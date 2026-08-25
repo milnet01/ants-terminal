@@ -124,6 +124,44 @@ TEST(wrapped_quote_match, Inv2NormalisationIsTwoSided) {
                               QStringLiteral("a finding whose quote")).size(), 1);
 }
 
+// INV-12 (ANTS-4607) — a SOURCE COMMENT LEADER is a continuation marker like
+// `>`, on both sides. A C++ codebase keeps its reasoning in hard-wrapped `//`
+// comments, so that is most of what a spec quotes; until this fix such a
+// sentence was unfindable, and "absent" could not be told from "wrapped" — so
+// a review gate that dismisses a finding whose quotation it cannot locate
+// dismissed real ones.
+TEST(wrapped_quote_match, Inv12FoldsSourceCommentLeaders) {
+    // The measured case, reduced: fillBulletRecord()'s own comment, which
+    // returned zero matches while the same sentence was found in two .md
+    // copies of it.
+    const QString cpp = QStringLiteral(
+        "        // bullets). Nothing in the text can separate that from a real\n"
+        "        // multi-word id, which is the argument for ANTS-3771: let a\n"
+        "        // project DECLARE its id format instead of inferring one.");
+    EXPECT_EQ(WrapMatch::find(cpp, QStringLiteral(
+                  "separate that from a real multi-word id, which is the "
+                  "argument for ANTS-3771")).size(), 1)
+        << "a quotation wrapped across `//` lines must be locatable";
+
+    // `#` (shell / python) and a lone `*` (the javadoc continuation).
+    EXPECT_EQ(WrapMatch::find(QStringLiteral("# one two\n# three four"),
+                              QStringLiteral("two three")).size(), 1);
+    EXPECT_EQ(WrapMatch::find(QStringLiteral(" * one two\n * three four"),
+                              QStringLiteral("two three")).size(), 1);
+
+    // Two-sided, as INV-2 requires: paste the comment block WITH its leaders
+    // against text carrying none.
+    EXPECT_EQ(WrapMatch::find(QStringLiteral("one two three four"),
+                              QStringLiteral("two\n// three")).size(), 1)
+        << "a needle pasted with its own `//` leaders must match flat text";
+
+    // A marker is folded only where it FOLLOWS whitespace, so emphasis glued
+    // to a word stays text rather than being skipped over.
+    EXPECT_TRUE(WrapMatch::find(QStringLiteral("one **two** three"),
+                                QStringLiteral("one two three")).isEmpty())
+        << "`**two**` is emphasis in the text, not a continuation marker";
+}
+
 // INV-3 — every occurrence is reported; an empty / whitespace-only needle
 // finds nothing rather than everything.
 TEST(wrapped_quote_match, Inv3AllOccurrencesAndEmptyNeedle) {

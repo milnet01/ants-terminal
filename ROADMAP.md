@@ -43260,7 +43260,7 @@ filed below.
   Source: in-session-2026-08-21, split out of ANTS-4604.
   Lanes: remotecontrol.
 
-- 📋 [ANTS-4607] **Neither quotation checker survives a hard wrap, so a true quotation reads as unverifiable.**
+- ✅ [ANTS-4607] **Neither quotation checker survives a hard wrap, so a true quotation reads as unverifiable.**
   Two verbs, one class, both hit while grounding the ANTS-3771 spec's
   quotations. Each is the failure workspace_search's own match_wrapped
   description warns about: a review gate that DISMISSES a finding whose quote
@@ -43321,6 +43321,7 @@ filed below.
   line while the matcher folds newlines. Three of these now -- attribution
   (fixed), span detection (open), comment leaders (open) -- which is the
   argument for fixing the class rather than the instances.
+  Resolved (2026-08-25). Part 1 done, so the item closes -- part 2 shipped as ANTS-4638 on the same day it was filed. WrapMatch's continuation-marker set now covers source comment leaders on BOTH sides: kSeparator folds `//` (and longer runs), `#` and a lone `*` after whitespace, and tokenise() drops needle tokens made only of those, exactly as it already did for `>`. A lone `*` and not `**`: the second opens markdown emphasis, and a marker is folded only where it FOLLOWS whitespace, so `**two**` stays text. Reproduced before fixing with this item's own example -- fillBulletRecord()'s comment in roadmapparse.cpp returned zero matches while the identical sentence was found in two .md copies. Each half was mutated separately: reverting the separator reddens the file-side assertions, reverting the tokeniser reddens the two-sided one, so neither is decorative. Verified on the ripgrep path too, not only the pure seam -- rg accepts the generated pattern and locates the wrapped comment, which mattered because a construct Rust regex rejected would have turned every match_wrapped call into an error. INV-12 plus wrapped_quote_match.Inv12FoldsSourceCommentLeaders. What remains in this family is ANTS-4664 (the quoted SPAN is still detected per line in doc_citations) and ANTS-4566.
   **Layman:** Two tools that check whether a quote is real fail when the quote is split across lines, which is how this project writes everything.
   Kind: fix.
   Source: in-session-2026-08-21 (ANTS-3771 spec authoring).

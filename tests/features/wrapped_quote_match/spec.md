@@ -38,6 +38,15 @@ handing to ripgrep.
   newline, and reports the span in the ORIGINAL text.
 - **INV-2** — two-sided: a needle carrying its own newlines, indentation
   and `>` blockquote markers matches text that has none.
+- **INV-12** (ANTS-4607) — a source COMMENT LEADER is a continuation marker
+  like `>`, folded on both sides: `//` (and longer runs), `#`, and a lone `*`
+  for the javadoc/doxygen continuation. A lone `*` only — `**` opens markdown
+  emphasis, and a marker is folded only where it follows whitespace, so
+  `**two**` stays text. Without this a sentence hard-wrapped across `//` lines
+  was unfindable, which is most of what a spec quotes in a C++ codebase, and
+  a gate that dismisses a finding whose quotation it cannot locate could not
+  tell "absent" from "wrapped".
+  *Test:* `wrapped_quote_match.Inv12FoldsSourceCommentLeaders`.
 - **INV-3** — `find()` reports EVERY occurrence; deciding what a second
   one means is the caller's. An empty or whitespace-only needle finds
   nothing rather than everything.

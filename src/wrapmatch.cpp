@@ -28,25 +28,49 @@ QString escapeLiteral(const QString &s) {
 }
 
 // The separator a whitespace run in the needle becomes: at least one
-// whitespace character, then any number of markdown blockquote markers
-// with their trailing space. That is the "and blockquote markers" half of
-// the rule, and it is what makes the normalisation two-sided — a
-// quotation pasted with its own `>` prefixes tokenises them away (below)
-// while the FILE keeps them here.
-const char *kSeparator = "[ \\t\\r\\n]+(?:>+[ \\t]*)*";
+// whitespace character, then any number of CONTINUATION MARKERS with their
+// trailing space. That is the "and blockquote markers" half of the rule, and
+// it is what makes the normalisation two-sided — a quotation pasted with its
+// own prefixes tokenises them away (below) while the FILE keeps them here.
+//
+// ANTS-4607 — a source COMMENT LEADER is such a marker and was not folded, so
+// a sentence hard-wrapped across `//` lines could not be found at all. That is
+// most of what a spec quotes: a C++ codebase keeps its reasoning in wrapped
+// comments, and a review gate that dismisses a finding whose quotation it
+// cannot locate cannot tell "absent" from "wrapped" — so the real defect
+// ships. Measured on this repo: fillBulletRecord()'s comment in
+// roadmapparse.cpp carries such a sentence verbatim over three lines, and it
+// returned zero matches while the same sentence was found in two .md copies.
+//
+// `//` and `#` are the line-comment leaders; a lone `*` is the javadoc/doxygen
+// continuation. `\\*` is deliberately NOT `\\*+`: one asterisk is the
+// continuation marker, while `**` opens markdown bold, and folding that away
+// would let a needle skip emphasis that is really there.
+const char *kSeparator = "[ \\t\\r\\n]+(?:(?:>+|/{2,}|#+|\\*)[ \\t]*)*";
 
-// Split the needle into the literal runs the separator joins. A token
-// that is nothing but blockquote markers is dropped rather than matched:
-// it is the marker of a wrapped line in the pasted quotation, not text.
+// Split the needle into the literal runs the separator joins. A token that is
+// nothing but continuation markers is dropped rather than matched: it is the
+// marker of a wrapped line in the PASTED quotation, not text.
+//
+// ANTS-4607 — this is the second side of the separator above, and the two must
+// carry the same marker set or the normalisation stops being two-sided: paste
+// a comment block complete with its `//` leaders and they tokenise away here,
+// exactly as `>` already did.
+bool isMarkerOnly(const QString &tok) {
+    for (const QChar c : tok) {
+        if (c != QLatin1Char('>') && c != QLatin1Char('/')
+            && c != QLatin1Char('#') && c != QLatin1Char('*'))
+            return false;
+    }
+    return true;
+}
+
 QStringList tokenise(const QString &needle) {
     QStringList out;
     for (const QString &tok :
          needle.split(QRegularExpression(QStringLiteral("[ \\t\\r\\n]+")),
                       Qt::SkipEmptyParts)) {
-        bool markerOnly = true;
-        for (const QChar c : tok)
-            if (c != QLatin1Char('>')) { markerOnly = false; break; }
-        if (!markerOnly) out.append(tok);
+        if (!isMarkerOnly(tok)) out.append(tok);
     }
     return out;
 }
