@@ -591,7 +591,59 @@ QJsonDocument RemoteControl::cmdChangelogLog(const QJsonObject &req) {
         out["line"]          = res.line;
         // The closed section's content, because a caller wants it as release
         // notes immediately — otherwise they re-read the file they just wrote.
-        out["released_body"] = res.released_body;
+        //
+        // ANTS-4561 — CAPPED, because on the projects that most need this verb
+        // the section is enormous. A big `[Unreleased]` is the symptom of a
+        // project that has been skipping the promotion step, and Vestige's had
+        // reached ~11,100 lines: the reply came back at 621,306 characters on
+        // one line, over the tool-result ceiling, so the one changelog edit
+        // every release makes could not be performed by the verb that owns it.
+        // dry_run did not help — it renders the same body — and the verb had
+        // no fields / compact / max_bytes to opt out with.
+        //
+        // Default-on rather than opt-in, per this project's rule that a
+        // token-saving knob ships enabled with an off switch: the callers who
+        // hit this are precisely the ones who do not know to ask. Truncation
+        // is ANNOUNCED and says how to get the rest, so a caller can never
+        // mistake a clipped body for the whole section.
+        {
+            const QByteArray fullBody = res.released_body.toUtf8();
+            qint64 cap = 16384;
+            const QJsonValue mbv = req.value(QStringLiteral("max_body_bytes"));
+            if (mbv.isDouble()) {
+                const qint64 want = static_cast<qint64>(mbv.toDouble());
+                if (want <= 0)              cap = 0;     // explicit opt-out
+                else if (want < 2000)       cap = 2000;
+                else if (want > 1048576)    cap = 1048576;
+                else                        cap = want;
+            }
+            if (cap > 0 && fullBody.size() > cap) {
+                // Back off to a UTF-8 boundary in O(1) rather than shrinking a
+                // QString a character at a time — this body can be 600 KB.
+                QByteArray headBytes = fullBody.left(static_cast<int>(cap));
+                while (!headBytes.isEmpty() &&
+                       (static_cast<unsigned char>(headBytes.back()) & 0xC0)
+                           == 0x80)
+                    headBytes.chop(1);
+                if (!headBytes.isEmpty() &&
+                    static_cast<unsigned char>(headBytes.back()) >= 0xC0)
+                    headBytes.chop(1);
+                out["released_body"] =
+                    QString::fromUtf8(headBytes) +
+                    QStringLiteral("\n\n... [released_body truncated at %1 of "
+                                   "%2 bytes — read the whole section with "
+                                   "read_region section=\"%3\", or pass "
+                                   "max_body_bytes (0 for no cap)] ...")
+                        .arg(cap)
+                        .arg(fullBody.size())
+                        .arg(res.heading);
+                out["released_body_truncated"] = true;
+                out["released_body_bytes"]     =
+                    static_cast<qint64>(fullBody.size());
+            } else {
+                out["released_body"] = res.released_body;
+            }
+        }
 
         if (dryRun) {
             out["dry_run"] = true;

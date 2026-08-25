@@ -40526,7 +40526,7 @@ filed below.
   Source: Vestige_Ants_MCP_Feedback.md 2026-08-20.
   Lanes: remotecontrol, codebaseindex.
 
-- 📋 [ANTS-4561] **changelog_log op:release echoes the whole closed section back with no way to suppress it, so it fails on a large [Unreleased].**
+- ✅ [ANTS-4561] **changelog_log op:release echoes the whole closed section back with no way to suppress it, so it fails on a large [Unreleased].**
   op:release returns the closed section as released_body so the caller has
   its release notes without re-reading the file. Right default for a normal
   section; a hard failure when the section is large.
@@ -40555,6 +40555,17 @@ filed below.
   flag; or a max_body_bytes cap that truncates with a marker the way
   roadmap_query's include_body already does. A caller who wants the notes
   can read the section back with read_region section=.
+  Resolved (2026-08-25) by the third of the item's three suggested fixes, chosen because it needs nothing from the caller. `released_body` is capped at 16384 bytes by default, with `max_body_bytes` to raise it (clamped to [2000, 1048576]) or 0 to lift the cap entirely.
+
+  Default-on rather than an opt-in flag, per this project's rule that a token-saving knob ships enabled with an off switch, and because of who hits this: a huge [Unreleased] is the SYMPTOM of a project that has been skipping the promotion step, so the sessions that meet the failure are precisely the ones with no reason to know a flag exists. The item's other two options (honour `fields`, or a return_body:false flag) both require the caller to have read the fix.
+
+  Truncation is announced and actionable, never silent: `released_body_truncated` and `released_body_bytes` (the true size) ride along, and the body ends with a marker naming the read_region section= call that returns the whole thing. A clipped body cannot be mistaken for the section.
+
+  The UTF-8 boundary back-off is done on the byte array in constant time rather than by chopping a QString a character at a time -- this body can be 600 KB, and the naive loop is quadratic on exactly the input the item is about.
+
+  Test changelog_log_writer.Ants4561ReleasedBodyIsCappedAndSaysSo covers all three arms: an oversized section truncates and names read_region, an ordinary release is byte-identical to before, and max_body_bytes:0 lifts the cap. Mutation-verified. 3941/3941.
+
+  Not addressed, and out of scope: the reporter also had to hand-maintain a table-of-contents entry. That is a separate capability, not a symptom of this defect.
   **Layman:** Closing a big changelog section returns the entire section as its reply, which is too large to receive.
   Kind: fix.
   Source: Vestige_Ants_MCP_Feedback.md 2026-08-20.

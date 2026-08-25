@@ -12247,7 +12247,9 @@ void ClaudeIntegration::onMcpConnection() {
                         "this verb did not own. Takes `version` (required; "
                         "`date` defaults to today), returns the closed "
                         "section as `released_body` so a caller has its "
-                        "release notes without re-reading the file, and "
+                        "release notes without re-reading the file (capped at "
+                        "16384 bytes by default and announced when truncated "
+                        "\u2014 ANTS-4561; `max_body_bytes:0` lifts it), and "
                         "refuses `nothing_to_release` on an empty section or "
                         "`version_exists` when that heading already exists "
                         "(two `## [X.Y.Z]` blocks leave a notes-extraction "
@@ -12423,6 +12425,27 @@ void ClaudeIntegration::onMcpConnection() {
                     clProps["date"]       = clDate;
                     clProps["bullets"]    = clBullets;
                     clProps["dry_run"]    = clDryRun;
+                    {   // ANTS-4561
+                        QJsonObject mb; mb["type"] = "integer";
+                        mb["description"] = QStringLiteral(
+                            "op:\"release\" — cap on the echoed "
+                            "`released_body` in bytes (default 16384, clamped "
+                            "to [2000, 1048576]; pass 0 for NO cap). The "
+                            "closed section is returned so a caller has its "
+                            "release notes without re-reading the file, but a "
+                            "project that has been skipping the promotion "
+                            "step accumulates an enormous `[Unreleased]` — one "
+                            "measured at ~11,100 lines came back as 621,306 "
+                            "characters, over the tool-result ceiling, so the "
+                            "one changelog edit every release makes could not "
+                            "be performed at all (dry_run renders the same "
+                            "body, so it was no escape). A truncated body is "
+                            "ANNOUNCED with `released_body_truncated` and "
+                            "`released_body_bytes` and carries a marker "
+                            "naming the read_region call that returns the "
+                            "whole section \u2014 it is never silently clipped.");
+                        clProps["max_body_bytes"] = mb;
+                    }
 
                     QJsonObject clSchema;
                     clSchema["type"] = "object";

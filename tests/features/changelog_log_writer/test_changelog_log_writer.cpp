@@ -862,6 +862,69 @@ TEST(changelog_log_writer, Ants4363CloseUnreleasedIntoAVersionBlock) {
 // The alias runs before the op validation, so the canonical name is what every
 // downstream branch and every refusal message sees — the alias is a way in,
 // not a second vocabulary.
+// ANTS-4561 — op:"release" echoes the closed section so a caller has its
+// release notes without re-reading the file. On the projects that most need
+// this verb that section is enormous: a big `[Unreleased]` is the SYMPTOM of a
+// project that has been skipping the promotion step, and one measured at
+// ~11,100 lines returned 621,306 characters on a single line — over the
+// tool-result ceiling, so the one changelog edit every release makes could not
+// be performed by the verb that owns it. dry_run was no escape: it renders the
+// same body.
+//
+// Capped by default rather than behind a flag, because the callers who hit
+// this are exactly the ones who do not know to ask — and ANNOUNCED, so a
+// clipped body can never be mistaken for the whole section.
+TEST(changelog_log_writer, Ants4561ReleasedBodyIsCappedAndSaysSo) {
+    auto runRelease = [](int entries, int maxBodyBytes) -> QJsonObject {
+        QByteArray cl = "# Changelog\n\n## [Unreleased]\n\n### Added\n\n";
+        for (int i = 0; i < entries; ++i)
+            cl += QByteArray("- **Entry number ") + QByteArray::number(i) +
+                  ", carrying enough prose to make the section large.**\n";
+        cl += "\n";
+        QTemporaryDir tmp;
+        EXPECT_TRUE(tmp.isValid());
+        writeFile(clPath(tmp.path()), cl);
+        RemoteControl rc(nullptr);
+        QJsonObject req;
+        req[QStringLiteral("caller_cwd")] = tmp.path();
+        req[QStringLiteral("op")]         = QStringLiteral("release");
+        req[QStringLiteral("version")]    = QStringLiteral("1.2.3");
+        if (maxBodyBytes >= 0)
+            req[QStringLiteral("max_body_bytes")] = maxBodyBytes;
+        return rc.cmdChangelogLog(req).object();
+    };
+
+    // A section far over the default cap.
+    const QJsonObject big = runRelease(400, -1);
+    ASSERT_TRUE(big.value(QStringLiteral("ok")).toBool())
+        << QJsonDocument(big).toJson().toStdString();
+    EXPECT_TRUE(big.value(QStringLiteral("released_body_truncated")).toBool())
+        << "an oversized body must be capped, not returned whole";
+    const QString body = big.value(QStringLiteral("released_body")).toString();
+    EXPECT_LT(body.toUtf8().size(), 20000)
+        << "the cap must actually bind";
+    EXPECT_TRUE(body.contains(QStringLiteral("read_region")))
+        << "a truncated body must name how to read the whole section: "
+        << body.right(300).toStdString();
+    EXPECT_GT(big.value(QStringLiteral("released_body_bytes")).toInt(),
+              body.toUtf8().size())
+        << "the caller must be told the true size it did not receive";
+
+    // A normal release is untouched and says nothing.
+    const QJsonObject small = runRelease(3, -1);
+    ASSERT_TRUE(small.value(QStringLiteral("ok")).toBool());
+    EXPECT_FALSE(small.contains(QStringLiteral("released_body_truncated")))
+        << "an ordinary section must be byte-identical to before";
+    EXPECT_TRUE(small.value(QStringLiteral("released_body")).toString()
+                    .contains(QStringLiteral("Entry number 1")));
+
+    // The off switch: 0 means no cap.
+    const QJsonObject uncapped = runRelease(400, 0);
+    ASSERT_TRUE(uncapped.value(QStringLiteral("ok")).toBool());
+    EXPECT_FALSE(uncapped.contains(QStringLiteral("released_body_truncated")))
+        << "max_body_bytes:0 is the documented opt-out";
+}
+
 TEST(changelog_log_writer, Ants4475OpAliasAcceptsTheSiblingSpelling) {
     QTemporaryDir tmp;
     ASSERT_TRUE(tmp.isValid());
