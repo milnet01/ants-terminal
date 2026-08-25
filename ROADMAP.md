@@ -44561,6 +44561,352 @@ Three were reproduced directly in this session rather than taken on report.
   Source: in-session-2026-08-25 (hit while deciding ANTS-4348).
   Lanes: mcp, speclint.
 
+### 🔌 Ants-MCP feedback from CC sessions — 2026-08-25 triage
+
+Third triage of 2026-08-25, from Charls_Site, OneUp and claude_config. Two
+findings arrived already filed and are closed against their existing ids; one
+was already fixed the same day; one was a confirmation with nothing to build;
+one was a defect in the feedback file itself and was repaired in place rather
+than filed. No intro count here on purpose — a section intro cannot be amended
+(ANTS-4539), so a number written here would go stale with no route to correct
+it.
+
+- 📋 [ANTS-4664] **doc_citations quotes:true detects a quoted span per LINE while matching folds newlines, so a hard-wrapped quotation is never checked and lands in no bucket.**
+  REPRODUCED before filing, with the reporter's own fixture: subj.md carries
+  two quotations attributed to src.md, one on a single line and one wrapped
+  across a line break, both verbatim in the source. doc_citations returned
+  quotes_checked:1, quote_counts{ok:1}, every other bucket 0 -- and the
+  wrapped quotation appears NOWHERE in quotes[], not even as skipped.
+
+  The defect is one step earlier than the class ANTS-4386 fixed. That work
+  made MATCHING fold runs of whitespace including newlines, for the stated
+  reason that a hard-wrapped quotation does not survive a line-oriented
+  search. DETECTION of the double-quoted span was left line-scoped, so the
+  matcher never gets the wrapped span to match.
+
+  Why it is worse than a false not_found. A false negative is visible and
+  argues with you; this is silent. A document whose quotations all wrap
+  returns quotes_checked:0 with every bucket zero, which is byte-identical
+  to a document that quotes nothing. The corpora using this verb are
+  hard-wrapped at ~70 columns by convention, so any quotation longer than a
+  few words wraps -- in the reporter's real case a plan carried three
+  quotations and one was checked.
+
+  Fix: detect the span over the newline-folded text, the same normalisation
+  the matcher already applies, then match as today. Failing that, count a
+  wrapped-and-unparsed span into an explicit bucket the way fenced and
+  loop-log quotations already are, so a real zero is distinguishable from an
+  unexamined one. A gate that dismisses a finding whose quote it cannot
+  locate is the consumer here, so a silent skip ships the defect.
+  **Layman:** The quotation checker silently ignores any quote that runs onto a second line, and reports the document as clean.
+  Kind: fix.
+  Source: OneUp-feedback-2026-08-25.
+  Lanes: mcp, doccitations.
+
+- 📋 [ANTS-4665] **feedback_query ignores fields=, so a duplicate check pays for the whole delta it was passed to avoid.**
+  The twin of ANTS-4663, confirmed the same way: by reading the allowlist
+  rather than the response. feedback_query is not in
+  mcp::isFieldProjectionTool, and its schema declares path, max_bytes,
+  include_tracking, caller_cwd and etag_match -- no fields, no compact. So
+  the argument is accepted and dropped.
+
+  The reporter passed four names that are all real top-level fields of this
+  verb's own response, which rules out the documented unknown-names-ignored
+  path, and got back delta, delta_present, mapped_ids, mapped_id_status,
+  awaiting, etag, path, ok, found and truncated.
+
+  What makes it expensive rather than untidy: delta is the largest field in
+  the envelope and grows with every un-triaged finding, and the narrowing
+  call exists precisely to check for duplicates WITHOUT re-reading it. So
+  the cost is worst exactly when a file is busiest. Measured on this
+  morning's own triage, the three pending files returned roughly 160 lines
+  of delta between them.
+
+  Fix as ANTS-4663: join the allowlist and declare both props. The shared
+  test derives its count from kFieldProjectionTools, so the schema half
+  cannot be forgotten. If the verb is instead DELIBERATELY exempt because
+  the delta is the point of it, say so in the description and refuse --
+  ANTS-4578 now reports an unhonoured fields in ignored_args, so silence is
+  no longer the outcome either way, but a refusal is cheaper than an
+  advisory arriving after the tokens are spent.
+  Confirmed live 2026-08-25, incidentally and from the verb itself. A
+  feedback_query call made during this triage passed fields and the reply
+  carried ignored_args:["fields"] alongside the full envelope. So the
+  argument is reaching the dispatcher, being recognised as unhonoured, and
+  reported — which is ANTS-4578 working, and independent evidence that the
+  projection is genuinely absent rather than merely undocumented.
+
+  That also settles the reporter's open question about whether the silence
+  was deliberate. It was not: nothing in the verb declines the argument, it
+  simply is not on the list.
+  **Layman:** Asking the feedback reader for just a couple of small numbers returns the entire backlog anyway.
+  Kind: perf.
+  Source: Charls_Site-feedback-2026-08-25.
+  Lanes: mcp, feedback.
+
+- 📋 [ANTS-4666] **spec_lint names a check in skipped[] while returning that same check's findings, so the field cannot be read either way.**
+  One run returned findings:[{kind:"invariant_no_test", ...}] plus
+  counts{invariant_no_test:1} and, in the same envelope,
+  skipped:["invariant_no_test"]. The check plainly ran: it produced a
+  correct, actionable finding.
+
+  skipped[] is ANTS-4373's field and its documented meaning is every gated
+  check that did NOT run. That wording cannot be reconciled with a finding
+  of that kind sitting beside it, and the contradiction makes the field
+  unreadable in both directions -- a caller either discloses a check that
+  demonstrably ran, or re-does by hand the work the verb already did.
+  Nothing in the envelope says which.
+
+  The consumer is what makes it matter rather than merely being untidy:
+  write-spec Step 4 requires disclosing any check that did not run and
+  requires the caller to then perform that check itself. So this envelope
+  instructs a conformer to do redundant manual work AND to publish a false
+  disclosure.
+
+  Fix: exclude a check from skipped[] whenever it contributed a finding or a
+  counts[] entry. If the name means something narrower -- a PARTIALLY gated
+  check, say, one that ran on some documents and was gated on others -- then
+  the field's description has to say so, and the two cases need different
+  names, because a caller cannot act on the current one.
+  **Layman:** The spec checker reports a check as "did not run" in the same breath as reporting what that check found.
+  Kind: fix.
+  Source: Charls_Site-feedback-2026-08-25.
+  Lanes: mcp, speclint.
+
+- 📋 [ANTS-4667] **No op writes a trailer COLUMN after creation, and the documented workaround is one-way -- so a corrected Layman is permanently marked.**
+  Two findings from the same reporter, the second correcting the first, so
+  they are one item.
+
+  THE TRAP. roadmap_log can create a layman / kind / lanes / source /
+  evidence at append time and can never change one afterwards. amend_body
+  edits the stored BODY column; the trailer lines are COMPOSED at render
+  time from their own columns (ANTS-4599), so they are not in the stored
+  body and amend_body cannot reach them. What turns a missing feature into a
+  trap is that roadmap_query include_body:true RETURNS those composed lines
+  inside body -- so the text is visibly in the field the verb claims to
+  edit, the caller passes it as old_text, and gets body_match_not_found
+  about a string it just read back verbatim. The refusal mentions neither
+  composed trailers nor the way out.
+
+  THE WORKAROUND IS ONE-WAY, which is the correction. Declaring Layman: at a
+  line start inside the body does set the column, last-wins. It cannot be
+  withdrawn: the write path recomputes the column by re-parsing the amended
+  body, so deleting the declaration yields no Layman and op:amend_body
+  refuses render_gate_unmet. The gate is right and caught it before writing;
+  the point is that the state is now permanent. The render then emits a
+  plain Layman: line where the composed form is bold, so a project that
+  corrects one Layman carries two styles it can never reconcile. Measured on
+  the reporter's project after correcting four of twenty-two.
+
+  Why this field. roadmap-format.md makes Layman REQUIRED and it is what the
+  Roadmap dialog shows on the card face, with the headline only on expand.
+  So the one field written for the non-technical reader is the one that
+  cannot be corrected, and a stale sentence there is what a reader sees. It
+  also blocks any bulk house-style pass -- the reporter's laymans named a
+  real person and had to be generalised before the repo could go public.
+
+  THREE FIXES, cheapest first, and the first is worth doing alone. (a) Have
+  the render compose a body-declared Layman in the SAME bold form as a
+  column one: the two routes become indistinguishable in the output and this
+  whole class of damage disappears without a new verb. (b) Make
+  body_match_not_found detect that old_text matches a composed trailer line
+  and name the declare-at-line-start route -- a dead end becomes a one-call
+  redirect. (c) The real answer: op:"amend_field" (id + field + value,
+  dry_run previewable), or a field parameter on amend_body selecting which
+  column old_text/new_text apply to.
+
+  Sibling on the headline column, same class and a higher cost, filed
+  separately because the shapes differ: an op exists there and refuses.
+  **Layman:** A typo in the one line written for non-technical readers cannot be fixed without permanently changing how that item looks.
+  Kind: fix.
+  Source: Charls_Site-feedback-2026-08-25.
+  Lanes: roadmap-store, mcp.
+
+- 📋 [ANTS-4668] **On a store-backed project amend_headline refuses with no alternative, so the only route is to refile and lose the item's identity.**
+  op:amend_headline refuses unsupported_format on a migrated project. The
+  refusal is well reasoned about the markdown side -- the headline is a
+  store column and its locate key, so a markdown patch would be reverted by
+  the next render -- and then ends "or edit the store", which is not
+  something a caller can do through this MCP. No op writes that column. So
+  on a migrated project a headline is immutable.
+
+  That is not a small class. A headline STATES a finding, and a finding can
+  be refuted by later evidence. Body notes then accumulate the correction
+  while the headline goes on asserting the refuted claim, and the render is
+  what a person scans.
+
+  Measured by the reporter on one item: CFG-0200's headline said a failure
+  "has now fired twice, both times on the procedure's step 1". Its own body
+  then recorded a third instance, a fourth that refuted the position claim
+  outright, and a fifth. Three appended corrections, none able to reach the
+  headline. The only workaround is to close the bullet and refile under a
+  new id, which they did (CFG-0200 to CFG-0237) -- and that loses the item's
+  identity: every commit, note and cross-reference pointing at the old id
+  now points at a bullet marked shipped that was never done. For an item
+  whose whole value is an accumulating observation, refiling is the
+  expensive option.
+
+  Fix: a store-backed amend_headline that writes the column and re-renders,
+  which is the path op:flip and op:annotate already take on a migrated
+  project. The refusal's reasoning is about patching markdown and does not
+  apply to a write going through the store. Keep the refusal where a project
+  is markdown-backed -- it is the migrated path that has no alternative.
+  Guard it with amend_body's unique-match old_text so it cannot clobber a
+  headline blind, and make it dry_run previewable.
+
+  Sibling on the trailer columns, same class, cheaper fixes available.
+  **Layman:** Once a roadmap item is in the database its title can never be corrected, even when later evidence disproves it.
+  Kind: fix.
+  Source: claude_config-feedback-2026-08-25.
+  Lanes: roadmap-store, mcp.
+
+- 📋 [ANTS-4669] **roadmap_log has no amend_batch, so a house-style correction across freshly-appended bullets costs one full read and render per bullet.**
+  append, flip and annotate all have _batch forms; amend_body and
+  amend_headline do not. The reporter wrote their bullets in two
+  append_batch calls, was then asked to strip hard counts from the prose,
+  and paid six separate amend_body calls -- each a full read, a whole-file
+  render and an atomic commit, each racing the file watcher.
+
+  That race is the exact justification already accepted twice, for
+  flip_batch (ANTS-1690) and annotate_batch (ANTS-4470). This is the third
+  instance of one argument.
+
+  The asymmetry bites hardest immediately after an append_batch, which is
+  also when a batch of edits is most likely: the bullets were authored
+  together, so a house-style correction applies to all of them at once. It
+  is also where the per-call cost is least justified, since nothing between
+  the calls can have changed the file.
+
+  Fix: op:"amend_batch" taking flip_batch's locators[] shape extended with
+  old_text / new_text per locator, one read and one atomic commit,
+  per-locator failures into skipped[]. annotate_batch already took that
+  shape from flip_batch, so there is no new argument grammar to learn, and
+  the uniqueness guards apply per locator unchanged.
+
+  Sequencing note, not a blocker: if the trailer-column editor lands as a
+  field parameter on amend_body rather than a separate op, the batch form
+  should carry it too. Filing this now rather than after, because the two
+  are independently useful.
+  **Layman:** Fixing the same phrase in a batch of just-written roadmap items takes one slow operation each.
+  Kind: enhancement.
+  Source: Charls_Site-feedback-2026-08-25.
+  Lanes: roadmap-store, mcp.
+
+- 💭 [ANTS-4670] **doc_citations cannot check a quotation attributed to a SOURCE file, which is the citation style the documentation standard prefers.**
+  Filed as CONSIDERED because the reporter offered it as a scope
+  observation rather than a defect, and the current boundary was chosen
+  deliberately.
+
+  Per ANTS-4639 a backticked token becomes a target only when it names a
+  document (.md, .markdown, .txt, .rst, .adoc, .org). A quotation
+  attributed to a code file -- a comment in a shell script, a docstring --
+  resolves to no_target and is never checked, though the file is present and
+  the quotation is exactly as verifiable as a markdown one. The reporter's
+  case: a quotation from a comment in tests/run-tests.sh, backticked in the
+  same paragraph, came back no_target with the text present verbatim in that
+  file.
+
+  The argument for widening. documentation.md prefers citing code by a
+  greppable quotation over a line number, precisely because line numbers
+  rot. So the quotations this check cannot reach are the ones most exposed:
+  they sit next to code that changes.
+
+  The argument against, which is why this is considered rather than planned:
+  ANTS-4639 drew the boundary to stop a config key like core.hooksPath being
+  read as a target, and widening it re-opens that.
+
+  The reporter's own proposal threads both: treat a backticked token as a
+  target when it carries a directory separator AND resolves to a real file,
+  whatever the extension -- which admits tests/run-tests.sh and still
+  excludes core.hooksPath, since that has no separator and resolves to
+  nothing. Worth measuring against the corpus before building: the question
+  is how many NEW false targets that rule admits, not whether it admits the
+  one good case.
+  **Layman:** Quotes that point at code comments instead of documents are skipped, and those are the ones most likely to go stale.
+  Kind: enhancement.
+  Source: OneUp-feedback-2026-08-25.
+  Lanes: mcp, doccitations.
+
+- 📋 [ANTS-4671] **feedback_log op:assign_id fills one slot per call, so a triage pays one read and one atomic write per finding.**
+  Noticed by doing it rather than by reading the schema. Today's triage
+  decided thirteen findings across three files in one pass and then spent
+  thirteen assign_id calls writing that decision down, each a full read and
+  atomic write of a file in the tens of kilobytes.
+
+  The same argument as ANTS-4669, one verb over. It has now been accepted
+  three times on the roadmap side -- flip_batch (ANTS-1690), annotate_batch
+  (ANTS-4470) and ANTS-4669's amend_batch -- and the feedback side has no
+  batch op at all.
+
+  The shape is stronger here than on the roadmap side, because a triage is
+  inherently a batch: findings are read together via feedback_query, decided
+  together against one dedup sweep, and several legitimately share one id
+  (two of today's did, a finding and the correction that amended it). The
+  per-call cost is least justified where nothing between the calls can have
+  changed the file.
+
+  Fix: op:"assign_id_batch" taking assignments[] of {heading, heading_line?,
+  ids|closure|awaiting, note?} -- the existing per-call arguments unchanged
+  -- with one read and one atomic write, and per-assignment failures into
+  skipped[] as every other _batch op does. target_not_found and
+  target_ambiguous apply per assignment, which matters more here than
+  elsewhere: a heading is matched verbatim, so a mistyped one should cost
+  its own assignment and not the batch.
+
+  Not urgent. A triage this size is occasional, and the corpus is usually
+  drained in smaller passes. Filed because it was measured rather than
+  guessed, and because the batch-op argument is now settled enough that the
+  gap is an omission rather than a decision.
+  **Layman:** Recording the outcome of a triage takes one slow write per finding, even when they were all decided together.
+  Kind: enhancement.
+  Source: in-session-2026-08-25, hit while triaging the three pending feedback files.
+  Lanes: mcp, feedback.
+
+- 📋 [ANTS-4672] **workspace_search's glob takes one string where exclude_glob takes an array, and neither says a brace group is how you name several.**
+  Confirmed from the schema, which is the whole of the defect. `glob` is
+  type string and takes exactly one pattern; `exclude_glob` is documented
+  "a string or an array" and behaves that way. So a denylist of N paths is
+  one argument and an allowlist of N paths is not expressible the same way,
+  and NEITHER description mentions that a brace group is the answer.
+
+  The asymmetry itself is right -- it is ripgrep's own shape, and the
+  reporter says so. What is missing is the sentence telling a caller what to
+  do instead. They reached for an array on `glob` because the sibling
+  parameter one line away accepts one.
+
+  The reporter verified both forms live rather than assuming:
+  glob:"standards/{versioning,commits}.md" with files_only returned exactly
+  those two files out of a directory where every file matched the pattern,
+  and the exclude_glob array form worked as documented.
+
+  Why a description fix earns an item. They were writing a rule into a
+  review skill telling its lanes to bound every search to an allowlist of
+  documents. As an array it would have shipped unexecutable, and the failure
+  would have surfaced inside a dispatched subagent -- where it reads as the
+  lane misbehaving rather than as a bad brief. They caught it by re-reading
+  the schema before committing. The caller who does not re-read is the case
+  this protects.
+
+  Fix: one clause in `glob`'s description saying it takes a single pattern
+  and that several paths are named with a brace group,
+  `standards/{commits,releases}.md`, where `exclude_glob` would take an
+  array. Cheaper than widening `glob`, and more useful -- brace groups
+  express things an array cannot, and the syntax carries over to
+  `exclude_glob`.
+
+  Do ONE of the two, not both. The reporter's closing point is the
+  important one: the two parameters reading differently is what sent them to
+  the array, so a fix that leaves them still reading differently has not
+  fixed it. If widening is preferred, joining an array into one brace group
+  internally would be compatible with what callers already write.
+
+  Watch the source-scrape tests when editing this description: a schema
+  literal moving past a fixed byte window has broken those before.
+  **Layman:** Two neighbouring search options take different shapes, and the way to list several paths is not written down anywhere.
+  Kind: doc.
+  Source: claude_config-feedback-2026-08-25.
+  Lanes: mcp, workspacesearch.
+
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-08-11 triage
 
 35 un-triaged findings across 9 of the 18 shared-root feedback files (AI
