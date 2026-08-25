@@ -2,6 +2,7 @@
 #include "remotecontrol.h"
 #include "mutationprobe.h"   // ANTS-4398
 #include "remotecontrol_internal.h"
+#include "rgdiagnosis.h"   // ANTS-4650 — why rg did not start
 #include "wrapmatch.h"   // ANTS-4547 — the wrapped-quotation matching rule
 #include "buildtargets.h"        // ANTS-3745 — build_target_for engine
 #include "fileoutline.h"
@@ -22,6 +23,7 @@
 #include "debuglog.h"
 #include "secureio.h"
 #include <QDir>
+#include <QStandardPaths>
 #include <QElapsedTimer>
 #include <QFile>
 #include <QFileInfo>
@@ -51,9 +53,15 @@ struct RgRun {
     QByteArray stderrTail;        // capped at kWorkspaceSearchStderrCapBytes
     int  exitCode    = 0;
     bool startFailed = false;
+    QString startDiagnosis;       // ANTS-4650 — non-empty only when startFailed
     bool crashed     = false;     // abnormal exit that was not our own kill
     bool hardKilled  = false;
 };
+
+// How long to wait for the fork+exec to report started. Deliberately unchanged
+// by ANTS-4650: whether it is too short on a loaded host is a real question,
+// and the diagnosis now says so in the reply rather than guessing here.
+constexpr int kRgStartWaitMs = 500;
 
 RgRun rcRunRg(const QStringList &argv, const QString &workingDir, int budgetMs) {
     RgRun out;
@@ -63,8 +71,20 @@ RgRun rcRunRg(const QStringList &argv, const QString &workingDir, int budgetMs) 
     // ANTS-1248-INV-3: QProcess::start(QString, QStringList) — argv
     // form. No shell, no single-string overload.
     rg.start(QStringLiteral("rg"), argv);
-    if (!rg.waitForStarted(500)) {
+    if (!rg.waitForStarted(kRgStartWaitMs)) {
+        // ANTS-4650 — gather the evidence HERE, where it still exists. The
+        // caller only sees a bool, and a bool cannot tell a missing package
+        // from a busy host.
         out.startFailed = true;
+        RgDiagnosis::StartFailure f;
+        f.exePath          = QStandardPaths::findExecutable(QStringLiteral("rg"));
+        f.workingDir       = workingDir;
+        f.workingDirExists = QDir(workingDir).exists();
+        f.stillStarting    = (rg.state() == QProcess::Starting);
+        f.errorString      = rg.errorString();
+        f.pathEnv          = qEnvironmentVariable("PATH");
+        f.startTimeoutMs   = kRgStartWaitMs;
+        out.startDiagnosis = RgDiagnosis::explain(f);
         return out;
     }
 
@@ -435,7 +455,7 @@ QJsonDocument RemoteControl::cmdWorkspaceSearch(const QJsonObject &req) {
     const RgRun run = rcRunRg(argv, rootCanonical, budgetMs);
     if (run.startFailed) {
         return QJsonDocument(wsErr("rg_failed",
-            QStringLiteral("workspace-search: rg failed to start (is ripgrep installed?)")));
+            QStringLiteral("workspace-search: %1").arg(run.startDiagnosis)));
     }
     const bool hardKilled          = run.hardKilled;
     const QByteArray &stderrTail   = run.stderrTail;
@@ -1236,7 +1256,7 @@ QJsonDocument RemoteControl::cmdCitedBy(const QJsonObject &req) {
         // run had not happened yet would be reported uncited.
         if (run.startFailed) {
             return QJsonDocument(wsErr("rg_failed",
-                QStringLiteral("cited_by: rg failed to start (is ripgrep installed?)")));
+                QStringLiteral("cited_by: %1").arg(run.startDiagnosis)));
         }
         if (run.crashed) {
             QJsonObject o = wsErr("rg_failed",
@@ -3089,7 +3109,9 @@ QJsonDocument RemoteControl::cmdCoChangeFamily(const QJsonObject &req) {
     const RgRun run = rcRunRg(argv, rootCanonical, kWorkspaceSearchHardKillMs);
     if (run.startFailed || run.crashed) {
         return QJsonDocument(wsErr("rg_failed",
-            QStringLiteral("co_change_family: ripgrep did not run")));
+            QStringLiteral("co_change_family: %1")
+                .arg(run.startFailed ? run.startDiagnosis
+                                     : QStringLiteral("ripgrep crashed mid-scan"))));
     }
     // Exit 1 is ripgrep's "no matches" — a valid empty answer, not a failure.
     // A hard kill is a PARTIAL answer and is reported through `truncated`;

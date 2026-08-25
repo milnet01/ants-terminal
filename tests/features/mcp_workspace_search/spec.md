@@ -48,6 +48,18 @@ the existing `SRC_CLAUDE_INTEGRATION_CPP_PATH`,
 `ANTS_RC_SOURCES`, `SRC_MAINWINDOW_CPP_PATH` compile
 defs already declared on `test_claude`.
 
+## ANTS-4650 — a start failure names its cause
+
+| # | Statement |
+|---|-----------|
+| 4650-1 | `rcdetail::rgStartDiagnosis` returns a DIFFERENT sentence for each of four causes: a search root that no longer exists, rg absent from PATH, rg present but still starting when the wait expired, and rg present but refused by the OS. Two causes that read alike are two causes one of which gets the wrong repair. |
+| 4650-2 | The absent branch names the PATH it searched; the still-starting branch names the timeout it exceeded and does NOT say ripgrep is missing; the refused branch carries `QProcess::errorString()`. |
+| 4650-3 | No rg call site emits the retired single-cause string `rg failed to start (is ripgrep installed?)`. All three (`workspace_search`, `cited_by`, `co_change_family`) route through the shared diagnosis. |
+
+The classifier is pure so the four branches are testable without making
+ripgrep vanish — which is why the evidence is gathered at the spawn site and
+passed in, rather than classified there.
+
 ## Out of scope
 
 - Runtime correctness of the ripgrep child process. Manual smoke

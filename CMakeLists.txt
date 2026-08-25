@@ -540,6 +540,7 @@ add_library(ants_core_lib STATIC
     # ANTS-4547/4550 — the wrapped-quotation matching rule (pure helper),
     # shared by workspace_search and roadmap_log op:amend_body.
     src/wrapmatch.cpp
+    src/rgdiagnosis.cpp
     # ANTS-2094 — proactive result offload: spill large read bodies to a
     # content-addressed cache file + serve a head+pointer envelope.
     src/mcpspill.cpp

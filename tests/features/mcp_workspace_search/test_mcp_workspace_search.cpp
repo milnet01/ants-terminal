@@ -4,6 +4,10 @@
 // Exit 0 = all 10 invariants hold.
 
 #include "../../_support/expect.h"
+#include "rgdiagnosis.h"
+
+#include <QString>
+#include <QStringList>
 
 #include <cstdio>
 #include <regex>
@@ -444,4 +448,68 @@ TEST(McpWorkspaceSearch, Ants3704ExcludeGlobWiring) {
            "workspace_search inputSchema does not declare exclude_glob");
 
     EXPECT_EQ(0, expect_failures()) << expect_failures() << " ANTS-3704 invariant(s) failed";
+}
+
+// ANTS-4650 — the refusal named the one cause a session can rule out, and
+// offered no other. `rg_failed` has now been produced by two OPPOSITE causes:
+// ripgrep genuinely absent (CI red on main, 2026-08-14, recorded in
+// tests/features/ci_workflow_deps/spec.md) and ripgrep present and working
+// (2026-08-25). A message that cannot separate them sends the reader to the
+// wrong repair in one of the two cases, every time.
+TEST(McpWorkspaceSearch, Ants4650StartFailureNamesTheRightCause) {
+    using RgDiagnosis::StartFailure;
+
+    StartFailure absent;                       // the 2026-08-14 incident
+    absent.pathEnv        = QStringLiteral("/usr/bin:/bin");
+    absent.startTimeoutMs = 500;
+    const QString a = RgDiagnosis::explain(absent);
+    EXPECT_TRUE(a.contains(QStringLiteral("not found on PATH")));
+    EXPECT_TRUE(a.contains(QStringLiteral("/usr/bin:/bin")))
+        << "must name the PATH it actually searched";
+
+    StartFailure loaded;                       // the 2026-08-25 report
+    loaded.exePath        = QStringLiteral("/usr/bin/rg");
+    loaded.stillStarting  = true;
+    loaded.startTimeoutMs = 500;
+    const QString b = RgDiagnosis::explain(loaded);
+    EXPECT_FALSE(b.contains(QStringLiteral("not found on PATH")))
+        << "ripgrep was installed and working — do not send the reader there";
+    EXPECT_TRUE(b.contains(QStringLiteral("/usr/bin/rg")));
+    EXPECT_TRUE(b.contains(QStringLiteral("500")))
+        << "a start-wait timeout must name the budget it exceeded";
+
+    StartFailure failed;                       // found, exec refused
+    failed.exePath     = QStringLiteral("/usr/bin/rg");
+    failed.errorString = QStringLiteral("Resource temporarily unavailable");
+    const QString c = RgDiagnosis::explain(failed);
+    EXPECT_FALSE(c.contains(QStringLiteral("not found on PATH")));
+    EXPECT_TRUE(c.contains(QStringLiteral("Resource temporarily unavailable")))
+        << "the OS reason is the whole diagnostic value here";
+
+    StartFailure gone;                         // cwd deleted before the spawn
+    gone.exePath          = QStringLiteral("/usr/bin/rg");
+    gone.workingDir       = QStringLiteral("/tmp/deleted-root");
+    gone.workingDirExists = false;
+    const QString d = RgDiagnosis::explain(gone);
+    EXPECT_TRUE(d.contains(QStringLiteral("/tmp/deleted-root")));
+
+    // Four causes, four repairs — none may read as another.
+    const QStringList all{a, b, c, d};
+    for (int i = 0; i < all.size(); ++i)
+        for (int j = i + 1; j < all.size(); ++j)
+            EXPECT_NE(all.at(i), all.at(j))
+                << "cause " << i << " and " << j << " are indistinguishable";
+}
+
+// ANTS-4650 — every rg call site must route through the shared diagnosis. The
+// hardcoded "(is ripgrep installed?)" is the string that could only ever name
+// one cause, and there were three copies of it.
+TEST(McpWorkspaceSearch, Ants4650NoCallSiteHardcodesTheOneCause) {
+    const std::string rc = ants_test::slurpRemoteControl();
+    // The emitted string, closing paren included — prose ABOUT the retired
+    // message is not a reintroduction of it, and a guard that cannot tell the
+    // difference reddens on its own explanation.
+    EXPECT_EQ(rc.find("rg failed to start (is ripgrep installed?)"),
+              std::string::npos)
+        << "a call site still hardcodes the single-cause message";
 }

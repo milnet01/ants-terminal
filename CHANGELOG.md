@@ -173,6 +173,9 @@ for security-relevant changes.
 
 ### Changed
 
+- **a ripgrep start failure now names its cause instead of asking whether ripgrep is installed** (ANTS-4650)
+  "rg failed to start (is ripgrep installed?)" could only ever name one cause, and it has been emitted both for ripgrep genuinely absent and for ripgrep present and working — so in one of those cases it sent the reader to the wrong repair every time. The three rg-backed verbs now share one classifier that distinguishes a vanished search root, rg missing from PATH (naming the PATH searched), rg still starting when the wait expired (a loaded host — retry, do not fall back to grep), and rg refused by the OS.
+
 - **A 5-second git-spawn budget in eight test fixtures reddens build-asan at random.** (ANTS-4651)
   One shared, env-overridable budget replaces twelve hard 5-second
   literals across eight fixtures, and a timeout now says which command
