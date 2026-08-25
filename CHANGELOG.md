@@ -283,6 +283,13 @@ for security-relevant changes.
 
 ### Fixed
 
+- **fields= is documented universal but allowlisted, so every other verb drops it AND cannot report it.** (ANTS-4524)
+  `fields=` is honoured on every verb now, and declared on every schema, so
+  a caller who narrows a response gets what they asked for instead of the
+  full payload in silence. Compaction stays per-verb on purpose: it has a
+  default, and a default nobody asked for is what folded away a flag saying
+  a check had never run.
+
 - **changelog_log op:release echoes the whole closed section back with no way to suppress it, so it fails on a large [Unreleased].** (ANTS-4561)
   Closing a big changelog section returns the entire section as its reply, which is too large to receive.
 

@@ -39290,7 +39290,7 @@ are closed inline in the feedback files rather than filed here.
   Kind: fix.
   Source: in-session-2026-08-19 (maintainer, measured).
 
-- 📋 [ANTS-4524] **fields= is documented universal but allowlisted, so every other verb drops it AND cannot report it.**
+- ✅ [ANTS-4524] **fields= is documented universal but allowlisted, so every other verb drops it AND cannot report it.**
   Two specs disagree, and the gap between them is silent in both
   directions.
 
@@ -39368,6 +39368,39 @@ are closed inline in the feedback files rather than filed here.
   This body predicted the split would retire ANTS-4673's carve-out. It did not, and the reason is worth more than the prediction: asking which OTHER verbs emit a false boolean meaning "nobody looked" found roadmap_query's sync_checked being dropped in every session already (ANTS-4677, shipped). So the carve-out was generalised to protect any `*_checked` key rather than retired -- the class, not the instance.
 
   STILL OPEN, and it is what keeps this item planned: route 1's second half, making `fields=` genuinely universal so mcp_ignored_args INV-2's premise becomes true. The blocker this body named -- that widening the shared gate would compact every unlisted verb -- is now gone, which was the whole point of doing the split first.
+  Resolved (2026-08-25): route 1's second half. `fields=` is honoured on
+  every verb, the tools/list builder injects the property into every schema
+  that does not declare its own, and mcp::isUniversalDispatchArg says so to
+  the ignored_args advisory -- which is what makes mcp_ignored_args INV-2's
+  premise TRUE rather than merely asserted. isFieldProjectionTool is deleted
+  rather than left dormant, and a test scrapes for its absence: a dormant
+  predicate is what the next verb-author reaches for.
+
+  WHAT MADE IT SAFE, and it is not the same argument as the split. Two
+  floors in projectFields. The ANTS-2112 refusal floor already existed. The
+  new one returns any envelope carrying `unchanged:true` whole -- a verb with
+  per-run measurements owns its own 304 (mcp-tools.md step 7) and that one is
+  invisible to the dispatcher, so such a verb was told to DECLINE `fields=`.
+  There is nothing to decline now, and a guard in the shared transform covers
+  both kinds of 304 rather than each such verb remembering to. That is the
+  better shape and it only became available by removing the allowlist.
+
+  COMPACTION DID NOT FOLLOW, deliberately. isCompactArgTool replaces
+  isFieldProjectionTool as the table's membership test; isDefaultCompactTool
+  stays the separate answer for an ABSENT compact. The asymmetry this body
+  named holds: `fields=` is opt-in with no default, so widening it can only
+  do what a caller asked for.
+
+  Six mutations, each red on its intended test: re-adding the dispatch gate,
+  dropping the 304 floor, un-universalising the arg, removing the schema
+  injection, moving it after the tools/list snapshot, and default-compacting
+  spec_lint again. 3943/3943.
+
+  The two specs that were true alone and false as a pair are edited together
+  as this body required -- mcp_projection INV-8/10/11 and mcp_ignored_args
+  INV-2/2b. Collateral in docs/standards/mcp-tools.md (steps 7 and 8) is
+  being gated under CLAUDE.md rule 14, since a conformer now does something
+  different.
   **Layman:** One setting is advertised as working everywhere but only works on some tools, and nothing warns you.
   Kind: fix.
   Source: in-session-2026-08-19 (found fixing ANTS-4523).
