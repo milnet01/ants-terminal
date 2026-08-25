@@ -14,6 +14,14 @@ for security-relevant changes.
 
 ### Added
 
+- **`roadmap_migrate` accepts `fields=` and `compact`, so its envelope can be narrowed** (ANTS-4429)
+  A no-op re-sync returned ~25 KB with no way to ask for less — the schema
+  sets `additionalProperties: false`, so `fields=` was not merely absent, it
+  was refused. Both args are consumed by the dispatcher after the handler
+  returns, so they narrow the report and never the migration. Closes the
+  last of ANTS-4144, ANTS-4408 and ANTS-4429, the older half of which
+  ANTS-4649 had already settled.
+
 - **feedback_log op:"set_title" — rename a feedback file's heading after a project rename** (ANTS-4646)
   The filename was always derived correctly; the H1 was writable by no op, so a rename left the title contradicting it and the only route was a hand edit, against the file's own "don't hand-edit" instruction. `title` is the project name, not the whole heading: the existing prefix is preserved verbatim, since this renames a project rather than normalising a corpus. Re-runnable — an already-correct title reports no change and writes nothing.
 

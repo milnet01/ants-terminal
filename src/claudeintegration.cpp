@@ -11855,6 +11855,17 @@ void ClaudeIntegration::onMcpConnection() {
                         props["confirm"] = p;
                     }
                     props["dry_run"] = makeDryRunProp();
+                    // ANTS-4429 — declared for the same reason ANTS-4621
+                    // declared `op` and `confirm`: this schema sets
+                    // additionalProperties:false, so an undeclared argument is
+                    // refused by a strict client before the dispatcher is
+                    // reached, and on a permissive one ANTS-2175 reports it in
+                    // `ignored_args` — telling the caller its argument did
+                    // nothing on the call that argument had just steered.
+                    // Consumed by the dispatcher rather than the handler, so
+                    // they narrow the report and never the migration.
+                    props["fields"]  = makeFieldsProp();         // ANTS-1720
+                    props["compact"] = makeCompactProp();        // ANTS-2091
                     schema["properties"] = props;
                     QJsonArray req;
                     req.append(QStringLiteral("caller_cwd"));

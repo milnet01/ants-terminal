@@ -83,7 +83,24 @@ bool isFieldProjectionTool(const QString &toolName) {
         // negative list names session_brief and current_state and never named
         // this one. `fields=` narrows the PAYLOAD, not the work — the eager
         // codebase_index refresh (ANTS-2140) still runs.
-        || toolName == QStringLiteral("session_orient");
+        || toolName == QStringLiteral("session_orient")
+        // ANTS-4429 — the migrate envelope is the biggest thing a session
+        // adopting a project sees, and none of it could be narrowed: the
+        // schema is `additionalProperties:false`, so `fields=` was not merely
+        // absent, it was refused. Measured on a no-op dry run of this
+        // project: ~25 KB, the bulk being `notes` (~150 rows) and a capped
+        // `updated_items`, for an answer that is a handful of counters.
+        // ANTS-4649 collapsed the repeating notes; that shrank one
+        // contributor, it did not make the envelope narrowable.
+        //
+        // A WRITE verb on a read-verb list is deliberate and safe: the
+        // dispatcher applies both steps after the handler returns, so they
+        // narrow the REPORT and never the work. Compaction is safe for the
+        // same reason it is elsewhere — isCompactDroppable keeps every
+        // number, so `items_inserted:0` and `ids_allocated:0` survive; only
+        // the false/empty flags fold away, which is compactEnvelope's
+        // documented absent-⟺-default contract.
+        || toolName == QStringLiteral("roadmap_migrate");
 }
 
 // ANTS-2094 — offload-eligible read verbs (see header). A separate set from

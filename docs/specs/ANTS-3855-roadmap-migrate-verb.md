@@ -87,6 +87,18 @@ has nothing to fall back to when no project is named.
 | `dry_run` | bool | `false` | Plan every write, report the counts, roll back. Declared via `makeDryRunProp()`. |
 | `project_name` | string | leaf dir of the canonical root, verbatim | `project.name`. Must be non-empty after trimming — `project.name` is `TEXT NOT NULL`, and an all-whitespace name would satisfy the column and identify nothing. |
 | `export_slug` | string | slugified leaf dir | `project.export_slug`. |
+| `op` | enum | `"migrate"` | `"deregister"` is the inverse — see § 2.8. Declared because the handler reads it (ANTS-4617 / ANTS-4621). |
+| `confirm` | bool | `false` | `op:"deregister"` only; clears `confirm_required`. Ignored by the migrate op. |
+| `fields` | array | — | Narrow the response to these top-level keys. Declared via `makeFieldsProp()` (ANTS-4429). |
+| `compact` | bool | session terse default | Drop dead-weight values. Declared via `makeCompactProp()` (ANTS-4429). |
+
+**The last four rows were added 2026-08-25 to record what shipped, not to
+direct anything new** — `op` and `confirm` landed with ANTS-4617 and this
+table was never updated. `fields` and `compact` are consumed by the
+DISPATCHER rather than by this verb's handler, so they narrow the report and
+never the migration; they are listed here because
+`additionalProperties: false` makes an undeclared argument a refusal, which
+is what kept this envelope un-narrowable until ANTS-4429.
 
 `project_name` and `export_slug` are arguments because **nothing derives
 them**: `RoadmapMigrate::planFrom()` takes both from its caller by design

@@ -54691,7 +54691,7 @@ here.)
   be re-checked. Not filed separately — a hook recommending a broken verb is
   this bullet's cost, not a new defect.
 
-- 📋 [ANTS-4144] **A rolled-back `roadmap_migrate` still emits its full note list, spending thousands of tokens describing writes that did not happen.**
+- ✅ [ANTS-4144] **A rolled-back `roadmap_migrate` still emits its full note list, spending thousands of tokens describing writes that did not happen.**
   The failed Phase D2 run returned `ok:false` with a one-line error and
   `notes_count: 1032`, `notes_truncated: true` — roughly 180 truncated
   entries in the response, almost all repeats of `field_defaulted(kind)`,
@@ -54709,6 +54709,18 @@ here.)
   Kind: perf.
   Lanes: mcp, roadmap.
   Source: in-session-2026-08-13 (measured re-running Phase D2).
+  Resolved (2026-08-25): verified rather than assumed. ANTS-4649's collapse
+  lives in `setNotes`, and `setNotes` is called on BOTH arms of
+  RoadmapMigrateVerb::run -- the rollback arm at :407, under `!out.ok` beside
+  `code:migrate_failed` and `error`, and the success arm at :481. So the shape
+  this item asked for is exactly what a refusal now carries: the error, the
+  counts (`notes_count`), and a bounded, counted sample. Its second question --
+  whether the notes were worth emitting in full even on SUCCESS -- is answered
+  the same way, by the same code, on the same call. Measured today on this
+  project: 383 field_defaulted notes render as 2 rows. What did NOT collapse is
+  field_conflict, whose detail bakes in the item id; that is a distinct defect
+  in a different code and is filed as ANTS-4656 rather than left inside this
+  closure.
 
 - 📋 [ANTS-4145] **`session_memory` write ops key their tenancy gate on the FOCUSED tab, so a session in any other tab cannot save its own project's state.**
   Hit 2026-08-13 trying to persist Phase D2's resume state before a
@@ -54961,7 +54973,7 @@ here.)
   Source: in-session-2026-08-15.
   Lanes: mcp, audit.
 
-- 📋 [ANTS-4408] **roadmap_migrate returns ~1,040 notes on every call, so a routine re-import costs thousands of tokens of noise.**
+- ✅ [ANTS-4408] **roadmap_migrate returns ~1,040 notes on every call, so a routine re-import costs thousands of tokens of noise.**
   Every `roadmap_migrate` call on this project returns `notes_count: 1040`
   with `notes_truncated: true`, and the emitted prefix is still several
   thousand tokens. The content is three repeating codes --
@@ -54982,6 +54994,17 @@ here.)
   Kind: perf.
   Source: in-session-2026-08-15.
   Lanes: mcp, roadmap.
+  Resolved (2026-08-25) in substance, with one half deliberately not built and
+  said so here. The ask was two things: default to the aggregate, and add a
+  `notes` argument (summary | full | cap). ANTS-4649 delivered the first -- the
+  three repeating codes this item named collapse to one row each with a count
+  and up to three sample_lines -- and chose that over the opt-in flag on
+  purpose. The `notes` argument was not built and is no longer the cheapest
+  route to what it wanted: ANTS-4429 shipped `fields=` on this verb today, so a
+  caller who wants no notes at all passes fields=[...] and drops the array
+  entirely, which is stronger than a per-verb enum and is the same knob every
+  other read verb takes. Closing rather than carrying a residual whose only
+  remaining value is a second way to spell an argument that now exists.
 
 - 📋 [ANTS-4409] **The corpus survey silently omits a whole project, and roadmap-data-model.md's figures rest on it.**
   `tools/roadmap-corpus-survey.py` probes each project for `ROADMAP.md` at
@@ -55128,7 +55151,7 @@ here.)
   Source: in-session-2026-08-18 (ANTS-4065 Phase E2 pre-flight).
   Lanes: roadmap-store, mcp.
 
-- 📋 [ANTS-4429] **roadmap_migrate emits thousands of per-line notes with no summary and no way to ask for less.**
+- ✅ [ANTS-4429] **roadmap_migrate emits thousands of per-line notes with no summary and no way to ask for less.**
   Measured across the 14-project rollout: Vestige emitted 3,535 notes and
   Music_Production 1,428, both `notes_truncated: true`, on runs that
   SUCCEEDED. The notes are one per line per defaulted field, so a project
@@ -55151,6 +55174,33 @@ here.)
   Kind: enhancement.
   Source: in-session-2026-08-18 (ANTS-4065 Phase E2 rollout).
   Lanes: mcp, roadmap-store.
+  Resolved (2026-08-25), both halves. The `notes_summary of {code: count}
+  alongside a bounded sample` shipped as ANTS-4649: rows keyed by (code, detail,
+  source_index), each carrying `count` + up to three `sample_lines`, with a row
+  of one keeping its old shape -- which is precisely the split this item asked
+  for between the codes that name ONE thing (quarantined_id, unresolved_path)
+  and the per-bullet codes that should fold. The `fields=` / `compact` half
+  shipped today: roadmap_migrate joins mcp::isFieldProjectionTool and declares
+  both props, so the `additionalProperties:false` wall this item correctly
+  identified is gone.
+
+  Measured before closing, and the measurement changed what got built. The
+  envelope on a no-op dry run of this project is still ~25 KB AFTER ANTS-4649 --
+  not because that fix failed, but because two other contributors replaced the
+  one it removed: ~145 field_conflict rows that cannot collapse (ANTS-4656) and
+  a capped, truncated `updated_items`. So `fields=` was not the redundant
+  second half it looked like; it is the only knob that reaches either of them.
+
+  The suite found a defect on the way in: the compact-prop count guard is a
+  hardcoded literal whose comment claimed one prop per projection tool, and
+  three tools have declared `fields` without `compact` since the sets diverged.
+  Filed as ANTS-4657, not folded in here.
+
+  Not yet exercised against the live MCP socket: the running instance serves the
+  pre-change schema until it is relaunched. What is proven is the wiring --
+  INV-8, INV-10 and the compact dispatch-wiring test, all red on assertions
+  first -- and the dispatcher path itself, which fifteen other verbs already
+  ride.
 
 - 📋 [ANTS-4430] **A project that allocated no ids reports store_high_water 0 and file_ahead_of_store true, which reads as the divergence that means "do not write".**
   After the E2 rollout, 10 of the 14 migrated projects carry NO `id_prefix`
@@ -55665,6 +55715,61 @@ here.)
   **Layman:** A staleness warning appears on a small test project that has nothing wrong with it, which would teach people to ignore the warning.
   Kind: investigate.
   Source: in-session-2026-08-24.
+
+- 📋 [ANTS-4656] **roadmap_migrate's field_conflict notes cannot collapse: the item id is baked into `detail`.**
+  ANTS-4649 collapses repeated notes by keying rows on (code, detail,
+  source_index). Measured on this project today, that took field_defaulted
+  from 383 rows to 2. It did NOT touch field_conflict, which stayed at ~145
+  rows -- because its detail is built as "<ID>: <field>" ("ANTS-3734: extras"),
+  so every row's key is unique by construction and the collapse can never fire.
+
+  The repeated fact is "the `extras` column conflicted", once per item. The
+  per-row detail is also not locatable: every one of these rows carries
+  `line: 0`, so a caller cannot go and look even if it wanted to.
+
+  This is ANTS-4649's own complaint surviving under a different code, and it is
+  now the largest single contributor to the envelope.
+
+  FIX. Give Note a first-class id field rather than concatenating it into
+  `detail`, so the key becomes (code, field) and the ids collect into a
+  `sample_ids` array beside `sample_lines`. `sample_lines` is the wrong shape
+  here -- these notes have no line -- which is the tell that the id belongs in
+  its own slot.
+
+  NOT a duplicate of ANTS-4649: that one shipped and its design is sound. This
+  is a second call site the key does not fit.
+  **Layman:** Importing a roadmap still prints one line per item for a problem that is really one problem.
+  Kind: perf.
+  Source: in-session-2026-08-25 (measured while closing ANTS-4429).
+  Lanes: mcp, roadmap-store.
+
+- 📋 [ANTS-4657] **Three field-projectable verbs declare `fields` but not `compact`, and the count guard for it is a hardcoded literal.**
+  co_change_family, docs_index and session_orient are all on
+  mcp::isFieldProjectionTool and all declare a `fields` schema property. None
+  declares `compact`. So the dispatcher DOES compact their responses -- it gates
+  on the allowlist, not on the schema -- while a caller cannot pass the argument
+  explicitly. The caller who actually needs this is the one passing
+  `compact:false` to tell empty from absent, which is the escape hatch
+  compactEnvelope's absent-is-default contract depends on.
+
+  How it survived: McpCompact.Ants2091DispatchAndSchemaWiring counts
+  makeCompactProp() call sites against a LITERAL, and its comment claims "one
+  per in-scope projection tool" -- which has been false since the sets diverged.
+  ANTS-4624 fixed exactly this shape on the `fields` half by deriving the count
+  from the shared kFieldProjectionTools array, and left the compact sibling as
+  the literal it had always been.
+
+  FIX. Decide whether those three should declare `compact` (they should, unless
+  there is a reason none of them records), then derive the count from a shared
+  list the way INV-10 does, so adding a tool to one list fails the other until
+  both are done.
+
+  Deliberately not folded into ANTS-4429: that item is about roadmap_migrate's
+  envelope, and this is a guard defect three other verbs sit behind.
+  **Layman:** Three tools quietly refuse an argument the others accept, and the test meant to catch that counts by hand.
+  Kind: fix.
+  Source: in-session-2026-08-25 (found by the suite while closing ANTS-4429).
+  Lanes: mcp.
 
 ## 0.9.0 — platform + a11y (target: 2026-10)
 
