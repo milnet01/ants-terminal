@@ -1116,6 +1116,128 @@ ResolveResult compactResolved(const QString &content, const ResolveOptions &opts
     return res;
 }
 
+// ANTS-4646(a) — retire a legacy v1 tracking heading whose every id has
+// shipped. See feedbackfile.h for why this belongs to compact_resolved's gate
+// rather than to an op of its own.
+RetireResult retireTrackingHeadings(const QString &content,
+                                    const ResolveOptions &opts) {
+    RetireResult out;
+    out.newContent = content;
+
+    const QStringList lines = content.split(QLatin1Char('\n'));
+    static const QRegularExpression idRe(QStringLiteral("ANTS-[0-9]+"));
+    // The corpus shape, verbatim across all six files that carry one:
+    // `## Tracked in ROADMAP (detail + status there): ANTS-…`. Anchored at the
+    // heading so a MENTION of the phrase in a finding's prose — which is how
+    // ANTS-4646 itself was reported — is not mistaken for the heading.
+    static const QRegularExpression headRe(
+        QStringLiteral("^##\\s+Tracked in ROADMAP\\b"));
+
+    // ANTS-3744 — on a file carrying NO inline `**Proposed ID:**` at all (the
+    // fully condensed form), feedback_query harvests `mapped_ids` from this
+    // very pointer line: it is that project's ONLY record of what it reported.
+    // Retiring it there destroys the thing it exists to preserve, however
+    // shipped every id in it is. Inline ids win, exactly as ANTS-3744 states,
+    // so one inline id anywhere makes the heading redundant and retirable.
+    const bool hasInlineIds =
+        content.contains(QStringLiteral("**Proposed ID:**"));
+
+    QSet<int> dropLines;                      // 0-based
+    for (const Boundary &b : scanBoundaries(lines)) {
+        if (!headRe.match(b.text).hasMatch()) continue;
+
+        TrackingHeading th;
+        th.heading = b.text;
+        th.line    = b.line0 + 1;
+        auto it = idRe.globalMatch(b.text);
+        while (it.hasNext()) {
+            const QString id = it.next().captured(0);
+            if (!th.ids.contains(id)) th.ids.append(id);
+        }
+
+        // First-failure-wins, in the order and vocabulary ResolvedFinding uses
+        // — one gate, two shapes, so a caller reads both the same way.
+        if (th.ids.isEmpty()) {
+            th.code = QStringLiteral("no_ids");
+        } else if (!hasInlineIds) {
+            th.code = QStringLiteral("sole_id_record");
+        } else {
+            for (const QString &id : std::as_const(th.ids)) {
+                if (!opts.roadmapIds.contains(id))      th.unresolvedIds << id;
+                else if (!opts.shippedIds.contains(id)) th.openIds << id;
+            }
+            if (!th.unresolvedIds.isEmpty())
+                th.code = QStringLiteral("roadmap_unresolved_ids");
+            else if (!th.openIds.isEmpty())
+                th.code = QStringLiteral("has_open_id");
+        }
+
+        if (th.code.isEmpty()) {
+            th.retired = true;
+            dropLines.insert(b.line0);
+            out.bytesSaved += b.text.toUtf8().size() + 1;
+            // Absorb ONE trailing blank so retiring a heading does not leave a
+            // double gap behind it. Only one: a wider sweep would start
+            // reformatting a file this op has no business reformatting.
+            if (b.line0 + 1 < lines.size()
+                && lines.at(b.line0 + 1).trimmed().isEmpty()) {
+                dropLines.insert(b.line0 + 1);
+                out.bytesSaved += lines.at(b.line0 + 1).toUtf8().size() + 1;
+            }
+        }
+        out.headings.append(th);
+    }
+
+    if (dropLines.isEmpty()) return out;    // byte-identical, INV: no-op
+
+    QStringList kept;
+    kept.reserve(lines.size());
+    for (int i = 0; i < lines.size(); ++i)
+        if (!dropLines.contains(i)) kept << lines.at(i);
+    out.newContent = kept.join(QLatin1Char('\n'));
+    return out;
+}
+
+// ANTS-4646(b) — rewrite the H1's project name, preserving the file's own
+// prefix casing. The corpus carries both "Ants MCP feedback" and
+// "Ants MCP Feedback"; this renames a project, it does not normalise a corpus.
+SetTitleResult setTitle(const QString &content, const QString &projectTitle) {
+    SetTitleResult out;
+    out.newContent = content;
+    out.newTitle   = projectTitle.trimmed();
+
+    QStringList lines = content.split(QLatin1Char('\n'));
+    int h1 = -1;
+    for (const Boundary &b : scanBoundaries(lines)) {
+        // scanBoundaries already skips fenced regions, so a `# ` inside a code
+        // block cannot be picked up here.
+        if (b.text.startsWith(QStringLiteral("# "))) { h1 = b.line0; break; }
+    }
+    if (h1 < 0) {
+        // Never invent one: the format fixes the H1's position, and a guess
+        // would put it somewhere the reader does not expect.
+        out.code = QStringLiteral("no_h1");
+        return out;
+    }
+
+    const QString line = lines.at(h1);
+    static const QString kDash = QString::fromUtf8("\xE2\x80\x94");   // —
+    const int dash = line.lastIndexOf(kDash);
+    const QString rebuilt = dash >= 0
+        ? line.left(dash + kDash.size()) + QLatin1Char(' ') + out.newTitle
+        : QStringLiteral("# Ants MCP Feedback ") + kDash + QLatin1Char(' ')
+              + out.newTitle;
+    out.oldTitle = dash >= 0
+        ? line.mid(dash + kDash.size()).trimmed()
+        : line.mid(2).trimmed();
+
+    if (rebuilt == line) return out;        // changed stays false — no write
+    lines[h1]      = rebuilt;
+    out.newContent = lines.join(QLatin1Char('\n'));
+    out.changed    = true;
+    return out;
+}
+
 // ANTS-3446 — migrate_v2. Mechanical v1→v2: bump the version marker to `: 2`
 // and stamp a blank `**Proposed ID:**` placeholder on each finding-shaped,
 // below-watermark `### ` block that lacks one. Leaves the v1 tracking tables

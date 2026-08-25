@@ -742,3 +742,138 @@ TEST(FeedbackCompactResolved, Ants3631AwaitingIsNeverShippable) {
         << "a question quoting a shipped id must not collapse the write-up";
     EXPECT_EQ(r.findings.at(0).code, QStringLiteral("no_shippable_id"));
 }
+
+// ---- ANTS-4646(a) — retiring a legacy v1 tracking heading ----------------
+//
+// migrate_v2 converts findings and leaves v1 tracking content in place, so a
+// `## Tracked in ROADMAP (detail + status there): ANTS-…` heading survives on
+// a migrated file with no verb able to touch it: append_tracking refuses
+// not_v1, and assign_id needs a `### ` finding with a **Proposed ID:** line,
+// which those ids do not have. Six corpus files carry one.
+//
+// It belongs to compact_resolved rather than to a new op because the gate is
+// the one this verb already applies — every id ✅ — and a maintainer running
+// the canonical flow should not need a second verb to learn.
+
+namespace {
+
+const char *kTrackingFixture =
+    "<!-- ants-mcp-feedback: 2 -->\n"
+    "# Ants MCP Feedback TEST\n"
+    "\n"
+    "## Tracked in ROADMAP (detail + status there): ANTS-1525, ANTS-1579\n"
+    "\n"
+    "> Contributors append below.\n"
+    "\n"
+    "### Issue #1 \xE2\x80\x94 something\n"
+    "- **Proposed ID:** ANTS-1600\n"
+    "- **What:** open, so the file is not otherwise touched.\n";
+
+QString trackingFx() { return QString::fromUtf8(kTrackingFixture); }
+
+}  // namespace
+
+// All ids ✅ → the heading goes, and the retirement is reported.
+TEST(FeedbackCompactResolved, Ants4646RetiresAnAllShippedTrackingHeading) {
+    const FeedbackFile::RetireResult r =
+        FeedbackFile::retireTrackingHeadings(trackingFx(), stdOpts());
+
+    ASSERT_EQ(r.headings.size(), 1);
+    EXPECT_TRUE(r.headings.at(0).retired);
+    EXPECT_EQ(r.headings.at(0).ids.size(), 2);
+    EXPECT_FALSE(r.newContent.contains(QStringLiteral("Tracked in ROADMAP")))
+        << "the stale heading must actually leave the file";
+    EXPECT_GT(r.bytesSaved, 0);
+    // Nothing else may move: this op retires a heading, it does not compact.
+    EXPECT_TRUE(r.newContent.contains(QStringLiteral("Issue #1")));
+    EXPECT_TRUE(r.newContent.contains(QStringLiteral("ANTS-1600")));
+}
+
+// One id still open → kept, with the same first-failure code shape the
+// finding gate uses. A heading is all-or-nothing: half a tracking list is
+// worse than the whole one.
+TEST(FeedbackCompactResolved, Ants4646KeepsAHeadingWithAnOpenId) {
+    QString fx = trackingFx();
+    fx.replace(QStringLiteral("ANTS-1579"), QStringLiteral("ANTS-1600"));
+
+    const FeedbackFile::RetireResult r =
+        FeedbackFile::retireTrackingHeadings(fx, stdOpts());
+    ASSERT_EQ(r.headings.size(), 1);
+    EXPECT_FALSE(r.headings.at(0).retired);
+    EXPECT_EQ(r.headings.at(0).code, QStringLiteral("has_open_id"));
+    EXPECT_EQ(r.headings.at(0).openIds,
+              QStringList{QStringLiteral("ANTS-1600")});
+    EXPECT_EQ(r.newContent, fx) << "a skipped heading must leave the file byte-identical";
+}
+
+// An id the roadmap has never heard of is unresolved, not shipped — the
+// distinction compact_resolved already draws, applied to the same input.
+TEST(FeedbackCompactResolved, Ants4646UnresolvedIdIsNotTreatedAsShipped) {
+    QString fx = trackingFx();
+    fx.replace(QStringLiteral("ANTS-1579"), QStringLiteral("ANTS-9999"));
+
+    const FeedbackFile::RetireResult r =
+        FeedbackFile::retireTrackingHeadings(fx, stdOpts());
+    ASSERT_EQ(r.headings.size(), 1);
+    EXPECT_FALSE(r.headings.at(0).retired);
+    EXPECT_EQ(r.headings.at(0).code, QStringLiteral("roadmap_unresolved_ids"));
+    EXPECT_EQ(r.headings.at(0).unresolvedIds,
+              QStringList{QStringLiteral("ANTS-9999")});
+}
+
+// Idempotent: a file with no such heading is untouched and reports nothing,
+// so the op can ride on every compact_resolved without a second thought.
+TEST(FeedbackCompactResolved, Ants4646NoHeadingIsANoOp) {
+    const FeedbackFile::RetireResult r =
+        FeedbackFile::retireTrackingHeadings(fx(), stdOpts());
+    EXPECT_TRUE(r.headings.isEmpty());
+    EXPECT_EQ(r.newContent, fx());
+    EXPECT_EQ(r.bytesSaved, 0);
+}
+
+// End to end through the verb, against the mock roadmap: the retirement rides
+// on compact_resolved and is reported in its envelope.
+TEST(FeedbackCompactResolved, Ants4646VerbRetiresAlongsideCompaction) {
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid());
+    const QString p = dir.path() + "/TEST_Ants_MCP_Feedback.md";
+    ASSERT_TRUE(writeStr(p, trackingFx()));
+    ASSERT_TRUE(writeStr(dir.path() + "/ROADMAP.md", QString::fromUtf8(kRoadmap)));
+
+    RemoteControl rc(nullptr, nullptr);
+    QJsonObject req;
+    req["caller_cwd"] = dir.path();
+    req["path"]       = p;
+    req["op"]         = "compact_resolved";
+    const QJsonObject env = rc.cmdFeedbackLog(req).object();
+    ASSERT_TRUE(env.value("ok").toBool())
+        << env.value("error").toString().toStdString();
+
+    const QJsonArray retired = env.value("retired_headings").toArray();
+    ASSERT_EQ(retired.size(), 1);
+    EXPECT_TRUE(retired.at(0).toObject().value("retired").toBool());
+    EXPECT_FALSE(readStr(p).contains(QStringLiteral("Tracked in ROADMAP")));
+}
+
+// ANTS-4646(a) — the heading is NOT always cosmetic. ANTS-3744: on a fully
+// condensed file, one carrying no inline `**Proposed ID:**` at all, this
+// pointer line is where feedback_query harvests `mapped_ids` — so it is that
+// project's ONLY record of what it reported. Retiring it there would destroy
+// the thing it exists to preserve, however shipped every id is.
+TEST(FeedbackCompactResolved, Ants4646CondensedFileKeepsItsSoleIdRecord) {
+    const QString condensed = QString::fromUtf8(
+        "<!-- ants-mcp-feedback: 2 -->\n"
+        "# Ants MCP Feedback TEST\n"
+        "\n"
+        "## Tracked in ROADMAP (detail + status there): ANTS-1525, ANTS-1579\n"
+        "\n"
+        "> Everything else was compacted away.\n");
+
+    const FeedbackFile::RetireResult r =
+        FeedbackFile::retireTrackingHeadings(condensed, stdOpts());
+    ASSERT_EQ(r.headings.size(), 1);
+    EXPECT_FALSE(r.headings.at(0).retired)
+        << "both ids are shipped, and it must STILL be kept";
+    EXPECT_EQ(r.headings.at(0).code, QStringLiteral("sole_id_record"));
+    EXPECT_EQ(r.newContent, condensed);
+}

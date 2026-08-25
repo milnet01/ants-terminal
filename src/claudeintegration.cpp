@@ -6043,7 +6043,15 @@ void ClaudeIntegration::onMcpConnection() {
                         "ANTS-3447: op:\"assign_id\" (maintainer, v2 triage) "
                         "fills ONE finding's \"**Proposed ID:**\" line in place "
                         "with the assigned ids or an n/a closure — the inline "
-                        "replacement for append_tracking. caller_cwd required.");
+                        "replacement for append_tracking. ANTS-4646: "
+                        "op:\"set_title\" (maintainer) rewrites the H1's "
+                        "project name after a rename — the FILENAME is derived "
+                        "from caller_cwd's leaf and is always right, the H1 was "
+                        "writable by no op, and hand-editing it contradicts the "
+                        "file's own instruction. compact_resolved additionally "
+                        "retires a legacy v1 \"## Tracked in ROADMAP\" heading "
+                        "once every id in it is ✅, under the gate it already "
+                        "applies (`retired_headings`). caller_cwd required.");
                     t["selection_hint"] = QStringLiteral(
                         "Use to add feedback to a shared "
                         "*_Ants_MCP_Feedback.md file (or stamp a "
@@ -6059,6 +6067,19 @@ void ClaudeIntegration::onMcpConnection() {
                             "caller_cwd-relative). Omit to derive "
                             "<caller_cwd-leaf>_Ants_MCP_Feedback.md at the "
                             "shared root (parent of caller_cwd).");
+                    // ANTS-4646 — op:"set_title" only.
+                    QJsonObject titleProp; titleProp["type"] = "string";
+                        titleProp["description"] = QStringLiteral(
+                            "op:\"set_title\" only. The PROJECT NAME, not the "
+                            "whole heading: the existing H1 prefix is preserved "
+                            "verbatim (the corpus carries both \"Ants MCP "
+                            "feedback\" and \"Ants MCP Feedback\", and this "
+                            "renames a project rather than normalising a "
+                            "corpus), and only the text after the last em dash "
+                            "is replaced. `changed:false` on an already-correct "
+                            "title is a SUCCESS, so a rename is re-runnable; "
+                            "refuses `no_h1` rather than inventing a heading "
+                            "the format fixes the position of.");
                     QJsonObject opProp; opProp["type"] = "string";
                         { QJsonArray e; e.append(QStringLiteral("append_finding"));
                           e.append(QStringLiteral("append_tracking"));
@@ -6067,6 +6088,7 @@ void ClaudeIntegration::onMcpConnection() {
                           e.append(QStringLiteral("compact_resolved"));
                           e.append(QStringLiteral("migrate_v2"));
                           e.append(QStringLiteral("assign_id"));
+                          e.append(QStringLiteral("set_title"));   // ANTS-4646
                           opProp["enum"] = e; }
                         opProp["description"] = QStringLiteral(
                             "Required. \"append_finding\" (contributor) "
@@ -6198,6 +6220,7 @@ void ClaudeIntegration::onMcpConnection() {
                             "breadcrumb.");
                     props["path"]          = pathProp;
                     props["op"]            = opProp;
+                    props["title"]         = titleProp;           // ANTS-4646
                     props["date"]          = dateProp;
                     props["session_label"] = labelProp;
                     props["heading_level"] = hlProp;

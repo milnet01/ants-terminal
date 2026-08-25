@@ -43843,7 +43843,7 @@ Three were reproduced directly in this session rather than taken on report.
   Source: LocalWebServerManager-2026-08-24.
   Lanes: mcp, specs.
 
-- 📋 [ANTS-4646] **feedback_log has no op to retire a v1 tracking heading on a migrated file, and none to set the file's title.**
+- ✅ [ANTS-4646] **feedback_log has no op to retire a v1 tracking heading on a migrated file, and none to set the file's title.**
   Two small gaps hit in one session.
 
   (a) A legacy v1 heading `## Tracked in ROADMAP (detail + status there):
@@ -43869,6 +43869,7 @@ Three were reproduced directly in this session rather than taken on report.
   heading once every id in it resolves ✅ — the gate `compact_resolved` already
   applies. (b) A small `op:"set_title"`, or a `title` argument honoured on any
   write.
+  Resolved (2026-08-25), both halves. (b) `op:"set_title"` rewrites the H1's project name: `title` is the PROJECT NAME, not the whole heading, and the existing prefix is preserved verbatim because the corpus carries both "Ants MCP feedback" and "Ants MCP Feedback" — this renames a project, it does not normalise a corpus. `changed:false` on an already-correct title is a SUCCESS so a rename is re-runnable; it refuses `no_h1` rather than inventing a heading whose position the format fixes, and a `# ` inside a fence is body text (the ANTS-3695 hazard). (a) The retirement rides on `compact_resolved` rather than becoming a new op — the gate is the one that verb already resolves, and the canonical v2 flow should not grow a second verb to learn; one roadmap read, one write, one envelope, reported as `retired_headings[]` + `headings_retired`. All-or-nothing per heading, reusing ResolvedFinding's skip vocabulary and first-failure order. THE FINDING THAT MATTERED CAME FROM READING THE STANDARD, NOT FROM THE REPORT: ANTS-3744 makes that pointer line the source of `mapped_ids` on a fully condensed file — one carrying no inline `**Proposed ID:**` at all — so there it is the project's ONLY record of what it reported, and retiring it would have destroyed exactly what it preserves, however shipped every id in it was. Guarded as `sole_id_record` and pinned by INV-5. The report's other suggested route (converting the heading into per-item stubs assign_id could target) was declined: it manufactures findings nobody wrote to reach the same end state. The v1 tracking TABLES are untouched and still await the strip pass mcp-feedback-files.md lists as outstanding — only the condensed pointer heading is retired, and the standard now says so. Spec: docs/specs/ANTS-4646-feedback-title-and-tracking-heading.md, written after the build to satisfy that family's spec-per-verb rule, with the loop log recording that no gate ran and why. 11 tests across the two existing feature suites, all red on assertions first; full suite 100% of 3910, ctest -N 3913 → 3924.
   **Layman:** After renaming a project there is no supported way to fix its feedback file's title, so it has to be hand-edited against its own instructions.
   Kind: enhancement.
   Source: Album_Builder-2026-08-24.

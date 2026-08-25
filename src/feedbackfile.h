@@ -304,6 +304,69 @@ struct ResolveResult {
 // version gate, the roadmap read, and the atomic write.
 ResolveResult compactResolved(const QString &content, const ResolveOptions &opts);
 
+// ---- ANTS-4646(a): retire a legacy v1 tracking heading ---------------
+//
+// migrate_v2 converts findings and leaves v1 tracking content in place, so
+// `## Tracked in ROADMAP (detail + status there): ANTS-…` survives on a
+// migrated file with no verb able to touch it: append_tracking refuses
+// `not_v1`, and assign_id needs a `### ` finding carrying a
+// `**Proposed ID:**` line, which those ids do not have. Six corpus files
+// carry such a heading, and to a contributor reading only the file those ids
+// show no status at all.
+//
+// Owned by compact_resolved rather than by a new op, because the gate is the
+// one that verb already applies — every id ✅ — and the canonical v2 flow
+// should not grow a second verb to learn. All-or-nothing per heading: half a
+// retired tracking list is worse than the whole one.
+
+struct TrackingHeading {
+    QString     heading;            // verbatim heading line
+    int         line = -1;          // 1-based line in the ORIGINAL file
+    QStringList ids;                // canonical ids parsed from the heading
+    bool        retired = false;
+    QString     code;               // "" when retired; else the first-failing
+                                    // skip code (no_ids / has_open_id /
+                                    // roadmap_unresolved_ids), same vocabulary
+                                    // and same first-failure-wins order as
+                                    // ResolvedFinding
+    QStringList openIds;            // has_open_id: present but not ✅
+    QStringList unresolvedIds;      // roadmap_unresolved_ids: not in the roadmap
+};
+
+struct RetireResult {
+    QString                  newContent;
+    QVector<TrackingHeading> headings;   // document order; empty = nothing seen
+    long                     bytesSaved = 0;
+};
+
+// Pure, and a no-op on a file carrying no such heading — so it can ride on
+// every compact_resolved call without a caller thinking about it.
+RetireResult retireTrackingHeadings(const QString &content,
+                                    const ResolveOptions &opts);
+
+// ---- ANTS-4646(b): set the file's H1 (set_title) ---------------------
+//
+// The FILENAME is derived from caller_cwd's leaf and is always right; the H1
+// was writable by no op, so a project rename left the title contradicting the
+// filename and the only route was a hand edit — against the file's own
+// "don't hand-edit" instruction, at the moment a session is most likely to
+// get it wrong.
+
+struct SetTitleResult {
+    QString newContent;
+    QString oldTitle;
+    QString newTitle;
+    bool    changed = false;
+    QString code;        // "" on success; "no_h1" when the file has no H1
+};
+
+// Rewrite the first non-fenced `# ` line's project name. The existing prefix
+// is PRESERVED verbatim (the corpus carries both "Ants MCP feedback" and
+// "Ants MCP Feedback"): only the text after the last em dash is replaced, and
+// a prefix-less H1 is rewritten whole. Never invents an H1 — that would guess
+// at a position the format fixes.
+SetTitleResult setTitle(const QString &content, const QString &projectTitle);
+
 // ---- ANTS-3446: one-shot v1→v2 migration (migrate_v2) ---------------
 //
 // Mechanical, leave-tables-in-place v1→v2 converter: bump the version

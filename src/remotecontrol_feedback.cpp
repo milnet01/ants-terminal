@@ -436,13 +436,15 @@ QJsonDocument RemoteControl::cmdFeedbackLog(const QJsonObject &req) {
         op != QStringLiteral("prune_tracking") &&
         op != QStringLiteral("compact_resolved") &&
         op != QStringLiteral("migrate_v2") &&
-        op != QStringLiteral("assign_id")) {
+        op != QStringLiteral("assign_id") &&
+        op != QStringLiteral("set_title")) {
         return QJsonDocument(fbErr(
             QStringLiteral("bad_mode"),
             QStringLiteral("feedback_log: op must be \"append_finding\", "
                            "\"append_tracking\", \"compact_shipped\", "
                            "\"prune_tracking\", \"compact_resolved\", "
-                           "\"migrate_v2\" or \"assign_id\"")));
+                           "\"migrate_v2\", \"assign_id\" or "
+                           "\"set_title\"")));
     }
 
     // ANTS-3421 — maintainer compaction: collapse confirmed-shipped
@@ -871,8 +873,33 @@ QJsonDocument RemoteControl::cmdFeedbackLog(const QJsonObject &req) {
             }
         }
 
-        if (!dryRunR && collapsedCount > 0) {
-            const QByteArray utf8 = rr.newContent.toUtf8();
+        // ANTS-4646(a) — retire any legacy v1 tracking heading whose every id
+        // has shipped, under the gate this verb already resolved. Runs on
+        // rr.newContent so one write carries both, and it is a no-op on a file
+        // carrying no such heading — which is every file born v2.
+        const FeedbackFile::RetireResult retire =
+            FeedbackFile::retireTrackingHeadings(rr.newContent, ropts);
+        QJsonArray retiredArr;
+        int retiredCount = 0;
+        for (const FeedbackFile::TrackingHeading &th : retire.headings) {
+            QJsonObject e;
+            e[QStringLiteral("heading")] = th.heading;
+            e[QStringLiteral("line")]    = th.line;
+            e[QStringLiteral("retired")] = th.retired;
+            e[QStringLiteral("ids")]     = QJsonArray::fromStringList(th.ids);
+            if (!th.code.isEmpty()) e[QStringLiteral("code")] = th.code;
+            if (!th.openIds.isEmpty())
+                e[QStringLiteral("open_ids")] =
+                    QJsonArray::fromStringList(th.openIds);
+            if (!th.unresolvedIds.isEmpty())
+                e[QStringLiteral("unresolved_ids")] =
+                    QJsonArray::fromStringList(th.unresolvedIds);
+            if (th.retired) ++retiredCount;
+            retiredArr.append(e);
+        }
+
+        if (!dryRunR && (collapsedCount > 0 || retiredCount > 0)) {
+            const QByteArray utf8 = retire.newContent.toUtf8();
             QSaveFile sf(resolved);
             if (!sf.open(QIODevice::WriteOnly | QIODevice::Text)) {
                 return QJsonDocument(fbErr(
@@ -904,10 +931,95 @@ QJsonDocument RemoteControl::cmdFeedbackLog(const QJsonObject &req) {
         out[QStringLiteral("dry_run")]            = dryRunR;
         out[QStringLiteral("findings_collapsed")] = collapsedCount;
         out[QStringLiteral("bytes_saved")]        =
-            static_cast<qint64>(rr.bytesSaved);
+            static_cast<qint64>(rr.bytesSaved + retire.bytesSaved);
         out[QStringLiteral("collapsed")]          = collapsed;
         out[QStringLiteral("skipped")]            = skipped;
+        // ANTS-4646(a) — always present, so "this build cannot retire one" is
+        // never confused with "there was none to retire".
+        out[QStringLiteral("headings_retired")]   = retiredCount;
+        out[QStringLiteral("retired_headings")]   = retiredArr;
         if (derived) out[QStringLiteral("path_derived")] = true;  // ANTS-3376
+        return QJsonDocument(out);
+    }
+
+    // ANTS-4646(b) — set_title: rewrite the H1's project name. The FILENAME is
+    // derived from caller_cwd's leaf and is always right; the H1 was writable
+    // by no op, so a rename left the title contradicting the filename and the
+    // only route was a hand edit — against the file's own instruction, at the
+    // moment a session is most likely to get it wrong.
+    if (op == QStringLiteral("set_title")) {
+        if (!exists) {
+            return QJsonDocument(fbNotFound(
+                QStringLiteral("feedback_log: set_title on an absent file "
+                               "(nothing to retitle)"),
+                resolved, feedbackCallerLeaf(req)));
+        }
+        const QString wanted =
+            req.value(QStringLiteral("title")).toString().trimmed();
+        if (wanted.isEmpty()) {
+            return QJsonDocument(fbErr(
+                QStringLiteral("bad_args"),
+                QStringLiteral("feedback_log: set_title requires a non-empty "
+                               "\"title\" (the project name, not the whole "
+                               "heading)")));
+        }
+        QFile rf(resolved);
+        if (!rf.open(QIODevice::ReadOnly | QIODevice::Text)) {
+            return QJsonDocument(fbErr(
+                QStringLiteral("read_failed"),
+                QStringLiteral("feedback_log: cannot open \"%1\"")
+                    .arg(resolved)));
+        }
+        const QString content = QString::fromUtf8(rf.readAll());
+        rf.close();
+
+        const FeedbackFile::SetTitleResult tr =
+            FeedbackFile::setTitle(content, wanted);
+        if (!tr.code.isEmpty()) {
+            return QJsonDocument(fbErr(
+                tr.code,
+                QStringLiteral("feedback_log: set_title found no `# ` heading "
+                               "in \"%1\" — the format fixes the H1's "
+                               "position and this verb will not invent one")
+                    .arg(resolved)));
+        }
+        const bool dryRunT = req.value(QStringLiteral("dry_run")).toBool();
+        if (tr.changed && !dryRunT) {
+            const QByteArray utf8 = tr.newContent.toUtf8();
+            QSaveFile sf(resolved);
+            if (!sf.open(QIODevice::WriteOnly | QIODevice::Text)) {
+                return QJsonDocument(fbErr(
+                    QStringLiteral("write_failed"),
+                    QStringLiteral("feedback_log: cannot open \"%1\" for "
+                                   "writing").arg(resolved)));
+            }
+            bool committed = (sf.write(utf8) == utf8.size());
+            if (committed) {
+                if (g_forceFeedbackWriteFail) {
+                    sf.cancelWriting();
+                    committed = false;
+                } else {
+                    committed = sf.commit();
+                }
+            }
+            if (!committed) {
+                return QJsonDocument(fbErr(
+                    QStringLiteral("write_failed"),
+                    QStringLiteral("feedback_log: atomic write of \"%1\" "
+                                   "failed").arg(resolved)));
+            }
+        }
+        QJsonObject out;
+        out[QStringLiteral("ok")]        = true;
+        out[QStringLiteral("op")]        = op;
+        out[QStringLiteral("path")]      = resolved;
+        out[QStringLiteral("dry_run")]   = dryRunT;
+        // `changed:false` on an already-correct title is a SUCCESS, not a
+        // refusal — a rename script must be re-runnable.
+        out[QStringLiteral("changed")]   = tr.changed;
+        out[QStringLiteral("old_title")] = tr.oldTitle;
+        out[QStringLiteral("new_title")] = tr.newTitle;
+        if (derived) out[QStringLiteral("path_derived")] = true;
         return QJsonDocument(out);
     }
 

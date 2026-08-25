@@ -615,3 +615,116 @@ TEST(McpFeedbackLog, Ants3695StrayH1IsBodyRealSessionHeadingBounds) {
     EXPECT_LT(blocks.at(0).extentEnd0, blocks.at(1).headingLine0 + 1);
     EXPECT_EQ(blocks.at(1).idValue, QStringLiteral("ANTS-9999"));
 }
+
+// ---- ANTS-4646(b) — op:"set_title" ---------------------------------------
+//
+// The FILENAME is derived from caller_cwd's leaf and is always right; the H1
+// was writable by no op at all, so a project rename left the title
+// contradicting the filename and the only route was a hand edit — against the
+// file's own "don't hand-edit" instruction, at exactly the moment a session is
+// most likely to get it wrong.
+
+TEST(McpFeedbackLog, Ants4646SetTitleRewritesTheH1) {
+    const QString before = QString::fromUtf8(
+        "<!-- ants-mcp-feedback: 2 -->\n"
+        "# Ants MCP feedback \xE2\x80\x94 Old Name\n"
+        "\n"
+        "> Format: docs/standards/mcp-feedback-files.md\n");
+
+    const FeedbackFile::SetTitleResult r =
+        FeedbackFile::setTitle(before, QStringLiteral("New Name"));
+    EXPECT_TRUE(r.changed);
+    EXPECT_EQ(r.oldTitle, QStringLiteral("Old Name"));
+    // QStringLiteral does NOT decode \x-escaped UTF-8 — fromUtf8 does.
+    EXPECT_TRUE(r.newContent.contains(QString::fromUtf8("\xE2\x80\x94 New Name")));
+    // The file's own casing survives: this renames a project, it does not
+    // normalise a corpus. "feedback" here, "Feedback" in the skeleton.
+    EXPECT_TRUE(r.newContent.contains(QStringLiteral("# Ants MCP feedback")))
+        << "the existing H1 prefix must be preserved verbatim";
+    EXPECT_FALSE(r.newContent.contains(QStringLiteral("Old Name")));
+    // Everything below the H1 is untouched.
+    EXPECT_TRUE(r.newContent.contains(QStringLiteral("mcp-feedback-files.md")));
+}
+
+TEST(McpFeedbackLog, Ants4646SetTitleIsIdempotentAndReportsNoChange) {
+    const QString before = QString::fromUtf8(
+        "<!-- ants-mcp-feedback: 2 -->\n"
+        "# Ants MCP Feedback \xE2\x80\x94 Same\n");
+    const FeedbackFile::SetTitleResult r =
+        FeedbackFile::setTitle(before, QStringLiteral("Same"));
+    EXPECT_FALSE(r.changed) << "an unchanged title must not report a write";
+    EXPECT_EQ(r.newContent, before);
+}
+
+TEST(McpFeedbackLog, Ants4646SetTitleRefusesAFileWithNoH1) {
+    const QString before = QString::fromUtf8(
+        "<!-- ants-mcp-feedback: 2 -->\n\n> just a banner\n");
+    const FeedbackFile::SetTitleResult r =
+        FeedbackFile::setTitle(before, QStringLiteral("Whatever"));
+    EXPECT_FALSE(r.changed);
+    EXPECT_EQ(r.code, QStringLiteral("no_h1"))
+        << "inventing an H1 would guess at a position the format fixes";
+    EXPECT_EQ(r.newContent, before);
+}
+
+// A `# ` inside a fenced block is body text, not the title — the same hazard
+// ANTS-3695 fixed for session-heading bounds.
+TEST(McpFeedbackLog, Ants4646SetTitleIgnoresAFencedHash) {
+    const QString before = QString::fromUtf8(
+        "<!-- ants-mcp-feedback: 2 -->\n"
+        "```\n"
+        "# not the title\n"
+        "```\n"
+        "# Ants MCP Feedback \xE2\x80\x94 Real\n");
+    const FeedbackFile::SetTitleResult r =
+        FeedbackFile::setTitle(before, QStringLiteral("Renamed"));
+    EXPECT_TRUE(r.changed);
+    EXPECT_EQ(r.oldTitle, QStringLiteral("Real"));
+    EXPECT_TRUE(r.newContent.contains(QStringLiteral("# not the title")))
+        << "a fenced heading must survive untouched";
+}
+
+// End to end: the op writes, is re-runnable, and refuses an empty title.
+TEST(McpFeedbackLog, Ants4646SetTitleThroughTheVerb) {
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid());
+    const QString p = dir.path() + "/TEST_Ants_MCP_Feedback.md";
+    {
+        QFile f(p);
+        ASSERT_TRUE(f.open(QIODevice::WriteOnly));
+        f.write(QString::fromUtf8(
+            "<!-- ants-mcp-feedback: 2 -->\n"
+            "# Ants MCP feedback \xE2\x80\x94 Old Name\n"
+            "\n> banner\n").toUtf8());
+    }
+
+    RemoteControl rc(nullptr, nullptr);
+    QJsonObject req;
+    req["caller_cwd"] = dir.path();
+    req["path"]       = p;
+    req["op"]         = "set_title";
+    req["title"]      = "Renamed Project";
+
+    const QJsonObject env = rc.cmdFeedbackLog(req).object();
+    ASSERT_TRUE(env.value("ok").toBool())
+        << env.value("error").toString().toStdString();
+    EXPECT_TRUE(env.value("changed").toBool());
+    EXPECT_EQ(env.value("old_title").toString(), "Old Name");
+
+    QFile rf(p);
+    ASSERT_TRUE(rf.open(QIODevice::ReadOnly));
+    const QString after = QString::fromUtf8(rf.readAll());
+    EXPECT_TRUE(after.contains(QStringLiteral("Renamed Project")));
+    EXPECT_FALSE(after.contains(QStringLiteral("Old Name")));
+
+    // Re-runnable: a rename script must not fail on the second pass.
+    const QJsonObject again = rc.cmdFeedbackLog(req).object();
+    EXPECT_TRUE(again.value("ok").toBool());
+    EXPECT_FALSE(again.value("changed").toBool());
+
+    // An empty title is a caller error, not a silent no-op.
+    req["title"] = "";
+    const QJsonObject bad = rc.cmdFeedbackLog(req).object();
+    EXPECT_FALSE(bad.value("ok").toBool());
+    EXPECT_EQ(bad.value("code").toString(), "bad_args");
+}
