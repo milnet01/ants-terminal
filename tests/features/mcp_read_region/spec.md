@@ -6,7 +6,7 @@ invariants source-scrape the registration sites. Full design contract:
 
 | # | Test | Asserts |
 |---|------|---------|
-| W1 | `WiringContract` | `cmdReadRegion` declared + calls `ReadRegion::extract` + `validatePath`; `read_region` registered in claudeintegration (schema + `C::Required` contract + `isEtagSupportedTool`); `isFieldProjectionTool` in mcpprojection; `registerToolProvider("read_region"` in mainwindow. |
+| W1 | `WiringContract` | `cmdReadRegion` declared + calls `ReadRegion::extract` + `validatePath`; `read_region` registered in claudeintegration (schema + `C::Required` contract + `isEtagSupportedTool`); present in mcpprojection's compaction table; `registerToolProvider("read_region"` in mainwindow. |
 | B1 | `LineRange` (INV-1) | line mode returns exactly `[start,end]` in order; `end` clamps to EOF; effective range echoed. |
 | B2 | `PastEof` (INV-1) | `start_line` past EOF → `ok:true`, `lines:[]`. |
 | B3 | `SymbolBody` (INV-2) | symbol mode resolves a leaf function's body `[line, nextSymbolLine)`; echoes `symbol`. |

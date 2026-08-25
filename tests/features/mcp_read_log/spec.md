@@ -15,7 +15,7 @@ dispatch are locked by source-scrape.
   `remotecontrol.h`; the IPC dispatcher routes `read_log`/`read-log`;
   `callerCwdContractFor` returns `Required` for `read_log`; the handler
   calls `PathValidation::validatePath` (→ `bad_path`).
-- **W2 (INV-11)** — `read_log` is in `isFieldProjectionTool`
+- **W2 (INV-11)** — `read_log` is in mcpprojection's compaction table
   (`mcpprojection.cpp`) and the tools/list schema registers `read_log`
   with `path`/`include`/`exclude`/`contains`/`since`/`tail`/`max_bytes`/
   `since_cursor`/`fields` + `registerToolProvider("read_log", …Required…)`

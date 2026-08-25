@@ -15,7 +15,7 @@ source-scrape the registration sites. Full design: `docs/specs/ANTS-2139.md`.
 | 8  | `IdAllStemMatchesCaseSensitive` | `id=` returns every stem match (sorted), wrong case → `found:false`. |
 | 9  | `WiringRegistered`           | `registerToolProvider("docs_index", Required)`; `callerCwdContractFor` row; handler routes `doc_path` through PathValidation. |
 | 10 | `WarmServeStable` + scrape   | 4-call cold→warm→304→bust; `generated_at_ms` byte-identical across warm calls; handler emits no `etag`; in `isEtagSupportedTool`. |
-| 11 | `FieldsProjectionNarrows` + scrape | `docs_index` in `isFieldProjectionTool`; `mcp::projectFields` narrows a summary body. |
+| 11 | `FieldsProjectionNarrows` + scrape | `docs_index` in mcpprojection's compaction table; `mcp::projectFields` narrows a summary body (universal since ANTS-4524 — no `fields=` enrolment). |
 | 12 | `DocCountCeiling`            | `maxIndexDocs:2` over 2 root + 1 docs/ → root docs kept, docs/ dropped, `docs_truncated`. |
 | 13 | `SerialisationRoundTrip` + scrape | `toJson`→`fromJson` equality; `QSaveFile` atomic write. |
 | 14 | `StaleCacheRebuilds`         | version-0 / foreign-root / garbage cache each rebuilds. |

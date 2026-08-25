@@ -67,11 +67,11 @@ checklist below walks the full procedure; this is the at-a-glance map
   + `makeEtagMatchProp()`; a matching `etag_match` short-circuits to
   `{ok, unchanged, etag}`. **Except an envelope carrying per-run
   measurements, which owns its own 304 and uses neither — step 7.**
-- **`fields=` projection (ANTS-1720).** Opt in via
-  `isFieldProjectionTool` + `makeFieldsProp()`; narrows to named
-  top-level fields. Independent of the ETag opt-in, not a subset of it
-  (`read_log` projects but does not 304); where a verb has both, list
-  `"etag"` in `fields` to keep the 304.
+- **`fields=` projection (ANTS-1720).** Universal since ANTS-4524 — every
+  verb honours it and the `tools/list` builder declares it on every
+  schema, so there is nothing to opt into. Narrows to named top-level
+  fields; a refusal and a 304 are floored and returned whole. Where a verb
+  also 304s, list `"etag"` in `fields` to keep it.
 - **Refusal codes** follow [mcp-error-codes.md](mcp-error-codes.md);
   **caches** follow [mcp-caches.md](mcp-caches.md) (a path-keyed cache
   may go cold but must never *shadow*).
@@ -291,21 +291,36 @@ place when it saves a Claude session real tokens or round-trips
    the 304 is silently unreachable. The shared factory is wrong here for a
    second reason: its description names no excluded fields, so a
    handler-local etag computed over a subset would ship undocumented.
-   **It declines `fields=` (step 8)**: central projection is skipped only
-   on a *central* 304, so a handler-local one is invisible to it and a
-   caller passing `etag_match` and `fields` together would have
-   `unchanged` projected out of its own 304 response.
+   **It no longer declines `fields=`, and cannot (ANTS-4524).** Projection
+   is universal, so there is nothing to withhold; instead `projectFields`
+   floors any envelope carrying `unchanged:true` and returns it whole. The
+   hazard the old rule named is real and unchanged — central projection is
+   skipped only on a *central* 304, so a handler-local one is invisible to
+   the dispatcher and a caller passing `etag_match` and `fields` together
+   would have `unchanged` projected out of its own 304. What moved is where
+   the guard lives: in the shared transform, where it covers both kinds,
+   rather than in each such verb's schema, where it was one omission from
+   failing.
 
-8. **Opt into `fields=` projection for high-volume reads (optional).**
-   A tool with a large payload should support response narrowing
-   (ANTS-1720): add a row to the dispatch table `mcp::isFieldProjectionTool`
-   reads (`src/mcpprojection.cpp`) and a `makeFieldsProp()` line to its
-   schema. Compose with ETag by listing `"etag"` in `fields`.
+8. **Decide compaction — `fields=` needs no decision (ANTS-4524).**
+   Response narrowing is universal: the dispatcher projects for every verb
+   and injects the `fields` property into every schema, so a new verb gets
+   it by existing. Compose with ETag by listing `"etag"` in `fields`.
 
-   The row carries a SECOND column, `defaultCompact`, answered separately
-   (ANTS-4524). The two were one predicate until 2026-08-25, so a verb added
-   for `fields=` also started compacting for callers who never asked — which
-   folded away `spec_lint`'s flag saying a check had not run (ANTS-4673).
+   What you DO answer is compaction, in `mcp::kDispatchProjection`
+   (`src/mcpprojection.cpp`). A row there declares the `compact` argument
+   (`mcp::isCompactArgTool` — add `makeCompactProp()` to the schema in the
+   same change); its `defaultCompact` column says whether an ABSENT
+   `compact` falls back to the default-ON `mcp::terseDefault()`. **Answer
+   the second one on its own evidence.** These were one predicate with
+   `fields=` until 2026-08-25, so a verb added for narrowing began
+   compacting for callers who never asked, folding away `spec_lint`'s flag
+   saying a check had not run (ANTS-4673). Say no to the default where a
+   `false` or empty field in your envelope carries meaning a caller
+   branches on.
+
+   **No row at all is a fine answer**, and the common one: the verb then
+   takes `fields=` like every other and is never compacted.
 
 9. **Follow the cache contract for any project-scoped cache.** If the
    tool reads/writes a per-project cache, key + relocate it per

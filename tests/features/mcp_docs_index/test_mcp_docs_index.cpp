@@ -304,9 +304,10 @@ TEST(DocsIndex, WiringRegistered) {
     // ETag-304 (INV-10) — registered, handler emits no etag.
     EXPECT_TRUE(has(ci, "isEtagSupportedTool"));
     EXPECT_FALSE(has(di, "\"etag\""));
-    // fields projection (INV-11).
+    // Compaction table (INV-11). `fields=` needs no enrolment since
+    // ANTS-4524 — every verb honours it; this row is the compaction answer.
     EXPECT_TRUE(has(mp, "docs_index"));
-    EXPECT_TRUE(has(mp, "isFieldProjectionTool"));
+    EXPECT_TRUE(has(mp, "isDefaultCompactTool"));
     // handler routes doc_path through PathValidation (INV-9 path defence).
     EXPECT_TRUE(has(rc, "cmdDocsIndex"));
     EXPECT_TRUE(has(rc, "validatePath"));

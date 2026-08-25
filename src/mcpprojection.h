@@ -13,28 +13,32 @@ class QJsonObject;
 // mirrors the focusedtest / modelrecommender extraction pattern.
 namespace mcp {
 
-// Allowlist: the 11 read tools that accept `fields=` (grew past the original
-// 7 via ANTS-1855 read_log, ANTS-2021 read_region, ANTS-1637 codebase_index,
-// ANTS-1735 model_switch_stats). Mostly overlaps
-// ClaudeIntegration::isEtagSupportedTool, but `read_log` is projection-only
-// (NOT etag-able) — so this is no longer a strict subset of the etag set.
-// Chosen for payload size (see docs/specs/ANTS-1720 / ROADMAP).
-bool isFieldProjectionTool(const QString &toolName);
-
-// ANTS-4524 — the verbs whose envelope is compacted when the caller did NOT
-// ask, i.e. where mcp::terseDefault() applies to an absent `compact` arg. An
-// EXPLICIT compact:true is honoured wherever the schema declares it; this
-// gates only the default. Asked SEPARATELY from `fields=`: the two shared one
-// predicate, so a verb added for one acquired the other silently
-// (ANTS-4663 → ANTS-4673). Both answers live in one table in the .cpp, so a
-// new verb must answer both.
+// ANTS-4524 — there is NO `fields=` allowlist. Every verb honours it, the
+// dispatcher declares the property on every schema, and `isUniversalDispatchArg`
+// says so to the ignored_args advisory. The predicate that used to gate it
+// (isFieldProjectionTool) is gone: it answered a question whose answer is now
+// always yes, while a caller passing `fields=` to any other verb had it dropped
+// in silence. projectFields is a pure top-level key filter with a refusal floor
+// and a 304 floor, so it is safe on any object envelope.
+//
+// The verbs whose envelope is compacted when the caller did NOT ask — where
+// mcp::terseDefault() applies to an ABSENT `compact` arg.
 bool isDefaultCompactTool(const QString &toolName);
+
+// The verbs that declare `compact` and therefore honour an EXPLICIT
+// compact:true / compact:false. Membership and the default above are two
+// columns of one table in the .cpp, because they were one predicate until
+// 2026-08-25: a verb added for `fields=` acquired compaction silently, which
+// folded away spec_lint's flag saying a check had never run (ANTS-4663 →
+// ANTS-4673). Unlike `fields=`, compaction is not universal — it has a
+// default, and a default nobody asked for is what did the damage.
+bool isCompactArgTool(const QString &toolName);
 
 // ANTS-2094 — the read verbs whose bodies are large enough to be worth
 // spilling to a content-addressed cache file + returning a head+pointer
-// envelope (observation masking). Deliberately a SEPARATE set from
-// isFieldProjectionTool: it adds the large-body verbs that take no
-// `fields=` (get_scrollback / get_text / workspace_search / find_sources).
+// envelope (observation masking). A real allowlist, unlike `fields=`: an
+// offload replaces the body with a pointer, so it is not something to do to
+// every verb by default.
 // Write, control-plane, refusal and 304 responses are never offloaded
 // (gated by the dispatch site, not here). See docs/specs/ANTS-2094.md.
 bool isOffloadEligible(const QString &toolName);
@@ -52,8 +56,14 @@ bool isRawEligible(const QString &toolName);
 //   - `fields` empty                    -> responseText returned unchanged.
 //   - responseText not a JSON object    -> responseText returned unchanged.
 //   - field present in source           -> copied verbatim.
-//   - field absent / non-string / empty -> omitted (never an error).
-//   - all fields unknown                -> "{}".
+//   - field absent / non-string / empty -> omitted, and NAMED in
+//                                          `fields_unmatched` (ANTS-4567).
+//   - refusal (`ok:false`)              -> the refusal floor is carried
+//                                          verbatim whatever `fields` names.
+//   - a 304 envelope (`unchanged:true`) -> returned unchanged: there is no
+//                                          content to narrow, and narrowing
+//                                          one drops the `unchanged` that IS
+//                                          the answer (ANTS-4524).
 // The etag is NOT auto-preserved: a caller that wants the etag for a
 // follow-up ANTS-1499 304 round-trip lists "etag" in `fields`. The
 // dispatch computes the etag on the unfiltered body before projecting,

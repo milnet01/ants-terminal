@@ -195,12 +195,11 @@ TEST(ChangelogQueryWiring, RegisteredAndAllowlisted) {
     ASSERT_FALSE(rc.empty());
     EXPECT_NE(rc.find("RemoteControl::cmdChangelogQuery"), std::string::npos);
 
-    // Four opt-in allowlists. ANTS-4524 — the projection membership is
-    // asserted by CALLING the predicates rather than by scraping
-    // isFieldProjectionTool's body: `fields=` and the compaction default are
-    // now two columns of one table, so a body scrape pinned where the list
-    // lives instead of what it says. The behaviour is the contract.
-    EXPECT_TRUE(mcp::isFieldProjectionTool(QStringLiteral("changelog_query")));
+    // The opt-in allowlists, asserted by CALLING the predicates rather than by
+    // scraping a table body — a body scrape pins where the list lives instead
+    // of what it says. `fields=` is no longer among them: ANTS-4524 made it
+    // universal, so there is nothing here for this verb to opt into.
+    EXPECT_TRUE(mcp::isCompactArgTool(QStringLiteral("changelog_query")));
     EXPECT_TRUE(mcp::isDefaultCompactTool(QStringLiteral("changelog_query")));
 
     const std::string proj = ants_test::slurpFile(SRC_MCPPROJECTION_CPP_PATH);

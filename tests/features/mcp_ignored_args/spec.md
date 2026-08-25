@@ -25,19 +25,28 @@ was a no-op.
   `args` that are neither in `known`, nor unconditionally universal, nor in
   the caller-supplied `honoured` set.
 - **INV-2** — a dispatch-layer arg the verb HONOURS is never reported, even
-  when its `known` set does not redeclare it. Two are unconditional:
-  `caller_cwd`, which every verb reads, and `encoding`, which the dispatcher
-  applies with no tool-name predicate. The rest arrive per call in
-  `honoured`.
-- **INV-2b** (ANTS-4578) — **`etag_match`, `fields`, `compact` and `offload`
-  ARE reported on a verb that does not honour them.** They were exempt
+  when its `known` set does not redeclare it. Three are unconditional:
+  `caller_cwd`, which every verb reads; `encoding`, which the dispatcher
+  applies with no tool-name predicate; and `fields`, universal since
+  ANTS-4524. The rest arrive per call in `honoured`.
+- **INV-2b** (ANTS-4578) — **`etag_match`, `compact` and `offload` ARE
+  reported on a verb that does not honour them.** They were exempt
   everywhere until 2026-08-25, while the dispatcher acts on them only for
-  the verbs on its allowlists — so `fields` sent to a verb with no
-  projection support did nothing and reported nothing, and the caller
-  believed the narrowing had worked. Reported from two projects, on
-  `feedback_query` and on `session_orient` before it joined the projection
-  allowlist. `raw` was never on the exemption list and was correctly
-  reported throughout; that asymmetry is what identified the defect.
+  the verbs on its allowlists — so an arg sent to a verb with no support for
+  it did nothing and reported nothing, and the caller believed it had worked.
+  Reported from two projects, both about `fields`: on `feedback_query`, and
+  on `session_orient` before it joined the projection allowlist. `raw` was
+  never on the exemption list and was correctly reported throughout; that
+  asymmetry is what identified the defect.
+
+  **`fields` left this list by being fixed, not by being exempted again
+  (ANTS-4524).** It is honoured on every verb now, so no verb can drop it —
+  which is what INV-2 claimed all along and what made the original defect
+  invisible. The distinction between the two exemptions is the whole lesson
+  here and it is not visible from inside `ignoredArgs`: *exempt because it
+  always works* and *exempt because nobody checked* produce the identical
+  empty list. `Ants4524FieldsIsUniversalAndNeverFlagged` pins the first;
+  `mcp_projection` INV-8 and INV-10 are what make it true.
 - **INV-3** — when every arg is recognised (in `known` or universal), the
   result is empty.
 - **INV-4** — an empty `known` set reports every non-universal arg (a verb

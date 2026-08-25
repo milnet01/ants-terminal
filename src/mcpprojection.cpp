@@ -64,73 +64,59 @@ void resetHintLatch() {
 
 namespace {
 
-// ANTS-4524 — ONE row per verb, TWO independent answers. `fields=` and
-// `compact` shared a single predicate, so a verb added for one silently
-// acquired the other: ANTS-4663 added spec_lint to get `fields=`, compaction
-// came with it, and it folded away the flag saying a check never ran
-// (ANTS-4673). A row makes you answer both questions.
+// ANTS-4524 — the COMPACTION table. `fields=` used to share it and no longer
+// does: it is honoured on every verb, declared on every schema, and gated by
+// nothing (see the header). Compaction cannot follow it, because it has a
+// DEFAULT — claude.mcp_terse_responses sets mcp::terseDefault() ON at startup
+// — and a transform nobody asked for is what shipped ANTS-4673, folding away
+// spec_lint's flag saying a check had never run.
 //
-//   fields  — `fields=` narrowing is honoured. Opt-in with no default, and
-//             projectFields is a pure top-level key filter with a refusal
-//             floor, so it is safe on any object envelope.
-//   defaultCompact — mcp::terseDefault() applies when the per-call `compact`
-//             arg is ABSENT. claude.mcp_terse_responses sets that ON at
-//             startup, so this column decides whether a verb's false/empty
-//             fields fold away for callers who never asked. It has teeth;
-//             `fields` does not. Do not answer it by copying the row above.
+// So one row per verb, and the row answers two questions:
 //
-// An EXPLICIT `compact` is honoured wherever the schema declares it, on both
-// columns — this gates the DEFAULT, which is the half a caller never asked
-// for and the half that shipped ANTS-4673.
+//   membership     — the verb declares `compact`, so an EXPLICIT compact:true
+//                    (or false) is honoured. isCompactArgTool.
+//   defaultCompact — an ABSENT `compact` falls back to mcp::terseDefault().
+//                    isDefaultCompactTool. Do not answer it by copying the
+//                    row above: a false/empty field a caller BRANCHES on
+//                    (spec_lint's sections_checked, feedback_query's
+//                    delta_present) must survive for a caller who never asked.
 struct DispatchProjection {
     const char *tool;
-    bool fields;
     bool defaultCompact;
 };
 
 const DispatchProjection kDispatchProjection[] = {
-    //  tool                  fields  defaultCompact
-    { "roadmap_query",          true,  true  },
-    { "changelog_query",        true,  true  },  // ANTS-3533
-    { "project_layout",         true,  true  },
-    { "file_outline",           true,  true  },
-    { "get_environment",        true,  true  },
-    { "tab_list",               true,  true  },
-    { "subsystem",              true,  true  },
-    { "git_state",              true,  true  },
-    { "read_log",               true,  true  },  // ANTS-1855
-    { "read_region",            true,  true  },  // ANTS-2021
-    { "codebase_index",         true,  true  },  // ANTS-1637
-    { "docs_index",             true,  true  },  // ANTS-2139
-    { "co_change_family",       true,  true  },  // ANTS-3368
-    { "model_switch_stats",     true,  true  },  // ANTS-1735
-    // ANTS-4523 — the documented first call and the largest response in the
-    // session, so the verb a caller is most likely to narrow. `fields=`
-    // narrows the PAYLOAD, not the work: the eager codebase_index refresh
-    // (ANTS-2140) still runs.
-    { "session_orient",         true,  true  },
-    // ANTS-4429 — a WRITE verb here is deliberate and safe: both steps run
-    // after the handler returns, so they narrow the REPORT and never the
-    // work. Measured ~25 KB on a no-op dry run, for an answer that is a
-    // handful of counters. isCompactDroppable keeps every number, so
-    // `items_inserted:0` survives.
-    { "roadmap_migrate",        true,  true  },
-    // ANTS-4663 / ANTS-4673 — the row this table exists for, and the only one
-    // whose two answers differ. `fields=` YES: a corpus-wide run overflows the
-    // inline budget and spills, and `counts` is the answer a caller wants.
-    // Compaction BY DEFAULT no: the bulk is findings[], whose rows are live
-    // and which compaction cannot touch, so the default saved almost nothing
-    // here while folding away sections_checked/surfaces_checked:false — the
-    // fields that say the check never ran. A caller who passes compact:true
-    // still gets it; what is withdrawn is doing it to callers who did not ask.
-    { "spec_lint",              true,  false },
-    // ANTS-4665 — the same shape and the second row to use the split. `delta`
-    // is the biggest field in the envelope and grows with the backlog, while
-    // the narrowing call exists to check for duplicates WITHOUT re-reading it.
-    // Compaction by default NO: `delta_present:false` is the answer "nothing
+    //  tool                  defaultCompact
+    { "roadmap_query",          true  },
+    { "changelog_query",        true  },  // ANTS-3533
+    { "project_layout",         true  },
+    { "file_outline",           true  },
+    { "get_environment",        true  },
+    { "tab_list",               true  },
+    { "subsystem",              true  },
+    { "git_state",              true  },
+    { "read_log",               true  },  // ANTS-1855
+    { "read_region",            true  },  // ANTS-2021
+    { "codebase_index",         true  },  // ANTS-1637
+    { "docs_index",             true  },  // ANTS-2139
+    { "co_change_family",       true  },  // ANTS-3368
+    { "model_switch_stats",     true  },  // ANTS-1735
+    { "session_orient",         true  },  // ANTS-4523
+    // ANTS-4429 — a WRITE verb here is deliberate and safe: compaction runs
+    // after the handler returns, so it narrows the REPORT and never the work.
+    // isCompactDroppable keeps every number, so `items_inserted:0` survives.
+    { "roadmap_migrate",        true  },
+    // ANTS-4663 / ANTS-4673 — the row this table exists for. Compaction BY
+    // DEFAULT no: the bulk is findings[], whose rows are live and which
+    // compaction cannot touch, so the default saved almost nothing here while
+    // folding away sections_checked/surfaces_checked:false — the fields that
+    // say the check never ran. A caller who passes compact:true still gets it;
+    // what is withdrawn is doing it to callers who did not ask.
+    { "spec_lint",              false },
+    // ANTS-4665 — the same shape. `delta_present:false` is the answer "nothing
     // is pending", and folding it away leaves that indistinguishable from a
     // field the caller forgot to read.
-    { "feedback_query",         true,  false },
+    { "feedback_query",         false },
 };
 
 const DispatchProjection *lookupDispatchProjection(const QString &toolName) {
@@ -141,9 +127,8 @@ const DispatchProjection *lookupDispatchProjection(const QString &toolName) {
 
 }  // namespace
 
-bool isFieldProjectionTool(const QString &toolName) {
-    const DispatchProjection *row = lookupDispatchProjection(toolName);
-    return row && row->fields;
+bool isCompactArgTool(const QString &toolName) {
+    return lookupDispatchProjection(toolName) != nullptr;
 }
 
 bool isDefaultCompactTool(const QString &toolName) {
@@ -151,8 +136,7 @@ bool isDefaultCompactTool(const QString &toolName) {
     return row && row->defaultCompact;
 }
 
-// ANTS-2094 — offload-eligible read verbs (see header). A separate set from
-// isFieldProjectionTool: adds the large-body verbs that take no `fields=`.
+// ANTS-2094 — offload-eligible read verbs (see header).
 bool isOffloadEligible(const QString &toolName) {
     return toolName == QStringLiteral("get_scrollback")
         || toolName == QStringLiteral("get_text")
@@ -206,6 +190,16 @@ QString projectFields(const QString &responseText, const QJsonArray &fields) {
         return responseText;
 
     const QJsonObject src = doc.object();
+    // ANTS-4524 — never narrow a 304. The dispatcher already skips projection
+    // on the CENTRAL etag short-circuit, but a verb whose envelope carries
+    // per-run measurements owns its own 304 (mcp-tools.md step 7,
+    // spec_conformance), and that one is invisible to the dispatcher. Before
+    // `fields=` was universal such a verb was told to decline the argument
+    // outright; there is no declining now, so the floor lives here, where it
+    // covers both. `{ok,unchanged,etag}` has no content to narrow, and
+    // narrowing it drops the `unchanged` that IS the answer.
+    if (src.value(QStringLiteral("unchanged")).toBool()) return responseText;
+
     QJsonObject out;
     for (const QJsonValue &f : fields) {
         if (!f.isString()) continue;
@@ -302,10 +296,11 @@ QString leanerModeHintFor(const QString &tool, const QJsonObject &args) {
         !args.contains(QStringLiteral("filter")))
         return QStringLiteral(
             "pass filter=<substr> to scan only matching symbols");
-    // Generic fallback: any field-projection tool the caller isn't yet
-    // narrowing (ANTS-1720 fields=).
-    if (isFieldProjectionTool(tool) &&
-        !args.contains(QStringLiteral("fields")))
+    // Generic fallback: any verb the caller isn't yet narrowing (ANTS-1720
+    // fields=). No tool-name gate since ANTS-4524 — every verb honours it, so
+    // suggesting it on one and not another was the allowlist leaking into a
+    // hint. appendReadHints still gates on a worthwhile body size.
+    if (!args.contains(QStringLiteral("fields")))
         return QStringLiteral(
             "pass fields=[…] to return only the fields you need");
     return QString();
@@ -537,12 +532,16 @@ namespace {
 // dispatcher with no tool-name predicate (tabularize self-guards per array),
 // so it is honoured wherever it is sent.
 //
-// The other four — fields, compact, offload, etag_match — are honoured only
-// for the verbs on the dispatcher's allowlists, so whether they were ignored
-// is a per-call question and arrives as `honoured`.
+// ANTS-4524 — `fields` joined them: the dispatcher projects for every verb and
+// declares the property on every schema, so it can never be the dropped
+// argument the advisory exists to name. The other three — compact, offload,
+// etag_match — are honoured only for the verbs on the dispatcher's allowlists,
+// so whether they were ignored is a per-call question and arrives as
+// `honoured`.
 bool isUniversalDispatchArg(const QString &key) {
     return key == QStringLiteral("caller_cwd")
-        || key == QStringLiteral("encoding");
+        || key == QStringLiteral("encoding")
+        || key == QStringLiteral("fields");
 }
 
 }  // namespace

@@ -1737,13 +1737,13 @@ void ClaudeIntegration::onMcpConnection() {
                     return p;
                 };
 
-                // ANTS-1720 — `fields` projection input prop. The 11
-                // high-volume read tools in mcp::isFieldProjectionTool
-                // (roadmap_query, project_layout, file_outline,
-                // get_environment, tab_list, subsystem, git_state, read_log,
-                // read_region, codebase_index, model_switch_stats) accept it;
-                // the response carries only the named top-level fields. Gated
-                // by that helper at the dispatch site.
+                // ANTS-1720 — `fields` projection input prop: the response
+                // carries only the named top-level fields. ANTS-4524 — the
+                // property is now injected into EVERY verb's schema in the
+                // tools/list loop below, with a terse description. This full
+                // one is what the high-volume read verbs keep, because they
+                // are where a caller is most likely to reach for it; the
+                // injection skips a schema that already declares its own.
                 auto makeFieldsProp = []{
                     QJsonObject p;
                     p["type"] = "array";
@@ -5412,8 +5412,10 @@ void ClaudeIntegration::onMcpConnection() {
                     // additionalProperties:false, so `fields=` was not
                     // merely unhonoured on a corpus run, it was
                     // undeclared: a strict client refuses it before the
-                    // dispatcher is reached. Declared here and honoured
-                    // by mcp::isFieldProjectionTool.
+                    // dispatcher is reached. Declared here with the full
+                    // description; ANTS-4524 later made the property
+                    // universal, and the injection skips a schema that
+                    // already carries its own.
                     props["fields"]  = makeFieldsProp();   // ANTS-1720
                     props["compact"] = makeCompactProp();  // ANTS-2091
                     schema["properties"] = props;
@@ -7002,9 +7004,9 @@ void ClaudeIntegration::onMcpConnection() {
                     QJsonObject props;
                     props["caller_cwd"] = cwdProp;
                     props["etag_match"] = etagProp;
-                    // ANTS-4624 — session_orient joined
-                    // mcp::isFieldProjectionTool in ANTS-4523 and never got
-                    // the matching schema property, so the dispatcher was
+                    // ANTS-4624 — session_orient joined the `fields=`
+                    // allowlist in ANTS-4523 and never got the matching
+                    // schema property, so the dispatcher was
                     // WILLING to project and the argument could not arrive in
                     // a projectable form: the ANTS-1720 block requires
                     // `fv.isArray()`, and with no declared property the client
@@ -13296,6 +13298,48 @@ void ClaudeIntegration::onMcpConnection() {
                             }
                         }
                     }
+                    // ANTS-4524 — `fields=` is universal, so DECLARE it
+                    // universally. The dispatcher projects for every verb now;
+                    // an undeclared property is the other half of the same
+                    // defect, and it shipped once already (ANTS-4624): a
+                    // strict client has no type to marshal to, the argument
+                    // arrives as a string, `fv.isArray()` is false and the
+                    // narrowing is skipped in silence. Injected here rather
+                    // than by ~150 hand-written schema lines, for the reason
+                    // the caller_cwd block above gives: one site cannot drift
+                    // from the dispatcher. Idempotent — a verb declaring its
+                    // own richer `fields` description keeps it, so this adds
+                    // the property only where it is missing, with a terse
+                    // description because ~150 copies of the full one is real
+                    // wire cost on tools/list.
+                    {
+                        QJsonObject schema =
+                            t.value(QStringLiteral("inputSchema")).toObject();
+                        if (!schema.isEmpty()) {
+                            QJsonObject props =
+                                schema.value(QStringLiteral("properties"))
+                                      .toObject();
+                            if (!props.contains(QStringLiteral("fields"))) {
+                                QJsonObject p;
+                                p[QStringLiteral("type")] =
+                                    QStringLiteral("array");
+                                QJsonObject items;
+                                items[QStringLiteral("type")] =
+                                    QStringLiteral("string");
+                                p[QStringLiteral("items")] = items;
+                                p[QStringLiteral("description")] =
+                                    QStringLiteral(
+                                        "Optional. Return only these top-level "
+                                        "response fields; names the envelope "
+                                        "does not carry are listed in "
+                                        "`fields_unmatched`. Honoured by every "
+                                        "verb (ANTS-4524).");
+                                props[QStringLiteral("fields")] = p;
+                                schema[QStringLiteral("properties")] = props;
+                                t[QStringLiteral("inputSchema")] = schema;
+                            }
+                        }
+                    }
                     // ANTS-2158 — exempt the highest-frequency verbs from
                     // Claude Code's MCP tool-search DEFERRAL so they are
                     // callable without a ToolSearch round-trip (the
@@ -13943,10 +13987,11 @@ void ClaudeIntegration::onMcpConnection() {
                     QSet<QString> honoured;
                     if (isEtagSupportedTool(toolName))
                         honoured.insert(QStringLiteral("etag_match"));
-                    if (mcp::isFieldProjectionTool(toolName)) {
-                        honoured.insert(QStringLiteral("fields"));
+                    // ANTS-4524 — `fields` is not here: it is universal now
+                    // (mcp::isUniversalDispatchArg), so it can never be the
+                    // dropped argument this advisory exists to name.
+                    if (mcp::isCompactArgTool(toolName))
                         honoured.insert(QStringLiteral("compact"));
-                    }
                     if (mcp::isOffloadEligible(toolName))
                         honoured.insert(QStringLiteral("offload"));
                     ignoredArgKeys = mcp::ignoredArgs(
@@ -13986,8 +14031,14 @@ void ClaudeIntegration::onMcpConnection() {
                 // on the etag short-circuit — {ok,unchanged,etag} has no
                 // content to narrow. To retain the etag through a narrowed
                 // call, the caller lists "etag" in `fields`.
-                if (toolHandled && !etagUnchanged &&
-                    mcp::isFieldProjectionTool(toolName)) {
+                // ANTS-4524 — EVERY verb, no allowlist. It was gated on one,
+                // so a caller passing `fields=` to any other verb had it
+                // dropped, and the per-verb workaround was paid one verb at a
+                // time (ANTS-4523, ANTS-4663, ANTS-4665). projectFields is a
+                // pure top-level key filter with a refusal floor and a 304
+                // floor, which is what makes it safe on an envelope this
+                // dispatcher has never seen.
+                if (toolHandled && !etagUnchanged) {
                     const QJsonValue fv =
                         argsObj.value(QStringLiteral("fields"));
                     if (fv.isArray()) {
@@ -14009,15 +14060,13 @@ void ClaudeIntegration::onMcpConnection() {
                 // token-saving needs no per-call flag). Absent ⟺ default makes
                 // the fallback lossless; a caller needing empty-vs-absent
                 // passes compact:false.
-                // ANTS-4524 — the FALLBACK is gated on isDefaultCompactTool,
-                // a separate answer from the `fields=` predicate above. They
-                // were one predicate, so a verb added for `fields=` started
-                // compacting for every caller whether or not they asked
-                // (ANTS-4663 → ANTS-4673). An explicit `compact` still wins on
-                // any verb declaring it; only the unasked-for default is
-                // per-verb.
+                // ANTS-4524 — compaction did NOT follow `fields=` into being
+                // universal, and the reason is the default: a transform nobody
+                // asked for is what shipped ANTS-4673. isCompactArgTool gates
+                // the verbs declaring the argument at all; isDefaultCompactTool
+                // is the separate answer for an ABSENT one.
                 if (toolHandled && !etagUnchanged &&
-                    mcp::isFieldProjectionTool(toolName)) {
+                    mcp::isCompactArgTool(toolName)) {
                     const QJsonValue compactArg =
                         argsObj.value(QStringLiteral("compact"));
                     const bool wantCompact = compactArg.isBool()

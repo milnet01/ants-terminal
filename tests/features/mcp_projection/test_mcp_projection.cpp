@@ -1,7 +1,8 @@
 // ANTS-1720 — feature-conformance test for MCP `fields=` response
-// projection. Behavioural coverage of mcp::projectFields +
-// mcp::isFieldProjectionTool (pure, Qt6::Core), plus a source-scrape of
-// the dispatch ordering invariant in claudeintegration.cpp.
+// projection. Behavioural coverage of mcp::projectFields (pure, Qt6::Core)
+// and of the compaction table (mcp::isCompactArgTool /
+// mcp::isDefaultCompactTool), plus source-scrapes of the dispatch ordering
+// invariant and of `fields=`' universality in claudeintegration.cpp.
 // See tests/features/mcp_projection/spec.md.
 
 #include "mcpprojection.h"
@@ -151,22 +152,17 @@ TEST(McpProjection, Ants2112SuccessNarrowingUnchanged) {
     EXPECT_TRUE(o.contains("bullets"));
 }
 
-// The in-scope projection tools, named ONCE. INV-8 asserts each is a member
-// of mcp::isFieldProjectionTool; INV-10 asserts each declares a `fields`
-// schema property. Those two must agree, and sharing the list is what makes
-// them agree by construction rather than by somebody remembering.
+// The verbs that declare `compact`, named ONCE. INV-11 asserts each answers
+// mcp::isCompactArgTool, and that the ones exempt from the DEFAULT answer
+// mcp::isDefaultCompactTool differently.
 //
-// ANTS-4624 — they did not agree, and the gap shipped. INV-10 asserted a
-// HARDCODED call-site count of 14, so when ANTS-4523 added session_orient to
-// the allowlist (15) the count still matched the 14 verbs that DO declare the
-// property, INV-10 kept passing, and the one member without it went out. The
-// dispatcher then required an array (`fv.isArray()`), the undeclared argument
-// arrived as a string, and the projection was silently skipped on the largest
-// response in the session. Deriving the count from this array is the whole
-// fix: adding a tool to one list now fails the other until both are done.
-//
-// Do NOT replace std::size(...) with a literal. The literal is the defect.
-constexpr const char *kFieldProjectionTools[] = {
+// ANTS-4524 — this array used to be the `fields=` allowlist as well, and the
+// two questions are no longer the same one. `fields=` is universal: gated by
+// no predicate, declared on every schema by the tools/list injection, and
+// asserted by Ants4524FieldsIsUniversal below. Compaction did not follow it
+// because compaction has a DEFAULT, and a transform nobody asked for is what
+// shipped ANTS-4673.
+constexpr const char *kCompactArgTools[] = {
     "roadmap_query", "changelog_query", "project_layout", "file_outline",
     "get_environment", "tab_list", "subsystem", "git_state", "read_log",
     "model_switch_stats", "read_region", "codebase_index", "docs_index",
@@ -178,16 +174,9 @@ constexpr const char *kFieldProjectionTools[] = {
     // the bulk — while the answer a caller wants is a handful of counters.
     // `additionalProperties:false` meant it could not even be asked for.
     "roadmap_migrate",
-    // ANTS-4663 — a corpus-wide run over docs/specs/ overflows the inline
-    // budget and spills to a handle, while the answer a caller wants is the
-    // `counts` object the envelope already carries. `fields=["counts"]` was
-    // passed and silently dropped, because the verb was not on this list.
+    // The two rows that answer the columns differently — see
+    // kNoDefaultCompactTools.
     "spec_lint",
-    // ANTS-4665 — `delta` is the largest field here and grows with every
-    // un-triaged finding, while the narrowing call exists to check for
-    // duplicates WITHOUT re-reading it: the cost was worst exactly when a
-    // file was busiest. Confirmed live by ANTS-4578, which reported the
-    // dropped `fields` in ignored_args.
     "feedback_query"};
 
 // ANTS-4524 — the verbs on the list above that are NOT compacted by default.
@@ -195,63 +184,84 @@ constexpr const char *kFieldProjectionTools[] = {
 // test asserting it must name the difference rather than derive it.
 constexpr const char *kNoDefaultCompactTools[] = {"spec_lint", "feedback_query"};
 
-// INV-8 — every in-scope tool is field-projectable, and the out-of-scope
-// ones are not. ANTS-4624 widened the positive list from 13 to the full 15:
-// changelog_query (ANTS-3533) and co_change_family (ANTS-3368) were on the
-// allowlist and asserted by nothing, in a test calling itself Exact.
-TEST(McpProjection, Inv8AllowlistExact) {
-    for (const char *t : kFieldProjectionTools) {
-        EXPECT_TRUE(mcp::isFieldProjectionTool(QString::fromUtf8(t)))
-            << t << " should be field-projectable";
-    }
-    for (const char *t : {"get_scrollback", "session_brief", "current_state",
-                          "last_audit_summary", "roadmap_branch_drift",
-                          "build_status", "test_results", ""}) {
-        EXPECT_FALSE(mcp::isFieldProjectionTool(QString::fromUtf8(t)))
-            << t << " should NOT be field-projectable";
-    }
+// INV-8 — `fields=` is UNIVERSAL: no allowlist, no predicate, and the verbs
+// that were once outside the list are the proof. Behavioural half — the pure
+// transform never asked which verb it was serving; the gate lived at the
+// dispatch site, which Ants4524FieldsIsUniversal scrapes.
+TEST(McpProjection, Inv8NoFieldsAllowlist) {
+    // The verbs the old allowlist excluded by name. Narrowing works on their
+    // envelopes exactly as on roadmap_query's, which is why gating it was
+    // never about safety.
+    const QString body = QStringLiteral(
+        "{\"ok\":true,\"lines\":[\"a\"],\"count\":1}");
+    const QJsonObject o = parse(mcp::projectFields(body, fields({"count"})));
+    EXPECT_EQ(o.size(), 1);
+    EXPECT_EQ(o.value("count").toInt(), 1);
+
+    // And the predicate that used to gate it is gone rather than dormant: a
+    // dormant one is what the next verb-author would reach for.
+    QFile mp(QString::fromUtf8(SRC_MCPPROJECTION_CPP_PATH));
+    ASSERT_TRUE(mp.open(QIODevice::ReadOnly));
+    EXPECT_FALSE(mp.readAll().contains("isFieldProjectionTool"))
+        << "the `fields=` allowlist must not come back — every verb honours it";
 }
 
-// ANTS-4524 — `fields=` and the compaction DEFAULT are two answers, not one.
-// They shared a predicate, so a verb added to the allowlist for `fields=`
-// silently began compacting for every caller: that is exactly how ANTS-4663
-// shipped ANTS-4673. spec_lint is the row where the two now differ.
-//
-// Only the DEFAULT is per-verb. An explicit compact:true is still honoured
-// wherever the schema declares it — withdrawing that would silently drop a
-// declared argument, which is the same class of defect pointing the other way.
-TEST(McpProjection, Ants4524FieldsAndDefaultCompactAreSeparate) {
+// ANTS-4524 — a 304 is never narrowed. The dispatcher skips projection on the
+// CENTRAL etag short-circuit, but a verb carrying per-run measurements owns
+// its own 304 (mcp-tools.md step 7, spec_conformance) and that one is
+// invisible to the dispatcher. While `fields=` was allowlisted such a verb was
+// told to decline the argument; there is nothing to decline now, so the floor
+// has to be here.
+TEST(McpProjection, Ants4524NeverNarrowsA304) {
+    const QString body = QStringLiteral(
+        "{\"ok\":true,\"unchanged\":true,\"etag\":\"abc\"}");
+    EXPECT_EQ(mcp::projectFields(body, fields({"ok"})), body)
+        << "narrowing a 304 drops the `unchanged` that IS the answer";
+}
+
+// INV-11 — the compaction table. Membership says an EXPLICIT `compact` is
+// honoured; the column says whether an ABSENT one falls back to
+// mcp::terseDefault(). `fields=` used to share this predicate, so a verb added
+// for narrowing began compacting for every caller: that is how ANTS-4663
+// shipped ANTS-4673.
+TEST(McpProjection, Inv11CompactArgAndDefaultAreSeparate) {
     const auto exempt = [](const QString &tool) {
         for (const char *e : kNoDefaultCompactTools)
             if (tool == QString::fromUtf8(e)) return true;
         return false;
     };
 
-    for (const char *t : kFieldProjectionTools) {
+    for (const char *t : kCompactArgTools) {
         const QString tool = QString::fromUtf8(t);
-        EXPECT_TRUE(mcp::isFieldProjectionTool(tool))
-            << t << " must take `fields=`";
+        EXPECT_TRUE(mcp::isCompactArgTool(tool))
+            << t << " must honour an explicit `compact`";
         EXPECT_EQ(mcp::isDefaultCompactTool(tool), !exempt(tool))
             << t << " answers the compaction column wrongly";
     }
 
-    // The split must stay REAL rather than becoming a rename: at least one
-    // verb answers the two differently. If none does, the table has collapsed
-    // back into the single predicate this item exists to undo.
+    // The two answers must stay REAL rather than collapsing into one: at least
+    // one verb declares `compact` and is still not compacted by default. If
+    // none does, membership has silently become the default again.
     static_assert(std::size(kNoDefaultCompactTools) > 0,
                   "the split is only meaningful while some verb differs");
     for (const char *t : kNoDefaultCompactTools) {
         const QString tool = QString::fromUtf8(t);
-        EXPECT_TRUE(mcp::isFieldProjectionTool(tool))
-            << t << " keeps `fields=` — that half is why it is on the list";
+        EXPECT_TRUE(mcp::isCompactArgTool(tool))
+            << t << " declares `compact` — a caller who asks still gets it";
         EXPECT_FALSE(mcp::isDefaultCompactTool(tool))
             << t << " must NOT be compacted for a caller who never asked: "
                     "its false/empty fields carry meaning a caller branches on";
     }
 
+    for (const char *t : {"get_scrollback", "session_brief", "current_state",
+                          "doc_citations", ""}) {
+        EXPECT_FALSE(mcp::isCompactArgTool(QString::fromUtf8(t)))
+            << t << " declares no `compact` argument";
+    }
+
     for (const char *t : {"get_scrollback", "session_brief", ""}) {
         EXPECT_FALSE(mcp::isDefaultCompactTool(QString::fromUtf8(t)))
-            << t << " is on neither list";
+            << t << " is not in the table at all";
     }
 }
 
@@ -286,30 +296,52 @@ TEST(McpProjection, Inv9DispatchOrdering) {
     // never narrowed.
     EXPECT_TRUE(s.contains("!etagUnchanged"))
         << "projection must be guarded by !etagUnchanged";
-    EXPECT_TRUE(s.contains("mcp::isFieldProjectionTool(toolName)"))
-        << "dispatch must gate projection on the allowlist";
+
+    // ANTS-4524 — and by NOTHING ELSE. The pure transform cannot tell whether
+    // the dispatcher gates it, so without this the allowlist could come back
+    // at the one site that decides, with every behavioural test still green.
+    const int fv = s.indexOf("const QJsonValue fv =");
+    ASSERT_GT(fv, 0) << "the `fields` argument read was not found";
+    const QByteArray guard = s.mid(fv - 90, 90);
+    EXPECT_TRUE(guard.contains("!etagUnchanged"))
+        << "expected the projection guard immediately above the argument read";
+    EXPECT_FALSE(guard.contains("mcp::is"))
+        << "the projection must not be gated on any tool-name predicate: "
+           "every verb honours `fields=`";
 }
 
-// INV-10 — each in-scope tool declares a `fields` schema property. The count
-// is DERIVED from kFieldProjectionTools above, so a tool added to the
-// allowlist without a schema property fails here (ANTS-4624).
-TEST(McpProjection, Inv10SchemaDeclaresFields) {
+// INV-10 — the schema declares `fields` on EVERY verb, because the dispatcher
+// projects for every verb. ANTS-4624 is the reason this invariant exists at
+// all: session_orient joined the old allowlist without the property, so the
+// client had no type to marshal to, `fields` arrived as a string,
+// `fv.isArray()` was false, and the narrowing was skipped in silence on the
+// largest response in the session. Under ANTS-4524 the same gap is possible
+// for ~150 verbs at once, so the declaration is injected in the tools/list
+// loop rather than hand-written per verb — and asserted here.
+TEST(McpProjection, Inv10SchemaDeclaresFieldsUniversally) {
     QFile f(QString::fromUtf8(SRC_CLAUDE_INTEGRATION_CPP_PATH));
     ASSERT_TRUE(f.open(QIODevice::ReadOnly));
     const QByteArray s = f.readAll();
     EXPECT_TRUE(s.contains("auto makeFieldsProp"))
         << "the shared `fields` schema fragment must be defined once";
-    // The lambda definition reads `makeFieldsProp = [` so it is not counted
-    // by the call-form needle.
-    int count = 0;
-    int idx = 0;
-    const QByteArray needle = "makeFieldsProp();";
-    while ((idx = s.indexOf(needle, idx)) != -1) { ++count; idx += needle.size(); }
-    EXPECT_EQ(count, int(std::size(kFieldProjectionTools)))
-        << "every tool in kFieldProjectionTools must declare a `fields` "
-           "schema property; expected "
-        << std::size(kFieldProjectionTools) << " makeFieldsProp() call sites, got "
-        << count;
+
+    const int inject = s.indexOf("props[QStringLiteral(\"fields\")] = p;");
+    ASSERT_GT(inject, 0)
+        << "every verb's schema must have `fields` injected in the tools/list "
+           "loop — a declared dispatcher behaviour no client can address is "
+           "the ANTS-4624 defect at ~150x the scale";
+    const int guard = s.lastIndexOf("!props.contains(QStringLiteral(\"fields\"))",
+                                    inject);
+    EXPECT_GT(guard, 0)
+        << "the injection must skip a schema that declares its own `fields`, "
+           "or the high-volume read verbs lose their full description";
+
+    // Before the snapshot, or tool_info and the ignored_args cache serve a
+    // schema the dispatcher does not honour.
+    const int snapshot = s.indexOf("m_lastToolsList = tools;");
+    ASSERT_GT(snapshot, 0) << "tools/list snapshot not found";
+    EXPECT_LT(inject, snapshot)
+        << "the injection must run before the snapshot tool_info serves";
 }
 
 // ───────────────────────────────────────────────────────────────────
@@ -608,8 +640,8 @@ TEST(McpCompact, Ants2091ProtectsBranchKeys) {
 // the same class isProtectedCompactKey already exists for.
 //
 // Shipped as a regression by ANTS-4663 and predicted by ANTS-4524 before it.
-// Adding spec_lint to mcp::isFieldProjectionTool bought `fields=`, and the
-// dispatcher gates COMPACTION on that same predicate — falling back to
+// Adding spec_lint to the `fields=` allowlist bought narrowing, and the
+// dispatcher gated COMPACTION on that same predicate — falling back to
 // mcp::terseDefault(), which config defaults TRUE. So the verb was silently
 // compacted for every caller, and spec_lint's own contract (ANTS-4373: treat a
 // skipped run as SILENT about section structure, never as a clean structural

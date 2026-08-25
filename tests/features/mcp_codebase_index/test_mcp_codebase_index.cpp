@@ -643,9 +643,10 @@ TEST(CodebaseIndex, WiringRegistered) {
     // no etag itself (the dispatcher injects it).
     EXPECT_TRUE(has(ci, "isEtagSupportedTool"));
     EXPECT_FALSE(has(ants_test::slurpFile(srcPath("src/codebaseindex.cpp")), "\"etag\""));
-    // fields projection (INV-10).
+    // Compaction table (INV-10). `fields=` needs no enrolment since
+    // ANTS-4524 — every verb honours it; this row is the compaction answer.
     EXPECT_TRUE(has(mp, "codebase_index"));
-    EXPECT_TRUE(has(mp, "isFieldProjectionTool"));
+    EXPECT_TRUE(has(mp, "isDefaultCompactTool"));
     // handler routes file_path through PathValidation (INV-7).
     EXPECT_TRUE(has(rc, "cmdCodebaseIndex"));
     EXPECT_TRUE(has(rc, "validatePath"));

@@ -2763,6 +2763,9 @@ if(ANTS_TESTS)
         SRC_CLAUDEALLOWLIST_CPP_PATH="${CMAKE_SOURCE_DIR}/src/claudeallowlist.cpp"
         # ANTS-1720 — dispatch-ordering scrape for the fields= projection.
         SRC_CLAUDE_INTEGRATION_CPP_PATH="${CMAKE_SOURCE_DIR}/src/claudeintegration.cpp"
+        # ANTS-4524 — INV-8 scrapes for the ABSENCE of the retired `fields=`
+        # allowlist; a dormant predicate is what the next verb-author reaches for.
+        SRC_MCPPROJECTION_CPP_PATH="${CMAKE_SOURCE_DIR}/src/mcpprojection.cpp"
         # ANTS-2094 — result-offload fail-open source-scrape (INV-11).
         SRC_MCPSPILL_CPP_PATH="${CMAKE_SOURCE_DIR}/src/mcpspill.cpp"
         SRC_SETTINGSDIALOG_CPP_PATH="${CMAKE_SOURCE_DIR}/src/settingsdialog.cpp"

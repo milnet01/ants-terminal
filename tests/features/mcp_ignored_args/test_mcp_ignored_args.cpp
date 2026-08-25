@@ -69,15 +69,21 @@ TEST(McpIgnoredArgs, Inv2HonouredArgsNeverFlagged) {
     EXPECT_TRUE(mcp::ignoredArgs(args, QSet<QString>{}, honoured).isEmpty());
 }
 
-// INV-2b — the same args ARE flagged on a verb that honours none of them.
-// This is the case ANTS-4578 reported, from two different projects: `fields`
-// to feedback_query, and `fields` to session_orient before it joined the
-// projection allowlist. Both returned the full payload in silence.
+// INV-2b — the remaining per-verb args ARE flagged on a verb that honours
+// none of them. This is the case ANTS-4578 reported, from two different
+// projects: `fields` to feedback_query, and `fields` to session_orient before
+// it joined the projection allowlist. Both returned the full payload in
+// silence.
 //
-// `caller_cwd` and `encoding` stay exempt unconditionally, and for a stated
-// reason rather than by omission: every verb reads caller_cwd, and
-// tabularize is self-guarding with no tool-name predicate, so both are
-// honoured everywhere.
+// ANTS-4524 — `fields` is no longer among them, and the reason is the reverse
+// of an exemption: it is honoured on EVERY verb now, so there is no verb on
+// which it could be the dropped argument. `caller_cwd` and `encoding` are
+// exempt for the same kind of reason rather than by omission — every verb
+// reads caller_cwd, and tabularize is self-guarding with no tool-name
+// predicate. The three that remain are honoured per allowlist and stay
+// reportable; test_fieldsIsUniversal below pins the difference, because
+// "exempt because it always works" and "exempt because nobody checked" look
+// identical from inside this function.
 TEST(McpIgnoredArgs, Inv2bUnhonouredDispatchArgsAreFlagged) {
     QJsonObject args;
     for (const char *k : {"caller_cwd", "encoding", "etag_match", "fields",
@@ -86,8 +92,20 @@ TEST(McpIgnoredArgs, Inv2bUnhonouredDispatchArgsAreFlagged) {
     EXPECT_EQ(mcp::ignoredArgs(args, QSet<QString>{}, QSet<QString>{}),
               (QStringList{QStringLiteral("compact"),
                            QStringLiteral("etag_match"),
-                           QStringLiteral("fields"),
                            QStringLiteral("offload")}));
+}
+
+// ANTS-4524 — `fields` is universal, so it is never reported however the
+// caller arrives: no declaration, no honoured set, any verb. Until ANTS-4578
+// INV-2's premise was false in the dangerous direction — the advisory called
+// `fields` a universal dispatch arg while the dispatcher honoured it on an
+// allowlist, so the verbs that dropped it were the ones barred from saying so.
+TEST(McpIgnoredArgs, Ants4524FieldsIsUniversalAndNeverFlagged) {
+    QJsonObject args;
+    args[QStringLiteral("fields")] = true;
+    args[QStringLiteral("bogus")]  = true;
+    EXPECT_EQ(mcp::ignoredArgs(args, QSet<QString>{}, QSet<QString>{}),
+              (QStringList{QStringLiteral("bogus")}));
 }
 
 // INV-3 — all-known args (declared + universal) → empty.

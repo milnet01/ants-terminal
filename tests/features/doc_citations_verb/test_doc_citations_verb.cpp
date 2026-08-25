@@ -208,8 +208,11 @@ TEST(DocCitationsVerb, Inv19RegisteredAtSevenSites) {
 
     // Negative: enrolment in either would delete anchor_found:false and
     // truncated:false, which § 2.1 requires present when false.
-    expect(!mcp::isFieldProjectionTool(QStringLiteral("doc_citations")),
-           "INV-19: NOT a field-projection tool — compact would drop its false flags");
+    // ANTS-4524 — `fields=` is universal and harmless here (opt-in, and the
+    // caller names what it wants). What would delete those flags is
+    // COMPACTION, so that is the enrolment this asserts the absence of.
+    expect(!mcp::isCompactArgTool(QStringLiteral("doc_citations")),
+           "INV-19: declares no `compact` — it would drop its false flags");
     expect(!mcp::isRawEligible(QStringLiteral("doc_citations")),
            "INV-19: NOT raw-eligible — file text is one field among many");
     EXPECT_EQ(0, expect_failures());

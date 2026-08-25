@@ -61,7 +61,7 @@ protected:
 }  // namespace
 
 // INV-1 — the offload-eligible set is the large-body read verbs, and is a
-// deliberately separate set from isFieldProjectionTool; write/control-plane
+// deliberately separate set from the compaction table; write/control-plane
 // verbs are never eligible. offloadRequested resolves per-call over default.
 TEST_F(McpResultOffload, Inv1EligibilityAndRequestResolution) {
     for (const char *t : {"get_scrollback", "get_text", "read_log",
@@ -74,7 +74,7 @@ TEST_F(McpResultOffload, Inv1EligibilityAndRequestResolution) {
     // get_scrollback is offload-eligible but NOT a field-projection tool —
     // the two predicates are independent.
     EXPECT_TRUE(mcp::isOffloadEligible(QStringLiteral("get_scrollback")));
-    EXPECT_FALSE(mcp::isFieldProjectionTool(QStringLiteral("get_scrollback")));
+    EXPECT_FALSE(mcp::isCompactArgTool(QStringLiteral("get_scrollback")));
 
     QJsonObject on; on["offload"] = true;
     QJsonObject off; off["offload"] = false;

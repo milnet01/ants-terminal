@@ -24,6 +24,7 @@ and source-scrapes the handler wiring.
 ## Wiring (source-scrape, INV-1/6/9)
 
 - `changelog_query` registered via `rcDelegate(&RemoteControl::cmdChangelogQuery)`.
-- Present in all four opt-in allowlists: `isFieldProjectionTool`,
+- Present in the opt-in allowlists (`fields=` needs none since ANTS-4524 —
+  every verb honours it): `isCompactArgTool`,
   `isOffloadEligible`, `isEtagSupportedTool`, `callerCwdContractFor` (Required).
 - `canonicalCategories()` is public (hoisted for the `bad_category` echo).

@@ -106,8 +106,10 @@ TEST(McpReadRegion, WiringContract) {
         char label[64]; std::snprintf(label, sizeof label, "W1 prop %s", p);
         expect(has(ciCpp, p), label, "read_region schema missing a property");
     }
-    expect(has(projCpp, "read_region"), "W1 fields",
-           "mcpprojection.cpp isFieldProjectionTool must include read_region");
+    // ANTS-4524 — `fields=` needs no enrolment now; what read_region is still
+    // a member of is the compaction table in mcpprojection.cpp.
+    expect(has(projCpp, "read_region"), "W1 compact",
+           "mcpprojection.cpp's compaction table must include read_region");
     expect(has(mwCpp, "registerToolProvider(\"read_region\"") &&
            has(mwCpp, "cmdReadRegion"), "W1 dispatch",
            "mainwindow.cpp must register read_region → cmdReadRegion");

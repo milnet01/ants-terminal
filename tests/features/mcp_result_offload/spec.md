@@ -10,7 +10,7 @@ dispatch-site and verb-wiring invariants.
 
 | Test | Covers |
 |---|---|
-| `Inv1EligibilityAndRequestResolution` | INV-1 — eligible set is the large-body read verbs, separate from `isFieldProjectionTool`; write/control-plane never eligible; `offloadRequested` resolves per-call over session default. |
+| `Inv1EligibilityAndRequestResolution` | INV-1 — eligible set is the large-body read verbs, separate from the compaction table; write/control-plane never eligible; `offloadRequested` resolves per-call over session default. |
 | `Inv12ConfigClamps` | INV-12 — threshold clamps to `[4096,1048576]`, head to `[256,16384]`. |
 | `Inv2And3EnvelopeAndSpillFile` | INV-2 (envelope: `offloaded`, 64-hex `handle`, `bytes`, `head` prefix, `head_truncated`, `hint` names `read_spill`) + INV-3 (spill file holds the body verbatim; `sha256(file)==handle`). |
 | `Inv4OwnerOnlyPerms` | INV-4 — spill file is 0600 (group/other bits clear). |

@@ -100,8 +100,10 @@ TEST(McpReadLog, WiringContract) {
         char label[64]; std::snprintf(label, sizeof label, "W2 prop %s", p);
         expect(has(ciCpp, p), label, "read_log schema missing a property");
     }
-    expect(has(projCpp, "read_log"), "W2 fields",
-           "mcpprojection.cpp isFieldProjectionTool must include read_log");
+    // ANTS-4524 — `fields=` needs no enrolment now; what read_log is still a
+    // member of is the compaction table in mcpprojection.cpp.
+    expect(has(projCpp, "read_log"), "W2 compact",
+           "mcpprojection.cpp's compaction table must include read_log");
     expect(has(mwCpp, "registerToolProvider(\"read_log\"") &&
            has(mwCpp, "cmdReadLog"), "W2 dispatch",
            "mainwindow.cpp must register read_log → cmdReadLog");

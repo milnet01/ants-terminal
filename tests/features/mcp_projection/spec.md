@@ -9,26 +9,25 @@ when the caller needs one top-level field. `roadmap_query` alone can run
 
 ## Solution
 
-A new optional `fields: ["f1","f2"]` array parameter on eleven read tools
-returns **only the named top-level fields**. The response *schema* is
-unchanged — absent fields are simply omitted. Callers that omit `fields`
-get the full payload (fully backwards-compatible).
+An optional `fields: ["f1","f2"]` array parameter returns **only the named
+top-level fields**. The response *schema* is unchanged — absent fields are
+simply omitted. Callers that omit `fields` get the full payload (fully
+backwards-compatible).
 
-Tools in scope (the original seven are etag-supported, ANTS-1499; of the
-four later additions all are etag-supported except `read_log`, which is
-projection-only):
-
-`roadmap_query`, `project_layout`, `file_outline`, `get_environment`,
-`tab_list`, `subsystem`, `git_state`, `read_log` (ANTS-1855),
-`model_switch_stats` (ANTS-1735), `read_region` (ANTS-2021),
-`codebase_index` (ANTS-1637).
+**Tools in scope: every verb (ANTS-4524).** It began as an allowlist of
+high-volume reads and grew one verb at a time (ANTS-1855, ANTS-2021,
+ANTS-1637, ANTS-1735, ANTS-3533, ANTS-2139, ANTS-3368, ANTS-4523, ANTS-4429,
+ANTS-4663, ANTS-4665). Each of those was a caller who had passed `fields=`,
+had it dropped in silence, and reported it — so the allowlist was a queue of
+future defects rather than a safety property. The transform never asked which
+verb it was serving.
 
 ## Where it lives
 
-Pure projection logic is `mcp::projectFields` + the allowlist
-`mcp::isFieldProjectionTool` in `src/mcpprojection.{h,cpp}` (Qt6::Core
-only — so the dispatch layer and this test share one implementation,
-mirroring `focusedtest` / `modelrecommender`).
+Pure projection logic is `mcp::projectFields` in `src/mcpprojection.{h,cpp}`
+(Qt6::Core only — so the dispatch layer and this test share one
+implementation, mirroring `focusedtest` / `modelrecommender`). There is no
+tool-name predicate; the dispatch site calls it for every verb.
 
 The dispatch site (`ClaudeIntegration`, `tools/call` branch) calls
 `mcp::projectFields` **after** the ETag short-circuit and **before**
@@ -68,77 +67,76 @@ short-circuits when state is unchanged.
   a `fields=["bullets","etag"]` response carries the same etag a full
   call would (this is what "etag computed on canonical body, not filtered
   body" means).
-- **INV-8 — allowlist is the in-scope tools only.**
-  `isFieldProjectionTool` returns true for exactly those and false
-  otherwise (e.g. `get_scrollback`, `session_brief`). The count is
-  deliberately not written here: it read "eleven" while the list held
-  fourteen, because every addition (ANTS-3533, ANTS-2139, ANTS-3368,
-  ANTS-4523 …) updates the list and not the prose. The test asserts the
-  membership, which is the part that matters; a number no check reads is
-  a number that goes stale.
+- **INV-8 — there is no allowlist (ANTS-4524).** `fields=` is honoured on
+  every verb, and the predicate that gated it is deleted rather than left
+  dormant — a dormant one is what the next verb-author reaches for. *Test:*
+  `Inv8NoFieldsAllowlist`, which narrows an envelope the old list excluded
+  and scrapes `mcpprojection.cpp` for the absence of the symbol.
 
-  **`session_orient` joined the list under ANTS-4523**, having been absent
-  by omission — the negative list below names `session_brief` and
-  `current_state` and never named it. **That fix was incomplete and the gap
-  shipped (ANTS-4624)**: membership makes the dispatcher willing to project,
-  and the schema property is what lets the argument arrive projectable. See
-  INV-10.
+  **A 304 is never narrowed.** The dispatcher already skips projection on the
+  central etag short-circuit, but a verb carrying per-run measurements owns
+  its own 304 (`mcp-tools.md` step 7, `spec_conformance`) and that one is
+  invisible to the dispatcher. While the allowlist existed such a verb was
+  told to *decline* `fields=`; there is nothing to decline now, so the floor
+  moved into `projectFields`, where it covers both. *Test:*
+  `Ants4524NeverNarrowsA304`.
 
-  **The positive list was widened to the full set by ANTS-4624.** It named
-  thirteen of fifteen — `changelog_query` (ANTS-3533) and `co_change_family`
-  (ANTS-3368) were on the allowlist and asserted by nothing, in a test
-  calling itself Exact.
+  **What the allowlist cost while it stood**, kept because it is the argument
+  against reintroducing one: `session_orient` joined it under ANTS-4523 having
+  been absent by omission, and that fix was incomplete — membership makes the
+  dispatcher willing to project, the schema property is what lets the argument
+  arrive projectable, and the gap shipped (ANTS-4624, see INV-10). The
+  positive test list then named thirteen of fifteen, in a test calling itself
+  Exact.
 
-  **Known contradiction, filed not fixed.** `tests/features/mcp_ignored_args`
-  INV-2 calls `fields` a universal dispatch-layer arg that is NEVER reported
-  as ignored, "because the dispatcher accepts them for every verb". This
-  allowlist is why that premise is false: a verb outside it accepts `fields`,
-  drops it, and is barred from reporting it — silence in both directions.
-  **The shared predicate was split by ANTS-4524 route 1 (2026-08-25)**, which
-  was the blocker named here: `compact` no longer shares this gate.
-  `isFieldProjectionTool` answers `fields=`; `isDefaultCompactTool` answers
-  whether an ABSENT `compact` falls back to the default-ON terse setting, and
-  both are columns of one table so a new verb must answer each. Widening this
-  list therefore no longer compacts a verb nobody asked to compact — the reason
-  the fix was not free. The contradiction with `mcp_ignored_args` INV-2 stands;
-  making `fields` genuinely universal is the remaining half.
+  **The contradiction with `mcp_ignored_args` INV-2 is closed, and it took two
+  changes because the second was unsafe until the first landed.** INV-2 called
+  `fields` a universal dispatch-layer arg never reported as ignored, while the
+  allowlist meant a verb outside it accepted `fields`, dropped it, and was
+  barred from saying so — silence in both directions. ANTS-4578 made the
+  advisory report an unhonoured `fields`, which named the problem. ANTS-4524
+  removed it: first splitting `compact` off this predicate (widening a shared
+  gate would have compacted every unlisted verb for callers who never asked),
+  then deleting the gate. Both specs were edited together, as each was true
+  alone and false as a pair — which is how the contradiction survived.
 - **INV-9 — dispatch ordering.** In `claudeintegration.cpp` the
   `projectFields` call appears after `applyEtagPattern` and before the
   `wrapMcpData` call, and is guarded so the etag short-circuit
   (`{ok,unchanged,etag}`) is never narrowed.
-- **INV-10 — schema declares `fields`.** Every tool on INV-8's list carries
-  a `fields` array-of-string property in its `inputSchema.properties`.
+- **INV-10 — the schema declares `fields` on EVERY verb.** The `tools/list`
+  builder injects the property into any verb whose schema does not already
+  carry it, in the same per-tool loop as the ANTS-1520 `caller_cwd` injection
+  and before the `m_lastToolsList` snapshot that `tool_info` and the
+  `ignored_args` cache read. A verb declaring its own richer `fields`
+  description keeps it; the injected one is terse, because ~150 copies of the
+  full description is real wire cost on `tools/list`. *Test:*
+  `Inv10SchemaDeclaresFieldsUniversally`.
 
-  **ANTS-4624 — the count is now DERIVED, and that is the invariant.** This
-  read "each of the eleven tools" while the list held fourteen, and the test
-  asserted a hardcoded fourteen `makeFieldsProp()` call sites. So when
-  ANTS-4523 added `session_orient` to the allowlist the count still matched
-  the fourteen verbs that DO declare the property, INV-10 kept passing, and
-  the one member without it shipped. INV-8's own note — *a number no check
-  reads is a number that goes stale* — was true of INV-10 and nobody applied
-  it there.
+  **Why the invariant exists at all — ANTS-4624.** Dispatcher willingness and
+  the schema property are two halves, and half is silent: `session_orient`
+  joined the allowlist without the property, so the client had no type to
+  marshal to, `fields` arrived as a string, `fv.isArray()` was false, and the
+  narrowing was skipped on the largest response in the session. Nothing
+  reported it — `ignored_args` was barred from naming `fields`, and passing
+  the argument suppressed the very hint that recommended it. Under ANTS-4524
+  the same gap is available for every verb at once, which is why the
+  declaration is injected rather than hand-written.
+- **INV-11 — declaring `compact` and defaulting to it are separate answers**
+  (ANTS-4524). `mcp::isCompactArgTool` says the verb declares `compact`, so an
+  EXPLICIT `compact:true`/`false` is honoured; `mcp::isDefaultCompactTool`
+  says whether an ABSENT one falls back to `mcp::terseDefault()`. Both read
+  one table in `mcpprojection.cpp`, so adding a verb makes you answer each.
+  `spec_lint` and `feedback_query` are the rows where they differ, and the
+  test asserts at least one does — if none does, membership has silently
+  become the default again.
 
-  The cost was silent: the dispatcher requires `fv.isArray()`, an undeclared
-  property gives the client no type to marshal to, so `fields` arrived as a
-  string and the projection was skipped on the largest response in the
-  session. Nothing reported it — `ignored_args` is barred from naming
-  `fields`, and passing the argument suppresses the very hint that
-  recommended it.
-
-  Both invariants now read one `kFieldProjectionTools` array in the test, and
-  INV-10 asserts `std::size` of it. Adding a tool to the allowlist without a
-  schema property fails INV-10; adding a schema property without the
-  allowlist fails INV-8. Do not reintroduce a literal.
-- **INV-11 — `fields=` and the compaction DEFAULT are separate answers**
-  (ANTS-4524). `mcp::isFieldProjectionTool` grants `fields=`;
-  `mcp::isDefaultCompactTool` decides whether an ABSENT `compact` falls back to
-  `mcp::terseDefault()`. Both read one table in `mcpprojection.cpp`, so adding
-  a verb makes you answer each. `spec_lint` is the row where they differ, and
-  the test asserts that difference — if no row differs, the split has collapsed
-  back into a rename. An EXPLICIT `compact` is still honoured wherever the
-  schema declares it; only the unasked-for default is gated, because
-  withdrawing a declared argument would silently drop it, which is the same
-  defect pointing the other way.
+  **Compaction did not follow `fields=` into being universal, and the reason
+  is the default.** `fields=` is opt-in with no default, so widening it can
+  only do what a caller asked for. Compaction has one, and
+  `claude.mcp_terse_responses` sets it ON at startup — so a verb joining the
+  shared predicate for narrowing began compacting for every caller. That is
+  how ANTS-4663 shipped ANTS-4673, folding away the `sections_checked:false`
+  that says a check never ran.
 
   Why it exists: the two shared one predicate, so ANTS-4663 added `spec_lint`
   for `fields=` and compaction arrived with it, folding away the

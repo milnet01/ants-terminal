@@ -130,7 +130,7 @@ Listed only where behavior isn't obvious from the name.
   changed files → `ctest -R` patterns via `tests/coverage-map.json`, with
   a basename heuristic + conservative full-suite fallback. Spec ANTS-1302.
 - `mcpprojection` (Qt6::Core) — `fields=` response projection for MCP
-  read tools; `projectFields` + `isFieldProjectionTool` (read the
+  read tools; `projectFields`, universal since ANTS-4524 (read the
   predicate for the current allowlist — it grows a verb at a time, and a
   count stated here goes stale on the next addition). ANTS-1720.
 - `briefdispatch` (Qt6::Core, `ants_core_lib`) — shared dispatch-brief

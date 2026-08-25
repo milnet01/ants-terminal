@@ -35,10 +35,14 @@ is absent from `isEtagSupportedTool` is what keeps the two mechanisms from being
 wired at once: adding it there would overwrite the engine's stable etag with a
 timing-sensitive one and silently kill the cache.
 
-`fields=` is declined for the same reason. Central projection is skipped only on
-a *central* 304; a handler-local one is invisible to it, so a caller passing
-`etag_match` and `fields` together would have `unchanged` projected out of its
-own 304 response.
+`fields=` used to be declined for the same reason: central projection is skipped
+only on a *central* 304, a handler-local one is invisible to it, and a caller
+passing `etag_match` and `fields` together would have `unchanged` projected out
+of its own 304 response. **ANTS-4524 made `fields=` universal, so there is
+nothing left to decline** — the hazard is now floored inside `projectFields`,
+which returns any envelope carrying `unchanged:true` whole. The guard covers
+this verb without this verb doing anything, which is the point: declining an
+argument is a thing a future verb forgets to do.
 
 ## Verified RED before the implementation landed
 
