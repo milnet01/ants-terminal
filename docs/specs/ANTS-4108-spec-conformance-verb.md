@@ -166,10 +166,15 @@ recorded here because a reader would otherwise take them for oversights
   `tests/features/spec_conformance_verb/` asserts that absence — wiring both
   mechanisms would overwrite the stable etag with a timing-sensitive one and
   kill the cache silently.
-- **`fields=` (step 8, optional) is declined.** Central projection is skipped
-  only on a *central* 304; a handler-local one is invisible to it, so a caller
+- **`fields=` (step 8, optional) was declined — no longer, and it cannot be
+  (ANTS-4524, 2026-08-25).** Projection is universal now, so there is nothing
+  to decline. The hazard stands and is unchanged: central projection is skipped
+  only on a *central* 304, a handler-local one is invisible to it, and a caller
   passing `etag_match` and `fields` together would have `unchanged` projected
-  out of its own 304 response.
+  out of its own 304 response. What moved is the guard — `mcp::projectFields`
+  returns any envelope carrying `unchanged:true` whole, so it covers this verb
+  without this verb doing anything. Only the ETag deviation above is still a
+  deviation.
 
 ### 2.4 Extraction contract
 

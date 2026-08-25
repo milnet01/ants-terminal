@@ -45,8 +45,13 @@ checklist below walks the full procedure; this is the at-a-glance map
   many candidates were declined and why. `find_definition`'s
   `file_stem_hint` (ANTS-1950) is the pattern already got right.
   **Emit the evidence as a field a caller READS, not as a `false` it must
-  know to look for** — an array or a count is noticed, a boolean is not,
-  and `compact:true` drops a `false` entirely. **And do not fold it into an
+  know to look for** — and pick a shape compaction keeps.
+  `mcp::isCompactDroppable` drops `null`, `false`, `""`, `[]` and `{}`
+  alike, so an EMPTY array is folded exactly like the boolean, on any verb
+  `mcp::isCompactArgTool` admits: `declined_candidates: []` on a clean run
+  is no evidence at all. Numbers survive, including `0` — so a count is the
+  safe shape, and a key ending `_checked` is protected by name
+  (`mcp::isProtectedCompactKey`). **And do not fold it into an
   existing failure signal**: a narrowed scope that legitimately matched
   nothing is not a partial run, and marking it one trades a silent wrong
   answer for a noisy one. Reached independently from three directions in
@@ -70,8 +75,11 @@ checklist below walks the full procedure; this is the at-a-glance map
 - **`fields=` projection (ANTS-1720).** Universal since ANTS-4524 — every
   verb honours it and the `tools/list` builder declares it on every
   schema, so there is nothing to opt into. Narrows to named top-level
-  fields; a refusal and a 304 are floored and returned whole. Where a verb
-  also 304s, list `"etag"` in `fields` to keep it.
+  fields. A **304** (`unchanged:true`) is returned whole. A **refusal** is
+  narrowed like any other envelope, then `ok` / `code` / `error` /
+  `retry_after_ms` are re-inserted — so § 6a's `format`, `path` and `hint`
+  survive only if the caller named them. Where a verb also 304s, list
+  `"etag"` in `fields` to keep it.
 - **Refusal codes** follow [mcp-error-codes.md](mcp-error-codes.md);
   **caches** follow [mcp-caches.md](mcp-caches.md) (a path-keyed cache
   may go cold but must never *shadow*).
@@ -234,14 +242,13 @@ place when it saves a Claude session real tokens or round-trips
    `create_section` → `format_mismatch`, `amend_body` →
    `unsupported_format` — while `op:"append"` writes that format.
 
-   **The boundary between those two is contested; ANTS-4134 is resolving
-   it in [mcp-error-codes.md](mcp-error-codes.md), which owns the
-   taxonomy.** That document's `format_mismatch` row currently glosses
-   the code as "the whole verb cannot write the format", which the
-   shipped behaviour above contradicts — five sibling ops write the
-   format the `format_mismatch` case refuses. Until it lands, follow the
-   per-op rule and the worked pair above, and do **not** derive a
-   verb-level test from either document.
+   **ANTS-4134 settled the boundary (2026-08-15) and
+   [mcp-error-codes.md](mcp-error-codes.md) owns it: the discriminator is
+   the op's OUTPUT ARTIFACT, not the verb.** `format_mismatch` where the
+   format has no writer for the kind of thing this op emits;
+   `unsupported_format` where the artifact is writable but this op's way of
+   producing it is not. Both rows there now state it that way — derive the
+   test from them.
 
    **6b. Every *mutating* verb takes `dry_run` (ANTS-2077 / 2136 /
    2227).** The contract is stated in full in the quick-reference map
@@ -273,7 +280,9 @@ place when it saves a Claude session real tokens or round-trips
    *minus* the measured fields, and performs the short-circuit itself —
    see `RemoteControl::specConformanceBuildResponse`
    (`src/remotecontrol_docs.cpp`), § 2.3 of
-   [ANTS-4108](../specs/ANTS-4108-spec-conformance-verb.md), and the
+   [ANTS-4108](../specs/ANTS-4108-spec-conformance-verb.md) — whose ETag
+   deviation stands, while its second deviation, `fields=` declined, is
+   superseded by ANTS-4524 — and the
    `Inv9EtagShortCircuitIsHandlerLocal` case in
    `tests/features/spec_conformance_verb/`, which asserts the absence.
    Per-run measurement in the envelope is the only condition that earns
@@ -285,10 +294,15 @@ place when it saves a Claude session real tokens or round-trips
    way no test of the handler can see. **It still declares an `etag_match`
    input property in its schema — inline, not via `makeEtagMatchProp()`,
    with a description naming the fields its etag excludes.** Only the
-   `isEtagSupportedTool` entry is withheld, never the property: an
-   undeclared arg is dropped by the dispatcher and reported back in
-   `ignored_args` (it is *not* rejected), so the handler never sees it and
-   the 304 is silently unreachable. The shared factory is wrong here for a
+   `isEtagSupportedTool` entry is withheld, never the property. **What
+   happens to an undeclared arg is the CLIENT's business, and neither
+   outcome reaches your handler usefully**: a strict client refuses the call
+   before the dispatcher is reached (measured on `spec_lint`, ANTS-4663), and
+   one that sends it anyway marshals it against no declared type — ANTS-4624
+   watched a `fields` array arrive as a string. The dispatcher itself neither
+   strips nor rejects it: it passes the arguments through and names the key
+   in `ignored_args`. Either way the 304 is silently unreachable. The shared
+   factory is wrong here for a
    second reason: its description names no excluded fields, so a
    handler-local etag computed over a subset would ship undocumented.
    **It no longer declines `fields=`, and cannot (ANTS-4524).** Projection
@@ -394,12 +408,18 @@ scrape window.
 
 ## Project overrides
 
-The dispatch order is load-bearing: idempotent-read cache →
-`applyEtagPattern` → `mcp::projectFields` → `<ants_mcp_data>` wrap. A
-new opt-in (a future projection-like transform) slots into that chain;
-read `applyEtagPattern`, `mcp::projectFields` and
-`ClaudeIntegration::wrapMcpData` for the exact hook points before
-adding one.
+The dispatch order is load-bearing: `mcp::withIgnoredArgs` →
+idempotent-read cache → `applyEtagPattern` → `mcp::projectFields` →
+`mcp::compactEnvelope` → `<ants_mcp_data>` wrap. A new opt-in (a future
+projection-like transform) slots into that chain; read `applyEtagPattern`,
+`mcp::projectFields`, `mcp::compactEnvelope` and
+`ClaudeIntegration::wrapMcpData` for the exact hook points before adding
+one.
+
+**Place it relative to `mcp::compactEnvelope` deliberately.** Anything
+downstream of it is untouched; anything upstream emitting a `false`, `""`,
+`[]` or `{}` has that folded away on any verb `mcp::isCompactArgTool`
+admits — which is ANTS-4673's damage, and step 8 is where you decide it.
 
 ## Cold-eyes loop log
 
@@ -408,6 +428,7 @@ adding one.
 | 1 | 2026-08-12 | 3 (same doc, independent, cold) | 2 / 3 / 3 / n-a | **First gate on this document**, triggered by ANTS-4129's edit to step 7. 8 verified, 0 dismissed, all fixed. Q4 is not asked of a standard. All three lanes independently led on the same two defects, both in the new step-7 exception and both the same shape — it sanctioned a handler-local 304 without stating what else comes with it: the verb must still **declare** an `etag_match` schema property (step 10's `additionalProperties:false` rejects the arg otherwise, so the 304 is unreachable while every handler-level test still passes), and it must **decline** `fields=`, which the linked ANTS-4108 § 2.3 records as the second forced deviation. The `fields=` defect was also found by the orchestrator while building the packet. Verified against the dispatch predicate, not inferred: `etagUnchanged` is only ever set inside the `isEtagSupportedTool` branch, so a handler-local 304 always falls through to `mcp::projectFields` and a caller sending `etag_match` + `fields` loses `unchanged` from its own 304. Pre-existing defects the same read surfaced: the `fields=` quick-reference claimed the projection set is "a subset of the ETag set" — it is not, `read_log` projects but does not 304 (13-name set vs 25-name set, compared element-wise); § 6a's `format_mismatch` MUST was unqualified where `mcp-error-codes.md` reserves the narrower `unsupported_format` for the per-op gap, which `roadmap_log` emits live (`amend_body` → `unsupported_format`, `create_section` → `format_mismatch`, both predicates opened); `dry_run` was a hard obligation stated only in the at-a-glance map and absent from the checklist the document calls "the ordered procedure so a new tool doesn't miss a step" — added as **6b** rather than a new step, because ANTS-4108 and ANTS-2021 cite steps 7 and 8 by number and renumbering would strand them; step 10 permitted two of step 2's four contract words; and three pointers sent authors to `CLAUDE.md` § Conventions for wrap mechanics, hook points and a state-routing note that section has never contained. **Resolved clean, so not in the tally:** step 4's `validatePath` signature and defaults, and step 2's `Q_ASSERT_X` contract-drift assertion — both checked against source, both accurate; the lanes could not check them only because the packet lacked those windows. |
 | 2 | 2026-08-12 | 3 (same doc, independent, cold, same packet rebuilt) | 2 / 2 / 2 / n-a | 6 verified, 0 dismissed, all fixed. **Half were loop 1's own collateral**, which is the honest headline. All three lanes led on the same one: loop 1's § 6a rewrite asserted `format_mismatch` is for "a format the verb cannot produce on any op" — false, and refuted by the example beside it, since `roadmap_log` *does* write pass-headings on `append` (ANTS-2126 / ANTS-4117) while `create_section` still refuses `format_mismatch`. The rule was deleted rather than restated: `mcp-error-codes.md` owns that boundary and this document now defers to it, because a discriminator derived here was wrong twice. Two lanes also found the step-7 exception said to *declare* `etag_match` without saying **how** — the shipped exemplar builds it inline, and a conformer reaching for `makeEtagMatchProp()` ships a description that names no excluded fields for an etag computed over a subset. **Loop 1's stated mechanism for that obligation was itself wrong and is corrected here**: `additionalProperties:false` does **not** reject an undeclared arg — measured by calling a verb with one, the dispatcher drops it and reports `ignored_args` (`src/claudeintegration.cpp:11750-11764`), so the 304 is unreachable silently rather than loudly. Loop 1's row is left as written; this row is the correction. Pre-existing defects found: the `Instances:` line stated ANTS-2031's `format_mismatch` for the verb when it is per-op; and the step-1 template broke the line between `registerToolProvider(` and `"<name>",` while the test it prescribes scrapes for them adjacent — 87 registrations in `mainwindow.cpp` use the adjacent form and none the split one, so a conformer copying the template ships a registration its mandated test cannot see. Also scoped "tenant-hashed storage", a phrase used once and never defined. **Three further errors were caught inside this loop's own fix pass by executing each new claim**: the factory description does not "promise an etag over the whole response" (it names no scope at all), `RcGate` is used far beyond the two state verbs, and a positive discriminator was asserted where none could be grounded — all three corrected before the commit. **Filed, not fixed here:** `mcp-error-codes.md`'s `format_mismatch` row defines the code as "the whole verb cannot write the format" while its own example has five sibling ops writing that format — a contradiction in the document that owns the taxonomy, out of scope for this one. Resolved clean, not in the tally: `PathValidation::validatePath` — the qualifier is right, `src/pathvalidation.h:13` opens `namespace PathValidation`. |
 | 3 (cap) | 2026-08-12 | 3 (same doc, independent, cold, packet rebuilt) | 5 / 2 / 1 / n-a | 8 verified, 0 dismissed, all 8 fixed. **Stopped at the `--max-loops` cap, NOT converged** — see the note below the table. Sharpest find: `isControlPlaneTool()` was named as the "canonical bypass list" and **exists nowhere in the tree** — the real one is an inline `isControlPlane` predicate at the `tools/call` dispatch site, and `mcp_output_sanitisation` scrapes for that literal, so an author extracting the accessor the doc named would have reddened the suite. That defect was **inside the packet's own "settled, do not re-confirm" list**, which claimed every unresolved identifier had been spot-checked; the lane overrode the instruction and said so, which is exactly the behaviour the brief asks for when a finding contradicts a stated fact. Also: "`Q_ASSERT_X`, i.e. debug builds" understated the enforcement — ANTS-1834 makes `registerToolProvider` **refuse the registration in every build config**, so drift makes the tool go missing rather than run mis-classified. § 6a's *trigger example* still said the bullet writer "can't splice" pass-headings, contradicting the per-op rule three lines below it. `dry_run`'s "every mutating verb" was false against its own lists — `audit_dismiss` ships one and was unlisted, while `session_memory` / `workflow_state` mutate and deliberately carry none; the rule is now scoped to verbs that write a **project file**. The quick-reference ETag bullet stated the opt-in unqualified against step 7's exception — a judgement call left open at loop 1 on the grounds that a cold loop should decide it, and it did. **Two findings were loop 2's own collateral**: deferring § 6a's boundary wholly to `mcp-error-codes.md` pointed at a gloss the shipped code contradicts, and deleting the discriminator left the MUST with no selection test at all — unfalsifiable at authoring. § 6a now states the per-op rule the code implements and names the contested part explicitly (ANTS-4134) instead of asserting or deferring. **One error was caught inside this loop's fix pass by executing the claim**: the drift log is `ANTS_LOG`, not the `qWarning` two lanes named — they reasoned from a *paraphrase in my packet*, and reading the source gave a stronger and different answer (refusal, not a warning). |
+| 4 | 2026-08-25 | 3 (same doc, independent, cold) | 5 / 1 / 0 / n-a | 6 verified, 0 dismissed, all fixed. **New run**, triggered by ANTS-4524 making `fields=` universal and rewriting step 8, step 7's exception and the quick-reference bullet — `CLAUDE.md` rule 14, since a conformer now does something different. The 2026-08-12 run's cap was calm and its tail has since shipped. **Three lanes independently led on the same two defects, and the second is the run's most consequential.** § 6a still called the `format_mismatch` / `unsupported_format` boundary contested and pending ANTS-4134 — which shipped 2026-08-15; both rows in `mcp-error-codes.md` now state the artifact-not-verb discriminator, and the gloss § 6a quoted in the present tense sits only inside the `unsupported_format` row as the text that row records itself CORRECTING. So the document withheld a conformance test it forbade deriving, from the taxonomy that had settled it. Found at packet-build time as well as by every lane. And **§ Project overrides' dispatch chain omitted `mcp::compactEnvelope`**, which runs between `projectFields` and the wrap: that section exists to give hook points for a future projection-like transform, so an author placing one after `projectFields` ships a transform whose `false` / `[]` output compaction folds away — ANTS-4673's exact shape, three sections below the step that exists to prevent it. `mcp::withIgnoredArgs` was missing from the head of the chain too. **One finding was this session's own collateral, caught in the loop that created it**: the new `fields=` bullet said "a refusal and a 304 are floored and returned whole", and only the 304 is. A refusal is narrowed like anything else and then has `ok`/`code`/`error`/`retry_after_ms` re-inserted — so § 6a's own `format` / `path` / `hint` vanish unless the caller names them. Two lanes. **One lane alone found the sharpest reading of ANTS-4374's own rule**: it says to emit evidence as "an array or a count" rather than a `false`, and `isCompactDroppable` drops an empty array exactly like a `false`. The clean-run case — `declined_candidates: []` — is therefore no evidence at all on any verb that declares `compact`, which is the byte-identical envelope that bullet forbids. Numbers survive (including `0`), and a `_checked` suffix is protected by name; the rule now says so. **All three lanes raised the same open question and none filed it**: step 7 said an undeclared arg is "dropped by the dispatcher … so the handler never sees it". Resolved against the dispatch site rather than by reasoning — `it->second.handler(argsObj)` passes the arguments through unfiltered and `ignoredArgs` runs afterwards on the RESPONSE, so nothing strips it. Fixed rather than dismissed because the true mechanism is a different failure to debug: a strict client REFUSES the call before the dispatcher is reached (ANTS-4663), or sends it against no declared type (ANTS-4624 watched an array arrive as a string). This sentence's stated mechanism has now been wrong twice, loop 2 of the previous run having 'corrected' it to the claim just deleted. **Collateral outside the document, fixed there**: `ANTS-4108` § 2.3 still listed `fields=`-declined as a live deviation while step 7 says it cannot be declined — two lanes, and the spec is the half the standard cites. Resolved clean and NOT in the tally: whether `ignored_args` falsely reports `etag_match` on a handler-local-304 verb — it cannot, because that verb declares the property, so the key is in `known`. |
 
 **Not converged at the cap.** The remaining tail is one item: § 6a's
 `format_mismatch` / `unsupported_format` boundary cannot be stated correctly
