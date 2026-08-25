@@ -12,6 +12,8 @@
 #include <QByteArray>
 #include <QDir>
 #include <QFile>
+#include "support/testspawn.h"
+
 #include <QProcess>
 #include <QStandardPaths>
 #include <QString>
@@ -32,8 +34,7 @@ bool runGit(const QString &dir, const QStringList &args) {
     QProcess p;
     p.setWorkingDirectory(dir);
     p.start(QStringLiteral("git"), args);
-    if (!p.waitForStarted(3000)) return false;
-    if (!p.waitForFinished(5000)) { p.kill(); return false; }
+    if (!ants_test::waitForHelper(p)) return false;   // ANTS-4651
     return p.exitCode() == 0;
 }
 
@@ -41,7 +42,7 @@ QString gitOut(const QString &dir, const QStringList &args) {
     QProcess p;
     p.setWorkingDirectory(dir);
     p.start(QStringLiteral("git"), args);
-    if (!p.waitForStarted(3000) || !p.waitForFinished(5000)) return {};
+    if (!ants_test::waitForHelper(p)) return {};      // ANTS-4651
     return QString::fromUtf8(p.readAllStandardOutput()).trimmed();
 }
 

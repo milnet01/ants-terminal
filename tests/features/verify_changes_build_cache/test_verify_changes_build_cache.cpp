@@ -14,6 +14,8 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QJsonValue>
+#include "support/testspawn.h"
+
 #include <QProcess>
 #include <QString>
 #include <QStringLiteral>
@@ -33,11 +35,7 @@ bool runGit(const QString &dir, const QStringList &argv) {
     QProcess p;
     p.setWorkingDirectory(dir);
     p.start(QStringLiteral("git"), argv);
-    if (!p.waitForFinished(5000)) {
-        p.kill();
-        p.waitForFinished(500);
-        return false;
-    }
+    if (!ants_test::waitForHelper(p)) return false;   // ANTS-4651
     return p.exitStatus() == QProcess::NormalExit && p.exitCode() == 0;
 }
 

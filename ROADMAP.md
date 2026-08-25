@@ -33163,7 +33163,7 @@ in each bullet, not just the reporter's symptom.
   Lanes: ci, docs.
   Source: in-session-2026-08-14 (found while fixing ANTS-4391).
 
-- 📋 [ANTS-4651] **A 5-second git-spawn budget in eight test fixtures reddens build-asan at random.**
+- ✅ [ANTS-4651] **A 5-second git-spawn budget in eight test fixtures reddens build-asan at random.**
   MEASURED, run 32819126506 on 79808df6 (2026-08-25):
 
     VerifyChangesBuildCache.ReentrancyRejectedWhenFlagSet  Failed  5.79 s
@@ -33195,6 +33195,15 @@ in each bullet, not just the reporter's symptom.
   constant honouring an env override the sanitizer preset sets, and make
   the failure say WHICH git command timed out and after how long — the
   current message cannot distinguish "git is missing" from "git was slow".
+  Resolved (2026-08-25): the twelve literals became one shared budget in tests/support/testspawn.h, converted across all eight files. Three things changed, not just the number. The budget is ONE named constant, so the next calibration happens once. It is overridable by ANTS_TEST_SPAWN_TIMEOUT_MS, because the right value is a property of the machine rather than of the test. And it SAYS WHAT HAPPENED: "could not be started" and "did not finish" are separate answers with opposite repairs, and the old boolean could not tell them apart.
+
+  Default 20000 ms — about 4x the 5.79 s that failed, and deliberately well inside the bundles' 60 s ctest TIMEOUT, which is the layer that terminates a genuine hang; racing it would hand the report to the outer killer with a worse message than the inner one gives. A junk or out-of-range override falls back to the default rather than to 0, which would fail every fixture instantly and read as the code being broken.
+
+  Proved end to end at a real call site rather than only in the helper's own tests. With a fake git that sleeps 6 s on `init` — the reproduced CI condition — the two tests that failed in run 32819126506 now PASS, in 12 s. With a 1000 ms budget the message reads "helper did not finish: git init -q -b main — killed after 1001 ms against a 1000 ms budget", naming the command, the elapsed time, the budget and the remedy. With git absent from PATH it reads "helper could not be started: git init -q -b main (is it installed and on PATH?)" in 0.033 s, consuming no budget. The old output was "Value of: initGitProject(tmp.path())  Actual: false" and nothing else.
+
+  Five new invariants cover the helper (tests/features/spawn_budget), written against a stubbed header so the red run failed on assertions and not on compile. Full suite 100% of 3899.
+
+  NOT converted, and out of scope: the 2000 / 3000 / 10000 / 15000 / 30000 ms spawn budgets elsewhere in the tree. The helper is now available to them and converting one is a one-line change.
   **Layman:** Some tests give a helper command five seconds to start; on a busy build machine it sometimes takes longer, and the whole run fails for no real reason.
   Kind: test.
   Source: in-session-2026-08-25.

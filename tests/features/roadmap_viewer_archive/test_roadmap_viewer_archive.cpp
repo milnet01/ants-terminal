@@ -15,6 +15,8 @@
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
+#include "support/testspawn.h"
+
 #include <QProcess>
 #include <QTemporaryDir>
 #include <QTextStream>
@@ -394,10 +396,8 @@ static int runMain() {
         full += args;
         p.setArguments(full);
         p.start();
-        if (!p.waitForFinished(5000)) {
-            p.kill();
-            return {-1, QStringLiteral("timeout")};
-        }
+        QString why;                                     // ANTS-4651
+        if (!ants_test::waitForHelper(p, &why)) return {-1, why};
         return {p.exitCode(),
                 QString::fromUtf8(p.readAllStandardError())};
     };

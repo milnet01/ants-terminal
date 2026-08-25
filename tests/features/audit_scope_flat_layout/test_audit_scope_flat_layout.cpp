@@ -19,6 +19,8 @@
 #include <QFile>
 #include <QFileInfo>
 #include <QIODevice>
+#include "support/testspawn.h"
+
 #include <QProcess>
 #include <QProcessEnvironment>
 #include <QStandardPaths>
@@ -48,8 +50,7 @@ bool runGit(const QString &dir, const QStringList &args) {
     p.setProcessEnvironment(env);
     p.setWorkingDirectory(dir);
     p.start(QStringLiteral("git"), args);
-    if (!p.waitForStarted(3000)) return false;
-    if (!p.waitForFinished(5000)) { p.kill(); return false; }
+    if (!ants_test::waitForHelper(p)) return false;   // ANTS-4651
     return p.exitCode() == 0;
 }
 

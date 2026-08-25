@@ -16,6 +16,8 @@
 #include <QByteArray>
 #include <QDir>
 #include <QFile>
+#include "support/testspawn.h"
+
 #include <QProcess>
 #include <QString>
 #include <QStringList>
@@ -54,8 +56,7 @@ bool runGitOk(const QString &root, const QStringList &argv,
     full << QStringLiteral("-C") << root;
     full.append(argv);
     p.start(QStringLiteral("git"), full);
-    if (!p.waitForStarted(2000)) return false;
-    if (!p.waitForFinished(5000)) { p.kill(); return false; }
+    if (!ants_test::waitForHelper(p)) return false;   // ANTS-4651
     if (stdoutCapture) {
         *stdoutCapture = QString::fromUtf8(
             p.readAllStandardOutput()).trimmed();

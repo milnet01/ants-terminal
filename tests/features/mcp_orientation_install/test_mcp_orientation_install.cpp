@@ -26,6 +26,8 @@
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include "support/testspawn.h"
+
 #include <QProcess>
 #include <QRegularExpression>
 #include <QString>
@@ -253,8 +255,8 @@ TEST(McpOrientation_Inv3, CommandRunnableWithSpacesInPath) {
     env.remove("ANTS_MCP_SOCKET");
     p.setProcessEnvironment(env);
     p.start("bash", {"-c", cmd});
-    ASSERT_TRUE(p.waitForStarted(2000));
-    ASSERT_TRUE(p.waitForFinished(5000));
+    QString why;                                         // ANTS-4651
+    ASSERT_TRUE(ants_test::waitForHelper(p, &why)) << qPrintable(why);
     EXPECT_EQ(p.exitCode(), 0)
         << "command failed — likely an unquoted path with a space; cmd="
         << cmd.toStdString()
@@ -326,8 +328,8 @@ TEST(McpOrientation_Inv9, ScriptExitZero) {
     env.remove("ANTS_MCP_SOCKET");
     p.setProcessEnvironment(env);
     p.start("bash", {scriptPathIn(tmp.path())});
-    ASSERT_TRUE(p.waitForStarted(2000));
-    ASSERT_TRUE(p.waitForFinished(5000));
+    QString why;                                         // ANTS-4651
+    ASSERT_TRUE(ants_test::waitForHelper(p, &why)) << qPrintable(why);
     EXPECT_EQ(p.exitCode(), 0);
     EXPECT_EQ(p.readAllStandardOutput().size(), 0);
 }
@@ -360,8 +362,8 @@ TEST(McpOrientation_Inv10, ScriptOutputByteCap) {
     env.insert("ANTS_MCP_SOCKET", fakeSocket);
     p.setProcessEnvironment(env);
     p.start("bash", {scriptPathIn(tmp.path())});
-    ASSERT_TRUE(p.waitForStarted(2000));
-    ASSERT_TRUE(p.waitForFinished(5000));
+    QString why;                                         // ANTS-4651
+    ASSERT_TRUE(ants_test::waitForHelper(p, &why)) << qPrintable(why);
     EXPECT_EQ(p.exitCode(), 0);
     const QByteArray out = p.readAllStandardOutput();
     EXPECT_LE(out.size(), 1400) << "stdout=" << out.size() << " bytes";
@@ -420,8 +422,8 @@ TEST(McpOrientation_Ants1971, ConditionalFeedbackHint) {
         env.insert("CLAUDE_PROJECT_DIR", projectDir);
         p.setProcessEnvironment(env);
         p.start("bash", {scriptPathIn(tmp.path())});
-        EXPECT_TRUE(p.waitForStarted(2000));
-        EXPECT_TRUE(p.waitForFinished(5000));
+        QString why;                                     // ANTS-4651
+        EXPECT_TRUE(ants_test::waitForHelper(p, &why)) << qPrintable(why);
         EXPECT_EQ(p.exitCode(), 0);
         return p.readAllStandardOutput();
     };

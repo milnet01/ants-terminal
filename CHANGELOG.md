@@ -170,6 +170,12 @@ for security-relevant changes.
 
 ### Changed
 
+- **A 5-second git-spawn budget in eight test fixtures reddens build-asan at random.** (ANTS-4651)
+  One shared, env-overridable budget replaces twelve hard 5-second
+  literals across eight fixtures, and a timeout now says which command
+  blew it and after how long — distinctly from a helper that could not
+  start at all.
+
 - **Large-result previews shrink each row's text sample before dropping it** (ANTS-4474)
   When a preview could not fit a sample of every row it discarded all of
   them, leaving row sizes but no hint of what any row contained — usually

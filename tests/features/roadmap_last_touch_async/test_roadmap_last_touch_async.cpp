@@ -14,6 +14,8 @@
 #include <QCoreApplication>
 #include <QElapsedTimer>
 #include <QFile>
+#include "support/testspawn.h"
+
 #include <QProcess>
 #include <QString>
 #include <QTemporaryDir>
@@ -39,8 +41,7 @@ const char *kFixture =
 bool gitAvailable() {
     QProcess p;
     p.start(QStringLiteral("git"), {QStringLiteral("--version")});
-    return p.waitForStarted(2000) && p.waitForFinished(5000)
-           && p.exitCode() == 0;
+    return ants_test::waitForHelper(p) && p.exitCode() == 0;   // ANTS-4651
 }
 
 // A committed repo. Identity is set LOCALLY and signing disabled: the machine's

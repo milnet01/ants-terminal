@@ -2525,6 +2525,7 @@ if(ANTS_TESTS)
                 tests/features/doc_integrity/test_doc_integrity.cpp
                 # ANTS-3636 doc_citations engine — ladder, statuses, caps.
                 tests/features/doc_citations/test_doc_citations.cpp
+                tests/features/spawn_budget/test_spawn_budget.cpp
                 # ANTS-3653 — citation scan: pure grammar, no filesystem.
                 tests/features/doc_citations_scan/test_doc_citations_scan.cpp
                 # ANTS-3654 — anchor-symbol drift check (advisory, layered on ok).

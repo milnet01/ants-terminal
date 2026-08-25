@@ -7,6 +7,8 @@
 #include <QByteArray>
 #include <QDir>
 #include <QFile>
+#include "support/testspawn.h"
+
 #include <QProcess>
 #include <QProcessEnvironment>
 #include <QRegularExpression>
@@ -44,8 +46,7 @@ QString slurp(const QString &abs) {
 bool gitAvailable() {
     QProcess p;
     p.start(QStringLiteral("git"), {QStringLiteral("--version")});
-    return p.waitForStarted(2000) && p.waitForFinished(5000)
-           && p.exitCode() == 0;
+    return ants_test::waitForHelper(p) && p.exitCode() == 0;   // ANTS-4651
 }
 
 // Run a git command in `dir` with optional extra env (KEY=VALUE).
