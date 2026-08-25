@@ -481,8 +481,10 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppend(const QJsonObject &req) {
             // § 2.5 / § 2.6 — body, the five trailer columns, and the refusal
             // for a column the body would out-vote.
             QStringList scrubbedNames;
+            int scrubbedUnnamed = 0;              // ANTS-4572
             QString shadowErr;
-            if (!rlFillItemBody(req, w, scrubbedNames, &shadowErr))
+            if (!rlFillItemBody(req, w, scrubbedNames, &shadowErr,
+                                &scrubbedUnnamed))
                 return rlErr(QStringLiteral("body_shadowed"),
                     QStringLiteral("roadmap_log: %1").arg(shadowErr));
 
@@ -598,16 +600,24 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppend(const QJsonObject &req) {
                     env[QStringLiteral("possible_duplicates")] =
                         possibleDuplicates;
             }
-            if (!scrubbedNames.isEmpty()) {
+            // ANTS-4572 — fire when the scrub removed ANYTHING. It fired only
+            // on a matched <parameter name="X"> pair before, so a stray
+            // </invoke> or an ANTS-4609 `<tag>scalar` line was removed in
+            // silence — and a caller who has read that bodies are scrubbed
+            // takes ok:true for "the body is clean" and never re-reads it.
+            if (!scrubbedNames.isEmpty() || scrubbedUnnamed > 0) {
                 QJsonArray names;
                 for (const QString &n : scrubbedNames) names.append(n);
                 QJsonObject warn;
                 warn["code"]    = QStringLiteral("body_scrubbed_tool_xml");
                 warn["message"] = QStringLiteral(
-                    "Stripped leaked <parameter name=\"…\"> tool-call XML "
-                    "from body; resend the named siblings as proper JSON "
-                    "fields if you intended them.");
-                warn["lost_parameters"] = names;
+                    "Stripped leaked tool-call XML from body; resend any "
+                    "named siblings as proper JSON fields if you intended "
+                    "them, and re-read the stored body if the count is "
+                    "unexpected.");
+                if (!names.isEmpty()) warn["lost_parameters"] = names;
+                if (scrubbedUnnamed > 0)
+                    warn["unnamed_fragments_removed"] = scrubbedUnnamed;
                 env[QStringLiteral("warnings")] = QJsonArray{ warn };
             }
             if (rcReturnHeadlineOnly(req))
@@ -961,8 +971,10 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppend(const QJsonObject &req) {
             idStr = QStringLiteral("%1-%2").arg(pfx).arg(newId);
     }
     QStringList scrubbedNames;
+    int scrubbedUnnamed = 0;                      // ANTS-4572
     const QString bullet =
-        formatRoadmapBullet(req, idStr, statusEmoji, scrubbedNames);
+        formatRoadmapBullet(req, idStr, statusEmoji, scrubbedNames,
+                            &scrubbedUnnamed);
 
     // Splice bullet at the section's lineEnd. lineEnd is 0-indexed
     // and exclusive — i.e. the line index of the next heading (or
@@ -1097,16 +1109,18 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppend(const QJsonObject &req) {
     // ANTS-1551 — if the defensive scrub stripped leaked tool-call
     // XML, surface the recognised sibling-parameter names so the
     // caller knows which typed arguments were lost in transit.
-    if (!scrubbedNames.isEmpty()) {
+    if (!scrubbedNames.isEmpty() || scrubbedUnnamed > 0) {   // ANTS-4572
         QJsonArray names;
         for (const QString &n : scrubbedNames) names.append(n);
         QJsonObject warn;
         warn["code"]    = QStringLiteral("body_scrubbed_tool_xml");
         warn["message"] = QStringLiteral(
-            "Stripped leaked <parameter name=\"…\"> tool-call XML "
-            "from body; resend the named siblings as proper JSON "
-            "fields if you intended them.");
-        warn["lost_parameters"] = names;
+            "Stripped leaked tool-call XML from body; resend any named "
+            "siblings as proper JSON fields if you intended them, and "
+            "re-read the stored body if the count is unexpected.");
+        if (!names.isEmpty()) warn["lost_parameters"] = names;
+        if (scrubbedUnnamed > 0)
+            warn["unnamed_fragments_removed"] = scrubbedUnnamed;
         out["warnings"] = QJsonArray{ warn };
     }
     // ANTS-2080 — confirm-after compact echo of the appended bullet.

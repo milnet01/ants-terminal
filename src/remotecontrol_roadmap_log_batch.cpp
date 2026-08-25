@@ -976,7 +976,8 @@ QString RemoteControl::formatRoadmapBullet(
     const QJsonObject &bulletReq,
     const QString    &idStr,
     const QString    &statusEmoji,
-    QStringList      &scrubbedNames)
+    QStringList      &scrubbedNames,
+    int              *unnamedRemovals)
 {
     const QString headline =
         bulletReq.value(QStringLiteral("headline")).toString();
@@ -994,7 +995,7 @@ QString RemoteControl::formatRoadmapBullet(
 
     // ANTS-1551 — defensive scrub of leaked tool-call XML.
     QString body = bulletReq.value(QStringLiteral("body")).toString();
-    rcScrubLeakedToolXml(body, scrubbedNames);
+    rcScrubLeakedToolXml(body, scrubbedNames, unnamedRemovals);
     if (!body.isEmpty()) {
         const QStringList lines = body.split(QChar('\n'));
         for (const QString &ln : lines)
@@ -2226,6 +2227,7 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppendBatch(const QJsonObject &req) {
     QJsonArray skipped;
     QSet<QString> seenStableIds;   // ANTS-2078 — intra-batch dup guard
     QStringList scrubbedRollup;    // deduped across bullets, both paths
+    int scrubbedUnnamedRollup = 0;  // ANTS-4572 — summed across bullets
 
     // ANTS-2054 / ANTS-2076 — resolve the project's counter prefix once
     // for all bullets. Precedence: explicit id_prefix > prefix sniffed
@@ -2316,7 +2318,8 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppendBatch(const QJsonObject &req) {
         if (writeTarget) {
             QStringList scrubbed;
             QString shadowErr;
-            if (!rlFillItemBody(b, itemW, scrubbed, &shadowErr)) {
+            if (!rlFillItemBody(b, itemW, scrubbed, &shadowErr,
+                                &scrubbedUnnamedRollup)) {
                 skip(QStringLiteral("body_shadowed"), shadowErr);
                 continue;
             }
@@ -2537,16 +2540,21 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppendBatch(const QJsonObject &req) {
         }
         if (!possibleDuplicates.isEmpty())
             env[QStringLiteral("possible_duplicates")] = possibleDuplicates;
-        if (!scrubbedRollup.isEmpty()) {
+        // ANTS-4572 — fire when the scrub removed ANYTHING, not only a named
+        // parameter pair. A batch is where a silent partial scrub hides best:
+        // one bullet of many, and nobody re-reads the rendered file.
+        if (!scrubbedRollup.isEmpty() || scrubbedUnnamedRollup > 0) {
             QJsonArray names;
             for (const QString &n : scrubbedRollup) names.append(n);
             QJsonObject warn;
             warn["code"]            = QStringLiteral("body_scrubbed_tool_xml");
             warn["message"]         = QStringLiteral(
-                "Stripped leaked <parameter name=\"…\"> tool-call XML "
-                "from bullet bodies; resend as proper JSON fields if "
-                "intended.");
-            warn["lost_parameters"] = names;
+                "Stripped leaked tool-call XML from bullet bodies; resend "
+                "any named siblings as proper JSON fields if intended, and "
+                "re-read the stored bodies if the count is unexpected.");
+            if (!names.isEmpty()) warn["lost_parameters"] = names;
+            if (scrubbedUnnamedRollup > 0)
+                warn["unnamed_fragments_removed"] = scrubbedUnnamedRollup;
             env[QStringLiteral("warnings")] = QJsonArray{ warn };
         }
         if (rcReturnHeadlineOnly(req)) {
@@ -2567,7 +2575,7 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppendBatch(const QJsonObject &req) {
     for (const Accepted &a : accepted) {
         QStringList scrubbed;
         const QString blk = formatRoadmapBullet(
-            a.bulletReq, a.idStr, a.emoji, scrubbed);
+            a.bulletReq, a.idStr, a.emoji, scrubbed, &scrubbedUnnamedRollup);
         bulletBlocks.append(blk);
         totalBytes += blk.toUtf8().size();
         // Dedup scrubbed names across all bullets.

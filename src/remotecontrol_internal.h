@@ -368,7 +368,7 @@ QVector<RoadmapParse::BulletRecord> rlParse(const QString &markdown,
 // ANTS-3833 INV-6's 6000-line cap, so the envelope is built here and each call
 // site is one line.
 QJsonDocument rlWrappedBlockErr();
-bool rlFillItemBody(const QJsonObject &bulletReq, RoadmapStore::ItemWrite &w, QStringList &scrubbedNames, QString *error);
+bool rlFillItemBody(const QJsonObject &bulletReq, RoadmapStore::ItemWrite &w, QStringList &scrubbedNames, QString *error, int *unnamedRemovals = nullptr);
 QString changelogMalformedAdvisory(int line, bool plural, bool applied);
 QStringList rcShortBareAltTerms(const QString &pattern);
 bool rcLooksLikeRegexButLiteral(const QString &pattern);
@@ -419,7 +419,16 @@ QJsonObject rcSectionShape(const QString &slice);
 QJsonArray rcFilterDuplicateIdsForSection(const QJsonArray &dupes, const QString &sectionSlug);
 QJsonArray rcComputeDuplicateIds(const QJsonArray &bullets);
 QString rcFenceOpenerHint(int fenceOpenLine);
-void rcScrubLeakedToolXml(QString &text, QStringList &scrubbedNames);
+// ANTS-4572 — `unnamedRemovals`, when given, counts the leak fragments the
+// scrub removed that carry NO parameter name: an orphan tag, a stray
+// </invoke> or </body>, an edge tag, or ANTS-4609's `<tag>scalar` line.
+// `scrubbedNames` only ever held matched <parameter name="X"> pairs, so
+// every other removal was invisible and the caller read ok:true on a verb
+// documented to scrub as "the body is clean". Cosmetic normalisation
+// (blank-run collapse, trailing whitespace, the final newline chop) is NOT
+// counted — it fires on almost every body and would make the signal noise.
+void rcScrubLeakedToolXml(QString &text, QStringList &scrubbedNames,
+                          int *unnamedRemovals = nullptr);
 QString rcRightStrip(QString s);
 void rcSetWriteBytes(QJsonObject &out, qint64 before, qint64 after);
 int appendBodyNote(QStringList &lines, int headlineLine, const QString &note, bool *alreadyPresent = nullptr);

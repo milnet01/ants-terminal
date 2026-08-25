@@ -9,6 +9,7 @@
 
 #include <gtest/gtest.h>
 #include <QFile>
+#include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QString>
@@ -130,6 +131,52 @@ TEST(roadmap_log_fence_guard, Inv1UnclosedFenceEscapedAndBelowStaysEditable) {
     const QJsonObject out = rc.cmdRoadmapLogFlipForTest(flip).object();
     EXPECT_TRUE(out.value(QStringLiteral("ok")).toBool())
         << QJsonDocument(out).toJson().toStdString();
+}
+
+// ANTS-4572 — a scrub that removed something must SAY so, even when what it
+// removed carries no parameter name. `scrubbedNames` only ever held matched
+// <parameter name="X"> pairs, so a stray closing tag, or ANTS-4609's
+// `<tag>scalar` line, was stripped in silence. A caller who has read that
+// bodies are scrubbed then takes ok:true for "the body is clean" and never
+// re-reads the file — which is how ANTS-4609's half-scrub reached disk. A
+// partial scrub is worse than no scrubber, because a caller who knew there was
+// none would have sanitised the body themselves.
+TEST(roadmap_log_fence_guard, Ants4572UnnamedScrubIsReported) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    ASSERT_TRUE(seed(tmp, freshRoadmap()));
+
+    RemoteControl rc(nullptr);
+    const QJsonObject a = appendBullet(
+        rc, tmp.path(), QStringLiteral("Bullet whose body leaked a bare tag."),
+        QStringLiteral("The prose is fine and complete.\n</invoke>"));
+    ASSERT_TRUE(a.value(QStringLiteral("ok")).toBool())
+        << QJsonDocument(a).toJson().toStdString();
+
+    const QJsonArray warns = a.value(QStringLiteral("warnings")).toArray();
+    ASSERT_EQ(warns.size(), 1)
+        << "the scrub removed a fragment and said nothing: "
+        << QJsonDocument(a).toJson().toStdString();
+    const QJsonObject w = warns.at(0).toObject();
+    EXPECT_EQ(w.value(QStringLiteral("code")).toString(),
+              QStringLiteral("body_scrubbed_tool_xml"));
+    EXPECT_GT(w.value(QStringLiteral("unnamed_fragments_removed")).toInt(), 0)
+        << "the fragment carries no parameter name, so lost_parameters cannot "
+           "carry it and a count is what remains";
+    EXPECT_FALSE(w.contains(QStringLiteral("lost_parameters")))
+        << "nothing NAMED was lost, so that field must not appear empty";
+
+    // …and an ordinary body still reports nothing: the cosmetic half of the
+    // scrub (blank runs, trailing whitespace, the final newline) fires on
+    // almost every body and must never read as leakage.
+    const QJsonObject clean = appendBullet(
+        rc, tmp.path(), QStringLiteral("Bullet with an ordinary body."),
+        QStringLiteral("Plain prose, no markup at all.\n\n\nWith a gap."));
+    ASSERT_TRUE(clean.value(QStringLiteral("ok")).toBool())
+        << QJsonDocument(clean).toJson().toStdString();
+    EXPECT_FALSE(clean.contains(QStringLiteral("warnings")))
+        << "cosmetic normalisation must not read as a scrub: "
+        << QJsonDocument(clean).toJson().toStdString();
 }
 
 // INV-2 — a balanced fence pair is legitimate prose and is written verbatim.

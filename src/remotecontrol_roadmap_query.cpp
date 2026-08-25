@@ -982,10 +982,11 @@ bool rcdetail::rlNoteDeclaresTrailer(const QString &note, QString *error,
 // Returns false with *error set on a body_shadowed refusal.
 bool rcdetail::rlFillItemBody(const QJsonObject &bulletReq,
                            RoadmapStore::ItemWrite &w,
-                           QStringList &scrubbedNames, QString *error) {
+                           QStringList &scrubbedNames, QString *error,
+                           int *unnamedRemovals) {
     // Scrubbed exactly as formatRoadmapBullet() scrubs it on the markdown path.
     QString body = bulletReq.value(QStringLiteral("body")).toString();
-    rcScrubLeakedToolXml(body, scrubbedNames);
+    rcScrubLeakedToolXml(body, scrubbedNames, unnamedRemovals);
     const RoadmapParse::TrailerValues tv = RoadmapParse::trailerValuesIn(body);
     w.body = body;
 

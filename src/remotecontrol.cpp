@@ -1108,8 +1108,17 @@ QString rcFenceOpenerHint(int fenceOpenLine) {
         .arg(fenceOpenLine + 1);
 }
 
-void rcScrubLeakedToolXml(QString &text, QStringList &scrubbedNames) {
+void rcScrubLeakedToolXml(QString &text, QStringList &scrubbedNames,
+                          int *unnamedRemovals) {
     if (text.isEmpty()) return;
+    // ANTS-4572 — count only the removals that report themselves nowhere
+    // else. A matched pair already surfaces as `lost_parameters`.
+    const auto removeCounting = [&](const QRegularExpression &re) {
+        if (!unnamedRemovals) { text.remove(re); return; }
+        const QString before = text;
+        text.remove(re);
+        if (text != before) ++*unnamedRemovals;
+    };
     // Matched <parameter name="X">…</parameter> pairs. [\s\S] spans
     // newlines (QRegularExpression '.' doesn't by default).
     static const QRegularExpression pairRx(
@@ -1131,19 +1140,19 @@ void rcScrubLeakedToolXml(QString &text, QStringList &scrubbedNames) {
     static const QRegularExpression reOrphanOpen(
         QStringLiteral("<parameter\\s+name=[^>]*>"),
         QRegularExpression::CaseInsensitiveOption);
-    text.remove(reOrphanOpen);
+    removeCounting(reOrphanOpen);
     static const QRegularExpression reOrphanClose(
         QStringLiteral("</parameter>"),
         QRegularExpression::CaseInsensitiveOption);
-    text.remove(reOrphanClose);
+    removeCounting(reOrphanClose);
     static const QRegularExpression reStrayBody(
         QStringLiteral("</body>"),
         QRegularExpression::CaseInsensitiveOption);
-    text.remove(reStrayBody);
+    removeCounting(reStrayBody);
     static const QRegularExpression reCloseTag(
         QStringLiteral("</invoke>"),
         QRegularExpression::CaseInsensitiveOption);
-    text.remove(reCloseTag);
+    removeCounting(reCloseTag);
     static const QRegularExpression reBlankRun(QStringLiteral("\\n{3,}"));
     text.replace(reBlankRun, QStringLiteral("\n\n"));
     QStringList ls = text.split(QChar('\n'));
@@ -1178,8 +1187,8 @@ void rcScrubLeakedToolXml(QString &text, QStringList &scrubbedNames) {
         QRegularExpression::CaseInsensitiveOption);
     for (;;) {
         const QString before = text;
-        text.remove(reEdgeTag);
-        text.remove(reEdgeOpenScalarLine);
+        removeCounting(reEdgeTag);
+        removeCounting(reEdgeOpenScalarLine);
         if (text == before) break;
     }
     rcEscapeUnclosedFence(text);   // ANTS-3640

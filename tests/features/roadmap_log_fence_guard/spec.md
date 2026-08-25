@@ -45,6 +45,16 @@ a `grep -n` and a hand edit.
   a legitimate thing to write, so the guard does not touch it.
 - **INV-3** — the same escape applies to an `op:annotate` note, because
   both paths run through `rcScrubLeakedToolXml`.
+- **INV-5** (ANTS-4572) — a scrub that removed ANYTHING says so. The
+  `body_scrubbed_tool_xml` warning fired only on a matched
+  `<parameter name="X">` pair, so a stray closing tag or ANTS-4609's
+  `<tag>scalar` line was stripped in silence; the envelope now carries
+  `unnamed_fragments_removed` alongside (or instead of) `lost_parameters`.
+  Cosmetic normalisation — blank-run collapse, trailing whitespace, the final
+  newline chop — is deliberately NOT counted: it fires on almost every body and
+  would turn the signal into noise. Belongs here because the scrub and the
+  fence escape are one helper, which is also why INV-3 lives here.
+  *Test:* `roadmap_log_fence_guard.Ants4572UnnamedScrubIsReported`.
 - **INV-4** — when a bullet genuinely sits inside a fence (a hand-written
   file the guard never saw), the `anchor_unsafe_context` refusal names the
   1-based line number of the fence *opener*, not just the bullet.

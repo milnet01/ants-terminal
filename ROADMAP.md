@@ -41026,7 +41026,7 @@ filed below.
   Source: LocalWebServerManager_Ants_MCP_Feedback.md 2026-08-20 (fifth and sixth firings).
   Lanes: antshelper, claudeintegration.
 
-- 📋 [ANTS-4572] **roadmap_log's envelope could report when its XML scrub actually removed something.**
+- ✅ [ANTS-4572] **roadmap_log's envelope could report when its XML scrub actually removed something.**
   Filed as considered because the reporter rates it optional and low value,
   and explicitly says the current behaviour is the right default either way.
 
@@ -41079,6 +41079,17 @@ filed below.
   Pair it with ANTS-4609 rather than sequencing them -- that one makes the
   scrub complete, this one makes it legible, and shipping only the first
   leaves the next gap just as silent.
+  Resolved (2026-08-25). The envelope now reports a scrub that removed ANYTHING, not only one that removed a named parameter pair.
+
+  The gap was narrower and worse than "no signal exists": a signal existed and covered one case. rcScrubLeakedToolXml populated scrubbedNames ONLY from matched parameter-name pairs, and the warning fired on that list alone -- while the same function also strips orphan opening tags, a bare closing parameter tag, a stray closing body tag, a stray closing invoke tag, edge tags and ANTS-4609's opening-tag-plus-scalar line, every one of them recording nothing. (The tag examples are spelled out in words here on purpose: writing them literally is what made this very note demonstrate the defect -- the append envelope came back reporting a scrub of its own.) So the promoted premise was exactly right: a caller who has read that bodies are scrubbed takes ok:true for "the body is clean". That is how ANTS-4609's half-scrub reached disk unnoticed.
+
+  The scrubber takes an optional out-param counting those unnamed removals, and both op:append and op:append_batch, on both the store and markdown paths, now emit `unnamed_fragments_removed` beside (or instead of) `lost_parameters`. `lost_parameters` is omitted rather than emitted empty when nothing named was lost.
+
+  The one judgement worth recording: cosmetic normalisation is deliberately NOT counted -- blank-run collapse, trailing-whitespace trim and the final newline chop fire on almost every body, so counting them would make the signal noise and the disclosure useless. The test asserts that directly: a body with a blank-line run and no markup reports no warning.
+
+  INV-5; test roadmap_log_fence_guard.Ants4572UnnamedScrubIsReported. Mutation-verified -- restoring the old condition reddens it on the silent-scrub assertion. 3940/3940.
+
+  Note for ANTS-4675, which asks whether disclosure should be a standing rule: this is the third measured case this session where the disclosure existed and was still unusable, after ANTS-4676 (mislabelled) and ANTS-4666 (wrong check named). The pattern is that a partial disclosure is the dangerous state, not an absent one.
   **Layman:** A safety net quietly cleans up a mistake, so nobody learns they made it.
   Kind: enhancement.
   Source: LocalWebServerManager_Ants_MCP_Feedback.md 2026-08-20 (filed as a worked-well report).

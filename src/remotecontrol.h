@@ -1108,7 +1108,8 @@ private:
     QString formatRoadmapBullet(const QJsonObject &bulletReq,
                                 const QString    &idStr,
                                 const QString    &statusEmoji,
-                                QStringList      &scrubbedNames);
+                                QStringList      &scrubbedNames,
+                                int              *unnamedRemovals = nullptr);
     QJsonDocument cmdLs();
     QJsonDocument cmdSendText(const QJsonObject &req);
     QJsonDocument cmdNewTab(const QJsonObject &req);
