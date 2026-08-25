@@ -43021,7 +43021,7 @@ filed below.
   Source: in-session-2026-08-21 (ANTS-3771 spec authoring).
   Lanes: mcp.
 
-- 📋 [ANTS-4608] **The trailer-shadow guard reads a C++ scope operator as a trailer key, so a note naming a symbol refuses.**
+- ✅ [ANTS-4608] **The trailer-shadow guard reads a C++ scope operator as a trailer key, so a note naming a symbol refuses.**
   Hit twice while writing the ANTS-3771 progress note, and then a THIRD
   time by this very bullet -- the first draft of this item was refused by
   the defect it describes, which is as good a reproduction as exists.
@@ -43048,10 +43048,74 @@ filed below.
   Worked around by backticking the symbol, which is the documented escape --
   note that this bullet had to backtick its own repro to be writable, so the
   verbatim form of the trigger is not recorded here.
+  Resolved (2026-08-25) with the one character of lookahead this item proposed.
+  Every trailer pattern in roadmapparse.cpp now requires the colon NOT be
+  followed by a second colon.
+
+  The item's reasoning that it cannot weaken the guard holds, and the suite
+  confirmed it: a genuine declaration is `Key: value`, which still matches, and
+  the bold form has an asterisk after the colon rather than a colon. No
+  existing trailer test moved.
+
+  It found a second symptom the report did not, and the quiet one is worse. The
+  stop-marker patterns had the same defect, so a scoped symbol INSIDE a value
+  truncated it early -- `Source: measured against Lanes::all() and the live
+  store` stored as `measured against`. A refusal announces itself; a silently
+  short column does not. Both are covered.
+
+  New feature test `tests/features/roadmap_trailer_scope_operator` (test_core),
+  four invariants, modelled on ANTS-4504's sibling guard. INV-1 and INV-3 were
+  red on assertions; INV-2 and INV-4 pin that a real declaration sharing the
+  body still parses and that the bold form is untouched.
+
+  Not repaired, and filed rather than left implicit: three items in the live
+  store already hold a source column captured this way. ANTS-3765's "empty does
+  not overwrite" rule preserves them by design, and `op:"repair_trailers"`
+  cannot reach them because it only ever EXTENDS a value. ANTS-4660.
+
+  `roadmap-format.md` was not amended. It names the label as `Kind: <kind>.`,
+  and `Kind::` is a different token -- the parser was matching inside something
+  the standard never called a label, so this is conformance to the existing
+  contract rather than a change to it. CLAUDE.md rule 14: checked, no line
+  changes for a conformer, no gate. If a future reader thinks the guard list in
+  § 3.5 should name this case, that is a documentation change with its own
+  gate, not a precondition for this fix.
   **Layman:** Writing a note that mentions a code symbol whose name happens to end in Source or Kind gets rejected, because the tool mistakes the double colon for a heading.
   Kind: fix.
   Source: in-session-2026-08-21 (ANTS-3771 spec authoring).
   Lanes: mcp, roadmap-store.
+
+- 📋 [ANTS-4660] **Three stored items carry a source column captured from a scope operator, and no repair op can reach them.**
+  ANTS-4608 stopped the parser reading a C++ scope operator as a trailer
+  declaration. It does not undo what the old parser already wrote.
+
+  Measured read-only against the live store while closing it: three items hold
+  a `source` beginning with a colon, each the tail of a scoped symbol --
+  ANTS-3863, ANTS-4068 and ANTS-4426, carrying fragments of
+  `migratedProject()` and `bulletsFromStore()`.
+
+  They survive on purpose. ANTS-3765's "empty does not overwrite" rule means
+  the now-correct empty re-parse cannot replace a non-empty stored value, so a
+  re-migrate leaves them and raises `field_conflict` instead. That is the right
+  default and it means these need an explicit repair.
+
+  `op:"repair_trailers"` does not reach them either, and the reason is the same
+  guard: it writes only where the stored value is a strict PREFIX of the
+  re-parse, so it can extend a truncated value but never replace a wrong one.
+  Here the re-parse is empty, which is not an extension.
+
+  Small, and worth doing while the cause is fresh: a repair that clears a
+  column whose stored value is a strict SUFFIX of a scope-operator capture in
+  the item's own body. That predicate is narrow enough to be safe -- it fires
+  only where the body still contains the text the column was mis-read from.
+
+  Related but distinct: ANTS-4595 is a different garbage-in-source class (a
+  lifecycle word), so a repair pass may as well cover both. Do not merge them
+  -- the predicates differ.
+  **Layman:** A few roadmap entries have a nonsense value saved where their origin should be, left over from a parsing bug.
+  Kind: fix.
+  Source: in-session-2026-08-25 (measured while fixing ANTS-4608).
+  Lanes: roadmap-store.
 
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-08-21 triage
 

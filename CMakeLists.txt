@@ -2721,6 +2721,7 @@ if(ANTS_TESTS)
                 # mention, not a declaration. Drives trailerValuesIn(), which
                 # is where the fixed-length lookbehind guard lived.
                 tests/features/roadmap_trailer_code_span/test_roadmap_trailer_code_span.cpp
+                tests/features/roadmap_trailer_scope_operator/test_roadmap_trailer_scope_operator.cpp
                 $<$<NOT:$<BOOL:${ANTS_ENABLE_HELPER_CLI}>>:src/antshelper.cpp>)
     target_compile_definitions(test_core PRIVATE
         # ANTS-3757 INV-1/INV-2/INV-11 — the committed fixture roots and the

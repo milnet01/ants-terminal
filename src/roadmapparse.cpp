@@ -294,10 +294,27 @@ bool stripInlineEmoji(QString &head, QString &status) {
 // label can sit at: `` `Kind: ``, `` `*Kind: `` and `` `**Kind: ``. Without the
 // last two, ``  `**Kind:** implement.` `` — a bullet QUOTING the trailer, which
 // the bullets documenting this format do constantly — parses as a declaration.
+// ANTS-4608 — every trailer pattern below carries a `(?!:)` lookahead after
+// its colon: a key followed by a SECOND colon declares nothing. A C++ scope
+// operator is not a trailer, and `roadmap-format.md` § 3.5 names the label
+// `Kind: <kind>.` — `Kind::` is a different token these patterns were
+// matching inside, because they are deliberately un-anchored (ANTS-2058) so
+// an inline trailer is found mid-line.
+//
+// In this codebase the collision is routine: any symbol whose scope name ends
+// in a key word hits it. Two symptoms, and the quiet one is worse. A note
+// naming such a symbol was refused `body_shadowed` — correctly about the
+// consequence, since a re-parse really would have taken the rest of the line
+// as the column. And a scoped symbol INSIDE a value silently truncated it at
+// the stop marker, which no refusal announces.
+//
+// It cannot weaken the guard: a genuine declaration is `Key: value`, which
+// the lookahead still matches, and the bold form `**Key:**` has an asterisk
+// after the colon rather than a colon.
 const QRegularExpression &rxKind() {
     static const QRegularExpression rx(
         QStringLiteral("(?<!`)(?<!`\\*)(?<!`\\*\\*)"
-                       "(?:\\*\\*)?Kind:(?:\\*\\*)?\\s*([^\\.\\n]+?)\\s*[\\.\\n]"),
+                       "(?:\\*\\*)?Kind:(?!:)(?:\\*\\*)?\\s*([^\\.\\n]+?)\\s*[\\.\\n]"),
         QRegularExpression::MultilineOption);
     return rx;
 }
@@ -354,7 +371,7 @@ const QRegularExpression &rxKind() {
 const QRegularExpression &rxLanes() {
     static const QRegularExpression rx(
         QStringLiteral("(?<!`)(?<!`\\*)(?<!`\\*\\*)"
-                       "(?:\\*\\*)?Lanes:(?:\\*\\*)?\\s*([^\\n]+)"),
+                       "(?:\\*\\*)?Lanes:(?!:)(?:\\*\\*)?\\s*([^\\n]+)"),
         QRegularExpression::MultilineOption);
     return rx;
 }
@@ -381,7 +398,7 @@ const QRegularExpression &rxLanes() {
 // rxBoldLayman (see remotecontrol_changelog.cpp, ANTS-1933).
 const QRegularExpression &rxLayman() {
     static const QRegularExpression rx(
-        QStringLiteral("^\\s*(?:\\*\\*)?Layman:(?:\\*\\*)?\\s*([^\\n]+)"),
+        QStringLiteral("^\\s*(?:\\*\\*)?Layman:(?!:)(?:\\*\\*)?\\s*([^\\n]+)"),
         QRegularExpression::MultilineOption |
         QRegularExpression::CaseInsensitiveOption);
     return rx;
@@ -395,7 +412,7 @@ const QRegularExpression &rxLayman() {
 // writer always emits capital `Evidence:`, so the round-trip is unchanged.
 const QRegularExpression &rxEvidence() {
     static const QRegularExpression rx(
-        QStringLiteral("^\\s*Evidence:\\s*([^\\n]+)"),
+        QStringLiteral("^\\s*Evidence:(?!:)\\s*([^\\n]+)"),
         QRegularExpression::MultilineOption |
         QRegularExpression::CaseInsensitiveOption);
     return rx;
@@ -424,7 +441,7 @@ const QRegularExpression &rxEvidence() {
 const QRegularExpression &rxSource() {
     static const QRegularExpression rx(
         QStringLiteral("(?<!`)(?<!`\\*)(?<!`\\*\\*)"
-                       "(?:\\*\\*)?Source:(?:\\*\\*)?\\s*([^\\n]+)"));
+                       "(?:\\*\\*)?Source:(?!:)(?:\\*\\*)?\\s*([^\\n]+)"));
     return rx;
 }
 //  - The value stops at a following trailer key: 10 lines write two keys
@@ -433,7 +450,7 @@ const QRegularExpression &rxSource() {
 //    optionally bold, since roadmap_log writes `**Layman:**`.
 const QRegularExpression &rxTrailerKey() {
     static const QRegularExpression rx(
-        QStringLiteral("\\s(?:\\*\\*)?(?:Kind|Lanes|Layman|Evidence):"));
+        QStringLiteral("\\s(?:\\*\\*)?(?:Kind|Lanes|Layman|Evidence):(?!:)"));
     return rx;
 }
 
@@ -443,7 +460,7 @@ const QRegularExpression &rxTrailerKey() {
 // ending at a second `Layman:` that cannot occur on one line.
 const QRegularExpression &rxTrailerKeyAfterLayman() {
     static const QRegularExpression rx(
-        QStringLiteral("\\s(?:\\*\\*)?(?:Kind|Lanes|Source|Evidence):"));
+        QStringLiteral("\\s(?:\\*\\*)?(?:Kind|Lanes|Source|Evidence):(?!:)"));
     return rx;
 }
 
@@ -456,7 +473,7 @@ const QRegularExpression &rxTrailerKeyAfterLayman() {
 // only spelling of the trailer keys behind a join.
 const QRegularExpression &rxTrailerKeyAfterLanes() {
     static const QRegularExpression rx(
-        QStringLiteral("\\s(?:\\*\\*)?(?:Kind|Layman|Source|Evidence):"));
+        QStringLiteral("\\s(?:\\*\\*)?(?:Kind|Layman|Source|Evidence):(?!:)"));
     return rx;
 }
 
@@ -474,7 +491,7 @@ const QRegularExpression &rxTrailerKeyAfterLanes() {
 // construction.
 const QRegularExpression &rxTrailerLineLabel() {
     static const QRegularExpression rx(
-        QStringLiteral("^(?:\\*\\*)?(Kind|Lanes|Layman|Evidence|Source):(?:\\*\\*)?"));
+        QStringLiteral("^(?:\\*\\*)?(Kind|Lanes|Layman|Evidence|Source):(?!:)(?:\\*\\*)?"));
     return rx;
 }
 // The same label ANYWHERE, which is what pins the strip's right edge to a
@@ -485,7 +502,7 @@ const QRegularExpression &rxTrailerLineLabel() {
 // label already matched rather than used to truncate a value.
 const QRegularExpression &rxTrailerLabelAnywhere() {
     static const QRegularExpression rx(
-        QStringLiteral("(?:\\*\\*)?(?:Kind|Lanes|Layman|Evidence|Source):"));
+        QStringLiteral("(?:\\*\\*)?(?:Kind|Lanes|Layman|Evidence|Source):(?!:)"));
     return rx;
 }
 

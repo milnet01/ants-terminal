@@ -262,6 +262,12 @@ for security-relevant changes.
 
 ### Fixed
 
+- **A roadmap note naming a C++ symbol is no longer read as a trailer declaration** (ANTS-4608)
+  A double colon is a scope operator, not a heading. Writing about a symbol
+  whose scope name ends in `Source`, `Kind`, `Lanes`, `Layman` or
+  `Evidence` was refused; the quieter half was a scoped symbol inside a
+  value silently truncating it at that point.
+
 - **A spilled MCP reply now still names the argument it ignored** (ANTS-4626)
   The unknown-argument advisory was attached to the response body and then
   discarded when a large body was spilled to a handle — so it reached the
