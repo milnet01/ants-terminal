@@ -307,6 +307,45 @@ TEST(SpecLintVerb, Ants4393BothSkippedChecksAreNamed) {
            "did not run";
 }
 
+// ANTS-4676 — a skipped[] entry and the field explaining it shared no token:
+// `invariant_no_test` is explained by `surfaces_skipped_hint`, and
+// `missing_section` by the generically-named `skipped_hint`. A reporting
+// project read the pair as two skips, matched the hint to the wrong entry, and
+// filed the hinted skip as unexplained — then hand-checked what the envelope
+// had already answered. The PAIRING was never broken; its labelling was, and
+// tools/list taught the wrong model by promising one hint for the array.
+TEST(SpecLintVerb, Ants4676EachHintNamesItsSkippedEntry) {
+    // The reporter's exact envelope: surfaces skipped, sections checked.
+    const QJsonObject o = RemoteControl::specLintBuildResponse(
+        {}, true, QJsonObject{}, false,
+        QStringList{QStringLiteral("docs/specs/X.md")}, 0, false,
+        QStringLiteral("~global/standards/spec-format.md"));
+    const QJsonArray skipped = o.value(QStringLiteral("skipped")).toArray();
+    ASSERT_EQ(skipped.size(), 1)
+        << "sections_checked:true means only the surfaces check skipped";
+    EXPECT_EQ(skipped.first().toString(), QStringLiteral("invariant_no_test"));
+    const QString sh =
+        o.value(QStringLiteral("surfaces_skipped_hint")).toString();
+    EXPECT_TRUE(sh.contains(QStringLiteral("invariant_no_test")))
+        << "the hint must name the skipped[] entry it explains, or a caller "
+           "cannot tell which entry it belongs to: " << sh.toStdString();
+    EXPECT_FALSE(o.contains(QStringLiteral("skipped_hint")))
+        << "skipped_hint explains missing_section, which did NOT skip here — "
+           "its absence is correct and is what the reporter read as a gap";
+
+    // …and the sections hint names its own entry on BOTH of its arms.
+    const QJsonObject none = RemoteControl::specLintBuildResponse(
+        {}, false, QJsonObject{}, false, QStringList{}, 0, false, QString());
+    EXPECT_TRUE(none.value(QStringLiteral("skipped_hint")).toString()
+                    .contains(QStringLiteral("missing_section")))
+        << "the empty-walk arm must name its entry too";
+    const QJsonObject some = RemoteControl::specLintBuildResponse(
+        {}, false, QJsonObject{}, false,
+        QStringList{QStringLiteral("docs/specs/X.md")}, 0, false, QString());
+    EXPECT_TRUE(some.value(QStringLiteral("skipped_hint")).toString()
+                    .contains(QStringLiteral("missing_section")));
+}
+
 // ANTS-4080 — the global tier. `~/.claude/standards/spec-format.md` became the
 // authoritative spec-format standard on 2026-08-08 with projects carrying
 // deltas, so a project with no local copy is linted against NOTHING and the

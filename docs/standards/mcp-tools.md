@@ -298,9 +298,14 @@ place when it saves a Claude session real tokens or round-trips
 
 8. **Opt into `fields=` projection for high-volume reads (optional).**
    A tool with a large payload should support response narrowing
-   (ANTS-1720): add it to `mcp::isFieldProjectionTool` and a
-   `makeFieldsProp()` line to its schema. Compose with ETag by listing
-   `"etag"` in `fields`.
+   (ANTS-1720): add a row to the dispatch table `mcp::isFieldProjectionTool`
+   reads (`src/mcpprojection.cpp`) and a `makeFieldsProp()` line to its
+   schema. Compose with ETag by listing `"etag"` in `fields`.
+
+   The row carries a SECOND column, `defaultCompact`, answered separately
+   (ANTS-4524). The two were one predicate until 2026-08-25, so a verb added
+   for `fields=` also started compacting for callers who never asked — which
+   folded away `spec_lint`'s flag saying a check had not run (ANTS-4673).
 
 9. **Follow the cache contract for any project-scoped cache.** If the
    tool reads/writes a per-project cache, key + relocate it per

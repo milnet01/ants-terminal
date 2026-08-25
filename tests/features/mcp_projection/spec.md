@@ -84,9 +84,14 @@ short-circuits when state is unchanged.
   as ignored, "because the dispatcher accepts them for every verb". This
   allowlist is why that premise is false: a verb outside it accepts `fields`,
   drops it, and is barred from reporting it — silence in both directions.
-  Widening the gate is NOT a free fix, because `compact` shares this same
-  predicate and falls back to a default-ON terse setting, so widening both
-  together would compact every currently-unlisted verb's response.
+  **The shared predicate was split by ANTS-4524 route 1 (2026-08-25)**, which
+  was the blocker named here: `compact` no longer shares this gate.
+  `isFieldProjectionTool` answers `fields=`; `isDefaultCompactTool` answers
+  whether an ABSENT `compact` falls back to the default-ON terse setting, and
+  both are columns of one table so a new verb must answer each. Widening this
+  list therefore no longer compacts a verb nobody asked to compact — the reason
+  the fix was not free. The contradiction with `mcp_ignored_args` INV-2 stands;
+  making `fields` genuinely universal is the remaining half.
 - **INV-9 — dispatch ordering.** In `claudeintegration.cpp` the
   `projectFields` call appears after `applyEtagPattern` and before the
   `wrapMcpData` call, and is guarded so the etag short-circuit
@@ -114,6 +119,21 @@ short-circuits when state is unchanged.
   INV-10 asserts `std::size` of it. Adding a tool to the allowlist without a
   schema property fails INV-10; adding a schema property without the
   allowlist fails INV-8. Do not reintroduce a literal.
+- **INV-11 — `fields=` and the compaction DEFAULT are separate answers**
+  (ANTS-4524). `mcp::isFieldProjectionTool` grants `fields=`;
+  `mcp::isDefaultCompactTool` decides whether an ABSENT `compact` falls back to
+  `mcp::terseDefault()`. Both read one table in `mcpprojection.cpp`, so adding
+  a verb makes you answer each. `spec_lint` is the row where they differ, and
+  the test asserts that difference — if no row differs, the split has collapsed
+  back into a rename. An EXPLICIT `compact` is still honoured wherever the
+  schema declares it; only the unasked-for default is gated, because
+  withdrawing a declared argument would silently drop it, which is the same
+  defect pointing the other way.
+
+  Why it exists: the two shared one predicate, so ANTS-4663 added `spec_lint`
+  for `fields=` and compaction arrived with it, folding away the
+  `sections_checked:false` that says a check never ran (ANTS-4673). The
+  coupling was named in ANTS-4524 before it was hit.
 
 ## ANTS-2090 — tabular (columnar) encoding (`encoding:"tabular"`)
 

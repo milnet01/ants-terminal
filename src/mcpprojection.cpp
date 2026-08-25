@@ -62,54 +62,86 @@ void resetHintLatch() {
     g_taughtHints.clear();
 }
 
+namespace {
+
+// ANTS-4524 — ONE row per verb, TWO independent answers. `fields=` and
+// `compact` shared a single predicate, so a verb added for one silently
+// acquired the other: ANTS-4663 added spec_lint to get `fields=`, compaction
+// came with it, and it folded away the flag saying a check never ran
+// (ANTS-4673). A row makes you answer both questions.
+//
+//   fields  — `fields=` narrowing is honoured. Opt-in with no default, and
+//             projectFields is a pure top-level key filter with a refusal
+//             floor, so it is safe on any object envelope.
+//   defaultCompact — mcp::terseDefault() applies when the per-call `compact`
+//             arg is ABSENT. claude.mcp_terse_responses sets that ON at
+//             startup, so this column decides whether a verb's false/empty
+//             fields fold away for callers who never asked. It has teeth;
+//             `fields` does not. Do not answer it by copying the row above.
+//
+// An EXPLICIT `compact` is honoured wherever the schema declares it, on both
+// columns — this gates the DEFAULT, which is the half a caller never asked
+// for and the half that shipped ANTS-4673.
+struct DispatchProjection {
+    const char *tool;
+    bool fields;
+    bool defaultCompact;
+};
+
+const DispatchProjection kDispatchProjection[] = {
+    //  tool                  fields  defaultCompact
+    { "roadmap_query",          true,  true  },
+    { "changelog_query",        true,  true  },  // ANTS-3533
+    { "project_layout",         true,  true  },
+    { "file_outline",           true,  true  },
+    { "get_environment",        true,  true  },
+    { "tab_list",               true,  true  },
+    { "subsystem",              true,  true  },
+    { "git_state",              true,  true  },
+    { "read_log",               true,  true  },  // ANTS-1855
+    { "read_region",            true,  true  },  // ANTS-2021
+    { "codebase_index",         true,  true  },  // ANTS-1637
+    { "docs_index",             true,  true  },  // ANTS-2139
+    { "co_change_family",       true,  true  },  // ANTS-3368
+    { "model_switch_stats",     true,  true  },  // ANTS-1735
+    // ANTS-4523 — the documented first call and the largest response in the
+    // session, so the verb a caller is most likely to narrow. `fields=`
+    // narrows the PAYLOAD, not the work: the eager codebase_index refresh
+    // (ANTS-2140) still runs.
+    { "session_orient",         true,  true  },
+    // ANTS-4429 — a WRITE verb here is deliberate and safe: both steps run
+    // after the handler returns, so they narrow the REPORT and never the
+    // work. Measured ~25 KB on a no-op dry run, for an answer that is a
+    // handful of counters. isCompactDroppable keeps every number, so
+    // `items_inserted:0` survives.
+    { "roadmap_migrate",        true,  true  },
+    // ANTS-4663 / ANTS-4673 — the row this table exists for, and the only one
+    // whose two answers differ. `fields=` YES: a corpus-wide run overflows the
+    // inline budget and spills, and `counts` is the answer a caller wants.
+    // Compaction BY DEFAULT no: the bulk is findings[], whose rows are live
+    // and which compaction cannot touch, so the default saved almost nothing
+    // here while folding away sections_checked/surfaces_checked:false — the
+    // fields that say the check never ran. A caller who passes compact:true
+    // still gets it; what is withdrawn is doing it to callers who did not ask.
+    { "spec_lint",              true,  false },
+};
+
+const DispatchProjection *lookupDispatchProjection(const QString &toolName) {
+    for (const auto &row : kDispatchProjection)
+        if (toolName == QLatin1String(row.tool)) return &row;
+    return nullptr;
+}
+
+}  // namespace
+
 bool isFieldProjectionTool(const QString &toolName) {
-    return toolName == QStringLiteral("roadmap_query")
-        || toolName == QStringLiteral("changelog_query")   // ANTS-3533
-        || toolName == QStringLiteral("project_layout")
-        || toolName == QStringLiteral("file_outline")
-        || toolName == QStringLiteral("get_environment")
-        || toolName == QStringLiteral("tab_list")
-        || toolName == QStringLiteral("subsystem")
-        || toolName == QStringLiteral("git_state")
-        || toolName == QStringLiteral("read_log")            // ANTS-1855
-        || toolName == QStringLiteral("read_region")         // ANTS-2021
-        || toolName == QStringLiteral("codebase_index")      // ANTS-1637
-        || toolName == QStringLiteral("docs_index")          // ANTS-2139
-        || toolName == QStringLiteral("co_change_family")    // ANTS-3368
-        || toolName == QStringLiteral("model_switch_stats")  // ANTS-1735
-        // ANTS-4523 — the documented first call and the largest response in
-        // the session, so the verb a caller is most likely to narrow. It was
-        // absent by omission rather than by decision: the sibling test's
-        // negative list names session_brief and current_state and never named
-        // this one. `fields=` narrows the PAYLOAD, not the work — the eager
-        // codebase_index refresh (ANTS-2140) still runs.
-        || toolName == QStringLiteral("session_orient")
-        // ANTS-4429 — the migrate envelope is the biggest thing a session
-        // adopting a project sees, and none of it could be narrowed: the
-        // schema is `additionalProperties:false`, so `fields=` was not merely
-        // absent, it was refused. Measured on a no-op dry run of this
-        // project: ~25 KB, the bulk being `notes` (~150 rows) and a capped
-        // `updated_items`, for an answer that is a handful of counters.
-        // ANTS-4649 collapsed the repeating notes; that shrank one
-        // contributor, it did not make the envelope narrowable.
-        //
-        // A WRITE verb on a read-verb list is deliberate and safe: the
-        // dispatcher applies both steps after the handler returns, so they
-        // narrow the REPORT and never the work. Compaction is safe for the
-        // same reason it is elsewhere — isCompactDroppable keeps every
-        // number, so `items_inserted:0` and `ids_allocated:0` survive; only
-        // the false/empty flags fold away, which is compactEnvelope's
-        // documented absent-⟺-default contract.
-        || toolName == QStringLiteral("roadmap_migrate")
-        // ANTS-4663 — a corpus-wide run over docs/specs/ overflows the
-        // inline budget and spills to a handle, and the answer a caller
-        // usually wants from that run is `counts`, which the envelope
-        // already carries. `fields=["counts"]` was passed and dropped;
-        // recovering the summary then meant reading the spill file and
-        // parsing findings[] by hand. The bulk is findings[], which
-        // compaction cannot touch (its rows are live), so `fields=` is
-        // the only knob that reaches it.
-        || toolName == QStringLiteral("spec_lint");
+    const DispatchProjection *row = lookupDispatchProjection(toolName);
+    return row && row->fields;
+}
+
+bool isDefaultCompactTool(const QString &toolName) {
+    const DispatchProjection *row = lookupDispatchProjection(toolName);
+    return row && row->defaultCompact;
 }
 
 // ANTS-2094 — offload-eligible read verbs (see header). A separate set from
@@ -307,28 +339,22 @@ namespace {
 // fields callers branch on; a dropped `ok:false` / `found:false` would
 // silently invert the result's meaning.
 bool isProtectedCompactKey(const QString &key) {
+    // ANTS-4677 — a `*_checked:false` reports that a check DID NOT RUN, so
+    // dropping it inverts the meaning exactly as a dropped `found:false`
+    // would: the envelope then reads as a clean pass when nothing was
+    // examined. Protected by SUFFIX rather than by name. ANTS-4673 named
+    // spec_lint's sections_checked and surfaces_checked after that verb was
+    // bitten; roadmap_query's `sync_checked` was already being dropped by the
+    // same mechanism in every session, while its own schema tells callers to
+    // branch on it. A name list needs each verb's author to remember this
+    // one; a suffix does not.
+    if (key.endsWith(QLatin1String("_checked"))) return true;
     return key == QStringLiteral("ok")
         || key == QStringLiteral("code")
         || key == QStringLiteral("error")
         || key == QStringLiteral("etag")
         || key == QStringLiteral("found")
-        || key == QStringLiteral("unchanged")
-        // ANTS-4673 — a `*_checked:false` reports that the check DID NOT RUN,
-        // so dropping it inverts the meaning exactly as a dropped `found:false`
-        // would: the envelope then reads as a clean structural pass when
-        // nothing was examined. spec_lint's contract (ANTS-4373) says to treat
-        // a skipped run as SILENT about structure, never as a clean result,
-        // and these are the fields carrying that.
-        //
-        // Needed because the dispatcher gates COMPACTION on
-        // isFieldProjectionTool, the same predicate that grants `fields=`,
-        // falling back to terseDefault() — config-default TRUE. So a verb
-        // joining that list for `fields=` alone is compacted for every caller
-        // as a side effect. ANTS-4524 named that coupling before ANTS-4663 hit
-        // it; splitting the predicate is that item's route 1 and would make
-        // this carve-out unnecessary.
-        || key == QStringLiteral("sections_checked")
-        || key == QStringLiteral("surfaces_checked");
+        || key == QStringLiteral("unchanged");
 }
 
 // A value is "dead weight" when it equals its zero/default form: null,

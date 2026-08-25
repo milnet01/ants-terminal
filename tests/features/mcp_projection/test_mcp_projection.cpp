@@ -180,6 +180,45 @@ TEST(McpProjection, Inv8AllowlistExact) {
     }
 }
 
+// ANTS-4524 — `fields=` and the compaction DEFAULT are two answers, not one.
+// They shared a predicate, so a verb added to the allowlist for `fields=`
+// silently began compacting for every caller: that is exactly how ANTS-4663
+// shipped ANTS-4673. spec_lint is the row where the two now differ.
+//
+// Only the DEFAULT is per-verb. An explicit compact:true is still honoured
+// wherever the schema declares it — withdrawing that would silently drop a
+// declared argument, which is the same class of defect pointing the other way.
+TEST(McpProjection, Ants4524FieldsAndDefaultCompactAreSeparate) {
+    for (const char *t : kFieldProjectionTools) {
+        const QString tool = QString::fromUtf8(t);
+        if (tool == QStringLiteral("spec_lint")) continue;
+        EXPECT_TRUE(mcp::isDefaultCompactTool(tool))
+            << t << " should still be compacted by default";
+    }
+    // The split is real rather than a rename: one verb answers the two
+    // differently, and if that stops being true the table has collapsed back.
+    EXPECT_TRUE(mcp::isFieldProjectionTool(QStringLiteral("spec_lint")))
+        << "spec_lint keeps `fields=` — ANTS-4663's reason is unchanged";
+    EXPECT_FALSE(mcp::isDefaultCompactTool(QStringLiteral("spec_lint")))
+        << "...and must NOT be compacted for a caller who never asked: its bulk "
+           "is live findings[] rows compaction cannot touch, so the default "
+           "only ever risked its did-not-run flags";
+    for (const char *t : {"get_scrollback", "session_brief", ""}) {
+        EXPECT_FALSE(mcp::isDefaultCompactTool(QString::fromUtf8(t)))
+            << t << " is on neither list";
+    }
+}
+
+// ANTS-4524 — and the dispatcher must consult the new answer, not the old one.
+TEST(McpProjection, Ants4524DispatchGatesTheDefaultSeparately) {
+    QFile f(QString::fromUtf8(SRC_CLAUDE_INTEGRATION_CPP_PATH));
+    ASSERT_TRUE(f.open(QIODevice::ReadOnly));
+    const QByteArray s = f.readAll();
+    EXPECT_TRUE(s.contains("mcp::isDefaultCompactTool(toolName)"))
+        << "the terseDefault fallback must be gated on the compaction answer, "
+           "not on the `fields=` allowlist it used to share";
+}
+
 // INV-9 — dispatch ordering: projectFields is called after
 // applyEtagPattern and before wrapMcpData, and skipped on the etag
 // short-circuit. Source-scrape (the dispatch path is GUI-coupled).
@@ -549,6 +588,27 @@ TEST(McpCompact, Ants4673KeepsDidNotRunFlags) {
     // opt-out of compaction for the verb.
     EXPECT_FALSE(o.contains("findings")) << "an empty array is still dead weight";
     EXPECT_EQ(o.value("line_count").toInt(), 40) << "numbers are kept as before";
+}
+
+// ANTS-4677 — the same class, in a second verb, and already live rather than
+// predicted. roadmap_query sets sync_checked:false to say NOBODY LOOKED, is on
+// the compaction list, and its own schema tells callers to branch on that
+// field — so every real session was having it dropped, and the answer read as
+// a clean bill of health.
+//
+// ANTS-4673 fixed its instance by naming two keys. Protection is by SUFFIX so
+// that the next verb to emit such a flag does not depend on its author
+// remembering this list exists.
+TEST(McpCompact, Ants4677ProtectsEveryCheckedSuffix) {
+    const QString body = QStringLiteral(
+        "{\"ok\":true,\"sync_checked\":false,\"bullets\":[],\"total\":3}");
+    const QJsonObject o = parse(mcp::compactEnvelope(body));
+    ASSERT_TRUE(o.contains("sync_checked"))
+        << "sync_checked:false means nobody looked; dropped, it is "
+           "indistinguishable from a checked-and-in-sync answer";
+    EXPECT_FALSE(o.value("sync_checked").toBool());
+    EXPECT_FALSE(o.contains("bullets")) << "an empty array is still dead weight";
+    EXPECT_EQ(o.value("total").toInt(), 3);
 }
 
 // Recurses into nested objects AND array elements; a child emptied by

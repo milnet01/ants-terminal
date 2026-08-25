@@ -754,7 +754,8 @@ QJsonObject RemoteControl::specLintBuildResponse(
     if (!skipped.isEmpty()) o[QStringLiteral("skipped")] = skipped;
     if (!surfacesChecked) {
         o[QStringLiteral("surfaces_skipped_hint")] = QStringLiteral(
-            "the test-surface check did NOT run, and unlike the "
+            "explains `invariant_no_test` in skipped[]: the test-surface "
+            "check did NOT run, and unlike the "
             "required-section check there is NO documented input that turns "
             "it on — this is a limitation of the verb, not something the "
             "project can configure. Treat `findings:[]` as silent about test "
@@ -768,11 +769,13 @@ QJsonObject RemoteControl::specLintBuildResponse(
         o[QStringLiteral("skipped_hint")] =
             checkedDocs.isEmpty()
                 ? QStringLiteral(
-                      "no document was checked, so NO check ran: `path` matched "
+                      "explains `missing_section` in skipped[]: no document "
+                      "was checked, so NO check ran: `path` matched "
                       "nothing under the specs dir. `checked_docs` is empty — "
                       "this says nothing about the project's format standard.")
                 : QStringLiteral(
-                      "the required-section check did NOT run: no `<!-- "
+                      "explains `missing_section` in skipped[]: the "
+                      "required-section check did NOT run: no `<!-- "
                       "required-sections -->` fenced block was found in any of "
                       "%1 (relative to the project root), nor in the same four "
                       "relative to ~/.claude/ (ANTS-4080's global tier). "

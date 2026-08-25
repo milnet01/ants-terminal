@@ -21,6 +21,15 @@ namespace mcp {
 // Chosen for payload size (see docs/specs/ANTS-1720 / ROADMAP).
 bool isFieldProjectionTool(const QString &toolName);
 
+// ANTS-4524 — the verbs whose envelope is compacted when the caller did NOT
+// ask, i.e. where mcp::terseDefault() applies to an absent `compact` arg. An
+// EXPLICIT compact:true is honoured wherever the schema declares it; this
+// gates only the default. Asked SEPARATELY from `fields=`: the two shared one
+// predicate, so a verb added for one acquired the other silently
+// (ANTS-4663 → ANTS-4673). Both answers live in one table in the .cpp, so a
+// new verb must answer both.
+bool isDefaultCompactTool(const QString &toolName);
+
 // ANTS-2094 — the read verbs whose bodies are large enough to be worth
 // spilling to a content-addressed cache file + returning a head+pointer
 // envelope (observation masking). Deliberately a SEPARATE set from

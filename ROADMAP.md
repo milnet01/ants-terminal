@@ -39361,6 +39361,13 @@ are closed inline in the feedback files rather than filed here.
   tidiness argument: splitting the predicate is what stops the next verb
   joining this list from taking compaction with it, and it would retire
   ANTS-4673's carve-out.
+  Progress (2026-08-25): ROUTE 1's FIRST HALF IS DONE -- the predicate is split. `fields=` and the compaction default are now two columns of one table in mcpprojection.cpp, read by isFieldProjectionTool and the new isDefaultCompactTool. Adding a verb makes you answer both, which is what stops the next one repeating ANTS-4663 -> ANTS-4673. spec_lint is the row where the two differ, and a test asserts a row DOES differ, so the split cannot silently collapse back into a rename.
+
+  Narrower than this body proposed, on evidence found while building it: spec_lint's schema DECLARES `compact`, so ungating the arg entirely would either silently drop a declared argument or hard-refuse existing callers -- the same defect pointing the other way. Only the DEFAULT is per-verb now; an explicit compact:true is still honoured wherever the schema declares it.
+
+  This body predicted the split would retire ANTS-4673's carve-out. It did not, and the reason is worth more than the prediction: asking which OTHER verbs emit a false boolean meaning "nobody looked" found roadmap_query's sync_checked being dropped in every session already (ANTS-4677, shipped). So the carve-out was generalised to protect any `*_checked` key rather than retired -- the class, not the instance.
+
+  STILL OPEN, and it is what keeps this item planned: route 1's second half, making `fields=` genuinely universal so mcp_ignored_args INV-2's premise becomes true. The blocker this body named -- that widening the shared gate would compact every unlisted verb -- is now gone, which was the whole point of doing the split first.
   **Layman:** One setting is advertised as working everywhere but only works on some tools, and nothing warns you.
   Kind: fix.
   Source: in-session-2026-08-19 (found fixing ANTS-4523).
@@ -45129,6 +45136,90 @@ it.
   Kind: enhancement.
   Source: in-session-2026-08-25, proposed while answering how to clear the backlog.
   Lanes: mcp, process.
+
+- ✅ [ANTS-4676] **spec_lint's skip entries and their hint fields share no token, so a hinted skip reads as unexplained.**
+  REPRODUCED, and the reporter's EXPERIENCE is right while their stated
+  mechanism is wrong. Both halves matter, so both are recorded.
+
+  What they reported: invariant_no_test appears in skipped[] with no hint of
+  any kind, and the documented skipped_hint field is absent from the
+  envelope.
+
+  What the code does (RemoteControl::specLintBuildResponse):
+    !surfacesChecked -> skipped += "invariant_no_test"  AND  surfaces_skipped_hint
+    !sectionsChecked -> skipped += "missing_section"    AND  skipped_hint
+
+  So every skipped entry ALREADY has its own hint, and both are always
+  emitted with it. In the reporter's run sections_checked was true, so
+  missing_section never skipped and skipped_hint was correctly absent --
+  its check ran.
+
+  THE REAL DEFECT is that the pairing is unreadable. The skip entry and the
+  field explaining it share no token: `invariant_no_test` is explained by
+  `surfaces_skipped_hint`, and `missing_section` by the generically-named
+  `skipped_hint`. Neither hint names the skipped[] token it belongs to. A
+  caller therefore reads two skips where there is one, matches the hint to
+  the wrong entry, and concludes a check was skipped for no stated reason.
+
+  THE DESCRIPTION IS WHAT TAUGHT THEM THAT, and they quoted it almost
+  verbatim. tools/list says skipped[] names every gated check that did not
+  run "plus a skipped_hint naming the paths consulted" -- one hint for the
+  whole array, described by what only the SECTIONS hint does. There are two
+  hints, one per skip, and the description names one.
+
+  Fix, and it is deliberately not a new field: make each hint name the
+  skipped[] token it explains, and correct the description to state the
+  pairing. Adding a keyed skipped_hints object was considered and rejected
+  -- it duplicates both strings in every envelope to fix a labelling
+  problem, against this project's token frugality, and ANTS-4666 is the
+  standing evidence that another disclosure field is itself another thing
+  that can be wrong.
+
+  Same class as ANTS-4666: the disclosure exists and misleads. Note for
+  ANTS-4675, which proposes disclosure as a standing rule -- this is the
+  second measured case where the field was present and the CALLER still
+  could not act on it, so that rule needs to bind the label as well as the
+  presence.
+  Resolved (2026-08-25). Each hint now names the skipped[] entry it explains -- surfaces_skipped_hint opens "explains `invariant_no_test` in skipped[]", both arms of skipped_hint open with `missing_section`. tools/list corrected: it promised ONE "skipped_hint naming the paths consulted" for the whole array, described by what only the sections hint does, and the reporter quoted that almost verbatim. It now states that every skipped entry has its own hint and names both pairings. No new field: a keyed hints object would duplicate both strings in every envelope to fix a labelling problem. Test SpecLintVerb.Ants4676EachHintNamesItsSkippedEntry builds the reporter's exact envelope (surfaces skipped, sections checked), asserts the pairing is legible, and asserts skipped_hint is CORRECTLY absent there. Mutation-verified: stripping the token from the hint reddens it, printing the pre-fix text the reporter saw.
+  **Layman:** A tool says it skipped a check and does explain why, but the explanation is labelled so differently that readers cannot tell the two go together.
+  Kind: fix.
+  Source: Charls-Site-feedback-2026-08-25.
+
+- ✅ [ANTS-4677] **roadmap_query's sync_checked:false is folded away by default compaction -- ANTS-4673 in a second verb, already live.**
+  Found while splitting the fields=/compact predicate, by asking which
+  OTHER verbs emit a false boolean whose meaning is "nobody looked".
+
+  The chain, every link verified in source:
+    remotecontrol_roadmap_query.cpp sets sync_checked = false explicitly,
+    under a comment reading "`checked:false` says nobody looked" and "must
+    NOT read as in sync".
+    roadmap_query is in mcp::isFieldProjectionTool.
+    The dispatcher gates COMPACTION on that same predicate, falling back to
+    mcp::terseDefault(), which claude.mcp_terse_responses sets ON at
+    startup.
+    compactObject drops a Bool false unless isProtectedCompactKey names it,
+    and it names only ok/code/error/etag/found/unchanged plus ANTS-4673's
+    two spec_lint keys.
+
+  So in every real session the field that says the sync check did not run
+  is deleted from the envelope, leaving an answer indistinguishable from
+  one where nobody asked for the check. The verb's own schema tells the
+  caller to branch on exactly this field.
+
+  THIS IS WHY THE CARVE-OUT SHOULD NOT HAVE BEEN TWO NAMES. ANTS-4673 fixed
+  the instance it was bitten by, by naming sections_checked and
+  surfaces_checked. The defect is the CLASS: a `*_checked:false` reports
+  that a check did not run, so dropping it inverts the meaning exactly as a
+  dropped `found:false` would. Fixed by protecting the suffix rather than
+  the two names, which covers this verb, spec_lint, and any verb that emits
+  such a flag later without anybody remembering to add it to a list.
+
+  Filed separately from ANTS-4524 because it is a shipped defect a user can
+  hit today, where that item is a structural coupling.
+  Resolved (2026-08-25). isProtectedCompactKey now protects any key ending `_checked` rather than the two names ANTS-4673 added, so roadmap_query's sync_checked:false survives compaction along with spec_lint's pair and any verb that emits such a flag later. Test McpCompact.Ants4677ProtectsEveryCheckedSuffix. Mutation-verified: disabling the suffix rule reddens both this and the ANTS-4673 test on their own assertions.
+  **Layman:** A flag meaning nobody checked whether the file matches the database is quietly deleted from the reply, so it reads as checked and fine.
+  Kind: fix.
+  Source: in-session-2026-08-25 (found implementing ANTS-4524 route 1).
 
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-08-11 triage
 

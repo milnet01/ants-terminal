@@ -5358,9 +5358,11 @@ void ClaudeIntegration::onMcpConnection() {
                     "only route for a spec that continues a sibling's numbering on a corpus "
                     "that otherwise numbers per-document. ANTS-4373: when the check is skipped the envelope says so "
                     "in fields a caller reads rather than in a boolean it does not — "
-                    "skipped[] naming EVERY gated check that did not run plus a "
-                        "skipped_hint naming the paths "
-                    "consulted; sections_source names the standard that DID resolve (null "
+                    "skipped[] naming EVERY gated check that did not run, EACH with its "
+                    "own hint that names it back (ANTS-4676): skipped_hint explains "
+                    "missing_section and names the paths consulted, surfaces_skipped_hint "
+                    "explains invariant_no_test. "
+                    "sections_source names the standard that DID resolve (null "
                     "when none did). Treat a skipped run as SILENT about section structure, "
                     "never as a clean structural result. Size is reported in line_count, never as a finding. "
                     "Emits docs_digest, a fingerprint of the checked set, so the ETag "
@@ -13956,13 +13958,21 @@ void ClaudeIntegration::onMcpConnection() {
                 // token-saving needs no per-call flag). Absent ⟺ default makes
                 // the fallback lossless; a caller needing empty-vs-absent
                 // passes compact:false.
+                // ANTS-4524 — the FALLBACK is gated on isDefaultCompactTool,
+                // a separate answer from the `fields=` predicate above. They
+                // were one predicate, so a verb added for `fields=` started
+                // compacting for every caller whether or not they asked
+                // (ANTS-4663 → ANTS-4673). An explicit `compact` still wins on
+                // any verb declaring it; only the unasked-for default is
+                // per-verb.
                 if (toolHandled && !etagUnchanged &&
                     mcp::isFieldProjectionTool(toolName)) {
                     const QJsonValue compactArg =
                         argsObj.value(QStringLiteral("compact"));
                     const bool wantCompact = compactArg.isBool()
                         ? compactArg.toBool()
-                        : mcp::terseDefault();
+                        : (mcp::isDefaultCompactTool(toolName)
+                           && mcp::terseDefault());
                     if (wantCompact)
                         responseText = mcp::compactEnvelope(responseText);
                 }
