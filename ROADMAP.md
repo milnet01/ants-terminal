@@ -43987,10 +43987,47 @@ Three were reproduced directly in this session rather than taken on report.
   "executable not found on PATH" from "found but failed to start", and
   report the PATH it searched — a message that can only ever name one
   cause sends the reader to the wrong place.
+  Corroborating precedent found in this project's own tree (2026-08-25), and it raises the priority: `tests/features/ci_workflow_deps/spec.md` records that on 2026-08-14 CI was red on main for several commits with `{"code":"rg_failed","error":"cited_by: rg failed to start (is ripgrep installed?)"}` — the SAME message shape from a sibling verb, where the cause really was a missing package. So this refusal string has now been produced by two different causes: ripgrep genuinely absent (that incident) and ripgrep present and working (this one). A message that cannot separate them sends the reader to the wrong repair in one of the two cases, every time.
+
+  That is the same defect ANTS-4651 fixed for spawned test helpers hours later on the same day, and the repair has the same shape: report "executable not found on PATH" and "found but failed to start" as different answers, and name the PATH that was searched. Worth doing for `rcRunRg()` centrally rather than per verb, since cited_by, workspace_search and co_change_family all start rg through it.
   **Layman:** A code-search tool said the search program was missing when it was present, so the session fell back to plain grep.
   Kind: investigate.
   Source: in-session-2026-08-25.
   Lanes: mcp.
+
+- 📋 [ANTS-4654] **check-doc-facts' keep-the-hand-rolled-quotes decision is due for re-decision now that ANTS-4637 has shipped.**
+  `skills/check-doc-facts/references/checks.md` in the global Claude config
+  carries a dated decision: "Decided 2026-08-24 (CFG-0203): keep the
+  hand-rolled half", resting on the measurement that 271 of 520 quotations sit
+  in a loop-log row, and ending with the standing instruction **"Re-decide when
+  the loop-log skip lands"**.
+
+  It landed on 2026-08-25 (ANTS-4637), together with the paragraph-scoped
+  attribution (ANTS-4638), the sibling-directory resolution and honest
+  target statuses (ANTS-4639) and the table-cell scope (ANTS-4640). So that
+  document now instructs a hand-rolled check whose blocker is gone, and its
+  quoted numbers describe a verb that no longer behaves that way.
+
+  MEASURED AFTER THE FIX, over the same corpus (standards, skills, CLAUDE.md,
+  draft/skills/README.md — 102 files, 416 harvested quotations), by linking the
+  engine rather than calling the live verb: 183 skipped as loop-log rows (44%),
+  not_found 30 to 10, no_target 380 to 182, target_unresolved 32, ok 6 either
+  way. `standards/commits.md` went from 9 no_target + 1 not_found to 8 skipped
+  + 2 no_target.
+
+  WHY THIS IS FILED HERE rather than fixed. The file is under
+  `hooks/global-config-lock.sh`, which refuses an edit to the global
+  instruction surface from a project session, and rightly so: a fix made from
+  here would govern every future session on the machine and land outside that
+  repo's own review. It needs a session whose cwd is the config repo.
+
+  NOT AN ANTS DEFECT — no Ants change is owed. This is a pointer so the
+  consequence of ANTS-4637 is not lost, since nothing on the Ants side would
+  ever surface it.
+  **Layman:** A checklist elsewhere says to keep doing a job by hand until a certain fix lands. It landed today, so that instruction is now out of date.
+  Kind: doc.
+  Source: in-session-2026-08-25.
+  Lanes: docs, mcp.
 
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-08-11 triage
 
