@@ -40771,7 +40771,7 @@ filed below.
   Source: Games_Hub_Ants_MCP_Feedback.md 2026-08-20.
   Lanes: remotecontrol, speclint.
 
-- 📋 [ANTS-4567] **read_region gives no positive signal that a read did NOT spill once fields + compact narrow the envelope away.**
+- ✅ [ANTS-4567] **read_region gives no positive signal that a read did NOT spill once fields + compact narrow the envelope away.**
   Probing whether ANTS-4519 was fixed, a caller passed fields:[ok, code,
   spill, row_count, total_bytes, rows_preview_heads_omitted, rows_preview,
   truncated, hint] with compact:true over a 2500-line file, deliberately
@@ -40801,6 +40801,15 @@ filed below.
   the fields description that a fully inapplicable field list is a
   legitimate way to get a one-key envelope, so the shape is not read as a
   failure.
+  Resolved (2026-08-25), and generalised rather than taken literally. The item proposed protecting `spilled` as a key; what shipped is `fields_unmatched`, which names every requested field the envelope did not carry, emitted only when non-empty.
+
+  Why the wider fix. Protecting one key answers "did this read spill?" for one verb, and the reporter's own analysis is that the problem is bigger: `{"ok":true}` was indistinguishable from FOUR outcomes -- a correct answer, the verb ignoring fields, compaction stripping the survivors, and every name being misspelled. Naming the unmatched fields separates all four and does it for all eighteen projection verbs. In the reporter's own probe the reply would now carry fields_unmatched listing spill / row_count / rows_preview / truncated / hint, which reads directly as "none of those apply, so it did not spill" -- the positive signal they asked for, without adding a per-call field to the most-used read verb in the toolkit.
+
+  It is ANTS-4578's pattern (say what you did not honour) applied to the VALUES of `fields` rather than to the argument, so the two compose: ignored_args says the argument was dropped, fields_unmatched says the argument was honoured and these names were not there.
+
+  An exactly-matching request is byte-identical to before -- asserted, not assumed. INV-4 re-fixtured: its contract was "unknown name is not an error", which is unchanged; the bare `{}` it also pinned was the defect. Mutation-verified. 3939/3939.
+
+  Not needed as a result: the item's fallback of documenting that an inapplicable list legitimately returns one key. The envelope now says so itself.
   **Layman:** A deliberately cheap probe can come back saying only "ok", which is indistinguishable from the probe being wrong.
   Kind: enhancement.
   Source: OneUp_Ants_MCP_Feedback.md 2026-08-20.

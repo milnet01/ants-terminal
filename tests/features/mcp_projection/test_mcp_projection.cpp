@@ -61,12 +61,33 @@ TEST(McpProjection, Inv3MultiFieldSubset) {
 
 // INV-4 — unknown field yields {}; known+unknown yields only the known.
 TEST(McpProjection, Inv4UnknownFieldEmptyNotError) {
-    EXPECT_EQ(mcp::projectFields(kBody, fields({"nonexistent"})),
-              QStringLiteral("{}"));
+    // ANTS-4567 re-fixture. The contract is "not an error", and that is
+    // unchanged; what moved is that the reply now SAYS which names it could
+    // not find, because an all-unknown request used to return `{}` — the same
+    // shape a correct request for entirely inapplicable fields returns, and a
+    // caller could not tell those apart from a misspelling.
+    const QJsonObject none =
+        parse(mcp::projectFields(kBody, fields({"nonexistent"})));
+    EXPECT_FALSE(none.contains(QStringLiteral("error")))
+        << "an unknown name is still not an error";
+    EXPECT_EQ(none.value(QStringLiteral("fields_unmatched")).toArray(),
+              (QJsonArray{QStringLiteral("nonexistent")}))
+        << "…and the reply names what it could not find";
+
     const QJsonObject o =
         parse(mcp::projectFields(kBody, fields({"count", "nope"})));
-    EXPECT_EQ(o.size(), 1);
-    EXPECT_EQ(o.value("count").toInt(), 3);
+    EXPECT_EQ(o.value("count").toInt(), 3) << "the known field survives";
+    EXPECT_EQ(o.value(QStringLiteral("fields_unmatched")).toArray(),
+              (QJsonArray{QStringLiteral("nope")}))
+        << "only the unmatched name is listed";
+
+    // An exactly-matching request is byte-identical to before: the field is
+    // emitted only when it says something.
+    const QJsonObject exact =
+        parse(mcp::projectFields(kBody, fields({"count"})));
+    EXPECT_EQ(exact.size(), 1)
+        << "a request that matches everything must not grow";
+    EXPECT_FALSE(exact.contains(QStringLiteral("fields_unmatched")));
 }
 
 // INV-5 — non-string / empty entries are ignored, not faulted.

@@ -213,6 +213,28 @@ QString projectFields(const QString &responseText, const QJsonArray &fields) {
         if (!name.isEmpty() && src.contains(name))
             out.insert(name, src.value(name));
     }
+    // ANTS-4567 — name the requested fields the envelope did NOT carry, so an
+    // absence can be read positively. A caller probing read_region narrowed to
+    // a set that happened to be entirely inapplicable and got back
+    // `{"ok":true}`. That was the correct answer to "did this read spill?" — it
+    // did not — and was indistinguishable from the verb ignoring `fields`,
+    // from compaction having stripped the survivors, and from every name being
+    // misspelled. Absence carried the answer, and absence is the one thing a
+    // caller cannot read.
+    //
+    // Emitted only when something is missing, so an exactly-matching request
+    // is byte-identical to before. It is ANTS-4578's pattern — say what you
+    // did not honour — applied to the VALUES of `fields` rather than to the
+    // argument itself, and it survives the compaction step that runs after
+    // this one because a non-empty array is not dead weight.
+    QJsonArray unmatched;
+    for (const QJsonValue &f : fields) {
+        if (!f.isString()) continue;
+        const QString name = f.toString();
+        if (!name.isEmpty() && !src.contains(name)) unmatched.append(name);
+    }
+    if (!unmatched.isEmpty())
+        out.insert(QStringLiteral("fields_unmatched"), unmatched);
     // ANTS-2112 — never blank a refusal. A fields=-narrowed read that hits a
     // rate-limit / validation refusal carries its error in ok/code/error/
     // retry_after_ms — none of which the caller's fields= would name — so the

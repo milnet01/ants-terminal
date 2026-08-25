@@ -46,7 +46,17 @@ short-circuits when state is unchanged.
   key, with its value copied verbatim.
 - **INV-3 — multi-field subset preserves only named keys, verbatim.**
   `fields=["branch","files"]` yields `{branch,files}` and nothing else.
-- **INV-4 — unknown field name yields an empty object, never an error.**
+- **INV-4 — unknown field name is never an error, and is REPORTED.**
+  (ANTS-4567) A name the envelope does not carry is listed in
+  `fields_unmatched`, emitted only when non-empty — so an exactly-matching
+  request is byte-identical to before, while an all-unknown list yields that
+  field alone instead of the bare `{}` it used to. The bare `{}` was the
+  defect: it is also what a CORRECT request for entirely inapplicable fields
+  returns, so a caller probing a verb could not tell a true "none of these
+  apply" from a misspelling, from compaction having stripped the survivors, or
+  from the argument being dropped altogether. Absence was carrying the answer.
+  This is ANTS-4578's pattern applied to the VALUES of `fields` rather than to
+  the argument.
   `fields=["nonexistent"]` returns `{}`. A mix of known + unknown returns
   only the known keys.
 - **INV-5 — non-string / empty field entries are ignored**, not faulted.
