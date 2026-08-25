@@ -821,10 +821,41 @@ TEST(RoadmapMigrateVerb, Inv10NotesAreBoundedOnBothAxes) {
         ASSERT_TRUE(env.value(QStringLiteral("ok")).toBool())
             << env.value(QStringLiteral("error")).toString().toStdString();
 
-        EXPECT_EQ(env.value(QStringLiteral("notes")).toArray().size(), 200);
-        EXPECT_TRUE(env.value(QStringLiteral("notes_truncated")).toBool());
+        // ANTS-4649 — the entry cap still bounds the array, but repetition is
+        // now collapsed BEFORE the cap, so 250 identical notes cost a handful
+        // of rows instead of 200. A 357-item migration spent ~6 KB restating
+        // one mechanical fact the envelope already carried twice, and paid it
+        // again on the dry run a careful caller makes first.
+        const QJsonArray notes = env.value(QStringLiteral("notes")).toArray();
+        EXPECT_LT(notes.size(), 20)
+            << "repeated (code, detail) pairs must collapse, not fill the cap";
+        EXPECT_TRUE(env.value(QStringLiteral("notes_collapsed")).toBool());
+        EXPECT_FALSE(env.value(QStringLiteral("notes_truncated")).toBool())
+            << "nothing was dropped — the rows were merged, which is different";
         EXPECT_GT(env.value(QStringLiteral("notes_count")).toInt(), 200)
-            << "notes_count must stay the TRUE total, not the clipped one";
+            << "notes_count must stay the TRUE total, not the collapsed one";
+
+        // The collapse must be lossless in aggregate: every note is accounted
+        // for by exactly one row's count. A summary that does not add up is a
+        // worse answer than the repetition it replaced.
+        int summed = 0;
+        bool sawCollapsedRow = false;
+        for (const QJsonValue &v : notes) {
+            const QJsonObject o = v.toObject();
+            ASSERT_TRUE(o.contains(QStringLiteral("count")));
+            summed += o.value(QStringLiteral("count")).toInt();
+            if (o.value(QStringLiteral("count")).toInt() <= 1) continue;
+            sawCollapsedRow = true;
+            EXPECT_FALSE(o.contains(QStringLiteral("line")))
+                << "a merged row has no single line — it must not claim one";
+            const QJsonArray samples =
+                o.value(QStringLiteral("sample_lines")).toArray();
+            EXPECT_GT(samples.size(), 0) << "a merged row must stay locatable";
+            EXPECT_LE(samples.size(), 3);
+        }
+        EXPECT_TRUE(sawCollapsedRow);
+        EXPECT_EQ(summed, env.value(QStringLiteral("notes_count")).toInt())
+            << "the per-row counts must account for every note";
     }
 
     // (b) The byte cap. A capped array of uncapped strings bounds nothing.
@@ -1486,3 +1517,4 @@ TEST(RoadmapMigrateVerb, Ants4621HandlerReadsOnlyDeclaredArgs) {
                "false, and ignored_args will call it ignored";
     }
 }
+

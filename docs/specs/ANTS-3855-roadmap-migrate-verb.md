@@ -483,7 +483,8 @@ bounds no bytes — `Note::detail` is a `QString` with no length rule of its own
 
 | Bound | Value | On breach |
 |---|---|---|
-| entries | 200 | `notes_truncated: true`; `notes_count` stays the TRUE total |
+| rows | 200 DISTINCT `(code, detail, source_index)` groups | `notes_truncated: true`; `notes_count` stays the TRUE total |
+| repetition | collapsed before the row cap (ANTS-4649) | `notes_collapsed: true`; the merged row carries `count` + up to 3 `sample_lines` and NO `line` |
 | `detail` | 2048 characters each | that entry's `detail` is clipped to exactly 2048 with an ellipsis as the last character |
 
 **The detail bound is in CHARACTERS, not bytes** — corrected at implementation
@@ -775,12 +776,32 @@ test's own `Access::Interactive` `RoadmapStore` at the same `storePath` after
   `RoadmapStore::open()`, and ANTS-3756 INV-17 is where that is asserted;
   re-asserting it here would duplicate another spec's invariant with a fixture
   that cannot see it.
-- **INV-10** — `notes[]` honours both bounds in § 2.4. *Test:* feature test —
-  a fixture roadmap carrying >200 note-raising lines yields exactly 200
-  entries, `notes_truncated: true`, and a `notes_count` equal to the true
-  total (>200); a fixture whose note `detail` would exceed 2048 characters
-  yields a `detail` of exactly 2048 ending in the ellipsis. Both legs are needed
-  because the two bounds are independent — capping entries bounds no bytes.
+- **INV-10** — `notes[]` honours the bounds in § 2.4. *(Amended 2026-08-25,
+  ANTS-4649.)* Repetition is collapsed BEFORE the row cap: rows are keyed by
+  `(code, detail, source_index)` in first-appearance order, a row of one keeps
+  the pre-ANTS-4649 shape exactly, and a merged row carries `count` plus up to
+  three `sample_lines` and omits `line` — it has no single line and must not
+  claim one. EVERY row carries `count`, so the counts sum to `notes_count` and
+  the collapse is checkably lossless in aggregate. `notes_truncated` and
+  `notes_collapsed` are two different facts and stay two fields: truncated
+  means rows were DROPPED and are unrecoverable, collapsed means rows were
+  MERGED and every note is still accounted for.
+  <br>Why it changed: a 357-item migration returned 357 identical
+  `{code:"field_defaulted", detail:"source", line:N}` objects — ~6 KB — beside
+  `defaulted_fields:{source:357}` and `notes_count:357`, which already stated
+  the same fact twice, and both the dry run and the real call emitted it, so a
+  caller who previewed first paid it twice. The per-line detail was not
+  actionable: the column defaults because the legacy bullets carry no `Source:`
+  trailer at all, which is uniform across the file rather than per-line.
+  Measured on the 250-item fixture: 500 notes → 2 rows, 197 bytes, and
+  COMPLETE, where the pre-amendment array was 200 rows and still truncated.
+  *Test:* feature test — a fixture roadmap carrying >200 note-raising lines
+  yields a handful of rows rather than 200, `notes_collapsed: true`,
+  `notes_truncated: false` (nothing was dropped), a `notes_count` equal to the
+  true total (>200), per-row `count`s summing to it, and no `line` on a merged
+  row; a fixture whose note `detail` would exceed 2048 characters yields a
+  `detail` of exactly 2048 ending in the ellipsis. Both legs are needed because
+  the two bounds are independent — capping rows bounds no bytes.
 - **INV-11** — This verb writes no **source** file under `req.projectRoot`, and
   `markdown_rewritten` says so. *Test:* feature test — hash every file under the
   fixture root before `run()` and again after a successful **non-dry** run;

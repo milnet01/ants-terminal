@@ -46,6 +46,9 @@ QJsonObject rmErr(const QString &code, const QString &message) {
 // project's note handling uses (rcdetail::kRcMaxNoteChars).
 constexpr int kMaxNoteEntries     = 200;
 constexpr int kMaxNoteDetailChars = 2048;
+// ANTS-4649 — enough to locate a repeated note without restating it. Three
+// lines answer "where does this happen?"; the fourth answers nothing new.
+constexpr int kMaxNoteSampleLines = 3;
 
 QJsonObject noteToJson(const RoadmapMigrate::Note &n) {
     QJsonObject o;
@@ -63,16 +66,72 @@ QJsonObject noteToJson(const RoadmapMigrate::Note &n) {
 }
 
 // Carried by the success envelope and by `migrate_failed`, under one set of
-// bounds. `notes_count` stays the TRUE total so a truncated array cannot read
-// as a complete one.
+// bounds. `notes_count` stays the TRUE total so a collapsed or truncated array
+// cannot read as a complete one.
+//
+// ANTS-4649 — repetition is collapsed BEFORE the cap. A 357-item migration
+// returned 357 `{code:"field_defaulted", detail:"source", line:N}` objects —
+// roughly 6 KB — beside `defaulted_fields:{source:357}` and
+// `notes_count:357`, which already state the same fact twice; and because both
+// the dry run and the real call emit it, a careful caller who previews first
+// paid it twice. The per-line detail was not actionable: the column defaults
+// because the legacy bullets carry no `Source:` trailer at all, which is
+// uniform across the file rather than a per-line problem.
+//
+// Rows are keyed by (code, detail, source_index) and keep first-appearance
+// order. A row of one keeps the old shape exactly, so a genuine one-off is
+// untouched; a merged row carries `count` + up to kMaxNoteSampleLines
+// `sample_lines` and NO `line`, because it has no single line and must not
+// claim one. Every row carries `count`, so the counts sum to `notes_count`
+// and the collapse is checkably lossless in aggregate.
 void setNotes(QJsonObject &env, const QVector<RoadmapMigrate::Note> &notes) {
+    struct Group {
+        RoadmapMigrate::Note first;
+        int         count = 0;
+        QJsonArray  sampleLines;
+    };
+    QVector<Group>      groups;
+    QHash<QString, int> indexOf;          // key → position in `groups`
+
+    for (const RoadmapMigrate::Note &n : notes) {
+        const QString key = n.code + QLatin1Char('\x1f') + n.detail
+                          + QLatin1Char('\x1f') + QString::number(n.sourceIndex);
+        auto at = indexOf.constFind(key);
+        if (at == indexOf.constEnd()) {
+            indexOf.insert(key, groups.size());
+            Group g;
+            g.first = n;
+            g.count = 1;
+            g.sampleLines.append(n.line);
+            groups.append(g);
+            continue;
+        }
+        Group &g = groups[at.value()];
+        ++g.count;
+        if (g.sampleLines.size() < kMaxNoteSampleLines) g.sampleLines.append(n.line);
+    }
+
+    bool collapsed = false;
     QJsonArray arr;
-    const int shown = std::min<int>(notes.size(), kMaxNoteEntries);
-    for (int i = 0; i < shown; ++i)
-        arr.append(noteToJson(notes.at(i)));
-    env[QStringLiteral("notes")]           = arr;
-    env[QStringLiteral("notes_count")]     = notes.size();
-    env[QStringLiteral("notes_truncated")] = notes.size() > kMaxNoteEntries;
+    const int shown = std::min<int>(groups.size(), kMaxNoteEntries);
+    for (int i = 0; i < shown; ++i) {
+        const Group &g = groups.at(i);
+        QJsonObject o  = noteToJson(g.first);
+        o[QStringLiteral("count")] = g.count;
+        if (g.count > 1) {
+            collapsed = true;
+            o.remove(QStringLiteral("line"));
+            o[QStringLiteral("sample_lines")] = g.sampleLines;
+        }
+        arr.append(o);
+    }
+    env[QStringLiteral("notes")]       = arr;
+    env[QStringLiteral("notes_count")] = notes.size();
+    // Two different facts, deliberately two fields: `notes_truncated` means
+    // rows were DROPPED and are unrecoverable; `notes_collapsed` means rows
+    // were MERGED and every note is still accounted for by a count.
+    env[QStringLiteral("notes_truncated")] = groups.size() > kMaxNoteEntries;
+    env[QStringLiteral("notes_collapsed")] = collapsed;
 }
 
 // ANTS-4479 — WHICH items `items_updated` counted, and which columns moved.

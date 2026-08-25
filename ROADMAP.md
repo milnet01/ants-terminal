@@ -43942,7 +43942,7 @@ Three were reproduced directly in this session rather than taken on report.
   Source: OneUp-2026-08-24.
   Lanes: mcp.
 
-- 📋 [ANTS-4649] **roadmap_migrate emits one inline note per defaulted field — 357 of them — duplicating its own defaulted_fields summary.**
+- ✅ [ANTS-4649] **roadmap_migrate emits one inline note per defaulted field — 357 of them — duplicating its own defaulted_fields summary.**
   On a 357-item roadmap, `roadmap_migrate` returned a `notes` array of 357
   `{code:"field_defaulted", detail:"source", line:N, source_index:0}` objects —
   roughly 6 KB — IN ADDITION to `defaulted_fields:{source:357}` and
@@ -43961,6 +43961,7 @@ Three were reproduced directly in this session rather than taken on report.
   sample_lines:[80,84,88]}`. `defaulted_fields` + `notes_count` already carry
   the total, so the array only needs to be a sample. Gating the full array
   behind an opt-in flag, the way include_body works, is the alternative.
+  Resolved (2026-08-25): `setNotes` collapses repetition BEFORE the row cap, taking the item's first option rather than the opt-in flag. Rows are keyed by (code, detail, source_index) in first-appearance order; a row of one keeps the pre-change shape exactly, so a genuine one-off is untouched, and a merged row carries `count` plus up to three `sample_lines` and OMITS `line` — it has no single line and must not claim one. EVERY row carries `count`, so the counts sum to `notes_count` and the collapse is checkably lossless in aggregate; the test asserts that sum rather than just the row count, because a summary that does not add up is a worse answer than the repetition it replaced. `notes_collapsed` and `notes_truncated` are deliberately two fields for two different facts: MERGED and fully accounted for, versus DROPPED and unrecoverable. MEASURED on the 250-item fixture: 500 notes → 2 rows, 197 bytes, and complete — where the pre-change array was 200 rows and still `notes_truncated:true`, so this is cheaper AND more informative, not a trade. INV-10 amended on both docs/specs/ANTS-3855-roadmap-migrate-verb.md and the feature spec, since this changes a shape those documents pinned. The existing INV-10 test was rewritten first and proved red on assertions.
   **Layman:** Migrating a project prints the same message hundreds of times when one line and a count would do.
   Kind: perf.
   Source: Album_Builder-2026-08-24.

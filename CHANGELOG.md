@@ -173,6 +173,9 @@ for security-relevant changes.
 
 ### Changed
 
+- **roadmap_migrate collapses repeated notes instead of restating one fact hundreds of times** (ANTS-4649)
+  A 357-item migration returned 357 identical "field defaulted" objects — about 6 KB — beside two envelope fields that already said the same thing, and both the preview and the real call emitted it. Repeated notes are now merged by (code, detail, source), each merged row carrying a count and up to three sample lines. Measured on the 250-item fixture: 500 notes become 2 rows and 197 bytes, and the answer is now complete where before it was capped at 200 rows and still truncated.
+
 - **a ripgrep start failure now names its cause instead of asking whether ripgrep is installed** (ANTS-4650)
   "rg failed to start (is ripgrep installed?)" could only ever name one cause, and it has been emitted both for ripgrep genuinely absent and for ripgrep present and working — so in one of those cases it sent the reader to the wrong repair every time. The three rg-backed verbs now share one classifier that distinguishes a vanished search root, rg missing from PATH (naming the PATH searched), rg still starting when the wait expired (a loaded host — retry, do not fall back to grep), and rg refused by the OS.
 

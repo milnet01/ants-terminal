@@ -80,8 +80,12 @@ tested apart from is not a seam.
 - **INV-9** — A store this verb creates is mode 0600. The test sets `umask(022)`
   for the duration of the call and restores it, or the leg passes vacuously on a
   machine already running `umask 077`.
-- **INV-10** — `notes[]` honours both bounds: 200 entries and 2048 characters
-  of `detail` each.
+- **INV-10** — `notes[]` honours its bounds: 2048 characters of `detail` each,
+  and 200 DISTINCT `(code, detail, source_index)` rows after ANTS-4649 collapses
+  repetition. A merged row carries `count` + up to three `sample_lines` and no
+  `line`; every row carries `count`, so the counts sum to `notes_count`.
+  `notes_collapsed` (rows MERGED, nothing lost) and `notes_truncated` (rows
+  DROPPED, unrecoverable) are two facts and stay two fields.
 
 ## Out of scope
 
