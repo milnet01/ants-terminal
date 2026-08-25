@@ -48,7 +48,14 @@ jobs:
     timeout-minutes: 25
     env:
       CCACHE_DIR: ${{ github.workspace }}/.ccache
-      CCACHE_MAXSIZE: 500M
+      # ANTS-4652 — 500M was thrashing. build-test's own stats step reported
+      # `Cache size (GB): 0.5 / 0.5 (99.98%)` with `Cleanups: 14` in ONE run:
+      # the cache filled and evicted DURING the build, which is why an 85% hit
+      # rate still cost ~500 s of compile. CLAUDE.md records the same trap at
+      # the other end — locally, 5 GiB self-evicts on this Qt codebase. The
+      # measurement that says whether 2G is enough is the next run's
+      # `Cleanups:` line; non-zero means raise it again.
+      CCACHE_MAXSIZE: 2G
       CCACHE_COMPRESS: "1"
     steps:
       - name: Check out source
@@ -173,7 +180,14 @@ jobs:
     timeout-minutes: 42
     env:
       CCACHE_DIR: ${{ github.workspace }}/.ccache
-      CCACHE_MAXSIZE: 500M
+      # ANTS-4652 — 500M was thrashing. build-test's own stats step reported
+      # `Cache size (GB): 0.5 / 0.5 (99.98%)` with `Cleanups: 14` in ONE run:
+      # the cache filled and evicted DURING the build, which is why an 85% hit
+      # rate still cost ~500 s of compile. CLAUDE.md records the same trap at
+      # the other end — locally, 5 GiB self-evicts on this Qt codebase. The
+      # measurement that says whether 2G is enough is the next run's
+      # `Cleanups:` line; non-zero means raise it again.
+      CCACHE_MAXSIZE: 2G
       CCACHE_COMPRESS: "1"
     steps:
       - name: Check out source
@@ -279,6 +293,15 @@ jobs:
   qt62-baseline:
     runs-on: ubuntu-22.04
     timeout-minutes: 30
+    # ANTS-4652 — this job had no compile cache at all and rebuilt the whole
+    # tree from scratch every run: 1281 s measured, the second-longest job and
+    # one bad day from becoming the critical path. Its own cache key, because
+    # Qt 6.2 headers hash to different ccache entries than the 6.4+ the other
+    # jobs build against — sharing either would miss 100%.
+    env:
+      CCACHE_DIR: ${{ github.workspace }}/.ccache
+      CCACHE_MAXSIZE: 2G
+      CCACHE_COMPRESS: "1"
     steps:
       - name: Check out source
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10  # v6.0.3
@@ -287,6 +310,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
+            ccache \
             build-essential cmake ninja-build pkg-config \
             qt6-base-dev qt6-base-dev-tools \
             libqt6opengl6-dev libqt6openglwidgets6 \
@@ -296,11 +320,39 @@ jobs:
             libfontconfig1-dev libfreetype-dev \
             libxkbcommon-dev libxkbcommon-x11-dev
 
+      - name: Restore ccache (qt62)
+        # Split restore/save, per ANTS-4533's finding on build-asan: the
+        # combined action saves from an implicit post-step that is SKIPPED on
+        # cancellation, so a timed-out run leaves the cache frozen at the last
+        # run that completed.
+        uses: actions/cache/restore@27d5ce7f107fe9357f9df03efb73ab90386fccae  # v5.0.5
+        with:
+          path: ${{ github.workspace }}/.ccache
+          key: ${{ runner.os }}-ccache-qt62-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-ccache-qt62-
+
       - name: Configure (Release, tests ON)
-        run: cmake -S . -B build-qt62 -G Ninja -DCMAKE_BUILD_TYPE=Release
+        run: |
+          cmake -S . -B build-qt62 -G Ninja -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_C_COMPILER_LAUNCHER=ccache \
+            -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
+          ccache --zero-stats
 
       - name: Build everything (compile guard — no ctest)
         # Compiles the app + every test TU on Qt 6.2; running the suite
         # is the build-test job's responsibility. A baseline-only compile
         # error (find_sources-class) fails here, not at the release tag.
         run: cmake --build build-qt62 --parallel
+
+      - name: Save ccache (qt62)
+        # always(): must survive the overrun it exists to prevent recurring.
+        if: always()
+        uses: actions/cache/save@27d5ce7f107fe9357f9df03efb73ab90386fccae  # v5.0.5
+        with:
+          path: ${{ github.workspace }}/.ccache
+          key: ${{ runner.os }}-ccache-qt62-${{ github.sha }}
+
+      - name: ccache stats (qt62)
+        if: always()
+        run: ccache --show-stats

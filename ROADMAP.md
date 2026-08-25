@@ -33209,6 +33209,71 @@ in each bullet, not just the reporter's symptom.
   Source: in-session-2026-08-25.
   Lanes: ci, tests.
 
+- 🚧 [ANTS-4652] **CI's compile cache is capped at 500 MB and thrashes; qt62-baseline has none at all.**
+  MEASURED, run 32820161654 (2026-08-25). The three jobs run in PARALLEL, so
+  wall clock is the slowest of them:
+
+    build-asan      1681 s  = Build 899 s + sanitized ctest 761 s
+    qt62-baseline   1313 s  = Build 1281 s (no ctest in this job)
+    build-test       829 s  = Build 494 s + ctest 148 s + cppcheck 144 s
+
+  THE CACHE IS FULL. build-test's own stats step reports
+  `Cache size (GB): 0.5 / 0.5 (99.98%)` with `Cleanups: 14` in a single run:
+  CCACHE_MAXSIZE is 500M, the cache fills, and it evicts DURING the build. The
+  asan cache measures 473 MB against the same 500 MB cap. Hit rate 85.26% on
+  release, which is what a thrashing cache looks like rather than a healthy one.
+
+  This project already knows this trap at the other end. CLAUDE.md's build
+  section says of the LOCAL cache: "at the 5 GiB default this Qt codebase fills
+  it and self-evicts (~40% hit rate); `ccache -M 20G` once lifts the hit rate".
+  CI is set to one TENTH of the size already known to be too small, and no
+  comment in ci.yml justifies the number.
+
+  qt62-baseline HAS NO CACHE AT ALL. It recompiles the whole tree from scratch
+  every run: 1281 s, the second-longest job, and one bad day from becoming the
+  critical path.
+
+  FIX. Raise CCACHE_MAXSIZE on both cached jobs, and give qt62-baseline the
+  same split restore/save ANTS-4533 established for build-asan. The measurement
+  that says whether it worked is the `Cleanups:` line in the next run's stats:
+  non-zero means it is still evicting mid-build and the cap is still too small.
+  Applied (2026-08-25): CCACHE_MAXSIZE 500M to 2G on build-test and build-asan, and qt62-baseline given its own split restore/save on the ANTS-4533 pattern, with its own cache key (Qt 6.2 headers hash to different entries than the 6.4+ the other jobs build against, so sharing either would miss 100%).
+
+  READ THE FIRST RUN CAREFULLY — it will UNDERSTATE the gain, and mistaking that for failure is the likely error. qt62-baseline has no `Linux-ccache-qt62-` key to restore yet, so its first run still compiles from scratch and only SAVES; the gain appears on the run after. The other two restore the old 500M-capped cache and grow toward 2G from there, so their hit rate improves gradually rather than at once.
+
+  THE MEASUREMENT IS THE `Cleanups:` LINE in each job's ccache stats step, not the wall clock. Non-zero means the cache is still evicting mid-build and the cap is still too small. Wall clock is confounded by runner speed and queue depth; Cleanups is not.
+
+  TWO PROPOSALS DROPPED ON INSPECTION, recorded so they are not re-proposed. A workflow-level `concurrency: cancel-in-progress` would stop superseded runs, but this repo pushes straight to main, so it would cancel the verdict on intermediate commits — and ci_asan_budget's own spec records this project being bitten by runs that concluded `cancelled` unnoticed. Raising build-test's serial ctest to -j4 would cut ~100 s, but CLAUDE.md names a loaded 4-vCPU runner as the thing that exposes timing races, and ANTS-4651 was exactly that class; trading wall clock for contention-induced flakes is the wrong direction on the job that is not the critical path anyway.
+  **Layman:** The build machine throws away most of what it compiled last time, so it recompiles the same code every run.
+  Kind: perf.
+  Source: user-request-2026-08-25.
+  Lanes: ci.
+
+- 📋 [ANTS-4653] **CI compiles at -j2 on a 4-vCPU runner because JOB_POOLS is tuned for a 32 GiB desktop.**
+  ci.yml's own comment says it: "Runner is the GitHub-hosted ubuntu-24.04
+  (4 vCPU / 16 GiB) with the in-tree JOB_POOLS cap limiting compile to -j2."
+  That cap is `compile_pool=max(2, nproc/4)`, which on 4 vCPU is 2 — so half
+  the runner's cores sit idle through a 900 s build.
+
+  WHY THIS IS NOT A ONE-LINE BUMP, and why it is filed rather than done.
+  The cap exists because cc1plus over-parallelism earlyoom-reaped binaries in
+  0.7.x. The CI runner has 16 GiB against the development host's 32 GiB, so it
+  is TIGHTER per core, not looser, and an ASan build is the memory-hungriest
+  configuration this project has. A blind bump risks trading a slow build for
+  an OOM-killed one, which fails in a way that reads as something else.
+
+  WHAT WOULD SETTLE IT. Measure peak RSS per cc1plus on the sanitizer
+  configuration, against the runner's real memory, and derive the cap from that
+  rather than from nproc. The pool is a CMake-side knob, so an experiment can
+  override it per job without touching the local default.
+
+  NOT to be bundled with a cache change: two levers moved together cannot be
+  told apart in the next run's numbers.
+  **Layman:** The build machine has four processors but only uses two, because the limit was set for a different computer.
+  Kind: investigate.
+  Source: in-session-2026-08-25.
+  Lanes: ci, build.
+
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-08-14 triage
 
 Un-triaged findings drained from the shared `*_Ants_MCP_Feedback.md` corpus
