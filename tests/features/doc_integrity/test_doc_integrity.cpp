@@ -633,3 +633,136 @@ TEST(DocIntegrity, UngrantedToolDescriptionDoesNotGrant) {
     EXPECT_EQ(countKind(fs, Kind::UngrantedTool), 1)
         << "description: must not act as a grant";
 }
+
+// ANTS-4641 — a numbering gap the document itself accounts for.
+//
+// `skills/review-tests/references/dimensions.md` numbers its dimensions 1, 4,
+// 5-9, 11, 12, 14 and carries a `## Retired dimensions` section listing 2, 3,
+// 10 and 13 with a reason each, stating outright that the numbers are NOT
+// reused — because a reader meeting dimension 11 in an old report must still
+// be able to look it up. Three of that tree's fourteen findings were those
+// gaps, permanently, on a correct file — and the obvious remedy, renumbering,
+// is the one action the document forbids.
+//
+// Suppressing it silently would be the other failure, so the numbers are
+// REPORTED: a justified gap has to be distinguishable from an unchecked one.
+TEST(DocIntegrity, Ants4641RetiredNumbersAccountForTheirOwnGap) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString root = canon(tmp);
+
+    // The real file's shape: the retired numbers are LIST ITEMS under a
+    // Retired heading, which is a far narrower signal than sweeping the
+    // section's prose for integers — that prose says "2026-08-12" and
+    // "question 2" and would poison a looser rule.
+    ASSERT_TRUE(writeFile(root + "/docs/a.md",
+                          "# Dimensions\n"
+                          "\n"
+                          "### 1. Accuracy\n"
+                          "### 4. Never run\n"
+                          "### 5. Flakiness\n"
+                          "\n"
+                          "## Retired dimensions\n"
+                          "\n"
+                          "Retired 2026-08-12. **The numbers are not reused.**\n"
+                          "\n"
+                          "- **2. Assertion quality.** Diagnosability, not validity.\n"
+                          "- **3. Coverage gaps.** A different question entirely.\n"));
+    // Same gap, no accounting — must still be a finding, or the rule has
+    // simply turned the check off.
+    ASSERT_TRUE(writeFile(root + "/docs/b.md",
+                          "# Dimensions\n"
+                          "\n"
+                          "### 1. Accuracy\n"
+                          "### 4. Never run\n"
+                          "### 5. Flakiness\n"));
+
+    DocIntegrity::Suppressed sup;
+    const auto fs = DocIntegrity::check(root, {"docs/a.md"}, {}, nullptr, &sup);
+    EXPECT_EQ(countKind(fs, Kind::HeadingSequence), 0)
+        << "ANTS-4641: the document names 2 and 3 as retired, so the gap is "
+           "accounted for — and renumbering to close it is the one action the "
+           "document forbids";
+    EXPECT_EQ(sup.headingNumbers.value(QStringLiteral("docs/a.md")),
+              (QList<int>{2, 3}))
+        << "ANTS-4641: the suppression is reported, so a justified gap is "
+           "distinguishable from an unchecked one";
+
+    DocIntegrity::Suppressed sup2;
+    const auto fs2 = DocIntegrity::check(root, {"docs/b.md"}, {}, nullptr, &sup2);
+    EXPECT_EQ(countKind(fs2, Kind::HeadingSequence), 1)
+        << "ANTS-4641: an unaccounted gap is still a finding";
+    EXPECT_TRUE(sup2.headingNumbers.isEmpty())
+        << "ANTS-4641: …and nothing was suppressed for it";
+}
+
+// ANTS-4642 — a link dragged along by a verbatim quotation.
+//
+// A dated review record quotes two standards word for word, and those
+// standards link to their siblings. The links were correct in `standards/` and
+// cannot resolve from the record's `docs/` — but rewriting them would falsify
+// the quotation, which is the whole point of the record. Every remedy either
+// breaks the quotation or leaves the finding standing.
+//
+// The quotation WRAPS, which is what makes a line-scoped rule useless here:
+// in the real file `*"Release tagging is\n[releases.md](releases.md) §4."*`
+// opens on one line and closes on the next.
+TEST(DocIntegrity, Ants4642LinkInsideAQuotationIsNotABrokenLink) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString root = canon(tmp);
+    ASSERT_TRUE(writeFile(root + "/docs/rec.md",
+                          "# Record\n"
+                          "\n"
+                          "The standard states *\"Push them explicitly rather "
+                          "than relying on a\n"
+                          "bulk push\"*, then hands off: *\"Release tagging is\n"
+                          "[releases.md](releases.md) \xC2\xA7 4.\"*\n"
+                          "\n"
+                          "This record's own link is [gone](nowhere.md).\n"));
+
+    DocIntegrity::Suppressed sup;
+    const auto fs = DocIntegrity::check(root, {"docs/rec.md"}, {}, nullptr, &sup);
+    EXPECT_FALSE(hasMention(fs, Kind::BrokenLink, QStringLiteral("releases.md")))
+        << "ANTS-4642: the link is inside a verbatim quotation of another "
+           "document — rewriting it would falsify the quotation, so there is "
+           "nothing to fix at this end";
+    EXPECT_TRUE(hasMention(fs, Kind::BrokenLink, QStringLiteral("nowhere.md")))
+        << "ANTS-4642: the record's OWN broken link is still a finding — the "
+           "rule must not turn the check off";
+    EXPECT_EQ(sup.quotedLinks, 1)
+        << "ANTS-4642: the suppression is counted, not silent";
+}
+
+// ANTS-4643 — a `~/`-prefixed link target.
+//
+// Eight findings on one tree were `[SKILL.md](~/.claude/skills/…/SKILL.md)`
+// inside scaffolding templates. The file exists at that absolute path; the
+// checker resolved `~/…` relative to the document and said it was missing,
+// which sends a session looking for a file that is present.
+//
+// The decision: `~/` names a location OUTSIDE the project, exactly as a
+// leading `/` does, and this resolver's contract is relative targets under the
+// root. So it is skipped like any absolute target — no finding, no probe, and
+// no message that could be wrong.
+TEST(DocIntegrity, Ants4643TildeTargetIsOutOfScopeNotMissing) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString root = canon(tmp);
+    ASSERT_TRUE(writeFile(root + "/docs/a.md",
+                          "# T\n"
+                          "\n"
+                          "Read [SKILL.md](~/.claude/skills/app-workflow/SKILL.md).\n"
+                          "Absolute already skips: [x](/etc/hosts).\n"
+                          "Relative still checked: [gone](nope.md).\n"));
+
+    const auto fs = DocIntegrity::check(root, {"docs/a.md"});
+    EXPECT_FALSE(hasMention(fs, Kind::BrokenLink, QStringLiteral("~/")))
+        << "ANTS-4643: a `~/` target is out of the project, like a leading "
+           "slash — reporting it MISSING sends a session hunting a file that "
+           "is there";
+    EXPECT_EQ(countKind(fs, Kind::BrokenLink), 1)
+        << "ANTS-4643: exactly the genuinely relative miss survives";
+    EXPECT_TRUE(hasMention(fs, Kind::BrokenLink, QStringLiteral("nope.md")))
+        << "ANTS-4643: …and it is the relative one";
+}

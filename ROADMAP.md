@@ -43566,7 +43566,7 @@ Three were reproduced directly in this session rather than taken on report.
   Source: finbreak-2026-08-24 (recovered from suspected_untagged).
   Lanes: mcp, docs.
 
-- 📋 [ANTS-4641] **doc_integrity heading_sequence: suppress a numbering gap the document itself accounts for, and say that it did.**
+- ✅ [ANTS-4641] **doc_integrity heading_sequence: suppress a numbering gap the document itself accounts for, and say that it did.**
   `skills/review-tests/references/dimensions.md` numbers its dimensions 1, 4,
   5-9, 11, 12, 14. The gaps are not drift: the file carries a
   `## Retired dimensions` section naming 2, 3, 10 and 13, giving the reason for
@@ -43588,12 +43588,13 @@ Three were reproduced directly in this session rather than taken on report.
   reporter prefers is an explicit opt-in marker the document carries, which
   avoids sniffing prose. Either way report it — `heading_sequence_suppressed:
   [2,3,10,13]` — so a justified gap is distinguishable from an unchecked one.
+  Resolved (2026-08-25): a numbering gap is suppressed where the document's own Retired / Removed / Withdrawn section lists the missing numbers, and the numbers are REPORTED as heading_sequence_suppressed {doc: [n, ...]} so a justified gap stays distinguishable from an unchecked one. The signal is the narrow one the reporter preferred over a prose sniff: a LIST ITEM beginning `<n>.` inside such a section. dimensions.md's own first paragraph says "2026-08-12" and "question 2", which a section-wide integer sweep would have swallowed. Verdict diff by linking the engine over the whole config tree: heading_sequence 383 to 380, and the three that went are exactly the dimensions.md rows the item names.
   **Layman:** A file that explains why it skips numbers 2, 3, 10 and 13 still gets flagged for skipping them.
   Kind: fix.
   Source: claude_config-2026-08-24.
   Lanes: mcp, docs.
 
-- 📋 [ANTS-4642] **doc_integrity broken_link: skip a link whose enclosing span is a verbatim quotation of another document.**
+- ✅ [ANTS-4642] **doc_integrity broken_link: skip a link whose enclosing span is a verbatim quotation of another document.**
   A dated review record quotes two standards word for word, and those standards
   contain markdown links to their siblings. The links were correct in
   `standards/` and cannot resolve from the record's `docs/` — but rewriting
@@ -43617,12 +43618,13 @@ Three were reproduced directly in this session rather than taken on report.
   which beats no signal. Shares its premise with the loop-log item above — both
   are the verb needing to know a span is quoted text rather than the
   document's own voice.
+  Resolved (2026-08-25): a link whose enclosing span is a verbatim quotation is skipped, and counted as broken_link_suppressed. The span scan is DOCUMENT-wide, not line-scoped, because the real quotations wrap — the repro opens a quotation on line 120 and closes it on 121 — so a line-oriented rule sees two unbalanced quote marks and nothing else. Two bounds stop a stray quote mark swallowing the document: a blank line ends an open span, and so does a fence; the 30-character floor is doc_citations' own, so the two verbs agree what a quotation is. dead_anchor loses those links too, deliberately. Verdict diff: the two findings that went are exactly lines 121 and 123 of the record the item names.
   **Layman:** Quoting another document word for word drags its links along, and the checker reports them as broken.
   Kind: fix.
   Source: claude_config-2026-08-24.
   Lanes: mcp, docs.
 
-- 📋 [ANTS-4643] **doc_integrity broken_link: a `~/`-prefixed target is resolved as a relative path and reported as a missing file.**
+- ✅ [ANTS-4643] **doc_integrity broken_link: a `~/`-prefixed target is resolved as a relative path and reported as a missing file.**
   Eight findings on one tree are links of the form
   `[SKILL.md](~/.claude/skills/app-workflow/SKILL.md)` inside scaffolding
   templates. The target exists at that absolute path; the checker resolves
@@ -43640,6 +43642,7 @@ Three were reproduced directly in this session rather than taken on report.
   `~/` target is a defect, say that ("`~/` is not a resolvable link target");
   if it is not, expand `~` before resolving. Decide which, then make the
   message match — that part is not a judgement call.
+  Resolved (2026-08-25): decided as the third option the item left open. A home-relative target names a location OUTSIDE the project in exactly the way a leading slash does, and resolveRelative's stated contract is relative targets under the root, so it is skipped like any absolute target: no finding, no probe, and no message left that could be wrong. That satisfies the half the item called not a judgement call. Verdict diff: broken_link 25 to 7 over the config tree, 16 of the 18 removed being the template links the item names (8 live, 8 in a backup copy of the same templates), and 0 findings appeared.
   **Layman:** Links written with the home-directory shortcut are reported as pointing at nothing, with a message that sends you looking for a file that is there.
   Kind: fix.
   Source: claude_config-2026-08-24.

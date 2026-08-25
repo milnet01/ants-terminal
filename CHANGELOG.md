@@ -233,6 +233,15 @@ for security-relevant changes.
 
 ### Fixed
 
+- **doc_integrity broken_link: a `~/`-prefixed target is resolved as a relative path and reported as a missing file.** (ANTS-4643)
+  Links written with the home-directory shortcut are reported as pointing at nothing, with a message that sends you looking for a file that is there.
+
+- **doc_integrity broken_link: skip a link whose enclosing span is a verbatim quotation of another document.** (ANTS-4642)
+  Quoting another document word for word drags its links along, and the checker reports them as broken.
+
+- **doc_integrity heading_sequence: suppress a numbering gap the document itself accounts for, and say that it did.** (ANTS-4641)
+  A file that explains why it skips numbers 2, 3, 10 and 13 still gets flagged for skipping them.
+
 - **doc_citations quotes: a table row's LAST backticked path wins attribution, which is the wrong one in an impact table.** (ANTS-4640)
   In a table listing which documents a change affects, the quote gets checked against the affected file instead of the source.
 

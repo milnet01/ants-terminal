@@ -95,6 +95,9 @@ struct DocData {
     // only. Empty for every doc that is not a skill file with an
     // `allowed-tools:` frontmatter key, which is almost all of them.
     QList<QPair<int, QString>> ungranted;
+    // ANTS-4641 — section numbers this document's own Retired/Removed section
+    // accounts for. Empty for every document that has no such section.
+    QSet<int> accounted;
 };
 
 QList<Heading> extractHeadings(const QStringList &lines,
@@ -159,16 +162,131 @@ QStringList maskInlineCode(const QStringList &lines,
     return out;
 }
 
+// ANTS-4642 — the spans of a document that are a verbatim QUOTATION of another
+// document. A dated review record quotes two standards word for word, and those
+// standards link to their siblings: the links were correct where they were
+// written and cannot resolve from the record's directory, but rewriting one
+// falsifies the quotation, which is the whole point of the record. Every remedy
+// either breaks the quotation or leaves the finding standing — the same shape
+// that made fenced content exempt, since a specimen is not a claim and neither
+// is a quotation.
+//
+// Document-wide rather than line-by-line, because the quotations WRAP: the real
+// file opens a quotation on one line and closes it on the next, so a
+// line-scoped scan sees two unbalanced quote marks and nothing else.
+//
+// Two bounds keep an unbalanced quote mark from swallowing the document: a
+// blank line ends any open span (a quotation does not cross a paragraph break),
+// and so does a fence. The length floor keeps ordinary quoted words from
+// becoming spans at all.
+struct QuotedSpan { int startLine, startCol, endLine, endCol; };
+
+bool isQuoteChar(QChar ch) {
+    return ch == QLatin1Char('"') || ch == QChar(0x201C) || ch == QChar(0x201D);
+}
+
+QList<QuotedSpan> quotedSpans(const QStringList &lines,
+                              const QVector<bool> &fence, int minChars) {
+    QList<QuotedSpan> out;
+    int     openLine = -1, openCol = -1;
+    QString content;
+    for (int i = 0; i < lines.size(); ++i) {
+        if (fence.value(i) || lines.at(i).trimmed().isEmpty()) {
+            openLine = -1;                      // the two bounds
+            content.clear();
+            continue;
+        }
+        const QString &l = lines.at(i);
+        for (int col = 0; col < l.size(); ++col) {
+            const QChar ch = l.at(col);
+            if (!isQuoteChar(ch)) {
+                if (openLine >= 0) content.append(ch);
+                continue;
+            }
+            if (openLine < 0) {
+                openLine = i;
+                openCol  = col;
+                content.clear();
+            } else {
+                if (content.simplified().size() >= minChars)
+                    out.append({openLine, openCol, i, col});
+                openLine = -1;
+                content.clear();
+            }
+        }
+        if (openLine >= 0) content.append(QLatin1Char(' '));   // the newline
+    }
+    return out;
+}
+
+bool insideQuotation(const QList<QuotedSpan> &spans, int line, int col) {
+    for (const QuotedSpan &s : spans) {
+        const bool afterOpen = line > s.startLine ||
+                               (line == s.startLine && col > s.startCol);
+        const bool beforeClose = line < s.endLine ||
+                                 (line == s.endLine && col < s.endCol);
+        if (afterOpen && beforeClose) return true;
+    }
+    return false;
+}
+
+// `quotedSkipped` (if non-null) counts the links dropped by the rule above.
+// Both link checks lose them together, deliberately: an anchor inside someone
+// else's quoted sentence is no more ours to fix than the path is.
 QList<Link> extractLinks(const QStringList &lines,
-                         const QVector<bool> &fence, int cap) {
+                         const QVector<bool> &fence, int cap,
+                         int *quotedSkipped = nullptr) {
     const QStringList scan = maskInlineCode(lines, fence);
+    // 30 characters — the same floor doc_citations puts on a quotation, so the
+    // two verbs agree about what counts as one.
+    const QList<QuotedSpan> quotes = quotedSpans(scan, fence, 30);
     QList<Link> out;
     for (int i = 0; i < scan.size() && out.size() < cap; ++i) {
         if (fence.value(i)) continue;
         auto it = linkRe().globalMatch(scan.at(i));
         while (it.hasNext() && out.size() < cap) {
             const auto m = it.next();
+            if (insideQuotation(quotes, i, m.capturedStart(0))) {
+                if (quotedSkipped) ++*quotedSkipped;
+                continue;
+            }
             out.append({m.captured(1).trimmed(), i + 1});
+        }
+    }
+    return out;
+}
+
+// ANTS-4641 — the section numbers a document's own "Retired" / "Removed" /
+// "Withdrawn" section accounts for. One reference file numbers its dimensions
+// 1, 4, 5-9, 11, 12, 14 and lists 2, 3, 10 and 13 as retired, stating outright
+// that the numbers are NOT reused — because a reader meeting dimension 11 in an
+// old report must still be able to look it up. So three of that tree's findings
+// were permanent, on a correct file, and the obvious remedy — renumber to close
+// the gaps — is the one action the document forbids.
+//
+// The signal is deliberately narrow: a LIST ITEM whose text begins `<n>.`,
+// inside such a section. Sweeping the section's prose for integers would catch
+// the "2026-08-12" and "question 2" in that file's own first paragraph.
+QSet<int> accountedNumbers(const QStringList &lines,
+                           const QList<Heading> &headings) {
+    static const QRegularExpression retiredRe(
+        QStringLiteral("^(retired|removed|withdrawn)\\b"),
+        QRegularExpression::CaseInsensitiveOption);
+    static const QRegularExpression itemRe(
+        QStringLiteral("^\\s*[-*+]\\s+(?:\\*\\*|__)?(\\d{1,4})\\."));
+    QSet<int> out;
+    for (int h = 0; h < headings.size(); ++h) {
+        if (!retiredRe.match(headings[h].text).hasMatch()) continue;
+        const int level = headings[h].level;
+        int end = lines.size();                       // 0-based, exclusive
+        for (int k = h + 1; k < headings.size(); ++k) {
+            if (headings[k].level > level) continue;  // a subsection stays in
+            end = headings[k].line - 1;
+            break;
+        }
+        for (int i = headings[h].line; i < end && i < lines.size(); ++i) {
+            const auto m = itemRe.match(lines.at(i));
+            if (m.hasMatch()) out.insert(m.captured(1).toInt());
         }
     }
     return out;
@@ -233,6 +351,15 @@ Resolved resolveRelative(const QString &rootCanonical, const QString &docAbsDir,
     if (filePart.contains(QLatin1String("://"))) return {true, {}};  // external
     if (filePart.startsWith(QLatin1String("mailto:"))) return {true, {}};
     if (filePart.startsWith('/')) return {true, {}};           // absolute → skip
+    // ANTS-4643 — a home-relative target names a location outside the project
+    // in exactly the way a leading slash does, and this resolver's contract is
+    // relative targets under the root. Eight findings on one tree were links
+    // into a home-directory skill tree from inside scaffolding templates: the
+    // file is present at that absolute path, the resolver joined it to the
+    // document's own directory, and the message said it did not exist — which
+    // sends a session hunting a file that is there. Skipped, not reported, so
+    // no message is left that could be wrong.
+    if (filePart.startsWith(QLatin1String("~/"))) return {true, {}};
     const QString joined = QDir(docAbsDir).filePath(filePart);
     const QString clean = QDir::cleanPath(joined);
     const QString rel = QDir(rootCanonical).relativeFilePath(clean);
@@ -281,6 +408,7 @@ QString gfmSlug(const QString &headingText) {
 //     Without this, the commonest shape of the defect (two siblings swapped)
 //     reports twice: once as a hole at 5.8, once as a reversal at 5.7.
 void checkHeadingSequence(const QString &rel, const QList<Heading> &headings,
+                          const QSet<int> &accounted, QList<int> *suppressed,
                           QList<Finding> &out) {
     struct Group {
         QSet<int>  present;   // every number seen under this parent, any order
@@ -332,9 +460,18 @@ void checkHeadingSequence(const QString &rel, const QList<Heading> &headings,
                                   .arg(prefix).arg(n).arg(prev)});
             } else if (n > high + 1) {
                 QStringList missing;
-                for (int k = high + 1; k < n; ++k)
-                    if (!g.present.contains(k))
-                        missing << prefix + QString::number(k);
+                for (int k = high + 1; k < n; ++k) {
+                    if (g.present.contains(k)) continue;
+                    // ANTS-4641 — the document says where this number went.
+                    // Reported rather than dropped: a justified gap has to be
+                    // distinguishable from one nobody checked.
+                    if (accounted.contains(k)) {
+                        if (suppressed && !suppressed->contains(k))
+                            suppressed->append(k);
+                        continue;
+                    }
+                    missing << prefix + QString::number(k);
+                }
                 if (!missing.isEmpty()) {
                     local.append({Kind::HeadingSequence, rel, line,
                                   QStringLiteral("section %1%2 skips %3")
@@ -420,7 +557,8 @@ QList<QPair<int, QString>> detectUngrantedTools(const QStringList &lines,
 }
 
 QList<Finding> check(const QString &rootCanonical, const QStringList &relDocs,
-                     const Options &opts, QStringList *checkedDocs) {
+                     const Options &opts, QStringList *checkedDocs,
+                     Suppressed *suppressed) {
     const QDir rootDir(rootCanonical);
 
     // ---- Phase A — parse every openable in-scope doc (capped) ---------------
@@ -446,7 +584,9 @@ QList<Finding> check(const QString &rootCanonical, const QStringList &relDocs,
         d.absDir = QFileInfo(abs).absolutePath();
         d.headings = extractHeadings(lines, fence, opts.maxHeadingsPerDoc);
         for (const Heading &h : d.headings) d.slugs.insert(h.slug);
-        d.links = extractLinks(lines, fence, opts.maxLinksPerDoc);
+        d.links = extractLinks(lines, fence, opts.maxLinksPerDoc,
+                               suppressed ? &suppressed->quotedLinks : nullptr);
+        d.accounted = accountedNumbers(lines, d.headings);   // ANTS-4641
         detectToc(lines, d);
         d.ungranted = detectUngrantedTools(lines, fence);  // ANTS-3719
 
@@ -534,7 +674,13 @@ QList<Finding> check(const QString &rootCanonical, const QStringList &relDocs,
         }
 
         // Check 4 — numbered-heading sequence (ANTS-3700).
-        checkHeadingSequence(rel, d.headings, findings);
+        QList<int> suppressedHere;
+        checkHeadingSequence(rel, d.headings, d.accounted,
+                             suppressed ? &suppressedHere : nullptr, findings);
+        if (suppressed && !suppressedHere.isEmpty()) {
+            std::sort(suppressedHere.begin(), suppressedHere.end());
+            suppressed->headingNumbers.insert(rel, suppressedHere);
+        }
 
         // Check 5 — a skill calling an MCP verb it never granted (ANTS-3719).
         for (const auto &u : d.ungranted)

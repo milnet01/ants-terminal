@@ -166,8 +166,9 @@ QJsonDocument RemoteControl::cmdDocIntegrity(const QJsonObject &req) {
         relDocs = relDocs.mid(0, opts.maxDocsPerRun);
 
     QStringList checked;
+    DocIntegrity::Suppressed suppressed;   // ANTS-4641 / ANTS-4642
     const QList<DocIntegrity::Finding> findings =
-        DocIntegrity::check(rootCanonical, relDocs, opts, &checked);
+        DocIntegrity::check(rootCanonical, relDocs, opts, &checked, &suppressed);
 
     QSet<QString> kindFilter;
     for (const auto &v : req.value(QStringLiteral("kinds")).toArray())
@@ -176,6 +177,19 @@ QJsonDocument RemoteControl::cmdDocIntegrity(const QJsonObject &req) {
     // etag injected centrally (isEtagSupportedTool) — over THIS envelope, so
     // docs_digest is what makes it content-sensitive (ANTS-3737).
     QJsonObject out = docIntegrityBuildResponse(findings, kindFilter, checked);
+    // ANTS-4641 / ANTS-4642 — say what the run deliberately did NOT report.
+    // Both keys ship unconditionally, empty included: a checker that suppresses
+    // silently cannot be told from one that never looked, which is the whole
+    // reason these two classes were worth fixing rather than muting.
+    QJsonObject headingSup;
+    for (auto it = suppressed.headingNumbers.constBegin();
+         it != suppressed.headingNumbers.constEnd(); ++it) {
+        QJsonArray nums;
+        for (int n : it.value()) nums.append(n);
+        headingSup[it.key()] = nums;
+    }
+    out[QStringLiteral("heading_sequence_suppressed")] = headingSup;
+    out[QStringLiteral("broken_link_suppressed")]      = suppressed.quotedLinks;
     out[QStringLiteral("docs_digest")] = docSetDigest(rootCanonical, checked);
     return QJsonDocument(out);
 }

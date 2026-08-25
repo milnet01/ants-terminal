@@ -65,6 +65,20 @@ struct Options {
                                       // the cap are skipped, not read.
 };
 
+// ANTS-4641 / ANTS-4642 — what a run deliberately did NOT report. A checker
+// that suppresses silently is indistinguishable from one that never looked, so
+// every suppression this engine performs is countable here. Optional: pass
+// nullptr and the checks behave identically, they just say nothing about it.
+struct Suppressed {
+    // ANTS-4641 — heading numbers a document's own "Retired" / "Removed" /
+    // "Withdrawn" section accounts for, keyed by project-relative doc path.
+    // Sorted ascending. Absent key ⟺ nothing suppressed for that doc.
+    QHash<QString, QList<int>> headingNumbers;
+    // ANTS-4642 — links skipped because the span enclosing them is a verbatim
+    // quotation of another document, summed over the run.
+    int quotedLinks = 0;
+};
+
 // Check the given project-relative docs. `rootCanonical` anchors relative-link
 // and cross-doc-anchor resolution. Findings are returned in (file, line)
 // order. Pure: no disk writes, no cache. `checkedDocs` (if non-null) receives
@@ -73,7 +87,8 @@ struct Options {
 QList<Finding> check(const QString &rootCanonical,
                      const QStringList &relDocs,
                      const Options &opts = {},
-                     QStringList *checkedDocs = nullptr);
+                     QStringList *checkedDocs = nullptr,
+                     Suppressed *suppressed = nullptr);
 
 // GitHub-compatible heading anchor slug (`github-slugger` algorithm): strip
 // backtick code-span markers, lowercase, delete every char that is not a
