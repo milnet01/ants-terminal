@@ -45248,6 +45248,39 @@ it.
   than no field, because a caller acts on it. So the rule needs a matching
   obligation that the disclosure be TESTED, not merely present. Decide that
   before building.
+  Decided (2026-08-25): YES, build it — but as an EXTENSION of the rule
+  that already exists, not as a new one, and with the accuracy obligation
+  this item's own risk paragraph demands. The user was asked and deferred
+  the call.
+
+  WHY YES. The argument against was token cost, and it is weaker than it
+  looked. mcp-tools.md step 5a (ANTS-4374) already prescribes the cheap
+  shape — "prefer a count", because a number survives compaction where a
+  boolean is skipped — so the marginal bytes are one integer per verb, not
+  a new object. Against that: ANTS-4578 paid twice within days of shipping,
+  and this backlog is the only item on it that reduces the ARRIVAL rate.
+
+  WHAT TO BUILD, and it is smaller than the item assumes. Step 5a is
+  already 80% of this rule; it is scoped to a ZERO. The delta is two edits:
+  generalise its subject from "every zero a verb can emit" to "anything the
+  verb ignored, skipped or dropped", and add the obligation this item
+  identifies — the disclosure is TESTED, not merely present.
+
+  THE ACCURACY HALF IS THE POINT, not a caveat. Every disclosure defect
+  this session produced failed by being PARTIAL: spec_lint's skipped list
+  named checks that had run (ANTS-4666), and a flag meaning "did not run"
+  was folded away by a transform nobody asked for (ANTS-4673). Both were
+  present and both were worse than absent, because a caller branches on
+  them. So the rule binds the LABEL and the ACCURACY: the test asserts the
+  field names what was actually skipped, on a run where something was
+  skipped and on a run where nothing was.
+
+  DO NOT write it as a second rule beside step 5a. Two rules about
+  disclosure in one standard is the restatement shape ANTS-4680 just spent
+  a run removing from this file.
+
+  Sequencing: not now. mcp-tools.md is mid-gate as of this note, and its
+  subject is frozen. Do this after the run closes.
   **Layman:** Most complaints we get are a tool quietly doing nothing; a general rule that tools always say what they ignored would prevent them.
   Kind: enhancement.
   Source: in-session-2026-08-25, proposed while answering how to clear the backlog.
