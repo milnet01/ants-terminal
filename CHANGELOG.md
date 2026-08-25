@@ -262,6 +262,12 @@ for security-relevant changes.
 
 ### Fixed
 
+- **A spilled MCP reply now still names the argument it ignored** (ANTS-4626)
+  The unknown-argument advisory was attached to the response body and then
+  discarded when a large body was spilled to a handle — so it reached the
+  caller only when the reply was small, which is backwards: a filter that
+  was silently ignored is what makes a reply large in the first place.
+
 - **A repeated MCP refusal no longer comes back as `ok:true`** (ANTS-4446)
   The ETag short-circuit built its `{ok:true, unchanged:true}` reply before
   parsing the response, so it never learned the body was a refusal — and

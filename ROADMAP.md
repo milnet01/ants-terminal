@@ -43371,7 +43371,7 @@ open, and two of these were exactly that.
   Kind: fix.
   Source: in-session-2026-08-22 (live verb test after relaunch).
 
-- 📋 [ANTS-4626] **An unrecognised argument is silently ignored and answered with the full set.**
+- ✅ [ANTS-4626] **An unrecognised argument is silently ignored and answered with the full set.**
   Measured 2026-08-23. `roadmap_query {caller_cwd, mode:"sections",
   section_filter:"cc-sessions", compact:true, fields:["sections"]}` returned
   all 79 sections, 19,871 bytes, spilled to a handle — byte-identical to the
@@ -43407,9 +43407,76 @@ open, and two of these were exactly that.
   right tools for what the failing call wanted — `query` narrows the index
   by section name (ANTS-4610) and `slugs_only` avoids exactly this spill
   (ANTS-4467). The defect is the silence, not a missing capability.
+  Resolved (2026-08-25), and the cause was not the one this item names.
+
+  The report says "nothing said it had been dropped". The mechanism to say so
+  already existed and already fired: ANTS-2175's `ignored_args` advisory, whose
+  original trigger was literally an unknown argument passed to roadmap_query.
+  Measured live before touching anything, same bogus `section_filter`:
+
+    small reply   -> ignored_args:["section_filter"]
+    spilled reply -> no such key anywhere in the envelope
+
+  `offloadBody` (ANTS-2094) builds a FRESH head+pointer envelope from its own
+  keys, and the advisory was attached before it ran. So the advisory reached a
+  caller only when the response was small -- exactly backwards, because the
+  offload fires on the largest answers and a silently-ignored filter is what
+  MAKES an answer large. That is why the reporter, whose call spilled, saw
+  silence: the argument WAS named, into a body that was then thrown away.
+
+  Fixed by re-applying after the offload rather than by teaching `offloadBody`
+  to preserve keys -- it is deliberately content-agnostic and its parse is
+  RAM-capped, so an over-cap body could not carry the advisory across at all.
+  The list is computed once and applied on both sides, including on a cache hit,
+  where the pre-offload apply is skipped but the post-offload one is still owed.
+
+  New feature test `tests/features/mcp_offload_keeps_advisory` (test_core), four
+  invariants. Only INV-4 -- the source-scrape asserting the dispatcher applies
+  it on both sides of the offload -- was red, which is correct: the defect was
+  the call ORDER, and the pure helpers cannot see order. INV-2 pins that
+  offloadBody alone still drops the key, so a later change making it preserve
+  keys cannot quietly turn INV-1 into an assertion that proves nothing.
+
+  The item's two open questions are NOT settled and remain worth doing.
+  Refusing an unknown key with bad_args is still the stronger contract -- an
+  advisory is easy to miss and this one was invisible for large replies. And
+  whether that belongs in the dispatcher still wants the survey the item asks
+  for. What changed is that the advisory now works as designed, so neither is
+  urgent. Re-filed as ANTS-4659 rather than left inside a shipped item.
   **Layman:** Ask a tool to narrow its answer using a setting it does not have, and it hands back everything instead of saying the setting is not real.
   Kind: fix.
   Source: in-session-2026-08-23.
+
+- 📋 [ANTS-4659] **An unknown argument is advised about, not refused — and the survey for refusing it dispatcher-wide has not been done.**
+  ANTS-4626 shipped the half that was broken: the `ignored_args` advisory was
+  being discarded by the result offload, so it reached a caller only on small
+  replies. It now survives.
+
+  Both questions that item raised are still open, and it argued for them well
+  enough that they should not vanish into a closure note.
+
+  The narrow one: refuse an unknown top-level key with `bad_args` naming it,
+  rather than advising. `ids` already refuses a present-but-wrongly-typed value
+  instead of dumping the full list (ANTS-3541), and that reasoning applies
+  unchanged. An advisory is a field a caller may not read; a refusal cannot be
+  missed. ANTS-4626 is evidence for this rather than against it -- the advisory
+  was invisible for large replies for as long as the offload has existed, and
+  nobody noticed until a session went looking for why its filter did nothing.
+
+  The wide one: whether that belongs in the dispatcher rather than in each
+  verb. Every verb hand-reads its arguments, so a per-verb fix leaves the next
+  verb exposed -- ANTS-3698 fixed this same class one argument at a time and
+  the class survived. Against it: a strict dispatcher check can break a caller
+  passing a harmless extra key.
+
+  Do the survey before switching anything on. What do callers actually send
+  that the schemas do not declare? The dispatcher already computes exactly that
+  set per call to build the advisory, so the question is answerable by logging
+  what is already there rather than by guessing.
+  **Layman:** Passing a setting a tool does not have gets you a note rather than a clear error.
+  Kind: fix.
+  Source: in-session-2026-08-25, split out of ANTS-4626.
+  Lanes: mcp.
 
 ### Ants MCP feedback from CC sessions — 2026-08-24 triage
 
@@ -54843,6 +54910,40 @@ here.)
   Kind: fix.
   Lanes: mcp.
   Source: in-session-2026-08-13 (hit persisting state before a relaunch).
+  Scoped (2026-08-25). The diagnosis holds and the fix is smaller than it
+  looks, but it is gated -- recorded so the next session does not discover
+  that mid-edit.
+
+  The mechanism it proposes already exists. `ants::resolveCallerCwdRoot`
+  (ANTS-1401) walks the open tabs and returns `ExplicitMatch` when caller_cwd
+  canonicalises to a tab's cwd, `NoMatch` when no tab does. That is exactly
+  "caller_cwd resolves to a project this session is running in", and the
+  session_memory READ path already routes through it. So the write path needs
+  to switch helpers, not gain a tab walk: accept ExplicitMatch, refuse NoMatch
+  as cwd_mismatch with a message naming the real cause, keep Unresolvable as
+  cwd_bad. The confused-deputy guard survives -- a session still cannot write
+  a bucket for a project this Ants has no tab in -- while focus stops
+  mattering.
+
+  What gates it: three surfaces pin the current behaviour, and one is a
+  contract document.
+
+    docs/specs/ANTS-1435.md                        -- the contract
+    tests/features/session_memory_read_caller_cwd  -- INV-2, "write ops keep
+                                                      RcGate", source-scraped
+    tests/features/mcp_session_memory              -- REG-3b, asserts
+                                                      RcGate::checkCallerCwd
+                                                      is still in the body
+
+  A conformer reading ANTS-1435 today builds the focused-tab gate, so CLAUDE.md
+  rule 14's test answers yes and the amendment runs the cold gate BEFORE the
+  edit. The two feature specs are out of rule 14's scope and just need
+  rewriting alongside.
+
+  Worth deciding in that amendment rather than in passing: whether the same
+  asymmetry is wrong anywhere else RcGate is the write gate. This item found it
+  in session_memory because that is where it hurt, not because it is the only
+  place focus is standing in for tenancy.
 
 - 📋 [ANTS-4343] **A store row keeps `id_origin='synthesised'` after the source file starts declaring that id, so the store records an id as invented that a human filed by hand.**
   Found in ANTS-4065 Phase D2. `ANTS-4141`…`ANTS-4145` were allocated by

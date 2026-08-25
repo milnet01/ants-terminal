@@ -2614,6 +2614,7 @@ if(ANTS_TESTS)
                 # mcpspill.cpp is in ants_core_lib (linked); the wiring INVs
                 # source-scrape claudeintegration / mainwindow / remotecontrol.
                 tests/features/mcp_result_offload/test_mcp_result_offload.cpp
+                tests/features/mcp_offload_keeps_advisory/test_mcp_offload_keeps_advisory.cpp
                 # ANTS-2175 — MCP unknown-arg `ignored_args` advisory.
                 # mcp::ignoredArgs is in ants_core_lib (linked); the dispatch
                 # wiring INVs source-scrape claudeintegration.cpp.

@@ -13846,12 +13846,20 @@ void ClaudeIntegration::onMcpConnection() {
                 // correct the model is suppressed precisely because it
                 // refused. mcp::withIgnoredArgs only ADDS a key, so the
                 // ANTS-2112 refusal floor is untouched by construction.
-                if (toolHandled && !cachedHit &&
-                    m_toolParamKeys.contains(toolName)) {
-                    responseText = mcp::withIgnoredArgs(
-                        responseText,
-                        mcp::ignoredArgs(argsObj,
-                                         m_toolParamKeys.value(toolName)));
+                //
+                // ANTS-4626 — computed into a local because it is applied on
+                // BOTH sides of the offload below. It is computed even on a
+                // cache hit, where the pre-offload apply is skipped (the
+                // cached body already carries it) but the post-offload one is
+                // still owed, since the offload discards it either way.
+                QStringList ignoredArgKeys;
+                if (toolHandled && m_toolParamKeys.contains(toolName)) {
+                    ignoredArgKeys = mcp::ignoredArgs(
+                        argsObj, m_toolParamKeys.value(toolName));
+                }
+                if (toolHandled && !cachedHit && !ignoredArgKeys.isEmpty()) {
+                    responseText =
+                        mcp::withIgnoredArgs(responseText, ignoredArgKeys);
                 }
                 // ANTS-1357 — populate cache on miss-success. INV-5
                 // exclusions enforced inside maybeInsertIdempotentReadCache.
@@ -13969,6 +13977,28 @@ void ClaudeIntegration::onMcpConnection() {
                     const qint64 bodyBytes = responseText.toUtf8().size();
                     if (mcp::shouldOffload(bodyBytes)) {
                         responseText = mcp::offloadBody(toolName, responseText);
+                        // ANTS-4626 — offloadBody builds a FRESH head+pointer
+                        // envelope from its own keys, so the ANTS-2175
+                        // advisory attached above is discarded with the rest
+                        // of the body. That put it exactly backwards: the
+                        // offload fires on the largest answers, and a filter
+                        // that was silently ignored is what MAKES an answer
+                        // too large. The reply is then a superset of what was
+                        // asked for — the one shape a caller cannot detect,
+                        // since a filter that matched nothing and a filter
+                        // that never ran both return rows, and the second
+                        // returns more.
+                        //
+                        // Re-applied here rather than preserved inside
+                        // offloadBody, which is deliberately content-agnostic
+                        // (it Q_UNUSEDs the tool name) and whose parse is
+                        // RAM-capped, so a body over that cap could not carry
+                        // the advisory across at all. withIgnoredArgs only
+                        // ADDS a key, so the pointer envelope is untouched.
+                        if (!ignoredArgKeys.isEmpty()) {
+                            responseText = mcp::withIgnoredArgs(
+                                responseText, ignoredArgKeys);
+                        }
                     }
                 }
 
