@@ -496,7 +496,13 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppend(const QJsonObject &req) {
                 store, projectId, callerCanonical, roadmapPath, dryRun, mutate,
                 &outcome, &writeErr);
             QJsonObject env;
-            if (rcRoadmapWriteRefused(env, r, writeErr, outcome))
+            // ANTS-4593 — under dry_run the row keyed `idStr` is created inside
+            // the transaction and rolled back, so the gate can name an id that
+            // will exist nowhere. Hand it over so the refusal reports it apart
+            // from genuine offenders. Empty on a real write, where it is real.
+            if (rcRoadmapWriteRefused(
+                    env, r, writeErr, outcome,
+                    dryRun ? QStringList{idStr} : QStringList{}))
                 return QJsonDocument(env);
 
             env[QStringLiteral("ok")]   = true;

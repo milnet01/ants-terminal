@@ -162,7 +162,12 @@ QJsonDocument cmdRoadmapLogPassFlipBatch(const QJsonObject &req, const QString &
 bool rcRoadmapIdLess(const QString &a, const QString &b);
 QString rcExtractGateNote(const QString &body);
 bool rcRoadmapSourceRefused(QJsonObject &out, RoadmapSource::ReadError why, const QString &err);
-bool rcRoadmapWriteRefused(QJsonObject &out, RoadmapWrite::Result r, const QString &err, const RoadmapRender::Outcome &outcome);
+// ANTS-4593 — `previewOwnIds` names the rows THIS call would create and then
+// roll back (a dry run's candidate ids). On the GateUnmet arm they are split
+// out of `gate_failures` into `request_gate_failures`, because the two need
+// different actions: fix the call, versus go and repair the roadmap. Empty for
+// every real write, where the row is real and belongs in gate_failures.
+bool rcRoadmapWriteRefused(QJsonObject &out, RoadmapWrite::Result r, const QString &err, const RoadmapRender::Outcome &outcome, const QStringList &previewOwnIds = QStringList());
 // ANTS-4463 — the dry-run field policy, in ONE place because nine sites emit
 // these fields and nine copies of a rule is nine chances to miss one.
 //

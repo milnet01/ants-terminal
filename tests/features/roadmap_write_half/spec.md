@@ -131,3 +131,11 @@ reported. And the two sub-counters classify the **file's** lines only, so they
 deliberately do not sum to the total — which also counts lines the render
 restores that the file had deleted. A reverted deletion is not a loss, and
 inventing an arithmetic relationship would be a third wrong number.
+
+- **ANTS-4593 / a preview's own candidate is not a gate failure.** A dry run
+  runs `mutate` inside the transaction and rolls it back, so the proposed row
+  is in the store when the gate evaluates. Its id is reported under
+  `request_gate_failures`; `gate_failures` keeps only ids that really exist,
+  and when the proposed row is the only offender the message says the refusal
+  is about the arguments. A real write passes no candidate ids and is
+  unchanged. *Test:* `Ants4593PreviewOwnIdIsNotAGateFailure`.

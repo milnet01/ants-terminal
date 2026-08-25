@@ -266,6 +266,69 @@ TEST(RoadmapWriteHalf, Inv1RenderFailureRollsBack) {
         << "a store write must not survive the render that refused it";
 }
 
+// ------------------------------------------------------------- ANTS-4593 -----
+
+// A dry run runs `mutate` inside the transaction and rolls it back (ANTS-4548),
+// so the caller's candidate row IS in the store when the gate evaluates. Its id
+// was then reported in `gate_failures` beside genuine offenders — and it exists
+// nowhere afterwards, so a caller greps for it, finds nothing, and cannot tell
+// a bad input from a diverged store.
+//
+// The two need different actions: fix the call, versus go and repair the
+// roadmap. They are now different keys.
+TEST(RoadmapWriteHalf, Ants4593PreviewOwnIdIsNotAGateFailure) {
+    ants_test::XdgGuard guard;
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    qint64 projectId = 0;
+    // No pre-existing offenders: the ONLY thing the gate can catch is the row
+    // this call proposes, which is the case that must not read as project debt.
+    const QString root =
+        seedMigrated(guard, tmp, fixture(/*gateOffenders=*/0), &projectId);
+    ASSERT_FALSE(root.isEmpty());
+
+    QJsonObject resp;
+    {
+        RemoteControl rc(nullptr);
+        QJsonObject req;
+        req[QStringLiteral("caller_cwd")] = root;
+        req[QStringLiteral("op")]         = QStringLiteral("append");
+        req[QStringLiteral("section")]    = QStringLiteral("work");
+        req[QStringLiteral("status")]     = QStringLiteral("planned");
+        req[QStringLiteral("kind")]       = QStringLiteral("chore");
+        req[QStringLiteral("source")]     = QStringLiteral("test");
+        req[QStringLiteral("headline")]   =
+            QStringLiteral("A bullet with no Layman line.");
+        req[QStringLiteral("dry_run")]    = true;      // the whole point
+        resp = rc.cmdRoadmapLogAppendForTest(req).object();
+    }
+
+    EXPECT_FALSE(resp.value(QStringLiteral("ok")).toBool());
+    EXPECT_EQ(resp.value(QStringLiteral("code")).toString(),
+              QStringLiteral("render_gate_unmet"));
+
+    // The preview's own candidate is reported apart from real offenders...
+    const QJsonArray own =
+        resp.value(QStringLiteral("request_gate_failures")).toArray();
+    ASSERT_EQ(own.size(), 1)
+        << "the row this call proposes must be named, and named separately";
+
+    // ...and gate_failures, which elsewhere names ids that really exist, is
+    // empty. This is the assertion that fails against the pre-fix tree.
+    EXPECT_TRUE(resp.value(QStringLiteral("gate_failures")).toArray().isEmpty())
+        << "a rolled-back candidate id must never appear in gate_failures";
+
+    // The message must not send the caller looking for that id in the roadmap.
+    const QString err = resp.value(QStringLiteral("error")).toString();
+    EXPECT_NE(err.indexOf(QStringLiteral("this call would append")), -1)
+        << "when the only offender is the proposed row, the refusal is about "
+           "the arguments, not about the roadmap: " << err.toStdString();
+
+    // And nothing was written — the id is genuinely rolled back.
+    EXPECT_TRUE(statusOf(own.at(0).toString(), projectId).isEmpty())
+        << "the candidate row must not survive the preview that named it";
+}
+
 // ------------------------------------------------------------- ANTS-4628 -----
 
 // The inversion of ANTS-4434's deadlock, and the case that proves the gate's

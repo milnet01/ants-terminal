@@ -262,6 +262,13 @@ for security-relevant changes.
 
 ### Fixed
 
+- **A refused preview no longer blames an item id that exists nowhere** (ANTS-4593)
+  A dry run creates its candidate row inside the transaction and rolls it
+  back, so a render-gate refusal listed an id nobody could look up. The
+  preview's own row is now reported separately, and when it is the only
+  offender the message says the problem is the arguments rather than the
+  roadmap.
+
 - **A truncated first-call file digest now says so under a findable name** (ANTS-4560)
   On a project with no module map the digest is a flat file list, and the
   only flag describing it was named for the lane digest — while the

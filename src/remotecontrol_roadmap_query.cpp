@@ -258,7 +258,8 @@ void rcdetail::rcRoadmapReconcileCounterCache(QJsonObject &env,
 
 bool rcdetail::rcRoadmapWriteRefused(QJsonObject &out, RoadmapWrite::Result r,
                                   const QString &err,
-                                  const RoadmapRender::Outcome &outcome) {
+                                  const RoadmapRender::Outcome &outcome,
+                                  const QStringList &previewOwnIds) {
     const auto fail = [&out, &err](const char *code, const char *fallback) {
         out[QStringLiteral("ok")] = false;
         out[QStringLiteral("error")] = err.isEmpty() ? QString::fromLatin1(fallback) : err;
@@ -273,13 +274,49 @@ bool rcdetail::rcRoadmapWriteRefused(QJsonObject &out, RoadmapWrite::Result r,
         // named id is one the caller is already editing. Naming them is still
         // what makes the refusal actionable; what changed is that the list can
         // no longer contain an item the caller has never heard of.
+        // ANTS-4593 — a dry run runs `mutate` inside the transaction and rolls
+        // it back (ANTS-4548), so the caller's candidate row IS in the store
+        // when the gate evaluates, and its id was reported verbatim beside
+        // genuine ones. That id exists nowhere afterwards: a caller greps for
+        // it, finds nothing, and cannot tell a bad input from a diverged
+        // store. The two need different actions — fix the call, versus go and
+        // repair the roadmap — so they are reported under different keys.
+        //
+        // `previewOwnIds` is empty on every real write, where the row is real
+        // and belongs in gate_failures, so that shape is untouched.
+        {
+        QStringList theirs;
+        QStringList ours;
+        for (const QString &id : outcome.gateFailures) {
+            if (previewOwnIds.contains(id)) ours.append(id);
+            else                            theirs.append(id);
+        }
         out[QStringLiteral("gate_failures")] =
-            QJsonArray::fromStringList(outcome.gateFailures);
+            QJsonArray::fromStringList(theirs);
+        if (!previewOwnIds.isEmpty()) {
+            out[QStringLiteral("request_gate_failures")] =
+                QJsonArray::fromStringList(ours);
+        }
+        // When the ONLY offender is the row this call is proposing, the
+        // refusal is about the arguments, not about the roadmap. Say so
+        // instead of pointing at an id that will never exist.
+        if (!ours.isEmpty() && theirs.isEmpty()) {
+            out[QStringLiteral("ok")]    = false;
+            out[QStringLiteral("code")]  = QStringLiteral("render_gate_unmet");
+            out[QStringLiteral("error")] = QStringLiteral(
+                "the roadmap render refuses this write: the item this call "
+                "would append carries no Layman: line. Add a one-sentence "
+                "`layman` summary and re-send. The id in "
+                "`request_gate_failures` is this preview's own candidate and "
+                "is rolled back — do not look for it in the roadmap.");
+            return true;
+        }
         // Reached only when RoadmapWrite left `err` empty — it normally sets a
         // fuller message naming the ids and the remedy. Kept in step with it.
         return fail("render_gate_unmet",
                     "the roadmap render refuses this write: an open item it "
                     "touches carries no Layman: line");
+        }
     case RoadmapWrite::Result::WouldDrop:
         // ANTS-4141. No array beside it: unlike the gate, the offenders are
         // named in `error` itself, because the remedy is a migration the caller

@@ -42337,7 +42337,7 @@ filed below.
   Source: in-session-2026-08-20, residue of ANTS-4556.
   Lanes: remotecontrol, docs.
 
-- 📋 [ANTS-4592] **ANTS-4508's would_be_id never reached the store-backed dry_run path.**
+- ✅ [ANTS-4592] **ANTS-4508's would_be_id never reached the store-backed dry_run path.**
   Confirmed in source, not taken on report. src/remotecontrol_roadmap_log.cpp:501 sets env["id"] = idStr unconditionally inside cmdRoadmapLogAppend's store-backed arm — there is no dryRun branch, and rcRoadmapWriteFields() (which runs 56 lines later) adds only the would_write / items_rendered tense pair, never an id. The file-backed preview at :967 does emit would_be_id, which is where ANTS-4508 landed.
 
   So the invariant holds on one of the two paths it covers. INV-7 of tests/features/roadmap_log_prefix_and_dry_run/spec.md states unconditionally that a preview reports its id under would_be_id / would_be_ids and never under id / ids; its fixture allocates DOOM-0001 on a fresh counter-strategy project, which is the file-backed path, so no existing test can see the store-backed class.
@@ -42345,12 +42345,34 @@ filed below.
   The reporter's point that this is now worse than before the fix stands: the schema's dry_run description promises would_be_id, so a caller who reads the docs looks for it, does not find it, and falls back to id — the key ANTS-4508 exists to remove.
 
   Fix: emit would_be_id on the store-backed dry_run arm and drop id there, mirroring :967. append_batch's store arm needs the same check for would_be_ids. Add a fixture on a migrated project — the gap is that INV-7 is verified on one path only.
+  Already resolved, by ANTS-4634, before this was picked up. Verified against
+  the live socket rather than by reading the source a second time.
+
+    op:append      dry_run -> would_be_id: "ANTS-4662",  no `id`
+    op:append_batch dry_run -> would_be_ids: [...],       no `ids`
+
+  So both arms this item named are correct, including the append_batch half it
+  flagged as needing the same check. The source at the store-backed arm now
+  branches on dryRun and carries ANTS-4634's reasoning, which is this item's
+  reasoning: a caller reading one field takes the real write's key for a
+  reservation, and nothing is reserved.
+
+  The diagnosis was exact -- the id was emitted unconditionally in the
+  store-backed arm while the file-backed preview already did the right thing --
+  and it is what ANTS-4634 fixed.
+
+  The test gap it identified is NOT closed and is the part worth keeping:
+  INV-7's fixture allocates on a fresh counter-strategy project, which is the
+  file-backed path, so no test can see the store-backed class. That is
+  ANTS-4661, filed today from ANTS-4570's reporter making the same observation
+  independently. Two reporters reaching one conclusion from different symptoms
+  is the strongest evidence in either item.
   **Layman:** A preview of a new roadmap item still hands back the id under the key a real write uses, on any project that has moved to the database.
   Kind: fix.
   Source: claude_config_Ants_MCP_Feedback.md 2026-08-20.
   Lanes: remotecontrol_roadmap_log.
 
-- 📋 [ANTS-4593] **A dry_run render-gate refusal names its own rolled-back candidate id.**
+- ✅ [ANTS-4593] **A dry_run render-gate refusal names its own rolled-back candidate id.**
   Confirmed in source. Under ANTS-4548 a dry run runs `mutate` inside the transaction and rolls it back, so the caller's candidate row IS in the store when the render gate evaluates. rcRoadmapWriteRefused() (src/remotecontrol_roadmap_query.cpp, GateUnmet arm) then emits outcome.gateFailures verbatim, with no marker separating the request's own row from pre-existing ones.
 
   The gate reaching a dry run is the design and is not in question. The reporting is: the message is present-tense about the PROJECT ("the roadmap render refuses this project: 1 open item(s) carry no Layman: line") and gate_failures is the key that elsewhere names real ids. The caller greps for the id, finds nothing, and cannot tell a bad input from a diverged store. That code's own comment says the gate is per-project so the caller's item may be blameless — which is true of a real write and false of a dry run.
@@ -42360,6 +42382,36 @@ filed below.
   Fix: on the dry_run path, separate the caller's own candidate row from gate_failures. An input error missing a required field is arguably missing_field rather than render_gate_unmet; failing that, report it under a request_gate_failures / would_be_id key, which is the convention ANTS-4463 and ANTS-4508 already established on this envelope.
 
   Same shape as its sibling above, one level up: a would-be id reported under the key that names real ones.
+  Resolved (2026-08-25). Reproduced by accident first, which is worth recording:
+  a probe for the sibling item ANTS-4592 omitted a Layman line, and the refusal
+  came back naming ANTS-4662 -- an id that exists nowhere, because the dry run
+  had already rolled it back.
+
+  The caller's own candidate is now reported under `request_gate_failures`, and
+  `gate_failures` keeps only ids that really exist. When the proposed row is the
+  ONLY offender the message says so outright -- the refusal is about the
+  arguments, not about the roadmap -- and says the id is a rolled-back candidate
+  so nobody goes looking for it.
+
+  The split is what the item asked for and the reason is its own: the two cases
+  need different actions, fix the call versus go and repair the roadmap, and
+  they were indistinguishable. `missing_field`, the item's first suggestion, was
+  not taken -- the gate is a render-time judgement rather than argument
+  validation, and re-coding it would make a real write and a preview refuse
+  differently for the same cause.
+
+  A real write is untouched by construction: its row is real, so it belongs in
+  gate_failures, and the new parameter is empty there.
+
+  One thing the item quotes is already fixed. The message it cites is
+  project-scoped -- "refuses this project ... 1 open item(s) carry no Layman" --
+  and ANTS-4628 has since narrowed the gate to the items a write touches, so it
+  now reads "this write" and "items it touches". That removed the
+  blameless-item half of the complaint; the fake-id half is what remained and is
+  what shipped.
+
+  Verified by mutation: dropping the candidate ids at the call site reddens the
+  new test in tests/features/roadmap_write_half.
   **Layman:** When a preview is refused for a missing Layman line, it blames an item id that exists nowhere — the preview's own throwaway row.
   Kind: fix.
   Source: claude_config_Ants_MCP_Feedback.md 2026-08-20.
