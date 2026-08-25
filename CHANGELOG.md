@@ -14,6 +14,15 @@ for security-relevant changes.
 
 ### Added
 
+- **roadmap_log's envelope could report when its XML scrub actually removed something.** (ANTS-4572)
+  A safety net quietly cleans up a mistake, so nobody learns they made it.
+
+- **read_region gives no positive signal that a read did NOT spill once fields + compact narrow the envelope away.** (ANTS-4567)
+  A deliberately cheap probe can come back saying only "ok", which is indistinguishable from the probe being wrong.
+
+- **invariant_check cannot see a spec that cites the file by basename, so the wrong spec comes back looking like the answer.** (ANTS-4566)
+  Asking which design document governs a file returns a confidently wrong one when the right one names the file informally.
+
 - **`roadmap_migrate` accepts `fields=` and `compact`, so its envelope can be narrowed** (ANTS-4429)
   A no-op re-sync returned ~25 KB with no way to ask for less — the schema
   sets `additionalProperties: false`, so `fields=` was not merely absent, it
@@ -184,6 +193,18 @@ for security-relevant changes.
 
 ### Changed
 
+- **`fields=` and response compaction are now separate per-verb answers, so spec_lint and feedback_query are no longer compacted unless asked** (ANTS-4524)
+  A single predicate granted both, so a verb added to the list for `fields=`
+  silently began compacting its replies for every caller — which folded away
+  spec_lint's flag saying a check had never run. They are now two columns of
+  one table, and adding a verb makes you answer each. An explicit
+  `compact:true` is still honoured wherever the schema declares it; only the
+  unasked-for default is per-verb. Partial: making `fields=` universal is the
+  remaining half, and the blocker that half named is now gone.
+
+- **feedback_query ignores fields=, so a duplicate check pays for the whole delta it was passed to avoid.** (ANTS-4665)
+  Asking the feedback reader for just a couple of small numbers returns the entire backlog anyway.
+
 - **compact_resolved retires a legacy tracking heading once every id in it has shipped** (ANTS-4646)
   A v1 "Tracked in ROADMAP" heading survived migration with no verb able to touch it — append_tracking refuses on a v2 file, and assign_id needs a finding those ids do not have. It is retired under the gate compact_resolved already applies, all-or-nothing per heading. It is deliberately KEPT on a fully condensed file carrying no inline proposed ids, where that line is the project's only record of what it reported.
 
@@ -261,6 +282,27 @@ for security-relevant changes.
   with `glob` — so a refused call carries its own repair.
 
 ### Fixed
+
+- **changelog_log op:release echoes the whole closed section back with no way to suppress it, so it fails on a large [Unreleased].** (ANTS-4561)
+  Closing a big changelog section returns the entire section as its reply, which is too large to receive.
+
+- **spec_lint's surfaces hint states a FALSE cause: the check does have an input, and it is a hard-coded layout.** (ANTS-4679)
+  A tool tells you a check can never be switched on. It can -- the tool just only looks in one place for the thing that switches it on.
+
+- **spec_lint names a check in skipped[] while returning that same check's findings, so the field cannot be read either way.** (ANTS-4666)
+  The spec checker reports a check as "did not run" in the same breath as reporting what that check found.
+
+- **roadmap_query's sync_checked:false is folded away by default compaction -- ANTS-4673 in a second verb, already live.** (ANTS-4677)
+  A flag meaning nobody checked whether the file matches the database is quietly deleted from the reply, so it reads as checked and fine.
+
+- **spec_lint's skip entries and their hint fields share no token, so a hinted skip reads as unexplained.** (ANTS-4676)
+  A tool says it skipped a check and does explain why, but the explanation is labelled so differently that readers cannot tell the two go together.
+
+- **doc_citations quotes:true detects a quoted span per LINE while matching folds newlines, so a hard-wrapped quotation is never checked and lands in no bucket.** (ANTS-4664)
+  The quotation checker silently ignores any quote that runs onto a second line, and reports the document as clean.
+
+- **Neither quotation checker survives a hard wrap, so a true quotation reads as unverifiable.** (ANTS-4607)
+  Two tools that check whether a quote is real fail when the quote is split across lines, which is how this project writes everything.
 
 - **An unknown roadmap section now suggests near misses on database-backed projects too** (ANTS-4591)
   The "did you mean?" hint had reached only the file-backed path, so every
