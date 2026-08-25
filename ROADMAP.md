@@ -43285,6 +43285,35 @@ filed below.
 
   Both are detection-side, not matching-side: the comparison is already
   wrap-tolerant and only the finding of the two operands is not.
+  Re-verified 2026-08-25 by running both halves. HALF DONE -- rescoped
+  rather than closed, and neither half was taken on trust.
+
+  PART 2 IS FIXED, by ANTS-4638 (paragraph-scoped attribution, shipped
+  2026-08-25). Tested with a fixture built to this item's description: a
+  bullet naming `src2.md` on one line and quoting it on the next now returns
+  status "ok" with target resolved, where this item recorded no_target. The
+  "same physical line" requirement is gone.
+
+  PART 1 IS STILL LIVE, and confirmed with this item's own example. The
+  sentence "Nothing in the text can separate that from a real multi-word id,
+  which is the argument for ANTS-3771" is present verbatim in
+  src/roadmapparse.cpp, hard-wrapped across four `//` lines.
+  workspace_search with match_wrapped:true returns ZERO matches for it. So
+  match_wrapped folds whitespace and blockquote markers, and still does not
+  fold a source comment leader.
+
+  Remaining scope is therefore part 1 alone: fold `//`, `#` and a leading
+  `*` (the javadoc continuation) the way blockquote markers already are.
+  The argument for it is unchanged and is the strong one -- a C++ codebase
+  keeps its reasoning in wrapped comments, so that is most of what a spec
+  quotes, and a review gate that dismisses a finding whose quote it cannot
+  locate cannot tell "absent" from "wrapped".
+
+  Related, filed today from a second reporter: ANTS-4664 is the same
+  detection-side class in doc_citations, where the quoted SPAN is found per
+  line while the matcher folds newlines. Three of these now -- attribution
+  (fixed), span detection (open), comment leaders (open) -- which is the
+  argument for fixing the class rather than the instances.
   **Layman:** Two tools that check whether a quote is real fail when the quote is split across lines, which is how this project writes everything.
   Kind: fix.
   Source: in-session-2026-08-21 (ANTS-3771 spec authoring).
