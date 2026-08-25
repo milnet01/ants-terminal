@@ -23,118 +23,31 @@ step; per-verb behaviour is
 
 ## Load-bearing contracts (quick reference)
 
-The contracts a new tool composes with, each with its spec. The
-checklist below walks the full procedure; this is the at-a-glance map
-(relocated out of the always-loaded `CLAUDE.md` preamble by ANTS-2088).
+The contracts a new tool composes with, and where each is stated. This
+is a map, not a second copy: every line points at the checklist step or
+sibling standard that OWNS the rule (relocated out of the always-loaded
+`CLAUDE.md` preamble by ANTS-2088). Read the owner before building
+against it — a restatement here is one more thing that can drift from
+what it restates, which is what ANTS-4680 removed.
 
-- **Response wrap (ANTS-1294).** `tools/call` replies are auto-wrapped
-  in `<ants_mcp_data tool="…">…</ants_mcp_data>` by
-  `ClaudeIntegration::wrapMcpData`. Register normally and the dispatch
-  site wraps; control-plane tools (`get_session_info`, `token_usage`,
-  `tool_info`) bypass. **Raw reads (ANTS-2218):** a content-read verb in
-  `mcp::isRawEligible` honours `raw:true` (declare `makeRawProp()`),
-  returning bytes verbatim in an unforgeable nonce frame via
-  `wrapMcpDataRaw` — for agents reading frame-sensitive source to Edit it.
-- **A verb reporting ZERO must say what it looked at (ANTS-4374).** The
-  envelope for *"checked, and it is clean"* must not be byte-identical to
-  the envelope for *"could not check"*. Every zero a verb can emit —
-  `cases_run:0`, `total_raw:0`, `sections_checked:false`, an empty
-  `symbols[]`, an empty `missing_ids[]` — is read at a gate as a pass, and
-  a gate is exactly where the difference matters. So a zero ships with the
-  denominator beside it: what was scanned, which path was consulted, how
-  many candidates were declined and why. `find_definition`'s
-  `file_stem_hint` (ANTS-1950) is the pattern already got right.
-  **Emit the evidence as a field a caller READS, not as a `false` it must
-  know to look for** — and pick a shape compaction keeps.
-  `mcp::isCompactDroppable` drops `null`, `false`, `""`, `[]` and `{}`
-  alike, so an EMPTY array is folded exactly like the boolean wherever
-  compaction resolves true: `declined_candidates: []` on a clean run is no
-  evidence at all. **Prefer a count** — numbers survive, including `0`, and a
-  number is read where a boolean is skipped. A `*_checked` boolean is
-  permitted and survives (protected by suffix since ANTS-4677,
-  `mcp::isProtectedCompactKey`), but it is still a `false` the caller must
-  know to look for, so it is the weaker of the two shapes rather than an
-  exception to this rule. **And do not fold it into an
-  existing failure signal**: a narrowed scope that legitimately matched
-  nothing is not a partial run, and marking it one trades a silent wrong
-  answer for a noisy one. Reached independently from three directions in
-  one session; the instances are ANTS-4366, ANTS-4370, ANTS-4371,
-  ANTS-4373, and the refusal side of ANTS-4350 / ANTS-4368 / ANTS-4387.
-- **caller_cwd resolution (ANTS-1401).** Consume `caller_cwd` via
-  `ants::resolveCallerCwdRoot` (`src/resolvedroot.h`) — never
-  re-implement canonicalisation / tab-walks.
-- **CallerCwdContract (ANTS-1404).** Classify each tool at
-  `callerCwdContractFor` as Required / Optional / TabSpecific /
-  ProcessGlobal; `Required` refuses empty `caller_cwd` with
-  `code:"caller_cwd_required"`. Unclassified defaults to Optional.
-  **Only `Required` is ENFORCED at dispatch.** `TabSpecific` and
-  `ProcessGlobal` are classification-only (ANTS-1404 Phase 3a, and the enum's
-  own comments say so), so a tab-scoped verb gates itself in its handler —
-  `RcGate` is the shared helper for that, and step 3 notes it is used well
-  beyond the state store. Picking the word does not buy the check, and
-  nothing refuses the registration if you assume it does.
-- **Path validation (ANTS-1295).** Any path-typed arg routes through
-  `PathValidation::validatePath` (`src/pathvalidation.h`) before any FS
-  op; reject `code:"bad_path"`. Use `check.argvForm` for argv,
-  `check.resolved` for the canonical path (empty if not-yet-existing).
-- **ETag 304 (ANTS-1499).** Read tools opt in via `isEtagSupportedTool`
-  + `makeEtagMatchProp()`; a matching `etag_match` short-circuits to
-  `{ok, unchanged, etag}`. **Except an envelope carrying per-run
-  measurements, which owns its own 304: withheld from `isEtagSupportedTool`
-  and not using `makeEtagMatchProp()`, but still declaring `etag_match`
-  inline — step 7.**
-- **`fields=` projection (ANTS-1720).** Universal since ANTS-4524 — every
-  verb honours it and the `tools/list` builder declares it on every
-  schema, so there is nothing to opt into. Narrows to named top-level
-  fields. A **304** (`unchanged:true`) is returned whole. A **refusal** is
-  narrowed like any other envelope, then `ok` / `code` / `error` /
-  `retry_after_ms` are re-inserted — so § 6a's `format`, `path` and `hint`
-  survive only if the caller named them. Where a verb also 304s, list
-  `"etag"` in `fields` to keep it.
-- **Refusal codes** follow [mcp-error-codes.md](mcp-error-codes.md);
-  **caches** follow [mcp-caches.md](mcp-caches.md) (a path-keyed cache
-  may go cold but must never *shadow*).
-- **State routing (ANTS-1336 / ANTS-1435).** `session_memory` /
-  `workflow_state` *writes* go through RcGate (focused-tab match);
-  *reads* anchor to `caller_cwd`. `wf.<skill>` keys purge at 72 h;
-  `session_memory` has no TTL. Storage
-  `~/.cache/ants-terminal/mcp-state/<sha256(cwd)>.json`. See ANTS-1435
-  §Limitations.
-- **`dry_run` preview (ANTS-2077 / 2136 / 2227).** Every *mutating* verb
-  takes a `dry_run` bool (default false). When true it computes the
-  would-be result envelope (carrying `dry_run:true`) and returns it
-  *before* any disk write — the preview path must share the exact code
-  that computes the write so it can't drift. Declare the schema prop via
-  the shared `makeDryRunProp()` factory (the pre-factory verbs roadmap_log
-  / changelog_log / spec_log keep tailored copies). Supported:
-  roadmap_log, changelog_log, spec_log, apply_edits, project_settings,
-  feedback_log, audit_falsepos_log, indie_review_fold_in, cold_eyes_fold_in,
-  debt_sweep_defer, roadmap_migrate, audit_dismiss. **`roadmap_migrate` is a stated
-  deviation from the "before any disk write" rule** (ANTS-3855 § 2.3.1): its
-  preview opens the store, and on a machine with no store yet that *creates an
-  empty schema-initialised one*. Required for the preview to be correct rather
-  than merely convenient — `load()`'s counts are a diff against existing rows,
-  so a throwaway store would report every item as an insert on a project that
-  is already migrated, which is a confident wrong answer. The deviation is
-  bounded: what a dry run may create is an empty schema (zero `project` /
-  `section` / `item` / `element` / `history` rows), it writes no roadmap data,
-  and it modifies an existing store no more than a rolled-back transaction
-  does. The ROADMAP-fold-in verbs peek the would-be IDs via
-  `RoadmapFoldIn::peekIds` (no `.roadmap-counter` bump) and skip `insertBlock`.
-  Also `session_message` — the mail verb, not the `session_memory` state
-  writer named below — plus `test_audit_fold_in` and `debt_sweep_apply_fix`,
-  **which were this rule's outstanding tail and no longer are** (verified
-  2026-08-25 by opening all three: each declares the property via
-  `makeDryRunProp()` and each handler branches on it). Read-only verbs
-  (`get_*`, `*_query`, `find_*`, `read_*`) are out
-  of scope, as are the **session-state** writers `session_memory` and
-  `workflow_state`: they mutate, and deliberately carry no `dry_run` — what
-  the rule is about is durable **project or roadmap data**, where a wrong
-  write is expensive to undo. Read it that way rather than as file-vs-store:
-  `roadmap_migrate` and `session_message` write the machine-global roadmap
-  store and are both in scope, while the session-state pair write a
-  regenerable cache and are not. The lists above are the live inventory; treat a verb on
-  neither as unclassified rather than compliant.
+- **caller_cwd contract (ANTS-1404 / ANTS-1419)** — step 2.
+- **caller_cwd resolution (ANTS-1401)**, **state routing (ANTS-1336 /
+  ANTS-1435)** — step 3.
+- **Path validation (ANTS-1295)** — step 4.
+- **Response wrap (ANTS-1294)**, **raw reads (ANTS-2218)** — step 5.
+- **A verb reporting ZERO must say what it looked at (ANTS-4374)** —
+  step 5a.
+- **Refusal codes** — step 6; the taxonomy itself is
+  [mcp-error-codes.md](mcp-error-codes.md).
+- **Writer/reader format parity (ANTS-2042 / ANTS-4134)** — step 6a.
+- **`dry_run` preview (ANTS-2077 / 2136 / 2227)** — step 6b.
+- **ETag 304 (ANTS-1499)** and its handler-local exception (ANTS-4108) —
+  step 7.
+- **`fields=` projection (ANTS-1720 / ANTS-4524)**, **compaction
+  (ANTS-4673 / ANTS-4677)** — step 8.
+- **Cache keying and relocation (ANTS-1439)** — step 9; the contract
+  itself is [mcp-caches.md](mcp-caches.md).
+- **Dispatch order of the shared transforms** — § Project overrides.
 
 ---
 
@@ -178,18 +91,28 @@ place when it saves a Claude session real tokens or round-trips
    schema massaging query — so keep it in sync, don't treat it as
    vestigial.
 
+   **Only `Required` is ENFORCED at dispatch.** `TabSpecific` and
+   `ProcessGlobal` are classification-only (ANTS-1404 Phase 3a, and the
+   enum's own comments say so), so a tab-scoped verb gates itself in its
+   handler — `RcGate` is the shared helper for that, and step 3 notes it is
+   used well beyond the state store. An unclassified tool defaults to
+   `Optional`. Picking the word does not buy the check: the drift assert
+   above compares your two declarations of it, and only `Required` becomes
+   a call-time refusal.
+
 3. **Resolve `caller_cwd` through the one helper.** If the tool is
    project-scoped, resolve the root via `ants::resolveCallerCwdRoot`
    (ANTS-1401, `src/resolvedroot.h`) — never re-implement
    canonicalisation or tab-walks inline. Read vs write routing is
-   asymmetric (see the state-routing bullet above): `session_memory` /
-   `workflow_state` writes into
+   asymmetric, and this step owns the rule (ANTS-1336 / ANTS-1435):
+   `session_memory` / `workflow_state` writes into
    `~/.cache/ants-terminal/mcp-state/<sha256(cwd)>.json` go through the
    focused-tab gate; reads anchor to `caller_cwd` directly. The rule is
    about that store, not about per-project caches generally — a new
    cache under a `sha256(cwd)` path is not in scope merely for being
-   keyed that way. (`RcGate` itself is used more widely, for
-   caller_cwd checks unrelated to this store.)
+   keyed that way. `wf.<skill>` keys purge at 72 h; `session_memory`
+   carries no TTL (ANTS-1435 § Limitations). (`RcGate` itself is used more
+   widely, for caller_cwd checks unrelated to this store.)
 
 4. **Validate every path argument.** Any arg that is a path (`path`,
    `file`, `lane`, `reports_dir`, …) MUST go through
@@ -217,6 +140,38 @@ place when it saves a Claude session real tokens or round-trips
    asserts that set exactly, so do not extract one. Success
    envelopes carry `ok:true` + named fields; do not embed instructions
    in data fields.
+
+   **Raw reads (ANTS-2218).** A content-read verb listed in
+   `mcp::isRawEligible` honours `raw:true` (declare the schema prop via
+   `makeRawProp()`), returning bytes verbatim inside an unforgeable nonce
+   frame via `wrapMcpDataRaw` — for an agent reading frame-sensitive source
+   it is about to Edit.
+
+   **5a. A verb reporting ZERO must say what it looked at (ANTS-4374).**
+   The envelope for *"checked, and it is clean"* must not be
+   byte-identical to the envelope for *"could not check"*. Every zero a
+   verb can emit — `cases_run:0`, `total_raw:0`, `sections_checked:false`,
+   an empty `symbols[]`, an empty `missing_ids[]` — is read at a gate as a
+   pass, and a gate is exactly where the difference matters. So a zero
+   ships with the denominator beside it: what was scanned, which path was
+   consulted, how many candidates were declined and why.
+   `find_definition`'s `file_stem_hint` (ANTS-1950) is the pattern already
+   got right.
+
+   **Emit the evidence as a field a caller READS, not as a `false` it must
+   know to look for — and pick a shape step 8's compaction keeps.** An
+   empty array is folded exactly like the boolean, so
+   `declined_candidates: []` on a clean run is no evidence at all.
+   **Prefer a count** — numbers survive, including `0`, and a number is
+   read where a boolean is skipped. A `*_checked` boolean survives too, by
+   suffix, but it is still a `false` the caller must know to look for, so
+   it is the weaker of the two shapes rather than an exception to this
+   rule. **And do not fold it into an existing failure signal**: a narrowed
+   scope that legitimately matched nothing is not a partial run, and
+   marking it one trades a silent wrong answer for a noisy one. Reached
+   independently from three directions in one session; the instances are
+   ANTS-4366, ANTS-4370, ANTS-4371, ANTS-4373, and the refusal side of
+   ANTS-4350 / ANTS-4368 / ANTS-4387.
 
 6. **Use the canonical refusal shape.** Every failure is
    `{ok:false, error:"<human readable>", code:"<taxonomy code>"}` with
@@ -270,9 +225,44 @@ place when it saves a Claude session real tokens or round-trips
    test from them.
 
    **6b. Every *mutating* verb takes `dry_run` (ANTS-2077 / 2136 /
-   2227).** The contract is stated in full in the quick-reference map
-   above; it is repeated here as a checklist step because a mutating
-   verb walked through steps 1–11 would otherwise ship without it.
+   2227).** A bool, default false. When true the verb computes the
+   would-be result envelope (carrying `dry_run:true`) and returns it
+   *before* any disk write — the preview path must share the exact code
+   that computes the write, so it can't drift. Declare the schema prop via
+   the shared `makeDryRunProp()` factory (the pre-factory verbs
+   roadmap_log / changelog_log / spec_log keep tailored copies). Supported:
+   roadmap_log, changelog_log, spec_log, apply_edits, project_settings,
+   feedback_log, audit_falsepos_log, indie_review_fold_in,
+   cold_eyes_fold_in, debt_sweep_defer, roadmap_migrate, audit_dismiss,
+   session_message, test_audit_fold_in, debt_sweep_apply_fix — the last
+   three were this rule's outstanding tail until 2026-08-25, when all three
+   were opened and found to declare the property and branch on it. The
+   ROADMAP-fold-in verbs peek the would-be IDs via
+   `RoadmapFoldIn::peekIds` (no `.roadmap-counter` bump) and skip
+   `insertBlock`.
+
+   **`roadmap_migrate` is a stated deviation from the "before any disk
+   write" rule** (ANTS-3855 § 2.3.1): its preview opens the store, and on a
+   machine with no store yet that *creates an empty schema-initialised
+   one*. Required for the preview to be correct rather than merely
+   convenient — `load()`'s counts are a diff against existing rows, so a
+   throwaway store would report every item as an insert on a project that
+   is already migrated, which is a confident wrong answer. The deviation is
+   bounded: what a dry run may create is an empty schema (zero `project` /
+   `section` / `item` / `element` / `history` rows), it writes no roadmap
+   data, and it modifies an existing store no more than a rolled-back
+   transaction does.
+
+   **Out of scope:** read-only verbs (`get_*`, `*_query`, `find_*`,
+   `read_*`), and the **session-state** writers `session_memory` and
+   `workflow_state` — which mutate, and deliberately carry no `dry_run`.
+   What the rule is about is durable **project or roadmap data**, where a
+   wrong write is expensive to undo. Read it that way rather than as
+   file-vs-store: `roadmap_migrate` and `session_message` (the mail verb,
+   not the `session_memory` state writer) write the machine-global roadmap
+   store and are both in scope, while the session-state pair write a
+   regenerable cache and are not. The lists above are the live inventory;
+   treat a verb on neither as unclassified rather than compliant.
 
    **File note for steps 7–8:** a tool's `inputSchema` lives in the
    `tools/list` builder in `src/claudeintegration.cpp` — a *different*
@@ -339,7 +329,12 @@ place when it saves a Claude session real tokens or round-trips
 8. **Decide compaction — `fields=` needs no decision (ANTS-4524).**
    Response narrowing is universal: the dispatcher projects for every verb
    and injects the `fields` property into every schema, so a new verb gets
-   it by existing. Compose with ETag by listing `"etag"` in `fields`.
+   it by existing. It narrows to named top-level fields and has two floors.
+   A **304** (`unchanged:true`) is returned whole — so compose with ETag by
+   listing `"etag"` in `fields`. A **refusal** is narrowed like any other
+   envelope, then `ok` / `code` / `error` / `retry_after_ms` are
+   re-inserted — so § 6a's `format`, `path` and `hint` survive only if the
+   caller named them.
 
    What you DO answer is compaction, in `mcp::kDispatchProjection`
    (`src/mcpprojection.cpp`). A row there declares the `compact` argument
@@ -360,11 +355,13 @@ place when it saves a Claude session real tokens or round-trips
 
    **A row does not protect a meaning-bearing `false`; `defaultCompact:false`
    only spares the caller who did not ask.** An explicit `compact:true` on a
-   verb in the table still folds it. The one thing that survives regardless
+   verb in the table still folds it, and `mcp::isCompactDroppable` folds
+   `null`, `false`, `""`, `[]` and `{}` alike — an empty array goes exactly
+   as the boolean does. The one thing that survives regardless
    is `mcp::isProtectedCompactKey`: `ok`, `code`, `error`, `etag`, `found`,
-   `unchanged`, and any key ending `_checked`. So a field a caller branches
-   on is named for that suffix, or emitted as a count — not defended by a
-   table row.
+   `unchanged`, and any key ending `_checked` (by suffix since ANTS-4677).
+   So a field a caller branches on is named for that suffix, or emitted as
+   a count — not defended by a table row (step 5a).
 
 9. **Follow the cache contract for any project-scoped cache.** If the
    tool reads/writes a per-project cache, key + relocate it per
@@ -489,8 +486,9 @@ that restates contracts owned by `mcp-error-codes.md`, `mcp-caches.md`,
 independent chance to drift from its owner. Loop 6 acted on that for the first
 time rather than only naming it — the § Project overrides restatement was
 deleted and step 8 made complete, which is one instance of the durable fix.
-**The remaining tail is the rest of them**: the quick-reference map is
-restatement by construction, and every bullet in it is a copy that can drift
-from the step below or the sibling standard beside it. That is a restructuring
-job, not a review finding, and it is what the next edit to this file should
-take on.
+**That tail was taken by ANTS-4680** (2026-08-25): the quick-reference map was
+restatement by construction, every bullet in it a copy that could drift from
+the step below or the sibling standard beside it. Each bullet's content moved
+into the step that owns it and the map is pointers only. That is an authoring
+edit that changes direction, so the bar above has lapsed with the text it was
+measured against.
