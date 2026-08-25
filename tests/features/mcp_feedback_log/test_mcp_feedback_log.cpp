@@ -728,3 +728,91 @@ TEST(McpFeedbackLog, Ants4646SetTitleThroughTheVerb) {
     EXPECT_FALSE(bad.value("ok").toBool());
     EXPECT_EQ(bad.value("code").toString(), "bad_args");
 }
+
+// ---- ANTS-4647 — a NESTED project's parent is not the shared root --------
+//
+// The derivation is "<leaf>_Ants_MCP_Feedback.md at the parent of caller_cwd",
+// correct for a project sitting directly under the shared root — which is
+// every project the convention was designed around. One level deeper it is
+// wrong: Pressless is its own repo inside the Charls_Site workspace, so the
+// parent is Charls_Site, and the derived file lands where no maintainer sweep
+// globs it. Verified against 0.7.106: ok:true, created:true, path_derived:true.
+//
+// This is ANTS-4613's failure for a different reason — a derived name that can
+// never be read — and it takes ANTS-4613's answer: refuse, with the ancestor's
+// files as candidates. Guessing an ancestor would have to report which one it
+// picked; a refusal naming candidates cannot pick the wrong file.
+TEST(McpFeedbackLog, Ants4647RefusesToDeriveForANestedProject) {
+    QTemporaryDir root; ASSERT_TRUE(root.isValid());
+    // The real corpus lives at the top; the workspace between holds none.
+    QFile sib(root.path() + "/Charls_Site_Ants_MCP_Feedback.md");
+    ASSERT_TRUE(sib.open(QIODevice::WriteOnly));
+    sib.write("# Ants MCP Feedback\n"); sib.close();
+    ASSERT_TRUE(QDir(root.path()).mkpath("Charls_Site/Pressless"));
+
+    RemoteControl rc(nullptr);
+    QJsonObject req;
+    req["caller_cwd"] = root.path() + "/Charls_Site/Pressless";
+    req["op"] = "append_finding"; req["date"] = "2026-08-25";
+    QJsonArray fs; fs.append(finding("Title", "what"));
+    req["findings"] = fs;
+    const QJsonObject env = rc.cmdFeedbackLog(req).object();
+
+    EXPECT_FALSE(env.value("ok").toBool())
+        << "a file nobody can glob must not be reported as created";
+    EXPECT_EQ(env.value("code").toString().toStdString(), "bad_args");
+    EXPECT_FALSE(QFileInfo::exists(
+        root.path() + "/Charls_Site/Pressless_Ants_MCP_Feedback.md"))
+        << "the stranded file must not be created";
+    const QJsonArray cands = env.value("candidates").toArray();
+    ASSERT_EQ(cands.size(), 1) << "the ancestor's corpus is the actionable retry";
+    EXPECT_TRUE(cands.at(0).toString().endsWith(
+        "Charls_Site_Ants_MCP_Feedback.md"));
+    EXPECT_FALSE(env.value("hint").toString().isEmpty());
+}
+
+// The refusal must fire ONLY where a real corpus was found above. A brand-new
+// shared root holds no feedback file yet, and refusing there would make the
+// FIRST file on any new machine impossible to create — turning a fix into a
+// worse bug than the one it closes.
+TEST(McpFeedbackLog, Ants4647FirstFileInAFreshCorpusStillDerives) {
+    QTemporaryDir root; ASSERT_TRUE(root.isValid());
+    ASSERT_TRUE(QDir(root.path()).mkpath("workspace/Project"));
+
+    RemoteControl rc(nullptr);
+    QJsonObject req;
+    req["caller_cwd"] = root.path() + "/workspace/Project";
+    req["op"] = "append_finding"; req["date"] = "2026-08-25";
+    QJsonArray fs; fs.append(finding("Title", "what"));
+    req["findings"] = fs;
+    const QJsonObject env = rc.cmdFeedbackLog(req).object();
+
+    EXPECT_TRUE(env.value("ok").toBool())
+        << env.value("error").toString().toStdString();
+    EXPECT_TRUE(QFileInfo::exists(
+        root.path() + "/workspace/Project_Ants_MCP_Feedback.md"))
+        << "no corpus anywhere above means this IS the first file";
+}
+
+// A project sitting directly under the corpus root is the designed case and
+// must be untouched, even though its own file does not exist yet.
+TEST(McpFeedbackLog, Ants4647DirectChildOfTheCorpusRootStillDerives) {
+    QTemporaryDir root; ASSERT_TRUE(root.isValid());
+    QFile sib(root.path() + "/Other_Ants_MCP_Feedback.md");
+    ASSERT_TRUE(sib.open(QIODevice::WriteOnly));
+    sib.write("# Ants MCP Feedback\n"); sib.close();
+    ASSERT_TRUE(QDir(root.path()).mkdir("NewProject"));
+
+    RemoteControl rc(nullptr);
+    QJsonObject req;
+    req["caller_cwd"] = root.path() + "/NewProject";
+    req["op"] = "append_finding"; req["date"] = "2026-08-25";
+    QJsonArray fs; fs.append(finding("Title", "what"));
+    req["findings"] = fs;
+    const QJsonObject env = rc.cmdFeedbackLog(req).object();
+
+    EXPECT_TRUE(env.value("ok").toBool())
+        << env.value("error").toString().toStdString();
+    EXPECT_TRUE(QFileInfo::exists(
+        root.path() + "/NewProject_Ants_MCP_Feedback.md"));
+}

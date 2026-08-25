@@ -6066,7 +6066,21 @@ void ClaudeIntegration::onMcpConnection() {
                             "*_Ants_MCP_Feedback.md file (absolute or "
                             "caller_cwd-relative). Omit to derive "
                             "<caller_cwd-leaf>_Ants_MCP_Feedback.md at the "
-                            "shared root (parent of caller_cwd).");
+                            "shared root (parent of caller_cwd). ANTS-4647 — "
+                            "that assumes caller_cwd sits DIRECTLY under the "
+                            "shared root. For a NESTED project (a repo inside "
+                            "another workspace) the parent is not the corpus, "
+                            "and the derived file would land where no "
+                            "maintainer sweep globs it — so when the parent "
+                            "holds no *_Ants_MCP_Feedback.md and an ancestor "
+                            "does, the verb refuses `bad_args` with "
+                            "`candidates` from that ancestor rather than "
+                            "creating a stranded file. A configured "
+                            "`claude.mcp_feedback_root` (ANTS-4471) is "
+                            "consulted first and REDIRECTS the derivation "
+                            "there instead of refusing. With no corpus "
+                            "anywhere above, this is the first file and it is "
+                            "created as before.");
                     // ANTS-4646 — op:"set_title" only.
                     QJsonObject titleProp; titleProp["type"] = "string";
                         titleProp["description"] = QStringLiteral(

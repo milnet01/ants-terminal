@@ -43875,7 +43875,7 @@ Three were reproduced directly in this session rather than taken on report.
   Source: Album_Builder-2026-08-24.
   Lanes: mcp, feedback.
 
-- 📋 [ANTS-4647] **Omitted-path feedback derivation strands a NESTED project's file where no maintainer sweep globs it.**
+- ✅ [ANTS-4647] **Omitted-path feedback derivation strands a NESTED project's file where no maintainer sweep globs it.**
   The derivation is "<caller_cwd-leaf>_Ants_MCP_Feedback.md at the shared root
   (parent of caller_cwd)" — correct for a project sitting directly under the
   shared root, which is every project the convention was designed around. It is
@@ -43907,6 +43907,7 @@ Three were reproduced directly in this session rather than taken on report.
   project beneath it — guesses, and would have to report which ancestor it
   chose. Prefer the refusal. Interacts with ANTS-4471's mcp_feedback_root,
   which should be consulted before either.
+  Resolved (2026-08-25) by extending ANTS-4613's refusal, as prescribed: when caller_cwd's parent holds no *_Ants_MCP_Feedback.md and an ancestor does, the derivation refuses bad_args with candidates from that ancestor plus a hint, instead of creating a file no maintainer sweep globs. The reporter's alternative (walk up and derive from the project beneath the corpus) was declined for the reason they gave — it guesses, and would have to report which ancestor it chose. TWO THINGS THE ITEM DID NOT ASK FOR, both load-bearing. (1) THE TRIGGER IS DELIBERATELY NARROW: the naive form — "the parent holds no feedback file" — would make the FIRST file in any new corpus impossible to create, a worse bug than the one being closed, so the refusal fires only when a real corpus was found ABOVE. Pinned by two guard tests (a fresh corpus and a direct child of the corpus root, both of which must still derive). (2) THE CONFIGURED ROOT REDIRECTS RATHER THAN REFUSING. Consulting claude.mcp_feedback_root and refusing on it — the literal reading of "consulted before either" — REDDENED feedback_query_shared_root INV-2, which requires that key to produce ok:true + candidates: a user who declared the corpus has already answered the question this refusal asks. So a declared corpus now becomes the derivation base for writes too, which is what setting the key plainly means and what INV-2 already implied for reads. Covered by a new write-side test in that suite, since it is behaviour beyond the report. Repro confirmed on the real tree first: /mnt/Games/Scripts/Linux/Charls_Site holds no feedback file while the shared root holds 20. mcp-feedback-files.md § File location & name gains the nested-project bullet beside ANTS-3714's dot-leaf one; the path argument's description carries the same. Full suite 100% of 3914, ctest -N 3924 → 3928.
   **Layman:** A project inside another project files its feedback into a folder nobody reads, and is told it succeeded.
   Kind: fix.
   Source: Charls_Site-2026-08-24.

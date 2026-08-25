@@ -2917,6 +2917,87 @@ bool resolveFeedbackPath(const QJsonObject &req, const QString &toolName,
                 }
             }
         }
+        // ANTS-4647 — the derivation assumes caller_cwd sits DIRECTLY under the
+        // shared root, which is every project the convention was designed
+        // around. One level deeper it is wrong: a repo nested inside another
+        // workspace derives into that workspace, where no maintainer sweep
+        // globs it, and the verb answered ok:true / created:true — the same
+        // shape ANTS-4613 refuses for a dot leaf, for the same stated reason.
+        // It also splits the record, starting an empty parallel file for work
+        // the real one already tracks.
+        //
+        // Refuse rather than guess. Walking up to the nearest ancestor holding
+        // a corpus and deriving from the project beneath it would have to
+        // report which ancestor it chose; a refusal naming candidates cannot
+        // pick the wrong file.
+        //
+        // The trigger is deliberately narrow, because the naive form of this
+        // check — "the parent holds no feedback file" — would make the FIRST
+        // file in any new corpus impossible to create, a worse bug than the
+        // one being closed. It fires only when the parent holds NO corpus AND
+        // an ancestor (or the configured `claude.mcp_feedback_root`) does.
+        if (!existsOut) {
+            const auto holdsCorpus = [](const QString &dir) {
+                if (dir.isEmpty()) return false;
+                return !QDir(dir).entryList(
+                    {QLatin1String("*") + QLatin1String(kFeedbackSuffix)},
+                    QDir::Files).isEmpty();
+            };
+            if (!holdsCorpus(sharedRoot)) {
+                // ANTS-4471's configured root is consulted FIRST, and it
+                // REDIRECTS rather than refusing: a user who declared the
+                // corpus directory has already answered the question this
+                // refusal would ask, and refusing there would contradict that
+                // key's own contract (feedback_query_shared_root INV-2, which
+                // requires ok:true + candidates from the configured root).
+                const QString declared = Config().claudeMcpFeedbackRoot();
+                if (holdsCorpus(declared)) {
+                    QString redirected;
+                    for (const QString &name : feedbackConventionalNames(leaf)) {
+                        const QString cand = QDir::cleanPath(
+                            declared + QLatin1Char('/') + name);
+                        if (redirected.isEmpty()) redirected = cand;
+                        if (QFileInfo::exists(cand)) {
+                            redirected = cand;
+                            existsOut  = true;
+                            break;
+                        }
+                    }
+                    resolvedOut = redirected;
+                    if (derivedOut) *derivedOut = true;
+                    return true;
+                }
+                QString corpus;
+                QDir up(sharedRoot);
+                while (up.cdUp()) {
+                    if (holdsCorpus(up.absolutePath())) {
+                        corpus = up.absolutePath();
+                        break;
+                    }
+                }
+                if (!corpus.isEmpty()) {
+                    err = fbErr(QStringLiteral("bad_args"),
+                        toolName + QStringLiteral(": \"path\" is required — "
+                        "caller_cwd's parent \"%1\" holds no "
+                        "*%2 file, so \"%3\" is a NESTED project and the "
+                        "derived name would land where no maintainer sweep "
+                        "reads it. The corpus is \"%4\"; name the file "
+                        "explicitly.")
+                        .arg(sharedRoot, QLatin1String(kFeedbackSuffix), leaf,
+                             corpus));
+                    const QJsonArray cands = feedbackSiblingCandidates(
+                        QDir::cleanPath(corpus + QLatin1Char('/') + leaf));
+                    if (!cands.isEmpty()) {
+                        err[QStringLiteral("candidates")] = cands;
+                        err[QStringLiteral("hint")] = QStringLiteral(
+                            "pass one of `candidates` as `path`, or the new "
+                            "name you want under \"%1\"").arg(corpus);
+                    }
+                    return false;
+                }
+                // No corpus anywhere above: this IS the first file. Derive.
+            }
+        }
         if (derivedOut) *derivedOut = true;
         return true;
     }

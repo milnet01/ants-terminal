@@ -254,6 +254,9 @@ for security-relevant changes.
 
 ### Fixed
 
+- **a nested project's feedback file is no longer created where nothing reads it** (ANTS-4647)
+  Omitting `path` derives the file into the parent of caller_cwd, which is the shared corpus only for a project sitting directly under it. A repo nested inside another workspace got a file in that workspace — invisible to every maintainer sweep, and starting an empty parallel record beside the workspace's real one — and was told it succeeded. It now refuses with the ancestor corpus's files as candidates. A configured `claude.mcp_feedback_root` redirects the write there instead, and a genuinely new corpus with no feedback file anywhere above still creates its first file.
+
 - **project_settings op:detect omits its source counts when no walk ran, instead of reporting 0** (ANTS-4648)
   A project with a settings file short-circuits before the directory walk, so both counts were still their initialiser — and a ~3000-line project was reported as holding no source at all. They are omitted now, with counts_computed saying which shape the reply is.
 

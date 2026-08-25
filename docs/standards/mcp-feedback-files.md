@@ -194,6 +194,24 @@ still never rewrites a contributor's *description*.
   is in fact DOOM's file — which is exactly why the explicit `path` is
   mandatory, not merely advised, for a leaf-mismatch project. New files use
   the dir-leaf basename and avoid the whole problem.
+- **A NESTED project cannot use the dir-leaf rule either (ANTS-4647).** The
+  rule and the omit-`path` derivation both say *directly under the shared
+  root*, and that is load-bearing: a repo that lives inside another workspace
+  (`Charls_Site/Pressless/`) has a parent that is not the corpus, so the
+  derived `Pressless_Ants_MCP_Feedback.md` lands in `Charls_Site/` where the
+  authoritative glob never looks. The same failure as the dot-leaf case above,
+  by a different route — a file that exists, conforms in every other respect,
+  and is invisible — with the extra harm that it splits the record: the
+  workspace's real file keeps its findings while an empty parallel one starts.
+  So **pass an explicit `path`**, and the verb now enforces it: when the
+  parent holds no `*_Ants_MCP_Feedback.md` and an ancestor does, it refuses
+  `bad_args` with `candidates` from that ancestor instead of creating the
+  stranded file. A configured `claude.mcp_feedback_root` (ANTS-4471) is
+  consulted first and REDIRECTS the derivation there rather than refusing —
+  a user who declared the corpus has already answered the question. With no
+  corpus anywhere above, this is the first file in a new corpus and it is
+  created as before, because refusing there would make a first file
+  impossible.
 - **A dot-leading leaf cannot use the dir-leaf rule (ANTS-3714).** Where the
   project directory begins with a dot — `~/.claude`, leaf `.claude` — the
   derived basename would be `.claude_Ants_MCP_Feedback.md`, which the

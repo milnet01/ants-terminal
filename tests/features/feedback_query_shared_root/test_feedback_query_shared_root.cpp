@@ -183,3 +183,47 @@ TEST(feedback_query_shared_root, Inv3DefaultDirStillSearchedAndDeduped) {
     EXPECT_EQ(hits, 1)
         << "scanning one directory twice must not offer the same file twice";
 }
+
+// ANTS-4647 — the WRITE side of the same key. ANTS-4647 refuses to derive for
+// a nested project, because the derived file would land where no maintainer
+// sweep globs it. But a user who set `claude.mcp_feedback_root` has already
+// answered the question that refusal would ask, so the declared corpus
+// REDIRECTS the derivation instead of triggering it. Refusing there would
+// contradict INV-2 above, which requires the key to produce an answer.
+TEST(feedback_query_shared_root, Ants4647ConfiguredRootRedirectsAWrite) {
+    ants_test::XdgGuard g;
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    sandboxConfig(g, tmp);
+    const Layout l = makeLayout(tmp);
+    ASSERT_TRUE(writeFile(l.corpusFilePath, corpusFile()));
+    {
+        Config cfg;
+        cfg.setClaudeMcpFeedbackRoot(l.corpusDir);
+    }
+
+    RemoteControl rc(nullptr);
+    QJsonObject req;
+    req[QStringLiteral("caller_cwd")] = l.callerProj;
+    req[QStringLiteral("op")]         = QStringLiteral("append_finding");
+    req[QStringLiteral("date")]       = QStringLiteral("2026-08-25");
+    QJsonObject f;
+    f[QStringLiteral("title")] = QStringLiteral("T");
+    f[QStringLiteral("what")]  = QStringLiteral("w");
+    QJsonArray fs; fs.append(f);
+    req[QStringLiteral("findings")] = fs;
+
+    const QJsonObject env = rc.cmdFeedbackLog(req).object();
+    ASSERT_TRUE(env.value(QStringLiteral("ok")).toBool())
+        << env.value(QStringLiteral("error")).toString().toStdString();
+
+    const QString wrote = env.value(QStringLiteral("path")).toString();
+    EXPECT_EQ(QFileInfo(wrote).absolutePath(), l.corpusDir)
+        << "the declared corpus is the shared root — write there, not beside "
+           "the project";
+    EXPECT_TRUE(QFileInfo::exists(wrote));
+    // And NOT the stranded default the derivation would otherwise have picked.
+    EXPECT_FALSE(QFileInfo::exists(
+        QDir(QFileInfo(l.callerProj).absolutePath())
+            .filePath(QStringLiteral("proj_Ants_MCP_Feedback.md"))));
+}
