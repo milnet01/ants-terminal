@@ -110,12 +110,12 @@ already required by this section or by § 4, and it is deliberately a
 ## Cold-eyes loop log
 ```
 
-**Expect a real backlog the first time this runs over `docs/specs/`, and
-it is not evidence the list is wrong.** Measured 2026-08-14 across all
-243 specs: 139 are missing at least one of these five as a `##` section —
-`Cold-eyes loop log` in 133, `Tests` in 112, `Surface` in 87. The corpus
-predates this standard (v1, 2026-05-21) and § 2 already records that
-specs from an earlier convention are still present.
+**Expect a real backlog over `docs/specs/`, and it is not evidence the
+list is wrong.** Most of the corpus predates this standard (v1,
+2026-05-21); § 2 already records that. `spec_lint` measures the current
+figure — this document does not restate it, because a count here reads as
+present tense and rots.
+
 
 ### 3.1 Title (H1)
 

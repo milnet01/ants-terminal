@@ -46510,7 +46510,7 @@ defect from different angles.
   that they stay unnumbered. The legacy backlog this exposes is ANTS-4348,
   filed rather than absorbed.
 
-- 📋 [ANTS-4348] **139 of 243 specs are missing a section `docs/standards/specs.md` § 3 requires — the backlog ANTS-4345's check exposes.**
+- ✅ [ANTS-4348] **139 of 243 specs are missing a section `docs/standards/specs.md` § 3 requires — the backlog ANTS-4345's check exposes.**
   Now that § 3 carries a `<!-- required-sections -->` block, `spec_lint`
   reports `missing_section` against the five unconditionally-required
   sections. Measured 2026-08-14 by name (number-insensitive, so this is
@@ -46533,6 +46533,54 @@ defect from different angles.
   Kind: investigate.
   Lanes: specs, speclint, docs.
   Source: in-session-2026-08-14 (measured while closing ANTS-4345).
+  Decided (2026-08-25), user deferred the call. Kind is investigate and the
+  investigation is done; the work it implies is ANTS-4662.
+
+  Re-measured first, because the figures had drifted since this was filed and
+  the gap was growing rather than settling.
+
+  THE DECISION, and the evidence under each part.
+
+  Do not back-fill. Split by DATE, and the split is near-total: almost every
+  document missing a section was added before the standard, and almost every
+  clean one after. So the standard is being followed and the backlog is
+  inheritance, not neglect. § 5.6 makes a pre-standard spec a historical record.
+  Leave it.
+
+  The pre-standard population is CLOSED and cannot grow. That is what makes a
+  baseline safe rather than an excuse: the metric worth watching is how many
+  specs written SINCE conform, and any rise there is a real regression. Option 3
+  as filed -- accept a standing count -- was rejected on its own, because it
+  hides the post-standard offenders; it becomes correct only once those are
+  closed.
+
+  Option 1 as filed -- a cutoff spec_lint cannot express -- turned out not to
+  need building. The date split is a fact about a closed set, so it can be stated
+  rather than computed.
+
+  The post-standard offenders are few and mostly small; most want only a Surface
+  section. Those are the real finding.
+
+  TWO THINGS THE MEASUREMENT FOUND THAT THIS ITEM DID NOT.
+
+  The check is unsatisfiable for one class, which is why the backlog looked
+  permanent. One offender's Status records a converged gate of several loops with
+  no log section: the loop RAN and its findings are gone. § 5.7 makes the log
+  evidence and CLAUDE.md forbids reconstructing it, so there is no conforming way
+  to satisfy the check on that document -- only fabrication. § 5.7 needs to say
+  what an honest section looks like when the log was never kept. That is the
+  policy piece whose absence made this look like a choice between fabricating and
+  ignoring.
+
+  And spec_lint holds a SUPERSEDED redirect stub to the five-section shape,
+  though § 5.6 recognises that genre. One document today, so a correctness fix
+  rather than a numbers one.
+
+  DONE HERE: removed the frozen figures from § 3, which were already stale and
+  which a standard reads in present tense. It now names spec_lint as the thing
+  that measures them. No direction changed, so no gate -- CLAUDE.md rule 14
+  checked, and the two changes that DO change direction were deliberately not
+  made here; they are ANTS-4662's, with the gate.
 
 - ✅ [ANTS-4135] **23 specs cite feature-test directories that do not exist.**
   Measured 2026-08-12 over docs/specs/ (excluding ANTS-4127's own spec):
@@ -46777,6 +46825,42 @@ defect from different angles.
   **Layman:** A fifth of our design documents never say whether the work is done, so the automatic checkers cannot tell a finished document from a draft.
   Kind: doc-fix.
   Source: in-session-2026-08-15 (measured while closing ANTS-4135).
+
+- 📋 [ANTS-4662] **Write ANTS-4348's decision into specs.md, then close the post-standard spec gaps.**
+  ANTS-4348 asked which specs are worth going back to. Decided there; this is
+  the work, split out because two of the three parts change a contract and owe
+  the cold gate.
+
+  GATED -- amend specs.md § 5.7. It says the loop log is the evidence a gate
+  happened, and CLAUDE.md forbids adding one retroactively. Between them there
+  is no conforming way to satisfy the required-section check on a spec whose
+  gate ran unlogged, so the only route left is to fabricate. § 5.7 should say
+  what an honest section looks like when the loop did not run, or ran and was
+  not recorded. Without that the check is unsatisfiable for that class and the
+  backlog reads as permanent.
+
+  Rule 14 applies: a conformer writes something different, so review-contract
+  runs before the edit.
+
+  GATED -- exempt the superseded genre. § 5.6 recognises a spec superseded by
+  another, and one such document is a redirect stub carrying a section titled
+  "Why this is a redirect and not a spec". spec_lint holds it to the five-section
+  shape anyway. One document today, so this is a correctness fix rather than a
+  numbers one, and it will recur.
+
+  UNGATED -- close the post-standard gaps, once § 5.7 makes them closable. Nine
+  specs authored after the standard miss a required section. Five need only a
+  Surface section, which is writable truthfully today. The rest want a loop-log
+  section, and at least one of those ran a gate whose findings are gone -- so its
+  honest artefact is a section saying so, never a reconstruction. Take them under
+  the amended rule, not before it.
+
+  Do NOT touch the pre-standard corpus. That population is closed, cannot grow,
+  and § 5.6 makes each document a historical record.
+  **Layman:** Record the agreed rule about older design documents, then fix the handful written since the rule that still miss a chapter.
+  Kind: doc.
+  Source: in-session-2026-08-25, the actionable half of ANTS-4348's decision.
+  Lanes: specs, speclint, docs.
 
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-07-23 triage
 
