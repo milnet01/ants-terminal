@@ -40085,7 +40085,7 @@ filed below.
   Source: finbreak_Ants_MCP_Feedback.md 2026-08-20.
   Lanes: remotecontrol, roadmapwrite.
 
-- 📋 [ANTS-4551] **op:append_batch omits the counter_advanced_* fields op:append emits, and the silence read as evidence.**
+- ✅ [ANTS-4551] **op:append_batch omits the counter_advanced_* fields op:append emits, and the silence read as evidence.**
   A single op:append returns counter_advanced_past / counter_advanced_to
   when it reconciles a lagging .roadmap-counter. op:append_batch returns
   no counter fields at all. Both do the same allocation, so the
@@ -40140,6 +40140,13 @@ filed below.
   have already concluded the store owns it. Emitting the counter fields
   on append_batch fixes the reporting; not writing the file fixes the
   class.
+  Closed (2026-08-25) as ALREADY DELIVERED by ANTS-4635 -- no new code. Verified by reading the path rather than by re-running the repro, because this project's counter file sits at 10000, well ahead of the high-water, so the lag cannot be staged here without disturbing the live allocator.
+
+  What exists now: rcRoadmapReconcileCounterCache() in remotecontrol_roadmap_query.cpp is called from BOTH op:append and op:append_batch, and it does both halves this item asked for -- it writes the refreshed value to .roadmap-counter, and on success it sets counter_advanced_to AND counter_advanced_past on the envelope. ANTS-4635's headline is this item's cause almost word for word: store-path append_batch never reconciled the counter, so the cache drifted until the next single append repaired it.
+
+  So the silence is gone and, with it, the wrong inference it produced: a caller no longer has to read an absent field as an absent effect.
+
+  Not taken, and recorded rather than dropped: Snatch's alternative of not writing the file at all on a store-backed project. That remains the cleaner answer to the half-and-half, and nothing here forecloses it -- but the reported harm is fixed, so it is an improvement rather than a defect and should be re-filed as one if anybody still wants it.
   **Layman:** One way of adding items reports that it updated the ID counter and the batch way doesn't, so people conclude it never does.
   Kind: fix.
   Source: finbreak_Ants_MCP_Feedback.md 2026-08-20; Snatch_Ants_MCP_Feedback.md 2026-08-20.
@@ -41530,7 +41537,7 @@ filed below.
   Source: Snatch_Ants_MCP_Feedback.md 2026-08-20; reproduced on this repo during the triage that filed it.
   Lanes: remotecontrol, mcp.
 
-- 📋 [ANTS-4579] **counter_advanced_past reports a position the allocator has already passed, so the one field a caller would predict from is knowably false.**
+- ✅ [ANTS-4579] **counter_advanced_past reports a position the allocator has already passed, so the one field a caller would predict from is knowably false.**
   Distinct from ANTS-4551, which is about op:append_batch OMITTING the
   counter fields. This is about the value being wrong when op:append does
   emit them.
@@ -41601,6 +41608,11 @@ filed below.
   this session, so the better answer already exists and this field is the
   one that misleads. Note ANTS-4570 has the opposite report on op:flip, so
   "already works" holds for append and not across the verb.
+  Closed (2026-08-25) as ALREADY DELIVERED, and it was never independent -- this item's own progress note says so: append_batch not writing .roadmap-counter is what left the file stale, and the next append then reported that stale value as counter_advanced_past. One cause, two symptoms. ANTS-4635 fixed the cause (see ANTS-4551), so the symptom cannot arise: append_batch now refreshes the counter before any later call reads it.
+
+  The field's own semantics were separately corrected by ANTS-4493 and are now defensible. In op:append, counter_advanced_past is set to maxFileId -- the max of the ROADMAP scan, the archived-corpus high-water and the STORE's own idHighWater -- computed fresh at allocation. It is therefore the true occupied high-water and cannot report a position the allocator has passed. In the shared cache helper it is the counter file's pre-write value, which is what "advanced past" means there.
+
+  The reporter's second option -- drop the field in favour of the ids and post_bullets the write already returns -- was not taken and does not need to be: the field is now correct, and it answers a question those do not (what the counter was before this write). Their observation that ids + post_bullets are the thing to read for id prediction stands and is better advice than reading either counter field.
   **Layman:** The write receipt names an ID counter position that had already moved on, so predicting the next ID from it fails.
   Kind: fix.
   Source: Snatch_Ants_MCP_Feedback.md 2026-08-20.
