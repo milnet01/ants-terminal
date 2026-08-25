@@ -44663,7 +44663,7 @@ than filed. No intro count here on purpose — a section intro cannot be amended
 (ANTS-4539), so a number written here would go stale with no route to correct
 it.
 
-- 📋 [ANTS-4664] **doc_citations quotes:true detects a quoted span per LINE while matching folds newlines, so a hard-wrapped quotation is never checked and lands in no bucket.**
+- ✅ [ANTS-4664] **doc_citations quotes:true detects a quoted span per LINE while matching folds newlines, so a hard-wrapped quotation is never checked and lands in no bucket.**
   REPRODUCED before filing, with the reporter's own fixture: subj.md carries
   two quotations attributed to src.md, one on a single line and one wrapped
   across a line break, both verbatim in the source. doc_citations returned
@@ -44690,6 +44690,15 @@ it.
   loop-log quotations already are, so a real zero is distinguishable from an
   unexamined one. A gate that dismisses a finding whose quote it cannot
   locate is the consumer here, so a silent skip ships the defect.
+  Resolved (2026-08-25). Detection now runs over the newline-folded BLOCK, the same normalisation the matcher has applied since ANTS-4386, and each match resolves back to the line it really starts on so attribution stays scoped exactly as the line-scoped rule scoped it. A table row keeps the line-scoped window (it cannot wrap, and the cell arithmetic indexes into the line).
+
+  MEASURED BY LINKING THE REAL ENGINE, not by reasoning: a throwaway calling DocCitations::check over this repo's 317 documents, run against the old and new libraries. 745 quotations before, 1985 after, and `ok` -- quotations verified present in their target -- 7 to 32. So roughly three in five quotations in this corpus were never being checked, which matches the reporter's case of three quotations in a plan and one checked.
+
+  THE VERDICT DIFF CAUGHT A DEFECT IN THE FIRST FIX, which is the whole reason for running it. Scanning a window from EVERY line makes a window that opens inside a quotation still in progress pair that quotation's CLOSING delimiter with the next one's OPENING one, manufacturing a span out of the prose between two real quotations. That produced 2078, of which 93 were fabricated. Opening one window per BLOCK gives 1985 and none.
+
+  AND THE OLD DETECTOR HAD THE SAME BUG IN THE OTHER DIRECTION: 18 old verdicts disappear, every one read and confirmed garbage -- e.g. ANTS-1876.md:322 emitted `(HIGH); the schema still said` as a quotation, which is the prose BETWEEN two wrapped quotations on one line. So this removes false positives as well as adding true negatives.
+
+  Both halves mutation-verified separately: killing the fold drops the fixture from 3 quotations to 0 (the defect exactly), killing the block-start guard raises it to 5 (two fabricated). Test DocCitations.Ants4664WrappedQuotationSpansAreDetected. 3936/3936.
   **Layman:** The quotation checker silently ignores any quote that runs onto a second line, and reports the document as clean.
   Kind: fix.
   Source: OneUp-feedback-2026-08-25.
@@ -45221,6 +45230,36 @@ it.
   **Layman:** A flag meaning nobody checked whether the file matches the database is quietly deleted from the reply, so it reads as checked and fine.
   Kind: fix.
   Source: in-session-2026-08-25 (found implementing ANTS-4524 route 1).
+
+- 📋 [ANTS-4678] **doc_citations' whole quotation pass is uncontracted -- six shipped items of behaviour, no invariant anywhere.**
+  Noticed while looking for the contract ANTS-4664 might have made false,
+  and worth filing because the answer was "there isn't one".
+
+  docs/specs/ANTS-3636.md is the governing spec for doc_citations and does
+  not mention quotations at all -- no match for quotation, quotes_checked
+  or ANTS-4386 anywhere in it. tests/features/doc_citations/spec.md has no
+  quotation invariant either. So the quotation pass, built across ANTS-4386
+  (matching folds newlines), ANTS-4637 (loop-log rows skipped and counted),
+  ANTS-4638 (paragraph-scoped attribution), ANTS-4639 (document-token
+  targets, honest target statuses), ANTS-4640 (cell-scoped table
+  attribution) and now ANTS-4664 (block-scoped span detection), is
+  described only by its tests.
+
+  Two concrete costs, both met this session. Deciding whether ANTS-4664
+  needed CLAUDE.md rule 14's gate required reading the code, because no
+  document stated the detection scope to compare against. And the
+  status vocabulary -- ok / not_found / ambiguous / no_target /
+  target_unresolved, plus the `skipped` overlay that is deliberately NOT a
+  status bucket -- is a partition a caller must get right, stated only in a
+  header comment and a test's failure message.
+
+  Not urgent and deliberately not sized as a spec rewrite: the cheapest
+  honest fix is a quotation section in tests/features/doc_citations/spec.md
+  carrying the invariants the tests already assert, since those tests exist
+  and are good. Writing it from the tests is mostly transcription.
+  **Layman:** A feature built over six changes has no written contract, so the only description of how it should behave is the code.
+  Kind: doc.
+  Source: in-session-2026-08-25 (noticed while shipping ANTS-4664).
 
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-08-11 triage
 

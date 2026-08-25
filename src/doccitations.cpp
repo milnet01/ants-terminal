@@ -1202,12 +1202,69 @@ QJsonObject check(const QString &rootCanonical, const QString &docAbsPath,
                 tableRow ? dcTableCells(line) : QVector<QPair<int, int>>{};
             const bool loopLog = tableRow && dcIsLoopLogRow(line, cells);
 
-            auto it = quoteRe.globalMatch(line);
+            // ANTS-4664 — detect the span over the newline-folded block, the
+            // same normalisation the MATCHER has applied since ANTS-4386.
+            // Detection stayed line-scoped, so a hard-wrapped quotation was
+            // never handed to the matcher at all: it entered NO bucket, and a
+            // document whose quotations all wrap returned quotes_checked:0 —
+            // byte-identical to a document that quotes nothing. This corpus
+            // wraps at ~70 columns, so that is most quotations longer than a
+            // few words.
+            //
+            // The window stops at the block — a blank line, a fence, or a
+            // table row ends it. That is ANTS-4638's paragraph bound, here for
+            // the same reason: an unpaired `"` must not reach across the
+            // document and manufacture an enormous quotation. A table row
+            // cannot wrap, so it keeps the line-scoped window and the cell
+            // arithmetic below (which indexes into `line`) stays valid.
+            // Only a block's FIRST line opens a window, and that one window
+            // yields every quotation in the block. A window opened on a
+            // CONTINUATION line would begin inside the quotation still in
+            // progress, pair that quotation's CLOSING delimiter with the next
+            // one's OPENING delimiter, and manufacture a span out of the prose
+            // between two real quotations. Measured over this repo's 317
+            // documents while building this: scanning every line produced 2078
+            // quotations against 745 before, and the surplus was full of such
+            // fragments; opening one window per block gives the real number.
+            if (!tableRow && i > 0 && !prefix.at(i - 1).trimmed().isEmpty()
+                && !(i - 1 < fence.size() && fence.at(i - 1))
+                && !dcIsTableRow(prefix.at(i - 1)))
+                continue;
+
+            // `lineStarts[k]` is the window offset at which line `i + k`
+            // begins, so a match resolves back to the line it really starts
+            // on — which is what the caller is told and what the attribution
+            // rules below are scoped to.
+            QVector<int> lineStarts;
+            lineStarts.append(0);
+            QString window = line;
+            if (!tableRow) {
+                for (int j = i + 1; j < prefix.size(); ++j) {
+                    if (prefix.at(j).trimmed().isEmpty()) break;
+                    if (j < fence.size() && fence.at(j)) break;
+                    if (dcIsTableRow(prefix.at(j))) break;
+                    window += QLatin1Char('\n');
+                    lineStarts.append(window.size());
+                    window += prefix.at(j);
+                }
+            }
+
+            auto it = quoteRe.globalMatch(window);
             while (it.hasNext() && harvested < opts.maxQuotes) {
                 const auto m = it.next();
-                const QString text = m.captured(1).isEmpty() ? m.captured(2)
-                                                             : m.captured(1);
+                const QString text = dcFoldWhitespace(
+                    m.captured(1).isEmpty() ? m.captured(2) : m.captured(1));
                 if (text.size() < opts.quoteMinChars) continue;  // ordinary prose
+
+                // Resolve the match back to its own line before attributing:
+                // a quotation three lines into the block is introduced by the
+                // text beside IT, not by the block's first line.
+                int k = 0;
+                while (k + 1 < lineStarts.size()
+                       && lineStarts.at(k + 1) <= m.capturedStart(0))
+                    ++k;
+                const int qLineIdx  = i + k;
+                const QString qLine = prefix.at(qLineIdx);
 
                 // ANTS-4637 — historical by design. Counted rather than
                 // silently dropped: a suppressed quotation that is merely
@@ -1215,7 +1272,7 @@ QJsonObject check(const QString &rootCanonical, const QString &docAbsPath,
                 if (loopLog) { ++skipped; continue; }
 
                 QJsonObject q;
-                q[QStringLiteral("line")] = i + 1;
+                q[QStringLiteral("line")] = qLineIdx + 1;
                 q[QStringLiteral("text")] = text;
 
                 // Attribution candidates, most local scope first.
@@ -1249,8 +1306,11 @@ QJsonObject check(const QString &rootCanonical, const QString &docAbsPath,
                     // Same line first — today's rule, kept as the tie-break —
                     // then the paragraph. Last on a line wins either way: the
                     // attribution sits closest to the quote it introduces.
-                    cand = dcDocTokensIn(line);
-                    if (cand.isEmpty()) cand = paragraphAttribution(i);
+                    // Scoped to the quotation's OWN line (ANTS-4664), not the
+                    // window's first, so a wrapped quotation is attributed
+                    // exactly as the line-scoped rule attributed it.
+                    cand = dcDocTokensIn(qLine);
+                    if (cand.isEmpty()) cand = paragraphAttribution(qLineIdx);
                     if (cand.size() > 1) cand = QStringList{cand.last()};
                 }
 

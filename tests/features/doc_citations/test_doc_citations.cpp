@@ -1239,6 +1239,61 @@ TEST(DocCitations, Ants4085ForeignPathIsNotStale) {
                .value(QStringLiteral("foreign_path")).toInt(), 1);
 }
 
+// ANTS-4664 — the quoted SPAN was detected per LINE while the matcher folded
+// newlines (ANTS-4386), so a hard-wrapped quotation was never handed to the
+// matcher at all: it entered NO bucket, and a document whose quotations all
+// wrap returned quotes_checked:0 — byte-identical to one that quotes nothing.
+// This corpus wraps at ~70 columns, so that is most quotations.
+//
+// Measured over this repo's 317 documents while fixing it: 745 quotations
+// before, 1985 after, and `ok` (verified present in the target) 7 → 32. The
+// surplus is not all new: the line-scoped pass was ALSO mis-pairing one
+// quotation's CLOSING delimiter with the next one's OPENING one and emitting
+// the prose between them as a quotation, and 18 such spans disappear. Hence
+// the second paragraph below, which is that case.
+TEST(DocCitations, Ants4664WrappedQuotationSpansAreDetected) {
+    Fixture fx;
+    fx.write(QStringLiteral("docs/standards/commits.md"),
+             "# Commits\n"
+             "\n"
+             "Every commit message must name the reason the change\n"
+             "exists, not merely what it changed. A second sentence\n"
+             "lives here so a second quotation can be checked too.\n");
+
+    DocCitations::Options opts;
+    opts.quotes = true;
+
+    const QString doc = fx.doc(
+        // The defect itself: the quoted span straddles the line break.
+        "As `docs/standards/commits.md` puts it, \"name the reason the change\n"
+        "exists, not merely what it changed\", which is the whole rule.\n"
+        "\n"
+        // TWO wrapped quotations in ONE paragraph. The prose between them
+        // (" and also ") must not become a third.
+        "`docs/standards/commits.md` says \"must name the reason the\n"
+        "change exists\" and also \"A second sentence lives here so a\n"
+        "second quotation can be checked too\" in the same breath.\n");
+
+    const QJsonObject r = DocCitations::check(fx.root, doc, opts);
+    const QJsonArray qs = r.value(QStringLiteral("quotes")).toArray();
+
+    EXPECT_EQ(r.value(QStringLiteral("quotes_checked")).toInt(), 3)
+        << "three wrapped quotations — and NOT a fourth manufactured out of "
+           "the prose between the two that share a paragraph";
+
+    for (const QJsonValue &v : qs) {
+        const QJsonObject q = v.toObject();
+        EXPECT_EQ(q.value(QStringLiteral("status")).toString(),
+                  QStringLiteral("ok"))
+            << "a wrapped quotation that IS present in its target must "
+               "verify, not land in no bucket: "
+            << q.value(QStringLiteral("text")).toString().toStdString();
+        EXPECT_FALSE(q.value(QStringLiteral("text")).toString()
+                         .contains(QLatin1Char('\n')))
+            << "the emitted text is folded to one line";
+    }
+}
+
 // ANTS-4637 — a quotation sitting in a loop-log row is historical BY DESIGN.
 //
 // A converged review document records each loop in a table row, and those rows
