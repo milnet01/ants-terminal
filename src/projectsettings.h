@@ -79,6 +79,11 @@ struct Suggestion {
     QString                    reason;            // human string incl. counts; ALWAYS non-empty after a walk/short-circuit (ANTS-3369). nullopt sourceRoots — not an empty reason — is the "no suggestion" signal.
     int                        defaultSourceCount = 0;  // admitted files under literal src/+tests/
     int                        totalSourceCount   = 0;  // admitted files repo-wide (bounded)
+    // ANTS-4648 — true only once the directory walk has actually run. The
+    // present:true short-circuit (INV-2) returns before it, leaving both counts
+    // at their initialiser; 0 there is not a measurement of nothing, and a
+    // caller reading it "fixes" a declaration that was already correct.
+    bool                       countsComputed = false;
     std::optional<QStringList> wouldUseRoots;     // ANTS-3369: roots already in effect — declared source_roots when present:true, else whichever of src/ or tests/ actually hold source on the no-override path. Echoed so a caller can confirm the layout even when nothing is suggested.
     QStringList                excluded;          // ANTS-3369: every isNoiseDir match present on disk and skipped, minus dot-dirs (build* + vendored names listed; .git/.ants not). Names only, no descent.
     // ANTS-3588 (INV-19): conventional auxiliary layout keys that EXIST on disk,

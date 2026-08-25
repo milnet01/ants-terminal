@@ -326,6 +326,7 @@ Suggestion detect(const QString &rootCanonical) {
     }
     s.totalSourceCount   = total;
     s.defaultSourceCount = srcCount + testsCount;
+    s.countsComputed     = true;   // ANTS-4648 — the walk actually ran
 
     if (total == 0) {                                           // empty repo
         s.reason = QStringLiteral("no source files found under the project root");

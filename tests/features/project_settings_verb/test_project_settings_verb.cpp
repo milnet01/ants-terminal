@@ -7,6 +7,7 @@
 #include "../../_support/expect.h"
 #include "../../_support/srcgrep.h"
 #include "projectsettings.h"
+#include "remotecontrol.h"
 
 #include <string>
 
@@ -464,4 +465,61 @@ TEST(ProjectSettingsVerb, VerbAndRegistrationWiring) {
     EXPECT_TRUE(has(rc, "unrecognised_format"));
     // set's "no recognised key" guard uses bad_args.
     EXPECT_TRUE(has(rc, "bad_args"));
+}
+
+// ANTS-4648 — the present:true path returns before the walk (INV-2), so the
+// two counts were never taken. Reporting 0 there is a measurement of nothing,
+// and a session reading it "fixes" a declaration that was already right.
+TEST(ProjectSettingsVerb, Ants4648ConfiguredProjectMarksCountsUncomputed) {
+    QTemporaryDir dir;
+    const QString root = canon(dir);
+    writeFile(root + "/engine/a.c", cFile("a"));
+    writeFile(root + "/engine/b.c", cFile("b"));
+    const QString settings = root + "/.ants/project.json";
+    writeFile(settings, QStringLiteral("{\"source_roots\":[\".\"]}\n"));
+
+    const ProjectSettings::Suggestion s = ProjectSettings::detect(root);
+    ASSERT_TRUE(s.present);
+    EXPECT_FALSE(s.countsComputed)
+        << "no walk ran, so the counts carry no measurement";
+
+    // The contrast is the same tree with the short-circuit removed: identical
+    // files, and now the counts mean something.
+    ASSERT_TRUE(QFile::remove(settings));
+    const ProjectSettings::Suggestion w = ProjectSettings::detect(root);
+    ASSERT_FALSE(w.present);
+    EXPECT_TRUE(w.countsComputed);
+    EXPECT_EQ(w.totalSourceCount, 2);
+}
+
+// ANTS-4648 (verb layer) — the envelope is where the zero was read. Absent
+// reads as not-computed, which is what `compact:true` already does for empties;
+// `counts_computed` is always present so absence is never ambiguous.
+TEST(ProjectSettingsVerb, Ants4648DetectOmitsUncomputedCounts) {
+    QTemporaryDir dir;
+    const QString root = canon(dir);
+    writeFile(root + "/engine/a.c", cFile("a"));
+    writeFile(root + "/engine/b.c", cFile("b"));
+    const QString settings = root + "/.ants/project.json";
+    writeFile(settings, QStringLiteral("{\"source_roots\":[\".\"]}\n"));
+
+    RemoteControl rc(nullptr, nullptr);
+    QJsonObject req;
+    req["caller_cwd"] = root;
+    req["op"] = "detect";
+
+    const QJsonObject skipped =
+        rc.cmdProjectSettings(req).object().value("suggestion").toObject();
+    ASSERT_FALSE(skipped.isEmpty());
+    ASSERT_TRUE(skipped.contains("counts_computed"));
+    EXPECT_FALSE(skipped.value("counts_computed").toBool());
+    EXPECT_FALSE(skipped.contains("default_source_count"))
+        << "a count nobody took must not be emitted as 0";
+    EXPECT_FALSE(skipped.contains("total_source_count"));
+
+    ASSERT_TRUE(QFile::remove(settings));
+    const QJsonObject walked =
+        rc.cmdProjectSettings(req).object().value("suggestion").toObject();
+    EXPECT_TRUE(walked.value("counts_computed").toBool());
+    EXPECT_EQ(walked.value("total_source_count").toInt(), 2);
 }

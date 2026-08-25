@@ -75,6 +75,15 @@ the ANTS-2160 suite used for its consumer-wiring check.
   consumer. Both fields are omitted when empty, so a project with no settings
   file sees the pre-ANTS-3705 envelope unchanged.
 
+- **INV-21** (ANTS-4648) — the `present:true` short-circuit (INV-2) returns
+  before the walk, so `defaultSourceCount` / `totalSourceCount` are still
+  their initialiser. `Suggestion::countsComputed` records whether the walk
+  ran, and `op:"detect"` OMITS both counts when it did not — absent reads as
+  not-taken, the way `compact:true` already treats an empty. `counts_computed`
+  is emitted either way, so absence is never ambiguous with a build that
+  predates the field. A 0 there was read as a measurement: a ~3000-line
+  project was reported as containing no source at all.
+
 - **INV-5/6/10/13 (wiring)** — `project_settings` registered
   `CallerCwdContract::Required` in `claudeintegration.cpp`'s
   `callerCwdContractFor()` + `registerToolProvider`; the handler writes

@@ -341,3 +341,102 @@ TEST(McpInvariantCheck, ScanningNothingIsDistinguishableFromMatchingNothing) {
     EXPECT_FALSE(looked.contains("scanned_nothing"))
         << "it looked and found nothing — that is the legitimate case";
 }
+
+// ANTS-4644 — a spec cites a module the way a human writes it, so the
+// project-relative form this verb's own description prescribes is the one that
+// matches nothing. Reproduced in this repo: docs/specs/ANTS-2161.md, which
+// governs op:detect, cites `projectsettings.cpp` and is invisible to a query
+// for `src/projectsettings.cpp`.
+TEST(McpInvariantCheck, Ants4644PathSuffixFallbackRescuesAConfidentZero) {
+    QTemporaryDir dir; ASSERT_TRUE(dir.isValid());
+    seedSpec(dir.path(), QStringLiteral("PROJ-0007"),
+             QStringLiteral("services/auth.py"));
+
+    const QJsonObject env =
+        runCheck(dir.path(),
+                 QStringLiteral("src/finbreak/services/auth.py"), QString());
+    ASSERT_TRUE(env.value("ok").toBool());
+    ASSERT_EQ(env.value("matched_count").toInt(), 1)
+        << "the prescribed path form must not answer a confident zero";
+    EXPECT_TRUE(env.value("fallback_match").toBool());
+    EXPECT_EQ(env.value("fallback_kind").toString(), "path_suffix");
+    // A rescued hit that looks like a direct hit is a different lie from the
+    // one being fixed — say which form actually matched.
+    EXPECT_EQ(env.value("matched_as").toObject()
+                  .value("src/finbreak/services/auth.py").toString(),
+              "services/auth.py");
+    EXPECT_FALSE(env.value("hint").toString().isEmpty());
+}
+
+// ANTS-4644 — the bare basename is its own tier because it is the one that can
+// collide, and it is also the tier the ANTS-2161 case needs.
+TEST(McpInvariantCheck, Ants4644BasenameIsItsOwnTier) {
+    QTemporaryDir dir; ASSERT_TRUE(dir.isValid());
+    seedSpec(dir.path(), QStringLiteral("PROJ-0008"),
+             QStringLiteral("projectsettings.cpp"));
+
+    const QJsonObject env =
+        runCheck(dir.path(), QStringLiteral("src/projectsettings.cpp"),
+                 QString());
+    ASSERT_EQ(env.value("matched_count").toInt(), 1);
+    EXPECT_TRUE(env.value("fallback_match").toBool());
+    EXPECT_EQ(env.value("fallback_kind").toString(), "basename")
+        << "a basename hit must be reported as one, not as a path match";
+    EXPECT_EQ(env.value("matched_as").toObject()
+                  .value("src/projectsettings.cpp").toString(),
+              "projectsettings.cpp");
+}
+
+// ANTS-4644 — the basename tier is GATED behind the fuller forms, so an
+// unrelated `auth.py` elsewhere in the corpus cannot dilute a good answer.
+TEST(McpInvariantCheck, Ants4644BasenameTierGatedBehindFullerForms) {
+    QTemporaryDir dir; ASSERT_TRUE(dir.isValid());
+    seedSpec(dir.path(), QStringLiteral("PROJ-0009"),
+             QStringLiteral("services/auth.py"));
+    seedSpec(dir.path(), QStringLiteral("PROJ-0010"),
+             QStringLiteral("auth.py"));   // a different module, same basename
+
+    const QJsonObject env =
+        runCheck(dir.path(),
+                 QStringLiteral("src/finbreak/services/auth.py"), QString());
+    ASSERT_EQ(env.value("matched_count").toInt(), 1)
+        << "the colliding basename must not be admitted once a longer form hit";
+    EXPECT_EQ(env.value("matched_specs").toArray().at(0).toObject()
+                  .value("id").toString(), "PROJ-0009");
+    EXPECT_EQ(env.value("fallback_kind").toString(), "path_suffix");
+}
+
+// ANTS-4644 — a direct hit must stay a direct hit, and say so. `fallback_match`
+// is emitted on every reply: an absent flag is exactly how the defect above
+// reads to a caller that cannot tell which build it is talking to.
+TEST(McpInvariantCheck, Ants4644DirectHitNeverFallsBack) {
+    QTemporaryDir dir; ASSERT_TRUE(dir.isValid());
+    seedSpec(dir.path(), QStringLiteral("PROJ-0011"),
+             QStringLiteral("src/widget.cpp"));
+
+    const QJsonObject env =
+        runCheck(dir.path(), QStringLiteral("src/widget.cpp"), QString());
+    ASSERT_EQ(env.value("matched_count").toInt(), 1);
+    ASSERT_TRUE(env.contains("fallback_match"));
+    EXPECT_FALSE(env.value("fallback_match").toBool());
+    EXPECT_FALSE(env.contains("matched_as"));
+    EXPECT_FALSE(env.contains("fallback_kind"));
+}
+
+// ANTS-4645 — the envelope is confident and complete-looking, and the ROADMAP
+// was never in scope. The harm case is a NON-zero answer, so the scope note
+// rides on a matching reply too, not only on an empty one.
+TEST(McpInvariantCheck, Ants4645SaysTheRoadmapWasNotConsulted) {
+    QTemporaryDir dir; ASSERT_TRUE(dir.isValid());
+    seedSpec(dir.path(), QStringLiteral("PROJ-0012"),
+             QStringLiteral("src/registry.py"));
+
+    const QJsonObject env =
+        runCheck(dir.path(), QStringLiteral("src/registry.py"), QString());
+    ASSERT_EQ(env.value("matched_count").toInt(), 1);
+    ASSERT_TRUE(env.contains("roadmap_scanned"))
+        << "an absent flag is indistinguishable from a build that never checked";
+    EXPECT_FALSE(env.value("roadmap_scanned").toBool());
+    EXPECT_TRUE(env.value("scope_note").toString().contains("roadmap_query"))
+        << "the note must name where roadmap coverage actually comes from";
+}

@@ -14,6 +14,9 @@ for security-relevant changes.
 
 ### Added
 
+- **invariant_check states that the ROADMAP was not consulted** (ANTS-4645)
+  Every reply now carries roadmap_scanned:false and a scope_note naming roadmap_query and task_priors. The envelope was confident and complete-looking on a non-zero answer, and a project rebuilt a feature its own roadmap had already specified.
+
 - **doc_citations quotes: widen attribution from the line to the paragraph — coverage goes from 26 to 111 of 249 checkable quotations.** (ANTS-4638)
   The checker only links a quote to its source when both sit on one line, which hard-wrapped prose almost never does.
 
@@ -238,6 +241,12 @@ for security-relevant changes.
   with `glob` — so a refused call carries its own repair.
 
 ### Fixed
+
+- **project_settings op:detect omits its source counts when no walk ran, instead of reporting 0** (ANTS-4648)
+  A project with a settings file short-circuits before the directory walk, so both counts were still their initialiser — and a ~3000-line project was reported as holding no source at all. They are omitted now, with counts_computed saying which shape the reply is.
+
+- **invariant_check retries a zero with the path's suffixes, so a spec that cites a module by name is no longer invisible** (ANTS-4644)
+  A spec cites a module the way its author writes it, so the project-relative path the verb's own description prescribed was routinely the one form that matched nothing — and matched_count:0 beside specs_scanned:247 read as "nothing governs this file". On a zero that did look, the scan now retries with each path's suffixes, longest first; the bare basename is a separate later tier, used only when every fuller form has failed. fallback_match rides on every reply, and matched_as names the form that actually matched. Measured over this repo's 247 specs: 29 source files that returned a confident zero now return their governing specs.
 
 - **doc_integrity broken_link: a `~/`-prefixed target is resolved as a relative path and reported as a missing file.** (ANTS-4643)
   Links written with the home-directory shortcut are reported as pointing at nothing, with a message that sends you looking for a file that is there.

@@ -1156,8 +1156,17 @@ QJsonDocument RemoteControl::cmdProjectSettings(const QJsonObject &req) {
             s[QStringLiteral("source_roots")] =
                 QJsonArray::fromStringList(*sug.sourceRoots);
         s[QStringLiteral("reason")]               = sug.reason;
-        s[QStringLiteral("default_source_count")] = sug.defaultSourceCount;
-        s[QStringLiteral("total_source_count")]   = sug.totalSourceCount;
+        // ANTS-4648 — the present:true short-circuit returns before the walk
+        // (INV-2), so both counts are still their initialiser. Emitting 0 there
+        // reads as a measurement: a ~3000-line project was reported as holding
+        // no source at all. Omit them instead — absent reads as not-computed,
+        // which is what compact:true already does for an empty — and state
+        // which shape this is, so absence is never ambiguous.
+        s[QStringLiteral("counts_computed")] = sug.countsComputed;
+        if (sug.countsComputed) {
+            s[QStringLiteral("default_source_count")] = sug.defaultSourceCount;
+            s[QStringLiteral("total_source_count")]   = sug.totalSourceCount;
+        }
         // ANTS-3369 — echo what's already in effect / what was discounted,
         // emitted only when non-empty (1:1 snake_case mapping like above).
         if (sug.wouldUseRoots)

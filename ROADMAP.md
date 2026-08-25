@@ -43772,7 +43772,7 @@ Three were reproduced directly in this session rather than taken on report.
   Source: claude_config-2026-08-24.
   Lanes: mcp, docs.
 
-- 📋 [ANTS-4644] **invariant_check: a path-form miss returns a confident zero, and the form the description prescribes is the one that matches nothing.**
+- ✅ [ANTS-4644] **invariant_check: a path-form miss returns a confident zero, and the form the description prescribes is the one that matches nothing.**
   TWO PROJECTS REPORTED THIS INDEPENDENTLY on the same day, which is the
   strongest signal in this batch.
 
@@ -43806,12 +43806,13 @@ Three were reproduced directly in this session rather than taken on report.
   NOT COVERED BY THIS ITEM: a spec that names the module only as a symbol
   (`vault_migration.resume`), where no path form finds it. Same reply, but no
   suffix retry reaches it.
+  Resolved (2026-08-25): on a zero that DID look (matched_count:0 with specs_scanned>0), the scan is retried with each path's suffixes, longest first. The bare basename is a separate, later tier — it is the one that can collide, and it runs only when every fuller form has failed. `fallback_match` rides on EVERY reply (an absent flag is how this class of defect reads to a caller); when true, `fallback_kind` is "path_suffix" or "basename" and `matched_as` maps each path passed in to the form that actually matched, so a rescued hit never passes for a direct one. The verb description no longer prescribes the form that matches nothing. MEASURED by linking the real engine over this repo's 247 specs: 29 of 132 src files that previously returned a confident zero now return their governing specs, all via the basename tier (this repo is flat src/, so no intermediate component exists to strip). Tests: McpInvariantCheck.Ants4644{PathSuffixFallbackRescuesAConfidentZero,BasenameIsItsOwnTier,BasenameTierGatedBehindFullerForms,DirectHitNeverFallsBack}, all proved red on assertions first. FOLLOW-UP FILED as ANTS-4655: the fallback is gated on a zero, so a PARTIAL miss still hides a governing spec — docs/specs/ANTS-2161.md is invisible to a query for src/projectsettings.cpp because three other specs match the full path.
   **Layman:** Asking "what rules govern this file?" answers "none" when the answer is sixteen, because the file was named slightly differently in the rules.
   Kind: fix.
   Source: finbreak-2026-08-24 + claude_config-2026-08-24 (two projects, independently).
   Lanes: mcp, specs.
 
-- 📋 [ANTS-4645] **invariant_check answers from docs/specs only, and nothing in the envelope says the ROADMAP was not consulted.**
+- ✅ [ANTS-4645] **invariant_check answers from docs/specs only, and nothing in the envelope says the ROADMAP was not consulted.**
   DISTINCT FROM THE PATH-FORM ITEM ABOVE, and the two fire in different
   conditions: that one is a zero-match that should have matched, this one is a
   correct non-zero answer to a NARROWER question than the caller asked.
@@ -43836,6 +43837,7 @@ Three were reproduced directly in this session rather than taken on report.
   + hint shape the verb already has. An optional `include_roadmap:true` that
   also substring-matches active bullets would be stronger and is a bigger
   change — do the hint first.
+  Resolved (2026-08-25): every reply now carries `roadmap_scanned:false` plus a `scope_note` naming roadmap_query and task_priors. Emitted unconditionally rather than on an empty answer, because the harm case is a CONFIDENT NON-ZERO reply — LWSM saw four matched specs and read it as a complete answer to "is this under contract?". Kept out of `hint`, which mode:"full" contracts to be absent on a clean direct hit (mcp_invariant_check INV-10); the hint field itself now composes its parts so a fallback message and the summary-mode message cannot displace each other. The verb description carries the same statement. Took the cheap half only, as the item prescribed: no `include_roadmap` option. Test: McpInvariantCheck.Ants4645SaysTheRoadmapWasNotConsulted, which asserts the KEY is present rather than reading its boolean, since an absent flag is falsy.
   **Layman:** The contract check does not look at the roadmap, so a feature already planned there can be built again from scratch.
   Kind: enhancement.
   Source: LocalWebServerManager-2026-08-24.
@@ -43909,7 +43911,7 @@ Three were reproduced directly in this session rather than taken on report.
   Source: Charls_Site-2026-08-24.
   Lanes: mcp, feedback.
 
-- 📋 [ANTS-4648] **project_settings op:detect reports total_source_count:0 when the walk was skipped, where 0 reads as a measurement.**
+- ✅ [ANTS-4648] **project_settings op:detect reports total_source_count:0 when the walk was skipped, where 0 reads as a measurement.**
   On a project that already has `.ants/project.json`, detect returns
   `suggestion.default_source_count: 0` and `suggestion.total_source_count: 0`
   alongside `reason: "settings file present; 1 source_root(s) already declared
@@ -43934,6 +43936,7 @@ Three were reproduced directly in this session rather than taken on report.
   than the alternative and matches how the envelope treats fields it has
   nothing to say about. If they are kept, mark them: `counts_computed:false`,
   or null rather than 0.
+  Resolved (2026-08-25): `Suggestion::countsComputed` is set only where the walk actually takes the counts, and op:detect omits `default_source_count` / `total_source_count` when it is false — absent reads as not-taken, the way compact:true already treats an empty. `counts_computed` is emitted on both paths so absence can never be confused with a build predating the field. The session_orient nudge is untouched: it is gated on a sourceRoots suggestion, which only a completed walk produces. Recorded as INV-20 on docs/specs/ANTS-2161.md and INV-21 on the feature spec. Tests: ProjectSettingsVerb.Ants4648{ConfiguredProjectMarksCountsUncomputed,DetectOmitsUncomputedCounts} — the detector half and the envelope half, both red first (the detector half red on a compile-stubbed field, then on its assertion).
   **Layman:** A project with thousands of lines of code is reported as containing none, because the count was never taken.
   Kind: fix.
   Source: OneUp-2026-08-24.
@@ -44028,6 +44031,47 @@ Three were reproduced directly in this session rather than taken on report.
   Kind: doc.
   Source: in-session-2026-08-25.
   Lanes: docs, mcp.
+
+- 📋 [ANTS-4655] **invariant_check: ANTS-4644's fallback is gated on a ZERO, so a PARTIAL miss still hides a governing spec.**
+  FOUND BY MEASURING ANTS-4644 ON THE REAL CORPUS, not reported by a
+  contributor. ANTS-4644 is shipped and correct for what it describes: both
+  reporting projects saw `matched_count:0`, and the suffix retry fixes exactly
+  that. This is the condition it deliberately does not reach.
+
+  THE EVIDENCE. `invariant_check files:["src/projectsettings.cpp"]` returns 3
+  specs (ANTS-2160, ANTS-3758, ANTS-3771) — all of which cite the full
+  project-relative path. `docs/specs/ANTS-2161.md`, which is THE spec governing
+  `ProjectSettings::detect` and carries 19 invariants, cites the module as
+  `projectsettings.cpp` (bare) and is absent from that answer. The fallback
+  never fires because `matched` was non-empty, so the reply is confident,
+  plural and incomplete.
+
+  WHY THAT IS THE WORSE SHAPE. A zero at least looks like an absence and
+  prompts a second look; three specs read as the answer. Measured on this
+  repo's 247 specs, the shipped zero-gated tier rescues 29 of 132 src files
+  that previously returned nothing — none by path-suffix, all by basename,
+  because this repo is flat `src/`. So the basename tier is doing all the work
+  here, and it is precisely the tier a partial miss suppresses.
+
+  THE COST OF THE OBVIOUS FIX. Always running the suffix tiers and merging
+  would pay the basename tier's collision risk on EVERY call rather than only
+  where the alternative is a confident zero — which is the trade ANTS-4644
+  explicitly declined. Options worth costing before choosing:
+    (a) always run the tiers, but return extra hits in a separate
+        `also_matched_as[]` array rather than in `matched_specs[]`, so a
+        caller's primary answer keeps its precision;
+    (b) run them only when the caller opts in (`fuzzy:true`);
+    (c) run them always and mark each entry with the form that matched, letting
+        the caller filter.
+  (a) is the cheapest honest one and matches how this verb already separates
+  `matched_as` from the match list.
+
+  NOT COVERED, same as ANTS-4644: a spec naming the module only as a symbol
+  (`ProjectSettings::detect`), where no path form reaches it at all.
+  **Layman:** The contract check now rescues "no rules found", but if it finds three rules it stops looking — and a fourth, more important one stays hidden.
+  Kind: enhancement.
+  Source: in-session-2026-08-25 (found while measuring ANTS-4644).
+  Lanes: mcp, specs.
 
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-08-11 triage
 

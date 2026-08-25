@@ -2453,6 +2453,10 @@ QJsonDocument RemoteControl::cmdInvariantCheck(const QJsonObject &req) {
     QJsonArray matched;
     int specsScanned = 0;
     int phasesScanned = 0;
+    // ANTS-4644 — the scan reads its needles from here rather than from
+    // `needles`, so a fallback pass can swap in shorter path forms without a
+    // second copy of the matcher.
+    QStringList activeNeedles = needles;
     auto scanOneDir = [&](const QString &dirRel,
                           const QString &glob,
                           int &counter) {
@@ -2469,7 +2473,7 @@ QJsonDocument RemoteControl::cmdInvariantCheck(const QJsonObject &req) {
             const QString text = QString::fromUtf8(f.readAll());
             f.close();
             QStringList hits;
-            for (const QString &needle : needles) {
+            for (const QString &needle : std::as_const(activeNeedles)) {
                 if (text.contains(needle, Qt::CaseSensitive)) {
                     if (!hits.contains(needle)) hits.append(needle);
                 }
@@ -2513,9 +2517,75 @@ QJsonDocument RemoteControl::cmdInvariantCheck(const QJsonObject &req) {
     const QString specsDir =
         ProjectSettings::load(rootCanonical).specsDir.value_or(
             QStringLiteral("docs/specs"));
-    scanOneDir(specsDir, QStringLiteral("*.md"), specsScanned);
-    scanOneDir(QStringLiteral("docs/phases"),
-               QStringLiteral("phase_*.md"), phasesScanned);
+    // Every pass reads the same files, so the counters are reset and retaken
+    // rather than accumulated — a fallback pass must not double the scan count.
+    auto runScan = [&]() {
+        matched       = QJsonArray();
+        specsScanned  = 0;
+        phasesScanned = 0;
+        scanOneDir(specsDir, QStringLiteral("*.md"), specsScanned);
+        scanOneDir(QStringLiteral("docs/phases"),
+                   QStringLiteral("phase_*.md"), phasesScanned);
+    };
+    runScan();
+
+    // ANTS-4644 — a spec cites a module the way a HUMAN writes it, so the
+    // project-relative form this verb's own description prescribes is routinely
+    // the one form that matches nothing. Two projects reported it on the same
+    // day, and it reproduces here: docs/specs/ANTS-2161.md, the spec governing
+    // op:detect, cites `projectsettings.cpp` and is invisible to a query for
+    // `src/projectsettings.cpp`.
+    //
+    // The damage is that `matched_count:0` beside `specs_scanned:247` reads as
+    // a definitive "nothing governs this file" — the same confident zero
+    // ANTS-4376 fixed for a blind scan, arriving by a different route.
+    //
+    // So on a zero that DID look, retry with the path's suffixes, longest
+    // first. The bare basename is its own tier and runs only when every fuller
+    // form has failed, because it is the tier that can collide (two `auth.py`
+    // in one repo); `matched_as` names the form that actually matched, so a
+    // rescued hit never passes for a direct one.
+    QJsonObject matchedAs;
+    QString     fallbackKind;
+    if (matched.isEmpty() && (specsScanned + phasesScanned) > 0) {
+        QList<QPair<QString, QString>> pathForms;   // {form, original}
+        QList<QPair<QString, QString>> baseForms;
+        for (const QString &n : std::as_const(needles)) {
+            const QStringList parts =
+                n.split(QLatin1Char('/'), Qt::SkipEmptyParts);
+            for (int i = 1; i < parts.size(); ++i) {
+                const QString form =
+                    QStringList(parts.mid(i)).join(QLatin1Char('/'));
+                if (i < parts.size() - 1) pathForms.append({form, n});
+                else                      baseForms.append({form, n});
+            }
+        }
+        const auto tryTier = [&](const QList<QPair<QString, QString>> &tier,
+                                 const QString &kind) {
+            if (tier.isEmpty() || !matched.isEmpty()) return;
+            activeNeedles.clear();
+            for (const auto &p : tier)
+                if (!activeNeedles.contains(p.first))
+                    activeNeedles.append(p.first);
+            runScan();
+            if (matched.isEmpty()) return;
+            fallbackKind = kind;
+            QStringList hitForms;
+            for (const QJsonValue &v : std::as_const(matched))
+                for (const QJsonValue &t :
+                     v.toObject().value(QStringLiteral("matched_terms")).toArray())
+                    hitForms.append(t.toString());
+            // `tier` is built longest-suffix-first, so the first hit per
+            // original path is the most specific form that worked.
+            for (const auto &p : tier) {
+                if (!hitForms.contains(p.first)) continue;
+                if (matchedAs.contains(p.second)) continue;
+                matchedAs[p.second] = p.first;
+            }
+        };
+        tryTier(pathForms, QStringLiteral("path_suffix"));
+        tryTier(baseForms, QStringLiteral("basename"));
+    }
 
     QJsonObject result;
     result["ok"]             = true;
@@ -2534,10 +2604,11 @@ QJsonDocument RemoteControl::cmdInvariantCheck(const QJsonObject &req) {
     // `matched_count:0` is the legitimate "no spec governs these files", and
     // for three sessions it was also what a totally blind scan returned. Say
     // which, and say what was looked at.
+    QString scannedNothingHint;
     if (specsScanned == 0 && phasesScanned == 0) {
         result["scanned_nothing"] = true;
         result["specs_dir"]       = specsDir;
-        result["hint"] = QDir(rootCanonical + QLatin1Char('/') + specsDir).exists()
+        scannedNothingHint = QDir(rootCanonical + QLatin1Char('/') + specsDir).exists()
             ? QStringLiteral("no spec files were read: %1 exists but holds no "
                              "*.md. matched_count:0 here means NOTHING WAS "
                              "LOOKED AT, not that no spec governs these files.")
@@ -2546,13 +2617,49 @@ QJsonDocument RemoteControl::cmdInvariantCheck(const QJsonObject &req) {
                              "`specs_dir` in .ants/project.json if this "
                              "project keeps specs elsewhere.").arg(specsDir);
     }
+    // ANTS-4644 — emitted on EVERY reply. An absent flag is indistinguishable
+    // from a build that has no fallback, which is the class of ambiguity this
+    // item exists to remove.
+    result["fallback_match"] = !fallbackKind.isEmpty();
+    if (!fallbackKind.isEmpty()) {
+        result["fallback_kind"] = fallbackKind;
+        result["matched_as"]    = matchedAs;
+    }
+    // ANTS-4645 — the envelope is confident and complete-looking, and says
+    // nothing about the ROADMAP being outside the scan. A project re-built a
+    // feature its own roadmap had specified because four matched specs read as
+    // a complete answer to "is this under contract?". The harm case is a
+    // NON-zero reply, so this rides on every one.
+    result["roadmap_scanned"] = false;
+    result["scope_note"] = QStringLiteral(
+        "scope: %1 + docs/phases only — the ROADMAP was NOT consulted, so work "
+        "already planned there will not appear here. Use roadmap_query "
+        "(query=<keyword>) or task_priors for that.").arg(specsDir);
+
+    // Hints compose: a fallback hit in summary mode owes the caller both
+    // messages, and neither may displace the other.
+    QStringList hints;
+    if (!scannedNothingHint.isEmpty()) hints << scannedNothingHint;
+    if (!fallbackKind.isEmpty()) {
+        hints << (fallbackKind == QLatin1String("basename")
+            ? QStringLiteral(
+                  "no spec mentioned the paths as given; these matched by BARE "
+                  "FILENAME (see matched_as) — the lowest-confidence tier, "
+                  "since two modules can share a name. Confirm each spec is "
+                  "about your file.")
+            : QStringLiteral(
+                  "no spec mentioned the paths as given; these matched after "
+                  "stripping leading directory components (see matched_as). A "
+                  "spec cites a module the way its author writes it."));
+    }
     if (!wantBodies && !matched.isEmpty()) {
-        result["hint"] = QStringLiteral(
+        hints << QStringLiteral(
             "summary mode: invariant bodies omitted (invariants_count is the "
             "real count). Drill into one spec with spec_query, or pass "
             "mode:\"full\" for every body — which on a widely-referenced file "
             "can exceed the response cap.");
     }
+    if (!hints.isEmpty()) result["hint"] = hints.join(QLatin1Char('\n'));
     return QJsonDocument(result);
 }
 

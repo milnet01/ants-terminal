@@ -468,7 +468,11 @@ which heading you expect it under.
 - **`project_settings`** — detect a non-standard layout + create/update
   `<root>/.ants/project.json` (the ANTS-2160 reader's source). Ops:
   `detect` (read-only — `{present, suggestion:{source_roots?, reason,
-  default_source_count, total_source_count, would_use_roots?, excluded?}}`;
+  counts_computed, default_source_count?, total_source_count?,
+  would_use_roots?, excluded?}}`; the two counts are OMITTED, not zeroed,
+  when `present:true` short-circuits before the walk (ANTS-4648) — a 0 there
+  read as a measurement and had a ~3000-line project reported as holding no
+  source, so absent now means not-taken and `counts_computed` says which;
   its bounded shallow walk reuses `CodebaseIndex::isIndexableSuffix` so
   counts agree with what the index admits, and discounts vendored /
   third-party trees — `*-deps`, `*-prefix`, `third_party`, `external`,
