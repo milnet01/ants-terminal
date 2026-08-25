@@ -14679,6 +14679,41 @@ QString ClaudeIntegration::applyEtagPattern(const QString &toolName,
                                             bool *unchanged) {
     if (unchanged) *unchanged = false;
     if (!isEtagSupportedTool(toolName)) return responseText;
+
+    // ANTS-4446 — parse BEFORE the 304 arm, which otherwise speaks for a body
+    // it has not read. `mcp-tools.md` § ETag-304: "a refusal envelope is
+    // never short-circuited."
+    //
+    // Two defects, one root, both closed by this ordering. The short-circuit
+    // built {ok:true, unchanged:true, etag} without looking at responseText,
+    // so a caller whose cached etag matched was told a just-refused call had
+    // succeeded. The tail below then attached an etag to any parseable object
+    // regardless of `ok` — which is what put a replayable etag in that
+    // caller's hands, since every etag-supported verb tells it to cache the
+    // value and send it back.
+    //
+    // Withholding the etag is the half that matters: a caller can only replay
+    // what it was given. Both are kept anyway — the sibling read cache
+    // (maybeInsertIdempotentReadCache, INV-5(a)/(b)) guards its own store
+    // rather than trusting its callers.
+    QJsonParseError err{};
+    const QJsonDocument doc =
+        QJsonDocument::fromJson(responseText.toUtf8(), &err);
+    const bool isJsonObject =
+        (err.error == QJsonParseError::NoError && doc.isObject());
+
+    // The refusal test is mcp::projectFields' verbatim (ANTS-2112): `ok`
+    // present and false. An envelope with no `ok` key is NOT a refusal —
+    // if these two ever disagree, one is narrowing an error envelope the
+    // other is protecting.
+    if (isJsonObject) {
+        const QJsonObject probe = doc.object();
+        if (probe.contains(QStringLiteral("ok")) &&
+            !probe.value(QStringLiteral("ok")).toBool()) {
+            return responseText;
+        }
+    }
+
     const QString etag  = etagFor(responseText);
     const QString match = args.value(QStringLiteral("etag_match"))
         .toString();
@@ -14691,10 +14726,7 @@ QString ClaudeIntegration::applyEtagPattern(const QString &toolName,
         return QString::fromUtf8(
             QJsonDocument(env).toJson(QJsonDocument::Compact));
     }
-    QJsonParseError err{};
-    const QJsonDocument doc =
-        QJsonDocument::fromJson(responseText.toUtf8(), &err);
-    if (err.error != QJsonParseError::NoError || !doc.isObject()) {
+    if (!isJsonObject) {
         // Provider returned a non-JSON payload — return as-is.
         // ETag injection only applies to JSON-envelope tools.
         return responseText;

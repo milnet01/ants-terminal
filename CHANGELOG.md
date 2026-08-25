@@ -262,6 +262,13 @@ for security-relevant changes.
 
 ### Fixed
 
+- **A repeated MCP refusal no longer comes back as `ok:true`** (ANTS-4446)
+  The ETag short-circuit built its `{ok:true, unchanged:true}` reply before
+  parsing the response, so it never learned the body was a refusal — and
+  the same function attached an etag to refusals in the first place, which
+  is what put a replayable etag in the caller's hands. It now parses first
+  and returns a refusal verbatim.
+
 - **a nested project's feedback file is no longer created where nothing reads it** (ANTS-4647)
   Omitting `path` derives the file into the parent of caller_cwd, which is the shared corpus only for a project sitting directly under it. A repo nested inside another workspace got a file in that workspace — invisible to every maintainer sweep, and starting an empty parallel record beside the workspace's real one — and was told it succeeded. It now refuses with the ancestor corpus's files as candidates. A configured `claude.mcp_feedback_root` redirects the write there instead, and a genuinely new corpus with no feedback file anywhere above still creates its first file.
 

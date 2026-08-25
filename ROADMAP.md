@@ -35713,7 +35713,7 @@ whole files.
   Source: cold-sweep-2026-08-18 lane review-dialogs (VERIFIED in-session).
   Lanes: testauditdialog.
 
-- 📋 [ANTS-4446] **ETag 304 short-circuit turns a repeated MCP refusal into `ok:true`.**
+- ✅ [ANTS-4446] **ETag 304 short-circuit turns a repeated MCP refusal into `ok:true`.**
   `ClaudeIntegration::applyEtagPattern` (`src/claudeintegration.cpp:13590`)
   builds `{ok:true, unchanged:true, etag}` at `:13598-13606` BEFORE it parses
   `responseText`, so it never learns the body was a refusal. And the tail of
@@ -35731,6 +35731,33 @@ whole files.
   Kind: fix.
   Source: cold-sweep-2026-08-18 lanes claude-mcp-infra + claude-mcp-b (VERIFIED in-session).
   Lanes: claudeintegration.
+  Resolved (2026-08-25). `applyEtagPattern` now parses before the 304 arm and
+  returns a refusal verbatim -- no etag attached, no short-circuit.
+
+  Both halves this item named had one root, and the ordering closes both. The
+  refusal test is `mcp::projectFields`' verbatim (`ok` present and false), so
+  the two agree on what a refusal is.
+
+  Withholding the etag is the half that matters: a caller can only replay what
+  it was given. The short-circuit guard is kept regardless, matching how
+  `maybeInsertIdempotentReadCache` guards its own store rather than trusting
+  callers.
+
+  New feature test `tests/features/mcp_etag_refusal` (test_claude bundle), four
+  invariants. INV-1 and INV-2 were red on assertions first, reproducing exactly
+  what was reported: the refusal carried an etag, and replaying it returned
+  ok:true with the code gone. INV-3 and INV-4 were green before the fix by
+  design -- they guard against satisfying the first two by disabling the
+  pattern, or by widening the refusal test to swallow envelopes that carry no
+  `ok` key.
+
+  One correction to the filing, which does not change the outcome. It cites the
+  contract sentence as verbatim, and it is -- but that sentence sits inside
+  `mcp-tools.md`'s paragraph on HANDLER-LOCAL short-circuits, so it binds this
+  dispatcher-level one only on the natural reading of its second clause, which
+  carries no such qualifier. The behaviour is wrong on its own merits either
+  way. The standard was not edited: stating the rule generally would change
+  what a conformer builds and needs its own gate. Filed as ANTS-4658.
 
 - 📋 [ANTS-4447] **`findRoadmapUnder` ancestor walk is unbounded for a non-git `caller_cwd`, on a WRITE verb.**
   `src/remotecontrol.cpp:129-135` walks up to 64 ancestors probing for a
@@ -36158,6 +36185,29 @@ whole files.
   Kind: investigate.
   Source: cold-sweep-2026-08-18 lanes roadmap-write + roadmap-read + plugin lane (UNVERIFIED — triage before work).
   Lanes: roadmapstore, roadmapexport, pluginmanager.
+
+- 📋 [ANTS-4658] **mcp-tools.md states "a refusal is never short-circuited" only inside its handler-local paragraph.**
+  The sentence is the whole contract for refusals and short-circuits, and it
+  sits in the paragraph describing a HANDLER-LOCAL 304 -- the case for verbs
+  held out of `isEtagSupportedTool`. Its second clause carries no qualifier, so
+  the natural reading is general, but a reader checking scope finds it stated
+  about the narrow case only.
+
+  ANTS-4446 fixed the dispatcher-level short-circuit, which is the other case.
+  The code now conforms on either reading. What is unresolved is whether the
+  standard means to bind both.
+
+  This is a rule-14 change: a conformer told the rule is general adds a guard
+  they would otherwise leave out. So it needs the cold gate, which is why it
+  was not folded into ANTS-4446's commit.
+
+  Check while there whether `maybeInsertIdempotentReadCache`'s INV-5(a)/(b) is
+  the same rule wearing a third name. If it is, the standard should say it
+  once.
+  **Layman:** A rule that should cover every case is written where it looks like it covers one.
+  Kind: doc.
+  Source: in-session-2026-08-25 (found while fixing ANTS-4446).
+  Lanes: docs, mcp.
 
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-08-18 triage
 
@@ -37247,7 +37297,7 @@ are closed inline in the feedback files rather than filed here.
   Source: cc-feedback-2026-08-18 (Fin Break).
   Lanes: mcp, roadmap-store.
 
-- 📋 [ANTS-4488] **No cheap read-only way to ask whether a project is in the store and in sync — dry_run answers it by side effect at 181 notes.**
+- ✅ [ANTS-4488] **No cheap read-only way to ask whether a project is in the store and in sync — dry_run answers it by side effect at 181 notes.**
   The question a session actually has when handed "migrate this project" is whether it is already
   migrated, and if so whether store and markdown agree. Nothing answers it directly.
 
@@ -37276,6 +37326,29 @@ are closed inline in the feedback files rather than filed here.
   Kind: feature.
   Source: cc-feedback-2026-08-18 (Local Web Server Manager).
   Lanes: mcp, roadmap-store.
+  Resolved (2026-08-25) by ANTS-4462's `check_sync`, which is not the shape
+  this item asked for and does answer its question -- verified today rather
+  than reasoned about.
+
+  The ask was a read-only `op:"status"` on roadmap_migrate returning
+  {present, project_id, items_in_store, items_in_markdown, in_sync,
+  differing_ids[]}. What exists instead is an opt-in flag on roadmap_query:
+  `{check_sync:true}` returns `source` (store or file -- so, present) and
+  `file_in_sync`, plus drift_lines / drift_restyled / drift_lost when they
+  diverge. Measured: ~400 bytes, no notes array, no write plan, and it does
+  not create an empty schema -- which was this item's sharpest observation,
+  that the read-only-sounding option was not entirely read-only.
+
+  The counts (items_in_store / items_in_markdown) were not built. They are
+  not what the question needed: `sync_checked:false` distinguishes "nobody
+  looked" from "looked and agreed", which is the failure mode a count cannot
+  report.
+
+  The consequence this item cared about most is the one that lands. It argued
+  the absence sat upstream of the wrapped-headline corruption -- a session
+  that could ask "already migrated, in sync?" cheaply would never reach for
+  the destructive path. That call now exists and costs a fifth of a kilobyte.
+  No spec was written; the verb it landed on already had one.
 
 - ✅ [ANTS-4489] **changelog_log add_subsection calls a section FLAT on one legacy heading, and its remedy entrenches the mixture.**
   VERIFIED against src/changeloglog.cpp:520-545. The guard scans from `## [Unreleased]` for the
@@ -54643,7 +54716,7 @@ here.)
   Lanes: mcp, roadmap.
   Source: in-session-2026-08-13 (hit re-running Phase D2 after the ANTS-4086 fix).
 
-- 📋 [ANTS-4143] **`roadmap_query` answers from the store while its envelope names ROADMAP.md as the source, so a caller cannot tell which document it read.**
+- ✅ [ANTS-4143] **`roadmap_query` answers from the store while its envelope names ROADMAP.md as the source, so a caller cannot tell which document it read.**
   Reproduced 2026-08-13, twice, and the second is the clean one. ANTS-3821
   was flipped 📋 → ✅ in ROADMAP.md with a resolution note and committed;
   `roadmap_query {id:"ANTS-3821"}` immediately after still returned
@@ -54690,6 +54763,28 @@ here.)
   hook is pointing at a known-bad source; whichever lands first, the other must
   be re-checked. Not filed separately — a hook recommending a broken verb is
   this bullet's cost, not a new defect.
+  Resolved (2026-08-25), and resolved DIFFERENTLY from the way this item
+  proposed -- recorded because the difference is the interesting part.
+
+  The ask was a `source: "store" | "file"` discriminator, and `path` emitted
+  ONLY when the file was actually read. ANTS-4402 shipped the first and
+  deliberately kept the second: `path` still names ROADMAP.md on a
+  store-backed answer. That is defensible now in a way it was not when this
+  was filed -- `path` names the file the store renders TO, and with `source`
+  present it can no longer be mistaken for the document that answered. The
+  verb's own schema says so in as many words: "`source` = the backend that
+  answered, not `path`".
+
+  The second measurement's ask -- make STALENESS visible, since a stale body
+  is indistinguishable from a current one -- is ANTS-4462's `check_sync`,
+  which renders the store and diffs it against the live file. Verified today
+  on this project: `{id:"ANTS-4143", check_sync:true}` returned
+  `source:"store"`, `file_in_sync:true`, in one read-only call.
+
+  The third measurement's complaint retires with the cause. The Bash hook that
+  routes callers here was pointing at a verb that returned stale bodies with
+  no truncation flag; it now points at one that names its backend and can be
+  asked whether it is current. The hook was right and is now also safe.
 
 - ✅ [ANTS-4144] **A rolled-back `roadmap_migrate` still emits its full note list, spending thousands of tokens describing writes that did not happen.**
   The failed Phase D2 run returned `ok:false` with a one-line error and
@@ -55738,6 +55833,32 @@ here.)
 
   NOT a duplicate of ANTS-4649: that one shipped and its design is sound. This
   is a second call site the key does not fit.
+  Scoped (2026-08-25), same day it was filed, because the first look found a
+  constraint the filing did not know about. This is NOT the small fix the body
+  sketches.
+
+  `docs/specs/ANTS-3765-roadmap-migration-load.md` PINS the detail format twice.
+  INV-16 requires the suppressed write to raise "a `field_conflict` note naming
+  the id and the column", and § 2.11's note-code table says "Detail names the id
+  and the field -- so a caller cannot tell the two apart, which is deliberate".
+  So moving the id out of `detail` changes what a conformer builds, which is
+  CLAUDE.md rule 14's test answered yes: it needs a spec amendment and the cold
+  gate before it is written.
+
+  That does not sink the item, and it narrows it usefully. The likely shape is
+  ADDITIVE rather than a move: give Note an optional `id` alongside the existing
+  `detail`, populate it at both call sites in Loader::applyPlanFields
+  (roadmapmigrateload.cpp:544 and :554), and let setNotes key on
+  (code, detail, source_index) unchanged -- with `detail` now the bare column.
+  The envelope still names the id and the column, in two fields instead of one
+  concatenated string, so INV-16's substance survives and only its wording moves.
+  Check what INV-16's test actually asserts before assuming that is free.
+
+  Also worth carrying into the amendment: `sample_lines` is the wrong shape for
+  this code. Every one of these rows carries `line: 0`, so a merged row would
+  sample nothing useful; `sample_ids` is the field that answers "which items?".
+  That asymmetry is the tell that the id wants its own slot rather than a
+  prefix on a string.
   **Layman:** Importing a roadmap still prints one line per item for a problem that is really one problem.
   Kind: perf.
   Source: in-session-2026-08-25 (measured while closing ANTS-4429).

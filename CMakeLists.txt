@@ -1502,6 +1502,7 @@ if(ANTS_TESTS)
                 tests/features/claude_permission_prompt_structure/test_claude_permission_prompt_structure.cpp
                 # ANTS-1996 — wrapMcpData neutralises XML comment markers.
                 tests/features/mcp_wrap_comment_escape/test_mcp_wrap_comment_escape.cpp
+                tests/features/mcp_etag_refusal/test_mcp_etag_refusal.cpp
                 # ANTS-2102 — nested-loop socket use-after-free guard lock.
                 tests/features/socket_readyread_uaf_guard/test_socket_readyread_uaf_guard.cpp
                 # ANTS-2131 — blocking MCP verbs dispatch off the main thread.
