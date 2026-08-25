@@ -5395,6 +5395,14 @@ void ClaudeIntegration::onMcpConnection() {
                     props["caller_cwd"] = slCwd;
                     props["max_findings"] = slMax;
                     props["etag_match"] = slEtag;
+                    // ANTS-4663 — this schema is
+                    // additionalProperties:false, so `fields=` was not
+                    // merely unhonoured on a corpus run, it was
+                    // undeclared: a strict client refuses it before the
+                    // dispatcher is reached. Declared here and honoured
+                    // by mcp::isFieldProjectionTool.
+                    props["fields"]  = makeFieldsProp();   // ANTS-1720
+                    props["compact"] = makeCompactProp();  // ANTS-2091
                     schema["properties"] = props;
                     specLint["inputSchema"] = schema;
                 }

@@ -156,7 +156,12 @@ constexpr const char *kFieldProjectionTools[] = {
     // per-id `field_conflict`) and `updated_items` (capped, truncated) are
     // the bulk — while the answer a caller wants is a handful of counters.
     // `additionalProperties:false` meant it could not even be asked for.
-    "roadmap_migrate"};
+    "roadmap_migrate",
+    // ANTS-4663 — a corpus-wide run over docs/specs/ overflows the inline
+    // budget and spills to a handle, while the answer a caller wants is the
+    // `counts` object the envelope already carries. `fields=["counts"]` was
+    // passed and silently dropped, because the verb was not on this list.
+    "spec_lint"};
 
 // INV-8 — every in-scope tool is field-projectable, and the out-of-scope
 // ones are not. ANTS-4624 widened the positive list from 13 to the full 15:
@@ -568,11 +573,11 @@ TEST(McpCompact, Ants2091DispatchAndSchemaWiring) {
     EXPECT_TRUE(s.contains("mcp::terseDefault()"))
         << "compaction must fall back to mcp::terseDefault() when compact "
            "is absent";
-    // 13 compact schema props — NOT one per in-scope projection tool, which
-    // is what this comment claimed until ANTS-4429 measured it. There are 16
-    // projection tools; co_change_family, docs_index and session_orient
-    // declare `fields` and not `compact`, so the two sets have diverged and
-    // the literal is the only thing standing in for the difference.
+    // 14 compact schema props — NOT one per in-scope projection tool, which
+    // is what this comment claimed until ANTS-4429 measured it.
+    // co_change_family, docs_index and session_orient declare `fields` and
+    // not `compact`, so the two sets have diverged and the literal is the
+    // only thing standing in for the difference.
     //
     // ANTS-4657 owns both halves of that: whether those three should declare
     // it, and deriving this count from a shared list the way INV-10 does
@@ -581,7 +586,7 @@ TEST(McpCompact, Ants2091DispatchAndSchemaWiring) {
     int count = 0, idx = 0;
     const QByteArray needle = "makeCompactProp();";
     while ((idx = s.indexOf(needle, idx)) != -1) { ++count; idx += needle.size(); }
-    EXPECT_EQ(count, 13) << "expected 13 makeCompactProp() call sites, got "
+    EXPECT_EQ(count, 14) << "expected 14 makeCompactProp() call sites, got "
                          << count;
 }
 

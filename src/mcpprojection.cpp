@@ -100,7 +100,16 @@ bool isFieldProjectionTool(const QString &toolName) {
         // number, so `items_inserted:0` and `ids_allocated:0` survive; only
         // the false/empty flags fold away, which is compactEnvelope's
         // documented absent-⟺-default contract.
-        || toolName == QStringLiteral("roadmap_migrate");
+        || toolName == QStringLiteral("roadmap_migrate")
+        // ANTS-4663 — a corpus-wide run over docs/specs/ overflows the
+        // inline budget and spills to a handle, and the answer a caller
+        // usually wants from that run is `counts`, which the envelope
+        // already carries. `fields=["counts"]` was passed and dropped;
+        // recovering the summary then meant reading the spill file and
+        // parsing findings[] by hand. The bulk is findings[], which
+        // compaction cannot touch (its rows are live), so `fields=` is
+        // the only knob that reaches it.
+        || toolName == QStringLiteral("spec_lint");
 }
 
 // ANTS-2094 — offload-eligible read verbs (see header). A separate set from
