@@ -45408,6 +45408,45 @@ it.
   Kind: fix.
   Source: in-session-2026-08-25 (found fixing ANTS-4666).
 
+- 📋 [ANTS-4680] **mcp-tools.md's quick-reference map is restatement by construction, and every bullet in it can drift from its owner.**
+  THE DEFERRED TAIL of review-contract's 2026-08-25 run on
+  docs/standards/mcp-tools.md. Filed rather than fixed because it is a
+  restructuring job, not a review finding, and because the run reached a
+  VIOLENT cap -- 4 of loop 6's 5 findings landed on text that run had itself
+  written, so the correct move was to stop rather than keep editing.
+
+  THE DIAGNOSIS, reached independently by both runs (2026-08-12 and
+  2026-08-25). This document is a HUB: its "Load-bearing contracts (quick
+  reference)" section restates rules owned by mcp-error-codes.md,
+  mcp-caches.md, mcp-behavioural-notes.md and the per-verb specs. Every
+  restatement is an independent chance to drift from its owner, and six
+  review loops across two runs each found drift of exactly that kind.
+
+  THE EVIDENCE THAT DELETION WORKS RATHER THAN CORRECTION. Loop 6 acted on
+  the diagnosis for the first time instead of only naming it. The Project
+  overrides section carried a restatement of when compaction fires; it was
+  corrected in loop 4, again in loop 5, and found wrong a third way in loop
+  6 -- each correction wrong in a NEW way, which is a fact about the
+  paragraph rather than about any wording. It was deleted, the section kept
+  only the dispatch ORDER which is its own job, and step 8 absorbed the
+  obligation the deletion moved. That one instance is the shape of the fix.
+
+  WHAT THIS ITEM IS. Do the same for the rest of the quick-reference map:
+  for each bullet, either the step below it or the sibling standard beside
+  it is the owner, and the bullet becomes a pointer. The map exists because
+  it was relocated out of the always-loaded CLAUDE.md preamble by ANTS-2088,
+  so the goal is a map that still orients a reader without carrying a second
+  copy of any rule.
+
+  DO NOT re-run review-contract on this document as it stands. The cap note
+  below the loop log says so and gives the reason: a fresh run starts at loop
+  1 against text whose last three loops were each repairing the one before.
+  An authoring edit that changes direction -- which this item IS -- re-arms
+  the gate normally, so gate the restructured document when it exists.
+  **Layman:** One documentation file repeats rules that other files own, so the copies keep going out of date; the fix is to stop repeating them.
+  Kind: refactor.
+  Source: in-session-2026-08-25, the deferred tail of review-contract's 2026-08-25 run.
+
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-08-11 triage
 
 35 un-triaged findings across 9 of the 18 shared-root feedback files (AI
