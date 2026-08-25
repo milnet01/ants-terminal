@@ -45047,6 +45047,89 @@ it.
   Source: in-session-2026-08-25, found by the re-verify sweep over the open feedback backlog.
   Lanes: mcp, speclint.
 
+- 📋 [ANTS-4674] **The open CC-feedback backlog is about eight mechanisms, not thirty-six items -- the partition, so it is not re-derived.**
+  Derived by sorting the open items by MECHANISM rather than by id, and
+  worth writing down because deriving it cost a full pass over every open
+  body and the answer is stable.
+
+  The families, each one commit rather than one per item:
+
+    Wrap / detection in the citation checkers
+        ANTS-4607 (part 1 only -- part 2 shipped as ANTS-4638),
+        ANTS-4664, ANTS-4670, ANTS-4566
+    Envelope reports the wrong thing, or nothing
+        ANTS-4551, ANTS-4552, ANTS-4567, ANTS-4572, ANTS-4579, ANTS-4561
+    Store data damaged and no repair op reaches it
+        ANTS-4585, ANTS-4595, ANTS-4601, ANTS-4660
+    No editor for a store column after creation
+        ANTS-4667, ANTS-4668
+    Missing _batch forms
+        ANTS-4669, ANTS-4671, ANTS-4580
+    fields= is allowlisted rather than universal
+        ANTS-4524 (the class), ANTS-4665 (an instance)
+    Description / doc fixes, one sitting between them
+        ANTS-4555, ANTS-4562, ANTS-4563, ANTS-4564, ANTS-4568,
+        ANTS-4606, ANTS-4672
+
+  WHY THE PARTITION IS WORTH MORE THAN THE SPEED. The wrap family is three
+  reports from three unrelated projects describing one defect, which is the
+  evidence that these arrive as duplicates because each caller hits the same
+  mechanism independently. So a family fix closes reports that have not been
+  filed yet. Working item-by-item cannot do that, and produces six
+  inconsistent answers to one question.
+
+  The families are also not equal. Fix the fields= class (ANTS-4524 route 1)
+  and the envelope-silence class first: both are causes, and every other
+  family is downstream of somebody not being told what a verb did.
+
+  RECHECK BEFORE USING. This lists ids, and an id that ships drops out. The
+  membership is stable; the open/shipped status is not.
+  **Layman:** The long list of outstanding reports is really a handful of underlying problems; this records which is which.
+  Kind: chore.
+  Source: in-session-2026-08-25, derived while answering how to clear the backlog.
+  Lanes: mcp, process.
+
+- 💭 [ANTS-4675] **Make every verb report what it silently dropped, and a whole class of reports stops arriving.**
+  CONSIDERED, not planned -- this is a proposal awaiting a decision, filed
+  so the reasoning does not die with the session that produced it.
+
+  THE OBSERVATION. A large share of arriving reports are one shape: a verb
+  did something, or failed to, and said nothing. Counting only the items
+  open today, ANTS-4551, ANTS-4552, ANTS-4567, ANTS-4572, ANTS-4579,
+  ANTS-4665 and ANTS-4666 are all that shape, and so is ANTS-4664, where a
+  quotation is never checked and enters no bucket. So is ANTS-4673, the
+  regression this session shipped and caught: a flag meaning "did not run"
+  folded away and the envelope read as a pass.
+
+  THE EVIDENCE THAT IT WORKS. ANTS-4578 did exactly this for one case two
+  days ago -- an unknown or unhonoured argument is now named in
+  ignored_args. It paid immediately and twice: it is what confirmed
+  ANTS-4665 live during this triage, reporting a dropped argument that would
+  otherwise have been silent, and the reporter of ANTS-4663 said outright
+  that had it existed earlier their defect would have been self-diagnosing.
+
+  THE PROPOSAL. A standing rule, in mcp-tools.md rather than per verb: a
+  verb reports what it ignored, what it skipped, and what it dropped, in
+  fields a caller reads rather than in a boolean it does not -- ANTS-4373's
+  phrasing, generalised from spec_lint to everything. Then a conformance
+  test, since a rule no check enforces decays.
+
+  WHY IT IS WORTH MORE THAN ITS OWN SIZE. It is the only item on the
+  backlog that reduces the ARRIVAL rate rather than the queue. Everything
+  else is one report closed.
+
+  WHAT WOULD MAKE IT A BAD IDEA, recorded honestly: it widens every
+  envelope, which is the opposite of the token-frugality every other item
+  this week pulled toward, and ANTS-4666 shows a disclosure field is itself
+  a thing that can be wrong -- a skipped[] naming checks that ran is worse
+  than no field, because a caller acts on it. So the rule needs a matching
+  obligation that the disclosure be TESTED, not merely present. Decide that
+  before building.
+  **Layman:** Most complaints we get are a tool quietly doing nothing; a general rule that tools always say what they ignored would prevent them.
+  Kind: enhancement.
+  Source: in-session-2026-08-25, proposed while answering how to clear the backlog.
+  Lanes: mcp, process.
+
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-08-11 triage
 
 35 un-triaged findings across 9 of the 18 shared-root feedback files (AI
