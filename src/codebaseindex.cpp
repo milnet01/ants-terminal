@@ -492,6 +492,17 @@ QJsonObject query(const Index &idx, const QueryParams &params,
                 files.append(p);
             }
             env[QStringLiteral("source_files")] = files;
+            // ANTS-4560 — the same fact under the name that matches the array
+            // it describes. On this arm there are no lanes at all, so
+            // `lane_digest_truncated` names a digest the caller cannot see,
+            // and the flag whose name DOES look right — `files_truncated` —
+            // is about the index's own cap and is correctly false. A reporter
+            // read those two, concluded the list was neither complete nor
+            // flagged, and inferred the project had no renderer, no scripting
+            // and no tests directory. Both flags are emitted here: this one
+            // because it is findable, `lane_digest_truncated` because callers
+            // already key on it.
+            env[QStringLiteral("source_files_truncated")] = digestTruncated;
         }
         QJsonObject langs, roles;
         for (auto it = langCounts.cbegin(); it != langCounts.cend(); ++it)

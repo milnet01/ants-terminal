@@ -262,6 +262,13 @@ for security-relevant changes.
 
 ### Fixed
 
+- **A truncated first-call file digest now says so under a findable name** (ANTS-4560)
+  On a project with no module map the digest is a flat file list, and the
+  only flag describing it was named for the lane digest — while the
+  obvious-looking `files_truncated` describes the index cap and is
+  correctly false. A reporter read those and concluded a large project had
+  no renderer. `source_files_truncated` now travels alongside.
+
 - **`doc_citations` accepts the `~global` sentinel its sibling verbs already took** (ANTS-4565)
   It was the one verb of the doc-checking set that refused it, so checking
   a document under `~/.claude/` meant hand-rolling the citation pass. The

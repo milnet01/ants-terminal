@@ -48,7 +48,10 @@ source-scrapes the MCP wiring sites. It maps to the spec invariants:
   (ANTS-3503) When the lane digest is empty because the project has no
   parseable `## Module map` (no file carries a lane), `lane_files:true`
   instead emits a flat top-level `source_files` digest (sorted non-test
-  paths, same `kMaxLaneDigestFiles` cap + `lane_digest_truncated` flag) so a
+  paths, same `kMaxLaneDigestFiles` cap, flagged by BOTH
+  `lane_digest_truncated` and — ANTS-4560 — `source_files_truncated`, which is
+  the name that matches the array on an arm where there are no lanes at all)
+  so a
   lane-less repo still gets a first-call code map; the field is present only
   when the fallback fires (the has-lanes shape is unchanged).
 - **INV-20** — (ANTS-3390) a `source_roots:["."]` walk keys files by their

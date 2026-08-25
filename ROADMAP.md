@@ -40388,7 +40388,7 @@ filed below.
   Source: Vestige_Ants_MCP_Feedback.md 2026-08-20.
   Lanes: roadmapmigrate.
 
-- 📋 [ANTS-4560] **session_orient's codebase_index file list is cut mid-alphabet while files_truncated reports false.**
+- ✅ [ANTS-4560] **session_orient's codebase_index file list is cut mid-alphabet while files_truncated reports false.**
   The docstring describes codebase_index in the orientation bundle as "a
   trimmed codebase-map summary". On Vestige (file_count 1120) the bundle
   carried roughly 430 project-relative paths, running alphabetically from
@@ -40414,6 +40414,44 @@ filed below.
   which is the verb that owns it. If the list must stay, set
   files_truncated:true when it is cut and say what the cap was — a wrong
   flag is worse than a small list.
+  Resolved (2026-08-25), and one premise in the report is wrong in a way worth
+  recording, because the corrected version is a sharper defect than the one
+  filed.
+
+  The list WAS flagged. Vestige has no parseable module map, so it takes
+  ANTS-3503's fallback arm: a flat, sorted, non-test file digest capped at
+  kMaxLaneDigestFiles -- which is exactly the alphabetical run from
+  app/cli_args.cpp that stops partway. That cap sets `lane_digest_truncated`,
+  and session_orient always requests the digest, so the flag was in the envelope
+  and true.
+
+  What the report checked was `files_truncated` and `symbols_truncated`, and
+  both are correctly false: they describe the INDEX's own caps, not the digest.
+  So the real defect is that the flag which applies is the one whose name looks
+  wrong, and the flag whose name looks right is about something else. On this
+  arm there are no lanes at all, so `lane_digest_truncated` names a digest the
+  caller cannot see. Three truncation flags, three scopes, and the array in hand
+  matches none of the names.
+
+  Fixed by emitting `source_files_truncated` alongside -- same fact, the name
+  that matches the array. Both travel together so a caller keyed on either is
+  served, and it is emitted false rather than omitted, because absent reads as
+  "this build does not have the flag".
+
+  Verified by mutation, not by assumption: removing the new line reddens two
+  assertions in the ANTS-3503 fallback test. Also pinned that `files_truncated`
+  stays false there, so a later fix cannot quietly repurpose the index cap to
+  mean the digest cap.
+
+  The preferred fix in the report -- drop the per-file list from the bundle --
+  was NOT taken, deliberately. That list is ANTS-3468's stated purpose: the
+  counts-only summary could not answer "where does subsystem X live", so the
+  first-call map forced a grep. Removing it reverses a shipped decision rather
+  than fixing a defect, and the token cost the report weighs against it is real
+  but is the cost that feature was accepted at. If it should be reversed, that
+  is a decision about ANTS-3468, with its spec, not a bug fix. What is
+  defensible without that decision is making the truncation legible, which is
+  what shipped.
   **Layman:** The session-start summary silently lists only part of the project's files and says nothing is missing.
   Kind: fix.
   Source: Vestige_Ants_MCP_Feedback.md 2026-08-20.

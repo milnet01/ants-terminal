@@ -608,6 +608,23 @@ TEST(CodebaseIndex, NoModuleMapFallbackDigest) {
     QJsonObject capped = query(idx, q, 0, QStringLiteral("/c"), o);
     EXPECT_EQ(capped.value("source_files").toArray().size(), 1);
     EXPECT_TRUE(capped.value("lane_digest_truncated").toBool());
+
+    // ANTS-4560 — and under the name that matches the array. On this arm
+    // there are no lanes, so `lane_digest_truncated` names a digest the
+    // caller cannot see, while `files_truncated` — the flag whose name looks
+    // right — is about the index's own cap and is correctly false. A reporter
+    // read those two and concluded a 1120-file project had no renderer.
+    EXPECT_TRUE(capped.value("source_files_truncated").toBool());
+    EXPECT_FALSE(capped.value("files_truncated").toBool())
+        << "files_truncated is the index cap and must not be repurposed";
+    // Both flags travel together, so a caller keyed on either is served.
+    EXPECT_FALSE(env.value("source_files_truncated").toBool())
+        << "an uncapped digest must report false, not go absent — absent "
+           "reads as 'this build does not have the flag'";
+    EXPECT_TRUE(env.contains("source_files_truncated"));
+
+    // The opt-out summary gains nothing: no digest, no digest flag.
+    EXPECT_FALSE(plain.contains("source_files_truncated"));
 }
 
 // INV-8/9/10 — wiring source-scrapes.
