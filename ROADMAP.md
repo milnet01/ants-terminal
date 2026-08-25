@@ -56459,6 +56459,21 @@ here.)
   Layman: Make the app run on macOS as well as Linux.
   Kind: implement.
   Source: planned.
+  Cost note (2026-08-25), found while retracting [[ANTS-1087]]'s paid-audit
+  wording. "sign+notarize the `.app`" is not free: Apple notarisation
+  requires a paid Apple Developer Program membership, billed annually, and
+  nothing in this item or anywhere else in the roadmap recorded that. The
+  project has received no donations, so there is nothing to pay it from.
+
+  Not a reason to drop the port. An unsigned macOS build still runs — the
+  user must clear Gatekeeper by hand — so the port and the notarisation
+  are separable, and only the second one costs anything. Decide that
+  split when the port is actually scheduled, and price the membership
+  then rather than trusting this note.
+
+  The same trap sits in [[ANTS-1077]] (Windows, 💭): "Sign + ship MSI /
+  MSIX" needs a code-signing certificate, which is also a purchase. It is
+  already deferred beyond 1.0, so nothing is owed today.
 
 - 💭 [ANTS-1077] **H12 — Windows port.**
   ConPTY via `CreatePseudoConsole`
@@ -56685,10 +56700,33 @@ here.)
 - 📋 [ANTS-1087] **External security audit.**
   `SECURITY.md` disclosure policy
   itself ships early under H1 (0.7.0); the 1.0 item is the
-  **external** audit — budget a third-party review of the VT
-  parser, plugin sandbox, and OSC-8/OSC-52 surfaces before
-  stamping 1.0.
-  Layman: Pay outside security experts to review the riskiest parts of the code before 1.0.
+  **external** audit — review the VT
+  parser, plugin sandbox and OSC-8/OSC-52 surfaces before stamping 1.0.
+
+  RETRACTED 2026-08-25: no paid engagement is committed. This bullet read
+  "budget a third-party review", and its Layman line said "pay outside
+  security experts" — wording nobody agreed to fund, written as an
+  aspiration (its `Source:` is bare "planned"). Nobody has offered to pay
+  for an audit and the maintainer has not undertaken to. Do not treat a
+  paid review as a 1.0 gate, and do not cite this item as a commitment.
+
+  There is also nothing to spend. Confirmed by the maintainer 2026-08-25:
+  the project has received no donations at all. `.github/FUNDING.yml`
+  lists GitHub Sponsors, Patreon and a PayBru tip jar, and their presence
+  is not income — so any item implying a spend rests on money that does
+  not exist. Applies beyond this bullet: check it before writing another.
+
+  The no-cost routes, which are the actual scope now. CodeQL is free on a
+  public repo and this repo configures none. A libFuzzer target on
+  VtParser is already [[ANTS-1005]] and unstarted; malformed input is
+  what fuzzing is for, and it is also the prerequisite for OSS-Fuzz,
+  which runs continuously for open-source projects at no cost.
+
+  A GRANT-funded audit (OSTIF, OpenSSF Alpha-Omega are the usual names)
+  would cost the project nothing, but those programmes generally want
+  real adoption first — which 0.8.0 and 0.9.0 are for. So an audit
+  before 1.0 has the sequence backwards regardless of who pays.
+  Layman: Check the riskiest parts of the code before 1.0 using free tools. Nobody is paying for a security review and nobody has promised to.
   Kind: implement.
   Source: planned.
 
