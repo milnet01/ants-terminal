@@ -67,7 +67,8 @@ checklist below walks the full procedure; this is the at-a-glance map
   **Only `Required` is ENFORCED at dispatch.** `TabSpecific` and
   `ProcessGlobal` are classification-only (ANTS-1404 Phase 3a, and the enum's
   own comments say so), so a tab-scoped verb gates itself in its handler —
-  see step 3's `RcGate` note. Picking the word does not buy the check, and
+  `RcGate` is the shared helper for that, and step 3 notes it is used well
+  beyond the state store. Picking the word does not buy the check, and
   nothing refuses the registration if you assume it does.
 - **Path validation (ANTS-1295).** Any path-typed arg routes through
   `PathValidation::validatePath` (`src/pathvalidation.h`) before any FS
