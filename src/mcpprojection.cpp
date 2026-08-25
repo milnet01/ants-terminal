@@ -312,7 +312,23 @@ bool isProtectedCompactKey(const QString &key) {
         || key == QStringLiteral("error")
         || key == QStringLiteral("etag")
         || key == QStringLiteral("found")
-        || key == QStringLiteral("unchanged");
+        || key == QStringLiteral("unchanged")
+        // ANTS-4673 — a `*_checked:false` reports that the check DID NOT RUN,
+        // so dropping it inverts the meaning exactly as a dropped `found:false`
+        // would: the envelope then reads as a clean structural pass when
+        // nothing was examined. spec_lint's contract (ANTS-4373) says to treat
+        // a skipped run as SILENT about structure, never as a clean result,
+        // and these are the fields carrying that.
+        //
+        // Needed because the dispatcher gates COMPACTION on
+        // isFieldProjectionTool, the same predicate that grants `fields=`,
+        // falling back to terseDefault() — config-default TRUE. So a verb
+        // joining that list for `fields=` alone is compacted for every caller
+        // as a side effect. ANTS-4524 named that coupling before ANTS-4663 hit
+        // it; splitting the predicate is that item's route 1 and would make
+        // this carve-out unnecessary.
+        || key == QStringLiteral("sections_checked")
+        || key == QStringLiteral("surfaces_checked");
 }
 
 // A value is "dead weight" when it equals its zero/default form: null,

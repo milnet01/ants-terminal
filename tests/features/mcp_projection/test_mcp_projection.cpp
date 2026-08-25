@@ -518,6 +518,39 @@ TEST(McpCompact, Ants2091ProtectsBranchKeys) {
     EXPECT_TRUE(o.contains("etag"));
 }
 
+// ANTS-4673 — a `*_checked:false` says the check DID NOT RUN, so dropping it
+// inverts the result's meaning exactly as a dropped `found:false` would. It is
+// the same class isProtectedCompactKey already exists for.
+//
+// Shipped as a regression by ANTS-4663 and predicted by ANTS-4524 before it.
+// Adding spec_lint to mcp::isFieldProjectionTool bought `fields=`, and the
+// dispatcher gates COMPACTION on that same predicate — falling back to
+// mcp::terseDefault(), which config defaults TRUE. So the verb was silently
+// compacted for every caller, and spec_lint's own contract (ANTS-4373: treat a
+// skipped run as SILENT about section structure, never as a clean structural
+// result) was the casualty: sections_checked:false folded away and the envelope
+// read as a clean pass.
+//
+// skipped[] is NOT an adequate fallback here: ANTS-4666 has it naming checks
+// that demonstrably ran, so the array cannot stand in for the boolean.
+TEST(McpCompact, Ants4673KeepsDidNotRunFlags) {
+    const QString body = QStringLiteral(
+        "{\"ok\":true,\"sections_checked\":false,\"surfaces_checked\":false,"
+        "\"findings\":[],\"line_count\":40}");
+    const QJsonObject o = parse(mcp::compactEnvelope(body));
+    ASSERT_TRUE(o.contains("sections_checked"))
+        << "sections_checked:false means the check did not run and must survive "
+           "compaction; dropped, a skipped run is indistinguishable from a clean one";
+    EXPECT_FALSE(o.value("sections_checked").toBool());
+    ASSERT_TRUE(o.contains("surfaces_checked"))
+        << "surfaces_checked:false must survive compaction for the same reason";
+    EXPECT_FALSE(o.value("surfaces_checked").toBool());
+    // Unrelated dead weight still folds — this is a targeted carve-out, not an
+    // opt-out of compaction for the verb.
+    EXPECT_FALSE(o.contains("findings")) << "an empty array is still dead weight";
+    EXPECT_EQ(o.value("line_count").toInt(), 40) << "numbers are kept as before";
+}
+
 // Recurses into nested objects AND array elements; a child emptied by
 // pruning is itself dropped.
 TEST(McpCompact, Ants2091RecursesAndPrunesEmptiedChildren) {

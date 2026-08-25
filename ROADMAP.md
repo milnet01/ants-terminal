@@ -38795,7 +38795,7 @@ are closed inline in the feedback files rather than filed here.
   Source: cc-feedback-2026-08-19 (Claude Code config).
   Lanes: mcp, roadmap-store.
 
-- 📋 [ANTS-4509] **No supported way to materialise the store's canonical ROADMAP.md, so normalisation requires inventing an unrelated write.**
+- ✅ [ANTS-4509] **No supported way to materialise the store's canonical ROADMAP.md, so normalisation requires inventing an unrelated write.**
   roadmap_migrate never writes ROADMAP.md by design (ANTS-4482), and the
   file is re-rendered by the next roadmap_log write. Sound, but it leaves a
   gap: there is no supported route to the store's canonical rendering short
@@ -38819,6 +38819,29 @@ are closed inline in the feedback files rather than filed here.
   Gate this behind the round-trip fix filed in this same batch: rendering
   on demand from a store whose bodies re-parse differently would make the
   churn easier to trigger, not harder.
+  Already delivered, by ANTS-4614 (op:"render") on 2026-08-24. Closed by the
+  2026-08-25 re-verify sweep, not by new work.
+
+  The ask here was "an explicit op that writes the canonical ROADMAP.md and
+  reports bytes plus a changed/unchanged flag, with dry_run support".
+  op:"render" is exactly that: no locator, nothing written to the store,
+  reports files_written / items_rendered / bytes_written, dry_run
+  previewable, and it runs the same gates the semantic ops run. Verified in
+  src/remotecontrol_roadmap_publish.cpp rather than from the tool
+  description.
+
+  It also answers both costs named here. A caller can now tell success from
+  a no-op without inventing a write, and house-format enforcement has its
+  enforcement point.
+
+  Two things the sweep checked rather than assumed. This is NOT ANTS-4483,
+  which asks for the render GATE to fire earlier and stays open. And the
+  gating condition written into this body -- "gate this behind the
+  round-trip fix filed in this same batch" -- was not honoured by ANTS-4614,
+  which shipped regardless; recorded here rather than silently dropped,
+  because if round-trip churn is still triggerable then rendering on demand
+  makes it easier to hit. Nothing observed, and no churn was reported over
+  the 2,308-item render this sweep performed.
   **Layman:** After importing a roadmap there is no command that just writes the tidied-up file — you have to make some other change to trigger it.
   Kind: feature.
   Source: cc-feedback-2026-08-19 (DOOM Ants).
@@ -39306,6 +39329,38 @@ are closed inline in the feedback files rather than filed here.
 
   Whichever is taken, the two specs must be edited together -- they are
   each true alone and false as a pair, which is how this survived.
+  Re-verified 2026-08-25. Half shipped, one premise corrected, and this item
+  turned out to predict a live regression.
+
+  ROUTE 2 IS DONE. ANTS-4578 shipped today: an unknown or unhonoured
+  `fields` is no longer exempt from the ignored_args advisory on any verb.
+  Confirmed incidentally the same day -- a feedback_query call passing
+  fields came back with ignored_args:["fields"]. So the "AND cannot report
+  it" half of this headline is closed, and a caller now learns the argument
+  was dropped instead of guessing.
+
+  ROUTE 1 IS NOT. `fields` is still allowlisted, and the per-verb workaround
+  continues: ANTS-4663 (spec_lint, shipped) and ANTS-4665 (feedback_query,
+  open) are both instances of paying for one verb at a time.
+
+  ONE CORRECTION to this body, from reading the code. It says compact "falls
+  back to mcp::terseDefault() which is ON by default". The MODULE default is
+  false -- g_terseDefault{false} in mcpprojection.cpp. What is true is that
+  the shipped CONFIG default is on: claude.mcp_terse_responses reads
+  .toBool(true) and mainwindow wires it into setTerseDefault at startup. The
+  conclusion stands, so the design constraint is real; the distinction
+  matters because a test harness loading no config sees compaction OFF while
+  every real session has it ON, which is a test-visibility trap of the
+  ANTS-4661 class.
+
+  AND THE WARNING WAS RIGHT. This body's reason for not widening the shared
+  gate -- that it would compact a verb's response for every caller whether
+  or not they asked -- is precisely what ANTS-4663 did to spec_lint this
+  morning, folding away the sections_checked:false that says the check never
+  ran. Filed and fixed as ANTS-4673. So route 1 is no longer only a
+  tidiness argument: splitting the predicate is what stops the next verb
+  joining this list from taking compaction with it, and it would retire
+  ANTS-4673's carve-out.
   **Layman:** One setting is advertised as working everywhere but only works on some tools, and nothing warns you.
   Kind: fix.
   Source: in-session-2026-08-19 (found fixing ANTS-4523).
@@ -44906,6 +44961,62 @@ it.
   Kind: doc.
   Source: claude_config-feedback-2026-08-25.
   Lanes: mcp, workspacesearch.
+
+- ✅ [ANTS-4673] **Joining the projection allowlist for fields= turns compaction on as a side effect, and it ate spec_lint's did-not-run flags.**
+  A regression shipped by ANTS-4663 this morning and caught the same day by
+  the re-verify pass, not by a report.
+
+  THE COUPLING. The dispatcher gates COMPACTION on
+  mcp::isFieldProjectionTool -- the same predicate that grants `fields=` --
+  falling back to mcp::terseDefault() when `compact` is absent. That default
+  is config-driven and `claude.mcp_terse_responses` defaults TRUE, wired in
+  at startup. So a verb added to that list to gain `fields=` is compacted
+  for every caller as a side effect, whether or not anyone asked.
+
+  THE CASUALTY. isCompactDroppable drops any false boolean. spec_lint
+  reports a gated check that did not run as sections_checked:false /
+  surfaces_checked:false, and ANTS-4373's contract is to treat a skipped run
+  as SILENT about structure, never as a clean structural result. Compacted,
+  those flags fold away and the envelope reads as a clean pass. That is the
+  ANTS-4666 defect class -- a skipped check indistinguishable from a passing
+  one -- reintroduced in a second place, hours after being filed.
+
+  skipped[] does not cover it. A non-empty array survives compaction, so in
+  principle it carries the signal. But ANTS-4666 is open precisely because
+  skipped[] names checks that demonstrably ran, so it cannot stand in for
+  the boolean.
+
+  FIXED by protecting both keys in isProtectedCompactKey, whose existing
+  rationale already covers the case exactly: these are the fields callers
+  branch on, and a dropped false inverts the meaning. Narrow on purpose --
+  unrelated dead weight in a spec_lint envelope still folds, so the verb
+  keeps the compaction it gained.
+
+  ANTS-4524 PREDICTED THIS, in writing, before ANTS-4663 existed: "compact
+  shares the identical predicate at the adjacent dispatch block, and it
+  falls back to mcp::terseDefault() which is ON by default -- so widening
+  the shared gate would start compacting every currently-unlisted verb's
+  response, for every caller, whether or not they asked." That is this
+  defect, named in advance. The lesson is not about spec_lint: any future
+  verb joining the allowlist for `fields=` takes compaction with it, and
+  splitting the predicate is ANTS-4524 route 1, which would retire this
+  carve-out.
+
+  One correction to ANTS-4524's own wording, recorded on that item: the
+  MODULE default is false, not on. Only the shipped config default is true.
+  The distinction matters because a test harness that loads no config sees
+  compaction off while every real session has it on.
+
+  Red first, and the test earns its keep: it failed on the assertion, and
+  mutating the fix to drop surfaces_checked reddened it again on that
+  specific line before restore. Suite 3930/3930, ctest -N 3944 (+1).
+
+  NOT verified against the live socket -- the running instance serves
+  pre-change code until relaunch, as with ANTS-4663 itself.
+  **Layman:** A change made this morning to let callers ask for less accidentally hid the spec checker's warning that it had not actually checked anything.
+  Kind: fix.
+  Source: in-session-2026-08-25, found by the re-verify sweep over the open feedback backlog.
+  Lanes: mcp, speclint.
 
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-08-11 triage
 
