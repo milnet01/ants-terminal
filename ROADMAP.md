@@ -33163,6 +33163,43 @@ in each bullet, not just the reporter's symptom.
   Lanes: ci, docs.
   Source: in-session-2026-08-14 (found while fixing ANTS-4391).
 
+- 📋 [ANTS-4651] **A 5-second git-spawn budget in eight test fixtures reddens build-asan at random.**
+  MEASURED, run 32819126506 on 79808df6 (2026-08-25):
+
+    VerifyChangesBuildCache.ReentrancyRejectedWhenFlagSet  Failed  5.79 s
+    VerifyChangesBuildCache.HitWithinTtl                   Failed  5.58 s
+    test_verify_changes_build_cache.cpp:154: Value of:
+      initGitProject(tmp.path())  Actual: false
+
+  Both failed inside FIXTURE SETUP, not in an assertion about the code
+  under test. The SAME COMMIT passed both in the `build-test` job at
+  0.04 s each, and the previous ten CI runs were green.
+
+  MECHANISM. `runGit()` does `p.waitForFinished(5000)` and returns false
+  on expiry. Under ASan on a loaded 4-vCPU runner the first `git init`
+  exceeded five seconds and was killed. `git` is a separate, unsanitised
+  process, so what ASan costs here is contention, not git's own runtime.
+
+  CLASS, NOT A CASE. `waitForFinished(5000)` around a spawned helper
+  appears in eight test files: verify_changes_build_cache,
+  mcp_roadmap_branch_drift, audit_scope_flat_layout,
+  roadmap_viewer_archive, audit_run_since_last_run,
+  roadmap_last_touch_async, mcp_orientation_install, debt_sweep_engine.
+  Any of them can redden the sanitizer job on a bad minute, and the
+  failure message points at git rather than at the budget.
+
+  WHAT MAKES IT WORTH FIXING RATHER THAN RE-RUNNING. A red CI whose cause
+  is the harness teaches the next session to re-run and move on, which is
+  the habit that hides a real red. The fix is not merely a bigger number:
+  a fixture timeout should scale with the environment, so make it a named
+  constant honouring an env override the sanitizer preset sets, and make
+  the failure say WHICH git command timed out and after how long — the
+  current message cannot distinguish "git is missing" from "git was slow".
+  **Layman:** Some tests give a helper command five seconds to start; on a busy build machine it sometimes takes longer, and the whole run fails for no real reason.
+  Kind: test.
+  Source: in-session-2026-08-25.
+  Lanes: ci, tests.
+
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-08-14 triage
 
 Un-triaged findings drained from the shared `*_Ants_MCP_Feedback.md` corpus
