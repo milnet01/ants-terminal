@@ -45960,7 +45960,7 @@ envelope dropped `source`/`path`/`etag`/`total`/`filter`.
   Source: perch-feedback-2026-08-26 (filed, then corroborated by a decisive probe in the same session).
   Lanes: mcp, roadmapmigrate.
 
-- 📋 [ANTS-4694] **Migrating a mixed-dialect roadmap reports ok:true without saying how much of the document the store did not model.**
+- ✅ [ANTS-4694] **Migrating a mixed-dialect roadmap reports ok:true without saying how much of the document the store did not model.**
   THE ADOPTION HAZARD, and the reporter stopped rather than migrate because
   nothing available told them what a later render would keep. That is the
   correct response and it is also the defect: the decision was unsafe to
@@ -45991,6 +45991,7 @@ envelope dropped `source`/`path`/`etag`/`total`/`filter`.
   bullets and M sections of prose not modelled" makes the decision safe.
   (2) Document whether render preserves section prose; the round-trip
   guarantee is what a project needs to see before adopting the store.
+  Resolved (2026-08-26), but NOT as specified, and the difference matters. The report's premise -- an unmodelled remainder a later render would drop -- is false: INV-11 is a partition and partitionFault() tests it, asserting every non-blank source line has exactly ONE owner among items, elements, sections and legend. Prose becomes narration, tables become table, a stray line becomes narration because dropping it is forbidden. The requested "bullets that did not parse as items" counter would have read zero forever. `elements_written` was also already on the envelope, so the data was there and only its MEANING was missing. Shipped instead: a coverage_hint saying the item count is not a coverage figure and naming where the rest went, on the arm where the numbers can mislead (more elements than items). Part 2 is answered by measurement -- ANTS-4695's report measured a real op:"render" of the same project at discarded_text_lines:0, which a render dropping prose could not produce. Red check recorded in the commit: it first came back green because I rebuilt test_claude while this suite lives in test_core. Commit 68ad675f, suite 3986/3986.
   **Layman:** Adopting a project into the database can quietly capture only a fraction of its roadmap, and nothing says so.
   Kind: enhancement.
   Source: perch-feedback-2026-08-26.
