@@ -246,6 +246,26 @@ QString projectFields(const QString &responseText, const QJsonArray &fields) {
             if (src.contains(key)) out.insert(key, src.value(key));
         }
     }
+    // ANTS-4698 — a DIAGNOSTIC floor, third after the 304 and refusal floors
+    // above and admitted for their reason: a narrowed reply must not lose the
+    // field that says how to READ the fields it kept. ANTS-3583 added
+    // `warning` + `parseable_bullets` so that count:0 on a prose or id-less
+    // roadmap could not be misread as "nothing outstanding". Both are
+    // ordinary top-level keys, so `fields:["count","source"]` — the minimal
+    // claim-read the adopt-project skill prescribes — dropped the warning and
+    // handed back the bare zero that fix exists to prevent. The caller most
+    // likely to narrow is the token-careful one, so the fix was reachable
+    // only by not using the argument.
+    //
+    // `parseable_bullets` rides along because it is the DATUM the warning
+    // explains; a warning about a number, without the number, is half an
+    // answer. Generic rather than roadmap-keyed on purpose: `warning` names a
+    // diagnostic in any envelope that carries one, and this floor is the
+    // statement that a diagnostic outranks a caller's narrowing.
+    for (const QString &key : {QStringLiteral("warning"),
+                               QStringLiteral("parseable_bullets")}) {
+        if (src.contains(key)) out.insert(key, src.value(key));
+    }
     return QString::fromUtf8(
         QJsonDocument(out).toJson(QJsonDocument::Compact));
 }

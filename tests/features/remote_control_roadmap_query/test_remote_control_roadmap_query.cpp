@@ -241,7 +241,27 @@ static int runMain() {
         fail("INV-11",
              "roadmap_query schema does not declare the `filter` alias");
 
-    std::puts("OK remote_control_roadmap_query: 12/12 invariants");
+    // INV-13 (ANTS-4701) — `max_results` is honoured as an alias for `limit`,
+    // asserted in INV-11's two halves for INV-11's reason: honouring the arg
+    // without declaring it leaves it reported in ignored_args, which is the
+    // worse of both states — it works, and the envelope says it was dropped.
+    // workspace_search spells this cap `max_results`, so it is the name a
+    // caller alternating between the two list verbs carries across; it used
+    // to be dropped and answered with the FULL set, which under
+    // mode:"headline_only" is every row.
+    // The anchor is the ASSIGNMENT, not the bare read: `max_results` is read
+    // by workspace_search and two state verbs in sibling RC TUs, and
+    // slurpRemoteControl concatenates them all — so the bare literal matches
+    // a sibling and can never fail. Verified: this form occurs exactly once.
+    if (!contains(rcSrc,
+                  "limitVal = req.value(QStringLiteral(\"max_results\"))"))
+        fail("INV-13",
+             "cmdRoadmapQuery does not fall back to the `max_results` alias");
+    if (!contains(ciSrc, "props[\"max_results\"] = maxResultsAliasProp"))
+        fail("INV-13",
+             "roadmap_query schema does not declare the `max_results` alias");
+
+    std::puts("OK remote_control_roadmap_query: 13/13 invariants");
     return 0;
 }
 

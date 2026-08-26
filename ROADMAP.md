@@ -45842,6 +45842,375 @@ it.
   Source: in-session-2026-08-25, found while diagnosing a user report of the terminal locking up.
   Lanes: mcp, roadmap, perf.
 
+### 🔌 Ants-MCP feedback from CC sessions — 2026-08-26 triage
+
+Twelve findings from five reporting projects (Charls_Site, claude_config,
+DOOM_Ants, finbreak, perch); fifteen of the twenty corpus files were already
+clean. Two further findings were CONFIRMED-SHIPPED notices (ANTS-4665,
+ANTS-4676) and were closed inline rather than filed. Three claims were verified
+live during triage before filing: headline_only returns no `kind`, `max_results`
+lands in `ignored_args` on roadmap_query, and that same call's offloaded
+envelope dropped `source`/`path`/`etag`/`total`/`filter`.
+
+- 📋 [ANTS-4691] **roadmap_log dry_run writes .roadmap-counter to disk even when the call is REFUSED.**
+  THE SHARPEST FINDING IN THIS TRIAGE, because it breaks the guarantee
+  dry_run exists to give. dry_run is documented as returning the would-be
+  result WITHOUT writing to disk, and specifically as not bumping
+  .roadmap-counter.
+
+  REPORTED REPRO (perch, tree clean, no counter anywhere): roadmap_log
+  op:"append" dry_run:true with id_prefix "PERCH" against a section that
+  turns out to have subsections. The call correctly REFUSES
+  section_has_subsections and writes no bullet -- and git status then shows
+  an untracked docs/.roadmap-counter containing 0, which did not exist
+  before. The reporter deleted it to restore the tree.
+
+  So the side effect happens on a path that did not even reach a valid
+  target: the counter is created at prefix-resolution time, before the
+  refusal, and outside whatever gates the bullet write.
+
+  WHY IT MATTERS BEYOND THE STRAY FILE. dry_run's value is being safe to
+  point at a repository you do not own -- an adoption probe, a readiness
+  report, another project's tree. If a REFUSED dry run can touch disk, that
+  is no longer true, and a session that does not notice either commits the
+  artefact or reports a dirty tree it caused itself.
+
+  FIX: create the counter lazily at first real allocation rather than at
+  parse/prefix resolution, and gate every filesystem side effect behind the
+  same dry_run check that gates the bullet write. The reporter asks for an
+  audit of other verbs whose dry_run path initialises state files, and that
+  is the right scope -- this is a class, not one line.
+  **Layman:** A preview that is supposed to change nothing leaves a stray file behind in the project.
+  Kind: fix.
+  Source: perch-feedback-2026-08-26.
+  Lanes: mcp, roadmapwrite.
+
+- 📋 [ANTS-4692] **An offloaded roadmap_query drops every top-level scalar, including check_sync's answer and `source`.**
+  VERIFIED LIVE DURING TRIAGE, not taken on report. A roadmap_query on this
+  project (status:"planned", mode:"headline_only") spilled, and the envelope
+  carried only bytes/handle/head/head_rows/head_rows_key/hint/offloaded/ok/
+  row_count. Absent: source, path, etag, total, filter.
+
+  The reporter's case is worse because it involves check_sync. On a project
+  with many active items, the broad orientation call spills and file_in_sync,
+  sync_checked and the drift_* companions vanish with it; the same flag on a
+  narrower call returns file_in_sync:true and source:"store". Same project,
+  same session -- the answer appears only when the row list happens to be
+  small enough.
+
+  THE DIRECTION OF THE FAILURE IS THE DANGEROUS ONE. `file_in_sync` absent
+  is indistinguishable from never requested, so a caller treating a missing
+  field as its zero value reads it as out-of-sync or skips the check
+  entirely. check_sync exists precisely to catch a hand-edit a later
+  roadmap_log write would silently discard, so losing its answer on the
+  orientation call defeats the feature exactly where its own schema says to
+  use it -- and the ~204 ms render was performed and then thrown away.
+  `source` is the field that distinguishes a store-backed project from a
+  flat-file one, which a session is instructed to check before touching the
+  roadmap. read_spill does not recover either: it pages the bullets array,
+  not the envelope.
+
+  FIX: on offload, keep the scalar/short-string top-level fields and spill
+  only the array named by head_rows_key. They are a fixed handful of bytes
+  and cannot themselves cause a spill. At minimum carry sync_checked, so a
+  dropped answer is distinguishable from a check that never ran -- the
+  reasoning spec_lint's skipped[] (ANTS-4373) and doc_integrity's
+  *_suppressed counters already apply.
+  **Layman:** When a roadmap answer is too big it gets stored aside, and the safety information a session is told to read first is thrown away with it.
+  Kind: fix.
+  Source: DOOM_Ants-feedback-2026-08-26.
+  Lanes: mcp, roadmapquery.
+
+- 📋 [ANTS-4693] **roadmap_migrate ignores the declared `roadmap` key that roadmap_query and roadmap_log both honour.**
+  TWO FINDINGS, THE SECOND ISOLATING THE FIRST'S CAUSE, so they are one
+  item. The reporter did the work that makes this actionable rather than
+  leaving it as a disagreement between verbs.
+
+  WHAT WAS OBSERVED. perch declares roadmap = docs/11-roadmap.md in
+  .ants/project.json (confirmed via project_settings op:"detect").
+  roadmap_query resolves and reads it. roadmap_log op:"append" dry_run
+  parsed it well enough to refuse section_has_subsections and list that
+  section's six real child slugs. roadmap_migrate dry_run refuses
+  no_roadmap, "(not_found)".
+
+  THE DECISIVE PROBE. With a symlink ROADMAP.md -> docs/11-roadmap.md at the
+  repo root and NOTHING else changed, roadmap_migrate dry_run succeeds:
+  format ants-v1, store_backed true, sections_written 34. Symlink removed,
+  tree clean. So the file is migratable and the only difference is how the
+  source path is resolved.
+
+  WHY IT MATTERS. The declared-path support is inconsistent across one verb
+  family, and the one verb that lacks it is the one that decides whether a
+  project can adopt the store at all -- the opposite of the machine-wide
+  standard goal.
+
+  FIX, two independent parts. (1) Resolve roadmap_migrate's source through
+  the same declared-path lookup roadmap_query and roadmap_log already use,
+  before falling back to root ROADMAP.md plus docs/roadmap/ archives.
+  (2) Split the refusal: not_found for an absent roadmap, and a distinct
+  unsupported_dialect naming the dialect detected where a file was located
+  but cannot be migrated. Those want opposite follow-ups -- a project to
+  file work in versus a conversion decision -- and not_found currently
+  points at the wrong one.
+  **Layman:** A project that keeps its roadmap somewhere other than the usual filename can be read and written but cannot be adopted into the database.
+  Kind: enhancement.
+  Source: perch-feedback-2026-08-26 (filed, then corroborated by a decisive probe in the same session).
+  Lanes: mcp, roadmapmigrate.
+
+- 📋 [ANTS-4694] **Migrating a mixed-dialect roadmap reports ok:true without saying how much of the document the store did not model.**
+  THE ADOPTION HAZARD, and the reporter stopped rather than migrate because
+  nothing available told them what a later render would keep. That is the
+  correct response and it is also the defect: the decision was unsafe to
+  make from the envelope.
+
+  WHAT WAS OBSERVED. perch's roadmap is a large milestone document -- prose
+  phase map, per-milestone exit criteria, two research logs, and a Post-v1
+  section whose bullets are partly ants-v1 and partly plain GFM.
+  roadmap_migrate dry_run reports ok:true, store_backed:true,
+  sections_written 34 -- having inserted THREE items, the only bullets
+  already in ants-v1 shape. No note about unmodelled bullets or prose.
+
+  WHY THAT IS ACUTE HERE. After migration the store is authoritative and
+  roadmap_log re-renders the whole file from it; op:"render" exists to
+  publish store -> ROADMAP.md and the verb documents that a hand-edit
+  outside the store is reverted. So the unmodelled remainder is not merely
+  unrecorded -- it is what a later render stands to drop.
+
+  THE DETECTION ALREADY EXISTS ONE VERB OVER, which is what makes this cheap:
+  roadmap_query's section_index computes and reports legacy_format_hint /
+  legacy_format_sections, naming the sections whose bullets carry no ids.
+  The migrate envelope reports none of it.
+
+  FIX, in order of value. (1) Surface the unmodelled remainder in
+  roadmap_migrate's envelope -- count of bullets that did not parse as
+  items, and whether non-item prose exists under the sections it wrote --
+  reusing that same detection. A dry run that says "3 items modelled, N
+  bullets and M sections of prose not modelled" makes the decision safe.
+  (2) Document whether render preserves section prose; the round-trip
+  guarantee is what a project needs to see before adopting the store.
+  **Layman:** Adopting a project into the database can quietly capture only a fraction of its roadmap, and nothing says so.
+  Kind: enhancement.
+  Source: perch-feedback-2026-08-26.
+  Lanes: mcp, roadmapmigrate.
+
+- 📋 [ANTS-4695] **roadmap_log op:"render" strips the trailing period from every Layman line and counts it as restyling, not text.**
+  REPORTED WITH NUMBERS. perch, migrated 2026-08-26, 30 items, every Layman
+  line hand-authored ending in a period. roadmap_log op:"render" reports
+  discarded_restyled_lines 30, discarded_text_lines 0, ok:true. After the
+  write, a grep for Layman lines ENDING in a period returns 0 and the
+  without-period count returns 30 -- all thirty lost it. The dry_run reported
+  the same split, so the preview did not warn either.
+
+  WHY THE ACCOUNTING IS THE DEFECT, more than the punctuation.
+  discarded_text_lines is the field a caller checks before allowing a render
+  to overwrite their file. The reporter checked exactly that, and it read 0
+  while thirty lines of their prose were about to change. A caller cannot
+  distinguish cosmetic normalisation from prose loss if both count as
+  restyle -- so the field that exists to make the render safe was, in this
+  case, the field that made it look safe.
+
+  It also makes the file non-idempotent against its authored source:
+  re-authoring with periods and re-rendering flips them off again every time.
+
+  FIX: either preserve the author's terminal punctuation on the Layman line,
+  or normalise it deliberately in the documented direction (headline_format
+  already requires the headline to end in a period, and Layman reads as
+  prose). Whichever is chosen, count punctuation changes to author-supplied
+  prose somewhere other than `restyled` -- a third counter is fine -- so
+  discarded_text_lines:0 keeps meaning "your text is untouched".
+  **Layman:** Publishing the roadmap quietly edits the author's own sentences while reporting that no text changed.
+  Kind: fix.
+  Source: perch-feedback-2026-08-26.
+  Lanes: mcp, roadmaprender.
+
+- 📋 [ANTS-4696] **doc_citations attributes a quotation to a merely-nearby document when the real target is rejected, manufacturing a false stale-citation report.**
+  WHAT WAS OBSERVED. A spec cited an ADR as `docs/decisions/ADR-0003` (no
+  .md extension) on the line directly above a quotation of it, with
+  `docs/design.md` mentioned earlier in the same bullet. Per ANTS-4639 a
+  token becomes a target only if it names a document, so the extensionless
+  ADR is correctly NOT a target -- but instead of reporting no_target the
+  check fell through to `docs/design.md` and returned status:"not_found"
+  against it.
+
+  That reads as "this quotation is stale in docs/design.md", which is false
+  twice over: the quotation is present and exact in the ADR, and
+  docs/design.md was never claimed as its source. Adding the .md extension
+  made it resolve ok immediately, so the underlying matching is sound --
+  this is purely the attribution fallback.
+
+  WHY IT MATTERS. not_found is the ACTIONABLE status: it means a quotation
+  went stale and someone must repair it. Pointing it at a nearby document
+  manufactures a false report whose natural repair is to edit a correct
+  passage. And citing an ADR by bare id is the normal convention in that
+  corpus, so the shape recurs rather than being a one-off.
+
+  FIX: when the nearest preceding path-shaped token in the attribution scope
+  was REJECTED for not naming a document, prefer no_target (or a new
+  target_unrecognised) over falling through to an older token in the same
+  paragraph. A quotation whose target could not be identified is a different
+  fact from one whose target says something else, and only the second
+  warrants not_found. Naming the rejected token in the reply would make the
+  fix -- add the extension -- obvious.
+  **Layman:** The citation checker can say a quote is out of date in a document that was never its source.
+  Kind: fix.
+  Source: Charls_Site-feedback-2026-08-26.
+  Lanes: mcp, doccitations.
+
+- 📋 [ANTS-4697] **doc_citations emits a line-wrapped quotation twice, inflating quotes_checked and the quote_counts buckets.**
+  A single double-quoted span straddling a hard line break is reported as
+  TWO identical entries -- same line, same text, same target, same status.
+  Not status-dependent: the reporter saw it first as two no_target entries
+  and then, after fixing the attribution, as two ok entries for the same
+  quotation. Unwrapped quotations in the same document are reported once
+  each. Measured: quotes_checked 9 for 8 distinct quotations.
+
+  WHY IT LANDS WHERE IT HURTS. This verb's whole job is to say how many
+  quotations were checked and how many are stale. A wrapped quotation makes
+  both figures wrong in the same direction, and prose in this corpus wraps
+  at ~70 columns, so a quotation of any length usually wraps. A run
+  comparing quotes_checked against a hand count sees a discrepancy it cannot
+  explain, and a not_found on a wrapped quotation reads as two stale
+  citations rather than one.
+
+  The match itself is correct -- ANTS-4386's whitespace-and-newline folding
+  found the quotation and resolved it correctly both times -- so this looks
+  like the span being harvested once per line it covers.
+
+  FIX: de-duplicate on (line, text, target) after the wrapped-match pass, or
+  emit one entry per matched SPAN rather than one per line the span touches.
+  The second is the real repair; the first is the safe one.
+  **Layman:** A quote that runs across two lines is counted as two quotes, so the checker's totals are wrong.
+  Kind: fix.
+  Source: Charls_Site-feedback-2026-08-26.
+  Lanes: mcp, doccitations.
+
+- 📋 [ANTS-4698] **roadmap_query's `fields` narrowing drops the prose-roadmap `warning`, re-opening the misread ANTS-3583 shipped to prevent.**
+  ANTS-3583 added `parseable_bullets` and a `warning` explaining that
+  count:0 on a prose / ID-less roadmap means "format not recognised", not
+  "no outstanding work". Both are ordinary top-level fields, so a `fields`
+  list that does not name them removes them. `compact` protects
+  ok/code/error/etag/found/unchanged from exactly this; `warning` has no
+  such protection.
+
+  REPORTED REPRO (perch, prose/milestone roadmap declared in
+  .ants/project.json). Call A: fields:["count","source"] ->
+  {"count":0,"source":"markdown"} and nothing else. Call B: same call with
+  fields omitted and compact:true -> the same count:0 PLUS
+  parseable_bullets:0 and the full warning string. The signal is present and
+  the narrowing hides it.
+
+  WHY THE REACHABILITY IS THE GAP. The caller most likely to narrow `fields`
+  is the one being token-careful, and fields:["count","source"] is a natural
+  minimal claim-read -- the adopt-project skill prescribes that exact shape.
+  That caller gets a bare count:0 and concludes the project has nothing
+  outstanding, which is the original ANTS-3583 misread reached through a
+  documented argument. The fix works; its reachability is the defect.
+
+  FIX: treat `warning` (and `parseable_bullets` where set) as protected keys
+  surviving `fields` narrowing, as ok/code/error/etag already do under
+  compact. Failing that, name the hazard in the `fields` description: a
+  narrowed list can drop a diagnostic that changes how the returned numbers
+  must be read.
+  **Layman:** Asking for a short answer can hide the note explaining that a zero means "format not understood" rather than "nothing to do".
+  Kind: fix.
+  Source: perch-feedback-2026-08-26.
+  Lanes: mcp, roadmapquery.
+
+- 📋 [ANTS-4699] **roadmap_query mode:"headline_only" omits `kind`, which a project's documented resumption flow depends on.**
+  VERIFIED LIVE DURING TRIAGE. roadmap_query {ids:[...],
+  mode:"headline_only"} returns exactly {headline_oneline, id, input_index,
+  section_slug, status}. No `kind`, and no `bodies_omitted`.
+
+  THE REPORTER'S CASE is that finbreak's CLAUDE.md states the opposite as
+  settled behaviour -- that a filtered call withholds bodies but still
+  returns kind, so the survey answers their Resumption flow step 2 with no
+  second call owed. Step 2 reads the ONE standards file matching the active
+  item's Kind, so a headline_only survey that omits kind cannot answer it.
+
+  THE REPORTER STATED THEIR OWN UNCERTAINTY, which is worth preserving:
+  that CLAUDE.md sentence may have been written about a status:"active"
+  filtered call rather than mode:"headline_only", and they did not exercise
+  status:"active". So this is an observation about the headline_only shape,
+  NOT a claim that the verb regressed. Treat it that way.
+
+  IMPACT is low and is cost/accuracy rather than correctness -- one extra
+  call. It is filed because the divergence is between the verb and a project
+  instruction file that reads as authoritative, so a session following that
+  doc either believes it holds the Kind when it does not, or pays a call the
+  doc says is not owed.
+
+  FIX, either direction, but pick one and say so: include `kind` in the
+  headline_only projection (a scalar, small beside the headline already
+  returned), or -- if headline_only is deliberately minimal -- say so in the
+  verb description so a project doc cannot record the wider claim. If the
+  field set differs between the status-filtered and ids+headline_only
+  shapes, naming that difference settles both.
+  **Layman:** The short roadmap listing leaves out the item's category, so a session that needs it must ask twice.
+  Kind: enhancement.
+  Source: finbreak-feedback-2026-08-26.
+  Lanes: mcp, roadmapquery.
+
+- 📋 [ANTS-4700] **read_region has no per-line clip, so a region whose weight sits in a few long lines spills or truncates.**
+  workspace_search takes max_match_bytes and clips every emitted line to it.
+  read_region has no equivalent. Its only size control is max_bytes, which
+  keeps the HEAD and truncates the tail -- so on a region whose weight sits
+  in a few very long lines it either spills or drops exactly the rows you
+  were reading toward.
+
+  MEASURED BY THE REPORTER, not estimated: a 113-line region of a
+  hard-wrapped standard is 29,244 bytes, of which a six-row review loop-log
+  table is 20,446 -- 70% of the region in six lines. read_region spilled to
+  a handle and returned a truncated head plus rows_preview_omitted, so the
+  call cost a round-trip and returned neither the structure nor the tail. A
+  sed | cut got the same material in one call at a fraction of the size.
+
+  WHY IT MATTERS BEYOND COST. It pushes a caller off the verb and back onto
+  Bash for exactly the documents these standards are written in. In a
+  review-gate run it is worse: the loop-log rows are the section the
+  reviewing skill FORBIDS reading, and they are what the read is mostly
+  paying for. A clip returns the row shape -- loop number, date, lane count
+  -- with the outcome prose cut, which is all a caller wants from such a
+  table.
+
+  FIX: an optional max_line_bytes on read_region, clipping each emitted line
+  to that many UTF-8 bytes with the same ellipsis marker max_match_bytes
+  uses, echoing the effective value on the envelope. Applied BEFORE the
+  max_bytes cap so it makes room rather than competing with it -- the
+  ordering workspace_search's `filter` already documents. Composes with
+  file_outline sizes:true (ANTS-4384), which answers WHERE the weight is;
+  this answers how to read past it.
+  **Layman:** Reading part of a document with very long lines returns too much or cuts off the part you wanted.
+  Kind: enhancement.
+  Source: claude_config-feedback-2026-08-26.
+  Lanes: mcp, readregion.
+
+- 📋 [ANTS-4701] **roadmap_query spells its row cap `limit` where workspace_search spells it `max_results`, and the wasted call returns everything.**
+  VERIFIED LIVE DURING TRIAGE: roadmap_query {status:"planned",
+  mode:"headline_only", max_results:3} returned ignored_args:["max_results"]
+  and the full set -- 94 rows, which then spilled to a handle. The cap
+  applied to nothing.
+
+  Nothing is broken and nothing is silent: ignored_args is right there in
+  the envelope. But the caller only learns AFTER the call, and on a mode
+  that returns every row the wasted call is the whole result set. The cost
+  lands hardest on the caller who was being token-careful, which is the
+  wrong way round.
+
+  THE PRECEDENT IS THIS SAME VERB. ANTS-3698 added `filter` as an alias for
+  `status` on roadmap_query, on the stated ground that the name a caller
+  naturally reaches for "used to be silently ignored and answered with the
+  full set". That sentence describes this case exactly.
+
+  FIX: accept `max_results` as an alias for `limit`, with `limit` winning
+  when both are sent. Alternatively -- or additionally -- name the
+  unrecognised argument's likely intent in the envelope, the way several
+  verbs already return `candidates` on a near miss, so ignored_args says
+  which argument was MEANT rather than only that one was dropped.
+  **Layman:** Asking the roadmap for three rows using the name the other search tool uses silently returns all of them.
+  Kind: enhancement.
+  Source: claude_config-feedback-2026-08-26.
+  Lanes: mcp, roadmapquery.
+
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-08-11 triage
 
 35 un-triaged findings across 9 of the 18 shared-root feedback files (AI

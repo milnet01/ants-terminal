@@ -3118,7 +3118,14 @@ void ClaudeIntegration::onMcpConnection() {
                         "section= (bad_mode_combo). ANTS-1881 — "
                         "\"headline_only\" returns bullets[] narrowed to "
                         "{id, status, headline_oneline, section_slug} per "
-                        "bullet (skips body/lanes/kind) — ~10× smaller "
+                        "bullet (skips body/lanes/kind). ANTS-4699 — those "
+                        "four keys are the MODE's contract (ANTS-1881 INV-2: "
+                        "extra keys fail, missing keys fail), NOT a `fields` "
+                        "default, so `kind` is not obtainable here by any "
+                        "argument and a caller needing it wants an "
+                        "unfiltered id/ids fetch. Stated because a project "
+                        "doc had recorded the wider claim that a filtered "
+                        "call still returns kind. ~10× smaller "
                         "payload on dense bundle sections; composes with "
                         "section=, status=, id=, pagination, and ETag. "
                         "ANTS-1922 — \"bundles\" groups the active subset "
@@ -3168,6 +3175,28 @@ void ClaudeIntegration::onMcpConnection() {
                         "offset/limit/total/truncated and next_offset "
                         "when truncated.");
                     props["limit"] = limitProp;
+                    // ANTS-4701 — `max_results` alias, declared for the same
+                    // reason ANTS-3698 declared `filter`: so the argument is
+                    // not reported in ignored_args now that it is honoured.
+                    // An undeclared-but-honoured arg is the worse of both
+                    // states — it works, and the envelope says it was dropped.
+                    QJsonObject maxResultsAliasProp;
+                    maxResultsAliasProp["type"]    = "integer";
+                    maxResultsAliasProp["minimum"] = 1;
+                    maxResultsAliasProp["maximum"] = 500;
+                    maxResultsAliasProp["description"] = QStringLiteral(
+                        "Alias for `limit` (ANTS-4701) — same range and same "
+                        "meaning; `limit` wins when both are sent. Accepted "
+                        "because workspace_search, the other list verb a "
+                        "session reaches for, spells this cap `max_results`, "
+                        "so the name a caller naturally carries across used "
+                        "to be dropped into ignored_args and answered with "
+                        "the FULL set — on mode:\"headline_only\" that is "
+                        "every row, which then spills. Learning after the "
+                        "call that the cap applied to nothing costs most "
+                        "exactly the caller who was trying to bound the "
+                        "response.");
+                    props["max_results"] = maxResultsAliasProp;
                     // ANTS-1391 — caller_cwd anchor.
                     props["caller_cwd"] = makeCallerCwdReadProp();
                     props["etag_match"] = makeEtagMatchProp();   // ANTS-1499

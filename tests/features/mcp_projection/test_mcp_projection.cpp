@@ -1129,3 +1129,39 @@ TEST(McpProjection, Ants4367WholeWordAndRegexNarrowTheQuery) {
     EXPECT_FALSE(mcp::bulletMatchesQuery(real, QStringLiteral("CI("),
                                          mcp::QueryMode::Regex));
 }
+
+
+// ANTS-4698 — the DIAGNOSTIC floor. `warning` and `parseable_bullets` survive
+// a `fields` narrowing that does not name them.
+//
+// ANTS-3583 added both so that count:0 on a prose / id-less roadmap could not
+// be misread as "nothing outstanding". They are ordinary top-level keys, so a
+// narrowing dropped them and handed back exactly the bare zero that fix
+// exists to prevent — and the caller most likely to narrow is the
+// token-careful one the adopt-project skill sends down that path.
+TEST(McpProjection, Inv10WarningSurvivesFieldsNarrowing) {
+    const QString body = QStringLiteral(
+        "{\"ok\":true,\"count\":0,\"source\":\"markdown\","
+        "\"parseable_bullets\":0,"
+        "\"warning\":\"format not recognised — 0 bullets carry an id\"}");
+
+    // The minimal claim-read: neither diagnostic is named.
+    const QJsonObject o = parse(mcp::projectFields(body, fields({"count",
+                                                                "source"})));
+    EXPECT_EQ(o.value("count").toInt(), 0);
+    EXPECT_EQ(o.value("source").toString(), QStringLiteral("markdown"));
+    EXPECT_TRUE(o.contains("warning"))
+        << "a narrowed reply must not lose the field that says how to READ "
+           "the fields it kept";
+    EXPECT_EQ(o.value("parseable_bullets").toInt(), 0)
+        << "the datum the warning explains rides along with it";
+}
+
+// The floor is a floor, not a rewrite: an envelope carrying no diagnostic is
+// narrowed exactly as before, so the common case is byte-identical.
+TEST(McpProjection, Inv10NoDiagnosticLeavesNarrowingUnchanged) {
+    const QJsonObject o =
+        parse(mcp::projectFields(kBody, fields({"count"})));
+    EXPECT_EQ(o.size(), 1) << "no warning present, so nothing is added";
+    EXPECT_EQ(o.value("count").toInt(), 3);
+}

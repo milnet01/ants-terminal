@@ -1876,7 +1876,18 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
     // "not passed" gate; isDouble() the "passed and well-formed"
     // gate. Negative values rejected at this layer too.
     const QJsonValue offsetVal = req.value(QStringLiteral("offset"));
-    const QJsonValue limitVal  = req.value(QStringLiteral("limit"));
+    // ANTS-4701 — `max_results` is accepted as an alias for `limit`. Same
+    // shape and same reason as ANTS-3698's `filter`/`status` alias on this
+    // verb: workspace_search — the other list verb a session reaches for —
+    // spells this cap `max_results`, so a caller alternating between the two
+    // sends the sibling's name, has it dropped into ignored_args, and is
+    // answered with the FULL set. Under mode:"headline_only" that is every
+    // row, which then spills, so the wasted call is the whole result set —
+    // and the cost lands on the caller who was being token-careful, which is
+    // the wrong way round. `limit` still wins when both are present.
+    QJsonValue limitVal = req.value(QStringLiteral("limit"));
+    if (limitVal.isUndefined())
+        limitVal = req.value(QStringLiteral("max_results"));
     const bool callerPassedOffset = !offsetVal.isUndefined();
     const bool callerPassedLimit  = !limitVal.isUndefined();
     int offsetArg = 0;
