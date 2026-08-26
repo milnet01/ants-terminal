@@ -48,6 +48,31 @@ fi
 
 # Expand the spec for real and syntax-check the scriptlets it generates.
 #
+# ANTS-4719 — a comment macro in the PREAMBLE, which the scriptlet check below
+# cannot see. That one bash -n's each EXPANDED section body, so it catches an
+# unescaped macro inside %%build or %%check. In the preamble the expansion
+# produces a section marker or a tag instead of broken shell: rpmspec -P still
+# succeeds on a host whose rpm only warns, every scriptlet still parses, and the
+# failure arrives as "Unknown tag" a minute into a foreign build.
+#
+# Measured 2026-08-26: a BuildRequires comment reading "runs %%check" (written
+# with one %%) built fine here and took out Mageia_10 alone, because this host's
+# rpm warns where Mageia's errors. Needs no rpmspec, so unlike the check below
+# it still runs where rpmspec is absent.
+bad_comment_macro="$(awk '
+    /^[[:space:]]*#/ {
+        line = $0
+        gsub(/%%%%/, "", line)
+        if (line ~ /%%[A-Za-z_{]/) printf "%%d: %%s\n", NR, $0
+    }' "$SPEC")"
+if [ -n "$bad_comment_macro" ]; then
+    echo "obs-submit: unescaped macro reference in a comment:" >&2
+    printf '%%s\n' "$bad_comment_macro" >&2
+    echo "            rpm expands macros in comments — double it (%%%%check)." >&2
+    exit 1
+fi
+echo ">>> no unescaped macro references in comments"
+
 # rpm expands macros inside `#` comments — they are comments to the shell, not
 # to the macro engine. So a singly-written macro reference in a comment (%ctest
 # rather than %%ctest) expands mid-comment and can push live text into %build or

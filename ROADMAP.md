@@ -46788,6 +46788,13 @@ envelope dropped `source`/`path`/`etag`/`total`/`filter`.
   Source: in-session-2026-08-26, the twelfth failure in the same OBS build.
   Lanes: packaging, roadmapdialog.
 
+- ✅ [ANTS-4719] **The spec's comment-macro guard cannot see the preamble, where the failure is a bad tag rather than bad shell.**
+  SELF-INFLICTED, and worth writing down for that reason. Fixing ANTS-4717\nI wrote a BuildRequires comment reading \"runs %check\" with ONE percent.\nrpm expands macros in comments, so it expanded into a section marker and\nMageia_10 died at `error: line 80: Unknown tag`. The other three targets\nhad not reached the parse yet and would have followed.\n\nobs-submit.sh ALREADY guards this class, and its own comment records that\nit cost a cycle on 2026-07-29. It did not fire, for a structural reason:\nit runs `rpmspec -P` and then `bash -n` over each expanded SCRIPTLET body,\nso it sees an unescaped macro inside %build or %check. In the PREAMBLE the\nexpansion yields a tag or a section marker rather than broken shell --\nevery scriptlet still parses, and the check has nothing to fail on.\n\nTWO THINGS MADE IT INVISIBLE LOCALLY. `rpmspec -q --srpm` returns success\non the broken file, verified by reintroducing the defect afterwards: this\nhost's rpm WARNS where Mageia's rpm ERRORS. So the validation reached for\nby reflex is not a validator for this at all.\n\nFIXED by scanning comment lines directly for an unescaped macro: strip\n`%%` pairs, then refuse a remaining `%` followed by a letter or brace. It\nneeds no rpmspec, so it also runs where the existing check is skipped.\n\nPROVEN IN BOTH DIRECTIONS rather than asserted, which is the only evidence\nthat separates a working guard from one that merely runs. Against the\nrepaired spec it is silent; against a copy with the defect reintroduced it\nreports `CAUGHT line 80`, while `rpmspec -q --srpm` on that same file\nstill exits clean.\n\nWORTH KEEPING IN MIND: the pattern is deliberately about COMMENTS only. A\nbare macro in live spec text is meant to expand, so widening this to the\nwhole file would refuse the entire recipe.
+  **Layman:** A safety check for one kind of typo in the package recipe only looked at part of the file.
+  Kind: fix.
+  Source: in-session-2026-08-26, self-inflicted while fixing ANTS-4717.
+  Lanes: packaging.
+
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-08-11 triage
 
 35 un-triaged findings across 9 of the 18 shared-root feedback files (AI

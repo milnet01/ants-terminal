@@ -77,7 +77,7 @@ BuildRequires:  git-core
 # tests fail with {"code":"rg_failed"} rather than skipping when rg is absent.
 # ANTS-4391 already cost five red CI runs for this exact reason and was fixed
 # by adding ripgrep to .github/workflows/ci.yml — but only there. The RPM is a
-# SECOND environment that runs %check, it never got the same line, and
+# SECOND environment that runs %%check, it never got the same line, and
 # tests/features/ci_workflow_deps guards the workflow without reading this
 # spec. Declaring it makes those tests RUN instead of failing the build.
 BuildRequires:  ripgrep
