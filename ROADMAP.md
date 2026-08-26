@@ -46084,7 +46084,7 @@ envelope dropped `source`/`path`/`etag`/`total`/`filter`.
   Source: Charls_Site-feedback-2026-08-26.
   Lanes: mcp, doccitations.
 
-- 📋 [ANTS-4698] **roadmap_query's `fields` narrowing drops the prose-roadmap `warning`, re-opening the misread ANTS-3583 shipped to prevent.**
+- ✅ [ANTS-4698] **roadmap_query's `fields` narrowing drops the prose-roadmap `warning`, re-opening the misread ANTS-3583 shipped to prevent.**
   ANTS-3583 added `parseable_bullets` and a `warning` explaining that
   count:0 on a prose / ID-less roadmap means "format not recognised", not
   "no outstanding work". Both are ordinary top-level fields, so a `fields`
@@ -46111,12 +46111,13 @@ envelope dropped `source`/`path`/`etag`/`total`/`filter`.
   compact. Failing that, name the hazard in the `fields` description: a
   narrowed list can drop a diagnostic that changes how the returned numbers
   must be read.
+  Resolved (2026-08-26). mcp::projectFields gains a DIAGNOSTIC floor beside the 304 and refusal floors it already carried: `warning` and `parseable_bullets` survive a narrowing that does not name them. Generic rather than roadmap-keyed on purpose — `warning` names a diagnostic in any envelope carrying one, and the floor is the statement that a diagnostic outranks a caller's narrowing. `parseable_bullets` rides along as the datum the warning explains. Two cases added to tests/features/mcp_projection; mutation-proved (removing the floor fails the first by name, and the no-diagnostic case correctly stays green, so the floor is a floor rather than a rewrite).
   **Layman:** Asking for a short answer can hide the note explaining that a zero means "format not understood" rather than "nothing to do".
   Kind: fix.
   Source: perch-feedback-2026-08-26.
   Lanes: mcp, roadmapquery.
 
-- 📋 [ANTS-4699] **roadmap_query mode:"headline_only" omits `kind`, which a project's documented resumption flow depends on.**
+- ✅ [ANTS-4699] **roadmap_query mode:"headline_only" omits `kind`, which a project's documented resumption flow depends on.**
   VERIFIED LIVE DURING TRIAGE. roadmap_query {ids:[...],
   mode:"headline_only"} returns exactly {headline_oneline, id, input_index,
   section_slug, status}. No `kind`, and no `bodies_omitted`.
@@ -46145,6 +46146,7 @@ envelope dropped `source`/`path`/`etag`/`total`/`filter`.
   verb description so a project doc cannot record the wider claim. If the
   field set differs between the status-filtered and ids+headline_only
   shapes, naming that difference settles both.
+  Resolved (2026-08-26) — NOT by the change requested, and the reason is the finding. The ask was to add `kind` to mode:"headline_only". Phase 0's invariant_check surfaced ANTS-1881 INV-2: the four-key set {id, status, headline_oneline, section_slug} is the MODE's contract, "extra keys fail, missing keys fail", pinned by Inv2KeySetExactlyFour — so widening would have broken a tested contract. The schema ALSO already named `kind` among what the mode skips, so no Ants defect existed. Took the reporter's own second option: the schema now states the four keys are a mode contract rather than a `fields` default, and that `kind` needs an unfiltered id/ids fetch, so a project doc cannot record the wider claim. The divergence is in finbreak's CLAUDE.md, which is theirs to correct; the reporter had flagged that uncertainty themselves.
   **Layman:** The short roadmap listing leaves out the item's category, so a session that needs it must ask twice.
   Kind: enhancement.
   Source: finbreak-feedback-2026-08-26.
@@ -46184,7 +46186,7 @@ envelope dropped `source`/`path`/`etag`/`total`/`filter`.
   Source: claude_config-feedback-2026-08-26.
   Lanes: mcp, readregion.
 
-- 📋 [ANTS-4701] **roadmap_query spells its row cap `limit` where workspace_search spells it `max_results`, and the wasted call returns everything.**
+- ✅ [ANTS-4701] **roadmap_query spells its row cap `limit` where workspace_search spells it `max_results`, and the wasted call returns everything.**
   VERIFIED LIVE DURING TRIAGE: roadmap_query {status:"planned",
   mode:"headline_only", max_results:3} returned ignored_args:["max_results"]
   and the full set -- 94 rows, which then spilled to a handle. The cap
@@ -46206,6 +46208,7 @@ envelope dropped `source`/`path`/`etag`/`total`/`filter`.
   unrecognised argument's likely intent in the envelope, the way several
   verbs already return `candidates` on a near miss, so ignored_args says
   which argument was MEANT rather than only that one was dropped.
+  Resolved (2026-08-26). roadmap_query reads `max_results` when `limit` is undefined, so `limit` wins when both are sent, and the arg is DECLARED in the schema — ANTS-3698's stated reason: honouring an arg without declaring it leaves it reported in ignored_args, which is the worse of both states. Reproduced live before filing (max_results:3 returned ignored_args and all 94 planned rows, which then spilled). ANTS-1881's combinator table gains a row, because INV-5 requires every argument the validator reads to have defined behaviour there. NOTED NOT FIXED: `filter` is missing from that same table, pre-existing since ANTS-3698 — coding.md 1.7 leaves it alone.
   **Layman:** Asking the roadmap for three rows using the name the other search tool uses silently returns all of them.
   Kind: enhancement.
   Source: claude_config-feedback-2026-08-26.

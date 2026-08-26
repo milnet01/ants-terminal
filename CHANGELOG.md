@@ -298,6 +298,12 @@ for security-relevant changes.
 
 ### Fixed
 
+- **A narrowed reply keeps the note explaining how to read it** (ANTS-4698)
+  Asking a verb for only certain fields could drop the warning that says a zero means "this roadmap's format wasn't recognised" rather than "nothing left to do". That warning now always survives.
+
+- **Asking the roadmap for a few rows using the search tool's word now works** (ANTS-4701)
+  roadmap_query calls its row cap `limit` where workspace_search calls it `max_results`. Sending the wrong one used to be ignored and answered with every row; it is now accepted as an alias.
+
 - **token_usage says so when it cannot read the figures, instead of reporting zero** (ANTS-4684)
   Asked while the window is closing, it reported no savings rather than saying it could not look -- a wrong number where an error was owed.
 
