@@ -12,6 +12,7 @@ for security-relevant changes.
 
 ## [Unreleased]
 
+## [0.7.107] — unreleased (Patron RC preview)
 ### Added
 
 - **feedback_query reports a format version it does not recognise** (ANTS-4702)
