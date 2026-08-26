@@ -46024,7 +46024,7 @@ envelope dropped `source`/`path`/`etag`/`total`/`filter`.
   Source: perch-feedback-2026-08-26.
   Lanes: mcp, roadmaprender.
 
-- 📋 [ANTS-4696] **doc_citations attributes a quotation to a merely-nearby document when the real target is rejected, manufacturing a false stale-citation report.**
+- ✅ [ANTS-4696] **doc_citations attributes a quotation to a merely-nearby document when the real target is rejected, manufacturing a false stale-citation report.**
   WHAT WAS OBSERVED. A spec cited an ADR as `docs/decisions/ADR-0003` (no
   .md extension) on the line directly above a quotation of it, with
   `docs/design.md` mentioned earlier in the same bullet. Per ANTS-4639 a
@@ -46052,6 +46052,7 @@ envelope dropped `source`/`path`/`etag`/`total`/`filter`.
   fact from one whose target says something else, and only the second
   warrants not_found. Naming the rejected token in the reply would make the
   fix -- add the extension -- obvious.
+  Resolved (2026-08-26): reproduced exactly as reported -- the extensionless ADR token was skipped and the quotation came back not_found against a docs/design.md named earlier in the same paragraph. Attribution now stops at a path-shaped token that names no document extension, returns no_target, and names it in `rejected_target` with a hint. The guard is the SLASH rather than the dot, so ANTS-4639's `core.hooksPath` case is untouched; the test asserts that directly. Verified red on the assertion before the fix. Commit 2cc85698.
   **Layman:** The citation checker can say a quote is out of date in a document that was never its source.
   Kind: fix.
   Source: Charls_Site-feedback-2026-08-26.
