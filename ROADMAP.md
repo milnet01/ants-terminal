@@ -13128,7 +13128,7 @@ indie-review finding.
   Source: in-session-2026-06-15 (threading survey).
   Resolved (2026-06-17). Verify-before-coding finding: the literal goal (zero main-thread QEventLoops in MCP dispatch) was ALREADY met by ANTS-2103/2104 — audit_run + indie_review_dispatch are the only two QEventLoop verbs and both already run on workers. The bullet's other named candidates don't spin a QEventLoop: cold_eyes_*/test_audit_* are pure in-process (no pump), and verify_changes/debt_sweep_* block on QProcess::waitForFinished, which does NOT pump the main loop's socket notifiers — so they were never in the UAF class. Surfaced to user; user chose 'lock-in + un-freeze the GUI'. Shipped: (1) new rcDelegateWorker factory in mainwindow.cpp (mirrors rcDelegate but runs cmd*() on a QThread::create worker + worker->wait() join, no event pump); (2) verify_changes + all 4 debt_sweep_* moved from rcDelegate → rcDelegateWorker so a multi-second shell-out no longer freezes the GUI (not a crash fix — GUI-responsiveness); (3) regression lock tests/features/mcp_verb_offthread_guard (INV-1 factory shape, INV-2/3 the 5 verbs use the worker delegate; verified fail-on-revert). cold_eyes_*/test_audit_* intentionally left in-process (wrapping buys nothing). Updated mcp_dispatch_forward_completeness + mcp_call_site_contract source-scrapes to recognise rcDelegateWorker( (does not contain rcDelegate( as a substring). Full suite 2142/2142 green; build-fast clean.
 
-- 📋 [ANTS-2132] **INV-9: async MCP dispatch so audit_run / indie_review_dispatch stop freezing the GUI for the sweep duration.**
+- 🚧 [ANTS-2132] **INV-9: async MCP dispatch so audit_run / indie_review_dispatch stop freezing the GUI for the sweep duration.**
   ANTS-2103/2104 moved these verbs to a worker but still block the GUI thread on QThread::wait() for the whole run (5-600s: repo size / LLM latency) — mainwindow.cpp:4506, 5074. Convert from blocking join to fire-and-forget worker + completion callback that queues the MCP response when the worker finishes, so the UI keeps painting. Larger change (response-path plumbing); the wait()-join is a deliberate interim per the ANTS-2103/2104 commit notes.
   **Layman:** While a long scan runs, the window currently freezes; make it stay responsive.
   Kind: perf.
@@ -13181,6 +13181,21 @@ indie-review finding.
   Progress (2026-08-25): diagnosis only, no code change. Raising visibility
   rather than starting the refactor mid-session — the response-path
   plumbing wants its own pass.
+  Progress (2026-08-26): spec accepted at docs/specs/ANTS-2132-async-mcp-dispatch.md
+  after two review-contract loops (19 verified, 19 fixed; cap reached).
+
+  Step 1 shipped: the response pipeline is extracted into
+  ClaudeIntegration::finishToolDispatch, with sendMcpResponse owning the
+  envelope write. No behaviour change yet -- every verb still dispatches
+  synchronously. Suite 3943/3943.
+
+  SCOPE CORRECTION, and this headline needs rewording before the item closes.
+  The spec defers audit_run and indie_review_dispatch -- the two verbs this
+  headline names -- to ANTS-4682, because their handlers are inline lambdas
+  capturing MainWindow and each needs its own audit. Their sync path is
+  QThread::create + worker->wait() on the GUI thread, so they still freeze the
+  window for a whole sweep. What this item now fixes is the reported symptom:
+  the intermittent freeze from ordinary verbs.
 
 - 📋 [ANTS-2133] **Verb in-flight stale-slot reaper: 270s recovery after a worker SIGKILL is too slow — add proactive liveness check.**
   claudeintegration.cpp verbInFlightTryAcquire reaps entries older than kVerbInFlightReapMs (270s). If a worker is SIGKILLed mid-verb the slot stays held until that window elapses, blocking the same (verb, projectRoot) pair. Add a cheap worker-liveness probe (/proc/<pid> existence, or a stored QThread* isRunning check) on tryAcquire so a dead worker's slot frees in seconds. Low-priority hardening; current reaper already bounds the worst case.

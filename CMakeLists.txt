@@ -1507,6 +1507,7 @@ if(ANTS_TESTS)
                 tests/features/socket_readyread_uaf_guard/test_socket_readyread_uaf_guard.cpp
                 # ANTS-2131 — blocking MCP verbs dispatch off the main thread.
                 tests/features/mcp_verb_offthread_guard/test_mcp_verb_offthread_guard.cpp
+    tests/features/mcp_async_dispatch/test_mcp_async_dispatch.cpp
                 tests/features/allowlist_perms_postcommit/test_allowlist_perms_postcommit.cpp
                 tests/features/ssh_dash_host_rejected/test_ssh_dash.cpp
                 tests/features/ssh_extra_args_sanitize/test_ssh_extra_args.cpp

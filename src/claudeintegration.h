@@ -287,8 +287,10 @@ public:
     QStringList registeredToolNames() const;
 
     // ANTS-1404 — return the classification for `toolName`. Static
-    // table inside claudeintegration.cpp; unknown tools default to
-    // Optional. See docs/specs/ANTS-1404.md.
+    // table inside claudeintegration.cpp. ANTS-1520 flipped the
+    // fall-through default to Required so a new tool fails CLOSED:
+    // an unclassified name refuses without caller_cwd rather than
+    // silently anchoring to the focused tab. See docs/specs/ANTS-1404.md.
     static CallerCwdContract callerCwdContractFor(const QString &toolName);
 
     // ANTS-1357 — shared with the MainWindow lambdas that emit this
