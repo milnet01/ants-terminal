@@ -13514,6 +13514,71 @@ indie-review finding.
   Source: in-session-2026-08-26 (found while deciding where to put op:amend_field).
   Lanes: docs, remotecontrol.
 
+- 🚧 [ANTS-4689] **Expand the tab-tag colour picker to 25 presets, including a grey and black neutral ramp.**
+  The picker offered the 14 Catppuccin Mocha accents, all pastels. A user
+  asking for a grey or black tab had only "Custom colour..." and a colour
+  dialog.
+
+  Adds eleven: six pastels filling the accent row's hue gaps (Orchid,
+  Indigo, Sand, Olive, Lime, Mint) and the five-step Mocha neutral ramp
+  (Silver, Gray, Slate, Charcoal, Black), which is what the request was
+  actually for. Neutrals are grouped last rather than sorted by hue --
+  someone reaching for a grey wants it beside the other greys.
+
+  WHAT THE MEASUREMENT FOUND, and it inverted the expected answer. The
+  existing code comment said the added colours "can't be
+  darker/lower-contrast than what shipped" because all sat in one pastel
+  lightness band -- so a dark colour looked like the risky case. Measured
+  against Mocha base with the alpha-140 wash paintEvent() composites OVER
+  the label: the shipped pastels sit at 2.50-2.9:1, and the NEUTRALS are
+  the best in the palette (Gray 3.2, Black 3.3, Charcoal 3.4). A dark wash
+  darkens the light label less than it darkens the tab beneath it. So the
+  pastel band never protected contrast, and lightness is the wrong axis to
+  screen a candidate on.
+
+  The bar applied instead: no new colour may be worse THROUGH THE WASH than
+  the worst already shipped. All eleven clear it. The comment that said
+  otherwise is corrected in place rather than left to mislead the next
+  change.
+  **Layman:** The tab colour menu now offers 25 colours instead of 14, including greys and black.
+  Kind: feature.
+  Source: user-request-2026-08-26.
+  Lanes: chrome, ui.
+
+- 📋 [ANTS-4690] **Tab-tag label contrast sits near 2.5:1 through the alpha-140 wash, below every WCAG floor.**
+  MEASURED, not estimated. ColoredTabBar::paintEvent() composites the tab's
+  colour over the ALREADY-RENDERED label as a vertical gradient reaching
+  alpha 140/255 at the bottom. Against Catppuccin Mocha base #1E1E2E with
+  text #CDD6F4, an untagged tab's label is about 11:1; through the wash the
+  shipped colours land between roughly 2.5:1 and 3.4:1.
+
+  WCAG 2.x wants 4.5:1 for body text and 3:1 for large text. So a tagged
+  tab's label is below the text floor for every colour in the palette, and
+  below even the large-text floor for most of the pastels. This is
+  pre-existing and predates the colours added by the sibling item -- which
+  measured BETTER than the average, and is how this was found.
+
+  The alpha was chosen deliberately ("the sweet spot on a 30px tab: tab text
+  stays readable across all themes") and it was a judgement, not a
+  measurement. It is not obviously wrong to a reader -- the tabs do look
+  fine to normal vision on the dark theme, which is why it has stood.
+
+  WHY IT IS ITS OWN ITEM rather than a fix folded into the palette work.
+  Every route changes how EVERY existing coloured tab looks, on every
+  theme, for every user who has tagged a tab: lowering the alpha, reserving
+  the label's band from the gradient, or re-deriving the label colour per
+  tab the way ClaudeTabIndicator::contrastColor() already does for the
+  state dot. That last one is the principled fix and the machinery for it
+  exists in this file -- it binary-searches lightness against a contrast
+  floor -- but it is aimed at the dot, not the label.
+
+  Measure per theme before choosing: the light themes (Solarized-light,
+  Gruvbox-light) invert the relationship and may already be worse.
+  **Layman:** Text on a coloured tab is harder to read than it should be; fixing it changes how every coloured tab looks.
+  Kind: accessibility.
+  Source: in-session-2026-08-26 (measured while adding tab colours).
+  Lanes: chrome, accessibility.
+
 ### 🎨 Review Changes dialog UX (user request 2026-06-03)
 
 Navigation + scroll affordances for the Review Changes dialog, requested

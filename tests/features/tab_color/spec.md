@@ -40,8 +40,10 @@ produce a visible, persistent colour tag on the tab that:
    accumulate orphans for tabs that will never re-exist.
 
 6. **Offers a rich palette plus an arbitrary custom colour (ANTS-1374).**
-   The picker MUST expose a broad set of named preset swatches (≥14 — the
-   full Catppuccin accent row) so users aren't limited to a handful, AND a
+   The picker MUST expose a broad set of named preset swatches (≥25 — the
+   full Catppuccin accent row, six pastels filling its hue gaps, and the
+   Mocha neutral ramp Silver/Gray/Slate/Charcoal/Black; ANTS-4689) so users
+   aren't limited to a handful, AND a
    "Custom colour…" entry that opens `QColorDialog` for a fully arbitrary
    per-tab colour. The custom pick MUST flow through the *same*
    `ColoredTabBar::setTabColor` + `MainWindow::persistTabColor` path as the
@@ -75,7 +77,7 @@ a strip on top of the base-class paint) out of the stylesheet's reach.
   config is never written.
 
 - **Picker menu surface (ANTS-1374, §6):** a source-grep contract over
-  `MainWindow::showTabColorMenu` in `mainwindow.cpp` — asserts ≥14 named
+  `MainWindow::showTabColorMenu` in `mainwindow.cpp` — asserts ≥25 named
   swatches, a "Custom" entry opening `QColorDialog`, and reuse of
   `persistTabColor`. Source-grep (not runtime) because driving the live
   menu needs a full MainWindow harness; the same approach as

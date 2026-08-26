@@ -6656,29 +6656,58 @@ void MainWindow::showTabColorMenu(int tabIndex) {
 
     menu.addSeparator();
 
-    // ANTS-1374 — the full Catppuccin Mocha accent row (14 colours),
-    // ordered warm→cool for a coherent picker. All sit in the same pastel
-    // lightness band as the original 7, so tab-label contrast is unchanged
-    // (the added colours can't be darker/lower-contrast than what shipped).
-    // "None" clears the tag. Preset names kept stable (Purple = Mauve,
-    // Orange = Peach) so existing users' colour vocabulary still matches.
+    // ANTS-1374 / ANTS-4689 — the tab-tag palette: 25 colours plus "None".
+    // The 14 Catppuccin Mocha accents, ordered warm→cool, with six pastels
+    // filling that row's hue gaps (Orchid ~308°, Indigo ~243°, Sand ~34°,
+    // Olive ~56°, Lime ~82°, Mint ~150°) and the Mocha neutral ramp last —
+    // Silver, Gray, Slate, Charcoal, Black — because a user asking for a
+    // grey tab wants it beside the other greys, not sorted by hue among the
+    // colours. Preset names kept stable (Purple = Mauve, Orange = Peach) so
+    // existing users' colour vocabulary still matches.
+    //
+    // ON CONTRAST, because the previous note here was reassuring and wrong.
+    // It said the added colours "can't be darker/lower-contrast than what
+    // shipped" since all sit in one pastel band. Measured against Mocha base
+    // #1E1E2E with text #CDD6F4, through the alpha-140 wash paintEvent()
+    // composites OVER the label: the shipped pastels land at 2.50–2.9:1, and
+    // the neutrals added here are the BEST in the palette (Gray 3.2, Black
+    // 3.3, Charcoal 3.4) — a dark wash darkens the light text less than it
+    // darkens the tab beneath it. So the band was never what protected
+    // contrast, and lightness is the wrong axis to screen a candidate on.
+    //
+    // The real bar for a new entry: compute the ratio through the wash and
+    // require it to be no worse than the WORST colour already shipped. Every
+    // colour below clears that. Raising the floor for all of them is a
+    // separate change (it would alter every existing tab's appearance) and
+    // is ANTS-4690.
     struct ColorEntry { QString name; QColor color; };
     QList<ColorEntry> colors = {
         {"None", QColor()},
         {"Rosewater", QColor(0xF5, 0xE0, 0xDC)},
         {"Flamingo", QColor(0xF2, 0xCD, 0xCD)},
         {"Pink", QColor(0xF5, 0xC2, 0xE7)},
+        {"Orchid", QColor(0xE8, 0xA9, 0xE0)},
         {"Purple", QColor(0xCB, 0xA6, 0xF7)},
+        {"Indigo", QColor(0xA8, 0xA4, 0xF7)},
         {"Lavender", QColor(0xB4, 0xBE, 0xFE)},
         {"Red", QColor(0xF3, 0x8B, 0xA8)},
         {"Maroon", QColor(0xEB, 0xA0, 0xAC)},
         {"Orange", QColor(0xFA, 0xB3, 0x87)},
+        {"Sand", QColor(0xD9, 0xC2, 0xA4)},
         {"Yellow", QColor(0xF9, 0xE2, 0xAF)},
+        {"Olive", QColor(0xD5, 0xD0, 0x8A)},
+        {"Lime", QColor(0xC6, 0xE8, 0x8C)},
         {"Green", QColor(0xA6, 0xE3, 0xA1)},
+        {"Mint", QColor(0xA9, 0xE8, 0xC8)},
         {"Teal", QColor(0x94, 0xE2, 0xD5)},
         {"Sky", QColor(0x89, 0xDC, 0xEB)},
         {"Sapphire", QColor(0x74, 0xC7, 0xEC)},
         {"Blue", QColor(0x89, 0xB4, 0xFA)},
+        {"Silver", QColor(0xA6, 0xAD, 0xC8)},
+        {"Gray", QColor(0x6C, 0x70, 0x86)},
+        {"Slate", QColor(0x58, 0x5B, 0x70)},
+        {"Charcoal", QColor(0x45, 0x47, 0x5A)},
+        {"Black", QColor(0x11, 0x11, 0x1B)},
     };
     for (const auto &ce : colors) {
         QAction *a = menu.addAction(ce.name);

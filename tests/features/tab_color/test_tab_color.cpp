@@ -233,8 +233,12 @@ int runPickerMenuSourceContract() {
     // entry uses a default QColor(). Count only within the function body so
     // unrelated QColor(0x..) uses elsewhere in mainwindow.cpp don't inflate.
     const std::size_t swatches = ants_test::countOccurrences(body, "QColor(0x");
-    CHECK(swatches >= 14,
-          "picker palette has >= 14 named colour swatches (ANTS-1374 part 1)");
+    // ANTS-4689 raised this from 14. A floor only locks what it names, so it
+    // moves with the palette — at 14 it would have gone on passing after a
+    // regression that dropped every colour added since.
+    CHECK(swatches >= 25,
+          "picker palette has >= 25 named colour swatches "
+          "(ANTS-1374 part 1; neutrals added by ANTS-4689)");
 
     // Part 2 — a "Custom" entry opens QColorDialog for an arbitrary per-tab
     // colour, persisted through the SAME persistTabColor path as the presets
