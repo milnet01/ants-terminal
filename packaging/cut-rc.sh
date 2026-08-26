@@ -367,6 +367,49 @@ require_no_version_drift() {
     fi
 }
 
+# ANTS-4716 — publish the pinned revision to OBS. pin_obs_service_revision()
+# above updates packaging/obs/_service IN GIT; obs_scm only re-clones when the
+# services are TRIGGERED, so without this the repositories keep building the
+# source archive they already hold and the correct git-side pin is exactly what
+# makes that invisible.
+#
+# This has now bitten twice. ANTS-4587 found all four repositories two releases
+# behind and repaired the instance by hand; the fix that shipped was the daily
+# audit (ANTS-4588), which detects and cannot act. The very next release missed
+# it again. Detection standing in for automation is the whole defect.
+#
+# Runs AFTER the tag is pushed, not with the stamp commit: obs-submit.sh refuses
+# when _service pins a tag that does not exist yet, and OBS needs it on the
+# remote to clone.
+#
+# A failure here does NOT fail the promote. By this point the tag is pushed and
+# the release is published, so aborting would leave a state nobody can read.
+# It reports loudly instead and names the one command to run.
+submit_to_obs() {
+    local script="packaging/obs/obs-submit.sh"
+    if [ ! -x "$script" ]; then
+        echo "cut-rc: ⊘ OBS submit SKIPPED — $script not executable." >&2
+        echo "cut-rc:   Package repositories will keep serving the previous release." >&2
+        return 0
+    fi
+    if ! command -v osc >/dev/null 2>&1; then
+        echo "cut-rc: ⊘ OBS submit SKIPPED — osc not installed." >&2
+        echo "cut-rc:   Run '$script' from a machine that has it." >&2
+        return 0
+    fi
+    echo "cut-rc: submitting the pinned revision to OBS…"
+    if "$script"; then
+        echo "cut-rc: OBS submit committed; watch it with packaging/obs/obs-status.sh"
+    else
+        echo "" >&2
+        echo "cut-rc: ✗ OBS SUBMIT FAILED — the release is tagged and published," >&2
+        echo "cut-rc:   but package repositories still serve the PREVIOUS version." >&2
+        echo "cut-rc:   This does not undo the release. Fix and run:" >&2
+        echo "cut-rc:       $script" >&2
+        echo "" >&2
+    fi
+}
+
 # Shipped-coverage report (ANTS-4714): which items the roadmap store says
 # shipped since the last public tag are cited by no CHANGELOG bullet. This is
 # the CONVERSE of the release skill's own gate, which only checks that ids the
@@ -660,6 +703,11 @@ cmd_promote() {
         rm -f "$notes_file"
     else
         echo "  [rehearsal] would run: gh release create ${pub} (public, prerelease=false) --notes-file <theme + CHANGELOG link>"
+    fi
+    if [ "$DO_PUSH" = 1 ]; then
+        submit_to_obs                 # ANTS-4716 — after the tag push, on purpose
+    else
+        echo "  [rehearsal] would run: packaging/obs/obs-submit.sh (ANTS-4716)"
     fi
     echo "cut-rc: ${pub} promoted. Now bump to the next patch and run 'new-rc'"
     echo "        to cut the following week's RC (ANTS-1318 §2.4 dual-cut)."

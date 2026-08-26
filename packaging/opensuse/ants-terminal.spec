@@ -81,6 +81,26 @@ BuildRequires:  git-core
 # tests/features/ci_workflow_deps guards the workflow without reading this
 # spec. Declaring it makes those tests RUN instead of failing the build.
 BuildRequires:  ripgrep
+# ANTS-4718 — a monospace font. The card-grid case measures laid-out column
+# positions, and a chroot with NO fonts installed makes Qt fall back to
+# something no user has: `fc-match monospace` resolves to Liberation Mono here,
+# and reproducing the empty-font condition locally (FONTCONFIG_FILE pointing at
+# a config with no font dirs) reproduced the OBS failure exactly. The layout bug
+# that exposed is fixed in the code from 0.7.107; this is the other half — a Qt
+# GUI suite should not be measuring text under a degenerate fallback.
+#
+# Fedora is deliberately NOT given an arm. It already resolves a monospace font
+# in its chroot and builds green, and an unverified package name there would
+# turn a working target UNRESOLVABLE, which produces no build log to read at
+# all. Names below are checked, not guessed: liberation-fonts is installed here,
+# and Mageia's fonts-$type-$name convention gives fonts-ttf-liberation.
+%if 0%{?mageia}
+BuildRequires:  fonts-ttf-liberation
+%else
+%if !0%{?fedora} && !0%{?rhel}
+BuildRequires:  liberation-fonts
+%endif
+%endif
 BuildRequires:  cmake(Qt6Core) >= 6.2
 BuildRequires:  cmake(Qt6DBus)
 BuildRequires:  cmake(Qt6Gui)
