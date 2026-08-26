@@ -386,16 +386,27 @@ TEST(McpReadRegion, Ants4700PerLineClipMakesRoomForMoreLines) {
     EXPECT_EQ(env.value("lines_clipped").toInt(), 3)
         << "the three fat lines, and only those";
 
+    // ANTS-4708's own lesson, applied here: hoist once and ASSERT the size
+    // before indexing. The EXPECTs above are non-fatal, so on a build where
+    // the clip does not fire this ran on to .at(3) of a one-element list and
+    // SEGFAULTED the bundle -- which is what it did during this feature's own
+    // red check. A crash reports that the binary died rather than which
+    // assertion failed, and under a parallel run the surviving output is
+    // whichever test happened to be writing.
+    const QStringList got = linesOf(env);
+    ASSERT_GE(got.size(), 4)
+        << "only " << got.size() << " line(s) came back; the assertions below "
+           "index into four";
     // The marker is the one workspace_search uses, and the clipped line still
     // carries its identity — the row label a caller recognises.
-    const QString first = linesOf(env).at(0);
+    const QString first = got.at(0);
     EXPECT_TRUE(first.startsWith(QStringLiteral("FAT0 ")))
         << "got: " << first.toStdString();
     EXPECT_TRUE(first.endsWith(QChar(0x2026)))
         << "the clip marker must be U+2026, as max_match_bytes emits it";
     EXPECT_LE(first.toUtf8().size(), 60);
     // A thin line is untouched — no marker on something that already fitted.
-    EXPECT_EQ(linesOf(env).at(3), "thin one");
+    EXPECT_EQ(got.at(3), "thin one");
 }
 
 // ANTS-4700 — the range is the one `max_match_bytes` uses, and an out-of-range
