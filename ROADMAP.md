@@ -46277,6 +46277,13 @@ envelope dropped `source`/`path`/`etag`/`total`/`filter`.
   reads against the table -- today the invariant is enforced by nobody, which
   is why one argument could ship without its row and a second nearly did.
   Part 2 is the one worth having; part 1 without it just resets the clock.
+  Progress (2026-08-26): part 1 done -- the `filter` row is in the 2.3 table, describing what the code does (alias for `status`, read only when `status` is empty, so `status` wins). No rule-14 gate: a row documenting existing behaviour changes no line anyone would build differently.
+
+  MEASURED, and the gap is far larger than this item states. cmdRoadmapQuery's body reads 24 arguments; the 2.3 table has 12 rows including the new one. Absent, beyond `filter`: check_sync, ids, include_section_etags, max_body_bytes, mode, query, regex, scope, section_etag_match, since, slugs_only, until, whole_word -- thirteen, plus caller_cwd which is the dispatcher's. So INV-5's claim was false of fourteen arguments and `filter` is simply the one that got noticed.
+
+  That reframes part 2. It is not "should the test cross-check" but a choice on a gated spec: WIDEN the table to every argument the verb reads, or NARROW INV-5 to the subset it can honestly claim -- arguments that change this mode's behaviour. Only after that is settled can a test enforce it, because today there is nothing true to enforce.
+
+  Deliberately not decided here. Redefining an invariant is a direction change under rule 14 and owes three cold lanes, and writing thirteen rows whose behaviour I would be inferring is how a false claim ships -- the failure this session has spent its day on. The measurement is the part that was missing; the decision wants its own session.
   **Layman:** A spec says every option is documented in its table; one option shipped without being added.
   Kind: doc-fix.
   Source: in-session-2026-08-26 (found while adding the max_results row ANTS-4701 owed).
