@@ -1,4 +1,5 @@
 #include "claudeintegration.h"
+#include "guithread.h"
 
 #include "build_info.h"  // ANTS-1952 — git SHA + build time for serverInfo
 #include "configpaths.h"
@@ -88,6 +89,8 @@ ClaudeIntegration::ClaudeIntegration(QObject *parent) : QObject(parent) {
 }
 
 ClaudeIntegration::~ClaudeIntegration() {
+    // ANTS-2132 — stop accepting verbs, refuse in-flight GUI marshals, join.
+    shutdownDispatchWorker();
     stopHookServer();
     stopMcpServer();
 }
@@ -1587,6 +1590,62 @@ QJsonObject ClaudeIntegration::queryMcpTrace(
     out["ring_capacity"] = kMcpTraceCap;
     out["ring_size"]     = m_mcpTraceRing.size();
     return out;
+}
+
+// ANTS-2132 — hand a verb to the dispatch worker and return to the event
+// loop. The GUI thread neither runs the verb nor waits for it, which is the
+// whole point: it stops being blocked for the verb's duration.
+//
+// Returns false when the queue is full. The caller must then refuse, because
+// no reply is coming from this path.
+bool ClaudeIntegration::postToolDispatch(const McpCallContext &ctx,
+                                         const ToolHandler &handler) {
+    if (m_dispatchShuttingDown) return false;
+    // The cap counts the executing job as well as the queued ones, so the
+    // 65th outstanding call is the first refused (spec § 2.6, INV-10).
+    if (m_dispatchInFlight.loadAcquire() >= kMaxDispatchQueue) return false;
+
+    if (!m_dispatchWorker) {
+        m_dispatchWorker = new QThread(this);
+        m_dispatchWorker->setObjectName(QStringLiteral("ants-mcp-dispatch"));
+        // No parent: a QObject cannot be parented across threads. Deleted in
+        // shutdownDispatchWorker() once the thread has been joined.
+        m_dispatchSink = new QObject();
+        m_dispatchSink->moveToThread(m_dispatchWorker);
+        m_dispatchWorker->start();
+    }
+
+    m_dispatchInFlight.fetchAndAddOrdered(1);
+    QMetaObject::invokeMethod(m_dispatchSink, [this, ctx, handler]() {
+        // On the worker. The handler forwards to a RemoteControl cmd*(); any
+        // MainWindow read inside it goes through ants::onGuiThread.
+        const QString body = handler(ctx.args);
+        // Back to the GUI thread to finish the reply. The socket is only ever
+        // written from there.
+        QMetaObject::invokeMethod(this, [this, ctx, body]() {
+            m_dispatchInFlight.fetchAndSubOrdered(1);
+            finishToolDispatch(ctx, body);
+        }, Qt::QueuedConnection);
+    }, Qt::QueuedConnection);
+    return true;
+}
+
+// ANTS-2132 — teardown, in the one order that cannot deadlock.
+//
+// Refuse new GUI marshals BEFORE joining. A worker parked in a
+// BlockingQueuedConnection while this thread sits in wait() would deadlock;
+// refusing first lets it unwind. This join is INV-7's sole exception: the GUI
+// thread never blocks on the worker while SERVING a request.
+void ClaudeIntegration::shutdownDispatchWorker() {
+    m_dispatchShuttingDown = true;
+    ants::setGuiMarshalRefused(true);
+    if (!m_dispatchWorker) return;
+    m_dispatchWorker->quit();
+    m_dispatchWorker->wait();
+    delete m_dispatchSink;
+    m_dispatchSink = nullptr;
+    // ~QObject removes events still posted to `this`, so a result that
+    // finished after the join never reaches a half-destroyed object.
 }
 
 // ANTS-2132 — the MCP response pipeline, lifted out of onMcpConnection()'s
@@ -14309,7 +14368,39 @@ void ClaudeIntegration::onMcpConnection() {
                                it != m_toolProviders.end()) {
                         // ANTS-1419 — value type is RegisteredTool
                         // (handler + contract); call the handler.
-                        responseText = it->second.handler(argsObj);
+                        // ANTS-2132 — off-thread where the registration
+                        // marked it so. postToolDispatch returns having
+                        // queued the work; the reply is written later, from
+                        // finishToolDispatch, on this thread.
+                        if (it->second.offThread) {
+                            McpCallContext octx;
+                            octx.socket         = guard;
+                            octx.requestId      = reqId;
+                            octx.toolName       = toolName;
+                            octx.args           = argsObj;
+                            octx.requestBytes   = buf.size();
+                            octx.cachedHit      = cachedHit;
+                            octx.cacheable      = cacheable;
+                            octx.toolHandled    = true;
+                            octx.dispatchResult = dispatchResult;
+                            octx.traceTimer     = mcpTraceTimer;
+                            if (postToolDispatch(octx, it->second.handler))
+                                return;  // reply follows from the worker
+                            // Queue full — refuse rather than drop it, so a
+                            // caller sees a code instead of a dead socket.
+                            QJsonObject env;
+                            env["ok"]             = false;
+                            env["code"]           = QStringLiteral("dispatch_queue_full");
+                            env["error"]          = QStringLiteral(
+                                "%1: too many MCP calls are already in "
+                                "flight; retry shortly").arg(toolName);
+                            env["retry_after_ms"] = 250;
+                            responseText   = QString::fromUtf8(
+                                QJsonDocument(env).toJson(QJsonDocument::Compact));
+                            dispatchResult = QStringLiteral("dispatch_queue_full");
+                        } else {
+                            responseText = it->second.handler(argsObj);
+                        }
                         toolHandled = true;
                     }
                 }

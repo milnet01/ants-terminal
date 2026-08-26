@@ -15,6 +15,8 @@
 #include <QLocalSocket>
 #include <QDateTime>
 #include <QPointer>
+#include <QAtomicInt>
+#include <QThread>
 #include <QElapsedTimer>
 #include <QJsonValue>
 
@@ -559,6 +561,13 @@ private slots:
     // through to the socket write. Runs on the GUI thread on both the
     // synchronous and the deferred path; neither has its own copy.
     void finishToolDispatch(McpCallContext ctx, QString responseText);
+    // ANTS-2132 — hand a verb to the dispatch worker and return immediately.
+    // false = the queue is full and the caller must refuse; the reply is NOT
+    // coming. On true the worker runs `handler`, then queues
+    // finishToolDispatch back onto the GUI thread.
+    bool postToolDispatch(const McpCallContext &ctx, const ToolHandler &handler);
+    // ANTS-2132 — stop accepting work, refuse in-flight GUI marshals, join.
+    void shutdownDispatchWorker();
     // ANTS-2132 — the JSON-RPC envelope write, shared by every method.
     static void sendMcpResponse(const QPointer<QLocalSocket> &socket,
                                 const QJsonValue &requestId,
@@ -634,6 +643,19 @@ private:
         bool offThread = false;
     };
     std::map<QString, RegisteredTool> m_toolProviders;
+
+    // ANTS-2132 — one long-lived worker, started lazily on the first
+    // off-thread dispatch. ONE, not one per call: verbs then run one at a
+    // time in arrival order, exactly today's serialisation, so no pair of
+    // off-thread verbs begins to overlap. m_dispatchSink lives on the worker
+    // and is what queued invocations target.
+    QThread *m_dispatchWorker = nullptr;
+    QObject *m_dispatchSink   = nullptr;
+    QAtomicInt m_dispatchInFlight{0};
+    bool m_dispatchShuttingDown = false;
+    // Counts the executing job too, so the 65th outstanding call is the first
+    // refused and the boundary is stateable in a test.
+    static constexpr int kMaxDispatchQueue = 64;
 
     // ANTS-1284 — per-tool MCP dispatch byte counters. Resets on
     // MCP `initialize` and on explicit token_usage(reset:true).
