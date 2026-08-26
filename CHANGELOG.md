@@ -31,13 +31,6 @@ for security-relevant changes.
   package users ended up two releases behind twice. The promote step now runs
   the submit itself, and says so loudly if it cannot.
 
-- **Roadmap card columns now line up across sections whatever the font** (ANTS-4718)
-  The shared column grid was not actually shared: a section whose rows carry a
-  kind grew that column past its reserved width when the text did not fit,
-  while a section without one kept the reserved width, so the two sat on
-  different grids. It only showed where fonts render the kind text wider —
-  never on a typical desktop. The grid is now measured across every card and
-  applied uniformly, and no text is truncated to achieve it.
 
 ## [0.7.107] — unreleased (Patron RC preview)
 ### Added
@@ -356,6 +349,14 @@ for security-relevant changes.
   with `glob` — so a refused call carries its own repair.
 
 ### Fixed
+
+- **Roadmap card columns now line up across sections whatever the font** (ANTS-4718)
+  The shared column grid was not actually shared: a section whose rows carry a
+  kind grew that column past its reserved width when the text did not fit,
+  while a section without one kept the reserved width, so the two sat on
+  different grids. It only showed where fonts render the kind text wider —
+  never on a typical desktop. The grid is now measured across every card and
+  applied uniformly, and no text is truncated to achieve it.
 
 - **`changelog_log add_subsection`'s docstring described a guard the code does not implement** (ANTS-4562)
   It claimed a refusal against any `[Unreleased]` carrying flat category
