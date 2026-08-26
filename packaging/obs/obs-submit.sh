@@ -62,13 +62,13 @@ fi
 bad_comment_macro="$(awk '
     /^[[:space:]]*#/ {
         line = $0
-        gsub(/%%%%/, "", line)
-        if (line ~ /%%[A-Za-z_{]/) printf "%%d: %%s\n", NR, $0
+        gsub(/%%/, "", line)
+        if (line ~ /%[A-Za-z_{]/) printf "%d: %s\n", NR, $0
     }' "$SPEC")"
 if [ -n "$bad_comment_macro" ]; then
     echo "obs-submit: unescaped macro reference in a comment:" >&2
-    printf '%%s\n' "$bad_comment_macro" >&2
-    echo "            rpm expands macros in comments — double it (%%%%check)." >&2
+    printf '%s\n' "$bad_comment_macro" >&2
+    echo "            rpm expands macros in comments — double it (%%check)." >&2
     exit 1
 fi
 echo ">>> no unescaped macro references in comments"
