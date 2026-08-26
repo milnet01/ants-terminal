@@ -4192,14 +4192,17 @@ void MainWindow::setupClaudeMcpProviders() {
     // delegates, the no-arg tab_list and multi-arg token_usage) keep
     // their inline lambdas — the factory only fits the
     // `cmd(args).toJson()` shape.
+    // ANTS-2132 — returns the MARKED handler type, so registration can tell a
+    // forward-to-cmd*() body from a hand-written inline lambda and decide
+    // which thread may run it. No call site's text changes.
     auto rcDelegate =
         [this](QJsonDocument (RemoteControl::*fn)(const QJsonObject &))
-            -> ClaudeIntegration::ToolHandler {
-        return [this, fn](const QJsonObject &args) -> QString {
+            -> ClaudeIntegration::RcHandler {
+        return ClaudeIntegration::RcHandler{[this, fn](const QJsonObject &args) -> QString {
             if (!m_remoteControl) return QString::fromUtf8(kRcUnavailable);
             return QString::fromUtf8(
                 (m_remoteControl->*fn)(args).toJson(QJsonDocument::Compact));
-        };
+        }};
     };
 
     // ANTS-2131 — off-main-thread RC-delegate factory. Same shim shape as
@@ -4216,8 +4219,8 @@ void MainWindow::setupClaudeMcpProviders() {
     // reference; the QProcess + its buffers construct and live on the worker.
     auto rcDelegateWorker =
         [this](QJsonDocument (RemoteControl::*fn)(const QJsonObject &))
-            -> ClaudeIntegration::ToolHandler {
-        return [this, fn](const QJsonObject &args) -> QString {
+            -> ClaudeIntegration::RcHandler {
+        return ClaudeIntegration::RcHandler{[this, fn](const QJsonObject &args) -> QString {
             if (!m_remoteControl) return QString::fromUtf8(kRcUnavailable);
             QJsonDocument doc;
             QThread *worker = QThread::create(
@@ -4226,7 +4229,7 @@ void MainWindow::setupClaudeMcpProviders() {
             worker->wait();
             delete worker;
             return QString::fromUtf8(doc.toJson(QJsonDocument::Compact));
-        };
+        }};
     };
 
     // ANTS-1301 — recent_errors. Scans the focused terminal's recent

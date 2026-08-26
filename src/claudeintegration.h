@@ -217,6 +217,25 @@ public:
                               CallerCwdContract contract,
                               ToolHandler handler);
 
+    // ANTS-2132 — a handler whose body is known to touch no widget, so the
+    // dispatcher may run it off the GUI thread. Produced by mainwindow.cpp's
+    // rc-delegate factories, whose bodies are nothing but a forward to a
+    // RemoteControl cmd*(); a hand-written inline lambda captures MainWindow
+    // and registers through the ToolHandler overload above, which never
+    // marks one. Directly constructible on purpose, so a test can register an
+    // off-thread verb without an rc factory (spec § 2.4).
+    //
+    // Deliberately NOT implicitly constructible from a ToolHandler: that
+    // would make every inline-lambda registration ambiguous between the two
+    // overloads, and the whole point is that the two are distinguishable.
+    struct RcHandler {
+        ToolHandler fn;
+        bool offThreadEligible = true;
+    };
+    void registerToolProvider(const QString &name,
+                              CallerCwdContract contract,
+                              RcHandler handler);
+
     // ANTS-2132 — everything the response pipeline needs after the tool
     // handler has produced its body. Captured by value so the reply can be
     // finished later, on the GUI thread, once the handler has run off it.
@@ -609,6 +628,10 @@ private:
     struct RegisteredTool {
         ToolHandler handler;
         CallerCwdContract contract = CallerCwdContract::Optional;
+        // ANTS-2132 — may the dispatcher run this handler off the GUI thread?
+        // Set at registration from the handler's provenance AND its contract;
+        // a TabSpecific verb reads live terminal state and never qualifies.
+        bool offThread = false;
     };
     std::map<QString, RegisteredTool> m_toolProviders;
 

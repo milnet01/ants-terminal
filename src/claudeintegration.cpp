@@ -1352,7 +1352,29 @@ void ClaudeIntegration::registerToolProvider(
                      static_cast<long long>(args.size()));
             return inner(args);
         };
-    m_toolProviders[name] = RegisteredTool{std::move(wrapped), contract};
+    m_toolProviders[name] = RegisteredTool{std::move(wrapped), contract, false};
+}
+
+// ANTS-2132 — the rc-factory overload. Same registration, plus the one bit
+// the dispatcher needs to decide which thread may run this handler.
+//
+// Eligibility is BOTH halves and neither alone. A handler built by an rc
+// factory forwards to a RemoteControl cmd*() and nothing else, so it touches
+// no widget of its own -- but a TabSpecific verb's cmd*() reads live terminal
+// state through MainWindow (cmdLastSelection resolves a TerminalWidget and
+// reads selectedText()), so provenance alone is not enough.
+// See docs/specs/ANTS-2132-async-mcp-dispatch.md § 2.4.
+void ClaudeIntegration::registerToolProvider(
+    const QString &name,
+    CallerCwdContract contract,
+    RcHandler handler) {
+    const bool offThread = handler.offThreadEligible
+                        && contract != CallerCwdContract::TabSpecific;
+    registerToolProvider(name, contract, std::move(handler.fn));
+    // registerToolProvider returns early on a contract-drift refusal without
+    // inserting, so only stamp the flag on an entry that actually landed.
+    if (auto it = m_toolProviders.find(name); it != m_toolProviders.end())
+        it->second.offThread = offThread;
 }
 
 // ANTS-1360 — MCP debug-log tap. Top-level shape only — no recursion
