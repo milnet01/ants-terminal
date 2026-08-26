@@ -1462,6 +1462,82 @@ static QString migrateToolBlock() {
 // its argument did nothing, by the call the argument just steered.
 //
 // Falsifiable against the pre-fix tree: both assertions fail there.
+// ANTS-4694 — the item count is not a coverage figure, and on a prose-heavy
+// roadmap it is small by construction. A reporter saw "3 items" against a
+// 34-section milestone document, read it as three-of-N captured, and declined
+// to adopt the store. Stopping was the right call on the information they had,
+// which is what makes it a defect in the envelope rather than in the migration:
+// the remainder is not unmodelled, it is carried as narration and table
+// elements, and the line partition is total and tested as one.
+TEST(RoadmapMigrateVerb, Ants4694ProseHeavyMigrationExplainsItsItemCount) {
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid());
+    // One real item, then prose and a table AFTER it — prose before a
+    // section's first element is the section's intro, so content has to sit
+    // past the bullet to become elements at all.
+    QByteArray md =
+        "<!-- ants-roadmap-format: 1 -->\n"
+        "\n"
+        "# Demo — Roadmap\n"
+        "\n"
+        "## Work\n"
+        "\n"
+        "- \xF0\x9F\x93\x8B [DEMO-0001] **An open item.**\n"
+        "  Layman: A thing.\n"
+        "  Kind: implement.\n"
+        "  Source: test.\n"
+        "\n"
+        "Exit criteria for this milestone are judged by hand.\n"
+        "\n"
+        "| Phase | Gate |\n"
+        "| --- | --- |\n"
+        "| One | manual |\n"
+        "\n"
+        "A research note nobody has turned into a bullet yet.\n";
+    const QString root = makeProjectRoot(dir, QStringLiteral("proj"), md);
+    ASSERT_FALSE(root.isEmpty());
+
+    const QJsonObject env =
+        RoadmapMigrateVerb::run(dir.filePath(QStringLiteral("store.sqlite")),
+                                request(root));
+    ASSERT_TRUE(env.value(QStringLiteral("ok")).toBool())
+        << env.value(QStringLiteral("error")).toString().toStdString();
+
+    const int items    = env.value(QStringLiteral("items_inserted")).toInt();
+    const int elements = env.value(QStringLiteral("elements_written")).toInt();
+    ASSERT_EQ(items, 1);
+    ASSERT_GT(elements, items)
+        << "precondition: this fixture must actually be prose-heavy, or the "
+           "hint's own trigger is untested";
+
+    const QString hint = env.value(QStringLiteral("coverage_hint")).toString();
+    ASSERT_FALSE(hint.isEmpty())
+        << "the numbers that misled a reporter must carry their meaning";
+    EXPECT_TRUE(hint.contains(QStringLiteral("not")))
+        << "got: " << hint.toStdString();
+    EXPECT_TRUE(hint.contains(QString::number(elements)))
+        << "the hint must name the element count it is explaining: "
+        << hint.toStdString();
+}
+
+// ANTS-4694 — and it stays quiet where the numbers cannot mislead. A hint on
+// every migration is one nobody reads, which is the failure mode the item is
+// about in the first place.
+TEST(RoadmapMigrateVerb, Ants4694ItemHeavyMigrationIsQuiet) {
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid());
+    const QString root = makeProjectRoot(dir, QStringLiteral("proj"), demoRoadmap());
+    ASSERT_FALSE(root.isEmpty());
+
+    const QJsonObject env =
+        RoadmapMigrateVerb::run(dir.filePath(QStringLiteral("store.sqlite")),
+                                request(root));
+    ASSERT_TRUE(env.value(QStringLiteral("ok")).toBool());
+    ASSERT_EQ(env.value(QStringLiteral("items_inserted")).toInt(), 1);
+    EXPECT_LE(env.value(QStringLiteral("elements_written")).toInt(), 1);
+    EXPECT_FALSE(env.contains(QStringLiteral("coverage_hint")));
+}
+
 TEST(RoadmapMigrateVerb, Ants4621SchemaDeclaresDeregisterArgs) {
     const QString block = migrateToolBlock();
     ASSERT_FALSE(block.isEmpty())

@@ -477,6 +477,38 @@ QJsonObject RoadmapMigrateVerb::run(const QString &storePath, const Request &req
     // reported it.
     env[QStringLiteral("sections_unchanged")] = out.sectionsUnchanged;
     env[QStringLiteral("elements_written")] = out.elementsWritten;
+    // ANTS-4694 — what those numbers MEAN, on the one shape where they mislead.
+    //
+    // A large milestone roadmap is mostly prose: a phase map, exit criteria,
+    // research logs, and bullets in an older dialect. Only the ants-v1 bullets
+    // become ITEMS; everything else is carried as `narration` / `table`
+    // elements. So the envelope can honestly say "3 items" about a 34-section
+    // document, and a caller reads that as three-of-N captured and declines to
+    // adopt the store. That is what happened, and stopping was the right call
+    // on the information available -- which is the defect.
+    //
+    // The document is NOT partly captured. INV-11 is a PARTITION and is tested
+    // as one: every non-blank source line falls inside exactly one item,
+    // element, section or legend span, and a stray line is narration precisely
+    // because the store has no other bucket and dropping it is forbidden.
+    //
+    // Rides the arm where the misreading is possible -- more non-item elements
+    // than items -- because a hint on every migration is one nobody reads.
+    {
+        const int itemRows = out.itemsInserted + out.itemsUpdated
+                           + out.itemsUnchanged;
+        if (out.elementsWritten > itemRows) {
+            env[QStringLiteral("coverage_hint")] = QStringLiteral(
+                "%1 item(s) and %2 non-item element(s). The item count is NOT "
+                "a coverage figure: only bullets in this project's own item "
+                "dialect become items, and every other non-blank line -- "
+                "prose, older-dialect bullets, tables, legends -- is carried "
+                "as a `narration` or `table` element under the section it sat "
+                "in. The line partition is total and is tested as one, so "
+                "nothing in the source is dropped by the migration.")
+                    .arg(itemRows).arg(out.elementsWritten);
+        }
+    }
     env[QStringLiteral("history_rows")]     = out.historyRows;
     setNotes(env, out.notes);
     setUpdatedItems(env, out);
