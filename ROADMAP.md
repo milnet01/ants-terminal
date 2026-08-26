@@ -46498,6 +46498,37 @@ envelope dropped `source`/`path`/`etag`/`total`/`filter`.
   Source: claude_config_Ants_MCP_Feedback.md 2026-08-26 (measured against two projects).
   Lanes: mcp.
 
+- 📋 [ANTS-4711] **Sibling specs still cite the pre-split remotecontrol.cpp and the deleted isFieldProjectionTool.**
+  Collateral from ANTS-1881's gate, filed rather than fixed: a
+  neighbouring document's defect is not the subject's, and each of these
+  has its own gate.
+
+  TWO CLASSES, one cause each.
+
+  `cmdRoadmapQuery` moved to `src/remotecontrol_roadmap_query.cpp`, and
+  specs written before the split still attribute it to
+  `src/remotecontrol.cpp` — several with line pins that now land on
+  unrelated code. Seen in ANTS-2090, ANTS-1922, ANTS-1437 and ANTS-1247.
+  ANTS-2132 already names the new file, so the split is known somewhere.
+
+  `mcp::isFieldProjectionTool` was DELETED by ANTS-4524 — there is no
+  `fields=` allowlist and every verb honours it. Specs still citing the
+  predicate as a membership gate: ANTS-2090, ANTS-1855, ANTS-1637,
+  ANTS-3368. An implementer reading one hunts a list that is absent, and
+  may re-add the gate ANTS-4524 removed on purpose.
+
+  WORTH DOING AS ONE SWEEP, not per document. Both are mechanical
+  re-pointings with a single correct answer, and the second is the more
+  dangerous because it invites re-introducing deleted code.
+
+  PREFER A FUNCTION-NAME PIN TO A RE-DERIVED LINE RANGE. ANTS-1881 dropped
+  its line numbers rather than re-measuring them, as its own loop 3 did;
+  re-deriving them just resets the clock until the next split.
+  **Layman:** Several design documents point at a file that no longer holds the code they describe.
+  Kind: doc-fix.
+  Source: in-session-2026-08-26, found by ANTS-1881's loop-9 blast-radius sweep.
+  Lanes: docs, specs.
+
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-08-11 triage
 
 35 un-triaged findings across 9 of the 18 shared-root feedback files (AI
