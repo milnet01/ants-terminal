@@ -517,10 +517,21 @@ TEST(roadmap_migrate_read, Inv3IdentityIsPositional) {
         EXPECT_TRUE(it->idAllocationOwed);
         EXPECT_EQ(prov(*it, "id"), QStringLiteral("migrated"));
     }
+    // ANTS-4708 — ASSERT each lookup before dereferencing it. `closedNoId`
+    // was already guarded and its two neighbours were not, so a fixture edit
+    // that moved either line would SEGFAULT the bundle instead of failing:
+    // the suite would report that the binary died rather than which invariant
+    // broke, and under a parallel run the surviving output is whichever test
+    // happened to be writing. Telling you which item moved is the whole value
+    // of these plan tests.
+    const PlannedItem *openAt9  = itemAtLine(plan, 9);
+    const PlannedItem *openAt11 = itemAtLine(plan, 11);
     const PlannedItem *closedNoId = itemAtLine(plan, 14);
-    ASSERT_NE(closedNoId, nullptr);
-    EXPECT_FALSE(itemAtLine(plan, 9)->closed);
-    EXPECT_FALSE(itemAtLine(plan, 11)->closed);
+    ASSERT_NE(openAt9, nullptr)   << "no item spans line 9";
+    ASSERT_NE(openAt11, nullptr)  << "no item spans line 11";
+    ASSERT_NE(closedNoId, nullptr) << "no item spans line 14";
+    EXPECT_FALSE(openAt9->closed);
+    EXPECT_FALSE(openAt11->closed);
     EXPECT_TRUE(closedNoId->closed)
         << "INV-3: closed matches the item's own status";
 
