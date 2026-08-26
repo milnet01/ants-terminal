@@ -301,7 +301,31 @@ export LC_ALL=C.UTF-8
 # macro is not defined", and `rpm --eval %%check` returns %%check unchanged here
 # while Mageia expands it. Double every one; rpm's other escape is %%dnl, which
 # discards to end of line. obs-submit.sh refuses a bare one before it builds.
-%ctest
+# ANTS-4720 — run everything EXCEPT the perf lane. Not a tolerance: the perf
+# label is how this project already says "this assertion needs a quiet host",
+# and every other gate honours it. tests/features/roadmap_read_seam/spec.md
+# puts it plainly -- "A timing assertion on a loaded host is a flake
+# generator" -- and both the default presets and tools/hooks/pre-push filter
+# -LE 'e2e|perf'. The RPM was the ONLY gate running them, by accident, because
+# %%ctest cannot take -LE (see above). Measured 2026-08-26: Inv3Latency's
+# wall-clock p95 missed its 50 ms budget by 0.5% on an OBS worker and by 50%
+# (75-78 ms) when pinned to two contended cores locally, while passing
+# comfortably unloaded. The test already skips itself under ASan for exactly
+# this reason -- an unsanitized, unloaded build is a precondition of the
+# instrument, not a tolerance to widen.
+#
+# e2e is deliberately NOT excluded: it passes here, having its own offscreen
+# wiring in CMakeLists.txt.
+#
+# The build directory is found rather than assumed -- %%ctest hardcodes its own
+# per distro (plain `build` here, a different one on Fedora), and this file
+# builds for four targets.
+for _d in build redhat-linux-build %{_target_platform} .; do
+    [ -f "$_d/CTestTestfile.cmake" ] && break
+done
+cd "$_d"
+ctest --output-on-failure --force-new-ctest-process -j"${RPM_BUILD_NCPUS:-1}" -LE perf
+cd ..
 
 %files
 %license LICENSE
