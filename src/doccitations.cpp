@@ -766,9 +766,45 @@ QJsonObject refusal(const QString &code) {
 //      several matches reports `ambiguous` WITH the hit list rather than
 //      guessing — guessing is how a check like this starts producing
 //      confident wrong answers.
+// ANTS-4706 — blockquote markers fold with the whitespace they sit in.
+//
+// A quotation spanning several lines of a `> ` block matched nothing and came
+// back `not_found` against a document that contains it verbatim, with the
+// markers embedded in the reported text: "...theta iota > kappa lambda...".
+// That is the actionable status, so its natural repair is to edit a passage
+// that was already correct -- the same harm ANTS-4696 was filed for, by
+// another route. A blockquote is how this corpus quotes another document at
+// length, so the shape is common.
+//
+// Stripped per LINE and before simplifying, because that is the only place the
+// marker is unambiguous: a leading `>` in markdown IS a blockquote, while a
+// `>` mid-line is prose. Repeated for nesting. Both sides of the comparison
+// call this one function, so the fold is two-sided by construction rather than
+// by remembering -- and the harvested TEXT passes through it too, so a caller
+// copying the reported string into a search gets one that matches.
+static QString dcStripBlockquoteMarkers(const QString &in) {
+    if (!in.contains(QLatin1Char('>'))) return in;   // the common case, untouched
+    QStringList out;
+    const QStringList lines = in.split(QLatin1Char('\n'));
+    out.reserve(lines.size());
+    for (const QString &line : lines) {
+        QStringView v(line);
+        while (true) {
+            QStringView t = v;
+            while (!t.isEmpty() && (t.front() == u' ' || t.front() == u'\t'))
+                t = t.sliced(1);
+            if (t.isEmpty() || t.front() != u'>') break;
+            v = t.sliced(1);
+        }
+        out.append(v.toString());
+    }
+    return out.join(QLatin1Char('\n'));
+}
+
 static QString dcFoldWhitespace(const QString &in) {
     static const QRegularExpression ws(QStringLiteral("\\s+"));
-    return in.simplified().replace(ws, QStringLiteral(" "));
+    return dcStripBlockquoteMarkers(in).simplified()
+        .replace(ws, QStringLiteral(" "));
 }
 
 // The document a quotation is attributed to. Four rules, and each was a defect

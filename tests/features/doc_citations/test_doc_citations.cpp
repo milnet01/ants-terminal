@@ -1665,3 +1665,73 @@ TEST(DocCitations, Ants4696RejectedTargetDoesNotFallThrough) {
         << "ANTS-4639's config key is not path-shaped and must not be named "
            "as a rejected target: " << qPrintable(render(r));
 }
+
+// ANTS-4706 — a quotation inside a `> ` blockquote resolves. Found while
+// probing ANTS-4697 against a throwaway project: a multi-line blockquoted
+// quotation came back not_found against a document containing it verbatim,
+// with the continuation markers embedded in the reported text
+// ("...theta iota > kappa lambda..."). not_found is the ACTIONABLE status, so
+// its natural repair is to edit a passage that was already correct — the same
+// harm as ANTS-4696, by another route. A blockquote is how this corpus quotes
+// another document at length.
+TEST(DocCitations, Ants4706BlockquotedQuotationResolves) {
+    Fixture fx;
+    fx.write(QStringLiteral("docs/target.md"),
+             "# Target\n\nthe counter is a derived cache and an absent counter "
+             "is the normal fresh clone state rather than a desync\n");
+
+    DocCitations::Options opts;
+    opts.quotes = true;
+
+    const QString doc = fx.write(QStringLiteral("docs/spec.md"),
+        "# Spec\n"
+        "\n"
+        "> Per `docs/target.md`: \"the counter is a derived cache and an\n"
+        "> absent counter is the normal fresh clone state rather than a\n"
+        "> desync\"\n");
+
+    const QJsonObject r = DocCitations::check(fx.root, doc, opts);
+    const QJsonArray qs = r.value(QStringLiteral("quotes")).toArray();
+    ASSERT_EQ(qs.size(), 1) << qPrintable(render(r));
+    const QJsonObject q = qs.at(0).toObject();
+
+    EXPECT_EQ(q.value(QStringLiteral("status")).toString(),
+              QStringLiteral("ok"))
+        << "the quotation is present and exact in the target: "
+        << qPrintable(render(r));
+    // The reported text must be copy-pasteable into a search. Markers embedded
+    // in it are why the first symptom was so hard to read.
+    EXPECT_FALSE(q.value(QStringLiteral("text")).toString()
+                     .contains(QLatin1Char('>')))
+        << "got: " << q.value(QStringLiteral("text")).toString().toStdString();
+}
+
+// ANTS-4706 — and a `>` that is NOT a leading marker survives, because a
+// comparison operator inside quoted prose is content. The strip is per line
+// and anchored, which is the only place the marker is unambiguous.
+TEST(DocCitations, Ants4706InlineAngleBracketIsContent) {
+    Fixture fx;
+    fx.write(QStringLiteral("docs/target.md"),
+             "# Target\n\nrefuse the write when bytes > the configured ceiling "
+             "and say which one it was\n");
+
+    DocCitations::Options opts;
+    opts.quotes = true;
+
+    const QString doc = fx.write(QStringLiteral("docs/spec.md"),
+        "# Spec\n"
+        "\n"
+        "`docs/target.md` says \"refuse the write when bytes > the configured\n"
+        "ceiling and say which one it was\".\n");
+
+    const QJsonObject r = DocCitations::check(fx.root, doc, opts);
+    const QJsonArray qs = r.value(QStringLiteral("quotes")).toArray();
+    ASSERT_EQ(qs.size(), 1) << qPrintable(render(r));
+    EXPECT_EQ(qs.at(0).toObject().value(QStringLiteral("status")).toString(),
+              QStringLiteral("ok"))
+        << "an inline `>` is prose and must not be stripped: "
+        << qPrintable(render(r));
+    EXPECT_TRUE(qs.at(0).toObject().value(QStringLiteral("text")).toString()
+                    .contains(QLatin1Char('>')))
+        << "…and must survive into the reported text";
+}
