@@ -43640,7 +43640,7 @@ filed below.
   Source: measured in-session 2026-08-21 against Vestige's roadmap.
   Lanes: remotecontrol, roadmapparse.
 
-- 📋 [ANTS-4606] **One dialect, two spellings: roadmap_log says `gfm` where roadmap_query says `github-task-list`.**
+- ✅ [ANTS-4606] **One dialect, two spellings: roadmap_log says `gfm` where roadmap_query says `github-task-list`.**
   Split out of ANTS-4604 rather than folded into it, on the user's call, so
   the deferral is findable instead of buried in a shipped item's note.
 
@@ -43662,6 +43662,7 @@ filed below.
   say so in each verb's `detail`, so the split is documented rather than
   discovered. That is strictly worse than one spelling and strictly better
   than today.
+  Resolved (2026-08-26) by the item's OWN named fallback, not by unification. Both verbs' `detail` now state that they spell one dialect two ways -- roadmap_query `github-task-list`, roadmap_log `gfm` -- and tell a caller to map both spellings rather than compare by string equality across the two. Say plainly what did NOT change: the divergence is still there. Only the surprise is gone. The break was judged unacceptable on the item's own reasoning, strengthened by a fact it did not cite: the roadmap store is MACHINE-GLOBAL, so a caller keying on either spelling may belong to another project's session entirely, and this repo's suite could never see it go red. Unifying stays available to whoever is willing to own that. Two corrections to the item, both found by reading rather than assumed. Its three cited line numbers for the `gfm` site are stale -- one survives -- so the split was re-verified directly instead: this session's own roadmap_log flip returned format:"ants-v1" while roadmap_query emits "github-task-list". And the note could NOT go where a reader would first put it: roadmap_log's `description` is capped at 800 B on the tools/list wire by that verb's INV-5, so prose there would have breached an invariant rather than merely lengthened a string. Both notes went to `detail`, which is what the item asked for. Verified: test_claude rebuilt, 24/24 green across mcp_tool_detail_field, McpWorkspaceSearch and roadmap_query_headline_only, Inv5WireBudgetUnder800 included.
   **Layman:** Two tools spell the same roadmap format differently, so comparing their answers looks like a disagreement.
   Kind: fix.
   Source: in-session-2026-08-21, split out of ANTS-4604.

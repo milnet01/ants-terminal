@@ -219,6 +219,14 @@ for security-relevant changes.
 
 ### Changed
 
+- **`roadmap_query` and `roadmap_log` now document that they spell one dialect two ways** (ANTS-4606)
+  `roadmap_query` reports `github-task-list` where `roadmap_log` reports
+  `gfm` for the same format, so comparing the two envelopes read as a
+  disagreement that was not one. Both spellings stand — unifying them would
+  silently break a caller already keying on either, and the roadmap store is
+  machine-global, so that caller may be another project's session. Each
+  verb's `detail` now says so and tells you to map both spellings.
+
 - **`workspace_search`'s `exclude_glob` now names its use for scoping a cold review lane** (ANTS-4568)
   A subagent told which files it may read cannot honour that through an
   unscoped search: one project-wide match returns context lines from the
