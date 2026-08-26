@@ -46795,6 +46795,13 @@ envelope dropped `source`/`path`/`etag`/`total`/`filter`.
   Source: in-session-2026-08-26, self-inflicted while fixing ANTS-4717.
   Lanes: packaging.
 
+- 📋 [ANTS-4720] **A p95 read-latency budget misses by 0.5% on an OBS builder, and its own remedy forbids relaxing it.**
+  RoadmapReadSeam.Inv3Latency fails in the OBS build VM and passes here:\n\n  Expected: (p95) < (50 * 1000), actual: 50538 vs 50000\n  p95 50.538 ms over 20 warm reads of a 1839-item project\n\nA miss of half a percent on a wall-clock budget, on a shared builder under\ncontention. Locally the same suite runs green.\n\nTHE TEST ALREADY NAMES ITS REMEDY AND RULES OUT THE EASY ONE, in its own\nfailure message: \"§ 4's remedy if this reds is a batched\nRoadmapStore::readItems() (ANTS-3816) -- not a cache and not a relaxed\nbudget.\" So raising the number is the one repair the contract forbids, and\nthat is worth honouring rather than rediscovering: a budget widened once\nbecause a builder was loaded stops measuring anything.\n\nWHY IT SURFACED NOW. Like ANTS-4717, this is the first OBS build to run\ncurrent sources at all -- OBS had been on stale ones for weeks (ANTS-4587).\nThe budget was not newly breached; nothing had measured it in that\nenvironment before.\n\nTHE REAL QUESTION IS WHICH KIND OF FAILURE THIS IS, and it is not settled.\nEither the per-item read really is at its ceiling and ANTS-3816's batched\nreadItems is due, or the budget is being asked to hold on hardware it was\nnever calibrated against. The margin -- half a percent -- is small enough\nthat both readings are live, and a p95 over 20 samples on a contended host\nis a noisy statistic.\n\nWORTH MEASURING FIRST: run the same test on a deliberately loaded local\nmachine before concluding. If it reproduces under contention here, the\nbudget is environment-sensitive and belongs behind the same treatment the\nperf lane already gets (its MB/s floor is off by default precisely so a\nloaded worker cannot fail it). If it does not, ANTS-3816 is the answer the\nspec already wrote down.\n\nBLOCKING: together with ANTS-4718 this keeps the RPM red, so package users\nstay on the previously published version.
+  **Layman:** A speed check just barely fails on the shared build machines, blocking the package build.
+  Kind: perf.
+  Source: in-session-2026-08-26, second of two failures left after the ripgrep fix.
+  Lanes: roadmapstore, packaging.
+
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-08-11 triage
 
 35 un-triaged findings across 9 of the 18 shared-root feedback files (AI

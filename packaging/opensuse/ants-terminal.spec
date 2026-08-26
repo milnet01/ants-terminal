@@ -291,8 +291,16 @@ export LC_ALL=C.UTF-8
 # they are comments to the shell, not to the macro engine — so a singly-written
 # macro reference here expands mid-comment and its trailing (:-:) reaches bash
 # as a syntax error, which is exactly how this line first broke the build.
-# (%%check / %%post appear singly elsewhere in this file and are harmless only
-# because they are section keywords with no macro body to expand.)
+# ANTS-4719 — an earlier version of this note said %%check and %%post were
+# "harmless singly, being section keywords with no macro body to expand". That
+# is true on openSUSE and FALSE elsewhere, measured 2026-08-26: a BuildRequires
+# comment reading "runs %%check" with one %% built fine on Tumbleweed and Leap
+# and killed Mageia_10 at `error: Unknown tag`. Macro definitions differ by
+# distro, so no macro name is safe unescaped in a comment here -- the openSUSE
+# cross-distribution howto puts it as "if a distribution is not listed, the
+# macro is not defined", and `rpm --eval %%check` returns %%check unchanged here
+# while Mageia expands it. Double every one; rpm's other escape is %%dnl, which
+# discards to end of line. obs-submit.sh refuses a bare one before it builds.
 %ctest
 
 %files
