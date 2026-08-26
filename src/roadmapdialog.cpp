@@ -3369,34 +3369,74 @@ void RoadmapDialog::applyCardColumnGrid(QTextDocument *doc, Density density) {
     if (!doc) return;
 
     const DensityTier &t = kDensityTable[densityToIndex(density)];
-    const QVector<QTextLength> cols{
-        QTextLength(QTextLength::FixedLength,      t.colStatePx),
-        QTextLength(QTextLength::FixedLength,      t.colKindPx),
-        QTextLength(QTextLength::PercentageLength, 100),
-        QTextLength(QTextLength::FixedLength,      t.colMetaPx),
-    };
+    constexpr int kCardColumns = 4;
 
     // Depth-first over the frame tree; a card table can nest inside the body
     // row of another (`rm-card-body` uses colspan, but a future body could
-    // carry its own table, and recursing costs nothing).
+    // carry its own table, and recursing costs nothing). Only the four-column
+    // card tables: a markdown table in an expanded body has its own column
+    // count and must keep its own natural layout.
+    QVector<QTextTable *> cards;
     std::function<void(QTextFrame *)> walk = [&](QTextFrame *frame) {
         for (auto it = frame->begin(); !it.atEnd(); ++it) {
             QTextFrame *child = it.currentFrame();
             if (!child) continue;
-            if (auto *table = qobject_cast<QTextTable *>(child)) {
-                // Only the four-column card tables. A markdown table in an
-                // expanded body has its own column count and must keep its
-                // own natural layout.
-                if (table->columns() == cols.size()) {
-                    QTextTableFormat fmt = table->format();
-                    fmt.setColumnWidthConstraints(cols);
-                    table->setFormat(fmt);
-                }
-            }
+            if (auto *table = qobject_cast<QTextTable *>(child))
+                if (table->columns() == kCardColumns) cards.append(table);
             walk(child);
         }
     };
     walk(doc->rootFrame());
+    if (cards.isEmpty()) return;
+
+    const auto applyWidths = [&](qreal statePx, qreal kindPx) {
+        const QVector<QTextLength> cols{
+            QTextLength(QTextLength::FixedLength,      statePx),
+            QTextLength(QTextLength::FixedLength,      kindPx),
+            QTextLength(QTextLength::PercentageLength, 100),
+            QTextLength(QTextLength::FixedLength,      t.colMetaPx),
+        };
+        for (QTextTable *table : std::as_const(cards)) {
+            QTextTableFormat fmt = table->format();
+            fmt.setColumnWidthConstraints(cols);
+            table->setFormat(fmt);
+        }
+    };
+
+    // ANTS-4718 — two passes, because a FixedLength column constraint is a
+    // MINIMUM to Qt, not a maximum: a cell whose content will not fit grows the
+    // column past it. Kind values are single unbreakable words from
+    // roadmap-format.md § 3.5.3's enum (`accessibility` is 13 characters), so
+    // under a narrow tier or a wide fallback font the section that HAS kinds
+    // widens its column while a section with none keeps the nominal width — and
+    // the "shared" grid silently stops being shared. Measured with a fontconfig
+    // serving no fonts: the kind column came out 160 px against a nominal 106,
+    // and only on the section carrying kind text.
+    //
+    // So: apply the nominal widths, ask Qt what it actually laid out, and
+    // re-apply the per-column MAXIMUM to every card. Qt does the measuring —
+    // computing text extents here would re-derive the layout's own arithmetic
+    // (padding, borders, the cell's own font) and be wrong in a different way.
+    // The widest card already fits at its own measurement, so the second pass
+    // grows nothing and every card lands on one grid. Nothing is elided.
+    applyWidths(t.colStatePx, t.colKindPx);
+
+    const auto contentX = [&](QTextTable *table, int column) {
+        const QTextCursor cur = table->cellAt(0, column).firstCursorPosition();
+        return doc->documentLayout()->blockBoundingRect(cur.block()).x();
+    };
+
+    qreal stateWidth = t.colStatePx;
+    qreal kindWidth  = t.colKindPx;
+    for (QTextTable *table : std::as_const(cards)) {
+        if (table->rows() < 1) continue;
+        const qreal x0 = contentX(table, 0);
+        const qreal x1 = contentX(table, 1);
+        const qreal x2 = contentX(table, 2);
+        stateWidth = std::max(stateWidth, x1 - x0);
+        kindWidth  = std::max(kindWidth,  x2 - x1);
+    }
+    applyWidths(stateWidth, kindWidth);
 }
 
 void RoadmapDialog::rebuild() {
