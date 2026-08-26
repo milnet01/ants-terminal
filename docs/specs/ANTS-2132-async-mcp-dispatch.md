@@ -131,8 +131,8 @@ Eligibility is decided at registration, from two facts the registration site
 already carries. **No registration's contract argument or handler shape
 changes**, so the scrape tests that match `rcDelegate(` keep matching
 untouched. The 8 `rcDelegateWorker(&RemoteControl::…)` sites are the one
-exception: § 2.4 deletes that factory, so each is retyped to `rcDelegate(`.
-§ 6 names every test that binds to the deleted spelling.
+exception: this section deletes that factory, so each is retyped to
+`rcDelegate(`. § 6 names every test that binds to the deleted spelling.
 
 The factory returns a marked type instead of a bare `ToolHandler`. **It is
 declared in `claudeintegration.h`, not in `mainwindow.cpp`** — a
@@ -151,7 +151,7 @@ struct RcHandler {
 `registerToolProvider` gains an overload taking `RcHandler` and sets:
 
 ```
-offThread = builtByRcFactory && contract != CallerCwdContract::TabSpecific
+offThread = handler.offThreadEligible && contract != CallerCwdContract::TabSpecific
 ```
 
 The bare-`ToolHandler` overload — every hand-written inline lambda — sets
