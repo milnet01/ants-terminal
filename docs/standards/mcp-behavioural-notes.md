@@ -372,6 +372,20 @@ server-controllable beyond this per-tool hint.
   incremental byte cap; caller_cwd-Required (ANTS-2021). Its
   `call_sequence:true` facet has its own bullet further down this section
   (ANTS-2157) — this bullet is not the whole `read_region` entry.
+- **`max_line_bytes` (ANTS-4700)** — optional PER-LINE clip, using the same
+  payload-prefix + U+2026 marker as `workspace_search`'s `max_match_bytes`
+  and the same [50, 10000] clamp (one shared `ReadRegion::clipToBytes`, so
+  the two cannot drift on a marker callers strip or grep for). **Applied
+  before `max_bytes` is charged**, so it makes room for more LINES rather
+  than competing with the cap — which is the point on a region whose weight
+  sits in a few very long lines, where a head-keeping cap returns neither
+  the structure nor the tail. Off unless asked: this verb's job is to return
+  the bytes that are there, and a default clip would silently change what a
+  re-read returns. When set, the envelope echoes `max_line_bytes` and
+  `lines_clipped` (+ `line_cap_clamped` on an out-of-range value); a
+  `lines_clipped:0` says nothing was long enough to clip, which is not the
+  same as the argument having been ignored. Pairs with `file_outline`
+  `sizes:true`, which answers WHERE the weight is.
 - **`raw:true` (ANTS-2218)** — opt-in verbatim framing, honoured by
   `read_region` / `read_regions` / `workspace_search`
   (`mcp::isRawEligible`). The default frame neutralises any literal

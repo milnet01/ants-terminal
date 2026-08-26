@@ -2072,6 +2072,9 @@ QJsonDocument RemoteControl::cmdReadRegion(const QJsonObject &req) {
     opts.symbol       = req.value(QStringLiteral("symbol")).toString();
     opts.section      = req.value(QStringLiteral("section")).toString();  // ANTS-2221
     opts.maxBytes     = req.value(QStringLiteral("max_bytes")).toInt(0);
+    // ANTS-4700 — optional per-line clip, applied before the byte cap so it
+    // makes room for more LINES rather than competing with the cap.
+    opts.maxLineBytes = req.value(QStringLiteral("max_line_bytes")).toInt(0);
     opts.callSequence =                                        // ANTS-2157
         req.value(QStringLiteral("call_sequence")).toBool(false);
     const QJsonValue startV = req.value(QStringLiteral("start_line"));

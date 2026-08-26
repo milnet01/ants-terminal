@@ -8,6 +8,7 @@
 // sibling takes its header with it.
 #include <limits>
 #include "remotecontrol.h"
+#include "readregion.h"   // ANTS-4700 — shared clipToBytes
 #include "remotecontrol_internal.h"  // ANTS-3833 — shared rcdetail helpers
 #include "mcpspill.h"        // ANTS-2094 — read_spill
 #include "mainwindow.h"
@@ -412,32 +413,10 @@ void rcStripBodyFields(QJsonArray &arr) {
 // continuation-byte check (0x80..0xBF) backs up to the prior code-
 // point boundary, so we never emit a half-character.
 QString rcClipMatchBytes(const QString &s, int cap) {
-    if (cap <= 0) return s;
-    const QByteArray utf8 = s.toUtf8();
-    if (utf8.size() <= cap) return s;
-    // Reserve 3 bytes for the UTF-8 ellipsis (U+2026 → E2 80 A6).
-    constexpr int kEllipsisBytes = 3;
-    int budget = cap - kEllipsisBytes;
-    if (budget < 0) budget = 0;
-    // Back up across any UTF-8 continuation bytes (0x80..0xBF) at
-    // the budget boundary so we don't split a multi-byte sequence.
-    int cut = std::min<int>(budget, utf8.size());
-    while (cut > 0 &&
-           (static_cast<unsigned char>(utf8.at(cut)) & 0xC0) == 0x80) {
-        --cut;
-    }
-    // ANTS-4389 — the marker is a CHARACTER, not three bytes.
-    // `QStringLiteral("\xE2\x80\xA6")` reads a narrow literal as Latin-1, so
-    // U+2026's UTF-8 bytes each became their own QChar and re-encoded as the
-    // mojibake `â¦`. That mattered beyond looks: the schema documents the clip
-    // as "payload prefix + 3-byte ellipsis", so a caller stripping the
-    // documented marker never matched it, and a caller grepping the returned
-    // text verbatim — which is what a cross-document review does when
-    // verifying a quotation — got three spurious characters at the boundary.
-    // `max_match_bytes` defaults to 512 (ANTS-3548), so this was on by
-    // default. The 3-byte reservation above is unchanged and still correct:
-    // U+2026 is 3 bytes in UTF-8.
-    return QString::fromUtf8(utf8.constData(), cut) + QChar(0x2026);
+    // ANTS-4700 — the body moved to ReadRegion::clipToBytes so read_region's
+    // per-line clip and this one cannot drift on the marker. A caller strips
+    // or greps for that marker, so two implementations would be two contracts.
+    return ReadRegion::clipToBytes(s, cap);
 }
 
 // ANTS-1876 — apply `max_match_bytes` clip to every text-bearing

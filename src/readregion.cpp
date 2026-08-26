@@ -23,6 +23,27 @@
 #include <algorithm>
 #include <climits>
 
+// ANTS-4700 — see readregion.h. The body is ANTS-1876's, moved here so the
+// per-line clip and workspace_search's `max_match_bytes` cannot drift on the
+// marker; rcClipMatchBytes now delegates to this.
+QString ReadRegion::clipToBytes(const QString &s, int capBytes) {
+    if (capBytes <= 0) return s;
+    const QByteArray utf8 = s.toUtf8();
+    if (utf8.size() <= capBytes) return s;
+    // Reserve 3 bytes for the UTF-8 ellipsis (U+2026 -> E2 80 A6).
+    constexpr int kEllipsisBytes = 3;
+    int budget = capBytes - kEllipsisBytes;
+    if (budget < 0) budget = 0;
+    int cut = std::min<int>(budget, utf8.size());
+    while (cut > 0 &&
+           (static_cast<unsigned char>(utf8.at(cut)) & 0xC0) == 0x80) {
+        --cut;
+    }
+    // The marker is a CHARACTER, not three bytes (ANTS-4389).
+    return QString::fromUtf8(utf8.constData(), cut) + QChar(0x2026);
+}
+
+
 namespace ReadRegion {
 
 // ANTS-4556 — shared with roadmap_log's bad_section refusal, so it lives
@@ -496,6 +517,18 @@ QJsonObject extract(const QString &absPath, const Options &opts) {
     bool capClamped = false;
     if (maxBytes > kMaxBytesCeiling) { maxBytes = kMaxBytesCeiling; capClamped = true; }
 
+    // ANTS-4700 — per-line clip, clamped to the same range `max_match_bytes`
+    // uses so one number means one thing across the two verbs. Off unless the
+    // caller asks: read_region's job is to return the bytes that are there,
+    // and a default clip would silently change what a re-read returns.
+    int maxLineBytes = opts.maxLineBytes;
+    bool lineCapClamped = false;
+    if (maxLineBytes > 0) {
+        if (maxLineBytes < kMinLineBytes) { maxLineBytes = kMinLineBytes; lineCapClamped = true; }
+        if (maxLineBytes > kMaxLineBytes) { maxLineBytes = kMaxLineBytes; lineCapClamped = true; }
+    }
+    int linesClipped = 0;
+
     QJsonArray lines;
     qint64 keptBytes = 0;
     int lineNo = 0;
@@ -509,13 +542,27 @@ QJsonObject extract(const QString &absPath, const Options &opts) {
         if (lineNo < startLine) continue;
         if (lineNo > endLine) break;
 
+        // Clip BEFORE costing, so the clip makes room rather than competing
+        // with the byte cap — the ordering the report asked for and the one
+        // that changes the answer: on a region whose weight is a few long
+        // lines, clipping is what lets the later rows be reached at all.
+        QString text = QString::fromUtf8(raw);
+        if (maxLineBytes > 0) {
+            const QString clipped = ReadRegion::clipToBytes(text, maxLineBytes);
+            if (clipped.size() != text.size()) {
+                ++linesClipped;
+                text = clipped;
+                raw = text.toUtf8();
+            }
+        }
+
         const int cost = lineCost(raw);
         // Incremental cap: keep ≥1 line, then stop before overflowing.
         if (!lines.isEmpty() && keptBytes + cost > maxBytes) {
             truncated = true;
             break;  // this line and all later ones are never read (INV-9)
         }
-        lines.append(QString::fromUtf8(raw));
+        lines.append(text);
         keptBytes += cost;
         effectiveEnd = lineNo;
     }
@@ -531,6 +578,15 @@ QJsonObject extract(const QString &absPath, const Options &opts) {
     env["returned"] = returned;
     env["truncated"] = truncated;
     if (capClamped) env["bytes_cap_clamped"] = true;
+    // ANTS-4700 — echo the effective cap and how many lines it actually cut.
+    // Both ride the true arm: a caller who did not ask sees no new keys, and
+    // one who did can tell "nothing was long enough to clip" from "the clip
+    // was ignored", which are the same envelope without the counter.
+    if (opts.maxLineBytes > 0) {
+        env["max_line_bytes"] = maxLineBytes;
+        env["lines_clipped"]  = linesClipped;
+        if (lineCapClamped) env["line_cap_clamped"] = true;
+    }
     if (hasSym) {
         env["symbol"] = symbolEcho;
         if (symAmbiguous) {

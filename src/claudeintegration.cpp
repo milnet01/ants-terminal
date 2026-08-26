@@ -5045,6 +5045,38 @@ void ClaudeIntegration::onMcpConnection() {
                     props["section"]    = sectionProp;   // ANTS-2221
                     props["max_bytes"]  = mbProp;
                     {
+                        // ANTS-4700 — per-line clip.
+                        QJsonObject mlb;
+                        mlb["type"]    = "integer";
+                        mlb["minimum"] = 0;
+                        mlb["description"] = QStringLiteral(
+                            "Optional (ANTS-4700). Clip each emitted LINE to "
+                            "this many UTF-8 bytes, using the same "
+                            "payload-prefix + U+2026 marker as "
+                            "workspace_search's `max_match_bytes`, and clamped "
+                            "to the same [50, 10000]. Applied BEFORE the "
+                            "`max_bytes` cap is charged, so it makes room for "
+                            "more LINES rather than competing with the cap — "
+                            "which is the whole point on a region whose weight "
+                            "sits in a few very long lines (a review loop-log "
+                            "table, a hard-wrapped standard). Measured on the "
+                            "reporting call: a 113-line region was 29,244 "
+                            "bytes of which six table rows were 20,446, so the "
+                            "call spilled and returned neither the structure "
+                            "nor the tail. Off unless asked: read_region's job "
+                            "is to return the bytes that are there, and a "
+                            "default clip would silently change what a re-read "
+                            "returns. When set, the envelope echoes "
+                            "`max_line_bytes` and `lines_clipped` (+ "
+                            "`line_cap_clamped` when the value was out of "
+                            "range) — a zero there says nothing was long "
+                            "enough to clip, which is not the same as the "
+                            "argument having been ignored. Complements "
+                            "file_outline `sizes:true`, which answers WHERE "
+                            "the weight is; this reads past it.");
+                        props["max_line_bytes"] = mlb;
+                    }
+                    {
                         // ANTS-2157 — integration brief.
                         QJsonObject p;
                         p["type"]        = "boolean";

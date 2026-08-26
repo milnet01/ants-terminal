@@ -19,6 +19,23 @@ namespace ReadRegion {
 constexpr int kDefaultBytesCap = 512 * 1024;       // 512 KiB
 constexpr int kMaxBytesCeiling = 4 * 1024 * 1024;  // 4 MiB
 
+// ANTS-4700 — the per-line clip's range, deliberately the same [50, 10000] as
+// workspace_search's `max_match_bytes`, so a caller who has learned one number
+// has learned both. Below 50 a clipped line is all marker and no content.
+constexpr int kMinLineBytes = 50;
+constexpr int kMaxLineBytes = 10000;
+
+// ANTS-4700 — clip one string to at most `capBytes` UTF-8 bytes, the ellipsis
+// counted INSIDE the budget, backing up across continuation bytes so a
+// multi-byte character is never split. `capBytes <= 0` returns the string
+// verbatim, as does one that already fits (no marker is added).
+//
+// Hoisted here from remotecontrol.cpp's `rcClipMatchBytes` (ANTS-1876) rather
+// than copied: read_region's per-line clip and workspace_search's
+// `max_match_bytes` must agree on the marker, because a caller strips or greps
+// for it. Two implementations of one convention is two conventions.
+QString clipToBytes(const QString &s, int capBytes);
+
 struct Options {
     bool    hasLine   = false;  // line-range mode selected
     int     startLine = 0;      // 1-based inclusive
@@ -26,6 +43,13 @@ struct Options {
     QString symbol;             // non-empty → symbol-body mode
     QString section;            // ANTS-2221 — non-empty → markdown section-body mode
     int     maxBytes  = 0;      // <=0 → kDefaultBytesCap; clamped to ceiling
+    // ANTS-4700 — <=0 → off. Clips each emitted LINE to this many UTF-8 bytes,
+    // BEFORE `maxBytes` is charged, so it makes room for more lines rather
+    // than competing with the cap. For a region whose weight sits in a few
+    // very long lines — a review loop-log table, a hard-wrapped standard —
+    // that is the difference between the rows you were reading toward and a
+    // truncated head.
+    int     maxLineBytes = 0;
     bool    callSequence = false;  // ANTS-2157 — also emit the ordered call list + accessors
 };
 

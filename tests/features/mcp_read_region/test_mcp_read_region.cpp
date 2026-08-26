@@ -344,6 +344,84 @@ TEST(McpReadRegion, ByteCapHead) {
     EXPECT_FALSE(benv.value("truncated").toBool());  // whole small file fits
 }
 
+// ANTS-4700 — the per-line clip. The report's case is a region whose weight
+// sits in a few very long lines: a 113-line slice of a hard-wrapped standard
+// was 29,244 bytes of which six loop-log rows were 20,446, so a byte cap that
+// keeps the head returned neither the structure nor the tail. Clipping per
+// line, BEFORE the cap is charged, is what lets the later rows be reached.
+TEST(McpReadRegion, Ants4700PerLineClipMakesRoomForMoreLines) {
+    QTemporaryDir dir; ASSERT_TRUE(dir.isValid());
+    // Three fat lines then three thin ones. Any head-keeping byte cap large
+    // enough to reach the thin rows must otherwise carry the fat ones whole.
+    QStringList body;
+    for (int i = 0; i < 3; ++i)
+        body << QStringLiteral("FAT%1 ").arg(i) + QString(400, QLatin1Char('x'));
+    body << QStringLiteral("thin one") << QStringLiteral("thin two")
+         << QStringLiteral("thin three");
+    const QString p = writeFile(dir, "wide.txt", body);
+
+    // Without the clip the cap is spent on the fat lines.
+    ReadRegion::Options plain = lineOpts(1, 6);
+    plain.maxBytes = 600;
+    const QJsonObject bare = ReadRegion::extract(p, plain);
+    ASSERT_TRUE(bare.value("ok").toBool());
+    ASSERT_TRUE(bare.value("truncated").toBool())
+        << "precondition: the cap must actually bite, or this proves nothing";
+    const int bareReturned = bare.value("returned").toInt();
+    EXPECT_FALSE(bare.contains("max_line_bytes"))
+        << "no clip requested, so no clip keys";
+    EXPECT_FALSE(bare.contains("lines_clipped"));
+
+    // With it, the same cap reaches every line.
+    ReadRegion::Options clip = lineOpts(1, 6);
+    clip.maxBytes     = 600;
+    clip.maxLineBytes = 60;
+    const QJsonObject env = ReadRegion::extract(p, clip);
+    ASSERT_TRUE(env.value("ok").toBool());
+    EXPECT_GT(env.value("returned").toInt(), bareReturned)
+        << "the clip must make ROOM, not merely shorten what already fitted";
+    EXPECT_EQ(env.value("returned").toInt(), 6);
+    EXPECT_FALSE(env.value("truncated").toBool());
+    EXPECT_EQ(env.value("max_line_bytes").toInt(), 60);
+    EXPECT_EQ(env.value("lines_clipped").toInt(), 3)
+        << "the three fat lines, and only those";
+
+    // The marker is the one workspace_search uses, and the clipped line still
+    // carries its identity — the row label a caller recognises.
+    const QString first = linesOf(env).at(0);
+    EXPECT_TRUE(first.startsWith(QStringLiteral("FAT0 ")))
+        << "got: " << first.toStdString();
+    EXPECT_TRUE(first.endsWith(QChar(0x2026)))
+        << "the clip marker must be U+2026, as max_match_bytes emits it";
+    EXPECT_LE(first.toUtf8().size(), 60);
+    // A thin line is untouched — no marker on something that already fitted.
+    EXPECT_EQ(linesOf(env).at(3), "thin one");
+}
+
+// ANTS-4700 — the range is the one `max_match_bytes` uses, and an out-of-range
+// value is clamped and SAID SO, rather than silently becoming something else.
+TEST(McpReadRegion, Ants4700ClampsAndReportsTheLineCap) {
+    QTemporaryDir dir; ASSERT_TRUE(dir.isValid());
+    const QString p = writeFile(dir, "f.txt", kFixture);
+
+    ReadRegion::Options low = lineOpts(1, 5);
+    low.maxLineBytes = 1;
+    const QJsonObject lenv = ReadRegion::extract(p, low);
+    ASSERT_TRUE(lenv.value("ok").toBool());
+    EXPECT_EQ(lenv.value("max_line_bytes").toInt(), ReadRegion::kMinLineBytes);
+    EXPECT_TRUE(lenv.value("line_cap_clamped").toBool());
+    // Below the floor a clipped line would be all marker and no content, which
+    // is why there is a floor rather than an honest 1.
+    EXPECT_EQ(lenv.value("lines_clipped").toInt(), 0)
+        << "the fixture's lines are short; clamping must not invent clipping";
+
+    ReadRegion::Options high = lineOpts(1, 5);
+    high.maxLineBytes = ReadRegion::kMaxLineBytes + 1;
+    const QJsonObject henv = ReadRegion::extract(p, high);
+    EXPECT_EQ(henv.value("max_line_bytes").toInt(), ReadRegion::kMaxLineBytes);
+    EXPECT_TRUE(henv.value("line_cap_clamped").toBool());
+}
+
 // ANTS-4394 — the `~global` sentinel is documented on read_region and
 // read_regions.
 //
