@@ -46157,7 +46157,7 @@ envelope dropped `source`/`path`/`etag`/`total`/`filter`.
   Source: finbreak-feedback-2026-08-26.
   Lanes: mcp, roadmapquery.
 
-- 📋 [ANTS-4700] **read_region has no per-line clip, so a region whose weight sits in a few long lines spills or truncates.**
+- ✅ [ANTS-4700] **read_region has no per-line clip, so a region whose weight sits in a few long lines spills or truncates.**
   workspace_search takes max_match_bytes and clips every emitted line to it.
   read_region has no equivalent. Its only size control is max_bytes, which
   keeps the HEAD and truncates the tail -- so on a region whose weight sits
@@ -46186,6 +46186,7 @@ envelope dropped `source`/`path`/`etag`/`total`/`filter`.
   ordering workspace_search's `filter` already documents. Composes with
   file_outline sizes:true (ANTS-4384), which answers WHERE the weight is;
   this answers how to read past it.
+  Resolved (2026-08-26): max_line_bytes on read_region, applied BEFORE the max_bytes cap is charged so it makes room for more lines rather than competing with it -- the ordering the report asked for, and the whole feature. The marker is SHARED rather than copied: rcClipMatchBytes (ANTS-1876) moved down to ReadRegion::clipToBytes and remotecontrol.cpp delegates, because a caller strips or greps for that marker and two implementations would be two contracts; same [50, 10000] clamp as max_match_bytes. Off by default -- returning the bytes that are there is this verb's job, and a default clip would silently change what a re-read returns. lines_clipped is emitted even at 0, so "nothing was long enough" is distinguishable from "the argument was ignored". Red proven by mutating the clip decision alone; reverting the implementation would have failed to compile, which proves nothing about the assertions. Commit da408249, suite 3982/3982.
   **Layman:** Reading part of a document with very long lines returns too much or cuts off the part you wanted.
   Kind: enhancement.
   Source: claude_config-feedback-2026-08-26.
