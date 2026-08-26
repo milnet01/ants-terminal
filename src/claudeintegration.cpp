@@ -12422,7 +12422,14 @@ void ClaudeIntegration::onMcpConnection() {
                         "(export_slug slugified); a supplied export_slug is "
                         "validated verbatim, never rewritten, and must match "
                         "[a-z0-9][a-z0-9-]*. Re-running over an unchanged project "
-                        "is idempotent; re-running with a different name or slug "
+                        "is idempotent in INTENT — but parse(render(x)) is not "
+                        "yet identity (ANTS-4507), so `items_updated` can be a "
+                        "re-parse artefact rather than real drift, and applying "
+                        "it overwrites a correct row. Read `updated_items[]` "
+                        "before acting on a non-zero count; measured on a project "
+                        "whose file git says is unmodified, one item reported "
+                        "updated and diffed to zero differing lines. Re-running "
+                        "with a different name or slug "
                         "is refused rather than silently applied. ANTS-4482 — it "
                         "NEVER writes ROADMAP.md, it only reads: the file is "
                         "first re-rendered by the next roadmap_log write, so a "
@@ -12481,10 +12488,10 @@ void ClaudeIntegration::onMcpConnection() {
                     // with "Use " (McpOrientation_Inv7.SelectionHintFormat).
                     t["selection_hint"] = QStringLiteral(
                         "Use it once to move a project onto the roadmap store, "
-                        "and AGAIN any time to reconcile a store that has "
-                        "drifted behind ROADMAP.md — re-ingesting is routine and "
-                        "idempotent. dry_run:true previews the counts. It never "
-                        "writes ROADMAP.md.");
+                        "and again to reconcile real drift. dry_run:true first: "
+                        "items_updated may be a re-parse artefact, not drift "
+                        "(ANTS-4507), so read updated_items[] before acting. "
+                        "Never writes ROADMAP.md.");
                     QJsonObject schema;
                     schema["type"] = "object";
                     QJsonObject props;
@@ -12904,12 +12911,18 @@ void ClaudeIntegration::onMcpConnection() {
                         "(two `## [X.Y.Z]` blocks leave a notes-extraction "
                         "grep unable to choose). "
                         "\"add_subsection\" (ANTS-3584, guarded by "
-                        "ANTS-4356 — it refuses `flat_section` against an "
-                        "[Unreleased] carrying flat `### <category>` blocks, "
+                        "ANTS-4356 — it refuses `flat_section` when a flat "
+                        "`### <category>` heading sits ABOVE every dated topic, "
                         "because writing a dated topic there produces a MIXED "
                         "section from which op:add and op:normalize BOTH start "
-                        "refusing; empty the section first to convert a "
-                        "project) writes a DATED "
+                        "refusing. ANTS-4562 — the test is ORDER, not presence: "
+                        "a section whose first `### ` heading is a dated topic "
+                        "is ACCEPTED however many flat category blocks trail "
+                        "below it, because a top insert is safe there. So a "
+                        "legacy tail does NOT block the migration it would "
+                        "otherwise be protecting, and emptying the section is "
+                        "not the remedy — leading with a dated topic is) "
+                        "writes a DATED "
                         "feature-grouped block (`### <date> <Category> — "
                         "<headline>` + optional prose `body` + optional "
                         "`bullets[]`) at the TOP of [Unreleased], "

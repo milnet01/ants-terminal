@@ -329,6 +329,19 @@ for security-relevant changes.
 
 ### Fixed
 
+- **`changelog_log add_subsection`'s docstring described a guard the code does not implement** (ANTS-4562)
+  It claimed a refusal against any `[Unreleased]` carrying flat category
+  blocks, and told you to empty the section first. The guard actually tests
+  ORDER: a section led by a dated topic is accepted however many flat blocks
+  trail below. The remedy is to lead with a dated topic, and a legacy tail no
+  longer reads as a blocker.
+
+- **`roadmap_migrate` no longer advises a re-run that a known open defect says destroys correct rows** (ANTS-4564)
+  Its hint called re-ingesting "routine and idempotent", while ANTS-4507 has
+  established that parse(render(x)) is not identity — so `items_updated` can
+  be a re-parse artefact and applying it overwrites a good row. Both the hint
+  and the description now say so and point at `updated_items[]`.
+
 - **doc_citations resolves a quotation inside a blockquote** (ANTS-4706)
   A quote written as an indented `>` block was reported out of date even
   when it matched its source exactly, and the reported text carried the

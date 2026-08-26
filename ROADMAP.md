@@ -40924,7 +40924,7 @@ filed below.
   Source: Vestige_Ants_MCP_Feedback.md 2026-08-20.
   Lanes: remotecontrol, changelog.
 
-- 📋 [ANTS-4562] **changelog_log add_subsection's flat_section guard is positional, and its docstring describes an exhaustive scan.**
+- ✅ [ANTS-4562] **changelog_log add_subsection's flat_section guard is positional, and its docstring describes an exhaustive scan.**
   A contributor correcting their own earlier report, and the correction
   changes the diagnosis.
 
@@ -40956,6 +40956,7 @@ filed below.
   The reporter's own preference is explicit: this is the first time in that
   project's history add_subsection has been usable, and they would rather it
   stayed usable.
+  Resolved (2026-08-26) as a doc fix, and the item's DIAGNOSIS was wrong -- worth recording so it is not re-derived. The guard does not classify by the first heading. It scans the whole section, counts flat category headings and dated topics, records the first line of each, and refuses only when a flat heading sits ABOVE every dated topic (`datedLeads` in changeloglog.cpp). Deleting that one heading made a dated topic lead, which is why the section began passing -- not because the scan is positional. So the code already does what the reporter says they would prefer: a legacy flat tail is tolerated, a genuinely flat section is refused, and the migration the guard protects is not blocked by the state a project is migrating OUT of. What was actually false was the docstring, which claimed a refusal against any [Unreleased] "carrying flat `### <category>` blocks" and prescribed "empty the section first to convert a project". Both wrong now: the test is ORDER, not presence, and the remedy is to lead with a dated topic. The second was the more costly -- it sent a migrating project to empty its section when it never needed to. Verified: test_claude rebuilt, 15/15 green.
   **Layman:** A safety check on the changelog only looks at the first heading, but its documentation says it checks the whole section.
   Kind: doc-fix.
   Source: Vestige_Ants_MCP_Feedback.md 2026-08-20 (correction to their own 2026-08-18 report).
@@ -40985,12 +40986,13 @@ filed below.
 
   See also the add_subsection guard item in this section — that half of
   the trap is now gone, this is the half still standing.
+  Progress (2026-08-26): mechanism found, so the item can stop being described by its symptom. NOT fixed -- the fix it proposes is not the fix the mechanism calls for. op:add DOES refuse a feature-grouped section (ANTS-3416, code feature_grouped_section). It did not refuse Vestige's because firstFeatureGroupedTopicLine's condition 2 returns -1 the moment ANY `### ` heading is a canonical category word -- its comment says so outright: "a single canonical heading means it is a flat (possibly messy) category layout ... not feature-grouped". Vestige's [Unreleased] is MIXED, dated topics on top and flat categories in the tail, so that one canonical heading declassifies the whole section, the refusal never fires, and the flat insert lands at the end of the legacy tail. So a MIXED section falls between the two guards, and this is the sharp statement of the defect. add_subsection's flat_section guard is an ORDER test and now TOLERATES a mixed section (see ANTS-4562). op:add's feature_grouped guard is a PRESENCE test and DECLASSIFIES the same section. One shape, two classifiers, opposite answers -- and the gap between them is exactly where the entry gets buried. WHY THE PROPOSED FIX IS THE WRONG SHAPE: there is no advisory on this path to add a distance to. The refusal returns early, and when it does not fire the insert simply proceeds. Reporting distance would mean inventing a new advisory, which buys a number while leaving the classifier split that caused it. THE DECISION IS WHICH CLASSIFIER IS RIGHT for a mixed section, and both guards should then use it. Given ANTS-4562 settled that a mixed section is SAFE to insert at the top of, the consistent answer is for op:add to route a mixed section to add_subsection rather than append to the tail. That is a behavioural change with a live caller, so it wants deciding, not assuming at the end of a session.
   **Layman:** Adding a changelog entry can succeed while burying it 10,000 lines below where anyone reads.
   Kind: enhancement.
   Source: Vestige_Ants_MCP_Feedback.md 2026-08-20 (still-open recheck of their 2026-07-31 report).
   Lanes: remotecontrol, changelog.
 
-- 📋 [ANTS-4564] **roadmap_migrate's selection_hint recommends the re-run ANTS-4507 says can overwrite good rows.**
+- ✅ [ANTS-4564] **roadmap_migrate's selection_hint recommends the re-run ANTS-4507 says can overwrite good rows.**
   ANTS-4480 shipped and the hint now reads: "Use it once to move a project
   onto the roadmap store, and AGAIN any time to reconcile a store that has
   drifted behind ROADMAP.md — re-ingesting is routine and idempotent."
@@ -41017,6 +41019,7 @@ filed below.
   contradicting a known open defect.
 
   The reporter's preferred underlying fix is recorded on ANTS-4507.
+  Resolved (2026-08-26): both copies of the claim are qualified, not just the hint the item named. The selection_hint no longer says re-ingesting is "routine and idempotent"; it now reads dry_run-first and says items_updated may be a re-parse artefact, not drift (ANTS-4507), so read updated_items[] before acting. The DESCRIPTION carried the same claim -- "Re-running over an unchanged project is idempotent" -- and the item flagged it; fixing only the hint would have left the contradiction live in the longer string a session actually reads, which is the fix-one-copy failure. It now says idempotent in INTENT, names parse(render(x)) as not yet identity, and carries the item's own measurement: a project whose file git says is unmodified reported one item updated that diffed to zero differing lines. Constraint worth knowing for the next edit: this hint is capped at 240 chars and must open with "Use ", both tested (McpSelectionHint.HintsRespectSizeBudget, McpOrientation_Inv7.SelectionHintFormat). The old string was already at 232, so the qualification did not fit by appending -- the false claim had to come out to make room. Verified: test_claude rebuilt, 15/15 green including both guards.
   **Layman:** The migration tool's own advice tells you to do the thing a known open bug says will destroy data.
   Kind: doc-fix.
   Source: AI_Prompts_Ants_MCP_Feedback.md 2026-08-20.
