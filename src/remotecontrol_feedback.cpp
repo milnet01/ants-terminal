@@ -420,6 +420,79 @@ void RemoteControl::setForceFeedbackWriteFailForTest(bool on) {
 }
 
 // ANTS-1962 — feedback_log: append a contributor or maintainer block.
+// ANTS-4671 — the disposition composition, extracted so op:"assign_id" and
+// op:"assign_id_batch" cannot answer one assignment differently. Every rule
+// here was previously inline in assign_id and is unchanged: exactly one of
+// ids / closure / awaiting, the ^ANTS-[0-9]+$ id gate with first-occurrence
+// de-duplication, and the control-character fold that keeps the written line
+// single-line.
+//
+// Returns true on success. On failure it fills *err with the bad_args
+// envelope the single op used to return directly, so the batch can put that
+// same envelope into skipped[] rather than inventing a second wording.
+static bool fbComposeAssignValue(const QJsonObject &a, QString *value,
+                                 bool *isClosure, QString *note,
+                                 QJsonObject *err) {
+    const QJsonArray idsArr = a.value(QStringLiteral("ids")).toArray();
+    const bool hasIds     = !idsArr.isEmpty();
+    const bool hasClosure = a.contains(QStringLiteral("closure")) &&
+                            a.value(QStringLiteral("closure")).isString();
+    const bool hasAwaiting = a.contains(QStringLiteral("awaiting")) &&
+                             a.value(QStringLiteral("awaiting")).isString();
+    const int dispositions = int(hasIds) + int(hasClosure) + int(hasAwaiting);
+    if (dispositions != 1) {
+        *err = fbErr(
+            QStringLiteral("bad_args"),
+            QStringLiteral("feedback_log: assign_id needs exactly one of a "
+                           "non-empty \"ids\" array, a \"closure\" string, "
+                           "or an \"awaiting\" question string (got %1)")
+                .arg(dispositions));
+        return false;
+    }
+
+    if (hasIds) {
+        static const QRegularExpression idOkRe(QStringLiteral("^ANTS-[0-9]+$"));
+        QStringList idList;   // de-duplicated, keeping first occurrence
+        for (const QJsonValue &v : idsArr) {
+            const QString id = v.toString().trimmed();
+            if (!idOkRe.match(id).hasMatch()) {
+                *err = fbErr(
+                    QStringLiteral("bad_args"),
+                    QStringLiteral("feedback_log: assign_id \"ids\" entries "
+                                   "must match ^ANTS-[0-9]+$ (got \"%1\")")
+                        .arg(id));
+                return false;
+            }
+            if (!idList.contains(id)) idList.append(id);
+        }
+        *value = idList.join(QStringLiteral(", "));
+    } else if (hasAwaiting) {
+        QString q = a.value(QStringLiteral("awaiting")).toString();
+        static const QRegularExpression awCtrlRe(QStringLiteral("[\\x00-\\x1F]"));
+        q.replace(awCtrlRe, QStringLiteral(" "));
+        q = q.trimmed();
+        *value = q.isEmpty()
+                     ? QStringLiteral("_(awaiting reporter)_")
+                     : QString::fromUtf8("_(awaiting reporter \xE2\x80\x94 ")
+                           + q + QStringLiteral(")_");
+    } else {
+        QString reason = a.value(QStringLiteral("closure")).toString();
+        static const QRegularExpression ctrlRe(QStringLiteral("[\\x00-\\x1F]"));
+        reason.replace(ctrlRe, QStringLiteral(" "));
+        reason = reason.trimmed();
+        *value = reason.isEmpty()
+                     ? QStringLiteral("n/a")
+                     : QString::fromUtf8("n/a \xE2\x80\x94 ") + reason;
+    }
+    *isClosure = hasClosure;
+
+    QString n = a.value(QStringLiteral("note")).toString();
+    static const QRegularExpression noteCtrlRe(QStringLiteral("[\\x00-\\x1F]"));
+    n.replace(noteCtrlRe, QStringLiteral(" "));
+    *note = n.trimmed();
+    return true;
+}
+
 QJsonDocument RemoteControl::cmdFeedbackLog(const QJsonObject &req) {
     QString resolved;
     bool exists = false;
@@ -438,13 +511,15 @@ QJsonDocument RemoteControl::cmdFeedbackLog(const QJsonObject &req) {
         op != QStringLiteral("compact_resolved") &&
         op != QStringLiteral("migrate_v2") &&
         op != QStringLiteral("assign_id") &&
+        op != QStringLiteral("assign_id_batch") &&   // ANTS-4671
         op != QStringLiteral("set_title")) {
         return QJsonDocument(fbErr(
             QStringLiteral("bad_mode"),
             QStringLiteral("feedback_log: op must be \"append_finding\", "
                            "\"append_tracking\", \"compact_shipped\", "
                            "\"prune_tracking\", \"compact_resolved\", "
-                           "\"migrate_v2\", \"assign_id\" or "
+                           "\"migrate_v2\", \"assign_id\", "
+                           "\"assign_id_batch\" or "
                            "\"set_title\"")));
     }
 
@@ -1133,6 +1208,171 @@ QJsonDocument RemoteControl::cmdFeedbackLog(const QJsonObject &req) {
     // `**Proposed ID:**` line with the maintainer's assigned id(s) or an
     // `n/a — <reason>` closure. Distinct request shape (heading + ids|closure,
     // no roadmap read); returns early like the sibling compaction ops.
+    // ANTS-4671 — assign_id_batch: N findings' slots in ONE read and ONE
+    // atomic write. The argument for it was already accepted three times on
+    // the roadmap side (flip_batch, annotate_batch, amend_batch's item), and
+    // the shape is stronger here: a triage is inherently a batch — findings
+    // are read together via feedback_query, decided together against one dedup
+    // sweep, and several legitimately share one id. Nothing between the calls
+    // can have changed the file, which is exactly where a per-call read and
+    // write is least justified.
+    //
+    // FeedbackFile::assignId() is pure (content -> content), so the batch is
+    // the single op's body with the read and write hoisted out of the loop and
+    // the content threaded through. Per-assignment failures land in skipped[]
+    // and cost only their own assignment — which matters more here than
+    // elsewhere, because a heading is matched verbatim and one mistyped
+    // heading must not cost the batch its other closures.
+    if (op == QStringLiteral("assign_id_batch")) {
+        const QJsonArray assignments =
+            req.value(QStringLiteral("assignments")).toArray();
+        if (assignments.isEmpty()) {
+            return QJsonDocument(fbErr(
+                QStringLiteral("bad_args"),
+                QStringLiteral("feedback_log: assign_id_batch requires a "
+                               "non-empty \"assignments\" array")));
+        }
+        if (!exists) {
+            return QJsonDocument(fbNotFound(
+                QStringLiteral("feedback_log: assign_id_batch on an absent file"),
+                resolved, feedbackCallerLeaf(req)));
+        }
+        QFile rf(resolved);
+        if (!rf.open(QIODevice::ReadOnly | QIODevice::Text)) {
+            return QJsonDocument(fbErr(
+                QStringLiteral("read_failed"),
+                QStringLiteral("feedback_log: cannot open \"%1\"").arg(resolved)));
+        }
+        QString content = QString::fromUtf8(rf.readAll());
+        rf.close();
+
+        const bool dryRunB = req.value(QStringLiteral("dry_run")).toBool();
+        QJsonArray applied, skipped;
+        bool anyChange = false;
+        int index = -1;
+        for (const QJsonValue &av : assignments) {
+            ++index;
+            const QJsonObject a = av.toObject();
+            auto skip = [&](const QJsonObject &e) {
+                QJsonObject row = e;
+                row[QStringLiteral("index")]   = index;
+                row[QStringLiteral("heading")] =
+                    a.value(QStringLiteral("heading")).toString();
+                skipped.append(row);
+            };
+
+            const QString heading = a.value(QStringLiteral("heading")).toString();
+            if (heading.trimmed().isEmpty()) {
+                skip(fbErr(QStringLiteral("bad_args"),
+                     QStringLiteral("feedback_log: assign_id requires a "
+                                    "non-empty \"heading\" (the target `### ` "
+                                    "finding line)")));
+                continue;
+            }
+            QString value, note;
+            bool isClosure = false;
+            QJsonObject cerr;
+            if (!fbComposeAssignValue(a, &value, &isClosure, &note, &cerr)) {
+                skip(cerr);
+                continue;
+            }
+
+            FeedbackFile::AssignTarget tgt;
+            tgt.heading     = heading;
+            tgt.headingLine = a.value(QStringLiteral("heading_line")).toInt(-1);
+            tgt.value       = value;
+            tgt.isClosure   = isClosure;
+            tgt.note        = note;
+            const FeedbackFile::AssignResult ar =
+                FeedbackFile::assignId(content, tgt);
+            if (!ar.code.isEmpty()) {       // target_not_found / target_ambiguous
+                QJsonObject e = fbErr(
+                    ar.code,
+                    ar.code == QStringLiteral("target_ambiguous")
+                        ? QStringLiteral("feedback_log: assign_id heading "
+                                         "matches %1 `### ` blocks; pass "
+                                         "heading_line").arg(ar.candidates.size())
+                        : QStringLiteral("feedback_log: assign_id found no "
+                                         "`### ` finding matching \"%1\"")
+                              .arg(heading));
+                if (!ar.candidates.isEmpty()) {
+                    QJsonArray cand;
+                    for (int c : ar.candidates) cand.append(c);
+                    e[QStringLiteral("candidates")] = cand;
+                }
+                skip(e);
+                continue;
+            }
+
+            // Thread the content forward: each assignment sees the previous
+            // one's result, so two assignments to the same finding behave as
+            // they would in two separate calls.
+            content = ar.newContent;
+            if (ar.changed) anyChange = true;
+            QJsonObject row;
+            row[QStringLiteral("index")]    = index;
+            row[QStringLiteral("heading")]  = ar.heading;
+            row[QStringLiteral("line")]     = ar.line;
+            row[QStringLiteral("value")]    = ar.value;
+            row[QStringLiteral("inserted")] = ar.inserted;
+            row[QStringLiteral("changed")]  = ar.changed;
+            if (ar.noteWritten) row[QStringLiteral("note_written")] = true;
+            applied.append(row);
+        }
+
+        // ANTS-4470's rule, kept: an all-failed batch is a refusal, not a
+        // success reporting nothing. A caller that reads only `ok` must not
+        // read "every heading was mistyped" as a completed triage.
+        if (applied.isEmpty()) {
+            QJsonObject e = fbErr(
+                QStringLiteral("bad_args"),
+                QStringLiteral("feedback_log: assign_id_batch applied no "
+                               "assignment — every one was refused"));
+            e[QStringLiteral("skipped")]       = skipped;
+            e[QStringLiteral("skipped_count")] = skipped.size();
+            return QJsonDocument(e);
+        }
+
+        if (!dryRunB && anyChange) {
+            const QByteArray utf8 = content.toUtf8();
+            QSaveFile sf(resolved);
+            if (!sf.open(QIODevice::WriteOnly | QIODevice::Text)) {
+                return QJsonDocument(fbErr(
+                    QStringLiteral("write_failed"),
+                    QStringLiteral("feedback_log: cannot open \"%1\" for "
+                                   "writing").arg(resolved)));
+            }
+            bool committed = (sf.write(utf8) == utf8.size());
+            if (committed) {
+                if (g_forceFeedbackWriteFail) {
+                    sf.cancelWriting();
+                    committed = false;
+                } else {
+                    committed = sf.commit();
+                }
+            }
+            if (!committed) {
+                return QJsonDocument(fbErr(
+                    QStringLiteral("write_failed"),
+                    QStringLiteral("feedback_log: atomic write of \"%1\" "
+                                   "failed").arg(resolved)));
+            }
+        }
+
+        QJsonObject out;
+        out[QStringLiteral("ok")]            = true;
+        out[QStringLiteral("op")]            = op;
+        out[QStringLiteral("path")]          = resolved;
+        out[QStringLiteral("dry_run")]       = dryRunB;
+        out[QStringLiteral("applied")]       = applied;
+        out[QStringLiteral("applied_count")] = applied.size();
+        out[QStringLiteral("skipped")]       = skipped;
+        out[QStringLiteral("skipped_count")] = skipped.size();
+        out[QStringLiteral("changed")]       = anyChange;
+        if (derived) out[QStringLiteral("path_derived")] = true;   // ANTS-3376
+        return QJsonDocument(out);
+    }
+
     if (op == QStringLiteral("assign_id")) {
         const QString heading =
             req.value(QStringLiteral("heading")).toString();
@@ -1143,76 +1383,17 @@ QJsonDocument RemoteControl::cmdFeedbackLog(const QJsonObject &req) {
                                "\"heading\" (the target `### ` finding line)")));
         }
 
-        // hasIds XOR hasClosure (spec § 2.1): hasIds = a non-empty `ids` array;
-        // hasClosure = a `closure` key with a STRING value (any string, incl "").
-        const QJsonArray idsArr = req.value(QStringLiteral("ids")).toArray();
-        const bool hasIds = !idsArr.isEmpty();
-        const bool hasClosure = req.contains(QStringLiteral("closure")) &&
-                                req.value(QStringLiteral("closure")).isString();
-        // ANTS-3631 — a THIRD disposition, so the guard becomes exactly-one-of
-        // three. It is counted rather than written as another equality: the
-        // two-way form was `hasIds == hasClosure`, and that shape does not
-        // generalise — extending it by conjunction admits "all three".
-        const bool hasAwaiting = req.contains(QStringLiteral("awaiting")) &&
-                                 req.value(QStringLiteral("awaiting")).isString();
-        const int dispositions =
-            int(hasIds) + int(hasClosure) + int(hasAwaiting);
-        if (dispositions != 1) {
-            return QJsonDocument(fbErr(
-                QStringLiteral("bad_args"),
-                QStringLiteral("feedback_log: assign_id needs exactly one of a "
-                               "non-empty \"ids\" array, a \"closure\" string, "
-                               "or an \"awaiting\" question string (got %1)")
-                    .arg(dispositions)));
-        }
-
-        // Compose the id-line value the helper will write.
-        QString value;
-        if (hasIds) {
-            static const QRegularExpression idOkRe(
-                QStringLiteral("^ANTS-[0-9]+$"));
-            QStringList idList;   // de-duplicated, keeping first occurrence
-            for (const QJsonValue &v : idsArr) {
-                const QString id = v.toString().trimmed();
-                if (!idOkRe.match(id).hasMatch()) {
-                    return QJsonDocument(fbErr(
-                        QStringLiteral("bad_args"),
-                        QStringLiteral("feedback_log: assign_id \"ids\" entries "
-                                       "must match ^ANTS-[0-9]+$ (got \"%1\")")
-                            .arg(id)));
-                }
-                if (!idList.contains(id)) idList.append(id);
-            }
-            value = idList.join(QStringLiteral(", "));
-        } else if (hasAwaiting) {
-            // ANTS-3631 — the awaiting marker. Same control-char fold as the
-            // closure below, for the same reason: the id line is one line.
-            //
-            // An EMPTY question still writes a marker rather than refusing.
-            // The disposition's job is to keep the finding in the reporter's
-            // delta; the question is the payload, and a marker with no text is
-            // less wrong than a slot that silently reverts to "nobody looked".
-            QString q = req.value(QStringLiteral("awaiting")).toString();
-            static const QRegularExpression awCtrlRe(
-                QStringLiteral("[\\x00-\\x1F]"));
-            q.replace(awCtrlRe, QStringLiteral(" "));
-            q = q.trimmed();
-            value = q.isEmpty()
-                        ? QStringLiteral("_(awaiting reporter)_")
-                        : QString::fromUtf8("_(awaiting reporter \xE2\x80\x94 ")
-                              + q + QStringLiteral(")_");
-        } else {
-            // Closure: fold any newline / control char to a space so the written
-            // line stays single-line (spec § 2.2 step 2 / INV-3), then compose
-            // `n/a — <reason>` (bare `n/a` when the reason is empty).
-            QString reason = req.value(QStringLiteral("closure")).toString();
-            static const QRegularExpression ctrlRe(
-                QStringLiteral("[\\x00-\\x1F]"));
-            reason.replace(ctrlRe, QStringLiteral(" "));
-            reason = reason.trimmed();
-            value = reason.isEmpty()
-                        ? QStringLiteral("n/a")
-                        : QString::fromUtf8("n/a \xE2\x80\x94 ") + reason;
+        // ANTS-4671 — composition, validation and the control-char folds now
+        // live in fbComposeAssignValue so this op and assign_id_batch cannot
+        // answer one assignment differently. Behaviour is unchanged: exactly
+        // one of ids / closure / awaiting, the ^ANTS-[0-9]+$ gate, and the
+        // note fold that ANTS-3571 added.
+        QString value, note;
+        bool hasClosure = false;
+        {
+            QJsonObject cerr;
+            if (!fbComposeAssignValue(req, &value, &hasClosure, &note, &cerr))
+                return QJsonDocument(cerr);
         }
 
         if (!exists) {
@@ -1229,17 +1410,6 @@ QJsonDocument RemoteControl::cmdFeedbackLog(const QJsonObject &req) {
         }
         const QString content = QString::fromUtf8(rf.readAll());
         rf.close();
-
-        // ANTS-3571 — the documented `note` was silently ignored. Fold any
-        // newline / control char to a space (the finding block is one bullet
-        // per line) and trim; an empty result leaves the note bullet untouched.
-        QString note = req.value(QStringLiteral("note")).toString();
-        {
-            static const QRegularExpression noteCtrlRe(
-                QStringLiteral("[\\x00-\\x1F]"));
-            note.replace(noteCtrlRe, QStringLiteral(" "));
-            note = note.trimmed();
-        }
 
         FeedbackFile::AssignTarget tgt;
         tgt.heading     = heading;

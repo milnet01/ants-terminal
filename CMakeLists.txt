@@ -1829,6 +1829,7 @@ if(ANTS_TESTS)
                 tests/features/roadmap_log_trailer_undeclare/test_roadmap_log_trailer_undeclare.cpp
                 tests/features/roadmap_log_amend_headline_store/test_roadmap_log_amend_headline_store.cpp
                 tests/features/roadmap_log_amend_field/test_roadmap_log_amend_field.cpp
+                tests/features/feedback_log_assign_id_batch/test_feedback_log_assign_id_batch.cpp
                 # ANTS-4554 / ANTS-4558 / ANTS-4557 — a bullet body keeps its
                 # own shape through the read path and the re-render.
                 tests/features/roadmap_body_indent/test_roadmap_body_indent.cpp

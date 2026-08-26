@@ -6575,6 +6575,7 @@ void ClaudeIntegration::onMcpConnection() {
                           e.append(QStringLiteral("compact_resolved"));
                           e.append(QStringLiteral("migrate_v2"));
                           e.append(QStringLiteral("assign_id"));
+                          e.append(QStringLiteral("assign_id_batch"));  // ANTS-4671
                           e.append(QStringLiteral("set_title"));   // ANTS-4646
                           opProp["enum"] = e; }
                         opProp["description"] = QStringLiteral(
@@ -6775,6 +6776,34 @@ void ClaudeIntegration::onMcpConnection() {
                             "the marker when you triage their answer. Supply "
                             "EXACTLY ONE of ids / closure / awaiting.");
                     props["closure"]       = closureProp;         // ANTS-3447
+                    // ANTS-4671 — op:"assign_id_batch" operand.
+                    QJsonObject assignmentsProp;
+                    assignmentsProp["type"] = QStringLiteral("array");
+                    { QJsonObject it; it["type"] = QStringLiteral("object");
+                      assignmentsProp["items"] = it; }
+                    assignmentsProp["description"] = QStringLiteral(
+                        "op:\"assign_id_batch\" — the assignments to write "
+                        "in ONE read and ONE atomic write. Each element "
+                        "takes this op's existing per-call arguments "
+                        "UNCHANGED: `heading` (required, matched verbatim), "
+                        "optional `heading_line`, exactly one of `ids` / "
+                        "`closure` / `awaiting`, and an optional `note`. So "
+                        "there is no second argument grammar to learn — it "
+                        "is assign_id with the read and write hoisted out of "
+                        "the loop. A triage is inherently a batch: findings "
+                        "are read together via feedback_query and decided "
+                        "together, and nothing between the calls can change "
+                        "the file. Per-assignment failures land in "
+                        "`skipped[]` with their `index` and cost only their "
+                        "own assignment, which matters here because a "
+                        "heading is matched verbatim and one mistyped "
+                        "heading must not cost the batch its other "
+                        "closures. An ALL-failed batch refuses rather than "
+                        "reporting success with nothing applied. Each "
+                        "assignment sees the previous one's result, so two "
+                        "aimed at one finding behave as two separate calls "
+                        "would.");
+                    props["assignments"]   = assignmentsProp;    // ANTS-4671
                     props["awaiting"]      = awaitingProp;        // ANTS-3631
                     // ANTS-3474 — migrate_v2 tracking-table backfill opt-in.
                     QJsonObject backfillProp; backfillProp["type"] = "boolean";

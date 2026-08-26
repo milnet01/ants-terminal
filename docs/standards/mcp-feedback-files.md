@@ -377,6 +377,19 @@ appending a block. For each finding in the un-triaged tail:
    - **Proposed ID:** ANTS-1525, ANTS-1579
    ```
 
+   **A whole triage goes in one call: `op:assign_id_batch`** (ANTS-4671)
+   takes `assignments[]`, each element carrying this op's per-call
+   arguments unchanged — `heading`, optional `heading_line`, exactly one
+   of `ids` / `closure` / `awaiting`, optional `note` — and performs one
+   read and one atomic write. A triage is inherently a batch: findings are
+   read together via `feedback_query` and decided together, and nothing
+   between the calls can have changed the file. Per-assignment failures
+   land in `skipped[]` with their `index` and cost only their own
+   assignment, which matters because a heading is matched verbatim and one
+   mistyped heading must not cost the batch its other closures. A batch in
+   which *every* assignment fails refuses rather than reporting success
+   with nothing applied.
+
    Multiple ids are comma-separated (one finding can map to several). A finding
    the maintainer decides not to track carries a **closure marker** instead —
    `n/a — <reason>` (`n/a — out of scope`, `n/a — self-resolved`, `n/a — schema
