@@ -588,6 +588,15 @@ list-nested fences) and close it at the same fence character.
 `>= 2`** — `<!-- ants-mcp-feedback: 2 -->` or higher, so a future `: 3` file
 also reads under v2 (the reader *degrades forward*, never silently back to v1;
 this matches `migrate_v2`'s `>= 2` idempotency short-circuit, ANTS-3446/3448).
+**ANTS-4702 — degrading forward is now VISIBLE.** Reading a `: 4` file under
+the v2 rule is right, but doing it in silence is what let a marker naming a
+version that has never existed sit in the corpus unnoticed: everything worked,
+so nothing said anything. `feedback_query` now sets
+`format_version_unrecognised:true` plus a `format_version_hint` whenever the
+marker exceeds the highest version this build defines. The delta is unaffected
+— the flag reports the MARKER, not the content — and it rides the true arm
+only, so an ordinary `: 2` file stays quiet.
+
 Every file with a `: 1`, malformed, or absent marker uses the **v1 rule** until
 `op:migrate_v2` converts it (stamping **blank** `**Proposed ID:**` placeholders
 on the un-triaged findings and bumping the marker — no id is filled,

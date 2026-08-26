@@ -45995,7 +45995,7 @@ envelope dropped `source`/`path`/`etag`/`total`/`filter`.
   Source: perch-feedback-2026-08-26.
   Lanes: mcp, roadmapmigrate.
 
-- 📋 [ANTS-4695] **roadmap_log op:"render" strips the trailing period from every Layman line and counts it as restyling, not text.**
+- ✅ [ANTS-4695] **roadmap_log op:"render" strips the trailing period from every Layman line and counts it as restyling, not text.**
   REPORTED WITH NUMBERS. perch, migrated 2026-08-26, 30 items, every Layman
   line hand-authored ending in a period. roadmap_log op:"render" reports
   discarded_restyled_lines 30, discarded_text_lines 0, ok:true. After the
@@ -46020,6 +46020,7 @@ envelope dropped `source`/`path`/`etag`/`total`/`filter`.
   prose). Whichever is chosen, count punctuation changes to author-supplied
   prose somewhere other than `restyled` -- a third counter is fine -- so
   discarded_text_lines:0 keeps meaning "your text is untouched".
+  Resolved (2026-08-26): the accounting half, which the report names as the defect "more than the punctuation". contentKey() strips every non-alphanumeric, so two lines differing only in how they END shared a key and the second scored as a dialect restyle. driftLines now keeps the render line rather than a count, compares the matched pair, and reports a terminal-punctuation-only difference as discarded_repunctuated_lines (drift_repunctuated on check_sync), riding the true arm only. discarded_text_lines:0 goes back to meaning "your text is untouched". The chop itself is unchanged: ANTS-1154 INV-4 prescribes it. Worth recording -- my first test asserted the render always drops the period, and its own precondition caught that this happens in the markdown PARSE, so it bites migrated items while an item created through the structured layman field keeps its period. Commit 0ded42b7, suite 3978/3978.
   **Layman:** Publishing the roadmap quietly edits the author's own sentences while reporting that no text changed.
   Kind: fix.
   Source: perch-feedback-2026-08-26.
@@ -46218,7 +46219,7 @@ envelope dropped `source`/`path`/`etag`/`total`/`filter`.
   Source: claude_config-feedback-2026-08-26.
   Lanes: mcp, roadmapquery.
 
-- 📋 [ANTS-4702] **One feedback file declares format version 4, a version that does not exist, and nothing reports it.**
+- ✅ [ANTS-4702] **One feedback file declares format version 4, a version that does not exist, and nothing reports it.**
   MEASURED across the whole corpus on 2026-08-26: nineteen files carry
   `<!-- ants-mcp-feedback: 2 -->` and OneUp_Ants_MCP_Feedback.md carries
   `<!-- ants-mcp-feedback: 4 -->`. mcp-feedback-files.md defines v1 and v2.
@@ -46248,6 +46249,7 @@ envelope dropped `source`/`path`/`etag`/`total`/`filter`.
 
   NOT URGENT. Nothing is broken today and the sweep completed normally. Filed
   because a wrong version marker is invisible until the moment it is not.
+  Resolved (2026-08-26) for part 2 -- the reporting half. feedback_query now sets format_version_unrecognised:true plus a format_version_hint when the marker exceeds the highest version this build defines (FeedbackFile::kMaxKnownFormatVersion). It rides the true arm only, so an ordinary : 2 file stays quiet, and the delta is unaffected: the flag reports the MARKER, not the content, and a test asserts the delta is still sound so a future reader cannot take the flag for a failed read. Verified red on the assertion. Part 1 -- correcting OneUp's : 4 marker -- is SPLIT OUT as ANTS-4707 rather than done here: the reporter was explicit it must go through a verb, no such op exists, and adding one is a change to the feedback-file contract (naming, refusals, dry_run, and whether a marker may move DOWN) that does not belong inside a diagnostic fix. Suite 3980/3980.
   **Layman:** A feedback file claims to be in a newer format than any that was ever defined; the tools accept it silently.
   Kind: fix.
   Source: in-session-2026-08-26 (found while sweeping the corpus).
@@ -46359,6 +46361,33 @@ envelope dropped `source`/`path`/`etag`/`total`/`filter`.
   **Layman:** A quote written as an indented block is reported out of date even when it matches the source exactly.
   Kind: fix.
   Source: in-session-2026-08-26.
+
+- 📋 [ANTS-4707] **No feedback_log op can correct a file's format-version marker, so the only route is the hand edit the pipeline forbids.**
+  Split out of ANTS-4702, whose reporting half shipped separately. The
+  reporter named this one themselves: correct the marker "through a verb, not
+  a hand edit, since hand-editing these files is what the assign-id pipeline
+  exists to avoid; there is no op for it today, which is itself the finding".
+
+  CONCRETE CASE. OneUp_Ants_MCP_Feedback.md declares
+  `<!- - ants-mcp-feedback: 4 - ->`, a version that has never been defined.
+  feedback_query now reports that (format_version_unrecognised), so the state
+  is visible -- and still not fixable by any verb.
+
+  WHY IT WAS NOT DONE WITH THE REPORTING HALF. Adding a write op is a change
+  to the feedback-file contract: it needs a name, a refusal set, a dry_run,
+  and a ruling on whether it may move a marker DOWN as well as up. The
+  reporting half needed none of that, and bundling them would have put a
+  contract decision inside a diagnostic fix.
+
+  SHAPE, not a decision. op:"set_format_version" taking the target version,
+  refusing anything above kMaxKnownFormatVersion (a verb must not stamp a
+  version it cannot read), and refusing a DOWNgrade unless the file's shape
+  actually matches the older rule -- a marker is a claim about the content,
+  and letting a verb make that claim falsely is the defect this item exists
+  to close, not a new one to open.
+  **Layman:** There is no safe command to fix a feedback file's version label, so the only way is to edit the file by hand, which the tools tell you not to do.
+  Kind: feature.
+  Source: in-session-2026-08-26 (ANTS-4702 part 1).
 
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-08-11 triage
 

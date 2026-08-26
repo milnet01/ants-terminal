@@ -392,6 +392,62 @@ TEST(FeedbackV2Delta, LiveEnvelope) {
     EXPECT_EQ(mids.at(0).toString(), QStringLiteral("ANTS-1525"));
 }
 
+// ANTS-4702 — a marker above the highest version this build defines is
+// reported, not silently widened. Measured across the corpus: nineteen files
+// carry `2` and one carries `4`, a version that has never existed. The delta
+// rule is "v2 or higher", so that file parses and every verb works on it —
+// which is exactly why the wrong marker stayed invisible. The flag is what a
+// caller can act on before some future verb gates on an exact version and
+// fails far from the file that caused it.
+TEST(FeedbackV2Delta, Ants4702ReportsAnUnknownFormatVersion) {
+    QTemporaryDir dir; ASSERT_TRUE(dir.isValid());
+    const QString p = dir.path() + "/TEST_Ants_MCP_Feedback.md";
+    QString body = v2();
+    body.replace(QStringLiteral("ants-mcp-feedback: 2"),
+                 QStringLiteral("ants-mcp-feedback: 4"));
+    ASSERT_TRUE(body.contains(QStringLiteral("ants-mcp-feedback: 4")))
+        << "precondition: the marker was not rewritten, so this asserts nothing";
+    ASSERT_TRUE(writeStr(p, body));
+
+    RemoteControl rc(nullptr);
+    QJsonObject req;
+    req["path"] = p;
+    req["caller_cwd"] = dir.path();
+    const QJsonObject env = rc.cmdFeedbackQuery(req).object();
+    ASSERT_TRUE(env.value("ok").toBool())
+        << env.value("error").toString().toStdString();
+
+    EXPECT_EQ(env.value("format_version").toInt(), 4);
+    EXPECT_TRUE(env.value("format_version_unrecognised").toBool())
+        << "a version this build does not define must be named";
+    EXPECT_TRUE(env.value("format_version_hint").toString()
+                    .contains(QStringLiteral("format version 4")))
+        << "got: " << env.value("format_version_hint").toString().toStdString();
+
+    // The DELTA is still sound — this reports the marker, not the content.
+    // A flag that also implied the read had failed would be worse than none.
+    EXPECT_TRUE(env.value("delta_present").toBool())
+        << "the v2 rule still applied; only the marker is wrong";
+    EXPECT_EQ(env.value("delta_line_count").toInt(), 3);
+}
+
+// ANTS-4702 — and the ordinary case stays quiet. A flag on every call is one
+// nobody reads, which is the failure mode this kind of field keeps hitting.
+TEST(FeedbackV2Delta, Ants4702KnownVersionIsQuiet) {
+    QTemporaryDir dir; ASSERT_TRUE(dir.isValid());
+    const QString p = dir.path() + "/TEST_Ants_MCP_Feedback.md";
+    ASSERT_TRUE(writeStr(p, v2()));
+    RemoteControl rc(nullptr);
+    QJsonObject req;
+    req["path"] = p;
+    req["caller_cwd"] = dir.path();
+    const QJsonObject env = rc.cmdFeedbackQuery(req).object();
+    ASSERT_TRUE(env.value("ok").toBool());
+    EXPECT_EQ(env.value("format_version").toInt(), 2);
+    EXPECT_FALSE(env.contains("format_version_unrecognised"));
+    EXPECT_FALSE(env.contains("format_version_hint"));
+}
+
 // INV-8 — a v1 file: format_version 1, suspected_untagged empty.
 TEST(FeedbackV2Delta, LiveV1Envelope) {
     QTemporaryDir dir; ASSERT_TRUE(dir.isValid());

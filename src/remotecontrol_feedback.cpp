@@ -361,6 +361,24 @@ QJsonDocument RemoteControl::cmdFeedbackQuery(const QJsonObject &req) {
     // v2 `### ` finding-shaped blocks a hand editor left with no
     // `**Proposed ID:**` line (empty on v1 / a clean v2 file). Both additive.
     out["format_version"]        = pr.formatVersion;
+    // ANTS-4702 — a version this build does not define is a fact the caller
+    // can act on, not something to widen past in silence. The delta rule is
+    // "v2 or higher", so such a file parses and every verb works; the marker
+    // is still wrong, and the failure would land on whichever verb first
+    // gates on an exact version, far from the file that caused it. Rides the
+    // true arm only, like every other diagnostic here. Same shape as
+    // spec_lint's skipped[] and doc_integrity's *_suppressed counters: a
+    // widening the caller cannot see reads as a clean pass.
+    if (pr.formatVersion > FeedbackFile::kMaxKnownFormatVersion) {
+        out["format_version_unrecognised"] = true;
+        out["format_version_hint"] = QStringLiteral(
+            "this file declares format version %1; this build defines up to "
+            "%2 (see docs/standards/mcp-feedback-files.md). It was read under "
+            "the v2 rule, which is what \"v2 or higher\" means — the delta is "
+            "sound, the marker is not.")
+                .arg(pr.formatVersion)
+                .arg(FeedbackFile::kMaxKnownFormatVersion);
+    }
     QJsonArray suspected;
     for (const FeedbackFile::SuspectedFinding &sf : pr.suspectedUntagged) {
         QJsonObject o;

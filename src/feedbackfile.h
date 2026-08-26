@@ -21,6 +21,14 @@
 
 namespace FeedbackFile {
 
+// ANTS-4702 — the highest format version this build defines. The delta rule
+// is "v2 or higher", so a file marked with anything above this is treated as
+// v2 and everything works — which is exactly why a wrong marker stays
+// invisible until some verb gates on an exact version, and then fails far
+// from the file that caused it. Callers are told instead of widened silently.
+constexpr int kMaxKnownFormatVersion = 2;
+
+
 // ---- ANTS-1961: read side (the un-triaged delta parser) -------------
 
 // A maintainer tracking-table row. Authored by the write side (ANTS-1962,
