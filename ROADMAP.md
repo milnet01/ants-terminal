@@ -46673,6 +46673,51 @@ envelope dropped `source`/`path`/`etag`/`total`/`filter`.
   Source: in-session-2026-08-26, found while building the release shipped-coverage gate.
   Lanes: mcp, roadmapstore.
 
+- 📋 [ANTS-4716] **Nothing in the release path runs the OBS submit, so ANTS-4587 recurred at the very next release.**
+  MEASURED during the 0.7.106 release, 2026-08-26. All four repositories
+  served 0.7.105 against a public 0.7.106, and `osc results` reported
+  succeeded on every target -- the identical signature ANTS-4587 recorded
+  six days earlier.
+
+  WHY IT CAME BACK. ANTS-4587 fixed the INSTANCE (it submitted 0.7.105 by
+  hand) and its own note says the fix that shipped was the SIGNAL half:
+  ANTS-4588's daily audit. Nothing automated the submit. So the release
+  path still ends without touching OBS, and the next release missed it --
+  the first one after the fix.
+
+  WHAT promote ACTUALLY DOES. cmd_promote calls pin_obs_service_revision,
+  commits packaging/obs/_service and pushes main. That updates the recipe
+  IN GIT only. obs_scm re-clones when the services are triggered, so OBS
+  keeps building the source archive it already holds, and the git-side pin
+  being correct is exactly what makes the gap invisible: the repo looks
+  right.
+
+  THE AUDIT IS NOT A SUBSTITUTE, and ANTS-4588 says so itself -- "Read-only,
+  fixes nothing. Going red is the product." It runs daily, so it catches
+  this a day later at best, having already shipped a release users cannot
+  get. Detection without automation converts a silent failure into a
+  reported one; it does not stop the failure.
+
+  FIX: have cmd_promote run packaging/obs/obs-submit.sh after the tag is
+  pushed, gated on `osc` being present and authenticated, and SKIP LOUDLY
+  when it is not -- naming the manual command -- rather than passing.
+  The script is already the documented repeatable step, guards its own
+  preconditions (tag exists locally, spec and rpmlintrc present) and
+  uploads nothing large.
+
+  ORDER MATTERS AND THE SCRIPT ALREADY KNOWS IT: obs-submit refuses when
+  _service pins a tag that does not exist, so it must run AFTER the tag
+  push, not with the stamp commit.
+
+  NOT ADDRESSED HERE: whether an RC should reach OBS at all. Today only the
+  public tag is pinned, which looks deliberate -- RCs go out as AppImages on
+  a separate zsync channel -- but it is nowhere written down, so the next
+  person to touch this cannot tell a decision from an omission.
+  **Layman:** Publishing a release does not update the package repositories; someone has to remember a separate step.
+  Kind: fix.
+  Source: user-request-2026-08-26 (asked whether the OBS builds had been kicked off during the 0.7.106 release).
+  Lanes: packaging, release.
+
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-08-11 triage
 
 35 un-triaged findings across 9 of the 18 shared-root feedback files (AI
