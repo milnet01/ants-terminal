@@ -24,6 +24,13 @@ for security-relevant changes.
 
 ### Fixed
 
+- **Releasing now updates the package repositories instead of only the recipe in git** (ANTS-4716)
+  Promoting a release pinned the new tag in the OBS recipe and pushed it, but
+  nothing told OBS to re-fetch — so the repositories kept rebuilding the
+  sources they already had, while the git side looked correct. That is how
+  package users ended up two releases behind twice. The promote step now runs
+  the submit itself, and says so loudly if it cannot.
+
 - **Roadmap card columns now line up across sections whatever the font** (ANTS-4718)
   The shared column grid was not actually shared: a section whose rows carry a
   kind grew that column past its reserved width when the text did not fit,

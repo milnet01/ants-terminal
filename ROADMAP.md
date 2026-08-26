@@ -46673,7 +46673,7 @@ envelope dropped `source`/`path`/`etag`/`total`/`filter`.
   Source: in-session-2026-08-26, found while building the release shipped-coverage gate.
   Lanes: mcp, roadmapstore.
 
-- 📋 [ANTS-4716] **Nothing in the release path runs the OBS submit, so ANTS-4587 recurred at the very next release.**
+- ✅ [ANTS-4716] **Nothing in the release path runs the OBS submit, so ANTS-4587 recurred at the very next release.**
   MEASURED during the 0.7.106 release, 2026-08-26. All four repositories
   served 0.7.105 against a public 0.7.106, and `osc results` reported
   succeeded on every target -- the identical signature ANTS-4587 recorded
@@ -46713,6 +46713,7 @@ envelope dropped `source`/`path`/`etag`/`total`/`filter`.
   public tag is pinned, which looks deliberate -- RCs go out as AppImages on
   a separate zsync channel -- but it is nowhere written down, so the next
   person to touch this cannot tell a decision from an omission.
+  Resolved (2026-08-26): cmd_promote now calls packaging/obs/obs-submit.sh after the tag push. Closed rather than filed a third time -- ANTS-4587 fixed the instance by hand and shipped ANTS-4588's daily audit, which detects and cannot act, and the very next release missed the submit again. Detection standing in for automation was the whole defect. Placed after the tag push on purpose: obs-submit refuses when _service pins a tag that does not exist, and OBS must be able to clone it from the remote. A failure does NOT fail the promote -- by that point the tag is pushed and the release is published, so aborting would leave a half-state nobody can read; it prints a loud block naming the one command to run instead. A missing osc or a non-executable script SKIP loudly rather than passing silently, which is the failure mode this whole chain started with. Verified by rehearsal rather than asserted: `cut-rc.sh promote` without --push now prints "[rehearsal] would run: packaging/obs/obs-submit.sh (ANTS-4716)" in sequence after the gh release create, so the wiring is observable before the next real promote exercises it.
   **Layman:** Publishing a release does not update the package repositories; someone has to remember a separate step.
   Kind: fix.
   Source: user-request-2026-08-26 (asked whether the OBS builds had been kicked off during the 0.7.106 release).
