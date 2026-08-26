@@ -46259,7 +46259,7 @@ envelope dropped `source`/`path`/`etag`/`total`/`filter`.
   Source: in-session-2026-08-26 (found while sweeping the corpus).
   Lanes: mcp, feedback.
 
-- 📋 [ANTS-4703] **ANTS-1881's combinator table omits `filter`, so INV-5's own claim is false of the shipped verb.**
+- ✅ [ANTS-4703] **ANTS-1881's combinator table omits `filter`, so INV-5's own claim is false of the shipped verb.**
   ANTS-1881 INV-5 states that EVERY argument cmdRoadmapQuery validates has
   explicit behaviour defined in the section 2.3 combinator table, and that no
   silent-default behaviour is introduced. ANTS-3698 then shipped `filter` as
@@ -46285,6 +46285,7 @@ envelope dropped `source`/`path`/`etag`/`total`/`filter`.
   That reframes part 2. It is not "should the test cross-check" but a choice on a gated spec: WIDEN the table to every argument the verb reads, or NARROW INV-5 to the subset it can honestly claim -- arguments that change this mode's behaviour. Only after that is settled can a test enforce it, because today there is nothing true to enforce.
 
   Deliberately not decided here. Redefining an invariant is a direction change under rule 14 and owes three cold lanes, and writing thirteen rows whose behaviour I would be inferring is how a false claim ships -- the failure this session has spent its day on. The measurement is the part that was missing; the decision wants its own session.
+  Resolved (2026-08-26): part 2 decided and delivered. NARROW, not widen. INV-5 now claims every argument the verb reads is either given explicit behaviour in the 2.3 table or named there as having no effect. True, carries no enumeration to go stale, and is the first form of the invariant a test could enforce. Widening to a row per argument was rejected on the item's own grounds: it would have meant writing rows whose behaviour was inferred. The table gained rows for `ids`, the `query` family, `max_body_bytes` and `section_etag_match`, plus one naming the other-mode arguments that are read and silently ignored -- the silent default the old INV-5 denied existed. Every row was measured against source before it was written. Gate: review-contract, two loops, three cold lanes each, loops 9 and 10 in the spec's log. Sixteen verified findings, sixteen fixed. All three lanes of loop 10 independently re-walked the read-set against the table and confirmed the new claim holds. The gate also found what part 2 was really blocked on: `mode:"headline_only" + ids:[]` emits FIVE keys, because the projection runs before ANTS-4400's `input_index` loop -- filed as ANTS-4712 with the two missing test anchors. So the enforcing test this item wanted is now buildable AND has a live defect to catch. Collateral filed as ANTS-4711.
   **Layman:** A spec says every option is documented in its table; one option shipped without being added.
   Kind: doc-fix.
   Source: in-session-2026-08-26 (found while adding the max_results row ANTS-4701 owed).
@@ -46528,6 +46529,46 @@ envelope dropped `source`/`path`/`etag`/`total`/`filter`.
   Kind: doc-fix.
   Source: in-session-2026-08-26, found by ANTS-1881's loop-9 blast-radius sweep.
   Lanes: docs, specs.
+
+- 📋 [ANTS-4712] **roadmap_query mode:headline_only with ids[] emits five keys, breaking INV-2's four-key contract.**
+  A CODE defect, found by a docs gate and filed rather than fixed there.
+
+  THE ORDERING. In the `ids` branch of `cmdRoadmapQuery`,
+  `rcProjectHeadlineOnly(matches)` runs FIRST -- it builds a fresh object
+  carrying exactly `id`, `status`, `headline_oneline`, `section_slug` --
+  and the ANTS-4400 `input_index` loop runs AFTER it, writing a fifth key
+  back onto each bullet. That loop is not gated on mode.
+
+  So `roadmap_query {mode:"headline_only", ids:[...]}` returns five keys
+  per bullet. The singular `id` branch is unaffected: it projects and
+  returns with nothing added afterwards.
+
+  WHY IT MATTERS. ANTS-1881 INV-2 makes the four-key set a CONTRACT --
+  "extra keys fail, missing keys fail" -- and ANTS-4699 was closed on the
+  strength of it, deliberately shipping the opposite of what a reporter
+  asked for because that set is tested. It is not tested on this path.
+
+  WHY NOTHING CAUGHT IT. INV-5's only behavioural anchor,
+  Inv5IdSelectorProjected, exercises the SINGULAR `id`. Inv2KeySetExactlyFour
+  is a source grep. No named test calls this verb with `ids[]` under this
+  mode, so the branch that breaks the contract is the one branch nobody
+  exercises.
+
+  WHICH WAY TO FIX IT IS A REAL CHOICE, not a typo repair. Either move the
+  projection after the `input_index` annotation and let the key be stripped
+  -- which silently removes the field ANTS-4400 added to stop callers
+  mis-pairing results against their input -- or declare `input_index` an
+  explicit exemption and widen INV-2 to "four keys, plus `input_index` on
+  the `ids` branch". The second keeps both contracts and is the honest one,
+  but it changes a tested invariant, so it wants deciding rather than
+  assuming.
+
+  WHICHEVER WAY: the test that was missing is a headline_only + ids[] call
+  asserting the key set. Write that first.
+  **Layman:** Asking for a lean list of several items by ID returns an extra field the lean shape promises it will not.
+  Kind: fix.
+  Source: in-session-2026-08-26, found by ANTS-1881's review-contract loop 10.
+  Lanes: mcp.
 
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-08-11 triage
 
