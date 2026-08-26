@@ -46306,7 +46306,7 @@ envelope dropped `source`/`path`/`etag`/`total`/`filter`.
   Kind: doc-fix.
   Source: in-session-2026-08-26.
 
-- 📋 [ANTS-4705] **An offload envelope carrying rows_preview omits row_count, so the caller cannot see how many rows exist.**
+- ✅ [ANTS-4705] **An offload envelope carrying rows_preview omits row_count, so the caller cannot see how many rows exist.**
   Found by a cold lane during the ANTS-4692 gate on ANTS-2094, and kept
   separate because it is a code defect where that one is a contract change.
 
@@ -46327,11 +46327,12 @@ envelope dropped `source`/`path`/`etag`/`total`/`filter`.
 
   FIX: set `row_count` wherever a dominant array was detected, i.e. once,
   beside the hint replacement that is already gated on `domCount > 0`.
+  Resolved (2026-08-26): row_count is set once where the dominant array is detected, beside the hint already gated on the same condition, and both conditional copies are deleted rather than left redundant. The test pins the arm before asserting -- without ASSERT_TRUE(rows_preview) and ASSERT_FALSE(head_rows) it would pass from the working arm and assert nothing about the broken one. Verified red on "the shape arm reported truncation without the total it is truncated against". Commit 0a1f5d36, suite 3987/3987.
   **Layman:** When a big result is summarised row by row, the summary forgets to say how many rows there are in total.
   Kind: fix.
   Source: in-session-2026-08-26 review-contract lane.
 
-- 📋 [ANTS-4706] **doc_citations folds blockquote markers into a wrapped quotation, so a quotation inside a `>` block reads as stale.**
+- ✅ [ANTS-4706] **doc_citations folds blockquote markers into a wrapped quotation, so a quotation inside a `>` block reads as stale.**
   Found while trying to reproduce ANTS-4697 against a throwaway project.
 
   REPRO. A quotation spanning several lines of a Markdown blockquote, whose
@@ -46361,6 +46362,7 @@ envelope dropped `source`/`path`/`etag`/`total`/`filter`.
   line when building the window, on both sides of the comparison, exactly as
   match_wrapped does. Report the text without the markers too -- a caller
   copying the reported text into a search must get a string that matches.
+  Resolved (2026-08-26): the fold lives in dcFoldWhitespace, which BOTH sides of the comparison already call, so it is two-sided by construction rather than by remembering to apply it twice -- and the harvested text passes through the same function, so the reported string is copy-pasteable into a search. Stripped per line and anchored, before simplifying: a leading `>` in markdown IS a blockquote while a mid-line `>` is prose, and a second test pins that a quotation carrying "bytes > the configured ceiling" keeps its operator, because a fold swallowing inline `>` would trade one false not_found for another. Verified red on the exact original symptom, markers embedded in the reported text and all. Commit e1ef8f29, suite 3989/3989.
   **Layman:** A quote written as an indented block is reported out of date even when it matches the source exactly.
   Kind: fix.
   Source: in-session-2026-08-26.
