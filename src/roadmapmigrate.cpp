@@ -5,6 +5,7 @@
 #include "roadmapmigrate.h"
 
 #include "markdownscan.h"
+#include "projectsettings.h"   // ANTS-4693 — the declared `roadmap` key
 #include "roadmapindex.h"
 #include "roadmapparse.h"
 
@@ -818,12 +819,41 @@ std::optional<Discovery> findRoadmaps(const QString &projectRoot, QString *error
     const QDir dir(projectRoot);
     if (!dir.exists()) return fail("not_found");
     QStringList hits;
-    const QFileInfoList entries = dir.entryInfoList(QDir::Files | QDir::Hidden,
-                                                    QDir::Name);
-    for (const QFileInfo &fi : entries)
-        if (fi.fileName().compare(QStringLiteral("roadmap.md"),
-                                  Qt::CaseInsensitive) == 0)
-            hits.append(fi.absoluteFilePath());
+
+    // ANTS-4693 — the DECLARED path first, exactly as findRoadmapUnder()'s
+    // probeDir does for roadmap_query / roadmap_log. Those two honour
+    // `.ants/project.json`'s `roadmap` key and this verb did not, so a project
+    // keeping its roadmap anywhere but the root could be read and written but
+    // not ADOPTED -- and this is the verb that decides whether a project can
+    // use the store at all. The reporter isolated it exactly: with a symlink
+    // ROADMAP.md -> docs/11-roadmap.md and nothing else changed, the same
+    // migration succeeded with 34 sections.
+    //
+    // Reading .ants/project.json here is consistent with this function's half
+    // of the split: findRoadmaps() is the IMPURE half by construction (it is
+    // all filesystem), and it is planFrom() that must stay pure -- which is
+    // why THAT one takes its id format as an argument.
+    //
+    // No containment check is needed here and adding one would state a rule
+    // twice: ProjectSettings::validEntry() already drops any entry failing
+    // PathValidation::isInsideProject(), so a declared `../elsewhere.md`
+    // never arrives as a value. What IS handled is a declaration naming a
+    // file that is not there -- it falls through to the scan below rather
+    // than refusing, because an unusable declaration is not evidence that the
+    // ordinary root file is absent.
+    if (const auto declared = ProjectSettings::load(projectRoot).roadmap) {
+        const QFileInfo fi(dir.filePath(*declared));
+        if (fi.isFile()) hits.append(fi.absoluteFilePath());
+    }
+
+    if (hits.isEmpty()) {
+        const QFileInfoList entries =
+            dir.entryInfoList(QDir::Files | QDir::Hidden, QDir::Name);
+        for (const QFileInfo &fi : entries)
+            if (fi.fileName().compare(QStringLiteral("roadmap.md"),
+                                      Qt::CaseInsensitive) == 0)
+                hits.append(fi.absoluteFilePath());
+    }
     if (hits.isEmpty()) return fail("not_found");
     // Reachable on a case-sensitive filesystem, and either choice silently
     // discards a whole project's roadmap.

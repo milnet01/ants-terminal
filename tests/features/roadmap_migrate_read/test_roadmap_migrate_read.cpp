@@ -392,6 +392,87 @@ TEST(roadmap_migrate_read, Inv1Discovery) {
     EXPECT_EQ(err, QStringLiteral("not_found"));
 }
 
+// ANTS-4693 — the declared `roadmap` key. roadmap_query and roadmap_log both
+// honour `.ants/project.json`, and this verb did not — so a project keeping
+// its roadmap anywhere but the root could be READ and WRITTEN but not ADOPTED,
+// by the one verb that decides whether it can use the store at all. The
+// reporter isolated it with a symlink: ROADMAP.md -> docs/11-roadmap.md, and
+// with nothing else changed the same migration succeeded.
+TEST(roadmap_migrate_read, Ants4693HonoursTheDeclaredRoadmapKey) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString root = tmp.path();
+    ASSERT_TRUE(QDir(root).mkpath(QStringLiteral("docs")));
+    ASSERT_TRUE(QDir(root).mkpath(QStringLiteral(".ants")));
+
+    const auto put = [&](const QString &rel, const QByteArray &body) {
+        QFile f(root + QLatin1Char('/') + rel);
+        if (!f.open(QIODevice::WriteOnly | QIODevice::Truncate)) return false;
+        const bool ok = f.write(body) == body.size();
+        f.close();
+        return ok;
+    };
+
+    ASSERT_TRUE(put(QStringLiteral("docs/11-roadmap.md"),
+        "# Roadmap\n\n## Work\n\n"
+        "- \xF0\x9F\x93\x8B [PERCH-0001] **A declared-path bullet.**\n"
+        "  Kind: fix.\n  Source: seed.\n"));
+    ASSERT_TRUE(put(QStringLiteral(".ants/project.json"),
+                    "{\"roadmap\": \"docs/11-roadmap.md\"}"));
+    // No root-level roadmap at all: without the declared key there is nothing
+    // to find, which is what makes this assert the key rather than the scan.
+    ASSERT_FALSE(QFileInfo::exists(root + QStringLiteral("/ROADMAP.md")));
+
+    QString err;
+    const auto disc = RoadmapMigrate::findRoadmaps(root, &err);
+    ASSERT_TRUE(disc.has_value())
+        << "the declared roadmap must be discoverable: " << err.toStdString();
+    ASSERT_FALSE(disc->sources.isEmpty());
+    EXPECT_TRUE(disc->sources.constFirst().path.endsWith(
+        QStringLiteral("docs/11-roadmap.md")))
+        << "got: " << disc->sources.constFirst().path.toStdString();
+    EXPECT_TRUE(disc->sources.constFirst().markdown.contains(
+        QStringLiteral("PERCH-0001")))
+        << "the file's own text is returned, not just its path";
+}
+
+// ANTS-4693 — a declaration naming a file that is not there falls through to
+// the ordinary root scan. An unusable declaration is not evidence that the
+// root file is absent, and refusing on it would make a stale settings key
+// break a project that is otherwise fine.
+TEST(roadmap_migrate_read, Ants4693StaleDeclarationFallsBackToTheScan) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString root = tmp.path();
+    ASSERT_TRUE(QDir(root).mkpath(QStringLiteral(".ants")));
+
+    const auto put = [&](const QString &rel, const QByteArray &body) {
+        QFile f(root + QLatin1Char('/') + rel);
+        if (!f.open(QIODevice::WriteOnly | QIODevice::Truncate)) return false;
+        const bool ok = f.write(body) == body.size();
+        f.close();
+        return ok;
+    };
+
+    ASSERT_TRUE(put(QStringLiteral("ROADMAP.md"),
+        "# Roadmap\n\n## Work\n\n"
+        "- \xF0\x9F\x93\x8B [ROOT-0001] **The ordinary root bullet.**\n"
+        "  Kind: fix.\n  Source: seed.\n"));
+    ASSERT_TRUE(put(QStringLiteral(".ants/project.json"),
+                    "{\"roadmap\": \"docs/gone.md\"}"));
+
+    QString err;
+    const auto disc = RoadmapMigrate::findRoadmaps(root, &err);
+    ASSERT_TRUE(disc.has_value())
+        << "a stale declaration must not take the project down: "
+        << err.toStdString();
+    ASSERT_FALSE(disc->sources.isEmpty());
+    EXPECT_TRUE(disc->sources.constFirst().path.endsWith(
+        QStringLiteral("ROADMAP.md")));
+    EXPECT_TRUE(disc->sources.constFirst().markdown.contains(
+        QStringLiteral("ROOT-0001")));
+}
+
 // ---------------------------------------------------------------- INV-2 ----
 // The item count matches an independently written parser's, per fixture.
 TEST(roadmap_migrate_read, Inv2ItemCountParity) {
