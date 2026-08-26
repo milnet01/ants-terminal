@@ -1,0 +1,350 @@
+// ANTS-4667 — op:"amend_field": write one trailer COLUMN after creation.
+// Contract: tests/features/roadmap_log_amend_field/spec.md
+//
+// Behavioural, through roadmap_log itself. Every case migrates a small
+// markdown fixture into a store at RoadmapStore::defaultPath() (redirected
+// into the case's sandbox) and re-opens the store to assert what landed.
+//
+// The fixture carries BOTH shapes deliberately, because the shadowing rule is
+// the whole subtlety: DEMO-0007 ends on prose so its declarations stay in the
+// stored body (shadowed), while DEMO-0003 ends on a TRAILING run of trailer
+// lines, which ANTS-4506 strips out of the body — so its values live only in
+// the columns, which is the state amend_field is for.
+
+#include "../../_support/expect.h"
+#include "../../_support/xdg_guard.h"
+
+#include "remotecontrol.h"
+#include "roadmapmigrate.h"
+#include "roadmapmigrateload.h"
+#include "roadmapstore.h"
+
+#include <gtest/gtest.h>
+
+#include <QByteArray>
+#include <QDir>
+#include <QFile>
+#include <QFileInfo>
+#include <QJsonArray>
+#include <QJsonDocument>
+#include <QJsonObject>
+#include <QString>
+#include <QStringLiteral>
+#include <QTemporaryDir>
+
+#include <memory>
+#include <optional>
+#include <string>
+
+ANTS_TEST_SCOPE();
+
+namespace {
+
+bool writeFile(const QString &path, const QByteArray &body) {
+    QDir().mkpath(QFileInfo(path).path());
+    QFile f(path);
+    if (!f.open(QIODevice::WriteOnly | QIODevice::Truncate)) return false;
+    const bool ok = (f.write(body) == body.size());
+    f.close();
+    return ok;
+}
+
+QByteArray readAll(const QString &path) {
+    QFile f(path);
+    if (!f.open(QIODevice::ReadOnly)) return QByteArray();
+    return f.readAll();
+}
+
+bool has(const std::string &hay, const char *needle) {
+    return hay.find(needle) != std::string::npos;
+}
+
+// NEVER default-construct RoadmapStore: defaultPath() resolves the developer's
+// REAL machine-global store under XDG_DATA_HOME.
+std::unique_ptr<RoadmapStore> openStore(RoadmapStore::Access access) {
+    auto store = std::make_unique<RoadmapStore>(
+        RoadmapStore::defaultPath(), RoadmapStore::kDefaultHistoryCapBytes, access);
+    QString err;
+    if (!store->open(&err)) {
+        ADD_FAILURE() << "store open: " << err.toStdString();
+        return nullptr;
+    }
+    return store;
+}
+
+const char *kPad =
+    "Intro paragraph that exists purely to pad this fixture past the 1 KiB\n"
+    "minimum-parseable-size gate the roadmap_log write paths enforce before\n"
+    "they will trust an ants-v1 walk. Lorem ipsum dolor sit amet, consectetur\n"
+    "adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore\n"
+    "magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco\n"
+    "laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in\n"
+    "reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla\n"
+    "pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa\n"
+    "qui officia deserunt mollit anim id est laborum. Sed ut perspiciatis unde\n"
+    "omnis iste natus error sit voluptatem accusantium doloremque laudantium,\n"
+    "totam rem aperiam, eaque ipsa quae ab illo inventore veritatis et quasi\n"
+    "architecto beatae vitae dicta sunt explicabo. Nemo enim ipsam voluptatem\n"
+    "quia voluptas sit aspernatur aut odit aut fugit, sed quia consequuntur\n"
+    "magni dolores eos qui ratione voluptatem sequi nesciunt neque porro.\n"
+    "Quisquam est, qui dolorem ipsum quia dolor sit amet, consectetur, adipisci\n"
+    "velit, sed quia non numquam eius modi tempora incidunt ut labore.\n";
+
+QByteArray fixture() {
+    QByteArray b =
+        "<!-- ants-roadmap-format: 1 -->\n"
+        "\n"
+        "# Demo \xE2\x80\x94 Roadmap\n"
+        "\n";
+    b += kPad;
+    b += "\n"
+        "## Work\n"
+        "\n"
+        // Ends on PROSE, so the declarations stay in the stored body.
+        "- \xF0\x9F\x93\x8B [DEMO-0007] **An open item.**\n"
+        "  Layman: A body-declared thing.\n"
+        "  Kind: implement.\n"
+        "  Source: seed.\n"
+        "  Closing prose line.\n"
+        "\n"
+        // Ends on a TRAILING trailer run, which ANTS-4506 strips from the
+        // body — so these values live only in the columns.
+        "- \xE2\x9C\x85 [DEMO-0003] **A shipped item.**\n"
+        "  Some prose about it.\n"
+        "  Layman: A column-only thing.\n"
+        "  Kind: fix.\n"
+        "  Source: seed.\n"
+        "  Lanes: vt, core.\n"
+        "\n";
+    return b;
+}
+
+QString seedMigrated(ants_test::XdgGuard &guard, const QTemporaryDir &tmp,
+                     qint64 *projectId) {
+    guard.setEnv("XDG_DATA_HOME",
+                 QDir(tmp.path()).filePath(QStringLiteral("xdg")).toUtf8());
+    const QString rawRoot = QDir(tmp.path()).filePath(QStringLiteral("proj"));
+    if (!writeFile(rawRoot + QStringLiteral("/ROADMAP.md"), fixture()))
+        return QString();
+    const QString root = QFileInfo(rawRoot).canonicalFilePath();
+
+    auto store = openStore(RoadmapStore::Access::Bulk);
+    if (!store) return QString();
+    QString err;
+    const auto disc = RoadmapMigrate::findRoadmaps(root, &err);
+    if (!disc) { ADD_FAILURE() << "findRoadmaps: " << err.toStdString(); return QString(); }
+    const auto plan =
+        RoadmapMigrate::planFrom(*disc, QStringLiteral("Demo"), QStringLiteral("demo"));
+    RoadmapMigrateLoad::Options opts;
+    opts.changedAt   = QStringLiteral("2026-08-05T10:00:00Z");
+    opts.projectRoot = root;
+    const auto out = RoadmapMigrateLoad::load(*store, plan, opts);
+    if (!out.ok) { ADD_FAILURE() << "migration load: " << out.error.toStdString(); return QString(); }
+    *projectId = out.projectId;
+    return root;
+}
+
+QJsonObject fieldReq(const QString &root, const QString &id,
+                     const QString &field, const QJsonValue &value) {
+    QJsonObject req;
+    req[QStringLiteral("caller_cwd")] = root;
+    req[QStringLiteral("op")]         = QStringLiteral("amend_field");
+    req[QStringLiteral("id")]         = id;
+    req[QStringLiteral("field")]      = field;
+    req[QStringLiteral("value")]      = value;
+    return req;
+}
+
+std::optional<RoadmapStore::ItemWrite> itemOf(const QString &id, qint64 projectId) {
+    auto store = openStore(RoadmapStore::Access::Interactive);
+    if (!store) return std::nullopt;
+    QString err;
+    const auto pk = store->findItem(projectId, id, &err);
+    if (!pk) { ADD_FAILURE() << "findItem: " << err.toStdString(); return std::nullopt; }
+    return store->readItem(*pk, &err);
+}
+
+QString roadmapPath(const QString &root) {
+    return QDir(root).filePath(QStringLiteral("ROADMAP.md"));
+}
+
+struct Fx {
+    ants_test::XdgGuard guard;
+    QTemporaryDir tmp;
+    qint64 projectId = 0;
+    QString root;
+    bool ok() {
+        if (!tmp.isValid()) return false;
+        root = seedMigrated(guard, tmp, &projectId);
+        return !root.isEmpty();
+    }
+};
+
+}  // namespace
+
+// ---------------------------------------------------------------- INV-1 -----
+
+TEST(RoadmapLogAmendField, Inv1SetsColumnAndRenders) {
+    Fx fx; ASSERT_TRUE(fx.ok());
+    RemoteControl rc(nullptr);
+    const QJsonObject resp = rc.cmdRoadmapLogAmendFieldForTest(
+        fieldReq(fx.root, QStringLiteral("DEMO-0003"), QStringLiteral("layman"),
+                 QStringLiteral("A corrected sentence for the card face."))).object();
+
+    EXPECT_TRUE(resp.value(QStringLiteral("ok")).toBool())
+        << QJsonDocument(resp).toJson().toStdString();
+    // No trailing period: the trailer parser strips a value's final full stop,
+    // so the COLUMN holds "A column-only thing" though the line said
+    // "A column-only thing." Asserting the stored form keeps this test about
+    // amend_field rather than about the parser.
+    EXPECT_EQ(resp.value(QStringLiteral("previous")).toString(),
+              QStringLiteral("A column-only thing"))
+        << "the envelope echoes what it replaced";
+
+    const auto item = itemOf(QStringLiteral("DEMO-0003"), fx.projectId);
+    ASSERT_TRUE(item.has_value());
+    EXPECT_EQ(item->layman, QStringLiteral("A corrected sentence for the card face."));
+    EXPECT_TRUE(has(readAll(roadmapPath(fx.root)).toStdString(),
+                    "A corrected sentence for the card face."))
+        << "and the render published it";
+}
+
+// ---------------------------------------------------------------- INV-2 -----
+
+TEST(RoadmapLogAmendField, Inv2ShadowedByBodyRefuses) {
+    Fx fx; ASSERT_TRUE(fx.ok());
+    RemoteControl rc(nullptr);
+    // DEMO-0007's body declares `Layman:` at a line start.
+    const QJsonObject resp = rc.cmdRoadmapLogAmendFieldForTest(
+        fieldReq(fx.root, QStringLiteral("DEMO-0007"), QStringLiteral("layman"),
+                 QStringLiteral("Would be invisible."))).object();
+
+    EXPECT_FALSE(resp.value(QStringLiteral("ok")).toBool());
+    EXPECT_EQ(resp.value(QStringLiteral("code")).toString(),
+              QStringLiteral("field_shadowed_by_body"))
+        << QJsonDocument(resp).toJson().toStdString();
+    EXPECT_TRUE(has(resp.value(QStringLiteral("error")).toString().toStdString(),
+                    "amend_body"))
+        << "the refusal names the route that works";
+
+    const auto item = itemOf(QStringLiteral("DEMO-0007"), fx.projectId);
+    ASSERT_TRUE(item.has_value());
+    EXPECT_EQ(item->layman, QStringLiteral("A body-declared thing"))
+        << "nothing written under a shadowing declaration";
+}
+
+// ---------------------------------------------------------------- INV-3 -----
+
+TEST(RoadmapLogAmendField, Inv3UnknownFieldRefused) {
+    Fx fx; ASSERT_TRUE(fx.ok());
+    RemoteControl rc(nullptr);
+    const QJsonObject resp = rc.cmdRoadmapLogAmendFieldForTest(
+        fieldReq(fx.root, QStringLiteral("DEMO-0003"), QStringLiteral("headline"),
+                 QStringLiteral("nope"))).object();
+    EXPECT_FALSE(resp.value(QStringLiteral("ok")).toBool());
+    EXPECT_EQ(resp.value(QStringLiteral("code")).toString(), QStringLiteral("bad_args"));
+    EXPECT_TRUE(has(resp.value(QStringLiteral("error")).toString().toStdString(),
+                    "amend_headline"))
+        << "headline has its own op and the refusal says so";
+}
+
+// ---------------------------------------------------------------- INV-4 -----
+
+TEST(RoadmapLogAmendField, Inv4NotNullEmptyRefused) {
+    Fx fx; ASSERT_TRUE(fx.ok());
+    RemoteControl rc(nullptr);
+    const QJsonObject bad = rc.cmdRoadmapLogAmendFieldForTest(
+        fieldReq(fx.root, QStringLiteral("DEMO-0003"), QStringLiteral("source"),
+                 QString())).object();
+    EXPECT_FALSE(bad.value(QStringLiteral("ok")).toBool());
+    EXPECT_EQ(bad.value(QStringLiteral("code")).toString(), QStringLiteral("bad_args"))
+        << QJsonDocument(bad).toJson().toStdString();
+
+    // layman IS nullable, so the same shape is accepted there.
+    const QJsonObject ok = rc.cmdRoadmapLogAmendFieldForTest(
+        fieldReq(fx.root, QStringLiteral("DEMO-0003"), QStringLiteral("layman"),
+                 QString())).object();
+    EXPECT_NE(ok.value(QStringLiteral("code")).toString(), QStringLiteral("bad_args"))
+        << "layman is the one nullable trailer column";
+}
+
+// ---------------------------------------------------------------- INV-5 -----
+
+TEST(RoadmapLogAmendField, Inv5DryRunWritesNothing) {
+    Fx fx; ASSERT_TRUE(fx.ok());
+    RemoteControl rc(nullptr);
+    QJsonObject req = fieldReq(fx.root, QStringLiteral("DEMO-0003"),
+                               QStringLiteral("layman"),
+                               QStringLiteral("Previewed only."));
+    req[QStringLiteral("dry_run")] = true;
+    const QJsonObject resp = rc.cmdRoadmapLogAmendFieldForTest(req).object();
+
+    EXPECT_TRUE(resp.value(QStringLiteral("ok")).toBool())
+        << QJsonDocument(resp).toJson().toStdString();
+    EXPECT_TRUE(resp.value(QStringLiteral("dry_run")).toBool());
+
+    const auto item = itemOf(QStringLiteral("DEMO-0003"), fx.projectId);
+    ASSERT_TRUE(item.has_value());
+    EXPECT_EQ(item->layman, QStringLiteral("A column-only thing"))
+        << "a preview must not write the column";
+    EXPECT_FALSE(has(readAll(roadmapPath(fx.root)).toStdString(), "Previewed only."));
+}
+
+// ---------------------------------------------------------------- INV-6 -----
+
+TEST(RoadmapLogAmendField, Inv6LanesAcceptsArray) {
+    Fx fx; ASSERT_TRUE(fx.ok());
+    RemoteControl rc(nullptr);
+    QJsonArray lanes;
+    lanes.append(QStringLiteral("mcp"));
+    lanes.append(QStringLiteral("roadmap-store"));
+    const QJsonObject resp = rc.cmdRoadmapLogAmendFieldForTest(
+        fieldReq(fx.root, QStringLiteral("DEMO-0003"),
+                 QStringLiteral("lanes"), lanes)).object();
+
+    EXPECT_TRUE(resp.value(QStringLiteral("ok")).toBool())
+        << QJsonDocument(resp).toJson().toStdString();
+    const auto item = itemOf(QStringLiteral("DEMO-0003"), fx.projectId);
+    ASSERT_TRUE(item.has_value());
+    ASSERT_EQ(item->lanes.size(), 2);
+    EXPECT_EQ(item->lanes.at(0), QStringLiteral("mcp"));
+    EXPECT_EQ(item->lanes.at(1), QStringLiteral("roadmap-store"));
+}
+
+// ---------------------------------------------------------------- INV-7 -----
+
+// The trap's own redirect: the half that fires for a caller who has NOT read
+// this contract, which is how the defect was met in the first place.
+TEST(RoadmapLogAmendField, Inv7AmendBodyRedirectsToAmendField) {
+    Fx fx; ASSERT_TRUE(fx.ok());
+    RemoteControl rc(nullptr);
+    QJsonObject req;
+    req[QStringLiteral("caller_cwd")] = fx.root;
+    req[QStringLiteral("op")]         = QStringLiteral("amend_body");
+    req[QStringLiteral("id")]         = QStringLiteral("DEMO-0003");
+    req[QStringLiteral("old_text")]   = QStringLiteral("Layman: A column-only thing.");
+    req[QStringLiteral("new_text")]   = QStringLiteral("Layman: Something else.");
+    const QJsonObject resp = rc.cmdRoadmapLogAmendBodyForTest(req).object();
+
+    EXPECT_FALSE(resp.value(QStringLiteral("ok")).toBool());
+    EXPECT_EQ(resp.value(QStringLiteral("code")).toString(),
+              QStringLiteral("body_match_not_found"));
+    EXPECT_TRUE(has(resp.value(QStringLiteral("hint")).toString().toStdString(),
+                    "amend_field"))
+        << "a composed trailer line is not in the body; the hint must say where "
+           "it is: " << QJsonDocument(resp).toJson().toStdString();
+}
+
+// ---------------------------------------------------------------- INV-8 -----
+
+TEST(RoadmapLogAmendField, Inv8UnknownIdRefused) {
+    Fx fx; ASSERT_TRUE(fx.ok());
+    RemoteControl rc(nullptr);
+    const QJsonObject resp = rc.cmdRoadmapLogAmendFieldForTest(
+        fieldReq(fx.root, QStringLiteral("DEMO-9999"), QStringLiteral("layman"),
+                 QStringLiteral("x"))).object();
+    EXPECT_FALSE(resp.value(QStringLiteral("ok")).toBool());
+    EXPECT_EQ(resp.value(QStringLiteral("code")).toString(),
+              QStringLiteral("bullet_not_found"))
+        << QJsonDocument(resp).toJson().toStdString();
+}

@@ -11396,6 +11396,7 @@ void ClaudeIntegration::onMcpConnection() {
                     opEnum.append("annotate_batch");  // ANTS-4470
                     opEnum.append("amend_body");   // ANTS-3406
                     opEnum.append("amend_headline");  // ANTS-4372
+                    opEnum.append("amend_field");  // ANTS-4667
                     opEnum.append("create_section");
                     opEnum.append("bundle_row");
                     opEnum.append("backfill_dates");  // ANTS-4501
@@ -11404,6 +11405,26 @@ void ClaudeIntegration::onMcpConnection() {
                     opProp["enum"] = opEnum;
                     opProp["description"] = QStringLiteral(
                         "Verb mode. Default \"append\" (ANTS-1424). "
+                        "\"amend_field\" (ANTS-4667) writes ONE TRAILER "
+                        "COLUMN after creation — `id` + `field` "
+                        "(layman|kind|source|lanes|evidence) + `value`, "
+                        "dry_run previewable. It is not a mode of "
+                        "amend_body and takes no old_text: the trailer "
+                        "lines are COMPOSED at render time from their own "
+                        "columns (ANTS-4599), so they are not in the "
+                        "stored body and amend_body cannot reach them — "
+                        "while roadmap_query include_body:true RETURNS "
+                        "them inside `body`, which is what made a caller "
+                        "pass one back as old_text and get "
+                        "body_match_not_found about a string it had just "
+                        "read. Store-only (a markdown project keeps the "
+                        "trailer line as body text; use amend_body there) "
+                        "and id-only. Refuses field_shadowed_by_body when "
+                        "the body declares that key at a line start, "
+                        "because the declaration wins at render AND is "
+                        "re-parsed into the column by the next body "
+                        "write, so the column write would be invisible now "
+                        "and reverted later. "
                         "\"render\" (ANTS-4614) PUBLISHES the store to "
                         "ROADMAP.md with NO semantic change — no locator, no "
                         "arguments, nothing written to the store. It exists "
@@ -12160,6 +12181,34 @@ void ClaudeIntegration::onMcpConnection() {
                     props["anchor"]        = anchorProp;
                     props["prefix_hint"]   = prefixHintProp;
                     props["note"]          = noteProp;
+                    // ANTS-4667 — op:"amend_field" operands.
+                    QJsonObject fieldProp;
+                    fieldProp["type"] = QStringLiteral("string");
+                    fieldProp["enum"] = QJsonArray{
+                        QStringLiteral("layman"), QStringLiteral("kind"),
+                        QStringLiteral("source"), QStringLiteral("lanes"),
+                        QStringLiteral("evidence")};
+                    fieldProp["description"] = QStringLiteral(
+                        "op:\"amend_field\" — which trailer COLUMN to "
+                        "write. `headline` is op:\"amend_headline\" and "
+                        "`status` is op:\"flip\"; body prose is "
+                        "op:\"amend_body\". Only `layman` is nullable: "
+                        "kind and source are NOT NULL with no default, so "
+                        "an empty value refuses bad_args rather than "
+                        "reaching the caller as a raw constraint string.");
+                    QJsonObject valueProp;
+                    { QJsonArray ty; ty.append(QStringLiteral("string"));
+                                     ty.append(QStringLiteral("array"));
+                      valueProp["type"] = ty; }
+                    valueProp["description"] = QStringLiteral(
+                        "op:\"amend_field\" — the replacement value. The "
+                        "key must be PRESENT; for `layman` an empty string "
+                        "clears the column. `lanes` / `evidence` take an "
+                        "array of strings, or the comma-separated form the "
+                        "trailer line uses — both are accepted, and the "
+                        "stored bytes are canonicalised either way.");
+                    props["field"]         = fieldProp;      // ANTS-4667
+                    props["value"]         = valueProp;      // ANTS-4667
                     props["old_text"]      = oldTextProp;     // ANTS-3406
                     props["new_text"]      = newTextProp;     // ANTS-3406
                     props["id_strategy"]   = idStrategyProp;  // ANTS-1905

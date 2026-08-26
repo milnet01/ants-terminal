@@ -2737,6 +2737,37 @@ QJsonDocument RemoteControl::cmdRoadmapLogAmendBody(const QJsonObject &req,
                     QStringLiteral("roadmap_log: `old_text` not found in the body of "
                                    "the located bullet");
                 const QString foldedOld = oldText.simplified();
+                // ANTS-4667 — the trap this hint exists for: the trailer lines
+                // are COMPOSED at render time from their own columns, and
+                // roadmap_query include_body:true returns them INSIDE `body`.
+                // So a caller reads one back verbatim, passes it as old_text,
+                // and is told it is not there. Name the op that does reach it
+                // rather than leaving a dead end.
+                static const QStringList kTrailerLabels = {
+                    QStringLiteral("Layman:"), QStringLiteral("Kind:"),
+                    QStringLiteral("Source:"), QStringLiteral("Lanes:"),
+                    QStringLiteral("Evidence:")};
+                QString hitLabel;
+                for (const QString &lbl : kTrailerLabels)
+                    if (oldText.contains(lbl)) { hitLabel = lbl; break; }
+                if (!hitLabel.isEmpty()) {
+                    QJsonObject tenv;
+                    tenv[QStringLiteral("ok")]    = false;
+                    tenv[QStringLiteral("code")]  =
+                        QStringLiteral("body_match_not_found");
+                    tenv[QStringLiteral("error")] = QStringLiteral(
+                        "roadmap_log: `old_text` not found in the body of the "
+                        "located bullet");
+                    tenv[QStringLiteral("hint")] = QStringLiteral(
+                        "`old_text` names the trailer key \"%1\", and a trailer "
+                        "line is COMPOSED by the render from its own column — it "
+                        "is not in the stored body, even though "
+                        "roadmap_query include_body:true shows it inside `body`. "
+                        "Use op:\"amend_field\" with that column instead of "
+                        "declaring the key inside the body, which sets the column "
+                        "one-way and cannot be withdrawn.").arg(hitLabel);
+                    return QJsonDocument(tenv);
+                }
                 if (matchedHeadline.contains(oldText)) {
                     // The residual's own failure mode, and the one a caller
                     // coming from the markdown path will hit first.
@@ -2989,4 +3020,214 @@ QJsonDocument RemoteControl::cmdRoadmapLogAmendBody(const QJsonObject &req,
                 .arg(roadmapPath));
     }
     return buildEnvelope(false, static_cast<qint64>(utf8.size()));
+}
+
+// ANTS-4667 — op:"amend_field": write one TRAILER COLUMN after creation.
+//
+// Why it exists. roadmap_log could CREATE a layman / kind / source / lanes /
+// evidence at append time and never change one afterwards. amend_body edits
+// the stored BODY column, and the trailer lines are COMPOSED at render time
+// from their own columns (ANTS-4599), so they are not in the body and
+// amend_body cannot reach them. What made a missing feature a TRAP is that
+// roadmap_query include_body:true returns those composed lines INSIDE `body` —
+// so a caller reads the text back verbatim, passes it as old_text, and is told
+// body_match_not_found about a string it just read.
+//
+// The workaround was one-way: declaring `Layman:` at a line start in the body
+// does set the column, last-wins, and cannot be withdrawn, because the write
+// path recomputes the column by re-parsing the amended body. It also renders
+// plain where a column-sourced one renders bold, so a project that corrected
+// one Layman carried two styles it could not reconcile.
+//
+// Store-only and id-only, both deliberate. The column is the store's, so a
+// markdown project has nothing here to edit — there the trailer line IS body
+// text and amend_body already reaches it. And an id is the store's own key: a
+// headline or anchor locator would re-introduce an ambiguity the key removes,
+// on a write that replaces a value outright rather than patching a match.
+QJsonDocument RemoteControl::cmdRoadmapLogAmendField(const QJsonObject &req) {
+    auto rlErr = [](const QString &code, const QString &message) {
+        QJsonObject env;
+        env[QStringLiteral("ok")]    = false;
+        env[QStringLiteral("code")]  = code;
+        env[QStringLiteral("error")] = message;
+        return QJsonDocument(env);
+    };
+
+    const QString id    = req.value(QStringLiteral("id")).toString().trimmed();
+    const QString field = req.value(QStringLiteral("field")).toString().trimmed();
+    if (id.isEmpty())
+        return rlErr(QStringLiteral("missing_field"),
+            QStringLiteral("roadmap_log: op:\"amend_field\" needs `id` — the "
+                           "store's own key, and the only locator it takes"));
+    static const QStringList kEditable = {
+        QStringLiteral("layman"), QStringLiteral("kind"),
+        QStringLiteral("source"), QStringLiteral("lanes"),
+        QStringLiteral("evidence")};
+    if (!kEditable.contains(field)) {
+        return rlErr(QStringLiteral("bad_args"),
+            QStringLiteral("roadmap_log: `field` must be one of %1 — the five "
+                           "trailer columns. `headline` is op:\"amend_headline\" "
+                           "and `status` is op:\"flip\"; body prose is "
+                           "op:\"amend_body\".").arg(kEditable.join(QStringLiteral(", "))));
+    }
+    if (!req.contains(QStringLiteral("value")))
+        return rlErr(QStringLiteral("missing_field"),
+            QStringLiteral("roadmap_log: op:\"amend_field\" needs `value` (the "
+                           "key must be present; for layman an empty string "
+                           "clears the column)"));
+
+    const bool isList = (field == QLatin1String("lanes") ||
+                         field == QLatin1String("evidence"));
+
+    // The stored form setItemField wants: canonical JSON text for the two list
+    // columns, prose for the other three. An array is the shape a caller
+    // reaches for and a comma string is the shape the trailer line uses, so
+    // both are accepted rather than making one of them an error.
+    QString stored;
+    QString display;
+    if (isList) {
+        QStringList items;
+        const QJsonValue v = req.value(QStringLiteral("value"));
+        if (v.isArray()) {
+            for (const QJsonValue &e : v.toArray()) {
+                if (!e.isString())
+                    return rlErr(QStringLiteral("bad_args"),
+                        QStringLiteral("roadmap_log: `value` for %1 must be an "
+                                       "array of strings").arg(field));
+                const QString t = e.toString().trimmed();
+                if (!t.isEmpty()) items << t;
+            }
+        } else {
+            const QStringList parts = v.toString().split(QChar(','));
+            for (const QString &t : parts)
+                if (!t.trimmed().isEmpty()) items << t.trimmed();
+        }
+        QJsonArray arr;
+        for (const QString &t : std::as_const(items)) arr.append(t);
+        stored  = QString::fromUtf8(QJsonDocument(arr).toJson(QJsonDocument::Compact));
+        display = items.join(QStringLiteral(", "));
+    } else {
+        stored  = req.value(QStringLiteral("value")).toString().trimmed();
+        display = stored;
+        // kind and source are TEXT NOT NULL with no default (ANTS-4576), so
+        // "" is not an absent state for them — it is a constraint failure the
+        // caller would meet as a raw SQLite string. Refuse it here, named.
+        if (stored.isEmpty() && field != QLatin1String("layman"))
+            return rlErr(QStringLiteral("bad_args"),
+                QStringLiteral("roadmap_log: `%1` is NOT NULL and has no absent "
+                               "state, so it cannot be set empty. Only `layman` "
+                               "is nullable.").arg(field));
+        if (field == QLatin1String("kind") &&
+            !RoadmapParse::isRecognisedKind(stored)) {
+            return rlErr(QStringLiteral("bad_args"),
+                QStringLiteral("roadmap_log: \"%1\" is not a recognised Kind — "
+                               "the render drops an unrecognised one, so storing "
+                               "it would lose the value silently").arg(stored));
+        }
+    }
+
+    QString root, roadmapPath;
+    QJsonDocument refusal;
+    const auto target = roadmapSectionOpTarget(req, &root, &roadmapPath, &refusal);
+    if (!target) {
+        // Remapped for cmdRoadmapLogRender's reason: the shared prologue says
+        // `op_unsupported`, and a caller branching on `code` should get one
+        // this op's contract promises — with the route that DOES work named,
+        // since on a markdown project the trailer line is body text.
+        QJsonObject env = refusal.object();
+        if (env.value(QStringLiteral("code")).toString()
+                == QLatin1String("op_unsupported")) {
+            env[QStringLiteral("code")]  = QStringLiteral("unsupported_format");
+            env[QStringLiteral("error")] = QStringLiteral(
+                "roadmap_log: op:\"amend_field\" writes a STORE column, so it "
+                "needs a store-migrated project. On a markdown-backed project "
+                "the trailer line is body text — use op:\"amend_body\" on the "
+                "`%1:` line itself.").arg(field);
+        }
+        return QJsonDocument(env);
+    }
+
+    RoadmapStore &store = *target->store;
+    QString err;
+    const auto pk = store.findItem(target->projectId, id, &err);
+    if (!pk)
+        return rlErr(QStringLiteral("bullet_not_found"),
+            QStringLiteral("roadmap_log: no bullet with id \"%1\" in this "
+                           "project's store").arg(id));
+    const auto before = store.readItem(*pk, &err);
+    if (!before)
+        return rlErr(QStringLiteral("store_failed"), err);
+
+    // The body wins at render (roadmaprender's shadows(): declared at a line
+    // start), AND the next body write recomputes this column by re-parsing the
+    // body. So writing the column under a body declaration would be invisible
+    // now and reverted later — two ways of being wrong. Refuse, and name the
+    // route that works.
+    const RoadmapParse::TrailerValues tv =
+        RoadmapParse::trailerValuesIn(before->body);
+    const RoadmapParse::TrailerMatch &tm =
+        field == QLatin1String("layman")   ? tv.layman
+      : field == QLatin1String("kind")     ? tv.kind
+      : field == QLatin1String("source")   ? tv.source
+      : field == QLatin1String("lanes")    ? tv.lanes
+                                           : tv.evidence;
+    if (tm.offset >= 0 && tm.anchored) {
+        return rlErr(QStringLiteral("field_shadowed_by_body"),
+            QStringLiteral("roadmap_log: this bullet's BODY declares `%1:` at a "
+                           "line start, which wins at render and is re-parsed "
+                           "into the column by the next body write — so setting "
+                           "the column here would be invisible now and reverted "
+                           "later. Edit that declaration with op:\"amend_body\" "
+                           "instead.").arg(field));
+    }
+
+    const QString oldValue =
+        field == QLatin1String("layman")   ? before->layman
+      : field == QLatin1String("kind")     ? before->kind
+      : field == QLatin1String("source")   ? before->source
+      : field == QLatin1String("lanes")    ? before->lanes.join(QStringLiteral(", "))
+                                           : before->evidence.join(QStringLiteral(", "));
+
+    const bool dryRun = req.value(QStringLiteral("dry_run")).toBool();
+    HistoryContext hist;               // ANTS-3822 § 2.5 — one op, one stamp
+    hist.changedAt = rlHistoryStamp();
+    const auto mutate = [&](QString *e) -> bool {
+        if (!store.setItemField(*pk, field, stored,
+                                QStringLiteral("asserted"), e))
+            return false;
+        hist.record(*pk, field, oldValue, display);
+        // ANTS-4501 § 2.2 — an amend is a modification, and cannot move status.
+        if (!rlStampModified(store, *pk, e))
+            return false;
+        return rlFlushHistory(store, hist, e);
+    };
+
+    RoadmapRender::Outcome outcome;
+    QString writeErr;
+    const auto r = RoadmapWrite::commitAndRender(
+        store, target->projectId, root, roadmapPath, dryRun, mutate,
+        &outcome, &writeErr);
+    QJsonObject env;
+    if (rcRoadmapWriteRefused(env, r, writeErr, outcome))
+        return QJsonDocument(env);
+    rlAttachHistoryNote(env, store, hist);      // ANTS-3822 § 2.3.1
+
+    env[QStringLiteral("ok")]      = true;
+    env[QStringLiteral("op")]      = QStringLiteral("amend_field");
+    env[QStringLiteral("id")]      = id;
+    env[QStringLiteral("field")]   = field;
+    env[QStringLiteral("amended")] = true;
+    // Both sides echoed: the caller can see what it replaced without a second
+    // query, which is the amend_body path's `body_paragraph` rationale.
+    env[QStringLiteral("previous")] = oldValue;
+    env[QStringLiteral("value")]    = display;
+    rcRoadmapWriteFields(env, outcome, dryRun);  // ANTS-4463
+    if (dryRun)
+        env[QStringLiteral("dry_run")] = true;
+    return QJsonDocument(env);
+}
+
+// Store-only and m_main-independent, so the seam is the section ops' shape.
+QJsonDocument RemoteControl::cmdRoadmapLogAmendFieldForTest(const QJsonObject &req) {
+    return cmdRoadmapLogAmendField(req);
 }

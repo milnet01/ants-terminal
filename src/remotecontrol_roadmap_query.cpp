@@ -4077,6 +4077,14 @@ QJsonDocument RemoteControl::cmdRoadmapLog(const QJsonObject &req) {
     if (op == QStringLiteral("amend_headline")) {
         return cmdRoadmapLogAmendBody(req, /*headlineMode=*/true);
     }
+    // ANTS-4667 — op:"amend_field": the same idea aimed at a TRAILER COLUMN.
+    // Not a mode of amend_body: it replaces a value outright rather than
+    // patching a matched substring, so it takes no old_text and the body
+    // machinery would be dead weight around it. Store-only — on a markdown
+    // project the trailer line is body text and amend_body already reaches it.
+    if (op == QStringLiteral("amend_field")) {
+        return cmdRoadmapLogAmendField(req);
+    }
     // ANTS-1690 — batch flip: N bullets, one read + one commit.
     // ANTS-4470 — op:"annotate_batch" shares the handler, mirroring exactly how
     // op:"annotate" shares cmdRoadmapLogFlip above: it is this path with the
@@ -4126,6 +4134,7 @@ QJsonDocument RemoteControl::cmdRoadmapLog(const QJsonObject &req) {
                            "\"flip\", \"flip_batch\", \"annotate\", "
                            "\"annotate_batch\", "
                            "\"amend_body\", \"amend_headline\", "
+                           "\"amend_field\", "
                            "\"bundle_row\", \"backfill_dates\", "
                            "\"render\", "
                            "\"repair_trailers\", or "
