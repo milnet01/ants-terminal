@@ -46428,6 +46428,76 @@ envelope dropped `source`/`path`/`etag`/`total`/`filter`.
   Kind: test.
   Source: in-session-2026-08-26 (noticed while adding ANTS-4693 coverage).
 
+- 📋 [ANTS-4709] **apply_edits states no payload limit, so a caller cannot tell a protocol parse failure from a verb refusal.**
+  REPORTED, not reproduced here. A multi-line C++ body of a few kilobytes
+  carrying escaped quotes failed to parse when passed as an edit payload;
+  the batch was redone as a shell script.
+
+  The reporter is careful about the boundary, and that care is the whole
+  value of the report: the failure is at the JSON boundary the `new` string
+  crosses, which may be the protocol layer rather than this verb. If it is
+  the protocol's, no change to the verb fixes it and the honest deliverable
+  is a documented limit.
+
+  WHY IT MATTERS. write-code prescribes this verb for any batch of three or
+  more call sites, because one atomic batch beats N native edits and a
+  partial sweep is worse than none. A caller who hits the parse failure
+  mid-batch has no guidance, and the natural recovery -- falling back to
+  per-site edits -- is the partial sweep the rule exists to avoid.
+
+  TWO ROUTES, and the first is the one that is certainly ours. (1) State the
+  practical payload shape in the verb description, and say whether the limit
+  is the protocol's, since that is the part a caller cannot discover. (2) If
+  the verb can see the failure, refuse it by name: a payload_unparseable skip
+  in the shape not_found already uses (candidates + hint) lets a caller
+  branch instead of guessing.
+
+  FIRST STEP IS A MEASUREMENT, not a doc edit. Establish where the payload
+  actually breaks before describing a limit -- describing a guessed one is
+  how a false claim ships. The reporter's own framing already refuses to
+  assert which layer failed.
+  **Layman:** A tool for editing files can fail on a big paste, and nothing tells you why or how big is too big.
+  Kind: doc-fix.
+  Source: claude_config_Ants_MCP_Feedback.md 2026-08-26 (relayed from a write-code session on a C++ project).
+  Lanes: mcp, docs.
+
+- 📋 [ANTS-4710] **section_index answers an unparseable roadmap and an empty one identically, and drops a requested `slugs` without saying so.**
+  MEASURED by the reporter against two projects. Against a store-backed
+  project the mode answers with its slugs. Against a git repo whose
+  ROADMAP.md is prose -- no headings, no bullets -- it answers
+  source:"markdown", total:0, with NO `slugs` key and NO `warning`.
+
+  So the two cases a caller most needs to separate -- "this file is not a
+  roadmap" and "this roadmap has no sections" -- differ only in a count that
+  is 0 either way.
+
+  WHY IT MATTERS. A shared skill file prescribes this one call as the whole
+  answer to "which copy of the roadmap is authoritative". A skill reading an
+  empty index as "no sections" will report that when the real answer is
+  "unparseable" -- a wrong answer with nothing in the envelope marking it
+  wrong. The reporter worked around the empty-versus-full half on their side;
+  the unreadable-versus-empty half only the verb can supply.
+
+  TWO PARTS, independent. (1) Either emit a `warning` on this mode when the
+  roadmap resolved but yielded nothing parseable, as the count modes do, or
+  state in the description that section_index carries no warning and that
+  `total` is the discriminator. (2) Cheaper and separable: list a
+  requested-but-dropped `slugs` in fields_unmatched. Today it is neither
+  returned nor explained, which reads as a defect against that field's stated
+  purpose rather than as a design choice.
+
+  Part 2 is ANTS-4567's contract applied to a key the envelope drops rather
+  than never carries -- check whether that distinction is deliberate before
+  widening it.
+
+  ALSO RESOLVED by the same measurement: the earlier report that
+  fields:["source","path","slugs"] returned fields_unmatched:["slugs"] and no
+  index no longer reproduces.
+  **Layman:** Asking a project for its roadmap sections gives the same empty answer whether the file is broken or simply has none.
+  Kind: fix.
+  Source: claude_config_Ants_MCP_Feedback.md 2026-08-26 (measured against two projects).
+  Lanes: mcp.
+
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-08-11 triage
 
 35 un-triaged findings across 9 of the 18 shared-root feedback files (AI
