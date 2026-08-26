@@ -211,6 +211,20 @@ void rcdetail::rcRoadmapWriteFields(QJsonObject &out,
             out[dryRun ? QStringLiteral("would_discard_restyled_lines")
                        : QStringLiteral("discarded_restyled_lines")] =
                 outcome.externalRestyledLines;
+            // ANTS-4695 — a punctuation-only change to the author's own prose
+            // is neither of the two above. The Layman: parse drops one
+            // trailing period by design, so a project whose Layman lines were
+            // hand-authored with periods sees every one of them change on the
+            // first render -- and contentKey() cannot see punctuation at all,
+            // so all of them scored as `restyled` while `discarded_text_lines`
+            // read 0. That is the field a caller checks before allowing the
+            // overwrite, so the one number that made the render look safe was
+            // the one hiding the change.
+            if (outcome.externalRepunctuatedLines > 0) {
+                out[dryRun ? QStringLiteral("would_discard_repunctuated_lines")
+                           : QStringLiteral("discarded_repunctuated_lines")] =
+                    outcome.externalRepunctuatedLines;
+            }
             out[dryRun ? QStringLiteral("would_discard_text_lines")
                        : QStringLiteral("discarded_text_lines")] =
                 outcome.externalTextLines;
@@ -2405,6 +2419,9 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
                         // nobody reads.
                         out[QStringLiteral("drift_lines")]    = d->total;
                         out[QStringLiteral("drift_restyled")] = d->restyled;
+                        if (d->repunctuated > 0)
+                            out[QStringLiteral("drift_repunctuated")] =
+                                d->repunctuated;
                         out[QStringLiteral("drift_lost")]     = d->lost;
                         if (!d->lostText.isEmpty())
                             out[QStringLiteral("drift_lost_text")] =

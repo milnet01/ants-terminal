@@ -1402,6 +1402,64 @@ TEST(RoadmapWriteHalf, Ants4615SplitsRestyledFromLostText) {
         << "got: " << text.at(0).toString().toStdString();
 }
 
+// ANTS-4695 — a punctuation-only change to the author's own prose is neither
+// a dialect restyle nor lost text, and lumping it into `restyled` is what let
+// a render report `discarded_text_lines: 0` while every Layman line in the
+// file was about to change. The Layman: parse drops one trailing period by
+// design (ANTS-1154 INV-4), so a project whose Layman lines were hand-authored
+// with periods hits this on its first render — thirty of thirty, in the report.
+TEST(RoadmapWriteHalf, Ants4695CountsRepunctuationApartFromRestyling) {
+    ants_test::XdgGuard guard;
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    qint64 projectId = 0;
+    const QString root = seedMigrated(guard, tmp, fixture(), &projectId);
+    ASSERT_FALSE(root.isEmpty());
+    const QString roadmap = root + QStringLiteral("/ROADMAP.md");
+
+    RemoteControl rc(nullptr);
+    // Store a Layman value with NO terminal period. That is the state a
+    // MIGRATED project is left in: the markdown parse chops one trailing
+    // period on the way into the column (ANTS-1154 INV-4), so an author who
+    // wrote "…is normal." has "…is normal" stored. Setting it directly is the
+    // same end state without depending on the migration fixture's prose.
+    QJsonObject req = appendReq(root, QStringLiteral("A settling bullet."));
+    req[QStringLiteral("layman")] = QStringLiteral("A new thing");
+    ASSERT_TRUE(rc.cmdRoadmapLogAppendForTest(req).object()
+        .value(QStringLiteral("ok")).toBool());
+
+    QByteArray hand = readAll(roadmap);
+    ASSERT_FALSE(hand.isEmpty());
+
+    const QByteArray rendered = "**Layman:** A new thing";
+    ASSERT_TRUE(hand.contains(rendered))
+        << "precondition: the render's Layman line was not found";
+    ASSERT_FALSE(hand.contains(rendered + "."))
+        << "precondition: the store holds no period, so the render emits none";
+
+    // Now the author's own file, which still ends the sentence properly.
+    hand.replace(rendered + "\n", rendered + ".\n");
+    ASSERT_TRUE(writeFile(roadmap, hand));
+
+    const QJsonObject env = rc.cmdRoadmapLogAppendForTest(
+        appendReq(root, QStringLiteral("A bullet after the hand-edit."))).object();
+    ASSERT_TRUE(env.value(QStringLiteral("ok")).toBool());
+    ASSERT_TRUE(env.value(QStringLiteral("discarded_external_edits")).toBool())
+        << "precondition: the period should have registered as drift";
+
+    EXPECT_GE(env.value(QStringLiteral("discarded_repunctuated_lines")).toInt(), 1)
+        << "ANTS-4695: a terminal-punctuation change must be counted, and "
+           "counted as its own thing";
+
+    // The two claims either side of it are unchanged, and that is the point:
+    // `discarded_text_lines: 0` must keep meaning "your text is untouched".
+    EXPECT_EQ(env.value(QStringLiteral("discarded_text_lines")).toInt(), 0)
+        << "ANTS-4695: punctuation is not lost prose";
+    EXPECT_EQ(env.value(QStringLiteral("discarded_restyled_lines")).toInt(), 0)
+        << "ANTS-4695: nor is it a dialect restyle — if it leaks back into "
+           "that count the caller is where they started";
+}
+
 // ANTS-4615 — the quiet case. A healthy write must not start emitting the new
 // fields: a breakdown present on every write is a breakdown nobody reads, which
 // is the failure mode the item is about in the first place.

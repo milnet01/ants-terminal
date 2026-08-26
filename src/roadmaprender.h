@@ -104,6 +104,13 @@ struct Outcome {
     // one to act on, so an unclassifiable line counts as text: over-reporting
     // loss costs a look, under-reporting hides the thing the item is about.
     int         externalRestyledLines = 0;
+    // ANTS-4695 — a file line whose ONLY difference from the render is
+    // terminal punctuation. It is neither a dialect restyle nor lost prose:
+    // the author's words survive and their punctuation does not. Counted
+    // apart so `externalTextLines == 0` keeps meaning "your text is
+    // untouched", which is the claim a caller checks before letting a render
+    // overwrite their file.
+    int         externalRepunctuatedLines = 0;
     int         externalTextLines     = 0;
     QStringList externalLostText;              // capped; see kLostTextCap
     bool        externalLostTextTruncated = false;

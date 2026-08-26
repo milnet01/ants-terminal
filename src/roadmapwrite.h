@@ -52,6 +52,11 @@ namespace RoadmapWrite {
 struct Drift {
     int         total    = 0;   // lines on exactly one side, both directions
     int         restyled = 0;   // file lines the render would rewrite in place
+    // ANTS-4695 — file lines differing from the render ONLY in terminal
+    // punctuation. The author's words survive; their punctuation does not.
+    // Kept apart from `restyled` so `lost == 0` keeps meaning "your text is
+    // untouched" rather than "your text is untouched apart from its endings".
+    int         repunctuated = 0;
     int         lost     = 0;   // file lines whose TEXT the render would drop
     QStringList lostText;       // a capped sample of those lines
 };

@@ -89,9 +89,32 @@ constexpr int kLostTextCap = 20;
 struct DriftBreakdown {
     int         total    = 0;
     int         restyled = 0;
+    // ANTS-4695 — differs from its render twin only in terminal punctuation.
+    int         repunctuated = 0;
     int         lost     = 0;
     QStringList lostText;
 };
+
+// ANTS-4695 — the line with trailing sentence punctuation and surrounding
+// whitespace removed. Two lines equal under this but unequal when trimmed
+// differ ONLY in how they end, which is what the Layman: parse does on
+// purpose (roadmapparse.cpp drops one trailing period for ANTS-1154 INV-4).
+// contentKey() cannot see that difference at all -- it strips every
+// non-alphanumeric -- so such a line scored as a dialect restyle, and a
+// caller reading `discarded_text_lines: 0` was told their prose was
+// untouched while thirty of their sentences were about to change.
+QString terminalPunctStripped(QStringView line) {
+    QString t = line.trimmed().toString();
+    while (!t.isEmpty()) {
+        const QChar c = t.back();
+        if (c == u'.' || c == u',' || c == u';' || c == u':'
+            || c == u'!' || c == u'?')
+            t.chop(1);
+        else
+            break;
+    }
+    return t;
+}
 
 // ANTS-4462 / ANTS-4465 — how far `have` (the file on disk) has drifted from
 // `want` (what the store alone renders), counted in lines.
@@ -134,15 +157,25 @@ DriftBreakdown driftLines(const QString &have, const QString &want) {
     // is among them is the same text in another dialect — the render is about
     // to restyle it, not delete it. Each match is consumed so two file lines
     // cannot both be excused by one render line.
-    QHash<QString, int> renderKeys;
+    // ANTS-4695 — keep the render lines themselves, not just a count, so a
+    // match can be compared against the twin that excused it. A count alone
+    // cannot tell a dialect restyle from a punctuation edit to the author's
+    // own prose, and those are different answers to the question the caller
+    // is actually asking.
+    QHash<QString, QList<QStringView>> renderKeys;
     for (auto it = tally.cbegin(); it != tally.cend(); ++it)
-        if (it.value() > 0) renderKeys[contentKey(it.key())] += it.value();
+        for (int n = 0; n < it.value(); ++n)
+            renderKeys[contentKey(it.key())].append(it.key());
 
     for (QStringView l : std::as_const(fileOnly)) {
         const auto k = renderKeys.find(contentKey(l));
-        if (k != renderKeys.end() && k.value() > 0) {
-            --k.value();
-            ++d.restyled;
+        if (k != renderKeys.end() && !k.value().isEmpty()) {
+            const QStringView twin = k.value().takeLast();
+            if (terminalPunctStripped(l) == terminalPunctStripped(twin)
+                && l.trimmed() != twin.trimmed())
+                ++d.repunctuated;
+            else
+                ++d.restyled;
             continue;
         }
         // Blank and whitespace-only lines are layout, not text. Counting them
@@ -167,9 +200,10 @@ DriftBreakdown externalDrift(const QHash<QString, QString> &preImage) {
             continue;
         const DriftBreakdown d =
             driftLines(QString::fromUtf8(f.readAll()), it.value());
-        all.total    += d.total;
-        all.restyled += d.restyled;
-        all.lost     += d.lost;
+        all.total        += d.total;
+        all.restyled     += d.restyled;
+        all.repunctuated += d.repunctuated;
+        all.lost         += d.lost;
         for (const QString &t : d.lostText)
             if (all.lostText.size() < kLostTextCap) all.lostText.append(t);
     }
@@ -202,9 +236,10 @@ std::optional<Drift> measureDrift(RoadmapStore &store, qint64 projectId,
         return std::nullopt;
     const DriftBreakdown d = externalDrift(preImage);
     Drift out;
-    out.total    = d.total;
-    out.restyled = d.restyled;
-    out.lost     = d.lost;
+    out.total        = d.total;
+    out.restyled     = d.restyled;
+    out.repunctuated = d.repunctuated;
+    out.lost         = d.lost;
     out.lostText = d.lostText;
     return out;
 }
@@ -287,6 +322,7 @@ Result commitAndRender(RoadmapStore &store, qint64 projectId,
         outcome->externalEditsChecked     = driftChecked;
         outcome->externalEditLines        = drift.total;
         outcome->externalRestyledLines    = drift.restyled;
+        outcome->externalRepunctuatedLines = drift.repunctuated;
         outcome->externalTextLines        = drift.lost;
         outcome->externalLostText         = drift.lostText;
         outcome->externalLostTextTruncated = drift.lost > drift.lostText.size();

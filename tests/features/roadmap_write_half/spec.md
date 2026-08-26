@@ -118,6 +118,30 @@ The true arm now also carries `discarded_restyled_lines` (text survives, styling
 differs), `discarded_text_lines` (**the one to act on**), and `discarded_text[]`
 naming the lost lines, capped at 20 with `discarded_text_truncated`.
 
+### ANTS-4695 — punctuation is a third population, not a restyle
+
+`contentKey()` strips every non-alphanumeric, so two lines differing only in
+how they END share a key and the second scored as a dialect restyle. That is
+wrong in the one place it costs something: the Layman line. The markdown parse
+drops one trailing period on the way into the store (ANTS-1154 INV-4), so a
+migrated project whose Layman lines were hand-authored with periods differs
+from its own render on every one of them.
+
+The reported run: thirty items, `discarded_restyled_lines` 30,
+`discarded_text_lines` **0**, `ok:true` — and after the write not one Layman
+line still ended in a period. `discarded_text_lines` is the field a caller
+checks before allowing a render to overwrite their file, so the number that
+made the write look safe was the number hiding the change.
+
+The true arm now also carries `discarded_repunctuated_lines`, and `check_sync`
+carries `drift_repunctuated`. Both ride the true arm only, like their
+siblings. `discarded_text_lines: 0` goes back to meaning *your text is
+untouched*.
+
+**The punctuation behaviour itself is unchanged, deliberately.** INV-4
+prescribes the chop; the defect was reporting it as something it is not. The
+reporter offered either fix and named this one as the one that matters.
+
 **Nothing is suppressed, and that distinction is the design.**
 `Ants4462ReportsDiscardedExternalEdits` says in terms that deciding which
 differences are cosmetic is a judgement this check does not have and should not
