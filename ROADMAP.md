@@ -45886,7 +45886,7 @@ envelope dropped `source`/`path`/`etag`/`total`/`filter`.
   Source: perch-feedback-2026-08-26.
   Lanes: mcp, roadmapwrite.
 
-- 📋 [ANTS-4692] **An offloaded roadmap_query drops every top-level scalar, including check_sync's answer and `source`.**
+- ✅ [ANTS-4692] **An offloaded roadmap_query drops every top-level scalar, including check_sync's answer and `source`.**
   VERIFIED LIVE DURING TRIAGE, not taken on report. A roadmap_query on this
   project (status:"planned", mode:"headline_only") spilled, and the envelope
   carried only bytes/handle/head/head_rows/head_rows_key/hint/offloaded/ok/
@@ -45917,6 +45917,7 @@ envelope dropped `source`/`path`/`etag`/`total`/`filter`.
   dropped answer is distinguishable from a check that never ran -- the
   reasoning spec_lint's skipped[] (ANTS-4373) and doc_integrity's
   *_suppressed counters already apply.
+  Resolved (2026-08-26): contract gated first -- ANTS-2094 gained 2.3.2 + INV-15 and went through review-contract with 3 cold lanes, 9 verified findings all fixed, before any code. The reporter's open question turned out to rest on a false premise: drift_lines is an INTEGER, not an array, so there was no scalar-vs-array boundary to rule on; the only array in that family is drift_lost_text, which the 512 B per-member cap handles like any other member. The floor reuses isProtectedCompactKey (ANTS-2091 / ANTS-4677) rather than a new list -- that predicate's own comment already named roadmap_query's sync_checked as being dropped by the same mechanism -- and is now published on mcpprojection.h. Anything dropped for a budget is named in preserved_omitted. ignored_args is carved out because ANTS-4626's INV-2 pins offloadBody dropping it; that test caught this change, which is what it was written for. Commit 2eaf9ecb, full suite 3977/3977.
   **Layman:** When a roadmap answer is too big it gets stored aside, and the safety information a session is told to read first is thrown away with it.
   Kind: fix.
   Source: DOOM_Ants-feedback-2026-08-26.
