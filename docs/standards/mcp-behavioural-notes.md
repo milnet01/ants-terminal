@@ -124,8 +124,38 @@ whole elements), `head_rows_key` (the array's field name),
 caller sees real rows, not just a clipped byte-string, and the `hint`
 additionally advertises row paging (it does so whenever a dominant array
 exists, even when the rows are too large to fit the preview budget). A body
-with no row-shaped array carries only the base fields and a
-byte-paging-only `hint`.
+with no row-shaped array carries only the base fields, the preserved fields
+below, and a byte-paging-only `hint`.
+
+**Shape preview (ANTS-4397 / ANTS-4474 / ANTS-4519).** When the row BODIES
+do not all fit, the envelope instead carries one summary row per actual row:
+`rows_preview` (`{index, bytes, head}` each), `rows_preview_key`,
+`rows_preview_truncated` and `rows_preview_hint`, with
+`rows_preview_head_chars` present only where the per-row head was narrowed to
+cover every row. Where not even narrowed heads cover them all, the array is
+omitted and `rows_preview_omitted` is set instead — a bare list of row
+LENGTHS says no more than `row_count` and `bytes` already do. So a body of a
+few very wide rows is not the bare-base-fields case.
+
+**Preserved top-level fields (ANTS-4692).** An offload rebuilds the envelope,
+which used to discard every root member of the body except the previewed
+array. The envelope now carries the body's own top-level members: everything
+that is not the dominant array, is not a key the offload owns, fits 512 B
+(`kPreservedFieldMaxBytes`) and fits a running total of `offloadHeadBytes()`
+— plus, regardless of that total, every key `mcp::isProtectedCompactKey`
+protects, the same floor compact mode uses. A body's own `ok` overrides the
+envelope's placeholder, so an offloaded refusal is not reported as a success.
+`ignored_args` is skipped deliberately: it is the dispatcher's advisory,
+re-applied after the offload (ANTS-4626), so preserving it here would leave
+that feature's own test passing even if the re-application stopped.
+
+**Read `preserved_omitted` before concluding a field was never returned.** A
+member dropped for the per-member cap or the running total is named there; a
+skipped key and the dominant array are not. Without it, `roadmap_query`'s
+`file_in_sync` / `sync_checked` / `source` simply vanished whenever the call
+happened to spill — and absent is indistinguishable from never-requested, so
+a caller reading a missing field as its zero value concluded "out of sync",
+or skipped the check its own schema told it to make.
 
 **`read_spill` — byte mode (default).** `offset`/`max_bytes` return
 `{ok, content, offset, bytes, total_bytes, truncated}`; page forward by

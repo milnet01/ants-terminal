@@ -51,6 +51,14 @@ bool isOffloadEligible(const QString &toolName);
 // behaviour. See docs/standards/mcp-behavioural-notes.md.
 bool isRawEligible(const QString &toolName);
 
+// ANTS-2091 / ANTS-4677 — keys kept regardless of value, because callers
+// branch on them: a dropped `ok:false` / `found:false` inverts the result's
+// meaning, and a `*_checked:false` (matched by suffix) reports that a check
+// DID NOT RUN, so dropping it reads as a clean pass over nothing examined.
+// ANTS-4692 — also the floor for the offload path's preserved fields
+// (docs/specs/ANTS-2094.md § 2.3.2), so both paths agree on that set.
+bool isProtectedCompactKey(const QString &key);
+
 // Return a compact JSON object carrying only the named top-level fields
 // of `responseText`. Contract:
 //   - `fields` empty                    -> responseText returned unchanged.

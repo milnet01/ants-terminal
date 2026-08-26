@@ -377,11 +377,13 @@ QString appendReadHints(const QString &tool, const QJsonObject &args,
         QJsonDocument(env).toJson(QJsonDocument::Compact));
 }
 
-namespace {
-
 // ANTS-2091 — keys kept at every level regardless of value. These are the
 // fields callers branch on; a dropped `ok:false` / `found:false` would
 // silently invert the result's meaning.
+// ANTS-4692 — published on the header so the offload path uses this same
+// predicate as its preserved-field floor. One definition, two callers, so
+// compact mode and offload cannot drift apart on which fields invert a
+// result's meaning when dropped.
 bool isProtectedCompactKey(const QString &key) {
     // ANTS-4677 — a `*_checked:false` reports that a check DID NOT RUN, so
     // dropping it inverts the meaning exactly as a dropped `found:false`
@@ -400,6 +402,8 @@ bool isProtectedCompactKey(const QString &key) {
         || key == QStringLiteral("found")
         || key == QStringLiteral("unchanged");
 }
+
+namespace {
 
 // A value is "dead weight" when it equals its zero/default form: null,
 // false, "", [], {}. Numbers (including 0) are kept — a 0 count is often

@@ -1,4 +1,5 @@
 #include "mcpspill.h"
+#include "mcpprojection.h"   // isProtectedCompactKey — ANTS-4692 floor
 
 #include "secureio.h"   // ensurePrivateDir (0700) + setOwnerOnlyPerms (0600)
 
@@ -17,6 +18,8 @@
 #include <QJsonParseError>
 #include <QJsonValue>
 #include <QSaveFile>
+#include <QSet>
+#include <QStringList>
 #include <QStandardPaths>
 
 namespace mcp {
@@ -136,6 +139,100 @@ bool offloadRequested(const QJsonObject &args) {
     return v.isBool() ? v.toBool() : offloadDefault();
 }
 
+// ANTS-4692 — keys the OFFLOAD or the DISPATCH LAYER owns. A body member of
+// the same name describes the offload rather than the result, so it is
+// dropped instead of merged.
+// `ok` is listed because the envelope emits it, but it is the one exception to
+// the skip: the envelope sets it as a placeholder, so a body carrying its own
+// `ok` must win — an offloaded body whose `ok` is false must not be reported
+// as a success. See docs/specs/ANTS-2094.md § 2.3.2.
+static bool isOffloadOwnedKey(const QString &k) {
+    static const QSet<QString> kOwned{
+        QStringLiteral("ok"),
+        QStringLiteral("offloaded"),          QStringLiteral("handle"),
+        QStringLiteral("bytes"),              QStringLiteral("head"),
+        QStringLiteral("head_truncated"),     QStringLiteral("hint"),
+        QStringLiteral("preserved_omitted"),
+        QStringLiteral("head_rows"),          QStringLiteral("head_rows_key"),
+        QStringLiteral("head_rows_truncated"), QStringLiteral("row_count"),
+        QStringLiteral("rows_preview"),       QStringLiteral("rows_preview_key"),
+        QStringLiteral("rows_preview_truncated"),
+        QStringLiteral("rows_preview_head_chars"),
+        QStringLiteral("rows_preview_hint"),
+        QStringLiteral("rows_preview_omitted"),
+        // ANTS-4626 — `ignored_args` is the DISPATCHER's advisory, attached by
+        // mcp::withIgnoredArgs and deliberately re-applied AFTER the offload.
+        // That feature's INV-2 pins offloadBody dropping it, and says why: it
+        // is the premise that keeps INV-1 -- the re-application -- an
+        // assertion about something. Preserving it here would leave INV-1
+        // passing even if the dispatcher stopped re-applying, which is the
+        // silent weakening ANTS-4626 was written to prevent. The caller loses
+        // nothing: the dispatcher puts it back.
+        QStringLiteral("ignored_args")};
+    return kOwned.contains(k);
+}
+
+// Compact serialized size of one member, key and value, as it would land in
+// the envelope. Measured rather than estimated, so escaping is accounted for.
+static qint64 preservedMemberBytes(const QString &k, const QJsonValue &v) {
+    return QJsonDocument(QJsonObject{{k, v}})
+        .toJson(QJsonDocument::Compact).size();
+}
+
+// ANTS-4692 — carry the body's own top-level members onto the envelope.
+//
+// An offload rebuilds the envelope from scratch, so every root member other
+// than the previewed array was discarded. roadmap_query's `file_in_sync`,
+// `sync_checked` and `source` are the reported case: a session is told to read
+// them BEFORE writing, and they vanished exactly when the same call happened
+// to spill. Absent is indistinguishable from never-requested, so a caller
+// treating a missing field as its zero value reads "out of sync", or skips the
+// check it was told to make.
+//
+// Runs BEFORE the § 2.3.1 row-budget probe, so S0 counts these members and the
+// row budget shrinks to accommodate them — INV-9 then holds by construction,
+// with the ANTS-3540 finished-envelope fail-open as the backstop.
+static void preserveTopLevelFields(QJsonObject &o, const QJsonObject &root,
+                                   const QString &domKey) {
+    const qint64 totalBudget = offloadHeadBytes();
+    qint64 used = 0;
+    QStringList omitted;
+
+    // Protected keys first, so the floor cannot be starved by an ordinary
+    // member; then the rest in QJsonObject key order — the same sorted
+    // iteration § 2.3.1 relies on for its dominant-array tie-break.
+    for (int pass = 0; pass < 2; ++pass) {
+        const bool protectedPass = (pass == 0);
+        for (auto it = root.begin(); it != root.end(); ++it) {
+            const QString k = it.key();
+            // The dominant array is the payload being spilled; head_rows_key /
+            // rows_preview_key already name it, and it is not an omission.
+            if (!domKey.isEmpty() && k == domKey) continue;
+            const bool prot = mcp::isProtectedCompactKey(k);
+            if (prot != protectedPass) continue;
+            // `ok` is the one owned key a body may override.
+            if (isOffloadOwnedKey(k) && k != QStringLiteral("ok")) continue;
+
+            const qint64 sz = preservedMemberBytes(k, it.value());
+            if (sz > kPreservedFieldMaxBytes) { omitted.append(k); continue; }
+            // The floor ignores the running total, never the per-member cap:
+            // a protected key large enough to matter to the budget is not a
+            // flag.
+            if (!prot && used + sz > totalBudget) { omitted.append(k); continue; }
+            o[k] = it.value();
+            used += sz;
+        }
+    }
+
+    // A member rejected by the per-member cap or the running total is named,
+    // so an absent field is never ambiguous between dropped and
+    // never-requested — the reasoning spec_lint's skipped[] and
+    // doc_integrity's *_suppressed counters already apply.
+    if (!omitted.isEmpty())
+        o[QStringLiteral("preserved_omitted")] =
+            QJsonArray::fromStringList(omitted);
+}
+
 QString offloadBody(const QString &toolName, const QString &body) {
     Q_UNUSED(toolName);
     const QByteArray utf8 = body.toUtf8();
@@ -191,6 +288,10 @@ QString offloadBody(const QString &toolName, const QString &body) {
             // head_rows preview and read_spill row-paging always agree).
             int domCount = 0;
             const QString domKey = dominantArrayKey(root, &domCount);
+
+            // ANTS-4692 — before the row budget below, so S0 counts these.
+            preserveTopLevelFields(o, root, domKey);
+
             if (domCount > 0) {
                 // ANTS-3545 — advertise row paging on the very envelope where
                 // the agent decides how to continue (discoverability). Gated on

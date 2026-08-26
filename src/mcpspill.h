@@ -38,6 +38,12 @@ constexpr qint64  kStructuredParseMaxBytes = 1LL * 1024 * 1024;  // 1 MiB
 // kStructuredParseMaxBytes parse cap on the whole body. See docs/specs/ANTS-2094.md § 2.4.1.
 constexpr int     kSpillRowsDefault      = 100;
 
+// ANTS-4692 — per-member cap for the preserved top-level fields
+// (docs/specs/ANTS-2094.md § 2.3.2). Wide enough for a path, an `etag` or a
+// `source`; narrow enough that no one member can spend the whole preserved
+// total, which is offloadHeadBytes().
+constexpr qint64  kPreservedFieldMaxBytes = 512;
+
 // Config (set from the GUI thread on load / Settings Apply, read on every
 // dispatch). setOffloadConfig clamps threshold to [4096, 1048576] and head
 // to [256, 16384] (INV-12) before publishing.

@@ -974,3 +974,161 @@ TEST_F(McpResultOffload, Ants4474NarrowsHeadsBeforeDroppingThem) {
     // ones, not a new cost.
     EXPECT_LT(compact(o).toUtf8().size(), body.toUtf8().size());
 }
+
+// INV-15 (ANTS-4692) — the body's own top-level members survive an offload.
+// The reported case: a roadmap_query with check_sync spilled, and
+// `file_in_sync` / `source` went with it — the two fields a session is told
+// to read BEFORE writing. Absent is indistinguishable from never-requested,
+// so a caller treating a missing field as its zero value reads "out of sync".
+TEST_F(McpResultOffload, Inv15PreservesTopLevelFields) {
+    QJsonArray bullets;
+    for (int i = 0; i < 400; ++i)
+        bullets.append(QString(120, QLatin1Char('b')));
+    QJsonObject root;
+    root["bullets"]      = bullets;          // the dominant array
+    root["count"]        = 400;
+    root["etag"]         = QStringLiteral("3c77228fbb97896f");
+    root["file_in_sync"] = true;
+    root["found"]        = true;
+    root["ok"]           = true;
+    root["path"]         = QStringLiteral("/x/ROADMAP.md");
+    root["source"]       = QStringLiteral("store");
+    const QString body =
+        QString::fromUtf8(QJsonDocument(root).toJson(QJsonDocument::Compact));
+
+    const QString env = mcp::offloadBody(QStringLiteral("roadmap_query"), body);
+    const QJsonObject o = QJsonDocument::fromJson(env.toUtf8()).object();
+    ASSERT_TRUE(o.value("offloaded").toBool()) << env.toStdString();
+
+    EXPECT_EQ(o.value("source").toString(), QStringLiteral("store"))
+        << "the field that says whether the project is store-backed";
+    EXPECT_TRUE(o.contains("file_in_sync"))
+        << "check_sync's answer must survive the spill";
+    EXPECT_TRUE(o.value("file_in_sync").toBool());
+    EXPECT_EQ(o.value("path").toString(), QStringLiteral("/x/ROADMAP.md"));
+    EXPECT_EQ(o.value("count").toInt(), 400);
+
+    // The dominant array is the payload being spilled: head_rows_key names
+    // it, it is never copied back, and it is not an omission.
+    EXPECT_FALSE(o.contains("bullets"));
+    EXPECT_EQ(o.value("head_rows_key").toString(), QStringLiteral("bullets"));
+    const QJsonArray omitted = o.value("preserved_omitted").toArray();
+    for (const QJsonValue &v : omitted)
+        EXPECT_NE(v.toString(), QStringLiteral("bullets"))
+            << "the spilled array is skipped, not omitted";
+
+    // INV-9 preserved: measured against the real body, not assumed.
+    EXPECT_LT(env.toUtf8().size(), o.value("bytes").toInteger())
+        << "preservation must not push the envelope past the body";
+}
+
+// INV-15 — the protected floor, the per-member cap, the `ok` override, and
+// the owned-key collision, each asserted separately.
+TEST_F(McpResultOffload, Inv15FloorCapOverrideAndCollision) {
+    QJsonArray rows;
+    for (int i = 0; i < 400; ++i)
+        rows.append(QString(120, QLatin1Char('r')));
+    QJsonObject root;
+    root["matches"] = rows;
+    // Non-protected members, each under the per-member cap but together well
+    // over the preserved total (offloadHeadBytes() == 2048 in this fixture).
+    for (int i = 0; i < 12; ++i)
+        root[QStringLiteral("filler_%1").arg(i)] = QString(400, QLatin1Char('f'));
+    root["sync_checked"] = false;              // protected by *_checked suffix
+    root["etag"]         = QString(600, QLatin1Char('e'));  // protected, oversized
+    root["ok"]           = false;              // must override the placeholder
+    root["handle"]       = QStringLiteral("not-the-spill-handle");
+    const QString body =
+        QString::fromUtf8(QJsonDocument(root).toJson(QJsonDocument::Compact));
+
+    const QString env = mcp::offloadBody(QStringLiteral("workspace_search"), body);
+    const QJsonObject o = QJsonDocument::fromJson(env.toUtf8()).object();
+    ASSERT_TRUE(o.value("offloaded").toBool()) << env.toStdString();
+
+    // Floor: a *_checked:false says a check DID NOT RUN. Dropping it reads as
+    // a clean pass over nothing examined, so the running total must not reach
+    // it however much the ordinary members have spent.
+    ASSERT_TRUE(o.contains("sync_checked"))
+        << "the protected floor must outrank the preserved total: "
+        << env.toStdString();
+    EXPECT_FALSE(o.value("sync_checked").toBool());
+
+    // …but the floor does not lift the PER-MEMBER cap: a protected key that
+    // large is not a flag.
+    EXPECT_FALSE(o.contains("etag"))
+        << "an oversized protected key is still dropped";
+
+    const QJsonArray omitted = o.value("preserved_omitted").toArray();
+    QStringList names;
+    for (const QJsonValue &v : omitted) names << v.toString();
+    EXPECT_TRUE(names.contains(QStringLiteral("etag")))
+        << "a dropped member must be NAMED, or absent stays ambiguous";
+    EXPECT_FALSE(names.isEmpty());
+
+    // `ok` is the one owned key a body may override — an offloaded body whose
+    // ok is false must not be reported as a success.
+    EXPECT_FALSE(o.value("ok").toBool())
+        << "the envelope's ok:true is a placeholder, not an answer";
+
+    // Every other owned key describes the offload, not the result.
+    EXPECT_EQ(o.value("handle").toString().size(), 64)
+        << "a body member named `handle` must not overwrite the spill handle";
+    EXPECT_NE(o.value("handle").toString(),
+              QStringLiteral("not-the-spill-handle"));
+
+    EXPECT_LT(env.toUtf8().size(), o.value("bytes").toInteger());
+}
+
+// INV-15 — `ignored_args` is skipped, and for a reason worth pinning rather
+// than only commenting. It is the DISPATCHER's advisory, re-applied after the
+// offload; ANTS-4626's INV-2 asserts offloadBody drops it, and says that is
+// the premise keeping its INV-1 (the re-application) an assertion about
+// something. Preserving it here would leave that test green even if the
+// dispatcher stopped re-applying.
+TEST_F(McpResultOffload, Inv15SkipsTheDispatcherAdvisory) {
+    QJsonArray rows;
+    for (int i = 0; i < 400; ++i)
+        rows.append(QString(120, QLatin1Char('r')));
+    QJsonObject root;
+    root["matches"]      = rows;
+    root["ignored_args"] = QJsonArray{QStringLiteral("section_filter")};
+    root["source"]       = QStringLiteral("store");
+    const QString body =
+        QString::fromUtf8(QJsonDocument(root).toJson(QJsonDocument::Compact));
+
+    const QString env = mcp::offloadBody(QStringLiteral("roadmap_query"), body);
+    const QJsonObject o = QJsonDocument::fromJson(env.toUtf8()).object();
+    ASSERT_TRUE(o.value("offloaded").toBool()) << env.toStdString();
+
+    EXPECT_FALSE(o.contains("ignored_args"))
+        << "the dispatcher re-applies this one; preserving it would hollow "
+           "out ANTS-4626's INV-1";
+    // …and it is a SKIP, not an omission: nothing about the result was lost.
+    const QJsonArray omitted = o.value("preserved_omitted").toArray();
+    for (const QJsonValue &v : omitted)
+        EXPECT_NE(v.toString(), QStringLiteral("ignored_args"));
+    // The ordinary member beside it still survives, so this is a targeted
+    // carve-out rather than preservation failing to run.
+    EXPECT_EQ(o.value("source").toString(), QStringLiteral("store"));
+}
+
+// INV-15 — a body over kStructuredParseMaxBytes is never parsed, so nothing
+// is preserved AND no preserved_omitted is emitted. Silence there is honest:
+// the pass did not run, so it has no list of what it dropped.
+TEST_F(McpResultOffload, Inv15NoPreservationAboveParseCap) {
+    const QString filler(
+        static_cast<int>(mcp::kStructuredParseMaxBytes) + 1024,
+        QLatin1Char('z'));
+    const QString body = QStringLiteral("{\"source\":\"store\",\"matches\":[\"")
+        + filler + QStringLiteral("\"]}");
+    ASSERT_GT(body.toUtf8().size(), mcp::kStructuredParseMaxBytes);
+
+    const QString env = mcp::offloadBody(QStringLiteral("roadmap_query"), body);
+    const QJsonObject o = QJsonDocument::fromJson(env.toUtf8()).object();
+    ASSERT_TRUE(o.value("offloaded").toBool());
+
+    EXPECT_FALSE(o.contains("source"))
+        << "no parse above the cap, so nothing to preserve";
+    EXPECT_FALSE(o.contains("preserved_omitted"))
+        << "the pass did not run; it has no list of what it dropped";
+}
