@@ -14,6 +14,23 @@ for security-relevant changes.
 
 ### Added
 
+- **feedback_query reports a format version it does not recognise** (ANTS-4702)
+  A feedback file claiming a version that has never existed was accepted in
+  silence. It is still read, and the envelope now says the marker is
+  unrecognised.
+
+- **read_region takes max_line_bytes to clip long lines** (ANTS-4700)
+  Reading part of a document whose weight sits in a few very long lines
+  returned a truncated head and none of the rows you were reading toward.
+  Clipping per line is applied before the size cap, so it makes room rather
+  than competing with it.
+
+- **A prose-heavy migration explains its item count** (ANTS-4694)
+  Migrating a large milestone document could report only a handful of
+  items, which read as though most of the file had been skipped. Nothing is
+  skipped — the rest is stored as prose and tables — and the report now
+  says so.
+
 - **feedback_log can record a whole triage in one write** (ANTS-4671)
   The new assign_id_batch fills many findings' id slots at once, where before each one cost a separate read and write of the file.
 
@@ -297,6 +314,42 @@ for security-relevant changes.
   with `glob` — so a refused call carries its own repair.
 
 ### Fixed
+
+- **doc_citations resolves a quotation inside a blockquote** (ANTS-4706)
+  A quote written as an indented `>` block was reported out of date even
+  when it matched its source exactly, and the reported text carried the
+  block markers so copying it into a search found nothing.
+
+- **An offload envelope always reports how many rows exist** (ANTS-4705)
+  A summarised result could say its preview was shortened without ever
+  reporting the total it was shortened against — the figure that decides
+  where to read next.
+
+- **doc_citations no longer blames a nearby document for a stale quote** (ANTS-4696)
+  A quotation credited to a document cited without its file extension was
+  reported out of date against an unrelated file mentioned earlier in the
+  same paragraph. It now says the target was not recognised, and names it.
+
+- **Publishing the roadmap reports punctuation changes separately** (ANTS-4695)
+  A render that adjusted the punctuation of hand-written summary lines
+  counted it as cosmetic restyling, so the field a caller checks before
+  allowing an overwrite read zero while their sentences changed.
+
+- **roadmap_migrate finds a roadmap declared in .ants/project.json** (ANTS-4693)
+  A project keeping its roadmap somewhere other than the usual filename
+  could be read and written but not adopted into the database. The other
+  verbs already honoured the declared path; this one now does too.
+
+- **An offloaded result keeps the body's own top-level fields** (ANTS-4692)
+  When a large roadmap_query answer was parked to disk, fields like
+  `source` and `file_in_sync` vanished with it — the safety information a
+  session is told to read before writing. They now survive, and anything
+  dropped for size is named in `preserved_omitted`.
+
+- **A roadmap_log dry run no longer leaves a counter file behind** (ANTS-4691)
+  A preview that refused still created `.roadmap-counter`, so pointing a dry
+  run at a repository left an untracked file in it. Both the single-append
+  and batch paths are fixed.
 
 - **A narrowed reply keeps the note explaining how to read it** (ANTS-4698)
   Asking a verb for only certain fields could drop the warning that says a zero means "this roadmap's format wasn't recognised" rather than "nothing left to do". That warning now always survives.
