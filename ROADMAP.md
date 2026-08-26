@@ -32761,7 +32761,7 @@ against current source before filing.
   Kind: perf.
   Source: in-session-2026-08-18 (found closing ANTS-4431).
 
-- 📋 [ANTS-4434] **The render gate bricks roadmap_log: no op can write the layman column it refuses on.**
+- ✅ [ANTS-4434] **The render gate bricks roadmap_log: no op can write the layman column it refuses on.**
   roadmaprender.cpp:315 gates the render on `isOpen(it->status) && it->layman.isEmpty()` — the store's `layman` COLUMN. Every roadmap_log op renders to validate, so one offending open item refuses EVERY op on that project, `dry_run` included.
 
   No op writes that column. `annotate` and `amend_body` write `body`; `append` takes a layman argument but only for a NEW item. So a project in this state cannot be repaired with the verb that the state blocks. It is a bootstrap deadlock, not a content check.
@@ -32948,6 +32948,7 @@ against current source before filing.
   (Ants4434BatchRepairEscapesTheGateDeadlock) is inverted and renamed
   Ants4628SingleItemRepairNowCommits, asserting that the single repair lands AND
   that the untouched offender is left alone.
+  Resolved (2026-08-26): flipped during the 0.7.107 pre-flight, which found the CHANGELOG claiming this shipped against a roadmap that still called it planned. The code is in the tree and was verified before flipping rather than taken from the changelog: `render_gate_unmet` is emitted from src/remotecontrol_roadmap_query.cpp and the gate's own reasoning sits in src/roadmapwrite.cpp. The delivered behaviour is the one the changelog describes -- the refusal now names a remedy that actually works, repairing every offender in one flip_batch, because the Layman gate is per project and evaluated after the mutation, so a one-at-a-time repair is refused by whichever offenders remain. Recorded because the release gate is the only thing that looked: nothing else compares a changelog claim against the roadmap's own status, and a bullet that ships while its item stays planned is invisible from both sides.
 
 - 📋 [ANTS-4435] **mcp-error-codes.md names a render_gate_unmet remedy that provably cannot work.**
   The `render_gate_unmet` row says: "Remedy is to fill in the named layman lines, which `annotate` / `amend_body` can do one at a time."
@@ -42279,7 +42280,7 @@ filed below.
   Source: user-request-2026-08-20.
   Lanes: ci, docs.
 
-- 📋 [ANTS-4585] **Migrated bullets still state their metadata twice, and the already-truncated columns are still short.**
+- ✅ [ANTS-4585] **Migrated bullets still state their metadata twice, and the already-truncated columns are still short.**
   ANTS-4542 and ANTS-4553 fixed the CAUSE: a hard-wrapped trailer value is
   no longer truncated at the wrap. Neither repaired the damage already in
   the stores, and ANTS-4553's reader-facing complaint is therefore still
@@ -42558,6 +42559,7 @@ filed below.
   Phase 2 is DONE for 15 projects. What remains: ANTS-4601 to reach
   Vestige, the 37 skips (7 known hand edits, the rest undecided, see the
   note above), then phase 3.
+  Resolved (2026-08-26): flipped during the 0.7.107 pre-flight, on the user's call, having verified the code rather than trusting the changelog -- src/remotecontrol_roadmap_repair.cpp is the ANTS-4585 phase 2 TU and `repair_trailers` is in roadmap_log's op enum. Stating the honest limit: what shipped is the REPAIR OP, not the repaired corpus. The op recovers a value only where the stored one is a strict prefix of a re-parse of the item's own surviving prose, so it can only extend a value with the author's adjacent text and it skips anything a later write already updated. Running it per project is still outstanding and is not claimed by this flip. That distinction is why the pre-flight surfaced this as a decision rather than resolving it: the changelog entry reports a delivered capability, the item's headline describes the corpus, and the two are only the same once the op has actually been run.
   **Layman:** Old roadmap entries still say their category twice, and some stored values are still missing the words that were cut off.
   Kind: fix.
   Source: ANTS-4542 / ANTS-4553 follow-up, 2026-08-20.
