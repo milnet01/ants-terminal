@@ -209,8 +209,19 @@ TEST_F(RateLimitTestFixture, Inv10RefusalRoutedThroughDispatch) {
               std::string::npos);
     EXPECT_NE(cc.find("dispatchResult = QStringLiteral(\"rate_limited\")"),
               std::string::npos);
-    EXPECT_NE(cc.find("dispatchResult);\n                    haveResult"),
-              std::string::npos);
+    // ANTS-2132 — the response pipeline moved into
+    // ClaudeIntegration::finishToolDispatch, which dedented it. The contract
+    // was never the indentation: it is the ADJACENCY, that recordDispatch's
+    // last argument is dispatchResult and haveResult is set immediately
+    // after it. Matched on that instead, so a future re-indent cannot make
+    // this guard silently stop guarding.
+    const std::string tail = "dispatchResult);";
+    const size_t rd = cc.find(tail);
+    ASSERT_NE(rd, std::string::npos);
+    const size_t next = cc.find_first_not_of(" \t\n", rd + tail.size());
+    ASSERT_NE(next, std::string::npos);
+    EXPECT_EQ(cc.compare(next, 10, "haveResult"), 0)
+        << "haveResult must be set immediately after recordDispatch";
 }
 
 // INV-11 — refusal envelope shape (source-grep).

@@ -14,6 +14,9 @@
 #include <QLocalServer>
 #include <QLocalSocket>
 #include <QDateTime>
+#include <QPointer>
+#include <QElapsedTimer>
+#include <QJsonValue>
 
 #include "tokenusageengine.h"
 // ANTS-3611 — for AuditRunner::kAggregateCapMs. Header-only constant; no
@@ -213,6 +216,23 @@ public:
     void registerToolProvider(const QString &name,
                               CallerCwdContract contract,
                               ToolHandler handler);
+
+    // ANTS-2132 — everything the response pipeline needs after the tool
+    // handler has produced its body. Captured by value so the reply can be
+    // finished later, on the GUI thread, once the handler has run off it.
+    // See docs/specs/ANTS-2132-async-mcp-dispatch.md § 2.2.
+    struct McpCallContext {
+        QPointer<QLocalSocket> socket;
+        QJsonValue    requestId;
+        QString       toolName;
+        QJsonObject   args;
+        qint64        requestBytes = 0;
+        bool          cachedHit    = false;
+        bool          cacheable    = false;
+        bool          toolHandled  = false;
+        QString       dispatchResult;
+        QElapsedTimer traceTimer;
+    };
 
     // ANTS-1404 — per-tool caller_cwd contract. Recorded once per
     // tool at registration time and consulted by the dispatcher
@@ -516,6 +536,15 @@ private slots:
     void pollClaudeProcess();
     void onHookConnection();
     void onMcpConnection();
+    // ANTS-2132 — the response pipeline, from the tool handler's body
+    // through to the socket write. Runs on the GUI thread on both the
+    // synchronous and the deferred path; neither has its own copy.
+    void finishToolDispatch(McpCallContext ctx, QString responseText);
+    // ANTS-2132 — the JSON-RPC envelope write, shared by every method.
+    static void sendMcpResponse(const QPointer<QLocalSocket> &socket,
+                                const QJsonValue &requestId,
+                                const QJsonObject *result,
+                                const QJsonObject *error);
 
 private:
     void processHookEvent(const QJsonObject &event);

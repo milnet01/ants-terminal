@@ -1567,6 +1567,349 @@ QJsonObject ClaudeIntegration::queryMcpTrace(
     return out;
 }
 
+// ANTS-2132 — the MCP response pipeline, lifted out of onMcpConnection()'s
+// readyRead lambda so a reply can be finished after the handler has run
+// somewhere else. The body below is the inline code VERBATIM and in the same
+// order; neither dispatch path keeps its own copy (spec § 2.2).
+//
+// The locals the lambda held are re-bound as aliases rather than rewritten to
+// ctx.* on purpose: a rename would change the argument spellings that many
+// source-scrape tests search for, and a scrape that silently stops matching is
+// a guard that stops guarding. For the same reason this comment must not quote
+// one of those literals -- doing so plants a false first match ahead of the
+// real call site and breaks the ordering assertions.
+void ClaudeIntegration::finishToolDispatch(McpCallContext ctx,
+                                           QString responseText) {
+    const QString     &toolName    = ctx.toolName;
+    const QJsonObject &argsObj     = ctx.args;
+    const bool         cachedHit   = ctx.cachedHit;
+    const bool         cacheable   = ctx.cacheable;
+    const bool         toolHandled = ctx.toolHandled;
+    const QElapsedTimer &mcpTraceTimer = ctx.traceTimer;
+    // Written to by the etag short-circuit below, then read by recordDispatch;
+    // the mutation never needs to escape this function.
+    QString dispatchResult = ctx.dispatchResult;
+
+    auto makeTextContent = [](const QString &text) {
+        QJsonObject block;
+        block["type"] = "text";
+        block["text"] = text;
+        QJsonArray arr;
+        arr.append(block);
+        return arr;
+    };
+    QJsonObject result;
+    QJsonObject error;
+    bool haveResult = false;
+    // ANTS-2175 — unknown-arg advisory. Diff the call's arg keys
+    // against the verb's declared inputSchema properties (plus the
+    // universal dispatch-layer args, handled inside mcp::ignoredArgs)
+    // and, when a key is unrecognised, attach a non-fatal
+    // `ignored_args:[...]` field to the success envelope so a
+    // typo'd / stale param surfaces on the first call rather than
+    // masquerading as a working filter (the trigger was `query=`
+    // passed to roadmap_query, silently dropped). Runs only on a
+    // freshly-dispatched call (skip cache hits — the cached body
+    // already carries the advisory for those args) and BEFORE the
+    // cache insert so a future hit returns it too. Parses the body
+    // only when there IS an unrecognised arg (rare), so the
+    // steady-state cost is one cheap key-set diff. Empty
+    // m_toolParamKeys (no tools/list yet) degrades to no advisory.
+    //
+    // ANTS-4525 — REFUSALS are annotated too. They used to be left
+    // untouched on the reasoning that the caller already reads the
+    // error, and that is backwards for the case it matters most
+    // in: a caller with a wrong mental model of a verb passes wrong
+    // ARGUMENTS and gets a refusal, so the advisory that would
+    // correct the model is suppressed precisely because it
+    // refused. mcp::withIgnoredArgs only ADDS a key, so the
+    // ANTS-2112 refusal floor is untouched by construction.
+    //
+    // ANTS-4626 — computed into a local because it is applied on
+    // BOTH sides of the offload below. It is computed even on a
+    // cache hit, where the pre-offload apply is skipped (the
+    // cached body already carries it) but the post-offload one is
+    // still owed, since the offload discards it either way.
+    QStringList ignoredArgKeys;
+    if (toolHandled && m_toolParamKeys.contains(toolName)) {
+        // ANTS-4578 — which dispatch-layer args THIS verb actually
+        // honours. The predicates live here, so the pure helper
+        // cannot ask them; previously it exempted all four
+        // unconditionally and a `fields` sent to a verb with no
+        // projection support did nothing and said nothing.
+        QSet<QString> honoured;
+        if (isEtagSupportedTool(toolName))
+            honoured.insert(QStringLiteral("etag_match"));
+        // ANTS-4524 — `fields` is not here: it is universal now
+        // (mcp::isUniversalDispatchArg), so it can never be the
+        // dropped argument this advisory exists to name.
+        if (mcp::isCompactArgTool(toolName))
+            honoured.insert(QStringLiteral("compact"));
+        if (mcp::isOffloadEligible(toolName))
+            honoured.insert(QStringLiteral("offload"));
+        ignoredArgKeys = mcp::ignoredArgs(
+            argsObj, m_toolParamKeys.value(toolName), honoured);
+    }
+    if (toolHandled && !cachedHit && !ignoredArgKeys.isEmpty()) {
+        responseText =
+            mcp::withIgnoredArgs(responseText, ignoredArgKeys);
+    }
+    // ANTS-1357 — populate cache on miss-success. INV-5
+    // exclusions enforced inside maybeInsertIdempotentReadCache.
+    // The cache stores the un-etagged response so subsequent
+    // callers can either reuse it verbatim OR short-circuit
+    // via etag_match against the same fingerprint.
+    if (toolHandled && cacheable && !cachedHit) {
+        maybeInsertIdempotentReadCache(
+            toolName, argsObj, responseText);
+    }
+    // ANTS-1499 — ETag short-circuit. Runs after the
+    // idempotent-read cache so the cached body stays in its
+    // canonical (un-etagged) form, and before the wrap so
+    // the etag is computed against the actual JSON envelope
+    // (not the <ants_mcp_data> wrapper bytes which would
+    // shift the hash for every tool name change).
+    bool etagUnchanged = false;
+    if (toolHandled && isEtagSupportedTool(toolName)) {
+        responseText = applyEtagPattern(
+            toolName, argsObj, responseText, &etagUnchanged);
+        if (etagUnchanged) {
+            dispatchResult = QStringLiteral("etag_unchanged");
+        }
+    }
+    // ANTS-1720 — `fields=` projection. Runs after the etag
+    // short-circuit (so the etag is computed on the
+    // unfiltered canonical body) and before the wrap (so the
+    // hash covers the JSON envelope, not the wrapper). Skipped
+    // on the etag short-circuit — {ok,unchanged,etag} has no
+    // content to narrow. To retain the etag through a narrowed
+    // call, the caller lists "etag" in `fields`.
+    // ANTS-4524 — EVERY verb, no allowlist. It was gated on one,
+    // so a caller passing `fields=` to any other verb had it
+    // dropped, and the per-verb workaround was paid one verb at a
+    // time (ANTS-4523, ANTS-4663, ANTS-4665). projectFields is a
+    // pure top-level key filter with a refusal floor and a 304
+    // floor, which is what makes it safe on an envelope this
+    // dispatcher has never seen.
+    if (toolHandled && !etagUnchanged) {
+        const QJsonValue fv =
+            argsObj.value(QStringLiteral("fields"));
+        if (fv.isArray()) {
+            responseText = mcp::projectFields(
+                responseText, fv.toArray());
+        }
+    }
+    // ANTS-2091 — opt-in `compact:true` drops dead-weight
+    // fields (null / false / "" / [] / {}) the model never
+    // reads. After fields= (compacts the narrowed body too)
+    // and before the etag-unchanged short-circuit is irrelevant
+    // — skipped on a 304, which is already minimal. Protected
+    // keys (ok/code/error/etag/found/unchanged) survive at
+    // every level (see mcp::compactEnvelope).
+    // ANTS-2085 — resolve `compact` from the per-call arg when
+    // present (true OR false both win), else fall back to the
+    // session/user terse default (mcp::terseDefault(), driven by
+    // the claude.mcp_terse_responses config key — on by default so
+    // token-saving needs no per-call flag). Absent ⟺ default makes
+    // the fallback lossless; a caller needing empty-vs-absent
+    // passes compact:false.
+    // ANTS-4524 — compaction did NOT follow `fields=` into being
+    // universal, and the reason is the default: a transform nobody
+    // asked for is what shipped ANTS-4673. isCompactArgTool gates
+    // the verbs declaring the argument at all; isDefaultCompactTool
+    // is the separate answer for an ABSENT one.
+    if (toolHandled && !etagUnchanged &&
+        mcp::isCompactArgTool(toolName)) {
+        const QJsonValue compactArg =
+            argsObj.value(QStringLiteral("compact"));
+        const bool wantCompact = compactArg.isBool()
+            ? compactArg.toBool()
+            : (mcp::isDefaultCompactTool(toolName)
+               && mcp::terseDefault());
+        if (wantCompact)
+            responseText = mcp::compactEnvelope(responseText);
+    }
+    // ANTS-2081 / ANTS-2086 — append etag-reuse + leaner-mode
+    // nudges to large read responses. After the etag/fields
+    // steps so the hint never perturbs the etag hash or a
+    // narrowed body (see maybeAppendReadHints gating).
+    if (toolHandled) {
+        responseText = mcp::appendReadHints(
+            toolName, argsObj, responseText, etagUnchanged);
+    }
+
+    // ANTS-2090 — opt-in columnar encoding for homogeneous-array
+    // read replies. After appendReadHints (which operates on
+    // normal JSON top-level scalars, untouched by tabularize) and
+    // before offloadBody — a smaller tabular body may now fit
+    // under the spill threshold, and if it still spills the spill
+    // file holds valid tabular JSON (INV-8/INV-9). Per-call only
+    // (encoding:"tabular"); never a session default, because it
+    // changes a field's SHAPE and the caller must know how to
+    // decode {__cols__,__rows__}. tabularize is self-guarding per
+    // array (no tool-name predicate) — it no-ops on refusals,
+    // 304s, and arrays that don't shrink. See docs/specs/ANTS-2090.md.
+    if (toolHandled && !etagUnchanged &&
+        argsObj.value(QStringLiteral("encoding")).toString()
+            == QStringLiteral("tabular")) {
+        responseText = mcp::tabularize(responseText);
+    }
+
+    // ANTS-2218 — raw (verbatim) framing for content reads. Read
+    // here, before the offload below, so it can suppress it: an
+    // agent that asked for true bytes must not be handed a
+    // head+pointer envelope instead. Honoured only for the
+    // isRawEligible read verbs (read_region/read_regions/
+    // workspace_search); see the wrap branch below.
+    const bool rawRequested =
+        mcp::isRawEligible(toolName) &&
+        argsObj.value(QStringLiteral("raw")).toBool();
+
+    // ANTS-2094 — proactive result offload (observation masking).
+    // After every token-trim transform (fields/compact/hints) and
+    // before the wrap: spill an over-threshold body to a
+    // content-addressed cache file and replace it with a small
+    // head+pointer envelope. Opt-in (per-call offload:true or the
+    // session default). The head guard (bodyBytes > head size)
+    // keeps offload a net saving; fail-open returns the body
+    // unchanged on any write failure. See docs/specs/ANTS-2094.md.
+    if (toolHandled && !etagUnchanged && !rawRequested &&
+        mcp::isOffloadEligible(toolName) &&
+        mcp::offloadRequested(argsObj)) {
+        // ANTS-3552 — the >=threshold / >head boundary is the
+        // extracted mcp::shouldOffload predicate (behaviourally
+        // tested; offloadBody has no internal threshold guard).
+        const qint64 bodyBytes = responseText.toUtf8().size();
+        if (mcp::shouldOffload(bodyBytes)) {
+            responseText = mcp::offloadBody(toolName, responseText);
+            // ANTS-4626 — offloadBody builds a FRESH head+pointer
+            // envelope from its own keys, so the ANTS-2175
+            // advisory attached above is discarded with the rest
+            // of the body. That put it exactly backwards: the
+            // offload fires on the largest answers, and a filter
+            // that was silently ignored is what MAKES an answer
+            // too large. The reply is then a superset of what was
+            // asked for — the one shape a caller cannot detect,
+            // since a filter that matched nothing and a filter
+            // that never ran both return rows, and the second
+            // returns more.
+            //
+            // Re-applied here rather than preserved inside
+            // offloadBody, which is deliberately content-agnostic
+            // (it Q_UNUSEDs the tool name) and whose parse is
+            // RAM-capped, so a body over that cap could not carry
+            // the advisory across at all. withIgnoredArgs only
+            // ADDS a key, so the pointer envelope is untouched.
+            if (!ignoredArgKeys.isEmpty()) {
+                responseText = mcp::withIgnoredArgs(
+                    responseText, ignoredArgKeys);
+            }
+        }
+    }
+
+    if (toolHandled) {
+        // ANTS-1294 — frame user-supplied content as data,
+        // not instructions. Control-plane tools (server-
+        // generated state) skip the wrap so a caller can
+        // syntactically distinguish structural metadata
+        // from content. See docs/specs/ANTS-1294.md.
+        const bool isControlPlane =
+            (toolName == QStringLiteral("get_session_info") ||
+             toolName == QStringLiteral("token_usage") ||
+             // ANTS-1399 — tool_info returns a descriptor
+             // slice (server-generated metadata about other
+             // tools), not user content. Bypass the wrap
+             // for the same reason get_session_info does.
+             toolName == QStringLiteral("tool_info"));
+        // ANTS-2218 — raw verbatim frame (opt-in, read verbs) vs
+        // the default lossy tag-scrub. Control-plane bypasses both.
+        const QString wrapped =
+            isControlPlane ? responseText
+            : rawRequested ? wrapMcpDataRaw(toolName, responseText)
+                           : wrapMcpData(toolName, responseText);
+        result["content"] = makeTextContent(wrapped);
+        // ANTS-1284 — record dispatch (token_usage +
+        // mcp_trace). ANTS-1402-INV-3: now teed through
+        // a single recordDispatch hook so both observers
+        // see byte-identical numbers. ANTS-1284 byte-count
+        // contract preserved: arg/out bytes measure the
+        // wrapped payload (what actually crosses the wire).
+        // ANTS-1355: wrap delta + dispatch latency captured
+        // once at the dispatch site and forwarded verbatim.
+        const qint64 argBytes = QJsonDocument(argsObj)
+            .toJson(QJsonDocument::Compact).size();
+        const qint64 outBytes  = wrapped.toUtf8().size();
+        const qint64 rawBytes  = responseText.toUtf8().size();
+        const qint64 wrapBytes = outBytes - rawBytes;       // ANTS-1355 INV-3
+        const qint64 durUs     = mcpTraceTimer.nsecsElapsed() / 1000;
+        // ANTS-1356 + ANTS-1454 — dispatchResult is "ok"
+        // for normal success, "caller_cwd_required" for
+        // ANTS-1404 refusals, "rate_limited" for ANTS-1356
+        // refusals. recordDispatch derives `succeeded =
+        // (result == "ok")` so failed-call accounting in
+        // token_usage stays honest.
+        recordDispatch(toolName, argsObj, argBytes,
+                       /*rawBytes=*/ctx.requestBytes, outBytes,
+                       wrapBytes, durUs, cachedHit,
+                       dispatchResult);
+        haveResult = true;
+    } else {
+        // JSON-RPC application error: tool not found or provider missing.
+        error["code"] = -32602; // Invalid params
+        error["message"] = QString("Unknown tool: %1").arg(toolName);
+        // ANTS-1402-INV-4 — failure-branch hook now routes
+        // through recordDispatch with result="tool_not_found".
+        // m_tokenUsage.recordCall is skipped inside
+        // recordDispatch when result != "ok" (preserves
+        // pre-1402 behaviour). INV-12 of ANTS-1360 still
+        // applies: resp_bytes=0 and a non-negative
+        // duration_us reach the mcp_trace ring.
+        const qint64 argBytes = QJsonDocument(argsObj)
+            .toJson(QJsonDocument::Compact).size();
+        const qint64 durUs = mcpTraceTimer.nsecsElapsed() / 1000;
+        recordDispatch(toolName, argsObj, argBytes,
+                       /*rawBytes=*/ctx.requestBytes,
+                       /*outBytes=*/0,
+                       /*wrapBytes=*/0,
+                       durUs,
+                       /*cachedHit=*/false,
+                       QStringLiteral("tool_not_found"));
+    }
+    sendMcpResponse(ctx.socket, ctx.requestId,
+                    haveResult ? &result : nullptr,
+                    haveResult ? nullptr : &error);
+}
+
+// ANTS-2132 — the JSON-RPC envelope write, shared by every method so the
+// deferred path cannot drift from the synchronous one.
+void ClaudeIntegration::sendMcpResponse(const QPointer<QLocalSocket> &socket,
+                                        const QJsonValue &requestId,
+                                        const QJsonObject *result,
+                                        const QJsonObject *error) {
+    // ANTS-2101 — the peer can disconnect mid-dispatch, freeing this socket
+    // via disconnected -> deleteLater. Bail before touching a dangling
+    // pointer. ANTS-2132 widens that window: the reply may now be written a
+    // whole verb-duration after the request arrived.
+    if (!socket || socket->state() != QLocalSocket::ConnectedState) return;
+    // Notifications (no id) must NOT receive a response per JSON-RPC 2.0.
+    if (requestId.isUndefined() || requestId.isNull()) {
+        socket->disconnectFromServer();
+        return;
+    }
+    QJsonObject envelope;
+    envelope["jsonrpc"] = "2.0";
+    envelope["id"] = requestId;
+    if (result)     envelope["result"] = *result;
+    else if (error) envelope["error"]  = *error;
+    QByteArray resp = QJsonDocument(envelope).toJson(QJsonDocument::Compact);
+    // ANTS-1769 — '\n' end-of-reply terminator; compact JSON carries no raw
+    // newline, so it is an unambiguous "reply complete" marker.
+    resp.append('\n');
+    socket->write(resp);
+    socket->flush();
+    socket->disconnectFromServer();
+}
+
 void ClaudeIntegration::onMcpConnection() {
     while (m_mcpServer->hasPendingConnections()) {
         QLocalSocket *socket = m_mcpServer->nextPendingConnection();
@@ -13948,319 +14291,31 @@ void ClaudeIntegration::onMcpConnection() {
                         toolHandled = true;
                     }
                 }
-                // ANTS-2175 — unknown-arg advisory. Diff the call's arg keys
-                // against the verb's declared inputSchema properties (plus the
-                // universal dispatch-layer args, handled inside mcp::ignoredArgs)
-                // and, when a key is unrecognised, attach a non-fatal
-                // `ignored_args:[...]` field to the success envelope so a
-                // typo'd / stale param surfaces on the first call rather than
-                // masquerading as a working filter (the trigger was `query=`
-                // passed to roadmap_query, silently dropped). Runs only on a
-                // freshly-dispatched call (skip cache hits — the cached body
-                // already carries the advisory for those args) and BEFORE the
-                // cache insert so a future hit returns it too. Parses the body
-                // only when there IS an unrecognised arg (rare), so the
-                // steady-state cost is one cheap key-set diff. Empty
-                // m_toolParamKeys (no tools/list yet) degrades to no advisory.
-                //
-                // ANTS-4525 — REFUSALS are annotated too. They used to be left
-                // untouched on the reasoning that the caller already reads the
-                // error, and that is backwards for the case it matters most
-                // in: a caller with a wrong mental model of a verb passes wrong
-                // ARGUMENTS and gets a refusal, so the advisory that would
-                // correct the model is suppressed precisely because it
-                // refused. mcp::withIgnoredArgs only ADDS a key, so the
-                // ANTS-2112 refusal floor is untouched by construction.
-                //
-                // ANTS-4626 — computed into a local because it is applied on
-                // BOTH sides of the offload below. It is computed even on a
-                // cache hit, where the pre-offload apply is skipped (the
-                // cached body already carries it) but the post-offload one is
-                // still owed, since the offload discards it either way.
-                QStringList ignoredArgKeys;
-                if (toolHandled && m_toolParamKeys.contains(toolName)) {
-                    // ANTS-4578 — which dispatch-layer args THIS verb actually
-                    // honours. The predicates live here, so the pure helper
-                    // cannot ask them; previously it exempted all four
-                    // unconditionally and a `fields` sent to a verb with no
-                    // projection support did nothing and said nothing.
-                    QSet<QString> honoured;
-                    if (isEtagSupportedTool(toolName))
-                        honoured.insert(QStringLiteral("etag_match"));
-                    // ANTS-4524 — `fields` is not here: it is universal now
-                    // (mcp::isUniversalDispatchArg), so it can never be the
-                    // dropped argument this advisory exists to name.
-                    if (mcp::isCompactArgTool(toolName))
-                        honoured.insert(QStringLiteral("compact"));
-                    if (mcp::isOffloadEligible(toolName))
-                        honoured.insert(QStringLiteral("offload"));
-                    ignoredArgKeys = mcp::ignoredArgs(
-                        argsObj, m_toolParamKeys.value(toolName), honoured);
-                }
-                if (toolHandled && !cachedHit && !ignoredArgKeys.isEmpty()) {
-                    responseText =
-                        mcp::withIgnoredArgs(responseText, ignoredArgKeys);
-                }
-                // ANTS-1357 — populate cache on miss-success. INV-5
-                // exclusions enforced inside maybeInsertIdempotentReadCache.
-                // The cache stores the un-etagged response so subsequent
-                // callers can either reuse it verbatim OR short-circuit
-                // via etag_match against the same fingerprint.
-                if (toolHandled && cacheable && !cachedHit) {
-                    maybeInsertIdempotentReadCache(
-                        toolName, argsObj, responseText);
-                }
-                // ANTS-1499 — ETag short-circuit. Runs after the
-                // idempotent-read cache so the cached body stays in its
-                // canonical (un-etagged) form, and before the wrap so
-                // the etag is computed against the actual JSON envelope
-                // (not the <ants_mcp_data> wrapper bytes which would
-                // shift the hash for every tool name change).
-                bool etagUnchanged = false;
-                if (toolHandled && isEtagSupportedTool(toolName)) {
-                    responseText = applyEtagPattern(
-                        toolName, argsObj, responseText, &etagUnchanged);
-                    if (etagUnchanged) {
-                        dispatchResult = QStringLiteral("etag_unchanged");
-                    }
-                }
-                // ANTS-1720 — `fields=` projection. Runs after the etag
-                // short-circuit (so the etag is computed on the
-                // unfiltered canonical body) and before the wrap (so the
-                // hash covers the JSON envelope, not the wrapper). Skipped
-                // on the etag short-circuit — {ok,unchanged,etag} has no
-                // content to narrow. To retain the etag through a narrowed
-                // call, the caller lists "etag" in `fields`.
-                // ANTS-4524 — EVERY verb, no allowlist. It was gated on one,
-                // so a caller passing `fields=` to any other verb had it
-                // dropped, and the per-verb workaround was paid one verb at a
-                // time (ANTS-4523, ANTS-4663, ANTS-4665). projectFields is a
-                // pure top-level key filter with a refusal floor and a 304
-                // floor, which is what makes it safe on an envelope this
-                // dispatcher has never seen.
-                if (toolHandled && !etagUnchanged) {
-                    const QJsonValue fv =
-                        argsObj.value(QStringLiteral("fields"));
-                    if (fv.isArray()) {
-                        responseText = mcp::projectFields(
-                            responseText, fv.toArray());
-                    }
-                }
-                // ANTS-2091 — opt-in `compact:true` drops dead-weight
-                // fields (null / false / "" / [] / {}) the model never
-                // reads. After fields= (compacts the narrowed body too)
-                // and before the etag-unchanged short-circuit is irrelevant
-                // — skipped on a 304, which is already minimal. Protected
-                // keys (ok/code/error/etag/found/unchanged) survive at
-                // every level (see mcp::compactEnvelope).
-                // ANTS-2085 — resolve `compact` from the per-call arg when
-                // present (true OR false both win), else fall back to the
-                // session/user terse default (mcp::terseDefault(), driven by
-                // the claude.mcp_terse_responses config key — on by default so
-                // token-saving needs no per-call flag). Absent ⟺ default makes
-                // the fallback lossless; a caller needing empty-vs-absent
-                // passes compact:false.
-                // ANTS-4524 — compaction did NOT follow `fields=` into being
-                // universal, and the reason is the default: a transform nobody
-                // asked for is what shipped ANTS-4673. isCompactArgTool gates
-                // the verbs declaring the argument at all; isDefaultCompactTool
-                // is the separate answer for an ABSENT one.
-                if (toolHandled && !etagUnchanged &&
-                    mcp::isCompactArgTool(toolName)) {
-                    const QJsonValue compactArg =
-                        argsObj.value(QStringLiteral("compact"));
-                    const bool wantCompact = compactArg.isBool()
-                        ? compactArg.toBool()
-                        : (mcp::isDefaultCompactTool(toolName)
-                           && mcp::terseDefault());
-                    if (wantCompact)
-                        responseText = mcp::compactEnvelope(responseText);
-                }
-                // ANTS-2081 / ANTS-2086 — append etag-reuse + leaner-mode
-                // nudges to large read responses. After the etag/fields
-                // steps so the hint never perturbs the etag hash or a
-                // narrowed body (see maybeAppendReadHints gating).
-                if (toolHandled) {
-                    responseText = mcp::appendReadHints(
-                        toolName, argsObj, responseText, etagUnchanged);
-                }
-
-                // ANTS-2090 — opt-in columnar encoding for homogeneous-array
-                // read replies. After appendReadHints (which operates on
-                // normal JSON top-level scalars, untouched by tabularize) and
-                // before offloadBody — a smaller tabular body may now fit
-                // under the spill threshold, and if it still spills the spill
-                // file holds valid tabular JSON (INV-8/INV-9). Per-call only
-                // (encoding:"tabular"); never a session default, because it
-                // changes a field's SHAPE and the caller must know how to
-                // decode {__cols__,__rows__}. tabularize is self-guarding per
-                // array (no tool-name predicate) — it no-ops on refusals,
-                // 304s, and arrays that don't shrink. See docs/specs/ANTS-2090.md.
-                if (toolHandled && !etagUnchanged &&
-                    argsObj.value(QStringLiteral("encoding")).toString()
-                        == QStringLiteral("tabular")) {
-                    responseText = mcp::tabularize(responseText);
-                }
-
-                // ANTS-2218 — raw (verbatim) framing for content reads. Read
-                // here, before the offload below, so it can suppress it: an
-                // agent that asked for true bytes must not be handed a
-                // head+pointer envelope instead. Honoured only for the
-                // isRawEligible read verbs (read_region/read_regions/
-                // workspace_search); see the wrap branch below.
-                const bool rawRequested =
-                    mcp::isRawEligible(toolName) &&
-                    argsObj.value(QStringLiteral("raw")).toBool();
-
-                // ANTS-2094 — proactive result offload (observation masking).
-                // After every token-trim transform (fields/compact/hints) and
-                // before the wrap: spill an over-threshold body to a
-                // content-addressed cache file and replace it with a small
-                // head+pointer envelope. Opt-in (per-call offload:true or the
-                // session default). The head guard (bodyBytes > head size)
-                // keeps offload a net saving; fail-open returns the body
-                // unchanged on any write failure. See docs/specs/ANTS-2094.md.
-                if (toolHandled && !etagUnchanged && !rawRequested &&
-                    mcp::isOffloadEligible(toolName) &&
-                    mcp::offloadRequested(argsObj)) {
-                    // ANTS-3552 — the >=threshold / >head boundary is the
-                    // extracted mcp::shouldOffload predicate (behaviourally
-                    // tested; offloadBody has no internal threshold guard).
-                    const qint64 bodyBytes = responseText.toUtf8().size();
-                    if (mcp::shouldOffload(bodyBytes)) {
-                        responseText = mcp::offloadBody(toolName, responseText);
-                        // ANTS-4626 — offloadBody builds a FRESH head+pointer
-                        // envelope from its own keys, so the ANTS-2175
-                        // advisory attached above is discarded with the rest
-                        // of the body. That put it exactly backwards: the
-                        // offload fires on the largest answers, and a filter
-                        // that was silently ignored is what MAKES an answer
-                        // too large. The reply is then a superset of what was
-                        // asked for — the one shape a caller cannot detect,
-                        // since a filter that matched nothing and a filter
-                        // that never ran both return rows, and the second
-                        // returns more.
-                        //
-                        // Re-applied here rather than preserved inside
-                        // offloadBody, which is deliberately content-agnostic
-                        // (it Q_UNUSEDs the tool name) and whose parse is
-                        // RAM-capped, so a body over that cap could not carry
-                        // the advisory across at all. withIgnoredArgs only
-                        // ADDS a key, so the pointer envelope is untouched.
-                        if (!ignoredArgKeys.isEmpty()) {
-                            responseText = mcp::withIgnoredArgs(
-                                responseText, ignoredArgKeys);
-                        }
-                    }
-                }
-
-                if (toolHandled) {
-                    // ANTS-1294 — frame user-supplied content as data,
-                    // not instructions. Control-plane tools (server-
-                    // generated state) skip the wrap so a caller can
-                    // syntactically distinguish structural metadata
-                    // from content. See docs/specs/ANTS-1294.md.
-                    const bool isControlPlane =
-                        (toolName == QStringLiteral("get_session_info") ||
-                         toolName == QStringLiteral("token_usage") ||
-                         // ANTS-1399 — tool_info returns a descriptor
-                         // slice (server-generated metadata about other
-                         // tools), not user content. Bypass the wrap
-                         // for the same reason get_session_info does.
-                         toolName == QStringLiteral("tool_info"));
-                    // ANTS-2218 — raw verbatim frame (opt-in, read verbs) vs
-                    // the default lossy tag-scrub. Control-plane bypasses both.
-                    const QString wrapped =
-                        isControlPlane ? responseText
-                        : rawRequested ? wrapMcpDataRaw(toolName, responseText)
-                                       : wrapMcpData(toolName, responseText);
-                    result["content"] = makeTextContent(wrapped);
-                    // ANTS-1284 — record dispatch (token_usage +
-                    // mcp_trace). ANTS-1402-INV-3: now teed through
-                    // a single recordDispatch hook so both observers
-                    // see byte-identical numbers. ANTS-1284 byte-count
-                    // contract preserved: arg/out bytes measure the
-                    // wrapped payload (what actually crosses the wire).
-                    // ANTS-1355: wrap delta + dispatch latency captured
-                    // once at the dispatch site and forwarded verbatim.
-                    const qint64 argBytes = QJsonDocument(argsObj)
-                        .toJson(QJsonDocument::Compact).size();
-                    const qint64 outBytes  = wrapped.toUtf8().size();
-                    const qint64 rawBytes  = responseText.toUtf8().size();
-                    const qint64 wrapBytes = outBytes - rawBytes;       // ANTS-1355 INV-3
-                    const qint64 durUs     = mcpTraceTimer.nsecsElapsed() / 1000;
-                    // ANTS-1356 + ANTS-1454 — dispatchResult is "ok"
-                    // for normal success, "caller_cwd_required" for
-                    // ANTS-1404 refusals, "rate_limited" for ANTS-1356
-                    // refusals. recordDispatch derives `succeeded =
-                    // (result == "ok")` so failed-call accounting in
-                    // token_usage stays honest.
-                    recordDispatch(toolName, argsObj, argBytes,
-                                   /*rawBytes=*/buf.size(), outBytes,
-                                   wrapBytes, durUs, cachedHit,
-                                   dispatchResult);
-                    haveResult = true;
-                } else {
-                    // JSON-RPC application error: tool not found or provider missing.
-                    error["code"] = -32602; // Invalid params
-                    error["message"] = QString("Unknown tool: %1").arg(toolName);
-                    // ANTS-1402-INV-4 — failure-branch hook now routes
-                    // through recordDispatch with result="tool_not_found".
-                    // m_tokenUsage.recordCall is skipped inside
-                    // recordDispatch when result != "ok" (preserves
-                    // pre-1402 behaviour). INV-12 of ANTS-1360 still
-                    // applies: resp_bytes=0 and a non-negative
-                    // duration_us reach the mcp_trace ring.
-                    const qint64 argBytes = QJsonDocument(argsObj)
-                        .toJson(QJsonDocument::Compact).size();
-                    const qint64 durUs = mcpTraceTimer.nsecsElapsed() / 1000;
-                    recordDispatch(toolName, argsObj, argBytes,
-                                   /*rawBytes=*/buf.size(),
-                                   /*outBytes=*/0,
-                                   /*wrapBytes=*/0,
-                                   durUs,
-                                   /*cachedHit=*/false,
-                                   QStringLiteral("tool_not_found"));
-                }
+                // ANTS-2132 — hand the rest of the reply to finishToolDispatch.
+                // It owns the transforms, the wrap, recordDispatch and the
+                // socket write for this path.
+                McpCallContext ctx;
+                ctx.socket         = guard;
+                ctx.requestId      = reqId;
+                ctx.toolName       = toolName;
+                ctx.args           = argsObj;
+                ctx.requestBytes   = buf.size();
+                ctx.cachedHit      = cachedHit;
+                ctx.cacheable      = cacheable;
+                ctx.toolHandled    = toolHandled;
+                ctx.dispatchResult = dispatchResult;
+                ctx.traceTimer     = mcpTraceTimer;
+                finishToolDispatch(ctx, responseText);
+                return;
             } else {
                 // JSON-RPC -32601 = Method not found
                 error["code"] = -32601;
                 error["message"] = QString("Method not found: %1").arg(method);
             }
 
-            // ANTS-2101 — the dispatch above may have run a nested event
-            // loop (audit_run pumps QProcesses), during which the peer's
-            // disconnect freed this socket via disconnected -> deleteLater.
-            // Bail before touching a dangling pointer (covers both the
-            // notification-disconnect and the response write below).
-            if (!guard || socket->state() != QLocalSocket::ConnectedState)
-                return;
-
-            // Notifications (no id) must NOT receive a response per JSON-RPC 2.0.
-            if (reqId.isUndefined() || reqId.isNull()) {
-                socket->disconnectFromServer();
-                return;
-            }
-
-            QJsonObject envelope;
-            envelope["jsonrpc"] = "2.0";
-            envelope["id"] = reqId;
-            if (haveResult) envelope["result"] = result;
-            else            envelope["error"]  = error;
-
-            QByteArray resp = QJsonDocument(envelope).toJson(QJsonDocument::Compact);
-            // ANTS-1769 — append a '\n' end-of-reply terminator. Compact
-            // JSON contains no raw newline bytes (string newlines are
-            // escaped as the two chars \n), so a trailing raw '\n' is an
-            // unambiguous "reply complete" marker. The client (mcp-bridge)
-            // treats a missing terminator on a parse failure as truncation
-            // (-32000) rather than malformed (-32700). Back-compatible: an
-            // older client that reads to EOF + json.loads ignores the
-            // trailing whitespace.
-            resp.append('\n');
-            socket->write(resp);
-            socket->flush();
-            socket->disconnectFromServer();
+            sendMcpResponse(guard, reqId,
+                            haveResult ? &result : nullptr,
+                            haveResult ? nullptr : &error);
         });
         connect(socket, &QLocalSocket::disconnected, socket, &QObject::deleteLater);
     }
