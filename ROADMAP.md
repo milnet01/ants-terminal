@@ -46718,6 +46718,76 @@ envelope dropped `source`/`path`/`etag`/`total`/`filter`.
   Source: user-request-2026-08-26 (asked whether the OBS builds had been kicked off during the 0.7.106 release).
   Lanes: packaging, release.
 
+- 🚧 [ANTS-4717] **ANTS-4391's ripgrep fix reached ci.yml and not the RPM spec, so the OBS build fails 11 CitedBy tests.**
+  MEASURED from the Tumbleweed build log: all 11 CitedBy tests fail with
+  {"code":"rg_failed","error":"cited_by: rg failed to start (is ripgrep
+  installed?)"}, and %check exits non-zero, so the RPM does not build on
+  Tumbleweed, Leap 16.0 or Mageia 10.
+
+  SAME DEFECT AS ANTS-4391, one surface over. That item cost five red CI
+  runs for this exact cause and was fixed by adding ripgrep to
+  .github/workflows/ci.yml. The RPM is a SECOND environment that runs the
+  full ctest suite in %check, and it never got the same line.
+
+  WHY THE GUARD DID NOT CATCH IT. tests/features/ci_workflow_deps exists
+  precisely to stop this recurring -- a static check that the workflow and
+  the script agree on their dependencies. It reads the workflow and does not
+  read packaging/opensuse/ants-terminal.spec, so the spec was never in
+  scope. The repair for the CLASS is to widen that guard to every
+  environment that runs the suite, not to add one more line and wait for the
+  next surface to be found by a build.
+
+  WHY IT SURFACED ONLY NOW. OBS had been building stale sources for weeks
+  (ANTS-4587), so this is the first OBS build to run the CitedBy suite at
+  all. The submit that exposed it is the fix for that item.
+
+  FIXED HERE by declaring BuildRequires: ripgrep, with the reasoning the
+  neighbouring git-core entry already sets out -- a build VM has neither
+  unless asked, and the tests carry no absent-tool skip path, so declaring
+  it makes them RUN rather than be excluded into silence.
+
+  The spec is copied from the working tree at submit time rather than taken
+  from the tag, so this reaches OBS without a new tag.
+  **Layman:** The package build was missing a search tool the tests need, so it failed in a way local runs never see.
+  Kind: fix.
+  Source: in-session-2026-08-26, found by the first OBS build of 0.7.106 after the submit was run.
+  Lanes: packaging, ci.
+
+- 📋 [ANTS-4718] **A roadmap-dialog column-grid test asserts layout the build VM's font fallback breaks.**
+  RoadmapDialogCards.Ants3762ColumnGridIsSharedAcrossSections fails in the
+  OBS build VM and passes on the dev box:
+
+    gridFirst                    = { 15.5, 304, 464, 1180 }
+    columnXs(doc, tables.at(i))  = { 15.5, 304, 410, 1180 }
+
+  The third column differs. The card CSS sets font-family:monospace, and the
+  spec declares NO font packages at all, so Qt resolves monospace to
+  whatever fallback the chroot happens to have.
+
+  WORTH READING CAREFULLY BEFORE FIXING. The assertion compares sections to
+  EACH OTHER within one run, not against fixed pixels. A merely different
+  font would shift every section together and the test would still pass.
+  That it fails means the shared-grid computation produces DIFFERENT columns
+  for different sections under that fallback -- so this may be a real
+  invariant violation the dev box's fonts mask, rather than a test that is
+  simply too strict. Decide which before changing either side.
+
+  NOT FIXED WITH THE RIPGREP GAP, deliberately. Declaring a font would need
+  per-distro package names (dejavu-fonts / dejavu-sans-mono-fonts /
+  fonts-ttf-dejavu) behind %if guards, and no portable font(...) provide
+  exists to avoid them -- checked. Guessing at three package names during a
+  live release is how an unresolvable job replaces a failing one, which is
+  strictly worse: an unresolvable build produces no log to read.
+
+  STATED LIMIT: until this is resolved the RPM build stays red even with the
+  ripgrep fix, so package users remain on the previously published version.
+  That is visible rather than silent, which is the improvement ANTS-4588 was
+  built for.
+  **Layman:** One test measures text positions, and a machine with no fonts installed measures them differently.
+  Kind: fix.
+  Source: in-session-2026-08-26, the twelfth failure in the same OBS build.
+  Lanes: packaging, roadmapdialog.
+
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-08-11 triage
 
 35 un-triaged findings across 9 of the 18 shared-root feedback files (AI

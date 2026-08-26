@@ -72,6 +72,15 @@ BuildRequires:  ninja
 # of being excluded into silence. git-core is the client alone; the `git`
 # metapackage would drag in gitk/git-email for nothing.
 BuildRequires:  git-core
+# Same shape as git-core above, and found the same way — by a build VM. The
+# cited_by verb shells out to ripgrep with no skip path, so all 11 CitedBy
+# tests fail with {"code":"rg_failed"} rather than skipping when rg is absent.
+# ANTS-4391 already cost five red CI runs for this exact reason and was fixed
+# by adding ripgrep to .github/workflows/ci.yml — but only there. The RPM is a
+# SECOND environment that runs %check, it never got the same line, and
+# tests/features/ci_workflow_deps guards the workflow without reading this
+# spec. Declaring it makes those tests RUN instead of failing the build.
+BuildRequires:  ripgrep
 BuildRequires:  cmake(Qt6Core) >= 6.2
 BuildRequires:  cmake(Qt6DBus)
 BuildRequires:  cmake(Qt6Gui)
