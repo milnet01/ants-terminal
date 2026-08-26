@@ -1,6 +1,7 @@
 // ANTS-3833 TU 11/17 — Indie review verbs.
 #include "remotecontrol.h"
 #include "remotecontrol_internal.h"
+#include "guithread.h"
 #include "debtsweepengine.h"
 #include "claudeintegration.h"
 #include "config.h"
@@ -1951,7 +1952,10 @@ QJsonDocument RemoteControl::cmdTokenUsage(const QJsonObject &req,
     // the session about to be folded (a follow-up call then returns the same
     // lifetime). m_main is non-owning/non-null by contract; guard defensively.
     const TokenSavingsSummary savings =
-        m_main ? m_main->tokenSavingsSummary() : TokenSavingsSummary{};
+        m_main ? ants::onGuiThread(
+                     [this]() { return m_main->tokenSavingsSummary(); })
+                     .value_or(TokenSavingsSummary{})
+               : TokenSavingsSummary{};
     if (wantsReset) {
         ci->resetTokenUsage();
     }

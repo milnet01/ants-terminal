@@ -2,6 +2,7 @@
 #include "remotecontrol.h"
 #include <QRegularExpression>
 #include "remotecontrol_internal.h"
+#include "guithread.h"
 #include "projectsettings.h"   // ANTS-3771 — the declared id format
 #include "mcpspill.h"        // ANTS-2094 — read_spill
 #include "mainwindow.h"
@@ -2261,7 +2262,12 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
         path = findRoadmapUnder(callerCanonical);
     }
     if (path.isEmpty() && callerRaw.isEmpty()) {
-        path = m_main->roadmapPathForRemote();
+    // ANTS-2132 — MainWindow read on the dispatch worker; marshalled.
+        // nullopt = shutting down: leave `path` empty so the existing
+        // no-roadmap refusal fires, rather than answering from a default.
+        if (const auto p = ants::onGuiThread(
+                [this]() { return m_main->roadmapPathForRemote(); }))
+            path = *p;
     }
     if (path.isEmpty()) {
         // ANTS-4611 — the VERDICT here was always right; the wording

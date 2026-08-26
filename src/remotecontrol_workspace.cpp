@@ -2,6 +2,7 @@
 #include "remotecontrol.h"
 #include "mutationprobe.h"   // ANTS-4398
 #include "remotecontrol_internal.h"
+#include "guithread.h"
 #include "rgdiagnosis.h"   // ANTS-4650 — why rg did not start
 #include "wrapmatch.h"   // ANTS-4547 — the wrapped-quotation matching rule
 #include "buildtargets.h"        // ANTS-3745 — build_target_for engine
@@ -155,8 +156,12 @@ QJsonDocument RemoteControl::cmdWorkspaceSearch(const QJsonObject &req) {
         rootCwd = sentinelRoot;
     } else if (!callerRaw.isEmpty()) {
         rootCwd = callerRaw;
-    } else if (auto *t = m_main->currentTerminal()) {
-        rootCwd = t->shellCwd();
+    // ANTS-2132 — MainWindow read on the dispatch worker; marshalled.
+    } else if (const auto cwd = ants::onGuiThread([this]() -> QString {
+                   auto *t = m_main ? m_main->currentTerminal() : nullptr;
+                   return t ? t->shellCwd() : QString();
+               })) {
+        rootCwd = *cwd;
     }
     if (rootCwd.isEmpty()) rootCwd = QDir::currentPath();
     const QFileInfo rootInfo(rootCwd);
@@ -1089,8 +1094,14 @@ QJsonDocument RemoteControl::cmdCitedBy(const QJsonObject &req) {
         rootCwd = sentinelRoot;
     } else if (!callerRaw.isEmpty()) {
         rootCwd = callerRaw;
+    // ANTS-2132 — MainWindow read on the dispatch worker; marshalled.
     } else if (m_main) {
-        if (auto *t = m_main->currentTerminal()) rootCwd = t->shellCwd();
+        if (const auto cwd = ants::onGuiThread([this]() -> QString {
+                auto *t = m_main->currentTerminal();
+                return t ? t->shellCwd() : QString();
+            })) {
+            rootCwd = *cwd;
+        }
     }
     if (rootCwd.isEmpty()) rootCwd = QDir::currentPath();
     const QString rootCanonical = QFileInfo(rootCwd).canonicalFilePath();

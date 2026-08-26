@@ -1,6 +1,7 @@
 // ANTS-3833 TU 9/17 — Feedback and audit verbs.
 #include "remotecontrol.h"
 #include "remotecontrol_internal.h"
+#include "guithread.h"
 #include "feedbackfile.h"        // ANTS-1961 / ANTS-1962
 #include "readlog.h"
 #include "speclog.h"             // ANTS-1963
@@ -1824,9 +1825,13 @@ QString resolveRootCanonical(MainWindow *main) {
     // it made every verb on this overload untestable at the handler layer
     // (segfault, not a refusal), which is why several of their tests scrape
     // source instead of driving the handler. Fall through to the process cwd.
-    if (auto *t = main ? main->currentTerminal() : nullptr) {
-        rootCwd = t->shellCwd();
-    }
+    // ANTS-2132 — MainWindow read, marshalled: this runs on the dispatch
+    // worker for every off-thread verb that reaches it.
+    const auto focused = ants::onGuiThread([main]() -> QString {
+        auto *t = main ? main->currentTerminal() : nullptr;
+        return t ? t->shellCwd() : QString();
+    });
+    if (focused) rootCwd = *focused;
     if (rootCwd.isEmpty()) rootCwd = QDir::currentPath();
     return QFileInfo(rootCwd).canonicalFilePath();
 }
@@ -1894,14 +1899,18 @@ ResolvedRoot resolveCallerCwdRoot(const MainWindow *main,
         // Case 1 — empty caller_cwd → focused fallback.
         rr.source = ResolvedRoot::Source::EmptyFallback;
         if (!main) return rr;
-        if (auto *t = main->focusedTerminal()) {
-            const QString cwd = t->shellCwd();
-            if (!cwd.isEmpty()) {
-                rr.cwd = QFileInfo(cwd).canonicalFilePath();
-            }
+        // ANTS-2132 — both MainWindow reads in ONE marshal, so an off-thread
+        // verb pays a single round-trip rather than one per accessor.
+        const auto focus = ants::onGuiThread([main]() {
+            auto *t = main->focusedTerminal();
+            return QPair<QString, int>(t ? t->shellCwd() : QString(),
+                                       main->currentTabIndexForRemote());
+        });
+        if (focus) {
+            if (!focus->first.isEmpty())
+                rr.cwd = QFileInfo(focus->first).canonicalFilePath();
+            if (focus->second >= 0) rr.tabIndex = focus->second;
         }
-        const int idx = main->currentTabIndexForRemote();
-        if (idx >= 0) rr.tabIndex = idx;
         return rr;
     }
     const QString wantCanonical =
@@ -1913,10 +1922,26 @@ ResolvedRoot resolveCallerCwdRoot(const MainWindow *main,
     }
     // INV-5 — deterministic lowest-index tie-break. for-loop walks
     // indices ascending; first match wins.
-    for (int i = 0; main && i < main->tabCount(); ++i) {
-        TerminalWidget *t = main->terminalAtTab(i);
-        if (!t) continue;
-        const QString tabCwd = t->shellCwd();
+    // ANTS-2132 — snapshot every tab's cwd in ONE marshal, then canonicalise
+    // off-thread. Marshalling per iteration would be a blocking round-trip per
+    // tab; QFileInfo is thread-safe, so only the widget reads need the GUI
+    // thread. Index order is preserved, so INV-5's lowest-index tie-break is
+    // unchanged.
+    QList<QPair<int, QString>> tabs;
+    if (main) {
+        const auto snap = ants::onGuiThread([main]() {
+            QList<QPair<int, QString>> v;
+            for (int i = 0; i < main->tabCount(); ++i) {
+                if (auto *t = main->terminalAtTab(i))
+                    v.append(QPair<int, QString>(i, t->shellCwd()));
+            }
+            return v;
+        });
+        if (snap) tabs = *snap;
+    }
+    for (const auto &entry : tabs) {
+        const int i = entry.first;
+        const QString tabCwd = entry.second;
         if (tabCwd.isEmpty()) continue;
         const QString tabCanonical =
             QFileInfo(tabCwd).canonicalFilePath();
