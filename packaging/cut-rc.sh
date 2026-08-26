@@ -367,6 +367,29 @@ require_no_version_drift() {
     fi
 }
 
+# Shipped-coverage report (ANTS-4714): which items the roadmap store says
+# shipped since the last public tag are cited by no CHANGELOG bullet. This is
+# the CONVERSE of the release skill's own gate, which only checks that ids the
+# CHANGELOG *claims* are really shipped — that direction cannot see work that
+# shipped and was never written down.
+#
+# ADVISORY, not a hard gate, and the reason is deliberate rather than timid.
+# Whether an uncovered item is release-note-worthy or deliberately internal is
+# a judgement, and the check landed against a 19-item backlog. A hard gate on
+# day one blocks every RC until someone triages that backlog, which is how a
+# new gate gets switched off instead of used. It prints the list where the
+# operator is already watching; the REQUIRED step is the bump-time run that
+# .claude/bump.json owns, where there is still an open [Unreleased] to add to.
+report_shipped_coverage() {
+    [ -x tools/check-shipped-coverage.sh ] || return 0
+    if ! tools/check-shipped-coverage.sh; then
+        echo "cut-rc: ^ shipped work above is in no CHANGELOG bullet (ANTS-4714)." >&2
+        echo "cut-rc:   Not blocking — add the release-note-worthy ones with" >&2
+        echo "cut-rc:   changelog_log, and say in the release report which were" >&2
+        echo "cut-rc:   left out on purpose." >&2
+    fi
+}
+
 # X.Y.Z → X.Y.(Z+1) / X.Y.(Z-1) — the patch-field arithmetic the hotfix
 # (ANTS-2165) and its guards use.
 patch_plus_one() {
@@ -411,6 +434,7 @@ cmd_new_rc() {
     require_clean_main
     wednesday_guard
     require_no_version_drift          # ANTS-2164 INV-5 (hard gate)
+    report_shipped_coverage           # ANTS-4714 (advisory — see the function)
     local base inflight n tag
     base=$(base_version)
     [ -n "$base" ] || { echo "cut-rc: could not read base version from CMakeLists.txt" >&2; exit 1; }

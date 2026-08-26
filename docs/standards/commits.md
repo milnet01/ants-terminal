@@ -92,20 +92,28 @@ ANTS-4108.
 `build-asan` simultaneously and produce `mold: unknown file type`, which
 looks like corruption and is not.
 
-### Releases are `packaging/cut-rc.sh`, not the global `/release` skill
+### Releases are `packaging/cut-rc.sh`, not `cut-release`'s release phases
 
 The weekly Wednesday cadence cuts a public release plus a Patron-preview RC.
 The `-rcN` suffix lives **only** at the git tag, GitHub-release title and
 AppImage filename — never in `CMakeLists.txt` or `bump.json`. Orchestration
 is `packaging/cut-rc.sh` (`new-rc` / `respin` / `promote` / `status` /
-`cycle` / `hotfix`); the version bump between phases is `/bump`, which the
-script never does itself.
+`cycle` / `hotfix`); the version bump between phases is
+`cut-release --bump-only`, which the script never does itself.
 
 ### Version bumps
 
 `project(... VERSION X.Y.Z)` in `CMakeLists.txt` is the single source of
-truth. Use `/bump` — its `.claude/bump.json` recipe covers the packaging
-carriers — and `packaging/check-version-drift.sh` verifies the lockstep.
+truth. Use `cut-release --bump-only` — its `.claude/bump.json` recipe covers
+the packaging carriers — and `packaging/check-version-drift.sh` verifies the
+lockstep. **`/bump` and `/release` were deleted 2026-08-13**; `cut-release`
+replaced both, and the old names resolve to nothing.
+
+`tools/check-shipped-coverage.sh` runs in the same step and asks the question
+the release skill's own gate cannot: which items the roadmap store says
+shipped since the last public tag are cited by no CHANGELOG bullet. That gate
+checks only that ids the CHANGELOG *claims* are really shipped, so work that
+shipped and was never written down is invisible to it (ANTS-4714).
 
 ## What checks this
 

@@ -12,6 +12,16 @@ for security-relevant changes.
 
 ## [Unreleased]
 
+### Added
+
+- **Release gate: work that shipped but reached no CHANGELOG entry is now reported** (ANTS-4714)
+  `tools/check-shipped-coverage.sh` reads the roadmap store's shipped dates
+  and lists every item closed since the last public tag that no CHANGELOG
+  bullet cites. The existing gate only checked the opposite direction — that
+  entries claiming to have shipped really had — so work that shipped and was
+  never written down was invisible. The first run found 19, one closed the
+  same day as the release it was missing from.
+
 ## [0.7.107] — unreleased (Patron RC preview)
 ### Added
 

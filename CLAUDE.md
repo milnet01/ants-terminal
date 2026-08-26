@@ -461,10 +461,13 @@ SemVer. **`project(... VERSION X.Y.Z)` in `CMakeLists.txt` is the single
 source of truth** — `ANTS_VERSION` propagates everywhere; never hardcode
 versions in `.cpp` / `.h`. Every bump touches `CMakeLists.txt`,
 `CHANGELOG.md` (new dated Keep-a-Changelog section), `README.md`
-("Current version"); use `/bump` (its `.claude/bump.json` covers the
-packaging files). Every cycle also **re-checks README.md's prose, not just
-its version banner** — a `bump.json` todo owns the criteria; update it only
-when a user-visible claim has actually drifted (the tool count is the one
+("Current version"); use `cut-release --bump-only` (its
+`.claude/bump.json` covers the packaging files). **That skill replaced both
+`/bump` and `/release`, which were deleted 2026-08-13** — the old names are
+gone, not aliased, so a session invoking them gets nothing. Every cycle
+also **re-checks README.md's prose, not just its version banner** — a
+`bump.json` todo owns the criteria; update it only when a user-visible
+claim has actually drifted (the tool count is the one
 nothing else verifies). Completed `ROADMAP.md` items migrate to CHANGELOG.
 Update `PLUGINS.md` in the same commit when the `ants.*` Lua surface
 changes.
@@ -474,32 +477,47 @@ public release + a Patron-preview RC. The `-rcN` suffix lives ONLY at the
 git tag, GitHub-release title, and AppImage filename — never in
 `CMakeLists.txt` / `bump.json` (INV-3 / INV-9). RC orchestration is
 `packaging/cut-rc.sh` (`new-rc` / `respin` / `promote` / `status` /
-`cycle` / `hotfix`), NOT the global `/release` skill. Flow: `/bump` to
-base `X.Y.Z`, then `cut-rc.sh new-rc --push`. `release.yml` routes RC
-AppImages to a separate zsync channel so stable users can't auto-update
-onto an RC.
+`cycle` / `hotfix`), NOT `cut-release`'s own release phases. Flow:
+`cut-release --bump-only` to base `X.Y.Z`, then `cut-rc.sh new-rc --push`.
+`release.yml` routes RC AppImages to a separate zsync channel so stable
+users can't auto-update onto an RC.
 
 The **guarded Wednesday cadence is `cut-rc.sh cycle`** (ANTS-2164):
 promote the in-flight RC, then cut the next one — each phase self-skips
 when there is nothing to do and hard-refuses an empty / placeholder /
 stale / drifted RC; `new-rc` auto-rolls `[Unreleased]` and `promote`
 auto-date-stamps the CHANGELOG/metainfo/debian carriers. The bump
-between phases is still a separate `/bump` (the script never edits
-version files). For an urgent bug in the already-published release, use
+between phases is still a separate `cut-release --bump-only` (the script
+never edits version files). For an urgent bug in the already-published
+release, use
 **`cut-rc.sh hotfix <fix-sha>…`** (ANTS-2165): two phases around a
-`/bump` that ship `vN` + the cherry-picked fix as the next public patch
+bump that ship `vN` + the cherry-picked fix as the next public patch
 and roll the in-flight RC up one number.
 
 **`new-rc` builds and tests before it tags — run it backgrounded, never
-under a short command timeout.** The preceding `/bump` edits
+under a short command timeout.** The preceding bump edits
 `CMakeLists.txt`, which regenerates `build_info` and invalidates most of
 the graph, so the gate is a near-full rebuild (630 pending steps on
 0.7.105). A rehearsal killed at a 2-minute timeout is a SIGTERM'd ninja —
 the corruption case CLAUDE.md warns about elsewhere. It survived
 (`ninja -C build -n` exit 0, `-t recompact` clean), but check that before
 doing anything else if it happens. `--skip-build` skips the gate, not the
-tagging. **Never leave `/bump` to author a CHANGELOG section** —
+tagging. **Never leave the bump to author a CHANGELOG section** —
 `.claude/bump.json` todo 2 explains why; `new-rc` owns that roll.
+
+**Check the roadmap store for shipped-but-unrecorded work at bump time**
+(ANTS-4714): `bash tools/check-shipped-coverage.sh` lists every item the
+store says shipped since the last public tag that no CHANGELOG bullet
+cites. It is the CONVERSE of the release skill's own gate, which only
+checks that ids the CHANGELOG *claims* are really shipped — that direction
+cannot see work that shipped and was never written down. Run it BEFORE
+`new-rc` rolls `[Unreleased]`, because afterwards a missing entry has to go
+into a closed section. It reads `roadmap.sqlite` directly: `roadmap_query
+mode:"report"` gives counts over a window and no ids, so the missing set is
+not derivable from the verb (ANTS-4715). The store stamps `shipped` only
+from 2026-08-20 forward, so every run also reports how many shipped items
+carry no date and were invisible to it; `roadmap_log op:"backfill_dates"`
+fills those from git history.
 
 ## Key design decisions (non-obvious)
 

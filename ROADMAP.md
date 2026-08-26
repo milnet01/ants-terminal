@@ -46607,6 +46607,72 @@ envelope dropped `source`/`path`/`etag`/`total`/`filter`.
   Source: in-session-2026-08-26, compiler diagnostic seen while editing an adjacent schema string.
   Lanes: claude.
 
+- ✅ [ANTS-4714] **Nothing checks the converse of the release gate: work shipped this cycle that reached no CHANGELOG bullet.**
+  cut-release Phase 0f asks ONE direction: every id the CHANGELOG claims,
+  is it shipped. Nothing asked the other: everything shipped this cycle,
+  is it in the CHANGELOG. A release whose notes silently omit shipped work
+  is the same class of defect as one that overclaims, and only one
+  direction had a gate.
+
+  MEASURED while cutting 0.7.107: the store reports 140 items shipped since
+  the 0.7.105 tag; 19 of them are cited by no CHANGELOG bullet. Among them
+  ANTS-4703, closed earlier the same session by the session that then cut
+  the release -- so the gap is not historical drift, it is same-day.
+
+  SHIPPED as tools/check-shipped-coverage.sh. Reads the store directly
+  because it has to: roadmap_query mode:"report" returns COUNTS over a
+  window and no ids, so the missing SET is not derivable from the verb.
+  That gap is its own item.
+
+  Window defaults to the newest public tag's date, so it asks "since the
+  last thing users received" rather than an arbitrary span. Only an id on a
+  line that STARTS a bullet counts as a claim, matching Phase 0f's own rule
+  in the other direction.
+
+  IT SKIPS LOUDLY rather than passing when it cannot see: no sqlite3, no
+  store, an unregistered project, or no public tag each print a reason and
+  exit 0. And every run reports how many shipped items carry NO date and
+  were therefore invisible to it -- currently 1755, because the store
+  stamps `shipped` only from 2026-08-20 forward until backfill_dates is
+  run. A gate that cannot say what it did not look at is one that reads as
+  coverage it does not have.
+
+  STILL TO DO: wire it into packaging/cut-rc.sh beside check-version-drift.sh.
+  Deferred only because cut-rc.sh was mid-execution when the script landed,
+  and bash reads a script incrementally -- editing a running one corrupts it.
+  Resolved (2026-08-26): tools/check-shipped-coverage.sh, wired into .claude/bump.json as a required bump-time todo and into cut-rc.sh's cmd_new_rc as an advisory last-look. Documented in CLAUDE.md and the commits.md delta. The two placements differ on purpose. The bump-time run is the REQUIRED one, because it happens while [Unreleased] is still open and a missing entry can simply be added; after new-rc rolls the section a late entry has to go into a closed one. The new-rc run reports and does not block, and that is a decision rather than timidity: whether an uncovered item is release-note-worthy or deliberately internal is a judgement, and this landed against a 19-item backlog, so a hard gate on day one blocks every RC until someone triages it -- which is how a new gate gets switched off instead of used. Measured on the run that motivated it: 140 items shipped since the 0.7.105 tag, 19 cited by no CHANGELOG bullet, one of them (ANTS-4703) closed the same day by the session that then cut the release. The gate skips loudly on a missing sqlite3, store, registration or public tag, and every run reports how many shipped items carry NO date and were invisible to it -- 1755 today, since the store stamps `shipped` only from 2026-08-20 forward until op:"backfill_dates" runs. Running that backfill is the obvious next step and is not claimed here.
+  **Layman:** A release could quietly leave out things that shipped, and no check would notice.
+  Kind: test.
+  Source: user-request-2026-08-26 (asked whether the store's shipped dates could be used at release time).
+  Lanes: release, roadmapstore.
+
+- 📋 [ANTS-4715] **roadmap_query mode:"report" gives counts over a window with no way to list the ids in it.**
+  mode:"report" answers "how many shipped in this window" -- periods.since
+  carries added / closed / net. It cannot answer "WHICH ones", and no other
+  mode takes a date range: the bullets path filters by status, section and
+  id, never by shipped date.
+
+  So the natural question at release time -- what shipped this cycle that
+  the changelog does not mention -- is unanswerable through the verb, even
+  though the store holds every value needed. tools/check-shipped-coverage.sh
+  had to open roadmap.sqlite directly, which means a release gate now
+  depends on the schema rather than on the interface.
+
+  CHEAPEST SHAPE: a `shipped_since` / `shipped_until` filter on the bullets
+  and headline_only paths, composing with the existing status filter. That
+  reuses the pagination and projection already there and needs no new mode.
+  A report that returned ids would spill on a wide window, which is why the
+  filter belongs on the list path rather than in the report envelope.
+
+  WORTH NOTING FOR WHOEVER TAKES IT: the dates are DATES, not datetimes --
+  the column stores YYYY-MM-DD. A caller asking for "shipped today" gets
+  day granularity and cannot order within a day, which is fine for a release
+  window and would not be for a throughput chart.
+  **Layman:** You can ask how many items shipped last week, but not which ones.
+  Kind: enhancement.
+  Source: in-session-2026-08-26, found while building the release shipped-coverage gate.
+  Lanes: mcp, roadmapstore.
+
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-08-11 triage
 
 35 un-triaged findings across 9 of the 18 shared-root feedback files (AI

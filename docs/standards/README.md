@@ -38,7 +38,7 @@ no longer matches its owner.
 | [coding.md](coding.md) | `~/.claude/standards/coding.md` (+ `languages/cpp.md`, `qt.md`, `python.md`) | House style (`s_` statics, K&R, `#pragma once`, signals/slots never sibling calls) and `setOwnerOnlyPerms()` in `src/secureio.h`. |
 | [documentation.md](documentation.md) | `~/.claude/standards/documentation.md` | § 1.8 the `doc-examples` marker contract, § 3 ROADMAP/CHANGELOG routing, § 7 Qt accessibility, § 9 the fold-in heading. Section numbers are preserved for inbound links. |
 | [testing.md](testing.md) | `~/.claude/standards/testing.md` (+ `languages/cpp.md`) | The corrected prove-a-test-is-real recipe, audit-rule fixtures, the real label set, the bundle-target trap. |
-| [commits.md](commits.md) | `~/.claude/standards/commits.md` (+ `releases.md`) | This repo is public; the `ci-parity.sh` / pre-push gate; `cut-rc.sh` releases; `/bump`. |
+| [commits.md](commits.md) | `~/.claude/standards/commits.md` (+ `releases.md`) | This repo is public; the `ci-parity.sh` / pre-push gate; `cut-rc.sh` releases; `cut-release --bump-only`. |
 
 **One file is a MIRROR only, with no delta.** [`security.md`](security.md)
 carries nothing of its own — it is the owner and nothing else, under the same
