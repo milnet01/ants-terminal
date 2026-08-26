@@ -2035,6 +2035,9 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppendBatch(const QJsonObject &req) {
     // stable_prefix strategy skips the counter machinery entirely
     // (a stable-ID project has no .roadmap-counter).
     qint64 counter = 0;
+    // ANTS-4691 — set when the counter came from the in-memory seed below
+    // (dry run) rather than from the file. Mirrors the op:append path.
+    bool counterResolved = false;
     if (!useStablePrefix && !writeTarget) {
         QFile cf(counterPath);
         if (!cf.open(QIODevice::ReadOnly | QIODevice::Text)) {
@@ -2064,34 +2067,44 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppendBatch(const QJsonObject &req) {
                                    "ids were found to recover a high-water "
                                    "mark from — restore it with: echo "
                                    "<highest-id> > %1").arg(counterPath));
-            QSaveFile init(counterPath);
-            const QByteArray seedBytes = QByteArray::number(seed) + '\n';
-            if (!init.open(QIODevice::WriteOnly | QIODevice::Text) ||
-                init.write(seedBytes) != seedBytes.size() ||
-                !init.commit())
-                return rlErr(QStringLiteral("counter_write_failed"),
-                    QStringLiteral("roadmap_log: could not auto-create "
-                                   ".roadmap-counter at \"%1\"")
-                        .arg(counterPath));
-            if (!cf.open(QIODevice::ReadOnly | QIODevice::Text))
-                return rlErr(QStringLiteral("counter_read_failed"),
-                    QStringLiteral("roadmap_log: could not read the "
-                                   "just-created .roadmap-counter at "
-                                   "\"%1\"").arg(counterPath));
-            // cf now reads "0"; fall through.
+            // ANTS-4691 — a dry run must not touch disk; see the op:append
+            // path for the reported case. The seed is already the value the
+            // file would hold, so the preview uses it in memory.
+            if (dryRun) {
+                counter = seed;
+                counterResolved = true;
+            } else {
+                QSaveFile init(counterPath);
+                const QByteArray seedBytes = QByteArray::number(seed) + '\n';
+                if (!init.open(QIODevice::WriteOnly | QIODevice::Text) ||
+                    init.write(seedBytes) != seedBytes.size() ||
+                    !init.commit())
+                    return rlErr(QStringLiteral("counter_write_failed"),
+                        QStringLiteral("roadmap_log: could not auto-create "
+                                       ".roadmap-counter at \"%1\"")
+                            .arg(counterPath));
+                if (!cf.open(QIODevice::ReadOnly | QIODevice::Text))
+                    return rlErr(QStringLiteral("counter_read_failed"),
+                        QStringLiteral("roadmap_log: could not read the "
+                                       "just-created .roadmap-counter at "
+                                       "\"%1\"").arg(counterPath));
+                // cf now reads "0"; fall through.
+            }
         }
-        const QByteArray raw = cf.readAll().trimmed();
-        if (raw.isEmpty())
-            return rlErr(QStringLiteral("counter_missing"),
-                QStringLiteral("roadmap_log: .roadmap-counter at "
-                               "\"%1\" is empty — initialise with: "
-                               "echo 0 > %1").arg(counterPath));
-        bool ok = false;
-        counter = QString::fromUtf8(raw).toLongLong(&ok);
-        if (!ok)
-            return rlErr(QStringLiteral("counter_read_failed"),
-                QStringLiteral("roadmap_log: .roadmap-counter is "
-                               "not a number"));
+        if (!counterResolved) {
+            const QByteArray raw = cf.readAll().trimmed();
+            if (raw.isEmpty())
+                return rlErr(QStringLiteral("counter_missing"),
+                    QStringLiteral("roadmap_log: .roadmap-counter at "
+                                   "\"%1\" is empty — initialise with: "
+                                   "echo 0 > %1").arg(counterPath));
+            bool ok = false;
+            counter = QString::fromUtf8(raw).toLongLong(&ok);
+            if (!ok)
+                return rlErr(QStringLiteral("counter_read_failed"),
+                    QStringLiteral("roadmap_log: .roadmap-counter is "
+                                   "not a number"));
+        }
     }
 
     // 4. Read markdown.

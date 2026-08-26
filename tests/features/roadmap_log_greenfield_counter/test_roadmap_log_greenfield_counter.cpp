@@ -40,6 +40,18 @@ const char *kIdBearingRoadmap =
     "\n"
     "- \xF0\x9F\x93\x8B [ANTS-9001] **Pre-existing bullet.** Kind: chore.\n";
 
+// ANTS-4691 — "to-do" here has a `###` child, so an append targeting it
+// REFUSES with section_has_subsections. The refusal fires after the counter
+// block, which is what made a dry run leave an artefact behind.
+const char *kSubsectionedRoadmap =
+    "# My Project Roadmap\n"
+    "\n"
+    "## To Do\n"
+    "\n"
+    "### Sub A\n"
+    "\n"
+    "- \xF0\x9F\x93\x8B **Set up the build.**\n";
+
 bool writeFile(const QString &path, const QByteArray &body) {
     QFile f(path);
     if (!f.open(QIODevice::WriteOnly | QIODevice::Truncate)) return false;
@@ -199,4 +211,79 @@ TEST(RoadmapLogGreenfieldCounter, Inv4HelperPresent) {
     const std::string src = ants_test::slurpRemoteControl();
     EXPECT_NE(src.find("rlRoadmapHasAnyBulletId"), std::string::npos)
         << "the greenfield-vs-desync discriminator must exist";
+}
+
+// INV-5 (ANTS-4691) — a SUCCEEDING dry run allocates nothing and writes no
+// counter file, while still reporting the id the real append would hand out.
+TEST(RoadmapLogGreenfieldCounter, Inv5DryRunLeavesNoCounter) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    ASSERT_TRUE(writeFile(roadmapPath(tmp.path()),
+                          QByteArray(kGreenfieldRoadmap)));
+    ASSERT_FALSE(QFile::exists(counterPath(tmp.path())));
+
+    QJsonObject req = appendReq(tmp.path());
+    req[QStringLiteral("dry_run")] = true;
+
+    RemoteControl rc(nullptr);
+    const QJsonObject resp = rc.cmdRoadmapLogAppendForTest(req).object();
+
+    ASSERT_TRUE(resp.value(QStringLiteral("ok")).toBool())
+        << QJsonDocument(resp).toJson().toStdString();
+    EXPECT_TRUE(resp.value(QStringLiteral("dry_run")).toBool());
+    // Parity with INV-1's real append: same first id, no allocation.
+    EXPECT_EQ(resp.value(QStringLiteral("would_be_id")).toString(),
+              QStringLiteral("CL-0001"));
+    EXPECT_FALSE(QFile::exists(counterPath(tmp.path())))
+        << "a dry run must not create .roadmap-counter";
+}
+
+// INV-6 (ANTS-4691) — the reported case: a REFUSED dry run must leave the
+// tree exactly as it found it. The counter seed runs before the section
+// gate, so without the guard this call wrote a file having written no
+// bullet, and the caller either committed the artefact or reported a dirty
+// tree it had caused itself.
+TEST(RoadmapLogGreenfieldCounter, Inv6RefusedDryRunLeavesNoCounter) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    ASSERT_TRUE(writeFile(roadmapPath(tmp.path()),
+                          QByteArray(kSubsectionedRoadmap)));
+    ASSERT_FALSE(QFile::exists(counterPath(tmp.path())));
+
+    QJsonObject req = appendReq(tmp.path());
+    req[QStringLiteral("dry_run")] = true;
+
+    RemoteControl rc(nullptr);
+    const QJsonObject resp = rc.cmdRoadmapLogAppendForTest(req).object();
+
+    ASSERT_FALSE(resp.value(QStringLiteral("ok")).toBool())
+        << "the fixture must actually refuse, or this asserts nothing: "
+        << QJsonDocument(resp).toJson().toStdString();
+    EXPECT_EQ(resp.value(QStringLiteral("code")).toString(),
+              QStringLiteral("section_has_subsections"));
+    EXPECT_FALSE(QFile::exists(counterPath(tmp.path())))
+        << "a REFUSED dry run must not create .roadmap-counter";
+}
+
+// INV-7 (ANTS-4691) — the same guard on op:append_batch, which carries its
+// own copy of the auto-init. One path fixed and the other left is how this
+// defect would come back.
+TEST(RoadmapLogGreenfieldCounter, Inv7BatchDryRunLeavesNoCounter) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    ASSERT_TRUE(writeFile(roadmapPath(tmp.path()),
+                          QByteArray(kGreenfieldRoadmap)));
+    ASSERT_FALSE(QFile::exists(counterPath(tmp.path())));
+
+    QJsonObject req = batchReq(tmp.path());
+    req[QStringLiteral("dry_run")] = true;
+
+    RemoteControl rc(nullptr);
+    const QJsonObject resp =
+        rc.cmdRoadmapLogAppendBatchForTest(req).object();
+
+    ASSERT_TRUE(resp.value(QStringLiteral("ok")).toBool())
+        << QJsonDocument(resp).toJson().toStdString();
+    EXPECT_FALSE(QFile::exists(counterPath(tmp.path())))
+        << "a batch dry run must not create .roadmap-counter";
 }

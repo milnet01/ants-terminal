@@ -646,6 +646,10 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppend(const QJsonObject &req) {
     // decided above).
     qint64 counter = 0;
     qint64 newId = 0;
+    // ANTS-4691 — set when the counter value came from the in-memory seed
+    // below (dry run) rather than from the file, so the shared read block
+    // does not re-read a handle that was never opened.
+    bool counterResolved = false;
     if (!useStablePrefix) {
         QFile cf(counterPath);
         const bool counterExists = QFile::exists(counterPath);
@@ -722,28 +726,40 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppend(const QJsonObject &req) {
                                        "restore it with: echo <highest-id> "
                                        "> %1").arg(counterPath));
                 }
-                QSaveFile init(counterPath);
-                const QByteArray seedBytes = QByteArray::number(seed) + '\n';
-                if (!init.open(QIODevice::WriteOnly | QIODevice::Text) ||
-                    init.write(seedBytes) != seedBytes.size() ||
-                    !init.commit()) {
-                    return rlErr(QStringLiteral("counter_write_failed"),
-                        QStringLiteral("roadmap_log: could not "
-                                       "auto-create .roadmap-counter at "
-                                       "\"%1\"").arg(counterPath));
-                }
-                if (!cf.open(QIODevice::ReadOnly | QIODevice::Text)) {
-                    return rlErr(QStringLiteral("counter_read_failed"),
-                        QStringLiteral("roadmap_log: could not read the "
-                                       "just-created .roadmap-counter at "
-                                       "\"%1\"").arg(counterPath));
+                // ANTS-4691 — a dry run must not touch disk. This seed runs
+                // before the section and target gates, so without the guard a
+                // REFUSED preview still created the file: the reporter's tree
+                // gained an untracked .roadmap-counter from a call that wrote
+                // no bullet. `seed` is already the value the file would hold,
+                // so the preview uses it directly and reports the same
+                // would_be_id the real allocate would hand out.
+                if (dryRun) {
+                    counter = seed;
+                    counterResolved = true;
+                } else {
+                    QSaveFile init(counterPath);
+                    const QByteArray seedBytes = QByteArray::number(seed) + '\n';
+                    if (!init.open(QIODevice::WriteOnly | QIODevice::Text) ||
+                        init.write(seedBytes) != seedBytes.size() ||
+                        !init.commit()) {
+                        return rlErr(QStringLiteral("counter_write_failed"),
+                            QStringLiteral("roadmap_log: could not "
+                                           "auto-create .roadmap-counter at "
+                                           "\"%1\"").arg(counterPath));
+                    }
+                    if (!cf.open(QIODevice::ReadOnly | QIODevice::Text)) {
+                        return rlErr(QStringLiteral("counter_read_failed"),
+                            QStringLiteral("roadmap_log: could not read the "
+                                           "just-created .roadmap-counter at "
+                                           "\"%1\"").arg(counterPath));
+                    }
                 }
                 // cf now reads "0"; fall through to the shared
                 // counter-read block below (counter=0 → newId=1,
                 // id_hint honoured).
             }
         }
-        {
+        if (!counterResolved) {
             const QByteArray raw = cf.readAll().trimmed();
             if (raw.isEmpty()) {
                 // Empty / whitespace-only file — caller likely `touch`ed
