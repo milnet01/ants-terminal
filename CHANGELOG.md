@@ -219,6 +219,12 @@ for security-relevant changes.
 
 ### Changed
 
+- **`workspace_search`'s `exclude_glob` now names its use for scoping a cold review lane** (ANTS-4568)
+  A subagent told which files it may read cannot honour that through an
+  unscoped search: one project-wide match returns context lines from the
+  documents it was forbidden. The description now says so, so a caller
+  reaches for the argument instead of trusting the instruction.
+
 - **workspace_search's `glob` says how to name several paths at once** (ANTS-4672)
   It takes one pattern where its neighbour exclude_glob takes a list, and nothing said that several paths are written as docs/{coding,testing}.md. The description now says both.
 

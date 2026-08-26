@@ -4057,7 +4057,14 @@ void ClaudeIntegration::onMcpConnection() {
                         "pattern positively (\"docs/**\", not \"!docs/**\"). Use for "
                         "\"search everywhere but the prose\" on a doc-heavy repo, "
                         "which `lane` (one subdir) and `glob` (one positive "
-                        "pattern) cannot express.");
+                        "pattern) cannot express. ANTS-4568 — it is also how you "
+                        "keep a COLD REVIEW LANE inside its permitted set. An "
+                        "agent told which files it may read cannot honour that "
+                        "through an unscoped search: one project-wide match "
+                        "returns context lines from the very documents it was "
+                        "forbidden, so a path-scoped prohibition does not survive "
+                        "an unscoped search. Name those paths here rather than "
+                        "relying on the instruction.");
                     QJsonObject maxProp;      maxProp["type"]      = "integer";
                                               maxProp["default"]   = 50;
                                               maxProp["maximum"]   = 500;

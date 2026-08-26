@@ -41178,7 +41178,7 @@ filed below.
   Source: OneUp_Ants_MCP_Feedback.md 2026-08-20.
   Lanes: remotecontrol.
 
-- 📋 [ANTS-4568] **workspace_search's exclude_glob is the tool for hiding paths a cold review lane may not see, and nothing says so.**
+- ✅ [ANTS-4568] **workspace_search's exclude_glob is the tool for hiding paths a cold review lane may not see, and nothing says so.**
   The Ants-side half of a larger harness finding; the rest is not ours.
 
   Context: two review-lane subagents dispatched an hour apart, each told
@@ -41207,6 +41207,7 @@ filed below.
   answered honestly and specifically. That converts an invisible
   contamination into a disclosed one, which is the difference between a
   read you can weigh and one you cannot.
+  Resolved (2026-08-26): exclude_glob's description now names the cold-review-lane use — an agent told which files it may read cannot honour that through an unscoped search, because one project-wide match returns context lines from the very documents it was forbidden, so a path-scoped prohibition does not survive an unscoped search. Verified: test_claude rebuilt, McpWorkspaceSearch 4/4 green including Ants3704ExcludeGlobWiring, the scrape test that pins this property's wiring. Corroborated in-session rather than taken on trust: six review-lane subagents dispatched today, each given a bounded read-set, and every one of them disclosed CLAUDE.md files, the auto-memory index and a git snapshot already in context before its first tool call — the same four vectors the report names. The disclosure habit the report recommends works and is worth keeping; this fix closes only the fourth, preventable vector.
   **Layman:** There is a way to stop a reviewing helper from seeing files it shouldn't, but its description doesn't mention that use.
   Kind: doc.
   Source: OneUp_Ants_MCP_Feedback.md 2026-08-20.
@@ -46569,6 +46570,35 @@ envelope dropped `source`/`path`/`etag`/`total`/`filter`.
   Kind: fix.
   Source: in-session-2026-08-26, found by ANTS-1881's review-contract loop 10.
   Lanes: mcp.
+
+- 📋 [ANTS-4713] **A duplicate makeTextContent lambda in the tools/call branch has never been called.**
+  clang: "Unused variable 'makeTextContent' [-Wunused-variable]" in
+  `src/claudeintegration.cpp`, inside the `tools/call` branch.
+
+  There are TWO lambdas of this name. The earlier one is live -- defined
+  near the top of the same method and called once, wrapping a string into
+  the MCP `content` block array. The one in the `tools/call` branch is a
+  verbatim second definition that nothing calls, and `grep` finds no call
+  site for it.
+
+  Dates to the original Claude-integration commit (2026-04-09), so it has
+  been dead for the file's whole life rather than being left behind by a
+  recent refactor. Harmless at runtime; it costs a warning on every build of
+  a file that is already the largest in the tree.
+
+  Fix is a deletion. Confirm the call at the live site still resolves to the
+  outer lambda after removing the inner one -- the inner definition SHADOWS
+  the outer within that branch, so anything inside `tools/call` that looked
+  like it used the helper was in fact binding to the dead copy. Nothing
+  does today, which is why it warns.
+
+  NOT a defect anyone can hit, and filed only because the standing rule is
+  that a warning noticed during other work gets an entry rather than a
+  shrug.
+  **Layman:** A small helper is defined twice; the second copy is dead and the compiler warns about it.
+  Kind: chore.
+  Source: in-session-2026-08-26, compiler diagnostic seen while editing an adjacent schema string.
+  Lanes: claude.
 
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-08-11 triage
 
