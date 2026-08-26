@@ -46214,6 +46214,65 @@ envelope dropped `source`/`path`/`etag`/`total`/`filter`.
   Source: claude_config-feedback-2026-08-26.
   Lanes: mcp, roadmapquery.
 
+- 📋 [ANTS-4702] **One feedback file declares format version 4, a version that does not exist, and nothing reports it.**
+  MEASURED across the whole corpus on 2026-08-26: nineteen files carry
+  `<!-- ants-mcp-feedback: 2 -->` and OneUp_Ants_MCP_Feedback.md carries
+  `<!-- ants-mcp-feedback: 4 -->`. mcp-feedback-files.md defines v1 and v2.
+  There is no v3 and no v4.
+
+  WHY IT WENT UNNOTICED. feedback_query's version rule is "v2 or higher", so
+  the 4 is treated as v2 and everything works: the delta resolved, and
+  compact_resolved collapsed five findings on that file in this sweep. The
+  marker is wrong and nothing in any envelope says so -- format_version
+  simply echoes 4.
+
+  WHY IT MATTERS ANYWAY. The marker is the format contract. A verb that ever
+  gates on an exact version, or a future v3 that means something specific,
+  inherits a file claiming to be something it is not -- and the failure would
+  land on whichever verb tightened first, far from the file that caused it.
+  It also makes the corpus non-uniform in the one field a maintainer sweep
+  reads to decide which pipeline a file takes.
+
+  TWO PARTS, and the first is the cheap one. (1) Correct OneUp's marker to 2
+  -- but through a verb, not a hand edit, since hand-editing these files is
+  what the assign-id pipeline exists to avoid; there is no op for it today,
+  which is itself the finding. (2) Have feedback_query report an
+  unrecognised version rather than silently widening: a `format_version`
+  above the highest the build knows is a fact the caller can act on, and the
+  same shape spec_lint's skipped[] and doc_integrity's *_suppressed counters
+  already use -- a widening the caller cannot see reads as a clean pass.
+
+  NOT URGENT. Nothing is broken today and the sweep completed normally. Filed
+  because a wrong version marker is invisible until the moment it is not.
+  **Layman:** A feedback file claims to be in a newer format than any that was ever defined; the tools accept it silently.
+  Kind: fix.
+  Source: in-session-2026-08-26 (found while sweeping the corpus).
+  Lanes: mcp, feedback.
+
+- 📋 [ANTS-4703] **ANTS-1881's combinator table omits `filter`, so INV-5's own claim is false of the shipped verb.**
+  ANTS-1881 INV-5 states that EVERY argument cmdRoadmapQuery validates has
+  explicit behaviour defined in the section 2.3 combinator table, and that no
+  silent-default behaviour is introduced. ANTS-3698 then shipped `filter` as
+  an alias for `status` and did not add a row.
+
+  So INV-5's text is false of the shipped verb, and has been since ANTS-3698.
+
+  WHY IT SURVIVED. INV-5's test, Inv5CombinatorCoverageSourceGrep, does not
+  check what the invariant claims -- it asserts only that a shared projection
+  helper is named. Read on 2026-08-26 while adding the `max_results` row
+  ANTS-4701 owed; the row was added, this gap was left, because fixing what
+  this edit did not break is the sweep coding.md 1.7 forbids.
+
+  TWO PARTS, and they are independent. (1) Add the `filter` row. (2) Decide
+  whether INV-5's test should actually cross-check the validator's argument
+  reads against the table -- today the invariant is enforced by nobody, which
+  is why one argument could ship without its row and a second nearly did.
+  Part 2 is the one worth having; part 1 without it just resets the clock.
+  **Layman:** A spec says every option is documented in its table; one option shipped without being added.
+  Kind: doc-fix.
+  Source: in-session-2026-08-26 (found while adding the max_results row ANTS-4701 owed).
+  Lanes: docs, specs.
+
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-08-11 triage
 
 35 un-triaged findings across 9 of the 18 shared-root feedback files (AI
