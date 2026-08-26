@@ -46273,6 +46273,54 @@ envelope dropped `source`/`path`/`etag`/`total`/`filter`.
   Source: in-session-2026-08-26 (found while adding the max_results row ANTS-4701 owed).
   Lanes: docs, specs.
 
+- 📋 [ANTS-4704] **ANTS-2094's spec does not describe the rows_preview envelope family, and INV-13 now contradicts the code.**
+  Found while reading INV-2/INV-9 for ANTS-4692.
+
+  `docs/specs/ANTS-2094.md` names no amendment for ANTS-4397, ANTS-4474 or
+  ANTS-4519, and the string `rows_preview` does not occur in it. So the
+  whole shape-summary family the envelope now emits -- rows_preview,
+  rows_preview_key, rows_preview_truncated, rows_preview_head_chars,
+  rows_preview_hint, rows_preview_omitted -- is undocumented in the spec
+  that owns the envelope contract.
+
+  INV-13 goes further than silence: it states that a single-oversized-row
+  body "emits **no** structured preview". ANTS-4397 made that case emit a
+  rows_preview shape summary, and its own code comment says so. A reader
+  building to INV-13 would assert an envelope the code does not produce.
+
+  Scope note: fixing this is a spec amendment, not a code change. The code
+  is correct; the document is behind it. Kept separate from ANTS-4692
+  deliberately (coding.md 1.7) -- that item amends the same spec but for a
+  different reason, and folding the two would hide this one.
+  **Layman:** The design document for large-result offloading is behind the code, so it describes an envelope the tool no longer sends.
+  Kind: doc-fix.
+  Source: in-session-2026-08-26.
+
+- 📋 [ANTS-4705] **An offload envelope carrying rows_preview omits row_count, so the caller cannot see how many rows exist.**
+  Found by a cold lane during the ANTS-4692 gate on ANTS-2094, and kept
+  separate because it is a code defect where that one is a contract change.
+
+  In `mcp::offloadBody`, `row_count` is set on only two of the three arms
+  that can fire for a body with a dominant array. The `head_rows` arm sets
+  it, and ANTS-4519's `rows_preview_omitted` arm sets it. The ordinary
+  ANTS-4397 arm -- `rows_preview` present -- does not.
+
+  So an envelope can carry `rows_preview_truncated: true`, which is computed
+  as `shape.size() < domCount`, while `domCount` itself is reported nowhere.
+  The caller is told the preview is short and cannot learn by how much, which
+  is the figure that decides where to page.
+
+  There is a fourth arm that emits nothing at all: `head_rows` empty, the
+  shape empty and the headless rebuild no larger. Only the ANTS-3545 hint
+  fires there, and it does name the array key, so the caller is not blind --
+  but no field carries the count.
+
+  FIX: set `row_count` wherever a dominant array was detected, i.e. once,
+  beside the hint replacement that is already gated on `domCount > 0`.
+  **Layman:** When a big result is summarised row by row, the summary forgets to say how many rows there are in total.
+  Kind: fix.
+  Source: in-session-2026-08-26 review-contract lane.
+
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-08-11 triage
 
 35 un-triaged findings across 9 of the 18 shared-root feedback files (AI
