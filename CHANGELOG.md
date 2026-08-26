@@ -22,6 +22,16 @@ for security-relevant changes.
   never written down was invisible. The first run found 19, one closed the
   same day as the release it was missing from.
 
+### Fixed
+
+- **Roadmap card columns now line up across sections whatever the font** (ANTS-4718)
+  The shared column grid was not actually shared: a section whose rows carry a
+  kind grew that column past its reserved width when the text did not fit,
+  while a section without one kept the reserved width, so the two sat on
+  different grids. It only showed where fonts render the kind text wider —
+  never on a typical desktop. The grid is now measured across every card and
+  applied uniformly, and no text is truncated to achieve it.
+
 ## [0.7.107] — unreleased (Patron RC preview)
 ### Added
 
