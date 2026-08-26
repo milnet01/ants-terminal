@@ -14,6 +14,9 @@ for security-relevant changes.
 
 ### Added
 
+- **roadmap_log op:"amend_field" edits an item's Layman, Kind, Source, Lanes or Evidence** (ANTS-4667)
+  These could be set when an item was filed and never changed afterwards. Trying through amend_body failed with the text reported missing, because those lines are assembled when the roadmap is written out rather than stored. That error now points at the new command.
+
 - **roadmap_log's envelope could report when its XML scrub actually removed something.** (ANTS-4572)
   A safety net quietly cleans up a mistake, so nobody learns they made it.
 
@@ -193,6 +196,12 @@ for security-relevant changes.
 
 ### Changed
 
+- **workspace_search's `glob` says how to name several paths at once** (ANTS-4672)
+  It takes one pattern where its neighbour exclude_glob takes a list, and nothing said that several paths are written as docs/{coding,testing}.md. The description now says both.
+
+- **Seven more MCP verbs now run off the GUI thread** (ANTS-4682)
+  The five test_audit_* verbs, caller_cwd_info and project_query no longer hold the window while they work. The other seven inline verbs stay on the GUI thread on purpose, and each now records why in the code.
+
 - **`fields=` and response compaction are now separate per-verb answers, so spec_lint and feedback_query are no longer compacted unless asked** (ANTS-4524)
   A single predicate granted both, so a verb added to the list for `fields=`
   silently began compacting its replies for every caller — which folded away
@@ -282,6 +291,12 @@ for security-relevant changes.
   with `glob` — so a refused call carries its own repair.
 
 ### Fixed
+
+- **token_usage says so when it cannot read the figures, instead of reporting zero** (ANTS-4684)
+  Asked while the window is closing, it reported no savings rather than saying it could not look -- a wrong number where an error was owed.
+
+- **A roadmap item's title can be corrected again** (ANTS-4668)
+  roadmap_log op:"amend_headline" refused outright on any project whose roadmap lives in the database, which is all of them -- so a title was fixed only by refiling the item under a new number and losing every reference to the old one. It now edits the title in place.
 
 - **The window no longer freezes while Claude runs an MCP command** (ANTS-2132)
   Ants answered every MCP request on the thread that draws the window, so

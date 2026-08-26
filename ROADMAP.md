@@ -13355,7 +13355,7 @@ indie-review finding.
   Attempt 1 (2026-07-20) REVERTED — decouple design is right (stable src/build_info.h with extern declarations + generated build_info_values.cpp holding the definitions), but the CMake build-graph wiring forced FULL rebuilds, worse than the minute-churn. Two dead ends: (a) add generated .cpp to ants_core_lib + add_dependencies(ants_core_lib ants_build_info) → the always-run generator target forces core's PCH to rebuild every build; (b) put the .cpp in a tiny PCH-less lib (ants_build_info_lib) that ants_core_lib PUBLIC-links → the link edge propagates the generator's always-dirty state, still rebuilding everything. Also learned: consumers use QStringLiteral(ANTS_BUILD_*) (needs a string-LITERAL macro), which an extern const char[] breaks — must switch those ~17 sites to QString::fromLatin1(). Next attempt needs a mechanism where the generated TU regenerates every build WITHOUT any target depending on the always-run custom target: e.g. add_custom_command(OUTPUT build_info_values.cpp ...) with a byproduct stamp + a POST_BUILD refresh, or inject the SHA/minute at LINK time (linker --defsym / a generated .o), or accept configure-time-only refresh. Verify with: settle build, then force a minute change, then a build must recompile ONLY build_info_values.cpp.o. Keep 📋.
   Shipped 2026-07-20. Chose the full value/header DECOUPLE (advanced option), NOT the two-header split: verification showed the two heavy consumers (remotecontrol.cpp / claudeintegration.cpp) DO emit build_time in the MCP serverInfo / session_orient, so the split would have dropped the build minute from MCP output — a behavioural regression (weakens same-commit build-freshness detection). src/build_info.h is now a stable hand-written extern-declaration header; the definitions live in a generated build_info_values.cpp (ants_build_info_stamp ALL target + file-level add_custom_command + copy_if_different), compiled into ants_core_lib with SKIP_PRECOMPILE_HEADERS + SKIP_UNITY_BUILD_INCLUSION. 17 QStringLiteral(ANTS_BUILD_*) -> QString::fromLatin1 (rc x5, claude x12). Attempt-1 dead ends avoided by a FILE-level custom-command edge (never a target-level add_dependencies on the always-run target). Proven in an isolated fresh tree AND a healed build/: a minute/value change recompiles ONLY build_info_values.o — never remotecontrol.cpp / claudeintegration.cpp / the core PCH. Full suite green (2795 features tests, 0 failed). Help->About still shows the minute. Tests: mcp_build_identity INV-4/INV-7 rewired to the new mechanism + new INV-8 churn regression guard.
 
-- 📋 [ANTS-4682] **Audit the 14 inline MCP handlers and move the GUI-free ones off the dispatch thread.**
+- ✅ [ANTS-4682] **Audit the 14 inline MCP handlers and move the GUI-free ones off the dispatch thread.**
   ANTS-2132 moves the 71 rc-factory verbs off the GUI thread and leaves the
   14 hand-written inline handlers on it, because each captures MainWindow and
   needs its own audit: audit_run, audit_poll, indie_review_dispatch,
@@ -13376,22 +13376,143 @@ indie-review finding.
   their job registry is GUI-thread state, so they are the likeliest to stay
   synchronous on purpose. Record that verdict rather than leaving them
   unexamined.
+  Resolved (2026-08-26) in acd10ddd. All 14 inline non-TabSpecific handlers enumerated FROM SOURCE by a paren-matched parse (not from the spec's table), which agreed with section 5's list exactly and left nothing unclassified. Seven moved off-thread: the five test_audit_* (zero capture, pure TestAuditEngine), caller_cwd_info (its only `this` use goes through ants::resolveCallerCwdRoot, which marshals internally), and project_query, whose three Config reads are now marshalled and which refuses on nullopt rather than reading the feature's own off switch as false. Seven stay, each verdict recorded at its registration. HONEST RESIDUE: section 5's tree-access hazard is NOT closed for get_git_status (no refusal channel -- see the new sibling item), nor for audit_run / audit_poll / indie_review_dispatch, which keep a GUI-thread job registry and are the deferred freeze work. Also added INV-11 to the offthread guard, because INV-6 scrapes remotecontrol*.cpp for m_main-> and could not see an inline handler in mainwindow.cpp at all -- a gap that was inert until this item moved six verbs. Mutation-proved.
   **Layman:** Finish the job ANTS-2132 starts: a handful of commands still run on the drawing thread.
   Kind: perf.
   Source: in-session-2026-08-26 (ANTS-2132 spec, § 5 deferral).
   Lanes: mcp, threading.
 
-- 📋 [ANTS-4683] **No MCP route rewords a roadmap headline on a store-backed project.**
+- ✅ [ANTS-4683] **No MCP route rewords a roadmap headline on a store-backed project.**
   roadmap_log op:"amend_headline" refuses `unsupported_format` on a migrated project, and no other op writes the headline column. ANTS-2132 § 7 required its own headline reworded, and the only available route was a direct sqlite UPDATE against the machine-global store followed by op:"render" — outside every guard the verb layer provides (no dry_run, no locator validation, no divergence check). Either give amend_headline a store path, or state in the refusal what the supported route actually is.
+  Resolved (2026-08-26) in acd10ddd -- same fix as ANTS-4668, which this duplicates (filed independently while closing ANTS-2132). The direct sqlite UPDATE plus op:"render" workaround recorded in this body is no longer needed: amend_headline now writes the column through the store's own guarded path, with dry_run and the unique-match locator.
   **Layman:** Fixing a typo in a roadmap item's title needs a hand-written database edit, because no Ants command can do it.
   Kind: enhancement.
   Source: in-session-2026-08-26 (ANTS-2132 § 7).
 
-- 📋 [ANTS-4684] **cmdTokenUsage falls back to a default when a GUI marshal is refused.**
+- ✅ [ANTS-4684] **cmdTokenUsage falls back to a default when a GUI marshal is refused.**
   remotecontrol_review.cpp wraps m_main->tokenSavingsSummary() in ants::onGuiThread(...).value_or(TokenSavingsSummary{}). ANTS-2132 § 2.5 forbids exactly that: on nullopt a call site must refuse with its anchor-failure code, never answer from a default. Unreachable today because token_usage is registered inline and so always runs on the GUI thread — which is the same accident § 1.1 warns about, and it stops holding the moment ANTS-4682 moves an inline verb off-thread. Needs a refusal code for token_usage, which is why it is filed rather than patched.
+  Resolved (2026-08-26) in acd10ddd. cmdTokenUsage no longer answers .value_or(TokenSavingsSummary{}) on a refused marshal -- it refuses with the new gui_read_refused code, added to mcp-error-codes.md section 5 and shared with project_query. A null m_main is a DIFFERENT case and still defaults, because there is no window to ask and that is not a refusal. Fixed rather than left filed because ANTS-4682 created the code this item said it needed.
   **Layman:** One command would quietly report zero token savings instead of an error if it were ever asked during shutdown.
   Kind: fix.
   Source: in-session-2026-08-26 (found finishing ANTS-2132 §§ 6-7).
+
+- 📋 [ANTS-4685] **Render a body-declared trailer in the same bold form as a column one, so a corrected Layman stops being permanently marked.**
+  ANTS-4667 shipped op:"amend_field" (the column editor) and the amend_body
+  redirect. It did NOT close the damage already done by the one-way
+  workaround it documented.
+
+  THE RESIDUE. A body that declares `Layman:` at a line start still shadows
+  the column: the declaration wins at render, and the next body write
+  re-parses it back into the column. Deleting the declaration still trips
+  render_gate_unmet, because the column is recomputed from the body and
+  comes back empty. So a row corrected the old way is stuck, and the render
+  emits it PLAIN where a column-sourced one is BOLD -- a project that
+  corrected some of its laymans carries two styles it cannot reconcile.
+  Measured by the original reporter on four of twenty-two items.
+
+  THE FIX is ANTS-4667's option (a), the one it called worth doing alone:
+  have the render emit a body-declared trailer in the same bold form as a
+  column-sourced one. The two routes become indistinguishable in the output
+  and the whole class of damage disappears with no new verb.
+
+  DE-RISKED WHILE IMPLEMENTING ANTS-4667, and this is why it is worth
+  filing rather than leaving as an idea: RoadmapParse::rxLayman() ALREADY
+  accepts both spellings -- its pattern is ^\s*(?:\*\*)?Layman:(?!:)(?:\*\*)?\s*([^\n]+)
+  -- so a bolded body declaration still parses back to the same column
+  value. The round-trip that would have made this risky is already safe.
+
+  WHY IT IS STILL ITS OWN ITEM. It changes rendered output for EVERY
+  project carrying a body-declared trailer, across a machine-global store.
+  That wants its own verification pass and its own diff to look at, not a
+  fold-in at the end of another item.
+  **Layman:** Items whose summary line was corrected the old way still look different from every other item; this makes them match.
+  Kind: enhancement.
+  Source: in-session-2026-08-26 (ANTS-4667 residue, option (a)).
+  Lanes: roadmap-store, roadmaprender.
+
+- 📋 [ANTS-4686] **get_git_status has no refusal channel, so it cannot move off the GUI thread and still blocks it for up to 2 seconds.**
+  ANTS-4682 moved the GUI-free inline handlers off the dispatch thread and
+  recorded a verdict for each that stayed. This is the one whose verdict is
+  a DEFECT rather than a design choice, so it is filed rather than left in
+  a comment.
+
+  WHAT IT DOES NOW. The handler resolves a TerminalWidget through
+  terminalForCaller() and reads shellCwd() -- GUI-owned -- then runs three
+  QProcess git probes with waitForFinished(2000) each. They are started
+  together so the worst case is one 2 s timeout rather than three
+  (ANTS-1748), but that 2 s is still spent ON THE GUI THREAD, on a slow or
+  locked repository. It is the freeze the status bar's async branch-probe
+  exists to avoid, in a different verb.
+
+  WHY IT COULD NOT SIMPLY MOVE. Marshalling the terminal read through
+  ants::onGuiThread is the ANTS-2132 section 2.5 pattern and would work --
+  except that this verb returns a PLAIN TEXT blob, not a JSON envelope. It
+  already returns an empty string for "no terminal". So a refused marshal
+  (nullopt) would be indistinguishable from that, which is exactly the
+  defect ANTS-4684 was filed for and exactly what section 2.5 forbids:
+  refuse with a code, never answer from a default.
+
+  THE ORDER OF WORK, and the first step is the real one. Give get_git_status
+  an envelope with an `ok`/`code` channel -- at which point gui_read_refused
+  (added by ANTS-4682) is already there to use -- then move it off-thread.
+  Changing its response shape is a caller-visible change, which is why this
+  is an item and not a tail on ANTS-4682.
+
+  CONSEQUENCE UNTIL THEN, stated so it is not lost: this verb reads the
+  project tree on the GUI thread while off-thread verbs write it, so
+  ANTS-2132 section 5's concurrency hazard remains open for it -- as it does
+  for audit_run / audit_poll / indie_review_dispatch, which are the
+  separately-deferred freeze work.
+  **Layman:** One command can freeze the window for two seconds, and fixing it needs the command to be able to report an error first.
+  Kind: fix.
+  Source: in-session-2026-08-26 (ANTS-4682 residue).
+  Lanes: mcp, threading.
+
+- 📋 [ANTS-4687] **claudeintegration.cpp builds with an unused-variable warning for makeTextContent.**
+  Every build of ants_claude_lib prints:
+
+    src/claudeintegration.cpp: In lambda function:
+    src/claudeintegration.cpp:13984:22: warning: variable 'makeTextContent'
+    set but not used [-Wunused-but-set-variable=]
+
+  Pre-existing and unrelated to the work that surfaced it -- confirmed by
+  the shape of the edits that were live at the time, which were string
+  literal changes in unrelated blocks and cannot produce an
+  unused-variable diagnostic.
+
+  Filed under the standing rule that a warning found during any work gets
+  an entry rather than being walked past. The lambda is either dead and
+  should go, or its result was meant to be used and a call site is missing
+  -- worth reading before deleting, since the second case is a real bug
+  wearing a warning.
+  **Layman:** The build prints a warning about a leftover piece of code that is set but never used.
+  Kind: chore.
+  Source: in-session-2026-08-26 (observed during an unrelated build).
+  Lanes: claude.
+
+- 📋 [ANTS-4688] **remotecontrol_roadmap_publish.cpp claims the roadmap_log TU sits at the 6000-line cap; it is nowhere near it.**
+  src/remotecontrol_roadmap_publish.cpp's header comment justifies being its
+  own TU partly with: "(Nor would there be room -- that TU sits AT
+  ANTS-3833 INV-6's 6000-line cap; see ANTS-4620.)", referring to
+  remotecontrol_roadmap_log.cpp.
+
+  MEASURED 2026-08-26, before adding to that file: the largest TU matching
+  src/remotecontrol*.cpp is remotecontrol_roadmap_query.cpp, and the
+  roadmap_log TU is well under the cap. Whatever was true when the comment
+  was written, ANTS-4620's split evidently removed the pressure and the
+  claim was not revisited.
+
+  Deliberately no line counts recorded here: they go stale, which is the
+  very failure being reported. Re-measure before acting.
+
+  WHY IT MATTERS ENOUGH TO FILE. The comment is load-bearing REASONING -- a
+  session deciding where to put a new roadmap_log op reads it and concludes
+  the obvious home is full, then creates a TU it did not need. That is the
+  decision it was about to drive when it was checked.
+  **Layman:** A code comment gives a reason for a past decision that is no longer true, which could mislead the next person.
+  Kind: doc-fix.
+  Source: in-session-2026-08-26 (found while deciding where to put op:amend_field).
+  Lanes: docs, remotecontrol.
 
 ### 🎨 Review Changes dialog UX (user request 2026-06-03)
 
@@ -44842,7 +44963,7 @@ Three were reproduced directly in this session rather than taken on report.
   Source: in-session-2026-08-25 (found while measuring ANTS-4644).
   Lanes: mcp, specs.
 
-- 📋 [ANTS-4663] **spec_lint takes neither fields= nor compact, so a corpus run spills and must be parsed by hand.**
+- ✅ [ANTS-4663] **spec_lint takes neither fields= nor compact, so a corpus run spills and must be parsed by hand.**
   A corpus-wide `spec_lint` over docs/specs/ overflowed the inline budget and
   spilled to a handle. The answer wanted was the `counts` object -- a handful of
   totals the verb already computes and already returns.
@@ -44867,6 +44988,7 @@ Three were reproduced directly in this session rather than taken on report.
   unhonoured `fields` was exempt from the ignored_args advisory on every verb, so
   nothing said the argument had been dropped. That is now reported, which would
   have made this self-diagnosing.
+  Resolved (2026-08-26): ALREADY DELIVERED, verified rather than assumed. ANTS-4524 deleted isFieldProjectionTool outright -- `fields=` is universal, honoured on every verb and declared on every schema -- and spec_lint is a row in the compaction table with defaultCompact:false. The exact call this item reported as impossible now works: a corpus-wide spec_lint with fields:["counts","sections_checked","surfaces_checked"] returns those three keys and does not spill. No code change was needed.
   **Layman:** Asking the spec checker about the whole project returns far more than fits, with no way to ask for just the totals.
   Kind: perf.
   Source: in-session-2026-08-25 (hit while deciding ANTS-4348).
@@ -45001,7 +45123,7 @@ it.
   Source: Charls_Site-feedback-2026-08-25.
   Lanes: mcp, speclint.
 
-- 📋 [ANTS-4667] **No op writes a trailer COLUMN after creation, and the documented workaround is one-way -- so a corrected Layman is permanently marked.**
+- ✅ [ANTS-4667] **No op writes a trailer COLUMN after creation, and the documented workaround is one-way -- so a corrected Layman is permanently marked.**
   Two findings from the same reporter, the second correcting the first, so
   they are one item.
 
@@ -45045,12 +45167,13 @@ it.
 
   Sibling on the headline column, same class and a higher cost, filed
   separately because the shapes differ: an op exists there and refuses.
+  Resolved (2026-08-26) in dd1df646 — options (b) and (c); option (a) is filed as ANTS-4685 and is NOT closed here. op:"amend_field" (id + field + value, dry_run previewable) writes any of the five trailer columns through the store's own guarded path. Deliberately not a mode of amend_body: it replaces a value outright rather than patching a matched substring, so it takes no old_text. Store-only and id-only. The subtle rule is body-shadowing — a body declaration wins at render AND is re-parsed into the column by the next body write, so writing the column under one would be invisible now and reverted later; that refuses field_shadowed_by_body (new row in mcp-error-codes.md section 2) naming amend_body as the route that works. Option (b) shipped too, and it is the half that fires for a caller who has not read any of this: amend_body's not-found hint now detects an old_text naming a trailer key and points at amend_field, instead of reporting a string absent that the caller had just read back out of include_body. Eight-case feature test; the two load-bearing guards are mutation-proved — disabling the shadow check fails only INV-2, disabling the redirect only INV-7. WHAT IS NOT CLOSED: rows already damaged by the one-way workaround. A body declaration still shadows, and deleting it still trips the render gate, so a project that corrected some laymans the old way still carries two styles. That is option (a) — ANTS-4685 — and it was de-risked while doing this: RoadmapParse::rxLayman() already accepts both the plain and bold spellings, so bolding a body-declared trailer round-trips through the parser.
   **Layman:** A typo in the one line written for non-technical readers cannot be fixed without permanently changing how that item looks.
   Kind: fix.
   Source: Charls_Site-feedback-2026-08-25.
   Lanes: roadmap-store, mcp.
 
-- 📋 [ANTS-4668] **On a store-backed project amend_headline refuses with no alternative, so the only route is to refile and lose the item's identity.**
+- ✅ [ANTS-4668] **On a store-backed project amend_headline refuses with no alternative, so the only route is to refile and lose the item's identity.**
   op:amend_headline refuses unsupported_format on a migrated project. The
   refusal is well reasoned about the markdown side -- the headline is a
   store column and its locate key, so a markdown patch would be reverted by
@@ -45083,6 +45206,7 @@ it.
   headline blind, and make it dry_run previewable.
 
   Sibling on the trailer columns, same class, cheaper fixes available.
+  Resolved (2026-08-26) in acd10ddd. op:"amend_headline" now writes the `headline` column on a store-backed project and re-renders, the path flip/annotate already take; the old refusal reasoned about patching markdown and never reached a write going through the store. No structural-prefix guard on that route, deliberately -- the column holds the headline TEXT alone, with marker, id brackets, emoji and bold delimiters composed by the render -- and the guard it does get is bad_args on a new_text that would empty it. New feature test tests/features/roadmap_log_amend_headline_store/ (6 cases incl. uniqueness, absent-with-body-hint, empty, dry_run), PROVEN RED against pre-fix code: all six fail with the handler reverted and pass with it.
   **Layman:** Once a roadmap item is in the database its title can never be corrected, even when later evidence disproves it.
   Kind: fix.
   Source: claude_config-feedback-2026-08-25.
@@ -45190,7 +45314,7 @@ it.
   Source: in-session-2026-08-25, hit while triaging the three pending feedback files.
   Lanes: mcp, feedback.
 
-- 📋 [ANTS-4672] **workspace_search's glob takes one string where exclude_glob takes an array, and neither says a brace group is how you name several.**
+- ✅ [ANTS-4672] **workspace_search's glob takes one string where exclude_glob takes an array, and neither says a brace group is how you name several.**
   Confirmed from the schema, which is the whole of the defect. `glob` is
   type string and takes exactly one pattern; `exclude_glob` is documented
   "a string or an array" and behaves that way. So a denylist of N paths is
@@ -45230,6 +45354,7 @@ it.
 
   Watch the source-scrape tests when editing this description: a schema
   literal moving past a fixed byte window has broken those before.
+  Resolved (2026-08-26) in acd10ddd. Took the description route, which the item recommends over widening `glob`. The clause says `glob` takes ONE pattern, names the brace group as how to write several, and states the asymmetry with exclude_glob's array outright -- the item's closing point being that two parameters reading differently is what sent the reporter to an array. Verified the brace group live before writing it: docs/standards/{dialogs,specs}.md narrows 24 matching files to exactly 2.
   **Layman:** Two neighbouring search options take different shapes, and the way to list several paths is not written down anywhere.
   Kind: doc.
   Source: claude_config-feedback-2026-08-25.
