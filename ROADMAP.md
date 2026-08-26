@@ -46394,7 +46394,7 @@ envelope dropped `source`/`path`/`etag`/`total`/`filter`.
   Kind: feature.
   Source: in-session-2026-08-26 (ANTS-4702 part 1).
 
-- 📋 [ANTS-4708] **roadmap_migrate_read's plan tests dereference itemAtLine() without checking, so a regression crashes instead of failing.**
+- ✅ [ANTS-4708] **roadmap_migrate_read's plan tests dereference itemAtLine() without checking, so a regression crashes instead of failing.**
   Pre-existing, and confirmed pre-existing rather than assumed: with my
   ANTS-4693 change stashed the build still emits four -Wnull-dereference
   warnings from this file, and my added tests occupy none of the cited lines.
@@ -46415,6 +46415,7 @@ envelope dropped `source`/`path`/`etag`/`total`/`filter`.
 
   NOT URGENT. The tests pass today because the fixtures do contain those
   lines; the exposure is a future fixture edit.
+  Resolved (2026-08-26): each itemAtLine() lookup is hoisted into a named local and asserted before use, warning count four to zero. The hoist is not cosmetic -- written inline the call would run twice and the guard would not cover the deref. The already-guarded lookup joins the other two so they read as a set rather than an exception plus two oversights, and each ASSERT names the line it wanted, since a bare null-pointer failure says a pointer was null without saying what it was for. No red check and it does not warrant one: the defect is that a FUTURE fixture edit crashes instead of failing, so reproducing it would mean corrupting a fixture to prove a segfault; the warning count is the checkable observable. Commit 0990b804, suite 3989/3989.
   **Layman:** A few tests would crash rather than report a clear failure if the thing they look for goes missing.
   Kind: test.
   Source: in-session-2026-08-26 (noticed while adding ANTS-4693 coverage).
