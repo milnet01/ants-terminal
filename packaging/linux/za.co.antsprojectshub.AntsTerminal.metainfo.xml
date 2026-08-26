@@ -103,6 +103,22 @@
   </screenshots>
 
   <releases>
+    <release version="0.7.107" date="2026-08-26">
+      <description>
+        <p>Roadmap database maturation — batch triage operations, richer queries, MCP responsiveness, and documentation tooling that stops reporting false problems.</p>
+        <ul>
+          <li><em>Added:</em> Roadmap database — <code>roadmap_log</code> gains batch operations (<code>flip_batch</code>, <code>annotate_batch</code>, <code>assign_id_batch</code>), <code>repair_trailers</code> recovers values migration cut short, <code>deregister</code> removes a project, <code>render</code> publishes to ROADMAP.md on demand, and <code>amend_field</code> edits Layman, Kind, Source, Lanes and Evidence after creation. (ANTS-4671, 4667, 4585, 4617, 4614)</li>
+          <li><em>Added:</em> Roadmap query refinement — <code>check_sync</code> compares the database against the file, <code>section_index</code> can be narrowed by name, bodies return the item's own notes rather than a re-rendered bullet, dates are backfilled from git history, and a project can declare its own id format. (ANTS-4462, 4610, 4557, 4501, 3771)</li>
+          <li><em>Added:</em> Feedback and cross-project tooling — IDs are assigned in one batched write, an unrecognised format version is reported rather than ignored, a mailbox carries notes between projects, and a feedback file can be retitled after a rename. (ANTS-4671, 4702, 4622, 4646)</li>
+          <li><em>Added:</em> MCP read and search — <code>read_region</code> clips over-long lines, <code>workspace_search</code> matches a quotation broken across a line wrap, and tables, code fences and blockquotes survive the database round trip intact. (ANTS-4700, 4547, 4616)</li>
+          <li><em>Added:</em> The tab colour palette grows to 25 choices, with a grey-to-black neutral ramp grouped at the end. (ANTS-4689)</li>
+          <li><em>Added:</em> Release infrastructure — a permanent direct-download link for the newest AppImage, a daily audit of what is actually published, and README figures verified on every push. (ANTS-4586, 4588, 4584)</li>
+          <li><em>Changed:</em> The window keeps painting during MCP calls — eligible verbs now run off the interface thread — and every verb accepts response narrowing, which had been documented as universal while only some honoured it. (ANTS-4682, 4524, 4665)</li>
+          <li><em>Fixed:</em> Roadmap accuracy — batch appends reconcile the id counter instead of letting it drift, id allocation asks the database rather than scraping the rendered file, a mismatched project prefix no longer reports an empty history, and migration no longer advises a re-run that overwrites correct rows. (ANTS-4635, 4631, 4636, 4564)</li>
+          <li><em>Fixed:</em> Documentation checking stops crying wolf — quotations broken across a wrap or sitting inside a blockquote are found, home-directory links resolve, paths resolve against the quoting document, and a citation naming a file by its bare name is matched. (ANTS-4706, 4643, 4639, 4637, 4644)</li>
+        </ul>
+      </description>
+    </release>
     <release version="0.7.106" date="2026-08-26">
       <description>
         <p>Roadmap store robustness — reconciliation of item IDs and field values between the file and database, plus a large sweep of MCP tooling improvements, feedback system enhancements, and a Lua event-handler memory corruption fix.</p>
