@@ -13128,7 +13128,7 @@ indie-review finding.
   Source: in-session-2026-06-15 (threading survey).
   Resolved (2026-06-17). Verify-before-coding finding: the literal goal (zero main-thread QEventLoops in MCP dispatch) was ALREADY met by ANTS-2103/2104 — audit_run + indie_review_dispatch are the only two QEventLoop verbs and both already run on workers. The bullet's other named candidates don't spin a QEventLoop: cold_eyes_*/test_audit_* are pure in-process (no pump), and verify_changes/debt_sweep_* block on QProcess::waitForFinished, which does NOT pump the main loop's socket notifiers — so they were never in the UAF class. Surfaced to user; user chose 'lock-in + un-freeze the GUI'. Shipped: (1) new rcDelegateWorker factory in mainwindow.cpp (mirrors rcDelegate but runs cmd*() on a QThread::create worker + worker->wait() join, no event pump); (2) verify_changes + all 4 debt_sweep_* moved from rcDelegate → rcDelegateWorker so a multi-second shell-out no longer freezes the GUI (not a crash fix — GUI-responsiveness); (3) regression lock tests/features/mcp_verb_offthread_guard (INV-1 factory shape, INV-2/3 the 5 verbs use the worker delegate; verified fail-on-revert). cold_eyes_*/test_audit_* intentionally left in-process (wrapping buys nothing). Updated mcp_dispatch_forward_completeness + mcp_call_site_contract source-scrapes to recognise rcDelegateWorker( (does not contain rcDelegate( as a substring). Full suite 2142/2142 green; build-fast clean.
 
-- 🚧 [ANTS-2132] **INV-9: async MCP dispatch so audit_run / indie_review_dispatch stop freezing the GUI for the sweep duration.**
+- ✅ [ANTS-2132] **Async MCP dispatch: eligible verbs run off the GUI thread, so the window keeps painting during a call.**
   ANTS-2103/2104 moved these verbs to a worker but still block the GUI thread on QThread::wait() for the whole run (5-600s: repo size / LLM latency) — mainwindow.cpp:4506, 5074. Convert from blocking join to fire-and-forget worker + completion callback that queues the MCP response when the worker finishes, so the UI keeps painting. Larger change (response-path plumbing); the wait()-join is a deliberate interim per the ANTS-2103/2104 commit notes.
   **Layman:** While a long scan runs, the window currently freezes; make it stay responsive.
   Kind: perf.
@@ -13212,8 +13212,9 @@ indie-review finding.
   ran (ticks=1)". A 10 ms heartbeat fired ONCE across a 200 ms verb. With the fix
   it fires ~20 times. That single number is the user-reported freeze, measured.
 
-  STILL OPEN on this item, all specified in docs/specs/ANTS-2132-async-mcp-dispatch.md
-  sections 6 and 7 — do not re-derive them:
+  CLOSED 2026-08-26 — the list below is what sections 6 and 7 of
+    docs/specs/ANTS-2132-async-mcp-dispatch.md required, and every line of it is
+    done; kept as the record of what shipped:
     - delete rcDelegateWorker and retype its 8 call sites to rcDelegate(
     - update the three tests binding the deleted spelling: mutation_probe,
       mcp_dispatch_forward_completeness, mcp_call_site_contract
@@ -13226,6 +13227,7 @@ indie-review finding.
 
   Parent spec INV-8 (disconnect mid-verb) and INV-10 (queue cap) are not yet
   covered by a test; the limits are recorded in the test's own spec.md.
+  Resolved (2026-08-26). Spec §§ 6-7 closed: the rcDelegateWorker factory is deleted and its call sites retyped to rcDelegate; mutation_probe, mcp_dispatch_forward_completeness and mcp_call_site_contract no longer bind the deleted spelling; mcp_verb_offthread_guard is rewritten for INV-3/6/7/9 and each of the four was proven to bite by mutating the source it scrapes. mcp-tools.md gains the dispatch-thread eligibility rule (step 2a) and mcp-error-codes.md gains dispatch_queue_full. Headline reworded off audit_run / indie_review_dispatch, which stay synchronous under ANTS-4682. Suite 3947/3947.
 
 - 📋 [ANTS-2133] **Verb in-flight stale-slot reaper: 270s recovery after a worker SIGKILL is too slow — add proactive liveness check.**
   claudeintegration.cpp verbInFlightTryAcquire reaps entries older than kVerbInFlightReapMs (270s). If a worker is SIGKILLed mid-verb the slot stays held until that window elapses, blocking the same (verb, projectRoot) pair. Add a cheap worker-liveness probe (/proc/<pid> existence, or a stored QThread* isRunning check) on tryAcquire so a dead worker's slot frees in seconds. Low-priority hardening; current reaper already bounds the worst case.
@@ -13378,6 +13380,18 @@ indie-review finding.
   Kind: perf.
   Source: in-session-2026-08-26 (ANTS-2132 spec, § 5 deferral).
   Lanes: mcp, threading.
+
+- 📋 [ANTS-4683] **No MCP route rewords a roadmap headline on a store-backed project.**
+  roadmap_log op:"amend_headline" refuses `unsupported_format` on a migrated project, and no other op writes the headline column. ANTS-2132 § 7 required its own headline reworded, and the only available route was a direct sqlite UPDATE against the machine-global store followed by op:"render" — outside every guard the verb layer provides (no dry_run, no locator validation, no divergence check). Either give amend_headline a store path, or state in the refusal what the supported route actually is.
+  **Layman:** Fixing a typo in a roadmap item's title needs a hand-written database edit, because no Ants command can do it.
+  Kind: enhancement.
+  Source: in-session-2026-08-26 (ANTS-2132 § 7).
+
+- 📋 [ANTS-4684] **cmdTokenUsage falls back to a default when a GUI marshal is refused.**
+  remotecontrol_review.cpp wraps m_main->tokenSavingsSummary() in ants::onGuiThread(...).value_or(TokenSavingsSummary{}). ANTS-2132 § 2.5 forbids exactly that: on nullopt a call site must refuse with its anchor-failure code, never answer from a default. Unreachable today because token_usage is registered inline and so always runs on the GUI thread — which is the same accident § 1.1 warns about, and it stops holding the moment ANTS-4682 moves an inline verb off-thread. Needs a refusal code for token_usage, which is why it is filed rather than patched.
+  **Layman:** One command would quietly report zero token savings instead of an error if it were ever asked during shutdown.
+  Kind: fix.
+  Source: in-session-2026-08-26 (found finishing ANTS-2132 §§ 6-7).
 
 ### 🎨 Review Changes dialog UX (user request 2026-06-03)
 

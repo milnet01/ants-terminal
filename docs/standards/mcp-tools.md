@@ -33,6 +33,7 @@ what it restates, which is what ANTS-4680 removed.
 - **caller_cwd contract (ANTS-1404 / ANTS-1419)** — step 2.
 - **caller_cwd resolution (ANTS-1401)**, **state routing (ANTS-1336 /
   ANTS-1435)** — step 3.
+- **Which thread the verb runs on (ANTS-2132)** — step 2a.
 - **Path validation (ANTS-1295)** — step 4.
 - **Response wrap (ANTS-1294)**, **raw reads (ANTS-2218)** — step 5.
 - **A verb reporting ZERO must say what it looked at (ANTS-4374)** —
@@ -99,6 +100,28 @@ place when it saves a Claude session real tokens or round-trips
    `Optional`. Picking the word does not buy the check: the drift assert
    above compares your two declarations of it, and only `Required` becomes
    a call-time refusal.
+
+2a. **Know which thread your verb runs on (ANTS-2132).** Registration
+   decides it, from two facts step 1 already carries. A verb built by the
+   `rcDelegate` factory whose contract is **not** `TabSpecific` runs on the
+   shared MCP dispatch worker; everything else — every hand-written inline
+   lambda, and every `TabSpecific` verb — runs on the GUI thread. So a plain
+   `cmd*()` forward is off-thread by default, and that is the common case.
+
+   **An off-thread body must not touch a widget or a `MainWindow` accessor
+   directly.** Marshal the read through `ants::onGuiThread`
+   (`src/guithread.h`), which returns `std::nullopt` when the dispatcher is
+   shutting down and refused it. On `nullopt` refuse with your own
+   anchor-failure code — never fall back to a default-constructed value, which
+   answers with a silently wrong project instead of an error the caller sees.
+
+   Two consequences worth knowing. Verbs still execute one at a time, in
+   arrival order, so nothing that could not overlap before begins to. And an
+   over-cap call is refused with `dispatch_queue_full` before the handler runs
+   — nothing for the handler to do, but a caller may see it.
+
+   `tests/features/mcp_verb_offthread_guard/` locks the structure and
+   `tests/features/mcp_async_dispatch/` the runtime behaviour.
 
 3. **Resolve `caller_cwd` through the one helper.** If the tool is
    project-scoped, resolve the root via `ants::resolveCallerCwdRoot`

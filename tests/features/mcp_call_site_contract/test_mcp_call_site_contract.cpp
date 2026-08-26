@@ -24,10 +24,10 @@ bool contains(const std::string &hay, const std::string &needle) {
 // Pull every registered tool name + the literal text between the
 // name-string and the handler argument. The handler is either an
 // inline lambda capture-list `[` or, for the ANTS-1782 pure RC-delegate
-// shims, an `rcDelegate(` factory call (or the ANTS-2131
-// `rcDelegateWorker(` off-main-thread variant). The captured slice is
-// the place where the CallerCwdContract argument must appear, in all
-// forms.
+// shims, an `rcDelegate(` factory call. The regex still tolerates the
+// ANTS-2131 `rcDelegateWorker(` spelling, deleted by ANTS-2132. The
+// captured slice is the place where the CallerCwdContract argument must
+// appear, in all forms.
 struct Registration {
     std::string name;
     std::string betweenNameAndLambda;  // raw text slice (contract lives here)

@@ -111,11 +111,12 @@ TEST(MutationProbe, Inv3GuaranteesWired) {
     const std::string ci =
         ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
 
-    // Registered, and on the WORKER delegate — each mutation is a full test
-    // run, so a batch is seconds-to-minutes and must not block the GUI thread.
+    // Registered, and on the rc delegate — ANTS-2132 dispatches every
+    // rc-delegate verb off the GUI thread, so a batch of full test runs
+    // (seconds-to-minutes) does not block the window.
     EXPECT_NE(mw.find("registerToolProvider(\"mutation_probe\""),
               std::string::npos);
-    EXPECT_NE(mw.find("rcDelegateWorker(&RemoteControl::cmdMutationProbe)"),
+    EXPECT_NE(mw.find("rcDelegate(&RemoteControl::cmdMutationProbe)"),
               std::string::npos)
         << "a batch of full test runs must not run on the GUI thread";
     EXPECT_NE(ci.find("\"mutation_probe\""), std::string::npos);

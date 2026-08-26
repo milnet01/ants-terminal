@@ -1,91 +1,67 @@
-# ANTS-2131 — Every blocking MCP verb dispatches off the main thread
+# ANTS-2132 — the async-dispatch structure holds
 
 ## Background
 
-ANTS-2103/2104 moved the two MCP verbs that spin a **local `QEventLoop`**
-(`audit_run`, `indie_review_dispatch`) onto `QThread::create` workers, so
-their nested loops never pump the main thread and never reentrantly free
-the live MCP `QLocalSocket` mid-dispatch (the use-after-free crash class
-locked by ANTS-2102).
+MCP requests used to run on the GUI thread, so the window stopped painting
+for the duration of every verb. ANTS-2132 dispatches the eligible ones on one
+shared worker; `docs/specs/ANTS-2132-async-mcp-dispatch.md` is the contract.
 
-ANTS-2131 is the structural end-state. A second group of MCP verbs does
-**not** spin a `QEventLoop` but still runs synchronously on the
-dispatching (main) thread and **blocks on `QProcess::waitForFinished`**:
-
-- `verify_changes` — shells out to per-gate build/test commands
-  (`verifyengine.cpp` `waitForFinished`).
-- `debt_sweep_scan` — shells out to `git` (`debtsweepengine.cpp:66`).
-- `debt_sweep_apply_fix` — shells out to a packaging script
-  (`debtsweepengine.cpp:945`).
-- `debt_sweep_defer`, `debt_sweep_triage_prompt` — fast and in-process,
-  wrapped too for family uniformity + future-safety.
-- `workspace_search` (ANTS-2144) — shells out to ripgrep
-  (`remotecontrol.cpp` `rg.waitForFinished(budgetMs)`). On `rcDelegate`
-  the wait blocked the socket thread, so a concurrent verb starved the
-  `QLocalSocket` notifier and the client tripped its transport deadline
-  (`-32000 timed out`), falling back to raw grep. Moved to
-  `rcDelegateWorker` so the rg wait runs off the socket thread.
-
-`waitForFinished` blocks on the child-process pipe and does **not** pump
-the main loop's socket notifiers, so — unlike the `QEventLoop` verbs —
-these cannot trigger the reentrant-disconnect use-after-free. The cost is
-a frozen GUI for the duration of the child process, not a crash. Moving
-them to a joined worker thread (`QThread::wait()` is a join, not an event
-pump) keeps the GUI responsive and closes the "any MCP verb that blocks
-the main thread" class by construction.
-
-The verbs the original roadmap bullet *guessed* were affected
-(`cold_eyes_*`, `test_audit_*`) pump nothing at all — pure in-process —
-so they are intentionally **out of scope** (wrapping them buys nothing).
+This file supersedes the ANTS-2131 version of the same test, which asserted
+that named verbs registered through an `rcDelegateWorker` factory. That
+factory ran the verb on a short-lived thread and then `wait()`-joined it, and
+its comment claimed the join bought GUI responsiveness. **It did not** — a
+join blocks the calling thread for the whole call. What worker-isolation
+bought was the absence of an event pump, which is the ANTS-2131 use-after-free
+fix and is unrelated. The factory is deleted: under the new design it would be
+byte-for-byte `rcDelegate`.
 
 ## Mechanism
 
-`mainwindow.cpp` registers the `rcDelegate`-shaped verbs through one of
-two factories:
-
-- `rcDelegate(fn)` — forwards `args` to `(m_remoteControl->*fn)(args)`
-  synchronously on the dispatching thread.
-- `rcDelegateWorker(fn)` (ANTS-2131) — same shim, but runs the `cmd*()`
-  call inside a `QThread::create` lambda and `worker->wait()`-joins
-  before returning the serialised result. The `QJsonDocument` result is a
-  main-thread local captured by reference; the `QProcess` constructs and
-  lives on the worker.
-
-The five blocking verbs above register through `rcDelegateWorker`; every
-other RC-shim verb stays on `rcDelegate`.
+`registerToolProvider` marks a verb off-thread when it was built by the
+`rcDelegate` factory and its contract is not `TabSpecific`. `onMcpConnection`
+hands a marked verb to `postToolDispatch`, which queues it on the worker; the
+worker runs the handler and marshals the result back, and
+`finishToolDispatch` — the one response pipeline, shared with the synchronous
+path — writes the reply from the GUI thread. A verb body that reaches into
+`MainWindow` marshals that read through `ants::onGuiThread` (`src/guithread.h`).
 
 ## Contract
 
-- **INV-1** — `mainwindow.cpp` defines an `rcDelegateWorker` factory whose
-  body runs the delegated `cmd*()` call inside a `QThread::create` worker
-  and joins it with `worker->wait()` (a join, never an event pump).
-- **INV-2** — `verify_changes` is registered through
-  `rcDelegateWorker(&RemoteControl::cmdVerifyChanges)`, not the
-  synchronous `rcDelegate`.
-- **INV-3** — all four `debt_sweep_*` verbs (`scan`, `apply_fix`,
-  `defer`, `triage_prompt`) are registered through `rcDelegateWorker`.
-- **INV-4** (ANTS-2144) — `workspace_search` is registered through
-  `rcDelegateWorker(&RemoteControl::cmdWorkspaceSearch)`, so its ripgrep
-  `waitForFinished` runs off the socket thread and cannot starve a
-  concurrent verb into a transport timeout. The `--remote` CLI dispatch
-  path stays synchronous (it never touches the MCP socket).
+Four invariants of the spec, each a claim about where code **is**. The runtime
+observations — a GUI tick during a verb, arrival order, the queue cap, the
+disconnect and shutdown cases — are `tests/features/mcp_async_dispatch/`,
+which drives a real `ClaudeIntegration`. A scrape cannot hold those: a grep
+for a queued connection passes against code that still joins.
 
-Reverting any of these to the synchronous `rcDelegate` re-freezes the GUI
-(or, for `workspace_search`, reopens the socket-starvation timeout) and
-fails this test.
+- **INV-3** — the dispatch path spins no nested `QEventLoop` on the GUI thread
+  (ANTS-2131 preserved), and the `rcDelegate` factory neither pumps nor joins.
+  The `rcDelegateWorker` factory stays deleted.
+- **INV-6** — no verb body reaches `MainWindow` except through
+  `ants::onGuiThread`, unless it always runs on the GUI thread. The exempt set
+  is **derived from the registration table**, never listed here: a body is
+  exempt only while its verb is not registered off-thread — `TabSpecific`,
+  registered through an inline lambda, or a `--remote` CLI verb that is not
+  MCP-registered at all. Move one to `rcDelegate` and its unwrapped reads fail.
+  The scrape matches the `->` arrow rather than accessor names, so a new
+  `MainWindow` accessor cannot be added without this test noticing.
+- **INV-7** — the GUI thread never blocks on the dispatch worker while serving
+  a request. `shutdownDispatchWorker`'s join is the sole exception, it is the
+  only join in the file, and only the destructor reaches it.
+- **INV-9** — one `finishToolDispatch` definition, the wrap lives inside it,
+  and the dispatcher keeps no second copy. Two pipelines would let the
+  synchronous and deferred replies drift apart.
 
 ## Out of scope
 
-- The `QEventLoop` worker-isolation for `audit_run` /
-  `indie_review_dispatch` — that is ANTS-2103/2104, locked by ANTS-2102
-  (INV-3/INV-4 there).
-- `cold_eyes_*` / `test_audit_*` — pump nothing; not wrapped.
-- Full async dispatch (no join at all) — a larger follow-up; the join
-  keeps the existing one-request-at-a-time semantics.
+- `audit_run` / `indie_review_dispatch` — still synchronous, still freeze the
+  window for a sweep. Deferred to ANTS-4682; their nested loops are locked by
+  `tests/features/socket_readyread_uaf_guard/` (ANTS-2102).
+- INV-1, INV-2, INV-4, INV-5, INV-8, INV-10 — runtime, and owned by
+  `tests/features/mcp_async_dispatch/`.
 
 ## Test
 
-`test_mcp_verb_offthread_guard.cpp` — pure source-grep against
-`mainwindow.cpp` (path supplied as `SRC_MAINWINDOW_CPP_PATH` by the
-`test_claude` bundle). No build-time runtime dependency, matching the
-ANTS-2102 precedent.
+`test_mcp_verb_offthread_guard.cpp` — source scrape over `mainwindow.cpp`,
+`claudeintegration.cpp` and every `RemoteControl` TU (`SRC_MAINWINDOW_CPP_PATH`,
+`SRC_CLAUDE_INTEGRATION_CPP_PATH`, `ANTS_RC_SOURCES`, supplied by the
+`test_claude` bundle).

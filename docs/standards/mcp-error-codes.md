@@ -169,6 +169,7 @@ against the table below.
 |------|---------|----------|
 | `unknown_tool` | The dispatcher has no provider for the tool name. | `tools/call` with a typo in `name`. |
 | `mcp_disabled` | The Ants MCP integration is toggled off (Settings → General → "Enable Ants MCP integration"); the dispatcher refuses every verb before any handler runs. | Any `tools/call` after the master switch is turned off mid-session (ANTS-1901). |
+| `dispatch_queue_full` | The off-thread dispatch queue is full, so the verb was refused rather than dropped. The envelope carries `retry_after_ms`. Counts the executing job, so the 65th outstanding call is the first refused (ANTS-2132 § 2.6, INV-10). | A wedged verb holding the worker while a session keeps calling. |
 | `e2e_disabled` | An e2e inject verb (`inject-key` / `inject-click` / `resize-window` / `grab-image`) was called on an instance not launched with `--e2e`; `dispatch()` refuses before the handler runs and posts no event / does no resize or grab (ANTS-2049 INV-1/INV-2). **Scope note:** emitted by socket-only `--e2e` verbs (not MCP-registered tools) — they are unreachable through the agent's MCP toolset by design (spec §5) and share this code space so the harness dispatches on `code`. | `inject-key` over the socket of a plain (non-`--e2e`) instance. |
 
 ### 6 — Query execution (ANTS-2093, `project_query`)

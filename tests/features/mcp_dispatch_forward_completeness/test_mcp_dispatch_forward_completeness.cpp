@@ -146,12 +146,6 @@ bool isPassThroughLambda(const std::string &body) {
         // cmd verb, so a registration handed an rcDelegate(...) is
         // pass-through by construction (same as `cmd(args)` inline).
         "rcDelegate(",
-        // ANTS-2131 — rcDelegateWorker(&RemoteControl::cmd*) is the same
-        // wholesale-forward, just on a joined worker thread (off-main for
-        // QProcess-blocking verbs). `rcDelegateWorker(` does not contain
-        // `rcDelegate(` as a substring (the `(` follows `Worker`), so it
-        // needs its own entry.
-        "rcDelegateWorker(",
     };
     for (const auto &f : forms) {
         if (contains(body, f)) return true;
