@@ -45923,7 +45923,7 @@ envelope dropped `source`/`path`/`etag`/`total`/`filter`.
   Source: DOOM_Ants-feedback-2026-08-26.
   Lanes: mcp, roadmapquery.
 
-- 📋 [ANTS-4693] **roadmap_migrate ignores the declared `roadmap` key that roadmap_query and roadmap_log both honour.**
+- ✅ [ANTS-4693] **roadmap_migrate ignores the declared `roadmap` key that roadmap_query and roadmap_log both honour.**
   TWO FINDINGS, THE SECOND ISOLATING THE FIRST'S CAUSE, so they are one
   item. The reporter did the work that makes this actionable rather than
   leaving it as a disagreement between verbs.
@@ -45954,6 +45954,7 @@ envelope dropped `source`/`path`/`etag`/`total`/`filter`.
   but cannot be migrated. Those want opposite follow-ups -- a project to
   file work in versus a conversion decision -- and not_found currently
   points at the wrong one.
+  Resolved (2026-08-26) for part 1. findRoadmaps() now probes ProjectSettings' declared `roadmap` key before the root case-fold scan, the same order findRoadmapUnder() uses for roadmap_query and roadmap_log. Verified red on the reporter's exact symptom: not_found against a roadmap that plainly exists. A declaration naming a missing file falls through to the scan rather than refusing, so a stale key cannot take down a project that is otherwise fine; both paths tested. No containment guard was added -- ProjectSettings::validEntry already drops entries failing PathValidation::isInsideProject, and I cut the one I had written rather than state that rule twice. Part 2 (a distinct unsupported_dialect refusal) is deliberately NOT built: findRoadmaps has no "located but unmigratable" outcome to split off, every located file gets a detected format, and archive_format_mismatch already has its own code -- the not_found seen here was genuinely "no file found". Commit 7be005e9, suite 3984/3984.
   **Layman:** A project that keeps its roadmap somewhere other than the usual filename can be read and written but cannot be adopted into the database.
   Kind: enhancement.
   Source: perch-feedback-2026-08-26 (filed, then corroborated by a decisive probe in the same session).
@@ -46389,6 +46390,31 @@ envelope dropped `source`/`path`/`etag`/`total`/`filter`.
   **Layman:** There is no safe command to fix a feedback file's version label, so the only way is to edit the file by hand, which the tools tell you not to do.
   Kind: feature.
   Source: in-session-2026-08-26 (ANTS-4702 part 1).
+
+- 📋 [ANTS-4708] **roadmap_migrate_read's plan tests dereference itemAtLine() without checking, so a regression crashes instead of failing.**
+  Pre-existing, and confirmed pre-existing rather than assumed: with my
+  ANTS-4693 change stashed the build still emits four -Wnull-dereference
+  warnings from this file, and my added tests occupy none of the cited lines.
+
+  SHAPE. Inv3IdentityIsPositional and its neighbours call
+  `itemAtLine(plan, N)->closed` directly. `itemAtLine` returns a pointer that
+  can be null, and the test only ASSERT_NEs it for SOME of the lookups --
+  `closedNoId` is checked, the two beside it are not.
+
+  WHY IT IS WORTH A LINE. A test that segfaults reports nothing useful: the
+  suite says the binary died, not which invariant broke, and under a parallel
+  ctest run the surviving output is whichever test happened to be writing.
+  The whole value of these plan tests is telling you WHICH item moved.
+
+  FIX. ASSERT_NE(..., nullptr) before each deref, or a small helper that
+  ASSERTs and returns a reference. Mechanical, and the compiler already
+  names every site.
+
+  NOT URGENT. The tests pass today because the fixtures do contain those
+  lines; the exposure is a future fixture edit.
+  **Layman:** A few tests would crash rather than report a clear failure if the thing they look for goes missing.
+  Kind: test.
+  Source: in-session-2026-08-26 (noticed while adding ANTS-4693 coverage).
 
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-08-11 triage
 
