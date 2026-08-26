@@ -13514,7 +13514,7 @@ indie-review finding.
   Source: in-session-2026-08-26 (found while deciding where to put op:amend_field).
   Lanes: docs, remotecontrol.
 
-- 🚧 [ANTS-4689] **Expand the tab-tag colour picker to 25 presets, including a grey and black neutral ramp.**
+- ✅ [ANTS-4689] **Expand the tab-tag colour picker to 25 presets, including a grey and black neutral ramp.**
   The picker offered the 14 Catppuccin Mocha accents, all pastels. A user
   asking for a grey or black tab had only "Custom colour..." and a colour
   dialog.
@@ -13540,6 +13540,7 @@ indie-review finding.
   the worst already shipped. All eleven clear it. The comment that said
   otherwise is corrected in place rather than left to mislead the next
   change.
+  Resolved (2026-08-26). 25 presets: the 14 Catppuccin Mocha accents, six pastels filling the row's hue gaps (Orchid, Indigo, Sand, Olive, Lime, Mint), and the five-step neutral ramp (Silver, Gray, Slate, Charcoal, Black) grouped last. All eleven go through the SAME setTabColor + gradient path as every existing colour -- no per-colour special-casing, which the user confirmed was the intent. The alpha special-case drafted for dark colours was DROPPED after measuring: it was solving a problem that did not exist. Test floor raised 14 -> 25 and mutation-proved (removing the neutral ramp fails it by name); a floor left at 14 would have gone on passing after a regression that dropped every colour added since.
   **Layman:** The tab colour menu now offers 25 colours instead of 14, including greys and black.
   Kind: feature.
   Source: user-request-2026-08-26.
@@ -45344,7 +45345,7 @@ it.
   Source: OneUp-feedback-2026-08-25.
   Lanes: mcp, doccitations.
 
-- 📋 [ANTS-4671] **feedback_log op:assign_id fills one slot per call, so a triage pays one read and one atomic write per finding.**
+- ✅ [ANTS-4671] **feedback_log op:assign_id fills one slot per call, so a triage pays one read and one atomic write per finding.**
   Noticed by doing it rather than by reading the schema. Today's triage
   decided thirteen findings across three files in one pass and then spent
   thirteen assign_id calls writing that decision down, each a full read and
@@ -45374,6 +45375,7 @@ it.
   drained in smaller passes. Filed because it was measured rather than
   guessed, and because the batch-op argument is now settled enough that the
   gap is an omission rather than a decision.
+  Resolved (2026-08-26) in 9453678d. op:"assign_id_batch" takes assignments[] -- each carrying assign_id's per-call arguments unchanged -- in one read and one atomic write. The composition (exactly-one-of ids/closure/awaiting, the ^ANTS-[0-9]+$ gate, the control-char folds) was EXTRACTED into fbComposeAssignValue rather than copied, so the two ops cannot answer one assignment differently; the 26 existing assign_id cases passing untouched is the evidence that refactor is behaviour-preserving. Per-assignment failures land in skipped[] with their index, and an all-failed batch refuses rather than reporting success with nothing applied (ANTS-4470's rule, kept). Six-case feature test; the standard's triage flow documents the op.
   **Layman:** Recording the outcome of a triage takes one slow write per finding, even when they were all decided together.
   Kind: enhancement.
   Source: in-session-2026-08-25, hit while triaging the three pending feedback files.

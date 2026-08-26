@@ -14,6 +14,12 @@ for security-relevant changes.
 
 ### Added
 
+- **feedback_log can record a whole triage in one write** (ANTS-4671)
+  The new assign_id_batch fills many findings' id slots at once, where before each one cost a separate read and write of the file.
+
+- **The tab colour menu now offers 25 colours, including greys and black** (ANTS-4689)
+  Right-click a tab to pick from 25 presets instead of 14. New: Orchid, Indigo, Sand, Olive, Lime and Mint fill gaps between the existing shades, and a grey ramp -- Silver, Gray, Slate, Charcoal, Black -- is grouped at the bottom of the list. They use the same gradient as every other tab colour.
+
 - **roadmap_log op:"amend_field" edits an item's Layman, Kind, Source, Lanes or Evidence** (ANTS-4667)
   These could be set when an item was filed and never changed afterwards. Trying through amend_body failed with the text reported missing, because those lines are assembled when the roadmap is written out rather than stored. That error now points at the new command.
 
