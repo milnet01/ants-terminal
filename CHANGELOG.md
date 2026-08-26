@@ -283,6 +283,17 @@ for security-relevant changes.
 
 ### Fixed
 
+- **The window no longer freezes while Claude runs an MCP command** (ANTS-2132)
+  Ants answered every MCP request on the thread that draws the window, so
+  the whole window was frozen for as long as the request took — and with
+  several Claude sessions live, their requests queued behind each other on
+  that one thread, which is why the freezes had no pattern. Eligible verbs
+  now run on a background worker and the window keeps painting. Requests
+  still run one at a time, so nothing that could not previously overlap
+  now does. Measured: a 10 ms timer fired once across a 200 ms verb
+  before, ~20 times after. Two verbs are NOT covered yet and still block
+  for a whole sweep — audit_run and indie_review_dispatch (ANTS-4682).
+
 - **fields= is documented universal but allowlisted, so every other verb drops it AND cannot report it.** (ANTS-4524)
   `fields=` is honoured on every verb now, and declared on every schema, so
   a caller who narrows a response gets what they asked for instead of the

@@ -13196,6 +13196,36 @@ indie-review finding.
   QThread::create + worker->wait() on the GUI thread, so they still freeze the
   window for a whole sweep. What this item now fixes is the reported symptom:
   the intermittent freeze from ordinary verbs.
+  Progress (2026-08-26, later): the dispatch change is SHIPPED and proven, in
+  five commits ending 7a070f1f. Suite 3947/3947 (was 3943; +4 new).
+
+  What landed: the response pipeline extracted into
+  ClaudeIntegration::finishToolDispatch; an RcHandler registration overload
+  marking which handlers may leave the GUI thread (provenance AND contract);
+  ants::onGuiThread (src/guithread.h) marshalling all nine MainWindow reads in
+  verb bodies, landed BEFORE threading turned on so the tree was never racy; one
+  shared worker with a 64-job cap; and tests/features/mcp_async_dispatch/, a
+  live-dispatcher harness the spec said did not exist.
+
+  RED RUN, the evidence: forcing offThread=false reproduces the old behaviour
+  and fails INV-1 with "the GUI thread was not processing events while the verb
+  ran (ticks=1)". A 10 ms heartbeat fired ONCE across a 200 ms verb. With the fix
+  it fires ~20 times. That single number is the user-reported freeze, measured.
+
+  STILL OPEN on this item, all specified in docs/specs/ANTS-2132-async-mcp-dispatch.md
+  sections 6 and 7 — do not re-derive them:
+    - delete rcDelegateWorker and retype its 8 call sites to rcDelegate(
+    - update the three tests binding the deleted spelling: mutation_probe,
+      mcp_dispatch_forward_completeness, mcp_call_site_contract
+    - rewrite tests/features/mcp_verb_offthread_guard/ for INV-3/6/7/9 and drop
+      its false GUI-responsiveness claim (it is in that file's Background
+      section, NOT Mechanism)
+    - mcp-tools.md gains the eligibility rule; mcp-error-codes.md gains
+      dispatch_queue_full
+    - reword THIS headline off audit_run / indie_review_dispatch before closing
+
+  Parent spec INV-8 (disconnect mid-verb) and INV-10 (queue cap) are not yet
+  covered by a test; the limits are recorded in the test's own spec.md.
 
 - 📋 [ANTS-2133] **Verb in-flight stale-slot reaper: 270s recovery after a worker SIGKILL is too slow — add proactive liveness check.**
   claudeintegration.cpp verbInFlightTryAcquire reaps entries older than kVerbInFlightReapMs (270s). If a worker is SIGKILLed mid-verb the slot stays held until that window elapses, blocking the same (verb, projectRoot) pair. Add a cheap worker-liveness probe (/proc/<pid> existence, or a stored QThread* isRunning check) on tryAcquire so a dead worker's slot frees in seconds. Low-priority hardening; current reaper already bounds the worst case.
