@@ -50,12 +50,30 @@ for a queued connection passes against code that still joins.
 - **INV-9** — one `finishToolDispatch` definition, the wrap lives inside it,
   and the dispatcher keeps no second copy. Two pipelines would let the
   synchronous and deferred replies drift apart.
+- **INV-11** — an INLINE handler registered off-thread reads no `MainWindow`
+  member except through `ants::onGuiThread`. INV-6 cannot hold this: its
+  scrape covers `remotecontrol*.cpp` and matches `m_main->`, while an inline
+  handler lives in `mainwindow.cpp` and reaches `MainWindow` through its own
+  members. That gap was inert while every inline verb stayed on the GUI
+  thread, and stopped being inert when ANTS-4682 moved six of them off it.
+  The subject is **derived** the same way INV-6's is — every
+  `ClaudeIntegration::RcHandler{` registration in that file — so moving one
+  more inline verb off-thread enrols it here rather than needing a list
+  edited. Passing a bare `this` to a free function that marshals internally
+  (`ants::resolveCallerCwdRoot`) is not a member read and is not matched.
 
 ## Out of scope
 
-- `audit_run` / `indie_review_dispatch` — still synchronous, still freeze the
-  window for a sweep. Deferred to ANTS-4682; their nested loops are locked by
+- `audit_run` / `audit_poll` / `indie_review_dispatch` — still synchronous,
+  still freeze the window for a sweep. ANTS-4682 audited all fourteen inline
+  handlers and moved the GUI-free ones; these three keep a GUI-thread job
+  registry and build their own workers, so they were recorded as staying
+  rather than moved, and the § 5 tree-access hazard is **not** closed for
+  them. Their nested loops are locked by
   `tests/features/socket_readyread_uaf_guard/` (ANTS-2102).
+- `get_git_status` — also stays. It returns a plain text blob with no refusal
+  channel, so a refused marshal could not be distinguished from "no
+  terminal"; moving it needs an envelope first.
 - INV-1, INV-2, INV-4, INV-5, INV-8, INV-10 — runtime, and owned by
   `tests/features/mcp_async_dispatch/`.
 

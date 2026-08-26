@@ -1,6 +1,7 @@
 #include "mainwindow.h"
 
 #include "tokenusageengine.h"  // ANTS-3572 — foldMonthlyBucket / sumYear
+#include "guithread.h"       // ANTS-4682 — ants::onGuiThread in inline verbs
 #include <QDate>
 #include <QJsonObject>
 #include "themes.h"             // ANTS-1325: include directly where Themes:: is called
@@ -4367,6 +4368,12 @@ void MainWindow::setupClaudeMcpProviders() {
             return QString::fromUtf8(
                 QJsonDocument(info).toJson(QJsonDocument::Compact));
         });
+    // ANTS-4682 — STAYS. It resolves a TerminalWidget (terminalForCaller)
+    // and reads shellCwd(), and it returns a PLAIN TEXT blob with no
+    // refusal channel — so a refused marshal would be indistinguishable
+    // from "no terminal", which is the ANTS-4684 class of defect. Moving
+    // it needs an envelope first. It touches the repo, so it remains part
+    // of the ANTS-2132 § 5 hazard until then.
     m_claudeIntegration->registerToolProvider("get_git_status",
         ClaudeIntegration::CallerCwdContract::Required,
         [this](const QJsonObject &args) -> QString {
@@ -4442,6 +4449,8 @@ void MainWindow::setupClaudeMcpProviders() {
     m_claudeIntegration->registerToolProvider("roadmap_query",
         ClaudeIntegration::CallerCwdContract::Required,
         rcDelegate(&RemoteControl::cmdRoadmapQuery));
+    // ANTS-4682 — STAYS. Reads live tab state, which is GUI-owned. Touches
+    // no project file, so it is not part of the § 5 concurrency hazard.
     m_claudeIntegration->registerToolProvider("tab_list",
         ClaudeIntegration::CallerCwdContract::ProcessGlobal,
         [this](const QJsonObject &) -> QString {
@@ -4493,6 +4502,10 @@ void MainWindow::setupClaudeMcpProviders() {
     // wired — see that spec's INV-12 (corrected 2026-07-25).
     // caller_cwd is Required (ANTS-1404 contract registered in
     // callerCwdContractFor); dispatcher refuses upstream when absent.
+    // ANTS-4682 — STAYS, deliberately (ANTS-2132 § 5). Its job registry is
+    // GUI-thread state and it builds its own worker, so it still freezes the
+    // window for a sweep AND touches the tree: the § 5 hazard is NOT closed
+    // for this verb. Rewriting it is the deferred freeze work, not this item.
     m_claudeIntegration->registerToolProvider("audit_run",
         ClaudeIntegration::CallerCwdContract::Required,
         [this](const QJsonObject &args) -> QString {
@@ -4846,6 +4859,7 @@ void MainWindow::setupClaudeMcpProviders() {
     // registry. Read-only, cheap, never blocks. Required caller_cwd for
     // parity with audit_run (dispatcher refuses caller_cwd_required
     // upstream); under the claude.mcp_enabled master gate.
+    // ANTS-4682 — STAYS. Same GUI-thread job registry as audit_run.
     m_claudeIntegration->registerToolProvider("audit_poll",
         ClaudeIntegration::CallerCwdContract::Required,
         [this](const QJsonObject &args) -> QString {
@@ -4881,7 +4895,7 @@ void MainWindow::setupClaudeMcpProviders() {
     // engine entries directly (NOT MCP re-entry — INV-3).
     m_claudeIntegration->registerToolProvider("test_audit_partition",
         ClaudeIntegration::CallerCwdContract::Required,
-        [](const QJsonObject &args) -> QString {
+        ClaudeIntegration::RcHandler{[](const QJsonObject &args) -> QString {
             TestAuditEngine::PartitionRequest req;
             req.callerCwd   = args.value(QStringLiteral("caller_cwd")).toString();
             req.scope       = args.value(QStringLiteral("scope")).toString();
@@ -4986,10 +5000,10 @@ void MainWindow::setupClaudeMcpProviders() {
             if (r.nextOffset >= 0) env["next_offset"] = r.nextOffset;
             env["byte_count"] = r.byteCount;
             return QString::fromUtf8(QJsonDocument(env).toJson(QJsonDocument::Compact));
-        });
+        }});
     m_claudeIntegration->registerToolProvider("test_audit_brief",
         ClaudeIntegration::CallerCwdContract::Required,
-        [](const QJsonObject &args) -> QString {
+        ClaudeIntegration::RcHandler{[](const QJsonObject &args) -> QString {
             TestAuditEngine::BriefRequest req;
             req.callerCwd       = args.value(QStringLiteral("caller_cwd")).toString();
             req.chunkId         = args.value(QStringLiteral("chunk_id")).toString();
@@ -5009,10 +5023,10 @@ void MainWindow::setupClaudeMcpProviders() {
             env["prior_false_positives"] = r.priorFalsePositives;
             env["byte_count"]        = r.byteCount;
             return QString::fromUtf8(QJsonDocument(env).toJson(QJsonDocument::Compact));
-        });
+        }});
     m_claudeIntegration->registerToolProvider("test_audit_synthesis_prompt",
         ClaudeIntegration::CallerCwdContract::Required,
-        [](const QJsonObject &args) -> QString {
+        ClaudeIntegration::RcHandler{[](const QJsonObject &args) -> QString {
             TestAuditEngine::SynthRequest req;
             req.callerCwd          = args.value(QStringLiteral("caller_cwd")).toString();
             req.partitionToken     = args.value(QStringLiteral("partition_token")).toString();
@@ -5050,10 +5064,10 @@ void MainWindow::setupClaudeMcpProviders() {
             env["truncated_by_limit"]  = r.truncatedByLimit;
             env["byte_count"]          = r.byteCount;
             return QString::fromUtf8(QJsonDocument(env).toJson(QJsonDocument::Compact));
-        });
+        }});
     m_claudeIntegration->registerToolProvider("test_audit_fold_in",
         ClaudeIntegration::CallerCwdContract::Required,
-        [](const QJsonObject &args) -> QString {
+        ClaudeIntegration::RcHandler{[](const QJsonObject &args) -> QString {
             TestAuditEngine::FoldInRequest req;
             req.callerCwd    = args.value(QStringLiteral("caller_cwd")).toString();
             req.actionable   = args.value(QStringLiteral("actionable")).toArray();
@@ -5094,12 +5108,12 @@ void MainWindow::setupClaudeMcpProviders() {
             env["failed_count"]          = r.failedCount;
             env["partial"]               = r.partial;
             return QString::fromUtf8(QJsonDocument(env).toJson(QJsonDocument::Compact));
-        });
+        }});
     // ANTS-1513 — test_audit_recheck: verify a deferred finding's cite
     // is still live before resuming the work. Read-only project query.
     m_claudeIntegration->registerToolProvider("test_audit_recheck",
         ClaudeIntegration::CallerCwdContract::Required,
-        [](const QJsonObject &args) -> QString {
+        ClaudeIntegration::RcHandler{[](const QJsonObject &args) -> QString {
             TestAuditEngine::RecheckRequest req;
             req.callerCwd  = args.value(QStringLiteral("caller_cwd")).toString();
             req.findingId  = args.value(QStringLiteral("finding_id")).toString();
@@ -5160,7 +5174,7 @@ void MainWindow::setupClaudeMcpProviders() {
                 }
             }
             return QString::fromUtf8(QJsonDocument(env).toJson(QJsonDocument::Compact));
-        });
+        }});
     m_claudeIntegration->registerToolProvider("get_text",
         ClaudeIntegration::CallerCwdContract::TabSpecific,
         [this](const QJsonObject &args) -> QString {
@@ -5274,14 +5288,35 @@ void MainWindow::setupClaudeMcpProviders() {
     // otherwise — clean drop-out, no dead refusal path). See docs/specs/ANTS-2093.md.
     m_claudeIntegration->registerToolProvider("project_query",
         ClaudeIntegration::CallerCwdContract::Required,
-        [this](const QJsonObject &args) -> QString {
+        ClaudeIntegration::RcHandler{[this](const QJsonObject &args) -> QString {
+            // ANTS-4682 — the three Config reads are GUI-thread-owned; the
+            // snippet run they parameterise is not, and it walks the project
+            // tree. Marshal the reads, run the verb on the worker: that is
+            // what re-serialises this verb against the off-thread ones, which
+            // is the hazard ANTS-2132 § 5 named and left open.
+            struct Cfg { bool enabled; int timeoutMs; int capBytes; };
+            const auto cfg = ants::onGuiThread([this]() -> Cfg {
+                return Cfg{m_config.claudeMcpProjectQueryEnabled(),
+                           m_config.claudeMcpProjectQueryTimeoutMs(),
+                           m_config.claudeMcpProjectQueryResultCapBytes()};
+            });
+            // § 2.5 — refuse, never default. A default-constructed Cfg reads
+            // the feature's own off switch as false, so the verb would report
+            // "project_query is disabled" to a caller who had enabled it.
+            if (!cfg) {
+                QJsonObject env;
+                env[QStringLiteral("ok")]    = false;
+                env[QStringLiteral("code")]  = QStringLiteral("gui_read_refused");
+                env[QStringLiteral("error")] = QStringLiteral(
+                    "project_query: the settings read was refused because the "
+                    "dispatcher is shutting down");
+                return QString::fromUtf8(
+                    QJsonDocument(env).toJson(QJsonDocument::Compact));
+            }
             return QString::fromUtf8(QJsonDocument(LuaEngine::projectQueryVerb(
-                    args,
-                    m_config.claudeMcpProjectQueryEnabled(),
-                    m_config.claudeMcpProjectQueryTimeoutMs(),
-                    m_config.claudeMcpProjectQueryResultCapBytes()))
+                    args, cfg->enabled, cfg->timeoutMs, cfg->capBytes))
                 .toJson(QJsonDocument::Compact));
-        });
+        }});
 #endif
     // ANTS-1961 / ANTS-1962 — cross-session feedback-file read + write.
     m_claudeIntegration->registerToolProvider("feedback_query",
@@ -5429,6 +5464,8 @@ void MainWindow::setupClaudeMcpProviders() {
     // ANTS-1352 — indie_review_dispatch. Inline in-flight gate via
     // verbInFlight* (same pattern as audit_run); caller_cwd Required
     // per callerCwdContractFor; rate-limit tier Expensive.
+    // ANTS-4682 — STAYS, deliberately (ANTS-2132 § 5), same shape as
+    // audit_run: GUI-owned job registry, own worker, still freezes.
     m_claudeIntegration->registerToolProvider("indie_review_dispatch",
         ClaudeIntegration::CallerCwdContract::Required,
         [this](const QJsonObject &args) -> QString {
@@ -5521,6 +5558,9 @@ void MainWindow::setupClaudeMcpProviders() {
     // returned null on a live build with no static-analysis
     // explanation, and the only call site (this lambda) always
     // supplies the pointer.
+    // ANTS-4682 — STAYS. ClaudeIntegration counters + MainWindow savings,
+    // both GUI-owned; no project file. The marshal inside cmdTokenUsage now
+    // refuses rather than defaulting (ANTS-4684).
     m_claudeIntegration->registerToolProvider("token_usage",
         ClaudeIntegration::CallerCwdContract::ProcessGlobal,
         [this](const QJsonObject &args) -> QString {
@@ -5533,6 +5573,8 @@ void MainWindow::setupClaudeMcpProviders() {
     // ANTS-1360 — mcp_trace: read a slice of ClaudeIntegration's
     // ring buffer of last tool/call dispatches. Does NOT delegate
     // to RemoteControl — the ring lives inside ClaudeIntegration.
+    // ANTS-4682 — STAYS. Reads ClaudeIntegration's trace ring; no project
+    // file, so it is outside the § 5 hazard.
     m_claudeIntegration->registerToolProvider("mcp_trace",
         ClaudeIntegration::CallerCwdContract::ProcessGlobal,
         [ci = m_claudeIntegration](const QJsonObject &args) -> QString {
@@ -5604,7 +5646,7 @@ void MainWindow::setupClaudeMcpProviders() {
     // without it?" question). See docs/specs/ANTS-1400.md.
     m_claudeIntegration->registerToolProvider("caller_cwd_info",
         ClaudeIntegration::CallerCwdContract::Optional,
-        [this](const QJsonObject &args) -> QString {
+        ClaudeIntegration::RcHandler{[this](const QJsonObject &args) -> QString {
             const QString callerCwd =
                 args.value(QStringLiteral("caller_cwd")).toString();
             const ants::ResolvedRoot rr =
@@ -5616,7 +5658,7 @@ void MainWindow::setupClaudeMcpProviders() {
             if (rr.tabIndex) env["tab_index"] = *rr.tabIndex;
             return QString::fromUtf8(
                 QJsonDocument(env).toJson(QJsonDocument::Compact));
-        });
+        }});
 
     // Start hook server
     m_claudeIntegration->startHookServer();

@@ -254,5 +254,67 @@ TEST(McpVerbOffthreadGuard, Main) {
         }
     }
 
+
+    // INV-11 — ANTS-4682. INV-6's scrape covers remotecontrol*.cpp and matches
+    // `m_main->`. An INLINE handler lives in mainwindow.cpp and reaches
+    // MainWindow through its OWN members, which that scrape cannot see — so
+    // the moment an inline verb is registered off-thread (ANTS-4682 moved
+    // six), an unmarshalled member read there is INV-6's defect with no guard
+    // on it. Derived, not listed: the subject is every RcHandler{ registration
+    // in this file, so moving one more inline verb off-thread enrols it here.
+    // Passing a bare `this` to an already-marshalled free function
+    // (ants::resolveCallerCwdRoot) is not a member read and is not matched.
+    {
+        static const std::regex member(R"RX(\bm_[A-Za-z_]+)RX");
+        static const std::regex nameRx(R"RX(registerToolProvider\("([^"]+)")RX");
+        // Segment the file by the registration statements themselves rather
+        // than paren-matching a call: callEnd() skips ' as a char literal, so
+        // an apostrophe in a comment inside a handler body ("the caller's
+        // cwd") opens a literal that never closes and the span runs off into
+        // unrelated code. This bound also terminates the LAST registration,
+        // which has no following registration to stop at, and it excludes the
+        // rcDelegate factory's own RcHandler{ — that is a factory definition,
+        // not a registration, and carries no verb name.
+        static const std::string kStmt = "\n    m_claudeIntegration->";
+        std::vector<size_t> bounds;
+        for (size_t b = mw.find(kStmt); b != std::string::npos;
+             b = mw.find(kStmt, b + 1))
+            bounds.push_back(b);
+        bounds.push_back(mw.size());
+
+        size_t seen = 0;
+        for (size_t i = 0; i + 1 < bounds.size(); ++i) {
+            const std::string seg = mw.substr(bounds[i], bounds[i + 1] - bounds[i]);
+            const size_t rc = seg.find("RcHandler{");
+            if (rc == std::string::npos) continue;
+            std::smatch nm;
+            if (!std::regex_search(seg, nm, nameRx)) continue;  // not a registration
+            const std::string verb = nm[1].str();
+
+            std::vector<std::pair<size_t, size_t>> marshalled;
+            for (size_t g = seg.find("onGuiThread("); g != std::string::npos;
+                 g = seg.find("onGuiThread(", g + 1)) {
+                const size_t o = seg.find('(', g);
+                marshalled.emplace_back(o, callEnd(seg, o));
+            }
+
+            // Scan only the HANDLER, so the registration's own
+            // `m_claudeIntegration->` receiver is not itself a finding.
+            for (auto it = std::sregex_iterator(seg.begin() + static_cast<long>(rc),
+                                                seg.end(), member);
+                 it != std::sregex_iterator(); ++it) {
+                const size_t off = rc + static_cast<size_t>(it->position(0));
+                bool wrapped = false;
+                for (const auto &sp : marshalled)
+                    if (off > sp.first && off < sp.second) { wrapped = true; break; }
+                expect(wrapped,
+                       "INV-11/off-thread-inline-member-read-must-be-marshalled",
+                       (verb + ":" + it->str(0)).c_str());
+            }
+            ++seen;
+        }
+        expect(seen > 0, "INV-11/off-thread-inline-registrations-found");
+    }
+
     EXPECT_EQ(0, expect_failures());
 }

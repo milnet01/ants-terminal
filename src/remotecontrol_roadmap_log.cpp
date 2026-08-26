@@ -2600,24 +2600,6 @@ QJsonDocument RemoteControl::cmdRoadmapLogAmendBody(const QJsonObject &req,
         auto seamText = RoadmapSource::RoadmapText::fromMemory(markdown);
         const auto target =
             roadmapWriteTarget(callerCanonical, seamText, &why, &seamErr);
-        // ANTS-4372 — headline mode does NOT write through the store yet, and
-        // refuses rather than patching markdown a migrated project renders
-        // FROM. A headline is the store's own column and its join key for the
-        // step-2 locate (ANTS-3809 § 2.2); writing one into the file alone
-        // would be silently reverted by the next render, and writing it into
-        // both without the store's own update path is how the two disagree.
-        // Refusing here costs a migrated project the op; writing blindly
-        // could cost it the bullet.
-        if (headlineMode && target) {
-            return rlErr(QStringLiteral("unsupported_format"),
-                QStringLiteral("roadmap_log: op:\"amend_headline\" is not "
-                               "supported on a migrated project — the "
-                               "headline is a store column and its locate "
-                               "key, so a markdown-only patch would be "
-                               "reverted by the next render. Use op:\"flip\" "
-                               "/ op:\"annotate\" for status and body, or "
-                               "edit the store."));
-        }
         QJsonObject refusal;
         if (rcRoadmapSourceRefused(refusal, why, seamErr))
             return QJsonDocument(refusal);
@@ -2636,6 +2618,108 @@ QJsonDocument RemoteControl::cmdRoadmapLogAmendBody(const QJsonObject &req,
             const auto before = store.readItem(*itemPk, &seamErr);
             if (!before)
                 return rlErr(QStringLiteral("store_failed"), seamErr);
+
+            // ANTS-4668 / ANTS-4683 — headline mode writes the store COLUMN.
+            // The refusal this replaces reasoned about markdown: patching a
+            // rendered line a migrated project regenerates would be reverted
+            // by the next render. A write going through the store is the path
+            // op:"flip" and op:"annotate" already take, so that reasoning
+            // never reached it — and refusing left a headline immutable for
+            // the life of the item, while a headline STATES a finding and a
+            // finding can be refuted by later evidence.
+            //
+            // No counterpart to the markdown path's structural-prefix guard,
+            // deliberately: the column holds the headline TEXT alone — the
+            // marker, id brackets, status emoji and bold delimiters are
+            // composed by the render and are not in the value, so `new_text`
+            // has no structure here to damage. Uniqueness IS enforced, for
+            // the reason it is on the body: a phrase occurring twice must not
+            // be clobbered on a guess.
+            if (headlineMode) {
+                const QString beforeHeadline = before->headline;
+                const int hHits = beforeHeadline.count(oldText);
+                if (hHits == 0) {
+                    QJsonObject env;
+                    env[QStringLiteral("ok")]   = false;
+                    env[QStringLiteral("code")] =
+                        QStringLiteral("headline_match_not_found");
+                    env[QStringLiteral("error")] =
+                        QStringLiteral("roadmap_log: `old_text` not found in "
+                                       "the headline of the located bullet");
+                    if (before->body.contains(oldText)) {
+                        env[QStringLiteral("hint")] =
+                            QStringLiteral("`old_text` occurs in the bullet's "
+                                           "BODY, which amend_headline does "
+                                           "not edit — op:\"amend_body\" does");
+                    }
+                    return QJsonDocument(env);
+                }
+                if (hHits > 1) {
+                    return rlErr(QStringLiteral("headline_match_ambiguous"),
+                        QStringLiteral("roadmap_log: `old_text` occurs %1 "
+                                       "times in the headline — narrow it to "
+                                       "a unique substring").arg(hHits));
+                }
+                const QString newHeadline =
+                    QString(beforeHeadline).replace(oldText, newText);
+                // The one structural property the column DOES carry: a bullet
+                // with no headline cannot be located by headline again, and
+                // the render has nothing to emit for it.
+                if (newHeadline.trimmed().isEmpty()) {
+                    return rlErr(QStringLiteral("bad_args"),
+                        QStringLiteral("roadmap_log: that `new_text` would "
+                                       "leave the headline empty — a bullet "
+                                       "with no headline cannot be located "
+                                       "again"));
+                }
+
+                HistoryContext hHist;      // ANTS-3822 § 2.5 — one op, one stamp
+                hHist.changedAt = rlHistoryStamp();
+                const auto hMutate = [&](QString *err) -> bool {
+                    if (!store.setItemField(*itemPk, QStringLiteral("headline"),
+                                            newHeadline,
+                                            QStringLiteral("asserted"), err))
+                        return false;
+                    hHist.record(*itemPk, QStringLiteral("headline"),
+                                 beforeHeadline, newHeadline);
+                    // ANTS-4501 § 2.2 — an amend is a modification. No
+                    // `shipped` stamp: amend_headline cannot move the status.
+                    if (!rlStampModified(store, *itemPk, err))
+                        return false;
+                    return rlFlushHistory(store, hHist, err);
+                };
+
+                RoadmapRender::Outcome hOutcome;
+                QString hWriteErr;
+                const auto hr = RoadmapWrite::commitAndRender(
+                    store, projectId, callerCanonical, roadmapPath, dryRun,
+                    hMutate, &hOutcome, &hWriteErr);
+                QJsonObject env;
+                if (rcRoadmapWriteRefused(env, hr, hWriteErr, hOutcome))
+                    return QJsonDocument(env);
+                rlAttachHistoryNote(env, store, hHist);   // ANTS-3822 § 2.3.1
+
+                env[QStringLiteral("ok")]       = true;
+                env[QStringLiteral("op")]       = opName;
+                env[QStringLiteral("format")]   = QStringLiteral("ants-v1");
+                env[QStringLiteral("file")]     = QStringLiteral("ROADMAP.md");
+                env[QStringLiteral("amended")]  = true;
+                // Echoed so the caller can read the joint result without a
+                // re-query — the amend_body path's `body_paragraph` rationale.
+                env[QStringLiteral("headline")] = newHeadline;
+                if (!matchedId.isEmpty())
+                    env[QStringLiteral("id")] = matchedId;
+                rcRoadmapWriteFields(env, hOutcome, dryRun);   // ANTS-4463
+                if (!newTextScrubbedNames.isEmpty()) {
+                    QJsonArray dropped;
+                    for (const QString &n : newTextScrubbedNames)
+                        dropped.append(n);
+                    env[QStringLiteral("note_scrubbed_params")] = dropped;
+                }
+                if (dryRun)
+                    env[QStringLiteral("dry_run")] = true;
+                return QJsonDocument(env);
+            }
 
             // ANTS-4550 — the same seam amendBodyExact() runs, so the two
             // paths cannot answer one old_text differently. Indent::None:

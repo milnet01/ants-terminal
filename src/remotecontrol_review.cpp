@@ -1951,11 +1951,27 @@ QJsonDocument RemoteControl::cmdTokenUsage(const QJsonObject &req,
     // any reset folds the session into storage, so the fields already include
     // the session about to be folded (a follow-up call then returns the same
     // lifetime). m_main is non-owning/non-null by contract; guard defensively.
-    const TokenSavingsSummary savings =
-        m_main ? ants::onGuiThread(
-                     [this]() { return m_main->tokenSavingsSummary(); })
-                     .value_or(TokenSavingsSummary{})
-               : TokenSavingsSummary{};
+    // ANTS-4684 — a REFUSED marshal is not a zero summary. § 2.5 forbids
+    // answering from a default here: the caller would read "no savings" where
+    // the truth is "nobody looked", and this verb exists to report a number.
+    // A null m_main is a DIFFERENT case and still defaults — there is no
+    // window to ask, which is not a refusal.
+    TokenSavingsSummary savings;
+    if (m_main) {
+        const auto got = ants::onGuiThread(
+            [this]() { return m_main->tokenSavingsSummary(); });
+        if (!got) {
+            QJsonObject env;
+            env[QStringLiteral("ok")]    = false;
+            env[QStringLiteral("code")]  = QStringLiteral("gui_read_refused");
+            env[QStringLiteral("error")] = QStringLiteral(
+                "token_usage: the savings read was refused because the "
+                "dispatcher is shutting down — reporting zero would "
+                "understate the total rather than say it is unavailable");
+            return QJsonDocument(env);
+        }
+        savings = *got;
+    }
     if (wantsReset) {
         ci->resetTokenUsage();
     }

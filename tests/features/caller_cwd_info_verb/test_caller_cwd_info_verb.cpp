@@ -35,9 +35,16 @@ TEST(CallerCwdInfoVerb, HandlerDelegatesToHelper) {
     ASSERT_FALSE(mw.empty());
     const auto pos = mw.find("registerToolProvider(\"caller_cwd_info\"");
     ASSERT_NE(pos, std::string::npos);
-    // Take the next ~600 bytes — captures the lambda body without
-    // bleeding into the following registration.
-    const std::string region = mw.substr(pos, 600);
+    // Take the next ~800 bytes — captures the lambda body without
+    // bleeding into the following registration. Widened from 600 by
+    // ANTS-4682, which wrapped this registration's handler in
+    // ClaudeIntegration::RcHandler{...} to dispatch it off the GUI thread:
+    // that prefix pushed "tab_index" to +604, four bytes past the old
+    // window, so every field below was still present and the scrape could
+    // no longer see the last one. caller_cwd_info is the final
+    // registration before startHookServer(), so there is nothing after it
+    // to bleed into.
+    const std::string region = mw.substr(pos, 800);
     EXPECT_NE(region.find("ants::resolveCallerCwdRoot"), std::string::npos)
         << "ANTS-1400 REG-2: handler must delegate to "
            "ants::resolveCallerCwdRoot";
