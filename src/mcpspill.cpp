@@ -305,6 +305,16 @@ QString offloadBody(const QString &toolName, const QString &body) {
                     "{handle:\"%1\"}: byte-paged (offset/max_bytes), or "
                     "row-paged (row_offset/row_count) over the \"%2\" array.")
                     .arg(handle, domKey);
+                // ANTS-4705 — once, here, because a dominant array EXISTS is
+                // exactly when the count is knowable. It used to be set on two
+                // of the three arms below: the head_rows arm and ANTS-4519's
+                // omitted arm, but not the ordinary rows_preview arm — so an
+                // envelope could carry `rows_preview_truncated: true`, which is
+                // computed as `shape.size() < domCount`, while domCount itself
+                // was reported nowhere. The caller was told the preview was
+                // short and could not learn by how much, and that figure is
+                // what decides where to page.
+                o[QStringLiteral("row_count")] = domCount;
                 // S0 = the full envelope with the three scalar preview fields
                 // + head_rows_truncated at its WIDER 'false' form (5 B) + an
                 // empty head_rows. Measuring 'false' guarantees the finished
@@ -340,7 +350,6 @@ QString offloadBody(const QString &toolName, const QString &body) {
                 }
                 if (!headRows.isEmpty()) {
                     o[QStringLiteral("head_rows_key")] = domKey;
-                    o[QStringLiteral("row_count")]     = domCount;
                     o[QStringLiteral("head_rows")]     = headRows;
                     o[QStringLiteral("head_rows_truncated")] =
                         headRows.size() < domCount;
@@ -468,7 +477,6 @@ QString offloadBody(const QString &toolName, const QString &body) {
                     // session's most expensive. It also misleads: the entries
                     // read as content until you notice every one is empty.
                     if (headsDropped) {
-                        o[QStringLiteral("row_count")] = domCount;
                         o[QStringLiteral("rows_preview_omitted")] = true;
                         o[QStringLiteral("rows_preview_hint")] = QStringLiteral(
                             "no per-row preview: the row bodies do not fit and "

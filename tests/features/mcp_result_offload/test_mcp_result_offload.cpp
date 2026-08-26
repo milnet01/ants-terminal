@@ -1132,3 +1132,42 @@ TEST_F(McpResultOffload, Inv15NoPreservationAboveParseCap) {
     EXPECT_FALSE(o.contains("preserved_omitted"))
         << "the pass did not run; it has no list of what it dropped";
 }
+
+// ANTS-4705 — `row_count` is emitted wherever a dominant array was detected,
+// not only on two of the three arms. It used to be set by the head_rows arm
+// and by ANTS-4519's omitted arm, but NOT by the ordinary rows_preview arm --
+// so an envelope could carry `rows_preview_truncated: true`, computed as
+// `shape.size() < domCount`, while domCount was reported nowhere. The caller
+// was told the preview was short and could not learn by how much, and that is
+// the figure that decides where to page.
+TEST_F(McpResultOffload, Ants4705RowCountRidesEveryArm) {
+    // Rows wide enough that no complete row fits the head_rows budget, but a
+    // per-row {index, bytes, head} shape does -- the ANTS-4397 arm.
+    QJsonArray rows;
+    for (int i = 0; i < 12; ++i)
+        rows.append(QStringLiteral("row%1 ").arg(i)
+                    + QString(3000, QLatin1Char('w')));
+    const QString body = QString::fromUtf8(
+        QJsonDocument(QJsonObject{{QStringLiteral("matches"), rows}})
+            .toJson(QJsonDocument::Compact));
+
+    const QString env = mcp::offloadBody(QStringLiteral("workspace_search"), body);
+    const QJsonObject o = QJsonDocument::fromJson(env.toUtf8()).object();
+    ASSERT_TRUE(o.value("offloaded").toBool()) << env.toStdString();
+
+    // Pin the arm, or this passes from the head_rows arm and asserts nothing.
+    ASSERT_TRUE(o.contains("rows_preview"))
+        << "precondition: this fixture must reach the shape-preview arm: "
+        << env.toStdString();
+    ASSERT_FALSE(o.contains("head_rows"))
+        << "precondition: no complete row may fit, or the arm is the other one";
+
+    ASSERT_TRUE(o.contains("row_count"))
+        << "the shape arm reported truncation without the total it is "
+           "truncated against";
+    EXPECT_EQ(o.value("row_count").toInt(), 12);
+    // And the claim it supports is checkable against it.
+    if (o.value("rows_preview_truncated").toBool())
+        EXPECT_LT(o.value("rows_preview").toArray().size(),
+                  o.value("row_count").toInt());
+}
