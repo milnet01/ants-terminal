@@ -103,7 +103,7 @@
   </screenshots>
 
   <releases>
-    <release version="0.7.106" date="2026-08-19">
+    <release version="0.7.106" date="2026-08-26">
       <description>
         <p>Roadmap store robustness — reconciliation of item IDs and field values between the file and database, plus a large sweep of MCP tooling improvements, feedback system enhancements, and a Lua event-handler memory corruption fix.</p>
         <ul>

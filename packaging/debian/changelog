@@ -33,7 +33,7 @@ ants-terminal (0.7.106-1) unstable; urgency=medium
     longer has its own example read as real data, and a filename mentioned
     in an entry's provenance line is no longer reported as a missing file.
     (ANTS-4504, 4502)
- -- Anthony Schemel <aant.schemel@gmail.com>  Wed, 19 Aug 2026 00:00:00 +0200
+ -- Anthony Schemel <aant.schemel@gmail.com>  Wed, 26 Aug 2026 00:00:00 +0200
 
 ants-terminal (0.7.105-1) unstable; urgency=medium
 

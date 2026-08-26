@@ -781,7 +781,7 @@ for security-relevant changes.
   import. A mid-sentence mention still declares nothing, and an
   unrecognised `Kind:` value cannot displace a recognised one.
 
-## [0.7.106] — unreleased (Patron RC preview)
+## [0.7.106] — 2026-08-26
 ### Added
 
 - **ignored_args is suppressed on refusals, so a wrong-argument call never learns its args were wrong.** (ANTS-4525)
