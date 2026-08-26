@@ -805,6 +805,32 @@ static bool dcIsDocumentToken(const QString &tok) {
     return kDocExt.contains(base.mid(dot + 1).toLower());
 }
 
+// ANTS-4696 — a backticked token that is SHAPED like a document path but was
+// rejected by dcIsDocumentToken, i.e. it carries a '/' and no known document
+// extension: `docs/decisions/ADR-0003`, which is how an ADR is cited by
+// convention. The slash is what keeps this off ANTS-4639's motivating case —
+// a config key like `core.hooksPath` has a dot and no slash, so it is still
+// not path-shaped and still attributes nothing.
+//
+// It exists so attribution can STOP at such a token instead of walking past
+// it to an older one in the same paragraph. Falling through reports the
+// quotation `not_found` in a document that was never claimed as its source,
+// and not_found is the actionable status: its natural repair is to edit a
+// passage that was already correct.
+static QStringList dcRejectedPathTokensIn(const QString &span) {
+    static const QRegularExpression tick(QStringLiteral("`([^`]+)`"));
+    QStringList out;
+    auto it = tick.globalMatch(span);
+    while (it.hasNext()) {
+        const QString tok = it.next().captured(1).trimmed();
+        if (tok.contains(QLatin1Char(' '))) continue;
+        if (!tok.contains(QLatin1Char('/'))) continue;
+        if (dcIsDocumentToken(tok)) continue;
+        if (!out.contains(tok)) out.append(tok);
+    }
+    return out;
+}
+
 // Every distinct document token in one span of a line, in reading order.
 // De-duplicated, so a span naming one document twice is one candidate rather
 // than an ambiguity.
@@ -1184,12 +1210,23 @@ QJsonObject check(const QString &rootCanonical, const QString &docAbsPath,
         // rule reaches back across the document and produces a confident wrong
         // attribution, which is worse than the silence it replaces. A fenced
         // line stops it for the same reason the citation antecedent resets.
-        auto paragraphAttribution = [&](int i) -> QStringList {
+        // ANTS-4696 — `rejected` reports the nearest path-shaped token that
+        // was NOT accepted as a document, so the caller can say why nothing
+        // was attributed instead of attributing something else.
+        auto paragraphAttribution = [&](int i, QString *rejected = nullptr)
+                -> QStringList {
             for (int j = i - 1; j >= 0; --j) {
                 if (prefix.at(j).trimmed().isEmpty()) break;
                 if (j < fence.size() && fence.at(j)) break;
                 const QStringList c = dcDocTokensIn(prefix.at(j));
                 if (!c.isEmpty()) return c;
+                const QStringList bad = dcRejectedPathTokensIn(prefix.at(j));
+                if (!bad.isEmpty()) {
+                    // Nearest wins. This line names a path and meant it as the
+                    // source; an older line in the same paragraph did not.
+                    if (rejected) *rejected = bad.last();
+                    return {};
+                }
             }
             return {};
         };
@@ -1277,6 +1314,9 @@ QJsonObject check(const QString &rootCanonical, const QString &docAbsPath,
 
                 // Attribution candidates, most local scope first.
                 QStringList cand;
+                // ANTS-4696 — set when a path-shaped token was found and
+                // rejected, so `no_target` can say which one.
+                QString rejectedTarget;
                 if (tableRow) {
                     // ANTS-4640 — the quotation's OWN cell, then the row's
                     // first cell, which is the row's subject by convention.
@@ -1310,7 +1350,15 @@ QJsonObject check(const QString &rootCanonical, const QString &docAbsPath,
                     // window's first, so a wrapped quotation is attributed
                     // exactly as the line-scoped rule attributed it.
                     cand = dcDocTokensIn(qLine);
-                    if (cand.isEmpty()) cand = paragraphAttribution(qLineIdx);
+                    if (cand.isEmpty()) {
+                        // The quotation's own line first: a rejected token
+                        // there outranks anything earlier in the paragraph.
+                        const QStringList badHere =
+                            dcRejectedPathTokensIn(qLine);
+                        if (!badHere.isEmpty()) rejectedTarget = badHere.last();
+                        else cand = paragraphAttribution(qLineIdx,
+                                                         &rejectedTarget);
+                    }
                     if (cand.size() > 1) cand = QStringList{cand.last()};
                 }
 
@@ -1318,6 +1366,19 @@ QJsonObject check(const QString &rootCanonical, const QString &docAbsPath,
                     // No document named. NOT a finding: the verb cannot know
                     // what a bare quotation is from, and guessing is how a
                     // check like this starts producing confident wrong answers.
+                    // ANTS-4696 — when a path-shaped token WAS there and was
+                    // rejected, name it. The repair is usually one character
+                    // (add the extension), and without the name the caller
+                    // cannot tell this from a quotation nobody attributed.
+                    if (!rejectedTarget.isEmpty()) {
+                        q[QStringLiteral("rejected_target")] = rejectedTarget;
+                        q[QStringLiteral("hint")] = QStringLiteral(
+                            "`%1` is path-shaped but names no document "
+                            "extension (.md, .markdown, .txt, .rst, .adoc, "
+                            ".org), so it was not used as the target and no "
+                            "older token in the paragraph was used either.")
+                                .arg(rejectedTarget);
+                    }
                     q[QStringLiteral("status")] = QStringLiteral("no_target");
                     ++qTally[QStringLiteral("no_target")];
                     quotesOut.append(q);

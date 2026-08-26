@@ -6162,7 +6162,21 @@ void ClaudeIntegration::onMcpConnection() {
                             "that PARSED but did not resolve is "
                             "`target_unresolved`, never `no_target` — those "
                             "mean the check did not run versus the check ran "
-                            "and the quotation is stale. Off by default.");
+                            "and the quotation is stale. ANTS-4696 — "
+                            "attribution STOPS at a path-shaped token that "
+                            "names no document extension (`docs/decisions/"
+                            "ADR-0003`, an ADR cited by convention) instead of "
+                            "walking past it to an older document in the same "
+                            "paragraph: that fallthrough reported the "
+                            "quotation `not_found` in a file never claimed as "
+                            "its source, and not_found is the actionable "
+                            "status, so its natural repair was to edit a "
+                            "correct passage. Such a quotation is `no_target` "
+                            "and carries `rejected_target` naming the token "
+                            "plus a `hint`; the repair is usually adding the "
+                            "extension. A token with no '/' is not "
+                            "path-shaped, so ANTS-4639's config key is "
+                            "unaffected. Off by default.");
                         props["quotes"] = q;
                         QJsonObject qm; qm["type"] = "integer";
                                         qm["default"] = 30;

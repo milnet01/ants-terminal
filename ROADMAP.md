@@ -45852,7 +45852,7 @@ live during triage before filing: headline_only returns no `kind`, `max_results`
 lands in `ignored_args` on roadmap_query, and that same call's offloaded
 envelope dropped `source`/`path`/`etag`/`total`/`filter`.
 
-- 📋 [ANTS-4691] **roadmap_log dry_run writes .roadmap-counter to disk even when the call is REFUSED.**
+- ✅ [ANTS-4691] **roadmap_log dry_run writes .roadmap-counter to disk even when the call is REFUSED.**
   THE SHARPEST FINDING IN THIS TRIAGE, because it breaks the guarantee
   dry_run exists to give. dry_run is documented as returning the would-be
   result WITHOUT writing to disk, and specifically as not bumping
@@ -45880,6 +45880,7 @@ envelope dropped `source`/`path`/`etag`/`total`/`filter`.
   same dry_run check that gates the bullet write. The reporter asks for an
   audit of other verbs whose dry_run path initialises state files, and that
   is the right scope -- this is a class, not one line.
+  Resolved (2026-08-26): reproduced against a throwaway repo first -- a REFUSED dry_run append did create docs/.roadmap-counter containing 0. Cause was ANTS-3450's greenfield auto-init, which writes during counter resolution, before the section and target gates. Now gated on dry_run, using the seed in memory so would_be_id is unchanged. The reporter's audit ask was right: op:append_batch carried its own copy and had the same defect; both fixed. Three regression cases in roadmap_log_greenfield_counter (INV-5 success, INV-6 the reported refusal, INV-7 batch), each verified red on the assertion against pre-fix code. Commit 6456caf7.
   **Layman:** A preview that is supposed to change nothing leaves a stray file behind in the project.
   Kind: fix.
   Source: perch-feedback-2026-08-26.
@@ -46079,6 +46080,7 @@ envelope dropped `source`/`path`/`etag`/`total`/`filter`.
   FIX: de-duplicate on (line, text, target) after the wrapped-match pass, or
   emit one entry per matched SPAN rather than one per line the span touches.
   The second is the real repair; the first is the safe one.
+  Progress (2026-08-26): could NOT reproduce on the current build. Three shapes tried against a throwaway project, each a single double-quoted span straddling a hard line break: plain prose wrapping over two lines, the same over three, and a Markdown blockquote. All three returned quotes_checked:1 with exactly one entry. ANTS-4664 gave detection a block-scoped window that only a block's FIRST line opens, which is the de-duplication this item asks for, and it post-dates the reporter's measurement. Kept OPEN rather than closed: the report measured 9 against 8 distinct, so one specific shape still double-counts and my fixtures did not find it -- the reporter's own document would settle it in one call. Related and separately filed: the blockquote shape surfaced a different real defect, ANTS-4706, where `>` continuation markers are folded into the quotation text and a present quotation reads as stale.
   **Layman:** A quote that runs across two lines is counted as two quotes, so the checker's totals are wrong.
   Kind: fix.
   Source: Charls_Site-feedback-2026-08-26.
@@ -46273,7 +46275,7 @@ envelope dropped `source`/`path`/`etag`/`total`/`filter`.
   Source: in-session-2026-08-26 (found while adding the max_results row ANTS-4701 owed).
   Lanes: docs, specs.
 
-- 📋 [ANTS-4704] **ANTS-2094's spec does not describe the rows_preview envelope family, and INV-13 now contradicts the code.**
+- ✅ [ANTS-4704] **ANTS-2094's spec does not describe the rows_preview envelope family, and INV-13 now contradicts the code.**
   Found while reading INV-2/INV-9 for ANTS-4692.
 
   `docs/specs/ANTS-2094.md` names no amendment for ANTS-4397, ANTS-4474 or
@@ -46292,6 +46294,7 @@ envelope dropped `source`/`path`/`etag`/`total`/`filter`.
   is correct; the document is behind it. Kept separate from ANTS-4692
   deliberately (coding.md 1.7) -- that item amends the same spec but for a
   different reason, and folding the two would hide this one.
+  Resolved (2026-08-26): fixed inside the ANTS-4692 cold gate rather than separately -- 2.3.2's skip list depends on the shape-preview key names, so documenting them was the same edit. 2.3.1 now carries the ANTS-4397/4474/4519 family, and the false "no structured preview / byte-identical to the non-array fallback" claim is deleted from both 2.3.1 and INV-13. A lane found the same defect independently. Commit 7672dc29.
   **Layman:** The design document for large-result offloading is behind the code, so it describes an envelope the tool no longer sends.
   Kind: doc-fix.
   Source: in-session-2026-08-26.
@@ -46320,6 +46323,40 @@ envelope dropped `source`/`path`/`etag`/`total`/`filter`.
   **Layman:** When a big result is summarised row by row, the summary forgets to say how many rows there are in total.
   Kind: fix.
   Source: in-session-2026-08-26 review-contract lane.
+
+- 📋 [ANTS-4706] **doc_citations folds blockquote markers into a wrapped quotation, so a quotation inside a `>` block reads as stale.**
+  Found while trying to reproduce ANTS-4697 against a throwaway project.
+
+  REPRO. A quotation spanning several lines of a Markdown blockquote, whose
+  target document contains it verbatim, comes back status:"not_found" -- and
+  the reported `text` carries the continuation markers inline:
+
+    "Alpha beta gamma delta epsilon zeta eta theta iota > kappa lambda mu nu
+    xi omicron pi rho sigma tau upsilon phi chi psi omega > and then some
+    more words ..."
+
+  The same quotation as plain wrapped prose resolves ok. So ANTS-4386's
+  whitespace-and-newline folding is doing its job and the `>` markers are
+  simply not stripped with the newline they follow.
+
+  WHY IT MATTERS. not_found is the ACTIONABLE status: it says a quotation
+  went stale and someone must repair it. Here the quotation is present and
+  exact, so the natural repair is to edit a passage that was already right --
+  the same harm ANTS-4696 was filed for, by a different route. A blockquote
+  is the normal way this corpus quotes another document at length, so the
+  shape is common rather than exotic.
+
+  The sibling already does this. workspace_search's `match_wrapped` folds
+  "whitespace runs and blockquote markers", two-sided. doc_citations folds
+  whitespace only.
+
+  FIX: strip a leading `>` (and its following space) from each continuation
+  line when building the window, on both sides of the comparison, exactly as
+  match_wrapped does. Report the text without the markers too -- a caller
+  copying the reported text into a search must get a string that matches.
+  **Layman:** A quote written as an indented block is reported out of date even when it matches the source exactly.
+  Kind: fix.
+  Source: in-session-2026-08-26.
 
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-08-11 triage
 

@@ -1599,3 +1599,69 @@ TEST(DocCitations, Ants4640TableRowAttributionIsCellScoped) {
         << "ANTS-4640: …and the candidate list is what makes it actionable: "
         << qPrintable(render(r));
 }
+
+// ANTS-4696 — a quotation whose nearest attribution is a path-shaped token
+// that names no document extension must report no_target and NAME the
+// rejected token, never fall through to an older document in the same
+// paragraph. Falling through reports the quotation stale in a file that was
+// never claimed as its source, and not_found is the actionable status: the
+// natural repair is to edit a passage that was already correct.
+TEST(DocCitations, Ants4696RejectedTargetDoesNotFallThrough) {
+    Fixture fx;
+    fx.write(QStringLiteral("docs/decisions/ADR-0003.md"),
+             "# ADR-0003\n\nthe counter is a derived cache and an absent "
+             "counter is normal\n");
+    fx.write(QStringLiteral("docs/design.md"),
+             "# Design\n\nnothing here is quoted by anyone\n");
+
+    DocCitations::Options opts;
+    opts.quotes = true;
+
+    const QString doc = fx.write(QStringLiteral("docs/spec.md"),
+        "# Spec\n"
+        "\n"
+        "This refines `docs/design.md` in one respect.\n"
+        "See `docs/decisions/ADR-0003`, which says\n"
+        "\"the counter is a derived cache and an absent counter is normal\".\n"
+        "\n"
+        "The hook is installed by setting `core.hooksPath`, and the rule is "
+        "\"a phrase attributed to a git config key, which is not a "
+        "document\".\n");
+
+    const QJsonObject r = DocCitations::check(fx.root, doc, opts);
+    const QJsonArray qs = r.value(QStringLiteral("quotes")).toArray();
+
+    auto find = [&](const char *needle) -> QJsonObject {
+        for (const QJsonValue &v : qs) {
+            const QJsonObject q = v.toObject();
+            if (q.value(QStringLiteral("text")).toString()
+                    .contains(QString::fromUtf8(needle))) return q;
+        }
+        return QJsonObject{};
+    };
+
+    const QJsonObject adr = find("derived cache");
+    EXPECT_EQ(adr.value(QStringLiteral("status")).toString(),
+              QStringLiteral("no_target"))
+        << "the extensionless ADR is the attribution; walking past it to "
+           "docs/design.md manufactures a stale-citation report: "
+        << qPrintable(render(r));
+    EXPECT_FALSE(adr.contains(QStringLiteral("target")))
+        << "docs/design.md was never claimed as this quotation's source: "
+        << qPrintable(render(r));
+    EXPECT_EQ(adr.value(QStringLiteral("rejected_target")).toString(),
+              QStringLiteral("docs/decisions/ADR-0003"))
+        << "the rejected token must be named — the repair is one character: "
+        << qPrintable(render(r));
+
+    // The slash is what keeps this off ANTS-4639's motivating case. A config
+    // key has a dot and no slash, so it is not path-shaped and must not be
+    // reported as a rejected target.
+    const QJsonObject key = find("git config key");
+    EXPECT_EQ(key.value(QStringLiteral("status")).toString(),
+              QStringLiteral("no_target"))
+        << qPrintable(render(r));
+    EXPECT_FALSE(key.contains(QStringLiteral("rejected_target")))
+        << "ANTS-4639's config key is not path-shaped and must not be named "
+           "as a rejected target: " << qPrintable(render(r));
+}
