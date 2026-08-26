@@ -13308,6 +13308,32 @@ indie-review finding.
   Attempt 1 (2026-07-20) REVERTED — decouple design is right (stable src/build_info.h with extern declarations + generated build_info_values.cpp holding the definitions), but the CMake build-graph wiring forced FULL rebuilds, worse than the minute-churn. Two dead ends: (a) add generated .cpp to ants_core_lib + add_dependencies(ants_core_lib ants_build_info) → the always-run generator target forces core's PCH to rebuild every build; (b) put the .cpp in a tiny PCH-less lib (ants_build_info_lib) that ants_core_lib PUBLIC-links → the link edge propagates the generator's always-dirty state, still rebuilding everything. Also learned: consumers use QStringLiteral(ANTS_BUILD_*) (needs a string-LITERAL macro), which an extern const char[] breaks — must switch those ~17 sites to QString::fromLatin1(). Next attempt needs a mechanism where the generated TU regenerates every build WITHOUT any target depending on the always-run custom target: e.g. add_custom_command(OUTPUT build_info_values.cpp ...) with a byproduct stamp + a POST_BUILD refresh, or inject the SHA/minute at LINK time (linker --defsym / a generated .o), or accept configure-time-only refresh. Verify with: settle build, then force a minute change, then a build must recompile ONLY build_info_values.cpp.o. Keep 📋.
   Shipped 2026-07-20. Chose the full value/header DECOUPLE (advanced option), NOT the two-header split: verification showed the two heavy consumers (remotecontrol.cpp / claudeintegration.cpp) DO emit build_time in the MCP serverInfo / session_orient, so the split would have dropped the build minute from MCP output — a behavioural regression (weakens same-commit build-freshness detection). src/build_info.h is now a stable hand-written extern-declaration header; the definitions live in a generated build_info_values.cpp (ants_build_info_stamp ALL target + file-level add_custom_command + copy_if_different), compiled into ants_core_lib with SKIP_PRECOMPILE_HEADERS + SKIP_UNITY_BUILD_INCLUSION. 17 QStringLiteral(ANTS_BUILD_*) -> QString::fromLatin1 (rc x5, claude x12). Attempt-1 dead ends avoided by a FILE-level custom-command edge (never a target-level add_dependencies on the always-run target). Proven in an isolated fresh tree AND a healed build/: a minute/value change recompiles ONLY build_info_values.o — never remotecontrol.cpp / claudeintegration.cpp / the core PCH. Full suite green (2795 features tests, 0 failed). Help->About still shows the minute. Tests: mcp_build_identity INV-4/INV-7 rewired to the new mechanism + new INV-8 churn regression guard.
 
+- 📋 [ANTS-4682] **Audit the 14 inline MCP handlers and move the GUI-free ones off the dispatch thread.**
+  ANTS-2132 moves the 71 rc-factory verbs off the GUI thread and leaves the
+  14 hand-written inline handlers on it, because each captures MainWindow and
+  needs its own audit: audit_run, audit_poll, indie_review_dispatch,
+  project_query, get_git_status, the five test_audit_*, and the Ants-internal
+  tab_list / token_usage / mcp_trace / caller_cwd_info.
+
+  TWO THINGS TO SETTLE PER HANDLER. Does it touch a widget or ClaudeIntegration
+  state that is GUI-thread-owned? And does it touch the project tree?
+
+  THE RESIDUAL HAZARD IS THE SECOND ONE. After ANTS-2132, a synchronous inline
+  verb that reads project files (project_query, get_git_status) can run on the
+  GUI thread while an off-thread verb writes the same tree — an overlap that
+  cannot happen today, because today everything serialises through the one
+  thread. That is the reason this item exists rather than being optional
+  tidying.
+
+  audit_run and indie_review_dispatch already own workers (ANTS-2103/2104) and
+  their job registry is GUI-thread state, so they are the likeliest to stay
+  synchronous on purpose. Record that verdict rather than leaving them
+  unexamined.
+  **Layman:** Finish the job ANTS-2132 starts: a handful of commands still run on the drawing thread.
+  Kind: perf.
+  Source: in-session-2026-08-26 (ANTS-2132 spec, § 5 deferral).
+  Lanes: mcp, threading.
+
 ### 🎨 Review Changes dialog UX (user request 2026-06-03)
 
 Navigation + scroll affordances for the Review Changes dialog, requested
