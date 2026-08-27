@@ -46466,6 +46466,30 @@ envelope dropped `source`/`path`/`etag`/`total`/`filter`.
   actually breaks before describing a limit -- describing a guessed one is
   how a false claim ships. The reporter's own framing already refuses to
   assert which layer failed.
+  Progress (2026-08-27): two more sightings, and together they widen the
+  question this item is meant to measure.
+
+  A maintainer session hit `transport: timed out` on a three-file apply_edits
+  batch of a few kilobytes. The write COMPLETED after the timeout was
+  reported and after the files had been checked, so the timeout was a
+  client-side deadline reported as an outcome. Filed as ANTS-4733, which
+  states that in the verb's description; the uniqueness guard on `old` is
+  what stopped the retry double-applying.
+
+  A Slipcase session hit the same transport error on `project_settings
+  op:"detect"` -- a read verb, one occurrence, not reproducible.
+
+  SO THE BUDGET IS NOT VERB-SPECIFIC AND MAY NOT BE PAYLOAD-SPECIFIC EITHER,
+  which is what this item should now establish. The original report framed it
+  as a size limit at the JSON boundary; a read verb timing out on a trivial
+  payload does not fit that framing. ANTS-4736 is a third instance from the
+  same day, where mutation_probe's batch cost exceeded the transport while
+  every individual run sat inside its own documented limit.
+
+  FIRST STEP IS UNCHANGED and now better motivated: measure where the
+  boundary actually is before describing one. Describing a guessed limit is
+  how a false claim ships, and there are now three shapes it would have to
+  cover.
   **Layman:** A tool for editing files can fail on a big paste, and nothing tells you why or how big is too big.
   Kind: doc-fix.
   Source: claude_config_Ants_MCP_Feedback.md 2026-08-26 (relayed from a write-code session on a C++ project).
@@ -47525,6 +47549,189 @@ envelope dropped `source`/`path`/`etag`/`total`/`filter`.
   Kind: refactor.
   Source: in-session-2026-08-27, deferred half of ANTS-4715.
   Lanes: tooling, mcp.
+
+- 📋 [ANTS-4735] **read_region symbol mode cuts a Python body short on a brace and reports truncated:false.**
+  MEASURED AGAINST GROUND TRUTH, with the discriminating case included.
+  Four of six methods came back cut off partway through their bodies, each
+  carrying truncated:false. The two that were correct are what identify the
+  cause: they contain no dict literal, while every failing cut point sits on
+  a line carrying a brace -- a dict literal, a nested dict inside a call, a
+  dict comprehension, a docstring. So the extent is being computed by BRACE
+  BALANCE, which means nothing in Python.
+
+  WHY THIS IS THE WORST SHAPE A DEFECT CAN TAKE HERE. This is the verb a
+  session reaches for to answer "what does this function do" before editing
+  it, and CLAUDE.md rule 18 makes it the default over a native Read. A short
+  body that reports itself complete means a fix is written against code the
+  session never saw -- in the measured case the slice ended before the
+  function's own os.replace, its fsync, its except-cleanup and the finally
+  that wipes key buffers, which is precisely the error-path a reviewer is
+  looking for. `truncated:false` is the field a caller checks, and it said
+  the read was whole.
+
+  TWO PARTS, and the reporter is right that the second matters more.
+  (1) In py mode take the extent from INDENTATION -- the first line at or
+  below the def's own indent that is not blank or comment ends it -- or fall
+  back to the next flat-outline symbol's line minus one, which would have
+  been correct in all four failing cases.
+  (2) Independently: when the computed end lands BEFORE the next outline
+  symbol's start, that is detectable without parsing anything, and the reply
+  must say so rather than assert truncated:false. A wrong slice a caller can
+  see is recoverable; one that reports itself complete is not.
+
+  DO PART 2 EVEN IF PART 1 SLIPS. It converts a silent wrong answer into a
+  visible one, which is the whole difference.
+  **Layman:** Asking for a function's code can return only part of it while saying it returned all of it.
+  Kind: fix.
+  Source: finbreak_Ants_MCP_Feedback.md 2026-08-27 (measured against Python's own ast).
+  Lanes: mcp.
+
+- 📋 [ANTS-4736] **mutation_probe keeps mutating the source after the transport has timed out, so a session can commit a mutant.**
+  THE EVIDENCE IS THE COMMAND SEQUENCE, not the conclusion. After the batch
+  returned `transport: timed out`, a git diff and a marker grep both looked
+  clean; the suite then failed one test; that test alone passed; the suite
+  passed twice a little later. The file was being mutated between the
+  caller's commands by a probe that had already reported failure to it.
+  Re-running the same batch in smaller chunks completed and returned
+  restored_clean:true.
+
+  WHY IT IS SERIOUS. `restored_clean` is the guard for a leaked mutated
+  file, and a transport timeout is the ONE case where the caller cannot
+  receive it. The verb's own description calls a leaked mutated file that
+  the session then commits "the dangerous failure" -- this reaches exactly
+  that failure by the one route the guard cannot cover. A session reacting
+  to the unexplained red by editing is editing a file it does not control.
+
+  THE ARITHMETIC IS THE TRIGGER. `timeout_sec` is per-run and clamps to
+  [5, 1800], but the transport budget is shorter and unrelated: a legal
+  5-mutation batch over a 17-second suite costs baseline + 5 runs and
+  exceeds the transport while every individual run sits far inside its own
+  limit. So a caller cannot predict the failure from the documented limits.
+
+  THREE FIXES, reporter's order of preference.
+  1. Abort and RESTORE on transport loss. If the client is gone the batch
+     has no consumer, and restoring beats continuing to mutate a file
+     nobody is waiting on.
+  2. Refuse UP FRONT when (mutations + 1) * timeout_sec exceeds the
+     transport budget, with a code naming the arithmetic, so the caller
+     splits the batch deliberately instead of discovering it by timeout.
+  3. Failing both, leave a marker while a probe is live so a caller that
+     gets a transport error can ask whether a probe still holds the file.
+
+  1 AND 2 ARE COMPLEMENTARY rather than alternatives: 2 prevents the common
+  case, 1 bounds the damage when it happens anyway.
+  **Layman:** A tool that temporarily damages code to test it can keep going after it has told you it gave up.
+  Kind: fix.
+  Source: finbreak_Ants_MCP_Feedback.md 2026-08-27 (observed, with the intervening commands recorded).
+  Lanes: mcp, tooling.
+
+- 📋 [ANTS-4737] **spec_lint counts are computed post-cap, so a truncated run under-reports the total.**
+  MEASURED AT THREE CAPS over one unchanged corpus: uncapped reports 81,
+  max_findings:40 reports 39, max_findings:5 reports 5. The cap is choosing
+  the count.
+
+  `truncated:true` is set, so the run is not silent -- but a caller reading
+  `counts` to answer "how much noise is there" gets a number that is a
+  function of its own argument.
+
+  IT BIT A REAL MEASUREMENT. The reporter was measuring the before/after
+  effect of adding a spec-format standard; a capped call reported 39 where
+  the true figure was 81, so the fix looked far more effective than it was.
+  A before/after comparison taken at two different caps is silently
+  meaningless.
+
+  THE HOUSE CONTRACT ALREADY POINTS THE OTHER WAY. workspace_search's
+  `count_only` documents `count` as the TRUE total, uncapped by
+  max_results. Two verbs disagreeing about what a count means is the defect
+  underneath this one.
+
+  FIX: compute `counts` over the full uncapped scan and cap only
+  `findings[]`. If that is expensive, emit `findings_total` -- a name the
+  reporter probed for and which does not exist -- so the divergence is at
+  least detectable.
+  **Layman:** A checker's summary number shrinks when you ask it to list fewer problems, so two runs cannot be compared.
+  Kind: fix.
+  Source: DOOM_Ants_MCP_Feedback.md 2026-08-27 (measured at three caps over one corpus).
+  Lanes: mcp.
+
+- 📋 [ANTS-4738] **spec_lint matches a required heading verbatim, so a descriptive suffix reads as an absent section.**
+  The required-sections check compares each entry against heading lines
+  byte-for-byte, so a heading carrying the required number and name PLUS a
+  qualifier is reported absent although the section is present and in the
+  right slot.
+
+  WHY IT MATTERS MORE THAN IT LOOKS: it makes the tool dictate house style.
+  The reporter's corpus uses a qualifier routinely because the section name
+  alone is generic, and the standard they had just written had to add a rule
+  forbidding the practice purely to satisfy the matcher. A check that
+  changes the prose it checks has stopped being a check.
+
+  FIX: match on the leading `## <n>. <name>` and let anything after it pass,
+  or offer the choice via a flag on the block. Verbatim stays the DEFAULT so
+  no existing caller changes -- the reporter proposes this themselves and it
+  is the right call, since loosening the default silently would weaken every
+  corpus that currently relies on it.
+  **Layman:** A checker says a section is missing when it is present but its title carries a few extra words.
+  Kind: enhancement.
+  Source: DOOM_Ants_MCP_Feedback.md 2026-08-27.
+  Lanes: mcp.
+
+- 📋 [ANTS-4739] **No way to exempt a document from spec_lint's required-sections, so a mixed corpus reports the same rows forever.**
+  MEASURED AND BROKEN DOWN, which is what makes it actionable: of the
+  findings remaining after the reporter adopted a spec-format standard,
+  every one sits on a document that CANNOT conform -- specs written before
+  the project adopted its section run, plus build plans and a fix ledger
+  that are not specs at all but live in specs_dir. The documents following
+  the current convention report zero.
+
+  SO THE RESIDUE IS PERMANENT, and a reader re-triages it on every run to
+  find the handful that are new. That is the failure the check exists to
+  prevent: noise is where a real finding hides. The always-actionable
+  `invariant_no_test` findings are outnumbered roughly ten to one by rows
+  nobody will ever act on.
+
+  FIX, and the shape is already precedented here: a per-document marker
+  outside fenced code, mirroring the existing invariant-id-base opt-out,
+  with the COUNT of exempted documents echoed in the envelope so an
+  exemption can never be mistaken for a clean pass. doc_integrity already
+  uses that pattern for its suppressed-heading case, so this is applying a
+  house convention rather than inventing one.
+  **Layman:** A checker keeps flagging old documents that can never be fixed, burying the few findings that matter.
+  Kind: enhancement.
+  Source: DOOM_Ants_MCP_Feedback.md 2026-08-27 (measured, with the residue broken down).
+  Lanes: mcp.
+
+- 📋 [ANTS-4740] **A project with no ROADMAP.md cannot be given a store-backed one through the verbs at all.**
+  THE STORE IS THE SOURCE OF TRUTH AND THE FILE IS ITS RENDER -- but every
+  route into the store requires a parseable file to already exist.
+  roadmap_migrate refuses no_roadmap; roadmap_log op:append refuses
+  no_roadmap. Both observed.
+
+  SO THE BOOTSTRAP INVERTS THE MIGRATION. The session must hand-author a
+  conforming ants-v1 file first, which means reading roadmap-format.md for
+  the bullet grammar, the trailer label case and the required fields --
+  markdown becomes primary again, briefly, at exactly the moment a
+  greenfield project is picked up, which is when adopt-project and
+  start-project run.
+
+  AND THE HAND-AUTHORED STEP IS THE ERROR-PRONE ONE: a mis-cased trailer
+  label is silently invisible per roadmap-format.md, so a bootstrap file can
+  migrate cleanly while dropping fields. That is the worst failure mode
+  available at the start of a project's life.
+
+  FIX: an explicit create-from-nothing op mirroring project_settings
+  op:"init" -- register the project, create the store rows, render a
+  conforming skeleton with the header and no bullets, after which append
+  works normally. Taking project_name / export_slug / id_prefix would
+  replace the hand-authoring step entirely.
+
+  CHEAPER INTERIM, worth doing even if the op is not: put a `hint` on both
+  no_roadmap refusals naming the bootstrap sequence. Today they say what is
+  missing and not how to supply it.
+  **Layman:** A brand-new project has to hand-write a roadmap file by hand before the tools will accept one.
+  Kind: enhancement.
+  Source: Slipcase_Ants_MCP_Feedback.md 2026-08-27 (both refusals observed).
+  Lanes: mcp, roadmapstore.
 
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-08-11 triage
 
