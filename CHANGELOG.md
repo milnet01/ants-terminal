@@ -14,6 +14,15 @@ for security-relevant changes.
 
 ### Added
 
+- **A project with no ROADMAP.md cannot be given a store-backed one through the verbs at all.** (ANTS-4740)
+  `roadmap_migrate op:"init"` bootstraps a project that has no
+  roadmap file at all. It writes a conforming skeleton with one
+  `## Backlog` section and then registers the project the ordinary way,
+  replacing the hand-authoring step a greenfield project used to need —
+  where a mis-cased trailer label would migrate cleanly while silently
+  dropping fields. Refuses `roadmap_exists` rather than overwriting;
+  `dry_run:true` returns the skeleton without writing.
+
 - **No way to exempt a document from spec_lint's required-sections, so a mixed corpus reports the same rows forever.** (ANTS-4739)
   A document may carry `spec-lint: no-required-sections`
   to opt out of the required-sections check -- for a mixed corpus holding

@@ -175,6 +175,15 @@ written against the **source**, which is the only place both halves are visible.
   op added later and left undeclared fails without anyone remembering to extend
   the test.
 
+- **INV-12** — (ANTS-4740) `op:"init"` writes a conforming ants-v1 skeleton for
+  a project that has none, then falls through to the ordinary migrate so
+  registration takes one code path. The skeleton parses with zero bullets and
+  carries exactly one section, whose slug is what `roadmap_log`'s `section`
+  argument takes. It refuses `roadmap_exists` rather than overwriting.
+
+- **`Ants4740InitSkeletonIsParseableAndEmpty`** — INV-12's skeleton, asserted
+  through `RoadmapParse::parseBullets` rather than by eye: a file that only
+  looks right migrates cleanly and drops fields silently.
 - **`Ants4621SchemaDeclaresDeregisterArgs`** — `op` and `confirm` are declared,
   and `op`'s enum carries `deregister`; without the enum value a client offering
   completions never surfaces the op at all.

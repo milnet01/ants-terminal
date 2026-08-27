@@ -12704,6 +12704,7 @@ void ClaudeIntegration::onMcpConnection() {
                         QJsonArray e;
                         e.append(QStringLiteral("migrate"));
                         e.append(QStringLiteral("deregister"));
+                        e.append(QStringLiteral("init"));
                         p["enum"] = e;
                         p["description"] = QStringLiteral(
                             "Verb mode. Default \"migrate\" (omit it) — load "
@@ -12716,7 +12717,24 @@ void ClaudeIntegration::onMcpConnection() {
                             "still exists on disk — pass `confirm:true` to "
                             "override. Preview it with `dry_run:true`, which "
                             "reports the per-table counts and deletes "
-                            "nothing.");
+                            "nothing. \"init\" (ANTS-4740) is the BOOTSTRAP, "
+                            "for a project with no roadmap at all: it writes a "
+                            "conforming ants-v1 skeleton carrying one "
+                            "`## Backlog` section and then migrates it, so "
+                            "registration takes the same path a migrated "
+                            "project takes. Until it existed, both routes into "
+                            "the store required a parseable file to already "
+                            "exist, so a greenfield project had to hand-author "
+                            "one — and a mis-cased trailer label there is "
+                            "silently invisible, so the bootstrap file could "
+                            "migrate cleanly while dropping fields. Refuses "
+                            "`roadmap_exists` when there is already one, since "
+                            "that project wants the plain migrate. The id "
+                            "prefix is stored nowhere: pass `id_prefix` on the "
+                            "first roadmap_log op:\"append\" to pin it, or it "
+                            "is derived from the directory name. Preview with "
+                            "`dry_run:true`, which returns the skeleton and "
+                            "writes nothing.");
                         props["op"] = p;
                     }
                     {

@@ -95,4 +95,17 @@ QString defaultExportSlug(const QString &leafDirName);
 // `canonicalRoot` must already be canonical, as Request::projectRoot is.
 bool isTransientRoot(const QString &canonicalRoot);
 
+// ANTS-4740 — the ants-v1 skeleton op:"init" writes for a project that has no
+// roadmap at all. Here, beside the two helpers above, for the reason this whole
+// seam exists: a test can link it without dragging RemoteControl and MainWindow
+// in behind it, and the file this returns is the one thing about the bootstrap
+// that has to be exactly right — a mis-formed skeleton migrates cleanly and
+// silently drops fields.
+//
+// Carries ONE section, because roadmap_log's `section` argument needs a slug to
+// target and its op:"create_section" needs an `after_section`: a sectionless
+// skeleton would be unappendable by either route, which is the state this op
+// exists to escape.
+QString initSkeleton(const QString &projectName);
+
 }  // namespace RoadmapMigrateVerb

@@ -13,11 +13,13 @@
 // than moving one, and the slice order that file's scrape windows depend on is
 // unchanged wherever this TU sits in the list.
 //
-// remotecontrol_internal.h is deliberately NOT included: this TU needs none of
-// the promoted rcdetail helpers, and ANTS-3833 INV-5 is a subset check — a TU
-// needing none of them is entitled not to include it.
+// remotecontrol_internal.h IS included, for `findRoadmapUnder` alone. ANTS-3833
+// INV-5 is a subset check, so a TU needing one of the promoted rcdetail helpers
+// includes the header; this TU needed none until ANTS-4740 added op:"init",
+// which must know whether a roadmap already exists before it writes one.
 
 #include "remotecontrol.h"
+#include "remotecontrol_internal.h"
 
 #include "resolvedroot.h"
 #include "roadmapmigrateverb.h"
@@ -25,6 +27,8 @@
 
 #include <QDateTime>
 #include <QDir>
+#include <QFile>
+#include <QSaveFile>
 
 QJsonDocument RemoteControl::cmdRoadmapMigrate(const QJsonObject &req) {
     // caller_cwd absent or empty is NOT this verb's refusal to make:
@@ -96,6 +100,75 @@ QJsonDocument RemoteControl::cmdRoadmapMigrate(const QJsonObject &req) {
             RoadmapMigrateVerb::deregister(RoadmapStore::defaultPath(), d));
     }
 
+    // ANTS-4740 — op:"init", the bootstrap.
+    //
+    // The store is the source of truth and the file is its render, yet every
+    // route INTO the store required a parseable file to already exist:
+    // roadmap_migrate refused no_roadmap and so did roadmap_log op:append. So a
+    // greenfield project had to hand-author a conforming ants-v1 file first —
+    // markdown became primary again, briefly, at exactly the moment
+    // adopt-project and start-project run.
+    //
+    // And the hand-authored step was the error-prone one: a mis-cased trailer
+    // label is silently invisible per roadmap-format.md, so a bootstrap file
+    // could migrate cleanly while dropping fields. That is the worst failure
+    // available at the start of a project's life.
+    //
+    // It writes the skeleton and then falls through to the ordinary migrate, so
+    // registration, the id_prefix row and idempotency are the SAME code path a
+    // migrated project takes. Nothing here duplicates run().
+    bool initialised = false;
+    if (req.value(QStringLiteral("op")).toString() == QLatin1String("init")) {
+        const QString existing = rcdetail::findRoadmapUnder(root);
+        if (!existing.isEmpty()) {
+            // Not an error the caller should paper over: op:"init" creates, and
+            // a project that already has a roadmap wants the plain migrate.
+            QJsonObject e;
+            e[QStringLiteral("ok")]    = false;
+            e[QStringLiteral("code")]  = QStringLiteral("roadmap_exists");
+            e[QStringLiteral("error")] =
+                QStringLiteral("roadmap_migrate op:\"init\": \"%1\" already has "
+                               "a roadmap. Run roadmap_migrate with no op to "
+                               "register it; init only creates one from nothing.")
+                    .arg(existing);
+            e[QStringLiteral("path")]  = existing;
+            return QJsonDocument(e);
+        }
+
+        const QString name =
+            req.value(QStringLiteral("project_name")).toString().isEmpty()
+                ? leaf
+                : req.value(QStringLiteral("project_name")).toString();
+        const QString target = root + QStringLiteral("/ROADMAP.md");
+        const QString skeleton = RoadmapMigrateVerb::initSkeleton(name);
+
+        if (req.value(QStringLiteral("dry_run")).toBool(false)) {
+            QJsonObject o;
+            o[QStringLiteral("ok")]      = true;
+            o[QStringLiteral("dry_run")] = true;
+            o[QStringLiteral("op")]      = QStringLiteral("init");
+            o[QStringLiteral("would_write")] = target;
+            o[QStringLiteral("section")] = QStringLiteral("backlog");
+            o[QStringLiteral("skeleton")] = skeleton;
+            return QJsonDocument(o);
+        }
+
+        QSaveFile w(target);
+        if (!w.open(QIODevice::WriteOnly | QIODevice::Truncate) ||
+            w.write(skeleton.toUtf8()) != skeleton.toUtf8().size() ||
+            !w.commit()) {
+            QJsonObject e;
+            e[QStringLiteral("ok")]    = false;
+            e[QStringLiteral("code")]  = QStringLiteral("write_failed");
+            e[QStringLiteral("error")] =
+                QStringLiteral("roadmap_migrate op:\"init\": could not write "
+                               "\"%1\"").arg(target);
+            return QJsonDocument(e);
+        }
+        // Falls through to the migrate below, which registers the project.
+        initialised = true;
+    }
+
     RoadmapMigrateVerb::Request r;
     r.projectRoot = root;
     const QString nameArg = req.value(QStringLiteral("project_name")).toString();
@@ -111,6 +184,18 @@ QJsonDocument RemoteControl::cmdRoadmapMigrate(const QJsonObject &req) {
     r.changedAt   = QDateTime::currentDateTimeUtc().toString(Qt::ISODate);
     r.dryRun      = req.value(QStringLiteral("dry_run")).toBool(false);
 
-    return QJsonDocument(
-        RoadmapMigrateVerb::run(RoadmapStore::defaultPath(), r));
+    QJsonObject out = RoadmapMigrateVerb::run(RoadmapStore::defaultPath(), r);
+    // ANTS-4740 — say the file was created. Without it an init reply is
+    // byte-identical to a migrate of a roadmap that happened to be there, and a
+    // caller cannot tell whether it bootstrapped or adopted.
+    if (initialised) {
+        out[QStringLiteral("initialised")] = true;
+        out[QStringLiteral("created_path")] = root + QStringLiteral("/ROADMAP.md");
+        out[QStringLiteral("section")]      = QStringLiteral("backlog");
+        out[QStringLiteral("next_step")] = QStringLiteral(
+            "append with roadmap_log op:\"append\" section:\"backlog\". The id "
+            "prefix is not stored anywhere: pass `id_prefix` on that first "
+            "append to pin it, or it is derived from the directory name.");
+    }
+    return QJsonDocument(out);
 }

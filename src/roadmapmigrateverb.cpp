@@ -240,6 +240,25 @@ QString RoadmapMigrateVerb::defaultExportSlug(const QString &leafDirName) {
 // under the system temp dir. Anything cleverer — matching "scratchpad" or a
 // session-id shape in the path — is guessing at a naming convention no
 // component owns.
+// ANTS-4740 — see the header for why this lives on the link-testable seam.
+QString RoadmapMigrateVerb::initSkeleton(const QString &projectName) {
+    // The marker is assembled rather than written whole so this source file can
+    // be read back through tooling that neutralises comment markers without the
+    // literal being corrupted on the way to a fixture.
+    return QStringLiteral("<!") + QStringLiteral("-- ants-roadmap-format: 1 --")
+         + QStringLiteral(">\n# %1 \u2014 Roadmap\n"
+             "\n"
+             "> **Format:** v1 \u2014 see\n"
+             "> [roadmap-format.md](docs/standards/roadmap-format.md).\n"
+             "> Every actionable bullet carries a stable ID; ID is identity,\n"
+             "> position is priority.\n"
+             "\n"
+             "**Legend** \u2014 \U0001F4CB planned \u00B7 \U0001F6A7 in progress "
+             "\u00B7 \u2705 shipped \u00B7 \U0001F4AD considered\n"
+             "\n"
+             "## Backlog\n").arg(projectName);
+}
+
 bool RoadmapMigrateVerb::isTransientRoot(const QString &canonicalRoot) {
     // The temp root is canonicalised too. `canonicalRoot` is canonical by
     // precondition, and on a system whose temp dir is itself a symlink the two

@@ -15,6 +15,7 @@
 #include <gtest/gtest.h>
 
 #include "roadmapmigrateverb.h"
+#include "roadmapparse.h"
 #include "roadmapsource.h"
 #include "roadmapstore.h"
 
@@ -1594,3 +1595,51 @@ TEST(RoadmapMigrateVerb, Ants4621HandlerReadsOnlyDeclaredArgs) {
     }
 }
 
+
+// ---------------------------------------------------------------------------
+// ANTS-4740 — op:"init", the bootstrap.
+//
+// The store is the source of truth and the file is its render, yet every route
+// INTO the store required a parseable file to already exist: roadmap_migrate
+// refused no_roadmap and so did roadmap_log op:append. So a greenfield project
+// had to hand-author a conforming ants-v1 file first — markdown became primary
+// again, briefly, at exactly the moment adopt-project and start-project run.
+//
+// The hand-authored step was also the error-prone one: a mis-cased trailer
+// label is silently invisible per roadmap-format.md, so a bootstrap file could
+// migrate cleanly while dropping fields. That is the worst failure available at
+// the start of a project's life, which is why the skeleton is asserted against
+// the REAL parser rather than eyeballed.
+TEST(RoadmapMigrateVerb, Ants4740InitSkeletonIsParseableAndEmpty) {
+    const QString sk = RoadmapMigrateVerb::initSkeleton(QStringLiteral("Demo"));
+
+    // The format declaration the reader keys on. Assembled, not written whole,
+    // so a tool that neutralises comment markers cannot corrupt the assertion.
+    EXPECT_TRUE(sk.startsWith(QStringLiteral("<!") +
+                              QStringLiteral("-- ants-roadmap-format: 1 --") +
+                              QStringLiteral(">")))
+        << "without the v1 marker the file is not recognised as a roadmap";
+    EXPECT_TRUE(sk.contains(QStringLiteral("# Demo — Roadmap")))
+        << "the project name is substituted, not left as a placeholder";
+
+    // Parsed by the same function every consumer reads bullets through. A
+    // skeleton that only LOOKS right is the failure this test exists for.
+    const QVector<RoadmapParse::BulletRecord> bullets =
+        RoadmapParse::parseBullets(sk);
+    EXPECT_TRUE(bullets.isEmpty())
+        << "init creates an empty roadmap — a seeded bullet would be work "
+           "nobody queued";
+
+    // One section, because roadmap_log's `section` needs a slug to target and
+    // op:"create_section" needs an `after_section`. A sectionless skeleton
+    // would be unappendable by either route, which is the state this op exists
+    // to escape — so the slug is asserted, not just the heading text.
+    EXPECT_TRUE(sk.contains(QStringLiteral("\n## Backlog\n")));
+    const QVector<RoadmapParse::BulletRecord> seeded = RoadmapParse::parseBullets(
+        sk + QStringLiteral("\n- 📋 [DEMO-0001] **A first item.**\n"));
+    ASSERT_EQ(seeded.size(), 1)
+        << "a bullet appended under the skeleton's section must parse";
+    EXPECT_EQ(seeded.first().sectionSlug.toStdString(), std::string("backlog"))
+        << "the slug roadmap_log's `section` argument takes";
+    EXPECT_EQ(seeded.first().id.toStdString(), std::string("DEMO-0001"));
+}

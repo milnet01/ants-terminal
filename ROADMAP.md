@@ -47737,7 +47737,7 @@ envelope dropped `source`/`path`/`etag`/`total`/`filter`.
   Source: DOOM_Ants_MCP_Feedback.md 2026-08-27 (measured, with the residue broken down).
   Lanes: mcp.
 
-- 📋 [ANTS-4740] **A project with no ROADMAP.md cannot be given a store-backed one through the verbs at all.**
+- ✅ [ANTS-4740] **A project with no ROADMAP.md cannot be given a store-backed one through the verbs at all.**
   THE STORE IS THE SOURCE OF TRUTH AND THE FILE IS ITS RENDER -- but every
   route into the store requires a parseable file to already exist.
   roadmap_migrate refuses no_roadmap; roadmap_log op:append refuses
@@ -47764,6 +47764,7 @@ envelope dropped `source`/`path`/`etag`/`total`/`filter`.
   CHEAPER INTERIM, worth doing even if the op is not: put a `hint` on both
   no_roadmap refusals naming the bootstrap sequence. Today they say what is
   missing and not how to supply it.
+  Resolved (2026-08-27): `roadmap_migrate op:"init"` writes a conforming ants-v1 skeleton for a project that has none, then FALLS THROUGH to the ordinary migrate -- so registration, the id_prefix row and idempotency are the same code path a migrated project takes, and nothing here duplicates run(). It refuses `roadmap_exists` rather than overwriting, and `dry_run:true` returns the skeleton without writing. The skeleton carries exactly one `## Backlog` section, because roadmap_log's `section` argument needs a slug to target and op:"create_section" needs an `after_section` -- a sectionless skeleton would be unappendable by either route, which is the state this op exists to escape. The skeleton lives on RoadmapMigrateVerb's link-testable seam and is asserted through `RoadmapParse::parseBullets` rather than by eye, since the whole point is that a file which only LOOKS right migrates cleanly while dropping fields. NOT taken: storing an `id_prefix` at init. Nothing persists a prefix (it is sniffed from existing ids, else derived from the directory name), so init has nowhere to put one; the reply says so and points at `id_prefix` on the first append. The interim `hint` on the two no_roadmap refusals was not needed separately -- the op removes the hand-authoring step the hint would have described. Three mutants killed.
   **Layman:** A brand-new project has to hand-write a roadmap file by hand before the tools will accept one.
   Kind: enhancement.
   Source: Slipcase_Ants_MCP_Feedback.md 2026-08-27 (both refusals observed).
