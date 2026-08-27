@@ -46807,6 +46807,99 @@ envelope dropped `source`/`path`/`etag`/`total`/`filter`.
   Source: in-session-2026-08-26, second of two failures left after the ripgrep fix.
   Lanes: roadmapstore, packaging.
 
+### ANTS MCP feedback from CC sessions — 2026-08-27 triage
+
+- 📋 [ANTS-4721] **read_regions refuses a non-object region item with the selector rule, not the shape it wanted.**
+  REPORTED and reproducible from the description. Passing
+  regions:[[15,24],[88,100]] -- a list of pairs rather than a list of
+  objects -- returns one per-item bad_args per region carrying
+  "read_region: exactly one of {line range, symbol, section} required".
+
+  That message describes the SELECTOR RULE. The caller's actual error was
+  that the item was not an object at all. So the envelope answers a question
+  the caller did not ask, and the natural next move -- adding a selector to
+  a thing that cannot hold one -- is wrong.
+
+  WHY THE GUESS IS NATURAL. The argument is named `regions`, and a region
+  spelled [start, end] is the obvious reading of that name. The verb's own
+  description does state the object form, so the cost falls on a caller who
+  called before reading it, which is the common case when the schema arrives
+  via ToolSearch.
+
+  FIX IS ONE BRANCH: when an item is not a JSON object, refuse with a
+  distinct message naming the expected shape rather than falling through to
+  the selector check. Distinguishing wrong-type from no-selector-chosen is
+  the whole of it.
+  **Layman:** A file-reading tool tells you the wrong thing about what you got wrong.
+  Kind: fix.
+  Source: Charls_Site_Ants_MCP_Feedback.md 2026-08-27.
+  Lanes: mcp.
+
+- 📋 [ANTS-4722] **file_outline mode:md reads a `#` comment inside a fenced code block as a heading, and sizes:true then mis-attributes the file to it.**
+  MEASURED by the reporter. The md outliner does not track fenced code
+  blocks, so a line beginning `# ` at column 0 inside a ```python fence is
+  emitted as kind:"heading" at level 1.
+
+  THE SIZING IS THE DAMAGE, not the phantom row. Because the phantom is
+  level 1 while the document's real sections are `##`, sizes:true gives its
+  extent as running to EOF -- so one comment line claims most of the file
+  and every real section below it reads as that comment's child, with its
+  own size absorbed. sizes:true is documented as the answer to "which
+  section carries the weight and where is the natural seam"; here it points
+  at a comment.
+
+  max_heading_level DOES NOT SUPPRESS IT. The phantom is level 1, and any
+  real filter keeps level 1 -- so the one argument that looks like a
+  workaround is not one.
+
+  COMMON SHAPE, not an edge case: any technical spec that shows a source
+  file in a fenced block and labels it with a path comment hits this.
+
+  FIX: track fence state while scanning in md mode -- a line inside a ``` or
+  \~~~ fence is never a heading. Fence-awareness already exists in this
+  codebase; spec_lint applies the same guard for the invariant-id-base
+  directive.
+
+  CHECK ALSO, unverified by the reporter: whether the phantom is addressable
+  by read_region section=, which resolves against the same outline.
+  **Layman:** Outlining a document treats a comment inside an example code block as a section title, and then reports the wrong sizes for every real section.
+  Kind: fix.
+  Source: Charls_Site_Ants_MCP_Feedback.md 2026-08-27 (measured against the Pressless repo).
+  Lanes: mcp.
+
+- 📋 [ANTS-4723] **apply_edits reports a not_found skip with no near-miss, so a wrap mismatch is indistinguishable from a genuine absence.**
+  REPORTED from a batch against a hard-wrapped markdown file. Two of eight
+  edits skipped with reason "not_found"; the envelope names the index and
+  the path and nothing else. Both misses had the same cause -- the `old`
+  string wrapped at a different word than the file does. The text was
+  present and exact apart from one newline position.
+
+  THE HALF-APPLIED STATE IS WHAT MAKES IT URGENT. In a multi-edit batch the
+  successful edits have ALREADY landed while the caller re-reads to work out
+  why. In this run one skipped edit was the correction for a claim whose
+  replacement HAD applied, so the file briefly carried both the false claim
+  and its correction.
+
+  TWO ROUTES, either closes it.
+
+  (a) Report a near-miss on a not_found skip, the way roadmap_log's section
+  resolution reports candidates[] -- the closest matching span with its line
+  range, capped small.
+
+  (b) Offer the whitespace-tolerant match this codebase already ships TWICE:
+  workspace_search's match_wrapped (ANTS-4547) and roadmap_log amend_body's
+  wrapped pass (ANTS-4550). A run of whitespace in `old` matches a run of
+  whitespace in the file, opt-in, under the same uniqueness guard.
+
+  (b) IS THE STRONGER FIX and the machinery exists already; (a) alone would
+  still have saved the round-trip. ANTS-4550's own refusal for a span whose
+  re-flow would destroy alignment is the precedent for what (b) must decline
+  rather than silently re-flow.
+  **Layman:** When a batch edit cannot find your text it just says so, even when the text is there and only the line breaks differ.
+  Kind: enhancement.
+  Source: claude_config_Ants_MCP_Feedback.md 2026-08-27.
+  Lanes: mcp.
+
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-08-11 triage
 
 35 un-triaged findings across 9 of the 18 shared-root feedback files (AI
