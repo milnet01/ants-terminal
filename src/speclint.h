@@ -55,6 +55,16 @@ struct Options {
     // the check is SKIPPED — not that nothing is required.
     QStringList requiredSections;
 
+    // ANTS-4738 — match a NUMBERED required entry on its `## N. Name` prefix
+    // and let a trailing qualifier pass, so `## 6. Tests (unit only)` satisfies
+    // `## 6. Tests`. Off by default: loosening the default silently would
+    // weaken every corpus already relying on the exact match. Set from the
+    // format standard's own block, so the standard decides its house style
+    // rather than the matcher dictating it — one reporting corpus had to add a
+    // rule forbidding qualifiers purely to satisfy this check, and a check that
+    // changes the prose it checks has stopped being a check.
+    bool sectionsPrefixMatch = false;
+
     // ANTS-4110 — the INV numbers OTHER specs in the same corpus own. A project
     // may number invariants once across the corpus rather than restarting per
     // document, and the shared spec-format standard permits it: ids are stable
@@ -136,6 +146,12 @@ struct Result {
     // `sectionsChecked` is never inferred from an empty findings list.
     bool surfacesChecked = false;
 
+    // ANTS-4738/4739 — this document carried the required-sections exemption
+    // marker, so the section comparison was deliberately not made for it. The
+    // verb layer counts these and echoes the total, because an exemption that
+    // is invisible is indistinguishable from a clean pass.
+    bool sectionsExempt = false;
+
     int  lineCount = 0;   // reported, NEVER emitted as a finding (INV-6)
     bool truncated = false;
 };
@@ -152,7 +168,11 @@ Result check(const QString &text, const QString &relPath,
 // Here rather than in the verb layer because it is the other half of this
 // engine's contract: the block's format and the list's meaning are one thing,
 // and splitting them across a library boundary is how the two drift.
-QStringList parseRequiredSections(const QString &standardText);
+// ANTS-4738 — `prefixMatch`, when given, reports whether the marker asked for
+// prefix matching (`required-sections: prefix`). Absent ⇒ verbatim, which is
+// the pre-4738 behaviour exactly.
+QStringList parseRequiredSections(const QString &standardText,
+                                  bool *prefixMatch = nullptr);
 
 // ANTS-4110 — the INV numbers a document ANCHORS (bullet or table form), for the
 // verb layer's corpus scan. Deliberately cheaper and looser than `check`'s own

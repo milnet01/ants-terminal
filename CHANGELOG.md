@@ -14,6 +14,19 @@ for security-relevant changes.
 
 ### Added
 
+- **No way to exempt a document from spec_lint's required-sections, so a mixed corpus reports the same rows forever.** (ANTS-4739)
+  A document may carry `spec-lint: no-required-sections`
+  to opt out of the required-sections check -- for a mixed corpus holding
+  pre-standard specs, build plans and ledgers that can never conform. The
+  number of exempted documents comes back as `sections_exempt_docs`, so
+  an exemption is never mistaken for a clean pass.
+
+- **spec_lint matches a required heading verbatim, so a descriptive suffix reads as an absent section.** (ANTS-4738)
+  A format standard may write its marker as
+  `required-sections: prefix`, which matches a numbered heading on its
+  number and name and lets a descriptive suffix pass. Exact matching
+  stays the default.
+
 - **roadmap_query can list WHICH items shipped in a date window, not just how many** (ANTS-4715)
   `shipped_since` / `shipped_until` narrow mode:"bullets" and
   mode:"headline_only" to items the store dates inside a half-open window,
@@ -62,6 +75,13 @@ for security-relevant changes.
   A test looks in the wrong part of the file, so it can pass without checking anything.
 
 ### Fixed
+
+- **spec_lint counts are computed post-cap, so a truncated run under-reports the total.** (ANTS-4737)
+  `spec_lint` counts are now taken over the whole scan, and
+  `max_findings` trims only the returned list. Previously a capped run
+  under-reported the total, so two runs at different caps could not be
+  compared -- one measurement read 39 where the truth was 81. A new
+  `findings_total` gives the uncapped figure.
 
 - **mutation_probe keeps mutating the source after the transport has timed out, so a session can commit a mutant.** (ANTS-4736)
   `mutation_probe` now stops a batch before it outlives the MCP

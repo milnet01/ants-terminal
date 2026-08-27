@@ -1124,3 +1124,131 @@ TEST(SpecLint, Ants4351JoiningDoesNotWidenTheExemption) {
         << "prose that merely CONTAINS the tombstone vocabulary is a live "
            "invariant with no test, and joining lines must not exempt it";
 }
+
+// ---------------------------------------------------------------------------
+// ANTS-4738 — a required heading is matched verbatim, so a descriptive suffix
+// reads as an absent section.
+//
+// It matters more than it looks: it makes the tool dictate house style. One
+// reporting corpus uses a qualifier routinely because the section name alone is
+// generic, and the standard they had just written had to add a rule forbidding
+// the practice purely to satisfy the matcher. A check that changes the prose it
+// checks has stopped being a check.
+//
+// Verbatim stays the DEFAULT. Loosening it silently would weaken every corpus
+// that currently relies on the exact match.
+TEST(SpecLint, Ants4738PrefixMatchIsOptInOnTheBlock) {
+    const QString doc = QStringLiteral(
+        "# ANTS-1 — a spec\n"
+        "\n"
+        "## 1. Problem\n"
+        "\n"
+        "text\n"
+        "\n"
+        "## 6. Tests (unit only)\n"
+        "\n"
+        "text\n");
+    const QString block = QStringLiteral(
+        "```\n"
+        "## 1. Problem\n"
+        "## 6. Tests\n"
+        "```\n");
+
+    // Default: the marker without the flag keeps the exact match, and the
+    // qualified heading is still reported absent.
+    bool prefix = true;  // seeded wrong, so an unwritten out-param is caught
+    SpecLint::Options strict;
+    strict.requiredSections = SpecLint::parseRequiredSections(
+        QStringLiteral("<!-- required-sections -->\n") + block, &prefix);
+    ASSERT_EQ(strict.requiredSections.size(), 2);
+    EXPECT_FALSE(prefix) << "an unflagged marker must not enable prefix matching";
+    strict.sectionsPrefixMatch = prefix;
+    EXPECT_EQ(countKind(SpecLint::check(doc, QStringLiteral("s.md"), strict),
+                        "missing_section"), 1);
+
+    // Flagged: the same document is clean.
+    SpecLint::Options loose;
+    loose.requiredSections = SpecLint::parseRequiredSections(
+        QStringLiteral("<!-- required-sections: prefix -->\n") + block, &prefix);
+    ASSERT_EQ(loose.requiredSections.size(), 2)
+        << "the flagged marker must still introduce its fenced block";
+    EXPECT_TRUE(prefix);
+    loose.sectionsPrefixMatch = prefix;
+    EXPECT_EQ(countKind(SpecLint::check(doc, QStringLiteral("s.md"), loose),
+                        "missing_section"), 0)
+        << "`## 6. Tests (unit only)` carries the required number and name";
+
+    // The loosening must not swallow the finding the check exists for. A
+    // genuinely absent section is still reported under the flag...
+    SpecLint::Options absent;
+    absent.requiredSections = SpecLint::parseRequiredSections(
+        QStringLiteral("<!-- required-sections: prefix -->\n```\n## 9. Surface\n```\n"),
+        &prefix);
+    absent.sectionsPrefixMatch = prefix;
+    EXPECT_EQ(countKind(SpecLint::check(doc, QStringLiteral("s.md"), absent),
+                        "missing_section"), 1);
+
+    // ...and a prefix that ends mid-word is NOT a match. Without this arm the
+    // flag would accept `## 6. Test` for `## 6. Tests`, which is a different
+    // section with a similar name.
+    const QString midWord = QStringLiteral("## 1. Problems\n\ntext\n");
+    SpecLint::Options mw;
+    mw.requiredSections = SpecLint::parseRequiredSections(
+        QStringLiteral("<!-- required-sections: prefix -->\n```\n## 1. Problem\n```\n"),
+        &prefix);
+    mw.sectionsPrefixMatch = prefix;
+    EXPECT_EQ(countKind(SpecLint::check(midWord, QStringLiteral("s.md"), mw),
+                        "missing_section"), 1)
+        << "`## 1. Problems` is not `## 1. Problem` plus a qualifier";
+}
+
+// ANTS-4739 — a document with no way to conform reports the same rows forever.
+//
+// Measured on the reporting corpus: every residual finding sat on a document
+// that CANNOT conform — specs written before the project adopted its section
+// run, plus build plans and a fix ledger that are not specs at all but live in
+// specs_dir. The documents following the convention reported zero. So the
+// residue is permanent, and a reader re-triages it on every run to find the few
+// rows that are new. That is the failure the check exists to prevent: noise is
+// where a real finding hides.
+TEST(SpecLint, Ants4739DocumentCanExemptItselfFromRequiredSections) {
+    const QString block = QStringLiteral(
+        "<!-- required-sections -->\n"
+        "```\n"
+        "## 1. Problem\n"
+        "## 2. Surface\n"
+        "```\n");
+    SpecLint::Options opts;
+    opts.requiredSections = SpecLint::parseRequiredSections(block);
+    ASSERT_EQ(opts.requiredSections.size(), 2);
+
+    const QString body = QStringLiteral("# A build plan\n\n## Steps\n\ntext\n");
+
+    // Control — without the marker the rows are reported, so the arms below
+    // cannot pass because the check never fired.
+    const SpecLint::Result plain =
+        SpecLint::check(body, QStringLiteral("p.md"), opts);
+    EXPECT_EQ(countKind(plain, "missing_section"), 2);
+    EXPECT_FALSE(plain.sectionsExempt);
+
+    const SpecLint::Result exempt = SpecLint::check(
+        QStringLiteral("<!-- spec-lint: no-required-sections -->\n") + body,
+        QStringLiteral("p.md"), opts);
+    EXPECT_TRUE(exempt.sectionsExempt);
+    EXPECT_EQ(countKind(exempt, "missing_section"), 0);
+
+    // sections_checked stays TRUE: the list resolved and the check ran. An
+    // exemption says this document opted out, never that nobody looked — which
+    // is why the verb layer echoes the COUNT rather than leaving the envelope
+    // to imply it.
+    EXPECT_TRUE(exempt.sectionsChecked);
+
+    // The marker is honoured only OUTSIDE fenced code, so a standard quoting it
+    // as an example cannot exempt the document quoting it.
+    const SpecLint::Result quoted = SpecLint::check(
+        QStringLiteral("# Doc\n\n```\n<!-- spec-lint: no-required-sections -->\n```\n")
+            + body,
+        QStringLiteral("p.md"), opts);
+    EXPECT_FALSE(quoted.sectionsExempt);
+    EXPECT_EQ(countKind(quoted, "missing_section"), 2);
+}

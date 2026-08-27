@@ -453,3 +453,80 @@ TEST(SpecLintVerb, Ants4080GlobalTierAndTheTwoSkipCauses) {
         << "the hint must name the global tier it now consults: "
         << h2.toStdString();
 }
+
+// ---------------------------------------------------------------------------
+// ANTS-4737 — the cap must trim what is EMITTED and nothing else.
+//
+// Measured at three caps over one unchanged corpus: uncapped reported 81,
+// max_findings:40 reported 39, max_findings:5 reported 5. `truncated` was set,
+// so the run was not silent — but a caller reading `counts` to ask "how much is
+// there" got a number that was a function of its own argument. It bit a real
+// measurement: the reporter was sizing the effect of adopting a spec-format
+// standard, a capped call reported 39 where the truth was 81, and the fix
+// looked twice as effective as it was. Two runs taken at different caps cannot
+// be compared at all.
+//
+// workspace_search's `count_only` already documents `count` as the TRUE total,
+// uncapped by max_results. Two verbs disagreeing about what a count means is
+// the defect underneath this one.
+TEST(SpecLintVerb, Ants4737CountsAreUncappedAndOnlyFindingsAreTrimmed) {
+    const auto mk = [](int line) {
+        DocFinding::Finding f;
+        f.verb    = QStringLiteral("spec_lint");
+        f.kind    = QStringLiteral("invariant_no_test");
+        f.file    = QStringLiteral("docs/specs/X.md");
+        f.line    = line;
+        f.message = QStringLiteral("INV carries no test-surface clause");
+        return f;
+    };
+    QList<DocFinding::Finding> all;
+    for (int i = 1; i <= 10; ++i) all.push_back(mk(i));
+
+    const auto build = [&](int cap) {
+        return RemoteControl::specLintBuildResponse(
+            all, true, QJsonObject{}, false,
+            QStringList{QStringLiteral("docs/specs/X.md")}, 0, false,
+            QStringLiteral("docs/standards/specs.md"), cap);
+    };
+
+    const QJsonObject capped = build(3);
+    EXPECT_EQ(capped.value(QStringLiteral("findings")).toArray().size(), 3)
+        << "the cap bounds the payload, which is what it is for";
+    EXPECT_EQ(capped.value(QStringLiteral("findings_total")).toInt(), 10)
+        << "the total the reporter probed for, and could not find";
+    EXPECT_EQ(capped.value(QStringLiteral("counts")).toObject()
+                  .value(QStringLiteral("invariant_no_test")).toInt(), 10)
+        << "the cap must not choose the count — this is the whole defect";
+    EXPECT_TRUE(capped.value(QStringLiteral("truncated")).toBool())
+        << "a trimmed payload must still say it was trimmed";
+
+    // The same corpus at a different cap must report the SAME counts, which is
+    // the property that makes a before/after comparison meaningful.
+    const QJsonObject tighter = build(1);
+    EXPECT_EQ(tighter.value(QStringLiteral("findings")).toArray().size(), 1);
+    EXPECT_EQ(tighter.value(QStringLiteral("counts")).toObject(),
+              capped.value(QStringLiteral("counts")).toObject())
+        << "two runs over one unchanged corpus at two caps must agree";
+    EXPECT_EQ(tighter.value(QStringLiteral("findings_total")).toInt(), 10);
+
+    // An uncapped run is unchanged: nothing trimmed, and `truncated` absent
+    // rather than set. Without this arm every assertion above is satisfied by
+    // an implementation that marks every run truncated.
+    const QJsonObject full = build(50);
+    EXPECT_EQ(full.value(QStringLiteral("findings")).toArray().size(), 10);
+    EXPECT_FALSE(full.value(QStringLiteral("truncated")).toBool());
+    EXPECT_EQ(full.value(QStringLiteral("findings_total")).toInt(), 10);
+}
+
+// The builder is only correct if the WALK hands it the caller's cap. Without
+// this, removing that argument leaves every run uncapped — max_findings stops
+// bounding the payload it exists to bound, and the behavioural test above
+// cannot see it because it calls the builder directly.
+TEST(SpecLintVerb, Ants4737WalkHandsTheCallerCapToTheBuilder) {
+    const std::string body = ants_test::slurpFunctionBody(
+        ants_test::slurpRemoteControl(),
+        "QJsonDocument RemoteControl::cmdSpecLint");
+    ASSERT_FALSE(body.empty()) << "cmdSpecLint body not found";
+    EXPECT_NE(body.find("sectionsSource, callerCap)"), std::string::npos)
+        << "max_findings must reach specLintBuildResponse, or nothing trims";
+}

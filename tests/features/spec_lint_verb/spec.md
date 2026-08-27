@@ -15,6 +15,8 @@ source-scrape the registration sites.
 | `Inv4CommandClauseIsACandidate` | INV-4 | A command clause with no stated expectation fires as a **candidate** — never `autoFixable`, `auto_fixable` absent from the wire — and the engine executes nothing. |
 | `Inv7RefusalMinimums` | INV-7 | `caller_cwd` Required at both declaration sites; `path` validated before enumeration; nothing to scan → `ok:true` with empty findings. |
 | `Ants4127SurfaceFieldsReachTheWire` | ANTS-4127 INV-3..5, 7, 10 | `surfaces_resolved` / `surfaces_checked` always emitted (including the falsifying `true` + `0` pair); the three new kinds carry `invariant` / `surface` / `spec_status` on the wire, with `spec_status` a **present** key holding `null`; the handler gathers both sets and sums the counter; the live `tests/features/` scan is non-empty and `wired ⊆ existing`. |
+| `Ants4737CountsAreUncappedAndOnlyFindingsAreTrimmed` | ANTS-4737 | `counts` and `findings_total` are taken over the full list; `max_findings` trims `findings[]` alone and sets `truncated`. Two caps over one unchanged list report identical counts. An uncapped run trims nothing and leaves `truncated` unset. |
+| `Ants4737WalkHandsTheCallerCapToTheBuilder` | ANTS-4737 | The walk passes the caller's cap through, or nothing trims. |
 
 The last of those is the only row in either lane that asserts the **project's
 own state** rather than a fixture's, and it is there because an empty scan is

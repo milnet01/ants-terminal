@@ -37,6 +37,8 @@ an implementation is tempted to guess around.
 | `Ants4127Inv8EngineTouchesNoFilesystem` | INV-8 | Comment-stripped token scrape over `speclint.{h,cpp}`, plus a corpus digest either side of a real run. |
 | `Ants4127Inv9EmptySetMeansSkipNotFail` | INV-9 | Each set gates its own check; empty means skip. Arms (a) and (b) differ **only** in whether the set was empty. |
 | `Ants4127Inv10CheckedIsNotInferredFromTheCounter` | INV-10 | `surfacesChecked` is false exactly when INV-9 skipped. **Arm (b) is the only falsifier.** |
+| `Ants4738PrefixMatchIsOptInOnTheBlock` | ANTS-4738 | A numbered required entry matches on its `## N. Name` prefix, so a trailing qualifier passes — but only when the standard's marker asks for it. Verbatim stays the default, an absent section is still reported under the flag, and a prefix ending mid-word is not a match. |
+| `Ants4739DocumentCanExemptItselfFromRequiredSections` | ANTS-4739 | A document carrying the exemption marker outside fenced code reports no `missing_section`; `sectionsChecked` stays true, and the marker inside a fence does not fire. |
 
 ## Verified RED before the implementation landed
 

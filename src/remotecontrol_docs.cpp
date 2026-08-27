@@ -509,13 +509,15 @@ static const QStringList &specLintStandardCandidates() {
 // enum: ANTS-4373 already made this field the PATH consulted, which answers the
 // enum's question and the next one too.
 static QStringList specLintRequiredSections(const QString &rootCanonical,
-                                            QString *whichOut = nullptr) {
+                                            QString *whichOut = nullptr,
+                                            bool *prefixMatch = nullptr) {
     const auto tryRoot = [&](const QDir &root, const QString &prefix) {
         QStringList got;
         for (const QString &rel : specLintStandardCandidates()) {
             QFile f(root.filePath(rel));
             if (!f.open(QIODevice::ReadOnly | QIODevice::Text)) continue;
-            got = SpecLint::parseRequiredSections(QString::fromUtf8(f.readAll()));
+            got = SpecLint::parseRequiredSections(QString::fromUtf8(f.readAll()),
+                                                  prefixMatch);
             if (!got.isEmpty()) {
                 if (whichOut) *whichOut = prefix + rel;
                 return got;
@@ -610,7 +612,8 @@ QJsonDocument RemoteControl::cmdSpecLint(const QJsonObject &req) {
     SpecLint::Options opts;
     QString sectionsSource;
     opts.requiredSections =
-        specLintRequiredSections(rootCanonical, &sectionsSource);
+        specLintRequiredSections(rootCanonical, &sectionsSource,
+                                 &opts.sectionsPrefixMatch);
     opts.maxFindings      = qBound(1, req.value(QStringLiteral("max_findings"))
                                           .toInt(500), 5000);
     // ANTS-4127 — same once-per-run rule, same reason (spec § 2.8).
@@ -661,6 +664,7 @@ QJsonDocument RemoteControl::cmdSpecLint(const QJsonObject &req) {
     QStringList checked;
     bool truncated = false, sectionsChecked = false;
     int idGapsSuppressed = 0;
+    int sectionsExemptDocs = 0;
     // ANTS-4127 — the walk's total is the SUM over documents (§ 2.3), so a
     // directory cited by three specs contributes three. `surfacesChecked` is a
     // property of the injected set rather than of any one document, so it is
@@ -668,7 +672,27 @@ QJsonDocument RemoteControl::cmdSpecLint(const QJsonObject &req) {
     // still reports honestly whether resolution was on.
     int  surfacesResolved = 0;
     bool surfacesChecked  = !opts.existingTestDirs.isEmpty();
-    int budget = opts.maxFindings;
+    // ANTS-4737 — the walk scans EVERYTHING and the cap is applied at the end.
+    //
+    // Measured over one unchanged corpus: uncapped reported 81, max_findings:40
+    // reported 39, max_findings:5 reported 5. The cap was choosing the count,
+    // because a document reached after the budget ran out was skipped whole and
+    // its findings were never counted. `truncated` was set, so the run was not
+    // silent — but a caller reading `counts` to ask "how much is there" got a
+    // number that was a function of its own argument, and a before/after
+    // comparison taken at two different caps was silently meaningless. It bit a
+    // real measurement: 39 reported where the true figure was 81, making a fix
+    // look twice as effective as it was.
+    //
+    // workspace_search's `count_only` already documents `count` as the TRUE
+    // total, uncapped by max_results. Two verbs disagreeing about what a count
+    // means is the defect underneath this one, so this one now matches.
+    //
+    // The scan cost is unchanged — the engine reads each document either way;
+    // only the finding list grows, and the ceiling bounds that.
+    const int callerCap = opts.maxFindings;
+    constexpr int kScanCeiling = 10000;
+    opts.maxFindings = kScanCeiling;
     for (const QString &rel : std::as_const(relDocs)) {
         QFile f(QDir(rootCanonical).filePath(rel));
         if (f.size() > walk.maxDocBytes) continue;
@@ -680,35 +704,41 @@ QJsonDocument RemoteControl::cmdSpecLint(const QJsonObject &req) {
         // max_findings is a RUN cap, decremented across documents for the same
         // reason doc_symbols decrements its needle budget: the engine is
         // per-document, and a per-document cap bounds nothing run-wide.
-        opts.maxFindings = qMax(1, budget);
+        opts.maxFindings = qMax(1, kScanCeiling - findings.size());
         const SpecLint::Result r = SpecLint::check(text, rel, opts);
         lineCounts[rel] = r.lineCount;
         sectionsChecked = sectionsChecked || r.sectionsChecked;
         idGapsSuppressed += r.idGapsSuppressed;
+        if (r.sectionsExempt) ++sectionsExemptDocs;
         surfacesResolved += r.surfacesResolved;
-        if (budget <= 0) {
-            truncated = true;
-            continue;
-        }
-        budget -= r.findings.size();
         for (DocFinding::Finding fnd : r.findings) {
             fnd.emissionIndex = findings.size();  // run-wide, not per-document
             findings.push_back(fnd);
         }
         truncated = truncated || r.truncated;
     }
+    // ANTS-4737 — counts are taken here, over the full scan, and the caller's
+    // cap trims only what is EMITTED. `findings_total` is the number the
+    // reporter probed for and could not find; it is the denominator that makes
+    // two runs at different caps comparable.
     // etag injected centrally (isEtagSupportedTool); docs_digest keeps it
     // content-sensitive (ANTS-3737 — same shape as doc_integrity).
     QJsonObject out = specLintBuildResponse(findings, sectionsChecked,
                                             lineCounts, truncated, checked,
                                             surfacesResolved, surfacesChecked,
-                                            sectionsSource);
+                                            sectionsSource, callerCap);
     out[QStringLiteral("docs_digest")] = docSetDigest(rootCanonical, checked);
     // ANTS-4110 — say that gaps were suppressed and how many. Emitted only when
     // non-zero: a caller reading a short findings list is entitled to know a
     // check declined to fire, and a constant 0 on every other project is noise.
     if (idGapsSuppressed > 0)
         out[QStringLiteral("id_gaps_suppressed")] = idGapsSuppressed;
+    // ANTS-4739 — say how many documents exempted themselves. Emitted only when
+    // non-zero, like the row above: an exemption nobody is told about is
+    // indistinguishable from a clean structural pass, and a constant 0 on every
+    // project that uses no exemptions is noise.
+    if (sectionsExemptDocs > 0)
+        out[QStringLiteral("sections_exempt_docs")] = sectionsExemptDocs;
     return QJsonDocument(out);
 }
 
@@ -717,11 +747,28 @@ QJsonObject RemoteControl::specLintBuildResponse(
     const QList<DocFinding::Finding> &findings, bool sectionsChecked,
     const QJsonObject &lineCounts, bool truncated,
     const QStringList &checkedDocs, int surfacesResolved,
-    bool surfacesChecked, const QString &sectionsSource) {
+    bool surfacesChecked, const QString &sectionsSource, int maxFindings) {
     QJsonObject o;
-    o[QStringLiteral("ok")]       = true;
-    o[QStringLiteral("findings")] = DocFinding::toJson(findings);
-    // Counts over the WHOLE list, before any cap or filter (ANTS-3664).
+    o[QStringLiteral("ok")] = true;
+    // ANTS-4737 — the cap trims what is EMITTED and nothing else. Measured at
+    // three caps over one unchanged corpus, the old order reported 81 uncapped,
+    // 39 at max_findings:40 and 5 at max_findings:5: the cap was choosing the
+    // count, so a before/after comparison taken at two caps was silently
+    // meaningless — it made one real fix look twice as effective as it was.
+    // workspace_search's `count_only` already documents its `count` as the true
+    // total, uncapped by max_results; this now agrees with it.
+    const int findingsTotal = findings.size();
+    o[QStringLiteral("findings_total")] = findingsTotal;
+    if (findingsTotal > maxFindings) {
+        truncated = true;
+        o[QStringLiteral("findings")] =
+            DocFinding::toJson(findings.mid(0, maxFindings));
+    } else {
+        o[QStringLiteral("findings")] = DocFinding::toJson(findings);
+    }
+    // Counts over the list this builder is HANDED (ANTS-3664). ANTS-4737: for
+    // spec_lint that list is capped, so cmdSpecLint overwrites this key with
+    // counts taken over the full scan.
     o[QStringLiteral("counts")] =
         DocFinding::countsByVerbAndKind(findings)
             .value(QStringLiteral("spec_lint")).toObject();

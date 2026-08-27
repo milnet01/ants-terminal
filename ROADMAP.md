@@ -47658,7 +47658,7 @@ envelope dropped `source`/`path`/`etag`/`total`/`filter`.
   Source: finbreak_Ants_MCP_Feedback.md 2026-08-27 (observed, with the intervening commands recorded).
   Lanes: mcp, tooling.
 
-- 📋 [ANTS-4737] **spec_lint counts are computed post-cap, so a truncated run under-reports the total.**
+- ✅ [ANTS-4737] **spec_lint counts are computed post-cap, so a truncated run under-reports the total.**
   MEASURED AT THREE CAPS over one unchanged corpus: uncapped reports 81,
   max_findings:40 reports 39, max_findings:5 reports 5. The cap is choosing
   the count.
@@ -47682,12 +47682,13 @@ envelope dropped `source`/`path`/`etag`/`total`/`filter`.
   `findings[]`. If that is expensive, emit `findings_total` -- a name the
   reporter probed for and which does not exist -- so the divergence is at
   least detectable.
+  Resolved (2026-08-27): `counts` and the new `findings_total` are taken over the FULL scan and `max_findings` trims `findings[]` alone. Two causes, both closed: the walk skipped later documents whole once its per-document budget ran out, so their findings were never counted; and the response builder derived `counts` from the list it was handed, which was the capped one. The trim now lives in `specLintBuildResponse`, which is pure and directly testable, so the property that matters -- two caps over one unchanged list report identical counts -- is asserted rather than scraped. Matches workspace_search's `count_only` contract, which was the house rule this verb disagreed with. Two mutants killed, one of them the original defect.
   **Layman:** A checker's summary number shrinks when you ask it to list fewer problems, so two runs cannot be compared.
   Kind: fix.
   Source: DOOM_Ants_MCP_Feedback.md 2026-08-27 (measured at three caps over one corpus).
   Lanes: mcp.
 
-- 📋 [ANTS-4738] **spec_lint matches a required heading verbatim, so a descriptive suffix reads as an absent section.**
+- ✅ [ANTS-4738] **spec_lint matches a required heading verbatim, so a descriptive suffix reads as an absent section.**
   The required-sections check compares each entry against heading lines
   byte-for-byte, so a heading carrying the required number and name PLUS a
   qualifier is reported absent although the section is present and in the
@@ -47704,12 +47705,13 @@ envelope dropped `source`/`path`/`etag`/`total`/`filter`.
   no existing caller changes -- the reporter proposes this themselves and it
   is the right call, since loosening the default silently would weaken every
   corpus that currently relies on it.
+  Resolved (2026-08-27): writing the marker as `required-sections: prefix` matches a numbered entry on its `## N. Name` prefix, so a descriptive suffix passes. Verbatim is still the DEFAULT, as the reporter proposed -- loosening it silently would weaken every corpus relying on the exact match. A prefix ending mid-word is not a match, so `## 1. Problem` does not accept `## 1. Problems`. Two mutants killed.
   **Layman:** A checker says a section is missing when it is present but its title carries a few extra words.
   Kind: enhancement.
   Source: DOOM_Ants_MCP_Feedback.md 2026-08-27.
   Lanes: mcp.
 
-- 📋 [ANTS-4739] **No way to exempt a document from spec_lint's required-sections, so a mixed corpus reports the same rows forever.**
+- ✅ [ANTS-4739] **No way to exempt a document from spec_lint's required-sections, so a mixed corpus reports the same rows forever.**
   MEASURED AND BROKEN DOWN, which is what makes it actionable: of the
   findings remaining after the reporter adopted a spec-format standard,
   every one sits on a document that CANNOT conform -- specs written before
@@ -47729,6 +47731,7 @@ envelope dropped `source`/`path`/`etag`/`total`/`filter`.
   exemption can never be mistaken for a clean pass. doc_integrity already
   uses that pattern for its suppressed-heading case, so this is applying a
   house convention rather than inventing one.
+  Resolved (2026-08-27): a document carrying `spec-lint: no-required-sections` outside fenced code is exempt from missing_section, mirroring the existing `invariant-id-base` opt-out. The number of exempted documents is echoed as `sections_exempt_docs` when non-zero, so an exemption can never be mistaken for a clean pass -- and `sections_checked` stays true, because the list did resolve. The marker inside a fence does not fire, so a standard quoting it as an example cannot exempt itself. One mutant killed.
   **Layman:** A checker keeps flagging old documents that can never be fixed, burying the few findings that matter.
   Kind: enhancement.
   Source: DOOM_Ants_MCP_Feedback.md 2026-08-27 (measured, with the residue broken down).

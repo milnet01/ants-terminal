@@ -20,6 +20,7 @@
 
 #include <QDate>       // ANTS-4501 — buildRoadmapReportEnvelope's window args
 #include <functional>  // ANTS-3543 — downshiftMatches lean-projector callback
+#include <limits>
 #include <memory>
 #include <optional>   // ANTS-4501 — scope:"all" is a nullopt project id
 
@@ -608,7 +609,12 @@ public:
         // ANTS-4373/4390 — the standard path actually consulted, empty when
         // none resolved. Reported so a caller is told what to fix rather than
         // re-deriving it from a bare boolean.
-        const QString &sectionsSource = QString());
+        const QString &sectionsSource = QString(),
+        // ANTS-4737 — the caller's max_findings. Applied HERE so `counts` and
+        // `findings_total` are taken over the full list before findings[] is
+        // trimmed: deriving the count from the trimmed list let the cap choose
+        // the count, which silently voids a before/after comparison.
+        int maxFindings = std::numeric_limits<int>::max());
     // ANTS-4108 — spec_conformance: RUN the patterns a spec prescribes against
     // the expectation table beside them (SpecConformance::run). Reads ONE
     // document, so `path` is required — there is no tree walk to default to.

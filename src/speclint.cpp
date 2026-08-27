@@ -249,12 +249,22 @@ QSet<int> invariantNumbers(const QString &text) {
     return out;
 }
 
-QStringList parseRequiredSections(const QString &standardText) {
+QStringList parseRequiredSections(const QString &standardText,
+                                  bool *prefixMatch) {
+    if (prefixMatch) *prefixMatch = false;
     const QStringList lines = standardText.split(QLatin1Char('\n'));
+    // ANTS-4738 — the marker may carry `: prefix`, which asks for the numbered
+    // entries to match on their `## N. Name` prefix so a trailing qualifier
+    // passes. Verbatim stays the default: loosening it silently would weaken
+    // every corpus already relying on the exact match.
+    static const QRegularExpression markerRe(
+        QStringLiteral(R"(<!--\s*required-sections(\s*:\s*prefix)?\s*-->)"));
     int marker = -1;
     for (int i = 0; i < lines.size(); ++i) {
-        if (lines[i].contains(QLatin1String("<!-- required-sections -->"))) {
+        const auto m = markerRe.match(lines[i]);
+        if (m.hasMatch()) {
             marker = i;
+            if (prefixMatch) *prefixMatch = m.capturedLength(1) > 0;
             break;
         }
     }
@@ -353,6 +363,23 @@ Result check(const QString &text, const QString &relPath,
     // a heading that is absent.
     if (!opts.requiredSections.isEmpty()) {
         r.sectionsChecked = true;
+        // ANTS-4739 — a document may exempt itself, mirroring the
+        // `invariant-id-base` opt-out above and doc_integrity's
+        // suppressed-heading case. A mixed corpus otherwise reports the same
+        // permanent rows forever: specs written before the project adopted its
+        // section run, plus build plans and ledgers that are not specs at all
+        // but live in the specs dir. A reader re-triages that residue on every
+        // run to find the few rows that are new, which is the failure the check
+        // exists to prevent — noise is where a real finding hides.
+        //
+        // Outside fenced code, so an example quoted in prose cannot exempt the
+        // document quoting it.
+        static const QRegularExpression exemptRe(
+            QStringLiteral(R"(^ {0,3}<!--\s*spec-lint:\s*no-required-sections\s*-->\s*$)"));
+        for (int i = 0; i < lines.size(); ++i) {
+            if (i < fence.size() && fence[i]) continue;
+            if (exemptRe.match(lines[i]).hasMatch()) { r.sectionsExempt = true; break; }
+        }
         const QSet<QString> present(headingLines.begin(), headingLines.end());
         // ANTS-4345 — a name-keyed index beside the exact one, so an entry
         // written without a number matches whatever number the document
@@ -361,12 +388,24 @@ Result check(const QString &text, const QString &relPath,
         presentNames.reserve(headingLines.size());
         for (const QString &h : headingLines) presentNames.insert(sectionNameOf(h));
 
+        // ANTS-4738 — under prefix matching a numbered entry is satisfied by a
+        // heading that starts with it and continues with a qualifier. The
+        // boundary check is what keeps `## 6. Test` from matching `## 6. Tests`.
+        const auto numberedFound = [&](const QString &want) {
+            if (present.contains(want)) return true;
+            if (!opts.sectionsPrefixMatch) return false;
+            for (const QString &h : headingLines) {
+                if (h.size() <= want.size() || !h.startsWith(want)) continue;
+                if (!h.at(want.size()).isLetterOrNumber()) return true;
+            }
+            return false;
+        };
         for (const QString &req : opts.requiredSections) {
             const QString want = collapseWs(req);
             const bool found = headingIsNumbered(want)
-                                   ? present.contains(want)
+                                   ? numberedFound(want)
                                    : presentNames.contains(sectionNameOf(want));
-            if (!found)
+            if (!found && !r.sectionsExempt)
                 add(QStringLiteral("missing_section"), 0,
                     QStringLiteral("required section is absent: %1").arg(want));
         }
