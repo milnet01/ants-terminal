@@ -161,6 +161,20 @@ struct ScanResult {
     // suppressed. Without it a too-wide region is indistinguishable from a
     // document that cites nothing.
     int examplesSuppressed = 0;
+    // ANTS-4743 — code spans that READ as a source citation this grammar cannot
+    // see: `path::symbol`, `Class::method()`, a bare backticked source or doc
+    // path. The grammar recognises `path:line`, and the authoring standard
+    // FORBIDS authors writing that form ("line numbers are not grounding: cite
+    // the symbol") — so a conforming corpus scans to zero, and the zero reads
+    // as clean. Measured on two specs of 485 and 650 lines, both dense with
+    // citations: count 0, every bucket 0, and an EMPTY `unparsed` reinforcing
+    // it, because nothing was rejected — nothing was recognised as a candidate.
+    //
+    // This does NOT widen the grammar. It reports what the grammar could not
+    // see, so "this document has no citations" is distinguishable from "none I
+    // can parse" — the same shape spec_lint's `surfaces_checked` and
+    // invariant_check's `path_match_only` already take.
+    int unrecognisedCandidates = 0;
 };
 
 ScanResult scan(const QStringList &lines, const Options &opts = {});

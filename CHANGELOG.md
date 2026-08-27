@@ -100,6 +100,15 @@ for security-relevant changes.
 
 ### Fixed
 
+- **doc_citations returns count:0 on a conforming spec corpus, and the zero is indistinguishable from a clean run.** (ANTS-4743)
+  `doc_citations` returning zero now says whether that is clean
+  or silent. It recognises only `path:line` citations, and the spec-format
+  standard tells authors to cite the symbol instead — so a conforming spec
+  corpus scanned to zero and read as checked. Every reply now names the
+  forms it recognises, and a zero over a document holding citation-shaped
+  text reports how many it could not read, with a hint not to record the
+  run as a passing check.
+
 - **spec_lint counts are computed post-cap, so a truncated run under-reports the total.** (ANTS-4737)
   `spec_lint` counts are now taken over the whole scan, and
   `max_findings` trims only the returned list. Previously a capped run

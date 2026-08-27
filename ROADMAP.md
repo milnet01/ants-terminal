@@ -47837,6 +47837,41 @@ envelope dropped `source`/`path`/`etag`/`total`/`filter`.
   Source: finbreak_Ants_MCP_Feedback.md 2026-08-27 (repro at commit 84c5849).
   Lanes: mcp.
 
+- ✅ [ANTS-4743] **doc_citations returns count:0 on a conforming spec corpus, and the zero is indistinguishable from a clean run.**
+  THE CHECKER SEES THE ONE FORM THE AUTHORING STANDARD BANS. The verb
+  recognises `path:line` citations; spec-format.md's drafting rules forbid
+  authors writing them -- line numbers are not grounding, cite the symbol.
+  So a conforming project's entire spec corpus is invisible to it.
+
+  MEASURED. Two specs, 485 and 650 lines, both dense with citations by
+  symbol and by path+section, both count:0 with every counts bucket 0 and
+  an EMPTY unparsed[]. Reproduces on all ten specs in that project.
+
+  THE ZERO IS LAUNDERED DOWNSTREAM, which is what makes it worse than a
+  gap. check-doc-facts sorts a clean doc_citations into its findings-empty
+  bucket, and review-contract Phase 1d then tells its cold lanes the
+  mechanical checks are settled -- so an unrun check becomes a
+  do-not-question fact. The empty unparsed[] actively reinforces it:
+  nothing was rejected, because nothing was recognised as a candidate.
+
+  THIS IS A SHAPE ALREADY GUARDED TWICE HERE: spec_lint's
+  surfaces_checked:false + skipped[] + "treat findings as SILENT, not as a
+  pass" (ANTS-4393/4679), and ANTS-4742's path_match_only on
+  invariant_check the same day.
+
+  FIX, in the reporter's own order of preference. (2) ADMIT THE SILENCE:
+  say which citation forms are recognised and how many citation-shaped
+  candidates were seen, so "no citations" is distinguishable from "none I
+  can parse". One field, and it is what stops the zero being laundered.
+  (1) recognise the symbol form -- path::symbol, path::Class::method(),
+  backticked bare repo paths -- resolving the way doc_symbols already
+  must. (1) is a real behaviour change and should not be bundled with (2).
+  Resolved (2026-08-27): took the reporter's option 2, which they ranked first and which is the one that stops the zero being laundered. `forms_recognised` now rides every reply, and a zero over a document holding citation-shaped code spans carries `unrecognised_candidates` plus a hint saying the run is SILENT about the document rather than clean about it, and naming why `unparsed` is empty. Option 1 (recognise the symbol form) is a real grammar change and is NOT bundled -- it stays available as its own item if wanted. The candidate test is deliberately conservative (a `::`, or an anchored bare source/doc filename): this field decides what a zero MEANS, so a loose test would make every backticked word evidence of a missed citation and the number useless. The anchor is what keeps the recognised `src/a.cpp:45` form out of the count. Three mutants killed -- but only after fixing the test: the first draft called expect() without the closing `ASSERT_EQ(0, expect_finish())` this file's harness needs, so it recorded failures and reported green, and all three mutants survived it. Caught by mutating, not by reading.
+  **Layman:** A checker reports no problems on documents it could not read at all, and the next step treats that as settled.
+  Kind: fix.
+  Source: LottoTracker_Ants_MCP_Feedback.md 2026-08-27 (measured on two specs, reproduces on all ten).
+  Lanes: mcp.
+
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-08-11 triage
 
 35 un-triaged findings across 9 of the 18 shared-root feedback files (AI

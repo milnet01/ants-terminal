@@ -380,3 +380,51 @@ TEST(DocCitationsScan, Inv40OverLongLocusRecognisedThenRejected) {
            "INV-40/one-past-cap-rejected", render(over));
     ASSERT_EQ(0, expect_finish());
 }
+
+// ANTS-4743 — a zero must say whether it is CLEAN or SILENT.
+//
+// The grammar recognises `path:line`, and the authoring standard forbids
+// authors writing that form — "line numbers are not grounding: they rot on the
+// next edit. Cite the symbol." So the one form this can see is the one banned
+// where it is most used, and a conforming corpus scans to zero. Measured on two
+// specs of 485 and 650 lines, both dense with citations: count 0, every bucket
+// 0, and an EMPTY unparsed reinforcing it — nothing was rejected because
+// nothing was recognised as a candidate.
+//
+// The zero is then laundered: check-doc-facts sorts a clean run into its
+// findings-empty bucket and review-contract tells its cold lanes the mechanical
+// checks are settled, so an unrun check becomes a fact they may not question.
+TEST(DocCitationsScan, Ants4743UnrecognisedCitationShapesAreCounted) {
+    expect_reset();
+
+    // The reporter's own forms, backticked as they appear in a spec.
+    const auto sym = scan("see `serve.py::build_model()` for the shape\n");
+    expect(sym.citations.isEmpty(), "4743/symbol-not-a-citation", render(sym));
+    expect(sym.unrecognisedCandidates == 1, "4743/symbol-counted", render(sym));
+
+    const auto path = scan("per `docs/specs/LOTTO-0002-local-web-page.md` 4.6\n");
+    expect(path.citations.isEmpty(), "4743/path-not-a-citation", render(path));
+    expect(path.unrecognisedCandidates == 1, "4743/path-counted", render(path));
+
+    // The recognised form must NOT be counted as unseen — it is seen. Without
+    // this the counter could be "every code span" and every assertion above
+    // would still pass.
+    const auto real = scan("see `src/a.cpp:45` here\n");
+    expect(real.citations.size() == 1, "4743/real-is-a-citation", render(real));
+    expect(real.unrecognisedCandidates == 0, "4743/real-not-counted", render(real));
+
+    // Nor may ordinary prose in backticks count. The field decides what a ZERO
+    // means, so a loose test would make every backticked word evidence of a
+    // missed citation and the number useless.
+    const auto prose = scan("set `enabled` to `true` before `run`\n");
+    expect(prose.citations.isEmpty(), "4743/prose-no-citation", render(prose));
+    expect(prose.unrecognisedCandidates == 0, "4743/prose-not-counted",
+           render(prose));
+
+    // A document that genuinely cites nothing stays at zero on BOTH numbers —
+    // which is what makes the pair able to tell clean from silent.
+    const auto empty = scan("just a sentence with no code spans at all\n");
+    expect(empty.citations.isEmpty() && empty.unrecognisedCandidates == 0,
+           "4743/silent-and-clean-are-distinguishable", render(empty));
+    ASSERT_EQ(0, expect_finish());
+}

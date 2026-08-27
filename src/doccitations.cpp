@@ -258,6 +258,20 @@ ScanResult scan(const QStringList &lines, const Options &opts) {
                         + oneSpaceStrip(line.mid(s.startCol,
                                                  s.endCol - s.startCol),
                                         stripped);
+        // ANTS-4743 — count the citation-SHAPED spans this grammar cannot see,
+        // before the `:` test drops them. Conservative on purpose: this field
+        // decides what a ZERO means, so a loose test would make every
+        // backticked word evidence of a missed citation and the field useless.
+        {
+            static const QRegularExpression srcRe(
+                QRegularExpression::anchoredPattern(QStringLiteral(
+                    R"([\w./-]+\.(?:py|cpp|cc|h|hpp|js|ts|lua|sh|rs|go|md|json|ya?ml)(?:\(\))?)")));
+            // `serve.py:45` does NOT match — the pattern is anchored, so a
+            // trailing locus excludes it, which is right: that form IS seen.
+            if (stripped.contains(QLatin1String("::")) ||
+                srcRe.match(stripped).hasMatch())
+                ++r.unrecognisedCandidates;
+        }
         if (!stripped.startsWith(QLatin1Char(':'))) continue;
 
         Token tok;
@@ -1220,7 +1234,30 @@ QJsonObject check(const QString &rootCanonical, const QString &docAbsPath,
          QJsonArray::fromStringList(kOverlayKeys)},
         {QStringLiteral("unparsed"), unparsedOut},
         {QStringLiteral("unparsed_total"), unparsedRows.size()},
-        {QStringLiteral("basename_index_size"), opts.basenameIndex.size()}};
+        {QStringLiteral("basename_index_size"), opts.basenameIndex.size()},
+        // ANTS-4743 — say what this verb can SEE, on every reply. An absent
+        // list is indistinguishable from a build that recognises everything.
+        {QStringLiteral("forms_recognised"),
+         QJsonArray{QStringLiteral("path:line"),
+                    QStringLiteral("path:startLine-endLine"),
+                    QStringLiteral(":line (continuation)")}}};
+    // The zero that needs explaining. Emitted only when the document produced
+    // no citations AND something in it read like one: on a document that
+    // genuinely cites nothing, the pair would be noise.
+    if (entries.isEmpty() && sc.unrecognisedCandidates > 0) {
+        out.insert(QStringLiteral("unrecognised_candidates"),
+                   sc.unrecognisedCandidates);
+        out.insert(QStringLiteral("citations_hint"), QStringLiteral(
+            "count:0 here is SILENT about this document, not clean about it. "
+            "%1 code span(s) read as a source citation in a form this verb "
+            "does not recognise — `path::symbol`, `Class::method()`, or a bare "
+            "backticked path. Only `path:line` is scanned, and the spec-format "
+            "standard forbids authors writing that form, so a conforming "
+            "corpus scans to zero. `unparsed` is empty for the same reason: "
+            "nothing was rejected because nothing was recognised as a "
+            "candidate. Do not record this run as a citation check that "
+            "passed.").arg(sc.unrecognisedCandidates));
+    }
     if (opts.basenameIndexTruncated)
         out.insert(QStringLiteral("basename_index_truncated"), true);
 

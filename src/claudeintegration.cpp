@@ -6266,8 +6266,20 @@ void ClaudeIntegration::onMcpConnection() {
                     "anchorless citations reports every one of them there. offset pages; max_range_lines "
                     "bounds the lines per citation; max_bytes the response; max_doc_lines the "
                     "scanned prefix. Tokens that look like citations but resolve nowhere land "
-                    "in unparsed[] rather than being guessed at. Read-only. caller_cwd "
-                    "required.");
+                    "in unparsed[] rather than being guessed at. "
+                    "ANTS-4743: a count of 0 now says whether it is CLEAN or "
+                    "SILENT. Only `path:line` is recognised (see "
+                    "forms_recognised, on every reply), and the spec-format "
+                    "standard forbids authors writing that form — cite the "
+                    "symbol, not the line — so a conforming spec corpus scans "
+                    "to zero with an EMPTY unparsed[] reinforcing it: nothing "
+                    "was rejected because nothing was recognised as a "
+                    "candidate. A zero over a document holding "
+                    "citation-shaped spans (`path::symbol`, "
+                    "`Class::method()`, a bare backticked path) now carries "
+                    "`unrecognised_candidates` and a hint. Do NOT record such "
+                    "a run as a citation check that passed. Read-only. "
+                    "caller_cwd required.");
                 docCit["selection_hint"] = QStringLiteral(
                     "Use when reviewing a doc full of file:line references, to check every "
                     "one still points where it claims — instead of opening each file by "
