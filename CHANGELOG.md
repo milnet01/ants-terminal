@@ -42,6 +42,12 @@ for security-relevant changes.
 
 ### Changed
 
+- **apply_edits says a transport timeout means UNKNOWN, not failed** (ANTS-4733)
+  Measured: a batch reported a timeout, the files showed nothing written,
+  and the write then landed — so the obvious recovery of looking and
+  re-sending races a write still in flight. The description now says to
+  re-read before deciding, and why the unique-`old` form is the safe one.
+
 - **Three source-scrape tests now anchor on the construct they mean, not on the first match** (ANTS-4727)
   Each opened its search window on a string that occurs several times, and
   landed on the intended site only because of where the translation units
@@ -56,6 +62,15 @@ for security-relevant changes.
   A test looks in the wrong part of the file, so it can pass without checking anything.
 
 ### Fixed
+
+- **doc_citations resolves a bare basename naming a markdown document where the codebase index cannot** (ANTS-4728)
+  A skill citing a standard as `commits.md` — a file living under
+  standards/ — matched none of the resolver's three routes in a tree with no
+  codebase index, so the quotation came back unverified and, in an
+  aggregate, looked like a pass. The caller now supplements the basename map
+  with a bounded markdown scan, and only where the index was absent or
+  truncated. A basename with two matches stays ambiguous rather than being
+  guessed.
 
 - **section_etag_match's schema says it is ignored under mode:"headline_only", and the code honours it.** (ANTS-4732)
   A tool's own instructions say one of its shortcuts does not work in a certain mode, but it does.

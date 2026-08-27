@@ -1070,6 +1070,39 @@ QJsonDocument RemoteControl::cmdDocCitations(const QJsonObject &req) {
         }
     }
 
+    // ANTS-4728 — a bare basename naming a MARKDOWN document, where the
+    // codebase index cannot answer.
+    //
+    // Reported after measuring a skill tree: a skill cites a standard as
+    // `commits.md`, the file lives at standards/<name>, and none of the
+    // resolver's three routes reaches it — not the citing document's own
+    // directory, not the repo root, and not the basename map, which is empty
+    // in a tree with no codebase index. Every such quotation came back
+    // target_unresolved: honest, but in an aggregate it is indistinguishable
+    // from a clean pass, and one of the measured cases was a skill quoting its
+    // own superseded wording, where not_found was the right answer.
+    //
+    // ONLY when the index could not answer — absent, or truncated. Where it
+    // exists and is complete it already walked the project, so a basename miss
+    // there is authoritative and supplementing it would be inventing a second
+    // opinion.
+    //
+    // Ambiguity is NOT resolved here on purpose: entries are appended to the
+    // same map, so a basename matching two files takes the engine's existing
+    // step-2b `ambiguous` arm with its candidate list. Guessing is how a check
+    // like this starts producing confident wrong answers — the rule ANTS-4638's
+    // attribution already follows.
+    //
+    // Bounded, because this is a READ verb: markdown only, no dot-segments (so
+    // .git and friends cost nothing), and a file cap. Markdown files are few
+    // even in large trees; the cap is a backstop, not a budget.
+    bool mdScanUsed = false;
+    int  mdScanFiles = 0;
+    if (opts.basenameIndex.isEmpty() || opts.basenameIndexTruncated) {
+        mdScanFiles = docCitationsMdScan(rootCanonical, &opts.basenameIndex);
+        mdScanUsed  = true;
+    }
+
     const QString rawPath = req.value(QStringLiteral("path")).toString();
     const QString abs = QDir::cleanPath(QDir(rootCanonical).filePath(rawPath));
     QJsonObject out = DocCitations::check(rootCanonical, abs, opts);
@@ -1077,6 +1110,14 @@ QJsonDocument RemoteControl::cmdDocCitations(const QJsonObject &req) {
     // string back, which is what makes a stored page self-describing.
     if (out.value(QStringLiteral("ok")).toBool())
         out[QStringLiteral("path")] = rawPath;
+    // ANTS-4728 — say when a resolution could have come from the markdown
+    // scan rather than the index. `basename_index_size` alone would report a
+    // populated map and give no clue where it came from, and the two have
+    // different coverage: the index knows every file type, this knows *.md.
+    if (mdScanUsed && out.value(QStringLiteral("ok")).toBool()) {
+        out[QStringLiteral("md_scan_used")]  = true;
+        out[QStringLiteral("md_scan_files")] = mdScanFiles;
+    }
     // etag injected centrally (isEtagSupportedTool).
     return QJsonDocument(out);
 }
@@ -1122,6 +1163,35 @@ QJsonObject RemoteControl::docCitationsValidate(const QString &rootCanonical,
 // than refuse, and a wrong-typed numeric falls back to its DEFAULT rather than
 // to a clamp endpoint — a caller who sends a string got the argument wrong, and
 // the default is the answer they would have had by omitting it.
+// ANTS-4728 — see the declaration for why this is a static rather than inline
+// in the handler. Bounded because doc_citations is a READ verb: markdown only,
+// and a file cap that is a backstop rather than a budget — markdown files are
+// few even in large trees.
+//
+// Dot-directories are excluded by the FILTER, not by a check of our own:
+// omitting QDir::Hidden stops QDirIterator descending into .git, .venv, .ants
+// and the rest, which is where the recursion would otherwise spend its time.
+// An explicit dot-segment guard was written here first and measured dead — the
+// iterator never yields such a path for it to reject. It is stated rather than
+// re-added because adding QDir::Hidden later would silently re-open the
+// recursion; the ANTS-4728 test is what holds that shut.
+int RemoteControl::docCitationsMdScan(const QString &rootCanonical,
+                                      QHash<QString, QStringList> *index) {
+    if (!index) return 0;
+    constexpr int kMdScanCap = 5000;
+    const QDir rootDir(rootCanonical);
+    QDirIterator it(rootCanonical, QStringList{QStringLiteral("*.md")},
+                    QDir::Files | QDir::NoSymLinks,
+                    QDirIterator::Subdirectories);
+    int seen = 0;
+    while (it.hasNext() && seen < kMdScanCap) {
+        const QString rel = rootDir.relativeFilePath(it.next());
+        ++seen;
+        (*index)[rel.section(QLatin1Char('/'), -1)].append(rel);
+    }
+    return seen;
+}
+
 DocCitations::Options RemoteControl::docCitationsClampOptions(const QJsonObject &req) {
     DocCitations::Options o;
     const auto clamped = [&req](const char *key, int def, int lo, int hi) {

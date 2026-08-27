@@ -669,6 +669,15 @@ public:
     static QJsonObject docCitationsValidate(const QString &rootCanonical,
                                             const QJsonObject &req);
     static DocCitations::Options docCitationsClampOptions(const QJsonObject &req);
+
+    // ANTS-4728 — the markdown basename supplement, factored out of the
+    // handler so it can be driven without a live MainWindow (the handler needs
+    // one; a directory walk does not). Appends `basename -> relpath` into
+    // `index` and returns the number of files scanned. Deliberately APPENDS:
+    // a basename that ends up with two paths takes the engine's existing
+    // `ambiguous` arm rather than being resolved here by a guess.
+    static int docCitationsMdScan(const QString &rootCanonical,
+                                  QHash<QString, QStringList> *index);
     // ANTS-2161 — project_settings: detect a misplaced layout + create/update
     // .ants/project.json (ops detect / init / set) via ProjectSettings.
     QJsonDocument cmdProjectSettings(const QJsonObject &req);

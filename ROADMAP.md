@@ -47218,7 +47218,7 @@ envelope dropped `source`/`path`/`etag`/`total`/`filter`.
   Source: in-session-2026-08-27, sweep prompted by ANTS-4724.
   Lanes: mcp, tests.
 
-- 📋 [ANTS-4728] **doc_citations cannot resolve a bare basename naming a project standard, so the most-cited class of document is never checked.**
+- ✅ [ANTS-4728] **doc_citations cannot resolve a bare basename naming a project standard, so the most-cited class of document is never checked.**
   MEASURED by the reporter, not inferred. ANTS-4639 gave the resolver three
   routes for a bare basename: the scanned document's own directory, the repo
   root, and the codebase-index basename map. A skill cites a standard as
@@ -47244,6 +47244,34 @@ envelope dropped `source`/`path`/`etag`/`total`/`filter`.
 
   PREFER (1): it needs no per-project declaration and its refusal rule is
   already precedented here.
+  Resolved (2026-08-27): the CALLER supplements the basename map with a
+  bounded markdown scan when the codebase index could not answer.
+
+  IN THE CALLER, NOT THE ENGINE, and that placement is the design. The
+  engine is deliberately Qt6::Core-pure and takes its basename map as an
+  argument so it stays unit-testable without an index on disk; a directory
+  walk inside it would cost that. Factored into a static so a test can drive
+  it without a live MainWindow, mirroring the two statics this handler
+  already exposes.
+
+  ONLY WHEN THE INDEX IS ABSENT OR TRUNCATED. Where it exists and is
+  complete it already walked the project, so a basename miss there is
+  authoritative and supplementing it would invent a second opinion. That is
+  also exactly the reported case: the measured tree has no codebase index.
+
+  AMBIGUITY IS NOT RESOLVED HERE. Entries are appended, so a basename with
+  two matches takes the engine's existing `ambiguous` arm with its candidate
+  list -- the reporter's own preferred rule, and the one ANTS-4638's
+  attribution already follows.
+
+  A DEAD GUARD WAS FOUND AND REMOVED BY THE MUTATION, which is the part
+  worth recording. The first version carried an explicit dot-segment skip
+  with a comment claiming it kept .git out. Mutating it away changed
+  nothing: omitting QDir::Hidden already stops QDirIterator descending into
+  hidden directories, so the guard never fired and its test was passing for
+  the wrong reason. The guard is gone, the comment now names the real
+  mechanism, and the test was re-proved by adding QDir::Hidden instead --
+  which reddens it. Suite 3999/3999 green.
   **Layman:** A checker that verifies quotations gives up on the documents it is asked about most, and the give-up looks like a pass.
   Kind: fix.
   Source: claude_config_Ants_MCP_Feedback.md 2026-08-27 (measured across four skill files).
@@ -47413,7 +47441,7 @@ envelope dropped `source`/`path`/`etag`/`total`/`filter`.
   Source: in-session-2026-08-27, found while settling ANTS-4725's cross-mode claim against the source.
   Lanes: mcp, docs.
 
-- 📋 [ANTS-4733] **apply_edits reports a transport timeout while the write is still in flight, so a caller that checks and retries races it.**
+- ✅ [ANTS-4733] **apply_edits reports a transport timeout while the write is still in flight, so a caller that checks and retries races it.**
   OBSERVED ONCE, with the sequence recorded because it is the evidence.
 
   A three-file apply_edits batch returned `Ants MCP transport: timed out`.
@@ -47448,6 +47476,20 @@ envelope dropped `source`/`path`/`etag`/`total`/`filter`.
   description that a transport timeout does not mean the write did not
   happen, and that the safe recovery is to re-read the file rather than
   re-send the batch.
+  Resolved (2026-08-27) for the half that is certainly ours: apply_edits'
+  description now says a transport timeout means UNKNOWN rather than failed,
+  names the measured sequence, and tells a caller to re-read rather than
+  re-send.
+
+  It also names WHY the unique-`old` form is the safe one here -- its
+  not_found refusal is what turned this session's duplicate re-send into a
+  no-op -- and that neither `replace_all` nor a start_line/end_line range
+  has an equivalent guard.
+
+  WHAT IS NOT DONE: whether the timeout is the protocol's or the verb's is
+  unmeasured, and that measurement is ANTS-4709's, which reports the same
+  class of failure at the JSON boundary. Describing a guessed limit is how a
+  false claim ships, so nothing about a size threshold was written.
   **Layman:** A file-editing tool said it timed out, then finished the job anyway — so checking whether it worked gave the wrong answer.
   Kind: fix.
   Source: in-session-2026-08-27, hit while applying ANTS-4727's three test edits.

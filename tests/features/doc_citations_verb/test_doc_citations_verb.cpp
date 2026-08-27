@@ -274,6 +274,62 @@ TEST(DocCitationsVerb, Inv22DescriptorShape) {
 
 // INV-48 — the Required contract, which is what makes the dispatcher answer
 // caller_cwd_required before the handler runs.
+// ANTS-4728 - a bare basename naming a markdown document resolves where the
+// codebase index cannot answer.
+//
+// Reported after measuring a skill tree: a skill cites a standard as
+// `commits.md`, the file lives at standards/<name>, and none of the resolver's
+// three routes reaches it - not the citing document's own directory, not the
+// repo root, and not the basename map, which is EMPTY in a tree with no
+// codebase index. Every such quotation came back target_unresolved. That is
+// honest, but in an aggregate it is indistinguishable from a clean pass, and
+// one measured case was a skill quoting its own superseded wording, where
+// not_found was the right answer and never came.
+TEST(DocCitationsVerb, Ants4728MdScanSupplementsAnEmptyBasenameIndex) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString root = tmp.path();
+    ASSERT_TRUE(writeFile(root + QStringLiteral("/standards/commits.md"),
+                          QByteArrayLiteral("# Commits\n")));
+    ASSERT_TRUE(writeFile(root + QStringLiteral("/docs/guide.md"),
+                          QByteArrayLiteral("# Guide\n")));
+    // A dot-directory must contribute nothing. It holds no document anyone
+    // cites, and here it would also manufacture a false ambiguity on the very
+    // basename the fix exists to resolve.
+    ASSERT_TRUE(writeFile(root + QStringLiteral("/.git/hooks/commits.md"),
+                          QByteArrayLiteral("decoy\n")));
+
+    QHash<QString, QStringList> index;
+    const int seen = RemoteControl::docCitationsMdScan(root, &index);
+
+    EXPECT_EQ(2, seen) << "two markdown files sit outside dot-directories";
+    ASSERT_TRUE(index.contains(QStringLiteral("commits.md")))
+        << "ANTS-4728: a standard cited by bare basename must be reachable";
+    EXPECT_EQ(index.value(QStringLiteral("commits.md")),
+              QStringList{QStringLiteral("standards/commits.md")});
+    EXPECT_TRUE(index.contains(QStringLiteral("guide.md")));
+    EXPECT_EQ(index.value(QStringLiteral("commits.md")).size(), 1)
+        << "the decoy under .git must not create a false ambiguity";
+}
+
+// ANTS-4728 - and a basename with two real matches stays AMBIGUOUS.
+TEST(DocCitationsVerb, Ants4728DuplicateBasenameIsLeftAmbiguous) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString root = tmp.path();
+    ASSERT_TRUE(writeFile(root + QStringLiteral("/a/notes.md"),
+                          QByteArrayLiteral("a\n")));
+    ASSERT_TRUE(writeFile(root + QStringLiteral("/b/notes.md"),
+                          QByteArrayLiteral("b\n")));
+
+    QHash<QString, QStringList> index;
+    RemoteControl::docCitationsMdScan(root, &index);
+    EXPECT_EQ(index.value(QStringLiteral("notes.md")).size(), 2)
+        << "both paths must be recorded so the engine takes its existing "
+           "ambiguous arm; picking one here is how a check like this starts "
+           "producing confident wrong answers";
+}
+
 TEST(DocCitationsVerb, Inv48CallerCwdRequired) {
     expect_reset();
     const QString ci = slurp(SRC_CLAUDE_INTEGRATION_CPP_PATH);
