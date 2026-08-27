@@ -60,6 +60,44 @@ TEST(ReadRegionAggregateBody, FullBody) {
     EXPECT_FALSE(body.contains(QStringLiteral("unrelated")));      // stops at the struct
 }
 
+// ANTS-4735 — brace balance means NOTHING in Python, and applying it there
+// returned a SHORT body while asserting truncated:false.
+//
+// Measured by finbreak against Python's own ast: four of six methods stopped
+// partway through their bodies, every cut point on a line carrying a brace,
+// while the two methods with no dict literal came back correct. The returned
+// slice ended before the function's own os.replace and its except-cleanup, and
+// said it was whole.
+TEST(ReadRegionAggregateBody, Ants4735PythonBodyNotBraceCapped) {
+    QTemporaryDir dir;
+    const QString root = QFileInfo(dir.path()).canonicalFilePath();
+    QDir().mkpath(root + "/src");
+    const QString path = root + "/src/backup.py";
+    const QJsonObject env = extractSym(path,
+        "def export_backup(dst):\n"        // 1
+        "    manifest = {\n"               // 2
+        "        'a': 1,\n"                // 3
+        "    }\n"                          // 4  <- the brace scan stopped HERE
+        "    tmp = write(manifest)\n"      // 5
+        "    os.replace(tmp, dst)\n"       // 6
+        "    return dst\n"                 // 7
+        "\n"                               // 8
+        "def other():\n"                   // 9
+        "    return 0\n",                  // 10
+        "export_backup");
+    ASSERT_TRUE(env.value("ok").toBool());
+    const QString body = joinLines(env);
+    EXPECT_TRUE(body.contains(QStringLiteral("os.replace(tmp, dst)")))
+        << "ANTS-4735: the brace scan closed on the dict literal's `}` and "
+           "called that the end of the function, dropping every line after "
+           "it -- here the replace, which is the kind of line a reviewer "
+           "opens the function to see";
+    EXPECT_TRUE(body.contains(QStringLiteral("return dst")));
+    EXPECT_FALSE(body.contains(QStringLiteral("def other")))
+        << "the extent must still stop at the next symbol";
+    EXPECT_GE(env.value("end_line").toInt(), 7);
+}
+
 // ANTS-3349 — when a symbol has both a forward declaration and a later
 // definition, symbol-mode returns the DEFINITION body, not the 1-line decl
 // (DOOM_Ants feedback 2026-06-28; r_vulkan.cpp forward-declares several

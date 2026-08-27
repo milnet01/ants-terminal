@@ -63,6 +63,13 @@ for security-relevant changes.
 
 ### Fixed
 
+- **read_region no longer returns a short Python function body while reporting it complete** (ANTS-4735)
+  Symbol mode brace-matched every function, and `{` opens nothing in
+  Python — so a body containing a dict literal ended at that dict's closing
+  brace, dropping everything after it, with `truncated:false` saying the
+  read was whole. In py mode the extent now comes from the flat outline,
+  which is what indentation already encodes.
+
 - **doc_citations resolves a bare basename naming a markdown document where the codebase index cannot** (ANTS-4728)
   A skill citing a standard as `commits.md` — a file living under
   standards/ — matched none of the resolver's three routes in a tree with no

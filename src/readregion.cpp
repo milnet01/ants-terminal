@@ -304,7 +304,38 @@ SymRange resolveSymbol(const QString &absPath, const QString &name) {
     // either way — its body can span the whole file, not a quotable unit.
     const QString kind = symObj.value(QStringLiteral("kind")).toString();
     const QString sig  = symObj.value(QStringLiteral("signature")).toString().trimmed();
-    const bool isAggregate = kind == QLatin1String("class") &&
+    // ANTS-4735 — brace balance means NOTHING in Python, and applying it there
+    // returned a SHORT body while reporting truncated:false.
+    //
+    // Measured against Python's own ast: four of six methods stopped partway
+    // through their bodies, each cut point on a line carrying a brace — a dict
+    // literal, a nested dict inside a call, a dict comprehension. The two
+    // methods with no dict literal came back correct, which is the control
+    // that identifies the cause. `{` opens nothing in Python, so the scan
+    // closed on the first `}` it met and called that the end of the function.
+    //
+    // The failure is the worst shape available: this is the verb a session
+    // reaches for before editing a function, rule 18 makes it the default over
+    // a native Read, and truncated:false is the field a caller checks. A slice
+    // that ended before its own error-path cleanup asserted it was whole.
+    //
+    // Indentation is what delimits a Python body, and the flat outline already
+    // encodes it: the next symbol's line is where this one ends. So the
+    // outline-derived end is not a fallback here, it is the RIGHT answer — and
+    // the reporter confirmed it would have been correct in all four failing
+    // cases.
+    //
+    // NOT WIDENED BEYOND PYTHON. Ruby is parsed by the brace-family parser and
+    // delimits with `end` rather than braces, so it plausibly shares this
+    // shape — but nobody has measured it, and guessing a language into this
+    // gate would be the same move that produced the bug.
+    // The echoed value is "py", not "python" (fileoutline's
+    // modeToLanguageString). Spelled wrong the gate matches nothing and the
+    // fix is a silent no-op, which is the same class of failure as the bug.
+    const bool braceDelimited =
+        outline.value(QStringLiteral("language")).toString()
+            != QLatin1String("py");
+    const bool isAggregate = braceDelimited && kind == QLatin1String("class") &&
         (sig.startsWith(QLatin1String("struct")) ||
          sig.startsWith(QLatin1String("class"))  ||
          sig.startsWith(QLatin1String("union")));
@@ -313,7 +344,7 @@ SymRange resolveSymbol(const QString &absPath, const QString &name) {
         // the outline-derived end stops there. Brace-match to the real close.
         const int braceEnd = braceBalancedEndLine(absPath, r.start);
         r.end = (braceEnd >= r.start) ? braceEnd : outlineEnd;
-    } else if (kind == QLatin1String("func")) {
+    } else if (braceDelimited && kind == QLatin1String("func")) {
         // ANTS-2224 — belt-and-braces cap on function bodies. When file_outline
         // misses the next symbol (e.g. an extern "C" fn — the ANTS-2159 gap),
         // outlineEnd extends past the real closing brace and swallows the

@@ -47550,7 +47550,7 @@ envelope dropped `source`/`path`/`etag`/`total`/`filter`.
   Source: in-session-2026-08-27, deferred half of ANTS-4715.
   Lanes: tooling, mcp.
 
-- 📋 [ANTS-4735] **read_region symbol mode cuts a Python body short on a brace and reports truncated:false.**
+- ✅ [ANTS-4735] **read_region symbol mode cuts a Python body short on a brace and reports truncated:false.**
   MEASURED AGAINST GROUND TRUTH, with the discriminating case included.
   Four of six methods came back cut off partway through their bodies, each
   carrying truncated:false. The two that were correct are what identify the
@@ -47581,6 +47581,38 @@ envelope dropped `source`/`path`/`etag`/`total`/`filter`.
 
   DO PART 2 EVEN IF PART 1 SLIPS. It converts a silent wrong answer into a
   visible one, which is the whole difference.
+  Resolved (2026-08-27): symbol mode no longer brace-matches a py file. The
+  extent comes from the flat outline -- the next symbol's line -- which is
+  what indentation already encodes, and which the reporter confirmed would
+  have been correct in every failing case.
+
+  GATED AT THE LANGUAGE, not at the symbol kind, so it covers a py class as
+  well as a py function; the aggregate branch brace-matched too.
+
+  A NEAR-MISS WORTH RECORDING: the gate was first written against
+  language == "python" and the verb echoes "py". Spelled that way it matches
+  nothing and the whole fix ships as a silent no-op -- the same class of
+  failure as the bug it repairs. Caught by checking the echo before
+  building, and the reason is now a comment beside the gate.
+
+  NOT WIDENED TO RUBY, which the brace-family parser also handles and which
+  delimits with `end`. It plausibly shares the shape; nobody has measured
+  it, and guessing a language into this gate is the move that produced the
+  bug.
+
+  PART 2 OF THE REPORT IS DECLINED, with the reason. The ask was to flag any
+  case where the computed end lands before the next outline symbol's start.
+  For C++ that is the NORMAL case -- ANTS-2224's brace cap tightens the
+  extent whenever blank lines separate a function from the next symbol -- so
+  the flag would fire on almost every healthy read and become noise. Fixing
+  the cause removes the Python case entirely, which is what part 2 existed
+  to make visible.
+
+  Verified: a new test builds a py function whose body carries a dict
+  literal followed by a second def. Against pre-fix code it fails with the
+  slice ending at the dict's closing brace, missing the os.replace and the
+  return -- the reporter's own failure, reproduced. Suite 4000/4000 green.
+  read_region's description now states the py extent rule.
   **Layman:** Asking for a function's code can return only part of it while saying it returned all of it.
   Kind: fix.
   Source: finbreak_Ants_MCP_Feedback.md 2026-08-27 (measured against Python's own ast).
