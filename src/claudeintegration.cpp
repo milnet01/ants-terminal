@@ -3107,6 +3107,46 @@ void ClaudeIntegration::onMcpConnection() {
                         "bound for `since`. Defaults to tomorrow's boundary, "
                         "so the default window includes today.");
                     props["until"] = untilProp;
+                    QJsonObject shipSinceProp;
+                    shipSinceProp["type"] = "string";
+                    shipSinceProp["description"] = QStringLiteral(
+                        "ANTS-4715. YYYY-MM-DD. Narrows the LIST path — "
+                        "mode:\"bullets\" and mode:\"headline_only\" — to items "
+                        "the STORE says shipped in [shipped_since, "
+                        "shipped_until), so it answers WHICH ids closed in a "
+                        "window where mode:\"report\" answers only how many. "
+                        "That gap is why a release gate had to open "
+                        "roadmap.sqlite directly. Composes with `status` and "
+                        "with pagination; REFUSES bad_mode_combo on id / ids / "
+                        "section= / section_index / bundles / report rather "
+                        "than being ignored, because an ignored window returns "
+                        "something that looks like a release list and is not "
+                        "one. Store-backed projects only (project_not_"
+                        "registered otherwise) — the roadmap FILE carries no "
+                        "ship date. Day granularity: the column is a DATE, so "
+                        "items cannot be ordered within a day. The envelope "
+                        "echoes the resolved window plus `shipped_in_window`, "
+                        "the store's own count — compare it against the rows "
+                        "returned, since an id the store dated but the file "
+                        "lacks is exactly what an audit is hunting. "
+                        "`shipped_undated` appears when the store holds "
+                        "shipped items with NO date: those cannot appear in "
+                        "any window, so a complete-looking result may not be. "
+                        "Dates are stamped going forward only; "
+                        "roadmap_log op:\"backfill_dates\" fills the rest from "
+                        "git history.");
+                    props["shipped_since"] = shipSinceProp;
+                    QJsonObject shipUntilProp;
+                    shipUntilProp["type"] = "string";
+                    shipUntilProp["description"] = QStringLiteral(
+                        "ANTS-4715. YYYY-MM-DD, EXCLUSIVE upper bound for "
+                        "`shipped_since` — half-open like mode:\"report\"'s "
+                        "buckets, so two adjacent windows tile without "
+                        "double-counting a boundary date. Defaults to "
+                        "tomorrow, so the default window includes today. May "
+                        "be passed alone, which reads as everything shipped "
+                        "BEFORE that date.");
+                    props["shipped_until"] = shipUntilProp;
                     modeProp["description"] = QStringLiteral(
                         "Response mode. \"bullets\" (default) returns "
                         "bullets[]. \"section_index\" returns "

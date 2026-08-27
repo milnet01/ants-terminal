@@ -46703,7 +46703,7 @@ envelope dropped `source`/`path`/`etag`/`total`/`filter`.
   Source: user-request-2026-08-26 (asked whether the store's shipped dates could be used at release time).
   Lanes: release, roadmapstore.
 
-- 📋 [ANTS-4715] **roadmap_query mode:"report" gives counts over a window with no way to list the ids in it.**
+- ✅ [ANTS-4715] **roadmap_query mode:"report" gives counts over a window with no way to list the ids in it.**
   mode:"report" answers "how many shipped in this window" -- periods.since
   carries added / closed / net. It cannot answer "WHICH ones", and no other
   mode takes a date range: the bullets path filters by status, section and
@@ -46725,6 +46725,34 @@ envelope dropped `source`/`path`/`etag`/`total`/`filter`.
   the column stores YYYY-MM-DD. A caller asking for "shipped today" gets
   day granularity and cannot order within a day, which is fine for a release
   window and would not be for a throughput chart.
+  Resolved (2026-08-27): `shipped_since` / `shipped_until` on the list path,
+  backed by a new RoadmapStore::idsShippedInWindow() mirroring
+  countInWindow(). Built to the shape this bullet proposed.
+
+  REFUSES RATHER THAN IGNORES on id / ids / section= / section_index /
+  bundles / report, and on a malformed date. An ignored window is the worst
+  outcome available here: the answer looks like a release list and is not
+  one. Not store-backed refuses project_not_registered rather than answering
+  unfiltered, for the same reason.
+
+  THE COVERAGE CAVEAT IS EMITTED, not left to be discovered. `shipped_undated`
+  plus a hint appear whenever the store holds shipped items with no date --
+  those cannot appear in ANY window, so a complete-looking result may not be,
+  and on an older project that is the normal state rather than an edge case.
+  `shipped_in_window` carries the store's own count beside the rows, so an id
+  the store dated but the file lacks stays visible; that gap is what an audit
+  is hunting.
+
+  NOT DONE, deliberately: tools/check-shipped-coverage.sh still reads
+  roadmap.sqlite directly, and CLAUDE.md still says the missing set is not
+  derivable from the verb. Both remain TRUE until a build carrying this
+  ships -- the running server serves the previous binary. Migrating the
+  script now would break it for every session until then. Filed as ANTS-4734.
+
+  Verified: a new test appends two bullets, ships one, and checks the window
+  contains it and not the other; that `shipped_until` is exclusive; and that
+  both refusals fire. Mutating the feature off reddens four independent
+  assertions. Suite 3997/3997 green.
   **Layman:** You can ask how many items shipped last week, but not which ones.
   Kind: enhancement.
   Source: in-session-2026-08-26, found while building the release shipped-coverage gate.
@@ -47424,6 +47452,37 @@ envelope dropped `source`/`path`/`etag`/`total`/`filter`.
   Kind: fix.
   Source: in-session-2026-08-27, hit while applying ANTS-4727's three test edits.
   Lanes: mcp.
+
+- 📋 [ANTS-4734] **Move check-shipped-coverage.sh off the sqlite schema and onto roadmap_query, once a build carrying ANTS-4715 ships.**
+  BLOCKED ON A RELEASE, not on design. ANTS-4715 added `shipped_since` /
+  `shipped_until` to roadmap_query's list path, which is the interface the
+  script was working around. The migration is straightforward once the verb
+  is reachable.
+
+  WHY IT WAS NOT DONE IN THE SAME CHANGE. The running server serves the
+  PREVIOUSLY-launched binary, so the new arguments do not exist for any
+  session until a build carrying them is launched. Migrating the script
+  immediately would break the release gate for every session between now and
+  then -- and the gate is the thing that catches work shipping unrecorded.
+
+  TWO THINGS TO CHANGE TOGETHER, or the second is missed:
+  - tools/check-shipped-coverage.sh, which opens roadmap.sqlite directly.
+  - CLAUDE.md's release section, which states that mode:"report" gives counts
+    and no ids so the missing set is not derivable from the verb. That is
+    true of every shipped build today and becomes false with this one.
+
+  THE CLAUDE.md EDIT IS RULE 14 GATED and the routing change is why: a
+  conformer reading the current sentence keeps using the script. That is a
+  line someone would write differently, so it is the Yes branch, not the
+  stale-fact exemption.
+
+  WORTH KEEPING WHEN IT MOVES: the script reports how many shipped items
+  carry no date. The verb now emits `shipped_undated` for the same reason, so
+  the replacement should surface it rather than dropping the caveat.
+  **Layman:** A release check reads the database file directly; now that the tool can answer the question, it should ask the tool instead.
+  Kind: refactor.
+  Source: in-session-2026-08-27, deferred half of ANTS-4715.
+  Lanes: tooling, mcp.
 
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-08-11 triage
 

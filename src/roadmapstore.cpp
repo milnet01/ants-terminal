@@ -2110,6 +2110,28 @@ RoadmapStore::countInWindow(std::optional<qint64> projectId, const QDate &from,
     return out;
 }
 
+std::optional<QStringList>
+RoadmapStore::idsShippedInWindow(std::optional<qint64> projectId, const QDate &from,
+                                 const QDate &untilExclusive, QString *error) const {
+    // Same half-open window and the same lexicographic-is-chronological
+    // argument countInWindow relies on: the column is YYYY-MM-DD TEXT under a
+    // CHECK constraint, so a string comparison IS a date comparison.
+    const QString lo = from.toString(QStringLiteral("yyyy-MM-dd"));
+    const QString hi = untilExclusive.toString(QStringLiteral("yyyy-MM-dd"));
+
+    QStringList out;
+    QSqlQuery q(const_cast<QSqlDatabase &>(m_db));
+    q.prepare(QStringLiteral(
+        "SELECT id FROM item "
+        "WHERE shipped IS NOT NULL AND shipped >= ? AND shipped < ?%1 "
+        "ORDER BY shipped, id").arg(rsScopeClause(projectId)));
+    q.addBindValue(lo); q.addBindValue(hi);
+    rsBindScope(q, projectId);
+    if (!q.exec()) { if (error) *error = lastErr(q); return std::nullopt; }
+    while (q.next()) out.append(q.value(0).toString());
+    return out;
+}
+
 namespace {
 
 // Median without loading the population. Two queries: count, then the middle

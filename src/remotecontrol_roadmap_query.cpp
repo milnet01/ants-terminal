@@ -2148,6 +2148,78 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
         }
     }
 
+    // ANTS-4715 — `shipped_since` / `shipped_until`: WHICH items closed in a
+    // window, where mode:"report" answers only how many. Without it the
+    // natural release-time question — what shipped this cycle that the
+    // changelog does not mention — was unanswerable through the verb, so this
+    // project's own release gate opened roadmap.sqlite directly and a release
+    // check came to depend on the schema rather than on the interface.
+    //
+    // On the LIST path deliberately, not in the report envelope: a report that
+    // returned ids would spill on a wide window, while the list path already
+    // carries the pagination and the projection.
+    //
+    // The dates are DATES — the column stores YYYY-MM-DD — so a caller gets day
+    // granularity and cannot order within a day. Right for a release window,
+    // wrong for a throughput chart, and said here rather than discovered.
+    QDate shippedSince, shippedUntil;
+    const bool wantShippedWindow =
+        req.contains(QStringLiteral("shipped_since")) ||
+        req.contains(QStringLiteral("shipped_until"));
+    if (wantShippedWindow) {
+        bool badDate = false;
+        auto parseDay = [&](const char *key, QDate *slot) {
+            const QString raw =
+                req.value(QLatin1String(key)).toString().trimmed();
+            if (raw.isEmpty()) return;
+            *slot = QDate::fromString(raw, QStringLiteral("yyyy-MM-dd"));
+            if (!slot->isValid()) badDate = true;
+        };
+        parseDay("shipped_since", &shippedSince);
+        parseDay("shipped_until", &shippedUntil);
+        if (badDate) {
+            out["ok"]    = false;
+            out["error"] = QStringLiteral(
+                "shipped_since / shipped_until take a YYYY-MM-DD date");
+            out["code"]  = QStringLiteral("bad_args");
+            return QJsonDocument(out);
+        }
+        // Half-open [since, until), matching mode:"report"'s buckets so two
+        // adjacent windows tile without double-counting a boundary date.
+        if (!shippedSince.isValid()) shippedSince = QDate(1970, 1, 1);
+        if (!shippedUntil.isValid())
+            shippedUntil = QDate::currentDate().addDays(1);
+
+        // Refused rather than ignored wherever the branch that would honour it
+        // is not the branch that runs — the same stance the combos above take,
+        // and it matters more here: an ignored window returns something that
+        // looks like a release list and is not one.
+        QString why;
+        if (!idArg.isEmpty() || !idsArg.isEmpty())
+            why = QStringLiteral("shipped_since / shipped_until narrow a list; "
+                                 "the id / ids selectors already name their "
+                                 "items");
+        else if (mode == QLatin1String("section_index"))
+            why = QStringLiteral("shipped_since / shipped_until narrow bullets, "
+                                 "and mode:section_index returns sections");
+        else if (mode == QLatin1String("bundles"))
+            why = QStringLiteral("shipped_since / shipped_until do not combine "
+                                 "with mode:bundles, which is active-only");
+        else if (mode == QLatin1String("report"))
+            why = QStringLiteral("mode:report has its own since / until; "
+                                 "shipped_since / shipped_until narrow the "
+                                 "list path");
+        else if (!section.isEmpty())
+            why = QStringLiteral("shipped_since / shipped_until are not applied "
+                                 "on the section= path");
+        if (!why.isEmpty()) {
+            out["ok"]    = false;
+            out["error"] = why;
+            out["code"]  = QStringLiteral("bad_mode_combo");
+            return QJsonDocument(out);
+        }
+    }
+
     // ANTS-1398-INV-1: `include_section_headers` opt-in. Default false
     // — section-rollup bullets (empty id + empty headline, status emoji
     // only) are dropped from `bullets[]` server-side so clients don't
@@ -3875,6 +3947,66 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
             if (keep) filtered.append(v);
         }
     }
+    // ANTS-4715 — narrow to what the STORE says shipped in the window. This is
+    // the one filter here that cannot be answered from the parsed bullets: the
+    // roadmap file carries no ship date at all.
+    if (wantShippedWindow) {
+        RoadmapSource::ReadError winWhy = RoadmapSource::ReadError::None;
+        std::optional<QStringList> shippedIds;
+        int shippedUndated = 0;
+        if (RoadmapStore *store = roadmapStoreOrNull(&winWhy, nullptr)) {
+            if (const auto pid = RoadmapSource::migratedProject(
+                    *store, callerCanonical, text, nullptr, &winWhy)) {
+                QString err;
+                shippedIds = store->idsShippedInWindow(*pid, shippedSince,
+                                                       shippedUntil, &err);
+                if (const auto rc = store->reportCounts(*pid, &err))
+                    shippedUndated = rc->shippedUndated;
+            }
+        }
+        if (!shippedIds) {
+            // Refused, never answered unfiltered. An unfiltered list under a
+            // window argument reads as "and nothing else shipped", which is a
+            // confident wrong answer to a release question.
+            out["ok"]    = false;
+            out["error"] = QStringLiteral(
+                "shipped_since / shipped_until read ship dates from the roadmap "
+                "store; this project is not store-backed, or its dates could "
+                "not be read");
+            out["code"]  = QStringLiteral("project_not_registered");
+            return QJsonDocument(out);
+        }
+        const QSet<QString> wanted(shippedIds->cbegin(), shippedIds->cend());
+        QJsonArray inWindow;
+        for (const auto &v : std::as_const(filtered)) {
+            if (wanted.contains(
+                    v.toObject().value(QStringLiteral("id")).toString()))
+                inWindow.append(v);
+        }
+        filtered = inWindow;
+        out["shipped_since"] = shippedSince.toString(QStringLiteral("yyyy-MM-dd"));
+        out["shipped_until"] = shippedUntil.toString(QStringLiteral("yyyy-MM-dd"));
+        // The STORE's count for the window, beside the bullets actually
+        // emitted. They differ when an id the store dated is absent from the
+        // file, and that gap is the thing a release audit is looking for —
+        // reporting only the emitted rows would hide it.
+        out["shipped_in_window"] = shippedIds->size();
+        // Its own keys rather than `warning`, which the list path below also
+        // writes: two owners of one key means the last one silently wins.
+        //
+        // Undated shipped items CANNOT appear in any window, so a window that
+        // looks complete may not be. The store stamps `shipped` going forward
+        // only, which makes this the normal state of an older project rather
+        // than an edge case.
+        if (shippedUndated > 0) {
+            out["shipped_undated"]      = shippedUndated;
+            out["shipped_undated_hint"] = QStringLiteral(
+                "%1 shipped item(s) carry no ship date and cannot appear in "
+                "any window. roadmap_log op:\"backfill_dates\" fills them from "
+                "git history.").arg(shippedUndated);
+        }
+    }
+
     // ANTS-1398-INV-3a + ANTS-1425 — full-file emission drops both
     // rollup and narrator bullets post-status filter unless the caller
     // opts each class back in via the matching flag.

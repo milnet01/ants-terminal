@@ -14,6 +14,15 @@ for security-relevant changes.
 
 ### Added
 
+- **roadmap_query can list WHICH items shipped in a date window, not just how many** (ANTS-4715)
+  `shipped_since` / `shipped_until` narrow mode:"bullets" and
+  mode:"headline_only" to items the store dates inside a half-open window,
+  so the release-time question — what shipped this cycle that the changelog
+  does not mention — can be asked through the verb. It refuses rather than
+  ignores the arguments wherever the branch that would honour them is not
+  the one that runs, and reports `shipped_undated` when the store holds
+  shipped items with no date, since those can appear in no window at all.
+
 - **apply_edits takes `match_wrapped`, applying an edit whose `old` differs from the file only in where its line breaks fall** (ANTS-4723)
   Opt-in and fallback-only — consulted just where the verbatim search found
   nothing, so it can turn a refusal into an edit and never changes a call

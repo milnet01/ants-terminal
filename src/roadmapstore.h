@@ -582,6 +582,23 @@ public:
                                               const QDate &untilExclusive,
                                               QString *error = nullptr) const;
 
+    // ANTS-4715 — WHICH ids closed in a window, where countInWindow answers
+    // HOW MANY. Same half-open [from, untilExclusive) as its sibling, for the
+    // same INV-8 reason.
+    //
+    // A separate call rather than a field on WindowCounts: the report path runs
+    // that per bucket and must not pay for a list it discards, while a release
+    // audit wants the ids and does. Returned sorted by (shipped, id) so a
+    // caller diffing two runs sees a stable order.
+    //
+    // `shipped` only. The release question is what CLOSED in the window; a
+    // created-side twin can be added when something needs one, rather than
+    // guessed into the signature now and shipped untested.
+    std::optional<QStringList> idsShippedInWindow(std::optional<qint64> projectId,
+                                                  const QDate &from,
+                                                  const QDate &untilExclusive,
+                                                  QString *error = nullptr) const;
+
     // A day-count spread. `sample` is the count the median was computed FROM,
     // never the population (INV-9) — a median over four items must not read as
     // a trend across two thousand. -1 means "no sample", which is distinct from

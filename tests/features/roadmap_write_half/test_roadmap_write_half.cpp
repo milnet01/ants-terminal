@@ -1328,6 +1328,112 @@ TEST(RoadmapWriteHalf, Ants4730SyncCheckedPresentOnTheHealthyArm) {
         << "the render-and-compare ran, so the field must say so";
 }
 
+// ANTS-4715 — shipped_since / shipped_until answer WHICH ids closed in a
+// window.
+//
+// mode:"report" gives counts over a window and no ids, and no other mode took
+// a date range, so the natural release-time question — what shipped this cycle
+// that the changelog does not mention — could not be asked through the verb.
+// This project's own release gate had to open roadmap.sqlite directly, which
+// makes a release check depend on the schema rather than on the interface.
+TEST(RoadmapWriteHalf, Ants4715ShippedWindowNarrowsTheListPath) {
+    ants_test::XdgGuard guard;
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    qint64 projectId = 0;
+    const QString root = seedMigrated(guard, tmp, fixture(), &projectId);
+    ASSERT_FALSE(root.isEmpty());
+
+    RemoteControl rc(nullptr);
+    const QJsonObject added =
+        rc.cmdRoadmapLogAppendForTest(
+              appendReq(root, QStringLiteral("A bullet that ships.")))
+            .object();
+    ASSERT_TRUE(added.value(QStringLiteral("ok")).toBool());
+    const QString shippedId = added.value(QStringLiteral("id")).toString();
+    ASSERT_FALSE(shippedId.isEmpty());
+
+    const QJsonObject kept =
+        rc.cmdRoadmapLogAppendForTest(
+              appendReq(root, QStringLiteral("A bullet that stays open.")))
+            .object();
+    ASSERT_TRUE(kept.value(QStringLiteral("ok")).toBool());
+    const QString openId = kept.value(QStringLiteral("id")).toString();
+    ASSERT_FALSE(openId.isEmpty());
+
+    QJsonObject flip;
+    flip[QStringLiteral("caller_cwd")] = root;
+    flip[QStringLiteral("op")]         = QStringLiteral("flip");
+    flip[QStringLiteral("id")]         = shippedId;
+    flip[QStringLiteral("to_status")]  = QStringLiteral("shipped");
+    ASSERT_TRUE(rc.cmdRoadmapLogFlipForTest(flip)
+                    .object()
+                    .value(QStringLiteral("ok"))
+                    .toBool());
+
+    const QString today =
+        QDate::currentDate().toString(QStringLiteral("yyyy-MM-dd"));
+    const auto idsOf = [](const QJsonObject &env) {
+        QStringList ids;
+        for (const QJsonValue &v : env.value(QStringLiteral("bullets")).toArray())
+            ids << v.toObject().value(QStringLiteral("id")).toString();
+        return ids;
+    };
+
+    // The window containing today's flip.
+    QJsonObject req;
+    req[QStringLiteral("caller_cwd")]    = root;
+    req[QStringLiteral("shipped_since")] = today;
+    const QJsonObject win = rc.cmdRoadmapQuery(req).object();
+    ASSERT_TRUE(win.value(QStringLiteral("ok")).toBool())
+        << "code=" << win.value(QStringLiteral("code")).toString().toStdString();
+
+    const QStringList got = idsOf(win);
+    EXPECT_TRUE(got.contains(shippedId))
+        << "the item flipped today must fall inside a window starting today";
+    EXPECT_FALSE(got.contains(openId))
+        << "an item that never shipped carries no ship date and cannot fall "
+           "in any window";
+    EXPECT_GE(win.value(QStringLiteral("shipped_in_window")).toInt(), 1)
+        << "the store's own count ships beside the rows, so an id the store "
+           "dated but the file lacks stays visible — which is the gap a "
+           "release audit is hunting";
+
+    // Half-open at the top: `today` as the EXCLUSIVE bound must exclude what
+    // shipped today. That property is what lets two adjacent windows tile
+    // without double-counting a boundary date.
+    QJsonObject before;
+    before[QStringLiteral("caller_cwd")]    = root;
+    before[QStringLiteral("shipped_until")] = today;
+    const QJsonObject none = rc.cmdRoadmapQuery(before).object();
+    ASSERT_TRUE(none.value(QStringLiteral("ok")).toBool());
+    EXPECT_FALSE(idsOf(none).contains(shippedId))
+        << "an inclusive upper bound would count today's ship in this window "
+           "AND in the next one";
+
+    // Refused rather than ignored where the branch that would honour it is not
+    // the branch that runs.
+    QJsonObject combo;
+    combo[QStringLiteral("caller_cwd")]    = root;
+    combo[QStringLiteral("id")]            = shippedId;
+    combo[QStringLiteral("shipped_since")] = today;
+    const QJsonObject bad = rc.cmdRoadmapQuery(combo).object();
+    EXPECT_FALSE(bad.value(QStringLiteral("ok")).toBool());
+    EXPECT_EQ(bad.value(QStringLiteral("code")).toString(),
+              QStringLiteral("bad_mode_combo"))
+        << "a silently ignored window returns something that looks like a "
+           "release list and is not one";
+
+    // A malformed date is refused, not quietly read as "no window".
+    QJsonObject junk;
+    junk[QStringLiteral("caller_cwd")]    = root;
+    junk[QStringLiteral("shipped_since")] = QStringLiteral("last Tuesday");
+    const QJsonObject badDate = rc.cmdRoadmapQuery(junk).object();
+    EXPECT_FALSE(badDate.value(QStringLiteral("ok")).toBool());
+    EXPECT_EQ(badDate.value(QStringLiteral("code")).toString(),
+              QStringLiteral("bad_args"));
+}
+
 // ANTS-4614 — op:"render" publishes the store with no semantic change.
 //
 // roadmap_migrate reports markdown_rewritten:false honestly (ANTS-4482) and
