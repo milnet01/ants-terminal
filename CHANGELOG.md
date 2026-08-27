@@ -31,7 +31,30 @@ for security-relevant changes.
   never written down was invisible. The first run found 19, one closed the
   same day as the release it was missing from.
 
+### Changed
+
+- **Two ANTS-1881 combinator claims are unverified: section_etag_match's cross-mode answer, and whether the list path gates its mode echo.** (ANTS-4725)
+  Two small claims in a design document were never checked against the code, and the review ran out of loops before they could be.
+
+- **Inv2BypassesStatusAndPagination anchors on a substring that also matches an earlier `else if`, so it measures the wrong branch.** (ANTS-4724)
+  A test looks in the wrong part of the file, so it can pass without checking anything.
+
 ### Fixed
+
+- **section_etag_match's schema says it is ignored under mode:"headline_only", and the code honours it.** (ANTS-4732)
+  A tool's own instructions say one of its shortcuts does not work in a certain mode, but it does.
+
+- **section_index now warns when it returns no sections, and says which of the two reasons applies** (ANTS-4710)
+  Asking a project for its roadmap sections used to give the same empty
+  answer whether the file was unreadable or simply had none. The warning
+  names the case, using whether any id-bearing bullet parsed to tell them
+  apart.
+
+- **check_sync omits sync_checked on the healthy arm, so the field its own schema says to branch on is absent exactly when the check succeeded.** (ANTS-4730)
+  A tool tells you to check one field first, then leaves that field out of the answer that proves everything is fine.
+
+- **discarded_external_edits fires on the renderer's own format marker, so the one flag that must never cry wolf does.** (ANTS-4729)
+  A warning meant for "someone's hand-written text was thrown away" also fires when the tool adds its own header.
 
 - **Removed a dead duplicate lambda that made every build of the Claude-integration library warn** (ANTS-4687)
   A second, never-called copy of a helper sat in a different method from

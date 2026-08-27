@@ -46471,7 +46471,7 @@ envelope dropped `source`/`path`/`etag`/`total`/`filter`.
   Source: claude_config_Ants_MCP_Feedback.md 2026-08-26 (relayed from a write-code session on a C++ project).
   Lanes: mcp, docs.
 
-- 📋 [ANTS-4710] **section_index answers an unparseable roadmap and an empty one identically, and drops a requested `slugs` without saying so.**
+- ✅ [ANTS-4710] **section_index answers an unparseable roadmap and an empty one identically, and drops a requested `slugs` without saying so.**
   MEASURED by the reporter against two projects. Against a store-backed
   project the mode answers with its slugs. Against a git repo whose
   ROADMAP.md is prose -- no headings, no bullets -- it answers
@@ -46503,6 +46503,27 @@ envelope dropped `source`/`path`/`etag`/`total`/`filter`.
   ALSO RESOLVED by the same measurement: the earlier report that
   fields:["source","path","slugs"] returned fields_unmatched:["slugs"] and no
   index no longer reproduces.
+  Resolved (2026-08-27): mode:"section_index" now warns when it returns no
+  sections, and the warning distinguishes the two cases.
+
+  The discriminator is whether any id-bearing bullet parsed: none means
+  nothing about the file was recognised, some means the file parsed and
+  carries no headings. Measured BEFORE the query filter, so a filter that
+  matched nothing does not masquerade as an unreadable roadmap -- that case
+  already ships its own counters.
+
+  PART 2 NEEDED NO CODE. The reporter's own measurement shows
+    fields_unmatched:["slugs"] already being returned, which IS the
+    explanation that part asked for -- `slugs` is carried only under
+    slugs_only, so naming it there is ANTS-4567 behaving correctly. Their
+    residual question is whether a requested-but-DROPPED key should be
+    described differently from one the envelope never carries; that is a
+    question about ANTS-4567's contract rather than about this mode, and is
+    left open rather than widened on a guess.
+
+  Verified: a new test builds a prose roadmap with no headings and no
+  bullets and asserts the warning names the unreadable case. Mutating the
+  warning away reddens it.
   **Layman:** Asking a project for its roadmap sections gives the same empty answer whether the file is broken or simply has none.
   Kind: fix.
   Source: claude_config_Ants_MCP_Feedback.md 2026-08-26 (measured against two projects).
@@ -47182,7 +47203,7 @@ envelope dropped `source`/`path`/`etag`/`total`/`filter`.
   Source: claude_config_Ants_MCP_Feedback.md 2026-08-27 (measured across four skill files).
   Lanes: mcp, docs.
 
-- 📋 [ANTS-4729] **discarded_external_edits fires on the renderer's own format marker, so the one flag that must never cry wolf does.**
+- ✅ [ANTS-4729] **discarded_external_edits fires on the renderer's own format marker, so the one flag that must never cry wolf does.**
   MEASURED, with the diff. On a migrated project whose ROADMAP.md predates
   the roadmap-format marker header, the first roadmap_log write reports
   discarded_external_edits:true, and check_sync reports drift beforehand.
@@ -47209,12 +47230,32 @@ envelope dropped `source`/`path`/`etag`/`total`/`filter`.
   CHECK BEFORE BUILDING: confirm the counters are populated on the same path
   that computes the boolean. The report establishes they are present in the
   envelope, not that they are available at the decision point.
+  Resolved (2026-08-27): the boolean is computed from the file's own
+  classified lines, so a line the RENDER adds and the file lacked no longer
+  fires it.
+
+  THE MECHANISM WAS NOT QUITE THE REPORTED ONE, and checking paid. The count
+  behind the flag is TWO-DIRECTIONAL -- it counts lines on either side --
+  while the flag claims something one-directional, that the publish
+  overwrote content the file held. The marker is an ADDITION, so it can
+  never be that. Deriving the boolean from the content counters is the
+  reporter's own suggested fix and is right for a reason they did not state.
+
+  The TOTAL is deliberately unchanged: ANTS-4462 is explicit that deciding
+  which differences are cosmetic is not this check's judgement, so
+  `discarded_edit_lines` still counts every differing line. Only the claim
+  made about it is narrowed.
+
+  Verified: a new test strips the marker from a rendered file and asserts the
+  next write reports no discard. Against pre-fix code it fails with
+  discarded_external_edits:true and discarded_edit_lines present -- the
+  reporter's envelope, reproduced.
   **Layman:** A warning meant for "someone's hand-written text was thrown away" also fires when the tool adds its own header.
   Kind: fix.
   Source: Rolodex_Ants_MCP_Feedback.md 2026-08-27 (measured, with a git diff naming the two lines).
   Lanes: mcp, roadmapstore.
 
-- 📋 [ANTS-4730] **check_sync omits sync_checked on the healthy arm, so the field its own schema says to branch on is absent exactly when the check succeeded.**
+- ✅ [ANTS-4730] **check_sync omits sync_checked on the healthy arm, so the field its own schema says to branch on is absent exactly when the check succeeded.**
   MEASURED, and the reporter ruled out the obvious confound by repeating the
   call without a fields= narrowing.
 
@@ -47237,6 +47278,19 @@ envelope dropped `source`/`path`/`etag`/`total`/`filter`.
   The documentation-only alternative -- state that the field appears solely
   on the false arm -- also resolves it and is strictly weaker; prefer the
   emit.
+  Resolved (2026-08-27): `sync_checked` is now emitted on both arms, so its
+  absence means only that check_sync was not requested.
+
+  A CONTRACT CHANGE, not just an addition. Two existing tests asserted the
+  OLD shape outright -- "sync_checked is the nobody-looked marker and must
+  be absent on a measurement that ran" -- which is the behaviour the report
+  names as the defect. Both were updated with the reason recorded rather
+  than deleted. The drift counters still ride the true arm only, and that
+  asymmetry is deliberate: they are detail a healthy caller can skip, while
+  this is the field the schema tells every caller to read first.
+
+  Verified: a new test asserting presence and truth on the healthy arm fails
+  against pre-fix code. Both MCP descriptions updated.
   **Layman:** A tool tells you to check one field first, then leaves that field out of the answer that proves everything is fine.
   Kind: fix.
   Source: perch_Ants_MCP_Feedback.md 2026-08-27 (measured, with the fields= filter ruled out).
@@ -47268,7 +47322,7 @@ envelope dropped `source`/`path`/`etag`/`total`/`filter`.
   Source: Charls_Site_Ants_MCP_Feedback.md 2026-08-27 (suggested after a near-miss the existing hint prevented).
   Lanes: mcp.
 
-- 📋 [ANTS-4732] **section_etag_match's schema says it is ignored under mode:"headline_only", and the code honours it.**
+- ✅ [ANTS-4732] **section_etag_match's schema says it is ignored under mode:"headline_only", and the code honours it.**
   FOUND WHILE VERIFYING SOMETHING ELSE. roadmap_query's schema carries two
   sentences that cannot both be true.
 
@@ -47296,6 +47350,18 @@ envelope dropped `source`/`path`/`etag`/`total`/`filter`.
   section's bytes, so a caller that varies `mode` between calls can be
   answered `unchanged` for a payload shape it did not ask for. Say that
   here too rather than only that it is honoured.
+  Resolved (2026-08-27): the row now says the `section` ARGUMENT selects the
+  short-circuit, never `mode`, and that it IS honoured under
+  mode:"headline_only".
+
+  It also carries the edge the honoured behaviour has, which the old wording
+  hid by denying the behaviour outright: the etag keys on the section's
+  bytes, so a caller that varies `mode` between calls can be answered
+  `unchanged` for a payload shape it did not ask for. Same fact now recorded
+  in ANTS-1881 § 2.3.
+
+  No code change -- the code was already right and the description was
+  wrong.
   **Layman:** A tool's own instructions say one of its shortcuts does not work in a certain mode, but it does.
   Kind: doc-fix.
   Source: in-session-2026-08-27, found while settling ANTS-4725's cross-mode claim against the source.

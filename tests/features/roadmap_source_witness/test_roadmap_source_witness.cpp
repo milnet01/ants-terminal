@@ -301,9 +301,14 @@ TEST(RoadmapSourceWitness, Inv4CheckSyncSeesAHandFlipTheIdWitnessCannot) {
     EXPECT_FALSE(after.value(QStringLiteral("file_in_sync")).toBool())
         << "the file says done and the store says open; that is not in sync";
     EXPECT_GT(after.value(QStringLiteral("drift_lines")).toInt(), 0);
-    EXPECT_FALSE(after.contains(QStringLiteral("sync_checked")))
-        << "sync_checked is the nobody-looked marker and must be absent on a "
-           "measurement that ran";
+    // ANTS-4730 — this asserted ABSENCE on a measurement that ran, which is
+    // the shape perch reported as a defect. The schema tells a caller to
+    // branch on sync_checked BEFORE trusting the answer, so absence on the
+    // one arm that proves the check ran is read as "nobody looked" — by the
+    // careful caller, not the careless one. The field is emitted on both arms
+    // now, and absence means only that check_sync was not requested.
+    EXPECT_TRUE(after.value(QStringLiteral("sync_checked")).toBool())
+        << "the render-and-compare ran, so the field must say so";
 }
 
 // ANTS-4462 — and it reports the healthy case as healthy, so the signal is
@@ -333,7 +338,60 @@ TEST(RoadmapSourceWitness, Inv4CheckSyncIsQuietOnAnUneditedProject) {
     // The drift counters ride the true arm only — zeros on every healthy
     // check are fields nobody reads.
     EXPECT_FALSE(out.contains(QStringLiteral("drift_lines")));
-    EXPECT_FALSE(out.contains(QStringLiteral("sync_checked")));
+    // ANTS-4730 — sync_checked does NOT ride the true arm with the counters,
+    // and that asymmetry is the point: the counters are detail a healthy
+    // caller can skip, while this is the field the schema tells every caller
+    // to read first. A field that is absent exactly when the news is good
+    // cannot serve that purpose.
+    EXPECT_TRUE(out.value(QStringLiteral("sync_checked")).toBool());
+}
+
+// ANTS-4710 — an unparseable roadmap and a sectionless one must not answer
+// identically.
+//
+// Reported after measuring two projects. Against a git repo whose ROADMAP.md
+// is prose — no headings, no bullets — mode:"section_index" answered total:0
+// with no `slugs` and no `warning`; against a store-backed project it answers
+// with its slugs. So the two cases a caller most needs to separate — "this
+// file is not a roadmap" and "this roadmap has no sections" — differed only
+// in a count that is 0 either way. A shared skill prescribes this one call as
+// the whole answer to which roadmap is authoritative, so it reports "no
+// sections" when the true answer is "unreadable".
+TEST(RoadmapSourceWitness, Ants4710SectionIndexWarnsOnAnUnparseableRoadmap) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    XdgRedirect redirect(tmp.path());
+    QDir dir(tmp.path());
+    ASSERT_TRUE(dir.mkpath(QStringLiteral("proj")));
+    const QString root = dir.filePath(QStringLiteral("proj"));
+    // Prose: no headings, no bullets, nothing this verb can parse.
+    ASSERT_TRUE(writeFile(
+        root + QStringLiteral("/ROADMAP.md"),
+        QByteArrayLiteral("We plan to ship the thing.\n"
+                          "Then we plan to ship the next thing.\n")));
+
+    RemoteControl rc(nullptr);
+    QJsonObject req;
+    req[QStringLiteral("caller_cwd")] = root;
+    req[QStringLiteral("mode")]       = QStringLiteral("section_index");
+    const QJsonObject out = rc.cmdRoadmapQuery(req).object();
+
+    ASSERT_TRUE(out.value(QStringLiteral("ok")).toBool())
+        << "precondition: code="
+        << out.value(QStringLiteral("code")).toString().toStdString();
+    ASSERT_TRUE(out.value(QStringLiteral("sections")).toArray().isEmpty())
+        << "precondition: this fixture has no parseable sections, which is "
+           "the whole case — with sections there is nothing ambiguous to warn "
+           "about";
+    ASSERT_TRUE(out.contains(QStringLiteral("warning")))
+        << "ANTS-4710: total:0 alone cannot tell an unreadable roadmap from a "
+           "sectionless one";
+    EXPECT_TRUE(out.value(QStringLiteral("warning"))
+                    .toString()
+                    .contains(QStringLiteral("format not recognised")))
+        << "this fixture has neither headings nor id-bearing bullets, so the "
+           "warning must name the UNREADABLE case; naming the sectionless one "
+           "here would be a confident wrong answer rather than no answer";
 }
 
 // ANTS-4462 — an unmigrated project must not read as "in sync". Nobody looked

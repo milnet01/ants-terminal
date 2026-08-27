@@ -196,7 +196,27 @@ void rcdetail::rcRoadmapWriteFields(QJsonObject &out,
     // on the true arm: on a healthy project it is always zero, and a zero
     // emitted on every write is a field nobody reads.
     if (outcome.externalEditsChecked) {
-        const bool any = outcome.externalEditLines > 0;
+        // ANTS-4729 — the BOOLEAN asks whether the publish overwrote content
+        // the file held, so it is computed from the file's own classified
+        // lines. externalEditLines is two-directional: it also counts lines the
+        // RENDER holds and the file lacks, and those are additions, which can
+        // never be something the publish discarded.
+        //
+        // The reported case is the format-marker header on a project whose file
+        // was rendered before that marker existed: two render-only lines, a
+        // true flag, and every content counter zero. This is documented as the
+        // one place a silently discarded hand-edit surfaces, so a session is
+        // told to stop and investigate whenever it fires — and an investigation
+        // that routinely finds the renderer's own output is how the flag stops
+        // being read.
+        //
+        // The TOTAL is deliberately unchanged. ANTS-4462 is explicit that
+        // deciding which differences are cosmetic is not this check's
+        // judgement, so `discarded_edit_lines` still counts every differing
+        // line in both directions; only the claim made ABOUT it is narrowed.
+        const bool any = (outcome.externalRestyledLines
+                          + outcome.externalRepunctuatedLines
+                          + outcome.externalTextLines) > 0;
         out[dryRun ? QStringLiteral("would_discard_external_edits")
                    : QStringLiteral("discarded_external_edits")] = any;
         if (any) {
@@ -2434,8 +2454,15 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
         // built, must NOT read as "in sync" — that is the ANTS-4463 lesson in
         // the other direction, where a present field asserted something nobody
         // checked. `checked:false` says nobody looked.
-        if (!measured)
-            out[QStringLiteral("sync_checked")] = false;
+        //
+        // ANTS-4730 — emitted on BOTH arms. The schema tells a caller to
+        // branch on this field before trusting the answer, and a caller doing
+        // exactly that reads an absent key as falsy — concluding nobody looked,
+        // on the one response that proves somebody did. Stamping it only where
+        // it would be false defeated the misread the field was added to
+        // prevent, and did so for the CAREFUL caller. Absence now means one
+        // thing: check_sync was not requested.
+        out[QStringLiteral("sync_checked")] = measured;
     }
 
     if (!fresh) {
@@ -2850,6 +2877,40 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
                 legacyFormatSections.append(sec.slug);
             }
             sections.append(obj);
+        }
+
+        // ANTS-4710 — an UNPARSEABLE roadmap and one with genuinely no
+        // sections answered identically: total:0, no slugs, and nothing in the
+        // envelope marking which. A shared skill prescribes this one call as
+        // the whole answer to "which copy of the roadmap is authoritative", so
+        // an empty index gets reported as "no sections" when the true answer
+        // is "this file is not a roadmap" — a wrong answer with nothing in the
+        // envelope marking it wrong. The list path already warns on this
+        // shape; this is its twin.
+        //
+        // The discriminator is whether any id-bearing bullet parsed. None means
+        // nothing about the file was recognised; some means the file parsed and
+        // simply carries no headings, which is a different and far less
+        // alarming answer.
+        //
+        // Measured BEFORE the query filter below, deliberately: a filter that
+        // matched nothing leaves an empty array for a reason that has nothing
+        // to do with the parse, and that case already ships its own counters.
+        if (sections.isEmpty()) {
+            bool anyIdBearingBullet = false;
+            for (const auto &v : std::as_const(m_roadmapCacheBullets)) {
+                if (!shouldDropUnnumbered(v)) { anyIdBearingBullet = true; break; }
+            }
+            out["warning"] = anyIdBearingBullet
+                ? QStringLiteral(
+                      "this roadmap parsed but carries no section headings, so "
+                      "there are no slugs to return. total:0 here means \"no "
+                      "sections\", NOT \"unreadable\".")
+                : QStringLiteral(
+                      "no section headings parsed AND no [PROJ-NNNN]-tagged "
+                      "bullets, so total:0 means \"format not recognised\", NOT "
+                      "\"this roadmap has no sections\". Check `source` and the "
+                      "file itself before reporting it as sectionless.");
         }
 
         // ANTS-4610 — narrow by section NAME. Matched against the headline AND

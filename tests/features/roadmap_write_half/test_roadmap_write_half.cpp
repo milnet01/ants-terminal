@@ -1207,6 +1207,127 @@ TEST(RoadmapWriteHalf, Ants4462ReportsDiscardedExternalEdits) {
         << "a stale true would train callers to ignore the field";
 }
 
+// ANTS-4729 — the renderer's own format marker is not a discarded hand-edit.
+//
+// Reported from Rolodex: on a migrated project whose ROADMAP.md was rendered
+// before the format marker existed, the first write reported
+// discarded_external_edits:true — the marker comment and its blank line, which
+// the RENDER emits and the older file never had. Every content counter in the
+// same envelope read zero.
+//
+// The flag is documented as the one place a silently discarded hand-edit
+// surfaces, so a session is told to stop and investigate whenever it fires.
+// Here the investigation finds nothing anybody wrote — which is how a
+// high-trust flag becomes one that gets skimmed, and how a genuine discard
+// later gets waved through.
+TEST(RoadmapWriteHalf, Ants4729RenderOnlyMarkerIsNotADiscard) {
+    ants_test::XdgGuard guard;
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    qint64 projectId = 0;
+    const QString root = seedMigrated(guard, tmp, fixture(), &projectId);
+    ASSERT_FALSE(root.isEmpty());
+    const QString roadmap = root + QStringLiteral("/ROADMAP.md");
+
+    RemoteControl rc(nullptr);
+
+    // Canonicalise first: this write publishes the store's render, so the file
+    // becomes exactly what the render emits — marker included. Without it the
+    // migration's own normalisation would be in the diff too, and the test
+    // could not attribute the flag to the marker alone.
+    ASSERT_TRUE(rc.cmdRoadmapLogAppendForTest(
+                      appendReq(root, QStringLiteral("A canonicalising bullet.")))
+                    .object()
+                    .value(QStringLiteral("ok"))
+                    .toBool());
+
+    const QByteArray rendered = readAll(roadmap);
+    ASSERT_TRUE(rendered.contains("ants-roadmap-format"))
+        << "precondition: the render emits the format marker, which is the "
+           "line this test strips; without it there is no render-only line "
+           "and the test would pass vacuously";
+
+    // Strip ONLY the marker line, reproducing a file rendered before it
+    // existed. Nothing else changes, so every remaining difference is a line
+    // the render holds and the file lacks.
+    QByteArrayList lines = rendered.split('\n');
+    int removed = 0;
+    for (int i = 0; i < lines.size(); ++i) {
+        if (lines.at(i).contains("ants-roadmap-format")) {
+            lines.removeAt(i);
+            ++removed;
+            break;
+        }
+    }
+    ASSERT_EQ(1, removed);
+    ASSERT_TRUE(writeFile(roadmap, lines.join('\n')));
+
+    const QJsonObject env =
+        rc.cmdRoadmapLogAppendForTest(
+              appendReq(root, QStringLiteral("A bullet after the marker was stripped.")))
+            .object();
+    ASSERT_TRUE(env.value(QStringLiteral("ok")).toBool())
+        << "precondition: code="
+        << env.value(QStringLiteral("code")).toString().toStdString();
+
+    EXPECT_TRUE(readAll(roadmap).contains("ants-roadmap-format"))
+        << "precondition for the assertions below: the render really did "
+           "re-add the marker, so there WAS a difference to classify";
+    EXPECT_FALSE(env.value(QStringLiteral("discarded_external_edits")).toBool())
+        << "ANTS-4729: the marker is a line the RENDER adds and the file "
+           "lacked. An addition can never be content the publish discarded, "
+           "so flagging it fires this check on the renderer's own output";
+    EXPECT_FALSE(env.contains(QStringLiteral("discarded_edit_lines")))
+        << "the count rides the true arm only, so a false flag must not "
+           "carry one";
+}
+
+// ANTS-4730 — check_sync reports sync_checked on BOTH arms.
+//
+// Reported from perch. The schema says sync_checked:false means nobody looked
+// and is NOT a clean bill of health — which instructs a caller to branch on
+// that field before trusting the answer. On the in-sync arm the envelope
+// carried file_in_sync:true and no sync_checked key at all, so a caller doing
+// exactly what the schema said read absent as falsy and concluded nobody
+// looked, on the one response that proves somebody did. The key was emitted
+// only where it would be false, which defeats the misread it exists to
+// prevent — and lands on the careful caller rather than the careless one.
+TEST(RoadmapWriteHalf, Ants4730SyncCheckedPresentOnTheHealthyArm) {
+    ants_test::XdgGuard guard;
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    qint64 projectId = 0;
+    const QString root = seedMigrated(guard, tmp, fixture(), &projectId);
+    ASSERT_FALSE(root.isEmpty());
+
+    RemoteControl rc(nullptr);
+    // Publish first, so the file IS the store's render and the check takes its
+    // HEALTHY arm — the arm the defect was on.
+    ASSERT_TRUE(rc.cmdRoadmapLogAppendForTest(
+                      appendReq(root, QStringLiteral("A canonicalising bullet.")))
+                    .object()
+                    .value(QStringLiteral("ok"))
+                    .toBool());
+
+    QJsonObject req;
+    req[QStringLiteral("caller_cwd")] = root;
+    req[QStringLiteral("check_sync")] = true;
+    const QJsonObject env = rc.cmdRoadmapQuery(req).object();
+
+    ASSERT_TRUE(env.value(QStringLiteral("ok")).toBool())
+        << "precondition: code="
+        << env.value(QStringLiteral("code")).toString().toStdString();
+    ASSERT_TRUE(env.value(QStringLiteral("file_in_sync")).toBool())
+        << "precondition: the write above published the store, so the file is "
+           "in sync and this is the healthy arm";
+    ASSERT_TRUE(env.contains(QStringLiteral("sync_checked")))
+        << "ANTS-4730: absence on the arm that proves the check ran is read "
+           "as falsy by a caller following the schema, so it reports that "
+           "nobody looked";
+    EXPECT_TRUE(env.value(QStringLiteral("sync_checked")).toBool())
+        << "the render-and-compare ran, so the field must say so";
+}
+
 // ANTS-4614 — op:"render" publishes the store with no semantic change.
 //
 // roadmap_migrate reports markdown_rewritten:false honestly (ANTS-4482) and
