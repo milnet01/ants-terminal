@@ -47019,7 +47019,7 @@ envelope dropped `source`/`path`/`etag`/`total`/`filter`.
   Source: in-session-2026-08-27, found while writing ANTS-4712's test.
   Lanes: mcp.
 
-- 📋 [ANTS-4725] **Two ANTS-1881 combinator claims are unverified: section_etag_match's cross-mode answer, and whether the list path gates its mode echo.**
+- ✅ [ANTS-4725] **Two ANTS-1881 combinator claims are unverified: section_etag_match's cross-mode answer, and whether the list path gates its mode echo.**
   RECORDED RATHER THAN GUESSED. Both were raised as lane open questions
   in ANTS-1881's loop 12 and left unsettled for want of a source window;
   the run hit its cap (2 for a spec) before either could be windowed.
@@ -47043,6 +47043,25 @@ envelope dropped `source`/`path`/`etag`/`total`/`filter`.
   Do NOT re-gate the document for this -- loop 12 recorded an oscillating
   cap and routed it to implementation, and an amendment that RECORDS what
   the code does is the kind rule 14 exempts anyway.
+  Resolved (2026-08-27): both claims opened against the code and both hold.
+  Amended in place; the document was NOT re-gated, per this bullet.
+
+  (1) The section etag is mode-independent. `rcComputeSectionEtag` takes the
+  section slice alone, and the short-circuit returns from inside the
+  `section=` branch before the headline_only projection. So a caller
+  holding an etag taken under mode:"bullets" IS answered `unchanged`. The
+  row stands, and now records the edge that follows: vary `mode` between
+  calls and you can be answered `unchanged` for a payload shape you did not
+  ask for.
+
+  (2) The list path's mode echo IS `hasModeArg`-gated, and so is every
+  other bullets-shaped path. Only the `section_index` and `bundles`
+  branches emit unconditionally, `bundles` emitting a literal rather than
+  the caller's argument. § 2.4's back-compat claim rests on a uniform gate.
+
+  SPUN OUT: ANTS-4732 — the verification found roadmap_query's own schema
+  saying section_etag_match is ignored under mode:"headline_only", which
+  the code contradicts.
   **Layman:** Two small claims in a design document were never checked against the code, and the review ran out of loops before they could be.
   Kind: doc.
   Source: in-session-2026-08-27, ANTS-1881 review-contract loop 12 open questions.
@@ -47248,6 +47267,39 @@ envelope dropped `source`/`path`/`etag`/`total`/`filter`.
   Kind: enhancement.
   Source: Charls_Site_Ants_MCP_Feedback.md 2026-08-27 (suggested after a near-miss the existing hint prevented).
   Lanes: mcp.
+
+- 📋 [ANTS-4732] **section_etag_match's schema says it is ignored under mode:"headline_only", and the code honours it.**
+  FOUND WHILE VERIFYING SOMETHING ELSE. roadmap_query's schema carries two
+  sentences that cannot both be true.
+
+  `section_etag_match` says: "Only honoured in section= mode; ignored in
+  bullets/section_index/headline_only." The `mode` argument says
+  headline_only "composes with section=, status=, id=, pagination, and
+  ETag."
+
+  THE CODE SIDES WITH THE SECOND. The section branch is entered on
+  `section=` alone, with no mode guard. The short-circuit returns from
+  inside it BEFORE the headline_only projection. So `section=` plus
+  mode:"headline_only" plus a matching `section_etag_match` returns
+  `unchanged` -- honoured, not ignored.
+
+  The confusion looks like the phrase "section= mode", which names the
+  ARGUMENT while the list beside it names `mode` VALUES. Under section= +
+  mode:headline_only both clauses apply and they disagree.
+
+  WHY IT MATTERS, and it is small: a caller reading the row builds a
+  needless second code path for headline_only, or omits the argument and
+  pays for a body it already holds. Nobody gets a wrong answer.
+
+  WORTH FIXING WITH THE ROW, NOT INSTEAD OF IT: the honoured behaviour has
+  a real edge, now recorded in ANTS-1881 § 2.3 -- the etag keys on the
+  section's bytes, so a caller that varies `mode` between calls can be
+  answered `unchanged` for a payload shape it did not ask for. Say that
+  here too rather than only that it is honoured.
+  **Layman:** A tool's own instructions say one of its shortcuts does not work in a certain mode, but it does.
+  Kind: doc-fix.
+  Source: in-session-2026-08-27, found while settling ANTS-4725's cross-mode claim against the source.
+  Lanes: mcp, docs.
 
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-08-11 triage
 
