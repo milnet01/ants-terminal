@@ -111,6 +111,16 @@ reported against three prior releases.
    }
    ```
 
+   **`ASSERT_EQ(0, expect_finish())` is what makes the test able to
+   fail — it is not decoration.** `expect()` only RECORDS; omit the
+   closing line and every failure is counted, printed to stderr, and
+   then discarded, so the test reports green however wrong the code is.
+   A green run and a run that measures nothing look identical from
+   ctest. Cost a real green-for-the-wrong-reason test on 2026-08-27
+   (ANTS-4743), where three mutants survived a test that had recorded
+   their failures — caught by mutating, not by reading. If you take one
+   habit from this file, mutate a new test once before believing it.
+
    PASS labels are silently counted; on the first FAIL the helper
    flushes a single `(N prior ok)` summary plus the FAIL line —
    `ctest --output-on-failure` tails stay short. The macro emits
