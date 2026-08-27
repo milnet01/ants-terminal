@@ -544,3 +544,63 @@ TEST(McpInvariantCheck, Ants4742ZeroSaysMatchingIsByPathOnly) {
     ASSERT_GT(hit.value("matched_count").toInt(), 0);
     EXPECT_FALSE(hit.contains("path_match_only"));
 }
+
+// ANTS-4744 — `paths` is an alias for `files`.
+//
+// The multi-path verbs disagreed on the name: read_regions takes `items` with
+// three aliases, doc_integrity and file_outline take `paths`, and this one took
+// `files` alone. A caller arriving from any of the other three paid a round trip
+// on a refusal. There is no files-versus-directories distinction behind the
+// name — every entry is substring-matched — so the asymmetry was accidental.
+TEST(McpInvariantCheck, Ants4744PathsIsAnAliasForFiles) {
+    QTemporaryDir dir; ASSERT_TRUE(dir.isValid());
+    seedSpec(dir.path(), QStringLiteral("PROJ-0044"),
+             QStringLiteral("src/store.py"));
+
+    RemoteControl rc(nullptr);
+    const auto call = [&](const char *key) {
+        QJsonObject req;
+        req[QStringLiteral("caller_cwd")] = dir.path();
+        QJsonArray a; a.append(QStringLiteral("src/store.py"));
+        req[QString::fromUtf8(key)] = a;
+        return rc.cmdInvariantCheck(req).object();
+    };
+
+    const QJsonObject viaFiles = call("files");
+    ASSERT_TRUE(viaFiles.value("ok").toBool());
+    ASSERT_EQ(viaFiles.value("matched_count").toInt(), 1);
+
+    const QJsonObject viaPaths = call("paths");
+    ASSERT_TRUE(viaPaths.value("ok").toBool())
+        << "the alias must not refuse — a wasted round trip is the whole cost";
+    EXPECT_EQ(viaPaths.value("matched_count").toInt(),
+              viaFiles.value("matched_count").toInt())
+        << "the alias must give the SAME answer, not merely an ok one";
+
+    // `files` wins when both are sent — the house rule for every alias here.
+    // Without this arm the alias could be implemented as "last key wins".
+    {
+        QJsonObject req;
+        req[QStringLiteral("caller_cwd")] = dir.path();
+        QJsonArray good; good.append(QStringLiteral("src/store.py"));
+        QJsonArray bad;  bad.append(QStringLiteral("src/nothing_cited.py"));
+        req[QStringLiteral("files")] = good;
+        req[QStringLiteral("paths")] = bad;
+        const QJsonObject both = rc.cmdInvariantCheck(req).object();
+        EXPECT_EQ(both.value("matched_count").toInt(), 1)
+            << "`files` must win, so a caller sending both is not surprised";
+    }
+
+    // Neither key still refuses, and the refusal names both spellings — which
+    // is what makes the correction cheap from the reply alone.
+    {
+        QJsonObject req;
+        req[QStringLiteral("caller_cwd")] = dir.path();
+        const QJsonObject env = rc.cmdInvariantCheck(req).object();
+        EXPECT_FALSE(env.value("ok").toBool());
+        EXPECT_EQ(env.value("code").toString().toStdString(),
+                  std::string("bad_files"));
+        EXPECT_TRUE(env.value("error").toString().contains(QStringLiteral("paths")))
+            << "the refusal must name the alias it now accepts";
+    }
+}

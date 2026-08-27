@@ -8240,6 +8240,21 @@ void ClaudeIntegration::onMcpConnection() {
                         "among path hits, the same collision `basename_matches` "
                         "is reported-and-never-merged to avoid.");
                     props["files"]      = filesProp;
+                    // ANTS-4744 — declared, not merely accepted. ANTS-2175
+                    // builds `ignored_args` from inputSchema.properties, so an
+                    // undeclared alias answers a working call with
+                    // "ignored_args":["paths"] — telling the caller its
+                    // argument did nothing, on the call that argument steered.
+                    {
+                        QJsonObject aliasProp = filesProp;
+                        aliasProp["description"] = QStringLiteral(
+                            "Alias for `files` — the spelling doc_integrity "
+                            "and file_outline use, so the name a caller "
+                            "carries across works here too. `files` wins when "
+                            "both are sent. There is no files-versus-"
+                            "directories distinction behind the two names.");
+                        props["paths"] = aliasProp;
+                    }
                     // ANTS-3699 — response-shape selector; summary by default.
                     QJsonObject modeProp;
                     modeProp["type"] = "string";

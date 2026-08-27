@@ -14,6 +14,12 @@ for security-relevant changes.
 
 ### Added
 
+- **invariant_check takes `files` while its sibling multi-path verbs take `paths` or `items`.** (ANTS-4744)
+  `invariant_check` now accepts `paths` as an alias for `files`,
+  the spelling its sibling multi-path verbs use, so the argument name a
+  caller carries across works here too. `files` wins when both are sent,
+  and the refusal for neither names both spellings.
+
 - **invariant_check returns matched_count 0 with no hint when a spec cites the module by symbol rather than by path.** (ANTS-4742)
   `invariant_check` returning zero matches now says why it can
   be wrong. Matching is by file path only, so a spec naming the module by

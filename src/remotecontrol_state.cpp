@@ -2391,13 +2391,27 @@ QJsonDocument RemoteControl::cmdSpecQuery(const QJsonObject &req) {
 }
 
 QJsonDocument RemoteControl::cmdInvariantCheck(const QJsonObject &req) {
-    const QJsonArray filesArr =
-        req.value(QStringLiteral("files")).toArray();
+    // ANTS-4744 — `paths` is an alias for `files`.
+    //
+    // The multi-path verbs disagreed on the name: read_regions takes `items`
+    // and accepts three aliases (ANTS-3500), doc_integrity and file_outline
+    // take `paths`, and this one took `files` and accepted nothing else. A
+    // caller arriving from any of the other three spent a round trip on a
+    // refusal. There is no files-versus-directories distinction behind the
+    // name — every entry is substring-matched against spec bodies — so the
+    // asymmetry was accidental rather than meaningful.
+    //
+    // `files` wins when both are sent, the house rule for every alias here
+    // (roadmap_query's `status`/`filter`, apply_edits' `old`/`old_string`).
+    QJsonArray filesArr = req.value(QStringLiteral("files")).toArray();
+    if (filesArr.isEmpty())
+        filesArr = req.value(QStringLiteral("paths")).toArray();
     if (filesArr.isEmpty()) {
         return QJsonDocument(sqErr(
             QStringLiteral("bad_files"),
-            QStringLiteral("invariant_check: \"files\" must be a "
-                           "non-empty array of project-relative paths")));
+            QStringLiteral("invariant_check: \"files\" (or its alias "
+                           "\"paths\") must be a non-empty array of "
+                           "project-relative paths")));
     }
     const QString rootCanonical = resolveRootCanonical(m_main, req);
     if (rootCanonical.isEmpty()) {

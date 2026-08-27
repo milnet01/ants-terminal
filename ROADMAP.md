@@ -47872,6 +47872,37 @@ envelope dropped `source`/`path`/`etag`/`total`/`filter`.
   Source: LottoTracker_Ants_MCP_Feedback.md 2026-08-27 (measured on two specs, reproduces on all ten).
   Lanes: mcp.
 
+- ✅ [ANTS-4744] **invariant_check takes `files` while its sibling multi-path verbs take `paths` or `items`.**
+  The multi-path verbs disagreed on the argument name: read_regions takes
+  `items` with three aliases (ANTS-3500), doc_integrity and file_outline
+  take `paths`, invariant_check took `files` and accepted nothing else. A
+  caller arriving from any of the other three spent a round trip on a
+  bad_files refusal.
+
+  MINOR, and the reporter says so -- one wasted round trip, never a wrong
+  answer. Worth taking because the fix is small and the cost is paid by
+  every caller who reaches this verb from one of the others.
+
+  THE ASYMMETRY WAS ACCIDENTAL, checked rather than assumed: there is no
+  files-versus-directories distinction behind the name. Every entry is
+  substring-matched against spec bodies, so the two words meant the same
+  thing.
+
+  Resolved (2026-08-27): `paths` is an alias, with `files` winning when
+  both are sent -- the house rule for every alias here. Declared in the
+  schema rather than merely accepted, because ANTS-2175 builds
+  `ignored_args` from inputSchema.properties, so an undeclared alias
+  answers a WORKING call with ignored_args:["paths"] -- telling the caller
+  its argument did nothing, on the call that argument had just steered.
+  The refusal now names both spellings; the reporter singled that envelope
+  out as the thing worth keeping, since it made the correction obvious
+  from the reply alone. Two mutants killed, including the last-key-wins
+  variant.
+  **Layman:** One tool wanted a different word for the same thing, so a correct call was refused.
+  Kind: enhancement.
+  Source: Charls_Site_Ants_MCP_Feedback.md 2026-08-27 (refusal envelope recorded).
+  Lanes: mcp.
+
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-08-11 triage
 
 35 un-triaged findings across 9 of the 18 shared-root feedback files (AI
