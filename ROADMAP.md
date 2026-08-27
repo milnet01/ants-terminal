@@ -46534,6 +46534,31 @@ envelope dropped `source`/`path`/`etag`/`total`/`filter`.
   PREFER A FUNCTION-NAME PIN TO A RE-DERIVED LINE RANGE. ANTS-1881 dropped
   its line numbers rather than re-measuring them, as its own loop 3 did;
   re-deriving them just resets the clock until the next split.
+  Progress (2026-08-27) — scope MEASURED, not yet swept. Both classes are
+  wider than this bullet lists, and there is a hazard the filing did not
+  anticipate.
+
+  CONFIRMED: `mcp::isFieldProjectionTool` really is gone. `src/mcpprojection.h`
+  says so in its own words under the ANTS-4524 comment, and
+  mcp_projection's suite asserts the name is absent from the source. So the
+  "implementer re-adds the deleted gate" risk is real.
+
+  WIDER THAN FILED. The stale-`isFieldProjectionTool` class also reaches
+  ANTS-3636, ANTS-2094, ANTS-2139, ANTS-2021 and ANTS-3533, plus a
+  docs/journal note — beyond the four named here. The
+  pre-split-`remotecontrol.cpp` class also reaches ANTS-1462, ANTS-1463 and
+  ANTS-1287, plus docs/plans/ANTS-1160.md.
+
+  THE HAZARD: many hits sit inside COLD-EYES LOOP-LOG ROWS, not in spec
+  bodies. A landed loop-log row is never edited -- it records what a pass
+  found on a date, and back-dating it destroys the audit trail it is kept
+  for. ANTS-1881's own hits are all of this kind. So this is NOT a blanket
+  find-and-replace; each hit needs classifying as live body text or history
+  first, and the history is left alone.
+
+  REMAINS A GOOD SWEEP, and the function-name pin over a re-derived line
+  range still holds. Sized rather than started because a blanket sweep here
+  would have damaged five loop logs.
   **Layman:** Several design documents point at a file that no longer holds the code they describe.
   Kind: doc-fix.
   Source: in-session-2026-08-26, found by ANTS-1881's loop-9 blast-radius sweep.
