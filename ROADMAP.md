@@ -47618,7 +47618,7 @@ envelope dropped `source`/`path`/`etag`/`total`/`filter`.
   Source: finbreak_Ants_MCP_Feedback.md 2026-08-27 (measured against Python's own ast).
   Lanes: mcp.
 
-- 📋 [ANTS-4736] **mutation_probe keeps mutating the source after the transport has timed out, so a session can commit a mutant.**
+- ✅ [ANTS-4736] **mutation_probe keeps mutating the source after the transport has timed out, so a session can commit a mutant.**
   THE EVIDENCE IS THE COMMAND SEQUENCE, not the conclusion. After the batch
   returned `transport: timed out`, a git diff and a marker grep both looked
   clean; the suite then failed one test; that test alone passed; the suite
@@ -47652,6 +47652,7 @@ envelope dropped `source`/`path`/`etag`/`total`/`filter`.
 
   1 AND 2 ARE COMPLEMENTARY rather than alternatives: 2 prevents the common
   case, 1 bounds the damage when it happens anyway.
+  Resolved (2026-08-27): a batch DEADLINE, measured rather than predicted. Before each run the loop asks whether the slowest run observed so far still fits in `transport_budget_sec` (default 60, matching the bridge's read timeout; 0 disables); when it does not, the remaining mutations come back `not_run` and nothing further is written, with `budget_exhausted` plus the measured arithmetic. The reporter's fix 2 was NOT taken as written: `(mutations + 1) * timeout_sec` keys on a worst-case cap almost never reached, so the default 300 s cap over their own 17 s suite would have refused a batch finishing in a fifth of the budget. Fix 1's aim is met by the same mechanism, and better than a socket probe would meet it -- stopping BEFORE the crossing means the partial reply still arrives, so the caller reads the arithmetic off its own run. Predicate extracted as `MutationProbe::budgetExhausted` so it is unit-testable, matching `judgeBaseline`. Four mutants killed.
   **Layman:** A tool that temporarily damages code to test it can keep going after it has told you it gave up.
   Kind: fix.
   Source: finbreak_Ants_MCP_Feedback.md 2026-08-27 (observed, with the intervening commands recorded).

@@ -368,3 +368,71 @@ TEST(MutationProbe, Ants4521AbsentExpectationIsUnchangedBehaviour) {
               std::string("survived"));
     EXPECT_TRUE(QFileInfo::exists(sentinel));
 }
+
+// ---------------------------------------------------------------------------
+// ANTS-4736 — the batch must stop before the transport stops waiting.
+//
+// Observed: a 5-mutation batch returned `transport: timed out`, and the file
+// went on being mutated between the caller's NEXT commands — a suite that
+// failed one test, then passed that test alone, then passed twice. The probe
+// still held the file after it had reported failure to the caller.
+//
+// This is the leaked mutant `restored_clean` exists to report, reached by the
+// one route where the caller cannot receive that field. A session reacting to
+// the unexplained red by editing is editing a file it does not control.
+
+// The estimate is the slowest run OBSERVED, never `timeout_sec`. That argument
+// is a worst-case cap almost never reached — predicting from it would refuse a
+// batch that finishes in a fifth of the budget, which is the common case.
+TEST(MutationProbe, Ants4736DeadlineIsMeasuredNotPredicted) {
+    using MutationProbe::budgetExhausted;
+
+    // The reporter's own numbers: a 17 s suite, 60 s budget. Runs are taken
+    // until one more would not fit — three of them, reply at ~51 s, inside the
+    // budget. Predicting from timeout_sec (default 300) would have refused the
+    // batch outright at zero runs.
+    EXPECT_FALSE(budgetExhausted(17'000, 17'000, 60));
+    EXPECT_FALSE(budgetExhausted(34'000, 17'000, 60));
+    EXPECT_TRUE(budgetExhausted(51'000, 17'000, 60))
+        << "a fourth 17 s run would land at 68 s, past the 60 s budget";
+
+    // Exactly fitting is not exhausted — the run lands ON the boundary, and
+    // refusing it would cost a legitimate run on every batch that tiles evenly.
+    EXPECT_FALSE(budgetExhausted(40'000, 20'000, 60));
+    EXPECT_TRUE(budgetExhausted(40'001, 20'000, 60));
+
+    // Nothing measured yet ⟹ never stop. The gate needs one completed run to
+    // estimate from, so the first is always taken and a batch of ONE behaves
+    // exactly as it did before this change.
+    EXPECT_FALSE(budgetExhausted(999'999, 0, 60));
+
+    // 0 disables it, for a caller that raised ANTS_MCP_READ_TIMEOUT_S.
+    EXPECT_FALSE(budgetExhausted(999'999, 999'999, 0));
+
+    // Without this arm every assertion above is satisfied by a function that
+    // returns false unconditionally.
+    EXPECT_TRUE(budgetExhausted(1'000, 60'000, 60));
+}
+
+// The deadline must live in the loop that WRITES, not merely in the schema. A
+// budget declared and not spent is the defect wearing a fix's clothes.
+TEST(MutationProbe, Ants4736DeadlineIsWiredIntoTheMutationLoop) {
+    const std::string body = ants_test::slurpFunctionBody(
+        ants_test::slurpRemoteControl(),
+        "QJsonDocument RemoteControl::cmdMutationProbe");
+    ASSERT_FALSE(body.empty()) << "cmdMutationProbe body not found";
+
+    EXPECT_NE(body.find("budgetExhausted"), std::string::npos)
+        << "the deadline must be consulted inside the loop that mutates";
+    EXPECT_NE(body.find("transport_budget_sec"), std::string::npos);
+
+    // A skipped mutation gets its OWN row. Dropping it from `results` would
+    // let a caller zipping labels against verdicts mis-pair silently, and a
+    // skip must never be readable as evidence about the suite.
+    EXPECT_NE(body.find("\"not_run\""), std::string::npos);
+    EXPECT_NE(body.find("budget_exhausted"), std::string::npos);
+
+    // Discoverable, or it cannot be raised deliberately.
+    const std::string ci = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    EXPECT_NE(ci.find("transport_budget_sec"), std::string::npos);
+}

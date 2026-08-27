@@ -1701,6 +1701,33 @@ QJsonDocument RemoteControl::cmdMutationProbe(const QJsonObject &req) {
     int timeoutSec = qBound(5, req.value(QStringLiteral("timeout_sec"))
                                    .toInt(300), 1800);
 
+    // ANTS-4736 — the batch deadline.
+    //
+    // The bridge stops waiting for a reply after ANTS_MCP_READ_TIMEOUT_S
+    // (tools/mcp-bridge.py, default 60) while this loop keeps running. So a
+    // batch that outlives it went on mutating the file BETWEEN the caller's
+    // next commands: observed as a suite that failed one test, then passed it
+    // alone, then passed twice. That is the leaked-mutant failure this verb
+    // exists to prevent, reached by the one route `restored_clean` cannot
+    // report — the caller is no longer there to receive it.
+    //
+    // MEASURED, NOT PREDICTED. Refusing up front on (mutations + 1) *
+    // timeout_sec keys on a worst-case CAP that is almost never reached: the
+    // default 300 s cap over a 17 s suite refuses a batch that would have
+    // finished in a fifth of the budget. So the budget is spent as it is
+    // consumed — before each run, stop if the SLOWEST run so far would not fit
+    // in what is left. Stopping BEFORE the crossing is what makes the partial
+    // reply arrive, so the caller reads the arithmetic off its own run instead
+    // of inferring it from a timeout.
+    //
+    // 0 disables the deadline, for a caller that raised the env override.
+    const int budgetSec =
+        qBound(0, req.value(QStringLiteral("transport_budget_sec")).toInt(60),
+               1800);
+    QElapsedTimer batchClock;
+    batchClock.start();
+    qint64 slowestRunMs = 0;
+
     // Read the baseline ONCE. Every mutation is applied to this, never to the
     // previous mutant, so two mutations cannot compound.
     QFile bf(check.resolved);
@@ -1714,12 +1741,18 @@ QJsonDocument RemoteControl::cmdMutationProbe(const QJsonObject &req) {
 
     struct RunOut { bool started; bool timedOut; int exitCode; QString output; };
     auto runTests = [&]() -> RunOut {
+        QElapsedTimer runClock;
+        runClock.start();
         QProcess p;
         p.setWorkingDirectory(rootCanonical);
         p.setProcessChannelMode(QProcess::MergedChannels);
         p.start(argv.first(), argv.mid(1));
         RunOut o{true, false, -1, QString()};
-        if (!p.waitForStarted(5000)) { o.started = false; return o; }
+        if (!p.waitForStarted(5000)) {
+            o.started = false;
+            slowestRunMs = qMax(slowestRunMs, runClock.elapsed());
+            return o;
+        }
         if (!p.waitForFinished(timeoutSec * 1000)) {
             p.kill();
             p.waitForFinished(2000);
@@ -1730,6 +1763,7 @@ QJsonDocument RemoteControl::cmdMutationProbe(const QJsonObject &req) {
         static const int kCap = 512 * 1024;
         if (out.size() > kCap) out = out.right(kCap);
         o.output = QString::fromUtf8(out);
+        slowestRunMs = qMax(slowestRunMs, runClock.elapsed());
         return o;
     };
     // The restore, used on every exit path. Writing the ORIGINAL BYTES (not a
@@ -1751,6 +1785,8 @@ QJsonDocument RemoteControl::cmdMutationProbe(const QJsonObject &req) {
     QJsonObject out;
     QJsonArray results;
     bool restoredClean = true;
+    bool budgetStopped = false;
+    int  notRun        = 0;
 
     // Optional green-baseline gate. A RED baseline makes every result
     // meaningless — a mutant "dying" proves nothing when the suite was
@@ -1840,6 +1876,25 @@ QJsonDocument RemoteControl::cmdMutationProbe(const QJsonObject &req) {
 
         QJsonObject r;
         r[QStringLiteral("label")] = m.label;
+
+        // ANTS-4736 — spend the deadline before applying anything. The gate
+        // needs one completed run to estimate from, so the first is always
+        // taken; a batch of one therefore behaves exactly as before.
+        if (!budgetStopped &&
+            MutationProbe::budgetExhausted(batchClock.elapsed(), slowestRunMs,
+                                           budgetSec))
+            budgetStopped = true;
+        if (budgetStopped) {
+            ++notRun;
+            r[QStringLiteral("applied")] = false;
+            r[QStringLiteral("outcome")] = QStringLiteral("not_run");
+            r[QStringLiteral("summary")] = QStringLiteral(
+                "the batch would have outlived the transport budget, so this "
+                "mutation was NOT applied and no test was run. This says "
+                "nothing about the suite — re-send it in a smaller batch.");
+            results.append(r);
+            continue;
+        }
 
         const auto ap = MutationProbe::applyOne(baseline, m);
         if (!ap.ok) {
@@ -1953,6 +2008,27 @@ QJsonDocument RemoteControl::cmdMutationProbe(const QJsonObject &req) {
             }
         }
         results.append(r);
+    }
+
+    // ANTS-4736 — report the arithmetic that stopped the batch, measured. A
+    // caller that reads only `results` still sees every skipped mutation as
+    // its own `not_run` row, so a skip can never be mistaken for a verdict.
+    if (budgetStopped) {
+        out[QStringLiteral("budget_exhausted")]     = true;
+        out[QStringLiteral("mutations_not_run")]    = notRun;
+        out[QStringLiteral("elapsed_ms")]           = batchClock.elapsed();
+        out[QStringLiteral("slowest_run_ms")]       = slowestRunMs;
+        out[QStringLiteral("transport_budget_sec")] = budgetSec;
+        out[QStringLiteral("budget_hint")] = QStringLiteral(
+            "stopped after %1 ms because the slowest run so far took %2 ms and "
+            "would not fit inside the %3 s transport budget. Continuing would "
+            "mutate \"%4\" after this reply had stopped being awaited — the "
+            "leaked-mutant failure `restored_clean` cannot report, since you "
+            "would never receive it. Split the batch, lower `timeout_sec`, or "
+            "raise `transport_budget_sec` to match an increased "
+            "ANTS_MCP_READ_TIMEOUT_S.")
+                .arg(batchClock.elapsed()).arg(slowestRunMs)
+                .arg(budgetSec).arg(rawPath);
     }
 
     out[QStringLiteral("ok")]             = true;

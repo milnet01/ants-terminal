@@ -63,6 +63,16 @@ for security-relevant changes.
 
 ### Fixed
 
+- **mutation_probe keeps mutating the source after the transport has timed out, so a session can commit a mutant.** (ANTS-4736)
+  `mutation_probe` now stops a batch before it outlives the MCP
+  transport's read timeout. Previously the loop kept mutating the source
+  after the caller had been told the call timed out, so a session could
+  see an unexplained red suite and commit a file the probe still held.
+  The deadline is measured from the slowest run so far, not predicted
+  from `timeout_sec` (a worst-case cap), so batches that fit are
+  unaffected; skipped mutations report `not_run` and the reply names the
+  arithmetic. `transport_budget_sec` (default 60, 0 disables) tunes it.
+
 - **read_region no longer returns a short Python function body while reporting it complete** (ANTS-4735)
   Symbol mode brace-matched every function, and `{` opens nothing in
   Python — so a body containing a dict literal ended at that dict's closing

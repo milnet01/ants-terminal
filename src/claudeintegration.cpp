@@ -4847,6 +4847,15 @@ void ClaudeIntegration::onMcpConnection() {
                         "because a mutation hitting more sites than intended "
                         "can be killed by a test covering a site you never "
                         "meant to probe. "
+                        "ANTS-4736: the batch stops when the slowest run so "
+                        "far would not fit in `transport_budget_sec` (default "
+                        "60, matching the bridge's read timeout) — remaining "
+                        "mutations come back `not_run` with "
+                        "budget_exhausted:true and the measured arithmetic. "
+                        "Without it the loop kept mutating the file after the "
+                        "transport had given up, which reaches the leaked "
+                        "mutant by the one route `restored_clean` cannot "
+                        "report: you are no longer there to read it. "
                         "`test_command` is an ARGV ARRAY, never a shell string — "
                         "a deliberate narrowing, because this verb writes to a "
                         "source file and spawns a process. caller_cwd required.");
@@ -4923,6 +4932,21 @@ void ClaudeIntegration::onMcpConnection() {
                             toP["description"] = QStringLiteral(
                                 "Per-run wall-clock budget in seconds, clamped "
                                 "to [5, 1800].");
+                        QJsonObject tbP; tbP["type"] = "integer";
+                            tbP["default"] = 60;
+                            tbP["description"] = QStringLiteral(
+                                "ANTS-4736: batch-wide deadline in seconds, "
+                                "clamped to [0, 1800]; 0 disables it. Defaults "
+                                "to the bridge's own read timeout, so the "
+                                "batch stops while you are still waiting "
+                                "instead of mutating on unwatched. It is "
+                                "MEASURED, not predicted from `timeout_sec`: "
+                                "that is a worst-case cap almost never "
+                                "reached, so predicting from it would refuse "
+                                "batches that finish well inside the budget. "
+                                "Raise it only alongside "
+                                "ANTS_MCP_READ_TIMEOUT_S.");
+                        props["transport_budget_sec"]   = tbP;
                         props["path"]                   = pathP;
                         props["test_command"]           = cmdP;
                         props["mutations"]              = mutsP;

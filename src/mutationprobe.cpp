@@ -98,6 +98,12 @@ Counts parseCounts(const QString &output) {
 // ANTS-4401 — see mutationprobe.h. Ordered so the loudest evidence wins: a
 // non-zero exit is red whatever the counts say, and only then is the absence
 // of evidence separated from evidence of success.
+bool budgetExhausted(qint64 elapsedMs, qint64 slowestRunMs, int budgetSec) {
+    if (budgetSec <= 0)    return false;  // disabled
+    if (slowestRunMs <= 0) return false;  // nothing measured yet to estimate from
+    return elapsedMs + slowestRunMs > qint64(budgetSec) * 1000;
+}
+
 BaselineVerdict judgeBaseline(bool timedOut, int exitCode, const Counts &c) {
     if (timedOut || exitCode != 0) return BaselineVerdict::NotGreen;
     if (c.passed < 0 || c.failed < 0) return BaselineVerdict::Unreadable;

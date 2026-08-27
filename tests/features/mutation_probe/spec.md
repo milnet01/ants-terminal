@@ -15,6 +15,23 @@ session, this project six times in one evening.
 | INV-2 | `parseCounts` reads pytest, ctest and gtest summaries; unrecognised output leaves both counts at `-1`, which is distinct from `0`. *Test:* `MutationProbe.Inv2CountParsing` |
 | INV-3 | The verb is registered on the WORKER delegate, verifies `restored_clean` rather than assuming it, refuses a red baseline under `require_green_baseline`, and executes `test_command` as argv with no shell path. *Test:* `MutationProbe.Inv3GuaranteesWired` |
 | INV-4 | (ANTS-4521) A mutation may carry `expect_occurrences`. When it does not match how many times `old` occurs, THAT mutation is refused with outcome `occurrence_mismatch`, both counts reported, no write and no test run; the rest of the batch still runs. Absent ⟹ unchecked, and it does NOT default to 1 — a mutation meant to hit every site is legitimate. *Test:* `MutationProbe.Ants4521OccurrenceMismatchRefusesBeforeAnyTestRuns`, `…MatchingExpectationRunsNormally`, `…AbsentExpectationIsUnchangedBehaviour` |
+| INV-5 | (ANTS-4736) The batch stops before it outlives the transport budget: before each run, if the SLOWEST run observed so far would not fit in what remains of `transport_budget_sec`, the remaining mutations are reported `not_run` and nothing further is written. The estimate is measured, never predicted from `timeout_sec` — that is a worst-case cap almost never reached. The first run is always taken, so a batch of one is unchanged. *Test:* `MutationProbe.Ants4736DeadlineIsMeasuredNotPredicted`, `…DeadlineIsWiredIntoTheMutationLoop` |
+
+## Why the deadline is measured rather than predicted
+
+The bridge stops waiting for a reply after `ANTS_MCP_READ_TIMEOUT_S` while
+this loop keeps running. A batch that outlives it went on mutating the file
+between the caller's later commands — the leaked mutant `restored_clean`
+exists to report, reached by the one route where the caller cannot receive
+that field.
+
+Refusing up front on `(mutations + 1) * timeout_sec` was considered and is
+unsound: `timeout_sec` is a worst-case cap, so its default over a short suite
+refuses batches that would finish well inside the budget. Spending the budget
+as it is consumed costs nothing when the batch fits, and stopping *before* the
+crossing rather than after it is what makes the partial reply arrive — so the
+caller reads the arithmetic off its own run instead of inferring it from a
+timeout.
 
 ## Why `inert` is the field that matters
 

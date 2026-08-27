@@ -101,4 +101,22 @@ enum class BaselineVerdict {
 };
 BaselineVerdict judgeBaseline(bool timedOut, int exitCode, const Counts &c);
 
+// ANTS-4736 — whether the NEXT run would outlive the transport budget.
+//
+// The bridge stops waiting after ANTS_MCP_READ_TIMEOUT_S while the loop keeps
+// running, so a long batch went on mutating the file between the caller's
+// later commands — the leaked mutant, reached by the one route
+// `restored_clean` cannot report, because nobody is there to read it.
+//
+// MEASURED, NOT PREDICTED. The obvious guard — refuse up front when
+// (mutations + 1) * timeout_sec exceeds the budget — keys on a worst-case CAP
+// that is almost never reached: the default 300 s cap over a 17 s suite would
+// refuse a batch finishing in a fifth of the budget. So the estimate is the
+// slowest run OBSERVED so far, which means the first run is always taken and a
+// batch of one behaves exactly as it did before.
+//
+// Stopping before the crossing rather than after it is the point: the partial
+// reply still arrives, so the caller reads the arithmetic off its own run.
+bool budgetExhausted(qint64 elapsedMs, qint64 slowestRunMs, int budgetSec);
+
 }  // namespace MutationProbe
