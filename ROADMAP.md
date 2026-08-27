@@ -47033,6 +47033,58 @@ envelope dropped `source`/`path`/`etag`/`total`/`filter`.
   Source: in-session-2026-08-27, ANTS-1881 review-contract loop 12 open questions.
   Lanes: mcp, specs.
 
+- 📋 [ANTS-4726] **A pre-push carrying a non-docs file was classified docs-only and skipped the gate, and the misclassification does not reproduce.**
+  OBSERVED, NOT REPRODUCED. Filed on that basis rather than fixed blind.
+
+  WHAT HAPPENED. The push of ca87254a printed "docs-only push ... no local
+  gate" and skipped. Its range (143bdf3f..ca87254a) carries
+  tests/features/roadmap_query_headline_only/spec.md, which matches
+  NEITHER the hook's docs_only_re NOR ci.yml's paths-ignore. GitHub agreed
+  it was not docs-only: it created a run for that push and ran build-test,
+  qt62-baseline and build-asan to completion.
+
+  WHY IT MATTERS. That push carried a spec edit only, so nothing was at
+  risk this time. The class is the risk: the hook is the mechanism
+  commits.md § 4.2 relies on, and a hook that waves a push through on a
+  mistaken docs-only verdict is indistinguishable from one that ran and
+  passed. A skipped check followed by a green line reads as a clean run.
+
+  WHAT WAS RULED OUT. Replaying the real hook with that push's exact
+  stdin (local=ca87254a, remote=143bdf3f) RUNS THE GATE -- correctly. So
+  the logic is right given that input, and the fault is in what the hook
+  received or in state at the time, not in the regex. Also checked and
+  cleared: docs/** does match docs/specs/ (a docs/* pattern would not);
+  ROADMAP.md carries its own entry; the only triggers are push and
+  pull_request, so no schedule / workflow_run path bypasses the filter;
+  and the hook's regex and ci.yml's list agree pattern for pattern.
+
+  WHERE TO LOOK NEXT. The hook reads its ref lines from stdin and derives
+  `changed` from `git diff --name-only "$remote_sha" "$local_sha"`. The
+  untested paths are the ones where that read or that diff yields less
+  than the true range -- a short read, an empty `changed` taking a
+  different branch, or a remote_sha other than the one the reflog records.
+  Instrumenting the hook to log its computed `changed` set would settle it
+  in one push; there is no such log today, which is why a live event could
+  not be diagnosed after the fact.
+
+  SEPARATE AND ALREADY DONE: the hook's message claimed "CI skips via
+  paths-ignore" -- an assertion about a server-side decision a client-side
+  hook cannot observe, and wrong for the same change opened as a PR, since
+  ci.yml's pull_request trigger carries no paths-ignore. Reworded to state
+  the local decision only.
+
+  STILL OPEN, and the reason this is `investigate` rather than `fix`: the
+  hook's path list is a HAND-MAINTAINED TWIN of ci.yml's and nothing
+  checks they agree. That is the shape ANTS-4392 names for
+  tools/ci-parity.sh, and ANTS-4391 is what it cost -- five red commits
+  from a dependency no local run could see. The repair for that class is a
+  static check that the two agree, not a more careful copy. A comment now
+  says so; a test would say it better.
+  **Layman:** A safety check that runs before uploading code skipped itself once when it should not have, and we cannot make it happen again.
+  Kind: investigate.
+  Source: in-session-2026-08-27, observed live then investigated at a peer session's prompting.
+  Lanes: ci, tooling.
+
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-08-11 triage
 
 35 un-triaged findings across 9 of the 18 shared-root feedback files (AI

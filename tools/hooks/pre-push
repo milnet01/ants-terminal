@@ -16,9 +16,19 @@
 # `tools/ci-parity.sh --full`, which is the exact and complete CI mirror, before
 # a release or when touching packaging- / e2e-sensitive code.
 #
-# Mirrors ci.yml's push `paths-ignore`: a docs-only push (ROADMAP / CHANGELOG /
-# README / PLUGINS / LICENSE / docs/** / .roadmap-counter) skips CI, so the hook
-# skips too and stays instant.
+# Mirrors ci.yml's push `paths-ignore` (ROADMAP / CHANGELOG / README / PLUGINS /
+# LICENSE / docs/** / .roadmap-counter): a push touching only those needs no
+# local gate, so the hook skips and stays instant.
+#
+# THE LIST BELOW IS A HAND-MAINTAINED TWIN of ci.yml's, and nothing checks that
+# the two agree — the same shape as tools/ci-parity.sh, which ANTS-4392 records
+# as a parallel implementation rather than a runner. Edit one, edit the other.
+#
+# And the skip is a statement about THIS HOOK's local decision, never a
+# prediction about the remote. `paths-ignore` binds the `push` trigger only:
+# ci.yml's `pull_request` trigger carries none, so the identical change opened
+# as a PR runs the full gate. A client-side hook cannot observe which trigger
+# will fire or what the server will decide, so it must not claim to.
 #
 # Bypass (use sparingly): `git push --no-verify`.
 set -uo pipefail
@@ -87,7 +97,9 @@ if [[ "$run_gate" -eq 0 && -n "$changed" ]]; then
     # docs_only_re. If there are none, the push is docs-only and CI would skip.
     non_doc="$(grep -vE "$docs_only_re" <<<"$changed" || true)"
     if [[ -z "$non_doc" ]]; then
-        echo "pre-push: docs-only push (CI skips via paths-ignore) — no local gate."
+        echo "pre-push: changed paths are all in the docs-only set — no local gate."
+        echo "          (a local decision; says nothing about what CI will do —"
+        echo "           paths-ignore binds ci.yml's push trigger only.)"
         exit 0
     fi
 fi
