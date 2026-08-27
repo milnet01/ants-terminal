@@ -7,6 +7,7 @@
 // Drives cmdFeedbackQuery behaviourally (m_main-independent).
 
 #include "remotecontrol.h"
+#include "build_info.h"    // ANTS-4741
 
 #include <gtest/gtest.h>
 
@@ -167,4 +168,100 @@ TEST(feedback_query_foreign_resolve, Inv4SamePrefixUnaffected) {
     // Same-prefix id absent from the caller roadmap stays "unknown", not foreign.
     EXPECT_EQ(got.value("ANTS-3599").value("status").toString(),
               QStringLiteral("unknown"));
+}
+
+// ANTS-4741 — do the stale-binary comparison rather than describe it.
+//
+// This verb already carried `shipped_date`, and its own description told the
+// caller to fetch session_orient's `server_build.build_date` and compare. Both
+// operands are server-side at reply time, so the second call bought nothing —
+// and the guidance lived on a different verb from the one surfacing the date.
+//
+// Dates here are relative to the REAL build date rather than hardcoded, so the
+// test cannot go stale as the binary is rebuilt.
+TEST(feedback_query_foreign_resolve, Ants4741FlagsAShipDateNotOlderThanTheBuild) {
+    const QString buildDate = QString::fromLatin1(ANTS_BUILD_DATE);
+    ASSERT_FALSE(buildDate.isEmpty()) << "the comparison needs a build date";
+
+    QTemporaryDir root;
+    ASSERT_TRUE(root.isValid());
+    const QString sharedRoot = root.path();
+
+    const QString fb = sharedRoot + "/Consumer_Ants_MCP_Feedback.md";
+    ASSERT_TRUE(writeFile(fb, consumerFeedback()));
+    ASSERT_TRUE(writeFile(sharedRoot + "/Consumer/ROADMAP.md",
+        QString::fromUtf8("# Consumer ROADMAP\n\n"
+            "- \xF0\x9F\x93\x8B [CONS-0100] **A local planned item.**\n").toUtf8()));
+
+    // 3517 shipped long before this binary was built; 3599 shipped ON the day
+    // it was built — the ambiguous case, and the one most likely to be misread,
+    // because the dates match and only the time separates them.
+    ASSERT_TRUE(writeFile(sharedRoot + "/OwnerProj/ROADMAP.md",
+        (QString::fromUtf8(
+            "# Owner ROADMAP\n\n"
+            "- \xE2\x9C\x85 [ANTS-3517] **Shipped well before this build.**\n"
+            "  Resolved (2020-01-01): done.\n"
+            "- \xE2\x9C\x85 [ANTS-3599] **Shipped the day this build was made.**\n"
+            "  Resolved (") + buildDate +
+         QStringLiteral("): done.\n")).toUtf8()));
+
+    RemoteControl rc(nullptr);
+    QJsonObject req;
+    req["path"]       = fb;
+    req["caller_cwd"] = sharedRoot + "/Consumer";
+    const QJsonObject env = rc.cmdFeedbackQuery(req).object();
+    ASSERT_TRUE(env.value("ok").toBool());
+
+    const auto got = statusMap(env);
+    ASSERT_EQ(got.value("ANTS-3517").value("shipped_date").toString(),
+              QStringLiteral("2020-01-01"));
+    EXPECT_FALSE(got.value("ANTS-3517").contains("possibly_stale_binary"))
+        << "a fix that shipped before the build is IN this binary — flagging it "
+           "would make the flag mean nothing";
+    EXPECT_TRUE(got.value("ANTS-3599").value("possibly_stale_binary").toBool())
+        << "same-day sets it: shipped_date has no time component, so it cannot "
+           "be told from a fix that landed after the build was made";
+
+    // Both operands must sit in the one reply — putting them in two verbs is
+    // the defect, not the presentation.
+    EXPECT_EQ(env.value("server_build_date").toString(), buildDate);
+    EXPECT_TRUE(env.contains("server_build_commit"));
+    EXPECT_TRUE(env.value("possibly_stale_binary_hint").toString()
+                    .contains(QStringLiteral("relaunched")))
+        << "the hint must name the action, not just the condition";
+}
+
+// It fires only when something IS suspect. A constant flag is noise, and the
+// envelope keys must stay absent otherwise — without this arm every assertion
+// above is satisfied by an implementation that flags every shipped id.
+TEST(feedback_query_foreign_resolve, Ants4741QuietWhenEverythingPredatesTheBuild) {
+    QTemporaryDir root;
+    ASSERT_TRUE(root.isValid());
+    const QString sharedRoot = root.path();
+
+    ASSERT_TRUE(writeFile(sharedRoot + "/Consumer_Ants_MCP_Feedback.md",
+                          consumerFeedback()));
+    ASSERT_TRUE(writeFile(sharedRoot + "/Consumer/ROADMAP.md",
+        QString::fromUtf8("# Consumer ROADMAP\n\n"
+            "- \xF0\x9F\x93\x8B [CONS-0100] **A local planned item.**\n").toUtf8()));
+    ASSERT_TRUE(writeFile(sharedRoot + "/OwnerProj/ROADMAP.md",
+        QString::fromUtf8(
+            "# Owner ROADMAP\n\n"
+            "- \xE2\x9C\x85 [ANTS-3517] **Shipped well before this build.**\n"
+            "  Resolved (2020-01-01): done.\n"
+            "- \xF0\x9F\x93\x8B [ANTS-3599] **Still planned.**\n").toUtf8()));
+
+    RemoteControl rc(nullptr);
+    QJsonObject req;
+    req["path"]       = sharedRoot + "/Consumer_Ants_MCP_Feedback.md";
+    req["caller_cwd"] = sharedRoot + "/Consumer";
+    const QJsonObject env = rc.cmdFeedbackQuery(req).object();
+    ASSERT_TRUE(env.value("ok").toBool());
+
+    const auto got = statusMap(env);
+    EXPECT_FALSE(got.value("ANTS-3517").contains("possibly_stale_binary"));
+    EXPECT_FALSE(got.value("ANTS-3599").contains("possibly_stale_binary"))
+        << "a planned id has no ship date and cannot be stale";
+    EXPECT_FALSE(env.contains("server_build_date"));
+    EXPECT_FALSE(env.contains("possibly_stale_binary_hint"));
 }

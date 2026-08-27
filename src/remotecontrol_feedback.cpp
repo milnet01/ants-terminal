@@ -1,6 +1,7 @@
 // ANTS-3833 TU 9/17 — Feedback and audit verbs.
 #include "remotecontrol.h"
 #include "remotecontrol_internal.h"
+#include "build_info.h"    // ANTS-4741 — the stale-binary comparison
 #include "guithread.h"
 #include "feedbackfile.h"        // ANTS-1961 / ANTS-1962
 #include "readlog.h"
@@ -346,7 +347,47 @@ QJsonDocument RemoteControl::cmdFeedbackQuery(const QJsonObject &req) {
             }
             statusArr.append(o);
         }
+        // ANTS-4741 — do the stale-binary comparison rather than describe it.
+        //
+        // This verb already carries `shipped_date`, and its own description
+        // told the caller to fetch session_orient's `server_build.build_date`
+        // and compare. Both operands are server-side at reply time, so the
+        // second call bought nothing — and the guidance lived on a different
+        // verb from the one surfacing the ship date.
+        //
+        // SAME-DAY SETS THE FLAG. `shipped_date` has no time component, so a
+        // fix that shipped after the running build was made is indistinguishable
+        // from one that shipped before it when the dates match — and same-day
+        // is the case most likely to be misread. Flagging it is the safe
+        // direction: the cost of a false flag is one extra check, the cost of a
+        // missed one is a maintainer's triage cycle on a fix that already
+        // shipped.
+        const QString buildDate = QString::fromLatin1(ANTS_BUILD_DATE);
+        bool anyStale = false;
+        for (QJsonValueRef v : statusArr) {
+            QJsonObject o = v.toObject();
+            const QString shipped =
+                o.value(QStringLiteral("shipped_date")).toString();
+            if (shipped.isEmpty() || buildDate.isEmpty()) continue;
+            if (shipped >= buildDate) {   // ISO dates compare lexically
+                o[QStringLiteral("possibly_stale_binary")] = true;
+                anyStale = true;
+                v = o;
+            }
+        }
         out["mapped_id_status"] = statusArr;
+        if (anyStale) {
+            out[QStringLiteral("server_build_date")]   = buildDate;
+            out[QStringLiteral("server_build_commit")] =
+                QString::fromLatin1(ANTS_BUILD_COMMIT);
+            out[QStringLiteral("possibly_stale_binary_hint")] = QStringLiteral(
+                "one or more ids shipped on or after this server binary was "
+                "built (%1), so the running MCP does NOT necessarily carry "
+                "their fix. Verify against a relaunched build before "
+                "re-reporting any of them as still broken — a same-day ship "
+                "sets this flag, because shipped_date has no time component to "
+                "compare against the build time.").arg(buildDate);
+        }
         if (anyForeign)
             out[QStringLiteral("mapped_id_status_note")] = QStringLiteral(
                 "Some mapped ids belong to a different project's roadmap "

@@ -47770,6 +47770,73 @@ envelope dropped `source`/`path`/`etag`/`total`/`filter`.
   Source: Slipcase_Ants_MCP_Feedback.md 2026-08-27 (both refusals observed).
   Lanes: mcp, roadmapstore.
 
+- ✅ [ANTS-4741] **feedback_query holds both halves of the stale-binary check and makes the caller fetch the second.**
+  BOTH OPERANDS ARE SERVER-SIDE AT REPLY TIME. `mapped_id_status`
+  carries `shipped_date` on shipped ids, and this verb's own description
+  tells the caller to compare it against session_orient
+  `server_build.build_date` before re-reporting a shipped fix as still
+  broken. So the verb describes a comparison it is holding both sides of.
+
+  OBSERVED. ANTS-4733 came back ✅ shipped_date 2026-08-27; the stated fix
+  was absent from `tool_info`. Resolving that took a third call, which
+  reported the running build as fd49e63e built 2026-08-27 09:37 -- before
+  the fix landed.
+
+  THE FAILURE IS ONE-DIRECTIONAL and expensive: a false re-report costs a
+  maintainer a triage cycle on a fix that already shipped. Today it is
+  guarded by prose in a description, and by a hint living on a DIFFERENT
+  verb from the one that surfaces the ship date.
+
+  SAME-DAY IS THE AMBIGUOUS CASE and the one most likely to be misread,
+  because the dates match and only the time separates them -- which a
+  date-only `shipped_date` cannot express.
+
+  FIX: a boolean on each shipped entry, set when the ship date is not
+  strictly older than the running build's date, so same-day sets it.
+  Carry the existing stale_check_hint text alongside so the reply is
+  self-explaining. If the flag reads as too strong a claim, echoing
+  build_date + build_commit at least puts both operands in one place.
+  Resolved (2026-08-27): each shipped entry in `mapped_id_status` now carries `possibly_stale_binary:true` when its ship date is NOT strictly older than the running binary's build date, and the envelope then echoes `server_build_date`, `server_build_commit` and a hint naming the action. Both operands were already server-side at reply time, so the second call bought nothing. SAME-DAY SETS THE FLAG, deliberately: `shipped_date` has no time component, so a fix that landed after the build is indistinguishable from one that landed before it when the dates match -- and that is the case most likely to be misread. The asymmetry decides it: a false flag costs one extra check, a missed one costs a maintainer's triage cycle on a fix that already shipped. Dates in the test are relative to the real ANTS_BUILD_DATE, so it cannot go stale as the binary is rebuilt. Two mutants killed, including the strict-`>` variant that drops the same-day case.
+  **Layman:** A tool tells you a fix shipped, but you need a second call to learn your copy is too old to have it.
+  Kind: enhancement.
+  Source: Slipcase_Ants_MCP_Feedback.md 2026-08-27 (observed, three calls recorded).
+  Lanes: mcp.
+
+- ✅ [ANTS-4742] **invariant_check returns matched_count 0 with no hint when a spec cites the module by symbol rather than by path.**
+  THE ZERO IS INDISTINGUISHABLE FROM A GENUINE ABSENCE. Matching is
+  path-substring, which the schema states -- so a spec naming a module
+  only by symbol matches nothing, and the envelope says only
+  matched_count:0 beside specs_scanned:64. That reads as "no spec governs
+  this file", which is the opposite of the truth.
+
+  THE DIRECTION IS WHAT MAKES IT SERIOUS. write-code's Phase 0 makes this
+  the first lookup, ahead of the first line of code. A false zero sends
+  the session to write against no contract; a false hit is visible and
+  gets read. On the reporting session the missed spec was the one that
+  DECIDED the fix -- it named the remedy as the opposite of the one the
+  finding implied, so a session trusting the zero would have shipped the
+  wrong fix and it would have passed its tests.
+
+  THE SHAPE ALREADY EXISTS. `scanned_nothing` distinguishes "the
+  directory is not there" from "nothing matched"; there is no equivalent
+  for "nothing matched BY PATH, and paths are the only thing matched".
+
+  FIX, and the reporter is right to prefer it: do NOT change the
+  matching. On the zero case where specs WERE scanned, say in the
+  envelope that matching is by path substring only, that a spec citing
+  the module by symbol cannot match, and name the cheap fallback -- a
+  workspace_search for the module's basename across specs_dir. One field
+  on the zero case, no behaviour change, no cost on a hit.
+
+  The reporter's second option -- also trying the module's bare stem as a
+  whole-word match under a distinct `symbol_matched_specs` key -- is a
+  behaviour change and is deferred behind the hint, not bundled with it.
+  Resolved (2026-08-27): a zero that is NOT `scanned_nothing` now sets `path_match_only:true` with a hint saying matching is by path substring only, that a spec citing the module by symbol carries nothing to match, and naming the workspace_search fallback over the module's stem. Matching is DELIBERATELY unchanged, as the reporter preferred: folding a bare stem into `matched_specs` would hide a weaker match among path hits -- the same collision `basename_matches` is reported-and-never-merged to avoid. The reporter's second option (a distinct `symbol_matched_specs` key) is a behaviour change and stays deferred rather than bundled. Note that `basename_matches` did not already cover this: it keys on the basename WITH extension, so a `vault_migration` citation escapes it too. Fires only on the zero -- a matching reply is not in doubt and a constant flag would be noise. One mutant killed.
+  **Layman:** A checker says no rules govern a file when the rules exist but name it a different way.
+  Kind: enhancement.
+  Source: finbreak_Ants_MCP_Feedback.md 2026-08-27 (repro at commit 84c5849).
+  Lanes: mcp.
+
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-08-11 triage
 
 35 un-triaged findings across 9 of the 18 shared-root feedback files (AI

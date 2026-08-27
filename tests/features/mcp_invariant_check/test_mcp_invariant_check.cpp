@@ -495,3 +495,52 @@ TEST(McpInvariantCheck, Ants4645SaysTheRoadmapWasNotConsulted) {
     EXPECT_TRUE(env.value("scope_note").toString().contains("roadmap_query"))
         << "the note must name where roadmap coverage actually comes from";
 }
+
+// ANTS-4742 — a zero that is NOT `scanned_nothing` must say WHY it can be
+// wrong.
+//
+// Every match tier here keys on the PATH: as given, with leading components
+// stripped, or by bare filename. A spec that cites the module by SYMBOL carries
+// no path form at all, so no suffix of the path can reach it — and the reply
+// then reads "no spec governs this file", which is the opposite of the truth.
+//
+// The direction is what makes it worth a field. write-code's Phase 0 makes this
+// the first lookup, ahead of the first line of code: a false zero sends the
+// session to write against no contract, while a false hit is visible and gets
+// read. On the reporting session the missed spec was the one that DECIDED the
+// fix — it named the remedy as the opposite of the one the finding implied, so
+// a session trusting the zero would have shipped the wrong fix and it would
+// have passed its tests.
+TEST(McpInvariantCheck, Ants4742ZeroSaysMatchingIsByPathOnly) {
+    QTemporaryDir dir; ASSERT_TRUE(dir.isValid());
+    // The reporter's shape: the governing spec names the module by SYMBOL, so
+    // no path form of it appears anywhere in the document.
+    seedSpec(dir.path(), QStringLiteral("PROJ-0019"),
+             QStringLiteral("vault_migration.resume"));
+
+    const QJsonObject env = runCheck(
+        dir.path(), QStringLiteral("services/vault_migration.py"), QString());
+    ASSERT_EQ(env.value("matched_count").toInt(), 0);
+    ASSERT_GT(env.value("total_scanned").toInt(), 0)
+        << "specs WERE read — this is not the scanned_nothing case";
+    EXPECT_FALSE(env.contains("scanned_nothing"))
+        << "the two zeroes are different and must stay distinguishable";
+
+    EXPECT_TRUE(env.value("path_match_only").toBool())
+        << "a silent zero is indistinguishable from a genuine absence";
+    const QString hint = env.value("hint").toString();
+    EXPECT_TRUE(hint.contains(QStringLiteral("PATH substring")))
+        << "the hint must say what was actually matched against";
+    EXPECT_TRUE(hint.contains(QStringLiteral("workspace_search")))
+        << "naming the cheap fallback is what makes the hint actionable";
+
+    // It fires ONLY on the zero. A reply that matched something is not in
+    // doubt, and a constant flag would be noise. Without this arm the test is
+    // satisfied by an implementation that flags every call.
+    seedSpec(dir.path(), QStringLiteral("PROJ-0020"),
+             QStringLiteral("services/vault_migration.py"));
+    const QJsonObject hit = runCheck(
+        dir.path(), QStringLiteral("services/vault_migration.py"), QString());
+    ASSERT_GT(hit.value("matched_count").toInt(), 0);
+    EXPECT_FALSE(hit.contains("path_match_only"));
+}

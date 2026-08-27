@@ -2711,6 +2711,37 @@ QJsonDocument RemoteControl::cmdInvariantCheck(const QJsonObject &req) {
     // messages, and neither may displace the other.
     QStringList hints;
     if (!scannedNothingHint.isEmpty()) hints << scannedNothingHint;
+    // ANTS-4742 — a zero that is NOT scanned_nothing still needs saying. Every
+    // tier here matches the PATH: as given, with leading components stripped,
+    // or by bare filename. A spec that cites the module by SYMBOL carries no
+    // path form at all, so no suffix of the path can reach it and the reply
+    // reads "no spec governs this file" — the opposite of the truth.
+    //
+    // The direction is what makes it worth a field. write-code's Phase 0 makes
+    // this the first lookup, ahead of the first line of code: a false zero
+    // sends the session to write against no contract, while a false hit is
+    // visible and gets read. On the reporting session the missed spec was the
+    // one that DECIDED the fix — it named the remedy as the opposite of the one
+    // the finding implied, so a session trusting the zero would have shipped
+    // the wrong fix and it would have passed its tests.
+    //
+    // A hint, not a match. Widening the matching to bare stems would fold a
+    // weaker match into `matched_specs`, where a caller cannot tell it apart
+    // from a path hit — the same collision `basename_matches` is deliberately
+    // reported-and-never-merged to avoid.
+    if (matched.isEmpty() && (specsScanned + phasesScanned) > 0 &&
+        nearMiss.isEmpty()) {
+        result["path_match_only"] = true;
+        hints << QStringLiteral(
+            "specs WERE read and none mentioned these paths. Matching is by "
+            "PATH substring only, so a spec that cites the module by SYMBOL "
+            "(`vault_migration.resume`) rather than by path carries nothing "
+            "this can match, and a zero here does NOT establish that no spec "
+            "governs the file. Before treating it as uncontracted, search the "
+            "module's stem across the specs dir: workspace_search "
+            "{pattern:\"<stem>\", glob:\"%1/*.md\", files_only:true}.")
+                .arg(specsDir);
+    }
     if (!fallbackKind.isEmpty()) {
         hints << (fallbackKind == QLatin1String("basename")
             ? QStringLiteral(

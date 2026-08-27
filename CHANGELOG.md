@@ -14,6 +14,21 @@ for security-relevant changes.
 
 ### Added
 
+- **invariant_check returns matched_count 0 with no hint when a spec cites the module by symbol rather than by path.** (ANTS-4742)
+  `invariant_check` returning zero matches now says why it can
+  be wrong. Matching is by file path only, so a spec naming the module by
+  symbol was reported as no spec at all — the reading that sends a
+  session to write against no contract. The zero case now carries
+  `path_match_only` and a hint naming the fallback search. Matching
+  itself is unchanged.
+
+- **feedback_query holds both halves of the stale-binary check and makes the caller fetch the second.** (ANTS-4741)
+  `feedback_query` now does the stale-binary comparison instead of
+  telling you to make a second call for it. A shipped id whose ship date
+  is not older than the running server binary's build date comes back
+  with `possibly_stale_binary`, alongside the build date and commit. A
+  same-day ship sets it, because the ship date carries no time.
+
 - **A project with no ROADMAP.md cannot be given a store-backed one through the verbs at all.** (ANTS-4740)
   `roadmap_migrate op:"init"` bootstraps a project that has no
   roadmap file at all. It writes a conforming skeleton with one
