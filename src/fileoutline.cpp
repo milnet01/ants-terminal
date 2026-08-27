@@ -608,6 +608,9 @@ QJsonObject compute(const QString &absPath,
     // top-level def/class stays bare. Each entry = (indent width, dotted
     // class-name prefix so far). Nested classes chain (`Outer.Inner`).
     QVector<QPair<int, QString>> pyClassStack;
+    // ANTS-4722 — Md fence state. Null when outside a fenced block, else the
+    // fence character (backtick or tilde) that opened the one we are in.
+    QChar mdFenceChar;
     // ANTS-4361 — HTML landmark state.
     bool inHtmlScript  = false;
     bool htmlScriptIsJs = true;
@@ -934,8 +937,36 @@ QJsonObject compute(const QString &absPath,
             // blocks a session is told to read FIRST were invisible in the one
             // call meant to answer "what is in this file?". The `>` does not
             // change the depth, so the ANTS-4396 filter treats it as a `##`.
-            QRegularExpressionMatch m =
-                rxMdHeading().match(MarkdownScan::stripBlockquote(line));
+            //
+            // ANTS-4722 — fenced code is not document structure. Without this
+            // guard a `# src/pkg/mod.py` label at column 0 inside a ```python
+            // block is emitted as a level-1 heading, and the SIZING is the
+            // damage rather than the phantom row: sizes:true scopes a
+            // heading's extent to the next same-or-higher heading, so a
+            // level-1 phantom in a document whose real sections are `##`
+            // absorbs everything below it to EOF and every real section reads
+            // as its child, with its own size wrong. max_heading_level is no
+            // escape — the phantom is level 1, and any real filter keeps
+            // level 1. Labelling a fenced source listing with a path comment
+            // is an ordinary shape in a technical spec, not an edge case.
+            //
+            // Measured against the blockquote strip, like the heading match
+            // below, so a fenced block quoted inside a `>` is tracked too.
+            const QString mdLine = MarkdownScan::stripBlockquote(line);
+            const QChar opener   = MarkdownScan::fenceOpenerChar(mdLine);
+            if (!mdFenceChar.isNull()) {
+                // Inside a fence. CommonMark closes one only on a line
+                // opening with the SAME fence character; either way nothing
+                // in here is a heading, the closing line included.
+                if (!opener.isNull() && opener == mdFenceChar)
+                    mdFenceChar = QChar();
+                continue;
+            }
+            if (!opener.isNull()) {
+                mdFenceChar = opener;
+                continue;
+            }
+            QRegularExpressionMatch m = rxMdHeading().match(mdLine);
             if (m.hasMatch()) {
                 const int level = m.captured(1).size();
                 if (withSizes) mdLevelByLine.insert(totalLines, level);

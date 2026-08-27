@@ -13468,7 +13468,7 @@ indie-review finding.
   Source: in-session-2026-08-26 (ANTS-4682 residue).
   Lanes: mcp, threading.
 
-- 📋 [ANTS-4687] **claudeintegration.cpp builds with an unused-variable warning for makeTextContent.**
+- ✅ [ANTS-4687] **claudeintegration.cpp builds with an unused-variable warning for makeTextContent.**
   Every build of ants_claude_lib prints:
 
     src/claudeintegration.cpp: In lambda function:
@@ -13485,6 +13485,7 @@ indie-review finding.
   should go, or its result was meant to be used and a call site is missing
   -- worth reading before deleting, since the second case is a real bug
   wearing a warning.
+  Resolved (2026-08-27) — the same defect as ANTS-4713, filed twice. One deletion closes both. Build is now warning-free.
   **Layman:** The build prints a warning about a leftover piece of code that is set but never used.
   Kind: chore.
   Source: in-session-2026-08-26 (observed during an unrelated build).
@@ -46538,7 +46539,7 @@ envelope dropped `source`/`path`/`etag`/`total`/`filter`.
   Source: in-session-2026-08-26, found by ANTS-1881's loop-9 blast-radius sweep.
   Lanes: docs, specs.
 
-- 📋 [ANTS-4712] **roadmap_query mode:headline_only with ids[] emits five keys, breaking INV-2's four-key contract.**
+- ✅ [ANTS-4712] **roadmap_query mode:headline_only with ids[] emits five keys, breaking INV-2's four-key contract.**
   A CODE defect, found by a docs gate and filed rather than fixed there.
 
   THE ORDERING. In the `ids` branch of `cmdRoadmapQuery`,
@@ -46573,12 +46574,19 @@ envelope dropped `source`/`path`/`etag`/`total`/`filter`.
 
   WHICHEVER WAY: the test that was missing is a headline_only + ids[] call
   asserting the key set. Write that first.
+  Resolved (2026-08-27) — the exemption is KEPT and documented, not stripped.
+
+  DECISION: input_index stays on the ids branch, and INV-2 now reads "the four keys, plus input_index on the `ids` selector alone". Stripping it to hold a four-key shape would reintroduce ANTS-4400's mis-pairing for exactly the leanest caller, which is the worst place to have it. Schema and spec both say so now.
+
+  A SECOND CLAIM IN THE FILING WAS ALSO WRONG: Inv5IdSelectorProjected does not "exercise the singular id" -- it is a source grep, like every test in both suites, because the feature bundles do not link cmdRoadmapQuery. No test in either suite calls the verb. The spec now states that rather than implying a behavioural anchor exists.
+
+  Test: roadmap_query_by_ids.Inv2IdsBranchKeepsInputIndex locks the ORDERING that produces the exemption. Proven by mutation: moving the projection after the annotation reddens it.
   **Layman:** Asking for a lean list of several items by ID returns an extra field the lean shape promises it will not.
   Kind: fix.
   Source: in-session-2026-08-26, found by ANTS-1881's review-contract loop 10.
   Lanes: mcp.
 
-- 📋 [ANTS-4713] **A duplicate makeTextContent lambda in the tools/call branch has never been called.**
+- ✅ [ANTS-4713] **A duplicate makeTextContent lambda in the tools/call branch has never been called.**
   clang: "Unused variable 'makeTextContent' [-Wunused-variable]" in
   `src/claudeintegration.cpp`, inside the `tools/call` branch.
 
@@ -46602,6 +46610,9 @@ envelope dropped `source`/`path`/`etag`/`total`/`filter`.
   NOT a defect anyone can hit, and filed only because the standing rule is
   that a warning noticed during other work gets an entry rather than a
   shrug.
+  Resolved (2026-08-27) — deleted. DUPLICATE of ANTS-4687, which had it first.
+
+  THE STATED MECHANISM WAS WRONG and the correction matters: the two lambdas are not in one method and neither shadows the other. The live one is in ClaudeIntegration::finishToolDispatch (defined there, called there); the dead one is in ClaudeIntegration::onMcpConnection's tools/call branch, where nothing calls it. So it was never a shadowed helper -- just a second copy in a second method, dead since it was written.
   **Layman:** A small helper is defined twice; the second copy is dead and the compiler warns about it.
   Kind: chore.
   Source: in-session-2026-08-26, compiler diagnostic seen while editing an adjacent schema string.
@@ -46809,7 +46820,7 @@ envelope dropped `source`/`path`/`etag`/`total`/`filter`.
 
 ### ANTS MCP feedback from CC sessions — 2026-08-27 triage
 
-- 📋 [ANTS-4721] **read_regions refuses a non-object region item with the selector rule, not the shape it wanted.**
+- ✅ [ANTS-4721] **read_regions refuses a non-object region item with the selector rule, not the shape it wanted.**
   REPORTED and reproducible from the description. Passing
   regions:[[15,24],[88,100]] -- a list of pairs rather than a list of
   objects -- returns one per-item bad_args per region carrying
@@ -46830,12 +46841,19 @@ envelope dropped `source`/`path`/`etag`/`total`/`filter`.
   distinct message naming the expected shape rather than falling through to
   the selector check. Distinguishing wrong-type from no-selector-chosen is
   the whole of it.
+  Resolved (2026-08-27) — a non-object item is now refused for its shape.
+
+  The cause was one line: extractBatch did `iv.toObject()` unconditionally, and a non-object yields an EMPTY object, which then trips readOneRegion's selector rule. So the caller was told to choose a selector by a message that could not help -- an array has nowhere to hold one.
+
+  The refusal now names the expected shape, what was actually received, and the item's index; it stays per-item, so one malformed item does not cost the batch its good ones.
+
+  Test: ReadRegions.Ants4721NonObjectItemNamesTheShape, proven red pre-fix.
   **Layman:** A file-reading tool tells you the wrong thing about what you got wrong.
   Kind: fix.
   Source: Charls_Site_Ants_MCP_Feedback.md 2026-08-27.
   Lanes: mcp.
 
-- 📋 [ANTS-4722] **file_outline mode:md reads a `#` comment inside a fenced code block as a heading, and sizes:true then mis-attributes the file to it.**
+- ✅ [ANTS-4722] **file_outline mode:md reads a `#` comment inside a fenced code block as a heading, and sizes:true then mis-attributes the file to it.**
   MEASURED by the reporter. The md outliner does not track fenced code
   blocks, so a line beginning `# ` at column 0 inside a ```python fence is
   emitted as kind:"heading" at level 1.
@@ -46862,12 +46880,17 @@ envelope dropped `source`/`path`/`etag`/`total`/`filter`.
 
   CHECK ALSO, unverified by the reporter: whether the phantom is addressable
   by read_region section=, which resolves against the same outline.
+  Resolved (2026-08-27) — md mode now tracks fences.
+
+  Reused MarkdownScan::fenceOpenerChar, the incremental primitive the shared scanner already exposes, so the streaming outline loop needed a single QChar of state rather than a second fence implementation. Measured against the blockquote strip, like the heading match beside it, so a fence quoted inside a `>` is tracked too.
+
+  Test: McpFileOutline.Ants4722FencedCommentIsNotAHeading. Proven red pre-fix on BOTH halves -- the phantom heading AND the sizing, which was the damage the reporter identified and is the half a phantom-row-only test would have missed.
   **Layman:** Outlining a document treats a comment inside an example code block as a section title, and then reports the wrong sizes for every real section.
   Kind: fix.
   Source: Charls_Site_Ants_MCP_Feedback.md 2026-08-27 (measured against the Pressless repo).
   Lanes: mcp.
 
-- 📋 [ANTS-4723] **apply_edits reports a not_found skip with no near-miss, so a wrap mismatch is indistinguishable from a genuine absence.**
+- ✅ [ANTS-4723] **apply_edits reports a not_found skip with no near-miss, so a wrap mismatch is indistinguishable from a genuine absence.**
   REPORTED from a batch against a hard-wrapped markdown file. Two of eight
   edits skipped with reason "not_found"; the envelope names the index and
   the path and nothing else. Both misses had the same cause -- the `old`
@@ -46895,9 +46918,47 @@ envelope dropped `source`/`path`/`etag`/`total`/`filter`.
   still have saved the round-trip. ANTS-4550's own refusal for a span whose
   re-flow would destroy alignment is the precedent for what (b) must decline
   rather than silently re-flow.
+  Resolved (2026-08-27) — route (b), as an opt-in `match_wrapped`.
+
+  THE DIAGNOSIS WAS SHARPER THAN THE REPORT. Route (a) already shipped as ANTS-4418, and its near-miss bails on the first line of its own body: `if (oldStr.contains('\n')) return;`. The reporter's case is a MULTI-LINE old string, so it hit exactly the scope ANTS-4418 declined as "a different piece of work". WrapMatch is that work, already written for two other verbs.
+
+  SHIPPED BOTH HALVES. The near miss now answers the multi-line case and reports kind "wrapped" -- unconditionally, since the round-trip worth saving is the one where the caller does not yet know the flag exists; its hint names the flag. And `match_wrapped:true` applies it, via WrapMatch::patchOnce, which is fallback-only (so no call that succeeds today changes), uniqueness-guarded on whichever pass matched, and already declines alignment-bearing spans per ANTS-4612.
+
+  OPT-IN RATHER THAN AUTOMATIC, unlike amend_body, and the asymmetry is deliberate: that verb re-flows prose it hard-wrapped itself, while this one edits files it did not author. When it fires the envelope carries wrapped_match + wrapped_match_indices, so a re-flowed span is never silent.
+
+  Test: McpApplyEdits.Ants4723MatchWrappedOptIn, plus the ANTS-4418 case whose multi-line assertion this supersedes.
   **Layman:** When a batch edit cannot find your text it just says so, even when the text is there and only the line breaks differ.
   Kind: enhancement.
   Source: claude_config_Ants_MCP_Feedback.md 2026-08-27.
+  Lanes: mcp.
+
+- 📋 [ANTS-4724] **Inv2BypassesStatusAndPagination anchors on a substring that also matches an earlier `else if`, so it measures the wrong branch.**
+  FOUND BY MUTATION, not by reading. ANTS-4712's new test used the same
+  anchor and passed under a mutation that should have reddened it.
+
+  `at(cpp, "if (!idsArg.isEmpty())")` takes the FIRST occurrence, and that
+  string is a substring of an `else if (!idsArg.isEmpty())` far earlier in
+  the file. So the window opens above the singular `id` branch rather than
+  at the plural one, and every position compared against it is measured
+  from the wrong place.
+
+  ANTS-4712's copy is fixed (it anchors on `wanted(idsArg.cbegin()`, which
+  occurs once). The ORIGINAL is not: Inv2BypassesStatusAndPagination still
+  carries it.
+
+  WHETHER ITS ASSERTION IS CURRENTLY TRUE IS NOT THE POINT. It asserts
+  idsBranch &lt; statusFilter and that ordering may well still hold from the
+  wrong anchor -- which is precisely the failure mode, since a test that
+  passes from the wrong position gives no signal when the thing it names
+  moves.
+
+  FIX IS THE SAME ONE LINE, plus a comment saying why the obvious anchor is
+  not usable. Worth a wider look while there: any source-scrape anchor that
+  is a substring of a longer construct has this shape, and this suite is
+  built entirely from source scrapes.
+  **Layman:** A test looks in the wrong part of the file, so it can pass without checking anything.
+  Kind: test.
+  Source: in-session-2026-08-27, found while writing ANTS-4712's test.
   Lanes: mcp.
 
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-08-11 triage

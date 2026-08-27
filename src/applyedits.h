@@ -31,7 +31,13 @@ struct EditOutcome {
     // a caller reads the line number and retries with a line range.
     int     nearMissLine = -1;     // 1-based line in `contents`
     QString nearMissText;          // that line, verbatim, as the file has it
-    QString nearMissKind;          // why it differed, e.g. "whitespace"
+    QString nearMissKind;          // why it differed: "whitespace" | "wrapped"
+
+    // ANTS-4723 — the edit was matched by the wrapped rule rather than
+    // verbatim, i.e. `oldStr` and the file agree except in where their
+    // whitespace runs fall. Only ever set when the caller asked for that
+    // rule; reported upward so a re-flowed span is never silent.
+    bool    wrappedMatch = false;
 
     // ANTS-4473 — the occurrences behind an `ambiguous`. The near-miss fields
     // above answer "you are one space out"; these answer "there are N of them,
@@ -57,10 +63,21 @@ struct EditOutcome {
 // every occurrence is replaced (and 0 occurrences still skips "not_found",
 // never a silent no-op). A whole-content substring replace, so a trailing
 // newline is preserved without any split/rejoin (INV-8).
+// ANTS-4723 — `matchWrapped` opts into WrapMatch's whitespace-tolerant rule
+// as a FALLBACK: it is consulted only where the verbatim search found nothing,
+// so it can turn a refusal into an edit and can never change a call that
+// already succeeded. Uniqueness is enforced on it exactly as on the verbatim
+// pass. Opt-in rather than automatic, unlike `roadmap_log op:amend_body`,
+// and the asymmetry is the point: that verb re-flows prose it hard-wrapped
+// itself, so tolerating the wrap corrects its own noise, while this one edits
+// files it did not author and must not quietly rewrite someone's line breaks.
+// `replaceAll` does not take the fallback — "every occurrence" of a phrase
+// whose boundaries are approximate is not a set a caller can predict.
 EditOutcome applyToContent(const QString &contents,
                            const QString &oldStr,
                            const QString &newStr,
-                           bool replaceAll);
+                           bool replaceAll,
+                           bool matchWrapped = false);
 
 // ANTS-3711 — replace the inclusive 1-based line range [startLine, endLine]
 // with `newStr`, as an alternative to naming the text via `oldStr`. The shape

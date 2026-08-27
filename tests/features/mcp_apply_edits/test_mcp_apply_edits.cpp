@@ -149,14 +149,84 @@ TEST(McpApplyEdits, Ants4418NearMissOnlyWhenUniqueAndWhitespace) {
         << "a value difference is not a whitespace near miss; claiming it is "
            "would send the caller to re-copy text that is genuinely different";
 
-    // A multi-line `old` reports nothing rather than a confident wrong line —
-    // the documented scope limit.
+    // ANTS-4723 SUPERSEDES this block's original assertion. ANTS-4418 scoped
+    // the near miss to a single-line `old` and this case asserted that limit,
+    // on the grounds that multi-line alignment was "a different piece of
+    // work". WrapMatch is that work, and it was already written for two other
+    // verbs — so the multi-line miss now reports, and the caller is told WHERE
+    // rather than being left unable to tell a wrap mismatch from an absence.
+    // Still a near miss, not an application: reporting is unconditional,
+    // applying takes match_wrapped.
     const auto multi = ApplyEdits::applyToContent(
         QStringLiteral("one  two\nthree\n"),
         QStringLiteral("one two\nthree"), QStringLiteral("x"), false);
-    EXPECT_EQ(multi.nearMissLine, -1)
-        << "multi-line near-miss alignment is out of scope and must report "
-           "nothing rather than guess";
+    EXPECT_EQ(multi.skipReason, "not_found");
+    EXPECT_FALSE(multi.applied)
+        << "reporting a wrapped near miss must not apply it";
+    EXPECT_EQ(multi.nearMissLine, 1);
+    EXPECT_EQ(multi.nearMissKind, "wrapped")
+        << "a wrap mismatch must be distinguishable from a spacing one — "
+           "they take different retries";
+
+    // The uniqueness guard survives the widening: two wrapped candidates
+    // cannot say which to retry, so neither is named. BOTH candidates are
+    // spaced differently from the needle on purpose: give either one the
+    // needle's exact spacing and the verbatim pass takes it, the wrapped pass
+    // never runs, and this assertion passes without testing anything.
+    const auto multiAmbiguous = ApplyEdits::applyToContent(
+        QStringLiteral("one  two\nthree\nzz\none   two\nthree\n"),
+        QStringLiteral("one two\nthree"), QStringLiteral("x"), false);
+    EXPECT_EQ(multiAmbiguous.nearMissLine, -1)
+        << "two wrapped candidates must report none, as two whitespace "
+           "candidates already do";
+}
+
+// ANTS-4723 — match_wrapped applies an `old` whose line breaks fall elsewhere
+// than the file's. Opt-in, fallback-only, uniqueness enforced.
+TEST(McpApplyEdits, Ants4723MatchWrappedOptIn) {
+    const QString file = QStringLiteral("one  two\nthree\n");
+    const QString wrapped = QStringLiteral("one two\nthree");
+
+    // Default OFF — the pre-ANTS-4723 behaviour is byte-identical.
+    const auto off = ApplyEdits::applyToContent(file, wrapped,
+                                                QStringLiteral("x"), false);
+    EXPECT_FALSE(off.applied);
+    EXPECT_EQ(off.skipReason, "not_found");
+    EXPECT_FALSE(off.wrappedMatch);
+
+    // Opt in — the same call now lands, and says that it took the loose rule.
+    const auto on = ApplyEdits::applyToContent(file, wrapped,
+                                               QStringLiteral("x"), false, true);
+    EXPECT_TRUE(on.applied);
+    EXPECT_TRUE(on.wrappedMatch)
+        << "a re-flowed span must never be silent";
+    EXPECT_EQ(on.replacements, 1);
+    EXPECT_EQ(on.newContents, "x\n");
+
+    // FALLBACK ONLY: where an exact match exists the flag changes nothing, so
+    // enabling it cannot alter a call that already succeeds.
+    const auto exact = ApplyEdits::applyToContent(
+        QStringLiteral("keep\nalpha\n"), QStringLiteral("alpha"),
+        QStringLiteral("beta"), false, true);
+    EXPECT_TRUE(exact.applied);
+    EXPECT_FALSE(exact.wrappedMatch);
+    EXPECT_EQ(exact.newContents, "keep\nbeta\n");
+
+    // Uniqueness is enforced on the loose pass too — two wrapped hits are
+    // ambiguous, not a licence to take the first. Neither candidate carries
+    // the needle's exact spacing: an exact hit would be applied by the
+    // verbatim pass and this case would pass while proving nothing.
+    const auto ambiguous = ApplyEdits::applyToContent(
+        QStringLiteral("one  two\nthree\nzz\none   two\nthree\n"),
+        wrapped, QStringLiteral("x"), false, true);
+    EXPECT_FALSE(ambiguous.applied);
+    EXPECT_EQ(ambiguous.skipReason, "ambiguous");
+
+    // A genuine absence stays absent under the flag.
+    const auto absent = ApplyEdits::applyToContent(
+        file, QStringLiteral("nowhere\nhere"), QStringLiteral("x"), false, true);
+    EXPECT_FALSE(absent.applied);
+    EXPECT_EQ(absent.skipReason, "not_found");
 }
 
 // B2 — replace_all (INV-2).

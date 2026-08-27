@@ -14,6 +14,15 @@ for security-relevant changes.
 
 ### Added
 
+- **apply_edits takes `match_wrapped`, applying an edit whose `old` differs from the file only in where its line breaks fall** (ANTS-4723)
+  Opt-in and fallback-only — consulted just where the verbatim search found
+  nothing, so it can turn a refusal into an edit and never changes a call
+  that already succeeds. Uniqueness is enforced on it as on the verbatim
+  pass, and it declines a span whose continuation lines carry column
+  alignment or open a list item. When it fires the envelope says so, so a
+  re-flowed span is never silent. Same rule and spelling as
+  workspace_search's `match_wrapped`.
+
 - **Release gate: work that shipped but reached no CHANGELOG entry is now reported** (ANTS-4714)
   `tools/check-shipped-coverage.sh` reads the roadmap store's shipped dates
   and lists every item closed since the last public tag that no CHANGELOG
@@ -23,6 +32,41 @@ for security-relevant changes.
   same day as the release it was missing from.
 
 ### Fixed
+
+- **Removed a dead duplicate lambda that made every build of the Claude-integration library warn** (ANTS-4687)
+  A second, never-called copy of a helper sat in a different method from
+  the live one. Dead since it was written.
+
+- **roadmap_query's schema and spec now state that mode:"headline_only" with `ids` also carries `input_index`** (ANTS-4712)
+  Both described a strict four-key shape while the `ids` path has always
+  emitted a fifth. The key is kept rather than removed: results come back
+  in document order, so dropping it would reintroduce the mis-pairing it
+  exists to prevent, for exactly the leanest caller. A test now locks the
+  ordering that produces it.
+
+- **read_regions refuses a non-object region item by naming the shape it wanted, not the selector rule** (ANTS-4721)
+  Passing a `[start, end]` pair per item — a natural reading of the
+  `regions` alias — was refused with "exactly one of {line range, symbol,
+  section} required", which diagnoses a choice the caller never made and
+  cannot act on: an array has nowhere to hold a selector. The refusal now
+  names the expected shape, what arrived, and the item's index, and stays
+  per-item so one bad item does not cost the batch its good ones.
+
+- **file_outline no longer reads a `#` comment inside a fenced code block as a markdown heading** (ANTS-4722)
+  A path comment labelling a fenced source listing was emitted as a
+  level-1 heading. With `sizes:true` that phantom took its extent to the
+  end of the file, so it claimed most of the document and every real
+  section below read as its child with its own size wrong —
+  turning the answer to "where is the natural seam?" into a comment.
+  `max_heading_level` was no escape, since the phantom was level 1.
+
+- **A multi-line `old` that misses now reports where it nearly matched, instead of a bare not_found** (ANTS-4723)
+  The near-miss report previously covered single-line misses only, so the
+  commonest multi-line cause — a hard wrap falling elsewhere — was
+  indistinguishable from the text being absent. It now reports the location
+  and names `match_wrapped` in its hint, so the fix is one re-send rather
+  than a re-read. This matters most mid-batch, where earlier edits have
+  already landed and the file has moved under the caller.
 
 - **Releasing now updates the package repositories instead of only the recipe in git** (ANTS-4716)
   Promoting a release pinned the new tag in the OBS recipe and pushed it, but

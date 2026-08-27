@@ -775,7 +775,39 @@ QJsonObject extractBatch(const QString &rootCanonical,
 
     QJsonArray results;
     bool anyTruncated = false, budgetExhausted = false;
+    int itemIndex = -1;
     for (const QJsonValue &iv : items) {
+        ++itemIndex;
+        // ANTS-4721 — a non-object item is a SHAPE error, and saying so is
+        // the whole of this branch. Left to fall through, toObject() yields
+        // an EMPTY object and readOneRegion refuses with the selector rule
+        // ("exactly one of {line range, symbol, section} required") — which
+        // tells a caller who passed [start, end] to choose a selector, when
+        // what they must do is pass an object that can hold one. `regions`
+        // is an accepted alias for this key and a region spelled as a pair
+        // is the natural reading of that name, so this is the likely wrong
+        // guess rather than an exotic one. Per-item, matching every other
+        // refusal here: one bad item must not cost the batch its good ones.
+        if (!iv.isObject()) {
+            const char *got = iv.isArray()    ? "an array"
+                              : iv.isString() ? "a string"
+                              : iv.isDouble() ? "a number"
+                              : iv.isBool()   ? "a boolean"
+                                              : "null";
+            QJsonObject bad;
+            bad["ok"]    = false;
+            bad["code"]  = QStringLiteral("bad_args");
+            bad["index"] = itemIndex;
+            bad["error"] = QStringLiteral(
+                "read_regions: item %1 must be an OBJECT carrying a `path` "
+                "and exactly one of {start_line (+ optional end_line), "
+                "symbol, section} — got %2. A two-element [start, end] pair "
+                "is not an item; write {\"start_line\": N, \"end_line\": M}.")
+                    .arg(itemIndex)
+                    .arg(QLatin1String(got));
+            results.append(bad);
+            continue;
+        }
         const QJsonObject item = iv.toObject();
         const int itemCap = budget > 0 ? budget : 1;
         QJsonObject slice =

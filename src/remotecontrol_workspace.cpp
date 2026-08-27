@@ -2297,6 +2297,12 @@ QJsonDocument RemoteControl::cmdApplyEdits(const QJsonObject &req) {
     // a caller can pre-flight a multi-file edit (catch a no_match before any
     // partial write) without touching disk.
     const bool dryRun = req.value(QStringLiteral("dry_run")).toBool();
+    // ANTS-4723 — opt into WrapMatch's whitespace-tolerant rule as a fallback
+    // for an `old` whose hard wrap falls elsewhere than the file's. Spelled
+    // `match_wrapped` to match workspace_search (ANTS-4547), so a caller who
+    // knows one knows the other.
+    const bool matchWrapped =
+        req.value(QStringLiteral("match_wrapped")).toBool(false);
 
     const QString callerRaw = req.value(QStringLiteral("caller_cwd")).toString();
     const QString sentinelRoot = ants::expandGlobalConfigSentinel(callerRaw);
@@ -2413,6 +2419,7 @@ QJsonDocument RemoteControl::cmdApplyEdits(const QJsonObject &req) {
     // apply each file's edits in array order and write atomically.
     QJsonArray applied, skipped;
     int editsApplied = 0, editsSkipped = 0, filesWritten = 0;
+    QJsonArray wrappedIdx;   // ANTS-4723 — edit indices matched by the wrapped rule
     auto addSkip = [&](int index, const QString &path, const QString &reason) {
         QJsonObject s; s["index"] = index; s["path"] = path; s["reason"] = reason;
         skipped.append(s); ++editsSkipped;
@@ -2432,11 +2439,20 @@ QJsonDocument RemoteControl::cmdApplyEdits(const QJsonObject &req) {
             QJsonArray cands; cands.append(cand);
             s["candidates"]     = cands;
             s["near_miss_line"] = oc.nearMissLine;
-            s["hint"] = QStringLiteral(
-                "%1-only mismatch at line %2 — the file's text differs from "
-                "`old` only in spacing. Retry with that line's exact text, or "
-                "use the start_line/end_line form for line %2.")
-                    .arg(oc.nearMissKind).arg(oc.nearMissLine);
+            s["hint"] = oc.nearMissKind == QStringLiteral("wrapped")
+                // ANTS-4723 — the multi-line case. Naming the flag is the
+                // whole value: a caller who did not know it exists cannot ask
+                // for it, and this is the one moment they are certain to read.
+                ? QStringLiteral(
+                      "`old` matches the file at line %1 except for where its "
+                      "line breaks fall. Re-send with match_wrapped:true to "
+                      "apply it, or copy that span's text verbatim.")
+                      .arg(oc.nearMissLine)
+                : QStringLiteral(
+                      "%1-only mismatch at line %2 — the file's text differs from "
+                      "`old` only in spacing. Retry with that line's exact text, or "
+                      "use the start_line/end_line form for line %2.")
+                      .arg(oc.nearMissKind).arg(oc.nearMissLine);
         } else if (!oc.matchLines.isEmpty()) {
             // ANTS-4473 — the `ambiguous` half, in the SAME fields. The two
             // outcomes are mutually exclusive by construction (a near miss is
@@ -2525,11 +2541,16 @@ QJsonDocument RemoteControl::cmdApplyEdits(const QJsonObject &req) {
                       working, es[k].startLine, es[k].endLine,
                       es[k].expectFirst, es[k].expectLast, es[k].newStr)
                 : ApplyEdits::applyToContent(
-                      working, es[k].oldStr, es[k].newStr, es[k].replaceAll);
+                      working, es[k].oldStr, es[k].newStr, es[k].replaceAll,
+                      matchWrapped);
             if (oc.applied) {
                 working = oc.newContents;
                 fileReplacements += oc.replacements;
                 appliedIdx.push_back(k);
+                // ANTS-4723 — a wrapped hit re-flowed the span it matched, so
+                // it is never silent: the index is reported and the caller can
+                // check that edit specifically.
+                if (oc.wrappedMatch) wrappedIdx.append(es[k].index);
             } else {
                 // ANTS-4418 — carry the near miss onto this skip row when the
                 // helper found exactly one. `not_found` alone is equally
@@ -2591,6 +2612,12 @@ QJsonDocument RemoteControl::cmdApplyEdits(const QJsonObject &req) {
     env["edits_total"]   = edits.size();
     env["edits_applied"] = editsApplied;
     env["edits_skipped"] = editsSkipped;
+    // ANTS-4723 — announced only when it actually fired, so an absent key
+    // means "every edit matched verbatim" rather than "nobody looked".
+    if (!wrappedIdx.isEmpty()) {
+        env["wrapped_match"]         = true;
+        env["wrapped_match_indices"] = wrappedIdx;
+    }
     return QJsonDocument(env);
 }
 

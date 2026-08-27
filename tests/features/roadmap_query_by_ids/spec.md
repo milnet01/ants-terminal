@@ -83,3 +83,16 @@ matched_ids, missing_ids}`. Body included by default. Bypasses the
   (INV-1), guarded by `idsPresentNonEmpty`. Source anchors:
   `"got a non-string scalar"` and
   `"ids contained no valid id after hygiene"` in `cmdRoadmapQuery`.
+
+- **INV-13 / the `input_index` exemption (ANTS-4723 sibling, ANTS-4712).**
+  Under `mode:"headline_only"` the `ids` branch emits ANTS-1881 INV-2's
+  four projected keys PLUS `input_index` — the one documented exemption
+  to that four-key contract. It is produced by an ORDERING: the
+  projection runs first, then ANTS-4400's annotation writes the fifth
+  key back on. Reversing that order strips the key silently and
+  reintroduces the mis-pairing ANTS-4400 closed, for the mode carrying
+  the least context to recover from it. The singular `id` selector takes
+  no annotation and emits four. Source anchors: `rcProjectHeadlineOnly(matches)`
+  and the `input_index` write, both taken from `wanted(idsArg.cbegin()`
+  onward — `if (!idsArg.isEmpty())` is NOT usable as the window anchor,
+  being a substring of an earlier `else if` (ANTS-4724).

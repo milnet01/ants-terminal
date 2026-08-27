@@ -3134,7 +3134,14 @@ void ClaudeIntegration::onMcpConnection() {
                         "argument and a caller needing it wants an "
                         "unfiltered id/ids fetch. Stated because a project "
                         "doc had recorded the wider claim that a filtered "
-                        "call still returns kind. ~10× smaller "
+                        "call still returns kind. ANTS-4712 — the `ids` path "
+                        "is the ONE documented exemption: each bullet there "
+                        "also carries `input_index` (ANTS-4400), so it emits "
+                        "those four keys plus that one. Deliberate, because "
+                        "results come back in DOCUMENT order and a lean shape "
+                        "is exactly where a caller zipping them against its "
+                        "own array mis-pairs — the bug `input_index` exists "
+                        "to stop. The singular `id` path emits four. ~10× smaller "
                         "payload on dense bundle sections; composes with "
                         "section=, status=, id=, pagination, and ETag. "
                         "ANTS-1922 — \"bundles\" groups the active subset "
@@ -5524,6 +5531,48 @@ void ClaudeIntegration::onMcpConnection() {
                     editsProp["items"] = items;
                     props["edits"]      = editsProp;
                     props["dry_run"]    = makeDryRunProp();      // ANTS-2227
+                    {   // ANTS-4723 — wrapped-match opt-in.
+                        QJsonObject mw;
+                        mw["type"] = "boolean";
+                        mw["default"] = false;
+                        mw["description"] = QStringLiteral(
+                            "Optional (ANTS-4723). Apply an edit whose `old` "
+                            "agrees with the file except in WHERE its line "
+                            "breaks fall — a run of whitespace in `old` "
+                            "matches a run of whitespace in the file. Prose "
+                            "here is hard-wrapped, so an `old` copied from a "
+                            "differently-wrapped rendering of the same text "
+                            "is present and exact apart from one newline "
+                            "position, and a verbatim search reports "
+                            "not_found. In a MULTI-EDIT batch that is the "
+                            "expensive miss: the edits before it have already "
+                            "landed, so the file has moved under you while you "
+                            "work out why. Consulted only where the verbatim "
+                            "search found nothing, so it can only turn a "
+                            "refusal into an edit and never changes a call "
+                            "that already succeeds; uniqueness is enforced on "
+                            "it exactly as on the verbatim pass, so a phrase "
+                            "occurring twice under the looser rule is "
+                            "`ambiguous` rather than a licence to take the "
+                            "first. It DECLINES a span whose continuation "
+                            "lines carry structure a re-flow would destroy — "
+                            "column alignment, or the opening of a new list "
+                            "item (ANTS-4612) — and reports the near miss "
+                            "instead of writing. When it fires, the envelope "
+                            "carries `wrapped_match:true` and "
+                            "`wrapped_match_indices`, so a re-flowed span is "
+                            "never silent. Ignored with `replace_all`: "
+                            "\"every occurrence\" of a phrase whose "
+                            "boundaries are approximate is not a set you can "
+                            "predict. Off by default — this verb edits files "
+                            "it did not author and must not quietly rewrite "
+                            "line breaks. You do NOT need to guess when to "
+                            "set it: a not_found whose cause is a wrap "
+                            "mismatch already names this flag in its `hint`. "
+                            "Same rule and same spelling as workspace_search's "
+                            "`match_wrapped` (ANTS-4547).");
+                        props["match_wrapped"] = mw;
+                    }
                     props["caller_cwd"] = makeCallerCwdReadProp();
                     schema["properties"] = props;
                     QJsonArray required;
@@ -14153,15 +14202,6 @@ void ClaudeIntegration::onMcpConnection() {
             } else if (method == "tools/call") {
                 QJsonObject params = request.value("params").toObject();
                 QString toolName = params.value("name").toString();
-
-                auto makeTextContent = [](const QString &text) {
-                    QJsonObject block;
-                    block["type"] = "text";
-                    block["text"] = text;
-                    QJsonArray arr;
-                    arr.append(block);
-                    return arr;
-                };
 
                 // ANTS-1284 — hoist args + responseText out of the
                 // branches so a single recordCall covers both the

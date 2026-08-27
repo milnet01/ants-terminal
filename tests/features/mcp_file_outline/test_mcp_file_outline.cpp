@@ -1206,3 +1206,81 @@ TEST(McpFileOutline, Ants4520MdBlockquotedHeadings) {
     EXPECT_EQ(names(shallow), (QStringList{QStringLiteral("Plan")}))
         << "a quoted `##` must be filtered by depth like any other `##`";
 }
+
+// ANTS-4722 — md mode must not read a `#` comment inside a fenced code block
+// as a heading. The phantom row is the visible symptom; the SIZING is the
+// damage, and this test asserts both. Reported against a real spec whose
+// fenced Python listing was labelled with a path comment — an ordinary shape
+// in a technical document, not an edge case.
+TEST(McpFileOutline, Ants4722FencedCommentIsNotAHeading) {
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid());
+    const QString path = dir.filePath("spec.md");
+    {
+        QFile f(path);
+        ASSERT_TRUE(f.open(QIODevice::WriteOnly | QIODevice::Text));
+        f.write(
+            "# Title\n"
+            "\n"
+            "## Alpha\n"
+            "\n"
+            "Prose under alpha.\n"
+            "\n"
+            "```python\n"
+            "# src/pkg/mod.py\n"
+            "def go():\n"
+            "    return 1\n"
+            "```\n"
+            "\n"
+            "## Beta\n"
+            "\n"
+            "Prose under beta.\n"
+            "\n"
+            "~~~bash\n"
+            "# not a heading either — tilde fences count\n"
+            "~~~\n"
+            "\n"
+            "## Gamma\n"
+            "\n"
+            "Last section.\n");
+        f.close();
+    }
+    const QJsonObject out = FileOutline::compute(
+        path, FileOutline::Mode::Md, /*includeDocComment=*/false,
+        /*maxSymbols=*/100, /*withSizes=*/true);
+    ASSERT_TRUE(out.value("ok").toBool());
+    const QJsonArray symbols = out.value("symbols").toArray();
+
+    auto named = [&](const char *n) -> QJsonObject {
+        for (const auto &v : symbols)
+            if (v.toObject().value("name").toString() == QLatin1String(n))
+                return v.toObject();
+        return {};
+    };
+
+    EXPECT_TRUE(named("src/pkg/mod.py").isEmpty())
+        << "a `# path` comment inside a ```python fence is not a heading";
+    EXPECT_TRUE(named("not a heading either — tilde fences count").isEmpty())
+        << "a ~~~ fence bounds content exactly as a ``` fence does";
+
+    // The real sections all survive — the guard must not eat them.
+    EXPECT_FALSE(named("Title").isEmpty());
+    EXPECT_FALSE(named("Alpha").isEmpty());
+    EXPECT_FALSE(named("Beta").isEmpty());
+    EXPECT_FALSE(named("Gamma").isEmpty());
+
+    // THE SIZING, which is what the defect actually cost. A phantom level-1
+    // heading inside the fence would take its extent to the next same-or-
+    // higher heading — and there is none below it — so it would swallow the
+    // rest of the file and Alpha would be measured as ending at the fence.
+    // Alpha owns its prose AND the fenced block, and stops at Beta.
+    const QJsonObject alpha = named("Alpha");
+    ASSERT_FALSE(alpha.isEmpty());
+    EXPECT_EQ(alpha.value("lines").toInt(), 10)
+        << "Alpha spans its heading through the line before `## Beta`";
+    const QJsonObject beta = named("Beta");
+    ASSERT_FALSE(beta.isEmpty());
+    EXPECT_GT(beta.value("lines").toInt(), 0)
+        << "Beta must have an extent of its own, not be absorbed as a "
+           "phantom's child";
+}

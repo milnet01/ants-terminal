@@ -179,3 +179,51 @@ TEST(roadmap_query_by_ids, Inv12PresentButInvalidRefuses) {
            "empty-array/empty-string fall-through");
     EXPECT_EQ(0, expect_failures());
 }
+
+// ANTS-4712 INV-13 — the `ids` branch is ANTS-1881 INV-2's one
+// documented exemption: under mode:"headline_only" it emits the four
+// projected keys PLUS `input_index`. The exemption is produced by an
+// ORDERING — the projection runs first, then ANTS-4400's annotation
+// writes the fifth key back on — so the ordering is what this locks.
+// Reversing it would strip the key silently, reintroducing the
+// mis-pairing ANTS-4400 closed for exactly the leanest caller.
+// Scoped to the ids branch: both the projection call and the
+// annotation loop are searched from the branch opening onward, since
+// the singular `id` branch above carries its own projection call and
+// takes no annotation.
+TEST(roadmap_query_by_ids, Inv2IdsBranchKeepsInputIndex) {
+    expect_reset();
+    const std::string cpp = ants_test::slurpRemoteControl();
+    // The anchor must be UNIQUE to the ids branch. `if (!idsArg.isEmpty())`
+    // is not: it is a substring of an `else if (!idsArg.isEmpty())` far
+    // earlier in the file, so a window opened there starts ABOVE the
+    // singular `id` branch and picks up ITS projection call — which sits
+    // before the annotation whichever way the ids branch is ordered, so the
+    // ordering assert below holds vacuously. Caught by mutating the ordering
+    // and watching this test pass anyway. `wanted(idsArg.cbegin()` occurs
+    // once, inside the branch, above both sites being compared.
+    const size_t idsBranch = at(cpp, "const QSet<QString> wanted(idsArg.cbegin()");
+    expect(idsBranch != std::string::npos,
+           "INV-13: multi-item ids branch present (unique anchor)");
+    if (idsBranch == std::string::npos) {
+        EXPECT_EQ(0, expect_failures());
+        return;
+    }
+    const size_t projPos  = cpp.find("rcProjectHeadlineOnly(matches)", idsBranch);
+    const size_t annotPos = cpp.find("input_index", idsBranch);
+    expect(projPos != std::string::npos,
+           "INV-13: ids branch projects under mode:\"headline_only\"");
+    expect(annotPos != std::string::npos,
+           "INV-13: ids branch annotates each bullet with input_index");
+    expect(projPos != std::string::npos && annotPos != std::string::npos &&
+               projPos < annotPos,
+           "INV-13: the projection must run BEFORE the input_index "
+           "annotation — reversing it strips the key the exemption exists "
+           "to keep");
+    // The annotation must not be gated on mode: it is owed on every
+    // ids fetch, and a mode guard here is the shape a well-meaning
+    // four-key repair would take.
+    expect(!contains(cpp.substr(annotPos, 200), "headline_only"),
+           "INV-13: the input_index annotation is not gated on mode");
+    EXPECT_EQ(0, expect_failures());
+}

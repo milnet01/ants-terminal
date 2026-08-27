@@ -314,3 +314,58 @@ TEST(ReadRegions, TopLevelPathWiring) {
     EXPECT_EQ(0, expect_failures())
         << expect_failures() << " ANTS-3589 wiring invariant(s) failed";
 }
+
+// ANTS-4721 — a non-object item is refused for its SHAPE, not for its
+// selector. Reported by a session that passed regions:[[15,24],[88,100]] and
+// got back "exactly one of {line range, symbol, section} required" per item —
+// a message describing a rule the item could not have satisfied, since it was
+// not an object and had nowhere to hold a selector. `regions` is an accepted
+// alias for the batch key and a region spelled as a pair is the natural
+// reading of that name, so this is the likely wrong guess.
+TEST(ReadRegions, Ants4721NonObjectItemNamesTheShape) {
+    Fixture fx;
+    QJsonArray pair;              // the reported guess: [start, end]
+    pair.append(15);
+    pair.append(24);
+    QJsonArray items;
+    items.append(pair);
+    items.append(lineItem("src/a.cpp", 1, 2));   // a good item beside it
+    items.append(QJsonValue(QStringLiteral("src/a.cpp")));  // a bare string
+
+    const QJsonObject env = runRegions(fx.root, items);
+    ASSERT_TRUE(env.value("ok").toBool())
+        << "one malformed item must not fail the whole batch";
+    const QJsonArray r = env.value("results").toArray();
+    ASSERT_EQ(r.size(), 3);
+
+    const QJsonObject bad = r.at(0).toObject();
+    EXPECT_FALSE(bad.value("ok").toBool());
+    EXPECT_EQ(bad.value("code").toString().toStdString(), "bad_args");
+    EXPECT_EQ(bad.value("index").toInt(), 0)
+        << "the caller must be able to tell WHICH item was wrong";
+    const std::string err = bad.value("error").toString().toStdString();
+    EXPECT_NE(err.find("must be an OBJECT"), std::string::npos)
+        << "the refusal must name the shape, got: " << err;
+    EXPECT_NE(err.find("an array"), std::string::npos)
+        << "the refusal must name what it got, got: " << err;
+    // The discriminator is the OLD message's wording, not the phrase
+    // "exactly one of" — the new message uses that phrase legitimately, to
+    // say what the object should carry. What must be gone is the bare
+    // selector-rule refusal, which diagnosed a choice the caller never made.
+    EXPECT_EQ(err.find("{line range, symbol, section}"), std::string::npos)
+        << "the bare selector rule is the WRONG diagnosis for a non-object "
+           "item and following it cannot help: an array has nowhere to put a "
+           "selector. Got: " << err;
+
+    // The good item beside it still reads — a shape error is per-item.
+    const QJsonObject good = r.at(1).toObject();
+    EXPECT_TRUE(good.value("ok").toBool());
+    EXPECT_TRUE(joinLines(good).contains("alpha"));
+
+    // A bare string is refused the same way, naming its own type.
+    const QJsonObject str = r.at(2).toObject();
+    EXPECT_FALSE(str.value("ok").toBool());
+    EXPECT_NE(str.value("error").toString().toStdString().find("a string"),
+              std::string::npos);
+    EXPECT_EQ(str.value("index").toInt(), 2);
+}

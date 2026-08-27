@@ -5,6 +5,8 @@
 
 #include "applyedits.h"
 
+#include "wrapmatch.h"   // ANTS-4723 — the wrapped-match rule, one owner
+
 #include <QStringList>
 
 namespace ApplyEdits {
@@ -44,7 +46,34 @@ QString wsNormalised(const QString &s) {
 // alternative is a confident wrong line.
 void findWhitespaceNearMiss(const QString &contents, const QString &oldStr,
                             EditOutcome &r) {
-    if (oldStr.contains(QLatin1Char('\n'))) return;
+    if (oldStr.contains(QLatin1Char('\n'))) {
+        // ANTS-4723 — the case ANTS-4418 declined above, now answerable: a
+        // multi-line `oldStr` whose only disagreement with the file is WHERE a
+        // hard wrap falls ("§ Run\nhousekeeping" against "§ Run housekeeping\nas").
+        // ANTS-4418 called this "a windowed alignment over the file ... a
+        // different piece of work"; WrapMatch::find is that work, already
+        // written and already shared with two other verbs, so this is a call
+        // rather than a second implementation.
+        //
+        // Reported on EVERY such miss, whether or not `match_wrapped` was
+        // asked for, because the round-trip this saves is the one where the
+        // caller does not yet know the flag would help. Uniqueness is required
+        // for the same reason as above: two candidates cannot say which to
+        // retry, and naming one is worse than naming none.
+        const QVector<WrapMatch::Span> hits = WrapMatch::find(contents, oldStr, 2);
+        if (hits.size() != 1) return;
+        int line = 1;
+        for (int i = 0; i < hits.at(0).start && i < contents.size(); ++i)
+            if (contents.at(i) == QLatin1Char('\n')) ++line;
+        int ls = hits.at(0).start;
+        while (ls > 0 && contents.at(ls - 1) != QLatin1Char('\n')) --ls;
+        int le = ls;
+        while (le < contents.size() && contents.at(le) != QLatin1Char('\n')) ++le;
+        r.nearMissLine = line;
+        r.nearMissText = contents.mid(ls, le - ls);
+        r.nearMissKind = QStringLiteral("wrapped");
+        return;
+    }
     const QString needle = wsNormalised(oldStr);
     if (needle.isEmpty()) return;
 
@@ -104,7 +133,8 @@ void collectOccurrenceLines(const QString &contents, const QString &oldStr,
 }  // namespace
 
 EditOutcome applyToContent(const QString &contents, const QString &oldStr,
-                           const QString &newStr, bool replaceAll) {
+                           const QString &newStr, bool replaceAll,
+                           bool matchWrapped) {
     EditOutcome r;
     // An empty `old` is rejected upstream (bad_args); guard defensively so
     // QString::count("") (which returns size()+1) can't be misread as a hit.
@@ -114,6 +144,34 @@ EditOutcome applyToContent(const QString &contents, const QString &oldStr,
     }
     const int count = contents.count(oldStr);
     if (count == 0) {
+        // ANTS-4723 — the verbatim search found nothing; fall back to the
+        // wrapped rule when the caller asked for it. Ordered this way on
+        // purpose: the fallback is unreachable while an exact match exists,
+        // so no call that succeeds today can change behaviour under the flag.
+        if (matchWrapped && !replaceAll) {
+            const WrapMatch::Patch p =
+                WrapMatch::patchOnce(contents, oldStr, newStr);
+            if (p.hits > 1) {
+                // A phrase occurring twice under the looser rule is ambiguous,
+                // not a licence to take the first — the same guard the
+                // verbatim path applies.
+                r.skipReason = QStringLiteral("ambiguous");
+                r.matchCount = p.hits;
+                return r;
+            }
+            if (p.hits == 1 && !p.structuredBlock) {
+                r.applied      = true;
+                r.newContents  = p.text;
+                r.replacements = 1;
+                r.wrappedMatch = true;
+                return r;
+            }
+            // p.structuredBlock — ANTS-4612: the span was found but a
+            // continuation line of it carries alignment or opens a list item,
+            // which the re-flow would destroy. Declining is the contract, and
+            // it falls through to the near-miss report below so the caller is
+            // told WHERE rather than merely refused.
+        }
         r.skipReason = QStringLiteral("not_found");
         findWhitespaceNearMiss(contents, oldStr, r);
         return r;
