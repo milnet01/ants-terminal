@@ -47004,6 +47004,35 @@ envelope dropped `source`/`path`/`etag`/`total`/`filter`.
   Source: in-session-2026-08-27, found while writing ANTS-4712's test.
   Lanes: mcp.
 
+- 📋 [ANTS-4725] **Two ANTS-1881 combinator claims are unverified: section_etag_match's cross-mode answer, and whether the list path gates its mode echo.**
+  RECORDED RATHER THAN GUESSED. Both were raised as lane open questions
+  in ANTS-1881's loop 12 and left unsettled for want of a source window;
+  the run hit its cap (2 for a spec) before either could be windowed.
+  Neither is known to be wrong -- they are simply unchecked.
+
+  (1) § 2.3's `section_etag_match` row claims a caller holding a section
+  etag taken under mode:"bullets" is answered `unchanged` under
+  mode:"headline_only", on the grounds that the section etag keys on the
+  section's bytes rather than on `mode`. Plausible and unverified. If it
+  is FALSE the row is a live trap, because the two modes emit different
+  bytes and a caller would take a 304 for a payload shape it did not ask
+  for.
+
+  (2) § 2.4 and § 6's byte-identical back-compat claim both depend on the
+  LIST path's `mode` echo being `hasModeArg`-gated. That gate is confirmed
+  at four sites, but a lane could only tie one of them to the id branch.
+  Confirming which site serves the list path closes it.
+
+  CHEAP TO SETTLE, and neither needs a review: open the section-etag
+  short-circuit and the list path's echo site, then amend the two rows.
+  Do NOT re-gate the document for this -- loop 12 recorded an oscillating
+  cap and routed it to implementation, and an amendment that RECORDS what
+  the code does is the kind rule 14 exempts anyway.
+  **Layman:** Two small claims in a design document were never checked against the code, and the review ran out of loops before they could be.
+  Kind: doc.
+  Source: in-session-2026-08-27, ANTS-1881 review-contract loop 12 open questions.
+  Lanes: mcp, specs.
+
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-08-11 triage
 
 35 un-triaged findings across 9 of the 18 shared-root feedback files (AI
