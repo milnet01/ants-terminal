@@ -33,6 +33,13 @@ for security-relevant changes.
 
 ### Changed
 
+- **Three source-scrape tests now anchor on the construct they mean, not on the first match** (ANTS-4727)
+  Each opened its search window on a string that occurs several times, and
+  landed on the intended site only because of where the translation units
+  sit in the build's source list. Two of the three would have kept passing
+  from the wrong place. Each is now scoped to the function or branch under
+  test.
+
 - **Two ANTS-1881 combinator claims are unverified: section_etag_match's cross-mode answer, and whether the list path gates its mode echo.** (ANTS-4725)
   Two small claims in a design document were never checked against the code, and the review ran out of loops before they could be.
 

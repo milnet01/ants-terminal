@@ -404,7 +404,14 @@ TEST(mcp_roadmap_bundles, Inv6ComboGuards) {
     // initialiser asserts the same thing and survives both a reorder and a new
     // mode, which the position-encoded form did not.
     {
-        const auto ks = cpp.find("static const QStringList kModes");
+        // ANTS-4727 — scoped to cmdRoadmapQuery. `static const QStringList
+        // kModes` is NOT unique: the changelog verb declares one too, and only
+        // the order of the TUs in ANTS_RC_SOURCES puts this one first. That
+        // ordering is not this test's to depend on.
+        const auto qs = cpp.find("QJsonDocument RemoteControl::cmdRoadmapQuery");
+        const auto ks = qs == std::string::npos
+                            ? std::string::npos
+                            : cpp.find("static const QStringList kModes", qs);
         const auto ke = ks == std::string::npos
                             ? std::string::npos : cpp.find("};", ks);
         const std::string modes =

@@ -98,7 +98,14 @@ TEST(token_usage_no_ci_diagnostic, Inv3FallbackRetired) {
 TEST(token_usage_no_ci_diagnostic, Inv4SuccessPathClean) {
     expect_reset();
     const std::string cpp = ants_test::slurpRemoteControl();
-    const auto pos = cpp.find("env[\"ok\"] = true;");
+    // ANTS-4727 — `env["ok"] = true;` occurs in several sibling verbs; only
+    // the order of the TUs in ANTS_RC_SOURCES puts cmdTokenUsage's first. A
+    // new one in an earlier TU would move this window onto another verb's
+    // success path silently. Scoped to the function under test.
+    const auto fn = cpp.find("QJsonDocument RemoteControl::cmdTokenUsage");
+    ASSERT_NE(fn, std::string::npos)
+        << "INV-4 precondition: cmdTokenUsage definition not found";
+    const auto pos = cpp.find("env[\"ok\"] = true;", fn);
     ASSERT_NE(pos, std::string::npos)
         << "INV-4 precondition: cmdTokenUsage success path "
            "missing (env[\"ok\"] = true; not found)";

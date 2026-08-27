@@ -181,7 +181,17 @@ TEST(roadmap_query_headline_only, Inv5IdSelectorProjected) {
     // id-branch, conditional on mode == "headline_only".
     // The simplest check: the id-branch references "headline_only"
     // or the projection helper near the matches.append site.
-    const auto idBranchPos = cpp.find("matches.append(v)");
+    // ANTS-4727 — `matches.append(v)` is NOT unique: the plural `ids` branch
+    // carries the same call. Taking the first occurrence lands on the `id`
+    // branch only because of where the two sit in the file, and reordered the
+    // window would cover a branch that ALSO projects — so the assertion below
+    // would hold and the test would report nothing. Scoped to the `id`
+    // branch, whose opening occurs once.
+    const auto idBranchOpen = cpp.find("if (!idArg.isEmpty()) {");
+    const auto idBranchPos =
+        idBranchOpen == std::string::npos
+            ? std::string::npos
+            : cpp.find("matches.append(v)", idBranchOpen);
     expect(idBranchPos != std::string::npos,
            "INV-5: id-branch site (matches.append) present");
     if (idBranchPos != std::string::npos) {

@@ -47140,7 +47140,7 @@ envelope dropped `source`/`path`/`etag`/`total`/`filter`.
   Source: in-session-2026-08-27, observed live then investigated at a peer session's prompting.
   Lanes: ci, tooling.
 
-- 📋 [ANTS-4727] **Three source-scrape anchors take the first occurrence of a non-unique needle and are correct only by TU order.**
+- ✅ [ANTS-4727] **Three source-scrape anchors take the first occurrence of a non-unique needle and are correct only by TU order.**
   FOUND BY SWEEP, not by a failure. Every positional `at(cpp, ...)` anchor
   in the source-scrape suite is unique, so no test currently measures the
   wrong place. These three are the residue: each takes the FIRST occurrence
@@ -47167,6 +47167,24 @@ envelope dropped `source`/`path`/`etag`/`total`/`filter`.
   plus a comment saying why the obvious one is not usable. VERIFY BY
   MUTATION, per ANTS-4724: a source-scrape test that passes from the wrong
   position passes from the right one too, so reading it proves nothing.
+  Resolved (2026-08-27): all three scoped to the construct they mean, each
+  with a comment naming why the obvious anchor is not usable.
+
+  `token_usage_no_ci_diagnostic` opens from the cmdTokenUsage definition,
+  `roadmap_query_headline_only` from the singular `id` branch's opening, and
+  `mcp_roadmap_bundles` from the cmdRoadmapQuery definition. All three
+  scoping anchors occur exactly once across ANTS_RC_SOURCES.
+
+  VERIFIED BY SIMULATION rather than by a red run, and the distinction is
+  worth stating: these three were already passing and already on the right
+  site, so there is no mutation that reddens them today. What was measured
+  is the property the fix adds -- inserting a decoy occurrence ahead of the
+  intended site moves the UNSCOPED window outside the function under test
+  while the scoped window stays put. Suite 3996/3996 green.
+
+  SPUN OUT: ANTS-4733 -- applying these three edits hit an apply_edits
+  transport timeout whose write completed after the client had been told it
+  failed and had checked the files.
   **Layman:** Some tests find the right spot in the code by luck, and would stop checking anything if the code moved.
   Kind: test.
   Source: in-session-2026-08-27, sweep prompted by ANTS-4724.
@@ -47366,6 +47384,46 @@ envelope dropped `source`/`path`/`etag`/`total`/`filter`.
   Kind: doc-fix.
   Source: in-session-2026-08-27, found while settling ANTS-4725's cross-mode claim against the source.
   Lanes: mcp, docs.
+
+- 📋 [ANTS-4733] **apply_edits reports a transport timeout while the write is still in flight, so a caller that checks and retries races it.**
+  OBSERVED ONCE, with the sequence recorded because it is the evidence.
+
+  A three-file apply_edits batch returned `Ants MCP transport: timed out`.
+  Checking immediately afterwards -- `git status --porcelain` plus a grep for
+  the new marker in all three files -- showed a CLEAN tree and no marker
+  anywhere. On that evidence the batch had not applied, so one edit was
+  re-sent. It refused `not_found`. A second grep then found the marker
+  present in all three files, each exactly once.
+
+  So the write completed AFTER the client had been told the call timed out
+  and after the client had looked. The timeout is a client-side deadline
+  being reported as an outcome, and the honest reading of it is "unknown",
+  not "failed".
+
+  WHY IT MATTERS. The documented recovery from a failed batch is to retry,
+  and the natural check before retrying -- look at the file -- can return
+  the pre-write state. Here the uniqueness guard saved it: `old` no longer
+  matched, so the retry refused instead of double-applying. That guard does
+  NOT cover every shape. `replace_all:true` re-applies against whatever the
+  new text matches, and a `start_line`/`end_line` range edit is guarded only
+  by `expect_first_line` / `expect_last_line`, which a completed write may
+  still satisfy on a shifted range.
+
+  POSSIBLY THE SAME CLASS AS ANTS-4709, which reports an apply_edits failure
+  at the JSON boundary on a multi-kilobyte payload. This batch was a few
+  kilobytes across three files. Worth measuring together: if the timeout is
+  the protocol's rather than the verb's, no change to the verb fixes it and
+  the deliverable is a documented limit plus a statement that a timeout
+  means UNKNOWN.
+
+  CHEAPEST HONEST STEP, and it needs no protocol work: say in the verb's
+  description that a transport timeout does not mean the write did not
+  happen, and that the safe recovery is to re-read the file rather than
+  re-send the batch.
+  **Layman:** A file-editing tool said it timed out, then finished the job anyway — so checking whether it worked gave the wrong answer.
+  Kind: fix.
+  Source: in-session-2026-08-27, hit while applying ANTS-4727's three test edits.
+  Lanes: mcp.
 
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-08-11 triage
 
