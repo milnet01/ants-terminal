@@ -54,7 +54,14 @@ TEST(roadmap_query_by_ids, Inv1IdsReadAndHygiene) {
 TEST(roadmap_query_by_ids, Inv2BypassesStatusAndPagination) {
     expect_reset();
     const std::string cpp = ants_test::slurpRemoteControl();
-    const size_t idsBranch    = at(cpp, "if (!idsArg.isEmpty())");
+    // ANTS-4724 — the anchor must be UNIQUE to the ids branch.
+    // `if (!idsArg.isEmpty())` is not: it is a substring of an
+    // `else if (!idsArg.isEmpty())` in the `query` bad_mode_combo chain
+    // far earlier in the file. A window opened there measures a position
+    // that has nothing to do with the ids selector, and the ordering
+    // assert below then holds wherever the real branch sits.
+    // `wanted(idsArg.cbegin()` occurs once, inside the branch.
+    const size_t idsBranch    = at(cpp, "wanted(idsArg.cbegin()");
     const size_t statusFilter = at(cpp, "ANTS-1247-INV-2/3");
     expect(idsBranch != std::string::npos,
            "INV-2: multi-item ids branch present");

@@ -46975,7 +46975,7 @@ envelope dropped `source`/`path`/`etag`/`total`/`filter`.
   Source: claude_config_Ants_MCP_Feedback.md 2026-08-27.
   Lanes: mcp.
 
-- 📋 [ANTS-4724] **Inv2BypassesStatusAndPagination anchors on a substring that also matches an earlier `else if`, so it measures the wrong branch.**
+- ✅ [ANTS-4724] **Inv2BypassesStatusAndPagination anchors on a substring that also matches an earlier `else if`, so it measures the wrong branch.**
   FOUND BY MUTATION, not by reading. ANTS-4712's new test used the same
   anchor and passed under a mutation that should have reddened it.
 
@@ -46999,6 +46999,21 @@ envelope dropped `source`/`path`/`etag`/`total`/`filter`.
   not usable. Worth a wider look while there: any source-scrape anchor that
   is a substring of a longer construct has this shape, and this suite is
   built entirely from source scrapes.
+  Resolved (2026-08-27): re-anchored on `wanted(idsArg.cbegin()`, which
+  occurs once and sits inside the branch, with a comment naming why the
+  obvious anchor is unusable.
+
+  PROVED BY MUTATION, both directions. Inserting a decoy
+  `ANTS-1247-INV-2/3` anchor between the decoy `else if` and the real ids
+  branch reddens the fixed test; replaying the OLD anchor's arithmetic over
+  the same concatenation shows its assertion still holds. So the anchor was
+  measuring a position in the `query` bad_mode_combo chain, unrelated to the
+  ids selector.
+
+  WIDER LOOK DONE, filed separately as ANTS-4727. Every positional
+  `at(cpp, ...)` anchor across the source-scrape suite is unique; three
+  first-occurrence anchors on non-unique needles are correct only by the
+  order of the TUs in ANTS_RC_SOURCES.
   **Layman:** A test looks in the wrong part of the file, so it can pass without checking anything.
   Kind: test.
   Source: in-session-2026-08-27, found while writing ANTS-4712's test.
@@ -47084,6 +47099,155 @@ envelope dropped `source`/`path`/`etag`/`total`/`filter`.
   Kind: investigate.
   Source: in-session-2026-08-27, observed live then investigated at a peer session's prompting.
   Lanes: ci, tooling.
+
+- 📋 [ANTS-4727] **Three source-scrape anchors take the first occurrence of a non-unique needle and are correct only by TU order.**
+  FOUND BY SWEEP, not by a failure. Every positional `at(cpp, ...)` anchor
+  in the source-scrape suite is unique, so no test currently measures the
+  wrong place. These three are the residue: each takes the FIRST occurrence
+  of a needle that occurs more than once, and lands on the intended site
+  only because of where its TU sits in ANTS_RC_SOURCES.
+
+  - `mcp_roadmap_bundles` slices the `static const QStringList kModes`
+    initialiser. changelog's TU declares one too, and wins if it ever
+    precedes roadmap_query's. This one fails LOUDLY -- the sliced list
+    would not contain the mode being asserted.
+  - `roadmap_query_headline_only` opens its window at `matches.append(v)`,
+    intending the singular `id` branch. The plural `ids` branch carries the
+    same call. Reordered, the window covers a branch that ALSO projects, so
+    the assertion holds and the test says nothing.
+  - `token_usage_no_ci_diagnostic` opens at `env["ok"] = true;`, intending
+    cmdTokenUsage. Several sibling verbs carry the same line; only the TU
+    order puts the intended one first. A new one in an earlier TU moves the
+    window silently.
+
+  THE LAST TWO ARE THE ANTS-4724 SHAPE -- correct today, no signal after a
+  move. The first is not, because it reddens.
+
+  FIX IS THE SAME SHAPE EACH TIME: an anchor unique to the intended site,
+  plus a comment saying why the obvious one is not usable. VERIFY BY
+  MUTATION, per ANTS-4724: a source-scrape test that passes from the wrong
+  position passes from the right one too, so reading it proves nothing.
+  **Layman:** Some tests find the right spot in the code by luck, and would stop checking anything if the code moved.
+  Kind: test.
+  Source: in-session-2026-08-27, sweep prompted by ANTS-4724.
+  Lanes: mcp, tests.
+
+- 📋 [ANTS-4728] **doc_citations cannot resolve a bare basename naming a project standard, so the most-cited class of document is never checked.**
+  MEASURED by the reporter, not inferred. ANTS-4639 gave the resolver three
+  routes for a bare basename: the scanned document's own directory, the repo
+  root, and the codebase-index basename map. A skill cites a standard as
+  `commits.md`; the file lives under standards/. No route reaches it, and
+  the basename index is empty in that tree, so the quotation comes back
+  target_unresolved.
+
+  WHY IT MATTERS. target_unresolved is honest -- it says the check did not
+  run -- but in an aggregate it is indistinguishable from a clean pass
+  unless the reader breaks the counts down. Every unresolved quotation the
+  reporter hand-checked named a file that EXISTS at standards/<basename>,
+  and one of them was a skill quoting its own superseded wording, where
+  not_found was the correct answer and never came.
+
+  TWO CANDIDATE FIXES, reporter's own, in their order of preference.
+  (1) When the basename index is empty or misses, fall back to a bounded
+  repo-wide search among *.md and take the hit only if it is UNIQUE --
+  ambiguous stays unresolved rather than guessing, which is the rule
+  ANTS-4638's attribution already follows.
+  (2) Consult docs_dir from .ants/project.json and a conventional standards/
+  beside it. Narrower, closes every case measured, but bakes in a directory
+  name.
+
+  PREFER (1): it needs no per-project declaration and its refusal rule is
+  already precedented here.
+  **Layman:** A checker that verifies quotations gives up on the documents it is asked about most, and the give-up looks like a pass.
+  Kind: fix.
+  Source: claude_config_Ants_MCP_Feedback.md 2026-08-27 (measured across four skill files).
+  Lanes: mcp, docs.
+
+- 📋 [ANTS-4729] **discarded_external_edits fires on the renderer's own format marker, so the one flag that must never cry wolf does.**
+  MEASURED, with the diff. On a migrated project whose ROADMAP.md predates
+  the roadmap-format marker header, the first roadmap_log write reports
+  discarded_external_edits:true, and check_sync reports drift beforehand.
+  The lines are the marker comment and its blank line -- emitted by the
+  RENDERER, absent from the older file. No authored content is involved,
+  and the same envelope says so: discarded_text_lines and
+  discarded_restyled_lines are both zero, drift_lost is zero. A second
+  write on the now-marked file reports false.
+
+  WHY IT MATTERS. This flag is documented as the only place a silently
+  discarded hand-edit surfaces, so a session is told to stop and investigate
+  whenever it fires. Here it fires once per not-yet-marked project on the
+  tool's own header, and the investigation finds nothing anyone wrote. A
+  session following that instruction reports a discarded edit to the user
+  that did not happen -- and a high-trust flag with a routine false positive
+  is one sessions learn to skim.
+
+  REPORTER'S FIX, and it may be the whole of it: derive the boolean from the
+  CONTENT counters rather than the raw line delta, since
+  discarded_text_lines already separates the two cases. If the marker
+  addition is worth reporting at all, give it its own field and leave
+  discarded_external_edits for bytes a human wrote.
+
+  CHECK BEFORE BUILDING: confirm the counters are populated on the same path
+  that computes the boolean. The report establishes they are present in the
+  envelope, not that they are available at the decision point.
+  **Layman:** A warning meant for "someone's hand-written text was thrown away" also fires when the tool adds its own header.
+  Kind: fix.
+  Source: Rolodex_Ants_MCP_Feedback.md 2026-08-27 (measured, with a git diff naming the two lines).
+  Lanes: mcp, roadmapstore.
+
+- 📋 [ANTS-4730] **check_sync omits sync_checked on the healthy arm, so the field its own schema says to branch on is absent exactly when the check succeeded.**
+  MEASURED, and the reporter ruled out the obvious confound by repeating the
+  call without a fields= narrowing.
+
+  The check_sync schema says sync_checked:false means nobody looked and is
+  NOT a clean bill of health -- which instructs a caller to branch on it
+  before trusting the answer. On the in-sync arm the envelope carries
+  file_in_sync:true and NO sync_checked key. A caller doing the documented
+  check reads absent as falsy and concludes nobody looked, on the one
+  response that proves somebody did. The key is emitted only on the arm
+  where it would be false.
+
+  WHY IT MATTERS. It defeats precisely the misread the field was added to
+  prevent, and it lands on the CAREFUL caller -- one trusting file_in_sync
+  alone is unaffected. The reporter names ANTS-3583 and ANTS-4698 as the
+  same shape: a guard field that is absent rather than explicit, where
+  absence and the bad value are indistinguishable.
+
+  FIX: emit sync_checked:true on the arm where the render-and-compare
+  actually ran, so absence means only that check_sync was not requested.
+  The documentation-only alternative -- state that the field appears solely
+  on the false arm -- also resolves it and is strictly weaker; prefer the
+  emit.
+  **Layman:** A tool tells you to check one field first, then leaves that field out of the answer that proves everything is fine.
+  Kind: fix.
+  Source: perch_Ants_MCP_Feedback.md 2026-08-27 (measured, with the fields= filter ruled out).
+  Lanes: mcp, roadmapstore.
+
+- 📋 [ANTS-4731] **feedback_query has both halves of the stale-binary test and makes the caller join them by hand.**
+  NOT A DEFECT REPORT, and the reporter is explicit about that. The existing
+  machinery WORKED: session_orient's stale_check_hint stopped them filing
+  two confident "shipped but still broken" reports on the day those fixes
+  landed, against a server built before them.
+
+  THE GAP IS ERGONOMIC. feedback_query already returns shipped_date per
+  mapped id. session_orient already returns the running build's date. A
+  session has to fetch both and join them. Flagging a mapped id whose
+  shipped_date is later than the running build -- "shipped after this
+  binary; do not re-report" -- would put the whole test in the call that
+  already lists the ids.
+
+  VALUE IS CONDITIONAL, and the reporter says so: low if sessions read the
+  hint, which this one did. Weigh it against the items already filed rather
+  than above them.
+
+  WORTH CONFIRMING FIRST: whether feedback_query can see the running build's
+  date at all without a new dependency on the server-build surface. If it
+  cannot, the honest deliverable is a line in its description pointing at
+  the join, not a new field.
+  **Layman:** Two tools each hold half of "is this fix actually running yet?", and you have to put them together yourself.
+  Kind: enhancement.
+  Source: Charls_Site_Ants_MCP_Feedback.md 2026-08-27 (suggested after a near-miss the existing hint prevented).
+  Lanes: mcp.
 
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-08-11 triage
 
