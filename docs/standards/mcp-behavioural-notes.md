@@ -799,7 +799,8 @@ which heading you expect it under.
     `render_gate_unmet`'s envelope carries `gate_failures[]` naming the
     offending ids, so the caller is not left guessing which items block it —
     and since ANTS-4628 each is one the same call can repair, because a note
-    whose FIRST line declares the `Layman:` trailer sets the column. **ANTS-4141 adds `render_would_drop`** at the same seam and
+    declaring the `Layman:` trailer first on its own line — any line, not
+    only the note's first — sets the column. **ANTS-4141 adds `render_would_drop`** at the same seam and
     with the same write-nothing, roll-back semantics: the write path renders
     the store's whole document, which assumes the store is a superset of the
     file, and where that is false a bullet the store never imported is
