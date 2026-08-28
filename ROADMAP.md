@@ -32981,7 +32981,7 @@ against current source before filing.
   that the untouched offender is left alone.
   Resolved (2026-08-26): flipped during the 0.7.107 pre-flight, which found the CHANGELOG claiming this shipped against a roadmap that still called it planned. The code is in the tree and was verified before flipping rather than taken from the changelog: `render_gate_unmet` is emitted from src/remotecontrol_roadmap_query.cpp and the gate's own reasoning sits in src/roadmapwrite.cpp. The delivered behaviour is the one the changelog describes -- the refusal now names a remedy that actually works, repairing every offender in one flip_batch, because the Layman gate is per project and evaluated after the mutation, so a one-at-a-time repair is refused by whichever offenders remain. Recorded because the release gate is the only thing that looked: nothing else compares a changelog claim against the roadmap's own status, and a bullet that ships while its item stays planned is invisible from both sides.
 
-- 📋 [ANTS-4435] **mcp-error-codes.md names a render_gate_unmet remedy that provably cannot work.**
+- ✅ [ANTS-4435] **mcp-error-codes.md names a render_gate_unmet remedy that provably cannot work.**
   The `render_gate_unmet` row says: "Remedy is to fill in the named layman lines, which `annotate` / `amend_body` can do one at a time."
 
   Both write the item's `body`. The gate reads the `layman` column (roadmaprender.cpp:315). So neither clears it — and both are refused by the same gate before they run at all. A caller following the table one item at a time gets a byte-identical refusal every time, which is what the finbreak session reported after doing exactly that.
@@ -33032,6 +33032,7 @@ against current source before filing.
   What it does NOT cover, and what remains this item's: whatever else the row is
   stale about beyond the gate's scope. Re-read it fresh rather than assuming the
   2026-08-24 pass swept it -- that pass was aimed at one claim.
+  Resolved (2026-08-28): the render_gate_unmet row was re-read fresh, as this item asked, and the re-read found more than the row. The remedy now names op:"amend_field" as the direct route to the layman column, with the field_shadowed_by_body case that defeats it and the amend_body way out. Gated under rule 14 because a conformer would reach for a different op; the gate ran three cold loops, verified 22 findings and fixed 19, dismissed one on measurement and filed three as ANTS-4752 at a violent cap. The run also corrected a claim this item's own fix had carried: the ride-along rule is the label first on ANY line, not the note's first line, which the shipped refusal message still gets wrong (ANTS-4749). The file gained the loop-log section the standard skeleton requires, which it had never had.
 
 - 💭 [ANTS-4436] **file_ahead_of_store fires on every project whose id_prefix row was never written, including one migrated seconds ago.**
   ANTS-4402's witness compares `file_highest_id` against `store_high_water`, and the high water comes from the `id_prefix` table. Migration does not write a row there — only an id-allocating append does. So a migrated-but-never-appended project reports `store_high_water: 0`, and any id in the file makes `file_ahead_of_store` true forever.
@@ -33638,6 +33639,50 @@ in each bullet, not just the reporter's symptom.
   Kind: investigate.
   Source: in-session-2026-08-25.
   Lanes: ci, build.
+
+- 📋 [ANTS-4751] **A promoted RC runs the release workflow frozen at its cut, so a pipeline fix skips the very next release.**
+  The Release audit went red and is right: the permanent download URL
+  /releases/latest/download/Ants_Terminal-x86_64.AppImage returns 404,
+  measured today. v0.7.105 carries that alias asset; v0.7.106 does not.
+
+  Root cause, confirmed rather than inferred. The `v0.7.106` tag points at
+  commit 397cea8a, dated 2026-08-19. `git show v0.7.106:.github/workflows/
+  release.yml` has no ALIAS step. ANTS-4586, which adds it, and ANTS-4583,
+  which adds the step that verifies it, both landed 2026-08-20 — the day
+  after. GitHub runs a tag's workflow AS OF THAT TAG, so promoting a frozen
+  RC re-runs the pipeline the RC was cut with.
+
+  The compounding part is the reason this went unnoticed: ANTS-4583's
+  verification step was frozen out too. So the run went GREEN while
+  publishing a release missing the artefact a published link depends on,
+  which is precisely the "an artefact nothing checks can vanish quietly"
+  failure ANTS-4586's own commit message describes. The guard cannot
+  protect the release it was written for.
+
+  Not a one-off. Any release-pipeline change made after an RC is cut
+  silently applies one release later, and the release in between looks
+  healthy from inside CI. The freeze is deliberate for PRODUCT code — that
+  is what an RC is — but the release WORKFLOW is machinery, not product,
+  and freezing it buys nothing.
+
+  Self-heals here: v0.7.107's RC was cut 2026-08-26, after both fixes, so
+  it should carry the alias. Confirm that at promotion rather than assume
+  it — this item is about the mechanism, and the next occurrence is the
+  next pipeline change made mid-RC.
+
+  Direction, not yet decided. Either promote by re-running the release job
+  from `main`'s workflow against the frozen tree, or have `cut-rc.sh
+  promote` refuse when `.github/workflows/release.yml` has changed since
+  the RC was cut, naming the diff. The second is smaller and turns a silent
+  skip into a loud one.
+
+  Separately: v0.7.106's alias can be restored by uploading the existing
+  binary under the alias name; that repairs the live link without waiting
+  for 0.7.107.
+  **Layman:** A fix to the release machinery does not reach the next release, because that release was already frozen before the fix existed — and the check meant to catch it was frozen out too.
+  Kind: fix.
+  Source: release-audit failure on 5dcebaef, diagnosed in-session 2026-08-28.
+  Lanes: ci, packaging.
 
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-08-14 triage
 
@@ -48015,6 +48060,86 @@ envelope dropped `source`/`path`/`etag`/`total`/`filter`.
   Kind: enhancement.
   Source: ANTS-4743 option 1, deferred; new measurement in-session-2026-08-28.
   Lanes: mcp, docs.
+
+- 📋 [ANTS-4752] **mcp-error-codes.md: the category scheme is unfalsifiable, and the run that found it hit its cap.**
+  Deferred tail of the ANTS-4435 gate, which reached its 3-loop cap for a
+  standard. Twenty-two findings were verified and fixed across three
+  loops; these three survive, and they share one subject the run could
+  not settle inside a cap.
+
+  1. The section headings are definitions the table contradicts.
+     § 1 is "caller's argv is malformed" and holds `rate_limited`, where
+     argv is fine. § 2 is "the requested object isn't where the tool can
+     act on it" and holds `bad_summary`, which is a malformed argument.
+     Only `no_roadmap` carries an exemption note. This matters because
+     step 4 puts the section number into the source comment, so two
+     conformers citing different sections are both unfalsifiable.
+
+  2. `query_disabled` sits in § 6 (execution of caller-supplied Lua) but
+     is checked before anything is executed, while its structural twin
+     `mcp_disabled` sits in § 5. An author adding a second feature gate
+     has two precedents pointing opposite ways.
+
+  3. The step-2 minting test the run promoted is not yet applied to the
+     table's existing analogue pairs — `target_not_found`,
+     `target_ambiguous`, `widget_not_found`, `symbol_not_found`. Each may
+     conform or be grandfathered like `not_audited`; none is marked.
+     A loop-3 fix tried to justify them by disambiguation payload and was
+     withdrawn: the source shows `target_ambiguous` carries `candidates`,
+     and no `suggestions[]` payload is documented anywhere. Do not
+     re-reach for that reasoning without checking the emitters.
+
+  WHY THIS IS FILED RATHER THAN LOOPED. The cap was VIOLENT: roughly six
+  of loop 3's nine verified findings landed on text this run itself wrote,
+  each loop repairing the last, with nothing suggesting a fourth would
+  stop. Per review-contract's own rule that ends this document's review as
+  it stands; a further gate on the same text is not the remedy.
+
+  The size signal points the same way and is the recommended route. The
+  file is only ~230 lines but ~59 KB, and one section — § Categories —
+  carries ~56 KB of it as six dense tables. That is a document doing six
+  jobs, which is why a cold reader keeps finding boundary defects between
+  them. Splitting § Categories, or giving each category its own file with
+  the minting rules kept central, is the change that would make the next
+  gate converge.
+  **Layman:** The error-code reference sorts codes into sections whose stated meanings do not match where the codes actually sit, so nobody can tell which section a new one belongs in.
+  Kind: doc-fix.
+  Source: review-contract deferred tail, ANTS-4435 run 2026-08-28.
+  Lanes: mcp, docs.
+
+- 📋 [ANTS-4753] **workspace_search returns a silent zero when a glob names a dot-directory, because include_hidden gates the path.**
+  Hit today: `workspace_search` with `glob: ".github/workflows/*.yml"`
+  for a string that is present in `release.yml` returned zero matches and
+  no explanation. A plain `grep -n` on the same file found it at once, and
+  the conclusion drawn from the empty result — that the release workflow
+  had lost its alias step — was wrong and would have sent the diagnosis
+  down a false path.
+
+  Cause is documented behaviour, not a bug: `include_hidden` defaults to
+  false, `.github` is a dotfile path, so the walk never reaches it.
+
+  Why it is still worth changing. A `lane` or `glob` that NAMES a hidden
+  path is an unambiguous statement of intent — nobody types `.github/`
+  meaning "not `.github/`". The default is right for an unscoped sweep and
+  wrong for an explicitly scoped one, and the failure mode is the one
+  ANTS-4374 already calls unacceptable elsewhere: an empty list with no
+  reason, indistinguishable from the string genuinely being absent.
+
+  Cheapest correct fix, and it is the smaller of the two: when `glob` or
+  `lane` begins with a dot segment and `include_hidden` is false, say so
+  in the envelope — a `hidden_paths_skipped` flag plus a hint naming the
+  argument. That keeps every existing call byte-identical and removes the
+  silence. Auto-enabling `include_hidden` on such a glob is the other
+  option and is more convenient, but it changes what an existing call
+  returns, which this project treats as the more expensive kind of change.
+
+  Precedent for the shape: `doc_citations`' honest-zero message
+  (ANTS-4743) and `invariant_check`'s path-only zero (ANTS-4742) are the
+  same repair — a zero that says whether it is clean or silent.
+  **Layman:** Searching inside a folder whose name starts with a dot finds nothing and says nothing, even when you name that folder explicitly.
+  Kind: enhancement.
+  Source: in-session-2026-08-28, hit while diagnosing the release-audit failure.
+  Lanes: mcp.
 
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-08-11 triage
 
