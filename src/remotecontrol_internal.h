@@ -299,6 +299,20 @@ void rlAttachHistoryNote(QJsonObject &env, const RoadmapStore &store,
 // (annotate / flip / flip_batch) and `new_text` (amend_body, ANTS-4576).
 bool rlNoteDeclaresTrailer(const QString &note, QString *error,
                            const char *argName = "note");
+
+// ANTS-4532 — hard-wrap a note that carries NO line structure of its own.
+//
+// `note` is written verbatim, because prose that brought its own line breaks
+// must keep them. A note with no newline at all has none to keep, and left
+// alone it lands as a single very long line in a corpus where every other body
+// is wrapped — noisy in a diff and in the dialog's raw view. So this wraps that
+// case and only that case; a multi-line note is returned untouched, and no new
+// argument is needed to ask for either.
+//
+// MUST run AFTER rlNoteDeclaresTrailer(). Wrapping can move a word to the start
+// of a line, and a trailer key at a line start is a DECLARATION — running this
+// first could manufacture one the caller never wrote.
+QString rlWrapNote(const QString &note);
 // `kept` (ANTS-4576, optional) collects the NOT NULL columns whose declaration
 // the new body dropped and whose value therefore survives — the one outcome a
 // caller cannot see in their own diff.

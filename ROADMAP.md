@@ -39924,7 +39924,7 @@ are closed inline in the feedback files rather than filed here.
   Source: in-session-2026-08-19, hit while logging ANTS-4505/4506.
   Lanes: roadmap-mcp, changelog.
 
-- 📋 [ANTS-4532] **roadmap_log writes a flip note as one long unwrapped line, so a resolution note does not match the corpus around it.**
+- ✅ [ANTS-4532] **roadmap_log writes a flip note as one long unwrapped line, so a resolution note does not match the corpus around it.**
   `note` (op:flip / flip_batch / annotate) is written verbatim, and the
   schema tells the caller to pre-wrap to ~70 columns. Every existing body
   in ROADMAP.md is wrapped, so a caller who does not pre-wrap leaves one
@@ -39940,6 +39940,15 @@ are closed inline in the feedback files rather than filed here.
   Observed on ANTS-4505 and ANTS-4506's own resolution notes, left as
   written rather than repaired by hand -- an amend_body rewrite of a
   1,200-character line risks more than it fixes.
+  Resolved (2026-08-28): a note carrying NO newline is now hard-wrapped at ~70 columns, the width the corpus around it uses; a note that brought its own line breaks is still written verbatim.
+
+  Took this body's second option rather than its first. An opt-in `wrap` argument would make every caller choose, and the choice is decidable from the input: prose with no newline has no structure to preserve, so there is nothing an argument could protect. No new argument was added.
+
+  ONE ORDERING CONSTRAINT, and it is the whole risk in the change: the wrap runs AFTER the ANTS-4549 trailer guard, never before. Wrapping moves words to the start of lines, and a trailer key at a line start is a DECLARATION — running it first could manufacture one the caller never wrote. It also runs before the already-present check, so a re-run compares the text it would actually write.
+
+  Both note-taking paths share the one helper: flip / annotate, and flip_batch / annotate_batch.
+
+  Two behavioural cases through the existing test seam, observed in the FILE because that is where the defect was seen. Seen red: with the wrap neutered, the single-line case fails and the multi-line case still passes, which is the pair the design needs.
   **Layman:** Notes added to roadmap entries come out as one very long line instead of wrapped like everything else.
   Kind: enhancement.
   Source: in-session-2026-08-19, observed logging ANTS-4505/4506.
@@ -40040,7 +40049,7 @@ are closed inline in the feedback files rather than filed here.
   Source: in-session-2026-08-20.
   Lanes: roadmap-store, roadmaprender.
 
-- 📋 [ANTS-4544] **Silence 2 GCC -Wnull-dereference false-positives from roadmapdialog.cpp's TOC-toggle lambda — ANTS-1554/3358/3505 class.**
+- ✅ [ANTS-4544] **Silence 2 GCC -Wnull-dereference false-positives from roadmapdialog.cpp's TOC-toggle lambda — ANTS-1554/3358/3505 class.**
   Noticed 2026-08-20 during an ordinary `cmake --build build`: two
   identical `warning: potential null pointer dereference
   [-Wnull-dereference]` at src/roadmapdialog.cpp:2294, which is the
@@ -40062,6 +40071,11 @@ are closed inline in the feedback files rather than filed here.
 
   Small and mechanical. Filed rather than fixed inline because it is
   orthogonal to the work that surfaced it (ANTS-4501).
+  Resolved (2026-08-28): silenced with the GCC-only, tightly scoped pragma ANTS-1554 / ANTS-3358 / ANTS-3505 all settled on, with a comment naming the guard it covers for.
+
+  Reproduced first, as this body instructed, rather than fixed blind — two identical warnings on a clean rebuild of the TU. The line had MOVED since filing, so the pin in this bullet no longer pointed at the lambda; the guard is the `if (m_toc)` on the warning's own line, which is what makes it a false positive.
+
+  The suppression covers both guarded derefs in the lambda and nothing else. Verified in both directions: two warnings before, zero after, on a forced rebuild of that translation unit.
   **Layman:** The compiler prints a scary "possible crash here" warning about code that already checks for the thing it is warning about. Harmless, but it clutters every build.
   Kind: fix.
   Source: in-session-2026-08-20.

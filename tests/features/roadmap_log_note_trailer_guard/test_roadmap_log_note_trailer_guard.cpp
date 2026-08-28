@@ -255,3 +255,73 @@ TEST(roadmap_log_note_trailer_guard, Inv7DeliberateDeclarationSurvives) {
             << "refused a declaration in the render's own shape: " << n;
     }
 }
+
+// ANTS-4532 — a note is written verbatim, which is right for prose carrying its
+// own line breaks and wrong for prose carrying none: a single unwrapped line
+// lands in a corpus where every other body is wrapped. A note with no newline
+// has no structure to preserve, so it is wrapped; one with newlines is not.
+//
+// Behavioural, through the same seam as the guard cases above, because the
+// wrapping has to be observed in the FILE — that is where the defect was seen.
+namespace {
+int longestLine(const QByteArray &bytes) {
+    int worst = 0;
+    for (const QByteArray &ln : bytes.split('\n'))
+        worst = std::max<int>(worst, QString::fromUtf8(ln).size());
+    return worst;
+}
+}  // namespace
+
+TEST(roadmap_log_note_trailer_guard, Ants4532SingleLineNoteIsWrapped) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    ASSERT_TRUE(writeFile(roadmapPath(tmp.path()), seed()));
+    ASSERT_LT(longestLine(readFile(roadmapPath(tmp.path()))), 70)
+        << "fixture drift: the seed must already be wrapped, or the assertion "
+           "below proves nothing about the note";
+
+    RemoteControl rc(nullptr);
+    QJsonObject r = req(tmp.path(), QStringLiteral("annotate"));
+    r[QStringLiteral("id")]   = QStringLiteral("ANTS-0042");
+    r[QStringLiteral("note")] = QStringLiteral(
+        "Resolved (2026-08-28): one very long single line of prose with no "
+        "newline anywhere in it, of the kind a caller writes when they do not "
+        "pre-wrap, which previously landed in the file as a single line far "
+        "wider than everything around it and showed up as noise in the diff.");
+    const QJsonObject resp = rc.cmdRoadmapLogFlipForTest(r).object();
+    ASSERT_TRUE(resp.value(QStringLiteral("ok")).toBool())
+        << QJsonDocument(resp).toJson(QJsonDocument::Compact).toStdString();
+
+    const QByteArray after = readFile(roadmapPath(tmp.path()));
+    EXPECT_LE(longestLine(after), 74)
+        << "the note must be hard-wrapped, not written as one long line";
+    // Wrapping must not lose or reorder the prose.
+    const std::string s = QString::fromUtf8(after).toStdString();
+    EXPECT_TRUE(has(s, "Resolved (2026-08-28): one very long single line"));
+    EXPECT_TRUE(has(s, "noise in the diff."));
+}
+
+// The other half, and the reason this is not simply "always wrap": a note that
+// brought its own line breaks keeps them.
+TEST(roadmap_log_note_trailer_guard, Ants4532MultiLineNoteIsVerbatim) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    ASSERT_TRUE(writeFile(roadmapPath(tmp.path()), seed()));
+
+    RemoteControl rc(nullptr);
+    QJsonObject r = req(tmp.path(), QStringLiteral("annotate"));
+    r[QStringLiteral("id")]   = QStringLiteral("ANTS-0042");
+    r[QStringLiteral("note")] = QStringLiteral(
+        "Resolved: a deliberate break follows this sentence.\n"
+        "- a bullet that must stay on its own line\n"
+        "- and a second one");
+    const QJsonObject resp = rc.cmdRoadmapLogFlipForTest(r).object();
+    ASSERT_TRUE(resp.value(QStringLiteral("ok")).toBool())
+        << QJsonDocument(resp).toJson(QJsonDocument::Compact).toStdString();
+
+    const std::string s = QString::fromUtf8(readFile(roadmapPath(tmp.path()))).toStdString();
+    EXPECT_TRUE(has(s, "- a bullet that must stay on its own line"))
+        << "an authored line break must survive; re-flowing it would join the "
+           "bullets into a paragraph";
+    EXPECT_TRUE(has(s, "- and a second one"));
+}

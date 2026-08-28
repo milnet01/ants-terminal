@@ -952,6 +952,27 @@ QString rcdetail::rlDeclaredIdRefusal(const QString &writtenId,
 //
 // ANTS-4504's code-span masking is what makes the remedy cheap: a key inside
 // backticks declares nothing, so wrapping it is a one-character fix.
+// ANTS-4532 — see remotecontrol_internal.h for why this is single-line only
+// and why it must run after the trailer guard.
+QString rcdetail::rlWrapNote(const QString &note) {
+    if (note.contains(QLatin1Char('\n'))) return note;
+    // ~70 columns, which is what the corpus around it uses.
+    constexpr int kCols = 70;
+    const QStringList words = note.split(QLatin1Char(' '), Qt::SkipEmptyParts);
+    QStringList lines;
+    QString cur;
+    for (const QString &w : words) {
+        if (!cur.isEmpty() && cur.size() + 1 + w.size() > kCols) {
+            lines << cur;
+            cur.clear();
+        }
+        if (!cur.isEmpty()) cur += QLatin1Char(' ');
+        cur += w;   // a word longer than the column budget takes its own line
+    }
+    if (!cur.isEmpty()) lines << cur;
+    return lines.join(QLatin1Char('\n'));
+}
+
 bool rcdetail::rlNoteDeclaresTrailer(const QString &note, QString *error,
                                      const char *argName) {
     if (note.isEmpty())

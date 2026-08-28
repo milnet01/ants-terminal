@@ -317,6 +317,8 @@ QJsonDocument RemoteControl::cmdRoadmapLogFlipBatch(const QJsonObject &req) {
                 continue;
             }
         }
+        // ANTS-4532 — after the guard above, never before it.
+        note = rlWrapNote(note);
 
         const bool hasRange = (locRange.size() == 2);
         if (locId.isEmpty() && locAnchor.isEmpty() &&

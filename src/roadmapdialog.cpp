@@ -2296,8 +2296,21 @@ RoadmapDialog::RoadmapDialog(const QString &roadmapPath,
     connect(m_tocToggleBtn.data(), &QToolButton::toggled, this,
             [this](bool on) {
         m_tocVisible = on;
+        // ANTS-4544 — the guard on this very line proves m_toc non-null, but at
+        // -O3 GCC inlines the QPointer accessor through the signal dispatch that
+        // calls this lambda, loses the guard, and reports a false-positive twice.
+        // Same class as ANTS-1554 / ANTS-3358 / ANTS-3505, closed the same way:
+        // GCC-only, scoped to the two guarded derefs. NOT ANTS-3514, which is a
+        // genuinely unchecked pointer.
+#if defined(__GNUC__) && !defined(__clang__)
+#  pragma GCC diagnostic push
+#  pragma GCC diagnostic ignored "-Wnull-dereference"
+#endif
         if (m_toc) m_toc->setVisible(on);
         if (m_config) m_config->setRoadmapTocVisible(on);
+#if defined(__GNUC__) && !defined(__clang__)
+#  pragma GCC diagnostic pop
+#endif
         // Showing it again has to fill it: rebuild() skips the TOC walk while
         // hidden, so the pane's contents are whatever the last visible render
         // left — stale, or empty if it started hidden.

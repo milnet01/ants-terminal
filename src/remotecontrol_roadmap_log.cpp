@@ -1324,6 +1324,10 @@ QJsonDocument RemoteControl::cmdRoadmapLogFlip(const QJsonObject &req) {
             return rlErr(QStringLiteral("body_shadowed"),
                 QStringLiteral("roadmap_log: %1").arg(shadowErr));
     }
+    // ANTS-4532 — after the guard above, never before it. Also before the
+    // already-present check further down, so a re-run compares the same text it
+    // would write.
+    note = rlWrapNote(note);
 
     // 2. id_hint is bad_op_combo under op:"flip"/"annotate" — counter
     //    is consumed only when an anchor is injected, never explicitly
