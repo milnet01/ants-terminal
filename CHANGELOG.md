@@ -155,6 +155,15 @@ for security-relevant changes.
 
 ### Fixed
 
+- **The roadmap store's history budget counts the bytes it says it counts** (ANTS-4503)
+  Three units were in play — SQLite counted characters, the incoming size
+  counted UTF-16 code units, and every name for the budget said bytes. They
+  agree on plain ASCII and diverge on emoji status markers, em dashes and
+  non-Latin text, so a real store could hold several times the history the
+  cap names. All four measurement sites now count UTF-8 bytes. On such a
+  store the effective budget is smaller, which is the documented intent, and
+  reaching it still writes no history and never aborts the operation.
+
 - **Asking for `fields=` no longer switches compaction on as a side effect** (ANTS-4673)
   The two shared one allowlist, so narrowing a reply also applied a transform nobody asked for — which folded away spec_lint's flag saying a check had never run.
 

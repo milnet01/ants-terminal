@@ -242,10 +242,12 @@ struct HistoryContext {
                 const QString &oldValue, const QString &newValue) {
         pending.push_back({itemPk, field, oldValue, newValue});
     }
+    // ANTS-4503 — UTF-8 bytes, the unit historyBytes() and the cap both use.
     qint64 pendingBytes() const {
         qint64 n = 0;
         for (const Row &r : pending)
-            n += r.field.size() + r.oldValue.size() + r.newValue.size();
+            n += r.field.toUtf8().size() + r.oldValue.toUtf8().size()
+                 + r.newValue.toUtf8().size();
         return n;
     }
 };

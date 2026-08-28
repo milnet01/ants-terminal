@@ -1040,13 +1040,21 @@ bool RoadmapStore::relateCrossProject(const QString &type, qint64 srcPk,
 }
 
 qint64 RoadmapStore::historyBytes() const {
-    // The measure is pinned to length() over the three text columns rather than
-    // dbstat, which needs SQLITE_ENABLE_DBSTAT_VTAB — a build flag, and the
-    // schema deliberately depends on no build flags.
+    // The measure is pinned to the three text columns rather than dbstat, which
+    // needs SQLITE_ENABLE_DBSTAT_VTAB — a build flag, and the schema deliberately
+    // depends on none.
+    //
+    // ANTS-4503 — CAST(... AS BLOB) because SQLite's length() on TEXT counts
+    // CHARACTERS, and every name for this budget says bytes: the ctor argument,
+    // historyCapBytes(), and appendHistory's own refusal message. On an ASCII
+    // store the two agree; on one carrying emoji status markers and em dashes
+    // the character count enforced several times the size it names. The CAST
+    // form rather than octet_length() so no SQLite version floor is implied.
     QSqlQuery q(const_cast<QSqlDatabase &>(m_db));
     if (q.exec(QStringLiteral(
-            "SELECT COALESCE(SUM(length(field) + length(coalesce(old_value,'')) "
-            "+ length(coalesce(new_value,''))), 0) FROM history")) &&
+            "SELECT COALESCE(SUM(length(CAST(field AS BLOB)) "
+            "+ length(CAST(coalesce(old_value,'') AS BLOB)) "
+            "+ length(CAST(coalesce(new_value,'') AS BLOB))), 0) FROM history")) &&
         q.next())
         return q.value(0).toLongLong();
     return 0;
@@ -1062,7 +1070,11 @@ bool RoadmapStore::appendHistory(qint64 itemPk, const QString &changedAt, int se
     // accessor IS this comparison, and two other callers ask it in advance. A
     // second spelling here is how the in-advance answer and the actual refusal
     // drift apart.
-    const qint64 incoming = field.size() + oldValue.size() + newValue.size();
+    // ANTS-4503 — UTF-8 bytes, matching historyBytes(). QString::size() is
+    // UTF-16 code units, which agrees with neither the stored measure nor the
+    // name of the budget.
+    const qint64 incoming = field.toUtf8().size() + oldValue.toUtf8().size()
+                            + newValue.toUtf8().size();
     if (historyWouldExceedCap(incoming)) {
         if (error)
             *error = QStringLiteral("history cap reached (%1 bytes); revision refused")

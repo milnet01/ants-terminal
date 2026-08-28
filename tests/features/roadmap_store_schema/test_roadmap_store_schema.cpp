@@ -960,3 +960,66 @@ TEST(RoadmapStoreSchema, Ants3815Inv1SourceFormatColumn) {
     ASSERT_TRUE(row.has_value()) << err.toStdString();
     EXPECT_EQ(row->sourceFormat.toStdString(), std::string("pass-headings"));
 }
+
+// ANTS-4503 — the history cap is documented in BYTES everywhere (the ctor
+// argument, historyCapBytes(), ANTS_HISTORY_CAP_BYTES, and appendHistory's own
+// refusal message) while three different units were being counted:
+//
+//   SQLite length()   — characters
+//   QString::size()   — UTF-16 code units
+//   what is claimed   — UTF-8 bytes
+//
+// They agree on ASCII and diverge on everything else, and this corpus is full of
+// emoji status markers, em dashes and non-Latin text. Not a live bug — both
+// sides of the comparison used one unit, so the cap functioned — but it enforced
+// a size several times the one it names.
+//
+// The fixture is deliberately three-way: "status" is ASCII (6 of each unit),
+// U+1F4CB is 4 bytes / 2 UTF-16 units / 1 character, and U+2705 is 3 / 1 / 1. Any
+// two units being confused gives a different total, so no wrong unit passes.
+TEST(RoadmapStoreSchema, Ants4503HistoryIsMeasuredInUtf8Bytes) {
+    Fixture f(1024 * 1024);
+    QString err;
+    ASSERT_TRUE(f.store.open(&err)) << err.toStdString();
+    const qint64 p  = f.project(QStringLiteral("alpha"));
+    const qint64 s  = f.section(p);
+    const qint64 pk = f.item(p, s, QStringLiteral("A-1"), 0);
+
+    const QString field = QStringLiteral("status");         // 6 bytes
+    const QString oldV  = QString::fromUtf8("\xF0\x9F\x93\x8B");  // U+1F4CB, 4 bytes
+    const QString newV  = QString::fromUtf8("\xE2\x9C\x85");      // U+2705,  3 bytes
+    ASSERT_TRUE(f.store.appendHistory(pk, QStringLiteral("2026-08-28T00:00:00Z"),
+                                      0, field, oldV, newV, &err))
+        << err.toStdString();
+
+    const qint64 utf8 = field.toUtf8().size() + oldV.toUtf8().size()
+                        + newV.toUtf8().size();
+    ASSERT_EQ(utf8, 13) << "fixture drift: the three-way spread is the test";
+    EXPECT_EQ(f.store.historyBytes(), utf8)
+        << "historyBytes() must count UTF-8 bytes; SQLite length() would give 8 "
+           "(characters) and QString::size() 9 (UTF-16 code units)";
+}
+
+// The stored measure and the in-advance predicate must count the same unit, or
+// a caller asking "will this fit?" is answered about a different quantity than
+// the one appendHistory then refuses on.
+TEST(RoadmapStoreSchema, Ants4503CapPredicateUsesTheSameUnit) {
+    const QString oldV = QString::fromUtf8("\xF0\x9F\x93\x8B");  // 4 bytes, 2 units
+    // A cap that admits the UTF-16 measure but not the UTF-8 one, so the two
+    // answers differ and only the byte reading refuses.
+    Fixture f(10);
+    QString err;
+    ASSERT_TRUE(f.store.open(&err)) << err.toStdString();
+    const qint64 p  = f.project(QStringLiteral("alpha"));
+    const qint64 s  = f.section(p);
+    const qint64 pk = f.item(p, s, QStringLiteral("A-1"), 0);
+
+    // "kind" (4) + U+1F4CB (4) + U+1F4CB (4) = 12 bytes > 10; as UTF-16 units it
+    // is 8 and would fit.
+    EXPECT_TRUE(f.store.historyWouldExceedCap(
+        QStringLiteral("kind").toUtf8().size() + oldV.toUtf8().size()
+        + oldV.toUtf8().size()));
+    EXPECT_FALSE(f.store.appendHistory(pk, QStringLiteral("2026-08-28T00:00:00Z"),
+                                       0, QStringLiteral("kind"), oldV, oldV, &err))
+        << "the write must refuse on the same unit the predicate answered on";
+}

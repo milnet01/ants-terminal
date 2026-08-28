@@ -619,7 +619,11 @@ bool Loader::recordHistory(qint64 itemPk, const QString &field, const QString &o
     // than a faithful copy of it. The reasoning above is kept because it is why
     // the accessor exists at all — the naive form is the one a reader reaches
     // for, and it is backwards.
-    const qint64 incoming = field.size() + oldValue.size() + newValue.size();
+    // ANTS-4503 — UTF-8 bytes, matching historyBytes(). QString::size() is
+    // UTF-16 code units, which agrees with neither the stored measure nor the
+    // name of the budget.
+    const qint64 incoming = field.toUtf8().size() + oldValue.toUtf8().size()
+                            + newValue.toUtf8().size();
     if (store.historyWouldExceedCap(incoming)) {
         note("history_capped", QStringLiteral("%1: %2").arg(itemPk).arg(field));
         return true;

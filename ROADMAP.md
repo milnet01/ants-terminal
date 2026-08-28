@@ -38868,7 +38868,7 @@ are closed inline in the feedback files rather than filed here.
   Two halves filed rather than folded in: ANTS-4526 (a trailer key on a
   fenced line) and ANTS-4527 (Evidence: values that are prose).
 
-- 📋 [ANTS-4503] **The roadmap store's history byte cap counts characters, so a UTF-8 store can exceed it several-fold.**
+- ✅ [ANTS-4503] **The roadmap store's history byte cap counts characters, so a UTF-8 store can exceed it several-fold.**
   Found by a cold review lane while gating ANTS-4498; verified against
   source, dismissed from that gate as inert, filed rather than dropped.
 
@@ -38904,6 +38904,39 @@ are closed inline in the feedback files rather than filed here.
   **Layman:** The limit on how much change-history the roadmap database keeps is measured in the wrong unit, so it can grow bigger than intended.
   Kind: fix.
   Source: in-session-2026-08-19, ANTS-4498's review-contract gate loop 2.
+  Resolved (2026-08-28): the cap now counts UTF-8 bytes, which is what
+  every name for it already claimed.
+
+  THE POLICY CHOICE THIS BODY LEFT OPEN is settled toward bytes, and the
+  evidence is that it was never really open: the ctor argument,
+  historyCapBytes(), ANTS_HISTORY_CAP_BYTES, appendHistory's own refusal
+  message and ANTS-3765 § 2.9 all say bytes. Making the code match is one
+  change; making the documents match the code would have been many, and
+  would have left the budget meaning something no reader expects.
+
+  THREE UNITS WERE IN PLAY, not two — this body named the third and it
+  mattered. SQLite `length()` counts characters; `QString::size()` counts
+  UTF-16 code units; the budget claims bytes. Four sites now agree on bytes:
+  historyBytes(), appendHistory()'s incoming sum, the migration loader's
+  copy of it, and the batch pendingBytes() this bullet did not list.
+
+  `CAST(... AS BLOB)` rather than `octet_length()`, deliberately: the CAST
+  form works on every SQLite, so no version floor is implied where the
+  project has none. The dbstat reasoning in the original comment is
+  untouched and still applies.
+
+  Pinned by two cases, both seen red. The first uses a deliberately
+  three-way fixture — ASCII, a 4-byte astral character and a 3-byte one —
+  so confusing ANY two of the units gives a different total and no wrong
+  unit passes; it read 8 before and 13 after. The second holds the stored
+  measure and the in-advance predicate to one unit, since a caller asking
+  "will this fit?" must be answered about the quantity the write then
+  refuses on; before the fix that write was accepted.
+
+  Consequence worth stating: on a store carrying emoji status markers and
+  em dashes the effective budget is now SMALLER, which is the documented
+  intent. It costs nothing in safety — hitting the cap writes no history,
+  reports `history_capped`, and never aborts the op (ANTS-3765 INV-15).
 
 - ✅ [ANTS-4504] **A backticked trailer mention that soft-wraps escapes the guard, so its second key parses as a declaration.**
   rxSource()/rxLanes() guard a quoted key with THREE FIXED-LENGTH negative
@@ -39849,7 +39882,7 @@ are closed inline in the feedback files rather than filed here.
   Kind: enhancement.
   Source: in-session-2026-08-19 (found closing ANTS-4510).
 
-- 📋 [ANTS-4531] **changelog_log appends the id to a summary that already ends with it, so the bullet reads (ANTS-4506) (ANTS-4506).**
+- ✅ [ANTS-4531] **changelog_log appends the id to a summary that already ends with it, so the bullet reads (ANTS-4506) (ANTS-4506).**
   op:add / add_batch renders `- **<summary>** (<id>)`. A caller who
   writes the id into `summary` -- which reads naturally, and which the
   verb's own examples do not warn against -- gets it twice, and the
@@ -39863,6 +39896,29 @@ are closed inline in the feedback files rather than filed here.
   do not append a second one. A refusal would be wrong here -- the input is
   unambiguous and the intent is obvious. Second choice is naming the
   append in the `summary` field description so a caller stops writing it.
+  Resolved (2026-08-28): already fixed by ANTS-4629, which shipped after
+  this was filed — and it settled this bullet's design question the OTHER
+  way, which is worth recording rather than quietly closing.
+
+  `ChangelogLog::preRenderedSummaryReason()` refuses a summary that already
+  ends with an id in parentheses, and it is wired on both paths this bullet
+  was hit on, op:add and op:add_batch. So the duplicate cannot be written.
+
+  THIS BULLET ASKED FOR THE OPPOSITE: strip the duplicate and proceed, on
+  the grounds that "a refusal would be wrong here — the input is unambiguous
+  and the intent is obvious". ANTS-4629 refuses instead, and its reason
+  answers that directly: the guard matches whatever the summary carries
+  rather than only an id equal to `id`, because a summary carrying SOME id
+  is the caller doing this verb's job either way — and where the two
+  disagree, silently stripping one would produce a bullet that is wrong
+  twice while reporting ok. The intent is only obvious when the ids match.
+
+  It also took this bullet's second choice, and further: the guard's sibling
+  refuses a summary that already opens with `**`, which is the same mistake
+  in the other half of the render.
+
+  Nothing built here. Verified in the tree, not from ANTS-4629's own
+  closing note.
   **Layman:** Writing a changelog line whose title already names the item number prints that number twice.
   Kind: fix.
   Source: in-session-2026-08-19, hit while logging ANTS-4505/4506.
@@ -48530,6 +48586,38 @@ envelope dropped `source`/`path`/`etag`/`total`/`filter`.
   Kind: enhancement.
   Source: in-session-2026-08-28, measured while shipping ANTS-4748.
   Lanes: mcp, docs.
+
+- 📋 [ANTS-4758] **roadmap_query's section_index counts a subtree while section= returns direct bullets, and neither says so.**
+  MEASURED. `mode:"section_index"` reports a `##` section as carrying 93
+  active items. `section=` on that same slug returns 16, with `total` 16 and
+  no note. The gap is real and benign — the heading has many `###` children
+  whose bullets the index sums and the query does not return — but nothing
+  in either envelope says that, so a caller sees two numbers for one
+  question and cannot tell which it asked.
+
+  WHY IT MATTERS HERE. The index is what a session reads to choose where to
+  work, so the counts are exactly what a plan is built on. Reading 93 and
+  receiving 16 reads as truncation or as a filter having bitten; neither is
+  happening.
+
+  The schema is silent on it: section_index documents its count fields
+  without saying they include descendants, and section= says it returns "only
+  bullets within that section", where "within" is the ambiguity.
+
+  CHEAPEST FIX is the one this project keeps reaching for: say it in the
+  envelope. On a section with children, emit the child count alongside — or
+  name the child slugs — so a caller can descend rather than guess. A
+  `direct` versus `subtree` pair on the index would answer it outright.
+
+  DO NOT change what either call returns. Both behaviours are defensible and
+  callers depend on them; the defect is that the difference is invisible.
+  Same family as ANTS-4743, ANTS-4742 and ANTS-4753 — a reply that is
+  correct, unhelpful, and indistinguishable from something having gone
+  wrong.
+  **Layman:** A section's item count and the list of items you get for that same section can disagree by a lot, with nothing saying why.
+  Kind: enhancement.
+  Source: in-session-2026-08-28, hit while picking work from a parent section.
+  Lanes: mcp, roadmapquery.
 
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-08-11 triage
 
