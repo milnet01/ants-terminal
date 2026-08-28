@@ -225,3 +225,36 @@ TEST(ChangelogQueryWiring, CanonicalCategoriesPublic) {
     EXPECT_EQ(cats.first(), QStringLiteral("Added"));
     EXPECT_TRUE(cats.contains(QStringLiteral("Security")));
 }
+
+// ANTS-4754 — the bad_mode refusal names the accepted modes and, before this,
+// nothing else. A caller wanting one version's entries reaches for
+// mode:"unreleased", reads a list that does not contain it, and concludes the
+// verb cannot filter by version — when `version` has done exactly that since
+// ANTS-3533. Measured: that reasoning produced a roadmap item proposing a filter
+// the verb already had, so the missing piece was the signpost, not the feature.
+//
+// Source-scraped: the refusal is built in the handler, which needs a live
+// RemoteControl.
+TEST(ChangelogQueryParse, Ants4754BadModeNamesTheVersionArgument) {
+    expect_reset();
+    const std::string src = ants_test::slurpRemoteControl();
+    ASSERT_FALSE(src.empty());
+    expect(src.find("narrowing to ONE version block is the `version` argument")
+               != std::string::npos,
+           "4754/hint-names-the-argument", QString());
+    // It must sit on THIS verb's bad_mode branch — a hint on some other refusal
+    // would not reach the caller who guessed a mode. Anchored on the message
+    // text rather than on `kModes`, which several verbs declare: the scrape
+    // concatenates every RemoteControl TU, so a shared token finds the wrong one.
+    const std::size_t branch = src.find("changelog_query: unknown mode");
+    expect(branch != std::string::npos, "4754/bad_mode-branch-present", QString());
+    if (branch != std::string::npos) {
+        const std::size_t hint = src.find("env[QStringLiteral(\"hint\")]", branch);
+        expect(hint != std::string::npos && hint - branch < 800,
+               "4754/hint-on-the-bad_mode-branch", QString());
+    }
+    // And it must name a value that actually works, not a shape.
+    expect(src.find("version:\\\"Unreleased\\\"") != std::string::npos,
+           "4754/hint-gives-a-usable-value", QString());
+    ASSERT_EQ(0, expect_finish());
+}

@@ -47017,7 +47017,7 @@ envelope dropped `source`/`path`/`etag`/`total`/`filter`.
   Source: in-session-2026-08-26, second of two failures left after the ripgrep fix.
   Lanes: roadmapstore, packaging.
 
-- 📋 [ANTS-4754] **changelog_query has no mode for the [Unreleased] section, the one question a release-readiness check asks.**
+- ✅ [ANTS-4754] **changelog_query has no mode for the [Unreleased] section, the one question a release-readiness check asks.**
   MEASURED: changelog_query mode:"unreleased" refuses with bad_code
   `bad_mode` and accepts only entries / version_index / headline_only.
 
@@ -47040,6 +47040,29 @@ envelope dropped `source`/`path`/`etag`/`total`/`filter`.
 
   Not a blocker — the workaround is a client-side filter — but it is paid
   on every release cycle.
+  Resolved (2026-08-28), and the item's premise was wrong: the filter it
+  proposes ALREADY EXISTED. `version:"Unreleased"` has been accepted since
+  ANTS-3533 and composes with every mode. Measured this session —
+  `{version:"Unreleased", mode:"headline_only"}` returns total 31, the
+  [Unreleased] entries alone, not the 1729-entry corpus this body says a
+  caller must page through. "Show me what shipped in 0.7.107" works the
+  same way. No new filter was needed and none was written.
+
+  What actually failed is the signpost. `mode:"unreleased"` refuses
+  bad_mode with the accepted-mode list and nothing else, so a caller who
+  guesses a mode reads a list that does not contain it and concludes the
+  verb cannot filter by version. That reasoning is what produced this
+  item, which is the strongest evidence available that the dead end is
+  real. The refusal now carries a hint naming the `version` argument and a
+  value that works.
+
+  Same class as ANTS-4743, ANTS-4742 and ANTS-4753: a reply that is
+  correct, unhelpful, and indistinguishable from the capability being
+  absent. The fix is the route out, not the feature.
+
+  Pinned by ChangelogQueryParse.Ants4754BadModeNamesTheVersionArgument,
+  seen red by removing the hint text and re-running — the scrape reads
+  source at test time, so that check needed no rebuild.
   **Layman:** Asking "what have we finished but not shipped yet?" takes a big list and manual filtering, when it should be one call.
   Kind: enhancement.
   Source: in-session-2026-08-28, hit while reading project state before picking work.

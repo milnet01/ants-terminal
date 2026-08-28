@@ -61,6 +61,16 @@ QJsonDocument RemoteControl::cmdChangelogQuery(const QJsonObject &req) {
         env[QStringLiteral("error")]    =
             QStringLiteral("changelog_query: unknown mode \"%1\"").arg(mode.left(64));
         env[QStringLiteral("accepted")] = QJsonArray::fromStringList(kModes);
+        // ANTS-4754 — the accepted list alone is a dead end for the commonest
+        // wrong guess. A caller after one version's entries reaches for
+        // mode:"unreleased", gets a list that does not contain it, and concludes
+        // no such filter exists — the argument it wants is `version`, and it has
+        // worked all along. Measured: that reasoning produced a roadmap item
+        // proposing a filter the verb already had.
+        env[QStringLiteral("hint")] = QStringLiteral(
+            "narrowing to ONE version block is the `version` argument, not a "
+            "mode — pass version:\"Unreleased\" (or a bare token like "
+            "\"0.7.107\"), which composes with every mode above.");
         return QJsonDocument(env);
     }
 

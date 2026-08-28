@@ -116,6 +116,14 @@ for security-relevant changes.
 
 ### Fixed
 
+- **changelog_query's bad_mode refusal names the `version` argument** (ANTS-4754)
+  A caller after one version's entries reaches for `mode:"unreleased"`,
+  reads an accepted-mode list that does not contain it, and concludes the
+  verb cannot filter by version — when `version:"Unreleased"` has done
+  exactly that all along and composes with every mode. The refusal now says
+  so and gives a value that works. No filter was added; the capability was
+  never missing, only unfindable from the reply that turned it down.
+
 - **workspace_search explains a zero caused by its own hidden-path filter** (ANTS-4753)
   A `glob` naming a dot-directory (`.github/workflows/*.yml`) returned no
   matches and no reason, because `include_hidden` defaults to false and
