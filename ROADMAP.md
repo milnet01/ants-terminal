@@ -47933,6 +47933,52 @@ envelope dropped `source`/`path`/`etag`/`total`/`filter`.
   Source: Charls_Site_Ants_MCP_Feedback.md 2026-08-27 (refusal envelope recorded).
   Lanes: mcp.
 
+### Ants MCP feedback from CC sessions — 2026-08-28 triage
+
+- 📋 [ANTS-4746] **A verb that reads this session's completed subagent returns, so a fan-out that outlives a compaction is recoverable.**
+  Reported against ~/.claude: a multi-lane review's whole product is its
+  lanes' returns, and a compaction before the findings are applied drops
+  them from context. They survive on disk in the session transcript, and
+  no verb reads them — every other expensive read is covered
+  (read_region, file_outline, workspace_search), so the one whose
+  alternative is re-dispatching every lane is the gap.
+
+  Reproduced here rather than taken on trust, against this project's own
+  transcripts under ~/.claude/projects/<slug>/: `queue-operation` records
+  carry the return verbatim in a `<task-notification>` block, tagged
+  task-id / tool-use-id / status / summary / result / usage / output-file.
+
+  Two facts the report did not have, both of which argue for the verb.
+  The `<output-file>` spill it references is ALREADY DELETED — that path
+  is transient, so the transcript is the last surviving copy rather than
+  a convenience over it. And `content` is absent on some
+  `queue-operation` records, so a reader that assumes the key is present
+  throws partway through; the reporter's own walk-every-string script
+  tolerates this by accident, a verb must do it on purpose.
+
+  Shape asked for, and it is the right one: list the returns as
+  {index, label, bytes, first_line}, fetch one by index. No query
+  language, natural cap of one return per call. It must resolve the
+  current session's transcript itself — the directory-slug transform is
+  the friction, and a session does not reliably know its own id.
+  Explicitly NOT wanted by the reporter: a general transcript search, or
+  capture-to-disk duplicating bytes the transcript already holds.
+
+  The real design question is scope, and it should be settled before
+  building. Every existing verb reads the project tree or terminal
+  state; this reads Claude Code's own state directory, which is a new
+  class of read for this MCP and one that cannot be confined by
+  caller_cwd. Path resolution must therefore be derived, never
+  caller-supplied, or the verb is a general file reader wearing a
+  narrow name.
+
+  Fallback if the verb is unwelcome: document that returns persist in
+  the transcript. The knowledge is most of the value.
+  **Layman:** When Claude sends out helper agents and then runs out of memory for the conversation, their reports vanish from view — but they are still saved on disk. Right now the only way back to them is a hand-written script. This adds a proper way to ask for them.
+  Kind: feature.
+  Source: claude_config_Ants_MCP_Feedback.md 2026-08-27.
+  Lanes: mcp, session.
+
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-08-11 triage
 
 35 un-triaged findings across 9 of the 18 shared-root feedback files (AI
