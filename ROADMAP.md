@@ -47980,6 +47980,42 @@ envelope dropped `source`/`path`/`etag`/`total`/`filter`.
   Source: claude_config_Ants_MCP_Feedback.md 2026-08-27.
   Lanes: mcp, session.
 
+- 📋 [ANTS-4748] **doc_citations recognises only path:line, so a corpus citing path::symbol scans to a silent zero.**
+  Split out of ANTS-4743, which deliberately shipped the honest-zero
+  message and NOT the wider grammar. That was the right order: the
+  message makes this measurable, and this is the measurement.
+
+  Measured on docs/standards/mcp-error-codes.md during the ANTS-4435
+  gate: `count: 0` citations, with `unrecognised_candidates: 29` — the
+  verb saw 29 backticked spans reading as source citations in forms it
+  does not scan (`path::symbol`, `Class::method()`, bare backticked
+  paths) and could check none of them. The same run's quotation half
+  returned 9 of 9 `no_target`, so nothing in that document's cited
+  surface was verified by anything.
+
+  This is a real standard, not an outlier, and the project's own
+  documentation standard prefers symbol citations over line numbers
+  because line numbers go stale. So the corpus is written in the form
+  the verb does not read, by policy — which means the zero is not an
+  edge case but the expected result across the project's standards.
+
+  Weigh before building, because ANTS-4743's reasoning still holds and
+  this item must not quietly undo it. Widening the grammar means
+  resolving a symbol rather than a line, so it needs the codebase index
+  and it can be WRONG in a way `path:line` cannot: an overload, a
+  stale name that still resolves elsewhere, a method on a class that
+  moved. A false `ok` is worse than a reported silence, which is the
+  whole reason 4743 admitted the silence rather than widening.
+
+  Cheapest defensible first cut, if taken: resolve `path::symbol` only
+  where the path resolves AND the symbol is unique in that file, and
+  report every other shape as unrecognised exactly as today. That
+  keeps the honest zero for the ambiguous cases and buys the majority.
+  **Layman:** The tool that checks a document's references to code understands only one way of writing them, so documents using another way get checked for nothing.
+  Kind: enhancement.
+  Source: ANTS-4743 option 1, deferred; new measurement in-session-2026-08-28.
+  Lanes: mcp, docs.
+
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-08-11 triage
 
 35 un-triaged findings across 9 of the 18 shared-root feedback files (AI
