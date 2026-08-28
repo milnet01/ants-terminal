@@ -375,6 +375,29 @@ struct SetTitleResult {
 // at a position the format fixes.
 SetTitleResult setTitle(const QString &content, const QString &projectTitle);
 
+// ---- ANTS-4707: correct the format-version marker (set_format_version) ----
+//
+// The marker is a CLAIM ABOUT THE CONTENT, so this rewrites it only when the
+// content already matches the version being stamped. That test is symmetric,
+// which the reporting item's "guard a downgrade" framing was not: stamping
+// `: 2` on a file carrying no inline-ID slots is as false as stamping `: 1` on
+// a file full of them, and an unchecked upgrade would open the defect this
+// closes.
+//
+// It CORRECTS an existing marker and never invents one — a file with no marker
+// is migrate_v2's job, which also builds the shape the marker would claim.
+struct SetFormatVersionResult {
+    QString newContent;
+    int     oldVersion = 0;
+    int     newVersion = 0;
+    bool    changed    = false;
+    QString code;   // "" on success; "no_marker", "unknown_version",
+                    //   "shape_mismatch"
+    QString detail;  // why a shape_mismatch was refused
+};
+
+SetFormatVersionResult setFormatVersion(const QString &content, int version);
+
 // ---- ANTS-3446: one-shot v1→v2 migration (migrate_v2) ---------------
 //
 // Mechanical, leave-tables-in-place v1→v2 converter: bump the version

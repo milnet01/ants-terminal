@@ -4,6 +4,9 @@
 
 #include "feedbackfile.h"
 #include "remotecontrol.h"
+#include "../../_support/srcgrep.h"
+
+#include <string>
 
 #include <gtest/gtest.h>
 #include <QByteArray>
@@ -815,4 +818,112 @@ TEST(McpFeedbackLog, Ants4647DirectChildOfTheCorpusRootStillDerives) {
         << env.value("error").toString().toStdString();
     EXPECT_TRUE(QFileInfo::exists(
         root.path() + "/NewProject_Ants_MCP_Feedback.md"));
+}
+
+// ANTS-4707 — the format-version marker had no verb that could correct it, so
+// the only route was the hand edit the assign-id pipeline exists to avoid. A
+// real file declares version 4, which has never been defined.
+//
+// The marker is a CLAIM ABOUT THE CONTENT, and the guard is symmetric: the item
+// asked to check downgrades, but stamping `: 2` on a file with no inline-ID
+// slots is exactly as false as stamping `: 1` on a file full of them.
+
+TEST(McpFeedbackLog, Ants4707CorrectsAnUndefinedVersionOnAV2ShapedFile) {
+    const QString before = QString::fromUtf8(
+        "<!-- ants-mcp-feedback: 4 -->\n"
+        "# Ants MCP Feedback \xE2\x80\x94 OneUp\n"
+        "\n"
+        "### A finding\n"
+        "**Proposed ID:** ANTS-1234\n");
+    const FeedbackFile::SetFormatVersionResult r =
+        FeedbackFile::setFormatVersion(before, 2);
+    EXPECT_TRUE(r.code.isEmpty()) << r.code.toStdString();
+    EXPECT_TRUE(r.changed);
+    EXPECT_EQ(r.oldVersion, 4);
+    EXPECT_EQ(r.newVersion, 2);
+    EXPECT_TRUE(r.newContent.contains(QStringLiteral("ants-mcp-feedback: 2")));
+    EXPECT_FALSE(r.newContent.contains(QStringLiteral("ants-mcp-feedback: 4")));
+    // Nothing but the marker moves.
+    EXPECT_TRUE(r.newContent.contains(QStringLiteral("**Proposed ID:** ANTS-1234")));
+}
+
+TEST(McpFeedbackLog, Ants4707RefusesAVersionItCannotRead) {
+    const QString before = QString::fromUtf8(
+        "<!-- ants-mcp-feedback: 2 -->\n### F\n**Proposed ID:** ANTS-1\n");
+    const FeedbackFile::SetFormatVersionResult r =
+        FeedbackFile::setFormatVersion(before, FeedbackFile::kMaxKnownFormatVersion + 1);
+    EXPECT_EQ(r.code, QStringLiteral("unknown_version"))
+        << "a verb must not stamp a version it cannot read";
+    EXPECT_FALSE(r.changed);
+    EXPECT_EQ(r.newContent, before);
+}
+
+// The upgrade direction the item did not ask to guard, and it is the same lie.
+TEST(McpFeedbackLog, Ants4707RefusesStampingV2OnAV1ShapedFile) {
+    const QString before = QString::fromUtf8(
+        "<!-- ants-mcp-feedback: 1 -->\n"
+        "# Ants MCP Feedback \xE2\x80\x94 Old\n"
+        "\n"
+        "### A finding\n"
+        "Some prose, and no inline id slot anywhere.\n");
+    const FeedbackFile::SetFormatVersionResult r =
+        FeedbackFile::setFormatVersion(before, 2);
+    EXPECT_EQ(r.code, QStringLiteral("shape_mismatch"));
+    EXPECT_FALSE(r.changed);
+    EXPECT_EQ(r.newContent, before);
+    EXPECT_FALSE(r.detail.isEmpty()) << "a refusal must say what did not match";
+}
+
+TEST(McpFeedbackLog, Ants4707RefusesStampingV1OnAV2ShapedFile) {
+    const QString before = QString::fromUtf8(
+        "<!-- ants-mcp-feedback: 2 -->\n"
+        "### A finding\n"
+        "**Proposed ID:** ANTS-9\n");
+    const FeedbackFile::SetFormatVersionResult r =
+        FeedbackFile::setFormatVersion(before, 1);
+    EXPECT_EQ(r.code, QStringLiteral("shape_mismatch"));
+    EXPECT_FALSE(r.changed);
+}
+
+TEST(McpFeedbackLog, Ants4707IsIdempotent) {
+    const QString before = QString::fromUtf8(
+        "<!-- ants-mcp-feedback: 2 -->\n### F\n**Proposed ID:** ANTS-2\n");
+    const FeedbackFile::SetFormatVersionResult r =
+        FeedbackFile::setFormatVersion(before, 2);
+    EXPECT_TRUE(r.code.isEmpty());
+    EXPECT_FALSE(r.changed) << "an already-correct marker must not report a write";
+    EXPECT_EQ(r.newContent, before);
+}
+
+// It corrects a marker; it never invents one. A file with no marker is
+// migrate_v2's job, which also builds the shape a marker would claim.
+TEST(McpFeedbackLog, Ants4707RefusesAFileWithNoMarker) {
+    const QString before = QString::fromUtf8(
+        "# Ants MCP Feedback \xE2\x80\x94 Unmarked\n### F\n**Proposed ID:** ANTS-3\n");
+    const FeedbackFile::SetFormatVersionResult r =
+        FeedbackFile::setFormatVersion(before, 2);
+    EXPECT_EQ(r.code, QStringLiteral("no_marker"));
+    EXPECT_FALSE(r.changed);
+    EXPECT_EQ(r.newContent, before);
+}
+
+// The op must be reachable, not merely implemented: a pure function nothing
+// dispatches leaves the hand edit as the only route, which is the finding.
+// Source-scraped — the handler needs a live RemoteControl.
+TEST(McpFeedbackLog, Ants4707OpIsWiredAndAdvertised) {
+    const std::string src = ants_test::slurpRemoteControl();
+    ASSERT_FALSE(src.empty());
+    EXPECT_TRUE(src.find("op == QStringLiteral(\"set_format_version\")")
+                != std::string::npos)
+        << "the op must have a branch in cmdFeedbackLog";
+    EXPECT_TRUE(src.find("op != QStringLiteral(\"set_format_version\")")
+                != std::string::npos)
+        << "the op must be in the accepted-op guard, or the branch is dead";
+    EXPECT_TRUE(src.find("FeedbackFile::setFormatVersion") != std::string::npos)
+        << "the branch must call the engine, not re-implement the rule";
+    // The refusal detail has to reach the caller, or a shape_mismatch says
+    // nothing about which way the shape disagreed.
+    EXPECT_TRUE(src.find("e[QStringLiteral(\"hint\")] = vr.detail")
+                != std::string::npos)
+        << "a shape_mismatch must carry its reason";
 }

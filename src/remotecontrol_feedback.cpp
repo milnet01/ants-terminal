@@ -571,6 +571,7 @@ QJsonDocument RemoteControl::cmdFeedbackLog(const QJsonObject &req) {
         op != QStringLiteral("migrate_v2") &&
         op != QStringLiteral("assign_id") &&
         op != QStringLiteral("assign_id_batch") &&   // ANTS-4671
+        op != QStringLiteral("set_format_version") &&   // ANTS-4707
         op != QStringLiteral("set_title")) {
         return QJsonDocument(fbErr(
             QStringLiteral("bad_mode"),
@@ -578,7 +579,8 @@ QJsonDocument RemoteControl::cmdFeedbackLog(const QJsonObject &req) {
                            "\"append_tracking\", \"compact_shipped\", "
                            "\"prune_tracking\", \"compact_resolved\", "
                            "\"migrate_v2\", \"assign_id\", "
-                           "\"assign_id_batch\" or "
+                           "\"assign_id_batch\", "
+                           "\"set_format_version\" or "
                            "\"set_title\"")));
     }
 
@@ -1082,6 +1084,84 @@ QJsonDocument RemoteControl::cmdFeedbackLog(const QJsonObject &req) {
     // by no op, so a rename left the title contradicting the filename and the
     // only route was a hand edit — against the file's own instruction, at the
     // moment a session is most likely to get it wrong.
+    // ANTS-4707 — correct the format-version marker. The only route before this
+    // was the hand edit the assign-id pipeline exists to avoid, and a real file
+    // declares a version that has never been defined.
+    if (op == QStringLiteral("set_format_version")) {
+        if (!exists) {
+            return QJsonDocument(fbNotFound(
+                QStringLiteral("feedback_log: set_format_version on an absent "
+                               "file (nothing to correct)"),
+                resolved, feedbackCallerLeaf(req)));
+        }
+        const QJsonValue vv = req.value(QStringLiteral("version"));
+        if (!vv.isDouble()) {
+            return QJsonDocument(fbErr(
+                QStringLiteral("bad_args"),
+                QStringLiteral("feedback_log: set_format_version requires an "
+                               "integer \"version\"")));
+        }
+        QFile vf(resolved);
+        if (!vf.open(QIODevice::ReadOnly | QIODevice::Text)) {
+            return QJsonDocument(fbErr(
+                QStringLiteral("read_failed"),
+                QStringLiteral("feedback_log: cannot open \"%1\"")
+                    .arg(resolved)));
+        }
+        const QString vcontent = QString::fromUtf8(vf.readAll());
+        vf.close();
+
+        const FeedbackFile::SetFormatVersionResult vr =
+            FeedbackFile::setFormatVersion(vcontent, vv.toInt());
+        if (!vr.code.isEmpty()) {
+            QJsonObject e = fbErr(
+                vr.code,
+                QStringLiteral("feedback_log: set_format_version refused on "
+                               "\"%1\"").arg(resolved));
+            if (!vr.detail.isEmpty())
+                e[QStringLiteral("hint")] = vr.detail;
+            return QJsonDocument(e);
+        }
+        const bool dryRunV = req.value(QStringLiteral("dry_run")).toBool();
+        if (vr.changed && !dryRunV) {
+            const QByteArray utf8 = vr.newContent.toUtf8();
+            QSaveFile sf(resolved);
+            if (!sf.open(QIODevice::WriteOnly | QIODevice::Text)) {
+                return QJsonDocument(fbErr(
+                    QStringLiteral("write_failed"),
+                    QStringLiteral("feedback_log: cannot open \"%1\" for "
+                                   "writing").arg(resolved)));
+            }
+            bool committed = (sf.write(utf8) == utf8.size());
+            if (committed) {
+                if (g_forceFeedbackWriteFail) {
+                    sf.cancelWriting();
+                    committed = false;
+                } else {
+                    committed = sf.commit();
+                }
+            }
+            if (!committed) {
+                return QJsonDocument(fbErr(
+                    QStringLiteral("write_failed"),
+                    QStringLiteral("feedback_log: atomic write of \"%1\" "
+                                   "failed").arg(resolved)));
+            }
+        }
+        QJsonObject out;
+        out[QStringLiteral("ok")]          = true;
+        out[QStringLiteral("op")]          = op;
+        out[QStringLiteral("path")]        = resolved;
+        out[QStringLiteral("dry_run")]     = dryRunV;
+        // An already-correct marker is a SUCCESS, not a refusal — a corpus
+        // sweep must be re-runnable.
+        out[QStringLiteral("changed")]     = vr.changed;
+        out[QStringLiteral("old_version")] = vr.oldVersion;
+        out[QStringLiteral("new_version")] = vr.newVersion;
+        if (derived) out[QStringLiteral("path_derived")] = true;
+        return QJsonDocument(out);
+    }
+
     if (op == QStringLiteral("set_title")) {
         if (!exists) {
             return QJsonDocument(fbNotFound(

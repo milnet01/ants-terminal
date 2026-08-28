@@ -46461,7 +46461,7 @@ envelope dropped `source`/`path`/`etag`/`total`/`filter`.
   Kind: fix.
   Source: in-session-2026-08-26.
 
-- 📋 [ANTS-4707] **No feedback_log op can correct a file's format-version marker, so the only route is the hand edit the pipeline forbids.**
+- ✅ [ANTS-4707] **No feedback_log op can correct a file's format-version marker, so the only route is the hand edit the pipeline forbids.**
   Split out of ANTS-4702, whose reporting half shipped separately. The
   reporter named this one themselves: correct the marker "through a verb, not
   a hand edit, since hand-editing these files is what the assign-id pipeline
@@ -46484,6 +46484,40 @@ envelope dropped `source`/`path`/`etag`/`total`/`filter`.
   actually matches the older rule -- a marker is a claim about the content,
   and letting a verb make that claim falsely is the defect this item exists
   to close, not a new one to open.
+  Resolved (2026-08-28): `op:"set_format_version"` ships, with the contract
+  this body sketched and ONE correction to it, stated rather than buried.
+
+  THE GUARD IS SYMMETRIC, not downgrade-only. This body asked to refuse a
+  DOWNgrade unless the content matches the older rule, and left upgrades
+  unchecked — but stamping `: 2` on a file carrying no inline-`**Proposed
+  ID:**` slots is exactly as false as stamping `: 1` on a file full of
+  them. The marker is a claim about the content, so the test is that the
+  content matches the version being stamped, whichever direction that is.
+  An unchecked upgrade would have opened the defect this item exists to
+  close.
+
+  The rest is as proposed: refuses `unknown_version` above the highest
+  version this build can read, since a verb must not stamp one it cannot
+  parse. Added beyond the sketch: `no_marker` refuses a file that has none
+  — this CORRECTS a marker and never invents one, because inventing one
+  means claiming a shape, and building that shape is `migrate_v2`'s job.
+  `changed:false` on an already-correct marker is a success so a corpus
+  sweep is re-runnable, and `dry_run` previews.
+
+  One bound recorded rather than engineered away: the shape test is not
+  fence-masked, so a fenced SAMPLE carrying a slot could tip it. Both
+  outcomes are safe — a readable refusal, or a stamp matching the shape the
+  sample demonstrates — and fence-masking here would cost more than it buys.
+
+  NOT YET APPLIED to the file that prompted this. OneUp's marker still
+  declares its undefined version: this session's MCP calls are served by the
+  pre-fix binary, so the op is not callable until a build carrying it is
+  launched. Same constraint ANTS-4734 records for its own reason.
+
+  Pinned by seven cases in mcp_feedback_log — the correction, both refusal
+  directions, the unreadable version, idempotence, the absent marker, and
+  the dispatch wiring, because a pure function nothing dispatches leaves the
+  hand edit as the only route, which was the finding.
   **Layman:** There is no safe command to fix a feedback file's version label, so the only way is to edit the file by hand, which the tools tell you not to do.
   Kind: feature.
   Source: in-session-2026-08-26 (ANTS-4702 part 1).

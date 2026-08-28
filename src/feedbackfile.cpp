@@ -1201,6 +1201,62 @@ RetireResult retireTrackingHeadings(const QString &content,
 // ANTS-4646(b) — rewrite the H1's project name, preserving the file's own
 // prefix casing. The corpus carries both "Ants MCP feedback" and
 // "Ants MCP Feedback"; this renames a project, it does not normalise a corpus.
+// ANTS-4707 — see feedbackfile.h for the contract.
+SetFormatVersionResult setFormatVersion(const QString &content, int version) {
+    SetFormatVersionResult r;
+    r.newContent = content;
+    r.newVersion = version;
+
+    if (version < 1 || version > kMaxKnownFormatVersion) {
+        r.code = QStringLiteral("unknown_version");
+        return r;
+    }
+    const QRegularExpressionMatch m = markerRe().match(content);
+    if (!m.hasMatch()) {
+        r.code = QStringLiteral("no_marker");
+        return r;
+    }
+    r.oldVersion = m.captured(1).toInt();      // "" → 0, per markerRe's contract
+
+    // The shape test, symmetric in both directions. v2 is the inline-ID model,
+    // so its evidence is a `**Proposed ID:**` slot; v1's is the absence of one.
+    // A file with no findings at all makes no claim either way — the skeleton is
+    // written at the current version and stamping it is not a lie.
+    //
+    // Not fence-masked: a fenced SAMPLE carrying a slot could tip the test. The
+    // cost is bounded, because both outcomes are safe — a refusal the caller can
+    // read, or a stamp that matches the shape the sample demonstrates.
+    const bool hasSlot = content.contains(QStringLiteral("**Proposed ID:**"));
+    const bool hasFindings =
+        content.startsWith(QStringLiteral("### "))
+        || content.contains(QStringLiteral("\n### "));
+    if (version >= 2 && hasFindings && !hasSlot) {
+        r.code   = QStringLiteral("shape_mismatch");
+        r.detail = QStringLiteral(
+            "the file carries findings but no `**Proposed ID:**` slot, so it is "
+            "not the inline-ID model version 2 names — op:\"migrate_v2\" builds "
+            "that shape and bumps the marker with it");
+        return r;
+    }
+    if (version < 2 && hasSlot) {
+        r.code   = QStringLiteral("shape_mismatch");
+        r.detail = QStringLiteral(
+            "the file carries `**Proposed ID:**` slots, which is the version-2 "
+            "inline-ID model — stamping an earlier version would claim a shape "
+            "the content contradicts");
+        return r;
+    }
+
+    if (r.oldVersion == version) return r;      // already correct: not a write
+
+    QString out = content;
+    out.replace(m.capturedStart(), m.capturedLength(),
+                QStringLiteral("<!-- ants-mcp-feedback: %1 -->").arg(version));
+    r.newContent = out;
+    r.changed    = true;
+    return r;
+}
+
 SetTitleResult setTitle(const QString &content, const QString &projectTitle) {
     SetTitleResult out;
     out.newContent = content;

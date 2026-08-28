@@ -14,6 +14,17 @@ for security-relevant changes.
 
 ### Added
 
+- **feedback_log op:"set_format_version" corrects a file's format marker** (ANTS-4707)
+  A feedback file declaring a version that was never defined could only be
+  fixed by the hand edit the assign-id pipeline exists to avoid. The marker
+  is a claim about the content, so the write happens only where the content
+  already matches — stamping 2 needs the inline-`**Proposed ID:**` model,
+  stamping 1 needs its absence, and either way round refuses with a hint
+  saying which. Refuses a version above what the build can read, and refuses
+  a file with no marker at all: building that shape is `migrate_v2`'s job.
+  An already-correct marker reports no change, so a corpus sweep is
+  re-runnable; `dry_run` previews.
+
 - **The pre-push docs-only set is checked against ci.yml's paths-ignore, and the skip decision is recorded** (ANTS-4726)
   The hook's docs-only path list was a hand-maintained twin of the
   workflow's `paths-ignore` that nothing compared, so drift would let it

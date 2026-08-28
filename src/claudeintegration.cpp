@@ -6858,6 +6858,25 @@ void ClaudeIntegration::onMcpConnection() {
                             "title is a SUCCESS, so a rename is re-runnable; "
                             "refuses `no_h1` rather than inventing a heading "
                             "the format fixes the position of.");
+                    // ANTS-4707 — op:"set_format_version" only.
+                    QJsonObject versionProp; versionProp["type"] = "integer";
+                        versionProp["description"] = QStringLiteral(
+                            "op:\"set_format_version\" only. The version to "
+                            "stamp on the file's `ants-mcp-feedback` marker. "
+                            "The marker is a CLAIM ABOUT THE CONTENT, so the "
+                            "write happens only where the content already "
+                            "matches: stamping 2 needs the inline-`**Proposed "
+                            "ID:**` model, stamping 1 needs its absence, and "
+                            "either way round refuses `shape_mismatch` with a "
+                            "hint saying which. Refuses `unknown_version` above "
+                            "the highest version this build can read — a verb "
+                            "must not stamp one it cannot parse — and "
+                            "`no_marker` on a file that has none, which is "
+                            "op:\"migrate_v2\"'s job, since that also builds "
+                            "the shape the marker would claim. "
+                            "`changed:false` on an already-correct marker is a "
+                            "SUCCESS, so a corpus sweep is re-runnable; "
+                            "`dry_run` previews.");
                     QJsonObject opProp; opProp["type"] = "string";
                         { QJsonArray e; e.append(QStringLiteral("append_finding"));
                           e.append(QStringLiteral("append_tracking"));
@@ -6868,6 +6887,7 @@ void ClaudeIntegration::onMcpConnection() {
                           e.append(QStringLiteral("assign_id"));
                           e.append(QStringLiteral("assign_id_batch"));  // ANTS-4671
                           e.append(QStringLiteral("set_title"));   // ANTS-4646
+                          e.append(QStringLiteral("set_format_version"));  // ANTS-4707
                           opProp["enum"] = e; }
                         opProp["description"] = QStringLiteral(
                             "Required. \"append_finding\" (contributor) "
@@ -7000,6 +7020,7 @@ void ClaudeIntegration::onMcpConnection() {
                     props["path"]          = pathProp;
                     props["op"]            = opProp;
                     props["title"]         = titleProp;           // ANTS-4646
+                    props["version"]       = versionProp;         // ANTS-4707
                     props["date"]          = dateProp;
                     props["session_label"] = labelProp;
                     props["heading_level"] = hlProp;
