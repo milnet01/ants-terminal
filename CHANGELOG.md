@@ -14,6 +14,16 @@ for security-relevant changes.
 
 ### Added
 
+- **doc_citations resolves a backticked `path::symbol` to the symbol's line** (ANTS-4748)
+  Only where the path resolves and the symbol is unique in that file; the
+  entry carries `resolved_via:"symbol"`, since its `start_line` was looked
+  up rather than authored. An overload, a name that has moved, or an
+  unresolvable path resolves to nothing and is counted as unchecked — a
+  false ok is worse than the admitted silence ANTS-4743 added. The
+  unqualified suffix of a qualified definition is matched too, which is how
+  the corpus writes these; two definitions sharing a suffix are ambiguous
+  and refused.
+
 - **invariant_check takes `files` while its sibling multi-path verbs take `paths` or `items`.** (ANTS-4744)
   `invariant_check` now accepts `paths` as an alias for `files`,
   the spelling its sibling multi-path verbs use, so the argument name a

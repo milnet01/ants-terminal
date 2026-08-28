@@ -398,9 +398,24 @@ TEST(DocCitationsScan, Ants4743UnrecognisedCitationShapesAreCounted) {
     expect_reset();
 
     // The reporter's own forms, backticked as they appear in a spec.
+    //
+    // ANTS-4748 narrowed this one. `path::symbol` is now SEEN by the scan — it
+    // lands in symbolRefs and is no longer counted here, because the count means
+    // "citation-shaped and not checked" and the scan has checked its shape.
+    // Whether it RESOLVES is check()'s answer, and the ones it cannot resolve are
+    // added back to this count there, so the published number is unchanged in
+    // meaning. `Class::method()` names no file and stays counted at this layer.
     const auto sym = scan("see `serve.py::build_model()` for the shape\n");
     expect(sym.citations.isEmpty(), "4743/symbol-not-a-citation", render(sym));
-    expect(sym.unrecognisedCandidates == 1, "4743/symbol-counted", render(sym));
+    expect(sym.symbolRefs.size() == 1, "4743/symbol-now-seen", render(sym));
+    expect(sym.unrecognisedCandidates == 0, "4743/symbol-no-longer-unseen",
+           render(sym));
+
+    const auto scoped = scan("see `Config::load()` for the shape\n");
+    expect(scoped.symbolRefs.isEmpty(), "4743/scope-ref-not-a-symbolref",
+           render(scoped));
+    expect(scoped.unrecognisedCandidates == 1, "4743/scope-ref-still-counted",
+           render(scoped));
 
     const auto path = scan("per `docs/specs/LOTTO-0002-local-web-page.md` 4.6\n");
     expect(path.citations.isEmpty(), "4743/path-not-a-citation", render(path));
@@ -426,5 +441,61 @@ TEST(DocCitationsScan, Ants4743UnrecognisedCitationShapesAreCounted) {
     const auto empty = scan("just a sentence with no code spans at all\n");
     expect(empty.citations.isEmpty() && empty.unrecognisedCandidates == 0,
            "4743/silent-and-clean-are-distinguishable", render(empty));
+    ASSERT_EQ(0, expect_finish());
+}
+
+
+// ANTS-4748 — `path::symbol` inside a code span is SEEN by the scan: it names a
+// file and a symbol, and stops there, because resolving the symbol to a line
+// needs the file and this layer touches no filesystem.
+//
+// Span-only, deliberately. A bare `::` in prose is C++ scope resolution far more
+// often than a citation, and the delimiters are what make the reference authored
+// rather than coincidental — the rule ANTS-3636 already applies to a bare `:N`.
+TEST(DocCitationsScan, Ants4748SymbolRefSeenInSpan) {
+    expect_reset();
+    const auto r = scan("see `src/a.cpp::doThing` for the ladder\n");
+    expect(r.symbolRefs.size() == 1, "4748/one-ref", render(r));
+    if (r.symbolRefs.size() == 1) {
+        expect(r.symbolRefs[0].path == QStringLiteral("src/a.cpp"),
+               "4748/path", render(r));
+        expect(r.symbolRefs[0].symbol == QStringLiteral("doThing"),
+               "4748/symbol", render(r));
+    }
+    // The scan assigns no line — it has no file to look in.
+    expect(r.citations.isEmpty(), "4748/no-citation-from-scan", render(r));
+    // And it is no longer merely counted as a shape nothing could see.
+    expect(r.unrecognisedCandidates == 0, "4748/not-counted-unseen", render(r));
+    ASSERT_EQ(0, expect_finish());
+}
+
+// A trailing `()` is how the corpus writes a function reference, so it is
+// accepted and stripped rather than sent back to the unrecognised bucket.
+TEST(DocCitationsScan, Ants4748TrailingParensStripped) {
+    expect_reset();
+    const auto r = scan("`src/doccitations.cpp::scan()`\n");
+    expect(r.symbolRefs.size() == 1, "4748/parens-one-ref", render(r));
+    if (r.symbolRefs.size() == 1)
+        expect(r.symbolRefs[0].symbol == QStringLiteral("scan"),
+               "4748/parens-stripped", render(r));
+    ASSERT_EQ(0, expect_finish());
+}
+
+// The shapes this cut does NOT widen to stay counted, so the ANTS-4743 zero keeps
+// meaning what it says. `Config::load()` names no file (no dot in a last path
+// segment) and a bare backticked path names no symbol.
+TEST(DocCitationsScan, Ants4748OtherShapesStillUnrecognised) {
+    expect_reset();
+    const auto r = scan("`Config::load()` and `src/a.cpp` and `a::b`\n");
+    expect(r.symbolRefs.isEmpty(), "4748/no-refs-for-other-shapes", render(r));
+    expect(r.unrecognisedCandidates == 3, "4748/others-still-counted", render(r));
+    ASSERT_EQ(0, expect_finish());
+}
+
+// A span the reference does not FILL is prose that happens to contain the shape.
+TEST(DocCitationsScan, Ants4748MustFillTheSpan) {
+    expect_reset();
+    const auto r = scan("`see src/a.cpp::doThing now`\n");
+    expect(r.symbolRefs.isEmpty(), "4748/must-fill-span", render(r));
     ASSERT_EQ(0, expect_finish());
 }

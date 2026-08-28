@@ -131,6 +131,24 @@ struct Citation {
     int     endLine   = 0;      // == startLine when the token names no range
     bool    approximate = false;  // `~` on a KEPT locus
     bool    partial     = false;  // a trailing locus or `+` was dropped
+    // ANTS-4748 — non-empty ⟺ the line above was looked up from this symbol
+    // rather than written by the author. Reported, because a symbol that has
+    // since moved resolves to a line the document never claimed.
+    QString symbol;
+};
+
+// ANTS-4748 — a `path::symbol` span. The scan layer names the file and the
+// symbol and stops there: resolving a symbol to a line needs the file, and this
+// layer touches no filesystem. `check()` resolves it, and only where the path
+// resolves AND the symbol is unique in that file — an overload, or a stale name
+// that still resolves elsewhere, would otherwise be reported `ok` against the
+// wrong lines, and a false ok is worse than the silence ANTS-4743 admitted.
+struct SymbolRef {
+    int     docLine = 0;
+    int     docCol  = 0;
+    QString raw;                 // the span's content, delimiters stripped
+    QString path;
+    QString symbol;              // identifier only; a trailing "()" is stripped
 };
 
 // A token that recognised but failed validation.
@@ -175,6 +193,12 @@ struct ScanResult {
     // can parse" — the same shape spec_lint's `surfaces_checked` and
     // invariant_check's `path_match_only` already take.
     int unrecognisedCandidates = 0;
+    // ANTS-4748 — the `path::symbol` spans, in document order. NOT counted in
+    // unrecognisedCandidates above: this layer HAS seen them. Whether each is
+    // checkable is `check()`'s answer, and the ones it cannot resolve are added
+    // back to that count there, so the published number keeps its meaning —
+    // citation-shaped, and not checked by this run.
+    QVector<SymbolRef> symbolRefs;
 };
 
 ScanResult scan(const QStringList &lines, const Options &opts = {});

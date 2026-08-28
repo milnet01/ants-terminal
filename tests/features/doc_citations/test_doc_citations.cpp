@@ -1735,3 +1735,131 @@ TEST(DocCitations, Ants4706InlineAngleBracketIsContent) {
                     .contains(QLatin1Char('>')))
         << "…and must survive into the reported text";
 }
+
+
+// ANTS-4748 — a `path::symbol` span resolves to the symbol's line where the path
+// resolves AND the symbol is unique in that file. The entry says where the line
+// came from: `resolved_via` is what lets a reader tell a looked-up line from an
+// authored one.
+TEST(DocCitations, Ants4748UniqueSymbolResolvesToItsLine) {
+    expect_reset();
+    Fixture fx;
+    fx.write(QStringLiteral("src/a.cpp"),
+             "// header\n"
+             "void other() {\n"
+             "}\n"
+             "\n"
+             "void doThing() {\n"
+             "    body();\n"
+             "}\n");
+    const QString doc = fx.doc("see `src/a.cpp::doThing` for it\n");
+
+    const QJsonObject r = DocCitations::check(fx.root, doc);
+    expect(cites(r).size() == 1, "4748/one-citation", render(r));
+    if (cites(r).size() == 1) {
+        expect(status(r, 0) == QStringLiteral("ok"), "4748/ok", render(r));
+        expect(cite(r, 0).value(QStringLiteral("start_line")).toInt() == 5,
+               "4748/line-from-the-tree", render(r));
+        expect(cite(r, 0).value(QStringLiteral("resolved_via")).toString()
+                   == QStringLiteral("symbol"),
+               "4748/resolved-via", render(r));
+        expect(cite(r, 0).value(QStringLiteral("symbol")).toString()
+                   == QStringLiteral("doThing"),
+               "4748/symbol-echoed", render(r));
+    }
+    ASSERT_EQ(0, expect_finish());
+}
+
+// The guard that earns the widening. Two declarations of one name — an overload,
+// the commonest case — resolve to no line at all. Reporting either one `ok` would
+// be a FALSE ok, worse than the silence ANTS-4743 deliberately admitted, so the
+// reference goes back to the unrecognised count.
+TEST(DocCitations, Ants4748AmbiguousSymbolResolvesToNothing) {
+    expect_reset();
+    Fixture fx;
+    fx.write(QStringLiteral("src/a.cpp"),
+             "void f(int x) {\n"
+             "}\n"
+             "void f(double x) {\n"
+             "}\n");
+    const QString doc = fx.doc("see `src/a.cpp::f`\n");
+
+    const QJsonObject r = DocCitations::check(fx.root, doc);
+    expect(cites(r).isEmpty(), "4748/ambiguous-invents-nothing", render(r));
+    expect(r.value(QStringLiteral("unrecognised_candidates")).toInt() == 1,
+           "4748/ambiguous-counted-unchecked", render(r));
+    ASSERT_EQ(0, expect_finish());
+}
+
+// Same for a name the file does not carry — renamed, or moved away.
+TEST(DocCitations, Ants4748AbsentSymbolResolvesToNothing) {
+    expect_reset();
+    Fixture fx;
+    fx.write(QStringLiteral("src/a.cpp"), "void present() {\n}\n");
+    const QString doc = fx.doc("see `src/a.cpp::goneAway`\n");
+
+    const QJsonObject r = DocCitations::check(fx.root, doc);
+    expect(cites(r).isEmpty(), "4748/absent-invents-nothing", render(r));
+    expect(r.value(QStringLiteral("unrecognised_candidates")).toInt() == 1,
+           "4748/absent-counted-unchecked", render(r));
+    ASSERT_EQ(0, expect_finish());
+}
+
+// An unresolvable PATH is the other half of the same guard: with no file to look
+// in, there is nothing to make the reference unique against.
+TEST(DocCitations, Ants4748UnresolvablePathResolvesToNothing) {
+    expect_reset();
+    Fixture fx;
+    const QString doc = fx.doc("see `src/gone.cpp::doThing`\n");
+
+    const QJsonObject r = DocCitations::check(fx.root, doc);
+    expect(cites(r).isEmpty(), "4748/bad-path-invents-nothing", render(r));
+    expect(r.value(QStringLiteral("unrecognised_candidates")).toInt() == 1,
+           "4748/bad-path-counted-unchecked", render(r));
+    ASSERT_EQ(0, expect_finish());
+}
+
+// The outline names an out-of-class definition by its QUALIFIED name, and the
+// corpus writes the unqualified one — measured across this project's docs as the
+// majority of the `path::symbol` spans. Without the suffix rung the widening
+// reaches almost none of them, so it is pinned rather than left incidental.
+TEST(DocCitations, Ants4748QualifiedDefinitionMatchesUnqualifiedReference) {
+    expect_reset();
+    Fixture fx;
+    fx.write(QStringLiteral("src/k.cpp"),
+             "#include \"k.h\"\n"
+             "\n"
+             "void Klass::doThing() {\n"
+             "    body();\n"
+             "}\n");
+    const QString doc = fx.doc("see `src/k.cpp::doThing`\n");
+
+    const QJsonObject r = DocCitations::check(fx.root, doc);
+    expect(cites(r).size() == 1, "4748/qualified-one-citation", render(r));
+    if (cites(r).size() == 1) {
+        expect(status(r, 0) == QStringLiteral("ok"), "4748/qualified-ok", render(r));
+        expect(cite(r, 0).value(QStringLiteral("start_line")).toInt() == 3,
+               "4748/qualified-line", render(r));
+    }
+    ASSERT_EQ(0, expect_finish());
+}
+
+// Uniqueness survives the suffix rung: two qualified names sharing one suffix
+// are ambiguous, so the reference resolves to nothing rather than to whichever
+// was seen first.
+TEST(DocCitations, Ants4748SharedSuffixIsStillAmbiguous) {
+    expect_reset();
+    Fixture fx;
+    fx.write(QStringLiteral("src/k.cpp"),
+             "void Alpha::run() {\n"
+             "}\n"
+             "void Beta::run() {\n"
+             "}\n");
+    const QString doc = fx.doc("see `src/k.cpp::run`\n");
+
+    const QJsonObject r = DocCitations::check(fx.root, doc);
+    expect(cites(r).isEmpty(), "4748/shared-suffix-invents-nothing", render(r));
+    expect(r.value(QStringLiteral("unrecognised_candidates")).toInt() == 1,
+           "4748/shared-suffix-counted-unchecked", render(r));
+    ASSERT_EQ(0, expect_finish());
+}

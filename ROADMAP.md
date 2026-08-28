@@ -48060,7 +48060,7 @@ envelope dropped `source`/`path`/`etag`/`total`/`filter`.
   Source: claude_config_Ants_MCP_Feedback.md 2026-08-27.
   Lanes: mcp, session.
 
-- 📋 [ANTS-4748] **doc_citations recognises only path:line, so a corpus citing path::symbol scans to a silent zero.**
+- ✅ [ANTS-4748] **doc_citations recognises only path:line, so a corpus citing path::symbol scans to a silent zero.**
   Split out of ANTS-4743, which deliberately shipped the honest-zero
   message and NOT the wider grammar. That was the right order: the
   message makes this measurable, and this is the measurement.
@@ -48091,6 +48091,44 @@ envelope dropped `source`/`path`/`etag`/`total`/`filter`.
   where the path resolves AND the symbol is unique in that file, and
   report every other shape as unrecognised exactly as today. That
   keeps the honest zero for the ambiguous cases and buys the majority.
+  Resolved (2026-08-28): the cheapest defensible cut shipped as this body
+  specified — a backticked `path::symbol` resolves where the path resolves
+  AND the symbol is unique in that file; every other shape, and every
+  `path::symbol` that fails either test, is counted as unchecked exactly
+  as before. The resolved entry carries `resolved_via:"symbol"`, because
+  a looked-up line is not an authored one and a reader judging the
+  citation needs to know which it has.
+
+  MEASURED, and it overturns this body's headline example. Linked against
+  the built engine rather than the running verb: `mcp-error-codes.md` is
+  UNCHANGED at zero. That document contains no `path::symbol` at all —
+  every `::` span in it is `Class::method()`, which names no file, and
+  the rest are bare backticked document paths. The premise that its
+  corpus cites `path::symbol` does not hold for the document cited as
+  the evidence for it.
+
+  The form is real elsewhere, which is what the change buys: 99 such
+  spans across 43 documents in this repo. End-to-end on real files,
+  `src/auditrunner.cpp::writeSarif` resolves to line 1158 (verified
+  against the source) and `src/roadmapdialog.cpp::renderCardsHtml` to
+  1015.
+
+  One rung was not in the plan and the widening reaches almost nothing
+  without it: the outline names an out-of-class definition by its
+  QUALIFIED name while the corpus writes the unqualified one, so the
+  unqualified suffix is indexed too. Uniqueness is unchanged — two
+  qualified names sharing a suffix collide and are refused rather than
+  guessed, pinned by its own test.
+
+  Known bound, and it fails safe: the outline is a regex scanner, not a
+  parser, so a definition it cannot extract reads here as "not unique in
+  this file" and the reference reports as unchecked. Never as clean, and
+  never as a line.
+
+  ANTS-4756 filed for the two shapes that WOULD move the measured
+  document. Superseded one assertion in ANTS-4743's own test, which
+  required `path::symbol` to be counted as unseen; updated there rather
+  than worked around here.
   **Layman:** The tool that checks a document's references to code understands only one way of writing them, so documents using another way get checked for nothing.
   Kind: enhancement.
   Source: ANTS-4743 option 1, deferred; new measurement in-session-2026-08-28.
@@ -48224,6 +48262,39 @@ envelope dropped `source`/`path`/`etag`/`total`/`filter`.
   Kind: doc-fix.
   Source: in-session-2026-08-28, found while adding ANTS-4753's test.
   Lanes: tests, docs.
+
+- 📋 [ANTS-4756] **doc_citations still scans mcp-error-codes.md to zero, because its citations are scope references and bare paths, not path::symbol.**
+  ANTS-4748 widened the grammar to `path::symbol` and left the document
+  that motivated it unchanged at zero. Measured by linking the engine, not
+  by reasoning: `mcp-error-codes.md` holds no `path::symbol` at all. Its
+  `::` spans are `Class::method()`, which names no file, and the rest are
+  bare backticked document paths. Two shapes remain, and they are not one
+  job.
+
+  **A. `Class::method()` — a scope reference with no path.** This is the
+  form that standard actually writes. Resolving it means a project-wide
+  symbol lookup, which is where ANTS-4743's warning bites hardest: a name
+  that resolves in the WRONG file is reported `ok` against lines the author
+  never meant, and nothing downstream can tell. `find_definition` already
+  does this lookup and reports every definition it finds, so the honest
+  shape is probably to resolve only where the whole project holds exactly
+  one — the same uniqueness test ANTS-4748 applies within a file, widened
+  to the tree. Weigh that before building: the population of names unique
+  across a tree is much smaller than within a file.
+
+  **B. A bare backticked path.** Cheap and low-risk, and the odd one out —
+  it names no symbol and no line, so it is not a citation in this verb's
+  sense. What can be checked is whether the file EXISTS, which cannot be
+  wrong in the dangerous direction. It needs its own entry shape rather
+  than a `start_line`, so it is a design question and not a rung.
+
+  Do these separately. B is the smaller and answers a real question about
+  a standards corpus (does this document point at files that are gone);
+  A carries the false-ok risk and deserves its own weighing.
+  **Layman:** The tool that checks a document's references to code still cannot check the two ways our standards actually write them.
+  Kind: enhancement.
+  Source: in-session-2026-08-28, measured while shipping ANTS-4748.
+  Lanes: mcp, docs.
 
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-08-11 triage
 

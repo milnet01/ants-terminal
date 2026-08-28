@@ -3,6 +3,7 @@
 
 #include "doccitations.h"
 
+#include "fileoutline.h"
 #include "markdownscan.h"
 #include "pathvalidation.h"
 
@@ -37,6 +38,21 @@ bool isSegChar(QChar c) {
     return (u >= u'a' && u <= u'z') || (u >= u'A' && u <= u'Z')
            || (u >= u'0' && u <= u'9')
            || u == u'_' || u == u'.' || u == u'@' || u == u'+' || u == u'-';
+}
+
+// ANTS-4748 — ident := [A-Za-z_][A-Za-z0-9_]*. ASCII by construction, like
+// isSegChar above and for the same reason.
+bool isIdentifier(const QString &s) {
+    if (s.isEmpty()) return false;
+    for (int i = 0; i < s.size(); ++i) {
+        const char16_t u = s.at(i).unicode();
+        const bool alpha = (u >= u'a' && u <= u'z') || (u >= u'A' && u <= u'Z')
+                           || u == u'_';
+        if (alpha) continue;
+        if (i > 0 && u >= u'0' && u <= u'9') continue;
+        return false;
+    }
+    return true;
 }
 
 bool isDigit(QChar c) {
@@ -258,6 +274,32 @@ ScanResult scan(const QStringList &lines, const Options &opts) {
                         + oneSpaceStrip(line.mid(s.startCol,
                                                  s.endCol - s.startCol),
                                         stripped);
+        // ANTS-4748 — `path::symbol` FILLING the span. Recognised here and
+        // resolved in check(): this layer has no file to look the symbol up in.
+        // Span-filling for the reason a continuation is — the delimiters are
+        // what make the reference authored rather than coincidental.
+        {
+            const int dc = stripped.indexOf(QLatin1String("::"));
+            QString sym  = dc > 0 ? stripped.mid(dc + 2) : QString();
+            if (sym.endsWith(QLatin1String("()"))) sym.chop(2);
+            const QString sp = dc > 0 ? stripped.left(dc) : QString();
+            if (dc > 0 && validPath(sp) && isIdentifier(sym)) {
+                // The same funnel guard record() applies: an illustration is
+                // not a claim, whichever array it would have landed in.
+                if (examples.value(s.startLine)) {
+                    ++r.examplesSuppressed;
+                    continue;
+                }
+                SymbolRef ref;
+                ref.docLine = s.startLine + 1;
+                ref.docCol  = off;
+                ref.raw     = stripped;
+                ref.path    = sp;
+                ref.symbol  = sym;
+                r.symbolRefs.append(ref);
+                continue;
+            }
+        }
         // ANTS-4743 — count the citation-SHAPED spans this grammar cannot see,
         // before the `:` test drops them. Conservative on purpose: this field
         // decides what a ZERO means, so a loose test would make every
@@ -290,6 +332,7 @@ ScanResult scan(const QStringList &lines, const Options &opts) {
     };
     std::stable_sort(r.citations.begin(), r.citations.end(), byPosition);
     std::stable_sort(r.unparsed.begin(), r.unparsed.end(), byPosition);
+    std::stable_sort(r.symbolRefs.begin(), r.symbolRefs.end(), byPosition);
     return r;
 }
 
@@ -976,6 +1019,66 @@ QJsonObject check(const QString &rootCanonical, const QString &docAbsPath,
     // unterminated sentinel, so the out-param is nullptr here.
     const QVector<bool> examples = MarkdownScan::exampleMask(prefix, fence);
 
+    // ANTS-4748 — resolve each `path::symbol` to a line, and ONLY where the
+    // path resolves and the symbol is unique in that file. Everything else is
+    // added back to the unrecognised count: a false `ok` against an overload or
+    // a name that has since moved is worse than the silence ANTS-4743 admitted,
+    // so an unresolvable reference reports as unchecked rather than as a guess.
+    QVector<Citation> citations   = sc.citations;
+    int               unrecognised = sc.unrecognisedCandidates;
+    QHash<QString, QHash<QString, int>> outlineCache;  // absPath → name → line
+    for (const SymbolRef &ref : sc.symbolRefs) {
+        const Target st = resolvePath(rootCanonical, ref.path, opts);
+        if (st.kind != Target::Resolved) { ++unrecognised; continue; }
+        if (!outlineCache.contains(st.absPath)) {
+            QHash<QString, int> byName;
+            const QJsonObject ol =
+                FileOutline::compute(st.absPath, FileOutline::Mode::Auto, false,
+                                     FileOutline::kMaxSymbolsCap);
+            for (const QJsonValue &v : ol.value(QStringLiteral("symbols")).toArray()) {
+                const QJsonObject so = v.toObject();
+                const QString name   = so.value(QStringLiteral("name")).toString();
+                if (name.isEmpty()) continue;
+                const int line = so.value(QStringLiteral("line")).toInt();
+                // -1 marks a name this file declares more than once. Kept as a
+                // value rather than removed, so a second sighting cannot make an
+                // ambiguous name look absent — the two are reported the same way
+                // here, but conflating them would hide the reason from a later
+                // reader of this code.
+                const auto put = [&byName](const QString &key, int at) {
+                    byName.insert(key, byName.contains(key) ? -1 : at);
+                };
+                put(name, line);
+                // The outline names an out-of-class definition by its QUALIFIED
+                // name (`RoadmapDialog::renderCardsHtml`), and the corpus writes
+                // the unqualified one. Measured across this project's docs: the
+                // qualified form is the majority of the `path::symbol` spans, so
+                // without this rung the widening reaches almost none of them.
+                // Uniqueness is unchanged — two qualified names sharing a
+                // suffix collide onto -1 and are refused, not guessed.
+                const QString tail = name.section(QLatin1String("::"), -1);
+                if (tail != name && !tail.isEmpty()) put(tail, line);
+            }
+            outlineCache.insert(st.absPath, byName);
+        }
+        const int line = outlineCache.value(st.absPath).value(ref.symbol, 0);
+        if (line < 1) { ++unrecognised; continue; }
+        Citation c;
+        c.docLine   = ref.docLine;
+        c.docCol    = ref.docCol;
+        c.raw       = ref.raw;
+        c.path      = ref.path;
+        c.startLine = line;
+        c.endLine   = line;
+        c.symbol    = ref.symbol;
+        citations.append(c);
+    }
+    std::stable_sort(citations.begin(), citations.end(),
+                     [](const Citation &a, const Citation &b) {
+                         return a.docLine != b.docLine ? a.docLine < b.docLine
+                                                       : a.docCol < b.docCol;
+                     });
+
     TargetReader           reader(opts);
     QVector<QJsonObject>   entries;
     QVector<PendingUnparsed> unparsedRows;
@@ -988,7 +1091,7 @@ QJsonObject check(const QString &rootCanonical, const QString &docAbsPath,
     int anchorMissing = 0;
     int uncheckedOk   = 0;
 
-    for (const Citation &tok : sc.citations) {
+    for (const Citation &tok : citations) {
         // A fence is a context break, not merely skipped text: a `:45` after a
         // code sample far more likely discusses that sample, and a visible
         // `unresolved` beats a silent mis-attribution. ANTS-3659 — an example
@@ -1157,6 +1260,12 @@ QJsonObject check(const QString &rootCanonical, const QString &docAbsPath,
         }
         }
 
+        // ANTS-4748 — a looked-up line is not an authored one, and a reader
+        // judging the citation needs to know which it has.
+        if (!tok.symbol.isEmpty()) {
+            e.insert(QStringLiteral("resolved_via"), QStringLiteral("symbol"));
+            e.insert(QStringLiteral("symbol"), tok.symbol);
+        }
         e.insert(QStringLiteral("status"), status);
         ++tally[status];
         entries.append(e);
@@ -1240,23 +1349,22 @@ QJsonObject check(const QString &rootCanonical, const QString &docAbsPath,
         {QStringLiteral("forms_recognised"),
          QJsonArray{QStringLiteral("path:line"),
                     QStringLiteral("path:startLine-endLine"),
-                    QStringLiteral(":line (continuation)")}}};
+                    QStringLiteral(":line (continuation)"),
+                    QStringLiteral("`path::symbol` (unique in that file)")}}};
     // The zero that needs explaining. Emitted only when the document produced
     // no citations AND something in it read like one: on a document that
     // genuinely cites nothing, the pair would be noise.
-    if (entries.isEmpty() && sc.unrecognisedCandidates > 0) {
-        out.insert(QStringLiteral("unrecognised_candidates"),
-                   sc.unrecognisedCandidates);
+    if (entries.isEmpty() && unrecognised > 0) {
+        out.insert(QStringLiteral("unrecognised_candidates"), unrecognised);
         out.insert(QStringLiteral("citations_hint"), QStringLiteral(
             "count:0 here is SILENT about this document, not clean about it. "
-            "%1 code span(s) read as a source citation in a form this verb "
-            "does not recognise — `path::symbol`, `Class::method()`, or a bare "
-            "backticked path. Only `path:line` is scanned, and the spec-format "
-            "standard forbids authors writing that form, so a conforming "
-            "corpus scans to zero. `unparsed` is empty for the same reason: "
-            "nothing was rejected because nothing was recognised as a "
-            "candidate. Do not record this run as a citation check that "
-            "passed.").arg(sc.unrecognisedCandidates));
+            "%1 code span(s) read as a source citation this run could not "
+            "check — `Class::method()`, a bare backticked path, or a "
+            "`path::symbol` whose file did not resolve or whose symbol is not "
+            "unique in it (an overload, or a name that has moved). "
+            "`unparsed` is empty because nothing was rejected: these were "
+            "never recognised as citations. Do not record this run as a "
+            "citation check that passed.").arg(unrecognised));
     }
     if (opts.basenameIndexTruncated)
         out.insert(QStringLiteral("basename_index_truncated"), true);
