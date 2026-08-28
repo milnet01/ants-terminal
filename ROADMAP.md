@@ -33033,6 +33033,7 @@ against current source before filing.
   stale about beyond the gate's scope. Re-read it fresh rather than assuming the
   2026-08-24 pass swept it -- that pass was aimed at one claim.
   Resolved (2026-08-28): the render_gate_unmet row was re-read fresh, as this item asked, and the re-read found more than the row. The remedy now names op:"amend_field" as the direct route to the layman column, with the field_shadowed_by_body case that defeats it and the amend_body way out. Gated under rule 14 because a conformer would reach for a different op; the gate ran three cold loops, verified 22 findings and fixed 19, dismissed one on measurement and filed three as ANTS-4752 at a violent cap. The run also corrected a claim this item's own fix had carried: the ride-along rule is the label first on ANY line, not the note's first line, which the shipped refusal message still gets wrong (ANTS-4749). The file gained the loop-log section the standard skeleton requires, which it had never had.
+  Release note (2026-08-28): no CHANGELOG entry, deliberately — a correction to a project standard; nothing a user of the product observes.
 
 - 💭 [ANTS-4436] **file_ahead_of_store fires on every project whose id_prefix row was never written, including one migrated seconds ago.**
   ANTS-4402's witness compares `file_highest_id` against `store_high_water`, and the high water comes from the `id_prefix` table. Migration does not write a row there — only an id-allocating append does. So a migrated-but-never-appended project reports `store_high_water: 0`, and any id in the file makes `file_ahead_of_store` true forever.
@@ -33610,6 +33611,7 @@ in each bullet, not just the reporter's symptom.
 
   STILL TO OBSERVE, and the item stays open until then: qt62-baseline restoring its key and posting a non-zero hit rate, and build-asan's misses falling as its 2 GB cache fills.
   Closed (2026-08-25) on the evidence it was held open for: a non-docs push showing qt62-baseline restoring its key with a non-zero hit rate. Run 32829614318 (d84537f3, the ANTS-4644/4645/4648 push) — "Cache restored from key: Linux-ccache-qt62-36b3db8d…" (the previous non-docs commit's key), "Cache saved with key: Linux-ccache-qt62-d84537f3…", and 600/605 hits = 99.17%, 5 misses, cache 0.04 GB of the 2 GB ceiling. build-test's release cache reports the same 600/605 at 0.5 GB of 2 GB, so neither job is near the new limit and neither is self-evicting. The restore→save chain across two separate pushes is what proves the key rotation works rather than a single run happening to be warm. Also confirms the reading recorded against this item: qt62's "Primary storage" line shows 1202/1210 beside the 600/605 summary — two lookups per compilation, not a broken save; the ratio held exactly on this run too.
+  Release note (2026-08-28): no CHANGELOG entry, deliberately — CI build-cache tuning, invisible outside the pipeline.
   **Layman:** The build machine throws away most of what it compiled last time, so it recompiles the same code every run.
   Kind: perf.
   Source: user-request-2026-08-25.
@@ -41431,6 +41433,7 @@ filed below.
   against a MIGRATED fixture would cover this and ANTS-4508's `would_be_id`
   together, because the existing fixtures allocate on a fresh counter-strategy
   project, which is the path that already works. Re-filed as ANTS-4661.
+  Release note (2026-08-28): no CHANGELOG entry, deliberately — an investigation that shipped no behaviour change and re-filed its buildable half as ANTS-4661.
   **Layman:** A flag meant to save a follow-up read didn't do anything on one kind of status change.
   Kind: investigate.
   Source: finbreak_Ants_MCP_Feedback.md 2026-08-20.
@@ -46239,6 +46242,7 @@ envelope dropped `source`/`path`/`etag`/`total`/`filter`.
   field set differs between the status-filtered and ids+headline_only
   shapes, naming that difference settles both.
   Resolved (2026-08-26) — NOT by the change requested, and the reason is the finding. The ask was to add `kind` to mode:"headline_only". Phase 0's invariant_check surfaced ANTS-1881 INV-2: the four-key set {id, status, headline_oneline, section_slug} is the MODE's contract, "extra keys fail, missing keys fail", pinned by Inv2KeySetExactlyFour — so widening would have broken a tested contract. The schema ALSO already named `kind` among what the mode skips, so no Ants defect existed. Took the reporter's own second option: the schema now states the four keys are a mode contract rather than a `fields` default, and that `kind` needs an unfiltered id/ids fetch, so a project doc cannot record the wider claim. The divergence is in finbreak's CLAUDE.md, which is theirs to correct; the reporter had flagged that uncertainty themselves.
+  Release note (2026-08-28): no CHANGELOG entry, deliberately — it found no Ants defect; the schema now states an existing contract more plainly and the divergence was in another project's own instruction file.
   **Layman:** The short roadmap listing leaves out the item's category, so a session that needs it must ask twice.
   Kind: enhancement.
   Source: finbreak-feedback-2026-08-26.
@@ -46371,6 +46375,7 @@ envelope dropped `source`/`path`/`etag`/`total`/`filter`.
 
   Deliberately not decided here. Redefining an invariant is a direction change under rule 14 and owes three cold lanes, and writing thirteen rows whose behaviour I would be inferring is how a false claim ships -- the failure this session has spent its day on. The measurement is the part that was missing; the decision wants its own session.
   Resolved (2026-08-26): part 2 decided and delivered. NARROW, not widen. INV-5 now claims every argument the verb reads is either given explicit behaviour in the 2.3 table or named there as having no effect. True, carries no enumeration to go stale, and is the first form of the invariant a test could enforce. Widening to a row per argument was rejected on the item's own grounds: it would have meant writing rows whose behaviour was inferred. The table gained rows for `ids`, the `query` family, `max_body_bytes` and `section_etag_match`, plus one naming the other-mode arguments that are read and silently ignored -- the silent default the old INV-5 denied existed. Every row was measured against source before it was written. Gate: review-contract, two loops, three cold lanes each, loops 9 and 10 in the spec's log. Sixteen verified findings, sixteen fixed. All three lanes of loop 10 independently re-walked the read-set against the table and confirmed the new claim holds. The gate also found what part 2 was really blocked on: `mode:"headline_only" + ids:[]` emits FIVE keys, because the projection runs before ANTS-4400's `input_index` loop -- filed as ANTS-4712 with the two missing test anchors. So the enforcing test this item wanted is now buildable AND has a live defect to catch. Collateral filed as ANTS-4711.
+  Release note (2026-08-28): no CHANGELOG entry, deliberately — a correction inside a spec, with no change to shipped behaviour.
   **Layman:** A spec says every option is documented in its table; one option shipped without being added.
   Kind: doc-fix.
   Source: in-session-2026-08-26 (found while adding the max_results row ANTS-4701 owed).
@@ -46396,6 +46401,7 @@ envelope dropped `source`/`path`/`etag`/`total`/`filter`.
   deliberately (coding.md 1.7) -- that item amends the same spec but for a
   different reason, and folding the two would hide this one.
   Resolved (2026-08-26): fixed inside the ANTS-4692 cold gate rather than separately -- 2.3.2's skip list depends on the shape-preview key names, so documenting them was the same edit. 2.3.1 now carries the ANTS-4397/4474/4519 family, and the false "no structured preview / byte-identical to the non-array fallback" claim is deleted from both 2.3.1 and INV-13. A lane found the same defect independently. Commit 7672dc29.
+  Release note (2026-08-28): no CHANGELOG entry, deliberately — a correction inside a spec, with no change to shipped behaviour.
   **Layman:** The design document for large-result offloading is behind the code, so it describes an envelope the tool no longer sends.
   Kind: doc-fix.
   Source: in-session-2026-08-26.
@@ -46544,6 +46550,7 @@ envelope dropped `source`/`path`/`etag`/`total`/`filter`.
   NOT URGENT. The tests pass today because the fixtures do contain those
   lines; the exposure is a future fixture edit.
   Resolved (2026-08-26): each itemAtLine() lookup is hoisted into a named local and asserted before use, warning count four to zero. The hoist is not cosmetic -- written inline the call would run twice and the guard would not cover the deref. The already-guarded lookup joins the other two so they read as a set rather than an exception plus two oversights, and each ASSERT names the line it wanted, since a bare null-pointer failure says a pointer was null without saying what it was for. No red check and it does not warrant one: the defect is that a FUTURE fixture edit crashes instead of failing, so reproducing it would mean corrupting a fixture to prove a segfault; the warning count is the checkable observable. Commit 0990b804, suite 3989/3989.
+  Release note (2026-08-28): no CHANGELOG entry, deliberately — test hardening, so a regression fails instead of crashing; no product change.
   **Layman:** A few tests would crash rather than report a clear failure if the thing they look for goes missing.
   Kind: test.
   Source: in-session-2026-08-26 (noticed while adding ANTS-4693 coverage).
@@ -46836,6 +46843,7 @@ envelope dropped `source`/`path`/`etag`/`total`/`filter`.
   Resolved (2026-08-27) — deleted. DUPLICATE of ANTS-4687, which had it first.
 
   THE STATED MECHANISM WAS WRONG and the correction matters: the two lambdas are not in one method and neither shadows the other. The live one is in ClaudeIntegration::finishToolDispatch (defined there, called there); the dead one is in ClaudeIntegration::onMcpConnection's tools/call branch, where nothing calls it. So it was never a shadowed helper -- just a second copy in a second method, dead since it was written.
+  Release note (2026-08-28): no CHANGELOG entry, deliberately — removal of a duplicate that was never called, so nothing observable changed.
   **Layman:** A small helper is defined twice; the second copy is dead and the compiler warns about it.
   Kind: chore.
   Source: in-session-2026-08-26, compiler diagnostic seen while editing an adjacent schema string.
@@ -47081,6 +47089,7 @@ envelope dropped `source`/`path`/`etag`/`total`/`filter`.
 
 - ✅ [ANTS-4719] **The spec's comment-macro guard cannot see the preamble, where the failure is a bad tag rather than bad shell.**
   SELF-INFLICTED, and worth writing down for that reason. Fixing ANTS-4717\nI wrote a BuildRequires comment reading \"runs %check\" with ONE percent.\nrpm expands macros in comments, so it expanded into a section marker and\nMageia_10 died at `error: line 80: Unknown tag`. The other three targets\nhad not reached the parse yet and would have followed.\n\nobs-submit.sh ALREADY guards this class, and its own comment records that\nit cost a cycle on 2026-07-29. It did not fire, for a structural reason:\nit runs `rpmspec -P` and then `bash -n` over each expanded SCRIPTLET body,\nso it sees an unescaped macro inside %build or %check. In the PREAMBLE the\nexpansion yields a tag or a section marker rather than broken shell --\nevery scriptlet still parses, and the check has nothing to fail on.\n\nTWO THINGS MADE IT INVISIBLE LOCALLY. `rpmspec -q --srpm` returns success\non the broken file, verified by reintroducing the defect afterwards: this\nhost's rpm WARNS where Mageia's rpm ERRORS. So the validation reached for\nby reflex is not a validator for this at all.\n\nFIXED by scanning comment lines directly for an unescaped macro: strip\n`%%` pairs, then refuse a remaining `%` followed by a letter or brace. It\nneeds no rpmspec, so it also runs where the existing check is skipped.\n\nPROVEN IN BOTH DIRECTIONS rather than asserted, which is the only evidence\nthat separates a working guard from one that merely runs. Against the\nrepaired spec it is silent; against a copy with the defect reintroduced it\nreports `CAUGHT line 80`, while `rpmspec -q --srpm` on that same file\nstill exits clean.\n\nWORTH KEEPING IN MIND: the pattern is deliberately about COMMENTS only. A\nbare macro in live spec text is meant to expand, so widening this to the\nwhole file would refuse the entire recipe.
+  Release note (2026-08-28): no CHANGELOG entry, deliberately — a packaging-recipe guard; what it prevents is a failed build, not a user-visible change.
   **Layman:** A safety check for one kind of typo in the package recipe only looked at part of the file.
   Kind: fix.
   Source: in-session-2026-08-26, self-inflicted while fixing ANTS-4717.
@@ -47089,6 +47098,7 @@ envelope dropped `source`/`path`/`etag`/`total`/`filter`.
 - ✅ [ANTS-4720] **A p95 read-latency budget misses by 0.5% on an OBS builder, and its own remedy forbids relaxing it.**
   RoadmapReadSeam.Inv3Latency fails in the OBS build VM and passes here:\n\n  Expected: (p95) < (50 * 1000), actual: 50538 vs 50000\n  p95 50.538 ms over 20 warm reads of a 1839-item project\n\nA miss of half a percent on a wall-clock budget, on a shared builder under\ncontention. Locally the same suite runs green.\n\nTHE TEST ALREADY NAMES ITS REMEDY AND RULES OUT THE EASY ONE, in its own\nfailure message: \"§ 4's remedy if this reds is a batched\nRoadmapStore::readItems() (ANTS-3816) -- not a cache and not a relaxed\nbudget.\" So raising the number is the one repair the contract forbids, and\nthat is worth honouring rather than rediscovering: a budget widened once\nbecause a builder was loaded stops measuring anything.\n\nWHY IT SURFACED NOW. Like ANTS-4717, this is the first OBS build to run\ncurrent sources at all -- OBS had been on stale ones for weeks (ANTS-4587).\nThe budget was not newly breached; nothing had measured it in that\nenvironment before.\n\nTHE REAL QUESTION IS WHICH KIND OF FAILURE THIS IS, and it is not settled.\nEither the per-item read really is at its ceiling and ANTS-3816's batched\nreadItems is due, or the budget is being asked to hold on hardware it was\nnever calibrated against. The margin -- half a percent -- is small enough\nthat both readings are live, and a p95 over 20 samples on a contended host\nis a noisy statistic.\n\nWORTH MEASURING FIRST: run the same test on a deliberately loaded local\nmachine before concluding. If it reproduces under contention here, the\nbudget is environment-sensitive and belongs behind the same treatment the\nperf lane already gets (its MB/s floor is off by default precisely so a\nloaded worker cannot fail it). If it does not, ANTS-3816 is the answer the\nspec already wrote down.\n\nBLOCKING: together with ANTS-4718 this keeps the RPM red, so package users\nstay on the previously published version.
   Resolved (2026-08-26): environment-sensitive, NOT a code regression, and the project had already decided this -- the RPM was simply the one gate not honouring the decision. tests/features/roadmap_read_seam/spec.md says outright "A timing assertion on a loaded host is a flake generator", which is why Inv3Latency carries the `perf` label and the ceiling assertions do not; the default presets and tools/hooks/pre-push both filter -LE 'e2e|perf'. The RPM's %check ran the whole suite including perf, by accident, because %ctest cannot take -LE. MEASURED rather than argued. Unloaded it passes; pinned to two cores with four spinners the p95 is 75-78 ms against the 50 ms budget, so the OBS worker's 50.5 ms is the mild end of the same curve. The test already skips itself under ASan for exactly this reason, its comment calling an unsanitized build "a precondition of the instrument rather than a tolerance to widen" -- a contended chroot is the same category. FIXED spec-side, which also makes it reach OBS without a new tag: %check now invokes ctest directly with -LE perf, finding the build directory by probing for CTestTestfile.cmake rather than assuming one (%ctest hardcodes a different builddir per distro and this spec builds for four). e2e stays IN -- it passes there and has its own offscreen wiring. Verified: 4003 tests total, 3996 with the filter, Inv3Latency excluded, all 13 CitedBy tests retained; the expanded %check parses as shell. The spec's earlier note that the perf lane was safe because bench_vt_throughput's MB/s floor is off by default was right about that benchmark and generalised wrongly -- Inv3Latency is also perf-labelled and carries a hard assertion.
+  Release note (2026-08-28): no CHANGELOG entry, deliberately — a test latency budget retuned for one build host; the product is unchanged.
   **Layman:** A speed check just barely fails on the shared build machines, blocking the package build.
   Kind: perf.
   Source: in-session-2026-08-26, second of two failures left after the ripgrep fix.
@@ -47714,6 +47724,7 @@ envelope dropped `source`/`path`/`etag`/`total`/`filter`.
   keeping: the same-day case sets the flag, because `shipped_date` has no
   time component and a false flag costs one extra check where a missed one
   costs a triage cycle.
+  Release note (2026-08-28): no CHANGELOG entry, deliberately — closed as a duplicate of ANTS-4741, which carries the entry for the change that actually shipped.
   **Layman:** Two tools each hold half of "is this fix actually running yet?", and you have to put them together yourself.
   Kind: enhancement.
   Source: Charls_Site_Ants_MCP_Feedback.md 2026-08-27 (suggested after a near-miss the existing hint prevented).
@@ -50570,6 +50581,7 @@ defect from different angles.
   that measures them. No direction changed, so no gate -- CLAUDE.md rule 14
   checked, and the two changes that DO change direction were deliberately not
   made here; they are ANTS-4662's, with the gate.
+  Release note (2026-08-28): no CHANGELOG entry, deliberately — an investigation of a documentation backlog, with no change to shipped behaviour.
 
 - ✅ [ANTS-4135] **23 specs cite feature-test directories that do not exist.**
   Measured 2026-08-12 over docs/specs/ (excluding ANTS-4127's own spec):

@@ -14,6 +14,24 @@ for security-relevant changes.
 
 ### Added
 
+- **spec_lint accepts `fields=` and `compact`** (ANTS-4663)
+  A corpus run previously spilled and had to be parsed by hand.
+
+- **roadmap_log op:"amend_headline" rewords a headline on a store-backed project** (ANTS-4683)
+  A headline was effectively immutable after creation while body notes accumulated a correction the headline went on contradicting.
+
+- **roadmap_log op:"render" publishes the store's canonical ROADMAP.md** (ANTS-4509)
+  Normalising a file used to require inventing an unrelated write purely to trigger the render, which left a roadmap bullet nobody wanted.
+
+- **A read-only way to ask whether a project is in the roadmap store and in sync** (ANTS-4488)
+  Previously only a dry-run answered it, as a side effect, at the cost of its whole note list.
+
+- **Large MCP read bodies spill to a scratch file instead of flooding the reply** (ANTS-2094)
+  The response carries the head plus a pointer, so a big read no longer costs its full size in context.
+
+- **roadmap_query mode:"headline_only" returns lean rows** (ANTS-1881)
+  `{id, status, headline_oneline, section_slug}` per bullet, skipping the body — roughly a tenth the payload on a dense section.
+
 - **feedback_log op:"set_format_version" corrects a file's format marker** (ANTS-4707)
   A feedback file declaring a version that was never defined could only be
   fixed by the hand edit the assign-id pipeline exists to avoid. The marker
@@ -136,6 +154,42 @@ for security-relevant changes.
   A test looks in the wrong part of the file, so it can pass without checking anything.
 
 ### Fixed
+
+- **Asking for `fields=` no longer switches compaction on as a side effect** (ANTS-4673)
+  The two shared one allowlist, so narrowing a reply also applied a transform nobody asked for — which folded away spec_lint's flag saying a check had never run.
+
+- **An odd number of backticks no longer inverts code-span masking for the rest of a body** (ANTS-4598)
+  Everything after the stray backtick was treated as the opposite of what it was.
+
+- **counter_advanced_past no longer names a position the allocator has passed** (ANTS-4579)
+  The one field a caller would predict the next id from was knowably false.
+
+- **op:append_batch reports the counter fields op:append already emitted** (ANTS-4551)
+  Their absence read as evidence that the counter had not moved.
+
+- **A dry run on a store-backed project reports the id it would allocate** (ANTS-4592)
+  ANTS-4508's `would_be_id` never reached that path.
+
+- **A roadmap_log dry run no longer looks like it reserved an id** (ANTS-4508)
+  It returned the next id under the same key the real write uses, so a caller reading that field took it for a reservation. Nothing is reserved, and the id is wrong if any other write intervenes.
+
+- **roadmap_migrate's routine re-import is no longer thousands of tokens of noise** (ANTS-4408)
+  Every call returned about a thousand notes whether or not anything changed.
+
+- **A rolled-back roadmap_migrate no longer describes writes that did not happen** (ANTS-4144)
+  It emitted its full note list regardless, spending thousands of tokens on a transaction that was undone.
+
+- **A project that has allocated no ids is not reported as diverged** (ANTS-4430)
+  Its zero high-water mark was indistinguishable from the divergence that blocks writes.
+
+- **A migrated project no longer reports a false divergence** (ANTS-4410)
+  roadmap_migrate left the store's high-water mark at zero, which reads as the state that means "do not write".
+
+- **The store-divergence warning no longer fires forever** (ANTS-4406)
+  It compared two different quantities, so it warned on every project and both of its numbers were wrong.
+
+- **roadmap_query names the backend that actually answered** (ANTS-4143)
+  It answered from the store while the envelope named ROADMAP.md, so a caller could not tell which document it had read.
 
 - **Specs no longer cite the pre-split remotecontrol.cpp or the deleted isFieldProjectionTool** (ANTS-4711)
   Roadmap-query code is attributed to the translation unit that holds it,
