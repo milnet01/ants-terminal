@@ -59937,6 +59937,57 @@ here.)
   Source: in-session-2026-08-28, closing ANTS-4406/4410/4430.
   Lanes: mcp, roadmap.
 
+- 📋 [ANTS-4749] **The render_gate_unmet refusal message narrows the trailer rule to the note's first line, where any line works.**
+  `rlNoteDeclaresTrailer` computes the start of the line CARRYING the
+  match and requires only that the label precede the value on THAT line,
+  whichever line it is. Its own refusal text says so: "put `%3:` first on
+  its own line".
+
+  The `render_gate_unmet` message in `RoadmapWrite::commitAndRender`
+  instead says a note whose FIRST line declares the trailer sets the
+  column. A caller who follows it puts the Layman line first when they
+  need not, and one who reads it as exhaustive concludes a mid-note
+  declaration will not cure the gate when it does.
+
+  Found by a cold lane during the ANTS-4435 gate, verified against the
+  function. The two documents carrying the same narrowing were fixed
+  there (mcp-error-codes.md, mcp-behavioural-notes.md); this is the code
+  half, which a docs skill must not edit.
+
+  One test comment in tests/features/roadmap_write_half repeats it and
+  should go in the same change.
+
+  Small and low risk: the behaviour is right, the sentence is wrong.
+  **Layman:** The error message telling you how to fix a blocked roadmap write describes a stricter rule than the code actually enforces.
+  Kind: fix.
+  Source: review-contract loop 1 on mcp-error-codes.md, 2026-08-28.
+  Lanes: mcp, roadmap-store.
+
+- 📋 [ANTS-4750] **amend_field refuses an unrecognised kind as bad_args, where bad_kind is that enum's named owner.**
+  `roadmap_log kind:"weird"` refuses `bad_kind`. The same bad value
+  through `op:"amend_field" field:"kind"` refuses `bad_args`.
+
+  One of the two is wrong, and the taxonomy now says which: the
+  `bad_args` row was corrected during the ANTS-4435 gate to state that a
+  named code owns its enum where one exists. So `amend_field` should
+  emit `bad_kind`.
+
+  Why it is worth changing rather than documenting: a caller branching on
+  `code` to re-prompt for a valid Kind handles `bad_kind` and silently
+  mis-handles the amend_field path — which is the harm `bad_kind` was
+  minted to end.
+
+  Found by a cold lane, which opened both call sites. It did not presume
+  which side was canonical; the doc row now does, so this is the code
+  catching up rather than a second opinion.
+
+  Check the sibling fields in the same handler before changing one —
+  `status` has `bad_status` and may carry the same split.
+  **Layman:** Two parts of the same tool report the same mistake under two different names, so a caller cannot handle it in one place.
+  Kind: fix.
+  Source: review-contract loop 1 on mcp-error-codes.md, 2026-08-28.
+  Lanes: mcp, roadmap-store.
+
 ## 0.9.0 — platform + a11y (target: 2026-10)
 
 **Theme:** reach new users. Port, accessibility, internationalization.
