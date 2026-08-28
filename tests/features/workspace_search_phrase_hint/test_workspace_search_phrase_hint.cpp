@@ -108,3 +108,52 @@ TEST(WorkspaceSearchPhraseHint, Ants4420HtmlEntityHint) {
     EXPECT_TRUE(has(src, "&(lt|gt|amp|quot|apos|nbsp|#[0-9]+|#x[0-9A-Fa-f]+);"))
         << "the detector must require a terminated entity, not a bare &";
 }
+
+// ANTS-4753 — a `glob` naming a dot-directory returns zero matches and, before
+// this, no reason at all: `include_hidden` defaults to false, ripgrep prunes
+// the hidden directory during the walk, and the caller cannot tell an absent
+// string from a path that was never read. Hit in-session: a glob over
+// `.github/workflows/` came back empty and the conclusion drawn from it — that
+// the release workflow had lost a step — was wrong.
+//
+// Measured on rg 15.2.0 before implementing, because the reported fix was half
+// wrong: a glob naming a hidden DIRECTORY finds nothing without --hidden, but
+// an explicitly-named `lane` under one IS descended, and a hidden FILE named
+// by a glob is whitelisted through. So the advisory fires on `glob` alone —
+// a lane-triggered warning would be a false alarm.
+//
+// Source-scraped for the reason the four tests above are: the envelope builder
+// needs a live RemoteControl. This pins the WIRING — the detector exists, it
+// gates on zero results, it reaches every return path that can emit a zero,
+// and the hint names the argument that lifts it.
+TEST(WorkspaceSearchPhraseHint, Ants4753HiddenGlobHint) {
+    const std::string src = ants_test::slurpRemoteControl();
+    ASSERT_FALSE(src.empty());
+    EXPECT_TRUE(has(src, "rcGlobNamesHiddenPath"))
+        << "the hidden-path glob detector must exist";
+    // Gated on include_hidden being off — with it on, nothing was skipped.
+    EXPECT_TRUE(has(src, "!include_hidden && rcGlobNamesHiddenPath(glob)"))
+        << "the advisory must gate on include_hidden:false + a dotted glob";
+    EXPECT_TRUE(has(src, "out[\"hidden_paths_skipped\"] = true"))
+        << "the flag must land on the envelope";
+    // Ordered FIRST in the zero-match chain: when the walk never reached the
+    // path, no hint about the PATTERN can be the right diagnosis.
+    EXPECT_TRUE(has(src, "if (matches.isEmpty() && hiddenGlobSkipped)"))
+        << "the hidden-path branch must lead the zero-match hint chain";
+    EXPECT_TRUE(has(src, "else if (matches.isEmpty() && rcContainsHtmlEntity(pattern))"))
+        << "the entity branch must chain off it, so `hint` is set at most once";
+    // The three rows-eliminated modes return their own envelopes and their own
+    // zeros; an existence check via count_only is the most dangerous of them.
+    EXPECT_TRUE(has(src, "seenMatchEvents == 0 && hiddenGlobSkipped"))
+        << "count_only's zero must carry the advisory too";
+    EXPECT_TRUE(has(src, "filesWithMatches == 0 && hiddenGlobSkipped"))
+        << "files_only's zero must carry the advisory too";
+    EXPECT_TRUE(has(src, "distinctOrder.isEmpty() && hiddenGlobSkipped"))
+        << "matches_only's zero must carry the advisory too";
+    // The hint names the argument that lifts the filter.
+    EXPECT_TRUE(has(src, "include_hidden:true"))
+        << "the advisory must name include_hidden:true as the fix";
+    // A lane is descended even when hidden, so it must not trigger this.
+    EXPECT_FALSE(has(src, "rcGlobNamesHiddenPath(laneRaw)"))
+        << "a lane naming a hidden directory is searched anyway — no advisory";
+}

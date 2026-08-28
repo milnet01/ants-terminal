@@ -112,6 +112,39 @@ RgRun rcRunRg(const QStringList &argv, const QString &workingDir, int budgetMs) 
     return out;
 }
 
+// ANTS-4753 — does `glob` name a path with a hidden segment? Measured on
+// ripgrep 15.2.0: a hidden DIRECTORY is pruned during the walk, so
+// `--glob '.github/workflows/*.yml'` matches nothing unless --hidden is
+// passed. Two neighbouring cases measured the same day do NOT qualify, and
+// firing on either would be a false alarm: a `lane` naming that directory is
+// descended because it was given explicitly, and a hidden FILE named by a glob
+// is whitelisted through the filter.
+//
+// Segment-anchored on purpose. `*.cpp` names no hidden path; `..` is refused
+// upstream. A dot segment inside a brace group ("{.github,docs}/**") is not
+// detected — that miss leaves today's behaviour, where a false positive would
+// teach callers to ignore the advisory.
+bool rcGlobNamesHiddenPath(const QString &glob) {
+    const QStringList segments =
+        glob.split(QLatin1Char('/'), Qt::SkipEmptyParts);
+    for (const QString &seg : segments) {
+        if (!seg.startsWith(QLatin1Char('.'))) continue;
+        if (seg == QLatin1String(".") || seg == QLatin1String("..")) continue;
+        return true;
+    }
+    return false;
+}
+
+// The one advisory text, shared by every return path that can emit a zero, so
+// the four cannot answer the same silence differently.
+QString rcHiddenGlobHint() {
+    return QStringLiteral(
+        "\"glob\" names a hidden path (a segment starting with \".\") and "
+        "include_hidden is false, so ripgrep pruned it during the walk — this "
+        "zero says nothing about whether the pattern is present. Re-run with "
+        "include_hidden:true.");
+}
+
 }  // namespace
 
 QJsonDocument RemoteControl::cmdWorkspaceSearch(const QJsonObject &req) {
@@ -414,6 +447,11 @@ QJsonDocument RemoteControl::cmdWorkspaceSearch(const QJsonObject &req) {
         req.value(QStringLiteral("respect_gitignore")).toBool(true);
     const bool include_hidden =
         req.value(QStringLiteral("include_hidden")).toBool(false);
+    // ANTS-4753 — an explicitly scoped `glob` that names a hidden path is an
+    // unambiguous statement of intent, and the default filter silently defeats
+    // it. Recorded here, spent on whichever envelope returns a zero below.
+    const bool hiddenGlobSkipped =
+        !include_hidden && rcGlobNamesHiddenPath(glob);
 
     // ANTS-1248-INV-3: shell-less argv. Every flag is a separate
     // QString in the argv list; rcRunRg() above starts rg with the
@@ -774,6 +812,10 @@ QJsonDocument RemoteControl::cmdWorkspaceSearch(const QJsonObject &req) {
         // occurrences were seen, which is the normal case here.
         out["truncated"] = (distinctOrder.size() > emitCount) ||
                            hardKilled || parseBudgetExceeded;
+        if (distinctOrder.isEmpty() && hiddenGlobSkipped) {
+            out["hidden_paths_skipped"] = true;
+            out["hint"] = rcHiddenGlobHint();
+        }
         out["respect_gitignore"] = respect_gitignore;
         out["include_hidden"]    = include_hidden;
         out["timeout_sec"]       = budgetSec;
@@ -789,6 +831,10 @@ QJsonDocument RemoteControl::cmdWorkspaceSearch(const QJsonObject &req) {
         out["files_count"] = filesWithMatches;
         out["truncated"]   = (hardKilled || parseBudgetExceeded);
         out["count_only"]  = true;
+        if (seenMatchEvents == 0 && hiddenGlobSkipped) {
+            out["hidden_paths_skipped"] = true;
+            out["hint"] = rcHiddenGlobHint();
+        }
         out["respect_gitignore"] = respect_gitignore;
         out["include_hidden"]    = include_hidden;
         out["timeout_sec"]       = budgetSec;
@@ -821,6 +867,10 @@ QJsonDocument RemoteControl::cmdWorkspaceSearch(const QJsonObject &req) {
         out["count"]       = seenMatchEvents;
         out["truncated"]   = (hardKilled || parseBudgetExceeded);
         out["files_only"]  = true;
+        if (filesWithMatches == 0 && hiddenGlobSkipped) {
+            out["hidden_paths_skipped"] = true;
+            out["hint"] = rcHiddenGlobHint();
+        }
         out["respect_gitignore"] = respect_gitignore;
         out["include_hidden"]    = include_hidden;
         out["timeout_sec"]       = budgetSec;
@@ -955,7 +1005,13 @@ QJsonDocument RemoteControl::cmdWorkspaceSearch(const QJsonObject &req) {
     // caught a short-bare-alternation trap unprompted, and cited it as
     // precedent for exactly this case. Same channel, same trigger shape: a
     // pattern that is probably not what the caller meant.
-    if (matches.isEmpty() && rcContainsHtmlEntity(pattern)) {
+    // ANTS-4753 — ordered ahead of every branch below, because when the walk
+    // never reached the path no diagnosis about the PATTERN can be right.
+    if (matches.isEmpty() && hiddenGlobSkipped) {
+        out["hidden_paths_skipped"] = true;
+        out["hint"] = rcHiddenGlobHint();
+    }
+    else if (matches.isEmpty() && rcContainsHtmlEntity(pattern)) {
         out["hint"] = QStringLiteral(
             "pattern contains HTML entities (e.g. &lt; &gt; &amp;) — did you "
             "mean the literal characters (< > & \") ? Searching HTML/XML "

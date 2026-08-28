@@ -48142,7 +48142,7 @@ envelope dropped `source`/`path`/`etag`/`total`/`filter`.
   Source: review-contract deferred tail, ANTS-4435 run 2026-08-28.
   Lanes: mcp, docs.
 
-- 📋 [ANTS-4753] **workspace_search returns a silent zero when a glob names a dot-directory, because include_hidden gates the path.**
+- ✅ [ANTS-4753] **workspace_search returns a silent zero when a glob names a dot-directory, because include_hidden gates the path.**
   Hit today: `workspace_search` with `glob: ".github/workflows/*.yml"`
   for a string that is present in `release.yml` returned zero matches and
   no explanation. A plain `grep -n` on the same file found it at once, and
@@ -48171,10 +48171,59 @@ envelope dropped `source`/`path`/`etag`/`total`/`filter`.
   Precedent for the shape: `doc_citations`' honest-zero message
   (ANTS-4743) and `invariant_check`'s path-only zero (ANTS-4742) are the
   same repair — a zero that says whether it is clean or silent.
+  Resolved (2026-08-28): shipped, and the reported fix was half wrong.
+  Measured on rg 15.2.0 before implementing: ripgrep prunes a hidden
+  DIRECTORY during the walk, so a `glob` naming one returns the silent
+  zero — but an explicitly-named `lane` under one IS descended, and a
+  hidden FILE named by a glob is whitelisted through the filter. So the
+  advisory fires on `glob` alone; firing on `lane`, as this body
+  proposed, would have been a false alarm on a search that worked.
+
+  Shape is the cheaper of the two options weighed here: a
+  `hidden_paths_skipped` flag plus a shared hint naming
+  `include_hidden:true`, gated on a zero result, so every existing call
+  that returns rows is byte-identical. It reaches every return path that
+  can emit a zero — the match list plus count_only, files_only and
+  matches_only — because an existence check through count_only is the
+  most dangerous reading of a silent zero, not the least.
+
+  Detection is segment-anchored: a dot segment inside a brace group
+  (`{.github,docs}/**`) is not detected. Deliberate — that miss leaves
+  today's behaviour, where a false positive would teach callers to
+  ignore the advisory.
+
+  Pinned by WorkspaceSearchPhraseHint.Ants4753HiddenGlobHint, seen red
+  on its assertions before the fix. Verified by that test rather than by
+  calling the verb: the running instance serves this session's MCP calls
+  from the pre-fix binary.
   **Layman:** Searching inside a folder whose name starts with a dot finds nothing and says nothing, even when you name that folder explicitly.
   Kind: enhancement.
   Source: in-session-2026-08-28, hit while diagnosing the release-audit failure.
   Lanes: mcp.
+
+- 📋 [ANTS-4755] **A feature dir's spec.md states only its original invariant while its test file has absorbed several later items' contracts.**
+  `tests/features/workspace_search_phrase_hint/` pairs a spec.md stating
+  the ANTS-2045 phrase-hint invariant with a test file that has since
+  absorbed the ANTS-2181, ANTS-3466, ANTS-4420 and ANTS-4753 advisories.
+  None of those four is in the spec. Each was added the same way, so this
+  is a convention that stopped being followed rather than one omission —
+  `tests/features/README.md` makes spec.md the contract the test is
+  written against, and step 1 of its recipe writes it first.
+
+  Nothing is untested; what is missing is the written contract a cold
+  reader would check the tests against. That is also why the dir's name no
+  longer describes it: every one of those items is a zero-match advisory,
+  and only the first is a phrase hint.
+
+  Two defensible shapes, and choosing is the work. State each advisory as
+  its own invariant in the existing spec, or rename the dir to what it has
+  become and restate the spec around that. Do NOT split them into per-item
+  dirs: they scrape one source through one helper, and separating them
+  would multiply the slurp without buying isolation.
+  **Layman:** A test folder's written description still covers only the first thing it tested, though several more contracts have been added to it since.
+  Kind: doc-fix.
+  Source: in-session-2026-08-28, found while adding ANTS-4753's test.
+  Lanes: tests, docs.
 
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-08-11 triage
 

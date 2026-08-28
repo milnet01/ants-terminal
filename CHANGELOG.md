@@ -106,6 +106,16 @@ for security-relevant changes.
 
 ### Fixed
 
+- **workspace_search explains a zero caused by its own hidden-path filter** (ANTS-4753)
+  A `glob` naming a dot-directory (`.github/workflows/*.yml`) returned no
+  matches and no reason, because `include_hidden` defaults to false and
+  ripgrep prunes the hidden directory during the walk — indistinguishable
+  from the string genuinely being absent. Such a zero now carries
+  `hidden_paths_skipped:true` and a hint naming `include_hidden:true`, on
+  the match list and on the count_only, files_only and matches_only
+  replies alike. A call that returns rows is unchanged. A `lane` naming a
+  hidden directory is searched as before and does not flag it.
+
 - **The Arch and Debian packages now declare ripgrep, so their test suites run instead of failing** (ANTS-4717)
   The guard that catches this class was reading only the CI workflow, so the
   same missing declaration was still live in two package recipes. It now reads
