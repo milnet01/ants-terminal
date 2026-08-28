@@ -35414,7 +35414,7 @@ finbreak re-verified it.
   Lanes: mcp, roadmap.
   Source: cc-feedback-2026-08-14 (finbreak).
 
-- 📋 [ANTS-4410] **roadmap_migrate leaves store_high_water at 0, so every migrated project reports a false divergence.**
+- ✅ [ANTS-4410] **roadmap_migrate leaves store_high_water at 0, so every migrated project reports a false divergence.**
   Measured on the AI_Prompts cutover (2026-08-15), immediately after a
   clean migrate: 27 inserted, 0 orphaned, re-run dry run 0/27 unchanged.
   The very next roadmap_query returned `store_high_water: 0` alongside
@@ -35465,6 +35465,7 @@ finbreak re-verified it.
   so a caller can tell a cosmetic lag from a genuine unmigrated bullet.
   That would also settle ANTS-4430 and ANTS-4406, which are the same
   one-flag-two-meanings shape.
+  Resolved (2026-08-28): closed to ANTS-4636, which made the store-side witness max(idHighWater, maxAllocatedId) rather than the allocator counter alone. That covers both readings this item could not choose between — the 0 of the original report and the off-by-one of the LottoTracker re-measurement are the same defect, since both are the counter lagging what the store holds. Verified on LottoTracker itself, the re-measurement's own project: roadmap_query answers source:store with no file_ahead_of_store.
 
 - 📋 [ANTS-4411] **render_gate_unmet names the id being appended, so its remedy is unfollowable.**
   Measured on the AI_Prompts cutover (2026-08-15). A `roadmap_log
@@ -58972,7 +58973,7 @@ here.)
   Source: review-contract-2026-08-15 (ANTS-4065 plan gate).
   Lanes: roadmap, mcp.
 
-- 📋 [ANTS-4406] **The store-divergence witness compares two different quantities, so it warns forever and both its numbers are wrong.**
+- ✅ [ANTS-4406] **The store-divergence witness compares two different quantities, so it warns forever and both its numbers are wrong.**
   ANTS-4402 shipped `file_ahead_of_store` with `file_highest_id` and
   `store_high_water`. Measured immediately after a clean re-import of this
   project (0 orphaned, store holding every id in the file), the warning was
@@ -59006,6 +59007,7 @@ here.)
   Kind: fix.
   Source: in-session-2026-08-15.
   Lanes: mcp, roadmap.
+  Resolved (2026-08-28): already fixed by ANTS-4631 + ANTS-4636; verified, not reasoned. This item asked for like-for-like comparison and both halves now are. The file side is RoadmapFoldIn::maxDeclaredId, which counts an id only on a top-level list item outside a fence, so the narrated id in ANTS-4383's body that produced the reported file_highest_id no longer contributes. The store side is max(idHighWater, maxAllocatedId), so it is the ids the store HOLDS rather than the allocator's last handout. Evidence: roadmap_query on this project emits no file_ahead_of_store at all, on a binary built after both fixes.
 
 - 📋 [ANTS-4407] **ANTS-4404 names four walkers; measured, one is not the defect it describes and one is a different job.**
   ANTS-4404 said four walkers hand-roll the same naive fence test and
@@ -59266,7 +59268,7 @@ here.)
   first -- and the dispatcher path itself, which fifteen other verbs already
   ride.
 
-- 📋 [ANTS-4430] **A project that allocated no ids reports store_high_water 0 and file_ahead_of_store true, which reads as the divergence that means "do not write".**
+- ✅ [ANTS-4430] **A project that allocated no ids reports store_high_water 0 and file_ahead_of_store true, which reads as the divergence that means "do not write".**
   After the E2 rollout, 10 of the 14 migrated projects carry NO `id_prefix`
   row, because every bullet already declared an id and nothing was
   allocated. `roadmap_query` on such a project returns
@@ -59298,6 +59300,7 @@ here.)
   Kind: fix.
   Source: in-session-2026-08-18 (ANTS-4065 Phase E2 rollout).
   Lanes: mcp, roadmap-store.
+  Resolved (2026-08-28): closed to ANTS-4636. A project with no id_prefix row now reports the ids its items hold instead of 0, so the flag no longer fires on a synced store. The item proposed seeding id_prefix at migration as the preferred repair; the shipped fix takes the other route and derives the mark, which needs no migration and cannot go stale. Verified on Contact_List and MAME_Curator, both of which still carry NO id_prefix row: each answers source:store with no file_ahead_of_store. Count correction for the record: the body says 10 of 14 projects lacked a row and the progress note re-measured 8 of 14; today it is 3 of 19.
 
 - 📋 [ANTS-4618] **The downstream global copy of roadmap-format.md has structurally diverged, and nothing catches it.**
   CFG-0069 (user decision 2026-08-12) makes THIS project upstream of
@@ -59860,6 +59863,43 @@ here.)
   Kind: fix.
   Source: in-session-2026-08-25 (found by the suite while closing ANTS-4429).
   Lanes: mcp.
+
+- 📋 [ANTS-4747] **maxDeclaredId counts a nested body sub-bullet as a declaration, leaving the ANTS-4406 trap open on a narrower path.**
+  Found while verifying ANTS-4406/4410/4430, all three of which are
+  genuinely fixed. This is the residue.
+
+  RoadmapFoldIn::maxDeclaredId treats any list item with up to three
+  leading spaces as a declaration. The comment justifies the allowance by
+  CommonMark's fence rule — four spaces past the content column opens a
+  code block, "which is where a documented example sits". True for a
+  fenced or indented example, but a roadmap BODY's own nested sub-bullet
+  sits at two spaces and is not a declaration either. It is a citation.
+
+  Measured on this project's roadmap: the shape `^ {1,3}[-*+] .*ANTS-`
+  is common, and every hit is a body sub-bullet citing an existing id.
+  So the defect is latent rather than live — the witness is silent here
+  because every cited id is below the mark, not because the scan is
+  right.
+
+  The live failure is ANTS-4406's exactly, on a narrower path: narrate a
+  hypothetical or future id in a nested sub-bullet and file_ahead_of_store
+  pins on for a store in perfect sync. ANTS-4383's narration sat in plain
+  prose, which the top-level-item filter already excludes; the same
+  sentence one indent deeper inside a body would still bite.
+
+  Fix direction, not yet decided: a declaration is a bullet that OPENS an
+  item, so the test wants the id at a fixed position after the marker
+  (the `- <emoji> [ID] **` shape the renderer emits) rather than anywhere
+  on any shallow list line. That is stricter than an indent count and does
+  not depend on how deeply a body nests. Worth confirming against the
+  github-task-list and pass-headings dialects before changing it, since
+  maxDeclaredId is shared with the allocator's floor and a stricter scan
+  that misses a real declaration would hand out a colliding id — a far
+  worse failure than the false warning it fixes.
+  **Layman:** The check that spots a roadmap file running ahead of the database can still be fooled by an example id written as an indented sub-point inside an entry.
+  Kind: fix.
+  Source: in-session-2026-08-28, closing ANTS-4406/4410/4430.
+  Lanes: mcp, roadmap.
 
 ## 0.9.0 — platform + a11y (target: 2026-10)
 
