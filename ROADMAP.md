@@ -13607,6 +13607,36 @@ Navigation + scroll affordances for the Review Changes dialog, requested
   Source: user-request-2026-06-03.
   Resolved (2026-06-04): Back-to-top overlay button (objectName reviewBackToTopBtn) parented to the viewer's viewport, shown when the vertical scroll bar leaves 0 (valueChanged) and hidden at the top; click → setValue(0). Repositioned on rangeChanged. Mirrors the terminal scroll-to-bottom chip.
 
+- 📋 [ANTS-4745] **Review Changes dialog — show a date and time against every commit.**
+  Both commit lists in the dialog render `git log --oneline
+  --decorate` output, so a row is `<sha> (<decoration>) <subject>` with
+  no timestamp at all. Two probes:
+  `src/diffviewer.cpp:715` (`@{u}..HEAD`, `ProbeState::unpushed`) and
+  `src/diffviewer.cpp:729` (`--branches --not --remotes`,
+  `ProbeState::crossUnpushed`). The Branches section is a separate
+  for-each-ref probe and is out of scope unless its subject line
+  wants the same treatment.
+
+  Shape: drop `--oneline` for an explicit
+  `--pretty=format:%h%d %ad %s` with `--date=format:%Y-%m-%d %H:%M`
+  (`%d` restores what `--decorate` was giving). Author vs committer
+  date is a real choice — a rebase moves `%cd` and leaves `%ad`
+  behind; `%ad` matches what "when did I write this" means to the
+  reader, so prefer it unless the push-ordering reading is wanted.
+  Render the timestamp in `textSecondary` so the subject stays the
+  thing the eye lands on, matching the Branches section's treatment.
+
+  Watch the source-scrape tests: `tests/features/review_changes_branches`
+  asserts the probe wirings by their literal argument strings and
+  `tests/features/diffviewer_extraction` asserts the section headings,
+  so both need updating in the same change. `Copy Diff`
+  (`diffviewer.cpp:673`) emits the same raw text and inherits the new
+  format for free.
+  **Layman:** The Review Changes window lists unpushed commits with only a short code and a message — this adds when each one was made, so you can tell a commit from five minutes ago from one from last week.
+  Kind: enhancement.
+  Source: user-request-2026-08-28.
+  Lanes: diffviewer.
+
 ### 🐛 v0.7.94 ship-day findings (2026-06-04)
 
 Bugs surfaced while shipping v0.7.94: a 3-week release-pipeline outage (CI green
