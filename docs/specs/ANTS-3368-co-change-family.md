@@ -284,7 +284,7 @@ this stem matches 74 files, most of them prose under `docs/specs/`.
 | `src/remotecontrol.h` | Handler declaration. |
 | `src/mainwindow.cpp` | `registerToolProvider("co_change_family", CallerCwdContract::Required, …)`. |
 | `src/claudeintegration.cpp` | `tools/list` schema (incl. `makeEtagMatchProp()` + `makeFieldsProp()` — the entry alone leaves the arg undeclared, so the dispatcher drops it into `ignored_args` and the 304 is silently unreachable); a `detail` sibling, since the wire `description` would otherwise blow `mcp-tools.md` step 11's ~800 B budget; `selection_hint`; prefix-tag bucket; `callerCwdContractFor`; `isEtagSupportedTool`. **No `encoding` prop**: the columnar repack is for a top-level array of flat objects, and `files[]` carries a nested `sites[]` per row. |
-| `src/mcpprojection.cpp` | `isFieldProjectionTool` — the `fields=` opt-in lives here, not in `claudeintegration.cpp`. |
+| `src/mcpprojection.cpp` | `projectFields` — ANTS-4524 removed the `fields=` allowlist; every verb honours it, so there is no opt-in to add. |
 | `CMakeLists.txt` | `src/cochangefamily.cpp` into `ants_core_lib`; the feature test into `test_claude`. |
 
 ## 3. Invariants
@@ -374,7 +374,7 @@ this stem matches 74 files, most of them prose under `docs/specs/`.
   `inputSchema.type == "object"` and `additionalProperties == false`, is
   registered with `CallerCwdContract::Required` at both the registration site
   and `callerCwdContractFor`, and is listed in `isEtagSupportedTool` and
-  `isFieldProjectionTool`. *Test:* case `RegistrationAndSchema`.
+  honours `fields=` without enrolment (ANTS-4524). *Test:* case `RegistrationAndSchema`.
 - **INV-12** — every word derived from a stem is regex-quoted
   (`QRegularExpression::escape`) before assembly into the alternation, so no
   stem can inject pattern syntax into the `rg` argv. This is the trust

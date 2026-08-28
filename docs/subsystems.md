@@ -170,7 +170,7 @@ Listed only where behavior isn't obvious from the name.
   `file-outline`, `find-definition`, `find-caller`, `similar-code`,
   `git-state`, `subsystem`, `roadmap-branch-drift`. Trust model:
   UID-scoped + 0700 perms + `lstat`-checked `S_ISSOCK`.
-  **Twelve translation units (ANTS-3833, ANTS-3855).** The class and
+  **Split across `remotecontrol*.cpp` translation units (ANTS-3833, ANTS-3855).** The class and
   `src/remotecontrol.h` are unchanged; only the bodies were cut, each TU one
   contiguous slice of the old file: `remotecontrol.cpp` (the dispatcher and
   the shared `rcdetail` helper pool), then `_terminal`, `_roadmap_query`,

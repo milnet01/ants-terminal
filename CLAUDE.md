@@ -52,8 +52,9 @@ clean. The binary is location-independent: its only path-relative load is the
 app-icon fallback (`applicationDirPath()/../assets`), which never fires because
 the icon is installed in the hicolor theme; the MCP project root is resolved
 per-call from `caller_cwd` / the focused tab's cwd, NOT from `applicationDirPath`
-(see `remotecontrol.cpp:8129` — applicationDirPath would be the build dir, which
-is wrong); all user state lives under XDG paths.
+(the note lives beside the `caller_cwd` resolution in
+`src/remotecontrol_workspace.cpp` — applicationDirPath would be the build dir,
+which is wrong); all user state lives under XDG paths.
 
 **Token-frugal invocations** (pipe to `tail` so a 10k-line log stays out
 of the assistant's context):

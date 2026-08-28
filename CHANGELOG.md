@@ -126,6 +126,18 @@ for security-relevant changes.
 
 ### Fixed
 
+- **Specs no longer cite the pre-split remotecontrol.cpp or the deleted isFieldProjectionTool** (ANTS-4711)
+  Roadmap-query code is attributed to the translation unit that holds it,
+  and the stale line pins are dropped rather than re-derived — every one
+  landed on unrelated code or past the file's end. The file was corrected
+  only where the subject moved: `dispatch()` and the `rc*` helpers those
+  specs cite really did stay put. Instructions to enrol a verb in
+  `isFieldProjectionTool` now say there is nothing to enrol in, ANTS-4524
+  having removed the `fields=` allowlist; two statements asserting the
+  deleted symbol still exists are gone, which is what invited re-adding it.
+  Loop-log rows are untouched — they record what a review pass found on a
+  date. CLAUDE.md's own applicationDirPath citation is corrected with them.
+
 - **changelog_query's bad_mode refusal names the `version` argument** (ANTS-4754)
   A caller after one version's entries reaches for `mode:"unreleased"`,
   reads an accepted-mode list that does not contain it, and concludes the

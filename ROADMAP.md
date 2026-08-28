@@ -46629,7 +46629,7 @@ envelope dropped `source`/`path`/`etag`/`total`/`filter`.
   Source: claude_config_Ants_MCP_Feedback.md 2026-08-26 (measured against two projects).
   Lanes: mcp.
 
-- 📋 [ANTS-4711] **Sibling specs still cite the pre-split remotecontrol.cpp and the deleted isFieldProjectionTool.**
+- ✅ [ANTS-4711] **Sibling specs still cite the pre-split remotecontrol.cpp and the deleted isFieldProjectionTool.**
   Collateral from ANTS-1881's gate, filed rather than fixed: a
   neighbouring document's defect is not the subject's, and each of these
   has its own gate.
@@ -46680,6 +46680,49 @@ envelope dropped `source`/`path`/`etag`/`total`/`filter`.
   REMAINS A GOOD SWEEP, and the function-name pin over a re-derived line
   range still holds. Sized rather than started because a blanket sweep here
   would have damaged five loop logs.
+  Resolved (2026-08-28): both named classes swept, as one pass, with every
+  hit classified as live body text or history BEFORE anything was edited —
+  the hazard this body raised.
+
+  METHOD. A cold lane enumerated and classified every hit; the edits were
+  then applied by exact unique-match, one site at a time. The uniqueness
+  guard earned itself immediately: one replacement matched twice in
+  ANTS-1922, and the second occurrence was a loop-log row. A blanket
+  find-and-replace would have rewritten it silently. Every loop-log hit the
+  sweep found is untouched.
+
+  CLASS A. Pins were DROPPED, not re-derived, per this body's own
+  instruction — `src/remotecontrol.cpp` is far shorter than most of them
+  assumed and every pin landed on unrelated code or past EOF. The file was
+  corrected only where the subject is roadmap-query handler code. It is not
+  uniformly wrong: `dispatch()` and the `rc*` helpers those specs cite —
+  `rcNormaliseHeadline`, `rcComputeDuplicateIds`, `rcHeadlineJaccard`,
+  `rcProjectHeadlineOnly` — really did stay in `remotecontrol.cpp`, so
+  renaming them would have introduced the defect being fixed.
+
+  CLASS B. Verified at the source rather than taken from this bullet:
+  `src/mcpprojection.h` states there is NO `fields=` allowlist and that
+  every verb honours it. The "add the name to the allowlist" instructions
+  now say there is nothing to enrol in. Two statements in ANTS-3636 were
+  outright false and are the reason this class was the more dangerous one —
+  one asserted the symbol still exists, the other made a test assertion
+  against it. Its § 2.1 requirement to stay OUT of the gate is preserved by
+  re-pointing at the COMPACTION table, which ANTS-4524 split off and which
+  is what actually folds an envelope now.
+
+  WHAT WAS DELIBERATELY LEFT. `docs/journal/` is a dated record, like a loop
+  log. ROADMAP.md is a render of the store. Neither is live instruction.
+
+  WIDER CLASS FOUND AND FILED AS ANTS-4757: the same stale-pin damage runs
+  well past these two classes — the roadmap WRITE half, workspace_search,
+  session_orient. Not folded in here, because this bullet named two classes
+  and a sweep that quietly grows is one nobody can check.
+
+  Also corrected, found by the same lane and outside both classes: CLAUDE.md
+  cited a line far past EOF for the applicationDirPath note — the
+  always-loaded preamble — and docs/subsystems.md gave a translation-unit
+  count that no longer matched the tree. Both are stale facts with no line a
+  conformer would write differently, so neither is rule-14 gated.
   **Layman:** Several design documents point at a file that no longer holds the code they describe.
   Kind: doc-fix.
   Source: in-session-2026-08-26, found by ANTS-1881's loop-9 blast-radius sweep.
@@ -47067,6 +47110,40 @@ envelope dropped `source`/`path`/`etag`/`total`/`filter`.
   Kind: enhancement.
   Source: in-session-2026-08-28, hit while reading project state before picking work.
   Lanes: mcp, release.
+
+- 📋 [ANTS-4757] **The stale remotecontrol.cpp line pins run well past ANTS-4711's two classes, across every verb family.**
+  ANTS-4711 swept the roadmap-QUERY attributions and the deleted
+  `isFieldProjectionTool`. Its classification lane found the same damage
+  across families that bullet did not name, and they were left rather than
+  folded in: a sweep that quietly grows past its stated scope is one nobody
+  can check.
+
+  WHAT REMAINS, all of one cause — the ANTS-3833 TU split left
+  `src/remotecontrol.cpp` far shorter than the specs assume, so a pin above
+  its length names nothing and a pin below it names unrelated code.
+
+  - The roadmap WRITE half, now `remotecontrol_roadmap_log.cpp` and
+    `_log_batch.cpp`, still attributed to `remotecontrol.cpp` across the
+    ANTS-14xx / 18xx spec family.
+  - `workspace_search`, `session_orient` and other verb pins, likewise.
+
+  METHOD IS SETTLED and should be reused rather than redesigned: classify
+  every hit as live body text or history BEFORE editing, and edit by exact
+  unique match. A landed loop-log row records what a pass found on a date
+  and is never rewritten. On the last run one replacement matched twice and
+  the second was such a row, so the guard is not theoretical.
+
+  DROP THE PIN, do not re-derive it. That is ANTS-4711's rule and the reason
+  holds: re-measuring only resets the clock until the next split. Name the
+  function.
+
+  CHEAPEST HONEST SCOPE is one verb family per pass, each closing a class
+  that can be stated. There is no urgency — a wrong pin misleads a reader
+  who follows it, but nothing builds from these documents unattended.
+  **Layman:** Many design documents still point at line numbers in a file that has since been split up, so following one lands on unrelated code.
+  Kind: doc-fix.
+  Source: in-session-2026-08-28, measured by ANTS-4711's classification lane.
+  Lanes: docs, specs.
 
 ### ANTS MCP feedback from CC sessions — 2026-08-27 triage
 
