@@ -2026,6 +2026,9 @@ if(ANTS_TESTS)
                 # ANTS-4391/4717 every carrier that runs the suite declares
                 # the tools it shells out to.
                 tests/features/ci_workflow_deps/test_ci_workflow_deps.cpp
+                # ANTS-4726 the pre-push docs-only set and ci.yml's
+                # paths-ignore are twins; nothing checked they agree.
+                tests/features/prepush_docs_only_parity/test_prepush_docs_only_parity.cpp
                 # ANTS-4533 ci.yml's build-asan job stays inside its budget
                 # and goes red, not `cancelled`, when it does not.
                 tests/features/ci_asan_budget/test_ci_asan_budget.cpp
@@ -2053,6 +2056,8 @@ if(ANTS_TESTS)
         SRC_RPM_SPEC_PATH="${CMAKE_SOURCE_DIR}/packaging/opensuse/ants-terminal.spec"
         SRC_ARCH_PKGBUILD_PATH="${CMAKE_SOURCE_DIR}/packaging/archlinux/PKGBUILD"
         SRC_DEBIAN_CONTROL_PATH="${CMAKE_SOURCE_DIR}/packaging/debian/control"
+        # ANTS-4726 — the hook whose docs-only list must match ci.yml's.
+        SRC_PREPUSH_HOOK_PATH="${CMAKE_SOURCE_DIR}/tools/hooks/pre-push"
         ANTS_SOURCE_DIR="${CMAKE_SOURCE_DIR}"
         SRC_MAINWINDOW_PATH="${CMAKE_SOURCE_DIR}/src/mainwindow.cpp"
         SRC_MAINWINDOW_CPP_PATH="${CMAKE_SOURCE_DIR}/src/mainwindow.cpp"

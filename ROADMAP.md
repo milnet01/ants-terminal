@@ -47321,6 +47321,39 @@ envelope dropped `source`/`path`/`etag`/`total`/`filter`.
   from a dependency no local run could see. The repair for that class is a
   static check that the two agree, not a more careful copy. A comment now
   says so; a test would say it better.
+  Progress (2026-08-28): both named next steps landed. Deliberately NOT
+  closed — the misclassification is still unexplained, and flipping this
+  would claim a diagnosis nobody has.
+
+  THE TWIN NOW HAS A CHECK. `tests/features/prepush_docs_only_parity`
+  parses ci.yml's push `paths-ignore` and the hook's `docs_only_re` and
+  asserts they name the same paths, in BOTH directions: an alternative only
+  the hook holds makes it skip a gate CI will run, which is this item's
+  failure; an entry only ci.yml holds is merely wasteful but is still a
+  twin that has stopped agreeing. A second invariant pins the `^` anchor,
+  without which any path containing `docs/` reads as documentation. This is
+  the static check ANTS-4392 prescribes for the class, not a more careful
+  copy — the comment said so, and now a test does.
+
+  Seen red in each direction before being trusted: dropping one entry from
+  ci.yml, dropping the same one from the regex, and unanchoring the regex
+  each fail with the offending path named. Both files were restored
+  byte-identical.
+
+  THE HOOK NOW RECORDS ITS DECISION. On the docs-only skip it prints the
+  ref range(s) it derived `changed` from and the paths it decided on. That
+  is exactly what this body says a live recurrence needs and what its
+  absence cost: a skip that was wrong and a skip that was right printed the
+  same line and exited 0. Verified by replaying the hook against a real
+  docs-only range.
+
+  WHAT IS STILL UNKNOWN, unchanged: why that one push saw a `changed` set
+  that omitted a spec file. The parity check cannot explain it — the two
+  lists agree today and agreed then. The remaining candidates are the ones
+  this body already named, all upstream of the regex: a short read of
+  stdin, an empty `changed` taking a different branch, or a remote_sha
+  other than the one the reflog records. The next occurrence will now say
+  which.
   **Layman:** A safety check that runs before uploading code skipped itself once when it should not have, and we cannot make it happen again.
   Kind: investigate.
   Source: in-session-2026-08-27, observed live then investigated at a peer session's prompting.
@@ -47528,7 +47561,7 @@ envelope dropped `source`/`path`/`etag`/`total`/`filter`.
   Source: perch_Ants_MCP_Feedback.md 2026-08-27 (measured, with the fields= filter ruled out).
   Lanes: mcp, roadmapstore.
 
-- 📋 [ANTS-4731] **feedback_query has both halves of the stale-binary test and makes the caller join them by hand.**
+- ✅ [ANTS-4731] **feedback_query has both halves of the stale-binary test and makes the caller join them by hand.**
   NOT A DEFECT REPORT, and the reporter is explicit about that. The existing
   machinery WORKED: session_orient's stale_check_hint stopped them filing
   two confident "shipped but still broken" reports on the day those fixes
@@ -47549,6 +47582,27 @@ envelope dropped `source`/`path`/`etag`/`total`/`filter`.
   date at all without a new dependency on the server-build surface. If it
   cannot, the honest deliverable is a line in its description pointing at
   the join, not a new field.
+  Resolved (2026-08-28): DUPLICATE — ANTS-4741 shipped exactly this on
+  2026-08-27, filed the same day from Slipcase where this came from
+  Charls_Site. Two sessions found one gap independently, which is a signal
+  about the gap rather than about either report.
+
+  Nothing built here. Verified in the tree rather than taken from
+  ANTS-4741's closing note: `possibly_stale_binary` is live in
+  `src/remotecontrol_feedback.cpp`, described in `src/claudeintegration.cpp`
+  and pinned by feedback_query_foreign_resolve's suite.
+
+  It answers both of this body's open questions. The verb CAN see the
+  running build's date — both operands were already server-side at reply
+  time, so the join needed no new dependency and the fallback "a line in
+  the description pointing at the join" was not the honest deliverable
+  after all. And the flag carries the build date, the build commit and the
+  hint text, so the reply explains itself without the second call.
+
+  One point this body raised that ANTS-4741 settled the same way, worth
+  keeping: the same-day case sets the flag, because `shipped_date` has no
+  time component and a false flag costs one extra check where a missed one
+  costs a triage cycle.
   **Layman:** Two tools each hold half of "is this fix actually running yet?", and you have to put them together yourself.
   Kind: enhancement.
   Source: Charls_Site_Ants_MCP_Feedback.md 2026-08-27 (suggested after a near-miss the existing hint prevented).

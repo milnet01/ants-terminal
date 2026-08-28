@@ -46,6 +46,13 @@ docs_only_re='^(ROADMAP\.md|CHANGELOG\.md|README\.md|PLUGINS\.md|LICENSE|\.roadm
 # tracking), fall back to running the gate — never skip on uncertainty.
 changed=""
 run_gate=0
+# ANTS-4726 — the ranges this hook actually derived `changed` from. A push once
+# skipped the gate on a docs-only verdict for a range that was not docs-only,
+# and replaying the hook with that push's stdin ran the gate correctly — so the
+# fault was in what it received or in state at the time, neither of which was
+# recoverable after the fact because nothing recorded either. Printed only on
+# the skip, which is the decision that can be wrong in the dangerous direction.
+ranges=""
 while read -r _local_ref local_sha _remote_ref remote_sha; do
     [[ "$local_sha" == "$zero" ]] && continue          # branch delete — nothing to test
     if [[ "$remote_sha" == "$zero" ]]; then
@@ -54,11 +61,14 @@ while read -r _local_ref local_sha _remote_ref remote_sha; do
         base="$(git merge-base "$local_sha" origin/main 2>/dev/null || true)"
         if [[ -n "$base" ]]; then
             changed+=$'\n'"$(git diff --name-only "$base" "$local_sha")"
+            ranges+=" ${base:0:8}..${local_sha:0:8}(merge-base)"
         else
             run_gate=1
+            ranges+=" ${local_sha:0:8}(new-branch,no-base)"
         fi
     else
         changed+=$'\n'"$(git diff --name-only "$remote_sha" "$local_sha")"
+        ranges+=" ${remote_sha:0:8}..${local_sha:0:8}"
     fi
 done
 
@@ -100,6 +110,14 @@ if [[ "$run_gate" -eq 0 && -n "$changed" ]]; then
         echo "pre-push: changed paths are all in the docs-only set — no local gate."
         echo "          (a local decision; says nothing about what CI will do —"
         echo "           paths-ignore binds ci.yml's push trigger only.)"
+        # ANTS-4726 — the evidence a recurrence needs, at the moment the
+        # decision is made. A skip that was wrong is otherwise indistinguishable
+        # from one that was right: both print the line above and exit 0.
+        echo "          range(s):${ranges:-" <none>"}"
+        echo "          decided on these paths:"
+        printf '%s\n' "$changed" | head -20 | sed 's/^/            /'
+        [[ "$(printf '%s\n' "$changed" | wc -l)" -gt 20 ]] \
+            && echo "            … and more"
         exit 0
     fi
 fi

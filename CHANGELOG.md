@@ -14,6 +14,16 @@ for security-relevant changes.
 
 ### Added
 
+- **The pre-push docs-only set is checked against ci.yml's paths-ignore, and the skip decision is recorded** (ANTS-4726)
+  The hook's docs-only path list was a hand-maintained twin of the
+  workflow's `paths-ignore` that nothing compared, so drift would let it
+  skip a gate CI then runs. A static test now asserts the two name the same
+  paths in both directions, and that the regex is anchored. The hook also
+  prints the ref range and the paths its skip was decided on — previously a
+  wrong skip and a right one printed the same line and exited 0. The
+  misclassification that prompted this is still unexplained and the item
+  stays open; the log is what a recurrence needs.
+
 - **doc_citations resolves a backticked `path::symbol` to the symbol's line** (ANTS-4748)
   Only where the path resolves and the symbol is unique in that file; the
   entry carries `resolved_via:"symbol"`, since its `start_line` was looked
