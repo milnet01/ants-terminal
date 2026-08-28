@@ -518,9 +518,12 @@ cites. It is the CONVERSE of the release skill's own gate, which only
 checks that ids the CHANGELOG *claims* are really shipped — that direction
 cannot see work that shipped and was never written down. Run it BEFORE
 `new-rc` rolls `[Unreleased]`, because afterwards a missing entry has to go
-into a closed section. It reads `roadmap.sqlite` directly: `roadmap_query
-mode:"report"` gives counts over a window and no ids, so the missing set is
-not derivable from the verb (ANTS-4715). The store stamps `shipped` only
+into a closed section. It reads `roadmap.sqlite` directly, and keeps doing
+so: `roadmap_query` CAN now return the ids (`shipped_since` on the list
+path, ANTS-4715), but only to a session talking to a running instance — a
+shell script reaches a verb through `--remote-json`, which needs one. That
+would trade a dependency on `sqlite3` for a dependency on the GUI app being
+up, and the gate must work headless (ANTS-4734). The store stamps `shipped` only
 from 2026-08-20 forward, so every run also reports how many shipped items
 carry no date and were invisible to it; `roadmap_log op:"backfill_dates"`
 fills those from git history.

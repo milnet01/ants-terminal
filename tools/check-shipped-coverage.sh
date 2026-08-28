@@ -7,10 +7,13 @@
 # work is the same class of defect as one that overclaims, and nothing checked
 # it until now.
 #
-# The store is the only source that can answer it. `roadmap_query mode:"report"`
-# returns COUNTS over a window and no ids, so the missing set is not derivable
-# from the verb — hence the direct read. Read-only, and safe while Ants holds
-# its own connection (the store runs in WAL).
+# The store is read directly, and ANTS-4734 re-examined that rather than
+# assuming it. `roadmap_query` CAN now return the ids (`shipped_since` on the
+# list path, ANTS-4715) — but a shell script reaches a verb only through
+# `--remote-json`, which needs a running instance. Migrating would trade
+# `sqlite3` — small, present everywhere, and SKIPping loudly when it is not —
+# for the GUI app being up, and this gate has to work headless. Read-only, and
+# safe while Ants holds its own connection (the store runs in WAL).
 #
 # Exit 0 = every shipped item in the window is recorded, or the check could not
 # run and said so. Exit 1 = uncovered items, listed.

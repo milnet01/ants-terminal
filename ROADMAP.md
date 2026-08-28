@@ -47707,7 +47707,7 @@ envelope dropped `source`/`path`/`etag`/`total`/`filter`.
   Source: in-session-2026-08-27, hit while applying ANTS-4727's three test edits.
   Lanes: mcp.
 
-- 📋 [ANTS-4734] **Move check-shipped-coverage.sh off the sqlite schema and onto roadmap_query, once a build carrying ANTS-4715 ships.**
+- 💭 [ANTS-4734] **Move check-shipped-coverage.sh off the sqlite schema and onto roadmap_query, once a build carrying ANTS-4715 ships.**
   BLOCKED ON A RELEASE, not on design. ANTS-4715 added `shipped_since` /
   `shipped_until` to roadmap_query's list path, which is the interface the
   script was working around. The migration is straightforward once the verb
@@ -47733,6 +47733,42 @@ envelope dropped `source`/`path`/`etag`/`total`/`filter`.
   WORTH KEEPING WHEN IT MOVES: the script reports how many shipped items
   carry no date. The verb now emits `shipped_undated` for the same reason, so
   the replacement should surface it rather than dropping the caveat.
+  Evaluated 2026-08-28 and DECLINED — the data-source migration should not
+  happen. The block this body describes has lifted and the reason it was
+  deferred is not the reason it fails.
+
+  THE VERB IS REACHABLE, verified: `shipped_since` answers on the running
+  build, returning the ids over a window plus `shipped_undated` and its
+  hint. So the interface half of ANTS-4715 is live.
+
+  WHAT THE PLAN MISSED. A shell script does not call a verb the way a
+  session does. Its only route is `--remote-json`, which needs a running
+  instance to talk to — tools/e2e/run.sh is the sole precedent here and it
+  spawns a throwaway one for exactly that reason. Migrating would trade a
+  dependency on `sqlite3` — small, present nearly everywhere, and SKIPping
+  loudly when absent — for a dependency on the GUI app being up, and this
+  gate is run at bump time from a plain terminal. It has to work headless.
+  That is a robustness regression wearing the word refactor.
+
+  DONE INSTEAD, because the stale FACT was real even though the routing
+  was not: both places carrying "the verb gives counts and no ids" now say
+  that it can give ids, and why the script still reads the store anyway —
+  this bullet's own second change target, CLAUDE.md's release section, and
+  the script's header comment.
+
+  NOT RULE 14 GATED, and this body's prediction that it would be rested on
+  the routing changing. It does not: a conformer reading either sentence
+  still runs the script. Only the reason under the instruction was wrong,
+  which is the stale-fact branch, recorded in the commit body.
+
+  The caveat this body asked to keep is kept: the script still reports how
+  many shipped items carry no date.
+
+  Observed on the run that verified the edit, and it is the gate working
+  rather than a defect: 27 of 180 items shipped since the last tag are
+  cited by no CHANGELOG bullet. Surfaced to the user, not fixed here —
+  each is either release-note-worthy or deliberately internal, and that is
+  a per-item call.
   **Layman:** A release check reads the database file directly; now that the tool can answer the question, it should ask the tool instead.
   Kind: refactor.
   Source: in-session-2026-08-27, deferred half of ANTS-4715.
