@@ -17,7 +17,11 @@ Build-Depends: debhelper-compat (= 13),
 # self-disables the feature if the package is missing, so package
 # maintainers can drop this line on older releases without breaking
 # the build — X11 Quake is unaffected.
-               liblayershellqt6-dev
+               liblayershellqt6-dev,
+# override_dh_auto_test runs the full ctest suite. cited_by /
+# workspace_search / co_change_family shell out to rg with no skip path, so
+# an absent ripgrep FAILS those tests rather than skipping them (ANTS-4717).
+               ripgrep
 Standards-Version: 4.6.2
 Homepage: https://github.com/milnet01/ants-terminal
 Vcs-Git: https://github.com/milnet01/ants-terminal.git

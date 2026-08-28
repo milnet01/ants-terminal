@@ -2023,7 +2023,8 @@ if(ANTS_TESTS)
                 tests/features/mcp_find_sources/test_mcp_find_sources.cpp
                 # ANTS-3368 co_change_family seam + MCP wiring.
                 tests/features/co_change_family/test_co_change_family.cpp
-                # ANTS-4391 ci.yml declares the tools the suite shells out to.
+                # ANTS-4391/4717 every carrier that runs the suite declares
+                # the tools it shells out to.
                 tests/features/ci_workflow_deps/test_ci_workflow_deps.cpp
                 # ANTS-4533 ci.yml's build-asan job stays inside its budget
                 # and goes red, not `cancelled`, when it does not.
@@ -2046,8 +2047,12 @@ if(ANTS_TESTS)
     # MCP-server hooks.
     target_link_libraries(test_claude PRIVATE Qt6::Test Qt6::Network)
     target_compile_definitions(test_claude PRIVATE
-        # ANTS-4391 — the CI-dependency guard reads the workflow.
+        # ANTS-4391 / ANTS-4717 — the dependency guard reads every carrier
+        # that runs the suite, not the workflow alone.
         SRC_CI_WORKFLOW_PATH="${CMAKE_SOURCE_DIR}/.github/workflows/ci.yml"
+        SRC_RPM_SPEC_PATH="${CMAKE_SOURCE_DIR}/packaging/opensuse/ants-terminal.spec"
+        SRC_ARCH_PKGBUILD_PATH="${CMAKE_SOURCE_DIR}/packaging/archlinux/PKGBUILD"
+        SRC_DEBIAN_CONTROL_PATH="${CMAKE_SOURCE_DIR}/packaging/debian/control"
         ANTS_SOURCE_DIR="${CMAKE_SOURCE_DIR}"
         SRC_MAINWINDOW_PATH="${CMAKE_SOURCE_DIR}/src/mainwindow.cpp"
         SRC_MAINWINDOW_CPP_PATH="${CMAKE_SOURCE_DIR}/src/mainwindow.cpp"

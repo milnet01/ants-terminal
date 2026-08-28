@@ -77,9 +77,10 @@ BuildRequires:  git-core
 # tests fail with {"code":"rg_failed"} rather than skipping when rg is absent.
 # ANTS-4391 already cost five red CI runs for this exact reason and was fixed
 # by adding ripgrep to .github/workflows/ci.yml — but only there. The RPM is a
-# SECOND environment that runs %%check, it never got the same line, and
-# tests/features/ci_workflow_deps guards the workflow without reading this
-# spec. Declaring it makes those tests RUN instead of failing the build.
+# SECOND environment that runs %%check and never got the same line.
+# tests/features/ci_workflow_deps now reads this spec too, so deleting the
+# line below reddens the suite. Declaring it makes those tests RUN instead
+# of failing the build.
 BuildRequires:  ripgrep
 # ANTS-4718 — a monospace font. The card-grid case measures laid-out column
 # positions, and a chroot with NO fonts installed makes Qt fall back to

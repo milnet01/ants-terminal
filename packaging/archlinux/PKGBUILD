@@ -33,6 +33,10 @@ makedepends=(
   'cmake'
   'ninja'
   'layer-shell-qt'
+  # check() runs the full ctest suite. cited_by / workspace_search /
+  # co_change_family shell out to rg with no skip path, so an absent
+  # ripgrep FAILS those tests rather than skipping them (ANTS-4717).
+  'ripgrep'
 )
 source=("$pkgname-$pkgver.tar.gz::$url/archive/refs/tags/v$pkgver.tar.gz")
 # SKIP is intentional for the in-tree recipe: the v$pkgver tarball does

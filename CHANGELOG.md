@@ -106,6 +106,12 @@ for security-relevant changes.
 
 ### Fixed
 
+- **The Arch and Debian packages now declare ripgrep, so their test suites run instead of failing** (ANTS-4717)
+  The guard that catches this class was reading only the CI workflow, so the
+  same missing declaration was still live in two package recipes. It now reads
+  every recipe that runs the test suite, and matches a declaration rather than
+  a mention.
+
 - **doc_citations returns count:0 on a conforming spec corpus, and the zero is indistinguishable from a clean run.** (ANTS-4743)
   `doc_citations` returning zero now says whether that is clean
   or silent. It recognises only `path:line` citations, and the spec-format

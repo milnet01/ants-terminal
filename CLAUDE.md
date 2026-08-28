@@ -144,9 +144,15 @@ cannot catch by construction is anything *declared* in `ci.yml` that the
 script never knew to assume — a runner package, an env var, an action
 version. **ANTS-4391 is what that costs**: `ripgrep` was installed by no job,
 CI was red for five commits, and no local run could see it because rg exists
-on the dev box. The repair for that class is a *static* check that the two
-agree (`tests/features/ci_workflow_deps`), never a parallel implementation
-trying harder. Driving the real workflow with `act` was considered and
+on the dev box. The repair for that class is a *static* check that the
+recipes agree with the source (`tests/features/ci_workflow_deps`), never a
+parallel implementation trying harder. **It reads every carrier that runs the
+suite, not just `ci.yml`** (ANTS-4717): the workflow, the RPM spec, the Arch
+PKGBUILD and the Debian control. Guarding one carrier turns a class defect
+into a queue of surfaces, each found by a build — the RPM was the second.
+Adding a carrier that runs `ctest` means adding it to that test.
+
+Driving the real workflow with `act` was considered and
 rejected — it pulls container images and is slow enough that nobody would run
 it before a push, and a gate nobody runs catches nothing.
 

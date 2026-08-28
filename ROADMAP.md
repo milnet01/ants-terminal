@@ -46904,7 +46904,7 @@ envelope dropped `source`/`path`/`etag`/`total`/`filter`.
   Source: user-request-2026-08-26 (asked whether the OBS builds had been kicked off during the 0.7.106 release).
   Lanes: packaging, release.
 
-- 🚧 [ANTS-4717] **ANTS-4391's ripgrep fix reached ci.yml and not the RPM spec, so the OBS build fails 11 CitedBy tests.**
+- ✅ [ANTS-4717] **ANTS-4391's ripgrep fix reached ci.yml and not the RPM spec, so the OBS build fails 11 CitedBy tests.**
   MEASURED from the Tumbleweed build log: all 11 CitedBy tests fail with
   {"code":"rg_failed","error":"cited_by: rg failed to start (is ripgrep
   installed?)"}, and %check exits non-zero, so the RPM does not build on
@@ -46934,6 +46934,13 @@ envelope dropped `source`/`path`/`etag`/`total`/`filter`.
 
   The spec is copied from the working tree at submit time rather than taken
   from the tag, so this reaches OBS without a new tag.
+  Resolved (2026-08-28): the CLASS repair, not another line. tests/features/ci_workflow_deps now reads every carrier that runs ctest — ci.yml, the RPM spec, the Arch PKGBUILD, the Debian control — through four SRC_*_PATH compile definitions, and the match strips whole-line `#` comments so a mention cannot pass for a declaration. That distinction is load-bearing: the RPM spec names ripgrep three times and declares it once, so the raw substring match the test used before would have passed with the BuildRequires line deleted.
+
+  The widened test went red on first run against exactly the two carriers that were missing the declaration — the Arch PKGBUILD's check() and the Debian control backing override_dh_auto_test, both of which run the full suite. So the same defect was live on two more surfaces and had not yet been found by a build. Both now declare ripgrep.
+
+  Flatpak is excluded on purpose (builds -DANTS_TESTS=OFF, runs no ctest) and ci.yml's qt62-baseline job needs nothing (compile guard, no ctest) — both verified rather than assumed.
+
+  Suite green: 4012/4012.
   **Layman:** The package build was missing a search tool the tests need, so it failed in a way local runs never see.
   Kind: fix.
   Source: in-session-2026-08-26, found by the first OBS build of 0.7.106 after the submit was run.
@@ -47009,6 +47016,34 @@ envelope dropped `source`/`path`/`etag`/`total`/`filter`.
   Kind: perf.
   Source: in-session-2026-08-26, second of two failures left after the ripgrep fix.
   Lanes: roadmapstore, packaging.
+
+- 📋 [ANTS-4754] **changelog_query has no mode for the [Unreleased] section, the one question a release-readiness check asks.**
+  MEASURED: changelog_query mode:"unreleased" refuses with bad_code
+  `bad_mode` and accepts only entries / version_index / headline_only.
+
+  Why it matters. "What is already owed a release?" is the standard
+  pre-release question, and the accepted modes answer it only by
+  returning the whole corpus and filtering client-side on
+  version == "Unreleased". This call reported total 1729 entries and
+  truncated at 30 — so the caller pages, or raises the limit and pays for
+  the entire history, to read one section that is typically a few dozen
+  bullets.
+
+  mode:"version_index" gives the version list, not one version's entries;
+  there is no `version` filter on the entries mode either, so the same gap
+  blocks "show me what shipped in 0.7.107".
+
+  PROPOSED: a `version` filter accepted alongside the existing modes, with
+  "Unreleased" a legal value. That is strictly smaller than a new mode and
+  answers both questions. cut-release --check and
+  tools/check-shipped-coverage.sh are the callers that want it.
+
+  Not a blocker — the workaround is a client-side filter — but it is paid
+  on every release cycle.
+  **Layman:** Asking "what have we finished but not shipped yet?" takes a big list and manual filtering, when it should be one call.
+  Kind: enhancement.
+  Source: in-session-2026-08-28, hit while reading project state before picking work.
+  Lanes: mcp, release.
 
 ### ANTS MCP feedback from CC sessions — 2026-08-27 triage
 
