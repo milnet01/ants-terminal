@@ -48495,6 +48495,37 @@ envelope dropped `source`/`path`/`etag`/`total`/`filter`.
   Source: in-session-2026-08-31, found by a cold lane during the ANTS-4759 gate on CLAUDE.md.
   Lanes: docs.
 
+- 📋 [ANTS-4763] **cut-rc.sh carries five shellcheck info findings; three are deliberate and two are worth a look.**
+  shellcheck packaging/cut-rc.sh exits 1 on five info-level findings. None
+  was introduced by the ANTS-4759 edit to that file, which touched only
+  report_shipped_coverage around line 415-440.
+
+  DELIBERATE, and should be silenced with a directive rather than changed --
+  SC2016 at lines 328, 333, 340. Each is an awk PROGRAM passed in single
+  quotes to apply_rewrite; not expanding $1 and friends in the shell is the
+  entire point. A `# shellcheck disable=SC2016` with that one-line reason
+  turns three permanent false alarms into nothing.
+
+  WORTH A LOOK -- SC2015 at lines 292 and 764, both `A && B || C` on a
+  CHANGELOG rewrite: `... > "$tmp" && mv "$tmp" "$CHANGELOG_FILE" \ ...`.
+  That idiom runs C when A succeeds and B fails, which is not if-then-else,
+  and on this path B is the mv that installs a rewritten changelog. Worth
+  reading whether the || arm can fire after a partial write during a release
+  cut. May well be fine; nobody has checked.
+
+  WHY IT IS FILED RATHER THAN FIXED: pre-existing, info-level, and in code
+  this session did not write -- editing it would be the drive-by that
+  coding.md § 1.7 forbids. Filed because the standing rule here is that a
+  warning seen during any work gets an entry rather than a mention.
+
+  NOTE ON REACH: tools/ci-parity.sh --lints is where this would be caught
+  routinely; this run saw it only because write-code gates a shell edit with
+  shellcheck on the file it touched.
+  **Layman:** A release script has five style warnings; three are false alarms and two are the kind that can hide a failure.
+  Kind: chore.
+  Source: in-session-2026-08-31, seen while gating an unrelated edit to the same file.
+  Lanes: packaging.
+
 ### Ants MCP feedback from CC sessions — 2026-08-28 triage
 
 - 📋 [ANTS-4746] **A verb that reads this session's completed subagent returns, so a fan-out that outlives a compaction is recoverable.**
