@@ -48941,7 +48941,7 @@ shipped note, which is the staleness discipline ANTS-4741 exists to prompt.
   Source: finbreak_Ants_MCP_Feedback.md 2026-08-31.
   Lanes: mcp.
 
-- 📋 [ANTS-4771] **indie_review_partition's computed fallback drops non-Python sources with no field reporting the omission.**
+- ✅ [ANTS-4771] **indie_review_partition's computed fallback drops non-Python sources with no field reporting the omission.**
   THE SERIOUS ONE IN THIS BATCH, because the failure is silent and the
   consequence is a coverage claim that is not true.
 
@@ -48981,6 +48981,53 @@ shipped note, which is the staleness discipline ANTS-4741 exists to prompt.
   WORTH CONFIRMING FIRST: whether the same extension filter sits in the
   module-map path as well as the computed fallback, since only the fallback was
   exercised here.
+  Resolved (2026-08-31). Took the reporter's second option, and the codebase
+  supplied the argument for it: isIndexableSuffix carries an explicit in-step
+  rule -- count, outline and symbol query must cover the SAME files -- and
+  excludes `css` for exactly that reason. FileOutline has no shell mode, so
+  widening the suffix list would count files the outline cannot read, which is
+  the drift that rule exists to prevent. The defect was never the list; it was
+  the silence.
+
+  deriveComputedPartition takes an optional UnassignedSources* and records
+  every file the suffix gate skipped, as a total and per lowercased suffix.
+  cmdIndieReviewPartition emits unassigned_count / unassigned_by_suffix /
+  unassigned_hint, and the MCP tool description says to read them as a
+  coverage gap rather than a formatting note.
+
+  FILTER ORDER TURNED OUT TO BE THE DESIGN. The three filters accept the same
+  set in any order, but the order decides what is REPORTED: recording at the
+  suffix gate while noise directories and generated sources were still in the
+  walk would have buried the one signal this exists to surface under build
+  output. Noise and generated files are now eliminated first, and the code says
+  why so a later reorder does not undo it silently.
+
+  GATED ON `derived`, not for brevity: the walk populates the reporter whenever
+  it runs, so an envelope carrying the module map's partition would otherwise
+  report counts describing a partition it does not carry. INV-8 asserts the
+  gate precedes the emit.
+
+  TEST-FIRST, and the red run was real: INV-6 failed on its assertions rather
+  than on compilation, and the ctest count moved 5 -> 8, which is the check
+  that a new test is actually wired into its bundle.
+
+  THE TEST CAUGHT MY OWN ASSUMPTION. I expected count 2 and got 3 -- the
+  seeded CLAUDE.md is dropped by the same gate. The implementation was right:
+  markdown IS a file no lane covers, and excluding it would reintroduce the
+  judgement about which extensions matter that this approach avoids. The
+  per-suffix breakdown is what keeps that readable, and the expectation was
+  corrected rather than the behaviour.
+
+  Deliberately NOT done: a path list. It is unbounded where a suffix map is
+  bounded by the tree's distinct suffixes, and `sh: 5` already tells a caller
+  what to look for. Also not done: the reporter's per-lane `lines` figure for
+  too_coarse -- a real second defect, but a separate one.
+
+  Not addressed here, and worth confirming before it is assumed fixed: whether
+  the same suffix gate sits in the module-map path. Only the computed fallback
+  was exercised.
+
+  Verified: 4040/4040 on ctest --preset=default, up from 4037.
   **Layman:** A review tool quietly leaves whole files out of the plan while its report still reads as covering everything.
   Kind: fix.
   Source: OneUp_Ants_MCP_Feedback.md 2026-08-31.

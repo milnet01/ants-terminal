@@ -41,6 +41,7 @@
 
 #include <QHash>
 #include <QList>
+#include <QMap>
 #include <QString>
 #include <QStringList>
 
@@ -133,7 +134,33 @@ QList<Lane> derivePartition(const QString &projectPath);
 // its sparse-partition path when there is genuinely nothing to split. Kept
 // separate from derivePartition so the MCP layer can label the result
 // `derived: true` rather than passing off a guess as a declared partition.
-QList<Lane> deriveComputedPartition(const QString &projectPath);
+// ANTS-4771 — what the walk DROPPED, and why this is not a wider suffix list.
+// deriveComputedPartition admits only suffixes CodebaseIndex::isIndexableSuffix
+// accepts, and that list is deliberately narrower than "source": it is kept in
+// step with FileOutline so count -> outline -> symbol query cover the same
+// files. That comment excludes `css` for exactly this reason. Shell is outside
+// it too, so a mixed Python/shell tree lost every .sh file — on the reported
+// project, including the only component that runs as root.
+//
+// Widening the list is therefore the wrong repair: it would count files the
+// outline cannot read, which is the drift that rule exists to prevent. The
+// defect is the SILENCE. `sparse_partition` reports a missing module map, a
+// different condition, and `file_count` counts what survived the filter — so
+// every number in the reply was self-consistent and wrong. This is the same
+// call ANTS-4100 made for lane coarseness: a defensible thing to return, and
+// an indefensible thing to return silently.
+//
+// Suffix-filtered files ONLY. Generated sources and noise directories are
+// dropped for reasons a caller already knows, and folding them in would bury
+// the signal under build output. Bounded by the tree's distinct suffixes, so
+// it cannot grow with file count the way a path list would.
+struct UnassignedSources {
+    int                count = 0;   // files the suffix filter skipped
+    QMap<QString, int> bySuffix;    // lowercased suffix -> count ("" if none)
+};
+
+QList<Lane> deriveComputedPartition(const QString &projectPath,
+                                    UnassignedSources *unassigned = nullptr);
 
 // ANTS-4100 — how many reviewable source files a lane actually covers. A lane
 // may name a DIRECTORY (a module map that says `src/finbreak`), so the count

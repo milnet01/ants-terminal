@@ -62,3 +62,31 @@ of the surface.
   `cmdIndieReviewPartition`).
   *Breaks when:* the fallback overwrites a good partition, or ships
   unlabelled.
+
+- **INV-6** (the suffix filter reports what it drops) — the walk admits only
+  suffixes `CodebaseIndex::isIndexableSuffix` accepts, which is deliberately
+  narrower than "source" so that count → outline → symbol query cover the
+  same files. When an `UnassignedSources *` is passed,
+  `deriveComputedPartition` records every file that gate skipped, as a total
+  and per lowercased suffix. Noise directories and generated sources are
+  eliminated BEFORE the gate, so build output cannot bury the signal.
+  *Test:* `Inv6SuffixFilteredFilesAreReported`.
+  *Breaks when:* the filters are reordered so the gate sees noise, or the
+  suffix list is widened instead — which would count files the outline
+  cannot read, the drift the in-step rule exists to prevent.
+
+- **INV-7** (the reporter is optional) — the one-argument form still works
+  and is what the dialogs call, so reporting is additive.
+  *Test:* `Inv7NullReporterIsHarmless`.
+  *Breaks when:* the out-param stops defaulting.
+
+- **INV-8** (the handler surfaces it, and only when it used the computed
+  partition) — `cmdIndieReviewPartition` passes the reporter to the walk and
+  emits `unassigned_count` / `unassigned_by_suffix` / `unassigned_hint`,
+  gated on `derived`. The walk populates the reporter whenever it runs, so
+  without that gate a reply carrying the module map's partition would report
+  counts describing a partition it does not carry.
+  *Test:* `Inv8HandlerReportsUnassignedWhenDerived` (source-grep over
+  `cmdIndieReviewPartition`).
+  *Breaks when:* the reporter is not passed — the counts then stay zero and
+  the envelope is silent again while every field still exists.

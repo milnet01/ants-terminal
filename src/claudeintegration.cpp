@@ -9157,7 +9157,17 @@ void ClaudeIntegration::onMcpConnection() {
                         "`too_coarse_hint`. The verb mirrors the module map's "
                         "granularity and never splits a lane for you: treat "
                         "`too_coarse` as a prompt to partition by cohesion "
-                        "and commit `.indie-review/partition.json`.");
+                        "and commit `.indie-review/partition.json`. "
+                        "ANTS-4771 — when the reply is `derived:true`, the "
+                        "computed walk admits only suffixes the codebase "
+                        "index can outline, which is NARROWER than "
+                        "\"source\": shell in particular is dropped. Files "
+                        "that landed in no lane are reported as "
+                        "`unassigned_count` / `unassigned_by_suffix` / "
+                        "`unassigned_hint`. Read them as a coverage gap "
+                        "rather than a formatting note — a review driven by "
+                        "this partition will not look at those files, and "
+                        "`file_count` counts only what survived the filter.");
                     t["selection_hint"] = QStringLiteral(
                         "Use to split source files for multi-reviewer "
                         "indie-review dispatch. Pairs with "

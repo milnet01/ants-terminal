@@ -128,6 +128,87 @@ TEST(IndieReviewComputedPartition, Inv4SingleDirectoryYieldsEmpty) {
         << "a single lane must keep the caller's sparse_partition path";
 }
 
+// INV-6 — the walk reports what its suffix filter dropped (ANTS-4771).
+TEST(IndieReviewComputedPartition, Inv6SuffixFilteredFilesAreReported) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    // A mixed tree: Python that partitions, shell that the suffix filter
+    // drops. The shell sits in BOTH directories, including alongside the
+    // Python at the root of a lane, so a path-shaped explanation is ruled out.
+    const QString root = seedProse(tmp, QStringList{
+        QStringLiteral("oneup/updater.py"),
+        QStringLiteral("oneup/bump.py"),
+        QStringLiteral("oneup/update_system.sh"),
+        QStringLiteral("packaging/build-appimage.sh"),
+        QStringLiteral("packaging/release.py"),
+    });
+
+    IndieReviewEngine::UnassignedSources dropped;
+    const auto lanes = IndieReviewEngine::deriveComputedPartition(root, &dropped);
+
+    // The partition itself is unchanged — this adds reporting, not coverage.
+    ASSERT_EQ(lanes.size(), 2);
+    const auto *oneup = laneNamed(lanes, QStringLiteral("oneup"));
+    ASSERT_NE(oneup, nullptr);
+    EXPECT_EQ(oneup->sourcePaths.size(), 2) << "shell is still not a lane member";
+
+    // ...but it is no longer silent about the shell it skipped.
+    EXPECT_EQ(dropped.bySuffix.value(QStringLiteral("sh")), 2)
+        << "reported per suffix, so a caller sees WHAT was dropped";
+    EXPECT_FALSE(dropped.bySuffix.contains(QStringLiteral("py")))
+        << "a file that made it into a lane is not unassigned";
+    // The seeded CLAUDE.md is dropped by the same filter and is reported too.
+    // That is deliberate: it IS a file no lane covers, and deciding that
+    // markdown does not count would reintroduce the judgement about which
+    // extensions matter that this whole approach exists to avoid. The
+    // per-suffix breakdown is what keeps it readable — a caller sees
+    // `sh: 2` next to `md: 1` and can tell the signal from the prose.
+    EXPECT_EQ(dropped.bySuffix.value(QStringLiteral("md")), 1);
+    EXPECT_EQ(dropped.count, 3) << "count is the sum across suffixes";
+}
+
+// INV-7 — a caller that passes no reporter still works (ANTS-4771).
+TEST(IndieReviewComputedPartition, Inv7NullReporterIsHarmless) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString root = seedProse(tmp, QStringList{
+        QStringLiteral("a/one.py"), QStringLiteral("a/tool.sh"),
+        QStringLiteral("b/two.py"),
+    });
+    // The dialogs call the one-argument form; it must not crash or change.
+    const auto lanes = IndieReviewEngine::deriveComputedPartition(root);
+    EXPECT_EQ(lanes.size(), 2);
+}
+
+// INV-8 — the handler surfaces the dropped files, and only when it used the
+// computed partition (ANTS-4771).
+TEST(IndieReviewComputedPartition, Inv8HandlerReportsUnassignedWhenDerived) {
+    const std::string rc = ants_test::slurpRemoteControl();
+    ASSERT_FALSE(rc.empty());
+    const std::string body =
+        ants_test::slurpFunctionBody(rc, "RemoteControl::cmdIndieReviewPartition");
+    ASSERT_FALSE(body.empty());
+
+    // The reporter must actually be passed to the walk, or it stays empty and
+    // every assertion below would pass against a permanently silent envelope.
+    EXPECT_NE(body.find("deriveComputedPartition(root, &unassigned)"),
+              std::string::npos)
+        << "the walk must be given somewhere to record what it skipped";
+    EXPECT_NE(body.find("env[\"unassigned_count\"]"), std::string::npos);
+    EXPECT_NE(body.find("env[\"unassigned_by_suffix\"]"), std::string::npos)
+        << "a bare count cannot tell shell from documentation";
+
+    // Gated on `derived`: when the module map's partition won, these counts
+    // would describe a partition the reply does not carry.
+    const auto gate = body.find("if (derived && unassigned.count > 0)");
+    // NB: not `emit` — that is a Qt macro and expands to nothing here.
+    const auto emitAt = body.find("env[\"unassigned_count\"]");
+    ASSERT_NE(gate, std::string::npos)
+        << "unassigned counts must not be reported for a partition this reply "
+           "did not use";
+    EXPECT_LT(gate, emitAt);
+}
+
 // INV-5 — the handler labels the computed partition and keeps the hint.
 TEST(IndieReviewComputedPartition, Inv5HandlerLabelsDerivedAndKeepsHint) {
     const std::string rc = ants_test::slurpRemoteControl();

@@ -164,6 +164,13 @@ for security-relevant changes.
 
 ### Fixed
 
+- **indie_review_partition now reports the source files its computed walk left out of every lane, so a review can no longer read as full coverage while skipping part of the tree** (ANTS-4771)
+  The computed partition admits only suffixes the codebase index can
+  outline, which is narrower than "source" on purpose. On a mixed
+  Python and shell project that silently dropped every shell file. The
+  envelope now carries unassigned_count, unassigned_by_suffix and a
+  hint whenever it hands back a computed partition.
+
 - **The mirrored standards now include the C++, Qt and Python spellings that coding.md names as owning how this project's code is written** (ANTS-4764)
   A reader with only the checkout could open coding.md, read that the
   language spellings live elsewhere, and have no way to follow it.

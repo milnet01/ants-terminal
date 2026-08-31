@@ -44,8 +44,10 @@ QJsonDocument RemoteControl::cmdIndieReviewPartition(const QJsonObject &req) {
     // .indie-review/partition.json remains the fix.
     bool derived = false;
     const int mapLaneCount = lanes.size();   // what the map itself yielded
+    IndieReviewEngine::UnassignedSources unassigned;   // ANTS-4771
     if (lanes.size() <= 1) {
-        const auto computed = IndieReviewEngine::deriveComputedPartition(root);
+        const auto computed =
+            IndieReviewEngine::deriveComputedPartition(root, &unassigned);
         if (computed.size() > lanes.size()) {
             lanes   = computed;
             derived = true;
@@ -118,6 +120,36 @@ QJsonDocument RemoteControl::cmdIndieReviewPartition(const QJsonObject &req) {
             "computed — no module map parsed; source files grouped by "
             "directory (ANTS-3709). Adjust and commit as "
             ".indie-review/partition.json to pin it.");
+    }
+    // ANTS-4771 — the computed walk admits only suffixes
+    // CodebaseIndex::isIndexableSuffix accepts, which is narrower than
+    // "source" by design. Reported only when the computed partition was
+    // actually USED: `unassigned` is populated whenever the walk runs, but if
+    // the map's partition won, these counts describe a partition this reply
+    // does not carry, and a number describing something else is worse than no
+    // number. Gated on `derived` for that reason, not for brevity.
+    if (derived && unassigned.count > 0) {
+        env["unassigned_count"] = unassigned.count;
+        QJsonObject bySuffix;
+        for (auto it = unassigned.bySuffix.constBegin();
+             it != unassigned.bySuffix.constEnd(); ++it) {
+            bySuffix[it.key().isEmpty() ? QStringLiteral("(no suffix)")
+                                        : it.key()] = it.value();
+        }
+        env["unassigned_by_suffix"] = bySuffix;
+        env["unassigned_hint"] = QStringLiteral(
+            "%1 file(s) under the walked source roots are in NO lane, because "
+            "the computed partition admits only the suffixes the codebase "
+            "index can outline. See `unassigned_by_suffix` for what was "
+            "skipped — shell, and any language this project builds on that "
+            "the index does not read, land here. This is a coverage gap, not "
+            "a formatting note: a review driven by this partition will not "
+            "look at those files, and `file_count` counts only what survived "
+            "the filter. Cover them by committing "
+            "<projectPath>/.indie-review/partition.json with a lane naming "
+            "them, or brief them ad-hoc via indie_review_brief("
+            "lane=\"<label>\", source_paths=[...]).")
+                .arg(unassigned.count);
     }
     if (lanes.size() <= 1 || derived) {
         env["sparse_partition"]      = true;

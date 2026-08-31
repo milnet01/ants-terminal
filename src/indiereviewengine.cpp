@@ -274,7 +274,8 @@ bool isGeneratedSource(const QString &fileName) {
 // sorted paths), so re-derivations agree, which multi-loop review depends on.
 // Returns empty unless it derives >1 lane, so the sparse_partition path still
 // fires when there is genuinely nothing to split.
-QList<Lane> deriveComputedPartition(const QString &projectPath) {
+QList<Lane> deriveComputedPartition(const QString &projectPath,
+                                    UnassignedSources *unassigned) {
     // A flat directory of 200 files is one useless lane; split it into
     // reviewable chunks. Deliberately not line-range sub-lanes — Lane has no
     // line-range field, and adding one reaches into brief assembly.
@@ -301,14 +302,28 @@ QList<Lane> deriveComputedPartition(const QString &projectPath) {
             if (!abs.startsWith(projectPath + QLatin1Char('/'))) continue;
             const QString rel = abs.mid(projectPath.size() + 1);
             const QFileInfo fi(abs);
-            if (!CodebaseIndex::isIndexableSuffix(fi.suffix().toLower()))
-                continue;
-            if (isGeneratedSource(fi.fileName())) continue;
+            // ANTS-4771 — the three filters below accept exactly the same set
+            // in any order, but the ORDER decides what gets REPORTED, so noise
+            // and generated files are eliminated first. Recording at the suffix
+            // gate while build output was still in the walk would bury the one
+            // signal this exists to surface under a mountain of artifacts.
             const QStringList segs = rel.split(QLatin1Char('/'));
             bool noise = false;
             for (int i = 0; i + 1 < segs.size(); ++i)
                 if (ProjectSettings::isNoiseDir(segs.at(i))) noise = true;
             if (noise) continue;
+            if (isGeneratedSource(fi.fileName())) continue;
+            // The suffix gate is the surprising one: it is narrower than
+            // "source" on purpose (see UnassignedSources in the header), so a
+            // hand-written shell script is dropped here. Report it.
+            const QString suffix = fi.suffix().toLower();
+            if (!CodebaseIndex::isIndexableSuffix(suffix)) {
+                if (unassigned) {
+                    ++unassigned->count;
+                    ++unassigned->bySuffix[suffix];
+                }
+                continue;
+            }
             const QString dir = segs.size() > 1
                 ? rel.section(QLatin1Char('/'), 0, -2) : QStringLiteral(".");
             byDir[dir] << rel;
