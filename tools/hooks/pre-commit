@@ -1,20 +1,37 @@
 #!/usr/bin/env bash
-# ANTS-4133 — pre-commit gate: a mirrored global standard must still match its
-# owner. docs/standards/{coding,documentation,testing,commits,security}.md each
-# carry a verbatim copy of `~/.claude/standards/<name>.md` so a reader of this
-# public repo can follow the rule without a private home directory. A copy that
-# nothing checks is the pre-cutover state with better manners — this is the
-# check. `tools/check-standard-mirrors.sh --write` is the fix.
+# Pre-commit gate. Two checks, both about docs/standards/, both cheap.
 #
-# Skips silently on a checkout with no ~/.claude/standards (outside
-# contributor, CI): there is no owner to compare against.
+# ANTS-4133 — a mirrored global standard must still match its owner. Each
+# mirrored file in docs/standards/ carries a verbatim copy of its owner so a
+# reader of this public repo can follow the rule without a private home
+# directory. A copy that nothing checks is the pre-cutover state with better
+# manners; this is the check, and `tools/check-standard-mirrors.sh --write` is
+# the fix. Since ANTS-4761 it also fails on a link out of a mirrored half that
+# this repo does not carry. It skips silently where there is no owner tree to
+# compare against (an outside contributor, CI).
 #
-# Bypass (use sparingly): `git commit --no-verify`, or ANTS_PRECOMMIT_NO_MIRRORS=1.
+# ANTS-4762 — docs/standards/README.md must still name every standard beside
+# it, or a session has no route to one and cannot tell it has breached. Needs
+# no owner tree, so it runs everywhere.
+#
+# Both run even when the first fails, so one commit reports both problems.
+#
+# Bypass (use sparingly): `git commit --no-verify`, or ANTS_PRECOMMIT_NO_MIRRORS=1
+# for the mirror check alone — which is the one that reads a tree this repo
+# does not control.
 set -uo pipefail
 
-[ "${ANTS_PRECOMMIT_NO_MIRRORS:-0}" = "1" ] && exit 0
-
 repo_root="$(git rev-parse --show-toplevel 2>/dev/null)" || exit 0
-[ -x "$repo_root/tools/check-standard-mirrors.sh" ] || exit 0
 
-exec "$repo_root/tools/check-standard-mirrors.sh"
+rc=0
+
+if [ "${ANTS_PRECOMMIT_NO_MIRRORS:-0}" != "1" ] &&
+   [ -x "$repo_root/tools/check-standard-mirrors.sh" ]; then
+    "$repo_root/tools/check-standard-mirrors.sh" || rc=1
+fi
+
+if [ -x "$repo_root/tools/check-standards-index.sh" ]; then
+    "$repo_root/tools/check-standards-index.sh" || rc=1
+fi
+
+exit "$rc"

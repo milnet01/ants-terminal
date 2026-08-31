@@ -421,9 +421,12 @@ misreading; if in doubt, do the same rather than reasoning from the header.
 
 Project sub-specs. The list below is illustrative — **`docs/standards/` itself
 is the roster**, and a file there binds you whether or not it is named below,
-unless it marks itself superseded (as `mcp-errors.md` does). Do not treat
-[`docs/standards/README.md`](docs/standards/README.md) as the index: it omits
-seven of the files (ANTS-4762). Most have no global counterpart;
+unless it marks itself superseded (as `mcp-errors.md` does). Prefer it to
+[`docs/standards/README.md`](docs/standards/README.md): a directory listing
+cannot go stale where a hand-maintained table can. That table had omitted
+files no other document named either, so a session could breach a standard it
+had no route to; `tools/check-standards-index.sh` now fails when a standard is
+missing from it (ANTS-4762). Most have no global counterpart;
 `dependencies.md` is the exception and its entry says so:
 
 - [`mcp-error-codes.md`](docs/standards/mcp-error-codes.md) (ANTS-1353) —

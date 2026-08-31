@@ -48541,7 +48541,7 @@ envelope dropped `source`/`path`/`etag`/`total`/`filter`.
   Source: in-session-2026-08-31, surfaced by the ANTS-4759 review-contract gate on CLAUDE.md.
   Lanes: docs.
 
-- 📋 [ANTS-4762] **docs/standards/README.md calls itself the index and omits seven of the standards it indexes.**
+- ✅ [ANTS-4762] **docs/standards/README.md calls itself the index and omits seven of the standards it indexes.**
   MEASURED. docs/standards/ holds 24 markdown files. Seven are named
   nowhere in its own README.md: ci-build.md, config-hot-reload.md,
   dependencies.md, mcp-behavioural-notes.md, mcp-config-keys.md, menus.md,
@@ -48568,6 +48568,37 @@ envelope dropped `source`/`path`/`etag`/`total`/`filter`.
   this recurs silently every time a file lands. doc_integrity already walks
   the directory; a parity check between the files present and the files the
   README names is the same shape as its existing toc_gap kind.
+  Resolved (2026-08-31). Every standard in docs/standards/ is now named in
+  that folder's README, and tools/check-standards-index.sh fails when one is
+  not. The check is wired into tools/hooks/pre-commit alongside the mirror
+  gate, and both now run even when the first fails, so one commit reports
+  both problems.
+
+  The item predicted seven unindexed files and six were left, because
+  ANTS-4761's own edit had incidentally named dependencies.md hours earlier
+  -- which is the item's point restated: a hand-maintained table cannot
+  notice what lands beside it, in either direction. ANTS-4761 also added
+  five mirrors, and they would have gone unindexed too had this run not
+  followed it.
+
+  PROVEN IN BOTH DIRECTIONS rather than asserted: against a throwaway file
+  dropped into the folder the check names it and exits 1; removed, it exits
+  0 reporting every standard named. shellcheck clean, as is the rewritten
+  hook.
+
+  CLAUDE.md's claim that the README "omits seven of the files" was corrected
+  rather than left standing. The operative instruction is unchanged -- the
+  directory is still the roster -- so the edit reports a check instead of a
+  count, which cannot go stale the way the number did.
+
+  Not closed as fixed for the four files routed by NOTHING (ci-build,
+  config-hot-reload, menus, roadmap-data-model): they are now named in the
+  README, which is the route the item asked for. Whether CLAUDE.md should
+  name any of them directly is a separate judgement and was not made here.
+
+  Release note (2026-08-31): no CHANGELOG entry, deliberately -- a
+  documentation index and a maintainer-side pre-commit check; nothing a user
+  of the product observes.
   **Layman:** The contents page for the project's rule documents is missing seven of them, so those rules are easy to miss entirely.
   Kind: doc-fix.
   Source: in-session-2026-08-31, found by a cold lane during the ANTS-4759 gate on CLAUDE.md.

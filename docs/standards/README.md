@@ -13,6 +13,11 @@ the rule simply absent for them (ANTS-4133). **Do not edit a mirrored half** —
 a correction goes upstream, then `tools/check-standard-mirrors.sh --write`
 re-copies it down.
 
+**This table names every file in this folder**, and
+`tools/check-standards-index.sh` fails when it stops doing so (ANTS-4762). It
+had quietly omitted several, four of which were named in no other document
+either — so a session could breach a standard it had no way to learn existed.
+
 **A link inside a mirrored half points at the owner's siblings, not at this
 folder's.** The rule that settles which of them this repo carries (ANTS-4761):
 **mirror every top-level global standard that a mirrored half links to.** That
@@ -85,6 +90,12 @@ template):
 | [specs.md](specs.md) | Spec-authoring standard for `docs/specs/ANTS-NNNN.md` (ANTS-1728): required structure, INV-N bullet form, grounding/RAM/security conventions, `spec_query` machine-readability contract. |
 | [test-audit-resume.md](test-audit-resume.md) | Resume recipe for picking up a partially-completed `/test-audit` in a follow-up session — `partition_token` is in-process LRU, not durable; the recipe covers the explicit `session_memory` round-trip and the partition-re-run fallback (ANTS-1580). |
 | [mcp-feedback-files.md](mcp-feedback-files.md) | Format spec for the cross-session `*_Ants_MCP_Feedback.md` files that other CC sessions use to report MCP issues — contributor/maintainer roles, the maintainer-block watermark anchor, and the un-triaged-delta parser contract the `feedback_query` verb (ANTS-1961) consumes. |
+| [mcp-behavioural-notes.md](mcp-behavioural-notes.md) | Per-verb behavioural reference for the MCP surface — what an individual verb actually does, as against how to author one (that is `mcp-tools.md`). Relocated out of the always-loaded `CLAUDE.md` preamble by ANTS-2088, so it is read on demand. |
+| [mcp-config-keys.md](mcp-config-keys.md) | Config-file / Settings keys for the Ants-MCP integration (ANTS-3429) — the `claude.mcp_enabled` master gate, the feedback corpus root, the autonomous model switcher, result offload, tabular encoding, the advisory-hint latch and `project_query`. |
+| [roadmap-data-model.md](roadmap-data-model.md) | The roadmap store's data model (ANTS-3753) — the three artifacts, what an item must carry at write and before publish, and what migration accepts from historical items. Partly implemented; its own status block says which parts have shipped. |
+| [ci-build.md](ci-build.md) | What the CI workflows must guarantee about a release — B1, that CI builds on the release's Qt / runner baseline, and the corollary that the release tooling gates on CI rather than on a local build. |
+| [config-hot-reload.md](config-hot-reload.md) | Contract between the `config.json` file watcher and the in-app writers sharing that file — C1, an in-app write must not trigger the external-reload reaction, and C2, what a new config-writing component inherits for free. |
+| [menus.md](menus.md) | Menu-bar convention (M1–M3) — a checkbox toggle keeps its menu open where a radio pick closes it, menus are themed by the app stylesheet cascade rather than per-menu, and actions carry a mnemonic. |
 
 ## Historical / superseded
 
