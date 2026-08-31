@@ -241,6 +241,11 @@ release_body_is_placeholder() {
 roll_unreleased() {
     local v=$1 tmp
     tmp=$(mktemp)
+    # A && B || C is intended here and is not a mis-written if-then-else: C is
+    # cleanup-on-any-failure, wanted whether awk failed or the rename did.
+    # Neither arm can leave a half-written file — awk writes to "$tmp" and the
+    # original is only ever replaced by an atomic mv (ANTS-4763).
+    # shellcheck disable=SC2015
     awk -v ver="$v" -v verraw="$v" '
         { lines[NR]=$0 }
         END {
@@ -325,11 +330,19 @@ stamp_release_date() {
     local v=$1 iso=$2 rfc
     rfc=$(date -R -d "$iso") || { echo "cut-rc: stamp_release_date: bad date '$iso'" >&2; exit 1; }
 
+    # awk program, single-quoted deliberately: $1 and $0 below are awk's own
+    # fields, not shell variables. Letting the shell expand them would empty
+    # the program, so the quoting is the point rather than an oversight.
+    # shellcheck disable=SC2016
     apply_rewrite "$CHANGELOG_FILE" -v ver="$v" -v verraw="$v" -v iso="$iso" '
         !done && $0 ~ ("^## \\[" ver "\\]") { print "## [" verraw "] — " iso; done=1; next }
         { print }
         END { exit (done ? 0 : 3) }
     '
+    # awk program, single-quoted deliberately: $1 and $0 below are awk's own
+    # fields, not shell variables. Letting the shell expand them would empty
+    # the program, so the quoting is the point rather than an oversight.
+    # shellcheck disable=SC2016
     apply_rewrite "$METAINFO_FILE" -v ver="$v" -v iso="$iso" '
         !done && $0 ~ ("<release version=\"" ver "\"") {
             sub(/date="[0-9-]+"/, "date=\"" iso "\""); done=1
@@ -337,6 +350,10 @@ stamp_release_date() {
         { print }
         END { exit (done ? 0 : 3) }
     '
+    # awk program, single-quoted deliberately: $1 and $0 below are awk's own
+    # fields, not shell variables. Letting the shell expand them would empty
+    # the program, so the quoting is the point rather than an oversight.
+    # shellcheck disable=SC2016
     apply_rewrite "$DEBIAN_CHANGELOG_FILE" -v ver="$v" -v rfc="$rfc" '
         $0 ~ ("^ants-terminal \\(" ver "-") { inblk=1 }
         inblk && /^ants-terminal \(/ && seenhdr { inblk=0 }
@@ -753,6 +770,11 @@ cmd_cycle() {
 record_hotfix_on_main() {
     local N=$2 block=$3 tmp
     tmp=$(mktemp)
+    # A && B || C is intended here and is not a mis-written if-then-else: C is
+    # cleanup-on-any-failure, wanted whether awk failed or the rename did.
+    # Neither arm can leave a half-written file — awk writes to "$tmp" and the
+    # original is only ever replaced by an atomic mv (ANTS-4763).
+    # shellcheck disable=SC2015
     awk -v nver="$N" -v blockf="$block" '
         !done && $0 ~ ("^## \\[" nver "\\]") {
             while ((getline line < blockf) > 0) print line
@@ -762,7 +784,7 @@ record_hotfix_on_main() {
         END { if (!done) exit 3 }
     ' "$CHANGELOG_FILE" > "$tmp" \
         && mv "$tmp" "$CHANGELOG_FILE" \
-        || { rm -f "$tmp"; echo "cut-rc: record_hotfix_on_main: [${N}] anchor not found" >&2; exit 1; }
+        || { rm -f "$tmp"; echo "cut-rc: record_hotfix_on_main failed — [${N}] anchor not found, or the CHANGELOG could not be replaced" >&2; exit 1; }
 }
 
 # ANTS-2165 — out-of-cadence emergency release, two phases around a '/bump'.

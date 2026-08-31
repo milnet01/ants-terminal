@@ -48604,7 +48604,7 @@ envelope dropped `source`/`path`/`etag`/`total`/`filter`.
   Source: in-session-2026-08-31, found by a cold lane during the ANTS-4759 gate on CLAUDE.md.
   Lanes: docs.
 
-- 📋 [ANTS-4763] **cut-rc.sh carries five shellcheck info findings; three are deliberate and two are worth a look.**
+- ✅ [ANTS-4763] **cut-rc.sh carries five shellcheck info findings; three are deliberate and two are worth a look.**
   shellcheck packaging/cut-rc.sh exits 1 on five info-level findings. None
   was introduced by the ANTS-4759 edit to that file, which touched only
   report_shipped_coverage around line 415-440.
@@ -48630,6 +48630,36 @@ envelope dropped `source`/`path`/`etag`/`total`/`filter`.
   NOTE ON REACH: tools/ci-parity.sh --lints is where this would be caught
   routinely; this run saw it only because write-code gates a shell edit with
   shellcheck on the file it touched.
+  Resolved (2026-08-31). shellcheck packaging/cut-rc.sh now exits 0.
+
+  The three SC2016 findings are silenced with a directive and a stated
+  reason, as this item prescribed -- the awk programs stay single-quoted
+  because $1 and $0 in them are awk's fields, and letting the shell expand
+  them would empty the program.
+
+  THE SC2015 QUESTION IS ANSWERED, which was the half nobody had checked.
+  The || arm CAN fire after the awk succeeds, on a failed mv -- so the
+  concern was well founded -- but it cannot leave a partially written
+  CHANGELOG. Each site runs awk into a mktemp file and replaces the original
+  only by an atomic rename, so on either failure the original is untouched
+  and the arm's rm -f removes the temp. The idiom is cleanup-on-any-failure
+  rather than a mis-written if-then-else, which is what SC2015 warns about,
+  so both sites are disabled with that reasoning recorded rather than
+  restructured.
+
+  ONE REAL DEFECT FOUND BY ASKING. Because the arm also catches a failed mv,
+  record_hotfix_on_main's message asserted a cause it had not established --
+  "[N] anchor not found" -- for a rename failure that has nothing to do with
+  the anchor. Reworded to name both. No test asserted on the string, checked
+  before changing it.
+
+  VERIFIED, not assumed: tests/features/release_rc_pipeline's behavioural
+  suite passes 29/29 including the 2165 INV-4 hotfix path through the
+  function whose message changed, and bash -n parses.
+
+  Release note (2026-08-31): no CHANGELOG entry, deliberately -- release
+  orchestration tooling and its lint hygiene; nothing a user of the product
+  observes.
   **Layman:** A release script has five style warnings; three are false alarms and two are the kind that can hide a failure.
   Kind: chore.
   Source: in-session-2026-08-31, seen while gating an unrelated edit to the same file.
