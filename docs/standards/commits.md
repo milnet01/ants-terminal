@@ -366,7 +366,8 @@ The body note is the only trace either leaves.
 
 **Scope: a bypass at COMMIT time. A push-time bypass has no commit body
 to be written in**, because every commit already exists by then and §2.2
-forbids amending one to add the note. Skipping the §4.2 gate —
+forbids amending one to add the note. Skipping the local-run gate
+([local-gate.md](local-gate.md)) —
 `git push --no-verify`, or a `SKIP_LOCAL_CI=1` form a hook offers in its
 own documentation — **still needs the user under the rule above**, since
 a hook's *header* is not a failure message naming a case. The record is
