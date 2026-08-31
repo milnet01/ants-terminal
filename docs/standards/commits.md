@@ -109,11 +109,14 @@ the packaging carriers — and `packaging/check-version-drift.sh` verifies the
 lockstep. **`/bump` and `/release` were deleted 2026-08-13**; `cut-release`
 replaced both, and the old names resolve to nothing.
 
-`tools/check-shipped-coverage.sh` runs in the same step and asks the question
+`tools/check-shipped-coverage.sh` runs in the same step and asks two questions
 the release skill's own gate cannot: which items the roadmap store says
-shipped since the last public tag are cited by no CHANGELOG bullet. That gate
-checks only that ids the CHANGELOG *claims* are really shipped, so work that
-shipped and was never written down is invisible to it (ANTS-4714).
+shipped since the last public tag are cited by no CHANGELOG bullet
+(ANTS-4714), and which `[Unreleased]` bullets merely repeat their roadmap
+headline byte-for-byte (ANTS-4759). That gate checks only that ids the
+CHANGELOG *claims* are really shipped, so work that shipped and was never
+written down is invisible to it. The script exits non-zero on either finding;
+`cut-rc.sh` prints and continues.
 
 ## What checks this
 

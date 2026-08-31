@@ -419,10 +419,11 @@ misreading; if in doubt, do the same rather than reasoning from the header.
   § 0 records why. It owns a spec's **shape**; global `spec-format.md` § 1
   owns whether a spec is needed at all.
 
-Project sub-specs (no global counterpart exists for any of these). The list
-below is illustrative, not the roster — [`docs/standards/README.md`](docs/standards/README.md)
-is the index, and every file in that directory binds you whether or not it is
-named here:
+Project sub-specs. The list below is illustrative, not the roster —
+[`docs/standards/README.md`](docs/standards/README.md) is the index, and a
+file there binds you whether or not it is named below, unless it marks itself
+superseded (as `mcp-errors.md` does). Most have no global counterpart;
+`dependencies.md` is the exception and its entry says so:
 
 - [`mcp-error-codes.md`](docs/standards/mcp-error-codes.md) (ANTS-1353) —
   canonical `code` taxonomy for refusal envelopes.
@@ -479,8 +480,8 @@ gone, not aliased, so a session invoking them gets nothing. Every cycle
 also **re-checks README.md's prose, not just its version banner** — a
 `bump.json` todo owns the criteria; update it only when a user-visible
 claim has actually drifted (the tool count is the one
-nothing else verifies). Completed `ROADMAP.md` items are re-stated in the
-CHANGELOG as what shipped — never a verbatim headline copy (see below).
+nothing else verifies). Completed `ROADMAP.md` items reach the CHANGELOG as
+an authored summary — the copy rule below owns what that means.
 Update `PLUGINS.md` in the same commit when the `ants.*` Lua surface
 changes.
 
@@ -547,9 +548,11 @@ only the line-wrapping half). So prefer `op:"add"` with an authored summary
 wherever the headline states a problem — which is not only the `fix` kinds: 6
 of the 14 were `enhancement`, filed as the gap they closed. Keep
 `add_from_roadmap` for an item whose headline already reads as a delivered
-change. `tools/check-shipped-coverage.sh` now reports the
-copies alongside the uncovered items; both are advisory, and `cut-rc.sh` prints
-them without blocking.
+change. `tools/check-shipped-coverage.sh` reports the copies alongside the
+uncovered items and **exits non-zero on either** — it is `cut-rc.sh` that
+chooses not to block, so do not wire the bump-time run into a `set -e` chain
+expecting it to pass. It compares **byte-identically**, so a reworded headline
+that still states the problem is not caught: check those yourself.
 
 ## Key design decisions (non-obvious)
 
