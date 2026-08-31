@@ -419,7 +419,10 @@ misreading; if in doubt, do the same rather than reasoning from the header.
   § 0 records why. It owns a spec's **shape**; global `spec-format.md` § 1
   owns whether a spec is needed at all.
 
-Project sub-specs (no global counterpart exists for any of these):
+Project sub-specs (no global counterpart exists for any of these). The list
+below is illustrative, not the roster — [`docs/standards/README.md`](docs/standards/README.md)
+is the index, and every file in that directory binds you whether or not it is
+named here:
 
 - [`mcp-error-codes.md`](docs/standards/mcp-error-codes.md) (ANTS-1353) —
   canonical `code` taxonomy for refusal envelopes.
@@ -466,16 +469,18 @@ deprecated (historical records only).
 
 SemVer. **`project(... VERSION X.Y.Z)` in `CMakeLists.txt` is the single
 source of truth** — `ANTS_VERSION` propagates everywhere; never hardcode
-versions in `.cpp` / `.h`. Every bump touches `CMakeLists.txt`,
-`CHANGELOG.md` (new dated Keep-a-Changelog section), `README.md`
-("Current version"); use `cut-release --bump-only` (its
-`.claude/bump.json` covers the packaging files). **That skill replaced both
+versions in `.cpp` / `.h`. Every bump touches `CMakeLists.txt` and
+`README.md` ("Current version") — the `CHANGELOG.md` section is rolled by
+`new-rc` and dated by `promote`, never by the bump (see below); use
+`cut-release --bump-only` (its `.claude/bump.json` covers the packaging
+files). **That skill replaced both
 `/bump` and `/release`, which were deleted 2026-08-13** — the old names are
 gone, not aliased, so a session invoking them gets nothing. Every cycle
 also **re-checks README.md's prose, not just its version banner** — a
 `bump.json` todo owns the criteria; update it only when a user-visible
 claim has actually drifted (the tool count is the one
-nothing else verifies). Completed `ROADMAP.md` items migrate to CHANGELOG.
+nothing else verifies). Completed `ROADMAP.md` items are re-stated in the
+CHANGELOG as what shipped — never a verbatim headline copy (see below).
 Update `PLUGINS.md` in the same commit when the `ants.*` Lua surface
 changes.
 
@@ -529,18 +534,20 @@ from 2026-08-20 forward, so every run also reports how many shipped items
 carry no date and were invisible to it; `roadmap_log op:"backfill_dates"`
 fills those from git history.
 
-**A CHANGELOG entry states what SHIPPED, never what was wrong — do not copy
-the roadmap headline into the bullet** (ANTS-4759). A defect item's headline
-states the PROBLEM, so copying it puts the bug in the release notes where the
-fix belongs: `### Fixed` ends up announcing "mutation_probe keeps mutating the
-source after the transport has timed out". `releases.md` § 2 makes the
+**A CHANGELOG entry states what SHIPPED, never what was wrong — do not copy a
+roadmap headline that states a PROBLEM into the bullet** (ANTS-4759). A defect
+item's headline states one, so copying it puts the bug in the release notes
+where the fix belongs: `### Fixed` ends up announcing "mutation_probe keeps
+mutating the source after the transport has timed out". `releases.md` § 2 makes the
 changelog section the description of what shipped, and that is the line this
 breaches. It is a REFLEX, not a one-off — 14 of 56 `[Unreleased]` bullets were
 verbatim copies on 2026-08-31, written across seven separate commits, and
 `changelog_log op:"add_from_roadmap"` produces one by design (ANTS-1868 fixed
-only the line-wrapping half). So prefer `op:"add"` with an authored summary for
-any defect item, and keep `add_from_roadmap` for an item whose headline already
-reads as a delivered change. `tools/check-shipped-coverage.sh` now reports the
+only the line-wrapping half). So prefer `op:"add"` with an authored summary
+wherever the headline states a problem — which is not only the `fix` kinds: 6
+of the 14 were `enhancement`, filed as the gap they closed. Keep
+`add_from_roadmap` for an item whose headline already reads as a delivered
+change. `tools/check-shipped-coverage.sh` now reports the
 copies alongside the uncovered items; both are advisory, and `cut-rc.sh` prints
 them without blocking.
 
