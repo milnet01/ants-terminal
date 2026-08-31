@@ -334,7 +334,7 @@ RetroDB, and others) write MCP observations to `*_Ants_MCP_Feedback.md` files un
 > **v2 is live (2026-07-10).** The format moved to an inline-ID model — the
 > maintainer fills each finding's `**Proposed ID:**` slot in place
 > (`op:assign_id`) and status is derived live from the ROADMAP, so v2 **stops
-> writing tracking tables**. All ten corpus files are migrated to `: 2` (their old
+> writing tracking tables**. Every corpus file is migrated (their old
 > v1 tables are retained in place pending a declutter pass). `op:append_tracking` and
 > the v1 table-compaction ops below are **legacy** (un-migrated files only); the
 > canonical v2 flow is `migrate_v2` → `assign_id` → `compact_resolved`.

@@ -48484,6 +48484,27 @@ envelope dropped `source`/`path`/`etag`/`total`/`filter`.
   corpus files are migrated". There are 21. Left alone as immaterial --
   feedback_query is version-aware and reads each file's own marker, so no
   session acts on that count.
+  Progress (2026-08-31). The second half of this item is CLOSED: this
+  project's CLAUDE.md no longer claims "All ten corpus files are migrated
+  to `: 2`". That sentence was wrong twice -- the corpus is larger than
+  ten, and one file is not at `: 2` -- so it now states that every corpus
+  file is migrated, with no count and no marker value, neither of which it
+  needs and both of which went stale.
+
+  The marker itself is still NOT changed, and the evidence is now gathered
+  so the decision is a one-liner rather than a fresh investigation.
+  Surveyed the whole corpus: every file but one carries `: 2`, and
+  OneUp_Ants_MCP_Feedback.md carries `: 4`. That file's content is plainly
+  v2-shaped -- inline `**Proposed ID:**` slots, no tracking tables -- so
+  the label disagrees with the file's own structure. The corpus root is
+  not a git checkout, so there is no history to consult, and
+  mcp-feedback-files.md defines no version 3 or 4. Nothing found that a
+  `4` could have meant.
+
+  That still is not proof of a typo, which is why this stays open. The
+  call belongs to whoever owns OneUp; surfaced to the user 2026-08-31.
+  If confirmed, it is one feedback_log op:"set_format_version" call and
+  nothing else.
   **Layman:** A shared notes file says it is written in a format that does not exist; nothing breaks, but the label is wrong.
   Kind: fix.
   Source: in-session-2026-08-31, surfaced by the ANTS-4759 review-contract gate on CLAUDE.md.
