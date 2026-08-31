@@ -529,6 +529,21 @@ from 2026-08-20 forward, so every run also reports how many shipped items
 carry no date and were invisible to it; `roadmap_log op:"backfill_dates"`
 fills those from git history.
 
+**A CHANGELOG entry states what SHIPPED, never what was wrong — do not copy
+the roadmap headline into the bullet** (ANTS-4759). A defect item's headline
+states the PROBLEM, so copying it puts the bug in the release notes where the
+fix belongs: `### Fixed` ends up announcing "mutation_probe keeps mutating the
+source after the transport has timed out". `releases.md` § 2 makes the
+changelog section the description of what shipped, and that is the line this
+breaches. It is a REFLEX, not a one-off — 14 of 56 `[Unreleased]` bullets were
+verbatim copies on 2026-08-31, written across seven separate commits, and
+`changelog_log op:"add_from_roadmap"` produces one by design (ANTS-1868 fixed
+only the line-wrapping half). So prefer `op:"add"` with an authored summary for
+any defect item, and keep `add_from_roadmap` for an item whose headline already
+reads as a delivered change. `tools/check-shipped-coverage.sh` now reports the
+copies alongside the uncovered items; both are advisory, and `cut-rc.sh` prints
+them without blocking.
+
 ## Key design decisions (non-obvious)
 
 - Custom VT100 parser, no pyte/libvterm. Qt6 is the only runtime dep.

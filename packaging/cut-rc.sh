@@ -414,7 +414,11 @@ submit_to_obs() {
 # shipped since the last public tag are cited by no CHANGELOG bullet. This is
 # the CONVERSE of the release skill's own gate, which only checks that ids the
 # CHANGELOG *claims* are really shipped — that direction cannot see work that
-# shipped and was never written down.
+# shipped and was never written down. Since ANTS-4759 the same script also
+# reports [Unreleased] bullets whose bold summary is a verbatim copy of the
+# item's roadmap headline — for a defect item that headline states the
+# problem, so the copy puts the bug in the release notes where the fix
+# belongs.
 #
 # ADVISORY, not a hard gate, and the reason is deliberate rather than timid.
 # Whether an uncovered item is release-note-worthy or deliberately internal is
@@ -426,10 +430,12 @@ submit_to_obs() {
 report_shipped_coverage() {
     [ -x tools/check-shipped-coverage.sh ] || return 0
     if ! tools/check-shipped-coverage.sh; then
-        echo "cut-rc: ^ shipped work above is in no CHANGELOG bullet (ANTS-4714)." >&2
-        echo "cut-rc:   Not blocking — add the release-note-worthy ones with" >&2
-        echo "cut-rc:   changelog_log, and say in the release report which were" >&2
-        echo "cut-rc:   left out on purpose." >&2
+        echo "cut-rc: ^ the coverage gate above found something (ANTS-4714/4759)." >&2
+        echo "cut-rc:   Not blocking. Shipped work in no CHANGELOG bullet: add the" >&2
+        echo "cut-rc:   release-note-worthy ones with changelog_log, and say in the" >&2
+        echo "cut-rc:   release report which were left out on purpose. A bullet whose" >&2
+        echo "cut-rc:   summary repeats its roadmap headline: reword it to say what" >&2
+        echo "cut-rc:   shipped, since a defect headline states the problem." >&2
     fi
 }
 

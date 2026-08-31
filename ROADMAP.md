@@ -48319,6 +48319,44 @@ envelope dropped `source`/`path`/`etag`/`total`/`filter`.
   Source: Charls_Site_Ants_MCP_Feedback.md 2026-08-27 (refusal envelope recorded).
   Lanes: mcp.
 
+- ✅ [ANTS-4759] **A CHANGELOG bullet copied from a defect item's roadmap headline announces the bug where the fix belongs.**
+  MEASURED over the live corpus. 14 of 56 cited [Unreleased] bullets
+  carried a bold summary byte-identical to the item's stored headline; the
+  other 42 were authored, so the test has no false positives on this
+  corpus. A defect item's headline states the PROBLEM, so the copy lands
+  under "### Fixed" announcing the bug -- e.g. "mutation_probe keeps
+  mutating the source after the transport has timed out, so a session can
+  commit a mutant". releases.md § 2 makes the changelog section the
+  description of what SHIPPED, and that is the line it breaches.
+
+  NOT A ONE-OFF. The 14 landed across seven separate commits, so it is a
+  reflex rather than one bad session. Five of them also carry the roadmap
+  one-line summary as their body, which is the signature of
+  changelog_log op:"add_from_roadmap" -- that op reuses the cited headline
+  BY DESIGN, and ANTS-1868 fixed only its line-wrapping half. Correct for
+  an item whose headline already reads as a delivered change; wrong for
+  every defect item.
+
+  Resolved (2026-08-31): all 14 summaries rewritten to state what shipped
+  (five of them bodies too, where the body also restated the defect), and
+  tools/check-shipped-coverage.sh grew a second check reporting the class
+  -- byte-identical to the stored headline, no judgement in the code.
+  Advisory like its sibling, so it cannot block an RC over wording. It
+  counts id-bearing bullets it could not compare, since a count with no
+  flag reads as completeness, and skips loudly when [Unreleased] is empty.
+  cut-rc.sh's message and .claude/bump.json todo 5 were generalised: both
+  explained a coverage-only exit and would have mislabelled this one.
+
+  NOT DONE, deliberately: no guard inside changelog_log itself. Whether a
+  copy is wrong depends on whether the headline reads as a delivered
+  change, which is judgement, and a refusal there would fire on the
+  legitimate add_from_roadmap case. The release-time report is the right
+  cost profile -- a false positive costs a look.
+  **Layman:** Release notes were describing bugs instead of the fixes for them, because the wording was copied straight off the to-do list.
+  Kind: fix.
+  Source: in-session-2026-08-31, found reading [Unreleased] before the 0.7.108 cycle.
+  Lanes: mcp, roadmap, docs.
+
 ### Ants MCP feedback from CC sessions — 2026-08-28 triage
 
 - 📋 [ANTS-4746] **A verb that reads this session's completed subagent returns, so a fan-out that outlives a compaction is recoverable.**

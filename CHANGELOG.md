@@ -14,6 +14,9 @@ for security-relevant changes.
 
 ### Added
 
+- **Release gate: a CHANGELOG bullet that merely repeats its roadmap headline is now reported** (ANTS-4759)
+  A defect item's roadmap headline states the problem, so a summary copied from it puts the bug in the release notes where the fix belongs. `tools/check-shipped-coverage.sh` now flags any `[Unreleased]` bullet whose bold summary is byte-identical to the item's stored headline — 14 of 56 were, across seven commits, and all 14 have been rewritten to say what shipped. Advisory like its sibling check, so it cannot block a release over wording.
+
 - **spec_lint accepts `fields=` and `compact`** (ANTS-4663)
   A corpus run previously spilled and had to be parsed by hand.
 
@@ -63,13 +66,13 @@ for security-relevant changes.
   the corpus writes these; two definitions sharing a suffix are ambiguous
   and refused.
 
-- **invariant_check takes `files` while its sibling multi-path verbs take `paths` or `items`.** (ANTS-4744)
+- **invariant_check accepts `paths` as an alias for `files`** (ANTS-4744)
   `invariant_check` now accepts `paths` as an alias for `files`,
   the spelling its sibling multi-path verbs use, so the argument name a
   caller carries across works here too. `files` wins when both are sent,
   and the refusal for neither names both spellings.
 
-- **invariant_check returns matched_count 0 with no hint when a spec cites the module by symbol rather than by path.** (ANTS-4742)
+- **invariant_check says why a zero match can be wrong** (ANTS-4742)
   `invariant_check` returning zero matches now says why it can
   be wrong. Matching is by file path only, so a spec naming the module by
   symbol was reported as no spec at all — the reading that sends a
@@ -77,14 +80,14 @@ for security-relevant changes.
   `path_match_only` and a hint naming the fallback search. Matching
   itself is unchanged.
 
-- **feedback_query holds both halves of the stale-binary check and makes the caller fetch the second.** (ANTS-4741)
+- **feedback_query does the stale-binary comparison itself** (ANTS-4741)
   `feedback_query` now does the stale-binary comparison instead of
   telling you to make a second call for it. A shipped id whose ship date
   is not older than the running server binary's build date comes back
   with `possibly_stale_binary`, alongside the build date and commit. A
   same-day ship sets it, because the ship date carries no time.
 
-- **A project with no ROADMAP.md cannot be given a store-backed one through the verbs at all.** (ANTS-4740)
+- **roadmap_migrate op:"init" bootstraps a project that has no ROADMAP.md** (ANTS-4740)
   `roadmap_migrate op:"init"` bootstraps a project that has no
   roadmap file at all. It writes a conforming skeleton with one
   `## Backlog` section and then registers the project the ordinary way,
@@ -93,14 +96,14 @@ for security-relevant changes.
   dropping fields. Refuses `roadmap_exists` rather than overwriting;
   `dry_run:true` returns the skeleton without writing.
 
-- **No way to exempt a document from spec_lint's required-sections, so a mixed corpus reports the same rows forever.** (ANTS-4739)
+- **A document can opt out of spec_lint's required-sections check** (ANTS-4739)
   A document may carry `spec-lint: no-required-sections`
   to opt out of the required-sections check -- for a mixed corpus holding
   pre-standard specs, build plans and ledgers that can never conform. The
   number of exempted documents comes back as `sections_exempt_docs`, so
   an exemption is never mistaken for a clean pass.
 
-- **spec_lint matches a required heading verbatim, so a descriptive suffix reads as an absent section.** (ANTS-4738)
+- **spec_lint can match a required heading by prefix, so a descriptive suffix passes** (ANTS-4738)
   A format standard may write its marker as
   `required-sections: prefix`, which matches a numbered heading on its
   number and name and lets a descriptive suffix pass. Exact matching
@@ -150,11 +153,11 @@ for security-relevant changes.
   from the wrong place. Each is now scoped to the function or branch under
   test.
 
-- **Two ANTS-1881 combinator claims are unverified: section_etag_match's cross-mode answer, and whether the list path gates its mode echo.** (ANTS-4725)
-  Two small claims in a design document were never checked against the code, and the review ran out of loops before they could be.
+- **Two unverified ANTS-1881 combinator claims are now checked against the code** (ANTS-4725)
+  Both hold. The section etag keys on the section's bytes rather than on `mode`, so an etag taken under one mode is answered `unchanged` under another — the row now records that edge. And the list path's `mode` echo is gated, which is what § 2.4's byte-identical back-compat claim rests on.
 
-- **Inv2BypassesStatusAndPagination anchors on a substring that also matches an earlier `else if`, so it measures the wrong branch.** (ANTS-4724)
-  A test looks in the wrong part of the file, so it can pass without checking anything.
+- **A source-scrape test now anchors inside the branch it measures** (ANTS-4724)
+  `Inv2BypassesStatusAndPagination` anchored on a string that also matches an earlier `else if`, so its byte window opened above the branch it names — a test that passes from the wrong position gives no signal when the thing it names moves. Re-anchored on a needle that occurs once, and proved by mutation in both directions.
 
 ### Fixed
 
@@ -242,7 +245,7 @@ for security-relevant changes.
   every recipe that runs the test suite, and matches a declaration rather than
   a mention.
 
-- **doc_citations returns count:0 on a conforming spec corpus, and the zero is indistinguishable from a clean run.** (ANTS-4743)
+- **doc_citations says whether a zero is a clean run or a silent one** (ANTS-4743)
   `doc_citations` returning zero now says whether that is clean
   or silent. It recognises only `path:line` citations, and the spec-format
   standard tells authors to cite the symbol instead — so a conforming spec
@@ -251,14 +254,14 @@ for security-relevant changes.
   text reports how many it could not read, with a hint not to record the
   run as a passing check.
 
-- **spec_lint counts are computed post-cap, so a truncated run under-reports the total.** (ANTS-4737)
+- **spec_lint counts are taken over the whole scan, not after the cap** (ANTS-4737)
   `spec_lint` counts are now taken over the whole scan, and
   `max_findings` trims only the returned list. Previously a capped run
   under-reported the total, so two runs at different caps could not be
   compared -- one measurement read 39 where the truth was 81. A new
   `findings_total` gives the uncapped figure.
 
-- **mutation_probe keeps mutating the source after the transport has timed out, so a session can commit a mutant.** (ANTS-4736)
+- **mutation_probe stops a batch before it outlives the transport timeout** (ANTS-4736)
   `mutation_probe` now stops a batch before it outlives the MCP
   transport's read timeout. Previously the loop kept mutating the source
   after the caller had been told the call timed out, so a session could
@@ -284,8 +287,8 @@ for security-relevant changes.
   truncated. A basename with two matches stays ambiguous rather than being
   guessed.
 
-- **section_etag_match's schema says it is ignored under mode:"headline_only", and the code honours it.** (ANTS-4732)
-  A tool's own instructions say one of its shortcuts does not work in a certain mode, but it does.
+- **roadmap_query's section_etag_match row now matches what the code does** (ANTS-4732)
+  The row said the shortcut was ignored under `mode:"headline_only"`; in fact the `section` argument alone selects it, and it is honoured. The row now says so, and carries the edge that follows: the etag keys on the section's bytes, so varying `mode` between calls can be answered `unchanged` for a payload shape you did not ask for. No code change — the code was already right.
 
 - **section_index now warns when it returns no sections, and says which of the two reasons applies** (ANTS-4710)
   Asking a project for its roadmap sections used to give the same empty
@@ -293,11 +296,11 @@ for security-relevant changes.
   names the case, using whether any id-bearing bullet parsed to tell them
   apart.
 
-- **check_sync omits sync_checked on the healthy arm, so the field its own schema says to branch on is absent exactly when the check succeeded.** (ANTS-4730)
-  A tool tells you to check one field first, then leaves that field out of the answer that proves everything is fine.
+- **check_sync emits sync_checked on both arms** (ANTS-4730)
+  The field the schema tells every caller to read first was emitted only where it would be false, so a caller doing the documented check read the healthy answer as "nobody looked" — defeating exactly the misread the field was added to prevent. Its absence now means only that check_sync was not requested. Two tests asserting the old shape were updated with the reason recorded.
 
-- **discarded_external_edits fires on the renderer's own format marker, so the one flag that must never cry wolf does.** (ANTS-4729)
-  A warning meant for "someone's hand-written text was thrown away" also fires when the tool adds its own header.
+- **discarded_external_edits no longer fires on the renderer's own format marker** (ANTS-4729)
+  The one flag documented as the only place a silently discarded hand-edit surfaces was firing once per not-yet-marked project, on a header the render itself adds — and a high-trust flag with a routine false positive is one sessions learn to skim. The boolean is now derived from the file's own classified lines; the total count is deliberately unchanged, since deciding which differences are cosmetic is not this check's judgement.
 
 - **Removed a dead duplicate lambda that made every build of the Claude-integration library warn** (ANTS-4687)
   A second, never-called copy of a helper sat in a different method from

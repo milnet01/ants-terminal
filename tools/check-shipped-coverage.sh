@@ -15,8 +15,19 @@
 # for the GUI app being up, and this gate has to work headless. Read-only, and
 # safe while Ants holds its own connection (the store runs in WAL).
 #
-# Exit 0 = every shipped item in the window is recorded, or the check could not
-# run and said so. Exit 1 = uncovered items, listed.
+# ANTS-4759 adds the second question, over the same store and the same file:
+# does each CHANGELOG bullet describe what SHIPPED, or does it restate the
+# defect? `releases.md` § 2 makes the changelog section the description of what
+# shipped. A defect item's roadmap headline states the PROBLEM, so a summary
+# copied from it lands under "### Fixed" announcing the bug as though it were
+# the release. Byte-identical to the stored headline is the whole test — a
+# reworded summary is never flagged, and a copy is legitimate only where the
+# headline already reads as a delivered change, which is why this reports
+# rather than refuses.
+#
+# Exit 0 = every shipped item in the window is recorded and no bullet restates
+# its defect, or the check could not run and said so. Exit 1 = uncovered items
+# or copied headlines, listed.
 set -uo pipefail
 
 ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
@@ -34,6 +45,8 @@ while [[ $# -gt 0 ]]; do
             echo "usage: check-shipped-coverage.sh [--since YYYY-MM-DD] [--quiet]"
             echo "  Reports roadmap items shipped since DATE that no CHANGELOG"
             echo "  bullet cites. Default DATE is the latest public release tag."
+            echo "  Also reports [Unreleased] bullets whose bold summary is a"
+            echo "  verbatim copy of the item's roadmap headline (ANTS-4759)."
             exit 0 ;;
         *) echo "check-shipped-coverage: unknown argument: $1" >&2; exit 2 ;;
     esac
@@ -66,6 +79,64 @@ if [[ -z "$PROJECT_ID" ]]; then
     exit 0
 fi
 
+# --- Second question (ANTS-4759): does any [Unreleased] bullet's bold summary
+#     merely repeat its roadmap headline? Scoped to [Unreleased] because that
+#     is the text still open to correction — after `new-rc` rolls it, a wrong
+#     summary is in a closed section.
+check_copied_headlines() {
+    local line id summary headline
+    local -a copied=()
+    local seen=0 unparsed=0 unrel
+
+    unrel="$(awk '/^## \[Unreleased\]/{f=1;next} /^## \[/{f=0} f' "$CHANGELOG")"
+    if [[ -z "${unrel//[[:space:]]/}" ]]; then
+        echo "copied-headline:  ⊘ SKIPPED — [Unreleased] is empty, so there is no"
+        echo "                  open section to check. Run this before new-rc"
+        echo "                  rolls it."
+        return 0
+    fi
+
+    while IFS= read -r line; do
+        [[ "$line" =~ ^[[:space:]]*[-*][[:space:]].*\((ANTS-[0-9]+)[^\)]*\)[[:space:]]*$ ]] || continue
+        id="${BASH_REMATCH[1]}"
+        seen=$((seen + 1))
+        if [[ "$line" =~ ^[[:space:]]*[-*][[:space:]]+\*\*(.+)\*\*[[:space:]]*\(ANTS- ]]; then
+            summary="${BASH_REMATCH[1]}"
+        else
+            unparsed=$((unparsed + 1)); continue
+        fi
+        headline="$(q "SELECT headline FROM item
+                      WHERE project_id=${PROJECT_ID} AND id='${id}' LIMIT 1;")"
+        [[ -n "$headline" && "$headline" == "$summary" ]] && copied+=("$id")
+    done <<< "$unrel"
+
+    # A count with no flag reads as completeness: say how many id-bearing
+    # bullets carried no bold summary and were therefore never compared.
+    local note=""
+    [[ $unparsed -gt 0 ]] && note=" (skipped ${unparsed} with no bold summary)"
+
+    if [[ ${#copied[@]} -eq 0 ]]; then
+        [[ $QUIET -eq 1 ]] || echo "copied-headline:  none of ${seen} cited [Unreleased] bullets repeats its roadmap headline.${note}"
+        return 0
+    fi
+
+    echo "copied-headline:  ${#copied[@]} of ${seen} cited [Unreleased] bullets have a bold"
+    echo "                  summary byte-identical to the roadmap headline${note}:"
+    echo
+    for id in "${copied[@]}"; do
+        printf '  %-12s %s\n' "$id" "$(q "SELECT kind || ' — ' || headline FROM item
+                                          WHERE project_id=${PROJECT_ID} AND id='${id}' LIMIT 1;" | cut -c1-88)"
+    done
+    echo
+    echo "A defect item's headline states the PROBLEM, so copying it puts the bug"
+    echo "in the release notes where the fix belongs. Reword the summary to say"
+    echo "what shipped — the bullet's own body usually already does. A copy is"
+    echo "right only where the headline already reads as a delivered change."
+    echo
+    return 1
+}
+check_copied_headlines; HEADLINE_RC=$?
+
 # --- Window. Default to the newest public tag's date, so the window is
 #     "since the last thing users received" rather than an arbitrary span.
 if [[ -z "$SINCE" ]]; then
@@ -78,7 +149,7 @@ fi
 if [[ -z "$SINCE" ]]; then
     echo "shipped-coverage: ⊘ SKIPPED — no public release tag found and no"
     echo "                  --since given, so there is no window to check."
-    exit 0
+    exit $HEADLINE_RC
 fi
 
 # --- What the store says shipped in the window.
@@ -100,7 +171,7 @@ if [[ ${#SHIPPED[@]} -eq 0 ]]; then
     echo "shipped-coverage: no dated ships since ${SINCE} — nothing to check."
     [[ "${UNDATED:-0}" -gt 0 ]] && echo "                  (${UNDATED} shipped items carry no date and are not covered;"
     [[ "${UNDATED:-0}" -gt 0 ]] && echo "                   run roadmap_log op:\"backfill_dates\" to date them.)"
-    exit 0
+    exit $HEADLINE_RC
 fi
 
 # --- Which of them a CHANGELOG bullet cites. Position matters: an id in
@@ -119,7 +190,7 @@ if [[ ${#UNCOVERED[@]} -eq 0 ]]; then
     [[ $QUIET -eq 1 ]] || echo "shipped-coverage: all ${#SHIPPED[@]} items shipped since ${SINCE} are recorded."
     [[ "${UNDATED:-0}" -gt 0 && $QUIET -eq 0 ]] && \
         echo "                  (${UNDATED} older shipped items carry no date and were not checked.)"
-    exit 0
+    exit $HEADLINE_RC
 fi
 
 echo "shipped-coverage: ${#UNCOVERED[@]} of ${#SHIPPED[@]} items shipped since ${SINCE}"
