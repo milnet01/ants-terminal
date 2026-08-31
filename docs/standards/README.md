@@ -14,13 +14,20 @@ a correction goes upstream, then `tools/check-standard-mirrors.sh --write`
 re-copies it down.
 
 **A link inside a mirrored half points at the owner's siblings, not at this
-folder's.** Five do not resolve here at all — `releases.md`,
-`spec-format.md`, `changelog-format.md` and
-`skeletons/standard-skeleton.md` are global files this repo does not carry —
-and one, `README.md`, resolves to *this* index rather than the global one it
-means. That is the same gap one hop out, tracked as ANTS-4138; it cannot be
-fixed by editing the mirror, since a mirror that differs from its owner is
-what the gate exists to refuse.
+folder's.** The rule that settles which of them this repo carries (ANTS-4761):
+**mirror every top-level global standard that a mirrored half links to.** That
+rule converges — the mirrored set is closed under its own links, so adding a
+file cannot cascade indefinitely. `roadmap-format.md` and `dependencies.md`
+satisfy it already, as files this repo owns outright.
+
+**`tools/check-standard-mirrors.sh` enforces it** and fails on an unresolvable
+link out of a mirrored half, so the set cannot rot the next time the owner
+gains a sibling. It exempts the two classes the rule deliberately leaves
+behind: a target that leaves the top level (`skeletons/`, `languages/`,
+`../workflow.md`), and `README.md`, which resolves to *this* index rather than
+the global one it means (ANTS-4138). Narrowing that exemption is ANTS-4764.
+None of it can be fixed by editing a mirror, since a mirror that differs from
+its owner is what the gate exists to refuse.
 
 That arrangement dates from 2026-08-12. Until then these were verbatim
 `/start-app` copies kept in sync by discipline, with nothing checking them.
@@ -40,10 +47,18 @@ no longer matches its owner.
 | [testing.md](testing.md) | `~/.claude/standards/testing.md` (+ `languages/cpp.md`) | The corrected prove-a-test-is-real recipe, audit-rule fixtures, the real label set, the bundle-target trap. |
 | [commits.md](commits.md) | `~/.claude/standards/commits.md` (+ `releases.md`) | This repo is public; the `ci-parity.sh` / pre-push gate; `cut-rc.sh` releases; `cut-release --bump-only`. |
 
-**One file is a MIRROR only, with no delta.** [`security.md`](security.md)
-carries nothing of its own — it is the owner and nothing else, under the same
-markers and the same drift gate as the four above. Project-specific security
-rules go in `coding.md`.
+**Some files here are MIRRORS only, with no delta** — the owner and nothing
+else, under the same markers and the same drift gate as the deltas above:
+[`security.md`](security.md), [`releases.md`](releases.md),
+[`local-gate.md`](local-gate.md),
+[`changelog-format.md`](changelog-format.md),
+[`versioning.md`](versioning.md) and [`spec-format.md`](spec-format.md).
+Project-specific security rules go in `coding.md`, not in the first of them.
+
+`security.md` is carried because this project is bound by it directly. The
+rest arrived with the rule above: each is linked from a mirrored half, so
+without a copy those links dead-ended for exactly the reader the mirrors
+exist to serve.
 
 **Two files here are NOT deltas, deliberately.** `roadmap-format.md` is
 **upstream of** its global copy (CFG-0069, 2026-08-12) — the parser, the store

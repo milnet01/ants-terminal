@@ -48431,7 +48431,7 @@ envelope dropped `source`/`path`/`etag`/`total`/`filter`.
   Source: in-session-2026-08-31, surfaced by the ANTS-4759 review-contract gate on CLAUDE.md.
   Lanes: mcp, docs.
 
-- 📋 [ANTS-4761] **The mirrored commits.md carries nine links a public reader cannot follow, defeating the reason the mirrors exist.**
+- ✅ [ANTS-4761] **The mirrored commits.md carries nine links a public reader cannot follow, defeating the reason the mirrors exist.**
   MEASURED. doc_integrity over docs/standards/commits.md reports 9
   broken_link findings, all inside the MIRROR half: 5 to releases.md and 4
   to local-gate.md. Neither file exists under docs/standards/, because
@@ -48458,6 +48458,26 @@ envelope dropped `source`/`path`/`etag`/`total`/`filter`.
 
   CHEAP SIGNAL AVAILABLE: doc_integrity over docs/standards/ already finds
   this, so whichever way it is decided, the check that keeps it fixed exists.
+  Resolved (2026-08-31). Decided the mirror set with a rule rather than
+  per-sibling: mirror every top-level global standard a mirrored half
+  links to. Verified that rule converges by walking the link graph out
+  from the existing mirrors -- the closure is a closed set, and this
+  repo already carries roadmap-format.md and dependencies.md under its
+  own authority, so five new mirrors remained (releases, local-gate,
+  changelog-format, versioning, spec-format).
+
+  Measured with doc_integrity over docs/standards/ kind broken_link:
+  the unresolvable links inside mirrored halves fell from 15 instances
+  to 5, and every survivor is the residual the rule deliberately leaves
+  -- a target that leaves the top level. Filed as ANTS-4764.
+
+  check-standard-mirrors.sh now fails on a dead link out of a mirrored
+  half, exempting those two classes. Proved it fires by removing a
+  mirror and confirming exit 1 naming its three callers, not by reading
+  the code. Two documents the change falsified were corrected: the
+  commits.md delta said releases.md is not mirrored, and README.md
+  listed a stale residual and named security.md as the only mirror
+  with no delta.
   **Layman:** The public copy of a rules document links to two files that were never copied across, so those links go nowhere.
   Kind: doc-fix.
   Source: in-session-2026-08-31, surfaced by the ANTS-4759 review-contract gate on CLAUDE.md.
@@ -48525,6 +48545,40 @@ envelope dropped `source`/`path`/`etag`/`total`/`filter`.
   Kind: chore.
   Source: in-session-2026-08-31, seen while gating an unrelated edit to the same file.
   Lanes: packaging.
+
+- 📋 [ANTS-4764] **Links from a mirrored standard into the owner's subdirectories still dead-end for a public reader.**
+  ANTS-4761 settled the mirror set with a rule that converges: mirror every
+  top-level global standard a mirrored half links to. Applying it closed most
+  of the dead links and, by construction, leaves a residual of a different
+  shape -- links that leave the top level.
+
+  WHAT REMAINS, per doc_integrity over docs/standards/ with kind broken_link:
+  `skeletons/standard-skeleton.md` from documentation.md,
+  `skeletons/spec-skeleton.md` and `skeletons/plan-skeleton.md` from
+  spec-format.md, `languages/cpp.md` and `../workflow.md` from local-gate.md.
+
+  WHY IT WAS NOT FIXED WITH 4761. Each needs a decision 4761's rule does not
+  make. A skeleton is a template, and CLAUDE.md rule 14 puts skeletons out of
+  contract-gate scope -- so whether a public reader needs one is a real
+  question, not an oversight. `languages/cpp.md` is the strongest candidate:
+  docs/standards/README.md already names it as part of coding.md's owner, so
+  this project cites it as binding and a public reader cannot open it.
+  `../workflow.md` is a foundation document rather than a standard, and
+  mirroring it would put the mirror set outside standards/ entirely.
+
+  CONSTRAINT THAT SHAPES ANY FIX: mirroring a subdirectory file means
+  docs/standards/languages/ and docs/standards/skeletons/ exist, which
+  check-standard-mirrors.sh does not currently walk -- it globs
+  docs/standards/*.md only. So this is a script change as well as a decision.
+
+  CHECK ALREADY IN PLACE: check-standard-mirrors.sh now fails on an
+  unresolvable link from a mirrored half, exempting exactly these two classes
+  (a target containing a slash, and README.md). Narrowing that exemption is how
+  this item would be closed.
+  **Layman:** A few links in the public copies of the rule documents still go nowhere, because they point into folders that were not copied across.
+  Kind: doc-fix.
+  Source: in-session-2026-08-31, the deliberate residual left by ANTS-4761.
+  Lanes: docs.
 
 ### Ants MCP feedback from CC sessions — 2026-08-28 triage
 

@@ -164,6 +164,13 @@ for security-relevant changes.
 
 ### Fixed
 
+- **The public copies of the shared standards now carry every sibling they link to, so their cross-references resolve for a reader who has only the checkout** (ANTS-4761)
+  The mirrored half of a standard is a verbatim copy, so a link in it
+  pointing at a global file this repo did not carry simply dead-ended.
+  The mirror set is now closed under its own links, and
+  tools/check-standard-mirrors.sh fails on a link out of a mirrored
+  half that this repo does not carry.
+
 - **Two false-positive compiler warnings no longer appear on every build** (ANTS-4544)
   GCC reported a possible null dereference on a line that checks for null, which it loses sight of when optimising. Scoped suppression, same as the three earlier instances of this class. Reproduced before being silenced and confirmed gone after.
 

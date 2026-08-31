@@ -11,8 +11,8 @@
 > edit that half.** A correction goes upstream, then
 > `tools/check-standard-mirrors.sh --write` re-copies it down;
 > `tools/hooks/pre-commit` refuses a commit whose mirror has drifted from its
-> owner (ANTS-4133). Note that `releases.md` is **not** mirrored — only the
-> four deltas' own owners plus `security.md` are.
+> owner (ANTS-4133). `releases.md` is mirrored here too, under the rule
+> [`README.md`](README.md) states (ANTS-4761).
 
 **Why this file is a delta (2026-08-12).** It was a verbatim `/start-app`
 copy, last touched 2026-04-30, and it had drifted into instructing

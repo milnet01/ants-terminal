@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # ANTS-4133 — is each mirrored global standard still identical to its owner?
 #
-#   tools/check-standard-mirrors.sh           # check; exit 1 on drift
+#   tools/check-standard-mirrors.sh           # check; exit 1 on drift or dead link
 #   tools/check-standard-mirrors.sh --write   # re-copy each owner into its mirror
 #
 # WHY a mirror exists at all: this repo is PUBLIC, and the four delta standards
@@ -86,6 +86,35 @@ for f in docs/standards/*.md; do
     fi
 done
 
+# ANTS-4761 - a link out of a mirrored half must resolve inside this folder.
+# The mirror is verbatim, so a dead link here cannot be fixed by rewriting it:
+# that would fail the drift check above. The only fix is to mirror the missing
+# sibling, which is the rule docs/standards/README.md states.
+#
+# Exempt by that rule: a target that leaves the top level (skeletons/,
+# languages/, ../workflow.md), and README.md, which resolves to this index
+# rather than the global one it means. Narrowing the exemption is ANTS-4764.
+dead_links=0
+for f in docs/standards/*.md; do
+    [ -f "$f" ] || continue
+    begin=$(grep -nE "$BEGIN_RE" "$f" | head -1 | cut -d: -f1)
+    [ -n "$begin" ] || continue
+    end=$(grep -nE "$END_RE" "$f" | head -1 | cut -d: -f1)
+    { [ -n "$end" ] && [ "$end" -gt "$begin" ]; } || continue
+
+    while read -r target; do
+        [ -n "$target" ] || continue
+        case "$target" in */* | README.md) continue ;; esac
+        [ -e "docs/standards/$target" ] && continue
+        echo "$f: DEAD LINK to '$target' - not mirrored into docs/standards/" >&2
+        dead_links=$((dead_links + 1))
+    done <<EOF
+$(sed -n "$((begin + 1)),$((end - 1))p" "$f" \
+    | grep -oE '\]\([A-Za-z0-9_./-]+\.md[^)]*\)' \
+    | sed 's/^](//; s/[)#].*//' | sort -u)
+EOF
+done
+
 if [ "$status" -ne 0 ]; then
     cat >&2 <<'EOF'
 
@@ -97,8 +126,23 @@ second standard: fix the owner under ~/.claude/standards/, then run
 to re-copy it down. Do NOT edit the text between the MIRROR markers.
 Bypass for one commit: git commit --no-verify (or ANTS_PRECOMMIT_NO_MIRRORS=1).
 EOF
+fi
+
+if [ "$dead_links" -ne 0 ]; then
+    cat >&2 <<'XEOF'
+
+A mirrored standard links to a global sibling this repo does not carry, so the
+link dead-ends for the public reader the mirror exists to serve. Do NOT edit
+the link: the mirror is verbatim and the drift gate refuses a copy that
+differs from its owner. Mirror the missing sibling instead - add
+docs/standards/<name>.md carrying the MIRROR markers, then run --write.
+Bypass for one commit: git commit --no-verify (or ANTS_PRECOMMIT_NO_MIRRORS=1).
+XEOF
+fi
+
+if [ "$status" -ne 0 ] || [ "$dead_links" -ne 0 ]; then
     exit 1
 fi
 
-echo "check-standard-mirrors: $checked in sync, $skipped skipped"
+echo "check-standard-mirrors: $checked in sync, $skipped skipped, links resolve"
 exit 0
