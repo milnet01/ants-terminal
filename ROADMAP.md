@@ -33729,6 +33729,60 @@ in each bullet, not just the reporter's symptom.
   Source: release-audit failure on 5dcebaef, diagnosed in-session 2026-08-28.
   Lanes: ci, packaging.
 
+- ✅ [ANTS-4765] **check-shipped-coverage.sh re-reports a triage decision already recorded on the item, so every run re-triages it.**
+  MEASURED. The gate listed 13 shipped items no CHANGELOG bullet cites.
+  Twelve of them already carried a line in their own roadmap body reading
+  "Release note (2026-08-28): no CHANGELOG entry, deliberately -- <reason>",
+  written by an earlier triage pass. Only one was genuinely undecided.
+
+  WHY IT MATTERS. The gate closes by telling the reader to say so "in the
+  release report", which is a per-release act that dies with the report. The
+  practice that actually emerged writes the decision into the item, where it
+  travels with the item and outlives the release. That is the better home --
+  but the gate cannot read it, so a settled decision is re-reported every run
+  and the next session re-triages the whole list from scratch. Doing that here
+  cost a full pass over twelve items to reach twelve answers already on record.
+
+  It also erodes the gate. A list that is mostly already-answered trains the
+  reader to skim it, which is how the one real item in it gets missed.
+
+  FIX: read the item body from the store the gate already opens, and split the
+  uncovered list into decided and undecided. Report the decided count, list only
+  the undecided, and fail only on those. The exact form the gate names in its
+  own output becomes the recorded convention, so it is discoverable from the
+  failure rather than from a standard nobody opens.
+
+  NOT A ROADMAP-FORMAT CHANGE. The marker is prose in the body, not a new
+  trailer column, so it needs no schema rung -- which matters here, because
+  CLAUDE.md records a kSchemaVersion bump as a machine-wide one-way door.
+  Resolved (2026-08-31). The gate now reads each uncovered item's body
+  from the store it already opens, in one query, and splits the list into
+  decided and undecided. It fails only on the undecided, and always prints
+  the decided count -- a suppression the reader cannot see is
+  indistinguishable from a gate that stopped checking.
+
+  The closing advice changed with it. It used to say to record the decision
+  "in the release report", which dies with the report; it now names the
+  exact line to append and the verb that writes it, so the convention is
+  discoverable from the failure rather than from a standard nobody opens.
+
+  PROVEN IN BOTH DIRECTIONS rather than asserted. With the ANTS-4761 bullet
+  temporarily removed from the CHANGELOG the gate exits 1 and names it,
+  while the 13 decided items stay suppressed and counted; restored, it
+  exits 0. The CHANGELOG was verified byte-identical afterwards.
+
+  Measured effect on the run that prompted it: 13 uncovered became 1
+  uncovered plus 13 decided, and that 1 was the only item in the list
+  without an answer already on record.
+
+  Release note (2026-08-31): no CHANGELOG entry, deliberately -- a
+  maintainer-side release gate; nothing a user of the product observes.
+  Same call as ANTS-4652.
+  **Layman:** A release check keeps flagging work that was already looked at and deliberately left out of the release notes.
+  Kind: enhancement.
+  Source: in-session-2026-08-31, found while triaging the gate's own uncovered list.
+  Lanes: ci, changelog.
+
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-08-14 triage
 
 Un-triaged findings drained from the shared `*_Ants_MCP_Feedback.md` corpus
@@ -39962,6 +40016,10 @@ are closed inline in the feedback files rather than filed here.
 
   Nothing built here. Verified in the tree, not from ANTS-4629's own
   closing note.
+  Release note (2026-08-31): no CHANGELOG entry, deliberately — nothing
+  was built here. The fix shipped as ANTS-4629, whose entry is in the
+  CHANGELOG already; an entry here would announce the same change twice
+  under an id that changed no code.
   **Layman:** Writing a changelog line whose title already names the item number prints that number twice.
   Kind: fix.
   Source: in-session-2026-08-19, hit while logging ANTS-4505/4506.

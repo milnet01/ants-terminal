@@ -25,9 +25,14 @@
 # headline already reads as a delivered change, which is why this reports
 # rather than refuses.
 #
-# Exit 0 = every shipped item in the window is recorded and no bullet restates
-# its defect, or the check could not run and said so. Exit 1 = uncovered items
-# or copied headlines, listed.
+# ANTS-4765 adds the third: an item whose body already records a deliberate
+# "no CHANGELOG entry" decision is reported as decided rather than uncovered,
+# and does not fail the gate. The decision lives on the item because that is
+# where it survives the release it was taken for.
+#
+# Exit 0 = every shipped item in the window is recorded or decided and no
+# bullet restates its defect, or the check could not run and said so. Exit 1 =
+# undecided uncovered items or copied headlines, listed.
 set -uo pipefail
 
 ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
@@ -178,16 +183,43 @@ fi
 #     continuation prose is a cross-reference, not a claim that it shipped, so
 #     only a line STARTING a bullet counts — the same rule cut-release Phase 0f
 #     applies in the other direction.
+# --- ANTS-4765: a decision already recorded on the item is not an omission.
+#     An item deliberately kept out of the release notes gets that decision
+#     written into its own roadmap body, where it travels with the item and
+#     outlives any one release report. Without reading it, this gate re-listed
+#     every settled decision on every run, and the next session re-triaged the
+#     lot to reach answers already on record — which also trains the reader to
+#     skim the list the one real entry is hiding in.
+declare -A DECIDED_SET=()
+while IFS= read -r d; do
+    [[ -n "$d" ]] && DECIDED_SET["$d"]=1
+done < <(q "SELECT id FROM item
+            WHERE project_id=${PROJECT_ID}
+              AND body LIKE '%Release note (%no CHANGELOG entry%';")
+
 UNCOVERED=()
+DECIDED=()
 for ID in "${SHIPPED[@]}"; do
     [[ -z "$ID" ]] && continue
-    if ! grep -qE "^[[:space:]]*[-*][[:space:]].*\(${ID}\)" "$CHANGELOG"; then
+    grep -qE "^[[:space:]]*[-*][[:space:]].*\(${ID}\)" "$CHANGELOG" && continue
+    if [[ -n "${DECIDED_SET[$ID]:-}" ]]; then
+        DECIDED+=("$ID")
+    else
         UNCOVERED+=("$ID")
     fi
 done
 
+# Report the decided ones as a count, never silently: a suppression the reader
+# cannot see is indistinguishable from a gate that stopped checking.
+decided_note() {
+    [[ ${#DECIDED[@]} -eq 0 || $QUIET -eq 1 ]] && return 0
+    echo "shipped-coverage: ${#DECIDED[@]} more carry a recorded \"no CHANGELOG entry\""
+    echo "                  decision in the roadmap and are not counted as uncovered."
+}
+
 if [[ ${#UNCOVERED[@]} -eq 0 ]]; then
-    [[ $QUIET -eq 1 ]] || echo "shipped-coverage: all ${#SHIPPED[@]} items shipped since ${SINCE} are recorded."
+    [[ $QUIET -eq 1 ]] || echo "shipped-coverage: all ${#SHIPPED[@]} items shipped since ${SINCE} are recorded or decided."
+    decided_note
     [[ "${UNDATED:-0}" -gt 0 && $QUIET -eq 0 ]] && \
         echo "                  (${UNDATED} older shipped items carry no date and were not checked.)"
     exit $HEADLINE_RC
@@ -202,9 +234,16 @@ for ID in "${UNCOVERED[@]}"; do
     printf '  %-12s %s\n' "$ID" "${LINE:0:96}"
 done
 echo
+decided_note
+echo
 echo "Each is either release-note-worthy — add it with changelog_log — or"
-echo "deliberately internal, in which case say so in the release report rather"
-echo "than leaving it to look like an oversight."
+echo "deliberately internal, in which case record that on the item so this gate"
+echo "stops asking, by appending a line to its roadmap body of the form:"
+echo
+echo "  Release note (YYYY-MM-DD): no CHANGELOG entry, deliberately — <reason>"
+echo
+echo "Write it with roadmap_log op:\"annotate\". Recording it on the item rather"
+echo "than in the release report keeps the reasoning with the work."
 [[ "${UNDATED:-0}" -gt 0 ]] && \
     echo "(${UNDATED} older shipped items carry no date and were not checked.)"
 exit 1
