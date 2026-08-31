@@ -419,10 +419,11 @@ misreading; if in doubt, do the same rather than reasoning from the header.
   § 0 records why. It owns a spec's **shape**; global `spec-format.md` § 1
   owns whether a spec is needed at all.
 
-Project sub-specs. The list below is illustrative, not the roster —
-[`docs/standards/README.md`](docs/standards/README.md) is the index, and a
-file there binds you whether or not it is named below, unless it marks itself
-superseded (as `mcp-errors.md` does). Most have no global counterpart;
+Project sub-specs. The list below is illustrative — **`docs/standards/` itself
+is the roster**, and a file there binds you whether or not it is named below,
+unless it marks itself superseded (as `mcp-errors.md` does). Do not treat
+[`docs/standards/README.md`](docs/standards/README.md) as the index: it omits
+seven of the files (ANTS-4762). Most have no global counterpart;
 `dependencies.md` is the exception and its entry says so:
 
 - [`mcp-error-codes.md`](docs/standards/mcp-error-codes.md) (ANTS-1353) —
@@ -471,8 +472,9 @@ deprecated (historical records only).
 SemVer. **`project(... VERSION X.Y.Z)` in `CMakeLists.txt` is the single
 source of truth** — `ANTS_VERSION` propagates everywhere; never hardcode
 versions in `.cpp` / `.h`. Every bump touches `CMakeLists.txt` and
-`README.md` ("Current version") — the `CHANGELOG.md` section is rolled by
-`new-rc` and dated by `promote`, never by the bump (see below); use
+`README.md` ("Current version") — the `CHANGELOG.md` **version heading** is
+rolled by `new-rc` and dated by `promote`, never by the bump; bullets in the
+still-open `[Unreleased]` **are** authored at bump time (see below); use
 `cut-release --bump-only` (its `.claude/bump.json` covers the packaging
 files). **That skill replaced both
 `/bump` and `/release`, which were deleted 2026-08-13** — the old names are
@@ -480,8 +482,8 @@ gone, not aliased, so a session invoking them gets nothing. Every cycle
 also **re-checks README.md's prose, not just its version banner** — a
 `bump.json` todo owns the criteria; update it only when a user-visible
 claim has actually drifted (the tool count is the one
-nothing else verifies). Completed `ROADMAP.md` items reach the CHANGELOG as
-an authored summary — the copy rule below owns what that means.
+nothing else verifies). Completed `ROADMAP.md` items reach the CHANGELOG as a
+summary the copy rule below governs.
 Update `PLUGINS.md` in the same commit when the `ants.*` Lua surface
 changes.
 
@@ -515,8 +517,10 @@ the graph, so the gate is a near-full rebuild (630 pending steps on
 the corruption case CLAUDE.md warns about elsewhere. It survived
 (`ninja -C build -n` exit 0, `-t recompact` clean), but check that before
 doing anything else if it happens. `--skip-build` skips the gate, not the
-tagging. **Never leave the bump to author a CHANGELOG section** —
-`.claude/bump.json` todo 2 explains why; `new-rc` owns that roll.
+tagging. **Never leave the bump to author or date a CHANGELOG _version_
+section** — `.claude/bump.json` todo 2 explains why; `new-rc` owns that roll.
+Bullets under the open `[Unreleased]` are a different thing and are authored
+as work lands, the bump-time coverage run included.
 
 **Check the roadmap store for shipped-but-unrecorded work at bump time**
 (ANTS-4714): `bash tools/check-shipped-coverage.sh` lists every item the
@@ -538,21 +542,25 @@ fills those from git history.
 **A CHANGELOG entry states what SHIPPED, never what was wrong — do not copy a
 roadmap headline that states a PROBLEM into the bullet** (ANTS-4759). A defect
 item's headline states one, so copying it puts the bug in the release notes
-where the fix belongs: `### Fixed` ends up announcing "mutation_probe keeps
-mutating the source after the transport has timed out". `releases.md` § 2 makes the
-changelog section the description of what shipped, and that is the line this
-breaches. It is a REFLEX, not a one-off — 14 of 56 `[Unreleased]` bullets were
+where the fix belongs — before this was fixed, `### Fixed` announced
+"mutation_probe keeps mutating the source after the transport has timed out".
+`releases.md` § 2 makes the changelog section the description of what shipped,
+and that is the line this breaches. It is a REFLEX, not a one-off — 14 of 56 `[Unreleased]` bullets were
 verbatim copies on 2026-08-31, written across seven separate commits, and
 `changelog_log op:"add_from_roadmap"` produces one by design (ANTS-1868 fixed
-only the line-wrapping half). So prefer `op:"add"` with an authored summary
+only the line-wrapping half) — **and so does `op:"add_batch"` for an entry
+given only an id**, which auto-detects to that same path, so the entry's shape
+decides rather than an op you chose. Prefer `op:"add"` with an authored summary
 wherever the headline states a problem — which is not only the `fix` kinds: 6
 of the 14 were `enhancement`, filed as the gap they closed. Keep
 `add_from_roadmap` for an item whose headline already reads as a delivered
 change. `tools/check-shipped-coverage.sh` reports the copies alongside the
 uncovered items and **exits non-zero on either** — it is `cut-rc.sh` that
 chooses not to block, so do not wire the bump-time run into a `set -e` chain
-expecting it to pass. It compares **byte-identically**, so a reworded headline
-that still states the problem is not caught: check those yourself.
+expecting it to pass. It compares **byte-identically**, which cuts both ways:
+a reworded headline that still states the problem is not caught, and a copy
+this rule PERMITS is flagged anyway. It reports byte-identity, not the rule —
+so review each hit rather than rewording it on sight.
 
 ## Key design decisions (non-obvious)
 

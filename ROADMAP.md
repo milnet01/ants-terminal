@@ -48420,6 +48420,38 @@ envelope dropped `source`/`path`/`etag`/`total`/`filter`.
   Source: in-session-2026-08-31, surfaced by the ANTS-4759 review-contract gate on CLAUDE.md.
   Lanes: docs.
 
+- 📋 [ANTS-4762] **docs/standards/README.md calls itself the index and omits seven of the standards it indexes.**
+  MEASURED. docs/standards/ holds 24 markdown files. Seven are named
+  nowhere in its own README.md: ci-build.md, config-hot-reload.md,
+  dependencies.md, mcp-behavioural-notes.md, mcp-config-keys.md, menus.md,
+  roadmap-data-model.md.
+
+  FOUR OF THOSE ARE ROUTED BY NOTHING AT ALL -- ci-build.md,
+  config-hot-reload.md, menus.md and roadmap-data-model.md are named
+  neither in README.md nor in CLAUDE.md. So a session adding a QMenu reads
+  CLAUDE.md, follows dialogs.md because that is what CLAUDE.md names, never
+  learns menus.md exists, and cannot tell it has breached it. Same shape for
+  a ci.yml edit, a hot-reloadable config key, and the roadmap DB schema.
+
+  HOW IT SURFACED, which is worth recording. A loop-2 fix to CLAUDE.md
+  pointed conformers at README.md as "the index" precisely to avoid listing
+  files inline -- and loop 3 found the index does not contain them either.
+  The fix moved the roster to a document that is not one. CLAUDE.md now
+  names the DIRECTORY as the roster instead, which is true today and stays
+  true as files are added; this item is the other half.
+
+  FIX: add the seven to README.md's tables. Then the index claim is true and
+  CLAUDE.md can point at it again.
+
+  WORTH A CHECK, not just a fix: nothing reports an unindexed standard, so
+  this recurs silently every time a file lands. doc_integrity already walks
+  the directory; a parity check between the files present and the files the
+  README names is the same shape as its existing toc_gap kind.
+  **Layman:** The contents page for the project's rule documents is missing seven of them, so those rules are easy to miss entirely.
+  Kind: doc-fix.
+  Source: in-session-2026-08-31, found by a cold lane during the ANTS-4759 gate on CLAUDE.md.
+  Lanes: docs.
+
 ### Ants MCP feedback from CC sessions — 2026-08-28 triage
 
 - 📋 [ANTS-4746] **A verb that reads this session's completed subagent returns, so a fan-out that outlives a compaction is recoverable.**
