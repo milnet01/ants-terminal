@@ -26,13 +26,13 @@ index="docs/standards/README.md"
 
 missing=()
 counted=0
-for f in docs/standards/*.md; do
+while IFS= read -r f; do
     [ -f "$f" ] || continue
     base="${f##*/}"
     [ "$base" = "README.md" ] && continue
     counted=$((counted + 1))
-    grep -qF "$base" "$index" || missing+=("$base")
-done
+    grep -qF "$base" "$index" || missing+=("${f#docs/standards/}")
+done < <(find docs/standards -type f -name '*.md' | sort)
 
 if [ ${#missing[@]} -eq 0 ]; then
     echo "check-standards-index: $counted standards, all named in $index"

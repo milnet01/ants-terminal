@@ -49,7 +49,11 @@ status=0
 checked=0
 skipped=0
 
-for f in docs/standards/*.md; do
+# ANTS-4764 — mirrors live in subdirectories too (docs/standards/languages/),
+# so the walk cannot be a flat glob.
+mapfile -t STANDARD_FILES < <(find docs/standards -type f -name '*.md' | sort)
+
+for f in "${STANDARD_FILES[@]}"; do
     [ -f "$f" ] || continue
     grep -qE "$BEGIN_RE" "$f" || continue
 
@@ -91,21 +95,35 @@ done
 # that would fail the drift check above. The only fix is to mirror the missing
 # sibling, which is the rule docs/standards/README.md states.
 #
-# Exempt by that rule: a target that leaves the top level (skeletons/,
-# languages/, ../workflow.md), and README.md, which resolves to this index
-# rather than the global one it means. Narrowing the exemption is ANTS-4764.
+# The set is a top-level sibling plus languages/, which ANTS-4764 added because
+# the mirrored coding.md names those files as owning this project's C++, Qt and
+# Python spellings. Out of the set by rule: a skeleton, which is a template to
+# copy rather than a rule to conform to; a path leaving standards/ altogether;
+# an illustrative path inside a quoted example; and README.md, which resolves to
+# this index rather than the global one it means (ANTS-4138).
 dead_links=0
-for f in docs/standards/*.md; do
+for f in "${STANDARD_FILES[@]}"; do
     [ -f "$f" ] || continue
     begin=$(grep -nE "$BEGIN_RE" "$f" | head -1 | cut -d: -f1)
     [ -n "$begin" ] || continue
     end=$(grep -nE "$END_RE" "$f" | head -1 | cut -d: -f1)
     { [ -n "$end" ] && [ "$end" -gt "$begin" ]; } || continue
 
+    dir="${f%/*}"
     while read -r target; do
         [ -n "$target" ] || continue
-        case "$target" in */* | README.md) continue ;; esac
-        [ -e "docs/standards/$target" ] && continue
+        # Relative to the mirror's own directory, so a subdirectory mirror
+        # resolves its siblings correctly.
+        [ -e "$dir/$target" ] && continue
+        # Classify by what is IN the mirror set, not by listing exclusions: a
+        # top-level sibling, and languages/. Anything else carrying a directory
+        # component is out of it by rule — a skeleton, a path leaving
+        # standards/, or an illustrative path inside a quoted example.
+        case "$target" in
+            README.md) continue ;;   # resolves to this index (ANTS-4138)
+            languages/*) ;;          # carried since ANTS-4764 — must resolve
+            */*) continue ;;
+        esac
         echo "$f: DEAD LINK to '$target' - not mirrored into docs/standards/" >&2
         dead_links=$((dead_links + 1))
     done <<EOF

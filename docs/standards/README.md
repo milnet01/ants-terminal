@@ -47,9 +47,9 @@ no longer matches its owner.
 
 | Delta file | Global owner | What the project file adds |
 |----------|--------|--------|
-| [coding.md](coding.md) | `~/.claude/standards/coding.md` (+ `languages/cpp.md`, `qt.md`, `python.md`) | House style (`s_` statics, K&R, `#pragma once`, signals/slots never sibling calls) and `setOwnerOnlyPerms()` in `src/secureio.h`. |
+| [coding.md](coding.md) | `~/.claude/standards/coding.md` (+ [`languages/cpp.md`](languages/cpp.md), [`qt.md`](languages/qt.md), [`python.md`](languages/python.md)) | House style (`s_` statics, K&R, `#pragma once`, signals/slots never sibling calls) and `setOwnerOnlyPerms()` in `src/secureio.h`. |
 | [documentation.md](documentation.md) | `~/.claude/standards/documentation.md` | § 1.8 the `doc-examples` marker contract, § 3 ROADMAP/CHANGELOG routing, § 7 Qt accessibility, § 9 the fold-in heading. Section numbers are preserved for inbound links. |
-| [testing.md](testing.md) | `~/.claude/standards/testing.md` (+ `languages/cpp.md`) | The corrected prove-a-test-is-real recipe, audit-rule fixtures, the real label set, the bundle-target trap. |
+| [testing.md](testing.md) | `~/.claude/standards/testing.md` (+ [`languages/cpp.md`](languages/cpp.md)) | The corrected prove-a-test-is-real recipe, audit-rule fixtures, the real label set, the bundle-target trap. |
 | [commits.md](commits.md) | `~/.claude/standards/commits.md` (+ `releases.md`) | This repo is public; the `ci-parity.sh` / pre-push gate; `cut-rc.sh` releases; `cut-release --bump-only`. |
 
 **Some files here are MIRRORS only, with no delta** — the owner and nothing
@@ -64,6 +64,14 @@ Project-specific security rules go in `coding.md`, not in the first of them.
 rest arrived with the rule above: each is linked from a mirrored half, so
 without a copy those links dead-ended for exactly the reader the mirrors
 exist to serve.
+
+**`languages/` is mirrored too** (ANTS-4764) — the `coding.md` table above
+names those three files as owning this project's C++, Qt and Python
+spellings, so a reader who could not open them was missing the rules that
+decide how the code is actually written. They are the one place the mirror
+set reaches below the top level. **A skeleton is not mirrored**: it is a
+template to copy rather than a rule to conform to, and this project owns
+spec shape itself in `specs.md`. Nor is a path that leaves `standards/`.
 
 **Two files here are NOT deltas, deliberately.** `roadmap-format.md` is
 **upstream of** its global copy (CFG-0069, 2026-08-12) — the parser, the store

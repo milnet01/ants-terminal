@@ -48665,7 +48665,7 @@ envelope dropped `source`/`path`/`etag`/`total`/`filter`.
   Source: in-session-2026-08-31, seen while gating an unrelated edit to the same file.
   Lanes: packaging.
 
-- 📋 [ANTS-4764] **Links from a mirrored standard into the owner's subdirectories still dead-end for a public reader.**
+- ✅ [ANTS-4764] **Links from a mirrored standard into the owner's subdirectories still dead-end for a public reader.**
   ANTS-4761 settled the mirror set with a rule that converges: mirror every
   top-level global standard a mirrored half links to. Applying it closed most
   of the dead links and, by construction, leaves a residual of a different
@@ -48694,6 +48694,45 @@ envelope dropped `source`/`path`/`etag`/`total`/`filter`.
   unresolvable link from a mirrored half, exempting exactly these two classes
   (a target containing a slash, and README.md). Narrowing that exemption is how
   this item would be closed.
+  Resolved (2026-08-31). The residual is decided rather than merely
+  reduced, and the two halves went opposite ways on their merits.
+
+  MIRRORED: languages/cpp.md, qt.md and python.md. The deciding fact was
+  not the broken link -- it was that the mirrored coding.md's own table
+  names all three as owning this project's C++, Qt and Python spellings,
+  so a public reader was missing the rules that decide how the code is
+  written, not a footnote. Measured before deciding: the three carry no
+  outbound links at all, so nothing cascades, and this repo has C++ and
+  Python source in quantity, so all three genuinely bind.
+
+  NOT MIRRORED, with reasons: a skeleton is a template to copy rather
+  than a rule to conform to, CLAUDE.md rule 14 keeps skeletons out of
+  contract-gate scope, and this project owns spec shape itself in
+  specs.md. ../workflow.md is a lifecycle document rather than a
+  standard, and carrying it would put the mirror set outside standards/
+  with no natural boundary after that.
+
+  The script change the item predicted was needed and is done: both
+  checks now walk subdirectories instead of a flat glob, and the link
+  check resolves a target against the mirror's OWN directory so a
+  subdirectory mirror resolves its siblings correctly.
+
+  THE EXEMPTION IS NARROWED, which was the item's own closing condition.
+  It classified by exclusion -- any target containing a slash -- so it
+  would have waved through a missing languages/ mirror. It now classifies
+  by what is IN the set (a top-level sibling, plus languages/), and
+  anything else with a directory component is out by rule. Proved by
+  removing languages/cpp.md and watching local-gate.md's link get caught,
+  which the old form could not do.
+
+  That narrowing also surfaced docs/x.md, an illustrative path inside a
+  quoted log row that doc_integrity suppresses as a quotation and a shell
+  check cannot recognise. Classifying by membership handles it correctly
+  rather than needing a special case.
+
+  MEASURED with doc_integrity: unresolvable links inside mirrored halves
+  went 15 -> 5 (ANTS-4761) -> 4, and all 4 remaining are the deliberate
+  residual above, recorded in docs/standards/README.md.
   **Layman:** A few links in the public copies of the rule documents still go nowhere, because they point into folders that were not copied across.
   Kind: doc-fix.
   Source: in-session-2026-08-31, the deliberate residual left by ANTS-4761.

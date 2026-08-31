@@ -164,6 +164,13 @@ for security-relevant changes.
 
 ### Fixed
 
+- **The mirrored standards now include the C++, Qt and Python spellings that coding.md names as owning how this project's code is written** (ANTS-4764)
+  A reader with only the checkout could open coding.md, read that the
+  language spellings live elsewhere, and have no way to follow it.
+  What stays out of the mirror set is now a stated decision rather
+  than an omission: a skeleton is a template to copy, not a rule to
+  conform to, and docs/standards/README.md records the boundary.
+
 - **The public copies of the shared standards now carry every sibling they link to, so their cross-references resolve for a reader who has only the checkout** (ANTS-4761)
   The mirrored half of a standard is a verbatim copy, so a link in it
   pointing at a global file this repo did not carry simply dead-ended.
