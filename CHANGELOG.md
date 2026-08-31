@@ -137,6 +137,9 @@ for security-relevant changes.
 
 ### Changed
 
+- **The roadmap high-water scan is 41% faster on a large roadmap** (ANTS-4426)
+  `maxDeclaredId` — the scan behind `roadmap_query`'s `file_ahead_of_store` witness and the allocator's floor — ran a regular expression once per line of the file, 62,918 times on this project's 4.96 MB roadmap. It is now a character check with identical semantics: the scan drops from 22.6 ms to 13.3 ms, and a cache-miss roadmap read on a migrated project from ~26.5 ms to ~16.6 ms. Verified by verdict diff over 400 markdown files and 234,692 lines, with no verdict moved.
+
 - **A roadmap note with no line breaks of its own is wrapped to match the corpus** (ANTS-4532)
   It was written verbatim, so a caller who did not pre-wrap left one very long line in a file where every other body is wrapped. Prose carrying no newline has no structure to preserve, so it is wrapped at the width used around it; a note that brought its own line breaks is still written exactly as given. The wrap runs after the trailer-key guard, never before it — moving a word to the start of a line could otherwise manufacture a declaration the caller never wrote.
 

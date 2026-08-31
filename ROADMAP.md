@@ -32620,6 +32620,49 @@ against current source before filing.
   beside roadmap_read_seam's Inv3Latency, not a claim in this body.
   **Layman:** The roadmap tools now avoid opening the big 3 MB file just to ask "is this project in the database?" — but three places still read the whole thing straight afterwards for their own reasons, so those three got no faster.
   Kind: perf.
+  Progress (2026-08-31): MEASURED at last, and the measurement corrects
+  this item's framing. Site 1's cost is NOT mainly the read.
+
+  On the live corpus (4.96 MB, 62,918 lines, 2,397 items), linked against
+  the project's own libs and timed 5x on a quiet box:
+
+    read (file -> QString)   3.9 ms
+    maxDeclaredId (witness) 22.6 ms   <- the ANTS-4402 scan
+    buildIndex (section)     5.2 ms
+
+  So the read this item is named for is 15% of site 1's cost and the scan on
+  top of it is 85%. "ANTS-3863's saving does not reach them" is true and
+  understates site 1 by 5.8x: removing the read entirely would leave 22.6 ms
+  standing. Within the scan the split was fenceMask 9.0, the per-line bullet
+  regex 7.1, split 5.5, the id regex 1.2.
+
+  SHIPPED HERE: the per-line predicate. maxDeclaredId ran the regex
+  `^ {0,3}[-*+] ` once per LINE -- 62,918 QRegularExpression invocations per
+  scan. Replaced with rfIsTopLevelListItem(), a character check with
+  identical semantics: 7.28 ms -> 0.35 ms on that loop, whole scan
+  22.6 -> 13.3 ms (-41%), migrated-path cache miss ~26.5 -> ~16.6 ms (-37%).
+  Same max id (4762) before and after.
+
+  Verdict diff over the whole population rather than a sample: 400 markdown
+  files, 234,692 lines, 0 verdicts moved. Guarded by
+  RoadmapFoldIn.CorpusHighWaterCountsOnlyDeclaringLines, seen RED under a
+  "every non-empty line declares" mutant with the right blast radius (1 of
+  22, not 22 of 22).
+
+  METHOD NOTE worth keeping: the first mutation run rebuilt test_core and
+  reported the test did not guard the predicate at all. Wrong bundle -- these
+  suites build into test_audit, which build_target_for says outright and
+  which is not guessable from the path. The false conclusion looked exactly
+  like a real coverage gap.
+
+  STILL OPEN, and this item's headline stays true: sites 1 and 3 both still
+  read the whole body. Neither is removable within this item, for the reasons
+  already in this body -- site 1 needs a render fingerprint (a schema change,
+  and kSchemaVersion is a machine-wide one-way door), site 3 needs the
+  heading index sourced from the store's section table. What changed today is
+  that the remaining prize is smaller than it looked: 3.9 ms at site 1, and
+  site 3's own full() is already free since ANTS-4431 memoised the body
+  through one shared provider, leaving only buildIndex's 4.6 ms.
   Source: :bulletsFromStore() instead of parsing storeText.full(), so op:append's migrated path reads no body at all.
 
 - 📋 [ANTS-4427] **apply_edits: a batch of line-range edits resolves against the mutating file, so every edit after the first fails with no hint saying why.**
@@ -60683,6 +60726,35 @@ here.)
   maxDeclaredId is shared with the allocator's floor and a stricter scan
   that misses a real declaration would hand out a colliding id — a far
   worse failure than the false warning it fixes.
+  Note (2026-08-31, from ANTS-4426's perf pass): NO TEST GUARDS THE INDENT
+  CAP, so the change this item asks for is currently unwitnessed in both
+  directions.
+
+  INV-6c (tests/features/roadmap_fold_in/spec.md) says the scan counts an id
+  only on a top-level list item with up to three leading spaces, and names
+  CorpusHighWaterCountsOnlyDeclaringLines as its witness. Mutating the cap
+  from 3 to 4 leaves that test GREEN -- verified against test_audit, the
+  bundle that actually owns it.
+
+  The reason is the fixture. Its three excluded positions are prose, an
+  indented example and a fence, and the indented example is
+  `    changelog_log {op:"add", id:"ANTS-9998",` -- four spaces then a
+  letter. It carries no list marker, so it is excluded for a different
+  reason than its indent and the boundary is never exercised. A
+  four-space-indented BULLET holding a high id would raise the high water
+  and nothing would fail.
+
+  That matters here specifically: a nested body sub-bullet in this corpus is
+  indented two spaces, which is INSIDE the cap, which is exactly why it
+  counts today and why this item exists. So whoever tightens the predicate
+  should add the fixture case first -- a deeper-indented bullet with an id
+  above the real one -- or the tightening ships with no red run to prove it
+  did anything.
+
+  The predicate is now rfIsTopLevelListItem() in src/roadmapfoldin.cpp
+  (ANTS-4426 replaced the regex with a character check for speed; semantics
+  unchanged, 0 verdicts moved over 234,692 lines). It is a smaller and
+  clearer place to make the change than the regex was.
   **Layman:** The check that spots a roadmap file running ahead of the database can still be fooled by an example id written as an indented sub-point inside an entry.
   Kind: fix.
   Source: in-session-2026-08-28, closing ANTS-4406/4410/4430.

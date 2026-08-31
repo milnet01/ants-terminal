@@ -230,6 +230,26 @@ QString sniffIdPrefix(const QString &projectPath, const QString &fallback) {
     return sniffPrefixFromText(QString::fromUtf8(f.readAll()), fallback);
 }
 
+// ANTS-4426 — `^ {0,3}[-*+] ` by hand, because this predicate runs once per
+// LINE of the whole roadmap and the regex engine dominated the scan: measured
+// on the 4.9 MB / 62,918-line corpus, 7.28 ms of regex against 0.35 ms here,
+// out of a 22.6 ms scan. Greedy space-eating is equivalent to the regex's
+// backtracking because a space is never in [-*+], so a shorter run of spaces
+// can only land the bullet test on another space and fail; verified by verdict
+// diff over 400 markdown files / 234,692 lines, 0 verdicts moved.
+//
+// Semantics are INV-6c's (tests/features/roadmap_fold_in/spec.md) and are
+// unchanged here. ANTS-4747 wants them STRICTER — a nested body sub-bullet
+// should not declare an id — and this is the function that tightens.
+static inline bool rfIsTopLevelListItem(QStringView s) {
+    qsizetype i = 0;
+    while (i < 3 && i < s.size() && s[i] == u' ') ++i;
+    if (i + 1 >= s.size()) return false;
+    const QChar c = s[i];
+    if (c != u'-' && c != u'*' && c != u'+') return false;
+    return s[i + 1] == u' ';
+}
+
 qint64 maxDeclaredId(const QString &text, const QString &prefix) {
     if (prefix.isEmpty() || text.isEmpty()) return 0;
 
@@ -241,7 +261,7 @@ qint64 maxDeclaredId(const QString &text, const QString &prefix) {
     // fence. Three is not arbitrary — four spaces past the enclosing content
     // column opens an indented code block, which is where a documented
     // example sits, so the cap is what separates a bullet from a sample.
-    static const QRegularExpression itemRe(QStringLiteral("^ {0,3}[-*+] "));
+    // The test itself is rfIsTopLevelListItem() above; see its comment.
 
     const QStringList lines = text.split(QChar('\n'));
     const QVector<bool> fence = MarkdownScan::fenceMask(lines);
@@ -250,7 +270,7 @@ qint64 maxDeclaredId(const QString &text, const QString &prefix) {
     for (int i = 0; i < lines.size(); ++i) {
         if (fence.value(i)) continue;   // fence syntax and its content
         const QString &line = lines.at(i);
-        if (!itemRe.match(line).hasMatch()) continue;
+        if (!rfIsTopLevelListItem(line)) continue;
         auto it = idRe.globalMatch(line);
         while (it.hasNext()) {
             bool ok = false;
