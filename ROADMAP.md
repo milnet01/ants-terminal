@@ -48458,7 +48458,7 @@ envelope dropped `source`/`path`/`etag`/`total`/`filter`.
   Source: in-session-2026-08-31, found reading [Unreleased] before the 0.7.108 cycle.
   Lanes: mcp, roadmap, docs.
 
-- 📋 [ANTS-4760] **One corpus file declares format version 4, which the standard never defined.**
+- ✅ [ANTS-4760] **One corpus file declares format version 4, which the standard never defined.**
   MEASURED. 21 files match *_Ants_MCP_Feedback.md under
   /mnt/Games/Scripts/Linux/. 20 carry the canonical
   &lt;!-- ants-mcp-feedback: 2 --&gt;. OneUp_Ants_MCP_Feedback.md carries
@@ -48505,6 +48505,27 @@ envelope dropped `source`/`path`/`etag`/`total`/`filter`.
   call belongs to whoever owns OneUp; surfaced to the user 2026-08-31.
   If confirmed, it is one feedback_log op:"set_format_version" call and
   nothing else.
+  Resolved (2026-08-31). Confirmed with the owner and stamped back to 2 with
+  one feedback_log op:"set_format_version" call; the corpus now carries one
+  marker value throughout.
+
+  THE VERB'S OWN GATE IS WHAT MADE THIS SAFE rather than the guess this item
+  refused to make. set_format_version treats the marker as a CLAIM ABOUT THE
+  CONTENT and writes only where the content already matches -- stamping 2
+  requires the inline-Proposed-ID model and refuses shape_mismatch otherwise.
+  It succeeded, which is independent evidence the file was v2-shaped, not an
+  assertion that it was.
+
+  ANTS-4702 was also observed working during the same triage: feedback_query
+  on the file returned format_version_unrecognised with a hint saying the
+  delta was read under the v2 rule and the marker, not the content, was the
+  problem. That is what turned an odd label into a one-line fix.
+
+  The CLAUDE.md half of this item closed earlier today -- the preamble no
+  longer claims a corpus count or a marker value, neither of which it needed.
+
+  Release note (2026-08-31): no CHANGELOG entry, deliberately -- a one-character
+  correction to a peer project's notes file; nothing in this product changed.
   **Layman:** A shared notes file says it is written in a format that does not exist; nothing breaks, but the label is wrong.
   Kind: fix.
   Source: in-session-2026-08-31, surfaced by the ANTS-4759 review-contract gate on CLAUDE.md.
