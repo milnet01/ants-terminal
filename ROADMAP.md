@@ -48759,6 +48759,212 @@ envelope dropped `source`/`path`/`etag`/`total`/`filter`.
   Source: in-session-2026-08-31, the deliberate residual left by ANTS-4761.
   Lanes: docs.
 
+### Ants MCP feedback from CC sessions — 2026-08-31 triage
+
+Triage of the pending tails in four corpus files. Seven findings: four were
+positive confirmations wanting no work, closed in place with an n/a closure
+rather than an id, and three are filed below. Three of the four positives re-ran
+their repro against the running build rather than trusting the maintainer's
+shipped note, which is the staleness discipline ANTS-4741 exists to prompt.
+
+- 📋 [ANTS-4766] **roadmap_log can create a section but has no op to correct its intro, so a wrong one is permanent.**
+  CORRECTION FIRST, because this section's own intro is the worked example.
+  It says "Seven findings ... three are filed below". Both numbers are wrong:
+  there are EIGHT findings in the four pending tails, four of them positive
+  confirmations wanting no work and four filed here.
+
+  WHAT HAPPENED. op:"create_section" takes an intro_body and writes it. No op
+  reads it back or replaces it: amend_body and amend_headline are item-scoped
+  and locate by id, anchor or headline, none of which a section has. So an
+  intro is write-once, and a miscount in it outlives every later correction.
+
+  WHY THE OBVIOUS WORKAROUNDS ARE WRONG HERE. ROADMAP.md is a RENDER of the
+  store, so a hand-edit is reverted by the next write and reported as
+  discarded_external_edits. Calling create_section again would add a second
+  section rather than replace the first. Editing the store by hand is outside
+  the verb contract. So the only honest move left was to record the correction
+  in a bullet, which is what this one is.
+
+  FIX: an op:"amend_section" taking the slug plus a replacement intro_body,
+  with dry_run like its siblings. The slug is already the locator every other
+  section-scoped argument uses, so nothing new has to be invented.
+
+  WORTH NOTING: the same asymmetry probably applies to a section TITLE, which
+  is also write-once and is what the slug derives from. A rename would move
+  the slug, so that half needs more thought than the intro half and should not
+  be bundled with it without deciding what happens to inbound references.
+  **Layman:** A heading's introduction can be written once but never corrected through the tool.
+  Kind: enhancement.
+  Source: in-session-2026-08-31, hit while filing this very section.
+  Lanes: mcp, roadmapwrite.
+
+- 📋 [ANTS-4767] **A fields= call whose names all miss returns the misses and no way to learn the real key set.**
+  REPORTED against feedback_query, but the shape reaches every verb, because
+  fields= is advertised on all of them.
+
+  Passing names the envelope does not carry returns fields_unmatched and
+  nothing else. That is ANTS-4567 working as designed -- the narrowed reply
+  says WHY it is nearly empty. The gap is the next step: a verb's reply keys
+  are not derivable from its inputSchema (feedback_query answers with
+  mapped_ids, mapped_id_status, awaiting, delta, format_version and more, none
+  of them an input property), so a caller who guesses wrong learns only that
+  the guess was wrong and must re-call unfiltered to discover the key set.
+
+  Cost is one wasted round trip, never a wrong answer. Filed because the fix
+  looks small and because the reporter's framing is right: a refusal that
+  carries what WOULD have worked is self-correcting from the reply alone.
+
+  SUGGESTED FIX, from the reporter: when EVERY requested field is unmatched,
+  also echo the envelope's available top-level key names -- fields_available,
+  or the same list on the existing hint. Scoping it to the all-unmatched case
+  keeps it off the common path where one name of several was a typo.
+
+  WORTH CHECKING BEFORE BUILDING: whether the key set is knowable before the
+  handler runs, or only after it has composed the envelope. If only after,
+  echoing the keys is nearly free; if before, it may be worth exposing on
+  tool_info instead.
+  **Layman:** Asking for the wrong parts of a reply tells you they were wrong but not what you could have asked for.
+  Kind: enhancement.
+  Source: Charls_Site_Ants_MCP_Feedback.md 2026-08-31.
+  Lanes: mcp.
+
+- 📋 [ANTS-4768] **mutation_probe cannot set environment variables for its test command, and a fully-skipped baseline passes the green gate.**
+  TWO HALVES, and the second is the dangerous one.
+
+  HALF ONE, the reported ask. test_command is an ARGV array, which is right,
+  but there is no env key beside it. A suite whose behaviour depends on an
+  environment variable therefore cannot be probed directly. The reporter's
+  tests skip unless PRESSLESS_ARCHIVE names a WordPress export, and that path
+  is machine-local, so it lives in a git config key rather than in any file.
+  Probing the module those tests cover needs a throwaway wrapper script whose
+  only job is to read the key and exec pytest -- one more thing to create and
+  delete around a verb that otherwise guarantees its own cleanup.
+
+  HALF TWO, which the reporter surfaced separately and matters more. Without
+  the wrapper the baseline runs, SKIPS the only test, and exits 0 -- so
+  require_green_baseline passes and the probe measures a suite that executed
+  nothing. ANTS-4401's baseline_unreadable gate catches 0/0 and unparsable
+  counts; 0 passed with 1 skipped is neither, so it goes straight through.
+  That is the same false conclusion baseline_unreadable exists to prevent,
+  reached by a route it does not cover.
+
+  FIX: an optional env map merged over the inherited environment, and a
+  baseline check that refuses (or at minimum reports) when the run collected
+  tests but executed none of them. The two are independent -- the second is
+  worth doing even if the first is declined, because it converts a silent
+  wrong verdict into a refusal.
+  **Layman:** A code-mutation check cannot run test suites that need an environment variable, and it cannot tell that such a suite ran nothing.
+  Kind: enhancement.
+  Source: Charls_Site_Ants_MCP_Feedback.md 2026-08-31.
+  Lanes: mcp.
+
+- 📋 [ANTS-4769] **roadmap_query include_body is all-or-nothing, so an item used as a running log costs its whole history to read.**
+  CORROBORATED IN THIS SESSION, which is why it is not filed as merely
+  plausible. Reading four items to triage them here returned every accumulated
+  Progress and Resolved note on each, when what was wanted was the last one --
+  the same cost the reporter describes, hit independently the same day.
+
+  The reporter's item is a nine-stage one where each finished stage appends a
+  Progress note. There is no way to ask for a tail: fields narrows the
+  ENVELOPE rather than the body, and compact drops empty keys rather than
+  trimming prose.
+
+  WHY IT GETS WORSE WITH USE. The cost grows with the item, and a
+  long-running item is exactly the one a new session most needs to orient
+  against -- so the cost rises with the need. It reaches any project using
+  annotate as a running log, which is what that op's own description invites.
+
+  SUGGESTED FIX, from the reporter: a body tail on roadmap_query. A note-count
+  form would beat a byte cap because the paragraph boundary is already
+  meaningful -- each note begins "Progress (" or "Resolved (" by convention --
+  and both could co-exist the way read_region's max_bytes and max_line_bytes
+  do. Keep the head line either way; a tail with no headline is not orienting.
+
+  NOTE THE CONVENTION IS NOT ENFORCED anywhere, so a tail keyed on it must
+  degrade to a byte cap rather than returning nothing on an item whose notes
+  do not match.
+  **Layman:** Reading where a long-running task got to returns its entire history rather than the latest note.
+  Kind: enhancement.
+  Source: OneUp_Ants_MCP_Feedback.md 2026-08-31.
+  Lanes: mcp, roadmapquery.
+
+- 💭 [ANTS-4770] **read_region section mode cannot address a bolded list-item anchor, which is how per-feature test contracts number invariants.**
+  FILED AS CONSIDERED, not planned, because the reporter explicitly scoped it
+  low and named the condition under which it should be declined.
+
+  section:"INV-21" on a tests/features/<name>/spec.md refuses section_not_found
+  and returns the file's headings as candidates. That is correct -- INV-21 is a
+  list item, not a heading -- but every invariant in this project's per-feature
+  contracts is a `- **INV-N**` bullet, so section mode reaches none of them and
+  the fallback is grep plus line arithmetic.
+
+  This repo has the identical convention, so the gap is not one project's
+  local style.
+
+  Cost is one extra grep per invariant read, and the reporter notes the
+  candidate list makes the refusal self-explaining, so it is a round trip
+  rather than confusion.
+
+  SUGGESTED FIX: let section mode resolve a bolded leading anchor in a list
+  item when no heading matches, returning that bullet through to the next
+  bullet at the same indent. Would also suit glossary lists and ADR decision
+  lists.
+
+  THE REPORTER'S OWN CAVEAT IS THE REASON THIS IS NOT PLANNED: "not worth it
+  if it complicates the heading contract". Section mode's refusals already
+  carry candidates and an ambiguity code, and a second namespace of
+  addressable names sharing one argument is where that gets harder to keep
+  honest. Decide that before building.
+  **Layman:** A tool that reads one named part of a document cannot address invariants written as bulleted list items.
+  Kind: enhancement.
+  Source: finbreak_Ants_MCP_Feedback.md 2026-08-31.
+  Lanes: mcp.
+
+- 📋 [ANTS-4771] **indie_review_partition's computed fallback drops non-Python sources with no field reporting the omission.**
+  THE SERIOUS ONE IN THIS BATCH, because the failure is silent and the
+  consequence is a coverage claim that is not true.
+
+  REPORTED. With no module map the verb derives lanes by directory (ANTS-3709).
+  On OneUp it returned lanes covering the Python tree and NO lane for any .sh
+  file -- including update_system.sh, the shipped privileged engine and the only
+  component that becomes root, plus the test runner, the CI script, the release
+  script and the AppImage build. The reporter puts it at over 6,000 lines, more
+  than a third of that tree.
+
+  THE FILTER IS BY EXTENSION, NOT BY PATH, and their evidence pins that: the
+  root lane names bump.py and updater.py but not local-CI.sh or release.sh,
+  which sit in the same directory.
+
+  WHY IT IS NOT MERELY A GAP. Nothing in the envelope says files were dropped.
+  sparse_partition and its hint are about the module map being ABSENT, which is
+  a different condition, and file_count counts only what survived the filter --
+  so every number in the reply is self-consistent and wrong. A review
+  orchestrator that trusts the partition reviews part of the tree while its
+  coverage report reads as complete. review-code's synthesis asks what was not
+  looked at, and this envelope gives it no way to answer.
+
+  IT COMPOUNDS WITH A KNOWN WEAKNESS. too_coarse is a FILE count, so their
+  21-file, 6,071-line GUI lane came back too_coarse:false. Neither the omission
+  nor the oversized lane raised a flag. This project's own global CLAUDE.md
+  already records review-code needing to distrust this verb's lanes for the
+  same reason, so the two halves are one story.
+
+  FIX, and the reporter's second option is the better one. Widening the
+  deriver's extension set trades one hard-coded list for a longer hard-coded
+  list. Emitting unassigned_paths[] / unassigned_count -- tracked source files
+  that landed in no lane -- needs no judgement about which extensions count,
+  composes with sparse_partition, and makes the gap visible to a caller who
+  does not know the filter's shape. A per-lane lines figure alongside
+  file_count would let too_coarse fire on the case that actually matters.
+
+  WORTH CONFIRMING FIRST: whether the same extension filter sits in the
+  module-map path as well as the computed fallback, since only the fallback was
+  exercised here.
+  **Layman:** A review tool quietly leaves whole files out of the plan while its report still reads as covering everything.
+  Kind: fix.
+  Source: OneUp_Ants_MCP_Feedback.md 2026-08-31.
+  Lanes: mcp, indiereview.
+
 ### Ants MCP feedback from CC sessions — 2026-08-28 triage
 
 - 📋 [ANTS-4746] **A verb that reads this session's completed subagent returns, so a fan-out that outlives a compaction is recoverable.**
