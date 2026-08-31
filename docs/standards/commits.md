@@ -473,215 +473,20 @@ stricter cadence than cost alone would, it wins.
 
 ### 4.2 Run the pipeline locally before pushing
 
-**If the repository has a CI pipeline, run it locally first — and a
-hook does it, not a person.** A rule a person has to remember holds
-exactly as often as they remember it: nine projects on this machine
-wrote this rule into a document and every one of them later wrote a
-`pre-push` hook anyway. So **a repository with a pipeline, a gate script
-and no reachable `pre-push` hook is in breach of this section**, not
-merely unlucky. `workflow.md` § 6 says the same and defers here for the
-rule itself. A failure
-found on your machine costs seconds; the same failure found by CI costs
-a push, a wait, a red notification, a fix commit and a second push — and
-on a metered repository it costs the minutes twice.
+**A push on a repository that has a CI pipeline is gated by a local run
+of that pipeline, and [local-gate.md](local-gate.md) owns every rule
+about it.** This section owns only the fact that the gate exists and
+sits on the push. That standard holds the rest and this one does not
+restate any of it: that a hook performs the run rather than a person,
+executing the pipeline's own definition rather than a copy, which tree
+the run answers for, jobs that cannot run locally, documentation mode,
+and the one skip that needs no run at all.
 
-**The local run must execute the pipeline's own definition, not a copy
-of it.** This is the whole rule, and it is the part that gets skipped. A
-hand-written `ci-local.sh` that mirrors the workflow is correct on the
-day it is written and drifts from then on, silently — and a drifted
-mirror is *worse than no mirror*, because it returns green for a
-pipeline that will fail. You then push with more confidence than if you
-had never run it.
+`workflow.md` § 6 says where in a project's life this lands and defers
+to the same place for the rules.
 
-**So invert it: put the checks in one script the repository owns, and
-have `.github/workflows/ci.yml` set up a machine and call that script.**
-Then there is one list of steps, the local run and the remote run cannot
-disagree, and the script is a thing you can give a flag to — which the
-documentation mode below requires and a container full of YAML cannot
-offer. LocalWebServerManager is the worked example; its `ci.yml` header
-says outright that the script owns every actual check.
-
-**A repository-owned gate script is only a mirror when the workflow does
-not call it.** That distinction is the whole rule, and without it the
-paragraph above appears to forbid the arrangement this one prescribes.
-
-**Where the pipeline cannot be inverted** — a workflow you do not
-control, a job matrix with no single entry point —
-[`act`](https://github.com/nektos/act) runs the real workflow in a
-container and is the fallback. Same principle either way: **read the
-source of truth, never re-encode it.**
-
-**Run it over the commits you are pushing, not over your working
-tree.** Those are the same tree only when the tree is clean, and nothing
-makes it clean. An uncommitted fix turns the run green for commits that
-will go red. Unrelated scratch work turns it red for commits that were
-fine. Both answers are about a tree the remote will never see, and
-neither announces itself.
-
-**One sequence legitimately gates an uncommitted tree, and it is not an
-exception to this rule.** [releases.md](releases.md) §6 step 5 runs the
-pipeline from the bumped tree before step 6 commits it — and there the
-working tree *is* the commit about to be made, which is the thing being
-released. What that run does not do is discharge the push-time one: the
-gate that runs when those commits are pushed is still over the pushed
-tip. Two runs, two questions.
-
-A pre-push hook is where this bites. git hands the hook the exact range
-on stdin — one `<local ref> <local sha> <remote ref> <remote sha>` line
-per ref — and a hook that then runs the gate from the repo root has
-thrown it away. **The same range decides the docs-only exemption
-below**, so a hook that reads it for one and not the other is already
-half right.
-
-**Route 1 — check the pushed commits out somewhere else and run the
-gate there.**
-
-```bash
-tree=$(mktemp -d)
-trap 'git worktree remove --force "$tree" 2>/dev/null' EXIT
-git worktree add --detach --quiet "$tree" "$local_sha"
-( cd "$tree" && ./scripts/local-ci.sh )
-```
-
-That runs against what the remote will see, and it never touches the
-working tree. The cost is a checkout with none of your ignored files in
-it, so a gate that needs a virtualenv, a build tree or a downloaded
-fixture pays to make one on every push.
-
-**Route 2 — where that cost is too high, refuse a dirty tree instead**
-— exit non-zero when `git status --porcelain` is non-empty, and name the
-files.
-It is a worse experience and an honest one: the developer is told the
-run cannot answer for this push, rather than shown a verdict that does
-not.
-
-**A clean tree is not enough on its own, and this is the condition that
-gets left out.** It proves the tree matches `HEAD` — never that `HEAD`
-is what you are pushing. `git push origin other-branch` from `main`,
-`git push origin HEAD~2:main`, and a push carrying several refs all pass
-the porcelain check while the gate answers for a commit the remote will
-never receive. So route 2 is available **only when every pushed tip
-equals `HEAD`**: compare each `<local sha>` on stdin against
-`git rev-parse HEAD`, and where any differs, refuse or take route 1.
-
-**Never stash to manufacture a clean tree.** `git stash` exits 0 having
-stashed nothing when there is nothing to stash, so the hook cannot tell
-a clean tree from a failed stash — [`languages/cpp.md`](languages/cpp.md)
-§ Tests records the same trap producing a false pass. A stash also
-mutates the developer's tree mid-hook, and the `pop` has to survive a
-gate that may have just exited non-zero, on a machine where the push was
-interrupted.
-
-**Where a job genuinely cannot run locally** — a self-hosted runner, a
-secret that is not on your machine, a platform you do not have — cover
-what you can and **write down which jobs are not covered**, next to the
-command that runs the rest. An uncovered job nobody has named is
-indistinguishable from a covered one, which is the same false
-confidence in a different place.
-
-**A repository with a pipeline and no way to run it locally has a gap
-worth fixing** before the next feature, not a rule to argue with.
-
-**A docs-only push runs the documentation checks — not the whole
-pipeline, and not nothing.** Both extremes are wrong in the same way. A
-full run charges ninety seconds of engine tests for a typo fix, and that
-is how a person learns to reach for `--no-verify` by reflex; a blanket
-skip walks past the markdown lint, the link check, the docs build and
-the test that counts something in a README. Measured on this machine
-(OneUp, 2026-08-21): the documentation mode of that project's gate runs
-in 0.14s where its full gate takes about 90s. Read its step list to see
-why that is not a coverage cut — `--docs` keeps the version lockstep
-(its `CHANGELOG.md` is one of the six sites that must agree), the
-bump-tool test (it rewrites changelog headings and compare links) and
-the documentation checker, and drops the engine suite, the GUI smoke
-test, byte-compilation, lint and packaging validation. **What it keeps
-is decided per project and this document does not certify it** — that
-gate's own header claims it covers every check a `.md` edit can reach,
-and only that project can say so.
-
-So **give the gate a documentation mode and select it by the paths in
-the push**. Where the gate has no such mode, run all of it and say so —
-never quietly select a subset the gate does not offer. A hook cannot
-invent a check, and a skipped check followed by a green line is
-indistinguishable from a clean run.
-
-**Which files count as documentation is a per-project answer, and
-getting it wrong is not symmetric.** A file the pipeline READS is a
-pipeline input whatever its extension: a test that asserts against
-`README.md`, a check that counts headings, a docs site that builds from
-`docs/`. On 2026-08-19 a LocalWebServerManager push edited `CLAUDE.md`,
-took the exemption on the strength of the `.md`, and GitHub found the
-prose count that project's own suite forbids. So decide by what the
-pipeline reads, never by the extension, and let every uncertain case run
-the full gate — a wrong guess must cost time, never coverage.
-
-**A generic hook cannot do this on its own, so it must be told.** One
-shared between repositories has no way to know what a given pipeline
-reads, and its default will therefore be a list of extensions — which is
-the thing this paragraph forbids. `~/.claude/githooks/pre-push` takes the
-answer from `git config ants.gate.docsGlob`, per repository — **and
-untold, it falls back to an extension list, which is exactly what the
-paragraph above forbids.** So a repository that has not set that key has
-not satisfied this rule, whatever hook is installed. The fallback is a
-deliberate compromise rather than an oversight: a hook that refused to
-run until configured would be uninstalled, and one that guesses at least
-says so in its own source. **A
-repository whose pipeline reads markdown must narrow that glob to exclude
-those paths, or keep its own hook.** Nothing checks that it did.
-
-**The remaining case, where there is nothing to run at all.** Where the
-pipeline has no job that acts on documentation, the documentation checks
-are the empty set and the push may skip the local run entirely — **if
-all three hold**:
-
-0. **The push is documentation-only by the test above.** Stated as a
-   condition because the two below are not sufficient on their own: a
-   *code* push into a directory no job reads satisfies both, and a hook
-   built from them alone would wave it through untested.
-
-**This skip outranks the run-all-of-it fallback above.** Both fire on the
-same push — a docs-only push, to a repository whose gate has no
-documentation mode and whose pipeline has no documentation job — and they
-prescribe opposite things. A gate with no documentation mode is not a
-reason to run it when there is provably nothing in it for your paths.
-Condition 2 is what proves that, which is why it is the condition that
-matters.
-
-1. The last push's CI run on the remote succeeded —
-   `gh run list --branch <the branch being pushed> --event push
-   --limit 1 --json conclusion`. **Take the branch from the ref being
-   pushed, never from `git branch --show-current`** — that reads the
-   working tree, which this section has just finished saying is not what
-   is being pushed, so a hook run for `git push origin feature` from
-   `main` would check `main`'s last conclusion and grant the skip on it.
-   The `<remote ref>` field of the hook's own stdin line names it —
-   **with the prefix stripped**, `${remote_ref#refs/heads/}`. git supplies
-   that field fully qualified and `--branch` wants a bare branch name.
-   Measured 2026-08-21: `--branch main` returned two runs on a repository
-   where `--branch refs/heads/main` returned `[]`, so a hook substituting
-   the field directly gets an empty list on every push and condition 1
-   can never hold — a skip that silently never fires, indistinguishable
-   from one denied on the merits. **Both filters are load-bearing.** `gh
-   run list` scopes by neither branch nor event, so `--limit 1` alone
-   returns the most recent run of any kind on any branch — a green
-   scheduled run while the last push went red is exactly the case this
-   condition excludes.
-2. **No job in the pipeline acts on the documentation paths in this
-   push.** Check the pipeline's definition — the workflow, **and where
-   the workflow delegates to a gate script, that script**. In an
-   inverted repository the workflow is one thin job that runs on every
-   push, so reading it alone answers *"a job acts on my paths"* yes
-   every time and the skip becomes unreachable in exactly the shape
-   this section tells you to build.
-
-**The second condition is the one that matters, and it is why this is
-not simply "docs are safe".** Plenty of pipelines lint markdown, check
-links, spell-check, or build a docs site — and against one of those, a
-docs-only change is exactly as capable of going red as a code change.
-Taking the exemption without checking is how the rule produces the
-failure it exists to prevent. If any job touches your paths, this skip
-is not available — run those jobs, which is the documentation mode
-above, whatever the diff looks like.
+Split out 2026-08-31 (CFG-0185). This section had grown to a third of
+this document, and every fix of one review run landed inside it.
 
 ### 4.3 Tags
 
@@ -773,13 +578,12 @@ the rows below say so.
 | §2.2 don't amend | **nothing** for the case §2.2 leads with — an amend after a failed hook is local and leaves no trace. On a published commit it depends on the branch: on a shared one `git push` rejects the non-fast-forward and §3.3 refuses the force-push, but on a **personal** branch §3.3 permits it and §4.4 asks for no confirmation, so there it is **nothing** as well — and that is where most amending happens |
 | §2.3 don't skip hooks | **nothing mechanical** — `--no-verify` leaves no trace in the commit itself, so §2.3's required body note is the only one there is, and nothing checks that it was written. A **push**-time bypass (`--no-verify`, or a hook's own `SKIP_LOCAL_CI=1` form) is worse: it belongs in the next commit's body, and where there is no next commit it is recorded **nowhere at all** |
 | §2.4 commit only files you mean to | Partial: a well-maintained `.gitignore` catches the common cases. An allowlist-style ignore file catches more and creates the opposite failure — a file silently never committed (`draft/README.md` records seven lost that way) |
-| §2.5 don't commit half-finished work | CI, where the project has it — and `commits.md` §4.2's local run catches it earlier and cheaper |
+| §2.5 don't commit half-finished work | CI, where the project has it — and [local-gate.md](local-gate.md)'s local run catches it earlier and cheaper |
 | §2.6 don't commit generated files | The same `.gitignore`, when it has patterns for that project's build outputs. **Nothing** catches a generated file the ignore file does not name |
 | §3.1–3.2 trunk-based default, branch naming | **nothing** — branch names are never validated, and nothing reads the branching shape |
 | §3.3 don't force-push a shared branch | Branch protection, **where the plan allows it**. Checked 2026-08-10: unavailable on a private repo without GitHub Pro, so on this machine's private repos it is **nothing** |
 | §4.1 push cadence on a metered repo | **nothing** — nothing counts queued commits or asks before spending quota |
-| §4.2 the pipeline runs locally before a push | A `pre-push` hook, where one is installed **and reached**. It refuses the push, so it catches the breach rather than the failure. Three ways it fails to gate, **two of them silent**. `core.hooksPath` holds **one** value and the repository-local one wins, so a project setting it for its own `commit-msg` never runs `~/.claude/githooks/pre-push` unless a `pre-push` in its own hooks directory reaches it. `skeleton/files/.githooks/pre-push` does exactly that — it delegates — so a project scaffolded from 2026-08-21 is covered and one scaffolded before that date is not, silently, until somebody copies the file in. Nothing checks that `core.hooksPath` was set at all; it is per-clone and cannot be committed. The third is reached and is **not** silent: on discovering no gate script in a repository that has a pipeline, the machine-wide hook prints `NO LOCAL GATE, BUT THIS REPO HAS A PIPELINE — nothing was checked` and two lines citing this section. What it lacks there is a *block*, not a voice — it exits 0, so §4.2's "gap worth fixing" is announced on every push and stops none of them |
-| §4.2 the local run is over the pushed commits, not the working tree | `~/.claude/githooks/pre-push` and LocalWebServerManager's hook take route 1 unconditionally, so where either runs the rule cannot be breached. Everywhere else **nothing**, and this one is invisible from both sides — a gate run over a dirty tree returns an ordinary verdict with no sign that it answered for a tree nobody is pushing. Checked 2026-08-21: no project has a test asserting its hook takes either route |
+| §4.2 the pipeline runs locally before a push | A `pre-push` hook, where one is installed **and reached**. [local-gate.md](local-gate.md) § What checks this owns the row and its three failure modes — the rules it enforces live there |
 | §4.3 annotated tags, never lightweight | **nothing** — and a lightweight tag is invisible until someone reads its absent message |
 | §4.4 confirm before a destructive operation | **nothing** — by construction: the confirmation is the check, and nothing checks the confirmation happened |
 
