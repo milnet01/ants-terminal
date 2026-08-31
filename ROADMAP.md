@@ -48357,6 +48357,37 @@ envelope dropped `source`/`path`/`etag`/`total`/`filter`.
   Source: in-session-2026-08-31, found reading [Unreleased] before the 0.7.108 cycle.
   Lanes: mcp, roadmap, docs.
 
+- 📋 [ANTS-4760] **One corpus file declares format version 4, which the standard never defined.**
+  MEASURED. 21 files match *_Ants_MCP_Feedback.md under
+  /mnt/Games/Scripts/Linux/. 20 carry the canonical
+  &lt;!-- ants-mcp-feedback: 2 --&gt;. OneUp_Ants_MCP_Feedback.md carries
+  &lt;!-- ants-mcp-feedback: 4 --&gt;.
+
+  mcp-feedback-files.md defines versions 1 and 2 only. Its delta-parser
+  contract treats a marker of 2 or higher as v2-shaped, explicitly
+  anticipating a future 3 -- so nothing is broken today and feedback_query
+  reads the file correctly. What is wrong is the label: the file claims a
+  format the standard never defined, and the next reader cannot tell whether
+  that is a typo or a format they have not heard of.
+
+  This is the class ANTS-4707 shipped feedback_log op:"set_format_version"
+  for -- a file declaring a version that was never defined, previously
+  fixable only by the hand edit the assign-id pipeline exists to avoid.
+
+  NOT FIXED HERE, deliberately. It is another project's file, nothing is
+  broken, and the reason that session wrote 4 is unknown -- changing a peer
+  project's marker on a guess is worse than leaving it labelled oddly.
+  Confirm with whoever owns OneUp, then one op:"set_format_version" call.
+
+  ALSO NOTED, and separately: this project's own CLAUDE.md says "All ten
+  corpus files are migrated". There are 21. Left alone as immaterial --
+  feedback_query is version-aware and reads each file's own marker, so no
+  session acts on that count.
+  **Layman:** A shared notes file says it is written in a format that does not exist; nothing breaks, but the label is wrong.
+  Kind: fix.
+  Source: in-session-2026-08-31, surfaced by the ANTS-4759 review-contract gate on CLAUDE.md.
+  Lanes: mcp, docs.
+
 ### Ants MCP feedback from CC sessions — 2026-08-28 triage
 
 - 📋 [ANTS-4746] **A verb that reads this session's completed subagent returns, so a fan-out that outlives a compaction is recoverable.**
