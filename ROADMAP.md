@@ -48388,6 +48388,38 @@ envelope dropped `source`/`path`/`etag`/`total`/`filter`.
   Source: in-session-2026-08-31, surfaced by the ANTS-4759 review-contract gate on CLAUDE.md.
   Lanes: mcp, docs.
 
+- 📋 [ANTS-4761] **The mirrored commits.md carries nine links a public reader cannot follow, defeating the reason the mirrors exist.**
+  MEASURED. doc_integrity over docs/standards/commits.md reports 9
+  broken_link findings, all inside the MIRROR half: 5 to releases.md and 4
+  to local-gate.md. Neither file exists under docs/standards/, because
+  check-standard-mirrors.sh manages a fixed set of five (coding,
+  documentation, testing, commits, security) and those two are not in it.
+
+  WHY IT MATTERS. CLAUDE.md is explicit that the mirrors exist because this
+  repo is PUBLIC and an outside reader cannot open a path in a private home
+  directory. A mirror whose own relative links dead-end defeats exactly that
+  purpose, for the reader it was copied down to serve. The links resolve
+  fine in the owner's tree, which is why nobody notices.
+
+  MOSTLY PRE-EXISTING. 8 of the 9 predate this session; the 9th arrived with
+  a routine re-copy after CFG-0185 split commits.md § 4.2 into the new
+  local-gate.md upstream. So the count grows every time the owner gains a
+  sibling, and nothing reports it.
+
+  NOT FIXED HERE. The mirror half must not be hand-edited -- the pre-commit
+  hook enforces that, and it is the whole basis of the arrangement. The real
+  question is which standards get mirrored, which is a design decision:
+  either add releases.md and local-gate.md to the mirrored set, or teach the
+  copier to rewrite a link to an un-mirrored sibling into something a public
+  reader can act on. Worth deciding once rather than per-sibling.
+
+  CHEAP SIGNAL AVAILABLE: doc_integrity over docs/standards/ already finds
+  this, so whichever way it is decided, the check that keeps it fixed exists.
+  **Layman:** The public copy of a rules document links to two files that were never copied across, so those links go nowhere.
+  Kind: doc-fix.
+  Source: in-session-2026-08-31, surfaced by the ANTS-4759 review-contract gate on CLAUDE.md.
+  Lanes: docs.
+
 ### Ants MCP feedback from CC sessions — 2026-08-28 triage
 
 - 📋 [ANTS-4746] **A verb that reads this session's completed subagent returns, so a fan-out that outlives a compaction is recoverable.**
