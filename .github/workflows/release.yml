@@ -55,9 +55,16 @@ jobs:
     steps:
       - name: Resolve target tag
         id: tag
+        # ANTS-4772 — the workflow_dispatch input reaches the shell through
+        # env:, never by ${{ }} interpolation into the script body. The
+        # template engine expands ${{ }} before the shell parses the line, so
+        # a crafted tag would otherwise become shell source in a runner
+        # holding contents: write.
+        env:
+          INPUT_TAG: ${{ inputs.tag }}
         run: |
-          if [ -n "${{ inputs.tag }}" ]; then
-            REF="${{ inputs.tag }}"
+          if [ -n "$INPUT_TAG" ]; then
+            REF="$INPUT_TAG"
           else
             REF="${GITHUB_REF#refs/tags/}"
           fi
@@ -91,6 +98,9 @@ jobs:
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10  # v6.0.3
         with:
           ref: ${{ steps.tag.outputs.ref }}
+          # ANTS-4773 — nothing here runs git; don't leave the token in
+          # .git/config where an uploaded artifact could carry it.
+          persist-credentials: false
 
       - name: Install Qt6 + build deps
         # Ubuntu 22.04's qt6-base-dev does NOT pull libgl-dev /

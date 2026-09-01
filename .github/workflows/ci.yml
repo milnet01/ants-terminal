@@ -60,6 +60,10 @@ jobs:
     steps:
       - name: Check out source
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10  # v6.0.3
+        with:
+          # ANTS-4773 — no step in this workflow runs git, so the token has no
+          # reason to persist into .git/config where an artifact could carry it.
+          persist-credentials: false
 
       - name: Install Qt6 + build + packaging deps (cached)
         uses: awalsh128/cache-apt-pkgs-action@681749ae568c81c2037cb9185e38b709b261bd2f  # v1.6.1
@@ -192,6 +196,9 @@ jobs:
     steps:
       - name: Check out source
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10  # v6.0.3
+        with:
+          # ANTS-4773 — nothing here runs git.
+          persist-credentials: false
 
       - name: Install Qt6 + build deps (cached)
         uses: awalsh128/cache-apt-pkgs-action@681749ae568c81c2037cb9185e38b709b261bd2f  # v1.6.1
@@ -305,6 +312,9 @@ jobs:
     steps:
       - name: Check out source
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10  # v6.0.3
+        with:
+          # ANTS-4773 — nothing here runs git.
+          persist-credentials: false
 
       - name: Install Qt6 + build deps (release baseline)
         run: |
