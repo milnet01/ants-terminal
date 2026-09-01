@@ -95,7 +95,12 @@ void CommandPalette::setActions(const QList<QAction *> &actions) {
         m_allActions.append(QPointer<QAction>(a));
 }
 
-void CommandPalette::show() {
+void CommandPalette::setVisible(bool visible) {
+    if (!visible) {
+        QWidget::setVisible(false);
+        return;
+    }
+
     // First-show: build the QListWidget. After this point the view
     // exists for the lifetime of the palette — its internal timers
     // fire only when we interact, which is fine (a visible palette
@@ -108,7 +113,8 @@ void CommandPalette::show() {
     m_input->blockSignals(false);
     populateList("");
     positionAndResize();
-    QWidget::show();
+    // Base call, not QWidget::show() — that would re-enter this override.
+    QWidget::setVisible(true);
     raise();
     m_input->setFocus();
 }

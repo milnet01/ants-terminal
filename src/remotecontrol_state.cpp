@@ -18,6 +18,7 @@
 #include "subsystemmap.h"
 #include "testrescache.h"
 #include <QDir>
+#include <QElapsedTimer>
 #include <QFileInfo>
 #include <QLocalSocket>
 #include <QProcess>

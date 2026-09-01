@@ -52,7 +52,7 @@ protected:
         // before ~QObject clears QPointers). Comparing against
         // QPointer<QDialog> there calls data(), which downcasts the already-
         // QWidget-degraded object to QDialog* — a UBSan vptr error that was
-        // reding every dialog test under the sanitizer build.
+        // reddening every dialog test under the sanitizer build.
         if (obj == m_dlgObj) {
             switch (ev->type()) {
             case QEvent::Show:   onShow();      break;

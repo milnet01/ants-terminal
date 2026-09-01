@@ -34,7 +34,10 @@ public:
     explicit CommandPalette(QWidget *parent = nullptr);
 
     void setActions(const QList<QAction *> &actions);
-    void show();
+
+    // ANTS-4775 — override the VIRTUAL setVisible, not the non-virtual
+    // QWidget::show(): every reveal must build and position the palette.
+    void setVisible(bool visible) override;
 
 signals:
     void closed();

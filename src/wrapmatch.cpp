@@ -66,10 +66,10 @@ bool isMarkerOnly(const QString &tok) {
 }
 
 QStringList tokenise(const QString &needle) {
+    // ANTS-4776 — constant pattern: compile once, not once per query.
+    static const QRegularExpression sep(QStringLiteral("[ \\t\\r\\n]+"));
     QStringList out;
-    for (const QString &tok :
-         needle.split(QRegularExpression(QStringLiteral("[ \\t\\r\\n]+")),
-                      Qt::SkipEmptyParts)) {
+    for (const QString &tok : needle.split(sep, Qt::SkipEmptyParts)) {
         if (!isMarkerOnly(tok)) out.append(tok);
     }
     return out;

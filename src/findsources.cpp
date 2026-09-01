@@ -187,9 +187,10 @@ QVector<QString> collectCandidates(const QString &rootCanonical) {
 QStringList tokenise(const QString &topic) {
     // INV-1 — split on whitespace + common punctuation. Tokens shorter
     // than 3 chars are dropped (`a`, `to`, `in` are too noisy to scan).
-    QStringList raw =
-        topic.split(QRegularExpression(QStringLiteral("[\\s_/\\.\\(\\),:;]+")),
-                    Qt::SkipEmptyParts);
+    // ANTS-4776 — constant pattern: compile once, not once per query.
+    static const QRegularExpression sep(
+        QStringLiteral("[\\s_/\\.\\(\\),:;]+"));
+    QStringList raw = topic.split(sep, Qt::SkipEmptyParts);
     QStringList out;
     out.reserve(raw.size());
     for (QString &t : raw) {
