@@ -14,6 +14,9 @@ for security-relevant changes.
 
 ### Added
 
+- **Every source file now belongs to a review lane** (ANTS-4793)
+  A committed `.indie-review/partition.json` declares 32 lanes covering all 313 `src/` files exactly once. The module map's prefix rule had left 189 files and 59,257 lines — mainwindow.cpp among them — in no lane at all, so a full-codebase review silently skipped a third of the tree.
+
 - **Release gate: a CHANGELOG bullet that merely repeats its roadmap headline is now reported** (ANTS-4759)
   A defect item's roadmap headline states the problem, so a summary copied from it puts the bug in the release notes where the fix belongs. `tools/check-shipped-coverage.sh` now flags any `[Unreleased]` bullet whose bold summary is byte-identical to the item's stored headline — 14 of 56 were, across seven commits, and all 14 have been rewritten to say what shipped. Advisory like its sibling check, so it cannot block a release over wording.
 

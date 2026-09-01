@@ -49369,6 +49369,43 @@ volume classes, and the tooling/documentation gaps the run exposed.
   Source: close-findings-sweep-2026-09-01.
   Lanes: ci, packaging.
 
+- ✅ [ANTS-4793] **A committed .indie-review/partition.json gives every src file a review lane.**
+  The mitigation for the coverage gap ANTS-4785 and ANTS-4786 describe.
+  Neither is closed by this: 4785 is about docs/subsystems.md being
+  incomplete and 4786 about the verb hiding the gap on the map-driven
+  path. This bypasses both for review purposes.
+
+  MEASURED before building it: the module map's prefix rule
+  (`<name>.{h,cpp}` + `<name>*.{h,cpp}`, per indiereviewengine.h) left
+  189 of 313 files and 59,257 of 171,089 lines in no lane -- including
+  mainwindow.cpp. `remotecontrol` resolved to one 35,288-line lane and
+  `claudeintegration` to one of 16,972.
+
+  The partition declares 32 lanes covering all 313 files exactly once,
+  verified two ways: the build script refuses to write unless every file
+  is assigned exactly once with no duplicate (it caught
+  remotecontrol_internal.h on the first run), and indie_review_partition's
+  own independent walk returns file_counts summing to 313. It reports
+  path:".indie-review/partition.json", no too_coarse lanes, and no
+  suggested_merges.
+
+  Sizing: no lane exceeds 25 files (the engine's own kMaxFilesPerLane) and
+  none exceeds ~8,600 lines, with one unavoidable exception --
+  claude-integration is 16,972 lines because claudeintegration.cpp is
+  16,111 lines in a single TU. Lane carries no line-range field, so that
+  one cannot be split in this format; its summary says to split it by
+  concern at dispatch.
+
+  .gitignore carried `.indie-review/` for "sidecar reports (transient,
+  regenerated per sweep)". A declared partition is not that, and the verb's
+  schema says to commit it, so the rule was narrowed to `.indie-review/*`
+  plus a negation for partition.json. Verified both ways: partition.json is
+  tracked, a sidecar report is still ignored.
+  **Layman:** Reviews used to silently skip most of the code; now every source file belongs to exactly one review group.
+  Kind: chore.
+  Source: in-session-2026-09-02.
+  Lanes: review, docs.
+
 ### Ants MCP feedback from CC sessions — 2026-08-28 triage
 
 - 📋 [ANTS-4746] **A verb that reads this session's completed subagent returns, so a fan-out that outlives a compaction is recoverable.**

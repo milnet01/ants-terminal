@@ -1,0 +1,510 @@
+{
+  "version": 1,
+  "lanes": [
+    {
+      "name": "vt-parser-pty",
+      "summary": "VT100/xterm state machine, byte stream and the forkpty transport that feeds it.",
+      "sourcePaths": [
+        "src/ptyhandler.cpp",
+        "src/ptyhandler.h",
+        "src/vtparser.cpp",
+        "src/vtparser.h",
+        "src/vtstream.cpp",
+        "src/vtstream.h"
+      ]
+    },
+    {
+      "name": "terminal-grid",
+      "summary": "Cell grid, scrollback, cursor, modes, OSC handlers, soft-wrap reflow.",
+      "sourcePaths": [
+        "src/terminalgrid.cpp",
+        "src/terminalgrid.h"
+      ]
+    },
+    {
+      "name": "terminal-widget",
+      "summary": "QPainter/QTextLayout renderer, ligature shaping, mouse and focus reporting, accessibility.",
+      "sourcePaths": [
+        "src/shapedruncache.cpp",
+        "src/shapedruncache.h",
+        "src/terminalaccessible.cpp",
+        "src/terminalaccessible.h",
+        "src/terminalwidget.cpp",
+        "src/terminalwidget.h"
+      ]
+    },
+    {
+      "name": "mainwindow",
+      "summary": "The main window: tab lifecycle, menu and action wiring, paste pipeline, quake mode.",
+      "sourcePaths": [
+        "src/mainwindow.cpp",
+        "src/mainwindow.h"
+      ]
+    },
+    {
+      "name": "chrome-widgets",
+      "summary": "Title bar, tab bar, command palette, status chrome and desktop-shell integration.",
+      "sourcePaths": [
+        "src/branchchip.h",
+        "src/coloredtabbar.cpp",
+        "src/coloredtabbar.h",
+        "src/commandpalette.cpp",
+        "src/commandpalette.h",
+        "src/elidedlabel.h",
+        "src/globalshortcutsportal.cpp",
+        "src/globalshortcutsportal.h",
+        "src/kwinpositiontracker.cpp",
+        "src/kwinpositiontracker.h",
+        "src/opaquemenubar.h",
+        "src/opaquestatusbar.h",
+        "src/titlebar.cpp",
+        "src/titlebar.h",
+        "src/toggleswitch.cpp",
+        "src/toggleswitch.h"
+      ]
+    },
+    {
+      "name": "dialog-chrome-theme",
+      "summary": "Shared dialog chrome, focus handling and the theme/stylesheet layer.",
+      "sourcePaths": [
+        "src/aboutdialogs.cpp",
+        "src/aboutdialogs.h",
+        "src/dialogchrome.cpp",
+        "src/dialogchrome.h",
+        "src/dialogfocus.h",
+        "src/dialogshowtracer.cpp",
+        "src/dialogshowtracer.h",
+        "src/reviewdialogbase.cpp",
+        "src/reviewdialogbase.h",
+        "src/themedstylesheet.cpp",
+        "src/themedstylesheet.h",
+        "src/themes.cpp",
+        "src/themes.h",
+        "src/verifytrust.cpp",
+        "src/verifytrust.h",
+        "src/verifytrustmodal.cpp",
+        "src/verifytrustmodal.h"
+      ]
+    },
+    {
+      "name": "audit-dialog",
+      "summary": "Static-analysis panel: filter, enrich, render, SARIF/HTML export.",
+      "sourcePaths": [
+        "src/auditdialog.cpp",
+        "src/auditdialog.h"
+      ]
+    },
+    {
+      "name": "audit-engine",
+      "summary": "Non-GUI audit pipeline, runner, cache, hygiene, autofix and the false-positive ledgers.",
+      "sourcePaths": [
+        "src/auditautofix.cpp",
+        "src/auditautofix.h",
+        "src/auditcache.cpp",
+        "src/auditcache.h",
+        "src/auditdelta.cpp",
+        "src/auditdelta.h",
+        "src/auditengine.cpp",
+        "src/auditengine.h",
+        "src/auditfpledger.cpp",
+        "src/auditfpledger.h",
+        "src/audithygiene.cpp",
+        "src/audithygiene.h",
+        "src/auditrulequality.cpp",
+        "src/auditrulequality.h",
+        "src/auditrunner.cpp",
+        "src/auditrunner.h",
+        "src/auditscope.cpp",
+        "src/auditscope.h",
+        "src/falseposledger.cpp",
+        "src/falseposledger.h"
+      ]
+    },
+    {
+      "name": "roadmap-store",
+      "summary": "The machine-global SQLite store and every migration path into it.",
+      "sourcePaths": [
+        "src/roadmapmigrate.cpp",
+        "src/roadmapmigrate.h",
+        "src/roadmapmigrateload.cpp",
+        "src/roadmapmigrateload.h",
+        "src/roadmapmigrateverb.cpp",
+        "src/roadmapmigrateverb.h",
+        "src/roadmapstore.cpp",
+        "src/roadmapstore.h"
+      ]
+    },
+    {
+      "name": "roadmap-parse-render",
+      "summary": "Roadmap parsing, rendering, writing and the source/index/export surfaces.",
+      "sourcePaths": [
+        "src/passheadingwrite.cpp",
+        "src/passheadingwrite.h",
+        "src/roadmapclock.cpp",
+        "src/roadmapclock.h",
+        "src/roadmapexport.cpp",
+        "src/roadmapexport.h",
+        "src/roadmapfoldin.cpp",
+        "src/roadmapfoldin.h",
+        "src/roadmapindex.cpp",
+        "src/roadmapindex.h",
+        "src/roadmapparse.cpp",
+        "src/roadmapparse.h",
+        "src/roadmaprender.cpp",
+        "src/roadmaprender.h",
+        "src/roadmapsource.cpp",
+        "src/roadmapsource.h",
+        "src/roadmapwrite.cpp",
+        "src/roadmapwrite.h"
+      ]
+    },
+    {
+      "name": "roadmap-dialog",
+      "summary": "The roadmap GUI.",
+      "sourcePaths": [
+        "src/roadmapdialog.cpp",
+        "src/roadmapdialog.h",
+        "src/roadmapshortcutsdialog.cpp",
+        "src/roadmapshortcutsdialog.h"
+      ]
+    },
+    {
+      "name": "claude-integration",
+      "summary": "MCP tool registry and dispatch. OVERSIZE: claudeintegration.cpp is 16,111 lines in one TU; split it by concern (schema block / verb handlers / helpers) when dispatching, this format has no line-range field.",
+      "sourcePaths": [
+        "src/claudeintegration.cpp",
+        "src/claudeintegration.h"
+      ]
+    },
+    {
+      "name": "claude-session-widgets",
+      "summary": "Claude session state, task lists, transcripts, allowlist and project tracking.",
+      "sourcePaths": [
+        "src/claudeallowlist.cpp",
+        "src/claudeallowlist.h",
+        "src/claudebgtasks.cpp",
+        "src/claudebgtasks.h",
+        "src/claudebgtasksdialog.cpp",
+        "src/claudebgtasksdialog.h",
+        "src/claudecontent.h",
+        "src/claudeprojects.cpp",
+        "src/claudeprojects.h",
+        "src/claudepromptdetect.cpp",
+        "src/claudepromptdetect.h",
+        "src/claudestateresolver.cpp",
+        "src/claudestateresolver.h",
+        "src/claudestatuswidgets.cpp",
+        "src/claudestatuswidgets.h",
+        "src/claudetabtracker.cpp",
+        "src/claudetabtracker.h",
+        "src/claudetasklist.cpp",
+        "src/claudetasklist.h",
+        "src/claudetasklistdialog.cpp",
+        "src/claudetasklistdialog.h",
+        "src/claudetranscript.cpp",
+        "src/claudetranscript.h",
+        "src/claudetranscriptwalker.h"
+      ]
+    },
+    {
+      "name": "mcp-transport",
+      "summary": "Socket transport, request routing, the shared internal header and the master enable gate.",
+      "sourcePaths": [
+        "src/remotecontrol.cpp",
+        "src/remotecontrol.h",
+        "src/remotecontrol_internal.h",
+        "src/remotecontrolgate.cpp",
+        "src/remotecontrolgate.h"
+      ]
+    },
+    {
+      "name": "mcp-roadmap-query-log",
+      "summary": "The two largest roadmap verbs: query and single-item log.",
+      "sourcePaths": [
+        "src/remotecontrol_roadmap_log.cpp",
+        "src/remotecontrol_roadmap_query.cpp"
+      ]
+    },
+    {
+      "name": "mcp-roadmap-batch",
+      "summary": "Batch log plus the migrate/publish/repair/backfill verbs.",
+      "sourcePaths": [
+        "src/remotecontrol_roadmap_backfill.cpp",
+        "src/remotecontrol_roadmap_log_batch.cpp",
+        "src/remotecontrol_roadmap_migrate.cpp",
+        "src/remotecontrol_roadmap_publish.cpp",
+        "src/remotecontrol_roadmap_repair.cpp"
+      ]
+    },
+    {
+      "name": "mcp-state-workspace",
+      "summary": "session_orient/state verbs and the workspace read/search verbs.",
+      "sourcePaths": [
+        "src/remotecontrol_state.cpp",
+        "src/remotecontrol_workspace.cpp"
+      ]
+    },
+    {
+      "name": "mcp-review-verbs",
+      "summary": "indie-review and cold-eyes verb surfaces.",
+      "sourcePaths": [
+        "src/remotecontrol_coldeyes.cpp",
+        "src/remotecontrol_review.cpp"
+      ]
+    },
+    {
+      "name": "mcp-content-verbs",
+      "summary": "Feedback, changelog, docs, terminal and cross-session message verbs.",
+      "sourcePaths": [
+        "src/remotecontrol_changelog.cpp",
+        "src/remotecontrol_docs.cpp",
+        "src/remotecontrol_feedback.cpp",
+        "src/remotecontrol_session_message.cpp",
+        "src/remotecontrol_terminal.cpp"
+      ]
+    },
+    {
+      "name": "doc-engines",
+      "summary": "Documentation indexing, citations, integrity, symbols, dedup and markdown scanning.",
+      "sourcePaths": [
+        "src/doccitations.cpp",
+        "src/doccitations.h",
+        "src/docdedup.cpp",
+        "src/docdedup.h",
+        "src/docfinding.cpp",
+        "src/docfinding.h",
+        "src/docintegrity.cpp",
+        "src/docintegrity.h",
+        "src/docsindex.cpp",
+        "src/docsindex.h",
+        "src/docsymbols.cpp",
+        "src/docsymbols.h",
+        "src/markdownscan.cpp",
+        "src/markdownscan.h"
+      ]
+    },
+    {
+      "name": "spec-engines",
+      "summary": "Spec parse/lint/log/conformance, plan templates and feature coverage.",
+      "sourcePaths": [
+        "src/featurecoverage.cpp",
+        "src/featurecoverage.h",
+        "src/plantemplateengine.cpp",
+        "src/plantemplateengine.h",
+        "src/specconformance.cpp",
+        "src/specconformance.h",
+        "src/speclint.cpp",
+        "src/speclint.h",
+        "src/speclog.cpp",
+        "src/speclog.h",
+        "src/specparse.cpp",
+        "src/specparse.h"
+      ]
+    },
+    {
+      "name": "review-engines",
+      "summary": "Indie-review, cold-eyes and debt-sweep engines plus brief dispatch.",
+      "sourcePaths": [
+        "src/briefdispatch.cpp",
+        "src/briefdispatch.h",
+        "src/coldeyesdialog.cpp",
+        "src/coldeyesdialog.h",
+        "src/coldeyesengine.cpp",
+        "src/coldeyesengine.h",
+        "src/debtsweepengine.cpp",
+        "src/debtsweepengine.h",
+        "src/indiereviewdialog.cpp",
+        "src/indiereviewdialog.h",
+        "src/indiereviewdispatcher.cpp",
+        "src/indiereviewdispatcher.h",
+        "src/indiereviewengine.cpp",
+        "src/indiereviewengine.h"
+      ]
+    },
+    {
+      "name": "test-audit-verify",
+      "summary": "Test-audit engine and dialog, focused test selection, mutation probe, build/verify gates.",
+      "sourcePaths": [
+        "src/buildfixhint.cpp",
+        "src/buildfixhint.h",
+        "src/buildtargets.cpp",
+        "src/buildtargets.h",
+        "src/focusedtest.cpp",
+        "src/focusedtest.h",
+        "src/mutationprobe.cpp",
+        "src/mutationprobe.h",
+        "src/testauditdialog.cpp",
+        "src/testauditdialog.h",
+        "src/testauditengine.cpp",
+        "src/testauditengine.h",
+        "src/testrescache.cpp",
+        "src/testrescache.h",
+        "src/verifyengine.cpp",
+        "src/verifyengine.h"
+      ]
+    },
+    {
+      "name": "code-index-search",
+      "summary": "Codebase index, symbol/source lookup, file outline, region reads and edit application.",
+      "sourcePaths": [
+        "src/applyedits.cpp",
+        "src/applyedits.h",
+        "src/cochangefamily.cpp",
+        "src/cochangefamily.h",
+        "src/codebaseindex.cpp",
+        "src/codebaseindex.h",
+        "src/fileoutline.cpp",
+        "src/fileoutline.h",
+        "src/findsources.cpp",
+        "src/findsources.h",
+        "src/paginationengine.cpp",
+        "src/paginationengine.h",
+        "src/readregion.cpp",
+        "src/readregion.h",
+        "src/regexharden.cpp",
+        "src/regexharden.h",
+        "src/similarcode.cpp",
+        "src/similarcode.h",
+        "src/symbolquery.cpp",
+        "src/symbolquery.h",
+        "src/wrapmatch.cpp",
+        "src/wrapmatch.h"
+      ]
+    },
+    {
+      "name": "mcp-infra",
+      "summary": "Orientation, projection, result spill, token accounting and JSON/redaction helpers.",
+      "sourcePaths": [
+        "src/jsoncanonical.cpp",
+        "src/jsoncanonical.h",
+        "src/jsonlfile.cpp",
+        "src/jsonlfile.h",
+        "src/mcporientation.cpp",
+        "src/mcporientation.h",
+        "src/mcpprojection.cpp",
+        "src/mcpprojection.h",
+        "src/mcpspill.cpp",
+        "src/mcpspill.h",
+        "src/resolvedroot.h",
+        "src/secretredact.h",
+        "src/tokenusageengine.cpp",
+        "src/tokenusageengine.h"
+      ]
+    },
+    {
+      "name": "model-switching",
+      "summary": "Auto model switcher, near-miss ledger, recommender and the LLM client/dispatcher.",
+      "sourcePaths": [
+        "src/aidialog.cpp",
+        "src/aidialog.h",
+        "src/llmclient.cpp",
+        "src/llmclient.h",
+        "src/llmdispatcher.cpp",
+        "src/llmdispatcher.h",
+        "src/modelautoswitch.cpp",
+        "src/modelautoswitch.h",
+        "src/modelnearmissledger.cpp",
+        "src/modelnearmissledger.h",
+        "src/modelrecommender.cpp",
+        "src/modelrecommender.h",
+        "src/modelswitchledger.cpp",
+        "src/modelswitchledger.h"
+      ]
+    },
+    {
+      "name": "config-session-project",
+      "summary": "Config load/save/backup, session persistence and per-project settings.",
+      "sourcePaths": [
+        "src/config.cpp",
+        "src/config.h",
+        "src/configbackup.h",
+        "src/configpaths.h",
+        "src/projectlayoutengine.cpp",
+        "src/projectlayoutengine.h",
+        "src/projectsettings.cpp",
+        "src/projectsettings.h",
+        "src/secureio.h",
+        "src/sessionmanager.cpp",
+        "src/sessionmanager.h",
+        "src/sessionmemoryengine.cpp",
+        "src/sessionmemoryengine.h"
+      ]
+    },
+    {
+      "name": "plugins-lua",
+      "summary": "Lua sandbox and the plugin manager.",
+      "sourcePaths": [
+        "src/luaengine.cpp",
+        "src/luaengine.h",
+        "src/pluginmanager.cpp",
+        "src/pluginmanager.h"
+      ]
+    },
+    {
+      "name": "changelog-feedback",
+      "summary": "CHANGELOG verbs and the cross-session feedback-file format.",
+      "sourcePaths": [
+        "src/changeloglog.cpp",
+        "src/changeloglog.h",
+        "src/changelogquery.cpp",
+        "src/changelogquery.h",
+        "src/feedbackfile.cpp",
+        "src/feedbackfile.h"
+      ]
+    },
+    {
+      "name": "app-entry-dialogs",
+      "summary": "Entry points, the helper binary, and the settings/ssh/diff dialogs.",
+      "sourcePaths": [
+        "src/antshelper.cpp",
+        "src/antshelper.h",
+        "src/antshelpermain.cpp",
+        "src/diffviewer.cpp",
+        "src/diffviewer.h",
+        "src/main.cpp",
+        "src/settingsdialog.cpp",
+        "src/settingsdialog.h",
+        "src/sshdialog.cpp",
+        "src/sshdialog.h"
+      ]
+    },
+    {
+      "name": "diagnostics-logging",
+      "summary": "Debug log, scrollback error capture, build cache and tool detection.",
+      "sourcePaths": [
+        "src/buildcache.cpp",
+        "src/buildcache.h",
+        "src/debuglog.cpp",
+        "src/debuglog.h",
+        "src/readlog.cpp",
+        "src/readlog.h",
+        "src/rgdiagnosis.cpp",
+        "src/rgdiagnosis.h",
+        "src/scrollbackerrors.cpp",
+        "src/scrollbackerrors.h",
+        "src/tooldetectionengine.cpp",
+        "src/tooldetectionengine.h"
+      ]
+    },
+    {
+      "name": "shared-utilities",
+      "summary": "Small cross-cutting helpers: path validation, git wrapper, tree watcher, clipboard and thread guards.",
+      "sourcePaths": [
+        "src/build_info.h",
+        "src/clipboardguard.cpp",
+        "src/clipboardguard.h",
+        "src/gitwrap.cpp",
+        "src/gitwrap.h",
+        "src/guithread.h",
+        "src/pathvalidation.cpp",
+        "src/pathvalidation.h",
+        "src/reviewbuttonstate.h",
+        "src/shellutils.h",
+        "src/subsystemmap.cpp",
+        "src/subsystemmap.h",
+        "src/treewatcher.cpp",
+        "src/treewatcher.h"
+      ]
+    }
+  ]
+}

@@ -128,8 +128,15 @@ tmp/
 # Local design-synthesis scratch (multi-model brainstorm dumps)
 RoadMap_Design/
 
-# Indie-review sidecar reports (transient, regenerated per sweep)
-.indie-review/
+# Indie-review sidecar reports (transient, regenerated per sweep).
+# partition.json is the exception and is TRACKED: it is a declaration, not
+# a sweep artifact — indie_review_partition reads it as an override, its own
+# schema says to commit it, and rebuilding it by hand is a measurement, not a
+# regeneration. Ignore the directory's CONTENTS (not the directory itself) so
+# the negation below can re-include one file; git cannot re-include a path
+# whose parent directory is excluded.
+.indie-review/*
+!.indie-review/partition.json
 
 # Investigation scratch (untracked working notes)
 INVESTIGATION_tab_close_x.md
