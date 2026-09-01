@@ -49045,61 +49045,91 @@ positives or volume classes needing per-site judgement, which is review-code's
 call rather than a tool's. Items below split into the six fixes, the deferred
 volume classes, and the tooling/documentation gaps the run exposed.
 
-- 📋 [ANTS-4772] **release.yml interpolates ${{ inputs.tag }} straight into a run: block.**
+- ✅ [ANTS-4772] **release.yml interpolates ${{ inputs.tag }} straight into a run: block.**
   zizmor template-injection, HIGH severity, HIGH confidence, two sites: .github/workflows/release.yml:59 and :60, inside the "Resolve target tag" step. The workflow_dispatch input is expanded by the Actions template engine BEFORE the shell sees it, so a crafted tag becomes shell source in a runner holding contents: write and GITHUB_TOKEN.
 
   Graded MEDIUM rather than HIGH because workflow_dispatch on a public repo needs write access, so the attacker is already a collaborator. Filed anyway: the fix is the standard env: indirection and costs nothing, and this file's own header claims "Hardening matches ci.yml".
 
   Fix: pass the input through env: INPUT_TAG and reference "$INPUT_TAG" in the script.
+  Resolved (2026-09-01, bc166e37): the input reaches the script through
+  env: INPUT_TAG and is referenced as "$INPUT_TAG", so the template
+  engine no longer substitutes into shell source. Verified with zizmor:
+  no inputs.tag remains inside any run: block.
   **Layman:** A release script drops whatever tag name you type directly into a command, so a typo-shaped attack could run code.
   Kind: security.
   Source: check-code-sweep-2026-09-01.
   Lanes: ci, packaging.
 
-- 📋 [ANTS-4773] **Four actions/checkout steps persist the git credential into the runner workspace.**
+- ✅ [ANTS-4773] **Four actions/checkout steps persist the git credential into the runner workspace.**
   zizmor artipacked, MEDIUM severity, LOW confidence: ci.yml:60, ci.yml:192, ci.yml:305 and release.yml:89 all use actions/checkout without persist-credentials: false, so the token stays in .git/config and can reach an uploaded artifact.
 
   VERIFIED SAFE TO FIX: no workflow run: block and no script they invoke (ci-parity.sh, check-version-drift.sh) executes any git command after checkout, so nothing depends on the persisted credential.
+  Resolved (2026-09-01, bc166e37): persist-credentials: false on all
+  four checkout steps. The safe-to-fix premise was re-verified before
+  the edit rather than taken from the report -- neither workflow invokes
+  git at all. Verified with zizmor: artipacked now reports 0 findings.
   **Layman:** The build checks out code in a way that leaves a login token lying around on the build machine.
   Kind: security.
   Source: check-code-sweep-2026-09-01.
   Lanes: ci.
 
-- 📋 [ANTS-4774] **remotecontrol_state.cpp uses QElapsedTimer without including it.**
+- ✅ [ANTS-4774] **remotecontrol_state.cpp uses QElapsedTimer without including it.**
   clang-tidy clang-diagnostic-error at src/remotecontrol_state.cpp:3375 ("unknown type name 'QElapsedTimer'") once the precompiled header is removed from the compile database. The file declares QElapsedTimer wall; and its include block carries no <QElapsedTimer>.
 
   It compiles today only because ants_apply_qt_pch() feeds every library <QtCore/QtCore> (CMakeLists.txt:885-893). Latent: the TU breaks if the PCH is ever disabled. One-line fix.
 
   This was the ONLY hard error across all 729 translation units, so the rest of the tree does not share the dependency.
+  Resolved (2026-09-01, ad56d833): <QElapsedTimer> added to the include
+  block. The TU no longer depends on the Qt module PCH for that type.
   **Layman:** A source file uses a timer type it never asks for; it only builds because a shared shortcut header happens to supply it.
   Kind: fix.
   Source: check-code-sweep-2026-09-01.
   Lanes: remotecontrol.
 
-- 📋 [ANTS-4775] **CommandPalette::show() shadows the non-virtual QWidget::show().**
+- ✅ [ANTS-4775] **CommandPalette::show() shadows the non-virtual QWidget::show().**
   clang-tidy bugprone-derived-method-shadowing-base-method at src/commandpalette.h:37. QWidget::show() is NOT virtual, and setVisible(bool) — which is — is not overridden.
 
   CommandPalette::show() (commandpalette.cpp:98-114) does the real work: ensureListReady(), clear input, populateList(""), positionAndResize(), raise(), setFocus(). Any reveal that does not go through a CommandPalette-typed pointer runs QWidget::show() and yields an unbuilt, unpositioned, unfocused palette.
 
   NOT LIVE TODAY: the sole call site is mainwindow.cpp:1410 on a CommandPalette*, and the widget is explicitly hidden at construction (:460) so a parent show cannot reveal it. Fix by overriding setVisible(bool) instead.
+  Resolved (2026-09-01, ad56d833): overrides the virtual
+  setVisible(bool) instead of shadowing the non-virtual QWidget::show().
+  The base call is QWidget::setVisible, not QWidget::show, which would
+  re-enter the override; a false argument early-returns before touching
+  m_input, so the construction-time hide() is safe. The three existing
+  test call sites and mainwindow.cpp all reach it through show()
+  unchanged.
   **Layman:** The command palette does its setup in a function Qt does not always call, so it could appear blank.
   Kind: fix.
   Source: check-code-sweep-2026-09-01.
   Lanes: chrome.
 
-- 📋 [ANTS-4776] **Two per-query tokenisers rebuild a literal QRegularExpression on every call.**
+- ✅ [ANTS-4776] **Two per-query tokenisers rebuild a literal QRegularExpression on every call.**
   clazy use-static-qregularexpression at src/wrapmatch.cpp:71 and src/findsources.cpp:191. Both split on a QStringLiteral pattern constructed inline inside a tokenise() called once per query, so the pattern is recompiled per call. Both patterns are constant; static const is the fix.
 
   SCOPE NOTE: clazy reported 18 such sites in src/. Only these two were verified as constant patterns in a per-call path. The rest include at least one genuine false positive (mcpprojection.cpp:644, where the pattern is caller-supplied and cannot be static) and are left to the deferred Qt-idiom item.
+  Resolved (2026-09-01, ad56d833): both patterns are now static const,
+  compiled once per process. Scope held to the two sites this item
+  verified; the other 16 clazy hits stay with the deferred Qt-idiom
+  item.
   **Layman:** Two search helpers recompile the same fixed pattern every single time instead of once.
   Kind: perf.
   Source: check-code-sweep-2026-09-01.
   Lanes: remotecontrol.
 
-- 📋 [ANTS-4777] **dialogchrome.cpp comment misspells reddening as reding.**
+- ✅ [ANTS-4777] **dialogchrome.cpp comment misspells reddening as reding.**
   src/dialogchrome.cpp:55, in the ANTS-1869 comment: "a UBSan vptr error that was reding every dialog test under the sanitizer build" — should be "reddening".
 
   This is the ONLY real hit in typos' 920 findings on this tree; the other 919 are project vocabulary and are recorded in .ants_review_falsepos.jsonl.
+  Resolved (2026-09-01, ad56d833): reding -> reddening. A second
+  occurrence of the same typo survives at
+  docs/specs/ANTS-4065-import-mapping-contract.md:1354, inside a landed
+  cold-eyes loop-log row -- a frozen record, left as written per
+  CLAUDE.md rule 14.
+  Release note (2026-09-01): no CHANGELOG entry, deliberately — the
+  change is one word inside a code comment. It alters no behaviour, no
+  interface and nothing a reader of the release notes could observe, so
+  a bullet would describe the release rather than inform it.
   **Layman:** A code comment has a typo.
   Kind: doc-fix.
   Source: check-code-sweep-2026-09-01.
@@ -49312,6 +49342,32 @@ volume classes, and the tooling/documentation gaps the run exposed.
   Kind: chore.
   Source: check-code-sweep-2026-09-01.
   Lanes: ci.
+
+- 📋 [ANTS-4792] **Thirteen info-level template-injection sites remain in release.yml after ANTS-4772.**
+  Found by the ANTS-4772/4773 close-findings sweep, not by the original
+  check-code run: ANTS-4772 named only the two HIGH-confidence
+  ${{ inputs.tag }} sites and both are fixed, but zizmor still reports 13
+  info-level template-injection findings in release.yml at lines 234, 242,
+  245 (x3), 247, 249, 272, 276 (x2), 293, 295 and 302.
+
+  PRE-EXISTING, not caused by that fix -- the same sites report against
+  HEAD~2. Graded info by zizmor rather than HIGH because these expand
+  steps.tag.outputs.* and github.* rather than a workflow_dispatch input,
+  so the value is derived inside the workflow rather than typed by a
+  caller. That is why they are filed rather than fixed in the same pass:
+  deciding which of the 13 are genuinely caller-influenced needs per-site
+  judgement, and an unreviewed edit to a release workflow is the wrong
+  thing to attach to a fix run.
+
+  ci.yml is clean -- all 13 are in release.yml.
+
+  Fix shape when it is picked up: the same env: indirection ANTS-4772
+  used, applied per site, after deciding which sites can carry an
+  attacker-influenced value at all.
+  **Layman:** The release script still drops several computed values straight into commands; each needs checking to see whether anyone outside could influence them.
+  Kind: security.
+  Source: close-findings-sweep-2026-09-01.
+  Lanes: ci, packaging.
 
 ### Ants MCP feedback from CC sessions — 2026-08-28 triage
 

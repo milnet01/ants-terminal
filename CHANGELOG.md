@@ -137,6 +137,9 @@ for security-relevant changes.
 
 ### Changed
 
+- **Two per-query tokenisers compile their search pattern once per process rather than once per call** (ANTS-4776)
+  `wrapmatch.cpp` and `findsources.cpp` hold their constant `QRegularExpression` as `static const`.
+
 - **The roadmap high-water scan is 41% faster on a large roadmap** (ANTS-4426)
   `maxDeclaredId` — the scan behind `roadmap_query`'s `file_ahead_of_store` witness and the allocator's floor — ran a regular expression once per line of the file, 62,918 times on this project's 4.96 MB roadmap. It is now a character check with identical semantics: the scan drops from 22.6 ms to 13.3 ms, and a cache-miss roadmap read on a migrated project from ~26.5 ms to ~16.6 ms. Verified by verdict diff over 400 markdown files and 234,692 lines, with no verdict moved.
 
@@ -163,6 +166,12 @@ for security-relevant changes.
   `Inv2BypassesStatusAndPagination` anchored on a string that also matches an earlier `else if`, so its byte window opened above the branch it names — a test that passes from the wrong position gives no signal when the thing it names moves. Re-anchored on a needle that occurs once, and proved by mutation in both directions.
 
 ### Fixed
+
+- **`remotecontrol_state.cpp` includes the Qt header it uses instead of relying on the module precompiled header** (ANTS-4774)
+  The translation unit built only because the shared Qt PCH happened to supply `QElapsedTimer`; it now compiles on its own terms.
+
+- **The command palette builds and positions itself on every reveal, not only when shown through a typed pointer** (ANTS-4775)
+  It now overrides the virtual `setVisible(bool)` rather than shadowing the non-virtual `QWidget::show()`, which could otherwise yield an unbuilt, unpositioned and unfocused palette.
 
 - **indie_review_partition now reports the source files its computed walk left out of every lane, so a review can no longer read as full coverage while skipping part of the tree** (ANTS-4771)
   The computed partition admits only suffixes the codebase index can
@@ -368,6 +377,14 @@ for security-relevant changes.
   package users ended up two releases behind twice. The promote step now runs
   the submit itself, and says so loudly if it cannot.
 
+
+### Security
+
+- **CI and release checkouts no longer leave the git credential in the runner workspace** (ANTS-4773)
+  All four `actions/checkout` steps set `persist-credentials: false`. Neither workflow invokes git, so nothing depended on the persisted token, and it can no longer reach an uploaded artifact via `.git/config`.
+
+- **The release workflow passes its tag input through `env:` instead of expanding it into the shell** (ANTS-4772)
+  A `workflow_dispatch` tag is now read as `"$INPUT_TAG"` rather than substituted by the Actions template engine before the shell parses the line, so a crafted tag can no longer become shell source in a runner holding `contents: write`.
 
 ## [0.7.107] — unreleased (Patron RC preview)
 ### Added
