@@ -1,0 +1,48 @@
+; Encodes the layout this tree already uses. Measured before writing:
+; every shell, C++ and Python file indents with spaces, and no tracked
+; source file starts a line with a tab.
+;
+; It also gives shfmt a declared style. Without one shfmt diffs every
+; script against its own tab default and reports a conforming project as
+; malformed, so it was skipped rather than run (ANTS-4790).
+
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+indent_style = space
+indent_size = 4
+trim_trailing_whitespace = true
+insert_final_newline = true
+
+; SHFMT READS THIS FILE, including the [*] section above -- so it is armed
+; by the indent_size key whether or not a shell section exists. Do not read
+; the absence of one as shfmt being disabled.
+;
+; This project does NOT conform to shfmt's canonical output under any
+; setting: measured, thousands of diff lines every way, mostly `case`
+; pattern spacing (`/|/home)` rewritten as `/ | /home)`). Adopting shfmt
+; therefore means reformatting every script, not adding a key. Until that
+; is decided, do not wire shfmt into a gate -- it will fail (ANTS-4790).
+;
+; No shell section is set because the best-matching combination still left
+; thousands of lines, so it bought nothing but implied a style we follow.
+
+[*.{yml,yaml,json}]
+indent_size = 2
+
+[*.md]
+; Markdown gives a hard line break with two trailing spaces.
+trim_trailing_whitespace = false
+
+[Makefile]
+indent_style = tab
+
+; Byte-exact fixtures. tests/features/roadmap_export_roundtrip asserts that
+; export -> rebuild -> re-export is byte-identical (INV-1), and several of
+; these vectors deliberately end without a newline. An editor appending one
+; would break that test, so both rules are off here.
+[tests/features/roadmap_export_roundtrip/vectors/*.json]
+insert_final_newline = false
+trim_trailing_whitespace = false

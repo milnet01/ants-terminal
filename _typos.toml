@@ -1,0 +1,57 @@
+# Project vocabulary for `typos`.
+#
+# Without it a whole-tree run is almost entirely false positives on this
+# codebase, which makes the tool unusable here (ANTS-4789). Every entry
+# below was verified against the source that produces it -- none is a real
+# misspelling being waved through.
+#
+# Add an entry only after reading the line that triggered it.
+#
+# NOTE ON CHECKING THIS FILE: `[files] extend-exclude` applies to typos'
+# own directory walk. Passing paths as positional arguments bypasses it, so
+# run plain `typos` from the repo root to see what the config actually does.
+
+[files]
+# Generated or append-only, and the largest single source of noise.
+# ROADMAP.md is rendered from the roadmap store, so a correction made here
+# would be overwritten by the next roadmap write.
+extend-exclude = [
+    "ROADMAP.md",
+    "CHANGELOG.md",
+    "docs/roadmap/",
+    ".audit_cache/",
+    "tests/audit_fixtures/",
+]
+
+[default]
+# `mis-` is a live English prefix and this tree uses it constantly:
+# mis-cased, mis-pairing, mis-routed, mis-diagnosed. The trailing part is
+# optional because prose here hard-wraps, so a line can end on `mis-`.
+# A bare `mis` still reports, so this does not mask the real typo.
+extend-ignore-re = [
+    "\\b[Mm]is-",
+]
+
+[default.extend-words]
+# Real words and domain notation the dictionary lacks. These are matched as
+# WORDS -- typos splits identifiers, so `foTool` is checked as `fo` + `Tool`
+# and belongs here rather than under extend-identifiers.
+unparseable = "unparseable"   # used throughout in place of "unparsable"
+writeable = "writeable"       # valid variant, used throughout the specs
+fnd = "fnd"                   # Finding fnd; -- debtsweepengine.cpp
+fo = "fo"                     # foTool, the file_outline tool object
+sme = "sme"                   # SME, the SessionMemoryEngine namespace alias
+lod = "lod"                   # level-of-detail, co-change-family spec
+tese = "tese"                 # GLSL tessellation-evaluation shader
+tesc = "tesc"                 # GLSL tessellation-control shader
+restat = "restat"             # Ninja's restat feature, in the build files
+nothink = "nothink"           # a real Claude Code thinking directive
+ful = "ful"                   # "id-ful", coined as the opposite of id-less
+fillin = "fillin"             # model_auto_switch_outcome_fillin test suite
+foldin = "foldin"             # foldin_block_inserted, review fold-in envelopes
+thr = "thr"                   # thr() helper in tests/features/hook_pack
+caf = "caf"                   # café, in the cited-by escape fixtures
+clen = "clen"                 # composed-length local, terminalwidget.cpp
+ser = "ser"                   # serBody, session checksum test
+nd = "nd"                     # "Nd ago" relative-time notation
+pn = "pn"                     # "CSI Pn I" -- VT100 parameter notation

@@ -49200,6 +49200,25 @@ volume classes, and the tooling/documentation gaps the run exposed.
   Committing a .clang-tidy would settle ANTS-4778 and ANTS-4779 at the same time (which classes this project considers defects) and make the tool safe for anyone else to run.
 
   SECOND TRAP, same file: the project builds with GCC and uses target_precompile_headers. clang-tidy and clazy both REJECT a GCC .gch (-Werror,-Wignored-gch), abandon every file and exit 0. This run only worked because the compile database was rewritten with the PCH include stripped. Any future CI clang-tidy job needs that step or it will report a clean tree having read nothing.
+  Progress (2026-09-01): the consequence is bigger than filed, and it is VERIFIED rather than reasoned.
+
+  This project's OWN audit_run verb runs clang-tidy as one of its nine
+  auto-detected tools (spec ANTS-1351 § 60). auditrunner.cpp:536-539 emits
+  --checks= ONLY when the caller passes a non-empty `checks` argument, so a
+  default sweep invokes clang-tidy with no check selection at all.
+
+  Measured on this tree: `clang-tidy --list-checks` with no .clang-tidy and no
+  --checks reports "No checks enabled." -- 0 checks. So audit_run's clang-tidy
+  lane has been contributing zero findings to every default sweep, silently,
+  and a caller reading nine tools in the envelope cannot tell.
+
+  For scale: an explicit --checks= list over the same tree returned 12,431
+  unique findings.
+
+  So a committed .clang-tidy is not only ergonomics for a human running the
+  tool by hand -- it is what makes this project's own audit verb analyse C++
+  at all. It also means adding one CHANGES audit_run's output for every
+  caller, which is why it wants a deliberate check set rather than a default.
   **Layman:** One of the code checkers has no settings file, so running it looks clean when it has actually checked nothing.
   Kind: chore.
   Source: check-code-sweep-2026-09-01.
@@ -49222,6 +49241,27 @@ volume classes, and the tooling/documentation gaps the run exposed.
   The noise is project vocabulary, not sloppiness: 306 mis-<word> hyphenated prefixes, 105 `fnd` (the Finding variable in debtsweepengine.cpp), 96 `unparseable`, 74 `SME` (a namespace alias), 62 `fo` (the foTool identifier), 32 `Pn` (VT100 notation, CSI Pn I), 29 `CHEC` word-splits, 21 `ba` git SHA prefixes, 12 `nothink` (a real Claude Code directive), plus `tese` (a real GLSL tessellation-eval extension) and `restat` (a real Ninja feature).
 
   Cheapest first cut: exclude ROADMAP.md and CHANGELOG.md, which contribute 165 between them and are generated or append-only. Full rationale is in .ants_review_falsepos.jsonl.
+  Progress (2026-09-01): _typos.toml landed. A whole-tree run drops from the
+  figure recorded above to a small fraction of it, and the tool is usable here
+  now.
+
+  The residue is deliberate rather than unfinished. It still reports `occured`,
+  `trivials`, `Nam`, `CANDIDAT` and friends -- real misspellings, mostly in
+  test fixtures and spec prose -- which is the evidence the config suppresses
+  VOCABULARY and not spelling. Pushing the count to zero would mean allowing
+  tokens that mask those.
+
+  Two things worth knowing before editing the file. `[files] extend-exclude`
+  applies to typos' own directory WALK, so checking the config by passing paths
+  as positional arguments bypasses it and reads as though the exclusions do
+  nothing -- run plain `typos` from the repo root. And typos splits identifiers
+  into words, so `foTool` is checked as `fo` + `Tool`: those entries belong
+  under extend-words, not extend-identifiers, which matches whole identifiers
+  only.
+
+  The `mis-` prefix is handled by a regex with the trailing part optional,
+  because prose here hard-wraps and a line can end on `mis-`. A bare `mis`
+  still reports.
   **Layman:** The spell checker does not know this project's words, so it cries wolf 919 times out of 920.
   Kind: chore.
   Source: check-code-sweep-2026-09-01.
@@ -49232,6 +49272,30 @@ volume classes, and the tooling/documentation gaps the run exposed.
   If one is added, give it a section whose glob actually selects *.sh. A blanket [*] section does NOT count: measured elsewhere, a project whose [*] set indent_size=2 for its TypeScript produced 397 bogus diff lines against 4-space shell.
 
   Low priority — nothing is broken. Filed so the skip has a reason on record rather than looking like an oversight.
+  Progress (2026-09-01): an .editorconfig now exists, and it deliberately does
+  NOT declare a shell style. The framing in this item was wrong, so the
+  remaining decision is different from the one filed.
+
+  MEASURED: shfmt's canonical output differs from this project's scripts by
+  thousands of diff lines under every setting combination tried, including the
+  best one (4-space, binary_next_line, switch_case_indent). Most of the
+  residue is `case` pattern spacing -- shfmt rewrites `/|/home)` as
+  `/ | /home)`. So no config key makes shfmt clean here.
+
+  The real choice is therefore: reformat every shell script to shfmt's style
+  and adopt it as a gate, or do not adopt shfmt. It is NOT "add an
+  .editorconfig and the tool works", which is what this item assumed.
+
+  Declining to arm it was the surgical call -- a config key that silently
+  turns a skipped tool into a failing gate is worse than the skip, and
+  reformatting 39 scripts is an orthogonal change no finding asked for.
+
+  The .editorconfig that landed carries the measured facts only: spaces,
+  4-wide, LF, UTF-8, trimmed trailing whitespace, final newline. Two carve-outs
+  in it are load-bearing: markdown keeps trailing whitespace (it is a hard line
+  break), and the roadmap_export_roundtrip vectors keep both rules off, since
+  they back a byte-identical round trip and several deliberately end without a
+  newline.
   **Layman:** There is no file saying how code should be laid out, so the formatter has nothing to check against.
   Kind: chore.
   Source: check-code-sweep-2026-09-01.

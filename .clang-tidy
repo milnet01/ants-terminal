@@ -1,0 +1,61 @@
+# Check selection for clang-tidy (ANTS-4787).
+#
+# WHY THIS FILE EXISTS AT ALL: with no .clang-tidy and no --checks, clang-tidy
+# enables NO checks. It then analyses nothing and exits 0, which in a log is
+# indistinguishable from a clean pass. Verified on this tree with
+# `clang-tidy --list-checks`: "No checks enabled."
+#
+# That is not only a hazard for someone running the tool by hand. This
+# project's own audit_run verb auto-detects clang-tidy (spec ANTS-1351), and
+# auditrunner.cpp emits --checks= only when a caller passes an explicit
+# `checks` argument -- so every default sweep ran it with no selection. This
+# file is what makes that lane analyse C++ at all.
+#
+# ADDING IT THEREFORE CHANGES audit_run OUTPUT for every caller. The set below
+# is chosen to be worth reading rather than to be exhaustive.
+#
+# TWO TRAPS worth knowing before wiring clang-tidy into any gate:
+#   * This project builds with GCC and uses target_precompile_headers. The
+#     clang front end rejects a GCC .gch, so clang-tidy abandons every file
+#     and exits 0. Strip the PCH include from the compile database first, or
+#     pass -Wno-error=ignored-gch.
+#   * Never pass --quiet. It suppresses the findings, not just the summary.
+
+Checks: >
+  -*,
+  bugprone-*,
+  clang-analyzer-*,
+  performance-*,
+  misc-*,
+  cert-*,
+  readability-misleading-indentation,
+  -bugprone-easily-swappable-parameters,
+  -bugprone-narrowing-conversions,
+  -misc-include-cleaner,
+  -misc-const-correctness,
+  -misc-non-private-member-variables-in-classes,
+  -cert-err33-c
+
+# Each exclusion above traces to a filed decision or a verified reason:
+#
+#   bugprone-narrowing-conversions       ANTS-4781 -- needs per-site judgement
+#   misc-include-cleaner                 ANTS-4778 -- the tree leans on the
+#                                        Qt module PCH for its includes; that
+#                                        is a project policy question
+#   misc-const-correctness               ANTS-4779 -- advisory, no hit is a
+#                                        defect
+#   bugprone-easily-swappable-parameters advisory API-shape opinion; fires on
+#                                        ordinary Qt signatures
+#   misc-non-private-member-variables    style, not correctness
+#   cert-err33-c                         verified as the stderr-logging idiom
+#                                        (debuglog.cpp, dialogshowtracer.cpp);
+#                                        ignoring an fprintf return there is
+#                                        correct practice
+#
+# Re-enable any of them by deleting its line once the item it names is
+# decided.
+
+# Findings in headers this project owns; system and Qt headers stay silent.
+HeaderFilterRegex: '.*/(src|tests)/[^/]+\.h$'
+
+FormatStyle: none
