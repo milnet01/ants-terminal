@@ -49033,6 +49033,222 @@ shipped note, which is the staleness discipline ANTS-4741 exists to prompt.
   Source: OneUp_Ants_MCP_Feedback.md 2026-08-31.
   Lanes: mcp, indiereview.
 
+## check-code whole-tree sweep fold-in (2026-09-01)
+
+Whole-tree static-analysis sweep: 13 tools ran, 5 were correctly skipped (no
+config or no language signal). Raw totals — clang-tidy 12,431 unique, cppcheck
+826, clazy 821, typos 920, shellcheck 58, zizmor 19, ruff 23, yamllint 24,
+actionlint 1, bandit 2, gitleaks 2, semgrep 0, vulture 0. After applying the
+project's existing false-positive ledger and verifying each survivor against
+source, six findings were actionable; the rest are either recorded false
+positives or volume classes needing per-site judgement, which is review-code's
+call rather than a tool's. Items below split into the six fixes, the deferred
+volume classes, and the tooling/documentation gaps the run exposed.
+
+- 📋 [ANTS-4772] **release.yml interpolates ${{ inputs.tag }} straight into a run: block.**
+  zizmor template-injection, HIGH severity, HIGH confidence, two sites: .github/workflows/release.yml:59 and :60, inside the "Resolve target tag" step. The workflow_dispatch input is expanded by the Actions template engine BEFORE the shell sees it, so a crafted tag becomes shell source in a runner holding contents: write and GITHUB_TOKEN.
+
+  Graded MEDIUM rather than HIGH because workflow_dispatch on a public repo needs write access, so the attacker is already a collaborator. Filed anyway: the fix is the standard env: indirection and costs nothing, and this file's own header claims "Hardening matches ci.yml".
+
+  Fix: pass the input through env: INPUT_TAG and reference "$INPUT_TAG" in the script.
+  **Layman:** A release script drops whatever tag name you type directly into a command, so a typo-shaped attack could run code.
+  Kind: security.
+  Source: check-code-sweep-2026-09-01.
+  Lanes: ci, packaging.
+
+- 📋 [ANTS-4773] **Four actions/checkout steps persist the git credential into the runner workspace.**
+  zizmor artipacked, MEDIUM severity, LOW confidence: ci.yml:60, ci.yml:192, ci.yml:305 and release.yml:89 all use actions/checkout without persist-credentials: false, so the token stays in .git/config and can reach an uploaded artifact.
+
+  VERIFIED SAFE TO FIX: no workflow run: block and no script they invoke (ci-parity.sh, check-version-drift.sh) executes any git command after checkout, so nothing depends on the persisted credential.
+  **Layman:** The build checks out code in a way that leaves a login token lying around on the build machine.
+  Kind: security.
+  Source: check-code-sweep-2026-09-01.
+  Lanes: ci.
+
+- 📋 [ANTS-4774] **remotecontrol_state.cpp uses QElapsedTimer without including it.**
+  clang-tidy clang-diagnostic-error at src/remotecontrol_state.cpp:3375 ("unknown type name 'QElapsedTimer'") once the precompiled header is removed from the compile database. The file declares QElapsedTimer wall; and its include block carries no <QElapsedTimer>.
+
+  It compiles today only because ants_apply_qt_pch() feeds every library <QtCore/QtCore> (CMakeLists.txt:885-893). Latent: the TU breaks if the PCH is ever disabled. One-line fix.
+
+  This was the ONLY hard error across all 729 translation units, so the rest of the tree does not share the dependency.
+  **Layman:** A source file uses a timer type it never asks for; it only builds because a shared shortcut header happens to supply it.
+  Kind: fix.
+  Source: check-code-sweep-2026-09-01.
+  Lanes: remotecontrol.
+
+- 📋 [ANTS-4775] **CommandPalette::show() shadows the non-virtual QWidget::show().**
+  clang-tidy bugprone-derived-method-shadowing-base-method at src/commandpalette.h:37. QWidget::show() is NOT virtual, and setVisible(bool) — which is — is not overridden.
+
+  CommandPalette::show() (commandpalette.cpp:98-114) does the real work: ensureListReady(), clear input, populateList(""), positionAndResize(), raise(), setFocus(). Any reveal that does not go through a CommandPalette-typed pointer runs QWidget::show() and yields an unbuilt, unpositioned, unfocused palette.
+
+  NOT LIVE TODAY: the sole call site is mainwindow.cpp:1410 on a CommandPalette*, and the widget is explicitly hidden at construction (:460) so a parent show cannot reveal it. Fix by overriding setVisible(bool) instead.
+  **Layman:** The command palette does its setup in a function Qt does not always call, so it could appear blank.
+  Kind: fix.
+  Source: check-code-sweep-2026-09-01.
+  Lanes: chrome.
+
+- 📋 [ANTS-4776] **Two per-query tokenisers rebuild a literal QRegularExpression on every call.**
+  clazy use-static-qregularexpression at src/wrapmatch.cpp:71 and src/findsources.cpp:191. Both split on a QStringLiteral pattern constructed inline inside a tokenise() called once per query, so the pattern is recompiled per call. Both patterns are constant; static const is the fix.
+
+  SCOPE NOTE: clazy reported 18 such sites in src/. Only these two were verified as constant patterns in a per-call path. The rest include at least one genuine false positive (mcpprojection.cpp:644, where the pattern is caller-supplied and cannot be static) and are left to the deferred Qt-idiom item.
+  **Layman:** Two search helpers recompile the same fixed pattern every single time instead of once.
+  Kind: perf.
+  Source: check-code-sweep-2026-09-01.
+  Lanes: remotecontrol.
+
+- 📋 [ANTS-4777] **dialogchrome.cpp comment misspells reddening as reding.**
+  src/dialogchrome.cpp:55, in the ANTS-1869 comment: "a UBSan vptr error that was reding every dialog test under the sanitizer build" — should be "reddening".
+
+  This is the ONLY real hit in typos' 920 findings on this tree; the other 919 are project vocabulary and are recorded in .ants_review_falsepos.jsonl.
+  **Layman:** A code comment has a typo.
+  Kind: doc-fix.
+  Source: check-code-sweep-2026-09-01.
+  Lanes: chrome.
+
+- 📋 [ANTS-4778] **3,345 include-cleaner hits: the tree leans on the Qt module PCH for its includes.**
+  clang-tidy misc-include-cleaner, 3,345 unique hits (2,177 in src/). ants_apply_qt_pch() gives every library <QtCore/QtCore> + <QtGui/QtGui> + <QtWidgets/QtWidgets> (CMakeLists.txt:885-893), so a TU can name almost any Qt type without including it.
+
+  ANTS-4775 is the one case where this already bites (a hard compile error with the PCH stripped). The question here is the policy, not the sites: is include-what-you-use a goal for this project, or is the module PCH the accepted convention? Until that is answered no site is a defect, which is why this is filed as investigate and not as a fix.
+
+  Do NOT bulk-apply: 3,345 edits across the tree is the opposite of a surgical change.
+  **Layman:** Most files do not list what they use; they build because a shared shortcut header supplies it. That works until the shortcut is removed.
+  Kind: investigate.
+  Source: check-code-sweep-2026-09-01.
+
+- 📋 [ANTS-4779] **4,354 const-correctness hits await a project decision.**
+  clang-tidy misc-const-correctness, 4,354 unique hits (1,361 in src/) — 35% of that tool's entire output and the single largest class in the sweep.
+
+  Purely advisory: no hit is a defect. Needs one project-level answer (adopt, or exclude the check in a committed .clang-tidy) rather than 4,354 judgements. Note the project ships NO .clang-tidy at all, which is why this run had to pass an explicit --checks= list; deciding that file's contents would settle this item and several below.
+  **Layman:** A style checker wants thousands of variables marked as never-changing. Worth deciding once, not case by case.
+  Kind: investigate.
+  Source: check-code-sweep-2026-09-01.
+
+- 📋 [ANTS-4780] **464 clazy range-loop-detach hits: Qt containers detach inside range-for.**
+  clazy range-loop-detach, 464 unique hits (331 in src/) — 56% of clazy's output and its largest class. Iterating a non-const Qt container in a range-for triggers a detach (deep copy) under implicit sharing.
+
+  The idiomatic fix is std::as_const(...) per site, which the codebase already uses in places (e.g. remotecontrol_state.cpp:2490). Real cost, but 331 mechanical edits in src/ is a dedicated pass with its own test run, not something to fold into an unrelated fix batch. Worth measuring one hot path first — the paint and VT loops — rather than sweeping alphabetically.
+  **Layman:** Loops over Qt lists quietly copy the whole list because the loop is not marked read-only.
+  Kind: perf.
+  Source: check-code-sweep-2026-09-01.
+
+- 📋 [ANTS-4781] **784 narrowing-conversion hits need per-site judgement.**
+  clang-tidy bugprone-narrowing-conversions, 784 unique hits (522 in src/). Overwhelmingly int/qsizetype and qint64/int boundaries typical of Qt code.
+
+  Each hit needs the actual value range to decide, which is a judgement a tool cannot make — review-code's territory rather than check-code's. Filed so the class is on record; expect most to be benign and a small number to matter (grid coordinates, scrollback indices, byte counts near 2 GiB).
+  **Layman:** Hundreds of places convert big numbers to smaller ones; most are fine, a few might lose data.
+  Kind: investigate.
+  Source: check-code-sweep-2026-09-01.
+
+- 📋 [ANTS-4782] **382 cppcheck useStlAlgorithm hits await a project decision.**
+  cppcheck useStlAlgorithm, 382 hits (246 in src/) — 46% of cppcheck's output and the trigger for its aggregation report.
+
+  Style-severity and advisory. The project's own CI gate already runs cppcheck --enable=all informationally (ci.yml:110-118, --error-exitcode=0), so these have been printing in CI without action for some time. Either adopt the suggestion as a convention or add --suppress=useStlAlgorithm to the CI invocation with a stated reason; leaving 382 advisory lines in every CI log is the status quo and trains people to ignore the tool.
+  **Layman:** A checker suggests replacing hundreds of hand-written loops with standard library calls.
+  Kind: investigate.
+  Source: check-code-sweep-2026-09-01.
+
+- 📋 [ANTS-4783] **354 unchecked-optional-access hits, all of them in tests.**
+  clang-tidy bugprone-unchecked-optional-access, 354 unique hits, ZERO in src/ — every one is under tests/. Dereferencing a std::optional without checking has_value() is undefined behaviour when empty.
+
+  In a test this usually means a crash rather than a readable assertion failure, which is a diagnosability problem: see the recorded lesson that a red-run grep hides crashes. Belongs to review-tests rather than to this sweep; filed so the count is on record.
+
+  NOT a claim that 354 tests are wrong — most optionals are populated by construction one line earlier.
+  **Layman:** Test code reads optional values without first checking they exist; if one is empty the test crashes instead of failing cleanly.
+  Kind: test.
+  Source: check-code-sweep-2026-09-01.
+  Lanes: tests.
+
+- 📋 [ANTS-4784] **clazy Qt-idiom residue: 26 qstring-arg, 26 qcolor-from-literal, 166 non-pod-global-static.**
+  The clazy tail after ANTS-4776 takes the two verified regex sites. Three classes:
+
+  qstring-arg (26, 22 in src/) — .arg(a).arg(b) chains. Performance, but carries a latent correctness edge: if the FIRST substituted value itself contains %2, the second .arg() substitutes into it. Worth checking the sites that interpolate user or file text.
+
+  qcolor-from-literal (26) and non-pod-global-static (166) — performance and static-initialisation-order respectively. The latter matters only if one such object is read during another's construction.
+
+  Also here: 16 remaining use-static-qregularexpression sites, at least one of which (mcpprojection.cpp:644) is a false positive because the pattern is caller-supplied.
+  **Layman:** Assorted Qt habits that cost a little speed, plus one pattern that can bite at start-up.
+  Kind: perf.
+  Source: check-code-sweep-2026-09-01.
+
+- 📋 [ANTS-4785] **docs/subsystems.md documents 113 of 313 src files; 200 files and 61,179 lines have no lane.**
+  Measured 2026-09-01 against the 50 lanes indie_review_partition returns. Assigned: 113 files. Total tracked src/*.cpp + src/*.h: 313. UNASSIGNED: 200 files, 61,179 lines — 36% of src/ by line count.
+
+  The largest undocumented files: mainwindow.cpp (7,935 lines), auditrunner.cpp (2,687), testauditengine.cpp (2,270), settingsdialog.cpp (1,851), doccitations.cpp (1,706), debtsweepengine.cpp (1,645), feedbackfile.cpp (1,616), config.cpp (1,467), coldeyesengine.cpp (1,381), indiereviewengine.cpp (1,187). Also sessionmanager.cpp, fileoutline.cpp, readregion.cpp, codebaseindex.cpp, symbolquery.cpp.
+
+  WHY IT MATTERS BEYOND TIDINESS: every review that partitions by subsystem — indie_review_dialog, review-code, this session's own sweep — derives its lanes from this file. A file in no lane is read by no lane. mainwindow.cpp, the largest single file in the project, is reviewed by nothing.
+
+  CLAUDE.md already says "Keep docs/subsystems.md in sync with the code as you would any spec"; this records how far out of sync it actually is.
+  **Layman:** The map of what lives where covers about a third of the code. Any review driven by that map silently skips the rest.
+  Kind: doc.
+  Source: check-code-sweep-2026-09-01.
+  Lanes: docs.
+
+- 📋 [ANTS-4786] **indie_review_partition reports unassigned files only when derived:true, hiding the gap on the normal path.**
+  ANTS-4771 added unassigned_count / unassigned_by_suffix / unassigned_hint, and the verb's own description scopes them: "when the reply is derived:true". On the docs/subsystems.md path — the normal path for this project and every migrated one — the envelope carries no derived field and no unassigned fields at all.
+
+  Measured here: the reply listed 50 lanes covering 113 files and said nothing about the 200 it left out (ANTS-4785). A caller reading file_count across lanes gets 113 and no signal that src/ holds 313.
+
+  The coverage question is identical on both paths; only the CAUSE differs (suffix filter vs an incomplete map). Report the unassigned set on the map-driven path too, with the reason distinguished. Cheap: the walk that produces file_count already knows the tree.
+  **Layman:** The tool that splits code into review lanes only warns about files it missed when it guessed the split itself, not when it read the project map.
+  Kind: fix.
+  Source: check-code-sweep-2026-09-01.
+  Lanes: remotecontrol, mcp.
+
+- 📋 [ANTS-4787] **The project ships no .clang-tidy, so an unconfigured clang-tidy run analyses nothing and exits 0.**
+  No .clang-tidy anywhere in the tree. With no config and no explicit --checks=, clang-tidy selects an empty check set, analyses nothing and exits 0 — indistinguishable in a log from a clean pass. This sweep had to pass an explicit --checks= list to get any output at all, and then got 12,431 findings.
+
+  Committing a .clang-tidy would settle ANTS-4778 and ANTS-4779 at the same time (which classes this project considers defects) and make the tool safe for anyone else to run.
+
+  SECOND TRAP, same file: the project builds with GCC and uses target_precompile_headers. clang-tidy and clazy both REJECT a GCC .gch (-Werror,-Wignored-gch), abandon every file and exit 0. This run only worked because the compile database was rewritten with the PCH include stripped. Any future CI clang-tidy job needs that step or it will report a clean tree having read nothing.
+  **Layman:** One of the code checkers has no settings file, so running it looks clean when it has actually checked nothing.
+  Kind: chore.
+  Source: check-code-sweep-2026-09-01.
+  Lanes: ci.
+
+- 📋 [ANTS-4788] **The CI cppcheck gate scans src/ only, leaving 322 findings under tests/ unseen.**
+  ci.yml:110-118 and tools/ci-parity.sh:169-176 both invoke cppcheck with `-I src src/`. This sweep ran the same flags over src/, tests/ and tools/ and got 826 findings, 322 of them outside src/.
+
+  VERIFIED, so the gate's flags are otherwise correct: running the project's exact CI invocation and this run's calibrated one over src/ produced IDENTICAL output — 504 findings, 0 syntax errors, both. Adding --language=c++ changed nothing. The only gap is the scope.
+
+  Caveat before widening: cppcheck cannot parse the TEST()/HYGIENE_TEST()/RQ_TEST() macros (25 TUs, already recorded as a misparse in .ants_review_falsepos.jsonl), so a naive widening adds 25 syntaxError lines to every CI log. Suppress that rule for tests/ if the scope is widened.
+  **Layman:** The automated code check looks at the app but not at the tests.
+  Kind: chore.
+  Source: check-code-sweep-2026-09-01.
+  Lanes: ci, tests.
+
+- 📋 [ANTS-4789] **typos has no project config; 920 findings, one real.**
+  A whole-tree typos run returns 920 findings. Exactly one is real (ANTS-4777). The 99.9% noise rate makes the tool unusable here without a _typos.toml.
+
+  The noise is project vocabulary, not sloppiness: 306 mis-<word> hyphenated prefixes, 105 `fnd` (the Finding variable in debtsweepengine.cpp), 96 `unparseable`, 74 `SME` (a namespace alias), 62 `fo` (the foTool identifier), 32 `Pn` (VT100 notation, CSI Pn I), 29 `CHEC` word-splits, 21 `ba` git SHA prefixes, 12 `nothink` (a real Claude Code directive), plus `tese` (a real GLSL tessellation-eval extension) and `restat` (a real Ninja feature).
+
+  Cheapest first cut: exclude ROADMAP.md and CHANGELOG.md, which contribute 165 between them and are generated or append-only. Full rationale is in .ants_review_falsepos.jsonl.
+  **Layman:** The spell checker does not know this project's words, so it cries wolf 919 times out of 920.
+  Kind: chore.
+  Source: check-code-sweep-2026-09-01.
+
+- 📋 [ANTS-4790] **No .editorconfig, so shfmt has no declared style and cannot run.**
+  The repo ships no .editorconfig at any level. shfmt was skipped for want of a config rather than run — with no declared style it diffs 39 shell files against its own tab default, which reports a conforming project as entirely malformed.
+
+  If one is added, give it a section whose glob actually selects *.sh. A blanket [*] section does NOT count: measured elsewhere, a project whose [*] set indent_size=2 for its TypeScript produced 397 bogus diff lines against 4-space shell.
+
+  Low priority — nothing is broken. Filed so the skip has a reason on record rather than looking like an oversight.
+  **Layman:** There is no file saying how code should be laid out, so the formatter has nothing to check against.
+  Kind: chore.
+  Source: check-code-sweep-2026-09-01.
+
+- 📋 [ANTS-4791] **CMake build files are analysed by no linter, and the eleven tools/*.py have never been type-checked.**
+  TWO GAPS, both "no tool ran" rather than "a tool found nothing".
+
+  CMake: CMakeLists.txt (900+ lines) plus cmake/GenerateBuildInfoValues.cmake, cmake/QtVersionGuard.cmake and tests/slow_test_timeouts.cmake are read by nothing. cmakelint / cmake-format exist and are not installed here. CMakeLists.txt carries load-bearing logic — JOB_POOLS, the PCH application, ANTS_RC_SOURCES_REL ordering — that a syntax-level linter would at least parse.
+
+  Python: no [tool.mypy], no mypy.ini, no pyrightconfig.json, so the type-check row was skipped. An unconfigured mypy on this tree reports missing annotations rather than defects, so configuring it is the prerequisite, not just running it. ruff and bandit DID run and found nothing real.
+
+  Neither is urgent; both are places where a green report currently means nobody looked.
+  **Layman:** Two kinds of file in the project have no automated checking at all.
+  Kind: chore.
+  Source: check-code-sweep-2026-09-01.
+  Lanes: ci.
+
 ### Ants MCP feedback from CC sessions — 2026-08-28 triage
 
 - 📋 [ANTS-4746] **A verb that reads this session's completed subagent returns, so a fan-out that outlives a compaction is recoverable.**
