@@ -3365,7 +3365,13 @@ void ClaudeIntegration::onMcpConnection() {
                             "bullet-cache TTL, so it cannot ride every query "
                             "— and a cached answer to a question about RIGHT "
                             "NOW would be worse than no answer. Ask once at "
-                            "orientation, not per call.");
+                            "orientation, not per call. ANTS-4818 — "
+                            "answered on the LIST path and on mode:\"report\", "
+                            "which is where a project-level question about the "
+                            "file is most naturally asked. Under scope:\"all\" "
+                            "it reports checked:false, because the question is "
+                            "about ONE file and that scope spans every "
+                            "registered project.");
                         props["check_sync"] = p;
                     }
                     props["encoding"] = makeEncodingProp();      // ANTS-2090

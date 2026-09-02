@@ -49891,6 +49891,40 @@ volume classes, and the tooling/documentation gaps the run exposed.
   RoadmapLogAmendField.Ants4807NotFoundShowsWhatItMatchedAgainst, which
   pins the distinction by asserting the echo does NOT carry the rendered
   trailer lines.
+  Third report from Pressless (2026-09-02), narrowing again: appending
+  prose below the garbled tail does NOT free it, so the predicate is not
+  the body's end. They now describe it as the position of the last
+  backslash sequence.
+
+  That is a third mechanism and it is also not one. WrapMatch::patchOnce's
+  exact pass is `text.indexOf(oldText)`. There is no positional predicate
+  of any kind to key on -- not the body's end, not a backslash run -- so
+  the schema must NOT be amended to describe one, which was their first
+  suggested fix. Documenting a mechanism that does not exist would make
+  the next report harder, not easier.
+
+  What survives all three reports is the one thing common to every failing
+  call and absent from every passing one: the span CONTAINS BACKSLASHES.
+  Their own control cuts the other way from how they read it -- a span
+  with no backslash is exactly the span JSON escaping cannot alter, so it
+  passing tells us nothing about escaping. This project has already
+  measured the write half of that hazard, where an escaped \n in a
+  roadmap_log body lands as two literal characters, which is how this body
+  was garbled in the first place.
+
+  ANTS-4807 is the instrument for settling it and did not exist when any
+  of the three reports was written: body_match_not_found now echoes
+  `body_tail`, the stored bytes verbatim. Comparing an old_text against
+  that answers in one call what eleven probes could not, because bisection
+  can only vary one side.
+
+  Their second suggestion -- match a span bounded on both sides by matched
+  text -- is not a fix for an indexOf miss either. If the bytes are
+  present, indexOf finds them; if they are not, no bounding helps.
+
+  The real unblock is ANTS-4808 (op:set_body), which recovers the body
+  whatever the matcher is doing. That is now the third time they have
+  asked for it.
   **Layman:** When an edit cannot find the words you gave it, it now shows you what it was looking at.
   Kind: enhancement.
   Source: pressless-feedback-2026-09-01.
@@ -50090,6 +50124,195 @@ volume classes, and the tooling/documentation gaps the run exposed.
   **Layman:** A roadmap entry's text mixes what an author wrote with lines the tool adds; now you can tell which is which.
   Kind: fix.
   Source: snatch-feedback-2026-09-02.
+  Lanes: remotecontrol, mcp.
+
+- 📋 [ANTS-4814] **indie_review_corroborate keys on file:line, so the same defect in three files reads as no agreement.**
+  Games_Hub resolved 64 of 66 citations across 19 lane reports and got
+  exactly ONE corroborated finding -- correct against the documented
+  contract, which keys on (file, line), and useless as the answer to the
+  question it is offered for.
+
+  That run's strongest cross-lane signal was three lanes independently
+  finding one defect SHAPE at three different locations (an unguarded
+  scheduled engine move in chessview, reversiview and draughtsview), plus
+  a second shape across six files in three lanes. The verb sees neither,
+  so a caller reading its output alone concludes the lanes barely agreed
+  when in fact they agreed twice over.
+
+  On a multi-subsystem sweep the agreement that matters is
+  same-shape-different-place, because that is what a partition BY
+  subsystem produces: lanes do not share lines, so identical file:line is
+  the one form of agreement the partition makes unlikely.
+
+  The reporter explicitly does NOT want fuzzy matching, and that
+  restraint is the useful part -- similarity scoring here would be
+  guesswork wearing a number. Their proposal stays mechanical: alongside
+  the file:line matches, report the distinct SYMBOLS or identifiers cited
+  by two or more lanes. A shared function name would have surfaced both
+  themes in that run, and it needs no model in the loop.
+
+  Worth settling when built: what counts as a cited identifier (a
+  backticked token, a symbol resolvable by find_definition, or any
+  CamelCase/snake_case word), and whether a shared identifier is reported
+  as corroboration or as a separate weaker signal beside it. Conflating
+  the two would inflate what corroboration means, which is what makes the
+  current strictness worth keeping.
+  Corroborated by OneUp (2026-09-02) with a second shape of the same gap:
+  two lanes finding one defect in the two halves of a project mid-port,
+  cited at update_system.sh:253 and oneup/engine/__main__.py:276. Not
+  same-file-adjacent-line (that is ANTS-4817) and not quite Games_Hub's
+  same-shape-across-siblings either -- here the two files are different
+  languages.
+
+  Their proposal is more specific than the shared-identifier pass filed
+  here and worth taking with it: group by ENCLOSING SYMBOL rather than by
+  line, which workspace_search already computes via enclosing_symbol:true.
+  That reuses an existing capability instead of adding a second notion of
+  what a citation is about.
+  **Layman:** The tool that spots when several reviewers found the same problem only notices if they point at the identical line.
+  Kind: enhancement.
+  Source: games-hub-feedback-2026-09-01.
+  Lanes: remotecontrol, mcp.
+
+- 📋 [ANTS-4815] **project_settings op:detect lists undeclared keys that can never be declared.**
+  detect returns undeclared:["docs_dir","specs_dir","changelog"] for a
+  project that has none of those paths. op:set requires a path to exist,
+  so those entries can only be cleared by creating directories the project
+  does not want -- and a project that legitimately keeps no specs has a
+  permanently non-empty array.
+
+  The cost is not the noise. A caller cannot distinguish "not configured
+  yet" from "deliberately has none", so a session following the layout
+  guidance reads undeclared[] as a to-do list, calls op:set, and gets a
+  rejection it cannot satisfy. What that trains is ignoring the array,
+  which costs the cases where it IS a to-do list.
+
+  The reporter offers two fixes and prefers the cheaper, rightly: split
+  the response into `undeclared` (a candidate path exists in the tree and
+  no key names it) and `unavailable` (no candidate path exists, so there
+  is nothing to declare). That needs no change to the stored file's schema
+  and no new write semantics.
+
+  The alternative -- letting a key be declared absent with an explicit
+  null -- adds a third state to the settings file that every reader then
+  has to handle, for the same information the split conveys by
+  partitioning what detect already computes.
+  **Layman:** A setup check keeps listing missing settings that a project has deliberately chosen not to have.
+  Kind: enhancement.
+  Source: slipcase-feedback-2026-09-01.
+  Lanes: remotecontrol, mcp.
+
+- 📋 [ANTS-4816] **file_count reports 0 for a lane of non-indexable files, so too_coarse can never fire on it.**
+  finbreak got file_count:0 for its `.github`, `assets` and `packaging`
+  lanes while each carried a non-empty sourcePaths array — `.github`
+  listing three concrete .yml files. `scripts`, `src` and `tests` counted
+  correctly, so the walk works for some entries and not others.
+
+  The cause is that laneFileCount admits only what
+  CodebaseIndex::isIndexableSuffix accepts, and drops any path under a
+  noise directory. A lane of YAML, XML, a debian tree and an RPM spec
+  therefore counts zero, and `.github` is dropped twice over — by the
+  suffix gate and by the dot-directory rule (ANTS-4805).
+
+  The reporter names the consequence precisely: file_count is the input to
+  too_coarse, so a lane counted as 0 can never be flagged however large it
+  is, and 0 reads identically to an empty directory. This is the same
+  failure shape as ANTS-4771 and ANTS-4786 — a number that is
+  self-consistent and wrong — in the one place those two did not reach.
+
+  Their fallback is the better first move and should probably be the whole
+  of it: emit file_count:null where the walk did not admit anything,
+  rather than 0, so "not counted" is distinguishable from "empty".
+  Widening the suffix list is the repair ANTS-4771's own header argues
+  against, because it would count files the outline cannot read.
+
+  Note for whoever takes it: ANTS-4804's total_lines is computed from the
+  same collectLaneFiles walk, so it reports 0 on these lanes too and
+  inherits the same defect. Fix them together or the new signal carries
+  the old blind spot.
+  **Layman:** Lanes made of build and packaging files are counted as empty, so nothing can flag them as too big.
+  Kind: fix.
+  Source: finbreak-feedback-2026-09-01.
+  Lanes: remotecontrol, mcp.
+
+- 📋 [ANTS-4817] **indie_review_corroborate misses two lanes citing one defect a line apart.**
+  Sibling of ANTS-4814 and a DIFFERENT mechanism, so filed separately.
+  That one is same-shape-different-file; this one is same-defect-same-file
+  at adjacent lines.
+
+  finbreak had two independent lanes find one defect — an unescaped path
+  interpolated into an ATTACH DATABASE statement — and cite it a single
+  line apart, because one quoted the statement's first line and the other
+  the f-string inside it. All 72 citations resolved, five findings came
+  back, and the strongest cross-lane signal in the run was not among them.
+  They found it by reading the reports.
+
+  The general case is the argument: two readers quoting one statement
+  rarely pick the same line, because a multi-line call, a decorator or a
+  docstring puts the quotable line somewhere different for each. So exact
+  matching makes the highest-value agreements the least likely to be
+  reported, and nothing signals that a near-miss occurred.
+
+  Proposed as specified: an optional `line_slop`, defaulting to 0 so
+  current behaviour is untouched, grouping citations within N lines of one
+  another in the same file, with the returned finding naming the SPAN
+  rather than a single line. Their measured 2-3 would have caught this
+  pair.
+
+  The default matters and should stay 0: corroboration is a claim about
+  agreement, and a tolerance that ships on by default changes what every
+  existing report means without anyone asking for it.
+  Corroborated by OneUp (2026-09-02), independently and with the same
+  mechanism: two lanes cited one defect at window.py:738 and :739, one
+  anchoring on the `if` and the other on the call inside it. Their run
+  returned total_findings:0 on a 10-lane review with a healthy envelope --
+  37 citations seen, 37 resolved, no unresolved.
+
+  Two reports now measure the SAME rate: every real agreement in the run
+  was missed. finbreak 1 of 1, OneUp 2 of 2. So this is the common case,
+  not an edge one, which is the argument for building it.
+
+  One addition from their report, and it is the cheapest useful step on
+  its own: report near_misses[] for citations within N lines that did not
+  meet min_lanes. That makes a zero EXPLAINABLE without changing what
+  corroboration means, and it can ship before any tolerance is adopted.
+  **Layman:** Two reviewers found the same bug but quoted different lines of it, so the tool saw no agreement.
+  Kind: enhancement.
+  Source: finbreak-feedback-2026-09-01.
+  Lanes: remotecontrol, mcp.
+
+- ✅ [ANTS-4818] **roadmap_query mode:"report" answers check_sync instead of dropping it.**
+  check_sync:true was accepted on mode:"report" and silently ignored --
+  no file_in_sync, no sync_checked, and the names landing in
+  fields_unmatched when asked for explicitly. The same argument on the
+  list path answered correctly.
+
+  That is precisely the behaviour ANTS-4730's wording rules out. It tells
+  a caller that sync_checked is emitted on BOTH arms, so absence means
+  only that check_sync was not requested -- so a caller who DID request
+  it and got nothing reads the absence as their own omission. And
+  mode:"report" is the natural place to ask a project-level question
+  about the file, so it is the mode a session tries first.
+
+  Honoured rather than refused, which was the reporter's preferred option
+  of the two. The drift stamp is now one shared helper, so the list path
+  and report cannot answer one check_sync differently. The report branch
+  runs before the list path resolves the roadmap file, so it resolves it
+  itself rather than reaching for a variable that is not set yet.
+
+  scope:"all" measures nothing and says checked:false. The question is
+  about ONE file and that scope spans every registered project, so there
+  is no file to compare; reporting false there is true rather than
+  evasive, and it keeps the both-arms invariant intact.
+
+  The check_sync schema text named no mode restriction, which is what let
+  the gap read as intended behaviour; it now says where the argument is
+  answered. Test: RoadmapSourceWitness.Ants4818ReportModeAnswersCheckSync,
+  which also asserts that NOT asking still leaves no field behind --
+  without that half, the first assertion does not establish the invariant.
+  **Layman:** Asking "is the roadmap file in sync?" in the summary view gave no answer at all, not even a no.
+  Kind: fix.
+  Source: ants-terminal-feedback-2026-09-02.
   Lanes: remotecontrol, mcp.
 
 ### Ants MCP feedback from CC sessions — 2026-08-28 triage

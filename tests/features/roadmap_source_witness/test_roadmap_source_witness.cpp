@@ -311,6 +311,50 @@ TEST(RoadmapSourceWitness, Inv4CheckSyncSeesAHandFlipTheIdWitnessCannot) {
         << "the render-and-compare ran, so the field must say so";
 }
 
+// ANTS-4818 — mode:"report" answers check_sync instead of dropping it.
+// ANTS-4730 makes an absent `sync_checked` mean "not requested" and nothing
+// else, so a caller who DID request it and got no field read the absence as
+// their own omission. Reported against this project by a session that tried
+// report first, which is the natural place to ask a project-level question
+// about the file.
+TEST(RoadmapSourceWitness, Ants4818ReportModeAnswersCheckSync) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    XdgRedirect redirect(tmp.path());
+    QDir dir(tmp.path());
+    ASSERT_TRUE(dir.mkpath(QStringLiteral("proj")));
+    const QString root = dir.filePath(QStringLiteral("proj"));
+    ASSERT_TRUE(writeFile(root + QStringLiteral("/ROADMAP.md"), roadmapText()));
+    ASSERT_TRUE(migrateDefaultStore(root));
+    ASSERT_TRUE(renderStore(root));
+
+    RemoteControl rc(nullptr);
+    auto report = [&](bool ask) {
+        QJsonObject req;
+        req[QStringLiteral("caller_cwd")] = root;
+        req[QStringLiteral("mode")]       = QStringLiteral("report");
+        if (ask) req[QStringLiteral("check_sync")] = true;
+        return rc.cmdRoadmapQuery(req).object();
+    };
+
+    const QJsonObject asked = report(true);
+    ASSERT_TRUE(asked.value(QStringLiteral("ok")).toBool())
+        << QJsonDocument(asked).toJson().toStdString();
+    ASSERT_TRUE(asked.contains(QStringLiteral("sync_checked")))
+        << "check_sync was requested, so the answer must be in the envelope";
+    EXPECT_TRUE(asked.value(QStringLiteral("sync_checked")).toBool())
+        << "the store had just been rendered to the file, so a measurement "
+           "was available and must have been taken";
+    EXPECT_TRUE(asked.value(QStringLiteral("file_in_sync")).toBool());
+
+    // And absence still means exactly one thing, or the field above is not
+    // the signal ANTS-4730 says it is.
+    const QJsonObject unasked = report(false);
+    ASSERT_TRUE(unasked.value(QStringLiteral("ok")).toBool());
+    EXPECT_FALSE(unasked.contains(QStringLiteral("sync_checked")))
+        << "an unrequested check must leave no field behind";
+}
+
 // ANTS-4462 — and it reports the healthy case as healthy, so the signal is
 // worth something. A check that cried wolf on every project would be ignored.
 TEST(RoadmapSourceWitness, Inv4CheckSyncIsQuietOnAnUneditedProject) {

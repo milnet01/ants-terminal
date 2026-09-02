@@ -1661,6 +1661,34 @@ QJsonObject RemoteControl::buildRoadmapReportEnvelope(
     return out;
 }
 
+namespace {
+
+// ANTS-4818 — the drift stamp, once, so the list path and mode:"report"
+// cannot answer one check_sync differently. Returns true when a measurement
+// was actually taken, which is what `sync_checked` reports.
+bool rcStampDriftFields(QJsonObject &out, RoadmapStore &store, qint64 pid,
+                        const QString &root, const QString &path) {
+    const auto d = RoadmapWrite::measureDrift(store, pid, root, path);
+    if (!d) return false;
+    out[QStringLiteral("file_in_sync")] = (d->total == 0);
+    if (d->total > 0) {
+        // Rides the true arm only, like the write side's discarded_* fields:
+        // on a healthy project every count is zero, and zeros emitted on
+        // every check are fields nobody reads.
+        out[QStringLiteral("drift_lines")]    = d->total;
+        out[QStringLiteral("drift_restyled")] = d->restyled;
+        if (d->repunctuated > 0)
+            out[QStringLiteral("drift_repunctuated")] = d->repunctuated;
+        out[QStringLiteral("drift_lost")]     = d->lost;
+        if (!d->lostText.isEmpty())
+            out[QStringLiteral("drift_lost_text")] =
+                QJsonArray::fromStringList(d->lostText);
+    }
+    return true;
+}
+
+}  // namespace
+
 QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-1247-INV-1
     QJsonObject out;
 
@@ -2323,6 +2351,14 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
     // truthful report; refusing no_roadmap_loaded for it would be wrong.
     if (mode == QLatin1String("report")) {
         RoadmapSource::ReadError why = RoadmapSource::ReadError::None;
+        // ANTS-4818 — check_sync is answered here too. See the list path's
+        // block for what it measures and why it is opt-in; what matters at
+        // THIS site is that the argument used to be accepted and dropped,
+        // which is the one behaviour ANTS-4730's wording rules out: it tells a
+        // caller that an absent `sync_checked` means nobody asked, so a caller
+        // who DID ask read the absence as their own omission. Reported against
+        // this project by a session that tried report first — which is the
+        // natural place to ask a project-level question about the file.
         QString storeErr;
         RoadmapStore *store = roadmapStoreOrNull(&why, &storeErr);
         if (rcdetail::rcRoadmapSourceRefused(out, why, storeErr))
@@ -2383,7 +2419,7 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
             req.value(QStringLiteral("until")).toString(),
             QStringLiteral("yyyy-MM-dd"));
         QString repErr;
-        const QJsonObject env = buildRoadmapReportEnvelope(
+        QJsonObject env = buildRoadmapReportEnvelope(
             *store, projectId, today, since, until, &repErr);
         if (env.isEmpty()) {
             out["ok"] = false;
@@ -2391,6 +2427,27 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
                                             : repErr;
             out["code"] = QStringLiteral("store_error");
             return QJsonDocument(out);
+        }
+        // ANTS-4818 — answer check_sync here rather than dropping it.
+        //
+        // `sync_checked` is emitted on BOTH arms, which is the whole of
+        // ANTS-4730: absence must mean "not requested" and nothing else, so a
+        // caller who asked and got no answer is never left reading their own
+        // omission. scope:"all" measures nothing on purpose — the question is
+        // about ONE file and that scope spans every registered project — so it
+        // reports checked:false, which is true rather than evasive.
+        if (req.value(QStringLiteral("check_sync")).toBool()) {
+            bool measured = false;
+            if (projectId && !callerCanonical.isEmpty()) {
+                // The report branch runs before the list path resolves the
+                // roadmap file, so resolve it here rather than reaching for a
+                // variable that is not set yet.
+                const QString rmPath = findRoadmapUnder(callerCanonical);
+                if (!rmPath.isEmpty())
+                    measured = rcStampDriftFields(env, *store, *projectId,
+                                                  callerCanonical, rmPath);
+            }
+            env[QStringLiteral("sync_checked")] = measured;
         }
         return QJsonDocument(env);
     }
@@ -2522,26 +2579,8 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
         if (RoadmapStore *store = roadmapStoreOrNull(&syncWhy, nullptr)) {
             if (const auto pid = RoadmapSource::migratedProject(
                     *store, callerCanonical, text, nullptr, &syncWhy)) {
-                if (const auto d = RoadmapWrite::measureDrift(
-                        *store, *pid, callerCanonical, path)) {
+                if (rcStampDriftFields(out, *store, *pid, callerCanonical, path))
                     measured = true;
-                    out[QStringLiteral("file_in_sync")] = (d->total == 0);
-                    if (d->total > 0) {
-                        // Rides the true arm only, like the write side's
-                        // discarded_* fields: on a healthy project every count
-                        // is zero, and zeros emitted on every check are fields
-                        // nobody reads.
-                        out[QStringLiteral("drift_lines")]    = d->total;
-                        out[QStringLiteral("drift_restyled")] = d->restyled;
-                        if (d->repunctuated > 0)
-                            out[QStringLiteral("drift_repunctuated")] =
-                                d->repunctuated;
-                        out[QStringLiteral("drift_lost")]     = d->lost;
-                        if (!d->lostText.isEmpty())
-                            out[QStringLiteral("drift_lost_text")] =
-                                QJsonArray::fromStringList(d->lostText);
-                    }
-                }
             }
         }
         // A project that is not store-backed, or a render that could not be
