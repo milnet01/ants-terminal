@@ -12476,7 +12476,7 @@ fixes don't address. Roadmapped here as their own design tasks.
   Source: in-session-2026-09-02.
   Lanes: remotecontrol, mcp.
 
-- 📋 [ANTS-4820] **Hand-rolled fence loops carry the closer-length bug `fenceMask` no longer has.**
+- ✅ [ANTS-4820] **Hand-rolled fence loops carry the closer-length bug `fenceMask` no longer has.**
   ANTS-3678 gave `MarkdownScan::fenceMask` CommonMark § 4.5's rule: a
   closing fence must be at least as long as its opener. Several files do
   not call `fenceMask`. They call `fenceOpenerChar` and hand-roll the
@@ -12503,6 +12503,28 @@ fixes don't address. Roadmapped here as their own design tasks.
   shared primitive and said so, and rewriting five files under a
   one-primitive item would have put unreviewed changes behind a green
   suite that never covered them.
+  Resolved (2026-09-02): every hand-rolled site now asks
+  `MarkdownScan::fenceCloses(line, openChar, openRun)` instead of comparing
+  the fence character. All five files are converted — feedbackfile,
+  speclog, speclint, docsindex, fileoutline.
+  The rule went into one shared predicate rather than being written out at
+  each site: it was wrong at every site that had its own copy, which is
+  the argument against writing it out again. Each loop keeps its own
+  shape, so this is not the fenceMask conversion the item floated as the
+  larger alternative.
+  fileoutline's comment stated the rule WITHOUT its length half, so the
+  code matched its own description and was still wrong; the comment is
+  corrected with it.
+  Tests in tests/features/fence_closer_run_consumers cover the predicate
+  and three consumers end to end. Two of those three were VACUOUS on
+  their first draft and were rewritten: asserting the quoted block came
+  back unchanged passes under the defect, because a phantom heading's
+  section runs to EOF and the append lands past the block either way; and
+  a feedback fixture with no maintainer heading starts its delta at line 1
+  whatever the scanner believes. Caught by mutating the predicate back to
+  the character-only rule, which is the only reason it was caught at all.
+  The final set fails on four of five under that mutation and passes on
+  all five with it restored. Full suite green.
   **Layman:** The same code-block bug was just fixed in one place, but several files keep their own copy of that logic and still have it.
   Kind: fix.
   Source: in-session-2026-09-02 (ANTS-3678 fix).

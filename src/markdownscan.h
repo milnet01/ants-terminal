@@ -55,6 +55,19 @@ const QRegularExpression &fenceRe();
 QChar fenceOpenerChar(const QString &line, int maxIndent = 3,
                       int *runLength = nullptr);
 
+// ANTS-4820 — does `line` CLOSE a fence opened with `openChar` at run length
+// `openRun`? CommonMark § 4.5: the same character, in a run at least as long.
+//
+// The rule lives here because it was written wrong at every site that had its
+// own copy — each compared the fence CHARACTER alone, so a short run closed a
+// longer block and the sample text after it leaked out. A predicate the sites
+// share cannot drift the way a dozen hand-written comparisons did.
+//
+// Returns false for a null `openChar`, so a caller may ask without first
+// checking whether it is inside a fence.
+bool fenceCloses(const QString &line, QChar openChar, int openRun,
+                 int maxIndent = 3);
+
 // Per-line "inside a fenced code block" mask, one bool per input line. The
 // opener and closer lines are themselves masked true (they are fence syntax,
 // not prose). An unterminated fence masks true to end-of-input — the same

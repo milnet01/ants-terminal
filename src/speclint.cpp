@@ -272,15 +272,17 @@ QStringList parseRequiredSections(const QString &standardText,
 
     QStringList out;
     QChar closer;
+    int   closerRun = 0;   // ANTS-4820 — the opener's run length
     for (int i = marker + 1; i < lines.size(); ++i) {
         if (closer.isNull()) {
-            closer = MarkdownScan::fenceOpenerChar(lines[i]);
+            closer = MarkdownScan::fenceOpenerChar(lines[i], 3, &closerRun);
             // A non-blank line before the fence means the marker was not
             // introducing one: no block, so no list (the skip signal).
             if (closer.isNull() && !lines[i].trimmed().isEmpty()) return {};
             continue;
         }
-        if (MarkdownScan::fenceOpenerChar(lines[i]) == closer) break;
+        // ANTS-4820 — CommonMark § 4.5: a shorter run does not close.
+        if (MarkdownScan::fenceCloses(lines[i], closer, closerRun)) break;
         const QString h = lines[i].trimmed();
         if (!h.isEmpty()) out.append(h);
     }

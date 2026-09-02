@@ -66,6 +66,14 @@ QChar fenceOpenerChar(const QString &line, int maxIndent, int *runLength) {
     return c;
 }
 
+bool fenceCloses(const QString &line, QChar openChar, int openRun,
+                 int maxIndent) {
+    if (openChar.isNull()) return false;
+    int run = 0;
+    const QChar c = fenceOpenerChar(line, maxIndent, &run);
+    return !c.isNull() && c == openChar && run >= openRun;
+}
+
 QVector<bool> fenceMask(const QStringList &lines) {
     return fenceMask(lines, nullptr);
 }

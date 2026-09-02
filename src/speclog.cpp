@@ -40,15 +40,25 @@ bool isLevel2Heading(const QString &line) {
 // regions. Returns -1 when none.
 int findSectionHeading(const QStringList &lines, const QString &keyword) {
     QChar openFence;
+    int   openFenceRun = 0;  // ANTS-4820
     for (int i = 0; i < lines.size(); ++i) {
         const QString &line = lines.at(i);
         if (!openFence.isNull()) {
-            const QChar c = fenceOpenerChar(line);
-            if (!c.isNull() && c == openFence) openFence = QChar();
+            // ANTS-4820 — CommonMark § 4.5: the closer must be at
+            // least as long as the opener, not merely the same char.
+            if (MarkdownScan::fenceCloses(line, openFence, openFenceRun)) {
+                openFence    = QChar();
+                openFenceRun = 0;
+            }
             continue;
         }
-        const QChar opener = fenceOpenerChar(line);
-        if (!opener.isNull()) { openFence = opener; continue; }
+        int openerRun = 0;
+        const QChar opener = fenceOpenerChar(line, 3, &openerRun);
+        if (!opener.isNull()) {
+            openFence    = opener;
+            openFenceRun = openerRun;
+            continue;
+        }
         if (isLevel2Heading(line) &&
             line.contains(keyword, Qt::CaseInsensitive)) {
             return i;
@@ -64,15 +74,25 @@ int findSectionHeading(const QStringList &lines, const QString &keyword) {
 // for the caller to tell "found it" from "found several".
 int countSectionHeadings(const QStringList &lines, const QString &keyword) {
     QChar openFence;
+    int   openFenceRun = 0;  // ANTS-4820
     int n = 0;
     for (const QString &line : lines) {
         if (!openFence.isNull()) {
-            const QChar c = fenceOpenerChar(line);
-            if (!c.isNull() && c == openFence) openFence = QChar();
+            // ANTS-4820 — CommonMark § 4.5: the closer must be at
+            // least as long as the opener, not merely the same char.
+            if (MarkdownScan::fenceCloses(line, openFence, openFenceRun)) {
+                openFence    = QChar();
+                openFenceRun = 0;
+            }
             continue;
         }
-        const QChar opener = fenceOpenerChar(line);
-        if (!opener.isNull()) { openFence = opener; continue; }
+        int openerRun = 0;
+        const QChar opener = fenceOpenerChar(line, 3, &openerRun);
+        if (!opener.isNull()) {
+            openFence    = opener;
+            openFenceRun = openerRun;
+            continue;
+        }
         if (isLevel2Heading(line) &&
             line.contains(keyword, Qt::CaseInsensitive)) {
             ++n;
@@ -86,15 +106,25 @@ int countSectionHeadings(const QStringList &lines, const QString &keyword) {
 // Returns the 0-based index of the boundary line (== lines.size() at EOF).
 int sectionEnd(const QStringList &lines, int hdrIdx) {
     QChar openFence;
+    int   openFenceRun = 0;  // ANTS-4820
     for (int i = hdrIdx + 1; i < lines.size(); ++i) {
         const QString &line = lines.at(i);
         if (!openFence.isNull()) {
-            const QChar c = fenceOpenerChar(line);
-            if (!c.isNull() && c == openFence) openFence = QChar();
+            // ANTS-4820 — CommonMark § 4.5: the closer must be at
+            // least as long as the opener, not merely the same char.
+            if (MarkdownScan::fenceCloses(line, openFence, openFenceRun)) {
+                openFence    = QChar();
+                openFenceRun = 0;
+            }
             continue;
         }
-        const QChar opener = fenceOpenerChar(line);
-        if (!opener.isNull()) { openFence = opener; continue; }
+        int openerRun = 0;
+        const QChar opener = fenceOpenerChar(line, 3, &openerRun);
+        if (!opener.isNull()) {
+            openFence    = opener;
+            openFenceRun = openerRun;
+            continue;
+        }
         if (isLevel2Heading(line)) return i;
     }
     return lines.size();

@@ -88,6 +88,7 @@ ScanResult scanDoc(const QString &absPath, const QString &relDir,
     qint64 budget = 0;
     int lineNo = 0;
     QChar openFence;  // ANTS-3604 — null when not inside a fenced code block
+    int   openFenceRun = 0;  // ANTS-4820 — that fence's character-run length
 
     // ANTS-3786 — the header block, buffered so SpecParse::headerField reads it
     // once per document instead of a per-line regex that could only ever see one
@@ -113,12 +114,23 @@ ScanResult scanDoc(const QString &absPath, const QString &relDir,
         // an illustration, not real index content. Track the open fence and
         // skip its opener, body, and closer lines (line/byte counting above
         // still runs so line numbers stay accurate).
-        const QChar opener = MarkdownScan::fenceOpenerChar(line);
+        // ANTS-4820 — close on the run LENGTH too (CommonMark § 4.5), not on
+        // the fence character alone: a ``` line was ending a ```` block, so a
+        // heading quoted as sample text was indexed as real content.
+        int openerRun = 0;
+        const QChar opener = MarkdownScan::fenceOpenerChar(line, 3, &openerRun);
         if (!openFence.isNull()) {
-            if (!opener.isNull() && opener == openFence) openFence = QChar();
+            if (MarkdownScan::fenceCloses(line, openFence, openFenceRun)) {
+                openFence    = QChar();
+                openFenceRun = 0;
+            }
             continue;
         }
-        if (!opener.isNull()) { openFence = opener; continue; }
+        if (!opener.isNull()) {
+            openFence    = opener;
+            openFenceRun = openerRun;
+            continue;
+        }
 
         const auto hm = headingRx.match(line);
         if (hm.hasMatch()) {

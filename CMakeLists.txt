@@ -2550,6 +2550,9 @@ if(ANTS_TESTS)
                 tests/features/flathub_manifest_transform/test_flathub_manifest_transform.cpp
                 # ANTS-3603 — shared MarkdownScan fence primitives (fenceMask contract).
                 tests/features/markdownscan/test_markdownscan.cpp
+                # ANTS-4820 — the closer-length rule reaches the
+                # hand-rolled fence loops in five consumers.
+                tests/features/fence_closer_run_consumers/test_fence_closer_run_consumers.cpp
                 # ANTS-3664 — shared doc-lint finding shape (wire form, counts).
                 tests/features/doc_finding/test_doc_finding.cpp
                 # ANTS-3601 — deterministic doc-integrity engine (Core-only).

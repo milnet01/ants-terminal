@@ -248,6 +248,13 @@ for security-relevant changes.
 
 ### Fixed
 
+- **The closer-length rule now reaches every reader that tracks fences itself** (ANTS-4820)
+  The docs index, file outline, spec lint, spec log and feedback-file
+  scanners each kept their own fence loop and still ended a block on a
+  short run. A document quoting code-block syntax no longer leaks its
+  sample headings into the outline, the docs index, or a feedback file's
+  untriaged delta.
+
 - **Code fences now honour CommonMark's closer-length rule** (ANTS-3678)
   A short run of backticks or tildes no longer ends a block opened with a
   longer one, so a document that quotes fence syntax keeps its sample text

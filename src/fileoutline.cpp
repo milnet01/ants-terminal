@@ -611,6 +611,7 @@ QJsonObject compute(const QString &absPath,
     // ANTS-4722 — Md fence state. Null when outside a fenced block, else the
     // fence character (backtick or tilde) that opened the one we are in.
     QChar mdFenceChar;
+    int   mdFenceRun = 0;  // ANTS-4820 — the open fence's run length
     // ANTS-4361 — HTML landmark state.
     bool inHtmlScript  = false;
     bool htmlScriptIsJs = true;
@@ -953,17 +954,26 @@ QJsonObject compute(const QString &absPath,
             // Measured against the blockquote strip, like the heading match
             // below, so a fenced block quoted inside a `>` is tracked too.
             const QString mdLine = MarkdownScan::stripBlockquote(line);
-            const QChar opener   = MarkdownScan::fenceOpenerChar(mdLine);
+            int openerRun = 0;
+            const QChar opener =
+                MarkdownScan::fenceOpenerChar(mdLine, 3, &openerRun);
             if (!mdFenceChar.isNull()) {
-                // Inside a fence. CommonMark closes one only on a line
-                // opening with the SAME fence character; either way nothing
-                // in here is a heading, the closing line included.
-                if (!opener.isNull() && opener == mdFenceChar)
+                // Inside a fence. CommonMark § 4.5 closes one on a line
+                // opening with the same fence character in a run AT LEAST AS
+                // LONG as the opener; either way nothing in here is a
+                // heading, the closing line included.
+                // ANTS-4820 — the length half was missing, and the comment
+                // above used to state the rule without it, so a ``` line
+                // ended a ```` block and its sample headings became real.
+                if (MarkdownScan::fenceCloses(mdLine, mdFenceChar, mdFenceRun)) {
                     mdFenceChar = QChar();
+                    mdFenceRun  = 0;
+                }
                 continue;
             }
             if (!opener.isNull()) {
                 mdFenceChar = opener;
+                mdFenceRun  = openerRun;
                 continue;
             }
             QRegularExpressionMatch m = rxMdHeading().match(mdLine);
