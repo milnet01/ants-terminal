@@ -391,6 +391,13 @@ for security-relevant changes.
 
 ### Security
 
+- **The release workflow defaults to read-only and grants write on one job** (ANTS-4795)
+  `release.yml` declared `contents: write` for the whole workflow; it now
+  defaults to `contents: read` and grants write on the single job that
+  creates the release and uploads the AppImage, mirroring `ci.yml`. Same
+  effect today, but a job added later inherits read rather than a write
+  grant nobody decided to make.
+
 - **Release-workflow values now reach the shell through env:, never template expansion** (ANTS-4792)
   All thirteen remaining `${{ }}` expansions into `run:` bodies in
   `release.yml` are gone; the tag and RC flag are passed as environment

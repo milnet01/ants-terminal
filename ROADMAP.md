@@ -49470,7 +49470,7 @@ volume classes, and the tooling/documentation gaps the run exposed.
   Source: in-session-2026-09-02.
   Lanes: review, tests.
 
-- 📋 [ANTS-4795] **release.yml declares contents: write at workflow level rather than on the job.**
+- ✅ [ANTS-4795] **release.yml declares contents: write at workflow level rather than on the job.**
   zizmor --persona=auditor reports one error[excessive-permissions] on
   release.yml. PRE-EXISTING and unchanged by ANTS-4792 -- verified by
   running the same command against HEAD before that fix.
@@ -49490,10 +49490,46 @@ volume classes, and the tooling/documentation gaps the run exposed.
 
   Not covered by the ANTS-4792 regression test, whose invariant is
   shell-position ${{ }} and nothing else.
+  Resolved (2026-09-02): zizmor --persona=auditor now reports zero
+  excessive-permissions across all three workflows.
+
+  Fixed one step further than filed. The item said "move it to the job",
+  which would leave nothing at workflow level and so make the default
+  the token's own broad default. Instead the workflow declares
+  contents: read and the appimage job declares contents: write -- the
+  shape ci.yml already uses. That is what actually closes the reason for
+  filing: a job added later inherits READ, where a bare move would
+  inherit whatever GitHub defaults to.
+
+  Verified there is exactly one job before touching it, so the grant is
+  unchanged for the release path itself. actionlint and yamllint output
+  unchanged (1 finding, 4 long lines, both pre-existing).
+
+  Remaining zizmor output across all three workflows after this pass is
+  3 info[anonymous-definition] on ci.yml, filed as ANTS-4796. Nothing
+  security-relevant is left.
   **Layman:** The release script hands out its write permission more broadly than it needs to; harmless today because there is only one job, but it stops being harmless the moment a second one is added.
   Kind: security.
   Source: in-session-2026-09-02.
   Lanes: ci, packaging.
+
+- 📋 [ANTS-4796] **Three ci.yml jobs carry no display name.**
+  zizmor --persona=auditor reports 3 info[anonymous-definition] against
+  ci.yml (lines 40, 175 and one more): jobs with no `name:` key, so the
+  Actions UI labels them by their yaml key.
+
+  Cosmetic, with no security consequence -- recorded because the
+  standing rule is that anything found gets an id, not because it is
+  urgent. Filed at the end of the ANTS-4792/4795 workflow pass, which
+  left these as the only zizmor output remaining across all three
+  workflows.
+
+  Worth doing in the same breath as any other ci.yml edit rather than
+  on its own.
+  **Layman:** Three steps of the automated build show up in GitHub's list under their internal id rather than a readable label.
+  Kind: chore.
+  Source: in-session-2026-09-02.
+  Lanes: ci.
 
 ### Ants MCP feedback from CC sessions — 2026-08-28 triage
 

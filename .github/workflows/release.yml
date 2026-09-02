@@ -35,13 +35,19 @@ on:
         required: true
         default: ''
 
+# ANTS-4795 — the workflow default is read; `contents: write` is granted on
+# the one job that needs it (creating the release and uploading the
+# AppImage). Declared here it would be inherited by any job added later,
+# which is a write grant nobody decided to make. Mirrors ci.yml.
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   appimage:
     name: Build AppImage (x86_64)
     runs-on: ubuntu-22.04
+    permissions:
+      contents: write
     # ANTS-4583 — was 25, which is what silently lost the v0.7.105
     # AppImage: that run died at 25m19s and GitHub reports a timed-out
     # job as "cancelled", so the release page was created by the tag and
