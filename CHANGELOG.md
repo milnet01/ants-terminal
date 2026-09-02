@@ -242,6 +242,12 @@ for security-relevant changes.
 
 ### Fixed
 
+- **`roadmap_query section=` now returns a heading's nested sections too** (ANTS-4819)
+  A level-2 slug answers with its level-3 children's items, matching the
+  descendants `mode:"section_index"` already rolled into that slug's
+  counts. Store-backed projects previously got an empty read for any
+  parent heading while the index promised its children's bullets.
+
 - **The citation scanner appears in the project's own code map** (ANTS-3687)
   docs/subsystems.md listed all five of its siblings and not it, so the
   code map answered "no such thing" to a session asking where the citation

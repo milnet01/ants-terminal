@@ -7,6 +7,7 @@
 #include <QHash>
 #include <QSet>
 #include <QString>
+#include <QStringList>
 #include <QVector>
 
 #include <algorithm>
@@ -34,6 +35,20 @@ const Section *findBySlug(const QVector<Section> &index, const QString &slug);
 // Returns the substring covering lines [section.lineStart,
 // section.lineEnd), joined with '\n'. First line is the heading.
 QString sliceSection(const QString &markdown, const Section &section);
+
+// ANTS-4819 — the slugs a `section=` read must cover: this section's own,
+// plus every section nested inside it. Nesting is [lineStart, lineEnd]
+// containment, the same relation `rollupCounts` below walks, so a caller
+// that reads a section and a caller that reads the index agree by
+// construction rather than by two rules that happen to coincide.
+//
+// The markdown backend never needed it: `sliceSection` returns the whole
+// span, so a parent's slice already carries its children's bullets. The
+// store backend holds records keyed on one slug each, and filtering on the
+// section's own slug answered nothing for every parent heading while
+// `section_index`, rolling those same children up, promised their bullets.
+QStringList descendantSlugs(const QVector<Section> &index,
+                            const Section &section);
 
 // Canonical home for the slug helpers — moved out of
 // roadmapdialog.cpp so the index and parseBullets share a single

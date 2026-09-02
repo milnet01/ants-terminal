@@ -12348,7 +12348,7 @@ fixes don't address. Roadmapped here as their own design tasks.
   Kind: enhancement.
   Source: in-session-2026-08-22.
 
-- 📋 [ANTS-4819] **section_index counts bullets a section= read of the same slug returns none of.**
+- ✅ [ANTS-4819] **section_index counts bullets a section= read of the same slug returns none of.**
   Measured 2026-09-02 while counting the open review backlog, and it made
   me report a wrong number before I checked.
 
@@ -12385,6 +12385,23 @@ fixes don't address. Roadmapped here as their own design tasks.
   `section_shape:"table"` already exists and is the nearest thing to a
   signal, but it appears only on the SECTION read, which is the call you
   make after the index has already misled you.
+  Resolved (2026-09-02): the cause was neither candidate as filed. The
+  index's counts do roll descendants up, but so does the markdown arm —
+  sliceSection returns [lineStart, lineEnd), and buildIndex ends a section
+  at the next heading of level <= its own, so a parent's slice already
+  carried its children's bullets. Only the STORE arm disagreed: it
+  filtered records on the section's own slug, which a parent heading owns
+  none of. So the defect was the two backends disagreeing with each other,
+  against the INV-2 parity comment in that same function.
+  New RoadmapIndex::descendantSlugs keys the store filter on span
+  containment — the relation rollupCounts itself walks — so the index and
+  both arms agree by construction rather than by rules that happen to
+  coincide. The verb's own section-argument text now says descendants are
+  included.
+  Conformance test tests/features/roadmap_query_section_descendants; INV-5
+  holds the two backends against each other, which is the property that
+  was missing. Red on assertions before the fix, green after; full suite
+  green.
   **Layman:** The roadmap's contents page lists items for a section that the section itself reports as empty.
   Kind: fix.
   Source: in-session-2026-09-02.

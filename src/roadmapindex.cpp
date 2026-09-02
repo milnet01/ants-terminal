@@ -130,6 +130,22 @@ const Section *findBySlug(const QVector<Section> &index, const QString &slug) {
     return nullptr;
 }
 
+QStringList descendantSlugs(const QVector<Section> &index,
+                            const Section &section) {
+    // Containment, not a level comparison: `rollupCounts` below bubbles a
+    // child's tally into every section whose [lineStart, lineEnd] span
+    // encloses it, and this set must be the one those counts were summed
+    // over. It is also exactly the span `sliceSection` returns, so the
+    // markdown and store backends answer a `section=` read alike.
+    QStringList out{section.slug};
+    for (const auto &s : index) {
+        if (s.slug == section.slug) continue;
+        if (s.lineStart >= section.lineStart && s.lineEnd <= section.lineEnd)
+            out.append(s.slug);
+    }
+    return out;
+}
+
 // ANTS-1442 — descendant-aware tally rollup moved to a header-only
 // template (ANTS-1693) so RoadmapDialog can reuse the identical
 // tree-walk with its own count shape. See roadmapindex.h.

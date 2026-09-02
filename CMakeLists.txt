@@ -2411,6 +2411,9 @@ if(ANTS_TESTS)
                 tests/features/remote_control_roadmap_query/test_remote_control_roadmap_query.cpp
                 # ANTS-2225 — section= surfaces nested #### Pass N.M bullets.
                 tests/features/roadmap_query_section_pass_heading/test_roadmap_query_section_pass_heading.cpp
+                # ANTS-4819 — section= covers a heading's descendants on
+                # both backends, matching section_index's rollup.
+                tests/features/roadmap_query_section_descendants/test_roadmap_query_section_descendants.cpp
                 # ANTS-1638 + ANTS-1639 — Task List dialog right-click copy
                 # + malformed-markup flagging.
                 tests/features/task_list_dialog_context_menu/test_task_list_dialog_context_menu.cpp

@@ -2786,9 +2786,14 @@ void ClaudeIntegration::onMcpConnection() {
                     sectionProp["type"] = "string";
                     sectionProp["description"] = QStringLiteral(
                         "Slug of a ## or ### heading (e.g. "
-                        "\"performance-2\"). Returns only bullets "
-                        "within that section; saves a full reparse "
-                        "for partial queries. Slugs are canonically "
+                        "\"performance-2\"). Returns the bullets "
+                        "within that section AND within every section "
+                        "nested inside it (ANTS-4819), so a level-2 "
+                        "heading answers with its level-3 children's "
+                        "items rather than nothing — the same "
+                        "descendants mode:\"section_index\" rolls into "
+                        "that slug's counts, on both backends. Saves a "
+                        "full reparse for partial queries. Slugs are canonically "
                         "lowercase; off-case spelling → code=bad_case "
                         "with `canonical_slug` surfaced (ANTS-1524). "
                         "Unknown slug → code=bad_section.");

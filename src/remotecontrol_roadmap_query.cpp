@@ -3310,8 +3310,18 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
                                                   &srcWhy, &srcErr);
                 if (srcWhy != RoadmapSource::ReadError::None)
                     return refuseRoadmapSource(srcWhy, srcErr);
+                // ANTS-4819 — the section's own slug AND its descendants'.
+                // The markdown arm below parses the SLICE, which spans the
+                // nested headings, and mode:"section_index" tallies the
+                // same descendants through rollupCounts. Filtering on one
+                // slug answered nothing for every parent heading while the
+                // index promised its children's bullets.
+                const QStringList slugList =
+                    RoadmapIndex::descendantSlugs(m_roadmapIndex, *sec);
+                const QSet<QString> slugs(slugList.cbegin(),
+                                          slugList.cend());
                 for (const auto &b : whole)
-                    if (b.sectionSlug == sec->slug) bullets.append(b);
+                    if (slugs.contains(b.sectionSlug)) bullets.append(b);
             } else {
                 bullets = RoadmapParse::parseBullets(   // ANTS-3771
                     slice, ProjectSettings::idFormatFor(callerCanonical));
