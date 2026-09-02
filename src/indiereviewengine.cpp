@@ -413,6 +413,42 @@ int laneFileCount(const QString &projectPath, const Lane &lane) {
     return counted.size();
 }
 
+// ANTS-4804 — see header.
+qint64 laneLineCount(const QString &projectPath, const Lane &lane,
+                     bool *capped) {
+    if (capped) *capped = false;
+
+    QSet<QString> files;
+    collectLaneFiles(projectPath, lane, &files, 5000);
+
+    QStringList sorted(files.constBegin(), files.constEnd());
+    sorted.sort();   // deterministic budget spend, so two runs agree
+
+    qint64 lines = 0;
+    qint64 bytesRead = 0;
+    for (const QString &path : sorted) {
+        if (bytesRead >= kLaneLineScanCap) {
+            if (capped) *capped = true;
+            break;
+        }
+        QFile f(path);
+        if (!f.open(QIODevice::ReadOnly)) continue;
+        while (!f.atEnd()) {
+            const QByteArray chunk = f.read(64 * 1024);
+            if (chunk.isEmpty()) break;
+            bytesRead += chunk.size();
+            lines += chunk.count('\n');
+        }
+        // A last line with no trailing newline is still a line.
+        if (f.size() > 0) {
+            f.seek(f.size() - 1);
+            if (f.read(1) != QByteArray("\n")) ++lines;
+        }
+        f.close();
+    }
+    return lines;
+}
+
 // ANTS-4786 — see header.
 UnassignedSources unassignedForLanes(const QString &projectPath,
                                      const QList<Lane> &lanes,

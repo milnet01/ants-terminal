@@ -470,9 +470,35 @@ QJsonObject RoadmapMigrateVerb::run(const QString &storePath, const Request &req
     // Index 0 is the live roadmap and is what project.source_format records
     // (ANTS-3815 INV-2). Unchanged by dry_run on purpose: this answers a
     // question about the source DIALECT, which a rollback cannot change.
-    env[QStringLiteral("store_backed")] =
+    const bool storeBacked =
         !plan.sources.isEmpty()
         && plan.sources.first().format == QLatin1String("ants-v1");
+    env[QStringLiteral("store_backed")] = storeBacked;
+
+    // ANTS-4802 — the bare flag was not enough. A reader sees ok:true, a
+    // project_id and a faithful item count, and concludes the store is now the
+    // source of truth; `store_backed:false` sits among a dozen other fields
+    // with nothing saying what it costs. RetroDB migrated twice on that
+    // reading, leaving two snapshots no read path consults, and diagnosed it
+    // only by going to sqlite3 directly.
+    //
+    // Say the consequence, not the fact. The rows ARE written and they are
+    // faithful; what does not follow is that anything reads them.
+    if (!storeBacked) {
+        env[QStringLiteral("store_backed_hint")] = QStringLiteral(
+            "Rows were written and are faithful, but NOTHING READS THEM: only "
+            "the ants-v1 dialect is served from the store, and this roadmap is "
+            "%1. roadmap_query keeps answering from markdown, roadmap_log keeps "
+            "editing the file, and roadmap_log op:\"render\" has nothing to "
+            "publish. Re-running this verb will not change that — it writes the "
+            "same inert snapshot again. Those rows are summed by "
+            "roadmap_query mode:\"report\" scope:\"all\", so if the store was "
+            "not wanted here, remove them with roadmap_migrate "
+            "op:\"deregister\".")
+                .arg(plan.sources.isEmpty()
+                         ? QStringLiteral("in no recognised dialect")
+                         : QStringLiteral("'%1'").arg(plan.sources.first().format));
+    }
 
     // ANTS-4482 — always false, and a field rather than a sentence because a
     // caller cannot branch on prose. This verb reads the roadmap and never

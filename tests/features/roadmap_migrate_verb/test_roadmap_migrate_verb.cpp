@@ -1064,6 +1064,52 @@ TEST(RoadmapMigrateVerb, Inv12StoreBackedAgreesWithTheConsumerDispatch) {
     }
 }
 
+// ANTS-4802 — store_backed:false carries its consequence, not just its value.
+// RetroDB migrated a pass-headings roadmap twice on the strength of ok:true, a
+// project_id and a faithful item count, and found out only from sqlite3 that
+// nothing reads those rows. The flag was already in the envelope and was not
+// enough: a bare boolean among a dozen fields does not tell a reader that
+// re-running is futile, which is the mistake it has to prevent.
+TEST(RoadmapMigrateVerb, Ants4802NotStoreBackedSaysWhatItCosts) {
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid());
+    const QString antsRoot = makeProjectRoot(dir, QStringLiteral("ants"), demoRoadmap());
+    const QString gfmRoot  = makeProjectRoot(dir, QStringLiteral("gfm"), gfmRoadmap());
+    ASSERT_FALSE(antsRoot.isEmpty());
+    ASSERT_FALSE(gfmRoot.isEmpty());
+    const QString storePath = dir.filePath(QStringLiteral("store.sqlite"));
+
+    const QJsonObject served =
+        RoadmapMigrateVerb::run(storePath, request(antsRoot, QStringLiteral("ants"),
+                                                   QStringLiteral("Ants")));
+    ASSERT_TRUE(served.value(QStringLiteral("ok")).toBool())
+        << served.value(QStringLiteral("error")).toString().toStdString();
+    ASSERT_TRUE(served.value(QStringLiteral("store_backed")).toBool())
+        << "the ants-v1 leg must be store-backed or the absence below proves nothing";
+    EXPECT_FALSE(served.contains(QStringLiteral("store_backed_hint")))
+        << "a hint on the served path would read as a warning about nothing";
+
+    const QJsonObject inert =
+        RoadmapMigrateVerb::run(storePath, request(gfmRoot, QStringLiteral("gfm"),
+                                                   QStringLiteral("Gfm")));
+    ASSERT_TRUE(inert.value(QStringLiteral("ok")).toBool())
+        << inert.value(QStringLiteral("error")).toString().toStdString();
+    ASSERT_FALSE(inert.value(QStringLiteral("store_backed")).toBool());
+    ASSERT_TRUE(inert.contains(QStringLiteral("store_backed_hint")));
+
+    const QString hint = inert.value(QStringLiteral("store_backed_hint")).toString();
+    // The dialect, so the reader knows which answer they got.
+    EXPECT_TRUE(hint.contains(QStringLiteral("github-task-list")))
+        << hint.toStdString();
+    // The two things that stop a second migration: nothing reads the rows, and
+    // re-running writes them again. Either alone leaves the trap open.
+    EXPECT_TRUE(hint.contains(QStringLiteral("NOTHING READS THEM")))
+        << hint.toStdString();
+    EXPECT_TRUE(hint.contains(QStringLiteral("Re-running"))) << hint.toStdString();
+    // And the way out, since the rows are summed machine-wide until removed.
+    EXPECT_TRUE(hint.contains(QStringLiteral("deregister"))) << hint.toStdString();
+}
+
 // --------------------------------------------------------------- INV-13 -----
 //
 // updated_items names exactly the items items_updated counted, with the fields

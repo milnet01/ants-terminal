@@ -58,8 +58,18 @@ QJsonDocument RemoteControl::cmdIndieReviewPartition(const QJsonObject &req) {
     // crypto, a vault, importers, services and 40 UI modules while presenting
     // as one tidy entry. The partition read as fine because nothing measured
     // it, so the coarseness — not the silence — is what gets reported here.
+    // ANTS-4804 — file_count answers "how many", never "how much". A project
+    // whose logic sits in few large files reports file_count:1 on a lane that
+    // is a whole application, so too_coarse is silent in exactly the shape
+    // review-code's own procedure says to split. total_lines is reported for
+    // every lane whether or not a threshold trips, because the caller's budget
+    // is not this verb's to decide; oversized_lanes is the second signal, in
+    // the shape too_coarse already uses, and leaves too_coarse's file-based
+    // meaning intact.
     QJsonArray arr;
     QStringList coarseLanes;
+    QStringList oversizedLanes;
+    bool anyLineScanCapped = false;
     for (const auto &l : lanes) {
         QJsonObject o;
         o["name"]    = l.name;
@@ -69,9 +79,20 @@ QJsonDocument RemoteControl::cmdIndieReviewPartition(const QJsonObject &req) {
         o["sourcePaths"] = sps;
         const int files = IndieReviewEngine::laneFileCount(root, l);
         o["file_count"] = files;
+        bool capped = false;
+        const qint64 lines = IndieReviewEngine::laneLineCount(root, l, &capped);
+        o["total_lines"] = static_cast<double>(lines);
+        if (capped) {
+            o["total_lines_capped"] = true;
+            anyLineScanCapped = true;
+        }
         if (files > IndieReviewEngine::kMaxReviewableFilesPerLane) {
             o["too_coarse"] = true;
             coarseLanes << l.name;
+        }
+        if (lines > IndieReviewEngine::kMaxReviewableLinesPerLane) {
+            o["oversized"] = true;
+            oversizedLanes << l.name;
         }
         arr.append(o);
     }
@@ -216,6 +237,36 @@ QJsonDocument RemoteControl::cmdIndieReviewPartition(const QJsonObject &req) {
             "source_paths=[...]).")
                 .arg(coarseLanes.size())
                 .arg(IndieReviewEngine::kMaxReviewableFilesPerLane);
+    }
+    // ANTS-4804 — the same signal keyed on SIZE, for the lane too_coarse
+    // cannot see. Reported alongside rather than folded into it: a caller that
+    // already branches on too_coarse keeps its meaning, and the two causes send
+    // you to different splits — too many files is a partition problem, too many
+    // lines in few files is a cohesion problem inside them.
+    if (!oversizedLanes.isEmpty()) {
+        env["oversized"] = true;
+        QJsonArray ol;
+        for (const QString &n : std::as_const(oversizedLanes)) ol.append(n);
+        env["oversized_lanes"] = ol;
+        env["oversized_hint"]  = QStringLiteral(
+            "%1 lane(s) exceed %2 lines each (see per-lane `total_lines`). "
+            "file_count cannot see this: a lane that is one large module "
+            "reports file_count:1 and trips no threshold while covering a "
+            "whole application, which is the shape a single briefed reviewer "
+            "reads shallowly. Split it by COHESION — by what the code does, "
+            "which inside one file means naming line ranges or symbols — and "
+            "brief each part via indie_review_brief(lane=\"<label>\", "
+            "source_paths=[...]). `total_lines` is reported on every lane, so "
+            "apply your own budget rather than this one if it differs.")
+                .arg(oversizedLanes.size())
+                .arg(IndieReviewEngine::kMaxReviewableLinesPerLane);
+    }
+    if (anyLineScanCapped) {
+        env["total_lines_capped"] = true;
+        env["total_lines_capped_hint"] = QStringLiteral(
+            "At least one lane hit the line-scan byte budget, so its "
+            "`total_lines` is a FLOOR rather than a total. Treat that lane as "
+            "at least this large, never as this large.");
     }
     return QJsonDocument(env);
 }

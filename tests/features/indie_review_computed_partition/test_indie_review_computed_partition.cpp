@@ -180,6 +180,61 @@ TEST(IndieReviewComputedPartition, Inv7NullReporterIsHarmless) {
     EXPECT_EQ(lanes.size(), 2);
 }
 
+// ANTS-4804 — a lane's SIZE is measured, so the one-huge-file lane that
+// file_count cannot see is not handed back as a single reviewable unit.
+TEST(IndieReviewComputedPartition, Ants4804LaneLinesAreCountedNotJustFiles) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString root = QFileInfo(tmp.path()).canonicalFilePath();
+    QDir().mkpath(QDir(root).filePath(QStringLiteral("src")));
+
+    // One file, many lines — the Rolodex shape: file_count 1, and a whole
+    // application behind it.
+    QByteArray big;
+    for (int i = 0; i < 3000; ++i) big += "int x" + QByteArray::number(i) + ";\n";
+    writeFile(root, QStringLiteral("src/huge.py"), big);
+    writeFile(root, QStringLiteral("src/small.py"), QByteArray("int y;\n"));
+
+    IndieReviewEngine::Lane huge;
+    huge.name        = QStringLiteral("huge");
+    huge.sourcePaths = QStringList{QStringLiteral("src/huge.py")};
+    IndieReviewEngine::Lane small;
+    small.name        = QStringLiteral("small");
+    small.sourcePaths = QStringList{QStringLiteral("src/small.py")};
+
+    EXPECT_EQ(IndieReviewEngine::laneFileCount(root, huge), 1)
+        << "the premise: by file count this lane looks trivial";
+    bool capped = true;
+    EXPECT_EQ(IndieReviewEngine::laneLineCount(root, huge, &capped), 3000);
+    EXPECT_FALSE(capped) << "a 3k-line file must not hit the scan budget";
+    EXPECT_GT(IndieReviewEngine::laneLineCount(root, huge),
+              IndieReviewEngine::kMaxReviewableLinesPerLane)
+        << "a whole-application lane must trip the line budget";
+    EXPECT_LT(IndieReviewEngine::laneLineCount(root, small),
+              IndieReviewEngine::kMaxReviewableLinesPerLane)
+        << "a real lane must not";
+}
+
+// ANTS-4804 — a final line with no trailing newline is still a line, so the
+// count does not depend on how the last file happens to end.
+TEST(IndieReviewComputedPartition, Ants4804UnterminatedLastLineCounts) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString root = QFileInfo(tmp.path()).canonicalFilePath();
+    writeFile(root, QStringLiteral("src/a.py"), QByteArray("one\ntwo\nthree"));
+    writeFile(root, QStringLiteral("src/b.py"), QByteArray("one\ntwo\nthree\n"));
+
+    IndieReviewEngine::Lane a;
+    a.name        = QStringLiteral("a");
+    a.sourcePaths = QStringList{QStringLiteral("src/a.py")};
+    IndieReviewEngine::Lane b;
+    b.name        = QStringLiteral("b");
+    b.sourcePaths = QStringList{QStringLiteral("src/b.py")};
+
+    EXPECT_EQ(IndieReviewEngine::laneLineCount(root, a), 3);
+    EXPECT_EQ(IndieReviewEngine::laneLineCount(root, b), 3);
+}
+
 // INV-9 — a DECLARED partition is measured for coverage too (ANTS-4786).
 TEST(IndieReviewComputedPartition, Inv9DeclaredPartitionCoverageIsMeasured) {
     QTemporaryDir tmp;

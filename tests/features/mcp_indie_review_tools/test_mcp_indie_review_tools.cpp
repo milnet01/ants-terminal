@@ -116,13 +116,18 @@ TEST(McpIndieReviewTools, Ants1279OrchestrateComposesManifest) {
 TEST(McpIndieReviewTools, Ants1288PartitionEmitsSuggestedMerges) {
     const std::string rc = ants_test::slurpRemoteControl();
     ASSERT_FALSE(rc.empty());
-    const auto p = rc.find("RemoteControl::cmdIndieReviewPartition");
-    ASSERT_NE(p, std::string::npos);
-    // Window widened 2000 → 4000 by ANTS-3709: the computed-partition
-    // fallback grew the handler, pushing suggested_merges past the old
-    // scrape window. A fixed-byte window measures handler length, not the
-    // wiring it claims to lock.
-    const std::string body = rc.substr(p, 4000);
+    // ANTS-4804 — was a fixed 4000-byte scrape window, itself widened from
+    // 2000 by ANTS-3709 for the same reason: the handler grew again (per-lane
+    // total_lines and the oversized signal) and pushed suggested_merges past
+    // the window, reddening a test that asserts nothing about either. Widening
+    // a third time would buy the same failure at the next addition — a fixed
+    // window measures the handler's LENGTH, not the wiring it claims to lock,
+    // as this test's own note already said. slurpFunctionBody brace-matches
+    // the real body, which is the repair the sibling INV-5 case made for this
+    // exact failure under ANTS-4100.
+    const std::string body =
+        ants_test::slurpFunctionBody(rc, "RemoteControl::cmdIndieReviewPartition");
+    ASSERT_FALSE(body.empty());
     EXPECT_NE(body.find("suggested_merges"), std::string::npos)
         << "cmdIndieReviewPartition no longer emits suggested_merges";
     EXPECT_NE(body.find("IndieReviewEngine::suggestedMerges"),

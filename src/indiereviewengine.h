@@ -199,6 +199,34 @@ UnassignedSources unassignedForLanes(const QString &projectPath,
 // never trips it and a whole-application lane always does.
 constexpr int kMaxReviewableFilesPerLane = 30;
 
+// ANTS-4804 — how many LINES a lane covers, which is the measure that survives
+// a project whose logic sits in few large files. kMaxReviewableFilesPerLane
+// counts files, so a lane that is one 3,793-line module reports file_count:1
+// and trips nothing — silent in exactly the shape review-code's own procedure
+// says to split. Same walk and same filters as laneFileCount, so the two
+// numbers describe one set of files.
+//
+// Reads the files, unlike the count, so it is bounded by kLaneLineScanCap
+// bytes; past that the total is reported as capped rather than as a smaller
+// number, because a number that quietly means "some of it" is what this exists
+// to stop. A binary or minified file is measured in newlines like any other:
+// deciding which files are "real" source is the judgement the per-file walk
+// already refuses to make.
+qint64 laneLineCount(const QString &projectPath, const Lane &lane,
+                     bool *capped = nullptr);
+
+// A lane above this holds more than a briefed reviewer reads carefully, at any
+// file count. Set against measured practice rather than taste: this project's
+// own declared lanes are far below it, and the whole-application lanes that
+// prompted it — a 3,793-line single-file project, a 30,349-line subsystem — are
+// far above. A lane between the two is a judgement call the caller makes from
+// `total_lines`, which is reported whether or not the threshold trips.
+constexpr qint64 kMaxReviewableLinesPerLane = 2000;
+
+// The read budget above. Generous enough that no realistic lane hits it, so
+// `capped` reaching a caller is a signal about the tree rather than routine.
+constexpr qint64 kLaneLineScanCap = 64LL * 1024 * 1024;
+
 // ANTS-1288 — scan a partition for lanes whose summaries are duplicate or
 // near-duplicate and return one MergeSuggestion per candidate pair (in
 // stable lane order). Pure, side-effect-free. Identical summaries (after

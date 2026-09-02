@@ -49702,6 +49702,164 @@ volume classes, and the tooling/documentation gaps the run exposed.
   Source: in-session-2026-09-02.
   Lanes: tests.
 
+- ✅ [ANTS-4802] **A registered project that the store does not serve was told the store held no row.**
+  RetroDB reported this twice, the second time after being told fixes had
+  landed. Both reports are correct and the mechanism is confirmed in
+  source.
+
+  Only the ants-v1 dialect is served from the store:
+  RoadmapSource::migratedProject returns nullopt for every other format.
+  roadmap_migrate reads all three, so a pass-headings project registers,
+  writes faithful rows, and is still read and written as markdown.
+
+  Two things made that state hard to see, and both are fixed here.
+
+  roadmap_log op:"render" took the shared prologue's op_unsupported and
+  rewrote it as project_not_registered with the text "the store holds no
+  row for X" — a specific falsehood about a row the caller had just
+  created. It now ASKS the store first: with a row present it refuses
+  unsupported_format, names the stored dialect, carries store_row_present
+  and store_source_format, and says re-running the migration will not
+  help. With no row the old message is unchanged and correct.
+
+  roadmap_migrate already emitted store_backed:false (ANTS-4490), which
+  the reports did not mention — a bare boolean among a dozen fields beside
+  ok:true and a real item count. It now carries store_backed_hint saying
+  what it costs: the rows are written and faithful, nothing reads them,
+  re-running writes the same inert snapshot, and op:"deregister" is the
+  way out. Test: RoadmapMigrateVerb.Ants4802NotStoreBackedSaysWhatItCosts.
+
+  What this does NOT do is make the store serve pass-headings. That is
+  ANTS-4803, and it is what the reporter actually wants.
+  **Layman:** The tool said a project was not registered when it was, sending people to repeat a step that could not help.
+  Kind: fix.
+  Source: retrodb-feedback-2026-09-01.
+  Lanes: remotecontrol, mcp.
+
+- 📋 [ANTS-4803] **Serve the pass-headings dialect from the store, or say why it never will.**
+  RoadmapSource::migratedProject ends `if (format != "ants-v1") return
+  nullopt; // legitimately markdown-served`. So for pass-headings the
+  store is write-only: migrate fills it, no read consults it, and every
+  store-side benefit — source of truth, op:"render", check_sync drift
+  detection, cross-project reporting — is unavailable.
+
+  The reporter's evidence is that the DATA side already works: 228 items,
+  39 sections, correct slugs, ids folded to PASS-N-M and resolvable by
+  roadmap_query {ids:[...]}. Verified here too — the gate is the format
+  comparison, not the schema.
+
+  What is genuinely missing is the RENDER. src/passheadingwrite.cpp is a
+  markdown editor (ANTS-2126): it flips a status and appends a note inside
+  an existing file. Publishing from the store needs the inverse — emit a
+  whole `#### Pass N.M` document from rows — and until that exists the
+  write half cannot round-trip, so this is not a one-line gate change.
+
+  The decision is which of two, and it should be made rather than left:
+
+    Serve it. Needs a store-to-pass-headings renderer and the round-trip
+    test that proves migrate then render is byte-stable.
+
+    Or refuse it. roadmap_migrate would decline the format outright
+    (format_not_store_backed) rather than writing rows nothing reads. Much
+    cheaper, and it closes the trap ANTS-4802 could only label.
+
+  What rules out a third option — asking the project to convert — is that
+  RetroDB measured it at roughly 1,800 `Pass N.M` citations across ~230
+  files including three test module filenames.
+
+  Blocking: the project cannot adopt the store until this is settled, and
+  has now deregistered twice to avoid leaving stale rows in the
+  machine-global figures.
+  **Layman:** One project's roadmap style can be copied into the database but not read back out of it, so that project cannot use any of the database features.
+  Kind: feature.
+  Source: retrodb-feedback-2026-09-01.
+  Lanes: remotecontrol, mcp.
+
+- ✅ [ANTS-4804] **Review lanes now report how many LINES they cover, not only how many files.**
+  too_coarse counts FILES, so a lane that is one 3,793-line module reports
+  file_count:1, trips nothing, and is handed back as a single reviewable
+  unit — silent in exactly the shape review-code's own procedure says to
+  split. Rolodex found this on a single-file project; review-code's first
+  run had already met it as a 30,349-line lane.
+
+  Every lane now carries total_lines, and a lane over the line budget is
+  oversized:true with envelope oversized / oversized_lanes /
+  oversized_hint, in the shape too_coarse already uses.
+
+  Reported alongside rather than folded in, as the reporter asked.
+  too_coarse keeps its file-based meaning, a caller branching on it is
+  unaffected, and the two causes send you to different splits: too many
+  files is a partition problem, too many lines in few files is a cohesion
+  problem inside them.
+
+  total_lines is reported whether or not the threshold trips, so a caller
+  with a different budget uses the number rather than the flag — which is
+  what the reporter said would be enough on its own.
+
+  Counting reads the files, unlike counting them, so it is byte-budgeted;
+  past the budget total_lines_capped says the figure is a FLOOR. Tests:
+  Ants4804LaneLinesAreCountedNotJustFiles, Ants4804UnterminatedLastLineCounts.
+  **Layman:** The review splitter can now tell that one enormous file is too much for one reviewer.
+  Kind: enhancement.
+  Source: rolodex-feedback-2026-09-01.
+  Lanes: remotecontrol, mcp.
+
+- 📋 [ANTS-4805] **The CI and release surface is in no review lane and is not reported as uncovered.**
+  Rolodex reported four shell scripts and two GitHub workflows in no lane
+  at all. The shell half is reported since ANTS-4771 and now on both paths
+  (ANTS-4786). The workflow half is not, and the cause is different.
+
+  ProjectSettings::isNoiseDir treats any dot-prefixed directory as noise,
+  so `.github` is eliminated from the walk before any other filter. Those
+  files are therefore in no lane AND absent from unassigned_by_suffix —
+  invisible to the partition and to the coverage report that exists to
+  catch exactly this.
+
+  That matters more than its size suggests: this session's own sweep found
+  four real workflow defects, two of them security-relevant
+  (ANTS-4772/4792/4795), on files no review partition would have offered a
+  reviewer.
+
+  The fix is NOT to stop treating dot-directories as noise. That rule is
+  shared with codebase_index and project-layout detection, where it earns
+  its place — .git and .venv are exactly what it is for. What is wanted is
+  a narrow exception for the CI surface, or a lane synthesised for it, so
+  that a partition either covers those files or says it does not.
+
+  Decide which before building: an exception inside isNoiseDir changes
+  every consumer of that function, and a synthesised lane changes only
+  this verb.
+  **Layman:** Automated build files are skipped by the review splitter and it does not mention skipping them.
+  Kind: fix.
+  Source: rolodex-feedback-2026-09-01.
+  Lanes: remotecontrol, mcp.
+
+- 📋 [ANTS-4806] **A computed partition hands review-code lanes over the test tree, which is not its scope.**
+  With no module map the partition groups by directory, so tests/ becomes
+  a lane like any other. review-code's scope excludes tests — those are
+  review-tests' — so a caller applying the partition unchanged spends
+  lanes reading test code under a brief written for production code.
+
+  The reporter's suggestion is the right shape and is cheap: mark such a
+  lane kind:"tests" so a consumer can drop it, rather than excluding it
+  here. Excluding would be wrong — review-tests wants exactly those lanes,
+  and a verb that silently omits a tree is the failure ANTS-4771 and
+  ANTS-4786 were both filed about.
+
+  The test root is already known: ProjectSettings carries test_roots, and
+  the same detection that finds source roots finds them.
+
+  Separately, and NOT fixed by a label: the reporter notes the derived
+  partition groups by DIRECTORY while review-code's procedure calls for
+  cohesion, so the lanes are in a shape that skill forbids. derived_from
+  says "grouped by directory" outright, so the envelope is honest; whether
+  a consumer should be told more strongly not to use it as-is is the open
+  question here.
+  **Layman:** The review splitter offers test files to a reviewer briefed to read the app, not the tests.
+  Kind: enhancement.
+  Source: rolodex-feedback-2026-09-01.
+  Lanes: remotecontrol, mcp.
+
 ### Ants MCP feedback from CC sessions — 2026-08-28 triage
 
 - 📋 [ANTS-4746] **A verb that reads this session's completed subagent returns, so a fan-out that outlives a compaction is recoverable.**
