@@ -11262,7 +11262,7 @@ fixes don't address. Roadmapped here as their own design tasks.
   Kind: investigate.
   Source: in-session-2026-07-27 (ANTS-3660 cold-eyes loop 2 — two passes measured the same pairs and disagreed)..
 
-- 📋 [ANTS-3667] **ANTS-1870.md's table of contents stops at section 2 — six real toc_gap findings on every doc_integrity run.**
+- ✅ [ANTS-3667] **ANTS-1870.md's table of contents stops at section 2 — six real toc_gap findings on every doc_integrity run.**
   A doc_integrity run over docs/specs/ returns 7 findings. One is the
   adjudicated false positive ANTS-3634 already ruled on (ANTS-1894.md:851's
   deliberate self-reference in its Cross-doc impact section). The other SIX
@@ -11287,6 +11287,13 @@ fixes don't address. Roadmapped here as their own design tasks.
   **Layman:** One spec's contents list is missing most of its own sections, so the doc checker reports six complaints about it every single time.
   Kind: doc-fix.
   Source: in-session-2026-07-27 (doc_integrity sweep during the ANTS-3661..3664 cold-eyes fold).
+  Resolved (2026-09-02): already fixed, verified rather than assumed.
+  docs/specs/ANTS-1870.md's `## Contents` now lists all eight sections,
+  and a doc_integrity run over docs/specs returns toc_gap: 0 — the six
+  findings this item was filed for are gone, and so is every other
+  finding in that corpus. No code or doc change made here; nothing to
+  add to the CHANGELOG, since whatever pass repaired the ToC shipped
+  under its own id.
 
 - ✅ [ANTS-3668] **`find_definition` cannot resolve C++ data members, enumerators or response-field names.**
   `SymbolQuery::buildAnchors` builds exactly three C++ definition patterns: a
@@ -11550,7 +11557,7 @@ fixes don't address. Roadmapped here as their own design tasks.
   Kind: fix.
   Source: in-session-2026-07-28 (cold-eyes loop 4 §1e pre-pass).
 
-- 📋 [ANTS-3675] **doc_integrity should honour doc-examples regions — a quoted CHANGELOG draft false-flags as a broken link.**
+- ✅ [ANTS-3675] **doc_integrity should honour doc-examples regions — a quoted CHANGELOG draft false-flags as a broken link.**
   `doc_integrity` over `docs/specs/` reports exactly one `broken_link`
   corpus-wide: `docs/specs/ANTS-1894.md:851`, target
   `docs/specs/ANTS-1894.md`.
@@ -11598,6 +11605,14 @@ fixes don't address. Roadmapped here as their own design tasks.
   **Layman:** The link-checking tool flags a link inside a quoted draft of another file, where the link is written to be correct once the draft is moved to its real home.
   Kind: fix.
   Source: in-session-2026-07-28 (cold-eyes loop 4 §1e pre-pass, docs/specs sweep).
+  Resolved (2026-09-02) by ANTS-4642, which skips a link whose enclosing
+  span is a verbatim quotation of another document — the mechanism this
+  item argued for, arrived at from the same reasoning: a quotation of
+  another document is not a claim about this one. Verified:
+  doc_integrity over docs/specs returns broken_link: 0, where this
+  item's own measurement was that ANTS-1894.md:851 was the corpus's ONLY
+  one. The item's warning held — the drafted CHANGELOG entry was not
+  rewritten to quiet the linter.
 
 - ✅ [ANTS-3676] **parseSpecBody splits an invariant body at a clause marker written inside a code span.**
   `SpecParse::parseSpecBody` locates an invariant's test-surface clause by
@@ -11992,7 +12007,7 @@ fixes don't address. Roadmapped here as their own design tasks.
   Kind: enhancement.
   Source: in-session-2026-07-28 (ANTS-3662 calibration run).
 
-- 📋 [ANTS-3685] **`spec_log op:append_loop` writes a bullet into a TABLE-form cold-eyes loop log.**
+- ✅ [ANTS-3685] **`spec_log op:append_loop` writes a bullet into a TABLE-form cold-eyes loop log.**
   The verb always appends `- **<label>** — <body>`. Most specs in this
   project carry the loop log as a Markdown TABLE
   (`| Loop | Date | Lanes | C | H | M | L | I | Outcome |`) — ANTS-3660,
@@ -12013,6 +12028,15 @@ fixes don't address. Roadmapped here as their own design tasks.
   **Layman:** The tool that adds a review-round entry to a design doc writes it in the wrong shape when the doc uses a table, so it has to be fixed by hand every time.
   Kind: fix.
   Source: in-session-2026-07-28 (hit while recording ANTS-3660's implementation row).
+  Resolved (2026-09-02) by ANTS-4364, filed later from CC-session
+  feedback against the same defect. `op:append_loop` now detects a
+  table-form loop log, takes the row's `cells`, validates them against
+  the header's column count, and refuses rather than writing a bullet
+  that would corrupt the table. ANTS-4353 added the row-ORDER inference
+  alongside it, which this item did not know to ask for: loop logs run
+  in opposite directions across specs, so a row appended at the wrong
+  end reads as a different loop's result. The adjacent gap this item
+  named — no way to state the C/H/M/L/I counts — is answered by `cells`.
 
 - ✅ [ANTS-3686] **`spec_query` ignores `fields=`, returning the full payload including `invariants[]`.**
   Observed 2026-07-28: `spec_query {id:"ANTS-3664", fields:["ok","id",
