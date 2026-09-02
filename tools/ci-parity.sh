@@ -166,6 +166,23 @@ if [[ "$do_lints" == 1 ]]; then
     # summary as incomplete parity. Using plain `gate` here reported a missing
     # tool as a FAILURE (exit 127), which reads as "the check found something"
     # rather than "the check never ran" — the two need to stay distinguishable.
+    # ANTS-4518 — shellcheck over the tracked shell surface. The project ships
+    # a lot of load-bearing shell (hooks/, tools/, packaging/, tests/*.sh) and
+    # nothing ran this: a committed hook had silently lost a suppression its
+    # installed copy carried, and no gate said so.
+    #
+    # BLOCKING, unlike cppcheck below, because the surface is clean at this
+    # severity today — an informational gate on a clean surface reports a
+    # regression to nobody. -S warning rather than the default: `info` and
+    # `style` carry a real backlog that has never been triaged, and turning
+    # those red would mean either a wall of noise or a suppression file nobody
+    # audits.
+    #
+    # The file list is not `*.sh`: tools/hooks/pre-commit and pre-push carry no
+    # extension and are exactly the scripts the finding was about.
+    maybe_gate shellcheck "shellcheck (shell surface)" \
+        bash -c '{ git ls-files "*.sh"; git ls-files tools/hooks | grep -v "\.md$"; } \
+                 | sort -u | xargs shellcheck -S warning'
     # Scope + syntaxError suppression mirror ci.yml's step (ANTS-4788).
     maybe_gate cppcheck "cppcheck (informational)" \
         cppcheck --enable=all --std=c++20 --library=qt \

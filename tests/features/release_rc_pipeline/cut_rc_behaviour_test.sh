@@ -136,12 +136,15 @@ write_changelog "$D" "" 0.7.98 "### Fixed
 - Real fix that shipped."
 write_metainfo "$D" 0.7.98 "Real preview notes."; write_debian "$D" 0.7.98 "Real preview notes."
 commit_all "$D"; git -C "$D" tag -a v0.7.98-rc1 -m rc1
-RC_COMMIT=$(git -C "$D" rev-parse v0.7.98-rc1^{commit})
+# Quoted for SC1083 (ANTS-4518): the braces are git's peel syntax and are
+# meant literally, which is indistinguishable from a typo'd brace expansion
+# unless they are quoted.
+RC_COMMIT=$(git -C "$D" rev-parse "v0.7.98-rc1^{commit}")
 echo extra > "$D/extra.txt"; commit_all "$D" "post-rc work"   # main ahead of RC
 run "$D" promote --push --force-non-wed
 if [ "$RC" -eq 0 ]; then
     has_tag "$D" v0.7.98 && ok "INV-6 public tag created" || bad "INV-6 no public tag"
-    [ "$(git -C "$D" rev-parse v0.7.98^{commit})" = "$RC_COMMIT" ] \
+    [ "$(git -C "$D" rev-parse "v0.7.98^{commit}")" = "$RC_COMMIT" ] \
         && ok "INV-6 public tags frozen RC commit (main ahead)" || bad "INV-6 wrong commit"
     grep -q "## \[0.7.98\] — ${TODAY}" "$D/CHANGELOG.md" && ok "INV-3 CHANGELOG stamped" || bad "INV-3 CHANGELOG"
     grep -q "version=\"0.7.98\" date=\"${TODAY}\"" "$D/packaging/linux/za.co.antsprojectshub.AntsTerminal.metainfo.xml" \

@@ -5237,15 +5237,23 @@ void TerminalWidget::checkForClaudePermissionPrompt() {
 
 void TerminalWidget::clearClaudeQuestionPrompt() {
     // Belt-and-suspenders clear for the AskUserQuestion dot (ANTS-1858
-    // follow-up). The footer-gone debounce above needs N=3 quiet-gap
-    // scans, but m_claudeDetectTimer is a single-shot trailing-edge
-    // timer restarted on every PTY batch — Claude's spinner repaints
-    // faster than its 300 ms interval, so during active output the scan
-    // never runs and the debounce can't accumulate. Without an external
-    // clear the dot stays orange until the next genuine ≥300 ms quiet
-    // gap, which may never come. Reset the sticky state here so the next
-    // question's rising edge re-fires, and route through the same
-    // claudeQuestionCleared signal the debounce uses.
+    // follow-up).
+    //
+    // ANTS-3364 — this described the defect it was written against and not
+    // the code as it stands. m_claudeDetectTimer IS single-shot, but it is no
+    // longer "restarted on every PTY batch": the batch path starts it only
+    // when idle, which turns it into a ~300 ms throttle that fires DURING
+    // continuous output rather than being perpetually reset by a spinner
+    // repainting faster than its interval. So the footer-gone N=3 debounce
+    // does accumulate now, and the starvation this comment claimed is gone.
+    //
+    // The clear is kept because the debounce is not the only way the dot goes
+    // out: it needs three quiet-gap scans, and a question answered mid-stream
+    // leaves the sticky state set until they arrive. The hook-driven clear
+    // only fires where Ants' Claude hooks are installed, which is not
+    // guaranteed. Reset the sticky state here so the next question's rising
+    // edge re-fires, and route through the same claudeQuestionCleared signal
+    // the debounce uses.
     if (!m_claudeQuestionActive)
         return;
     m_claudeQuestionActive = false;

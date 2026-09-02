@@ -86,6 +86,13 @@ Listed only where behavior isn't obvious from the name.
   engine: dead anchors, broken relative links, TOC coverage over a doc set.
   GitHub-compatible `gfmSlug`, fence-aware. Powers the `doc_integrity` MCP verb
   and the cold-eyes Phase-1e feed (`doc_integrity[]` in the brief). ANTS-3601.
+- `doccitations` (Qt6::Core, `ants_core_lib`) — the citation SCAN layer: what
+  does this document cite? A pure function — document text in, citation tokens
+  out — with no filesystem, path resolution or status taxonomy; those belong to
+  the read path that consumes it. Consumes `MarkdownScan`'s fenceMask +
+  codeSpans. Matching is two-stage, a permissive RECOGNISE pass then a VALIDATE
+  pass, so a token that fails to match can still be REPORTED rather than
+  vanishing. Powers the `doc_citations` MCP verb. ANTS-3653.
 - `docsymbols` (Qt6::Core, `ants_core_lib`) — resolves the identifiers a doc
   asserts something about: harvests inline code spans matching
   `ident(::ident)*()?`, applies six exclusions (paths, `doc-examples` regions,

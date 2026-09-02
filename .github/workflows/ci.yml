@@ -73,7 +73,7 @@ jobs:
             build-essential cmake ninja-build pkg-config ccache
             qt6-base-dev qt6-base-dev-tools
             libqt6opengl6-dev libqt6openglwidgets6
-            liblua5.4-dev cppcheck ripgrep
+            liblua5.4-dev cppcheck ripgrep shellcheck
             appstream desktop-file-utils groff zsh fish
           version: 1.0
 
@@ -111,6 +111,17 @@ jobs:
       - name: Run tests
         working-directory: build
         run: ctest --output-on-failure
+
+      # ANTS-4518 — nothing checked this project's shell, and it ships a lot of
+      # load-bearing shell. BLOCKING at -S warning, where the surface is clean
+      # today; info/style carry an untriaged backlog and turning those red would
+      # mean noise or an unaudited suppression file. The file list is not
+      # `*.sh` because tools/hooks/pre-commit and pre-push carry no extension
+      # and are the scripts the finding was about.
+      - name: "Run shellcheck (shell surface)"
+        run: |
+          { git ls-files '*.sh'; git ls-files tools/hooks | grep -v '\.md$'; } \
+            | sort -u | xargs shellcheck -S warning
 
       # Scope covers tests/ as well as src/ (ANTS-4788). cppcheck cannot parse
       # the TEST()/HYGIENE_TEST()/RQ_TEST() macros, so syntaxError is suppressed

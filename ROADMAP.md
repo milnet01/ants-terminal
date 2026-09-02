@@ -11955,7 +11955,7 @@ fixes don't address. Roadmapped here as their own design tasks.
   Kind: fix.
   Source: in-session-2026-07-28 (hit while recording ANTS-3660's implementation row).
 
-- 📋 [ANTS-3686] **`spec_query` ignores `fields=`, returning the full payload including `invariants[]`.**
+- ✅ [ANTS-3686] **`spec_query` ignores `fields=`, returning the full payload including `invariants[]`.**
   Observed 2026-07-28: `spec_query {id:"ANTS-3664", fields:["ok","id",
   "title","status","kind","invariants_count"]}` returned the complete
   envelope, `invariants[]` included — roughly 2.5 KB where ~120 bytes was
@@ -11975,8 +11975,24 @@ fixes don't address. Roadmapped here as their own design tasks.
   **Layman:** Asking the spec reader for just a few summary fields still sends back the whole spec, which wastes a lot of the assistant's reading budget.
   Kind: fix.
   Source: in-session-2026-07-28 (hit while sweeping the doc-lint specs).
+  Resolved by ANTS-4524, not by this session — closing the record rather
+  than claiming the work.
 
-- 📋 [ANTS-3687] **`codebase_index` omits the `doccitations` lane while its five siblings are present.**
+  Verified 2026-09-02: `fields=` is no longer gated per-verb. The
+  predicate that used to decide which verbs honoured it
+  (isFieldProjectionTool) is gone, the dispatcher declares the property on
+  every schema, and projection is applied centrally — so spec_query gets
+  it like every other read verb.
+
+  The item's two follow-up checks are both answered by that design: the
+  filter is no longer branch-specific, and the etag is computed on the
+  unfiltered body before projecting, so a narrowed call still 304s.
+
+  Left open for weeks after it was fixed, which is the ledger drift worth
+  noting: this was found by re-verifying an aged backlog item rather than
+  by anyone hitting it.
+
+- ✅ [ANTS-3687] **`codebase_index` omits the `doccitations` lane while its five siblings are present.**
   `codebase_index {lane:"doccitations"}` returns `found:false`, and the
   lane list carries `docdedup`, `docfinding`, `docintegrity`, `docsymbols`
   and `speclint` but not `doccitations` — 58 lanes, `lane_digest_truncated:
@@ -11998,6 +12014,22 @@ fixes don't address. Roadmapped here as their own design tasks.
   **Layman:** The project's own code map is missing one file pair, so a session asking "where does the citation checker live?" gets told it doesn't exist.
   Kind: fix.
   Source: in-session-2026-07-28 (cold-eyes ANTS-3663 loop 5 pre-pass).
+  Resolved (2026-09-02): docs/subsystems.md has a `doccitations` entry.
+
+  The cause is duller than the item feared and worth recording so nobody
+  re-investigates: codebase_index's lanes come from that module map, and
+  the file pair was simply never listed while all five siblings were. No
+  lane-derivation rule keys on anything doccitations misses — there was
+  nothing to find in the code.
+
+  The second half of the report stands and is a different item: the
+  find_definition miss on `DocCitations` is the namespace/data-member gap
+  (ANTS-3668), still open.
+
+  This is one instance of the wider ANTS-4785 gap — the map documents a
+  minority of src/ — but filed and fixed separately, because a pair whose
+  siblings are all present is an oversight rather than the general
+  shortfall.
 
 - ✅ [ANTS-3688] **`doc_symbols` reports response-key names as unresolved symbols — 291 of 309 on one spec.**
   Measured on `docs/specs/ANTS-3663.md` (1100 lines): 448 occurrences,
@@ -12246,7 +12278,7 @@ fixes don't address. Roadmapped here as their own design tasks.
   Kind: fix.
   Source: in-session-2026-08-19 (ANTS-4462 verification).
 
-- 📋 [ANTS-4518] **No gate runs shellcheck, so hooks/ and tools/ shell regressions are invisible.**
+- ✅ [ANTS-4518] **No gate runs shellcheck, so hooks/ and tools/ shell regressions are invisible.**
   Neither ci.yml nor tools/ci-parity.sh runs shellcheck on anything --
   verified by grep; ci-parity's only match is a comment mentioning SC2164.
   Measured consequence: ants-bash-veto.sh had lost the SC2016 suppression
@@ -12257,6 +12289,34 @@ fixes don't address. Roadmapped here as their own design tasks.
   signal -- so the tool is already the project's choice, it is simply never
   run automatically. Wire it into ci-parity --lints and ci.yml over the
   shell surface, and expect an existing-findings backlog on first run.
+  Resolved (2026-09-02): shellcheck runs in ci.yml and in
+  ci-parity.sh --lints, over the tracked shell surface.
+
+  BLOCKING rather than informational, unlike the cppcheck step beside it,
+  because the surface is CLEAN at this severity — an informational gate on
+  a clean surface reports a regression to nobody. -S warning rather than
+  the default: `info` and `style` carry an untriaged backlog, and turning
+  those red would mean a wall of noise or a suppression file nobody
+  audits.
+
+  The file list is deliberately not `*.sh`. tools/hooks/pre-commit and
+  pre-push carry no extension and are exactly the scripts the finding was
+  about; both are clean.
+
+  Three real findings fixed to reach zero: tools/e2e/run.sh is SOURCED and
+  rightly has no shebang, so it takes a `shell=bash` directive instead of
+  being skipped; a poll loop's counter became `_`, the conventional
+  throwaway, rather than carrying a suppression directive to keep true;
+  and two git peel expressions (`v0.7.98^{commit}`) are quoted, since
+  literal braces are indistinguishable from a typo'd brace expansion
+  otherwise.
+
+  shellcheck is added to ci.yml's apt list and to NO packaging carrier.
+  ANTS-4391 and ANTS-4717 are the precedent for adding it, and the reason
+  for the limit: the deps guard covers tools the SUITE invokes with no
+  skip path, and this is a lint gate. The RPM, Arch and Debian carriers
+  run ctest, not the lints, so declaring it there would install a package
+  nothing they run needs.
   **Layman:** Nothing automatically checks our shell scripts for mistakes.
   Kind: test.
   Source: in-session-2026-08-19 (ANTS-4462 verification).
@@ -14278,12 +14338,32 @@ apiKey-from-config, secretredact.h filename, openUrl internal URL, trigger sh
   Progress 2026-06-29: (7b) fixed — extracted MainWindow::runKWinScript(kwinJs, tag) from moveViaKWin / centerWindow (was ~35 duplicated lines each: the write-tempfile → loadScript → start → unloadScript → remove dbus chain). The two callers now build only their KWin JS body and call the helper with a tag ("move"/"center") that drives both the tempfile prefix (kwin_<tag>_ants_*) and the registered script name (ants_terminal_<tag>) — exact prior behaviour preserved. mainwindow.cpp −22 lines net. Suite 2340/2340. Now 6 of 7 done. Still open (all deferred-class, not surgical): (4) terminal QAccessible name/role [a11y feature — own item], (5) per-root cache eviction [needs eviction-policy + RAM-budget design], (7c) SSH-dialog + hook-installer tr() i18n [latent — no translation pipeline yet].
   Resolved 2026-06-29: (4) terminal QAccessible name/role — done as its own item ANTS-1078 (terminal screen-reader accessibility, core H9 slice). The terminal now exposes role Terminal + a QAccessibleTextInterface (viewport text + caret) to AT. Still open under this cluster: (5) per-root cache eviction, (7c) SSH-dialog + hook-installer tr() i18n.
 
-- 📋 [ANTS-3364] **Stale m_claudeDetectTimer comment: terminalwidget.cpp:4792 still says "single-shot trailing-edge".**
+- ✅ [ANTS-3364] **Stale m_claudeDetectTimer comment: terminalwidget.cpp:4792 still says "single-shot trailing-edge".**
   The comment in clearClaudeQuestionPrompt() (terminalwidget.cpp:4792-4793) calls m_claudeDetectTimer a "single-shot trailing-edge timer ... during active output the scan never runs" — the pre-ANTS-1862 behaviour. The actual code (terminalwidget.cpp:2442-2443, `if (!m_claudeDetectTimer.isActive()) start()`) and the authoritative comment at :2430-2441 make it a LEADING-edge ~300 ms throttle that DOES fire during continuous output. One-line comment fix to match reality; no code change. Surfaced during the ANTS-1078 terminal-a11y spec cold-eyes loop (the spec's §2.5 relies on the correct leading-edge reading).
   **Layman:** A code comment describes a timer the wrong way round — harmless to the app, but misleading to anyone reading the code.
   Kind: doc-fix.
   Source: cold-eyes-ANTS-1078-2026-06-29.
   Scope widened 2026-06-29: a second stale comment at terminalwidget.h:123 ("the trailing-edge m_claudeDetectTimer rarely delivers while Claude streams output") describes the same pre-ANTS-1862 behaviour and should be fixed in the same pass. (A reviewer also flagged terminalwidget.cpp:179, but that line is m_syncTimer.setInterval(500) — unrelated; not in scope.)
+  Resolved (2026-09-02): the comment describes the code as it is.
+
+  Verified before rewriting rather than taken on the report. The timer IS
+  single-shot, so half the comment was right; what had gone stale is
+  "restarted on every PTY batch". The batch path starts it only when idle
+  — a ~300 ms throttle that fires DURING continuous output — which is the
+  fix that made the comment wrong, and its own comment says so a few
+  thousand lines up.
+
+  So the starvation the comment described, and the whole justification it
+  gave for the belt-and-suspenders clear, no longer holds.
+
+  The clear itself is KEPT and the comment now says why on current
+  behaviour: the footer-gone debounce still needs three quiet-gap scans,
+  and a question answered mid-stream leaves the sticky state set until
+  they arrive. Deleting the function would have been a larger change than
+  the finding asked for, on reasoning the finding did not do.
+
+  The item's file:line had drifted by ~450 lines, which is why the text
+  rather than the location was the anchor.
 
 ### 🔬 Test-suite audit fold-in (2026-05-15)
 

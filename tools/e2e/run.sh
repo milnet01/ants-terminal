@@ -1,4 +1,9 @@
+# shellcheck shell=bash
 # ANTS-2049 — e2e harness driver (sourced by smoke.sh, not executed directly).
+#
+# ANTS-4518 — the directive above, not a shebang: this file is SOURCED and has
+# no business being executable. It is what SC2148 asks for on a library, and it
+# lets the gate check the file instead of skipping it.
 #
 # launch_e2e / call_e2e / teardown_e2e drive a throwaway `--e2e` Ants instance
 # over its own RemoteControl socket, with an isolated profile (all three XDG
@@ -61,8 +66,10 @@ launch_e2e() {
 
     # Readiness: the socket file existing is not enough — the server must
     # accept and answer. Poll tab-list (socket-dispatchable) until ok or ~10 s.
-    local i
-    for i in $(seq 1 40); do
+    # `_` rather than a named variable: the body counts iterations and never
+    # reads the counter, and the conventional throwaway says so without a
+    # suppression directive to keep true (ANTS-4518).
+    for _ in $(seq 1 40); do
         if call_e2e '{"cmd":"tab-list"}' "$tag" 2>/dev/null | grep -q '"ok":true'; then
             return 0
         fi

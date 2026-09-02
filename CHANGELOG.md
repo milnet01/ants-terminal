@@ -14,6 +14,15 @@ for security-relevant changes.
 
 ### Added
 
+- **Shell scripts are checked automatically, in CI and locally** (ANTS-4518)
+  The project ships a lot of load-bearing shell — git hooks, build and
+  release tooling, test drivers — and nothing checked any of it, so a
+  committed hook had silently lost a suppression its installed copy
+  carried with no gate to say so. The gate blocks rather than reporting,
+  because the surface is clean at the severity it runs. It covers the two
+  hooks that carry no .sh extension, which are the scripts the original
+  finding was about.
+
 - **Review lanes over a test tree are labelled as such** (ANTS-4806)
   A computed partition groups by directory, so the tests become a lane
   like any other — and a code review's scope excludes them while a test
@@ -232,6 +241,11 @@ for security-relevant changes.
   `Inv2BypassesStatusAndPagination` anchored on a string that also matches an earlier `else if`, so its byte window opened above the branch it names — a test that passes from the wrong position gives no signal when the thing it names moves. Re-anchored on a needle that occurs once, and proved by mutation in both directions.
 
 ### Fixed
+
+- **The citation scanner appears in the project's own code map** (ANTS-3687)
+  docs/subsystems.md listed all five of its siblings and not it, so the
+  code map answered "no such thing" to a session asking where the citation
+  checker lives.
 
 - **Build and release workflows are visible to the review splitter** (ANTS-4805)
   The walk never descended into .github at all, so a project's CI files
