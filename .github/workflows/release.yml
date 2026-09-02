@@ -224,6 +224,15 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           OUTPUT: Ants_Terminal-${{ steps.tag.outputs.version }}-x86_64.AppImage
+          # ANTS-4792 — `ref` and `is_rc` reach the shell through env:, not by
+          # ${{ }} interpolation. ANTS-4772 stopped `inputs.tag` being
+          # interpolated directly, but the value it guards is written to
+          # $GITHUB_OUTPUT and read back as steps.tag.outputs.ref, so every
+          # `${{ ... }}` of it below was the SAME injection one hop further
+          # along -- expanded into the script body before any shell sees it,
+          # in a job holding contents: write.
+          REF: ${{ steps.tag.outputs.ref }}
+          IS_RC: ${{ steps.tag.outputs.is_rc }}
         run: |
           # Pushing a tag does NOT auto-create a GitHub Release object
           # — `gh release upload` 404s if the Release isn't there yet.
@@ -231,7 +240,7 @@ jobs:
           # Release on demand with the tag as title and an empty body
           # (the user can flesh out the description after; CHANGELOG.md
           # has the full notes already).
-          if ! gh release view "${{ steps.tag.outputs.ref }}" >/dev/null 2>&1; then
+          if ! gh release view "$REF" >/dev/null 2>&1; then
             # ANTS-1318 INV-5 (defense-in-depth, OQ-4): an RC tag that
             # reaches this auto-create path (e.g. a manual
             # workflow_dispatch that didn't pre-create the release) must
@@ -239,14 +248,14 @@ jobs:
             # `latest`. cut-rc.sh normally pre-creates the RC release
             # with --prerelease, so this branch is the backstop.
             PRERELEASE_FLAG=""
-            if [ "${{ steps.tag.outputs.is_rc }}" = "1" ]; then
+            if [ "$IS_RC" = "1" ]; then
               PRERELEASE_FLAG="--prerelease"
             fi
-            gh release create "${{ steps.tag.outputs.ref }}" \
+            gh release create "$REF" \
               $PRERELEASE_FLAG \
-              --title "${{ steps.tag.outputs.ref }}" \
-              --notes "See [CHANGELOG.md](https://github.com/${GITHUB_REPOSITORY}/blob/${{ steps.tag.outputs.ref }}/CHANGELOG.md) for release notes."
-            echo "Created GitHub Release ${{ steps.tag.outputs.ref }} (prerelease=${{ steps.tag.outputs.is_rc }})"
+              --title "$REF" \
+              --notes "See [CHANGELOG.md](https://github.com/${GITHUB_REPOSITORY}/blob/${REF}/CHANGELOG.md) for release notes."
+            echo "Created GitHub Release ${REF} (prerelease=${IS_RC})"
           fi
           # Upload both the AppImage AND its `.zsync` sidecar.
           # AppImageUpdate fetches the .zsync to compute partial
@@ -269,14 +278,14 @@ jobs:
           # the separate RC channel exists to prevent.
           ALIAS="Ants_Terminal-x86_64.AppImage"
           UPLOADS=( "${OUTPUT}" "${OUTPUT}.zsync" )
-          if [ "${{ steps.tag.outputs.is_rc }}" != "1" ]; then
+          if [ "$IS_RC" != "1" ]; then
             cp "${OUTPUT}" "${ALIAS}"
             UPLOADS+=( "${ALIAS}" )
           fi
-          gh release upload "${{ steps.tag.outputs.ref }}" \
+          gh release upload "$REF" \
             "${UPLOADS[@]}" \
             --clobber
-          echo "Uploaded ${UPLOADS[*]} to release ${{ steps.tag.outputs.ref }}"
+          echo "Uploaded ${UPLOADS[*]} to release ${REF}"
 
       # ANTS-4583 — assert the release really carries both artefacts.
       # Uploading and *having uploaded* are different claims, and until
@@ -288,18 +297,27 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           OUTPUT: Ants_Terminal-${{ steps.tag.outputs.version }}-x86_64.AppImage
+          # ANTS-4792 — `ref` and `is_rc` reach the shell through env:, not by
+          # ${{ }} interpolation. ANTS-4772 stopped `inputs.tag` being
+          # interpolated directly, but the value it guards is written to
+          # $GITHUB_OUTPUT and read back as steps.tag.outputs.ref, so every
+          # `${{ ... }}` of it below was the SAME injection one hop further
+          # along -- expanded into the script body before any shell sees it,
+          # in a job holding contents: write.
+          REF: ${{ steps.tag.outputs.ref }}
+          IS_RC: ${{ steps.tag.outputs.is_rc }}
         run: |
           set -euo pipefail
-          NAMES=$(gh release view "${{ steps.tag.outputs.ref }}" \
+          NAMES=$(gh release view "$REF" \
                     --json assets --jq '.assets[].name')
-          echo "Assets now on ${{ steps.tag.outputs.ref }}:"
+          echo "Assets now on ${REF}:"
           echo "${NAMES}"
           # ANTS-4586 — the alias is checked on a stable release for the same
           # reason the other two are: an artefact nothing verifies is one that
           # can go missing quietly, and this is the one a published link
           # depends on.
           WANT=( "${OUTPUT}" "${OUTPUT}.zsync" )
-          if [ "${{ steps.tag.outputs.is_rc }}" != "1" ]; then
+          if [ "$IS_RC" != "1" ]; then
             WANT+=( "Ants_Terminal-x86_64.AppImage" )
           fi
           MISSING=0

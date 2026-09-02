@@ -391,6 +391,15 @@ for security-relevant changes.
 
 ### Security
 
+- **Release-workflow values now reach the shell through env:, never template expansion** (ANTS-4792)
+  All thirteen remaining `${{ }}` expansions into `run:` bodies in
+  `release.yml` are gone; the tag and RC flag are passed as environment
+  variables. ANTS-4772 had closed the direct `inputs.tag` path but the same
+  value was written to `$GITHUB_OUTPUT` and read back into the script body
+  at eight further sites. A new conformance test enumerates
+  `.github/workflows/` and fails on any expansion reaching a shell body, so
+  a workflow added later is covered on the day it lands.
+
 - **CI and release checkouts no longer leave the git credential in the runner workspace** (ANTS-4773)
   All four `actions/checkout` steps set `persist-credentials: false`. Neither workflow invokes git, so nothing depended on the persisted token, and it can no longer reach an uploaded artifact via `.git/config`.
 

@@ -2026,6 +2026,9 @@ if(ANTS_TESTS)
                 # ANTS-4391/4717 every carrier that runs the suite declares
                 # the tools it shells out to.
                 tests/features/ci_workflow_deps/test_ci_workflow_deps.cpp
+                # ANTS-4792 — no workflow expands ${{ }} into a shell body;
+                # enumerates the directory, so a new workflow is covered.
+                tests/features/workflow_no_shell_interpolation/test_workflow_no_shell_interpolation.cpp
                 # ANTS-4726 the pre-push docs-only set and ci.yml's
                 # paths-ignore are twins; nothing checked they agree.
                 tests/features/prepush_docs_only_parity/test_prepush_docs_only_parity.cpp

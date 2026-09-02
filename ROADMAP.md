@@ -49343,7 +49343,7 @@ volume classes, and the tooling/documentation gaps the run exposed.
   Source: check-code-sweep-2026-09-01.
   Lanes: ci.
 
-- 📋 [ANTS-4792] **Thirteen info-level template-injection sites remain in release.yml after ANTS-4772.**
+- ✅ [ANTS-4792] **Thirteen info-level template-injection sites remain in release.yml after ANTS-4772.**
   Found by the ANTS-4772/4773 close-findings sweep, not by the original
   check-code run: ANTS-4772 named only the two HIGH-confidence
   ${{ inputs.tag }} sites and both are fixed, but zizmor still reports 13
@@ -49364,6 +49364,38 @@ volume classes, and the tooling/documentation gaps the run exposed.
   Fix shape when it is picked up: the same env: indirection ANTS-4772
   used, applied per site, after deciding which sites can carry an
   attacker-influenced value at all.
+  Resolved (2026-09-02): all 13 sites closed via env: indirection;
+  zizmor --persona=auditor reports 0 template-injection across all three
+  workflows, against 13 on the same command at HEAD.
+
+  The filing above was wrong about the severity, and the correction is
+  the point of this item. It read these as info-graded because they
+  expand steps.tag.outputs.* rather than a caller-typed input -- "the
+  value is derived inside the workflow". It is not derived: the tag step
+  assigns REF from $INPUT_TAG and echoes it to $GITHUB_OUTPUT, so
+  steps.tag.outputs.ref IS inputs.tag. Eight of the thirteen were the
+  ANTS-4772 injection laundered one hop, live, in a job with
+  contents: write. zizmor graded them info because its taint analysis
+  does not follow a value out through a step output and back in -- so
+  the severity signal pointed away from the live path, and the earlier
+  filing reasoned from the grade instead of from the flow.
+
+  Also found: no zizmor, actionlint or yamllint run anywhere in ci.yml or
+  tools/ci-parity.sh, so between ANTS-4772 and today the survivors
+  appeared in no run at all. Closed with a conformance test rather than a
+  CI lint job -- the suite is what pre-push gates on, and a Rust binary
+  in ci.yml would oblige every packaging carrier that runs ctest to
+  install it (the ANTS-4391/4717 trap).
+
+  The guard enumerates .github/workflows/ rather than a file list, and
+  was proved to fire on a block scalar, on a shell COMMENT (the
+  expansion precedes tokenisation, so a newline in the value escapes the
+  comment) and on the single-line run: form, while staying green on the
+  env: shape it prescribes.
+
+  Left open deliberately: ANTS-4795 (excessive-permissions, pre-existing).
+  Measured no regression -- yamllint long lines 6 -> 4, actionlint
+  findings 1 -> 1.
   **Layman:** The release script still drops several computed values straight into commands; each needs checking to see whether anyone outside could influence them.
   Kind: security.
   Source: close-findings-sweep-2026-09-01.
@@ -49437,6 +49469,31 @@ volume classes, and the tooling/documentation gaps the run exposed.
   Kind: test.
   Source: in-session-2026-09-02.
   Lanes: review, tests.
+
+- 📋 [ANTS-4795] **release.yml declares contents: write at workflow level rather than on the job.**
+  zizmor --persona=auditor reports one error[excessive-permissions] on
+  release.yml. PRE-EXISTING and unchanged by ANTS-4792 -- verified by
+  running the same command against HEAD before that fix.
+
+  Today it is inert: the workflow has exactly one job and that job
+  genuinely needs contents: write to create the release and upload the
+  AppImage, so workflow-level and job-level grant the same thing. It
+  stops being inert the moment a second job is added, because the new
+  job inherits write without anyone deciding it should.
+
+  Filed rather than folded into ANTS-4792 on purpose. The remedy is a
+  two-line move and the temptation is to call that trivial, but the
+  axis is effect, not effort: it changes what the release path is
+  permitted to do, and a permissions edit riding along on someone
+  else's security fix is reviewed by nobody. It wants its own pass and
+  its own commit.
+
+  Not covered by the ANTS-4792 regression test, whose invariant is
+  shell-position ${{ }} and nothing else.
+  **Layman:** The release script hands out its write permission more broadly than it needs to; harmless today because there is only one job, but it stops being harmless the moment a second one is added.
+  Kind: security.
+  Source: in-session-2026-09-02.
+  Lanes: ci, packaging.
 
 ### Ants MCP feedback from CC sessions — 2026-08-28 triage
 
