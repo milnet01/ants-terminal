@@ -12348,6 +12348,48 @@ fixes don't address. Roadmapped here as their own design tasks.
   Kind: enhancement.
   Source: in-session-2026-08-22.
 
+- 📋 [ANTS-4819] **section_index counts bullets a section= read of the same slug returns none of.**
+  Measured 2026-09-02 while counting the open review backlog, and it made
+  me report a wrong number before I checked.
+
+  mode:"section_index" reports the slug
+  `0-7-65-bundle-g-indie-review-sweep-ants-1118-fix-pass-target-2026-05`
+  with a large total_count_id_only, of which a large active_count_id_only.
+  A `section=` query on that exact slug returns count:0 and total:0 --
+  under status:"active" AND under status:"all" -- with
+  section_shape:"table" and a large non_bullet_lines.
+
+  So the index promises id-bearing bullets that the section read cannot
+  produce. A session planning from the index looks for items it can never
+  enumerate, and concludes either that the roadmap is corrupt or that the
+  section verb is broken.
+
+  TWO CANDIDATE CAUSES, not distinguished from the caller side, and the
+  fix differs:
+
+    The index's per-section counts may ROLL UP descendant sections, while
+    section= returns one heading's own slice. That level-2 heading does
+    have level-3 children, and they appear in the index in their own
+    right -- so their bullets would be counted twice, once under the
+    parent and once under themselves.
+
+    Or the counts and the read may use different parses, the index
+    counting rows a table-shaped section holds and the bullet reader
+    correctly declining them.
+
+  Either way the ENVELOPE is what needs fixing, and cheaply. If the counts
+  are cumulative, say so -- a `rollup:true`, or a direct count beside the
+  cumulative one. If they count rows the reader will not return, that is a
+  straight disagreement between two surfaces over one section.
+
+  `section_shape:"table"` already exists and is the nearest thing to a
+  signal, but it appears only on the SECTION read, which is the call you
+  make after the index has already misled you.
+  **Layman:** The roadmap's contents page lists items for a section that the section itself reports as empty.
+  Kind: fix.
+  Source: in-session-2026-09-02.
+  Lanes: remotecontrol, mcp.
+
 ### 🔬 Project Audit false-positive reduction (self-audit 2026-05-20)
 
 Ran the project's own `ants-audit` CLI against this repo (~300 findings,
