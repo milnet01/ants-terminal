@@ -49804,7 +49804,7 @@ volume classes, and the tooling/documentation gaps the run exposed.
   Source: rolodex-feedback-2026-09-01.
   Lanes: remotecontrol, mcp.
 
-- 📋 [ANTS-4805] **The CI and release surface is in no review lane and is not reported as uncovered.**
+- ✅ [ANTS-4805] **The CI and release surface is in no review lane and is not reported as uncovered.**
   Rolodex reported four shell scripts and two GitHub workflows in no lane
   at all. The shell half is reported since ANTS-4771 and now on both paths
   (ANTS-4786). The workflow half is not, and the cause is different.
@@ -49829,12 +49829,34 @@ volume classes, and the tooling/documentation gaps the run exposed.
   Decide which before building: an exception inside isNoiseDir changes
   every consumer of that function, and a synthesised lane changes only
   this verb.
+  Resolved (2026-09-02): .github is walked as an EXPLICIT source root, so
+  the CI and release surface reaches a lane or the coverage report instead
+  of vanishing.
+
+  The filed diagnosis was right about the effect and incomplete about the
+  cause, which changed the fix. isNoiseDir dropping dot-directories was
+  only the second gate: QDirIterator does not descend into a hidden
+  directory AT ALL, so the walk never reached .github and no noise test
+  was ever consulted. Exempting it from the noise rule alone — which was
+  the obvious fix and is in this change too — did nothing on its own, and
+  the test caught that.
+
+  Naming the one directory rather than passing QDir::Hidden: that flag
+  would descend into .git and .venv on every call just to discard them.
+  And it cannot double-count against a "." root, for the same reason the
+  bug existed — that walk never reaches a hidden directory.
+
+  The workflows are YAML, so no lane claims them; they are REPORTED as
+  uncovered, which is what the reporter asked for — that a partition
+  either covers those files or says it does not. The test's control keeps
+  the change honest: .venv stays noise, so this is one named exception
+  rather than a widening of the dot rule.
   **Layman:** Automated build files are skipped by the review splitter and it does not mention skipping them.
   Kind: fix.
   Source: rolodex-feedback-2026-09-01.
   Lanes: remotecontrol, mcp.
 
-- 📋 [ANTS-4806] **A computed partition hands review-code lanes over the test tree, which is not its scope.**
+- ✅ [ANTS-4806] **A computed partition hands review-code lanes over the test tree, which is not its scope.**
   With no module map the partition groups by directory, so tests/ becomes
   a lane like any other. review-code's scope excludes tests — those are
   review-tests' — so a caller applying the partition unchanged spends
@@ -49855,6 +49877,29 @@ volume classes, and the tooling/documentation gaps the run exposed.
   says "grouped by directory" outright, so the envelope is honest; whether
   a consumer should be told more strongly not to use it as-is is the open
   question here.
+  Resolved (2026-09-02): a computed lane over a declared or detected test
+  root carries kind:"tests", emitted in the envelope only when set.
+
+  Labelled rather than excluded, as the reporter proposed and for their
+  reason: review-tests wants exactly those lanes, so a verb that omitted
+  them would trade one consumer's problem for another's, and a silently
+  omitted tree is the failure ANTS-4771 and ANTS-4786 were both filed
+  about. The consumer drops what it does not want; the verb decides for
+  neither.
+
+  Declared test_roots win over the conventional names, since a project
+  that says where its tests are is authoritative. Prefix-matched, so a
+  lane named tests/features under a declared tests root is labelled too.
+
+  An ABSENT kind is the absence of a label and not a claim that the lane
+  is production code — asserted in the test, because a consumer reading it
+  the other way would start trusting an unlabelled lane it should not.
+
+  The reporter's second observation is NOT closed by this and was not
+  claimed to be: a derived partition still groups by DIRECTORY where
+  review-code's procedure calls for cohesion. derived_from says so
+  outright, so the envelope is honest; whether a consumer should be warned
+  more strongly stays open.
   **Layman:** The review splitter offers test files to a reviewer briefed to read the app, not the tests.
   Kind: enhancement.
   Source: rolodex-feedback-2026-09-01.

@@ -75,6 +75,9 @@ QJsonDocument RemoteControl::cmdIndieReviewPartition(const QJsonObject &req) {
         QJsonObject o;
         o["name"]    = l.name;
         o["summary"] = l.summary;
+        // ANTS-4806 — emitted only when set, so its absence is not a claim
+        // that the lane is production code; it is the absence of a label.
+        if (!l.kind.isEmpty()) o["kind"] = l.kind;
         QJsonArray sps;
         for (const QString &sp : l.sourcePaths) sps.append(sp);
         o["sourcePaths"] = sps;

@@ -181,6 +181,66 @@ TEST(IndieReviewComputedPartition, Inv7NullReporterIsHarmless) {
     EXPECT_EQ(lanes.size(), 2);
 }
 
+// ANTS-4805 — the CI surface is reachable by the partition walk. isNoiseDir
+// drops every dot-directory, which is right for an index and wrong for a
+// review partition: .github holds the build and release workflows, and
+// dropping it made them invisible to the lanes AND to the coverage report
+// that exists to catch that.
+TEST(IndieReviewComputedPartition, Ants4805CiSurfaceIsNotSilentlyDropped) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString root = seedProse(tmp, QStringList{
+        QStringLiteral("engine/core.py"),
+        QStringLiteral("ui/window.py"),
+    });
+    writeFile(root, QStringLiteral(".github/workflows/ci.yml"),
+              QByteArray("name: CI\n"));
+    writeFile(root, QStringLiteral(".github/workflows/release.yml"),
+              QByteArray("name: Release\n"));
+    // A dot-directory that is NOT the CI surface, as the control: the rule is
+    // one named exception, not a widening of the dot rule.
+    writeFile(root, QStringLiteral(".venv/lib/thing.py"), QByteArray("x = 1\n"));
+    SubsystemMap::clearCacheForTests();
+
+    const auto lanes = IndieReviewEngine::deriveComputedPartition(root);
+    QStringList sample;
+    const auto gap = IndieReviewEngine::unassignedForLanes(root, lanes, &sample);
+
+    // The workflows are YAML, so no lane claims them — but they are now
+    // REPORTED as uncovered instead of vanishing before every filter.
+    EXPECT_EQ(gap.bySuffix.value(QStringLiteral("yml")), 2)
+        << "the CI surface must be visible to the coverage report";
+    // .venv is still noise, and its .py would otherwise be indexable — so if
+    // the dot rule had been widened rather than excepted, this would fire.
+    for (const QString &p : sample)
+        EXPECT_FALSE(p.contains(QStringLiteral(".venv")))
+            << "the exception must be one directory, not the whole dot rule";
+}
+
+// ANTS-4806 — a derived lane over the test tree is LABELLED, not omitted.
+// review-code's scope excludes tests and review-tests' is exactly them, so the
+// consumer drops what it does not want and the verb decides for neither.
+TEST(IndieReviewComputedPartition, Ants4806TestLanesAreLabelled) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString root = seedProse(tmp, QStringList{
+        QStringLiteral("engine/core.py"),
+        QStringLiteral("ui/window.py"),
+        QStringLiteral("tests/test_core.py"),
+    });
+
+    const auto lanes = IndieReviewEngine::deriveComputedPartition(root);
+    const auto *tests  = laneNamed(lanes, QStringLiteral("tests"));
+    const auto *engine = laneNamed(lanes, QStringLiteral("engine"));
+    ASSERT_NE(tests, nullptr) << "the test tree must still BE a lane";
+    ASSERT_NE(engine, nullptr);
+
+    EXPECT_EQ(tests->kind, QStringLiteral("tests"));
+    EXPECT_TRUE(engine->kind.isEmpty())
+        << "an unlabelled lane must stay unlabelled — the absence of a label "
+           "is not a claim that the lane is production code";
+}
+
 // ANTS-4816 — a lane of files the count cannot admit reports 0 AND says so,
 // so "nothing here" is distinguishable from "nothing I could measure".
 // finbreak measured three such lanes (.github, assets, packaging) carrying

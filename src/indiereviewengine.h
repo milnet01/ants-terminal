@@ -58,6 +58,17 @@ struct Lane {
     QString     name;
     QString     summary;
     QStringList sourcePaths;  // project-relative
+    // ANTS-4806 — "tests" where the lane covers a declared or detected test
+    // root, empty otherwise. A computed partition groups by directory, so the
+    // test tree becomes a lane like any other — and review-code's scope
+    // excludes tests, so a caller applying the partition unchanged spends a
+    // lane reading test code under a brief written for production code.
+    //
+    // LABELLED rather than excluded, deliberately. review-tests wants exactly
+    // those lanes, and a verb that silently omits a tree is the failure
+    // ANTS-4771 and ANTS-4786 were both filed about. The consumer drops what
+    // it does not want; the verb does not decide for it.
+    QString     kind;
 };
 
 struct Citation {

@@ -14,6 +14,12 @@ for security-relevant changes.
 
 ### Added
 
+- **Review lanes over a test tree are labelled as such** (ANTS-4806)
+  A computed partition groups by directory, so the tests become a lane
+  like any other — and a code review's scope excludes them while a test
+  review's is exactly them. The lane is labelled rather than dropped, so
+  each consumer takes what it wants instead of the tool choosing.
+
 - **Review lanes report how many lines they cover, not just how many files** (ANTS-4804)
   A lane holding one very large file counted as one file and tripped no
   size threshold, so the biggest lanes were the ones least likely to be
@@ -226,6 +232,13 @@ for security-relevant changes.
   `Inv2BypassesStatusAndPagination` anchored on a string that also matches an earlier `else if`, so its byte window opened above the branch it names — a test that passes from the wrong position gives no signal when the thing it names moves. Re-anchored on a needle that occurs once, and proved by mutation in both directions.
 
 ### Fixed
+
+- **Build and release workflows are visible to the review splitter** (ANTS-4805)
+  The walk never descended into .github at all, so a project's CI files
+  appeared in no review lane and in no coverage report either — an absent
+  lane and a clean lane look identical downstream. This session's own
+  sweep found four real workflow defects, two security-relevant, on files
+  no partition would have offered a reviewer.
 
 - **A registered project is no longer told the store holds no record of it** (ANTS-4802)
   Only one roadmap dialect is served from the store, while the migration

@@ -273,7 +273,61 @@ QStringList walkedSourceRoots(const QString &projectPath) {
         roots << (QDir(projectPath + QStringLiteral("/src")).exists()
                       ? QStringLiteral("src") : QStringLiteral("."));
     }
+    // ANTS-4805 — .github as an EXPLICIT root, not by relaxing a filter.
+    // QDirIterator does not descend into hidden directories at all, so the CI
+    // surface was unreachable before any noise test could be consulted — which
+    // is why isPartitionNoiseDir alone did not surface it. Naming the one
+    // directory is also cheaper and safer than passing QDir::Hidden, which
+    // would descend into .git and .venv on every call just to discard them.
+    //
+    // It cannot double-count against a "." root for the same reason: that walk
+    // never reaches a hidden directory.
+    if (QDir(projectPath + QStringLiteral("/.github")).exists())
+        roots << QStringLiteral(".github");
     return roots;
+}
+
+// ANTS-4806 — is this directory a test tree? Declared test_roots first
+// (.ants/project.json), since a project that says so is authoritative; the
+// conventional names only where it declares none. Prefix-matched, so a lane
+// named `tests/features` under a declared `tests` root is labelled too.
+QString laneKindForDir(const QString &projectPath, const QString &dir) {
+    const auto declared =
+        ProjectSettings::load(projectPath).testRoots.value_or(QStringList{});
+    const auto isUnder = [&dir](const QString &root) {
+        const QString r = QString(root).remove(QRegularExpression(
+            QStringLiteral("/+$")));
+        return dir == r || dir.startsWith(r + QLatin1Char('/'));
+    };
+    if (!declared.isEmpty()) {
+        for (const QString &r : declared)
+            if (isUnder(r)) return QStringLiteral("tests");
+        return QString();
+    }
+    static const QStringList kConventional = {
+        QStringLiteral("tests"), QStringLiteral("test"),
+        QStringLiteral("spec"),  QStringLiteral("specs"),
+    };
+    const QString top = dir.section(QLatin1Char('/'), 0, 0);
+    return kConventional.contains(top) ? QStringLiteral("tests") : QString();
+}
+
+// ANTS-4805 — the partition's own noise test. ProjectSettings::isNoiseDir
+// drops every dot-directory, which is right for an INDEX — .git and .venv are
+// what it is for — and wrong for a REVIEW partition on one of them: `.github`
+// holds the build and release workflows, and dropping it before every other
+// filter made those files invisible to the lanes AND to the coverage report
+// that exists to catch exactly that. Rolodex reported the release supply chain
+// going unreviewed; this session's own sweep then found four real workflow
+// defects, two security-relevant, on files no partition would have offered.
+//
+// Narrow on purpose: one named directory, applied HERE rather than in
+// isNoiseDir, whose other callers (codebase_index, layout detection) have no
+// reason to start walking it. Widening the dot rule globally is the change
+// this deliberately is not.
+bool isPartitionNoiseDir(const QString &name) {
+    if (name == QLatin1String(".github")) return false;
+    return ProjectSettings::isNoiseDir(name);
 }
 
 // ANTS-4809 — the directories under the walked roots that git ignores, as a
@@ -307,7 +361,7 @@ QSet<QString> ignoredDirPrefixes(const QString &projectPath,
             const QStringList segs = rel.split(QLatin1Char('/'));
             bool noise = false;
             for (const QString &s : segs)
-                if (ProjectSettings::isNoiseDir(s)) noise = true;
+                if (isPartitionNoiseDir(s)) noise = true;
             if (noise) continue;
             candidates << rel;
         }
@@ -362,7 +416,7 @@ void collectLaneFiles(const QString &projectPath, const Lane &lane,
             bool noise = false;
             const QStringList segs = rel.split(QLatin1Char('/'));
             for (int i = 0; i + 1 < segs.size(); ++i)
-                if (ProjectSettings::isNoiseDir(segs.at(i))) noise = true;
+                if (isPartitionNoiseDir(segs.at(i))) noise = true;
             if (noise) continue;
             const QString fcanon = QFileInfo(f).canonicalFilePath();
             out->insert(fcanon.isEmpty() ? f : fcanon);
@@ -416,7 +470,7 @@ QList<Lane> deriveComputedPartition(const QString &projectPath,
             const QStringList segs = rel.split(QLatin1Char('/'));
             bool noise = false;
             for (int i = 0; i + 1 < segs.size(); ++i)
-                if (ProjectSettings::isNoiseDir(segs.at(i))) noise = true;
+                if (isPartitionNoiseDir(segs.at(i))) noise = true;
             if (noise) continue;
             if (underIgnoredDir(rel, ignoredDirs)) continue;   // ANTS-4809
             if (isGeneratedSource(fi.fileName())) continue;
@@ -450,6 +504,7 @@ QList<Lane> deriveComputedPartition(const QString &projectPath,
                 ? QStringLiteral("%1 (%2/%3)").arg(it.key()).arg(p + 1).arg(parts)
                 : it.key();
             l.sourcePaths = paths.mid(p * kMaxFilesPerLane, kMaxFilesPerLane);
+            l.kind = laneKindForDir(projectPath, it.key());   // ANTS-4806
             l.summary = QStringLiteral(
                 "%1 file(s) under %2/ (computed partition — no module map; "
                 "grouped by directory)").arg(l.sourcePaths.size()).arg(it.key());
@@ -551,7 +606,7 @@ int laneUncountedFiles(const QString &projectPath, const Lane &lane) {
             bool noise = false;
             const QStringList segs = rel.split(QLatin1Char('/'));
             for (int i = 0; i + 1 < segs.size(); ++i)
-                if (ProjectSettings::isNoiseDir(segs.at(i))) noise = true;
+                if (isPartitionNoiseDir(segs.at(i))) noise = true;
             if (noise) continue;
             const QString fcanon = QFileInfo(f).canonicalFilePath();
             all.insert(fcanon.isEmpty() ? f : fcanon);
@@ -634,7 +689,7 @@ UnassignedSources unassignedForLanes(const QString &projectPath,
             const QStringList segs = rel.split(QLatin1Char('/'));
             bool noise = false;
             for (int i = 0; i + 1 < segs.size(); ++i)
-                if (ProjectSettings::isNoiseDir(segs.at(i))) noise = true;
+                if (isPartitionNoiseDir(segs.at(i))) noise = true;
             if (noise) continue;
             if (underIgnoredDir(rel, ignoredDirs)) continue;   // ANTS-4809
             if (isGeneratedSource(fi.fileName())) continue;
@@ -1020,7 +1075,7 @@ QHash<QString, QString> buildBasenameIndex(const QString &projectPath) {
         const QStringList segs = rel.split(QLatin1Char('/'));
         bool noise = false;
         for (int i = 0; i + 1 < segs.size(); ++i)
-            if (ProjectSettings::isNoiseDir(segs.at(i))) noise = true;
+            if (isPartitionNoiseDir(segs.at(i))) noise = true;
         if (noise) continue;
         ++seen;
         const QString base = fi.fileName();
