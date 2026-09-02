@@ -6035,7 +6035,7 @@ void ClaudeIntegration::onMcpConnection() {
                 specLint["description"] = QStringLiteral(
                     "Check specs for the structural defects /cold-eyes § 1e greps for by "
                     "hand: an INV-N with no test-surface clause (invariant_no_test), a gap "
-                    "in the doc's own id sequence (invariant_id_gap), a cold-eyes loop-log "
+                    "in the doc's own id sequence (invariant_id_gap \u2014 a CANDIDATE since ANTS-3684: a spec carrying a subset of a parent's invariants keeps the parent's ids, and renumbering would break the citation), a cold-eyes loop-log "
                     "row with no outcome (loop_row_no_outcome), an invariant the Tests "
                     "section names no coverage for (test_coverage_gap) or a Tests section "
                     "stating coverage in notation that cannot be expanded, such as "

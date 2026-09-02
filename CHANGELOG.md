@@ -220,6 +220,12 @@ for security-relevant changes.
 
 ### Changed
 
+- **A gap in a spec's invariant numbering now reads as evidence, not a defect** (ANTS-3684)
+  A spec that continues a parent spec's numbering keeps its ids, and
+  renumbering would break the citations — so the gap is real and the
+  document is correct. The finding is now a candidate and names that cause,
+  so it can be triaged without opening the parent spec.
+
 - **CI jobs show readable names in the GitHub Actions UI** (ANTS-4796)
   The three jobs carried no name, so Actions labelled each by its internal
   yaml key.

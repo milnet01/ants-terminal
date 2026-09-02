@@ -12000,7 +12000,7 @@ fixes don't address. Roadmapped here as their own design tasks.
   Kind: fix.
   Source: in-session-2026-07-28 (found while implementing ANTS-3662).
 
-- 📋 [ANTS-3684] **spec_lint's invariant_id_gap fires on specs that inherit a parent's numbering.**
+- ✅ [ANTS-3684] **spec_lint's invariant_id_gap fires on specs that inherit a parent's numbering.**
   Measured on ANTS-3662's calibration run (218 specs, 1,856 invariant
   anchors): `invariant_id_gap` fires 28 times, and the residual
   population after the origin fix is one class — a spec that carries a
@@ -12033,6 +12033,26 @@ fixes don't address. Roadmapped here as their own design tasks.
   **Layman:** A spec that reuses another spec's invariant numbers looks like it lost some.
   Kind: enhancement.
   Source: in-session-2026-07-28 (ANTS-3662 calibration run).
+  Resolved (2026-09-02): took the item's first option — demote
+  `invariant_id_gap` to a CANDIDATE — and did not take the second.
+  The item said the marker option is only worth doing if the convention is
+  written down first, and that inventing one with no corpus instance is
+  the failure mode ANTS-3662 INV-3 records. That still holds, and neither
+  opt-out added since reaches this class anyway: `invariant-id-base`
+  (ANTS-3784) sets a FLOOR, and this population has holes in the INTERIOR.
+  The message now names the legitimate cause rather than only the
+  symptom — a spec carrying a subset of a parent's invariants keeps the
+  parent's ids, and renumbering would break the citation the spec-format
+  standard makes permanent. A reader triages in one read instead of
+  opening the parent spec to work out why the numbers jump. That is the
+  half worth having: the finding was never wrong, it was unactionable, and
+  saying so is cheaper than suppressing something true.
+  The gap is still reported and still not auto-fixable, since renumbering
+  is the one repair the standard forbids. The verb's own description says
+  so too, so the catalogue does not describe it as a verdict.
+  Fire rate is unchanged at 28 over the corpus, which is what the item
+  called a reviewable rate — this changes how they read, not how many.
+  Full suite green.
 
 - ✅ [ANTS-3685] **`spec_log op:append_loop` writes a bullet into a TABLE-form cold-eyes loop log.**
   The verb always appends `- **<label>** — <body>`. Most specs in this

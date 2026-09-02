@@ -666,9 +666,24 @@ Result check(const QString &text, const QString &relPath,
                 const int cand = anchorLine.value(e.id, 0);
                 if (cand > 0) { line = cand; break; }
             }
+            // ANTS-3684 — a CANDIDATE, not a verdict. A gap is evidence, and
+            // the residual population after the origin fix (ANTS-3662's
+            // document-minimum anchor) and the sibling-corpus set (ANTS-4110)
+            // is one legitimate class: a spec carrying a SUBSET of a parent
+            // spec's invariants, keeping the parent's ids. Renumbering those
+            // would break the citation, which the spec-format standard
+            // forbids — so the document is correct and the gap is real.
+            //
+            // Neither existing opt-out reaches it. `invariant-id-base` sets a
+            // FLOOR, and this class has holes in the interior. The message
+            // names the cause so a reader triages in one read rather than
+            // opening the parent spec to work out why.
             add(QStringLiteral("invariant_id_gap"), line,
                 QStringLiteral("INV-%1 is missing from the id sequence with no "
-                               "tombstone").arg(n));
+                               "tombstone (candidate — a spec carrying a subset "
+                               "of a parent's invariants keeps the parent's ids, "
+                               "and renumbering would break the citation)")
+                    .arg(n));
         }
     }
 

@@ -1446,3 +1446,31 @@ TEST(SpecLint, Ants3691EmissionOrderIsByIdNotDocumentOrder) {
                   r.findings.at(i).emissionIndex)
             << "emissionIndex is strictly ascending in emission order";
 }
+
+// ANTS-3684 — invariant_id_gap is a CANDIDATE. The residual population after
+// the origin fix and the sibling-corpus set is one legitimate class: a spec
+// carrying a SUBSET of a parent's invariants, keeping the parent's ids.
+// Renumbering those would break the citation, which the spec-format standard
+// forbids — so the document is correct and the gap is real. Reporting it as a
+// verdict asked the reader to fix a document that must not be changed.
+TEST(SpecLint, Ants3684IdGapIsACandidateAndNamesTheLegitimateCause) {
+    const QString doc = QStringLiteral(
+        "# ANTS-1 — a spec\n"
+        "\n"
+        "## 3. Invariants\n"
+        "\n"
+        "- **INV-1** — one. *Test:* a.\n"
+        "- **INV-2** — two. *Test:* b.\n"
+        "- **INV-9** — inherited from a parent, so 3..8 live there. *Test:* c.\n");
+    const auto r = SpecLint::check(doc, QStringLiteral("s.md"), {});
+    const auto *f = firstOfKind(r, "invariant_id_gap");
+    ASSERT_NE(f, nullptr) << "the gap is still reported — it is real";
+    EXPECT_TRUE(f->message.contains(QStringLiteral("(candidate")))
+        << "but as evidence, not a verdict: " << f->message.toStdString();
+    EXPECT_TRUE(f->message.contains(QStringLiteral("parent")))
+        << "and it names the legitimate cause, so a reader triages in one "
+           "read instead of opening the parent spec: "
+        << f->message.toStdString();
+    EXPECT_FALSE(f->autoFixable)
+        << "renumbering is the one repair the standard forbids";
+}
