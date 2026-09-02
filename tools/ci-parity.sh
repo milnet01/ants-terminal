@@ -166,14 +166,16 @@ if [[ "$do_lints" == 1 ]]; then
     # summary as incomplete parity. Using plain `gate` here reported a missing
     # tool as a FAILURE (exit 127), which reads as "the check found something"
     # rather than "the check never ran" — the two need to stay distinguishable.
+    # Scope + syntaxError suppression mirror ci.yml's step (ANTS-4788).
     maybe_gate cppcheck "cppcheck (informational)" \
         cppcheck --enable=all --std=c++20 --library=qt \
                  --suppress=missingIncludeSystem \
                  --suppress=unusedFunction \
                  --suppress=unknownMacro \
                  --suppress=normalCheckLevelMaxBranches \
+                 --suppress=syntaxError:tests/* \
                  --error-exitcode=0 \
-                 -I src src/
+                 -I src src/ tests/
     maybe_gate appstreamcli "appstream metainfo" \
         appstreamcli validate --explain packaging/linux/za.co.antsprojectshub.AntsTerminal.metainfo.xml
     maybe_gate desktop-file-validate "desktop entry" \

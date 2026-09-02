@@ -38,6 +38,7 @@ permissions:
 
 jobs:
   build-test:
+    name: Build and test (Release)
     runs-on: ubuntu-24.04
     # Bumped 15→25 (2026-05-13) as the test corpus crossed the prior
     # cap. Reference: ANTS-1248 finished in 13m38s; ANTS-1254 build
@@ -111,6 +112,9 @@ jobs:
         working-directory: build
         run: ctest --output-on-failure
 
+      # Scope covers tests/ as well as src/ (ANTS-4788). cppcheck cannot parse
+      # the TEST()/HYGIENE_TEST()/RQ_TEST() macros, so syntaxError is suppressed
+      # under tests/ — without it the widening adds a misparse line per bundle.
       - name: "Run cppcheck (audit rule: Qt-aware static analysis)"
         run: |
           cppcheck --enable=all --std=c++20 --library=qt \
@@ -118,8 +122,9 @@ jobs:
                    --suppress=unusedFunction \
                    --suppress=unknownMacro \
                    --suppress=normalCheckLevelMaxBranches \
+                   --suppress=syntaxError:tests/* \
                    --error-exitcode=0 \
-                   -I src src/
+                   -I src src/ tests/
 
       # Packaging artefact validation (H2 — distribution readiness).
       # Runs the same validators distro packagers invoke during package
@@ -173,6 +178,7 @@ jobs:
   # that look like leaks to LSan on a fast-exit path. Re-enable once we
   # have a real unit-test suite that does full app lifecycle.
   build-asan:
+    name: Build and test (ASan/UBSan)
     runs-on: ubuntu-24.04
     # ANTS-4533 — this cap is a BACKSTOP, not the gate. It must stay above
     # the sum of the per-step `timeout` guards below (24m + 16m), because a
@@ -298,6 +304,7 @@ jobs:
   # (ANTS-1977/1978). Keep the runner + Qt apt set in lockstep with
   # release.yml's install step.
   qt62-baseline:
+    name: Qt 6.2 floor build
     runs-on: ubuntu-22.04
     timeout-minutes: 30
     # ANTS-4652 — this job had no compile cache at all and rebuilt the whole
