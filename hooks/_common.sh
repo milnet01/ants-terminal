@@ -263,3 +263,44 @@ ants_grep_nudge_throttled() {
     touch "$stamp" 2>/dev/null || true
     return 1
 }
+
+# ANTS-4516 — report the installed pack's drift from the repo. Two ids were
+# shipped, tested and green while having no effect on the machine for a
+# month: the installed hooks are a COPY, nothing re-runs
+# tools/install-hooks.sh, and the only route was somebody remembering.
+#
+# Reports; it does not install. The item weighed running the installer at
+# launch against emitting a message and chose the message — writing into
+# ~/.claude on every session start is a much larger blast radius than a
+# line of text, and the fix is one command the reader can run deliberately.
+#
+# Fires only where the pack is AUTHORED (its source dir is present), which
+# is the only place a hook is edited and therefore the only session that
+# can act on it. Elsewhere there is nothing to compare against, and it says
+# so by staying silent rather than by guessing.
+#
+# Silent when the install dir is absent: that is "never installed", which
+# this cannot distinguish from "installed elsewhere", and reporting every
+# hook as stale would be a worse answer than none.
+ants_hook_drift_line() {
+    local src="${1:-${ANTS_PROJECT_ROOT:-}/hooks}"
+    local dst="${2:-${HOME:-/nonexistent}/.claude/hooks}"
+    [ -d "$src" ] && [ -d "$dst" ] || return 0
+    command -v cmp >/dev/null 2>&1 || return 0
+
+    local drifted="" f base
+    for f in "$src"/*.sh; do
+        [ -f "$f" ] || continue
+        base="$(basename "$f")"
+        # cmp against a missing file is a difference, which is right: a hook
+        # added to the pack and never installed is drift of the same kind.
+        cmp -s "$f" "$dst/$base" && continue
+        drifted="${drifted}${drifted:+,}${base%.sh}"
+    done
+    [ -n "$drifted" ] || return 0
+
+    # Trimmed: this shares the preamble's 500 B envelope (ANTS-1252 INV-3),
+    # and the names matter less than the fact and the remedy.
+    printf '[ants:hooks] stale vs repo: %s — run tools/install-hooks.sh\n' \
+        "$(printf '%s' "$drifted" | head -c 100)"
+}

@@ -12259,7 +12259,7 @@ fixes don't address. Roadmapped here as their own design tasks.
   Kind: fix.
   Source: in-session-2026-07-28 (ANTS-3688 post-relaunch probe).
 
-- 📋 [ANTS-4516] **Hook installer never runs, so ~/.claude/hooks silently drifts from the repo.**
+- ✅ [ANTS-4516] **Hook installer never runs, so ~/.claude/hooks silently drifts from the repo.**
   Found while verifying ANTS-4462. The LIVE hook at ~/.claude/hooks/ was a
   month-stale copy: it was missing ANTS-2023's read-dump nudge AND
   ANTS-2169 Part 1's exclusion fix, both marked shipped. Nothing invokes
@@ -12273,6 +12273,23 @@ fixes don't address. Roadmapped here as their own design tasks.
   installer from launch.sh, or have a hook self-check its own mtime against
   the repo and warn. Prefer the warn -- writing to ~/.claude at launch is a
   bigger blast radius than a message.
+  Resolved (2026-09-02): took the option the item preferred — report, do
+  not write to ~/.claude at launch. `ants_hook_drift_line` in _common.sh
+  compares the repo's pack against the installed copy and the session
+  preamble emits one line naming the stale hooks and the command that
+  fixes them.
+  It fires only where the pack is authored, which is the only session that
+  can act on it, and stays silent when the install dir is absent: that is
+  the never-installed shape, indistinguishable from installed-elsewhere,
+  and reporting every hook as stale would be a worse answer than none. A
+  hook added to the pack and never installed counts as drift, since cmp
+  against a missing file must not read as agreement.
+  Verified live rather than by fixture alone: with ANTS-4517's fix
+  uncommitted the line named exactly the three hooks this session had
+  changed, at 219 bytes against the 500 B preamble cap.
+  The drift line sits above the resume line inside that shared cap, so a
+  long resume line can be clipped while drift is outstanding. Deliberate —
+  drift asks for an action and clears as soon as it is taken.
   **Layman:** Fixes to my helper hooks were written but never actually switched on, for a month.
   Kind: fix.
   Source: in-session-2026-08-19 (ANTS-4462 verification).

@@ -52,6 +52,12 @@ fi
 {
     printf '[ants:project] branch=%s ahead=%s behind=%s last="%s"\n' \
         "$branch" "${ahead:-0}" "${behind:-0}" "$last_log"
+    # ANTS-4516 — the installed pack silently drifting from this repo is
+    # worth a line: a hook fix here has no effect on the machine until the
+    # installer runs, and nothing runs it. Emitted before the softer lines
+    # because it is the one that asks for an action, and the block is
+    # head -c 500'd (INV-3) from the top.
+    ants_hook_drift_line
     if [ -f .ants-tests-summary ]; then
         head -1 .ants-tests-summary | sed 's/^/[ants:tests] /' | head -c 120
         printf '\n'

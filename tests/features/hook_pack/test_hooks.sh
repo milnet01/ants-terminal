@@ -95,6 +95,75 @@ else
     skip "auto-compact resume flow (jq not available)"
 fi
 
+# ---------- ANTS-4516: installed-pack drift is reported ----------
+# Two ids were shipped, tested and green while having no effect on the
+# machine, for a month, because nothing re-runs the installer. The pack now
+# reports its own staleness. Read-only by design: the item weighed writing
+# to ~/.claude at launch against a message and chose the message.
+(
+    # shellcheck source=hooks/_common.sh disable=SC1091
+    . "$HOOKS_DIR/_common.sh"
+
+    # Guard the two silent-arm assertions below: a MISSING function also
+    # prints nothing, so without this they would pass for the wrong reason.
+    if ! command -v ants_hook_drift_line >/dev/null 2>&1; then
+        fail "ANTS-4516 ants_hook_drift_line is not defined in _common.sh"
+        exit 1
+    fi
+
+    drift_src="$(mktemp -d)"
+    drift_dst="$(mktemp -d)"
+    trap 'rm -rf "$drift_src" "$drift_dst"' EXIT
+
+    printf '#!/bin/sh\nexit 0\n' > "$drift_src/alpha.sh"
+    printf '#!/bin/sh\nexit 0\n' > "$drift_src/beta.sh"
+    cp "$drift_src/alpha.sh" "$drift_dst/alpha.sh"
+    cp "$drift_src/beta.sh" "$drift_dst/beta.sh"
+
+    # In sync: silent. A warning that fires when nothing is wrong is a
+    # warning nobody reads.
+    if [ -z "$(ants_hook_drift_line "$drift_src" "$drift_dst")" ]; then
+        pass "ANTS-4516 in-sync pack emits nothing"
+    else
+        fail "ANTS-4516 fired on an in-sync pack"
+    fi
+
+    # Installed copy edited behind the repo's back — the month-stale case.
+    printf '#!/bin/sh\n# stale\nexit 0\n' > "$drift_dst/alpha.sh"
+    stale_line="$(ants_hook_drift_line "$drift_src" "$drift_dst")"
+    case "$stale_line" in
+        *alpha*) pass "ANTS-4516 names the drifted hook" ;;
+        "")      fail "ANTS-4516 silent on a drifted hook" ;;
+        *)       fail "ANTS-4516 wrong hook named: $stale_line" ;;
+    esac
+    case "$stale_line" in
+        *install-hooks.sh*) pass "ANTS-4516 names the command that fixes it" ;;
+        *) fail "ANTS-4516 says what is wrong but not what to do: $stale_line" ;;
+    esac
+    case "$stale_line" in
+        *beta*) fail "ANTS-4516 named an in-sync hook: $stale_line" ;;
+        *)      pass "ANTS-4516 does not name an in-sync hook" ;;
+    esac
+
+    # A hook added to the pack and never installed is drift too: that is
+    # exactly the never-installed shape, and cmp against a missing file
+    # must not read as agreement.
+    cp "$drift_src/alpha.sh" "$drift_dst/alpha.sh"
+    printf '#!/bin/sh\nexit 0\n' > "$drift_src/gamma.sh"
+    case "$(ants_hook_drift_line "$drift_src" "$drift_dst")" in
+        *gamma*) pass "ANTS-4516 an uninstalled new hook counts as drift" ;;
+        *)       fail "ANTS-4516 missed a hook absent from the install dir" ;;
+    esac
+
+    # No install dir at all: nothing to compare, so say nothing rather
+    # than reporting every hook as stale.
+    if [ -z "$(ants_hook_drift_line "$drift_src" "$drift_dst/absent")" ]; then
+        pass "ANTS-4516 silent when there is nothing to compare against"
+    else
+        fail "ANTS-4516 reported drift against a non-existent install dir"
+    fi
+) || failures=$((failures + 1))
+
 # ---------- INV-4 & behavioural: bash-veto reason cap + hits + bypass ----------
 if [ "$have_jq" -eq 1 ]; then
     check_reason_size() {
