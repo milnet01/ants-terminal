@@ -14,7 +14,10 @@ here: a `##`/`###` inside a fenced block is not a heading.
 
 Usage: tools/roadmap-slug-oracle.py <fixture-dir> > expected-section-slugs.json
 """
-import json, os, sys, unicodedata
+import json
+import os
+import sys
+import unicodedata
 
 
 def slugify(heading: str) -> str:
@@ -62,7 +65,8 @@ def heading_level(line: str):
 
 
 def slugs_for(path: str):
-    seen, out = set(), []
+    seen: set[str] = set()
+    out: list[str] = []
     in_fence = False
     with open(path, encoding="utf-8") as fh:
         for line in fh.read().split("\n"):

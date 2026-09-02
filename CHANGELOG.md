@@ -14,6 +14,28 @@ for security-relevant changes.
 
 ### Added
 
+- **An .editorconfig recording the layout this project actually uses** (ANTS-4790)
+  Spaces, four wide, LF, UTF-8, trimmed trailing whitespace and a final
+  newline, with two deliberate carve-outs: markdown keeps trailing
+  whitespace because there it is a line break, and the roadmap round-trip
+  vectors keep both rules off because they back a byte-identical
+  comparison. It does not declare a shell style — no setting makes shfmt
+  agree with these scripts, so arming that tool would mean reformatting
+  every one of them.
+
+- **A spell-check vocabulary file, so typos is usable on this tree** (ANTS-4789)
+  A whole-tree run was almost entirely false positives — identifier
+  fragments, VT100 notation, git SHA prefixes and namespace aliases read
+  as misspellings. The config names the project's vocabulary rather than
+  silencing the rule, so genuine misspellings still report.
+
+- **A committed clang-tidy check set, so the C++ analyser actually analyses** (ANTS-4787)
+  With no configuration clang-tidy selects an empty check set: it reads
+  every file, reports nothing, and exits successfully, which is
+  indistinguishable in a log from a clean tree. This project's own
+  audit_run had been invoking it that way. It now runs against a declared
+  set of checks.
+
 - **Conformance test holding the committed review partition to every source file** (ANTS-4794)
   The build now fails when a file under `src/` belongs to no lane in
   `.indie-review/partition.json`, when a lane names a path that has been
@@ -148,6 +170,17 @@ for security-relevant changes.
 
 ### Changed
 
+- **CI jobs show readable names in the GitHub Actions UI** (ANTS-4796)
+  The three jobs carried no name, so Actions labelled each by its internal
+  yaml key.
+
+- **The cppcheck gate reads tests/ as well as src/** (ANTS-4788)
+  Findings under tests/ were previously seen by no run. cppcheck cannot
+  parse this project's test macros, so its syntax-error rule is suppressed
+  under that directory; without that the widening reports a parse failure
+  per affected file. The gate stays informational and does not fail a
+  build. tools/ is not in scope because it carries no C or C++ source.
+
 - **Two per-query tokenisers compile their search pattern once per process rather than once per call** (ANTS-4776)
   `wrapmatch.cpp` and `findsources.cpp` hold their constant `QRegularExpression` as `static const`.
 
@@ -177,6 +210,14 @@ for security-relevant changes.
   `Inv2BypassesStatusAndPagination` anchored on a string that also matches an earlier `else if`, so its byte window opened above the branch it names — a test that passes from the wrong position gives no signal when the thing it names moves. Re-anchored on a needle that occurs once, and proved by mutation in both directions.
 
 ### Fixed
+
+- **indie_review_partition now reports which files no review lane covers** (ANTS-4786)
+  It could only answer that for a partition it had computed itself. On the
+  declared path — the normal one here and on every migrated project — the
+  reply listed lanes and said nothing about what they left out. The
+  envelope now carries the uncovered count, a per-suffix breakdown, a
+  bounded sample of paths, and a reason saying whether the files were
+  dropped by a filter or simply never named.
 
 - **`remotecontrol_state.cpp` includes the Qt header it uses instead of relying on the module precompiled header** (ANTS-4774)
   The translation unit built only because the shared Qt PCH happened to supply `QElapsedTimer`; it now compiles on its own terms.

@@ -49213,18 +49213,25 @@ volume classes, and the tooling/documentation gaps the run exposed.
   Source: check-code-sweep-2026-09-01.
   Lanes: docs.
 
-- 📋 [ANTS-4786] **indie_review_partition reports unassigned files only when derived:true, hiding the gap on the normal path.**
+- ✅ [ANTS-4786] **indie_review_partition reports unassigned files only when derived:true, hiding the gap on the normal path.**
   ANTS-4771 added unassigned_count / unassigned_by_suffix / unassigned_hint, and the verb's own description scopes them: "when the reply is derived:true". On the docs/subsystems.md path — the normal path for this project and every migrated one — the envelope carries no derived field and no unassigned fields at all.
 
   Measured here: the reply listed 50 lanes covering 113 files and said nothing about the 200 it left out (ANTS-4785). A caller reading file_count across lanes gets 113 and no signal that src/ holds 313.
 
   The coverage question is identical on both paths; only the CAUSE differs (suffix filter vs an incomplete map). Report the unassigned set on the map-driven path too, with the reason distinguished. Cheap: the walk that produces file_count already knows the tree.
+  Resolved (2026-09-02): IndieReviewEngine::unassignedForLanes asks the
+  coverage question of the declared lanes — same source roots, same noise
+  and generated filters, minus what the lanes cover. The envelope carries
+  unassigned_reason (suffix_filter | incomplete_partition) and a bounded
+  unassigned_sample. laneFileCount and the new walk share one
+  collectLaneFiles, so the lane count and the gap cannot disagree.
+  INV-9 tests added, INV-8 updated; suite green at 4056/4056.
   **Layman:** The tool that splits code into review lanes only warns about files it missed when it guessed the split itself, not when it read the project map.
   Kind: fix.
   Source: check-code-sweep-2026-09-01.
   Lanes: remotecontrol, mcp.
 
-- 📋 [ANTS-4787] **The project ships no .clang-tidy, so an unconfigured clang-tidy run analyses nothing and exits 0.**
+- ✅ [ANTS-4787] **The project ships no .clang-tidy, so an unconfigured clang-tidy run analyses nothing and exits 0.**
   No .clang-tidy anywhere in the tree. With no config and no explicit --checks=, clang-tidy selects an empty check set, analyses nothing and exits 0 — indistinguishable in a log from a clean pass. This sweep had to pass an explicit --checks= list to get any output at all, and then got 12,431 findings.
 
   Committing a .clang-tidy would settle ANTS-4778 and ANTS-4779 at the same time (which classes this project considers defects) and make the tool safe for anyone else to run.
@@ -49249,23 +49256,34 @@ volume classes, and the tooling/documentation gaps the run exposed.
   tool by hand -- it is what makes this project's own audit verb analyse C++
   at all. It also means adding one CHANGES audit_run's output for every
   caller, which is why it wants a deliberate check set rather than a default.
+  Resolved (2026-09-01, verified 2026-09-02): .clang-tidy is committed.
+  Measured — clang-tidy --list-checks now reports an enabled check set
+  where it previously reported "No checks enabled", so audit_run's
+  clang-tidy lane analyses C++ instead of silently contributing nothing.
+  The PCH trap in the body stands as a note for any future CI clang-tidy
+  job; no such job exists, so nothing is outstanding here.
   **Layman:** One of the code checkers has no settings file, so running it looks clean when it has actually checked nothing.
   Kind: chore.
   Source: check-code-sweep-2026-09-01.
   Lanes: ci.
 
-- 📋 [ANTS-4788] **The CI cppcheck gate scans src/ only, leaving 322 findings under tests/ unseen.**
+- ✅ [ANTS-4788] **The CI cppcheck gate scans src/ only, leaving 322 findings under tests/ unseen.**
   ci.yml:110-118 and tools/ci-parity.sh:169-176 both invoke cppcheck with `-I src src/`. This sweep ran the same flags over src/, tests/ and tools/ and got 826 findings, 322 of them outside src/.
 
   VERIFIED, so the gate's flags are otherwise correct: running the project's exact CI invocation and this run's calibrated one over src/ produced IDENTICAL output — 504 findings, 0 syntax errors, both. Adding --language=c++ changed nothing. The only gap is the scope.
 
   Caveat before widening: cppcheck cannot parse the TEST()/HYGIENE_TEST()/RQ_TEST() macros (25 TUs, already recorded as a misparse in .ants_review_falsepos.jsonl), so a naive widening adds 25 syntaxError lines to every CI log. Suppress that rule for tests/ if the scope is widened.
+  Resolved (2026-09-02): ci.yml and tools/ci-parity.sh both scan src/ and
+  tests/. syntaxError is suppressed under tests/ for the TEST() macro
+  misparse the item predicted. Verified on the real tree: the new
+  invocation exits 0 with zero syntaxError lines. tools/ is not in scope —
+  it carries no C or C++ source.
   **Layman:** The automated code check looks at the app but not at the tests.
   Kind: chore.
   Source: check-code-sweep-2026-09-01.
   Lanes: ci, tests.
 
-- 📋 [ANTS-4789] **typos has no project config; 920 findings, one real.**
+- ✅ [ANTS-4789] **typos has no project config; 920 findings, one real.**
   A whole-tree typos run returns 920 findings. Exactly one is real (ANTS-4777). The 99.9% noise rate makes the tool unusable here without a _typos.toml.
 
   The noise is project vocabulary, not sloppiness: 306 mis-<word> hyphenated prefixes, 105 `fnd` (the Finding variable in debtsweepengine.cpp), 96 `unparseable`, 74 `SME` (a namespace alias), 62 `fo` (the foTool identifier), 32 `Pn` (VT100 notation, CSI Pn I), 29 `CHEC` word-splits, 21 `ba` git SHA prefixes, 12 `nothink` (a real Claude Code directive), plus `tese` (a real GLSL tessellation-eval extension) and `restat` (a real Ninja feature).
@@ -49292,11 +49310,16 @@ volume classes, and the tooling/documentation gaps the run exposed.
   The `mis-` prefix is handled by a regex with the trailing part optional,
   because prose here hard-wraps and a line can end on `mis-`. A bare `mis`
   still reports.
+  Resolved (2026-09-01, verified 2026-09-02): _typos.toml is committed and
+  the whole-tree count is a fraction of what it was. The residue is NOT
+  all real misspellings as the progress note claimed — a majority is still
+  the vocabulary word-split classes the config targeted. Measured and
+  filed separately rather than left inside a closed item.
   **Layman:** The spell checker does not know this project's words, so it cries wolf 919 times out of 920.
   Kind: chore.
   Source: check-code-sweep-2026-09-01.
 
-- 📋 [ANTS-4790] **No .editorconfig, so shfmt has no declared style and cannot run.**
+- ✅ [ANTS-4790] **No .editorconfig, so shfmt has no declared style and cannot run.**
   The repo ships no .editorconfig at any level. shfmt was skipped for want of a config rather than run — with no declared style it diffs 39 shell files against its own tab default, which reports a conforming project as entirely malformed.
 
   If one is added, give it a section whose glob actually selects *.sh. A blanket [*] section does NOT count: measured elsewhere, a project whose [*] set indent_size=2 for its TypeScript produced 397 bogus diff lines against 4-space shell.
@@ -49326,6 +49349,10 @@ volume classes, and the tooling/documentation gaps the run exposed.
   break), and the roadmap_export_roundtrip vectors keep both rules off, since
   they back a byte-identical round trip and several deliberately end without a
   newline.
+  Resolved (2026-09-01): .editorconfig is committed carrying the measured
+  facts, and the shfmt question is answered — declining to arm it IS the
+  resolution, because no config key makes shfmt clean here and
+  reformatting every script is an orthogonal change no finding asked for.
   **Layman:** There is no file saying how code should be laid out, so the formatter has nothing to check against.
   Kind: chore.
   Source: check-code-sweep-2026-09-01.
@@ -49338,6 +49365,21 @@ volume classes, and the tooling/documentation gaps the run exposed.
   Python: no [tool.mypy], no mypy.ini, no pyrightconfig.json, so the type-check row was skipped. An unconfigured mypy on this tree reports missing annotations rather than defects, so configuring it is the prerequisite, not just running it. ruff and bandit DID run and found nothing real.
 
   Neither is urgent; both are places where a green report currently means nobody looked.
+  Progress (2026-09-02): the PYTHON half is closed and has already paid.
+  mypy.ini is committed; a run over tools/*.py found one real defect (a
+  set with no element type in roadmap-slug-oracle.py), now fixed, and the
+  run is clean.
+
+  The CMAKE half stays open and is BLOCKED on tooling rather than on a
+  decision: neither cmakelint nor cmake-format is installed on this
+  machine, so the check cannot be run, let alone wired into a gate. That
+  is the whole of what remains.
+
+  Also measured, and NOT part of this item: ruff over tools/*.py is not
+  clean. Three of its findings are B023 late-binding closures in
+  roadmap-import-verify.py, which is a bug class rather than style. Filed
+  separately, because this item is about surfaces nothing analyses and
+  that one IS analysed.
   **Layman:** Two kinds of file in the project have no automated checking at all.
   Kind: chore.
   Source: check-code-sweep-2026-09-01.
@@ -49513,7 +49555,7 @@ volume classes, and the tooling/documentation gaps the run exposed.
   Source: in-session-2026-09-02.
   Lanes: ci, packaging.
 
-- 📋 [ANTS-4796] **Three ci.yml jobs carry no display name.**
+- ✅ [ANTS-4796] **Three ci.yml jobs carry no display name.**
   zizmor --persona=auditor reports 3 info[anonymous-definition] against
   ci.yml (lines 40, 175 and one more): jobs with no `name:` key, so the
   Actions UI labels them by their yaml key.
@@ -49526,6 +49568,9 @@ volume classes, and the tooling/documentation gaps the run exposed.
 
   Worth doing in the same breath as any other ci.yml edit rather than
   on its own.
+  Resolved (2026-09-02): the three jobs carry name: keys. zizmor
+  --persona=auditor reports none of the three anonymous-definition
+  findings against ci.yml.
   **Layman:** Three steps of the automated build show up in GitHub's list under their internal id rather than a readable label.
   Kind: chore.
   Source: in-session-2026-09-02.
@@ -49581,6 +49626,81 @@ volume classes, and the tooling/documentation gaps the run exposed.
   Kind: investigate.
   Source: in-session-2026-09-02.
   Lanes: build.
+
+- 📋 [ANTS-4799] **ci.yml declares no concurrency group, so superseded pushes keep running.**
+  zizmor --persona=auditor reports one low finding against ci.yml after
+  ANTS-4796 cleared the three anonymous-definition ones: the workflow sets
+  no `concurrency:` key, so every job in it is affected.
+
+  Pre-existing rather than introduced — confirmed by running zizmor over
+  the HEAD copy of the file before those edits, where it reported the same
+  finding alongside the three.
+
+  Not fixed in that pass on purpose. `cancel-in-progress` changes what CI
+  does to a run already in flight, which is a decision about the pipeline
+  rather than a lint fix. The repo is public so runner minutes are free;
+  what it buys is wall-clock on a rapid push sequence, and a shorter queue
+  behind it.
+
+  One caveat if it is adopted: build-asan is the job ANTS-4533 records as
+  having gone cancelled-and-unnoticed for two days. A cancel-in-progress
+  group makes `cancelled` an ordinary outcome again, so whatever notices a
+  real cancellation has to keep telling the two apart.
+  **Layman:** Pushing twice in a row runs the whole build twice instead of dropping the first one.
+  Kind: chore.
+  Source: in-session-2026-09-02.
+  Lanes: ci.
+
+- 📋 [ANTS-4800] **The typos residue is still mostly the vocabulary classes _typos.toml targeted.**
+  ANTS-4789 closed on the config existing and working, and its progress
+  note said the residue was "real misspellings, mostly in test fixtures
+  and spec prose". Measured on 2026-09-02, that is not what the residue
+  is: a clear majority of the remaining findings are three word-split
+  vocabulary classes the config already tries to suppress — the `mis-`
+  hyphenated prefix, `CHEC` from CHECK-word splits, and `ba` from git SHA
+  prefixes.
+
+  So the config's own targets are leaking, and the real misspellings
+  underneath (occured, trivials, and a handful more) are outnumbered by
+  noise the rule set was written to remove.
+
+  Two separate jobs, and they should not be conflated: tighten the three
+  rules so the classes they name are actually caught, THEN fix what is
+  left, which is a small enough set to read. Doing it the other way round
+  means reading the noise again.
+
+  Check the config by running plain `typos` from the repo root — passing
+  paths positionally bypasses `[files] extend-exclude`, which reads as
+  though the exclusions do nothing.
+  **Layman:** The spell checker's settings file cut most of the noise but not the three biggest kinds of it.
+  Kind: chore.
+  Source: in-session-2026-09-02.
+
+- 📋 [ANTS-4801] **ruff is not clean over tools/*.py, and three findings are late-binding closures.**
+  The check-code sweep recorded that "ruff and bandit DID run and found
+  nothing real" (ANTS-4791's body). Re-measured on 2026-09-02 with the
+  default rule set, ruff reports findings across tools/*.py, and they are
+  not all style.
+
+  The three that matter are B023 in tools/roadmap-import-verify.py — a
+  lambda or nested def inside a loop that closes over the loop variable
+  rather than binding it. Every closure then sees the LAST value, so a
+  verifier built this way can report against the wrong block and look
+  correct doing it. That is a bug class, not a formatting note, and this
+  script verifies roadmap imports.
+
+  The rest are style and mechanical: percent-format strings, a few
+  unsorted import blocks, implicit str concatenation inside a call, and an
+  unclosed file handle.
+
+  The first question is which rule set the project intends, because "ruff
+  found nothing" and "ruff found this" cannot both be true of one
+  invocation — the sweep's run and this one disagree, and no ruff config
+  is committed to settle it. Fix B023 regardless of how that lands.
+  **Layman:** The Python checker does report problems in the helper scripts, including three that could actually misbehave.
+  Kind: fix.
+  Source: in-session-2026-09-02.
+  Lanes: tests.
 
 ### Ants MCP feedback from CC sessions — 2026-08-28 triage
 
