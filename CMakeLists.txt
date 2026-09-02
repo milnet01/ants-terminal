@@ -2550,6 +2550,8 @@ if(ANTS_TESTS)
                 tests/features/flathub_manifest_transform/test_flathub_manifest_transform.cpp
                 # ANTS-3603 — shared MarkdownScan fence primitives (fenceMask contract).
                 tests/features/markdownscan/test_markdownscan.cpp
+                # ANTS-3681 — structural bounds for source-scrape tests.
+                tests/features/srcgrep_region_bounds/test_srcgrep_region_bounds.cpp
                 # ANTS-4820 — the closer-length rule reaches the
                 # hand-rolled fence loops in five consumers.
                 tests/features/fence_closer_run_consumers/test_fence_closer_run_consumers.cpp

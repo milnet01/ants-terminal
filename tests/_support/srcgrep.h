@@ -139,6 +139,31 @@ inline std::string slurpFunctionBody(const std::string &src,
     return {};  // unbalanced
 }
 
+// ANTS-3681 — the region between two structural anchors, for a block that is
+// not a function body (a registration entry, a schema block, one arm of a
+// dispatch chain). `slurpFunctionBody` above covers the function case; this
+// covers the rest, so a test never needs a byte count.
+//
+// Returns from `startAnchor` up to but excluding the next `endAnchor` after
+// it. On any failure — either anchor missing — returns "" rather than a tail
+// running to end-of-file: a caller asserting an ABSENCE over a region that
+// silently became the whole file passes for the wrong reason, which is the
+// same failure the byte windows had.
+//
+// Measured when this landed: every fixed-byte window converted alongside it
+// was seeing a FRACTION of its target — 17% of cmdSpecLint, 20% of
+// recordDispatch — so the checks were partially blind and their EXPECT_FALSE
+// rows were passing because they had stopped looking.
+inline std::string regionBetween(const std::string &text,
+                                 const std::string &startAnchor,
+                                 const std::string &endAnchor) {
+    const std::size_t s = text.find(startAnchor);
+    if (s == std::string::npos) return {};
+    const std::size_t e = text.find(endAnchor, s + startAnchor.size());
+    if (e == std::string::npos) return {};
+    return text.substr(s, e - s);
+}
+
 // Convenience overload: combines slurpFile + slurpFunctionBody.
 inline std::string slurpFunctionBody(const char *path,
                                      const std::string &signatureAnchor) {

@@ -214,9 +214,10 @@ TEST(ReadRegions, WiringContract) {
 TEST(ReadRegions, ItemsKeyAliases) {
     expect_reset();
     const std::string rc = ants_test::slurpRemoteControl();
-    const auto p = rc.find("RemoteControl::cmdReadRegions");
-    ASSERT_NE(p, std::string::npos);
-    const std::string body = rc.substr(p, 1500);
+    // ANTS-3681 — brace-matched body rather than a byte window.
+    const std::string body =
+        ants_test::slurpFunctionBody(rc, "RemoteControl::cmdReadRegions");
+    ASSERT_FALSE(body.empty()) << "cmdReadRegions body not found";
     expect(body.find("\"requests\"") != std::string::npos, "RR-7a",
            "cmdReadRegions missing `requests` alias for items");
     expect(body.find("\"paths\"") != std::string::npos, "RR-7b",
@@ -305,9 +306,9 @@ TEST(ReadRegions, TopLevelPathWiring) {
     const std::string block = ci.substr(p, end - p);
     expect(block.find("props[\"path\"]") != std::string::npos, "RR-10a",
            "read_regions schema does not declare a top-level `path` default");
-    const auto h = rc.find("RemoteControl::cmdReadRegions");
-    ASSERT_NE(h, std::string::npos);
-    const std::string hbody = rc.substr(h, 2000);
+    const std::string hbody =
+        ants_test::slurpFunctionBody(rc, "RemoteControl::cmdReadRegions");
+    ASSERT_FALSE(hbody.empty()) << "cmdReadRegions body not found";
     expect(hbody.find("extractBatch") != std::string::npos &&
                hbody.find("\"path\"") != std::string::npos, "RR-10b",
            "cmdReadRegions does not forward a top-level `path` to extractBatch");

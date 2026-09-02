@@ -11916,6 +11916,33 @@ fixes don't address. Roadmapped here as their own design tasks.
   **Layman:** Some tests check code by reading a fixed number of characters after a landmark. Adding anything nearby shifts the target out of range and the test fails for no real reason.
   Kind: test.
   Source: in-session-2026-07-28 (ANTS-3661 broke mcp_build_status again).
+  Progress (2026-09-02): the HELPER half is done and a first slice of the
+  sweep with it. Item stays open — the remainder needs per-site judgement,
+  and flipping it would claim a sweep that has not happened.
+  Re-measured first: the class has GROWN, not held. 118 windows across 57
+  files, against the 88 across ~40 recorded when this was filed.
+  `slurpFunctionBody` already existed and is the structural bound for the
+  dominant "anchor on a function, take N bytes" shape, so the gap was
+  adoption rather than mechanism. `regionBetween(text, start, end)` is new
+  and covers the non-function blocks the item named. Its contract is the
+  FAILURE mode: either anchor missing returns "", never a tail running to
+  end-of-file, because a region that silently became the whole file makes
+  an absence assertion pass for the wrong reason — the same defect in a
+  new place. Locked by tests/features/srcgrep_region_bounds.
+  Converted 12 of 118 — eight function bodies and four registration
+  blocks — leaving 106 across 55 files.
+  The measurement that justifies continuing: EVERY converted window was
+  reading a FRACTION of its target. cmdSpecLint 17%, recordDispatch 20%,
+  cmdDocSymbols 36%, docSymbolsBuildResponse 62%. So these were not merely
+  fragile, they were partially blind, and their EXPECT_FALSE rows were
+  passing because they had stopped looking. All still pass over the full
+  body, so the code is genuinely clean — but nothing had checked it.
+  cmdIndieReviewOrchestrate is the sharpest: its window had already been
+  widened 3500 to 4800 once, and the body measures 4928. It was already
+  truncating, before any further edit.
+  Remaining sites are heterogeneous — arbitrary literal anchors, schema
+  blocks, dispatch arms — and each needs its own end anchor chosen by
+  reading it. A mechanical pass would change what some rows assert.
 
 - 📋 [ANTS-3682] **Define one loop-log format in specs.md § 5.7, so the balance check becomes checkable.**
   /cold-eyes § 1e specifies two loop-log checks. ANTS-3662 ships the

@@ -109,7 +109,11 @@ TEST(SpecLintVerb, Inv7RefusalMinimums) {
     ASSERT_FALSE(mw.isEmpty());
     const int reg = mw.indexOf(QStringLiteral("registerToolProvider(\"spec_lint\""));
     ASSERT_GE(reg, 0);
-    EXPECT_TRUE(mw.mid(reg, 160).contains(QStringLiteral("CallerCwdContract::Required")));
+    // ANTS-3681 — the registration entry, bounded by the next one.
+    EXPECT_TRUE(QString::fromStdString(ants_test::regionBetween(
+                    mw.toStdString(), "registerToolProvider(\"spec_lint\"",
+                    "registerToolProvider("))
+                    .contains(QStringLiteral("CallerCwdContract::Required")));
 
     const QString ci = slurp(SRC_CLAUDE_INTEGRATION_CPP_PATH);
     ASSERT_FALSE(ci.isEmpty());
@@ -121,9 +125,9 @@ TEST(SpecLintVerb, Inv7RefusalMinimums) {
     // (2) a supplied path is validated BEFORE any enumeration → bad_path.
     const QString rc = QString::fromStdString(ants_test::slurpRemoteControl());
     ASSERT_FALSE(rc.isEmpty());
-    const int h = rc.indexOf(QStringLiteral("RemoteControl::cmdSpecLint"));
-    ASSERT_GE(h, 0);
-    const QString handler = rc.mid(h, 1600);
+    const QString handler = QString::fromStdString(ants_test::slurpFunctionBody(
+        rc.toStdString(), "RemoteControl::cmdSpecLint"));     // ANTS-3681
+    ASSERT_FALSE(handler.isEmpty()) << "cmdSpecLint body not found";
     EXPECT_TRUE(handler.contains(QStringLiteral("validatePath(")));
     EXPECT_TRUE(handler.contains(QStringLiteral("check.err")));
 

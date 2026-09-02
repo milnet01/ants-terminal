@@ -141,7 +141,11 @@ TEST(DocIntegrityVerb, WiringRegistered) {
     // Registered with the Required caller_cwd contract.
     const int reg = mw.indexOf("registerToolProvider(\"doc_integrity\"");
     ASSERT_GE(reg, 0);
-    EXPECT_TRUE(mw.mid(reg, 160).contains("CallerCwdContract::Required"));
+    // ANTS-3681 — the registration entry, bounded by the next one.
+    EXPECT_TRUE(QString::fromStdString(ants_test::regionBetween(
+                    mw.toStdString(), "registerToolProvider(\"doc_integrity\"",
+                    "registerToolProvider("))
+                    .contains("CallerCwdContract::Required"));
 
     const QString ci = slurp(SRC_CLAUDE_INTEGRATION_CPP_PATH);
     ASSERT_FALSE(ci.isEmpty());

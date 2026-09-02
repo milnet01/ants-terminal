@@ -50,8 +50,9 @@ TEST(mcp_record_dispatch_unification, Inv2BodyGatesRecordCall) {
     ASSERT_NE(pos, std::string::npos)
         << "INV-2 precondition: recordDispatch definition missing "
            "from claudeintegration.cpp";
-    // 800-byte window over the function body.
-    const std::string region = cc.substr(pos, 800);
+    // ANTS-3681 — the function body, brace-matched, not a byte window.
+    const std::string region =
+        ants_test::slurpFunctionBody(cc, "ClaudeIntegration::recordDispatch");
     expect(contains(region, "m_tokenUsage.recordCall"),
            "INV-2: recordDispatch forwards to m_tokenUsage.recordCall");
     expect(contains(region, "recordMcpTrace"),

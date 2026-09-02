@@ -94,7 +94,12 @@ TEST(McpIndieReviewTools, Ants1279OrchestrateComposesManifest) {
     ASSERT_NE(p, std::string::npos);
     // ANTS-3481 widened 3500→4800: the module_map_unparseable branch added
     // ~1 KB to the handler head, pushing the later literals past the window.
-    const std::string body = rc.substr(p, 4800);
+    // ANTS-3681 — brace-matched body. The comment above records this window
+    // being widened 3500 -> 4800 for a reason that had nothing to do with what
+    // the row asserts, which is the cost this replaces.
+    const std::string body =
+        ants_test::slurpFunctionBody(rc, "RemoteControl::cmdIndieReviewOrchestrate");
+    ASSERT_FALSE(body.empty()) << "cmdIndieReviewOrchestrate body not found";
     EXPECT_NE(body.find("derivePartition"), std::string::npos)
         << "orchestrate must derive the partition";
     EXPECT_NE(body.find("assembleBriefManifest"), std::string::npos)
