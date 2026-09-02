@@ -12236,7 +12236,7 @@ fixes don't address. Roadmapped here as their own design tasks.
   INV-5 and leaves INV-1 and INV-3 passing, which is the correct split.
   Full suite green.
 
-- 📋 [ANTS-3690] **ANTS-3660 § 2.3's Options block omits `excludedPathGlobs`, which `src/docdedup.h` carries.**
+- ✅ [ANTS-3690] **ANTS-3660 § 2.3's Options block omits `excludedPathGlobs`, which `src/docdedup.h` carries.**
   `ANTS-3663` § 2.5 forwards `excludedPathGlobs` to `doc_dedup` and cites
   ANTS-3660 § 2.4 for it. The member is real in `src/docdedup.h`, but
   ANTS-3660's own § 2.3 Options block does not list it — so the consumer
@@ -12247,8 +12247,14 @@ fixes don't address. Roadmapped here as their own design tasks.
   **Layman:** One of the duplicate-checker's settings exists in the code but is missing from the document that is supposed to describe it.
   Kind: doc-fix.
   Source: in-session-2026-07-28 (ANTS-3663 cold-eyes loop 6, lane B)..
+  Resolved (2026-09-02): ANTS-3660 § 2.3's Options block now carries
+  `excludedPathGlobs`, with the note that it is INJECTED for the reason
+  every member of this family is — the engine opens nothing, so the
+  caller supplies the globs. Verified against src/docdedup.h rather than
+  taken from the report: the member is there and the block omitted it, so
+  the consumer spec documented a member the producer spec did not.
 
-- 📋 [ANTS-3691] **`doc_dedup` and `spec_lint` state no finding-emission order, which ANTS-3663 INV-7 depends on.**
+- ✅ [ANTS-3691] **`doc_dedup` and `spec_lint` state no finding-emission order, which ANTS-3663 INV-7 depends on.**
   ANTS-3663 INV-7 makes findings totally ordered, with the producer's own
   `emissionIndex` as the tiebreak of last resort. That tiebreak is only as
   well-defined as each producer's emission order:
@@ -12267,6 +12273,25 @@ fixes don't address. Roadmapped here as their own design tasks.
   **Layman:** Two of the five document checkers never promise what order they report problems in, so the combined verb cannot fully guarantee a stable list.
   Kind: doc.
   Source: in-session-2026-07-28 (ANTS-3663 cold-eyes loop 6, lane C)..
+  Resolved (2026-09-02): ANTS-3660 gains INV-10 and ANTS-3662 gains
+  INV-8, each stating its engine's deterministic total emission order.
+  Both STATE what the code already does rather than prescribing new work,
+  and that was checked before writing: doc_dedup sorts strongest-first
+  then by location with a full tiebreak chain, and spec_lint sorts its
+  invariant ids by number then sub-letter and runs its passes in a fixed
+  sequence. So no conformer writes anything different, which is why this
+  did not go through the cold-read gate.
+  Each invariant got a real test, and each test was proven non-vacuous by
+  mutating its engine's comparator — reversing either order reddens
+  exactly its own row.
+  The spec_lint test asserts order by ID rather than by DOCUMENT position,
+  which is the half worth having: an engine emitting in declaration order
+  passes any fixture whose ids happen to be written in sequence. The
+  doc_dedup test asserts both keys, since a fixture with only one distinct
+  similarity cannot tell the primary key from the tiebreak.
+  Both specs come back clean from spec_lint, including ANTS-4623's new
+  parity check — which is what confirmed each new invariant also got its
+  row in the Tests table.
 
 - ✅ [ANTS-3692] **`doc_symbols` harvests bare lowercase words — the 291-occurrence residue ANTS-3688 did not cover.**
   ANTS-3688 fixed the verb-name half and is confirmed live by probe

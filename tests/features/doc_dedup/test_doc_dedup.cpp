@@ -485,3 +485,55 @@ TEST(DocDedup, DISABLED_CorpusCalibration) {
                            << " pair must still report at " << probe.first;
     }
 }
+
+// ANTS-3691 / INV-10 — deterministic emission order. ANTS-3663 INV-7 makes
+// findings totally ordered with the producer's own emissionIndex as the
+// tiebreak of last resort, and that tiebreak is only as well-defined as each
+// producer's order. Three of the five producers state one; this engine's was
+// real in code and stated nowhere, so the consumer's invariant rested on an
+// unwritten guarantee.
+//
+// The order is strongest similarity first, then by location. Both halves are
+// asserted: a corpus with two DIFFERENT similarities fixes the primary key,
+// and a corpus with two EQUAL ones fixes the tiebreak — either alone passes
+// against an implementation that has only the other.
+TEST(DocDedup, Ants3691EmissionOrderIsStrongestThenLocation) {
+    DocDedup::Options o;
+    const QStringList base = tokens(QStringLiteral("w"), 30);
+
+    // z.md/y.md are a NEAR-exact pair; b.md shares less with a.md. The two
+    // similarities differ, so similarity alone decides the order.
+    const QString a = para(base);
+    const QString strong = para(base);                       // identical
+    const QString weak   = para(base.mid(0, 18) + tokens(QStringLiteral("q"), 12));
+
+    const auto r = run({{QStringLiteral("a.md"), a},
+                        {QStringLiteral("b.md"), weak},
+                        {QStringLiteral("y.md"), strong},
+                        {QStringLiteral("z.md"), a}},
+                       o);
+    ASSERT_GE(pairsAt(r), 2) << "the fixture must produce pairs to order";
+    ASSERT_EQ(r.findings.size(), r.pairs.size());
+
+    for (int i = 1; i < r.findings.size(); ++i) {
+        const auto &px = r.pairs.at(i - 1);
+        const auto &py = r.pairs.at(i);
+        EXPECT_GE(px.similarity, py.similarity)
+            << "strongest first is the primary key";
+        if (px.similarity == py.similarity) {
+            // The tiebreak chain, in the order the engine applies it.
+            const bool ordered =
+                (px.a.file < py.a.file) ||
+                (px.a.file == py.a.file && px.a.line < py.a.line) ||
+                (px.a.file == py.a.file && px.a.line == py.a.line &&
+                 (px.b.file < py.b.file ||
+                  (px.b.file == py.b.file && px.b.line <= py.b.line)));
+            EXPECT_TRUE(ordered)
+                << "equal similarity falls back to location, a then b";
+        }
+        EXPECT_LT(r.findings.at(i - 1).emissionIndex,
+                  r.findings.at(i).emissionIndex)
+            << "emissionIndex is strictly ascending — the field ANTS-3663 "
+               "INV-7 actually reads";
+    }
+}

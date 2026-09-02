@@ -1405,3 +1405,44 @@ TEST(SpecLint, Ants4623TestsSectionNamingNoIdsSkips) {
     EXPECT_FALSE(r.testCoverageChecked)
         << "no comparison was made, so this must not read as a clean pass";
 }
+
+// ANTS-3691 / INV-8 — deterministic emission order. ANTS-3663 INV-7 makes
+// findings totally ordered with the producer's own emissionIndex as the
+// tiebreak of last resort, and that tiebreak is only as well-defined as each
+// producer's order. doc_symbols, doc_citations and doc_integrity each state
+// one; this engine did not, so the consumer's invariant rested on an
+// unstated guarantee.
+//
+// The order is by INVARIANT ID, not by position in the document, which is
+// the half worth asserting: a document declaring INV-3 before INV-1 must
+// still report INV-1 first.
+TEST(SpecLint, Ants3691EmissionOrderIsByIdNotDocumentOrder) {
+    const QString doc = QStringLiteral(
+        "# ANTS-1 — a spec\n"
+        "\n"
+        "## 3. Invariants\n"
+        "\n"
+        "- **INV-3** — declared first, numbered third.\n"
+        "- **INV-1** — declared third, numbered first.\n"
+        "- **INV-2a** — a sub-lettered id.\n"
+        "- **INV-2** — the plain form of the same number.\n");
+    const auto r = SpecLint::check(doc, QStringLiteral("s.md"), {});
+
+    QStringList order;
+    for (const auto &f : r.findings)
+        if (f.kind == QStringLiteral("invariant_no_test"))
+            order << f.message.section(QLatin1Char(' '), 0, 0);
+    EXPECT_EQ(order, (QStringList{QStringLiteral("INV-1"),
+                                  QStringLiteral("INV-2"),
+                                  QStringLiteral("INV-2a"),
+                                  QStringLiteral("INV-3")}))
+        << "ascending by number, then by sub-letter, whatever order the "
+           "document declares them in";
+
+    // emissionIndex is the field ANTS-3663 INV-7 actually reads, so assert on
+    // it rather than only on the sequence it happens to produce.
+    for (int i = 1; i < r.findings.size(); ++i)
+        EXPECT_LT(r.findings.at(i - 1).emissionIndex,
+                  r.findings.at(i).emissionIndex)
+            << "emissionIndex is strictly ascending in emission order";
+}
