@@ -5975,7 +5975,14 @@ void ClaudeIntegration::onMcpConnection() {
                     "FUNCTION, where \"no such symbol\" is usually a real defect, while "
                     "bare identifiers are as often enum values, macros, CMake variables "
                     "or JSON keys. A classification, never a verdict — nothing is "
-                    "filtered and no bucket is dropped. Read-only. "
+                    "filtered and no bucket is dropped. "
+                    "ANTS-3689: `only` narrows symbols[] to one resolution class "
+                    "(\"unresolved\" | \"not_checked\"); `counts` stays "
+                    "whole-document and `symbols_filtered_out` reports what was "
+                    "withheld. Reach for it on a single dense document — every "
+                    "`resolved` row ships by default, which is the class nobody "
+                    "reads and the reason an unfiltered single-doc run can spill "
+                    "past the response cap. Read-only. "
                     "caller_cwd required.");
                 docSym["selection_hint"] = QStringLiteral(
                     "Use when reviewing a spec or design doc to get the short list of names "
@@ -5998,9 +6005,24 @@ void ClaudeIntegration::onMcpConnection() {
                         dsEtag["description"] = QStringLiteral(
                             "Server-issued etag from a prior call; an unchanged corpus "
                             "short-circuits to {ok:true, unchanged:true}.");
+                    // ANTS-3689 — doc_citations' `only` shape, same rule:
+                    // narrow the rows, leave counts whole-document.
+                    QJsonObject dsOnly; dsOnly["type"] = "string";
+                        dsOnly["enum"] = QJsonArray{
+                            QStringLiteral("all"),
+                            QStringLiteral("unresolved"),
+                            QStringLiteral("not_checked")};
+                        dsOnly["description"] = QStringLiteral(
+                            "Filter over symbols[] only. \"unresolved\" keeps the rows "
+                            "worth reading and drops the resolved ones nobody reads — "
+                            "the difference between a reply you can read inline and one "
+                            "that spills to a file. counts stay whole-document and "
+                            "symbols_filtered_out reports what was withheld, so a short "
+                            "list is not mistaken for a clean document. Default all.");
                     props["path"] = dsPath;
                     props["caller_cwd"] = dsCwd;
                     props["etag_match"] = dsEtag;
+                    props["only"] = dsOnly;
                     schema["properties"] = props;
                     docSym["inputSchema"] = schema;
                 }

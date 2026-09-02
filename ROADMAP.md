@@ -12118,7 +12118,7 @@ fixes don't address. Roadmapped here as their own design tasks.
   Kind: fix.
   Source: in-session-2026-07-28 (ANTS-3663 cold-eyes loop 7 pre-pass)..
 
-- 📋 [ANTS-3689] **`doc_symbols` has no `only=` filter, so a single-document run returns 105 KB.**
+- ✅ [ANTS-3689] **`doc_symbols` has no `only=` filter, so a single-document run returns 105 KB.**
   `doc_citations` has `only:"stale"`, which narrows the rows to the ones a
   caller acts on while leaving `counts` whole-document. `doc_symbols` has
   no equivalent, so every occurrence ships — including every `resolved`
@@ -12137,6 +12137,21 @@ fixes don't address. Roadmapped here as their own design tasks.
   **Layman:** Asking the symbol checker about one file returns so much text it has to be written to a scratch file and parsed before it can be read.
   Kind: enhancement.
   Source: in-session-2026-07-28 (ANTS-3663 cold-eyes loop 7 pre-pass)..
+  Resolved (2026-09-02): `only` accepts "all" (default), "unresolved" and
+  "not_checked", narrowing symbols[] the way doc_citations' only:"stale"
+  narrows citations[]. `counts` stays whole-document under every value —
+  it answers what the scan found, not what the call printed — and
+  `symbols_filtered_out` reports the withheld rows, so a short list is not
+  read as a clean document.
+  The gate sits on the append inside the same loop that does the counting,
+  so the two cannot drift. An unrecognised value refuses bad_args with the
+  accepted list rather than reading as "all": a filter that silently
+  widens returns the oversized payload the caller passed it to avoid.
+  Conformance test tests/features/doc_symbols_only_filter, behavioural
+  against the real builder. Verified by mutation rather than by assertion
+  alone — reverting the gate to an unconditional append fails INV-2/4 and
+  INV-5 and leaves INV-1 and INV-3 passing, which is the correct split.
+  Full suite green.
 
 - 📋 [ANTS-3690] **ANTS-3660 § 2.3's Options block omits `excludedPathGlobs`, which `src/docdedup.h` carries.**
   `ANTS-3663` § 2.5 forwards `excludedPathGlobs` to `doc_dedup` and cites

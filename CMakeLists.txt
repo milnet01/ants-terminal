@@ -1581,6 +1581,8 @@ if(ANTS_TESTS)
                 # and its verb layer (vocabulary scrape + refusal minimums).
                 tests/features/doc_symbols/test_doc_symbols.cpp
                 tests/features/doc_symbols_verb/test_doc_symbols_verb.cpp
+                # ANTS-3689 — doc_symbols only= row filter.
+                tests/features/doc_symbols_only_filter/test_doc_symbols_only_filter.cpp
                 # ANTS-3662 — spec_lint engine (five checks, two of them gated)
                 # and its verb layer (candidate contract + refusal minimums).
                 tests/features/spec_lint/test_spec_lint.cpp

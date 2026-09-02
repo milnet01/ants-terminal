@@ -14,6 +14,12 @@ for security-relevant changes.
 
 ### Added
 
+- **`doc_symbols` gains an `only=` row filter** (ANTS-3689)
+  `only:"unresolved"` (or `"not_checked"`) drops the resolved rows nobody
+  reads, which is what let a single dense document spill past the response
+  cap. `counts` stays whole-document and `symbols_filtered_out` reports
+  what was withheld; an unrecognised value refuses rather than widening.
+
 - **Shell scripts are checked automatically, in CI and locally** (ANTS-4518)
   The project ships a lot of load-bearing shell — git hooks, build and
   release tooling, test drivers — and nothing checked any of it, so a

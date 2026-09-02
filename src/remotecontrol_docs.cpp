@@ -346,6 +346,25 @@ QJsonDocument RemoteControl::cmdDocSymbols(const QJsonObject &req) {
     if (relDocs.size() > walk.maxDocsPerRun)
         relDocs = relDocs.mid(0, walk.maxDocsPerRun);
 
+    // ANTS-3689-INV-6 — validate `only` before the scan, and REFUSE an
+    // unrecognised value rather than reading it as "all". A filter that
+    // silently widens returns the oversized payload the caller passed it to
+    // avoid, and says nothing about why.
+    const QString only = req.value(QStringLiteral("only")).toString();
+    if (!only.isEmpty() && only != QLatin1String("all")
+        && only != QLatin1String("unresolved")
+        && only != QLatin1String("not_checked")) {
+        QJsonObject bad;
+        bad[QStringLiteral("ok")]    = false;
+        bad[QStringLiteral("code")]  = QStringLiteral("bad_args");
+        bad[QStringLiteral("error")] = QStringLiteral(
+            "doc_symbols: unknown only=\"%1\"").arg(only.left(64));
+        bad[QStringLiteral("accepted")] = QJsonArray{
+            QStringLiteral("all"), QStringLiteral("unresolved"),
+            QStringLiteral("not_checked")};
+        return QJsonDocument(bad);
+    }
+
     DocSymbols::Options opts;
     opts.rootCanonical = rootCanonical;
     opts.excludedNames = docSymbolsRefusalCodes(rootCanonical);
@@ -381,7 +400,7 @@ QJsonDocument RemoteControl::cmdDocSymbols(const QJsonObject &req) {
     // etag injected centrally (isEtagSupportedTool); docs_digest keeps it
     // content-sensitive (ANTS-3737 — same shape as doc_integrity).
     QJsonObject out =
-        docSymbolsBuildResponse(symbols, findings, truncated, checked);
+        docSymbolsBuildResponse(symbols, findings, truncated, checked, only);
     out[QStringLiteral("docs_digest")] = docSetDigest(rootCanonical, checked);
     return QJsonDocument(out);
 }
@@ -390,9 +409,14 @@ QJsonDocument RemoteControl::cmdDocSymbols(const QJsonObject &req) {
 QJsonObject RemoteControl::docSymbolsBuildResponse(
     const QVector<DocSymbols::Symbol> &symbols,
     const QList<DocFinding::Finding> &findings, bool truncated,
-    const QStringList &checkedDocs) {
+    const QStringList &checkedDocs, const QString &only) {
+    // ANTS-3689 — the doc_citations `only:"stale"` shape: narrow the rows a
+    // caller acts on, leave `counts` whole-document. The counting below runs
+    // over every symbol and the append is what the filter gates, so the two
+    // cannot drift.
+    const QString onlyApplied = only.isEmpty() ? QStringLiteral("all") : only;
     QJsonArray symbolsArr;
-    int resolved = 0, unresolved = 0, notChecked = 0;
+    int resolved = 0, unresolved = 0, notChecked = 0, withheld = 0;
     for (const DocSymbols::Symbol &s : symbols) {
         QJsonObject so;
         so[QStringLiteral("symbol")]     = s.symbol;
@@ -417,7 +441,11 @@ QJsonObject RemoteControl::docSymbolsBuildResponse(
         } else {
             ++notChecked;
         }
-        symbolsArr.append(so);
+        const QString res = DocSymbols::resolutionStr(s.resolution);
+        if (onlyApplied == QLatin1String("all") || onlyApplied == res)
+            symbolsArr.append(so);
+        else
+            ++withheld;
     }
 
     QJsonObject counts;
@@ -459,6 +487,11 @@ QJsonObject RemoteControl::docSymbolsBuildResponse(
     o[QStringLiteral("findings")]     = DocFinding::toJson(findings);
     o[QStringLiteral("truncated")]    = truncated;
     o[QStringLiteral("checked_docs")] = QJsonArray::fromStringList(checkedDocs);
+    // ANTS-3689 — the applied value and what it cost, so a short list is
+    // distinguishable from a document with little in it. Emitted always:
+    // absence would otherwise be a third state a reader has to interpret.
+    o[QStringLiteral("only")]                 = onlyApplied;
+    o[QStringLiteral("symbols_filtered_out")] = withheld;
     return o;
 }
 

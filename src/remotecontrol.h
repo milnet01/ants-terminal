@@ -583,10 +583,16 @@ public:
     QJsonDocument cmdDocSymbols(const QJsonObject &req);
     // Pure, for the same headless-test reason as the pair above. `truncated`
     // is the run-wide OR; counts are occurrence counts across every document.
+    // ANTS-3689 — `only` narrows symbols[] to one resolution class
+    // ("all" | "unresolved" | "not_checked"; empty reads as "all").
+    // `counts` stays whole-document under every value: it answers what
+    // the scan found, not what this call chose to print. An unrecognised
+    // value is refused by the verb before it reaches here, so this stays
+    // total and a test can call it with anything.
     static QJsonObject docSymbolsBuildResponse(
         const QVector<DocSymbols::Symbol> &symbols,
         const QList<DocFinding::Finding> &findings, bool truncated,
-        const QStringList &checkedDocs);
+        const QStringList &checkedDocs, const QString &only = {});
     // ANTS-3662 — spec_lint: the greppable half of the spec-format contract
     // (SpecLint::check). Walks `specs_dir`, not `docs_dir` — a README has no
     // invariants to check — but reuses docIntegrityEnumerate for the walk, for
