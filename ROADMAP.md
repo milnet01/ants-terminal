@@ -11288,7 +11288,7 @@ fixes don't address. Roadmapped here as their own design tasks.
   Kind: doc-fix.
   Source: in-session-2026-07-27 (doc_integrity sweep during the ANTS-3661..3664 cold-eyes fold).
 
-- 📋 [ANTS-3668] **`find_definition` cannot resolve C++ data members, enumerators or response-field names.**
+- ✅ [ANTS-3668] **`find_definition` cannot resolve C++ data members, enumerators or response-field names.**
   `SymbolQuery::buildAnchors` builds exactly three C++ definition patterns: a
   return-type-led form requiring a trailing `(`, an out-of-line ctor/dtor form,
   and a `struct|class|union|enum` keyword form. None matches a data-member
@@ -11328,6 +11328,29 @@ fixes don't address. Roadmapped here as their own design tasks.
   **Layman:** Ants can find functions and classes in C++ code, but not the named values stored inside them — so asking "where is maxDocsPerRun defined?" comes back empty even though the answer is sitting in a header.
   Kind: enhancement.
   Source: cold-eyes-2026-07-28 ANTS-3661 loop 3 lane B.
+  Resolved (2026-09-02): the Cpp ladder gained a data-member pattern —
+  type tokens, the name, then a terminator of `;`, `=` or `{`, with no `(`
+  before it. That absence is what separates a field from a function
+  declaration and from a call, and a test asserts it rather than assuming
+  it. The template-argument group is ANTS-3746's, needed here for the same
+  reason: a comma is neither a type character nor a separator.
+  Took the item's second option on locals: the pattern matches one, and
+  that is a decision rather than an oversight. The ladder is line-based
+  with no scope tracking, so "inside a class body" is not a question it
+  can ask, and a local is a real declaration of that name.
+  Verified by re-running the calibration the item asked for, not by
+  assertion alone. `cpp_data_member` unresolved is 22 (7%), against the
+  item's measured 117 of 442 (26%) — below ANTS-3661 § 2.1's 25% gate,
+  which that class used to be the reason for firing. Total unresolved fell
+  from 442 to 290.
+  Enumerators and response-field names, also in the headline, are NOT
+  covered. Neither carries a type token, so neither is reachable by this
+  shape; the measured population was data members and that is what was
+  fixed. Filed nothing for them: no measurement supports a pattern yet.
+  Filed ANTS-4821 instead — the fix made a pre-existing kind inconsistency
+  reachable, where a brace-initialised member is tagged `definition`
+  because looksLikeDeclaration reads any brace as a body.
+  Full suite green.
 
 - 📋 [ANTS-3669] **`doc_lint --fix`: the write half of the doc-lint composite, split out of ANTS-3663.**
   Implementation phase 2 of one verb. ANTS-3663 keeps the walk, the
@@ -12545,6 +12568,35 @@ fixes don't address. Roadmapped here as their own design tasks.
   **Layman:** The same code-block bug was just fixed in one place, but several files keep their own copy of that logic and still have it.
   Kind: fix.
   Source: in-session-2026-09-02 (ANTS-3678 fix).
+
+- 📋 [ANTS-4821] **A brace-initialised declaration is tagged `definition`, because any brace reads as a body.**
+  `SymbolQuery::looksLikeDeclaration` is `endsWith(';') &amp;&amp;
+  !contains('{')`. The brace test was written for a function body on one
+  line, and it cannot tell that brace from an INITIALISER.
+
+  So two spellings of one member disagree:
+
+    `int m_scrollOffset = 0;`        -> declaration
+    `QTimer *m_timer{nullptr};`      -> definition
+
+  Found 2026-09-02 while adding ANTS-3668's data-member pattern, which is
+  what made the inconsistency reachable — before it, neither line resolved
+  at all, so neither had a kind.
+
+  Not folded into ANTS-3668: `looksLikeDeclaration` decides the kind of
+  EVERY C++ match, so changing it is a change to function classification
+  as well, and that item's tests cover data members only. It is also not
+  obviously a one-line fix — `int f() { return 0; }` must stay a
+  definition, so the rule wants to distinguish a brace that follows `)`
+  from one that follows an identifier, and a default member initialiser
+  containing a brace (`std::map<int,int> m_m{{1,2}};`) has to survive it.
+
+  Nobody is known to be relying on the current answer. The visible cost is
+  that a caller filtering `kind == "declaration"` to find where a field is
+  declared misses every brace-initialised one.
+  **Layman:** Two ways of writing the same thing get labelled differently by the symbol finder — one is called a definition and the other a declaration.
+  Kind: fix.
+  Source: in-session-2026-09-02 (ANTS-3668 fix).
 
 ### 🔬 Project Audit false-positive reduction (self-audit 2026-05-20)
 

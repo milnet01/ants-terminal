@@ -14,6 +14,12 @@ for security-relevant changes.
 
 ### Added
 
+- **`find_definition` resolves C++ data members** (ANTS-3668)
+  Asking where a struct field or an `m_`-prefixed member is declared used
+  to come back empty, though the answer was sitting in a header. Measured
+  on this project's own docs, the unresolved data-member share fell from
+  26% to 7%, which also lifts `doc_symbols`' signal-to-noise.
+
 - **`doc_symbols` gains an `only=` row filter** (ANTS-3689)
   `only:"unresolved"` (or `"not_checked"`) drops the resolved rows nobody
   reads, which is what let a single dense document spill past the response

@@ -245,7 +245,45 @@ Anchors buildAnchors(Lang lang, const QString &s) {
             // could not find. NOT anchored to column 0: the whole point is
             // that these live at function-body indent.
             add(QStringLiteral("^\\s*(?:static\\s+)?(?:const\\s+)?(?:constexpr\\s+)?auto\\s+") + s + QStringLiteral("\\s*=\\s*\\["));
-            // ANTS-4346 — a namespace. `find_definition` returned an empty
+            // ANTS-3668 — a DATA MEMBER declaration. The three forms above
+            // all require either a `(` (function) or a type keyword (class),
+            // so every struct field, every `m_`-prefixed member, resolved
+            // nowhere. Measured via doc_symbols' corpus calibration as the
+            // single largest classified population of unresolved candidates
+            // — the one that fires ANTS-3661 § 2.1's "something is missing"
+            // gate.
+            //
+            // Shape: one or more type tokens, then the name, then a
+            // terminator of `;`, `=` or `{`. The absence of `(` before that
+            // terminator is what separates this from a function declaration
+            // and from a call, and it is load-bearing rather than incidental.
+            // An optional array extent (`int m_rows[8];`) sits between.
+            //
+            // The template-argument group is the same one ANTS-3746 added to
+            // the return-type ladder, and it is needed here for the same
+            // reason: a COMMA is neither a type character nor a separator, so
+            // without it `QMap<QString, QStringList> m_byCategory;` does not
+            // match.
+            //
+            // This DOES also match a local variable, and that is a decision
+            // rather than an oversight. The ladder is line-based with no
+            // scope tracking, so "inside a class body" is not a question it
+            // can ask; a local is a real declaration of that name, and the
+            // existing kind logic tags both `declaration` because both end in
+            // `;`. Reporting where a name is declared beats reporting that a
+            // name the reader is looking at does not exist.
+            //
+            // The keyword lookahead is the same guard the return-type form
+            // carries, widened by the statement keywords that can precede a
+            // bare name (`case Foo:` and `using Foo =` are not declarations
+            // of Foo in the sense a reader means).
+            add(QStringLiteral(
+                    "^[ \\t]*(?!(?:return|co_return|co_await|co_yield|throw|else|case|"
+                    "default|using|typedef|friend|delete|goto|sizeof|new)\\b)"
+                    "(?:[\\w:<>~]+(?:<[^();{]*>)?[\\s*&]+)+(?:[\\w:]+::)?")
+                + s
+                + QStringLiteral("\\s*(?:\\[[^\\]]*\\])?\\s*[;={]"));
+                        // ANTS-4346 — a namespace. `find_definition` returned an empty
             // `definitions[]` for one, which reads as "no such symbol" for a
             // thing that is plainly there. Tagged `namespace` by the kind
             // logic below so a caller can tell it from a function.

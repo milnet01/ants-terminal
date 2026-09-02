@@ -722,6 +722,35 @@ namespace {
 // One tree carrying all four shapes, plus the controls that isolate each.
 QString cppFormsRoot(QTemporaryDir &tmp) {
     const QString root = tmp.path();
+    // ANTS-3668 — data-member declarations. Measured as the single largest
+    // classified population of unresolved doc_symbols candidates, and every
+    // one of them resolved nowhere: the Cpp ladder had a return-type-led
+    // form requiring `(`, an out-of-line ctor/dtor form, and a
+    // struct/class/union/enum keyword form. A field matches none.
+    writeFile(root, QStringLiteral("src/members.h"), QStringLiteral(
+        "#pragma once\n"
+        "#include <QTimer>\n"
+        "\n"
+        "class Widget {\n"
+        "public:\n"
+        "    void paint();               // a method, for contrast\n"
+        "private:\n"
+        "    int m_scrollOffset = 0;\n"
+        "    QTimer *m_claudeDetectTimer = nullptr;\n"
+        "    QPushButton *m_claudeReviewBtn{nullptr};\n"
+        "    static const int kFrozenRows;\n"
+        "    QMap<QString, QStringList> m_byCategory;\n"
+        "};\n"
+        "\n"
+        "void onlyEverCalled();\n"))
+        ;
+    writeFile(root, QStringLiteral("src/members.cpp"), QStringLiteral(
+        "#include \"members.h\"\n"
+        "\n"
+        "void Widget::paint() {\n"
+        "    onlyEverCalled();\n"
+        "    m_scrollOffset = 1;\n"
+        "}\n"));
     writeFile(root, QStringLiteral("src/seam.cpp"), QStringLiteral(
         "#include \"seam.h\"\n"
         "\n"
@@ -934,4 +963,71 @@ TEST(McpSymbolQuery, Ants3746CommaBearingTemplateReturnType) {
            "ANTS-3746: a nested template argument list resolves");
 
     EXPECT_EQ(0, expect_failures());
+}
+
+// ANTS-3668 — a data member is a definition of a name, and the Cpp ladder
+// resolved none. Measured via the doc_symbols corpus calibration as the
+// single largest classified population of unresolved candidates: every
+// struct field, every `m_`-prefixed member, resolving nowhere.
+TEST(SymbolQueryCppForms, Ants3668DataMembersResolve) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString root = cppFormsRoot(tmp);
+    SymbolQuery::Options o;
+
+    // Resolution is what this item is about; the kind is asserted separately
+    // below, because the two answers differ for a brace-initialised member.
+    for (const char *name : {"m_scrollOffset", "m_claudeDetectTimer",
+                             "m_claudeReviewBtn", "kFrozenRows"}) {
+        const auto d =
+            SymbolQuery::findDefinition(root, QString::fromUtf8(name), o);
+        bool found = false;
+        for (const auto &m : d.definitions)
+            if (m.file.endsWith(QLatin1String("members.h"))) found = true;
+        EXPECT_TRUE(found) << "data member did not resolve: " << name;
+    }
+
+    // A `;`-terminated member is tagged `declaration`, which is what it is.
+    // A brace-INITIALISED one (`T *m_p{nullptr};`) is not, because
+    // looksLikeDeclaration reads any `{` as a function body. That predates
+    // this change and is filed as ANTS-4821 rather than widened into here:
+    // it decides the kind of every C++ match, not only a member's.
+    EXPECT_TRUE(hasKindAt(SymbolQuery::findDefinition(
+                              root, QStringLiteral("m_scrollOffset"), o),
+                          "members.h", "declaration"))
+        << "int m_scrollOffset = 0;";
+}
+
+// A member whose type carries a COMMA in its template arguments. The same
+// shape ANTS-3746 had to fix for return types, and it fails by the same
+// route: a comma is neither a type character nor a separator.
+TEST(SymbolQueryCppForms, Ants3668CommaBearingMemberTypeResolves) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString root = cppFormsRoot(tmp);
+    SymbolQuery::Options o;
+    EXPECT_TRUE(hasKindAt(SymbolQuery::findDefinition(
+                              root, QStringLiteral("m_byCategory"), o),
+                          "members.h", "declaration"))
+        << "QMap<QString, QStringList> m_byCategory;";
+}
+
+// The guard that stops the member pattern swallowing call sites. A name that
+// is only ever DECLARED as a function and CALLED must not gain a member-shaped
+// definition from either line — the pattern requires no `(` before its
+// terminator, and this is what proves that requirement is load-bearing.
+TEST(SymbolQueryCppForms, Ants3668CallSiteIsNotAMemberDefinition) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString root = cppFormsRoot(tmp);
+    SymbolQuery::Options o;
+    const auto d =
+        SymbolQuery::findDefinition(root, QStringLiteral("onlyEverCalled"), o);
+    bool inCpp = false;
+    for (const auto &m : d.definitions)
+        if (m.file.endsWith(QLatin1String("members.cpp"))) inCpp = true;
+    EXPECT_FALSE(inCpp)
+        << "the call site in members.cpp must not read as a definition";
+    EXPECT_TRUE(hasKindAt(d, "members.h", "declaration"))
+        << "precondition: its real prototype still resolves";
 }
