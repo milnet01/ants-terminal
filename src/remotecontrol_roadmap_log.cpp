@@ -2807,6 +2807,38 @@ QJsonDocument RemoteControl::cmdRoadmapLogAmendBody(const QJsonObject &req,
                                        "a character inside it that is not plain "
                                        "space, tab or newline");
                 }
+                // ANTS-4807 — show what the match was actually made against.
+                // Every hint above names a cause someone already diagnosed;
+                // this one answers the question underneath all of them, which
+                // no hint can anticipate. Pressless spent eleven probes
+                // narrowing a miss by bisecting old_text, reached a wrong
+                // diagnosis, and could not have reached a right one: the
+                // stored body is not the body roadmap_query include_body
+                // returns (that one is rendered and re-parsed, so it carries
+                // COMPOSED trailer lines), and nothing exposed the difference.
+                //
+                // The tail rather than the whole body: a miss is nearly always
+                // at one end, the head is what a caller already has, and an
+                // unbounded echo of a long body would be its own problem.
+                {
+                    constexpr int kTailChars = 240;
+                    const QString &b = before->body;
+                    env[QStringLiteral("body_chars")] = b.size();
+                    env[QStringLiteral("body_tail")] =
+                        b.size() > kTailChars ? b.right(kTailChars) : b;
+                    if (b.size() > kTailChars)
+                        env[QStringLiteral("body_tail_truncated")] = true;
+                    env[QStringLiteral("body_tail_hint")] = QStringLiteral(
+                        "`body_tail` is the END of the text this op matched "
+                        "against, verbatim — the STORED body, which is not the "
+                        "`body` roadmap_query include_body:true returns (that "
+                        "one is rendered and re-parsed, so it carries composed "
+                        "trailer lines the stored body has never held). Compare "
+                        "your `old_text` against these characters rather than "
+                        "bisecting it: a backslash here is a literal backslash "
+                        "in the stored text, and JSON escaping in your request "
+                        "has to produce one to match it.");
+                }
                 return QJsonDocument(env);
             }
             if (hits > 1) {

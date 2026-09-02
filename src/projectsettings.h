@@ -72,6 +72,22 @@ RoadmapParse::IdFormat idFormatFor(const QString &rootCanonical);
 // no longer drowns a flat-root source_roots=["."] index.
 bool isNoiseDir(const QString &name);
 
+// ANTS-4092/4809 — which of `relPaths` git itself ignores, answered by one
+// `git check-ignore --stdin` from `rootCanonical`. isNoiseDir knows the
+// CONVENTIONAL exclusions; only the repository knows its own, and a walk that
+// consults neither disagrees with workspace_search about what the project
+// contains. Paths are repository-relative and may be nested.
+//
+// Fails OPEN, deliberately: a repo-less root, an absent git, an unexpected
+// exit or a timeout all yield an empty set, so a caller behaves exactly as it
+// did before consulting it. This narrows a walk; it must never block one.
+//
+// Exported from projectsettings.cpp's anonymous namespace by ANTS-4809, whose
+// second caller is the review partition — which had been offering lanes over
+// a gitignored data tree, where a lane is a subagent told to go and read it.
+QSet<QString> gitIgnoredPaths(const QString &rootCanonical,
+                              const QStringList &relPaths);
+
 // ANTS-2161 — layout-suggestion detector. See docs/specs/ANTS-2161.md § 2.1.
 struct Suggestion {
     bool                       present = false;   // .ants/project.json already on disk

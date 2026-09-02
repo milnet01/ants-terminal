@@ -1880,7 +1880,9 @@ QJsonDocument RemoteControl::cmdSpecLog(const QJsonObject &req) {
     if (!id.isEmpty() && pathArg.isEmpty() && !isValidSpecId(id)) {
         return slErr(QStringLiteral("bad_id"),
                      QStringLiteral("spec_log: id must match <PREFIX>-NNNN "
-                                    "(e.g. ANTS-1963, DOOM-0009), "
+                                    "(e.g. ANTS-1963, DOOM-0009), optionally "
+                                    "with a topic suffix as invariant_check "
+                                    "returns it (LOTTO-0014-http-surface), "
                                     "phase_<NN>_<topic>, or a numeric "
                                     "<NN>-<topic> (e.g. 17-emission-model)"));
     }

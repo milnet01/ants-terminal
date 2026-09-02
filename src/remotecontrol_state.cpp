@@ -2004,8 +2004,22 @@ bool isValidSpecId(const QString &id) {
     // surface must accept the identifiers its own list mode hands out. The
     // char class stays `[A-Za-z0-9_-]` (no `/`/`.`), so routing to
     // `docs/specs/<id>.md` cannot traverse out of the specs dir.
+    // ANTS-4810 — arm 1 accepts a TOPIC SUFFIX after the number, so
+    // `LOTTO-0014-http-surface-and-security` is an id and not just a
+    // filename. Same rule ANTS-3436 applied to arm 3, and for the same
+    // reason: the read surface must accept the identifiers this server
+    // hands out. invariant_check's matched_specs[].id is the file stem, so
+    // write-code's prescribed Phase 0 sequence — invariant_check to find
+    // which specs govern an edit, then spec_query to read one — refused its
+    // own output on any project whose specs are named <ID>-<topic>.md.
+    //
+    // Nothing downstream needs teaching: resolveSpecRelForId already tries
+    // the exact `<id>.md` before the `<id>-*.md` glob, so a suffixed id
+    // resolves to the one file it names and a bare prefix keeps matching
+    // the glob. The char class still excludes `/` and `.`, so a longer id
+    // cannot traverse out of the specs dir.
     static const QRegularExpression re(
-        QStringLiteral("^([A-Za-z][A-Za-z0-9_-]*-[0-9]+"
+        QStringLiteral("^([A-Za-z][A-Za-z0-9_-]*-[0-9]+(?:-[A-Za-z0-9_-]+)*"
                        "|phase_[0-9]+_[A-Za-z0-9_-]+"
                        "|[0-9]+(?:-[A-Za-z0-9_-]+)*)$"));
     return re.match(id).hasMatch();
@@ -2291,10 +2305,12 @@ QJsonDocument RemoteControl::cmdSpecQuery(const QJsonObject &req) {
         return QJsonDocument(sqErr(
             QStringLiteral("bad_id"),
             QStringLiteral("spec_query: id must match <PREFIX>-NNNN "
-                           "(e.g. ANTS-1963, DOOM-0009), "
-                           "phase_<NN>_<topic>, a numeric <NN>-<topic> "
+                           "(e.g. ANTS-1963, DOOM-0009), optionally with a "
+                           "topic suffix as invariant_check returns it "
+                           "(LOTTO-0014-http-surface), phase_<NN>_<topic>, "
+                           "a numeric <NN>-<topic> "
                            "(e.g. 17-emission-model), or pass an explicit "
-                           "`path` (ANTS-1906)")));
+                           "`path` (ANTS-1906/4810)")));
     }
     const QString rootCanonical = resolveRootCanonical(m_main, req);
     if (rootCanonical.isEmpty()) {

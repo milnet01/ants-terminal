@@ -19,6 +19,8 @@
 #include <QDir>
 #include <QFileInfo>
 #include <QJsonArray>
+#include <QFile>
+#include <QJsonDocument>
 #include <QJsonObject>
 #include <QTemporaryDir>
 
@@ -296,6 +298,58 @@ TEST(McpSpecQuery, Ants4352GateDriftMode) {
 // used to fall through to the LIST branch and return ok:true with a spec list.
 // A list returned in answer to a drift question is a confident wrong answer,
 // so it refuses.
+// ANTS-4810 — spec_query accepts the topic-suffixed id invariant_check hands
+// out. write-code's Phase 0 is exactly this two-call sequence — invariant_check
+// for the specs governing an edit, then spec_query to read one — and on any
+// project whose specs are named <ID>-<topic>.md the second call refused the
+// first call's output with bad_id. The read surface must accept the
+// identifiers this server hands out, which is the rule ANTS-3436 applied to
+// the numeric arm.
+TEST(McpSpecQuery, Ants4810TopicSuffixedIdResolves) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString root = QFileInfo(tmp.path()).canonicalFilePath();
+    QDir().mkpath(root + QStringLiteral("/docs/specs"));
+
+    QFile f(root + QStringLiteral("/docs/specs/LOTTO-0014-http-surface.md"));
+    ASSERT_TRUE(f.open(QIODevice::WriteOnly | QIODevice::Truncate));
+    f.write("# LOTTO-0014 \xE2\x80\x94 HTTP surface\n\n"
+            "Status: accepted\n\n"
+            "## Invariants\n\n"
+            "- **INV-1** \xE2\x80\x94 the server binds loopback only.\n");
+    f.close();
+
+    RemoteControl rc(nullptr);
+    auto byId = [&](const QString &id) {
+        QJsonObject r;
+        r[QStringLiteral("caller_cwd")] = root;
+        r[QStringLiteral("id")]         = id;
+        return rc.cmdSpecQuery(r).object();
+    };
+
+    // The id invariant_check returns: the file stem, suffix and all.
+    const QJsonObject suffixed =
+        byId(QStringLiteral("LOTTO-0014-http-surface"));
+    EXPECT_TRUE(suffixed.value(QStringLiteral("ok")).toBool())
+        << "spec_query refused an id this server hands out: "
+        << QJsonDocument(suffixed).toJson().toStdString();
+    EXPECT_NE(suffixed.value(QStringLiteral("path")).toString()
+                  .indexOf(QStringLiteral("LOTTO-0014-http-surface.md")), -1);
+
+    // The bare prefix keeps working through the <id>-*.md glob, so widening
+    // the id grammar took nothing away.
+    const QJsonObject bare = byId(QStringLiteral("LOTTO-0014"));
+    EXPECT_TRUE(bare.value(QStringLiteral("ok")).toBool())
+        << QJsonDocument(bare).toJson().toStdString();
+
+    // And the grammar is still a grammar: a path-shaped id is not an id, or
+    // routing to docs/specs/<id>.md could leave the specs dir.
+    const QJsonObject traversal = byId(QStringLiteral("LOTTO-0014-../../etc"));
+    EXPECT_FALSE(traversal.value(QStringLiteral("ok")).toBool());
+    EXPECT_EQ(traversal.value(QStringLiteral("code")).toString(),
+              QStringLiteral("bad_id"));
+}
+
 TEST(McpSpecQuery, Ants4468ModeIsDeclaredAndUnknownModeRefuses) {
     // The schema half is declared in ClaudeIntegration's tools/list builder,
     // which this bundle does not link, so it is not asserted here. Worth

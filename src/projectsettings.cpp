@@ -192,8 +192,12 @@ void proposeAuxLayout(Suggestion &s, const QString &root) {
 // absent git, a non-zero-beyond-1 exit or a timeout all yield an empty set,
 // i.e. exactly the pre-4092 behaviour; this narrows a suggestion, it never
 // blocks one.
-QSet<QString> gitIgnoredDirs(const QString &rootCanonical,
-                             const QStringList &names) {
+}  // namespace
+
+// ANTS-4809 — was gitIgnoredDirs() in the anonymous namespace above; see the
+// header for why it is shared now. Behaviour is unchanged.
+QSet<QString> gitIgnoredPaths(const QString &rootCanonical,
+                              const QStringList &names) {
     QSet<QString> out;
     if (names.isEmpty()) return out;
     QProcess git;
@@ -222,8 +226,6 @@ QSet<QString> gitIgnoredDirs(const QString &rootCanonical,
     }
     return out;
 }
-
-}  // namespace
 
 // ANTS-2161 / ANTS-3393 — single source of truth for "is this a top-level
 // dir the source walk should neither descend nor index". Shared by
@@ -287,7 +289,8 @@ Suggestion detect(const QString &rootCanonical) {
     QStringList gitCandidates;
     for (const QFileInfo &fi : dirs)
         if (!isNoiseDir(fi.fileName())) gitCandidates << fi.fileName();
-    const QSet<QString> gitIgnored = gitIgnoredDirs(rootCanonical, gitCandidates);
+    const QSet<QString> gitIgnored =
+        gitIgnoredPaths(rootCanonical, gitCandidates);
     for (const QFileInfo &fi : dirs) {
         const QString name = fi.fileName();
         if (isNoiseDir(name)) {

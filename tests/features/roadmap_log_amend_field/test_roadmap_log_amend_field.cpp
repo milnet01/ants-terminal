@@ -335,6 +335,44 @@ TEST(RoadmapLogAmendField, Inv7AmendBodyRedirectsToAmendField) {
            "it is: " << QJsonDocument(resp).toJson().toStdString();
 }
 
+// ANTS-4807 — a body_match_not_found shows the text it matched AGAINST, so a
+// caller can see the difference instead of bisecting old_text to infer it.
+// Pressless spent eleven probes on one miss and still reached a wrong
+// diagnosis, which was unreachable by bisection: the stored body is not the
+// body roadmap_query include_body:true returns.
+//
+// DEMO-0003 is exactly that gap. Its fixture ends on a trailing trailer run,
+// which ANTS-4506 strips from the stored body into the columns — so the
+// rendered body a caller reads carries Layman/Kind/Source/Lanes lines that the
+// text this op searches has never held.
+TEST(RoadmapLogAmendField, Ants4807NotFoundShowsWhatItMatchedAgainst) {
+    Fx fx; ASSERT_TRUE(fx.ok());
+    RemoteControl rc(nullptr);
+    QJsonObject req;
+    req[QStringLiteral("caller_cwd")] = fx.root;
+    req[QStringLiteral("op")]         = QStringLiteral("amend_body");
+    req[QStringLiteral("id")]         = QStringLiteral("DEMO-0003");
+    // No trailer label: the trailer hint returns its own envelope early, and
+    // this case is the general miss that hint cannot anticipate.
+    req[QStringLiteral("old_text")]   = QStringLiteral("a phrase that is not there");
+    req[QStringLiteral("new_text")]   = QStringLiteral("x");
+    const QJsonObject resp = rc.cmdRoadmapLogAmendBodyForTest(req).object();
+
+    ASSERT_FALSE(resp.value(QStringLiteral("ok")).toBool());
+    ASSERT_EQ(resp.value(QStringLiteral("code")).toString(),
+              QStringLiteral("body_match_not_found"));
+
+    const QString tail = resp.value(QStringLiteral("body_tail")).toString();
+    EXPECT_TRUE(has(tail.toStdString(), "Some prose about it."))
+        << "body_tail must be the stored body: "
+        << QJsonDocument(resp).toJson().toStdString();
+    // The assertion that carries the point: what the caller READ is not what
+    // was searched, and the echo is what makes that visible in one call.
+    EXPECT_FALSE(has(tail.toStdString(), "Layman:"))
+        << "body_tail must be the STORED body, not the rendered one";
+    EXPECT_GT(resp.value(QStringLiteral("body_chars")).toInt(), 0);
+}
+
 // ---------------------------------------------------------------- INV-8 -----
 
 TEST(RoadmapLogAmendField, Inv8UnknownIdRefused) {

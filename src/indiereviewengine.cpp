@@ -276,6 +276,57 @@ QStringList walkedSourceRoots(const QString &projectPath) {
     return roots;
 }
 
+// ANTS-4809 — the directories under the walked roots that git ignores, as a
+// set of repository-relative prefixes. isNoiseDir knows the CONVENTIONAL
+// exclusions and only the repository knows its own: LottoTracker's partition
+// came back 14 lanes of gitignored scraped HTML out of 17, and a lane is a
+// subagent told to go and read what it names.
+//
+// A directory-only pass first, then ONE `git check-ignore` over the result:
+// enumerating directories is cheap where enumerating an ignored tree's FILES
+// is not, and one batched call is what ANTS-4092 already established as the
+// affordable shape. Capped, because the pass runs before we know the tree is
+// sane; past the cap we simply consult git about fewer directories, which
+// costs coverage and never correctness.
+QSet<QString> ignoredDirPrefixes(const QString &projectPath,
+                                 const QStringList &roots) {
+    constexpr int kMaxDirsChecked = 2000;
+
+    QStringList candidates;
+    for (const QString &root : roots) {
+        const QString rootAbs = QDir::cleanPath(
+            projectPath + QLatin1Char('/') + root);
+        QDirIterator it(rootAbs, QDir::Dirs | QDir::NoDotAndDotDot,
+                        QDirIterator::Subdirectories);
+        while (it.hasNext() && candidates.size() < kMaxDirsChecked) {
+            const QString abs = it.next();
+            if (!abs.startsWith(projectPath + QLatin1Char('/'))) continue;
+            const QString rel = abs.mid(projectPath.size() + 1);
+            // A noise dir is pruned by the walk anyway; asking git about it
+            // spends the cap on an answer nobody reads.
+            const QStringList segs = rel.split(QLatin1Char('/'));
+            bool noise = false;
+            for (const QString &s : segs)
+                if (ProjectSettings::isNoiseDir(s)) noise = true;
+            if (noise) continue;
+            candidates << rel;
+        }
+    }
+    return ProjectSettings::gitIgnoredPaths(projectPath, candidates);
+}
+
+// True when `rel` is inside any ignored directory, or is one. Prefix rather
+// than membership: check-ignore was asked about directories, and a file under
+// an ignored one is ignored without being named.
+bool underIgnoredDir(const QString &rel, const QSet<QString> &ignored) {
+    if (ignored.isEmpty()) return false;
+    for (const QString &pre : ignored) {
+        if (rel == pre) return true;
+        if (rel.startsWith(pre + QLatin1Char('/'))) return true;
+    }
+    return false;
+}
+
 // ANTS-4786 — one definition of "the files a lane covers", so laneFileCount
 // and unassignedForLanes cannot disagree about what counts as covered. Paths
 // are canonical, which is what makes set subtraction against a fresh walk
@@ -341,6 +392,10 @@ QList<Lane> deriveComputedPartition(const QString &projectPath,
     constexpr int kMaxFilesTotal   = 4000;   // pathological-tree backstop
 
     const QStringList roots = walkedSourceRoots(projectPath);
+    // ANTS-4809 — what the repository itself excludes, which isNoiseDir cannot
+    // know. A lane naming an ignored tree is worse than noise: it is an
+    // instruction to read it.
+    const QSet<QString> ignoredDirs = ignoredDirPrefixes(projectPath, roots);
 
     QMap<QString, QStringList> byDir;   // dir rel path → file rel paths
     int seen = 0;
@@ -363,6 +418,7 @@ QList<Lane> deriveComputedPartition(const QString &projectPath,
             for (int i = 0; i + 1 < segs.size(); ++i)
                 if (ProjectSettings::isNoiseDir(segs.at(i))) noise = true;
             if (noise) continue;
+            if (underIgnoredDir(rel, ignoredDirs)) continue;   // ANTS-4809
             if (isGeneratedSource(fi.fileName())) continue;
             // The suffix gate is the surprising one: it is narrower than
             // "source" on purpose (see UnassignedSources in the header), so a
@@ -464,9 +520,15 @@ UnassignedSources unassignedForLanes(const QString &projectPath,
     for (const Lane &l : lanes)
         collectLaneFiles(projectPath, l, &covered, kMaxFilesTotal);
 
+    const QStringList roots = walkedSourceRoots(projectPath);
+    // ANTS-4809 — an ignored file is not a coverage gap, so reporting it would
+    // be a false one. The partition and this report must exclude the same set
+    // or they contradict each other about the same tree.
+    const QSet<QString> ignoredDirs = ignoredDirPrefixes(projectPath, roots);
+
     QStringList uncovered;
     int seen = 0;
-    for (const QString &root : walkedSourceRoots(projectPath)) {
+    for (const QString &root : roots) {
         const QString rootAbs = QDir::cleanPath(
             projectPath + QLatin1Char('/') + root);
         QDirIterator it(rootAbs, QDir::Files, QDirIterator::Subdirectories);
@@ -483,6 +545,7 @@ UnassignedSources unassignedForLanes(const QString &projectPath,
             for (int i = 0; i + 1 < segs.size(); ++i)
                 if (ProjectSettings::isNoiseDir(segs.at(i))) noise = true;
             if (noise) continue;
+            if (underIgnoredDir(rel, ignoredDirs)) continue;   // ANTS-4809
             if (isGeneratedSource(fi.fileName())) continue;
             ++seen;
             if (covered.contains(canon)) continue;

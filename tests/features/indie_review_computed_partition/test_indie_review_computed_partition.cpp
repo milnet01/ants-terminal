@@ -11,6 +11,7 @@
 #include <QFileInfo>
 #include <QString>
 #include <QStringList>
+#include <QProcess>
 #include <QTemporaryDir>
 
 #include "indiereviewengine.h"
@@ -178,6 +179,55 @@ TEST(IndieReviewComputedPartition, Inv7NullReporterIsHarmless) {
     // The dialogs call the one-argument form; it must not crash or change.
     const auto lanes = IndieReviewEngine::deriveComputedPartition(root);
     EXPECT_EQ(lanes.size(), 2);
+}
+
+// ANTS-4809 — a directory the repository ignores yields no lane, and is not
+// reported as a coverage gap either. LottoTracker got 14 of 17 lanes over a
+// gitignored tree of scraped HTML; a lane is a subagent told to read what it
+// names, and that tree held data the project deliberately excludes.
+TEST(IndieReviewComputedPartition, Ants4809GitIgnoredTreeIsNeitherLaneNorGap) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString root = QFileInfo(tmp.path()).canonicalFilePath();
+
+    writeFile(root, QStringLiteral("src/engine/core.py"), QByteArray("x = 1\n"));
+    writeFile(root, QStringLiteral("src/ui/window.py"), QByteArray("x = 1\n"));
+    writeFile(root, QStringLiteral("src/archive_cache/a.py"), QByteArray("x = 1\n"));
+    writeFile(root, QStringLiteral("src/archive_cache/b.py"), QByteArray("x = 1\n"));
+    writeFile(root, QStringLiteral(".gitignore"),
+              QByteArray("src/archive_cache/\n"));
+
+    // A real repository, or check-ignore has nothing to answer from. The
+    // helper fails OPEN, so without this the test would pass vacuously —
+    // which is why the control assertion below is not optional.
+    ASSERT_EQ(QProcess::execute(QStringLiteral("git"),
+                                {QStringLiteral("-C"), root,
+                                 QStringLiteral("init"), QStringLiteral("-q")}), 0)
+        << "git is required for this case; without a repo it proves nothing";
+
+    const auto lanes = IndieReviewEngine::deriveComputedPartition(root);
+    ASSERT_FALSE(lanes.isEmpty());
+    for (const auto &l : lanes) {
+        EXPECT_FALSE(l.name.contains(QStringLiteral("archive_cache")))
+            << "a gitignored tree became a review lane: " << l.name.toStdString();
+        for (const QString &sp : l.sourcePaths)
+            EXPECT_FALSE(sp.contains(QStringLiteral("archive_cache")))
+                << "a gitignored file entered a lane: " << sp.toStdString();
+    }
+    // The control: the walk still found the real source, so the exclusion
+    // above is the gitignore rule biting and not an empty partition.
+    EXPECT_NE(laneNamed(lanes, QStringLiteral("src/engine")), nullptr);
+
+    // And it is not a coverage gap: an ignored file is not uncovered, so
+    // reporting it would be a false gap. The two walks must exclude the same
+    // set or they contradict each other about one tree.
+    QStringList sample;
+    const auto gap = IndieReviewEngine::unassignedForLanes(root, lanes, &sample);
+    for (const QString &p : sample)
+        EXPECT_FALSE(p.contains(QStringLiteral("archive_cache")))
+            << "an ignored file was reported as an uncovered one: "
+            << p.toStdString();
+    EXPECT_EQ(gap.bySuffix.value(QStringLiteral("py")), 0);
 }
 
 // ANTS-4804 — a lane's SIZE is measured, so the one-huge-file lane that

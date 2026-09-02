@@ -49860,6 +49860,130 @@ volume classes, and the tooling/documentation gaps the run exposed.
   Source: rolodex-feedback-2026-09-01.
   Lanes: remotecontrol, mcp.
 
+- ✅ [ANTS-4807] **amend_body's not-found refusal now shows the text it searched.**
+  Pressless filed a defect, then corrected it, and the correction is also
+  wrong — which is the finding. Their first diagnosis was that a literal
+  backslash cannot be matched; the second, that a span ENDING at the
+  body's last characters is never found.
+
+  Verified in source: WrapMatch::patchOnce's exact pass is
+  `text.indexOf(oldText)`. It has no positional behaviour whatever, so a
+  terminal span cannot fail as such. The cause is that the bytes differ —
+  and nothing in the refusal let them see that.
+
+  The likeliest difference is one this project knows about and never
+  exposed: the STORED body is not the body roadmap_query include_body:true
+  returns. That one is rendered and re-parsed, so it carries composed
+  trailer lines (ANTS-4599), and ANTS-4506 strips a trailing trailer run
+  out of the stored body entirely. A caller reads a body, copies its tail,
+  and searches a text that never held it.
+
+  So the fix is not another hint naming another cause — every hint there
+  already names a cause someone had diagnosed, and this one was not
+  diagnosable by bisection at all. body_match_not_found now carries
+  body_tail (bounded), body_chars, and a note saying that tail IS the
+  searched text and is not what include_body returns.
+
+  Store path only. On the markdown path the body is a span of a file the
+  caller can already read, so the gap does not exist there.
+
+  Eleven probes on their side; one call now. Test:
+  RoadmapLogAmendField.Ants4807NotFoundShowsWhatItMatchedAgainst, which
+  pins the distinction by asserting the echo does NOT carry the rendered
+  trailer lines.
+  **Layman:** When an edit cannot find the words you gave it, it now shows you what it was looking at.
+  Kind: enhancement.
+  Source: pressless-feedback-2026-09-01.
+  Lanes: remotecontrol, mcp.
+
+- 📋 [ANTS-4808] **No verb replaces a bullet body wholesale, so a garbled body has no route back.**
+  Requested twice by Pressless, in both their findings, and it stands
+  independently of which diagnosis of the matcher was right. amend_body
+  patches a matched span; if the span cannot be expressed, the text is
+  stuck. There is no op:set_body and no delete, so "I made a mess and want
+  to start over" has no route at all.
+
+  The cost is not hypothetical: they left garbled text in a roadmap item
+  and prepended a paragraph telling readers to ignore everything below a
+  marker line — in an item other sessions read as the contract for a fix.
+
+  On a store-backed project it is small: setItemField(body) then
+  commitAndRender, which is amend_body's own mutate with the match
+  removed. Two things it must not skip, both of which amend_body does:
+  re-derive the trailer columns from the new prose (ANTS-4576/4599, or a
+  replacement silently changes what the render emits), and record the
+  before/after in history, since this op can destroy more text than any
+  other.
+
+  Open questions worth settling before building. Whether it needs a
+  confirmation argument — every other write is bounded by a locator, and
+  this one is bounded by nothing. Whether the markdown path gets it too,
+  or refuses. And whether it should require the caller to state the
+  expected current body, the way apply_edits' unique-`old` form makes a
+  duplicate re-send safe.
+  **Layman:** If a roadmap entry's text gets mangled, there is no way to rewrite it — only to patch pieces of it.
+  Kind: feature.
+  Source: pressless-feedback-2026-09-01.
+  Lanes: remotecontrol, mcp.
+
+- ✅ [ANTS-4809] **The review partition no longer offers lanes over a tree the repository ignores.**
+  LottoTracker got 17 lanes, 14 of them over a gitignored directory of
+  scraped HTML, plus a nested duplicate of it. The partition walk consulted
+  isNoiseDir, which knows the CONVENTIONAL exclusions, and never asked the
+  repository about its own — so it disagreed with workspace_search, which
+  respects .gitignore by default, about what the project contains.
+
+  The sharp half is not the noise. A lane is an instruction to a subagent
+  to read what it names, and on that project the ignored tree held data
+  kept out of the repository on purpose.
+
+  Both walks now consult git: the partition, and ANTS-4786's coverage
+  report, which would otherwise report every ignored file as an uncovered
+  one and contradict the partition about the same tree.
+
+  Built on ANTS-4092's helper rather than a second copy — it moves out of
+  projectsettings.cpp's anonymous namespace as ProjectSettings::
+  gitIgnoredPaths. One directory-only pass, then ONE `git check-ignore`
+  over the result: enumerating directories is cheap where enumerating an
+  ignored tree's files is not.
+
+  It FAILS OPEN, like its first caller: no repo, no git, or a timeout
+  yields an empty set and the previous behaviour. That is also why the
+  test asserts `git init` succeeded and that real lanes survive — without
+  both, a vacuous pass would look identical. Verified red by disabling the
+  filter: the lane and both ignored files came back.
+  **Layman:** The review splitter was pointing reviewers at private data the project deliberately excludes.
+  Kind: fix.
+  Source: lottotracker-feedback-2026-09-01.
+  Lanes: remotecontrol, mcp.
+
+- ✅ [ANTS-4810] **spec_query accepts the topic-suffixed spec id invariant_check returns.**
+  invariant_check returns matched_specs[].id as the file stem, so on a
+  project whose specs are named <ID>-<topic>.md it hands back
+  LOTTO-0014-http-surface-and-security. spec_query refused that with
+  bad_id: its grammar required the id to END in digits.
+
+  write-code's Phase 0 prescribes exactly that sequence — invariant_check
+  to find which specs govern an edit, then spec_query to read one — so the
+  break was at the join between the two documented halves of one lookup,
+  and it cost a cycle on every such lookup.
+
+  isValidSpecId's first arm now accepts an optional topic suffix. This is
+  the same repair ANTS-3436 made to the numeric arm, for the same stated
+  reason: the read surface must accept the identifiers this server hands
+  out.
+
+  Nothing downstream needed teaching — resolveSpecRelForId already tries
+  the exact <id>.md before the <id>-*.md glob, so a suffixed id resolves
+  to the file it names and a bare prefix still matches the glob. The char
+  class still excludes / and ., so a longer id cannot leave the specs dir;
+  the test asserts that directly. Both refusal messages now name the
+  accepted form. Test: McpSpecQuery.Ants4810TopicSuffixedIdResolves.
+  **Layman:** Two tools disagreed about how to spell the same spec's name, so a documented two-step lookup failed at the join.
+  Kind: fix.
+  Source: lottotracker-feedback-2026-09-01.
+  Lanes: remotecontrol, mcp.
+
 ### Ants MCP feedback from CC sessions — 2026-08-28 triage
 
 - 📋 [ANTS-4746] **A verb that reads this session's completed subagent returns, so a fan-out that outlives a compaction is recoverable.**
