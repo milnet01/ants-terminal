@@ -12,6 +12,7 @@
 #include "focusedtest.h"
 #include "config.h"
 #include "pathvalidation.h"
+#include "projectlayoutengine.h"   // ANTS-3353
 #include "projectsettings.h"    // ANTS-2160 — .ants/project.json overrides
 #include "roadmapstore.h"       // ANTS-4622 — session_orient's mail_pending
 #include "similarcode.h"
@@ -1764,15 +1765,64 @@ QJsonDocument RemoteControl::cmdSessionOrient(const QJsonObject &req)
         // standard projects). Does NOT contribute to allOk.
         constexpr int kSuggestLowWaterMark = 5;
         const int fileCount = ci.value(QStringLiteral("file_count")).toInt(-1);
-        if (fileCount >= 0 && fileCount < kSuggestLowWaterMark
-            && !QFileInfo::exists(rootCanonical
-                                  + QStringLiteral("/.ants/project.json"))) {
+        const bool unconfigured = !QFileInfo::exists(
+            rootCanonical + QStringLiteral("/.ants/project.json"));
+        // ANTS-3353 — the AUX layout decides too, not the source count alone.
+        // The old gate fired only when codebase_index came back near-empty, so
+        // a project whose source layout is fine and whose roadmap lives at
+        // `docs/ROADMAP.md` never heard that the settings file exists — and
+        // that is precisely the layout it exists to pin. The resolution is
+        // ProjectLayoutEngine's and is injected rather than recomputed: that
+        // engine reads ProjectSettings, so calling it from there would leave
+        // the two with no order between them.
+        //
+        // Cheap by construction. scanLayout is cached, and the comparison is
+        // against the conventional defaults, so a standard project proposes
+        // nothing, skips the walk, and keeps an ETag-stable envelope. A
+        // non-standard one pays one walk per call until it writes the file,
+        // after which the present:true short-circuit returns before the walk.
+        ProjectSettings::ResolvedAux aux;
+        bool auxOffDefault = false;
+        if (unconfigured) {
+            const auto lay = ProjectLayoutEngine::scanLayout(rootCanonical);
+            aux.specsDir   = lay.specsDir;
+            aux.roadmap    = lay.roadmap.path;
+            aux.changelog  = lay.changelog.path;
+            auxOffDefault =
+                (!aux.specsDir.isEmpty()
+                 && aux.specsDir != QStringLiteral("docs/specs"))
+                || (!aux.roadmap.isEmpty()
+                    && aux.roadmap != QStringLiteral("ROADMAP.md"))
+                || (!aux.changelog.isEmpty()
+                    && aux.changelog != QStringLiteral("CHANGELOG.md"));
+        }
+        const bool sourceLooksMisplaced =
+            fileCount >= 0 && fileCount < kSuggestLowWaterMark;
+        if (unconfigured && (sourceLooksMisplaced || auxOffDefault)) {
             const ProjectSettings::Suggestion sug =
-                ProjectSettings::detect(rootCanonical);
-            if (sug.sourceRoots) {
+                ProjectSettings::detect(rootCanonical, aux);
+            // ANTS-3353 — ANY proposed key opens the suggestion, not
+            // source_roots alone. detect() has computed the aux block since
+            // ANTS-4093, and this dropped every one of them on the floor.
+            const bool anySuggestion =
+                sug.sourceRoots || sug.testRoots || sug.docsDir
+                || sug.specsDir || sug.roadmap || sug.changelog;
+            if (anySuggestion) {
                 QJsonObject suggested;
-                suggested[QStringLiteral("source_roots")] =
-                    QJsonArray::fromStringList(*sug.sourceRoots);
+                if (sug.sourceRoots)
+                    suggested[QStringLiteral("source_roots")] =
+                        QJsonArray::fromStringList(*sug.sourceRoots);
+                if (sug.testRoots)
+                    suggested[QStringLiteral("test_roots")] =
+                        QJsonArray::fromStringList(*sug.testRoots);
+                if (sug.docsDir)
+                    suggested[QStringLiteral("docs_dir")]   = *sug.docsDir;
+                if (sug.specsDir)
+                    suggested[QStringLiteral("specs_dir")]  = *sug.specsDir;
+                if (sug.roadmap)
+                    suggested[QStringLiteral("roadmap")]    = *sug.roadmap;
+                if (sug.changelog)
+                    suggested[QStringLiteral("changelog")]  = *sug.changelog;
                 QJsonObject sg;
                 sg[QStringLiteral("reason")]               = sug.reason;
                 sg[QStringLiteral("suggested")]            = suggested;

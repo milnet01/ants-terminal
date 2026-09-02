@@ -10802,12 +10802,28 @@ fixes don't address. Roadmapped here as their own design tasks.
   Source: DOOM_Ants feedback 2026-06-27 (4a/4b-i bring-up).
   Resolved (2026-06-27): file_outline's cpp scanner now registers `typedef struct TAG_s { … } ALIAS_t;` (and anonymous `typedef struct { … } ALIAS_t;`) as aggregate symbols — a pending-typedef recorded at the opening line emits at the matching close via the existing braceDepth bookkeeping, keyed by BOTH alias and tag with a signature starting "struct" so ANTS-2222's aggregate-body brace-match reads the full struct. read_region symbol:"subsector_t"/"subsector_s" now resolve. Forward decls unaffected. Regression test: file_outline_typedef_struct TS-1..5.
 
-- 📋 [ANTS-2229] **Review Changes dialog stops auto-updating on in-place / subdirectory edits.**
+- ✅ [ANTS-2229] **Review Changes dialog stops auto-updating on in-place / subdirectory edits.**
   User reports the Review Changes dialog (diffviewer.cpp, ANTS-1145) no longer auto-refreshes — they must click Refresh. Diagnosis: the QFileSystemWatcher (0.7.32) watches only the repo ROOT dir + .git internals (HEAD/index/refs/logs). Two structural gaps: (1) QFileSystemWatcher::directoryChanged fires on dir-ENTRY changes (create/rename/delete), NOT on in-place content edits, so an editor that rewrites a file in place triggers nothing; (2) the watch is non-recursive, so editing a file in any SUBDIRECTORY (e.g. src/foo.cpp) never fires the cwd watch, and an unstaged edit doesn't touch .git/index either. So auto-refresh only ever fired on git ops (commit/checkout/add) or atomic-rename saves of root-level files — likely a perceived regression now that work is in subdirs. Candidate fix: add a low-frequency safety-net re-probe QTimer (~2-3 s, gated by the existing 0.7.37 diff-skip so an unchanged probe is a no-op render — zero scroll/flicker churn), mirroring the roadmap dialog's watcher+manual-refresh safety net but periodic since the diff'd file SET is dynamic. Confirm whether the regression is this watcher-scope gap (auto-updates on commit but not on bare save) vs. a render-path regression from the b5b5d13 QTextEdit→QTextBrowser swap before implementing. Kind: fix. Lanes: diffviewer.
   **Layman:** Make the 'Review Changes' window refresh itself when you save a file, instead of you having to click Refresh.
   Kind: fix.
   Lanes: diffviewer.
   Source: user-report-2026-06-27.
+  Resolved (2026-09-02) by ANTS-3509, a duplicate filed from CC-session
+  feedback against the same symptom. Verified in source, not inferred: the
+  comment at the watcher setup in diffviewer.cpp says outright that it
+  supersedes the 0.7.32 QFileSystemWatcher design, and it names BOTH
+  structural gaps this item diagnosed.
+  The fix is a raw-inotify DirTreeWatcher rather than the periodic
+  re-probe timer proposed here. It answers gap 1 because a directory watch
+  reports child IN_MODIFY, so an in-place content edit fires; and gap 2
+  because the watch set is the gitignore-aware set of working-tree
+  directories, so a subdirectory edit is covered. Watching directories
+  rather than one watch per tracked file is roughly 4x fewer watches,
+  which the timer proposal would not have improved on.
+  This item's other instruction was answered too: it said to confirm the
+  cause was the watcher scope rather than a render-path regression from
+  the QTextEdit to QTextBrowser swap, before implementing. The shipped fix
+  is entirely in the watcher, so the diagnosis held.
 
 - ✅ [ANTS-2234] **`read_region` section selector: forgiving match for a heading's short title when it carries a trailing parenthetical (ANTS-2221 follow-up).**
   resolveSection (src/readregion.cpp) matches a heading only on EXACT
@@ -10894,11 +10910,43 @@ fixes don't address. Roadmapped here as their own design tasks.
   different populations. If the original intent was broader — no debt-sweep entry
   in the prose ledger at all — ANTS-3701 is the thing to revert, not this.
 
-- 📋 [ANTS-3353] **Make `.ants/project.json` self-advertising for any non-standard layout, not just non-src source.**
+- ✅ [ANTS-3353] **Make `.ants/project.json` self-advertising for any non-standard layout, not just non-src source.**
   Discoverability gap (user question 2026-06-28): a CC session learns about .ants/project.json almost only via session_orient's project_settings_suggestion, which (1) fires only when codebase_index is near-empty (source not under src/) and (2) suggests source_roots ONLY. ProjectSettings::detect analyses source layout only. Other sessions don't read Ants's CLAUDE.md, and project_settings isn't in the SessionStart prelude. Fix: extend ProjectSettings::detect to ALSO flag off-default docs_dir/roadmap/changelog/specs_dir (compare project_layout's resolved paths vs the conventional defaults), and have session_orient surface those keys in project_settings_suggestion + the ANTS-3352 next_step — so the file self-advertises on the first call for ANY non-standard layout, staying silent (ETag-stable) for standard ones. Decided AGAINST: adding project_settings to the always-on SessionStart prelude (standing token cost for a low-frequency setup verb) and per-verb scattered hints (redundant once session_orient covers it). ANTS-3352 (next_step nudge) already shipped as the first increment.
   **Layman:** Right now another Claude session only learns it can create a project-settings file if its code isn't in the usual `src/` folder. If its code is fine but its roadmap/changelog/docs live somewhere unusual, it never hears about the file — so the helpful path-pinning never happens.
   Kind: enhancement.
   Source: user-request-2026-06-28.
+  Resolved (2026-09-02). Half of this had already landed and half had not,
+  and checking which was the first job.
+  ANTS-4093 made detect() propose the aux block on every path, including
+  the one where the source layout is fine — so the engine had stopped
+  being source-only. But session_orient still gated on a near-empty
+  codebase_index AND emitted `source_roots` alone, so those keys were
+  computed and dropped. Both are fixed.
+  The gate now opens on either cause: a thin index, or an aux path that
+  differs from the convention. A project with a healthy src/ and a roadmap
+  at docs/ROADMAP.md is exactly the layout the settings file exists to
+  pin, and was the one case that heard nothing.
+  Off-default detection reuses ProjectLayoutEngine's resolution rather
+  than a new heuristic, as the item proposed. It is INJECTED, not called:
+  that engine already reads ProjectSettings, and closing the loop would
+  leave the two modules with no order between them. The injection is the
+  shape SpecLint's requiredSections and DocSymbols' excludedNames use, for
+  the same stated reason.
+  Cost discipline kept, which the item asked for. scanLayout is cached and
+  the comparison is against the defaults, so a standard project proposes
+  nothing, never reaches the walk, and keeps an ETag-stable envelope. A
+  non-standard one pays one walk per call until it writes the file, after
+  which the present:true short-circuit returns before the walk — so the
+  cost is self-limiting rather than standing.
+  Three engine tests and one handler test. An EMPTY hint means "not
+  resolved", never "resolved to nothing", and has its own test: without it
+  the injection would silently delete a correct proposal for every caller
+  that supplies no hints. Verified by mutation — ignoring the hint reddens
+  the positive row and correctly leaves both controls green, since those
+  guard against over-application rather than under-application.
+  The decisions this item recorded AGAINST are still not taken: no
+  project_settings entry in the SessionStart prelude, and no per-verb
+  hints. Full suite green.
 
 - ✅ [ANTS-3367] **Unify the build-dir candidate list — auditdialog's two probe loops vs AuditEngine::resolveCompileCommands.**
   ANTS-2182 added AuditEngine::resolveCompileCommands(projectRoot) for the MCP toolArgv path (returns the full compile_commands.json PATH for cppcheck --project / clazy -p). The in-app AuditDialog still has two near-identical inline probe loops (auditdialog.cpp ~1184-1190 clang-tidy, ~1299-1306 clazy) that return the relative build-dir NAME for shell `cd`/`-p .` strings. Three copies of the {build, build-fast, build-asan, build-workstation, build-release, build-debug, build-test} list = the genuine Rule-of-Three trigger (the list already caused ANTS-1707 when a static copy missed build-fast). Left un-merged in ANTS-2182 to stay surgical (different return shapes: PATH vs NAME). Fix: add a sibling AuditEngine::resolveBuildDir(projectRoot) returning the dir name (or have resolveCompileCommands expose the candidate list) and migrate both auditdialog loops onto it. Low risk, same subsystem.

@@ -259,3 +259,41 @@ TEST(session_orient_bundle, Inv11ServerBuildStaleFlag) {
     }
     EXPECT_EQ(0, expect_failures());
 }
+
+// ANTS-3353 — the project_settings_suggestion gate is no longer the source
+// count alone, and the emitted block is no longer source_roots alone.
+//
+// The old gate fired only when codebase_index came back near-empty, so a
+// project whose source layout is fine and whose roadmap lives at
+// `docs/ROADMAP.md` never heard that the settings file exists — and that is
+// precisely the layout the file exists to pin. detect() had computed the aux
+// block since ANTS-4093; this handler dropped every key of it.
+//
+// The handler needs a live MainWindow, so this is a scrape — bounded by the
+// function body rather than a byte window (ANTS-3681).
+TEST(SessionOrientBundle, Ants3353SuggestionCoversTheAuxLayout) {
+    const std::string body = ants_test::slurpFunctionBody(
+        ants_test::slurpRemoteControl(), "cmdSessionOrient");
+    ASSERT_FALSE(body.empty()) << "cmdSessionOrient body not found";
+
+    // The gate admits an off-default aux layout, not only a thin index.
+    EXPECT_NE(body.find("auxOffDefault"), std::string::npos)
+        << "the aux layout must be able to open the suggestion on its own";
+    EXPECT_NE(body.find("sourceLooksMisplaced || auxOffDefault"),
+              std::string::npos)
+        << "and either cause alone must be sufficient";
+
+    // Every key detect() can propose is emitted, not just source_roots.
+    for (const char *key : {"source_roots", "test_roots", "docs_dir",
+                            "specs_dir", "roadmap", "changelog"})
+        EXPECT_NE(body.find(std::string("\"") + key + "\""), std::string::npos)
+            << "suggestion drops a key detect() computed: " << key;
+
+    // The resolution is injected, not recomputed here — ProjectLayoutEngine
+    // reads ProjectSettings, so the reverse call would leave the two modules
+    // with no order between them.
+    EXPECT_NE(body.find("ProjectLayoutEngine::scanLayout"), std::string::npos);
+    EXPECT_NE(body.find("ProjectSettings::detect(rootCanonical, aux)"),
+              std::string::npos)
+        << "detect must receive the resolved paths rather than re-deriving";
+}

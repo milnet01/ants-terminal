@@ -163,19 +163,39 @@ bool validFileUnder(const QString &root, const QString &rel) {
 // verb's `if (sug.field)` emission and the op:init applyWrite re-check are safe.
 // Called only where s.sourceRoots is set — the aux keys ride ONLY on a
 // suggestion (a standard layout proposes nothing; INV-1/INV-6 unchanged).
-void proposeAuxLayout(Suggestion &s, const QString &root) {
+void proposeAuxLayout(Suggestion &s, const QString &root,
+                      const ResolvedAux &aux) {
     QStringList testDirs;
     for (const QString &d : {QStringLiteral("tests"), QStringLiteral("test")})
         if (validDirUnder(root, d)) testDirs << d;
     if (!testDirs.isEmpty()) s.testRoots = testDirs;
     if (validDirUnder(root, QStringLiteral("docs")))
         s.docsDir = QStringLiteral("docs");
+    // ANTS-3353 — an injected RESOLVED path wins over the conventional probe
+    // when it differs from the default. That is the whole point: a project
+    // already at the conventional path gains nothing by declaring it, while
+    // one whose roadmap is `docs/ROADMAP.md` is exactly the layout the file
+    // exists to pin — and was the case that heard nothing.
+    //
+    // A resolved path EQUAL to the default proposes nothing new, so a standard
+    // project stays silent and its envelope stays ETag-stable.
+    const auto preferResolved = [](std::optional<QString> &slot,
+                                   const QString &resolved,
+                                   const QString &conventional) {
+        if (!resolved.isEmpty() && resolved != conventional) slot = resolved;
+    };
+
     if (validDirUnder(root, QStringLiteral("docs/specs")))
         s.specsDir = QStringLiteral("docs/specs");
+    preferResolved(s.specsDir, aux.specsDir, QStringLiteral("docs/specs"));
+
     if (validFileUnder(root, QStringLiteral("ROADMAP.md")))
         s.roadmap = QStringLiteral("ROADMAP.md");
+    preferResolved(s.roadmap, aux.roadmap, QStringLiteral("ROADMAP.md"));
+
     if (validFileUnder(root, QStringLiteral("CHANGELOG.md")))
         s.changelog = QStringLiteral("CHANGELOG.md");
+    preferResolved(s.changelog, aux.changelog, QStringLiteral("CHANGELOG.md"));
 }
 
 // ANTS-4092 — the candidate dirs git itself ignores. workspace_search
@@ -254,7 +274,7 @@ bool isNoiseDir(const QString &name) {
     return noise.contains(name);
 }
 
-Suggestion detect(const QString &rootCanonical) {
+Suggestion detect(const QString &rootCanonical, const ResolvedAux &aux) {
     Suggestion s;
     if (rootCanonical.isEmpty()) return s;
     if (QFileInfo::exists(rootCanonical + QStringLiteral("/.ants/project.json"))) {
@@ -349,7 +369,7 @@ Suggestion detect(const QString &rootCanonical) {
         // unmentioned — and the cheapest read of that is "nothing to
         // configure", which leaves the project in the state this verb exists
         // to end. The probe is a handful of stat calls (proposeAuxLayout).
-        proposeAuxLayout(s, rootCanonical);
+        proposeAuxLayout(s, rootCanonical, aux);
         // …and say what the "no override" verdict is ABOUT. It was only ever
         // true of source_roots.
         s.reason = QStringLiteral(
@@ -368,7 +388,7 @@ Suggestion detect(const QString &rootCanonical) {
     // rootLevel==0 falls through to the subdir list (INV-14/INV-17).
     if (rootLevel > 0) {
         s.sourceRoots = QStringList{QStringLiteral(".")};
-        proposeAuxLayout(s, rootCanonical);            // ANTS-3588 (INV-19)
+        proposeAuxLayout(s, rootCanonical, aux);            // ANTS-3588 (INV-19)
         s.reason = QStringLiteral(
             "default src/+tests/ walk indexed %1 of %2 source files; %3 file(s) "
             "sit loose at the repo root — suggesting the whole-root walk (\".\") "
@@ -403,7 +423,7 @@ Suggestion detect(const QString &rootCanonical) {
     int covered = 0;
     for (const auto &p : cands) { chosen << p.first; covered += p.second; }
     s.sourceRoots = chosen;
-    proposeAuxLayout(s, rootCanonical);                // ANTS-3588 (INV-19)
+    proposeAuxLayout(s, rootCanonical, aux);                // ANTS-3588 (INV-19)
     s.reason = QStringLiteral(
         "default src/+tests/ walk indexed %1 of %2 source files; %3 hold(s) %4")
         .arg(s.defaultSourceCount).arg(total)

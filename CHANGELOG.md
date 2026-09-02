@@ -220,6 +220,12 @@ for security-relevant changes.
 
 ### Changed
 
+- **`session_orient` offers project settings for any non-standard layout** (ANTS-3353)
+  A project whose code sits where Ants expects but whose roadmap, changelog
+  or specs live somewhere unusual now hears that it can pin those paths —
+  previously only a project with misplaced SOURCE was told. The suggestion
+  carries every path it found, not just the source directories.
+
 - **A gap in a spec's invariant numbering now reads as evidence, not a defect** (ANTS-3684)
   A spec that continues a parent spec's numbering keeps its ids, and
   renumbering would break the citations — so the gap is real and the
@@ -266,6 +272,11 @@ for security-relevant changes.
   `Inv2BypassesStatusAndPagination` anchored on a string that also matches an earlier `else if`, so its byte window opened above the branch it names — a test that passes from the wrong position gives no signal when the thing it names moves. Re-anchored on a needle that occurs once, and proved by mutation in both directions.
 
 ### Fixed
+
+- **The Review Changes dialog refreshes when a file is saved in place** (ANTS-2229)
+  Closed by the watcher rewrite already shipped under ANTS-3509: edits to
+  an existing file, and edits anywhere in a subdirectory, now refresh the
+  diff without a manual Refresh.
 
 - **A spec that quotes the test-clause marker parses whole** (ANTS-3676)
   The spec reader took the first occurrence of the marker wherever it

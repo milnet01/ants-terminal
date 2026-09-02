@@ -128,7 +128,28 @@ struct Suggestion {
 // repo root is noted in `reason` as an un-suggestable remainder. `reason`
 // is ALWAYS non-empty; `excluded`/`wouldUseRoots` echo what was skipped /
 // already in effect.
-Suggestion detect(const QString &rootCanonical);
+// ANTS-3353 — the aux paths another engine has already RESOLVED, injected.
+//
+// `proposeAuxLayout` proposes a CONVENTIONAL path that exists, so a project
+// whose roadmap really is `docs/ROADMAP.md` was told nothing: its layout is
+// exactly the non-standard case the settings file exists for, and it was the
+// one case that never heard about it.
+//
+// The resolution already exists in ProjectLayoutEngine, and this module does
+// NOT call it. That engine reads ProjectSettings, so closing the loop would
+// leave two modules with no order between them. Injected instead — the shape
+// SpecLint's `requiredSections` and DocSymbols' `excludedNames` use, for the
+// same reason: the engine cannot reach the input, so the caller supplies it.
+//
+// Empty means "not resolved / not asked", never "resolved to nothing", so an
+// absent field leaves the conventional probe exactly as it was.
+struct ResolvedAux {
+    QString specsDir;
+    QString roadmap;
+    QString changelog;
+};
+
+Suggestion detect(const QString &rootCanonical, const ResolvedAux &aux = {});
 
 // Merge `changes` into `existing` for an op:"set"/"init" write. `changes`
 // carries only the caller-supplied keys; a JSON-null value REMOVES the key.

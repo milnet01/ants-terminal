@@ -346,3 +346,60 @@ TEST(ProjectSettings, ConsumerWiring) {
     EXPECT_TRUE(has(rc, "ProjectSettings::load"));   // finders + spec routing
     EXPECT_TRUE(has(pl, "ProjectSettings::load"));   // scanLayout()
 }
+
+// ANTS-3353 — an off-default aux path is PROPOSED, and a conventional one is
+// not. proposeAuxLayout only ever probed the conventional locations, so the
+// project whose roadmap really is `docs/ROADMAP.md` — exactly the layout the
+// settings file exists to pin — was the one that heard nothing.
+//
+// The resolution is injected rather than recomputed here: ProjectLayoutEngine
+// already reads ProjectSettings, so calling it from ProjectSettings would
+// leave the two modules with no order between them.
+TEST(ProjectSettings, Ants3353ResolvedAuxPathIsProposedOverTheConvention) {
+    QTemporaryDir dir;
+    const QString root = canon(dir);
+    // A source layout that MISSES, so a suggestion is produced at all.
+    writeFile(root + "/engine/foo.c", cFile("foo"));
+    writeFile(root + "/docs/ROADMAP.md", QStringLiteral("# r\n"));
+
+    ProjectSettings::ResolvedAux aux;
+    aux.roadmap = QStringLiteral("docs/ROADMAP.md");
+    const ProjectSettings::Suggestion s = ProjectSettings::detect(root, aux);
+
+    EXPECT_EQ(s.roadmap.value_or(QString()), QStringLiteral("docs/ROADMAP.md"))
+        << "the resolved off-default path is what a caller should declare";
+}
+
+// The silence half, and the one that keeps this from becoming noise: a
+// resolved path EQUAL to the convention proposes nothing new, so a standard
+// project's envelope is unchanged and stays ETag-stable.
+TEST(ProjectSettings, Ants3353ConventionalResolvedPathChangesNothing) {
+    QTemporaryDir dir;
+    const QString root = canon(dir);
+    writeFile(root + "/engine/foo.c", cFile("foo"));
+    writeFile(root + "/ROADMAP.md", QStringLiteral("# r\n"));
+
+    ProjectSettings::ResolvedAux aux;
+    aux.roadmap = QStringLiteral("ROADMAP.md");          // the default
+    const ProjectSettings::Suggestion withHint = ProjectSettings::detect(root, aux);
+    const ProjectSettings::Suggestion without  = ProjectSettings::detect(root);
+    EXPECT_EQ(withHint.roadmap.value_or(QString()),
+              without.roadmap.value_or(QString()))
+        << "a conventional resolution must not change what is proposed";
+}
+
+// An EMPTY hint means "not resolved / not asked", never "resolved to
+// nothing" — so it must leave the conventional probe exactly as it was.
+// Without this the injection would silently delete a correct proposal on
+// every caller that does not supply hints.
+TEST(ProjectSettings, Ants3353EmptyHintLeavesTheConventionalProbeAlone) {
+    QTemporaryDir dir;
+    const QString root = canon(dir);
+    writeFile(root + "/engine/foo.c", cFile("foo"));
+    writeFile(root + "/ROADMAP.md", QStringLiteral("# r\n"));
+    writeFile(root + "/CHANGELOG.md", QStringLiteral("# c\n"));
+
+    const ProjectSettings::Suggestion s = ProjectSettings::detect(root, {});
+    EXPECT_EQ(s.roadmap.value_or(QString()), QStringLiteral("ROADMAP.md"));
+    EXPECT_EQ(s.changelog.value_or(QString()), QStringLiteral("CHANGELOG.md"));
+}
