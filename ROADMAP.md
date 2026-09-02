@@ -49531,6 +49531,57 @@ volume classes, and the tooling/documentation gaps the run exposed.
   Source: in-session-2026-09-02.
   Lanes: ci.
 
+- 📋 [ANTS-4797] **Test bundles' SRC_*_PATH defines are target-wide, so one new define recompiles the whole bundle.**
+  MEASURED in-session, twice, on the same day:
+
+    test_audit  -- new source + 2 target_compile_definitions -> 55 TUs
+    test_claude -- new source only, reusing an existing define ->  2 TUs
+
+  A 27x difference, and the cause is only that the defines are attached
+  with target_compile_definitions(<bundle> PRIVATE ...). Every TU in the
+  bundle carries them in its command line, so adding one SRC_*_PATH
+  invalidates all ~55 objects even though exactly one test reads it.
+
+  This is the repo's single most common build operation -- there are 553
+  directories under tests/features/, and a feature test that scrapes a
+  source file needs a path define by construction.
+
+  Fix shape: set_source_files_properties(<the one test .cpp> PROPERTIES
+  COMPILE_DEFINITIONS "...") instead, leaving genuinely shared defines
+  (ANTS_SOURCE_DIR, ANTS_RC_SOURCES) target-wide. Costs no RAM, no
+  desktop responsiveness, and no behaviour -- it is purely a narrowing of
+  what the define is attached to.
+
+  Not attempted in the session that measured it: it touches several
+  bundles' define blocks at once and a mistake there is a broken build,
+  so it wants its own pass with a full-suite run either side.
+  **Layman:** Adding one new test that needs a file path rebuilds about sixty files instead of one, every time.
+  Kind: perf.
+  Source: in-session-2026-09-02.
+  Lanes: build, tests.
+
+- 📋 [ANTS-4798] **link_pool was tuned before mold became the default linker and has not been re-measured since.**
+  link_pool=1 (ANTS-1558) serialises the link step because a Qt link was
+  the heaviest single process in the build and the one most likely to
+  swap. There are 42 test executables, so that tail is 42 links in a row.
+
+  Raising it looks like the obvious win and may not be: ANTS-2233 made
+  mold the default linker afterwards, and mold is multi-threaded per
+  link. Two concurrent molds on a 12-core host contend for the same
+  cores, so link_pool=2 could be flat or worse rather than ~2x. The
+  fast preset's link_pool=2 was chosen pre-mold and inherits the same
+  question.
+
+  So this is an investigate item, not a change: time a cold link tail at
+  link_pool 1 vs 2 vs 3 on this host, with mold on, and set the default
+  from the measurement. Do NOT raise it on the strength of the old
+  comment's reasoning, which describes a linker the project no longer
+  uses by default.
+  **Layman:** The build links one program at a time on purpose. That rule was set before we switched to a much faster linker, so it may now be costing time for no reason -- or still be right. Nobody has checked.
+  Kind: investigate.
+  Source: in-session-2026-09-02.
+  Lanes: build.
+
 ### Ants MCP feedback from CC sessions — 2026-08-28 triage
 
 - 📋 [ANTS-4746] **A verb that reads this session's completed subagent returns, so a fan-out that outlives a compaction is recoverable.**
