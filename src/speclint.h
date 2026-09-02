@@ -152,6 +152,13 @@ struct Result {
     // is invisible is indistinguishable from a clean pass.
     bool sectionsExempt = false;
 
+    // ANTS-4623 — false when the document has no Tests section to compare
+    // § Invariants against, the one state in which the parity check cannot
+    // run. Reported rather than inferred from an empty findings list, for the
+    // reason `sectionsChecked` above is: a check that quietly declines to fire
+    // is indistinguishable from one that fired and found nothing.
+    bool testCoverageChecked = false;
+
     int  lineCount = 0;   // reported, NEVER emitted as a finding (INV-6)
     bool truncated = false;
 };

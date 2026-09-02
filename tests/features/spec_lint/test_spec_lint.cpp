@@ -1252,3 +1252,156 @@ TEST(SpecLint, Ants4739DocumentCanExemptItselfFromRequiredSections) {
     EXPECT_FALSE(quoted.sectionsExempt);
     EXPECT_EQ(countKind(quoted, "missing_section"), 2);
 }
+
+// ---------------------------------------------------------------------------
+// ANTS-4623 — § Invariants <-> § Tests parity.
+//
+// spec_lint checked that an invariant declares a test clause, and that the id
+// sequence has no hole. Nothing checked the OTHER direction: that the ids the
+// Tests section claims to cover are the ids § Invariants declares. The two
+// sections restate one set in different words and share no token to grep for,
+// so they can disagree indefinitely — which is why a citation search cannot
+// find this and a check has to.
+namespace {
+
+// A spec with a Tests section, so the parity check has both halves to compare.
+QString parityDoc(const QString &invariants, const QString &tests) {
+    return QStringLiteral("# ANTS-1 — a spec\n"
+                          "\n"
+                          "## 3. Invariants\n"
+                          "\n")
+           + invariants
+           + QStringLiteral("\n## 6. Tests\n\n")
+           + tests;
+}
+
+}  // namespace
+
+// A spec declaring three invariants whose Tests section names only two.
+TEST(SpecLint, Ants4623ReportsAnInvariantNoTestSectionNames) {
+    const QString doc = parityDoc(
+        QStringLiteral("- **INV-1** — one. *Test:* a.\n"
+                       "- **INV-2** — two. *Test:* b.\n"
+                       "- **INV-3** — three. *Test:* c.\n"),
+        QStringLiteral("INV-1 and INV-2 are covered by the fixture.\n"));
+    const auto r = SpecLint::check(doc, QStringLiteral("s.md"), {});
+    EXPECT_EQ(1, countKind(r, "test_coverage_gap"))
+        << "exactly the one id the Tests section never names";
+    const auto *f = firstOfKind(r, "test_coverage_gap");
+    ASSERT_NE(f, nullptr);
+    EXPECT_TRUE(f->message.contains(QStringLiteral("INV-3")))
+        << "and it says which: " << f->message.toStdString();
+    EXPECT_FALSE(f->autoFixable)
+        << "a coverage gap is never repaired by a machine";
+    EXPECT_TRUE(r.testCoverageChecked);
+}
+
+// The control. Full coverage must be silent, or the check is noise.
+TEST(SpecLint, Ants4623SilentWhenEveryInvariantIsNamed) {
+    const QString doc = parityDoc(
+        QStringLiteral("- **INV-1** — one. *Test:* a.\n"
+                       "- **INV-2** — two. *Test:* b.\n"),
+        QStringLiteral("INV-1, INV-2 — both covered.\n"));
+    const auto r = SpecLint::check(doc, QStringLiteral("s.md"), {});
+    EXPECT_EQ(0, countKind(r, "test_coverage_gap"));
+    EXPECT_TRUE(r.testCoverageChecked);
+}
+
+// Range notation defeats the comparison. The item hit this on a real spec and
+// chose the cheaper rule: report it as unverifiable rather than teach the
+// checker to expand ranges. Reporting gaps as well would be worse than saying
+// nothing — every id inside the range would read as uncovered.
+TEST(SpecLint, Ants4623RangeNotationIsUnverifiableNotAGap) {
+    const QString doc = parityDoc(
+        QStringLiteral("- **INV-1** — one. *Test:* a.\n"
+                       "- **INV-2** — two. *Test:* b.\n"
+                       "- **INV-3** — three. *Test:* c.\n"),
+        QStringLiteral("INV-1..INV-3 are covered by the bundle.\n"));
+    const auto r = SpecLint::check(doc, QStringLiteral("s.md"), {});
+    EXPECT_EQ(1, countKind(r, "test_coverage_unverifiable"));
+    EXPECT_EQ(0, countKind(r, "test_coverage_gap"))
+        << "a defeated comparison must not also report every id in the range";
+    EXPECT_TRUE(r.testCoverageChecked);
+}
+
+// No Tests section: the check cannot run, and must say so rather than report
+// every invariant as uncovered. Same contract sectionsChecked already uses.
+TEST(SpecLint, Ants4623NoTestsSectionSkipsRatherThanCondemns) {
+    const QString doc = QStringLiteral(
+        "# ANTS-1 — a spec\n"
+        "\n"
+        "## 3. Invariants\n"
+        "\n"
+        "- **INV-1** — one. *Test:* a.\n"
+        "- **INV-2** — two. *Test:* b.\n");
+    const auto r = SpecLint::check(doc, QStringLiteral("s.md"), {});
+    EXPECT_EQ(0, countKind(r, "test_coverage_gap"));
+    EXPECT_FALSE(r.testCoverageChecked)
+        << "a skipped check must not read as a clean pass";
+}
+
+// A tombstoned invariant has nothing left to test, so the Tests section is
+// right not to name it. The other two invariant checks already exempt these.
+TEST(SpecLint, Ants4623TombstoneIsNotACoverageGap) {
+    const QString doc = parityDoc(
+        QStringLiteral("- **INV-1** — one. *Test:* a.\n"
+                       "- **INV-2** — *withdrawn — folded into INV-1.*\n"),
+        QStringLiteral("INV-1 is covered.\n"));
+    const auto r = SpecLint::check(doc, QStringLiteral("s.md"), {});
+    EXPECT_EQ(0, countKind(r, "test_coverage_gap"))
+        << "a withdrawn invariant needs no coverage";
+}
+
+// The abbreviated notations, each found in this corpus during the pre-ship
+// measurement and each a false-positive source until handled. The rule is the
+// item's own, generalised: a BARE continuation cannot be expanded, so say the
+// comparison is unverifiable rather than reporting every id inside it.
+TEST(SpecLint, Ants4623AbbreviatedNotationsAreUnverifiable) {
+    const QString invs = QStringLiteral(
+        "- **INV-1** — one. *Test:* a.\n"
+        "- **INV-2** — two. *Test:* b.\n"
+        "- **INV-3** — three. *Test:* c.\n");
+    for (const char *tests : {"INV-1..7 are covered.\n",
+                              "INV-1/2 source-scrape; INV-3 behavioural.\n",
+                              "INV-1, 2 and 3 are covered.\n",
+                              "INV-1 to 3 are covered.\n"}) {
+        const auto r = SpecLint::check(
+            parityDoc(invs, QString::fromUtf8(tests)),
+            QStringLiteral("s.md"), {});
+        EXPECT_EQ(1, countKind(r, "test_coverage_unverifiable")) << tests;
+        EXPECT_EQ(0, countKind(r, "test_coverage_gap"))
+            << "abbreviated notation must not also report gaps: " << tests;
+    }
+}
+
+// The converse, and the boundary that keeps the rule from swallowing the
+// check: a FULLY-QUALIFIED list names its ids and is perfectly comparable, so
+// it must be compared rather than waved through as unverifiable.
+TEST(SpecLint, Ants4623QualifiedListIsComparedNotWavedThrough) {
+    const auto r = SpecLint::check(
+        parityDoc(QStringLiteral("- **INV-1** — one. *Test:* a.\n"
+                                 "- **INV-2** — two. *Test:* b.\n"
+                                 "- **INV-3** — three. *Test:* c.\n"),
+                  QStringLiteral("INV-1, INV-2 are covered.\n")),
+        QStringLiteral("s.md"), {});
+    EXPECT_EQ(0, countKind(r, "test_coverage_unverifiable"))
+        << "INV-1, INV-2 names both ids and is not abbreviated";
+    EXPECT_EQ(1, countKind(r, "test_coverage_gap"))
+        << "so the missing INV-3 is still reported";
+}
+
+// A Tests section naming NO id is not partial coverage — it is a document
+// that does not use per-id notation, and comparing against it condemns every
+// invariant. Measured: this gate alone removed 59 true-but-useless findings,
+// including a spec whose Tests section says it ships no code.
+TEST(SpecLint, Ants4623TestsSectionNamingNoIdsSkips) {
+    const auto r = SpecLint::check(
+        parityDoc(QStringLiteral("- **INV-1** — one. *Test:* a.\n"
+                                 "- **INV-2** — two. *Test:* b.\n"),
+                  QStringLiteral("This bullet ships no code, so there is no\n"
+                                 "feature-test file. Acceptance is a reading.\n")),
+        QStringLiteral("s.md"), {});
+    EXPECT_EQ(0, countKind(r, "test_coverage_gap"));
+    EXPECT_FALSE(r.testCoverageChecked)
+        << "no comparison was made, so this must not read as a clean pass";
+}

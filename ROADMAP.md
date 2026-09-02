@@ -12454,7 +12454,7 @@ fixes don't address. Roadmapped here as their own design tasks.
   Kind: test.
   Source: in-session-2026-08-19 (ANTS-4462 verification).
 
-- 📋 [ANTS-4623] **spec_lint has no §Invariants ↔ §Tests parity check.**
+- ✅ [ANTS-4623] **spec_lint has no §Invariants ↔ §Tests parity check.**
   Found while writing ANTS-4622's spec. `spec_lint` checks
   `invariant_no_test` (an INV with no test clause) and `invariant_id_gap`
   (a hole in the id sequence), but nothing checks the OTHER direction:
@@ -12477,6 +12477,40 @@ fixes don't address. Roadmapped here as their own design tasks.
   names) and `test_coverage_unverifiable` (range notation defeating the
   comparison). CANDIDATE, not a finding: a spec may legitimately leave an
   invariant to a surface the Tests section does not enumerate.
+  Resolved (2026-09-02): spec_lint compares the ids § Invariants declares
+  against the ids the Tests section names. Both suggested kinds shipped as
+  named, both CANDIDATES, neither auto-fixable.
+  Took the item's own call on ranges — report unverifiable rather than
+  expand — and then GENERALISED it, because the corpus writes coverage in
+  more shapes than a fully-qualified range. Measured, not guessed: at
+  first the check emitted 382 findings, 16.9% of all invariant anchors,
+  and sampling showed they were TRUE and useless. Three passes on real
+  data, each closing one class:
+  A Tests section naming NO id is not partial coverage, it is a document
+  not using id notation, so comparing against it condemns everything it
+  declares. That is the rule Options already states for its injected sets
+  — empty means skip. 382 to 323.
+  `INV-1..7` writes the second operand BARE, which the range detector
+  required to be qualified. It was the largest remaining class. 323 to
+  229.
+  `INV-1/2`, `INV-3, 4 and 5` and `INV-1 to 3` are the same problem with
+  different punctuation, so the rule became "a bare continuation cannot be
+  expanded" rather than a list of notations. 229 to 175.
+  `INV-1, INV-2` is deliberately NOT caught: it names both ids and is
+  comparable, so it is compared. A test holds that boundary, since a rule
+  that swallowed it would leave the check doing nothing.
+  Final: 175 gaps (7.8% of anchors) and 63 unverifiable over 249 specs.
+  Sampled true positives include ANTS-1432, whose Tests section names
+  INV-1 to INV-4 individually and never mentions the declared INV-5.
+  `test_coverage_checked` is reported, and both kinds go into skipped[]
+  with their own hint when it is false — a check that could not run must
+  not read as one that ran clean.
+  An existing invariant caught a real defect in the wiring: ANTS-4676
+  requires each hint to name every skipped[] entry it explains, and a
+  third hint in one envelope is exactly the condition that test was
+  written for. Its fixture now states coverage was checked, and the new
+  pair has its own row.
+  Full suite green.
   **Layman:** Catch a spec that declares ten contracts and only remembers to test eight.
   Kind: enhancement.
   Source: in-session-2026-08-22.

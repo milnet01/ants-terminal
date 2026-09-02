@@ -129,7 +129,7 @@ TEST(SpecLintVerb, Inv7RefusalMinimums) {
 
     // (3) nothing to scan → ok:true with EMPTY findings, not a refusal.
     const QJsonObject empty =
-        RemoteControl::specLintBuildResponse({}, false, {}, false, {}, 0, false);
+        RemoteControl::specLintBuildResponse({}, false, false, {}, false, {}, 0, false);
     EXPECT_TRUE(empty.value(QStringLiteral("ok")).toBool());
     EXPECT_TRUE(empty.value(QStringLiteral("findings")).toArray().isEmpty());
     EXPECT_TRUE(empty.value(QStringLiteral("checked_docs")).toArray().isEmpty());
@@ -155,7 +155,7 @@ TEST(SpecLintVerb, Ants4127SurfaceFieldsReachTheWire) {
     // layer where that is observable — a verb lane that never asserts it leaves
     // the claim untested.
     const QJsonObject empty =
-        RemoteControl::specLintBuildResponse({}, false, {}, false, {}, 0, false);
+        RemoteControl::specLintBuildResponse({}, false, false, {}, false, {}, 0, false);
     ASSERT_TRUE(empty.contains(QStringLiteral("surfaces_checked")));
     EXPECT_FALSE(empty.value(QStringLiteral("surfaces_checked")).toBool());
     ASSERT_TRUE(empty.contains(QStringLiteral("surfaces_resolved")));
@@ -164,7 +164,7 @@ TEST(SpecLintVerb, Ants4127SurfaceFieldsReachTheWire) {
     // The falsifying pair: checked TRUE with the counter at ZERO. An envelope
     // built by inferring the flag from the count cannot produce this row.
     const QJsonObject checked =
-        RemoteControl::specLintBuildResponse({}, false, {}, false, {}, 0, true);
+        RemoteControl::specLintBuildResponse({}, false, false, {}, false, {}, 0, true);
     EXPECT_TRUE(checked.value(QStringLiteral("surfaces_checked")).toBool());
     EXPECT_EQ(checked.value(QStringLiteral("surfaces_resolved")).toInt(), 0);
 
@@ -339,7 +339,7 @@ TEST(SpecLintVerb, Ants4666SkippedAndCountsAreDisjoint) {
     // Surfaces gated OFF, yet the invariant_no_test check has still produced a
     // finding — which is the exact envelope that was reported.
     const QJsonObject o = RemoteControl::specLintBuildResponse(
-        {f}, true, QJsonObject{}, false,
+        {f}, true, false, QJsonObject{}, false,
         QStringList{QStringLiteral("docs/specs/X.md")}, 0, false,
         QStringLiteral("docs/standards/specs.md"));
 
@@ -364,8 +364,11 @@ TEST(SpecLintVerb, Ants4666SkippedAndCountsAreDisjoint) {
 // tools/list taught the wrong model by promising one hint for the array.
 TEST(SpecLintVerb, Ants4676EachHintNamesItsSkippedEntry) {
     // The reporter's exact envelope: surfaces skipped, sections checked.
+    // ANTS-4623 — coverage parity CHECKED here, deliberately: this row is
+    // about the surface pair, and a third skipped check would change the
+    // scenario rather than extend it. The new pair gets its own row below.
     const QJsonObject o = RemoteControl::specLintBuildResponse(
-        {}, true, QJsonObject{}, false,
+        {}, true, true, QJsonObject{}, false,
         QStringList{QStringLiteral("docs/specs/X.md")}, 0, false,
         QStringLiteral("~global/standards/spec-format.md"));
     QStringList skipped;
@@ -391,14 +394,38 @@ TEST(SpecLintVerb, Ants4676EachHintNamesItsSkippedEntry) {
         << "skipped_hint explains missing_section, which did NOT skip here — "
            "its absence is correct and is what the reporter read as a gap";
 
+    // ANTS-4623 — the same rule for the parity pair: its hint must name both
+    // entries it explains. A third hint in one envelope is exactly the
+    // condition that produced the mis-pairing this test exists for.
+    const QJsonObject cov = RemoteControl::specLintBuildResponse(
+        {}, true, false, QJsonObject{}, false,
+        QStringList{QStringLiteral("docs/specs/X.md")}, 0, true,
+        QStringLiteral("~global/standards/spec-format.md"));
+    QStringList covSkipped;
+    for (const QJsonValue &v : cov.value(QStringLiteral("skipped")).toArray())
+        covSkipped << v.toString();
+    EXPECT_EQ(covSkipped,
+              (QStringList{QStringLiteral("test_coverage_gap"),
+                           QStringLiteral("test_coverage_unverifiable")}))
+        << "only the parity pair skipped in this envelope";
+    const QString ch =
+        cov.value(QStringLiteral("test_coverage_skipped_hint")).toString();
+    for (const QString &k : covSkipped)
+        EXPECT_TRUE(ch.contains(k))
+            << "the parity hint must name every entry it explains: "
+            << ch.toStdString();
+    EXPECT_FALSE(cov.contains(QStringLiteral("surfaces_skipped_hint")))
+        << "surfaces were checked here, so its hint must be absent";
+
     // …and the sections hint names its own entry on BOTH of its arms.
     const QJsonObject none = RemoteControl::specLintBuildResponse(
-        {}, false, QJsonObject{}, false, QStringList{}, 0, false, QString());
+        {}, false, false, QJsonObject{}, false, QStringList{}, 0, false,
+        QString());
     EXPECT_TRUE(none.value(QStringLiteral("skipped_hint")).toString()
                     .contains(QStringLiteral("missing_section")))
         << "the empty-walk arm must name its entry too";
     const QJsonObject some = RemoteControl::specLintBuildResponse(
-        {}, false, QJsonObject{}, false,
+        {}, false, false, QJsonObject{}, false,
         QStringList{QStringLiteral("docs/specs/X.md")}, 0, false, QString());
     EXPECT_TRUE(some.value(QStringLiteral("skipped_hint")).toString()
                     .contains(QStringLiteral("missing_section")));
@@ -433,7 +460,8 @@ TEST(SpecLintVerb, Ants4080GlobalTierAndTheTwoSkipCauses) {
     // a true skip — the class ANTS-4373 exists to close, reintroduced by the
     // hint that predates this row.
     const QJsonObject none = RemoteControl::specLintBuildResponse(
-        {}, false, QJsonObject{}, false, QStringList{}, 0, false, QString());
+        {}, false, false, QJsonObject{}, false, QStringList{}, 0, false,
+        QString());
     ASSERT_TRUE(none.contains(QStringLiteral("skipped_hint")));
     const QString h = none.value(QStringLiteral("skipped_hint")).toString();
     EXPECT_TRUE(h.contains(QStringLiteral("no document was checked")))
@@ -444,7 +472,7 @@ TEST(SpecLintVerb, Ants4080GlobalTierAndTheTwoSkipCauses) {
     // A walk that DID read a document and still skipped names the paths that
     // were actually consulted — and there are now six, not four.
     const QJsonObject some = RemoteControl::specLintBuildResponse(
-        {}, false, QJsonObject{}, false,
+        {}, false, false, QJsonObject{}, false,
         QStringList{QStringLiteral("docs/specs/X.md")}, 0, false, QString());
     const QString h2 = some.value(QStringLiteral("skipped_hint")).toString();
     EXPECT_TRUE(h2.contains(QStringLiteral("docs/standards/spec-format.md")))
@@ -484,7 +512,7 @@ TEST(SpecLintVerb, Ants4737CountsAreUncappedAndOnlyFindingsAreTrimmed) {
 
     const auto build = [&](int cap) {
         return RemoteControl::specLintBuildResponse(
-            all, true, QJsonObject{}, false,
+            all, true, false, QJsonObject{}, false,
             QStringList{QStringLiteral("docs/specs/X.md")}, 0, false,
             QStringLiteral("docs/standards/specs.md"), cap);
     };

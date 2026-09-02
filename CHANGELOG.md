@@ -14,6 +14,13 @@ for security-relevant changes.
 
 ### Added
 
+- **`spec_lint` checks a spec's Invariants against its Tests section** (ANTS-4623)
+  Catches a spec that declares ten contracts and remembers to test eight —
+  the two sections restate one set in different words, so they share no
+  token to search for and could disagree indefinitely. Coverage written in
+  notation that cannot be expanded, such as `INV-1..7`, is reported as
+  unverifiable rather than as a pile of gaps.
+
 - **`find_definition` resolves C++ data members** (ANTS-3668)
   Asking where a struct field or an `m_`-prefixed member is declared used
   to come back empty, though the answer was sitting in a header. Measured

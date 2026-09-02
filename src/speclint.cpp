@@ -695,6 +695,127 @@ Result check(const QString &text, const QString &relPath,
         }
     }
 
+    // --- ANTS-4623: § Invariants <-> § Tests parity -----------------------
+    // The two invariant checks above ask whether an invariant declares a test.
+    // Neither asks the other direction: whether the ids the Tests section
+    // claims to cover are the ids § Invariants declares. The two sections
+    // restate one set in different words and share no token to grep for, so
+    // they can disagree indefinitely — which is why a citation search cannot
+    // find this class and a check has to.
+    {
+        static const QRegularExpression testsHdrRe(
+            QStringLiteral(R"(^ {0,3}##\s+(?:\d+\.\s+)?[Tt]ests\b)"));
+        static const QRegularExpression testsHdrLooseRe(
+            QStringLiteral(R"(^ {0,3}##\s+(?:\d+\.\s+)?[^\n]*\b[Tt]ests\b)"));
+        // Strict before loose, the same order the Invariants header uses and
+        // for the same reason: a document carrying both a real Tests section
+        // and a heading that merely mentions tests must take the real one.
+        int hdr = -1;
+        for (int i = 0; i < lines.size() && hdr < 0; ++i) {
+            if (i < fence.size() && fence[i]) continue;
+            if (testsHdrRe.match(lines[i]).hasMatch()) hdr = i;
+        }
+        for (int i = 0; i < lines.size() && hdr < 0; ++i) {
+            if (i < fence.size() && fence[i]) continue;
+            if (testsHdrLooseRe.match(lines[i]).hasMatch()) hdr = i;
+        }
+
+        // No Tests section: the comparison has one half. SKIP rather than
+        // report every invariant as uncovered — the contract `sectionsChecked`
+        // already sets, and the difference between the two states is what
+        // `testCoverageChecked` exists to carry.
+        if (hdr >= 0 && !ids.isEmpty()) {
+            r.testCoverageChecked = true;
+            int end = lines.size();
+            for (int i = hdr + 1; i < lines.size(); ++i) {
+                if (i < fence.size() && fence[i]) continue;
+                if (nextH2Re.match(lines[i]).hasMatch()) { end = i; break; }
+            }
+            QString section;
+            for (int i = hdr + 1; i < end; ++i)
+                section += lines[i] + QLatin1Char('\n');
+
+            // The second operand's `INV-` prefix is OPTIONAL, and that is not
+            // tidiness: `INV-1..7` is how this corpus most often writes a
+            // range, and requiring the prefix on both ends made every id
+            // inside such a range read as uncovered. It was the single
+            // largest false-positive class in the pre-ship measurement.
+            //
+            // A RANGE defeats the comparison rather than answering it. The
+            // cheaper rule of the two the item offered: say so, and report no
+            // gaps at all for this document. Expanding the range would mean
+            // guessing which ids the author meant; reporting gaps ALONGSIDE it
+            // would be worse than silence, since every id inside the range
+            // would read as uncovered.
+            // Two shapes, one meaning: notation this comparison cannot expand.
+            //
+            //   INV-1..INV-9   a fully-qualified range
+            //   INV-1..7       a range whose second operand is BARE
+            //   INV-1/2        a slash-joined pair
+            //   INV-3, 4 and 5 a comma/and list continuing with bare numbers
+            //
+            // The trigger for the second shape is a BARE continuation, which
+            // is what makes it undecidable: `INV-1, INV-2` names two ids and
+            // is perfectly comparable, so it is not caught here and must not
+            // be. Every corpus form found in the pre-ship measurement is one
+            // of these two.
+            static const QRegularExpression rangeRe(QStringLiteral(
+                R"(INV-[0-9]+[a-z]?\s*(?:\.\.\.?|\x{2013}|\x{2014}|-{1,2}|to)\s*INV-[0-9]+[a-z]?)"
+                R"(|INV-[0-9]+[a-z]?\s*(?:\.\.\.?|\x{2013}|\x{2014}|-{1,2}|/|,|\band\b|\bto\b)\s*[0-9]+[a-z]?\b)"));
+            const auto rangeM = rangeRe.match(section);
+            if (rangeM.hasMatch()) {
+                add(QStringLiteral("test_coverage_unverifiable"), hdr + 1,
+                    QStringLiteral("the Tests section states coverage as a "
+                                   "range (%1), which cannot be compared "
+                                   "against the declared ids (candidate)")
+                        .arg(rangeM.captured(0)));
+            } else {
+                static const QRegularExpression namedRe(
+                    QStringLiteral(R"(INV-[0-9]+[a-z]?(?![A-Za-z0-9]))"));
+                QSet<QString> named;
+                auto nit = namedRe.globalMatch(section);
+                while (nit.hasNext()) named.insert(nit.next().captured(0));
+
+                // A Tests section naming NO id is not partial coverage — it is
+                // a document that does not use per-id notation at all, and
+                // comparing against it condemns every invariant it declares.
+                // That is the rule `Options` above already states for its own
+                // injected sets: empty means SKIP, because a check against an
+                // empty set condemns everything it reads.
+                //
+                // Measured before the gate: 382 findings over this corpus,
+                // 16.9% of all invariant anchors, and the sampled ones were
+                // TRUE — ANTS-1120's Tests section says the bullet ships no
+                // code and names nothing. True and useless is still noise, and
+                // noise is where a real finding hides.
+                //
+                // What survives is the defect the item described: a spec that
+                // names SOME ids and misses others.
+                if (named.isEmpty()) {
+                    r.testCoverageChecked = false;
+                } else
+                for (const InvId &e : ids) {
+                    if (named.contains(e.id)) continue;
+                    // A withdrawn or moved invariant has nothing left to
+                    // test, so the Tests section is right not to name it —
+                    // the exemption both invariant checks above already make.
+                    const QJsonObject o = parsedById.value(e.id);
+                    if (isTombstone(o.value(QStringLiteral("body")).toString()))
+                        continue;
+                    // A CANDIDATE, never a verdict: a spec may legitimately
+                    // leave an invariant to a surface the Tests section does
+                    // not enumerate. Never autoFixable — nothing here knows
+                    // what the missing test would assert.
+                    add(QStringLiteral("test_coverage_gap"),
+                        anchorLine.value(e.id, hdr + 1),
+                        QStringLiteral("%1 is declared but the Tests section "
+                                       "names no coverage for it (candidate)")
+                            .arg(e.id));
+                }
+            }
+        }
+    }
+
     return r;
 }
 

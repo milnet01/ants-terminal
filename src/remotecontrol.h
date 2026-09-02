@@ -607,8 +607,12 @@ public:
     // same rule and are not defaulted here: a caller that forgets to pass them
     // should fail to compile rather than ship a silent zero, which is exactly
     // the "nobody checked, reported as clean" state the pair exists to prevent.
+    // ANTS-4623 — `testCoverageChecked` is the § Invariants <-> § Tests
+    // parity flag, reported for the reason its two siblings are: a check
+    // that could not run must not read as one that ran clean.
     static QJsonObject specLintBuildResponse(
         const QList<DocFinding::Finding> &findings, bool sectionsChecked,
+        bool testCoverageChecked,
         const QJsonObject &lineCounts, bool truncated,
         const QStringList &checkedDocs, int surfacesResolved,
         bool surfacesChecked,

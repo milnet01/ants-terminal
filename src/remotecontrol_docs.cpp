@@ -696,6 +696,7 @@ QJsonDocument RemoteControl::cmdSpecLint(const QJsonObject &req) {
     QJsonObject lineCounts;
     QStringList checked;
     bool truncated = false, sectionsChecked = false;
+    bool testCoverageChecked = false;   // ANTS-4623
     int idGapsSuppressed = 0;
     int sectionsExemptDocs = 0;
     // ANTS-4127 — the walk's total is the SUM over documents (§ 2.3), so a
@@ -741,6 +742,8 @@ QJsonDocument RemoteControl::cmdSpecLint(const QJsonObject &req) {
         const SpecLint::Result r = SpecLint::check(text, rel, opts);
         lineCounts[rel] = r.lineCount;
         sectionsChecked = sectionsChecked || r.sectionsChecked;
+        // ANTS-4623 — any document that had both halves to compare.
+        testCoverageChecked = testCoverageChecked || r.testCoverageChecked;
         idGapsSuppressed += r.idGapsSuppressed;
         if (r.sectionsExempt) ++sectionsExemptDocs;
         surfacesResolved += r.surfacesResolved;
@@ -757,6 +760,7 @@ QJsonDocument RemoteControl::cmdSpecLint(const QJsonObject &req) {
     // etag injected centrally (isEtagSupportedTool); docs_digest keeps it
     // content-sensitive (ANTS-3737 — same shape as doc_integrity).
     QJsonObject out = specLintBuildResponse(findings, sectionsChecked,
+                                            testCoverageChecked,
                                             lineCounts, truncated, checked,
                                             surfacesResolved, surfacesChecked,
                                             sectionsSource, callerCap);
@@ -778,6 +782,7 @@ QJsonDocument RemoteControl::cmdSpecLint(const QJsonObject &req) {
 // ANTS-3662 — pure: engine output → the response object.
 QJsonObject RemoteControl::specLintBuildResponse(
     const QList<DocFinding::Finding> &findings, bool sectionsChecked,
+    bool testCoverageChecked,
     const QJsonObject &lineCounts, bool truncated,
     const QStringList &checkedDocs, int surfacesResolved,
     bool surfacesChecked, const QString &sectionsSource, int maxFindings) {
@@ -807,6 +812,11 @@ QJsonObject RemoteControl::specLintBuildResponse(
             .value(QStringLiteral("spec_lint")).toObject();
     // Never omitted when false — see the header.
     o[QStringLiteral("sections_checked")] = sectionsChecked;
+    // ANTS-4623 — reported always, like its two siblings: no document in the
+    // walk had both a Tests section and an id-naming one, so the parity
+    // comparison was never made. An empty findings list is silent about
+    // coverage in that state, not a pass.
+    o[QStringLiteral("test_coverage_checked")] = testCoverageChecked;
     // ANTS-4373 — the shape AROUND the skip, which is a separate defect from
     // the check not running. `ok:true` with an empty `findings[]` is the same
     // envelope a genuinely clean run produces, and nothing said which standard
@@ -843,6 +853,10 @@ QJsonObject RemoteControl::specLintBuildResponse(
         skipped.append(QStringLiteral("test_surface_unwired"));
     }
     if (!sectionsChecked) skipped.append(QStringLiteral("missing_section"));
+    if (!testCoverageChecked) {
+        skipped.append(QStringLiteral("test_coverage_gap"));
+        skipped.append(QStringLiteral("test_coverage_unverifiable"));
+    }
     if (!skipped.isEmpty()) o[QStringLiteral("skipped")] = skipped;
     if (!surfacesChecked) {
         // ANTS-4679 — this stated a FALSE cause for a true skip, which is the
@@ -863,6 +877,17 @@ QJsonObject RemoteControl::specLintBuildResponse(
             "pass. Note `invariant_no_test` is NOT gated by this and always "
             "runs: an INV-N with no *Test:* clause is still reported. "
             "Tracked as ANTS-4393 / ANTS-4679.");
+    }
+    if (!testCoverageChecked) {
+        o[QStringLiteral("test_coverage_skipped_hint")] = QStringLiteral(
+            "explains test_coverage_gap / test_coverage_unverifiable in "
+            "skipped[]: no document in this walk had a Tests section that "
+            "names invariant ids, so § Invariants was compared against "
+            "nothing. Two causes, and both are the document's: there is no "
+            "Tests section at all, or it describes coverage in prose without "
+            "citing an INV-N. Neither is configurable here. Treat "
+            "`findings:[]` as SILENT about coverage parity, not as a pass. "
+            "Tracked as ANTS-4623.");
     }
     if (!sectionsChecked) {
         // Two causes, and the hint must name the right one. An empty walk
