@@ -123,13 +123,29 @@ QJsonDocument RemoteControl::cmdIndieReviewPartition(const QJsonObject &req) {
     }
     // ANTS-4771 — the computed walk admits only suffixes
     // CodebaseIndex::isIndexableSuffix accepts, which is narrower than
-    // "source" by design. Reported only when the computed partition was
-    // actually USED: `unassigned` is populated whenever the walk runs, but if
-    // the map's partition won, these counts describe a partition this reply
-    // does not carry, and a number describing something else is worse than no
-    // number. Gated on `derived` for that reason, not for brevity.
-    if (derived && unassigned.count > 0) {
-        env["unassigned_count"] = unassigned.count;
+    // "source" by design, so the files it drops are reported rather than lost.
+    // ANTS-4786 — the DECLARED partition needs the same answer and could not
+    // give it: `unassigned` is populated only when the computed walk runs, so
+    // on the map-driven path — the normal path here and on every migrated
+    // project — the envelope carried no coverage signal at all. Measured: 50
+    // lanes over 113 files, silent about the 200 they omitted (ANTS-4785).
+    //
+    // The QUESTION is one question, so the number means the same thing on both
+    // paths and the CAUSE is what the caller is told apart. Ask it of whichever
+    // partition this reply actually carries; a count describing the other one
+    // would be worse than no count, which is what the old `derived` gate was
+    // protecting.
+    QStringList unassignedSample;
+    const QString unassignedReason =
+        derived ? QStringLiteral("suffix_filter")
+                : QStringLiteral("incomplete_partition");
+    if (!derived) {
+        unassigned =
+            IndieReviewEngine::unassignedForLanes(root, lanes, &unassignedSample);
+    }
+    if (unassigned.count > 0) {
+        env["unassigned_count"]  = unassigned.count;
+        env["unassigned_reason"] = unassignedReason;
         QJsonObject bySuffix;
         for (auto it = unassigned.bySuffix.constBegin();
              it != unassigned.bySuffix.constEnd(); ++it) {
@@ -137,19 +153,33 @@ QJsonDocument RemoteControl::cmdIndieReviewPartition(const QJsonObject &req) {
                                         : it.key()] = it.value();
         }
         env["unassigned_by_suffix"] = bySuffix;
+        if (!unassignedSample.isEmpty()) {
+            QJsonArray sampleArr;
+            for (const QString &p : unassignedSample) sampleArr.append(p);
+            env["unassigned_sample"] = sampleArr;
+        }
+        const QString cause =
+            derived
+                ? QStringLiteral(
+                      "the computed partition admits only the suffixes the "
+                      "codebase index can outline — shell, and any language "
+                      "this project builds on that the index does not read, "
+                      "land here")
+                : QStringLiteral(
+                      "the partition this project declares does not name them "
+                      "— see `path` for the file that declares it, and "
+                      "`unassigned_sample` for where the gap starts");
         env["unassigned_hint"] = QStringLiteral(
             "%1 file(s) under the walked source roots are in NO lane, because "
-            "the computed partition admits only the suffixes the codebase "
-            "index can outline. See `unassigned_by_suffix` for what was "
-            "skipped — shell, and any language this project builds on that "
-            "the index does not read, land here. This is a coverage gap, not "
-            "a formatting note: a review driven by this partition will not "
-            "look at those files, and `file_count` counts only what survived "
-            "the filter. Cover them by committing "
-            "<projectPath>/.indie-review/partition.json with a lane naming "
-            "them, or brief them ad-hoc via indie_review_brief("
-            "lane=\"<label>\", source_paths=[...]).")
-                .arg(unassigned.count);
+            "%2. See `unassigned_by_suffix` for what was skipped. This is a "
+            "coverage gap, not a formatting note: a review driven by this "
+            "partition will not look at those files, and `file_count` counts "
+            "only what a lane covers. Cover them by editing "
+            "<projectPath>/.indie-review/partition.json to name them, or "
+            "brief them ad-hoc via indie_review_brief(lane=\"<label>\", "
+            "source_paths=[...]).")
+                .arg(unassigned.count)
+                .arg(cause);
     }
     if (lanes.size() <= 1 || derived) {
         env["sparse_partition"]      = true;

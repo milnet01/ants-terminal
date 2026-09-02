@@ -180,9 +180,91 @@ TEST(IndieReviewComputedPartition, Inv7NullReporterIsHarmless) {
     EXPECT_EQ(lanes.size(), 2);
 }
 
-// INV-8 — the handler surfaces the dropped files, and only when it used the
-// computed partition (ANTS-4771).
-TEST(IndieReviewComputedPartition, Inv8HandlerReportsUnassignedWhenDerived) {
+// INV-9 — a DECLARED partition is measured for coverage too (ANTS-4786).
+TEST(IndieReviewComputedPartition, Inv9DeclaredPartitionCoverageIsMeasured) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString root = seedProse(tmp, QStringList{
+        QStringLiteral("src/engine/core.cpp"),
+        QStringLiteral("src/engine/core.h"),
+        QStringLiteral("src/ui/window.cpp"),
+        QStringLiteral("src/tools/run.sh"),
+    });
+
+    // One lane naming one directory — the shape a module map produces, and the
+    // shape whose coverage nothing could previously ask about.
+    IndieReviewEngine::Lane engine;
+    engine.name        = QStringLiteral("engine");
+    engine.sourcePaths = QStringList{QStringLiteral("src/engine")};
+
+    QStringList sample;
+    const auto gap = IndieReviewEngine::unassignedForLanes(
+        root, QList<IndieReviewEngine::Lane>{engine}, &sample);
+
+    EXPECT_FALSE(gap.bySuffix.contains(QStringLiteral("h")))
+        << "a header inside the named directory IS covered by that lane";
+    EXPECT_EQ(gap.bySuffix.value(QStringLiteral("cpp")), 1)
+        << "src/ui/window.cpp is in no lane";
+    // No suffix filter on this path: a shell script no lane names is a gap,
+    // and calling it out of scope is the silence ANTS-4771 was filed about.
+    EXPECT_EQ(gap.bySuffix.value(QStringLiteral("sh")), 1);
+    EXPECT_EQ(gap.count, 2) << "count is the sum across suffixes";
+
+    EXPECT_TRUE(sample.contains(QStringLiteral("src/tools/run.sh")));
+    EXPECT_TRUE(sample.contains(QStringLiteral("src/ui/window.cpp")));
+    EXPECT_FALSE(sample.contains(QStringLiteral("src/engine/core.cpp")));
+}
+
+// INV-9 — a partition that covers everything reports nothing, so the fields'
+// absence is a clean bill of health rather than a question nobody asked.
+TEST(IndieReviewComputedPartition, Inv9FullCoverageReportsNothing) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString root = seedProse(tmp, QStringList{
+        QStringLiteral("src/engine/core.cpp"),
+        QStringLiteral("src/ui/window.cpp"),
+    });
+
+    IndieReviewEngine::Lane all;
+    all.name        = QStringLiteral("all");
+    all.sourcePaths = QStringList{QStringLiteral("src")};
+
+    const auto gap = IndieReviewEngine::unassignedForLanes(
+        root, QList<IndieReviewEngine::Lane>{all});
+    EXPECT_EQ(gap.count, 0);
+    EXPECT_TRUE(gap.bySuffix.isEmpty());
+}
+
+// INV-9 — the sample is sorted BEFORE it is capped, so it does not depend on
+// directory-walk order: two runs over one tree must name the same files.
+TEST(IndieReviewComputedPartition, Inv9SampleIsDeterministicAndCapped) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    QStringList files;
+    for (int i = 0; i < 25; ++i)
+        files << QStringLiteral("src/wide/f%1.cpp")
+                     .arg(i, 2, 10, QLatin1Char('0'));
+    const QString root = seedProse(tmp, files);
+
+    QStringList sample;
+    const auto gap = IndieReviewEngine::unassignedForLanes(
+        root, QList<IndieReviewEngine::Lane>{}, &sample);
+
+    EXPECT_EQ(gap.count, 25) << "the count is complete even when the sample is not";
+    EXPECT_EQ(sample.size(), 20) << "sample is bounded";
+    // Sorted-then-capped means the first names, not whichever 20 the walk hit.
+    EXPECT_EQ(sample.first(), QStringLiteral("src/wide/f00.cpp"));
+    EXPECT_EQ(sample.last(), QStringLiteral("src/wide/f19.cpp"));
+
+    QStringList again;
+    IndieReviewEngine::unassignedForLanes(
+        root, QList<IndieReviewEngine::Lane>{}, &again);
+    EXPECT_EQ(again, sample) << "two runs over one tree agree";
+}
+
+// INV-8 — the handler surfaces the uncovered files for whichever partition the
+// reply carries (ANTS-4771; both paths since ANTS-4786).
+TEST(IndieReviewComputedPartition, Inv8HandlerReportsUnassignedForTheCarriedPartition) {
     const std::string rc = ants_test::slurpRemoteControl();
     ASSERT_FALSE(rc.empty());
     const std::string body =
@@ -198,15 +280,22 @@ TEST(IndieReviewComputedPartition, Inv8HandlerReportsUnassignedWhenDerived) {
     EXPECT_NE(body.find("env[\"unassigned_by_suffix\"]"), std::string::npos)
         << "a bare count cannot tell shell from documentation";
 
-    // Gated on `derived`: when the module map's partition won, these counts
+    // ANTS-4786 — the reported set must describe the partition the reply
+    // carries. The computed walk answers for `derived`; the declared lanes are
+    // measured by unassignedForLanes. Without the second branch the map path
+    // reports nothing, which is the defect, and without the first the counts
     // would describe a partition the reply does not carry.
-    const auto gate = body.find("if (derived && unassigned.count > 0)");
+    const auto branch = body.find("if (!derived) {");
+    ASSERT_NE(branch, std::string::npos);
+    EXPECT_NE(body.find("IndieReviewEngine::unassignedForLanes(root, lanes"),
+              std::string::npos)
+        << "the declared partition must be measured against the tree";
     // NB: not `emit` — that is a Qt macro and expands to nothing here.
     const auto emitAt = body.find("env[\"unassigned_count\"]");
-    ASSERT_NE(gate, std::string::npos)
-        << "unassigned counts must not be reported for a partition this reply "
-           "did not use";
-    EXPECT_LT(gate, emitAt);
+    ASSERT_NE(emitAt, std::string::npos);
+    EXPECT_LT(branch, emitAt) << "measure before reporting";
+    EXPECT_NE(body.find("env[\"unassigned_reason\"]"), std::string::npos)
+        << "one number, two causes — the caller cannot act without knowing which";
 }
 
 // INV-5 — the handler labels the computed partition and keeps the hint.

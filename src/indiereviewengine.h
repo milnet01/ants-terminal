@@ -169,6 +169,30 @@ QList<Lane> deriveComputedPartition(const QString &projectPath,
 // noise directories are excluded, so the number is what a reviewer would read.
 int laneFileCount(const QString &projectPath, const Lane &lane);
 
+// ANTS-4786 — the same coverage question, asked of a DECLARED partition.
+// A module map answers "which lanes exist" and never "which files were left
+// out", so a map naming a minority of the tree reads as complete: measured on
+// this project, 50 lanes covering 113 files said nothing about the 200 they
+// omitted. deriveComputedPartition's reporter cannot answer it, because that
+// walk does not run when the map's partition wins.
+//
+// One rule serves both paths: files under the walked source roots, minus noise
+// directories and generated output, that no lane covers. On the computed path
+// that set is exactly what the suffix filter dropped — everything indexable is
+// in a lane by construction — so the number means the same thing either way
+// and only the CAUSE differs. The caller labels it; this function does not.
+//
+// No suffix filter here, deliberately. Deciding which extensions count would
+// reintroduce the judgement the per-suffix breakdown exists to avoid: a caller
+// reading `sh: 2` beside `md: 1` separates the signal from the prose itself.
+//
+// `sample` (optional) receives up to a bounded number of the uncovered
+// project-relative paths. A count says a gap exists; a path says where, which
+// is what the caller needs to name them in a lane.
+UnassignedSources unassignedForLanes(const QString &projectPath,
+                                     const QList<Lane> &lanes,
+                                     QStringList *sample = nullptr);
+
 // A lane above this is past what one briefed reviewer can hold: the review
 // skills partition for 8-20 cohesive subsystems, and this project's own
 // declared lanes top out at 14 files. Chosen so a real declared partition

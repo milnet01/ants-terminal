@@ -80,13 +80,28 @@ of the surface.
   *Test:* `Inv7NullReporterIsHarmless`.
   *Breaks when:* the out-param stops defaulting.
 
-- **INV-8** (the handler surfaces it, and only when it used the computed
-  partition) — `cmdIndieReviewPartition` passes the reporter to the walk and
-  emits `unassigned_count` / `unassigned_by_suffix` / `unassigned_hint`,
-  gated on `derived`. The walk populates the reporter whenever it runs, so
-  without that gate a reply carrying the module map's partition would report
-  counts describing a partition it does not carry.
-  *Test:* `Inv8HandlerReportsUnassignedWhenDerived` (source-grep over
-  `cmdIndieReviewPartition`).
+- **INV-8** (the handler surfaces it, for whichever partition the reply
+  carries) — `cmdIndieReviewPartition` passes the reporter to the computed
+  walk and emits `unassigned_count` / `unassigned_by_suffix` /
+  `unassigned_reason` / `unassigned_hint`. The reported set always describes
+  the partition in the envelope: the computed walk's reporter is used on the
+  `derived` path, and `unassignedForLanes` answers the same question about the
+  declared lanes otherwise (ANTS-4786). A count describing the other partition
+  would be worse than no count, which is what the original `derived` gate
+  protected — the gate is now a branch rather than a silence.
+  *Test:* `Inv8HandlerReportsUnassignedForTheCarriedPartition` (source-grep
+  over `cmdIndieReviewPartition`).
   *Breaks when:* the reporter is not passed — the counts then stay zero and
   the envelope is silent again while every field still exists.
+
+- **INV-9** (a declared partition is measured for coverage too, ANTS-4786) —
+  `unassignedForLanes` walks the same source roots under the same noise and
+  generated-output filters, subtracts what the lanes cover, and returns the
+  remainder by suffix. It applies NO suffix filter: on the computed path the
+  uncovered set is exactly what the suffix gate dropped, so one rule serves
+  both paths and only the cause differs. The optional sample is sorted before
+  it is capped, so two runs over one tree name the same files.
+  *Test:* `Inv9DeclaredPartitionCoverageIsMeasured`,
+  `Inv9SampleIsDeterministicAndCapped`.
+  *Breaks when:* the coverage walk and the partition walk resolve different
+  source roots, or the sample is capped in directory-walk order.

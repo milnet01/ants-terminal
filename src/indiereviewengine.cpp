@@ -261,6 +261,64 @@ bool isGeneratedSource(const QString &fileName) {
     return reGenerated.match(fileName).hasMatch();
 }
 
+// ANTS-4786 — the source roots the computed walk reads. Extracted so
+// unassignedForLanes asks about the same tree; two copies of this resolution
+// would let the coverage report and the partition disagree about scope.
+QStringList walkedSourceRoots(const QString &projectPath) {
+    QStringList roots;
+    for (const QString &r :
+             ProjectSettings::load(projectPath).sourceRoots.value_or(QStringList{}))
+        if (QDir(projectPath + QLatin1Char('/') + r).exists()) roots << r;
+    if (roots.isEmpty()) {
+        roots << (QDir(projectPath + QStringLiteral("/src")).exists()
+                      ? QStringLiteral("src") : QStringLiteral("."));
+    }
+    return roots;
+}
+
+// ANTS-4786 — one definition of "the files a lane covers", so laneFileCount
+// and unassignedForLanes cannot disagree about what counts as covered. Paths
+// are canonical, which is what makes set subtraction against a fresh walk
+// meaningful. `cap` bounds a pathological directory entry.
+void collectLaneFiles(const QString &projectPath, const Lane &lane,
+                      QSet<QString> *out, int cap) {
+    const QString rootCanon = QFileInfo(projectPath).canonicalFilePath();
+    if (rootCanon.isEmpty() || !out) return;
+
+    for (const QString &sp : lane.sourcePaths) {
+        const QString abs = QDir(projectPath).filePath(sp);
+        const QString canon = QFileInfo(abs).canonicalFilePath();
+        if (canon.isEmpty()) continue;
+        if (canon != rootCanon && !canon.startsWith(rootCanon + QChar('/')))
+            continue;
+        const QFileInfo fi(canon);
+        if (fi.isFile()) {
+            if (CodebaseIndex::isIndexableSuffix(fi.suffix().toLower())
+                && !isGeneratedSource(fi.fileName()))
+                out->insert(canon);
+            continue;
+        }
+        if (!fi.isDir()) continue;
+        QDirIterator it(canon, QDir::Files, QDirIterator::Subdirectories);
+        while (it.hasNext() && out->size() < cap) {
+            const QString f = it.next();
+            const QFileInfo ffi(f);
+            if (!CodebaseIndex::isIndexableSuffix(ffi.suffix().toLower()))
+                continue;
+            if (isGeneratedSource(ffi.fileName())) continue;
+            const QString rel = f.startsWith(rootCanon + QLatin1Char('/'))
+                                    ? f.mid(rootCanon.size() + 1) : QString();
+            bool noise = false;
+            const QStringList segs = rel.split(QLatin1Char('/'));
+            for (int i = 0; i + 1 < segs.size(); ++i)
+                if (ProjectSettings::isNoiseDir(segs.at(i))) noise = true;
+            if (noise) continue;
+            const QString fcanon = QFileInfo(f).canonicalFilePath();
+            out->insert(fcanon.isEmpty() ? f : fcanon);
+        }
+    }
+}
+
 }  // namespace
 
 // ANTS-3709 — computed fallback partition. Every earlier deriver reads a
@@ -282,14 +340,7 @@ QList<Lane> deriveComputedPartition(const QString &projectPath,
     constexpr int kMaxFilesPerLane = 25;
     constexpr int kMaxFilesTotal   = 4000;   // pathological-tree backstop
 
-    QStringList roots;
-    for (const QString &r :
-             ProjectSettings::load(projectPath).sourceRoots.value_or(QStringList{}))
-        if (QDir(projectPath + QLatin1Char('/') + r).exists()) roots << r;
-    if (roots.isEmpty()) {
-        roots << (QDir(projectPath + QStringLiteral("/src")).exists()
-                      ? QStringLiteral("src") : QStringLiteral("."));
-    }
+    const QStringList roots = walkedSourceRoots(projectPath);
 
     QMap<QString, QStringList> byDir;   // dir rel path → file rel paths
     int seen = 0;
@@ -357,42 +408,61 @@ QList<Lane> deriveComputedPartition(const QString &projectPath,
 // caller only needs to know it is over, not by how much.
 int laneFileCount(const QString &projectPath, const Lane &lane) {
     constexpr int kCountCap = 5000;
-    const QString rootCanon = QFileInfo(projectPath).canonicalFilePath();
-    if (rootCanon.isEmpty()) return 0;
-
     QSet<QString> counted;   // a file named twice is one file
-    for (const QString &sp : lane.sourcePaths) {
-        const QString abs = QDir(projectPath).filePath(sp);
-        const QString canon = QFileInfo(abs).canonicalFilePath();
-        if (canon.isEmpty()) continue;
-        if (canon != rootCanon && !canon.startsWith(rootCanon + QChar('/')))
-            continue;
-        const QFileInfo fi(canon);
-        if (fi.isFile()) {
-            if (CodebaseIndex::isIndexableSuffix(fi.suffix().toLower())
-                && !isGeneratedSource(fi.fileName()))
-                counted.insert(canon);
-            continue;
-        }
-        if (!fi.isDir()) continue;
-        QDirIterator it(canon, QDir::Files, QDirIterator::Subdirectories);
-        while (it.hasNext() && counted.size() < kCountCap) {
-            const QString f = it.next();
-            const QFileInfo ffi(f);
-            if (!CodebaseIndex::isIndexableSuffix(ffi.suffix().toLower()))
-                continue;
-            if (isGeneratedSource(ffi.fileName())) continue;
-            const QString rel = f.startsWith(rootCanon + QLatin1Char('/'))
-                                    ? f.mid(rootCanon.size() + 1) : QString();
-            bool noise = false;
+    collectLaneFiles(projectPath, lane, &counted, kCountCap);
+    return counted.size();
+}
+
+// ANTS-4786 — see header.
+UnassignedSources unassignedForLanes(const QString &projectPath,
+                                     const QList<Lane> &lanes,
+                                     QStringList *sample) {
+    constexpr int kSampleCap     = 20;
+    constexpr int kMaxFilesTotal = 4000;   // same backstop as the computed walk
+
+    UnassignedSources out;
+    const QString rootCanon = QFileInfo(projectPath).canonicalFilePath();
+    if (rootCanon.isEmpty()) return out;
+
+    QSet<QString> covered;
+    for (const Lane &l : lanes)
+        collectLaneFiles(projectPath, l, &covered, kMaxFilesTotal);
+
+    QStringList uncovered;
+    int seen = 0;
+    for (const QString &root : walkedSourceRoots(projectPath)) {
+        const QString rootAbs = QDir::cleanPath(
+            projectPath + QLatin1Char('/') + root);
+        QDirIterator it(rootAbs, QDir::Files, QDirIterator::Subdirectories);
+        while (it.hasNext() && seen < kMaxFilesTotal) {
+            const QString canon = QFileInfo(it.next()).canonicalFilePath();
+            if (canon.isEmpty()) continue;
+            if (!canon.startsWith(rootCanon + QLatin1Char('/'))) continue;
+            const QString rel = canon.mid(rootCanon.size() + 1);
+            const QFileInfo fi(canon);
+            // Same elimination order as the computed walk: noise and generated
+            // output go first, so what is REPORTED is never build artifacts.
             const QStringList segs = rel.split(QLatin1Char('/'));
+            bool noise = false;
             for (int i = 0; i + 1 < segs.size(); ++i)
                 if (ProjectSettings::isNoiseDir(segs.at(i))) noise = true;
             if (noise) continue;
-            counted.insert(f);
+            if (isGeneratedSource(fi.fileName())) continue;
+            ++seen;
+            if (covered.contains(canon)) continue;
+            ++out.count;
+            ++out.bySuffix[fi.suffix().toLower()];
+            if (sample) uncovered << rel;
         }
     }
-    return counted.size();
+    // Sort BEFORE capping, so the sample does not depend on directory-walk
+    // order: two runs on the same tree must name the same files, which is what
+    // a multi-loop review compares across passes.
+    if (sample) {
+        uncovered.sort();
+        *sample += uncovered.mid(0, kSampleCap);
+    }
+    return out;
 }
 
 QList<Lane> derivePartition(const QString &projectPath) {
