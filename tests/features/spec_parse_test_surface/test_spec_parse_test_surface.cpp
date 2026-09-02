@@ -240,3 +240,51 @@ TEST(SpecParseTestSurface, Ants3697MultiParagraphBodySurvives) {
            "ANTS-3697: a multi-paragraph body must survive the heading clamp");
     EXPECT_EQ(0, expect_failures());
 }
+
+// ANTS-3676 — the clause marker was located by its FIRST occurrence in the
+// bullet body, with no inline-code masking. A spec that DISCUSSES the marker
+// quotes it in backticks, so its body was cut at the mention: everything
+// before became `body` and everything after became `test_surface`.
+//
+// Reproduced live against a spec whose invariant defines `invariant_no_test`
+// and therefore has to name the marker. The sharpest consequence is that
+// spec_lint's own `invariant_no_test` check consumes this parser, so it read a
+// corrupt surface on exactly the specs most likely to discuss spec format.
+TEST(SpecParseTestSurface, Ants3676QuotedMarkerIsNotTheClause) {
+    expect_reset();
+    const QJsonObject p = parse(withHeader(QStringLiteral(
+        "- **INV-2** — Every `INV-N` without a `*Test:*` clause is reported.\n"
+        "\n"
+        "  *Test:* a fixture spec with a clauseless invariant yields one\n"
+        "  finding.\n")).toUtf8().constData());
+    const QJsonObject i = inv(p, 0);
+    expect(field(i, "id") == QStringLiteral("INV-2"),
+           "ANTS-3676 precondition: the invariant parsed", render(i));
+    expect(field(i, "body").contains(QStringLiteral("is reported")),
+           "ANTS-3676: the body survives past the quoted marker", render(i));
+    expect(field(i, "test_surface").startsWith(QStringLiteral("a fixture spec")),
+           "ANTS-3676: the REAL clause is the test surface", render(i));
+    expect(!field(i, "test_surface").contains(QStringLiteral("clause is reported")),
+           "ANTS-3676: the prose after the mention is not the test surface",
+           render(i));
+    EXPECT_EQ(0, expect_finish());
+}
+
+// The converse, and the one that keeps the fix honest: an invariant that only
+// MENTIONS the marker has no test surface, and must still report none. That
+// absence is the signal spec_lint's invariant_no_test check reads, so masking
+// must not manufacture a surface from the mention.
+TEST(SpecParseTestSurface, Ants3676QuotedMarkerAloneIsNoSurface) {
+    expect_reset();
+    const QJsonObject p = parse(withHeader(QStringLiteral(
+        "- **INV-3** — A bullet naming `*Test:*` in prose declares nothing.\n"))
+        .toUtf8().constData());
+    const QJsonObject i = inv(p, 0);
+    expect(!has(i, "test_surface"),
+           "ANTS-3676: a quoted mention alone yields no test_surface",
+           render(i));
+    expect(field(i, "body").contains(QStringLiteral("declares nothing")),
+           "ANTS-3676: and the body is not truncated at the mention",
+           render(i));
+    EXPECT_EQ(0, expect_finish());
+}

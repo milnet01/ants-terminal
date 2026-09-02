@@ -248,6 +248,13 @@ for security-relevant changes.
 
 ### Fixed
 
+- **A spec that quotes the test-clause marker parses whole** (ANTS-3676)
+  The spec reader took the first occurrence of the marker wherever it
+  appeared, so an invariant naming it in backticks was cut in half at the
+  mention. It now skips a marker inside an inline code span. `spec_lint`
+  reads this parser, so its findings were least reliable on the specs that
+  discuss spec format.
+
 - **The closer-length rule now reaches every reader that tracks fences itself** (ANTS-4820)
   The docs index, file outline, spec lint, spec log and feedback-file
   scanners each kept their own fence loop and still ended a block on a

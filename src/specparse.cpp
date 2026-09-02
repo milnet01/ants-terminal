@@ -3,11 +3,15 @@
 
 #include "specparse.h"
 
+#include "markdownscan.h"
+
 #include <QJsonArray>
 #include <QList>
 #include <QPair>
 #include <QRegularExpression>
 #include <QSet>
+#include <QStringList>
+#include <QVector>
 
 #include <algorithm>   // ANTS-3799 — stable_sort over the merged invariant list
 
@@ -60,6 +64,39 @@ FieldExtent headerField(const QStringList &lines, const QString &name) {
         return e;
     }
     return {};
+}
+
+// ANTS-3676 — flat-offset mask of every inline code span in `text`.
+//
+// The clause marker was located by its first occurrence, so a spec that
+// DISCUSSES the marker — which it must, to define the check that reads it —
+// was cut at the mention: the prose before became `body` and the prose after
+// became `test_surface`. spec_lint's own invariant_no_test check consumes
+// this parser, so it read a corrupt surface on exactly the specs most likely
+// to talk about spec format.
+//
+// MarkdownScan reports line/col and this parser works on flat offsets into
+// one string, so the conversion is the whole of this helper. The mask covers
+// a span's CONTENT: a marker cannot hide inside a backtick run, and the
+// content is what must not be searched.
+QVector<bool> inlineCodeMask(const QString &text) {
+    const QStringList lines = text.split(QLatin1Char('\n'));
+    QVector<int> lineStart(lines.size(), 0);
+    int acc = 0;
+    for (int i = 0; i < lines.size(); ++i) {
+        lineStart[i] = acc;
+        acc += lines.at(i).size() + 1;   // + the '\n' that split() removed
+    }
+
+    QVector<bool> mask(text.size(), false);
+    const QVector<bool> fence = MarkdownScan::fenceMask(lines);
+    for (const auto &s : MarkdownScan::codeSpans(lines, fence)) {
+        const int from = lineStart.value(s.startLine) + s.startCol;
+        const int to   = lineStart.value(s.endLine) + s.endCol;
+        for (int i = qMax(0, from); i < to && i < mask.size(); ++i)
+            mask[i] = true;
+    }
+    return mask;
 }
 
 QJsonObject parseSpecBody(const QString &body) {
@@ -229,7 +266,21 @@ QJsonObject parseSpecBody(const QString &body) {
                 // truncating at it — nothing is lost either way.
                 static const QRegularExpression testRe(
                     QStringLiteral(R"(\*Test:\*\s*)"));
-                const auto testM = testRe.match(invBody);
+                // ANTS-3676 — the first marker OUTSIDE an inline code span.
+                // A quoted mention is the document talking about the marker,
+                // not declaring one.
+                QRegularExpressionMatch testM;
+                {
+                    const QVector<bool> quoted = inlineCodeMask(invBody);
+                    auto tit = testRe.globalMatch(invBody);
+                    while (tit.hasNext()) {
+                        const auto m = tit.next();
+                        if (!quoted.value(m.capturedStart())) {
+                            testM = m;
+                            break;
+                        }
+                    }
+                }
                 QString testSurface;
                 if (testM.hasMatch()) {
                     const int clauseFrom = testM.capturedEnd();

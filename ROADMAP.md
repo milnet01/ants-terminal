@@ -11576,7 +11576,7 @@ fixes don't address. Roadmapped here as their own design tasks.
   Kind: fix.
   Source: in-session-2026-07-28 (cold-eyes loop 4 §1e pre-pass, docs/specs sweep).
 
-- 📋 [ANTS-3676] **parseSpecBody splits an invariant body at a clause marker written inside a code span.**
+- ✅ [ANTS-3676] **parseSpecBody splits an invariant body at a clause marker written inside a code span.**
   `SpecParse::parseSpecBody` locates an invariant's test-surface clause by
   the first occurrence of the marker in the bullet body, without masking
   inline code spans. A spec that *discusses* the marker — quoting it in
@@ -11608,6 +11608,23 @@ fixes don't address. Roadmapped here as their own design tasks.
   **Layman:** A spec that talks about the test-marker gets cut in half by the spec reader, because the reader can't tell a mention of the marker from the real one.
   Kind: fix.
   Source: in-session-2026-07-28 (cold-eyes loop 4, lane C CRITICAL — verified live).
+  Resolved (2026-09-02): the clause marker is now located by the first
+  occurrence OUTSIDE an inline code span, via `MarkdownScan::codeSpans` as
+  the item prescribed. A quoted mention is the document talking about the
+  marker, not declaring one.
+  The conversion is the whole of the new helper: codeSpans reports
+  line/col and this parser works on flat offsets into one string. The mask
+  covers a span's CONTENT — a marker cannot hide inside a backtick run.
+  The red run reproduced the item's recorded symptom byte for byte, down
+  to the truncated body ending at the opening backtick.
+  Two cases in tests/features/spec_parse_test_surface. The second is the
+  one that keeps the fix honest: an invariant that only MENTIONS the
+  marker must still report NO test surface, since that absence is the
+  signal spec_lint's invariant_no_test check reads. Masking must not
+  manufacture a surface from a mention, and before the fix it did exactly
+  that — the mention produced a surface of "` in prose declares nothing."
+  The seven pre-existing cases in that file pass unchanged, and the full
+  suite is green.
 
 - ✅ [ANTS-3677] **Fold cold-eyes loop 4's deferred MEDIUM/LOW tail into the six doc-lint specs.**
   Cold-eyes loop 4 over ANTS-3660/3661/3662/3663/3664/3669 raised ~101
