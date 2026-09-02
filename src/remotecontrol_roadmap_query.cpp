@@ -1122,6 +1122,7 @@ static QJsonArray rcBuildBulletCacheArray(
         o["headline_oneline"] = rcHeadlineOneline(b.headline);
         rcMaybeEmitHeadlineFull(o, b);
         rcSetBodyFields(o, b.bodyProse, kRoadmapQueryBodyCacheCap);  // ANTS-4557  // ANTS-3402
+        rcMaybeEmitComposedTrailers(o, b);  // ANTS-4813
         o["kind"] = b.kind;
         QJsonArray lanes;
         for (const QString &l : b.lanes) lanes.append(l);
@@ -2667,6 +2668,7 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
                 // id/ids max_body_bytes fetch can emit past 2000
                 // (list/section emission still re-caps to 2000).
                 rcSetBodyFields(o, b.bodyProse, kRoadmapQueryBodyCacheCap);  // ANTS-4557
+                rcMaybeEmitComposedTrailers(o, b);  // ANTS-4813
                 o["kind"] = b.kind;
                 QJsonArray lanes;
                 for (const QString &l : b.lanes) lanes.append(l);
@@ -2746,6 +2748,7 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
                     // the larger cap so an id/ids max_body_bytes fetch sees
                     // it (list/section emission still re-caps to 2000).
                     rcSetBodyFields(o, b.bodyProse, kRoadmapQueryBodyCacheCap);  // ANTS-4557
+                    rcMaybeEmitComposedTrailers(o, b);  // ANTS-4813
                     o["kind"] = b.kind;
                     o["section_slug"] = b.sectionSlug;
                     QJsonArray lanes;
@@ -3326,6 +3329,7 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
                 rcMaybeEmitHeadlineFull(o, b);  // ANTS-2075
                 // ANTS-1517 — body (truncated).
                 rcSetBodyFields(o, b.bodyProse);  // ANTS-4557
+                rcMaybeEmitComposedTrailers(o, b);  // ANTS-4813
                 o["kind"] = b.kind;
                 QJsonArray lanes;
                 for (const QString &l : b.lanes) lanes.append(l);
@@ -3628,6 +3632,7 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
                 // larger cap so an id/ids max_body_bytes fetch sees it
                 // (list/section emission still re-caps to 2000).
                 rcSetBodyFields(o, b.bodyProse, kRoadmapQueryBodyCacheCap);  // ANTS-4557
+                rcMaybeEmitComposedTrailers(o, b);  // ANTS-4813
                 o["kind"] = b.kind;
                 QJsonArray lanes;
                 for (const QString &l : b.lanes) lanes.append(l);

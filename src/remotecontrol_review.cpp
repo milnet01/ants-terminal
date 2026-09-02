@@ -204,10 +204,25 @@ QJsonDocument RemoteControl::cmdIndieReviewPartition(const QJsonObject &req) {
     }
     if (lanes.size() <= 1 || derived) {
         env["sparse_partition"]      = true;
+        // ANTS-4811 — which STAGE produced nothing, as a field rather than
+        // prose. The hint below tells a caller to check for a `## Module map`,
+        // and LocalWebServerManager read that while looking at one: the
+        // heading matched, the bullets parsed, and the grouping collapsed. A
+        // hint that describes a precondition already holding sends the reader
+        // to verify the wrong thing, and nothing in the envelope separated
+        // "no such heading" from "heading found, nothing derived from it".
+        env["map_lane_count"] = mapLaneCount;
+        env["partition_source"] =
+            derived ? QStringLiteral("computed")
+                    : (mapLaneCount > 0 ? QStringLiteral("module_map")
+                                        : QStringLiteral("none"));
         env["sparse_partition_hint"] = QStringLiteral(
-            "Module-map deriver returned %1 lane(s). Check that the project "
-            "root's CLAUDE.md carries a `## Module map` of `- <name> — "
-            "<summary>` subsystems (or that docs/subsystems.md exists). Pass "
+            "Module-map deriver returned %1 lane(s). `map_lane_count` is that "
+            "number and `partition_source` says which stage answered, so a "
+            "zero there is \"the map yielded nothing\" and not necessarily \"there "
+            "is no map\" — check which before rewriting the file. If the map is "
+            "absent, the project root's CLAUDE.md wants a `## Module map` of "
+            "`- <name> — <summary>` subsystems (or a docs/subsystems.md). Pass "
             "indie_review_brief(lane=\"<your-label>\", source_paths=[\"...\"]) "
             "to mint a brief over an arbitrary file set without a partition "
             "(ANTS-3375 ad-hoc mode), or commit "

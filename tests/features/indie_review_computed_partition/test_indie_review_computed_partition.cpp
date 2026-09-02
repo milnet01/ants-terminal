@@ -181,6 +181,61 @@ TEST(IndieReviewComputedPartition, Inv7NullReporterIsHarmless) {
     EXPECT_EQ(lanes.size(), 2);
 }
 
+// ANTS-4811 — a project whose sources all sit under ONE directory gets a
+// partition. Grouping by directory produced one lane, the >1 gate discarded
+// it, and the verb answered `lanes:[], ok:true` — which is what a project with
+// no subsystems looks like. LocalWebServerManager hit it with fifteen modules
+// under one package directory.
+TEST(IndieReviewComputedPartition, Ants4811SingleDirectoryStillPartitions) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString root = QFileInfo(tmp.path()).canonicalFilePath();
+
+    // Fifteen modules, one directory, each big enough that the whole is well
+    // over a reviewer's budget — the shape file counts cannot see, since
+    // fifteen is under every per-lane file threshold.
+    QByteArray mod;
+    for (int i = 0; i < 400; ++i) mod += "x = " + QByteArray::number(i) + "\n";
+    for (int f = 0; f < 15; ++f)
+        writeFile(root, QStringLiteral("src/lwsm/m%1.py")
+                            .arg(f, 2, 10, QLatin1Char('0')), mod);
+    SubsystemMap::clearCacheForTests();
+
+    const auto lanes = IndieReviewEngine::deriveComputedPartition(root);
+    ASSERT_GT(lanes.size(), 1)
+        << "one directory must still partition, not collapse to nothing";
+
+    // Every file is placed exactly once: a split that drops or duplicates one
+    // is worse than the empty partition it replaces.
+    QStringList placed;
+    for (const auto &l : lanes) placed += l.sourcePaths;
+    EXPECT_EQ(placed.size(), 15);
+    placed.sort();
+    QStringList unique = placed;
+    unique.removeDuplicates();
+    EXPECT_EQ(unique.size(), 15) << "a file landed in two lanes";
+
+    // Split by SIZE, so each lane is within a reviewer's budget.
+    for (const auto &l : lanes)
+        EXPECT_LE(IndieReviewEngine::laneLineCount(root, l),
+                  IndieReviewEngine::kMaxReviewableLinesPerLane +
+                      400 /* one file may overshoot; a file is not divisible */)
+            << "lane " << l.name.toStdString();
+}
+
+// ANTS-4811 — and a small one-directory project still collapses, because
+// there the refusal and its hint are the honest answer rather than a lane per
+// handful of lines.
+TEST(IndieReviewComputedPartition, Ants4811SmallSingleDirectoryStillCollapses) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString root = seedProse(tmp, QStringList{
+        QStringLiteral("src/only/a.py"),
+        QStringLiteral("src/only/b.py"),
+    });
+    EXPECT_TRUE(IndieReviewEngine::deriveComputedPartition(root).isEmpty());
+}
+
 // ANTS-4809 — a directory the repository ignores yields no lane, and is not
 // reported as a coverage gap either. LottoTracker got 14 of 17 lanes over a
 // gitignored tree of scraped HTML; a lane is a subagent told to read what it

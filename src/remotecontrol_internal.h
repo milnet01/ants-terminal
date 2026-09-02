@@ -425,6 +425,10 @@ void rcProjectChangelogHeadlineOnly(QJsonArray &arr);
 QString rcHeadlineOneline(const QString &headline);
 void rcMaybeEmitHeadlineFull(QJsonObject &o, const RoadmapDialog::BulletRecord &b);
 void rcMaybeEmitEvidence(QJsonObject &o, const RoadmapDialog::BulletRecord &b);
+// ANTS-4813 — names the `body` trailer lines the render composed, so a caller
+// can tell what amend_body can reach. Emitted only when non-empty.
+void rcMaybeEmitComposedTrailers(QJsonObject &o,
+                                 const RoadmapDialog::BulletRecord &b);
 bool rcReturnHeadlineOnly(const QJsonObject &req);
 QJsonObject rcCompactBullet(const QString &id, const QString &statusWord, const QString &headline);
 QString rcStatusWord(const QString &emoji);

@@ -373,6 +373,53 @@ TEST(RoadmapLogAmendField, Ants4807NotFoundShowsWhatItMatchedAgainst) {
     EXPECT_GT(resp.value(QStringLiteral("body_chars")).toInt(), 0);
 }
 
+// ANTS-4813 — roadmap_query names which of `body`'s trailer lines the RENDER
+// composed, so a caller can tell what amend_body can reach. The fixture is
+// built for exactly this contrast: DEMO-0003 ends on a trailing trailer run,
+// which is stripped into the columns, and DEMO-0007 ends on prose, so its
+// declarations stay in the stored body.
+TEST(RoadmapLogAmendField, Ants4813ComposedTrailersAreNamed) {
+    Fx fx; ASSERT_TRUE(fx.ok());
+    RemoteControl rc(nullptr);
+
+    auto bulletFor = [&](const QString &id) {
+        QJsonObject req;
+        req[QStringLiteral("caller_cwd")]   = fx.root;
+        req[QStringLiteral("id")]           = id;
+        req[QStringLiteral("include_body")] = true;
+        const QJsonObject resp = rc.cmdRoadmapQuery(req).object();
+        EXPECT_TRUE(resp.value(QStringLiteral("ok")).toBool())
+            << QJsonDocument(resp).toJson().toStdString();
+        return resp.value(QStringLiteral("bullets")).toArray()
+                   .at(0).toObject();
+    };
+    auto keys = [](const QJsonObject &o) {
+        QStringList out;
+        for (const QJsonValue &v :
+                 o.value(QStringLiteral("composed_trailers")).toArray())
+            out << v.toString();
+        out.sort();
+        return out;
+    };
+
+    // Column-only: the render wrote these lines, so amend_body cannot reach
+    // them however plainly they appear in `body`.
+    const QJsonObject columnOnly = bulletFor(QStringLiteral("DEMO-0003"));
+    EXPECT_TRUE(columnOnly.value(QStringLiteral("body")).toString()
+                    .contains(QStringLiteral("Layman:")))
+        << "the premise: the composed line IS in the body a caller reads";
+    EXPECT_TRUE(keys(columnOnly).contains(QStringLiteral("layman")));
+    EXPECT_TRUE(keys(columnOnly).contains(QStringLiteral("kind")));
+
+    // Body-declared: the author wrote these, so they are stored prose and
+    // amend_body owns them. Naming them here would send a caller to the wrong
+    // op just as surely as naming none does.
+    const QJsonObject bodyDeclared = bulletFor(QStringLiteral("DEMO-0007"));
+    EXPECT_FALSE(keys(bodyDeclared).contains(QStringLiteral("layman")))
+        << "a body-declared trailer is stored prose, not a composed line";
+    EXPECT_FALSE(keys(bodyDeclared).contains(QStringLiteral("kind")));
+}
+
 // ---------------------------------------------------------------- INV-8 -----
 
 TEST(RoadmapLogAmendField, Inv8UnknownIdRefused) {

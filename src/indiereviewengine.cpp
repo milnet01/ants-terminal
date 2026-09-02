@@ -456,6 +456,55 @@ QList<Lane> deriveComputedPartition(const QString &projectPath,
             out << l;
         }
     }
+    // ANTS-4811 — a project whose sources all sit under ONE directory grouped
+    // to one lane, which the >1 gate below then discarded, so the verb
+    // returned `lanes:[] , ok:true` — shape-identical to a project with no
+    // subsystems at all. LocalWebServerManager hit it with fifteen modules
+    // under src/lwsm/, and its consumer (review-code Phase 2) would have
+    // merged nothing while believing it had checked.
+    //
+    // Split that one directory by the LINE budget rather than the file count:
+    // the file count is what could not see it (fifteen files is under every
+    // per-lane file threshold), and size is what decides whether one reviewer
+    // can hold a lane. A directory genuinely under the budget still collapses
+    // to nothing, which is correct — there the refusal and its
+    // sparse_partition hint are the honest answer.
+    if (out.size() == 1 && byDir.size() == 1 && out.first().sourcePaths.size() > 1) {
+        const Lane whole = out.first();
+        const QString dir = byDir.constBegin().key();
+        QList<Lane> split;
+        QStringList chunk;
+        qint64 chunkLines = 0;
+        auto flush = [&]() {
+            if (chunk.isEmpty()) return;
+            Lane l;
+            l.sourcePaths = chunk;
+            split << l;
+            chunk.clear();
+            chunkLines = 0;
+        };
+        for (const QString &rel : whole.sourcePaths) {
+            Lane one;
+            one.sourcePaths = QStringList{rel};
+            const qint64 lines = laneLineCount(projectPath, one);
+            if (!chunk.isEmpty() && chunkLines + lines > kMaxReviewableLinesPerLane)
+                flush();
+            chunk << rel;
+            chunkLines += lines;
+        }
+        flush();
+        if (split.size() > 1) {
+            for (int p = 0; p < split.size(); ++p) {
+                split[p].name = QStringLiteral("%1 (%2/%3)")
+                                    .arg(dir).arg(p + 1).arg(split.size());
+                split[p].summary = QStringLiteral(
+                    "%1 file(s) under %2/ (computed partition — no module map; "
+                    "one directory split by size)")
+                        .arg(split.at(p).sourcePaths.size()).arg(dir);
+            }
+            return split;
+        }
+    }
     return out.size() > 1 ? out : QList<Lane>{};
 }
 

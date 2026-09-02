@@ -398,9 +398,14 @@ void rcStripBodyFields(QJsonArray &arr) {
     for (int i = 0; i < arr.size(); ++i) {
         QJsonObject o = arr.at(i).toObject();
         if (o.contains(QStringLiteral("body")) ||
-            o.contains(QStringLiteral("body_truncated"))) {
+            o.contains(QStringLiteral("body_truncated")) ||
+            // ANTS-4813 — it describes lines INSIDE `body`, so it goes with
+            // it. Left behind, it would answer a question about text the
+            // reply does not carry.
+            o.contains(QStringLiteral("composed_trailers"))) {
             o.remove(QStringLiteral("body"));
             o.remove(QStringLiteral("body_truncated"));
+            o.remove(QStringLiteral("composed_trailers"));
             arr.replace(i, o);
         }
     }
@@ -755,6 +760,20 @@ void rcMaybeEmitEvidence(QJsonObject &o,
     QJsonArray ev;
     for (const QString &p : b.evidence) ev.append(p);
     o[QStringLiteral("evidence")] = ev;
+}
+
+// ANTS-4813 — which of `body`'s trailing lines the RENDER wrote, rather than
+// an author. The two halves are edited by different ops — amend_body reaches
+// stored prose and only amend_field reaches a column — and nothing in the
+// reply distinguished them, so a caller passing a line back verbatim was
+// refused on text it had just read. Absent when nothing was composed, so the
+// field's presence is the signal and its absence is not a missing answer.
+void rcMaybeEmitComposedTrailers(QJsonObject &o,
+                                 const RoadmapDialog::BulletRecord &b) {
+    if (b.composedTrailers.isEmpty()) return;
+    QJsonArray ct;
+    for (const QString &k : b.composedTrailers) ct.append(k);
+    o[QStringLiteral("composed_trailers")] = ct;
 }
 
 // ANTS-2080 — confirm-after compact echo for roadmap_log write verbs.

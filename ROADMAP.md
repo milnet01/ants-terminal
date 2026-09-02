@@ -49984,6 +49984,114 @@ volume classes, and the tooling/documentation gaps the run exposed.
   Source: lottotracker-feedback-2026-09-01.
   Lanes: remotecontrol, mcp.
 
+- ✅ [ANTS-4811] **A project whose sources sit under one directory now gets a partition.**
+  LocalWebServerManager reported indie_review_partition returning
+  `lanes:[], ok:true` on a project whose CLAUDE.md carries a `## Module
+  map` of fifteen modules. They offered two candidate causes and both are
+  wrong, which is worth recording: the heading matcher is a plain
+  startsWith on `## Module map`, so no `(src/)` suffix is required, and
+  the bullet harvester's char class already steps over the surrounding
+  `**` and strips backticks.
+
+  The real cause is structural and hits every deriver at once. Both
+  document derivers group by TOP-LEVEL directory and return nothing unless
+  grouping yields more than one lane. Every module in that project lives
+  under one package directory, so the grouping produced exactly one group
+  and each deriver discarded it in turn.
+
+  That gate was right for what it was written for and wrong here: it
+  cannot tell "there is nothing to partition" from "everything is in one
+  place". The verb then answers exactly as a project with no subsystems
+  does, and review-code's Phase 2 would have merged nothing while
+  believing it had checked.
+
+  deriveComputedPartition now splits a single-directory grouping by the
+  LINE budget rather than the file count. File count is precisely what
+  could not see this: fifteen files is under every per-lane file
+  threshold, while the directory as a whole is well past what one briefed
+  reviewer holds. A small one-directory project still collapses, which is
+  correct -- there the refusal and its hint are the honest answer.
+
+  Their second suggestion shipped too, and it is the one that would have
+  saved the diagnosis: the envelope carries `map_lane_count` and
+  `partition_source`, so zero lanes from a map that parsed is
+  distinguishable from no map at all. The old hint told them to check for
+  a `## Module map` while they were looking at one.
+
+  Tests: Ants4811SingleDirectoryStillPartitions, which also asserts every
+  file lands in exactly one lane, and Ants4811SmallSingleDirectoryStillCollapses.
+  **Layman:** Projects that keep all their code in a single folder were told they had no subsystems at all.
+  Kind: fix.
+  Source: localwebservermanager-feedback-2026-09-01.
+  Lanes: remotecontrol, mcp.
+
+- 📋 [ANTS-4812] **changelog_log can only reach the root CHANGELOG.md, so a nested component changelog has no verb.**
+  Vestige ships a root CHANGELOG.md and tools/audit/CHANGELOG.md for a
+  separately-versioned bundled component. changelog_log resolves its
+  target from caller_cwd's PROJECT ROOT, so a nested caller_cwd resolves
+  back to the same file and the nested changelog is unreachable. That run
+  wrote its entries with a Python heredoc, which is the raw-edit route the
+  verb exists to replace.
+
+  The reporter's framing is the argument: the protections that go missing
+  here are atomic write, category routing, format validation and the
+  [Unreleased] guard, and they go missing on exactly the file most likely
+  to drift, because a component changelog is edited least often and by
+  fewest people. Their nested file had already diverged in format, by hand.
+
+  The shape is already established in this codebase and should be copied
+  rather than invented: feedback_log takes an optional `path`, resolved
+  under the project root and refused outside it. changelog_log's own
+  Markdown/YAML probe would then run against whatever file it is handed,
+  so a nested file in a convention it cannot parse refuses format_mismatch
+  as it does today rather than writing something wrong.
+
+  Three call sites resolve through findChangelogUnder — the single op, the
+  batch op, and changelog_query — and all three want the argument, or the
+  read side cannot check what the write side just wrote.
+  **Layman:** A project with a second changelog for a bundled tool has to edit that one by hand.
+  Kind: feature.
+  Source: vestige-feedback-2026-09-01.
+  Lanes: remotecontrol, mcp.
+
+- ✅ [ANTS-4813] **roadmap_query now names which body trailer lines the render composed.**
+  Snatch reopened the trailer half of ANTS-4557, and Pressless hit the
+  same thing from the other side on the same day without either knowing.
+  A bullet's `body` mixes stored prose with trailer lines the render
+  composes from columns; the two are edited by DIFFERENT ops -- amend_body
+  reaches the prose, only amend_field reaches a column -- and nothing in
+  the reply said which was which. Pass a composed line back as
+  amend_body's old_text and it refuses on text you read verbatim.
+
+  roadmap_query's bullets now carry composed_trailers, naming the keys the
+  render wrote. Computed in appendRecord from the STORE ROW, using the
+  same rule bulletText applies when it decides to emit a line -- a column
+  is composed when it has a value and the stored body does not declare
+  that key at a line start. Deriving it by diffing the rendered text would
+  let the record disagree with the renderer about lines the renderer
+  itself wrote.
+
+  Emitted only when non-empty, and stripped with the body when
+  include_body is false, since it describes text the reply does not
+  otherwise carry.
+
+  The tool description's own claim that "nothing marks a composed line and
+  nothing can" is corrected in the same change, and its stated objection
+  is answered rather than ignored: marking one backend does NOT diverge
+  the two, because on the markdown backend every line was written by an
+  author, so an empty list there is the true answer and not a missing one.
+
+  Snatch asked for the cheapest honest option and explicitly did not ask
+  for include_body's shape to be withdrawn. This is that: nothing returned
+  today changed. Test: RoadmapLogAmendField.Ants4813ComposedTrailersAreNamed,
+  which asserts BOTH directions -- a column-only trailer is named, and a
+  body-declared one is not, since naming that would send a caller to the
+  wrong op just as surely.
+  **Layman:** A roadmap entry's text mixes what an author wrote with lines the tool adds; now you can tell which is which.
+  Kind: fix.
+  Source: snatch-feedback-2026-09-02.
+  Lanes: remotecontrol, mcp.
+
 ### Ants MCP feedback from CC sessions — 2026-08-28 triage
 
 - 📋 [ANTS-4746] **A verb that reads this session's completed subagent returns, so a fan-out that outlives a compaction is recoverable.**

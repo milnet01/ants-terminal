@@ -116,6 +116,28 @@ void appendRecord(QVector<BulletRecord> &out, const RoadmapStore::ItemWrite &it,
     // of INV-2's named break clauses.
     if (!heading.isEmpty())
         rec->sectionSlug = slug;
+    // ANTS-4813 — same rule bulletText() applies when it decides to emit a
+    // trailer line: a column is COMPOSED when it has a value and the stored
+    // body does not declare that key at a line start. Computed from the store
+    // row rather than by diffing the rendered text, so the record cannot
+    // disagree with the renderer about which lines it wrote.
+    {
+        const RoadmapParse::TrailerValues tv =
+            RoadmapParse::trailerValuesIn(it.body);
+        const auto shadows = [](const RoadmapParse::TrailerMatch &m) {
+            return m.offset >= 0 && m.anchored;
+        };
+        if (!it.layman.isEmpty()   && !shadows(tv.layman))
+            rec->composedTrailers << QStringLiteral("layman");
+        if (!it.kind.isEmpty()     && !shadows(tv.kind))
+            rec->composedTrailers << QStringLiteral("kind");
+        if (!it.source.isEmpty()   && !shadows(tv.source))
+            rec->composedTrailers << QStringLiteral("source");
+        if (!it.lanes.isEmpty()    && !shadows(tv.lanes))
+            rec->composedTrailers << QStringLiteral("lanes");
+        if (!it.evidence.isEmpty() && !shadows(tv.evidence))
+            rec->composedTrailers << QStringLiteral("evidence");
+    }
     // firstLine / lastLine stay 0: a store has no lines to number, and no walk
     // can invent them. INV-2's one declared field difference.
     out.append(*rec);

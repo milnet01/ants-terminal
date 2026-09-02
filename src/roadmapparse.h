@@ -88,6 +88,20 @@ struct BulletRecord {
     // the head line is already returned as `headline` / `headline_oneline`,
     // and the indent below the common one is the author's structure.
     QString bodyProse;
+    // ANTS-4813 — which trailer keys in `bodyProse` were COMPOSED by the render
+    // from their own columns rather than written by an author, lowercased
+    // ("layman", "kind", "source", "lanes", "evidence").
+    //
+    // The two halves of a bullet are edited by different ops — amend_body for
+    // stored prose, amend_field for a column — and until this existed a reader
+    // could not tell them apart in the text they had just been handed. Passing
+    // a composed line back as amend_body's old_text refuses on a string the
+    // caller has read verbatim, which two sessions hit independently.
+    //
+    // Store path only. On the markdown path every line WAS written by an
+    // author, so the list is empty and its emptiness is the true answer rather
+    // than a missing one.
+    QStringList composedTrailers;
     QString sectionHeading;  // text of the most recent ## or ### heading
     int sectionLevel = 0;    // 2 for `##`, 3 for `###`, 0 if no section
     QString sectionSlug;     // sectionHeading → lowercase, non-alnum→`-`
