@@ -47,7 +47,13 @@ const QRegularExpression &fenceRe();
 // content column: a fence inside an item may be indented up to 3 spaces past
 // THAT column. The indent is space-only either way (a tab never opens a
 // fence — ANTS-3598).
-QChar fenceOpenerChar(const QString &line, int maxIndent = 3);
+// ANTS-3678 — `runLength`, when given, receives the length of the fence
+// character's run. CommonMark § 4.5 requires a closing fence to be AT LEAST
+// AS LONG as its opener, and the character alone cannot express that, so a
+// caller pairing an opener with a closer needs both. Defaulted: the
+// stateless callers below ask only "does a fence start here".
+QChar fenceOpenerChar(const QString &line, int maxIndent = 3,
+                      int *runLength = nullptr);
 
 // Per-line "inside a fenced code block" mask, one bool per input line. The
 // opener and closer lines are themselves masked true (they are fence syntax,

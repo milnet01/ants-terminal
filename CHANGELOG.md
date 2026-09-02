@@ -248,6 +248,12 @@ for security-relevant changes.
 
 ### Fixed
 
+- **Code fences now honour CommonMark's closer-length rule** (ANTS-3678)
+  A short run of backticks or tildes no longer ends a block opened with a
+  longer one, so a document that quotes fence syntax keeps its sample text
+  — headings included — inside the block. Affects every reader built on
+  `fenceMask`, `read_region`'s section resolution among them.
+
 - **The bash veto no longer blocks commands that merely mention a git diff** (ANTS-4517)
   The rule matched its phrase anywhere in the command, so an echo, a
   heredoc or a sed replacement carrying it was vetoed while running no git

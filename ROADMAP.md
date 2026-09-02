@@ -11706,7 +11706,7 @@ fixes don't address. Roadmapped here as their own design tasks.
   Kind: doc-fix.
   Source: in-session-2026-07-28 (cold-eyes loop 4, deferred tail).
 
-- 📋 [ANTS-3678] **MarkdownScan::fenceMask ignores the CommonMark closer-length rule.**
+- ✅ [ANTS-3678] **MarkdownScan::fenceMask ignores the CommonMark closer-length rule.**
   `fenceMask` (`src/markdownscan.cpp`) closes an open fence on the fence
   CHARACTER alone — `if (!c.isNull() && c == openFence)` — with no
   comparison of run lengths. CommonMark § 4.5 requires a closing fence be
@@ -11747,6 +11747,25 @@ fixes don't address. Roadmapped here as their own design tasks.
   **Layman:** A short row of backticks can end a code block that was opened with a longer row, so text meant to be inside the block leaks out.
   Kind: fix.
   Source: in-session-2026-07-28 (found writing ANTS-3674's regression test).
+  Resolved (2026-09-02): `fenceOpenerChar` gained an optional out-param
+  carrying the fence character's RUN LENGTH, and `fenceMask` closes only
+  on a same-character run of at least the opener's length — CommonMark
+  § 4.5. The parameter is defaulted, so the stateless callers asking only
+  "does a fence start here" are unchanged.
+  The run walk moved out of the backtick-only arm, which is what makes the
+  rule reach tilde fences. That matters more there than for backticks: a
+  tilde info string may hold any character, so the ANTS-3655 guard does
+  not incidentally bound the run the way it does for backticks.
+  Four cases in tests/features/markdownscan. Two are the defect (a short
+  backtick closer and a short tilde closer, each leaking a heading out of
+  its block) and were red; two are controls — a LONGER closer must still
+  close, and an equal-length closer must still close — and passed in both
+  states, so the fix cannot have been "never close".
+  Full suite green, so none of fenceMask's consumers regressed.
+  Not widened: several files replicate this open/close loop against
+  `fenceOpenerChar` directly rather than calling `fenceMask`, and they
+  carry the same rule in their own copies. That is a larger change than
+  this item and is not made here.
 
 - 📋 [ANTS-3679] **Extract the tools/list payload from onMcpConnection into an accessor.**
   The whole `tools/list` schema — ~74 verbs, each with its name,
@@ -12456,6 +12475,37 @@ fixes don't address. Roadmapped here as their own design tasks.
   Kind: fix.
   Source: in-session-2026-09-02.
   Lanes: remotecontrol, mcp.
+
+- 📋 [ANTS-4820] **Hand-rolled fence loops carry the closer-length bug `fenceMask` no longer has.**
+  ANTS-3678 gave `MarkdownScan::fenceMask` CommonMark § 4.5's rule: a
+  closing fence must be at least as long as its opener. Several files do
+  not call `fenceMask`. They call `fenceOpenerChar` and hand-roll the
+  open/close loop, closing on the fence CHARACTER alone — the exact shape
+  just fixed.
+
+  Verified 2026-09-02 by reading them, not inferred: `feedbackfile.cpp`
+  (several boundary scanners), `speclog.cpp` (its section finders),
+  `speclint.cpp`, `docsindex.cpp` and `fileoutline.cpp`. Each holds
+  `if (!c.isNull() &amp;&amp; c == openFence)` or its equivalent.
+
+  Consequence is the same one ANTS-3678 described, per surface: a document
+  that QUOTES fence syntax — the ordinary reason to write a 4-backtick
+  block — ends its block early, and headings meant as sample text leak
+  out as real ones.
+
+  `fenceOpenerChar` now takes an optional run-length out-param, so each
+  site is a small change. The better question is whether these loops
+  should exist: they predate `fenceMask` and each is a partial
+  reimplementation of it. Prefer converting a site to `fenceMask` where
+  its shape allows, and pass the run length only where it does not.
+
+  Deliberately not folded into ANTS-3678: that item scoped itself to the
+  shared primitive and said so, and rewriting five files under a
+  one-primitive item would have put unreviewed changes behind a green
+  suite that never covered them.
+  **Layman:** The same code-block bug was just fixed in one place, but several files keep their own copy of that logic and still have it.
+  Kind: fix.
+  Source: in-session-2026-09-02 (ANTS-3678 fix).
 
 ### 🔬 Project Audit false-positive reduction (self-audit 2026-05-20)
 

@@ -40,7 +40,8 @@ const QRegularExpression &listMarkerRe() {
 
 }  // namespace
 
-QChar fenceOpenerChar(const QString &line, int maxIndent) {
+QChar fenceOpenerChar(const QString &line, int maxIndent, int *runLength) {
+    if (runLength) *runLength = 0;
     // Hand-scanned rather than regex-matched because maxIndent varies
     // (ANTS-3638). At the default 3 this accepts exactly what fenceRe()
     // matches, which is the contract INV-1 pins — leading SPACES only, so a
@@ -56,11 +57,12 @@ QChar fenceOpenerChar(const QString &line, int maxIndent) {
     // — opened a fence that never closed and masked the document to its end.
     // Tilde fences are exempt: their info string may hold any character but a
     // tilde run, which the run scan below already consumed.
+    int j = ind + 3;
+    while (j < line.size() && line.at(j) == c) ++j;       // rest of the run
     if (c == QLatin1Char('`')) {
-        int j = ind + 3;
-        while (j < line.size() && line.at(j) == c) ++j;   // rest of the run
         if (line.indexOf(c, j) >= 0) return QChar();      // backtick in the info
     }
+    if (runLength) *runLength = j - ind;
     return c;
 }
 
@@ -74,6 +76,11 @@ QVector<bool> fenceMask(const QStringList &lines, int *unterminatedOpenerLine) {
     QChar openFence;         // null when not inside a fence
     int   openLine      = -1;// 1-based line of the open fence's opener
     int   openAllowance = 3; // indent the closer of the open fence may carry
+    // ANTS-3678 — CommonMark § 4.5: the closer must be at least as long as
+    // the opener. Without the run length a ``` line ended a ```` block, and
+    // everything after it — headings included — leaked out of the sample as
+    // prose. A document quoting fence syntax is the ordinary way to hit it.
+    int   openRun       = 0; // length of the open fence's character run
     // Content columns of the open list items, outermost → innermost. Empty
     // at top level, where the allowance is CommonMark's plain 3 spaces.
     QVector<int> listCols;
@@ -84,8 +91,13 @@ QVector<bool> fenceMask(const QStringList &lines, int *unterminatedOpenerLine) {
             // The container stack is frozen: a bullet inside a code sample
             // is sample text, not a list.
             mask[i] = true;
-            const QChar c = fenceOpenerChar(line, openAllowance);
-            if (!c.isNull() && c == openFence) { openFence = QChar(); openLine = -1; }
+            int run = 0;
+            const QChar c = fenceOpenerChar(line, openAllowance, &run);
+            if (!c.isNull() && c == openFence && run >= openRun) {
+                openFence = QChar();
+                openLine  = -1;
+                openRun   = 0;
+            }
             continue;
         }
         if (!line.trimmed().isEmpty()) {
@@ -100,11 +112,13 @@ QVector<bool> fenceMask(const QStringList &lines, int *unterminatedOpenerLine) {
         }
         const int allowance =
             (listCols.isEmpty() ? 0 : listCols.last()) + 3;
-        const QChar opener = fenceOpenerChar(line, allowance);
+        int openerRun = 0;
+        const QChar opener = fenceOpenerChar(line, allowance, &openerRun);
         if (!opener.isNull()) {
             openFence     = opener;
             openLine      = i + 1;
             openAllowance = allowance;
+            openRun       = openerRun;
             mask[i]       = true;
         }
     }

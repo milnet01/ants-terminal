@@ -433,3 +433,77 @@ TEST(MarkdownScan, StripBlockquoteAndQuotedHeadingSpans) {
     EXPECT_EQ(h[1].quoteDepth, 0);
     EXPECT_EQ(h[1].endLine, 4);
 }
+
+// ANTS-3678 — CommonMark § 4.5: a closing fence must be AT LEAST AS LONG as
+// the opener. fenceMask closed on the fence CHARACTER alone, so a 3-backtick
+// line ended a 4-backtick block and everything after it — headings included —
+// leaked out of the code sample as prose. A doc quoting fence syntax is the
+// normal way to hit this, which is why read_region could resolve a section
+// whose heading is sample text inside a block.
+TEST(MarkdownScanFenceRun, ShortCloserDoesNotCloseALongerFence) {
+    const QStringList lines = {
+        QStringLiteral("prose before"),
+        QStringLiteral("````"),            // opener: run of 4
+        QStringLiteral("```"),             // sample text, NOT a closer
+        QStringLiteral("## Not A Real Heading"),
+        QStringLiteral("````"),            // the real closer: run of 4
+        QStringLiteral("prose after"),
+    };
+    const QVector<bool> m = fenceMask(lines);
+    ASSERT_EQ(m.size(), lines.size());
+    EXPECT_FALSE(m[0]) << "prose before the fence is not masked";
+    EXPECT_TRUE(m[1])  << "the opener is masked";
+    EXPECT_TRUE(m[2])  << "a shorter run inside the block is body text";
+    EXPECT_TRUE(m[3])  << "the heading is sample text inside the block";
+    EXPECT_TRUE(m[4])  << "the real closer is masked";
+    EXPECT_FALSE(m[5]) << "prose after the block is not masked";
+}
+
+// The converse, so the fix cannot be "never close": a run LONGER than the
+// opener closes it, which CommonMark allows and the run-length rule must
+// keep allowing.
+TEST(MarkdownScanFenceRun, LongerCloserClosesAShorterFence) {
+    const QStringList lines = {
+        QStringLiteral("```"),             // opener: run of 3
+        QStringLiteral("body"),
+        QStringLiteral("`````"),           // run of 5 — closes it
+        QStringLiteral("after"),
+    };
+    const QVector<bool> m = fenceMask(lines);
+    ASSERT_EQ(m.size(), lines.size());
+    EXPECT_TRUE(m[2])  << "the longer closer is masked";
+    EXPECT_FALSE(m[3]) << "the block ended, so what follows is prose";
+}
+
+// The ordinary equal-length case, which carried the suite before this rule
+// existed and must be untouched by it.
+TEST(MarkdownScanFenceRun, EqualLengthCloserStillCloses) {
+    const QStringList lines = {
+        QStringLiteral("```cpp"),
+        QStringLiteral("int x = 0;"),
+        QStringLiteral("```"),
+        QStringLiteral("after"),
+    };
+    const QVector<bool> m = fenceMask(lines);
+    ASSERT_EQ(m.size(), lines.size());
+    EXPECT_TRUE(m[2])  << "the equal-length closer is masked";
+    EXPECT_FALSE(m[3]) << "the block ended";
+}
+
+// Tilde fences carry the same rule, and are the case where the ANTS-3655
+// info-string guard does NOT stand in for it: a tilde info string may hold
+// any character, so nothing else here bounds the run.
+TEST(MarkdownScanFenceRun, TildeShortCloserDoesNotClose) {
+    const QStringList lines = {
+        QStringLiteral("~~~~"),
+        QStringLiteral("~~~"),
+        QStringLiteral("## Still Sample Text"),
+        QStringLiteral("~~~~"),
+        QStringLiteral("after"),
+    };
+    const QVector<bool> m = fenceMask(lines);
+    ASSERT_EQ(m.size(), lines.size());
+    EXPECT_TRUE(m[1])  << "a shorter tilde run is body text";
+    EXPECT_TRUE(m[2])  << "the heading stays inside the block";
+    EXPECT_FALSE(m[4]) << "the equal-length closer ended the block";
+}
