@@ -163,6 +163,42 @@ if [ "$have_jq" -eq 1 ]; then
     esac
     check_reason_size git-diff-stat '{"tool_input":{"command":"git diff --stat"}}'
 
+    # ANTS-4517 — the diff branch matched the phrase ANYWHERE in the command,
+    # so WRITING about a diff was vetoed even though the command runs no git
+    # at all. Hit while editing this very veto: the rule blocked the fix to
+    # itself, and again while writing these cases. The match is now anchored
+    # to a command position, so the phrase inside a string, a heredoc or an
+    # echo is text.
+    for writing in \
+        'echo "run git diff --stat for counts" >> notes.md' \
+        'python3 -c "print(1) # git diff --stat"' \
+        'sed -i "s/x/git diff --stat/" doc.md'
+    do
+        payload="$(jq -nc --arg c "$writing" '{tool_input:{command:$c}}')"
+        if [ -z "$(printf '%s' "$payload" | bash "$HOOKS_DIR/ants-bash-veto.sh" 2>/dev/null)" ]; then
+            pass "ANTS-4517 writing about a diff is not vetoed: $writing"
+        else
+            fail "ANTS-4517 veto fired on text, not an invocation: $writing"
+        fi
+    done
+
+    # The over-correction the item named: anchoring to the START of the whole
+    # command would stop blocking a real invocation in a later stage. A
+    # pipeline's or a compound's second stage runs git exactly as the first
+    # does, so each must still be vetoed.
+    for realcmd in \
+        'cd src && git diff --stat' \
+        'true; git diff --stat' \
+        'make || git diff --stat'
+    do
+        payload="$(jq -nc --arg c "$realcmd" '{tool_input:{command:$c}}')"
+        if [ -n "$(printf '%s' "$payload" | bash "$HOOKS_DIR/ants-bash-veto.sh" 2>/dev/null)" ]; then
+            pass "ANTS-4517 a later-stage invocation is still vetoed: $realcmd"
+        else
+            fail "ANTS-4517 anchoring went too far, missed: $realcmd"
+        fi
+    done
+
     # The status/log branch keeps its own verb — splitting the diff case out
     # must not have taken get_git_status with it.
     status_reason="$(printf '%s' '{"tool_input":{"command":"git status"}}' \

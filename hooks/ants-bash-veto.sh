@@ -83,6 +83,26 @@ case "$cmd" in
     *"grep"*"-v"*"ROADMAP.md"*|*"--exclude"*"ROADMAP.md"*) roadmap_read=0 ;;
 esac
 
+# ANTS-4517 — same false-positive shape, on the git branch. The diff pattern
+# below matched the phrase ANYWHERE in the command, so WRITING about a diff —
+# an echo, a heredoc, a sed replacement, this file's own comments — was
+# vetoed while running no git at all. It blocked the fix to itself twice.
+#
+# A real invocation sits at a COMMAND POSITION. Anchoring to the start of the
+# whole string is the obvious over-correction: a pipeline's or a compound's
+# later stage runs git exactly as its first does. So split on the separators
+# and test each segment's head.
+git_diff_stat=0
+_scan=$(printf '%s' "$cmd" | tr '|;&()' '\n\n\n\n\n')
+while IFS= read -r _seg; do
+    _seg=${_seg#"${_seg%%[![:space:]]*}"}
+    case "$_seg" in
+        "git diff --stat"*) git_diff_stat=1 ;;
+    esac
+done <<SCAN
+$_scan
+SCAN
+
 # Block branches — precise, low false-positive routing kept as hard vetoes.
 reason=""
 case "$cmd" in
@@ -93,7 +113,8 @@ case "$cmd" in
     # (ANTS-2074 working-tree, ANTS-3377 hunks); ANTS-2169 Part 2 identified it
     # but the message kept naming the wrong two.
     *"git diff --stat"*)
-        reason='use mcp__ants__git_state op:"diff" — per-file added/removed counts (hunks:true for @@ headers); get_git_status is status-only and cannot answer a diff'
+        [ "$git_diff_stat" -eq 1 ] && \
+            reason='use mcp__ants__git_state op:"diff" — per-file added/removed counts (hunks:true for @@ headers); get_git_status is status-only and cannot answer a diff'
         ;;
     "git status"|"git status "*|"git log --oneline"*|"git log -n"*"--oneline"*)
         reason='use mcp__ants__get_git_status (status+branch+ahead/behind) or mcp__ants__git_state op:"log" — paginated git facts cost ~30 tokens vs raw stdout'

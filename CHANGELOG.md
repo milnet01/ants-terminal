@@ -248,6 +248,12 @@ for security-relevant changes.
 
 ### Fixed
 
+- **The bash veto no longer blocks commands that merely mention a git diff** (ANTS-4517)
+  The rule matched its phrase anywhere in the command, so an echo, a
+  heredoc or a sed replacement carrying it was vetoed while running no git
+  at all. The match now anchors to a command position; a later stage of a
+  pipeline or a compound is still a real invocation and still vetoed.
+
 - **`roadmap_query section=` now returns a heading's nested sections too** (ANTS-4819)
   A level-2 slug answers with its level-3 children's items, matching the
   descendants `mode:"section_index"` already rolled into that slug's
