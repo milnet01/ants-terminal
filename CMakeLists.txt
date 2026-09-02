@@ -2238,6 +2238,9 @@ if(ANTS_TESTS)
                 tests/features/indie_review_engine/test_indie_review_engine.cpp
                 # ANTS-3507 — file-list module-map fallback partitioner.
                 tests/features/indie_review_filelist_partition/test_indie_review_filelist_partition.cpp
+                # ANTS-4794 — the committed .indie-review/partition.json keeps
+                # covering every src file; a new file in no lane is silent.
+                tests/features/indie_review_partition_coverage/test_partition_coverage.cpp
                 tests/features/debt_sweep_engine/test_debt_sweep_engine.cpp
                 tests/features/verify_changes_engine/test_verify_changes_engine.cpp
                 # ANTS-3473 — fold-in ID prefix sniffing.
@@ -2328,6 +2331,10 @@ if(ANTS_TESTS)
         SRC_INDIE_REVIEW_ENGINE_CPP_PATH="${CMAKE_SOURCE_DIR}/src/indiereviewengine.cpp"
         # ANTS-1344 — truncation-flag source-grep needs the engine header.
         SRC_INDIE_REVIEW_ENGINE_H_PATH="${CMAKE_SOURCE_DIR}/src/indiereviewengine.h"
+        # ANTS-4794 — the coverage guard reads the committed partition and
+        # walks the real tree, so it needs both the file and the root.
+        ANTS_PARTITION_JSON_PATH="${CMAKE_SOURCE_DIR}/.indie-review/partition.json"
+        ANTS_PROJECT_ROOT_DIR="${CMAKE_SOURCE_DIR}"
         # ANTS-1455 — taxonomy doc for new error-code rows.
         MCP_ERROR_CODES_DOC_PATH="${CMAKE_SOURCE_DIR}/docs/standards/mcp-error-codes.md"
         # ANTS-1579 — verify_changes description source-scrape (INV-4).

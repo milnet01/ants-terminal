@@ -14,6 +14,14 @@ for security-relevant changes.
 
 ### Added
 
+- **Conformance test holding the committed review partition to every source file** (ANTS-4794)
+  The build now fails when a file under `src/` belongs to no lane in
+  `.indie-review/partition.json`, when a lane names a path that has been
+  renamed away, or when two lanes claim the same file. The reviewable-file
+  set comes from the review engine's own walk rather than a second copy of
+  its filters, so a change to what counts as reviewable moves the test with
+  it.
+
 - **Every source file now belongs to a review lane** (ANTS-4793)
   A committed `.indie-review/partition.json` declares 32 lanes covering all 313 `src/` files exactly once. The module map's prefix rule had left 189 files and 59,257 lines — mainwindow.cpp among them — in no lane at all, so a full-codebase review silently skipped a third of the tree.
 

@@ -49406,6 +49406,38 @@ volume classes, and the tooling/documentation gaps the run exposed.
   Source: in-session-2026-09-02.
   Lanes: review, docs.
 
+- ✅ [ANTS-4794] **A conformance test keeps .indie-review/partition.json covering every src file.**
+  ANTS-4793 committed the partition; nothing keeps it true. It is a
+  static list of 313 paths, so the day a src file is added it belongs to
+  no lane, and the failure is SILENT -- indie_review_partition reports
+  the override it was given and cannot know a file is missing from it.
+  That is the same shape as ANTS-4785/4786, recreated one level up.
+
+  The guard reuses the engine's own definition of a reviewable file
+  rather than replicating it: IndieReviewEngine::deriveComputedPartition
+  walks the real tree under the same three filters the engine uses
+  (noise dir, generated file, CodebaseIndex::isIndexableSuffix), so a
+  change to what counts as reviewable moves the test with it.
+  Resolved (2026-09-02): three tests in test_audit, ctest count 4054 ->
+  4057, full suite 4043/4043 green.
+
+  Each invariant was proved to FIRE against injected drift rather than
+  assumed: dropping src/mainwindow.cpp from its lane reddens INV-1;
+  pointing a lane at a path that does not exist reddens INV-2;
+  naming one file in two lanes reddens INV-3; and adding a new
+  src/*.cpp that no lane claims -- the real trigger -- reddens INV-1
+  naming the file. The tree was restored clean after each.
+
+  Deliberately not asserted: lane sizing (claude-integration cannot be
+  split, ANTS-4793) and which lane a file belongs to, which is a
+  judgement. INV-1 is one-directional so the committed partition may
+  name a path the engine's walk does not return; INV-2 stops that
+  permission covering a path that is simply wrong.
+  **Layman:** The review groups can no longer silently stop covering new code — the build fails the day a source file belongs to no group.
+  Kind: test.
+  Source: in-session-2026-09-02.
+  Lanes: review, tests.
+
 ### Ants MCP feedback from CC sessions — 2026-08-28 triage
 
 - 📋 [ANTS-4746] **A verb that reads this session's completed subagent returns, so a fan-out that outlives a compaction is recoverable.**
