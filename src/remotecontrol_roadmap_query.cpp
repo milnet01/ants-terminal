@@ -4363,6 +4363,15 @@ QJsonDocument RemoteControl::cmdRoadmapLog(const QJsonObject &req) {
     if (op == QStringLiteral("amend_headline")) {
         return cmdRoadmapLogAmendBody(req, /*headlineMode=*/true);
     }
+    // ANTS-4808 — op:"set_body": replace a bullet's body outright. amend_body
+    // patches a MATCHED span, so a body whose text cannot be expressed as a
+    // match had no route back at all — one project has carried a kilobyte of
+    // garbled prose in a shipped item for that reason, with a marker
+    // paragraph above it explaining why. Three reports ended there.
+    if (op == QStringLiteral("set_body")) {
+        return cmdRoadmapLogAmendBody(req, /*headlineMode=*/false,
+                                      /*setBodyMode=*/true);
+    }
     // ANTS-4667 — op:"amend_field": the same idea aimed at a TRAILER COLUMN.
     // Not a mode of amend_body: it replaces a value outright rather than
     // patching a matched substring, so it takes no old_text and the body
@@ -4474,6 +4483,12 @@ QJsonDocument RemoteControl::cmdRoadmapLogFlipForTest(
 QJsonDocument RemoteControl::cmdRoadmapLogAmendBodyForTest(
         const QJsonObject &req) {
     return cmdRoadmapLogAmendBody(req);
+}
+
+QJsonDocument RemoteControl::cmdRoadmapLogSetBodyForTest(
+    const QJsonObject &req) {
+    return cmdRoadmapLogAmendBody(req, /*headlineMode=*/false,
+                                  /*setBodyMode=*/true);
 }
 
 QJsonDocument RemoteControl::cmdRoadmapLogAmendHeadlineForTest(

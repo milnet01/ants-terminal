@@ -14,6 +14,22 @@ for security-relevant changes.
 
 ### Added
 
+- **Review lanes report how many lines they cover, not just how many files** (ANTS-4804)
+  A lane holding one very large file counted as one file and tripped no
+  size threshold, so the biggest lanes were the ones least likely to be
+  flagged. Six projects reported it independently. Each lane now carries a
+  line count and an oversized signal alongside the existing file-count
+  one, which keeps its meaning.
+
+- **A way to rewrite a roadmap entry's text from scratch** (ANTS-4808)
+  Editing an entry's prose could only replace a matched piece of it, so
+  text that could not be matched had no route back — one project carried a
+  kilobyte of garbled prose in a shipped entry for that reason.
+  roadmap_log op:"set_body" replaces the whole body. It records the
+  previous text in history and reports how much it replaced, and it
+  refuses an old_text rather than ignoring one, since a caller who sends
+  it believes the write is bounded by it.
+
 - **An .editorconfig recording the layout this project actually uses** (ANTS-4790)
   Spaces, four wide, LF, UTF-8, trimmed trailing whitespace and a final
   newline, with two deliberate carve-outs: markdown keeps trailing
@@ -210,6 +226,51 @@ for security-relevant changes.
   `Inv2BypassesStatusAndPagination` anchored on a string that also matches an earlier `else if`, so its byte window opened above the branch it names — a test that passes from the wrong position gives no signal when the thing it names moves. Re-anchored on a needle that occurs once, and proved by mutation in both directions.
 
 ### Fixed
+
+- **A registered project is no longer told the store holds no record of it** (ANTS-4802)
+  Only one roadmap dialect is served from the store, while the migration
+  reads three — so a project could be registered, hold hundreds of rows,
+  and still be told there was no row for it, which sends the reader to
+  re-run the migration, the one action that cannot help. The refusal now
+  asks the store first, and the migration says what a non-served format
+  costs rather than reporting a bare flag.
+
+- **A spec id one tool hands out is now accepted by the tool that reads specs** (ANTS-4810)
+  invariant_check returns a spec's id as its filename stem, and on
+  projects whose specs carry a topic suffix spec_query rejected that exact
+  id — breaking the two-call lookup the coding workflow prescribes.
+
+- **The roadmap summary view answers the in-sync question instead of ignoring it** (ANTS-4818)
+  Asking whether ROADMAP.md matches the store was accepted and silently
+  dropped in report mode, while the documented rule says a missing answer
+  means the question was never asked — so a caller who did ask read the
+  silence as their own omission.
+
+- **A roadmap entry's reply says which of its lines the tool wrote** (ANTS-4813)
+  An entry's text mixes an author's prose with lines composed from stored
+  fields, and the two are edited by different operations. Nothing
+  distinguished them, so passing a line back to be edited failed on text
+  that had just been read. The reply now names the composed lines.
+
+- **Lanes that count zero now say whether they are empty or unmeasured** (ANTS-4816)
+  A lane of packaging files, YAML or shell counted zero, because the count
+  admits only file types the code index can read — and zero read exactly
+  like an empty directory while being what the size warnings key on. Such
+  a lane now reports how many files were there and not counted.
+
+- **A project keeping all its code in one directory gets review lanes again** (ANTS-4811)
+  Every partitioner grouped by top-level directory and returned nothing
+  unless grouping produced more than one group, so a project whose modules
+  all live in one package got an empty partition that looked exactly like
+  having no subsystems. Such a directory is now split by size, and the
+  reply says which stage produced the lanes so "the map yielded nothing"
+  is distinguishable from "there is no map".
+
+- **Review lanes no longer cover files the repository ignores** (ANTS-4809)
+  The partition walk knew the conventional exclusions but never asked git
+  about the project's own, so one project got fourteen of seventeen lanes
+  over an ignored directory of scraped data. A lane is an instruction to
+  read what it names, so this mattered more than the noise.
 
 - **indie_review_partition now reports which files no review lane covers** (ANTS-4786)
   It could only answer that for a partition it had computed itself. On the

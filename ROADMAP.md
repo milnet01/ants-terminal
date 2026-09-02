@@ -49930,7 +49930,7 @@ volume classes, and the tooling/documentation gaps the run exposed.
   Source: pressless-feedback-2026-09-01.
   Lanes: remotecontrol, mcp.
 
-- 📋 [ANTS-4808] **No verb replaces a bullet body wholesale, so a garbled body has no route back.**
+- ✅ [ANTS-4808] **No verb replaces a bullet body wholesale, so a garbled body has no route back.**
   Requested twice by Pressless, in both their findings, and it stands
   independently of which diagnosis of the matcher was right. amend_body
   patches a matched span; if the span cannot be expressed, the text is
@@ -49955,6 +49955,40 @@ volume classes, and the tooling/documentation gaps the run exposed.
   or refuses. And whether it should require the caller to state the
   expected current body, the way apply_edits' unique-`old` form makes a
   duplicate re-send safe.
+  Resolved (2026-09-02): op:"set_body" replaces a bullet's whole body.
+  Store-backed projects only.
+
+  Built as a third mode of the amend_body handler rather than its own
+  handler, for the reason amend_headline is the second: the locate, the
+  column write, the trailer re-derivation, the modified stamp and the
+  history row are identical, and only the step deciding the new text
+  differs. A separate copy is how the two would come to disagree about
+  what writing a body costs.
+
+  `old_text` is REFUSED (bad_op_combo), not ignored — a caller who sends
+  one believes the write is bounded by it, so discarding it silently would
+  destroy text they thought they had protected. The refusal names
+  amend_body as the op that does take it.
+
+  No confirmation argument, which was the open question. The op is a
+  rescue and friction on it lands hardest on the caller already in
+  trouble; the write is bounded by a locator like every other, the
+  previous body goes to history, and the envelope echoes
+  replaced_body_chars so the loss is visible in the reply rather than only
+  in a later diff.
+
+  One interaction found by the tests and kept rather than worked around:
+  replacing an OPEN item's body drops any Layman: it declared there, which
+  clears the column, which the render gate then refuses. The gate is
+  right — a rescue that silently strips a required field trades one kind
+  of damage for another — and its refusal already says the remedy can
+  ride along in the same call. Pinned by
+  Ants4808StrippingAnOpenItemsLaymanIsRefused so it is a documented cost
+  rather than a surprise.
+
+  The markdown path is NOT covered: this writes a store column, and a
+  markdown project's body is the file. Recorded rather than hidden — all
+  three reports came from store-backed projects.
   **Layman:** If a roadmap entry's text gets mangled, there is no way to rewrite it — only to patch pieces of it.
   Kind: feature.
   Source: pressless-feedback-2026-09-01.
@@ -50202,7 +50236,7 @@ volume classes, and the tooling/documentation gaps the run exposed.
   Source: slipcase-feedback-2026-09-01.
   Lanes: remotecontrol, mcp.
 
-- 📋 [ANTS-4816] **file_count reports 0 for a lane of non-indexable files, so too_coarse can never fire on it.**
+- ✅ [ANTS-4816] **file_count reports 0 for a lane of non-indexable files, so too_coarse can never fire on it.**
   finbreak got file_count:0 for its `.github`, `assets` and `packaging`
   lanes while each carried a non-empty sourcePaths array — `.github`
   listing three concrete .yml files. `scripts`, `src` and `tests` counted
@@ -50230,6 +50264,28 @@ volume classes, and the tooling/documentation gaps the run exposed.
   same collectLaneFiles walk, so it reports 0 on these lanes too and
   inherits the same defect. Fix them together or the new signal carries
   the old blind spot.
+  Resolved (2026-09-02): each lane carries uncounted_files where the walk
+  found files it could not admit, with counted_nothing on a lane that
+  reports zero while not being empty, mirrored by an envelope-level
+  counted_nothing / counted_nothing_hint.
+
+  Built as the reporter's fallback rather than their first option, and the
+  reason is the one ANTS-4771's header gives: widening the suffix list
+  would count files the outline cannot read. A second number says "not
+  measured" where a changed first number would only move the confusion —
+  and file_count keeps its type, so no caller reading it as an int breaks.
+
+  The walk is collectLaneFiles with the suffix gate removed, so the
+  difference between the two numbers IS the gate and nothing else.
+
+  This also closes the blind spot ANTS-4804's total_lines shipped with
+  this morning, since both derive from that same walk: a lane reporting
+  0 lines now says whether that is emptiness or a measurement that did
+  not run.
+
+  Still NOT covered, and it is a different gap: a path the noise rule
+  drops whole — any dot-directory, so `.github` — is invisible to both
+  sides of the subtraction and reports 0 and 0. That is ANTS-4805.
   **Layman:** Lanes made of build and packaging files are counted as empty, so nothing can flag them as too big.
   Kind: fix.
   Source: finbreak-feedback-2026-09-01.

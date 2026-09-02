@@ -1002,6 +1002,8 @@ public:
     // m_main-independent. See tests/features/roadmap_log_amend_body/spec.md.
     QJsonDocument cmdRoadmapLogAmendBodyForTest(const QJsonObject &req);
     QJsonDocument cmdRoadmapLogAmendHeadlineForTest(const QJsonObject &req);
+    // ANTS-4808 — op:"set_body", same seam as the two above.
+    QJsonDocument cmdRoadmapLogSetBodyForTest(const QJsonObject &req);
     // ANTS-4667 — op:"amend_field": store-only, so the seam is the
     // section ops' shape (no MainWindow, no counter).
     QJsonDocument cmdRoadmapLogAmendFieldForTest(const QJsonObject &req);
@@ -1070,8 +1072,12 @@ private:
     // the unique-match guard and the atomic write are identical, and a second
     // copy of ~400 lines is how the two drift.
     QJsonDocument cmdRoadmapLogAmendField(const QJsonObject &req);
+    // ANTS-4808 — `setBodyMode` is op:"set_body": the same locate, store
+    // write, trailer re-derivation and history row, with the match step
+    // removed. A third mode for the reason the second is a mode.
     QJsonDocument cmdRoadmapLogAmendBody(const QJsonObject &req,
-                                         bool headlineMode = false);
+                                         bool headlineMode = false,
+                                         bool setBodyMode  = false);
     // ANTS-1690 — batch flip: flip N bullets to one to_status in a
     // single read + single QSaveFile commit. Dispatched from
     // cmdRoadmapLog when req["op"] == "flip_batch".

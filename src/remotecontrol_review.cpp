@@ -70,6 +70,7 @@ QJsonDocument RemoteControl::cmdIndieReviewPartition(const QJsonObject &req) {
     QStringList coarseLanes;
     QStringList oversizedLanes;
     bool anyLineScanCapped = false;
+    bool anyCountedNothing = false;   // ANTS-4816
     for (const auto &l : lanes) {
         QJsonObject o;
         o["name"]    = l.name;
@@ -79,6 +80,19 @@ QJsonDocument RemoteControl::cmdIndieReviewPartition(const QJsonObject &req) {
         o["sourcePaths"] = sps;
         const int files = IndieReviewEngine::laneFileCount(root, l);
         o["file_count"] = files;
+        // ANTS-4816 — a lane of packaging, YAML or an RPM spec counts 0,
+        // because file_count admits only what the codebase index can outline.
+        // 0 then reads exactly like an empty directory while being the input
+        // too_coarse and total_lines both key on. Say how many files were
+        // there and not counted, so the two are distinguishable.
+        const int uncounted = IndieReviewEngine::laneUncountedFiles(root, l);
+        if (uncounted > 0) {
+            o["uncounted_files"] = uncounted;
+            if (files == 0) {
+                o["counted_nothing"] = true;
+                anyCountedNothing = true;
+            }
+        }
         bool capped = false;
         const qint64 lines = IndieReviewEngine::laneLineCount(root, l, &capped);
         o["total_lines"] = static_cast<double>(lines);
@@ -275,6 +289,17 @@ QJsonDocument RemoteControl::cmdIndieReviewPartition(const QJsonObject &req) {
             "apply your own budget rather than this one if it differs.")
                 .arg(oversizedLanes.size())
                 .arg(IndieReviewEngine::kMaxReviewableLinesPerLane);
+    }
+    if (anyCountedNothing) {
+        env["counted_nothing"] = true;
+        env["counted_nothing_hint"] = QStringLiteral(
+            "At least one lane holds files that `file_count` and "
+            "`total_lines` do not measure, so it reports 0 while not being "
+            "empty — see per-lane `uncounted_files`. Both numbers admit only "
+            "suffixes the codebase index can outline, which a packaging, "
+            "YAML or shell lane is not. Do NOT read 0 as \"nothing to review\" "
+            "on such a lane, and do not expect `too_coarse` or `oversized` to "
+            "fire on it: they key on measurements that did not run.");
     }
     if (anyLineScanCapped) {
         env["total_lines_capped"] = true;

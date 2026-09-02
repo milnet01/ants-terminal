@@ -181,6 +181,50 @@ TEST(IndieReviewComputedPartition, Inv7NullReporterIsHarmless) {
     EXPECT_EQ(lanes.size(), 2);
 }
 
+// ANTS-4816 — a lane of files the count cannot admit reports 0 AND says so,
+// so "nothing here" is distinguishable from "nothing I could measure".
+// finbreak measured three such lanes (.github, assets, packaging) carrying
+// real files while counting zero — and 0 is the input too_coarse and
+// total_lines both key on.
+TEST(IndieReviewComputedPartition, Ants4816UncountedFilesAreReported) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString root = QFileInfo(tmp.path()).canonicalFilePath();
+
+    // A packaging lane: real files, none of them a suffix the index outlines.
+    writeFile(root, QStringLiteral("packaging/app.spec"), QByteArray("Name: x\n"));
+    writeFile(root, QStringLiteral("packaging/debian/control"), QByteArray("Package: x\n"));
+    writeFile(root, QStringLiteral("packaging/app.metainfo.xml"), QByteArray("<c/>\n"));
+    // And a source lane, as the control.
+    writeFile(root, QStringLiteral("src/a.py"), QByteArray("x = 1\n"));
+
+    IndieReviewEngine::Lane pkg;
+    pkg.name        = QStringLiteral("packaging");
+    pkg.sourcePaths = QStringList{QStringLiteral("packaging")};
+    IndieReviewEngine::Lane src;
+    src.name        = QStringLiteral("src");
+    src.sourcePaths = QStringList{QStringLiteral("src")};
+
+    // The premise: the lane is not empty and counts zero anyway.
+    EXPECT_EQ(IndieReviewEngine::laneFileCount(root, pkg), 0);
+    EXPECT_EQ(IndieReviewEngine::laneUncountedFiles(root, pkg), 3)
+        << "three real files were there and not counted";
+
+    // The control: a lane the walk DOES admit reports nothing uncounted, so
+    // the signal means something rather than firing everywhere.
+    EXPECT_EQ(IndieReviewEngine::laneFileCount(root, src), 1);
+    EXPECT_EQ(IndieReviewEngine::laneUncountedFiles(root, src), 0);
+
+    // A genuinely empty lane is still zero and zero — which is what makes the
+    // pair readable as "empty" rather than "unmeasured".
+    QDir().mkpath(QDir(root).filePath(QStringLiteral("hollow")));
+    IndieReviewEngine::Lane hollow;
+    hollow.name        = QStringLiteral("hollow");
+    hollow.sourcePaths = QStringList{QStringLiteral("hollow")};
+    EXPECT_EQ(IndieReviewEngine::laneFileCount(root, hollow), 0);
+    EXPECT_EQ(IndieReviewEngine::laneUncountedFiles(root, hollow), 0);
+}
+
 // ANTS-4811 — a project whose sources all sit under ONE directory gets a
 // partition. Grouping by directory produced one lane, the >1 gate discarded
 // it, and the verb answered `lanes:[], ok:true` — which is what a project with

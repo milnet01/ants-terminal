@@ -420,6 +420,123 @@ TEST(RoadmapLogAmendField, Ants4813ComposedTrailersAreNamed) {
     EXPECT_FALSE(keys(bodyDeclared).contains(QStringLiteral("kind")));
 }
 
+// ANTS-4808 — op:"set_body" replaces a body outright, which is the route back
+// for text amend_body cannot express as a match. Three sessions reported
+// ending at "there is no route at all"; one left a kilobyte of garbled prose
+// in a shipped roadmap item because of it.
+TEST(RoadmapLogSetBody, Ants4808ReplacesTheWholeBody) {
+    Fx fx; ASSERT_TRUE(fx.ok());
+    RemoteControl rc(nullptr);
+
+    QJsonObject req;
+    req[QStringLiteral("caller_cwd")] = fx.root;
+    req[QStringLiteral("id")]         = QStringLiteral("DEMO-0007");
+    // The new body declares Layman: itself. DEMO-0007 is OPEN and its Layman
+    // lives in its body, so a replacement that dropped the declaration would
+    // clear the column and the render gate would refuse the write — correctly.
+    // That interaction is asserted on its own below.
+    req[QStringLiteral("new_text")] =
+        QStringLiteral("Layman: A rewritten thing.\nRewritten from scratch.");
+    const QJsonObject resp = rc.cmdRoadmapLogSetBodyForTest(req).object();
+
+    ASSERT_TRUE(resp.value(QStringLiteral("ok")).toBool())
+        << QJsonDocument(resp).toJson().toStdString();
+    EXPECT_EQ(resp.value(QStringLiteral("op")).toString(),
+              QStringLiteral("set_body"));
+    // The reply says what it destroyed — the one op whose cost a caller
+    // cannot read off its own arguments.
+    EXPECT_GT(resp.value(QStringLiteral("replaced_body_chars")).toInt(), 0);
+
+    QJsonObject q;
+    q[QStringLiteral("caller_cwd")]   = fx.root;
+    q[QStringLiteral("id")]           = QStringLiteral("DEMO-0007");
+    q[QStringLiteral("include_body")] = true;
+    const QJsonObject after = rc.cmdRoadmapQuery(q).object();
+    const QString body = after.value(QStringLiteral("bullets")).toArray()
+                             .at(0).toObject()
+                             .value(QStringLiteral("body")).toString();
+    EXPECT_TRUE(body.contains(QStringLiteral("Rewritten from scratch.")));
+    EXPECT_FALSE(body.contains(QStringLiteral("Closing prose line.")))
+        << "the previous prose must be gone, or this is an append";
+}
+
+// ANTS-4808 — old_text is REFUSED rather than ignored. A caller who sent one
+// believes the write is bounded by it, so discarding it silently would
+// destroy text they thought they had protected.
+TEST(RoadmapLogSetBody, Ants4808OldTextIsRefusedNotIgnored) {
+    Fx fx; ASSERT_TRUE(fx.ok());
+    RemoteControl rc(nullptr);
+
+    QJsonObject req;
+    req[QStringLiteral("caller_cwd")] = fx.root;
+    req[QStringLiteral("id")]         = QStringLiteral("DEMO-0007");
+    req[QStringLiteral("old_text")]   = QStringLiteral("Closing prose line.");
+    req[QStringLiteral("new_text")]   = QStringLiteral("x");
+    const QJsonObject resp = rc.cmdRoadmapLogSetBodyForTest(req).object();
+
+    EXPECT_FALSE(resp.value(QStringLiteral("ok")).toBool());
+    EXPECT_EQ(resp.value(QStringLiteral("code")).toString(),
+              QStringLiteral("bad_op_combo"));
+    EXPECT_TRUE(has(resp.value(QStringLiteral("error")).toString().toStdString(),
+                    "amend_body"))
+        << "the refusal must name the op that DOES take old_text";
+}
+
+// ANTS-4808 — replacing an OPEN item's body drops any Layman: it declared
+// there, which clears the column, which the render gate then refuses. The gate
+// is right and the op must not sidestep it: a rescue that silently strips a
+// required field would trade one kind of damage for another. Asserted so the
+// interaction is a documented cost of the op rather than a surprise.
+TEST(RoadmapLogSetBody, Ants4808StrippingAnOpenItemsLaymanIsRefused) {
+    Fx fx; ASSERT_TRUE(fx.ok());
+    RemoteControl rc(nullptr);
+
+    QJsonObject req;
+    req[QStringLiteral("caller_cwd")] = fx.root;
+    req[QStringLiteral("id")]         = QStringLiteral("DEMO-0007");
+    req[QStringLiteral("new_text")]   = QStringLiteral("No Layman line here.");
+    const QJsonObject resp = rc.cmdRoadmapLogSetBodyForTest(req).object();
+
+    EXPECT_FALSE(resp.value(QStringLiteral("ok")).toBool())
+        << "an open item left with no Layman must not be written";
+    EXPECT_EQ(resp.value(QStringLiteral("code")).toString(),
+              QStringLiteral("render_gate_unmet"));
+    // The refusal names the remedy and says it can ride along in the same
+    // call, which is what keeps the op usable in the case it exists for.
+    EXPECT_TRUE(has(resp.value(QStringLiteral("error")).toString().toStdString(),
+                    "Layman"));
+}
+
+// ANTS-4808 — a dry run previews and writes nothing, like every other op here.
+TEST(RoadmapLogSetBody, Ants4808DryRunWritesNothing) {
+    Fx fx; ASSERT_TRUE(fx.ok());
+    RemoteControl rc(nullptr);
+
+    QJsonObject req;
+    req[QStringLiteral("caller_cwd")] = fx.root;
+    req[QStringLiteral("id")]         = QStringLiteral("DEMO-0007");
+    req[QStringLiteral("new_text")] =
+        QStringLiteral("Layman: A previewed thing.\nPreview only.");
+    req[QStringLiteral("dry_run")]    = true;
+    const QJsonObject resp = rc.cmdRoadmapLogSetBodyForTest(req).object();
+    ASSERT_TRUE(resp.value(QStringLiteral("ok")).toBool())
+        << QJsonDocument(resp).toJson().toStdString();
+    EXPECT_TRUE(resp.value(QStringLiteral("dry_run")).toBool());
+
+    QJsonObject q;
+    q[QStringLiteral("caller_cwd")]   = fx.root;
+    q[QStringLiteral("id")]           = QStringLiteral("DEMO-0007");
+    q[QStringLiteral("include_body")] = true;
+    const QString body = rc.cmdRoadmapQuery(q).object()
+                             .value(QStringLiteral("bullets")).toArray()
+                             .at(0).toObject()
+                             .value(QStringLiteral("body")).toString();
+    EXPECT_FALSE(body.contains(QStringLiteral("Preview only.")))
+        << "a preview must not land";
+    EXPECT_TRUE(body.contains(QStringLiteral("Closing prose line.")))
+        << "and must not destroy what it previewed replacing";
+}
+
 // ---------------------------------------------------------------- INV-8 -----
 
 TEST(RoadmapLogAmendField, Inv8UnknownIdRefused) {

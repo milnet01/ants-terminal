@@ -2310,12 +2310,109 @@ static QString rcAmendedParagraph(const QStringList &lines, int editedIdx) {
 // untouched. Exact-match patch only this pass; full-body-replace is out
 // of scope (see tests/features/roadmap_log_amend_body/spec.md).
 // m_main-independent (caller_cwd + filesystem only).
+// ANTS-4808 — op:"set_body"'s store write. Deliberately amend_body's own
+// mutate with the match removed, so the two cannot come to disagree about what
+// writing a body entails: the column, the re-derived trailers, the modified
+// stamp and the history row are all the same steps in the same order.
+//
+// Why the op exists at all. amend_body patches a MATCHED span, so a body whose
+// text cannot be expressed as a match has no route back — and one project has
+// carried about a kilobyte of garbled prose in a shipped roadmap item for
+// exactly that reason, with a marker paragraph above it explaining why it is
+// still there. Three separate reports ended at "there is no route at all".
+//
+// No confirmation argument, and that is a decision rather than an oversight.
+// The op is a rescue, friction on it lands hardest on the caller already in
+// trouble; the write is bounded by a locator like every other, the previous
+// body is recorded in history, and the envelope echoes what was destroyed so
+// the loss is visible in the reply rather than only in a later diff.
+namespace {
+
+// File-local rather than a member: RoadmapStore is deliberately incomplete in
+// remotecontrol.h, and this takes everything it needs as parameters.
+QJsonDocument rlSetBodyStore(
+    RoadmapStore &store, qint64 projectId, qint64 itemPk,
+    const RoadmapStore::ItemWrite &before, const QString &newBody,
+    const QString &callerCanonical, const QString &roadmapPath,
+    const QString &matchedId, bool dryRun,
+    const QStringList &newTextScrubbedNames) {
+    HistoryContext hist;
+    hist.changedAt = rlHistoryStamp();
+    QString deriveCode;
+    QStringList keptColumns;
+
+    const auto mutate = [&](QString *err) -> bool {
+        if (!store.setItemField(itemPk, QStringLiteral("body"), newBody,
+                                QStringLiteral("asserted"), err))
+            return false;
+        hist.record(itemPk, QStringLiteral("body"), before.body, newBody);
+        // The same re-derivation amend_body runs. Skipping it would let a
+        // replacement silently change what the render emits: a body that
+        // declared `Kind:` and no longer does hands the column back, and one
+        // that newly declares it takes the column over.
+        if (!rlDeriveTrailerColumns(store, itemPk, before, newBody, {}, &hist,
+                                    err, &keptColumns, &deriveCode))
+            return false;
+        if (!rlStampModified(store, itemPk, err))
+            return false;
+        return rlFlushHistory(store, hist, err);
+    };
+
+    RoadmapRender::Outcome outcome;
+    QString writeErr;
+    const auto r = RoadmapWrite::commitAndRender(
+        store, projectId, callerCanonical, roadmapPath, dryRun, mutate,
+        &outcome, &writeErr);
+    QJsonObject env;
+    if (rcRoadmapWriteRefused(env, r, writeErr, outcome)) {
+        if (!deriveCode.isEmpty())
+            env[QStringLiteral("code")] = deriveCode;
+        return QJsonDocument(env);
+    }
+    rlAttachHistoryNote(env, store, hist);
+
+    env[QStringLiteral("ok")]      = true;
+    env[QStringLiteral("op")]      = QStringLiteral("set_body");
+    env[QStringLiteral("format")]  = QStringLiteral("ants-v1");
+    env[QStringLiteral("file")]    = QStringLiteral("ROADMAP.md");
+    env[QStringLiteral("amended")] = true;
+    // What was destroyed, in the reply. A whole-body write is the one op whose
+    // cost a caller cannot read off its own arguments.
+    env[QStringLiteral("replaced_body_chars")] = before.body.size();
+    env[QStringLiteral("body_chars")]          = newBody.size();
+    if (!keptColumns.isEmpty()) {
+        QJsonArray kept;
+        for (const QString &c : std::as_const(keptColumns)) kept.append(c);
+        env[QStringLiteral("trailer_columns_kept")] = kept;
+    }
+    if (!matchedId.isEmpty())
+        env[QStringLiteral("id")] = matchedId;
+    rcRoadmapWriteFields(env, outcome, dryRun);
+    if (!newTextScrubbedNames.isEmpty()) {
+        QJsonArray dropped;
+        for (const QString &n : newTextScrubbedNames) dropped.append(n);
+        env[QStringLiteral("note_scrubbed_params")] = dropped;
+    }
+    if (dryRun)
+        env[QStringLiteral("dry_run")] = true;
+    return QJsonDocument(env);
+}
+
+}  // namespace
+
 QJsonDocument RemoteControl::cmdRoadmapLogAmendBody(const QJsonObject &req,
-                                                    bool headlineMode) {
+                                                    bool headlineMode,
+                                                    bool setBodyMode) {
     // ANTS-4372 — every message below names the op the CALLER used, so a
     // refusal from the shared machinery never tells them about an op they did
     // not call.
-    const QString opName = headlineMode ? QStringLiteral("amend_headline")
+    // ANTS-4808 — set_body is a third mode of this handler rather than its own
+    // TU: it locates a bullet, writes the body column and re-derives the
+    // trailers exactly as amend_body does. Only the step that decides the new
+    // text differs, and duplicating the rest is how the two would come to
+    // disagree about what a body write costs.
+    const QString opName = setBodyMode  ? QStringLiteral("set_body")
+                         : headlineMode ? QStringLiteral("amend_headline")
                                         : QStringLiteral("amend_body");
     auto rlErr = [](const QString &code, const QString &message) {
         QJsonObject env;
@@ -2357,7 +2454,18 @@ QJsonDocument RemoteControl::cmdRoadmapLogAmendBody(const QJsonObject &req,
                            "op:\"%1\"").arg(opName));
     }
     const QString oldText = req.value(QStringLiteral("old_text")).toString();
-    if (oldText.isEmpty()) {
+    // ANTS-4808 — set_body replaces the WHOLE body, so `old_text` scopes
+    // nothing. Refused rather than ignored: a caller who sent one believes the
+    // write is bounded by it, and silently discarding it would destroy text
+    // they thought they had protected.
+    if (setBodyMode && !oldText.isEmpty()) {
+        return rlErr(QStringLiteral("bad_op_combo"),
+            QStringLiteral("roadmap_log: `old_text` is not accepted under "
+                           "op:\"set_body\" — it replaces the entire body and "
+                           "matches nothing. Use op:\"amend_body\" to replace "
+                           "one span."));
+    }
+    if (!setBodyMode && oldText.isEmpty()) {
         return rlErr(QStringLiteral("missing_field"),
             QStringLiteral("roadmap_log: op:\"%1\" requires a non-empty "
                            "`old_text` — the exact substring to replace "
@@ -2741,6 +2849,15 @@ QJsonDocument RemoteControl::cmdRoadmapLogAmendBody(const QJsonObject &req,
                 return QJsonDocument(env);
             }
 
+            // ANTS-4808 — set_body writes the column outright. No match, so
+            // none of the miss/ambiguity machinery below applies; everything
+            // after the new text is decided is shared, which is the point of
+            // it being a mode rather than its own handler.
+            if (setBodyMode) {
+                return rlSetBodyStore(store, projectId, *itemPk, *before,
+                                      newText, callerCanonical, roadmapPath,
+                                      matchedId, dryRun, newTextScrubbedNames);
+            }
             // ANTS-4550 — the same seam amendBodyExact() runs, so the two
             // paths cannot answer one old_text differently. Indent::None:
             // the store holds the body as an UNINDENTED residual the render

@@ -215,6 +215,24 @@ constexpr int kMaxReviewableFilesPerLane = 30;
 qint64 laneLineCount(const QString &projectPath, const Lane &lane,
                      bool *capped = nullptr);
 
+// ANTS-4816 — files behind a lane's sourcePaths that the count did NOT admit.
+// laneFileCount takes only suffixes the codebase index can outline, so a lane
+// of YAML, an RPM spec and a debian tree counts 0 — and 0 reads exactly like
+// an empty directory, while being the input too_coarse and total_lines both
+// key on. finbreak measured three such lanes carrying real files.
+//
+// Reported rather than counted, deliberately: widening the suffix list is the
+// repair ANTS-4771's own reasoning rejects, because it would count files the
+// outline cannot read. A caller needs to tell "nothing here" from "nothing I
+// could measure", and a second number says that where a changed first one
+// would only move the confusion.
+//
+// Noise directories and generated output are excluded from BOTH sides, so this
+// isolates the suffix filter alone. A path the noise rule drops whole — any
+// dot-directory, so `.github` included — is invisible to this too; that is
+// ANTS-4805 and is a different gap.
+int laneUncountedFiles(const QString &projectPath, const Lane &lane);
+
 // A lane above this holds more than a briefed reviewer reads carefully, at any
 // file count. Set against measured practice rather than taste: this project's
 // own declared lanes are far below it, and the whole-application lanes that

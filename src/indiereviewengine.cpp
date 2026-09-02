@@ -518,6 +518,48 @@ int laneFileCount(const QString &projectPath, const Lane &lane) {
     return counted.size();
 }
 
+// ANTS-4816 — see header. Same walk as collectLaneFiles with the suffix gate
+// removed, so the difference between the two IS the gate and nothing else.
+int laneUncountedFiles(const QString &projectPath, const Lane &lane) {
+    constexpr int kCountCap = 5000;
+    const QString rootCanon = QFileInfo(projectPath).canonicalFilePath();
+    if (rootCanon.isEmpty()) return 0;
+
+    QSet<QString> admitted;
+    collectLaneFiles(projectPath, lane, &admitted, kCountCap);
+
+    QSet<QString> all;
+    for (const QString &sp : lane.sourcePaths) {
+        const QString canon =
+            QFileInfo(QDir(projectPath).filePath(sp)).canonicalFilePath();
+        if (canon.isEmpty()) continue;
+        if (canon != rootCanon && !canon.startsWith(rootCanon + QChar('/')))
+            continue;
+        const QFileInfo fi(canon);
+        if (fi.isFile()) {
+            if (!isGeneratedSource(fi.fileName())) all.insert(canon);
+            continue;
+        }
+        if (!fi.isDir()) continue;
+        QDirIterator it(canon, QDir::Files, QDirIterator::Subdirectories);
+        while (it.hasNext() && all.size() < kCountCap) {
+            const QString f = it.next();
+            const QFileInfo ffi(f);
+            if (isGeneratedSource(ffi.fileName())) continue;
+            const QString rel = f.startsWith(rootCanon + QLatin1Char('/'))
+                                    ? f.mid(rootCanon.size() + 1) : QString();
+            bool noise = false;
+            const QStringList segs = rel.split(QLatin1Char('/'));
+            for (int i = 0; i + 1 < segs.size(); ++i)
+                if (ProjectSettings::isNoiseDir(segs.at(i))) noise = true;
+            if (noise) continue;
+            const QString fcanon = QFileInfo(f).canonicalFilePath();
+            all.insert(fcanon.isEmpty() ? f : fcanon);
+        }
+    }
+    return qMax(0, all.size() - admitted.size());
+}
+
 // ANTS-4804 — see header.
 qint64 laneLineCount(const QString &projectPath, const Lane &lane,
                      bool *capped) {
