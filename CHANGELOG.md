@@ -280,6 +280,12 @@ for security-relevant changes.
 
 ### Fixed
 
+- **The debt-sweep engine's design doc matches the shipped code again** (ANTS-3510)
+  Its detector list, scan order, apply-fix contract, dry-run path and perf
+  budget had fallen behind several months of changes. The two places that
+  listed detectors by name now point at the engine's own roster, so adding
+  one no longer needs a doc edit.
+
 - **`find_definition` tags a brace-initialised member `declaration`, so both spellings of one field agree** (ANTS-4821)
   A brace only opens a body when a parameter list, a lambda capture list
   or a class-key precedes it; otherwise it initialises the declarator it

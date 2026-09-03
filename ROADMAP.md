@@ -10978,7 +10978,7 @@ fixes don't address. Roadmapped here as their own design tasks.
   Source: user-request-2026-07-03.
   Shipped 2026-07-03. PathValidation::validatePath now allows an out-of-root path whose basename ends in _Ants_MCP_Feedback.md (new isFeedbackFile helper; addFeedbackHintIfApplicable removed as unreachable). One chokepoint covers all general verbs (read_region/read_regions/file_outline/workspace_search/apply_edits). Test: mcp_path_anchor PV-13 (FeedbackFileAllowedOutsideRoot) — existing file allowed w/ resolved set, non-existent allowed w/ empty resolved, non-feedback escape still refused. 19/19 McpPathAnchor green.
 
-- 📋 [ANTS-3510] **Reconcile the ANTS-1113 DebtSweepEngine spec with the post-ship code (ANTS-1358 / ANTS-2227 drift).**
+- ✅ [ANTS-3510] **Reconcile the ANTS-1113 DebtSweepEngine spec with the post-ship code (ANTS-1358 / ANTS-2227 drift).**
   Surfaced by the cold-eyes pass triggered by ANTS-3342 (that pass converged the §3.5 window-scoping edit; these are separate pre-existing drifts). docs/specs/ANTS-1113.md vs src/debtsweepengine.{h,cpp}:
   - §2.1 `ScanOptions` omits the 6th field `int staleTodoMaxAgeDays = 180` (ANTS-1358).
   - §2.1 `ApplyVerdict` lacks `bool wouldApply` and `applyMechanicalFix` lacks the `bool dryRun=false` param (ANTS-2227); §3.9 step machine + §2.2 `debt_sweep_apply_fix` envelope never mention the dry-run path.
@@ -10989,6 +10989,30 @@ fixes don't address. Roadmapped here as their own design tasks.
   **Layman:** The debt-sweep engine's design doc has fallen behind the code over several months of changes; a reviewer found five places where the doc no longer matches what the code actually does.
   Kind: doc-fix.
   Source: cold-eyes-2026-07-13 (loop 2, ANTS-3342 review).
+  Resolved (2026-09-03). All five drifts verified live against
+  src/debtsweepengine.{h,cpp} before editing, and three more found while
+  checking: the roster is 12 detectors not 11, THREE detectors set
+  autoFixable (orphan_q_unused, duplicate_include, obsolete_qstring_idiom)
+  where § 3.9 said one, and the engine holds a kFixable allow-list that
+  refuses a detector absent from it whatever its flag says.
+
+  Fixed by pointing at the live roster rather than re-enumerating it.
+  § 2.1's signature block and § 3.8's scanAll order both listed detectors
+  by name, which is what put them out of date twice; they now defer to
+  detectorsByCategory() and to ANTS-1358's spec, so a detector added there
+  needs no edit here. § 5 budgets detectStaleTodos on its own row because
+  it is the one detector whose cost is per-FINDING (a git blame per
+  marker) rather than per-file.
+
+  Also: ScanOptions gains staleTodoMaxAgeDays, ApplyVerdict gains
+  wouldApply, applyMechanicalFix gains dryRun with its own step, § 3.10's
+  empty-return covers the size-mismatch case, § 2.2's envelope carries
+  dry_run / would_apply, and § 1.1's "unchanged" now says what it is
+  unchanged BY.
+
+  Not done, and not this item: spec_lint reports 12 missing_section and 13
+  invariant_no_test findings on this file, all pre-existing — it predates
+  the required-sections standard. ANTS-4662 owns that class.
 
 - ✅ [ANTS-3513] **read_region/read_regions symbol mode should resolve namespace/class-qualified names, not only the bare identifier.**
   Observed while fixing ANTS-2119: `read_region {symbol:"AntsHelper::driftCheck"}` and `{symbol:"claudestate::display"}` both refuse with `symbol_not_found`, while the bare `{symbol:"driftCheck"}` / `{symbol:"display"}` resolve fine. The flat file_outline indexes the unqualified identifier, so a qualified query misses. The instinct (from find_definition / grep output, which show qualified names) is to paste the qualified form, so this costs a retry each time. Fix: in symbol-mode resolution, if an exact match fails, retry against the last `::`-separated component (or match on suffix `(::|^)<tail>$`). Low-risk, purely additive matching. Same for read_regions items[].symbol.
@@ -11900,6 +11924,21 @@ fixes don't address. Roadmapped here as their own design tasks.
   **Layman:** Make the list of MCP tool descriptions readable from code, instead of only being built inside one enormous function.
   Kind: refactor.
   Source: in-session-2026-07-28 (ANTS-3661 implementation).
+  Progress (2026-09-03): the stated trigger cannot fire as written, so
+  this stays open and unprioritised rather than being picked up.
+
+  Ran ANTS-3661 § 2.1's calibration. No classified population reaches the
+  25% gate — qt_framework 21%, cpp_data_member 15%, cmake_target 7%, with
+  55% in the unclassified `other` bucket. More to the point, the
+  classifier has NO schema-argument population at all, so nothing counts
+  the thing this item's trigger asks about. Measuring it first is a
+  smaller job than the extraction.
+
+  Cost checked while there: onMcpConnection's tools/list branch runs
+  roughly 12,400 lines, and several source-scrape tests bound their
+  windows by that function's body (mcp_verb_offthread_guard scrapes
+  `bodyAfter(ci, "void ClaudeIntegration::onMcpConnection() {")`), so the
+  move has a real blast radius. Worth doing on evidence, not on shape.
 
 - ✅ [ANTS-3680] **Batched symbol resolution: answer N needles in one tree walk.**
   `SymbolQuery::findDefinition` resolves ONE symbol per call and walks
