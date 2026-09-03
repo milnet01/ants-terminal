@@ -1330,7 +1330,22 @@ if(ANTS_TESTS)
         SRC_VTPARSER_PATH="${CMAKE_SOURCE_DIR}/src/vtparser.cpp"
         SRC_MAINWINDOW_CPP_PATH="${CMAKE_SOURCE_DIR}/src/mainwindow.cpp"
         SRC_MAINWINDOW_H_PATH="${CMAKE_SOURCE_DIR}/src/mainwindow.h"
-        SRC_THEMEDSTYLESHEET_CPP_PATH="${CMAKE_SOURCE_DIR}/src/themedstylesheet.cpp"
+        SRC_THEMEDSTYLESHEET_CPP_PATH="${CMAKE_SOURCE_DIR}/src/themedstylesheet.cpp")
+
+    # ANTS-4797 — a per-TEST path define belongs on its own source, not on
+    # the bundle. Every define in the block above lands on EVERY TU's command
+    # line, so adding one for a single test invalidates the whole bundle.
+    # Measured on test_audit: adding one define per-source rebuilds 1 TU,
+    # adding the same define target-wide rebuilds 54. Adding a feature test
+    # that scrapes a source file is this repo's most common build operation,
+    # so a NEW define goes here. The block above keeps what is genuinely
+    # shared across the bundle.
+    #
+    # set_property(APPEND) rather than set_source_files_properties(PROPERTIES):
+    # that signature takes name/value PAIRS, so a source needing two defines
+    # fails to configure outright.
+    set_property(SOURCE tests/features/themedstylesheet_extraction/test_themedstylesheet_extraction.cpp
+        APPEND PROPERTY COMPILE_DEFINITIONS
         SRC_THEMEDSTYLESHEET_H_PATH="${CMAKE_SOURCE_DIR}/src/themedstylesheet.h")
 
     # ----------------------------------------------------------------------
@@ -1431,50 +1446,99 @@ if(ANTS_TESTS)
         SRC_TERMINALWIDGET_HEADER_PATH="${CMAKE_SOURCE_DIR}/src/terminalwidget.h"
         SRC_TERMINALWIDGET_IMPL_PATH="${CMAKE_SOURCE_DIR}/src/terminalwidget.cpp"
         TERMINALWIDGET_CPP="${CMAKE_SOURCE_DIR}/src/terminalwidget.cpp"
-        TERMINALWIDGET_H="${CMAKE_SOURCE_DIR}/src/terminalwidget.h"
-        SRC_TERMINALACCESSIBLE_PATH="${CMAKE_SOURCE_DIR}/src/terminalaccessible.h"
-        SRC_SESSIONMANAGER_H_PATH="${CMAKE_SOURCE_DIR}/src/sessionmanager.h"
-        SRC_PORTAL_HEADER_PATH="${CMAKE_SOURCE_DIR}/src/globalshortcutsportal.h"
-        SRC_PORTAL_IMPL_PATH="${CMAKE_SOURCE_DIR}/src/globalshortcutsportal.cpp"
-        SRC_PORTAL_H_PATH="${CMAKE_SOURCE_DIR}/src/globalshortcutsportal.h"
-        SRC_PORTAL_CPP_PATH="${CMAKE_SOURCE_DIR}/src/globalshortcutsportal.cpp"
-        SRC_CONFIG_HEADER_PATH="${CMAKE_SOURCE_DIR}/src/config.h"
-        SRC_CONFIG_IMPL_PATH="${CMAKE_SOURCE_DIR}/src/config.cpp"
-        SRC_CONFIG_H_PATH="${CMAKE_SOURCE_DIR}/src/config.h"
         SRC_CONFIG_CPP_PATH="${CMAKE_SOURCE_DIR}/src/config.cpp"
-        SRC_SETTINGSDIALOG_HEADER_PATH="${CMAKE_SOURCE_DIR}/src/settingsdialog.h"
-        SRC_SETTINGSDIALOG_IMPL_PATH="${CMAKE_SOURCE_DIR}/src/settingsdialog.cpp"
         SRC_SETTINGSDIALOG_H_PATH="${CMAKE_SOURCE_DIR}/src/settingsdialog.h"
         SRC_SETTINGSDIALOG_CPP_PATH="${CMAKE_SOURCE_DIR}/src/settingsdialog.cpp"
-        SRC_OPAQUEMENUBAR_PATH="${CMAKE_SOURCE_DIR}/src/opaquemenubar.h"
-        SRC_OPAQUESTATUSBAR_PATH="${CMAKE_SOURCE_DIR}/src/opaquestatusbar.h"
-        SRC_THEMEDSTYLESHEET_PATH="${CMAKE_SOURCE_DIR}/src/themedstylesheet.cpp"
         SRC_THEMEDSTYLESHEET_CPP_PATH="${CMAKE_SOURCE_DIR}/src/themedstylesheet.cpp"
-        SRC_COLOREDTABBAR_CPP_PATH="${CMAKE_SOURCE_DIR}/src/coloredtabbar.cpp"
-        SRC_COLOREDTABBAR_H_PATH="${CMAKE_SOURCE_DIR}/src/coloredtabbar.h"
-        TITLEBAR_CPP_PATH="${CMAKE_SOURCE_DIR}/src/titlebar.cpp"
         COMMANDPALETTE_CPP_PATH="${CMAKE_SOURCE_DIR}/src/commandpalette.cpp"
         DIALOGFOCUS_H="${CMAKE_SOURCE_DIR}/src/dialogfocus.h"
-        CLIPBOARDGUARD_H="${CMAKE_SOURCE_DIR}/src/clipboardguard.h"
-        KWINPOS_CPP="${CMAKE_SOURCE_DIR}/src/kwinpositiontracker.cpp"
-        KWINPOS_H="${CMAKE_SOURCE_DIR}/src/kwinpositiontracker.h"
-        SRC_PTYHANDLER_CPP_PATH="${CMAKE_SOURCE_DIR}/src/ptyhandler.cpp"
         SRC_DIFFVIEWER_CPP_PATH="${CMAKE_SOURCE_DIR}/src/diffviewer.cpp"
-        SRC_ABOUTDIALOGS_PATH="${CMAKE_SOURCE_DIR}/src/aboutdialogs.cpp"
-        SRC_ROADMAPDIALOG_CPP_PATH="${CMAKE_SOURCE_DIR}/src/roadmapdialog.cpp"
-        SRC_AUDITDIALOG_H_PATH="${CMAKE_SOURCE_DIR}/src/auditdialog.h"
         SRC_AUDITDIALOG_CPP_PATH="${CMAKE_SOURCE_DIR}/src/auditdialog.cpp"
         SRC_RELEASE_WORKFLOW_PATH="${CMAKE_SOURCE_DIR}/.github/workflows/release.yml"
-        CUT_RC_SH_PATH="${CMAKE_SOURCE_DIR}/packaging/cut-rc.sh"
-        BUMP_JSON_PATH="${CMAKE_SOURCE_DIR}/.claude/bump.json"
-        CHECK_VERSION_DRIFT_SH_PATH="${CMAKE_SOURCE_DIR}/packaging/check-version-drift.sh"
-        LIVE_ROADMAP_PATH="${CMAKE_SOURCE_DIR}/ROADMAP.md"
-        DOCS_STATUS_BAR_STANDARD_PATH="${CMAKE_SOURCE_DIR}/docs/standards/status-bar.md"
-        CMAKELISTS_TXT="${CMAKE_SOURCE_DIR}/CMakeLists.txt"
         SRC_CMAKELISTS_PATH="${CMAKE_SOURCE_DIR}/CMakeLists.txt"
-        SRC_DIR="${CMAKE_SOURCE_DIR}/src"
+        SRC_DIR="${CMAKE_SOURCE_DIR}/src")
+
+    # ANTS-4797 — a per-TEST path define belongs on its own source, not on
+    # the bundle. Every define in the block above lands on EVERY TU's command
+    # line, so adding one for a single test invalidates the whole bundle.
+    # Measured on test_audit: adding one define per-source rebuilds 1 TU,
+    # adding the same define target-wide rebuilds 54. Adding a feature test
+    # that scrapes a source file is this repo's most common build operation,
+    # so a NEW define goes here. The block above keeps what is genuinely
+    # shared across the bundle.
+    #
+    # set_property(APPEND) rather than set_source_files_properties(PROPERTIES):
+    # that signature takes name/value PAIRS, so a source needing two defines
+    # fails to configure outright.
+    set_property(SOURCE tests/features/vtbatch_zero_copy/test_vtbatch_zero_copy.cpp
+        APPEND PROPERTY COMPILE_DEFINITIONS
+        TERMINALWIDGET_H="${CMAKE_SOURCE_DIR}/src/terminalwidget.h"
         VTSTREAM_H="${CMAKE_SOURCE_DIR}/src/vtstream.h"
         VTSTREAM_CPP="${CMAKE_SOURCE_DIR}/src/vtstream.cpp")
+    set_property(SOURCE tests/features/terminal_a11y/test_terminal_a11y.cpp
+        APPEND PROPERTY COMPILE_DEFINITIONS
+        SRC_TERMINALACCESSIBLE_PATH="${CMAKE_SOURCE_DIR}/src/terminalaccessible.h")
+    set_property(SOURCE tests/features/tab_rename_persist/test_tab_rename_persist.cpp
+        APPEND PROPERTY COMPILE_DEFINITIONS
+        SRC_SESSIONMANAGER_H_PATH="${CMAKE_SOURCE_DIR}/src/sessionmanager.h")
+    set_property(SOURCE tests/features/global_shortcuts_portal/test_global_shortcuts_portal.cpp
+        APPEND PROPERTY COMPILE_DEFINITIONS
+        SRC_PORTAL_HEADER_PATH="${CMAKE_SOURCE_DIR}/src/globalshortcutsportal.h"
+        SRC_PORTAL_IMPL_PATH="${CMAKE_SOURCE_DIR}/src/globalshortcutsportal.cpp")
+    set_property(SOURCE tests/features/portal_session_close/test_portal_session_close.cpp
+        APPEND PROPERTY COMPILE_DEFINITIONS
+        SRC_PORTAL_H_PATH="${CMAKE_SOURCE_DIR}/src/globalshortcutsportal.h"
+        SRC_PORTAL_CPP_PATH="${CMAKE_SOURCE_DIR}/src/globalshortcutsportal.cpp")
+    set_property(SOURCE tests/features/command_mark_gutter/test_command_mark_gutter.cpp
+        APPEND PROPERTY COMPILE_DEFINITIONS
+        SRC_CONFIG_HEADER_PATH="${CMAKE_SOURCE_DIR}/src/config.h"
+        SRC_CONFIG_IMPL_PATH="${CMAKE_SOURCE_DIR}/src/config.cpp"
+        SRC_SETTINGSDIALOG_HEADER_PATH="${CMAKE_SOURCE_DIR}/src/settingsdialog.h"
+        SRC_SETTINGSDIALOG_IMPL_PATH="${CMAKE_SOURCE_DIR}/src/settingsdialog.cpp")
+    set_property(SOURCE tests/features/confirm_close_with_processes/test_confirm_close_with_processes.cpp
+        APPEND PROPERTY COMPILE_DEFINITIONS
+        SRC_CONFIG_H_PATH="${CMAKE_SOURCE_DIR}/src/config.h")
+    set_property(SOURCE tests/features/menubar_hover_stylesheet/test_menubar_hover_stylesheet.cpp
+        APPEND PROPERTY COMPILE_DEFINITIONS
+        SRC_OPAQUEMENUBAR_PATH="${CMAKE_SOURCE_DIR}/src/opaquemenubar.h"
+        SRC_THEMEDSTYLESHEET_PATH="${CMAKE_SOURCE_DIR}/src/themedstylesheet.cpp")
+    set_property(SOURCE tests/features/tabbar_statusbar_opaque/test_tabbar_statusbar_opaque.cpp
+        APPEND PROPERTY COMPILE_DEFINITIONS
+        SRC_OPAQUESTATUSBAR_PATH="${CMAKE_SOURCE_DIR}/src/opaquestatusbar.h"
+        SRC_COLOREDTABBAR_CPP_PATH="${CMAKE_SOURCE_DIR}/src/coloredtabbar.cpp"
+        SRC_COLOREDTABBAR_H_PATH="${CMAKE_SOURCE_DIR}/src/coloredtabbar.h")
+    set_property(SOURCE tests/features/a11y_chrome_names/test_a11y_chrome_names.cpp
+        APPEND PROPERTY COMPILE_DEFINITIONS
+        TITLEBAR_CPP_PATH="${CMAKE_SOURCE_DIR}/src/titlebar.cpp")
+    set_property(SOURCE tests/features/clipboard_redaction/test_clipboard_redaction.cpp
+        APPEND PROPERTY COMPILE_DEFINITIONS
+        CLIPBOARDGUARD_H="${CMAKE_SOURCE_DIR}/src/clipboardguard.h")
+    set_property(SOURCE tests/features/kwin_position_tracker/test_kwin_position_tracker.cpp
+        APPEND PROPERTY COMPILE_DEFINITIONS
+        KWINPOS_CPP="${CMAKE_SOURCE_DIR}/src/kwinpositiontracker.cpp"
+        KWINPOS_H="${CMAKE_SOURCE_DIR}/src/kwinpositiontracker.h"
+        CMAKELISTS_TXT="${CMAKE_SOURCE_DIR}/CMakeLists.txt")
+    set_property(SOURCE tests/features/pty_dtor_off_main_thread/test_pty_dtor_off_main_thread.cpp
+        APPEND PROPERTY COMPILE_DEFINITIONS
+        SRC_PTYHANDLER_CPP_PATH="${CMAKE_SOURCE_DIR}/src/ptyhandler.cpp")
+    set_property(SOURCE tests/features/help_about_menu/test_help_about_menu.cpp
+        APPEND PROPERTY COMPILE_DEFINITIONS
+        SRC_ABOUTDIALOGS_PATH="${CMAKE_SOURCE_DIR}/src/aboutdialogs.cpp")
+    set_property(SOURCE tests/features/ui_state_persistence/test_ui_state_persistence.cpp
+        APPEND PROPERTY COMPILE_DEFINITIONS
+        SRC_ROADMAPDIALOG_CPP_PATH="${CMAKE_SOURCE_DIR}/src/roadmapdialog.cpp"
+        SRC_AUDITDIALOG_H_PATH="${CMAKE_SOURCE_DIR}/src/auditdialog.h")
+    set_property(SOURCE tests/features/release_rc_pipeline/test_release_rc_pipeline.cpp
+        APPEND PROPERTY COMPILE_DEFINITIONS
+        CUT_RC_SH_PATH="${CMAKE_SOURCE_DIR}/packaging/cut-rc.sh")
+    set_property(SOURCE tests/features/bump_recipe_no_generated_files/test_bump_recipe_no_generated_files.cpp
+        APPEND PROPERTY COMPILE_DEFINITIONS
+        BUMP_JSON_PATH="${CMAKE_SOURCE_DIR}/.claude/bump.json"
+        CHECK_VERSION_DRIFT_SH_PATH="${CMAKE_SOURCE_DIR}/packaging/check-version-drift.sh"
+        LIVE_ROADMAP_PATH="${CMAKE_SOURCE_DIR}/ROADMAP.md")
+    set_property(SOURCE tests/features/roadmap_status_bar_refresh/test_roadmap_status_bar_refresh.cpp
+        APPEND PROPERTY COMPILE_DEFINITIONS
+        DOCS_STATUS_BAR_STANDARD_PATH="${CMAKE_SOURCE_DIR}/docs/standards/status-bar.md")
 
     # ANTS-1217 Phase 4: Claude integration + allowlist + AI + SSH +
     # shell-utils tests. Bundle pulls in claude_lib (its primary subject)
@@ -2063,36 +2127,16 @@ if(ANTS_TESTS)
         # ANTS-4391 / ANTS-4717 — the dependency guard reads every carrier
         # that runs the suite, not the workflow alone.
         SRC_CI_WORKFLOW_PATH="${CMAKE_SOURCE_DIR}/.github/workflows/ci.yml"
-        SRC_RPM_SPEC_PATH="${CMAKE_SOURCE_DIR}/packaging/opensuse/ants-terminal.spec"
-        SRC_ARCH_PKGBUILD_PATH="${CMAKE_SOURCE_DIR}/packaging/archlinux/PKGBUILD"
-        SRC_DEBIAN_CONTROL_PATH="${CMAKE_SOURCE_DIR}/packaging/debian/control"
-        # ANTS-4726 — the hook whose docs-only list must match ci.yml's.
-        SRC_PREPUSH_HOOK_PATH="${CMAKE_SOURCE_DIR}/tools/hooks/pre-push"
         ANTS_SOURCE_DIR="${CMAKE_SOURCE_DIR}"
         SRC_MAINWINDOW_PATH="${CMAKE_SOURCE_DIR}/src/mainwindow.cpp"
         SRC_MAINWINDOW_CPP_PATH="${CMAKE_SOURCE_DIR}/src/mainwindow.cpp"
         SRC_MAINWINDOW_H_PATH="${CMAKE_SOURCE_DIR}/src/mainwindow.h"
         MAINWINDOW_CPP="${CMAKE_SOURCE_DIR}/src/mainwindow.cpp"
-        SRC_CLAUDESTATUSWIDGETS_PATH="${CMAKE_SOURCE_DIR}/src/claudestatuswidgets.cpp"
         SRC_CLAUDESTATUSWIDGETS_CPP_PATH="${CMAKE_SOURCE_DIR}/src/claudestatuswidgets.cpp"
         SRC_CLAUDESTATUSWIDGETS_H_PATH="${CMAKE_SOURCE_DIR}/src/claudestatuswidgets.h"
-        CLAUDESTATUSWIDGETS_CPP="${CMAKE_SOURCE_DIR}/src/claudestatuswidgets.cpp"
-        SRC_CLAUDEALLOWLIST_PATH="${CMAKE_SOURCE_DIR}/src/claudeallowlist.cpp"
         SRC_CLAUDE_INTEGRATION_CPP_PATH="${CMAKE_SOURCE_DIR}/src/claudeintegration.cpp"
         SRC_CLAUDE_INTEGRATION_H_PATH="${CMAKE_SOURCE_DIR}/src/claudeintegration.h"
-        ANTS_MCP_DETAIL_ANCHORS_DIR="${CMAKE_SOURCE_DIR}/tests/features/mcp_tool_detail_field/anchors"
-        CLAUDETABTRACKER_H="${CMAKE_SOURCE_DIR}/src/claudetabtracker.h"
-        COLOREDTABBAR_H="${CMAKE_SOURCE_DIR}/src/coloredtabbar.h"
-        COLOREDTABBAR_CPP="${CMAKE_SOURCE_DIR}/src/coloredtabbar.cpp"
-        SRC_AI_CPP="${CMAKE_SOURCE_DIR}/src/aidialog.cpp"
-        SRC_AIDIALOG_CPP="${CMAKE_SOURCE_DIR}/src/aidialog.cpp"
         SRC_SETTINGSDIALOG_CPP="${CMAKE_SOURCE_DIR}/src/settingsdialog.cpp"
-        SRC_SETTINGSDIALOG_H="${CMAKE_SOURCE_DIR}/src/settingsdialog.h"
-        SRC_CONFIGPATHS_H="${CMAKE_SOURCE_DIR}/src/configpaths.h"
-        SRC_BGTASKS_CPP_PATH="${CMAKE_SOURCE_DIR}/src/claudebgtasks.cpp"
-        SRC_BGTASKS_H_PATH="${CMAKE_SOURCE_DIR}/src/claudebgtasks.h"
-        SRC_BGDIALOG_CPP_PATH="${CMAKE_SOURCE_DIR}/src/claudebgtasksdialog.cpp"
-        SRC_BGDIALOG_H_PATH="${CMAKE_SOURCE_DIR}/src/claudebgtasksdialog.h"
         SRC_RC_HEADER="${CMAKE_SOURCE_DIR}/src/remotecontrol.h"
         # ANTS-3833 — the RemoteControl implementation is eleven TUs. The two
         # single-file path macros are retired: a scrape reading one TU sees a
@@ -2107,20 +2151,117 @@ if(ANTS_TESTS)
         # ANTS-3665 — parseSpecBody was hoisted out of remotecontrol.cpp into
         # ants_core_lib; the spec_query wiring scrape follows it here.
         SRC_SPECPARSE_CPP_PATH="${CMAKE_SOURCE_DIR}/src/specparse.cpp"
-        # ANTS-3785 INV-6 — both consumers of the header-field extent rule are
-        # scraped, so a build that drops one regex without adopting the shared
-        # helper cannot pass.
-        SRC_SPECLOG_CPP_PATH="${CMAKE_SOURCE_DIR}/src/speclog.cpp"
-        # ANTS-3786 INV-7 — the third consumer of that rule gets its own scrape,
-        # in its own spec's own directory (ANTS-3785's scrape stays pinned to
-        # the two files its INV-6 names).
-        SRC_DOCSINDEX_CPP_PATH="${CMAKE_SOURCE_DIR}/src/docsindex.cpp"
         # ANTS-3661 INV-4 — the doc_symbols engine must carry no defect
         # vocabulary; a behavioural test cannot hold that claim.
         SRC_DOCSYMBOLS_CPP_PATH="${CMAKE_SOURCE_DIR}/src/docsymbols.cpp"
         # ANTS-3662 INV-4 — the spec_lint engine must never execute a test
         # clause; "runs no subprocess" is a claim only a source scrape can hold.
         SRC_SPECLINT_CPP_PATH="${CMAKE_SOURCE_DIR}/src/speclint.cpp"
+        # ANTS-3660 INV-5 — "the engine writes nothing" is a claim about code
+        # that did NOT run, so only a source scrape can hold it.
+        SRC_DOCDEDUP_CPP_PATH="${CMAKE_SOURCE_DIR}/src/docdedup.cpp"
+        # ANTS-3345 — debt_sweep_scan offload-eligibility source-grep lock.
+        SRC_MCPPROJECTION_CPP_PATH="${CMAKE_SOURCE_DIR}/src/mcpprojection.cpp"
+        SRC_AUDIT_ENGINE_H_PATH="${CMAKE_SOURCE_DIR}/src/auditengine.h"
+        SRC_AUDIT_ENGINE_CPP_PATH="${CMAKE_SOURCE_DIR}/src/auditengine.cpp"
+        SRC_REMOTECONTROL_H_PATH="${CMAKE_SOURCE_DIR}/src/remotecontrol.h"
+        # ANTS-1351 — audit_run engine source for source-scrape tests.
+        SRC_AUDITRUNNER_CPP_PATH="${CMAKE_SOURCE_DIR}/src/auditrunner.cpp"
+        # ANTS-1512 — audit_run scoped-check mode source-scrape.
+        SRC_AUDITRUNNER_H_PATH="${CMAKE_SOURCE_DIR}/src/auditrunner.h"
+        # ANTS-1555 — audit_run per-project .audit_cache/ infra source-scrape.
+        SRC_AUDITCACHE_CPP_PATH="${CMAKE_SOURCE_DIR}/src/auditcache.cpp"
+        SRC_AUDITCACHE_H_PATH="${CMAKE_SOURCE_DIR}/src/auditcache.h"
+        # ANTS-1299 + ANTS-1300 — build/test cache MCP source-scrape.
+        SRC_BUILDCACHE_H_PATH="${CMAKE_SOURCE_DIR}/src/buildcache.h"
+        SRC_TESTRESCACHE_H_PATH="${CMAKE_SOURCE_DIR}/src/testrescache.h"
+        # ANTS-1397 — test_audit engine source for source-scrape tests.
+        SRC_TESTAUDITENGINE_CPP_PATH="${CMAKE_SOURCE_DIR}/src/testauditengine.cpp"
+        # ANTS-2227 — debt-sweep engine source for dry_run no-write scrape.
+        SRC_DEBTSWEEPENGINE_CPP_PATH="${CMAKE_SOURCE_DIR}/src/debtsweepengine.cpp"
+        SRC_INDIE_REVIEW_ENGINE_H_PATH="${CMAKE_SOURCE_DIR}/src/indiereviewengine.h"
+        SRC_INDIE_REVIEW_ENGINE_CPP_PATH="${CMAKE_SOURCE_DIR}/src/indiereviewengine.cpp"
+        # ANTS-1727 — fence kernel relocated to BriefDispatch (G-15 scrape)
+        # + review-dialog foundation source-grep paths (INV-16 widget-free
+        # guard, INV-8 dispatcher no-retention).
+        SRC_BRIEFDISPATCH_CPP_PATH="${CMAKE_SOURCE_DIR}/src/briefdispatch.cpp"
+        SRC_LLMDISPATCHER_H_PATH="${CMAKE_SOURCE_DIR}/src/llmdispatcher.h"
+        SRC_LLMDISPATCHER_CPP_PATH="${CMAKE_SOURCE_DIR}/src/llmdispatcher.cpp"
+        SRC_COLDEYESENGINE_CPP_PATH="${CMAKE_SOURCE_DIR}/src/coldeyesengine.cpp"
+        SRC_MAINWINDOW_CPP_PATH="${CMAKE_SOURCE_DIR}/src/mainwindow.cpp"
+        MCP_ERROR_CODES_DOC_PATH="${CMAKE_SOURCE_DIR}/docs/standards/mcp-error-codes.md"
+        FIXTURE_PROVENANCE_SARIF="${CMAKE_SOURCE_DIR}/tests/features/mcp_last_audit_summary/fixture_provenance.sarif"
+        SRC_AUDITDIALOG_CPP_PATH="${CMAKE_SOURCE_DIR}/src/auditdialog.cpp"
+        ANTS_CLAUDE_MD_PATH="${CMAKE_SOURCE_DIR}/CLAUDE.md"
+        CMAKELISTS_PATH="${CMAKE_SOURCE_DIR}/CMakeLists.txt"
+        SRC_CMAKELISTS_PATH="${CMAKE_SOURCE_DIR}/CMakeLists.txt")
+
+    # ANTS-4797 — a per-TEST path define belongs on its own source, not on
+    # the bundle. Every define in the block above lands on EVERY TU's command
+    # line, so adding one for a single test invalidates the whole bundle.
+    # Measured on test_audit: adding one define per-source rebuilds 1 TU,
+    # adding the same define target-wide rebuilds 54. Adding a feature test
+    # that scrapes a source file is this repo's most common build operation,
+    # so a NEW define goes here. The block above keeps what is genuinely
+    # shared across the bundle.
+    #
+    # set_property(APPEND) rather than set_source_files_properties(PROPERTIES):
+    # that signature takes name/value PAIRS, so a source needing two defines
+    # fails to configure outright.
+    set_property(SOURCE tests/features/ci_workflow_deps/test_ci_workflow_deps.cpp
+        APPEND PROPERTY COMPILE_DEFINITIONS
+        SRC_RPM_SPEC_PATH="${CMAKE_SOURCE_DIR}/packaging/opensuse/ants-terminal.spec"
+        SRC_ARCH_PKGBUILD_PATH="${CMAKE_SOURCE_DIR}/packaging/archlinux/PKGBUILD"
+        SRC_DEBIAN_CONTROL_PATH="${CMAKE_SOURCE_DIR}/packaging/debian/control")
+    set_property(SOURCE tests/features/prepush_docs_only_parity/test_prepush_docs_only_parity.cpp
+        APPEND PROPERTY COMPILE_DEFINITIONS
+        # ANTS-4726 — the hook whose docs-only list must match ci.yml's.
+        SRC_PREPUSH_HOOK_PATH="${CMAKE_SOURCE_DIR}/tools/hooks/pre-push")
+    set_property(SOURCE tests/features/allowlist_add/test_allowlist_add.cpp
+        APPEND PROPERTY COMPILE_DEFINITIONS
+        SRC_CLAUDESTATUSWIDGETS_PATH="${CMAKE_SOURCE_DIR}/src/claudestatuswidgets.cpp")
+    set_property(SOURCE tests/features/claude_state_dot_palette/test_claude_state_dot_palette.cpp
+        APPEND PROPERTY COMPILE_DEFINITIONS
+        CLAUDESTATUSWIDGETS_CPP="${CMAKE_SOURCE_DIR}/src/claudestatuswidgets.cpp"
+        CLAUDETABTRACKER_H="${CMAKE_SOURCE_DIR}/src/claudetabtracker.h"
+        COLOREDTABBAR_H="${CMAKE_SOURCE_DIR}/src/coloredtabbar.h"
+        COLOREDTABBAR_CPP="${CMAKE_SOURCE_DIR}/src/coloredtabbar.cpp")
+    set_property(SOURCE tests/features/allowlist_perms_postcommit/test_allowlist_perms_postcommit.cpp
+        APPEND PROPERTY COMPILE_DEFINITIONS
+        SRC_CLAUDEALLOWLIST_PATH="${CMAKE_SOURCE_DIR}/src/claudeallowlist.cpp")
+    set_property(SOURCE tests/features/mcp_tool_detail_field/test_mcp_tool_detail_field.cpp
+        APPEND PROPERTY COMPILE_DEFINITIONS
+        ANTS_MCP_DETAIL_ANCHORS_DIR="${CMAKE_SOURCE_DIR}/tests/features/mcp_tool_detail_field/anchors")
+    set_property(SOURCE tests/features/ai_insert_command_sanitize/test_ai_insert_command.cpp
+        APPEND PROPERTY COMPILE_DEFINITIONS
+        SRC_AI_CPP="${CMAKE_SOURCE_DIR}/src/aidialog.cpp")
+    set_property(SOURCE tests/features/ai_context_redaction/test_ai_context_redaction.cpp
+        APPEND PROPERTY COMPILE_DEFINITIONS
+        SRC_AIDIALOG_CPP="${CMAKE_SOURCE_DIR}/src/aidialog.cpp")
+    set_property(SOURCE tests/features/claude_git_context_hook/test_installer_grep.cpp
+        APPEND PROPERTY COMPILE_DEFINITIONS
+        SRC_SETTINGSDIALOG_H="${CMAKE_SOURCE_DIR}/src/settingsdialog.h"
+        SRC_CONFIGPATHS_H="${CMAKE_SOURCE_DIR}/src/configpaths.h")
+    set_property(SOURCE tests/features/claude_bg_tasks_button/test_claude_bg_tasks_button.cpp
+        APPEND PROPERTY COMPILE_DEFINITIONS
+        SRC_BGTASKS_CPP_PATH="${CMAKE_SOURCE_DIR}/src/claudebgtasks.cpp"
+        SRC_BGTASKS_H_PATH="${CMAKE_SOURCE_DIR}/src/claudebgtasks.h"
+        SRC_BGDIALOG_CPP_PATH="${CMAKE_SOURCE_DIR}/src/claudebgtasksdialog.cpp"
+        SRC_BGDIALOG_H_PATH="${CMAKE_SOURCE_DIR}/src/claudebgtasksdialog.h")
+    set_property(SOURCE tests/features/spec_field_extent/test_spec_field_extent.cpp
+        APPEND PROPERTY COMPILE_DEFINITIONS
+        # ANTS-3785 INV-6 — both consumers of the header-field extent rule are
+        # scraped, so a build that drops one regex without adopting the shared
+        # helper cannot pass.
+        SRC_SPECLOG_CPP_PATH="${CMAKE_SOURCE_DIR}/src/speclog.cpp")
+    set_property(SOURCE tests/features/docsindex_header_field/test_docsindex_header_field.cpp
+        APPEND PROPERTY COMPILE_DEFINITIONS
+        # ANTS-3786 INV-7 — the third consumer of that rule gets its own scrape,
+        # in its own spec's own directory (ANTS-3785's scrape stays pinned to
+        # the two files its INV-6 names).
+        SRC_DOCSINDEX_CPP_PATH="${CMAKE_SOURCE_DIR}/src/docsindex.cpp")
+    set_property(SOURCE tests/features/spec_lint/test_spec_lint.cpp
+        APPEND PROPERTY COMPILE_DEFINITIONS
         # ANTS-4127 INV-8 — and never opens a FILE either: both filesystem sets
         # are injected. The header is scraped beside the .cpp because it is where
         # the no-filesystem contract is stated, so a QFile creeping in there
@@ -2131,80 +2272,72 @@ if(ANTS_TESTS)
         # catches an engine that guesses the list from § 3's prose instead.
         # The calibration harness walks the spec corpus from the same root.
         DOCS_STANDARDS_SPECS_MD_PATH="${CMAKE_SOURCE_DIR}/docs/standards/specs.md"
-        DOCS_SPECS_DIR_PATH="${CMAKE_SOURCE_DIR}/docs/specs"
-        # ANTS-3660 INV-5 — "the engine writes nothing" is a claim about code
-        # that did NOT run, so only a source scrape can hold it.
-        SRC_DOCDEDUP_CPP_PATH="${CMAKE_SOURCE_DIR}/src/docdedup.cpp"
+        DOCS_SPECS_DIR_PATH="${CMAKE_SOURCE_DIR}/docs/specs")
+    set_property(SOURCE tests/features/doc_dedup/test_doc_dedup.cpp
+        APPEND PROPERTY COMPILE_DEFINITIONS
         # ANTS-3660 § 2.3 — the corpus-calibration harness walks the whole docs
         # tree, not just specs: a duplicated fact is not confined to specs.
-        DOCS_DIR_PATH="${CMAKE_SOURCE_DIR}/docs"
+        DOCS_DIR_PATH="${CMAKE_SOURCE_DIR}/docs")
+    set_property(SOURCE tests/features/mcp_build_identity/test_mcp_build_identity.cpp
+        APPEND PROPERTY COMPILE_DEFINITIONS
         # ANTS-3582 — stable extern-decl build-info header (churn regression guard).
-        SRC_BUILD_INFO_H_PATH="${CMAKE_SOURCE_DIR}/src/build_info.h"
-        # ANTS-3345 — debt_sweep_scan offload-eligibility source-grep lock.
-        SRC_MCPPROJECTION_CPP_PATH="${CMAKE_SOURCE_DIR}/src/mcpprojection.cpp"
+        SRC_BUILD_INFO_H_PATH="${CMAKE_SOURCE_DIR}/src/build_info.h")
+    set_property(SOURCE tests/features/spec_query_phases_layout/test_spec_query_phases_layout.cpp
+        APPEND PROPERTY COMPILE_DEFINITIONS
         # ANTS-1880 — phases-layout source-grep paths.
         SRC_PROJECTLAYOUTENGINE_CPP_PATH="${CMAKE_SOURCE_DIR}/src/projectlayoutengine.cpp"
-        SRC_PROJECTLAYOUTENGINE_H_PATH="${CMAKE_SOURCE_DIR}/src/projectlayoutengine.h"
+        SRC_PROJECTLAYOUTENGINE_H_PATH="${CMAKE_SOURCE_DIR}/src/projectlayoutengine.h")
+    set_property(SOURCE tests/features/mcp_git_state/test_mcp_git_state.cpp
+        APPEND PROPERTY COMPILE_DEFINITIONS
         SRC_GITWRAP_CPP_PATH="${CMAKE_SOURCE_DIR}/src/gitwrap.cpp"
-        SRC_GITWRAP_H_PATH="${CMAKE_SOURCE_DIR}/src/gitwrap.h"
+        SRC_GITWRAP_H_PATH="${CMAKE_SOURCE_DIR}/src/gitwrap.h")
+    set_property(SOURCE tests/features/mcp_subsystem/test_mcp_subsystem.cpp
+        APPEND PROPERTY COMPILE_DEFINITIONS
         SRC_SUBSYSTEMMAP_CPP_PATH="${CMAKE_SOURCE_DIR}/src/subsystemmap.cpp"
-        SRC_SUBSYSTEMMAP_H_PATH="${CMAKE_SOURCE_DIR}/src/subsystemmap.h"
-        SRC_AUDIT_ENGINE_H_PATH="${CMAKE_SOURCE_DIR}/src/auditengine.h"
-        SRC_AUDIT_ENGINE_CPP_PATH="${CMAKE_SOURCE_DIR}/src/auditengine.cpp"
-        SRC_REMOTECONTROL_H_PATH="${CMAKE_SOURCE_DIR}/src/remotecontrol.h"
+        SRC_SUBSYSTEMMAP_H_PATH="${CMAKE_SOURCE_DIR}/src/subsystemmap.h")
+    set_property(SOURCE tests/features/roadmap_query_duplicate_ids/test_roadmap_query_duplicate_ids.cpp
+        APPEND PROPERTY COMPILE_DEFINITIONS
         # ANTS-1646 — live ROADMAP.md path for duplicate-id detector test.
-        ROADMAP_MD_PATH="${CMAKE_SOURCE_DIR}/ROADMAP.md"
+        ROADMAP_MD_PATH="${CMAKE_SOURCE_DIR}/ROADMAP.md")
+    set_property(SOURCE tests/features/audit_skill_anchors/test_audit_skill_anchors.cpp
+        APPEND PROPERTY COMPILE_DEFINITIONS
         # ANTS-1410 — spec-anchor drift test for the /audit skill.
-        SPEC_ANTS_1410_PATH="${CMAKE_SOURCE_DIR}/docs/specs/ANTS-1410.md"
-        # ANTS-1351 — audit_run engine source for source-scrape tests.
-        SRC_AUDITRUNNER_CPP_PATH="${CMAKE_SOURCE_DIR}/src/auditrunner.cpp"
-        # ANTS-1512 — audit_run scoped-check mode source-scrape.
-        SRC_AUDITRUNNER_H_PATH="${CMAKE_SOURCE_DIR}/src/auditrunner.h"
-        # ANTS-1555 — audit_run per-project .audit_cache/ infra source-scrape.
-        SRC_AUDITCACHE_CPP_PATH="${CMAKE_SOURCE_DIR}/src/auditcache.cpp"
-        SRC_AUDITCACHE_H_PATH="${CMAKE_SOURCE_DIR}/src/auditcache.h"
+        SPEC_ANTS_1410_PATH="${CMAKE_SOURCE_DIR}/docs/specs/ANTS-1410.md")
+    set_property(SOURCE tests/features/audit_run_since_last_run/test_audit_run_since_last_run.cpp
+        APPEND PROPERTY COMPILE_DEFINITIONS
         # ANTS-1504 — audit_run since-last-run scope source-scrape.
-        SRC_AUDITSCOPE_CPP_PATH="${CMAKE_SOURCE_DIR}/src/auditscope.cpp"
+        SRC_AUDITSCOPE_CPP_PATH="${CMAKE_SOURCE_DIR}/src/auditscope.cpp")
+    set_property(SOURCE tests/features/audit_run_delta/test_audit_run_delta.cpp
+        APPEND PROPERTY COMPILE_DEFINITIONS
         # ANTS-1870 — since-last-run findings delta source-scrape.
-        SRC_AUDITDELTA_CPP_PATH="${CMAKE_SOURCE_DIR}/src/auditdelta.cpp"
-        # ANTS-1299 + ANTS-1300 — build/test cache MCP source-scrape.
-        SRC_BUILDCACHE_H_PATH="${CMAKE_SOURCE_DIR}/src/buildcache.h"
-        SRC_TESTRESCACHE_H_PATH="${CMAKE_SOURCE_DIR}/src/testrescache.h"
-        # ANTS-1397 — test_audit engine source for source-scrape tests.
-        SRC_TESTAUDITENGINE_CPP_PATH="${CMAKE_SOURCE_DIR}/src/testauditengine.cpp"
-        # ANTS-2227 — debt-sweep engine source for dry_run no-write scrape.
-        SRC_DEBTSWEEPENGINE_CPP_PATH="${CMAKE_SOURCE_DIR}/src/debtsweepengine.cpp"
+        SRC_AUDITDELTA_CPP_PATH="${CMAKE_SOURCE_DIR}/src/auditdelta.cpp")
+    set_property(SOURCE tests/features/indie_review_dispatch/test_indie_review_dispatch.cpp
+        APPEND PROPERTY COMPILE_DEFINITIONS
         # ANTS-1352 — indie_review_dispatch source-scrape paths.
         SRC_INDIE_REVIEW_DISPATCHER_H_PATH="${CMAKE_SOURCE_DIR}/src/indiereviewdispatcher.h"
-        SRC_INDIE_REVIEW_DISPATCHER_CPP_PATH="${CMAKE_SOURCE_DIR}/src/indiereviewdispatcher.cpp"
-        SRC_INDIE_REVIEW_ENGINE_H_PATH="${CMAKE_SOURCE_DIR}/src/indiereviewengine.h"
-        SRC_INDIE_REVIEW_ENGINE_CPP_PATH="${CMAKE_SOURCE_DIR}/src/indiereviewengine.cpp"
-        # ANTS-1727 — fence kernel relocated to BriefDispatch (G-15 scrape)
-        # + review-dialog foundation source-grep paths (INV-16 widget-free
-        # guard, INV-8 dispatcher no-retention).
-        SRC_BRIEFDISPATCH_CPP_PATH="${CMAKE_SOURCE_DIR}/src/briefdispatch.cpp"
+        SRC_INDIE_REVIEW_DISPATCHER_CPP_PATH="${CMAKE_SOURCE_DIR}/src/indiereviewdispatcher.cpp")
+    set_property(SOURCE tests/features/llm_client/test_llm_client.cpp
+        APPEND PROPERTY COMPILE_DEFINITIONS
         SRC_BRIEFDISPATCH_H_PATH="${CMAKE_SOURCE_DIR}/src/briefdispatch.h"
         SRC_LLMCLIENT_H_PATH="${CMAKE_SOURCE_DIR}/src/llmclient.h"
-        SRC_LLMCLIENT_CPP_PATH="${CMAKE_SOURCE_DIR}/src/llmclient.cpp"
-        SRC_LLMDISPATCHER_H_PATH="${CMAKE_SOURCE_DIR}/src/llmdispatcher.h"
-        SRC_LLMDISPATCHER_CPP_PATH="${CMAKE_SOURCE_DIR}/src/llmdispatcher.cpp"
+        SRC_LLMCLIENT_CPP_PATH="${CMAKE_SOURCE_DIR}/src/llmclient.cpp")
+    set_property(SOURCE tests/features/cold_eyes_fold_in_freeform/test_cold_eyes_fold_in_freeform.cpp
+        APPEND PROPERTY COMPILE_DEFINITIONS
         # ANTS-1510 — cold_eyes_fold_in freeform-mode source-scrape.
-        SRC_COLDEYESENGINE_H_PATH="${CMAKE_SOURCE_DIR}/src/coldeyesengine.h"
-        SRC_COLDEYESENGINE_CPP_PATH="${CMAKE_SOURCE_DIR}/src/coldeyesengine.cpp"
-        SRC_MAINWINDOW_CPP_PATH="${CMAKE_SOURCE_DIR}/src/mainwindow.cpp"
-        MCP_ERROR_CODES_DOC_PATH="${CMAKE_SOURCE_DIR}/docs/standards/mcp-error-codes.md"
+        SRC_COLDEYESENGINE_H_PATH="${CMAKE_SOURCE_DIR}/src/coldeyesengine.h")
+    set_property(SOURCE tests/features/mcp_last_audit_summary/test_mcp_last_audit_summary.cpp
+        APPEND PROPERTY COMPILE_DEFINITIONS
         FIXTURE_MIN_SARIF="${CMAKE_SOURCE_DIR}/tests/features/mcp_last_audit_summary/fixture_min.sarif"
         FIXTURE_EMPTY_SARIF="${CMAKE_SOURCE_DIR}/tests/features/mcp_last_audit_summary/fixture_empty.sarif"
-        FIXTURE_CPPCHECK_XML="${CMAKE_SOURCE_DIR}/tests/features/mcp_last_audit_summary/fixture_cppcheck.xml"
-        FIXTURE_PROVENANCE_SARIF="${CMAKE_SOURCE_DIR}/tests/features/mcp_last_audit_summary/fixture_provenance.sarif"
-        SRC_AUDITDIALOG_CPP_PATH="${CMAKE_SOURCE_DIR}/src/auditdialog.cpp"
-        ANTS_CLAUDE_MD_PATH="${CMAKE_SOURCE_DIR}/CLAUDE.md"
-        ANTS_MCP_TOOLS_MD_PATH="${CMAKE_SOURCE_DIR}/docs/standards/mcp-tools.md"
-        CMAKELISTS_PATH="${CMAKE_SOURCE_DIR}/CMakeLists.txt"
+        FIXTURE_CPPCHECK_XML="${CMAKE_SOURCE_DIR}/tests/features/mcp_last_audit_summary/fixture_cppcheck.xml")
+    set_property(SOURCE tests/features/mcp_output_sanitisation/test_mcp_output_sanitisation.cpp
+        APPEND PROPERTY COMPILE_DEFINITIONS
+        ANTS_MCP_TOOLS_MD_PATH="${CMAKE_SOURCE_DIR}/docs/standards/mcp-tools.md")
+    set_property(SOURCE tests/features/mcp_audit_run/test_mcp_audit_run.cpp
+        APPEND PROPERTY COMPILE_DEFINITIONS
         # ANTS-3658 — drift guard: the per-test TIMEOUT override is keyed by
         # ctest test name, which CMake cannot validate (lazy discovery).
-        SLOW_TEST_TIMEOUTS_CMAKE="${CMAKE_SOURCE_DIR}/tests/slow_test_timeouts.cmake"
-        SRC_CMAKELISTS_PATH="${CMAKE_SOURCE_DIR}/CMakeLists.txt")
+        SLOW_TEST_TIMEOUTS_CMAKE="${CMAKE_SOURCE_DIR}/tests/slow_test_timeouts.cmake")
 
     # ANTS-1217 Phase 5 — test_audit bundle. Audit tests consolidated
     # behind one target. Most are pure source-grep (slurp + regex on
@@ -2312,12 +2445,6 @@ if(ANTS_TESTS)
         SRC_AUDIT_H_PATH="${CMAKE_SOURCE_DIR}/src/auditdialog.h"
         SRC_AUDIT_ENGINE_CPP_PATH="${CMAKE_SOURCE_DIR}/src/auditengine.cpp"
         SRC_AUDIT_ENGINE_H_PATH="${CMAKE_SOURCE_DIR}/src/auditengine.h"
-        # ANTS-1665 — regex-DoS watchdog now also scans regexharden.cpp, the
-        # extracted home of isCatastrophicRegex / hardenUserRegex.
-        SRC_REGEXHARDEN_CPP_PATH="${CMAKE_SOURCE_DIR}/src/regexharden.cpp"
-        SRC_AUDIT_CPP="${CMAKE_SOURCE_DIR}/src/auditdialog.cpp"
-        SRC_AUDIT_H="${CMAKE_SOURCE_DIR}/src/auditdialog.h"
-        SRC_AUDIT_ENGINE_CPP="${CMAKE_SOURCE_DIR}/src/auditengine.cpp"
         SRC_AUDIT_ENGINE_H="${CMAKE_SOURCE_DIR}/src/auditengine.h"
         SRC_AUDITDIALOG_PATH="${CMAKE_SOURCE_DIR}/src/auditdialog.cpp"
         # ANTS-1372 source-grep tests: roadmap_fold_in needs visibility
@@ -2332,25 +2459,58 @@ if(ANTS_TESTS)
         "ANTS_RC_SOURCES=\"${_ants_rc_joined}\""
         ANTS_RC_SRC_DIR="${CMAKE_SOURCE_DIR}/src"
         ANTS_RC_ROOT_DIR="${CMAKE_SOURCE_DIR}"
-        SRC_ROADMAPFOLDIN_CPP_PATH="${CMAKE_SOURCE_DIR}/src/roadmapfoldin.cpp"
-        # ANTS-1457 — false-positive ledger source-scrape paths.
-        SRC_FALSEPOS_H_PATH="${CMAKE_SOURCE_DIR}/src/falseposledger.h"
-        SRC_FALSEPOS_CPP_PATH="${CMAKE_SOURCE_DIR}/src/falseposledger.cpp"
         SRC_COLDEYESENGINE_CPP_PATH="${CMAKE_SOURCE_DIR}/src/coldeyesengine.cpp"
         SRC_TESTAUDITENGINE_CPP_PATH="${CMAKE_SOURCE_DIR}/src/testauditengine.cpp"
         SRC_INDIE_REVIEW_ENGINE_CPP_PATH="${CMAKE_SOURCE_DIR}/src/indiereviewengine.cpp"
         # ANTS-1344 — truncation-flag source-grep needs the engine header.
         SRC_INDIE_REVIEW_ENGINE_H_PATH="${CMAKE_SOURCE_DIR}/src/indiereviewengine.h"
-        # ANTS-4794 — the coverage guard reads the committed partition and
-        # walks the real tree, so it needs both the file and the root.
-        ANTS_PARTITION_JSON_PATH="${CMAKE_SOURCE_DIR}/.indie-review/partition.json"
-        ANTS_PROJECT_ROOT_DIR="${CMAKE_SOURCE_DIR}"
         # ANTS-1455 — taxonomy doc for new error-code rows.
         MCP_ERROR_CODES_DOC_PATH="${CMAKE_SOURCE_DIR}/docs/standards/mcp-error-codes.md"
         # ANTS-1579 — verify_changes description source-scrape (INV-4).
-        SRC_CLAUDE_INTEGRATION_CPP_PATH="${CMAKE_SOURCE_DIR}/src/claudeintegration.cpp"
+        SRC_CLAUDE_INTEGRATION_CPP_PATH="${CMAKE_SOURCE_DIR}/src/claudeintegration.cpp")
+
+    # ANTS-4797 — a per-TEST path define belongs on its own source, not on
+    # the bundle. Every define in the block above lands on EVERY TU's command
+    # line, so adding one for a single test invalidates the whole bundle.
+    # Measured on test_audit: adding one define per-source rebuilds 1 TU,
+    # adding the same define target-wide rebuilds 54. Adding a feature test
+    # that scrapes a source file is this repo's most common build operation,
+    # so a NEW define goes here. The block above keeps what is genuinely
+    # shared across the bundle.
+    #
+    # set_property(APPEND) rather than set_source_files_properties(PROPERTIES):
+    # that signature takes name/value PAIRS, so a source needing two defines
+    # fails to configure outright.
+    set_property(SOURCE tests/features/audit_regex_dos_watchdog/test_audit_regex_dos_watchdog.cpp
+        APPEND PROPERTY COMPILE_DEFINITIONS
+        # ANTS-1665 — regex-DoS watchdog now also scans regexharden.cpp, the
+        # extracted home of isCatastrophicRegex / hardenUserRegex.
+        SRC_REGEXHARDEN_CPP_PATH="${CMAKE_SOURCE_DIR}/src/regexharden.cpp")
+    set_property(SOURCE tests/features/audit_engine_extraction/test_audit_engine_extraction.cpp
+        APPEND PROPERTY COMPILE_DEFINITIONS
+        SRC_AUDIT_CPP="${CMAKE_SOURCE_DIR}/src/auditdialog.cpp"
+        SRC_AUDIT_H="${CMAKE_SOURCE_DIR}/src/auditdialog.h"
+        SRC_AUDIT_ENGINE_CPP="${CMAKE_SOURCE_DIR}/src/auditengine.cpp")
+    set_property(SOURCE tests/features/roadmap_fold_in/test_roadmap_fold_in.cpp
+        APPEND PROPERTY COMPILE_DEFINITIONS
+        SRC_ROADMAPFOLDIN_CPP_PATH="${CMAKE_SOURCE_DIR}/src/roadmapfoldin.cpp")
+    set_property(SOURCE tests/features/audit_falsepos_ledger/test_audit_falsepos_ledger.cpp
+        APPEND PROPERTY COMPILE_DEFINITIONS
+        # ANTS-1457 — false-positive ledger source-scrape paths.
+        SRC_FALSEPOS_H_PATH="${CMAKE_SOURCE_DIR}/src/falseposledger.h"
+        SRC_FALSEPOS_CPP_PATH="${CMAKE_SOURCE_DIR}/src/falseposledger.cpp")
+    set_property(SOURCE tests/features/indie_review_partition_coverage/test_partition_coverage.cpp
+        APPEND PROPERTY COMPILE_DEFINITIONS
+        # ANTS-4794 — the coverage guard reads the committed partition and
+        # walks the real tree, so it needs both the file and the root.
+        ANTS_PARTITION_JSON_PATH="${CMAKE_SOURCE_DIR}/.indie-review/partition.json"
+        ANTS_PROJECT_ROOT_DIR="${CMAKE_SOURCE_DIR}")
+    set_property(SOURCE tests/features/audit_exclusion_set/test_audit_exclusion_set.cpp
+        APPEND PROPERTY COMPILE_DEFINITIONS
         # ANTS-1709 — centralised exclusion-set drift guard (INV-7).
-        SRC_FEATURECOVERAGE_CPP_PATH="${CMAKE_SOURCE_DIR}/src/featurecoverage.cpp"
+        SRC_FEATURECOVERAGE_CPP_PATH="${CMAKE_SOURCE_DIR}/src/featurecoverage.cpp")
+    set_property(SOURCE tests/features/roadmap_index_engine/test_roadmap_index_engine.cpp
+        APPEND PROPERTY COMPILE_DEFINITIONS
         # ANTS-1844 — sliceSection perf-shape lock (roadmap_index_engine ENG-7).
         SRC_ROADMAPINDEX_CPP_PATH="${CMAKE_SOURCE_DIR}/src/roadmapindex.cpp")
 
@@ -2437,25 +2597,15 @@ if(ANTS_TESTS)
         SRC_AUDITDIALOG_CPP_PATH="${CMAKE_SOURCE_DIR}/src/auditdialog.cpp"
         SRC_SETTINGSDIALOG_CPP_PATH="${CMAKE_SOURCE_DIR}/src/settingsdialog.cpp"
         SRC_SETTINGSDIALOG_H_PATH="${CMAKE_SOURCE_DIR}/src/settingsdialog.h"
-        # ANTS-1843 — review-dialog interaction source-scrape (INV-17/18).
-        SRC_REVIEWDIALOGBASE_CPP_PATH="${CMAKE_SOURCE_DIR}/src/reviewdialogbase.cpp"
         SRC_CLAUDEALLOWLIST_CPP_PATH="${CMAKE_SOURCE_DIR}/src/claudeallowlist.cpp"
         SRC_MAINWINDOW_PATH="${CMAKE_SOURCE_DIR}/src/mainwindow.cpp"
         SRC_MAINWINDOW_CPP_PATH="${CMAKE_SOURCE_DIR}/src/mainwindow.cpp"
-        SRC_DIFFVIEWER_H_PATH="${CMAKE_SOURCE_DIR}/src/diffviewer.h"
         SRC_DIFFVIEWER_CPP_PATH="${CMAKE_SOURCE_DIR}/src/diffviewer.cpp"
         ROADMAPDIALOG_H="${CMAKE_SOURCE_DIR}/src/roadmapdialog.h"
         ROADMAPDIALOG_CPP="${CMAKE_SOURCE_DIR}/src/roadmapdialog.cpp"
-        # ANTS-3764 — the parser moved to roadmapparse.cpp, and the INV
-        # anchors annotating it moved with it. Scrape tests that assert on
-        # parser-side anchors read this path; renderer-side anchors stay in
-        # ROADMAPDIALOG_CPP.
-        ROADMAPPARSE_CPP="${CMAKE_SOURCE_DIR}/src/roadmapparse.cpp"
         # ANTS-1405 — source-scrape against claudeintegration.cpp for the
         # roadmap_query descriptor sentence (INV-9).
         SRC_CLAUDE_INTEGRATION_CPP_PATH="${CMAKE_SOURCE_DIR}/src/claudeintegration.cpp"
-        ROADMAP_FORMAT_MD="${CMAKE_SOURCE_DIR}/docs/standards/roadmap-format.md"
-        ROTATE_ROADMAP_SH="${CMAKE_SOURCE_DIR}/packaging/rotate-roadmap.sh"
         SRC_DIR="${CMAKE_SOURCE_DIR}/src"
         MAINWINDOW_H="${CMAKE_SOURCE_DIR}/src/mainwindow.h"
         MAINWINDOW_CPP="${CMAKE_SOURCE_DIR}/src/mainwindow.cpp"
@@ -2469,7 +2619,40 @@ if(ANTS_TESTS)
         # contains ";" separators, which an unquoted argument would split on.
         "ANTS_RC_SOURCES=\"${_ants_rc_joined}\""
         ANTS_RC_SRC_DIR="${CMAKE_SOURCE_DIR}/src"
-        ANTS_RC_ROOT_DIR="${CMAKE_SOURCE_DIR}"
+        ANTS_RC_ROOT_DIR="${CMAKE_SOURCE_DIR}")
+
+    # ANTS-4797 — a per-TEST path define belongs on its own source, not on
+    # the bundle. Every define in the block above lands on EVERY TU's command
+    # line, so adding one for a single test invalidates the whole bundle.
+    # Measured on test_audit: adding one define per-source rebuilds 1 TU,
+    # adding the same define target-wide rebuilds 54. Adding a feature test
+    # that scrapes a source file is this repo's most common build operation,
+    # so a NEW define goes here. The block above keeps what is genuinely
+    # shared across the bundle.
+    #
+    # set_property(APPEND) rather than set_source_files_properties(PROPERTIES):
+    # that signature takes name/value PAIRS, so a source needing two defines
+    # fails to configure outright.
+    set_property(SOURCE tests/features/review_dialog_base/test_review_dialog_base.cpp
+        APPEND PROPERTY COMPILE_DEFINITIONS
+        # ANTS-1843 — review-dialog interaction source-scrape (INV-17/18).
+        SRC_REVIEWDIALOGBASE_CPP_PATH="${CMAKE_SOURCE_DIR}/src/reviewdialogbase.cpp")
+    set_property(SOURCE tests/features/diffviewer_extraction/test_diffviewer_extraction.cpp
+        APPEND PROPERTY COMPILE_DEFINITIONS
+        SRC_DIFFVIEWER_H_PATH="${CMAKE_SOURCE_DIR}/src/diffviewer.h")
+    set_property(SOURCE tests/features/roadmap_dialog_cards/test_roadmap_dialog_cards.cpp
+        APPEND PROPERTY COMPILE_DEFINITIONS
+        # ANTS-3764 — the parser moved to roadmapparse.cpp, and the INV
+        # anchors annotating it moved with it. Scrape tests that assert on
+        # parser-side anchors read this path; renderer-side anchors stay in
+        # ROADMAPDIALOG_CPP.
+        ROADMAPPARSE_CPP="${CMAKE_SOURCE_DIR}/src/roadmapparse.cpp")
+    set_property(SOURCE tests/features/roadmap_viewer_archive/test_roadmap_viewer_archive.cpp
+        APPEND PROPERTY COMPILE_DEFINITIONS
+        ROADMAP_FORMAT_MD="${CMAKE_SOURCE_DIR}/docs/standards/roadmap-format.md"
+        ROTATE_ROADMAP_SH="${CMAKE_SOURCE_DIR}/packaging/rotate-roadmap.sh")
+    set_property(SOURCE tests/features/roadmap_shortcuts_cheatsheet/test_roadmap_shortcuts_cheatsheet.cpp
+        APPEND PROPERTY COMPILE_DEFINITIONS
         ROADMAPSHORTCUTSDIALOG_CPP="${CMAKE_SOURCE_DIR}/src/roadmapshortcutsdialog.cpp"
         ROADMAPSHORTCUTSDIALOG_H="${CMAKE_SOURCE_DIR}/src/roadmapshortcutsdialog.h")
     # ANTS-1236 — Qt6::Test for QTest::keyClick used by
@@ -2495,8 +2678,23 @@ if(ANTS_TESTS)
             SRC_LUAENGINE_PATH="${CMAKE_SOURCE_DIR}/src/luaengine.cpp"
             SRC_LUAENGINE_H_PATH="${CMAKE_SOURCE_DIR}/src/luaengine.h"
             SRC_PLUGINMANAGER_CPP_PATH="${CMAKE_SOURCE_DIR}/src/pluginmanager.cpp"
-            SRC_PLUGINMANAGER_H_PATH="${CMAKE_SOURCE_DIR}/src/pluginmanager.h"
             SRC_MAINWINDOW_PATH="${CMAKE_SOURCE_DIR}/src/mainwindow.cpp")
+
+    # ANTS-4797 — a per-TEST path define belongs on its own source, not on
+    # the bundle. Every define in the block above lands on EVERY TU's command
+    # line, so adding one for a single test invalidates the whole bundle.
+    # Measured on test_audit: adding one define per-source rebuilds 1 TU,
+    # adding the same define target-wide rebuilds 54. Adding a feature test
+    # that scrapes a source file is this repo's most common build operation,
+    # so a NEW define goes here. The block above keeps what is genuinely
+    # shared across the bundle.
+    #
+    # set_property(APPEND) rather than set_source_files_properties(PROPERTIES):
+    # that signature takes name/value PAIRS, so a source needing two defines
+    # fails to configure outright.
+    set_property(SOURCE tests/features/lua_threading/test_lua_threading.cpp
+        APPEND PROPERTY COMPILE_DEFINITIONS
+        SRC_PLUGINMANAGER_H_PATH="${CMAKE_SOURCE_DIR}/src/pluginmanager.h")
         # ANTS-1332 — A1/A2 loop-nested attacks finish in ~1.5s post-fix
         # and the whole runtime+source suite is ~3-4s total, well under
         # the bundle's gtest_discover_tests default TIMEOUT 10s. Pre-fix
@@ -2766,35 +2964,10 @@ if(ANTS_TESTS)
         # ANTS-3757 INV-1/INV-2/INV-11 — the committed fixture roots and the
         # out-of-band parity expectation generated by roadmap-corpus-survey.py.
         ANTS_MIGRATE_FIXTURE_DIR="${CMAKE_SOURCE_DIR}/tests/features/roadmap_migrate_read/fixtures"
-        ANTS_MIGRATE_EXPECTED_JSON="${CMAKE_SOURCE_DIR}/tests/features/roadmap_migrate_read/expected-counts.json"
-        # ANTS-3766 INV-2's golden — the ordered live-source slug list per
-        # fixture root, derived by tools/roadmap-slug-oracle.py independently of
-        # src/, so a systematic re-slug reddens here rather than agreeing with
-        # itself.
-        ANTS_MIGRATE_SLUG_GOLDEN="${CMAKE_SOURCE_DIR}/tests/features/roadmap_migrate_read/expected-section-slugs.json"
-        # ANTS-3761 INV-19 — the RFC's own vectors, committed under the test dir.
-        ANTS_JCS_VECTOR_DIR="${CMAKE_SOURCE_DIR}/tests/features/roadmap_export_roundtrip/vectors"
-        # ANTS-3761 INV-18 — the committed golden exports, likewise.
-        ANTS_EXPORT_GOLDEN_DIR="${CMAKE_SOURCE_DIR}/tests/features/roadmap_export_roundtrip/golden"
-        # ANTS-4625 — the Qt-version guard, its fixture headers, and the
-        # CMake file INV-6 scrapes to prove the guard is actually wired in.
-        ANTS_QT_GUARD_SCRIPT="${CMAKE_SOURCE_DIR}/cmake/QtVersionGuard.cmake"
-        ANTS_QT_GUARD_FIXTURES="${CMAKE_SOURCE_DIR}/tests/features/qt_version_guard/fixtures"
-        ANTS_QT_GUARD_CMAKELISTS="${CMAKE_SOURCE_DIR}/CMakeLists.txt"
         # ANTS-3758 INV-11 — the source tree the refit scrape walks.
         ANTS_SRC_DIR="${CMAKE_SOURCE_DIR}/src"
-        # ANTS-3856 INV-5 — the bundle mains, scraped for the sandbox arming.
-        # A directory and not two file paths: a third bundle main must be
-        # covered by being written, not by being remembered here.
-        ANTS_TESTS_DIR="${CMAKE_SOURCE_DIR}/tests"
         SRC_TERMINALGRID_PATH="${CMAKE_SOURCE_DIR}/src/terminalgrid.cpp"
-        SRC_TERMINALGRID_HEADER="${CMAKE_SOURCE_DIR}/src/terminalgrid.h"
         SRC_TERMINALWIDGET_PATH="${CMAKE_SOURCE_DIR}/src/terminalwidget.cpp"
-        SRC_VTSTREAM_HEADER_PATH="${CMAKE_SOURCE_DIR}/src/vtstream.h"
-        SRC_PTY_PATH="${CMAKE_SOURCE_DIR}/src/ptyhandler.cpp"
-        SRC_PTY_CPP_PATH="${CMAKE_SOURCE_DIR}/src/ptyhandler.cpp"
-        SRC_PTY_H_PATH="${CMAKE_SOURCE_DIR}/src/ptyhandler.h"
-        SRC_PTYHANDLER_PATH="${CMAKE_SOURCE_DIR}/src/ptyhandler.cpp"
         SRC_SESSION_CPP_PATH="${CMAKE_SOURCE_DIR}/src/sessionmanager.cpp"
         SRC_SESSION_H_PATH="${CMAKE_SOURCE_DIR}/src/sessionmanager.h"
         SRC_SESSIONMANAGER_CPP_PATH="${CMAKE_SOURCE_DIR}/src/sessionmanager.cpp"
@@ -2805,12 +2978,8 @@ if(ANTS_TESTS)
         # ANTS-4524 — INV-8 scrapes for the ABSENCE of the retired `fields=`
         # allowlist; a dormant predicate is what the next verb-author reaches for.
         SRC_MCPPROJECTION_CPP_PATH="${CMAKE_SOURCE_DIR}/src/mcpprojection.cpp"
-        # ANTS-2094 — result-offload fail-open source-scrape (INV-11).
-        SRC_MCPSPILL_CPP_PATH="${CMAKE_SOURCE_DIR}/src/mcpspill.cpp"
         SRC_SETTINGSDIALOG_CPP_PATH="${CMAKE_SOURCE_DIR}/src/settingsdialog.cpp"
         SRC_SECUREIO_H_PATH="${CMAKE_SOURCE_DIR}/src/secureio.h"
-        # ANTS-3664 INV-4 — Core-only include allow-list scrape.
-        SRC_DOCFINDING_H_PATH="${CMAKE_SOURCE_DIR}/src/docfinding.h"
         # ANTS-3664 INV-5 — the family's "text in, never opens the document"
         # calling convention. Unblocked once all three engines existed
         # (ANTS-3660 landed the last); before that the scrape ran over absent
@@ -2818,21 +2987,11 @@ if(ANTS_TESTS)
         SRC_DOCDEDUP_CPP_PATH="${CMAKE_SOURCE_DIR}/src/docdedup.cpp"
         SRC_DOCSYMBOLS_CPP_PATH="${CMAKE_SOURCE_DIR}/src/docsymbols.cpp"
         SRC_SPECLINT_CPP_PATH="${CMAKE_SOURCE_DIR}/src/speclint.cpp"
-        SRC_CONFIGBACKUP_H_PATH="${CMAKE_SOURCE_DIR}/src/configbackup.h"
-        # ANTS-1821/1823/1824/1836 — local-persistence write-safety wiring greps.
-        SRC_SESSIONMEMORYENGINE_CPP_PATH="${CMAKE_SOURCE_DIR}/src/sessionmemoryengine.cpp"
         SRC_AUDITFPLEDGER_CPP_PATH="${CMAKE_SOURCE_DIR}/src/auditfpledger.cpp"
         SRC_AUDITAUTOFIX_CPP_PATH="${CMAKE_SOURCE_DIR}/src/auditautofix.cpp"
-        SRC_TESTAUDITDIALOG_CPP_PATH="${CMAKE_SOURCE_DIR}/src/testauditdialog.cpp"
-        # ANTS-1988/1989 — file-write safety bundle wiring greps.
-        SRC_MODELSWITCHLEDGER_CPP_PATH="${CMAKE_SOURCE_DIR}/src/modelswitchledger.cpp"
-        SRC_MODELNEARMISSLEDGER_CPP_PATH="${CMAKE_SOURCE_DIR}/src/modelnearmissledger.cpp"
-        # ANTS-2119 — shared JSONL write helper (0700/0600 sequence lives here now).
-        SRC_JSONLFILE_CPP_PATH="${CMAKE_SOURCE_DIR}/src/jsonlfile.cpp"
         SRC_AUDITCACHE_CPP_PATH="${CMAKE_SOURCE_DIR}/src/auditcache.cpp"
         SRC_AUDITRUNNER_CPP_PATH="${CMAKE_SOURCE_DIR}/src/auditrunner.cpp"
         SRC_AUDITDIALOG_CPP_PATH="${CMAKE_SOURCE_DIR}/src/auditdialog.cpp"
-        SRC_DEBUGLOG_PATH="${CMAKE_SOURCE_DIR}/src/debuglog.cpp"
         SRC_RC_HEADER="${CMAKE_SOURCE_DIR}/src/remotecontrol.h"
         # ANTS-3833 — the RemoteControl implementation is eleven TUs. The two
         # single-file path macros are retired: a scrape reading one TU sees a
@@ -2843,30 +3002,132 @@ if(ANTS_TESTS)
         # contains ";" separators, which an unquoted argument would split on.
         "ANTS_RC_SOURCES=\"${_ants_rc_joined}\""
         ANTS_RC_SRC_DIR="${CMAKE_SOURCE_DIR}/src"
-        ANTS_RC_ROOT_DIR="${CMAKE_SOURCE_DIR}"
-        # ANTS-3562 — mcporientation split-tree guard source-grep.
-        SRC_MCPORIENTATION_CPP="${CMAKE_SOURCE_DIR}/src/mcporientation.cpp"
         SRC_MAINWINDOW_H="${CMAKE_SOURCE_DIR}/src/mainwindow.h"
         SRC_MAINWINDOW_CPP="${CMAKE_SOURCE_DIR}/src/mainwindow.cpp"
         # ANTS-3358 — ChromeGuard -Wnull-dereference pragma-guard source-grep.
         SRC_DIALOGCHROME_CPP="${CMAKE_SOURCE_DIR}/src/dialogchrome.cpp"
         # ANTS-3505 — diffviewer positionBackToTop -Wnull-dereference source-grep.
         SRC_DIFFVIEWER_CPP="${CMAKE_SOURCE_DIR}/src/diffviewer.cpp"
-        # ANTS-1888 — chip wiring contract.
-        SRC_CLAUDESTATUSWIDGETS_H_PATH="${CMAKE_SOURCE_DIR}/src/claudestatuswidgets.h"
         SRC_CLAUDESTATUSWIDGETS_CPP_PATH="${CMAKE_SOURCE_DIR}/src/claudestatuswidgets.cpp"
+        SRC_MAIN_CPP="${CMAKE_SOURCE_DIR}/src/main.cpp"
+        SRC_CMAKELISTS="${CMAKE_SOURCE_DIR}/CMakeLists.txt")
+
+    # ANTS-4797 — a per-TEST path define belongs on its own source, not on
+    # the bundle. Every define in the block above lands on EVERY TU's command
+    # line, so adding one for a single test invalidates the whole bundle.
+    # Measured on test_audit: adding one define per-source rebuilds 1 TU,
+    # adding the same define target-wide rebuilds 54. Adding a feature test
+    # that scrapes a source file is this repo's most common build operation,
+    # so a NEW define goes here. The block above keeps what is genuinely
+    # shared across the bundle.
+    #
+    # set_property(APPEND) rather than set_source_files_properties(PROPERTIES):
+    # that signature takes name/value PAIRS, so a source needing two defines
+    # fails to configure outright.
+    set_property(SOURCE tests/features/roadmap_migrate_read/test_roadmap_migrate_read.cpp
+        APPEND PROPERTY COMPILE_DEFINITIONS
+        ANTS_MIGRATE_EXPECTED_JSON="${CMAKE_SOURCE_DIR}/tests/features/roadmap_migrate_read/expected-counts.json"
+        # ANTS-3766 INV-2's golden — the ordered live-source slug list per
+        # fixture root, derived by tools/roadmap-slug-oracle.py independently of
+        # src/, so a systematic re-slug reddens here rather than agreeing with
+        # itself.
+        ANTS_MIGRATE_SLUG_GOLDEN="${CMAKE_SOURCE_DIR}/tests/features/roadmap_migrate_read/expected-section-slugs.json")
+    set_property(SOURCE tests/features/roadmap_export_roundtrip/test_roadmap_export_roundtrip.cpp
+        APPEND PROPERTY COMPILE_DEFINITIONS
+        # ANTS-3761 INV-19 — the RFC's own vectors, committed under the test dir.
+        ANTS_JCS_VECTOR_DIR="${CMAKE_SOURCE_DIR}/tests/features/roadmap_export_roundtrip/vectors"
+        # ANTS-3761 INV-18 — the committed golden exports, likewise.
+        ANTS_EXPORT_GOLDEN_DIR="${CMAKE_SOURCE_DIR}/tests/features/roadmap_export_roundtrip/golden")
+    set_property(SOURCE tests/features/qt_version_guard/test_qt_version_guard.cpp
+        APPEND PROPERTY COMPILE_DEFINITIONS
+        # ANTS-4625 — the Qt-version guard, its fixture headers, and the
+        # CMake file INV-6 scrapes to prove the guard is actually wired in.
+        ANTS_QT_GUARD_SCRIPT="${CMAKE_SOURCE_DIR}/cmake/QtVersionGuard.cmake"
+        ANTS_QT_GUARD_FIXTURES="${CMAKE_SOURCE_DIR}/tests/features/qt_version_guard/fixtures"
+        ANTS_QT_GUARD_CMAKELISTS="${CMAKE_SOURCE_DIR}/CMakeLists.txt")
+    set_property(SOURCE tests/features/roadmap_store_sandbox/test_roadmap_store_sandbox.cpp
+        APPEND PROPERTY COMPILE_DEFINITIONS
+        # ANTS-3856 INV-5 — the bundle mains, scraped for the sandbox arming.
+        # A directory and not two file paths: a third bundle main must be
+        # covered by being written, not by being remembered here.
+        ANTS_TESTS_DIR="${CMAKE_SOURCE_DIR}/tests")
+    set_property(SOURCE tests/features/image_bomb_png_header_peek/test_image_bomb.cpp
+        APPEND PROPERTY COMPILE_DEFINITIONS
+        SRC_TERMINALGRID_HEADER="${CMAKE_SOURCE_DIR}/src/terminalgrid.h")
+    set_property(SOURCE tests/features/threaded_resize_synchronous/test_threaded_resize_synchronous.cpp
+        APPEND PROPERTY COMPILE_DEFINITIONS
+        SRC_VTSTREAM_HEADER_PATH="${CMAKE_SOURCE_DIR}/src/vtstream.h")
+    set_property(SOURCE tests/features/pty_closefrom/test_pty_closefrom.cpp
+        APPEND PROPERTY COMPILE_DEFINITIONS
+        SRC_PTY_PATH="${CMAKE_SOURCE_DIR}/src/ptyhandler.cpp")
+    set_property(SOURCE tests/features/pty_write_eagain_queue/test_pty_write_eagain_queue.cpp
+        APPEND PROPERTY COMPILE_DEFINITIONS
+        SRC_PTY_CPP_PATH="${CMAKE_SOURCE_DIR}/src/ptyhandler.cpp"
+        SRC_PTY_H_PATH="${CMAKE_SOURCE_DIR}/src/ptyhandler.h")
+    set_property(SOURCE tests/features/flatpak_host_shell/test_flatpak_host_shell.cpp
+        APPEND PROPERTY COMPILE_DEFINITIONS
+        SRC_PTYHANDLER_PATH="${CMAKE_SOURCE_DIR}/src/ptyhandler.cpp")
+    set_property(SOURCE tests/features/mcp_result_offload/test_mcp_result_offload.cpp
+        APPEND PROPERTY COMPILE_DEFINITIONS
+        # ANTS-2094 — result-offload fail-open source-scrape (INV-11).
+        SRC_MCPSPILL_CPP_PATH="${CMAKE_SOURCE_DIR}/src/mcpspill.cpp")
+    set_property(SOURCE tests/features/doc_finding/test_doc_finding.cpp
+        APPEND PROPERTY COMPILE_DEFINITIONS
+        # ANTS-3664 INV-4 — Core-only include allow-list scrape.
+        SRC_DOCFINDING_H_PATH="${CMAKE_SOURCE_DIR}/src/docfinding.h")
+    set_property(SOURCE tests/features/secureio_configbackup_split/test_secureio_configbackup_split.cpp
+        APPEND PROPERTY COMPILE_DEFINITIONS
+        SRC_CONFIGBACKUP_H_PATH="${CMAKE_SOURCE_DIR}/src/configbackup.h")
+    set_property(SOURCE tests/features/local_persistence_hardening/test_local_persistence_hardening.cpp
+        APPEND PROPERTY COMPILE_DEFINITIONS
+        # ANTS-1821/1823/1824/1836 — local-persistence write-safety wiring greps.
+        SRC_SESSIONMEMORYENGINE_CPP_PATH="${CMAKE_SOURCE_DIR}/src/sessionmemoryengine.cpp"
+        SRC_TESTAUDITDIALOG_CPP_PATH="${CMAKE_SOURCE_DIR}/src/testauditdialog.cpp")
+    set_property(SOURCE tests/features/ledger_write_safety/test_ledger_write_safety.cpp
+        APPEND PROPERTY COMPILE_DEFINITIONS
+        # ANTS-1988/1989 — file-write safety bundle wiring greps.
+        SRC_MODELSWITCHLEDGER_CPP_PATH="${CMAKE_SOURCE_DIR}/src/modelswitchledger.cpp"
+        SRC_MODELNEARMISSLEDGER_CPP_PATH="${CMAKE_SOURCE_DIR}/src/modelnearmissledger.cpp"
+        # ANTS-2119 — shared JSONL write helper (0700/0600 sequence lives here now).
+        SRC_JSONLFILE_CPP_PATH="${CMAKE_SOURCE_DIR}/src/jsonlfile.cpp")
+    set_property(SOURCE tests/features/debuglog_perms/test_debuglog_perms.cpp
+        APPEND PROPERTY COMPILE_DEFINITIONS
+        SRC_DEBUGLOG_PATH="${CMAKE_SOURCE_DIR}/src/debuglog.cpp")
+    set_property(SOURCE tests/features/rc_tu_split/test_rc_tu_split.cpp
+        APPEND PROPERTY COMPILE_DEFINITIONS
+        ANTS_RC_ROOT_DIR="${CMAKE_SOURCE_DIR}")
+    set_property(SOURCE tests/features/mcp_orientation_install/test_mcp_orientation_install.cpp
+        APPEND PROPERTY COMPILE_DEFINITIONS
+        # ANTS-3562 — mcporientation split-tree guard source-grep.
+        SRC_MCPORIENTATION_CPP="${CMAKE_SOURCE_DIR}/src/mcporientation.cpp")
+    set_property(SOURCE tests/features/model_state_chip/test_model_state_chip.cpp
+        APPEND PROPERTY COMPILE_DEFINITIONS
+        # ANTS-1888 — chip wiring contract.
+        SRC_CLAUDESTATUSWIDGETS_H_PATH="${CMAKE_SOURCE_DIR}/src/claudestatuswidgets.h")
+    set_property(SOURCE tests/features/model_recommender/test_model_recommender.cpp
+        APPEND PROPERTY COMPILE_DEFINITIONS
         # ANTS-1890 — modelrecommender source-grep paths (INV-5/INV-9 purity).
         SRC_MODELRECOMMENDER_CPP_PATH="${CMAKE_SOURCE_DIR}/src/modelrecommender.cpp"
-        SRC_MODELRECOMMENDER_H_PATH="${CMAKE_SOURCE_DIR}/src/modelrecommender.h"
-        SRC_MODELAUTOSWITCH_H_PATH="${CMAKE_SOURCE_DIR}/src/modelautoswitch.h"
-        SRC_MAIN_CPP="${CMAKE_SOURCE_DIR}/src/main.cpp"
-        SRC_CMAKELISTS="${CMAKE_SOURCE_DIR}/CMakeLists.txt"
-        FLATPAK_MANIFEST_PATH="${CMAKE_SOURCE_DIR}/packaging/flatpak/za.co.antsprojectshub.AntsTerminal.yml"
-        TRANSFORMER_PATH="${CMAKE_SOURCE_DIR}/packaging/flatpak/make-flathub-manifest.sh"
+        SRC_MODELRECOMMENDER_H_PATH="${CMAKE_SOURCE_DIR}/src/modelrecommender.h")
+    set_property(SOURCE tests/features/model_switch_confirm/test_switch_confirm_actuator.cpp
+        APPEND PROPERTY COMPILE_DEFINITIONS
+        SRC_MODELAUTOSWITCH_H_PATH="${CMAKE_SOURCE_DIR}/src/modelautoswitch.h")
+    set_property(SOURCE tests/features/flatpak_lua_module/test_flatpak_lua_module.cpp
+        APPEND PROPERTY COMPILE_DEFINITIONS
+        FLATPAK_MANIFEST_PATH="${CMAKE_SOURCE_DIR}/packaging/flatpak/za.co.antsprojectshub.AntsTerminal.yml")
+    set_property(SOURCE tests/features/flathub_manifest_transform/test_flathub_manifest_transform.cpp
+        APPEND PROPERTY COMPILE_DEFINITIONS
+        TRANSFORMER_PATH="${CMAKE_SOURCE_DIR}/packaging/flatpak/make-flathub-manifest.sh")
+    set_property(SOURCE tests/features/test_audit_pattern_drift/test_pattern_drift.cpp
+        APPEND PROPERTY COMPILE_DEFINITIONS
         # ANTS-1450 — test_audit pattern/dimension drift guard.
-        TEST_AUDIT_PATTERNS_JSON="${CMAKE_SOURCE_DIR}/docs/standards/test-audit-grep-patterns.json"
+        TEST_AUDIT_PATTERNS_JSON="${CMAKE_SOURCE_DIR}/docs/standards/test-audit-grep-patterns.json")
+    set_property(SOURCE tests/features/mcp_master_toggle/test_mcp_master_toggle.cpp
+        APPEND PROPERTY COMPILE_DEFINITIONS
         # ANTS-1901 — master MCP toggle registration grep.
-        MCP_ERROR_CODES_MD_PATH="${CMAKE_SOURCE_DIR}/docs/standards/mcp-error-codes.md"
+        MCP_ERROR_CODES_MD_PATH="${CMAKE_SOURCE_DIR}/docs/standards/mcp-error-codes.md")
+    set_property(SOURCE tests/features/roadmap_read_seam/test_roadmap_read_seam.cpp
+        APPEND PROPERTY COMPILE_DEFINITIONS
         # ANTS-3793 § 6 — the drift guard for the p95 benchmark's `perf` label,
         # which is applied at ctest time and silently ignored if it names a case
         # that no longer exists.
