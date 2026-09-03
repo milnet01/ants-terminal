@@ -177,12 +177,19 @@ constexpr const char *kCompactArgTools[] = {
     // The two rows that answer the columns differently — see
     // kNoDefaultCompactTools.
     "spec_lint",
-    "feedback_query"};
+    "feedback_query",
+    "doc_integrity"};
 
 // ANTS-4524 — the verbs on the list above that are NOT compacted by default.
 // The table's whole purpose is that this set can differ from that one, so a
 // test asserting it must name the difference rather than derive it.
-constexpr const char *kNoDefaultCompactTools[] = {"spec_lint", "feedback_query"};
+// ANTS-4858 — doc_integrity joins them. Three projects reached for `compact`
+// here out of habit; all three read the ignored_args reply as correct, so it
+// is parity rather than a defect. Membership only: its zeroed counts and
+// heading_sequence_suppressed are the shape ANTS-4673 folded away from a
+// caller who never asked.
+constexpr const char *kNoDefaultCompactTools[] = {"spec_lint", "feedback_query",
+                                                  "doc_integrity"};
 
 // INV-8 — `fields=` is UNIVERSAL: no allowlist, no predicate, and the verbs
 // that were once outside the list are the proof. Behavioural half — the pure
@@ -744,7 +751,7 @@ TEST(McpCompact, Ants2091DispatchAndSchemaWiring) {
     EXPECT_TRUE(s.contains("mcp::terseDefault()"))
         << "compaction must fall back to mcp::terseDefault() when compact "
            "is absent";
-    // 14 compact schema props — NOT one per in-scope projection tool, which
+    // 15 compact schema props — NOT one per in-scope projection tool, which
     // is what this comment claimed until ANTS-4429 measured it.
     // co_change_family, docs_index and session_orient declare `fields` and
     // not `compact`, so the two sets have diverged and the literal is the
@@ -757,7 +764,10 @@ TEST(McpCompact, Ants2091DispatchAndSchemaWiring) {
     int count = 0, idx = 0;
     const QByteArray needle = "makeCompactProp();";
     while ((idx = s.indexOf(needle, idx)) != -1) { ++count; idx += needle.size(); }
-    EXPECT_EQ(count, 14) << "expected 14 makeCompactProp() call sites, got "
+    // ANTS-4858 bumped this from 14: doc_integrity now declares `compact`,
+    // which is precisely the "a NEW tool declaring it must bump it" case the
+    // paragraph above names. ANTS-4657 still owns replacing the literal.
+    EXPECT_EQ(count, 15) << "expected 15 makeCompactProp() call sites, got "
                          << count;
 }
 

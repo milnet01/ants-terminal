@@ -5948,6 +5948,16 @@ void ClaudeIntegration::onMcpConnection() {
                     props["kinds"]      = kindsProp;
                     props["caller_cwd"] = makeCallerCwdReadProp();
                     props["etag_match"] = makeEtagMatchProp();   // ANTS-1499
+                    // ANTS-4858 — parity with the sibling read verbs. Three
+                    // projects reached for it here out of habit and got it
+                    // back in `ignored_args`; all three called that behaviour
+                    // correct, which is why this is a consistency gap and not
+                    // a defect. Membership only: an ABSENT `compact` still
+                    // does nothing here (mcpprojection.cpp's row), because the
+                    // zeroed counts and heading_sequence_suppressed are the
+                    // shape ANTS-4673 folded away from a caller who never
+                    // asked.
+                    props["compact"]    = makeCompactProp();    // ANTS-4858
                     schema["properties"] = props;
                     docInt["inputSchema"] = schema;
                 }

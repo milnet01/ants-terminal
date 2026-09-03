@@ -117,6 +117,19 @@ const DispatchProjection kDispatchProjection[] = {
     // is pending", and folding it away leaves that indistinguishable from a
     // field the caller forgot to read.
     { "feedback_query",         false },
+    // ANTS-4826's sibling, ANTS-4858 — noticed independently by three
+    // projects, and all three called the existing behaviour CORRECT:
+    // `ignored_args` announced the drop, so nothing was silently lost and no
+    // answer was wrong. What they were asking for is parity, since `compact`
+    // reads as a dispatcher-wide convenience from the schema and this was the
+    // one verb in its family that did not take it.
+    //
+    // Membership only. Compaction BY DEFAULT no, for the reason the two rows
+    // above give: the bulk is findings[], whose rows compaction cannot touch,
+    // and the envelope's zeroed counts and heading_sequence_suppressed are
+    // exactly the shape ANTS-4673 folded away — a caller who did not ask must
+    // keep them.
+    { "doc_integrity",          false },
 };
 
 const DispatchProjection *lookupDispatchProjection(const QString &toolName) {
