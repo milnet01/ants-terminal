@@ -48,6 +48,7 @@
 #include <QThread>
 
 #include <algorithm>
+#include <utility>   // std::as_const — see updateSuggestion()
 
 namespace {
 
@@ -5816,8 +5817,16 @@ void TerminalWidget::updateSuggestion() {
 
     if (currentLine.length() < 2) return;
 
-    // Find first matching history entry
-    for (const QString &entry : m_historyEntries) {
+    // Find first matching history entry.
+    // ANTS-4780 — iterate through std::as_const: m_historyEntries is a MEMBER,
+    // and a range-for over a non-const Qt container calls the mutable begin(),
+    // which detaches when the container is shared. It is unshared today, so
+    // this costs nothing now; what it buys is that a future copy of the list
+    // cannot silently turn this into a deep copy of the whole shell history —
+    // up to ~50k entries — on a path that runs per VT batch as the user types.
+    // Measured as the one member-container detach site in the paint and VT hot
+    // paths; the others there iterate locals, where a detach is a no-op.
+    for (const QString &entry : std::as_const(m_historyEntries)) {
         if (entry.startsWith(currentLine) && entry != currentLine) {
             m_currentSuggestion = entry.mid(currentLine.length());
             break;

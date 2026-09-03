@@ -119,3 +119,20 @@ TEST(TerminalWidgetHotPathPerf, Inv5PaintHonorsDamageRect) {
         << "paintEvent still walks all rows unconditionally — the damage rect "
            "is ignored, so a cursor blink re-shapes the whole grid";
 }
+
+// INV-6 — updateSuggestion iterates the history through std::as_const
+// (ANTS-4780). m_historyEntries is a member, and a range-for over a non-const
+// Qt container calls the mutable begin(), which detaches when the container is
+// shared. It is unshared today, so this pins the guarantee rather than a
+// measured cost: without it, a later copy of the list silently turns this into
+// a deep copy of the whole shell history on a path that runs per VT batch.
+TEST(TerminalWidgetHotPathPerf, Inv6SuggestionScanDoesNotDetachHistory) {
+    const QString body = functionBody(
+        tw(), QStringLiteral("void TerminalWidget::updateSuggestion()"));
+    ASSERT_FALSE(body.isEmpty()) << "updateSuggestion not found";
+    EXPECT_TRUE(body.contains(QStringLiteral("std::as_const(m_historyEntries)")))
+        << "updateSuggestion must iterate m_historyEntries through "
+           "std::as_const — a bare range-for takes the detaching begin()";
+    EXPECT_FALSE(body.contains(QStringLiteral(": m_historyEntries)")))
+        << "updateSuggestion still range-fors the member directly";
+}
