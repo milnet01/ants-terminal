@@ -225,10 +225,25 @@ else()
     endif()
 endif()
 # ANTS-1558 — link_pool cap is overridable via ANTS_LINK_POOL (default 1).
-# The `fast` preset bumps it to 2 so the ~30 test-bundle link tail runs in
-# pairs on 32 GiB hosts where two concurrent Qt links (~1.5–2 GiB peak RSS
-# each) stay well clear of the OOM ceiling. Other presets keep the safer
-# link_pool=1 (each Qt link is the single heaviest process in the build).
+# The `fast` preset bumps it to 2 so the link tail runs in pairs on 32 GiB
+# hosts where two concurrent Qt links stay well clear of the OOM ceiling.
+# Other presets keep the safer link_pool=1 (each Qt link is the single
+# heaviest process in the build).
+#
+# ANTS-4798 — MEASURED, so it does not need re-litigating. Deleting every
+# linked executable and timing the relink, three runs each, mold on:
+#
+#     link_pool=1   0.43 0.44 0.42 s
+#     link_pool=2   0.33 0.33 0.32 s
+#     link_pool=3   0.28 0.28 0.28 s
+#
+# Raising the cap saves about 0.15 s in total, so the RAM ceiling costs
+# effectively nothing and STAYS AT 1. Two things had made it look like a
+# bigger question than it is: the tail is EIGHT executables, not the ~30 or
+# 42 the older comments assume — this project links test BUNDLES, not one
+# binary per test — and mold (ANTS-2233) already links each in well under a
+# second. Do not raise it for speed; the only reason to revisit is a change
+# that makes links slow again.
 set(ANTS_LINK_POOL 1 CACHE STRING "Concurrent link invocations cap (Ninja JOB_POOLS)")
 set_property(GLOBAL APPEND PROPERTY JOB_POOLS
     compile_pool=${_ANTS_COMPILE_CAP}
@@ -240,7 +255,7 @@ message(STATUS "Build job pools: compile=${_ANTS_COMPILE_CAP} link=${ANTS_LINK_P
 # ANTS-2233 — link with mold when available. Linking is the heaviest,
 # most RAM-hungry step here (hence the link_pool=1 cap above); mold is
 # multi-threaded AND uses markedly less peak RSS than GNU ld, so it
-# shortens the ~30-bundle link tail WITHOUT raising the OOM ceiling — the
+# shortens the link tail WITHOUT raising the OOM ceiling — the
 # right kind of speedup for a 32 GiB / earlyoom host. Auto-detected;
 # opt out with -DANTS_USE_MOLD=OFF. GCC 12+ honours -fuse-ld=mold
 # (host toolchain is GCC 15). Applies to every target defined below.
