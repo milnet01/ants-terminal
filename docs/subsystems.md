@@ -1,19 +1,33 @@
 # Ants Terminal — subsystem module map
 
-Canonical per-subsystem reference for `src/`. This file is the single
-source of truth for the module map; it is **served on demand** by the
-`subsystem` MCP tool (`op=map`) and consumed by `indie_review_partition`
-(one review lane per entry). It deliberately lives **outside CLAUDE.md**
-so the ~130-line lane catalogue is not reloaded into every Claude session
-preamble (ANTS-1292) — query it with the `subsystem` tool when you need a
-lane summary.
+Canonical per-subsystem reference for `src/`, **served on demand** by the
+`subsystem` MCP tool (`op=map`). It deliberately lives **outside CLAUDE.md**
+so the lane catalogue is not reloaded into every Claude session preamble
+(ANTS-1292) — query it with the `subsystem` tool when you need a lane
+summary.
+
+**It is not what `indie_review_partition` returns, and has not been since
+ANTS-4793.** That verb prefers `.indie-review/partition.json` when present,
+and this project commits one. The two are different partitions on purpose,
+at different granularities:
+
+| | this file | `.indie-review/partition.json` |
+|---|---|---|
+| Serves | `subsystem op=map` — a human reading about one module | `indie_review_partition` — one review lane per entry |
+| Granularity | fine, roughly per module | coarse, modules grouped into reviewable lanes |
+| Coverage | the modules worth describing | **every** tracked `src/` file |
+
+So a module absent here is not a module absent from review, and a lane name
+here need not exist there. Where a reader wants "which lane reviews this
+file?", the override answers it; this file answers "what does this module
+do?". Keep this one in sync with the code the same way CLAUDE.md used to be
+kept in sync.
 
 Format contract (parsed by `SubsystemMap::parse`): the `## Module map
 (src/)` H2 below, then one bullet per subsystem shaped as
 ``- `name` — summary`` (em-dash separator; multi-name and qualifier-paren
 forms tolerated; two-space indented continuation lines append to the
-summary). Keep this in sync with the code the same way CLAUDE.md used to
-be kept in sync.
+summary).
 
 ## Module map (src/)
 

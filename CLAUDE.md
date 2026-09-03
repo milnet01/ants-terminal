@@ -9,8 +9,14 @@ Per-subsystem reference moved to [`docs/subsystems.md`](docs/subsystems.md)
 (ANTS-1292) so the ~130-line lane catalogue is not reloaded into every
 Claude session preamble. Query it on demand with the `subsystem` MCP tool:
 `op=map` for the full `{name, summary}` list, `op=files` / `op=recent_changes`
-per lane. `indie_review_partition` derives one review lane per entry. Keep
-`docs/subsystems.md` in sync with the code as you would any spec.
+per lane. Keep `docs/subsystems.md` in sync with the code as you would any spec.
+
+**Review lanes come from `.indie-review/partition.json`, not from
+`docs/subsystems.md`** (ANTS-4793). `indie_review_partition` prefers that
+override, this project commits one, and it is the only one of the two that
+covers every tracked `src/` file. The two are different partitions at
+different granularities and that is deliberate — `docs/subsystems.md` § header
+carries the split. To change what a review lane covers, edit the override.
 
 ## Data flow
 
