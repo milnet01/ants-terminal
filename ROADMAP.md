@@ -51167,7 +51167,7 @@ volume classes, and the tooling/documentation gaps the run exposed.
   Source: localwebservermanager-feedback-2026-09-01.
   Lanes: remotecontrol, mcp.
 
-- 📋 [ANTS-4812] **changelog_log can only reach the root CHANGELOG.md, so a nested component changelog has no verb.**
+- ✅ [ANTS-4812] **changelog_log can only reach the root CHANGELOG.md, so a nested component changelog has no verb.**
   Vestige ships a root CHANGELOG.md and tools/audit/CHANGELOG.md for a
   separately-versioned bundled component. changelog_log resolves its
   target from caller_cwd's PROJECT ROOT, so a nested caller_cwd resolves
@@ -51191,6 +51191,31 @@ volume classes, and the tooling/documentation gaps the run exposed.
   Three call sites resolve through findChangelogUnder — the single op, the
   batch op, and changelog_query — and all three want the argument, or the
   read side cannot check what the write side just wrote.
+  Resolved (2026-09-03, 0522991d): optional `path` on changelog_log AND
+  changelog_query, exactly as the report specified.
+
+  Built the way the report argued for — feedback_log's existing shape
+  rather than a new one: PathValidation under the project root,
+  allowOutsideRoot=false. All three call sites that resolved through
+  findChangelogUnder go through one helper, since the read side cannot
+  check what the write side just wrote if only one can be aimed.
+
+  `path` names an EXISTING changelog and never creates one; a
+  non-existent one refuses no_changelog and a root-escaping one bad_path.
+  The Markdown/YAML probe still runs on whatever file is handed over, so
+  an unparseable nested file refuses format_mismatch as before. Absent
+  `path` is byte-identical to the previous behaviour.
+
+  New tests/features/changelog_log_nested_path, five invariants, red-proven
+  on four of them. The fifth pins the unchanged default and passes in both
+  states.
+
+  Lesson worth keeping from building it: the query invariant's first draft
+  PASSED in the red state. Pre-fix, write and read both fall back to the
+  root file, so a round-trip assertion succeeds while reading the wrong
+  changelog entirely. The two files now carry distinct markers and the
+  test asserts on both, which is what makes it measure the routing rather
+  than the round-trip.
   **Layman:** A project with a second changelog for a bundled tool has to edit that one by hand.
   Kind: feature.
   Source: vestige-feedback-2026-09-01.

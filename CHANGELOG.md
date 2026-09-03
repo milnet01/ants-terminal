@@ -14,6 +14,12 @@ for security-relevant changes.
 
 ### Added
 
+- **changelog_log and changelog_query can name a nested component changelog** (ANTS-4812)
+  A project that ships a second changelog for a bundled, separately
+  versioned component can now write and read it through the verbs, with an
+  optional path. Previously only the root CHANGELOG.md was reachable, so
+  the nested file had to be edited by hand.
+
 - **Shell scripts can be outlined, so Claude can see their shape without reading them whole** (ANTS-4826)
   Asking for the outline of a `.sh` file used to return nothing at all. It now lists the functions and the settings at the top, and recognises a script with no file extension — a git hook or a launcher — from its first line. Those scripts also become visible to the code search and review tools, which had been skipping them.
 
