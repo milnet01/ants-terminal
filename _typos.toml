@@ -10,6 +10,20 @@
 # NOTE ON CHECKING THIS FILE: `[files] extend-exclude` applies to typos'
 # own directory walk. Passing paths as positional arguments bypasses it, so
 # run plain `typos` from the repo root to see what the config actually does.
+#
+# EXPECTED RESIDUE (ANTS-4800). A clean run is not a silent one: four
+# findings remain on purpose, and each is unfixable rather than unfixed.
+#
+#   - `occured`, three times. Every one is a QUOTED EXAMPLE of the typo
+#     being corrected -- ANTS-3443's spec describes the correction, and a
+#     feedback_log test asserts it. Fixing them would break the test;
+#     adding the word here would wave through a real one elsewhere.
+#   - `reding`, once, inside a landed cold-eyes loop-log row in a spec. It
+#     is a genuine slip, and CLAUDE.md rule 14 forbids editing a row that
+#     has landed -- a corrected count is named there as exactly the reason
+#     not to.
+#
+# A FIFTH finding is a regression. Read the line before adding anything.
 
 [files]
 # Generated or append-only, and the largest single source of noise.
@@ -21,6 +35,11 @@ extend-exclude = [
     "docs/roadmap/",
     ".audit_cache/",
     "tests/audit_fixtures/",
+    # ANTS-4800 — a dated audit record. Its findings quote the typos they
+    # are about ("Typos like `ants.on(\"outpu\")`"), so the misspelling is
+    # the subject rather than a mistake, and the file is a record nobody
+    # edits.
+    "docs/AUDIT_REPORT_*.md",
 ]
 
 [default]
@@ -28,8 +47,26 @@ extend-exclude = [
 # mis-cased, mis-pairing, mis-routed, mis-diagnosed. The trailing part is
 # optional because prose here hard-wraps, so a line can end on `mis-`.
 # A bare `mis` still reports, so this does not mask the real typo.
+#
+# ANTS-4800 — the hyphen alone left most of the class reporting. The same
+# prefix appears in snake_case identifiers and their SCREAMING_CASE
+# constants (`mis_branched`, `MIS_`), which the word splitter cuts at the
+# underscore exactly as it does at the hyphen. Both separators, either case.
+#
+# camelCase is the third spelling of the same prefix -- `misBranched`,
+# `Inv12MisBranchedSurface` -- and it carries no separator to anchor on, so
+# that rule matches the capital that follows instead. No word boundary: the
+# occurrence inside a test name is preceded by a digit.
+#
+# The last rule is the word-splitter's other blind spot: an ALL-CAPS term
+# carrying an English suffix in lowercase. `CHECKs`, `CANDIDATEs`, `ANDed`
+# and `CHECKed` all split before the suffix, so the tool reports a truncated
+# word that appears nowhere. Three or more capitals, and only the three
+# suffixes actually seen, so it stays narrow.
 extend-ignore-re = [
-    "\\b[Mm]is-",
+    "\\b[Mm][Ii][Ss][-_]",
+    "[Mm]is[A-Z]",
+    "\\b[A-Z]{3,}(s|ed|ing)\\b",
 ]
 
 [default.extend-words]
@@ -55,3 +92,27 @@ clen = "clen"                 # composed-length local, terminalwidget.cpp
 ser = "ser"                   # serBody, session checksum test
 nd = "nd"                     # "Nd ago" relative-time notation
 pn = "pn"                     # "CSI Pn I" -- VT100 parameter notation
+# ANTS-4800 — identifiers and domain notation, each read at the line that
+# produces it. None is prose.
+ba = "ba"                     # QByteArray ba(...) helper, C1-filter tests
+ue = "ue"                     # awk/shell local in packaging/cut-rc.sh
+nver = "nver"                 # awk -v nver=, packaging/cut-rc.sh
+nam = "nam"                   # m_updateNam -- QNetworkAccessManager
+invokable = "invokable"       # Qt's Q_INVOKABLE macro
+parm = "parm"                 # VT "Parm" notation, fileoutline scanner test
+rcall = "rcall"               # the .rcall file extension
+sur = "sur"                   # gh[sur]_ char class -- GitHub token prefixes
+xdescribe = "xdescribe"       # the Jest/Mocha skip form, cited in a comment
+trivials = "trivials"         # used as a noun: "5 trivials (stale comments)"
+othr = "othr"                 # OTHR-0007, a deliberately wrong id in a test
+wrok = "wrok"                 # a deliberately bad section slug in a test
+truncat = "truncat"           # a deliberately truncated literal in a test
+relativiser = "relativiser"   # coined in ANTS-1292, British -iser spelling
+comman = "comman"             # "Re-run Last Comman&d" -- Qt menu accelerator
+alph = "alph"                 # "Alph[] task" fixture subject
+criticals = "criticals"       # used as a noun: "Both criticals were ..."
+empted = "empted"             # the tail of "pre-empted", PLUGINS.md. A word
+                              # entry rather than a `pre-` regex: that would
+                              # have masked the whole word after the prefix,
+                              # so a real typo in "pre-<typo>" would go
+                              # unreported. Verified by probe.
