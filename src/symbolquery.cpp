@@ -465,6 +465,18 @@ void scanFile(ScanState &st, const QFileInfo &fi, const Anchors &an) {
         }
         const QString line = QString::fromUtf8(raw);
 
+        // ANTS-3680 — every anchor that consumes the symbol (`def`,
+        // `wrappedDef`, `call`) splices its escaped literal into the pattern
+        // as mandatory text on THIS line, so a line without that literal can
+        // match none of them. A substring test is a sound necessary
+        // condition and skips the regex engine on almost every line.
+        // `prevLine` still advances: the wrapped pair reads it, and a line
+        // that is only ever context never contains the symbol.
+        if (!st.symbol.isEmpty() && !line.contains(st.symbol)) {
+            prevLine = line.trimmed();
+            continue;
+        }
+
         bool isDef = false;
         for (const QRegularExpression &re : an.def) {
             if (re.match(line).hasMatch()) { isDef = true; break; }
