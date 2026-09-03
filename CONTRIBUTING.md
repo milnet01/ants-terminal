@@ -130,19 +130,21 @@ additional paths exist for specialised work:
 
 ## Versioning + release
 
-SemVer. Every version bump uses the `/bump` skill — the `.claude/bump.json`
-recipe edits **all** version-bearing files automatically (CMakeLists.txt,
-CHANGELOG.md, README.md, packaging manifests, and more). Never hand-edit
-version strings individually.
+SemVer. Every version bump runs `cut-release --bump-only`, which applies the
+`.claude/bump.json` recipe to **all** version-bearing files;
+`packaging/check-version-drift.sh` fails the build when one is missed. Never
+hand-edit version strings individually.
 
 Key files the bump touches:
 
 1. `CMakeLists.txt` — `project(... VERSION X.Y.Z)` (single source of truth).
-2. `CHANGELOG.md` — new dated `## [X.Y.Z] — YYYY-MM-DD` section above the
-   previous release. Categories: Added / Changed / Fixed / Security / Removed.
-3. `README.md` — the "Current version: **X.Y.Z**" line.
-4. Packaging manifests (`packaging/opensuse/*.spec`, `packaging/archlinux/PKGBUILD`,
-   etc.) — covered by `/bump` automatically.
+2. `README.md` — the header banner, `Version <strong>X.Y.Z</strong>`.
+3. Packaging manifests (`packaging/opensuse/*.spec`, `packaging/archlinux/PKGBUILD`,
+   etc.) — covered by the recipe.
+
+`CHANGELOG.md`'s **version heading** is not the bump's: `packaging/cut-rc.sh
+new-rc` rolls it and `promote` dates it. Bullets under the open
+`[Unreleased]` section are authored as work lands.
 
 When you ship a ROADMAP item, move it from `ROADMAP.md` (status `📋`) into
 the matching `CHANGELOG.md` section. The `ROADMAP.md` entry converts to `✅`

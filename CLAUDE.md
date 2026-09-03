@@ -475,8 +475,9 @@ deprecated (historical records only).
 SemVer. **`project(... VERSION X.Y.Z)` in `CMakeLists.txt` is the single
 source of truth** — `ANTS_VERSION` propagates everywhere; never hardcode
 versions in `.cpp` / `.h`. Every bump touches `CMakeLists.txt` and
-`README.md` ("Current version") — the `CHANGELOG.md` **version heading** is
-rolled by `new-rc` and dated by `promote`, never by the bump; bullets in the
+`README.md` (its `Version <strong>X.Y.Z</strong>` banner) — the
+`CHANGELOG.md` **version heading** is rolled by `new-rc` and dated by
+`promote`, never by the bump; bullets in the
 still-open `[Unreleased]` **are** authored at bump time (see below); use
 `cut-release --bump-only` (its `.claude/bump.json` covers the packaging
 files). **That skill replaced both

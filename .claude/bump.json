@@ -1,5 +1,5 @@
 {
-  "$comment": "Recipe consumed by ~/.claude/skills/bump/SKILL.md. Bumps every version-bearing file in one /bump invocation; check-version-drift.sh enforces that no file is missed.",
+  "$comment": "Recipe consumed by the cut-release skill (--bump-only). Bumps every version-bearing file in one invocation; check-version-drift.sh enforces that no file is missed.",
   "version_source": "CMakeLists.txt",
   "version_pattern": "project\\([^)]*VERSION\\s+([0-9]+\\.[0-9]+\\.[0-9]+)",
   "files": [
@@ -32,7 +32,7 @@
   ],
   "$no_roadmap_note": "ROADMAP.md is deliberately ABSENT from this list, and must not be re-added (ANTS-4529). It is generated from the roadmap store by RoadmapRender::render(), which replays the root section's stored intro verbatim — so a pattern/replace edit to the markdown is discarded by the next roadmap_log write of ANY op, silently, at whatever later moment someone appends a bullet. It fired four times in one session on 2026-08-19. The banner no longer carries a version at all: the number was a duplicate of CMakeLists.txt's project(VERSION), and the sentence holding it already links CHANGELOG.md, which carries every shipped version, dated. Locked by tests/features/bump_recipe_no_generated_files/.",
   "tag": "v{NEW}",
-  "$tag_note": "Annotated tag created + pushed by the /release skill (step 9) after the release commit lands on origin/main. Distro packagers resolve v{NEW} back to a tarball via GitHub's /archive/refs/tags/v{NEW}.tar.gz URL — the openSUSE spec and Arch PKGBUILD's Source0 line depends on the tag existing.",
+  "$tag_note": "Annotated tag created + pushed by packaging/cut-rc.sh (new-rc / respin / promote / hotfix) after the release commit lands on origin/main. Distro packagers resolve v{NEW} back to a tarball via GitHub's /archive/refs/tags/v{NEW}.tar.gz URL — the openSUSE spec and Arch PKGBUILD's Source0 line depends on the tag existing.",
   "$todos_run_before_post_check": "All entries below MUST be done BEFORE running `post_check`. The drift script flags packaging/linux/za.co.antsprojectshub.AntsTerminal.metainfo.xml and packaging/debian/changelog because their version-bearing lines live inside the per-release blocks the recipe can't auto-generate — so the bump skill must hand off these todos and only then re-run post_check to confirm clean.",
   "todos": [
     "**On minor or major bumps only (not patch):** rotate the just-closed minor's section out of ROADMAP.md into docs/roadmap/<closed>.md by running `bash packaging/rotate-roadmap.sh <closed-minor>`. ANTS-1125 / spec INV-14. Skipped on patch bumps because per-patch sections aren't supported (per-minor only). The script is idempotent on an already-rotated roadmap.",
