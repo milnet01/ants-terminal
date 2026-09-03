@@ -4695,6 +4695,10 @@ void ClaudeIntegration::onMcpConnection() {
                     // IS the schema disagreeing with what the verb accepts.
                     modeEnum.append("generic");
                     modeEnum.append("glsl");
+                    // ANTS-4826 — shell, the third time this schema was the
+                    // one left behind. find_definition's own `lang` enum three
+                    // thousand lines below has listed "sh" since ANTS-3558.
+                    modeEnum.append("sh");
                     modeEnum.append("html");     // ANTS-4361
                     modeProp["enum"]    = modeEnum;
                     modeProp["default"] = "auto";

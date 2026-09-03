@@ -37,6 +37,39 @@ bool isGlslExt(const QString &ext) {
     return kGlsl.contains(ext);
 }
 
+// ANTS-4826 — the SAME pair SymbolQuery::langForExt maps to Lang::Sh, for the
+// reason ANTS-3800's comment above gives: a second list is the drift with an
+// extra step. `.zsh` and `.ksh` are deliberately absent, because that lane does
+// not claim them either and this verb must not be the one that widens the set.
+bool isShExt(const QString &ext) {
+    return ext == QLatin1String("sh") || ext == QLatin1String("bash");
+}
+
+// ANTS-4826 — the interpreter a shebang names, if it is a shell. Matches the
+// direct form (`#!/bin/sh`) and the env form (`#!/usr/bin/env bash`), which is
+// what these scripts are actually written with. Anything else is left alone:
+// promoting on the mere presence of `#!` would claim every extensionless
+// Python and Perl file in the tree.
+bool isShShebang(const QByteArray &firstLine) {
+    QByteArray l = firstLine.trimmed();
+    if (!l.startsWith("#!")) return false;
+    l = l.mid(2).trimmed();
+    // Split on whitespace: the interpreter, then its arguments. Under `env`
+    // the interpreter is the first argument instead.
+    const QList<QByteArray> parts = l.split(' ');
+    QByteArray interp;
+    for (const QByteArray &p : parts) {
+        if (p.isEmpty()) continue;
+        const QByteArray base = p.mid(p.lastIndexOf('/') + 1);
+        if (base == "env") { interp.clear(); continue; }
+        if (base.startsWith('-')) continue;   // `env -S`, `sh -e`
+        interp = base;
+        break;
+    }
+    return interp == "sh"   || interp == "bash" || interp == "dash" ||
+           interp == "ksh"  || interp == "zsh"  || interp == "ash";
+}
+
 // ANTS-4425 — see the header. `.htm` is the DOS-era spelling of the same thing
 // and pickModeByExt has always accepted both.
 bool isHtmlExt(const QString &ext) {
@@ -392,6 +425,44 @@ const QRegularExpression &rxGenericMethod() {
     }();
     return rx;
 }
+// ANTS-4826 — the shell set. Three rules, all anchored at column 0 with NO
+// leading-whitespace class, for the reason rxGenericBinding gives: indentation
+// is the only cheap signal a line-based scanner has for "top level", and a
+// script's body locals outnumber its landmarks several times over.
+//
+// (1) POSIX function definitions: `name() {`. The brace may sit on the next
+// line, so it is not required here. Captures name=group1.
+const QRegularExpression &rxShFunc() {
+    static const QRegularExpression rx = []{
+        QRegularExpression r(QStringLiteral(R"(^([A-Za-z_][A-Za-z0-9_]*)\s*\(\s*\))"));
+        r.optimize();
+        return r;
+    }();
+    return rx;
+}
+// (2) The keyword spelling, `function name {` / `function name() {`, which
+// ksh and bash both accept and which real scripts mix freely with (1). The
+// name may carry a `-` here, which the POSIX form does not allow.
+const QRegularExpression &rxShFuncKeyword() {
+    static const QRegularExpression rx = []{
+        QRegularExpression r(QStringLiteral(R"(^function\s++([A-Za-z_][A-Za-z0-9_-]*))"));
+        r.optimize();
+        return r;
+    }();
+    return rx;
+}
+// (3) Top-level assignments, with the declaration keywords a script actually
+// puts in front of a constant. `local` is deliberately absent: it is only
+// legal inside a function, so admitting it would outline exactly the body
+// variables rule (1)'s column-0 anchor exists to exclude. Captures name=group1.
+const QRegularExpression &rxShBinding() {
+    static const QRegularExpression rx = []{
+        QRegularExpression r(QStringLiteral(R"(^(?:export\s++|readonly\s++|declare\s++-\w++\s++|typeset\s++)?([A-Za-z_][A-Za-z0-9_]*)=)"));
+        r.optimize();
+        return r;
+    }();
+    return rx;
+}
 // (3) JS/TS arrow-function assignments: `export const foo = (…) => …`.
 // Captures name=group1.
 const QRegularExpression &rxGenericArrow() {
@@ -464,6 +535,7 @@ Mode pickModeByExt(const QString &absPath) {
         ext == QLatin1String("txt")) return Mode::Md;
     if (ext == QLatin1String("json")) return Mode::Json;
     if (isGlslExt(ext)) return Mode::Glsl;        // ANTS-3800 shader stages
+    if (isShExt(ext))   return Mode::Sh;          // ANTS-4826
     if (isHtmlExt(ext)) return Mode::Html;       // ANTS-4361 / ANTS-4425
     if (isGenericExt(ext)) return Mode::Generic;  // ANTS-2150 brace family
     return Mode::Auto;  // sentinel meaning "unknown" downstream
@@ -478,6 +550,7 @@ const char *modeToLanguageString(Mode m) {
         case Mode::Generic: return "generic";  // compute() overrides w/ precise name
         case Mode::Html:    return "html";     // ANTS-4361
         case Mode::Glsl:    return "glsl";     // ANTS-3800
+        case Mode::Sh:      return "sh";       // ANTS-4826
         case Mode::Auto:    return "unknown";
     }
     return "unknown";
@@ -489,6 +562,7 @@ QString headerCommentMarker(Mode m) {
         case Mode::Generic: return QStringLiteral("//");  // brace family (ANTS-2150)
         case Mode::Html:    return QStringLiteral("<!--"); // ANTS-4361
         case Mode::Glsl:    return QStringLiteral("//");  // ANTS-3800
+        case Mode::Sh:      return QStringLiteral("#");   // ANTS-4826
         case Mode::Py:      return QStringLiteral("#");
         case Mode::Md:      return QStringLiteral("<!--");
         default:            return QString();
@@ -527,6 +601,7 @@ Mode parseMode(const QString &s) {
     if (s == QLatin1String("json")) return Mode::Json;
     if (s == QLatin1String("generic")) return Mode::Generic;
     if (s == QLatin1String("glsl")) return Mode::Glsl;   // ANTS-3800
+    if (s == QLatin1String("sh"))   return Mode::Sh;     // ANTS-4826
     return Mode::Auto;
 }
 
@@ -554,6 +629,15 @@ QJsonObject compute(const QString &absPath,
 
     // Resolve effective mode (auto → ext-based).
     Mode effective = (mode == Mode::Auto) ? pickModeByExt(absPath) : mode;
+    // ANTS-4826 — a shell script is routinely EXTENSIONLESS (a git hook, a
+    // launcher, a CI gate), and those are the files a session most wants
+    // outlined. The extension is the only signal pickModeByExt has, so when it
+    // has said nothing, ask the file: a shebang is its own declaration of its
+    // language. Only a SHELL shebang promotes — firing on the mere presence of
+    // `#!` would claim every extensionless Python and Perl file in the tree.
+    if (effective == Mode::Auto && isShShebang(f.readLine(256)))
+        effective = Mode::Sh;
+    f.seek(0);
     // Mode::Auto still here = unknown extension; treat as "unknown".
     const bool isUnknown = (effective == Mode::Auto);
 
@@ -1036,6 +1120,26 @@ QJsonObject compute(const QString &absPath,
                 QRegularExpressionMatch idm = rxHtmlId().match(line);
                 if (idm.hasMatch())
                     offer("anchor", idm.captured(1), line.trimmed());
+            }
+        } else if (effective == Mode::Sh) {
+            // ANTS-4826 — landmarks, not a parse. Functions first, because a
+            // `name() {` line also matches nothing in the binding rule and the
+            // order costs nothing; then top-level constants, which is where a
+            // script's paths, versions and directories are declared.
+            QRegularExpressionMatch m = rxShFunc().match(line);
+            if (m.hasMatch()) {
+                offer("func", m.captured(1), line);
+            } else if ((m = rxShFuncKeyword().match(line)).hasMatch()) {
+                offer("func", m.captured(1), line);
+            } else if ((m = rxShBinding().match(line)).hasMatch()) {
+                // Kind "const" and a signature clipped at the `=`, both for
+                // ANTS-4090's reason on the brace family: a caller can tell a
+                // binding from a function, and a value that is a long command
+                // substitution or a heredoc opener does not ride along in
+                // every outline response.
+                offer("const", m.captured(1),
+                      line.left(m.capturedEnd(0)).trimmed() +
+                          QStringLiteral(" …"));
             }
         } else if (effective == Mode::Generic) {
             // Try keyword decl, then C-style method, then arrow assignment;

@@ -59,6 +59,14 @@ bool isIndexableSuffix(const QString &suffixLower) {
     // computed partition, which walks by this predicate. Delegated rather
     // than re-listed, per the in-step rule the comment above states.
         || FileOutline::isGlslExt(suffixLower)
+    // ANTS-4826 — the same drift a third time. SymbolQuery::langForExt has
+    // mapped `.sh`/`.bash` to Lang::Sh all along, so find_definition and
+    // workspace_search have advertised shell while this gate and file_outline
+    // did not — leaving a shell-first project's own sources invisible to
+    // codebase_index and to the indie_review computed partition, which walks
+    // by this predicate. Delegated rather than re-listed, per the in-step rule
+    // the comment above states.
+        || FileOutline::isShExt(suffixLower)
     // ANTS-4425 — the same drift ANTS-4096 fixed for shaders, one verb later.
     // FileOutline has outlined HTML since ANTS-4361, so this gate was again the
     // one left behind: a site project's pages were invisible to codebase_index

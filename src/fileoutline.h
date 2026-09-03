@@ -67,6 +67,20 @@ enum class Mode {
     // answered {language:"unknown"} with no symbols at all — which also broke
     // read_region's symbol mode, since it resolves through this outline.
     Glsl,
+    // ANTS-4826 — shell. The same drift ANTS-3800/ANTS-4096 fixed for shaders
+    // and ANTS-4425 for HTML, a third time: SymbolQuery::langForExt has mapped
+    // `.sh` and `.bash` to Lang::Sh all along, so find_definition and
+    // workspace_search advertise `sh` while this verb answered
+    // {language:"unknown"} with no symbols at all.
+    //
+    // Reported independently by three projects. Shell is where a project's
+    // release and launcher logic lives — the files a session most wants to
+    // orient in without a full Read — and all three fell back to grep or cat.
+    //
+    // Landmarks, not a parse: the two function spellings and top-level
+    // assignments. A script is also routinely EXTENSIONLESS (a hook, a
+    // launcher), so the shebang promotes one when the extension says nothing.
+    Sh,
 };
 
 Mode parseMode(const QString &s);
@@ -84,6 +98,19 @@ bool isGlslExt(const QString &ext);
 // indie_review computed partition that walks by that predicate. Shared rather
 // than re-listed, so the two cannot drift.
 bool isHtmlExt(const QString &ext);
+
+// True for a shell extension (lowercase, no dot).
+// ANTS-4826 — exported for the reason isGlslExt and isHtmlExt are: the in-step
+// rule in codebaseindex.cpp is that count → outline → symbol query cover the
+// same files, and a second list there is that drift with an extra step.
+bool isShExt(const QString &ext);
+
+// True when `firstLine` is a shebang naming a shell interpreter.
+// ANTS-4826 — a script is routinely EXTENSIONLESS (a git hook, a launcher, a
+// CI gate), and those are the files a session most wants outlined. The
+// extension is the only signal pickModeByExt has, so the file's own
+// declaration of its language is the one left.
+bool isShShebang(const QByteArray &firstLine);
 
 // Compute the outline for a single file. `absPath` MUST be a
 // canonical filesystem path under the project root (the caller is

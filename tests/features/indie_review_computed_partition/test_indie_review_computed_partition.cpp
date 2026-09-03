@@ -133,37 +133,47 @@ TEST(IndieReviewComputedPartition, Inv4SingleDirectoryYieldsEmpty) {
 TEST(IndieReviewComputedPartition, Inv6SuffixFilteredFilesAreReported) {
     QTemporaryDir tmp;
     ASSERT_TRUE(tmp.isValid());
-    // A mixed tree: Python that partitions, shell that the suffix filter
-    // drops. The shell sits in BOTH directories, including alongside the
+    // A mixed tree: source that partitions, config that the suffix filter
+    // drops. The YAML sits in BOTH directories, including alongside the
     // Python at the root of a lane, so a path-shaped explanation is ruled out.
+    //
+    // ANTS-4826 — this fixture used SHELL as its dropped example, and shell is
+    // now indexed, so the example moved to `.yml`. That is a real change in
+    // what this partition covers rather than a fixture detail: the walk keys
+    // on CodebaseIndex::isIndexableSuffix, so a shell-first project's own
+    // sources used to be invisible to the review lanes, which is the harm
+    // codebaseindex.cpp names for shaders and HTML in the same breath.
     const QString root = seedProse(tmp, QStringList{
         QStringLiteral("oneup/updater.py"),
         QStringLiteral("oneup/bump.py"),
         QStringLiteral("oneup/update_system.sh"),
-        QStringLiteral("packaging/build-appimage.sh"),
+        QStringLiteral("oneup/settings.yml"),
+        QStringLiteral("packaging/appimage.yml"),
         QStringLiteral("packaging/release.py"),
     });
 
     IndieReviewEngine::UnassignedSources dropped;
     const auto lanes = IndieReviewEngine::deriveComputedPartition(root, &dropped);
 
-    // The partition itself is unchanged — this adds reporting, not coverage.
     ASSERT_EQ(lanes.size(), 2);
     const auto *oneup = laneNamed(lanes, QStringLiteral("oneup"));
     ASSERT_NE(oneup, nullptr);
-    EXPECT_EQ(oneup->sourcePaths.size(), 2) << "shell is still not a lane member";
+    EXPECT_EQ(oneup->sourcePaths.size(), 3)
+        << "ANTS-4826 — shell is a lane member now, beside the two Python files";
 
-    // ...but it is no longer silent about the shell it skipped.
-    EXPECT_EQ(dropped.bySuffix.value(QStringLiteral("sh")), 2)
+    // ...and it is not silent about the config it skipped.
+    EXPECT_EQ(dropped.bySuffix.value(QStringLiteral("yml")), 2)
         << "reported per suffix, so a caller sees WHAT was dropped";
     EXPECT_FALSE(dropped.bySuffix.contains(QStringLiteral("py")))
         << "a file that made it into a lane is not unassigned";
+    EXPECT_FALSE(dropped.bySuffix.contains(QStringLiteral("sh")))
+        << "ANTS-4826 — shell reaches a lane, so it is no longer unassigned";
     // The seeded CLAUDE.md is dropped by the same filter and is reported too.
     // That is deliberate: it IS a file no lane covers, and deciding that
     // markdown does not count would reintroduce the judgement about which
     // extensions matter that this whole approach exists to avoid. The
     // per-suffix breakdown is what keeps it readable — a caller sees
-    // `sh: 2` next to `md: 1` and can tell the signal from the prose.
+    // `yml: 2` next to `md: 1` and can tell the signal from the prose.
     EXPECT_EQ(dropped.bySuffix.value(QStringLiteral("md")), 1);
     EXPECT_EQ(dropped.count, 3) << "count is the sum across suffixes";
 }
