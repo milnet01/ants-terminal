@@ -50054,6 +50054,30 @@ volume classes, and the tooling/documentation gaps the run exposed.
   measurable gain, and every edit still has to be built and tested. The
   paint and VT loops are where a per-frame detach actually costs
   something.
+  Progress (2026-09-03, cdc0786e): hot paths measured, one site fixed,
+  item stays open for the rest.
+
+  Measured with clazy over vtparser, terminalgrid, terminalwidget and
+  shapedruncache — the paint and VT loops this item named as worth
+  measuring first. Those four files carry five range-loop-detach hits
+  between them, so the hot paths are already almost clean.
+
+  Four of the five iterate LOCALS whose refcount is 1. detach() returns
+  immediately on unshared data, so those are no-ops and std::as_const
+  would buy nothing; they are deliberately unchanged.
+
+  The fifth was the one worth having: updateSuggestion() range-fors the
+  MEMBER m_historyEntries, on a path that runs per VT batch as the user
+  types, over a list that can hold roughly 50k entries. Unshared today, so
+  it costs nothing now — what the change buys is that a later copy of the
+  list cannot silently make it a deep copy per batch. Pinned as INV-6 in
+  tests/features/terminalwidget_hotpath_perf, red-proven.
+
+  No CHANGELOG bullet was written for it: measurement says there is no
+  present-day speed-up, and an entry claiming one would not be true.
+
+  What is NOT done: the remaining sites across the rest of src/. Nothing
+  here measured them, and the sweep was deliberately not run.
   **Layman:** Loops over Qt lists quietly copy the whole list because the loop is not marked read-only.
   Kind: perf.
   Source: check-code-sweep-2026-09-01.
