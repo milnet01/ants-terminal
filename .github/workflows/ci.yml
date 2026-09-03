@@ -135,6 +135,17 @@ jobs:
       # Scope covers tests/ as well as src/ (ANTS-4788). cppcheck cannot parse
       # the TEST()/HYGIENE_TEST()/RQ_TEST() macros, so syntaxError is suppressed
       # under tests/ — without it the widening adds a misparse line per bundle.
+      #
+      # useStlAlgorithm is style-severity and advisory: it asks for hand-written
+      # loops to become <algorithm> calls, and no hit is a defect. It was the
+      # largest single class in this tool's output and printed in every run
+      # without ever being acted on, which is how a tool teaches people to skip
+      # its output. Decided in ANTS-4782: suppressed here rather than swept.
+      # Re-enable by deleting that line once the convention is adopted.
+      #
+      # KEEP IN STEP with the same invocation in tools/ci-parity.sh — that
+      # script is a hand-maintained parallel implementation, not a runner for
+      # this file, so the two drift silently.
       - name: "Run cppcheck (audit rule: Qt-aware static analysis)"
         run: |
           cppcheck --enable=all --std=c++20 --library=qt \
@@ -143,6 +154,7 @@ jobs:
                    --suppress=unknownMacro \
                    --suppress=normalCheckLevelMaxBranches \
                    --suppress=syntaxError:tests/* \
+                   --suppress=useStlAlgorithm \
                    --error-exitcode=0 \
                    -I src src/ tests/
 

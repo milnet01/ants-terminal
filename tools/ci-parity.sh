@@ -183,7 +183,9 @@ if [[ "$do_lints" == 1 ]]; then
     maybe_gate shellcheck "shellcheck (shell surface)" \
         bash -c '{ git ls-files "*.sh"; git ls-files tools/hooks | grep -v "\.md$"; } \
                  | sort -u | xargs shellcheck -S warning'
-    # Scope + syntaxError suppression mirror ci.yml's step (ANTS-4788).
+    # Scope + syntaxError suppression mirror ci.yml's step (ANTS-4788);
+    # useStlAlgorithm mirrors it too (ANTS-4782 — advisory style class,
+    # suppressed rather than swept; the reason lives in ci.yml's comment).
     maybe_gate cppcheck "cppcheck (informational)" \
         cppcheck --enable=all --std=c++20 --library=qt \
                  --suppress=missingIncludeSystem \
@@ -191,6 +193,7 @@ if [[ "$do_lints" == 1 ]]; then
                  --suppress=unknownMacro \
                  --suppress=normalCheckLevelMaxBranches \
                  --suppress=syntaxError:tests/* \
+                 --suppress=useStlAlgorithm \
                  --error-exitcode=0 \
                  -I src src/ tests/
     maybe_gate appstreamcli "appstream metainfo" \
