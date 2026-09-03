@@ -51148,6 +51148,47 @@ volume classes, and the tooling/documentation gaps the run exposed.
   Source: in-session-2026-09-03.
   Lanes: mcp, roadmapquery.
 
+- 📋 [ANTS-4825] **A mirrored standard links to ../workflow.md, which the mirror gate is built not to check.**
+  `doc_integrity` over `docs/standards/` reports `local-gate.md`'s link to
+  `../workflow.md` as broken. It is: `workflow.md` is a foundation document
+  under `~/.claude/`, not a standard, so nothing mirrors it and a reader on
+  GitHub gets a 404.
+
+  This is ANTS-4138's class, found after that bullet was closed, and it is
+  not a miss in the fix — ANTS-4138 named `languages/*` and `releases.md`,
+  and this target is neither.
+
+  What makes it worth its own bullet is that the gate CANNOT catch it by
+  construction. `tools/check-standard-mirrors.sh` classifies a link target
+  by what is in the mirror set: a top-level sibling, or `languages/`.
+  Anything else carrying a directory component is skipped by rule, and
+  `../workflow.md` carries one. So the gate reports "links resolve" on a
+  tree where `doc_integrity` reports four broken links, and each tool is
+  right about the question it asks.
+
+  The other three are `skeletons/standard-skeleton.md` (documentation.md)
+  and `skeletons/spec-skeleton.md` + `skeletons/plan-skeleton.md`
+  (spec-format.md). Those are template paths, deliberately out of the
+  mirror set, and ANTS-4138 records why.
+
+  Three options, and none is obviously right:
+
+  1. Mirror `workflow.md` as well. It is a foundation document rather than
+     a standard, so this widens what `docs/standards/` means.
+  2. Teach the gate about a documented allowlist of unmirrorable targets,
+     so "skipped by rule" is stated per target rather than inferred from
+     the path shape. This closes the gap between the two tools without
+     copying anything.
+  3. Leave it and say so where a reader meets it.
+
+  Note this cannot be fixed by editing the mirror — the pre-commit gate
+  refuses a mirror that differs from its owner. Any prose change goes
+  upstream first.
+  **Layman:** A rulebook copied into the public repo links to a file that only exists on my home drive, and the checker that is supposed to catch that cannot see it.
+  Kind: doc-fix.
+  Source: in-session-2026-09-03.
+  Lanes: docs.
+
 ### Ants MCP feedback from CC sessions — 2026-08-28 triage
 
 - 📋 [ANTS-4746] **A verb that reads this session's completed subagent returns, so a fan-out that outlives a compaction is recoverable.**
