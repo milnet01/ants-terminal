@@ -54201,6 +54201,36 @@ assistant suggestions, accepted by the user for filing.
   path-shaped -- which tells the author at the moment they can fix it.
 
   ANTS-4065 section 5 carries the same entry, filed rather than folded in.
+  Measured (2026-09-03) over the machine-global store, and the corpus is both
+  smaller and worse than this bullet assumed.
+
+  Only 28 items across all projects carry a non-empty Evidence list at all, for
+  33 elements. 25 are path-shaped (20 resolve on disk, 5 do not); 8 are prose,
+  and those 8 come from just 3 items.
+
+  The correction: prose is not merely "reported as an unresolved path". It is
+  SHREDDED. `splitTrailerList` splits on commas, so one sentence becomes several
+  elements — GHUB-0052 stores `96`, `000 mutants across all twelve parsers under
+  ASan+UBSan` and `clean`, which was plainly one sentence with two commas in it.
+  DOOM-0321's `goosky-fog2)` is a fragment with an unbalanced paren. And
+  DOOM-0255's element ends mid-sentence at `...loads clean under the`, which is
+  the hard-wrap truncation class of ANTS-4542 rather than a split.
+
+  So an author who writes prose here does not get a value they can see is wrong;
+  they get several values, each individually plausible, none of them what they
+  wrote. That strengthens this bullet's case for repairing at the write side and
+  sharpens what the repair must say.
+
+  A predicate that accepts an element carrying a separator OR a filename-style
+  extension classifies all 33 correctly, including the `shot.png`-at-the-root
+  case this bullet warns a separator-only predicate would drop.
+
+  Direction chosen, and it is the softer of the two this bullet offers: an
+  ADVISORY on the success envelope rather than a refusal. `roadmap_log` is called
+  by sessions across every project on this machine, and a new refusal on input
+  that is accepted today would break them for a defect affecting 3 items. An
+  advisory still tells the author at the moment they can fix it, which is this
+  bullet's stated requirement.
   **Layman:** When someone writes a note instead of a filename in a roadmap entry's Evidence line, the import complains it cannot find a file of that name.
   Kind: fix.
   Source: in-session-2026-08-19, from the corroborating DOOM Ants report on ANTS-4502.
