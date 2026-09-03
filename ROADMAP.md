@@ -49681,8 +49681,15 @@ two projects).
   Kind: enhancement.
   Source: cc-feedback-2026-09-03 Games_Hub.
 
-- 📋 [ANTS-4833] **changelog_log op:"release" does not echo the date it stamps, the one field a caller cannot predict.**
+- ✅ [ANTS-4833] **changelog_log op:"release" does not echo the date it stamps, the one field a caller cannot predict.**
   Confirmed by fields_unmatched rather than inferred. The date defaults to the server's today, and the heading date is what a release-notes grep keys on. It is already computed to render the heading; echo it on the real write as well as the dry run.
+  Resolved (2026-09-03): ReleaseResult carries the resolved date and the
+  verb echoes it on the dry run and the write alike; the schema says so,
+  since a caller cannot see a field that is only sometimes present. Red
+  on assertions rather than the compile -- the field was added unset
+  first. The test pins both arms and cross-checks the reported value
+  against the heading, so it cannot pass by reporting a date other than
+  the one written. Suite 4121, ctest exit 0.
   **Layman:** The release preview shows everything except which date the heading will carry.
   Kind: fix.
   Source: cc-feedback-2026-09-03 Games_Hub.
@@ -51374,7 +51381,7 @@ volume classes, and the tooling/documentation gaps the run exposed.
   Source: in-session-2026-09-03.
   Lanes: remotecontrol, mcp, roadmap.
 
-- 📋 [ANTS-4824] **A section= query stamps every bullet with the QUERIED slug, not the one it lives in.**
+- ✅ [ANTS-4824] **A section= query stamps every bullet with the QUERIED slug, not the one it lives in.**
   MEASURED, on one item, two ways, this session.
 
   `roadmap_query section:"check-code-whole-tree-sweep-fold-in-2026-09-01"`
@@ -51408,6 +51415,15 @@ volume classes, and the tooling/documentation gaps the run exposed.
   Same family as ANTS-4758, ANTS-4743 and ANTS-4753 — a reply that is
   correct, unhelpful, and indistinguishable from something having gone
   wrong.
+  Resolved (2026-09-03): the descendant slug set this feature already
+  computes is what separates a bullet's own slug from the slice-local
+  artifact ANTS-1287-INV-7 was defending against, so it is hoisted out
+  of the store arm and used on both. A slug the index placed in the
+  subtree is emitted; anything else still falls back to the requested
+  slug, so INV-7 keeps its actual protection. INV-6 drives the real
+  cmdRoadmapQuery envelope rather than re-deriving the rule, and asserts
+  descendant inclusion first so it cannot pass by returning nothing.
+  Suite 4120, ctest exit 0.
   **Layman:** Asking for a parent section's items tells you the parent's name for every item, not the sub-section each one really lives in.
   Kind: fix.
   Source: in-session-2026-09-03.

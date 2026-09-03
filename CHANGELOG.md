@@ -297,6 +297,12 @@ for security-relevant changes.
 
 ### Fixed
 
+- **Asking for a roadmap section's items now tells you which sub-section each one is in** (ANTS-4824)
+  Every item came back labelled with the section you asked for, so a nested one looked like it lived in its parent. Filing a new item next to one of them would then have put it in the wrong place without saying so.
+
+- **Cutting a release now reports the date it stamped on the heading** (ANTS-4833)
+  That date is what release-note tooling searches for, and it was the one thing the preview could not show you — left out, it quietly uses the machine's idea of today.
+
 - **A roadmap note that quotes code-block markers is handled correctly again** (ANTS-4450)
   The check that stops such a note running away and swallowing the entries below it had drifted apart from the reader that enforces the same rule. It could both miss a runaway note and insert a stray backslash into a note that was perfectly fine.
 
