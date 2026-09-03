@@ -458,6 +458,7 @@ ReleaseResult closeUnreleased(const QString &markdown,
         ? QDate::currentDate().toString(QStringLiteral("yyyy-MM-dd"))
         : date.trimmed();
     r.heading = QStringLiteral("## [%1] - %2").arg(ver, effDate);
+    r.date    = effDate;   // ANTS-4833 — resolved, so the caller sees the default
 
     // Capture the closed body before rewriting, trimming the blank lines that
     // bracket it — a caller pastes this straight into release notes.

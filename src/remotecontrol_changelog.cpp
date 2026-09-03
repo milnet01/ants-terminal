@@ -598,6 +598,11 @@ QJsonDocument RemoteControl::cmdChangelogLog(const QJsonObject &req) {
         out["file"]          = clPath.section('/', -1);
         out["version"]       = version.trimmed();
         out["heading"]       = res.heading;
+        // ANTS-4833 — on the dry run as well as the write. It is the release
+        // path's only unpredictable field, so previewing everything except it
+        // leaves the caller unable to see which date the heading will carry —
+        // and that date is what a release-notes grep keys on.
+        out["date"]          = res.date;
         out["line"]          = res.line;
         // The closed section's content, because a caller wants it as release
         // notes immediately — otherwise they re-read the file they just wrote.

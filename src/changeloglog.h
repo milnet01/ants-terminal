@@ -149,6 +149,11 @@ struct ReleaseResult {
     QString error;           // human message iff !ok
     QString heading;         // the heading written (iff ok)
     QString released_body;   // the closed section's content (iff ok)
+    // ANTS-4833 — the date actually stamped, resolved. The caller cannot
+    // compute it: omitted, `date` defaults to the server's today, and the
+    // heading date is what a release-notes grep keys on. Previewing every
+    // field except that one is the wrong half.
+    QString date;            // the resolved heading date (iff ok)
     int     line = -1;       // 1-based line of the new version heading
 };
 

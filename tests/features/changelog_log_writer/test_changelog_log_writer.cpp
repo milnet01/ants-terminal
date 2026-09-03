@@ -963,3 +963,41 @@ TEST(changelog_log_writer, Ants4475OpAliasAcceptsTheSiblingSpelling) {
         << "the refusal keeps naming the CANONICAL form, so a caller learns "
            "`add` rather than the alias it happened to try";
 }
+
+// ANTS-4833 — op:"release" must report the DATE it stamped.
+//
+// The heading date is what a release-notes grep keys on, and it is the one
+// field of the release path a caller cannot predict: omitted, it defaults to
+// the server's today. So the dry run previewed everything except the value
+// worth previewing, and a caller asking for it got `date` back in
+// fields_unmatched. Reported from Games_Hub, confirmed there by the verb's
+// own reporting rather than inferred.
+//
+// Pinned on the resolver because that is where the default is applied; the
+// verb copies the field into its envelope on both the dry run and the write.
+TEST(changelog_log_writer, Ants4833ReleaseReportsTheDateItStamped) {
+    const QString before = QString::fromUtf8(
+        "# Changelog\n\n"
+        "## [Unreleased]\n\n"
+        "### Added\n\n"
+        "- **A thing.** (PROJ-1)\n");
+
+    // Supplied date: echoed verbatim, so a caller can confirm what it asked
+    // for was used rather than silently normalised.
+    const auto given = ChangelogLog::closeUnreleased(
+        before, QStringLiteral("0.2.0"), QStringLiteral("2026-08-14"));
+    ASSERT_TRUE(given.ok) << given.error.toStdString();
+    EXPECT_EQ(given.date, QStringLiteral("2026-08-14"));
+
+    // Omitted date: the resolved default, not an empty string. This is the
+    // case the report is about — the caller cannot compute it, because it is
+    // the server's clock that decides.
+    const auto today = ChangelogLog::closeUnreleased(
+        before, QStringLiteral("0.2.0"));
+    ASSERT_TRUE(today.ok) << today.error.toStdString();
+    EXPECT_FALSE(today.date.isEmpty())
+        << "an omitted date must come back resolved, not blank";
+    EXPECT_TRUE(today.heading.endsWith(today.date))
+        << "the reported date must be the one in the heading, or it answers "
+           "a different question than the caller asked";
+}
