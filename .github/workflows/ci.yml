@@ -36,6 +36,15 @@ on:
 permissions:
   contents: read
 
+# Supersede a still-running CI for the same ref, EXCEPT on main.
+# On a branch or PR the older run is answering a question nobody is
+# asking any more. On main it is not cancelled: ANTS-4533 records
+# build-asan going cancelled-and-unnoticed for two days, and that is
+# only spottable while `cancelled` on main stays an abnormal outcome.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
 jobs:
   build-test:
     name: Build and test (Release)
