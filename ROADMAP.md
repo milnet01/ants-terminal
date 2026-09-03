@@ -36904,7 +36904,7 @@ whole files.
   Source: cold-sweep-2026-08-18 lane ipc-workspace-docs (VERIFIED in-session).
   Lanes: markdownscan.
 
-- 📋 [ANTS-4450] **`rcEscapeUnclosedFence` kept a hand-rolled fence toggle and splices a backslash into user prose.**
+- ✅ [ANTS-4450] **`rcEscapeUnclosedFence` kept a hand-rolled fence toggle and splices a backslash into user prose.**
   `src/remotecontrol.cpp:1001-1022` still uses its own toggle
   (`openAt = (openAt < 0) ? i : -1`) after the walkers moved to
   `MarkdownScan::fenceMask` — while its comment at `:1005-1006` promises
@@ -36924,6 +36924,17 @@ whole files.
   Kind: fix.
   Source: cold-sweep-2026-08-18 lane ipc-core (VERIFIED in-session).
   Lanes: remotecontrol, markdownscan.
+  Resolved (2026-09-03): routed through MarkdownScan::fenceMask, and
+  looped, because escaping one opener can promote a line that was fence
+  CONTENT into a live opener. All three divergences close together. Red
+  on assertions first: INV-6 short run does not close a longer opener,
+  INV-7 tilde does not close a backtick fence, INV-8 a balanced long
+  fence keeps its short inner line. INV-8 is the headline's own claim
+  reproduced -- the old toggle called three fence-shaped lines odd and
+  escaped the CLOSER, corrupting the block and leaving the unterminated
+  fence the guard exists to prevent. INV-1, INV-2 and INV-3 pass in both
+  states, so the fix is not always-escape. Full suite green, ctest exit
+  0.
 
 - 📋 [ANTS-4451] **The `PostToolUse` hook branch is a permanent no-op — wrong JSON keys.**
   `ClaudeIntegration::updateChangedFiles` (`src/claudeintegration.cpp:975`)
@@ -49724,8 +49735,17 @@ two projects).
   Kind: fix.
   Source: cc-feedback-2026-09-03 Pressless.
 
-- 📋 [ANTS-4842] **roadmap_log's op enum omits set_body, though the description documents it and the call succeeds.**
+- ✅ [ANTS-4842] **roadmap_log's op enum omits set_body, though the description documents it and the call succeeds.**
   Self-concealing: an earlier session correctly read the enum's absence as a stale binary, and the same check now gives the wrong answer because the enum and the description disagree. A caller that trusts the enum will not attempt the one op that can repair a mangled body. Worth checking whether another recently added op is in the same state, since the two are maintained separately.
+  Resolved (2026-09-03): set_body added to the op enum, and pinned in
+  the verb's schema test with the amend_* trio. Also answered the
+  report's other question with evidence -- comparing the enum against
+  every op the dispatcher matches on, the only other absentees are `add`
+  and `add_batch`, which are normalised to append / append_batch as
+  aliases. set_body was the only real gap. The general
+  enum-versus-dispatcher check was NOT built: it needs a source path for
+  the dispatching TU that the bundle does not define, and adding one
+  recompiles the whole bundle (ANTS-4797).
   **Layman:** A working tool is missing from the list of tools, so callers conclude it is not there.
   Kind: fix.
   Source: cc-feedback-2026-09-03 Pressless.
@@ -51342,6 +51362,13 @@ volume classes, and the tooling/documentation gaps the run exposed.
   Worked around for now by rewriting ANTS-3678's body to describe the
   sample in prose rather than reproduce it, which balanced the file and
   unblocked the flips.
+  Progress (2026-09-03): repairs 1 and 3 are done, repair 2 is not, so this stays open.
+
+  Repair 1 turned out to be a REGRESSION rather than a missing guard. rcEscapeUnclosedFence has existed since ANTS-3640 and should have caught this body; it did not, because its hand-rolled toggle ignored fence run length and so read the 3-backtick line as closing the 4-backtick opener. That was harmless while MarkdownScan::fenceMask was wrong the same way -- ANTS-3678 fixed fenceMask and left the guard behind, which is why the trap surfaced when it did rather than when the body was written. Fixed as ANTS-4450: the guard now asks fenceMask.
+
+  Repair 3 was already shipped with ANTS-3640 (rcFenceOpenerHint names the opener's line).
+
+  Repair 2 -- scope the fence scan to the bullet, so one bad neighbour cannot take the rest of the file down -- is untouched. It still matters: the write-side guard only covers text written THROUGH the verb, so a hand-written or legacy file can still put a bullet inside a fence opened elsewhere.
   **Layman:** One roadmap entry containing an unfinished code block quietly stopped every entry below it from being updated.
   Kind: fix.
   Source: in-session-2026-09-03.

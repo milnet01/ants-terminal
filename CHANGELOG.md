@@ -297,6 +297,12 @@ for security-relevant changes.
 
 ### Fixed
 
+- **A roadmap note that quotes code-block markers is handled correctly again** (ANTS-4450)
+  The check that stops such a note running away and swallowing the entries below it had drifted apart from the reader that enforces the same rule. It could both miss a runaway note and insert a stray backslash into a note that was perfectly fine.
+
+- **The roadmap tool's `set_body` operation is listed among its operations again** (ANTS-4842)
+  It worked and was documented, but was missing from the list callers read to check what exists — so sessions concluded it was unavailable and left a garbled entry unrepaired.
+
 - **The spell checker's settings now cover the noise they were written for** (ANTS-4800)
   Findings dropped from 131 to 4, and the four that remain are documented as deliberate. Verified the checker still catches ordinary misspellings.
 
