@@ -50159,7 +50159,7 @@ volume classes, and the tooling/documentation gaps the run exposed.
   Kind: perf.
   Source: check-code-sweep-2026-09-01.
 
-- 📋 [ANTS-4785] **docs/subsystems.md documents 113 of 313 src files; 200 files and 61,179 lines have no lane.**
+- ✅ [ANTS-4785] **docs/subsystems.md documents 113 of 313 src files; 200 files and 61,179 lines have no lane.**
   Measured 2026-09-01 against the 50 lanes indie_review_partition returns. Assigned: 113 files. Total tracked src/*.cpp + src/*.h: 313. UNASSIGNED: 200 files, 61,179 lines — 36% of src/ by line count.
 
   The largest undocumented files: mainwindow.cpp (7,935 lines), auditrunner.cpp (2,687), testauditengine.cpp (2,270), settingsdialog.cpp (1,851), doccitations.cpp (1,706), debtsweepengine.cpp (1,645), feedbackfile.cpp (1,616), config.cpp (1,467), coldeyesengine.cpp (1,381), indiereviewengine.cpp (1,187). Also sessionmanager.cpp, fileoutline.cpp, readregion.cpp, codebaseindex.cpp, symbolquery.cpp.
@@ -50167,6 +50167,29 @@ volume classes, and the tooling/documentation gaps the run exposed.
   WHY IT MATTERS BEYOND TIDINESS: every review that partitions by subsystem — indie_review_dialog, review-code, this session's own sweep — derives its lanes from this file. A file in no lane is read by no lane. mainwindow.cpp, the largest single file in the project, is reviewed by nothing.
 
   CLAUDE.md already says "Keep docs/subsystems.md in sync with the code as you would any spec"; this records how far out of sync it actually is.
+  Resolved (2026-09-03, a3f44ccd), and the measurement changed what the
+  fix was.
+
+  CORRECTION to this item's central claim: the coverage hole is closed and
+  was closed by ANTS-4793, the day after this was filed. Measured today —
+  indie_review_partition reports 4 unassigned files, .indie-review/
+  partition.json assigns all 313 across 32 lanes, and mainwindow.cpp sits
+  in the `mainwindow` lane. "mainwindow.cpp is reviewed by nothing" was
+  true when written and is not true now. Do not read the body's figures as
+  current.
+
+  What survived was a DOCUMENTATION defect. docs/subsystems.md called
+  itself the single source of truth for the module map and said
+  indie_review_partition consumes it one lane per entry; the project
+  CLAUDE.md repeated it. Both false since ANTS-4793, and both were the
+  reason a reader would look in the wrong place to change a review lane.
+
+  Fixed by stating the real relationship in both, not by regenerating the
+  map. The two files are different partitions on purpose — this one is a
+  fine-grained per-module reference for `subsystem op=map`, the override is
+  coarse reviewable lanes covering every file — and each is right for its
+  own consumer. Regenerating either from the other would have destroyed the
+  per-module prose for no gain.
   **Layman:** The map of what lives where covers about a third of the code. Any review driven by that map silently skips the rest.
   Kind: doc.
   Source: check-code-sweep-2026-09-01.
@@ -50339,6 +50362,17 @@ volume classes, and the tooling/documentation gaps the run exposed.
   roadmap-import-verify.py, which is a bug class rather than style. Filed
   separately, because this item is about surfaces nothing analyses and
   that one IS analysed.
+  Progress (2026-09-03): re-checked the blocking claim rather than
+  assuming it. Neither cmakelint nor cmake-format is on this machine, so
+  the CMake half is still blocked on tooling exactly as the 2026-09-02
+  note says, and nothing in this session changed that.
+
+  Not installing one unasked: adding a linter to the machine is a change
+  to the development environment rather than to this project, and the
+  useful unit of work is the gate it feeds, which is a separate decision
+  about what CI runs.
+
+  The Python half stays closed.
   **Layman:** Two kinds of file in the project have no automated checking at all.
   Kind: chore.
   Source: check-code-sweep-2026-09-01.

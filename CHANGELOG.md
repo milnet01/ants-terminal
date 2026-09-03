@@ -333,6 +333,12 @@ for security-relevant changes.
 
 ### Fixed
 
+- **Documentation now says where review lanes actually come from** (ANTS-4785)
+  The subsystem map described itself as the source of the review lanes,
+  which stopped being true when every source file was given a lane in a
+  committed override. Both files now state which is which, and which one
+  to edit to change a lane.
+
 - **A code fence inside one roadmap bullet now ends with that bullet** (ANTS-4823)
   roadmap_log's walkers bind a fence to the body it was opened in, so a
   hand-written or legacy bullet that opens a fence and never closes it can
