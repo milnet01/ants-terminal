@@ -50884,7 +50884,7 @@ volume classes, and the tooling/documentation gaps the run exposed.
   Source: games-hub-feedback-2026-09-01.
   Lanes: remotecontrol, mcp.
 
-- 📋 [ANTS-4815] **project_settings op:detect lists undeclared keys that can never be declared.**
+- ✅ [ANTS-4815] **project_settings op:detect lists undeclared keys that can never be declared.**
   detect returns undeclared:["docs_dir","specs_dir","changelog"] for a
   project that has none of those paths. op:set requires a path to exist,
   so those entries can only be cleared by creating directories the project
@@ -50907,6 +50907,29 @@ volume classes, and the tooling/documentation gaps the run exposed.
   null -- adds a third state to the settings file that every reader then
   has to handle, for the same information the split conveys by
   partitioning what detect already computes.
+  Resolved (2026-09-03) by the reporter's preferred fix, the cheaper of the
+  two they offered. `op:"detect"` now reports `undeclared[]` (a candidate path
+  is on disk, so `op:"set"` will accept a declaration) and `unavailable[]`
+  (nothing to point at, so `op:"set"` refuses `bad_path`). No change to the
+  settings file's schema and no new write semantics, as the reporter
+  predicted. Verified first that the premise holds — `validDirUnder` /
+  `validFileUnder` do require existence, so `op:"set"` really does refuse.
+
+  Classification is a pure helper, `ProjectSettings::splitUndeclared`, rather
+  than inline in the handler: this feature's tests drive its pure helpers
+  against fixtures and source-scrape the handler, so putting it there is what
+  earns it a real test rather than a grep. Filed as INV-23.
+
+  One trap worth recording. Classifying from the `Suggestion` alone is wrong:
+  detect returns early on a configured project (INV-2) having proposed no aux
+  keys at all, so every key would have read as unavailable there. The helper
+  falls back to probing the conventional path, and that case has its own test.
+
+  Red run took a different shape than usual, since a missing symbol fails to
+  compile rather than failing an assertion: the helper was stubbed to the
+  pre-fix behaviour and both tests failed on their `unavailable` assertions
+  while their `undeclared` assertions still passed — so neither can be
+  satisfied by classifying every key one way. Suite 4110/4110 green.
   **Layman:** A setup check keeps listing missing settings that a project has deliberately chosen not to have.
   Kind: enhancement.
   Source: slipcase-feedback-2026-09-01.
@@ -51085,6 +51108,45 @@ volume classes, and the tooling/documentation gaps the run exposed.
   Kind: fix.
   Source: in-session-2026-09-03.
   Lanes: remotecontrol, mcp, roadmap.
+
+- 📋 [ANTS-4824] **A section= query stamps every bullet with the QUERIED slug, not the one it lives in.**
+  MEASURED, on one item, two ways, this session.
+
+  `roadmap_query section:"check-code-whole-tree-sweep-fold-in-2026-09-01"`
+  returns ANTS-4756 with
+  `section_slug:"check-code-whole-tree-sweep-fold-in-2026-09-01"`.
+  `roadmap_query ids:["ANTS-4756"]` returns the same item with
+  `section_slug:"ants-mcp-feedback-from-cc-sessions-2026-08-28-triage"`.
+  One field, one item, two values, decided by which selector was used.
+
+  This is fallout from ANTS-4819, which made `section=` return the
+  descendants a parent heading's counts already rolled up — a good change,
+  and the counts now agree (measured: index says 71 active for that parent,
+  `section=` returns 71). What it did not do is give the returned bullets
+  their OWN slug, so the descendant that made the result correct is
+  invisible in it.
+
+  Two costs, and the second is the one that bites:
+
+  - A caller cannot tell which child section a bullet is in without a
+    second per-id query, which is exactly the round-trip a section query
+    exists to avoid.
+  - The value is not safe to feed back. `roadmap_log op:"append"` takes a
+    section slug, so a session that reads a neighbour's `section_slug` to
+    file alongside it files into the PARENT instead. That is silent: the
+    append succeeds and lands in the wrong place.
+
+  Fix: report the bullet's own section. If the queried slug is worth
+  echoing, it is already echoed at the envelope's top level as `section`,
+  so nothing is lost by making the per-bullet field mean the bullet.
+
+  Same family as ANTS-4758, ANTS-4743 and ANTS-4753 — a reply that is
+  correct, unhelpful, and indistinguishable from something having gone
+  wrong.
+  **Layman:** Asking for a parent section's items tells you the parent's name for every item, not the sub-section each one really lives in.
+  Kind: fix.
+  Source: in-session-2026-09-03.
+  Lanes: mcp, roadmapquery.
 
 ### Ants MCP feedback from CC sessions — 2026-08-28 triage
 
@@ -51395,6 +51457,23 @@ volume classes, and the tooling/documentation gaps the run exposed.
   Same family as ANTS-4743, ANTS-4742 and ANTS-4753 — a reply that is
   correct, unhelpful, and indistinguishable from something having gone
   wrong.
+  Progress (2026-09-03): the counts half is closed, by ANTS-4819 rather than
+  by this bullet. `section=` now returns the bullets of a heading AND of every
+  section nested inside it — the same descendants `section_index` rolls into
+  that slug's counts — so the two numbers this item measured as disagreeing
+  now agree. Re-measured rather than assumed: the index reports 71 active for
+  `check-code-whole-tree-sweep-fold-in-2026-09-01` and `section=` returns 71.
+  The `section` argument's schema states the descendant behaviour outright.
+
+  Left open, and it is what remains of this item's real complaint: the
+  envelope still does not distinguish direct from subtree. A caller wanting a
+  parent's own bullets alone cannot ask for them, and the reply names no child
+  slugs to descend into.
+
+  Filed ANTS-4824 for a defect found while checking this one — under
+  ANTS-4819's descendant inclusion, every bullet a `section=` query returns is
+  stamped with the QUERIED slug rather than its own, so the value is wrong to
+  feed back to `roadmap_log op:"append"` and files into the parent silently.
   **Layman:** A section's item count and the list of items you get for that same section can disagree by a lot, with nothing saying why.
   Kind: enhancement.
   Source: in-session-2026-08-28, hit while picking work from a parent section.

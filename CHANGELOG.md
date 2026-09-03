@@ -226,6 +226,11 @@ for security-relevant changes.
 
 ### Changed
 
+- **The project-setup check separates settings you can fill in from ones you cannot** (ANTS-4815)
+  A project that deliberately keeps no docs or specs folder was listed as
+  missing them forever, with no way to clear the list short of creating
+  folders it did not want.
+
 - **CI now drops a superseded build on branches and PRs** (ANTS-4799)
   Pushing again to the same branch cancels the run the previous push started. Runs on `main` are never cancelled, so a cancelled build there still means something went wrong.
 
