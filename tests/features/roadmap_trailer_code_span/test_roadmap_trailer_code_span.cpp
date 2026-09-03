@@ -196,3 +196,59 @@ TEST(RoadmapTrailerCodeSpan, ARunInsideAPairedSpanIsContentNotADelimiter) {
     EXPECT_EQ(tv.kind.value, QStringLiteral("fix"));
     EXPECT_EQ(tv.lanesList, (QStringList{QStringLiteral("markdownscan")}));
 }
+
+// INV-10 (ANTS-4526). The sibling half of INV-1: a key inside a FENCED block is
+// a quoted example too. ANTS-4504 masked inline spans only and said so, on the
+// grounds that nothing had measured the fenced case. It has been now — no
+// bullet in the machine-global store declares a trailer key only on a fenced
+// line — so masking these costs the corpus nothing.
+TEST(RoadmapTrailerCodeSpan, KeyInsideAFencedBlockIsNotADeclaration) {
+    const auto tv = RoadmapParse::trailerValuesIn(QStringLiteral(
+        "  The bullet format looks like this:\n"
+        "\n"
+        "  ```\n"
+        "  Kind: fix.\n"
+        "  Lanes: illustration-only.\n"
+        "  ```\n"
+        "\n"
+        "  and that block is an example.\n"));
+    EXPECT_TRUE(tv.kind.value.isEmpty())
+        << "read a kind out of a fenced block: " << tv.kind.value.toStdString();
+    EXPECT_TRUE(tv.lanesList.isEmpty())
+        << "read a lane out of a fenced block";
+}
+
+// INV-11 (ANTS-4526). A TILDE fence carries no backtick, so the early-out has
+// to test for both characters — otherwise the whole body is returned unmasked
+// and the block parses as a declaration.
+TEST(RoadmapTrailerCodeSpan, KeyInsideATildeFencedBlockIsNotADeclaration) {
+    const auto tv = RoadmapParse::trailerValuesIn(QStringLiteral(
+        "  Example:\n"
+        "\n"
+        "  ~~~\n"
+        "  Source: illustration-only.\n"
+        "  ~~~\n"
+        "\n"
+        "  end.\n"));
+    EXPECT_TRUE(tv.source.value.isEmpty())
+        << "read a source out of a tilde-fenced block: "
+        << tv.source.value.toStdString();
+}
+
+// INV-12 (ANTS-4526). Containment, the fenced twin of INV-3: quoting keys in a
+// fence must not cost the bullet its own declarations written plainly below.
+// Without this the fix could be "never declare anything" and still pass.
+TEST(RoadmapTrailerCodeSpan, RealDeclarationBelowAFencedOneStillParses) {
+    const auto tv = RoadmapParse::trailerValuesIn(QStringLiteral(
+        "  Shape:\n"
+        "\n"
+        "  ```\n"
+        "  Kind: illustration-only.\n"
+        "  ```\n"
+        "\n"
+        "  Kind: fix.\n"
+        "  Lanes: roadmap.\n"));
+    EXPECT_EQ(tv.kind.value, QStringLiteral("fix"));
+    ASSERT_EQ(tv.lanesList.size(), 1);
+    EXPECT_EQ(tv.lanesList.constFirst(), QStringLiteral("roadmap"));
+}

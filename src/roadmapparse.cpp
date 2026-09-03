@@ -549,17 +549,25 @@ using CandidatePred = bool (*)(const QString &);
 // parseBullets() carries for the bold headline (ANTS-4066) pairs backticks one
 // at a time and documents that as a known miss; it is not the thing to copy.
 //
-// Fenced lines are NOT blanked. The fence mask exists because codeSpans()
-// requires one, and a key on a fenced line keeps parsing exactly as it does
-// today: that is a sibling defect with no measurement behind it, and this
-// change already moves corpus values.
-QString maskCodeSpans(const QString &body) {
-    if (!body.contains(QLatin1Char('`')))
+// ANTS-4526 — FENCED lines are blanked too, for the same reason and by the
+// same means: a key inside a fenced block is a quoted example, not a
+// declaration. The measurement ANTS-4526 asked for before masking these has
+// been taken — across every body in the machine-global store, no bullet
+// declares a trailer key only on a fenced line, so nothing in the corpus
+// loses a value. Measured by LINKING MarkdownScan::fenceMask, not by
+// replicating its rule: a hand-rolled fence test reported a false positive on
+// the multi-backtick inline span ANTS-4403 was filed for, which is the same
+// mistake in the same place twice.
+//
+// Tilde fences carry no backtick, so the early-out tests for both characters;
+// otherwise a `~~~` block would skip masking entirely.
+QString maskQuotedRegions(const QString &body) {
+    if (!body.contains(QLatin1Char('`')) && !body.contains(QLatin1Char('~')))
         return body;
     const QStringList  lines = body.split(QLatin1Char('\n'));
     const QVector<bool> fence = MarkdownScan::fenceMask(lines);
     const auto spans = MarkdownScan::codeSpans(lines, fence);
-    if (spans.isEmpty())
+    if (spans.isEmpty() && !fence.contains(true))
         return body;
 
     // Offset of each line's first character in `body`; +1 for the '\n' split
@@ -573,6 +581,17 @@ QString maskCodeSpans(const QString &body) {
     }
 
     QString out = body;
+    // Fenced lines first (ANTS-4526). Whole lines, delimiters included; the
+    // newline itself is preserved so `anchored` still sees a real line start
+    // and every match offset indexes the ORIGINAL string unchanged.
+    for (int i = 0; i < lines.size(); ++i) {
+        if (!fence.value(i)) continue;
+        const int from = lineStart.at(i);
+        const int to   = qMin(static_cast<int>(out.size()),
+                              from + static_cast<int>(lines.at(i).size()));
+        for (int k = from; k < to; ++k)
+            out[k] = QLatin1Char(' ');
+    }
     for (const MarkdownScan::CodeSpan &sp : spans) {
         if (sp.startLine < 0 || sp.startLine >= lines.size()
             || sp.endLine < 0 || sp.endLine >= lines.size())
@@ -587,7 +606,7 @@ QString maskCodeSpans(const QString &body) {
     return out;
 }
 
-// `masked` is maskCodeSpans(body): the matching runs against it, every captured
+// `masked` is maskQuotedRegions(body): the matching runs against it, every captured
 // value is sliced from `body` at the same offsets. That split is the whole
 // contract — the mask decides WHERE a declaration is, never what it says, so a
 // value legitimately carrying backticks is stored verbatim.
@@ -1702,7 +1721,7 @@ TrailerValues trailerValuesIn(const QString &body) {
     // and the three fixed-length lookbehinds the patterns carry can only see a
     // span that opened one to three characters earlier. Captures are sliced
     // from `body`, never from the mask.
-    const QString masked = maskCodeSpans(body);
+    const QString masked = maskQuotedRegions(body);
 
     // ANTS-4065 INV-11 — LAST match, not first. ANTS-4086 — and only among
     // captures the kind vocabulary recognises. See matchLastIn().

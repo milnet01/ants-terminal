@@ -59,6 +59,9 @@ this item's job.
 | INV-7 (ANTS-4598) | A line whose runs do not all pair does not unmask a key quoted BELOW it. The leftover run stays literal rather than taking the opener of a balanced line further down, which would invert the mask for the rest of the body. |
 | INV-8 (ANTS-4598) | INV-5's other half: a stray run does not swallow the trailer block below it merely because some later line quotes something. |
 | INV-9 (ANTS-4598) | A run INSIDE an already-paired span is span content, never a delimiter — a ``` quoted within a `…` span opens nothing. |
+| INV-10 (ANTS-4526) | A trailer key on a FENCED line is a quoted example, not a declaration — INV-1's sibling for the block form. |
+| INV-11 (ANTS-4526) | The same holds for a TILDE fence, which carries no backtick and so must not be skipped by the early-out. |
+| INV-12 (ANTS-4526) | Containment, the fenced twin of INV-3: quoting keys inside a fence does not cost the bullet its own declarations written plainly below. |
 
 ## Test
 
@@ -87,3 +90,19 @@ INV-9 is the no-regression half and is not hypothetical: the sweep consumed
 runs inside a span by resuming at the closing run, and a first draft that
 collected runs up front without saying so turned the ``` quoted inside a `…`
 span into a cross-line opener, silencing the declarations between them.
+
+INV-10 to INV-12 close the half ANTS-4504 deferred. It masked inline spans
+only and recorded why: nothing had measured how many corpus bullets carry a
+fenced trailer key, and masking one whose only declaration is fenced would
+lose a real value. That measurement has now been taken across every body in
+the machine-global store, and the answer is none — so masking costs the
+corpus nothing and guards the shape going forward.
+
+It was taken by LINKING `MarkdownScan::fenceMask` rather than reimplementing
+its rule. A hand-rolled fence test written for the measurement reported a
+false positive on a multi-backtick inline span — the identical mistake
+ANTS-4403 was filed for, made again in the tool measuring it. The real
+primitive treats that span as a paragraph, as CommonMark § 4.5 requires.
+
+INV-12 is the control: it passes both before and after the fix, so the fix
+cannot have been bought by masking everything.
