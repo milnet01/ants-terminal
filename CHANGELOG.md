@@ -303,6 +303,9 @@ for security-relevant changes.
 
 ### Fixed
 
+- **Projects whose item IDs start with a digit can name their own IDs again** (ANTS-4849)
+  An ID like `3D_E-0682` was rejected by the one setting that exists to let you choose an ID, while the rest of the same tool accepted it. The only route left quietly depended on a counter file being correct. A plain number with no letters is still rejected, because nothing could tell it apart from an automatic ID.
+
 - **A preview of a batch file edit no longer claims it wrote the files** (ANTS-4834)
   Asking "what would this change?" replied as though the change had already happened, so a caller checking that reply could conclude the work was done and skip doing it. Previews now say what they *would* do. The matching tool for roadmap edits was fixed the same way earlier.
 

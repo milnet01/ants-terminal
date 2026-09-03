@@ -49818,8 +49818,17 @@ two projects).
   Kind: fix.
   Source: cc-feedback-2026-09-03 Vestige.
 
-- 📋 [ANTS-4849] **roadmap_log stable_id rejects a digit-led project ID that the same verb's id and id_prefix accept.**
+- ✅ [ANTS-4849] **roadmap_log stable_id rejects a digit-led project ID that the same verb's id and id_prefix accept.**
   Reported by a project whose IDs are 3D_E-NNNN across hundreds of items. stable_id requires a leading letter; the `id` locator on op:"flip" accepts the same string, and id_prefix's own pattern deliberately allows a leading digit provided a letter appears somewhere. So one argument is stricter than the two either side of it for no reason visible from the schema. The counter-strategy workaround silently depends on .roadmap-counter being in sync, where stable_id exists precisely to let the caller name the ID. Relax it to id_prefix's pattern, which keeps the real guard: reject a bare number.
+  Resolved (2026-09-03): relaxed to id_prefix's rule -- a leading digit is fine provided a letter appears somewhere -- and extracted to rcdetail::rlStableIdShape(), because THREE sites carried a private copy.
+
+  The third copy is why this was worth more than a two-line patch. rlDetectStablePrefixId is the sniffer behind the missing-counter hint, which fires when a project uses stable IDs the counter cannot allocate. A shape that could not see 3D_E-0629 withheld that hint from precisely the projects it was written for, so fixing only the two validators would have left the reporter's deeper worry -- that the counter fallback silently depends on .roadmap-counter being in sync -- entirely live.
+
+  The guard's real purpose is kept: a bare number is still refused, and both messages now say why and name a leading digit as fine rather than printing a regex.
+
+  Red on three of four assertions first, with the bare-number control green in both states. INV-4 was rewritten mid-flight after RcTuSplit INV-5 correctly refused the test's include of remotecontrol_internal.h, so it drives the public verb instead -- and was then red-run on its own. Suite 4132, ctest exit 0.
+
+  Not imported: id_prefix's 16-char cap, which bounds a PREFIX where a stable_id is a whole ID.
   **Layman:** A project whose item IDs start with a digit cannot use the argument that names an ID.
   Kind: fix.
   Source: cc-feedback-2026-09-03 Vestige.
