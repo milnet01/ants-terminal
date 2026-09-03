@@ -1766,6 +1766,46 @@ QVector<int> rcFenceOpenerOf(const QVector<bool> &fenced) {
     return openerOf;
 }
 
+// ANTS-4823 repair 2 — a fence opened inside one bullet's body ends with that
+// body. It cannot reach a LATER bullet.
+//
+// The write-side guard (rcEscapeUnclosedFence) and the opener hint only cover
+// text written THROUGH the verb. A hand-written or legacy roadmap can still
+// carry a body that opens a fence and never closes it, and the whole-file mask
+// then reads every bullet below it as fenced — so one bad body made most of the
+// file unwritable and the refusal named an innocent bullet.
+//
+// A bullet's body is a bounded region: the continuation lines indented under
+// it, ending at the first following line that is neither blank nor indented.
+// A fence opened inside one cannot legitimately enclose anything past that
+// boundary, so masking beyond it is dropped.
+//
+// A fence opened in SECTION PROSE is left alone: it is inside no bullet's body,
+// and a bullet under it is genuinely fenced. That is the case
+// tests/features/roadmap_log_fence_span INV-2 pins, and this must not weaken
+// it — which is why the test is on the opener's position, not on whether the
+// fence happens to be unterminated.
+template <typename Bullet>
+void rcScopeFencesToBullets(const QStringList &lines, QVector<Bullet> &bullets) {
+    if (bullets.isEmpty()) return;
+    // Lines belonging to some bullet's body. The bullet's own line is excluded
+    // — it starts with "- ", so it can never be the fence opener.
+    QVector<bool> inBody(lines.size(), false);
+    for (const Bullet &b : bullets) {
+        for (int i = b.firstLine + 1; i < lines.size(); ++i) {
+            const QString &ln = lines.at(i);
+            if (!ln.isEmpty() && !ln.at(0).isSpace()) break;
+            inBody[i] = true;
+        }
+    }
+    for (Bullet &b : bullets) {
+        if (!b.insideFenced || b.fenceOpenLine < 0) continue;
+        if (!inBody.value(b.fenceOpenLine)) continue;
+        b.insideFenced  = false;
+        b.fenceOpenLine = -1;
+    }
+}
+
 QVector<GfmBullet> walkGfmBullets(const QStringList &lines,
                                   const RoadmapParse::IdFormat &fmt) {
     QVector<GfmBullet> out;
@@ -1865,6 +1905,7 @@ QVector<GfmBullet> walkGfmBullets(const QStringList &lines,
         }
         out.append(b);
     }
+    rcScopeFencesToBullets(lines, out);
     return out;
 }
 
@@ -2040,6 +2081,7 @@ QVector<AntsV1Bullet> walkAntsV1Bullets(const QStringList &lines) {
         b.headline = head.trimmed();
         out.append(b);
     }
+    rcScopeFencesToBullets(lines, out);
     return out;
 }
 

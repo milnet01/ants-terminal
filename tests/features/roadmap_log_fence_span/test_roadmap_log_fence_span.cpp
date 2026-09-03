@@ -188,3 +188,29 @@ TEST(roadmap_log_fence_span, Inv4IndentedFenceUnderBulletStillMasks) {
         << "an indented fence's closer must release what follows";
     EXPECT_TRUE(resp.value(QStringLiteral("ok")).toBool());
 }
+
+// INV-5 (ANTS-4823 repair 2) — a fence opened inside one bullet's body ends
+// with that body and cannot reach a later bullet. The write-side escape only
+// covers text written THROUGH the verb, so a hand-written or legacy body can
+// still open a fence nothing closes; before this rule that body took every
+// bullet under it down with it, and the refusal named an innocent one.
+TEST(roadmap_log_fence_span, Inv5BulletBodyFenceDoesNotEscapeItsBullet) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    ASSERT_TRUE(writeFile(roadmapPath(tmp.path()), seed(
+        "- \xF0\x9F\x93\x8B [ANTS-0041] **Body opens a fence it never closes.**\n"
+        "  Body prose before the opener.\n"
+        "  ```\n"
+        "  an opener with no closer, inside this bullet's body\n"
+        "\n")));
+
+    const QJsonObject resp = amend(tmp.path());
+
+    EXPECT_NE(resp.value(QStringLiteral("code")).toString(),
+              QStringLiteral("anchor_unsafe_context"))
+        << "a fence opened in a PREVIOUS bullet's body must not mask this "
+           "bullet — one bad body made most of the roadmap unwritable";
+    EXPECT_TRUE(resp.value(QStringLiteral("ok")).toBool())
+        << "amend_body should succeed below a bullet-scoped fence";
+    EXPECT_TRUE(resp.value(QStringLiteral("amended")).toBool());
+}

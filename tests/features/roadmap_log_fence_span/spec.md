@@ -66,6 +66,19 @@ applied to `walkSource()`. The rule is stated once, in `markdownscan.cpp`.
   pinned the same property for the migration walk.
   *Test:* `Inv4IndentedFenceUnderBulletStillMasks`. Passes before and after.
 
+- **INV-5** (ANTS-4823 repair 2) — a fence opened inside a bullet's *body* ends
+  with that body. A later bullet is editable even though the fence is never
+  closed. The write-side escape (`rcEscapeUnclosedFence`) only covers text
+  written through the verb, so a hand-written or legacy body can still open one;
+  before this rule that body took every bullet under it down with it, and the
+  refusal named an innocent bullet.
+  *Test:* `Inv5BulletBodyFenceDoesNotEscapeItsBullet`. **Fails on assertions
+  against the pre-fix walk** (returns `anchor_unsafe_context`).
+
+  The rule keys on where the fence OPENS, not on whether it is terminated —
+  which is what keeps INV-2 intact: a fence opened in section prose is inside no
+  bullet's body, so the bullet under it is still genuinely fenced.
+
 ## Deliberately not covered
 
 - `testauditengine.cpp:1604` and `changelogquery.cpp:151`, the other two sites
