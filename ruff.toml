@@ -1,0 +1,25 @@
+# Ruff configuration for the helper scripts in tools/.
+#
+# Deliberately narrow: these rules catch code that MISBEHAVES, not code
+# that is untidy. Formatting classes are left off on purpose, so that a
+# clean run is evidence and not an aesthetic opinion. ANTS-4801 filed the
+# ambiguity this settles — with nothing committed, "ruff is clean" and
+# "ruff reports dozens of things" were both true of this tree depending
+# on how it was invoked, and the noise hid a genuine finding.
+#
+# check-code selects ruff whenever a project has Python, so this file is
+# what that run measures against. Widen it if a style class ever earns
+# its keep; do not widen it merely to raise the count.
+
+target-version = "py311"
+
+[lint]
+select = [
+    "E9",      # syntax and IO errors — the file does not run
+    "F",       # pyflakes: undefined name, unused import, redefinition
+    "B",       # bugbear: likely bugs, incl. B023 loop-variable capture
+    "PLE",     # pylint errors (never its style or refactor classes)
+    "S102",    # exec()
+    "S307",    # eval()
+    "SIM115",  # a file handle opened without a context manager
+]

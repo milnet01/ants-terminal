@@ -181,8 +181,8 @@ def survey(path):
         # Body continuation lines only (see KIND_VALUE), last match wins.
         kv = None
         if line[:1].isspace():
-            for kv in KIND_VALUE.finditer(line):
-                pass
+            for match in KIND_VALUE.finditer(line):
+                kv = match
         if kv:
             val = kv.group(1).strip().lower()
             if not val:
@@ -286,7 +286,7 @@ def main():
 
     n = total["items"]
     if total["pass_heading_items"]:
-        print(f"\npass-headings roadmaps (roadmap-format § 3.10.5)")
+        print("\npass-headings roadmaps (roadmap-format § 3.10.5)")
         print(f"  `#### Pass N.M` items               {total['pass_heading_items']}")
         print(f"  `- **Status**:` lines               {total['pass_status_lines']}")
         print(f"  ...whose value is OUTSIDE the five-status enum  "
