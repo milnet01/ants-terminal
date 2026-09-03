@@ -40,3 +40,21 @@ any of those slugs.
 - **INV-5 backend parity.** For any section, the bullets the markdown
   slice yields and the records the store filter admits cover the same set
   of section slugs — the property whose absence was the defect.
+- **INV-6 own slug** (ANTS-4824). Each returned bullet's `section_slug` is
+  the slug of the section it lives in, not the one that was queried.
+
+  ANTS-1287-INV-7 overwrote the field with the requested slug. That was
+  correct while `section=` returned a section's own bullets: the two named
+  one value, and the overwrite defended only against a slice-local slugger
+  artifact, since a slice cannot reproduce mid-document `-N` suffixes.
+  Descendant inclusion made them diverge, so every child bullet reported
+  its parent — and the value stopped being safe to feed back to
+  `roadmap_log op:"append"`, which files by slug and would land in the
+  parent without saying so.
+
+  The set this feature already computes is what separates the two cases: a
+  slug the index placed in the subtree is the bullet's own, and anything
+  else is the artifact INV-7 named and still falls back to the requested
+  slug. INV-6 drives the real `cmdRoadmapQuery` envelope rather than
+  re-deriving that rule, and asserts the descendant inclusion still holds
+  first, so it cannot pass by returning nothing.

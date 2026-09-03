@@ -3359,24 +3359,28 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
                 roadmapStoreServes(callerCanonical, text, &srcWhy, &srcErr);
             if (srcWhy != RoadmapSource::ReadError::None)
                 return refuseRoadmapSource(srcWhy, srcErr);
+            // ANTS-4819 — the section's own slug AND its descendants'.
+            // The markdown arm below parses the SLICE, which spans the
+            // nested headings, and mode:"section_index" tallies the
+            // same descendants through rollupCounts. Filtering on one
+            // slug answered nothing for every parent heading while the
+            // index promised its children's bullets.
+            //
+            // ANTS-4824 — hoisted out of the store arm because the emission
+            // loop needs it on both: it is what tells a slug the index
+            // actually placed under this heading from a slice-local artifact.
+            const QStringList subtreeSlugList =
+                RoadmapIndex::descendantSlugs(m_roadmapIndex, *sec);
+            const QSet<QString> subtreeSlugs(subtreeSlugList.cbegin(),
+                                             subtreeSlugList.cend());
             if (fromStore) {
                 const auto whole = roadmapBullets(callerCanonical, text,
                                                   /*includeArchive=*/false,
                                                   &srcWhy, &srcErr);
                 if (srcWhy != RoadmapSource::ReadError::None)
                     return refuseRoadmapSource(srcWhy, srcErr);
-                // ANTS-4819 — the section's own slug AND its descendants'.
-                // The markdown arm below parses the SLICE, which spans the
-                // nested headings, and mode:"section_index" tallies the
-                // same descendants through rollupCounts. Filtering on one
-                // slug answered nothing for every parent heading while the
-                // index promised its children's bullets.
-                const QStringList slugList =
-                    RoadmapIndex::descendantSlugs(m_roadmapIndex, *sec);
-                const QSet<QString> slugs(slugList.cbegin(),
-                                          slugList.cend());
                 for (const auto &b : whole)
-                    if (slugs.contains(b.sectionSlug)) bullets.append(b);
+                    if (subtreeSlugs.contains(b.sectionSlug)) bullets.append(b);
             } else {
                 bullets = RoadmapParse::parseBullets(   // ANTS-3771
                     slice, ProjectSettings::idFormatFor(callerCanonical));
@@ -3441,7 +3445,24 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
                 // ANTS-1287-INV-7 — overwrite sectionSlug so all
                 // bullets in section-mode carry the requested slug,
                 // regardless of slice-local uniqueSlug state.
-                o["section_slug"] = sec->slug;
+                //
+                // ANTS-4824 — narrowed to what INV-7 was actually protecting.
+                // It was written when section= returned a section's own
+                // bullets, so "the requested slug" and "the bullet's own"
+                // named one value and the overwrite only defended against a
+                // slice-local slugger artifact — a slice cannot reproduce
+                // mid-document `-N` suffixes. ANTS-4819 made section= return
+                // descendants and the two diverged, so every child bullet
+                // reported its parent: the section that made the answer
+                // correct became invisible in it, and the value stopped being
+                // safe to feed back to op:"append", which files by slug.
+                //
+                // A slug the index placed in this subtree is that bullet's own
+                // and is emitted; anything else is the artifact INV-7 named
+                // and still falls back to the requested slug.
+                o["section_slug"] = subtreeSlugs.contains(b.sectionSlug)
+                                        ? b.sectionSlug
+                                        : sec->slug;
                 // ANTS-1428 metadata — parity with the full-file
                 // path's emission. Predates ANTS-1438 but only
                 // surfaced now that I'm adding bold_id here too;

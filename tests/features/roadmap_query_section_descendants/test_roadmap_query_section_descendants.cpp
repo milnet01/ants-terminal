@@ -8,6 +8,14 @@
 #include "../../_support/expect.h"
 #include "roadmapindex.h"
 #include "roadmapparse.h"
+#include "remotecontrol.h"
+
+#include <QFile>
+#include <QHash>
+#include <QJsonArray>
+#include <QJsonDocument>
+#include <QJsonObject>
+#include <QTemporaryDir>
 
 #include <QSet>
 #include <QString>
@@ -119,5 +127,63 @@ TEST(roadmap_query_section_descendants, Inv5BackendParity) {
            "slice yields");
     expect(!fromStore.contains(QStringLiteral("ANTS-0003")),
            "INV-5: the following section's bullet is in neither");
+    EXPECT_EQ(0, expect_finish());
+}
+
+// INV-6 (ANTS-4824) — a descendant's bullet reports the slug of the section
+// it LIVES in, not the one that was queried.
+//
+// ANTS-1287-INV-7 overwrote every returned bullet's slug with the requested
+// one, which was correct while section= returned a section's own bullets:
+// the two were the same value, and the overwrite defended against a
+// slice-local slug artifact. ANTS-4819 made section= return descendants and
+// the two diverged, so the child that made the answer correct became
+// invisible in it — and the value stopped being safe to feed back, since
+// roadmap_log op:"append" takes a section slug and would file into the
+// PARENT without saying so.
+//
+// Drives the real envelope rather than re-deriving the rule, which would
+// only restate the implementation.
+TEST(roadmap_query_section_descendants, Inv6DescendantReportsItsOwnSlug) {
+    expect_reset();
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+
+    QFile f(tmp.path() + QStringLiteral("/ROADMAP.md"));
+    ASSERT_TRUE(f.open(QIODevice::WriteOnly | QIODevice::Text));
+    f.write(QByteArray("# Roadmap\n\n") + kDoc);
+    f.close();
+
+    RemoteControl rc(nullptr);
+    QJsonObject req;
+    req["caller_cwd"] = tmp.path();
+    req["section"]    = QStringLiteral("parent-sweep");
+    req["status"]     = QStringLiteral("all");
+    const QJsonObject out = rc.cmdRoadmapQuery(req).object();
+    ASSERT_TRUE(out.value(QStringLiteral("ok")).toBool())
+        << QJsonDocument(out).toJson().toStdString();
+
+    QHash<QString, QString> slugOf;
+    const QJsonArray bullets = out.value(QStringLiteral("bullets")).toArray();
+    for (const auto &v : bullets) {
+        const QJsonObject o = v.toObject();
+        slugOf.insert(o.value(QStringLiteral("id")).toString(),
+                      o.value(QStringLiteral("section_slug")).toString());
+    }
+
+    // Precondition: ANTS-4819's descendant inclusion still holds, so there
+    // is a descendant bullet whose slug this invariant is about.
+    expect(slugOf.contains(QStringLiteral("ANTS-0001")) &&
+           slugOf.contains(QStringLiteral("ANTS-0002")),
+           "INV-6 precondition: the parent's read returns both children");
+    expect(!slugOf.contains(QStringLiteral("ANTS-0003")),
+           "INV-6 precondition: the following section's bullet is excluded");
+
+    expect(slugOf.value(QStringLiteral("ANTS-0001")) ==
+               QStringLiteral("child-alpha"),
+           "INV-6: a bullet in a nested section reports that section's slug");
+    expect(slugOf.value(QStringLiteral("ANTS-0002")) ==
+               QStringLiteral("child-beta"),
+           "INV-6: each descendant reports its own slug, not one shared one");
     EXPECT_EQ(0, expect_finish());
 }
