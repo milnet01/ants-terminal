@@ -2737,13 +2737,37 @@ QJsonDocument RemoteControl::cmdApplyEdits(const QJsonObject &req) {
 
     QJsonObject env;
     env["ok"]            = true;
-    if (dryRun) env["dry_run"] = true;   // ANTS-2227 — would-be result
-    env["applied"]       = applied;
     env["skipped"]       = skipped;
-    env["files_written"] = filesWritten;
     env["edits_total"]   = edits.size();
-    env["edits_applied"] = editsApplied;
     env["edits_skipped"] = editsSkipped;
+    if (dryRun) {
+        // ANTS-4834 — a preview reports in the FUTURE tense. ANTS-2227 gave
+        // this verb a dry run whose envelope differed from the real write only
+        // by carrying `dry_run:true`, so `files_written:1` came back from a
+        // call that wrote no file and `applied` / `edits_applied` named edits
+        // that were not applied.
+        //
+        // ANTS-4463 fixed the identical defect on roadmap_log and DROPPED the
+        // past-tense keys rather than merely adding future-tense ones, because
+        // `files_written` is the natural key to branch on and a caller that
+        // does reads the preview as done and skips the real call. Two sibling
+        // verbs disagreeing about the convention is worse than either alone:
+        // a caller who learned the other shape reads this one wrong.
+        //
+        // skipped[] and its candidates / near_miss_line diagnostics stay as
+        // they are — those are the reason to run a preview at all.
+        env["dry_run"] = true;
+        QJsonArray wouldWrite;
+        for (const QJsonValue &a : std::as_const(applied))
+            wouldWrite.append(a.toObject().value(QStringLiteral("path")));
+        env["would_write"]       = wouldWrite;
+        env["would_apply"]       = applied;
+        env["would_apply_count"] = editsApplied;
+    } else {
+        env["applied"]       = applied;
+        env["files_written"] = filesWritten;
+        env["edits_applied"] = editsApplied;
+    }
     // ANTS-4723 — announced only when it actually fired, so an absent key
     // means "every edit matched verbatim" rather than "nobody looked".
     if (!wrappedIdx.isEmpty()) {

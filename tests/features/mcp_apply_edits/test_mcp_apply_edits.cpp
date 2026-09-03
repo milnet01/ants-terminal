@@ -558,3 +558,96 @@ TEST(McpApplyEdits, Ants4473FieldsAreEmptyOnAppliedAndNotFound) {
     EXPECT_EQ(ra.replacements, 3);
     EXPECT_TRUE(ra.matchLines.isEmpty());
 }
+
+// ANTS-4834 — a dry run must not report in the PAST TENSE. This is the exact
+// defect ANTS-4463 fixed on roadmap_log, still live here: the preview
+// envelope differed from the real write only by carrying `dry_run:true`, so
+// `files_written:1` came back from a call that wrote no file and
+// `edits_applied` named edits that were not applied.
+//
+// Reported from LocalWebServerManager, which measured both verbs minutes
+// apart in one session. The cost is not the wrong number — it is that a
+// caller who learned roadmap_log's shape (branch on `files_written`, which
+// that verb deliberately REMOVED for this reason) reads the preview as done
+// and skips the real call. Two sibling verbs disagreeing about the
+// convention is worse than either convention alone.
+//
+// The real-write half is the control: it must keep every past-tense key, so
+// the fix cannot be "drop them everywhere".
+TEST(McpApplyEdits, Ants4834DryRunReportsInTheFutureTense) {
+    expect_reset();
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString path = tmp.path() + QStringLiteral("/note.txt");
+    {
+        QFile f(path);
+        ASSERT_TRUE(f.open(QIODevice::WriteOnly | QIODevice::Text));
+        f.write("alpha beta gamma\n");
+        f.close();
+    }
+    const auto fileText = [&]{
+        QFile f(path);
+        return f.open(QIODevice::ReadOnly | QIODevice::Text)
+                   ? QString::fromUtf8(f.readAll()) : QString();
+    };
+
+    QJsonObject edit;
+    edit["path"] = QStringLiteral("note.txt");
+    edit["old"]  = QStringLiteral("beta");
+    edit["new"]  = QStringLiteral("BETA");
+
+    QJsonObject req;
+    req["caller_cwd"] = tmp.path();
+    req["edits"]      = QJsonArray{ edit };
+
+    RemoteControl rc(nullptr);
+
+    // --- the preview -------------------------------------------------
+    QJsonObject preview = req;
+    preview["dry_run"] = true;
+    const QJsonObject dry = rc.cmdApplyEdits(preview).object();
+    ASSERT_TRUE(dry.value(QStringLiteral("ok")).toBool());
+    expect(dry.value(QStringLiteral("dry_run")).toBool(),
+           "ANTS-4834: the preview still says it is one");
+
+    expect(!dry.contains(QStringLiteral("files_written")),
+           "ANTS-4834: `files_written` must be ABSENT on a call that wrote "
+           "nothing — it is the key a caller branches on");
+    expect(!dry.contains(QStringLiteral("edits_applied")),
+           "ANTS-4834: `edits_applied` must be absent on a preview");
+    expect(!dry.contains(QStringLiteral("applied")),
+           "ANTS-4834: `applied` must be absent on a preview");
+
+    expect(dry.value(QStringLiteral("would_apply_count")).toInt() == 1,
+           "ANTS-4834: the preview counts what it WOULD apply");
+    const QJsonArray wouldWrite =
+        dry.value(QStringLiteral("would_write")).toArray();
+    expect(wouldWrite.size() == 1 &&
+               wouldWrite.at(0).toString() == QStringLiteral("note.txt"),
+           "ANTS-4834: `would_write` names the paths the real call would touch");
+    // The diagnostics a preview is RUN for are untouched.
+    expect(dry.contains(QStringLiteral("skipped")),
+           "ANTS-4834: skipped[] is why a preview is worth running");
+    expect(dry.value(QStringLiteral("edits_total")).toInt() == 1,
+           "ANTS-4834: edits_total describes the request, not an action");
+
+    expect(fileText() == QStringLiteral("alpha beta gamma\n"),
+           "ANTS-4834 precondition: the preview really did write nothing");
+
+    // --- the control: a real write still reports in the past tense ----
+    const QJsonObject wet = rc.cmdApplyEdits(req).object();
+    ASSERT_TRUE(wet.value(QStringLiteral("ok")).toBool());
+    expect(!wet.contains(QStringLiteral("dry_run")),
+           "control: the real call is not a preview");
+    expect(wet.value(QStringLiteral("files_written")).toInt() == 1,
+           "control: a real write still reports files_written");
+    expect(wet.value(QStringLiteral("edits_applied")).toInt() == 1,
+           "control: a real write still reports edits_applied");
+    expect(wet.value(QStringLiteral("applied")).toArray().size() == 1,
+           "control: a real write still reports applied[]");
+    expect(!wet.contains(QStringLiteral("would_write")),
+           "control: the future-tense keys belong to the preview alone");
+    expect(fileText() == QStringLiteral("alpha BETA gamma\n"),
+           "control: the real call actually edited the file");
+    EXPECT_EQ(0, expect_finish());
+}

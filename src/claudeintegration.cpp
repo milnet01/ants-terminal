@@ -5652,7 +5652,29 @@ void ClaudeIntegration::onMcpConnection() {
                         items["required"] = ir;
                     editsProp["items"] = items;
                     props["edits"]      = editsProp;
-                    props["dry_run"]    = makeDryRunProp();      // ANTS-2227
+                    {   // ANTS-4834 — the shared dry_run text plus what THIS
+                        // verb's preview envelope looks like. A caller cannot
+                        // see from the generic wording that the past-tense
+                        // keys are gone, and that is the whole point of the
+                        // change: `files_written` is the natural key to
+                        // branch on, so its absence has to be discoverable.
+                        QJsonObject p = makeDryRunProp();
+                        p["description"] = p.value("description").toString() +
+                            QStringLiteral(
+                                " ANTS-4834 — on a dry run this verb reports "
+                                "in the FUTURE tense: `would_write` (the paths "
+                                "the real call would touch), `would_apply` and "
+                                "`would_apply_count`, with `files_written`, "
+                                "`applied` and `edits_applied` ABSENT. Same "
+                                "resolution ANTS-4463 applied to roadmap_log, "
+                                "and for the same reason — a caller branching "
+                                "on a past-tense key reads a preview as a "
+                                "completed write. `skipped[]` and its "
+                                "`candidates` / `near_miss_line` diagnostics "
+                                "are unchanged: they are why a preview is "
+                                "worth running.");
+                        props["dry_run"] = p;                    // ANTS-2227
+                    }
                     {   // ANTS-4723 — wrapped-match opt-in.
                         QJsonObject mw;
                         mw["type"] = "boolean";
