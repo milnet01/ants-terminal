@@ -1917,6 +1917,7 @@ if(ANTS_TESTS)
                 # ANTS-3495/3381 changelog_log op:normalize (reorder [Unreleased]
                 # categories; fold stray prose into the bullet above it).
                 tests/features/changelog_log_normalize/test_changelog_log_normalize.cpp
+                tests/features/changelog_log_nested_path/test_changelog_log_nested_path.cpp
                 # ANTS-3584 changelog_log op:add_subsection (dated feature-grouped block).
                 tests/features/changelog_log_subsection/test_changelog_log_subsection.cpp
                 # ANTS-3533 changelog_query structured CHANGELOG reader (parser + wiring).

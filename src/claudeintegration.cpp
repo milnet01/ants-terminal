@@ -13546,6 +13546,36 @@ void ClaudeIntegration::onMcpConnection() {
                         clProps["max_body_bytes"] = mb;
                     }
 
+                    // ANTS-4812 — reach a nested component changelog.
+                    {
+                        QJsonObject p;
+                        p["type"] = "string";
+                        p["description"] = QStringLiteral(
+                            "Optional. The changelog to act on, "
+                            "project-relative. Omit for the usual behaviour: "
+                            "discovery walks up from caller_cwd to the repo "
+                            "boundary and finds the root CHANGELOG.md. Pass it "
+                            "when a project ships a SECOND changelog for a "
+                            "separately-versioned bundled component "
+                            "(tools/audit/CHANGELOG.md), which discovery "
+                            "cannot reach \\u2014 a nested caller_cwd resolves "
+                            "back to the root file, so that file's only route "
+                            "was a raw edit, losing the atomic write, category "
+                            "routing, format validation and the [Unreleased] "
+                            "guard on exactly the file most likely to drift. "
+                            "It names an EXISTING changelog and never creates "
+                            "one: a path that is not a file refuses "
+                            "no_changelog. Validated under the project root, "
+                            "so a root-escaping path refuses bad_path. The "
+                            "Markdown/YAML probe still runs on whatever file "
+                            "is handed over, so a nested file in a convention "
+                            "this writer cannot parse refuses format_mismatch "
+                            "as it does today. changelog_query takes the same "
+                            "argument, or the read side cannot check what the "
+                            "write side just wrote.");
+                        clProps["path"] = p;
+                    }
+
                     QJsonObject clSchema;
                     clSchema["type"] = "object";
                     clSchema["properties"] = clProps;
@@ -13713,6 +13743,21 @@ void ClaudeIntegration::onMcpConnection() {
                     cqProps["fields"]       = makeFieldsProp();     // ANTS-1720
                     cqProps["compact"]      = makeCompactProp();    // ANTS-2091
                     cqProps["encoding"]     = cqEncoding;           // ANTS-2090
+                    // ANTS-4812 — same `path` as changelog_log, or the read
+                    // side cannot check what the write side just wrote.
+                    {
+                        QJsonObject p;
+                        p["type"] = "string";
+                        p["description"] = QStringLiteral(
+                            "Optional. The changelog to read, "
+                            "project-relative. Omit to discover the root "
+                            "CHANGELOG.md by walking up from caller_cwd. Pass "
+                            "it to read a nested component changelog that "
+                            "discovery cannot reach. Names an EXISTING file: a "
+                            "path that is not a file refuses no_changelog, and "
+                            "a root-escaping one refuses bad_path.");
+                        cqProps["path"] = p;
+                    }
 
                     QJsonObject cqSchema;
                     cqSchema["type"] = "object";

@@ -4,11 +4,80 @@
 #include "paginationengine.h"
 #include "roadmapfoldin.h"
 #include "changeloglog.h"
+#include "pathvalidation.h"
+#include <QDir>
 #include <QFile>
 #include <QFileInfo>
 #include <QSaveFile>
 
 using namespace rcdetail;  // ANTS-3833
+
+namespace {
+
+// ANTS-4812 — resolve which changelog to act on, honouring an optional `path`.
+//
+// Discovery walks up from caller_cwd to the repo boundary, so a project that
+// ships a second changelog for a separately-versioned bundled component
+// (Vestige's tools/audit/CHANGELOG.md) could not reach it: a nested caller_cwd
+// resolved back to the root file. The fallback was a raw edit, which is what
+// this verb exists to replace — losing the atomic write, category routing,
+// format validation and the [Unreleased] guard on precisely the file most
+// likely to drift, because a component changelog is edited least often.
+//
+// `path` names an EXISTING changelog; it does not create one. Validated with
+// the same shape spec_log's `path` uses (ANTS-1295): under the project root,
+// allowOutsideRoot=false, so a root-escaping path refuses bad_path rather than
+// writing outside the project.
+//
+// Absent `path` is byte-identical to the previous behaviour, including the
+// empty result that lets each caller's own no_changelog / format_mismatch
+// branch decide. The Markdown/YAML probe still runs on whatever file is
+// handed over, so a nested file in a convention this writer cannot parse
+// refuses format_mismatch exactly as it does today.
+struct ClTarget {
+    bool        bad = false;
+    QJsonObject err;
+    QString     path;
+};
+
+ClTarget resolveChangelogTarget(const QJsonObject &req,
+                                const QString &rootCanonical,
+                                const QString &verb) {
+    ClTarget out;
+    const QString pathArg = req.value(QStringLiteral("path")).toString();
+    if (pathArg.isEmpty()) {
+        out.path = findChangelogUnder(rootCanonical);
+        return out;
+    }
+    const auto check = PathValidation::validatePath(
+        pathArg, rootCanonical, verb, QStringLiteral("path"),
+        /*allowOutsideRoot=*/false);
+    if (check.bad) {
+        out.bad = true;
+        out.err = check.err;
+        return out;
+    }
+    // validatePath leaves `resolved` empty for a non-existent path; rebuild the
+    // in-root absolute form so the existence refusal below names it.
+    const QString full = !check.resolved.isEmpty()
+        ? check.resolved
+        : QDir::cleanPath(rootCanonical + QLatin1Char('/') + pathArg);
+    if (!QFileInfo(full).isFile()) {
+        out.bad = true;
+        QJsonObject env;
+        env[QStringLiteral("ok")]    = false;
+        env[QStringLiteral("code")]  = QStringLiteral("no_changelog");
+        env[QStringLiteral("error")] = QStringLiteral(
+            "%1: path \"%2\" is not an existing file — `path` names a changelog "
+            "to act on, it does not create one").arg(verb, pathArg);
+        out.err = env;
+        return out;
+    }
+    out.path = full;
+    return out;
+}
+
+}  // namespace
 
 // ANTS-1548 — changelog_log. Renders one Keep-a-Changelog bullet and
 // splices it under the right category in `## [Unreleased]`. m_main-
@@ -36,7 +105,12 @@ QJsonDocument RemoteControl::cmdChangelogQuery(const QJsonObject &req) {
                                   "canonicalise to an existing directory").arg(callerRaw));
 
     // (1) path resolution — no_changelog / format_mismatch (§ 2.3 precedence).
-    const QString clPath = findChangelogUnder(callerCanonical);
+    // ANTS-4812 — an explicit `path` wins over discovery; the read side takes
+    // it too, or it cannot check what the write side just wrote.
+    const auto clTarget = resolveChangelogTarget(
+        req, callerCanonical, QStringLiteral("changelog_query"));
+    if (clTarget.bad) return QJsonDocument(clTarget.err);
+    const QString clPath = clTarget.path;
     if (clPath.isEmpty()) {
         if (!findYamlChangelogUnder(callerCanonical).isEmpty())
             return err(QStringLiteral("format_mismatch"),
@@ -425,7 +499,11 @@ QJsonDocument RemoteControl::cmdChangelogLog(const QJsonObject &req) {
                            "canonicalise to an existing directory")
                 .arg(callerRaw));
     }
-    const QString clPath = findChangelogUnder(callerCanonical);
+    // ANTS-4812 — an explicit `path` reaches a nested component changelog.
+    const auto clTarget = resolveChangelogTarget(
+        req, callerCanonical, QStringLiteral("changelog_log"));
+    if (clTarget.bad) return QJsonDocument(clTarget.err);
+    const QString clPath = clTarget.path;
     if (clPath.isEmpty()) {
         // ANTS-2040 — distinguish "no changelog at all" from "found a
         // YAML changelog the Keep-a-Changelog writer can't append to".
@@ -1191,8 +1269,12 @@ QJsonDocument RemoteControl::cmdChangelogLogAddBatch(const QJsonObject &req) {
                 .arg(callerRaw));
     }
     // Resolve the changelog with the same Markdown/YAML split as the
-    // single op (ANTS-2040 format_mismatch reused verbatim).
-    const QString clPath = findChangelogUnder(callerCanonical);
+    // single op (ANTS-2040 format_mismatch reused verbatim), and the same
+    // optional `path` (ANTS-4812).
+    const auto clTarget = resolveChangelogTarget(
+        req, callerCanonical, QStringLiteral("changelog_log"));
+    if (clTarget.bad) return QJsonDocument(clTarget.err);
+    const QString clPath = clTarget.path;
     if (clPath.isEmpty()) {
         const QString yamlPath = findYamlChangelogUnder(callerCanonical);
         if (!yamlPath.isEmpty()) {
