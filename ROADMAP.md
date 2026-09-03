@@ -50248,7 +50248,7 @@ volume classes, and the tooling/documentation gaps the run exposed.
   Source: in-session-2026-09-02.
   Lanes: ci.
 
-- 📋 [ANTS-4800] **The typos residue is still mostly the vocabulary classes _typos.toml targeted.**
+- ✅ [ANTS-4800] **The typos residue is still mostly the vocabulary classes _typos.toml targeted.**
   ANTS-4789 closed on the config existing and working, and its progress
   note said the residue was "real misspellings, mostly in test fixtures
   and spec prose". Measured on 2026-09-02, that is not what the residue
@@ -50269,6 +50269,33 @@ volume classes, and the tooling/documentation gaps the run exposed.
   Check the config by running plain `typos` from the repo root — passing
   paths positionally bypasses `[files] extend-exclude`, which reads as
   though the exclusions do nothing.
+  Resolved (2026-09-03), in the order this bullet prescribed — tighten the
+  rules first, then read what is left. Residue 131 to 4, measured with plain
+  `typos` from the repo root as the bullet warns.
+
+  The measurement held. All three named classes were leaking, and for one
+  reason each: `mis` had a rule for the hyphen alone while the tree also
+  writes `mis_branched`, `MIS_` and `misBranched`; `CHEC` was an ALL-CAPS term
+  splitting before a lowercase suffix, along with CANDIDAT, UNIQU, OTHR and
+  Ded; `ba` and the rest were identifiers and domain notation, each read at
+  the line producing it.
+
+  One rule was withdrawn after probing it, which is the part worth recording.
+  A `pre-` regex covering the whole word cleared "pre-empted" and also masked
+  `pre-<anything>`, so a real typo straight after the prefix would have gone
+  unreported — a spell-checker rule that quietly stops checking. Replaced by a
+  single word entry, and the probe confirms `pre-teh` reports again.
+
+  Verified the dictionary is intact rather than assuming it: a probe file
+  carrying `teh`, `Recieve`, `seperate` and a bare `mis` is still fully
+  reported, so the masking is class-shaped and not word-shaped.
+
+  The four survivors are in the config header as EXPECTED, with why each is
+  unfixable rather than unfixed: three are `occured` written as quoted
+  examples of that very typo being corrected (fixing them breaks a test;
+  listing the word waves through a real one), and one is a genuine slip inside
+  a landed cold-eyes loop-log row, which CLAUDE.md rule 14 forbids editing. A
+  fifth finding is a regression.
   **Layman:** The spell checker's settings file cut most of the noise but not the three biggest kinds of it.
   Kind: chore.
   Source: in-session-2026-09-02.
@@ -54228,7 +54255,7 @@ assistant suggestions, accepted by the user for filing.
   Source: in-session-2026-08-19, filed by ANTS-4504 as its own out-of-scope half.
   Lanes: roadmap.
 
-- 📋 [ANTS-4527] **Evidence: values that are prose are reported as unresolved paths, and the repair belongs at the write side.**
+- ✅ [ANTS-4527] **Evidence: values that are prose are reported as unresolved paths, and the repair belongs at the write side.**
   ANTS-4065 section 2.5 gives `Evidence:` no predicate, because
   roadmap-format.md section 3.5 defines every element as a path. The
   corpus disagrees: DOOM Ants' clean migration reports `user screenshot`
@@ -54272,6 +54299,17 @@ assistant suggestions, accepted by the user for filing.
   that is accepted today would break them for a defect affecting 3 items. An
   advisory still tells the author at the moment they can fix it, which is this
   bullet's stated requirement.
+  Resolved (2026-09-03) at the write side, as this bullet argued. `roadmap_log` now raises an `evidence_not_path_shaped` advisory naming the offending elements.
+
+  Advisory rather than refusal — the softer of the two options offered here. This verb is called by sessions in every project on the machine, and a new refusal on input accepted today would break them over a defect affecting three items. An advisory still tells the author at the moment they can fix it, which is what this bullet actually required.
+
+  The predicate accepts a separator OR a filename-style extension. The extension half is exactly the guard this bullet asked for: a separator-only predicate would drop `shot.png` at the repo root. INV-7 is the control and covers both spellings.
+
+  Four write surfaces, because two do not share code: `rlFillItemBody` (append and append_batch, both the argument and the body-trailer fallback), `amend_field` which normalises the list inline, and the two markdown paths rendering through `formatRoadmapBullet`. An advisory that fired only on migrated projects would be a worse inconsistency than the defect it reports.
+
+  One latent bug fixed because this change exposed it: every `warnings` site assigned `QJsonArray{ warn }` outright — correct with one warning, and silently dropping the first the moment there are two.
+
+  Red run: with the advisory neutralised INV-6 and INV-8 fail while INV-7 passes, so the fix is not "always warn". Suite 4116/4116 green.
   **Layman:** When someone writes a note instead of a filename in a roadmap entry's Evidence line, the import complains it cannot find a file of that name.
   Kind: fix.
   Source: in-session-2026-08-19, from the corroborating DOOM Ants report on ANTS-4502.

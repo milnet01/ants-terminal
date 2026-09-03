@@ -14,6 +14,9 @@ for security-relevant changes.
 
 ### Added
 
+- **Writing a note instead of a filename in a roadmap entry's Evidence line now warns you** (ANTS-4527)
+  That field is split on commas, so a sentence written there was silently stored as several fragments. The write still succeeds — it tells you rather than refusing.
+
 - **Documented how doc_integrity really behaves** (ANTS-3652)
   It answers a path that does not exist with a clean pass rather than an error, and silently stops after a fixed number of documents. The per-verb notes now say so.
 
@@ -293,6 +296,9 @@ for security-relevant changes.
   `Inv2BypassesStatusAndPagination` anchored on a string that also matches an earlier `else if`, so its byte window opened above the branch it names — a test that passes from the wrong position gives no signal when the thing it names moves. Re-anchored on a needle that occurs once, and proved by mutation in both directions.
 
 ### Fixed
+
+- **The spell checker's settings now cover the noise they were written for** (ANTS-4800)
+  Findings dropped from 131 to 4, and the four that remain are documented as deliberate. Verified the checker still catches ordinary misspellings.
 
 - **A roadmap entry can show its own format in a code block without that example becoming real data** (ANTS-4526)
   Keys written inside a fenced block are now read as illustration, matching
