@@ -251,6 +251,11 @@ for security-relevant changes.
 
 ### Changed
 
+- **Adding a test that reads a source file now rebuilds one file, not the whole bundle** (ANTS-4797)
+  Each test's file-path setting is attached to that test alone rather than
+  to every file in its bundle. Measured on one bundle: adding a setting
+  rebuilt 54 files before, and rebuilds 1 now.
+
 - **cppcheck's advisory useStlAlgorithm class is suppressed, with its reason recorded** (ANTS-4782)
   It asked for hand-written loops to become &lt;algorithm&gt; calls, printed in
   every run and was never acted on. Suppressed in both the workflow and

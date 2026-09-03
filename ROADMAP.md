@@ -50569,7 +50569,7 @@ volume classes, and the tooling/documentation gaps the run exposed.
   Source: in-session-2026-09-02.
   Lanes: ci.
 
-- 📋 [ANTS-4797] **Test bundles' SRC_*_PATH defines are target-wide, so one new define recompiles the whole bundle.**
+- ✅ [ANTS-4797] **Test bundles' SRC_*_PATH defines are target-wide, so one new define recompiles the whole bundle.**
   MEASURED in-session, twice, on the same day:
 
     test_audit  -- new source + 2 target_compile_definitions -> 55 TUs
@@ -50593,12 +50593,40 @@ volume classes, and the tooling/documentation gaps the run exposed.
   Not attempted in the session that measured it: it touches several
   bundles' define blocks at once and a mistake there is a broken build,
   so it wants its own pass with a full-suite run either side.
+  Resolved (2026-09-03, e75b473c): 134 single-use path defines moved onto
+  the one source that uses each, across all seven bundles, via
+  set_property(SOURCE ... APPEND PROPERTY COMPILE_DEFINITIONS).
+
+  Re-measured here on test_audit by adding one define and counting rebuilt
+  TUs: per-source 1, target-wide 54. The item's 27x is real and is 54x on
+  this bundle.
+
+  Which defines were safe to move was DERIVED, not judged: one moves only
+  when exactly one of its bundle's sources names it, no file under tests/
+  outside that bundle names it, and no other bundle's sources name it. The
+  last two conditions held 50 candidates back, and without them the move
+  would have broken sources that read a define through a shared header.
+
+  Honest limit, worth keeping: moving these buys no speedup by itself. The
+  block still invalidates its bundle whenever it changes, so what removes
+  the cost is where a NEW define goes. The real deliverable is the pattern
+  plus the comment at each block. They were moved anyway because six
+  bundles left on the old shape would have had an author copy the wrong
+  pattern from a neighbour.
+
+  One mechanical trap found by hitting it: set_source_files_properties(...
+  PROPERTIES ...) takes name/value PAIRS, so a source needing two defines
+  fails to configure outright. set_property(APPEND) takes a value list.
+
+  The rule is stated in CMakeLists.txt at each block and deliberately NOT
+  added to the feature-test recipe in CLAUDE.md: it belongs beside the code
+  it governs, where a conformer meets it at the moment they act.
   **Layman:** Adding one new test that needs a file path rebuilds about sixty files instead of one, every time.
   Kind: perf.
   Source: in-session-2026-09-02.
   Lanes: build, tests.
 
-- 📋 [ANTS-4798] **link_pool was tuned before mold became the default linker and has not been re-measured since.**
+- ✅ [ANTS-4798] **link_pool was tuned before mold became the default linker and has not been re-measured since.**
   link_pool=1 (ANTS-1558) serialises the link step because a Qt link was
   the heaviest single process in the build and the one most likely to
   swap. There are 42 test executables, so that tail is 42 links in a row.
@@ -50615,6 +50643,31 @@ volume classes, and the tooling/documentation gaps the run exposed.
   from the measurement. Do NOT raise it on the strength of the old
   comment's reasoning, which describes a linker the project no longer
   uses by default.
+  Resolved (2026-09-03, 027ebeec) as a MEASUREMENT with no change, which
+  is what the item asked for. link_pool stays at 1.
+
+  Deleted every linked executable and timed the relink, three runs each,
+  mold on:
+
+    link_pool=1   0.43 0.44 0.42 s
+    link_pool=2   0.33 0.33 0.32 s
+    link_pool=3   0.28 0.28 0.28 s
+
+  Raising the cap saves about 0.15 s in total, so the RAM ceiling costs
+  effectively nothing and there is no case for touching it. The item's own
+  warning was right for a different reason than it expected: not that two
+  molds would contend, but that there is almost nothing left to parallelise.
+
+  TWO PREMISES WERE WRONG, and both inflated the question. The tail is
+  EIGHT executables, not the 42 this item assumed nor the ~30 the
+  CMakeLists comments claimed -- this project links test BUNDLES, not one
+  binary per test, which is the whole point of ants_add_*_bundle. And mold
+  already links each in well under a second. Both stale counts corrected in
+  the comments.
+
+  The numbers now live at the setting itself so the question is not
+  reopened from the old reasoning. The fast preset's link_pool=2 is
+  harmless and buys about 0.1 s.
   **Layman:** The build links one program at a time on purpose. That rule was set before we switched to a much faster linker, so it may now be costing time for no reason -- or still be right. Nobody has checked.
   Kind: investigate.
   Source: in-session-2026-09-02.
