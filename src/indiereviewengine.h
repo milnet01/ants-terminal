@@ -77,6 +77,13 @@ struct Citation {
     QString context;  // ±40 chars
 };
 
+// ANTS-4817 — how far apart two citations may sit and still count as one
+// group. Both reports that measured this found their lanes 1 line apart and
+// put the useful tolerance at 2-3; 3 covers what they saw without widening far
+// enough to sweep in unrelated citations from a dense file. Used as the fixed
+// window for advisory near misses; the opt-in `lineSlop` supplies its own.
+inline constexpr int kNearMissLines = 3;
+
 // ANTS-4817 — two or more lanes citing one defect in the same file a few
 // lines apart, which exact (file, line) matching reports as no agreement.
 //
@@ -86,17 +93,11 @@ struct Citation {
 // cross-lane agreement in their runs was missed, one 1 of 1 and one 2 of 2 —
 // so this is the common case rather than an edge one.
 //
-// Deliberately advisory. Corroboration is a claim about agreement, and a
-// tolerance that promoted these to findings would change what every existing
-// report means without anyone asking. This makes a zero EXPLAINABLE; it does
-// not make it non-zero. Promoting them behind an opt-in `line_slop` is filed
-// separately and is NOT what this struct does.
-// How far apart two citations may sit and still be one near miss. Both
-// reports that measured this pair found their lanes 1 line apart and put the
-// useful tolerance at 2-3; 3 covers what they saw without widening far enough
-// to sweep in unrelated citations from a dense file.
-inline constexpr int kNearMissLines = 3;
-
+// Deliberately advisory. Corroboration is a claim about agreement, and
+// reporting these AS findings would change what every existing report means
+// without anyone asking. This makes a zero EXPLAINABLE; it does not make it
+// non-zero. A caller that does want them merged opts in with `lineSlop`, whose
+// default of 0 is why the two can coexist.
 struct CorroborateNearMiss {
     QString     file;
     int         lineFrom = -1;   // span, not a single line: the lanes disagree
@@ -140,6 +141,11 @@ struct MergeSuggestion {
 struct CorroboratedFinding {
     QString     file;
     int         line = -1;
+    // ANTS-4817 — end of the span when the finding was formed under an opt-in
+    // `lineSlop` and the lanes cited different lines of one defect. -1 on an
+    // exact match, which is every finding at the default lineSlop of 0, so an
+    // existing consumer sees no change.
+    int         lineTo = -1;
     QStringList citingLanes;  // sorted, unique
     QStringList contexts;     // one per citingLane, same order
     // ANTS-1278 — optional rich-card fields. When present, the
@@ -336,11 +342,18 @@ QList<Citation> extractFileLineCitations(
     const QHash<QString, QString> *basenameIndex = nullptr,
     CorroborateStats *stats = nullptr);
 
+// ANTS-4817 — `lineSlop` is an OPT-IN tolerance: when > 0, citations in one
+// file within that many lines of each other are grouped, and a group with
+// enough distinct lanes becomes one finding naming the SPAN (line..lineTo).
+// Default 0 is exact matching, unchanged, because corroboration is a claim
+// about agreement and a tolerance that shipped on would silently redefine it.
+// Near misses (advisory, always reported via stats) need no opt-in.
 QList<CorroboratedFinding> corroboratedFindings(
     const QString &projectPath,
     const QHash<QString, QString> &reports,
     int minLanes = 2,
-    CorroborateStats *stats = nullptr);
+    CorroborateStats *stats = nullptr,
+    int lineSlop = 0);
 
 // ANTS-1282: read reports from disk, then corroborate. The directory
 // is resolved relative to projectPath; lane name = filename stem of
@@ -359,7 +372,8 @@ QList<CorroboratedFinding> corroboratedFindingsFromDir(
     const QString &reportsDirRelative,
     int minLanes = 2,
     int *reportsRead = nullptr,
-    CorroborateStats *stats = nullptr);
+    CorroborateStats *stats = nullptr,
+    int lineSlop = 0);
 
 // ANTS-3713 — the read half of the above, entered with an ALREADY-VALIDATED
 // canonical directory, which may sit outside projectPath. The MCP layer uses
@@ -373,7 +387,8 @@ QList<CorroboratedFinding> corroboratedFindingsFromCanonicalDir(
     const QString &canonicalDir,
     int minLanes = 2,
     int *reportsRead = nullptr,
-    CorroborateStats *stats = nullptr);
+    CorroborateStats *stats = nullptr,
+    int lineSlop = 0);
 
 QString synthesisPrompt(
     const QHash<QString, QString> &reports,

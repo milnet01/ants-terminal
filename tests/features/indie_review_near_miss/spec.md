@@ -31,15 +31,22 @@ Near misses are **advisory**:
 - The envelope omits every near-miss field when there are none, so a run with
   no near misses is byte-identical to before.
 
-Promoting near misses to findings behind an opt-in `line_slop` is a separate,
-still-open question and is deliberately **not** what this builds.
+`lineSlop` (`line_slop` at the verb) is the opt-in other half. When > 0,
+citations in one file within that many lines are grouped and a group with
+enough distinct lanes becomes one finding carrying the span's end (`lineTo` /
+`line_to`). A group promoted this way is not *also* listed as a near miss.
+
+**The default stays 0**, which is what lets the two coexist: at 0 the run means
+exactly what it always meant, and the same groups are still visible as advisory
+near misses. Both reporting projects asked for that default in as many words.
 
 ## Invariants
 
-INV-1 is the new-behaviour pin and is the only one that goes red against the
-pre-fix engine. INV-2 to INV-4 are boundary pins — each names something that
-must *not* become a near miss — so they hold in both states by construction.
-That is what they are for: the risk here is over-reach, not absence.
+INV-1 and INV-5 are the new-behaviour pins and go red against the pre-fix
+engine. INV-2 to INV-4 and INV-6 are boundary pins — each names something that
+must *not* be grouped, or must *not* change — so they hold in both states by
+construction. That is what they are for: the risk here is over-reach, not
+absence.
 
 - **INV-1** — two lanes citing one defect a line apart produce no finding and
   one near miss, naming the span and both lanes.
@@ -60,6 +67,16 @@ That is what they are for: the risk here is over-reach, not absence.
   opinion, and reporting it would be the fuzzy matching both reporting
   projects explicitly asked not to have.
   *Test:* `Inv4OneLaneCitingAdjacentLinesIsNotANearMiss`.
+
+- **INV-5** — an opt-in `lineSlop` promotes the group to one finding naming
+  the span, and that group is then not also reported as a near miss.
+  *Test:* `Inv5LineSlopPromotesToASpanFinding`. **Fails against the pre-fix
+  engine**, which has no such parameter.
+
+- **INV-6** — the default is 0, an omitted argument and an explicit 0 agree,
+  and at 0 nothing is promoted while the group is still reported as advisory.
+  This is the invariant that keeps every existing report meaning what it meant.
+  *Test:* `Inv6DefaultSlopIsZeroAndPromotesNothing`.
 
 ## Deliberately not covered
 

@@ -1198,8 +1198,10 @@ QList<CorroboratedFinding> corroboratedFindings(
     const QString &projectPath,
     const QHash<QString, QString> &reports,
     int minLanes,
-    CorroborateStats *stats) {
+    CorroborateStats *stats,
+    int lineSlop) {
     if (minLanes < 1) minLanes = 1;
+    if (lineSlop < 0) lineSlop = 0;
 
     // (file, line) → set<lane>; (file, line) → ordered <lane, context>
     QHash<QPair<QString, int>, QSet<QString>> coverage;
@@ -1220,6 +1222,10 @@ QList<CorroboratedFinding> corroboratedFindings(
         }
     }
 
+    // ANTS-4817 — lines already claimed by an exact-match finding, so the
+    // proximity passes below cannot report the same agreement twice.
+    QSet<QPair<QString, int>> claimed;
+
     QList<CorroboratedFinding> out;
     for (auto it = coverage.constBegin(); it != coverage.constEnd(); ++it) {
         if (it.value().size() < minLanes) continue;
@@ -1232,33 +1238,26 @@ QList<CorroboratedFinding> corroboratedFindings(
         for (const QString &ln : std::as_const(cf.citingLanes)) {
             cf.contexts << ctxMap.value(ln);
         }
+        claimed.insert(it.key());
         out.append(cf);
     }
 
-    std::sort(out.begin(), out.end(),
-              [](const CorroboratedFinding &a, const CorroboratedFinding &b) {
-        if (a.citingLanes.size() != b.citingLanes.size())
-            return a.citingLanes.size() > b.citingLanes.size();
-        if (a.file != b.file) return a.file < b.file;
-        return a.line > b.line;
-    });
-
-    // ANTS-4817 — near misses, so a zero is explainable.
+    // ANTS-4817 — group the citations that did NOT agree exactly, by proximity
+    // within one file. One pass serves both consumers: `lineSlop` (opt-in)
+    // promotes a group to a finding naming the span, and kNearMissLines
+    // (always) reports one as advisory.
     //
-    // Same file, lines within kNearMissLines of each other, enough DISTINCT
-    // lanes to have met minLanes had they agreed on the line. Computed from
-    // the same coverage map, after `out` is built, and appended to stats
-    // only — `out` is untouched, so what corroboration means is unchanged.
-    //
-    // A (file, line) that already met minLanes is skipped: it is a finding
-    // and reporting it again as a near miss would double-count the run's
-    // strongest signal.
-    if (stats) {
-        // file → sorted list of (line, lanes) for the groups that MISSED.
+    // A (file, line) already claimed by an exact finding is excluded, so the
+    // run's strongest signal is never counted twice.
+    auto proximityGroups =
+        [&](int window) -> QList<CorroborateNearMiss> {
+        QList<CorroborateNearMiss> groups;
+        if (window <= 0) return groups;
+        // file -> the unclaimed (line, lanes) rows, sorted by line.
         QHash<QString, QList<QPair<int, QSet<QString>>>> missed;
         for (auto it = coverage.constBegin(); it != coverage.constEnd(); ++it) {
-            if (it.value().size() >= minLanes) continue;   // already a finding
-            if (it.key().second < 0) continue;             // bare-file citation
+            if (claimed.contains(it.key())) continue;
+            if (it.key().second < 0) continue;   // bare-file citation
             missed[it.key().first].append({it.key().second, it.value()});
         }
         for (auto it = missed.begin(); it != missed.end(); ++it) {
@@ -1274,35 +1273,34 @@ QList<CorroboratedFinding> corroboratedFindings(
                 int j = i;
                 QSet<QString> lanes = rows[i].second;
                 while (j + 1 < rows.size()
-                       && rows[j + 1].first - rows[j].first
-                              <= kNearMissLines) {
+                       && rows[j + 1].first - rows[j].first <= window) {
                     ++j;
                     lanes.unite(rows[j].second);
                 }
                 if (j > i && lanes.size() >= minLanes) {
-                    CorroborateNearMiss nm;
-                    nm.file     = it.key();
-                    nm.lineFrom = rows[i].first;
-                    nm.lineTo   = rows[j].first;
-                    nm.citingLanes = lanes.values();
-                    std::sort(nm.citingLanes.begin(), nm.citingLanes.end());
-                    for (const QString &ln : std::as_const(nm.citingLanes)) {
+                    CorroborateNearMiss g;
+                    g.file     = it.key();
+                    g.lineFrom = rows[i].first;
+                    g.lineTo   = rows[j].first;
+                    g.citingLanes = lanes.values();
+                    std::sort(g.citingLanes.begin(), g.citingLanes.end());
+                    for (const QString &ln : std::as_const(g.citingLanes)) {
                         // The line and context this lane actually cited
                         // inside the span.
                         for (int k = i; k <= j; ++k) {
                             if (!rows[k].second.contains(ln)) continue;
-                            nm.lines << QString::number(rows[k].first);
-                            nm.contexts << contexts[{it.key(), rows[k].first}]
+                            g.lines << QString::number(rows[k].first);
+                            g.contexts << contexts[{it.key(), rows[k].first}]
                                                .value(ln);
                             break;
                         }
                     }
-                    stats->nearMisses.append(nm);
+                    groups.append(g);
                 }
                 i = j + 1;
             }
         }
-        std::sort(stats->nearMisses.begin(), stats->nearMisses.end(),
+        std::sort(groups.begin(), groups.end(),
                   [](const CorroborateNearMiss &a,
                      const CorroborateNearMiss &b) {
             if (a.citingLanes.size() != b.citingLanes.size())
@@ -1310,7 +1308,43 @@ QList<CorroboratedFinding> corroboratedFindings(
             if (a.file != b.file) return a.file < b.file;
             return a.lineFrom < b.lineFrom;
         });
+        return groups;
+    };
+
+    // Opt-in tolerance. The default of 0 leaves every existing report meaning
+    // exactly what it meant: corroboration is a claim about agreement, and a
+    // tolerance that shipped on by default would redefine it for every caller
+    // who never asked. Both reporting projects said so explicitly.
+    if (lineSlop > 0) {
+        const auto promoted = proximityGroups(lineSlop);
+        for (const auto &g : promoted) {
+            CorroboratedFinding cf;
+            cf.file        = g.file;
+            cf.line        = g.lineFrom;
+            cf.lineTo      = g.lineTo;
+            cf.citingLanes = g.citingLanes;
+            cf.contexts    = g.contexts;
+            out.append(cf);
+            // Claimed, so the advisory pass below does not repeat a group
+            // that is now a finding.
+            for (const QString &ln : g.lines)
+                claimed.insert({g.file, ln.toInt()});
+        }
     }
+
+    std::sort(out.begin(), out.end(),
+              [](const CorroboratedFinding &a, const CorroboratedFinding &b) {
+        if (a.citingLanes.size() != b.citingLanes.size())
+            return a.citingLanes.size() > b.citingLanes.size();
+        if (a.file != b.file) return a.file < b.file;
+        return a.line > b.line;
+    });
+
+    // ANTS-4817 — near misses, so a zero is explainable. Always computed, over
+    // whatever is still unclaimed, and appended to stats only: `out` is
+    // untouched, so what corroboration means is unchanged. A group `lineSlop`
+    // already promoted is claimed above and so is not repeated here.
+    if (stats) stats->nearMisses = proximityGroups(kNearMissLines);
     return out;
 }
 
@@ -1319,7 +1353,8 @@ QList<CorroboratedFinding> corroboratedFindingsFromDir(
     const QString &reportsDirRelative,
     int minLanes,
     int *reportsRead,
-    CorroborateStats *stats) {
+    CorroborateStats *stats,
+    int lineSlop) {
     if (reportsRead) *reportsRead = 0;
 
     // INV-3: reject absolute paths outright.
@@ -1336,7 +1371,7 @@ QList<CorroboratedFinding> corroboratedFindingsFromDir(
     }
 
     return corroboratedFindingsFromCanonicalDir(projectPath, canon, minLanes,
-                                                reportsRead, stats);
+                                                reportsRead, stats, lineSlop);
 }
 
 // ANTS-3713 — the read half, split out so the MCP layer's
@@ -1347,7 +1382,8 @@ QList<CorroboratedFinding> corroboratedFindingsFromCanonicalDir(
     const QString &canonicalDir,
     int minLanes,
     int *reportsRead,
-    CorroborateStats *stats) {
+    CorroborateStats *stats,
+    int lineSlop) {
     if (reportsRead) *reportsRead = 0;
 
     QDir dir(canonicalDir);
@@ -1378,7 +1414,8 @@ QList<CorroboratedFinding> corroboratedFindingsFromCanonicalDir(
         if (reportsRead) (*reportsRead)++;
     }
 
-    return corroboratedFindings(projectPath, reports, minLanes, stats);
+    return corroboratedFindings(projectPath, reports, minLanes, stats,
+                                lineSlop);
 }
 
 QString synthesisPrompt(const QHash<QString, QString> &reports,

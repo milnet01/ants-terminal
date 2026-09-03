@@ -146,3 +146,65 @@ TEST(IndieReviewNearMiss, Inv4OneLaneCitingAdjacentLinesIsNotANearMiss) {
     EXPECT_TRUE(stats.nearMisses.isEmpty())
         << "a single lane's own adjacent citations are not agreement";
 }
+
+// INV-5 — the opt-in `lineSlop` promotes a near miss to a finding naming the
+// SPAN. This is the half that changes what corroboration reports, which is
+// exactly why it is opt-in.
+TEST(IndieReviewNearMiss, Inv5LineSlopPromotesToASpanFinding) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString root = makeProject(tmp);
+
+    QHash<QString, QString> reports;
+    reports.insert(QStringLiteral("lane_a"),
+        QStringLiteral("Defect at src/window.py:738."));
+    reports.insert(QStringLiteral("lane_b"),
+        QStringLiteral("Same defect, quoted at src/window.py:739."));
+
+    IndieReviewEngine::CorroborateStats stats;
+    const auto found = IndieReviewEngine::corroboratedFindings(
+        root, reports, 2, &stats, /*lineSlop=*/3);
+
+    ASSERT_EQ(found.size(), 1)
+        << "line_slop must group the two citations into one finding";
+    EXPECT_EQ(found.first().file, QStringLiteral("src/window.py"));
+    EXPECT_EQ(found.first().line, 738);
+    EXPECT_EQ(found.first().lineTo, 739)
+        << "a promoted finding names the SPAN — the lanes disagree about the "
+           "line, which is the whole reason it was not an exact match";
+    EXPECT_EQ(found.first().citingLanes.size(), 2);
+    EXPECT_TRUE(stats.nearMisses.isEmpty())
+        << "a group promoted to a finding must not ALSO be reported as a near "
+           "miss — that would double-count it";
+}
+
+// INV-6 — the default is 0, and at 0 nothing is promoted. This is what keeps
+// every existing report meaning what it meant; both reporting projects asked
+// for exactly this.
+TEST(IndieReviewNearMiss, Inv6DefaultSlopIsZeroAndPromotesNothing) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString root = makeProject(tmp);
+
+    QHash<QString, QString> reports;
+    reports.insert(QStringLiteral("lane_a"),
+        QStringLiteral("Defect at src/window.py:738."));
+    reports.insert(QStringLiteral("lane_b"),
+        QStringLiteral("Same defect, quoted at src/window.py:739."));
+
+    // Default (argument omitted) and an explicit 0 must agree.
+    IndieReviewEngine::CorroborateStats sDefault;
+    const auto byDefault =
+        IndieReviewEngine::corroboratedFindings(root, reports, 2, &sDefault);
+    IndieReviewEngine::CorroborateStats sZero;
+    const auto byZero = IndieReviewEngine::corroboratedFindings(
+        root, reports, 2, &sZero, /*lineSlop=*/0);
+
+    EXPECT_TRUE(byDefault.isEmpty())
+        << "the default must not group — that would redefine corroboration "
+           "for every caller who never asked";
+    EXPECT_EQ(byDefault.size(), byZero.size());
+    EXPECT_EQ(sDefault.nearMisses.size(), sZero.nearMisses.size());
+    EXPECT_EQ(sDefault.nearMisses.size(), 1)
+        << "the group is still reported, as an advisory near miss";
+}

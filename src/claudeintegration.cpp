@@ -9429,7 +9429,17 @@ void ClaudeIntegration::onMcpConnection() {
                         "not findings, are not counted in `total_findings`, "
                         "and do not change what corroboration means. Read "
                         "them before concluding from a zero that the lanes "
-                        "did not agree. Absent when there are none.");
+                        "did not agree. Absent when there are none. "
+                        "`line_slop` (default 0) is the opt-in other half: "
+                        "when > 0, citations in one file within that many "
+                        "lines are GROUPED and a group with enough distinct "
+                        "lanes becomes one finding carrying `line_to` (the "
+                        "span's end). The default stays 0 deliberately \\u2014 "
+                        "corroboration is a claim about agreement, and a "
+                        "tolerance that shipped on would redefine what every "
+                        "existing report means for callers who never asked. A "
+                        "group promoted this way is NOT also listed as a near "
+                        "miss.");
                     t["selection_hint"] = QStringLiteral(
                         "Use to cross-check two+ reviewers' findings "
                         "against shared evidence. Reduces false "
@@ -9468,10 +9478,28 @@ void ClaudeIntegration::onMcpConnection() {
                         "/tmp), so lane reports need not be written into "
                         "the working tree. Still NFC + control-char "
                         "checked and canonicalised. Default false.");
+                    // ANTS-4817 — opt-in proximity tolerance.
+                    QJsonObject slopProp;
+                    slopProp["type"]    = "integer";
+                    slopProp["default"] = 0;
+                    slopProp["minimum"] = 0;
+                    slopProp["description"] = QStringLiteral(
+                        "Group citations in one file within this many lines "
+                        "of each other, so two lanes quoting one defect at "
+                        "different lines count as agreeing. A grouped finding "
+                        "carries `line_to` (the span's end). Default 0 = "
+                        "exact (file, line) matching, unchanged \\u2014 and it "
+                        "stays the default deliberately, because a tolerance "
+                        "that shipped on would change what every existing "
+                        "report means for callers who never asked for it. "
+                        "Measured useful at 2-3 by the two projects that "
+                        "reported the gap. At 0 the same groups are still "
+                        "reported, as advisory `near_misses`.");
                     QJsonObject props;
                     props["reports"]     = reportsProp;
                     props["reports_dir"] = reportsDirProp;
                     props["min_lanes"]   = minLanesProp;
+                    props["line_slop"]   = slopProp;
                     props["allow_outside_project"] = aopProp;
                     // ANTS-1391 — caller_cwd anchor.
                     props["caller_cwd"]  = makeCallerCwdReadProp();

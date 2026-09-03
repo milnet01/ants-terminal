@@ -584,6 +584,12 @@ QJsonDocument RemoteControl::cmdIndieReviewCorroborate(const QJsonObject &req) {
 
     int minLanes = req.value(QStringLiteral("min_lanes")).toInt(2);
     if (minLanes < 1) minLanes = 1;
+    // ANTS-4817 — opt-in proximity tolerance. Default 0 is exact matching,
+    // unchanged: corroboration is a claim about agreement, and a tolerance
+    // that shipped on by default would redefine it for every caller who never
+    // asked. Both reporting projects said so in as many words.
+    int lineSlop = req.value(QStringLiteral("line_slop")).toInt(0);
+    if (lineSlop < 0) lineSlop = 0;
 
     QList<IndieReviewEngine::CorroboratedFinding> found;
     QString reportsDir;
@@ -628,9 +634,10 @@ QJsonDocument RemoteControl::cmdIndieReviewCorroborate(const QJsonObject &req) {
         if (check.bad) return QJsonDocument(check.err);
         found = allowOutside
             ? IndieReviewEngine::corroboratedFindingsFromCanonicalDir(
-                  root, check.resolved, minLanes, &reportsRead, &stats)
+                  root, check.resolved, minLanes, &reportsRead, &stats,
+                  lineSlop)
             : IndieReviewEngine::corroboratedFindingsFromDir(
-                  root, reportsDir, minLanes, &reportsRead, &stats);
+                  root, reportsDir, minLanes, &reportsRead, &stats, lineSlop);
         // No totalIn tally for the disk path — the orchestrator
         // didn't pay the parent-context cost, which is the whole
         // point of ANTS-1282.
@@ -669,7 +676,7 @@ QJsonDocument RemoteControl::cmdIndieReviewCorroborate(const QJsonObject &req) {
         }
         reportsRead = reports.size();
         found = IndieReviewEngine::corroboratedFindings(
-            root, reports, minLanes, &stats);
+            root, reports, minLanes, &stats, lineSlop);
     }
 
     QJsonArray arr;
@@ -677,6 +684,9 @@ QJsonDocument RemoteControl::cmdIndieReviewCorroborate(const QJsonObject &req) {
         QJsonObject o;
         o["file"] = f.file;
         o["line"] = f.line;
+        // ANTS-4817 — a span finding names where it ends. Absent on an exact
+        // match, which is every finding at the default line_slop of 0.
+        if (f.lineTo > f.line) o["line_to"] = f.lineTo;
         QJsonArray lns;
         for (const QString &ln : f.citingLanes) lns.append(ln);
         o["citing_lanes"] = lns;
@@ -699,6 +709,7 @@ QJsonDocument RemoteControl::cmdIndieReviewCorroborate(const QJsonObject &req) {
     // DESIGN on the reports_dir path (the orchestrator never paid the context
     // cost — ANTS-1282) and so is not the parse-failure signal it looks like;
     // these two are.
+    if (lineSlop > 0) env["line_slop"] = lineSlop;
     env["citations_seen"]     = stats.citationsSeen;
     env["citations_resolved"] = stats.citationsResolved;
     if (stats.citationsByBasename > 0)
