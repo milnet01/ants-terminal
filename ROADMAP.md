@@ -49712,8 +49712,15 @@ two projects).
   Kind: fix.
   Source: cc-feedback-2026-09-03 Games_Hub.
 
-- 📋 [ANTS-4834] **apply_edits dry_run returns files_written and edits_applied, the past-tense-key defect ANTS-4463 fixed on roadmap_log.**
+- ✅ [ANTS-4834] **apply_edits dry_run returns files_written and edits_applied, the past-tense-key defect ANTS-4463 fixed on roadmap_log.**
   Measured minutes apart against roadmap_log's corrected shape in the same session. Apply ANTS-4463's resolution: emit would_write / would_apply and omit files_written, applied and edits_applied. Keep skipped[] and the candidates / near_miss_line diagnostics, which are the reason to run a preview at all. The two verbs disagreeing is worse than either convention alone.
+  Resolved (2026-09-03): ANTS-4463's resolution applied verbatim. A dry run emits would_write / would_apply / would_apply_count and DROPS files_written / applied / edits_applied, rather than merely adding future-tense keys beside them -- dropping is the half that matters, because files_written is the natural key to branch on and its presence is what lets a caller read a preview as a completed write.
+
+  skipped[] and its candidates / near_miss_line diagnostics are untouched: they are the reason to run a preview. The schema carries the new shape, since the shared dry_run wording cannot show that the past-tense keys are gone and their absence is exactly what a caller has to discover.
+
+  Red on five assertions first, one per removed or added key, with the real-write half as the control IN THE SAME TEST so the fix cannot be "drop the keys everywhere"; the control re-reads the file to confirm the preview wrote nothing and the real call did edit it.
+
+  Note this is a BREAKING envelope change for any caller reading files_written on a dry run. That is deliberate and is the point -- the same call was made on roadmap_log. Suite 4128, ctest exit 0.
   **Layman:** A preview that changes nothing reports that it wrote a file.
   Kind: fix.
   Source: cc-feedback-2026-09-03 LocalWebServerManager.

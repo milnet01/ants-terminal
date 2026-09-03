@@ -303,6 +303,9 @@ for security-relevant changes.
 
 ### Fixed
 
+- **A preview of a batch file edit no longer claims it wrote the files** (ANTS-4834)
+  Asking "what would this change?" replied as though the change had already happened, so a caller checking that reply could conclude the work was done and skip doing it. Previews now say what they *would* do. The matching tool for roadmap edits was fixed the same way earlier.
+
 - **Asking for a roadmap section's items now tells you which sub-section each one is in** (ANTS-4824)
   Every item came back labelled with the section you asked for, so a nested one looked like it lived in its parent. Filing a new item next to one of them would then have put it in the wrong place without saying so.
 
