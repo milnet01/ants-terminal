@@ -11844,14 +11844,18 @@ fixes don't address. Roadmapped here as their own design tasks.
   Everything after the inner line is treated as prose, including headings
   and citations that are really sample text inside the block.
 
-  Reproduced 2026-07-28 while writing ANTS-3674's regression rows:
+  Reproduced 2026-07-28 while writing ANTS-3674's regression rows: a
+  four-backtick opener, a three-backtick line, a `## Not A Real Heading`
+  line, then the four-backtick closer. `read_region` resolves that heading
+  by name — it should refuse, the heading being sample text inside the
+  block.
 
-  ````
-  ```
-  ## Not A Real Heading
-  \````
-
-  `read_region {section:"Not A Real Heading"}` resolves — it should refuse.
+  That sample was written out as a literal fenced block until 2026-09-03.
+  Its closer had to be backslash-escaped to survive the render, which left
+  the file carrying an unclosed fence from here to EOF; `roadmap_log` then
+  refused every flip below this bullet as `anchor_unsafe_context`. It is
+  described in prose instead — a demonstration fence cannot live in a
+  document that is itself fence-scanned.
   The header comment already states the intended rule ("A fence is closed
   only by a line opening with the SAME fence character"), so the code
   matches its own comment; the comment is what is incomplete against
@@ -50281,6 +50285,27 @@ volume classes, and the tooling/documentation gaps the run exposed.
   found nothing" and "ruff found this" cannot both be true of one
   invocation — the sweep's run and this one disagree, and no ruff config
   is committed to settle it. Fix B023 regardless of how that lands.
+  Progress (2026-09-03): B023 is fixed. `declared_kinds()` no longer defines
+  `flush()` inside its loop; the logic moved to a module-level
+  `_flush_kind(cur, block, out)` taking its inputs explicitly. SIM115 fixed
+  in the same pass — `roadmap-corpus-survey.py` opened a file whose handle
+  was never closed deterministically.
+
+  Correcting this item's stated mechanism: it claimed every closure saw the
+  LAST value and so could report against the wrong block. Checked against
+  source — all three call sites invoked `flush()` synchronously inside the
+  same iteration, so it always read current values, and no output was ever
+  wrong. It was a true positive on the pattern, correct only by accident of
+  call placement, which is why it was still worth removing. Proved
+  behaviour-neutral: both revisions run over this repo produce byte-identical
+  reports.
+
+  Still open, and it is the item's own first question: which ruff rule set
+  the project intends. No ruff config is committed, so the remaining
+  findings — printf-style formatting, import order, regex-flag aliases,
+  implicit concatenation in a collection literal, shebang bits — are
+  unadjudicated style rather than defects. Settling that is a project
+  decision, not a fix.
   **Layman:** The Python checker does report problems in the helper scripts, including three that could actually misbehave.
   Kind: fix.
   Source: in-session-2026-09-02.
@@ -50999,6 +51024,45 @@ volume classes, and the tooling/documentation gaps the run exposed.
   Kind: fix.
   Source: ants-terminal-feedback-2026-09-02.
   Lanes: remotecontrol, mcp.
+
+- 📋 [ANTS-4823] **An unbalanced fence in one bullet's body makes roadmap_log refuse every bullet below it.**
+  ANTS-3678's body demonstrated a fence bug by writing the sample out
+  literally, closing it with a backslash-escaped four-backtick line so the
+  sample would survive the render. That leaves the rendered file with a
+  fence that opens and never closes.
+
+  Consequence: `roadmap_log op:"flip_batch"` refused two unrelated bullets
+  far below it with `anchor_unsafe_context` — "inside a fenced code block
+  — the fence opens at line 11849". The guard's reading was correct; its
+  blast radius is the defect. One body poisoned every bullet after it,
+  which on this roadmap is most of the file.
+
+  Three separable repairs, in the order they pay:
+
+  1. Guard the WRITE side. `roadmap_log` will happily store a body whose
+     fences do not balance, and the same verb's locator then refuses on
+     it. A body that opens a fence it does not close should be refused at
+     write time, the way ANTS-4527 argues for `Evidence:` values. This is
+     the fix that stops the class.
+
+  2. Scope the fence scan to the bullet. The project is store-backed: the
+     store knows each bullet's own body, so a fence opened in a DIFFERENT
+     bullet cannot legitimately enclose this one. Scanning the rendered
+     file from the top treats one bad neighbour as fatal to everything
+     downstream.
+
+  3. Say where the fence came from. The refusal gives a line number and
+     nothing else. Diagnosing it here cost a search and three reads to
+     learn that the opener belonged to another item's body. Naming the
+     owning id would have made it one call.
+
+  Worked around for now by rewriting ANTS-3678's body to describe the
+  sample in prose rather than reproduce it, which balanced the file and
+  unblocked the flips.
+  **Layman:** One roadmap entry containing an unfinished code block quietly stopped every entry below it from being updated.
+  Kind: fix.
+  Source: in-session-2026-09-03.
+  Lanes: remotecontrol, mcp, roadmap.
 
 ### Ants MCP feedback from CC sessions — 2026-08-28 triage
 
@@ -54108,7 +54172,7 @@ assistant suggestions, accepted by the user for filing.
   Source: in-session-2026-08-19, hit during the 0.7.105 -> 0.7.106 cycle.
   Lanes: roadmap-store, packaging.
 
-- 📋 [ANTS-4530] **CLAUDE.md and .claude/bump.json both route the version bump to /bump, which no longer exists.**
+- ✅ [ANTS-4530] **CLAUDE.md and .claude/bump.json both route the version bump to /bump, which no longer exists.**
   The project CLAUDE.md says to bump with `/bump`, and
   `.claude/bump.json`'s `$comment` says the recipe is "consumed by
   ~/.claude/skills/bump/SKILL.md". Neither exists: the global rules
@@ -54125,6 +54189,14 @@ assistant suggestions, accepted by the user for filing.
   whether naming a different bump route changes what a conformer does
   before editing. The `$tag_note` in bump.json also still credits tagging
   to "the /release skill (step 9)" when packaging/cut-rc.sh does it.
+  Resolved (2026-09-03): CONTRIBUTING.md now routes the bump to
+  `cut-release --bump-only`; `.claude/bump.json`'s `$comment` no longer
+  cites the absent `~/.claude/skills/bump/SKILL.md`, and its `$tag_note`
+  credits `packaging/cut-rc.sh`, verified as the only creator of
+  annotated tags. CLAUDE.md already named the live route, so no policy
+  changed there. CONTRIBUTING.md's separate claim that the bump writes a
+  dated CHANGELOG version heading was corrected in the same paragraph —
+  `new-rc` rolls it and `promote` dates it.
   **Layman:** The project's own instructions name a command that was removed, so a new session has to work out the bump by itself.
   Kind: doc-fix.
   Source: in-session-2026-08-19, hit during the 0.7.105 -> 0.7.106 cycle.
@@ -54249,7 +54321,7 @@ assistant suggestions, accepted by the user for filing.
   Kind: implement.
   Lanes: roadmap-store, mcp.
 
-- 📋 [ANTS-4540] **CLAUDE.md and CONTRIBUTING.md both describe README's version banner with wording it does not use.**
+- ✅ [ANTS-4540] **CLAUDE.md and CONTRIBUTING.md both describe README's version banner with wording it does not use.**
   `CLAUDE.md` § Versioning &amp; release says every bump touches
   `README.md` ("Current version"), and `CONTRIBUTING.md` § Versioning +
   release item 3 calls it the `"Current version: **X.Y.Z**" line`.
@@ -54267,6 +54339,11 @@ assistant suggestions, accepted by the user for filing.
   Fix: quote the real banner in both files. Neither is load-bearing
   for tooling -- the recipe and the gate carry the live patterns -- so
   this is a readability fix, not a drift risk.
+  Resolved (2026-09-03): CLAUDE.md and CONTRIBUTING.md both quote
+  README's real banner, `Version <strong>X.Y.Z</strong>`. Neither is
+  load-bearing — `.claude/bump.json` and
+  `packaging/check-version-drift.sh` carry the live patterns, so this
+  was a readability fix.
   **Layman:** Two guide documents quote the version line in the README using words the README does not actually use.
   Kind: doc-fix.
   Source: in-session-2026-08-19, spotted while fixing ANTS-4529.
