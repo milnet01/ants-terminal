@@ -446,6 +446,24 @@ server-controllable beyond this per-tool hint.
   Complements `spec_query` (the deep per-spec reader) — `docs_index` is the
   shallow cross-doc discovery layer over all doc types (ANTS-2139).
 
+- **`doc_integrity`** — a `path` that does not exist is **not a refusal**:
+  enumeration returns nothing and the envelope is `ok:true` with empty
+  `findings[]` (INV-15), which is byte-indistinguishable from a clean run.
+  Only a root-escaping path refuses `bad_path`. So a typo'd path reads as
+  a pass — check `checked_docs[]` before believing a zero. A directory
+  walks recursively for `*.md` alone, and **docs past
+  `Options::maxDocsPerRun` are skipped silently**: no `truncated` flag is
+  emitted, so again a short `checked_docs[]` is the only signal (INV-14).
+  `kinds` narrows `findings[]` and `counts{}` **together** — an excluded
+  kind's key is omitted from `counts` entirely rather than reported as
+  zero (INV-18). And a cross-document anchor is checked only where the
+  target doc is itself in scope, so narrowing `path` quietly narrows
+  anchor coverage rather than reporting reduced coverage. Kinds are
+  `dead_anchor`, `broken_link`, `toc_gap`, `heading_sequence`,
+  `ungranted_tool`. The engine caches nothing (`DocIntegrity::check` is
+  pure); the ETag-304 is made content-sensitive by `docs_digest` over the
+  checked set's paths, sizes and mtimes. Spec: `docs/specs/ANTS-3601.md`.
+
 - **`similar_code`** — `include_bodies:true` (ANTS-2156) makes each
   (top-N, score-ranked) match additionally carry the FULL enclosing
   definition — `symbol`, `body` lines, `body_start_line`/`body_end_line`,
