@@ -2243,6 +2243,7 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppendBatch(const QJsonObject &req) {
     QSet<QString> seenStableIds;   // ANTS-2078 — intra-batch dup guard
     QStringList scrubbedRollup;    // deduped across bullets, both paths
     int scrubbedUnnamedRollup = 0;  // ANTS-4572 — summed across bullets
+    QStringList evNotPathRollup;    // ANTS-4527 — collected across bullets
 
     // ANTS-2054 / ANTS-2076 — resolve the project's counter prefix once
     // for all bullets. Precedence: explicit id_prefix > prefix sniffed
@@ -2334,7 +2335,7 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppendBatch(const QJsonObject &req) {
             QStringList scrubbed;
             QString shadowErr;
             if (!rlFillItemBody(b, itemW, scrubbed, &shadowErr,
-                                &scrubbedUnnamedRollup)) {
+                                &scrubbedUnnamedRollup, &evNotPathRollup)) {
                 skip(QStringLiteral("body_shadowed"), shadowErr);
                 continue;
             }
@@ -2570,7 +2571,12 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppendBatch(const QJsonObject &req) {
             if (!names.isEmpty()) warn["lost_parameters"] = names;
             if (scrubbedUnnamedRollup > 0)
                 warn["unnamed_fragments_removed"] = scrubbedUnnamedRollup;
-            env[QStringLiteral("warnings")] = QJsonArray{ warn };
+            rlAddWarning(env, warn);
+        }
+        // ANTS-4527 — rolled up across the batch, as the scrub warning is.
+        if (const QJsonObject ev = rlEvidenceAdvisory(evNotPathRollup);
+            !ev.isEmpty()) {
+            rlAddWarning(env, ev);
         }
         if (rcReturnHeadlineOnly(req)) {
             QJsonArray postBullets;
@@ -2747,7 +2753,18 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppendBatch(const QJsonObject &req) {
             "from bullet bodies; resend as proper JSON fields if "
             "intended.");
         warn["lost_parameters"] = names;
-        out["warnings"] = QJsonArray{ warn };
+        rlAddWarning(out, warn);
+    }
+    // ANTS-4527 — rolled up over the batch's bullets, like the scrub warning.
+    {
+        QStringList bad;
+        for (const QJsonValue &bv : req.value(QStringLiteral("bullets")).toArray()) {
+            const QJsonObject ev = rlEvidenceAdvisoryForReq(bv.toObject());
+            for (const QJsonValue &e : ev.value(QStringLiteral("elements")).toArray())
+                bad << e.toString();
+        }
+        if (const QJsonObject ev = rlEvidenceAdvisory(bad); !ev.isEmpty())
+            rlAddWarning(out, ev);
     }
     // ANTS-2080 — confirm-after compact echo of every applied bullet.
     if (rcReturnHeadlineOnly(req)) {

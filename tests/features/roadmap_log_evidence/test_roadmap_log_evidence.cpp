@@ -188,3 +188,87 @@ TEST(roadmap_log_evidence, Inv5HandEditedLabelCase) {
     EXPECT_TRUE(b.lanes.isEmpty());
     EXPECT_TRUE(b.kind.isEmpty());
 }
+
+// ANTS-4527 helper — the `evidence_not_path_shaped` advisory, or a null object.
+namespace {
+QJsonObject evidenceWarning(const QJsonObject &out) {
+    for (const QJsonValue &w : out.value(QStringLiteral("warnings")).toArray()) {
+        const QJsonObject o = w.toObject();
+        if (o.value(QStringLiteral("code")).toString()
+            == QLatin1String("evidence_not_path_shaped"))
+            return o;
+    }
+    return {};
+}
+}  // namespace
+
+// INV-6 (ANTS-4527) — prose in Evidence: is reported to the caller. It is an
+// advisory on a successful write, never a refusal: this verb is called from
+// every project on the machine, and refusing input accepted today would break
+// them over a defect affecting a handful of items.
+TEST(roadmap_log_evidence, Inv6ProseEvidenceIsReported) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    ASSERT_TRUE(writeRoadmap(tmp.path(), freshRoadmap()));
+    ASSERT_TRUE(writeCounter(tmp.path(), 9001));
+
+    RemoteControl rc(nullptr);
+    QJsonObject req = appendReq(tmp.path(), QStringLiteral("Fog is wrong."));
+    QJsonArray ev;
+    ev.append(QStringLiteral("user screenshot"));
+    req["evidence"] = ev;
+    const QJsonObject out = rc.cmdRoadmapLogAppendForTest(req).object();
+
+    EXPECT_TRUE(out.value(QStringLiteral("ok")).toBool())
+        << "advisory, not refusal: " << QJsonDocument(out).toJson().toStdString();
+    const QJsonObject w = evidenceWarning(out);
+    ASSERT_FALSE(w.isEmpty()) << QJsonDocument(out).toJson().toStdString();
+    const QJsonArray els = w.value(QStringLiteral("elements")).toArray();
+    ASSERT_EQ(els.size(), 1);
+    EXPECT_EQ(els.at(0).toString(), QStringLiteral("user screenshot"));
+}
+
+// INV-7 (ANTS-4527) — the control, and the one that stops the advisory being
+// "always fire". A path with a separator and a path with only an extension
+// must BOTH stay silent; ANTS-4502's separator-only predicate would have
+// flagged the second, and `shot.png` at the repo root is legitimate evidence.
+TEST(roadmap_log_evidence, Inv7RealPathsRaiseNoAdvisory) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    ASSERT_TRUE(writeRoadmap(tmp.path(), freshRoadmap()));
+    ASSERT_TRUE(writeCounter(tmp.path(), 9001));
+
+    RemoteControl rc(nullptr);
+    QJsonObject req = appendReq(tmp.path(), QStringLiteral("Crash on open."));
+    QJsonArray ev;
+    ev.append(QStringLiteral("photos/IMG_2031.jpg"));
+    ev.append(QStringLiteral("shot.png"));
+    req["evidence"] = ev;
+    const QJsonObject out = rc.cmdRoadmapLogAppendForTest(req).object();
+
+    ASSERT_TRUE(out.value(QStringLiteral("ok")).toBool());
+    EXPECT_TRUE(evidenceWarning(out).isEmpty())
+        << "a real path tripped the advisory: "
+        << QJsonDocument(out).toJson().toStdString();
+}
+
+// INV-8 (ANTS-4527) — the measured corpus shape. One prose sentence with
+// commas in it is what produced GHUB-0052's "96" / "000 mutants ..." / "clean"
+// in the store. The advisory must fire on it however the field folds commas.
+TEST(roadmap_log_evidence, Inv8ProseWithCommasIsReported) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    ASSERT_TRUE(writeRoadmap(tmp.path(), freshRoadmap()));
+    ASSERT_TRUE(writeCounter(tmp.path(), 9001));
+
+    RemoteControl rc(nullptr);
+    QJsonObject req = appendReq(tmp.path(), QStringLiteral("Mutants ran."));
+    QJsonArray ev;
+    ev.append(QStringLiteral("96,000 mutants across all twelve parsers, clean"));
+    req["evidence"] = ev;
+    const QJsonObject out = rc.cmdRoadmapLogAppendForTest(req).object();
+
+    ASSERT_TRUE(out.value(QStringLiteral("ok")).toBool());
+    EXPECT_FALSE(evidenceWarning(out).isEmpty())
+        << QJsonDocument(out).toJson().toStdString();
+}

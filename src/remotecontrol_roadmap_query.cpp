@@ -1036,10 +1036,58 @@ bool rcdetail::rlNoteDeclaresTrailer(const QString &note, QString *error,
 // line lives in the body without repeating it as an argument.
 //
 // Returns false with *error set on a body_shadowed refusal.
+void rcdetail::rlAddWarning(QJsonObject &env, const QJsonObject &warn) {
+    QJsonArray arr = env.value(QStringLiteral("warnings")).toArray();
+    arr.append(warn);
+    env[QStringLiteral("warnings")] = arr;
+}
+
+QJsonObject rcdetail::rlEvidenceAdvisory(const QStringList &notPathShaped) {
+    if (notPathShaped.isEmpty()) return {};
+    QJsonArray vals;
+    for (const QString &e : notPathShaped) vals.append(e);
+    QJsonObject warn;
+    warn[QStringLiteral("code")] = QStringLiteral("evidence_not_path_shaped");
+    warn[QStringLiteral("message")] = QStringLiteral(
+        "roadmap-format 3.5 defines every Evidence: element as a path, and the "
+        "field is split on commas — so prose written here is stored as several "
+        "fragments rather than as the sentence you wrote. Move the explanation "
+        "into the body and leave Evidence: for paths.");
+    warn[QStringLiteral("elements")] = vals;
+    return warn;
+}
+
+QJsonObject rcdetail::rlEvidenceAdvisoryForReq(const QJsonObject &bulletReq) {
+    QStringList bad;
+    const QJsonArray a = bulletReq.value(QStringLiteral("evidence")).toArray();
+    for (const auto &v : a) {
+        // Sanitised as the render sanitises it, so the advisory judges the
+        // element that will actually be stored — the comma fold in particular
+        // turns one prose sentence into one ugly element rather than several.
+        QString p = rcSanitizeBulletField(v.toString(), 500);
+        p.replace(QChar('\n'), QChar(' '));
+        p.replace(QChar(','), QChar(' '));
+        p = p.trimmed();
+        if (!p.isEmpty() && !rlEvidenceLooksLikePath(p)) bad << p;
+    }
+    return rlEvidenceAdvisory(bad);
+}
+
+bool rcdetail::rlEvidenceLooksLikePath(const QString &element) {
+    if (element.contains(QLatin1Char('/')) || element.contains(QLatin1Char('\\')))
+        return true;
+    // A filename-style extension: a dot followed by a short alphanumeric run at
+    // the very end. Keeps `shot.png` at the repo root, which carries no
+    // separator and is legitimate evidence.
+    static const QRegularExpression ext(QStringLiteral("\\.[A-Za-z0-9]{1,8}$"));
+    return ext.match(element).hasMatch();
+}
+
 bool rcdetail::rlFillItemBody(const QJsonObject &bulletReq,
                            RoadmapStore::ItemWrite &w,
                            QStringList &scrubbedNames, QString *error,
-                           int *unnamedRemovals) {
+                           int *unnamedRemovals,
+                           QStringList *evidenceNotPathShaped) {
     // Scrubbed exactly as formatRoadmapBullet() scrubs it on the markdown path.
     QString body = bulletReq.value(QStringLiteral("body")).toString();
     rcScrubLeakedToolXml(body, scrubbedNames, unnamedRemovals);
@@ -1089,6 +1137,13 @@ bool rcdetail::rlFillItemBody(const QJsonObject &bulletReq,
         }
         if (k.colList) w.*(k.colList) = list;
         else           w.*(k.col)     = scalar;
+        // ANTS-4527 — report, never refuse. Checked on the FINAL list, so it
+        // covers both the `evidence` argument and the fallback to a body's own
+        // `Evidence:` line.
+        if (evidenceNotPathShaped && field == QLatin1String("evidence"))
+            for (const QString &e : list)
+                if (!rlEvidenceLooksLikePath(e))
+                    evidenceNotPathShaped->append(e);
         if (!(k.list ? list.isEmpty() : scalar.isEmpty()))
             provenance.insert(field, QStringLiteral("asserted"));
     }

@@ -483,8 +483,9 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppend(const QJsonObject &req) {
             QStringList scrubbedNames;
             int scrubbedUnnamed = 0;              // ANTS-4572
             QString shadowErr;
+            QStringList evNotPath;                // ANTS-4527
             if (!rlFillItemBody(req, w, scrubbedNames, &shadowErr,
-                                &scrubbedUnnamed))
+                                &scrubbedUnnamed, &evNotPath))
                 return rlErr(QStringLiteral("body_shadowed"),
                     QStringLiteral("roadmap_log: %1").arg(shadowErr));
 
@@ -618,8 +619,11 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppend(const QJsonObject &req) {
                 if (!names.isEmpty()) warn["lost_parameters"] = names;
                 if (scrubbedUnnamed > 0)
                     warn["unnamed_fragments_removed"] = scrubbedUnnamed;
-                env[QStringLiteral("warnings")] = QJsonArray{ warn };
+                rlAddWarning(env, warn);
             }
+            // ANTS-4527
+            if (const QJsonObject ev = rlEvidenceAdvisory(evNotPath); !ev.isEmpty())
+                rlAddWarning(env, ev);
             if (rcReturnHeadlineOnly(req))
                 env[QStringLiteral("post_bullets")] =
                     QJsonArray{ rcCompactBullet(idStr, status, headline) };
@@ -1137,8 +1141,10 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppend(const QJsonObject &req) {
         if (!names.isEmpty()) warn["lost_parameters"] = names;
         if (scrubbedUnnamed > 0)
             warn["unnamed_fragments_removed"] = scrubbedUnnamed;
-        out["warnings"] = QJsonArray{ warn };
+        rlAddWarning(out, warn);
     }
+    if (const QJsonObject ev = rlEvidenceAdvisoryForReq(req); !ev.isEmpty())
+        rlAddWarning(out, ev);                                  // ANTS-4527
     // ANTS-2080 — confirm-after compact echo of the appended bullet.
     if (rcReturnHeadlineOnly(req)) {
         out["post_bullets"] =
@@ -3254,6 +3260,7 @@ QJsonDocument RemoteControl::cmdRoadmapLogAmendField(const QJsonObject &req) {
     // both are accepted rather than making one of them an error.
     QString stored;
     QString display;
+    QStringList evNotPath;                       // ANTS-4527
     if (isList) {
         QStringList items;
         const QJsonValue v = req.value(QStringLiteral("value"));
@@ -3275,6 +3282,11 @@ QJsonDocument RemoteControl::cmdRoadmapLogAmendField(const QJsonObject &req) {
         for (const QString &t : std::as_const(items)) arr.append(t);
         stored  = QString::fromUtf8(QJsonDocument(arr).toJson(QJsonDocument::Compact));
         display = items.join(QStringLiteral(", "));
+        // ANTS-4527 — this op normalises the list itself rather than going
+        // through rlFillItemBody, so the advisory is raised here too.
+        if (field == QLatin1String("evidence"))
+            for (const QString &e : std::as_const(items))
+                if (!rlEvidenceLooksLikePath(e)) evNotPath << e;
     } else {
         stored  = req.value(QStringLiteral("value")).toString().trimmed();
         display = stored;
@@ -3390,6 +3402,8 @@ QJsonDocument RemoteControl::cmdRoadmapLogAmendField(const QJsonObject &req) {
     // query, which is the amend_body path's `body_paragraph` rationale.
     env[QStringLiteral("previous")] = oldValue;
     env[QStringLiteral("value")]    = display;
+    if (const QJsonObject ev = rlEvidenceAdvisory(evNotPath); !ev.isEmpty())
+        rlAddWarning(env, ev);                   // ANTS-4527
     rcRoadmapWriteFields(env, outcome, dryRun);  // ANTS-4463
     if (dryRun)
         env[QStringLiteral("dry_run")] = true;

@@ -384,7 +384,36 @@ QVector<RoadmapParse::BulletRecord> rlParse(const QString &markdown,
 // ANTS-3833 INV-6's 6000-line cap, so the envelope is built here and each call
 // site is one line.
 QJsonDocument rlWrappedBlockErr();
-bool rlFillItemBody(const QJsonObject &bulletReq, RoadmapStore::ItemWrite &w, QStringList &scrubbedNames, QString *error, int *unnamedRemovals = nullptr);
+// ANTS-4527 — is one `Evidence:` element shaped like a path? roadmap-format
+// § 3.5 defines every element as one, and the parse splits the field on
+// commas, so prose written here is not merely unresolvable: it is SHREDDED
+// into fragments that each look plausible. Measured over the machine-global
+// store, one sentence became "96", "000 mutants across all twelve parsers
+// under ASan+UBSan" and "clean".
+//
+// True for an element carrying a path separator OR ending in a filename-style
+// extension. The second half is why this is not ANTS-4502's separator
+// predicate, which would drop `shot.png` at the repo root — a legitimate
+// evidence path. Advisory only: the caller is TOLD, never refused, because
+// this verb is called from every project on the machine and a new refusal on
+// input accepted today would break them over a defect affecting three items.
+bool rlEvidenceLooksLikePath(const QString &element);
+// ANTS-4527 — APPEND one advisory to an envelope's `warnings` array. Every
+// existing site assigned `QJsonArray{ warn }` outright, which was correct
+// while there was one warning and silently drops the first the moment there
+// are two. Adding a second advisory is what made this a bug, so it is fixed
+// here rather than worked around.
+void rlAddWarning(QJsonObject &env, const QJsonObject &warn);
+// ANTS-4527 — the `evidence_not_path_shaped` advisory for a filled list, or a
+// null object when the list is empty. Built once so all four write paths say
+// the same thing.
+QJsonObject rlEvidenceAdvisory(const QStringList &notPathShaped);
+// ANTS-4527 — the same advisory computed from a request's `evidence` array,
+// for the MARKDOWN write paths. They render through formatRoadmapBullet
+// rather than rlFillItemBody, and an advisory that fires only on migrated
+// projects would be a worse defect than the one it reports.
+QJsonObject rlEvidenceAdvisoryForReq(const QJsonObject &bulletReq);
+bool rlFillItemBody(const QJsonObject &bulletReq, RoadmapStore::ItemWrite &w, QStringList &scrubbedNames, QString *error, int *unnamedRemovals = nullptr, QStringList *evidenceNotPathShaped = nullptr);
 QString changelogMalformedAdvisory(int line, bool plural, bool applied);
 QStringList rcShortBareAltTerms(const QString &pattern);
 bool rcLooksLikeRegexButLiteral(const QString &pattern);

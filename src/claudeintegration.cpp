@@ -11869,7 +11869,19 @@ void ClaudeIntegration::onMcpConnection() {
                         "path1, path2` line and echoed by roadmap_query "
                         "as an `evidence` array so a later session can "
                         "re-locate the files. Commas/newlines inside a "
-                        "path are folded to spaces.");
+                        "path are folded to spaces. PATHS, not prose "
+                        "(roadmap-format 3.5): the field is comma-split, so "
+                        "a sentence written here is stored as several "
+                        "fragments rather than as what you wrote — one "
+                        "measured bullet holds `96`, `000 mutants across all "
+                        "twelve parsers under ASan+UBSan` and `clean`. "
+                        "ANTS-4527 — an element that is neither separator- "
+                        "nor extension-shaped is reported back as an "
+                        "`evidence_not_path_shaped` entry in the envelope's "
+                        "`warnings` array. It is an ADVISORY on a successful "
+                        "write, never a refusal, and it fires on the store "
+                        "and markdown paths alike. Put the explanation in "
+                        "`body` and leave this for paths.");
 
                     QJsonObject idHintProp;
                     idHintProp["type"]    = "integer";
