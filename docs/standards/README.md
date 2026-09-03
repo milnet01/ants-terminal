@@ -27,12 +27,19 @@ satisfy it already, as files this repo owns outright.
 
 **`tools/check-standard-mirrors.sh` enforces it** and fails on an unresolvable
 link out of a mirrored half, so the set cannot rot the next time the owner
-gains a sibling. It exempts the two classes the rule deliberately leaves
-behind: a target that leaves the top level (`skeletons/`, `languages/`,
-`../workflow.md`), and `README.md`, which resolves to *this* index rather than
-the global one it means (ANTS-4138). Narrowing that exemption is ANTS-4764.
-None of it can be fixed by editing a mirror, since a mirror that differs from
-its owner is what the gate exists to refuse.
+gains a sibling. It exempts the classes the rule deliberately leaves behind: a
+skeleton (`skeletons/`), which is a template to copy rather than a rule to
+conform to; a target outside `standards/` altogether (`../workflow.md`), whose
+owner is a foundation document that nothing mirrors; and `README.md`, which
+resolves to *this* index rather than the global one it means (ANTS-4138).
+`languages/` is **not** exempt — ANTS-4764 brought those files into the mirror
+set, so a link to one must resolve.
+
+**An exempt link does not resolve for a reader on GitHub, and `doc_integrity`
+reports it.** Both tools are right; they ask different questions. The gate
+names each exempt target and its reason rather than passing over it silently
+(ANTS-4825). None of it can be fixed by editing a mirror, since a mirror that
+differs from its owner is what the gate exists to refuse.
 
 That arrangement dates from 2026-08-12. Until then these were verbatim
 `/start-app` copies kept in sync by discipline, with nothing checking them.

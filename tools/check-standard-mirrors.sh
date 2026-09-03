@@ -101,7 +101,18 @@ done
 # copy rather than a rule to conform to; a path leaving standards/ altogether;
 # an illustrative path inside a quoted example; and README.md, which resolves to
 # this index rather than the global one it means (ANTS-4138).
+#
+# ANTS-4825 — a target out of that set is skipped BY RULE, and the gate now
+# names it and says why instead of leaving it to be inferred from the path
+# shape. doc_integrity reports local-gate.md's link to ../workflow.md as broken
+# and is right: workflow.md is a foundation document under ~/.claude/, nothing
+# mirrors it, and a reader on GitHub gets a 404. This gate cannot resolve that
+# and must not imply it did — a bare "links resolve" over a tree carrying one
+# is what made the two tools look like they disagreed when each was answering
+# its own question correctly. Naming them copies nothing and edits no mirror.
 dead_links=0
+unmirrorable=0
+unmirrorable_list=""
 for f in "${STANDARD_FILES[@]}"; do
     [ -f "$f" ] || continue
     begin=$(grep -nE "$BEGIN_RE" "$f" | head -1 | cut -d: -f1)
@@ -122,6 +133,20 @@ for f in "${STANDARD_FILES[@]}"; do
         case "$target" in
             README.md) continue ;;   # resolves to this index (ANTS-4138)
             languages/*) ;;          # carried since ANTS-4764 — must resolve
+            ../*)
+                # Leaves docs/standards/ altogether. The owner is a foundation
+                # document rather than a standard, so nothing mirrors it and
+                # this link does not resolve for a public reader.
+                unmirrorable=$((unmirrorable + 1))
+                unmirrorable_list="${unmirrorable_list}
+  $f -> $target (outside standards/; owner is not a standard, so nothing mirrors it)"
+                continue ;;
+            skeletons/*)
+                # A skeleton is a template to copy, not a rule to conform to.
+                unmirrorable=$((unmirrorable + 1))
+                unmirrorable_list="${unmirrorable_list}
+  $f -> $target (a skeleton is a template to copy, not a rule to conform to)"
+                continue ;;
             */*) continue ;;
         esac
         echo "$f: DEAD LINK to '$target' - not mirrored into docs/standards/" >&2
@@ -162,5 +187,11 @@ if [ "$status" -ne 0 ] || [ "$dead_links" -ne 0 ]; then
     exit 1
 fi
 
-echo "check-standard-mirrors: $checked in sync, $skipped skipped, links resolve"
+if [ "$unmirrorable" -ne 0 ]; then
+    echo "check-standard-mirrors: $checked in sync, $skipped skipped, mirrorable links resolve"
+    echo "check-standard-mirrors: $unmirrorable link(s) cannot be mirrored and are skipped by rule."
+    echo "  They do NOT resolve for a reader on GitHub — doc_integrity reports them, correctly:$unmirrorable_list"
+else
+    echo "check-standard-mirrors: $checked in sync, $skipped skipped, links resolve"
+fi
 exit 0
