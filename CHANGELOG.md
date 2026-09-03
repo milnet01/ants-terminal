@@ -14,6 +14,9 @@ for security-relevant changes.
 
 ### Added
 
+- **Shell scripts can be outlined, so Claude can see their shape without reading them whole** (ANTS-4826)
+  Asking for the outline of a `.sh` file used to return nothing at all. It now lists the functions and the settings at the top, and recognises a script with no file extension — a git hook or a launcher — from its first line. Those scripts also become visible to the code search and review tools, which had been skipping them.
+
 - **Writing a note instead of a filename in a roadmap entry's Evidence line now warns you** (ANTS-4527)
   That field is split on commas, so a sentence written there was silently stored as several fragments. The write still succeeds — it tells you rather than refusing.
 

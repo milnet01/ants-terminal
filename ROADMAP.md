@@ -49639,8 +49639,17 @@ no shell family (three projects), changelog_log reuses a defect-phrased roadmap
 headline (three), and a transport timeout returns no envelope at all (two verbs,
 two projects).
 
-- 📋 [ANTS-4826] **file_outline has no shell family, so a .sh script outlines to nothing while find_definition accepts lang:"sh".**
+- ✅ [ANTS-4826] **file_outline has no shell family, so a .sh script outlines to nothing while find_definition accepts lang:"sh".**
   Reported independently by DOOM, OneUp and RetroDB. The mode enum is auto/cpp/py/md/json/generic/glsl/html; find_definition's lang enum includes sh, so the two verbs disagree about whether shell is supported. Emit `name() {` / `function name` definitions and top-level NAME= as kind "const", mirroring ANTS-4090. Detect on .sh/.bash and on a #!/...sh shebang, since many scripts are extensionless. Failing capability, the honest half is naming the supported set in the unknown-language reply.
+  Resolved (2026-09-03): Mode::Sh reachable by extension, by explicit mode, and by shebang; codebase_index admits the same pair via an exported isShExt rather than a second list, per the in-step rule codebaseindex.cpp states in its own comments.
+
+  That last part has a visible consequence and is worth knowing: shell now reaches the indie_review computed partition, so a shell-first project's own sources stop being invisible to the review lanes. It broke IndieReviewComputedPartition.Inv6 correctly -- that fixture used shell as its example of a DROPPED suffix -- which moved to `.yml` with the new behaviour pinned.
+
+  Red first on assertions rather than the compile: Mode::Sh was added unpopulated, so five of six invariants failed on assertions while INV-5 (no shebang stays unknown) passed in both states as the control.
+
+  Verified on two real scripts in this repo, not only the fixture: 6 of 6 functions in tools/ci-parity.sh, and 0 in the extensionless pre-push hook, which has none and was detected by its shebang. No false positives from heredocs or case blocks. Suite 4127, ctest exit 0.
+
+  Not widened to .zsh / .ksh: SymbolQuery::langForExt does not claim them, and this verb must not make the three disagree in the other direction.
   **Layman:** Outlining a shell script returns nothing useful, so sessions fall back to reading the whole file.
   Kind: enhancement.
   Source: cc-feedback-2026-09-03 DOOM/OneUp/RetroDB.
