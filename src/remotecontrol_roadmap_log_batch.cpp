@@ -1982,8 +1982,8 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppendBatch(const QJsonObject &req) {
                            "\"counter\" or \"stable_prefix\""));
     const bool useStablePrefix =
         idStrategy == QStringLiteral("stable_prefix");
-    static const QRegularExpression kBatchStableIdShape(
-        QStringLiteral("^[A-Za-z][A-Za-z0-9_-]+$"));
+    // ANTS-4849 — shared shape; see remotecontrol_internal.h.
+    const QRegularExpression &kBatchStableIdShape = rcdetail::rlStableIdShape();
 
     // 2. Resolve ROADMAP.md.
     const QString callerCanonical =
@@ -2358,8 +2358,10 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppendBatch(const QJsonObject &req) {
             if (!kBatchStableIdShape.match(sid).hasMatch()) {
                 skip(QStringLiteral("bad_args"),
                      QStringLiteral("stable_id \"%1\" does not match the "
-                                    "stable-prefix shape "
-                                    "^[A-Za-z][A-Za-z0-9_-]+$").arg(sid));
+                                    "stable-prefix shape: it must contain a "
+                                    "letter (a bare number is "
+                                    "indistinguishable from a counter ID). A "
+                                    "leading digit is fine — 3D_E-0682").arg(sid));
                 continue;
             }
             {   // ANTS-3771 § 2.3, per bullet: a breaching id is skipped and

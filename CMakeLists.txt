@@ -1735,6 +1735,7 @@ if(ANTS_TESTS)
                 tests/features/spec_query_phases_layout/test_spec_query_phases_layout.cpp
                 # ANTS-1877 roadmap_log op:append stable-prefix project hint.
                 tests/features/roadmap_log_stable_prefix_hint/test_roadmap_log_stable_prefix_hint.cpp
+                tests/features/roadmap_log_stable_id_digit_prefix/test_roadmap_log_stable_id_digit_prefix.cpp
                 # ANTS-1883 session_orient bundle verb.
                 tests/features/session_orient_bundle/test_session_orient_bundle.cpp
                 # ANTS-1423 Current preset excludes ✅ shipped bullets.

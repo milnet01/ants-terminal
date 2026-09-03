@@ -484,12 +484,25 @@ void rcApplyHeadlineOnly(QJsonArray &matches) {
 // cmdRoadmapLogAppend to surface a helpful hint when the
 // .roadmap-counter is missing AND the project uses stable IDs the
 // allocator doesn't currently support.
+// ANTS-4849 — see remotecontrol_internal.h. The lookahead is the guard that
+// actually matters (a value with no letter is a bare number, and no locator
+// could tell one from a counter ID); the leading class allows a digit, which
+// is what `id_prefix` has always done.
+const QRegularExpression &rlStableIdShape() {
+    static const QRegularExpression rx = []{
+        QRegularExpression r(
+            QStringLiteral("^(?=[A-Za-z0-9_-]*[A-Za-z])[A-Za-z0-9][A-Za-z0-9_-]+$"));
+        r.optimize();
+        return r;
+    }();
+    return rx;
+}
+
 QString rlDetectStablePrefixId(const QString &markdown,
                                const RoadmapParse::IdFormat &fmt) {
     static const QRegularExpression antsRe(
         QStringLiteral("^ANTS-[0-9]+$"));
-    static const QRegularExpression stableRe(
-        QStringLiteral("^[A-Za-z][A-Za-z0-9_-]+$"));
+    const QRegularExpression &stableRe = rlStableIdShape();   // ANTS-4849
     const auto bullets = RoadmapParse::parseBullets(markdown, fmt);
     constexpr int kSniffCap = 50;
     const int upTo = std::min<int>(bullets.size(), kSniffCap);

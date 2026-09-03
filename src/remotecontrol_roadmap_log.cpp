@@ -263,8 +263,8 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppend(const QJsonObject &req) {
     const bool dryRun =
         req.value(QStringLiteral("dry_run")).toBool();
 
-    static const QRegularExpression kStableIdShape(
-        QStringLiteral("^[A-Za-z][A-Za-z0-9_-]+$"));
+    // ANTS-4849 — shared shape; see remotecontrol_internal.h.
+    const QRegularExpression &kStableIdShape = rcdetail::rlStableIdShape();
 
     // ANTS-1905 — explicit stable_prefix strategy: validate stable_id and skip
     // the counter machinery. Works regardless of whether .roadmap-counter
@@ -292,7 +292,9 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppend(const QJsonObject &req) {
             return rlErr(QStringLiteral("bad_args"),
                 QStringLiteral("roadmap_log: stable_id \"%1\" "
                                "does not match the stable-prefix "
-                               "shape ^[A-Za-z][A-Za-z0-9_-]+$")
+                               "shape: it must contain a letter (a bare "
+                               "number is indistinguishable from a counter "
+                               "ID). A leading digit is fine — 3D_E-0682")
                     .arg(stableId));
         }
         QString declCode;   // ANTS-3771 § 2.3 — rlDeclaredIdRefusal()'s doc

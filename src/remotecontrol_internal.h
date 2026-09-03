@@ -442,6 +442,19 @@ void rcApplyHeadlineOnly(QJsonArray &matches);
 // sniff, so each takes the project's DECLARED id format. Defaulted for the
 // caller that holds no project root; a caller that holds one and omits it would
 // sniff ids the rest of the same verb does not agree with (INV-13).
+// ANTS-4849 — the shape of a stable-prefix ID, in ONE place. Three sites
+// carried a private `^[A-Za-z][A-Za-z0-9_-]+$`: op:"append"'s validator,
+// op:"append_batch"'s, and the sniffer below. All three demanded a leading
+// LETTER while the same verb's `id` locator accepts "3D_E-0629" and
+// `id_prefix` deliberately allows a leading digit provided a letter appears
+// somewhere — its own refusal names "3D_E" as valid. So one argument was
+// stricter than the two either side of it, and the sniffer withheld its
+// missing-counter hint from exactly the projects that needed it.
+//
+// The guard's real purpose is kept: a value with NO letter is still refused,
+// because no locator could tell a bare number from a counter ID. Shared
+// rather than re-listed, per the Rule of Three that three copies triggered.
+const QRegularExpression &rlStableIdShape();
 QString rlDetectStablePrefixId(const QString &markdown, const RoadmapParse::IdFormat &fmt = {});
 bool rlRoadmapHasAnyBulletId(const QString &markdown, const RoadmapParse::IdFormat &fmt = {});
 QString rlDetectCounterPrefix(const QString &markdown, const RoadmapParse::IdFormat &fmt = {});
