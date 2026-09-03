@@ -303,6 +303,12 @@ for security-relevant changes.
 
 ### Fixed
 
+- **A code fence inside one roadmap bullet now ends with that bullet** (ANTS-4823)
+  roadmap_log's walkers bind a fence to the body it was opened in, so a
+  hand-written or legacy bullet that opens a fence and never closes it can
+  no longer make every bullet below it unwritable. A fence opened in
+  section prose still masks what follows, unchanged.
+
 - **Projects whose item IDs start with a digit can name their own IDs again** (ANTS-4849)
   An ID like `3D_E-0682` was rejected by the one setting that exists to let you choose an ID, while the rest of the same tool accepted it. The only route left quietly depended on a counter file being correct. A plain number with no letters is still rejected, because nothing could tell it apart from an automatic ID.
 

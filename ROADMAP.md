@@ -51376,7 +51376,7 @@ volume classes, and the tooling/documentation gaps the run exposed.
   Source: ants-terminal-feedback-2026-09-02.
   Lanes: remotecontrol, mcp.
 
-- 📋 [ANTS-4823] **An unbalanced fence in one bullet's body makes roadmap_log refuse every bullet below it.**
+- ✅ [ANTS-4823] **An unbalanced fence in one bullet's body makes roadmap_log refuse every bullet below it.**
   ANTS-3678's body demonstrated a fence bug by writing the sample out
   literally, closing it with a backslash-escaped four-backtick line so the
   sample would survive the render. That leaves the rendered file with a
@@ -51417,6 +51417,20 @@ volume classes, and the tooling/documentation gaps the run exposed.
   Repair 3 was already shipped with ANTS-3640 (rcFenceOpenerHint names the opener's line).
 
   Repair 2 -- scope the fence scan to the bullet, so one bad neighbour cannot take the rest of the file down -- is untouched. It still matters: the write-side guard only covers text written THROUGH the verb, so a hand-written or legacy file can still put a bullet inside a fence opened elsewhere.
+  Resolved (2026-09-03, f7a4c8dd): repair 2 shipped, so all three are
+  now done. rcScopeFencesToBullets drops masking past the body of the
+  bullet a fence was opened in, applied at the tail of both roadmap_log
+  walkers, so every write op that consults insideFenced picks it up at
+  once.
+
+  It keys on where the fence OPENS rather than on whether it is
+  terminated, which is what leaves INV-2 intact: a fence opened in section
+  prose is inside no bullet's body, so a bullet under it stays genuinely
+  fenced.
+
+  INV-5 added to tests/features/roadmap_log_fence_span, proven red on
+  assertions against the walkers with the call removed and green with it
+  restored; INV-1 to INV-4 pass in both states. Full suite green.
   **Layman:** One roadmap entry containing an unfinished code block quietly stopped every entry below it from being updated.
   Kind: fix.
   Source: in-session-2026-09-03.
