@@ -55676,6 +55676,27 @@ to apply within a document. Follow-on work from that change.
   Kind: doc.
   Source: cold-eyes-2026-07-27 ANTS-3636 loop 11.
 
+- 📋 [ANTS-4822] **Specs cite C++ members that have since been renamed, and nothing acts on the report.**
+  ANTS-3661's corpus calibration classifies `cpp_data_member` as 15% of
+  unresolved occurrences. Spot-checked one: `m_claudeLastState` is cited
+  by docs/specs/ANTS-1146.md and docs/plans/ANTS-1146.md and resolves
+  nowhere, because ANTS-1146 itself renamed it to `m_lastState` — the
+  plan document records the rename two lines from the stale citation.
+
+  So this is real rot rather than a resolver gap, and ANTS-3668's
+  data-member anchor is working: it is what made these reachable at all.
+  What is missing is anyone acting on the output. doc_symbols reports;
+  no item owns the repair.
+
+  Worth doing as one sweep rather than per-document: the population is
+  bounded and the fix per hit is a rename or a deletion. Read the
+  calibration's own `top unresolved needles` list for the queue —
+  `qt_framework` (21%) is a separate population and mostly NOT rot, so
+  do not fold the two together.
+  **Layman:** Some design docs name variables that no longer exist under that name; the tool that finds them has nobody acting on what it finds.
+  Kind: doc-fix.
+  Source: in-session-2026-09-03 (ANTS-3680 calibration run).
+
 ### 💸 Review-loop token savings — subagent read dedup (user request 2026-07-16)
 
 /cold-eyes and /indie-review cost roughly N lanes × M loops × (base brief +
