@@ -49654,8 +49654,17 @@ two projects).
   Kind: enhancement.
   Source: cc-feedback-2026-09-03 DOOM/OneUp/RetroDB.
 
-- 📋 [ANTS-4827] **file_outline auto maps a .spec file to unknown, though it is Python syntax.**
+- 💭 [ANTS-4827] **file_outline auto maps a .spec file to unknown, though it is Python syntax.**
   mode:"py" works, but only for a caller who already knows the file is Python, which is what the outline was going to tell them.
+  Declined as proposed (2026-09-03), on evidence rather than cost.
+
+  `.spec` is AMBIGUOUS. RetroDB's case is a PyInstaller spec, which is Python; but the same extension is the RPM package spec, which is not, and this repository ships one at packaging/opensuse/ants-terminal.spec. Mapping the extension to `py` under `auto` would misparse every RPM spec in the corpus, including our own.
+
+  That is the collision the GLSL lane already refuses by name: isGlslExt excludes `.vs` / `.fs` / `.gs` because `.fs` is also F# source. Claiming an ambiguous extension is the one thing that set deliberately does not do, and ANTS-4826 shipped beside it holding the same line for `.zsh` / `.ksh`.
+
+  The workaround stands and is what the reporter already found: `mode:"py"` parses a PyInstaller spec correctly. Their objection to it is fair -- it only helps a caller who already knows the file is Python -- but the alternative on offer gives a confidently WRONG outline to a different set of callers, which is worse than an honest `unknown`.
+
+  Reopen only with a content sniff that can tell the two apart (an RPM spec opens with `Name:` / `%define` / a `#` comment block; a PyInstaller spec is Python statements), and only if the misfire rate is measured rather than assumed. Not worth it for one extension on current evidence.
   **Layman:** A PyInstaller build file is Python but the outliner does not recognise the extension.
   Kind: enhancement.
   Source: cc-feedback-2026-09-03 RetroDB.
@@ -49856,8 +49865,15 @@ two projects).
   Kind: enhancement.
   Source: cc-feedback-2026-09-03 Rolodex.
 
-- 📋 [ANTS-4858] **doc_integrity does not accept compact, where its sibling read verbs do.**
+- ✅ [ANTS-4858] **doc_integrity does not accept compact, where its sibling read verbs do.**
   Three projects noticed independently, and all three called the behaviour correct: ignored_args announces it, so nothing is silently dropped and no result is wrong. This is a consistency gap rather than a defect. The envelope carries several empty-valued keys on a clean run, so compact would do real work. If parity is chosen, encoding:"tabular" likely applies to findings[] too. Otherwise say in the description that it is deliberately not offered, so a caller who has adopted compact across the read verbs can stop guessing.
+  Resolved (2026-09-03): doc_integrity declares `compact` and honours an explicit true/false. MEMBERSHIP ONLY -- an absent `compact` still does nothing here, because its zeroed counts and heading_sequence_suppressed are exactly the shape ANTS-4673 folded away from a caller who never asked, which is why mcpprojection.cpp splits the two columns.
+
+  Proved red rather than assumed: the row and the test entries were written together, so the row was removed and the suite re-run; INV-11 failed on both doc_integrity assertions.
+
+  The schema-wiring test then failed on its makeCompactProp() call-site count, correctly -- its own comment says a new tool declaring `compact` must bump the literal, so it was bumped rather than redesigned. ANTS-4657 still owns deriving that count from a shared list, and this is a second instance of the cost it names.
+
+  The reporters' other half is NOT done: encoding:"tabular" for findings[] was raised alongside and is untouched. Suite 4127, ctest exit 0.
   **Layman:** One document-checking tool ignores a setting all its siblings honour.
   Kind: enhancement.
   Source: cc-feedback-2026-09-03 Rolodex/OneUp/finbreak.

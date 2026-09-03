@@ -232,6 +232,9 @@ for security-relevant changes.
 
 ### Changed
 
+- **The document-integrity check accepts the same `compact` setting as its sibling tools** (ANTS-4858)
+  It was the only one of that group that ignored the setting, so asking for a smaller reply there did nothing. Replies stay full-size unless you ask, because some of its empty fields carry meaning.
+
 - **The project-setup check separates settings you can fill in from ones you cannot** (ANTS-4815)
   A project that deliberately keeps no docs or specs folder was listed as
   missing them forever, with no way to clear the list short of creating
