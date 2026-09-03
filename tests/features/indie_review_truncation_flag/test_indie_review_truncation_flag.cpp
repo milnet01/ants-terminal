@@ -33,15 +33,21 @@ TEST(IndieReviewTruncationFlag, Inv1KMaxScanBytesExposed) {
         << "kMaxScanBytes constexpr missing from header (ANTS-1344 INV-1)";
 }
 
-// INV-2 — cmdIndieReviewCorroborate envelope carries truncation
-// surface.
+// INV-2 — the corroboration envelope carries the truncation surface.
+//
+// ANTS-4814 split the pass into corroborateWithRoot so a test could drive it
+// without a MainWindow; cmdIndieReviewCorroborate is now the thin m_main
+// guard, and the envelope this invariant is about is built in the callee. The
+// window is sized for a function that has since gained the near-miss and
+// shared-symbol blocks — the truncation surface sits at its end, so a window
+// too small reads as the surface being absent.
 TEST(IndieReviewTruncationFlag, Inv2CorroborateEnvelope) {
     const std::string rc = ants_test::slurpRemoteControl();
     ASSERT_FALSE(rc.empty()) << "remotecontrol.cpp not readable";
     const std::string body =
-        fnWindow(rc, "RemoteControl::cmdIndieReviewCorroborate", 8192);
+        fnWindow(rc, "RemoteControl::corroborateWithRoot", 24576);
     ASSERT_FALSE(body.empty())
-        << "cmdIndieReviewCorroborate definition not found";
+        << "corroborateWithRoot definition not found";
 
     EXPECT_NE(body.find("truncatedLanes"), std::string::npos)
         << "truncatedLanes tracking absent from cmdIndieReviewCorroborate";

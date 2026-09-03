@@ -1219,6 +1219,10 @@ QList<CorroboratedFinding> corroboratedFindings(
             const QPair<QString, int> key{c.file, c.line};
             coverage[key].insert(lane);
             contexts[key][lane] = c.context;
+            // ANTS-4814 — published raw so the MCP layer can group by
+            // enclosing symbol, which needs a file outline this engine has
+            // no dependency on.
+            if (stats) stats->citations.append({c.file, c.line, lane});
         }
     }
 

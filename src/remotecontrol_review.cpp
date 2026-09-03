@@ -17,6 +17,7 @@
 #include "verifyengine.h"
 #include "debuglog.h"
 #include <QTimeZone>
+#include "fileoutline.h"   // ANTS-4814 — enclosing-symbol grouping
 #include <QDir>
 #include <QElapsedTimer>
 #include <QFileInfo>
@@ -563,7 +564,22 @@ QJsonDocument RemoteControl::cmdIndieReviewCorroborate(const QJsonObject &req) {
     if (!m_main) return QJsonDocument(irErr(QStringLiteral("no_window"),
         QStringLiteral("indie_review_corroborate: no MainWindow")));
     // ANTS-1391: caller_cwd anchors the root when present.
-    const QString root = resolveRootCanonical(m_main, req);
+    return corroborateWithRoot(req, resolveRootCanonical(m_main, req));
+}
+
+// ANTS-4814 — drive the pass against a synthetic caller_cwd without a
+// MainWindow. The same seam the roadmap_log ops use: m_main supplies only the
+// focused-tab fallback for an absent caller_cwd, so once the root is resolved
+// nothing below it touches the window.
+QJsonDocument RemoteControl::cmdIndieReviewCorroborateForTest(
+    const QJsonObject &req) {
+    return corroborateWithRoot(
+        req, QFileInfo(req.value(QStringLiteral("caller_cwd")).toString())
+                 .canonicalFilePath());
+}
+
+QJsonDocument RemoteControl::corroborateWithRoot(const QJsonObject &req,
+                                                 const QString &root) {
     if (root.isEmpty()) return QJsonDocument(irErr(
         QStringLiteral("no_project"),
         QStringLiteral("indie_review_corroborate: no focused project")));
@@ -767,6 +783,90 @@ QJsonDocument RemoteControl::cmdIndieReviewCorroborate(const QJsonObject &req) {
             "statement rarely pick the same line. Read these before "
             "concluding the lanes did not agree.")
             .arg(nms.size()).arg(IndieReviewEngine::kNearMissLines);
+    }
+    // ANTS-4814 — the OTHER shape of agreement: several lanes finding one
+    // defect SHAPE at unrelated locations. On a partition BY SUBSYSTEM that is
+    // the agreement that matters, because lanes do not share files — so
+    // identical file:line is the one form of agreement the partition makes
+    // unlikely, and keying on it alone reported a run whose lanes agreed twice
+    // over as barely agreeing at all.
+    //
+    // Mechanical, with no model and no similarity scoring: group the citations
+    // by the UNQUALIFIED name of their enclosing symbol, reusing the outline
+    // machinery workspace_search's enclosing_symbol already owns. Unqualified,
+    // because the measured case was one defect repeated across sibling classes
+    // (ChessView / ReversiView / DraughtsView), whose qualified names differ
+    // by construction.
+    //
+    // Reported only when the group spans two or more DISTINCT FILES, which is
+    // what keeps this signal disjoint from findings (one location) and near
+    // misses (one file). Advisory, like near misses: conflating a shared
+    // symbol with a cited agreement would inflate what corroboration means,
+    // and that strictness is the part worth keeping.
+    if (!stats.citations.isEmpty()) {
+        QHash<QString, QJsonArray> outlineCache;
+        auto symbolsFor = [&](const QString &relFile) -> const QJsonArray & {
+            const auto it = outlineCache.find(relFile);
+            if (it != outlineCache.end()) return it.value();
+            QJsonArray syms;
+            const QString absPath = QDir::isAbsolutePath(relFile)
+                ? relFile : root + QLatin1Char('/') + relFile;
+            const QJsonObject outline = FileOutline::compute(
+                absPath, FileOutline::Mode::Auto,
+                /*includeDocComment=*/false, /*maxSymbols=*/2000);
+            if (outline.value("ok").toBool())
+                syms = outline.value("symbols").toArray();
+            return *outlineCache.insert(relFile, syms);
+        };
+        struct SymGroup {
+            QSet<QString> lanes;
+            QSet<QString> files;
+            QStringList   locations;   // "file:line (lane)", insertion order
+        };
+        QHash<QString, SymGroup> bySymbol;
+        for (const auto &c : std::as_const(stats.citations)) {
+            if (c.line < 0) continue;                    // bare-file citation
+            const QString qualified =
+                enclosingSymbolForLine(symbolsFor(c.file), c.line);
+            if (qualified.isEmpty()) continue;
+            const int sep = qualified.lastIndexOf(QStringLiteral("::"));
+            const QString name = sep >= 0 ? qualified.mid(sep + 2) : qualified;
+            if (name.isEmpty()) continue;
+            SymGroup &g = bySymbol[name];
+            g.lanes.insert(c.lane);
+            g.files.insert(c.file);
+            g.locations << QStringLiteral("%1:%2 (%3)")
+                               .arg(c.file).arg(c.line).arg(c.lane);
+        }
+        QJsonArray shared;
+        QStringList names = bySymbol.keys();
+        std::sort(names.begin(), names.end());
+        for (const QString &name : std::as_const(names)) {
+            const SymGroup &g = bySymbol.value(name);
+            if (g.lanes.size() < minLanes) continue;
+            if (g.files.size() < 2) continue;   // findings / near misses own it
+            QJsonObject o;
+            o["symbol"] = name;
+            QJsonArray lanes, locs;
+            QStringList sortedLanes = g.lanes.values();
+            std::sort(sortedLanes.begin(), sortedLanes.end());
+            for (const QString &l : std::as_const(sortedLanes)) lanes.append(l);
+            for (const QString &l : g.locations) locs.append(l);
+            o["citing_lanes"] = lanes;
+            o["file_count"]   = g.files.size();
+            o["locations"]    = locs;
+            shared.append(o);
+        }
+        if (!shared.isEmpty()) {
+            env["shared_symbols"]       = shared;
+            env["shared_symbols_count"] = shared.size();
+            env["shared_symbols_hint"]  = QStringLiteral(
+                "%1 symbol(s) were cited by >= min_lanes distinct lanes in two "
+                "or more DIFFERENT files — the same defect shape in several "
+                "places, which a partition by subsystem produces and exact "
+                "(file, line) matching cannot see. ADVISORY: not findings, not "
+                "counted in total_findings.").arg(shared.size());
+        }
     }
     // ANTS-1344 — surface truncation. `truncated` is the headline flag;
     // `truncated_lanes` lets the caller know which inputs to re-fetch

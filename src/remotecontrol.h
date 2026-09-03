@@ -840,6 +840,13 @@ public:
     QJsonDocument cmdIndieReviewPartition(const QJsonObject &req);
     QJsonDocument cmdIndieReviewBrief(const QJsonObject &req);
     QJsonDocument cmdIndieReviewCorroborate(const QJsonObject &req);
+    // ANTS-4814 — drive corroboration against a synthetic caller_cwd without
+    // a MainWindow. m_main only supplies the focused-tab fallback, so the
+    // pass itself is independent of it. See
+    // tests/features/indie_review_shared_symbol/spec.md.
+    QJsonDocument cmdIndieReviewCorroborateForTest(const QJsonObject &req);
+    QJsonDocument corroborateWithRoot(const QJsonObject &req,
+                                      const QString &root);
     QJsonDocument cmdIndieReviewSynthesisPrompt(const QJsonObject &req);
     QJsonDocument cmdIndieReviewFoldIn(const QJsonObject &req);
 

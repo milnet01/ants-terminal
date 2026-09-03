@@ -77,6 +77,15 @@ struct Citation {
     QString context;  // ±40 chars
 };
 
+// ANTS-4814 — one citation, and which lane made it. The Citation struct
+// itself is per-report and carries no lane, because the engine's own
+// grouping happens while the lane is still in scope.
+struct LaneCitation {
+    QString file;      // project-relative
+    int     line = -1;
+    QString lane;
+};
+
 // ANTS-4817 — how far apart two citations may sit and still count as one
 // group. Both reports that measured this found their lanes 1 line apart and
 // put the useful tolerance at 2-3; 3 covers what they saw without widening far
@@ -122,6 +131,20 @@ struct CorroborateStats {
     // findings and do not change what corroboration means. They ride on
     // stats because it is already threaded through all three entry points.
     QList<CorroborateNearMiss> nearMisses;
+    // ANTS-4814 — every resolved citation, with the lane that made it.
+    //
+    // The engine keys agreement on (file, line) and so cannot see the OTHER
+    // shape of it: several lanes finding one defect SHAPE at unrelated
+    // locations. On a partition BY SUBSYSTEM that is the agreement that
+    // matters, because lanes do not share files, and identical file:line is
+    // therefore the one form of agreement the partition makes unlikely.
+    //
+    // Grouping them needs each citation's ENCLOSING SYMBOL, which is resolved
+    // from a file outline — a dependency this Qt6::Core-only engine does not
+    // have and should not gain. So the engine publishes the raw citations and
+    // the MCP layer, which already owns that machinery for workspace_search,
+    // does the grouping.
+    QList<LaneCitation> citations;
 };
 
 // ANTS-1288 — a suggested merge of two review lanes whose CLAUDE.md /
