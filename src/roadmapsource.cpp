@@ -407,7 +407,21 @@ std::optional<qint64> migratedProject(RoadmapStore &store,
         return std::nullopt;
     }
 
-    if (format != QStringLiteral("ants-v1"))
+    // ANTS-4803 — pass-headings joins ants-v1 as store-served. The DATA side
+    // always worked: the migration reads the dialect, folds each heading to a
+    // PASS-N-M id and stores sections, items and bodies correctly. What was
+    // missing was the RENDER, so the store was WRITE-ONLY for this dialect —
+    // rows nobody read, and every store-side benefit (source of truth,
+    // op:"render", drift detection, cross-project reporting) unavailable. The
+    // reporting project de-registered twice rather than leave stale rows in the
+    // machine-global figures.
+    //
+    // RoadmapRender now emits the dialect (Options::dialect), so the gate can
+    // open. Any OTHER dialect still returns here: this list and the render's
+    // are the same set, and a format that can be stored but not published is
+    // the trap this item was filed about.
+    if (format != QStringLiteral("ants-v1")
+        && format != QStringLiteral("pass-headings"))
         return std::nullopt;   // legitimately markdown-served (§ 5)
 
     return row->projectId;

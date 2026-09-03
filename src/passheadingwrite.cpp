@@ -145,6 +145,21 @@ QString passIdFromDesignator(const QString &pass) {
         : QStringLiteral("PASS-%1-%2-%3").arg(major).arg(minor).arg(sub);
 }
 
+QString designatorFromPassId(const QString &id) {
+    // Inverse of passIdFromDesignator. The store keeps only the synthesised
+    // id, so the render recovers the designator from it — a pass block cannot
+    // be emitted without one, and inventing a second place to keep it would be
+    // a second thing to keep in step.
+    static const QRegularExpression re(
+        QStringLiteral("^PASS-(\\d+)-(\\d+)(?:-([A-Za-z][A-Za-z0-9]*))?$"));
+    const QRegularExpressionMatch m = re.match(id);
+    if (!m.hasMatch()) return QString();
+    const QString sub = m.captured(3);
+    return sub.isEmpty()
+        ? QStringLiteral("%1.%2").arg(m.captured(1), m.captured(2))
+        : QStringLiteral("%1.%2.%3").arg(m.captured(1), m.captured(2), sub);
+}
+
 QString formatPassBlock(const QString &pass, const QString &headline,
                         const QString &keyword, const QString &body) {
     QString head = QStringLiteral("#### Pass %1").arg(pass);

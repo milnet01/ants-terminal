@@ -365,6 +365,15 @@ add_library(ants_roadmapparse_lib STATIC
     # core links PUBLIC, so it could not reach up. Every previous consumer
     # keeps it transitively and no call site changed.
     src/markdownscan.cpp
+    # ANTS-4803 — moved down from ants_core_lib for the same reason
+    # markdownscan.cpp was (ANTS-4504): the store RENDER needs
+    # formatPassBlock() to publish a pass-headings roadmap, and
+    # ants_roadmapstore_lib's link surface is Qt6::Core + Qt6::Sql BY DESIGN so
+    # that ANTS-3794's headless publish path stays headless. Reaching up to
+    # core would drag Qt6::Gui, Widgets, Network, DBus and libutil into it. This
+    # file is Qt6::Core-only and this library is the LEAF core links PUBLIC, so
+    # every previous consumer keeps it transitively and no call site changed.
+    src/passheadingwrite.cpp
 )
 target_link_libraries(ants_roadmapparse_lib
     PUBLIC  Qt6::Core
@@ -576,7 +585,6 @@ add_library(ants_core_lib STATIC
     src/changelogquery.cpp
     # ANTS-2126 — pass-headings (`#### Pass N.M`) roadmap_log writer
     # primitives (render / flip / annotate), mirror of changeloglog.cpp.
-    src/passheadingwrite.cpp
     src/roadmapfoldin.cpp
     # ANTS-1665 — regex-safety helpers (catastrophic-shape detector +
     # LIMIT_MATCH hardener) shared by auditengine and terminalwidget.
@@ -1787,6 +1795,7 @@ if(ANTS_TESTS)
                 tests/features/roadmap_query_slugs_only/test_roadmap_query_slugs_only.cpp
                 # ANTS-4616 store round-trip fidelity per body element type.
                 tests/features/roadmap_body_element_roundtrip/test_roadmap_body_element_roundtrip.cpp
+                tests/features/roadmap_render_pass_headings/test_roadmap_render_pass_headings.cpp
                 # ANTS-4610 section_index narrowed by name.
                 tests/features/roadmap_query_section_filter/test_roadmap_query_section_filter.cpp
                 # ANTS-4611 no_roadmap_loaded names the root it searched.

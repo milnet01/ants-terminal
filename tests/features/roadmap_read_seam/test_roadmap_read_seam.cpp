@@ -254,29 +254,31 @@ TEST(RoadmapReadSeam, Inv1DispatchMarker) {
         EXPECT_FALSE(err.isEmpty());
     }
 
-    // (3) A loaded pass-headings project. A store row existing does NOT imply
-    // this path can serve it: the migration reads all three dialects and the
-    // store backend serves ants-v1 only. Markdown, and NOT a refusal — an
-    // earlier draft of INV-1 would have broken every such project.
+    // (3) A loaded project in a dialect the store cannot PUBLISH. A store row
+    // existing does NOT imply this path can serve it: the migration reads all
+    // three dialects and the store backend serves only those it can render
+    // back (ants-v1, and pass-headings since ANTS-4803). Markdown, and NOT a
+    // refusal — an earlier draft of INV-1 would have broken every such project.
     {
         const QString passRoot = dir.filePath(QStringLiteral("passproj"));
+        // ANTS-4803 — the foreign-dialect fixture is a GITHUB TASK LIST, not
+        // pass-headings. pass-headings became store-served when its render
+        // landed, so it is no longer an example of this rule; github-task-list
+        // is the dialect the store still cannot publish and therefore still
+        // dispatches to markdown. The invariant is unchanged — only the
+        // dialect that demonstrates it.
         const QByteArray passHeadings =
-            "# Pass Roadmap\n"
+            "# Task List Roadmap\n"
             "\n"
-            "#### Pass 1.1 First pass\n"
-            "- **Status**: done\n"
-            "  Some prose.\n"
-            "\n"
-            "#### Pass 1.2 Second pass\n"
-            "- **Status**: planned\n"
-            "  More prose.\n";
+            "- [x] First task\n"
+            "- [ ] Second task\n";
         ASSERT_TRUE(writeFile(passRoot + QStringLiteral("/ROADMAP.md"), passHeadings));
         const QString passMarkdown = readAll(passRoot + QStringLiteral("/ROADMAP.md"));
         // Confirm the fixture really is the dialect this case is about, so a
         // pass here cannot come from it having been read as ants-v1.
         bool sawSignal = false;
         ASSERT_EQ(RoadmapParse::detectRoadmapFormat(passMarkdown.split('\n'), &sawSignal),
-                  QStringLiteral("pass-headings"));
+                  QStringLiteral("github-task-list"));
         ASSERT_TRUE(sawSignal);
 
         qint64 passProjectId = 0;
@@ -357,22 +359,24 @@ TEST(RoadmapReadSeam, Ants3815Inv5UnrecordedFormatDispatchesAsBefore) {
             << err.toStdString();
     }
 
-    // (c) a pass-headings project is still markdown-served, not refused. This is
+    // (c) a project in an unpublishable dialect is still markdown-served, not
+    // refused. This is
     // the case the invariant exists for: '' matches no dialect a file can
     // produce, so treating the stored value as authoritative before it is known
     // to be SET turns every pre-bump project into a refusal.
     {
         const QString passRoot = dir.filePath(QStringLiteral("passproj"));
+        // ANTS-4803 — the foreign-dialect fixture is a GITHUB TASK LIST, not
+        // pass-headings. pass-headings became store-served when its render
+        // landed, so it is no longer an example of this rule; github-task-list
+        // is the dialect the store still cannot publish and therefore still
+        // dispatches to markdown. The invariant is unchanged — only the
+        // dialect that demonstrates it.
         const QByteArray passHeadings =
-            "# Pass Roadmap\n"
+            "# Task List Roadmap\n"
             "\n"
-            "#### Pass 1.1 First pass\n"
-            "- **Status**: done\n"
-            "  Some prose.\n"
-            "\n"
-            "#### Pass 1.2 Second pass\n"
-            "- **Status**: planned\n"
-            "  More prose.\n";
+            "- [x] First task\n"
+            "- [ ] Second task\n";
         ASSERT_TRUE(writeFile(passRoot + QStringLiteral("/ROADMAP.md"), passHeadings));
         const QString passMarkdown = readAll(passRoot + QStringLiteral("/ROADMAP.md"));
 

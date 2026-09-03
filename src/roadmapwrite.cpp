@@ -212,6 +212,17 @@ DriftBreakdown externalDrift(const QHash<QString, QString> &preImage) {
 
 }  // namespace
 
+// ANTS-4803 — publish in the dialect the project was MIGRATED FROM, read from
+// the store rather than declared by the caller. A caller that chose would be a
+// second place for the answer to be wrong, and publishing a pass-headings
+// project in bullet form would rewrite the whole file into a dialect its own
+// reader does not recognise. '' is a pre-bump row and means ants-v1, which is
+// what an empty dialect selects in the render.
+QString dialectOf(RoadmapStore &store, qint64 projectId) {
+    const auto row = store.readProject(projectId, nullptr);
+    return row ? row->sourceFormat : QString();
+}
+
 // ANTS-4462 — the read half. Deliberately the SAME pre-image render and the
 // SAME externalDrift() the write path runs at step 1b, so "is my file in sync?"
 // and "what would this write overwrite?" can never answer differently. A second
@@ -224,6 +235,7 @@ std::optional<Drift> measureDrift(RoadmapStore &store, qint64 projectId,
                                   const QString &liveRoadmapPath) {
     RoadmapRender::Options pre;
     pre.liveRoadmapPath = liveRoadmapPath;
+    pre.dialect = dialectOf(store, projectId);
     pre.dryRun = true;
     // ANTS-4628 — an ENGAGED EMPTY scope, judging nothing. A staleness check
     // that failed the Layman gate would go dark on exactly the projects
@@ -297,6 +309,8 @@ Result commitAndRender(RoadmapStore &store, qint64 projectId,
     {
         RoadmapRender::Options pre;
         pre.liveRoadmapPath = liveRoadmapPath;
+        pre.dialect = dialectOf(store, projectId);
+    pre.dialect = dialectOf(store, projectId);
         pre.dryRun = true;
         // ANTS-4628 — an ENGAGED EMPTY scope, so this diagnostic render judges
         // nothing. It has to: the pre-image exists only to measure drift, and
@@ -338,6 +352,7 @@ Result commitAndRender(RoadmapStore &store, qint64 projectId,
     // rolled back.
     RoadmapRender::Options opts;
     opts.liveRoadmapPath = liveRoadmapPath;
+    opts.dialect = dialectOf(store, projectId);
     opts.dryRun = true;
     // ANTS-4628 / ANTS-3758 § 2.5 — the Layman gate judges what THIS write
     // touched, taken from the store rather than declared by the caller. Read

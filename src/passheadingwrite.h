@@ -45,6 +45,11 @@ QString passIdFromDesignator(const QString &pass);
 //   - **Status**: <keyword>
 //   <body, verbatim>
 // `body` is written verbatim under the Status line when non-empty.
+// ANTS-4803 — inverse of passIdFromDesignator, for the store render. The
+// store keeps the synthesised id, not the designator, so publishing a pass
+// block recovers "43.5" from "PASS-43-5". Empty for an id of another shape.
+QString designatorFromPassId(const QString &id);
+
 QString formatPassBlock(const QString &pass, const QString &headline,
                         const QString &keyword, const QString &body);
 

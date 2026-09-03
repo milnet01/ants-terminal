@@ -48,6 +48,18 @@ struct Options {
     // `op:render` case is exactly that caller: it touches no item, so it MUST
     // be able to say "judge nothing" and be obeyed.
     std::optional<QSet<qint64>> gateScope;
+    // ANTS-4803 — which dialect to EMIT. "" / "ants-v1" is the bullet form
+    // every other project uses; "pass-headings" emits `#### Pass N.M` blocks.
+    //
+    // Only the per-ITEM emission differs. Sections, ordering, narration,
+    // tables, the file split, the INV-5 gate and the drift report are the
+    // same machinery, because the store's shape is the same and only the
+    // surface spelling is not. A second render() would have been a second
+    // place for all of that to drift.
+    //
+    // The caller passes the project's STORED source_format, so a project
+    // cannot be published in a dialect it was not migrated from.
+    QString dialect;
 };
 
 struct Outcome {

@@ -2,6 +2,7 @@
 
 #include "roadmaprender.h"
 
+#include "passheadingwrite.h"   // ANTS-4803 — the pass-headings emission
 #include "roadmapparse.h"
 #include "roadmapstore.h"
 
@@ -71,6 +72,27 @@ QString withStop(const QString &value) {
 }
 
 } // namespace
+
+// ANTS-4803 — the pass-headings dialect's item emission, the sibling of
+// bulletText() below.
+//
+// Deliberately much thinner than the bullet form, and that asymmetry is the
+// format's, not an omission. A `#### Pass` block carries a designator, a
+// headline, a Status keyword and free body prose; it has no slot for the id
+// bracket, the status EMOJI, or the Kind / Source / Lanes / Layman trailers,
+// which is exactly what roadmap_log's `pass` argument already documents about
+// appending one. Emitting them would produce a file the reader
+// (parsePassHeadingBullets) does not read back as it was written, which is the
+// one thing a render must not do.
+//
+// The designator is recovered from the synthesised id, the only place the
+// store keeps it.
+QString passBlockText(const RoadmapStore::ItemWrite &it) {
+    const QString pass = PassHeadingWrite::designatorFromPassId(it.id);
+    return PassHeadingWrite::formatPassBlock(
+        pass, it.headline.simplified(),
+        PassHeadingWrite::passStatusKeyword(it.status), it.body);
+}
 
 // One bullet in full § 3.5 form.
 //
@@ -318,6 +340,10 @@ std::optional<Outcome> render(RoadmapStore &store, qint64 projectId,
     if (error)
         error->clear();
 
+    // ANTS-4803 — only the per-ITEM emission differs between dialects.
+    const bool passHeadings =
+        opts.dialect == QLatin1String("pass-headings");
+
     const auto project = store.readProject(projectId, error);
     if (!project) {
         if (error && error->isEmpty())
@@ -361,7 +387,18 @@ std::optional<Outcome> render(RoadmapStore &store, qint64 projectId,
         // test on purpose: an engaged EMPTY scope must judge NOTHING, which is
         // the `op:render` case, and an `isEmpty()` here would silently turn it
         // back into judge-everything and re-create the deadlock.
-        if (isOpen(it->status) && it->layman.isEmpty()
+        // ANTS-4803 — and not at all in a dialect with no Layman slot. A
+        // `#### Pass` block carries a designator, a headline, a Status keyword
+        // and prose; there is nowhere to put a Layman line, so an open pass
+        // item can never satisfy this gate. Applied here it would refuse every
+        // publish forever — "serve it" that still refuses, which is the defect
+        // this item was filed about wearing a different code. Measured: the
+        // first round-trip run refused two of three items for exactly this.
+        //
+        // Scoped to the emission format rather than waived per item, because
+        // the reason is the FORMAT's, not any item's: no author of a
+        // pass-headings roadmap has failed to do something they could have done.
+        if (!passHeadings && isOpen(it->status) && it->layman.isEmpty()
             && (!opts.gateScope || opts.gateScope->contains(ref.itemPk)))
             out.gateFailures.append(it->id.isEmpty() ? ref.idFold : it->id);
         itemOf.insert(ref.itemPk, *it);
@@ -448,7 +485,8 @@ std::optional<Outcome> render(RoadmapStore &store, qint64 projectId,
                     const auto it = itemOf.constFind(e.itemPk);
                     if (it == itemOf.constEnd())
                         continue;   // excluded by INV-4; already counted
-                    blocks.append(bulletText(*it));
+                    blocks.append(passHeadings ? passBlockText(*it)
+                                               : bulletText(*it));
                     ++out.itemsRendered;
                     if (!it->id.isEmpty())
                         out.renderedIds.append(it->id);   // ANTS-4141
