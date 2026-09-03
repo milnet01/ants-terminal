@@ -715,6 +715,48 @@ QJsonDocument RemoteControl::cmdIndieReviewCorroborate(const QJsonObject &req) {
             "resolve). Check that caller_cwd is the project the lanes "
             "reviewed.").arg(reportsRead).arg(stats.citationsSeen);
     }
+    // ANTS-4817 — near misses: lanes that cited ONE defect in the same file a
+    // line or two apart, which exact (file, line) matching reports as no
+    // agreement. Two readers quoting one statement rarely pick the same line —
+    // a multi-line call, a decorator or a docstring puts the quotable line
+    // somewhere different for each — so exact matching makes the
+    // highest-value agreements the least likely to be reported.
+    //
+    // Advisory, and deliberately NOT merged into `findings`. Corroboration is
+    // a claim about agreement, and promoting these would change what every
+    // existing report means without anyone asking for it. What they buy is
+    // that a ZERO becomes explainable: two independent reports measured
+    // total_findings:0 on healthy runs where every real agreement was missed.
+    //
+    // Omitted entirely when there are none, so the happy-path envelope is
+    // byte-identical to before.
+    if (!stats.nearMisses.isEmpty()) {
+        QJsonArray nms;
+        for (const auto &n : std::as_const(stats.nearMisses)) {
+            QJsonObject o;
+            o["file"]      = n.file;
+            o["line_from"] = n.lineFrom;
+            o["line_to"]   = n.lineTo;
+            QJsonArray lanes, lines, ctxs;
+            for (const QString &l : n.citingLanes) lanes.append(l);
+            for (const QString &l : n.lines)       lines.append(l);
+            for (const QString &c : n.contexts)    ctxs.append(c);
+            o["citing_lanes"] = lanes;
+            o["cited_lines"]  = lines;
+            o["contexts"]     = ctxs;
+            nms.append(o);
+        }
+        env["near_misses"]       = nms;
+        env["near_misses_count"] = nms.size();
+        env["near_miss_lines"]   = IndieReviewEngine::kNearMissLines;
+        env["near_misses_hint"]  = QStringLiteral(
+            "%1 group(s) of lanes cited the same file within %2 lines of one "
+            "another WITHOUT agreeing on a line, so they are not findings and "
+            "are not counted in total_findings. Two readers quoting one "
+            "statement rarely pick the same line. Read these before "
+            "concluding the lanes did not agree.")
+            .arg(nms.size()).arg(IndieReviewEngine::kNearMissLines);
+    }
     // ANTS-1344 — surface truncation. `truncated` is the headline flag;
     // `truncated_lanes` lets the caller know which inputs to re-fetch
     // smaller / paginate. Both omitted when no truncation occurred

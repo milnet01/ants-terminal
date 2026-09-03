@@ -1667,6 +1667,7 @@ if(ANTS_TESTS)
                 tests/features/mcp_indie_review_tools/test_mcp_indie_review_tools.cpp
                 tests/features/indie_review_brief_manifest/test_indie_review_brief_manifest.cpp
                 tests/features/indie_review_corroborate_dir/test_indie_review_corroborate_dir.cpp
+                tests/features/indie_review_near_miss/test_indie_review_near_miss.cpp
                 tests/features/mcp_debt_sweep_tools/test_mcp_debt_sweep_tools.cpp
                 tests/features/mcp_verify_changes_tool/test_mcp_verify_changes_tool.cpp
                 tests/features/mcp_plan_template_tool/test_mcp_plan_template_tool.cpp

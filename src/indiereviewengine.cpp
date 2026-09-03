@@ -1242,6 +1242,75 @@ QList<CorroboratedFinding> corroboratedFindings(
         if (a.file != b.file) return a.file < b.file;
         return a.line > b.line;
     });
+
+    // ANTS-4817 — near misses, so a zero is explainable.
+    //
+    // Same file, lines within kNearMissLines of each other, enough DISTINCT
+    // lanes to have met minLanes had they agreed on the line. Computed from
+    // the same coverage map, after `out` is built, and appended to stats
+    // only — `out` is untouched, so what corroboration means is unchanged.
+    //
+    // A (file, line) that already met minLanes is skipped: it is a finding
+    // and reporting it again as a near miss would double-count the run's
+    // strongest signal.
+    if (stats) {
+        // file → sorted list of (line, lanes) for the groups that MISSED.
+        QHash<QString, QList<QPair<int, QSet<QString>>>> missed;
+        for (auto it = coverage.constBegin(); it != coverage.constEnd(); ++it) {
+            if (it.value().size() >= minLanes) continue;   // already a finding
+            if (it.key().second < 0) continue;             // bare-file citation
+            missed[it.key().first].append({it.key().second, it.value()});
+        }
+        for (auto it = missed.begin(); it != missed.end(); ++it) {
+            auto &rows = it.value();
+            std::sort(rows.begin(), rows.end(),
+                      [](const auto &a, const auto &b) {
+                          return a.first < b.first;
+                      });
+            // Walk a window forward while consecutive lines stay within the
+            // tolerance, accumulating distinct lanes.
+            int i = 0;
+            while (i < rows.size()) {
+                int j = i;
+                QSet<QString> lanes = rows[i].second;
+                while (j + 1 < rows.size()
+                       && rows[j + 1].first - rows[j].first
+                              <= kNearMissLines) {
+                    ++j;
+                    lanes.unite(rows[j].second);
+                }
+                if (j > i && lanes.size() >= minLanes) {
+                    CorroborateNearMiss nm;
+                    nm.file     = it.key();
+                    nm.lineFrom = rows[i].first;
+                    nm.lineTo   = rows[j].first;
+                    nm.citingLanes = lanes.values();
+                    std::sort(nm.citingLanes.begin(), nm.citingLanes.end());
+                    for (const QString &ln : std::as_const(nm.citingLanes)) {
+                        // The line and context this lane actually cited
+                        // inside the span.
+                        for (int k = i; k <= j; ++k) {
+                            if (!rows[k].second.contains(ln)) continue;
+                            nm.lines << QString::number(rows[k].first);
+                            nm.contexts << contexts[{it.key(), rows[k].first}]
+                                               .value(ln);
+                            break;
+                        }
+                    }
+                    stats->nearMisses.append(nm);
+                }
+                i = j + 1;
+            }
+        }
+        std::sort(stats->nearMisses.begin(), stats->nearMisses.end(),
+                  [](const CorroborateNearMiss &a,
+                     const CorroborateNearMiss &b) {
+            if (a.citingLanes.size() != b.citingLanes.size())
+                return a.citingLanes.size() > b.citingLanes.size();
+            if (a.file != b.file) return a.file < b.file;
+            return a.lineFrom < b.lineFrom;
+        });
+    }
     return out;
 }
 

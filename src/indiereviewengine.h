@@ -77,6 +77,35 @@ struct Citation {
     QString context;  // ±40 chars
 };
 
+// ANTS-4817 — two or more lanes citing one defect in the same file a few
+// lines apart, which exact (file, line) matching reports as no agreement.
+//
+// Two readers quoting one statement rarely pick the same line: a multi-line
+// call, a decorator or a docstring puts the quotable line somewhere different
+// for each. Two independent reports measured the same rate — EVERY real
+// cross-lane agreement in their runs was missed, one 1 of 1 and one 2 of 2 —
+// so this is the common case rather than an edge one.
+//
+// Deliberately advisory. Corroboration is a claim about agreement, and a
+// tolerance that promoted these to findings would change what every existing
+// report means without anyone asking. This makes a zero EXPLAINABLE; it does
+// not make it non-zero. Promoting them behind an opt-in `line_slop` is filed
+// separately and is NOT what this struct does.
+// How far apart two citations may sit and still be one near miss. Both
+// reports that measured this pair found their lanes 1 line apart and put the
+// useful tolerance at 2-3; 3 covers what they saw without widening far enough
+// to sweep in unrelated citations from a dense file.
+inline constexpr int kNearMissLines = 3;
+
+struct CorroborateNearMiss {
+    QString     file;
+    int         lineFrom = -1;   // span, not a single line: the lanes disagree
+    int         lineTo   = -1;   // about the line, which is the whole point
+    QStringList citingLanes;     // sorted
+    QStringList lines;           // each lane's cited line, same order
+    QStringList contexts;        // each lane's ±40-char context, same order
+};
+
 // ANTS-4096 — why a corroboration pass found what it found. Every count is
 // over the citations the regexes MATCHED, before the min_lanes filter, so
 // `seen > 0 && resolved == 0` positively identifies a resolution failure and
@@ -87,6 +116,11 @@ struct CorroborateStats {
     int citationsSeen       = 0;  // file:line / bare-file tokens matched
     int citationsResolved   = 0;  // ... that named a real file under the root
     int citationsByBasename = 0;  // ... resolved only via the basename fallback
+    // ANTS-4817 — lanes that cited ONE defect a line or two apart, which
+    // exact (file, line) matching cannot see. Advisory: these are NOT
+    // findings and do not change what corroboration means. They ride on
+    // stats because it is already threaded through all three entry points.
+    QList<CorroborateNearMiss> nearMisses;
 };
 
 // ANTS-1288 — a suggested merge of two review lanes whose CLAUDE.md /

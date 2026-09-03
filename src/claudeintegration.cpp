@@ -9415,7 +9415,21 @@ void ClaudeIntegration::onMcpConnection() {
                         "parsed but nothing resolved — that case is NOT the "
                         "same as no two lanes agreeing. `total_input_bytes` "
                         "is 0 by design on the reports_dir path and is not a "
-                        "parse-failure signal.");
+                        "parse-failure signal. "
+                        "ANTS-4817 — the envelope also carries `near_misses` "
+                        "when lanes cited the SAME FILE within a few lines of "
+                        "one another without agreeing on a line. Two readers "
+                        "quoting one statement rarely pick the same line (a "
+                        "multi-line call, a decorator or a docstring puts the "
+                        "quotable line somewhere different for each), so "
+                        "exact matching makes the highest-value agreements "
+                        "the least likely to be reported \\u2014 two "
+                        "independent reports measured runs where EVERY real "
+                        "agreement was missed. These are ADVISORY: they are "
+                        "not findings, are not counted in `total_findings`, "
+                        "and do not change what corroboration means. Read "
+                        "them before concluding from a zero that the lanes "
+                        "did not agree. Absent when there are none.");
                     t["selection_hint"] = QStringLiteral(
                         "Use to cross-check two+ reviewers' findings "
                         "against shared evidence. Reduces false "
