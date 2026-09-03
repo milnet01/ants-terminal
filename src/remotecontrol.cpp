@@ -1069,29 +1069,41 @@ constexpr int kRcMaxNoteChars = 4096;
 // block leaves the file well-formed, and quoting one is a legitimate thing
 // to do, so it passes through untouched. The escape is CommonMark's
 // backslash form — `\``` renders as a literal ``` and opens nothing — and
-// it also falls outside the walkers' `startsWith("```")` toggle, so both
-// readers agree on the repaired line.
+// it also falls outside `fenceOpenerChar`'s scan, so both readers agree on
+// the repaired line.
+//
+// ANTS-4450 — the scan is MarkdownScan's, not a local toggle. The hand-rolled
+// one this replaced disagreed with the walkers on all three rules that decide
+// what closes a fence: it `trimmed()`, so any indent opened one; it ignored
+// the opener's CHARACTER, so a `~~~` line closed a ``` block; and it ignored
+// RUN LENGTH, so a ``` line closed a ```` block. The last was harmless only
+// while `fenceMask` was wrong the same way — ANTS-3678 taught it CommonMark
+// § 4.5 and left this guard behind, after which a body quoting fence syntax
+// was written unescaped and fenced off every bullet under it (ANTS-4823).
 void rcEscapeUnclosedFence(QString &text) {
     if (!text.contains(QLatin1Char('`')) && !text.contains(QLatin1Char('~')))
         return;
     QStringList ls = text.split(QChar('\n'));
-    // Toggle exactly as the walkers do, so "balanced" means the same thing
-    // to this guard as it does to the code that would later refuse.
-    int openAt = -1;
-    for (int i = 0; i < ls.size(); ++i) {
-        const QString t = ls.at(i).trimmed();
-        if (!t.startsWith(QStringLiteral("```")) &&
-            !t.startsWith(QStringLiteral("~~~"))) {
-            continue;
-        }
-        openAt = (openAt < 0) ? i : -1;
+    // Loop, because escaping one opener can promote a line that was fence
+    // CONTENT into a live opener: a ```` block holding a ``` line is the
+    // ordinary way a document quotes fence syntax, and neutralising the outer
+    // one exposes the inner. Each pass escapes exactly one line and an escaped
+    // line can never open a fence again, so this terminates in at most one
+    // pass per line.
+    bool changed = false;
+    for (;;) {
+        int openerLine = -1;   // 1-based line of an unclosed opener, else -1
+        MarkdownScan::fenceMask(ls, &openerLine);
+        if (openerLine < 1 || openerLine > ls.size()) break;
+        QString &l = ls[openerLine - 1];
+        // Indent is spaces only — `fenceOpenerChar` accepts no other kind, so
+        // the backslash lands immediately before the fence run.
+        int at = 0;
+        while (at < l.size() && l.at(at) == QLatin1Char(' ')) ++at;
+        l.insert(at, QLatin1Char('\\'));
+        changed = true;
     }
-    if (openAt < 0) return;
-    QString &l = ls[openAt];
-    int at = 0;
-    while (at < l.size() && l.at(at).isSpace()) ++at;
-    l.insert(at, QLatin1Char('\\'));
-    text = ls.join(QChar('\n'));
+    if (changed) text = ls.join(QChar('\n'));
 }
 
 // ANTS-3640 — the fenced-bullet refusals name the bullet being edited,

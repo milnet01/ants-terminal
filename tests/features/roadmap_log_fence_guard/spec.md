@@ -30,6 +30,8 @@ a `grep -n` and a hand edit.
   shared `rcScrubLeakedToolXml`, so every writer that already scrubs prose
   (`op:append`, `append_batch`, `flip` note, `annotate`, `amend_body`, the
   pass-format renderer, `changelog_log`) is covered by one chokepoint.
+  ANTS-4450 replaced its hand-rolled fence toggle with `MarkdownScan::fenceMask`,
+  which is what the walkers ask, and made it loop until the text is balanced.
 - `rcFenceOpenerHint(int)` — new, appended to the six
   `anchor_unsafe_context` refusal messages.
 - `GfmBullet::fenceOpenLine` / `AntsV1Bullet::fenceOpenLine` — new fields,
@@ -58,6 +60,21 @@ a `grep -n` and a hand edit.
 - **INV-4** — when a bullet genuinely sits inside a fence (a hand-written
   file the guard never saw), the `anchor_unsafe_context` refusal names the
   1-based line number of the fence *opener*, not just the bullet.
+- **INV-6** (ANTS-4450) — a fence closer must be at least as long as its
+  opener (CommonMark § 4.5), so a ```` ``` ```` line does not close a
+  ```` ```` ```` block and the body is escaped. Both openers end up
+  escaped: neutralising the outer one promotes the inner line to a live
+  opener.
+- **INV-7** (ANTS-4450) — a fence is closed only by its own character, so a
+  `~~~` line does not close a ```` ``` ```` block.
+- **INV-8** (ANTS-4450) — the other direction, and the one that corrupted
+  prose: a *balanced* long-fence block containing a shorter fence line is
+  written verbatim. The replaced toggle counted its three fence-shaped lines
+  as odd and spliced a backslash into the closer, breaking the author's
+  block and leaving the unterminated fence the guard exists to prevent.
+
+INV-2 and INV-8 are the pair that stops the guard becoming "always escape";
+INV-1 and INV-3 pass in both states and pin the original behaviour.
 
 ## Tests
 

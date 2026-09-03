@@ -262,3 +262,107 @@ TEST(roadmap_log_fence_guard, Inv4RefusalNamesTheFenceOpener) {
                                  .arg(openerLine)))
         << err.toStdString();
 }
+
+// INV-6 (ANTS-4450) — the guard must agree with MarkdownScan::fenceMask on
+// the CommonMark § 4.5 closer-length rule. A 4-backtick opener is not closed
+// by a 3-backtick line, so this body is unterminated and must be escaped.
+//
+// Pre-fix the guard's own toggle counted both lines and called the body
+// balanced, so nothing was escaped and the walkers — which DO honour run
+// length since ANTS-3678 — fenced off every bullet below. That is the exact
+// shape that took ANTS-3678's own body out of service (ANTS-4823).
+TEST(roadmap_log_fence_guard, Inv6ShortRunDoesNotCloseALongerOpener) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    ASSERT_TRUE(seed(tmp, freshRoadmap()));
+
+    RemoteControl rc(nullptr);
+    const QJsonObject a = appendBullet(
+        rc, tmp.path(), QStringLiteral("Bullet quoting fence syntax."),
+        QStringLiteral("A 3-backtick line does not close a 4-backtick block:\n"
+                       "````\n"
+                       "```\n"
+                       "and the prose continues after it."));
+    ASSERT_TRUE(a.value(QStringLiteral("ok")).toBool())
+        << QJsonDocument(a).toJson().toStdString();
+
+    const QJsonObject b = appendBullet(
+        rc, tmp.path(), QStringLiteral("Bullet below the quoted fence."),
+        QString());
+    ASSERT_TRUE(b.value(QStringLiteral("ok")).toBool())
+        << QJsonDocument(b).toJson().toStdString();
+    const QString belowId = b.value(QStringLiteral("id")).toString();
+    ASSERT_FALSE(belowId.isEmpty());
+
+    const QString md = readRoadmap(tmp.path());
+    // Both openers must be neutralised: escaping only the 4-backtick line
+    // promotes the 3-backtick line to a live opener that never closes.
+    EXPECT_TRUE(md.contains(QStringLiteral("  \\````\n")))
+        << "4-backtick opener was not escaped:\n" << md.toStdString();
+    EXPECT_TRUE(md.contains(QStringLiteral("  \\```\n")))
+        << "3-backtick line was left as a live opener:\n" << md.toStdString();
+
+    QJsonObject flip;
+    flip["caller_cwd"] = tmp.path();
+    flip["op"]         = QStringLiteral("flip");
+    flip["id"]         = belowId;
+    flip["to_status"]  = QStringLiteral("shipped");
+    const QJsonObject out = rc.cmdRoadmapLogFlipForTest(flip).object();
+    EXPECT_TRUE(out.value(QStringLiteral("ok")).toBool())
+        << QJsonDocument(out).toJson().toStdString();
+}
+
+// INV-7 (ANTS-4450) — a fence is closed only by its OWN character. A tilde
+// line does not close a backtick block. Pre-fix the guard counted the pair
+// and called it balanced.
+TEST(roadmap_log_fence_guard, Inv7TildeDoesNotCloseABacktickFence) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    ASSERT_TRUE(seed(tmp, freshRoadmap()));
+
+    RemoteControl rc(nullptr);
+    const QJsonObject a = appendBullet(
+        rc, tmp.path(), QStringLiteral("Bullet mixing fence characters."),
+        QStringLiteral("The culprit pair looked like this:\n"
+                       "```\n"
+                       "~~~\n"
+                       "and the prose continues after it."));
+    ASSERT_TRUE(a.value(QStringLiteral("ok")).toBool())
+        << QJsonDocument(a).toJson().toStdString();
+
+    const QString md = readRoadmap(tmp.path());
+    EXPECT_TRUE(md.contains(QStringLiteral("  \\```\n")))
+        << "backtick opener was not escaped:\n" << md.toStdString();
+    EXPECT_TRUE(md.contains(QStringLiteral("  \\~~~\n")))
+        << "tilde line was left as a live opener:\n" << md.toStdString();
+}
+
+// INV-8 (ANTS-4450) — the other direction, and the one the item's headline
+// names: a BALANCED 4-backtick block containing a 3-backtick line is
+// legitimate prose and must pass through untouched.
+//
+// Pre-fix the guard saw three fence-looking lines, called the count odd, and
+// spliced a backslash into the CLOSER — corrupting the author's block and
+// leaving the file with the unterminated fence it was meant to prevent.
+TEST(roadmap_log_fence_guard, Inv8BalancedLongFenceKeepsItsShortInnerLine) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    ASSERT_TRUE(seed(tmp, freshRoadmap()));
+
+    RemoteControl rc(nullptr);
+    const QJsonObject a = appendBullet(
+        rc, tmp.path(), QStringLiteral("Bullet quoting a whole fence sample."),
+        QStringLiteral("How this document quotes fence syntax:\n"
+                       "````\n"
+                       "```\n"
+                       "````\n"
+                       "which is balanced and must survive verbatim."));
+    ASSERT_TRUE(a.value(QStringLiteral("ok")).toBool())
+        << QJsonDocument(a).toJson().toStdString();
+
+    const QString md = readRoadmap(tmp.path());
+    EXPECT_FALSE(md.contains(QStringLiteral("\\```")))
+        << "balanced block must not be escaped:\n" << md.toStdString();
+    EXPECT_TRUE(md.contains(QStringLiteral("  ````\n  ```\n  ````\n")))
+        << "balanced block was not written verbatim:\n" << md.toStdString();
+}
