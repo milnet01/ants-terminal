@@ -14,6 +14,13 @@ for security-relevant changes.
 
 ### Added
 
+- **Cross-lane review corroboration now reports near misses, and can group them on request** (ANTS-4817)
+  Two reviewers who find the same problem but quote different lines of it
+  were previously reported as no agreement at all, with nothing to say why
+  the result was empty. Those groups are now listed as near misses, and an
+  optional tolerance merges them into one finding naming the span. Exact
+  matching is unchanged unless that tolerance is asked for.
+
 - **changelog_log and changelog_query can name a nested component changelog** (ANTS-4812)
   A project that ships a second changelog for a bundled, separately
   versioned component can now write and read it through the verbs, with an

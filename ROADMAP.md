@@ -51413,7 +51413,7 @@ volume classes, and the tooling/documentation gaps the run exposed.
   Source: finbreak-feedback-2026-09-01.
   Lanes: remotecontrol, mcp.
 
-- 📋 [ANTS-4817] **indie_review_corroborate misses two lanes citing one defect a line apart.**
+- ✅ [ANTS-4817] **indie_review_corroborate misses two lanes citing one defect a line apart.**
   Sibling of ANTS-4814 and a DIFFERENT mechanism, so filed separately.
   That one is same-shape-different-file; this one is same-defect-same-file
   at adjacent lines.
@@ -51454,6 +51454,36 @@ volume classes, and the tooling/documentation gaps the run exposed.
   its own: report near_misses[] for citations within N lines that did not
   meet min_lanes. That makes a zero EXPLAINABLE without changing what
   corroboration means, and it can ship before any tolerance is adopted.
+  Resolved (2026-09-03, 413d4a93 + 1739d52f): both halves built, as
+  specified.
+
+  near_misses[] — advisory, always reported, no opt-in. Groups in one file
+  whose lines sit within a fixed narrow window and whose distinct lane
+  count would have met min_lanes had the lanes agreed on a line. Not
+  findings, not counted in total_findings, and the envelope omits every
+  near-miss field when there are none. This is the half that makes a zero
+  EXPLAINABLE, which is what both reports said was the cheapest useful
+  step.
+
+  line_slop — the opt-in tolerance, default 0. When above zero, citations
+  within that many lines are grouped and a group with enough distinct lanes
+  becomes one finding carrying line_to, the span's end. The default stays
+  0 permanently, for the reason both reports gave: a tolerance shipping on
+  would redefine what every existing report means for callers who never
+  asked. A promoted group is not also listed as a near miss.
+
+  One clustering pass serves both, so there is no second notion of what
+  proximity means. CorroboratedFinding gained lineTo, which is -1 on an
+  exact match and therefore on every finding at the default.
+
+  tests/features/indie_review_near_miss, six invariants. Two are
+  new-behaviour pins and go red against the pre-fix engine; four are
+  boundary pins that hold in both states by construction, because the risk
+  in this change is over-reach rather than absence.
+
+  Not built, and it is the sibling item's rather than a gap here:
+  same-shape-different-file agreement, where lanes find one defect SHAPE at
+  unrelated locations.
   **Layman:** Two reviewers found the same bug but quoted different lines of it, so the tool saw no agreement.
   Kind: enhancement.
   Source: finbreak-feedback-2026-09-01.

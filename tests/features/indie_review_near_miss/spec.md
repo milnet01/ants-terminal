@@ -26,8 +26,8 @@ Near misses are **advisory**:
 
 - They are not findings, and are not counted in `total_findings`.
 - They do not change what corroboration means. Corroboration is a claim about
-  agreement, and a tolerance that promoted these would change what every
-  existing report means without anyone asking.
+  agreement, so promoting a group is something a caller opts into (below),
+  never something a run does on its own.
 - The envelope omits every near-miss field when there are none, so a run with
   no near misses is byte-identical to before.
 
