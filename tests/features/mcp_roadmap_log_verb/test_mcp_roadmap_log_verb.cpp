@@ -64,6 +64,25 @@ TEST(mcp_roadmap_log_verb, Inv1SchemaDeclared) {
     expect(contains(region, "\"implement\"") &&
            contains(region, "\"fix\""),
            "INV-1: kind enum lists implement + fix values");
+    // ANTS-4842 — the op enum and the descriptor prose are maintained
+    // separately, and set_body was dispatched and documented for a release
+    // while missing from the enum. A caller that reads the enum to decide
+    // whether an op exists then gets the wrong answer, and the reasoning that
+    // produces it is sound: absence from the enum really does mean "this build
+    // predates the op" the rest of the time.
+    //
+    // The body-editing ops are pinned by name rather than compared against the
+    // dispatcher, which would need a source path for the dispatching TU that
+    // the bundle does not define — and adding one recompiles the whole bundle
+    // (ANTS-4797). Named ops are the proportionate guard.
+    expect(contains(region, "opEnum.append(\"amend_body\")"),
+           "INV-1: op enum lists amend_body");
+    expect(contains(region, "opEnum.append(\"amend_headline\")"),
+           "INV-1: op enum lists amend_headline");
+    expect(contains(region, "opEnum.append(\"amend_field\")"),
+           "INV-1: op enum lists amend_field");
+    expect(contains(region, "opEnum.append(\"set_body\")"),
+           "INV-1: op enum lists set_body (ANTS-4842)");
     EXPECT_EQ(0, expect_failures());
 }
 

@@ -11905,6 +11905,12 @@ void ClaudeIntegration::onMcpConnection() {
                     opEnum.append("amend_body");   // ANTS-3406
                     opEnum.append("amend_headline");  // ANTS-4372
                     opEnum.append("amend_field");  // ANTS-4667
+                    // ANTS-4842 — set_body was dispatched and described for a
+                    // release while absent here, so a caller that checked the
+                    // enum concluded the op did not exist. That reasoning was
+                    // right once: an earlier session correctly read its absence
+                    // as a stale binary. The enum is the answer callers trust.
+                    opEnum.append("set_body");  // ANTS-4808
                     opEnum.append("create_section");
                     opEnum.append("bundle_row");
                     opEnum.append("backfill_dates");  // ANTS-4501
