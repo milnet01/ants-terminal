@@ -132,14 +132,51 @@ QString codeWithoutComments(const QString &line) {
     return code.trimmed();
 }
 
-// A line is a DECLARATION when it ends in `;` and opens no body. The brace
-// half is ANTS-4358's other edge: `static const auto f = [](int n) { … };`
-// ends in `;` and is unmistakably a definition, and so is a one-line
-// `struct Foo { int a; };`. Testing the semicolon alone called both
-// prototypes.
+// True when the `[…]` ending `head` is a lambda's capture list rather than an
+// array extent. `int m_sizes[3]` opens its bracket against the declarator;
+// `auto f = []` cannot.
+bool endsWithCaptureList(const QString &head) {
+    if (!head.endsWith(QLatin1Char(']'))) return false;
+    int depth = 0;
+    for (int i = head.size() - 1; i >= 0; --i) {
+        const QChar c = head.at(i);
+        if (c == QLatin1Char(']')) ++depth;
+        else if (c == QLatin1Char('[') && --depth == 0)
+            return i == 0 || !(head.at(i - 1).isLetterOrNumber()
+                               || head.at(i - 1) == QLatin1Char('_'));
+    }
+    return false;
+}
+
+// A line is a DECLARATION when it ends in `;` and opens no body. ANTS-4358
+// found the first half of the brace edge: `static const auto f = [](int n) {
+// … };` ends in `;` and is a definition, and so is a one-line `struct Foo {
+// int a; };`. ANTS-4821 found the other half — a brace also INITIALISES:
+//
+//     QTimer *m_timer{nullptr};      declaration
+//     int m_scrollOffset = 0;        declaration — the same member, and the
+//                                    two spellings used to disagree
+//
+// What precedes the first brace separates them. A body follows a parameter
+// list, a capture list or a class-key; an initialiser follows the declarator
+// it abuts.
 bool looksLikeDeclaration(const QString &line) {
     const QString code = codeWithoutComments(line);
-    return code.endsWith(QLatin1Char(';')) && !code.contains(QLatin1Char('{'));
+    if (!code.endsWith(QLatin1Char(';'))) return false;
+    const qsizetype brace = code.indexOf(QLatin1Char('{'));
+    if (brace < 0) return true;
+
+    const QString head = code.left(brace).trimmed();
+    // A parameter list anywhere before the brace: `int f() const { … }`,
+    // `auto f = [](int n) { … }`. A `)` cannot precede an initialiser's brace,
+    // because that brace is the first one on the line.
+    if (head.contains(QLatin1Char(')'))) return false;
+    if (endsWithCaptureList(head)) return false;
+    static const QStringList kClassKeys{
+        QStringLiteral("struct"),  QStringLiteral("class"),
+        QStringLiteral("union"),   QStringLiteral("enum"),
+        QStringLiteral("typedef"), QStringLiteral("template")};
+    return !kClassKeys.contains(head.left(head.indexOf(QLatin1Char(' '))));
 }
 
 // Per-call compiled anchors for one language. `def` holds 1-2 patterns

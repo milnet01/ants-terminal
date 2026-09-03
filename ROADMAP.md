@@ -12747,7 +12747,7 @@ fixes don't address. Roadmapped here as their own design tasks.
   Kind: fix.
   Source: in-session-2026-09-02 (ANTS-3678 fix).
 
-- 📋 [ANTS-4821] **A brace-initialised declaration is tagged `definition`, because any brace reads as a body.**
+- ✅ [ANTS-4821] **A brace-initialised declaration is tagged `definition`, because any brace reads as a body.**
   `SymbolQuery::looksLikeDeclaration` is `endsWith(';') &amp;&amp;
   !contains('{')`. The brace test was written for a function body on one
   line, and it cannot tell that brace from an INITIALISER.
@@ -12772,6 +12772,16 @@ fixes don't address. Roadmapped here as their own design tasks.
   Nobody is known to be relying on the current answer. The visible cost is
   that a caller filtering `kind == "declaration"` to find where a field is
   declared misses every brace-initialised one.
+  Resolved (2026-09-03): what precedes the FIRST brace decides. A
+  parameter list, a lambda capture list or a class-key opens a body;
+  anything else abuts a declarator the brace initialises. The three
+  forms that made the old rule tempting are locked as guards —
+  `struct Foo { int a; };`, `[](int n) { … };` and `[]{ … };` — and
+  each was verified to redden under the naive rule.
+
+  No reachable false positive from the `)` test: every anchor that
+  reaches this predicate forbids a `(` before the declarator, so a
+  `)` ahead of the first brace can only be a parameter list.
   **Layman:** Two ways of writing the same thing get labelled differently by the symbol finder — one is called a definition and the other a declaration.
   Kind: fix.
   Source: in-session-2026-09-02 (ANTS-3668 fix).

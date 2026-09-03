@@ -9,8 +9,10 @@ design: `docs/specs/ANTS-1303.md`.
 source tree spanning C++, Python, Lua, Shell):
 
 1. `findDefinition` returns the definition site, ordered definition
-   before declaration, with `kind` keyed off a trailing `;`
-   (header decl → `declaration`, body def → `definition`).
+   before declaration, with `kind` per ANTS-1303 INV-8 — a line ending
+   in `;` that opens no body is a `declaration`. A brace opens a body
+   only after a parameter list, a capture list or a class-key, so
+   `QTimer *m_t{nullptr};` is a declaration (ANTS-4821).
 2. `findCaller` returns call sites, excludes the definition line
    (INV-9), and attaches the best-guess `definition`.
 3. Per-language anchors fire for C++ / Python / Lua / Shell.

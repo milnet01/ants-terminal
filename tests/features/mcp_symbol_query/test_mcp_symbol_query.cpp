@@ -740,7 +740,11 @@ QString cppFormsRoot(QTemporaryDir &tmp) {
         "    QPushButton *m_claudeReviewBtn{nullptr};\n"
         "    static const int kFrozenRows;\n"
         "    QMap<QString, QStringList> m_byCategory;\n"
+        "    int m_sizes[3]{1, 2, 3};\n"
+        "    std::map<int, int> m_pairs{{1, 2}};\n"
         "};\n"
+        "\n"
+        "struct Point { int x; int y; };\n"
         "\n"
         "void onlyEverCalled();\n"))
         ;
@@ -776,6 +780,7 @@ QString cppFormsRoot(QTemporaryDir &tmp) {
         "        return 1;\n"
         "    };\n"
         "    static const auto makeFieldsProp = [](int n) { return n; };\n"
+        "    static const auto makeRawProp = []{ return 2; };\n"
         "}\n"
         "\n"
         "namespace SeamSpace {\n"
@@ -987,15 +992,43 @@ TEST(SymbolQueryCppForms, Ants3668DataMembersResolve) {
         EXPECT_TRUE(found) << "data member did not resolve: " << name;
     }
 
-    // A `;`-terminated member is tagged `declaration`, which is what it is.
-    // A brace-INITIALISED one (`T *m_p{nullptr};`) is not, because
-    // looksLikeDeclaration reads any `{` as a function body. That predates
-    // this change and is filed as ANTS-4821 rather than widened into here:
-    // it decides the kind of every C++ match, not only a member's.
+    // The kind itself is ANTS-4821's subject; this is the `=`-initialised
+    // spelling, which was already right.
     EXPECT_TRUE(hasKindAt(SymbolQuery::findDefinition(
                               root, QStringLiteral("m_scrollOffset"), o),
                           "members.h", "declaration"))
         << "int m_scrollOffset = 0;";
+}
+
+// ANTS-4821 — a brace that INITIALISES a declarator is not a body, so the
+// two spellings of one member must agree. The guards below are the forms
+// that make the naive "any `{` is a body" rule tempting: each keeps its
+// `definition` because a parameter list, a capture list or a class-key
+// precedes the brace.
+TEST(SymbolQueryCppForms, Ants4821BraceInitIsADeclaration) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString root = cppFormsRoot(tmp);
+    SymbolQuery::Options o;
+
+    for (const char *name : {"m_claudeReviewBtn",  // T *m_p{nullptr};
+                             "m_pairs",            // nested `{{1, 2}}`
+                             "m_sizes"})           // array extent then `{`
+        EXPECT_TRUE(hasKindAt(SymbolQuery::findDefinition(
+                                  root, QString::fromUtf8(name), o),
+                              "members.h", "declaration"))
+            << "brace-initialised member tagged a definition: " << name;
+
+    // Guards: bodies that also end the line in `;`.
+    EXPECT_TRUE(hasKindAt(
+        SymbolQuery::findDefinition(root, QStringLiteral("Point"), o),
+        "members.h", "definition")) << "struct Point { int x; int y; };";
+    EXPECT_TRUE(hasKindAt(
+        SymbolQuery::findDefinition(root, QStringLiteral("makeFieldsProp"), o),
+        "seam.cpp", "definition")) << "lambda with a parameter list";
+    EXPECT_TRUE(hasKindAt(
+        SymbolQuery::findDefinition(root, QStringLiteral("makeRawProp"), o),
+        "seam.cpp", "definition")) << "lambda with no parameter list: `[]{`";
 }
 
 // A member whose type carries a COMMA in its template arguments. The same

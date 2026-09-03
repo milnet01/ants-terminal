@@ -273,6 +273,11 @@ for security-relevant changes.
 
 ### Fixed
 
+- **`find_definition` tags a brace-initialised member `declaration`, so both spellings of one field agree** (ANTS-4821)
+  A brace only opens a body when a parameter list, a lambda capture list
+  or a class-key precedes it; otherwise it initialises the declarator it
+  abuts. `QTimer *m_t{nullptr};` now matches `int m_x = 0;`.
+
 - **The Review Changes dialog refreshes when a file is saved in place** (ANTS-2229)
   Closed by the watcher rewrite already shipped under ANTS-3509: edits to
   an existing file, and edits anywhere in a subdirectory, now refresh the
