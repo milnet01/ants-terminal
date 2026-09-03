@@ -51259,7 +51259,7 @@ volume classes, and the tooling/documentation gaps the run exposed.
   Source: snatch-feedback-2026-09-02.
   Lanes: remotecontrol, mcp.
 
-- 📋 [ANTS-4814] **indie_review_corroborate keys on file:line, so the same defect in three files reads as no agreement.**
+- ✅ [ANTS-4814] **indie_review_corroborate keys on file:line, so the same defect in three files reads as no agreement.**
   Games_Hub resolved 64 of 66 citations across 19 lane reports and got
   exactly ONE corroborated finding -- correct against the documented
   contract, which keys on (file, line), and useless as the answer to the
@@ -51302,6 +51302,44 @@ volume classes, and the tooling/documentation gaps the run exposed.
   line, which workspace_search already computes via enclosing_symbol:true.
   That reuses an existing capability instead of adding a second notion of
   what a citation is about.
+  Resolved (2026-09-03, 56071bf3): shared_symbols[] added to the
+  corroboration envelope.
+
+  Both open design questions this item flagged are settled the way the item
+  itself argues for. WHAT COUNTS: the enclosing symbol, per the second
+  report's proposal, which the item records as more specific and as
+  reusing an existing capability rather than adding a second notion of what
+  a citation is about. Taken UNQUALIFIED, because the measured case was one
+  defect repeated across sibling classes whose qualified names differ by
+  construction. HOW REPORTED: a separate weaker signal, not corroboration —
+  the item warns that conflating the two would inflate what corroboration
+  means, and that strictness is the part worth keeping.
+
+  Reported only when a group spans two or more DISTINCT FILES. That is what
+  keeps the three signals disjoint: one location is a finding, one file is
+  a near miss, several files is this, so one agreement is never reported
+  twice. Absent from the envelope entirely when there is nothing to report.
+
+  No similarity scoring anywhere, which both reports asked for by name.
+
+  Lives at the MCP layer rather than the engine: grouping needs a file
+  outline, which the Qt6::Core-only engine does not depend on and should
+  not. The engine publishes its resolved citations with the lane that made
+  each one.
+
+  tests/features/indie_review_shared_symbol, four invariants, INV-1
+  red-proven. Driving it needed a test seam, so the verb was split into a
+  thin MainWindow guard plus corroborateWithRoot — the same shape the
+  roadmap_log ops use.
+
+  Worth knowing: that split moved code out of a fixed-window source scrape
+  and an existing test caught it correctly rather than passing vacuously.
+  Repointed at the function that now holds the envelope.
+
+  Not built, deliberately: cross-language grouping, where one defect
+  appears in files of different languages and the function names do not
+  match. Nothing mechanical groups those, and a heuristic that tried would
+  be the guesswork both reports ruled out.
   **Layman:** The tool that spots when several reviewers found the same problem only notices if they point at the identical line.
   Kind: enhancement.
   Source: games-hub-feedback-2026-09-01.

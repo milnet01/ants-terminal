@@ -14,6 +14,12 @@ for security-relevant changes.
 
 ### Added
 
+- **Review corroboration now spots the same problem found in several different files** (ANTS-4814)
+  When reviewers each cover a different part of the codebase they rarely
+  cite the same line, so finding one recurring problem in several places
+  used to read as no agreement at all. Those are now reported, grouped by
+  the function they sit in.
+
 - **Cross-lane review corroboration now reports near misses, and can group them on request** (ANTS-4817)
   Two reviewers who find the same problem but quote different lines of it
   were previously reported as no agreement at all, with nothing to say why
