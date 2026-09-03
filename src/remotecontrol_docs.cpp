@@ -1444,9 +1444,20 @@ QJsonDocument RemoteControl::cmdProjectSettings(const QJsonObject &req) {
         // "no override needed" as "nothing to configure" is how a project
         // stays unconfigured. Derived from the same kKeys set, so the two
         // fields can't disagree about what the recognised keys are.
-        QJsonArray undeclared;
-        for (const QString &k : kKeys)
-            if (!declared.contains(k)) undeclared.append(k);
+        //
+        // ANTS-4815 — but split by whether the caller can ACT on it. op:set
+        // refuses a path that is not on disk, so a key with no candidate can
+        // never leave this array: a project that legitimately keeps no specs
+        // had a permanently non-empty `undeclared`, and could not tell "not
+        // configured yet" from "deliberately has none". What that trains is
+        // ignoring the array, which costs the cases where it IS a to-do list.
+        const ProjectSettings::UndeclaredSplit split =
+            ProjectSettings::splitUndeclared(rootCanonical, sug, kKeys,
+                                             declared.keys());
+        const QJsonArray undeclared =
+            QJsonArray::fromStringList(split.undeclared);
+        const QJsonArray unavailable =
+            QJsonArray::fromStringList(split.unavailable);
 
         QJsonObject o;
         o[QStringLiteral("ok")]         = true;
@@ -1456,6 +1467,8 @@ QJsonDocument RemoteControl::cmdProjectSettings(const QJsonObject &req) {
             o[QStringLiteral("declared")] = declared;
         if (!undeclared.isEmpty())
             o[QStringLiteral("undeclared")] = undeclared;
+        if (!unavailable.isEmpty())
+            o[QStringLiteral("unavailable")] = unavailable;
         if (!declaredMissing.isEmpty())
             o[QStringLiteral("declared_missing")] = declaredMissing;
         return QJsonDocument(o);

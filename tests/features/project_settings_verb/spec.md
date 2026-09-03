@@ -84,6 +84,23 @@ the ANTS-2160 suite used for its consumer-wiring check.
   predates the field. A 0 there was read as a measurement: a ~3000-line
   project was reported as containing no source at all.
 
+- **INV-23** (ANTS-4815) — the recognised keys with no declaration are
+  partitioned by whether the caller can act on them.
+  `ProjectSettings::splitUndeclared` puts a key in `undeclared` when a
+  candidate path is on disk (so `op:"set"` will accept it) and in
+  `unavailable` when none is (so `op:"set"` refuses `bad_path`, and the entry
+  could only ever be cleared by creating a directory the project has chosen
+  not to have). The partition is exact: every undeclared key lands in one
+  half and no key in both. A key counts as having a candidate when the
+  `Suggestion` proposes one — which also carries an injected `ResolvedAux`
+  path differing from the convention — or when the conventional path exists;
+  the second half is what keeps the INV-2 short-circuit honest, since detect
+  returns there having proposed nothing at all. Before the split, a project
+  that legitimately keeps no specs carried those keys forever, and could not
+  distinguish "not configured yet" from "deliberately has none" — which
+  trains a caller to ignore the array, costing the cases where it is a real
+  to-do list.
+
 - **INV-5/6/10/13 (wiring)** — `project_settings` registered
   `CallerCwdContract::Required` in `claudeintegration.cpp`'s
   `callerCwdContractFor()` + `registerToolProvider`; the handler writes
@@ -97,5 +114,12 @@ Against pre-implementation code `ProjectSettings::detect`/`applyWrite` do
 not exist (compile error) and the verb/registration grep strings are
 absent, so every assertion fails. Verified before wiring the
 implementation.
+
+INV-23 was proved red differently, because a missing symbol fails to
+compile rather than fails an assertion. `splitUndeclared` was stubbed to
+the pre-fix behaviour — every undeclared key into `undeclared` — and both
+INV-23 tests failed on their `unavailable` assertions while their
+`undeclared` assertions still passed, so neither can be satisfied by
+classifying every key one way.
 
 Label: `features;fast`.

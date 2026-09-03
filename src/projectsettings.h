@@ -151,6 +151,36 @@ struct ResolvedAux {
 
 Suggestion detect(const QString &rootCanonical, const ResolvedAux &aux = {});
 
+// ANTS-4815 — partition the recognised keys a project has NOT declared.
+//
+// `undeclared` is a to-do list: a candidate path is on disk, so op:set will
+// accept a declaration for that key. `unavailable` is not a to-do list: no
+// candidate exists, and op:set refuses `bad_path` for a path that is not
+// there, so such an entry could only ever be cleared by creating a directory
+// the project has chosen not to have. Reporting both in one array is what
+// makes the array ignorable — and a caller who learns to ignore it also
+// ignores it in the cases where it IS actionable.
+//
+// A key counts as having a candidate when `s` already proposes one — which
+// also carries an injected ResolvedAux path that differs from the convention
+// — or, failing that, when the CONVENTIONAL path for that key exists. The
+// second half matters because detect returns early on a configured project
+// (INV-2) and on an empty one, having proposed nothing at all; classifying
+// from the suggestion alone would call every key unavailable there.
+//
+// Limitation, stated rather than hidden: a project keeping (say) its docs
+// somewhere unconventional and passing no ResolvedAux is reported
+// `unavailable` though the key is declarable by hand. Widening that means
+// searching for the layout rather than probing it, which is a different job.
+struct UndeclaredSplit {
+    QStringList undeclared;    // a path exists; op:set would accept it
+    QStringList unavailable;   // nothing to point at; op:set would refuse
+};
+UndeclaredSplit splitUndeclared(const QString &rootCanonical,
+                                const Suggestion &s,
+                                const QStringList &recognisedKeys,
+                                const QStringList &declaredKeys);
+
 // Merge `changes` into `existing` for an op:"set"/"init" write. `changes`
 // carries only the caller-supplied keys; a JSON-null value REMOVES the key.
 // Recognised keys are validated at write-time under the canonical root

@@ -536,4 +536,40 @@ std::optional<QJsonObject> applyWrite(const QJsonObject &existing,
     return out;
 }
 
+UndeclaredSplit splitUndeclared(const QString &rootCanonical,
+                                const Suggestion &s,
+                                const QStringList &recognisedKeys,
+                                const QStringList &declaredKeys) {
+    UndeclaredSplit out;
+    for (const QString &k : recognisedKeys) {
+        if (declaredKeys.contains(k)) continue;
+        bool candidate = false;
+        if (k == QLatin1String("source_roots")) {
+            // Either a suggestion (misplaced layout) or the defaults already
+            // in effect: both mean a real directory holds source, so the key
+            // is declarable even where declaring it changes nothing.
+            candidate = s.sourceRoots.has_value() || s.wouldUseRoots.has_value()
+                        || validDirUnder(rootCanonical, QStringLiteral("src"));
+        } else if (k == QLatin1String("test_roots")) {
+            candidate = s.testRoots.has_value()
+                        || validDirUnder(rootCanonical, QStringLiteral("tests"))
+                        || validDirUnder(rootCanonical, QStringLiteral("test"));
+        } else if (k == QLatin1String("docs_dir")) {
+            candidate = s.docsDir.has_value()
+                        || validDirUnder(rootCanonical, QStringLiteral("docs"));
+        } else if (k == QLatin1String("specs_dir")) {
+            candidate = s.specsDir.has_value()
+                        || validDirUnder(rootCanonical, QStringLiteral("docs/specs"));
+        } else if (k == QLatin1String("roadmap")) {
+            candidate = s.roadmap.has_value()
+                        || validFileUnder(rootCanonical, QStringLiteral("ROADMAP.md"));
+        } else if (k == QLatin1String("changelog")) {
+            candidate = s.changelog.has_value()
+                        || validFileUnder(rootCanonical, QStringLiteral("CHANGELOG.md"));
+        }
+        (candidate ? out.undeclared : out.unavailable) << k;
+    }
+    return out;
+}
+
 }  // namespace ProjectSettings

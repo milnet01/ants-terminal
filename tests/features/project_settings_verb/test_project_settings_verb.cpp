@@ -376,6 +376,80 @@ TEST(ProjectSettingsVerb, StandardLayoutProposesNoAuxKeys) {
         << "\"no override needed\" was only ever true of source_roots";
 }
 
+// ANTS-4815 — a recognised key with no declaration is split by whether the
+// caller can act on it. op:set refuses a path that is not on disk, so before
+// the split a project that legitimately keeps no docs/ or docs/specs carried
+// those keys in `undeclared[]` forever, clearable only by creating
+// directories it did not want. That is indistinguishable from a genuine
+// to-do, so the array as a whole became ignorable.
+TEST(ProjectSettingsVerb, Ants4815UndeclaredSplitsOnActionability) {
+    QTemporaryDir dir;
+    const QString root = canon(dir);
+    writeFile(root + "/src/a.c", cFile("a"));
+    writeFile(root + "/CHANGELOG.md", QStringLiteral("# c\n"));
+    // Deliberately absent: docs/, docs/specs/, ROADMAP.md, tests/.
+
+    static const QStringList kKeys = {
+        QStringLiteral("source_roots"), QStringLiteral("test_roots"),
+        QStringLiteral("docs_dir"), QStringLiteral("specs_dir"),
+        QStringLiteral("roadmap"), QStringLiteral("changelog")};
+
+    const ProjectSettings::Suggestion s = ProjectSettings::detect(root);
+    const ProjectSettings::UndeclaredSplit split =
+        ProjectSettings::splitUndeclared(root, s, kKeys, QStringList{});
+
+    // On disk, so op:set would accept a declaration for these.
+    EXPECT_TRUE(split.undeclared.contains(QStringLiteral("changelog")))
+        << "CHANGELOG.md exists — declaring it is actionable";
+    EXPECT_TRUE(split.undeclared.contains(QStringLiteral("source_roots")))
+        << "src/ exists — declaring source_roots is actionable";
+
+    // Not on disk: op:set refuses bad_path, so these are not a to-do list.
+    EXPECT_TRUE(split.unavailable.contains(QStringLiteral("docs_dir")));
+    EXPECT_TRUE(split.unavailable.contains(QStringLiteral("specs_dir")));
+    EXPECT_TRUE(split.unavailable.contains(QStringLiteral("roadmap")));
+    EXPECT_TRUE(split.unavailable.contains(QStringLiteral("test_roots")));
+
+    // The partition is exactly the undeclared set — nothing invented, nothing
+    // dropped, and no key in both halves.
+    EXPECT_EQ(split.undeclared.size() + split.unavailable.size(), kKeys.size());
+    for (const QString &k : split.undeclared)
+        EXPECT_FALSE(split.unavailable.contains(k)) << k.toStdString();
+
+    // A declared key appears in neither half.
+    const ProjectSettings::UndeclaredSplit declaredOut =
+        ProjectSettings::splitUndeclared(
+            root, s, kKeys, QStringList{QStringLiteral("changelog")});
+    EXPECT_FALSE(declaredOut.undeclared.contains(QStringLiteral("changelog")));
+    EXPECT_FALSE(declaredOut.unavailable.contains(QStringLiteral("changelog")));
+}
+
+// ANTS-4815 — detect returns early on a configured project (INV-2) having
+// proposed no aux keys at all, so classifying from the Suggestion alone would
+// call every key unavailable there. The split probes the conventional path as
+// well, which is what keeps that case honest.
+TEST(ProjectSettingsVerb, Ants4815ConfiguredProjectStillSeesPathsOnDisk) {
+    QTemporaryDir dir;
+    const QString root = canon(dir);
+    writeFile(root + "/src/a.c", cFile("a"));
+    writeFile(root + "/docs/x.md", QStringLiteral("# x\n"));
+    writeFile(root + "/.ants/project.json",
+              QStringLiteral("{\"source_roots\": [\"src\"]}\n"));
+
+    const ProjectSettings::Suggestion s = ProjectSettings::detect(root);
+    ASSERT_TRUE(s.present) << "fixture must take the configured short-circuit";
+    ASSERT_FALSE(s.docsDir.has_value())
+        << "the short-circuit proposes nothing — that is the trap being tested";
+
+    const ProjectSettings::UndeclaredSplit split = ProjectSettings::splitUndeclared(
+        root, s, QStringList{QStringLiteral("docs_dir"), QStringLiteral("roadmap")},
+        QStringList{});
+    EXPECT_TRUE(split.undeclared.contains(QStringLiteral("docs_dir")))
+        << "docs/ is on disk, so declaring docs_dir is actionable";
+    EXPECT_TRUE(split.unavailable.contains(QStringLiteral("roadmap")))
+        << "no ROADMAP.md in this fixture";
+}
+
 // INV-22 (ANTS-4092) — a gitignored top-level dir is excluded from the walk
 // rather than ranked as a source_root. Pre-fix, detect ignored .gitignore
 // entirely while workspace_search defaults to respect_gitignore:true, so on a
