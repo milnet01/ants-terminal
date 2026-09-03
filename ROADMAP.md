@@ -49621,6 +49621,217 @@ shipped note, which is the staleness discipline ANTS-4741 exists to prompt.
   Source: OneUp_Ants_MCP_Feedback.md 2026-08-31.
   Lanes: mcp, indiereview.
 
+### Ants MCP feedback from CC sessions — 2026-09-03 triage
+
+Thirteen contributor files, drained together. Recurring themes: file_outline has
+no shell family (three projects), changelog_log reuses a defect-phrased roadmap
+headline (three), and a transport timeout returns no envelope at all (two verbs,
+two projects).
+
+- 📋 [ANTS-4826] **file_outline has no shell family, so a .sh script outlines to nothing while find_definition accepts lang:"sh".**
+  Reported independently by DOOM, OneUp and RetroDB. The mode enum is auto/cpp/py/md/json/generic/glsl/html; find_definition's lang enum includes sh, so the two verbs disagree about whether shell is supported. Emit `name() {` / `function name` definitions and top-level NAME= as kind "const", mirroring ANTS-4090. Detect on .sh/.bash and on a #!/...sh shebang, since many scripts are extensionless. Failing capability, the honest half is naming the supported set in the unknown-language reply.
+  **Layman:** Outlining a shell script returns nothing useful, so sessions fall back to reading the whole file.
+  Kind: enhancement.
+  Source: cc-feedback-2026-09-03 DOOM/OneUp/RetroDB.
+
+- 📋 [ANTS-4827] **file_outline auto maps a .spec file to unknown, though it is Python syntax.**
+  mode:"py" works, but only for a caller who already knows the file is Python, which is what the outline was going to tell them.
+  **Layman:** A PyInstaller build file is Python but the outliner does not recognise the extension.
+  Kind: enhancement.
+  Source: cc-feedback-2026-09-03 RetroDB.
+
+- 📋 [ANTS-4828] **find_definition returns zero for a C function whose return type, name and parameters sit on separate lines.**
+  Found on the 1997 id Software playsim, where that style is the norm. The reply is ok:true with definitions_count:0 and no hint, so a zero is indistinguishable from a correct one; file_outline resolves the same files. Either allow newlines between the type, name and parameter list, or, where the matcher is not to be touched, add a hint when a workspace_search for the symbol hits a source file, as find_sources already does.
+  **Layman:** A common older C style makes functions invisible to the "where is this defined?" verb.
+  Kind: fix.
+  Source: cc-feedback-2026-09-03 DOOM.
+
+- 📋 [ANTS-4829] **changelog_log op:"add_from_roadmap" has no headline override, so a defect-phrased roadmap headline lands verbatim in the release notes.**
+  Three projects hit this independently and each rewrote a whole batch by hand. ANTS-4759 gave tools/check-shipped-coverage.sh a byte-identity report; the verb side is untouched, and op:"add_batch" reaches the same path for an id-only entry. `body` already overrides the reused Layman line, so accepting `headline` the same way keeps the id, the Kind-to-category derivation and the citation. A refusal would not help: the verb cannot tell a defect-phrased headline from a feature-phrased one.
+  **Layman:** Release notes generated from roadmap items describe the bug instead of the fix.
+  Kind: enhancement.
+  Source: cc-feedback-2026-09-03 DOOM/Slipcase/Snatch.
+
+- 📋 [ANTS-4830] **A mutation_probe transport timeout cannot be told from a leaked mutant, and the error names no path.**
+  ANTS-4736's budget guard fired on neither call. Games_Hub observed the file still mutated with nothing running; LocalWebServerManager observed a mutation present and then restored seconds later. From the caller's side those are one observation, and both wrong reactions are worse than the timeout: hand-repairing races the restore, committing ships a mutant. Cheapest half is to say in the description that a transport timeout means UNKNOWN and to re-read rather than repair. Stronger: hold the baseline server-side and restore on disconnect. Either way the timeout error should name the path that may be dirty.
+  **Layman:** When a mutation test times out, the caller cannot tell whether a damaged source file is about to be repaired or left that way.
+  Kind: fix.
+  Source: cc-feedback-2026-09-03 Games_Hub/LocalWebServerManager.
+
+- 📋 [ANTS-4831] **mutation_probe's transport_budget_sec cannot extend a batch, so the verb is unusable on a project that must rebuild.**
+  Passing 900 still left the bridge read timeout bounding the call, and one rebuild-plus-run cycle on that project costs more than the default budget, so not even a single mutation fits. A session cannot change ANTS_MCP_READ_TIMEOUT_S for itself. Echo an effective_budget_sec beside the requested one and refuse up front with the arithmetic when not one mutation fits, since a refusal leaves nothing dirty.
+  **Layman:** The argument that looks like it buys more time does not.
+  Kind: fix.
+  Source: cc-feedback-2026-09-03 Games_Hub.
+
+- 📋 [ANTS-4832] **No roadmap_log op reaches a store-backed ROADMAP.md's preamble, so a stale fact there cannot be fixed.**
+  Reported by a project whose preamble names a version three releases old. Every op addresses a bullet or a section. A hand edit is correctly discarded by op:"render" (ANTS-4462), which is what makes the text unreachable rather than merely awkward, and a session that edits it without rendering loses the change at the next unrelated write. Wants an op:"amend_preamble" in amend_body's shape, or a render message naming the op that would own it.
+  **Layman:** The paragraph at the top of the roadmap cannot be corrected by any tool.
+  Kind: enhancement.
+  Source: cc-feedback-2026-09-03 Games_Hub.
+
+- 📋 [ANTS-4833] **changelog_log op:"release" does not echo the date it stamps, the one field a caller cannot predict.**
+  Confirmed by fields_unmatched rather than inferred. The date defaults to the server's today, and the heading date is what a release-notes grep keys on. It is already computed to render the heading; echo it on the real write as well as the dry run.
+  **Layman:** The release preview shows everything except which date the heading will carry.
+  Kind: fix.
+  Source: cc-feedback-2026-09-03 Games_Hub.
+
+- 📋 [ANTS-4834] **apply_edits dry_run returns files_written and edits_applied, the past-tense-key defect ANTS-4463 fixed on roadmap_log.**
+  Measured minutes apart against roadmap_log's corrected shape in the same session. Apply ANTS-4463's resolution: emit would_write / would_apply and omit files_written, applied and edits_applied. Keep skipped[] and the candidates / near_miss_line diagnostics, which are the reason to run a preview at all. The two verbs disagreeing is worse than either convention alone.
+  **Layman:** A preview that changes nothing reports that it wrote a file.
+  Kind: fix.
+  Source: cc-feedback-2026-09-03 LocalWebServerManager.
+
+- 📋 [ANTS-4835] **mutation_probe's require_green_baseline is unreachable for a suite whose only signal is the exit code.**
+  Reported by a project whose verify_*.py scripts are the suite by design. baseline_unreadable fires when the baseline exits 0 with no parseable summary, and the documented workaround is to turn the gate off. ANTS-4401's reasoning holds as a DEFAULT; an explicit opt-in (require_green_baseline:"exit_code", or a caller-supplied summary regex) says which signal that runner gives without weakening it for anyone else.
+  **Layman:** The safety check that keeps a mutation result honest is refused on projects that do not use a recognised test runner.
+  Kind: enhancement.
+  Source: cc-feedback-2026-09-03 LottoTracker.
+
+- 📋 [ANTS-4836] **roadmap_query has no kind filter, so "which review fixes are still open?" cannot be asked directly.**
+  kind is write-only in practice: settable and readable, never selectable, so the triage question is answered by pulling every active bullet and sorting by hand. Refuse an unrecognised value with bad_kind plus an accepted list, as status refuses bad_status; a silently ignored filter returns the full set and reads as "nothing matches that kind". A per-kind count on mode:"section_index" or mode:"report" would answer the aggregate with no rows at all.
+  **Layman:** Every roadmap item records what kind of work it is, but you cannot search by it.
+  Kind: enhancement.
+  Source: cc-feedback-2026-09-03 LottoTracker.
+
+- 📋 [ANTS-4837] **roadmap_query has no per-row projection, so the lean mode cannot carry kind and the wide mode duplicates the headline.**
+  Two reported findings with one fix. headline_only's four keys are fixed by contract (ANTS-4699) and kind is unobtainable there; the bullets mode a caller falls back to emits headline and headline_oneline as byte-identical strings on a single-line headline, and `fields` reaches top-level keys only. A bullet_fields argument makes the lean shape caller-chosen and closes both. ANTS-4712's input_index exemption is the precedent for a fifth key.
+  **Layman:** The cheap way to list roadmap items drops the one field a triage question needs, and the expensive way sends the same text twice.
+  Kind: enhancement.
+  Source: cc-feedback-2026-09-03 LottoTracker.
+
+- 📋 [ANTS-4838] **apply_edits reports replacements per FILE, so a replace_all that matched the wrong number is invisible.**
+  replace_all is the one edit mode with no uniqueness guard, so the occurrence count IS the check that the pattern was scoped as intended; edits_skipped catches only the zero case and cannot catch an over-broad pattern that swallowed a sibling's sites. A per-edit `matched` in a results[] indexed like the input, in skipped[]'s existing shape, would be backwards-compatible. An optional expect_count refusing on a mismatch is the stronger form and gives replace_all the guard the unique-old form gets for free.
+  **Layman:** When several find-and-replace edits go to one file you cannot tell how many times each one fired.
+  Kind: fix.
+  Source: cc-feedback-2026-09-03 OneUp.
+
+- 📋 [ANTS-4839] **A roadmap_log write publishes the whole store render onto whichever branch is checked out.**
+  Reported by a project keeping a frozen main and an active branch, where main's rendered file is legitimately far behind the store. The drift fields (ANTS-4462) named it honestly and discarded_text_lines:0 proved nothing authored was lost, but a caller who does not read them commits a large unrelated diff into whatever change they were making. Wants either a render:false opt-out on the write half, since op:"render" (ANTS-4614) already owns publishing separately, or a hint saying the discarded content was an older render of the same store rather than external text.
+  **Layman:** Filing one roadmap item can rewrite the entire roadmap file with content from another branch.
+  Kind: enhancement.
+  Source: cc-feedback-2026-09-03 OneUp.
+
+- 📋 [ANTS-4840] **fields_unmatched cannot distinguish an unknown name from a field the response conditionally omits.**
+  Observed on feedback_query's server_build_date and server_build_commit, which are echoed only alongside possibly_stale_binary. The envelope was right and the call was wrong, but a caller reading the schema cannot tell a conditional field from an unconditional one before making the call. An unknown name is a typo; a conditional absence is information, and the two currently read the same.
+  **Layman:** Asking for a field that is only sometimes present looks the same as a typo.
+  Kind: enhancement.
+  Source: cc-feedback-2026-09-03 OneUp.
+
+- 📋 [ANTS-4841] **roadmap_log op:"set_body"'s 4096-char cap excludes the bodies the op was written for.**
+  ANTS-4808 shipped set_body as the route back for a body no match can express; the reporting project's own case was exactly that and was refused too_large at 6805 characters. The two properties correlate: a body large enough to accumulate unmatched garbage is likely over the cap, and one that fits is usually within amend_body's reach. set_body replaces a whole body by definition, so the match-safety argument for a 4096-char old_text does not apply to new_text. A file_path for new_text, as write_db and changelog_log already take, also keeps a long body out of the conversation. The workaround was three calls, each an extra chance to lose a paragraph.
+  **Layman:** The tool for replacing a mangled roadmap entry refuses the entries most likely to be mangled.
+  Kind: fix.
+  Source: cc-feedback-2026-09-03 Pressless.
+
+- 📋 [ANTS-4842] **roadmap_log's op enum omits set_body, though the description documents it and the call succeeds.**
+  Self-concealing: an earlier session correctly read the enum's absence as a stale binary, and the same check now gives the wrong answer because the enum and the description disagree. A caller that trusts the enum will not attempt the one op that can repair a mangled body. Worth checking whether another recently added op is in the same state, since the two are maintained separately.
+  **Layman:** A working tool is missing from the list of tools, so callers conclude it is not there.
+  Kind: fix.
+  Source: cc-feedback-2026-09-03 Pressless.
+
+- 📋 [ANTS-4843] **feedback_query cannot raise possibly_stale_binary for a shipped id carrying no shipped_date.**
+  The reporting session nearly filed a false defect against a shipped id that had no date, and was saved only because a sibling id's date was in the same reply. A missing shipped_date is exactly the case where the flag cannot fire, so treating it as "cannot rule out stale" closes the gap rather than widening the flag.
+  **Layman:** The check that stops a session re-reporting an already-fixed bug goes quiet when the fix has no recorded date.
+  Kind: fix.
+  Source: cc-feedback-2026-09-03 Pressless.
+
+- 📋 [ANTS-4844] **roadmap_log op:"flip" dry_run returns no rendered bullet, where op:"append" does.**
+  flip edits an existing bullet rather than appending a new one, so a bad render damages content that is already correct: the higher-stakes of the two ops, with the weaker preview. The only way to see what flip produces is to run it for real and read the file back, which is what dry_run exists to avoid. `bytes` also differs in kind between the ops (append reports the would-be bullet size, flip what looks like whole-file size), so it cannot be read as a change magnitude either. Echo the post-write rendering on flip, and ideally on annotate and amend_*.
+  **Layman:** The preview for changing an existing item shows nothing about what it will look like.
+  Kind: enhancement.
+  Source: cc-feedback-2026-09-03 RetroDB.
+
+- 📋 [ANTS-4845] **A transport timeout returns a bare string with no envelope, so it cannot be told from a refusal or an empty result.**
+  RetroDB saw it on workspace_search dispatched in a parallel block, where the identical retry ran in 42 ms; Slipcase saw a third project_settings op:"detect" sighting, this time on the present:true path that short-circuits before walking, so a cold-walk explanation does not cover it. The remedies a caller reaches for (narrow the pattern, raise timeout_sec) all address the wrong layer. Return {ok:false, code:"transport_timeout"} with a hint that the call may be retried unchanged, and say in the schema whether concurrent calls to one verb are safe. Parallel dispatch is the documented way to use these verbs.
+  **Layman:** When the connection gives up, the error looks like the tool answering "nothing found".
+  Kind: fix.
+  Source: cc-feedback-2026-09-03 RetroDB/Slipcase.
+
+- 📋 [ANTS-4846] **indie_review_partition ignores all three of its documented partition sources and reports the path it did not use.**
+  The reporting session tried docs/subsystems.md, then a `## Module map` heading in the shape the hint names, then a committed .indie-review/partition.json mirroring the envelope's own lane shape. partition_source stayed "computed" and map_lane_count stayed 0 through all four attempts. The envelope reports path:"docs/subsystems.md" while deriving nothing from it, so the field reads as "the map I used" when it means "where I looked", and oversized_lanes stays raised, so following the hint looks identical to never having tried. First make the failure legible with a map_rejected:[{path, reason}] array. Then publish the accepted grammar, and confirm whether the JSON override resolves at <root>/.indie-review/partition.json.
+  **Layman:** The documented way to fix a badly-split code review does nothing, and nothing says so.
+  Kind: fix.
+  Source: cc-feedback-2026-09-03 Slipcase.
+
+- 📋 [ANTS-4847] **changelog_log's success envelope names no enclosing section, so a caller cannot observe the invariant the verb enforces.**
+  The verb is safe here: it refuses not_unreleased, so a wrong-section write cannot happen. But `line` alone cannot distinguish [Unreleased] from an older released section, and two entries added minutes apart returned lines far enough apart to look wrong, costing a pass over the file to confirm. The enclosing heading is already known where the verb decides whether to refuse, so echoing it costs nothing and turns an enforced invariant into an observable one.
+  **Layman:** After adding a changelog entry you cannot tell from the reply which release section it landed in.
+  Kind: enhancement.
+  Source: cc-feedback-2026-09-03 Snatch.
+
+- 📋 [ANTS-4848] **roadmap_log op:"create_section" at level 2 can adopt trailing level-3 siblings, producing a section append_batch then refuses.**
+  The heading is inserted before a trailing run of deeper headings, silently re-parenting them; the follow-up append_batch then refuses section_has_subsections, correctly and with a good message. Nothing is corrupted, but create_section's success envelope is not evidence the section is usable, and the refusal's own remedies do not apply (a child slug is the wrong section, and creating again makes a second empty one). For level 2, compute the insertion point as the next heading of the same or shallower level: a caller asking for a top-level section after A means a peer of A, not a parent for A's trailing subsections. Failing that, report an adopted_subsections array in the success envelope and in dry_run.
+  **Layman:** Creating a new roadmap section can swallow the sections below it, and you only find out when the next write fails.
+  Kind: fix.
+  Source: cc-feedback-2026-09-03 Vestige.
+
+- 📋 [ANTS-4849] **roadmap_log stable_id rejects a digit-led project ID that the same verb's id and id_prefix accept.**
+  Reported by a project whose IDs are 3D_E-NNNN across hundreds of items. stable_id requires a leading letter; the `id` locator on op:"flip" accepts the same string, and id_prefix's own pattern deliberately allows a leading digit provided a letter appears somewhere. So one argument is stricter than the two either side of it for no reason visible from the schema. The counter-strategy workaround silently depends on .roadmap-counter being in sync, where stable_id exists precisely to let the caller name the ID. Relax it to id_prefix's pattern, which keeps the real guard: reject a bare number.
+  **Layman:** A project whose item IDs start with a digit cannot use the argument that names an ID.
+  Kind: fix.
+  Source: cc-feedback-2026-09-03 Vestige.
+
+- 📋 [ANTS-4850] **roadmap_query mode:"headline_only" spills on a large active set, and the spill hint names read_spill but not limit/offset.**
+  Reported on the call that project's own CLAUDE.md prescribes for session start. Graceful rather than a correctness bug, but a survey that offloads is where the caller most wants every id, since it is deciding what to work on. Either a leaner row shape for the mode (id and status only, in the spirit of section_index's slugs_only, ANTS-4467), or have the spill hint name limit/offset alongside read_spill. The second is cheap and may be the whole fix.
+  **Layman:** The cheap session-start survey is too big to return on a large roadmap.
+  Kind: enhancement.
+  Source: cc-feedback-2026-09-03 finbreak.
+
+- 📋 [ANTS-4851] **workspace_search refuses a multiline regex by naming a flag it does not expose.**
+  rg's stderr passes through recommending --multiline; the verb has no such argument, so the remedy the error names is unreachable and every route to the pattern leaves the MCP. A two-line shape, such as an exception swallowed by a bare pass, is a normal thing to search a codebase for. match_wrapped (ANTS-4547) solved the same class for hard-wrapped prose; this is its code-shaped twin. Either add a multiline boolean passing -U, or replace the passthrough with a refusal saying multiline is out of scope and naming the alternatives.
+  **Layman:** Searching for a two-line code pattern fails with advice you cannot act on.
+  Kind: enhancement.
+  Source: cc-feedback-2026-09-03 finbreak.
+
+- 📋 [ANTS-4852] **mutation_probe reports a pytest collection failure as baseline_not_green, pointing at the project instead of the call.**
+  The test_command named a directory that does not exist. pytest exited 4, its usage-error code, having collected nothing; the refusal said to fix the suite first, and there was no failing test because there was no test. The reply's own fields already show it: exit 4 with passed and failed both -1 is ANTS-4401's unparsable-counts shape, not a red suite. pytest 4 and 5 mean the command never measured anything, which is a different refusal from a suite that ran and went red. A baseline_did_not_run code naming the exit code and pointing at the test_command's paths would aim at the call.
+  **Layman:** A mistyped test path is reported as "your tests are failing".
+  Kind: fix.
+  Source: cc-feedback-2026-09-03 finbreak.
+
+- 📋 [ANTS-4853] **project_settings has no way to declare a key deliberately absent, so undeclared[] reports a design decision as a gap.**
+  The reporting project's numbered docs are its design narrative by a written standard, and docs/specs/ will not exist. A declared path must already exist, so specs_dir cannot be declared and sits in undeclared[] permanently, where every fresh session reads it as an undone task. Downstream verbs keying off it return empty for the same reason and are equally unreadable as deliberate-versus-unset. Accept an explicit null for a key, write it to project.json, echo it in a declared_none array and drop it from undeclared[], which keeps undeclared[] meaning "nobody has decided". A documentation-only answer does not work: the state lives in the envelope.
+  **Layman:** A project that has decided it needs no specs folder is told forever that it has not set one up.
+  Kind: enhancement.
+  Source: cc-feedback-2026-09-03 perch.
+
+- 📋 [ANTS-4854] **changelog_log op:"add_batch" renders the batch in reverse input order and the envelope does not say so.**
+  Each entry is inserted at the top of its category and the entries are applied in input order, so the last entry ends up first. "Applied in input order" reads as a promise about the result and is one about the traversal. The descending `line` values are the only evidence and no caller decodes those; single-entry op:"add" has no ordering to get wrong, so a caller's intuition is built on the case that cannot expose it. Apply entries in reverse when each insert is a prepend, which is what a caller means by a batch. Documenting it instead leaves every caller writing its array backwards.
+  **Layman:** A batch of release notes comes out backwards.
+  Kind: fix.
+  Source: cc-feedback-2026-09-03 perch.
+
+- 📋 [ANTS-4855] **workspace_search refuses an unknown lane with no near-miss candidates, where every sibling locator offers them.**
+  Observed on a plural-for-singular slip against a directory that existed. roadmap_log's section returns candidates plus sections_total (ANTS-4556 / ANTS-4591), read_region's section returns candidates on both not-found and ambiguous (ANTS-4350), find_definition returns file_stem_hint; lane is the odd one out. The cost lands on the caller who was scoping the search to be token-careful, and the natural recovery is a raw find, which rule 18 asks a session to avoid. It is also the argument a cold review lane uses to stay inside its permitted file set. Keep refusing, as section does, so nothing is silently guessed.
+  **Layman:** A one-character typo in a search folder gives a bare "does not exist".
+  Kind: enhancement.
+  Source: cc-feedback-2026-09-03 perch.
+
+- 📋 [ANTS-4856] **apply_edits can leave a file syntactically broken when part of a batch applies, and still reports ok:true.**
+  Observed where edit 0 defined a local and edit 1 read it: edit 0 missed on a one-character mismatch and was skipped, edit 1 applied, and the file then referenced a name nothing defined. "Atomic per file" is atomicity of the WRITE, not of the batch, and a caller naturally reads it as the batch. Worst exactly where the batch form is most valuable, a large mechanical refactor whose edits are coupled by construction. Wants an opt-in all_or_nothing that resolves every edit first and commits nothing if any would be skipped; dry_run already does the resolve half. At minimum a top-level partial:true when applied and skipped are both non-zero, since ok:true reads as success.
+  **Layman:** If one edit in a batch misses, the rest still apply and can leave the file in a state that is neither the old nor the new one.
+  Kind: fix.
+  Source: cc-feedback-2026-09-03 Rolodex.
+
+- 📋 [ANTS-4857] **apply_edits near-miss candidates fire on whitespace only, so a punctuation-class miss returns a bare not_found.**
+  ANTS-4418 covers a spacing-only difference and returns candidates, near_miss_line and a hint; an em dash typed as -- returns none of them, though the cause is the same (prose re-typed with ASCII punctuation where the file holds the typographic form) and so is the remedy. High frequency in a prose corpus, and it compounds with the partial-batch finding, since this is the kind of miss that lands mid-batch. Widen the equivalence class to a small punctuation fold: en/em dash, curly quotes and apostrophes, ellipsis. Same uniqueness guard, same fields, same single-line restriction; report as a candidate rather than matching, so the verb still refuses to guess.
+  **Layman:** Retyping an em dash as two hyphens gives no hint that you nearly matched.
+  Kind: enhancement.
+  Source: cc-feedback-2026-09-03 Rolodex.
+
+- 📋 [ANTS-4858] **doc_integrity does not accept compact, where its sibling read verbs do.**
+  Three projects noticed independently, and all three called the behaviour correct: ignored_args announces it, so nothing is silently dropped and no result is wrong. This is a consistency gap rather than a defect. The envelope carries several empty-valued keys on a clean run, so compact would do real work. If parity is chosen, encoding:"tabular" likely applies to findings[] too. Otherwise say in the description that it is deliberately not offered, so a caller who has adopted compact across the read verbs can stop guessing.
+  **Layman:** One document-checking tool ignores a setting all its siblings honour.
+  Kind: enhancement.
+  Source: cc-feedback-2026-09-03 Rolodex/OneUp/finbreak.
+
+- 📋 [ANTS-4859] **feedback_query's etag varies with include_tracking, so a 304 probe reports an unchanged file as changed.**
+  Measured with mtime identical either side, and confirmed by re-issuing with the same include_tracking, which did short-circuit. The schema anticipates this for `fields` only, stating the etag is computed on the unfiltered body so a narrowed call still short-circuits; include_tracking is not a narrowing argument and is not covered. Misleading in the alarming direction: the probe came straight after a transport timeout on a write, where the etag is the natural way to ask whether the write landed, and it answered that the file had changed. Key the etag on the file bytes plus the external state the envelope resolves, or echo an etag_inputs so a mismatch is self-diagnosing.
+  **Layman:** The cheap "has this file changed?" check answers yes when nothing changed.
+  Kind: fix.
+  Source: cc-feedback-2026-09-03 Rolodex.
+
 ## check-code whole-tree sweep fold-in (2026-09-01)
 
 Whole-tree static-analysis sweep: 13 tools ran, 5 were correctly skipped (no
