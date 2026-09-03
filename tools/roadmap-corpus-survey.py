@@ -134,7 +134,8 @@ def find_roadmaps(roots):
 
 def survey(path):
     """Return per-project counters for one ROADMAP.md."""
-    lines = open(path, encoding="utf-8", errors="replace").read().split("\n")
+    with open(path, encoding="utf-8", errors="replace") as fh:
+        lines = fh.read().split("\n")
     mask = fenced(lines)
     c = collections.Counter()
     kinds = collections.Counter()

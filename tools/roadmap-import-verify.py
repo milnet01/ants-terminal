@@ -39,6 +39,22 @@ BULLET = re.compile(r"^- (?:📋|🚧|✅|💭) \[([A-Za-z][A-Za-z0-9_-]*-\d+)\]
 KIND = re.compile(r"Kind:\s*\**\s*([^\n*]+)")
 
 
+def _flush_kind(cur, block, out):
+    """Record the canonical kind for one bullet's block into `out`."""
+    if cur is None:
+        return
+    vals = []
+    for line in block:
+        for raw in KIND.findall(line):
+            v = raw.strip().lower().rstrip(".,;")
+            if v in TAXONOMY:
+                vals.append(v)
+            elif v in ALIASES:
+                vals.append(ALIASES[v])
+    if vals:
+        out[cur] = vals[-1]              # § 2.2: last surviving candidate
+
+
 def declared_kinds(root):
     """id -> canonical kind, over ROADMAP.md and any rotated archives."""
     srcs = [root / "ROADMAP.md"]
@@ -50,31 +66,17 @@ def declared_kinds(root):
         seen_any = True
         cur, block = None, []
 
-        def flush():
-            if cur is None:
-                return
-            vals = []
-            for line in block:
-                for raw in KIND.findall(line):
-                    v = raw.strip().lower().rstrip(".,;")
-                    if v in TAXONOMY:
-                        vals.append(v)
-                    elif v in ALIASES:
-                        vals.append(ALIASES[v])
-            if vals:
-                out[cur] = vals[-1]          # § 2.2: last surviving candidate
-
         for line in src.read_text(encoding="utf-8").splitlines():
             m = BULLET.match(line)
             if m:
-                flush()
+                _flush_kind(cur, block, out)
                 cur, block = m.group(1), [line]
             elif line.startswith("- ") or line.startswith("#"):
-                flush()
+                _flush_kind(cur, block, out)
                 cur, block = None, []
             elif cur is not None:
                 block.append(line)
-        flush()
+        _flush_kind(cur, block, out)
     return out, seen_any
 
 
