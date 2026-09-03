@@ -50002,20 +50002,41 @@ volume classes, and the tooling/documentation gaps the run exposed.
   Source: check-code-sweep-2026-09-01.
   Lanes: chrome.
 
-- 📋 [ANTS-4778] **3,345 include-cleaner hits: the tree leans on the Qt module PCH for its includes.**
+- 💭 [ANTS-4778] **3,345 include-cleaner hits: the tree leans on the Qt module PCH for its includes.**
   clang-tidy misc-include-cleaner, 3,345 unique hits (2,177 in src/). ants_apply_qt_pch() gives every library <QtCore/QtCore> + <QtGui/QtGui> + <QtWidgets/QtWidgets> (CMakeLists.txt:885-893), so a TU can name almost any Qt type without including it.
 
   ANTS-4775 is the one case where this already bites (a hard compile error with the PCH stripped). The question here is the policy, not the sites: is include-what-you-use a goal for this project, or is the module PCH the accepted convention? Until that is answered no site is a defect, which is why this is filed as investigate and not as a fix.
 
   Do NOT bulk-apply: 3,345 edits across the tree is the opposite of a surgical change.
+  Resolved (2026-09-03) as a recorded decision rather than a sweep — user
+  decision this session. The Qt module PCH is the accepted convention here;
+  include-what-you-use is not a goal for this project, so no site is a
+  defect and nothing is swept.
+
+  .clang-tidy (ANTS-4787) already excludes misc-include-cleaner and names
+  this id as the reason, with deleting that line as the documented route
+  back if the policy ever changes.
+
+  ANTS-4775 stays open as the one case where a missing include actually
+  bites — a hard compile error with the PCH stripped.
   **Layman:** Most files do not list what they use; they build because a shared shortcut header supplies it. That works until the shortcut is removed.
   Kind: investigate.
   Source: check-code-sweep-2026-09-01.
 
-- 📋 [ANTS-4779] **4,354 const-correctness hits await a project decision.**
+- 💭 [ANTS-4779] **4,354 const-correctness hits await a project decision.**
   clang-tidy misc-const-correctness, 4,354 unique hits (1,361 in src/) — 35% of that tool's entire output and the single largest class in the sweep.
 
   Purely advisory: no hit is a defect. Needs one project-level answer (adopt, or exclude the check in a committed .clang-tidy) rather than 4,354 judgements. Note the project ships NO .clang-tidy at all, which is why this run had to pass an explicit --checks= list; deciding that file's contents would settle this item and several below.
+  Resolved (2026-09-03) as a recorded decision rather than a sweep — user
+  decision this session. Advisory by the item's own reading: no hit is a
+  defect, so one project-level answer was the right shape.
+
+  .clang-tidy (ANTS-4787) excludes misc-const-correctness and names this
+  id, with deleting that line as the route back.
+
+  Correction to this item's body: it says the project ships no .clang-tidy
+  at all. That was true when written, and ANTS-4787 added one days later —
+  which is what settles this. Do not read the body's premise as current.
   **Layman:** A style checker wants thousands of variables marked as never-changing. Worth deciding once, not case by case.
   Kind: investigate.
   Source: check-code-sweep-2026-09-01.
@@ -50024,22 +50045,54 @@ volume classes, and the tooling/documentation gaps the run exposed.
   clazy range-loop-detach, 464 unique hits (331 in src/) — 56% of clazy's output and its largest class. Iterating a non-const Qt container in a range-for triggers a detach (deep copy) under implicit sharing.
 
   The idiomatic fix is std::as_const(...) per site, which the codebase already uses in places (e.g. remotecontrol_state.cpp:2490). Real cost, but 331 mechanical edits in src/ is a dedicated pass with its own test run, not something to fold into an unrelated fix batch. Worth measuring one hot path first — the paint and VT loops — rather than sweeping alphabetically.
+  Approach chosen (2026-09-03), user decision this session: measure the hot
+  paths first and fix only what measurement justifies, rather than sweeping
+  every site. That is the item's own recommendation.
+
+  The reasoning against the full sweep: most of these sites are in code
+  that runs once, so a whole-tree pass buys a very large diff for no
+  measurable gain, and every edit still has to be built and tested. The
+  paint and VT loops are where a per-frame detach actually costs
+  something.
   **Layman:** Loops over Qt lists quietly copy the whole list because the loop is not marked read-only.
   Kind: perf.
   Source: check-code-sweep-2026-09-01.
 
-- 📋 [ANTS-4781] **784 narrowing-conversion hits need per-site judgement.**
+- 💭 [ANTS-4781] **784 narrowing-conversion hits need per-site judgement.**
   clang-tidy bugprone-narrowing-conversions, 784 unique hits (522 in src/). Overwhelmingly int/qsizetype and qint64/int boundaries typical of Qt code.
 
   Each hit needs the actual value range to decide, which is a judgement a tool cannot make — review-code's territory rather than check-code's. Filed so the class is on record; expect most to be benign and a small number to matter (grid coordinates, scrollback indices, byte counts near 2 GiB).
+  Resolved (2026-09-03) as a recorded decision rather than a sweep — user
+  decision this session. Each hit needs the actual value range to judge,
+  which the item itself places in review-code's territory rather than
+  check-code's; a config toggle cannot make that call and neither can a
+  bulk edit.
+
+  .clang-tidy (ANTS-4787) excludes bugprone-narrowing-conversions and
+  names this id, with deleting that line as the route back. The sites that
+  would actually matter — grid coordinates, scrollback indices, byte counts
+  near the 2 GiB boundary — are review-code's to raise per site.
   **Layman:** Hundreds of places convert big numbers to smaller ones; most are fine, a few might lose data.
   Kind: investigate.
   Source: check-code-sweep-2026-09-01.
 
-- 📋 [ANTS-4782] **382 cppcheck useStlAlgorithm hits await a project decision.**
+- ✅ [ANTS-4782] **382 cppcheck useStlAlgorithm hits await a project decision.**
   cppcheck useStlAlgorithm, 382 hits (246 in src/) — 46% of cppcheck's output and the trigger for its aggregation report.
 
   Style-severity and advisory. The project's own CI gate already runs cppcheck --enable=all informationally (ci.yml:110-118, --error-exitcode=0), so these have been printing in CI without action for some time. Either adopt the suggestion as a convention or add --suppress=useStlAlgorithm to the CI invocation with a stated reason; leaving 382 advisory lines in every CI log is the status quo and trains people to ignore the tool.
+  Resolved (2026-09-03, 60bd8550): --suppress=useStlAlgorithm added to the
+  cppcheck invocation in BOTH carriers — ci.yml and tools/ci-parity.sh —
+  with the reason and the delete-the-line route back stated at the ci.yml
+  step. Suppressed rather than adopted as a convention: the class is
+  style-severity and advisory, and leaving it printing unactioned is what
+  trains people to skip the tool's output.
+
+  Measured on three source files: useStlAlgorithm lines 2 to 0, all other
+  findings unchanged. actionlint and shellcheck clean.
+
+  Correction to this item's body: it cites the invocation by line number.
+  The step has since moved and ANTS-4788 edited it — cite it by step name,
+  "Run cppcheck", rather than by line.
   **Layman:** A checker suggests replacing hundreds of hand-written loops with standard library calls.
   Kind: investigate.
   Source: check-code-sweep-2026-09-01.
@@ -50063,6 +50116,21 @@ volume classes, and the tooling/documentation gaps the run exposed.
   qcolor-from-literal (26) and non-pod-global-static (166) — performance and static-initialisation-order respectively. The latter matters only if one such object is read during another's construction.
 
   Also here: 16 remaining use-static-qregularexpression sites, at least one of which (mcpprojection.cpp:644) is a false positive because the pattern is caller-supplied.
+  Stays open (2026-09-03). The session that closed its four sweep
+  siblings as recorded decisions deliberately did not close this one: it
+  is not a single advisory class, and two of its three parts name real
+  work rather than a policy question.
+
+  qstring-arg carries a latent correctness edge — if the first substituted
+  value itself contains a %2, the second .arg() substitutes into it — so
+  the sites interpolating user or file text need reading, not suppressing.
+  non-pod-global-static is static-initialisation-order, which bites only
+  if one such object is read during another's construction; that is a
+  readable question with a real answer.
+
+  The one false positive already identified (a caller-supplied pattern
+  flagged as a non-static QRegularExpression) belongs in the audit
+  false-positive ledger rather than in a suppression.
   **Layman:** Assorted Qt habits that cost a little speed, plus one pattern that can bite at start-up.
   Kind: perf.
   Source: check-code-sweep-2026-09-01.
@@ -51484,7 +51552,7 @@ volume classes, and the tooling/documentation gaps the run exposed.
   Source: in-session-2026-09-03.
   Lanes: mcp, roadmapquery.
 
-- 📋 [ANTS-4825] **A mirrored standard links to ../workflow.md, which the mirror gate is built not to check.**
+- ✅ [ANTS-4825] **A mirrored standard links to ../workflow.md, which the mirror gate is built not to check.**
   `doc_integrity` over `docs/standards/` reports `local-gate.md`'s link to
   `../workflow.md` as broken. It is: `workflow.md` is a foundation document
   under `~/.claude/`, not a standard, so nothing mirrors it and a reader on
@@ -51520,6 +51588,22 @@ volume classes, and the tooling/documentation gaps the run exposed.
   Note this cannot be fixed by editing the mirror — the pre-commit gate
   refuses a mirror that differs from its owner. Any prose change goes
   upstream first.
+  Resolved (2026-09-03, 73c6f79a) via option 2, the allowlist — user
+  decision this session. Option 1 (mirror workflow.md) was declined because
+  it widens what docs/standards/ means and adds a file that can drift;
+  option 3 (leave and document) was already half-done and left the gate
+  still claiming "links resolve".
+
+  check-standard-mirrors.sh now names each unmirrorable target with its
+  reason and no longer reports a bare "links resolve" when it skipped any.
+  It still exits 0 — these are deliberate exemptions, not failures — and
+  it copies nothing. Its output matches doc_integrity's four exactly:
+  local-gate.md's ../workflow.md plus the three skeletons/ targets.
+
+  Collateral fixed alongside: docs/standards/README.md still listed
+  languages/ among the exemptions, which ANTS-4764 ended when it brought
+  those files into the mirror set, and it did not say that an exempt link
+  genuinely 404s for a public reader.
   **Layman:** A rulebook copied into the public repo links to a file that only exists on my home drive, and the checker that is supposed to catch that cannot see it.
   Kind: doc-fix.
   Source: in-session-2026-09-03.

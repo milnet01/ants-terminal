@@ -232,6 +232,17 @@ for security-relevant changes.
 
 ### Changed
 
+- **cppcheck's advisory useStlAlgorithm class is suppressed, with its reason recorded** (ANTS-4782)
+  It asked for hand-written loops to become &lt;algorithm&gt; calls, printed in
+  every run and was never acted on. Suppressed in both the workflow and
+  the local parity script, each stating why and how to re-enable it.
+
+- **The standards mirror gate now names the links it cannot check** (ANTS-4825)
+  A link out of a mirrored standard that points outside the mirror set is
+  skipped by rule. The gate now names each such target and why, instead of
+  reporting a bare "links resolve" over a tree where doc_integrity finds
+  broken links. Both tools were right; only the reporting disagreed.
+
 - **The document-integrity check accepts the same `compact` setting as its sibling tools** (ANTS-4858)
   It was the only one of that group that ignored the setting, so asking for a smaller reply there did nothing. Replies stay full-size unless you ask, because some of its empty fields carry meaning.
 
