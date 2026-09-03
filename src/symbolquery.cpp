@@ -7,6 +7,7 @@
 #include <QFile>
 #include <QFileInfo>
 #include <QRegularExpression>
+#include <QVarLengthArray>
 
 namespace SymbolQuery {
 
@@ -434,9 +435,114 @@ struct ScanState {
     // nudge instead of a bare zero result.
     QString symbol;       // the queried symbol, for stem comparison
     QString fileStemHit;  // first rel path whose base name == symbol ("" = none)
+
+    // ANTS-3680 — batch mode. When `batch` is non-null this state owns the
+    // WALK only (file count, cap, stem hints) and carries no symbol of its
+    // own: scanFile fans each line out to the needles that line holds.
+    // holds. `bySymbol` keys on views into the caller's stable needle list.
+    QVector<ScanState> *batch = nullptr;
+    const QHash<QStringView, int> *bySymbol = nullptr;
+    const QHash<QString, int> *byStem = nullptr;   // lowercased needle -> slot
 };
 
-void scanFile(ScanState &st, const QFileInfo &fi, const Anchors &an) {
+// ANTS-3680 — the batch gate. Every anchor bounds the symbol on both sides
+// (a separator, `::`, `~` or line start before it; `\b`, `(`, `=` or one of
+// `;={` after), so a needle embedded in a longer identifier matches nothing.
+// Whole-identifier tokens are therefore exactly the `contains` test the
+// single-symbol path runs, at a cost independent of the needle count.
+void needleSlots(const QHash<QStringView, int> &bySymbol, const QString &line,
+                 QVarLengthArray<int, 8> &out) {
+    out.clear();
+    const QStringView v(line);
+    qsizetype i = 0;
+    while (i < v.size()) {
+        const QChar c = v.at(i);
+        if (!isAsciiAlpha(c) && c != QLatin1Char('_')) { ++i; continue; }
+        qsizetype j = i + 1;
+        while (j < v.size() && (isAsciiAlnum(v.at(j))
+                                || v.at(j) == QLatin1Char('_'))) ++j;
+        const auto it = bySymbol.constFind(v.mid(i, j - i));
+        if (it != bySymbol.constEnd() && !out.contains(*it)) out.append(*it);
+        i = j;
+    }
+}
+
+// ANTS-3680 — one line against ONE symbol's anchors, split out of scanFile so
+// the batch walk can run the same matcher per needle a line carries. `line` is
+// the raw decoded line, `thisLine` its trimmed form (computed once per line,
+// not once per needle), `prevLine` the previous trimmed line for the wrapped
+// pair.
+void matchLine(ScanState &st, const Anchors &an, const QString &rel,
+               const QString &line, const QString &thisLine,
+               const QString &prevLine, int lineNo) {
+    bool isDef = false;
+    for (const QRegularExpression &re : an.def) {
+        if (re.match(line).hasMatch()) { isDef = true; break; }
+    }
+
+    // ANTS-4603 — the wrapped-signature pair, tried only once the
+    // single-line anchors have all missed. `&&` is excluded here rather
+    // than in `wrappedPrev`: a reference return type legitimately ends in
+    // a single `&` (`const std::vector<UrlSpan> &`), and telling that from
+    // a wrapped boolean is a two-character test, not a regex.
+    bool isWrapped = false;
+    if (!isDef && an.hasWrapped && !prevLine.isEmpty()
+        && !prevLine.endsWith(QLatin1String("&&"))
+        && an.wrappedDef.match(line).hasMatch()
+        && an.wrappedPrev.match(prevLine).hasMatch()) {
+        isDef = true;
+        isWrapped = true;
+    }
+
+    if (isDef && st.collectDefs) {
+        ++st.defsTotal;
+        // A wrapped match reports BOTH lines, so the signature carries the
+        // return type the query was really about. `line` still names where
+        // the symbol is, which is what a reader jumps to.
+        const QString trimmed =
+            isWrapped ? prevLine + QLatin1Char(' ') + thisLine : thisLine;
+        QString kind = QStringLiteral("definition");
+        if (an.cppKind) {
+            if (trimmed.startsWith(QLatin1String("namespace"))) {
+                // ANTS-4346 — neither a body nor a prototype.
+                kind = QStringLiteral("namespace");
+            } else if (looksLikeDeclaration(trimmed)) {
+                kind = QStringLiteral("declaration");
+            }
+        }
+        QVector<DefMatch> &bucket =
+            (kind == QStringLiteral("declaration")) ? st.defsDecl : st.defsDefn;
+        if (bucket.size() < st.defCap) {
+            DefMatch d;
+            d.file = rel;
+            d.line = lineNo;
+            d.signature = trimmed;
+            d.lang = QString::fromLatin1(an.lang);
+            d.kind = kind;
+            bucket.append(d);
+        }
+    }
+
+    // A definition line is never reported as a caller (INV-9).
+    if (st.collectCalls && !isDef) {
+        if (an.call.match(line).hasMatch()) {
+            ++st.callsTotal;
+            if (st.calls.size() < st.callCap) {
+                CallMatch c;
+                c.file = rel;
+                c.line = lineNo;
+                c.context = line.trimmed();
+                c.lang = QString::fromLatin1(an.lang);
+                st.calls.append(c);
+            }
+        }
+    }
+}
+
+void scanFile(ScanState &st, const QFileInfo &fi, Lang lang) {
+    const int langOrd = static_cast<int>(lang);
+    const Anchors &an = st.anchors[langOrd];
+    QVarLengthArray<int, 8> hits;
     QFile f(fi.absoluteFilePath());
     if (!f.open(QIODevice::ReadOnly)) return;  // unopenable → not counted
     ++st.filesScanned;
@@ -464,82 +570,24 @@ void scanFile(ScanState &st, const QFileInfo &fi, const Anchors &an) {
             continue;                              // backtracking guard
         }
         const QString line = QString::fromUtf8(raw);
+        const QString thisLine = line.trimmed();
 
         // ANTS-3680 — every anchor that consumes the symbol (`def`,
         // `wrappedDef`, `call`) splices its escaped literal into the pattern
         // as mandatory text on THIS line, so a line without that literal can
         // match none of them. A substring test is a sound necessary
         // condition and skips the regex engine on almost every line.
-        // `prevLine` still advances: the wrapped pair reads it, and a line
-        // that is only ever context never contains the symbol.
-        if (!st.symbol.isEmpty() && !line.contains(st.symbol)) {
-            prevLine = line.trimmed();
-            continue;
-        }
-
-        bool isDef = false;
-        for (const QRegularExpression &re : an.def) {
-            if (re.match(line).hasMatch()) { isDef = true; break; }
-        }
-
-        // ANTS-4603 — the wrapped-signature pair, tried only once the
-        // single-line anchors have all missed. `&&` is excluded here rather
-        // than in `wrappedPrev`: a reference return type legitimately ends in
-        // a single `&` (`const std::vector<UrlSpan> &`), and telling that from
-        // a wrapped boolean is a two-character test, not a regex.
-        bool isWrapped = false;
-        if (!isDef && an.hasWrapped && !prevLine.isEmpty()
-            && !prevLine.endsWith(QLatin1String("&&"))
-            && an.wrappedDef.match(line).hasMatch()
-            && an.wrappedPrev.match(prevLine).hasMatch()) {
-            isDef = true;
-            isWrapped = true;
-        }
-
-        const QString thisLine = line.trimmed();
-
-        if (isDef && st.collectDefs) {
-            ++st.defsTotal;
-            // A wrapped match reports BOTH lines, so the signature carries the
-            // return type the query was really about. `line` still names where
-            // the symbol is, which is what a reader jumps to.
-            const QString trimmed =
-                isWrapped ? prevLine + QLatin1Char(' ') + thisLine : thisLine;
-            QString kind = QStringLiteral("definition");
-            if (an.cppKind) {
-                if (trimmed.startsWith(QLatin1String("namespace"))) {
-                    // ANTS-4346 — neither a body nor a prototype.
-                    kind = QStringLiteral("namespace");
-                } else if (looksLikeDeclaration(trimmed)) {
-                    kind = QStringLiteral("declaration");
-                }
+        // `prevLine` still advances either way: the wrapped pair reads it,
+        // and a line that is only ever context never carries the symbol.
+        if (st.batch) {
+            needleSlots(*st.bySymbol, line, hits);
+            for (const int idx : hits) {
+                ScanState &sl = (*st.batch)[idx];
+                matchLine(sl, sl.anchors[langOrd], rel, line, thisLine,
+                          prevLine, lineNo);
             }
-            QVector<DefMatch> &bucket =
-                (kind == QStringLiteral("declaration")) ? st.defsDecl : st.defsDefn;
-            if (bucket.size() < st.defCap) {
-                DefMatch d;
-                d.file = rel;
-                d.line = lineNo;
-                d.signature = trimmed;
-                d.lang = QString::fromLatin1(an.lang);
-                d.kind = kind;
-                bucket.append(d);
-            }
-        }
-
-        // A definition line is never reported as a caller (INV-9).
-        if (st.collectCalls && !isDef) {
-            if (an.call.match(line).hasMatch()) {
-                ++st.callsTotal;
-                if (st.calls.size() < st.callCap) {
-                    CallMatch c;
-                    c.file = rel;
-                    c.line = lineNo;
-                    c.context = line.trimmed();
-                    c.lang = QString::fromLatin1(an.lang);
-                    st.calls.append(c);
-                }
-            }
+        } else if (st.symbol.isEmpty() || line.contains(st.symbol)) {
+            matchLine(st, an, rel, line, thisLine, prevLine, lineNo);
         }
 
         prevLine = thisLine;
@@ -582,11 +630,22 @@ void walk(ScanState &st, const QString &dirPath) {
         if (st.fileStemHit.isEmpty() && !st.symbol.isEmpty()
             && fi.completeBaseName().compare(st.symbol, Qt::CaseInsensitive) == 0)
             st.fileStemHit = fi.absoluteFilePath().mid(st.rootPrefixLen);
+        // ANTS-3680 — the same hint per needle, keyed on the lowercased stem
+        // so the batch pays one hash lookup per file rather than one compare
+        // per needle per file.
+        if (st.byStem) {
+            const auto it = st.byStem->constFind(fi.completeBaseName().toLower());
+            if (it != st.byStem->constEnd()) {
+                ScanState &sl = (*st.batch)[*it];
+                if (sl.fileStemHit.isEmpty())
+                    sl.fileStemHit = fi.absoluteFilePath().mid(st.rootPrefixLen);
+            }
+        }
 
         if (st.langFilter != Lang::Auto && lang != st.langFilter) continue;
 
         if (st.filesScanned >= st.maxFiles) { st.walkCapped = true; return; }
-        scanFile(st, fi, st.anchors[static_cast<int>(lang)]);
+        scanFile(st, fi, lang);
     }
 }
 
@@ -609,6 +668,26 @@ void prepare(ScanState &st, const QString &rootCanonical,
     buildIf(Lang::Sh);
     buildIf(Lang::Generic);
     buildIf(Lang::Glsl);   // ANTS-3558
+}
+
+// Assemble one needle's result: definitions first, then declarations, each
+// already in walk (path) order, truncated to the per-needle cap. `filesScanned`
+// and `walkCapped` describe the WALK, which the batch shares across needles.
+DefResult finishDefs(const ScanState &st, int filesScanned, bool walkCapped) {
+    DefResult r;
+    r.definitions = st.defsDefn;
+    for (const DefMatch &d : st.defsDecl) r.definitions.append(d);
+    if (r.definitions.size() > st.defCap) r.definitions.resize(st.defCap);
+
+    r.definitionsTotal = st.defsTotal;
+    r.filesScanned = filesScanned;
+    r.walkCapped = walkCapped;
+    r.truncated = st.defsTotal > r.definitions.size();
+    // ANTS-1950 — only a hint when there was nothing to find: a real symbol
+    // that also happens to share a file's stem should not be second-guessed.
+    if (r.definitions.isEmpty())
+        r.fileStemHint = st.fileStemHit;
+    return r;
 }
 
 bool rootUsable(const QString &rootCanonical) {
@@ -657,22 +736,63 @@ DefResult findDefinition(const QString &rootCanonical,
     st.defCap = (opts.maxResults > 0) ? opts.maxResults : kDefDefaultResults;
 
     walk(st, QDir::cleanPath(rootCanonical));
+    return finishDefs(st, st.filesScanned, st.walkCapped);
+}
 
-    // definitions first, then declarations; each already in walk
-    // (path) order. Truncate the combined list to the cap.
-    r.definitions = st.defsDefn;
-    for (const DefMatch &d : st.defsDecl) r.definitions.append(d);
-    if (r.definitions.size() > st.defCap) r.definitions.resize(st.defCap);
+// ANTS-3680 — N needles in ONE walk. Equivalent to calling findDefinition
+// once per symbol: same anchors, same caps, same ordering. What it removes is
+// the per-needle re-walk — measured at ~81 ms a needle on this tree after the
+// per-line prefilter, of which ~45 ms was re-reading files already read.
+//
+// Caps stay per-needle (`maxResults` bounds each result, not the batch) so one
+// popular name cannot eat the budget; `maxFiles` is per-WALK, which is what it
+// already meant. RAM is one file's lines at a time, as before — nothing is
+// cached across files.
+QHash<QString, DefResult> findDefinitions(const QString &rootCanonical,
+                                          const QStringList &symbols,
+                                          const Options &opts) {
+    QHash<QString, DefResult> out;
+    QStringList needles;                 // stable: `bySymbol` views into it
+    needles.reserve(symbols.size());
+    for (const QString &sym : symbols) {
+        if (out.contains(sym)) continue;             // duplicate needle
+        if (!isValidSymbol(sym)) {
+            DefResult bad;
+            bad.ok = false;
+            bad.code = QStringLiteral("bad_args");
+            bad.error = QStringLiteral("find_definition: invalid symbol");
+            out.insert(sym, bad);
+            continue;
+        }
+        out.insert(sym, DefResult{});
+        needles << sym;
+    }
+    if (needles.isEmpty() || !rootUsable(rootCanonical)) return out;
 
-    r.definitionsTotal = st.defsTotal;
-    r.filesScanned = st.filesScanned;
-    r.walkCapped = st.walkCapped;
-    r.truncated = st.defsTotal > r.definitions.size();
-    // ANTS-1950 — only a hint when there was nothing to find: a real symbol
-    // that also happens to share a file's stem should not be second-guessed.
-    if (r.definitions.isEmpty())
-        r.fileStemHint = st.fileStemHit;
-    return r;
+    QVector<ScanState> batchSlots(needles.size());
+    QHash<QStringView, int> bySymbol;
+    QHash<QString, int> byStem;
+    for (int i = 0; i < needles.size(); ++i) {
+        prepare(batchSlots[i], rootCanonical, needles.at(i), opts);
+        batchSlots[i].collectDefs = true;
+        batchSlots[i].defCap = (opts.maxResults > 0) ? opts.maxResults
+                                                : kDefDefaultResults;
+        bySymbol.insert(QStringView(needles.at(i)), i);
+        byStem.insert(needles.at(i).toLower(), i);
+    }
+
+    // The walk state carries no symbol of its own; it owns the file budget.
+    ScanState walkSt;
+    prepare(walkSt, rootCanonical, QString(), opts);
+    walkSt.batch = &batchSlots;
+    walkSt.bySymbol = &bySymbol;
+    walkSt.byStem = &byStem;
+    walk(walkSt, QDir::cleanPath(rootCanonical));
+
+    for (int i = 0; i < needles.size(); ++i)
+        out[needles.at(i)] =
+            finishDefs(batchSlots[i], walkSt.filesScanned, walkSt.walkCapped);
+    return out;
 }
 
 CallResult findCaller(const QString &rootCanonical,

@@ -220,6 +220,13 @@ for security-relevant changes.
 
 ### Changed
 
+- **Symbol resolution answers many names in one tree walk, and skips lines that cannot match** (ANTS-3680)
+  `doc_symbols` over the whole `docs/specs` + `docs/standards` corpus went
+  41.8 s to 3.4 s with identical output. A single `find_definition` went
+  410 ms to 81 ms on this tree; 200 names resolved together went 15.6 s to
+  0.35 s. New lib entry point `SymbolQuery::findDefinitions`, which returns
+  exactly what the per-name call returns.
+
 - **`session_orient` offers project settings for any non-standard layout** (ANTS-3353)
   A project whose code sits where Ants expects but whose roadmap, changelog
   or specs live somewhere unusual now hears that it can pin those paths —

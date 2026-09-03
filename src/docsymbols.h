@@ -74,9 +74,11 @@ struct Options {
     // exempt — those shapes are unambiguous.
     int minIdentChars = 5;
 
-    // Wall-clock ceiling on the resolution phase. 500 needles × the 5000-file
-    // default walk is 2.5 M file scans, so a cap on needles alone does not
-    // bound wall-clock. 0 disables. Remaining needles become NotChecked.
+    // Wall-clock ceiling on the resolution phase: a cap on needles alone does
+    // not bound wall-clock, since each needle's cost is the tree's size. 0
+    // disables. Remaining needles become NotChecked. ANTS-3680 — checked
+    // between resolve chunks rather than between needles, so the granularity
+    // is a chunk; what it still guarantees is that the run stops and says so.
     int resolveDeadlineMs = 10000;
 
     // Resolution needs the project root: this engine never opens the DOCUMENT
@@ -111,7 +113,7 @@ struct ScanResult {
     // nowhere is dropped from `symbols` rather than reported, so deriving this
     // from the emitted occurrences would call an incomplete run complete.
     bool truncated = false;
-    int  needlesResolved = 0;  // walks actually spent; the caller's budget debit
+    int  needlesResolved = 0;  // needles attempted; the caller's budget debit
 };
 
 // `text` is the document's content; `relPath` is only carried onto findings.

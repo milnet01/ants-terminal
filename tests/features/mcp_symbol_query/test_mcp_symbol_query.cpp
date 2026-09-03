@@ -1000,6 +1000,124 @@ TEST(SymbolQueryCppForms, Ants3668DataMembersResolve) {
         << "int m_scrollOffset = 0;";
 }
 
+// ANTS-3680 — `findDefinitions` resolves N needles in one walk. Its whole
+// contract is that it answers exactly what N separate `findDefinition` calls
+// answer, so the test is that equivalence rather than a hand-written expected
+// set: a batch gate that silently dropped a needle would still look plausible
+// against literals.
+//
+// The tree carries the case the batch gate could get wrong on its own — a
+// needle that is a strict prefix of a longer identifier (`parseLine` inside
+// `parseLineExtra`, `m_count` inside `m_countTotal`, `load` inside `loader`) —
+// in every language family, plus a stem-hint-only needle, an invalid needle
+// and a duplicate.
+namespace {
+
+QString batchRoot(QTemporaryDir &tmp) {
+    const QString root = tmp.path();
+    writeFile(root, QStringLiteral("src/parse.h"), QStringLiteral(
+        "#pragma once\n"
+        "class Parser {\n"
+        "public:\n"
+        "    int parseLine(const QString &s);\n"
+        "    int parseLineExtra(const QString &s, int n);\n"
+        "private:\n"
+        "    int m_count = 0;\n"
+        "    int m_countTotal{0};\n"
+        "};\n"));
+    writeFile(root, QStringLiteral("src/parse.cpp"), QStringLiteral(
+        "#include \"parse.h\"\n"
+        "int Parser::parseLine(const QString &s) {\n"
+        "    m_count += parseLineExtra(s, 1);\n"
+        "    return m_count;\n"
+        "}\n"
+        "int Parser::parseLineExtra(const QString &s, int n) {\n"
+        "    m_countTotal += n;\n"
+        "    return n;\n"
+        "}\n"));
+    writeFile(root, QStringLiteral("app.py"), QStringLiteral(
+        "def load(path):\n"
+        "    return loader(path)\n"
+        "def loader(path):\n"
+        "    return path\n"));
+    writeFile(root, QStringLiteral("mod.lua"), QStringLiteral(
+        "function run(x)\n"
+        "  return runAll(x)\n"
+        "end\n"
+        "function runAll(x)\n"
+        "  return x\n"
+        "end\n"));
+    writeFile(root, QStringLiteral("script.sh"), QStringLiteral(
+        "#!/bin/sh\n"
+        "deploy() {\n"
+        "  deployAll\n"
+        "}\n"));
+    // ANTS-1950 — a file whose stem is a needle that resolves nowhere, so the
+    // batch has to reproduce the single path's stem hint too.
+    writeFile(root, QStringLiteral("src/orphan_stem.cpp"), QStringLiteral(
+        "// no symbol of that name anywhere\n"));
+    return root;
+}
+
+}  // namespace
+
+TEST(SymbolQueryBatch, Ants3680MatchesPerSymbolCalls) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString root = batchRoot(tmp);
+
+    const QStringList needles{
+        QStringLiteral("parseLine"),   QStringLiteral("parseLineExtra"),
+        QStringLiteral("m_count"),     QStringLiteral("m_countTotal"),
+        QStringLiteral("load"),        QStringLiteral("loader"),
+        QStringLiteral("run"),         QStringLiteral("runAll"),
+        QStringLiteral("deploy"),      QStringLiteral("orphan_stem"),
+        QStringLiteral("nowhere"),     QStringLiteral("parseLine"),  // duplicate
+        QStringLiteral("1bad")};                                     // invalid
+
+    for (const int cap : {0, 1}) {   // 0 = default cap; 1 = per-needle cap bites
+        SymbolQuery::Options o;
+        o.maxResults = cap;
+        const auto batch = SymbolQuery::findDefinitions(root, needles, o);
+        EXPECT_EQ(batch.size(), 12) << "duplicate needle answered twice";
+
+        for (const QString &n : needles) {
+            const SymbolQuery::DefResult one = SymbolQuery::findDefinition(root, n, o);
+            ASSERT_TRUE(batch.contains(n)) << "batch dropped needle: " << qPrintable(n);
+            const SymbolQuery::DefResult &b = batch.value(n);
+
+            EXPECT_EQ(b.ok, one.ok) << qPrintable(n);
+            EXPECT_EQ(b.code, one.code) << qPrintable(n);
+            EXPECT_EQ(b.definitionsTotal, one.definitionsTotal) << qPrintable(n);
+            EXPECT_EQ(b.truncated, one.truncated) << qPrintable(n);
+            EXPECT_EQ(b.walkCapped, one.walkCapped) << qPrintable(n);
+            EXPECT_EQ(b.fileStemHint, one.fileStemHint) << qPrintable(n);
+            ASSERT_EQ(b.definitions.size(), one.definitions.size()) << qPrintable(n);
+            for (int i = 0; i < b.definitions.size(); ++i) {
+                EXPECT_EQ(b.definitions[i].file, one.definitions[i].file) << qPrintable(n);
+                EXPECT_EQ(b.definitions[i].line, one.definitions[i].line) << qPrintable(n);
+                EXPECT_EQ(b.definitions[i].kind, one.definitions[i].kind) << qPrintable(n);
+                EXPECT_EQ(b.definitions[i].lang, one.definitions[i].lang) << qPrintable(n);
+                EXPECT_EQ(b.definitions[i].signature,
+                          one.definitions[i].signature) << qPrintable(n);
+            }
+        }
+    }
+
+    // The equivalence above is vacuous if nothing resolved. These are the
+    // needles the fixture exists to resolve.
+    SymbolQuery::Options o;
+    const auto batch = SymbolQuery::findDefinitions(root, needles, o);
+    for (const char *n : {"parseLine", "parseLineExtra", "m_count",
+                          "m_countTotal", "load", "loader", "run", "runAll",
+                          "deploy"})
+        EXPECT_FALSE(batch.value(QString::fromUtf8(n)).definitions.isEmpty())
+            << "fixture needle resolved nowhere: " << qPrintable(n);
+    EXPECT_FALSE(batch.value(QStringLiteral("1bad")).ok) << "invalid needle";
+    EXPECT_EQ(batch.value(QStringLiteral("1bad")).code,
+              QStringLiteral("bad_args"));
+}
+
 // ANTS-4821 — a brace that INITIALISES a declarator is not a body, so the
 // two spellings of one member must agree. The guards below are the forms
 // that make the naive "any `{` is a body" rule tempting: each keeps its

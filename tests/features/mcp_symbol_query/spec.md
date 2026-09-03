@@ -13,6 +13,9 @@ source tree spanning C++, Python, Lua, Shell):
    in `;` that opens no body is a `declaration`. A brace opens a body
    only after a parameter list, a capture list or a class-key, so
    `QTimer *m_t{nullptr};` is a declaration (ANTS-4821).
+1a. (ANTS-3680) `findDefinitions` answers N needles in one walk and
+    returns exactly what N `findDefinition` calls return, including
+    `fileStemHint`, per-needle caps and `bad_args` on an invalid needle.
 2. `findCaller` returns call sites, excludes the definition line
    (INV-9), and attaches the best-guess `definition`.
 3. Per-language anchors fire for C++ / Python / Lua / Shell.

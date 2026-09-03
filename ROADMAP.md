@@ -11901,7 +11901,7 @@ fixes don't address. Roadmapped here as their own design tasks.
   Kind: refactor.
   Source: in-session-2026-07-28 (ANTS-3661 implementation).
 
-- 📋 [ANTS-3680] **Batched symbol resolution: answer N needles in one tree walk.**
+- ✅ [ANTS-3680] **Batched symbol resolution: answer N needles in one tree walk.**
   `SymbolQuery::findDefinition` resolves ONE symbol per call and walks
   the source tree each time. Cost is therefore linear in needles, and
   each walk is the same walk.
@@ -11932,6 +11932,33 @@ fixes don't address. Roadmapped here as their own design tasks.
   **Layman:** Looking up 200 names currently means scanning the whole codebase 200 times. Scan it once instead.
   Kind: perf.
   Source: in-session-2026-07-28 (ANTS-3661 calibration run).
+  Resolved (2026-09-03), and the measurement redirected the design.
+  The walk was never the cost: one walk+read of this tree's source is
+  ~45 ms against ~410 ms for a single findDefinition, so ~90% was the
+  regex pass over lines that could not match.
+
+  Two changes. A per-line literal prefilter — every anchor that consumes
+  the symbol requires its escaped literal on that line, so a line without
+  it can match none of them — took a needle 410 ms -> 81 ms with no API
+  change. Then findDefinitions(root, symbols, opts) walks once and gates
+  each line on whole identifier tokens, which is exactly the same test at
+  a cost independent of the needle count (sound because every anchor
+  bounds the symbol on both sides).
+
+  Measured: 200 needles 15.6 s -> 0.35 s, same 582 definitions. The
+  doc_symbols corpus calibration 41.8 s -> 3.4 s, byte-identical output.
+
+  Scope taken beyond the proposal: doc_symbols was rewired, because a
+  public API with no caller is dead code and it is the beneficiary this
+  item names. It resolves in chunks of 128 rather than one batch, which
+  is the only point the resolve deadline can still fire and report the
+  rest not_checked honestly. ANTS-3661 § 4's wall-clock analysis is
+  amended — the deadline no longer governs any document in that corpus,
+  so maxSymbolsPerRun binds again, which is what the cap was for.
+
+  Not done: the proposal's alternation-of-anchors. Bucketing by capture
+  group needs one group per occurrence of the needle in a pattern, and
+  the token gate reaches the same place without touching the anchors.
 
 - 📋 [ANTS-3681] **Replace fixed-byte source-scrape windows with structural bounds.**
   Source-scrape tests bound their search region with a byte count —

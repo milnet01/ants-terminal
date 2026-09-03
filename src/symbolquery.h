@@ -16,7 +16,9 @@
 #ifndef ANTS_SYMBOLQUERY_H
 #define ANTS_SYMBOLQUERY_H
 
+#include <QHash>
 #include <QString>
+#include <QStringList>
 #include <QVector>
 
 #include <optional>
@@ -113,6 +115,16 @@ struct CallResult {
 DefResult  findDefinition(const QString &rootCanonical,
                           const QString &symbol,
                           const Options &opts);
+// ANTS-3680 — resolve N symbols in ONE tree walk, keyed by needle. Equivalent
+// to calling findDefinition per symbol, and the entry point for any sweep that
+// resolves a document's worth of names: per-needle re-walking made the cost
+// linear in needles when the walk is the same walk every time. A duplicate
+// needle is answered once; an invalid one gets its own `bad_args` result
+// without failing the batch. `maxResults` caps each needle; `maxFiles` the walk.
+QHash<QString, DefResult>
+           findDefinitions(const QString &rootCanonical,
+                           const QStringList &symbols,
+                           const Options &opts);
 CallResult findCaller(const QString &rootCanonical,
                       const QString &symbol,
                       const Options &opts);
