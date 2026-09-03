@@ -294,6 +294,11 @@ for security-relevant changes.
 
 ### Fixed
 
+- **A roadmap entry can show its own format in a code block without that example becoming real data** (ANTS-4526)
+  Keys written inside a fenced block are now read as illustration, matching
+  what already happened for keys quoted inline. Tilde-fenced blocks are
+  covered too, which they were not before.
+
 - **Roadmap entries below a certain point can be updated again** (ANTS-4823)
   One entry contained an unfinished code block, which made the roadmap tool refuse every entry after it.
 
