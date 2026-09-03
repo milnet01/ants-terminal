@@ -14,6 +14,12 @@ for security-relevant changes.
 
 ### Added
 
+- **Roadmaps written as numbered passes can now use the database** (ANTS-4803)
+  A project whose roadmap is organised as numbered pass headings could be
+  copied into the database but not written back out, so it could use none
+  of the database features. It can now be written back out, which makes
+  the database usable for those projects.
+
 - **Review corroboration now spots the same problem found in several different files** (ANTS-4814)
   When reviewers each cover a different part of the codebase they rarely
   cite the same line, so finding one recurring problem in several places

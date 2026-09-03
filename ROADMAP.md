@@ -50852,7 +50852,7 @@ volume classes, and the tooling/documentation gaps the run exposed.
   Source: retrodb-feedback-2026-09-01.
   Lanes: remotecontrol, mcp.
 
-- 📋 [ANTS-4803] **Serve the pass-headings dialect from the store, or say why it never will.**
+- ✅ [ANTS-4803] **Serve the pass-headings dialect from the store, or say why it never will.**
   RoadmapSource::migratedProject ends `if (format != "ants-v1") return
   nullopt; // legitimately markdown-served`. So for pass-headings the
   store is write-only: migrate fills it, no read consults it, and every
@@ -50886,6 +50886,47 @@ volume classes, and the tooling/documentation gaps the run exposed.
   Blocking: the project cannot adopt the store until this is settled, and
   has now deregistered twice to avoid leaving stale rows in the
   machine-global figures.
+  Resolved (2026-09-03, 9ec199cd): SERVED, not refused — user decision
+  this session. RetroDB can adopt the store.
+
+  Built as a dialect on the existing render rather than a second renderer:
+  only the per-item emission differs, so sections, ordering, narration,
+  tables, the file split and the drift report stay one implementation.
+  Callers pass the project's STORED source_format, so a project cannot be
+  published in a dialect it was not migrated from.
+
+  Two decisions taken to avoid a bigger change, both worth knowing:
+
+  The designator is RECOVERED FROM THE ID, not stored. passDesignator
+  exists on the parse record and in no store column, and adding one would
+  be a kSchemaVersion bump, which this project's own notes call a one-way
+  door across every project on the machine. Deriving 43.5 from PASS-43-5
+  needs no migration and cost nothing to build.
+
+  The Layman gate does NOT apply to this dialect. A pass block has nowhere
+  to put a Layman line, so an open pass item can never satisfy that gate;
+  applying it would refuse every publish forever, which is this item's own
+  defect wearing a different code. Found by measurement rather than
+  reasoning — the first round-trip run refused two of three items for
+  exactly this. Scoped to the emission format, not waived per item.
+
+  passheadingwrite.cpp moved down to ants_roadmapparse_lib, the leaf core
+  links PUBLIC, so the store's Qt6::Core + Qt6::Sql link surface stays
+  headless. Same move ANTS-4504 made for markdownscan.cpp.
+
+  tests/features/roadmap_render_pass_headings, four invariants, two
+  red-proven. The load-bearing one is byte-stability across a SECOND
+  round trip, which is what proves the render is the migration's inverse;
+  comparing against the author's seed would be the wrong bar, since a
+  render canonicalises.
+
+  roadmap_read_seam's foreign-dialect fixture moved to github-task-list.
+  Its invariant is unchanged and still correct — a dialect the store cannot
+  publish is markdown-served — but pass-headings is no longer an example of
+  one. Those two tests failing was the correct signal.
+
+  github-task-list remains markdown-served: the gate was widened only as
+  far as the render can publish, which is the trap this item was about.
   **Layman:** One project's roadmap style can be copied into the database but not read back out of it, so that project cannot use any of the database features.
   Kind: feature.
   Source: retrodb-feedback-2026-09-01.
