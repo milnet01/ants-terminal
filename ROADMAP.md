@@ -50215,7 +50215,7 @@ volume classes, and the tooling/documentation gaps the run exposed.
   Source: in-session-2026-09-02.
   Lanes: build.
 
-- 📋 [ANTS-4799] **ci.yml declares no concurrency group, so superseded pushes keep running.**
+- ✅ [ANTS-4799] **ci.yml declares no concurrency group, so superseded pushes keep running.**
   zizmor --persona=auditor reports one low finding against ci.yml after
   ANTS-4796 cleared the three anonymous-definition ones: the workflow sets
   no `concurrency:` key, so every job in it is affected.
@@ -50234,6 +50234,15 @@ volume classes, and the tooling/documentation gaps the run exposed.
   having gone cancelled-and-unnoticed for two days. A cancel-in-progress
   group makes `cancelled` an ordinary outcome again, so whatever notices a
   real cancellation has to keep telling the two apart.
+  Resolved (2026-09-03): `ci.yml` gained a `concurrency:` group keyed on
+  workflow and ref, with `cancel-in-progress` scoped to non-main refs.
+  The asymmetry is deliberate and answers this bullet's own caveat — on
+  a branch or PR the superseded run answers a question nobody is asking,
+  while on main it is left to finish, because ANTS-4533's
+  cancelled-and-unnoticed `build-asan` is only ever spotted while
+  `cancelled` on main stays abnormal. Verified: `actionlint` clean, and
+  `zizmor --persona=auditor` now reports no findings against the
+  workflow.
   **Layman:** Pushing twice in a row runs the whole build twice instead of dropping the first one.
   Kind: chore.
   Source: in-session-2026-09-02.
@@ -50264,7 +50273,7 @@ volume classes, and the tooling/documentation gaps the run exposed.
   Kind: chore.
   Source: in-session-2026-09-02.
 
-- 📋 [ANTS-4801] **ruff is not clean over tools/*.py, and three findings are late-binding closures.**
+- ✅ [ANTS-4801] **ruff is not clean over tools/*.py, and three findings are late-binding closures.**
   The check-code sweep recorded that "ruff and bandit DID run and found
   nothing real" (ANTS-4791's body). Re-measured on 2026-09-02 with the
   default rule set, ruff reports findings across tools/*.py, and they are
@@ -50306,6 +50315,19 @@ volume classes, and the tooling/documentation gaps the run exposed.
   implicit concatenation in a collection literal, shebang bits — are
   unadjudicated style rather than defects. Settling that is a project
   decision, not a fix.
+  Resolved (2026-09-03): the rule-set question this bullet opens with is
+  settled. `ruff.toml` now pins a bug-only selection — pyflakes, bugbear,
+  pylint errors, `exec`/`eval` and the unclosed-handle rule — with the
+  formatting classes deliberately left off, so a clean run is evidence
+  rather than an aesthetic opinion. `check-code` selects ruff on any project
+  carrying Python, so that run is what measures against it. `ruff check
+  tools/` is clean under it.
+
+  Two further findings the selection surfaced, both in
+  `roadmap-corpus-survey.py` and both fixed: a loop run only to leave a
+  variable bound to its last match (ruff's own suggested rename would have
+  broken the test below it, so it is written out explicitly instead), and an
+  f-string with no placeholders.
   **Layman:** The Python checker does report problems in the helper scripts, including three that could actually misbehave.
   Kind: fix.
   Source: in-session-2026-09-02.
@@ -53508,7 +53530,7 @@ defect from different angles.
 
   Test: `McpSpecLog.Ants4136PreserveBodyKeepsWrappedStatusProse`, which asserts BOTH directions — that the default still replaces the whole extent, and that opting in keeps every continuation line while the old state word goes. Suite 3527/3527.
 
-- 📋 [ANTS-4138] **The mirrored standards still point at four unmirrored global files.**
+- ✅ [ANTS-4138] **The mirrored standards still point at four unmirrored global files.**
   ANTS-4133 mirrored coding / documentation / testing / commits (plus
   security) so a public reader gets the rule rather than a pointer into a
   private home directory. Those five bodies then cite others that were NOT
@@ -53558,6 +53580,30 @@ defect from different angles.
   mirror those owners too (the marker mechanism already generalises), or leave
   them and say so. Said so for now in docs/standards/README.md, which is the
   one place describing the arrangement.
+  Resolved (2026-09-03) — by later work, not by this bullet. Verified rather
+  than assumed: every owner this item named as unmirrored now carries a
+  `MIRROR BEGIN` pair in `docs/standards/`. `languages/cpp.md`, `qt.md` and
+  `python.md` were mirrored by ANTS-4764, which also taught the gate to walk
+  subdirectories; `releases.md`, `spec-format.md` and `changelog-format.md`
+  are mirrored too, so five of the six links this item measured as 404 for a
+  GitHub reader resolve.
+
+  The two exceptions are both deliberate and both encoded in
+  `tools/check-standard-mirrors.sh` rather than left to discipline. A
+  `skeletons/` path is out of the mirror set by rule — a skeleton is a
+  template to copy, not a rule to conform to. `README.md` resolves to this
+  project's index rather than the global one the sentence means; the gate
+  skips it by name, citing this id.
+
+  The item asked for a decision between mirroring all four, mirroring the two
+  a contributor to this Qt/C++ codebase needs, or saying the pointers are
+  maintainer-only. Overtaken: all three language files are mirrored and the
+  gate holds them in sync, which is more than the middle option asked for and
+  costs nothing further to keep. Nothing removed to match the narrower
+  choice — that would be an orthogonal deletion of work already passing its
+  own gate.
+
+  Gate confirms: 13 mirrors in sync, 0 skipped, links resolve.
 
 - ✅ [ANTS-4346] **find_definition resolves no C++ namespace, and the ANTS-1950 stem-hint rescue is case-sensitive — so on this codebase's own naming convention the caller gets an empty result AND no nudge.**
   VERIFIED by running it, twice, while settling ANTS-3747's routing question.
@@ -55739,7 +55785,7 @@ to apply within a document. Follow-on work from that change.
   Kind: refactor.
   Source: in-session-2026-07-26 (ANTS-3636 spec consolidation)..
 
-- 📋 [ANTS-3652] **Give `doc_integrity` an entry in `mcp-behavioural-notes.md`.**
+- ✅ [ANTS-3652] **Give `doc_integrity` an entry in `mcp-behavioural-notes.md`.**
   `docs/standards/mcp-behavioural-notes.md` is the documented home for
   per-verb behavioural notes, and `grep -n doc_integrity` over it returns
   nothing — the verb has none, though it accepts a directory and walks it
@@ -55752,6 +55798,20 @@ to apply within a document. Follow-on work from that change.
   **Layman:** The per-verb notes file that tells a caller how a tool really behaves has no entry for doc_integrity, so its quirks are undocumented.
   Kind: doc.
   Source: cold-eyes-2026-07-27 ANTS-3636 loop 11.
+  Resolved (2026-09-03): `doc_integrity` now has an entry under § Read /
+  incremental verbs in `docs/standards/mcp-behavioural-notes.md`. Every
+  claim was re-verified against source rather than copied from this
+  bullet — all three it asserted (a directory walk, `ok:true` on a
+  non-existent path per INV-15, `kinds` narrowing findings and counts
+  together per INV-18) hold. Two more surprises worth a caller's
+  attention were added: docs past `maxDocsPerRun` are skipped with no
+  `truncated` flag, so a short `checked_docs[]` is the only signal in
+  both that case and the missing-path one; and a cross-document anchor
+  is checked only where the target doc is in scope, so narrowing `path`
+  quietly narrows coverage. Verified by running the verb over the edited
+  file — no findings, `checked_docs[]` naming it. The sibling gap this
+  bullet mentions, `doc_citations` having no entry either, is left to
+  ANTS-3636 § 7; adding it here would have been an orthogonal edit.
 
 - 📋 [ANTS-4822] **Specs cite C++ members that have since been renamed, and nothing acts on the report.**
   ANTS-3661's corpus calibration classifies `cpp_data_member` as 15% of

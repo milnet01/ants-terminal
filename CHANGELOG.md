@@ -14,6 +14,12 @@ for security-relevant changes.
 
 ### Added
 
+- **Documented how doc_integrity really behaves** (ANTS-3652)
+  It answers a path that does not exist with a clean pass rather than an error, and silently stops after a fixed number of documents. The per-verb notes now say so.
+
+- **Committed a linter configuration for the helper scripts** (ANTS-4801)
+  `ruff.toml` pins the checks to the ones that catch code that misbehaves, leaving formatting alone. Two real findings in the roadmap survey script were fixed with it.
+
 - **`spec_lint` checks a spec's Invariants against its Tests section** (ANTS-4623)
   Catches a spec that declares ten contracts and remembers to test eight —
   the two sections restate one set in different words, so they share no
@@ -220,6 +226,9 @@ for security-relevant changes.
 
 ### Changed
 
+- **CI now drops a superseded build on branches and PRs** (ANTS-4799)
+  Pushing again to the same branch cancels the run the previous push started. Runs on `main` are never cancelled, so a cancelled build there still means something went wrong.
+
 - **Symbol resolution answers many names in one tree walk, and skips lines that cannot match** (ANTS-3680)
   `doc_symbols` over the whole `docs/specs` + `docs/standards` corpus went
   41.8 s to 3.4 s with identical output. A single `find_definition` went
@@ -279,6 +288,15 @@ for security-relevant changes.
   `Inv2BypassesStatusAndPagination` anchored on a string that also matches an earlier `else if`, so its byte window opened above the branch it names — a test that passes from the wrong position gives no signal when the thing it names moves. Re-anchored on a needle that occurs once, and proved by mutation in both directions.
 
 ### Fixed
+
+- **Roadmap entries below a certain point can be updated again** (ANTS-4823)
+  One entry contained an unfinished code block, which made the roadmap tool refuse every entry after it.
+
+- **Both guides quote the README's real version line** (ANTS-4540)
+  They described it with wording the README stopped using, so a reader searching for it found nothing.
+
+- **The contributor guide and bump recipe name the tools that still exist** (ANTS-4530)
+  Both routed the version bump to a `/bump` command removed in August, and credited tagging to the wrong tool. They now name `cut-release` and `packaging/cut-rc.sh`.
 
 - **The debt-sweep engine's design doc matches the shipped code again** (ANTS-3510)
   Its detector list, scan order, apply-fix contract, dry-run path and perf
