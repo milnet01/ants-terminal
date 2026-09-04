@@ -14224,6 +14224,20 @@ indie-review finding.
   Kind: doc-fix.
   Source: in-session-2026-09-04.
 
+- 📋 [ANTS-4869] **cut-rc.sh new-rc cannot resume after an interrupted run — its empty-RC guard reads the roll it already did as nothing to ship.**
+  Hit 2026-09-04 cutting v0.7.108-rc1. `cmd_new_rc` rolls `[Unreleased]` into `## [<base>] — unreleased (Patron RC preview)` and commits, THEN runs `build_and_test`, THEN tags. The build was killed by the machine's memory guard, so the roll commit landed and no tag was created.
+
+  On re-run, `unreleased_has_content` reads the now-empty `[Unreleased]` and `new-rc` refuses with "nothing new to preview — '## [Unreleased]' has no entries." The RC is not empty; its content is one section further down, already rolled. The guard cannot tell "nothing to ship" from "already rolled", and the only way past is `--allow-empty-rc`, whose name says the opposite of what is true.
+
+  That flag is also the wrong instrument: it disables INV-1 outright, so it would equally wave through the degenerate same-tip cut INV-1 exists to stop. Using it to resume trades a real guard for a resume.
+
+  Fix: before refusing, check whether `## [<base>] — unreleased` already exists and carries content. If it does, the roll has run — proceed without needing the override, and say so. The two states are distinguishable from the file alone, which is what makes this a fixable guard rather than an inherent ambiguity.
+
+  Check `cmd_promote` and `cmd_hotfix` for the same resume gap. Related to ANTS-4865, the other half-completed-phase defect found the same day.
+  **Layman:** If the release script is interrupted halfway, re-running it says there is nothing to release — when in fact it already did the first half.
+  Kind: fix.
+  Source: in-session-2026-09-04.
+
 ### 🎨 Review Changes dialog UX (user request 2026-06-03)
 
 Navigation + scroll affordances for the Review Changes dialog, requested
