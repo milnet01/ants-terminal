@@ -38,7 +38,7 @@
 id: za.co.antsprojectshub.AntsTerminal
 
 runtime: org.kde.Platform
-runtime-version: '6.10'
+runtime-version: '6.11'
 sdk: org.kde.Sdk
 
 command: ants-terminal
@@ -100,8 +100,8 @@ modules:
       - make install INSTALL_TOP=/app
     sources:
       - type: archive
-        url: https://www.lua.org/ftp/lua-5.4.7.tar.gz
-        sha256: 9fbf5e28ef86c69858f6d3d34eccc32e911c1a28b4120ff3e84aaa70cfbf1e30
+        url: https://www.lua.org/ftp/lua-5.4.9.tar.gz
+        sha256: 2335b6c582a52654f94612bf10d2f4672805d05329aa6568b1d8cd9e5c6fb8e6
         # Flathub's flatpak-external-data-checker tracks upstream Lua
         # releases at https://www.lua.org/ftp/ and refreshes the URL
         # + sha256 fields above on 5.4.x point bumps. CI opens a PR

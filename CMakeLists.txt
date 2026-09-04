@@ -3198,6 +3198,13 @@ if(ANTS_TESTS)
     set_property(SOURCE tests/features/flathub_manifest_transform/test_flathub_manifest_transform.cpp
         APPEND PROPERTY COMPILE_DEFINITIONS
         TRANSFORMER_PATH="${CMAKE_SOURCE_DIR}/packaging/flatpak/make-flathub-manifest.sh")
+    # INV-3 compares the transformed manifest's Lua sha256 against the DEV
+    # manifest's, rather than against a literal. A literal made a legitimate
+    # Lua bump red and could never have caught the transform altering the
+    # hash, which is what the invariant is about.
+    set_property(SOURCE tests/features/flathub_manifest_transform/test_flathub_manifest_transform.cpp
+        APPEND PROPERTY COMPILE_DEFINITIONS
+        DEV_MANIFEST_PATH="${CMAKE_SOURCE_DIR}/packaging/flatpak/za.co.antsprojectshub.AntsTerminal.yml")
     set_property(SOURCE tests/features/test_audit_pattern_drift/test_pattern_drift.cpp
         APPEND PROPERTY COMPILE_DEFINITIONS
         # ANTS-1450 — test_audit pattern/dimension drift guard.

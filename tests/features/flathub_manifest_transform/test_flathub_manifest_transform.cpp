@@ -9,6 +9,8 @@
 #include <cstdio>
 #include <cstdlib>
 #include <memory>
+#include <fstream>
+#include <iterator>
 #include <string>
 #include <sys/wait.h>
 
@@ -17,6 +19,36 @@
 #ifndef TRANSFORMER_PATH
 #error "TRANSFORMER_PATH compile definition required"
 #endif
+#ifndef DEV_MANIFEST_PATH
+#error "DEV_MANIFEST_PATH compile definition required"
+#endif
+
+// Whole-file read; empty string when the path cannot be opened, which the
+// caller reports as its own failure rather than silently passing.
+static std::string readFile(const char *path) {
+    std::ifstream in(path, std::ios::binary);
+    if (!in) return {};
+    return std::string(std::istreambuf_iterator<char>(in),
+                       std::istreambuf_iterator<char>());
+}
+
+// The sha256 value of the `lua` module's archive source, taken from a
+// manifest's text. Scoped to that module: the search starts at
+// `- name: lua` and stops at the next top-level module, so a sha256
+// belonging to some later module can never be returned in its place.
+static std::string luaSha256(const std::string &manifest) {
+    const auto lua = manifest.find("- name: lua");
+    if (lua == std::string::npos) return {};
+    auto end = manifest.find("- name: ", lua + 1);
+    if (end == std::string::npos) end = manifest.size();
+    const auto key = manifest.find("sha256: ", lua);
+    if (key == std::string::npos || key >= end) return {};
+    const auto from = key + 8;
+    auto to = manifest.find_first_not_of(
+        "0123456789abcdefABCDEF", from);
+    if (to == std::string::npos) to = manifest.size();
+    return manifest.substr(from, to - from);
+}
 
 // Run a shell command, capture stdout. Returns exit status; appends
 // captured output to `out`.
@@ -99,8 +131,18 @@ static int runMain() {
     if (!has("x-checker-data:")) {
         fail("INV-3: x-checker-data stanza dropped");
     }
-    if (!has("sha256: 9fbf5e28ef86c69858f6d3d34eccc32e911c1a28b4120ff3e84aaa70cfbf1e30")) {
-        fail("INV-3: Lua tarball sha256 changed (should be byte-identical to dev)");
+    // Read the sha256 out of the DEV manifest and require the transformed
+    // one to carry the same line. A literal here was red on any legitimate
+    // Lua bump — and, worse, could never fail for the reason the invariant
+    // names: a transformer that rewrote the hash would be caught only when
+    // it happened to rewrite it to something other than one fixed constant.
+    {
+        const std::string devSha = luaSha256(readFile(DEV_MANIFEST_PATH));
+        if (devSha.empty()) {
+            fail("INV-3: no `sha256:` under the dev manifest's lua module");
+        } else if (!has("sha256: " + devSha)) {
+            fail("INV-3: Lua tarball sha256 changed (should be byte-identical to dev)");
+        }
     }
     // Lua before ants-terminal — same ordering as dev manifest.
     auto luaPos = out.find("- name: lua");

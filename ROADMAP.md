@@ -641,7 +641,7 @@ SSH key registered there.
   Progress (2026-08-02, cont.): the validation build justified itself on its first run. Pointing OBS at main turned Leap 16.0 and Tumbleweed RED — not a regression from the test, but main telling the truth for the first time: ANTS-3756 made Qt6::Sql a REQUIRED find_package component and no packaging carrier was told, so every openSUSE target died at configure with 'Failed to find required Qt component "Sql"'. Fixed in 1882d3dc; it would otherwise have shipped in Wednesday's release and broken every openSUSE and Fedora package on the day. That is this item's thesis demonstrated rather than argued. Mechanism notes from the OBS user guide, for whoever implements this properly: `osc branch` creates an isolated project for test builds WITHOUT touching the published package — that is the right tool, and editing the live package's _service (what was done here) is not; `osc build` runs a real chroot build locally per target, so a pre-tag rehearsal need not involve the server at all. Both are heavier than the bug class actually needs on every commit, so the cheap deterministic first rung is filed separately as ANTS-3791 (assert CMake's Qt6 COMPONENTS against the spec's BuildRequires — would have caught both this and the 2026-07-29 Qt6Test break at ctest time).
   Outcome (2026-08-02): four validation builds, ALL FOUR TARGETS GREEN on the last one — Tumbleweed, Leap 16.0, Mageia_10 and Fedora_44 each producing a complete RPM set (main + debuginfo + debugsource). Five distinct pre-existing defects were found, each hidden behind the one before it, and every one of them would have shipped in Wednesday's release: (1) luaengine's hardcoded <lua5.4/lua.hpp> — already fixed on main by 94122ab2, and this run is the first PROOF it works, since no tag containing it had ever been built; (2) missing BuildRequires cmake(Qt6Sql) after ANTS-3756 made it a required component — every openSUSE target failed configure (1882d3dc); (3) the SQLite DRIVER absent from the build chroot, since a Requires is not installed there and the roadmap-store tests open a real database during %check — 217 'Driver not loaded' failures (2fb77526); (4) Mageia declaring the debuginfo subpackage twice, latent since that target was added and only reachable once a build survived 900s to RPM assembly (2fb77526); (5) no UTF-8 locale in %check, so glibc's wcwidth() returned -1 (unprintable, not narrow) for CJK and combining marks, failing 3 tests (f9d4d8da). The OBS _service pin was reverted to v0.7.101 afterwards so the project stops publishing an unreleased 0.7.102 that would collide with the real one; the five spec fixes remain committed and reach published packages when the pin moves at the next release. Fedora/Mageia are expected to show red again until then — that is the v0.7.101 source, not a regression. Cheap deterministic follow-up: ANTS-3791. Deeper app-level locale defect surfaced by (5): ANTS-3792.
 
-- 📋 [ANTS-3734] **Flatpak manifest pins Lua 5.4.7; upstream is on 5.4.8.**
+- ✅ [ANTS-3734] **Flatpak manifest pins Lua 5.4.7; upstream is on 5.4.8.**
   packaging/flatpak/za.co.antsprojectshub.AntsTerminal.yml pins
   lua-5.4.7.tar.gz. lua.org/ftp/ currently lists lua-5.4.8.tar.gz.
 
@@ -667,6 +667,19 @@ SSH key registered there.
   the pinned source list and an outdated interpreter is the kind of
   thing they ask about. Bump to 5.4.9 with its sha256 and rebuild before
   the PR goes in.
+  Resolved (2026-09-04): manifest pinned to Lua 5.4.9 (sha256
+  2335b6c582a52654f94612bf10d2f4672805d05329aa6568b1d8cd9e5c6fb8e6,
+  computed from the fetched tarball, not copied). Two releases, not the
+  one this item recorded. FlatpakLuaModule and FlathubManifestTransform
+  both green afterwards — the latter only after ANTS-4868 fixed its
+  hardcoded-hash assertion, which this bump is what exposed. NOT yet
+  proven by a flatpak-builder run; that is the outstanding step before
+  any Flathub submission.
+  Release note (2026-09-04): no CHANGELOG entry, deliberately — the
+  Flatpak manifest ships to nobody until Flathub accepts the submission,
+  so a bundled-Lua bump reaches no user. It becomes release-note-worthy
+  on the release that first appears on Flathub, and belongs in that
+  announcement rather than here.
 
 - 📋 [ANTS-3790] **The .deb and Flatpak may not ship Qt's SQLite driver plugin.**
   Qt loads the SQLite driver as a runtime PLUGIN, so nothing links it
@@ -62382,15 +62395,40 @@ distro." Each sub-bullet can ship independently once H1–H4 land.
   Source: in-session-2026-08-19, noticed during the README pass.
   Lanes: packaging, docs.
 
-- 📋 [ANTS-4867] **Flatpak manifest builds on org.kde.Platform 6.10; 6.11 is current.**
+- ✅ [ANTS-4867] **Flatpak manifest builds on org.kde.Platform 6.10; 6.11 is current.**
   flatpak-builder-lint on the submission manifest warns `runtime-update-available-to-org.kde.Platform-6.11`. It is a warning rather than an error, so it does not block the PR, but a Flathub reviewer sees the same line and the runtime is the first thing they ask about.
 
   Both `org.kde.Platform//6.11` and `org.kde.Sdk//6.11` are already installed on this machine, so the change is a two-line edit to the dev manifest plus a full `flatpak-builder` run to prove the build still works against the newer Qt. The submission manifest is generated from the dev one, so only the dev file is edited.
 
   Do this before the first Flathub PR rather than after: a runtime bump after landing is a second review round.
+  Resolved (2026-09-04): runtime-version raised 6.10 → 6.11 in the dev
+  manifest, which the submission manifest is generated from.
+  flatpak-builder-lint's runtime-update-available warning is what asked
+  for it. NOT yet proven by a flatpak-builder run against the 6.11 Sdk;
+  that is the outstanding step before any Flathub submission, and if the
+  build fails on 6.11 the fallback is to revert this one line.
+  Release note (2026-09-04): no CHANGELOG entry, deliberately — same
+  reason as ANTS-3734: the Flatpak manifest is unpublished, so the
+  runtime it builds against reaches no user yet.
   **Layman:** The app store build uses a year-old base system; the current one is available.
   Kind: chore.
   Source: in-session-2026-09-04 (Flathub pre-submission lint).
+
+- ✅ [ANTS-4868] **FlathubManifestTransform INV-3 now compares the Lua hash against the dev manifest instead of a literal.**
+  INV-3 says the lua module survives the transform "byte-identical", and the test's own failure message says so, but the assertion was `has("sha256: 9fbf5e28...")` — a literal. Two defects follow, and the first is the one that bit.
+
+  It goes red on any legitimate Lua bump. Raising the pin 5.4.7 to 5.4.9 reddened the suite with a message blaming the transformer, which had done nothing.
+
+  And it is a substring search over the whole generated manifest, not a comparison against the dev manifest's lua module, so it does not check the invariant it names. NOT among its defects: failing to catch a rewritten hash. A literal does catch that, as long as the rewrite lands on some other value. Stated the other way in this session's first write-up and corrected here.
+
+  Now reads the sha256 out of the dev manifest via a new DEV_MANIFEST_PATH compile definition and requires the generated one to carry the same line. Extraction is scoped between `- name: lua` and the next top-level module, so another module's hash can never stand in; an empty extraction is its own reported failure rather than a silent pass.
+
+  Verified by mutation rather than by the green run: with the generator patched to rewrite the hash the test fails naming INV-3, and passes again on restore.
+  Release note (2026-09-04): no CHANGELOG entry, deliberately — a
+  conformance test's assertion, no shipped behaviour.
+  **Layman:** A packaging test had a copy of one file's checksum baked into it, so routine upkeep broke the test.
+  Kind: test.
+  Source: in-session-2026-09-04 (Flathub pre-submission prep).
 
 ### 🔌 Plugins — marketplace
 
