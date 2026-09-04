@@ -103,7 +103,7 @@
   </screenshots>
 
   <releases>
-    <release version="0.7.107" date="2026-08-26">
+    <release version="0.7.107" date="2026-09-04">
       <description>
         <p>Roadmap database maturation — batch triage operations, richer queries, MCP responsiveness, and documentation tooling that stops reporting false problems.</p>
         <ul>

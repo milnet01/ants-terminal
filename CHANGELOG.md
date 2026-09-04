@@ -850,7 +850,7 @@ for security-relevant changes.
 - **The release workflow passes its tag input through `env:` instead of expanding it into the shell** (ANTS-4772)
   A `workflow_dispatch` tag is now read as `"$INPUT_TAG"` rather than substituted by the Actions template engine before the shell parses the line, so a crafted tag can no longer become shell source in a runner holding `contents: write`.
 
-## [0.7.107] — unreleased (Patron RC preview)
+## [0.7.107] — 2026-09-04
 ### Added
 
 - **feedback_query reports a format version it does not recognise** (ANTS-4702)
