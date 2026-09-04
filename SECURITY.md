@@ -131,7 +131,7 @@ For context on the existing defense posture:
   per-image dimensions at 4096×4096.
 - **URI scheme allowlist** (0.6.14) — both OSC 8 explicit hyperlinks
   and `make_hyperlink` trigger rules are restricted to
-  http/https/ftp/file/mailto.
+  http/https/mailto. `ftp` and `file` are NOT accepted.
 - **Plugin permissions** (0.6.0 manifest v2) — permissions are
   declarative in `manifest.json`, user-granted per-plugin on first
   load, persisted in `config.plugin_grants`, and auditable /

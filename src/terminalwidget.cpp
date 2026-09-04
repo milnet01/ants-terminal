@@ -4255,8 +4255,8 @@ void TerminalWidget::openHyperlink(const UrlSpan &span, int globalLine) {
         }
     }
     // ants-audit: scheme-validated — OSC 8 URLs filtered to
-    // http/https/ftp/file/mailto at ingestion (terminalgrid.cpp:616);
-    // file-path spans go through openFileAtPath, never here.
+    // http/https/mailto at ingestion (TerminalGrid::handleOsc); file-path
+    // spans go through openFileAtPath, never here.
     QDesktopServices::openUrl(QUrl(span.url));
 }
 
@@ -4362,8 +4362,9 @@ void TerminalWidget::openFileAtPath(const QString &path) {
     };
     if (line > 0) {
         if (isCodeFamily()) {
-            args << "--goto" << QString("%1:%2%3").arg(filePathSafe).arg(line)
-                                                  .arg(col > 0 ? QString(":%1").arg(col) : "");
+            args << "--goto" << QString("%1:%2%3").arg(
+                filePathSafe, QString::number(line),
+                col > 0 ? QString(":%1").arg(col) : QString());
         } else if (editorBase == "kate") {
             args << "-l" << QString::number(line);
             if (col > 0) args << "-c" << QString::number(col);
@@ -4373,8 +4374,9 @@ void TerminalWidget::openFileAtPath(const QString &path) {
                 || editorBase == "micro") {
             // These editors all accept the same path:line:col goto syntax
             // VSCode's --goto uses internally — append directly.
-            args << QString("%1:%2%3").arg(filePathSafe).arg(line)
-                                       .arg(col > 0 ? QString(":%1").arg(col) : "");
+            args << QString("%1:%2%3").arg(
+                filePathSafe, QString::number(line),
+                col > 0 ? QString(":%1").arg(col) : QString());
         } else if (editorBase == "nvim" || editorBase == "vim"
                 || editorBase == "vi"   || editorBase == "ex") {
             // vi-family: +N file (col jump goes via -c "normal Mc|" — too
