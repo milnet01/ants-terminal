@@ -350,6 +350,12 @@ for security-relevant changes.
 
 ### Fixed
 
+- **Typing in the scrollback search box no longer freezes the window.** (ANTS-2000)
+  Each keystroke re-scanned the entire scrollback -- 50,000 lines by default
+  -- so typing a word could lock the window for seconds. The search now waits
+  for a brief pause in typing and scans once. Pressing the regex toggle still
+  searches immediately.
+
 - **Updating the compiler no longer leaves precompiled headers that can crash the build.** (ANTS-2107)
   The build now records which compiler built its precompiled headers and
   discards them when that changes. Previously a compiler upgrade left large

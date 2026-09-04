@@ -14492,6 +14492,31 @@ under one guard). The deferrals below.
   bypassing the paste safety guard, span cache without LRU eviction.
   Layman: Searching scrollback checks up to 50,000 lines on every keypress, which freezes the window for seconds.
   Kind: perf. Lanes: terminalwidget. Source: indie-review-2026-06-04.
+  Progress (2026-09-04, 3a560db7) — the HEADLINE defect is fixed; the four
+  bundled items are not, and the item stays open for them.
+
+  Fixed: performSearch() was wired straight to QLineEdit::textChanged, so a
+  full regex scan of the scrollback ran once per KEYSTROKE — 50k lines by
+  default, 1M at the cap. A 120 ms single-shot timer now coalesces the burst,
+  so a typed word costs one scan rather than one per character. The interval
+  sits below the ~200 ms at which a pause reads as lag and above a fast
+  typist's inter-key gap. The regex toggle stops the pending timer and
+  searches at once: an explicit action is not a burst, and stopping it keeps
+  the two from racing.
+
+  STILL OPEN, untouched: loadHistory()'s blocking I/O and O(N^2) prepend on
+  the first autocomplete keystroke, plus the four mediums — stale search
+  highlights after scrollback growth, asciicast raw-byte loss via
+  QString::fromUtf8, re-run bypassing the paste safety guard, and the span
+  cache without LRU eviction.
+
+  Note on why this was worth splitting out: the item is one bullet carrying
+  five unrelated defects, which is what kept it unactionable. The headline is
+  the user-visible one and needed ~15 lines.
+
+  tests/perf/bench_search_throughput.cpp reproduces the scan loop standalone
+  rather than driving the widget's wiring, so it does not cover the debounce
+  and was unaffected.
   Source: indie-review-2026-06-04.
   Lanes: terminalwidget.
 
