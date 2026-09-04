@@ -149,6 +149,36 @@ TEST(mcp_roadmap_unrecognised_format, Inv4HeaderInventoryFallback) {
     EXPECT_EQ(0, expect_failures());
 }
 
+// ANTS-4860 — the header-inventory fallback is a THIRD return arm.
+// ANTS-4730's contract is that an absent `sync_checked` means only that
+// check_sync was not requested, so this arm has to answer it too: a
+// caller who asked and got nothing back cannot tell "nobody looked"
+// from "the argument was dropped".
+TEST(mcp_roadmap_unrecognised_format, Inv4bFallbackAnswersCheckSync) {
+    expect_reset();
+    const std::string cpp = ants_test::slurpRemoteControl();
+    ASSERT_FALSE(cpp.empty())
+        << "ANTS-4860: remotecontrol sources not readable";
+
+    const std::string emitter = boundedBetween(
+        cpp,
+        "QJsonObject buildHeaderInventoryEnvelope(",
+        "quint64 rcFnv1a64(");
+    ASSERT_FALSE(emitter.empty())
+        << "ANTS-4860: failed to bound buildHeaderInventoryEnvelope";
+
+    expect(contains(emitter, "bool syncRequested"),
+           "ANTS-4860: the emitter is told whether check_sync was asked");
+    expect(contains(emitter, "if (syncRequested)"),
+           "ANTS-4860: the request gates the stamp, so a caller who did "
+           "not ask still gets absence");
+    expect(contains(emitter, "\"sync_checked\""),
+           "ANTS-4860: the emitter stamps sync_checked");
+    expect(contains(emitter, "sync_not_checked_reason"),
+           "ANTS-4860: the emitter says why the check did not run");
+    EXPECT_EQ(0, expect_failures());
+}
+
 // ANTS-1463 — every unrecognised_format envelope across the four
 // refusal sites carries the shared kUnrecognisedFormatHint +
 // expected_format[] fields. Wording regression-locks the hint

@@ -2893,7 +2893,8 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
             // (line ~1410); reuse it for the fallback.
             if (!m_roadmapIndex.isEmpty()) {
                 return QJsonDocument(buildHeaderInventoryEnvelope(
-                    m_roadmapIndex, path, fi.size()));
+                    m_roadmapIndex, path, fi.size(),
+                    req.value(QStringLiteral("check_sync")).toBool()));
             }
             QJsonObject env;
             env["ok"]    = false;
@@ -2901,7 +2902,7 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
             env["error"] = QStringLiteral(
                 "roadmap_query: \"%1\" parsed zero bullets from %2 "
                 "bytes — format not recognised")
-                    .arg(path).arg(fi.size());
+                    .arg(path, QString::number(fi.size()));
             env["path"]            = path;
             env["bytes"]           = fi.size();
             env["hint"]            = kUnrecognisedFormatHint();
@@ -3674,7 +3675,7 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
                 "id-bearing bullet(s) searched). If you passed multiple "
                 "space/comma-separated ids, use ids:[...] or query one id "
                 "at a time.")
-                    .arg(queryArg).arg(postIdPruneCountSec);
+                    .arg(queryArg, QString::number(postIdPruneCountSec));
         } else if (preIdPruneCountSec > 0 && filtered.isEmpty() &&
             !includeNarratorBullets && !includeSectionHeaders) {
             out["warning"] = QStringLiteral(
@@ -3821,7 +3822,8 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
         }
         if (!m_roadmapIndex.isEmpty()) {
             return QJsonDocument(buildHeaderInventoryEnvelope(
-                m_roadmapIndex, path, fi.size()));
+                m_roadmapIndex, path, fi.size(),
+                req.value(QStringLiteral("check_sync")).toBool()));
         }
         QJsonObject env;
         env["ok"]    = false;
@@ -3829,7 +3831,7 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
         env["error"] = QStringLiteral(
             "roadmap_query: \"%1\" parsed zero bullets from %2 "
             "bytes — format not recognised")
-                .arg(path).arg(fi.size());
+                .arg(path, QString::number(fi.size()));
         env["path"]            = path;
         env["bytes"]           = fi.size();
         env["hint"]            = kUnrecognisedFormatHint();
@@ -4294,7 +4296,7 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
                 "no bullet matched query \"%1\" (%2 id-bearing bullet(s) "
                 "searched). If you passed multiple space/comma-separated "
                 "ids, use ids:[...] or query one id at a time.")
-                    .arg(queryArg).arg(postIdPruneCountFull);
+                    .arg(queryArg, QString::number(postIdPruneCountFull));
         } else if (preIdPruneCountFull > 0 &&
                    !includeNarratorBullets && !includeSectionHeaders) {
             // ANTS-1538 — the default ID-filter genuinely dropped every

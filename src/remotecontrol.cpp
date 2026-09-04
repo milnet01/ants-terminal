@@ -82,6 +82,31 @@ QString resolveRootCanonical(MainWindow *main);
 // one below.
 QString resolveRootCanonical(MainWindow *main, const QJsonObject &req);
 
+// ANTS-4447 — the directories a resolver may probe, nearest first, ending
+// at the closest ancestor holding a `.git`.
+//
+// The walk used to test `.git` AFTER probing each level, which bounds it
+// only when a repo actually exists. With no `.git` anywhere above, the loop
+// ran toward the filesystem root probing every ancestor, so a caller whose
+// caller_cwd was a non-git directory could resolve — and, on a write verb,
+// APPEND — into an unrelated ancestor project's roadmap. No repo means no
+// project boundary, so there is nothing safe to walk and only the caller's
+// own directory is probed.
+QStringList repoBoundedAncestors(const QString &canonicalRoot) {
+    if (canonicalRoot.isEmpty()) return {};
+    QStringList chain;
+    QString dir = canonicalRoot;
+    for (int depth = 0; depth < 64 && !dir.isEmpty(); ++depth) {
+        chain << dir;
+        if (QFileInfo::exists(dir + QStringLiteral("/.git")))
+            return chain;                    // repo root reached — bounded
+        const QString parent = QFileInfo(dir).path();
+        if (parent == dir) break;            // filesystem root, still no repo
+        dir = parent;
+    }
+    return { canonicalRoot };                // unbounded — do not leave home
+}
+
 // ANTS-1459 — shared path list for ROADMAP.md discovery under a
 // project root. roadmap_query and roadmap_log both call this helper
 // so we don't duplicate the path-widening list (and so neither
@@ -124,18 +149,14 @@ QString findRoadmapUnder(const QString &canonicalRoot) {
     };
     // ANTS-3350 — resolve from a project SUBDIRECTORY too: walk up to the
     // nearest ancestor that holds a roadmap, bounded by the enclosing git
-    // repo (.git) so the search never escapes the project. caller_cwd == root
+    // repo so the search never escapes the project. caller_cwd == root
     // returns on the first probe (byte-identical to the prior single-dir
     // behaviour); only a subdir caller walks up. Matches the code read verbs,
-    // which already resolve the project from a subdir.
-    QString dir = canonicalRoot;
-    for (int depth = 0; depth < 64 && !dir.isEmpty(); ++depth) {
+    // which already resolve the project from a subdir. ANTS-4447 owns the
+    // bound, so the non-git case cannot walk out of the project either.
+    for (const QString &dir : repoBoundedAncestors(canonicalRoot)) {
         const QString hit = probeDir(dir);
         if (!hit.isEmpty()) return hit;
-        if (QFileInfo::exists(dir + QStringLiteral("/.git"))) break;
-        const QString parent = QFileInfo(dir).path();
-        if (parent == dir) break;
-        dir = parent;
     }
     return {};
 }
@@ -162,16 +183,12 @@ QString findChangelogUnder(const QString &canonicalRoot) {
         }
         return {};
     };
-    // ANTS-3350 — walk up to the repo (.git) boundary, mirroring
-    // findRoadmapUnder, so changelog_log resolves from a subdirectory.
-    QString dir = canonicalRoot;
-    for (int depth = 0; depth < 64 && !dir.isEmpty(); ++depth) {
+    // ANTS-3350 — walk up to the repo boundary, mirroring findRoadmapUnder,
+    // so changelog_log resolves from a subdirectory. Shares ANTS-4447's
+    // bound: the two had the same walk and therefore the same escape.
+    for (const QString &dir : repoBoundedAncestors(canonicalRoot)) {
         const QString hit = probeDir(dir);
         if (!hit.isEmpty()) return hit;
-        if (QFileInfo::exists(dir + QStringLiteral("/.git"))) break;
-        const QString parent = QFileInfo(dir).path();
-        if (parent == dir) break;
-        dir = parent;
     }
     return {};
 }
@@ -1430,7 +1447,8 @@ constexpr int kHeaderInventoryMax = 200;
 QJsonObject buildHeaderInventoryEnvelope(
     const QVector<RoadmapIndex::Section> &index,
     const QString &path,
-    qint64 bytes) {
+    qint64 bytes,
+    bool syncRequested) {
     QJsonObject env;
     env["ok"]    = true;
     env["mode"]  = QStringLiteral("header_inventory_fallback");
@@ -1453,6 +1471,18 @@ QJsonObject buildHeaderInventoryEnvelope(
         "no GFM/Ants-v1 bullets parsed; section inventory "
         "emitted instead — use Read for the full markdown.");
     env["expected_format"] = kUnrecognisedFormatExpected();
+    // ANTS-4860 — this is a THIRD return arm, and ANTS-4730's contract is
+    // that an absent `sync_checked` means only that check_sync was not
+    // requested. Answering it here keeps that true on every arm: the two
+    // the ANTS-4818 comment enumerates are not all of them, and a caller
+    // who asked and got nothing back was left reading their own omission.
+    // Nothing parsed, so there are no bullets to compare against the store.
+    if (syncRequested) {
+        env["sync_checked"] = false;
+        env["sync_not_checked_reason"] = QStringLiteral(
+            "header_inventory_fallback: no bullets parsed, so there is "
+            "nothing to compare against the store");
+    }
     return env;
 }
 
