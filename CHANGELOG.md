@@ -12,6 +12,14 @@ for security-relevant changes.
 
 ## [Unreleased]
 
+### Fixed
+
+- **`cut-rc.sh new-rc` resumes after an interrupted run instead of refusing.** (ANTS-4869)
+  Cutting a release candidate first moves the pending notes into the version's own section, then builds. If the build was interrupted, re-running said there was nothing to release — reading the move it had already made as an empty changelog. It now recognises its own completed work and carries on, and still refuses a genuinely empty cut.
+
+- **`cut-rc.sh` now names the release phase it abandoned when a pre-commit hook refuses one of its commits.** (ANTS-4865)
+  The run already stopped, but said nothing: the only text on screen was the hook's own refusal, which says nothing about the release, and a run piped through `tail` loses the exit status as well. It now reports which phase aborted, what did not happen (no tag, nothing pushed), and that the staged files are left as written so you can see what had been changed.
+
 ## [0.7.108] — unreleased (Patron RC preview)
 ### Added
 

@@ -160,6 +160,25 @@ require_clean_main() {
     fi
 }
 
+# Commit "$1" (message) for phase "$2", aborting loudly if the commit is
+# REFUSED — most often by a pre-commit hook such as the standards-mirror gate.
+# `set -e` already stops the run, but silently: the only text on screen is the
+# hook's own, which says nothing about the release, and the non-zero status is
+# lost the moment the run is piped (the project's own token-frugal `| tail`
+# idiom). So the next session cannot tell a queued release from a failed one.
+# "$3" states what did NOT happen, which differs per phase. The staged files
+# are deliberately left in place so the operator can see what was written
+# (ANTS-4865).
+commit_or_abort() {
+    local msg=$1 phase=$2 consequence=$3
+    git commit -q -m "$msg" && return 0
+    echo "cut-rc: ${phase} ABORTED — 'git commit' was refused (ANTS-4865)." >&2
+    echo "        ${consequence}" >&2
+    echo "        The staged files are left as written; inspect with 'git diff --cached'." >&2
+    echo "        Clear the refusal printed above, then re-run the same command." >&2
+    exit 1
+}
+
 release_notes() {
     # Concise GitHub-release body for tag $1: the **Theme:** paragraph
     # of the first "## [X.Y.Z]" CHANGELOG section + a link to the full
@@ -193,6 +212,21 @@ OBS_SERVICE_FILE="packaging/obs/_service"
 unreleased_has_content() {
     awk '
         /^## \[Unreleased\]/ { inseg=1; next }
+        inseg && /^## \[/ { exit }
+        inseg && /^[ \t]*[-*][ \t]/ { found=1 }
+        inseg && /^### (Added|Changed|Deprecated|Removed|Fixed|Security)/ { found=1 }
+        END { exit (found ? 0 : 1) }
+    ' "$CHANGELOG_FILE"
+}
+
+# True (exit 0) if "## [X.Y.Z]" already carries ≥1 real entry — the same
+# bullet/category test unreleased_has_content applies to [Unreleased]. An
+# interrupted new-rc leaves exactly this state: the roll commit landed, the
+# build was killed, no tag was created. It distinguishes "already rolled" from
+# "nothing to ship", which INV-1 alone cannot (ANTS-4869).
+rc_section_has_content() {
+    awk -v ver="$1" '
+        $0 ~ ("^## \\[" ver "\\]") { inseg=1; next }
         inseg && /^## \[/ { exit }
         inseg && /^[ \t]*[-*][ \t]/ { found=1 }
         inseg && /^### (Added|Changed|Deprecated|Removed|Fixed|Security)/ { found=1 }
@@ -529,11 +563,21 @@ cmd_new_rc() {
     # ANTS-2164 INV-1 — refuse an empty RC: the "## [Unreleased]" section must
     # have ≥1 real entry to preview. This is the guard that stops a degenerate
     # same-tip channel-opener cut.
+    #
+    # ANTS-4869 — an interrupted run empties [Unreleased] by rolling it, so the
+    # bare guard reads its own completed work as "nothing to ship" and the only
+    # way past is --allow-empty-rc, which would equally wave through the
+    # degenerate cut INV-1 exists to stop. Check for the roll first: a
+    # [${base}] section carrying real entries means the roll already ran.
     if ! unreleased_has_content; then
-        if [ "$ALLOW_EMPTY_RC" = 1 ]; then
+        if rc_section_has_content "$base"; then
+            echo "cut-rc: '## [Unreleased]' is empty because its body is already rolled"
+            echo "        into '## [${base}]' — resuming an interrupted new-rc (ANTS-4869)."
+        elif [ "$ALLOW_EMPTY_RC" = 1 ]; then
             echo "cut-rc: [Unreleased] is empty but --allow-empty-rc set — proceeding." >&2
         else
-            echo "cut-rc: nothing new to preview — '## [Unreleased]' has no entries." >&2
+            echo "cut-rc: nothing new to preview — neither '## [Unreleased]' nor" >&2
+            echo "        '## [${base}]' has any entries." >&2
             echo "        Skip the RC this week, or pass --allow-empty-rc to override" >&2
             echo "        (ANTS-2164 INV-1)." >&2
             exit 1
@@ -552,7 +596,8 @@ cmd_new_rc() {
         roll_unreleased "$base"
         if ! git diff --quiet "$CHANGELOG_FILE"; then
             git add "$CHANGELOG_FILE"
-            git commit -q -m "chore: roll [Unreleased] into [${base}] for RC${n}"
+            commit_or_abort "chore: roll [Unreleased] into [${base}] for RC${n}" \
+                "new-rc" "No RC tag was created and nothing was pushed."
         fi
     else
         echo "  [rehearsal] would roll [Unreleased] → [${base}] in ${CHANGELOG_FILE} and commit"
@@ -705,7 +750,9 @@ cmd_promote() {
     if [ "$DO_PUSH" = 1 ]; then
         git add "$CHANGELOG_FILE" "$METAINFO_FILE" "$DEBIAN_CHANGELOG_FILE"
         [ -f "$OBS_SERVICE_FILE" ] && git add "$OBS_SERVICE_FILE"
-        git diff --cached --quiet || git commit -q -m "chore: stamp ${inflight} release date ${today}"
+        git diff --cached --quiet || commit_or_abort \
+            "chore: stamp ${inflight} release date ${today}" \
+            "promote" "No public tag was created and nothing was pushed."
         confirm_or_print git push origin main
     fi
 
@@ -890,7 +937,9 @@ cmd_hotfix_continue() {
         record_hotfix_on_main "$H" "$N" "$hblock"
         if ! git diff --quiet "$CHANGELOG_FILE"; then
             git add "$CHANGELOG_FILE"
-            git commit -q -m "chore: record [${H}] hotfix in CHANGELOG (ANTS-2165 INV-4)"
+            commit_or_abort "chore: record [${H}] hotfix in CHANGELOG (ANTS-2165 INV-4)" \
+                "hotfix --continue" \
+                "v${H} is already tagged and published; only main's CHANGELOG record is missing."
             confirm_or_print git push origin main
         fi
         git branch -D _hotfix >/dev/null 2>&1 || true

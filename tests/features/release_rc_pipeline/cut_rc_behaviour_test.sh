@@ -283,6 +283,47 @@ if [ "$RC" -eq 0 ] && git -C "$D" rev-parse --abbrev-ref HEAD | grep -q _hotfix;
     else bad "2165 hotfix --continue (rc=$RC): $OUT"; fi
 else bad "2165 hotfix phase1 (rc=$RC): $OUT"; fi
 
+# ── ANTS-4869 — new-rc resumes after an interrupted run ─────────────────────
+# The post-roll, pre-tag state: the roll committed, then the build was killed
+# and no tag was created. [Unreleased] is empty *because the roll ran*, and the
+# RC section holds the content. INV-1 must read that as "already rolled", not
+# as "nothing to ship" — the two are distinguishable from the file alone.
+# The INV-1 case above is this test's negative: a placeholder RC section
+# carries no entry, so a genuinely empty cut is still refused.
+D=$TMPROOT/ants4869; seed_repo "$D"; write_cmake "$D" 0.7.98
+write_changelog "$D" "" 0.7.98 "### Added
+- Shiny new thing."
+write_metainfo "$D" 0.7.98 "Real preview notes."; write_debian "$D" 0.7.98 "Real preview notes."
+commit_all "$D"
+run "$D" new-rc --skip-build --force-non-wed --push
+{ [ "$RC" -eq 0 ] && has_tag "$D" v0.7.98-rc1; } \
+    && ok "ANTS-4869 new-rc resumes an already-rolled RC" \
+    || bad "ANTS-4869 resume (rc=$RC): $OUT"
+
+# ── ANTS-4865 — a refused commit aborts the phase out loud ──────────────────
+# A pre-commit hook (here standing in for the standards-mirror gate) refuses
+# the date-stamp commit. set -e already stopped the run, but silently: the only
+# text on screen was the hook's own, which says nothing about the release, and
+# the non-zero status is lost as soon as the run is piped. Assert cut-rc names
+# the abort itself, creates no tag, and leaves the stamped carriers staged.
+D=$TMPROOT/ants4865; seed_repo "$D"; write_cmake "$D" 0.7.98
+write_changelog "$D" "" 0.7.98 "### Fixed
+- Real fix that shipped."
+write_metainfo "$D" 0.7.98 "Real preview notes."; write_debian "$D" 0.7.98 "Real preview notes."
+commit_all "$D"; git -C "$D" tag -a v0.7.98-rc1 -m rc1
+mkdir -p "$D/.githooks"
+printf '#!/usr/bin/env bash\necho "pre-commit: mirror drift — refusing" >&2\nexit 1\n' \
+    > "$D/.githooks/pre-commit"
+chmod +x "$D/.githooks/pre-commit"
+git -C "$D" config core.hooksPath .githooks
+run "$D" promote --push --force-non-wed
+{ [ "$RC" -ne 0 ] && grep -q "ANTS-4865" <<<"$OUT" && ! has_tag "$D" v0.7.98; } \
+    && ok "ANTS-4865 refused commit aborts promote with a named diagnostic" \
+    || bad "ANTS-4865 abort (rc=$RC): $OUT"
+git -C "$D" diff --cached --quiet \
+    && bad "ANTS-4865 stamped carriers were discarded" \
+    || ok "ANTS-4865 stamped carriers left staged for inspection"
+
 echo
 echo "release_rc_pipeline behavioural: PASS=$PASS FAIL=$FAIL"
 [ "$FAIL" -eq 0 ]

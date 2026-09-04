@@ -14247,10 +14247,15 @@ indie-review finding.
   Kind: fix.
   Source: user-report-2026-09-04.
 
-- 📋 [ANTS-4865] **cut-rc.sh promote exits 0 when the pre-commit hook blocks its commit.**
+- ✅ [ANTS-4865] **cut-rc.sh abandons a release phase in silence when a pre-commit hook blocks its commit.**
   Hit 2026-09-04 promoting v0.7.107-rc2. The mirror gate refused the date-stamp commit; the script printed the hook's refusal, left the four carriers staged, created no tag, pushed nothing, and exited 0. A caller reading the exit code sees a completed promotion. The next session cannot tell a queued release from a failed one, which is exactly the half-cut state CLAUDE.md's release-push bullet is written to prevent.
 
   Every `git commit` in the script needs its status checked and the phase aborted on failure, with the staged carriers left in place so the operator can see what was written. Check `cmd_new_rc` and `cmd_hotfix` for the same shape.
+  Resolved (2026-09-04): added commit_or_abort and routed all three commit sites through it — new-rc's roll, promote's date stamp, and hotfix --continue's record-on-main. Each names the phase, what did not happen, and that the staged carriers are left in place for inspection.
+
+  Correction to the report above: the script did not exit 0. Reproduced against a throwaway repo with a refusing pre-commit hook — cut-rc exits 1 under set -e, creates no tag and pushes nothing. The observed 0 was the exit status of the `| tail` pipeline the run was passed through. The real defect was silence: the only output was the hook's own text, which says nothing about the release, and a piped run loses the status too, so the message is the only signal there is.
+
+  Covered by two cases in tests/features/release_rc_pipeline/cut_rc_behaviour_test.sh, red before the fix.
   **Layman:** The release script can report success while having done nothing, leaving the release half-cut.
   Kind: fix.
   Source: in-session-2026-09-04.
@@ -14263,7 +14268,7 @@ indie-review finding.
   Kind: doc-fix.
   Source: in-session-2026-09-04.
 
-- 📋 [ANTS-4869] **cut-rc.sh new-rc cannot resume after an interrupted run — its empty-RC guard reads the roll it already did as nothing to ship.**
+- ✅ [ANTS-4869] **cut-rc.sh new-rc cannot resume after an interrupted run — its empty-RC guard reads the roll it already did as nothing to ship.**
   Hit 2026-09-04 cutting v0.7.108-rc1. `cmd_new_rc` rolls `[Unreleased]` into `## [<base>] — unreleased (Patron RC preview)` and commits, THEN runs `build_and_test`, THEN tags. The build was killed by the machine's memory guard, so the roll commit landed and no tag was created.
 
   On re-run, `unreleased_has_content` reads the now-empty `[Unreleased]` and `new-rc` refuses with "nothing new to preview — '## [Unreleased]' has no entries." The RC is not empty; its content is one section further down, already rolled. The guard cannot tell "nothing to ship" from "already rolled", and the only way past is `--allow-empty-rc`, whose name says the opposite of what is true.
@@ -14273,7 +14278,28 @@ indie-review finding.
   Fix: before refusing, check whether `## [<base>] — unreleased` already exists and carries content. If it does, the roll has run — proceed without needing the override, and say so. The two states are distinguishable from the file alone, which is what makes this a fixable guard rather than an inherent ambiguity.
 
   Check `cmd_promote` and `cmd_hotfix` for the same resume gap. Related to ANTS-4865, the other half-completed-phase defect found the same day.
+  Resolved (2026-09-04): new-rc consults a new rc_section_has_content helper before refusing. A `## [<base>]` section carrying real entries means the roll already ran, so the run resumes and says so; --allow-empty-rc is untouched and INV-1 still refuses a genuinely empty cut, its existing fixture serving as the negative case.
+
+  Checked the two siblings the report names. cmd_promote needs no change: an abort at its stamp commit leaves the carriers staged, and require_clean_main refuses the re-run with a clear dirty-tree message. cmd_hotfix phase 1 already refuses an existing _hotfix branch and points at --continue. Two related gaps found while checking were filed separately rather than widened into this fix.
   **Layman:** If the release script is interrupted halfway, re-running it says there is nothing to release — when in fact it already did the first half.
+  Kind: fix.
+  Source: in-session-2026-09-04.
+
+- 📋 [ANTS-4871] **cut-rc.sh cycle skips its second phase silently after an interrupted new-rc.**
+  Found while closing ANTS-4869. cmd_cycle gates phase 2 on unreleased_has_content alone, so in the post-roll pre-tag state it prints "no [Unreleased] content (skip new-rc)" and exits 0 having done nothing.
+
+  The obvious fix regresses the normal path and was deliberately not taken: immediately after phase 1 promotes, the `## [<base>]` section is full and the base is not yet bumped, so a gate that also accepted rc_section_has_content would drive phase 2 into new-rc's INV-9 hard refusal and turn a clean skip into a failed cycle.
+
+  A correct gate must additionally require that v<base> is not already a public tag. Until then the route after an interruption is to run new-rc directly, which now resumes.
+  **Layman:** After an interrupted release cut, the weekly cadence command does nothing and still reports success.
+  Kind: fix.
+  Source: in-session-2026-09-04.
+
+- 📋 [ANTS-4872] **cut-rc.sh hotfix --continue has no resume path once the public tag exists.**
+  Found while checking cmd_promote and cmd_hotfix for ANTS-4869's resume gap. cmd_hotfix_continue tags v<H>, publishes the release, then records the [H] section on main. An interruption between the tag and the record leaves the re-run refused by the "v<H> already exists as a public tag" guard, with no route to finish the record step — the operator has to complete it by hand and nothing says so.
+
+  Same class as ANTS-4869: a guard that cannot tell "already done" from "must not start".
+  **Layman:** An emergency release interrupted after tagging cannot be finished by re-running the command.
   Kind: fix.
   Source: in-session-2026-09-04.
 
