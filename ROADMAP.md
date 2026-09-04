@@ -659,6 +659,14 @@ SSH key registered there.
   Kind: package.
   Lanes: packaging.
   Source: in-session-2026-07-30 (noticed while removing the manifest's dead lua5.4 header mirror).
+  Re-measured 2026-09-04 while preparing the Flathub submission:
+  upstream is now 5.4.9, not 5.4.8 — https://www.lua.org/ftp/ lists
+  lua-5.4.9.tar.gz. The manifest still pins 5.4.7, so the gap is two
+  releases rather than one. It is a Flathub-submission blocker in
+  practice: flatpak-builder-lint does not flag it, but a reviewer reads
+  the pinned source list and an outdated interpreter is the kind of
+  thing they ask about. Bump to 5.4.9 with its sha256 and rebuild before
+  the PR goes in.
 
 - 📋 [ANTS-3790] **The .deb and Flatpak may not ship Qt's SQLite driver plugin.**
   Qt loads the SQLite driver as a runtime PLUGIN, so nothing links it
@@ -62373,6 +62381,16 @@ distro." Each sub-bullet can ship independently once H1–H4 land.
   Kind: doc.
   Source: in-session-2026-08-19, noticed during the README pass.
   Lanes: packaging, docs.
+
+- 📋 [ANTS-4867] **Flatpak manifest builds on org.kde.Platform 6.10; 6.11 is current.**
+  flatpak-builder-lint on the submission manifest warns `runtime-update-available-to-org.kde.Platform-6.11`. It is a warning rather than an error, so it does not block the PR, but a Flathub reviewer sees the same line and the runtime is the first thing they ask about.
+
+  Both `org.kde.Platform//6.11` and `org.kde.Sdk//6.11` are already installed on this machine, so the change is a two-line edit to the dev manifest plus a full `flatpak-builder` run to prove the build still works against the newer Qt. The submission manifest is generated from the dev one, so only the dev file is edited.
+
+  Do this before the first Flathub PR rather than after: a runtime bump after landing is a second review round.
+  **Layman:** The app store build uses a year-old base system; the current one is available.
+  Kind: chore.
+  Source: in-session-2026-09-04 (Flathub pre-submission lint).
 
 ### 🔌 Plugins — marketplace
 
