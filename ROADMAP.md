@@ -14187,6 +14187,22 @@ indie-review finding.
   Kind: fix.
   Source: user-report-2026-09-04.
 
+- 📋 [ANTS-4865] **cut-rc.sh promote exits 0 when the pre-commit hook blocks its commit.**
+  Hit 2026-09-04 promoting v0.7.107-rc2. The mirror gate refused the date-stamp commit; the script printed the hook's refusal, left the four carriers staged, created no tag, pushed nothing, and exited 0. A caller reading the exit code sees a completed promotion. The next session cannot tell a queued release from a failed one, which is exactly the half-cut state CLAUDE.md's release-push bullet is written to prevent.
+
+  Every `git commit` in the script needs its status checked and the phase aborted on failure, with the staged carriers left in place so the operator can see what was written. Check `cmd_new_rc` and `cmd_hotfix` for the same shape.
+  **Layman:** The release script can report success while having done nothing, leaving the release half-cut.
+  Kind: fix.
+  Source: in-session-2026-09-04.
+
+- 📋 [ANTS-4866] **22 links inside the mirrored standards do not resolve for a reader on GitHub.**
+  check-standard-mirrors.sh reports them by rule and doc_integrity flags them correctly. Each points out of `standards/` into the owner's own tree — `../docs/history/<name>.md`, `../docs/reviews/<name>-loop-log.md`, `../workflow.md`, `skeletons/*.md` — none of which is mirrored, because the owner is not a standard. The count grew from 0 to 22 over the CFG-0309 pedigree move and the review-history move, which relocated text out of each standard and left a relative pointer behind.
+
+  The mirrors exist because this repo is public and an outside reader cannot open a path in a private home directory; a link that 404s for that reader defeats the arrangement. Three routes worth weighing: mirror the pointed-at files too, rewrite the link to the owner's public URL at copy time, or drop the pointer line from the mirrored half. The first two need the owner's agreement since the text is verbatim.
+  **Layman:** Some links in the public copies of our coding standards point at files that only exist on the maintainer's machine.
+  Kind: doc-fix.
+  Source: in-session-2026-09-04.
+
 ### 🎨 Review Changes dialog UX (user request 2026-06-03)
 
 Navigation + scroll affordances for the Review Changes dialog, requested
