@@ -344,6 +344,32 @@ for security-relevant changes.
 
 ### Fixed
 
+- **SECURITY.md now lists the link schemes the terminal actually accepts.** (ANTS-4453)
+  Hyperlinks are limited to http, https and mailto. The document promised
+  ftp and file as well, which the code has never accepted at these sites.
+
+- **Opening a file whose path contains a percent sign now passes the right path to the editor.** (ANTS-4784)
+  Ctrl-clicking a `file:line` in terminal output built the editor argument
+  with a form that could substitute into the path itself. The same form was
+  corrected wherever an untrusted path, lane name or caller-supplied string
+  is placed into a message before another value.
+
+- **Files that Claude Code changes are tracked again when the hooks are installed.** (ANTS-4451)
+  The hook path read the wrong field names from the event, so no file was
+  ever recorded and nothing downstream fired. The transcript path was
+  unaffected.
+
+- **Audit dedup keys and learned false-positive fingerprints no longer collide on a file path containing a percent sign.** (ANTS-4452)
+  Both keys are built from the file path first. The string-building form
+  used could read a `%2` inside the path as a placeholder, letting two
+  unrelated findings hash to the same key -- so dismissing one could silence
+  the other.
+
+- **roadmap_query now answers `check_sync` on every reply, including the section-inventory fallback.** (ANTS-4860)
+  Asking whether the roadmap file matches the store could previously come
+  back with the field simply absent, which is also how the reply looks when
+  nobody asked. The fallback reply now says the check did not run and why.
+
 - **Documentation now says where review lanes actually come from** (ANTS-4785)
   The subsystem map described itself as the source of the review lanes,
   which stopped being true when every source file was given a lane in a
@@ -716,6 +742,12 @@ for security-relevant changes.
 
 
 ### Security
+
+- **Roadmap and changelog lookups stay inside the project they were called from.** (ANTS-4447)
+  The search for a project's ROADMAP.md or CHANGELOG.md walks up from the
+  calling directory. It now stops at the enclosing git repository before
+  walking rather than after each step, so a call made from a directory that
+  is not in a repository no longer reaches a different project's files.
 
 - **The release workflow defaults to read-only and grants write on one job** (ANTS-4795)
   `release.yml` declared `contents: write` for the whole workflow; it now

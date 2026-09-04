@@ -36843,7 +36843,7 @@ whole files.
   way. The standard was not edited: stating the rule generally would change
   what a conformer builds and needs its own gate. Filed as ANTS-4658.
 
-- 📋 [ANTS-4447] **`findRoadmapUnder` ancestor walk is unbounded for a non-git `caller_cwd`, on a WRITE verb.**
+- ✅ [ANTS-4447] **`findRoadmapUnder` ancestor walk is unbounded for a non-git `caller_cwd`, on a WRITE verb.**
   `src/remotecontrol.cpp:129-135` walks up to 64 ancestors probing for a
   roadmap. The `.git` bound is checked AFTER the probe:
   `probeDir(dir)` -> return hit; `if (.git exists) break;` -> parent.
@@ -36861,6 +36861,17 @@ whole files.
   Kind: security.
   Source: cold-sweep-2026-08-18 lane ipc-core (VERIFIED in-session).
   Lanes: remotecontrol.
+  Resolved (2026-09-04, 27b2738c). The .git test now runs BEFORE the walk
+  rather than after each probe. repoBoundedAncestors() returns the chain from
+  caller_cwd up to the nearest ancestor holding a .git; with no repo above it
+  returns the caller's own directory alone, so a non-git caller_cwd can no
+  longer resolve -- or on a write verb append -- into an unrelated ancestor
+  project's roadmap.
+
+  findChangelogUnder had the identical walk and therefore the identical
+  escape, so the bound was extracted once instead of fixed twice; the item's
+  own "check the sibling resolvers" line is what found it. Behaviour inside a
+  git repo is unchanged.
 
 - 📋 [ANTS-4448] **Credentials can leave the machine in SARIF exports and AI-triage POSTs.**
   Two paths, one theme. The tree ships `src/secretredact.h` and neither calls
@@ -36885,7 +36896,7 @@ whole files.
   Source: cold-sweep-2026-08-18 lanes audit-engine + audit-dialog (VERIFIED in-session).
   Lanes: auditengine, auditdialog.
 
-- 📋 [ANTS-4449] **`MarkdownScan::fenceMask` matches a fence closer on character alone, never run length.**
+- ✅ [ANTS-4449] **`MarkdownScan::fenceMask` matches a fence closer on character alone, never run length.**
   `src/markdownscan.cpp:86` closes an open fence on
   `!c.isNull() && c == openFence` — the opener CHARACTER only. CommonMark
   requires the closing fence to be at least as long as the opening one, so a
@@ -36903,6 +36914,22 @@ whole files.
   Kind: fix.
   Source: cold-sweep-2026-08-18 lane ipc-workspace-docs (VERIFIED in-session).
   Lanes: markdownscan.
+  Resolved (2026-09-04) — found ALREADY FIXED on re-check, not fixed by this
+  session. Recorded rather than re-implemented.
+
+  Both halves the item names are closed. The run-length half landed under
+  ANTS-3678: MarkdownScan::fenceMask's closer test reads
+  `run >= openRun`, and fenceCloses() applies the same test, so a ``` line
+  no longer closes a ```` block. The comment beside it cites CommonMark
+  § 4.5 and describes exactly the leak this item reported.
+
+  The second half — "check fenceOpenerChar's callers, rcEscapeUnclosedFence
+  is a separate hand-rolled scanner" — is closed by unification rather than
+  by agreement: rcEscapeUnclosedFence now CALLS MarkdownScan::fenceMask
+  instead of scanning for itself, so the two cannot disagree.
+
+  Left open after its fix landed. The lesson is the standing one about
+  re-measuring an item's stated facts before implementing to them.
 
 - ✅ [ANTS-4450] **`rcEscapeUnclosedFence` kept a hand-rolled fence toggle and splices a backslash into user prose.**
   `src/remotecontrol.cpp:1001-1022` still uses its own toggle
@@ -36936,7 +36963,7 @@ whole files.
   states, so the fix is not always-escape. Full suite green, ctest exit
   0.
 
-- 📋 [ANTS-4451] **The `PostToolUse` hook branch is a permanent no-op — wrong JSON keys.**
+- ✅ [ANTS-4451] **The `PostToolUse` hook branch is a permanent no-op — wrong JSON keys.**
   `ClaudeIntegration::updateChangedFiles` (`src/claudeintegration.cpp:975`)
   reads `toolUse.value("name")` and `toolUse.value("input")`. The hook event it
   is handed from the `PostToolUse` branch (`:1225`) carries `tool_name` and
@@ -36952,8 +36979,16 @@ whole files.
   Kind: fix.
   Source: cold-sweep-2026-08-18 lane claude-session (VERIFIED in-session).
   Lanes: claudeintegration.
+  Resolved (2026-09-04, faf5196f). updateChangedFiles now takes the extracted
+  toolName and toolInput instead of a raw event, so each caller states its own
+  key spelling at the call site.
 
-- 📋 [ANTS-4452] **Two comments invert Qt's `.arg()` semantics, keying both suppression ledgers.**
+  The diagnosis held exactly: the two callers speak different dialects -- a
+  transcript tool_use block carries name/input, a hook event carries
+  tool_name/tool_input -- so taking one object meant one of them was always
+  read with the wrong keys, and the hook path had never fired.
+
+- ✅ [ANTS-4452] **Two comments invert Qt's `.arg()` semantics, keying both suppression ledgers.**
   `src/auditengine.cpp:317-321` (`computeDedup`) says: "Chained single-arg
   calls walk left-to-right and skip already-substituted regions." Qt documents
   the OPPOSITE — `arg(a1, a2)` exists precisely because it replaces in one
@@ -36974,8 +37009,20 @@ whole files.
   Kind: fix.
   Source: cold-sweep-2026-08-18 lanes audit-engine + audit-ledgers (VERIFIED in-session).
   Lanes: auditengine, auditfpledger.
+  Resolved (2026-09-04, f36bb93c). Both comments corrected, and the code with
+  them: computeDedup and computeFingerprint now use the multi-arg .arg()
+  form, which substitutes in one pass. The comments had recommended the
+  chained form as the escape-safe one, which is the opposite of what Qt
+  documents.
 
-- 📋 [ANTS-4453] **Two places claim the URI allowlist includes `ftp`/`file`; the code allows three schemes.**
+  Fixed the calls as well as the prose because the comment was driving a real
+  call and the file path is substituted first. Digests are byte-identical for
+  any path without a literal %N, so stored suppression keys and fingerprints
+  are unaffected except in the pathological case, where they were already
+  wrong. audit_dedup_96bit INV-1 pins the .left(24) hash chain, not the .arg()
+  chain, so it is untouched.
+
+- ✅ [ANTS-4453] **Two places claim the URI allowlist includes `ftp`/`file`; the code allows three schemes.**
   `SECURITY.md:132-134` says OSC 8 and `make_hyperlink` are "restricted to
   http/https/ftp/file/mailto". The code allows THREE:
   `src/terminalgrid.cpp:1142-1143` (`http`/`https`/`mailto`), `:2237`
@@ -36989,6 +37036,15 @@ whole files.
   Kind: doc-fix.
   Source: cold-sweep-2026-08-18 lane vt-core (VERIFIED in-session, plus one site the sweep missed).
   Lanes: terminalgrid, terminalwidget.
+  Resolved (2026-09-04, eecef6df). SECURITY.md and the terminalwidget comment
+  now both say http/https/mailto, which is what the three TerminalGrid
+  validation sites accept. The comment's stale line reference was replaced
+  with the symbol (TerminalGrid::handleOsc) so it cannot rot the same way.
+
+  One thing the item asked for was NOT written: it said ftp/file were dropped
+  in 0.7.52, and the CHANGELOG carries no entry for that, so the version could
+  not be verified. Adding an unverifiable claim is the defect this item is
+  about, so the docs now state only what the code does.
 
 - ✅ [ANTS-4454] **SARIF suppression uses `state`, which is not a v2.1.0 property — the field is `status`.**
   `src/auditdialog.cpp:5753` writes `sup["state"] = "accepted"`. The SARIF
@@ -37022,6 +37078,29 @@ whole files.
   Kind: doc-fix.
   Source: cold-sweep-2026-08-18 structural finding, found while partitioning (VERIFIED in-session).
   Lanes: remotecontrol, claudeintegration.
+  Progress (2026-09-04) — re-measured rather than implemented. The item's
+  stated CONSEQUENCE is closed by two later items; one of its two named
+  fixes is done and the other is not. Staying open for that one.
+
+  Closed: the line-count signal this item asked for shipped as ANTS-4804.
+  Every lane now carries `total_lines`, and a lane over the budget is
+  `oversized:true` with envelope `oversized` / `oversized_lanes` /
+  `oversized_hint`. The verb's own schema says why both signals are needed —
+  `too_coarse` counts files and is silent on a lane that is one large
+  module, which is this item's exact shape.
+
+  Also closed: "indie_review_partition derives one review lane per entry"
+  is no longer true. ANTS-4793 made the verb prefer
+  `.indie-review/partition.json`, this project commits one, and
+  docs/subsystems.md's header now states the split in a table — the two are
+  different partitions at different granularities on purpose, so a coarse
+  entry here no longer decides a review lane.
+
+  STILL OPEN: the map's own granularity. `remotecontrol` is one bullet
+  covering the whole `src/remotecontrol*` set, though
+  `remotecontrol_roadmap_migrate` already has its own entry, so the split
+  is partial. This is now a readability question for the human audience the
+  header names, not a review-partition defect.
 
 - 📋 [ANTS-4456] **Triage: terminal-core and render/PTY findings from the cold sweep.**
   Reviewer claims carried forward as-is. NOT re-verified in this session —
@@ -49900,6 +49979,63 @@ two projects).
   Kind: fix.
   Source: cc-feedback-2026-09-03 Rolodex.
 
+### Ants MCP feedback from CC sessions — 2026-09-04 triage
+
+- ✅ [ANTS-4860] **roadmap_query's header-inventory fallback emits no sync_checked, so check_sync:true is unanswerable there.**
+  Verified against source. buildHeaderInventoryEnvelope (src/remotecontrol.cpp)
+  sets ok, mode, path, bytes, sections, count, truncated, hint and
+  expected_format -- and neither sync_checked nor source.
+
+  It is a THIRD return path. ANTS-4818's comment in
+  RemoteControl::cmdRoadmapQuery says sync_checked is emitted on BOTH arms,
+  and the fallback is not one of the two it counted. So the schema's
+  promise -- absence means only that check_sync was not requested -- is
+  false on this arm, and a caller who asked cannot distinguish nobody
+  looked from the argument was dropped.
+
+  Fix: emit sync_checked:false on the fallback arm when check_sync was
+  requested, with the reason. That keeps ANTS-4730's invariant true on
+  every arm rather than on the two the comment enumerated.
+  Resolved (2026-09-04, 27b2738c). buildHeaderInventoryEnvelope now takes the
+  check_sync request and stamps sync_checked:false plus
+  sync_not_checked_reason on the fallback arm, so ANTS-4730's invariant --
+  absence means only that check_sync was not requested -- holds on every arm
+  rather than on the two its comment enumerated.
+
+  The verb's schema wording moved with it: it said "BOTH arms", and there are
+  three.
+
+  Regression test proven red first: with the stamp removed, the three
+  assertions depending on it fail and the one for the parameter passes.
+  Suite 4153 -> 4154.
+  **Layman:** Asking the roadmap tool to check whether the file matches the database can come back with no answer at all, and the caller cannot tell it was ignored.
+  Kind: fix.
+  Source: UT_Ants_MCP_Feedback.md 2026-09-04.
+  Lanes: mcp.
+
+- 📋 [ANTS-4861] **roadmap_query answers from the FILE on a store-backed project whose store holds no items, and tells the caller to Read the markdown.**
+  Reported after a successful roadmap_migrate (store_backed true, project_id
+  assigned) against a ROADMAP.md that parses but carries no bullets.
+  roadmap_query returned mode header_inventory_fallback with a path into
+  ROADMAP.md and the hint "use Read for the full markdown".
+
+  An empty store is a correct and complete answer -- this project has no
+  items -- not a parse failure to route around. The hint sends the session
+  back to the markdown, which is the token cost the store exists to remove,
+  at the moment a new project is most likely to follow it.
+
+  Fix: where the project resolves to a registered store row, answer from the
+  store and report zero items as zero. Reserve the fallback and its Read
+  hint for projects with no store row. Carrying source on this arm, as
+  ANTS-4402 does elsewhere, makes which backend answered visible either way.
+
+  Related to the sibling item in this section: both are the same fallback
+  arm not knowing it is on a store-backed project.
+  **Layman:** On a freshly set-up project the roadmap tool falls back to reading the file it was supposed to replace, which looks like the setup failed.
+  Kind: fix.
+  Source: UT_Ants_MCP_Feedback.md 2026-09-04.
+  Lanes: mcp.
+
 ## check-code whole-tree sweep fold-in (2026-09-01)
 
 Whole-tree static-analysis sweep: 13 tools ran, 5 were correctly skipped (no
@@ -50155,6 +50291,34 @@ volume classes, and the tooling/documentation gaps the run exposed.
   The one false positive already identified (a caller-supplied pattern
   flagged as a non-static QRegularExpression) belongs in the audit
   false-positive ledger rather than in a suppression.
+  Progress (2026-09-04, 59af9da4) — the qstring-arg CORRECTNESS half is
+  closed; the item stays open for its other two classes.
+
+  Done: the latent edge this item names. Qt's chained single-arg .arg()
+  re-scans text an earlier call already wrote, so a literal %N inside the
+  FIRST substituted value is read as a placeholder. Converted the sites where
+  that first value is untrusted text — a filesystem path, a lane or directory
+  name, a caller-supplied query or scope — across auditdialog, auditrunner,
+  coldeyesengine, debtsweepengine, docintegrity, featurecoverage,
+  indiereviewengine, rgdiagnosis, terminalwidget, testauditengine and
+  remotecontrol_roadmap_query.
+
+  Deliberately NOT swept: int-first chains. They cannot exhibit the bug, so
+  converting them buys a large diff and no correctness.
+
+  The sharpest site was terminalwidget's editor-launch argv, built from a path
+  scraped out of terminal output and handed to a process. Output is
+  byte-identical for any input without a literal %N, so nothing else changes;
+  suite 4154/4154.
+
+  Two of the same class were filed separately and are now shipped: ANTS-4452
+  (the audit dedup and false-positive ledger keys, where the comments argued
+  for the unsafe form).
+
+  STILL OPEN: qcolor-from-literal, non-pod-global-static, and the remaining
+  use-static-qregularexpression sites — including the one already identified
+  as a false positive, which belongs in the audit false-positive ledger rather
+  than in a suppression.
   **Layman:** Assorted Qt habits that cost a little speed, plus one pattern that can bite at start-up.
   Kind: perf.
   Source: check-code-sweep-2026-09-01.
