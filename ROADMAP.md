@@ -48461,7 +48461,7 @@ envelope dropped `source`/`path`/`etag`/`total`/`filter`.
   Source: in-session-2026-08-28, measured by ANTS-4711's classification lane.
   Lanes: docs, specs.
 
-- 📋 [ANTS-4876] **roadmap_query mode:"sections" has no name filter, so locating one section costs the whole index.**
+- 💭 [ANTS-4876] **roadmap_query mode:"sections" has no name filter, so locating one section costs the whole index.**
   Measured this session on this project: mode:"sections" spilled and needed a
   paged read_spill to find one slug, and the answer was ultimately found by
   looking up a neighbouring item's id instead. That id lookup is the cheap
@@ -48473,11 +48473,24 @@ envelope dropped `source`/`path`/`etag`/`total`/`filter`.
   and dropped so zero matches is distinguishable from an empty document. The
   same argument over the section headline/slug would answer the question in one
   call.
+  Closed (2026-09-04): NOT A DEFECT — the capability already exists and this
+  item was filed without checking. ANTS-4610 gave `mode:section_index` exactly
+  this: `query` narrows the index by section name, matching the headline OR the
+  slug, and the reply carries `sections_considered` / `sections_filtered_out`.
+  Verified live on this project — 226 sections narrowed to 35. It is documented
+  in the `query` argument's own schema description, which names section_index as
+  the exception by name, and covered by
+  tests/features/roadmap_query_section_filter.
+
+  What actually happened is that the session called the verb without reading the
+  argument description, then filed the absence it had not checked for. The
+  measured cost was real; the cause stated in the original body was not. Nothing
+  to build.
   **Layman:** Asking "which roadmap section should this go in?" returns every section, which is far more than fits in one reply.
   Kind: enhancement.
   Source: in-session-2026-09-04.
 
-- 📋 [ANTS-4877] **read_spill with an unmatched fields= returns an envelope carrying nothing but fields_unmatched.**
+- ✅ [ANTS-4877] **read_spill with an unmatched fields= returns an envelope carrying nothing but fields_unmatched.**
   Called read_spill with fields:["slug"] against a spilled sections array. The
   reply was `{"fields_unmatched":["slug"]}` alone — no `ok`, no `rows`, no
   `key`, and nothing saying the argument filters TOP-LEVEL envelope fields
@@ -48489,7 +48502,40 @@ envelope dropped `source`/`path`/`etag`/`total`/`filter`.
   the two are byte-indistinguishable, which is the shape ANTS-4374 rules out
   for an unexplained empty result. Per-row narrowing already has an answer in
   encoding:"tabular"; the refusal should say so.
+  Resolved (2026-09-04): a fourth floor in `projectFields`, firing only when NOT
+  ONE requested field matched. A partial match needs no floor — the matched field
+  is itself proof the call succeeded — so those replies and exactly-matching ones
+  stay byte-identical, which is what INV-4 pins.
+
+  Proved red before green: with the floor disabled and the test unchanged,
+  McpProjection.AllUnmatchedSuccessKeepsOk fails on its assertion ("an
+  all-unmatched success must still say it succeeded") rather than crashing.
+  Restored, ctest's own exit code is 0 with 56/56 in the owning bundle.
   **Layman:** Asking a paged result for one column by a name it does not have gives back a reply with nothing in it at all — not even a success flag.
+  Kind: fix.
+  Source: in-session-2026-09-04.
+
+- 📋 [ANTS-4878] **doc_integrity numbers headings across a MIRROR boundary, so every delta standard reports false duplicates.**
+  Measured on `docs/standards/documentation.md`: the delta half numbers its
+  sections, then `MIRROR BEGIN` starts the owner's copy at 1 again. heading_sequence
+  reports "section 1 is out of order — it follows 10" plus a duplicate for every
+  number the copy reuses. Both halves are correctly numbered; the finding is an
+  artefact of reading them as one run.
+
+  Neither half can be edited to satisfy it. The mirrored half must equal its owner
+  byte for byte or `tools/check-standard-mirrors.sh` refuses it, and renumbering
+  the delta half would distort a project-owned document to accommodate a copy —
+  and would break again whenever the owner gains or loses a section.
+
+  Fix in the checker: treat a `<!-- MIRROR BEGIN ... -->` / `<!-- MIRROR END -->`
+  region as its own numbering scope, so the two halves are sequenced separately.
+  The markers are already the contract the mirror gate keys on, so nothing new has
+  to be declared. ANTS-4875 took the same shape for links — the tool learns the
+  mirror rather than the documents contorting around it.
+
+  `heading_sequence_suppressed` is the wrong instrument here: it is keyed to a
+  document that ACCOUNTS for its own gaps, and neither half is doing that.
+  **Layman:** The heading-order check reads a standard and the copied-in copy below it as one document, so it says the numbering restarts and repeats when both halves are correct.
   Kind: fix.
   Source: in-session-2026-09-04.
 

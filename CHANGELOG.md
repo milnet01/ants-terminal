@@ -14,6 +14,12 @@ for security-relevant changes.
 
 ### Fixed
 
+- **A fields=-narrowed MCP reply that matched nothing now still says it succeeded** (ANTS-4877)
+  Asking a verb for a field it does not carry returned only the list of names it
+  could not find, with no `ok` — indistinguishable from a call that produced no
+  envelope at all. Such a reply now carries `ok`. A request where at least one
+  name matched is unchanged: the matched field already proves the call worked.
+
 - **Mirrored standards no longer carry dead links** (ANTS-4875)
   A link a mirrored standard cannot carry — the owner's review history, a
   foundation document, a skeleton — is now copied down as plain text instead of
