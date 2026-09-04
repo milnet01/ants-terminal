@@ -14313,8 +14313,25 @@ indie-review finding.
   Kind: fix.
   Source: in-session-2026-09-04.
 
-- 📋 [ANTS-4873] **The project is 0.x by default rather than by decision — no 1.0 exit condition is written down anywhere.**
+- ✅ [ANTS-4873] **The project is 0.x by default rather than by decision — no 1.0 exit condition is written down anywhere.**
   versioning.md section 4 requires a 0.x project to state, in one line in docs/standards/versioning-overrides.md beside its breaking surfaces, what would make it 1.0 — an exit condition checkable by someone else, not a feeling about maturity. That file does not exist, and no 1.0 condition or list of breaking surfaces appears anywhere in docs/standards/ or docs/decisions/.\n\nThe standard names the consequence outright: such a project \"is not deliberately 0.x\", its leading zero has gone inert, and the visible symptom is a long release history under a 0. prefix nobody has revisited. This project has shipped over a hundred public 0.7.x releases and has never tagged any other minor line.\n\nNothing is being versioned WRONGLY today: inside 0.x a new capability bumps the PATCH, which is what the weekly cadence does. What is missing is the decision. Reaching 0.8.0 needs a breaking change by that standard's definition — something that used to work for a user or an integrator stops working — and the surfaces that could break are undeclared, so no one can tell whether a change is one. Candidates to declare: the ants.* Lua plugin API, config.json keys, MCP verb contracts, the session-persistence format, keyboard shortcuts, the roadmap store schema.\n\nNeeds a user decision on what 1.0 means; not something to invent.
+  Resolved (2026-09-04): docs/standards/versioning-overrides.md now
+  exists, is named in the standards index, and carries both answers the
+  global standard requires plus one declared override.\n\nThe two
+  decisions are the user's, taken 2026-09-04 and recorded in the file as
+  theirs. Inside 0.x the MINOR is the MILESTONE and the PATCH is
+  everything else, which resolves the contradiction this item found: the
+  roadmap already had 0.8.0, 0.9.0 and 1.0.0 milestone sections while
+  the global rule moves the MINOR only on a breaking change, so the plan
+  and the ladder disagreed and the MINOR had never moved. The 1.0 exit
+  condition is the ants.* API freeze under ANTS-1084 plus a second
+  maintainer holding commit rights, the bus-factor half of ANTS-1088;
+  the governance doc that item also names is deliberately outside the
+  gate.\n\nGated under CLAUDE.md rule 14 as genre standard. Loop 1
+  verified six findings and fixed six, log in
+  docs/reviews/versioning-overrides-review-log.md.\n\nThis headline is
+  what the run made stale, which is why it is closed here rather than
+  left open: a 1.0 exit condition IS now written down.
   **Layman:** Our version number starts with 0, but nobody has written down what would make it 1.0, so the zero has stopped meaning anything.
   Kind: doc.
   Source: in-session-2026-09-04.

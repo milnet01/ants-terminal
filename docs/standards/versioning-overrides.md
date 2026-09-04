@@ -1,16 +1,20 @@
 # Versioning overrides — Ants Terminal
 
 Deltas only. Everything not named here follows
-`~/.claude/standards/versioning.md` unmodified. This file holds the two
-answers that standard refuses to supply — § 3's breaking surfaces and
-§ 4's `1.0` exit condition — which `~/.claude/standards/README.md`
-§ The three cases pins to this path.
+`~/.claude/standards/versioning.md` unmodified. It holds the two answers
+that standard requires of a `0.x` project — § 3's breaking surfaces and
+§ 4's `1.0` exit condition, which the global standards index pins to
+this path — **and one override of § 4's level rule**, below.
 
 ## The `1.0` exit condition
 
 > **MAJOR stays `0` until the `ants.*` plugin API is frozen under
 > [ANTS-1084]'s stability pledge, and a second maintainer holds commit
-> rights ([ANTS-1088]).**
+> rights — the bus-factor half of [ANTS-1088].**
+
+**The governance doc [ANTS-1088] also names is deliberately not part of
+the gate.** The bar is commit rights. Cite the item for the bus factor
+only; a `1.0` is not held for the document.
 
 Both halves are observable by someone else, which is what § 4 asks for in
 place of a judgement about maturity. Both are already items under
@@ -20,8 +24,10 @@ The bus-factor half is not ceremony: distributions treat a
 single-maintainer project as a risk, and this project is packaged for
 several. Decided by the user 2026-09-04.
 
-**[ANTS-1087] is not a gate.** It was retracted — no paid security review
-is committed or funded — so do not read it as a condition of `1.0`.
+**[ANTS-1087] is not a gate.** Its own roadmap entry records the
+retraction (2026-08-25) — no paid security review is committed or funded
+— and says not to cite the item as a commitment. **The item is still
+listed under § 1.0.0 as `planned`, so read the entry, not the status.**
 
 ## Override — what moves the MINOR inside `0.x`
 
@@ -30,13 +36,13 @@ bumps the MINOR; everything else, a new capability included, bumps the
 PATCH.
 
 **This project.** Inside `0.x` the MINOR is the **milestone**, and the
-PATCH is everything else — fixes, and capabilities that do not complete a
-milestone. Decided by the user 2026-09-04.
+PATCH is everything else — fixes, **breaking changes**, and capabilities
+that do not complete a milestone. Decided by the user 2026-09-04.
 
 | Version | Milestone | The release is cut when |
 |---|---|---|
-| `0.8.0` | Multiplexing + marketplace | The capabilities `ROADMAP.md` § 0.8.0 collects are shipped — the headless mux server and its domain/workspace abstractions, and the plugin marketplace |
-| `0.9.0` | Platform + accessibility | The items under `ROADMAP.md` § 0.9.0 are shipped |
+| `0.8.0` | Multiplexing + marketplace | Every item under `ROADMAP.md` § 0.8.0 is shipped or moved out of the section |
+| `0.9.0` | Platform + accessibility | Every item under `ROADMAP.md` § 0.9.0 is shipped or moved out of the section |
 | `1.0.0` | Stability | The exit condition above |
 
 **Why.** The global rule makes the MINOR a fact about breakage, which is
@@ -52,8 +58,10 @@ them rather than contradict them.
 itself in the version number. One thing carries it instead, and it is
 required rather than encouraged: every breaking change is a
 `### Changed` or `### Removed` entry in `CHANGELOG.md` that says, in its
-first clause, what stops working. A release whose section contains one
-leads with it, per `releases.md` § 2.
+first clause, what stops working. `releases.md` § 2 makes that section
+the single description of what shipped, and asks the same of a security
+fix for the same reason — someone on the previous version cannot decide
+whether to upgrade if nobody tells them.
 
 ## Breaking surfaces
 
@@ -116,3 +124,8 @@ that release was breaking whether or not this file mentions it.
 | The milestone table matches `ROADMAP.md`'s sections | Nothing. Both have to be changed together. |
 | A breaking change reached the CHANGELOG | Nothing automated. The override above makes this the only carrier, so it rests on review. |
 | The store schema is a one-way door | `RoadmapStore::open()` enforces the refusal itself. |
+
+## Cold-eyes loop log
+
+Kept in [`docs/reviews/versioning-overrides-review-log.md`](../reviews/versioning-overrides-review-log.md).
+A standard carries rules; its review history is read far less often.
