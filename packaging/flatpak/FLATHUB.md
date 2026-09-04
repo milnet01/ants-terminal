@@ -50,39 +50,78 @@ Before opening the submission PR, all of the following must be true:
 
 ## Opening the Flathub PR
 
-1. **Fork** [`flathub/flathub`](https://github.com/flathub/flathub)
-   and check out a `new-pr` branch off `master`.
+> **A person opens this PR, writes its body, and answers its review. Not an
+> agent.** Flathub's Generative AI policy, in its own words: *"AI tools or
+> agents must not open or automate Flathub submission pull requests, or
+> generate their commit messages, descriptions, review comments, or replies.
+> Submitters must not request AI-agent reviews."* The penalty escalates to
+> *"a permanent ban from future submissions and activities"*. The checkbox
+> enforcing it landed in Flathub's PR template on 2026-09-03 — after
+> finbreak's submission, so that one was not in breach when it was made, but
+> any further comment on it is covered.
+>
+> An agent may prepare the packaging — manifest, metainfo, desktop entry,
+> icon — and verify it builds and lints. That material is permitted, and the
+> template's *other* AI checkbox requires it be **disclosed**, naming the
+> affected parts and approximate extent. The two checkboxes are different
+> questions; do not answer them the same way.
 
-2. **Generate the Flathub-shaped manifest:**
-   ```bash
-   packaging/flatpak/make-flathub-manifest.sh \
-       > /path/to/flathub-fork/za.co.antsprojectshub.AntsTerminal/za.co.antsprojectshub.AntsTerminal.yml
-   ```
-   (Version auto-detected from `CMakeLists.txt`; pass an explicit
-   `<version>` argument to override.)
+1. **Fork** [`flathub/flathub`](https://github.com/flathub/flathub) and
+   branch off `master`. The PR's **base branch must be `new-pr`**, not
+   `master` — the template says so in its first line, and a submission
+   against `master` is rejected.
 
-3. **Generate the metainfo (preview placeholder stripped) + copy the
-   desktop and icon** into the same subdirectory:
+2. **Generate the submission carriers.** They go at the **repo root** of the
+   fork branch, not in a per-app subdirectory:
    ```bash
-   D=/path/to/flathub-fork/za.co.antsprojectshub.AntsTerminal
+   D=/path/to/flathub-fork
+   # Pin the newest STABLE tag — never an -rcN. Pass it explicitly: the
+   # auto-detect reads CMakeLists.txt, which under the RC cadence names the
+   # NEXT unreleased version.
+   packaging/flatpak/make-flathub-manifest.sh <VERSION> \
+       > "$D/za.co.antsprojectshub.AntsTerminal.yml"
    # metainfo via the generator so the unreleased "Patron RC preview"
    # <release> placeholder is stripped (shipped stable leads the list):
-   packaging/flatpak/make-flathub-manifest.sh --metainfo \
+   packaging/flatpak/make-flathub-manifest.sh <VERSION> --metainfo \
        > "$D/za.co.antsprojectshub.AntsTerminal.metainfo.xml"
    cp packaging/linux/za.co.antsprojectshub.AntsTerminal.desktop "$D/"
-   cp assets/ants-terminal-256.png \
-      "$D/za.co.antsprojectshub.AntsTerminal.png"
+   cp assets/ants-terminal-256.png "$D/za.co.antsprojectshub.AntsTerminal.png"
    ```
+   Verified on finbreak's submission: `flatpak-builder-lint manifest` exits 0
+   standalone, i.e. with the manifest at a repo root and no `packaging/`
+   tree beside it.
 
-4. **Open the PR** against the `new-pr` branch of `flathub/flathub`
-   with subject `Add za.co.antsprojectshub.AntsTerminal` and a body describing the app
-   in one paragraph. Flathub CI runs a build in the PR; iterate on
-   failures until green.
+3. **FILL IN Flathub's PR template. Do not replace it.** This is the single
+   most common way a submission dies: the submission-checker bot auto-closed
+   finbreak's PR **27 seconds** after it opened — 13:14:46Z to 13:15:13Z —
+   with *"Checklist(s) not completed or missing"*, because the body had been
+   replaced with a hand-written description instead of the template with its
+   boxes ticked. Open the PR compose view, keep every line the template
+   gives you, and replace each `[ ]` with `[X]` as it is satisfied. An item
+   that does not apply is ticked with `N/A` **and a reason**.
+
+   Items that need a human and cannot be prepared ahead:
+   - **A video showcasing the app running as a Flatpak on Linux.**
+   - **The AI-disclosure line**, naming the affected parts and extent.
+   - **The author/developer/upstream-contributor declaration.**
+
+   `packaging/flatpak/flathub-submission/PR_BODY.md` is **not** a PR body and
+   must never be pasted as one — it is exactly the shape that got finbreak
+   auto-closed. Treat it as source material: the app description and the
+   three permission justifications are worth pasting into the template's
+   description slot and into a follow-up comment respectively.
+
+4. **If the bot closes it anyway, comment — do not reopen or re-open a new
+   PR.** The bot's own message says so: *"please post a comment below instead
+   of opening or reopening (new) PRs."* A second PR while the first stands
+   reads as PR-spam to the reviewers. Only a maintainer can reopen.
 
 5. **After merge:** Flathub provisions a new repo at
-   `flathub/za.co.antsprojectshub.AntsTerminal` with the submitted files. Future
-   version bumps + Lua tarball refreshes go there, not here —
-   `flatpak-external-data-checker` opens those PRs automatically.
+   `flathub/za.co.antsprojectshub.AntsTerminal` with the submitted files.
+   Future version bumps + Lua tarball refreshes go there, not here —
+   `flatpak-external-data-checker` opens those PRs automatically. Accept the
+   repo-write invitation **within one week**, with 2FA enabled on the GitHub
+   account; both are Flathub requirements.
 
 ## On every subsequent release
 
