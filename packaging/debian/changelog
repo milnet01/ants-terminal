@@ -1,3 +1,43 @@
+ants-terminal (0.7.108-1) unstable; urgency=medium
+
+  * The roadmap database now reads and writes roadmaps organised as
+    numbered passes, roadmap_log gains format-version correction and
+    publish-to-file, and check_sync compares the file against the database.
+    (ANTS-4803, 4707, 4509, 4488)
+  * Review system - multi-file corroboration reports the same problem
+    across files grouped by function, cross-lane near misses can be merged
+    with a tolerance, computed lanes label themselves by purpose, and every
+    lane reports its line count. (ANTS-4814, 4817, 4806, 4804)
+  * Shell scripts are outlined and checked, locally and in CI, joining the
+    reviewed toolchain. (ANTS-4826, 4518)
+  * Nested component changelogs; find_definition resolves data members,
+    doc_symbols filters by status, doc_citations resolves a backticked
+    path::symbol, and apply_edits matches an edit that differs only in
+    where its lines break. (ANTS-4812, 3668, 3689, 4748, 4723)
+  * spec_lint checks invariant coverage against a spec's test section, and
+    the repository now commits its .editorconfig, ruff.toml, spell-check
+    vocabulary and clang-tidy check set. (ANTS-4623, 4790, 4801, 4789,
+    4787)
+  * Review lanes over test trees are labelled, a conformance test holds
+    every source file to exactly one lane, and a partition walk reports
+    which files remain uncovered. (ANTS-4793, 4794, 4786)
+  * Scrollback search no longer freezes the window while you type, a
+    compiler upgrade no longer discards the precompiled headers, the
+    tab-colour menu shows and ticks the colour a tab is already on, a
+    dismissed audit finding now stays hidden everywhere, and the shell
+    guard no longer blocks a command that merely mentions a git diff.
+    (ANTS-2000, 2107, 4862, 4864, 4444, 4517)
+  * Release gates now report a changelog bullet that merely repeats its
+    roadmap headline, and shipped work that reached no changelog at all;
+    cutting a release updates the package repositories rather than only the
+    git tag. (ANTS-4759, 4714, 4716)
+  * AI triage scrubs secrets before sending, SARIF exports strip
+    credentials, roadmap and changelog lookups stay inside the project, and
+    the release workflows default to read-only with write granted to one
+    job only. (ANTS-4448, 4447, 4795, 4792)
+
+ -- Anthony Schemel <aant.schemel@gmail.com>  Fri, 04 Sep 2026 00:00:00 +0200
+
 ants-terminal (0.7.107-1) unstable; urgency=medium
 
   * Roadmap database - roadmap_log gains batch operations (flip_batch,
