@@ -36,9 +36,10 @@ listed under § 1.0.0 as `planned`, so read the entry, not the status.**
 bumps the MINOR; everything else, a new capability included, bumps the
 PATCH.
 
-**This project.** Inside `0.x` the MINOR is the **milestone**, and the
-PATCH is everything else — fixes, **breaking changes**, and capabilities
-that do not complete a milestone. Decided by the user 2026-09-04.
+**This project.** Inside `0.x` the MINOR is the **milestone**: a release
+completing one takes it, breaking or not. The PATCH is everything else —
+fixes, breaking changes, and capabilities that complete no milestone.
+Decided by the user 2026-09-04.
 
 | Version | Milestone | The release is cut when |
 |---|---|---|
@@ -103,7 +104,8 @@ this project that is:
 
 ## What is deliberately not a surface
 
-Named because over-caution costs as much as carelessness.
+Named because over-caution costs as much as carelessness. Each is a
+judgement that nobody relies on it, not a limit on the rule below.
 
 - **Internal C++ APIs between the subsystems.** Nothing outside the
   binary links to them.
@@ -115,9 +117,9 @@ Named because over-caution costs as much as carelessness.
 
 `versioning.md` § 3's rule, repeated rather than cited because this list
 is new. If a user relies on something and an upgrade stops it working,
-that release was breaking whether or not this file names it. **It fires
-on a surface this file has not considered — not on one the section above
-deliberately excludes.**
+that release was breaking whether or not this file names it — including
+where the section above excludes it. § 3 says the list makes the common
+cases cheap and may not bound the promise.
 
 ## What checks this
 
