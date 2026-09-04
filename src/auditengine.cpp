@@ -2,6 +2,7 @@
 
 #include "auditfpledger.h"
 #include "regexharden.h"  // ANTS-1665 — isCatastrophicRegex / hardenUserRegex
+#include "secretredact.h"  // ANTS-4448 — strip credentials from the remote URL
 
 #include <QCryptographicHash>
 #include <QDateTime>
@@ -1487,6 +1488,11 @@ QJsonArray buildVcsProvenanceBlock(const QString &rootCanonical) {
     if (remote.isEmpty()) {
         remote = QStringLiteral("file://") + rootCanonical;
     }
+    // ANTS-4448 — the remote is written verbatim into SARIF, which is the
+    // artifact people attach to a ticket, and read back out of it by
+    // last_audit_summary. A credentialled remote is an ordinary form, so
+    // strip the userinfo; the repository is still identified without it.
+    remote = SecretRedact::stripUrlCredentials(remote);
 
     QJsonObject vcs;
     vcs[QStringLiteral("repositoryUri")] = remote;

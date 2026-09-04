@@ -6,6 +6,8 @@
 #include "feedbackfile.h"        // ANTS-1961 / ANTS-1962
 #include "findsources.h"
 #include "readregion.h"
+#include "secretredact.h"        // ANTS-4448 — strip credentials from a
+                                 // SARIF-carried remote URL on read-back
 #include "specparse.h"           // ANTS-3665 — hoisted spec-body parser
 #include "modelswitchledger.h"   // ANTS-1735 — model_switch_stats aggregation
 #include "modelnearmissledger.h" // ANTS-1894 — model_switch_stats near-miss arm
@@ -478,7 +480,12 @@ QJsonObject buildLasEnvelope(const AuditEngine::AuditSummary &s) {
     // fallback.
     if (!s.branch.isEmpty())        ok["branch"]         = s.branch;
     if (!s.commit.isEmpty())        ok["commit"]         = s.commit;
-    if (!s.repositoryUri.isEmpty()) ok["repository_uri"] = s.repositoryUri;
+    // ANTS-4448 — stripped on the READ side too, not only where the SARIF
+    // is written: every SARIF already on disk was captured before that fix
+    // and would otherwise keep sending a credentialled remote over the wire
+    // until the audit is re-run.
+    if (!s.repositoryUri.isEmpty())
+        ok["repository_uri"] = SecretRedact::stripUrlCredentials(s.repositoryUri);
     if (!s.branchSource.isEmpty())  ok["branch_source"]  = s.branchSource;
 
     return ok;

@@ -44,6 +44,7 @@
 #include <QNetworkRequest>
 #include <QNetworkReply>
 #include <QRegularExpression>
+#include "secretredact.h"   // ANTS-4448 — scrub the AI-triage prompt
 
 #include <algorithm>
 
@@ -5209,9 +5210,20 @@ void AuditDialog::requestAiTriage(const QString &dedupKey) {
         userMsg += QString("\nLast modified: %1 by %2 (%3)\n")
                        .arg(f.blameDate, f.blameAuthor, f.blameSha);
 
+    // ANTS-4448 — OWASP LLM06. This path hand-builds its body and POSTs it
+    // through a raw QNetworkAccessManager, so it never passed through
+    // LlmClient::buildRequestBody, which scrubs its prompts. The snippet
+    // above is verbatim project source, and for a secrets_scan or gitleaks
+    // finding that snippet IS the credential. endpointEgressError, checked
+    // above, validates the DESTINATION rather than the body, and the
+    // 0.6.22 fence hardening is prompt-injection defence, not a scrub.
+    //
+    // `sys` is a compile-time literal, so only the user message is scrubbed.
+    const auto scrubbedUser = SecretRedact::scrub(userMsg);
+
     QJsonArray messages;
     messages.append(QJsonObject{{"role", "system"},  {"content", sys}});
-    messages.append(QJsonObject{{"role", "user"},    {"content", userMsg}});
+    messages.append(QJsonObject{{"role", "user"},    {"content", scrubbedUser.text}});
 
     QJsonObject body;
     body["model"]       = model;
@@ -5252,8 +5264,17 @@ void AuditDialog::requestAiTriage(const QString &dedupKey) {
 
     auto *mgr = new QNetworkAccessManager(this);
     QNetworkReply *reply = mgr->post(req, QJsonDocument(body).toJson(QJsonDocument::Compact));
+    // ANTS-4448 — say when the prompt was scrubbed. A silent redaction
+    // changes what the model was shown, so a verdict that looks wrong would
+    // otherwise have no visible cause.
     if (m_statusLabel)
-        m_statusLabel->setFullText("AI triage: querying " + endpointUrl.host() + "…");
+        m_statusLabel->setFullText(
+            "AI triage: querying " + endpointUrl.host()
+            + (scrubbedUser.redactedCount > 0
+                   ? QStringLiteral(" (%1 secret(s) redacted)")
+                         .arg(scrubbedUser.redactedCount)
+                   : QString())
+            + "…");
 
     connect(reply, &QNetworkReply::finished, this, [this, reply, mgr, dedupKey]() {
         reply->deleteLater();

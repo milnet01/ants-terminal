@@ -2262,6 +2262,13 @@ if(ANTS_TESTS)
     set_property(SOURCE tests/features/ai_context_redaction/test_ai_context_redaction.cpp
         APPEND PROPERTY COMPILE_DEFINITIONS
         SRC_AIDIALOG_CPP="${CMAKE_SOURCE_DIR}/src/aidialog.cpp")
+    set_property(SOURCE tests/features/audit_provenance_redaction/test_audit_provenance_redaction.cpp
+        APPEND PROPERTY COMPILE_DEFINITIONS
+        SRC_AUDITENGINE_CPP_PATH="${CMAKE_SOURCE_DIR}/src/auditengine.cpp"
+        # RcTuSplit INV-11 — a remotecontrol TU is never named outside the
+        # ANTS_RC_SOURCES_REL block, so this scrapes the whole set instead.
+        "ANTS_RC_SOURCES=\"${_ants_rc_joined}\""
+        SRC_AUDITDIALOG_CPP_PATH="${CMAKE_SOURCE_DIR}/src/auditdialog.cpp")
     set_property(SOURCE tests/features/claude_git_context_hook/test_installer_grep.cpp
         APPEND PROPERTY COMPILE_DEFINITIONS
         SRC_SETTINGSDIALOG_H="${CMAKE_SOURCE_DIR}/src/settingsdialog.h"
@@ -2380,6 +2387,8 @@ if(ANTS_TESTS)
         SOURCES tests/features/audit_command_rule_trust/test_audit_command_rule_trust.cpp
                 tests/features/audit_dedup_96bit/test_audit_dedup_96bit.cpp
                 tests/features/audit_engine_extraction/test_audit_engine_extraction.cpp
+                # ANTS-4448 — credentials must not reach SARIF or the AI POST.
+                tests/features/audit_provenance_redaction/test_audit_provenance_redaction.cpp
                 tests/features/audit_hygiene/test_audit_hygiene.cpp
                 # ANTS-2210 — per-language comment/string lexer regression test.
                 tests/features/audit_line_lexer/test_audit_line_lexer.cpp

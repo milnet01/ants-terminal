@@ -15,6 +15,7 @@
 
 #include <QRegularExpression>
 #include <QString>
+#include <QUrl>
 
 #include <algorithm>
 #include <vector>
@@ -25,6 +26,26 @@ struct Result {
     QString text;
     int redactedCount = 0;
 };
+
+// ANTS-4448 — remove credentials carried in a URL's userinfo.
+//
+// `https://user:token@host/owner/repo.git` is an ordinary git remote form,
+// and a remote URL reaches shareable artifacts (SARIF provenance) and the
+// wire (last_audit_summary). scrub() cannot help here: it matches secret
+// SHAPES, and a plain password matches none of them.
+//
+// Only a URL with a scheme is touched, so an scp-style remote
+// (`git@host:owner/repo.git`) — which parses with no scheme, and whose
+// `git@` is a username rather than a secret — is returned unchanged. The
+// whole userinfo goes, not just the password: a bare token is routinely
+// placed in the username slot.
+inline QString stripUrlCredentials(const QString &url)
+{
+    QUrl u(url);
+    if (u.scheme().isEmpty() || u.userInfo().isEmpty()) return url;
+    u.setUserInfo(QString());
+    return u.toString();
+}
 
 namespace detail {
 
