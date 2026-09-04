@@ -324,6 +324,68 @@ git -C "$D" diff --cached --quiet \
     && bad "ANTS-4865 stamped carriers were discarded" \
     || ok "ANTS-4865 stamped carriers left staged for inspection"
 
+# ── ANTS-4871 — cycle picks up an interrupted new-rc instead of skipping ────
+# The ANTS-4869 state reached through `cycle`: phase 1 has no in-flight RC to
+# promote, and phase 2 must not read the roll that already happened as nothing
+# to preview. The INV-7 self-skip case above is this test's negative — its
+# [0.7.98] section is a placeholder carrying no entry, so cycle still skips.
+D=$TMPROOT/ants4871; seed_repo "$D"; write_cmake "$D" 0.7.98
+write_changelog "$D" "" 0.7.98 "### Added
+- Shiny new thing."
+write_metainfo "$D" 0.7.98 "Real preview notes."; write_debian "$D" 0.7.98 "Real preview notes."
+commit_all "$D"
+run "$D" cycle --push --skip-build --force-non-wed
+{ [ "$RC" -eq 0 ] && has_tag "$D" v0.7.98-rc1; } \
+    && ok "ANTS-4871 cycle resumes an already-rolled RC" \
+    || bad "ANTS-4871 cycle resume (rc=$RC): $OUT"
+
+# ── ANTS-4872 — hotfix --continue resumes once the public tag exists ────────
+# The interruption point: v0.7.98 tagged at _hotfix HEAD, then the run died
+# before publishing the release and recording [H] on main. Re-running must
+# finish the job rather than refuse, and must not leave a second [0.7.98].
+seed_hotfix_phase1() {              # $1 dir → leaves HEAD on _hotfix, bumped
+    local d=$1
+    seed_repo "$d"; write_cmake "$d" 0.7.97
+    { echo "# Changelog"; echo; echo "## [Unreleased]"; echo
+      echo "## [0.7.97] — 2026-06-24"; echo; echo "- Old."; echo; } > "$d/CHANGELOG.md"
+    write_metainfo "$d" 0.7.97 x; write_debian "$d" 0.7.97 x; commit_all "$d" base
+    git -C "$d" tag -a v0.7.97 -m pub
+    echo fixline > "$d/fix.txt"; commit_all "$d" "the fix"
+    FIXSHA=$(git -C "$d" rev-parse HEAD)
+    run "$d" hotfix "$FIXSHA"
+    [ "$RC" -eq 0 ] || return 1
+    write_cmake "$d" 0.7.98          # assistant /bump _hotfix → 0.7.98 + notes
+    { echo "# Changelog"; echo; echo "## [0.7.98] — unreleased"; echo
+      echo "### Fixed"; echo "- The urgent fix."; echo
+      echo "## [0.7.97] — 2026-06-24"; echo; echo "- Old."; echo; } > "$d/CHANGELOG.md"
+    write_metainfo "$d" 0.7.98 "Hotfix notes."; write_debian "$d" 0.7.98 "Hotfix notes."
+    git -C "$d" add -A; git -C "$d" commit -q -m "bump 0.7.98 hotfix"
+}
+D=$TMPROOT/hf_resume
+if seed_hotfix_phase1 "$D"; then
+    git -C "$D" tag -a v0.7.98 -m "0.7.98 — hotfix"     # tagged, then killed
+    run "$D" hotfix --continue --push --skip-build
+    if [ "$RC" -eq 0 ]; then
+        ndup=$(grep -c '^## \[0.7.98\]' "$D/CHANGELOG.md")
+        { [ "$ndup" = 1 ] \
+            && git -C "$D" rev-parse --abbrev-ref HEAD | grep -q main \
+            && [ -z "$(git -C "$D" branch --list _hotfix)" ]; } \
+            && ok "ANTS-4872 hotfix --continue resumes past its own tag" \
+            || bad "ANTS-4872 resume state (dup=$ndup): $OUT"
+    else bad "ANTS-4872 resume refused (rc=$RC): $OUT"; fi
+else bad "ANTS-4872 phase1 setup (rc=$RC): $OUT"; fi
+
+# …and a v0.7.98 that is NOT this _hotfix HEAD is still refused: that is a
+# different release landing between the phases, which is what the guard is for.
+D=$TMPROOT/hf_foreign
+if seed_hotfix_phase1 "$D"; then
+    git -C "$D" tag -a v0.7.98 -m "a release that landed meanwhile" "$(git -C "$D" rev-parse main)"
+    run "$D" hotfix --continue --push --skip-build
+    { [ "$RC" -ne 0 ] && grep -q "different commit" <<<"$OUT"; } \
+        && ok "ANTS-4872 foreign v0.7.98 still refused" \
+        || bad "ANTS-4872 foreign tag (rc=$RC): $OUT"
+else bad "ANTS-4872 foreign phase1 setup (rc=$RC): $OUT"; fi
+
 echo
 echo "release_rc_pipeline behavioural: PASS=$PASS FAIL=$FAIL"
 [ "$FAIL" -eq 0 ]

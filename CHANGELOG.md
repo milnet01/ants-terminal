@@ -14,6 +14,12 @@ for security-relevant changes.
 
 ### Fixed
 
+- **`cut-rc.sh hotfix --continue` resumes when the emergency release is already tagged.** (ANTS-4872)
+  An emergency release interrupted between tagging and writing its notes back to the main branch could not be finished by re-running the command; it refused, and the last steps had to be done by hand. It now recognises its own tag — the one sitting on the work in progress — and completes the remaining steps. A tag of that name made by anything else is still refused.
+
+- **`cut-rc.sh cycle` no longer skips its second phase after an interrupted release cut.** (ANTS-4871)
+  The weekly cadence command would report success having done nothing, for the same reason `new-rc` used to refuse: it read the notes already moved into the version's own section as an empty changelog. It now looks for that moved work — but only where the version is not already released, so the ordinary run still skips cleanly instead of failing.
+
 - **`cut-rc.sh new-rc` resumes after an interrupted run instead of refusing.** (ANTS-4869)
   Cutting a release candidate first moves the pending notes into the version's own section, then builds. If the build was interrupted, re-running said there was nothing to release — reading the move it had already made as an empty changelog. It now recognises its own completed work and carries on, and still refuses a genuinely empty cut.
 

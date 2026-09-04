@@ -234,6 +234,21 @@ rc_section_has_content() {
     ' "$CHANGELOG_FILE"
 }
 
+# True (exit 0) if new-rc would find work: either [Unreleased] carries entries,
+# or an interrupted run already rolled them into a [<base>] that is NOT yet
+# public. The second arm is cmd_new_rc's own ANTS-4869 resume condition, and
+# the not-yet-public test is what keeps it off the section promote has just
+# stamped — that base IS public, and new-rc refuses it under INV-9, which would
+# turn cycle's clean skip into a failed cycle. cmd_new_rc needs no such test of
+# its own: INV-9 runs there before INV-1 (ANTS-4871).
+new_rc_has_work() {
+    unreleased_has_content && return 0
+    local base; base=$(base_version)
+    [ -n "$base" ] || return 1
+    git rev-parse -q --verify "refs/tags/v${base}" >/dev/null && return 1
+    rc_section_has_content "$base"
+}
+
 # True (exit 0) if the CHANGELOG "## [X.Y.Z]" section is still the
 # channel-opener placeholder. Isolates that version's slice FIRST (up to the
 # next "## ["), then matches the single-line anchor within it (ANTS-2164
@@ -802,11 +817,11 @@ cmd_cycle() {
         echo "cut-rc: cycle phase 1 — no in-flight RC (skip promote)"
     fi
     echo
-    if unreleased_has_content; then
+    if new_rc_has_work; then
         echo "cut-rc: cycle phase 2 — cut next RC from main"
         cmd_new_rc
     else
-        echo "cut-rc: cycle phase 2 — no [Unreleased] content (skip new-rc)"
+        echo "cut-rc: cycle phase 2 — nothing to preview (skip new-rc)"
     fi
     echo "cut-rc: cycle complete."
 }
@@ -883,7 +898,7 @@ cmd_hotfix() {
 }
 
 cmd_hotfix_continue() {
-    local branch H pub_tag N
+    local branch H pub_tag N resuming
     branch=$(git rev-parse --abbrev-ref HEAD)
     [ "$branch" = _hotfix ] \
         || { echo "cut-rc: hotfix --continue must run on the _hotfix branch (on '$branch')" >&2; exit 1; }
@@ -894,15 +909,35 @@ cmd_hotfix_continue() {
     require_no_version_drift          # against the _hotfix tree (CMakeLists == H)
     H=$(base_version)
     [ -n "$H" ] || { echo "cut-rc: could not read hotfix version from CMakeLists.txt" >&2; exit 1; }
-    git rev-parse -q --verify "refs/tags/v${H}" >/dev/null \
-        && { echo "cut-rc: v${H} already exists as a public tag" >&2; exit 1; }
+    # ANTS-4872 — an interruption between the tag and the record on main left
+    # the re-run refused here with no route to finish; the operator had to
+    # complete it by hand and nothing said so. The two states are
+    # distinguishable: OUR interrupted run tagged v${H} at THIS _hotfix HEAD.
+    # Any other commit is a different release landing between the phases, which
+    # is the case this guard was written for and still refuses.
+    # Quoted for SC1083: the braces are git's peel syntax, meant literally.
+    resuming=0
+    if git rev-parse -q --verify "refs/tags/v${H}" >/dev/null; then
+        if [ "$(git rev-parse "refs/tags/v${H}^{commit}")" = "$(git rev-parse HEAD)" ]; then
+            resuming=1
+            echo "cut-rc: v${H} is already tagged at this _hotfix HEAD — resuming an"
+            echo "        interrupted 'hotfix --continue' (ANTS-4872)."
+        else
+            echo "cut-rc: v${H} already exists as a public tag, at a different commit." >&2
+            echo "        A release landed between hotfix phases; re-run" >&2
+            echo "        'cut-rc.sh hotfix' from scratch (ANTS-2165)." >&2
+            exit 1
+        fi
+    fi
     N=$(patch_minus_one "$H")
     pub_tag=$(latest_public_tag)
-    [ "$pub_tag" = "v${N}" ] || {
+    # Before our tag exists the newest public tag must be v${N}; on a resume it
+    # is our own v${H}. Nothing else is a state these phases can have produced.
+    if [ "$pub_tag" != "v${N}" ] && [ "$pub_tag" != "v${H}" ]; then
         echo "cut-rc: latest public tag is ${pub_tag}, expected v${N} — a release landed" >&2
         echo "        between hotfix phases; re-run 'cut-rc.sh hotfix' from scratch." >&2
         exit 1
-    }
+    fi
     echo "cut-rc: hotfix — building + tagging public v${H} at _hotfix HEAD"
     build_and_test
 
@@ -915,17 +950,25 @@ cmd_hotfix_continue() {
     ' "$CHANGELOG_FILE" > "$hblock"
 
     if [ "$DO_PUSH" = 1 ]; then
-        git tag -a "v${H}" -m "${H} — hotfix"
+        if [ "$resuming" = 1 ]; then
+            echo "cut-rc: v${H} is already tagged — keeping the existing tag."
+        else
+            git tag -a "v${H}" -m "${H} — hotfix"
+        fi
     else
         echo "  [rehearsal] would create annotated tag v${H} at _hotfix HEAD"
     fi
     confirm_or_print git push origin "v${H}"
     if [ "$DO_PUSH" = 1 ]; then
-        local notes_file; notes_file=$(mktemp)
-        release_notes "v${H}" > "$notes_file"
-        [ -s "$notes_file" ] || echo "Hotfix ${H}." > "$notes_file"
-        gh release create "v${H}" --title "${H} — hotfix" --notes-file "$notes_file"
-        rm -f "$notes_file"
+        if [ "$resuming" = 1 ] && gh release view "v${H}" >/dev/null 2>&1; then
+            echo "cut-rc: GitHub release v${H} is already published — leaving it."
+        else
+            local notes_file; notes_file=$(mktemp)
+            release_notes "v${H}" > "$notes_file"
+            [ -s "$notes_file" ] || echo "Hotfix ${H}." > "$notes_file"
+            gh release create "v${H}" --title "${H} — hotfix" --notes-file "$notes_file"
+            rm -f "$notes_file"
+        fi
     else
         echo "  [rehearsal] would run: gh release create v${H} (public, prerelease=false)"
     fi
@@ -934,13 +977,17 @@ cmd_hotfix_continue() {
     # reads [H+1] > [H] > [N] (or [H] > [N] when no RC was in flight).
     git checkout -q main
     if [ "$DO_PUSH" = 1 ]; then
-        record_hotfix_on_main "$H" "$N" "$hblock"
-        if ! git diff --quiet "$CHANGELOG_FILE"; then
-            git add "$CHANGELOG_FILE"
-            commit_or_abort "chore: record [${H}] hotfix in CHANGELOG (ANTS-2165 INV-4)" \
-                "hotfix --continue" \
-                "v${H} is already tagged and published; only main's CHANGELOG record is missing."
-            confirm_or_print git push origin main
+        if [ "$resuming" = 1 ] && grep -q "^## \[${H}\]" "$CHANGELOG_FILE"; then
+            echo "cut-rc: [${H}] is already recorded in ${CHANGELOG_FILE} on main."
+        else
+            record_hotfix_on_main "$H" "$N" "$hblock"
+            if ! git diff --quiet "$CHANGELOG_FILE"; then
+                git add "$CHANGELOG_FILE"
+                commit_or_abort "chore: record [${H}] hotfix in CHANGELOG (ANTS-2165 INV-4)" \
+                    "hotfix --continue" \
+                    "v${H} is already tagged and published; only main's CHANGELOG record is missing."
+                confirm_or_print git push origin main
+            fi
         fi
         git branch -D _hotfix >/dev/null 2>&1 || true
     else

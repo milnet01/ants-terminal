@@ -14285,20 +14285,30 @@ indie-review finding.
   Kind: fix.
   Source: in-session-2026-09-04.
 
-- 📋 [ANTS-4871] **cut-rc.sh cycle skips its second phase silently after an interrupted new-rc.**
+- ✅ [ANTS-4871] **cut-rc.sh cycle skips its second phase silently after an interrupted new-rc.**
   Found while closing ANTS-4869. cmd_cycle gates phase 2 on unreleased_has_content alone, so in the post-roll pre-tag state it prints "no [Unreleased] content (skip new-rc)" and exits 0 having done nothing.
 
   The obvious fix regresses the normal path and was deliberately not taken: immediately after phase 1 promotes, the `## [<base>]` section is full and the base is not yet bumped, so a gate that also accepted rc_section_has_content would drive phase 2 into new-rc's INV-9 hard refusal and turn a clean skip into a failed cycle.
 
   A correct gate must additionally require that v<base> is not already a public tag. Until then the route after an interruption is to run new-rc directly, which now resumes.
+  Resolved (2026-09-04): added new_rc_has_work, a cycle-side pre-flight carrying both arms — [Unreleased] has entries, OR an interrupted run already rolled them into a [<base>] that is not yet public. The second clause is the regression guard this item predicted: without it, phase 2 would fire on the section promote had just stamped and run new-rc straight into INV-9's refusal.
+
+  cmd_new_rc needs no equivalent test of its own, which is why the helper lives on the cycle side alone: INV-9 runs there before INV-1, so by the time the resume branch is reached the base is already known not to be public.
+
+  The existing INV-7 self-skip fixture is the negative case and stays green — its [0.7.98] section is a channel-opener placeholder, so it carries no entry and cycle still skips.
   **Layman:** After an interrupted release cut, the weekly cadence command does nothing and still reports success.
   Kind: fix.
   Source: in-session-2026-09-04.
 
-- 📋 [ANTS-4872] **cut-rc.sh hotfix --continue has no resume path once the public tag exists.**
+- ✅ [ANTS-4872] **cut-rc.sh hotfix --continue has no resume path once the public tag exists.**
   Found while checking cmd_promote and cmd_hotfix for ANTS-4869's resume gap. cmd_hotfix_continue tags v<H>, publishes the release, then records the [H] section on main. An interruption between the tag and the record leaves the re-run refused by the "v<H> already exists as a public tag" guard, with no route to finish the record step — the operator has to complete it by hand and nothing says so.
 
   Same class as ANTS-4869: a guard that cannot tell "already done" from "must not start".
+  Resolved (2026-09-04): the tag-exists guard now distinguishes the two states the way ANTS-4869 did, from evidence already present — our own interrupted run tagged v<H> at THIS _hotfix HEAD, and any other commit is a different release landing between the phases, which is still refused with a message that says which.
+
+  On a resume the four remaining steps are each made idempotent, every one gated on the resume flag alone so the fresh path is unchanged: the tag is kept rather than re-created, the GitHub release is left alone if already published, the latest-public-tag check accepts v<H> as well as v<N>, and the record on main is skipped when the section is already there. The tag push was already idempotent.
+
+  Three behavioural cases added — the resume, the foreign-tag refusal, and the full fresh flow which was already covered and stays green.
   **Layman:** An emergency release interrupted after tagging cannot be finished by re-running the command.
   Kind: fix.
   Source: in-session-2026-09-04.
