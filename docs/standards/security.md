@@ -28,6 +28,8 @@
 <!-- MIRROR BEGIN ~/.claude/standards/security.md -->
 # Security Standard — v1
 
+**Rule history: [`docs/history/security.md`](../docs/history/security.md).**
+
 **Status:** v1 (2026-08-08).
 **Applies to:** every project, at every stage — not only the code.
 
@@ -204,28 +206,23 @@ decision.
 
 ## 9. When you find a hole
 
-**This section is about a known hole in something you ship** — a
-reported vulnerability, an advisory naming a version you are on, a
-weakness you found in your own code. **A routine version sweep is not
-this**; that is `dependencies.md` §5, which reports and waits, because
-most of what a sweep returns is merely behind rather than dangerous.
-The two were saying opposite things about one event until 2026-08-14
-(ROADMAP CFG-0098). The dividing question is whether something is known
-to be exploitable, not which command surfaced it — a sweep that turns up
-a real advisory hands it here.
+**This section is about a known hole in something you ship** — a reported
+vulnerability, an advisory naming a version you are on, a weakness you found
+in your own code. **A routine version sweep is not this**; that is
+`dependencies.md` §5, which reports and waits, because most of what a sweep
+returns is merely behind rather than dangerous. The dividing question is
+whether something is known to be exploitable, not which command surfaced it —
+a sweep that turns up a real advisory hands it here.
 
 - **It is a fix, now — not a backlog item.** Ship the fix ahead of
   queued work.
 - **Where the hole is in your own code, write the regression test
-  first**, so it cannot reopen silently. **Where it is an upstream
-  advisory there is no behaviour of yours to lock down** — the check is
-  the version floor in the manifest, and no test is owed. Scoped
-  2026-08-14 (ROADMAP CFG-0108): this section was widened that morning to
-  cover an advisory naming a version you ship, and only this bullet was
-  scoped for it. **The two below bind on both** — rotate whatever an
-  advisory says may have been exposed, and say so in the CHANGELOG either
-  way, because a user on the old version needs to upgrade whoever wrote
-  the hole.
+  first**, so it cannot reopen silently. **Where it is an upstream advisory
+  there is no behaviour of yours to lock down** — the check is the version
+  floor in the manifest, and no test is owed. **The two below bind on both** —
+  rotate whatever an advisory says may have been exposed, and say so in the
+  CHANGELOG either way, because a user on the old version needs to upgrade
+  whoever wrote the hole.
 - **Assume exploitation where you cannot rule it out**, and rotate
   anything that may have been exposed.
 - **Say so in the CHANGELOG.** Users of a released version need to know

@@ -21,6 +21,8 @@
 <!-- MIRROR BEGIN ~/.claude/standards/languages/cpp.md -->
 # C++ — language notes
 
+**Rule history: [`docs/history/cpp.md`](../../docs/history/cpp.md).**
+
 Read alongside `../coding.md`, which holds the language-agnostic rules.
 This file covers only what is specific to C++.
 
@@ -149,16 +151,12 @@ C++.
   wrong.** A GUI-driving test labelled `integration` in a project whose
   exclusion is `-LE 'e2e|perf'` is not excluded — it joins the default suite
   and drives a GUI from a detached pre-push hook. Nothing reports this,
-  because the label is valid and simply matches no filter. Reported
-  2026-08-12.
+  because the label is valid and simply matches no filter.
 - **A failing test explains itself** (`testing.md` §6) — **every
   assertion prints the expected and the received value**, whatever
   framework is in use. Catch2's `REQUIRE(a == b)` and GoogleTest's
   `EXPECT_EQ` do this unaided; an assertion that prints only a line
-  number needs a message added by hand. Stated generally 2026-08-14
-  (ROADMAP CFG-0108) — the only spelling here was a Qt macro, so a
-  non-Qt C++ project had no rule it could apply, and `coding.md` §5
-  gives it no reason to look in `qt.md`. **In Qt**, that means `QVERIFY2`
+  number needs a message added by hand. **In Qt**, that means `QVERIFY2`
   with a formatted message, never bare `QVERIFY`, which prints only a
   line number:
 

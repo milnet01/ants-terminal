@@ -26,9 +26,7 @@
 
 **Status:** v1 (2026-08-08).
 
-**Why a rule here reads as it does: [`docs/history/releases.md`](../docs/history/releases.md).**
-Pedigree only — what a rule used to say and what changed it. A dated
-measurement a rule rests on stays in the rule.
+**Rule history: [`docs/history/releases.md`](../docs/history/releases.md).**
 
 **Purpose: so that a released version is one thing — the same version
 number, the same contents and the same description everywhere it

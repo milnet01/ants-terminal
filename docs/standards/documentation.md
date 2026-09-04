@@ -254,10 +254,7 @@ contributor's, or CI's — since there is then nothing to compare against.
 
 **Status:** v1 (2026-08-08).
 
-**Why a rule here reads as it does: [`docs/history/documentation.md`](../docs/history/documentation.md).**
-Pedigree only — what a rule used to say and what changed it. A dated
-measurement a rule rests on stays in the rule, as does a worked case a rule
-is calibrated by.
+**Rule history: [`docs/history/documentation.md`](../docs/history/documentation.md).**
 
 **Purpose: so that someone looking for an answer finds exactly one
 document that has it, and can trust what it says.**

@@ -183,6 +183,8 @@ or CI's — since there is then nothing to compare against.
 <!-- MIRROR BEGIN ~/.claude/standards/testing.md -->
 # Testing Standards — v1
 
+**Rule history: [`docs/history/testing.md`](../docs/history/testing.md).**
+
 **Status:** v1 (2026-08-08).
 
 **Purpose: so that a change which breaks behaviour fails a test before it
@@ -196,10 +198,7 @@ something breaks has done nothing.
 language lives in `languages/<name>.md` — the same split as `coding.md`.
 Governs **every change that ships behaviour, whatever its `Kind`** — §1's
 test-first order and §8's conformance test bind an `implement` or `feature`
-item exactly as they bind a `test` one. Widened 2026-08-14 (ROADMAP
-CFG-0108): this named `Kind: test` plus the regression follow-through only,
-so a conformer on a feature item read the scope line, concluded this standard
-did not govern them, and shipped untested while §8 recorded them in breach.
+item exactly as they bind a `test` one.
 The regression-test follow-through specifically covers `fix`,
 `audit-fix` and `review-fix`.
 
@@ -369,8 +368,7 @@ test body** — neither its reuse ladder nor the Rule of Three, so
 duplication between tests needs no commit-body justification. Extract
 only where the duplicated block is itself the thing under test, or where a
 change to it would have to be made identically in every copy to stay
-correct — never merely because it repeats. Stated
-2026-08-14 (ROADMAP CFG-0108). **A little duplication in a test is better
+correct — never merely because it repeats. **A little duplication in a test is better
 than a helper**, because a test should be readable in one place without
 following a chain of abstractions to find out what it actually asserts.
 

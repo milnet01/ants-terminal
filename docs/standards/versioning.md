@@ -26,10 +26,7 @@
 
 **Status:** v1 (2026-08-20).
 
-**Why a rule here reads as it does: [`docs/history/versioning.md`](../docs/history/versioning.md).**
-Pedigree only — what a rule used to say and what changed it. A dated
-measurement a rule rests on stays in the rule, as does a decision recorded
-against whoever made it.
+**Rule history: [`docs/history/versioning.md`](../docs/history/versioning.md).**
 
 **Purpose: so that a version number tells a reader what upgrading will
 do to them.**

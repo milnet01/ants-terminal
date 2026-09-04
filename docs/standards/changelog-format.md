@@ -24,9 +24,7 @@
 <!-- MIRROR BEGIN ~/.claude/standards/changelog-format.md -->
 # CHANGELOG.md format spec (v1.1)
 
-**Why a rule here reads as it does: [`docs/history/changelog-format.md`](../docs/history/changelog-format.md).**
-Pedigree only — what a rule used to say and what changed it. A dated
-measurement a rule rests on stays in the rule.
+**Rule history: [`docs/history/changelog-format.md`](../docs/history/changelog-format.md).**
 
 > Detailed format spec for `CHANGELOG.md` — the Keep-a-Changelog structure,
 > its conventions, and the release flow that moves entries out of

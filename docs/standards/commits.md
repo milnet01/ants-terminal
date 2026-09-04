@@ -145,6 +145,8 @@ since there is then nothing to compare against.
 <!-- MIRROR BEGIN ~/.claude/standards/commits.md -->
 # Commit Standards — v1
 
+**Rule history: [`docs/history/commits.md`](../docs/history/commits.md).**
+
 **Purpose: so that the history explains itself — why each change was
 made, and what it belongs to — to someone reading it later without
 being able to ask.**
@@ -156,7 +158,6 @@ at commit time is all there will ever be.
 Governs every commit, plus release-orchestration work under `Kind:
 chore` or `release`. See the [index](README.md) for the full set of
 standards.
-
 
 ## 1. Commit message format
 
@@ -300,8 +301,7 @@ itself stays here, which is what CFG-0098 item 9 decided.
 Changelog bullets routinely run past 72, and re-wrapping makes the tag
 stop matching the published notes — the one disagreement that standard
 exists to prevent. A manual re-wrap is also a step someone skips, so two
-people cutting the same release produce two different tags. Added
-2026-08-14 (ROADMAP CFG-0098).
+people cutting the same release produce two different tags.
 
 ### 1.5 Trailers
 
@@ -319,7 +319,6 @@ whatever version it currently is. The point is that a future reader can
 tell which changes were machine-written and by what; a model name copied
 from an older commit defeats that, and models are superseded often
 enough that copying is the likely failure.
-
 
 ## 2. Commit hygiene
 
@@ -398,7 +397,6 @@ Build artifacts (`build/`, `dist/`, `*.o`, `node_modules/`,
 `__pycache__/`) belong in `.gitignore`. Generated docs (`/_build/`,
 `docs/_static/`) too. Check `git status` before staging.
 
-
 ## 3. Branching
 
 ### 3.1 Trunk-based default
@@ -429,7 +427,6 @@ branch name and every author would invent a different collapse.
 `git push --force` overwrites remote history. On personal
 branches, fine. On `main` / `master` / shared branches, never —
 use `git revert` + new commit instead.
-
 
 ## 4. Push policy
 
@@ -465,9 +462,7 @@ worse than the minutes it saves: the tag exists on one machine, nothing
 is published, and the next session cannot tell a queued release from a
 failed one. So [releases.md](releases.md) §6 step 8 pushes without
 asking, and this section's batch rule does not apply to it. Everything
-else on a metered repository still queues. Written down 2026-08-14
-(ROADMAP CFG-0098) because the two standards had said opposite things
-and a release completed or hung depending on which was in hand.
+else on a metered repository still queues.
 
 Urgency overrides cadence — a security fix, or a push the user asks for,
 goes now regardless. The specific per-repository answers for this
@@ -489,9 +484,6 @@ and the one skip that needs no run at all.
 `workflow.md` § 6 says where in a project's life this lands and defers
 to the same place for the rules.
 
-Split out 2026-08-31 (CFG-0185). This section had grown to a third of
-this document, and every fix of one review run landed inside it.
-
 ### 4.3 Tags
 
 Annotated, never lightweight — a lightweight tag carries no message and
@@ -509,11 +501,7 @@ second command is explicit too. Where the project's workflows trigger on
 tags it buys a second CI run for nothing, and for a release tag
 [releases.md](releases.md) §4 rules out **the separate tag push** by
 name: that section prescribes `--follow-tags` and requires the tag to go
-"with the commit it names, not separately and not later". Settled 2026-08-18 (ROADMAP CFG-0133): this
-section said "explicitly" and named no command, while `releases.md` §4
-and the global `CLAUDE.md` §6 both prescribe `--follow-tags`. A
-conformer running the prescribed command could not tell whether it
-breached this rule.
+"with the commit it names, not separately and not later".
 
 Release tagging is [releases.md](releases.md) §4, which states the
 release tag's own push rule rather than deferring it back here.
@@ -531,7 +519,6 @@ abandon the release — forcing it is not on the menu.
 
 A user approving an action once does NOT approve it in all
 contexts.
-
 
 ## 5. Anti-patterns
 

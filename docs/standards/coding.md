@@ -105,6 +105,8 @@ CI's — since there is then nothing to compare against.
 <!-- MIRROR BEGIN ~/.claude/standards/coding.md -->
 # Coding Standards — v1
 
+**Rule history: [`docs/history/coding.md`](../docs/history/coding.md).**
+
 **Purpose: so that code written now is still readable and changeable by
 someone who was not there when it was written.**
 
@@ -118,7 +120,6 @@ do not. See the [index](README.md) for the full set of standards.
 
 Governs ROADMAP bullets with `Kind: implement`, `fix`, `refactor`,
 `audit-fix`, or `review-fix`.
-
 
 ## 1. Principles
 
@@ -143,9 +144,6 @@ the rule. The reason is that this workaround is invisible: every other
 one leaves something failing, or noisy, or obviously commented out,
 while a skipped test leaves a green run that looks exactly like a
 passing one. A comment in a file nobody opens is not a reminder.
-Reconciled 2026-08-14 (ROADMAP CFG-0098) — this section accepted a bare
-comment for every failure class including tests, and the two standards
-disagreed.
 
 ### 1.3 Reuse before rewriting
 
@@ -186,7 +184,6 @@ dependency and leaving the calling code in the previous era's
 style means the refresh never happens. Where a bump genuinely
 needs no caller change, say so in the commit rather than leaving
 it unsaid.
-
 
 ### 1.6 State an assumption; do not build on it
 
@@ -250,7 +247,6 @@ review loop stops converging.
   A message that only names the internal operation is a message
   they cannot act on.
 
-
 ## 3. Comments
 
 Default to **no comments**. Only add one when the WHY is
@@ -277,7 +273,6 @@ prohibition above is on narrating a body. Anything past that one line is
 the paragraph form, which is still the anti-pattern. Whether the
 language has such a comment, and how it is written, is
 `languages/<name>.md`.
-
 
 ## 4. Naming
 
@@ -325,13 +320,10 @@ Rules that hold in every language:
   requires one choice held across the whole schema. Without the
   exception a schema split over several files can end up half singular
   and half plural with both halves compliant, which is exactly the
-  confusion that rule exists to stop. Added 2026-08-14 (ROADMAP
-  CFG-0098): `database.md` deferred naming here, and this bullet routed
-  it straight back to the opposite answer.
+  confusion that rule exists to stop.
 - **Name for someone who has never seen the file.** The test is not "is
   this name accurate" — it is "could a stranger guess what this does
   from the name alone".
-
 
 ## 5. Language and framework notes
 
@@ -360,7 +352,6 @@ file for code written in the framework.
 **Adding a language:** copy the shape of `cpp.md` or `python.md`. Do not
 add a section here.
 
-
 ## 6. Performance
 
 - **Profile before optimising.** Make it work, make it right, make
@@ -381,7 +372,6 @@ add a section here.
   fine for a hundred items and hopeless for a million should say
   so, next to the code, not in someone's memory.
 
-
 ## 7. Security
 
 **Not in this file — see `security.md`.**
@@ -397,12 +387,9 @@ permissions on secret-bearing files, resolve paths before opening,
 never log a credential — are in `security.md`, stated once and in
 context. **`security.md` states them in a way that does not need a
 per-language spelling, and no language file carries one** — checked
-2026-08-14 (ROADMAP CFG-0108). This paragraph claimed §5's split applied
-to them, which told a C++ author to look in `cpp.md` for how a boundary
-check is written and find nothing. Where a language genuinely needs the
+2026-08-14 (ROADMAP CFG-0108). Where a language genuinely needs the
 spelling — an API that is the safe one, a flag that must be set — add it
 to that language file and say so here.
-
 
 ## 8. Anti-patterns
 

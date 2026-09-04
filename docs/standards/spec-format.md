@@ -26,10 +26,7 @@
 
 **Status:** v1 (2026-07-27).
 
-**Why a rule here reads as it does: [`docs/history/spec-format.md`](../docs/history/spec-format.md).**
-Pedigree only — what a rule used to say and what changed it. A dated
-measurement a rule rests on stays in the rule.
-**Applies to:** every file under `docs/specs/` and `docs/plans/`.
+**Rule history: [`docs/history/spec-format.md`](../docs/history/spec-format.md).**
 
 **Purpose: so that an implementer building from this document never has to
 invent a required behaviour, and can prove afterwards that they built the
