@@ -130,6 +130,8 @@ void sweepKwinScriptOrphansOnce();
 #include <QDialogButtonBox>
 #include <QRegularExpression>
 #include <QPainter>
+#include <QPen>
+#include <QPolygonF>
 #include <QScopeGuard>
 #include <QSystemTrayIcon>
 #include <QWindow>
@@ -6732,20 +6734,55 @@ void MainWindow::showTabColorMenu(int tabIndex) {
     colorGroup->setExclusive(true);
     bool matchedPreset = false;
 
+    // The active entry needs a marker the STYLE cannot swallow. A checkable
+    // QAction that also carries an icon renders its checked state as a
+    // framed swatch in Breeze/Fusion — indistinguishable from the other 25
+    // swatches — so setChecked() alone is invisible here, and the bold font
+    // alone was too subtle to find in a 27-row menu (reported 2026-09-04
+    // against a tab sitting on Lavender). Three cues now, and the text one
+    // is the only one no style can drop and the only one the icon-less
+    // "None" row can carry: a tick composited into the swatch, a "\u2713"
+    // suffix on the label, and bold.
+    auto tickedSwatch = [](const QColor &c) {
+        QPixmap px(14, 14);
+        px.fill(Qt::transparent);
+        QPainter p(&px);
+        p.setRenderHint(QPainter::Antialiasing, true);
+        p.fillRect(QRect(0, 0, 14, 14), c);
+        // Ink picked against the swatch itself, so the tick reads on both
+        // the near-black Black preset and the near-white Rosewater one.
+        const QColor ink = c.lightness() < 128 ? QColor(0xFF, 0xFF, 0xFF)
+                                               : QColor(0x11, 0x11, 0x1B);
+        QPen tick(ink, 2.0);
+        tick.setCapStyle(Qt::RoundCap);
+        tick.setJoinStyle(Qt::RoundJoin);
+        p.setPen(tick);
+        p.drawPolyline(QPolygonF(
+            {QPointF(3.0, 7.5), QPointF(5.75, 10.25), QPointF(11.0, 4.25)}));
+        return QIcon(px);
+    };
+    // Universal-character-name rather than a literal glyph: the escape is
+    // decoded by the compiler into UTF-8 execution bytes, which fromUtf8
+    // then reads back correctly.
+    const QString kActiveSuffix = QString::fromUtf8("   \u2713");
+
     for (const auto &ce : colors) {
         QAction *a = menu.addAction(ce.name);
+        const bool active = sameColor(ce.color, currentColor);
         if (ce.color.isValid()) {
-            QPixmap px(12, 12);
-            px.fill(ce.color);
-            a->setIcon(QIcon(px));
+            if (active) {
+                a->setIcon(tickedSwatch(ce.color));
+            } else {
+                QPixmap px(12, 12);
+                px.fill(ce.color);
+                a->setIcon(QIcon(px));
+            }
         }
         a->setCheckable(true);
         colorGroup->addAction(a);
-        if (sameColor(ce.color, currentColor)) {
+        if (active) {
             a->setChecked(true);
-            // Bold as well as checked: a checked action that also carries an
-            // icon renders as a framed swatch rather than a tick in several
-            // styles, which is easy to miss against 26 other swatches.
+            a->setText(ce.name + kActiveSuffix);
             QFont f = a->font();
             f.setBold(true);
             a->setFont(f);
@@ -6780,12 +6817,11 @@ void MainWindow::showTabColorMenu(int tabIndex) {
     colorGroup->addAction(customAction);
     if (currentColor.isValid() && !matchedPreset) {
         customAction->setChecked(true);
+        customAction->setText(customAction->text() + kActiveSuffix);
         QFont f = customAction->font();
         f.setBold(true);
         customAction->setFont(f);
-        QPixmap px(12, 12);
-        px.fill(currentColor);
-        customAction->setIcon(QIcon(px));
+        customAction->setIcon(tickedSwatch(currentColor));
     }
     connect(customAction, &QAction::triggered, this, [this, tabWidget]() {
         int idx = m_tabWidget->indexOf(tabWidget);

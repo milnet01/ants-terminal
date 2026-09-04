@@ -14169,6 +14169,12 @@ indie-review finding.
   Source: in-session-2026-08-26 (measured while adding tab colours).
   Lanes: chrome, accessibility.
 
+- ✅ [ANTS-4864] **Mark the active entry in the tab-colour menu with a tick the style cannot swallow.**
+  A checkable QAction that also carries an icon renders its checked state as a framed swatch in Breeze/Fusion, indistinguishable from the other 25 swatches, so setChecked() was invisible and the bold font alone was too subtle to find in a 27-row menu. Three cues now: a tick composited into the active swatch, a checkmark suffix on the label (the only cue no style can drop, and the only one the icon-less None row can carry), and bold.
+  **Layman:** The right-click tab-colour menu now clearly ticks whichever colour the tab is already on.
+  Kind: fix.
+  Source: user-report-2026-09-04.
+
 ### 🎨 Review Changes dialog UX (user request 2026-06-03)
 
 Navigation + scroll affordances for the Review Changes dialog, requested

@@ -350,6 +350,12 @@ for security-relevant changes.
 
 ### Fixed
 
+- **Tab-colour menu now ticks the colour the tab is already on** (ANTS-4864)
+  The active entry gets a tick drawn into its swatch plus a checkmark on
+  its label, so the current colour is findable in a 27-row menu. Qt's own
+  checked state was rendering as a frame around the swatch, which looked
+  like every other swatch.
+
 - **Typing in the scrollback search box no longer freezes the window.** (ANTS-2000)
   Each keystroke re-scanned the entire scrollback -- 50,000 lines by default
   -- so typing a word could lock the window for seconds. The search now waits
