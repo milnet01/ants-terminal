@@ -29,6 +29,10 @@ SPEC="$ROOT/packaging/opensuse/ants-terminal.spec"
 # to be committed next to the spec. Lives beside the spec for the same reason
 # the spec does — one copy, no OBS-local fork.
 LINTRC="$ROOT/packaging/opensuse/ants-terminal-rpmlintrc"
+# Patches live beside the spec, under the same rule: one copy, no OBS-local
+# fork. Carried as a directory rather than a named list so adding or removing
+# one is a repo edit alone.
+PATCHDIR="$ROOT/packaging/opensuse"
 
 command -v osc >/dev/null 2>&1 || { echo "obs-submit: osc not installed" >&2; exit 1; }
 [ -f "$SPEC" ] || { echo "obs-submit: spec not found: $SPEC" >&2; exit 1; }
@@ -117,6 +121,17 @@ cp "$HERE/_service" "$CO/_service"
 cp "$SPEC" "$CO/ants-terminal.spec"
 cp "$LINTRC" "$CO/ants-terminal-rpmlintrc"
 [ -f "$HERE/ants-terminal.changes" ] && cp "$HERE/ants-terminal.changes" "$CO/"
+
+# Cleared before copying so a patch DELETED from the repo also disappears from
+# the package — `osc addremove` below then drops it. Without the rm, removing a
+# backport upstream would leave it applied here forever, which is the drift
+# this whole copy-don't-fork arrangement exists to prevent.
+rm -f "$CO"/*.patch
+for _p in "$PATCHDIR"/*.patch; do
+    [ -e "$_p" ] || break
+    cp "$_p" "$CO/"
+    echo ">>> carrying patch $(basename "$_p")"
+done
 
 # ANTS-3731 — stamp Version: from the pinned tag, replacing _service's
 # set_version service, which used to do this inside the build VM.

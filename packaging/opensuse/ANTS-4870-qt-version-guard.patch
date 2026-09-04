@@ -1,0 +1,100 @@
+# Backport of upstream ANTS-4870 onto the 0.7.107 release tree.
+#
+# 0.7.107 hardcodes find_file(qconfig.h) for the Qt version guard. Fedora 44's
+# Qt 6.10.2 does not define QT_VERSION_STR there, so the guard correctly refuses
+# and every Fedora build fails at step 7 of 815. openSUSE, Leap and Mageia are
+# unaffected because those distros do put it in qconfig.h.
+#
+# Upstream commit: 0086e07bba0205a80051cf1ffcccbf290e1004e4 (in v0.7.108 onward).
+# DELETE THIS PATCH once the OBS pin moves past 0.7.107 (ANTS-4874).
+
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 0bd4a641..4d94e4ee 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -106,9 +106,68 @@ find_package(Qt6 6.2 REQUIRED COMPONENTS Core Gui Widgets Network OpenGL OpenGLW
+ # generated build file — so it is the version this tree was CONFIGURED
+ # against. The guard re-reads the INSTALLED qconfig.h on every build and
+ # compares. Patch precision on purpose: the incident was 6.11.1 -> 6.11.2.
+-find_file(ANTS_QCONFIG_H qconfig.h
+-    HINTS ${Qt6Core_INCLUDE_DIRS}
+-    PATH_SUFFIXES QtCore)
++# WHICH header carries QT_VERSION_STR is a DISTRO choice, not an upstream
++# guarantee, so it is resolved here rather than assumed. openSUSE, Leap and
++# Mageia all put it in qconfig.h; Fedora 44's Qt 6.10.2 does not, and the
++# guard refused every Fedora build on OBS with "no QT_VERSION_STR in
++# .../qconfig.h" (measured 2026-09-04, home:milnet:ants-terminal, v0.7.107).
++# The guard was right to refuse — it cannot read its input — but the input
++# was the wrong file.
++#
++# So probe the candidates for one that actually DEFINES it, and hand the
++# guard that. The build-time cost is unchanged (still one file read), and
++# the guard script is untouched, INV-5's refusal included: if none of these
++# carries the define, ANTS_QCONFIG_H stays unset and the else() branch below
++# warns loudly rather than wiring a guard that would refuse every build.
++set(ANTS_QCONFIG_H "ANTS_QCONFIG_H-NOTFOUND")
++foreach(_hdr qconfig.h qtversionchecks.h qtversion.h qglobal.h)
++    unset(_ants_qt_hdr CACHE)
++    find_file(_ants_qt_hdr ${_hdr}
++        HINTS ${Qt6Core_INCLUDE_DIRS}
++        PATH_SUFFIXES QtCore)
++    if(_ants_qt_hdr)
++        file(READ "${_ants_qt_hdr}" _ants_qt_hdr_text)
++        # Same pattern the guard matches with, so "found here" at configure
++        # time and "readable there" at build time cannot disagree.
++        string(REGEX MATCH
++            "#[ \t]*define[ \t]+QT_VERSION_STR[ \t]+\"[0-9]+\\.[0-9]+\\.[0-9]+\""
++            _ants_qt_hdr_match "${_ants_qt_hdr_text}")
++        if(_ants_qt_hdr_match)
++            set(ANTS_QCONFIG_H "${_ants_qt_hdr}")
++            break()
++        endif()
++    endif()
++endforeach()
++unset(_ants_qt_hdr CACHE)
++
++# Last resort: SCAN QtCore rather than guess a filename. The named list above
++# is informed by two distros and is not a contract — a third can put the
++# define anywhere, and a wrong guess reproduces the Fedora failure under a
++# different filename. This costs a few hundred small reads ONCE at configure
++# time and nothing per build, which is the right place to pay it. Sorted so
++# the choice is deterministic across machines rather than directory order.
++if(NOT ANTS_QCONFIG_H)
++    foreach(_dir ${Qt6Core_INCLUDE_DIRS})
++        file(GLOB _ants_qt_hdrs "${_dir}/*.h" "${_dir}/QtCore/*.h")
++        list(SORT _ants_qt_hdrs)
++        foreach(_cand ${_ants_qt_hdrs})
++            file(READ "${_cand}" _ants_qt_hdr_text)
++            string(REGEX MATCH
++                "#[ \t]*define[ \t]+QT_VERSION_STR[ \t]+\"[0-9]+\\.[0-9]+\\.[0-9]+\""
++                _ants_qt_hdr_match "${_ants_qt_hdr_text}")
++            if(_ants_qt_hdr_match)
++                set(ANTS_QCONFIG_H "${_cand}")
++                message(STATUS
++                    "ANTS-4625: QT_VERSION_STR found by scan in ${_cand} "
++                    "(not in the named candidates) — guard active.")
++                break()
++            endif()
++        endforeach()
++        if(ANTS_QCONFIG_H)
++            break()
++        endif()
++    endforeach()
++endif()
+ 
+ if(ANTS_QCONFIG_H)
+     # ALL, so an ordinary `cmake --build` runs it. Ninja may schedule it in
+@@ -125,9 +184,10 @@ else()
+     # Not silent. A guard that quietly does not exist is the failure mode
+     # ANTS-4625 is about, so say so loudly at configure time.
+     message(WARNING
+-        "ANTS-4625: qconfig.h not found under Qt6Core_INCLUDE_DIRS, so the "
+-        "Qt-version guard is NOT active in this tree. A Qt upgrade will not "
+-        "be detected; clean-rebuild by hand after one.")
++        "ANTS-4625: no header under Qt6Core_INCLUDE_DIRS defines "
++        "QT_VERSION_STR (tried qconfig.h, qtversionchecks.h, qtversion.h, "
++        "qglobal.h), so the Qt-version guard is NOT active in this tree. A "
++        "Qt upgrade will not be detected; clean-rebuild by hand after one.")
+ endif()
+ 
+ # Lua 5.4 (optional — plugin system)

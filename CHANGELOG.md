@@ -14,6 +14,9 @@ for security-relevant changes.
 
 ### Fixed
 
+- **The published 0.7.107 RPM now builds on Fedora 44, via a backport carried in the spec.** (ANTS-4870)
+  Fedora's package repository was stuck one release behind because 0.7.107 could not build there, while openSUSE, Leap and Mageia were unaffected. The already-released 0.7.107 now carries the fix as a packaging patch, so Fedora users no longer have to wait for the next release. The patch applies only to 0.7.107 and older and is skipped from 0.7.108 onward, which carries the fix directly.
+
 - **`cut-rc.sh hotfix --continue` resumes when the emergency release is already tagged.** (ANTS-4872)
   An emergency release interrupted between tagging and writing its notes back to the main branch could not be finished by re-running the command; it refused, and the last steps had to be done by hand. It now recognises its own tag — the one sitting on the work in progress — and completes the remaining steps. A tag of that name made by anything else is still refused.
 

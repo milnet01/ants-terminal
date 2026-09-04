@@ -41,6 +41,16 @@ Source0:        %{url}/archive/refs/tags/v%{version}.tar.gz#/%{name}-%{version}.
 # declaration, it auto-loads *-rpmlintrc out of SOURCES.
 Source1:        %{name}-rpmlintrc
 
+# TEMPORARY — DELETE WHEN THE OBS PIN MOVES PAST 0.7.107 (ANTS-4874).
+# 0.7.107 hardcodes find_file(qconfig.h) for the Qt version guard. Fedora 44's
+# Qt 6.10.2 does not define QT_VERSION_STR there, so the guard correctly
+# refuses and every Fedora build fails at step 7 of 815; openSUSE, Leap and
+# Mageia are unaffected. Fixed upstream in 0.7.108, so this patch exists only
+# to keep the published 0.7.107 buildable on Fedora. %%prep skips it from
+# 0.7.108 onward, which makes a forgotten removal a no-op rather than a build
+# failure on every distro -- but it is still meant to be removed.
+Patch0:         ANTS-4870-qt-version-guard.patch
+
 # Wayland-native Quake-mode, via LayerShellQt. Default ON — it resolves on both
 # openSUSE (layer-shell-qt6-devel) and Fedora (layer-shell-qt-devel), each at
 # 6.7.3. It exists as a knob because CMakeLists.txt treats the dependency as
@@ -51,6 +61,9 @@ Source1:        %{name}-rpmlintrc
 %bcond_without layershell
 
 BuildRequires:  cmake >= 3.20
+# Declared because %%prep invokes `patch` directly for the ANTS-4870 backport
+# rather than going through %%autosetup. Remove it with Patch0 (ANTS-4874).
+BuildRequires:  patch
 BuildRequires:  gcc-c++
 BuildRequires:  pkgconfig
 # Only Fedora and RHEL call it ninja-build; openSUSE, Mageia and Debian call it
@@ -245,7 +258,17 @@ disable, ants-native // ants-audit:disable), and SARIF v2.1.0 + HTML
 export.
 
 %prep
-%autosetup -n %{name}-%{version}
+# -N: patches are unpacked but not auto-applied, so Patch0 can be gated on the
+# version. Applied only where the tarball predates the fix (0.7.107 and older).
+# `patch < %%{PATCH0}` rather than %%patch, whose -P spelling differs across the
+# rpm versions in these four targets. Both this block and Patch0 go together.
+%autosetup -n %{name}-%{version} -N
+if [ "$(printf '%%s\n%%s\n' '%{version}' 0.7.107 | sort -V | tail -1)" = 0.7.107 ]; then
+    echo "ANTS-4870: applying the Qt version-guard backport to %{version}"
+    patch -p1 --fuzz=0 < %{PATCH0}
+else
+    echo "ANTS-4870: %{version} carries the fix upstream; backport skipped"
+fi
 
 %build
 # -DANTS_TESTS=ON is the CMake default; kept explicit so distro rebuilds
