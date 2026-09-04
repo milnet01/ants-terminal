@@ -111,6 +111,7 @@ template):
 | [ci-build.md](ci-build.md) | What the CI workflows must guarantee about a release — B1, that CI builds on the release's Qt / runner baseline, and the corollary that the release tooling gates on CI rather than on a local build. |
 | [config-hot-reload.md](config-hot-reload.md) | Contract between the `config.json` file watcher and the in-app writers sharing that file — C1, an in-app write must not trigger the external-reload reaction, and C2, what a new config-writing component inherits for free. |
 | [menus.md](menus.md) | Menu-bar convention (M1–M3) — a checkbox toggle keeps its menu open where a radio pick closes it, menus are themed by the app stylesheet cascade rather than per-menu, and actions carry a mnemonic. |
+| [versioning-overrides.md](versioning-overrides.md) | The two answers the global versioning standard refuses to supply for a `0.x` project — its § 3 breaking surfaces, and its § 4 one-line `1.0` exit condition. Also carries this project's one override: inside `0.x` the MINOR is the milestone rather than a fact about breakage, so read it before choosing a release's level. |
 
 ## Historical / superseded
 
