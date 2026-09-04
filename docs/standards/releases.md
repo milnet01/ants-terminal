@@ -26,6 +26,10 @@
 
 **Status:** v1 (2026-08-08).
 
+**Why a rule here reads as it does: [`docs/history/releases.md`](../docs/history/releases.md).**
+Pedigree only — what a rule used to say and what changed it. A dated
+measurement a rule rests on stays in the rule.
+
 **Purpose: so that a released version is one thing — the same version
 number, the same contents and the same description everywhere it
 appears.**
@@ -50,10 +54,7 @@ sometimes an about-box string.
 **This section owns where the number is written. It does not own which
 number to pick** — that is [versioning.md](versioning.md), which covers
 what makes a change breaking, `0.x`, pre-release suffixes and when a
-number may move at all. Added 2026-08-20 (ROADMAP CFG-0173): `cut-release`
-takes `<X.Y.Z|patch|minor|major>` as an argument, so the tooling asks the
-author for a level and, until that file existed, nothing anywhere told
-them how to choose it.
+number may move at all.
 
 - **Enumerate the version-bearing files once, and record the list as the
   project's release recipe** — at the path and in the dialect the release
@@ -61,10 +62,7 @@ them how to choose it.
   resolves to nothing**: on this machine it is `cut-release`, whose format
   contract is `skills/cut-release/references/bump-recipe.md` — rather than
   rediscovering it under release
-  pressure, or writing the list somewhere no tool reads. Pinned 2026-08-14
-  (ROADMAP CFG-0107): this said only "record the list in the project", so a
-  list kept in a README was fully conformant and the release still stopped
-  at pre-flight for want of a recipe.
+  pressure, or writing the list somewhere no tool reads.
 - **A release changes all of them or none of them.** A half-bumped
   repository builds and ships, and reports the wrong version to whoever
   is debugging it.
@@ -126,14 +124,11 @@ read is the one nobody checked.
   §7 forbids by name and §6 step 8 waits for. It is **wider than**
   `commits.md` §4.1's *"any repository with no CI at all"*: a repository
   whose CI runs on a branch push and never on a tag is inside it, and
-  waits for that branch run. Corrected 2026-08-25 (CFG-0175) twice —
-  citing §4.1 for the shape sent a builder to test the narrower one, and
-  the repair then read as lifting the gate rather than the tag wait.
+  waits for that branch run.
   Without this clause a tool built
   from §6 either waits forever for a run that will never appear or
   publishes on the ground that nothing has failed. Two tools, one
-  hanging and one shipping, from one sentence. Added 2026-08-18
-  (ROADMAP CFG-0143).
+  hanging and one shipping, from one sentence.
 - **Push the release tag with the commit it names, not separately and
   not later.** Send the annotated tags reachable from what you are
   already pushing — `git push --follow-tags` — rather than a bulk push
@@ -141,14 +136,11 @@ read is the one nobody checked.
   machine. A tag that exists locally and nowhere else is a release
   nobody can fetch, and §6's publish step will publish from it anyway.
   **One case is exempt: a repository with no remote.** There the local
-  tag is the end state and the publish step skips silently. Added
-  2026-08-25 (CFG-0175); all three lanes of that gate reached this rule,
-  which read as unconditional while the tool already carried the branch.
+  tag is the end state and the publish step skips silently.
 
 The push rule above is stated here rather than in
 [commits.md](commits.md), which owns everyday tags and defers release
-tagging to this section. Added 2026-08-14 (ROADMAP CFG-0098): each
-document had handed the rule to the other and neither had written it.
+tagging to this section.
 
 ## 5. Publishing
 
@@ -161,7 +153,6 @@ document had handed the rule to the other and neither had written it.
   produced by the project's own release scripts is part of the release,
   and withholding it publishes an incomplete one. The stable alias below
   is a second *copy of the same bytes* and is exempt by construction.
-  Narrowed 2026-08-25 (CFG-0175); the flat form forbade that alias.
 - **Publish a stable alias beside the versioned artefact, on a stable
   release only.** GitHub's one direct-download URL is
   `/releases/latest/download/<exact-filename>`, so a name that changes every
@@ -174,9 +165,7 @@ document had handed the rule to the other and neither had written it.
   unreachable there, and an unversioned RC binary invites the mix-up a
   separate candidate channel exists to prevent. **Scope: a project that
   publishes downloadable artefacts**; a library or a docs repository has
-  nothing to name. Added 2026-08-25 (CFG-0175), from Ants Terminal's
-  ANTS-4586, where the versioned name alone left a site with no download
-  link to offer.
+  nothing to name.
 - **Publishing is irreversible in practice.** Deleting a release does
   not un-fetch it. Confirm before **each** publish of a version,
   candidates included; never after.
@@ -190,8 +179,6 @@ carries its suffix at the tag, the release title and the artifact
 filename only, never in a version-bearing file
 ([versioning.md](versioning.md) § 5). It also publishes no stable alias —
 §5 puts that on a stable cut only. Every other step is unchanged.
-Scoped 2026-08-25 (CFG-0175); §5 named candidates and this section
-never did, so a conformer cutting one spent the date early.
 
 1. Move the unreleased changelog entries into a dated section.
 2. Update roadmap statuses this release makes true.
@@ -217,26 +204,16 @@ never did, so a conformer cutting one spent the date early.
    or private**, and wait for checks where the repository runs any. With
    no remote there is nothing to push and §4's exemption applies. A release push is
    neither batched nor gated on a confirmation —
-   [commits.md](commits.md) §4.1 owns why. *Not batched* alone left the
-   prompt standing, and the half-cut release §4.1 names is what a
-   conformer then produced: tagged on one machine, nothing published,
-   and the next session unable to tell a queued release from a failed
-   one. Corrected 2026-08-18 (ROADMAP CFG-0143).
+   [commits.md](commits.md) §4.1 owns why.
 9. Publish, with the changelog section as the notes — **confirming first,
-   per §5.** This step carried no confirmation until 2026-08-14 (ROADMAP
-   CFG-0107), so a tool built from this recipe alone published unattended
-   the moment checks went green, against a §5 that calls publishing
-   irreversible.
+   per §5.**
 
 Building before bumping tests a tree that will never be shipped.
 
 **The local pipeline run sits before the commit, not before the push.**
 The tree is byte-identical either way, and a failure found at step 5
 costs an edit — found after step 7 it costs an amended commit and a
-moved tag, which §4 forbids doing to a tag anyone has fetched. Step 5
-was absent entirely until 2026-08-18 (ROADMAP CFG-0143): a conformer
-either ran the pipeline, doing a step this order never listed, or
-skipped it and breached the local-run rule.
+moved tag, which §4 forbids doing to a tag anyone has fetched.
 
 **The changelog and the roadmap come before the bump, not after.** A
 release tool refuses to bump until a dated changelog section exists with
@@ -245,10 +222,7 @@ sequence that bumps first stalls at its own step 1. **Two branches
 qualify the changelog half, and neither touches the roadmap half.**
 Where the recipe closes `[Unreleased]` itself, that cut is part of the
 bump and the pre-flight passes; on a candidate cut the date is not yet
-owed. Corrected 2026-08-14 (ROADMAP CFG-0098); the earlier order had the
-bump at step 1 and was followed by nothing that worked. Qualified
-2026-08-25 (CFG-0175), when three cold lanes found the claim false in
-both branches.
+owed.
 
 ## 7. Anti-patterns
 
@@ -282,9 +256,7 @@ The rows reading **nothing** are this standard's honest error budget.
 **The table names the rules that have a check to discuss, not every rule
 in the document** — §3, §4's force-push and tag-push bullets and §6's
 ordering appear in no row, and their absence is not a claim that anything
-catches them. That closing line read *"the last two are this standard's
-honest error budget"* until 2026-08-18 (ROADMAP CFG-0143), which asserted
-a complete audit the table has never been.
+catches them.
 
 **The changelog row is where the pointer rule has an edge, and it is worth
 stating.** [documentation.md](documentation.md) § 2.1 requires a row about
@@ -301,12 +273,6 @@ Corrected the same day (ROADMAP CFG-0107); the rule that settles it —
 
 ## Cold-eyes loop log
 
-| Loop | Date | Lanes | Q1 | Q2 | Q3 | Q4 | Outcome |
-|------|------|-------|----|----|----|----|---------|
-| 1 | 2026-08-14 | 1, cold — this document's **first** gate run, three days after `cut-release` shipped against it. Packet carried `commits.md` §§ 1.4 / 4.1 / 4.3, `changelog-format.md` § What checks this, and `cut-release`'s Phase 0 stop conditions | 0 | 2 | 1 | n/a | **Three verified, three fixed, none dismissed.** **§ 6's recipe published unattended:** step 8 read *"Publish, with the changelog section as the notes"* with no confirmation, forty lines below a § 5 that calls publishing irreversible in practice — so a tool built from the ordered recipe alone ships the moment checks go green. The release tool does prompt; the standard did not say to. **The Q3: § 1 could not be conformed to.** *"Enumerate the version-bearing files once, and record the list in the project"* pins no path and no form, while the release tool stops on an absent or wrong-dialect recipe — so a list kept in a README is fully conformant and the release still fails pre-flight. Now pinned to the recipe, with the path and dialect left to the tool that owns them. **The third is this run's own collateral from CFG-0098, and it found a real limit on the rule that caused it:** the changelog row had been made a bare pointer to `changelog-format.md` under § 2.1's new pointer rule — but that document owns the changelog's *shape*, not the *release gate*, so it correctly answers **nothing** while the rule is in fact caught by the tool refusing to bump. The pointer said nothing checks this where something does. `documentation.md` § 2.1 now carries the limiter: **point at the document that owns the machinery, not the subject.** **Confirmed clean:** the `commits.md` deferrals now run one way only after CFG-0098, and both documents state the release-push exemption compatibly. |
-| 2 | 2026-08-18 | 3, cold — genre pinned `standard`, first loop of a NEW run, gating the CFG-0143 edit. Packet carried `commits.md` §§ 1.4 / 4.1 / 4.2 / 4.3 in full, `changelog-format.md` § What checks this, `documentation.md` § 2.1, and `cut-release`'s phase list with the fact that nothing sits between Phase 2 and Phase 3 | 0 | 2 | 3 | n/a | **Five verified, five fixed; one dismissed. Two of the five landed on text this run wrote hours earlier.** **Two lanes independently found the sharpest defect, and a third document proves it bit:** § 6 step 8 read *"A release push is not batched"*, which lifts `commits.md` § 4.1's batching and leaves its *"do not push unprompted"* standing — and `cut-release` Phase 5 does prompt on a private repo, producing exactly the half-cut release § 4.1 names as the harm. The standard's half is fixed here; the skill's is ROADMAP CFG-0144. **All three lanes found that nothing performs the new step 5** — no phase of the release tool, no hook — which merged with the § What checks this defect: *"the last two are this standard's honest error budget"* asserted a complete audit the table has never been, while § 3, § 4's two push rules and § 6's ordering appear in no row. **Both findings against this run's own text were mine:** step 5 was stated unconditionally where § 4.2 opens *"If the repository has a CI pipeline"*, so a project with no workflows could not tell whether it had breached; and *"§ 4.2's one exemption"* denied that section's second relief, the uncoverable-job clause, so a conformer holding a secret it cannot supply would have halted the release. **The pre-existing Q3 two lanes found:** § 1 says the recipe goes *"at the path and in the dialect the release tool fixes, which owns both"* and named no tool, path or dialect in 194 lines — a pointer resolving to nothing, which is the same defect CFG-0107 had already fixed once in this bullet. **Collateral fixed in `commits.md`:** § 1.4's narrative of what § 2 enumerates went stale the moment § 2 gained the tag body. **Dismissed as immaterial:** § 4.3's *"`releases.md` § 4 rules it out by name"*, where § 4 forbids the bulk tag push without naming `--tags` — both readings forbid the same thing. |
-| 3 | 2026-08-18 | 3, cold — identical brief, packet rebuilt from disk and its line count corrected; carried `cut-release`'s Phase 5 verbatim and the fact that nothing sits between Phases 2 and 3 | 0 | 1 | 1 | n/a | **Two verified, two fixed. Cap reached (3 for a standard); the run files its tail and exits. A CALM cap: neither finding landed on text this run wrote** — both anchors checked against loop 2's ledger rows rather than recall, and the document is 213 lines against a sibling median well inside the budget, so the cap binding is not evidence of a size problem. **All three lanes found the same defect, and it is doc-versus-tool rather than doc-versus-doc:** loop 2 corrected step 8 to *"Push without asking"* and narrated the correction in the past tense, while `cut-release` Phase 5 still prompts once before pushing a private repository. So the document asserted a fix that landed on one side only. Step 8 now says *on every repository, public or private*, and § What checks this carries a row naming the breach and pointing at ROADMAP CFG-0144 — a reader must not take step 8 as describing what the tool does today. **Two lanes found the Q3, and step 5 is what exposed it:** loop 2 conditioned step 5 on the repository having a pipeline, and left step 8's *"wait for checks"* and § 4's *"nothing is published from a tag whose checks have not passed"* unconditional — so on a repository with no CI, which `commits.md` § 4.1 names outright and which this repository is, a tool built from § 6 either waits forever for a run that will never appear or publishes because nothing failed. Both are now qualified. **Three lane open questions settled without a finding:** `CLAUDE.md` § 6 was already updated from step 7 to step 8 in loop 2 (the surviving *step 7* is a dated loop-log row); `commits.md` §§ 1.4 / 4.3 and § 2 / § 4 here agree in both directions; and the `documentation.md` § 2.1 window was cut mid-sentence in the packet, correctly raised as a packet defect rather than reasoned past. |
-| 4 | 2026-08-25 | 3, cold — genre pinned `standard`, NEW RUN, loop 1; gating the CFG-0175 artefact-naming bullet. Packet carried `commits.md` §§ 1.3 / 1.4 / 4.1 in full with § 4.2's opening, `versioning.md`'s header and §§ 5 and 7, `changelog-format.md` § 4.1, `documentation.md` § 2.1, `bump-recipe.md` § Notes, and `cut-release` Phases 0e / 1c / 4 / 5 / 6 | 3 | 3 | 0 | n/a | **Six verified, six fixed, plus one collateral fix in `cut-release`; one dismissed, three open questions settled.** **All three lanes found the same Q1**, and it is a claim this document had made about its own tool since the tool shipped: § 6 and the § 2 What-checks row both said the pre-flight refuses to bump without a dated changelog section, when Phase 0e passes outright where the recipe performs the cut and lifts the date under `--pre`. Both places now carry the two branches. **Two lanes found the defect in the bullet this run was gating**: § 5's existing rule forbids uploading artifacts a pipeline produces, and the new alias IS a second copy of those bytes — so a conformer on a CI-publishing project shipped no alias and still had no permanent link, which is the failure the bullet was added for. The ban is now on a rival *build*, matching the carve-out `cut-release` had already made on its own side, and § 7's anti-pattern is scoped with it. **Two lanes found § 6 has no candidate branch** — a conformer cutting an `-rc.N` by its order dates the changelog heading, which `versioning.md` § 5 calls the candidate flow's own undated state, and spends the date early. § 6 now says it is the order of a stable cut. **One lane found a deferral that sent a reader to the wrong question**: the § 1 row handed its uncovered half to `versioning.md` § 7, which answers what happens to a line that must NEVER move, not to a genuinely version-bearing file the recipe forgot. That half is caught by nothing, and now says so. **The run's best finding came from one lane opening the phase it was reading about**: the § 5 row named a repository gate script as a covering route for Phase 2b, and that phase had no such branch — because it read `commits.md` § 4.2 as *requiring* `.github/workflows/*.yml` to be executed itself and refused *"the project's own `ci-local.sh`"* by name. § 4.2 prescribes the opposite: invert the pipeline into one repository-owned script the workflow calls, with `act` as the fallback. **The skill was refusing the mechanism its own standard prescribes**; Phase 2b gained that branch and the row was corrected with it. All three lanes reached § 4's tag-push rule, which read as unconditional while both Phase 4 and Phase 5 carry a no-remote branch — now exempt in § 4 and in § 6 step 8. **One dismissed**: § 6's *"the local run sits before the commit, not before the push"* was read as cancelling § 4.2's `pre-push` hook. It positions step 5 within the release order, step 5 cites § 4.2 by name, and the release push at step 8 triggers the hook like any other. |
-| 5 | 2026-08-25 | 3, cold — identical brief; subject and packet rebuilt from disk, the packet extended with `cut-release` Phase 2b in full and the Phase 4 / Phase 5 no-remote branches after loop 4 left every lane without them | 2 | 4 | 1 | n/a | **Seven verified, fixed in six edits; none dismissed. FOUR of the seven landed on text loop 4 wrote, and the worst is loop 4's own fix pass failing at the thing it exists to catch.** **All three lanes found it**: loop 4 qualified §6's unconditional pre-flight claim and left the § 2 What-checks row stating the same claim unqualified, so the document again said both things. One copy fixed, the other left — and the pre-commit SURVIVOR check does not see it, because both copies sit in the same file. **The other three are loop 4's text too.** Its own correction note on the step-5 row described as the FIXED defect what the sentence above it now prescribes, so a maintainer read the note as retracting the rule. Its candidate scoping closed with *"every other step is unchanged"* while §5's stable alias is another step that changes — a conformer cutting an RC would publish an unversioned candidate binary, the exact mix-up §5 exists to prevent. And its § 1 row said Phase 1c runs the recipe's `post_check` without noting the recipe format makes that key OPTIONAL, so a recipe with none leaves §1 caught by nothing rather than partially. **Three pre-existing.** The no-checks carve-out cited `commits.md` §4.1 for its repository shape, and §4.1's shape is narrower — a repository with branch CI and no tag checks is inside this clause and outside that one, so a builder resolving it against the authority waits forever for a tag run. The step-5 row explained why a `pre-push` hook does not cover step 5 by what the hook RUNS, implying one running `act` would; the reason is timing — a hook fires after the commit and the tag. And *"confirm before the first publish of a version"* reads two ways once §6 admits candidates, since an RC publish is the first publish of that triple. **The packet was again this run's own defect, and this time by REGRESSION FROM ITS OWN FIX**: loop 4's Phase 6 window was cut by a pattern loop 4 had just edited out of the skill, so the fence shipped EMPTY and two lanes correctly refused to certify the asset-count claim resting on it. A window built by matching text you are also changing is a window that silently disappears. |
-| 6 | 2026-08-25 | 3, cold — identical brief; subject and packet rebuilt from disk, the Phase 6 window restored and re-cut by HEADING boundaries after loop 5 shipped it empty | 0 | 5 | 0 | n/a | **Five verified, five fixed, plus three collateral fixes in `cut-release`; none dismissed. Cap reached (3 for a standard); the run files its tail and exits, and the tail is empty. Not one Q1** — every defect was two passages disagreeing. **All three lanes found the same two, and BOTH are loop 5's own text.** Loop 5 settled *"confirm before the first publish of a version"* as **each** publish, taking a lane's proposed wording without opening the phase that implements it — and `cut-release` Phase 6 said *"ask once, before the first publish of a version, never after"*, citing § 5 as its authority. A lane's proposed fix is a proposal; the tool it contradicts is a fact. § 5 keeps *each* on its own reason — every publish is separately irreversible — and the phase was corrected to match. The second: loop 5 gave the step-5 row a timing reason and left the pre-existing contingent one beside it, so one row said no hook can ever cover step 5 and then implied a gate script does. **The same fix-one-copy-leave-the-other failure as loop 5's, one loop later, inside a single table row.** **Loop 5's widening of the no-checks carve-out was also over-read**: it lifted the *gate* where it should lift only the wait for a TAG-triggered run, so a red branch run would have published. **The run's best finding is a skill defect two standards had asserted against for weeks**: § 2 and `commits.md` § 1.4 both say the annotated tag's body IS the changelog section — § 1.4 grants it a wrap exemption on exactly that ground — and Phase 4 wrote `git tag -a <tag> -m "<X.Y.Z>"`, the version string. **And the question two lanes could not settle turned out to be a hole**: § 4 forbids publishing from a tag whose checks have not passed and § 6 step 8 waits for them, and `cut-release` had no wait anywhere in the file — it went from the push straight to the confirm. Phase 6 gained one, with a red run as a stop, and the table gained the row that would have shown the gap. |
+Rows live in [`docs/reviews/releases-loop-log.md`](../docs/reviews/releases-loop-log.md).
+`documentation.md` § 9.1 owns the form.
 <!-- MIRROR END -->

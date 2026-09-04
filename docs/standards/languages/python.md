@@ -113,7 +113,6 @@ there is one place to look.
 
 ## Cold-eyes loop log
 
-| Loop | Date | Lanes | Q1 | Q2 | Q3 | Q4 | Outcome |
-|------|------|-------|----|----|----|----|---------|
-| 1 | 2026-08-14 | 1, cold — **first gate ever**, reviewed as a coupled set with `cpp.md` and `qt.md` | 1 | 1 | 0 | n/a | **Two verified, two fixed.** **The Q1 was reproduced rather than read.** § Tests said a pytest label is *"declared in `pyproject.toml` so an unregistered mark is an error rather than a silent typo"* — false: declaring `markers` only silences the warning for the names listed. Run here 2026-08-14 with a deliberate `@pytest.mark.fastt`: **`1 passed, 1 warning`, exit 0** without `--strict-markers`, and a collection error with it. So the stated mechanism produced the opposite of the stated outcome, and a typo'd label drops the test silently out of `-m fast`. **The Q2 is a contradiction with a sibling this file never cites:** its *"prove the test can fail"* recipe is `git stash`, while `cpp.md` § Tests records — reproduced 2026-08-12 — that `git stash` against a **committed** fix prints `No local changes to save` and **exits 0**, leaving the fix in place. Same git, two languages, two prescriptions; the Python conformer watches a must-fail run pass and concludes the test is broken. Now points at `cpp.md`'s recipe rather than restating a broken one. |
+Rows live in [`docs/reviews/languages-python-loop-log.md`](../../docs/reviews/languages-python-loop-log.md).
+`documentation.md` § 9.1 owns the form.
 <!-- MIRROR END -->

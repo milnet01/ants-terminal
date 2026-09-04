@@ -454,9 +454,6 @@ is an argument for spending review attention there and not on the rest.
 
 ## Cold-eyes loop log
 
-| Loop | Date | Lanes | Q1 | Q2 | Q3 | Q4 | Outcome |
-|------|------|-------|----|----|----|----|---------|
-| 1 | 2026-08-12 | 3 | 3 | 3 | 1 | 0 | 8 findings, 7 verified / 1 dismissed. 6 fixed here, 2 of them in `README.md` and `languages/`-facing prose; 1 surfaced to the user (§3 versus `languages/python.md` on docstrings). Loop 2 dispatched. |
-| 2 | 2026-08-12 | 3 | 1 | 3 | 0 | 0 | 4 findings, all 4 verified and fixed. One was loop 1's own repair (§5's language-file shape); the other three predate the run. Loop 3 dispatched. |
-| 3 | 2026-08-12 | 3 | 1 | 3 | 1 | 0 | 7 findings, 5 verified / 2 dismissed. All 5 fixed; 1 was loop 2's own repair (§8's second dead-code bullet, left unscoped when its neighbour was scoped). **Cap reached, not converged** — tail in `~/.claude/docs/reviews/coding-md-review-2026-08-12.md`. |
+Rows live in [`docs/reviews/coding-loop-log.md`](../docs/reviews/coding-loop-log.md).
+`documentation.md` § 9.1 owns the form.
 <!-- MIRROR END -->

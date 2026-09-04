@@ -170,7 +170,6 @@ C++.
 
 ## Cold-eyes loop log
 
-| Loop | Date | Lanes | Q1 | Q2 | Q3 | Q4 | Outcome |
-|------|------|-------|----|----|----|----|---------|
-| 1 | 2026-08-14 | 1, cold — **first gate ever**, reviewed as a coupled set with `python.md` and `qt.md`. Packet carried `coding.md` §§ 1.5 / 2 / 4 and `testing.md` §§ 2 / 5 / 6 / 7 | 0 | 0 | 1 | n/a | **One verified, one fixed.** § Tests' only spelling for `testing.md` § 6 was `QVERIFY2` — a Qt macro, in the file that governs *C++*, whose own § Casing contemplates a Qt-free project. A Catch2 or GoogleTest project could not tell whether a bare `REQUIRE(a == b)` breached the rule, and `coding.md` § 5 gives it no reason to look in `qt.md`. The C++-general rule is now stated and the Qt spelling kept as its instance. **This file's `git stash` warning was the evidence that fixed a defect in `python.md`** — see that file's log. |
+Rows live in [`docs/reviews/languages-cpp-loop-log.md`](../../docs/reviews/languages-cpp-loop-log.md).
+`documentation.md` § 9.1 owns the form.
 <!-- MIRROR END -->

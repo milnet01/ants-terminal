@@ -87,7 +87,6 @@ present in QtCore.
 
 ## Cold-eyes loop log
 
-| Loop | Date | Lanes | Q1 | Q2 | Q3 | Q4 | Outcome |
-|------|------|-------|----|----|----|----|---------|
-| 1 | 2026-08-14 | 1, cold — **first gate ever**, reviewed as a coupled set with `cpp.md` and `python.md` | 1 | 0 | 0 | n/a | **One verified, one fixed.** The heading *"Retired — Qt 5 spellings that still compile"* was false of half its own list, and § Version floor rests on it (*"Qt 5 idioms still compile under 6 and are the main way a Qt codebase ages badly"*). Checked against this machine's Qt 6 headers: **neither `QRegExp` nor `qrand`/`qsrand` is present in QtCore** — the first moved to Qt5Compat, the second removed outright, so both are build errors rather than silent decay. A reader budgeted a hand audit for four entries where two are caught by the compiler, and a project hitting `QRegExp` links Qt5Compat to keep it, which is the outcome the list exists to prevent. Now split by whether the build catches it. |
+Rows live in [`docs/reviews/languages-qt-loop-log.md`](../../docs/reviews/languages-qt-loop-log.md).
+`documentation.md` § 9.1 owns the form.
 <!-- MIRROR END -->
