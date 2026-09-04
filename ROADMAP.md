@@ -825,6 +825,15 @@ SSH key registered there.
   state at the time of writing, v0.7.107 rev 27, results current rather
   than outdated: Tumbleweed, Leap 16.0 and Mageia 10 succeeded;
   Fedora_44 failed.
+  Resolved into the release line (2026-09-04, user go-ahead): `cut-rc.sh respin 0086e07b --push` cut v0.7.108-rc2, published as a Patron prerelease. So promote will now tag a commit that carries this fix, and Fedora is due to go green on the 0.7.108 OBS submit rather than waiting for 0.7.109.
+
+  Verified by CONTENT, not by ancestry. `git merge-base --is-ancestor 0086e07b v0.7.108-rc2` reports NO and that is correct rather than alarming: a cherry-pick rebuilds the commit under a new sha, so the original is never an ancestor of the respin. The check that means something is the tree — rc2's CMakeLists.txt carries the guard fix and rc1's does not.
+
+  One reading trap worth recording: `git rev-parse v0.7.108-rc1` returns 0fa27823, which is the ANNOTATED TAG OBJECT, not the commit. The commit is 49f788bc, and it is rc2's parent. Comparing a tag object against a commit sha makes the lineage look wrong when it is right.
+
+  rc2's CHANGELOG is in the correct pre-promote state: `[Unreleased]` empty, `## [0.7.108] — unreleased (Patron RC preview)` carrying the cycle, ready for promote to date-stamp.
+
+  Still NOT verified: an actual Fedora 44 build. That proof is the OBS run after 0.7.108 promotes.
   **Layman:** Our Fedora package had been failing to build because a safety check was looking in the wrong file for Qt's version number.
   Kind: fix.
   Source: in-session-2026-09-04 (OBS build sweep after the v0.7.107 promote).
