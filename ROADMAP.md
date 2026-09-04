@@ -813,6 +813,18 @@ SSH key registered there.
   Verified two ways here, neither of them a Fedora build. Locally the fast path still resolves qconfig.h and the guard passes, so behaviour on this machine is unchanged. And the scan branch — which never runs on this machine — was exercised against a fixture Qt tree whose define sits in an unnamed header: the named pass correctly rejects the version-less qconfig.h, the scan finds the other file, and the guard reads it and passes.
 
   NOT verified: an actual Fedora 44 build. That proof is the next OBS run.
+  Progress (2026-09-04): the fix is on main but NOT in v0.7.108-rc1 —
+  the RC was tagged at 0fa27823, the fix landed at 0086e07b after it,
+  and `git merge-base --is-ancestor` confirms it is not an ancestor.
+  This matters because `cut-rc.sh promote` tags the RC's COMMIT, not
+  main's tip: promoting rc1 as-is ships 0.7.108 without this fix and
+  leaves Fedora red until 0.7.109, two weeks out. The sanctioned remedy
+  is `cut-rc.sh respin 0086e07b`, which cherry-picks onto the RC tag and
+  cuts rc2. Awaiting a decision — a respin is a second Patron-visible
+  release within the hour, so it is not a call to make silently. OBS
+  state at the time of writing, v0.7.107 rev 27, results current rather
+  than outdated: Tumbleweed, Leap 16.0 and Mageia 10 succeeded;
+  Fedora_44 failed.
   **Layman:** Our Fedora package had been failing to build because a safety check was looking in the wrong file for Qt's version number.
   Kind: fix.
   Source: in-session-2026-09-04 (OBS build sweep after the v0.7.107 promote).
