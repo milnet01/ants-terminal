@@ -24,7 +24,7 @@
 <!-- MIRROR BEGIN ~/.claude/standards/changelog-format.md -->
 # CHANGELOG.md format spec (v1.1)
 
-**Rule history: [`docs/history/changelog-format.md`](../docs/history/changelog-format.md).**
+**Rule history: `docs/history/changelog-format.md`.**
 
 > Detailed format spec for `CHANGELOG.md` — the Keep-a-Changelog structure,
 > its conventions, and the release flow that moves entries out of
@@ -240,6 +240,6 @@ here went stale when the next row landed. `documentation.md` § 2.8 item 3.
 
 ## Cold-eyes loop log
 
-Rows live in [`docs/reviews/changelog-format-loop-log.md`](../docs/reviews/changelog-format-loop-log.md).
+Rows live in `docs/reviews/changelog-format-loop-log.md`.
 `documentation.md` § 9.1 owns the form.
 <!-- MIRROR END -->

@@ -26,7 +26,7 @@
 
 **Status:** v1 (2026-08-20).
 
-**Rule history: [`docs/history/versioning.md`](../docs/history/versioning.md).**
+**Rule history: `docs/history/versioning.md`.**
 
 **Purpose: so that a version number tells a reader what upgrading will
 do to them.**
@@ -382,6 +382,6 @@ by the user 2026-08-20 (CFG-0174).
 
 ## Cold-eyes loop log
 
-Rows live in [`docs/reviews/versioning-loop-log.md`](../docs/reviews/versioning-loop-log.md).
+Rows live in `docs/reviews/versioning-loop-log.md`.
 `documentation.md` § 9.1 owns the form.
 <!-- MIRROR END -->

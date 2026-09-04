@@ -254,7 +254,7 @@ contributor's, or CI's — since there is then nothing to compare against.
 
 **Status:** v1 (2026-08-08).
 
-**Rule history: [`docs/history/documentation.md`](../docs/history/documentation.md).**
+**Rule history: `docs/history/documentation.md`.**
 
 **Purpose: so that someone looking for an answer finds exactly one
 document that has it, and can trust what it says.**
@@ -773,7 +773,7 @@ Where this file and a per-kind standard both speak, the per-kind one
 wins for that kind.
 
 **A new standard starts from
-[skeletons/standard-skeleton.md](skeletons/standard-skeleton.md), which is a
+skeletons/standard-skeleton.md, which is a
 template and NOT a per-kind standard — the precedence below does not reach
 it.** A template that disagrees with a standard is a
 template to fix.
@@ -1222,6 +1222,6 @@ says about it is true.
 
 ## Cold-eyes loop log
 
-Rows live in [`docs/reviews/documentation-loop-log.md`](../docs/reviews/documentation-loop-log.md).
+Rows live in `docs/reviews/documentation-loop-log.md`.
 `documentation.md` § 9.1 owns the form.
 <!-- MIRROR END -->

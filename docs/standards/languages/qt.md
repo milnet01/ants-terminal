@@ -87,6 +87,6 @@ present in QtCore.
 
 ## Cold-eyes loop log
 
-Rows live in [`docs/reviews/languages-qt-loop-log.md`](../../docs/reviews/languages-qt-loop-log.md).
+Rows live in `docs/reviews/languages-qt-loop-log.md`.
 `documentation.md` § 9.1 owns the form.
 <!-- MIRROR END -->

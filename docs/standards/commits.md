@@ -145,7 +145,7 @@ since there is then nothing to compare against.
 <!-- MIRROR BEGIN ~/.claude/standards/commits.md -->
 # Commit Standards — v1
 
-**Rule history: [`docs/history/commits.md`](../docs/history/commits.md).**
+**Rule history: `docs/history/commits.md`.**
 
 **Purpose: so that the history explains itself — why each change was
 made, and what it belongs to — to someone reading it later without
@@ -580,6 +580,6 @@ the rows below say so.
 
 ## Cold-eyes loop log
 
-Rows live in [`docs/reviews/commits-loop-log.md`](../docs/reviews/commits-loop-log.md).
+Rows live in `docs/reviews/commits-loop-log.md`.
 `documentation.md` § 9.1 owns the form.
 <!-- MIRROR END -->

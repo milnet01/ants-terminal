@@ -29,7 +29,7 @@ before a push. It binds every repository that has a pipeline, and every
 hook, skill or session that pushes on one's behalf.
 [commits.md](commits.md) § 4.2 states the obligation, points here and
 restates none of it. **Four documents do carry summaries and must be
-amended with any rule they restate**: [`workflow.md`](../workflow.md) § 6,
+amended with any rule they restate**: `workflow.md` § 6,
 the machine's `CLAUDE.md` rule 6, [releases.md](releases.md) § 6 step 5,
 and this standard's own row in `commits.md` § What checks this. Editing a
 rule here and stopping is the re-encoding drift § 1.1 exists to prevent.
@@ -343,6 +343,6 @@ proof, not uncertainty.
 
 ## Cold-eyes loop log
 
-Rows live in [`docs/reviews/local-gate-loop-log.md`](../docs/reviews/local-gate-loop-log.md).
+Rows live in `docs/reviews/local-gate-loop-log.md`.
 `documentation.md` § 9.1 owns the form.
 <!-- MIRROR END -->

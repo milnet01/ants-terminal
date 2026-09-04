@@ -105,7 +105,7 @@ CI's — since there is then nothing to compare against.
 <!-- MIRROR BEGIN ~/.claude/standards/coding.md -->
 # Coding Standards — v1
 
-**Rule history: [`docs/history/coding.md`](../docs/history/coding.md).**
+**Rule history: `docs/history/coding.md`.**
 
 **Purpose: so that code written now is still readable and changeable by
 someone who was not there when it was written.**
@@ -441,6 +441,6 @@ is an argument for spending review attention there and not on the rest.
 
 ## Cold-eyes loop log
 
-Rows live in [`docs/reviews/coding-loop-log.md`](../docs/reviews/coding-loop-log.md).
+Rows live in `docs/reviews/coding-loop-log.md`.
 `documentation.md` § 9.1 owns the form.
 <!-- MIRROR END -->

@@ -28,7 +28,7 @@
 <!-- MIRROR BEGIN ~/.claude/standards/security.md -->
 # Security Standard — v1
 
-**Rule history: [`docs/history/security.md`](../docs/history/security.md).**
+**Rule history: `docs/history/security.md`.**
 
 **Status:** v1 (2026-08-08).
 **Applies to:** every project, at every stage — not only the code.
@@ -279,6 +279,6 @@ so the row moves up — not a longer standard.
 
 ## Cold-eyes loop log
 
-Rows live in [`docs/reviews/security-loop-log.md`](../docs/reviews/security-loop-log.md).
+Rows live in `docs/reviews/security-loop-log.md`.
 `documentation.md` § 9.1 owns the form.
 <!-- MIRROR END -->

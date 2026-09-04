@@ -21,7 +21,7 @@
 <!-- MIRROR BEGIN ~/.claude/standards/languages/cpp.md -->
 # C++ — language notes
 
-**Rule history: [`docs/history/cpp.md`](../../docs/history/cpp.md).**
+**Rule history: `docs/history/cpp.md`.**
 
 Read alongside `../coding.md`, which holds the language-agnostic rules.
 This file covers only what is specific to C++.
@@ -168,6 +168,6 @@ C++.
 
 ## Cold-eyes loop log
 
-Rows live in [`docs/reviews/languages-cpp-loop-log.md`](../../docs/reviews/languages-cpp-loop-log.md).
+Rows live in `docs/reviews/languages-cpp-loop-log.md`.
 `documentation.md` § 9.1 owns the form.
 <!-- MIRROR END -->

@@ -113,6 +113,6 @@ there is one place to look.
 
 ## Cold-eyes loop log
 
-Rows live in [`docs/reviews/languages-python-loop-log.md`](../../docs/reviews/languages-python-loop-log.md).
+Rows live in `docs/reviews/languages-python-loop-log.md`.
 `documentation.md` § 9.1 owns the form.
 <!-- MIRROR END -->

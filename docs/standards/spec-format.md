@@ -26,7 +26,7 @@
 
 **Status:** v1 (2026-07-27).
 
-**Rule history: [`docs/history/spec-format.md`](../docs/history/spec-format.md).**
+**Rule history: `docs/history/spec-format.md`.**
 
 **Purpose: so that an implementer building from this document never has to
 invent a required behaviour, and can prove afterwards that they built the
@@ -595,8 +595,8 @@ copy embedded here, because a skeleton in two places is two skeletons
 
 | File | For |
 |------|-----|
-| [`spec-skeleton.md`](skeletons/spec-skeleton.md) | a new spec — every section pre-numbered, with the authoring prompt inline as a comment |
-| [`plan-skeleton.md`](skeletons/plan-skeleton.md) | a new plan |
+| `spec-skeleton.md` | a new spec — every section pre-numbered, with the authoring prompt inline as a comment |
+| `plan-skeleton.md` | a new plan |
 
 The prompts live **in** the skeleton so an author never needs this standard
 open. That is deliberate: a rule you must remember to look up is a rule that
@@ -688,6 +688,6 @@ and in the spec that adopts it. See §5.8.
 
 ## Cold-eyes loop log
 
-Rows live in [`docs/reviews/spec-format-loop-log.md`](../docs/reviews/spec-format-loop-log.md).
+Rows live in `docs/reviews/spec-format-loop-log.md`.
 `documentation.md` § 9.1 owns the form.
 <!-- MIRROR END -->

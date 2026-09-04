@@ -183,7 +183,7 @@ or CI's — since there is then nothing to compare against.
 <!-- MIRROR BEGIN ~/.claude/standards/testing.md -->
 # Testing Standards — v1
 
-**Rule history: [`docs/history/testing.md`](../docs/history/testing.md).**
+**Rule history: `docs/history/testing.md`.**
 
 **Status:** v1 (2026-08-08).
 
@@ -409,6 +409,6 @@ enforces has to be understood to survive.
 
 ## Cold-eyes loop log
 
-Rows live in [`docs/reviews/testing-loop-log.md`](../docs/reviews/testing-loop-log.md).
+Rows live in `docs/reviews/testing-loop-log.md`.
 `documentation.md` § 9.1 owns the form.
 <!-- MIRROR END -->

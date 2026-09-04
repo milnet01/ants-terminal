@@ -26,7 +26,7 @@
 
 **Status:** v1 (2026-08-08).
 
-**Rule history: [`docs/history/releases.md`](../docs/history/releases.md).**
+**Rule history: `docs/history/releases.md`.**
 
 **Purpose: so that a released version is one thing — the same version
 number, the same contents and the same description everywhere it
@@ -271,6 +271,6 @@ Corrected the same day (ROADMAP CFG-0107); the rule that settles it —
 
 ## Cold-eyes loop log
 
-Rows live in [`docs/reviews/releases-loop-log.md`](../docs/reviews/releases-loop-log.md).
+Rows live in `docs/reviews/releases-loop-log.md`.
 `documentation.md` § 9.1 owns the form.
 <!-- MIRROR END -->
