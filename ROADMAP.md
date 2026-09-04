@@ -48539,6 +48539,31 @@ envelope dropped `source`/`path`/`etag`/`total`/`filter`.
   Kind: fix.
   Source: in-session-2026-09-04.
 
+- 📋 [ANTS-4879] **A -Wdangling-else warning stands in test_mcp_result_offload.cpp, where the ambiguity decides what is asserted.**
+  Seen on an ordinary `cmake --build build` this session, not sought:
+
+      test_mcp_result_offload.cpp:1170:8: warning: suggest explicit braces to
+      avoid ambiguous 'else' [-Wdangling-else]
+          if (o.value("rows_preview_truncated").toBool())
+
+  Pre-existing and unrelated to the change being built, so it is filed rather
+  than fixed in passing.
+
+  Worth more than the usual brace tidy because it is in a TEST, inside
+  `Ants4705RowCountRidesEveryArm` — a case whose whole point is that a field
+  rides EVERY arm. A dangling `else` binds to the nearest unbraced `if`, so if
+  the intent was to pair it with an outer one, the assertion currently runs on a
+  different arm than the author meant and the arm they wanted is unchecked. The
+  suite is green either way, which is exactly why the compiler is the only thing
+  reporting it.
+
+  Fix is to brace it, then confirm which arm each assertion was meant for by
+  reading it against ANTS-4705's contract rather than preserving current
+  behaviour on the assumption it is right.
+  **Layman:** A test has an if/else the compiler says could be read two ways, so which branch the else belongs to is not obvious from the code.
+  Kind: fix.
+  Source: in-session-2026-09-04.
+
 ### ANTS MCP feedback from CC sessions — 2026-08-27 triage
 
 - ✅ [ANTS-4721] **read_regions refuses a non-object region item with the selector rule, not the shape it wanted.**
