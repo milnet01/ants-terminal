@@ -70,10 +70,22 @@ place when it saves a Claude session real tokens or round-trips
    site, not a separate lookup:
 
    ```cpp
+   // A plain cmd*() forward — the common shape, and off-thread (step 2a).
+   m_claudeIntegration->registerToolProvider("<name>",
+       ClaudeIntegration::CallerCwdContract::Required,   // step 2
+       rcDelegate(&RemoteControl::cmdFoo));
+
+   // A hand-written body — runs on the GUI thread (step 2a).
    m_claudeIntegration->registerToolProvider("<name>",
        ClaudeIntegration::CallerCwdContract::Required,   // step 2
        [this](const QJsonObject &args) -> QString { /* … */ });
    ```
+
+   **Both forms are shown because the third argument is what picks your
+   thread**, and step 2a reads the choice back off it. The lambda used to be
+   the only form shown here while step 2a called the factory form "the
+   common case" — which it is: the factory is the majority of registrations
+   in `mainwindow.cpp`, so the documented shape was the minority one.
 
 2. **Choose the caller-cwd contract.** Pick one of `Required` /
    `Optional` / `TabSpecific` / `ProcessGlobal` (ANTS-1404 defined the
@@ -93,13 +105,18 @@ place when it saves a Claude session real tokens or round-trips
    vestigial.
 
    **Only `Required` is ENFORCED at dispatch.** `TabSpecific` and
-   `ProcessGlobal` are classification-only (ANTS-1404 Phase 3a, and the
+   `ProcessGlobal` buy no dispatch-time check (ANTS-1404 Phase 3a, and the
    enum's own comments say so), so a tab-scoped verb gates itself in its
    handler — `RcGate` is the shared helper for that, and step 3 notes it is
    used well beyond the state store. An unclassified tool defaults to
    `Optional`. Picking the word does not buy the check: the drift assert
    above compares your two declarations of it, and only `Required` becomes
    a call-time refusal.
+
+   **`TabSpecific` is not a free label, though.** It is classification-only
+   for *enforcement*, and step 2a reads it as a THREAD selector: a
+   `TabSpecific` verb runs on the GUI thread whichever registration form it
+   used. So the word you pick here decides what your handler may touch.
 
 2a. **Know which thread your verb runs on (ANTS-2132).** Registration
    decides it, from two facts step 1 already carries. A verb built by the
@@ -394,12 +411,9 @@ place when it saves a Claude session real tokens or round-trips
    caller named them. And a **diagnostic** — `warning` and
    `parseable_bullets` — is re-inserted into every narrowed envelope,
    success as well as refusal (ANTS-4698): a reply must not lose the field
-   that says how to read the fields it kept.
-
-   That third floor settles a naming question step 5a otherwise leaves open.
-   Evidence emitted under those two names survives `fields=`; the same
-   evidence under any other name survives only if the caller happens to name
-   it — and the caller most likely to narrow is the token-careful one.
+   that says how to read the fields it kept. Step 5a's *prefer a count* is
+   about COMPACTION and does not compete with this: a count survives
+   folding, a `warning` survives folding and narrowing both.
 
    What you DO answer is compaction, in `mcp::kDispatchProjection`
    (`src/mcpprojection.cpp`). A row there declares the `compact` argument
@@ -519,8 +533,11 @@ the exact hook points before adding one.
 **Three things constrain where yours goes.** `mcp::offloadBody` may replace the
 whole body with a head+pointer envelope, which is why the advisory is applied
 on both sides of it (ANTS-4626) — an annotation that must survive an
-over-threshold response is re-applied after it, and on a cache hit only
-there. And `mcp::compactEnvelope` may fold your `null` / `false` / `""` /
+over-threshold response is re-applied after it. The pre-offload apply is
+skipped on a cache hit, because the cached body already carries the
+advisory; the re-apply runs only when the body actually spills. So on a
+cache hit under the threshold neither fires, and that is correct rather
+than a gap. And `mcp::compactEnvelope` may fold your `null` / `false` / `""` /
 `[]` / `{}` away; **step 8 owns when that happens and this section does not
 restate it** — three consecutive review loops corrected a restatement here
 and each correction was wrong in a new way.
@@ -547,6 +564,7 @@ dispatch site before placing yours.
 | 7 | 2026-08-25 | 3 (same doc, independent, cold) | 2 / 1 / 0 / n-a | 3 verified, 1 dismissed, all 3 fixed. **New run**, re-armed by ANTS-4680's restructure: the quick-reference map became pointers and each bullet's content moved into the step that owns it. **The map came back clean** — two lanes independently checked every pointer against the step it names and found each rule stated where the pointer sends you. **All three lanes reported the same defect and all three proposed the same wrong fix**: that the dispatch chain omits a "raw framing" hop between `mcp::tabularize` and `mcp::offloadBody`. Reading the dispatch site settles it — `rawRequested` is a GATE, not a transform, so the chain list is correct and inserting the hop would have written a false ordering claim into the one list this document calls load-bearing. What IS true and was undocumented: `raw:true` suppresses the offload (`!rawRequested`) and swaps the terminal wrap for `wrapMcpDataRaw`, so "Two hops constrain where yours goes" was false — there are three. **One lane's open question is what caught it**, against two lanes' confident finding, and the cause was this run's own packet, which listed the gate in file order as though it were a hop. **The second Q1**: step 4 pinned the `bad_path` envelope's message to `escapes project root`, where `validatePath` has four reject sites carrying three reasons — an implementer copying the literal emits a wrong reason under a right code, and a step-4 re-read caught that the first fix's wording condemned a shipped test asserting that message for the branch it drives. **The Q2** was internal to § 6a: one sentence reserved the whole discovered-but-unwritable branch to `format_mismatch`, another eight lines below split it between two codes. **Dismissed**: a lane read the `unsupported_format` row as keying on a different test; it does not — its bolded boundary sentence carries the artifact test verbatim, and the lane saw only its opening clause because this packet elided the middle. Collateral: `docs/specs/ANTS-1295.md` § 6's rejection table predates ANTS-1805's fail-closed reason — a neighbouring spec, ledgered `out_of_scope` and not edited. |
 | 8 | 2026-08-25 | 3 (same doc, independent, cold, packet rebuilt) | 1 / 3 / 1 / n-a | 5 verified, 5 fixed, 0 dismissed. **Stopped here by choice at loop 2 of a permitted 3** — the user needed the session wrapped; a third cold loop is owed by anyone wanting convergence, and this run did NOT reach it. **Three of the five landed on text loop 7 wrote**, which is a 60% self-collateral share and the same signature the 2026-08-25 run capped on — read it as a caution against a fourth loop rather than as a verdict on the document. **Two lanes independently found the sharpest one**: step 5a said an empty array folds like a boolean, stated unconditionally, while step 8 says a verb with NO table row — its common case — is never compacted by anyone. Two implementers would have shipped different envelope shapes for the same evidence field, and callers bind to the name. **The Q3** is the twin of that: step 5's raw paragraph, also loop 7's text, described `mcp::isRawEligible` membership passively and never told the author to add themselves to it, where both sibling steps state their registry edit outright — so a conformer ships `makeRawProp()` and gets a `raw` argument that is silently inert. **The Q1** was the one pre-existing defect: § 6a's ANTS-2031 instance still read as live behaviour, and no op returns `format_mismatch` *instead of* `bullet_not_found` any more — ANTS-2126 made flip/annotate write that format, leaving `format_mismatch` scoped to `create_section`, which takes no bullet locator. **Also fixed**: the steps 7–8 file note named `makeFieldsProp()`, which step 8 says is injected and must not be declared, and omitted `makeCompactProp()`, which is the helper those steps actually require; and step 8's closing sentence read as offering the table row and the surviving shape as alternatives when both are needed. **Carried, unsettled, raised by two lanes in each loop**: whether the ignored-args advisory derives its honoured set for `etag_match` from `isEtagSupportedTool`, which would make a handler-local-304 verb advertise the argument as ignored while honouring it. No window was given for `withIgnoredArgs`; it changes no rule in step 7 either way, so it was not filed as a finding. |
 | 9 | 2026-09-04 | 3 (same doc, independent, cold) | 1 / 1 / 0 / n-a | 2 verified, 2 fixed, 0 dismissed. **New run**, re-armed by ANTS-4658's edit to step 7 — an authoring edit that changes direction, which the note below the table already says lapses the previous run's violent-cap bar. **The gated change itself came back clean: all three lanes independently opened `applyEtagPattern` and confirmed step 7's refusal rule holds on both arms** (the `ok` test precedes the 304 arm, `responseText` returned untouched, no etag attached), and none of them filed a finding against it. **Both findings were pre-existing and both in step 8, so 0 of 2 fall inside the gated span** — this run was mostly audit rather than gate, which is the honest reading of a rule-14 trigger on a document where every lane reads the whole text. **Q1, found independently by two lanes:** step 8 said `fields=` "has two floors" and `mcp::projectFields` has three — the ANTS-4698 diagnostic floor re-inserts `warning` and `parseable_bullets`, and the loop sits OUTSIDE the refusal `if`, so it fires on a narrowed SUCCESS too. Material rather than cosmetic: an author reading "two floors" believes nothing survives a narrowed success unless named, so they name their step-5a evidence field freely — and a caller passing `fields:["count","source"]` then loses it, which is verbatim the regression ANTS-4698 exists to stop. The same evidence named `warning` would have survived. **Q2, found independently by two lanes:** step 8 says "No row at all is a fine answer … never compacted — by anyone", then states unconditionally that a field a caller branches on "needs BOTH", including a `defaultCompact:false` row. A builder whose only concern is a meaning-bearing `false` reads the second and adds a row — the one act that exposes the field to `compact:true` folding. Scoped to the row case, with the no-row branch named as the stronger protection and the reading order stated. **1b yield: zero** — every citation was windowed and none was defective. **Resolved clean, NOT in the tally:** two lanes asked whether step 8 owes a word on `fields_unmatched`; it is inserted only when a named field is absent, so a collision needs an author to name a field that, and nothing anyone builds changes. Also unverified by design and disclosed by the lanes: step 2's registration-drift refusal, step 4's `validatePath` reject sites, step 5's `isControlPlane` list and step 6b's `dry_run` inventory carried no packet window. |
+| 10 | 2026-09-04 | 3 (same doc, independent, cold, packet rebuilt) | 1 / 2 / 1 / n-a | 4 verified, 4 fixed, 0 dismissed. **One of the four was loop 9's own collateral, found independently by two lanes** — the sentence loop 9 added claiming the third `fields=` floor "settles a naming question step 5a otherwise leaves open". It asserted a settlement and stated no rule, while step 5a prescribes "prefer a count either way", so a conformer emitting `declined_count: 0` complied with 5a and lost the evidence to any `fields=` caller, and one emitting `warning` complied with step 8 and breached 5a's preferred shape. DELETED rather than restated: the two rules answer different questions (5a is compaction, the floor is projection) and the floor sentence now says so in one clause. **Two lanes also found step 1 and step 2a sending an author to opposite threads**: step 1 showed only a hand-written inline lambda, which step 2a classifies as GUI-thread, while step 2a calls the `rcDelegate` forward "off-thread by default, and that is the common case" and the factory appeared nowhere else in the document. Measured against `mainwindow.cpp`, the factory IS the majority of registrations, so the documented shape was the minority one. Step 1 now shows both forms and names which thread each lands on. **One lane found step 2 calling `TabSpecific` "classification-only" where step 2a reads it as a THREAD selector** — so the word buys something after all, and an author picking `Optional` to self-gate lands on the dispatch worker where step 2a forbids the MainWindow accessor their handler was written to call. Qualified to "no dispatch-time check", with the thread consequence stated. **One lane found the advisory claim at § Project overrides wrong about cache hits**: the pre-offload apply is gated `!cachedHit` because the cached body already carries it, and the re-apply sits inside the offload block, so on a cache hit under the threshold NEITHER fires — which the old "on a cache hit only there" implied was a gap. **Caught in this loop's own fix pass**: the step-1 repair first cited hard registration counts, which go stale by construction; replaced with the qualitative claim. **Out of scope, ledgered not fixed**: `docs/specs/ANTS-1284.md` states a `grep -c registerToolProvider` figure that is now far out of date — another document's own historical measurement. **1b yield: zero** — packet rebuilt whole from disk, and the rebuild caught that loop 9's fixes had moved the loop-log boundary, so a hard-coded cut would have handed the lanes a subject missing fifteen lines of real rules. |
 
 **Not converged at either cap, and the two caps are different animals.**
 
