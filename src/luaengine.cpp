@@ -47,6 +47,33 @@ static int luaPanicHandler(lua_State *L) {
     return 0;
 }
 
+// ANTS-4442 — push a handler and its argument from INSIDE a protected call.
+//
+// The panic handler above concedes that a non-jump return from atpanic is
+// still fatal, and its comment assumed unprotected allocation sites were
+// hypothetical. fireEvent had two. lua_pushlstring allocates; at the heap
+// budget the capped allocator returns NULL, Lua raises a memory error, and
+// with no protected frame the process aborts — breaching PLUGINS.md's "The
+// terminal will never crash because of your plugin", for a state that same
+// document describes as one a plugin merely lives in.
+//
+// Setting the protected frame up cannot itself raise: lua_checkstack
+// reports failure by returning 0, and pushing a C function with no
+// upvalues, or a light userdata, stores a value directly without
+// allocating a Lua object.
+struct HandlerPushCtx {
+    int         ref;
+    const char *data;
+    size_t      len;
+};
+
+static int luaPushHandlerAndArg(lua_State *L) {
+    auto *ctx = static_cast<HandlerPushCtx *>(lua_touserdata(L, 1));
+    lua_rawgeti(L, LUA_REGISTRYINDEX, ctx->ref);
+    lua_pushlstring(L, ctx->data, ctx->len);
+    return 2;   // the handler, then its string argument
+}
+
 // Custom Lua allocator with memory limit (prevents string.rep OOM)
 void *LuaEngine::luaAlloc(void *ud, void *ptr, size_t osize, size_t nsize) {
     auto *engine = static_cast<LuaEngine *>(ud);
@@ -491,8 +518,31 @@ bool LuaEngine::fireEvent(PluginEvent event, const QString &data) {
     QByteArray dataUtf8 = data.toUtf8();
 
     for (int ref : handlers) {
-        lua_rawgeti(m_state, LUA_REGISTRYINDEX, ref);
-        lua_pushstring(m_state, dataUtf8.constData());
+        // ANTS-4442 — both pushes happen inside luaPushHandlerAndArg's
+        // protected call. Done here directly they run outside any pcall, and
+        // a plugin sitting at its documented heap budget takes the terminal
+        // down with it. Only stack space is secured unprotected, which
+        // lua_checkstack reports rather than raises.
+        if (!lua_checkstack(m_state, 4)) {
+            emit logMessage(
+                QStringLiteral("Plugin error: out of Lua stack — event "
+                               "handler skipped"));
+            continue;
+        }
+        HandlerPushCtx ctx{ ref, dataUtf8.constData(),
+                            static_cast<size_t>(dataUtf8.size()) };
+        lua_pushcfunction(m_state, &luaPushHandlerAndArg);
+        lua_pushlightuserdata(m_state, &ctx);
+        if (lua_pcall(m_state, 1, 2, 0) != LUA_OK) {
+            const char *perr = lua_tostring(m_state, -1);
+            emit logMessage(QStringLiteral("Plugin error: %1")
+                                .arg(perr ? QString::fromUtf8(perr)
+                                          : QStringLiteral(
+                                                "out of memory preparing "
+                                                "event handler")));
+            lua_pop(m_state, 1);
+            continue;
+        }
 
         startPcallBudget();
         if (lua_pcall(m_state, 1, 1, 0) != LUA_OK) {

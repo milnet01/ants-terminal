@@ -2262,6 +2262,9 @@ if(ANTS_TESTS)
     set_property(SOURCE tests/features/ai_context_redaction/test_ai_context_redaction.cpp
         APPEND PROPERTY COMPILE_DEFINITIONS
         SRC_AIDIALOG_CPP="${CMAKE_SOURCE_DIR}/src/aidialog.cpp")
+    set_property(SOURCE tests/features/lua_oom_event_dispatch/test_lua_oom_event_dispatch.cpp
+        APPEND PROPERTY COMPILE_DEFINITIONS
+        SRC_LUAENGINE_CPP_PATH="${CMAKE_SOURCE_DIR}/src/luaengine.cpp")
     set_property(SOURCE tests/features/audit_provenance_redaction/test_audit_provenance_redaction.cpp
         APPEND PROPERTY COMPILE_DEFINITIONS
         SRC_AUDITENGINE_CPP_PATH="${CMAKE_SOURCE_DIR}/src/auditengine.cpp"
@@ -2703,6 +2706,8 @@ if(ANTS_TESTS)
             LIBS    ants_lua_lib ants_core_lib
             SOURCES tests/features/lua_sandbox_hardening/test_lua_sandbox_hardening.cpp
                     tests/features/lua_handler_reentrancy/test_lua_handler_reentrancy.cpp
+                    # ANTS-4442 — a plugin at its heap budget must not abort us.
+                    tests/features/lua_oom_event_dispatch/test_lua_oom_event_dispatch.cpp
                     tests/features/lua_pcall_nesting_timeout/test_lua_pcall_nesting_timeout.cpp
                     tests/features/lua_threading/test_lua_threading.cpp
                     tests/features/plugin_manifest_safety/test_plugin_manifest_safety.cpp)
