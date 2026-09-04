@@ -602,6 +602,12 @@ private:
     QPushButton *m_searchWordBtn = nullptr;
     bool m_searchVisible = false;
     bool m_searchRegexMode = false;
+    // ANTS-2000 — performSearch() regex-scans every scrollback line (50k by
+    // default, 1M at the cap). Wired straight to textChanged it ran once per
+    // KEYSTROKE, so typing into the search box froze the window for seconds.
+    // Coalesce the bursts; an explicit action (Enter, the regex toggle)
+    // still searches at once.
+    QTimer m_searchDebounce;
     bool m_searchCaseSensitive = false;
     bool m_searchWholeWord = false;
     bool m_searchPatternInvalid = false;

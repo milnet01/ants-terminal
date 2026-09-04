@@ -428,8 +428,15 @@ TerminalWidget::TerminalWidget(QWidget *parent) : QWidget(parent) {
     searchLayout->addStretch();
     m_searchBar->hide();
 
+    // ANTS-2000 — coalesce keystrokes. 120 ms is below the ~200 ms at which
+    // a pause reads as lag, and above a fast typist's inter-key gap, so a
+    // burst costs one scan instead of one per character.
+    m_searchDebounce.setSingleShot(true);
+    m_searchDebounce.setInterval(120);
+    connect(&m_searchDebounce, &QTimer::timeout, this,
+            &TerminalWidget::performSearch);
     connect(m_searchInput, &QLineEdit::textChanged, this, [this](const QString &) {
-        performSearch();
+        m_searchDebounce.start();
     });
     connect(m_searchInput, &QLineEdit::returnPressed, this, &TerminalWidget::searchNext);
     connect(nextBtn, &QPushButton::clicked, this, &TerminalWidget::searchNext);
@@ -438,6 +445,9 @@ TerminalWidget::TerminalWidget(QWidget *parent) : QWidget(parent) {
 
     connect(m_searchRegexBtn, &QPushButton::toggled, this, [this](bool on) {
         m_searchRegexMode = on;
+        // An explicit toggle is not a keystroke burst — answer it now, and
+        // cancel any pending scan so the two cannot race.
+        m_searchDebounce.stop();
         performSearch();
     });
     connect(m_searchCaseBtn, &QPushButton::toggled, this, [this](bool on) {
