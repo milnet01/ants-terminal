@@ -904,6 +904,41 @@ target_link_libraries(ants-terminal PRIVATE
 # every .cpp inside reuses it — REUSE_FROM is avoided because per-lib
 # compile flags drift (ANTS_LUA_PLUGINS / ANTS_WAYLAND_LAYER_SHELL /
 # OpenGLWidgets define) would invalidate a single shared PCH.
+# ANTS-2107 — drop stale precompiled headers when the compiler changes.
+#
+# A GCC 15 update left ~368 MB cmake_pch.hxx.gch files, built by the previous
+# compiler, in place. GCC warned (-Winvalid-pch) and then SIGBUSed cc1plus
+# inside its own diagnostic printer during a parallel build. CMake does not
+# key a PCH on the compiler's identity, so nothing regenerated them and the
+# only remedy was knowing to delete them by hand.
+#
+# A PCH is a cache, so deleting one is always safe: the worst case here is a
+# slower build, never a wrong one.
+set(_ants_toolchain_id
+    "${CMAKE_CXX_COMPILER_ID}-${CMAKE_CXX_COMPILER_VERSION}")
+set(_ants_toolchain_stamp "${CMAKE_BINARY_DIR}/ants-toolchain-id.txt")
+set(_ants_toolchain_prev "")
+if(EXISTS "${_ants_toolchain_stamp}")
+    file(READ "${_ants_toolchain_stamp}" _ants_toolchain_prev)
+    string(STRIP "${_ants_toolchain_prev}" _ants_toolchain_prev)
+endif()
+if(NOT _ants_toolchain_prev STREQUAL _ants_toolchain_id)
+    # An empty previous value is a fresh build tree, not a bump — there is
+    # nothing stale to drop, and saying so would be noise.
+    if(NOT _ants_toolchain_prev STREQUAL "")
+        message(STATUS
+            "ants: C++ compiler changed (${_ants_toolchain_prev} -> "
+            "${_ants_toolchain_id}) — dropping stale precompiled headers")
+        file(GLOB_RECURSE _ants_stale_pch
+             "${CMAKE_BINARY_DIR}/CMakeFiles/*/cmake_pch.hxx.gch"
+             "${CMAKE_BINARY_DIR}/CMakeFiles/*/cmake_pch.hxx.pch")
+        if(_ants_stale_pch)
+            file(REMOVE ${_ants_stale_pch})
+        endif()
+    endif()
+    file(WRITE "${_ants_toolchain_stamp}" "${_ants_toolchain_id}\n")
+endif()
+
 function(ants_apply_qt_pch tgt)
     target_precompile_headers(${tgt} PRIVATE
         <QtCore/QtCore>

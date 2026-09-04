@@ -102,14 +102,21 @@ TEST(token_usage_no_ci_diagnostic, Inv4SuccessPathClean) {
     // the order of the TUs in ANTS_RC_SOURCES puts cmdTokenUsage's first. A
     // new one in an earlier TU would move this window onto another verb's
     // success path silently. Scoped to the function under test.
-    const auto fn = cpp.find("QJsonDocument RemoteControl::cmdTokenUsage");
-    ASSERT_NE(fn, std::string::npos)
-        << "INV-4 precondition: cmdTokenUsage definition not found";
-    const auto pos = cpp.find("env[\"ok\"] = true;", fn);
+    // ANTS-3573 — bound the region by the FUNCTION BODY, not by a byte
+    // count. The old `substr(pos, 2000)` window slid `env["calls"]` out of
+    // view as soon as the verb's success path grew past 2 KiB, turning a
+    // satisfied invariant red with nothing wrong in the code it guards —
+    // and the brace-matched extract cannot run past the function either,
+    // which the fixed window could.
+    const std::string body = ants_test::slurpFunctionBody(
+        cpp, "QJsonDocument RemoteControl::cmdTokenUsage");
+    ASSERT_FALSE(body.empty())
+        << "INV-4 precondition: cmdTokenUsage body not extractable";
+    const auto pos = body.find("env[\"ok\"] = true;");
     ASSERT_NE(pos, std::string::npos)
         << "INV-4 precondition: cmdTokenUsage success path "
            "missing (env[\"ok\"] = true; not found)";
-    const std::string region = cpp.substr(pos, 2000);
+    const std::string region = body.substr(pos);
     expect(!contains(region, "env[\"debug\"]"),
            "INV-4: success path must not assign a debug field");
     expect(contains(region, "env[\"calls\"]"),

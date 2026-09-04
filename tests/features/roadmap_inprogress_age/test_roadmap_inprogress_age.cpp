@@ -84,7 +84,10 @@ bool runGit(const QString &cwd, const QStringList &args,
     if (!env.isEmpty()) p.setProcessEnvironment(env);
     p.start(QStringLiteral("git"), args);
     if (!p.waitForStarted(2000)) return false;
-    if (!p.waitForFinished(10000)) {
+    // ANTS-1472 — a cold-cache git on a loaded CI runner can exceed 10 s,
+    // and this timeout failing looks exactly like the fixture being wrong.
+    // A generous bound costs nothing when git is fast.
+    if (!p.waitForFinished(60000)) {
         p.kill();
         return false;
     }

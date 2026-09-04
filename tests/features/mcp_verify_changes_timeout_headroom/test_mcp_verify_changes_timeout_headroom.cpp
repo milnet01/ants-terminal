@@ -80,12 +80,14 @@ TEST(Ants1579TimeoutHeadroom, Inv1Through3GateCompletesUnderBudget) {
     EXPECT_FALSE(g->skippedReason.contains(QLatin1String("timeout")))
         << "gate was killed by kill timer instead of completing "
         << "naturally; skippedReason: " << g->skippedReason.toStdString();
-    // INV-2 — duration < timeout budget (proves natural completion).
-    // sleep 1 plus QProcess overhead should land well under 3 s.
-    EXPECT_LT(g->durationSec, 3.0)
-        << "build gate took " << g->durationSec
-        << " s — too close to the 3 s budget; the kill timer may "
-        << "have been the trigger";
+    // INV-2 — ANTS-2066: the wall-clock UPPER bound is gone too, for the
+    // same reason the lower bound below went, and because it could not
+    // fail honestly. The budget IS 3 s, so a run that genuinely exceeded
+    // it was killed by the kill timer — which the `skippedReason` and
+    // `exitCode` assertions above already catch, with a far better
+    // message. What was left was an assertion that could only fire on a
+    // loaded runner in the narrow window where the timer had not yet
+    // fired: a red with no defect behind it.
     // Lower-bound dropped post-test-audit 2026-05-18: the
     // semantic check (ran && passed && exitCode == 0 && no "timeout"
     // in skippedReason) above is already sufficient to prove the
