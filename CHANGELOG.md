@@ -257,6 +257,12 @@ for security-relevant changes.
 
 ### Changed
 
+- **Right-clicking a tab now shows which colour that tab is currently set to.** (ANTS-4862)
+  The palette listed 26 colours and marked none of them, so there was no way
+  to read the current setting with the menu covering the tab. The active
+  entry is now ticked and bold; a colour picked from the custom dialog marks
+  "Custom colour..." and shows itself as that entry's swatch.
+
 - **Adding a test that reads a source file now rebuilds one file, not the whole bundle** (ANTS-4797)
   Each test's file-path setting is attached to that test alone rather than
   to every file in its bundle. Measured on one bundle: adding a setting
@@ -742,6 +748,20 @@ for security-relevant changes.
 
 
 ### Security
+
+- **The AI triage request is scrubbed for secrets before it is sent.** (ANTS-4448)
+  This path built and posted its own request rather than going through the
+  shared client, so it never got that client's scrub. The prompt embeds the
+  finding's source snippet -- and for a secrets or gitleaks finding, that
+  snippet is the credential. The status line now says when something was
+  redacted, so a scrubbed prompt is not silent.
+
+- **Credentials in a git remote URL no longer reach SARIF exports or the wire.** (ANTS-4448)
+  A remote like `https://user:token@host/owner/repo.git` was written
+  verbatim into SARIF provenance and read back out of it by
+  `last_audit_summary`. The userinfo is now stripped on both the write and
+  the read, so SARIF files captured before this change stop leaking too.
+  An scp-style remote (`git@host:owner/repo.git`) is left alone.
 
 - **Roadmap and changelog lookups stay inside the project they were called from.** (ANTS-4447)
   The search for a project's ROADMAP.md or CHANGELOG.md walks up from the

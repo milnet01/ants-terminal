@@ -36873,7 +36873,7 @@ whole files.
   own "check the sibling resolvers" line is what found it. Behaviour inside a
   git repo is unchanged.
 
-- 📋 [ANTS-4448] **Credentials can leave the machine in SARIF exports and AI-triage POSTs.**
+- ✅ [ANTS-4448] **Credentials can leave the machine in SARIF exports and AI-triage POSTs.**
   Two paths, one theme. The tree ships `src/secretredact.h` and neither calls
   it.
   (a) `src/auditengine.cpp:1482-1489` reads `git config --get
@@ -36895,6 +36895,43 @@ whole files.
   Kind: security.
   Source: cold-sweep-2026-08-18 lanes audit-engine + audit-dialog (VERIFIED in-session).
   Lanes: auditengine, auditdialog.
+  Resolved (2026-09-04). Both paths closed, plus a third the item did not
+  name.
+
+  (a) SARIF. buildVcsProvenanceBlock now passes the remote through the new
+  SecretRedact::stripUrlCredentials before it reaches repositoryUri. scrub()
+  could not answer this one: it matches secret SHAPES, and a plain password
+  matches none of them. Whole userinfo is removed rather than the password
+  alone, because a bare token is routinely placed in the username slot; an
+  scp-style remote parses with no scheme and is left alone, since its `git@`
+  is a username.
+
+  (c) NOT in the item, found while fixing it: last_audit_summary reads
+  repository_uri back OUT of a captured SARIF, so every file already on disk
+  would have kept leaking until its audit was re-run. Stripped on the read
+  side too.
+
+  (b) AI triage. The prompt is now scrubbed with SecretRedact::scrub,
+  mirroring LlmClient::buildRequestBody, which this raw-QNAM path had
+  bypassed. The status line reports the redaction count — a silent scrub
+  changes what the model was shown, so a verdict that looked wrong would have
+  had no visible cause.
+
+  CORRECTION to the item: it opens "The tree ships src/secretredact.h and
+  neither calls it." That is false — ptyhandler, auditrunner, aidialog and
+  llmclient all call it. The true and narrower claim is the one in its own
+  body: auditengine.cpp and auditdialog.cpp contained zero references.
+
+  Test: tests/features/audit_provenance_redaction, five invariants, red-proven
+  in two rounds so each part of the fix was mutated separately — removing the
+  three call sites failed INV-3/4/5 with three distinct messages, and making
+  stripUrlCredentials a no-op failed INV-1 while INV-2, the negative control,
+  correctly stayed green. Suite 4154 -> 4159.
+
+  One repair on the way: the first wiring named remotecontrol_state.cpp in
+  CMakeLists.txt, which RcTuSplit INV-11 forbids outside the
+  ANTS_RC_SOURCES_REL block. That test was right; the scrape now reads the
+  whole RC source set instead.
 
 - ✅ [ANTS-4449] **`MarkdownScan::fenceMask` matches a fence closer on character alone, never run length.**
   `src/markdownscan.cpp:86` closes an open fence on
@@ -50035,6 +50072,37 @@ two projects).
   Kind: fix.
   Source: UT_Ants_MCP_Feedback.md 2026-09-04.
   Lanes: mcp.
+
+### 🎨 UI polish (user request 2026-09-04)
+
+- ✅ [ANTS-4862] **The tab-colour context menu shows which colour the tab is currently set to.**
+  The palette listed 26 entries and marked none of them, so the menu gave no
+  way to read the tab's current colour — the swatch is on the tab, and the
+  tab is behind the open menu. "None" was indistinguishable from any colour.
+
+  Every entry is now a member of one exclusive QActionGroup, and the entry
+  matching the tab's colour is checked and bolded. menus.md M1 covers the
+  choice of affordance: an exclusive "choose one" pick keeps Qt's default
+  toggle-and-close, which is what a colour pick should do, and the
+  StayOpenOnToggleFilter that keeps menu-bar toggles open does not reach a
+  context menu.
+
+  Bold as well as checked, because a checked action carrying an icon renders
+  in several styles as a framed swatch rather than a tick, which is easy to
+  miss among 26 other swatches.
+
+  Colours are compared on rgb() rather than QColor::operator==: a persisted
+  colour round-trips through HexArgb and need not return with the same spec,
+  and an equality that silently failed would leave the menu looking exactly
+  as it did before.
+
+  "Custom colour..." is marked instead when the tab carries a colour matching
+  no preset, and takes the current colour as its swatch — otherwise a
+  custom-coloured tab showed nothing checked, which reads as None.
+  **Layman:** Right-clicking a tab to change its colour now marks the colour it already is, so you can see the current setting.
+  Kind: ux.
+  Source: user-request-2026-09-04.
+  Lanes: mainwindow.
 
 ## check-code whole-tree sweep fold-in (2026-09-01)
 
