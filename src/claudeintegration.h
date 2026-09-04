@@ -579,7 +579,12 @@ private slots:
 private:
     void processHookEvent(const QJsonObject &event);
     // parseTranscriptForState is declared above (public, for tests).
-    void updateChangedFiles(const QJsonObject &event);
+    // ANTS-4451 — takes the EXTRACTED name and input, never a raw event.
+    // The two callers speak different dialects: a transcript tool_use block
+    // carries name/input, a hook event carries tool_name/tool_input. Taking
+    // one object here meant one of them was always read with the wrong keys.
+    void updateChangedFiles(const QString &toolName,
+                            const QJsonObject &toolInput);
     // ANTS-1161 — gate hook events on the focused tab's session.
     // The hook server is one UDS shared across every Claude under any
     // tab, so without this gate Tab B's PreToolUse would clobber the

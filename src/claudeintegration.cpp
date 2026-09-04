@@ -948,7 +948,9 @@ void ClaudeIntegration::parseTranscriptForState(const QString &path) {
     }
 
     if (!snap.toolUseBlock.isEmpty()) {
-        updateChangedFiles(snap.toolUseBlock);
+        // Transcript dialect: a tool_use content block spells them name/input.
+        updateChangedFiles(snap.toolUseBlock.value("name").toString(),
+                           snap.toolUseBlock.value("input").toObject());
     }
 
     if (snap.planMode != m_planMode) {
@@ -975,14 +977,12 @@ void ClaudeIntegration::parseTranscriptForState(const QString &path) {
     }
 }
 
-void ClaudeIntegration::updateChangedFiles(const QJsonObject &toolUse) {
-    QString name = toolUse.value("name").toString();
-    QJsonObject input = toolUse.value("input").toObject();
-
+void ClaudeIntegration::updateChangedFiles(const QString &toolName,
+                                           const QJsonObject &toolInput) {
     QString filePath;
-    if (name == "Edit" || name == "Write" || name == "Read") {
-        filePath = input.value("file_path").toString();
-    } else if (name == "Bash") {
+    if (toolName == "Edit" || toolName == "Write" || toolName == "Read") {
+        filePath = toolInput.value("file_path").toString();
+    } else if (toolName == "Bash") {
         // Can't reliably extract file paths from bash commands
         return;
     }
@@ -1225,7 +1225,8 @@ void ClaudeIntegration::processHookEvent(const QJsonObject &event) {
         m_state = ClaudeState::Thinking;
         emit toolFinished(toolName, true);
         emit stateChanged(m_state, "thinking");
-        updateChangedFiles(event);
+        // Hook dialect: already extracted from tool_name/tool_input above.
+        updateChangedFiles(toolName, toolInput);
     } else if (hookName == "PostToolUseFailure") {
         if (!isFocused) return;
         emit toolFinished(toolName, false);
@@ -2568,7 +2569,7 @@ void ClaudeIntegration::onMcpConnection() {
                     "`drift_lost` / `drift_lost_text` on the drifted arm only. "
                     "`sync_checked:false` means nobody looked (not "
                     "store-backed, or the render failed) and must NOT be read "
-                    "as in-sync. ANTS-4730 — it reports on BOTH arms, so its "
+                    "as in-sync. ANTS-4730 — it reports on EVERY arm, so its "
                     "absence means only that check_sync was not requested. "
                     "OPT-IN and never cached, deliberately: one "
                     "render of a 2,267-item store measures ~204 ms, more than "
@@ -3358,7 +3359,7 @@ void ClaudeIntegration::onMcpConnection() {
                             "`sync_checked:false` means nobody looked — not "
                             "store-backed, or the render failed — and is NOT a "
                             "clean bill of health. ANTS-4730 — it is emitted "
-                            "on BOTH arms, so absence means only that "
+                            "on EVERY arm, so absence means only that "
                             "check_sync was not requested. This is the "
                             "two-directional "
                             "answer `file_ahead_of_store` cannot give: that "
