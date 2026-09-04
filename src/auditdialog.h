@@ -360,6 +360,12 @@ private:
     // Match either: full key (post-0.7.29 saves) OR leading-16 prefix
     // (legacy saves still in the user's ~/.audit_suppress file).
     bool isSuppressed(const QString &dedupKey) const;
+    // ANTS-4444 — the whole-Finding form, which every render and export path
+    // uses. The key-set lookup above cannot see the learned false-positive
+    // ledger: that is keyed by a line-independent content fingerprint, so a
+    // learned FP was marked `suppressed` and then rendered, exported and
+    // re-sent to the AI anyway.
+    bool isSuppressed(const Finding &f) const;
 
     // 0.6.31 self-learning layer — tracks per-rule fire and suppression
     // counts in <project>/audit_rule_quality.json. Surfaces noisy rules

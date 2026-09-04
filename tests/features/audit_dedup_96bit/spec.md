@@ -46,6 +46,14 @@ plus a backward-compatibility helper that lets existing 16-char keys in
 chain. The pre-fix `.left(16)` MUST NOT appear in `computeDedup`'s
 body.
 
+> **ANTS-4444 note.** The render sites now call `isSuppressed(f)` with the
+> whole `Finding` rather than `isSuppressed(f.dedupKey)`, and a second
+> overload taking a `Finding` sits above the one described below. Both
+> invariants here are unchanged in substance — the helper still owns the
+> legacy-key lookup, and the render sites still go through it rather than
+> touching `m_suppressedKeys` directly. Only the anchor and the argument
+> spelling moved, and the test was re-fixtured to match.
+
 **INV-2 — A backward-compatibility lookup helper exists.** Source-grep
 against `src/auditdialog.h` or `src/auditdialog.cpp`: a member
 function whose body queries `m_suppressedKeys` AND extracts a 16-char

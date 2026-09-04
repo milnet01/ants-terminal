@@ -117,8 +117,18 @@ TEST(AuditDedup96Bit, Main) {
     // first (isSuppressed); fall back to any *Suppressed* helper. Body
     // must reference both m_suppressedKeys AND a `.left(16)` legacy
     // prefix lookup.
+    // ANTS-4444 added an isSuppressed(const Finding &) overload ABOVE this
+    // one, and extractFnBody takes the FIRST match — so an unqualified
+    // extract began scraping the wrong body and this invariant failed on a
+    // tree that still satisfies it. Anchor on the QString overload, which
+    // is the one carrying the legacy-key contract.
+    const auto qsOverloadAt =
+        cpp.find("bool AuditDialog::isSuppressed(const QString &");
     const std::string helperBody =
-        extractFnBody(cpp, "AuditDialog::isSuppressed");
+        (qsOverloadAt == std::string::npos)
+            ? std::string()
+            : extractFnBody(cpp.substr(qsOverloadAt),
+                            "AuditDialog::isSuppressed");
     if (helperBody.empty()) {
         fail("INV-2: no `bool AuditDialog::isSuppressed(...) const` "
              "helper found. Render sites need a single point that "
@@ -155,7 +165,14 @@ TEST(AuditDedup96Bit, Main) {
     }
 
     // Ensure isSuppressed (or the helper) IS called from at least four sites.
-    std::regex helperCall(R"(isSuppressed\s*\(\s*[^)]*dedupKey)");
+    //
+    // ANTS-4444 — matches a call on a Finding OR on its key. The render
+    // sites now pass the whole Finding, because the learned-false-positive
+    // ledger is keyed by content fingerprint and a bare dedupKey cannot
+    // reach it. What this invariant protects is that the sites go through
+    // the helper rather than calling m_suppressedKeys.contains directly,
+    // and that is unchanged; only the argument's spelling moved.
+    std::regex helperCall(R"(isSuppressed\s*\(\s*f[.)])");
     int helperCount = 0;
     auto hb = std::sregex_iterator(cpp.begin(), cpp.end(), helperCall);
     auto he = std::sregex_iterator();

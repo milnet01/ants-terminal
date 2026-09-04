@@ -2265,6 +2265,9 @@ if(ANTS_TESTS)
     set_property(SOURCE tests/features/lua_oom_event_dispatch/test_lua_oom_event_dispatch.cpp
         APPEND PROPERTY COMPILE_DEFINITIONS
         SRC_LUAENGINE_CPP_PATH="${CMAKE_SOURCE_DIR}/src/luaengine.cpp")
+    set_property(SOURCE tests/features/audit_learned_fp_filtering/test_audit_learned_fp_filtering.cpp
+        APPEND PROPERTY COMPILE_DEFINITIONS
+        SRC_AUDITDIALOG_CPP_PATH="${CMAKE_SOURCE_DIR}/src/auditdialog.cpp")
     set_property(SOURCE tests/features/audit_provenance_redaction/test_audit_provenance_redaction.cpp
         APPEND PROPERTY COMPILE_DEFINITIONS
         SRC_AUDITENGINE_CPP_PATH="${CMAKE_SOURCE_DIR}/src/auditengine.cpp"
@@ -2392,6 +2395,8 @@ if(ANTS_TESTS)
                 tests/features/audit_engine_extraction/test_audit_engine_extraction.cpp
                 # ANTS-4448 — credentials must not reach SARIF or the AI POST.
                 tests/features/audit_provenance_redaction/test_audit_provenance_redaction.cpp
+                # ANTS-4444 — a learned false positive must actually be hidden.
+                tests/features/audit_learned_fp_filtering/test_audit_learned_fp_filtering.cpp
                 tests/features/audit_hygiene/test_audit_hygiene.cpp
                 # ANTS-2210 — per-language comment/string lexer regression test.
                 tests/features/audit_line_lexer/test_audit_line_lexer.cpp

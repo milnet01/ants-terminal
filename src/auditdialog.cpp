@@ -2565,7 +2565,7 @@ QList<Finding> AuditDialog::actionableFindings() const {
     for (const auto &r : m_completedResults) {
         if (r.warning) continue;
         for (const Finding &f : r.findings) {
-            if (isSuppressed(f.dedupKey)) continue;
+            if (isSuppressed(f)) continue;
             if (m_sinceBaseline) {
                 if (!visibleSinceBaseline(f, m_recentLines, m_baselineFingerprints))
                     continue;
@@ -3081,6 +3081,17 @@ void AuditDialog::loadSuppressions() {
         static const QRegularExpression reWs(R"(\s+)");  // ANTS-1647
         m_suppressedKeys.insert(line.section(reWs, 0, 0));
     }
+}
+
+// ANTS-4444 — checked LIVE, for the same reason the dedupKey lookup is:
+// a false positive learned after this audit ran must take effect without a
+// re-run, which the cached `f.suppressed` flag cannot express. The empty
+// check keeps the common case free of a SHA-256 per finding per render.
+bool AuditDialog::isSuppressed(const Finding &f) const {
+    if (isSuppressed(f.dedupKey)) return true;
+    if (m_learnedFpFingerprints.isEmpty()) return false;
+    return m_learnedFpFingerprints.contains(
+        ants::auditfp::computeFingerprint(f.file, f.checkId, f.message));
 }
 
 bool AuditDialog::isSuppressed(const QString &dedupKey) const {
@@ -4723,7 +4734,7 @@ void AuditDialog::renderResults() {
     for (const auto &r : sorted) {
         if (r.warning) continue;
         for (const Finding &f : r.findings) {
-            if (isSuppressed(f.dedupKey)) continue;
+            if (isSuppressed(f)) continue;
             if (m_sinceBaseline) {
                 if (!visibleSinceBaseline(f, m_recentLines, m_baselineFingerprints))
                     continue;
@@ -4795,7 +4806,7 @@ void AuditDialog::renderResults() {
     for (const auto &r : sorted) {
         if (r.warning) continue;
         for (const Finding &f : r.findings) {
-            if (isSuppressed(f.dedupKey)) continue;
+            if (isSuppressed(f)) continue;
             if (f.aiVerdict == "FALSE_POSITIVE") ++aiFalsePositiveCount;
         }
     }
@@ -4971,7 +4982,7 @@ void AuditDialog::renderResults() {
         QStringList parts;
         for (const Finding *pf : sortedFindings) {
             const Finding &f = *pf;
-            if (isSuppressed(f.dedupKey)) continue;
+            if (isSuppressed(f)) continue;
             if (m_sinceBaseline) {
                 if (!visibleSinceBaseline(f, m_recentLines, m_baselineFingerprints))
                     continue;
@@ -5374,7 +5385,7 @@ QStringList AuditDialog::visibleUntriagedKeys() const {
     for (const auto &r : m_completedResults) {
         if (r.warning) continue;
         for (const Finding &f : r.findings) {
-            if (isSuppressed(f.dedupKey)) continue;
+            if (isSuppressed(f)) continue;
             if (m_sinceBaseline) {
                 if (!visibleSinceBaseline(f, m_recentLines, m_baselineFingerprints))
                     continue;
@@ -5769,13 +5780,18 @@ QString AuditDialog::exportSarif() const {
             // hasn't been refreshed; the parser only re-runs on next
             // audit). HTML export at :5199 already calls isSuppressed
             // live — this brings SARIF into parity.
-            if (isSuppressed(f.dedupKey)) {
+            if (isSuppressed(f)) {
                 QJsonObject sup;
                 sup["kind"]  = "external";
                 sup["status"] = "accepted";
-                const QString reason =
+                // A learned false positive has no entry in the reason map —
+                // it was never suppressed by key — so fall back to the
+                // ledger's own note rather than exporting a suppression with
+                // no stated cause.
+                QString reason =
                     m_suppressionReasons.value(f.dedupKey,
                         m_suppressionReasons.value(f.dedupKey.left(16)));
+                if (reason.isEmpty()) reason = f.aiReasoning;
                 if (!reason.isEmpty()) sup["justification"] = reason;
                 QJsonArray suppArr; suppArr.append(sup);
                 res["suppressions"] = suppArr;
@@ -5832,7 +5848,7 @@ QString AuditDialog::exportHtml() const {
     for (const CheckResult &cr : m_completedResults) {
         if (cr.warning) continue;
         for (const Finding &f : cr.findings) {
-            if (isSuppressed(f.dedupKey)) continue;
+            if (isSuppressed(f)) continue;
             QJsonObject o;
             o["checkId"]   = f.checkId;
             o["checkName"] = f.checkName;
