@@ -24,6 +24,10 @@
 <!-- MIRROR BEGIN ~/.claude/standards/changelog-format.md -->
 # CHANGELOG.md format spec (v1.1)
 
+**Why a rule here reads as it does: [`docs/history/changelog-format.md`](../docs/history/changelog-format.md).**
+Pedigree only — what a rule used to say and what changed it. A dated
+measurement a rule rests on stays in the rule.
+
 > Detailed format spec for `CHANGELOG.md` — the Keep-a-Changelog structure,
 > its conventions, and the release flow that moves entries out of
 > `[Unreleased]` while the roadmap's bullets flip.
@@ -205,15 +209,6 @@ already exists with content, and its Phase 0f stops on any ROADMAP ID the
 section claims shipped that is not ✅. Neither check is an edit, and on no
 route does the skill draft a section or flip a bullet: where `[Unreleased]`
 moves inside a run, the recipe's verb moves it.
-
-**Until 2026-08-13 the predecessor did neither.** `/release` never read or wrote
-a roadmap at all — a `grep -c 'roadmap'` over its `SKILL.md` returned 0, checked
-2026-08-12, the file since deleted — and its step 2 would dispatch `changelog-writer` to draft a missing
-section from the commit range, which § 7 of `releases.md` names an anti-pattern.
-`cut-release` dropped that dispatch and claimed step 3 as a check; charter 17
-required one or the other. The first run found the case immediately: a 0.7.105
-changelog bullet claiming ANTS-4065 shipped, against a roadmap still holding it
-🚧 (`~/.claude/docs/cut-release-first-run-2026-08-13.md`).
 
 **On a store-backed project** (`roadmap-format.md` § 3.12), steps 1–2 are unchanged —
 `CHANGELOG.md` is not generated. **Step 3** is a roadmap edit and goes

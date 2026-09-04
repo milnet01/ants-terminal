@@ -25,6 +25,10 @@
 # Spec- and plan-authoring standard — v1
 
 **Status:** v1 (2026-07-27).
+
+**Why a rule here reads as it does: [`docs/history/spec-format.md`](../docs/history/spec-format.md).**
+Pedigree only — what a rule used to say and what changed it. A dated
+measurement a rule rests on stays in the rule.
 **Applies to:** every file under `docs/specs/` and `docs/plans/`.
 
 **Purpose: so that an implementer building from this document never has to
@@ -104,8 +108,7 @@ share drops. A process getting genuinely more reproducible is a process
 where that share falls over time; nothing else is evidence.
 
 **The share, not the count** — § What checks this owns why, and
-`documentation.md` §2.9 owns the budget itself. This section said *count*
-until 2026-08-17, which punished the very row-split that section requires.
+`documentation.md` §2.9 owns the budget itself.
 
 ---
 
@@ -163,8 +166,7 @@ docs/plans/<ID>-<topic>.md    the build steps
   longer contains the string anyone would search for. `<topic>` is two to
   four kebab-case words. Both are needed: the id links to the roadmap and
   is what `spec_query` routes on, the topic makes a directory listing
-  readable. Widened 2026-08-14 (ROADMAP CFG-0098), which found this rule
-  narrower than the roadmap standard it depends on.
+  readable.
 - One spec per roadmap item. Cross-cutting work gets one spec per id,
   cross-referenced in the header — or one umbrella spec whose header lists
   every id it covers.
@@ -226,9 +228,7 @@ uses.
 how a repository that *is* a standards set checks its own specs**, and this
 repository resolves to `standards/spec-format.md`: verified 2026-08-17 by
 linting a fixture, whose envelope came back
-`sections_source: "standards/spec-format.md"`. This sentence named the
-`docs/` pair alone until then, so such a project was told the global block
-governed it while its own local copy silently shadowed it. A project that ships its own
+`sections_source: "standards/spec-format.md"`. A project that ships its own
 spec standard is checked against *that*, not this — which is correct,
 and means this block governs projects following the global set.
 
@@ -240,9 +240,7 @@ and means this block governs projects following the global set.
 
 `<ID>` is §2's — the roadmap id spelled exactly as its project spells it,
 which is not always `<PREFIX>-NNNN`. One line; this is what `spec_query`
-returns as `title`. Backtick code identifiers. This template said
-`<PREFIX>-NNNN` until 2026-08-17, three sections after §2 was widened to
-admit `CL-9` and `PASS-3-1`.
+returns as `title`. Backtick code identifiers.
 
 ### 3.2 Header block
 
@@ -339,9 +337,7 @@ Five rules, each of which exists because its absence shipped a defect:
   *withdrawn — 1.4.0: the grid no longer caches rows.* <original claim>` —
   keeping the id and its text so a citation elsewhere still resolves. If
   it changes, add a new one or annotate the old (`INV-7 amended by
-  <ID>`). Never reflow the list. The version-and-reason slot was added
-  2026-08-14 (ROADMAP CFG-0108): `testing.md` §4 requires both and this
-  form, which owns the shape, had nowhere to put them. **The dash after
+  <ID>`). Never reflow the list. **The dash after
   `withdrawn` is load-bearing.** `spec_lint` exempts a tombstone spelled
   `*withdrawn — …*` and reports `*withdrawn 1.4.0: …*` as
   `invariant_no_test`, in the bucket a caller acts on without re-verifying.
@@ -385,8 +381,7 @@ it — so absence reads as a decision rather than an oversight.
 One table: each rule or contract this spec sets, and what catches a breach.
 **`documentation.md` §2.9 owns the table's rules** — the cell forms, which
 rules are owed a row, and why a wrong row is worse than a missing one. Read
-it there; restating them here is the copy §2.1 forbids, and it had already
-gone stale by 2026-08-12.
+it there; restating them here is the copy §2.1 forbids.
 
 | Rule | What catches a breach |
 |------|----------------------|
@@ -451,8 +446,7 @@ copies. `review-contract` Phase 4 explains why that shortens the whole run.
 not a defect in itself. It applies to a spec unchanged — the spec is
 subject to the same shortest-correct-form discipline as the code it
 specifies. **An authoring obligation, never a review question**
-(`documentation.md` §9.4); this read *gate* until 2026-08-20, which a cold
-lane read as licence to raise brevity at the gate.
+(`documentation.md` §9.4).
 
 ### 5.4 Size gate — split before reviewing
 
@@ -465,8 +459,7 @@ than the review's design point. Reaching the cap is a different event and a
 normal one: the skill files the tail and the spec ships, because the build
 is a better next reviewer than another cold read.
 
-**No check reports the line count. Count it yourself** — `wc -l`. This
-section cited `check-doc-facts`' `size` until 2026-08-17. That check was
+**No check reports the line count. Count it yourself** — `wc -l`. That check was
 dropped on 2026-08-10 and nothing replaced it.
 
 The evidence for splitting is real, and it lives in that check's drop
@@ -495,8 +488,7 @@ Same requirement and same reasoning as the roadmap bullet's `Layman:`
 
 **It goes immediately after the §3.2 header block, as prose.** Never as a
 bold key-value: §7 requires `**Status:**` and `**Kind:**` to be the first
-bold key-values, so a `**Layman:**` line above them breaks the parse. The
-placement was unstated until 2026-08-17, and "near the top" admits both.
+bold key-values, so a `**Layman:**` line above them breaks the parse.
 
 Two reasons, and the second is the one that earns it. A non-technical
 reader needs a way in — but more usefully, **a change that cannot be
@@ -532,13 +524,8 @@ a hook, a command, a verb — resolves.
 
 **Nothing checks a sub-check name inside `check-doc-facts` against the
 catalogue.** That requirement was written and removed on 2026-08-11, for
-flagging nearly every live cell in `coding.md` and `commits.md`. This section
-called it live until 2026-08-17 — while a cell of this file's own table named
-the `size` check, dropped 2026-08-10, and nothing fired for a week. Two
-further citations sat in a §0 checklist item and a §5.4 paragraph, which this
-check never covered at all. Check those names by eye; an invented catcher is
-the defect the table exists to prevent. This said *three cells* until
-2026-08-17.
+flagging nearly every live cell in `coding.md` and `commits.md`. Check those
+names by eye; an invented catcher is the defect the table exists to prevent.
 
 The general lesson, which is §5.7's: a compliance artifact that is itself
 unverifiable is a wish wearing a table's clothes.
@@ -556,15 +543,12 @@ post-fix blast-radius check.
 it is written as the loops happen rather than back-filled, and that **the
 tally balances** — findings raised must equal outcomes recorded, or the row
 dropped some without anyone deciding to. They apply to a spec unchanged.
-This named *every row carries an outcome* as the second, which is weaker and
-is not what §9.1 says, until 2026-08-17.
 
 One spec-side specific: `spec_log op:append_loop` matches the shape the
 section already holds. The skeleton ships a **table**, so pass `cells` — one
 string per column, in the header's order. Without `cells` against a table it
 refuses `format_mismatch` rather than writing a bullet into it, so it cannot
-corrupt the log. This said the verb writes bullet form and told you to reach
-for `Edit` instead, until 2026-08-17.
+corrupt the log.
 
 ## 7. Machine-readability
 
@@ -575,16 +559,11 @@ and the `**Status:**` and `**Kind:**` lines as the first bold key-values.
 
 **The `<PREFIX>-NNNN` shape is not a parse requirement.** A spec headed
 `# CL-9 — id shape probe` returns its title, status, kind and invariants
-intact; verified 2026-08-17 by running `spec_query` against one. This
-paragraph named that shape until then, which told an author with a `CL-9`
-id to pad it and so desynchronise the H1 from the filename §2 fixes.
+intact; verified 2026-08-17 by running `spec_query` against one.
 
 **The invariant list's shape is a convention, not a parse requirement.**
 `spec_query` reads the bullet form `- **INV-N** — body` and the GFM table
-form alike; §3.7 owns why the bullet form is nonetheless the default. This
-paragraph listed the bullet form among the parse requirements until
-2026-08-17 — which told an author holding a conforming table to reflow a
-list §3.7 forbids reflowing.
+form alike; §3.7 owns why the bullet form is nonetheless the default.
 
 Where `spec_query` is available (it is an Ants MCP verb, so not every
 project has it), `check-doc-facts`'s `structure` check runs it against the draft and confirms the
@@ -637,9 +616,7 @@ skeleton's numbering. When citing a rule *about* specs, cite this file's
 skeleton section because neither is a `##` heading. The skeleton's §12
 *Cold-eyes loop log* has no §3.N *subsection* either — its rules are §6's.
 **§3's required list still requires the heading**, and the
-`<!- - required-sections - ->` block carries it. This said the loop log was
-governed by §6 *rather than* by that list until 2026-08-17, which invited
-someone maintaining the block to delete the line.
+`<!- - required-sections - ->` block carries it.
 
 It was **not** a fixed offset until 2026-08-10, because the skeleton
 inserted *Resource cost* — a §4 recommended section — at its §10, so
@@ -693,14 +670,13 @@ number that looks plausible and is wrong.
 
 **Cell forms are `documentation.md` §2.9's**, and a catcher paired with the
 part it does *not* cover is that section's **`Partial:`** form rather than a
-blur. §3.12 delegates this. The paragraph here told you to split such a cell
-into two rows, contradicting the owner, until 2026-08-17.
+blur. §3.12 delegates this.
 
 Splitting a genuinely two-part row raises the row count without moving the
 budget, which is why the number to watch is the **share**. It should fall
 over time, not monotonically: a newly-found uncaught rule raises it, and
 raises it honestly — the paragraph below shows the budget moving both ways
-on 2026-08-10. This said *should only ever fall* until 2026-08-17.
+on 2026-08-10.
 
 **The budget then moved, on 2026-08-10, and both directions are worth
 seeing.** §3's required-section list gained a real catcher — `spec_lint`
