@@ -350,6 +350,13 @@ for security-relevant changes.
 
 ### Fixed
 
+- **Updating the compiler no longer leaves precompiled headers that can crash the build.** (ANTS-2107)
+  The build now records which compiler built its precompiled headers and
+  discards them when that changes. Previously a compiler upgrade left large
+  incompatible files in place, which warned and then crashed the compiler
+  part-way through a build, and the only remedy was knowing to delete them by
+  hand.
+
 - **The test-audit dialog's "Per-finding" fold-in now works.** (ANTS-4445)
   Choosing Per-finding reported a failure every time: nothing ever collected
   the findings it needed. The reviewer's reports are now read into findings

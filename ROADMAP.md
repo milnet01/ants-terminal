@@ -8397,6 +8397,26 @@ class; the deferrals below cover the rest.
   **Layman:** After the system's compiler updated to GCC 15, the leftover precompiled-header files became incompatible and crashed the compiler during a build. Clearing them fixes it; we should also stop those files from getting so huge.
   Kind: chore.
   Source: user-crash-report-2026-06-11 (cc1plus SIGBUS during reviewdialogbase.cpp compile).
+  Progress (2026-09-04, 6067e0d1) — action (1) is done; (2) stays open.
+
+  DONE: the configure-time toolchain stamp. CMake does not key a PCH on the
+  compiler's identity, which is why nothing regenerated the stale ones. The
+  build now records CMAKE_CXX_COMPILER_ID + _VERSION and drops every
+  cmake_pch.hxx.gch/.pch in the tree when it changes. A PCH is a cache, so the
+  worst case is a slower build rather than a wrong one; a fresh tree writes
+  the stamp and says nothing, since there is nothing stale to drop.
+
+  Verified live: the stamp reads GNU-16.2.0. This machine is already a major
+  version past the GCC 15.2.1 in the report, so the same class of bump has
+  happened again since — with no crash this time, but nothing in the build was
+  guarding against it either.
+
+  STILL OPEN — action (2): why the PCH is ~368 MB, and whether the header set
+  can be trimmed. That is open-ended measurement, not a bounded fix, and it is
+  the whole of what remains.
+
+  Action (3) needs no work: the JOB_POOLS caps are in CMakeLists.txt and apply
+  under Ninja, which is the documented build path.
 
 - ✅ [ANTS-2108] **Indie-review 2026-06-11: cleartext Bearer API-key egress on the review-dialog family (auditdialog batch path + coldeyesdialog) — add isPlaintextRemote refusal to LlmClient::send.**
   auditdialog.cpp:5742/5747 requestAiTriageBatch and the v2 review dialogs (coldeyesdialog via ReviewDialogBase->LlmClient::send) gate only on scheme + SSRF host-block, never on cleartext http to a public remote. The single-finding path (auditdialog.cpp:5467, ANTS-1826) and aidialog.cpp:236 already guard via LlmClient::isPlaintextRemote; the v2 refactor didn't carry it. Fix once in LlmClient::send so all egress is covered. Detail: .indie-review/reports-2026-06-11/{auditdialog,coldeyesdialog}.md.
@@ -16074,13 +16094,27 @@ Framework: ctest · Files scanned: 416 · Dimensions: isolation, duplication, as
   Resolved 2026-07-03 (commit be6a1d8). Same 6-file abort-removal as ANTS-1467 closes the monolithic-TEST early-return masking residual; all sequential invariants now evaluate + report each run via ADD_FAILURE_AT.
   Kind: implement.
 
-- 📋 [ANTS-2066] **Wall-clock / real-sleep flakiness: real `sleep 1` subprocess + EXPECT_LT(durationSec,3.0), 200ms warm-spin, msleep+mtime ….**
+- ✅ [ANTS-2066] **Wall-clock / real-sleep flakiness: real `sleep 1` subprocess + EXPECT_LT(durationSec,3.0), 200ms warm-spin, msleep+mtime ….**
   - File: tests/features/mcp_verify_changes_timeout_headroom/test_mcp_verify_changes_timeout_headroom.cpp:65
   - Dimension: flakiness
   - Severity: HIGH
   - Fix: Replace wall-clock bounds and fixed sleeps with VerifyEngine test-doubles, readiness polling (lua_threading:101), and write-count/mock-clock side-channels (config_reload_loop_safety:146 mtime idempotency, token_usage_engine:50). Keep semantic checks; drop timing-dependent assertions or gate them behind a clock abstraction.
   Layman: Tests that rely on real pauses and stopwatch timings fail at random on a busy machine.
   Kind: implement.
+  Resolved (2026-09-04, 6067e0d1). The wall-clock upper bound
+  `EXPECT_LT(g->durationSec, 3.0)` is removed.
+
+  It could not fail honestly. The budget IS 3 s, so a run that genuinely
+  exceeded it was killed by the kill timer -- which the skippedReason and
+  exitCode assertions above it already catch, with a far better message. What
+  remained could fire only on a loaded runner in the narrow window before the
+  timer fired: a red with no defect behind it.
+
+  That is the same argument the file's own comment already gave for dropping
+  the wall-clock LOWER bound after the 2026-05-18 test audit. The upper bound
+  simply outlived it. The item's larger "VerifyEngine test-doubles" plan was
+  not needed: the semantic checks the file already carries are what prove the
+  gate completed naturally.
 
 - ✅ [ANTS-2067] **Too-loose / whitespace-fragile source-grep assertions: whole-file contains("A")&&contains("B") without proximity; hardco ….**
   - File: tests/features/mcp_workflow_state/test_mcp_workflow_state.cpp:1
@@ -16179,7 +16213,7 @@ Framework: ctest · Files scanned: 416 · Dimensions: isolation, duplication, as
   Kind: chore.
   Source: user-request-2026-06-27.
 
-- 📋 [ANTS-3573] **Harden token_usage_no_ci_diagnostic Inv4SuccessPathClean fixed 2000-byte window.**
+- ✅ [ANTS-3573] **Harden token_usage_no_ci_diagnostic Inv4SuccessPathClean fixed 2000-byte window.**
   tests/features/token_usage_no_ci_diagnostic Inv4SuccessPathClean
   windows `cpp.substr(pos, 2000)` from `env["ok"] = true;` and asserts
   `env["calls"]` is inside it. ANTS-3572 added four fields to
@@ -16194,6 +16228,21 @@ Framework: ctest · Files scanned: 416 · Dimensions: isolation, duplication, as
   **Layman:** A test checks the token-usage reply is built correctly by looking at a fixed-size chunk of code; adding a new field can push what it looks for out of view and falsely fail it.
   Kind: test.
   Source: in-session-2026-07-18 (noticed during ANTS-3572).
+  Resolved (2026-09-04, 6067e0d1). The fixed `cpp.substr(pos, 2000)` window is
+  replaced by the shared brace-matched slurpFunctionBody, which 54 test files
+  already use. A byte count slides `env["calls"]` out of view as the verb
+  grows and can also run past the function end; a brace-matched extract does
+  neither.
+
+  The new bound was CHARACTERISED rather than assumed. `env["debug"]` appears
+  nowhere in the tree, so INV-4's negative assertion is vacuous against
+  current source and a green run proved nothing about the region. Two
+  opposing mutations settled it: `env["debug"]` inside cmdTokenUsage's
+  success path goes RED, the same line in the following function stays GREEN.
+
+  Worth recording: the first attempt at the second mutation did not apply --
+  its anchor was not unique -- and the green that followed was discarded
+  rather than reported as evidence.
 
 ### 📝 Cold-eyes 2026-05-21
 
@@ -16898,13 +16947,29 @@ Framework: ctest · Files scanned: 269 · Dimensions: performance, flakiness, du
   Resolved (2026-06-06): test_project_layout_scan IsStaleOnMtimeAdvance — removed QThread::msleep(1100) (was racey + slow). isStale() compares each probed path's live mtime against cached.scannedAtMs, and the test already backdates scannedAtMs by 2000ms, so the file's existing seconds-granular mtime is strictly newer than the scan time — staleness fires deterministically with no wall-clock wait. Orphaned <QThread> include removed. Suite now 9ms (was >1.1s); 20/20 green. (NB: the bullet's filename was test_mcp_project_layout_scan.cpp; actual is test_project_layout_scan.cpp.)
   Kind: implement.
 
-- 📋 [ANTS-1472] **INV-1/INV-2 anchor to QDateTime::currentSecsSinceEpoch() without a frozen clock; runGit 10 s hard timeout is too tight for slow CI runners..**
+- ✅ [ANTS-1472] **INV-1/INV-2 anchor to QDateTime::currentSecsSinceEpoch() without a frozen clock; runGit 10 s hard timeout is too tight for slow CI runners..**
   - File: tests/features/roadmap_inprogress_age/test_roadmap_inprogress_age.cpp:87
   - Dimension: flakiness
   - Severity: HIGH
   - Fix:
   Layman: Two tests depend on the real clock and a tight time limit, so they can fail on a slow machine for no real reason.
   Kind: implement.
+  Resolved (2026-09-04, 6067e0d1). One half fixed, and the other half is not a
+  defect -- checked rather than taken from the headline.
+
+  FIXED: runGit's `waitForFinished(10000)` goes to 60 s. A cold-cache git on a
+  loaded runner can exceed 10 s, and that timeout failing looks exactly like a
+  broken fixture. A generous bound costs nothing when git is fast.
+
+  NOT A DEFECT: the headline says INV-1/INV-2 anchor to
+  QDateTime::currentSecsSinceEpoch() without a frozen clock. They do, and it
+  cannot flake. The fixture sets lastTouch to `now - 3*86400` and the renderer
+  reads its OWN later `now`, so the computed age is 3 days plus the elapsed
+  delta -- it only ever grows past the boundary the assertion needs, never
+  below it. A frozen clock would change nothing.
+
+  The item's `Fix:` field was empty, so there was nothing to follow but the
+  code. Recorded here so the next reader does not re-derive it.
 
 - 📋 [ANTS-1473] **Multiple tests mutate process-global env (XDG_CONFIG_HOME, HOME, PATH) without RAII restore — leaks state to subsequent TESTs in the same binary..**
   - File: tests/features/*:0
