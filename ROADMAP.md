@@ -50263,6 +50263,38 @@ two projects).
   Source: UT_Ants_MCP_Feedback.md 2026-09-04.
   Lanes: mcp.
 
+- 📋 [ANTS-4863] **roadmap_log's description says only create_section refuses on pass-headings; amend_body refuses too.**
+  Found by a cold review lane on docs/standards/mcp-tools.md, and it resolves
+  the OPPOSITE way to the one the lane proposed.
+
+  The wire description in src/claudeintegration.cpp says of a pass-headings
+  roadmap that append/append_batch/flip/flip_batch/annotate now write "(only
+  create_section still refuses)". That parenthetical is false.
+  rcBulletsArePassHeadings gates the amend/set-body path in
+  src/remotecontrol_roadmap_log.cpp and returns unsupported_format with
+  "op:\"%1\" is not supported on pass-headings roadmaps", so amend_body
+  refuses there as well.
+
+  VERIFIED against the code rather than settled between the two documents.
+  mcp-tools.md § 6a is CORRECT and was not changed; the description is what
+  is wrong. A lane reading only the description proposed dropping amend_body
+  from the standard, which would have corrupted a correct rule — the reason
+  that finding was verified before being acted on.
+
+  Why it matters beyond the wording: § 6a tells an author to derive their own
+  verb's refusal-code test from these worked instances, and amend_body is the
+  standard's only concrete instance of the unwritable-route branch. An author
+  trusting the description would conclude that branch has no live example.
+
+  Fix: correct the parenthetical to name every op that still refuses on that
+  format. Check the store-backed route too — ANTS-4803 moved the
+  pass-headings dialect to the store, and the refusal above is on the
+  markdown path.
+  **Layman:** The roadmap tool's own help text names the wrong list of operations that refuse to work on one kind of roadmap file.
+  Kind: fix.
+  Source: review-contract-mcp-tools-2026-09-04 loop 3.
+  Lanes: mcp, remotecontrol.
+
 ### 🎨 UI polish (user request 2026-09-04)
 
 - ✅ [ANTS-4862] **The tab-colour context menu shows which colour the tab is currently set to.**
