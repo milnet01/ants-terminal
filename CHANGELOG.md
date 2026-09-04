@@ -257,6 +257,12 @@ for security-relevant changes.
 
 ### Changed
 
+- **amend_body's not-found refusal now shows the text it searched** (ANTS-4807)
+  The refusal echoes the stored body's tail and its length, and says
+  plainly that this is the text being matched against and not what
+  roadmap_query returns. A caller comparing their search string to that
+  echoed tail gets in one call what three rounds of guesswork could not.
+
 - **Right-clicking a tab now shows which colour that tab is currently set to.** (ANTS-4862)
   The palette listed 26 colours and marked none of them, so there was no way
   to read the current setting with the menu covering the tab. The active
@@ -349,6 +355,20 @@ for security-relevant changes.
   `Inv2BypassesStatusAndPagination` anchored on a string that also matches an earlier `else if`, so its byte window opened above the branch it names — a test that passes from the wrong position gives no signal when the thing it names moves. Re-anchored on a needle that occurs once, and proved by mutation in both directions.
 
 ### Fixed
+
+- **Session preamble now reports when the installed hooks have drifted from the repo** (ANTS-4516)
+  Fixes to the helper hooks could be written, tested and green while the
+  installed copies stayed a month stale, with nothing saying so. One
+  preamble line now names the stale hooks and the command that installs
+  them. It reports rather than writing to the hook directory at launch.
+
+- **spec_log op:append_loop no longer corrupts a table-form review log** (ANTS-3685)
+  It appended a bullet after the last table row whatever shape the log
+  was in. It now detects a table, takes the row's cells, checks them
+  against the header's column count, and refuses rather than writing a
+  row that breaks the table. Row order is inferred too, so a row lands
+  at the end the log actually runs from. Shipped under ANTS-4364 and
+  ANTS-4353.
 
 - **Tab-colour menu now ticks the colour the tab is already on** (ANTS-4864)
   The active entry gets a tick drawn into its swatch plus a checkmark on

@@ -11386,6 +11386,8 @@ fixes don't address. Roadmapped here as their own design tasks.
   finding in that corpus. No code or doc change made here; nothing to
   add to the CHANGELOG, since whatever pass repaired the ToC shipped
   under its own id.
+  Release note (2026-09-04): no CHANGELOG entry, deliberately — a spec's
+  table of contents repaired. Internal document.
 
 - ✅ [ANTS-3668] **`find_definition` cannot resolve C++ data members, enumerators or response-field names.**
   `SymbolQuery::buildAnchors` builds exactly three C++ definition patterns: a
@@ -11705,6 +11707,9 @@ fixes don't address. Roadmapped here as their own design tasks.
   item's own measurement was that ANTS-1894.md:851 was the corpus's ONLY
   one. The item's warning held — the drafted CHANGELOG entry was not
   rewritten to quiet the linter.
+  Release note (2026-09-04): no CHANGELOG entry, deliberately — the fix
+  shipped under ANTS-4642, which the CHANGELOG already cites. A second
+  bullet would report one change twice.
 
 - ✅ [ANTS-3676] **parseSpecBody splits an invariant body at a clause marker written inside a code span.**
   `SpecParse::parseSpecBody` locates an invariant's test-surface clause by
@@ -12259,6 +12264,8 @@ fixes don't address. Roadmapped here as their own design tasks.
   Left open for weeks after it was fixed, which is the ledger drift worth
   noting: this was found by re-verifying an aged backlog item rather than
   by anyone hitting it.
+  Release note (2026-09-04): no CHANGELOG entry, deliberately — the fix
+  shipped under ANTS-4524, which the CHANGELOG already cites.
 
 - ✅ [ANTS-3687] **`codebase_index` omits the `doccitations` lane while its five siblings are present.**
   `codebase_index {lane:"doccitations"}` returns `found:false`, and the
@@ -12438,6 +12445,9 @@ fixes don't address. Roadmapped here as their own design tasks.
   caller supplies the globs. Verified against src/docdedup.h rather than
   taken from the report: the member is there and the block omitted it, so
   the consumer spec documented a member the producer spec did not.
+  Release note (2026-09-04): no CHANGELOG entry, deliberately — a spec's
+  Options block brought back in line with the header it documents.
+  Internal document.
 
 - ✅ [ANTS-3691] **`doc_dedup` and `spec_lint` state no finding-emission order, which ANTS-3663 INV-7 depends on.**
   ANTS-3663 INV-7 makes findings totally ordered, with the producer's own
@@ -12477,6 +12487,8 @@ fixes don't address. Roadmapped here as their own design tasks.
   Both specs come back clean from spec_lint, including ANTS-4623's new
   parity check — which is what confirmed each new invariant also got its
   row in the Tests table.
+  Release note (2026-09-04): no CHANGELOG entry, deliberately — states
+  an emission order two verbs already had. Internal document.
 
 - ✅ [ANTS-3692] **`doc_symbols` harvests bare lowercase words — the 291-occurrence residue ANTS-3688 did not cover.**
   ANTS-3688 fixed the verb-name half and is confirmed live by probe
@@ -14923,6 +14935,8 @@ apiKey-from-config, secretredact.h filename, openUrl internal URL, trigger sh
 
   The item's file:line had drifted by ~450 lines, which is why the text
   rather than the location was the anchor.
+  Release note (2026-09-04): no CHANGELOG entry, deliberately — a stale
+  source comment corrected. No behaviour.
 
 ### 🔬 Test-suite audit fold-in (2026-05-15)
 
@@ -16146,6 +16160,8 @@ Framework: ctest · Files scanned: 416 · Dimensions: isolation, duplication, as
   simply outlived it. The item's larger "VerifyEngine test-doubles" plan was
   not needed: the semantic checks the file already carries are what prove the
   gate completed naturally.
+  Release note (2026-09-04): no CHANGELOG entry, deliberately — removes
+  wall-clock flakiness from the suite. Test infrastructure only.
 
 - ✅ [ANTS-2067] **Too-loose / whitespace-fragile source-grep assertions: whole-file contains("A")&&contains("B") without proximity; hardco ….**
   - File: tests/features/mcp_workflow_state/test_mcp_workflow_state.cpp:1
@@ -16274,6 +16290,8 @@ Framework: ctest · Files scanned: 416 · Dimensions: isolation, duplication, as
   Worth recording: the first attempt at the second mutation did not apply --
   its anchor was not unique -- and the green that followed was discarded
   rather than reported as evidence.
+  Release note (2026-09-04): no CHANGELOG entry, deliberately — hardens
+  one test's byte window. Test infrastructure only.
 
 ### 📝 Cold-eyes 2026-05-21
 
@@ -17001,6 +17019,9 @@ Framework: ctest · Files scanned: 269 · Dimensions: performance, flakiness, du
 
   The item's `Fix:` field was empty, so there was nothing to follow but the
   code. Recorded here so the next reader does not re-derive it.
+  Release note (2026-09-04): no CHANGELOG entry, deliberately — a
+  test-harness change (frozen clock for two invariants). Nothing a user
+  or packager can observe.
 
 - 📋 [ANTS-1473] **Multiple tests mutate process-global env (XDG_CONFIG_HOME, HOME, PATH) without RAII restore — leaks state to subsequent TESTs in the same binary..**
   - File: tests/features/*:0
@@ -37163,6 +37184,8 @@ whole files.
 
   Left open after its fix landed. The lesson is the standing one about
   re-measuring an item's stated facts before implementing to them.
+  Release note (2026-09-04): no CHANGELOG entry, deliberately — the fix
+  shipped under ANTS-3678, which the CHANGELOG already cites.
 
 - ✅ [ANTS-4450] **`rcEscapeUnclosedFence` kept a hand-rolled fence toggle and splices a backslash into user prose.**
   `src/remotecontrol.cpp:1001-1022` still uses its own toggle
@@ -51128,6 +51151,8 @@ volume classes, and the tooling/documentation gaps the run exposed.
   The numbers now live at the setting itself so the question is not
   reopened from the old reasoning. The fast preset's link_pool=2 is
   harmless and buys about 0.1 s.
+  Release note (2026-09-04): no CHANGELOG entry, deliberately — a
+  build-tuning measurement, not a shipped change.
   **Layman:** The build links one program at a time on purpose. That rule was set before we switched to a much faster linker, so it may now be costing time for no reason -- or still be right. Nobody has checked.
   Kind: investigate.
   Source: in-session-2026-09-02.
@@ -54849,6 +54874,8 @@ defect from different angles.
   own gate.
 
   Gate confirms: 13 mirrors in sync, 0 skipped, links resolve.
+  Release note (2026-09-04): no CHANGELOG entry, deliberately —
+  cross-references between the mirrored standards. Internal documents.
 
 - ✅ [ANTS-4346] **find_definition resolves no C++ namespace, and the ANTS-1950 stem-hint rescue is case-sensitive — so on this codebase's own naming convention the caller gets an empty result AND no nudge.**
   VERIFIED by running it, twice, while settling ANTS-3747's routing question.
