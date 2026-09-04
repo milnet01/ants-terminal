@@ -799,6 +799,24 @@ SSH key registered there.
   Kind: fix.
   Source: in-session-2026-08-02 (Mageia_10 build, first run to reach the suite).
 
+- ✅ [ANTS-4870] **The Qt version guard assumed qconfig.h carries QT_VERSION_STR, so every Fedora OBS build failed.**
+  Measured on home:milnet:ants-terminal, Fedora_44 x86_64, v0.7.107: the build stops at step 7 of 815 with "Qt version guard: no QT_VERSION_STR in '/usr/include/qt6/QtCore/qconfig.h'". Tumbleweed, Leap 16.0 and Mageia 10 all succeed, because on those distros the define IS in qconfig.h. Fedora 44's Qt 6.10.2 puts it elsewhere.
+
+  The guard behaved correctly. ANTS-4625 built it to REFUSE when it cannot read its input, precisely so "found nothing wrong" and "could not look" are never the same outcome, and that is what it did. The defect is upstream of it: CMakeLists hardcoded `find_file(qconfig.h)` and handed the guard a file that, on that distro, never carried the answer.
+
+  Which header carries QT_VERSION_STR is a distro packaging choice, not an upstream guarantee. So the header is now resolved at CONFIGURE time and the guard is handed whatever actually defines it. Named candidates first — qconfig.h, qtversionchecks.h, qtversion.h, qglobal.h — and a candidate that exists but lacks the define is rejected rather than accepted on its name.
+
+  Behind that sits a scan of the Qt include dirs, because the named list is informed by two distros and is not a contract: a third can put the define in a file none of them names, and a wrong guess reproduces this failure under a different filename. The scan costs a few hundred small reads once at configure time and nothing per build. Results are sorted so the choice is deterministic across machines.
+
+  The guard SCRIPT is untouched, so INV-1 to INV-6 are unaffected and all five tests still pass. Where no header defines it, ANTS_QCONFIG_H stays unset and the existing loud configure-time WARNING fires — a guard that cannot be pointed at anything is still never silently wired.
+
+  Verified two ways here, neither of them a Fedora build. Locally the fast path still resolves qconfig.h and the guard passes, so behaviour on this machine is unchanged. And the scan branch — which never runs on this machine — was exercised against a fixture Qt tree whose define sits in an unnamed header: the named pass correctly rejects the version-less qconfig.h, the scan finds the other file, and the guard reads it and passes.
+
+  NOT verified: an actual Fedora 44 build. That proof is the next OBS run.
+  **Layman:** Our Fedora package had been failing to build because a safety check was looking in the wrong file for Qt's version number.
+  Kind: fix.
+  Source: in-session-2026-09-04 (OBS build sweep after the v0.7.107 promote).
+
 ### P4 — Fedora COPR
 
 **Prerequisites:** H5 ✅ — and the spec is now Fedora-compatible in fact,
