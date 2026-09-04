@@ -350,6 +350,12 @@ for security-relevant changes.
 
 ### Fixed
 
+- **A plugin that reaches its memory limit can no longer take the terminal down with it.** (ANTS-4442)
+  Sending an event to a plugin already at its 10 MB budget crashed the whole
+  terminal, which is exactly what the plugin documentation promises cannot
+  happen. The event data is now prepared inside a protected call, so the
+  plugin is told it ran out of memory and the terminal carries on.
+
 - **SECURITY.md now lists the link schemes the terminal actually accepts.** (ANTS-4453)
   Hyperlinks are limited to http, https and mailto. The document promised
   ftp and file as well, which the code has never accepted at these sites.

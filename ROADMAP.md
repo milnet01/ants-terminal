@@ -36725,7 +36725,7 @@ whole files.
   Source: cold-sweep-2026-08-18 lane lua-sandbox (VERIFIED in-session).
   Lanes: luaengine.
 
-- 📋 [ANTS-4442] **A plugin at its documented heap budget can `abort()` the terminal from unprotected Lua pushes.**
+- ✅ [ANTS-4442] **A plugin at its documented heap budget can `abort()` the terminal from unprotected Lua pushes.**
   `src/luaengine.cpp:489-490` runs `lua_rawgeti` + `lua_pushstring` OUTSIDE
   any protected call — `lua_pcall` only starts at `:492`. `lua_pushstring`
   allocates, the custom allocator returns NULL at the cap, Lua raises a memory
@@ -36742,6 +36742,36 @@ whole files.
   Kind: fix.
   Source: cold-sweep-2026-08-18 lane lua-sandbox (VERIFIED in-session).
   Lanes: luaengine.
+  Resolved (2026-09-04). fireEvent's two pushes now happen inside a protected
+  call: luaPushHandlerAndArg does the lua_rawgeti and lua_pushlstring, and is
+  entered through lua_pcall.
+
+  Setting that frame up cannot itself raise, which is what makes the fix
+  possible at all. lua_checkstack reports failure by returning 0, and pushing
+  a C function with no upvalues, or a light userdata, stores a value directly
+  without allocating a Lua object.
+
+  REPRODUCED before fixing, rather than reasoned about. Reverting the pushes
+  and running the new test gave SIGABRT with the stack
+  lua_pushstring -> LuaEngine::fireEvent -> abort, out of liblua5.4. That is
+  the item's claim exactly, and it confirms the panic handler's own comment:
+  a non-jump return from atpanic is still fatal.
+
+  runQuery is NOT affected and was checked: it loads through
+  luaL_loadbufferx, which returns LUA_ERRMEM rather than raising.
+  registerApi's two pushes are also unprotected, but run at init when the
+  budget is empty; left alone rather than swept.
+
+  Test: tests/features/lua_oom_event_dispatch, five invariants. The
+  behavioural ones drive a real 10 MiB budget — a plugin holds 8 MiB, then an
+  event carrying 3 MiB is dispatched. INV-3 is the one worth having: a later
+  small event still reaches the handler, which proves the failure path left
+  the Lua stack balanced rather than one value deep.
+
+  One claim in the test header was written wrong and corrected after
+  measuring: the abort does NOT take the shared bundle with it. ctest launches
+  each registered test as its own process, so the red costs no sibling.
+  Suite 4159 -> 4161.
 
 - ✅ [ANTS-4443] **`doc_symbols` `qualified` counter is structurally always zero.**
   `src/docsymbols.cpp:259` classifies an unresolved span as `qualified` by
