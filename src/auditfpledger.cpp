@@ -45,13 +45,12 @@ bool Entry::isValid() const {
 QString computeFingerprint(const QString &file,
                            const QString &checkId,
                            const QString &message) {
-    // The single-arg .arg() chain mirrors computeDedup's escape-safety note:
-    // a literal "%2"/"%3" inside file/message must not be read as a
-    // placeholder.
+    // ANTS-4452 — multi-arg .arg() substitutes in ONE pass, so a literal
+    // "%2"/"%3" inside `file` is never re-read as a placeholder. The
+    // chained single-arg form is the one that would be, which is the
+    // opposite of what this comment used to say. Mirrors computeDedup.
     const QString raw = QString(QStringLiteral("%1|%2|%3"))
-                            .arg(file)
-                            .arg(checkId)
-                            .arg(stripLocation(message));
+                            .arg(file, checkId, stripLocation(message));
     return QString::fromLatin1(
         QCryptographicHash::hash(raw.toUtf8(), QCryptographicHash::Sha256)
             .toHex()
