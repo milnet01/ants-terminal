@@ -36847,7 +36847,7 @@ whole files.
   Test: tests/features/audit_learned_fp_filtering, five invariants, both
   parts red-proven separately. Suite 4161 -> 4163.
 
-- 📋 [ANTS-4445] **Test-audit "Per-finding (allocate ROADMAP IDs)" fold-in fails on every attempt.**
+- ✅ [ANTS-4445] **Test-audit "Per-finding (allocate ROADMAP IDs)" fold-in fails on every attempt.**
   `TestAuditDialog::setActionable` (`src/testauditdialog.h:60`) is the only
   writer of `m_actionable`, and its only caller in the tree is
   `tests/features/test_audit_dialog/test_test_audit_dialog.cpp:196` — there is
@@ -36862,6 +36862,40 @@ whole files.
   Kind: fix.
   Source: cold-sweep-2026-08-18 lane review-dialogs (VERIFIED in-session).
   Lanes: testauditdialog.
+  Resolved (2026-09-04). Took the item's first option — wire a production
+  parser — rather than removing the radio.
+
+  TestAuditEngine::parseActionableFindings reads the shape the dialog's OWN
+  system prompt asks the reviewer for (`- [SEV] file:line — description`
+  under `## <Dimension>` headers) and returns the keys foldIn consumes:
+  dimension, severity, file, line, summary. performFoldIn now parses
+  m_collectedReports; an explicitly-set m_actionable still wins, so the test
+  seam is unchanged.
+
+  DELIBERATELY ADDITIVE rather than an extension of synthesize()'s histogram
+  walk. That walk recognises three finding shapes across a 64 KiB window per
+  chunk and is pinned by several tests; this needs the field values rather
+  than the counts, and new code cannot destabilise it. That choice is what
+  made the item a bounded fix instead of a rewrite.
+
+  Also fixed, and the real UX half: when nothing parses, the dialog now says
+  the reports carried no finding in the expected shape and points at
+  Narrative mode, instead of letting the engine's generic "Fold-in failed"
+  stand in for it.
+
+  Verification note: the parser accepts an em dash, an en dash and a plain
+  hyphen. Rejecting a real finding over its punctuation would rebuild the
+  silent-empty-array failure this removes.
+
+  Test: tests/features/test_audit_actionable_parse, six invariants, all
+  behavioural. Red-proven by making the parser return empty — the pre-fix
+  behaviour — which fails five and correctly leaves INV-6, the negative
+  control asserting an empty result, green.
+
+  One self-inflicted defect caught: two invariants built their input with
+  QStringLiteral over \x UTF-8 escapes, which does not decode them, so the
+  parser was handed mangled bytes. QString::fromUtf8 throughout. Suite
+  4163 -> 4169.
 
 - ✅ [ANTS-4446] **ETag 304 short-circuit turns a repeated MCP refusal into `ok:true`.**
   `ClaudeIntegration::applyEtagPattern` (`src/claudeintegration.cpp:13590`)

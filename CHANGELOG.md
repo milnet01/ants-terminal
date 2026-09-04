@@ -350,6 +350,13 @@ for security-relevant changes.
 
 ### Fixed
 
+- **The test-audit dialog's "Per-finding" fold-in now works.** (ANTS-4445)
+  Choosing Per-finding reported a failure every time: nothing ever collected
+  the findings it needed. The reviewer's reports are now read into findings
+  and folded in with roadmap IDs allocated. When a report carries no findings
+  in the expected form, the dialog says so and points at Narrative mode
+  instead of reporting a failure.
+
 - **Dismissing an audit finding as a false positive now actually hides it.** (ANTS-4444)
   A dismissed finding was remembered, but it kept appearing in the results
   list, the summary counts, the HTML and SARIF exports and the roadmap
