@@ -1878,6 +1878,8 @@ if(ANTS_TESTS)
                 tests/features/test_audit_pagination_prepass/test_pagination_prepass.cpp
                 # ANTS-1451 walkTestFiles build-tree exclusions.
                 tests/features/test_audit_walk_exclusions/test_walk_exclusions.cpp
+                # ANTS-4445 — Per-finding fold-in's missing production parser.
+                tests/features/test_audit_actionable_parse/test_actionable_parse.cpp
                 # ANTS-1624 libcheck C-unit framework detection.
                 tests/features/test_audit_libcheck_detection/test_libcheck_detection.cpp
                 # ANTS-1623 polyglot framework detection + ANTS-1627

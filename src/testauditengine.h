@@ -253,6 +253,21 @@ BriefResult     brief(const BriefRequest &req);
 SynthResult     synthesize(const SynthRequest &req);
 FoldInResult    foldIn(const FoldInRequest &req);
 
+// ANTS-4445 — parse collected chunk reports into FoldInRequest::actionable.
+//
+// Per-finding fold-in had no production writer for that array at all: its
+// only setter's only caller was a test, so the mode shipped and refused
+// every attempt. This reads the shape the dialog's OWN system prompt asks
+// for — `- [SEV] file:line — description` grouped under `## <Dimension>`
+// headers — and returns [{dimension, severity, file, line, summary}, ...],
+// the keys foldIn() consumes.
+//
+// Deliberately separate from synthesize()'s histogram walk rather than an
+// extension of it. That walk counts three finding shapes across a 64 KiB
+// window per chunk and is pinned by several tests; this needs the field
+// values, not the counts, and additive code cannot destabilise it.
+QJsonArray      parseActionableFindings(const QStringList &reports);
+
 // ANTS-1513 — recheck a deferred finding's cite before picking the work
 // back up days later. Parses ROADMAP.md for the bullet `[<findingId>]`,
 // pulls the first `path:line` cite out of its body, and reports whether

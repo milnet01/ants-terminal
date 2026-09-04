@@ -376,8 +376,33 @@ void TestAuditDialog::performFoldIn() {
         fr.narrativeMode = true;
         fr.narrativeMd   = m_narrative;
     } else {
-        fr.actionable   = m_actionable;
-        fr.rawFindings  = m_actionable.size();
+        // ANTS-4445 — m_actionable had no production writer: its only setter's
+        // only caller is a test, so this arm always sent an empty array and
+        // the engine refused every attempt. Parse the collected chunk reports
+        // instead, and keep an explicitly-set array winning so the test seam
+        // still works.
+        QJsonArray actionable = m_actionable;
+        if (actionable.isEmpty()) {
+            QStringList reports;
+            reports.reserve(m_collectedReports.size());
+            for (auto it = m_collectedReports.cbegin();
+                 it != m_collectedReports.cend(); ++it)
+                reports << it.value();
+            actionable = TestAuditEngine::parseActionableFindings(reports);
+        }
+        if (actionable.isEmpty()) {
+            // Say WHY rather than letting the engine's generic refusal stand
+            // in for it — the reader needs to know the reports carried no
+            // finding in the shape the review was asked to produce.
+            if (statusLabel())
+                statusLabel()->setText(tr(
+                    "No per-finding results in the collected reports — "
+                    "expected `- [SEV] file:line — description` lines. "
+                    "Switch to Narrative, or re-run the review."));
+            return;
+        }
+        fr.actionable   = actionable;
+        fr.rawFindings  = actionable.size();
     }
     // The engine owns ID allocation + insert (testauditengine.h:21) — do
     // NOT call the base allocateFoldInIds / insertFoldInBlock helpers here

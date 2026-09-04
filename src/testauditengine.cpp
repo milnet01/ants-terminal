@@ -2267,4 +2267,65 @@ RecheckResult recheck(const RecheckRequest &req) {
     return r;
 }
 
+// ANTS-4445 — see the header for why this is additive rather than an
+// extension of synthesize()'s histogram walk.
+QJsonArray parseActionableFindings(const QStringList &reports) {
+    // `- [SEV] file:line — description`, the shape testAuditSystemPrompt
+    // asks for. The separator is an em dash there, but a model asked for one
+    // routinely writes a hyphen or an en dash, so all three are accepted:
+    // rejecting a finding over its punctuation would reproduce the silent
+    // empty-array failure this fixes.
+    //
+    // `\S+` before the colon is greedy, so a path that itself contains a
+    // colon keeps all of it and only the trailing :<digits> is the line.
+    static const QRegularExpression findingRx(QStringLiteral(
+        "^\\s*-\\s*\\[(CRIT|CRITICAL|HIGH|MED|MEDIUM|LOW|INFO)\\]\\s*"
+        "(\\S+):(\\d+)\\s*(?:—|–|--|-)\\s*(.+?)\\s*$"));
+    static const QRegularExpression headerRx(
+        QStringLiteral("^#{2,3}\\s+(.+?)\\s*$"));
+    // Trailing `(N)` count and any leading emoji in `## \U0001F9EA Naming (7)`.
+    static const QRegularExpression trailingCountRx(
+        QStringLiteral("\\s*\\(\\d+\\)\\s*$"));
+
+    auto sevCanonical = [](QString sev) -> QString {
+        sev = sev.toLower();
+        if (sev == QLatin1String("critical")) return QStringLiteral("crit");
+        if (sev == QLatin1String("medium"))   return QStringLiteral("med");
+        return sev;
+    };
+
+    QJsonArray out;
+    for (const QString &report : reports) {
+        QString curDim;
+        const QStringList lines = report.split(QChar('\n'));
+        for (const QString &line : lines) {
+            const QRegularExpressionMatch h = headerRx.match(line);
+            if (h.hasMatch()) {
+                QString text = h.captured(1);
+                text.remove(trailingCountRx);
+                // Canonicalise against the known dimensions so cosmetic
+                // differences in skill prose do not fragment the field.
+                QString canon;
+                for (const QString &d : g_kDimensions()) {
+                    if (text.contains(d, Qt::CaseInsensitive)) { canon = d; break; }
+                }
+                curDim = canon.isEmpty() ? text.trimmed() : canon;
+                continue;
+            }
+            const QRegularExpressionMatch m = findingRx.match(line);
+            if (!m.hasMatch()) continue;
+            const QString summary = m.captured(4).trimmed();
+            if (summary.isEmpty()) continue;   // no headline -> foldIn refuses
+            QJsonObject f;
+            f[QStringLiteral("dimension")] = curDim;
+            f[QStringLiteral("severity")]  = sevCanonical(m.captured(1));
+            f[QStringLiteral("file")]      = m.captured(2);
+            f[QStringLiteral("line")]      = m.captured(3).toInt();
+            f[QStringLiteral("summary")]   = summary;
+            out.append(f);
+        }
+    }
+    return out;
+}
+
 }  // namespace TestAuditEngine
