@@ -91,6 +91,33 @@ TEST(McpProjection, Inv4UnknownFieldEmptyNotError) {
     EXPECT_FALSE(exact.contains(QStringLiteral("fields_unmatched")));
 }
 
+// ANTS-4877 — a success narrowed to nothing still says it succeeded.
+TEST(McpProjection, AllUnmatchedSuccessKeepsOk) {
+    // The defect: `{"fields_unmatched":["nope"]}` alone carries no `ok`, so a
+    // caller cannot tell a working call whose names were all wrong from a call
+    // that produced no envelope at all. Measured against read_spill.
+    const QJsonObject none =
+        parse(mcp::projectFields(kBody, fields({"nonexistent"})));
+    ASSERT_TRUE(none.contains(QStringLiteral("ok")))
+        << "an all-unmatched success must still say it succeeded";
+    EXPECT_TRUE(none.value(QStringLiteral("ok")).toBool());
+    EXPECT_EQ(none.value(QStringLiteral("fields_unmatched")).toArray(),
+              (QJsonArray{QStringLiteral("nonexistent")}))
+        << "and must still name what it could not find";
+
+    // The floor is not a licence to re-add `ok` everywhere: a PARTIAL match
+    // already proves the call succeeded, so it stays byte-identical.
+    const QJsonObject partial =
+        parse(mcp::projectFields(kBody, fields({"count", "nope"})));
+    EXPECT_FALSE(partial.contains(QStringLiteral("ok")))
+        << "a matched field is its own proof; do not add ok as well";
+
+    // A caller who asks for `ok` by name gets it once, not twice.
+    const QJsonObject asked =
+        parse(mcp::projectFields(kBody, fields({"ok", "nope"})));
+    EXPECT_TRUE(asked.value(QStringLiteral("ok")).toBool());
+}
+
 // INV-5 — non-string / empty entries are ignored, not faulted.
 TEST(McpProjection, Inv5NonStringEntriesIgnored) {
     QJsonArray mixed;

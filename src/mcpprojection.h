@@ -66,6 +66,12 @@ bool isProtectedCompactKey(const QString &key);
 //   - field present in source           -> copied verbatim.
 //   - field absent / non-string / empty -> omitted, and NAMED in
 //                                          `fields_unmatched` (ANTS-4567).
+//   - NO requested field matched        -> `ok` is carried, so a narrowed
+//                                          success is distinguishable from a
+//                                          call that produced no envelope
+//                                          (ANTS-4877). A partial match needs
+//                                          no floor: the matched field proves
+//                                          the call succeeded.
 //   - refusal (`ok:false`)              -> the refusal floor is carried
 //                                          verbatim whatever `fields` names.
 //   - a 304 envelope (`unchanged:true`) -> returned unchanged: there is no

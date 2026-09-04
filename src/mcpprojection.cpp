@@ -220,6 +220,9 @@ QString projectFields(const QString &responseText, const QJsonArray &fields) {
         if (!name.isEmpty() && src.contains(name))
             out.insert(name, src.value(name));
     }
+    // ANTS-4877 — read before `fields_unmatched` lands, so it means "not one
+    // requested field matched" rather than "the reply is empty".
+    const bool matchedNothing = out.isEmpty();
     // ANTS-4567 — name the requested fields the envelope did NOT carry, so an
     // absence can be read positively. A caller probing read_region narrowed to
     // a set that happened to be entirely inapplicable and got back
@@ -242,6 +245,21 @@ QString projectFields(const QString &responseText, const QJsonArray &fields) {
     }
     if (!unmatched.isEmpty())
         out.insert(QStringLiteral("fields_unmatched"), unmatched);
+    // ANTS-4877 — a fourth floor, and the narrowest: when NOT ONE requested
+    // field matched, carry `ok`. The floors below cover a refusal and a
+    // diagnostic, and the 304 returned above; a SUCCESS narrowed to nothing
+    // was left emitting `{"fields_unmatched":[...]}` alone, carrying no `ok`.
+    // That is byte-indistinguishable from a call that produced no envelope, so
+    // the caller cannot tell "it worked and your names were wrong" from "it
+    // did not work". ANTS-4567 chose this shape over the older `{}` and fixed
+    // the naming half; the success flag is the half it left.
+    //
+    // Fires ONLY when nothing matched. Where one name landed and another did
+    // not, the matched field is itself proof the call succeeded, so those
+    // replies stay byte-identical — as does an exactly matching request, which
+    // INV-4 pins.
+    if (matchedNothing && src.contains(QStringLiteral("ok")))
+        out.insert(QStringLiteral("ok"), src.value(QStringLiteral("ok")));
     // ANTS-2112 — never blank a refusal. A fields=-narrowed read that hits a
     // rate-limit / validation refusal carries its error in ok/code/error/
     // retry_after_ms — none of which the caller's fields= would name — so the
