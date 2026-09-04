@@ -2,15 +2,16 @@
 
 Deltas only. Everything not named here follows
 `~/.claude/standards/versioning.md` unmodified. It holds the two answers
-that standard requires of a `0.x` project — § 3's breaking surfaces and
-§ 4's `1.0` exit condition, which the global standards index pins to
-this path — **and one override of § 4's level rule**, below.
+that standard requires — § 3's breaking surfaces, asked of every
+project, and § 4's `1.0` exit condition, asked of a `0.x` one — which
+the global standards index pins to this path, **and one override of
+§ 4's level rule**, below.
 
 ## The `1.0` exit condition
 
-> **MAJOR stays `0` until the `ants.*` plugin API is frozen under
-> [ANTS-1084]'s stability pledge, and a second maintainer holds commit
-> rights — the bus-factor half of [ANTS-1088].**
+> **MAJOR stays `0` until [ANTS-1084] is shipped — the `ants.*` API
+> carrying its stability pledge — and a second maintainer holds commit
+> rights, the bus-factor half of [ANTS-1088].**
 
 **The governance doc [ANTS-1088] also names is deliberately not part of
 the gate.** The bar is commit rights. Cite the item for the bus factor
@@ -18,7 +19,7 @@ only; a `1.0` is not held for the document.
 
 Both halves are observable by someone else, which is what § 4 asks for in
 place of a judgement about maturity. Both are already items under
-`ROADMAP.md` § 1.0.0, whose theme is the API freeze.
+`ROADMAP.md` § 1.0.0.
 
 The bus-factor half is not ceremony: distributions treat a
 single-maintainer project as a risk, and this project is packaged for
@@ -114,13 +115,15 @@ Named because over-caution costs as much as carelessness.
 
 `versioning.md` § 3's rule, repeated rather than cited because this list
 is new. If a user relies on something and an upgrade stops it working,
-that release was breaking whether or not this file mentions it.
+that release was breaking whether or not this file names it. **It fires
+on a surface this file has not considered — not on one the section above
+deliberately excludes.**
 
 ## What checks this
 
 | Claim | What checks it |
 |---|---|
-| A release's level matches what it changed | Nothing. `cut-release` does not choose the level, and its `Added`-forbids-a-PATCH floor is skipped while MAJOR is `0`. |
+| A release's level matches the milestone rule above | Nothing. `cut-release` does not choose the level, and its `Added`-forbids-a-PATCH floor is skipped while MAJOR is `0`. |
 | The milestone table matches `ROADMAP.md`'s sections | Nothing. Both have to be changed together. |
 | A breaking change reached the CHANGELOG | Nothing automated. The override above makes this the only carrier, so it rests on review. |
 | The store schema is a one-way door | `RoadmapStore::open()` enforces the refusal itself. |
