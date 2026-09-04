@@ -1241,7 +1241,7 @@ QList<Finding> detectDepPinMismatch(
         if (manifestSet.contains(rel)) continue;
         for (const detail::VersionPin &p : detail::extractVersionPins(
                  slurpUtf8(projectPath + QChar('/') + rel))) {
-            const QString where = QStringLiteral("%1:%2").arg(rel).arg(p.line);
+            const QString where = QStringLiteral("%1:%2").arg(rel, QString::number(p.line));
             const auto rec = pinOfRecord.constFind(p.package);
             if (rec != pinOfRecord.constEnd()) {
                 if (rec->first == p.version) continue;   // in step

@@ -501,7 +501,8 @@ QList<Lane> deriveComputedPartition(const QString &projectPath,
         for (int p = 0; p < parts; ++p) {
             Lane l;
             l.name = parts > 1
-                ? QStringLiteral("%1 (%2/%3)").arg(it.key()).arg(p + 1).arg(parts)
+                ? QStringLiteral("%1 (%2/%3)").arg(
+                      it.key(), QString::number(p + 1), QString::number(parts))
                 : it.key();
             l.sourcePaths = paths.mid(p * kMaxFilesPerLane, kMaxFilesPerLane);
             l.kind = laneKindForDir(projectPath, it.key());   // ANTS-4806
@@ -551,7 +552,7 @@ QList<Lane> deriveComputedPartition(const QString &projectPath,
         if (split.size() > 1) {
             for (int p = 0; p < split.size(); ++p) {
                 split[p].name = QStringLiteral("%1 (%2/%3)")
-                                    .arg(dir).arg(p + 1).arg(split.size());
+                                    .arg(dir, QString::number(p + 1), QString::number(split.size()));
                 split[p].summary = QStringLiteral(
                     "%1 file(s) under %2/ (computed partition — no module map; "
                     "one directory split by size)")

@@ -998,7 +998,7 @@ BriefManifest assembleBriefManifest(const QString &projectPath,
                                  ? QStringLiteral("broken_link")
                                  : QStringLiteral("toc_gap");
         m.docIntegrity << QStringLiteral("%1:%2: [%3] %4")
-                              .arg(f.file).arg(f.line).arg(kind, f.message);
+                              .arg(f.file, QString::number(f.line)).arg(kind, f.message);
     }
 
     // ANTS-3740 — per-doc section index. docPaths only (see the header): every

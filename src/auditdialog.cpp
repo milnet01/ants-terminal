@@ -2947,7 +2947,7 @@ void AuditDialog::onDebtAnchorClicked(const QUrl &url) {
                     "Detector: %1\nLocation: %2\nMessage:  %3\n\nOptional reason:")
                 .arg(f.detectorId,
                      f.file.isEmpty() ? QStringLiteral("(project)")
-                                      : QString("%1:%2").arg(f.file).arg(f.line),
+                                      : QString("%1:%2").arg(f.file, QString::number(f.line)),
                      f.message.left(200)),
             QLineEdit::Normal, QString(), &ok);
         if (!ok) return;
@@ -3223,7 +3223,7 @@ void AuditDialog::onResultAnchorClicked(const QUrl &url) {
     if (scheme == "ants-allow") {
         const Finding fa = m_findingsByKey.value(key);
         const QString whereA = (!fa.file.isEmpty() && fa.line > 0)
-            ? QString("%1:%2").arg(fa.file).arg(fa.line)
+            ? QString("%1:%2").arg(fa.file, QString::number(fa.line))
             : (fa.file.isEmpty() ? QStringLiteral("(no location)") : fa.file);
         bool okA = false;
         const QString reasonA = QInputDialog::getText(
@@ -3256,7 +3256,7 @@ void AuditDialog::onResultAnchorClicked(const QUrl &url) {
     if (scheme != "ants-suppress") return;
     const Finding f = m_findingsByKey.value(key);
     const QString where = (!f.file.isEmpty() && f.line > 0)
-        ? QString("%1:%2").arg(f.file).arg(f.line)
+        ? QString("%1:%2").arg(f.file, QString::number(f.line))
         : (f.file.isEmpty() ? QStringLiteral("(no location)") : f.file);
 
     const QString prompt = QString(
@@ -5190,7 +5190,7 @@ void AuditDialog::requestAiTriage(const QString &dedupKey) {
     userMsg += "Severity: " + severityLabel(f.severity) + "\n";
     userMsg += "Source: " + f.source + "\n";
     if (!f.file.isEmpty())
-        userMsg += QString("File: %1:%2\n").arg(f.file).arg(f.line);
+        userMsg += QString("File: %1:%2\n").arg(f.file, QString::number(f.line));
     userMsg += "Message: " + f.message + "\n";
     if (!f.snippet.isEmpty()) {
         // Prompt-injection hardening (0.6.22): the snippet comes from
@@ -5479,7 +5479,7 @@ void AuditDialog::requestAiTriageBatch(const QStringList &dedupKeys) {
         o["severity"] = severityLabel(f.severity);
         o["source"]   = f.source;
         if (!f.file.isEmpty())
-            o["location"] = QString("%1:%2").arg(f.file).arg(f.line);
+            o["location"] = QString("%1:%2").arg(f.file, QString::number(f.line));
         o["message"]  = f.message;
         if (!f.snippet.isEmpty()) {
             // Prompt-injection hardening matches the single-finding path.
@@ -6232,7 +6232,7 @@ QString AuditDialog::plainTextResults() const {
         for (const Finding &f : r.findings) {
             QString line;
             if (!f.file.isEmpty() && f.line >= 0)
-                line = QString("%1:%2  %3").arg(f.file).arg(f.line).arg(f.message);
+                line = QString("%1:%2  %3").arg(f.file, QString::number(f.line)).arg(f.message);
             else if (!f.file.isEmpty())
                 line = QString("%1  %2").arg(f.file, f.message);
             else

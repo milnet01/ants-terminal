@@ -547,7 +547,7 @@ QString runSpecDriftCheck(const QString &projectPath) {
             // spec wording, not real drift — see ROADMAP.)
             out += QString("%1:%2: spec references `%3` but no match in "
                            "project sources\n")
-                       .arg(relPath).arg(d.line).arg(d.token);
+                       .arg(relPath, QString::number(d.line)).arg(d.token);
         }
     }
     return out.trimmed();
@@ -610,7 +610,7 @@ QString runContractDocDriftCheck(const QString &projectPath) {
                 if (existsInSource(blob, t.token)) continue;
                 out += QString("%1:%2: doc references `%3` but no match in "
                                "project sources\n")
-                           .arg(relPath).arg(t.line).arg(t.token);
+                           .arg(relPath, QString::number(t.line)).arg(t.token);
             }
         }
     }

@@ -1573,7 +1573,7 @@ bool validateCompileCommandsImpl(const QString &canonProject,
                                           .toString();
                     *errReason = QStringLiteral(
                         "include path %1 (entry %2): %3")
-                            .arg(p).arg(file).arg(reason);
+                            .arg(p, file, reason);
                 }
                 return false;
             }

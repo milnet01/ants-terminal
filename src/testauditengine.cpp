@@ -1147,7 +1147,7 @@ PartitionResult partition(const PartitionRequest &req) {
         r.error = QStringLiteral(
             "test_audit_partition: framework=%1 detected but no "
             "test files matched (scope=%2)")
-                .arg(r.framework).arg(req.scope);
+                .arg(r.framework, req.scope);
         return r;
     }
     r.totalFiles = files.size();
@@ -2107,7 +2107,7 @@ FoldInResult foldIn(const FoldInRequest &req) {
             "test_audit_fold_in: allocateIds returned %1 of %2 on "
             "counter %3 — %4")
                 .arg(allocatedInts.size()).arg(n)
-                .arg(counterPathOrUnknown).arg(stateHint);
+                .arg(counterPathOrUnknown, stateHint);
         return r;
     }
     // ANTS-3473 — stamp the project's own ID prefix (sniffed from ROADMAP.md),

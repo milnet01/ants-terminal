@@ -452,12 +452,12 @@ void checkHeadingSequence(const QString &rel, const QList<Heading> &headings,
             if (seen.contains(n)) {
                 local.append({Kind::HeadingSequence, rel, line,
                               QStringLiteral("duplicate section number %1%2")
-                                  .arg(prefix).arg(n)});
+                                  .arg(prefix, QString::number(n))});
             } else if (n < prev) {
                 local.append({Kind::HeadingSequence, rel, line,
                               QStringLiteral("section %1%2 is out of order — "
                                              "it follows %1%3")
-                                  .arg(prefix).arg(n).arg(prev)});
+                                  .arg(prefix, QString::number(n), QString::number(prev))});
             } else if (n > high + 1) {
                 QStringList missing;
                 for (int k = high + 1; k < n; ++k) {
@@ -475,7 +475,7 @@ void checkHeadingSequence(const QString &rel, const QList<Heading> &headings,
                 if (!missing.isEmpty()) {
                     local.append({Kind::HeadingSequence, rel, line,
                                   QStringLiteral("section %1%2 skips %3")
-                                      .arg(prefix).arg(n)
+                                      .arg(prefix, QString::number(n))
                                       .arg(missing.join(QStringLiteral(", ")))});
                 }
             }

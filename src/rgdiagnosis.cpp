@@ -27,7 +27,7 @@ QString explain(const StartFailure &f) {
             "ripgrep (%1) is installed but had not reported started after "
             "%2 ms, and was still starting — a loaded host, not a missing "
             "package. Retry rather than falling back to grep")
-            .arg(f.exePath).arg(f.startTimeoutMs);
+            .arg(f.exePath, QString::number(f.startTimeoutMs));
     }
     return QStringLiteral(
         "ripgrep (%1) is installed but failed to start: %2 — the executable "
