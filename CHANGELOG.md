@@ -350,6 +350,13 @@ for security-relevant changes.
 
 ### Fixed
 
+- **Dismissing an audit finding as a false positive now actually hides it.** (ANTS-4444)
+  A dismissed finding was remembered, but it kept appearing in the results
+  list, the summary counts, the HTML and SARIF exports and the roadmap
+  fold-in, and was sent to the AI again on every triage. Every one of those
+  places now checks the learned-false-positive list, and does so live, so a
+  dismissal takes effect without re-running the audit.
+
 - **A plugin that reaches its memory limit can no longer take the terminal down with it.** (ANTS-4442)
   Sending an event to a plugin already at its 10 MB budget crashed the whole
   terminal, which is exactly what the plugin documentation promises cannot

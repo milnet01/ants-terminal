@@ -36790,7 +36790,7 @@ whole files.
   Source: cold-sweep-2026-08-18 lane doclint-engines (VERIFIED in-session).
   Lanes: docsymbols.
 
-- 📋 [ANTS-4444] **Learned false positives are still rendered, exported and re-sent to the AI.**
+- ✅ [ANTS-4444] **Learned false positives are still rendered, exported and re-sent to the AI.**
   `AuditEngine::applyLearnedFpSuppressions` (called at
   `src/auditdialog.cpp:4513`) sets `f.suppressed = true` on a fingerprint
   match. But the render / export paths filter on `isSuppressed(f.dedupKey)`
@@ -36810,6 +36810,42 @@ whole files.
   Kind: fix.
   Source: cold-sweep-2026-08-18 lane audit-dialog (VERIFIED in-session).
   Lanes: auditdialog, auditengine.
+  Resolved (2026-09-04). A second isSuppressed overload takes the whole
+  Finding: it delegates to the existing key lookup, then consults the
+  learned-FP ledger by content fingerprint. All seven render and export
+  filters now call it.
+
+  The item asked which way to resolve the tension it identified, and the
+  answer is neither of the two it offered. Both — the ledger joins the LIVE
+  lookup rather than the paths switching to the cached f.suppressed flag.
+  exportSarif's own comment says why: a suppression added mid-session must
+  take effect without re-running the audit, which a flag cached at parse time
+  cannot express. That reasoning applies to a learned false positive exactly
+  as it does to a keyed one.
+
+  The parse-time cache line deliberately keeps the key form. It runs BEFORE
+  applyLearnedFpSuppressions, which is what sets the flag for learned
+  findings, so routing it through the new overload would hash for nothing.
+
+  Also fixed, same export: a learned FP has no entry in the reason map, so
+  SARIF would have emitted a suppression with no justification. Falls back to
+  the ledger's own note.
+
+  TWO SELF-INFLICTED DEFECTS CAUGHT, both worth recording. The bulk edit that
+  rewrote the call sites also rewrote the new overload's own delegation into
+  a call to itself — unbounded recursion, caught by the replacement count not
+  matching the seven sites expected. And the first version of the test
+  forbade the bare-key spelling file-wide while another of its own invariants
+  required it inside the overload; the two contradicted each other.
+
+  Collateral: AuditDedup96Bit went red. Its contracts still hold — the new
+  overload sits ABOVE the old one and extractFnBody takes the first match, so
+  it was scraping the wrong body, and its helper-call regex counted an
+  argument spelling rather than the routing it protects. Re-fixtured to the
+  new spelling with the reasoning recorded in its spec, not relaxed.
+
+  Test: tests/features/audit_learned_fp_filtering, five invariants, both
+  parts red-proven separately. Suite 4161 -> 4163.
 
 - 📋 [ANTS-4445] **Test-audit "Per-finding (allocate ROADMAP IDs)" fold-in fails on every attempt.**
   `TestAuditDialog::setActionable` (`src/testauditdialog.h:60`) is the only
