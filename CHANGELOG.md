@@ -14,6 +14,14 @@ for security-relevant changes.
 
 ### Fixed
 
+- **Mirrored standards no longer carry dead links** (ANTS-4875)
+  A link a mirrored standard cannot carry — the owner's review history, a
+  foundation document, a skeleton — is now copied down as plain text instead of
+  as a link, so it no longer 404s for a reader on GitHub. The path is still
+  named. `tools/check-standard-mirrors.sh` does the de-link inside the same step
+  that feeds its drift check, so the copy stays derivable from its owner and no
+  mirror is hand-edited.
+
 - **The published 0.7.107 RPM now builds on Fedora 44, via a backport carried in the spec.** (ANTS-4870)
   Fedora's package repository was stuck one release behind because 0.7.107 could not build there, while openSUSE, Leap and Mageia were unaffected. The already-released 0.7.107 now carries the fix as a packaging patch, so Fedora users no longer have to wait for the next release. The patch applies only to 0.7.107 and older and is skipped from 0.7.108 onward, which carries the fix directly.
 

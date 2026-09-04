@@ -48461,6 +48461,38 @@ envelope dropped `source`/`path`/`etag`/`total`/`filter`.
   Source: in-session-2026-08-28, measured by ANTS-4711's classification lane.
   Lanes: docs, specs.
 
+- 📋 [ANTS-4876] **roadmap_query mode:"sections" has no name filter, so locating one section costs the whole index.**
+  Measured this session on this project: mode:"sections" spilled and needed a
+  paged read_spill to find one slug, and the answer was ultimately found by
+  looking up a neighbouring item's id instead. That id lookup is the cheap
+  route today, but it only works when you already know a sibling item.
+
+  file_outline solves the same shape with `filter` — a case-insensitive
+  substring over the symbol NAME, applied before the byte and row caps so it
+  makes room rather than competing with them, and echoing what it considered
+  and dropped so zero matches is distinguishable from an empty document. The
+  same argument over the section headline/slug would answer the question in one
+  call.
+  **Layman:** Asking "which roadmap section should this go in?" returns every section, which is far more than fits in one reply.
+  Kind: enhancement.
+  Source: in-session-2026-09-04.
+
+- 📋 [ANTS-4877] **read_spill with an unmatched fields= returns an envelope carrying nothing but fields_unmatched.**
+  Called read_spill with fields:["slug"] against a spilled sections array. The
+  reply was `{"fields_unmatched":["slug"]}` alone — no `ok`, no `rows`, no
+  `key`, and nothing saying the argument filters TOP-LEVEL envelope fields
+  rather than per-row keys.
+
+  The unmatched-name report is the right mechanism (ANTS-4567) and it fired
+  correctly. What is missing is the floor: a reply should keep its protected
+  keys so a caller can tell a narrowed result from a failed call. As it stands
+  the two are byte-indistinguishable, which is the shape ANTS-4374 rules out
+  for an unexplained empty result. Per-row narrowing already has an answer in
+  encoding:"tabular"; the refusal should say so.
+  **Layman:** Asking a paged result for one column by a name it does not have gives back a reply with nothing in it at all — not even a success flag.
+  Kind: fix.
+  Source: in-session-2026-09-04.
+
 ### ANTS MCP feedback from CC sessions — 2026-08-27 triage
 
 - ✅ [ANTS-4721] **read_regions refuses a non-object region item with the selector rule, not the shape it wanted.**
@@ -52505,6 +52537,34 @@ volume classes, and the tooling/documentation gaps the run exposed.
   Kind: doc-fix.
   Source: in-session-2026-09-03.
   Lanes: docs.
+
+- ✅ [ANTS-4875] **Copy an unmirrorable link down as plain text, so a mirrored standard carries no dead link.**
+  ANTS-4825 taught the mirror gate to NAME an unmirrorable link and say why,
+  which was the right half: the gate stopped implying it had checked one. It
+  left the links in place, and the upstream review-history split then multiplied
+  them — doc_integrity reports every one, correctly, and they are the majority of
+  its broken_link findings, which is where a real one would hide.
+
+  The fix is one de-link step inside `owner_body()` in
+  `tools/check-standard-mirrors.sh`: a target outside `standards/` or under
+  `skeletons/` is copied down with its link syntax dropped and its text kept. At
+  every such site the text already names the path, so nothing is lost.
+
+  It lives in `owner_body` deliberately — that function feeds BOTH the drift
+  comparison and `--write`, so the mirror stays byte-derivable from its owner and
+  no mirror is ever hand-edited, which is the invariant the gate exists to hold.
+  `languages/` is untouched: those files are in the mirror set and their links
+  must resolve. The `unmirrorable` reporting stays as a net for any link shape
+  the de-link misses.
+  Resolved (2026-09-04): de-link step added to `owner_body()` and the mirrors
+  re-copied. doc_integrity broken_link over docs/standards/ went 27 -> 0, and
+  over all of docs/ 1 -> 0 (the extra was a sibling link in a review log that
+  the earlier move out of docs/standards/ had left un-rebased). The gate is
+  idempotent: a second check run reports in sync, not drift. The mirror diff is
+  exactly 27 lines, one per finding, none of them a heading.
+  **Layman:** Links in the copied-in standards pointed at files that only exist in a private folder, so anyone reading them on GitHub got a dead link. They are now plain text that still names the path.
+  Kind: fix.
+  Source: in-session-2026-09-04.
 
 ### Ants MCP feedback from CC sessions — 2026-08-28 triage
 
