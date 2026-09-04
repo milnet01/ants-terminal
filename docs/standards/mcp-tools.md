@@ -320,6 +320,22 @@ place when it saves a Claude session real tokens or round-trips
    exception below. The dispatch short-circuits a matching
    `etag_match` to `{ok:true, unchanged:true, etag:"<same>"}`.
 
+   **A refusal envelope is never short-circuited, and never carries an
+   etag — on EITHER arm.** A 304 answers "your cached copy is still
+   current", and a refusal is not a copy of anything: replying `unchanged`
+   to one tells the caller a call that just failed had succeeded. So the
+   dispatcher parses the body and tests `ok` BEFORE the 304 arm, rather
+   than speaking for a body it has not read (ANTS-4446). Withholding the
+   etag is the half that matters, because a caller can only replay a value
+   it was given. The handler-local exception below inherits this rule
+   unchanged — it is stated here, above the split, because it binds both.
+
+   Not the same rule, though it is adjacent: the idempotent-read cache's
+   INV-5(a)/(b) refuse to *store* an empty or transient-unavailable
+   response. That is about what may enter a cache; this is about what may
+   be served from one. Each guards its own side rather than trusting the
+   other.
+
    **Exception — a timing-bearing envelope owns its own 304 (ANTS-4108).**
    The central etag hashes the whole response text, which is correct
    exactly when the response is a pure function of project state. A verb
@@ -337,8 +353,8 @@ place when it saves a Claude session real tokens or round-trips
    `tests/features/spec_conformance_verb/`, which asserts the absence.
    Per-run measurement in the envelope is the only condition that earns
    this; wanting a different hash is not one. A handler-local 304 still
-   returns the same `{ok:true, unchanged:true, etag}` shape, and a refusal
-   envelope is never short-circuited.
+   returns the same `{ok:true, unchanged:true, etag}` shape, and the
+   refusal rule stated above binds it too.
 
    One obligation comes with it, and a verb missing it is broken in a way
    no test of the handler can see. **It still declares an `etag_match`
