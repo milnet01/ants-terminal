@@ -35,11 +35,14 @@ resolves to *this* index rather than the global one it means (ANTS-4138).
 `languages/` is **not** exempt — ANTS-4764 brought those files into the mirror
 set, so a link to one must resolve.
 
-**An exempt link does not resolve for a reader on GitHub, and `doc_integrity`
-reports it.** Both tools are right; they ask different questions. The gate
-names each exempt target and its reason rather than passing over it silently
-(ANTS-4825). None of it can be fixed by editing a mirror, since a mirror that
-differs from its owner is what the gate exists to refuse.
+**An exempt link is copied down as plain text, not as a link** (ANTS-4875).
+It could never resolve for a reader on GitHub, and a link that 404s costs more
+than a named path — it also hides a real broken link among `doc_integrity`'s
+reports. The link text is kept, because at every such site it already names the
+path. The de-link lives in the gate's `owner_body`, which feeds both the drift
+check and `--write`, so the mirror stays byte-derivable from its owner and is
+still never hand-edited. Should a link shape slip past it, the gate names that
+target and its reason rather than passing over it silently (ANTS-4825).
 
 That arrangement dates from 2026-08-12. Until then these were verbatim
 `/start-app` copies kept in sync by discipline, with nothing checking them.

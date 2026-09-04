@@ -42,8 +42,25 @@ BEGIN_RE='^<!-- MIRROR BEGIN .* -->$'
 END_RE='^<!-- MIRROR END -->$'
 
 # The owner minus its own leading marker comment, which the mirror replaces
-# with one of its own.
-owner_body() { sed '1{/^<!-- ants-.*-->$/d;}' "$1"; }
+# with one of its own, and minus the link syntax on any target this repo
+# cannot carry.
+#
+# ANTS-4875 — a link out of a mirrored half that nothing mirrors is copied
+# down as PLAIN TEXT, not as a link: a skeleton, or a target outside
+# standards/ such as the owner's review history or a foundation document.
+# It cannot resolve for the public reader the mirror exists to serve, and a
+# link that 404s costs more than a named path — it also hides a real broken
+# link among doc_integrity's reports. The link TEXT is kept, because at every
+# such site it already names the path.
+#
+# This lives in owner_body, so the drift check and --write derive the mirror
+# by the same rule: the copy stays byte-derivable from its owner, and no
+# mirror is ever hand-edited. `languages/` is untouched — those files are in
+# the mirror set and their links must resolve.
+owner_body() {
+    sed -E -e '1{/^<!-- ants-.*-->$/d;}' \
+        -e 's/\[([^][]*)\]\((\.\.\/|skeletons\/)[A-Za-z0-9_.\/-]*\.md[^)]*\)/\1/g' "$1"
+}
 
 status=0
 checked=0
@@ -102,14 +119,17 @@ done
 # an illustrative path inside a quoted example; and README.md, which resolves to
 # this index rather than the global one it means (ANTS-4138).
 #
-# ANTS-4825 — a target out of that set is skipped BY RULE, and the gate now
-# names it and says why instead of leaving it to be inferred from the path
-# shape. doc_integrity reports local-gate.md's link to ../workflow.md as broken
-# and is right: workflow.md is a foundation document under ~/.claude/, nothing
-# mirrors it, and a reader on GitHub gets a 404. This gate cannot resolve that
-# and must not imply it did — a bare "links resolve" over a tree carrying one
-# is what made the two tools look like they disagreed when each was answering
-# its own question correctly. Naming them copies nothing and edits no mirror.
+# ANTS-4825 — a target out of that set is skipped BY RULE, and the gate names
+# it and says why instead of leaving it to be inferred from the path shape. It
+# could not resolve: the owner is a foundation document or a skeleton that
+# nothing mirrors, so a reader on GitHub got a 404, and a bare "links resolve"
+# over a tree carrying one is what made this gate and doc_integrity look like
+# they disagreed when each was answering its own question correctly.
+#
+# ANTS-4875 de-links those on the way down (see owner_body), so they now arrive
+# as plain text and no longer reach this scan. What is left here is the net for
+# a link shape the de-link does not match — it copies nothing and edits no
+# mirror, and a non-zero count means owner_body needs widening.
 dead_links=0
 unmirrorable=0
 unmirrorable_list=""
