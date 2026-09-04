@@ -6709,12 +6709,47 @@ void MainWindow::showTabColorMenu(int tabIndex) {
         {"Charcoal", QColor(0x45, 0x47, 0x5A)},
         {"Black", QColor(0x11, 0x11, 0x1B)},
     };
+    // Show which colour the tab is on now. Without this the menu gives no
+    // way to read the current state — the swatch is on the tab, but the tab
+    // is behind the menu, and "None" is indistinguishable from any colour.
+    //
+    // An exclusive QActionGroup, so menus.md M1 applies: a "choose one"
+    // radio pick keeps Qt's default toggle-and-close, which is what a colour
+    // pick should do. (The StayOpenOnToggleFilter is for the menu BAR's
+    // independent toggles and does not reach this context menu.)
+    //
+    // Compared on rgb() rather than with QColor::operator==: a persisted
+    // colour is round-tripped through HexArgb and need not come back with
+    // the same spec, and an equality that silently fails would leave the
+    // menu looking exactly as it did before this change.
+    const QColor currentColor =
+        m_coloredTabBar ? m_coloredTabBar->tabColor(tabIndex) : QColor();
+    auto sameColor = [](const QColor &a, const QColor &b) {
+        if (!a.isValid() || !b.isValid()) return a.isValid() == b.isValid();
+        return a.rgb() == b.rgb();
+    };
+    auto *colorGroup = new QActionGroup(&menu);
+    colorGroup->setExclusive(true);
+    bool matchedPreset = false;
+
     for (const auto &ce : colors) {
         QAction *a = menu.addAction(ce.name);
         if (ce.color.isValid()) {
             QPixmap px(12, 12);
             px.fill(ce.color);
             a->setIcon(QIcon(px));
+        }
+        a->setCheckable(true);
+        colorGroup->addAction(a);
+        if (sameColor(ce.color, currentColor)) {
+            a->setChecked(true);
+            // Bold as well as checked: a checked action that also carries an
+            // icon renders as a framed swatch rather than a tick in several
+            // styles, which is easy to miss against 26 other swatches.
+            QFont f = a->font();
+            f.setBold(true);
+            a->setFont(f);
+            matchedPreset = true;
         }
         connect(a, &QAction::triggered, this, [this, tabWidget, ce]() {
             int idx = m_tabWidget->indexOf(tabWidget);
@@ -6738,6 +6773,20 @@ void MainWindow::showTabColorMenu(int tabIndex) {
     // drag-reorder identically — persistTabColor already stores HexArgb.
     menu.addSeparator();
     QAction *customAction = menu.addAction("Custom colour...");
+    // A colour set from the picker matches no preset, so mark THIS entry
+    // instead — otherwise a custom-coloured tab shows nothing checked at
+    // all, which reads as "None".
+    customAction->setCheckable(true);
+    colorGroup->addAction(customAction);
+    if (currentColor.isValid() && !matchedPreset) {
+        customAction->setChecked(true);
+        QFont f = customAction->font();
+        f.setBold(true);
+        customAction->setFont(f);
+        QPixmap px(12, 12);
+        px.fill(currentColor);
+        customAction->setIcon(QIcon(px));
+    }
     connect(customAction, &QAction::triggered, this, [this, tabWidget]() {
         int idx = m_tabWidget->indexOf(tabWidget);
         if (idx < 0 || !m_coloredTabBar) return;
