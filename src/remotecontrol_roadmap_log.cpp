@@ -2130,7 +2130,10 @@ QJsonDocument RemoteControl::cmdRoadmapLogFlip(const QJsonObject &req) {
                         .arg(prefix));
             }
         }
-        counterPath = callerCanonical + QLatin1Char('/') +
+        // ANTS-3350 — beside the RESOLVED roadmap, as op:"append" does. A
+        // subdirectory caller resolved the roadmap in a parent, and the
+        // counter lives there rather than under caller_cwd.
+        counterPath = QFileInfo(roadmapPath).absolutePath() + QLatin1Char('/') +
             QStringLiteral(".roadmap-counter");
         qint64 counter = 0;
         if (QFile::exists(counterPath)) {

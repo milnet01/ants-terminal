@@ -19,6 +19,7 @@
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
+#include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QString>
@@ -121,6 +122,27 @@ QJsonObject appendReq(const QString &root) {
     o[QStringLiteral("kind")]       = QStringLiteral("chore");
     o[QStringLiteral("source")]     = QStringLiteral("ants-4493-test");
     o[QStringLiteral("id_prefix")]  = QStringLiteral("DEMO");
+    return o;
+}
+
+// The same request shaped for op:"append_batch", which allocates through the
+// same two paths and carries its ids in an array rather than a scalar.
+QJsonObject appendBatchReq(const QString &root) {
+    QJsonObject b;
+    b[QStringLiteral("status")]   = QStringLiteral("planned");
+    b[QStringLiteral("headline")] = QStringLiteral("The first batch append after migrating.");
+    b[QStringLiteral("layman")]   = QStringLiteral("A plain-language line.");
+    b[QStringLiteral("kind")]     = QStringLiteral("chore");
+    b[QStringLiteral("source")]   = QStringLiteral("ants-4460-test");
+
+    QJsonArray bullets;
+    bullets.append(b);
+
+    QJsonObject o;
+    o[QStringLiteral("caller_cwd")] = root;
+    o[QStringLiteral("section")]    = QStringLiteral("to-do");
+    o[QStringLiteral("id_prefix")]  = QStringLiteral("DEMO");
+    o[QStringLiteral("bullets")]    = bullets;
     return o;
 }
 
@@ -249,4 +271,76 @@ TEST(RoadmapAllocStoreFloor, Inv3StorePathReconcilesTheCounterCache) {
     EXPECT_EQ(readCounter(root), 2)
         << "the store path allocated " << id.toStdString()
         << " and left the counter cache behind at " << readCounter(root);
+}
+
+// ----------------------------------------------------------------- INV-4 ----
+//
+// op:"append_batch" allocates through the same two paths as op:"append", and
+// ANTS-4493's store floor landed in the latter alone. A migrated project that
+// is not served from the store therefore still reissues a synthesised id
+// through the batch op — the identical collision, one verb over.
+
+TEST(RoadmapAllocStoreFloor, Inv4AppendBatchDoesNotReissueASynthesisedId) {
+    ants_test::XdgGuard guard;
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString root = seedProject(guard, tmp);
+    ASSERT_FALSE(root.isEmpty());
+
+    qint64 allocated = 0;
+    ASSERT_TRUE(migrate(root, &allocated));
+    ASSERT_EQ(allocated, 2)
+        << "the fixture's two id-less bullets must be synthesised, or this case "
+           "has no stored id to collide with";
+
+    RemoteControl rc(nullptr);
+    const QJsonObject resp =
+        rc.cmdRoadmapLogAppendBatchForTest(appendBatchReq(root)).object();
+    ASSERT_TRUE(resp.value(QStringLiteral("ok")).toBool())
+        << QJsonDocument(resp).toJson().toStdString();
+    ASSERT_EQ(resp.value(QStringLiteral("applied_count")).toInt(), 1)
+        << QJsonDocument(resp).toJson().toStdString();
+
+    const QJsonArray ids = resp.value(QStringLiteral("ids")).toArray();
+    ASSERT_EQ(ids.size(), 1) << QJsonDocument(resp).toJson().toStdString();
+    EXPECT_EQ(ids.at(0).toString(), QStringLiteral("DEMO-0004"))
+        << "append_batch reissued an id the store already holds";
+}
+
+// ----------------------------------------------------------------- INV-5 ----
+//
+// ANTS-3350 put the counter beside the RESOLVED roadmap, and that landed in
+// op:"append" alone. From a subdirectory the batch op resolved it under
+// caller_cwd instead, which both consults the wrong counter and mis-aims the
+// committed-corpus floor, since that floor is computed from the counter's own
+// directory.
+//
+// The fixture needs a .git: repoBoundedAncestors returns the caller directory
+// alone when it finds no repo boundary, so without one findRoadmapUnder never
+// walks up and the subdirectory case cannot arise at all.
+
+TEST(RoadmapAllocStoreFloor, Inv5AppendBatchCounterSitsBesideTheRoadmap) {
+    ants_test::XdgGuard guard;
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString root = seedProject(guard, tmp);
+    ASSERT_FALSE(root.isEmpty());
+    ASSERT_TRUE(QDir().mkpath(QDir(root).filePath(QStringLiteral(".git"))));
+    const QString sub = QDir(root).filePath(QStringLiteral("sub"));
+    ASSERT_TRUE(QDir().mkpath(sub));
+
+    QJsonObject req = appendBatchReq(root);
+    req[QStringLiteral("caller_cwd")] = QFileInfo(sub).canonicalFilePath();
+
+    RemoteControl rc(nullptr);
+    const QJsonObject resp = rc.cmdRoadmapLogAppendBatchForTest(req).object();
+    ASSERT_TRUE(resp.value(QStringLiteral("ok")).toBool())
+        << QJsonDocument(resp).toJson().toStdString();
+
+    EXPECT_FALSE(QFile::exists(
+        QDir(sub).filePath(QStringLiteral(".roadmap-counter"))))
+        << "the batch op wrote a counter under caller_cwd instead of using the "
+           "one beside the resolved roadmap";
+    EXPECT_EQ(readCounter(root), 2)
+        << "the counter beside the roadmap was not the one allocated from";
 }

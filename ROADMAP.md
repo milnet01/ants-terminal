@@ -37762,6 +37762,40 @@ whole files.
   Kind: investigate.
   Source: cold-sweep-2026-08-18 lanes ipc-state-terminal + ipc-review + ipc-workspace-docs + ipc-roadmap-log/query + speclint-tools + doclint-engines (UNVERIFIED — triage before work).
   Lanes: remotecontrol, focusedtest, featurecoverage, speclint, docdedup.
+  Triage started (2026-09-05). One HIGH claim verified and fixed; the rest
+  of the bucket is untouched and still carries its "check each against
+  source first" warning.
+
+  VERIFIED and FIXED: the counter-path claim. `flip`, `flip_batch` and
+  `append_batch` resolved `.roadmap-counter` under `caller_cwd` where
+  `append` resolves it beside the resolved roadmap. The claim understated
+  it — from a subdirectory `append_batch` does not misallocate, it REFUSES
+  `counter_missing` naming a path in the subdirectory, so acting on the
+  advice creates a second competing allocator. The same path also derives
+  the committed-corpus floor, so the wrong directory disabled that floor
+  too.
+
+  Found beside it, and the sharper defect: `append_batch`'s markdown path
+  never consulted the STORE's high-water. That is ANTS-4493, which landed in
+  `append` alone, so the batch op still reissues a synthesised id after a
+  migration — proven red at DEMO-0002, verbatim the reported Vestige
+  collision. Both closed together with INV-4 and INV-5 on the existing
+  store-floor suite.
+
+  The pattern worth carrying to the rest of this bucket: several claims here
+  name one verb, and the fix they cite landed in one sibling of a family.
+  Check the siblings before accepting a claim as narrow.
+
+  Filed rather than fixed: ANTS-4882 — the store floor is looked up by
+  `caller_cwd`, so it does not apply to a subdirectory caller in either op.
+
+  NOT triaged, and each still unverified: the ReDoS claim on the
+  pass-headings scrub, `task_priors` hardcoding `ANTS-*.md`,
+  `project_conventions` answering with nothing to read, the changelog
+  read-modify-write race (now also cited by ANTS-4881), `doc_dedup`'s
+  missing `docs_digest`, `focused_test`'s two routes to a false green,
+  `featurecoverage`'s extension fallback, the `speclint` default, and the
+  whole MEDIUM list.
 
 - 📋 [ANTS-4461] **Triage: roadmap store/export and plugin-manager findings from the cold sweep.**
   Reviewer claims carried forward as-is. NOT re-verified — check each against
@@ -52864,6 +52898,34 @@ volume classes, and the tooling/documentation gaps the run exposed.
   Kind: fix.
   Source: in-session-2026-09-04.
 
+- 📋 [ANTS-4882] **The allocator's store floor is looked up by caller_cwd, so it does not apply to a subdirectory caller.**
+  ANTS-4493's floor asks the store `readProjectByRoot(callerCanonical)`. The
+  store keys a project on its canonical ROOT, so from a subdirectory that
+  lookup matches nothing, returns no row, and the floor silently does not
+  apply — leaving exactly the collision ANTS-4493 closed.
+
+  Reachable since ANTS-3350 let a write verb resolve the roadmap from a
+  subdirectory: before that, a subdirectory caller was refused outright, so
+  the two never met.
+
+  True of `op:"append"` as shipped, and now of `op:"append_batch"` as well:
+  this session mirrored append's block rather than diverging, so both carry
+  it identically. That was deliberate — changing the lookup key in two verbs
+  as a side effect of a different fix is not something a reader could check.
+
+  Likely repair is to look the project up by the roadmap's own directory
+  (`QFileInfo(roadmapPath).absolutePath()`), which is the root the store was
+  registered under. Verify that before building it: a project whose
+  registered root is not the roadmap's directory would change behaviour, and
+  nothing here measured whether any such project exists.
+
+  Silent by construction — the append succeeds with `ok:true` and a
+  normal-looking id, which is why it wants a test rather than a read.
+  **Layman:** A safety check that stops item numbers being reused is skipped when you work from a sub-folder.
+  Kind: fix.
+  Source: in-session-2026-09-05, found while fixing the same floor in append_batch.
+  Lanes: mcp, roadmap-store.
+
 ### Ants MCP feedback from CC sessions — 2026-08-28 triage
 
 - 📋 [ANTS-4746] **A verb that reads this session's completed subagent returns, so a fan-out that outlives a compaction is recoverable.**
@@ -60519,6 +60581,43 @@ Project's own grep-rule corpus + fixture coverage: **55 pass,
   **Layman:** When you have two Claude sessions open in two tabs, give them a way to pass notes to each other — "I'm done, your turn" or "here's what I found" — instead of you copy-pasting between them.
   Kind: feature.
   Source: user-request-2026-07-16.
+
+- 📋 [ANTS-4881] **Let several Claude Code sessions work one project at once, instead of quietly losing each other's writes.**
+  Today the safe pattern is one session per project, enforced by nothing.
+  Deliver a design first: this is an investigation, not a lock to bolt on.
+
+  Collision points already known, so the design has something concrete to
+  answer rather than starting from a blank page.
+
+  Whole-file read-modify-write with no lock. `changelog_log`'s write paths
+  read, edit and commit; `QSaveFile` makes the REPLACEMENT atomic and says
+  nothing about the read-to-commit window, so the later writer's copy wins
+  and the earlier entry is gone with both calls reporting success. Named in
+  ANTS-4460's HIGH list, still unverified there.
+  `SessionMemoryEngine::mutateLocked` is the in-tree precedent.
+
+  Roadmap writes re-render the WHOLE file from the store, so two sessions
+  appending concurrently have the same shape as above with a larger blast
+  radius. The store itself is machine-global and runs in WAL, so SQLite
+  already serialises the row writes — the exposure is the render and publish
+  step layered on top, not the database.
+
+  The push gate. Two pre-push hooks running at once build `build-asan`
+  simultaneously and fail with what looks like linker corruption; recorded
+  as a standing caution rather than fixed.
+
+  Worth deciding explicitly, because they lead to different designs: does
+  "multiple sessions" mean cooperating on one working tree, or one worktree
+  each (rule 17's route) sharing only the store and the roadmap? The second
+  removes the build and push collisions outright and leaves only the shared
+  records, which is a much smaller problem.
+
+  Not a licence to add a global mutex to every verb: most verbs are reads
+  and a blanket lock would cost every session to protect a rare write.
+  **Layman:** Two Claude sessions on the same project can overwrite each other's work; this is about making that safe.
+  Kind: investigate.
+  Source: user-request-2026-09-05.
+  Lanes: mcp, roadmap-store, claudeintegration.
 
 ### 📚 Methodology — adopted as standing practice
 

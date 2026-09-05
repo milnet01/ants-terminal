@@ -2,8 +2,9 @@
 
 ## Problem
 
-`roadmap_log op:"append"` has two allocation paths, and each floors to two
-of the three places an id can already exist.
+`roadmap_log` allocates through two paths, and each floors to two of the
+three places an id can already exist. Both `op:"append"` and
+`op:"append_batch"` reach them.
 
 - The **store path** (`ANTS-3809`) uses `rlStoreIdHighWater()` —
   `max(corpusHighWater, idHighWater)`.
@@ -47,3 +48,20 @@ file is in.
 - **INV-2** — The floor is additive, not a replacement: a project with no
   store row allocates exactly as before. *Test:* the same fixture with no
   migration run first allocates `DEMO-0002`.
+- **INV-4** — `op:"append_batch"` floors to the store as `op:"append"`
+  does. The fix landed in the scalar op alone, so the batch op reissued a
+  synthesised id — the same collision, one verb over. *Test:* INV-1's
+  fixture driven through the batch op; its single returned id is
+  `DEMO-0004`. *Breaks when:* the batch path reads the file and the corpus
+  only, and issues `DEMO-0002`.
+- **INV-5** — `op:"append_batch"` resolves `.roadmap-counter` beside the
+  RESOLVED roadmap, not under `caller_cwd` (ANTS-3350, which also landed
+  in the scalar op alone). The counter's directory is what the
+  committed-corpus floor is derived from, so a wrong one silently disables
+  that floor too. *Test:* call from a subdirectory of a project whose
+  roadmap sits at the root; no counter appears in the subdirectory and the
+  one beside the roadmap is what advanced. *Breaks when:* the op resolves
+  under `caller_cwd` — it then refuses `counter_missing`, naming a path in
+  the subdirectory. The fixture needs a `.git`: without a repo boundary
+  the ancestor walk returns the caller's own directory and the subdirectory
+  case cannot arise.

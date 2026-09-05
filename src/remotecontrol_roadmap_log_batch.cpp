@@ -773,7 +773,9 @@ QJsonDocument RemoteControl::cmdRoadmapLogFlipBatch(const QJsonObject &req) {
                                        "not match ^[A-Z][A-Z0-9_-]{0,15}$")
                             .arg(prefix));
             }
-            counterPath = callerCanonical + QLatin1Char('/') +
+            // ANTS-3350 — beside the RESOLVED roadmap, as op:"append" does.
+            counterPath = QFileInfo(roadmapPath).absolutePath() +
+                          QLatin1Char('/') +
                           QStringLiteral(".roadmap-counter");
             qint64 counter = 0;
             if (QFile::exists(counterPath)) {
@@ -2001,8 +2003,12 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppendBatch(const QJsonObject &req) {
 
     // ANTS-3771 — ONCE for the batch (load() re-reads the file every call).
     const RoadmapParse::IdFormat batchIdFormat = rlDecl(callerCanonical);
+    // ANTS-3350 — beside the RESOLVED roadmap, as op:"append" does. This also
+    // aims the committed-corpus floor below, which is derived from this path's
+    // own directory: under caller_cwd it scanned the subdirectory and found
+    // nothing to floor to.
     const QString counterPath =
-        callerCanonical + QLatin1Char('/') +
+        QFileInfo(roadmapPath).absolutePath() + QLatin1Char('/') +
         QStringLiteral(".roadmap-counter");
 
     // ANTS-3809 § 2.2 — the write target, resolved BEFORE the counter read for
@@ -2272,6 +2278,26 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppendBatch(const QJsonObject &req) {
         rlMaxExistingIdForPrefix(preflightBullets, counterPfx);
     maxFileId = std::max(maxFileId, RoadmapFoldIn::corpusHighWater(
         QFileInfo(counterPath).absolutePath(), counterPfx));
+    // ANTS-4493 — and floor to the STORE's high-water, which neither term above
+    // can see. A project MIGRATED but not SERVED from the store reaches this
+    // branch, and the ids its migration synthesised live in the store and in no
+    // file. op:"append" has carried this floor since ANTS-4493; the batch op
+    // did not, so it reissued one silently with ok:true.
+    //
+    // Markdown path only: with a writeTarget the store's own high-water is
+    // already what effCounter takes below.
+    if (!writeTarget) {
+        if (RoadmapStore *store = roadmapStoreOrNull(nullptr, nullptr)) {
+            QString storeErr;
+            if (const auto row =
+                    store->readProjectByRoot(callerCanonical, &storeErr)) {
+                QString hwErr;
+                if (const auto hw =
+                        store->idHighWater(row->projectId, counterPfx, &hwErr))
+                    maxFileId = std::max(maxFileId, *hw);
+            }
+        }
+    }
     // ANTS-3809 § 2.3 — on the store path the high-water is the store's own
     // (ANTS-4631: its two id columns, no text scan). There is no counter file
     // to lag or to self-heal, so counterReconciled cannot fire.
