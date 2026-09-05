@@ -14,6 +14,12 @@ for security-relevant changes.
 
 ### Fixed
 
+- **`doc_citations` counts each quotation once when the document contains a fenced code block** (ANTS-4697)
+  A blank line after a closing code fence used to open a scan window of
+  its own, so every quotation in the paragraph below it was counted twice
+  — inflating `quotes_checked` and the `quote_counts` buckets that a
+  reviewer reads.
+
 - **A fields=-narrowed MCP reply that matched nothing now still says it succeeded** (ANTS-4877)
   Asking a verb for a field it does not carry returned only the list of names it
   could not find, with no `ok` — indistinguishable from a call that produced no

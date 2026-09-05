@@ -47422,7 +47422,7 @@ envelope dropped `source`/`path`/`etag`/`total`/`filter`.
   Source: Charls_Site-feedback-2026-08-26.
   Lanes: mcp, doccitations.
 
-- 📋 [ANTS-4697] **doc_citations emits a line-wrapped quotation twice, inflating quotes_checked and the quote_counts buckets.**
+- ✅ [ANTS-4697] **doc_citations emits a line-wrapped quotation twice, inflating quotes_checked and the quote_counts buckets.**
   A single double-quoted span straddling a hard line break is reported as
   TWO identical entries -- same line, same text, same target, same status.
   Not status-dependent: the reporter saw it first as two no_target entries
@@ -47446,6 +47446,50 @@ envelope dropped `source`/`path`/`etag`/`total`/`filter`.
   emit one entry per matched SPAN rather than one per line the span touches.
   The second is the real repair; the first is the safe one.
   Progress (2026-08-26): could NOT reproduce on the current build. Three shapes tried against a throwaway project, each a single double-quoted span straddling a hard line break: plain prose wrapping over two lines, the same over three, and a Markdown blockquote. All three returned quotes_checked:1 with exactly one entry. ANTS-4664 gave detection a block-scoped window that only a block's FIRST line opens, which is the de-duplication this item asks for, and it post-dates the reporter's measurement. Kept OPEN rather than closed: the report measured 9 against 8 distinct, so one specific shape still double-counts and my fixtures did not find it -- the reporter's own document would settle it in one call. Related and separately filed: the blockquote shape surfaced a different real defect, ANTS-4706, where `>` continuation markers are folded into the quotation text and a present quotation reads as stale.
+  Reproduced (2026-09-05), and the 2026-08-26 "could not reproduce" was a
+  wrong-shape search rather than a fixed defect.
+
+  Running the verb over the reporter's own document — Pressless
+  docs/specs/PRESS-0002-credentials.md — emits the line-125 quotation
+  twice, identical in line, text, target and status. So it is live.
+
+  The shape is NOT a quotation straddling a line break, which is what the
+  headline says and what the earlier fixtures tested. In the reporter's own
+  example the quotation sits entirely on one line; it is the SENTENCE that
+  wraps. The trigger is a fenced code block earlier in the document.
+  Narrowed against a throwaway project: no fence reports once, a fence
+  AFTER the quotation reports once, a fence BEFORE it reports twice, and
+  two fences before still report twice — a doubling, not one extra per
+  fence. Removing the blank line between the fence and the paragraph makes
+  it correct again, which is what identifies the line at fault.
+
+  CAUSE. In `check`'s quotation pass (`src/doccitations.cpp`) a line is
+  treated as opening a block window unless its predecessor is non-blank,
+  unfenced and not a table row. `fenceMask` marks the fence DELIMITERS, so
+  the blank line after a closing fence satisfies the fence exemption and
+  opens a window; that window then absorbs the paragraph below it, and the
+  paragraph's own first line opens a second window over the same text.
+  Every quotation in the first paragraph after a fenced block is harvested
+  twice.
+
+  FIX is one line and is the real repair the item asks for rather than the
+  safe one: a blank line delimits a block and can never begin one, so skip
+  it before the window opens. No dedup on (line, text, target) is needed —
+  that would have hidden this cause.
+  Resolved (2026-09-05): a blank line is skipped before it can open a
+  window, so it delimits a block and never begins one. One line, and it is
+  the real repair rather than the safe one — de-duplicating on
+  (line, text, target) would have hidden this cause and left the second
+  window running.
+
+  Proven red then green: the new fixture emits the quotation twice before
+  the fix and once after, which is the reporter's symptom in a unit test.
+  Then the fixed engine was linked and run over the reporter's own
+  document, Pressless docs/specs/PRESS-0002-credentials.md: five
+  quotations became four, the line-125 duplicate gone and the other four
+  unchanged. That is the measurement the item was filed on.
+
+  The suggested (line, text, target) dedup is deliberately NOT taken.
   **Layman:** A quote that runs across two lines is counted as two quotes, so the checker's totals are wrong.
   Kind: fix.
   Source: Charls_Site-feedback-2026-08-26.

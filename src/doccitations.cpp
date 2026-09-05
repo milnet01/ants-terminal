@@ -1415,6 +1415,14 @@ QJsonObject check(const QString &rootCanonical, const QString &docAbsPath,
         for (int i = 0; i < prefix.size() && harvested < opts.maxQuotes; ++i) {
             if (i < fence.size() && fence.at(i)) continue;   // specimen
             const QString &line = prefix.at(i);
+            // ANTS-4697 — a blank line DELIMITS a block; it can never begin
+            // one. `fenceMask` marks the fence DELIMITERS, so the blank line
+            // after a closing fence satisfied the fence exemption below and
+            // opened a window of its own, which then absorbed the paragraph
+            // underneath — and that paragraph's first line opened a second
+            // window over the same text. Every quotation in the first
+            // paragraph after a fenced block was harvested twice.
+            if (line.trimmed().isEmpty()) continue;
             const bool tableRow = dcIsTableRow(line);
             const QVector<QPair<int, int>> cells =
                 tableRow ? dcTableCells(line) : QVector<QPair<int, int>>{};

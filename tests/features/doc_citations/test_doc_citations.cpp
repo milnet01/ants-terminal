@@ -1294,6 +1294,52 @@ TEST(DocCitations, Ants4664WrappedQuotationSpansAreDetected) {
     }
 }
 
+// ANTS-4697 — a blank line cannot OPEN a block, only end one.
+//
+// Reported as "a wrapped quotation is emitted twice", and fixtures built from
+// that description do not reproduce it: in the reporter's own example the
+// quotation sits entirely on one line and it is the SENTENCE that wraps. The
+// trigger is a fenced block EARLIER in the document.
+//
+// `fenceMask` marks the fence delimiters, so the blank line after a closing
+// fence satisfied the "previous line is fenced" exemption and opened a window,
+// which absorbed the paragraph below it; that paragraph's first line then
+// opened a second window over the same text. Narrowed against the reporter's
+// document: no fence counts once, a fence AFTER the quotation counts once, a
+// fence BEFORE it counts twice, and removing the blank line between fence and
+// paragraph makes it correct again.
+TEST(DocCitations, Ants4697BlankLineAfterAFenceOpensNoWindow) {
+    Fixture fx;
+    fx.write(QStringLiteral("docs/standards/commits.md"),
+             "# Commits\n"
+             "\n"
+             "Every commit message must name the reason the change\n"
+             "exists, not merely what it changed.\n");
+
+    DocCitations::Options opts;
+    opts.quotes = true;
+
+    const QString doc = fx.doc(
+        "```\n"
+        "git commit -m 'x'\n"
+        "```\n"
+        "\n"
+        "As `docs/standards/commits.md` puts it, a message must\n"
+        "\"name the reason the change exists\" and nothing less.\n");
+
+    const QJsonObject r = DocCitations::check(fx.root, doc, opts);
+    const QJsonArray qs = r.value(QStringLiteral("quotes")).toArray();
+
+    EXPECT_EQ(r.value(QStringLiteral("quotes_checked")).toInt(), 1)
+        << "one quotation, counted once: the blank line after the closing "
+           "fence must open no window of its own: "
+        << qPrintable(render(r));
+    ASSERT_EQ(qs.size(), 1) << qPrintable(render(r));
+    EXPECT_EQ(qs.at(0).toObject().value(QStringLiteral("status")).toString(),
+              QStringLiteral("ok"))
+        << "and it still resolves against its target";
+}
+
 // ANTS-4637 — a quotation sitting in a loop-log row is historical BY DESIGN.
 //
 // A converged review document records each loop in a table row, and those rows
