@@ -48515,7 +48515,7 @@ envelope dropped `source`/`path`/`etag`/`total`/`filter`.
   Kind: fix.
   Source: in-session-2026-09-04.
 
-- 📋 [ANTS-4878] **doc_integrity numbers headings across a MIRROR boundary, so every delta standard reports false duplicates.**
+- ✅ [ANTS-4878] **doc_integrity numbers headings across a MIRROR boundary, so every delta standard reports false duplicates.**
   Measured on `docs/standards/documentation.md`: the delta half numbers its
   sections, then `MIRROR BEGIN` starts the owner's copy at 1 again. heading_sequence
   reports "section 1 is out of order — it follows 10" plus a duplicate for every
@@ -48535,6 +48535,22 @@ envelope dropped `source`/`path`/`etag`/`total`/`filter`.
 
   `heading_sequence_suppressed` is the wrong instrument here: it is keyed to a
   document that ACCOUNTS for its own gaps, and neither half is doing that.
+  Resolved (2026-09-05): the sibling groups are now keyed by (mirror
+  region, parent) rather than parent alone, so a copy's numbering is never
+  sequenced against its host's. The markers were already the mirror gate's
+  contract, so nothing new is declared; an unclosed BEGIN runs to EOF,
+  which check-standard-mirrors.sh refuses outright but this check still
+  has to read sanely.
+  Verified two ways. The new fixture reported the false duplicates before
+  the fix and none after, and it also pins that a real defect INSIDE a
+  mirrored half is still reported — a scope that bought quiet by blinding
+  the check would pass the first assertion and fail that one. Then the
+  fixed detector was linked and run against the real
+  docs/standards/documentation.md: heading_sequence went from ten findings
+  to none. Measured by linking rather than by calling the verb, since the
+  running instance still serves the old binary.
+  ANTS-3601 § heading_sequence records the narrowed definition of a
+  sibling.
   **Layman:** The heading-order check reads a standard and the copied-in copy below it as one document, so it says the numbering restarts and repeats when both halves are correct.
   Kind: fix.
   Source: in-session-2026-09-04.

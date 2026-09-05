@@ -524,6 +524,60 @@ TEST(DocIntegrity, HeadingSequenceQuietCases) {
                         Kind::HeadingSequence), 0);
 }
 
+// ANTS-4878 — a MIRROR region is its own numbering scope. Seen on
+// docs/standards/documentation.md, whose delta half numbers its sections and
+// whose mirrored copy then starts at 1 again: read as one run that is an
+// out-of-order section plus a duplicate for every number the copy reuses, and
+// neither half can be edited to settle it — the copy must equal its owner byte
+// for byte, and renumbering the delta half distorts a document to suit a copy.
+TEST(DocIntegrity, HeadingSequenceMirrorRegionIsItsOwnScope) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString root = canon(tmp);
+
+    // Both halves correctly numbered, each starting at 1.
+    ASSERT_TRUE(writeFile(root + "/docs/a.md",
+                          "# Doc\n\n"
+                          "## 1. Delta one\n\n"
+                          "## 2. Delta two\n\n"
+                          "<!-- MIRROR BEGIN ~/.claude/standards/a.md -->\n\n"
+                          "## 1. Owner one\n\n"
+                          "## 2. Owner two\n\n"
+                          "<!-- MIRROR END -->\n"));
+    EXPECT_EQ(countKind(DocIntegrity::check(root, {"docs/a.md"}),
+                        Kind::HeadingSequence), 0)
+        << "the copy's numbering is its own; sequencing it against the delta "
+           "half is what produced the false duplicates";
+
+    // The scope must not buy quiet by blinding the check: a real defect
+    // INSIDE the mirrored half is still reported.
+    ASSERT_TRUE(writeFile(root + "/docs/b.md",
+                          "# Doc\n\n"
+                          "## 1. Delta one\n\n"
+                          "<!-- MIRROR BEGIN ~/.claude/standards/b.md -->\n\n"
+                          "## 1. Owner one\n\n"
+                          "## 2. Owner two\n\n"
+                          "## 2. Owner two again\n\n"
+                          "<!-- MIRROR END -->\n"));
+    const auto fs = DocIntegrity::check(root, {"docs/b.md"});
+    EXPECT_EQ(countKind(fs, Kind::HeadingSequence), 1);
+    EXPECT_TRUE(hasMention(fs, Kind::HeadingSequence,
+                           QStringLiteral("duplicate section number 2")));
+
+    // And a hole in the document's OWN text is still reported with a mirrored
+    // region present below it.
+    ASSERT_TRUE(writeFile(root + "/docs/c.md",
+                          "# Doc\n\n"
+                          "## 1. Delta one\n\n"
+                          "## 5. Delta five\n\n"
+                          "<!-- MIRROR BEGIN ~/.claude/standards/c.md -->\n\n"
+                          "## 1. Owner one\n\n"
+                          "<!-- MIRROR END -->\n"));
+    EXPECT_TRUE(hasMention(DocIntegrity::check(root, {"docs/c.md"}),
+                           Kind::HeadingSequence,
+                           QStringLiteral("skips 2, 3, 4")));
+}
+
 // ---- ANTS-3719 — ungranted_tool --------------------------------------------
 //
 // Requested by the claude_config session. A Claude Code skill declares its

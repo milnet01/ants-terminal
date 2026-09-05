@@ -98,6 +98,9 @@ struct DocData {
     // ANTS-4641 — section numbers this document's own Retired/Removed section
     // accounts for. Empty for every document that has no such section.
     QSet<int> accounted;
+    // ANTS-4878 — (first, last) line of each MIRROR region, markers included.
+    // Empty for every document that mirrors nothing, which is almost all.
+    QList<QPair<int, int>> mirrors;
 };
 
 QList<Heading> extractHeadings(const QStringList &lines,
@@ -391,6 +394,37 @@ QString gfmSlug(const QString &headingText) {
     return gfmSlug(headingText, seen);
 }
 
+// ANTS-4878 — a mirrored region is another document pasted in whole, kept
+// byte-identical to its owner by tools/check-standard-mirrors.sh, so its
+// numbering is its own and restarts. Read as one run with the delta half above
+// it, the two collide: the copy's first section reports as out of order and
+// every number it reuses as a duplicate. Neither half can be edited to settle
+// that — the copy must match its owner byte for byte, and renumbering the
+// delta half would distort a project-owned document to suit a copy, breaking
+// again whenever the owner gains a section. So the check learns the boundary
+// the mirror gate already keys on; the markers are an existing contract, not a
+// new declaration.
+QList<QPair<int, int>> mirrorRegions(const QStringList &lines) {
+    static const QRegularExpression beginRe(
+        QStringLiteral("^<!-- MIRROR BEGIN .* -->$"));
+    static const QRegularExpression endRe(
+        QStringLiteral("^<!-- MIRROR END -->$"));
+    QList<QPair<int, int>> regions;   // 1-based, inclusive of both markers
+    int begin = -1;
+    for (int i = 0; i < lines.size(); ++i) {
+        if (begin < 0) {
+            if (beginRe.match(lines[i]).hasMatch()) begin = i + 1;
+        } else if (endRe.match(lines[i]).hasMatch()) {
+            regions.append({begin, i + 1});
+            begin = -1;
+        }
+    }
+    // An unclosed BEGIN runs to EOF. check-standard-mirrors.sh refuses such a
+    // file outright, but this check still has to say something sane about one.
+    if (begin >= 0) regions.append({begin, lines.size()});
+    return regions;
+}
+
 // ANTS-3700 — check 4. Siblings are headings sharing a numeric parent prefix
 // ([5] and [6] are siblings under ""; [5,1] and [5,2] under "5"), which is the
 // grouping the numbering itself asserts — stricter and cleaner than matching
@@ -408,15 +442,25 @@ QString gfmSlug(const QString &headingText) {
 //     Without this, the commonest shape of the defect (two siblings swapped)
 //     reports twice: once as a hole at 5.8, once as a reversal at 5.7.
 void checkHeadingSequence(const QString &rel, const QList<Heading> &headings,
-                          const QSet<int> &accounted, QList<int> *suppressed,
-                          QList<Finding> &out) {
+                          const QSet<int> &accounted,
+                          const QList<QPair<int, int>> &mirrors,
+                          QList<int> *suppressed, QList<Finding> &out) {
     struct Group {
         QSet<int>  present;   // every number seen under this parent, any order
         QList<int> order;     // document order of those numbers
         QList<int> lines;
     };
-    QMap<QString, Group> groups;   // parent prefix ("", "5", "5.1") → group
-    QHash<QString, QString> label; // parent prefix → its heading text, for msgs
+    // ANTS-4878 — keyed by (scope, parent), where scope is the MIRROR region
+    // the heading sits in (0 = the document's own text). Siblings are siblings
+    // only within one scope: a copy's "## 2." is not this document's second
+    // section, and comparing them is what produced the false duplicates.
+    QMap<QPair<int, QString>, Group> groups;
+    const auto scopeOf = [&mirrors](int line) {
+        for (int i = 0; i < mirrors.size(); ++i)
+            if (line >= mirrors[i].first && line <= mirrors[i].second)
+                return i + 1;
+        return 0;
+    };
 
     for (const Heading &h : headings) {
         if (h.level < 2) continue;   // H1 is the doc title, not a section
@@ -426,18 +470,17 @@ void checkHeadingSequence(const QString &rel, const QList<Heading> &headings,
         for (int i = 0; i < num.size() - 1; ++i)
             parentParts << QString::number(num[i]);
         const QString parent = parentParts.join(QLatin1Char('.'));
-        Group &g = groups[parent];
+        Group &g = groups[{scopeOf(h.line), parent}];
         g.present.insert(num.last());
         g.order.append(num.last());
         g.lines.append(h.line);
-        label.insert(parent, h.text);
     }
 
     // Emit in document order across all groups, so findings interleave the way
     // the sort at the end of check() expects.
     QList<Finding> local;
     for (auto it = groups.constBegin(); it != groups.constEnd(); ++it) {
-        const QString &parent = it.key();
+        const QString &parent = it.key().second;
         const Group   &g      = it.value();
         const QString  prefix = parent.isEmpty()
                                     ? QString()
@@ -587,6 +630,7 @@ QList<Finding> check(const QString &rootCanonical, const QStringList &relDocs,
         d.links = extractLinks(lines, fence, opts.maxLinksPerDoc,
                                suppressed ? &suppressed->quotedLinks : nullptr);
         d.accounted = accountedNumbers(lines, d.headings);   // ANTS-4641
+        d.mirrors   = mirrorRegions(lines);                  // ANTS-4878
         detectToc(lines, d);
         d.ungranted = detectUngrantedTools(lines, fence);  // ANTS-3719
 
@@ -675,7 +719,7 @@ QList<Finding> check(const QString &rootCanonical, const QStringList &relDocs,
 
         // Check 4 — numbered-heading sequence (ANTS-3700).
         QList<int> suppressedHere;
-        checkHeadingSequence(rel, d.headings, d.accounted,
+        checkHeadingSequence(rel, d.headings, d.accounted, d.mirrors,
                              suppressed ? &suppressedHere : nullptr, findings);
         if (suppressed && !suppressedHere.isEmpty()) {
             std::sort(suppressedHere.begin(), suppressedHere.end());
