@@ -48456,6 +48456,34 @@ envelope dropped `source`/`path`/`etag`/`total`/`filter`.
   CHEAPEST HONEST SCOPE is one verb family per pass, each closing a class
   that can be stated. There is no urgency — a wrong pin misleads a reader
   who follows it, but nothing builds from these documents unattended.
+  Progress (2026-09-05): both classes this item names are closed, by the
+  method it prescribes.
+
+  The roadmap WRITE half — ANTS-1879, ANTS-1878, ANTS-1428, ANTS-1405 and
+  ANTS-1630 — now names the owning TU rather than a line: append and flip
+  in `remotecontrol_roadmap_log.cpp`, the batch ops and create_section in
+  `_log_batch.cpp`, the `cmdRoadmapLog` dispatcher in
+  `remotecontrol_roadmap_query.cpp`. The verb-pin half followed in the two
+  path-validation audit tables, ANTS-1347 and ANTS-1295, plus ANTS-1922's
+  `session_orient` pin.
+
+  Every home was resolved with `find_definition` rather than re-derived,
+  and the pin was dropped rather than renumbered — re-measuring only resets
+  the clock until the next split.
+
+  Loop-log rows were classified first and left alone: ANTS-1879, ANTS-1630,
+  ANTS-1922 and ANTS-1295 each still carry pins inside a cold-eyes section,
+  and those record what a pass found on a date. `doc_integrity` returns
+  clean on all nine edited files.
+
+  Also folded in, same cause and same repair: bare `(lines N-M)` and
+  `at line N` references beside the pins, which no search for the file name
+  would have found.
+
+  STILL OPEN and the reason the item is not closed: the same damage runs
+  through the remaining spec corpus — the largest concentrations are
+  ANTS-1365, ANTS-1372, ANTS-3543, ANTS-3492 and ANTS-2049. Next pass takes
+  one more stateable family.
   **Layman:** Many design documents still point at line numbers in a file that has since been split up, so following one lands on unrelated code.
   Kind: doc-fix.
   Source: in-session-2026-08-28, measured by ANTS-4711's classification lane.
