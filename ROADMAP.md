@@ -34676,6 +34676,35 @@ in each bullet, not just the reporter's symptom.
   Source: in-session-2026-08-31, found while triaging the gate's own uncovered list.
   Lanes: ci, changelog.
 
+- 📋 [ANTS-4883] **Using the documented ANTS_PREPUSH_NO_ASAN escape hatch fails the very suite the hook runs.**
+  `tools/hooks/pre-push` documents `ANTS_PREPUSH_NO_ASAN=1` as the way to
+  skip the sanitizer leg for one push. Setting it and pushing fails
+  `prepush_asan_gate`, so the push is refused — the escape hatch cannot be
+  used for the thing it is documented for.
+
+  Cause: the variable is INHERITED. The hook runs the Release suite as a
+  child, so an ambient value reaches the test, which sets that same variable
+  itself to exercise the skip branch and reads the hook's output for the
+  other branches. Its default-case checks therefore see a skip they did not
+  ask for.
+
+  Observed rather than reasoned: the same tree ran 4177/4177 green
+  moments before, and the only difference was the variable being exported.
+
+  Repair is on the test side, not the hook's: unset the variable for the
+  cases that exercise the default path, so the case's own `env VAR=1`
+  remains the only way it is ever set. Both branches stay testable.
+
+  Reachable exactly when it is most needed. The leg is cost-gated on a warm
+  tree (ANTS-4118), so it runs precisely when a session has been building —
+  which on this 32 GiB host is also when memory is tightest. Two pushes were
+  OOM-killed here before the hatch was tried; the ninja trees survived both
+  (`-n` exit 0, `-t recompact` clean) but that is luck rather than design.
+  **Layman:** The official way to skip the slow sanitizer check makes a test fail, so the push is blocked either way.
+  Kind: fix.
+  Source: in-session-2026-09-05, hit when the sanitizer leg could not complete on this machine.
+  Lanes: ci, tests.
+
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-08-14 triage
 
 Un-triaged findings drained from the shared `*_Ants_MCP_Feedback.md` corpus
@@ -37850,6 +37879,29 @@ whole files.
   NOT done, unchanged from the previous note: the pass-headings ReDoS claim,
   `project_conventions`, the changelog read-modify-write race, `featurecoverage`'s
   extension fallback, the `speclint` default, and the MEDIUM list.
+  Two further claims VERIFIED (2026-09-05), not yet fixed. Recorded so the
+  next session starts from the verification rather than repeating it.
+
+  `mutation_probe` writes the caller's own source with plain `QFile` +
+  `WriteOnly|Truncate` at BOTH sites — the mutation write and the restore —
+  while `apply_edits`, in the same TU, uses `QSaveFile` under a comment
+  naming the write atomic. The restore's read-back check does catch a short
+  write, but it cannot run at all if the process dies between the truncate
+  and the write, and the file is then EMPTY. The claim understated which
+  site matters: losing the restore is what destroys the caller's source,
+  and the lambda above it calls the guarantee "a real guarantee rather than
+  a hope". Repair is `QSaveFile` at both sites, keeping the read-back.
+
+  `project_conventions` is worse than "a five-row table for any caller": the
+  table is HARD-CODED and reads nothing from the project, and its rows cite
+  Ants-specific paths (`docs/standards/*.md`, `tests/features/README.md`).
+  So another project is handed THIS project's conventions as its own. The
+  only absence signal is a per-row `exists` boolean computed against the
+  caller's root — and `false` is exactly what `compact:true` drops by
+  design (ANTS-2091), which is why a reported run saw confident conventions
+  with no hedge at all. Repair is a top-level `warning` naming the cited
+  documents that do not exist under this root: `warning` sits in the
+  diagnostic floor, so neither `compact` nor `fields=` can drop it.
 
 - 📋 [ANTS-4461] **Triage: roadmap store/export and plugin-manager findings from the cold sweep.**
   Reviewer claims carried forward as-is. NOT re-verified — check each against

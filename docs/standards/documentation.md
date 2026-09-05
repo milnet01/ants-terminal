@@ -579,14 +579,15 @@ that is the whole edit:
    historical* form, it is past tense, it carries its date, and it cannot go
    stale. **Where the document names a history file — a record it keeps for
    rule pedigree, never its loop log, whose rows `review-contract` alone
-   writes — that record is written there and the rule keeps only its
+   writes — the pedigree is written there and the rule keeps its
    instruction.** A document naming none keeps its pedigree inline. Same
    ground as § 9.1: a
    document read in full whenever it is consulted pays for its pedigree on
    every read, and the pedigree is not what the reader came for. **Move a
    clause only when deleting it changes nothing a run would do** —
-   `skills/_shared/provenance-split.md` owns that test, and a dated
-   measurement the rule's strength rests on is scope and stays. It moves
+   `skills/_shared/provenance-split.md` owns that test, so a dated
+   measurement the rule's strength rests on is scope rather than pedigree,
+   and stays. It moves
    verbatim or not at all.
 5. **A note naming a broken passage is not a fix — change the passage.**
    Where a correction records that some *other* line is wrong, that line
@@ -609,7 +610,9 @@ failing — not by how firmly it is written.
 **Every standard, reference and spec carries a `## What checks this`
 section**: one table, each rule against what catches a breach. **In a
 standard or a reference it is the last content section, with the loop log
-after it** — a loop log is a record rather than content. **A spec's order is
+after it** — a loop log is a record rather than content. A reference is not
+gated (§9.1) and carries no loop log; the placement rule bites only where
+one exists. **A spec's order is
 `spec-format.md` § 3's block**, which puts `Cross-doc impact` between the two
 and appends § 4's sections after the log. (A spec numbers it, per the
 note below. `spec-format.md` § 3.12 delegates **all** of the table's rules
@@ -948,7 +951,7 @@ has to show as an empty cell rather than as a sentence nobody wrote.
 | Class | Fires on | Skips | Reads |
 |---|---|---|---|
 | **path** | a `~/.claude/…` path anywhere in the file, or a markdown link target beginning `./` or `../`, that resolves neither from the repo root nor relative to the staged file's own directory. A shell brace set (`a/{x,y}.cpp`) is expanded and **every** member must resolve | **a staged file under `docs/` or `skeleton/files/`**; a line carrying a `YYYY-MM-DD` date; placeholders (`<…>`, `{{…}}`, `*`); a truncated path; **a backticked bare path with no `~/.claude/` prefix, which it never extracts at all** | the staged file |
-| **survivor** | text of 45+ characters this change deletes that still exists in another tracked `*.md` | **`docs/`**, and **`ROADMAP.md` and `CHANGELOG.md`**, which are record genres the search never enters; the file being edited; **a line the same change adds back to that same file, which a whole-file reflow does to every line**; a hit in a file the same commit *added* the text to; **a copy this change replaces with a POINTER — the same change adds, to the file the text left, a line naming the file the copy survives in**; **text this change moves to a record under `docs/`, where the same change also adds to the file the text left a line naming that record — both artefacts required, because the search never looks inside `docs/` and the destination is therefore never a hit**; hits across the `draft/`-versus-live boundary; fragments under 45 characters; **a copy wrapped differently from the deleted line, which the class matches whole-line** | the tracked tree, working copy — **not** `--cached` |
+| **survivor** | text of 45+ characters this change deletes that still exists in another tracked `*.md` | **a staged file under `docs/` or `skeleton/files/`**; and, on the search side, **`docs/`**, **`ROADMAP.md` and `CHANGELOG.md`**, which are record genres the search never enters; the file being edited; **a line the same change adds back to that same file, which a whole-file reflow does to every line**; a hit in a file the same commit *added* the text to; **a copy this change replaces with a POINTER — the same change adds, to the file the text left, a line naming the file the copy survives in**; **text this change moves to a record under `docs/`, where the same change also adds to the file the text left a line naming that record — both artefacts required, because the search never looks inside `docs/` and the destination is therefore never a hit**; hits across the `draft/`-versus-live boundary; fragments under 45 characters; **a copy wrapped differently from the deleted line, which the class matches whole-line** | the tracked tree, working copy — **not** `--cached` |
 | **allowed-tools** | a skill, command or agent file instructing an `mcp__ants__*` verb its own grant list omits. **It matches the verb's call SHAPE — backticked with arguments, or near a call word — and cannot see the SUBJECT**, so a sentence describing some OTHER artefact making the call fires identically; the remedy is to break the shape, since deciding the subject is not mechanical (CFG-0214) | **a staged file under `docs/` or `skeleton/files/`**; `review-agent-rules` itself; `*/templates/*`; **a file with no grant line at all**, absent meaning unrestricted, so nothing can be breached; a sentence that negates the call (*never*, *not*, *don't*, *cannot*, *without*, *no*) | the staged file, plus the grant list in its own or its skill's frontmatter |
 | **citation** | a document citing a path this change renames or deletes, where no candidate resolves | **`docs/` and `draft/`**, and **`ROADMAP.md` and `CHANGELOG.md`**, which are record genres; removed paths under `*/templates/`; the removed file itself | the tracked index, `--cached` — **a staged document is searched like any other**, subject to the `Skips` column; the removed file is skipped on top of it. The class exists for documents *not* in the commit, which is its reason rather than its scope |
 | **section** | `` `<doc>.md` § N.N `` naming a heading that document does not have | **a staged file under `docs/` or `skeleton/files/`**; a line carrying a `YYYY-MM-DD` date; `*/templates/*`; a document name resolving to zero files or to several; a letter-suffixed id (`§ 1a`), which names an item rather than a heading | the staged file, plus the tracked `*.md` list |
@@ -966,8 +969,9 @@ runs and declines to *search inside* a directory.
 - **The search-scope skip:** `survivor` and `citation` never look *inside*
   `docs/` (and `citation` also skips `draft/`). `survivor` takes its needles
   from the staged diff and then searches the tree, so the `docs/` in its
-  `Skips` cell is this skip rather than the one above. Both classes are
-  subject to the staged-file skip as well.
+  `Skips` cell is this skip rather than the one above. `survivor` carries the
+  staged-file skip as well; `citation` runs before that loop and carries
+  neither it nor a `skeleton/files/` exclusion of any kind.
 
 Two independent cold readers landed here in one loop.
 
@@ -1222,7 +1226,7 @@ defect is repaired by hand, outside every gate — §2.8's length rule and
 | §2.3 no census counts | **`Partial:`** `check-doc-facts` `counts`, a census-count check, which names §2.3 as its own authority; the `pre-commit` hook has no count check of its own (§9.0), so a census reaches a commit uncaught. Added 2026-08-20; §2.3's larger half had no row while its `path:line` half did |
 | §2.9 cell forms | **`Partial:`** `check-doc-facts` `what-checks-this`, a cell-form and name-resolution check over this table. **Nothing** resolves a sub-check name inside `check-doc-facts` (§9.0), which is most of what these cells name |
 | §2.2 a new value lists what constrains its set | **nothing** — the limits it inherits are stated in another section, and no check reads one section against another |
-| §2.2 cited symbols exist | `check-doc-facts` `symbols`, a symbol-resolution check against current source |
+| §2.2 cited symbols exist | **`Partial:`** `check-doc-facts` `symbols`, a symbol-resolution check against current source, which emits CANDIDATES — only *does not resolve* is deterministic. **Nothing** decides which candidate is a defect |
 | §2.9 required sections present | **`Partial:`** `check-doc-facts` `sections`, a required-section check against the format standard, **for a spec only** — it reads a spec's machine-readable block, and a standard's or reference's requirement is prose, which `mandated-section` reaches from the document side and `section-exists` from the rule side. Both test PRESENCE; **nothing** checks that a mandated section is in the mandated PLACE, though §2.9 requires `## What checks this` last and the loop log after it (added 2026-08-20, when §9.4 credited a position test that does not exist). This row named `structure` until 2026-08-17; that check is fences, id gaps and parse |
 | §9.1 loop log present, tally balances | **`Partial:`** `check-doc-facts` `loop-log`, a tally check over the log's own rows, plus a required-section check for the log's presence — `mandated-section` where the requirement is prose, `sections` in a spec. The `loop-log` check does not test presence; this row credited it with both until 2026-08-17. It credited `sections` alone until 2026-08-20, and `sections` skips a standard, whose requirement is prose — which is exactly what `mandated-section` exists for. **The tally is caught by nothing once the rows live in a record** — `loop-log` reads the pointing section, finds no rows and passes; and a row written into that section instead reads as conforming to the sentence before it, with no check comparing the two |
 | §9.1 a landed row is not edited | **nothing** — the edit shows in the commit diff, and no check reads it |
@@ -1230,7 +1234,7 @@ defect is repaired by hand, outside every gate — §2.8's length rule and
 | `roadmap-format.md` / `changelog-format.md` parse | see each of those documents' own § What checks this. §4 routes to them and states no parsing rule of its own, so it states no *coverage* of its own either (§2.1). This row read "the parsers that read them" until 2026-08-14, where `changelog-format.md` says nothing validates a `CHANGELOG.md` at rest |
 | §2.6 absolute dates | **nothing** — both forms are greppable, so this is a check worth adding |
 | §3.1 / §3.3 filename form | **nothing** — the ID prefix and the `SHOUTING.md` / `lowercase-kebab.md` split are both greppable, so this is a check worth adding |
-| §2.1 one fact one home | **`Partial:`** the `pre-commit` hook's survivor class (§9.0) blocks when a change deletes text that still exists in another tracked `*.md` **outside `docs/`, `ROADMAP.md` and `CHANGELOG.md`** — so it catches the copy you *edited past*, only at the moment you edit it, **never a copy living in a spec, plan or ADR**, and **never a copy wrapped differently from the deleted line**, which the class matches whole-line. `check-doc-facts` `enumeration-parity`, an enumeration-parity check, covers a second slice — two lists of the same set inside ONE document — as CANDIDATES rather than findings. Nothing finds a rule sitting in two documents that nobody is touching: a cold read sees "these two passages disagree" within one document only, and **a rule copied into a second document is invisible to a single-document review** unless that document is in the review's packet. `review-contract-set` reaches that half only once the two copies **disagree** — its Q1 asks whether two documents contradict each other, so a faithful copy is caught by **nothing**, which is what § 9.4 states. And it is a review, not a check, so this row stays `Partial:` |
+| §2.1 one fact one home | **`Partial:`** the `pre-commit` hook's survivor class (§9.0), whose `Skips` cell is the enumeration and is not restated here — so it catches the copy you *edited past*, only at the moment you edit it, **never a copy living in a spec, plan or ADR**, and **never a copy wrapped differently from the deleted line**, which the class matches whole-line. `check-doc-facts` `enumeration-parity`, an enumeration-parity check, covers a second slice — two lists of the same set inside ONE document — as CANDIDATES rather than findings. Nothing finds a rule sitting in two documents that nobody is touching: a cold read sees "these two passages disagree" within one document only, and **a rule copied into a second document is invisible to a single-document review** unless that document is in the review's packet. `review-contract-set` reaches that half only once the two copies **disagree** — its Q1 asks whether two documents contradict each other, so a faithful copy is caught by **nothing**, which is what § 9.4 states. And it is a review, not a check, so this row stays `Partial:` |
 | §2.2 a pointer says what you attribute to it | **`Partial:`** the `pre-commit` hook's section class (§9.0), a section-resolution check over a prose `§` pointer — and **nothing** tests whether the named section carries the rule attributed to it, which §2.2 says outright is the half that matters. A scaffolded project has neither: its skeleton omits the class |
 | §2.2 the claim is *true* | **nothing** — resolution proves a symbol exists, not that the description of it is right |
 | §2.7 nothing documented before it ships | **nothing** — forward-reference versus defect is a judgement |
