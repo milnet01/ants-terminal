@@ -50704,6 +50704,34 @@ two projects).
   Kind: fix.
   Source: cc-feedback-2026-09-03 Rolodex.
 
+- 📋 [ANTS-4880] **find_definition reports a local variable initialisation as a definition, so a symbol appears to have several homes.**
+  Repro: `find_definition {symbol:"counterPath", lang:"cpp"}`. The real
+  definition is `QString counterPath(const QString &projectPath)` in
+  `src/roadmapfoldin.cpp`. Alongside it the reply carries rows for
+  `src/remotecontrol_roadmap_log.cpp` and `_log_batch.cpp` whose signature
+  is `const QString counterPath =` — function-local variables — each with
+  `kind:"definition"`, indistinguishable from the real one.
+
+  The scan anchors on `<type> <name>` and does not require a parameter
+  list, so any `const T name =` inside a function body matches. `kind`
+  already distinguishes definition from declaration, so the shape for
+  saying this exists; a local is neither.
+
+  Why it matters rather than being cosmetic: resolving a symbol's real
+  home is exactly what ANTS-4757's method prescribes, and that item exists
+  because attributions naming the wrong file mislead a reader and can
+  silence a source-grep check. A verb answering with several plausible
+  homes hands back the same failure. It is a FALSE POSITIVE and so
+  distinct from ANTS-4828, which is a false negative on a multi-line
+  signature.
+
+  Not urgent: the wrong rows are recognisable by their signature, and the
+  real definition was present in every case seen this session.
+  **Layman:** Asking "where is X defined?" can list ordinary local variables of the same name as if each were the real definition.
+  Kind: fix.
+  Source: in-session-2026-09-05, hit while resolving pin homes for ANTS-4757.
+  Lanes: mcp, workspace.
+
 ### Ants MCP feedback from CC sessions — 2026-09-04 triage
 
 - ✅ [ANTS-4860] **roadmap_query's header-inventory fallback emits no sync_checked, so check_sync:true is unanswerable there.**
