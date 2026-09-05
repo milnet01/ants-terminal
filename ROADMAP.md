@@ -48539,7 +48539,7 @@ envelope dropped `source`/`path`/`etag`/`total`/`filter`.
   Kind: fix.
   Source: in-session-2026-09-04.
 
-- 📋 [ANTS-4879] **A -Wdangling-else warning stands in test_mcp_result_offload.cpp, where the ambiguity decides what is asserted.**
+- ✅ [ANTS-4879] **A -Wdangling-else warning stands in test_mcp_result_offload.cpp, where the ambiguity decides what is asserted.**
   Seen on an ordinary `cmake --build build` this session, not sought:
 
       test_mcp_result_offload.cpp:1170:8: warning: suggest explicit braces to
@@ -48560,6 +48560,14 @@ envelope dropped `source`/`path`/`etag`/`total`/`filter`.
   Fix is to brace it, then confirm which arm each assertion was meant for by
   reading it against ANTS-4705's contract rather than preserving current
   behaviour on the assumption it is right.
+  Resolved (2026-09-05): the guard was not merely ambiguous, it was inert.
+  In this fixture `rows_preview_truncated` is false, so the guarded EXPECT_LT
+  never ran and the line asserted nothing at all — the suspicion in the body
+  was right, and worse than stated. Bracing it would have preserved that.
+  Replaced with an unconditional equivalence between the flag and
+  `rows_preview.size() < row_count`, so the false case is checked too; the
+  `if` is gone, and with it the warning. Proven live by mutation: negating
+  the comparison reddens the test, restoring it greens.
   **Layman:** A test has an if/else the compiler says could be read two ways, so which branch the else belongs to is not obvious from the code.
   Kind: fix.
   Source: in-session-2026-09-04.

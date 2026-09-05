@@ -1166,8 +1166,14 @@ TEST_F(McpResultOffload, Ants4705RowCountRidesEveryArm) {
         << "the shape arm reported truncation without the total it is "
            "truncated against";
     EXPECT_EQ(o.value("row_count").toInt(), 12);
-    // And the claim it supports is checkable against it.
-    if (o.value("rows_preview_truncated").toBool())
-        EXPECT_LT(o.value("rows_preview").toArray().size(),
-                  o.value("row_count").toInt());
+    // And the claim it supports is checkable against it. Unconditional: this
+    // arm always sets `rows_preview_truncated` beside `rows_preview`, so
+    // guarding on its value only made the check vacuous when it was false --
+    // the state where a wrong `row_count` would pass unseen. The guard also
+    // raised -Wdangling-else through gtest's macro expansion (ANTS-4879).
+    ASSERT_TRUE(o.contains("rows_preview_truncated"))
+        << "the shape arm must say whether its preview is short";
+    EXPECT_EQ(o.value("rows_preview_truncated").toBool(),
+              o.value("rows_preview").toArray().size()
+                  < o.value("row_count").toInt());
 }
