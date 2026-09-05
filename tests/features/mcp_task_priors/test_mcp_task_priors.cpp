@@ -14,6 +14,17 @@
 #include <gtest/gtest.h>
 #include "../../_support/srcgrep.h"
 
+#include "remotecontrol.h"
+
+#include <QDir>
+#include <QFile>
+#include <QFileInfo>
+#include <QJsonArray>
+#include <QJsonDocument>
+#include <QJsonObject>
+#include <QString>
+#include <QTemporaryDir>
+
 #ifndef SRC_CLAUDE_INTEGRATION_CPP_PATH
 #error "SRC_CLAUDE_INTEGRATION_CPP_PATH compile definition required"
 #endif
@@ -166,4 +177,87 @@ TEST(McpTaskPriors, WiringAndLogicContract) {
     }
 
     EXPECT_EQ(0, expect_failures());
+}
+
+// ---------------------------------------------------------------------------
+// ANTS-4460 / ANTS-4376 — behavioural: a project whose specs are NOT `ANTS-*`
+// is seen.
+//
+// task_priors is the sibling ANTS-4376's fix did not reach. It hard-coded both
+// the `docs/specs` directory and the `ANTS-*.md` glob, so on any project whose
+// id prefix is not ANTS it reported `specs_count: 0` with `ok:true` — which is
+// indistinguishable from "no spec mentions this task". This project's prefix
+// simply happens to be ANTS.
+//
+// The file header above says this verb is not GUI-free-exercisable. It is:
+// task_priors resolves its root through resolveRootCanonical(m_main, req),
+// which honours caller_cwd, exactly as invariant_check does — and invariant_check
+// is exercised this way in tests/features/mcp_invariant_check/.
+
+TEST(McpTaskPriors, ScansSpecsOfAnyProjectPrefix) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString root = QFileInfo(tmp.path()).canonicalFilePath();
+    ASSERT_TRUE(QDir().mkpath(root + QStringLiteral("/docs/specs")));
+
+    const auto write = [&](const QString &rel, const QString &body) {
+        QFile f(root + QLatin1Char('/') + rel);
+        ASSERT_TRUE(f.open(QIODevice::WriteOnly | QIODevice::Truncate));
+        f.write(body.toUtf8());
+    };
+    // LottoTracker's real shape: a non-ANTS prefix AND a topic suffix.
+    write(QStringLiteral("docs/specs/LOTTO-0001-ticket-tracker.md"),
+          QStringLiteral("# LOTTO-0001 — tickets\n\n"
+                         "The ticket scanner reads a barcode off the slip.\n"));
+
+    QJsonObject req;
+    req[QStringLiteral("caller_cwd")]  = root;
+    req[QStringLiteral("description")] = QStringLiteral("barcode scanner slip");
+
+    RemoteControl rc(nullptr);
+    const QJsonObject out = rc.cmdTaskPriors(req).object();
+
+    ASSERT_TRUE(out.value(QStringLiteral("ok")).toBool())
+        << QJsonDocument(out).toJson().toStdString();
+    EXPECT_EQ(out.value(QStringLiteral("specs_count")).toInt(), 1)
+        << "a spec whose id prefix is not ANTS must still be READ: "
+        << QJsonDocument(out).toJson().toStdString();
+}
+
+// The `specs_dir` override is honoured, so a project that keeps its specs
+// somewhere other than docs/specs is not silently invisible either (ANTS-2160).
+TEST(McpTaskPriors, HonoursTheSpecsDirOverride) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString root = QFileInfo(tmp.path()).canonicalFilePath();
+    ASSERT_TRUE(QDir().mkpath(root + QStringLiteral("/.ants")));
+    ASSERT_TRUE(QDir().mkpath(root + QStringLiteral("/design/contracts")));
+
+    const auto write = [&](const QString &rel, const QString &body) {
+        QFile f(root + QLatin1Char('/') + rel);
+        ASSERT_TRUE(f.open(QIODevice::WriteOnly | QIODevice::Truncate));
+        f.write(body.toUtf8());
+    };
+    write(QStringLiteral(".ants/project.json"),
+          QStringLiteral("{\"specs_dir\": \"design/contracts\"}"));
+    write(QStringLiteral("design/contracts/DOOM-0331-bloom.md"),
+          QStringLiteral("# DOOM-0331 — bloom\n\n"
+                         "The bloom pass blurs the framebuffer.\n"));
+
+    QJsonObject req;
+    req[QStringLiteral("caller_cwd")]  = root;
+    req[QStringLiteral("description")] = QStringLiteral("bloom framebuffer blur");
+
+    RemoteControl rc(nullptr);
+    const QJsonObject out = rc.cmdTaskPriors(req).object();
+
+    ASSERT_TRUE(out.value(QStringLiteral("ok")).toBool())
+        << QJsonDocument(out).toJson().toStdString();
+    EXPECT_EQ(out.value(QStringLiteral("specs_count")).toInt(), 1)
+        << "specs_dir was ignored: " << QJsonDocument(out).toJson().toStdString();
+    // The reported path must be relative to the override, not to docs/specs.
+    const QJsonArray specs = out.value(QStringLiteral("specs")).toArray();
+    ASSERT_EQ(specs.size(), 1);
+    EXPECT_EQ(specs.at(0).toObject().value(QStringLiteral("path")).toString(),
+              QStringLiteral("design/contracts/DOOM-0331-bloom.md"));
 }

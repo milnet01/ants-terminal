@@ -37504,7 +37504,7 @@ whole files.
   Source: cold-sweep-2026-08-18 lane audit-dialog (VERIFIED in-session).
   Lanes: auditdialog.
 
-- 📋 [ANTS-4455] **The module map presents two subsystems as peers when each is an order of magnitude larger.**
+- ✅ [ANTS-4455] **The module map presents two subsystems as peers when each is an order of magnitude larger.**
   `docs/subsystems.md` lists its subsystems as comparable units, one bullet
   each. Measured this session:
   • `src/remotecontrol*` = 30,349 lines across 16 files (14 `.cpp` + 2 `.h`);
@@ -37545,6 +37545,26 @@ whole files.
   `remotecontrol_roadmap_migrate` already has its own entry, so the split
   is partial. This is now a readability question for the human audience the
   header names, not a review-partition defect.
+  Resolved (2026-09-05): the map's granularity, which was the one half left
+  open after ANTS-4804 and ANTS-4793 closed the consequence.
+
+  Every `remotecontrol_*.cpp` TU now has its own entry with a one-line
+  summary, so a reader asking "what does this module do?" gets an answer per
+  module rather than one bullet covering the whole family. Verified against
+  source: there are sixteen such TUs, and the entry named eleven of them
+  inline — `_roadmap_log_batch`, `_roadmap_backfill`, `_roadmap_repair`,
+  `_roadmap_publish` and `_session_message` appeared nowhere.
+
+  Two stale facts went with it. The entry said the split was twelve TUs and
+  that `slurpRemoteControl()` "reads all twelve"; the header ordinals are
+  `TU n/17` today. The counts are dropped rather than corrected — they go
+  stale on the next split, and the rule underneath them does not: a TU that
+  is a slice of the pre-split file is inserted at its slice position, one
+  that never existed there is appended, so the two-anchor scrape windows do
+  not move. `CMakeLists.txt`'s own comment on `_roadmap_log_batch` states
+  that rule, and it is now in the map.
+
+  `doc_integrity` clean; suite 4177/4177 green with the map change in tree.
 
 - 📋 [ANTS-4456] **Triage: terminal-core and render/PTY findings from the cold sweep.**
   Reviewer claims carried forward as-is. NOT re-verified in this session —
@@ -37796,6 +37816,40 @@ whole files.
   missing `docs_digest`, `focused_test`'s two routes to a false green,
   `featurecoverage`'s extension fallback, the `speclint` default, and the
   whole MEDIUM list.
+  Triage continued (2026-09-05): three more HIGH claims verified and fixed,
+  each proven red before green. The bucket's remaining claims are still
+  unverified.
+
+  `task_priors` hard-coded both the `docs/specs` directory and an `ANTS-*.md`
+  glob, so any project whose id prefix is not ANTS got `specs_count: 0` with
+  `ok:true` — unreadable as anything but "no spec covers this". Same defect
+  ANTS-4376 fixed in `invariant_check`, in the sibling it did not reach. It
+  now scans every `*.md` and honours `specs_dir`. Blast radius here is nil:
+  every file in this project's specs dir is ANTS-prefixed, so the widened
+  glob changes nothing locally and everything for other projects.
+
+  `doc_dedup` is ETag-eligible yet emitted no `docs_digest`, alone among the
+  four doc verbs. The central etag hashes the response, so two runs over
+  different doc sets that both find nothing hash identically and the second
+  answers `unchanged` for a question it never asked. The test asserts the
+  digest MOVES with the set rather than merely being present — a constant
+  would satisfy presence and still permit the false 304.
+
+  `focused_test` inserted a coverage-map key whose value was a string rather
+  than an array with an EMPTY pattern list, so the file counted as MAPPED
+  and contributed nothing to the `ctest -R` regex: a run selected no tests
+  and reported success. Refused as `bad_schema` now, matching the
+  invalid-pattern check beside it. The `default` key had the same hole and
+  is guarded too, but only when present, since an absent one is legitimate.
+
+  Also corrected: two test files carried a header claiming their verb was
+  not GUI-free-exercisable. Both resolve their root through
+  `resolveRootCanonical(m_main, req)`, which honours `caller_cwd` — so both
+  now have behavioural tests where they had source-grep only.
+
+  NOT done, unchanged from the previous note: the pass-headings ReDoS claim,
+  `project_conventions`, the changelog read-modify-write race, `featurecoverage`'s
+  extension fallback, the `speclint` default, and the MEDIUM list.
 
 - 📋 [ANTS-4461] **Triage: roadmap store/export and plugin-manager findings from the cold sweep.**
   Reviewer claims carried forward as-is. NOT re-verified — check each against

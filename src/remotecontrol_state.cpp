@@ -3033,14 +3033,25 @@ QJsonDocument RemoteControl::cmdTaskPriors(const QJsonObject &req) {
         result["paths"] = a;
     }
 
-    // (1) specs — docs/specs/ANTS-*.md, score by distinct needles
+    // (1) specs — every `*.md` under the specs dir, scored by distinct needles
     // (+5 id-in-filename boost).
+    //
+    // ANTS-4376 fixed exactly this in invariant_check and did not reach here.
+    // The glob was hard-coded `ANTS-*.md` and the directory hard-coded
+    // `docs/specs`, so this verb saw NOTHING on any project whose id prefix is
+    // not ANTS — `specs_count: 0` with `ok:true`, indistinguishable from "no
+    // spec mentions this task". This project's prefix simply happens to be
+    // ANTS. Scan every `*.md`, as spec_query's list mode already does, and
+    // honour `.ants/project.json`'s `specs_dir` (ANTS-2160).
     {
         QVector<TpScored> hits;
-        QDir dir(rootCanonical + QStringLiteral("/docs/specs"));
+        const QString specsDir =
+            ProjectSettings::load(rootCanonical).specsDir.value_or(
+                QStringLiteral("docs/specs"));
+        QDir dir(rootCanonical + QLatin1Char('/') + specsDir);
         if (dir.exists()) {
             const QStringList files = dir.entryList(
-                {QStringLiteral("ANTS-*.md")},
+                {QStringLiteral("*.md")},
                 QDir::Files | QDir::Readable, QDir::Name);
             for (const QString &fname : files) {
                 QFile f(dir.filePath(fname));
@@ -3057,7 +3068,7 @@ QJsonDocument RemoteControl::cmdTaskPriors(const QJsonObject &req) {
                     parsed.value(QStringLiteral("title")).toString();
                 QJsonObject e;
                 e["id"]      = stem;
-                e["path"]    = QStringLiteral("docs/specs/") + fname;
+                e["path"]    = specsDir + QLatin1Char('/') + fname;
                 e["title"]   = title;
                 e["excerpt"] = tpExcerpt(body, terms,
                                          title.isEmpty() ? stem : title);

@@ -120,6 +120,16 @@ CoverageMap loadCoverageMap(const QString &rootCanonical) {
     const QJsonObject mapObj =
         root.value(QStringLiteral("map")).toObject();
     for (auto it = mapObj.constBegin(); it != mapObj.constEnd(); ++it) {
+        // ANTS-4460 — a value that is not an array (the natural mistake being a
+        // bare string, `"src/foo.cpp": "FooTest"`) gave an EMPTY toArray(): the
+        // key was inserted carrying no patterns, so the file counted as MAPPED
+        // and contributed nothing to the ctest `-R` regex. The run then
+        // selected no tests and reported success — a false green from a typo.
+        // Refuse the shape, as the invalid-pattern check beside it does.
+        if (!it.value().isArray()) {
+            cm.error = QStringLiteral("bad_schema");
+            return cm;
+        }
         QStringList pats;
         for (const QJsonValue &v : it.value().toArray()) {
             const QString s = v.toString();
@@ -131,6 +141,13 @@ CoverageMap loadCoverageMap(const QString &rootCanonical) {
             pats.append(s);
         }
         cm.entries.insert(it.key(), pats);
+    }
+    // Same shape guard as the map above, but only when the key is PRESENT: an
+    // absent `default` is legitimate and must stay an empty pattern list.
+    if (root.contains(QStringLiteral("default")) &&
+        !root.value(QStringLiteral("default")).isArray()) {
+        cm.error = QStringLiteral("bad_schema");
+        return cm;
     }
     for (const QJsonValue &v :
          root.value(QStringLiteral("default")).toArray()) {

@@ -1069,7 +1069,15 @@ QJsonDocument RemoteControl::cmdDocDedup(const QJsonObject &req) {
         acc.add(text, rel, opts);
     }
     // etag injected centrally (isEtagSupportedTool).
-    return QJsonDocument(docDedupBuildResponse(acc.finish(), checked));
+    QJsonObject out = docDedupBuildResponse(acc.finish(), checked);
+    // ANTS-4460 — doc_dedup is ETag-eligible (isEtagSupportedTool) and was the
+    // one doc verb emitting no docs_digest, so its central etag hashed a
+    // response saying nothing about WHICH docs were compared. Two runs over
+    // DIFFERENT sets that both find nothing hash identically, and the second
+    // 304s `unchanged` for a question it never answered. The three sibling doc
+    // verbs fold the set fingerprint in for this reason; this one now does too.
+    out[QStringLiteral("docs_digest")] = docSetDigest(rootCanonical, checked);
+    return QJsonDocument(out);
 }
 
 QJsonObject RemoteControl::docDedupBuildResponse(const DocDedup::Result &result,

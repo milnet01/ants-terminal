@@ -129,6 +129,33 @@ TEST(McpFocusedTest, LoadCoverageMapClassification) {
         EXPECT_FALSE(m.valid);
         EXPECT_EQ(m.error, "bad_schema");
     }
+    {  // ANTS-4460 — a map value that is a STRING, not an array. toArray() on
+       // one yields EMPTY, so the key used to be inserted carrying no
+       // patterns: the file counted as MAPPED and contributed nothing to the
+       // ctest -R regex, and the run selected no tests and reported success.
+        QTemporaryDir td; ASSERT_TRUE(td.isValid());
+        writeFile(td.path() + "/tests/coverage-map.json",
+                  "{\"schema_version\":1,\"map\":{\"src/foo.cpp\":\"Foo\"}}");
+        const auto m = FT::loadCoverageMap(td.path());
+        EXPECT_FALSE(m.valid);
+        EXPECT_EQ(m.error, "bad_schema");
+    }
+    {  // the same shape under `default`, which fed the identical empty list.
+        QTemporaryDir td; ASSERT_TRUE(td.isValid());
+        writeFile(td.path() + "/tests/coverage-map.json",
+                  "{\"schema_version\":1,\"map\":{},\"default\":\"Foo\"}");
+        const auto m = FT::loadCoverageMap(td.path());
+        EXPECT_FALSE(m.valid);
+        EXPECT_EQ(m.error, "bad_schema");
+    }
+    {  // an ABSENT `default` stays legitimate — the guard must not fire on it.
+        QTemporaryDir td; ASSERT_TRUE(td.isValid());
+        writeFile(td.path() + "/tests/coverage-map.json",
+                  "{\"schema_version\":1,\"map\":{\"src/foo.cpp\":[\"Foo\"]}}");
+        const auto m = FT::loadCoverageMap(td.path());
+        EXPECT_TRUE(m.valid);
+        EXPECT_TRUE(m.defaultPatterns.isEmpty());
+    }
     {  // valid
         QTemporaryDir td; ASSERT_TRUE(td.isValid());
         writeFile(td.path() + "/tests/coverage-map.json",

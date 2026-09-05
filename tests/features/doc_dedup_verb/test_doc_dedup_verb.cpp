@@ -6,11 +6,15 @@
 #include "remotecontrol.h"
 #include "docdedup.h"
 
+#include <QDir>
 #include <QFile>
+#include <QFileInfo>
 #include <QJsonArray>
+#include <QJsonDocument>
 #include <QJsonObject>
 #include <QString>
 #include <QStringList>
+#include <QTemporaryDir>
 
 #include <gtest/gtest.h>
 #include "../../_support/srcgrep.h"  // ANTS-3833 — slurpRemoteControl
@@ -161,4 +165,57 @@ TEST(DocDedupVerb, PairAndClusterShapeReachTheWire) {
     // counts is per-kind and covers the whole list (ANTS-3664).
     EXPECT_EQ(o.value(QStringLiteral("counts")).toObject()
                   .value(QStringLiteral("near_duplicate")).toInt(), 3);
+}
+
+// ANTS-4460 — doc_dedup is ETag-eligible (isEtagSupportedTool) and was the one
+// doc verb emitting no docs_digest. The central etag hashes the RESPONSE, so
+// without a fingerprint of the checked set two runs over DIFFERENT doc sets
+// that both find nothing hash identically — and the second answers a 304
+// `unchanged` for a question it never asked. Its three sibling doc verbs fold
+// the set in for exactly this reason.
+//
+// The assertion is that the digest MOVES with the set, not merely that the key
+// is present: a constant would satisfy presence and still permit the false 304.
+TEST(DocDedupVerb, Ants4460DigestTracksTheCheckedSet) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString root = QFileInfo(tmp.path()).canonicalFilePath();
+    ASSERT_TRUE(QDir().mkpath(root + QStringLiteral("/docs")));
+
+    const auto write = [&](const QString &rel, const QString &body) {
+        QFile f(root + QLatin1Char('/') + rel);
+        ASSERT_TRUE(f.open(QIODevice::WriteOnly | QIODevice::Truncate));
+        f.write(body.toUtf8());
+    };
+    // Two unrelated docs, so neither run reports a near-duplicate: the findings
+    // are empty either way, which is the case the digest has to separate.
+    write(QStringLiteral("docs/a.md"),
+          QStringLiteral("# A\n\n") + para(QStringLiteral("alpha"), 40) +
+              QStringLiteral("\n"));
+
+    QJsonObject req;
+    req[QStringLiteral("caller_cwd")] = root;
+
+    RemoteControl rc(nullptr);
+    const QJsonObject one = rc.cmdDocDedup(req).object();
+    ASSERT_TRUE(one.value(QStringLiteral("ok")).toBool())
+        << QJsonDocument(one).toJson().toStdString();
+    const QString digestOne =
+        one.value(QStringLiteral("docs_digest")).toString();
+    EXPECT_FALSE(digestOne.isEmpty())
+        << "an ETag-eligible doc verb must fingerprint its checked set";
+
+    write(QStringLiteral("docs/b.md"),
+          QStringLiteral("# B\n\n") + para(QStringLiteral("beta"), 40) +
+              QStringLiteral("\n"));
+
+    const QJsonObject two = rc.cmdDocDedup(req).object();
+    ASSERT_TRUE(two.value(QStringLiteral("ok")).toBool())
+        << QJsonDocument(two).toJson().toStdString();
+    ASSERT_EQ(two.value(QStringLiteral("checked_docs")).toArray().size(), 2)
+        << "the second run must actually have compared a LARGER set, or this "
+           "case proves nothing";
+    EXPECT_NE(two.value(QStringLiteral("docs_digest")).toString(), digestOne)
+        << "the digest did not move with the checked set, so the central etag "
+           "can still 304 across two different sets";
 }
