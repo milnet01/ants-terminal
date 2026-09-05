@@ -17539,6 +17539,27 @@ own design + test cycles.
   Kind: refactor.
   Source: indie-review-2026-05-13.
   Progress (2026-06-27): confirmed renderHtml v1 has ZERO production callers — every reference is in tests/specs (the spec itself already documents it as "test-only since ANTS-1747"). remotecontrol's roadmap-query path uses parseBullets, not renderHtml. So the CLAUDE.md "IPC verb consumers" justification is indeed stale. Left planned: the delete-or-rename is NOT a quick win — it is a 318-line removal plus a rewrite of 4 feature-test suites (roadmap_viewer, roadmap_viewer_tabs, roadmap_kind_facets, roadmap_current_preset_excludes_shipped) whose locked INVs assert renderHtml's existence/signature/anchor-emission. Needs its own focused session to avoid destabilising the test corpus.
+  Progress (2026-09-05): the DOCUMENTATION half is already done, and the
+  item still reads as though it were outstanding.
+
+  This was filed as "either delete + rewrite the suites, OR rename and
+  amend the stale claim". The stale claim is gone: the module map moved out
+  of CLAUDE.md under ANTS-1292, and `docs/subsystems.md` § roadmapdialog now
+  says `renderHtml` is test-only, cites ANTS-1747, and states outright that
+  `roadmap-query` IPC uses `parseBullets` + `RoadmapIndex` and not the
+  renderer — which is precisely the false justification this item was
+  raised against. Re-verified today: no production caller, every reference
+  outside the renderer itself is a test, a spec or a comment.
+
+  So the second branch is CLOSED and only the deletion remains. Left
+  planned on the 2026-06-27 assessment, which still holds: the removal
+  drags four feature suites whose locked INVs assert `renderHtml`'s
+  existence, signature and anchor emission, so it is a focused session's
+  work rather than a tail-end tidy.
+
+  Recorded rather than acted on, because a future session reading the
+  headline would otherwise go hunting for a CLAUDE.md claim that no longer
+  exists.
 
 - ✅ [ANTS-1264] **Implement INV-13 scroll-position persistence (roadmapdialog).**
   `src/roadmapdialog.cpp:2206`. Spec ANTS-1154
