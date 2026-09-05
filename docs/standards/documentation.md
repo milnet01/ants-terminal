@@ -280,7 +280,7 @@ mistake is a document being written as the wrong kind.
 
 | Kind | What it is for | So it must |
 |---|---|---|
-| **Contract** — design, spec, plan, ADR, standard | something is built *from* it or *under* it | be complete enough that an implementer never has to invent a required behaviour |
+| **Contract** — design, spec, plan, ADR, standard | something is built *from* it or *under* it | give direction — built *from*, an implementer never invents something other code binds to; built *under*, a conformer can tell they have breached it |
 | **Ledger** — roadmap, changelog | to record what is planned and what shipped | be true about the code, and stay true |
 | **Instructions** — README, INSTALL, CONTRIBUTING, runbook | so a reader can *do* the thing | work when followed literally, on a clean machine |
 | **Reference** — API docs, tables, glossaries | to be looked up, not read | resolve — every name in it must exist |
@@ -383,9 +383,10 @@ was never there. Say which document owns the answer and stop; a row may
 still say **nothing**, because that is a claim about this standard's own
 coverage.
 
-**The test is whether the other document STATES THE COVERAGE ANSWER, not
-whether it owns the subject** — and getting that wrong turns a pointer into a worse
-answer than the copy it replaced. A cold read the same day caught one:
+**The test is whether the other document STATES THE COVERAGE ANSWER FOR
+THIS RULE, not whether it owns the subject** — and getting that wrong turns
+a pointer into a worse answer than the copy it replaced. A cold read the
+same day caught one:
 `releases.md`'s row for *a changelog entry exists for this version* was
 pointed at `changelog-format.md`, which owns the changelog's shape and
 correctly answers **nothing** — while the rule is in fact caught, by the
@@ -621,7 +622,13 @@ Each right-hand cell says one of four things and never blurs them: a
 **named check**; **`nothing`** in bold plus why; **`Partial:`** a named check
 plus the part it does **not** cover; or **a pointer** to the document that
 owns the answer, which § 2.1 requires wherever the ANSWER belongs to
-another document — never merely the machinery, which § 2.1 settles above. **Where a pointer and `Partial:` both apply — another
+another document — never merely the machinery, which § 2.1 settles above.
+**Where the catcher is a person — a review, a reader, the user — the cell
+reads `nothing mechanical` plus who reads it.** That is the `nothing` form
+with its catcher named, not a fifth form: a person is not a check, and the
+row still counts toward the error budget below.
+
+**Where a pointer and `Partial:` both apply — another
 document's coverage ANSWER, covering part of the rule — write the `Partial:`
 and cite that document inside it.** § 2.1 forbids restating another document's
 coverage; it does not forbid naming the half nobody covers. **Where two catchers
@@ -686,6 +693,8 @@ docs/
   plans/             <ID>-<topic>.md   build steps for that contract
   decisions/         ADR-NNNN-<topic>.md
   standards/         this project's overrides and its own standards
+  reviews/           <name>-loop-log.md   a document's review history
+  history/           <name>.md            a rule's pedigree, where kept
   screenshots/
   videos/            screen recordings and demos
 ```
@@ -877,34 +886,35 @@ over it** — links, paths, quoted fragments, census counts, required
 sections, `§` pointers. Not once it reaches a reviewer: **before it is called
 done.**
 
-**`check-doc-facts` is what runs them**, and naming it here is the point of
-this paragraph: the `pre-commit` hook below **overlaps that list rather than
-being a subset of it**. `path` sits on the list above, against `paths`. **Tool
-grants overlap too** — `links` emits `ungranted_tool` on a skill calling a
-verb its own grant list omits, where the hook's class also reaches commands
-and agent files and matches the call's shape. **`section` sits on it
-nowhere.** It fires on a prose `` `<doc>.md` § N.N `` pointer; `links`' anchor
-check reads a markdown `[t](#slug)`, `paths` resolves an asserted path, and
-`section-exists` excludes a pointer into one named file. So a `§` pointer is
-caught by this hook or by nothing, and by nothing at all in a scaffolded
-project, whose skeleton omits the class. The rest — deleted text surviving
-elsewhere, citations to renamed paths, unresolved provenance ids, and
-**every** table's row shape — are this repository's own. **`check-doc-facts`
-has no general table check.** Its `what-checks-this` check takes the one table
-its own name gives it, so the hook's `table` class overlaps nothing. It read
-*"a blocking subset of that list"* until 2026-08-14 (ROADMAP CFG-0107), which
-invited the reverse error: treating a clean `check-doc-facts` run as covering
-the hook, and so dropping the survivor class, which the § 2.1 row below names
-as its only catcher across documents. A commit that passes **this
-repository's** hook has had **every blocking class the table below lists** run
-over it — and its links, quoted fragments, census counts and required sections
-not checked at all — **and, where the staged file is under `docs/` or
-`skeleton/files/`, not the classes whose `Skips` column excludes it either.**
-**A project scaffolded from the skeleton has fewer**: that copy carries
-`survivor` and a `link` class, for the reason given below. **`link` is not
-`path`** — the paragraph below the table says how they differ. **Passing the
-hook is not this rule satisfied**, and a session that reports otherwise has
-read the second half of this section and not the first.
+**`check-doc-facts` is what runs them, bar the last**, and naming it here is
+the point of this paragraph: the `pre-commit` hook below **overlaps that
+list rather than being a subset of it**. `path` sits on the list above,
+against `paths`. **Tool grants overlap too** — `links` emits
+`ungranted_tool` on a skill calling a verb its own grant list omits, where
+the hook's class also reaches commands and agent files and matches the
+call's shape. **`section` sits on it nowhere.** It fires on a prose ``
+`<doc>.md` § N.N `` pointer; `links`' anchor check reads a markdown
+`[t](#slug)`, `paths` resolves an asserted path, and `section-exists`
+excludes a pointer into one named file. So a `§` pointer is caught by this
+hook or by nothing, and by nothing at all in a scaffolded project, whose
+skeleton omits the class. The rest — deleted text surviving elsewhere,
+citations to renamed paths, unresolved provenance ids, and **every** table's
+row shape — are this repository's own. **`check-doc-facts` has no general
+table check.** Its `what-checks-this` check takes the one table its own name
+gives it, so the hook's `table` class overlaps nothing. It read *"a blocking
+subset of that list"* until 2026-08-14 (ROADMAP CFG-0107), which invited the
+reverse error: treating a clean `check-doc-facts` run as covering the hook,
+and so dropping the survivor class, which the § 2.1 row below names as its
+only catcher across documents. A commit that passes **this repository's**
+hook has had **every blocking class the table below lists** run over it —
+and its links, quoted fragments, census counts and required sections not
+checked at all — **and, where the staged file is under `docs/` or
+`skeleton/files/`, not the classes whose `Skips` column excludes it
+either.** **A project scaffolded from the skeleton has fewer**: that copy
+carries `survivor` and a `link` class, for the reason given below. **`link`
+is not `path`** — the paragraph below the table says how they differ.
+**Passing the hook is not this rule satisfied**, and a session that reports
+otherwise has read the second half of this section and not the first.
 
 **The cost difference is the whole rule.** A mechanical defect caught
 while writing costs one edit. The same defect caught at the gate costs a
@@ -939,7 +949,7 @@ has to show as an empty cell rather than as a sentence nobody wrote.
 | **path** | a `~/.claude/…` path anywhere in the file, or a markdown link target beginning `./` or `../`, that resolves neither from the repo root nor relative to the staged file's own directory. A shell brace set (`a/{x,y}.cpp`) is expanded and **every** member must resolve | **a staged file under `docs/` or `skeleton/files/`**; a line carrying a `YYYY-MM-DD` date; placeholders (`<…>`, `{{…}}`, `*`); a truncated path; **a backticked bare path with no `~/.claude/` prefix, which it never extracts at all** | the staged file |
 | **survivor** | text of 45+ characters this change deletes that still exists in another tracked `*.md` | **`docs/`**, and **`ROADMAP.md` and `CHANGELOG.md`**, which are record genres the search never enters; the file being edited; **a line the same change adds back to that same file, which a whole-file reflow does to every line**; a hit in a file the same commit *added* the text to; **a copy this change replaces with a POINTER — the same change adds, to the file the text left, a line naming the file the copy survives in**; **text this change moves to a record under `docs/`, where the same change also adds to the file the text left a line naming that record — both artefacts required, because the search never looks inside `docs/` and the destination is therefore never a hit**; hits across the `draft/`-versus-live boundary; fragments under 45 characters; **a copy wrapped differently from the deleted line, which the class matches whole-line** | the tracked tree, working copy — **not** `--cached` |
 | **allowed-tools** | a skill, command or agent file instructing an `mcp__ants__*` verb its own grant list omits. **It matches the verb's call SHAPE — backticked with arguments, or near a call word — and cannot see the SUBJECT**, so a sentence describing some OTHER artefact making the call fires identically; the remedy is to break the shape, since deciding the subject is not mechanical (CFG-0214) | **a staged file under `docs/` or `skeleton/files/`**; `review-agent-rules` itself; `*/templates/*`; **a file with no grant line at all**, absent meaning unrestricted, so nothing can be breached; a sentence that negates the call (*never*, *not*, *don't*, *cannot*, *without*, *no*) | the staged file, plus the grant list in its own or its skill's frontmatter |
-| **citation** | a document citing a path this change renames or deletes, where no candidate resolves | **`docs/` and `draft/`**, and **`ROADMAP.md` and `CHANGELOG.md`**, which are record genres; removed paths under `*/templates/`; the removed file itself | the tracked index, `--cached` — **a staged document is searched like any other**, the removed file being the only one skipped. The class exists for documents *not* in the commit, which is its reason rather than its scope |
+| **citation** | a document citing a path this change renames or deletes, where no candidate resolves | **`docs/` and `draft/`**, and **`ROADMAP.md` and `CHANGELOG.md`**, which are record genres; removed paths under `*/templates/`; the removed file itself | the tracked index, `--cached` — **a staged document is searched like any other**, subject to the `Skips` column; the removed file is skipped on top of it. The class exists for documents *not* in the commit, which is its reason rather than its scope |
 | **section** | `` `<doc>.md` § N.N `` naming a heading that document does not have | **a staged file under `docs/` or `skeleton/files/`**; a line carrying a `YYYY-MM-DD` date; `*/templates/*`; a document name resolving to zero files or to several; a letter-suffixed id (`§ 1a`), which names an item rather than a heading | the staged file, plus the tracked `*.md` list |
 | **roadmap-id** | a **parenthesised** provenance marker — `(CFG-0108)`, `(ROADMAP CFG-0108)` — whose id has no bullet in `ROADMAP.md`. The prefix is sniffed from the file, never hardcoded | a **bare** id in prose, which it never extracts at all; `ROADMAP.md` itself; a checkout with no `ROADMAP.md` or no ids, where it skips silently | the staged file, plus the bullet ids in `ROADMAP.md` |
 | **table** | a table row whose unescaped-pipe count differs from its header row's | anything inside a fence, which is a specimen; an escaped `\|`, masked before counting; a `\|` line that is not part of a table | the staged file only |
@@ -963,8 +973,8 @@ Two independent cold readers landed here in one loop.
 check can close.** Between them the survivor and citation classes never look
 inside `docs/` — every spec, plan and ADR — so a rule copied into a spec is
 invisible to the check §2.1 leans on. **Both search-scope classes skip the
-record genres too**, `ROADMAP.md` and `CHANGELOG.md`; the `Skips` column is
-the enumeration. `docs/` is where a rule is legitimately
+record genres too**, `ROADMAP.md` and `CHANGELOG.md`; the `Skips` column
+lists them. `docs/` is where a rule is legitimately
 *quoted* rather than restated, so a class that fired there would fire
 constantly and correctly-but-uselessly, which is the advisory channel again.
 
@@ -1098,7 +1108,7 @@ Before implementation, not after. A contract is what the implementer
 builds from; if it is wrong, the implementation is wrong by
 construction. Reviewing afterwards costs both.
 
-Two requirements this standard adds:
+The requirements this standard adds:
 
 - **The loop log is written as the loops happen**, in a `## Cold-eyes
   loop log` section, after the What-checks-this table **in a standard or a
@@ -1109,12 +1119,18 @@ Two requirements this standard adds:
   under `docs/reviews/`.
   § 2.9 calls a loop log a record rather than content, and a document read in
   full whenever it is consulted pays for that record on every read. The
-  heading stays because contents tables link to its anchor and
-  `check-doc-facts`' `mandated-section` requires the section; the `loop-log`
-  tally check fires only on a section carrying a table, so a pointer fails
-  nothing.
+  heading stays because contents tables link to its anchor and a
+  required-section check needs it — `mandated-section` where the requirement
+  is prose, `sections` in a spec, where it is `spec-format.md` § 3's
+  machine-readable block. The `loop-log` tally check reads rows, so a
+  section holding only a pointer fails nothing.
 - **The tally balances.** Eight findings against six outcomes is a row
   where two findings were dropped without anyone deciding to.
+- **A landed row is never edited** — a correction goes in the current
+  loop's row. **One exception: a relative path a file move broke may be
+  re-based.** The row still names the same file and still says the same
+  thing. Anything that changes what a row *says* is the current row's
+  business.
 
 ### 9.2 Sweep shipped documents separately
 
@@ -1196,9 +1212,11 @@ defect is repaired by hand, outside every gate — §2.8's length rule and
 | §2.2 a quotation names its source | **`Partial:`** `check-doc-facts` `quotes`, a quotation-drift check, re-verifies an *attributed* quotation when its source changes. **Nothing** catches an unattributed one, which is the form the rule exists to prevent — that is why the rule is written as an authoring obligation |
 | §2.3 no census counts | **`Partial:`** `check-doc-facts` `counts`, a census-count check, which names §2.3 as its own authority; the `pre-commit` hook has no count check of its own (§9.0), so a census reaches a commit uncaught. Added 2026-08-20; §2.3's larger half had no row while its `path:line` half did |
 | §2.9 cell forms | **`Partial:`** `check-doc-facts` `what-checks-this`, a cell-form and name-resolution check over this table. **Nothing** resolves a sub-check name inside `check-doc-facts` (§9.0), which is most of what these cells name |
+| §2.2 a new value lists what constrains its set | **nothing** — the limits it inherits are stated in another section, and no check reads one section against another |
 | §2.2 cited symbols exist | `check-doc-facts` `symbols`, a symbol-resolution check against current source |
 | §2.9 required sections present | **`Partial:`** `check-doc-facts` `sections`, a required-section check against the format standard, **for a spec only** — it reads a spec's machine-readable block, and a standard's or reference's requirement is prose, which only `mandated-section` reaches. Both test PRESENCE; **nothing** checks that a mandated section is in the mandated PLACE, though §2.9 requires `## What checks this` last and the loop log after it (added 2026-08-20, when §9.4 credited a position test that does not exist). This row named `structure` until 2026-08-17; that check is fences, id gaps and parse |
-| §9.1 loop log present, tally balances | **`Partial:`** `check-doc-facts` `loop-log`, a tally check over the log's own rows, plus `mandated-section`, a required-section check, for the log's presence. The `loop-log` check does not test presence; this row credited it with both until 2026-08-17. It credited `sections` for presence until 2026-08-20, and `sections` reads a *spec's* machine-readable block and skips a standard, whose requirement is stated in prose — which is exactly what `mandated-section` exists for. **The rows-in-the-reference half is caught by nothing** — a row written into a section that points elsewhere reads as conforming to the sentence before it, and no check compares the two |
+| §9.1 loop log present, tally balances | **`Partial:`** `check-doc-facts` `loop-log`, a tally check over the log's own rows, plus a required-section check for the log's presence — `mandated-section` where the requirement is prose, `sections` in a spec. The `loop-log` check does not test presence; this row credited it with both until 2026-08-17. It credited `sections` alone until 2026-08-20, and `sections` skips a standard, whose requirement is prose — which is exactly what `mandated-section` exists for. **The rows-in-the-reference half is caught by nothing** — a row written into a section that points elsewhere reads as conforming to the sentence before it, and no check compares the two |
+| §9.1 a landed row is not edited | **nothing** — the edit shows in the commit diff, and no check reads it |
 | §9.0 checks run before done | **`Partial:`** the `pre-commit` hook blocks this repository's classes at commit time — after *done*, not before it, which is what the rule asks. **Nothing** catches a document called done without `check-doc-facts` having run |
 | `roadmap-format.md` / `changelog-format.md` parse | see each of those documents' own § What checks this. §4 routes to them and states no parsing rule of its own, so it states no *coverage* of its own either (§2.1). This row read "the parsers that read them" until 2026-08-14, where `changelog-format.md` says nothing validates a `CHANGELOG.md` at rest |
 | §2.6 absolute dates | **nothing** — both forms are greppable, so this is a check worth adding |
