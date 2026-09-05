@@ -48528,6 +48528,26 @@ envelope dropped `source`/`path`/`etag`/`total`/`filter`.
   through the remaining spec corpus — the largest concentrations are
   ANTS-1365, ANTS-1372, ANTS-3543, ANTS-3492 and ANTS-2049. Next pass takes
   one more stateable family.
+  Progress (2026-09-05, second pass): two more families, keeping the same
+  method.
+
+  ANTS-3543's pins all pointed into workspace_search's handler, now
+  `cmdWorkspaceSearch` in `src/remotecontrol_workspace.cpp`; its
+  `rcApplyHeadlineOnly` and `capJsonArrayToBytes` are still where they
+  were, so only the numbers were wrong. ANTS-3492's site table is the
+  mirror case worth recording: five of its rows name symbols that never
+  LEFT `src/remotecontrol.cpp`, so the file was right and only the line was
+  stale — the pin was dropped and the file kept, rather than re-pointed
+  somewhere it does not live. Its remaining rows, and the stable-prefix and
+  prefix_hint bullets, moved to the append / append_batch and flip /
+  flip_batch handlers.
+
+  Both files' loop-log rows were left as written, and `doc_integrity`
+  returns clean on both.
+
+  Supersedes the previous note's list of concentrations: ANTS-3543 and
+  ANTS-3492 are done. The largest left are ANTS-1365, ANTS-1372 and
+  ANTS-2049.
   **Layman:** Many design documents still point at line numbers in a file that has since been split up, so following one lands on unrelated code.
   Kind: doc-fix.
   Source: in-session-2026-08-28, measured by ANTS-4711's classification lane.
