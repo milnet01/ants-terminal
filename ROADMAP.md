@@ -48597,6 +48597,40 @@ envelope dropped `source`/`path`/`etag`/`total`/`filter`.
   Supersedes the previous note's list of concentrations: ANTS-3543 and
   ANTS-3492 are done. The largest left are ANTS-1365, ANTS-1372 and
   ANTS-2049.
+  Progress (2026-09-05, third pass): the three concentrations the last note
+  named are done — ANTS-1365, ANTS-1372 and ANTS-2049 — same method, no
+  redesign.
+
+  Two shapes recur and are worth naming. Where a symbol never left
+  `remotecontrol.cpp` the file was right and only the line was stale, so the
+  pin was dropped and the file kept: `defaultSocketPath`, `dispatch` and its
+  if-chain, `onNewConnection`, the `UserAccessOption` call. Where it moved,
+  the pin named the wrong file outright: the socket helpers to `secureio.h`,
+  `runClient` to `remotecontrol_state.cpp`, `resolveRootCanonical` to
+  `remotecontrol_feedback.cpp`, and every ANTS-1372 gated handler to
+  `remotecontrol_review.cpp` or `remotecontrol_coldeyes.cpp`.
+
+  The costly find is that a stale pin can silence a CHECK, not just mislead a
+  reader. Three source-grep criteria targeted one TU of a split family and
+  would now pass having read nothing: ANTS-1372's S1/S2/S5, whose
+  `SRC_REMOTECONTROL_CPP_PATH` def ANTS-3833 retired outright, and
+  ANTS-2049's INV-8, which greps for QtTest in a file the inject verbs left.
+  Those now name the RemoteControl sources and
+  `ants_test::slurpRemoteControl()`. Worth looking for first in the remaining
+  corpus — it is the half of this damage that is not merely cosmetic.
+
+  Loop-log rows were classified before editing and left alone in ANTS-1365
+  and ANTS-2049; ANTS-1372 has no such section. `doc_integrity` clean on all
+  three.
+
+  STILL OPEN. No large remotecontrol.cpp concentration is left standing, so
+  the next pass has no obvious target and should re-survey rather than assume
+  one. Two things were deliberately not swept, to keep the scope checkable:
+  ANTS-1372's build-cost estimate names two object files, which is
+  planning-time prose rather than a pointer a reader follows; and ANTS-2049
+  carries `main.cpp` / `mainwindow.cpp` line pins, which are a different file
+  and a different cause than the ANTS-3833 split — unmeasured, so their
+  staleness is unknown.
   **Layman:** Many design documents still point at line numbers in a file that has since been split up, so following one lands on unrelated code.
   Kind: doc-fix.
   Source: in-session-2026-08-28, measured by ANTS-4711's classification lane.
