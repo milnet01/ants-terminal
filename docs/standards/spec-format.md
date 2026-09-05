@@ -48,7 +48,11 @@ by the `spec_query` MCP verb (§7).
 **This is the only copy.** It lives at `~/.claude/standards/spec-format.md` and
 every project on this machine reads it in place. Nothing scaffolds a copy into
 a project; a project that needs to differ writes deltas only, at
-`docs/standards/spec-format-overrides.md`.
+`docs/standards/spec-format-overrides.md`. `write-spec` reads it and applies
+its deltas when drafting; `spec_lint` does not, and §3 names the eight paths it
+searches instead — four filenames, project-local then under `~/.claude/`. So
+an override to §3's required-section list changes what gets drafted and not
+what gets checked.
 
 Until 2026-08-08 each project carried a full copy that took precedence, with
 this file as fallback. The copies were meant to stay verbatim, nothing checked
@@ -91,7 +95,7 @@ The gate catches everything countable. These are what it cannot:
 8. Does the **What checks this** table say `nothing` where that is the
    truth, rather than naming a catcher that does not really catch it?
    (§3.12)
-9. Count the lines yourself — given the number, **is the split worth it**?
+9. Given `spec_lint`'s `line_count`, **is the split worth it**?
    (§5.4)
 10. Does every plan step have an **observable** verification? (§8)
 
@@ -456,8 +460,8 @@ than the review's design point. Reaching the cap is a different event and a
 normal one: the skill files the tail and the spec ships, because the build
 is a better next reviewer than another cold read.
 
-**No check reports the line count. Count it yourself** — `wc -l`. That check was
-dropped on 2026-08-10 and nothing replaced it.
+**`spec_lint` reports it as `line_count`; no check judges it.** The `size`
+check that did was dropped on 2026-08-10 and nothing replaced it.
 
 The evidence for splitting is real, and it lives in that check's drop
 record — `skills/check-doc-facts/references/checks.md` § What was dropped,
@@ -541,11 +545,21 @@ it is written as the loops happen rather than back-filled, and that **the
 tally balances** — findings raised must equal outcomes recorded, or the row
 dropped some without anyone deciding to. They apply to a spec unchanged.
 
-One spec-side specific: `spec_log op:append_loop` matches the shape the
-section already holds. The skeleton ships a **table**, so pass `cells` — one
-string per column, in the header's order. Without `cells` against a table it
-refuses `format_mismatch` rather than writing a bullet into it, so it cannot
-corrupt the log.
+Two spec-side specifics.
+
+**The rows live outside the spec**, in
+`docs/reviews/<ID>-<topic>-loop-log.md` — §2's spec filename plus `-loop-log`.
+§12 keeps its heading and a one-line pointer; §9.1 owns that arrangement,
+and what is spec-side is that it is not optional here. `spec_lint`'s
+`missing_section` is what still requires the heading.
+
+**The record is a `## Cold-eyes loop log` heading above a table headed
+`Loop | Date | Lanes | Q1 | Q2 | Q3 | Q4 | Outcome`.** `write-spec` creates it
+with the document — the spec's record, and the plan's under `--plan` — so the
+pointer is a live link from the start. Both halves bind:
+`spec_log op:append_loop` locates the table by that heading — without it, it
+appends a bullet — and matches `cells` against that header. Pass the record's
+`path`.
 
 ## 7. Machine-readability
 
@@ -571,7 +585,11 @@ enforces it.
 ## 8. Plan format
 
 A plan is deliberately thin: ordered steps, each with its verification.
-Skeleton at `plan-skeleton.md` beside this file.
+Skeleton at `skeletons/plan-skeleton.md`.
+
+A plan runs §6's gate and keeps its loop log the same way. Its record is
+`docs/reviews/<ID>-<topic>-plan-loop-log.md`, since §2 gives a plan and its
+spec the same stem; the skeleton carries the heading and the pointer.
 
 Rules:
 
@@ -589,7 +607,7 @@ Rules:
 
 ## 9. Skeletons
 
-Two files beside this one. `write-spec` copies them; there is no second
+Two files in `skeletons/`. `write-spec` copies them; there is no second
 copy embedded here, because a skeleton in two places is two skeletons
 (§5.2).
 
@@ -640,10 +658,11 @@ Unnumbered because this is a standard — see `documentation.md` §2.9.
 | §5.1 no `path:line` citations | see [documentation.md](documentation.md) § What checks this, which owns this rule and records its coverage as **`Partial:`** — a `path:line` whose file half resolves passes, and the prose form is caught by nothing. The check is `check-doc-facts` `paths`, a path-resolution check; this row named `links` until 2026-08-14, and `links` is the URL-and-link-target check (ROADMAP CFG-0098, CFG-0107) |
 | §5.1 cited symbols exist | `check-doc-facts` `symbols` produces the unresolved list; **defect-vs-forward-reference is a lane's judgement**, not the check's |
 | §5.2 one fact, one place | **nothing mechanical**. [documentation.md](documentation.md) § What checks this owns this rule's coverage — §2.1 is its home — including what a single-document review cannot see and which skill covers that half |
-| §5.4 size gate | **nothing** — `size` was dropped 2026-08-10 and nothing replaced it. `wc -l` gives the number; whether the split is worth it is a judgement |
-| §6 every loop-log row has an outcome, and the tally balances | `check-doc-facts` `loop-log`, a loop-log integrity check. **It does not check presence** — that is `sections`, via §3's required list |
-| §3.12 every spec carries a What-checks-this table | `check-doc-facts` `sections`, which reads this file's §3 list |
-| §3 all twelve required sections present, correctly numbered | `spec_lint` `missing_section`, which reads §3's `<!-- required-sections -->` block verbatim |
+| §5.4 size gate | **`Partial:`** `spec_lint` reports `line_count`, a size measurement. **Nothing** judges it — `size` was dropped 2026-08-10, and whether the split is worth it is a judgement |
+| §6 every loop-log row has an outcome, and the tally balances | `check-doc-facts` `loop-log`, a loop-log integrity check. For a spec it reads the record under `docs/reviews/`, not the spec, whose §12 carries no table; that directory is inside the check's default `docs/` scope. **It does not check presence** — that is `spec_lint` `missing_section`, via §3's block |
+| §6 the record carries the `## Cold-eyes loop log` heading and the eight-column header | **`Partial:`** `spec_log op:append_loop`, a row-shape check, refuses `column_mismatch` when `cells` disagree with the record's header. **Nothing** catches a missing heading: the verb appends a bullet and returns `ok:true`, so a hand-made record accrues rows no tally check can read |
+| §3.12 every spec carries a What-checks-this table | **`Partial:`** `spec_lint` `missing_section`, the row below's check, catches a missing §10 heading — §3's block lists it. **Nothing** checks that the section carries a table rather than prose |
+| §3 all twelve required sections present, correctly numbered | `spec_lint` `missing_section`, a required-section presence check reading §3's `<!-- required-sections -->` block verbatim. `check-doc-facts` catalogues it as `sections`; they are one check, not two |
 | §3 that block still matching §3's own headings | **`Partial:`** `check-doc-facts` `enumeration-parity`, a two-list parity check added 2026-08-10, takes the in-document pair and returns a **candidate** — deciding two lists are the same set is judgement, which is its own stated bucket. It does not take the block against `skeletons/spec-skeleton.md`: that pair is cross-document, which `enumeration-parity` puts out of scope by name and hands to `review-contract-set`. This row said the check was not built, until 2026-08-17 |
 | §5.5 a trust boundary is stated as an invariant | **nothing** — whether a change crosses one is a judgement, and a spec that never mentions a boundary reads exactly like one with none to mention |
 | §5.6 layman line present, as prose after the header block | **nothing** — no check reads non-section prose, so an outright omission looks exactly like a spec with nothing user-visible to say |
@@ -656,7 +675,7 @@ when you need it rather than reading a number here:
 
 ```sh
 awk '/^## What checks this/{h=1;next} h&&/^\|/{t=1} t&&!/^\|/{exit}
-     t{if(++i>2){d++; if(tolower($0) ~ /\*\*nothing/)n++}}
+     t{if(++i>2){d++; if(tolower($0) ~ /\|[[:space:]]*\*\*nothing/)n++}}
      END{printf "%d of %d rows have no catcher\n", n, d}' spec-format.md
 ```
 
