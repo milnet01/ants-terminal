@@ -47923,6 +47923,34 @@ envelope dropped `source`/`path`/`etag`/`total`/`filter`.
   boundary actually is before describing one. Describing a guessed limit is
   how a false claim ships, and there are now three shapes it would have to
   cover.
+  Progress (2026-09-05): not measured, and one plausible way of measuring
+  it is ruled OUT — which is the part worth recording, because it looks
+  correct until you check.
+
+  Driving `apply_edits` from a shell script over `--remote-json` does not
+  measure the reported boundary. That flag speaks RemoteControl's `cmd`
+  surface (`{"cmd":"tab-list"}`), while `apply_edits` is registered as a
+  ClaudeIntegration TOOL PROVIDER — a different surface. A probe there
+  would bound the socket, report a number, and answer a question nobody
+  asked, which is exactly the guessed limit this item forbids shipping.
+
+  Two things that DO help whoever takes it.
+
+  `dry_run:true` is the right instrument: it runs the real path up to the
+  commit and writes nothing, so payload sizes can be escalated safely
+  against a real file without a cleanup step or a damaged tree.
+
+  And the measurement must SAY which layer it measured. There are two —
+  the Claude-Code-to-MCP bridge the original report points at, and the
+  Ants-side handler — and the three sightings do not agree about which is
+  at fault: a read verb timing out on a trivial payload
+  (`project_settings op:"detect"`) does not fit a size limit at the JSON
+  boundary at all.
+
+  A probe driven from an agent's own context is also self-defeating: the
+  payload has to be emitted into the conversation to be sent, so measuring
+  a megabyte costs a megabyte of context. Whatever runs this should
+  generate the payload outside the transcript.
   **Layman:** A tool for editing files can fail on a big paste, and nothing tells you why or how big is too big.
   Kind: doc-fix.
   Source: claude_config_Ants_MCP_Feedback.md 2026-08-26 (relayed from a write-code session on a C++ project).
