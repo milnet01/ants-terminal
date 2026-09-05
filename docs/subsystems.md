@@ -191,22 +191,64 @@ Listed only where behavior isn't obvious from the name.
   `file-outline`, `find-definition`, `find-caller`, `similar-code`,
   `git-state`, `subsystem`, `roadmap-branch-drift`. Trust model:
   UID-scoped + 0700 perms + `lstat`-checked `S_ISSOCK`.
-  **Split across `remotecontrol*.cpp` translation units (ANTS-3833, ANTS-3855).** The class and
-  `src/remotecontrol.h` are unchanged; only the bodies were cut, each TU one
-  contiguous slice of the old file: `remotecontrol.cpp` (the dispatcher and
-  the shared `rcdetail` helper pool), then `_terminal`, `_roadmap_query`,
-  `_changelog`, `_roadmap_log`, `_workspace`, `_docs`, `_feedback`, `_state`,
-  `_review`, `_coldeyes` — plus `_roadmap_migrate` (ANTS-3855), appended LAST
-  because it is NOT a slice of the old file but a member that never existed
-  there: appending keeps every existing TU's `TU N/12` ordinal and every
-  two-anchor scrape window between them exactly where they were.
-  `CMakeLists.txt`'s `ANTS_RC_SOURCES_REL` names them
-  in slice order and `ants_core_lib` consumes that list; the
-  `ANTS_RC_SOURCES` compile definition carries the same order to the test
-  tree, where `ants_test::slurpRemoteControl()` reads all twelve. A new verb's
-  body goes in its family's TU, its `dispatch` routing entry in
+  **The class is split across `remotecontrol_*.cpp` translation units
+  (ANTS-3833, ANTS-3855, ANTS-4620, ANTS-4622), each with its own entry
+  below.** `src/remotecontrol.h` is unchanged; only the bodies were cut, and
+  `remotecontrol.cpp` keeps the `dispatch` chain and the shared `rcdetail`
+  helper pool. `CMakeLists.txt`'s `ANTS_RC_SOURCES_REL` names the TUs in
+  slice order, `ants_core_lib` consumes that list, and the `ANTS_RC_SOURCES`
+  compile definition carries the same order to the test tree, where
+  `ants_test::slurpRemoteControl()` reads the whole set. A new verb's body
+  goes in its family's TU, its `dispatch` routing entry in
   `remotecontrol.cpp`. Cross-TU helpers are declared in
   `src/remotecontrol_internal.h`, which nothing outside the list may include.
+  **Position in that list is load-bearing**, and the `TU n/N` header ordinals
+  track it: a TU that is a SLICE of the pre-split file is inserted at its
+  slice position, one that never existed there is appended, so the
+  two-anchor scrape windows the tests use do not silently move.
+- `remotecontrol_terminal` — terminal and window verbs: tabs, windows, text
+  send and capture, plus the `--e2e` input-injection and screenshot verbs
+  (`cmdSendText`, `cmdGetText`, `cmdTabList`, `cmdInjectKey`, `cmdGrabImage`).
+- `remotecontrol_roadmap_query` — the roadmap READ surface (bullets, bundles,
+  reports) and, despite the name, the `cmdRoadmapLog` op dispatcher plus the
+  `rl*` helpers the write TUs share.
+- `remotecontrol_changelog` — reads and writes `CHANGELOG.md`: section
+  queries, and entry appends singly or in batches.
+- `remotecontrol_roadmap_log` — single-item roadmap writes: append a bullet,
+  flip its status, amend its body or one trailer column.
+- `remotecontrol_roadmap_log_batch` — multi-item roadmap writes and section
+  surgery: batch append and flip, bundle rows, create / retitle / rotate a
+  section. Cut out of the TU above when it reached ANTS-3833 INV-6's line
+  cap, and INSERTED at its slice position rather than appended (ANTS-4620).
+- `remotecontrol_workspace` — code navigation and file I/O: search, outline,
+  region reads, `apply_edits`, the codebase and build-target index, and
+  `mutation_probe`.
+- `remotecontrol_docs` — documentation health: the docs index, integrity /
+  citation / dedup checks, spec lint and conformance, and the per-project
+  `.ants/project.json` settings verb.
+- `remotecontrol_feedback` — the cross-session feedback files (read and
+  write), spec-file writes, git status / log / diff plumbing, audit
+  false-positive bookkeeping, and the `caller_cwd` → project-root resolver
+  every verb depends on.
+- `remotecontrol_state` — session orientation and "where am I" state (git,
+  subsystem, audit, spec), the symbol-lookup verbs, and the per-session
+  advisory verbs (`invariant_check`, `task_priors`, `project_conventions`,
+  `focused_test`).
+- `remotecontrol_review` — the AI-reviewer pipeline (partition, brief,
+  dispatch, corroborate, fold in), plus debt-sweep, `verify_changes`,
+  `plan_template` and `token_usage`.
+- `remotecontrol_coldeyes` — the cold-eyes document-review verbs, alongside
+  session memory, workflow / layout state, and build and test reporting.
+- `remotecontrol_roadmap_backfill` — one-off git walk that dates roadmap rows
+  predating forward ship-date stamping (`roadmap_log op:"backfill_dates"`).
+- `remotecontrol_roadmap_repair` — recovers trailer values migration cut
+  short, by re-parsing each bullet's stored prose (`op:"repair_trailers"`).
+- `remotecontrol_roadmap_publish` — publishes the store to `ROADMAP.md` with
+  no semantic change (`op:"render"`).
+- `remotecontrol_session_message` — thin handler for the cross-session
+  mailbox verb; the store does the work.
+  (`remotecontrol_roadmap_migrate` is the remaining TU and has its own entry
+  further down.)
 - `antshelper` (optional CLI, `-DANTS_ENABLE_HELPER_CLI=ON`) — local
   subagent for Claude Code; v1 surface is `drift-check`. ANTS-1116.
 - `luaengine` / `pluginmanager` — sandboxed Lua 5.4; plugins in
