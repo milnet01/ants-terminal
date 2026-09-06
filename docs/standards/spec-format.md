@@ -45,8 +45,12 @@ converged on independently (`Ants_Terminal/docs/standards/specs.md`,
 reverse-engineering the format from old specs, and so specs stay parseable
 by the `spec_query` MCP verb (§7).
 
-**This is the only copy.** It lives at `~/.claude/standards/spec-format.md` and
-every project on this machine reads it in place. Nothing scaffolds a copy into
+**There is one copy of THIS file.** It lives at
+`~/.claude/standards/spec-format.md` and every project on this machine reads it
+in place. **A project may still own a spec standard of its own** —
+`standards/README.md` § The three cases calls that correct, and § 3 says such a
+project is checked against its own. What is forbidden is a second copy of this
+document. Nothing scaffolds a copy into
 a project; a project that needs to differ writes deltas only, at
 `docs/standards/spec-format-overrides.md`. `write-spec` reads it and applies
 its deltas when drafting; `spec_lint` does not, and §3 names the eight paths it
@@ -66,9 +70,11 @@ reasoning.
 
 ## 0. How to use this — you should rarely read past here
 
-This document is a **reference**, not a procedure. Reading 400 lines before
-writing a spec is how variance gets in. Three tiers, and most work only
-touches the first:
+**Look this up; do not read it through.** It is long by design, and reading
+it end to end before writing a spec is how variance gets in. (*Reference* here
+is the reading habit, not `documentation.md` §1's document kind — this file is
+a standard, it is gated, and it carries a loop log.) Three tiers, and most work
+only touches the first:
 
 1. **Run `write-spec`.** It resolves the id, copies the skeleton (§9),
    runs the deterministic gate, and drives the review loop. Nothing to
@@ -76,12 +82,19 @@ touches the first:
 2. **Before you commit, walk the ten-item checklist below.** These are the
    judgment calls no script can make. Ten lines, not four hundred.
 3. **Read a numbered section only when a check fires** and you want to know
-   why the rule exists. Every rule below is here because its absence shipped
-   a defect; the section says which one.
+   why the rule exists. **Where a rule names the defect its absence shipped,
+   that provenance is in the section** — §3.7's five rules are the fullest
+   case. Many rules carry none, and an absent one is not evidence the rule is
+   unearned.
 
 ### Before you commit — the ten
 
-The gate catches everything countable. These are what it cannot:
+The gate catches everything countable. These are the judgement calls it
+cannot — **not a complete list of what nothing checks.** § What checks this
+owns that, and its `nothing` rows include the layman line (§5.6), the
+trust-boundary invariant (§5.5) and *Resource cost* (§4), none of which is an
+item below. Read the table when you want the residue; walk the ten when you
+want the calls.
 
 1. Does every invariant name **what input breaks it** — honestly? (§3.7)
 2. Could any invariant pass on **every possible input**? Then it is a
@@ -95,15 +108,21 @@ The gate catches everything countable. These are what it cannot:
 8. Does the **What checks this** table say `nothing` where that is the
    truth, rather than naming a catcher that does not really catch it?
    (§3.12)
-9. Given `spec_lint`'s `line_count`, **is the split worth it**?
-   (§5.4)
+9. Given `spec_lint`'s `line_count`, **is the split worth it**? (§5.4)
+   **Asked before the first review loop, not here** — §5.4 says splitting at
+   the cap wastes every loop that ran. This item is the reminder that the
+   call was owed, not the moment it is made.
 10. Does every plan step have an **observable** verification? (§8)
 
 ### The one number that matters
 
 Take the **share** of rows in your **What checks this** table (§3.12) that
-say `nothing`. That is the surface where mistakes can still get through —
-this process's honest error budget. When a reviewer or a human catches the
+say `nothing` **or `Partial:`** — `documentation.md` §2.9 owns the counting
+rule and includes both, on the strength of a `Partial:` row's uncovered half.
+Counting `nothing` alone lets a row be converted to a `Partial:` by naming
+any partial catcher, and the share falls with no coverage gained. That is the
+surface where mistakes can still get through — this process's honest error
+budget. When a reviewer or a human catches the
 same class twice, convert that row into a mechanical check (§5.7) and the
 share drops. A process getting genuinely more reproducible is a process
 where that share falls over time; nothing else is evidence.
@@ -119,7 +138,9 @@ Write a spec when **getting it wrong is expensive to undo**. Any one of
 these is enough:
 
 - **A contract something else binds to** — a file format, an API, a config
-  key, a database column, a CLI flag, a security boundary.
+  key, a database column, a security boundary, or a CLI flag other tooling
+  already scripts against. **The headline governs, not the examples**: a new
+  flag nothing yet binds to is the skip case below.
 - **Three or more subsystems** are touched. Subsystems, not files: a
   four-file change inside one subsystem is not a spec.
 - **A real design choice** — two defensible designs with different
@@ -135,8 +156,10 @@ new case in an existing switch, a new flag on an existing command, a typo,
 a dependency bump. The roadmap bullet plus `write-code` is the whole
 contract, and code review catches what a spec would have.
 
-**If you are two files in and it is still spreading, stop and write the
-spec.** That is the correction for a trigger call that went the wrong way,
+**If the work has reached a second subsystem and is still spreading, stop and
+write the spec.** Subsystems, not files, for the reason the trigger list gives
+— a four-file change inside one subsystem is still not a spec. That is the
+correction for a trigger call that went the wrong way,
 and it is cheaper than finishing it wrong.
 
 **There is deliberately no "when unsure, write the spec" here.** That
@@ -148,8 +171,9 @@ cheaply when the call was wrong. `docs/decisions/ADR-0001` in the config
 repo carries the reasoning.
 
 A test's own contract, wherever the project's pattern puts it, is the right
-home for a single-invariant behaviour; `docs/specs/` is for contracts that
-span subsystems. **The home used to be pinned to
+home for a single-invariant behaviour. **What belongs in `docs/specs/` is the
+trigger list above, not a subsystem count** — a one-subsystem on-disk format
+change fires two triggers and is a spec. **The home used to be pinned to
 `tests/features/<name>/spec.md` and was widened on 2026-09-06 (CFG-0306)**,
 `write-test`'s scope having reached past that directory long before.
 
@@ -165,14 +189,23 @@ docs/plans/<ID>-<topic>.md    the build steps
   one: `roadmap-format.md` §3.5.1 deliberately admits `CL-9`,
   `PASS-3-1`, caller-pinned ids and a prefix containing an underscore,
   and says a checker built from it must not reject them. Copy the id
-  rather than transliterating it — a filename that reshapes the id no
+  rather than transliterating it. **`spec_query` is narrower than that
+  set**: its id validator and its title regex both require a letter-led
+  prefix followed by `-<digits>`, so `CL-9` and `PASS-3-1` route and a
+  caller-pinned `Ts20-SP6` does not — it refuses `bad_id`, and read by path
+  the title comes back empty, which `check-doc-facts` `structure` reports as
+  a parse finding. On a stable-prefix project the spec is still authored with
+  the roadmap's id; what it loses is verb routing, and that is the tool's gap
+  rather than the author's breach — a filename that reshapes the id no
   longer contains the string anyone would search for. `<topic>` is two to
   four kebab-case words. Both are needed: the id links to the roadmap and
   is what `spec_query` routes on, the topic makes a directory listing
   readable.
-- One spec per roadmap item. Cross-cutting work gets one spec per id,
-  cross-referenced in the header — or one umbrella spec whose header lists
-  every id it covers.
+- One spec per roadmap item, and cross-cutting work gets one spec per id,
+  cross-referenced in the header. **There is no umbrella form**: the filename
+  rule, § 3.1's H1 and `spec_query`'s routing all take a single id, and § 3.2's
+  header has no slot for a list of them, so an umbrella spec leaves every id
+  but one unroutable.
 - A plan is optional for small items and mandatory once the build order
   matters (a migration, a change that must land in a specific sequence, or
   anything a second person will execute).
@@ -214,8 +247,9 @@ renamed with it. The reasoning, the measured cost and the conditions
 that would reopen the decision are in
 `../docs/specs/CFG-0052-cold-eyes-name-retention.md`; the short version
 is that the five `cold_eyes_*` MCP verbs are not this repository's to
-rename, so a migration would touch 284 documents across 15
-repositories and still leave the name in the tool surface.
+rename, so a migration would touch 284 documents in 14 repositories — plus a
+fifteenth reached only through fold-in headings — and would still leave the
+name in the tool surface.
 
 **That block is read by machine, not by you** — `spec_lint`'s
 `missing_section` check takes its list from it verbatim. It exists
@@ -243,8 +277,16 @@ re-verified 2026-09-06 after the reorder by linting a fixture:
 `standards/specs.md`, so the new first candidate misses and the outcome is
 unchanged. **The global tier is skipped outright where the project root IS
 the global root**, which is this repository's case. A project that ships its
-own spec standard is checked against *that*, not this — which is correct,
-and means this block governs projects following the global set.
+own spec standard is checked against *that*, not this — which is correct.
+
+**What it does NOT mean is that this block is enforced on everyone else.**
+`check-doc-facts`' `sections` entry tells a caller that a `~global/`
+`sections_source` means the project adopted no format standard, so the
+findings are dropped — and a project conforming to this file's own one-copy
+rule resolves there by construction. The prefix cannot tell *adopted the
+global standard* from *never adopted one*. So the block governs what
+`write-spec` drafts, and is mechanically checked only for a project carrying
+its own standard. Filed as CFG-0322.
 
 ### 3.1 Title
 
@@ -319,6 +361,11 @@ Numbered, independently testable contracts. Bullet form:
   *Breaks when:* <the concrete input or state that makes this fail>.
 ```
 
+**The arrow is conditional.** Where the test surface is a manual recipe or a
+test-file path there is nothing to run, so drop the arrow rather than
+inventing an output for it — the rule below asks for an expected result of a
+*command*, and the skeleton says the same.
+
 Five rules, each of which exists because its absence shipped a defect:
 
 - **Every invariant names its test surface.** An invariant with no test is
@@ -352,15 +399,20 @@ Five rules, each of which exists because its absence shipped a defect:
   keeping the id and its text so a citation elsewhere still resolves. If
   it changes, add a new one or annotate the old (`INV-7 amended by
   <ID>`). Never reflow the list. **The dash after
-  `withdrawn` is load-bearing.** `spec_lint` exempts a tombstone spelled
-  `*withdrawn — …*` and reports `*withdrawn 1.4.0: …*` as
+  `withdrawn` must be an EM DASH (U+2014), and that is what is
+  load-bearing** — the exemption is a literal match on that character, so a
+  hyphen draws the same false finding the wrong spelling does. `spec_lint`
+  exempts a tombstone spelled `*withdrawn — …*` and reports
+  `*withdrawn 1.4.0: …*` as
   `invariant_no_test`, in the bucket a caller acts on without re-verifying.
   Measured 2026-08-17 against a six-form fixture. CFG-0108 added the version
   slot in the spelling the linter rejects, so every correctly withdrawn
   invariant drew a false finding for three days.
 
-The GFM table form (`| INV-1 | claim | test surface |`) also parses, but
-the bullet form is the default — it is what `spec_log op:append_inv` writes,
+The GFM table form (`| INV-1 | claim | test surface |`) also parses, **but it
+has no column for *Breaks when:*, so an invariant written in it does not
+satisfy the third rule above.** The bullet form is the default — it is what
+`spec_log op:append_inv` writes,
 so a table guarantees mixed formatting the first time anything appends
 programmatically.
 
@@ -389,6 +441,13 @@ gets re-proposed in six months.
 
 Deliberately, each line pointing at the follow-up roadmap id that carries
 it — so absence reads as a decision rather than an oversight.
+
+**Where no such item exists yet, say so on the line rather than inventing an
+id.** `write-spec` is forbidden from filing roadmap items and is not granted
+the verb, so a genuinely new deferral has nothing to point at during a run. A
+line reading *"deferred; not yet queued"* still distinguishes a decision from
+an oversight, which is the whole point; a placeholder id is a false pointer,
+and a wrong pointer is worse than a missing one.
 
 ### 3.12 What checks this
 
@@ -433,8 +492,12 @@ required rather than recommended, and says so in its own bullet:**
 
 ### 5.1 Grounding
 
-`documentation.md` §2.3 owns the rule: cite by symbol, never by line
-number, and back every claim with a read against current source.
+Two rules apply and they have different homes. `documentation.md` §2.3 owns
+citing by symbol rather than by line number; **§2.2 owns backing a claim with
+a read against current source**, along with the four authoring rules that
+follow from it — a quotation names its source in the same sentence, a pointer
+you write is one you just opened, a negative claim is a search you ran, and a
+new value lists what already constrains its set.
 
 The spec-side stakes, which is why it leads this section: a spec built on
 an unverified assumption is found wrong on a later pass and forces a
@@ -471,7 +534,16 @@ figure copied into here. **Split before the first loop, never at the cap.**
 A spec you can already see needing more loops than the cap allows is larger
 than the review's design point. Reaching the cap is a different event and a
 normal one: the skill files the tail and the spec ships, because the build
-is a better next reviewer than another cold read.
+is a better next reviewer than another cold read — `review-contract` routes a
+spec to implementation at the cap and never to a split, so **nothing splits a
+spec after the loops begin.**
+
+**Who makes the pre-loop call is unsettled, and that is worth knowing before
+you rely on it.** This section addresses the author, before dispatch.
+`write-spec` tells its runner the opposite — that the split is the gate's
+call and the size figure does not make it theirs — and the gate does not
+split a spec at all. So an oversized spec can reach the loops with no one
+having owned the decision. Filed as CFG-0323.
 
 **`spec_lint` reports it as `line_count`; no check judges it.** The `size`
 check that did was dropped on 2026-08-10 and nothing replaced it.
@@ -500,9 +572,14 @@ in plain language saying what this changes for someone using the software.
 Same requirement and same reasoning as the roadmap bullet's `Layman:`
 (`roadmap-format.md` §3.5).
 
-**It goes immediately after the §3.2 header block, as prose.** Never as a
-bold key-value: §7 requires `**Status:**` and `**Kind:**` to be the first
-bold key-values, so a `**Layman:**` line above them breaks the parse.
+**It goes after the §3.2 header block, as prose, with a blank line before
+it.** Never as a bold key-value — a `**Layman:**` line inside the header block
+is harvested as a header field rather than read as prose. **The blank line is
+the load-bearing part**: the parser accumulates continuation lines into the
+preceding field's value until a blank line, a new `**Name:**` marker or a
+heading, so a prose layman line written straight under `**Source:**` is
+silently absorbed into it. Nothing catches that — § What checks this records
+that no check reads this line at all.
 
 Two reasons, and the second is the one that earns it. A non-technical
 reader needs a way in — but more usefully, **a change that cannot be
@@ -548,7 +625,11 @@ unverifiable is a wish wearing a table's clothes.
 
 Every spec runs through `review-contract` before implementation, looped until
 it converges **or reaches the skill's cap — both are clean exits** (§5.4).
-**A test's own contract is excluded**, by `CLAUDE.md` rule 14, which owns that
+**`CLAUDE.md` rule 14 owns when that fires, and an inert edit owes no run** —
+the trigger there is a change of direction rather than an edit, and a
+considered no is recorded in the commit body. This section states what a run
+must produce, never when one is owed.
+**A test's own contract is excluded**, by that same rule, which owns the
 gate's scope: it is a single-behaviour contract beside its test rather than a
 multi-file design document, and a self-read is sufficient.
 The skill owns the procedure — the four questions its lanes
@@ -556,10 +637,11 @@ answer, the per-loop Q tally, the definition of convergence, and the
 post-fix blast-radius check.
 **This standard does not restate those rules** (§5.2); read the skill.
 
-`documentation.md` §9.1 owns the loop-log requirements and states two: that
-it is written as the loops happen rather than back-filled, and that **the
-tally balances** — findings raised must equal outcomes recorded, or the row
-dropped some without anyone deciding to. They apply to a spec unchanged.
+`documentation.md` §9.1 owns the loop-log requirements and they apply to a
+spec unchanged. **Read them there rather than from a list here** — one that
+enumerated them went stale the moment §9.1 gained a third, and the missing
+one was *a landed row is never edited*, which this standard's own skeleton
+already carries.
 
 Two spec-side specifics.
 
@@ -581,8 +663,11 @@ appends a bullet — and matches `cells` against that header. Pass the record's
 
 `spec_query` parses a spec into
 `{id, title, status, kind, invariants:[{id, body, test_surface?}]}`. To stay
-parseable, keep the H1 as `# <ID> — title` — §2's id, whatever its shape —
-and the `**Status:**` and `**Kind:**` lines as the first bold key-values.
+parseable, keep the H1 as `# <ID> — title` and put `**Status:**` and
+`**Kind:**` in the header block — everything above the first `## ` heading.
+**Order within that block does not matter**: the parser scans every line of it
+for `**<name>:**` in any order. What does matter is the blank-line field
+boundary §5.6 owns.
 
 **The `<PREFIX>-NNNN` shape is not a parse requirement.** A spec headed
 `# CL-9 — id shape probe` returns its title, status, kind and invariants
@@ -623,9 +708,11 @@ Rules:
 
 ## 9. Skeletons
 
-Two files in `skeletons/`. `write-spec` copies them; there is no second
-copy embedded here, because a skeleton in two places is two skeletons
-(§5.2).
+`write-spec` copies the spec and plan skeletons from `skeletons/`; there is
+no second copy embedded here, because a skeleton in two places is two
+skeletons (§5.2). That directory also holds the standard skeleton, which
+`CLAUDE.md` 14a routes a new standard through and which this document does
+not own.
 
 | File | For |
 |------|-----|
@@ -663,36 +750,41 @@ Unnumbered because this is a standard — see `documentation.md` §2.9.
 
 | Rule | What catches a breach |
 |------|----------------------|
-| §3.1–3.2 title / Status / Kind shape, where the Ants MCP is present | `check-doc-facts` `structure` (via `spec_query`) |
+| §3.1–3.2 title / Status / Kind shape, where the Ants MCP is present | `check-doc-facts` `structure`, a header-field parse check (via `spec_query`) |
 | §3.1–3.2 the same, where it is not | **nothing** — the format still applies, but no verb enforces it |
 | §3.7 `INV-N` ids contiguous, no gaps | `check-doc-facts` `structure`, an id-sequence check, **as a candidate** — it cannot tell a withdrawn id from a lost one. In a spec conforming to §3.7 every candidate is a real defect, because §3.7 withdraws an invariant *in place* and so leaves no legitimate gap |
 | §3.7 no `INV-N` id reused | **nothing mechanical** — `check-doc-facts` `structure` checks for *gaps*, which a duplicate does not create; a cold reader or `spec_query`'s returned invariant list read by eye |
-| §3.7 every INV names a test surface | `check-doc-facts` `contract` |
+| §3.7 every INV names a test surface | `check-doc-facts` `contract`, an invariant test-clause check |
 | §3.7 a command `*Test:*` states its expected output | `check-doc-facts` `contract`, as a *candidate* — "is this clause a command?" is a heuristic, so the check produces the short list and a lane makes the call |
-| §3.7 every INV names its breaking input — the clause is present | `check-doc-facts` `contract` |
+| §3.7 every INV names its breaking input — the clause is present | `check-doc-facts` `contract`, the same invariant test-clause check |
 | §3.7 that clause being honest rather than decorative | **nothing mechanical** — a cold reader |
 | §5.1 no `path:line` citations | see [documentation.md](documentation.md) § What checks this, which owns this rule and records its coverage as **`Partial:`** — a `path:line` whose file half resolves passes, and the prose form is caught by nothing. The check is `check-doc-facts` `paths`, a path-resolution check; this row named `links` until 2026-08-14, and `links` is the URL-and-link-target check (ROADMAP CFG-0098, CFG-0107) |
-| §5.1 cited symbols exist | `check-doc-facts` `symbols` produces the unresolved list; **defect-vs-forward-reference is a lane's judgement**, not the check's |
-| §5.2 one fact, one place | **nothing mechanical**. [documentation.md](documentation.md) § What checks this owns this rule's coverage — §2.1 is its home — including what a single-document review cannot see and which skill covers that half |
+| §5.1 cited symbols exist | **`Partial:`** `check-doc-facts` `symbols`, a symbol-resolution check, produces the unresolved list; **defect-vs-forward-reference is a lane's judgement**, not the check's |
+| §5.2 one fact, one place | **`Partial:`** [documentation.md](documentation.md) § What checks this owns this rule's coverage — §2.1 is its home — and records two mechanical catchers this cell used to deny: the `pre-commit` hook's survivor class for text deleted from one copy and surviving in another, and `check-doc-facts` `enumeration-parity` for two lists of one set inside a single document. **Nothing** catches two copies that never diverge, or a fact restated in different words |
 | §5.4 size gate | **`Partial:`** `spec_lint` reports `line_count`, a size measurement. **Nothing** judges it — `size` was dropped 2026-08-10, and whether the split is worth it is a judgement |
-| §6 every loop-log row has an outcome, and the tally balances | `check-doc-facts` `loop-log`, a loop-log integrity check. For a spec it reads the record under `docs/reviews/`, not the spec, whose §12 carries no table; that directory is inside the check's default `docs/` scope. **It does not check presence** — that is `spec_lint` `missing_section`, via §3's block |
-| §6 the record carries the `## Cold-eyes loop log` heading and the eight-column header | **`Partial:`** `spec_log op:append_loop`, a row-shape check, refuses `column_mismatch` when `cells` disagree with the record's header. **Nothing** catches a missing heading: the verb appends a bullet and returns `ok:true`, so a hand-made record accrues rows no tally check can read |
-| §3.12 every spec carries a What-checks-this table | **`Partial:`** `spec_lint` `missing_section`, the row below's check, catches a missing §10 heading — §3's block lists it. **Nothing** checks that the section carries a table rather than prose |
-| §3 all twelve required sections present, correctly numbered | `spec_lint` `missing_section`, a required-section presence check reading §3's `<!-- required-sections -->` block verbatim. `check-doc-facts` catalogues it as `sections`; they are one check, not two |
-| §3 that block still matching §3's own headings | **`Partial:`** `check-doc-facts` `enumeration-parity`, a two-list parity check added 2026-08-10, takes the in-document pair and returns a **candidate** — deciding two lists are the same set is judgement, which is its own stated bucket. It does not take the block against `skeletons/spec-skeleton.md`: that pair is cross-document, which `enumeration-parity` puts out of scope by name and hands to `review-contract-set`. This row said the check was not built, until 2026-08-17 |
+| §6 every loop-log row has an outcome, and the tally balances | **`Partial:`** `check-doc-facts` `loop-log`, a loop-log integrity check. For a spec it reads the record under `docs/reviews/`, not the spec, whose §12 carries no table. **Pass that record explicitly** — the check defaults to `docs/`, but the same procedure says to exclude review run-state directories, and `docs/reviews/` holds both the records and a run's `RESUME.md`, so a runner obeying both skips it. **Nothing** compares a row written into the spec's own §12 against the record, which `documentation.md` § What checks this names as its uncovered half. **It does not check presence** — that is `spec_lint` `missing_section`, via §3's block |
+| §6 the record carries the `## Cold-eyes loop log` heading and the eight-column header | **`Partial:`** `spec_log op:append_loop`, a row-shape check, refuses `column_mismatch` when the number of `cells` differs from the header's column count — a count, not a match, so eight differently-named columns pass — and `format_mismatch` when a table log is given no `cells` at all. **Nothing** catches a missing heading: the verb appends a bullet and returns `ok:true`, so a hand-made record accrues rows no tally check can read |
+| §3.12 every spec carries a What-checks-this table | **`Partial:`** `spec_lint` `missing_section`, the row below's check, catches a missing §10 heading — §3's block lists it, **and the row below says those findings are dropped for a project reading this standard in place, so for most projects this catcher does not fire at all**. **Nothing** checks that the section carries a table rather than prose |
+| §3 all twelve required sections present, correctly numbered | **`Partial:`** `spec_lint` `missing_section`, a required-section presence check reading §3's `<!-- required-sections -->` block verbatim. `check-doc-facts` catalogues it as `sections`; they are one check, not two. **Its findings are DROPPED for a project that reads this standard in place** — that catalogue tells a caller a `~global/` `sections_source` means the project adopted no format standard, and a conforming project resolves there by construction, since this file forbids a local copy. So the check covers a project carrying its own standard and no other. Filed as CFG-0322 |
+| §3 that block still matching §3's own headings | **`Partial:`** `check-doc-facts` `enumeration-parity`, a two-list parity check added 2026-08-10, takes the in-document pair and returns a **candidate** — deciding two lists are the same set is judgement, which is its own stated bucket. The block against `skeletons/spec-skeleton.md` is `check-doc-facts` `sections`, whose second half diffs the block against §3's own headings and makes a skeleton-versus-standard disagreement its own finding, reported against the pair. This row said the check was not built, until 2026-08-17, and then handed that pair to `review-contract-set`, which does not own it |
+| §1 the trigger call — spec or no spec | **nothing.** The call is a judgement, the escape hatch is the correction for a wrong one, and `write-spec` § When NOT to run says outright that nothing observes whether it was taken |
+| §2 filename is `<ID>-<topic>.md`, and the id matches the roadmap's | **nothing mechanical** — `write-spec` reports siblings whose filename differs from the standard's, so a person reading that run notices; nothing fails |
 | §5.5 a trust boundary is stated as an invariant | **nothing** — whether a change crosses one is a judgement, and a spec that never mentions a boundary reads exactly like one with none to mention |
-| §5.6 layman line present, as prose after the header block | **nothing** — no check reads non-section prose, so an outright omission looks exactly like a spec with nothing user-visible to say |
+| §5.6 layman line present, as prose after the header block | **nothing** — no check reads non-section prose. Nor does anything catch the line being absorbed into the preceding header field when the blank line before it is missing, which §5.6 names as the real hazard |
 | §4 *Resource cost* present where the feature holds state or adds a build target | **nothing** — it sits outside §3's required list, so `missing_section` cannot see it, and whether a feature holds state is a judgement |
 | §8 every plan step has a verification | **nothing mechanical** — a cold reader |
 
-**The share of rows reading a bolded `nothing` is this standard's honest
-error budget** — the metric §0 defines, and §5.7 is how it falls. Count it
-when you need it rather than reading a number here:
+**The share of rows reading `nothing` or `Partial:` is this standard's honest
+error budget** — the metric §0 defines, `documentation.md` §2.9 owns, and
+§5.7 is how it falls. Count it when you need it rather than reading a number
+here. **Split on `|` and test the catcher cell alone**: a whole-line match
+counts a row whose rule text happens to contain the word.
 
 ```sh
-awk '/^## What checks this/{h=1;next} h&&/^\|/{t=1} t&&!/^\|/{exit}
-     t{if(++i>2){d++; if(tolower($0) ~ /\|[[:space:]]*\*\*nothing/)n++}}
-     END{printf "%d of %d rows have no catcher\n", n, d}' spec-format.md
+awk -F'|' '/^## What checks this/{h=1;next} h&&/^\|/{t=1} t&&!/^\|/{exit}
+     t{if(++i>2){d++; c=tolower($3)
+       if(c ~ /\*\*nothing/ || c ~ /`partial:`/)n++}}
+     END{printf "%d of %d rows have an uncovered half\n", n, d}' spec-format.md
 ```
 
 It anchors on the heading, not on the table's own header row — this file
