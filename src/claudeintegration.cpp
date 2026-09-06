@@ -4329,7 +4329,18 @@ void ClaudeIntegration::onMcpConnection() {
                         "is this in?\" follow-up into the search. Costs one "
                         "file-outline scan per distinct matched file, so it "
                         "is off by default. A match before the first symbol "
-                        "(e.g. in includes) carries no `enclosing`.");
+                        "(e.g. in includes) carries no `enclosing`. "
+                        "ANTS-4901 — the envelope says what the annotation "
+                        "managed: `enclosing_annotated` counts the rows that "
+                        "got one, and `enclosing_symbol_unavailable` names the "
+                        "files whose LANGUAGE has no outline (capped at 20, "
+                        "with the true total in "
+                        "`enclosing_symbol_unavailable_count`). Read that list "
+                        "before concluding anything from a missing "
+                        "`enclosing`: a row above the first symbol and a file "
+                        "this verb cannot outline at all look identical on the "
+                        "row, and in the second case NO row in that file can "
+                        "ever be annotated. Both keys ride the opt-in only.");
                     // ANTS-3537 — count_only: rows-eliminated existence /
                     // frequency mode. Omits matches[] entirely; returns
                     // just the totals.

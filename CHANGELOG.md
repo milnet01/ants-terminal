@@ -33,6 +33,14 @@ for security-relevant changes.
 
 ### Changed
 
+- **workspace_search now says what its enclosing-symbol annotation managed** (ANTS-4901)
+  Asking for the annotation over files whose language has no outline
+  returned every row unannotated and said nothing, which is
+  indistinguishable from the documented case of a match sitting above the
+  first symbol — except that here no row in the file can ever be annotated.
+  The envelope now carries `enclosing_annotated` and, when it applies,
+  `enclosing_symbol_unavailable` naming those files. Both ride the opt-in.
+
 - **The spec standard fixes one review-log table shape, and the spec skeleton now carries it** (ANTS-3682)
   Review logs had drifted into many incompatible column layouts because
   the spec skeleton handed authors a placeholder where a table should be.

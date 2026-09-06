@@ -131,3 +131,131 @@ TEST(WorkspaceSearchEnclosing, WiringContract) {
     EXPECT_EQ(0, expect_failures())
         << expect_failures() << " ANTS-2220 wiring invariant(s) failed";
 }
+
+// ---------------------------------------------------------------------------
+// ANTS-4901 — an annotation that could not run must say so.
+//
+// Reported by UT_MonsterHunt against a tree with no outline for its language:
+// every row came back with no `enclosing`, and the envelope carried no signal
+// at all. The ambiguity is the defect rather than the absence — ES-3 above
+// makes "a match above the first symbol carries no enclosing" a legitimate
+// empty case, so a reader cannot tell that from "this language is not outlined
+// at all", which was true of every row. Learning which cost a separate
+// file_outline call: the round-trip the annotation exists to remove.
+//
+// Behavioural, unlike WI-1..WI-3 above: cmdWorkspaceSearch runs without a
+// MainWindow.
+
+#include <QDir>
+#include <QFile>
+#include <QIODevice>
+#include <QJsonDocument>
+#include <QStandardPaths>
+#include <QTemporaryDir>
+
+namespace {
+
+bool writeSrc(const QString &path, const QByteArray &body) {
+    QFile f(path);
+    if (!f.open(QIODevice::WriteOnly | QIODevice::Truncate)) return false;
+    const bool ok = (f.write(body) == body.size());
+    f.close();
+    return ok;
+}
+
+// One outlined file and one whose language file_outline has no mode for.
+// `.lua` is the honest choice: SymbolQuery knows it, file_outline does not,
+// so it is exactly the reporter's situation and not a contrived extension.
+bool makeMixedTree(const QTemporaryDir &tmp) {
+    return writeSrc(QDir(tmp.path()).filePath(QStringLiteral("engine.cpp")),
+                    "#include <cstdio>\n"
+                    "\n"
+                    "void spawnWave() {\n"
+                    "    // marker_token here\n"
+                    "}\n")
+        && writeSrc(QDir(tmp.path()).filePath(QStringLiteral("hooks.lua")),
+                    "function on_load()\n"
+                    "  -- marker_token here\n"
+                    "end\n");
+}
+
+QJsonObject searchTree(const QTemporaryDir &tmp, bool enclosing) {
+    RemoteControl rc(nullptr);
+    QJsonObject r;
+    r[QStringLiteral("caller_cwd")] = tmp.path();
+    r[QStringLiteral("pattern")]    = QStringLiteral("marker_token");
+    if (enclosing) r[QStringLiteral("enclosing_symbol")] = true;
+    return rc.cmdWorkspaceSearch(r).object();
+}
+
+}  // namespace
+
+// ANTS-4901 INV-1 — the envelope states how many rows were annotated, and
+// names the files whose language yielded no outline. A zero that is stated is
+// actionable; a zero that is absent is not.
+TEST(WorkspaceSearchEnclosing, Ants4901UnavailableIsReported) {
+    if (QStandardPaths::findExecutable(QStringLiteral("rg")).isEmpty())
+        GTEST_SKIP() << "ripgrep not installed";
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    ASSERT_TRUE(makeMixedTree(tmp));
+
+    const QJsonObject env = searchTree(tmp, /*enclosing=*/true);
+    ASSERT_TRUE(env.value(QStringLiteral("ok")).toBool())
+        << QJsonDocument(env).toJson().toStdString();
+    const QJsonArray matches = env.value(QStringLiteral("matches")).toArray();
+    ASSERT_EQ(matches.size(), 2)
+        << "both files carry the marker: "
+        << QJsonDocument(env).toJson().toStdString();
+
+    EXPECT_EQ(env.value(QStringLiteral("enclosing_annotated")).toInt(-1), 1)
+        << "exactly one of the two rows is inside an outlined symbol";
+
+    const QJsonArray unavailable =
+        env.value(QStringLiteral("enclosing_symbol_unavailable")).toArray();
+    ASSERT_EQ(unavailable.size(), 1)
+        << "the un-outlined file must be named: "
+        << QJsonDocument(env).toJson().toStdString();
+    EXPECT_EQ(unavailable.at(0).toString(), QStringLiteral("hooks.lua"));
+}
+
+// ANTS-4901 INV-2 — an outlined file is never listed as unavailable, even
+// when a particular match in it legitimately carries no `enclosing`. That is
+// ES-3's case and the two must stay distinguishable.
+TEST(WorkspaceSearchEnclosing, Ants4901OutlinedFileNotListed) {
+    if (QStandardPaths::findExecutable(QStringLiteral("rg")).isEmpty())
+        GTEST_SKIP() << "ripgrep not installed";
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    // The marker sits ABOVE the first symbol — outlined language, no
+    // enclosing symbol for this row.
+    ASSERT_TRUE(writeSrc(QDir(tmp.path()).filePath(QStringLiteral("top.cpp")),
+                         "// marker_token in the header comment\n"
+                         "#include <cstdio>\n"
+                         "\n"
+                         "void later() {}\n"));
+
+    const QJsonObject env = searchTree(tmp, /*enclosing=*/true);
+    ASSERT_TRUE(env.value(QStringLiteral("ok")).toBool());
+    EXPECT_EQ(env.value(QStringLiteral("enclosing_annotated")).toInt(-1), 0);
+    EXPECT_TRUE(env.value(QStringLiteral("enclosing_symbol_unavailable"))
+                    .toArray()
+                    .isEmpty())
+        << "an outlined file with an unattributable match is ES-3, not an "
+           "unavailable language";
+}
+
+// ANTS-4901 INV-3 — the new keys ride the opt-in only. A search that did not
+// ask for the annotation returns exactly what it returned before.
+TEST(WorkspaceSearchEnclosing, Ants4901KeysAbsentWhenNotRequested) {
+    if (QStandardPaths::findExecutable(QStringLiteral("rg")).isEmpty())
+        GTEST_SKIP() << "ripgrep not installed";
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    ASSERT_TRUE(makeMixedTree(tmp));
+
+    const QJsonObject env = searchTree(tmp, /*enclosing=*/false);
+    ASSERT_TRUE(env.value(QStringLiteral("ok")).toBool());
+    EXPECT_FALSE(env.contains(QStringLiteral("enclosing_annotated")));
+    EXPECT_FALSE(env.contains(QStringLiteral("enclosing_symbol_unavailable")));
+}

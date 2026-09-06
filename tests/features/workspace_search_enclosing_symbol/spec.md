@@ -40,3 +40,37 @@ event loop); WI-1..WI-3 are source-greps via the `SRC_*` compile defs the
   carries `enclosing`; `also_at` entries stay bare `{file, line}`.
 - Runtime exercise of the full handler — it needs a live `MainWindow`; the
   per-file scan + cache loop is locked by WI-1 source-grep.
+
+## ANTS-4901 — the annotation says what it managed
+
+Reported by UT_MonsterHunt. `enclosing_symbol:true` over a tree of files
+whose language has no outline returned every row without `enclosing` and
+said nothing about why. The reporter learned the reason by calling
+`file_outline` separately — the round-trip the annotation exists to
+remove.
+
+**The ambiguity is the defect, not the absence.** ES-3 makes "a match
+above the first symbol carries no `enclosing`" a legitimate empty case,
+so a reader cannot tell that from "this language is not outlined at all"
+— and the second means no row in that file can ever be annotated. Same
+class as `spec_lint`'s `sections_checked:false`: a caller who cannot
+tell "checked, nothing there" from "never ran" reads the second as the
+first.
+
+### INV-1 — the envelope reports the outcome
+
+An annotated search carries `enclosing_annotated` (rows that got a
+symbol) and, when non-empty, `enclosing_symbol_unavailable` — the files
+whose language yielded no outline, capped at 20 with the true total in
+`enclosing_symbol_unavailable_count`.
+
+### INV-2 — unavailable is about the LANGUAGE, not the symbol count
+
+A file that outlines but happens to declare nothing, or one where a
+particular match sits above the first symbol, is ES-3 and is NOT listed.
+The two facts stay distinguishable, which is the whole point.
+
+### INV-3 — the keys ride the opt-in
+
+A search that did not pass `enclosing_symbol` returns the envelope it
+returned before, byte for byte.

@@ -940,6 +940,18 @@ QJsonDocument RemoteControl::cmdWorkspaceSearch(const QJsonObject &req) {
     // off by default and only paid when asked for.
     const bool enclosingSymbol =
         req.value(QStringLiteral("enclosing_symbol")).toBool(false);
+    // ANTS-4901 — what the annotation actually managed, reported on the
+    // envelope. A row carries no `enclosing` for two reasons that look
+    // identical from outside: it sits above the first symbol (legitimate, the
+    // heuristic's documented empty case), or its language has no outline at
+    // all, in which case NO row in that file can ever be annotated. The
+    // reporter measured the second across a whole tree and had to call
+    // file_outline separately to learn which — the round-trip the annotation
+    // exists to remove. Same class as spec_lint's sections_checked:false: a
+    // caller who cannot tell "checked, nothing there" from "never ran" reads
+    // the second as the first.
+    int enclosingAnnotated = 0;
+    QStringList enclosingUnavailable;
     if (enclosingSymbol && !matches.isEmpty()) {
         // One outline scan per UNIQUE matched file, cached by relative path.
         QHash<QString, QJsonArray> outlineCache;
@@ -955,6 +967,14 @@ QJsonDocument RemoteControl::cmdWorkspaceSearch(const QJsonObject &req) {
                 /*includeDocComment=*/false, /*maxSymbols=*/2000);
             if (outline.value("ok").toBool())
                 syms = outline.value("symbols").toArray();
+            // The language, not the symbol count, decides "unavailable": an
+            // outlined file that happens to declare nothing is a different
+            // fact from one this verb cannot outline at all.
+            if (!outline.value("ok").toBool()
+                || outline.value("language").toString()
+                       == QLatin1String("unknown")) {
+                enclosingUnavailable.append(relFile);
+            }
             return *outlineCache.insert(relFile, syms);
         };
         for (qsizetype i = 0; i < matches.size(); ++i) {
@@ -965,6 +985,7 @@ QJsonDocument RemoteControl::cmdWorkspaceSearch(const QJsonObject &req) {
             if (!enclosing.isEmpty()) {
                 m["enclosing"] = enclosing;
                 matches.replace(i, m);
+                ++enclosingAnnotated;
             }
         }
     }
@@ -974,6 +995,24 @@ QJsonDocument RemoteControl::cmdWorkspaceSearch(const QJsonObject &req) {
     out["pattern"]    = pattern;
     out["matches"]    = matches;
     out["truncated"]  = truncated;
+    // ANTS-4901 — opt-in only, so a search that did not ask for the
+    // annotation returns the envelope it always did. The count rides every
+    // annotated search (a stated zero is the answer); the file list only when
+    // non-empty, capped so a sweep over a large un-outlined tree reports the
+    // fact without carrying a thousand paths.
+    if (enclosingSymbol) {
+        out["enclosing_annotated"] = enclosingAnnotated;
+        if (!enclosingUnavailable.isEmpty()) {
+            constexpr int kUnavailableCap = 20;
+            QJsonArray un;
+            for (int i = 0; i < enclosingUnavailable.size()
+                            && i < kUnavailableCap; ++i)
+                un.append(enclosingUnavailable.at(i));
+            out["enclosing_symbol_unavailable"] = un;
+            out["enclosing_symbol_unavailable_count"] =
+                int(enclosingUnavailable.size());
+        }
+    }
     // ANTS-3547 — offset cursor echoes. Echo `offset` only when non-default
     // (keeps the common offset=0 envelope byte-identical), and emit
     // `next_offset` — the page-N+1 cursor — when more matches remain beyond
