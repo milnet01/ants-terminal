@@ -51785,7 +51785,7 @@ rather than refiled.
   Source: UT_Ants feedback 2026-09-06.
   Lanes: remotecontrol, workspace.
 
-- 📋 [ANTS-4900] **Feedback path derivation cannot see a corpus that sits one level BELOW the derivation root, so it would create a stranded file and report success.**
+- ✅ [ANTS-4900] **Feedback path derivation cannot see a corpus that sits one level BELOW the derivation root, so it would create a stranded file and report success.**
   Reported by UT_Ants the day the corpus moved into
   /mnt/Games/Scripts/Linux/Ants_MCP_Feedback_Files/. ANTS-4647's guard
   refuses when the parent holds no feedback file AND AN ANCESTOR DOES;
@@ -51808,6 +51808,22 @@ rather than refiled.
   ask stands: a single readdir one level down from the derivation root
   would have found the whole corpus, and feedback_log should refuse to
   CREATE when sibling feedback files exist within one level.
+  Resolved (2026-09-06) by the reporter's narrower fix, chosen over the
+  redirect for ANTS-4647's own stated reason: a refusal naming
+  candidates cannot pick the wrong file, where a guess has to report
+  which directory it chose. The derivation root's immediate children are
+  probed BEFORE the ancestor walk (nearest wins), bounded at 256
+  directories and on the miss path only -- that root can hold every
+  project on the machine. The refusal now also names
+  `claude.mcp_feedback_root`, so the reply carries both remedies. Guard
+  stays as narrow as ANTS-4647 made it: a subdirectory holding no
+  feedback file is not a corpus, so the first file on a fresh machine is
+  still creatable, and there is an invariant for exactly that -- it is
+  the case where a fix of this shape becomes worse than the bug. The
+  basename half of the report (leaf UT_Ants deriving
+  UT_Ants_MCP_Feedback.md rather than UT_Ants_Ants_MCP_Feedback.md) is
+  not separately fixed: nothing is derived at all now on that path.
+  Suite 4215/4215.
   **Layman:** After the shared feedback folder moved down a level, the tools would have quietly started a new empty file instead of finding the real one.
   Kind: fix.
   Source: UT_Ants feedback 2026-09-06.

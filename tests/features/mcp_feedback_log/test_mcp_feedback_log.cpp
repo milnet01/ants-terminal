@@ -927,3 +927,70 @@ TEST(McpFeedbackLog, Ants4707OpIsWiredAndAdvertised) {
                 != std::string::npos)
         << "a shape_mismatch must carry its reason";
 }
+
+// ANTS-4900 — the corpus one level BELOW the derivation root.
+//
+// Reported by UT_Ants the day the corpus moved into
+// Ants_MCP_Feedback_Files/. ANTS-4647's guard refuses when the parent holds no
+// feedback file AND AN ANCESTOR DOES; here the files sit in a DESCENDANT, so
+// nothing is above and derivation proceeds as if this were the corpus's first
+// file. feedback_query answers ok:true / found:false, which reads as "nothing
+// filed yet"; feedback_log CREATES an empty file and reports success, while
+// the real one — with its triage history and its assigned ids — sits one
+// directory down being read by nobody.
+//
+// Refuse rather than redirect, for ANTS-4647's own stated reason: a refusal
+// naming candidates cannot pick the wrong file.
+TEST(McpFeedbackLog, Ants4900RefusesWhenTheCorpusIsASubdirectory) {
+    QTemporaryDir root; ASSERT_TRUE(root.isValid());
+    // The corpus is a folder of its own under the shared root.
+    ASSERT_TRUE(QDir(root.path()).mkpath("Ants_MCP_Feedback_Files"));
+    QFile sib(root.path()
+              + "/Ants_MCP_Feedback_Files/Neighbour_Ants_MCP_Feedback.md");
+    ASSERT_TRUE(sib.open(QIODevice::WriteOnly));
+    sib.write("# Ants MCP Feedback\n"); sib.close();
+    ASSERT_TRUE(QDir(root.path()).mkpath("Project"));
+
+    RemoteControl rc(nullptr);
+    QJsonObject req;
+    req["caller_cwd"] = root.path() + "/Project";
+    req["op"] = "append_finding"; req["date"] = "2026-09-06";
+    QJsonArray fs; fs.append(finding("Title", "what"));
+    req["findings"] = fs;
+    const QJsonObject env = rc.cmdFeedbackLog(req).object();
+
+    EXPECT_FALSE(env.value("ok").toBool())
+        << "a second, empty file beside a corpus that already exists must not "
+           "be reported as created";
+    EXPECT_EQ(env.value("code").toString().toStdString(), "bad_args");
+    EXPECT_FALSE(QFileInfo::exists(
+        root.path() + "/Project_Ants_MCP_Feedback.md"))
+        << "the stranded file must not be created";
+    const QJsonArray cands = env.value("candidates").toArray();
+    ASSERT_FALSE(cands.isEmpty())
+        << "the corpus is one readdir away — naming it is the whole fix";
+    EXPECT_TRUE(cands.at(0).toString().contains("Ants_MCP_Feedback_Files"));
+    EXPECT_FALSE(env.value("hint").toString().isEmpty());
+}
+
+// ANTS-4900 — and the guard must stay as narrow as ANTS-4647 made it. A
+// subdirectory that holds no feedback file is not a corpus, so the first file
+// on a fresh machine is still creatable.
+TEST(McpFeedbackLog, Ants4900FreshRootWithSubdirsStillDerives) {
+    QTemporaryDir root; ASSERT_TRUE(root.isValid());
+    ASSERT_TRUE(QDir(root.path()).mkpath("Project"));
+    ASSERT_TRUE(QDir(root.path()).mkpath("SomeOtherFolder/nested"));
+
+    RemoteControl rc(nullptr);
+    QJsonObject req;
+    req["caller_cwd"] = root.path() + "/Project";
+    req["op"] = "append_finding"; req["date"] = "2026-09-06";
+    QJsonArray fs; fs.append(finding("Title", "what"));
+    req["findings"] = fs;
+    const QJsonObject env = rc.cmdFeedbackLog(req).object();
+
+    EXPECT_TRUE(env.value("ok").toBool())
+        << env.value("error").toString().toStdString();
+    EXPECT_TRUE(QFileInfo::exists(root.path() + "/Project_Ants_MCP_Feedback.md"))
+        << "no corpus anywhere — this IS the first file";
+}

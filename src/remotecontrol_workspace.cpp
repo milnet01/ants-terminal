@@ -3203,22 +3203,50 @@ bool resolveFeedbackPath(const QJsonObject &req, const QString &toolName,
                     if (derivedOut) *derivedOut = true;
                     return true;
                 }
+                // ANTS-4900 — the corpus may also be one level DOWN. Once a
+                // machine carries two dozen feedback files they get a folder
+                // of their own, and then the derivation root holds no corpus
+                // while a child does. ANTS-4647's walk only looks up, so that
+                // layout reads as "the first file in a new corpus": the write
+                // succeeds, the empty file is reported as created, and the
+                // real one goes on sitting one directory down unread.
+                //
+                // Nearest first — a child of the derivation root is nearer
+                // than an ancestor — and bounded, because this walks a
+                // directory that may hold every project on the machine. It is
+                // the miss path only.
                 QString corpus;
-                QDir up(sharedRoot);
-                while (up.cdUp()) {
-                    if (holdsCorpus(up.absolutePath())) {
-                        corpus = up.absolutePath();
-                        break;
+                {
+                    constexpr int kMaxSubdirsProbed = 256;
+                    const QDir here(sharedRoot);
+                    const QStringList kids =
+                        here.entryList(QDir::Dirs | QDir::NoDotAndDotDot,
+                                       QDir::Name);
+                    for (int i = 0; i < kids.size() && i < kMaxSubdirsProbed;
+                         ++i) {
+                        const QString kid = here.absoluteFilePath(kids.at(i));
+                        if (holdsCorpus(kid)) { corpus = kid; break; }
+                    }
+                }
+                if (corpus.isEmpty()) {
+                    QDir up(sharedRoot);
+                    while (up.cdUp()) {
+                        if (holdsCorpus(up.absolutePath())) {
+                            corpus = up.absolutePath();
+                            break;
+                        }
                     }
                 }
                 if (!corpus.isEmpty()) {
                     err = fbErr(QStringLiteral("bad_args"),
                         toolName + QStringLiteral(": \"path\" is required — "
                         "caller_cwd's parent \"%1\" holds no "
-                        "*%2 file, so \"%3\" is a NESTED project and the "
-                        "derived name would land where no maintainer sweep "
-                        "reads it. The corpus is \"%4\"; name the file "
-                        "explicitly.")
+                        "*%2 file, so the derived name would land where no "
+                        "maintainer sweep reads it and would start a second, "
+                        "empty record for \"%3\". The corpus is \"%4\"; name "
+                        "the file explicitly, or set "
+                        "`claude.mcp_feedback_root` to that directory and it "
+                        "will be derived there.")
                         .arg(sharedRoot, QLatin1String(kFeedbackSuffix), leaf,
                              corpus));
                     const QJsonArray cands = feedbackSiblingCandidates(

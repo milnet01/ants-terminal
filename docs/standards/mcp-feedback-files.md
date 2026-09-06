@@ -27,9 +27,18 @@ never forms the filename. A snapshot (correct as of 2026-07-24):
 | `DOOM_Ants` | `DOOM_Ants_MCP_Feedback.md` ⚠ leaf-mismatch | DOOM |
 | `.claude` (outside the shared root) | `claude_config_Ants_MCP_Feedback.md` ⚠ leaf-mismatch — dot-leading leaf, see ANTS-3714 | claude-config |
 
-`DOOM_Ants/` is the sole exception: its file uses the brand token `DOOM`,
-not the dir leaf `DOOM_Ants`, so a session there must pass an explicit
-`path` (see the canonical-basename rule below).
+**Three classes must pass an explicit `path`**, and the table above marks the
+first two:
+
+- **A leaf mismatch.** `DOOM_Ants/`'s file uses the brand token `DOOM`, not
+  the dir leaf `DOOM_Ants`.
+- **A dot-leading leaf** (`.claude` → `claude_config_...`, ANTS-3714): the
+  derivation refuses rather than creating a file the corpus glob can never
+  match.
+- **A nested project** — a repo inside another workspace, so its parent is
+  not the corpus (ANTS-4647).
+
+See the canonical-basename rule and the derivation order below.
 
 This is a *data-file format* spec (what a conforming feedback file must
 look like so tooling can parse it), like
@@ -61,6 +70,7 @@ file every week (v1 files grew unbounded — the largest reached several thousan
 - [v1 legacy compaction ops](#v1-legacy-compaction-ops-un-migrated-files-only)
 - [Migration from v1](#migration-from-v1)
 - [Tooling (verbs) under v2](#tooling-verbs-under-v2)
+- [Cold-eyes loop log](#cold-eyes-loop-log)
 
 ## Format version 2 (2026-07-04): status lives in the ROADMAP, not here
 
@@ -168,16 +178,22 @@ still never rewrites a contributor's *description*.
 
 ## File location & name
 
-- One file per contributing project, at the shared root
-  `/mnt/Games/Scripts/Linux/`.
+- One file per contributing project, in the **corpus directory**: the
+  directory `claude.mcp_feedback_root` names, else the parent of
+  `caller_cwd`. On this machine that is
+  `/mnt/Games/Scripts/Linux/Ants_MCP_Feedback_Files/` as of 2026-09-06 — an
+  example, not the rule. It was the shared root itself until that date, and a
+  corpus outgrows the shared root once a machine carries two dozen of these
+  files.
 - Named `<Project>_Ants_MCP_Feedback.md` (e.g.
   `RetroArch_Ants_MCP_Feedback.md`). Project token in `CamelCase` or
   `Snake_Case`, no spaces.
 - **Canonical basename = the project directory leaf (ANTS-3384).** A
-  contributing project lives in its own directory directly under the
-  shared root (`/mnt/Games/Scripts/Linux/<leaf>/`); its feedback file is
-  `<leaf>_Ants_MCP_Feedback.md` in that shared root — i.e. the project's
-  directory name, verbatim, plus the suffix. This is the rule a brand-new
+  contributing project lives in its own directory directly under the shared
+  root; its feedback file is `<leaf>_Ants_MCP_Feedback.md` in the CORPUS
+  directory — i.e. the project's directory name, verbatim, plus the suffix.
+  The corpus and the shared root are the same directory only until someone
+  moves the corpus, which is why the two are named separately here. This is the rule a brand-new
   project follows so two sessions can't create two differently-named files
   for the same project, and it is what makes the omit-`path` derivation
   (next bullet) land on the right file by construction. Most current files
@@ -203,15 +219,34 @@ still never rewrites a contributor's *description*.
   by a different route — a file that exists, conforms in every other respect,
   and is invisible — with the extra harm that it splits the record: the
   workspace's real file keeps its findings while an empty parallel one starts.
-  So **pass an explicit `path`**, and the verb now enforces it: when the
-  parent holds no `*_Ants_MCP_Feedback.md` and an ancestor does, it refuses
-  `bad_args` with `candidates` from that ancestor instead of creating the
-  stranded file. A configured `claude.mcp_feedback_root` (ANTS-4471) is
-  consulted first and REDIRECTS the derivation there rather than refusing —
-  a user who declared the corpus has already answered the question. With no
-  corpus anywhere above, this is the first file in a new corpus and it is
-  created as before, because refusing there would make a first file
-  impossible.
+  So **pass an explicit `path`**. The verb enforces it, and the order it
+  resolves in is the whole contract — stated once, here, because two rules
+  each claiming to run "first" fork on exactly the machine that configured
+  the key. **None of it runs when the derived file already exists**; this is
+  the miss path:
+
+  1. **The parent of `caller_cwd` holds a corpus** → derive there. Nothing
+     below runs.
+  2. **`claude.mcp_feedback_root` (ANTS-4471) holds a corpus** → the
+     derivation is REDIRECTED there and succeeds. A user who declared the
+     corpus has already answered the question a refusal would ask.
+  3. **An immediate child of the derivation root holds a corpus
+     (ANTS-4900)** → refuse. Bounded at 256 directories, nearest wins.
+  4. **An ancestor holds a corpus (ANTS-4647)** → refuse.
+  5. **No corpus anywhere** → this is the first file in a new corpus, and it
+     is created as before. Refusing here would make a first file impossible.
+
+  A refusal is `bad_args` with `candidates` from the corpus it found, plus a
+  hint naming both remedies — an explicit `path`, or the config key.
+  **Refusing rather than redirecting at steps 3 and 4 is deliberate**: a
+  refusal naming candidates cannot pick the wrong file, where a guess has to
+  report which directory it chose.
+- **Why step 3 exists (ANTS-4900).** ANTS-4647's walk only looked UP, so a
+  corpus moved into a folder of its own — which is what happens once a
+  machine carries two dozen feedback files — read as "the first file in a new
+  corpus": `feedback_query` answered `ok:true` / `found:false`, and
+  `feedback_log` created an empty second record and reported success while
+  the real file sat one directory down.
 - **Every surface that looks for the corpus consults the same key
   (ANTS-4896).** `session_orient`'s `feedback_pending` block did not, and
   scanned the parent of the project root alone — so on a corpus this key had
@@ -388,7 +423,11 @@ appending a block. For each finding in the un-triaged tail:
    **A whole triage goes in one call: `op:assign_id_batch`** (ANTS-4671)
    takes `assignments[]`, each element carrying this op's per-call
    arguments unchanged — `heading`, optional `heading_line`, exactly one
-   of `ids` / `closure` / `awaiting`, optional `note` — and performs one
+   of `ids` / `closure` / `awaiting`, optional `note` (ANTS-3571 — rendered as
+   a single `- **Note:**` bullet on its own line UNDER the `**Proposed ID:**`
+   line, newlines folded to spaces, replaced in place on re-assign; it is
+   never part of the id line's value, so it cannot push a triaged finding
+   back into the un-triaged delta) — and performs one
    read and one atomic write. A triage is inherently a batch: findings are
    read together via `feedback_query` and decided together, and nothing
    between the calls can have changed the file. Per-assignment failures
@@ -481,9 +520,23 @@ appending a block. For each finding in the un-triaged tail:
 2. **Do not write a status.** A finding's current status (📋/🚧/✅) is resolved
    live from `ROADMAP.md` by whoever reads the file (`feedback_query` renders
    each id's live status as `mapped_id_status` as of ANTS-3478 — see §"Tooling").
-   The file records *which id*, never *what state*. If an assigned id
-   is **absent** from `ROADMAP.md` (e.g. archive-rotated per roadmap-format.md),
-   the reader renders it `unknown` and surfaces it — it is never
+   The file records *which id*, never *what state*.
+
+   **An id whose PREFIX the caller's roadmap does not own is resolved against
+   the project that DOES own it (ANTS-3519, ANTS-4905).** This is the normal
+   case, not an edge one: every id in every contributor project's file is
+   `ANTS-NNNN`, and no contributor roadmap owns that prefix — so without this
+   the whole corpus would render `unknown` in every project but Ants Terminal,
+   and the stale-binary self-check below would never fire for the audience it
+   is written for. Search roots, in order and deduped: the feedback file's own
+   directory, then its parent. Ownership is decided by sniffing the first
+   32 KiB of each candidate roadmap for the prefix it allocates, never by the
+   directory's name. A resolved id carries `resolved_from` (the owning
+   project's directory leaf) and, when ✅, its `shipped_date`.
+
+   An id **absent** from every roadmap it could belong to (e.g. archive-rotated
+   per roadmap-format.md), or one whose prefix no project owns, renders as
+   `unknown` and `foreign_repo` respectively — surfaced either way, and never
    silently treated as shipped.
 
 3. Once an assigned id is ✅ in the roadmap, collapse the finding's write-up to
@@ -608,10 +661,12 @@ only, so an ordinary `: 2` file stays quiet.
 Every file with a `: 1`, malformed, or absent marker uses the **v1 rule** until
 `op:migrate_v2` converts it (stamping **blank** `**Proposed ID:**` placeholders
 on the un-triaged findings and bumping the marker — no id is filled,
-§"Migration from v1"). (The *compactor* `op:compact_resolved` deliberately keeps
-a stricter exact-`== 2` gate — a compactor must refuse to mutate an unrecognised
-future format, whereas a *reader* degrades forward. Reader `>= 2`, compactor
-`== 2` is intentional, not drift.) Gating on
+§"Migration from v1"). (**The compactor gates the same way — `>= 2`, not `== 2`.** ANTS-3621 changed
+it: an exact gate refused a `: 3` file as `not_v2` and told the caller to run
+`op:migrate_v2`, which is a no-op on an already-migrated file, so there was no
+way forward at all. The two version predicates are kept agreeing on purpose,
+and a future reader who "restores the asymmetry" reintroduces that dead end.)
+Gating on
 the marker — **not** on watermark-absence — is deliberate: a legacy file whose
 findings predate the structural `**Proposed ID:**` line (most of the corpus)
 must NOT be read under v2, or those line-less findings would be misclassified as
@@ -625,7 +680,12 @@ carries the `**Proposed ID:**` line.
 
 1. Enumerate every `### ` finding sub-block (outside fences). A `### ` block runs
    from its heading to the next `#`/`## `/`### ` boundary (or EOF), fences
-   skipped — the same extent the compaction ops use. **Note this needs a
+   skipped — the same extent the compaction ops use. **An H1 counts as a
+   boundary only where the rule above makes it one** — a `# <ISO date>`
+   session heading or the `# Ants MCP Feedback — <project>` title; any other
+   `# ` line is body text (ANTS-3695). Reading "the next `#`" literally ends a
+   block at a pasted shell transcript, and the compaction ops delete to that
+   extent. **Note this needs a
    `###`-aware scan**: the shipped v1 `scanBoundaries` (`feedbackfile.cpp`)
    treats only `#`/`## ` as boundaries and `###` as inert, so the v2 path adds
    `### ` as a boundary/extent terminator rather than reusing the v1 scanner
@@ -1003,11 +1063,12 @@ v1 code path until a file is migrated):
 
 | Verb | v2 change |
 |---|---|
-| `feedback_query` (ANTS-1961) **(marker-aware, ANTS-3448)** | On a `: 2`+ file the delta = un-triaged findings (unfilled `**Proposed ID:**`), not "after the last table"; emits `awaiting[]` (`{heading, line, question}`, ANTS-3631) + `format_version` + `suspected_untagged[]` (§"The un-triaged delta" step 4) and `mapped_ids` = the inline assigned ids. **Built** — `FeedbackFile::parse()` is marker-aware; the v1 "after last watermark" path is retained for un-migrated files. Rendering each id's **live roadmap status** is **shipped (ANTS-3478)**: `mapped_id_status` = [{id, status}] resolved from the caller project's `ROADMAP.md` (present only when `mapped_ids` is non-empty; an absent id → `"unknown"`, never silently ✅). **ANTS-3504** adds `shipped_date` to each ✅ entry (the id's last roadmap `Resolved` date, parens optional; absent for non-✅ ids and ✅ ids with no `Resolved` line) so a contributor can compare it against `session_orient` `server_build.build_date` before re-reporting (§"Stale-binary self-check"). **ANTS-3744** adds the fully-condensed fallback: when a file carries no inline `**Proposed ID:**` at all — the condensed form, whose entire body is a `## Tracked in ROADMAP (detail + status there): ANTS-…` pointer line — `mapped_ids` is harvested from that line instead, so the reporting session can still see its items' live status. Inline ids win: a file that still holds one keeps the inline-only harvest, so a stale pointer line cannot add ids to a file being triaged. |
+| `feedback_query` (ANTS-1961) **(marker-aware, ANTS-3448)** | On a `: 2`+ file the delta = un-triaged findings (unfilled `**Proposed ID:**`), not "after the last table"; emits `awaiting[]` (`{heading, line, question}`, ANTS-3631) + `format_version` + `suspected_untagged[]` (§"The un-triaged delta" step 4) and `mapped_ids` = the inline assigned ids. **Built** — `FeedbackFile::parse()` is marker-aware; the v1 "after last watermark" path is retained for un-migrated files. Rendering each id's **live roadmap status** is **shipped (ANTS-3478)**: `mapped_id_status` = [{id, status}] resolved from the caller project's `ROADMAP.md`, and — for an id whose prefix that roadmap does NOT own — from the project that owns the prefix instead (**ANTS-3519**, search roots widened by **ANTS-4905** to the feedback file's directory AND its parent, so a corpus in a folder of its own still resolves; ownership by a 32 KiB head sniff, `resolved_from` names the owning leaf). Present only when `mapped_ids` is non-empty; an id no roadmap holds → `"unknown"`, one whose prefix nobody owns → `"foreign_repo"`, never silently ✅. **ANTS-3504** adds `shipped_date` to each ✅ entry (the id's last roadmap `Resolved` date, parens optional; absent for non-✅ ids and ✅ ids with no `Resolved` line) so a contributor can compare it against `session_orient` `server_build.build_date` before re-reporting (§"Stale-binary self-check"). **ANTS-3744** adds the fully-condensed fallback: when a file carries no inline `**Proposed ID:**` at all — the condensed form, whose entire body is a `## Tracked in ROADMAP (detail + status there): ANTS-…` pointer line — `mapped_ids` is harvested from that line instead, so the reporting session can still see its items' live status. Inline ids win: a file that still holds one keeps the inline-only harvest, so a stale pointer line cannot add ids to a file being triaged. |
 | `session_orient` `feedback_pending` (ANTS-3631) | **A file is listed only when it holds un-triaged findings that are NOT awaiting markers** — i.e. real contributor input the maintainer owes a decision on. A file whose only un-triaged findings are the maintainer's own unanswered questions is their outbox, and listing it puts a permanently non-zero to-do at every session start. The outbox stays visible as a number rather than a row: **every scanned file with a non-zero `awaiting_count` carries an entry** — a listed one gains the field, and an awaiting-only file gets a minimal entry of `{file, awaiting_count}` with no `delta_line_count`, since the absence of that key is what marks it as outbox rather than inbox. The block also carries a top-level `total_awaiting` summed across every file scanned. Putting `awaiting_count` only on listed entries would leave an awaiting-only file's count with no carrier at all, which is the one case the field exists for. The pre-existing siblings keep their meaning and cover LISTED files only: `files_with_pending` equals the number of rows, and `total_pending_lines` sums only those rows' `delta_line_count` — an awaiting-only file appears in neither, and is counted solely in `total_awaiting`. Stated because a count that disagrees with the row beside it is read as a bug in whichever the reader trusts less. `delta_line_count` is unchanged and still counts the whole delta, awaiting findings included, because it describes what `feedback_query` would return. |
 | `session_orient` `feedback_pending` (ANTS-1964) **(ANTS-3448 — no code change ON THE COUNT; the listing predicate above IS an ANTS-3631 change)** | The per-file un-triaged **count** shares `FeedbackFile::parse`'s delta path, so it now follows the v2 unfilled-`Proposed ID` rule on a `: 2` file **for free** (a v2 file tracks triage inline, so the v1 "after last table" count would miscount — including on a **migrated** file, which retains its v1 tables in place yet triages via `**Proposed ID:**`). No code change on this path — the marker-aware `parse()` supplies the version-correct `deltaPresent`/`deltaLineCount`. |
 | `feedback_log op:append_finding` (ANTS-1962) | Already emits the `**Proposed ID:**` placeholder — now **structural**; no behavioural change beyond guaranteeing the line. |
-| `feedback_log op:assign_id` **(shipped, ANTS-3447)** | The v2 triage write: fill one finding's `**Proposed ID:**` slot in place with the id(s), a `n/a — <reason>` closure, or an `awaiting` question rendering `_(awaiting reporter — <question>)_` (ANTS-3631 — un-triaged on purpose, so the question reaches the reporter's delta). Exactly one of the three. Locates the finding by heading over the `### ` enumerator, **inheriting `compact_shipped`'s heading-resolution gate _shape_** (ANTS-3421: `heading_line` disambiguation + `target_ambiguous`+`candidates[]` when a "still broken" recheck reuses a `### ` title). Single-target (batch deferred), so no cross-target `duplicate_target`. Replaces `op:append_tracking` for v2 files. |
+| `feedback_log op:assign_id` **(shipped, ANTS-3447)** | The v2 triage write: fill one finding's `**Proposed ID:**` slot in place with the id(s), a `n/a — <reason>` closure, or an `awaiting` question rendering `_(awaiting reporter — <question>)_` (ANTS-3631 — un-triaged on purpose, so the question reaches the reporter's delta). Exactly one of the three. Locates the finding by heading over the `### ` enumerator, **inheriting `compact_shipped`'s heading-resolution gate _shape_** (ANTS-3421: `heading_line` disambiguation + `target_ambiguous`+`candidates[]` when a "still broken" recheck reuses a `### ` title). Replaces `op:append_tracking` for v2 files. |
+| `feedback_log op:assign_id_batch` **(shipped, ANTS-4671)** | The same op with the read and the write hoisted out of the loop: `assignments[]`, each element carrying `assign_id`'s per-call arguments unchanged, applied in one read and one atomic write. A triage IS a batch — findings are read together via `feedback_query` and decided together, and nothing between the calls can change the file. Per-assignment failures land in `skipped[]` with their `index`, so one mistyped heading costs only its own assignment; an all-failed batch refuses rather than reporting success with nothing applied. Two assignments naming one finding behave as two separate calls would, later wins. |
 | `feedback_log op:compact_resolved` **(shipped, ANTS-3443)** | Auto-collapse shipped findings' write-ups; gates on live roadmap ✅. Refuses `not_v2` on a v1 file. (A `drop_prose` option is **deferred** — see §"Maintainer compaction"; NOT in ANTS-3443 scope.) **ANTS-3504** stamps the fix's ship-date into the stub (`→ shipped ✅ <date> (write-up compacted, ANTS-3443)`; latest `Resolved` date among the finding's ✅ ids, dateless fallback when none) — §"Stale-binary self-check". **ANTS-4646** additionally retires a legacy v1 `## Tracked in ROADMAP (detail + status there): ANTS-…` heading in the same call and under the same gate — all-or-nothing per heading, reported in `retired_headings[]` with the same first-failure vocabulary the finding gate uses (`no_ids` / `has_open_id` / `roadmap_unresolved_ids`), plus `sole_id_record` for the ANTS-3744 case above. It belongs here rather than in a new op because the gate is the one this verb already resolves, and the canonical v2 flow should not grow a second verb to learn; `migrate_v2` leaves such headings in place, `append_tracking` refuses `not_v1`, and `assign_id` needs a `### ` finding those ids do not have — so before this, no verb could touch one. |
 | `feedback_log op:migrate_v2` **(shipped, ANTS-3446)** | One-shot **mechanical** v1→v2 migration (§"Migration from v1"): bumps the marker + stamps blank `**Proposed ID:**` placeholders on un-triaged findings; reports `orphans[]`/`unclassified[]`. Leaves the v1 tables **in place** (no move/collapse); the default path reads no table id content (the `backfill_from_tracking:true` opt-in reads the rows to carry ids inline — ANTS-3474). |
 | `feedback_log op:set_title` **(shipped, ANTS-4646)** | Rewrite the H1's project name after a rename. The FILENAME is derived from `caller_cwd`'s leaf and is always right; the H1 was writable by no op, so a rename left the title contradicting the filename and the only route was a hand edit — against this file's own "don't hand-edit" instruction, at exactly the moment a session is most likely to get it wrong. Takes `title` = the PROJECT NAME, not the whole heading: the existing H1 prefix is preserved verbatim (the corpus carries both "Ants MCP feedback" and "Ants MCP Feedback" — this renames a project, it does not normalise a corpus) and only the text after the last em dash is replaced. `changed:false` on an already-correct title is a SUCCESS, so a rename is re-runnable; refuses `no_h1` rather than inventing a heading whose position the format fixes, and ignores a `# ` inside a fenced block (the ANTS-3695 hazard). |
@@ -1015,8 +1076,17 @@ v1 code path until a file is migrated):
 | `feedback_log op:compact_shipped` (ANTS-3421) / `op:prune_tracking` (ANTS-3442) | **Legacy** — operate on v1 tables; used only to clean up / migrate un-migrated files. |
 
 Each new/changed verb ships spec-first with its own `docs/specs/ANTS-NNNN.md`
-and a `tests/features/` conformance test, per the project standards. Spec ids:
+and a `tests/features/` conformance test, per the project standards — subject
+to `spec-format.md` § 1, which decides whether a change needs a spec at all and
+usually answers no. The list below is the v2 core, not a census of every verb
+that has shipped since. Spec ids:
 `compact_resolved` = **ANTS-3443**, `migrate_v2` = **ANTS-3446**,
 `assign_id` = **ANTS-3447**, the marker-aware v2 delta reader = **ANTS-3448**
 (all shipped). `migrate_v2`'s ANTS-3474 `backfill_from_tracking` mode has no
 separate spec — its design-doc reconciliation is **ANTS-3475**.
+
+## Cold-eyes loop log
+
+Moved to [`docs/reviews/mcp-feedback-files-review-log.md`](../reviews/mcp-feedback-files-review-log.md).
+A standard carries rules; its review history is read far less often and
+would be the larger half of this file.

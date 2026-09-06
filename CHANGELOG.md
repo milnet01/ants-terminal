@@ -70,6 +70,17 @@ for security-relevant changes.
 
 ### Fixed
 
+- **a feedback corpus in its own folder no longer causes a second, empty record** (ANTS-4900)
+  The guard that stops a derived feedback file landing where no maintainer
+  sweep reads it only looked UP the tree. Move the corpus into a folder of
+  its own — which is what happens once a machine carries two dozen of these
+  files — and it sits BELOW instead, so the derivation read as "this is the
+  first file in a new corpus": the read answered "nothing filed yet" and
+  the write created an empty second record and reported success, while the
+  real file went on sitting one directory down. The derivation root's
+  children are now probed too, and the refusal names both the corpus it
+  found and the setting that would point derivation at it.
+
 - **cross-project id resolution survives the feedback corpus moving into its own folder** (ANTS-4905)
   `feedback_query` resolves a foreign-prefix id against the project whose
   roadmap owns that prefix, and found that project by scanning the feedback

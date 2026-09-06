@@ -19,8 +19,16 @@ back on takes effect on the next launch).
 ## Feedback corpus root (ANTS-4471)
 
 `claude.mcp_feedback_root` (string, default empty). The directory holding the
-shared `*_Ants_MCP_Feedback.md` corpus, searched by `feedback_query` /
-`feedback_log` when a derived path misses and they need to offer `candidates`.
+shared `*_Ants_MCP_Feedback.md` corpus.
+
+**It does two different things, and the second is the one that matters most.**
+On a MISS it is searched alongside the derived directory, so `candidates` can
+name the real file. And on a `feedback_log` write whose path would be DERIVED,
+a key naming a directory that holds a corpus REDIRECTS the derivation there and
+succeeds — it does not fall through to a refusal. A user who declared the
+corpus has already answered the question a refusal would ask. The full
+resolution order is `mcp-feedback-files.md` § File location & name, which owns
+it; this entry must not restate the order.
 
 **And by `session_orient`'s `feedback_pending` block (ANTS-4896).** That block
 scanned the parent of the project root alone, so a corpus this key had already
