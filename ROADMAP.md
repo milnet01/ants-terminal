@@ -62138,6 +62138,20 @@ merit whether or not the rest is built.
 
   Worth building even if nothing else in this section is: it turns a
   documented "do not do this" into something the machine enforces.
+  Ready to build (2026-09-06). ADR-0005 is at loop 2 of its 3-loop gate
+  cap, 23 findings fixed across the two loops; loop 3 is owed before
+  Phase 0a lands, per CLAUDE.md rule 14 (the gate runs before anything
+  is built under the ADR). Everything Phase 0a needs is now decided
+  rather than open: the lock is an flock at
+  ${XDG_STATE_HOME:-$HOME/.local/state}/ants-terminal/build.lock -- the
+  literal path is part of the decision, because its acquirers are built
+  in three different phases and two spellings of one intent exclude
+  nothing, silently. Extent is the BUILD only, released before the test
+  run and before any git push: an orchestrator holding it across the
+  gate would block on its own pre-push hook, which waits rather than
+  failing, and that deadlock has no timeout. tools/hooks/pre-push and
+  tools/ci-parity.sh take the same lock and WAIT rather than fail,
+  because a hook that aborts trains people to reach for --no-verify.
   **Layman:** Stop two parallel sessions from compiling at the same time and running the machine out of memory.
   Kind: implement.
   Source: user-request-2026-09-06, ADR-0005 D6.
