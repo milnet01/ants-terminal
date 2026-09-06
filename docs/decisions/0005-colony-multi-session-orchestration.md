@@ -215,6 +215,50 @@ exits rather than inventing work.
 Both keep the standing billing-safety rule intact: the parallelism is
 requested, and the work inside it is not invented.
 
+### D9 — Two workers MAY share a file. Overlap is handled at merge, not forbidden at dealing.
+
+Raised by the project lead, 2026-09-06: *how do two sessions work on one
+file — both take a copy, submit back, and the orchestrator merges?*
+
+That is already what D1 gives us: each worker's worktree holds its own
+copy of every file, so two workers on one file are two branches, and the
+orchestrator merges. The decision is what happens at merge, and it is
+three different problems wearing one name.
+
+**1. Different regions of one file — merge cleanly, and that is the
+common case.** Git handles it with nothing added. An earlier draft of
+this ADR refused to deal any task whose FILE overlapped one in flight;
+that is too strict, and it serialises exactly the work the oversized
+files already serialise. Withdrawn.
+
+**2. Overlapping regions — a textual conflict, visible and cheap.** The
+second task is REBASED onto the merged `main`, not merge-committed: it
+replays against current code, so the conflict is resolved in the place
+that has both halves. Where the rebase cannot be resolved mechanically
+the task is requeued with the failure attached, and its brief now names
+the change that landed underneath it.
+
+**3. No textual conflict, but a semantic one — the case that decides the
+design.** Worker A renames a function; worker B adds a caller of the old
+name. Both diffs apply cleanly and the result does not build — or builds
+and is wrong. **No partitioning scheme detects this**, because the
+conflict is not in the text either worker wrote. Only D5's post-merge
+gate catches it. That is why merges are serial and the full suite re-runs
+after every one; it is not conservatism, it is the only instrument that
+sees case 3.
+
+**So the dealing rule is a preference, not a prohibition.** The
+orchestrator prefers non-overlapping tasks when it has the choice —
+ordering two overlapping tasks costs one wait, while running them
+concurrently and requeueing costs one task's work twice. It refuses an
+overlap outright in one case only: a task whose brief is a RENAME or a
+signature change, which is case 3 by construction and where the cost of
+finding out at merge is a broken `main`.
+
+Partitioning at SYMBOL rather than file granularity narrows case 2 —
+`codebase_index` already knows which symbols live where — and is what
+ANTS-4914's glossary would sharpen. It does nothing for case 3.
+
 ### D8 — Build phases 0-2, then measure, before building 3-5
 
 Project lead, 2026-09-06.
@@ -253,9 +297,10 @@ keystroke injection. The verification path already exists.
   whole design is chasing. This is deliberate — the machine is the
   binding constraint, not the design — and it is the strongest argument
   for running D8's measurement before building phases 3-5.
-- **Partitioning is a first-class job.** Two tasks touching one file
-  conflict however good the machinery is, so the orchestrator refuses to
-  deal a task whose lane overlaps one in flight.
+- **Partitioning is a preference, not a guarantee** (D9). Two tasks in
+  different regions of one file merge cleanly; overlapping ones rebase or
+  requeue; and a semantic conflict is invisible to any partition and is
+  caught only by the post-merge gate.
 
   **This makes file SIZE a throughput variable, which is the strongest
   argument this project has yet had for its structural refactors**

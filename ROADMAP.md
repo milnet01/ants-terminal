@@ -62266,6 +62266,45 @@ merit whether or not the rest is built.
   Source: user-request-2026-09-06.
   Lanes: mcp.
 
+- 📋 [ANTS-4914] **A source-code glossary: one generated line per file saying what it handles, and Colony's partition input.**
+  Raised by the project lead as the consequence of splitting big files: many
+  small files need a glossary, or nobody can find anything -- and it should
+  change how apps are built here in future, not only how this one is
+  repaired.
+
+  WHAT ALREADY EXISTS, so this does not rebuild it. `codebase_index`
+  already maps 951 files into 84 lanes with per-lane file digests and
+  per-symbol locations, refreshed at session start. `subsystem` walks
+  docs/subsystems.md. `find_definition` / `find_sources` / `similar_code`
+  answer the per-symbol questions. The STRUCTURAL map is done.
+
+  WHAT IS MISSING is the prose half: one line per FILE saying what it
+  handles. docs/subsystems.md is the nearest thing and CLAUDE.md says
+  outright that its lanes are too coarse -- it lists a 30,349-line
+  subsystem and an 11,438-line function as single lanes. It is also
+  hand-maintained, which is exactly what stops working at 500+ files.
+
+  Two properties decide whether this is worth building. It must be
+  GENERATED or checked, not hand-kept, or it becomes another drifted
+  document -- the header comment each file already carries is the obvious
+  raw material, and file_outline already extracts it. And it must be
+  QUERYABLE by file and by topic, because the reader is usually a session
+  orienting, not a person browsing.
+
+  The Colony connection is what makes it more than navigation: the
+  orchestrator's partition asks "which files does this task touch, and does
+  that overlap a task in flight?" (ADR-0005). A per-file map with an
+  accurate owner is that question's input, so a good glossary raises how
+  many workers can run at once.
+
+  Sequencing: after the structural refactors it describes, and after
+  ANTS-4913 measures whether more workers pay -- both change what the
+  glossary has to cover.
+  **Layman:** A map of the codebase that says in one line what every file is for, kept up to date automatically.
+  Kind: feature.
+  Source: user-request-2026-09-06.
+  Lanes: mcp, workspace, docs.
+
 ### 📚 Methodology — adopted as standing practice
 
 - Re-run `/audit` + `/indie-review` before every minor tag.
