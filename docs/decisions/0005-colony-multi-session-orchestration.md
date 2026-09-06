@@ -35,7 +35,7 @@ review of this document found that several of them had been assumed.
 | Watch a session without disturbing it | `get_text {tab}` (MCP) | — |
 | Start a session, in a directory, running a command | `launch` / `new-tab` over the remote-control socket (`src/remotecontrol_terminal.cpp:459`) | **Not MCP verbs.** `cwd` is validated against the FOCUSED PROJECT ROOT, so a sibling worktree is refused unless the caller passes `allow_outside_root:true`, which is a blanket bypass. `command` is control-char filtered *by default*, with `raw:true` as a documented opt-out |
 | Durable cross-session messaging | `session_message` (ANTS-4622) | **Addressed to a PROJECT, never to a session** — and ANTS-4887 folds a worktree back into its main checkout, so the orchestrator and every worker share ONE inbox with no sender identity. Not usable as a worker→orchestrator channel without a discriminator |
-| Shared work record | the machine-global roadmap store, WAL, `busy_timeout` set (explicit `PRAGMA`, and the Qt plugin defaults to 5000 ms) | Concurrent writers block and retry rather than failing, so no retry logic is owed. The one uncovered statement is the WAL switch itself, which takes an EXCLUSIVE lock below the busy handler |
+| Shared work record | the machine-global roadmap store, WAL, `busy_timeout` set (explicit `PRAGMA`; Qt's QSQLITE default is 5000 ms, and the store carries a second bulk profile) | **A contended writer blocks up to `busy_timeout` and then FAILS.** ANTS-3756 INV-16 makes that a contract: a write that cannot take the lock in time "fails and reports; it is never retried silently and never dropped". So every worker store write owes a failure branch — see D4. The same section requires `BEGIN IMMEDIATE`: a deferred read-then-write returns `SQLITE_BUSY` on the upgrade WITHOUT honouring `busy_timeout` at all. The WAL switch is separately uncovered, taking an EXCLUSIVE lock below the busy handler |
 | Mechanical verification | `git_state`, `build_status`, `test_results`, `focused_test`, `verify_changes`, `tools/ci-parity.sh`, `tools/hooks/pre-push` | — |
 | Isolation between concurrent lines of work | git worktrees — CLAUDE.md rule 17 | — |
 
@@ -98,11 +98,14 @@ worktree. Only the orchestrator writes `ROADMAP.md`, `CHANGELOG.md` and
 the review records — on `main`, in the main checkout, one writer at a
 time.
 
-**The ban is on the RENDERED FILES, not on the store.** A worker must
-write the store to take a lease (D4), and that write MUST NOT go through
-the render-and-publish path: it is a direct conditional `UPDATE` of one
-row. Anything routed through `roadmap_log` republishes the whole store
-into the orchestrator's checkout, which is problem 2 exactly.
+**The ban is on the RENDERED FILES, not on the store.** A worker makes
+THREE store writes — the lease claim and its heartbeat (D4), the outcome
+report (D4), and the declaration (D10) — and **none of them may go
+through the render-and-publish path.** Each is a direct conditional
+`UPDATE` of one row. Anything routed through `roadmap_log` republishes
+the whole store into the orchestrator's checkout, which is problem 2
+exactly. Naming all three rather than only the lease, because a rule
+stated about one of them invites the other two through the front door.
 
 This costs a worker nothing it needs, and dissolves problem 2 rather than
 locking it.
@@ -144,9 +147,31 @@ when the store's `user_version` exceeds the build's, so the first binary
 to upgrade it locks every older build out of every project. A
 parallel-work feature does not earn that.
 
-A lease carries an owner, an expiry and a heartbeat. An expired lease
-returns the task to the queue — the whole answer to a worker that dies,
-hangs, or is closed by the user.
+**The lease record.** `owner` is the worker's **worktree path**, which is
+unique per task, stable for the worker's life, and — unlike a shell PID —
+neither ephemeral nor OS-reused. (D3 rules out addressing a worker by
+session, and `session_message` cannot name one either, so this is the
+only identity both sides can agree on.) It carries an expiry and a
+heartbeat, and **the expiry must exceed a D6 lock wait**: a worker
+legitimately blocks behind another build for minutes, and a reaper that
+cannot tell that from a hang will reclaim live work.
+
+**Every store write on this path owes a failure branch**, because a
+contended write FAILS at the deadline rather than retrying (see the table
+above, and ANTS-3756 INV-16). A claim that silently returns nothing is
+indistinguishable from losing the race, which is how two workers end up
+believing they own one task. Open the claim, the heartbeat, the report
+and D10's declaration with `BEGIN IMMEDIATE`.
+
+**An expired lease returns the task to the queue**, and requeue is a
+common path rather than an edge — it is also where an unresolvable rebase
+(D9) and a red post-merge (D5) land. So it must say what becomes of the
+prior worktree and branch, both of which D1 keys on the task id and both
+of which still exist after a hang: **fence first, then reap.** The
+orchestrator confirms the holder is gone (`tab_list` shows no live
+session at that `cwd`), then removes the worktree and deletes the branch,
+then re-deals. Deleting a directory under a worker that is still writing
+is the failure this ordering exists to prevent.
 
 **The worker's report goes in the task record, not in the mail.**
 `session_message` addresses projects, and every worker resolves to the
@@ -166,7 +191,13 @@ Per task, before merge, all three:
    `ci-parity.sh --full`: containerised Qt 6.2 and ASan are a release
    gate, and re-running them after every merge would dominate the
    wall-clock this whole design exists to reduce;
-3. the diff stays inside the lane the task named.
+3. the diff stays inside the lane the task named. **A lane is a set of
+   file paths** — that is what phase 1's task record stores and what this
+   check evaluates, because a diff is a set of paths and anything else
+   needs a translation step neither side has. (D9's symbol granularity
+   narrows which tasks are PREFERRED together; it does not change what
+   this gate compares. Sharpening the lane to symbols is ANTS-4914's
+   successor work.)
 
 A task meeting all three **merges without asking** (project lead,
 2026-09-06). The three checks are mechanical, so a human approving them
@@ -177,10 +208,21 @@ Merges are serial, and **the gate re-runs after each merge**, because at
 volume the dominant source of new defects stops being the original code
 and becomes the previous fixes.
 
-**When the post-merge re-run goes red**, the orchestrator reverts that
-merge, requeues its task with the failure attached, and **stops dealing
-until a human answers**. Continuing would cut every subsequent worker
-branch from a known-broken `main`.
+**When the post-merge re-run goes red**, the orchestrator **resets `main`
+to the pre-integration commit** — not `git revert -m 1`, which needs a
+merge commit that D9's rebase path never creates — requeues the task with
+the failure attached, and **stops dealing until a human answers**.
+Continuing would cut every subsequent worker branch from a known-broken
+`main`. The reset is safe because integration is serial: nothing else has
+landed since.
+
+**Where the pre-merge gate runs: in the WORKER's worktree, not the main
+checkout.** The orchestrator's checkout must stay on `main` — D2 has it
+rendering `ROADMAP.md` there, and ANTS-4839 publishes that render onto
+whichever branch is checked out, so borrowing it for a branch build would
+publish the roadmap onto a worker branch. The worktree is warm from the
+worker's own narrow builds (D6), so this is also the cheaper tree. The
+orchestrator's own checkout runs only the POST-merge gate, on `main`.
 
 This raises the cost of a weak suite: with auto-merge, the suite is the
 only thing between a confidently-wrong worker and `main`.
@@ -217,8 +259,27 @@ The orchestrator-only variant was considered and declined for the reason
 above: it is simpler to state and it makes every worker's output
 unverified until it lands.
 
-**It is an `flock` on a well-known path under `$XDG_STATE_HOME`, not a
-store row.** Three reasons, and the first is decisive:
+**It is an `flock` on `${XDG_STATE_HOME:-$HOME/.local/state}/ants-terminal/build.lock`,
+not a store row.**
+
+**The literal path is part of the decision, not an implementation
+detail.** Its acquirers are separate artefacts built in different phases
+— a shell hook and `ci-parity.sh` in phase 0a, the worker's narrow build
+in phase 3, the orchestrator's gate in phase 4 — and mutual exclusion
+exists only if every one of them names the identical file. Two spellings
+of the same intent exclude nothing, and the failure is silent until two
+`cc1plus` storms meet the earlyoom ceiling. `$XDG_STATE_HOME` is commonly
+unset, so the fallback is named too rather than left to each caller to
+invent.
+
+**Extent: the lock covers the BUILD only, and is released before the test
+run and before any `git push`.** An orchestrator holding it across D5's
+gate would then block on its own `pre-push` hook, which waits rather than
+failing — a deadlock with no timeout. Tests are not the RAM hog the lock
+exists for; concurrent `cc1plus` is.
+
+Three reasons it is a file lock rather than a store row, and the first is
+decisive:
 
 - **The documented failure is produced by git hooks**, and a hook is a
   shell script with no MCP session and no store connection. `flock(1)` is
@@ -288,10 +349,16 @@ merge clean, compile clean, and are wrong. D10 is what covers them.
 **So the dealing rule is a preference, not a prohibition.** The
 orchestrator prefers non-overlapping tasks when it has the choice —
 ordering two overlapping tasks costs one wait, while running them
-concurrently and requeueing costs one task's work twice. It refuses an
-overlap outright in one case only: a task whose brief is a RENAME or a
-signature change, which is case 3 by construction and where the cost of
-finding out at merge is a broken `main`.
+concurrently and requeueing costs one task's work twice.
+
+**It refuses nothing on the grounds of a rename. D10 supersedes the
+carve-out an earlier draft had here**, and the draft was wrong twice
+over: it refused exactly the work Colony exists to parallelise, and it
+used a FILE-overlap test to catch case 3 — which this section has just
+finished saying no partitioning scheme can detect. A file-overlap
+refusal blocks safe pairs and deals the disjoint-file pairs that are
+actually dangerous. Declare-and-sweep (D10) is the mechanism; preferring
+disjoint work is a cost heuristic and nothing more.
 
 Partitioning at SYMBOL rather than file granularity narrows case 2 —
 `codebase_index` already knows which symbols live where — and is what
@@ -355,9 +422,19 @@ language is:
   visible of them.
 
 The declaration is `{old, new, kind, language}` and rides the task record
-(D4), which the orchestrator already reads. `language` is there so the
-sweep can be scoped sensibly — a renamed Python method is worth grepping
-for across `.py`, docs and config, not across every `.cpp` in the tree.
+(D4), which the orchestrator already reads.
+
+**`language` narrows the sweep for a SOURCE-language rename only — never
+for the always-declare list above.** Those entries are declared precisely
+because they cross a boundary: a Lua binding's stale references live in
+`.cpp`, an MCP verb name lives in schema strings and docs, a config key
+lives in JSON and prose. **They are swept unscoped**, across source,
+tests, docs and config. Scoping them by the language they were written in
+would skip exactly the references the entry exists to catch.
+
+For an entry with no source language — a JSON key, a moved file path, a
+doc citation — `language` is `null`, which reads as "sweep everything"
+rather than as a missing field.
 
 **The orchestrator verifies rather than trusts.** On each merge it sweeps
 the merged tree for every declared `old` token still present, across
@@ -389,13 +466,20 @@ Project lead, 2026-09-06.
 
 | Phase | Delivers | D-numbers |
 |---|---|---|
-| 0a | Build lease (`flock`), hooks included | D6 |
-| 0b | Orchestrator owns the rendered files; worker store writes bypass the render | D2 |
-| 1 | Queue + lease + task record in `extras` | D4 |
-| 2 | `colony_spawn`: `launch` as a guarded MCP verb, worktree-aware `cwd` | D1, D3 |
-| 3 | `colony-worker` skill — claim, work, report, exit | D3, D7 |
-| 4 | `colony-orchestrator` skill — partition, deal, verify, merge, revert | D5 |
+| 0a | Build lease (`flock` at the named path), build-only extent, hooks and `ci-parity.sh` included | D6 |
+| 0b | Orchestrator owns the rendered files; worker store writes bypass the render, with `BEGIN IMMEDIATE` and a failure branch | D2, D4 |
+| 1 | Queue + lease + task record in `extras` — owner, expiry, heartbeat, **lane as a file-path set, and D10's `{old, new, kind, language}` declaration slot** | D4, D5, **D10** |
+| 2 | `colony_spawn`: `launch` as a guarded MCP verb, worktree-aware `cwd`, no `raw` | D1, D3 |
+| 3 | `colony-worker` skill — claim, work (narrow builds under the lease), **write the declaration**, report, exit | D3, D6, D7, **D10** |
+| 4 | `colony-orchestrator` skill — partition, deal, verify in the worker's worktree, **sweep declared tokens**, merge serially, rebase or requeue, reset on red | D5, **D9**, **D10** |
 | 5 | Fleet view — worker state, spend, queue depth | — |
+
+**D9 and D10 are split across phases rather than owning one**, which is
+why an earlier draft of this table omitted them entirely: the declaration
+is a FIELD in phase 1, a worker OBLIGATION in phase 3, and an
+orchestrator CHECK in phase 4. A builder scheduling from the table alone
+would otherwise ship a task record with no slot for it and a merge with
+no sweep.
 
 Phases 0-2 each stand on their own merit and fix hazards that exist
 today. **Phases 3-5 are the bet** that N sessions finish more work per
@@ -428,9 +512,12 @@ keystroke injection. The verification path already exists.
 
   **This makes file SIZE a throughput variable, which is the strongest
   argument this project has yet had for its structural refactors**
-  (project lead, 2026-09-06). `mainwindow.cpp` is 6,162 lines and
-  `auditdialog.cpp` 5,749; every task touching either one excludes every
-  other task that would. Splitting them does not merely tidy the tree —
+  (project lead, 2026-09-06). **`mainwindow.cpp` is 8,020 lines and
+  `auditdialog.cpp` 6,332**, measured 2026-09-06; every task touching
+  either one excludes every other task that would. (ANTS-1043 and
+  ANTS-1044 still carry the 2026-04-27 review's figures of 6,162 and
+  5,749 — both files have grown by roughly a third since, which sharpens
+  the argument rather than weakening it.) Splitting them does not merely tidy the tree —
   it converts one serialised lane into several parallel ones, so
   ANTS-1043, ANTS-1044 and ANTS-1049 are Colony ENABLERS rather than
   unrelated tier-3 work. The corollary is worth stating too: measuring
