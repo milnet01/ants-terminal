@@ -51421,6 +51421,36 @@ rather than refiled.
   different ARRAY on the spill path, not another adjustment to that one, so
   the question is whether it replaces or joins them — and workspace_search
   already computes the files_only shape.
+  Scoped (2026-09-06), not built. The constraint that decides the design was
+  read rather than guessed, and it is not where the request points.
+
+  `rows_preview` is built in mcpspill.cpp's offloadBody, which is
+  VERB-AGNOSTIC: it finds the "dominant array" of any object body and
+  summarises its rows without knowing what a row means. So it cannot emit
+  [{file, count}] — it does not know that workspace_search rows carry a
+  `file`. Adding that knowledge there gives the shared spill layer a
+  per-verb special case, which is the wrong place for it and would sit
+  alongside four existing behaviours (ANTS-4474 narrows heads, ANTS-4519
+  omits the array when they would be dropped, ANTS-4704/4705 document and
+  complete the family).
+
+  The layering-correct route, and it is cheaper: have WORKSPACE_SEARCH emit
+  the summary and let the spill layer preserve it. `preserveTopLevelFields`
+  already carries selected top-level fields onto a spilled envelope, and the
+  verb already computes exactly this shape for `files_only`. So the change
+  is a small `files` array on the verb's own response plus one entry in the
+  preserved-key list — no new logic in the spill layer at all.
+
+  Left open rather than half-built at the end of a long session: whether
+  that array is emitted always or only when the response is large, and
+  whether it REPLACES rows_preview or joins it, are the two questions worth
+  deciding together. The reporter offered both — an opt-in for the genuine
+  page-through case, or emitting rows_preview only when the match count
+  makes paging plausible — and either is compatible with the route above.
+
+  What is settled: a spilled search should not need a second call to answer
+  "which files matched", and the verb, not the spill layer, is where that
+  answer already lives.
   **Layman:** When a search is too big to return, the summary it gives back does not help you make the search smaller.
   Kind: enhancement.
   Source: finbreak-feedback-2026-09-06.
