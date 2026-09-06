@@ -10,12 +10,11 @@ legacy files.
 `~/.claude/standards/spec-format.md` says it is the only copy and that a
 project needing to differ writes deltas only. That rule targets projects
 carrying a *verbatim copy* that silently forked; this file is not one.
-The two prescribe different documents — the global standard requires
-twelve sections (Goal, Scope decisions, Design, Failure modes,
-Alternatives considered, What checks this, …) where this one requires
-six opening sections plus two more when their triggers apply (§§ 3-4),
-and names the design section *Surface* — so the "deltas" would be
-almost the whole file. It is also **executed, not just read**:
+The two prescribe different documents — the global standard's section
+set (Goal, Scope decisions, Design, Failure modes, Alternatives
+considered, What checks this, …) is not this one's (§§ 3-4), and it
+names the design section *Surface* — so the "deltas" would be almost
+the whole file. It is also **executed, not just read**:
 `src/speclint.cpp`, `src/specparse.h` and `src/speclog.h` implement the
 rules below, and the `spec_lint`, `mcp_spec_query` and
 `spec_parse_test_surface` feature tests lock them. Read
@@ -38,24 +37,14 @@ parseable by the `spec_query` MCP tool (§ 6).
 
 ## 1. When a spec is required
 
-Write a spec when the work has a **non-obvious contract** — invariants
-a future change could silently break, a data shape other code depends
-on, a security boundary, or a multi-file design.
+**`spec-format.md` § 1 owns this question** — its triggers, its skip
+test, and the escape hatch for a call that went the wrong way. Read it
+rather than deciding from this file.
 
-Skip the formal spec (a regression test is more useful) when the work
-is mechanical: a typo, a one-line fix, a menu entry, a dependency bump.
-A `spec.md` under `tests/features/<name>/` (the feature-conformance
-contract) is the right home for a small, single-invariant behaviour;
-a top-level spec under `docs/specs/` is for designs big enough that
-the contract spans files.
-
-**If you are two files in and it is still spreading, stop and write the
-spec.** That is the correction for a call that went the wrong way, and
-it is cheaper than finishing it wrong. There is deliberately no "when
-unsure, write the spec" rule — that instruction biased every borderline
-call toward a document plus its full review gate. `spec-format.md` § 1
-owns the five triggers and the skip test; read it rather than deciding
-from this paragraph.
+What this file adds is where the contract lives: a `spec.md` under
+`tests/features/<name>/` (the feature-conformance contract) is the right
+home for a small, single-invariant behaviour, and `docs/specs/` is for
+contracts that span subsystems.
 
 ## 2. File + naming
 
@@ -74,6 +63,10 @@ from this paragraph.
 - The spec elaborates exactly one ROADMAP bullet. Cross-cutting work
   that spans several ids gets one spec per id, cross-referenced in the
   header, or one umbrella spec whose header lists the ids it covers.
+  **An umbrella spec's filename takes the id it primarily elaborates**,
+  and `**Covers:**` (§ 3) carries the rest. Only the filename id is
+  addressable by `spec_query`, and no tool reads `**Covers:**`, so each
+  other id needs its own ROADMAP bullet to name the spec.
 
 ## 3. Required structure
 
@@ -214,8 +207,9 @@ When an invariant's claim is about a **regex pattern**, state the
 pattern as a fence tagged with its engine and put an `| input |
 expected |` table directly beneath it. In that form the
 `spec_conformance` verb *runs* the pattern against each row — within
-its per-run case cap, and skipping any pattern or input over 512 bytes
-as a `too_large` refusal — and a pattern that disagrees with its own
+its per-run case cap, which reports `truncated` rather than stopping
+silently, and skipping any pattern or input over 512 bytes as a
+`too_large` refusal — and a pattern that disagrees with its own
 example comes back as a finding instead of surviving a cold read. The
 example below is nested inside a four-backtick fence so this standard
 does not itself become a case:
@@ -268,7 +262,7 @@ is wrong without telling you what to write instead:
   unless you anchor it.
 
 **Run `spec_conformance` on your own draft once written** — the same
-habit § 6 asks for with `spec_query`, and the only way to catch the two
+habit § 6 asks for with `spec_query`, and the only way to catch the
 invisible mistakes above, which by definition no reader can see. A
 pattern invariant that comes back as a candidate, a refusal, or nothing
 at all is not yet in the runnable form.
@@ -401,9 +395,10 @@ changes get their own spec that supersedes it (`**Superseded by:**`).
 ### 5.7 Cold-eyes loop log
 
 Specs in this project run through the `review-contract` skill before
-implementation, looped until it reports convergence — never ship a
-first-draft spec. The skill owns the procedure and the definition of
-convergence; this standard does not restate them.
+implementation, looped until it reports convergence or its loop cap
+binds — at the cap the remaining findings are filed and the spec ships.
+Never ship a first-draft spec. The skill owns the procedure, the cap and
+the definition of convergence; this standard does not restate them.
 
 Record each loop's findings + resolutions in a `## Cold-eyes loop log`
 section and reflect progress in the **Status** line. **The section name
@@ -432,6 +427,11 @@ work across the older shapes too.
 **Findings go in the outcome cell and nowhere else.** Restating them
 under per-loop headings puts each count in two places, and two places
 drift.
+
+**The rules above bind the rows, not their location.** Rows normally sit
+in the section. Where it names a record instead — `documentation.md`
+§ 9.1's form, which this standard itself uses — the section keeps its
+heading and a one-line pointer, and the rows go to `docs/reviews/`.
 
 **This binds new logs.** A landed row is never edited, and a new row
 must match its table's existing header, so a log already running keeps
