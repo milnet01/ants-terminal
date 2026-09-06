@@ -110,11 +110,23 @@ A lease carries an owner, an expiry and a heartbeat. An expired lease
 returns the task to the queue; that is the whole answer to a worker that
 dies, hangs, or is closed by the user.
 
-### D5 — The orchestrator merges only on mechanical evidence
+### D5 — The orchestrator merges automatically, on mechanical evidence
 
 Per task, before merge: the branch builds, the suite is green, and the
 diff stays inside the lane the task named. The worker's report is used to
 *route* the check, never to replace it.
+
+**A task meeting all three merges without asking** (project lead,
+2026-09-06). The alternative — verified work queued for a human batch
+approval — was declined, and the reasoning is worth keeping: the three
+checks are mechanical, so a human approving them adds latency without
+adding a judgement. What a human should be asked about is a task that
+FAILS a check, which is a different message and a rarer one.
+
+This raises the cost of a weak suite: with auto-merge, the suite is the
+only thing standing between a confidently-wrong worker and `main`. It is
+an argument for the gate being the FULL local gate rather than a focused
+subset, and for D5's re-run after each merge.
 
 Merges are serial, and **the gate re-runs after each merge** — because at
 volume the dominant source of new defects stops being the original code
@@ -133,6 +145,19 @@ has an earlyoom history and a documented two-builds-at-once failure.
 No session spawns itself. When the queue is empty a worker exits rather
 than inventing work. This keeps the standing billing-safety rule intact:
 the parallelism is requested, the work inside it is not invented.
+
+### D8 — Build phases 0-2, then measure, before building 3-5
+
+Project lead, 2026-09-06. Phases 0-2 (build lease, record ownership,
+queue, spawn) each stand on their own merit and fix hazards that exist
+today. Phases 3-5 are the bet that N sessions finish more work per hour
+than one, and that is unmeasured.
+
+ANTS-4913 runs between them: a batch of independent backlog items, once
+serially and once with two workers, compared on wall-clock to merged,
+tokens spent, and defects found in the follow-up sweep. **If two workers
+are barely faster than one, phases 3-5 are not built** and the valuable
+half is still delivered.
 
 ## Consequences
 
