@@ -696,9 +696,10 @@ Result check(const QString &text, const QString &relPath,
 
     // --- loop_row_no_outcome ----------------------------------------------
     // A loop log is a GFM table whose FIRST HEADER CELL is exactly `Loop`; the
-    // outcome is the row's LAST cell. Four incompatible column layouts are in
-    // use across this corpus (spec § 2.2) and the prose column is last in all
-    // four, so position matches every shape where a column NAME matches one.
+    // outcome is the row's LAST cell. `specs.md` § 5.7 fixes the columns for
+    // new logs, but many earlier shapes are in use across this corpus and stay
+    // (a landed row is never edited). The prose column is last in all of them,
+    // so position matches every shape where a column NAME would match one.
     for (int i = 0; i + 1 < lines.size(); ++i) {
         if (i < fence.size() && fence[i]) continue;
         if (!isTableRow(lines[i]) || isDelimiterRow(lines[i])) continue;

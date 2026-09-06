@@ -413,6 +413,31 @@ renaming it here would strand all of them. The log is the evidence the
 loop happened and the audit trail for why a contract reads the way it
 does.
 
+**One table shape.** The log is a GFM table whose first header cell is
+exactly `Loop` and whose last column is the prose outcome:
+
+```
+| Loop | Date | Lanes | Q1 | Q2 | Q3 | Q4 | Outcome |
+|---|---|---|---|---|---|---|---|
+```
+
+One count per question, each in its own column, so the counts can be
+read without parsing prose. `review-contract`'s genre overlays decide
+which questions are asked; where a genre does not ask one, its cell is
+`n/a` rather than `0` — an unasked question and a question that found
+nothing are different facts. Keep the outcome last: that is the cell
+`spec_lint`'s `loop_row_no_outcome` reads, and it is what lets the check
+work across the older shapes too.
+
+**Findings go in the outcome cell and nowhere else.** Restating them
+under per-loop headings puts each count in two places, and two places
+drift.
+
+**This binds new logs.** A landed row is never edited, and a new row
+must match its table's existing header, so a log already running keeps
+the shape it has. Several other shapes are in use across this corpus
+from before this rule; they are correct as written and stay.
+
 ## 6. Machine-readability (`spec_query`)
 
 The `spec_query` MCP tool parses specs into
@@ -475,6 +500,9 @@ Feature test: `tests/features/<name>/`. Covers INV-1..N. Label
 <CLAUDE.md / CHANGELOG / README / sibling specs touched this release>
 
 ## Cold-eyes loop log
+
+| Loop | Date | Lanes | Q1 | Q2 | Q3 | Q4 | Outcome |
+|---|---|---|---|---|---|---|---|
 
 <one row per review loop; written as the loops happen, never back-filled>
 ```
