@@ -225,14 +225,25 @@ fire on every conforming spec. Edit it in the same commit as any change
 to the headings above, or the check starts reporting a structure nobody
 uses.
 
-**Where the check reads it from**, in order: `docs/standards/spec-format.md`,
-`docs/standards/specs.md`, `standards/spec-format.md`, `standards/specs.md`
-— then those same four again under `~/.claude/`. **The un-prefixed pair is
-how a repository that *is* a standards set checks its own specs**, and this
-repository resolves to `standards/spec-format.md`: verified 2026-08-17 by
-linting a fixture, whose envelope came back
-`sections_source: "standards/spec-format.md"`. A project that ships its own
-spec standard is checked against *that*, not this — which is correct,
+**Where the check reads it from**, in order: `docs/standards/specs.md`,
+`docs/standards/spec-format.md`, `standards/specs.md`,
+`standards/spec-format.md` — then those same four again under the global
+root, whose hits `sections_source` prefixes `~global/`. **A project's OWN
+standard is tried before the mirrored global one within each layout**
+(ANTS-4895, 2026-09-06); the earlier order put the `spec-format.md` name
+first and defeated § 3's intent wherever a project keeps a verbatim mirror
+of this standard beside its own — the mirror carries a required-sections
+block, resolution stops at the first block found, and the project's own list
+was never read.
+
+**The un-prefixed pair is how a repository that *is* a standards set checks
+its own specs**, and this repository resolves to `standards/spec-format.md`,
+re-verified 2026-09-06 after the reorder by linting a fixture:
+`sections_source: "standards/spec-format.md"`. It ships no
+`standards/specs.md`, so the new first candidate misses and the outcome is
+unchanged. **The global tier is skipped outright where the project root IS
+the global root**, which is this repository's case. A project that ships its
+own spec standard is checked against *that*, not this — which is correct,
 and means this block governs projects following the global set.
 
 ### 3.1 Title

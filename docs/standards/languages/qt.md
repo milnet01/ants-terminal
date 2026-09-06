@@ -85,6 +85,25 @@ Split 2026-08-14 (ROADMAP CFG-0108): all four sat under a heading reading
 this machine's Qt 6 headers, where neither `QRegExp` nor `qrand` is
 present in QtCore.
 
+## What checks this
+
+**Qt is the best-covered of the three, because `clazy` is a Qt-aware
+analyser and most of this file's idioms are checks it ships.** Names below
+were verified against the installed `clazy`.
+
+| Rule | What catches a breach |
+|------|----------------------|
+| Version floor — Qt 6 minimum | **Split, and the section says so.** The removed Qt 5 spellings (`QRegExp`, `qrand()`) fail the build, so nothing else is needed. The surviving ones do not, which is what the two rows below are for |
+| New-style `connect`, never `SIGNAL()` / `SLOT()` | `clazy`'s `old-style-connect`, with `connect-non-signal` beside it |
+| `QOverload<...>::of(...)` to disambiguate | `clazy`'s `overloaded-signal` |
+| `Q_OBJECT` on every `QObject` subclass | `clazy`'s `missing-qobject-macro` |
+| `tr()` around every user-visible string | **`Partial:`** `clazy`'s `tr-non-literal` catches a `tr()` given a non-literal. **Nothing** catches the omission this rule is actually about — a user-visible string never wrapped at all is ordinary code, and the section says retrofitting is many times the work |
+| `QWeakPointer<T>` → `QPointer<T>` for QObject lifetime | **nothing** — the section says so outright: it still compiles, so only a reader catches it |
+| Casing — Qt's convention, including the `m_` prefix | **`Partial:`** `clang-tidy`'s `readability-identifier-naming`, and only where the project configures it — see `cpp.md`'s row, which this inherits |
+| Parent-child ownership — never `delete` a parented child | **nothing that decides it.** A double free may surface under ASan at runtime; the idiom itself is not checked |
+| `QSaveFile` for atomic writes; `QStringLiteral` / `QStringView` | **`Partial:`** `clazy`'s `qstring-allocations` level reaches some implicit `QString` construction. **Nothing** checks the `QSaveFile` rule — a `QFile` with `Truncate` is valid code |
+| Owner-only permissions on config or secrets | **nothing, and this is the row to worry about.** The section says Qt has no single call for it, so the helper's name is local — there is no symbol to grep and no check to write without knowing the project's own |
+
 ## Cold-eyes loop log
 
 Rows live in `docs/reviews/languages-qt-loop-log.md`.

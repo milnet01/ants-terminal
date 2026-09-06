@@ -111,6 +111,32 @@ Python.
 `ruff` for lint and format. Its config lives in `pyproject.toml`, so
 there is one place to look.
 
+## What checks this
+
+**Nearly every rule here has a `ruff` code, and that is the point of the
+table — but almost none of them is on by default.** Measured on this
+machine: an isolated `ruff check` over a file with an untyped, undocumented,
+badly-cased function reported only `F401` and `I001`. So each row below is
+conditional on `pyproject.toml` selecting the family, and a project that
+selects nothing gets a clean report and no enforcement.
+
+| Rule | What catches a breach |
+|------|----------------------|
+| Version floor — Python 3.10 minimum | **`Partial:`** `requires-python` in `pyproject.toml`, which installers honour. **Nothing** stops a lower floor being declared; the idioms below then fail at runtime rather than at check time |
+| Casing — PEP 8 | `ruff`'s `N` family: `N801` for a class, `N802` for a function. **Selected, not default** |
+| Idioms — `list[int]` and `X \| Y` over `List`/`Union` | `ruff` `UP006`, `UP007`. **Selected, not default** |
+| Idioms — `pathlib` over `os.path` | `ruff`'s `PTH` family (`PTH100` and its siblings). **Selected, not default** |
+| Idioms — never `shell=True` with an f-string | `ruff` `S602`, with `S603` on the other side. **Selected, not default**, and `bandit` covers the same ground where it runs |
+| Idioms — type hints on every public signature | **`Partial:`** `ruff`'s `ANN` family, plus `mypy` or `pyright` where configured. **Nothing** enforces *public* as this rule means it — the checks fire on scope, not on what the project treats as its surface |
+| Idioms — `match`/`case`, `dataclasses`, no `setup.py` | **nothing.** Each is a design choice; a chain of `isinstance` checks and a hand-written `__init__` are both valid Python |
+| Catch what you can name — no bare `except:` | `ruff` `E722`, which **is** in the default set, with `BLE001` for `except Exception:` when selected |
+| Surface what you did not expect — never `except: pass` | **`Partial:`** `ruff` `SIM105` reaches the suppressible case. **Nothing** checks the rule's actual requirement, that a comment says why ignoring it is correct |
+| Wildcard imports | `ruff` `F403`, in the default set |
+| Comments — a docstring, not a paragraph restating the code | **nothing.** `D103` catches a *missing* docstring, which is the opposite failure; no check reads one and judges it |
+| Do not pessimise — comprehensions, `join()`, generators | **nothing that decides it.** `C4` and `PERF` flag some shapes; whether the whole list was needed at once is not something a check can call a breach |
+| Tests — labels registered with `--strict-markers` | **`Partial:`** the flag itself, which the section calls the whole mechanism — an unregistered mark becomes a collection error. **Nothing** catches its absence from `addopts`, which is the state the section reproduced |
+| Tests — determinism, and a tracked cause on a skip | **nothing.** A `@pytest.mark.skip` with no id is valid, and an unseeded random passes until it does not |
+
 ## Cold-eyes loop log
 
 Rows live in `docs/reviews/languages-python-loop-log.md`.

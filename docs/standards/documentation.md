@@ -620,7 +620,10 @@ section**: one table, each rule against what catches a breach.
 docs, tables, glossaries.** §3 gives it no folder because it lives beside
 whatever it serves. **A skill's files are §1's Agent rules whatever their
 directory is called, so a `references/` file under `skills/` is owed no
-table.** **And a foundation document carrying no table records an
+table.** **A skeleton or template is owed none either, wherever it sits** —
+`standards/skeletons/` included, whose path is the only thing about it that
+reads as a standard. It is copied elsewhere, and the table belongs to the
+copy once a project owns it. **And a foundation document carrying no table records an
 unchecked rule in `foundation.md`'s instead** — that document states the
 arrangement and names which documents it covers.
 
@@ -1048,9 +1051,12 @@ is the one with a substitute rather than a gap — the skeleton ships a
 *different* `link` class in its place, wider in one direction and narrower
 in the other.
 
-**The skeleton copy carries a `link` class of its own, and a `survivor` far
-narrower than the row above** — read that row as this repository's hook, not
-as a scaffolded project's. The
+**The skeleton copy carries a `link` class of its own, and a `survivor` with
+fewer exclusions than the row above** — read that row as this repository's
+hook, not as a scaffolded project's. It shares the deleted-side pattern
+(CFG-0317) and so sees markdown bullets; what it lacks is the pointer
+exclusion, the move-to-a-record exclusion, and the record-genre search skips,
+so `ROADMAP.md` and `CHANGELOG.md` are searched there. The
 `link` class fires on a markdown link target that does not resolve. **It is
 not the `path` class above**, and the paragraph three above says how the two
 differ.

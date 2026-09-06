@@ -166,6 +166,25 @@ C++.
                       .arg(cell.fg.name(), expected.name())));
   ```
 
+## What checks this
+
+**A language standard is where the catcher is most often a real tool, and
+that makes the empty cells worth stating.** Tool names below were verified
+against the binaries installed on this machine.
+
+| Rule | What catches a breach |
+|------|----------------------|
+| Version floor — C++20 minimum | **`Partial:`** the compiler. A C++20 construct fails to build under a lower `CMAKE_CXX_STANDARD`, so the floor holds wherever the code actually uses C++20. **Nothing** catches a pin below it carrying no reason: the pin compiles, and the reason is prose |
+| Casing — the project's chosen convention | **`Partial:`** `clang-tidy`'s `readability-identifier-naming`, **and only where the project configures it** — the check ships no default convention, so an unconfigured run enforces nothing and reports clean. **Nothing** catches the half that matters, that the choice is recorded and held; a file switching convention mid-way compiles |
+| Idioms — `make_unique` / `make_shared`, `auto`, `[[nodiscard]]`, `noexcept` on moves, `std::format` / `std::print` | `clang-tidy`, by name: `modernize-make-unique`, `modernize-make-shared`, `modernize-use-auto`, `modernize-use-nodiscard`, `performance-noexcept-move-constructor`, `modernize-use-std-print` |
+| Idioms — RAII, `std::optional` over sentinels, `std::span` over pointer + length, concepts over SFINAE | **nothing.** No installed check decides any of them — each is a design choice a conforming program makes either way, and `cppcheck` reaches only the leak a missing RAII wrapper eventually causes, never the idiom |
+| No `using namespace std;` in a header | `clang-tidy`'s `google-build-using-namespace`. **It does not draw this rule's header-versus-`.cpp` line**, which is the whole distinction — in a `.cpp` the rule calls it a judgement call and the check does not |
+| Catch what you can name — by `const&`, by specific type | **`Partial:`** `misc-throw-by-value-catch-by-reference` for the reference half, `bugprone-empty-catch` for a swallowed one. **Nothing** catches `catch (...)` away from a thread or `main` boundary: the construct is legal and the boundary is not something a check can see |
+| Do not pessimise — `std::move`, `reserve()`, pass by `const&` | **nothing that decides it.** `performance-*` flags some unnecessary copies; whether a known final size was reserved, or a helper's rvalue return moved, is not something a check can call a breach |
+| Tests — the prove-it-can-fail recipe | **nothing.** The recipe is a procedure a person runs, and both runs pass on a correct test and on a test that never exercised the fix. The recipe's own warnings are the only guard |
+| Tests — feature wiring, and labels | **nothing.** `ctest` runs whatever is registered; a guessed label is valid and simply matches no filter, which the section says outright is silent |
+| A failing test explains itself | **nothing.** A bare `QVERIFY` compiles and passes; only a reader looking at a failure notices it printed a line number and nothing else |
+
 ## Cold-eyes loop log
 
 Rows live in `docs/reviews/languages-cpp-loop-log.md`.
