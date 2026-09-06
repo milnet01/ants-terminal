@@ -2953,6 +2953,19 @@ void ClaudeIntegration::onMcpConnection() {
                         "with max_body_bytes for more] …` marker, so an "
                         "append-only progress-log body still reports its "
                         "CURRENT state and not just its oldest text. "
+                        "ANTS-4904 — a truncated body also carries "
+                        "`body_bytes`, the WHOLE body's size, so you can tell "
+                        "what fraction you are holding instead of inferring "
+                        "one; and `body_from_end:true` on a TARGETED id/ids "
+                        "fetch keeps the END of the body rather than head + "
+                        "tail, with the elision marker at the FRONT. Reach "
+                        "for it when the item is a progress log and the "
+                        "answer is its last paragraph: a 1 KiB tail is a "
+                        "sliver of it, and raising max_body_bytes to get more "
+                        "raises the head with it until the reply spills and "
+                        "the preview drops the body altogether. It is inert "
+                        "where nothing was truncated, so it can be passed "
+                        "unconditionally. "
                         "Default false. Use when triaging dense bundle "
                         "tables where the rationale lives in the body, "
                         "not the headline (ANTS-1517). ANTS-3402 — on a "
@@ -2989,6 +3002,28 @@ void ClaudeIntegration::onMcpConnection() {
                         "Ignored on list / section / section_index paths, "
                         "which always emit at the 2000 cap (ANTS-3402).");
                     props["max_body_bytes"] = maxBodyProp;
+                    // ANTS-4904 — read a progress-log bullet's TAIL.
+                    QJsonObject fromEndProp;
+                    fromEndProp["type"] = "boolean";
+                    fromEndProp["default"] = false;
+                    fromEndProp["description"] = QStringLiteral(
+                        "TARGETED id/ids fetch only. Keep the END of an "
+                        "over-cap body instead of ANTS-3736's head + 1 KiB "
+                        "tail, with the elision marker at the FRONT. A "
+                        "long-lived item is an append-only progress log, so "
+                        "the sentence a resuming session wants is its LAST "
+                        "paragraph — and raising `max_body_bytes` to reach "
+                        "more of it raises the head too, until the reply "
+                        "spills and the preview drops the body altogether. "
+                        "With this, `max_body_bytes` sizes the TAIL, so one "
+                        "small call answers 'where does this stand?'. Inert "
+                        "where nothing was truncated, so it is safe to pass "
+                        "unconditionally; ignored on list / section / "
+                        "section_index paths, whose cap is a payload bound "
+                        "across many rows rather than a question about one "
+                        "item. Pair it with `body_bytes` (emitted on every "
+                        "truncated body) to see how much you did not get.");
+                    props["body_from_end"] = fromEndProp;
                     // ANTS-3391 — `query` keyword text-filter.
                     QJsonObject queryProp;
                     queryProp["type"] = "string";

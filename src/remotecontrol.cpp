@@ -444,8 +444,22 @@ constexpr int kRoadmapQueryBodyTailCap = 1024;
 
 // head + marker + tail, sized to land exactly on `cap`. Falls back to a plain
 // head clip when `cap` is too small to carry both ends plus the marker.
-QString rcElideBody(const QString &body, int cap) {
+//
+// ANTS-4904 — `fromEnd` keeps the END instead, with the marker at the FRONT.
+// A long-lived bullet is an append-only progress log, so the sentence a
+// resuming session wants ("remaining on this item: …") is the LAST paragraph.
+// The 1 KiB tail above is a fixed sliver of it; raising max_body_bytes to get
+// more raises the head with it, and the reply then spills, at which point the
+// preview drops the body entirely. Measured by finbreak: three calls and a
+// hand-picked byte offset to read one closing paragraph — and an offset
+// guessed too high misses the note with nothing in the envelope saying so.
+QString rcElideBody(const QString &body, int cap, bool fromEnd = false) {
     const QString &marker = kBodyElisionMarker();
+    if (fromEnd) {
+        const int tailLen = cap - marker.size();
+        if (tailLen <= 0) return body.right(cap);
+        return marker + body.right(tailLen);
+    }
     const int tailLen = qMin(kRoadmapQueryBodyTailCap, cap / 3);
     const int headLen = cap - tailLen - marker.size();
     if (headLen <= 0) return body.left(cap);
@@ -463,6 +477,11 @@ void rcSetBodyFields(QJsonObject &o, const QString &body,
     if (body.size() > cap) {
         o["body"] = rcElideBody(body, cap);   // ANTS-3736 — head + tail
         o["body_truncated"] = true;
+        // ANTS-4904 — the WHOLE body's size, so a caller can tell what
+        // fraction it is holding rather than inferring one. Set here, where
+        // the untruncated body is in hand; rcCapBodyFields below never
+        // overwrites it, because by then the body may already be a slice.
+        o["body_bytes"] = body.size();
     } else {
         o["body"] = body;
     }
@@ -475,7 +494,7 @@ void rcSetBodyFields(QJsonObject &o, const QString &body,
 // existing body_truncated:true (a body truncated at the store cap stays
 // flagged even if it now fits `cap` — it can't, since cap ≤ store cap,
 // but the OR keeps the flag monotonic).
-void rcCapBodyFields(QJsonArray &arr, int cap) {
+void rcCapBodyFields(QJsonArray &arr, int cap, bool fromEnd) {
     for (int i = 0; i < arr.size(); ++i) {
         QJsonObject o = arr.at(i).toObject();
         const auto it = o.constFind(QStringLiteral("body"));
@@ -486,8 +505,15 @@ void rcCapBodyFields(QJsonArray &arr, int cap) {
             // cached body is safe: the emission cap is <= the store cap, so
             // the new head sits inside the old head and the new tail inside
             // the old tail — the stored marker falls in neither slice.
-            o["body"] = rcElideBody(body, cap);
+            o["body"] = rcElideBody(body, cap, fromEnd);
             o["body_truncated"] = true;
+            // ANTS-4904 — only when nobody upstream knew better. The cache
+            // holds whole bodies (kRoadmapQueryBodyCacheCap), so on the
+            // targeted path this IS the true size; where a smaller cap
+            // already truncated it, rcSetBodyFields has recorded the real one
+            // and this must not overwrite it with a slice's length.
+            if (!o.contains(QStringLiteral("body_bytes")))
+                o["body_bytes"] = body.size();
             arr.replace(i, o);
         }
     }

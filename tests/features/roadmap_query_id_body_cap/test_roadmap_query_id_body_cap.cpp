@@ -571,3 +571,107 @@ TEST(roadmap_query_id_body_cap, Inv11MarkerRemedyWorksAtTheTriggeringSize) {
     EXPECT_TRUE(full.contains(QStringLiteral("MIDSENTINEL")))
         << "the marker's own advice must reach the span the marker replaced";
 }
+
+// ---------------------------------------------------------------------------
+// ANTS-4904 — reading the TAIL of an append-only bullet.
+//
+// Reported by finbreak. A long-running bullet is a progress log: each session
+// appends a `Progress (date):` note, so the current state is the LAST
+// paragraph. ANTS-3736 already keeps a 1 KiB tail, and the reporter saw its
+// marker — what they could not do was ask for the tail ALONE. Raising
+// max_body_bytes raises the head with it, and at 100000 the reply spilled and
+// its rows_preview dropped the body entirely, so the closing paragraph took
+// three calls and a hand-picked byte offset. Guessing that offset too high
+// misses the note silently, which is the half that makes it unsafe.
+
+// INV-4904a — a truncated body says how big it really is, so a caller can
+// tell what fraction it holds instead of inferring one.
+TEST(roadmap_query_id_body_cap, Ants4904TruncatedBodyReportsItsTrueSize) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    ASSERT_TRUE(writeFile(rmPath(tmp.path()), roadmapWithSentinelBody(400)));
+
+    RemoteControl rc(nullptr);
+    QJsonObject req;
+    req[QStringLiteral("caller_cwd")]     = tmp.path();
+    req[QStringLiteral("id")]             = QStringLiteral("ANTS-7777");
+    req[QStringLiteral("max_body_bytes")] = 4000;
+    req[QStringLiteral("include_body")]   = true;
+    const QJsonObject resp = rc.cmdRoadmapQuery(req).object();
+    ASSERT_TRUE(resp.value(QStringLiteral("ok")).toBool());
+
+    const QJsonArray bullets = resp.value(QStringLiteral("bullets")).toArray();
+    ASSERT_FALSE(bullets.isEmpty());
+    const QJsonObject b = bullets.at(0).toObject();
+    ASSERT_TRUE(b.value(QStringLiteral("body_truncated")).toBool())
+        << "the fixture body is far past the cap";
+
+    const int reported = b.value(QStringLiteral("body_bytes")).toInt(-1);
+    const int emitted  = b.value(QStringLiteral("body")).toString().size();
+    EXPECT_GT(reported, emitted)
+        << "body_bytes must be the WHOLE body's size, not the emitted "
+           "slice's — that is the number an offset is computed from";
+    EXPECT_GT(reported, 16000)
+        << "the 400-line fixture body runs well past the store cap";
+}
+
+// INV-4904b — body_from_end returns the END of the body in ONE call, with the
+// elision at the front, and small enough not to spill.
+TEST(roadmap_query_id_body_cap, Ants4904BodyFromEndReturnsTheTail) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    ASSERT_TRUE(writeFile(rmPath(tmp.path()), roadmapWithSentinelBody(400)));
+
+    RemoteControl rc(nullptr);
+    QJsonObject req;
+    req[QStringLiteral("caller_cwd")]      = tmp.path();
+    req[QStringLiteral("id")]              = QStringLiteral("ANTS-7777");
+    req[QStringLiteral("max_body_bytes")]  = 2500;
+    req[QStringLiteral("include_body")]    = true;
+    req[QStringLiteral("body_from_end")]   = true;
+    const QJsonObject resp = rc.cmdRoadmapQuery(req).object();
+    ASSERT_TRUE(resp.value(QStringLiteral("ok")).toBool());
+
+    const QJsonArray bullets = resp.value(QStringLiteral("bullets")).toArray();
+    ASSERT_FALSE(bullets.isEmpty());
+    const QString body =
+        bullets.at(0).toObject().value(QStringLiteral("body")).toString();
+
+    EXPECT_TRUE(body.contains(QStringLiteral("TAILSENTINEL")))
+        << "the last line is the whole point of the flag";
+    EXPECT_FALSE(body.contains(QStringLiteral("HEADSENTINEL")))
+        << "a tail read must not spend its budget on the head";
+    EXPECT_TRUE(body.startsWith(QStringLiteral("…"))
+                || body.contains(QStringLiteral("[body elided")))
+        << "the elision must be at the FRONT, so a reader can see the "
+           "earlier text is missing: " << body.left(120).toStdString();
+    EXPECT_LE(body.size(), 2500)
+        << "the cap still binds — a small reply is what stops the spill";
+}
+
+// INV-4904c — the flag is inert where nothing was truncated, so a caller can
+// pass it unconditionally.
+TEST(roadmap_query_id_body_cap, Ants4904InertOnAShortBody) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    ASSERT_TRUE(writeFile(rmPath(tmp.path()), roadmapWithSentinelBody(2)));
+
+    RemoteControl rc(nullptr);
+    QJsonObject req;
+    req[QStringLiteral("caller_cwd")]     = tmp.path();
+    req[QStringLiteral("id")]             = QStringLiteral("ANTS-7777");
+    req[QStringLiteral("max_body_bytes")] = 8000;
+    req[QStringLiteral("include_body")]   = true;
+    req[QStringLiteral("body_from_end")]  = true;
+    const QJsonObject resp = rc.cmdRoadmapQuery(req).object();
+    ASSERT_TRUE(resp.value(QStringLiteral("ok")).toBool());
+
+    const QJsonObject b =
+        resp.value(QStringLiteral("bullets")).toArray().at(0).toObject();
+    const QString body = b.value(QStringLiteral("body")).toString();
+    EXPECT_TRUE(body.contains(QStringLiteral("HEADSENTINEL")));
+    EXPECT_TRUE(body.contains(QStringLiteral("TAILSENTINEL")));
+    EXPECT_FALSE(b.value(QStringLiteral("body_truncated")).toBool());
+    EXPECT_FALSE(body.contains(QStringLiteral("[body elided")))
+        << "nothing was elided, so nothing may claim to have been";
+}

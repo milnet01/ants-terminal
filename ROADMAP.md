@@ -51937,7 +51937,7 @@ rather than refiled.
   Source: AI_Prompts feedback 2026-09-06.
   Lanes: remotecontrol, project-settings.
 
-- 📋 [ANTS-4904] **roadmap_query can only keep the HEAD of a long bullet body, and on an append-only progress log the answer is in the tail.**
+- ✅ [ANTS-4904] **roadmap_query can only keep the HEAD of a long bullet body, and on an append-only progress log the answer is in the tail.**
   Reported by finbreak. A long-running bullet is append-only -- each
   session appends a `Progress (date):` note -- so the current state is the
   LAST paragraph. include_body truncates from the head and max_body_bytes
@@ -51958,6 +51958,27 @@ rather than refiled.
   length so an offset can be computed rather than guessed. Related to
   ANTS-4769 (include_body is all-or-nothing), which is a different cut of
   the same problem.
+  Resolved (2026-09-06). The item's own check first: ANTS-3736's
+  head-plus-tail elision IS firing on this path -- measured against a
+  23,046-char body, the reply carried the head, the marker and 1 KiB of
+  tail. So the reporter saw the marker and the report was not about a
+  missing feature; the gap is that a 1 KiB sliver is not the closing
+  paragraph, and the only way to more of it raised the head too. Shipped
+  BOTH halves they asked for. `body_from_end:true` keeps the END, marker
+  at the front, with `max_body_bytes` sizing the tail -- so one small
+  call answers "where does this stand" instead of three plus a guessed
+  offset. It is honoured on the TARGETED id/ids path only: a list
+  query's cap is a payload bound across many rows, not a question about
+  one item. And their cheaper variant is in too -- every truncated body
+  carries `body_bytes`, the whole body's size, so the fraction you are
+  missing is a number rather than an inference; it is set where the
+  untruncated body is in hand and never overwritten by a later slice's
+  length. Four invariants in tests/features/roadmap_query_id_body_cap,
+  two red before the fix. One trap for the next session there: the
+  targeted path has TWO arms (singular `id` and `ids[]`) and they cap
+  bodies at separate call sites -- wiring only the plural one leaves the
+  singular silently on the old behaviour, which is what the first
+  green-looking build did. Suite 4218/4218.
   **Layman:** For a long-running item, the newest note is at the bottom and there is no way to ask for just that.
   Kind: enhancement.
   Source: finbreak feedback 2026-09-06.

@@ -439,7 +439,10 @@ QJsonArray kUnrecognisedFormatExpected();
 bool rcBulletsArePassHeadings(const QVector<RoadmapDialog::BulletRecord> &parsed);
 QJsonDocument rcPassHeadingsWriteRefusal(const QString &path, const QString &op);
 void rcSetBodyFields(QJsonObject &o, const QString &body, int cap = kRoadmapQueryBodyCap);
-void rcCapBodyFields(QJsonArray &arr, int cap);
+// ANTS-4904 — `fromEnd` keeps the END of an over-cap body (marker at the
+// front) instead of head + tail, for the append-only progress-log case where
+// the wanted sentence is the last paragraph.
+void rcCapBodyFields(QJsonArray &arr, int cap, bool fromEnd = false);
 void rcStripBodyFields(QJsonArray &arr);
 void rcClipMatchTextFields(QJsonArray &matches, int cap);
 void rcApplyHeadlineOnly(QJsonArray &matches);

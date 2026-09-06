@@ -3915,7 +3915,13 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
             }
         }
         if (hasIncludeBodyArg && !includeBody) rcStripBodyFields(matches);
-        else rcCapBodyFields(matches, idBodyCap);  // ANTS-3402
+        // ANTS-4904 — `body_from_end` is honoured on the TARGETED path only
+        // (this singular-id arm and the ids[] arm below). A list query's
+        // 2000-char cap is a payload bound across many rows; this flag answers
+        // "where does THIS item stand", which is an id fetch.
+        else rcCapBodyFields(matches, idBodyCap,
+                             req.value(QStringLiteral("body_from_end"))
+                                 .toBool(false));  // ANTS-3402
         // ANTS-1881 — id-branch projection (second emission surface;
         // INV-5 anchors the dual-surface requirement). Applied after
         // body-strip so the projected object inherits the same key
@@ -3986,7 +3992,10 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
             }
         }
         if (hasIncludeBodyArg && !includeBody) rcStripBodyFields(matches);
-        else rcCapBodyFields(matches, idBodyCap);  // ANTS-3402
+        // ANTS-4904 — the plural ids[] arm of the same targeted path.
+        else rcCapBodyFields(matches, idBodyCap,
+                             req.value(QStringLiteral("body_from_end"))
+                                 .toBool(false));  // ANTS-3402
         if (mode == QLatin1String("headline_only")) {
             rcProjectHeadlineOnly(matches);
         }

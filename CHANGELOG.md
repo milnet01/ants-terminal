@@ -14,6 +14,17 @@ for security-relevant changes.
 
 ### Added
 
+- **read a long roadmap item's latest note in one call** (ANTS-4904)
+  A long-lived item is an append-only progress log, so what a resuming
+  session wants is its last paragraph — and the body could only be kept from
+  the head, with a fixed 1 KiB tail. Asking for more raised the head with it
+  until the reply spilled and the preview dropped the body altogether: three
+  calls and a hand-picked byte offset to read one closing paragraph, and an
+  offset guessed too high missed the note silently. `body_from_end` on a
+  targeted id fetch keeps the END instead, sized by `max_body_bytes`, and
+  every truncated body now reports `body_bytes` — its true size — so what is
+  missing is a number rather than a guess.
+
 - **project_settings op:"get" — the read, named like one** (ANTS-4903)
   Asking what a project has declared meant calling `op:"detect"`, whose
   name and documented purpose are to propose settings for a project that
