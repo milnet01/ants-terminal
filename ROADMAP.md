@@ -37902,6 +37902,31 @@ whole files.
   with no hedge at all. Repair is a top-level `warning` naming the cited
   documents that do not exist under this root: `warning` sits in the
   diagnostic floor, so neither `compact` nor `fields=` can drop it.
+  Field confirmation (2026-09-06, UT_Ants): the project_conventions claim
+  in this item is not just a code read — a session hit it. Called with
+  task_type "feature", the verb returned five confident conventions with
+  sources[].exists false on ALL FOUR cited files, and one of them
+  actively contradicted that project: a tests/features/<name>/ conformance
+  test with label "features;fast", where that project puts unit tests in
+  tests/unit/, builds one Catch2 executable and labels them "unit;fast".
+  Wrong directory, wrong target shape, wrong ctest label.
+
+  That report adds a second half this item did not have: .ants/project.json
+  THERE declares test_roots ["tests"], docs_dir and specs_dir, and
+  project_settings op:detect echoes all six keys — so the verb had a
+  machine-readable statement of the project's layout available and answered
+  from the static table anyway. A declared test_roots not containing
+  tests/features is enough to know the feature-directory convention does not
+  apply, and the declaration is already parsed by project_settings and
+  codebase_index.
+
+  So the repair has two parts now: the diagnostic-floor `warning` this item
+  already names, and consulting .ants/project.json before the static table.
+
+  The reporter also notes that write-code carries a hand-written warning
+  telling sessions to read sources[].exists first — which is evidence the
+  shape has already cost people time, and that the warning exists because
+  the verb does not say it.
 
 - 📋 [ANTS-4461] **Triage: roadmap store/export and plugin-manager findings from the cold sweep.**
   Reviewer claims carried forward as-is. NOT re-verified — check each against
@@ -50960,6 +50985,314 @@ two projects).
   Kind: fix.
   Source: review-contract-mcp-tools-2026-09-04 loop 3.
   Lanes: mcp, remotecontrol.
+
+### Ants MCP feedback from CC sessions — 2026-09-06 triage
+
+Five corpus files carried pending findings: finbreak, Games_Hub, claude_config,
+Pressless and UT_Ants. Three were confirmations of shipped fixes and are closed
+in place. One duplicates an open claim in ANTS-4460 and was assigned there
+rather than refiled.
+
+- 📋 [ANTS-4886] **spec_log op:append_loop writes an EMPTY bullet, discards every cell and returns ok:true when it cannot find the log heading.**
+  Reported twice by the claude_config session: first from a dry run, then
+  as a live repro that is worse than predicted.
+
+  The verb locates the log by a `## Cold-eyes loop log` heading. Given a
+  file whose table sits under a different heading it falls back to a bullet
+  arm, and that arm ignores `cells` entirely. The live call passed eight
+  cells — the last around 3.5 KB of outcome prose — and the file gained the
+  literal line `- **** — `. Envelope: ok:true, row_shape "bullet",
+  bytes_written 36. The row was recoverable only because the prose was
+  still in that session.
+
+  It also APPENDS the heading whose absence caused the fallback, after the
+  existing table. So the next call to the same file takes the table arm and
+  writes into a one-bullet section below the real log, and the file ends up
+  with two logs. The failure is self-perpetuating rather than repeatable.
+
+  Two fixes, the first sufficient alone. Never render an empty bullet:
+  passing `cells` is the caller asserting a table, so a bullet arm that
+  drops them cannot be what was meant — refuse instead. And do not create
+  the anchoring heading on the fallback path; a verb that could not locate
+  a section should not manufacture one.
+
+  Verify the reported shape before building: the claim is that `cells` is
+  accepted and dropped on that arm, which is a read of the bullet path.
+  **Layman:** Adding a review-log row to a file with an unusual heading throws the row away and says it worked.
+  Kind: fix.
+  Source: claude_config-feedback-2026-09-06.
+  Lanes: mcp, specs.
+
+- 📋 [ANTS-4887] **roadmap_log from a git worktree patches that worktree's generated ROADMAP.md and the store never learns.**
+  The store keys a project on the main checkout's canonical path. A git
+  worktree is a different path with no store row, so every roadmap verb
+  falls through to the markdown path — and ROADMAP.md there is generated
+  output.
+
+  Reported shape: roadmap_query from the worktree answers `source:
+  "markdown"` where the main checkout answers `source: "store"`, and a
+  dry-run flip returns ok:true with `write_path: "patch"` and no warning.
+  The write would edit the worktree's own file; the store would not record
+  it; the next render from the main checkout would erase it. A caller
+  checking `ok` sees success, and a caller re-reading the bullet sees the
+  flip, because it reads back the file it just patched.
+
+  Why it matters to that reporter: they were setting up two parallel Claude
+  Code sessions coordinating ONLY through the roadmap, claiming items by
+  flipping them to in-progress. From a worktree the claim is invisible to
+  the other session and then silently erased.
+
+  NOT fixed by ANTS-4884, which resolves a caller's cwd up to the directory
+  the roadmap was found under. In a worktree that resolves to the WORKTREE
+  root, which is still not the registered root, so the lookup still misses.
+
+  The reporter's preferred repair is the right shape and is one call:
+  `git rev-parse --git-common-dir` resolves any worktree to its main .git
+  directory, so the store row can be found from any worktree of the same
+  repository. Their fallbacks, in order, are a refusal naming the main
+  checkout, and failing that a `store_bypassed:true` flag on the write
+  envelope beside `write_path:"patch"`.
+
+  Check against ANTS-3842 (pre-push gate cannot pass from a worktree) and
+  ANTS-3841 before starting — same workflow, different failure.
+  **Layman:** Working in a second checkout of the same project writes roadmap changes to a file that is later overwritten.
+  Kind: fix.
+  Source: UT_Ants-feedback-2026-09-06.
+  Lanes: mcp, roadmap-store.
+
+- 📋 [ANTS-4888] **changelog_log op:add_from_roadmap cannot override the headline, so a maintainer's sentence reaches the release notes.**
+  The op reuses the ROADMAP headline verbatim and documents `summary` as
+  ignored. The two documents have different readers. The reporter's bullet
+  read "Sundry small defects in the shared code and the tooling, kept so
+  they are not lost" and that landed in CHANGELOG.md beside user-facing
+  neighbours; they hand-edited the file to fix it, which bypassed the
+  atomic write, the category routing and the format validation this verb
+  exists to provide.
+
+  This project already knows the class — CLAUDE.md's release section says a
+  changelog entry states what SHIPPED and that this op produces a
+  problem-stating bullet by design, and prescribes op:"add" as the
+  workaround. The cost of that workaround is the Layman-line reuse, which
+  is the op's whole point, so the choice today is between the right
+  headline and the reused prose.
+
+  Requested: accept `headline` (or honour `summary`) as an override while
+  keeping the Layman line and the Kind-derived category. Failing that, say
+  outright in the description that the roadmap headline becomes the
+  user-facing entry, so the choice is deliberate rather than discovered
+  afterwards.
+  **Layman:** The shortcut for writing a changelog entry from a roadmap item always reuses the item's wording, even when it was written for maintainers.
+  Kind: enhancement.
+  Source: Games_Hub-feedback-2026-09-06.
+  Lanes: mcp.
+
+- 📋 [ANTS-4889] **spec_lint's single-file path reports test_coverage_checked:false and blames the document, while the same document passes in a directory walk.**
+  Same bytes, same session, only the `path` argument differs. With a
+  single spec: test_coverage_checked:false, and a hint stating the two
+  causes are "both the document's" — no Tests section, or prose that cites
+  no INV-N. Neither held: the document has a Tests section naming every one
+  of its twelve invariants as literal INV-N tokens. With the containing
+  directory: test_coverage_checked:true, findings_total:0.
+
+  So the flag reads as walk-scoped while the hint attributes the cause to
+  the document, in absolute terms.
+
+  The cost is the hint. spec_lint's own guidance correctly tells a caller
+  to read the flag before the count; a caller that does so on the
+  single-file call — which write-spec Step 1 recommends, to avoid a spilled
+  response — is sent to edit a conforming document toward a diagnosis that
+  is not true of it.
+
+  Either scope the flag to the document being reported, or scope the hint
+  to the walk. If the check is meant to be per-document, the single-file
+  path appears not to reach the check the directory path reaches, and the
+  directory result is the correct one.
+
+  Smaller and independent, from the same report: on a run where the check
+  DID run, `test_coverage_skipped_hint` came back in fields_unmatched. That
+  is correct and useful — the hint's absence is the signal the check ran —
+  and is worth stating in the schema, since a caller requesting it
+  defensively cannot otherwise tell "check ran" from "field misspelled".
+  Does not reproduce (2026-09-06, reported by UT_Ants hours after filing).
+  They re-ran the exact repro on a document that session had not touched:
+  the single-file call and the directory walk now agree, both
+  test_coverage_checked:true, findings_total:0.
+
+  Nothing shipped here for it, so the cause is unexplained rather than
+  fixed — start by re-running the repro rather than assuming either way.
+  Their original report said "same bytes, same session", which is what
+  makes the disagreement worth understanding even now that it is gone.
+
+  What still stands is the smaller half, which they did not exercise today:
+  `test_coverage_skipped_hint` arriving in fields_unmatched is itself the
+  signal that the check ran, and that is worth stating in the schema — a
+  caller requesting the field defensively cannot otherwise tell "check ran"
+  from "field misspelled". Treat that as the item's remaining scope.
+  **Layman:** Checking one spec says its test coverage could not be checked and points at the document; checking the folder passes it.
+  Kind: fix.
+  Source: UT_Ants-feedback-2026-09-06.
+  Lanes: mcp, specs.
+
+- 📋 [ANTS-4890] **spec_lint's test_coverage_gap reads only the Tests section, so an invariant covered where the format puts it is still reported uncovered.**
+  Measured on one document: the check fired for exactly the invariants NOT
+  mentioned by id inside the Tests section, and for no others — the precise
+  complement. Every invariant carried a *Test:* clause naming a test
+  function and a row in the What-checks-this table, and every test name the
+  document cited was matched in the test file. So mention-by-id inside the
+  Tests section is the only discriminator.
+
+  In this format the Tests section is prose about the test approach.
+  Naming every invariant there duplicates the *Test:* clauses, which is the
+  duplication the format avoids — so the honest fix from the tool's point
+  of view adds a third place the same fact is stated, and gives the next
+  reviewer a real contradiction to find when one copy drifts.
+
+  Requested: count an invariant as covered when its coverage is named
+  anywhere the format puts it — the *Test:* clause or a What-checks-this
+  row. Both are already parsed, since invariant_no_test reads the *Test:*
+  clause. If the Tests-section reading is wanted as a separate signal it
+  needs its own kind and wording, saying the section does not mention the
+  id rather than that no coverage is named.
+
+  Cheaper interim: have the message name the two places it did not look,
+  as surfaces_skipped_hint already does for surfaces_checked.
+  **Layman:** A spec that names its tests in the two places the format asks for is still told its invariants have no tests.
+  Kind: fix.
+  Source: Pressless-feedback-2026-09-06.
+  Lanes: mcp, specs.
+
+- 📋 [ANTS-4891] **read_region and read_regions have no text encoding, so a routine multi-region read spills and costs more calls than the raw tool.**
+  Both verbs return content as `lines`, a JSON array of one string per
+  line. For source that roughly doubles the payload against the same bytes
+  as text — every line pays two quotes, a comma, a space and escaping — and
+  that inflation is what carries an ordinary read past the offload
+  threshold. Neither accepts `encoding` (file_outline and workspace_search
+  do), and `raw` is about neutralising envelope tokens rather than the row
+  shape, so no argument avoids it.
+
+  Measured: read_regions over 9 windows across 3 files came back 18,952
+  bytes and offloaded; the reporter abandoned it and read the three regions
+  they needed with one `sed -n`, same content, one round trip, fewer bytes.
+  Separately roadmap_query with 4 ids and include_body offloaded at 16,669
+  bytes and took two further read_spill calls — three calls for four
+  bullets, and that is the standard first call of a session picking up a
+  backlog item.
+
+  Requested: an `encoding:"text"` on read_region and read_regions (or have
+  `raw:true` imply it) returning the slice as one string with its own
+  newlines, framed as `raw` already frames it. On the measured read that is
+  close to half the bytes and would not have spilled. For roadmap_query,
+  consider counting the threshold against the joined body rather than the
+  encoded array.
+
+  Explicitly NOT a request to raise the threshold — the request is that the
+  encoding stop inflating the thing being measured.
+  **Layman:** Reading several slices of a file returns them in a bulky format that trips the size limit, so a plain shell command wins.
+  Kind: enhancement.
+  Source: Pressless-feedback-2026-09-06.
+  Lanes: mcp.
+
+- 📋 [ANTS-4892] **A spilled workspace_search returns per-row shape data, where the file-and-count summary is what a caller needs to narrow.**
+  On a spill the reply carries `rows_preview`: one {index, bytes, head}
+  entry per match. The reporter's call produced 28 such entries and they
+  used none of it — a spill means the query was too broad, and the next
+  move is to narrow it rather than to page 28 rows one at a time.
+
+  Requested: on spill, emit the files_only shape instead — [{file, count}]
+  plus the existing hint and handle. That is what a caller needs in order
+  to narrow (which files matched, how concentrated), it is far smaller for
+  a many-match spill, and it is directly usable as the next `glob` or
+  `lane` argument. Keep rows_preview behind an opt-in, or emit it only when
+  the match count is small enough that paging is plausible. Lower-effort
+  alternative from the same report: keep rows_preview but drop `head`.
+
+  Read the rows_preview history before building: ANTS-4474 narrowed the
+  heads rather than dropping them, ANTS-4519 omits the array when the heads
+  would be dropped, and ANTS-4704/4705 document the family. This asks for a
+  different ARRAY on the spill path, not another adjustment to that one, so
+  the question is whether it replaces or joins them — and workspace_search
+  already computes the files_only shape.
+  **Layman:** When a search is too big to return, the summary it gives back does not help you make the search smaller.
+  Kind: enhancement.
+  Source: finbreak-feedback-2026-09-06.
+  Lanes: mcp.
+
+- 📋 [ANTS-4893] **roadmap_migrate's dry run refuses on a slug mismatch, so it cannot answer the question its own description sends callers to it for.**
+  The verb's description names the dry run as the read-only route to "is
+  this project already migrated?" — project_id > 0 on a preview reads as
+  already migrated. But the slug check runs BEFORE the preview is built, so
+  any project whose stored export_slug was not derived from its leaf
+  directory refuses `slug_collision` and returns no project_id at all.
+  That is the population most likely to be deliberately registered, since a
+  non-default slug is something a person chose.
+
+  Reported against /home/ants/.claude, registered as export_slug
+  "claude-config": the refusal names both slugs in prose, and every
+  requested field including project_id and store_backed comes back in
+  fields_unmatched. Passing the slug is the workaround, but a caller asking
+  whether a project is migrated does not yet know it — that is the thing
+  being asked.
+
+  Low severity and a usability gap rather than a defect: the refusal itself
+  is correct. Requested: under dry_run return the preview with project_id,
+  store_backed and the stored export_slug instead of refusing, since a
+  preview writes nothing and there is no re-slug to guard against. If the
+  refusal should stand, carry the stored slug and project_id as FIELDS on
+  the refusal envelope so a caller can branch rather than parse prose.
+
+  Also requested: have the description name roadmap_query check_sync as the
+  status route, which works on every project and is what that session used.
+  **Layman:** The safe preview that is supposed to tell you whether a project is already set up refuses to answer for the projects most likely to be.
+  Kind: enhancement.
+  Source: claude_config-feedback-2026-09-06.
+  Lanes: mcp, roadmap-store.
+
+- 📋 [ANTS-4894] **spec_lint returns a clean envelope on a spec whose invariants parse as zero, and nothing in the envelope says none were recognised.**
+  A spec wrote its thirteen invariants as `**INV-1.** <claim>` paragraphs
+  with a `*Test:*` line under each. spec-format.md § 3.7 defines two forms,
+  the `- **INV-1** — <claim>` bullet and the GFM table; that shape is
+  neither.
+
+  spec_lint on it returned findings:[], findings_total:0,
+  sections_checked:true and test_coverage_checked:true. spec_query returned
+  invariants_count:0 for the same document, and invariant_check returned 0
+  where it returned 13 and 9 for the two siblings beside it. Converting the
+  section to the bullet form, changing nothing else, left spec_lint's
+  envelope materially unchanged while spec_query went to 13. So two runs
+  are indistinguishable from the envelope, and one checked thirteen
+  invariants and the other checked none.
+
+  The document had been through its full review gate — two review-contract
+  loops, 22 findings, all fixed — and shipped accepted with every invariant
+  invisible to every verb that reads one. The gate does not read invariants
+  mechanically; spec_lint is what does, and it reported clean.
+
+  Sharpening it: the hint spec_lint emits beside surfaces_checked:false
+  says `invariant_no_test` "is NOT gated by this and always runs". That is
+  what a caller reads to believe the contract half was checked. It ran over
+  an empty set — true and uninformative at once.
+
+  Requested, and the cheap half is enough on its own: carry
+  `invariants_found:<n>` on the envelope, the same shape as
+  sections_checked and surfaces_checked, which are readable because they
+  say what was REACHED rather than what was wrong. Stronger: emit a finding
+  when a document has the section the format designates for invariants and
+  zero parse out of it. That is mechanically decidable and needs no
+  judgement — the heading is present, a grep for `INV-[0-9]` finds
+  thirteen, and the parser recognised none. The gap between "ids are
+  lexically present" and "ids parsed" is the signal.
+
+  Also asked: scope the surfaces_checked hint's sentence — "runs over
+  whatever invariants were parsed; see invariants_found" — so it cannot be
+  read as evidence that any were.
+
+  Found only because an unrelated lookup ran invariant_check over three
+  sibling specs and one returned 0 against 13 and 9. Nothing in the linting
+  path would have surfaced it.
+  **Layman:** A spec whose rules are written in a slightly different style is reported as fully checked when none of them were read at all.
+  Kind: fix.
+  Source: UT_Ants-feedback-2026-09-06.
+  Lanes: mcp, specs.
 
 ### 🎨 UI polish (user request 2026-09-04)
 
