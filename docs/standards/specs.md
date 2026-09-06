@@ -218,8 +218,9 @@ Rules for invariants:
   test, source-grep, or manual recipe that locks it. An invariant with
   no test surface is a wish, not a contract.
 - **A command clause states what the command should return.** Where the
-  clause holds a code span opening with a command word (`grep`, `rg`,
-  `ctest`, `sed`, …), text carrying a letter or digit must follow the
+  clause holds a code span opening with a command word — `grep`, `rg`,
+  `ctest`, `sed` and the rest of a closed list `spec_lint` owns — text
+  carrying a letter or digit must follow the
   last such span — `` `grep -c foo src/` `` alone is reported by
   `spec_lint`'s `command_test_no_expectation`, where "3 hits" after it
   is not. Trailing punctuation does not count. The corpus habit of an

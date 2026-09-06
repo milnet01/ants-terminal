@@ -125,8 +125,10 @@ Listed only where behavior isn't obvious from the name.
   whose surface cell is empty, which is the very defect the check names.
   Tombstones (`*moved to <ID>*`, `*withdrawn — …*`) are exempt from both
   invariant checks. `missing_section` runs only when the project's format
-  standard carries a `<!-- required-sections -->` block; no standard here has
-  one, so `sectionsChecked:false` is the shipping default. ANTS-4127 adds
+  standard carries a `<!-- required-sections -->` block. Two here do, and
+  `docs/standards/spec-format.md` is tried first, so it is the twelve-section
+  list that runs against this project's specs — `sections_source` names the
+  file consulted, and reconciling the two is ANTS-4895. ANTS-4127 adds
   three more kinds to the same walk — `test_surface_absent`,
   `test_surface_unresolved` and `test_surface_unwired` — resolving a
   `tests/features/<name>` a clause NAMES against disk and against
