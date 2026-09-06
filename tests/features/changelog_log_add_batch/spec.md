@@ -17,10 +17,11 @@ per entry. Each entry is resolved by auto-detected mode: an entry with a
 Layman). Per-entry validation failures land in `skipped[]` while the
 rest still apply — parity with `append_batch`.
 
-Entries are inserted in input order, so the on-disk result is
-byte-identical to making the same N sequential `op:add`/`op:add_from_roadmap`
-calls (each insert goes to the top of its category, so within a category
-the last input entry ends up on top — exactly the sequential behaviour).
+Entries are inserted in reverse (ANTS-4854), so the on-disk result READS in
+input order. Until then they were applied forwards, which made the result
+byte-identical to N sequential `op:add`/`op:add_from_roadmap`
+calls — and put the LAST input entry on top, so a batch came out backwards
+from the array its author wrote. INV-4 owns the reasoning.
 
 ## Invariants
 
@@ -44,11 +45,24 @@ A batch where one entry is invalid (e.g. neither `summary` nor `id`, or a
 ROADMAP) returns `ok:true` with that entry in `skipped[]`
 (`{index, code, error}`) and the valid entries applied.
 
-### INV-4 — input order is preserved (sequential-equivalent)
+### INV-4 — the RESULT reads in input order (ANTS-4854)
 
-`add_batch` of `[E0, E1]` into the same category leaves the file
-byte-identical to `op:add E0` followed by `op:add E1` — E1 ends up above
-E0 (most-recent-first per insert).
+`add_batch` of `[E0, E1, E2]` into one category leaves the file reading
+E0, E1, E2 top-down. Entries are applied in REVERSE, because each insert
+prepends to the top of its category.
+
+**This replaces the original sequential-equivalence contract, which said
+E1 ends up above E0.** That was true of the code and satisfied
+byte-identity with N sequential `op:add` calls — and it meant a batch came
+out backwards from the array the caller wrote. Byte-identity with N
+separate calls is a property no caller checks; the file's order is one
+every caller reads. A batch is one act with an order its author wrote
+down, where N calls are N acts. Same entries, same categories, same count
+either way.
+
+`applied[]` and `skipped[]` are still emitted in INPUT order, whatever
+order the writes ran in: both are keyed by `index` so a caller can line
+them up against its own array.
 
 ### INV-5 — empty / missing entries refuses bad_args
 

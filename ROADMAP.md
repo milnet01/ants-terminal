@@ -50973,8 +50973,25 @@ two projects).
   Kind: enhancement.
   Source: cc-feedback-2026-09-03 perch.
 
-- 📋 [ANTS-4854] **changelog_log op:"add_batch" renders the batch in reverse input order and the envelope does not say so.**
+- ✅ [ANTS-4854] **changelog_log op:"add_batch" renders the batch in reverse input order and the envelope does not say so.**
   Each entry is inserted at the top of its category and the entries are applied in input order, so the last entry ends up first. "Applied in input order" reads as a promise about the result and is one about the traversal. The descending `line` values are the only evidence and no caller decodes those; single-entry op:"add" has no ordering to get wrong, so a caller's intuition is built on the case that cannot expose it. Apply entries in reverse when each insert is a prepend, which is what a caller means by a batch. Documenting it instead leaves every caller writing its array backwards.
+  Resolved (2026-09-06) by the route the reporter argued for, and it is
+  a CONTRACT CHANGE rather than a bug fix -- worth recording, because
+  the old behaviour was specified and tested.
+  tests/features/changelog_log_add_batch INV-4 read "input order is
+  preserved (sequential-equivalent) ... E1 ends up above E0", so the
+  code was doing exactly what its own spec said. The reporter's argument
+  is what decided it: byte-identity with N sequential calls is a
+  property no caller checks, where the order on the page is one every
+  reader sees, and a batch is one act with an order its author wrote
+  down. INV-4 is rewritten to state the new contract and why the old one
+  went. Two envelope arrays had to be re-ordered with it -- `applied[]`
+  and `skipped[]` are keyed by `index` precisely so a caller can line
+  them up against its own array, and the reversed write loop was handing
+  back 2, 1, 0. The existing Inv3BadEntrySkipped test caught that; it
+  was not something I predicted. ANTS-4395's line re-resolution needed
+  no change and is now more robust, since claiming walks the file
+  top-down in the same order as the input. Suite 4222/4222.
   **Layman:** A batch of release notes comes out backwards.
   Kind: fix.
   Source: cc-feedback-2026-09-03 perch.

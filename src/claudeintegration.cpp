@@ -13355,10 +13355,16 @@ void ClaudeIntegration::onMcpConnection() {
                         "op:\"add_batch\" (ANTS-2044) — write N "
                         "`entries[]` in one read + one atomic commit; "
                         "each entry auto-detects add vs add_from_roadmap, "
-                        "applies in input order (byte-identical to the "
-                        "same N sequential calls), and per-entry failures "
-                        "land in `skipped[]:[{index, code, error}]` while "
-                        "the rest apply. "
+                        "and per-entry failures land in "
+                        "`skipped[]:[{index, code, error}]` while the rest "
+                        "apply. **The RESULT reads in input order** "
+                        "(ANTS-4854): entries[0] ends up ABOVE entries[1]. "
+                        "They are written in reverse to achieve that, since "
+                        "each insert prepends to the top of its category — "
+                        "so this is NOT byte-identical to the same N "
+                        "sequential calls, which put the LAST entry on top. "
+                        "`applied[]` and `skipped[]` stay in input order "
+                        "whatever order the writes ran in. "
                         "op:\"normalize\" (ANTS-3495) — reorder the "
                         "`### <category>` blocks under `## [Unreleased]` "
                         "into canonical Keep-a-Changelog order "
@@ -13578,9 +13584,11 @@ void ClaudeIntegration::onMcpConnection() {
                         "op:\"add_batch\" only — the entries to write in "
                         "one atomic commit. Each: {summary + category|"
                         "kind (+ id?, body?)} for an add, OR {id} alone "
-                        "to pull from ROADMAP (add_from_roadmap). Applied "
-                        "in input order; per-entry failures go to "
-                        "`skipped[]`.");
+                        "to pull from ROADMAP (add_from_roadmap). The result "
+                        "READS in input order — entries[0] above entries[1] "
+                        "(ANTS-4854); per-entry failures go to `skipped[]`, "
+                        "which is keyed by `index` and emitted in input "
+                        "order.");
 
                     // ANTS-3584 — op:"add_subsection" params: the dated
                     // topic headline, its date, and optional bullets rendered

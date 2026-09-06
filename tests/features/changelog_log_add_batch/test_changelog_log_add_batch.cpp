@@ -181,45 +181,57 @@ TEST(changelog_log_add_batch, Inv3BadEntrySkipped) {
     EXPECT_FALSE(contains(md, "Bad cat."));
 }
 
-// INV-4 — input order preserved: equals two sequential single-op adds.
-TEST(changelog_log_add_batch, Inv4InputOrderSequentialEquivalent) {
-    // Batch path.
-    QTemporaryDir batchDir;
-    ASSERT_TRUE(batchDir.isValid());
-    ASSERT_TRUE(writeFile(clPath(batchDir.path()), QByteArray(kChangelog)));
-    {
-        QJsonArray entries;
-        entries.append(addEntry(QStringLiteral("Entry zero."),
-                                QStringLiteral("feature")));
-        entries.append(addEntry(QStringLiteral("Entry one."),
-                                QStringLiteral("feature")));
-        RemoteControl rc(nullptr);
-        QJsonObject req;
-        req[QStringLiteral("caller_cwd")] = batchDir.path();
-        req[QStringLiteral("op")]         = QStringLiteral("add_batch");
-        req[QStringLiteral("entries")]    = entries;
-        ASSERT_TRUE(rc.cmdChangelogLog(req).object()
-                        .value(QStringLiteral("ok")).toBool());
-    }
-    // Sequential path.
-    QTemporaryDir seqDir;
-    ASSERT_TRUE(seqDir.isValid());
-    ASSERT_TRUE(writeFile(clPath(seqDir.path()), QByteArray(kChangelog)));
-    {
-        RemoteControl rc(nullptr);
-        for (const char *s : {"Entry zero.", "Entry one."}) {
-            QJsonObject req;
-            req[QStringLiteral("caller_cwd")] = seqDir.path();
-            req[QStringLiteral("op")]         = QStringLiteral("add");
-            req[QStringLiteral("summary")]    = QString::fromUtf8(s);
-            req[QStringLiteral("kind")]       = QStringLiteral("feature");
-            ASSERT_TRUE(rc.cmdChangelogLog(req).object()
-                            .value(QStringLiteral("ok")).toBool());
-        }
-    }
-    EXPECT_EQ(readFileStd(clPath(batchDir.path())),
-              readFileStd(clPath(seqDir.path())))
-        << "add_batch must be byte-identical to N sequential op:add calls";
+// INV-4 (ANTS-4854) — the RESULT reads in input order.
+//
+// Each insert prepends to the top of its category, so applying [E0, E1] in
+// input order put E1 above E0: the batch came out backwards from the array
+// that was written. The old contract here was byte-identity with N sequential
+// op:add calls, which that behaviour satisfied — and which no caller checks,
+// while every caller reads the file. Entries are now applied in REVERSE, so
+// the file reads E0 then E1.
+//
+// Sequential-equivalence is deliberately withdrawn as an ordering claim: a
+// batch is one act with an order the caller wrote down, where N calls are N
+// acts. Same entries, same categories, same count either way.
+TEST(changelog_log_add_batch, Inv4ResultReadsInInputOrder) {
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid());
+    ASSERT_TRUE(writeFile(clPath(dir.path()), QByteArray(kChangelog)));
+
+    QJsonArray entries;
+    entries.append(addEntry(QStringLiteral("Entry zero."),
+                            QStringLiteral("feature")));
+    entries.append(addEntry(QStringLiteral("Entry one."),
+                            QStringLiteral("feature")));
+    entries.append(addEntry(QStringLiteral("Entry two."),
+                            QStringLiteral("feature")));
+    RemoteControl rc(nullptr);
+    QJsonObject req;
+    req[QStringLiteral("caller_cwd")] = dir.path();
+    req[QStringLiteral("op")]         = QStringLiteral("add_batch");
+    req[QStringLiteral("entries")]    = entries;
+    const QJsonObject env = rc.cmdChangelogLog(req).object();
+    ASSERT_TRUE(env.value(QStringLiteral("ok")).toBool())
+        << env.value(QStringLiteral("error")).toString().toStdString();
+
+    const std::string body = readFileStd(clPath(dir.path()));
+    const auto p0 = body.find("Entry zero.");
+    const auto p1 = body.find("Entry one.");
+    const auto p2 = body.find("Entry two.");
+    ASSERT_NE(p0, std::string::npos);
+    ASSERT_NE(p1, std::string::npos);
+    ASSERT_NE(p2, std::string::npos);
+    EXPECT_LT(p0, p1) << "entry 0 must read above entry 1";
+    EXPECT_LT(p1, p2) << "entry 1 must read above entry 2";
+
+    // applied[] still reports in INPUT order, whatever order the writes ran
+    // in — a caller diffing against its own array indexes by position.
+    const QJsonArray applied = env.value(QStringLiteral("applied")).toArray();
+    ASSERT_EQ(applied.size(), 3);
+    for (int i = 0; i < applied.size(); ++i)
+        EXPECT_EQ(applied.at(i).toObject().value(QStringLiteral("index")).toInt(),
+                  i)
+            << "applied[] must stay in input order";
 }
 
 // INV-5 — empty / missing entries refuses bad_args (no write).

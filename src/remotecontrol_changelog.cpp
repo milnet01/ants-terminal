@@ -1357,7 +1357,21 @@ QJsonDocument RemoteControl::cmdChangelogLogAddBatch(const QJsonObject &req) {
     bool malformedSection = false;
     bool anyCreatedCategory = false;   // ANTS-3804 — envelope-level rollup
     int  malformedLine = -1;
-    for (int i = 0; i < entries.size(); ++i) {
+    // ANTS-4854 — apply in REVERSE input order. Every insert prepends to the
+    // top of its category, so applying [E0, E1] forwards left E1 above E0:
+    // the batch came out backwards from the array the caller wrote. That did
+    // satisfy the old contract of byte-identity with N sequential op:add
+    // calls, and no caller checks that property while every caller reads the
+    // file. Inserting from the end leaves the file reading in input order.
+    //
+    // `applied[]` is still emitted in INPUT order below, because a caller
+    // diffing against its own array indexes by position; only the write order
+    // is reversed. Sequential-equivalence is deliberately withdrawn as an
+    // ORDERING claim (the feature spec's INV-4 says so): a batch is one act
+    // with an order the caller wrote down, where N calls are N acts.
+    QVector<QJsonObject> appliedByIndex(entries.size());
+    QVector<bool>        appliedHas(entries.size(), false);
+    for (int i = entries.size() - 1; i >= 0; --i) {
         const QJsonObject e = entries.at(i).toObject();
         const ClBatchEntryResult er =
             resolveClBatchEntry(e, roadmapBullets, roadmapPresent);
@@ -1383,7 +1397,7 @@ QJsonDocument RemoteControl::cmdChangelogLogAddBatch(const QJsonObject &req) {
             malformedSection = true;
             malformedLine = res.malformed_line;
         }
-        markdown = res.markdown;  // accumulate; insert in input order
+        markdown = res.markdown;  // accumulate; written last-entry-first
         QJsonObject a;
         a["index"]    = i;
         if (!er.id.isEmpty()) a["id"] = er.id;
@@ -1409,7 +1423,25 @@ QJsonDocument RemoteControl::cmdChangelogLogAddBatch(const QJsonObject &req) {
         // and pushes it down. A two-entry batch therefore reported the same
         // line for both, and only the first could ever be right.
         a["_bullet_head"] = er.bullet.split(QChar('\n')).value(0);
-        applied.append(a);
+        // ANTS-4854 — hold by index; the loop runs backwards and `applied`
+        // must come out in input order. Doing it here rather than sorting
+        // afterwards also keeps the ANTS-4395 line-claiming below walking the
+        // file top-down, which is the order the entries now sit in.
+        appliedByIndex[i] = a;
+        appliedHas[i]     = true;
+    }
+    for (int i = 0; i < appliedByIndex.size(); ++i)
+        if (appliedHas.at(i)) applied.append(appliedByIndex.at(i));
+    // ANTS-4854 — and `skipped[]` for the same reason: it is keyed by `index`
+    // precisely so a caller can line it up against its own array, and the
+    // reversed write order would otherwise hand back 2, 1, 0.
+    {
+        QJsonArray ordered;
+        for (int i = 0; i < entries.size(); ++i)
+            for (const QJsonValue &sv : skipped)
+                if (sv.toObject().value(QStringLiteral("index")).toInt() == i)
+                    ordered.append(sv);
+        skipped = ordered;
     }
 
     // ANTS-4395 — resolve each applied entry's line against the FINAL

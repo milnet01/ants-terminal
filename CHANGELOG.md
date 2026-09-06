@@ -91,6 +91,16 @@ for security-relevant changes.
 
 ### Fixed
 
+- **a batch of changelog entries now reads in the order it was written** (ANTS-4854)
+  Each entry is inserted at the top of its category, so applying a batch
+  front-to-back left the last entry on top and the release notes came out
+  backwards from the list their author wrote. The entries are now applied in
+  reverse, which puts them on the page in input order. This replaces an
+  earlier contract of being byte-identical to the same entries added one
+  call at a time — a property nothing checks, where the order on the page is
+  one every reader sees. The reports back to the caller are unchanged and
+  still follow the input list.
+
 - **"where is this defined?" no longer lists local variables as definitions** (ANTS-4880)
   A function-local variable whose value continues on the next line was
   reported with the same kind as the real definition, so a symbol appeared
