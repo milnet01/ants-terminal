@@ -52,6 +52,7 @@ bool isIndexableSuffix(const QString &suffixLower) {
         || suffixLower == QLatin1String("swift")|| suffixLower == QLatin1String("scala")
         || suffixLower == QLatin1String("sc")  || suffixLower == QLatin1String("php")
         || suffixLower == QLatin1String("rb")
+        || suffixLower == QLatin1String("uc")   // ANTS-4902 — UnrealScript
     // ANTS-4096 — GLSL / Vulkan shader stages. find_definition (ANTS-3558)
     // and file_outline (ANTS-3800) have both admitted them since; this gate
     // was the one left behind, so a shader-heavy project's hand-written

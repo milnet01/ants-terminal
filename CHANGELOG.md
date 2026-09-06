@@ -14,6 +14,15 @@ for security-relevant changes.
 
 ### Added
 
+- **UnrealScript (.uc) files are outlined, indexed and searchable for definitions** (ANTS-4902)
+  `file_outline` reported `unknown` with no symbols for `.uc`, so a project
+  whose whole runtime surface is UnrealScript had to read those files whole.
+  It now outlines as brace-family — classes, structs, consts and every
+  function spelling the language uses, including the modifiers no other
+  brace language has. `codebase_index` and `find_definition` admit the
+  extension in the same change, which the three lists' own in-step rule
+  requires. `var` members are the known gap.
+
 - **spec_lint reports how many invariants it recognised, so a spec it read none of is visible** (ANTS-4894)
   A spec whose invariants are written in a form the format standard does
   not define parses to zero, every per-invariant check then runs over an

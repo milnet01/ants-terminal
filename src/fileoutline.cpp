@@ -407,12 +407,35 @@ const QRegularExpression &rxMdHeading() {
 // optional Go receiver `(s *T)`, then the name. Captures kw=group1, name=group2.
 const QRegularExpression &rxGenericDecl() {
     static const QRegularExpression rx = []{
-        QRegularExpression r(QStringLiteral(R"(^\s*(?:(?:pub|export|default|public|private|protected|internal|static|final|abstract|sealed|async|open|override|suspend|inline|const|unsafe|extern|data)\s++)*+(fn|fun|func|function|def|class|struct|enum|trait|impl|interface|type|module|object|protocol|extension|namespace|record)\b(?:\s++\([^)]*\))?\s++(?:self\.)?([A-Za-z_$][\w$]*[?!]?))"));
+        // ANTS-4902 appends the UnrealScript function modifiers — simulated,
+        // singular, latent, exec, native, iterator — to the modifier list. A
+        // modifier is consumed only when a declaration keyword follows it, so
+        // this cannot change what any other brace-family file outlines.
+        QRegularExpression r(QStringLiteral(R"(^\s*(?:(?:pub|export|default|public|private|protected|internal|static|final|abstract|sealed|async|open|override|suspend|inline|const|unsafe|extern|data|simulated|singular|latent|exec|native|iterator)\s++)*+(fn|fun|func|function|def|class|struct|enum|trait|impl|interface|type|module|object|protocol|extension|namespace|record)\b(?:\s++\([^)]*\))?\s++(?:self\.)?([A-Za-z_$][\w$]*[?!]?))"));
         r.optimize();
         return r;
     }();
     return rx;
 }
+// ANTS-4902 — (1b) a `function` whose RETURN TYPE sits between the keyword and
+// the name: `function bool CheckReplacement(...)`, which is UnrealScript's
+// ordinary shape and the one rule (1) gets wrong rather than misses — it
+// captures the type, so the outline gains symbols called `bool` and `int`.
+// Tried BEFORE rule (1) for that reason.
+//
+// Safe for the rest of the family because it requires TWO identifiers between
+// `function` and the `(`: a JavaScript or PHP function name is followed
+// immediately by the parenthesis, so no valid file in those languages can
+// reach this rule. Captures name=group1.
+const QRegularExpression &rxGenericFunctionTyped() {
+    static const QRegularExpression rx = []{
+        QRegularExpression r(QStringLiteral(R"(^\s*(?:(?:static|final|simulated|singular|latent|exec|native|iterator|public|private|protected)\s++)*+function\s++[A-Za-z_$][\w$<>\[\].]*\s++([A-Za-z_$][\w$]*)\s*\()"));
+        r.optimize();
+        return r;
+    }();
+    return rx;
+}
+
 // (2) C-style method definitions (Java / C# / Swift / Kotlin members that lack
 // a leading decl keyword): return-type token(s) + name + parens + a body `{`.
 // The trailing `{` (not `;`) keeps it a definition, never a call; the negative
@@ -513,6 +536,13 @@ QString genericLangName(const QString &ext) {
         return QStringLiteral("scala");
     if (ext == QLatin1String("php"))   return QStringLiteral("php");
     if (ext == QLatin1String("rb"))    return QStringLiteral("ruby");  // ANTS-2150
+    // ANTS-4902 — UnrealScript. Brace-delimited and C-like: `class X extends
+    // Y;`, `function`/`struct` bodies. Measured over 190 real .uc files, the
+    // rules above already reach 1,237 functions, 190 classes and 4 structs;
+    // the 1,194 `var` members are the known gap (no `=`, so no binding to
+    // match) and `event`/`state` are deliberately excluded — see spec.md at
+    // tests/features/file_outline_unrealscript.
+    if (ext == QLatin1String("uc"))    return QStringLiteral("unrealscript");
     return QString();
 }
 
@@ -1142,10 +1172,15 @@ QJsonObject compute(const QString &absPath,
                           QStringLiteral(" …"));
             }
         } else if (effective == Mode::Generic) {
-            // Try keyword decl, then C-style method, then arrow assignment;
-            // first hit wins (ANTS-2150).
-            QRegularExpressionMatch m = rxGenericDecl().match(line);
+            // Try the typed-function form, then keyword decl, then C-style
+            // method, then arrow assignment; first hit wins (ANTS-2150).
+            // ANTS-4902 puts the typed form first: on `function bool Foo(`
+            // rule (1) MATCHES and captures the return type, so ordering is
+            // what decides the name rather than which rule fires.
+            QRegularExpressionMatch m = rxGenericFunctionTyped().match(line);
             if (m.hasMatch()) {
+                offer("func", m.captured(1), line);
+            } else if ((m = rxGenericDecl().match(line)).hasMatch()) {
                 const QString kw = m.captured(1);
                 const char *kind =
                     (kw == QLatin1String("fn")  || kw == QLatin1String("fun") ||

@@ -1802,6 +1802,8 @@ if(ANTS_TESTS)
                 # this verb agreeing with symbolquery.cpp's ANTS-3558 lane.
                 tests/features/file_outline_glsl/test_file_outline_glsl.cpp
                 tests/features/file_outline_sh/test_file_outline_sh.cpp
+                # ANTS-4902 .uc outlines as brace-family (UnrealScript).
+                tests/features/file_outline_unrealscript/test_file_outline_unrealscript.cpp
                 # ANTS-1961 / ANTS-1962 / ANTS-1963 — feedback + spec_log verbs.
                 tests/features/mcp_feedback_query/test_mcp_feedback_query.cpp
                 # ANTS-3519 feedback_query resolves foreign-prefix mapped ids

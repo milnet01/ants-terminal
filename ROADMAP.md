@@ -51835,7 +51835,7 @@ rather than refiled.
   Source: UT_MonsterHunt feedback 2026-09-06.
   Lanes: remotecontrol, workspace.
 
-- 📋 [ANTS-4902] **file_outline maps .uc to unknown, though UnrealScript is brace-family and the existing parser looks sufficient.**
+- ✅ [ANTS-4902] **file_outline maps .uc to unknown, though UnrealScript is brace-family and the existing parser looks sufficient.**
   Reported by UT_MonsterHunt, filed by them as a candidate rather than a
   defect. UnrealScript is brace-delimited and C-like: `class X extends
   Y;`, `var` / `var config` members, `function` / `event` / `state`
@@ -51848,6 +51848,24 @@ rather than refiled.
   `^function` is a cheap workaround. It also knocks on to the
   enclosing_symbol finding filed alongside it, which has nothing to
   attach to without an outline.
+  Resolved (2026-09-06). Shipped ONE STEP PAST the reporter's own gate,
+  and the reason is the finding the work turned up: the table entry
+  alone does not miss `function bool CheckReplacement(...)` --
+  rxGenericDecl MATCHES it and captures `bool`, so the outline would
+  have gained symbols called `bool` and `int`. A wrong name in an
+  outline is worse than the `unknown` it replaces.
+  rxGenericFunctionTyped is one regex, tried first, requiring two
+  identifiers between `function` and the `(` -- a shape no valid
+  JavaScript or PHP file produces. Not the bespoke parser the gate was
+  written against. Also added `.uc` to CodebaseIndex::isIndexableSuffix
+  and SymbolQuery::langForExt, which those lists' own in-step comment
+  requires, so count, outline and symbol query agree. Measured over 190
+  real .uc files: 1,237 functions, 190 classes, 4 structs, 30 consts.
+  Known gap, stated in the spec rather than hidden: the 1,194 `var`
+  members (no `=`, so no binding to match), and `event`/`state`,
+  excluded because `event` is a real C# keyword and admitting it would
+  outline the TYPE as the symbol name in every C# file -- 5 occurrences
+  in 2,670 does not buy that. Suite 4205/4205.
   **Layman:** One more file type could be skimmed by the outline tool if it is just a table entry.
   Kind: enhancement.
   Source: UT_MonsterHunt feedback 2026-09-06.

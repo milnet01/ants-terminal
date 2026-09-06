@@ -65,7 +65,8 @@ Lang langForExt(const QString &ext) {
         ext == QLatin1String("kt")  || ext == QLatin1String("kts") ||
         ext == QLatin1String("swift")|| ext == QLatin1String("scala") ||
         ext == QLatin1String("sc")  || ext == QLatin1String("php") ||
-        ext == QLatin1String("rb")) {
+        ext == QLatin1String("rb")  ||
+        ext == QLatin1String("uc")) {   // ANTS-4902 — UnrealScript
         return Lang::Generic;
     }
     // ANTS-3558 — GLSL / Vulkan shader stages. Only the UNAMBIGUOUS
