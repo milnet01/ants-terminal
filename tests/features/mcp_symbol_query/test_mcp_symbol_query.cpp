@@ -1182,3 +1182,73 @@ TEST(SymbolQueryCppForms, Ants3668CallSiteIsNotAMemberDefinition) {
     EXPECT_TRUE(hasKindAt(d, "members.h", "declaration"))
         << "precondition: its real prototype still resolves";
 }
+
+// ---------------------------------------------------------------------------
+// ANTS-4880 — a wrapped local initialisation is not a definition.
+//
+// Reported in-session: find_definition {symbol:"counterPath"} returned the
+// real `QString counterPath(const QString &)` alongside two rows whose
+// signature is `const QString counterPath =` — function-local variables, each
+// tagged `definition` and so indistinguishable from the real home.
+//
+// The ladder matching a local is a DECISION, not an oversight: it is
+// line-based with no scope tracking, and reporting where a name is declared
+// beats reporting that a visible name does not exist. The existing kind logic
+// already tags a local `declaration`, because the single-line form ends in
+// `;`. What escaped is the WRAPPED form — an initialiser continued on the next
+// line ends in `=`, which looksLikeDeclaration does not recognise, so it fell
+// through to `definition`. So this is not a new policy; it is the existing one
+// applied to the shape that slipped past it.
+
+TEST(McpSymbolQuery, Ants4880WrappedLocalInitIsNotADefinition) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString root = QFileInfo(tmp.path()).canonicalFilePath();
+
+    // The real home: a function definition.
+    writeFile(root, QStringLiteral("src/home.cpp"),
+              QStringLiteral(
+                  "#include <QString>\n"
+                  "QString counterPath(const QString &projectPath) {\n"
+                  "    return projectPath + QStringLiteral(\"/.counter\");\n"
+                  "}\n"));
+    // Two impostors: locals whose initialiser wraps onto the next line.
+    writeFile(root, QStringLiteral("src/user_a.cpp"),
+              QStringLiteral(
+                  "#include <QString>\n"
+                  "void useA(const QString &root) {\n"
+                  "    const QString counterPath =\n"
+                  "        root + QStringLiteral(\"/.roadmap-counter\");\n"
+                  "    (void)counterPath;\n"
+                  "}\n"));
+    // And the single-line form, which the existing logic already handles —
+    // kept so a fix cannot quietly change it.
+    writeFile(root, QStringLiteral("src/user_b.cpp"),
+              QStringLiteral(
+                  "#include <QString>\n"
+                  "void useB(const QString &root) {\n"
+                  "    const QString counterPath = root + QStringLiteral(\"/x\");\n"
+                  "    (void)counterPath;\n"
+                  "}\n"));
+
+    SymbolQuery::Options opts;
+    const auto d = SymbolQuery::findDefinition(
+        root, QStringLiteral("counterPath"), opts);
+
+    EXPECT_TRUE(hasDef(d, QStringLiteral("src/home.cpp"),
+                       QStringLiteral("definition")))
+        << "the real function definition must still be found";
+    EXPECT_FALSE(hasDef(d, QStringLiteral("src/user_a.cpp"),
+                        QStringLiteral("definition")))
+        << "a local whose initialiser wraps is a variable, not a second home "
+           "for the symbol — this is the reported defect";
+    EXPECT_FALSE(hasDef(d, QStringLiteral("src/user_b.cpp"),
+                        QStringLiteral("definition")))
+        << "the single-line form was already correct and must stay so";
+
+    // The rows are not dropped — the ladder reports where a name is declared
+    // on purpose. They are just no longer claiming to be the definition.
+    EXPECT_TRUE(hasDef(d, QStringLiteral("src/user_a.cpp"),
+                       QStringLiteral("declaration")))
+        << "the local should still be reported, as a declaration";
+}

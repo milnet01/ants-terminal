@@ -164,6 +164,20 @@ bool endsWithCaptureList(const QString &head) {
 // it abuts.
 bool looksLikeDeclaration(const QString &line) {
     const QString code = codeWithoutComments(line);
+    // ANTS-4880 — an initialiser continued on the NEXT line ends in `=`, so
+    // the trailing-`;` test below never saw it and a function-local variable
+    // came back tagged `definition`, indistinguishable from the symbol's real
+    // home. The ladder matching a local at all is a deliberate decision (see
+    // the anchor comments): it is line-based with no scope tracking, and
+    // reporting where a name is declared beats reporting that a visible name
+    // does not exist. The single-line form `const T x = y;` was already
+    // tagged `declaration` by that test. This is the same rule reaching the
+    // shape that wrapped.
+    //
+    // `operator=` is not caught: a line ending in a bare `=` after a name is
+    // an assignment, where an operator declaration ends in `)`, `;` or `{`.
+    if (code.endsWith(QLatin1Char('=')) && !code.endsWith(QLatin1String("==")))
+        return true;
     if (!code.endsWith(QLatin1Char(';'))) return false;
     const qsizetype brace = code.indexOf(QLatin1Char('{'));
     if (brace < 0) return true;
