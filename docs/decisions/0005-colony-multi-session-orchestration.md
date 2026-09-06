@@ -185,9 +185,37 @@ branch from a known-broken `main`.
 This raises the cost of a weak suite: with auto-merge, the suite is the
 only thing between a confidently-wrong worker and `main`.
 
-### D6 — A build lease as a file lock, because hooks are not sessions
+### D6 — One build at a time machine-wide; workers build narrow, the orchestrator builds full
 
-At most N concurrent builds machine-wide (N=1 initially).
+**Builds are the RAM hog, and sessions are not** (project lead,
+2026-09-06). Several Claude sessions sitting idle cost little; two
+`cc1plus` storms at once is what reaches the earlyoom ceiling on a 32 GiB
+host. `JOB_POOLS` already caps `compile_pool` and pins `link_pool = 1`
+WITHIN one build — the pools are per-invocation, so a second concurrent
+build doubles the peak the first one was capped to.
+
+**So: at most ONE build process machine-wide (N=1), and the work is split
+by weight.**
+
+- **A worker may build its own narrow target and run focused tests.** It
+  still takes the lock. This is what lets a worker watch a test FAIL
+  before writing the fix, which `testing.md` § 1 and `write-test` both
+  require — a worker that cannot build hands back code that has never
+  executed, and every defect then surfaces at merge, serially, in the
+  most expensive place to find one.
+- **Only the orchestrator runs the FULL build and the FULL suite**, at
+  merge (D5). It runs in one warm tree, so ccache stays hot where it
+  matters most.
+
+Peak RAM is identical to forbidding worker builds outright — one build,
+ever — and the difference is bought entirely from ordering rather than
+from concurrency. Measured on this machine with ccache hot: a narrow
+target build is 5-60 s, a full build 1-2 minutes, the full suite ~55 s at
+`-j4`. Waiting for a turn is cheap; discovering a defect at merge is not.
+
+The orchestrator-only variant was considered and declined for the reason
+above: it is simpler to state and it makes every worker's output
+unverified until it lands.
 
 **It is an `flock` on a well-known path under `$XDG_STATE_HOME`, not a
 store row.** Three reasons, and the first is decisive:

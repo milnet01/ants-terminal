@@ -62120,9 +62120,21 @@ merit whether or not the rest is built.
   already produce what looks like linker corruption (`mold: unknown file
   type`), recorded today as a standing caution rather than a fix.
 
-  A lease held in the roadmap store, acquired by any session about to
-  build, default limit 1. Expiry so a killed build does not wedge the
-  machine.
+  An `flock` on a well-known path under `$XDG_STATE_HOME`, acquired by any
+  session about to build, limit 1. NOT a store lease: the documented
+  failure is produced by git HOOKS, which are shell scripts with no MCP
+  session and no store connection -- `flock(1)` is one line to them. It
+  also dies with its process, so a killed build cannot wedge the machine.
+
+  The split it enforces (ADR-0005 D6, project lead 2026-09-06): a worker
+  may build its own NARROW target and run focused tests, so it can still
+  watch a test fail before fixing; only the orchestrator runs the FULL
+  build and suite. Peak RAM is one build either way -- the difference is
+  bought from ordering, not concurrency.
+
+  `tools/hooks/pre-push` and `tools/ci-parity.sh` take the same lock, and a
+  hook that cannot get it WAITS rather than failing: a push that blocks for
+  a minute is correct, and one that aborts trains people to `--no-verify`.
 
   Worth building even if nothing else in this section is: it turns a
   documented "do not do this" into something the machine enforces.
