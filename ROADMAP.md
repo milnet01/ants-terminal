@@ -51118,7 +51118,7 @@ two projects).
   Source: UT_Ants_MCP_Feedback.md 2026-09-04.
   Lanes: mcp.
 
-- 📋 [ANTS-4863] **roadmap_log's description says only create_section refuses on pass-headings; amend_body refuses too.**
+- ✅ [ANTS-4863] **roadmap_log's description says only create_section refuses on pass-headings; amend_body refuses too.**
   Found by a cold review lane on docs/standards/mcp-tools.md, and it resolves
   the OPPOSITE way to the one the lane proposed.
 
@@ -51145,6 +51145,20 @@ two projects).
   format. Check the store-backed route too — ANTS-4803 moved the
   pass-headings dialect to the store, and the refusal above is on the
   markdown path.
+  Resolved (2026-09-06). Verified against the code, as the item
+  required, and the true list is longer than the item's own correction:
+  on a MARKDOWN pass-headings roadmap FOUR ops refuse with
+  unsupported_format -- create_section
+  (remotecontrol_roadmap_log_batch.cpp), plus amend_body, amend_headline
+  and set_body, which share one handler whose opName is set from the
+  mode (remotecontrol_roadmap_log.cpp). The item named amend_body; the
+  other two ride the same gate. The store question it asked is answered
+  too: the store route returns BEFORE that markdown gate, so on a
+  store-backed project those three write rather than refuse -- which is
+  what the ANTS-4668 note elsewhere in the schema already implies and
+  nothing stated together. mcp-tools.md § 6a was correct and is
+  unchanged; the description was the wrong half, exactly as the item
+  concluded. Suite 4222/4222.
   **Layman:** The roadmap tool's own help text names the wrong list of operations that refuse to work on one kind of roadmap file.
   Kind: fix.
   Source: review-contract-mcp-tools-2026-09-04 loop 3.
