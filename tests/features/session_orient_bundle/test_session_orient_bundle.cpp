@@ -222,11 +222,18 @@ TEST(session_orient_bundle, Inv9FeedbackPendingScan) {
             ants_test::slurpFunctionBody(cpp, "cmdSessionOrient");
         expect(contains(body, "\"feedback_pending\""),
                "INV-9: bundle emits a feedback_pending envelope key");
-        expect(contains(body, "FeedbackFile::parse"),
+        // ANTS-4896 moved the scan itself into buildFeedbackPendingBlock so a
+        // headless test can drive it. The invariants below are unchanged and
+        // still hold of the system; they are now read where the code lives.
+        const std::string scan = ants_test::slurpFunctionBody(
+            cpp, "RemoteControl::buildFeedbackPendingBlock");
+        expect(contains(body, "buildFeedbackPendingBlock"),
+               "INV-9: the bundle fills that key from the extracted scan");
+        expect(contains(scan, "FeedbackFile::parse"),
                "INV-9: reuses the canonical parser (no bash reimpl)");
-        expect(contains(body, "mcp-feedback-files.md"),
+        expect(contains(scan, "mcp-feedback-files.md"),
                "INV-9: maintainer-only gate via the format-standard doc");
-        expect(contains(body, "deltaPresent"),
+        expect(contains(scan, "deltaPresent"),
                "INV-9: surfaces only files with an un-triaged delta");
     }
     EXPECT_EQ(0, expect_failures());

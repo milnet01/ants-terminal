@@ -212,6 +212,14 @@ still never rewrites a contributor's *description*.
   corpus anywhere above, this is the first file in a new corpus and it is
   created as before, because refusing there would make a first file
   impossible.
+- **Every surface that looks for the corpus consults the same key
+  (ANTS-4896).** `session_orient`'s `feedback_pending` block did not, and
+  scanned the parent of the project root alone — so on a corpus this key had
+  already relocated it reported `files_scanned:0`, which a reader takes for an
+  empty inbox. It now scans the derived parent AND the declared root, dedupes
+  by canonical path, reports the declared corpus as `shared_root`, and carries
+  `searched[]`, the directories actually read. An empty scan must say where it
+  looked: zero-pending and zero-visible are the same number otherwise.
 - **A dot-leading leaf cannot use the dir-leaf rule (ANTS-3714).** Where the
   project directory begins with a dot — `~/.claude`, leaf `.claude` — the
   derived basename would be `.claude_Ants_MCP_Feedback.md`, which the

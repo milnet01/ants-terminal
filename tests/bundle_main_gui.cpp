@@ -23,6 +23,18 @@ int main(int argc, char *argv[]) {
     }
     qputenv("XDG_DATA_HOME", dataHome.path().toLocal8Bit());
 
+    // ANTS-4898 — and XDG_CONFIG_HOME, which ANTS-3856 did not cover; see
+    // tests/bundle_main_core.cpp for the measurement. Config::load() reads the
+    // user's real config.json on construction, and on 2026-09-06 one live
+    // setting sent twelve tests' writes into the user's real feedback corpus.
+    QTemporaryDir configHome;
+    if (!configHome.isValid()) {
+        std::fprintf(stderr, "cannot create the XDG_CONFIG_HOME sandbox: %s\n",
+                     qUtf8Printable(configHome.errorString()));
+        return 1;  // fail closed — unsandboxed, a test can write real files.
+    }
+    qputenv("XDG_CONFIG_HOME", configHome.path().toLocal8Bit());
+
     QApplication app(argc, argv);
     ::testing::InitGoogleTest(&argc, argv);
     return RUN_ALL_TESTS();

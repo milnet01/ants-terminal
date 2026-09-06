@@ -36,6 +36,29 @@ int main(int argc, char *argv[]) {
     }
     qputenv("XDG_DATA_HOME", dataHome.path().toLocal8Bit());
 
+    // ANTS-4898 — the same guard for XDG_CONFIG_HOME, which ANTS-3856 did not
+    // cover. Config::load() reads ~/.config/ants-terminal/config.json on
+    // construction, so every verb consulting a setting consulted the
+    // developer's own.
+    //
+    // The case that forced it: `claude.mcp_feedback_root` (ANTS-4471) was set
+    // to the shared feedback corpus — which is what that key is for. Twelve
+    // McpFeedbackQuery / McpFeedbackLog tests, each asserting a path derived
+    // under its own QTemporaryDir, went red because the live key redirected
+    // the derivation. The red was the harmless half: the writes landed, in
+    // the user's real corpus, on 2026-09-06.
+    //
+    // A test whose result depends on a setting outside the repo is not a
+    // test. A test that wants its own config still overrides this one, as
+    // ants_test::XdgGuard does.
+    QTemporaryDir configHome;
+    if (!configHome.isValid()) {
+        std::fprintf(stderr, "cannot create the XDG_CONFIG_HOME sandbox: %s\n",
+                     qUtf8Printable(configHome.errorString()));
+        return 1;  // fail closed — unsandboxed, a test can write real files.
+    }
+    qputenv("XDG_CONFIG_HOME", configHome.path().toLocal8Bit());
+
     QCoreApplication app(argc, argv);
     ::testing::InitGoogleTest(&argc, argv);
     return RUN_ALL_TESTS();

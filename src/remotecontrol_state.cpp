@@ -1530,6 +1530,140 @@ QJsonDocument RemoteControl::cmdSessionBrief(const QJsonObject &req)
 // no new caches; each upstream call hits its existing cache. The
 // dispatch-layer applyEtagPattern wraps the bundle response with one
 // ETag — flips when any of the three upstreams' payload changes.
+// --- feedback_pending (ANTS-1964, ANTS-1961 follow-on "b") ---
+// Surface the un-triaged-addenda backlog across the cross-session
+// *_Ants_MCP_Feedback.md files at the shared root, so the maintainer
+// session sees at a glance which files have new contributor input
+// without one feedback_query round-trip per file. Reuses the canonical
+// FeedbackFile::parse (no bash reimplementation of the fence-aware
+// parser); the pure-shell SessionStart hooks can't reach it, and
+// session_orient is the documented first read (parity with
+// server_build / codebase_index above).
+//
+// Maintainer-only gate: this is meaningful solely for the Ants repo
+// (it owns the ANTS-NNNN triage). Detect it by the format-standard doc
+// it ships -- only the Ants project has docs/standards/mcp-feedback-files.md.
+// Sister projects whose root shares the same parent dir thus get {} and the
+// key is omitted entirely (unchanged response -> stable ETag for them). Does
+// NOT contribute to allOk: an absent corpus must not fail orient.
+//
+// ANTS-4896 -- static + public so the feature test drives it directly: the
+// bundle verb below refuses without a MainWindow and this scan needs none.
+// Do NOT name that verb in this comment: tests/_support/srcgrep.h anchors on
+// the first occurrence of its name, so a mention above the definition sends
+// slurpFunctionBody's brace walk into this function instead.
+QJsonObject RemoteControl::buildFeedbackPendingBlock(const QString &rootCanonical)
+{
+    if (!QFileInfo::exists(rootCanonical
+            + QLatin1String("/docs/standards/mcp-feedback-files.md")))
+        return {};
+
+    // ANTS-4896 -- the roots feedback_query searches, in its order: the
+    // derived parent of the project root, then the declared corpus
+    // (`claude.mcp_feedback_root`, ANTS-4471) when it names a different
+    // directory. Scanning the parent alone made a RELOCATED corpus report
+    // files_scanned:0 -- byte-identical to "nothing is waiting", which is the
+    // one reading this block exists to prevent. Measured 2026-09-06, when the
+    // corpus moved into a folder of its own.
+    QStringList roots{ QFileInfo(rootCanonical).absolutePath() };
+    const QString declared = Config().claudeMcpFeedbackRoot();
+    const QString declaredCanon =
+        declared.isEmpty() ? QString() : QDir(declared).absolutePath();
+    if (!declaredCanon.isEmpty() && !roots.contains(declaredCanon))
+        roots.append(declaredCanon);
+
+    QJsonArray pendingFiles;
+    QJsonArray searched;
+    QSet<QString> seen;        // dedupe by file, not by directory: two roots
+                               // can spell one directory two ways.
+    int totalAwaiting = 0, filesWithInbox = 0;
+    int filesScanned = 0;
+    int totalPendingLines = 0;
+    // Bound the transient working set (largest corpus file ~150 KB
+    // today); skip a pathologically large file rather than read it.
+    constexpr qint64 kFeedbackScanCeiling = 4 * 1024 * 1024;
+    for (const QString &rootDir : roots) {
+        searched.append(rootDir);
+        QDir dir(rootDir);
+        // Deterministic order -> ETag stability across calls.
+        const QStringList names = dir.entryList(
+            {QStringLiteral("*_Ants_MCP_Feedback.md")},
+            QDir::Files | QDir::Readable, QDir::Name);
+        for (const QString &name : names) {
+            const QString full = dir.absoluteFilePath(name);
+            const QString canon = QFileInfo(full).canonicalFilePath();
+            const QString key = canon.isEmpty() ? full : canon;
+            if (seen.contains(key)) continue;
+            seen.insert(key);
+            QFileInfo fi(full);
+            if (fi.size() > kFeedbackScanCeiling) continue;
+            QFile f(full);
+            if (!f.open(QIODevice::ReadOnly | QIODevice::Text)) continue;
+            const QString content = QString::fromUtf8(f.readAll());
+            f.close();
+            ++filesScanned;
+            const FeedbackFile::ParseResult pr = FeedbackFile::parse(content);
+            const int awaitingHere = int(pr.awaiting.size());
+            totalAwaiting += awaitingHere;
+            // ANTS-3631 -- an awaiting marker is the MAINTAINER'S OUTBOX, not
+            // their inbox: it is un-triaged so the question reaches the
+            // reporter, and counting it here would put a permanently non-zero
+            // to-do at every session start that clears only when someone else
+            // replies. So a file is LISTED only when it holds un-triaged
+            // findings that are not awaiting markers.
+            //
+            // The outbox stays visible as a number rather than a row: an
+            // awaiting-only file still gets a minimal entry carrying its count
+            // and NO `delta_line_count`, and the absence of that key is what
+            // marks it as outbox. Dropping it entirely would leave the count
+            // with no carrier in the one case the field exists for.
+            // "Does the delta hold anything that is NOT an awaiting marker?"
+            // The delta is a `\n`-joined concatenation of finding blocks, so
+            // its heading count is the finding count; every awaiting finding
+            // contributes exactly one. Equal counts mean awaiting-only.
+            const int deltaFindings = pr.deltaPresent
+                ? int(pr.delta.count(QStringLiteral("\n### "))
+                      + (pr.delta.startsWith(QStringLiteral("### ")) ? 1 : 0))
+                : 0;
+            const bool inboxOnlyAwaiting =
+                pr.deltaPresent && awaitingHere > 0 &&
+                deltaFindings > 0 && deltaFindings == awaitingHere;
+            if (!pr.deltaPresent && awaitingHere == 0) continue;
+            QJsonObject entry;
+            entry[QStringLiteral("file")] = name;
+            if (awaitingHere > 0)
+                entry[QStringLiteral("awaiting_count")] = awaitingHere;
+            if (pr.deltaPresent && !inboxOnlyAwaiting) {
+                entry[QStringLiteral("delta_line_count")] = pr.deltaLineCount;
+                totalPendingLines += pr.deltaLineCount;
+                ++filesWithInbox;
+            }
+            pendingFiles.append(entry);
+        }
+    }
+
+    QJsonObject fp;
+    // ANTS-4896 -- the corpus a reader should go to: the declared one when a
+    // key names it, else the derived parent. `searched` carries the full list,
+    // so files_scanned:0 says WHERE it looked rather than only that it found
+    // nothing.
+    fp[QStringLiteral("shared_root")] =
+        declaredCanon.isEmpty() ? roots.first() : declaredCanon;
+    fp[QStringLiteral("searched")]           = searched;
+    fp[QStringLiteral("files_scanned")]      = filesScanned;
+    // ANTS-3631 -- `files_with_pending` counts INBOX files only. An
+    // awaiting-only file is now a row (it carries the maintainer's own
+    // outstanding-question count) but is not work anyone owes them, and
+    // the standard pins these two to the listed-inbox set so a count can
+    // never disagree with the rows a reader is looking at.
+    fp[QStringLiteral("files_with_pending")]  = filesWithInbox;
+    fp[QStringLiteral("total_pending_lines")] = totalPendingLines;
+    fp[QStringLiteral("total_awaiting")]      = totalAwaiting;
+    fp[QStringLiteral("files")]              = pendingFiles;
+    return fp;
+}
+
+
 QJsonDocument RemoteControl::cmdSessionOrient(const QJsonObject &req)
 {
     if (!m_main) {
@@ -1868,98 +2002,12 @@ QJsonDocument RemoteControl::cmdSessionOrient(const QJsonObject &req)
     }
 
     // --- feedback_pending (ANTS-1964, ANTS-1961 follow-on "b") ---
-    // Surface the un-triaged-addenda backlog across the cross-session
-    // *_Ants_MCP_Feedback.md files at the shared root, so the maintainer
-    // session sees at a glance which files have new contributor input
-    // without one feedback_query round-trip per file. Reuses the canonical
-    // FeedbackFile::parse (no bash reimplementation of the fence-aware
-    // parser); the pure-shell SessionStart hooks can't reach it, and
-    // session_orient is the documented first read (parity with
-    // server_build / codebase_index above).
-    //
-    // Maintainer-only gate: this is meaningful solely for the Ants repo
-    // (it owns the ANTS-NNNN triage). Detect it by the format-standard doc
-    // it ships — only the Ants project has docs/standards/mcp-feedback-files.md.
-    // Sister projects whose root shares the same parent dir thus omit the
-    // block entirely (unchanged response → stable ETag for them). Does NOT
-    // contribute to allOk: an absent corpus must not fail orient.
-    if (QFileInfo::exists(rootCanonical
-            + QLatin1String("/docs/standards/mcp-feedback-files.md"))) {
-        const QString sharedRoot = QFileInfo(rootCanonical).absolutePath();
-        QDir dir(sharedRoot);
-        // Deterministic order → ETag stability across calls.
-        const QStringList names = dir.entryList(
-            {QStringLiteral("*_Ants_MCP_Feedback.md")},
-            QDir::Files | QDir::Readable, QDir::Name);
-
-        QJsonArray pendingFiles;
-        int totalAwaiting = 0, filesWithInbox = 0;
-        int filesScanned = 0;
-        int totalPendingLines = 0;
-        // Bound the transient working set (largest corpus file ~150 KB
-        // today); skip a pathologically large file rather than read it.
-        constexpr qint64 kFeedbackScanCeiling = 4 * 1024 * 1024;
-        for (const QString &name : names) {
-            const QString full = dir.absoluteFilePath(name);
-            QFileInfo fi(full);
-            if (fi.size() > kFeedbackScanCeiling) continue;
-            QFile f(full);
-            if (!f.open(QIODevice::ReadOnly | QIODevice::Text)) continue;
-            const QString content = QString::fromUtf8(f.readAll());
-            f.close();
-            ++filesScanned;
-            const FeedbackFile::ParseResult pr = FeedbackFile::parse(content);
-            const int awaitingHere = int(pr.awaiting.size());
-            totalAwaiting += awaitingHere;
-            // ANTS-3631 — an awaiting marker is the MAINTAINER'S OUTBOX, not
-            // their inbox: it is un-triaged so the question reaches the
-            // reporter, and counting it here would put a permanently non-zero
-            // to-do at every session start that clears only when someone else
-            // replies. So a file is LISTED only when it holds un-triaged
-            // findings that are not awaiting markers.
-            //
-            // The outbox stays visible as a number rather than a row: an
-            // awaiting-only file still gets a minimal entry carrying its count
-            // and NO `delta_line_count`, and the absence of that key is what
-            // marks it as outbox. Dropping it entirely would leave the count
-            // with no carrier in the one case the field exists for.
-            // "Does the delta hold anything that is NOT an awaiting marker?"
-            // The delta is a `\n`-joined concatenation of finding blocks, so
-            // its heading count is the finding count; every awaiting finding
-            // contributes exactly one. Equal counts mean awaiting-only.
-            const int deltaFindings = pr.deltaPresent
-                ? int(pr.delta.count(QStringLiteral("\n### "))
-                      + (pr.delta.startsWith(QStringLiteral("### ")) ? 1 : 0))
-                : 0;
-            const bool inboxOnlyAwaiting =
-                pr.deltaPresent && awaitingHere > 0 &&
-                deltaFindings > 0 && deltaFindings == awaitingHere;
-            if (!pr.deltaPresent && awaitingHere == 0) continue;
-            QJsonObject entry;
-            entry[QStringLiteral("file")] = name;
-            if (awaitingHere > 0)
-                entry[QStringLiteral("awaiting_count")] = awaitingHere;
-            if (pr.deltaPresent && !inboxOnlyAwaiting) {
-                entry[QStringLiteral("delta_line_count")] = pr.deltaLineCount;
-                totalPendingLines += pr.deltaLineCount;
-                ++filesWithInbox;
-            }
-            pendingFiles.append(entry);
-        }
-
-        QJsonObject fp;
-        fp[QStringLiteral("shared_root")]        = sharedRoot;
-        fp[QStringLiteral("files_scanned")]      = filesScanned;
-        // ANTS-3631 — `files_with_pending` counts INBOX files only. An
-        // awaiting-only file is now a row (it carries the maintainer's own
-        // outstanding-question count) but is not work anyone owes them, and
-        // the standard pins these two to the listed-inbox set so a count can
-        // never disagree with the rows a reader is looking at.
-        fp[QStringLiteral("files_with_pending")]  = filesWithInbox;
-        fp[QStringLiteral("total_pending_lines")] = totalPendingLines;
-        fp[QStringLiteral("total_awaiting")]      = totalAwaiting;
-        fp[QStringLiteral("files")]              = pendingFiles;
-        result[QStringLiteral("feedback_pending")] = fp;
+    // Body extracted to buildFeedbackPendingBlock (ANTS-4896) so the scan is
+    // reachable without a MainWindow; empty means the maintainer gate did not
+    // fire, and the key is then absent exactly as before.
+    {
+        const QJsonObject fp = buildFeedbackPendingBlock(rootCanonical);
+        if (!fp.isEmpty()) result[QStringLiteral("feedback_pending")] = fp;
     }
 
     // --- mail_pending (ANTS-4622 § 2.4) ---

@@ -1810,6 +1810,9 @@ if(ANTS_TESTS)
                 # ANTS-4471 feedback_query miss offers candidates from the
                 # configured shared corpus root, or says what it searched.
                 tests/features/feedback_query_shared_root/test_feedback_query_shared_root.cpp
+                # ANTS-4898 the bundle main sandboxes XDG_CONFIG_HOME, so no
+                # test reads the developer's live settings (or writes by them).
+                tests/features/test_bundle_config_sandbox/test_bundle_config_sandbox.cpp
                 tests/features/mcp_feedback_log/test_mcp_feedback_log.cpp
                 # ANTS-3421 feedback_log op:compact_shipped (maintainer compaction).
                 tests/features/feedback_log_compact_shipped/test_feedback_log_compact_shipped.cpp

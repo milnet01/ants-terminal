@@ -51697,6 +51697,74 @@ rather than refiled.
   Source: UT_Ants-feedback-2026-09-06.
   Lanes: mcp, specs.
 
+- ✅ [ANTS-4896] **session_orient's feedback_pending ignores claude.mcp_feedback_root, so a relocated corpus reads as zero pending.**
+  The block in src/remotecontrol_state.cpp hardcodes sharedRoot = QFileInfo(rootCanonical).absolutePath() -- the parent of the project root -- where feedback_query (src/remotecontrol_workspace.cpp) consults Config().claudeMcpFeedbackRoot() (ANTS-4471) and searches both. So one build answers the same question two ways.
+
+  Measured 2026-09-06: the user moved the corpus to /mnt/Games/Scripts/Linux/Ants_MCP_Feedback_Files/ and session_orient reported files_scanned:0, files_with_pending:0, total_awaiting:0. Zero-pending and zero-visible are byte-identical in that envelope, which is the failure the block exists to prevent.
+
+  Fix: resolve the same root feedback_query does, and when files_scanned is 0 say which directories were searched, so an empty result is readable.
+  Resolved (2026-09-06): the scan moved into
+  RemoteControl::buildFeedbackPendingBlock -- static and public, because
+  the bundle verb refuses without a MainWindow and the block could not
+  be driven from a test at all. It now scans the derived parent AND the
+  declared claude.mcp_feedback_root, dedupes by canonical path, reports
+  the declared corpus as shared_root, and carries searched[] so
+  files_scanned:0 says where it looked. Three invariants in
+  tests/features/feedback_query_shared_root (INV-5/6/7), red before the
+  fix. The extraction moved four facts out of the bundle verb's body,
+  which INV-9's source scrape reads; that test now reads them where the
+  code lives. One trap recorded in the source: srcgrep.h anchors on the
+  first occurrence of a function name, so naming the bundle verb in a
+  comment above this function sent its brace walk into the wrong body
+  and reddened seven scrape tests.
+  **Layman:** When the shared feedback folder moves, the session-start summary quietly says there is nothing waiting instead of saying it looked in the wrong place.
+  Kind: fix.
+  Source: in-session-2026-09-06.
+  Lanes: remotecontrol, claude-integration.
+
+- 📋 [ANTS-4897] **Reorganise ROADMAP.md so every active item sits under the version milestone that will deliver it.**
+  User direction 2026-09-06, from the UT_Ants roadmap: version sections (0.1.0 -- Bake and render, 0.2.0 -- Movement and weapons ...) read clearly to a user where a thematic split does not.
+
+  This project has 461 active items over 237 sections, mostly thematic; the version sections that exist (0.8.0, 0.9.0, 1.0.0, Beyond 1.0) hold a minority. An item nobody has committed to a version goes to a Later / unscheduled bucket rather than being forced into a milestone (user decision, same date).
+
+  Sequencing, user decision: AFTER the standing priority list, not before it. Touches roadmap-format.md, which this project owns.
+  **Layman:** Make the roadmap say what gets us to 0.8.0, what gets us to 0.9.0, and so on, the way a reader expects.
+  Kind: doc.
+  Source: user-request-2026-09-06.
+  Lanes: docs, roadmap.
+
+- ✅ [ANTS-4898] **Test bundles sandbox XDG_DATA_HOME but not XDG_CONFIG_HOME, so the suite reads the developer's live config and wrote into the real feedback corpus.**
+  ANTS-3856 sandboxed XDG_DATA_HOME in both bundle mains for exactly this
+  class -- a test that omitted a store path opened the live roadmap
+  database. XDG_CONFIG_HOME was never given the same treatment, so
+  Config::load() reads the user's real config.json in every test process.
+
+  Measured 2026-09-06. Setting `claude.mcp_feedback_root` (ANTS-4471) to
+  the relocated corpus made twelve tests in McpFeedbackQuery and
+  McpFeedbackLog fail -- they assert a derived path under their own
+  QTemporaryDir, and the live key redirected the derivation. Worse than
+  red: the write went through. Two junk files were created in the corpus
+  and three real corpus files were appended to with fixture text.
+  Repaired by hand the same day.
+
+  Fix: qputenv XDG_CONFIG_HOME to a per-process QTemporaryDir in
+  tests/bundle_main_gui.cpp and tests/bundle_main_core.cpp, beside the
+  XDG_DATA_HOME sandbox and for the same reason. A test that wants its own
+  config still overrides it, as XdgGuard already does.
+  Resolved (2026-09-06): both bundle mains now qputenv XDG_CONFIG_HOME
+  to a per-process QTemporaryDir, beside ANTS-3856's XDG_DATA_HOME
+  sandbox and for the same reason. Three invariants in
+  tests/features/test_bundle_config_sandbox, red before the fix. Suite
+  4202/4202 green after, where the live key had made it 4187/4199. The
+  damage was repaired by hand the same day: two fixture-created files
+  removed from the corpus and fixture blocks stripped from the tails of
+  DOOM and Pressless; a genuine un-triaged 2026-09-06 finding in
+  claude_config was left untouched.
+  **Layman:** Running the tests could change real files outside the project, because the tests were reading the app's actual settings.
+  Kind: test.
+  Source: in-session-2026-09-06.
+  Lanes: tests, remotecontrol.
+
 ### 🎨 UI polish (user request 2026-09-04)
 
 - ✅ [ANTS-4862] **The tab-colour context menu shows which colour the tab is currently set to.**

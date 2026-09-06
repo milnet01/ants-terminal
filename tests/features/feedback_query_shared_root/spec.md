@@ -67,3 +67,39 @@ own-file-floats-first ranking still applies.
 The key defaults to empty, and empty means "the parent of `caller_cwd`" —
 the rule the scan already used. A project that never sets it behaves
 exactly as before.
+
+## ANTS-4896 — the same key, one call earlier
+
+`feedback_query` consults `claude.mcp_feedback_root`; `session_orient`'s
+`feedback_pending` block hardcoded the parent of the project root. One
+build answered the same question two ways, and the block that exists to
+show the maintainer their backlog was the one that could not see it.
+
+Measured 2026-09-06: the corpus moved to a folder of its own and
+`feedback_pending` reported `files_scanned:0` — byte-identical to
+"nothing is waiting".
+
+The scan moved into `RemoteControl::buildFeedbackPendingBlock` in the
+same change. `cmdSessionOrient` refuses `no_window` without a MainWindow,
+so the block could not be driven from a test at all; what stood in for it
+was a source scrape of the bundle's body.
+
+### INV-5 — the configured root is scanned
+
+With `claude.mcp_feedback_root` set, feedback files in that directory are
+read, listed and counted, and `shared_root` reports the declared corpus
+rather than a parent directory holding nothing.
+
+### INV-6 — an empty scan says where it looked
+
+The block carries `searched` — every directory actually read.
+`files_scanned:0` alone is equally consistent with "no contributor input"
+and "the corpus is not where I looked", and those two want opposite
+responses from the reader.
+
+### INV-7 — the configured root ADDS, it does not replace
+
+Both roots are scanned, matching INV-3 on the query side, so setting the
+key cannot cost a project sitting beside its corpus. Files are deduped by
+canonical path, so one directory reachable by two spellings is counted
+once.

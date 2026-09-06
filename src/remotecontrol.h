@@ -439,6 +439,12 @@ public:
 
     static QJsonObject buildRoadmapBundlesEnvelope(
         const QJsonArray &cacheBullets, int softCapBytes);
+    // ANTS-1964 / ANTS-4896 — session_orient's cross-session feedback backlog
+    // block. Static + public on the precedent above, so the feature test drives
+    // the scan directly: cmdSessionOrient refuses without a MainWindow and this
+    // needs none. Returns {} when the maintainer gate (the format-standard doc
+    // the project ships) does not fire, and the caller then omits the key.
+    static QJsonObject buildFeedbackPendingBlock(const QString &rootCanonical);
     // ANTS-1922 — test-only soft-cap override for the bundles branch
     // (0 = use PaginationEngine::kSoftCapBytes). The pure builder above
     // takes the cap directly; this lets a live-verb path force truncation.

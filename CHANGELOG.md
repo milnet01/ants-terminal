@@ -44,6 +44,27 @@ for security-relevant changes.
 
 ### Fixed
 
+- **test bundles no longer read the developer's live settings** (ANTS-4898)
+  Both bundle mains sandboxed `XDG_DATA_HOME` so a test could not open the
+  real roadmap store, and left `XDG_CONFIG_HOME` alone — so every test
+  process read `~/.config/ants-terminal/config.json`. Setting one real
+  setting (the shared feedback corpus root) turned twelve tests red, and
+  their writes went to the real corpus rather than the temporary directory
+  each of them asserts against. Both mains now redirect the config
+  directory too, per process; a test that wants its own config still
+  overrides it.
+
+- **session_orient's feedback backlog now follows the configured corpus root** (ANTS-4896)
+  The `feedback_pending` block scanned the parent of the project root and
+  nothing else, while `feedback_query` had consulted
+  `claude.mcp_feedback_root` since ANTS-4471 — so moving the shared corpus
+  to a folder of its own left the session-start summary reporting nothing
+  waiting rather than saying it had looked somewhere else. It now scans
+  both roots, names the declared corpus as `shared_root`, and carries
+  `searched` — the directories actually read — so an empty result says
+  where it looked. The scan moved into its own builder, which is what let
+  it be tested at all: the bundle verb refuses without a window.
+
 - **`spec_lint` checks a project against its own spec standard, not a mirrored copy of the global one** (ANTS-4895)
   Where a project keeps a verbatim mirror of the global spec standard
   beside its own, the mirror was consulted first and the project's own

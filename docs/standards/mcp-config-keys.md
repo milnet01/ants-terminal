@@ -22,6 +22,12 @@ back on takes effect on the next launch).
 shared `*_Ants_MCP_Feedback.md` corpus, searched by `feedback_query` /
 `feedback_log` when a derived path misses and they need to offer `candidates`.
 
+**And by `session_orient`'s `feedback_pending` block (ANTS-4896).** That block
+scanned the parent of the project root alone, so a corpus this key had already
+relocated reported `files_scanned:0` — indistinguishable from an empty inbox.
+It now scans both roots, dedupes by canonical path, reports the declared corpus
+as `shared_root`, and carries `searched` so an empty scan says where it looked.
+
 **Empty means "the parent of `caller_cwd`"** — the rule the scan already used,
 and the right answer for every project whose checkout sits beside the corpus.
 Both directories are searched when the key is set, never one instead of the

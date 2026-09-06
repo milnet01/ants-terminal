@@ -227,3 +227,121 @@ TEST(feedback_query_shared_root, Ants4647ConfiguredRootRedirectsAWrite) {
         QDir(QFileInfo(l.callerProj).absolutePath())
             .filePath(QStringLiteral("proj_Ants_MCP_Feedback.md"))));
 }
+
+// ANTS-4896 — the READ side of the same key, one call earlier. `feedback_query`
+// consults `claude.mcp_feedback_root`; `session_orient`'s `feedback_pending`
+// block hardcoded the parent of the project root, so one build answered the
+// same question two ways. Measured 2026-09-06: the corpus moved to its own
+// folder and the session-start summary reported files_scanned:0 — which is
+// byte-identical to "nothing is waiting", the one reading the block exists to
+// prevent.
+//
+// The topology is INV-2's: a corpus no path rule reaches from caller_cwd. The
+// maintainer gate is the format-standard doc, so the caller project ships one.
+namespace {
+
+// feedback_pending is gated to the project that owns the triage, detected by
+// the standard it ships. Without this the block is absent by design.
+bool makeMaintainerProject(const QString &root) {
+    return writeFile(QDir(root).filePath(
+                         QStringLiteral("docs/standards/mcp-feedback-files.md")),
+                     "# format standard\n");
+}
+
+// The block's own builder, not the bundle: cmdSessionOrient refuses with
+// no_window when there is no MainWindow, and a headless test has none. That
+// refusal is why the block was extracted (ANTS-4896) rather than scraped.
+QJsonObject feedbackPendingFor(const QString &root) {
+    return RemoteControl::buildFeedbackPendingBlock(root);
+}
+
+}  // namespace
+
+// INV-5 — with the key set, feedback_pending scans the configured corpus.
+TEST(feedback_query_shared_root, Inv5PendingScansConfiguredRoot) {
+    ants_test::XdgGuard g;
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    sandboxConfig(g, tmp);
+    const Layout l = makeLayout(tmp);
+    ASSERT_TRUE(makeMaintainerProject(l.callerProj));
+    ASSERT_TRUE(writeFile(l.corpusFilePath, corpusFile()));
+    {
+        Config cfg;
+        cfg.setClaudeMcpFeedbackRoot(l.corpusDir);
+    }
+
+    const QJsonObject fp = feedbackPendingFor(l.callerProj);
+    ASSERT_FALSE(fp.isEmpty())
+        << "the maintainer gate is satisfied — the block must be present";
+
+    EXPECT_EQ(fp.value(QStringLiteral("files_scanned")).toInt(), 1)
+        << "the configured corpus holds one feedback file and must be read";
+    EXPECT_EQ(fp.value(QStringLiteral("files_with_pending")).toInt(), 1)
+        << "that file carries an un-triaged finding";
+
+    const QJsonArray files = fp.value(QStringLiteral("files")).toArray();
+    ASSERT_EQ(files.size(), 1);
+    EXPECT_EQ(files.at(0).toObject().value(QStringLiteral("file")).toString(),
+              QFileInfo(l.corpusFilePath).fileName());
+
+    // The corpus a reader should open is the declared one, not the parent that
+    // holds nothing.
+    EXPECT_EQ(fp.value(QStringLiteral("shared_root")).toString(), l.corpusDir);
+}
+
+// INV-6 — an empty scan says where it looked. files_scanned:0 with nothing
+// else is equally consistent with "no contributor input" and "the corpus is
+// not where I looked", and those two want opposite responses.
+TEST(feedback_query_shared_root, Inv6PendingNamesWhatItSearched) {
+    ants_test::XdgGuard g;
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    sandboxConfig(g, tmp);
+    const Layout l = makeLayout(tmp);
+    ASSERT_TRUE(makeMaintainerProject(l.callerProj));
+    ASSERT_TRUE(writeFile(l.corpusFilePath, corpusFile()));
+    // No key set: the corpus is unreachable, exactly as the reported repro.
+
+    const QJsonObject fp = feedbackPendingFor(l.callerProj);
+    ASSERT_FALSE(fp.isEmpty());
+    ASSERT_EQ(fp.value(QStringLiteral("files_scanned")).toInt(), 0)
+        << "with no key the corpus is out of reach — this is the state under "
+           "test, not a failure";
+
+    const QJsonArray searched = fp.value(QStringLiteral("searched")).toArray();
+    ASSERT_EQ(searched.size(), 1)
+        << "an empty scan must name the directory it read";
+    EXPECT_EQ(searched.at(0).toString(),
+              QFileInfo(l.callerProj).absoluteDir().absolutePath());
+}
+
+// INV-7 — the configured root ADDS, as it does on the query side (INV-3).
+// A project sitting beside its corpus must not lose it by setting the key,
+// and one directory scanned twice must not double-count a file.
+TEST(feedback_query_shared_root, Inv7PendingKeepsDerivedRootAndDedupes) {
+    ants_test::XdgGuard g;
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    sandboxConfig(g, tmp);
+    const Layout l = makeLayout(tmp);
+    ASSERT_TRUE(makeMaintainerProject(l.callerProj));
+
+    // One file in the DERIVED directory, one in the configured corpus.
+    const QString parent = QFileInfo(l.callerProj).absoluteDir().absolutePath();
+    const QString sibling =
+        QDir(parent).filePath(QStringLiteral("neighbour_Ants_MCP_Feedback.md"));
+    ASSERT_TRUE(writeFile(sibling, corpusFile()));
+    ASSERT_TRUE(writeFile(l.corpusFilePath, corpusFile()));
+    {
+        Config cfg;
+        cfg.setClaudeMcpFeedbackRoot(l.corpusDir);
+    }
+
+    const QJsonObject fp = feedbackPendingFor(l.callerProj);
+    ASSERT_FALSE(fp.isEmpty());
+    EXPECT_EQ(fp.value(QStringLiteral("files_scanned")).toInt(), 2)
+        << "both roots are scanned — configuring the key must not cost the "
+           "directory that was scanned before it existed";
+    EXPECT_EQ(fp.value(QStringLiteral("files_with_pending")).toInt(), 2);
+}
