@@ -62054,7 +62054,7 @@ Project's own grep-rule corpus + fixture coverage: **55 pass,
   Not a licence to add a global mutex to every verb: most verbs are reads
   and a blanket lock would cost every session to protect a rare write.
   Progress (2026-09-06): the design this item asked for is written, as
-  docs/decisions/0005-multi-session-orchestration.md, and the build
+  docs/decisions/0005-colony-multi-session-orchestration.md, and the build
   order is the new section "Multi-session orchestration"
   (ANTS-4906..4913). It answers the question this item said had to be
   decided explicitly -- one worktree each, not one shared working tree
@@ -62076,11 +62076,11 @@ Project's own grep-rule corpus + fixture coverage: **55 pass,
   Source: user-request-2026-09-05.
   Lanes: mcp, roadmap-store, claudeintegration.
 
-### Multi-session orchestration — one orchestrator, N workers (user-request 2026-09-06)
+### Colony — multi-session orchestration (user-request 2026-09-06)
 
 Run several Claude Code sessions on one project at once: an orchestrator deals
 work out, verifies it mechanically, and merges it back. Design and reasoning in
-docs/decisions/0005-multi-session-orchestration.md, which this section
+docs/decisions/0005-colony-multi-session-orchestration.md, which this section
 implements.
 
 The shape in one line: one git worktree per worker, workers write only code and
