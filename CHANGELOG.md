@@ -53,6 +53,16 @@ for security-relevant changes.
 
 ### Changed
 
+- **a refused absolute path now names the way to read that file** (ANTS-4899)
+  A file handed to a session from elsewhere on the machine was refused by
+  `file_outline` and `read_region` with nothing else to go on, so the
+  fallback was reading the whole thing raw — the one thing those tools exist
+  to avoid, and worst on the large documents where it matters. The boundary
+  has not moved: there was already a way to read such a file, and the
+  refusal now names it. Reads only, absolute paths only, and only for a file
+  that exists — a relative `../` is still a traversal and is still answered
+  with nothing.
+
 - **workspace_search now says what its enclosing-symbol annotation managed** (ANTS-4901)
   Asking for the annotation over files whose language has no outline
   returned every row unannotated and said nothing, which is

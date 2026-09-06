@@ -24,7 +24,14 @@ bool hasControlOrBackslash(const QString &s) {
 
 QJsonObject makeErr(const QString &toolName, const QString &paramName,
                     const QString &reason,
-                    const QString &absPath = QString()) {
+                    const QString &absPath = QString(),
+                    // ANTS-4899 — whether the CALLER wrote an absolute path.
+                    // `absPath` is the resolved form, so a relative `../`
+                    // traversal reaches here looking absolute; the two cases
+                    // get different answers and cannot be told apart
+                    // downstream. The existing ANTS-4421 contract test is what
+                    // caught this.
+                    bool callerWroteAbsolute = false) {
     QJsonObject o;
     o[QStringLiteral("ok")]    = false;
     o[QStringLiteral("error")] =
@@ -70,6 +77,41 @@ QJsonObject makeErr(const QString &toolName, const QString &paramName,
             "escape it. To search a DIFFERENT tree, set caller_cwd to that "
             "tree's root and confine the sweep with \"glob\".");
         return o;
+    }
+    // ANTS-4899 — an ABSOLUTE path to a file that exists, on a READ verb, is a
+    // handover rather than a traversal: the user (or another session on this
+    // machine) named a location, and there is a sanctioned route to it —
+    // caller_cwd at that file's own directory, verified 2026-09-06. Without
+    // the route the fallback is `cat` on an unfamiliar file, which is what
+    // outline and read_region exist to avoid, and it scales badly: a
+    // handed-over report of a few thousand lines enters context whole.
+    //
+    // Three conditions, and each is doing work. ABSOLUTE, because ANTS-4421's
+    // reasoning below holds for a relative `../` — a session already anchored
+    // here, reaching out, is attempting a traversal and gets no recipe.
+    // EXISTS, because the hint claims the file is readable from another root;
+    // for a path naming nothing that is false, and a hint would confirm an
+    // absence to a prober. And READ-ONLY verbs, because the boundary on a
+    // write is not a convenience and this must not read as one.
+    static const QStringList kReadOnlyVerbs = {
+        QStringLiteral("file_outline"), QStringLiteral("read_region"),
+        QStringLiteral("read_regions")};
+    if (!absPath.isEmpty() && callerWroteAbsolute
+        && kReadOnlyVerbs.contains(toolName)
+        && QFileInfo::exists(absPath)
+        && !QFileInfo(absPath).fileName().endsWith(
+               QStringLiteral("_Ants_MCP_Feedback.md"))) {
+        const QString dir = QFileInfo(absPath).absolutePath();
+        if (!dir.isEmpty()) {
+            o[QStringLiteral("hint")] = QStringLiteral(
+                "that file is outside this project, and the boundary stands. "
+                "If it was handed to you deliberately, read it as its own "
+                "project: re-issue with caller_cwd:\"%1\" and "
+                "path:\"%2\". Reads only — the write verbs keep the boundary "
+                "whatever caller_cwd says.")
+                    .arg(dir, QFileInfo(absPath).fileName());
+            return o;
+        }
     }
     if (!absPath.isEmpty()
         && QFileInfo(absPath).fileName().endsWith(
@@ -201,7 +243,8 @@ Check validatePath(const QString &rawPath,
                 && !isFeedbackFile(resolved, rootCanonical)) {
                 pc.bad = true;
                 pc.err = makeErr(toolName, paramName,
-                    QStringLiteral("escapes project root"), resolved);
+                    QStringLiteral("escapes project root"), resolved,
+                    QDir::isAbsolutePath(nfc));   // ANTS-4899
                 return pc;
             }
             pc.resolved = resolved;

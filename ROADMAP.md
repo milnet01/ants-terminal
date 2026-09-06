@@ -51765,7 +51765,7 @@ rather than refiled.
   Source: in-session-2026-09-06.
   Lanes: tests, remotecontrol.
 
-- 📋 [ANTS-4899] **file_outline and read_region refuse an absolute path outside the project root, with no opt-in, so a handed-over document can only be read whole.**
+- ✅ [ANTS-4899] **file_outline and read_region refuse an absolute path outside the project root, with no opt-in, so a handed-over document can only be read whole.**
   Reported by UT_Ants. The boundary is correct and the reporter does not
   ask for it to be dropped -- the gap is that there is no opt-in route, so
   the fallback is a raw read of an unfamiliar file, which is the case these
@@ -51780,6 +51780,25 @@ rather than refiled.
   convention. Suggested: a read-only sentinel for the corpus root, or a
   per-call opt-in for an absolute path. Reads only -- the write verbs keep
   the boundary as it is.
+  Resolved (2026-09-06), and NOT by the route the item proposed. Neither
+  sentinel nor per-call opt-in was needed: the capability already exists
+  and the reporter did not know it. Verified live -- file_outline
+  {caller_cwd:"/mnt/Games", path:"/mnt/Games/CLAUDE.md"} outlines
+  normally. So the boundary does not move at all; what was missing was
+  that the refusal never named the route, and the session fell back to
+  `cat`. The bad_path envelope now carries a hint naming the caller_cwd
+  to set and the bare filename to pass. Three conditions, each
+  load-bearing and each with its own invariant: ABSOLUTE only, because
+  ANTS-4421 deliberately withheld this from a relative `../` -- a
+  session already anchored here reaching out is attempting a traversal
+  and gets no recipe; EXISTS only, because the hint claims the file is
+  readable from another root and for a path naming nothing that is
+  false; and READ verbs only (file_outline, read_region, read_regions),
+  because the boundary on a write is not a convenience. ANTS-4421's own
+  contract test caught a real defect in the first attempt: `absPath` at
+  the error site is the RESOLVED path, so a relative traversal arrived
+  looking absolute and got the hint. The caller's rawness is now passed
+  explicitly. Suite 4221/4221.
   **Layman:** When another session hands you a file from elsewhere on the machine, the cheap tools for skimming it refuse, so you have to read the whole thing.
   Kind: enhancement.
   Source: UT_Ants feedback 2026-09-06.
@@ -51824,6 +51843,21 @@ rather than refiled.
   UT_Ants_MCP_Feedback.md rather than UT_Ants_Ants_MCP_Feedback.md) is
   not separately fixed: nothing is derived at all now on that path.
   Suite 4215/4215.
+  Gate (2026-09-06): rule 14's review-contract run on
+  docs/standards/mcp-feedback-files.md, genre standard, 3 lanes per
+  loop, 3 loops -- the cap. 26 verified, 26 fixed, 1 dismissed. Loop 2
+  was violent (4 of 9 on loop 1's own text, every one a fix that ADDED
+  an assertion); loop 3 was calm (1 of 8), so the document held more
+  defects than the cap held loops and shipping is right. Of the 26, only
+  9 fall inside the span that armed the gate: two thirds of the run was
+  an audit of untouched text, and it found the heaviest defects -- an
+  opening definition still naming the old corpus location, a v1 parser
+  rule stated unscoped in a v2 document, and a version-gate asymmetry
+  the file called intentional that ANTS-3621 had removed. Loop log at
+  docs/reviews/mcp-feedback-files-review-log.md. No further gate on this
+  text: a fresh run starts at loop 1 against a document whose last loops
+  were repairing each other. An authoring edit that changes direction
+  re-arms it normally.
   **Layman:** After the shared feedback folder moved down a level, the tools would have quietly started a new empty file instead of finding the real one.
   Kind: fix.
   Source: UT_Ants feedback 2026-09-06.

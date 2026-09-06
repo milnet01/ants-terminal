@@ -607,3 +607,82 @@ TEST(McpPathAnchor, Ants4569LaneEscapeNamesCallerCwd) {
         << "the hint must name how to confine the wider search; got: "
         << hint.toStdString();
 }
+
+// ---------------------------------------------------------------------------
+// ANTS-4899 — an ABSOLUTE path to a file elsewhere on the machine.
+//
+// Reported by UT_Ants: the user handed the session /mnt/Games/ut-ants-request.md
+// and file_outline refused it `bad_path`. The refusal is correct and stays —
+// what was missing is that there IS a sanctioned route, verified 2026-09-06:
+// pass caller_cwd as that file's own directory and the outline returns
+// normally. Without the hint the fallback is `cat` on an unfamiliar file,
+// which is exactly what outline and read_region exist to avoid, and it scales
+// badly: a handed-over report of a few thousand lines enters context whole.
+//
+// Deliberately NOT the relative case. ANTS-4421 withheld the hint from an
+// ordinary out-of-root path on the grounds that handing back a working
+// caller_cwd reads as an invitation to escape, and `../elsewhere/secrets.md`
+// is a traversal ATTEMPT — a session already anchored here, reaching out. An
+// absolute path is a session that was GIVEN a location. The test above locks
+// the first; this locks the second.
+
+TEST(McpPathAnchor, Ants4899AbsoluteReadPathNamesTheRoute) {
+    FeedbackFixture fx;
+    ASSERT_TRUE(fx.build());
+    ASSERT_TRUE(fx.write(QStringLiteral("elsewhere/deep/handover.md")));
+    const QString abs = QFileInfo(
+        fx.shared + QStringLiteral("/elsewhere/deep/handover.md"))
+                            .canonicalFilePath();
+    ASSERT_FALSE(abs.isEmpty());
+
+    const auto check = PathValidation::validatePath(
+        abs, fx.root, QStringLiteral("file_outline"));
+    ASSERT_TRUE(check.bad) << "the boundary itself must not move";
+    EXPECT_EQ(check.err.value(QStringLiteral("code")).toString(),
+              QStringLiteral("bad_path"));
+
+    const QString hint = check.err.value(QStringLiteral("hint")).toString();
+    ASSERT_FALSE(hint.isEmpty())
+        << "an absolute path to a real file is a handover, not a traversal — "
+           "bad_path alone sends the session to `cat`";
+    EXPECT_TRUE(hint.contains(QStringLiteral("caller_cwd")))
+        << "the hint must name the argument to change: " << hint.toStdString();
+    EXPECT_TRUE(hint.contains(QFileInfo(abs).absolutePath()))
+        << "and the directory to set it to: " << hint.toStdString();
+}
+
+// ANTS-4899 — read verbs only. A write verb refused for the same reason gets
+// no route: the boundary there is not a convenience, and this hint must not
+// read as one.
+TEST(McpPathAnchor, Ants4899NoRouteForWriteVerbs) {
+    FeedbackFixture fx;
+    ASSERT_TRUE(fx.build());
+    ASSERT_TRUE(fx.write(QStringLiteral("elsewhere/deep/handover.md")));
+    const QString abs = QFileInfo(
+        fx.shared + QStringLiteral("/elsewhere/deep/handover.md"))
+                            .canonicalFilePath();
+
+    for (const QString &verb : {QStringLiteral("apply_edits"),
+                                QStringLiteral("workspace_search")}) {
+        const auto check =
+            PathValidation::validatePath(abs, fx.root, verb);
+        ASSERT_TRUE(check.bad) << verb.toStdString();
+        EXPECT_FALSE(check.err.contains(QStringLiteral("hint")))
+            << verb.toStdString()
+            << " must not be handed a working caller_cwd";
+    }
+}
+
+// ANTS-4899 — a path that resolves to nothing gets no route either. The hint
+// says "this file is readable from a different root"; for a path naming no
+// file that is not true, and a hint would confirm an absence to a prober.
+TEST(McpPathAnchor, Ants4899NoRouteForAnAbsentFile) {
+    FeedbackFixture fx;
+    ASSERT_TRUE(fx.build());
+
+    const auto check = PathValidation::validatePath(
+        fx.shared + QStringLiteral("/elsewhere/deep/nothing-here.md"),
+        fx.root, QStringLiteral("read_region"));
+    ASSERT_TRUE(check.bad);
+    EXPECT_FALSE(check.err.contains(QStringLiteral("hint")));
+}
