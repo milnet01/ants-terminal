@@ -597,3 +597,96 @@ TEST(ProjectSettingsVerb, Ants4648DetectOmitsUncomputedCounts) {
     EXPECT_TRUE(walked.value("counts_computed").toBool());
     EXPECT_EQ(walked.value("total_source_count").toInt(), 2);
 }
+
+// ---------------------------------------------------------------------------
+// ANTS-4903 — op:"get", the read that is named like one.
+//
+// Reported by AI_Prompts. The verb took detect|init|set, and the standing
+// project-layout instruction asks a session to answer "is .ants/project.json
+// complete?" at orientation. The only route to that was op:"detect", whose
+// name and documented purpose are to PROPOSE settings for a project that may
+// have none — so every session paid a call it had to reason about before
+// trusting, and one reading `detect` as write-shaped skips the check the
+// instruction exists to force.
+//
+// The information was always reachable: detect echoes `declared`. This splits
+// the read from the proposal, the way the other verbs do.
+
+namespace {
+
+QJsonObject settingsCall(const QString &root, const QString &op) {
+    RemoteControl rc(nullptr);
+    QJsonObject req;
+    req[QStringLiteral("caller_cwd")] = root;
+    req[QStringLiteral("op")]         = op;
+    return rc.cmdProjectSettings(req).object();
+}
+
+}  // namespace
+
+// INV-1 — op:"get" answers the question, and carries no proposal.
+TEST(ProjectSettingsVerb, Ants4903GetIsTheRead) {
+    QTemporaryDir dir;
+    const QString root = canon(dir);
+    writeFile(root + "/src/a.c", cFile("a"));
+    writeFile(root + "/CHANGELOG.md", QStringLiteral("# c\n"));
+    writeFile(root + "/.ants/project.json",
+              QStringLiteral("{\n  \"source_roots\": [\"src\"],\n"
+                             "  \"changelog\": \"CHANGELOG.md\"\n}\n"));
+
+    const QJsonObject env = settingsCall(root, QStringLiteral("get"));
+    ASSERT_TRUE(env.value(QStringLiteral("ok")).toBool())
+        << QJsonDocument(env).toJson().toStdString();
+
+    const QJsonObject declared =
+        env.value(QStringLiteral("declared")).toObject();
+    EXPECT_TRUE(declared.contains(QStringLiteral("source_roots")));
+    EXPECT_TRUE(declared.contains(QStringLiteral("changelog")));
+
+    // The three fields a caller acts on ride the read unchanged.
+    EXPECT_TRUE(env.contains(QStringLiteral("undeclared"))
+                || env.contains(QStringLiteral("unavailable")))
+        << "the read must still say what is NOT declared";
+
+    // And the proposal does not: that is what makes this a read.
+    EXPECT_FALSE(env.contains(QStringLiteral("suggestion")))
+        << "op:get must not carry detect's proposal — the `suggestion` block "
+           "on an already-declared project is the noise this op removes";
+    EXPECT_EQ(env.value(QStringLiteral("op")).toString(),
+              QStringLiteral("get"))
+        << "the reply must name the op it answered";
+}
+
+// INV-2 — op:"get" writes nothing, on a project that has no settings file.
+// The op it replaces is read-only too; what changes is that the NAME says so.
+TEST(ProjectSettingsVerb, Ants4903GetCreatesNothing) {
+    QTemporaryDir dir;
+    const QString root = canon(dir);
+    writeFile(root + "/src/a.c", cFile("a"));
+
+    const QJsonObject env = settingsCall(root, QStringLiteral("get"));
+    ASSERT_TRUE(env.value(QStringLiteral("ok")).toBool());
+    EXPECT_FALSE(env.value(QStringLiteral("present")).toBool());
+    EXPECT_FALSE(QFileInfo::exists(root + "/.ants/project.json"))
+        << "a read must not create the file it reports on";
+    // Nothing declared, so every recognised key is accounted for on one of
+    // the two undeclared arms.
+    EXPECT_FALSE(env.contains(QStringLiteral("declared")));
+}
+
+// INV-3 — the refusal names every op, so a caller that guessed one wrong is
+// told what to reach for.
+TEST(ProjectSettingsVerb, Ants4903RefusalNamesEveryOp) {
+    QTemporaryDir dir;
+    const QString root = canon(dir);
+    writeFile(root + "/src/a.c", cFile("a"));
+
+    const QJsonObject env = settingsCall(root, QStringLiteral("fetch"));
+    EXPECT_FALSE(env.value(QStringLiteral("ok")).toBool());
+    EXPECT_EQ(env.value(QStringLiteral("code")).toString(),
+              QStringLiteral("bad_args"));
+    EXPECT_TRUE(env.value(QStringLiteral("error")).toString()
+                    .contains(QStringLiteral("get")))
+        << "the refusal must name the read op: "
+        << env.value(QStringLiteral("error")).toString().toStdString();
+}

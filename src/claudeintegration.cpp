@@ -6541,7 +6541,19 @@ void ClaudeIntegration::onMcpConnection() {
                 psTool["description"] = QStringLiteral(
                     "Detect a non-standard project layout and create/update the "
                     "repo-committed <root>/.ants/project.json (the ANTS-2160 "
-                    "reader's source). op:\"detect\" (read-only) → {present, "
+                    "reader's source). ANTS-4903 — op:\"get\" is the READ: "
+                    "{present, declared, undeclared[], unavailable[], "
+                    "declared_missing[], op:\"get\"} and NO `suggestion`. It "
+                    "is the op to reach for at orientation, when the question "
+                    "is \"what does this project declare, and what is still "
+                    "unset?\" — op:\"detect\" answers a different question "
+                    "(what SHOULD it declare), and routing the read through a "
+                    "verb whose name says it proposes made a caller reason "
+                    "about whether the call was safe before trusting it, with "
+                    "an inert `suggestion` block on an already-declared "
+                    "project as the reward. Both are read-only and share one "
+                    "implementation, so they cannot disagree about what is "
+                    "declared. op:\"detect\" (read-only) → {present, "
                     "suggestion:{source_roots?, reason, counts_computed, "
                     "default_source_count?, total_source_count?}} — suggests "
                     "source_roots when the "
@@ -6599,21 +6611,25 @@ void ClaudeIntegration::onMcpConnection() {
                     "op:\"detect\" cannot suggest it — a grammar is not a path "
                     "on disk. caller_cwd required.");
                 psTool["selection_hint"] = QStringLiteral(
-                    "Use op:detect (or read session_orient's "
-                    "project_settings_suggestion) when codebase_index comes back "
-                    "near-empty; op:init to accept the suggestion, op:set to "
-                    "declare source_roots/docs_dir/roadmap/etc. explicitly.");
+                    "Use op:get to read what this project declares; op:detect "
+                    "when codebase_index comes back near-empty; op:init to "
+                    "accept the suggestion, op:set to declare "
+                    "source_roots/docs_dir/roadmap explicitly.");
                 {
                     QJsonObject schema;
                     schema["type"] = "object";
                     schema["additionalProperties"] = false;
                     QJsonObject props;
                     QJsonObject opProp; opProp["type"] = "string";
-                        opProp["enum"] = QJsonArray{QStringLiteral("detect"),
+                        opProp["enum"] = QJsonArray{QStringLiteral("get"),
+                            QStringLiteral("detect"),
                             QStringLiteral("init"), QStringLiteral("set")};
                         opProp["description"] = QStringLiteral(
-                            "detect (preview, read-only) | init (create, no "
-                            "clobber) | set (create-or-update). Required.");
+                            "get (the READ: what IS declared, and what is "
+                            "still unset — no proposal, ANTS-4903) | detect "
+                            "(what SHOULD be declared; also read-only) | init "
+                            "(create, no clobber) | set (create-or-update). "
+                            "Required.");
                     const auto dirArrayProp = []() {
                         QJsonObject p; p["type"] = "array";
                         QJsonObject items; items["type"] = "string"; p["items"] = items;

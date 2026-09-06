@@ -51813,7 +51813,7 @@ rather than refiled.
   Source: UT_Ants feedback 2026-09-06.
   Lanes: remotecontrol, claude-integration.
 
-- 📋 [ANTS-4901] **workspace_search enclosing_symbol is a silent no-op where the language has no outline, and the envelope says nothing.**
+- ✅ [ANTS-4901] **workspace_search enclosing_symbol is a silent no-op where the language has no outline, and the envelope says nothing.**
   Reported by UT_MonsterHunt against a tree of UnrealScript (.uc) files.
   Every row came back with no `enclosing` key and the envelope carried no
   signal -- no annotated count, no unavailable list, nothing in
@@ -51830,6 +51830,22 @@ rather than refiled.
   ran" reads the second as the first. Suggested: an
   `enclosing_symbol_unavailable[]` naming the files whose language yielded
   no outline, or an `enclosing_annotated:<n>` count.
+  Resolved (2026-09-06) as filed. The envelope now carries
+  `enclosing_annotated` on every annotated search and
+  `enclosing_symbol_unavailable` when it applies, capped at 20 with
+  `enclosing_symbol_unavailable_count` beside it. Unavailability keys on
+  the outline's LANGUAGE rather than on its symbol count, which is what
+  keeps the reporter's two cases apart: a file that outlines and
+  declares nothing is ES-3, not an unoutlined language. Both keys ride
+  the opt-in, so a search that did not ask returns the envelope it
+  always did. Three behavioural invariants in
+  tests/features/workspace_search_enclosing_symbol, red before the fix
+  -- and worth noting for the next session there: the ANTS-2220 tests
+  were source-greps resting on a claim that cmdWorkspaceSearch needs a
+  live MainWindow, which it does not. The reporter's own tree is also
+  outlined now (ANTS-4902), so their measurement no longer reproduces
+  there; the signal remains for every other unoutlined language. Suite
+  4208/4208.
   **Layman:** A search option that labels each hit with the function it sits in does nothing for some file types, and never says so.
   Kind: enhancement.
   Source: UT_MonsterHunt feedback 2026-09-06.
@@ -51871,7 +51887,7 @@ rather than refiled.
   Source: UT_MonsterHunt feedback 2026-09-06.
   Lanes: remotecontrol, workspace.
 
-- 📋 [ANTS-4903] **project_settings has no read-only op, so asking what a project declared means calling the verb whose name says it proposes.**
+- ✅ [ANTS-4903] **project_settings has no read-only op, so asking what a project declared means calling the verb whose name says it proposes.**
   Reported by AI_Prompts. The verb takes detect|init|set. A session
   following the standing project-layout instruction at orientation has to
   reach for op:"detect", whose documented purpose is to PROPOSE settings
@@ -51888,6 +51904,18 @@ rather than refiled.
   declared_missing[] and nothing else, or say in the description that
   detect is the read and is side-effect-free. The reporter says the second
   would do; the first matches how the other verbs split read from write.
+  Resolved (2026-09-06) by the first of the reporter's two routes --
+  op:"get", which they judged the better of the pair and which matches
+  how the other verbs split read from write. It returns present /
+  declared / undeclared / unavailable / declared_missing plus an `op`
+  echo, and NO `suggestion`. It shares detect's branch rather than
+  copying it: two implementations of "what is declared" would drift. The
+  refusal now names all four ops, so a caller who guessed wrong is told
+  what to reach for. Three behavioural invariants in
+  tests/features/project_settings_verb, red before the fix. Two
+  contracts on the selection_hint caught the first two attempts and are
+  worth knowing before editing one: ANTS-1453 caps it at 240 characters,
+  and ANTS-1897 INV-7 requires it to start with "Use ". Suite 4211/4211.
   **Layman:** There is no plain "show me the settings" call, so you have to use the one that sounds like it changes them.
   Kind: enhancement.
   Source: AI_Prompts feedback 2026-09-06.

@@ -14,6 +14,15 @@ for security-relevant changes.
 
 ### Added
 
+- **project_settings op:"get" — the read, named like one** (ANTS-4903)
+  Asking what a project has declared meant calling `op:"detect"`, whose
+  name and documented purpose are to propose settings for a project that
+  may have none — so the answer arrived with an inert suggestion block
+  attached, and a session reading the op as write-shaped could skip the
+  check entirely. `op:"get"` returns the declaration and what is still
+  unset, and no proposal. Both are read-only and share one implementation,
+  so they cannot disagree about what is declared.
+
 - **UnrealScript (.uc) files are outlined, indexed and searchable for definitions** (ANTS-4902)
   `file_outline` reported `unknown` with no symbols for `.uc`, so a project
   whose whole runtime surface is UnrealScript had to read those files whole.

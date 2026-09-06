@@ -1382,9 +1382,10 @@ QJsonDocument RemoteControl::cmdProjectSettings(const QJsonObject &req) {
 
     const QString op = req.value(QStringLiteral("op")).toString();
     if (op != QLatin1String("detect") && op != QLatin1String("init")
-        && op != QLatin1String("set"))
+        && op != QLatin1String("set") && op != QLatin1String("get"))
         return err(QStringLiteral("bad_args"),
-                   QStringLiteral("project_settings: op must be detect|init|set"));
+                   QStringLiteral(
+                       "project_settings: op must be get|detect|init|set"));
 
     const QString settingsPath =
         rootCanonical + QStringLiteral("/.ants/project.json");
@@ -1401,8 +1402,18 @@ QJsonDocument RemoteControl::cmdProjectSettings(const QJsonObject &req) {
         QStringLiteral("docs_dir"), QStringLiteral("specs_dir"),
         QStringLiteral("roadmap"), QStringLiteral("changelog")};
 
-    // ---- detect (read-only) ----
-    if (op == QLatin1String("detect")) {
+    // ---- get / detect (read-only) ----
+    // ANTS-4903 — op:"get" is this branch WITHOUT the proposal. The two
+    // questions are different: detect asks "what should this project
+    // declare?", get asks "what does it declare?". Only the second is what
+    // the standing project-layout instruction sends a session to ask at
+    // orientation, and routing it through a verb whose name and documented
+    // purpose are to PROPOSE made every session reason about whether the call
+    // was safe — with a `suggestion` block on an already-declared project as
+    // its reward. Sharing the branch rather than copying it is deliberate:
+    // two implementations of "what is declared" would drift.
+    if (op == QLatin1String("detect") || op == QLatin1String("get")) {
+        const bool readOnlyGet = (op == QLatin1String("get"));
         const ProjectSettings::Suggestion sug =
             ProjectSettings::detect(rootCanonical);
         QJsonObject s;
@@ -1500,7 +1511,10 @@ QJsonDocument RemoteControl::cmdProjectSettings(const QJsonObject &req) {
         QJsonObject o;
         o[QStringLiteral("ok")]         = true;
         o[QStringLiteral("present")]    = sug.present;
-        o[QStringLiteral("suggestion")] = s;
+        // ANTS-4903 — name the op that answered, so a reply cannot be read as
+        // the other one's; and withhold the proposal on the read.
+        if (readOnlyGet) o[QStringLiteral("op")] = op;
+        else             o[QStringLiteral("suggestion")] = s;
         if (!declared.isEmpty())
             o[QStringLiteral("declared")] = declared;
         if (!undeclared.isEmpty())
