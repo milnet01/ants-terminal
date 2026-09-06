@@ -513,12 +513,30 @@ QJsonObject RemoteControl::docSymbolsBuildResponse(
 // ANTS-4373 — `whichOut` reports the path that was actually consulted. A
 // boolean says a check did not run; it does not say what to fix, so without
 // this every caller re-derives the cause.
+//
+// ANTS-4895 — a project's OWN standard comes first, within each layout.
+// `spec-format.md` § 3 states the intent: "A project that ships its own spec
+// standard is checked against *that*, not this." The original order put the
+// spec-format name first and defeated it wherever a project keeps a verbatim
+// MIRROR of the global standard beside its own — the mirror carries a
+// `required-sections` block, resolution below returns at the first block
+// found, and the project's own list is never read. That is not a rare shape:
+// a public repository cannot cite a path inside a private home directory, so
+// mirroring is how it makes the global standard readable at all.
+//
+// Measured on Ants Terminal before this change: `sections_source` came back
+// `docs/standards/spec-format.md`, and a whole-corpus run returned 3814
+// findings — mostly `missing_section` demanding the global's twelve numbered
+// sections from specs written to that project's own five.
+//
+// A project shipping no standard of its own is unaffected: its own name
+// misses and the mirror answers, one candidate later.
 static const QStringList &specLintStandardCandidates() {
     static const QStringList v = {
-        QStringLiteral("docs/standards/spec-format.md"),
         QStringLiteral("docs/standards/specs.md"),
-        QStringLiteral("standards/spec-format.md"),
+        QStringLiteral("docs/standards/spec-format.md"),
         QStringLiteral("standards/specs.md"),
+        QStringLiteral("standards/spec-format.md"),
     };
     return v;
 }

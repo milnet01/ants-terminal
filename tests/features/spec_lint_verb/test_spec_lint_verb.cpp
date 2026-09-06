@@ -258,8 +258,11 @@ TEST(SpecLintVerb, Ants4390And4373StandardResolutionAndSkipReporting) {
     const std::string rc = ants_test::slurpRemoteControl();
 
     // ANTS-4390 — both layouts are candidates.
+    // Presence only. Which of the two comes first is ANTS-4895's assertion
+    // below; this one said "must stay first" while testing nothing of the
+    // sort, so it passed against either order.
     EXPECT_TRUE(rc.find("\"docs/standards/spec-format.md\"") != std::string::npos)
-        << "the project layout must stay first in the resolution order";
+        << "the docs/standards layout must remain a candidate";
     EXPECT_TRUE(rc.find("\"standards/spec-format.md\"") != std::string::npos)
         << "the global standards repo's own layout must resolve too — it has "
            "no docs/ prefix because it IS the standards set";
@@ -273,6 +276,54 @@ TEST(SpecLintVerb, Ants4390And4373StandardResolutionAndSkipReporting) {
            "from a boolean nobody branches on";
     EXPECT_TRUE(rc.find("\"skipped_hint\"") != std::string::npos)
         << "a boolean says a check did not run; it does not say what to fix";
+}
+
+// ANTS-4895 — a project's OWN spec standard is tried before the mirrored
+// global one, because a project that ships its own is checked against that.
+// `spec-format.md` § 3 states exactly that intent, and the original order
+// defeated it for any project carrying a verbatim mirror of the global
+// standard beside its own: the mirror carries a `required-sections` block,
+// resolution stops at the first block found, and the project's own list is
+// never read.
+//
+// Measured on Ants Terminal before the reorder: `sections_source` came back
+// `docs/standards/spec-format.md` and a whole-corpus run returned 3814
+// findings, most of them `missing_section` demanding the global's twelve
+// numbered sections from specs written to this project's five.
+//
+// The assertion is ORDER, not presence. The sibling test above asserted
+// presence while its message said "must stay first", so it would have passed
+// against either order — which is why the defect survived.
+TEST(SpecLintVerb, Ants4895ProjectStandardResolvesBeforeTheMirror) {
+    const std::string rc = ants_test::slurpRemoteControl();
+
+    const size_t fn = rc.find("specLintStandardCandidates");
+    ASSERT_NE(fn, std::string::npos)
+        << "the candidate list must still be a named function to scope this "
+           "assertion to; a bare inline list would make the order untestable";
+
+    const size_t own    = rc.find("\"docs/standards/specs.md\"", fn);
+    const size_t mirror = rc.find("\"docs/standards/spec-format.md\"", fn);
+    ASSERT_NE(own, std::string::npos)
+        << "the project's own standard must be a candidate";
+    ASSERT_NE(mirror, std::string::npos)
+        << "the mirrored global standard must remain a candidate, for a "
+           "project that ships no standard of its own";
+
+    EXPECT_LT(own, mirror)
+        << "docs/standards/specs.md must be tried BEFORE "
+           "docs/standards/spec-format.md: resolution returns at the first "
+           "file carrying a required-sections block, so with the mirror first "
+           "a project's own standard is never consulted";
+
+    const size_t ownBare    = rc.find("\"standards/specs.md\"", fn);
+    const size_t mirrorBare = rc.find("\"standards/spec-format.md\"", fn);
+    ASSERT_NE(ownBare, std::string::npos);
+    ASSERT_NE(mirrorBare, std::string::npos);
+    EXPECT_LT(ownBare, mirrorBare)
+        << "the un-prefixed pair — how a repository that IS a standards set "
+           "checks its own specs — takes the same precedence, or one layout "
+           "answers the question differently from the other";
 }
 
 // ANTS-4393 — `surfaces_checked` has a DIFFERENT cause from
