@@ -1474,3 +1474,53 @@ TEST(SpecLint, Ants3684IdGapIsACandidateAndNamesTheLegitimateCause) {
     EXPECT_FALSE(f->autoFixable)
         << "renumbering is the one repair the standard forbids";
 }
+
+// --------------------------------------------------------------- ANTS-4894 --
+//
+// A spec wrote its invariants as `**INV-1.** <claim>` paragraphs with a
+// `*Test:*` line under each. spec-format.md § 3.7 defines the bullet form and
+// the GFM table; that shape is neither, so it parsed to ZERO — and every
+// per-invariant check then ran over an empty set while the envelope stayed
+// byte-comparable with one that checked thirteen.
+//
+// The document had been through its full review gate and shipped accepted with
+// every invariant invisible to every verb that reads one. The gate does not
+// read invariants mechanically; this does, and it reported clean.
+//
+// `invariantsFound` is the denominator that makes the two runs distinguishable.
+
+TEST(SpecLint, Ants4894ReportsZeroWhenNoInvariantFormIsRecognised) {
+    const QString unrecognised = QStringLiteral(
+        "# A spec\n"
+        "\n"
+        "## 5. Invariants\n"
+        "\n"
+        "**INV-1.** The thing holds.\n"
+        "*Test:* `test_thing`\n"
+        "\n"
+        "**INV-2.** The other thing holds.\n"
+        "*Test:* `test_other`\n");
+
+    const SpecLint::Result r = SpecLint::check(unrecognised, QStringLiteral("s.md"));
+    EXPECT_EQ(r.invariantsFound, 0)
+        << "the paragraph form is not one § 3.7 defines, so nothing should be "
+           "recognised — if this starts passing, the parser widened and the "
+           "case below is what still needs to hold";
+}
+
+TEST(SpecLint, Ants4894CountsTheInvariantsItDoesRecognise) {
+    // The same two claims in the § 3.7 bullet form, changing nothing else. The
+    // reporter's point is that these two runs were indistinguishable from the
+    // envelope; the count is what separates them.
+    const QString recognised = QStringLiteral(
+        "# A spec\n"
+        "\n"
+        "## 5. Invariants\n"
+        "\n"
+        "- **INV-1** — The thing holds. *Test:* `test_thing`\n"
+        "- **INV-2** — The other thing holds. *Test:* `test_other`\n");
+
+    const SpecLint::Result r = SpecLint::check(recognised, QStringLiteral("s.md"));
+    EXPECT_EQ(r.invariantsFound, 2)
+        << "the bullet form § 3.7 defines was not counted";
+}

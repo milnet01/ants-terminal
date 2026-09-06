@@ -452,6 +452,12 @@ Result check(const QString &text, const QString &relPath,
     for (auto it = parsedById.constBegin(); it != parsedById.constEnd(); ++it)
         allIds.insert(it.key());
 
+    // ANTS-4894 — the denominator every per-invariant check below runs over.
+    // Reported by the verb layer so a zero is visible: a document whose
+    // invariants are in a form § 3.7 does not define parses to none, and the
+    // envelope is otherwise identical to one that checked all of them.
+    r.invariantsFound = allIds.size();
+
     // ANTS-4107 — the checks below walk the ID STRINGS; only the gap scan
     // reduces them to numbers. Rebuilding `INV-%1` from an int silently dropped
     // every sub-lettered invariant from every check, so one could ship with no

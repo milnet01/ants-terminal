@@ -12,6 +12,16 @@ for security-relevant changes.
 
 ## [Unreleased]
 
+### Added
+
+- **spec_lint reports how many invariants it recognised, so a spec it read none of is visible** (ANTS-4894)
+  A spec whose invariants are written in a form the format standard does
+  not define parses to zero, every per-invariant check then runs over an
+  empty set, and the envelope was byte-comparable with one that checked
+  thirteen. `invariants_found` is emitted on every run — zero is the alarm
+  — and the hint that says `invariant_no_test` always runs now points at
+  it rather than reading as evidence that any invariants were seen.
+
 ### Fixed
 
 - **project_conventions no longer states a convention whose source document is not in your project** (ANTS-4460)

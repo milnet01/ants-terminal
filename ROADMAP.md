@@ -51348,6 +51348,38 @@ rather than refiled.
   Found only because an unrelated lookup ran invariant_check over three
   sibling specs and one returned 0 against 13 and 9. Nothing in the linting
   path would have surfaced it.
+  Progress (2026-09-06): the cheap half is SHIPPED, which the reporter
+  called sufficient on its own. The stronger half stays open.
+
+  `invariants_found` is on every spec_lint envelope — always, unlike
+  id_gaps_suppressed and sections_exempt_docs, because zero is the alarm
+  rather than noise. It is the union of the anchor scan and the parser,
+  which is the same set every per-invariant check runs over, so it is the
+  denominator rather than a second opinion. And the surfaces hint no longer
+  says invariant_no_test "always runs" full stop: it runs over whatever was
+  RECOGNISED, and the sentence now points at the count before that can be
+  read as evidence any were.
+
+  The reporter's core claim was confirmed rather than assumed: a case pins
+  that the `**INV-1.** <claim>` paragraph form recognises ZERO from a
+  section that looks well-formed, and its sibling pins that the § 3.7 bullet
+  form counts. Those two documents state the same two claims and were
+  indistinguishable from the envelope before this.
+
+  Honest about what the run proves: this is an observability addition, so
+  the cases could not fail against the old code — the field did not exist.
+  No behaviour changed and nothing was red-proven in the usual sense.
+
+  STILL OPEN, and deliberately not done here: a FINDING when a document has
+  the section the format designates for invariants and zero parse out of it.
+  It is mechanically decidable exactly as the reporter argues — the heading
+  is present, a grep for INV-[0-9] finds them, the parser recognised none —
+  but a new finding kind is a change to what spec_lint's own spec promises
+  (docs/specs/ANTS-3662.md), so it owes that amendment and its rule-14 gate.
+  That is a bigger unit than the field, and the field already makes the zero
+  visible.
+
+  Suite 4190/4190.
   **Layman:** A spec whose rules are written in a slightly different style is reported as fully checked when none of them were read at all.
   Kind: fix.
   Source: UT_Ants-feedback-2026-09-06.

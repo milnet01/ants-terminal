@@ -159,6 +159,18 @@ struct Result {
     // is indistinguishable from one that fired and found nothing.
     bool testCoverageChecked = false;
 
+    // ANTS-4894 — how many invariants this check RECOGNISED, the union of the
+    // anchor scan and the parser. A spec whose invariants are written in a form
+    // § 3.7 does not define (`**INV-1.** <claim>` paragraphs, say) parses to
+    // ZERO, and every per-invariant check then runs over an empty set: the
+    // envelope is byte-comparable with one that checked thirteen. Reported for
+    // the reason `sectionsChecked` is — a check that walks nothing is
+    // indistinguishable from one that walked everything cleanly.
+    //
+    // A COUNT rather than a flag: zero is the alarm, and a wrong non-zero
+    // number is visible where a `true` is not.
+    int  invariantsFound = 0;
+
     int  lineCount = 0;   // reported, NEVER emitted as a finding (INV-6)
     bool truncated = false;
 };

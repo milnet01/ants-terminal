@@ -705,6 +705,7 @@ QJsonDocument RemoteControl::cmdSpecLint(const QJsonObject &req) {
     // seeded from the set and not accumulated: a walk that read no document
     // still reports honestly whether resolution was on.
     int  surfacesResolved = 0;
+    int  invariantsFound  = 0;   // ANTS-4894
     bool surfacesChecked  = !opts.existingTestDirs.isEmpty();
     // ANTS-4737 — the walk scans EVERYTHING and the cap is applied at the end.
     //
@@ -747,6 +748,7 @@ QJsonDocument RemoteControl::cmdSpecLint(const QJsonObject &req) {
         idGapsSuppressed += r.idGapsSuppressed;
         if (r.sectionsExempt) ++sectionsExemptDocs;
         surfacesResolved += r.surfacesResolved;
+        invariantsFound  += r.invariantsFound;   // ANTS-4894
         for (DocFinding::Finding fnd : r.findings) {
             fnd.emissionIndex = findings.size();  // run-wide, not per-document
             findings.push_back(fnd);
@@ -776,6 +778,14 @@ QJsonDocument RemoteControl::cmdSpecLint(const QJsonObject &req) {
     // project that uses no exemptions is noise.
     if (sectionsExemptDocs > 0)
         out[QStringLiteral("sections_exempt_docs")] = sectionsExemptDocs;
+    // ANTS-4894 — ALWAYS, unlike the two rows above, because ZERO is the
+    // alarm. A spec whose invariants are written in a form § 3.7 does not
+    // define parses to none, every per-invariant check then runs over an empty
+    // set, and the envelope is otherwise byte-comparable with one that checked
+    // thirteen. Reported: a document that had been through its full review gate
+    // shipped accepted with every invariant invisible to every verb that reads
+    // one, and the linting path said nothing.
+    out[QStringLiteral("invariants_found")] = invariantsFound;
     return QJsonDocument(out);
 }
 
@@ -874,8 +884,10 @@ QJsonObject RemoteControl::specLintBuildResponse(
             "surface in that shape and no other, so a project laid out "
             "differently cannot turn the check on however many tests it has. "
             "Treat `findings:[]` as SILENT about test surfaces, not as a "
-            "pass. Note `invariant_no_test` is NOT gated by this and always "
-            "runs: an INV-N with no *Test:* clause is still reported. "
+            "pass. Note `invariant_no_test` is NOT gated by this and runs "
+            "over whatever invariants were RECOGNISED: an INV-N with no "
+            "*Test:* clause is still reported, but see `invariants_found` "
+            "before reading that as evidence any were (ANTS-4894). "
             "Tracked as ANTS-4393 / ANTS-4679.");
     }
     if (!testCoverageChecked) {
