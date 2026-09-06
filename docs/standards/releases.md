@@ -263,10 +263,11 @@ its coverage — so on 2026-08-14 this row became a bare pointer to
 `changelog-format.md`, replacing a copy that claimed a changelog is parsed.
 But that document owns the changelog **file's shape**, not the **release
 gate**: it correctly answers *nothing validates a `CHANGELOG.md` at rest*,
-and this rule is caught anyway, by the release tool refusing to bump. A bare
+and this rule is caught anyway, by `cut-release`'s changelog pre-flight —
+whose conditions the row above states, and this sentence must not restate. A bare
 pointer therefore told a reader nothing catches this when something does.
 Corrected the same day (ROADMAP CFG-0107); the rule that settles it —
-*point at the document that owns the machinery, not the subject* — is
+*point at the document that ANSWERS for the rule, never at machinery* — is
 [documentation.md](documentation.md) § 2.1's, stated there.
 
 ## Cold-eyes loop log

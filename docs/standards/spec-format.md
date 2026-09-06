@@ -147,9 +147,11 @@ system. The escape hatch above replaces it: bias toward building, correct
 cheaply when the call was wrong. `docs/decisions/ADR-0001` in the config
 repo carries the reasoning.
 
-A `spec.md` beside a feature test (`tests/features/<name>/`) is the right
+A test's own contract, wherever the project's pattern puts it, is the right
 home for a single-invariant behaviour; `docs/specs/` is for contracts that
-span subsystems.
+span subsystems. **The home used to be pinned to
+`tests/features/<name>/spec.md` and was widened on 2026-09-06 (CFG-0306)**,
+`write-test`'s scope having reached past that directory long before.
 
 ## 2. Files and naming
 
@@ -535,6 +537,9 @@ unverifiable is a wish wearing a table's clothes.
 
 Every spec runs through `review-contract` before implementation, looped until
 it converges **or reaches the skill's cap — both are clean exits** (§5.4).
+**A test's own contract is excluded**, by `CLAUDE.md` rule 14, which owns that
+gate's scope: it is a single-behaviour contract beside its test rather than a
+multi-file design document, and a self-read is sufficient.
 The skill owns the procedure — the four questions its lanes
 answer, the per-loop Q tally, the definition of convergence, and the
 post-fix blast-radius check.

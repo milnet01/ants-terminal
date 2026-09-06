@@ -280,7 +280,7 @@ mistake is a document being written as the wrong kind.
 
 | Kind | What it is for | So it must |
 |---|---|---|
-| **Contract** — design, spec, plan, ADR, standard | something is built *from* it or *under* it | give direction — built *from*, an implementer never invents something other code binds to; built *under*, a conformer can tell they have breached it |
+| **Contract** — design, spec, plan, ADR, standard, charter | something is built *from* it or *under* it | give direction — built *from*, an implementer never invents something other code binds to; built *under*, a conformer can tell they have breached it |
 | **Ledger** — roadmap, changelog | to record what is planned and what shipped | be true about the code, and stay true |
 | **Instructions** — README, INSTALL, CONTRIBUTING, runbook | so a reader can *do* the thing | work when followed literally, on a clean machine |
 | **Reference** — API docs, tables, glossaries | to be looked up, not read | resolve — every name in it must exist |
@@ -294,8 +294,9 @@ has failed completely. A README nobody has run is unverified however
 carefully it reads.
 
 **An ADR is a decision frozen in time** — context, choice, reasoning,
-cost. It is never edited to reflect a change of mind; a changed decision
-gets a new ADR that supersedes it.
+cost. **The freeze begins at Accepted**; while its Status is Draft it is
+corrected in place. Once Accepted it is never edited to reflect a change
+of mind; a changed decision gets a new ADR that supersedes it.
 
 Full reasoning: `../docs/decisions/ADR-0001-documentation-families.md`.
 
@@ -336,9 +337,9 @@ leading blockquote markers** — because
 these documents hard-wrap, so a phrase spanning a line break matches
 nowhere and the search returns a false all-clear; measured 2026-08-24, a
 search for one instruction reported no copy while copies existed. **The
-`pre-commit` hook's survivor class shares that blindness** — it matches a
-deleted line whole, so a differently-wrapped copy passes it (§ 9.0) — which
-is why this search is still owed after a clean hook run. **And the second copy is often not a sentence**: a
+`pre-commit` hook's survivor class shares that blindness** — its `Skips`
+cell (§ 9.0) says how — which is why this search is still owed after a
+clean hook run. **And the second copy is often not a sentence**: a
 table row, a trigger cell, a stop-condition bullet. It states the rule in
 a few words, shares no phrasing with the prose, and is what a fix to the
 prose leaves standing. So **search the subject too** — the tool name, the
@@ -367,7 +368,7 @@ transition rule restated in a second standard was narrowed there and left
 unscoped in its home, and the contradiction survived a full review loop
 because neither passage cited the other.
 
-**A "What checks this" row about machinery another document owns cites
+**A "What checks this" row about a rule another document ANSWERS FOR cites
 that document, never restates its coverage.** This is the same rule
 applied to the one place it kept being missed. **"Another document" means one
 that states its own coverage answer — a sibling standard, a format standard.
@@ -389,9 +390,13 @@ a pointer into a worse answer than the copy it replaced. A cold read the
 same day caught one:
 `releases.md`'s row for *a changelog entry exists for this version* was
 pointed at `changelog-format.md`, which owns the changelog's shape and
-correctly answers **nothing** — while the rule is in fact caught, by the
-release tool refusing to bump without a dated section. The pointer told a
-reader nothing checks this when something does. **Where the check lives in a
+correctly answers **nothing** — while the rule is in fact caught, by
+`cut-release`'s changelog pre-flight. The pointer told a reader nothing
+checks this when something does. **Name the check; leave its conditions to
+the cell that owns them** — `releases.md`'s row states which cases lift the
+*dated* half, and this sentence said the tool refuses outright until
+2026-09-06, which is the corrected-away form surviving in the section about
+surviving copies. **Where the check lives in a
 third place, name the check here**; point only when the cited document is
 where the answer actually is.
 
@@ -460,7 +465,7 @@ reads fine.
 
 **A count spelled as a word is still a count**, and this is the form that
 gets past the rule, because it does not look like a number: *both*
-defects, *three* reports, *two of this document's three* review loops.
+defects, *three* reports, *two of that spec's three* review loops.
 Enumerating a set
 that can grow is the tell, whatever it is spelled with. Write *these*,
 *each*, or the shape.
@@ -503,8 +508,9 @@ census, which is the pair the rule has to separate.
 ### 2.4 Show, don't claim
 
 An example beats a description. Show the command and its output rather
-than explaining what the command does. Code blocks are runnable as
-written.
+than explaining what the command does. **A block showing a command is
+runnable as written.** A block stating a structure rather than a
+command is §2.5's and runs nothing.
 
 ### 2.5 Say it as a structure, not a paragraph
 
@@ -554,9 +560,9 @@ fix pass, and `review-contract` 4a-min cites them there.
 **Writing is the other half, and there the bias runs the other way: if it
 fits in one paragraph, write one.** Not a target — a consequence. Every
 sentence is a claim that can be false, can contradict another sentence, and
-has to stay true as the subject moves. Measured across two review runs on
-this machine, fix passes added about twice what they removed, and the added
-text is where the next loop's findings landed. So the rule is *say it once,
+has to stay true as the subject moves. Measured across this machine's review
+runs, fix passes add more text than they remove, and the added text is where the
+next loop's findings land. So the rule is *say it once,
 as briefly as it can be said correctly*, and §2.8 above is what stops that
 becoming a licence to cut the subject itself.
 
@@ -608,11 +614,27 @@ Whether a rule holds is settled by whether something cheap catches it
 failing — not by how firmly it is written.
 
 **Every standard, reference and spec carries a `## What checks this`
-section**: one table, each rule against what catches a breach. **In a
-standard or a reference it is the last content section, with the loop log
-after it** — a loop log is a record rather than content. A reference is not
-gated (§9.1) and carries no loop log; the placement rule bites only where
-one exists. **A spec's order is
+section**: one table, each rule against what catches a breach.
+
+**A *reference* is §1's kind — looked up rather than read through: API
+docs, tables, glossaries.** §3 gives it no folder because it lives beside
+whatever it serves. **A skill's files are §1's Agent rules whatever their
+directory is called, so a `references/` file under `skills/` is owed no
+table.** **And a foundation document carrying no table records an
+unchecked rule in `foundation.md`'s instead** — that document states the
+arrangement and names which documents it covers.
+
+**In a standard or a reference the section is the last content one, with
+the loop log after it** — a loop log is a record rather than content. A
+reference is not gated (§9.1) and carries no loop log; the placement rule
+bites only where one exists.
+
+**A gated document owed no `## What checks this` table — a plan, ADR, design
+doc, charter or `CLAUDE.md` — puts its loop log last.** The table is
+required of standards, references and specs only, and the placement rule
+above uses it as its anchor. The log itself is owed by
+every gated document: the gate writes rows as the loops happen, so one
+with nowhere to write them cannot comply. **A spec's order is
 `spec-format.md` § 3's block**, which puts `Cross-doc impact` between the two
 and appends § 4's sections after the log. (A spec numbers it, per the
 note below. `spec-format.md` § 3.12 delegates **all** of the table's rules
@@ -640,10 +662,7 @@ they cover it between them, one plain named-check row names both**, because
 `Partial:` has no uncovered half to state.
 
 Name the check and say what kind it is — `` `check-doc-facts` `paths`, a
-path-resolution check `` — rather than either alone. **The rule read "name the
-kind of check rather than today's tool" until 2026-08-14 and this document's
-own table broke it twice**, naming `` `paths` `` and the `pre-commit` hook's
-survivor class; half the standards set modelled each answer. A bare kind is
+path-resolution check `` — rather than either alone. A bare kind is
 unactionable — nobody can run "a path-resolution check" — and a bare tool name
 goes stale when the tool is replaced, which is what the old rule was protecting
 and is why the kind is still required.
@@ -651,6 +670,19 @@ and is why the kind is still required.
 **The `Partial:` form is required, not permitted, wherever coverage is
 incomplete** — § 9.0 owns the reasoning, and a partial check recorded as a
 plain named check is the row that reads as coverage and is not.
+
+**It names every uncovered part the writer knows of, not one of them.** A
+cell naming one gap reads as naming the only gap — the same false coverage
+the form exists to prevent, one level down. Where the gaps cannot be
+enumerated, the cell says the list is not exhaustive rather than stopping
+after one. **Where they are enumerated somewhere else — a check's own
+documented scope, a hook's `Skips` column — cite that enumeration instead
+of copying it.** § 2.1 wins there, and a pointer a reader can follow names
+them all. What the form forbids is naming one and stopping.
+
+**Nothing checks this**: `what-checks-this` fires on a stated
+gap missing its `Partial:` prefix, so a cell that silently omits a second
+gap takes a valid form and passes.
 
 **A row is owed by every rule whose enforcement a reader would otherwise
 have to guess at** — not by every numbered section. A rule the surrounding
@@ -666,7 +698,10 @@ value is being trustable without re-deriving it.
 
 An unchecked rule recorded as unchecked gets fixed. An unchecked rule
 left silent reads as covered. **The `nothing` rows are the document's
-honest error budget — watch their share of the table fall.** The share,
+honest error budget — watch their share of the table fall.** **A `Partial:`
+row counts too, on the strength of its uncovered half** — otherwise a
+`nothing` row is converted to a `Partial:` by naming any partial catcher,
+and the share falls with no coverage gained. The share,
 never the raw count: splitting a blurred row into two is what the cell-form
 rule above requires, and it raises the count while moving nothing.
 
@@ -742,7 +777,7 @@ not by how important it is.
 |------|-----|----------|
 | `SHOUTING.md` | Documents an outside reader looks for **by name**, without being told they exist | `README.md`, `CHANGELOG.md`, `LICENSE`, `SECURITY.md`, `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`, `ROADMAP.md`, `CLAUDE.md` |
 | `lowercase-kebab.md` | Everything else — standards, guides, references, notes. Found by reading a directory or following a link | `coding.md`, `spec-format.md`, `roadmap-format.md`, `foundation.md` |
-| `<PREFIX>-NNNN-topic.md` | Specs, plans and ADRs. §3.1 owns the spec and plan form, where the ID is the roadmap item's; an ADR's is a sequence number, per §3's tree. The ID keeps its own casing | `CFG-0001-spec-authoring.md`, `ADR-0001-documentation-families.md` |
+| `<roadmap-ID>-<topic>.md`, and `ADR-NNNN-<topic>.md` for an ADR | Specs, plans and ADRs. §3.1 owns the spec and plan form, where the ID is the roadmap item's; an ADR's is a sequence number, per §3's tree. **The ID is whatever that project spells it** — the paragraph below this table says why a narrower form must not be checked for. The ID keeps its own casing | `CFG-0001-spec-authoring.md`, `ADR-0001-documentation-families.md` |
 
 **The uppercase set is closed, and it is closed on purpose.** It is the
 list the wider ecosystem already agreed on — GitHub renders those names
@@ -752,7 +787,9 @@ people's tools* expect it to, never because its author felt it mattered.
 That is what stops the set growing: "this is important" is not a reason,
 and it is the only reason anyone ever offers.
 
-**So a new document is lowercase unless it is on that list.** The
+**So a new document is lowercase unless it is on that list** — the rule is
+about the two rows above it, and a filename carrying an ID keeps that ID's
+own casing, an ADR's `ADR-NNNN-` included. The
 question to ask is not *is this a major document?* but *would someone
 look for this file without being told it exists?* A charter, a design
 note, a standard — all read because something pointed at them. All
@@ -814,7 +851,9 @@ content, and any screenshot link that does not resolve.
 
 Project-specific agent instructions, at the repo root: how to build, how
 to test, the module map, conventions particular to this codebase, and
-design decisions that are not visible from reading the code.
+**a pointer to the design decisions that are not visible from reading
+the code**. The decision itself lives in `docs/design.md` or an ADR (§3),
+never here — two homes for one decision is §2.1's own failure.
 
 **Only what is project-specific.** Machine-wide rules live in the global
 `CLAUDE.md`, and repeating them here creates a second home that will
@@ -905,13 +944,13 @@ elsewhere, citations to renamed paths, unresolved provenance ids, and
 **every** table's row shape — are this repository's own. **`check-doc-facts`
 has no general table check.** Its `what-checks-this` check takes the one
 table its own name gives it, so the hook's `table` class overlaps nothing.
-It read *"a blocking subset of that list"* until 2026-08-14 (ROADMAP
-CFG-0107), which invited the reverse error: treating a clean
-`check-doc-facts` run as covering the hook, and so dropping the survivor
-class, which the § 2.1 row below names as its only catcher across documents.
+**Do not read a clean `check-doc-facts` run as covering the hook**, which
+drops the survivor class — the § 2.1 row below names it as its only catcher
+across documents.
 A commit that passes **this repository's** hook has had **every blocking
-class the table below lists** run over it — and its links, quoted fragments,
-census counts and required sections not checked at all — **and, where the
+class the table below lists** run over it — and its anchors, quoted fragments,
+census counts and required sections not checked at all, its links only
+where one of the two overlaps above reaches them — **and, where the
 staged file is under `docs/` or `skeleton/files/`, not the classes whose
 `Skips` column excludes it either.** **A project scaffolded from the
 skeleton has fewer**: that copy carries `survivor` and a `link` class, for
@@ -939,8 +978,8 @@ required them.
 shipped in `skeleton/files/`) runs the decidable half in **blocking** classes
 only.
 
-**Read the table, not a paragraph.** Three loops of cold review each found an
-error in this section and few anywhere else, because classes described in prose
+**Read the table, not a paragraph.** Cold review keeps finding an error in
+this section and few anywhere else, because classes described in prose
 drift — one of them is always slightly wrong, and a different one each time.
 **That is also why no sentence here counts them.** A prose count beside a table
 is a second copy of the same fact (§2.1), and it goes stale the moment a class
@@ -950,13 +989,13 @@ has to show as an empty cell rather than as a sentence nobody wrote.
 
 | Class | Fires on | Skips | Reads |
 |---|---|---|---|
-| **path** | a `~/.claude/…` path anywhere in the file, or a markdown link target beginning `./` or `../`, that resolves neither from the repo root nor relative to the staged file's own directory. A shell brace set (`a/{x,y}.cpp`) is expanded and **every** member must resolve | **a staged file under `docs/` or `skeleton/files/`**; a line carrying a `YYYY-MM-DD` date; placeholders (`<…>`, `{{…}}`, `*`); a truncated path; **a backticked bare path with no `~/.claude/` prefix, which it never extracts at all** | the staged file |
+| **path** | a `~/.claude/…` path anywhere in the file, or a markdown link target beginning `./` or `../`, that resolves neither from the repo root nor relative to the staged file's own directory. A shell brace set (`a/{x,y}.cpp`) is expanded and **every** member must resolve | **a staged file under `docs/` or `skeleton/files/`**; **a path named on any line of the file that carries a `YYYY-MM-DD` date — the skip is on the PATH, not the line**, unlike the `section` row's, which is per-line; placeholders (`<…>`, `{{…}}`, `*`); a truncated path; **a backticked bare path with no `~/.claude/` prefix, which it never extracts at all** | the staged file, and **the working tree it resolves against** — `[ -e ]`, never the index, so an untracked file satisfies a path and a staged deletion does not fail one |
 | **survivor** | text of 45+ characters this change deletes that still exists in another tracked `*.md` | **a staged file under `docs/` or `skeleton/files/`**; and, on the search side, **`docs/`**, **`ROADMAP.md` and `CHANGELOG.md`**, which are record genres the search never enters; the file being edited; **a line the same change adds back to that same file, which a whole-file reflow does to every line**; a hit in a file the same commit *added* the text to; **a copy this change replaces with a POINTER — the same change adds, to the file the text left, a line naming the file the copy survives in**; **text this change moves to a record under `docs/`, where the same change also adds to the file the text left a line naming that record — both artefacts required, because the search never looks inside `docs/` and the destination is therefore never a hit**; hits across the `draft/`-versus-live boundary; fragments under 45 characters; **a copy wrapped differently from the deleted line, which the class matches whole-line** | the tracked tree, working copy — **not** `--cached` |
-| **allowed-tools** | a skill, command or agent file instructing an `mcp__ants__*` verb its own grant list omits. **It matches the verb's call SHAPE — backticked with arguments, or near a call word — and cannot see the SUBJECT**, so a sentence describing some OTHER artefact making the call fires identically; the remedy is to break the shape, since deciding the subject is not mechanical (CFG-0214) | **a staged file under `docs/` or `skeleton/files/`**; `review-agent-rules` itself; `*/templates/*`; **a file with no grant line at all**, absent meaning unrestricted, so nothing can be breached; a sentence that negates the call (*never*, *not*, *don't*, *cannot*, *without*, *no*) | the staged file, plus the grant list in its own or its skill's frontmatter |
+| **allowed-tools** | a skill, command or agent file instructing an `mcp__ants__*` verb its own grant list omits. **It matches the verb's call SHAPE — backticked with arguments, or near a call word — and cannot see the SUBJECT**, so a sentence describing some OTHER artefact making the call fires identically; the remedy is to break the shape, since deciding the subject is not mechanical (CFG-0214) | **a staged file under `docs/` or `skeleton/files/`**; `review-agent-rules` itself; `skills/*/templates/*` — **narrower than the `section` and `citation` rows' `*/templates/*`**, so a command or agent template IS checked; **a file with no grant line at all**, absent meaning unrestricted, so nothing can be breached; a sentence that negates the call (*never*, *not*, *don't*, *cannot*, *without*, *no*) | the staged file, plus the grant list in its own or its skill's frontmatter — **and every `skills/*/SKILL.md` and `commands/*.md` grant line, which is where the verb universe comes from.** A verb no grant list anywhere names is invisible to the class |
 | **citation** | a document citing a path this change renames or deletes, where no candidate resolves | **`docs/` and `draft/`**, and **`ROADMAP.md` and `CHANGELOG.md`**, which are record genres; removed paths under `*/templates/`; the removed file itself | the tracked index, `--cached` — **a staged document is searched like any other**, subject to the `Skips` column; the removed file is skipped on top of it. The class exists for documents *not* in the commit, which is its reason rather than its scope |
 | **section** | `` `<doc>.md` § N.N `` naming a heading that document does not have | **a staged file under `docs/` or `skeleton/files/`**; a line carrying a `YYYY-MM-DD` date; `*/templates/*`; a document name resolving to zero files or to several; a letter-suffixed id (`§ 1a`), which names an item rather than a heading | the staged file, plus the tracked `*.md` list |
 | **roadmap-id** | a **parenthesised** provenance marker — `(CFG-0108)`, `(ROADMAP CFG-0108)` — whose id has no bullet in `ROADMAP.md`. The prefix is sniffed from the file, never hardcoded | a **bare** id in prose, which it never extracts at all; `ROADMAP.md` itself; a checkout with no `ROADMAP.md` or no ids, where it skips silently | the staged file, plus the bullet ids in `ROADMAP.md` |
-| **table** | a table row whose unescaped-pipe count differs from its header row's | anything inside a fence, which is a specimen; an escaped `\|`, masked before counting; a `\|` line that is not part of a table | the staged file only |
+| **table** | a table row whose unescaped-pipe count differs from its header row's | anything inside a fence, which is a specimen; an escaped `\|`, masked before counting; a `\|` line that is not part of a table; **the delimiter row**, skipped unconditionally, so a delimiter whose count differs from its header's is not reported | the staged file only |
 
 **Two different things are both called a `docs/` skip, and conflating them
 misreads the table.** A class either declines to *run on* a staged file, or
@@ -973,7 +1012,7 @@ runs and declines to *search inside* a directory.
   staged-file skip as well; `citation` runs before that loop and carries
   neither it nor a `skeleton/files/` exclusion of any kind.
 
-Two independent cold readers landed here in one loop.
+Independent cold readers have landed here more than once.
 
 **The `docs/` exclusions are the largest hole here, and not one a blocking
 check can close.** Between them the survivor and citation classes never look
@@ -1005,10 +1044,13 @@ documentation one. `citation` (CFG-0067), `section` (CFG-0023), `roadmap-id`
 and `table` (both CFG-0129) are out for CFG-0028's reason: each is measured
 here and nowhere else, and an unmeasured check shipped to every new project is
 the warning channel in a different costume. **`path` is absent too**, and it
-is the one with a substitute rather than a gap — the skeleton ships the weaker
-`link` class in its place.
+is the one with a substitute rather than a gap — the skeleton ships a
+*different* `link` class in its place, wider in one direction and narrower
+in the other.
 
-**The skeleton copy carries `survivor` and a `link` class of its own.** The
+**The skeleton copy carries a `link` class of its own, and a `survivor` far
+narrower than the row above** — read that row as this repository's hook, not
+as a scaffolded project's. The
 `link` class fires on a markdown link target that does not resolve. **It is
 not the `path` class above**, and the paragraph three above says how the two
 differ.
@@ -1018,15 +1060,17 @@ cover part of a class, and is worth shipping when it does.** Only two shapes
 are decidable — a call written with its arguments, and a call word shortly
 before the verb — so it takes those and leaves the rest to
 `review-agent-rules`. **The price of a partial check is saying which part**,
-in the place a reader would otherwise assume coverage; that is what the
-`Skips` column is for.
+in the place a reader would otherwise assume coverage — for this class the
+`Fires on` cell, which is where the shape limit sits, rather than `Skips`.
 
 **`section` shipped on precision rather than yield**, which is the opposite of
 the evidence behind `allowed-tools` and `citation`: it caught nothing on the
 history it was replayed over. A dead `§` pointer renders perfectly and fails
 only for the reader who follows it, so a class that never fires is still worth
 its cost. Each class's own comment in `.githooks/pre-commit` records its
-measurement, at the point it is implemented.
+measurement. **The earlier classes are introduced in the file header and
+the later ones in place**, so a maintainer looking for a class's
+enumeration checks the header before concluding it has none.
 
 **The table above is the home of the class list and of the `Fires` column. The
 hook owns the exclusion enumeration — the `Skips` and `Reads` properties — as
@@ -1060,10 +1104,10 @@ expect: a header claiming to own a scope drifts from it, and the drift shows up
 as an undercount.
 
 **There is no advisory channel, and that absence is the more important half
-of the hook.** Measured 2026-08-14 over the tracked documents: 48 hits, none
+of the hook.** Measured 2026-08-11 over the tracked documents: 48 hits, none
 actionable, the dominant class a threshold rather than a population, four of
-them §2.3's own examples of the rule. It fired on most commits made on
-2026-08-14 and not one was acted on — while sharing a channel with the path
+them §2.3's own examples of the rule. It fired on most commits made that
+day and not one was acted on — while sharing a channel with the path
 check, which works. **A warning nobody acts on is worse than no check**,
 because it teaches its reader to skip the channel both arrive on. A check
 added here blocks, or it does not go in.
@@ -1103,13 +1147,19 @@ and for no other.
 
 ### 9.1 The gate
 
-**Every contract document runs through a cold read before the work it
-governs starts** — a spec, plan, ADR, design doc, standard or `CLAUDE.md`,
+**A gated document gets a cold read before the work it governs starts** —
+a spec, plan, ADR, design doc, standard, charter or `CLAUDE.md`,
 reviewed
 by someone with no memory of writing it, looped until a pass finds
 nothing that changes what gets built — **or until the review instrument's
 loop cap binds**, at which point the remaining findings are filed and the
 document ships. `review-contract` owns the cap and its numbers.
+
+**`CLAUDE.md` rule 14 owns when the gate fires and what it exempts** — the
+trigger is a change of direction rather than an edit, and the scope
+exclusions are its list. **So an inert edit to a gated document owes no
+run**, whatever the sentence above reads like on its own. This section
+states what a run must produce, never when one is owed.
 
 **A `CLAUDE.md` is Agent rules by §1's kind and is gated all the same** —
 something is built under it. Read as one document it is `review-contract`'s;
@@ -1124,8 +1174,9 @@ construction. Reviewing afterwards costs both.
 The requirements this standard adds:
 
 - **The loop log is written as the loops happen**, in a `## Cold-eyes
-  loop log` section, after the What-checks-this table **in a standard or a
-  reference; a spec's position is §2.9's**. Back-filling destroys
+  loop log` section, after the What-checks-this table **in a standard; a
+  spec's position is §2.9's, and a gated document with no such table puts
+  the log last**. Back-filling destroys
   the audit trail, which is the only evidence the review was real.
   **Where that section names a record, the rows are written there and the
   section keeps the heading and a one-line pointer.** These records live
@@ -1212,7 +1263,8 @@ defect is repaired by hand, outside every gate — §2.8's length rule and
   described to a reader, not a spec or plan written for a builder
   (§2.7).
 - ❌ A screenshot of an interface that no longer exists.
-- ❌ Placeholder text left in.
+- ❌ A stray `TODO` or an unfilled placeholder in a shipped document. A
+  template's own placeholders are its content (§4).
 - ❌ A rule with nothing checking it and no row admitting so.
 - ❌ A plan that argues for its approach.
 - ❌ Repeating a global rule in a project document.
@@ -1224,18 +1276,18 @@ defect is repaired by hand, outside every gate — §2.8's length rule and
 | §2.3 no `path:line` citations | **`Partial:`** `check-doc-facts` `paths`, a path-resolution check, flags a `path:line` that fails to resolve, which catches it incidentally rather than as a style breach — a `path:line` whose file half resolves passes. **Nothing** catches the prose form, "around line 786", which §2.3 says outright |
 | §2.2 a quotation names its source | **`Partial:`** `check-doc-facts` `quotes`, a quotation-drift check, re-verifies an *attributed* quotation when its source changes. **Nothing** catches an unattributed one, which is the form the rule exists to prevent — that is why the rule is written as an authoring obligation |
 | §2.3 no census counts | **`Partial:`** `check-doc-facts` `counts`, a census-count check, which names §2.3 as its own authority; the `pre-commit` hook has no count check of its own (§9.0), so a census reaches a commit uncaught. Added 2026-08-20; §2.3's larger half had no row while its `path:line` half did |
-| §2.9 cell forms | **`Partial:`** `check-doc-facts` `what-checks-this`, a cell-form and name-resolution check over this table. **Nothing** resolves a sub-check name inside `check-doc-facts` (§9.0), which is most of what these cells name |
-| §2.2 a new value lists what constrains its set | **nothing** — the limits it inherits are stated in another section, and no check reads one section against another |
+| §2.9 cell forms | **`Partial:`** `check-doc-facts` `what-checks-this`, a cell-form and name-resolution check over this table. **Nothing** resolves a sub-check name inside `check-doc-facts` (§9.0), which is most of what these cells name, and **nothing catches a `Partial:` cell naming one gap where the writer knows of two** — the form is valid either way |
+| §2.2 a new value lists what constrains its set | **nothing** — the limits it inherits are stated in another section, and the one check that does read section against section, `enumeration-parity`, takes two enumerations of one set, which these are not |
 | §2.2 cited symbols exist | **`Partial:`** `check-doc-facts` `symbols`, a symbol-resolution check against current source, which emits CANDIDATES — only *does not resolve* is deterministic. **Nothing** decides which candidate is a defect |
-| §2.9 required sections present | **`Partial:`** `check-doc-facts` `sections`, a required-section check against the format standard, **for a spec only** — it reads a spec's machine-readable block, and a standard's or reference's requirement is prose, which `mandated-section` reaches from the document side and `section-exists` from the rule side. Both test PRESENCE; **nothing** checks that a mandated section is in the mandated PLACE, though §2.9 requires `## What checks this` last and the loop log after it (added 2026-08-20, when §9.4 credited a position test that does not exist). This row named `structure` until 2026-08-17; that check is fences, id gaps and parse |
-| §9.1 loop log present, tally balances | **`Partial:`** `check-doc-facts` `loop-log`, a tally check over the log's own rows, plus a required-section check for the log's presence — `mandated-section` where the requirement is prose, `sections` in a spec. The `loop-log` check does not test presence; this row credited it with both until 2026-08-17. It credited `sections` alone until 2026-08-20, and `sections` skips a standard, whose requirement is prose — which is exactly what `mandated-section` exists for. **The tally is caught by nothing once the rows live in a record** — `loop-log` reads the pointing section, finds no rows and passes; and a row written into that section instead reads as conforming to the sentence before it, with no check comparing the two |
+| §2.9 required sections present | **`Partial:`** `check-doc-facts` `sections`, a required-section check against the format standard, **for a spec only** — it reads a spec's machine-readable block, and a standard's or reference's requirement is prose, which `mandated-section` reaches from the document side and `section-exists` from the rule side. Both test PRESENCE; **nothing** checks that a mandated section is in the mandated PLACE, though §2.9 requires `## What checks this` last and the loop log after it |
+| §9.1 loop log present, tally balances | **`Partial:`** `check-doc-facts` `loop-log`, a tally check over the log's own rows, plus a required-section check for the log's presence — `mandated-section` where the requirement is prose, `sections` in a spec. The `loop-log` check does not test presence, and `sections` skips a standard, whose requirement is prose — which is what `mandated-section` exists for. **Once the rows live in a record the tally is caught only by a `loop-log` run pointed at the record itself** — a run pointed at this document reads the pointing section, finds no rows and passes; and a row written into that section instead reads as conforming to the sentence before it, with no check comparing the two |
 | §9.1 a landed row is not edited | **nothing** — the edit shows in the commit diff, and no check reads it |
-| §9.0 checks run before done | **`Partial:`** the `pre-commit` hook blocks this repository's classes at commit time — after *done*, not before it, which is what the rule asks. **Nothing** catches a document called done without `check-doc-facts` having run |
-| `roadmap-format.md` / `changelog-format.md` parse | see each of those documents' own § What checks this. §4 routes to them and states no parsing rule of its own, so it states no *coverage* of its own either (§2.1). This row read "the parsers that read them" until 2026-08-14, where `changelog-format.md` says nothing validates a `CHANGELOG.md` at rest |
+| §9.0 checks run before done | **`Partial:`** the `pre-commit` hook, a staged-commit blocking check, blocks this repository's classes at commit time — after *done*, not before it, which is what the rule asks. **Nothing** catches a document called done without `check-doc-facts` having run |
+| `roadmap-format.md` / `changelog-format.md` parse | see each of those documents' own § What checks this. §4 routes to them and states no parsing rule of its own, so it states no *coverage* of its own either (§2.1). |
 | §2.6 absolute dates | **nothing** — both forms are greppable, so this is a check worth adding |
 | §3.1 / §3.3 filename form | **nothing** — the ID prefix and the `SHOUTING.md` / `lowercase-kebab.md` split are both greppable, so this is a check worth adding |
-| §2.1 one fact one home | **`Partial:`** the `pre-commit` hook's survivor class (§9.0), whose `Skips` cell is the enumeration and is not restated here — so it catches the copy you *edited past*, only at the moment you edit it, **never a copy living in a spec, plan or ADR**, and **never a copy wrapped differently from the deleted line**, which the class matches whole-line. `check-doc-facts` `enumeration-parity`, an enumeration-parity check, covers a second slice — two lists of the same set inside ONE document — as CANDIDATES rather than findings. Nothing finds a rule sitting in two documents that nobody is touching: a cold read sees "these two passages disagree" within one document only, and **a rule copied into a second document is invisible to a single-document review** unless that document is in the review's packet. `review-contract-set` reaches that half only once the two copies **disagree** — its Q1 asks whether two documents contradict each other, so a faithful copy is caught by **nothing**, which is what § 9.4 states. And it is a review, not a check, so this row stays `Partial:` |
-| §2.2 a pointer says what you attribute to it | **`Partial:`** the `pre-commit` hook's section class (§9.0), a section-resolution check over a prose `§` pointer — and **nothing** tests whether the named section carries the rule attributed to it, which §2.2 says outright is the half that matters. A scaffolded project has neither: its skeleton omits the class |
+| §2.1 one fact one home | **`Partial:`** the `pre-commit` hook's survivor class (§9.0), a deleted-text-survival check. **The hook owns its exclusions and §9.0's `Skips` cell restates them; this row repeats neither.** It catches the copy you *edited past*, and only at the moment you edit it. `check-doc-facts` `enumeration-parity`, an enumeration-parity check, covers a second slice — two lists of the same set inside ONE document — as CANDIDATES rather than findings. Nothing finds a rule sitting in two documents that nobody is touching: a cold read sees "these two passages disagree" within one document only, and **a rule copied into a second document is invisible to a single-document review** unless that document is in the review's packet. `review-contract-set` reaches that half only once the two copies **disagree** — its Q1 asks whether two documents contradict each other, so a faithful copy is caught by **nothing**, which is what § 9.4 states. And it is a review, not a check, so this row stays `Partial:` |
+| §2.2 a pointer says what you attribute to it | **`Partial:`** the `pre-commit` hook's section class (§9.0), a section-resolution check over a prose `§` pointer, **and only the backticked document-qualified form** — a bare `§ N.N`, which is how §2.2 illustrates the rule, resolves against nothing. **Nothing** tests whether the named section carries the rule attributed to it either, which §2.2 says outright is the half that matters. A scaffolded project has neither: its skeleton omits the class |
 | §2.2 the claim is *true* | **nothing** — resolution proves a symbol exists, not that the description of it is right |
 | §2.7 nothing documented before it ships | **nothing** — forward-reference versus defect is a judgement |
 | §2.8 length | **nothing** — an earned length cannot be told from an unearned one, which is the whole of the rule. |
@@ -1247,7 +1299,8 @@ defect is repaired by hand, outside every gate — §2.8's length rule and
 | §9.3 repeated classes become checks | **nothing** — a habit, evidenced only by the `nothing` rows' *share* of the table falling over time (§2.9, which rules out the raw count by name) |
 | §9.4 prose is outside every review | **nothing mechanical** — `review-skill` asks of each rule it enumerates what that rule must not fire on, so a skill that OMITS the exclusion offers it no rule to fire on. A prose finding raised inside a run is caught only by the parent dismissing it case by case, which is a review pass |
 
-The `nothing` rows are this standard's honest error budget. **§2.2's *the
+The `nothing` and `Partial:` rows are this standard's honest error budget
+(§2.9). **§2.2's *the
 claim is true* row is the largest hole in it**: a checker can prove that
 `derive_key()` exists, and nothing can prove that what this document
 says about it is true.
