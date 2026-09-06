@@ -14,6 +14,16 @@ for security-relevant changes.
 
 ### Fixed
 
+- **project_conventions no longer states a convention whose source document is not in your project** (ANTS-4460)
+  The rule table is curated and cites Ants Terminal's own documents, so on
+  another project it stated this project's conventions as that project's —
+  one report was told to write a `tests/features/<name>/` conformance test
+  by a project that keeps unit tests elsewhere. A rule whose cited document
+  is not present under the caller's root is now dropped and listed in
+  `conventions_dropped`, with a `warning` naming the missing documents and
+  `sources_resolved` saying how many were found. The only previous signal
+  was a per-row `exists:false`, which `compact:true` drops by design.
+
 - **spec_log op:append_loop refuses instead of writing an empty row and discarding the caller's cells** (ANTS-4886)
   The verb finds the log by its `## Cold-eyes loop log` heading. Against a
   file whose table sat under a different heading it fell through to the

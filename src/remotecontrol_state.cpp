@@ -3351,28 +3351,82 @@ QJsonDocument RemoteControl::cmdProjectConventions(const QJsonObject &req) {
     result["ok"]        = true;
     result["task_type"] = taskType;
 
+    // ANTS-4460 — the table above is CURATED: it reads nothing from the
+    // caller's project and its rows cite Ants-specific paths, so on another
+    // project it is THIS project's conventions wearing that project's root.
+    // A reported run was handed five confident rules, every cited file
+    // absent, one of them prescribing a tests/features/<name>/ conformance
+    // test to a project that puts unit tests elsewhere and labels them
+    // differently. Wrong directory, wrong target shape, wrong ctest label.
+    //
+    // A rule whose source is not under this root is not this project's rule,
+    // so it is DROPPED rather than stated — and named in conventions_dropped
+    // so the omission is visible rather than silent.
+    //
+    // Source existence is the whole test, and it subsumes reading
+    // .ants/project.json for the same answer: the conformance-test rule cites
+    // tests/features/README.md, which a project not organised that way does
+    // not have. Fewer moving parts, and it needs no declaration.
+    auto sourceExists = [&rootCanonical](const QString &rel) {
+        const QFileInfo fi(rootCanonical + QLatin1Char('/') + rel);
+        return fi.exists() && fi.isFile();
+    };
+
     QJsonArray cArr;
+    QJsonArray droppedArr;
     QStringList srcOrder;
+    QStringList missingSrc;
     for (const RS &rs : conv) {
+        if (!srcOrder.contains(rs.second)) srcOrder.append(rs.second);
         QJsonObject e;
         e["rule"]   = rs.first;
         e["source"] = rs.second;
-        cArr.append(e);
-        if (!srcOrder.contains(rs.second)) srcOrder.append(rs.second);
+        if (sourceExists(rs.second)) {
+            cArr.append(e);
+        } else {
+            droppedArr.append(e);
+            if (!missingSrc.contains(rs.second)) missingSrc.append(rs.second);
+        }
     }
     result["conventions"]       = cArr;
     result["conventions_count"] = cArr.size();
 
     QJsonArray sArr;
+    int resolved = 0;
     for (const QString &s : srcOrder) {
         QJsonObject e;
         e["path"] = s;
-        const QFileInfo fi(rootCanonical + QLatin1Char('/') + s);
-        e["exists"] = fi.exists() && fi.isFile();
+        const bool ex = sourceExists(s);
+        e["exists"] = ex;
+        if (ex) ++resolved;
         sArr.append(e);
     }
     result["sources"]       = sArr;
     result["sources_count"] = sArr.size();
+    // What was READ, not what was wrong — the shape spec_lint's
+    // sections_checked / surfaces_checked are readable for.
+    result["sources_resolved"] = resolved;
+
+    if (!droppedArr.isEmpty()) {
+        result["conventions_dropped"] = droppedArr;
+        // A non-empty STRING, deliberately: compact:true drops a false bool
+        // by design (ANTS-2091), which is exactly how `sources[].exists`
+        // false became invisible and left the answer with no hedge at all.
+        result["warning"] = QStringLiteral(
+            "%1 of %2 curated conventions were dropped because the document "
+            "each cites is not present under this project root (%3). The "
+            "table is this tool's own, not read from your project.")
+            .arg(droppedArr.size())
+            .arg(droppedArr.size() + cArr.size())
+            .arg(missingSrc.join(QStringLiteral(", ")));
+    }
+    if (resolved == 0) {
+        // The total-miss case: nothing here came from this project, and a
+        // caller that reads conventions[] before sources[] must not be able
+        // to miss that. Empty conventions[] says it too, but only to a caller
+        // who thought to ask why it was empty.
+        result["conventions_are_defaults"] = true;
+    }
     return QJsonDocument(result);
 }
 

@@ -2,10 +2,17 @@
 // `project_conventions` MCP tool. See spec.md and
 // docs/specs/ANTS-1307.md.
 //
-// Wiring is locked by source-grep (project_conventions resolves the
-// root via resolveRootCanonical(m_main, req), so it is not GUI-free
-// exercisable). INV-5 is a real behavioural drift guard: every
-// `source` path baked into the curated table must exist on disk.
+// Wiring is locked by source-grep. INV-5 is a real behavioural drift
+// guard: every `source` path baked into the curated table must exist on
+// disk.
+//
+// ANTS-4460 — this file used to say the verb "is not GUI-free exercisable"
+// because it resolves through resolveRootCanonical(m_main, req). That is
+// stale: with a non-empty caller_cwd the two-arg form returns rr.cwd and
+// never reaches the MainWindow, so the verb runs against a synthetic root
+// with m_main null. The claim is what kept the answer itself untested,
+// which is how a curated table came to be served to projects it does not
+// describe.
 
 #include "../../_support/expect.h"
 
@@ -15,6 +22,16 @@
 
 #include <gtest/gtest.h>
 #include "../../_support/srcgrep.h"
+
+#include "remotecontrol.h"
+
+#include <QDir>
+#include <QFileInfo>
+#include <QJsonArray>
+#include <QJsonDocument>
+#include <QJsonObject>
+#include <QString>
+#include <QTemporaryDir>
 
 #ifndef SRC_CLAUDE_INTEGRATION_CPP_PATH
 #error "SRC_CLAUDE_INTEGRATION_CPP_PATH compile definition required"
@@ -190,4 +207,83 @@ TEST(McpProjectConventions, WiringAndDriftGuard) {
     }
 
     EXPECT_EQ(0, expect_failures());
+}
+
+// --------------------------------------------------------------- ANTS-4460 --
+//
+// The curated table reads nothing from the caller's project and its rows cite
+// Ants-specific paths. Served to another project it is THIS project's
+// conventions wearing that project's root, and the only signal was a per-row
+// `exists:false` — a false bool, which compact:true drops by design.
+//
+// A reported run got five confident rules with every cited file absent, one of
+// them prescribing a tests/features/<name>/ conformance test to a project that
+// puts unit tests elsewhere and labels them differently.
+
+TEST(McpProjectConventions, Ants4460DropsConventionsWhoseSourceIsAbsent) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString root = QFileInfo(tmp.path()).canonicalFilePath();
+
+    QJsonObject req;
+    req[QStringLiteral("task_type")]  = QStringLiteral("feature");
+    req[QStringLiteral("caller_cwd")] = root;
+
+    RemoteControl rc(nullptr);
+    const QJsonObject r = rc.cmdProjectConventions(req).object();
+    ASSERT_TRUE(r.value(QStringLiteral("ok")).toBool())
+        << QJsonDocument(r).toJson().toStdString();
+
+    // Nothing this table cites exists in an empty directory, so nothing in it
+    // is this project's rule.
+    EXPECT_EQ(r.value(QStringLiteral("conventions_count")).toInt(), 0)
+        << "stated conventions read from documents that are not there: "
+        << QJsonDocument(r).toJson().toStdString();
+    EXPECT_EQ(r.value(QStringLiteral("sources_resolved")).toInt(), 0);
+    EXPECT_TRUE(r.value(QStringLiteral("conventions_are_defaults")).toBool());
+
+    // The hedge is a non-empty string on purpose: compact:true drops a false
+    // bool, which is how exists:false became invisible.
+    const QString warning = r.value(QStringLiteral("warning")).toString();
+    EXPECT_FALSE(warning.isEmpty()) << "no hedge on an answer read from nothing";
+
+    // Dropped, not silently omitted.
+    const QJsonArray dropped =
+        r.value(QStringLiteral("conventions_dropped")).toArray();
+    EXPECT_GT(dropped.size(), 0);
+    bool sawFeaturesRule = false;
+    for (const auto &v : dropped) {
+        if (v.toObject().value(QStringLiteral("source")).toString()
+                == QStringLiteral("tests/features/README.md"))
+            sawFeaturesRule = true;
+    }
+    EXPECT_TRUE(sawFeaturesRule)
+        << "the tests/features conformance rule was still stated to a project "
+           "that has no such directory";
+}
+
+TEST(McpProjectConventions, Ants4460KeepsConventionsThisProjectDoesDocument) {
+    // The guard must not empty the answer where the documents ARE there: this
+    // repository is the project the table was curated from.
+    QJsonObject req;
+    req[QStringLiteral("task_type")]  = QStringLiteral("feature");
+    // Derived from a definition this file already requires, rather than a new
+    // one: <root>/src/mainwindow.cpp up two levels is the repository root.
+    const QString repoRoot =
+        QFileInfo(QStringLiteral(SRC_MAINWINDOW_CPP_PATH)).dir().absolutePath()
+        + QStringLiteral("/..");
+    req[QStringLiteral("caller_cwd")] =
+        QFileInfo(repoRoot).canonicalFilePath();
+
+    RemoteControl rc(nullptr);
+    const QJsonObject r = rc.cmdProjectConventions(req).object();
+    ASSERT_TRUE(r.value(QStringLiteral("ok")).toBool())
+        << QJsonDocument(r).toJson().toStdString();
+
+    EXPECT_GT(r.value(QStringLiteral("conventions_count")).toInt(), 0);
+    EXPECT_GT(r.value(QStringLiteral("sources_resolved")).toInt(), 0);
+    EXPECT_FALSE(r.contains(QStringLiteral("conventions_are_defaults")));
+    EXPECT_FALSE(r.contains(QStringLiteral("warning")))
+        << "hedged an answer whose every source is present: "
+        << QJsonDocument(r).toJson().toStdString();
 }

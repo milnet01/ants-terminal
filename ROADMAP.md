@@ -37927,6 +37927,42 @@ whole files.
   telling sessions to read sources[].exists first — which is evidence the
   shape has already cost people time, and that the warning exists because
   the verb does not say it.
+  Progress (2026-09-06): the project_conventions claim is CLOSED. The item
+  stays open for its other cold-sweep claims.
+
+  A rule whose cited document is not under the caller's root is dropped
+  rather than stated, and named in conventions_dropped so the omission is
+  visible. Plus sources_resolved (what was READ, the shape spec_lint's
+  sections_checked is readable for), a warning string naming the missing
+  documents, and conventions_are_defaults when nothing resolved at all.
+
+  Two things this item got wrong, both checked rather than assumed.
+
+  The repair named here was "a top-level `warning` … `warning` sits in the
+  diagnostic floor, so neither `compact` nor `fields=` can drop it". It does
+  not: isProtectedCompactKey covers ok, code, error, etag, found, unchanged
+  and the `_checked` SUFFIX, and `warning` is none of them. The hedge
+  survives compaction for a different reason — isCompactDroppable drops a
+  false bool and an empty string, and a non-empty string is neither. That is
+  enough, and it is why the warning must never be emitted empty. No floor
+  change was made; adding one for a key nothing else uses would be a wider
+  change than the defect needs.
+
+  And the .ants/project.json half added from UT_Ants' report turned out to
+  be unnecessary. Source existence already answers it: the conformance-test
+  rule cites tests/features/README.md, which a project not organised that
+  way does not have, so it drops without reading any declaration. Fewer
+  moving parts than parsing test_roots, and it does not have to decide
+  whether a declared "tests" covers "tests/features" — which it lexically
+  does and semantically did not, in the very project that reported it.
+
+  Also fixed, and it is why the answer went untested for so long: the test
+  file's own header said the verb "is not GUI-free exercisable" because it
+  resolves through resolveRootCanonical(m_main, req). Stale — with a
+  non-empty caller_cwd the two-arg form returns rr.cwd and never touches the
+  MainWindow. The file held a source-scrape drift guard and no behavioural
+  case. Two behavioural cases now, red-proven by stashing the source change
+  out. Suite 4188/4188.
 
 - 📋 [ANTS-4461] **Triage: roadmap store/export and plugin-manager findings from the cold sweep.**
   Reviewer claims carried forward as-is. NOT re-verified — check each against
