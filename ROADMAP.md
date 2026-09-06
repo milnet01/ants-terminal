@@ -10143,6 +10143,20 @@ fixes don't address. Roadmapped here as their own design tasks.
   Kind: refactor.
   Lanes: ants_core_lib, CMakeLists.txt.
   Source: in-session 2026-05-20 (observed during ANTS-1444).
+  Measured (2026-09-06), not started. The four candidate TUs named above
+  are the wrong set. themedstylesheet.cpp includes QColor/QString only and
+  globalshortcutsportal.cpp is QtDBus only — both are already Widgets-free.
+  The actual Widgets users in ants_core_lib are remotecontrol.cpp
+  (QApplication, QWidget, QTabWidget), remotecontrol_terminal.cpp
+  (QApplication), dialogshowtracer.cpp (QApplication, QDialog, QWidget),
+  clipboardguard.cpp (QApplication) and kwinpositiontracker.
+  So the stated payoff — a pure-core MCP/CI consumer linking without
+  Qt6::Widgets — is blocked by the MCP dispatch hub itself, not by the
+  peripheral TUs. Two consequences. kwinpositiontracker.h includes QWidget
+  in a header ants_core_lib exports, so demoting the link to PRIVATE needs
+  that header changed first, independently of any TU move. And the hub
+  would have to be split before core can drop Widgets at all, which is a
+  far larger job than this bullet describes. Re-scope before picking up.
 
 - ✅ [ANTS-1445] **Prompt-injection fence sweep across `*_synthesis_prompt` MCP verbs.**
   Shipped 2026-05-18 (Bundle pull 16). `IndieReviewEngine::synthesisPrompt`
