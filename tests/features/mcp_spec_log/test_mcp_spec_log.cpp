@@ -668,3 +668,87 @@ TEST(McpSpecLog, Ants4136PreserveBodyKeepsWrappedStatusProse) {
     // is unaffected by opting in.
     EXPECT_FALSE(kept.previousValue.isEmpty());
 }
+
+// --------------------------------------------------------------- ANTS-4886 --
+//
+// appendLoop locates the log by its `## Cold-eyes loop log` heading. Given a
+// file whose table sits under a different heading it fell through to the bullet
+// arm, which renders from `label` and `body` alone — so a caller passing only
+// `cells` got the literal line `- **** — `, every cell discarded, ok:true.
+//
+// It then appended the heading whose absence caused the fallback, after the
+// existing table. The next call takes the table arm and writes into the
+// one-bullet section below the real log, so the file ends up with two logs and
+// the failure is self-perpetuating rather than repeatable.
+//
+// Reported by the claude_config session twice: once from a dry run, then as a
+// live repro that lost ~3.5 KB of composed outcome prose behind bytes_written:36.
+
+TEST(McpSpecLog, Ants4886RefusesRatherThanDroppingCellsIntoABullet) {
+    // A table-shaped log under an H1, which is the shape the report hit: the
+    // rows are there, the `## Cold-eyes loop log` heading is not.
+    const QString headless =
+        QStringLiteral("# documentation loop log\n\n"
+                       "| Loop | Date | Outcome |\n"
+                       "|---|---|---|\n"
+                       "| 1 | 2026-09-01 | Nine findings, nine fixed. |\n");
+
+    const SpecLog::EditResult r = SpecLog::appendLoop(
+        headless, QString(), QString(),
+        QStringList{QStringLiteral("2"), QStringLiteral("2026-09-06"),
+                    QStringLiteral("Seven verified, seven fixed.")});
+
+    EXPECT_FALSE(r.ok)
+        << "wrote a row into a file whose log it could not locate: "
+        << r.content.toStdString();
+    EXPECT_EQ(r.code, QStringLiteral("unrecognised_format"));
+    // The heading must not be manufactured on the refusal path: emitting it is
+    // what makes a second call take the table arm below the real table.
+    EXPECT_FALSE(r.content.contains(QStringLiteral("## Cold-eyes loop log")))
+        << "created the anchoring heading it could not find";
+}
+
+TEST(McpSpecLog, Ants4886RefusesCellsWhenTheLogIsBulletShaped) {
+    // A genuine bullet-shaped log, correctly located. `cells` still cannot be
+    // rendered into it, and silently dropping them is the same loss.
+    const QString bulletLog =
+        QStringLiteral("## Cold-eyes loop log\n\n"
+                       "- **Loop 1** — Nine findings, nine fixed.\n");
+
+    const SpecLog::EditResult r = SpecLog::appendLoop(
+        bulletLog, QStringLiteral("Loop 2"), QStringLiteral("Seven fixed."),
+        QStringList{QStringLiteral("2"), QStringLiteral("2026-09-06")});
+
+    EXPECT_FALSE(r.ok) << r.content.toStdString();
+    EXPECT_EQ(r.code, QStringLiteral("bad_args"));
+}
+
+TEST(McpSpecLog, Ants4886NeverRendersAnEmptyBullet) {
+    // No cells either — nothing asserts a table, so the only defect left is the
+    // row itself. `- **** — ` is not a log entry.
+    const QString bulletLog =
+        QStringLiteral("## Cold-eyes loop log\n\n"
+                       "- **Loop 1** — Nine findings, nine fixed.\n");
+
+    const SpecLog::EditResult r =
+        SpecLog::appendLoop(bulletLog, QString(), QString(), QStringList{});
+
+    EXPECT_FALSE(r.ok) << r.content.toStdString();
+    EXPECT_EQ(r.code, QStringLiteral("bad_args"));
+}
+
+TEST(McpSpecLog, Ants4886StillCreatesTheSectionOnASpecThatHasNoLogYet) {
+    // The repair must not cost the first-loop case: a spec with no loop log and
+    // no table anywhere is the one place creating the heading is right.
+    const QString noLog =
+        QStringLiteral("# A spec\n\n## 1. Problem\n\nSomething.\n");
+
+    const SpecLog::EditResult r = SpecLog::appendLoop(
+        noLog, QStringLiteral("Loop 1 (2026-09-06)"),
+        QStringLiteral("Seven verified, seven fixed."), QStringList{});
+
+    ASSERT_TRUE(r.ok) << r.content.toStdString();
+    EXPECT_EQ(r.rowShape, QStringLiteral("bullet"));
+    EXPECT_TRUE(r.content.contains(QStringLiteral("## Cold-eyes loop log")));
+    EXPECT_TRUE(r.content.contains(QStringLiteral("- **Loop 1 (2026-09-06)** — ")));
+}

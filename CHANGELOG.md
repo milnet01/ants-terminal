@@ -14,6 +14,17 @@ for security-relevant changes.
 
 ### Fixed
 
+- **spec_log op:append_loop refuses instead of writing an empty row and discarding the caller's cells** (ANTS-4886)
+  The verb finds the log by its `## Cold-eyes loop log` heading. Against a
+  file whose table sat under a different heading it fell through to the
+  bullet arm, which renders from `label` and `body` alone — so a call
+  passing only `cells` wrote the literal row `- **` `** — `, dropped every
+  cell, and returned `ok:true`. It then appended the heading it had failed
+  to find, below the existing table, so the next call wrote into that stub
+  and the file ended up with two logs. It now refuses in all three cases,
+  and still creates the section for a spec that genuinely has no loop log
+  yet.
+
 - **roadmap verbs called from a project subdirectory are now served by the roadmap store** (ANTS-4884)
   The store-vs-markdown dispatch asked the store by `caller_cwd`, and a
   project is keyed on its canonical root — so from a subdirectory the

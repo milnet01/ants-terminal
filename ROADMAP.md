@@ -50993,7 +50993,7 @@ Pressless and UT_Ants. Three were confirmations of shipped fixes and are closed
 in place. One duplicates an open claim in ANTS-4460 and was assigned there
 rather than refiled.
 
-- 📋 [ANTS-4886] **spec_log op:append_loop writes an EMPTY bullet, discards every cell and returns ok:true when it cannot find the log heading.**
+- ✅ [ANTS-4886] **spec_log op:append_loop writes an EMPTY bullet, discards every cell and returns ok:true when it cannot find the log heading.**
   Reported twice by the claude_config session: first from a dry run, then
   as a live repro that is worse than predicted.
 
@@ -51018,6 +51018,29 @@ rather than refiled.
 
   Verify the reported shape before building: the claim is that `cells` is
   accepted and dropped on that arm, which is a read of the bullet path.
+  Resolved (2026-09-06): both of the reporter's changes, plus a third the
+  repro implied.
+
+  Never render an empty bullet, and never drop cells: `cells` is the caller
+  asserting a table, so the bullet arm refuses bad_args rather than
+  rendering from label and body alone. A row with neither label nor body
+  refuses too — that is the `- **` `** — ` line the live call produced.
+
+  Do not manufacture the anchoring heading — but only where it is wrong to.
+  Creating it is RIGHT for a spec that has no loop log yet, which is the
+  first-loop case, so the discriminator is a markdown table this verb did
+  not select: the log is there, under a heading it does not recognise, and a
+  second one must not be opened below it. That arm refuses
+  unrecognised_format and names the repair (add the heading above the
+  existing table).
+
+  Red-proven by stashing the source change out: the three defect cases
+  failed against the old code and the first-loop case passed, so the guard
+  is shown not to cost the legitimate path. Suite 4186/4186.
+
+  The reporter noted sixteen loop-log records in their project were missing
+  the heading and have since been given one, so the live repro would soon
+  have become unreproducible there. It is pinned here instead.
   **Layman:** Adding a review-log row to a file with an unusual heading throws the row away and says it worked.
   Kind: fix.
   Source: claude_config-feedback-2026-09-06.

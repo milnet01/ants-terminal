@@ -389,6 +389,25 @@ EditResult appendLoop(const QString &content, const QString &label,
             return r;
         }
 
+        // ANTS-4886 — `cells` is the caller asserting a TABLE. This section is
+        // bullet-shaped, so rendering the bullet would drop every cell and
+        // report success: the reported live call lost ~3.5 KB of composed prose
+        // behind bytes_written:36, with ok:true and no other signal.
+        if (!cells.isEmpty())
+            return fail(QStringLiteral("bad_args"),
+                        QStringLiteral(
+                            "spec_log: `cells` was supplied but this file's "
+                            "loop log is bullet-shaped, so the cells cannot be "
+                            "rendered — pass `label` and `body` for a bullet "
+                            "log, or convert the section to a table first. "
+                            "Nothing was written."));
+        if (label.trimmed().isEmpty() && body.trimmed().isEmpty())
+            return fail(QStringLiteral("bad_args"),
+                        QStringLiteral(
+                            "spec_log: a bullet row needs `label` or `body`; "
+                            "both are empty, which renders the empty row "
+                            "`- **` `** — `. Nothing was written."));
+
         const auto ins = insertAtSectionEnd(lines, hdr, bullet, ewn);
         EditResult r;
         r.ok = true;
@@ -397,8 +416,39 @@ EditResult appendLoop(const QString &content, const QString &label,
         r.rowShape = QStringLiteral("bullet");
         return r;
     }
-    // No section — append a new `## Cold-eyes loop log` heading + the
-    // bullet at EOF (repaired, not refused). `line` is the bullet line.
+    // ANTS-4886 — creating the heading is right for a spec that has no loop
+    // log yet, and wrong for one whose log is simply under a heading this
+    // verb does not recognise. A markdown table it did not select separates
+    // the two: the log is there, so a second one must not be opened below it.
+    // Emitting the heading anyway is what made the failure self-perpetuating —
+    // the next call took the table arm and wrote into the one-bullet section
+    // beneath the real table, leaving the file with two logs.
+    for (const QString &l : lines) {
+        if (!l.trimmed().startsWith(QLatin1Char('|')))
+            continue;
+        return fail(QStringLiteral("unrecognised_format"),
+                    QStringLiteral(
+                        "spec_log: no \"## Cold-eyes loop log\" heading, but "
+                        "this file holds a markdown table — append_loop will "
+                        "not open a second log beneath it. Add the heading "
+                        "above the existing table and retry. Nothing was "
+                        "written."));
+    }
+    if (!cells.isEmpty())
+        return fail(QStringLiteral("bad_args"),
+                    QStringLiteral(
+                        "spec_log: `cells` was supplied but this file has no "
+                        "loop log to infer columns from, and a new section is "
+                        "written bullet-shaped — pass `label` and `body`. "
+                        "Nothing was written."));
+    if (label.trimmed().isEmpty() && body.trimmed().isEmpty())
+        return fail(QStringLiteral("bad_args"),
+                    QStringLiteral(
+                        "spec_log: a bullet row needs `label` or `body`; both "
+                        "are empty. Nothing was written."));
+
+    // No section and no table — append a new `## Cold-eyes loop log` heading +
+    // the bullet at EOF (repaired, not refused). `line` is the bullet line.
     QStringList out = lines;
     // Ensure a blank-line separator before the new heading.
     if (!out.isEmpty() && !out.last().trimmed().isEmpty())
