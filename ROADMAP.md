@@ -51765,6 +51765,166 @@ rather than refiled.
   Source: in-session-2026-09-06.
   Lanes: tests, remotecontrol.
 
+- 📋 [ANTS-4899] **file_outline and read_region refuse an absolute path outside the project root, with no opt-in, so a handed-over document can only be read whole.**
+  Reported by UT_Ants. The boundary is correct and the reporter does not
+  ask for it to be dropped -- the gap is that there is no opt-in route, so
+  the fallback is a raw read of an unfamiliar file, which is the case these
+  two verbs exist for.
+
+  Repro: file_outline caller_cwd=/mnt/Games/Scripts/Linux/UT_Ants
+  path=/mnt/Games/ut-ants-request.md -> bad_path, "escapes project root".
+
+  Precedent exists in both directions: caller_cwd already takes a `~global`
+  sentinel (ANTS-1390 for file_outline, ANTS-4394 for read_region), and
+  feedback_log already reads and writes outside every project root by
+  convention. Suggested: a read-only sentinel for the corpus root, or a
+  per-call opt-in for an absolute path. Reads only -- the write verbs keep
+  the boundary as it is.
+  **Layman:** When another session hands you a file from elsewhere on the machine, the cheap tools for skimming it refuse, so you have to read the whole thing.
+  Kind: enhancement.
+  Source: UT_Ants feedback 2026-09-06.
+  Lanes: remotecontrol, workspace.
+
+- 📋 [ANTS-4900] **Feedback path derivation cannot see a corpus that sits one level BELOW the derivation root, so it would create a stranded file and report success.**
+  Reported by UT_Ants the day the corpus moved into
+  /mnt/Games/Scripts/Linux/Ants_MCP_Feedback_Files/. ANTS-4647's guard
+  refuses when the parent holds no feedback file AND AN ANCESTOR DOES;
+  here the files sit in a DESCENDANT, so nothing is above and derivation
+  proceeds as if this were the corpus's first file.
+
+  Two failures together. feedback_query answers ok:true / found:false,
+  which reads as "nothing filed yet" rather than "the corpus moved"; and
+  on feedback_log that same derivation is a WRITE, so it creates an empty
+  file and reports success while the real file sits one directory down
+  with its whole triage history.
+
+  The derived basename was also wrong: leaf UT_Ants gave
+  UT_Ants_MCP_Feedback.md, not the documented
+  UT_Ants_Ants_MCP_Feedback.md, so even a sweep of the old root would find
+  a name matching no project.
+
+  Mitigated on this machine 2026-09-06 by setting ANTS-4471's
+  claude.mcp_feedback_root, which redirects derivation -- verified. The
+  ask stands: a single readdir one level down from the derivation root
+  would have found the whole corpus, and feedback_log should refuse to
+  CREATE when sibling feedback files exist within one level.
+  **Layman:** After the shared feedback folder moved down a level, the tools would have quietly started a new empty file instead of finding the real one.
+  Kind: fix.
+  Source: UT_Ants feedback 2026-09-06.
+  Lanes: remotecontrol, claude-integration.
+
+- 📋 [ANTS-4901] **workspace_search enclosing_symbol is a silent no-op where the language has no outline, and the envelope says nothing.**
+  Reported by UT_MonsterHunt against a tree of UnrealScript (.uc) files.
+  Every row came back with no `enclosing` key and the envelope carried no
+  signal -- no annotated count, no unavailable list, nothing in
+  fields_unmatched. The argument was accepted and applied to nothing.
+
+  The ambiguity is the defect rather than the absence: the schema names a
+  legitimate empty case (a match above the first symbol), so a reader
+  cannot tell that from "this language is not outlined at all", which was
+  true of every row. Learning which cost a separate file_outline call --
+  the round-trip the annotation exists to remove.
+
+  Same class as spec_lint's sections_checked:false and fields_unmatched:
+  a caller who cannot distinguish "checked, nothing there" from "never
+  ran" reads the second as the first. Suggested: an
+  `enclosing_symbol_unavailable[]` naming the files whose language yielded
+  no outline, or an `enclosing_annotated:<n>` count.
+  **Layman:** A search option that labels each hit with the function it sits in does nothing for some file types, and never says so.
+  Kind: enhancement.
+  Source: UT_MonsterHunt feedback 2026-09-06.
+  Lanes: remotecontrol, workspace.
+
+- 📋 [ANTS-4902] **file_outline maps .uc to unknown, though UnrealScript is brace-family and the existing parser looks sufficient.**
+  Reported by UT_MonsterHunt, filed by them as a candidate rather than a
+  defect. UnrealScript is brace-delimited and C-like: `class X extends
+  Y;`, `var` / `var config` members, `function` / `event` / `state`
+  bodies. The brace-family mode already serves rust, go, javascript,
+  java, csharp, kotlin, swift, scala, php and ruby.
+
+  The reporter's own gate, which stands: worth it ONLY if this is a table
+  entry in the extension map. If it needs a bespoke parser, close as n/a
+  -- UT99 modding is a narrow audience and workspace_search anchored on
+  `^function` is a cheap workaround. It also knocks on to the
+  enclosing_symbol finding filed alongside it, which has nothing to
+  attach to without an outline.
+  **Layman:** One more file type could be skimmed by the outline tool if it is just a table entry.
+  Kind: enhancement.
+  Source: UT_MonsterHunt feedback 2026-09-06.
+  Lanes: remotecontrol, workspace.
+
+- 📋 [ANTS-4903] **project_settings has no read-only op, so asking what a project declared means calling the verb whose name says it proposes.**
+  Reported by AI_Prompts. The verb takes detect|init|set. A session
+  following the standing project-layout instruction at orientation has to
+  reach for op:"detect", whose documented purpose is to PROPOSE settings
+  for a project that may have none. The information is reachable -- detect
+  echoes `declared` -- but the only route to it is a verb whose name says
+  it is doing something else, and a session reading detect as write-shaped
+  may skip the check the instruction exists to force.
+
+  Measured in a fully-declared project: op:"get" refuses bad_args;
+  op:"detect" returns declared with all six keys plus a `suggestion` block
+  that is inert there.
+
+  Either add op:"get" returning declared / undeclared[] /
+  declared_missing[] and nothing else, or say in the description that
+  detect is the read and is side-effect-free. The reporter says the second
+  would do; the first matches how the other verbs split read from write.
+  **Layman:** There is no plain "show me the settings" call, so you have to use the one that sounds like it changes them.
+  Kind: enhancement.
+  Source: AI_Prompts feedback 2026-09-06.
+  Lanes: remotecontrol, project-settings.
+
+- 📋 [ANTS-4904] **roadmap_query can only keep the HEAD of a long bullet body, and on an append-only progress log the answer is in the tail.**
+  Reported by finbreak. A long-running bullet is append-only -- each
+  session appends a `Progress (date):` note -- so the current state is the
+  LAST paragraph. include_body truncates from the head and max_body_bytes
+  only moves where the cut falls; there is no way to ask for the tail.
+
+  Measured on FIBR-0313: at max_body_bytes 40000 the body is cut
+  mid-note; at 100000 it spills (42993 bytes) and rows_preview declines to
+  show the body at all, so the tail needs a read_spill call with a
+  hand-picked offset. Three calls to read one closing paragraph, and
+  guessing high silently misses the note with nothing in the envelope
+  saying so.
+
+  Check first whether ANTS-3736's head-plus-final-1-KiB elision is
+  reaching this path -- the report describes head-only truncation, so
+  either it is not firing here or the marker is landing where the reporter
+  did not see it. Suggested: a `body_tail_bytes` / `body_from_end` option,
+  or at minimum have the spill's rows_preview report the body's total byte
+  length so an offset can be computed rather than guessed. Related to
+  ANTS-4769 (include_body is all-or-nothing), which is a different cut of
+  the same problem.
+  **Layman:** For a long-running item, the newest note is at the bottom and there is no way to ask for just that.
+  Kind: enhancement.
+  Source: finbreak feedback 2026-09-06.
+  Lanes: remotecontrol, roadmap.
+
+- 📋 [ANTS-4905] **feedback_query resolves mapped ids against the CALLER's roadmap, so every id reads foreign_repo in every project but Ants Terminal.**
+  Reported by claude_config. A contributor project's roadmap uses its own
+  prefix, so every ANTS-NNNN id in its feedback file is foreign to it.
+  Measured from ~/.claude (prefix CFG): all 64 mapped ids came back
+  foreign_repo, none with a status or a shipped_date.
+
+  ANTS-3519 shipped exactly this resolution -- a foreign-prefix id
+  resolved against the sibling roadmap that owns the prefix, with a
+  feature test at tests/features/feedback_query_foreign_resolve. So the
+  first question is why it does not fire here, and the likely answer is
+  the same shape as the corpus move: sibling lookup by directory
+  adjacency, where ~/.claude's siblings are in the home directory and the
+  owning project is under /mnt/Games/Scripts/Linux.
+
+  Downstream: ANTS-4741's possibly_stale_binary comparison needs a status
+  this path never produces, so it cannot fire for a contributor either.
+  If cross-project resolution is genuinely out of scope from a root the
+  lookup cannot reach, the field's description must say so, or
+  foreign_repo reads as a lookup that failed.
+  **Layman:** The "which of my suggestions shipped?" answer is blank everywhere except the project that owns the ids.
+  Kind: fix.
+  Source: claude_config feedback 2026-09-06.
+  Lanes: remotecontrol, claude-integration.
+
 ### 🎨 UI polish (user request 2026-09-04)
 
 - ✅ [ANTS-4862] **The tab-colour context menu shows which colour the tab is currently set to.**
