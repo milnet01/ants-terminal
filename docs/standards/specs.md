@@ -20,6 +20,9 @@ rules below, and the `spec_lint`, `mcp_spec_query` and
 `spec_parse_test_surface` feature tests lock them. Read
 the global standard for anything this file does not cover; where they
 differ on the *shape* of a spec under `docs/specs/`, this file wins.
+That applies to the in-repo mirror at `docs/standards/spec-format.md`
+too, which is the same document — with one exception the tooling makes,
+recorded in § 3.
 **The one exception is § 1** — whether a spec is needed at all is
 `spec-format.md` § 1's call, not this file's.
 
@@ -44,7 +47,11 @@ rather than deciding from this file.
 What this file adds is where the contract lives: a `spec.md` under
 `tests/features/<name>/` (the feature-conformance contract) is the right
 home for a small, single-invariant behaviour, and `docs/specs/` is for
-contracts that span subsystems.
+contracts that span subsystems. **§§ 2-7 bind the second only.** A
+feature-test contract follows `tests/features/README.md`, carries no
+loop log, and is not gated. A default `spec_lint` run walks `docs/specs/`
+and never reaches it; pointed at one directly it reports the whole
+required set as absent, which is not a defect in that file.
 
 ## 2. File + naming
 
@@ -103,11 +110,24 @@ already required by this section or by § 4, and it is deliberately a
 ## Cold-eyes loop log
 ```
 
-**Expect a real backlog over `docs/specs/`, and it is not evidence the
-list is wrong.** Most of the corpus predates this standard (v1,
-2026-05-21); § 2 already records that. `spec_lint` measures the current
-figure — this document does not restate it, because a count here reads as
-present tense and rots.
+**On this repository the check does not read this block.** `spec_lint`
+tries `docs/standards/spec-format.md` first and stops at the first file
+carrying a block; that mirror has one, so `missing_section` enforces the
+global standard's numbered twelve-section list instead. The response's
+`sections_source` names the file actually used — read it before acting on
+a run. Reconciling the two is **ANTS-4895**.
+
+**Expect a real backlog over `docs/specs/` either way.** Much of the
+corpus predates this standard (v1, 2026-05-21); § 2 already records that,
+and the resolution above is the other cause. `spec_lint` measures the
+current figure — this document does not restate it, because a count here
+reads as present tense and rots.
+
+A spec that cannot conform — a build plan or a ledger parked in
+`docs/specs/`, or a pre-standard file nobody is rewriting — may exempt
+itself with `<!-- spec-lint: no-required-sections -->` on its own line
+outside any fence, which suppresses every `missing_section` finding for
+that document. It is not a licence for a new spec.
 
 
 ### 3.1 Title (H1)

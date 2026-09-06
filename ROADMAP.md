@@ -12969,6 +12969,40 @@ fixes don't address. Roadmapped here as their own design tasks.
   Kind: fix.
   Source: in-session-2026-09-02 (ANTS-3668 fix).
 
+- 📋 [ANTS-4895] **`spec_lint` enforces the wrong required-sections list on this project.**
+  Two `required-sections` blocks exist under `docs/standards/`:
+  `specs.md` carries five unnumbered entries (Problem / Surface /
+  Invariants / Tests / Cold-eyes loop log); `spec-format.md`, a verbatim
+  mirror of the global standard, carries twelve numbered ones.
+
+  `specLintStandardCandidates()` in `src/remotecontrol_docs.cpp` lists
+  `docs/standards/spec-format.md` BEFORE `docs/standards/specs.md`, and
+  `specLintRequiredSections()` returns at the first candidate yielding a
+  non-empty block. The mirror exists here and carries one, so it wins.
+
+  Measured 2026-09-06, `spec_lint` on `docs/specs/ANTS-4108-...md`:
+  `sections_source` came back `docs/standards/spec-format.md`,
+  `sections_checked` true, and it emitted eleven `missing_section`
+  findings demanding Goal, Scope decisions, Design, Failure modes,
+  Alternatives considered, Out of scope, What checks this and Cross-doc
+  impact — sections `specs.md` deliberately does not require.
+
+  So `specs.md` § 3's block has never been the list enforced here, while
+  `specs.md` § 0 says this file wins on a spec's shape. The code and the
+  stated precedence disagree. Its § 3 also attributes the `docs/specs/`
+  backlog to pre-standard legacy, which is at best a partial cause.
+
+  The decision is which list governs this project, and it was NOT taken
+  during the review that found this — the options each cost something.
+  Reorder the candidate list, or rename one marker, or drop the mirror's
+  block, or accept the twelve and rewrite `specs.md` § 3 and § 7. The
+  first three change code or a mirrored file; the last changes every spec.
+  `specs.md` § 3 now states the resolution truthfully and points here.
+  **Layman:** Our spec checker is grading specs against a different rulebook than the one we wrote for this project, so it reports sections missing that we deliberately do not require.
+  Kind: fix.
+  Source: review-contract loop 6 on docs/standards/specs.md, 2026-09-06.
+  Lanes: speclint, docs/standards.
+
 ### 🔬 Project Audit false-positive reduction (self-audit 2026-05-20)
 
 Ran the project's own `ants-audit` CLI against this repo (~300 findings,
