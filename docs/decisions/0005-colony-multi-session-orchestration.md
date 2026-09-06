@@ -238,14 +238,24 @@ that has both halves. Where the rebase cannot be resolved mechanically
 the task is requeued with the failure attached, and its brief now names
 the change that landed underneath it.
 
-**3. No textual conflict, but a semantic one — the case that decides the
-design.** Worker A renames a function; worker B adds a caller of the old
-name. Both diffs apply cleanly and the result does not build — or builds
-and is wrong. **No partitioning scheme detects this**, because the
-conflict is not in the text either worker wrote. Only D5's post-merge
-gate catches it. That is why merges are serial and the full suite re-runs
-after every one; it is not conservatism, it is the only instrument that
-sees case 3.
+**3. No textual conflict, but a semantic one.** Worker A renames a
+function; worker B adds a caller of the old name. Both diffs apply
+cleanly. **No partitioning scheme detects this**, because the conflict is
+not in the text either worker wrote — only something reading the MERGED
+result can see it.
+
+**In C++ the compiler usually is that something, and an earlier draft of
+this ADR overstated the danger by ignoring it.** A stale caller of a
+renamed function does not compile; nor does a changed signature or return
+type. D5's post-merge build catches those without anything else being
+built.
+
+**The residue is the part the compiler never type-checks**, and it is
+where this project has actually been bitten: the Lua plugin surface
+(`ants.*` names), JSON config keys, MCP verb and argument names, string
+literals that tests match on, doc citations and spec `INV-` references,
+and a changed DEFAULT or behaviour behind an unchanged signature. Those
+merge clean, compile clean, and are wrong. D10 is what covers them.
 
 **So the dealing rule is a preference, not a prohibition.** The
 orchestrator prefers non-overlapping tasks when it has the choice —
@@ -258,6 +268,50 @@ finding out at merge is a broken `main`.
 Partitioning at SYMBOL rather than file granularity narrows case 2 —
 `codebase_index` already knows which symbols live where — and is what
 ANTS-4914's glossary would sharpen. It does nothing for case 3.
+
+### D10 — A worker DECLARES a change the compiler cannot check, and the orchestrator verifies the declaration
+
+Project lead, 2026-09-06: rather than forbidding the rename case, require
+the worker to tell the orchestrator the old name and the new one, so the
+merge can check other workers' code for references to the old.
+
+This is better than forbidding it, and the reason is that **renames are
+most frequent during exactly the work Colony exists to parallelise** —
+the structural refactors of ANTS-1043 / ANTS-1044. A rule that refuses
+them refuses the main use case.
+
+**What must be declared** is scoped by one test: *would the compiler
+catch a stale reference?* If yes, the build already covers it and no
+declaration is owed. If no, declare it. That is:
+
+- a renamed or removed **public C++ symbol** whose name is also reached
+  by string — a Lua binding, an MCP verb or argument, a test fixture
+  literal, a doc citation;
+- a renamed **config key** or JSON field;
+- a renamed or moved **file** that documents or tests cite by path;
+- a changed **default value or behaviour** behind an unchanged signature;
+- a changed **spec `INV-` id** or heading other documents cite.
+
+The declaration is `{old, new, kind}` and rides the task record (D4),
+which the orchestrator already reads.
+
+**The orchestrator verifies rather than trusts.** On each merge it sweeps
+the merged tree for every declared `old` token still present, across
+source, tests, docs and config — `workspace_search` is the instrument and
+it is one call per declaration. A survivor is a merge failure and takes
+D5's post-merge path.
+
+**And it derives what it can, so an undeclared change is still caught.**
+A declaration is a hint that makes the check precise and cheap, never the
+only line of defence: the post-merge build and suite catch the compiled
+cases regardless, and a token sweep over symbols the branch REMOVED
+catches the common undeclared rename without anyone remembering to say
+so. A standard that relies on being remembered is a standard that fails
+silently, which is the failure this whole design is built to avoid.
+
+**This wants its own standard**, not a paragraph here — ANTS-4915. An ADR
+records the decision; the rules a worker conforms to belong where a
+worker will read them.
 
 ### D8 — Build phases 0-2, then measure, before building 3-5
 

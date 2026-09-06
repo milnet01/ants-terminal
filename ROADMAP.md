@@ -62305,6 +62305,40 @@ merit whether or not the rest is built.
   Source: user-request-2026-09-06.
   Lanes: mcp, workspace, docs.
 
+- 📋 [ANTS-4915] **A Colony standard: what a worker must declare, what the orchestrator must verify, and who owns what.**
+  Asked for directly by the project lead: the arrangement needs standards
+  that manage it, not only an ADR recording the decisions. ADR-0005 decides;
+  this is what a worker and an orchestrator CONFORM to, and it belongs where
+  they will read it -- docs/standards/colony.md.
+
+  What it owns, and each of these is already a decision rather than an open
+  question:
+
+  - The declaration contract (ADR-0005 D10). What must be declared, scoped
+  by one test -- would the compiler catch a stale reference? -- so the list
+  is derivable rather than memorised. The {old, new, kind} shape, and where
+  it rides.
+  - Ownership (D2). A worker writes code and tests; the orchestrator writes
+  every rendered shared record. The store is not a rendered record, and a
+  lease write must bypass the render.
+  - The merge contract (D5, D9). What is checked before a merge, that
+  merges are serial, what happens when the post-merge gate goes red, and
+  when an overlapping task is rebased versus requeued.
+  - The lifecycle (D3, D7). One task per spawned session; a pull-mode
+  session stops when the queue empties; neither invents work.
+
+  Write it with `write-spec`'s sibling route for a standard: author from
+  ~/.claude/standards/skeletons/standard-skeleton.md and gate it with
+  `review-contract --genre standard`. It is built UNDER rather than FROM,
+  so it owes that gate before workers run against it.
+
+  Sequencing: before phase 3, since the worker skill is this standard
+  executed. Not before phase 0-2, which are plumbing no worker reads.
+  **Layman:** Write down the rules the parallel sessions follow, so they cannot quietly break each other's work.
+  Kind: doc.
+  Source: user-request-2026-09-06.
+  Lanes: docs, standards.
+
 ### 📚 Methodology — adopted as standing practice
 
 - Re-run `/audit` + `/indie-review` before every minor tag.
