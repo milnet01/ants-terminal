@@ -296,3 +296,44 @@ TEST(RoadmapSubdirDispatch, Inv4WorktreeOfAProjectWithNoRoadmapIsUnchanged) {
     EXPECT_EQ(r.value(QStringLiteral("source")).toString(),
               QStringLiteral("markdown"));
 }
+
+// --------------------------------------------------------------- ANTS-4885 --
+//
+// `source` is served from m_roadmapCacheSource, derived per cache FILL from
+// the filling caller's own project resolution, and the cache is keyed on the
+// roadmap's path and mtime — not on caller_cwd. Two callers resolving to
+// different projects over one file therefore shared an entry, and the second
+// was told the first's backend.
+//
+// That was reachable while the dispatch was keyed on caller_cwd: a root call
+// and a subdirectory call resolved differently over the same file. Since
+// ANTS-4884 both resolve to the same project, so one instance answering both
+// must now agree. This is the case that says so, on ONE RemoteControl —
+// INV-1 above deliberately uses two, to keep the cache out of its measurement.
+
+TEST(RoadmapSubdirDispatch, Ants4885OneInstanceAgreesAcrossRootAndSubdirectory) {
+    ants_test::XdgGuard guard;
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString root = seedProject(guard, tmp);
+    ASSERT_FALSE(root.isEmpty());
+    ASSERT_TRUE(migrate(root));
+
+    RemoteControl rc(nullptr);
+
+    QJsonObject subReq;
+    subReq[QStringLiteral("caller_cwd")] = subOf(root);
+    const QJsonObject a = rc.cmdRoadmapQueryForTest(subReq).object();
+    ASSERT_TRUE(a.value(QStringLiteral("ok")).toBool());
+
+    QJsonObject rootReq;
+    rootReq[QStringLiteral("caller_cwd")] = root;
+    const QJsonObject b = rc.cmdRoadmapQueryForTest(rootReq).object();
+    ASSERT_TRUE(b.value(QStringLiteral("ok")).toBool());
+
+    EXPECT_EQ(a.value(QStringLiteral("source")).toString(),
+              QStringLiteral("store"));
+    EXPECT_EQ(a.value(QStringLiteral("source")).toString(),
+              b.value(QStringLiteral("source")).toString())
+        << "one instance reported two backends for one roadmap file";
+}

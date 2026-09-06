@@ -51203,7 +51203,7 @@ rather than refiled.
   Source: Games_Hub-feedback-2026-09-06.
   Lanes: mcp.
 
-- 📋 [ANTS-4889] **spec_lint's single-file path reports test_coverage_checked:false and blames the document, while the same document passes in a directory walk.**
+- ✅ [ANTS-4889] **spec_lint's single-file path reports test_coverage_checked:false and blames the document, while the same document passes in a directory walk.**
   Same bytes, same session, only the `path` argument differs. With a
   single spec: test_coverage_checked:false, and a hint stating the two
   causes are "both the document's" — no Tests section, or prose that cites
@@ -51245,6 +51245,23 @@ rather than refiled.
   signal that the check ran, and that is worth stating in the schema — a
   caller requesting the field defensively cannot otherwise tell "check ran"
   from "field misspelled". Treat that as the item's remaining scope.
+  Resolved (2026-09-06) on its remaining scope, which was the smaller half.
+
+  spec_lint's schema now states that a skip hint is emitted ONLY when its
+  check was skipped — so asking for one by name in fields= and getting it
+  back in fields_unmatched is the signal the check RAN, and absence of the
+  hint is the pass. Stated because a caller requesting it defensively could
+  not otherwise tell "check ran" from "field misspelled", which is the
+  reporter's point and the thing no amount of reading the envelope answers.
+
+  The same edit documents ANTS-4894's invariants_found, since both belong to
+  the question this schema paragraph is about: what did and did not run.
+
+  The item's LARGER half — the single-file path reporting
+  test_coverage_checked:false and blaming the document — stopped reproducing
+  hours after it was filed, and nothing shipped for it here. That is
+  recorded in the note above rather than claimed as a fix: the cause is
+  unexplained, and if it returns the repro is in this item.
   **Layman:** Checking one spec says its test coverage could not be checked and points at the document; checking the folder passes it.
   Kind: fix.
   Source: UT_Ants-feedback-2026-09-06.
@@ -53729,7 +53746,7 @@ volume classes, and the tooling/documentation gaps the run exposed.
   Source: in-session-2026-09-06, found while fixing ANTS-4882.
   Lanes: mcp, roadmap-store.
 
-- 📋 [ANTS-4885] **roadmap_query's backend witness is cached on the roadmap's path alone, so one caller can be told another's backend.**
+- ✅ [ANTS-4885] **roadmap_query's backend witness is cached on the roadmap's path alone, so one caller can be told another's backend.**
   `m_roadmapCacheSource` is derived per cache FILL, from the filling
   caller's own project resolution, and the cache is keyed on the roadmap
   file's path and mtime. `source` is then served from it for the cache's
@@ -53753,6 +53770,28 @@ volume classes, and the tooling/documentation gaps the run exposed.
   first that no other cached field has the same shape —
   `m_roadmapCacheFileMaxId` and `m_roadmapCacheStoreHighWater` are filled
   in the same block from the same resolution.
+  Resolved (2026-09-06) by ANTS-4884, and pinned rather than assumed.
+
+  The defect needed two callers to resolve to DIFFERENT projects over the
+  same roadmap file. That is what a root call and a subdirectory call did
+  while the dispatch was keyed on caller_cwd, and it is what made a
+  subdirectory query report source:"store" purely because a root call had
+  filled the cache milliseconds earlier. rcProjectRootFor is a pure function
+  of the path, so both callers now resolve identically and the shared entry
+  can no longer carry a foreign answer.
+
+  No cache-key change was made. Folding the project root into a key that
+  already identifies the project through its roadmap path would add a field
+  that cannot differ, which is a change with no case behind it.
+
+  A case now drives both calls through ONE RemoteControl and asserts they
+  agree — deliberately the opposite setup from INV-1, which uses two
+  instances to keep the cache out of its measurement. Without it the closure
+  rests on reasoning about a cache nothing exercises.
+
+  The two siblings named in this item, m_roadmapCacheFileMaxId and
+  m_roadmapCacheStoreHighWater, fill in the same block from the same
+  resolution and are closed by the same argument.
   **Layman:** A field saying where the roadmap was read from can report the answer given to a different request.
   Kind: fix.
   Source: in-session-2026-09-06, found while testing ANTS-4884.
