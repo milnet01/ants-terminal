@@ -14,6 +14,14 @@ for security-relevant changes.
 
 ### Added
 
+- **search the roadmap by kind of work** (ANTS-4836)
+  Every item records what kind of work it is, and nothing could select on
+  it — so "which review fixes are still open?" meant fetching every open
+  item and sorting by hand. `roadmap_query` now takes a `kind`, composing
+  with status, section and keyword. An unrecognised kind is refused with the
+  list of real ones rather than quietly returning everything, which would
+  have read as "nothing of that kind exists".
+
 - **read a long roadmap item's latest note in one call** (ANTS-4904)
   A long-lived item is an append-only progress log, so what a resuming
   session wants is its last paragraph — and the body could only be kept from

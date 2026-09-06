@@ -3024,6 +3024,24 @@ void ClaudeIntegration::onMcpConnection() {
                         "item. Pair it with `body_bytes` (emitted on every "
                         "truncated body) to see how much you did not get.");
                     props["body_from_end"] = fromEndProp;
+                    // ANTS-4836 — `kind` filter.
+                    QJsonObject kindFilterProp;
+                    kindFilterProp["type"] = "string";
+                    kindFilterProp["description"] = QStringLiteral(
+                        "Keep only bullets whose `kind` equals this, "
+                        "case-folded — the one field that was settable and "
+                        "readable but never selectable, so \"which review "
+                        "fixes are still open?\" meant pulling every active "
+                        "bullet and sorting by hand. Composes with `status`, "
+                        "`section` and `query`. An unrecognised value REFUSES "
+                        "with `bad_kind` and an `accepted` list, exactly as "
+                        "`status` refuses `bad_status`: a silently ignored "
+                        "filter returns the FULL set, which reads as \"nothing "
+                        "matches that kind\" and is indistinguishable from a "
+                        "real empty result. Applies under mode:"
+                        "\"headline_only\" too — filtering runs before the "
+                        "projection that drops the field.");
+                    props["kind"] = kindFilterProp;
                     // ANTS-3391 — `query` keyword text-filter.
                     QJsonObject queryProp;
                     queryProp["type"] = "string";

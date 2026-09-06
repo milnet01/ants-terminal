@@ -1815,6 +1815,9 @@ if(ANTS_TESTS)
                 # ANTS-4898 the bundle main sandboxes XDG_CONFIG_HOME, so no
                 # test reads the developer's live settings (or writes by them).
                 tests/features/test_bundle_config_sandbox/test_bundle_config_sandbox.cpp
+                # ANTS-4836 roadmap_query filters by kind, and refuses an
+                # unrecognised one rather than returning the full set.
+                tests/features/roadmap_query_kind_filter/test_roadmap_query_kind_filter.cpp
                 tests/features/mcp_feedback_log/test_mcp_feedback_log.cpp
                 # ANTS-3421 feedback_log op:compact_shipped (maintainer compaction).
                 tests/features/feedback_log_compact_shipped/test_feedback_log_compact_shipped.cpp

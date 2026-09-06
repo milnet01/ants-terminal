@@ -1871,6 +1871,61 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
         arr = kept;
     };
 
+    // ANTS-4836 — optional `kind` filter. Until now `kind` was write-only in
+    // practice: roadmap_log sets it, every read surface returns it, and
+    // nothing selected on it, so "which review fixes are still open?" meant
+    // pulling every active bullet and sorting by hand.
+    //
+    // It REFUSES an unrecognised value, for the reason bad_status refuses one:
+    // a silently ignored filter returns the FULL set, which reads as "nothing
+    // matches that kind" — indistinguishable from a real empty result, and
+    // the caller has no way to tell.
+    //
+    // The vocabulary is roadmap_log's `kind` enum. Kept as a literal list
+    // rather than derived: the write side's enum lives in the schema builder
+    // in claudeintegration.cpp, and reaching across for it from a read verb
+    // would couple the two the wrong way round.
+    static const QStringList kAcceptedKinds = {
+        QStringLiteral("implement"),    QStringLiteral("fix"),
+        QStringLiteral("audit-fix"),    QStringLiteral("review-fix"),
+        QStringLiteral("doc"),          QStringLiteral("doc-fix"),
+        QStringLiteral("refactor"),     QStringLiteral("test"),
+        QStringLiteral("chore"),        QStringLiteral("release"),
+        QStringLiteral("perf"),         QStringLiteral("security"),
+        QStringLiteral("feature"),      QStringLiteral("enhancement"),
+        QStringLiteral("investigate"),  QStringLiteral("research"),
+        QStringLiteral("accessibility"),QStringLiteral("optimize"),
+        QStringLiteral("package"),      QStringLiteral("marketing"),
+        QStringLiteral("ux") };
+    QString kindArg = req.value(QStringLiteral("kind")).toString().trimmed();
+    if (!kindArg.isEmpty()) {
+        // Same 64-byte + control-char hygiene the status / id echoes use, so
+        // a stray value cannot smuggle ANSI bytes into the refusal.
+        if (kindArg.size() > 64) kindArg.truncate(64);
+        for (int i = 0; i < kindArg.size(); ++i)
+            if (kindArg.at(i).unicode() < 0x20) kindArg[i] = QChar('?');
+        const QString folded = kindArg.toLower();
+        if (!kAcceptedKinds.contains(folded)) {
+            out["ok"]       = false;
+            out["error"]    = QStringLiteral("unknown kind filter: %1")
+                                  .arg(kindArg);
+            out["code"]     = QStringLiteral("bad_kind");
+            out["accepted"] = QJsonArray::fromStringList(kAcceptedKinds);
+            return QJsonDocument(out);
+        }
+        kindArg = folded;
+    }
+    auto applyKindFilter = [&kindArg](QJsonArray &arr) {
+        if (kindArg.isEmpty()) return;
+        QJsonArray kept;
+        for (const auto &v : std::as_const(arr)) {
+            if (v.toObject().value(QStringLiteral("kind")).toString().toLower()
+                == kindArg)
+                kept.append(v);
+        }
+        arr = kept;
+    };
+
     // ANTS-1856 — optional `id` single-item selector. When set, the
     // query returns just the bullet(s) whose id equals this value,
     // bypassing the status filter + pagination so a caller after one
@@ -3574,6 +3629,7 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
         // ANTS-3391 — keyword filter composes after status + section, before
         // pagination (so count / next_offset reflect the narrowed set).
         applyQueryFilter(filtered);
+        applyKindFilter(filtered);   // ANTS-4836
         // ANTS-1436-INV-11 — pagination via PaginationEngine helper.
         // One call site per emission branch (section + full-file).
         // ANTS-3543 — auto-downshift a would-be-truncated fat list to its
@@ -3641,6 +3697,7 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
         out["count"] = page.slice.size();
         out["filter"] = filter;
         if (!queryArg.isEmpty()) out["query"] = queryArg;  // ANTS-3391
+        if (!kindArg.isEmpty())  out["kind"]  = kindArg;   // ANTS-4836
         out["section"] = sec->slug;
         // ANTS-1907 — always echo the section's etag on a section=
         // response so the caller can hand it back as section_etag_match
@@ -4206,6 +4263,7 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
     // ANTS-3391 — keyword filter composes after status, before pagination
     // (so count / next_offset reflect the narrowed set).
     applyQueryFilter(filtered);
+    applyKindFilter(filtered);   // ANTS-4836
 
     // ANTS-1436-INV-11 — pagination via PaginationEngine helper.
     // Second of two call sites (the other is in the section-mode
@@ -4267,6 +4325,7 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
     // ANTS-1247-INV-7: filter echo (canonicalised lowercase).
     out["filter"] = filter;
     if (!queryArg.isEmpty()) out["query"] = queryArg;  // ANTS-3391
+    if (!kindArg.isEmpty())  out["kind"]  = kindArg;   // ANTS-4836
     if (emitPagination) {
         out["offset"]    = page.offset;
         out["limit"]     = page.limit;

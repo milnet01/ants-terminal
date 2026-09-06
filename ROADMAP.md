@@ -50847,8 +50847,24 @@ two projects).
   Kind: enhancement.
   Source: cc-feedback-2026-09-03 LottoTracker.
 
-- 📋 [ANTS-4836] **roadmap_query has no kind filter, so "which review fixes are still open?" cannot be asked directly.**
+- ✅ [ANTS-4836] **roadmap_query has no kind filter, so "which review fixes are still open?" cannot be asked directly.**
   kind is write-only in practice: settable and readable, never selectable, so the triage question is answered by pulling every active bullet and sorting by hand. Refuse an unrecognised value with bad_kind plus an accepted list, as status refuses bad_status; a silently ignored filter returns the full set and reads as "nothing matches that kind". A per-kind count on mode:"section_index" or mode:"report" would answer the aggregate with no rows at all.
+  Resolved (2026-09-06) as filed, including the refusal the reporter
+  asked for by name: an unrecognised kind returns bad_kind with an
+  `accepted` list rather than the full set, because a silently ignored
+  filter reads as "nothing matches that kind" and is indistinguishable
+  from a real empty result. Composes with status, section and query;
+  applies under mode:"headline_only" too, since filtering runs before
+  the projection that drops the field (ANTS-4699) -- there is an
+  invariant for that, because it is the combination a triage question
+  actually uses. The vocabulary is roadmap_log's kind enum, kept as a
+  literal list rather than reached across for: the write side's enum
+  lives in the schema builder, and a read verb importing it would couple
+  the two the wrong way round. Four invariants in
+  tests/features/roadmap_query_kind_filter, three red before the fix.
+  NOT done, and left for whoever wants it: the item's second half, a
+  per-kind count on mode:"section_index" or mode:"report" to answer the
+  aggregate with no rows at all. Suite 4226/4226.
   **Layman:** Every roadmap item records what kind of work it is, but you cannot search by it.
   Kind: enhancement.
   Source: cc-feedback-2026-09-03 LottoTracker.
