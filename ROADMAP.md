@@ -68346,7 +68346,7 @@ contributors don't duplicate research.
   Kind: enhancement.
   Source: user-request-2026-08-06.
 
-- 📋 [ANTS-3846] **clang-tidy contributes zero analysis and its usage text is ingested as 92 findings.**
+- ✅ [ANTS-3846] **clang-tidy contributes zero analysis and its usage text is ingested as 92 findings.**
   Found in the audit report of 2026-08-06 (ants-audit v0.7.104), and it is
   two bugs stacked, the second worse than the first.
 
@@ -68389,6 +68389,27 @@ contributors don't duplicate research.
   **Layman:** One of the code checkers has silently not been checking anything, and its help text was being listed as if it were 92 problems found.
   Kind: fix.
   Source: audit-2026-08-06.
+  Resolved (2026-09-06). Re-measured first, and HALF the item was
+  already fixed: it says "this repo ships no .clang-tidy file", and
+  ANTS-4787 shipped one at the root on a later date -- so the COVERAGE
+  harm is closed and that half needed nothing. What remained was harm 2,
+  the one the item calls the worse of the two, and it is structural
+  rather than clang-tidy's: any line-based tool that refuses to run
+  prints a usage banner, and the runner parsed it as findings.
+  Reproduced verbatim before fixing -- `clang-tidy --checks=-* a.cpp --`
+  prints "Error: no checks enabled." plus the banner and EXITS 0, so the
+  exit code cannot detect it either, which is why a marker was needed.
+  Fixed on the existing precedent rather than a new mechanism:
+  ANTS-3395's hasToolAbortMarker does exactly this for the JSON tools
+  and feeds ParsedOutput.aborted, which the runner already promotes to a
+  crashed status so the tool lands in incomplete_tools[].
+  hasUsageBannerMarker is its line-based twin. Conservative by
+  construction: both markers anchor at line start and only the first 8
+  lines are examined, because a banner is printed INSTEAD of work while
+  a diagnostic mentioning usage sits among other diagnostics -- there is
+  an invariant for exactly that case, and it passed before the fix,
+  which is what proves it is a guard rather than an accident. The
+  fixture is clang-tidy's real captured bytes. Suite 4233/4233.
 
 - 📋 [ANTS-3847] **Four audit/project-query tests leak under LeakSanitizer; `ctest --preset=debug` is not green.**
   Measured 2026-08-06 while running the ASan leg for ANTS-3833 commit 2.

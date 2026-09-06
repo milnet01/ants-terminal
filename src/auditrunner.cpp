@@ -874,6 +874,45 @@ bool hasToolAbortMarker(const QString &raw) {
     return rxLevel.match(raw).hasMatch() && rxErr.match(raw).hasMatch();
 }
 
+// ANTS-3846 — a plain-text tool that printed its USAGE banner analysed
+// nothing, and the runner used to parse that banner as findings. The audit of
+// 2026-08-06 carried "clang-tidy Analysis — 92 finding(s)" whose contents were
+// lines like "--help  Display available options": a tool that produced nothing
+// read as coverage, which is strictly worse than the tool being absent.
+//
+// The exit code cannot be used. Verified 2026-09-06 on this machine:
+// `clang-tidy --checks=-* a.cpp --` prints "Error: no checks enabled." plus
+// the full banner and exits 0.
+//
+// Same shape as ANTS-3395's hasToolAbortMarker, which does this for the JSON
+// tools; this is the line-based tools' equivalent, and it feeds the same
+// `aborted` flag so both surface in incomplete_tools[] rather than as a clean
+// run.
+//
+// CONSERVATIVE on purpose, because a diagnostic MESSAGE may mention usage:
+// both markers are anchored at line start, and only the head of the stream is
+// examined — a banner is the first thing a tool prints when it refuses to
+// run, where a finding that talks about usage sits among other findings.
+bool hasUsageBannerMarker(const QString &raw) {
+    // A banner is emitted INSTEAD of work, so it is at the top. Eight lines is
+    // slack for a leading blank or a version line.
+    constexpr int kHeadLines = 8;
+    static const QRegularExpression rxUsage(
+        QStringLiteral("^[ \\t]*usage:"),
+        QRegularExpression::CaseInsensitiveOption);
+    static const QRegularExpression rxNoChecks(
+        QStringLiteral("^[ \\t]*Error: no checks enabled"),
+        QRegularExpression::CaseInsensitiveOption);
+    const QStringList lines = raw.split(QChar('\n'));
+    const int n = qMin(kHeadLines, int(lines.size()));
+    for (int i = 0; i < n; ++i) {
+        const QString &l = lines.at(i);
+        if (rxUsage.match(l).hasMatch() || rxNoChecks.match(l).hasMatch())
+            return true;
+    }
+    return false;
+}
+
 ParsedOutput parseToolOutput(const QString &tool,
                              const QString &raw,
                              int sampleCap,
@@ -886,6 +925,15 @@ ParsedOutput parseToolOutput(const QString &tool,
                                  = {}) {
     ParsedOutput out;
     if (raw.trimmed().isEmpty()) return out;
+    // ANTS-3846 — before anything is parsed: a line-based tool that printed a
+    // usage banner refused to run, so its stream is help text rather than
+    // findings. Checked here so no finding is ever built from it. The JSON
+    // tools are excluded because they have ANTS-3395's own abort marker and
+    // never reach the line-based path anyway.
+    if (!isJsonFindingTool(tool) && hasUsageBannerMarker(raw)) {
+        out.aborted = true;
+        return out;
+    }
     // ANTS-3395 — JSON tools (semgrep/bandit/ruff/gitleaks/trivy/shellcheck)
     // emit a single JSON document, sometimes wrapped in progress-bar / log
     // noise on the merged stream. Parse ONLY the extracted JSON span, and

@@ -99,6 +99,17 @@ for security-relevant changes.
 
 ### Fixed
 
+- **a checker that printed its help text is no longer reported as 92 findings** (ANTS-3846)
+  When a code checker refuses to run it prints its usage banner and exits
+  successfully, and the audit read that banner as its output — so one report
+  announced 92 findings whose contents were lines like "--help  Display
+  available options". A tool that analysed nothing looked exactly like a
+  tool that found problems, which is worse than the tool being missing:
+  missing reads as missing, this read as coverage. Such a run is now
+  reported as an incomplete tool. The markers are matched only at the start
+  of a line and only near the top of the output, so a genuine finding that
+  mentions usage is still a finding.
+
 - **one refusal code for a bad kind, whichever route reported it** (ANTS-4750)
   Setting an unrecognised kind of work was refused under one name through
   `roadmap_log`'s own argument and a different one through
