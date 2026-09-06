@@ -543,6 +543,28 @@ Feature test: `tests/features/<name>/`. Covers INV-1..N. Label
 <one row per review loop; written as the loops happen, never back-filled>
 ```
 
+## What checks this
+
+| Rule | What catches a breach |
+|---|---|
+| § 2 the `<ID>-<topic>.md` filename shape | **nothing** — `spec_query` resolves the bare `<ID>.md` too, so a missing slug is invisible to it; the corpus sweep is ANTS-3755 |
+| § 3 the required sections are present | **`Partial:`** `spec_lint` `missing_section`, a required-section presence check reading § 3's own block. It tests presence, never ORDER, though § 3 says "in this order" — **nothing** catches a spec whose sections are all present and out of sequence |
+| § 3.2 the header block stays parseable | **`Partial:`** `spec_query`, a parse check that fails loudly on a broken header — but nothing runs it. § 6 asks the author to |
+| § 3.5 every invariant carries a test surface | `spec_lint` `invariant_no_test`, a per-invariant clause-presence check. A tombstone is exempt, so a MALFORMED one — the dash in `*withdrawn — …*` is load-bearing — surfaces here as an untested invariant rather than as itself |
+| § 3.5 a command test clause states a result | `spec_lint` `command_test_no_expectation`, a candidate check over the clause's code spans |
+| § 3.5 / § 5.5 ids are never renumbered | **`Partial:`** `spec_lint` `invariant_id_gap`, a candidate id-sequence check. It sees a HOLE; a list renumbered contiguously leaves none, so **nothing** catches the renumbering this rule actually forbids |
+| § 3.5.1 a pattern invariant is runnable | **`Partial:`** `spec_conformance`, a pattern-execution check reporting a pattern that disagrees with its own example. The three mistakes § 3.5.1 calls invisible are reported by **nothing**, and nothing makes an author run the verb |
+| § 3.6 a named test surface resolves | `spec_lint` `test_surface_absent` / `test_surface_unresolved` / `test_surface_unwired`, disk- and CMake-resolution checks, gated on a `tests/features/<name>/` directory being named. Prose surfaces and wildcards are left alone by design |
+| § 5.1 every path, symbol and constant is grounded | **`Partial:`** `check-doc-facts` `paths` and `symbols`, resolution checks emitting candidates. Whether a symbol that RESOLVES supports the claim made about it is **nothing mechanical** — the review gate's cold lanes |
+| § 5.2 the Layman line | **nothing** — no check knows whether a given spec describes user-facing behaviour, which is what triggers the rule |
+| § 5.3 brevity, § 5.4 security boundaries | **nothing mechanical** — the review gate's cold lanes, and the reader of the resulting document |
+| § 5.6 the status lifecycle | **nothing** — no check reads `**Status:**` against the lifecycle. `spec_lint` reads the value only to bucket § 3.6's surface findings |
+| § 5.7 the loop log exists | `spec_lint` `missing_section`, via § 3's block, which lists it |
+| § 5.7 every loop row records an outcome | `spec_lint` `loop_row_no_outcome`, an emptiness check on the row's LAST cell, read by position |
+| § 5.7 the table's columns | **nothing** — no check reads the header cells. `loop_row_no_outcome` matches the first cell `Loop` and then counts from the end, which is what lets it work across the older shapes |
+| § 5.7 a landed row is never edited, and the log is not back-filled | **nothing** — both show only in the commit diff, and no check reads it |
+| § 5.7 the gate ran at all | **nothing** — the log is the only evidence, and the session that ran the gate writes it |
+
 ## Cold-eyes loop log
 
 Moved to [`docs/reviews/specs-review-log.md`](../reviews/specs-review-log.md).
