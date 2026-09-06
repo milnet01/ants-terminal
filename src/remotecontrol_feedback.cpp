@@ -74,12 +74,41 @@ QHash<QString, QJsonObject> RemoteControl::rlResolveForeignFeedbackIds(
     if (foreignPrefixes.isEmpty())
         return foreignResolved;
 
-    const QDir rootDir(QFileInfo(feedbackFilePath).absolutePath());
-    const QStringList subs = rootDir.entryList(QDir::Dirs | QDir::NoDotAndDotDot);
+    // ANTS-4905 — the owning project is a SIBLING of the feedback file, which
+    // held while the corpus WAS the shared root. Move the corpus into a
+    // directory of its own — which is what happens once a machine carries two
+    // dozen feedback files — and that directory has no project subdirs at all,
+    // so nothing resolves and every id falls back to foreign_repo. Measured
+    // 2026-09-06 from ~/.claude: 64 of 64.
+    //
+    // So: the corpus directory first, then its parent. Ordered, because the
+    // first hit for a prefix wins and the nearer directory is the better
+    // guess; deduped, so the pre-move layout still scans one directory once.
+    // Nothing is resolved from a project that does not OWN the prefix — the
+    // head sniff below is unchanged and is what decides ownership.
+    QStringList searchRoots;
+    const QString corpusDir = QFileInfo(feedbackFilePath).absolutePath();
+    searchRoots << corpusDir;
+    const QString corpusParent = QFileInfo(corpusDir).absolutePath();
+    if (!corpusParent.isEmpty() && corpusParent != corpusDir)
+        searchRoots << corpusParent;
+
+    QStringList subs;                 // absolute paths, in search order
+    QSet<QString> seenSub;
+    for (const QString &rootPath : searchRoots) {
+        const QDir rootDir(rootPath);
+        const QStringList names =
+            rootDir.entryList(QDir::Dirs | QDir::NoDotAndDotDot);
+        for (const QString &name : names) {
+            const QString abs = rootDir.absoluteFilePath(name);
+            if (seenSub.contains(abs)) continue;
+            seenSub.insert(abs);
+            subs << abs;
+        }
+    }
     for (const QString &sub : subs) {
         if (foreignPrefixes.isEmpty()) break;  // every prefix owned
-        const QString subCanon =
-            QFileInfo(rootDir.absoluteFilePath(sub)).canonicalFilePath();
+        const QString subCanon = QFileInfo(sub).canonicalFilePath();
         const QString sibRoadmap =
             subCanon.isEmpty() ? QString() : findRoadmapUnder(subCanon);
         if (sibRoadmap.isEmpty() || sibRoadmap == callerRoadmapPath)

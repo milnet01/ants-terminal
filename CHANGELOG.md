@@ -70,6 +70,16 @@ for security-relevant changes.
 
 ### Fixed
 
+- **cross-project id resolution survives the feedback corpus moving into its own folder** (ANTS-4905)
+  `feedback_query` resolves a foreign-prefix id against the project whose
+  roadmap owns that prefix, and found that project by scanning the feedback
+  file's own directory for sibling projects. That held while the corpus WAS
+  the shared root; once it moved into a folder of its own, the scan found
+  no projects and every id fell back to `foreign_repo` — measured at 64 of
+  64 from a contributor project. It now searches the corpus directory and
+  then its parent, nearer first. Ownership is still decided the same way,
+  so a prefix nobody owns is still reported as foreign.
+
 - **test bundles no longer read the developer's live settings** (ANTS-4898)
   Both bundle mains sandboxed `XDG_DATA_HOME` so a test could not open the
   real roadmap store, and left `XDG_CONFIG_HOME` alone — so every test

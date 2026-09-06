@@ -52,3 +52,29 @@ works from any consumer project.
 - **INV-4 / same-prefix caller ids unaffected (regression).** When the mapped
   ids share the caller roadmap's own prefix, no sibling scan runs and the
   ANTS-3478 caller-roadmap resolution (📋/✅/unknown) is unchanged. Behavioural.
+
+## ANTS-4905 — a corpus in a directory of its own
+
+Reported by claude_config: from `~/.claude`, all 64 mapped ids came back
+`foreign_repo`, none with a status or a ship date. The field's whole
+purpose is the "which of my prior suggestions shipped?" workflow, so for
+every contributor it was uniformly uninformative — and ANTS-4741's
+`possibly_stale_binary` comparison, which needs a status this path never
+produced, could not fire either.
+
+**The cause is topological, not a missing feature.** The resolver derives
+the shared root from the feedback FILE's own directory and scans that
+directory's subdirs for the owning project. That held while the corpus
+WAS the shared root. On 2026-09-06 the corpus moved into
+`Ants_MCP_Feedback_Files/` — which is what happens once a machine carries
+two dozen feedback files — and that directory has no project subdirs at
+all. INV-1 above kept passing throughout, because its topology is the
+pre-move one.
+
+### INV-4 — the corpus directory, then its parent
+
+Search roots are ordered (nearer first) and deduped, so the pre-move
+layout still scans one directory once. Ownership is still decided by the
+head sniff: a sibling whose roadmap does not own the prefix resolves
+nothing, and a prefix nobody owns stays `foreign_repo` with the
+unresolved-foreign note.

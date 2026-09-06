@@ -51947,7 +51947,7 @@ rather than refiled.
   Source: finbreak feedback 2026-09-06.
   Lanes: remotecontrol, roadmap.
 
-- 📋 [ANTS-4905] **feedback_query resolves mapped ids against the CALLER's roadmap, so every id reads foreign_repo in every project but Ants Terminal.**
+- ✅ [ANTS-4905] **feedback_query resolves mapped ids against the CALLER's roadmap, so every id reads foreign_repo in every project but Ants Terminal.**
   Reported by claude_config. A contributor project's roadmap uses its own
   prefix, so every ANTS-NNNN id in its feedback file is foreign to it.
   Measured from ~/.claude (prefix CFG): all 64 mapped ids came back
@@ -51966,6 +51966,24 @@ rather than refiled.
   If cross-project resolution is genuinely out of scope from a root the
   lookup cannot reach, the field's description must say so, or
   foreign_repo reads as a lookup that failed.
+  Resolved (2026-09-06). The item's first question -- why ANTS-3519 did
+  not fire -- had the answer the report predicted, and it is topological
+  rather than a missing feature. rlResolveForeignFeedbackIds derives the
+  shared root from the feedback FILE's own directory and scans THAT
+  directory's subdirs for the owning project, which held while the
+  corpus WAS the shared root. Once it moved into
+  Ants_MCP_Feedback_Files/ on 2026-09-06, that directory had no project
+  subdirs at all, so nothing resolved and every id fell back to
+  foreign_repo. So this was a same-day REGRESSION of ANTS-3519, not a
+  scope gap, and ANTS-3519's own INV-1 kept passing because its fixture
+  is the pre-move topology. Fixed by searching the corpus directory and
+  then its parent, ordered nearer-first and deduped so the pre-move
+  layout still scans one directory once. Ownership is still decided by
+  the existing head sniff, so a sibling that does not own the prefix
+  resolves nothing and an unowned prefix still reports foreign_repo with
+  its note -- covered by a second invariant written for exactly that.
+  compact_resolved shares this resolver (ANTS-3802) and is fixed with
+  it. Suite 4213/4213.
   **Layman:** The "which of my suggestions shipped?" answer is blank everywhere except the project that owns the ids.
   Kind: fix.
   Source: claude_config feedback 2026-09-06.

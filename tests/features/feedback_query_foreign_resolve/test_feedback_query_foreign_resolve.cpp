@@ -265,3 +265,96 @@ TEST(feedback_query_foreign_resolve, Ants4741QuietWhenEverythingPredatesTheBuild
     EXPECT_FALSE(env.contains("server_build_date"));
     EXPECT_FALSE(env.contains("possibly_stale_binary_hint"));
 }
+
+// ANTS-4905 — the corpus in a FOLDER OF ITS OWN, one level below the shared
+// root. Reported by claude_config: all 64 mapped ids came back foreign_repo.
+//
+// The resolver derives the shared root from the feedback FILE's own directory
+// and scans that directory's subdirs for the owning project. When the corpus
+// is a directory rather than the shared root itself, that scan finds no
+// projects at all — so nothing resolves, and every id falls back to
+// foreign_repo. INV-1 above passes throughout, because its topology is the
+// pre-move one.
+//
+// This is not a hypothetical layout: the corpus was moved into
+// Ants_MCP_Feedback_Files/ on 2026-09-06, because one file per project stops
+// scaling once there are two dozen of them.
+TEST(feedback_query_foreign_resolve, Ants4905ResolvesFromACorpusSubdirectory) {
+    QTemporaryDir root;
+    ASSERT_TRUE(root.isValid());
+    const QString sharedRoot = root.path();
+
+    // The corpus is a subdirectory of the shared root, and holds no projects.
+    const QString fb =
+        sharedRoot + "/Ants_MCP_Feedback_Files/Consumer_Ants_MCP_Feedback.md";
+    ASSERT_TRUE(writeFile(fb, consumerFeedback()));
+
+    ASSERT_TRUE(writeFile(sharedRoot + "/Consumer/ROADMAP.md",
+        QString::fromUtf8(
+            "# Consumer ROADMAP\n\n"
+            "- \xF0\x9F\x93\x8B [CONS-0100] **A local planned item.**\n")
+            .toUtf8()));
+    ASSERT_TRUE(writeFile(sharedRoot + "/OwnerProj/ROADMAP.md",
+        QString::fromUtf8(
+            "# Owner ROADMAP\n\n"
+            "- \xE2\x9C\x85 [ANTS-3517] **A shipped cross-repo item.**\n"
+            "  Resolved (2026-07-12): done.\n"
+            "- \xF0\x9F\x93\x8B [ANTS-3599] **A planned cross-repo item.**\n")
+            .toUtf8()));
+
+    RemoteControl rc(nullptr);
+    QJsonObject req;
+    req["path"]       = fb;
+    req["caller_cwd"] = sharedRoot + "/Consumer";
+    const QJsonObject env = rc.cmdFeedbackQuery(req).object();
+    ASSERT_TRUE(env.value("ok").toBool());
+
+    const auto got = statusMap(env);
+    EXPECT_EQ(got.value("ANTS-3517").value("status").toString(),
+              QString::fromUtf8(kCheck))
+        << "the owning roadmap is one level up from the corpus directory — "
+           "the whole \"which of my suggestions shipped?\" workflow depends "
+           "on finding it";
+    EXPECT_EQ(got.value("ANTS-3517").value("resolved_from").toString(),
+              QStringLiteral("OwnerProj"));
+    EXPECT_EQ(got.value("ANTS-3517").value("shipped_date").toString(),
+              QStringLiteral("2026-07-12"));
+    EXPECT_EQ(got.value("ANTS-3599").value("status").toString(),
+              QString::fromUtf8(kClip));
+    EXPECT_FALSE(env.contains("mapped_id_status_note"));
+}
+
+// ANTS-4905 — widening the search must not resolve an id from a project that
+// does NOT own the prefix. The grandparent is searched only after the corpus
+// directory itself, and a prefix nobody owns still comes back foreign_repo.
+TEST(feedback_query_foreign_resolve, Ants4905UnownedPrefixStillForeign) {
+    QTemporaryDir root;
+    ASSERT_TRUE(root.isValid());
+    const QString sharedRoot = root.path();
+    const QString fb =
+        sharedRoot + "/Ants_MCP_Feedback_Files/Consumer_Ants_MCP_Feedback.md";
+    ASSERT_TRUE(writeFile(fb, consumerFeedback()));
+    ASSERT_TRUE(writeFile(sharedRoot + "/Consumer/ROADMAP.md",
+        QString::fromUtf8(
+            "# Consumer ROADMAP\n\n"
+            "- \xF0\x9F\x93\x8B [CONS-0100] **A local planned item.**\n")
+            .toUtf8()));
+    // A sibling exists, but its roadmap owns a different prefix.
+    ASSERT_TRUE(writeFile(sharedRoot + "/Bystander/ROADMAP.md",
+        QString::fromUtf8(
+            "# Bystander ROADMAP\n\n"
+            "- \xE2\x9C\x85 [BYST-0001] **Not the owner.**\n").toUtf8()));
+
+    RemoteControl rc(nullptr);
+    QJsonObject req;
+    req["path"]       = fb;
+    req["caller_cwd"] = sharedRoot + "/Consumer";
+    const QJsonObject env = rc.cmdFeedbackQuery(req).object();
+    ASSERT_TRUE(env.value("ok").toBool());
+
+    const auto got = statusMap(env);
+    EXPECT_EQ(got.value("ANTS-3517").value("status").toString(),
+              QStringLiteral("foreign_repo"));
+    EXPECT_TRUE(env.contains("mapped_id_status_note"))
+        << "an unresolved foreign id must still say so";
+}
