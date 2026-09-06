@@ -534,7 +534,7 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppend(const QJsonObject &req) {
             RoadmapRender::Outcome outcome;
             QString writeErr;
             const auto r = RoadmapWrite::commitAndRender(
-                store, projectId, callerCanonical, roadmapPath, dryRun, mutate,
+                store, projectId, rcProjectRootFor(callerCanonical), roadmapPath, dryRun, mutate,
                 &outcome, &writeErr);
             QJsonObject env;
             // ANTS-4593 — under dry_run the row keyed `idStr` is created inside
@@ -1563,7 +1563,7 @@ QJsonDocument RemoteControl::cmdRoadmapLogFlip(const QJsonObject &req) {
                 RoadmapRender::Outcome outcome;
                 QString writeErr;
                 const auto r = RoadmapWrite::commitAndRender(
-                    store, projectId, callerCanonical, roadmapPath, dryRun,
+                    store, projectId, rcProjectRootFor(callerCanonical), roadmapPath, dryRun,
                     mutate, &outcome, &writeErr);
                 QJsonObject env;
                 if (rcRoadmapWriteRefused(env, r, writeErr, outcome)) {
@@ -2377,7 +2377,7 @@ QJsonDocument rlSetBodyStore(
     RoadmapRender::Outcome outcome;
     QString writeErr;
     const auto r = RoadmapWrite::commitAndRender(
-        store, projectId, callerCanonical, roadmapPath, dryRun, mutate,
+        store, projectId, rcProjectRootFor(callerCanonical), roadmapPath, dryRun, mutate,
         &outcome, &writeErr);
     QJsonObject env;
     if (rcRoadmapWriteRefused(env, r, writeErr, outcome)) {
@@ -2836,7 +2836,7 @@ QJsonDocument RemoteControl::cmdRoadmapLogAmendBody(const QJsonObject &req,
                 RoadmapRender::Outcome hOutcome;
                 QString hWriteErr;
                 const auto hr = RoadmapWrite::commitAndRender(
-                    store, projectId, callerCanonical, roadmapPath, dryRun,
+                    store, projectId, rcProjectRootFor(callerCanonical), roadmapPath, dryRun,
                     hMutate, &hOutcome, &hWriteErr);
                 QJsonObject env;
                 if (rcRoadmapWriteRefused(env, hr, hWriteErr, hOutcome))
@@ -3013,7 +3013,7 @@ QJsonDocument RemoteControl::cmdRoadmapLogAmendBody(const QJsonObject &req,
             RoadmapRender::Outcome outcome;
             QString writeErr;
             const auto r = RoadmapWrite::commitAndRender(
-                store, projectId, callerCanonical, roadmapPath, dryRun, mutate,
+                store, projectId, rcProjectRootFor(callerCanonical), roadmapPath, dryRun, mutate,
                 &outcome, &writeErr);
             QJsonObject env;
             if (rcRoadmapWriteRefused(env, r, writeErr, outcome)) {

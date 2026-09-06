@@ -53054,7 +53054,7 @@ volume classes, and the tooling/documentation gaps the run exposed.
   Source: in-session-2026-09-05, found while fixing the same floor in append_batch.
   Lanes: mcp, roadmap-store.
 
-- 📋 [ANTS-4884] **Every roadmap verb's store dispatch is keyed on caller_cwd, so a subdirectory caller silently falls back to markdown.**
+- ✅ [ANTS-4884] **Every roadmap verb's store dispatch is keyed on caller_cwd, so a subdirectory caller silently falls back to markdown.**
   ANTS-4882 fixed this key for the ALLOCATOR FLOOR alone. The same miss
   reaches the store-vs-markdown dispatch itself, which is the larger half.
 
@@ -53086,9 +53086,64 @@ volume classes, and the tooling/documentation gaps the run exposed.
   (added by ANTS-4882). What this item owes is the sweep of the dispatch call
   sites plus its own invariants, because changing which PATH a write takes is
   a behaviour change per verb rather than one floor going quiet.
+  Resolved (2026-09-06): one resolver, rcProjectRootFor(), wrapping
+  findRoadmapUnder's owner-directory report. Applied at both dispatchers
+  (roadmapBullets, roadmapWriteTarget), at roadmapStoreServes, at the four
+  direct store lookups in the query verb, and at every commitAndRender call
+  — thirteen of those, four via the shared roadmapSectionOpTarget helper.
+
+  The render's containment check was a THIRD site this item did not predict.
+  It takes the project root and was handed caller_cwd, so once the dispatch
+  was fixed the store write reached the render and refused "render path
+  escapes the project root". Found by the test, not by reading.
+
+  Pinned as INV-1 to INV-3 in tests/features/roadmap_subdir_dispatch, with a
+  roadmap_query test seam added because roadmapBullets is private and the read
+  side could otherwise only be observed from a live session. Full suite
+  4182/4182.
+
+  Two things the red run corrected in the first draft of that test. INV-1
+  passed while the defect was live, because `source` is served from a
+  per-instance cache keyed on the roadmap's path and mtime rather than on
+  caller_cwd — the control call at the root filled it, and the subject read
+  it back. Subject and control now use separate RemoteControl instances. And
+  INV-3 expected `no_roadmap`, where the verb refuses `no_roadmap_loaded`.
+
+  That cache keying is filed separately as its own observation: two callers
+  with different caller_cwd share one entry within the TTL, so `source` can
+  report the other caller's backend.
   **Layman:** Running a roadmap command from a sub-folder quietly reads and writes the file instead of the database.
   Kind: fix.
   Source: in-session-2026-09-06, found while fixing ANTS-4882.
+  Lanes: mcp, roadmap-store.
+
+- 📋 [ANTS-4885] **roadmap_query's backend witness is cached on the roadmap's path alone, so one caller can be told another's backend.**
+  `m_roadmapCacheSource` is derived per cache FILL, from the filling
+  caller's own project resolution, and the cache is keyed on the roadmap
+  file's path and mtime. `source` is then served from it for the cache's
+  100 ms TTL.
+
+  So two calls that resolve to different projects but the same roadmap
+  file — or, before ANTS-4884, the same file resolved once at a root and
+  once from a subdirectory — share one entry, and the second is told the
+  first's backend. Measured while testing ANTS-4884: a query from a
+  subdirectory reported `source:"store"` purely because a root call had
+  filled the cache milliseconds earlier, and it kept doing so while the
+  dispatch defect was live.
+
+  ANTS-4884 removed the case that made this reachable in ordinary use, by
+  making both callers resolve to the same project. What is left is a
+  witness whose key does not cover what it witnesses, which
+  `docs/standards/mcp-caches.md` is the contract for.
+
+  Cheap to check and cheap to state: either fold the resolved project root
+  into the key, or derive `source` outside the cache. Worth confirming
+  first that no other cached field has the same shape —
+  `m_roadmapCacheFileMaxId` and `m_roadmapCacheStoreHighWater` are filled
+  in the same block from the same resolution.
+  **Layman:** A field saying where the roadmap was read from can report the answer given to a different request.
+  Kind: fix.
+  Source: in-session-2026-09-06, found while testing ANTS-4884.
   Lanes: mcp, roadmap-store.
 
 ### Ants MCP feedback from CC sessions — 2026-08-28 triage

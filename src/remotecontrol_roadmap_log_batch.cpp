@@ -676,7 +676,7 @@ QJsonDocument RemoteControl::cmdRoadmapLogFlipBatch(const QJsonObject &req) {
         RoadmapRender::Outcome outcome;
         QString writeErr;
         const auto r = RoadmapWrite::commitAndRender(
-            store, projectId, callerCanonical, roadmapPath, dryRun,
+            store, projectId, rcProjectRootFor(callerCanonical), roadmapPath, dryRun,
             mutate, &outcome, &writeErr);
         QJsonObject env;
         if (rcRoadmapWriteRefused(env, r, writeErr, outcome)) {
@@ -1335,7 +1335,7 @@ QJsonDocument RemoteControl::cmdRoadmapLogCreateSection(const QJsonObject &req) 
             RoadmapRender::Outcome outcome;
             QString writeErr;
             const auto r = RoadmapWrite::commitAndRender(
-                store, projectId, callerCanonical, roadmapPath, dryRun, mutate,
+                store, projectId, rcProjectRootFor(callerCanonical), roadmapPath, dryRun, mutate,
                 &outcome, &writeErr);
             QJsonObject env;
             if (rcRoadmapWriteRefused(env, r, writeErr, outcome))
@@ -1682,7 +1682,7 @@ QJsonDocument RemoteControl::cmdRoadmapLogBundleRow(const QJsonObject &req) {
             RoadmapRender::Outcome outcome;
             QString writeErr;
             const auto r = RoadmapWrite::commitAndRender(
-                store, projectId, callerCanonical, roadmapPath, dryRun, mutate,
+                store, projectId, rcProjectRootFor(callerCanonical), roadmapPath, dryRun, mutate,
                 &outcome, &writeErr);
             QJsonObject env;
             if (rcRoadmapWriteRefused(env, r, writeErr, outcome))
@@ -2537,7 +2537,7 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppendBatch(const QJsonObject &req) {
         RoadmapRender::Outcome outcome;
         QString writeErr;
         const auto r = RoadmapWrite::commitAndRender(
-            store, projectId, callerCanonical, roadmapPath, dryRun, mutate,
+            store, projectId, rcProjectRootFor(callerCanonical), roadmapPath, dryRun, mutate,
             &outcome, &writeErr);
         QJsonObject env;
         if (rcRoadmapWriteRefused(env, r, writeErr, outcome))
@@ -2872,6 +2872,12 @@ RemoteControl::roadmapSectionOpTarget(const QJsonObject &req,
     }
 
     *roadmapPath = found;
+    // ANTS-4884 — upgrade the root now that the roadmap has resolved: `found`
+    // was matched under the project root, and the render's containment check
+    // and the store's project key both need that rather than the caller's cwd.
+    // The early assignment above stays as ANTS-4602 requires, because it is
+    // what the refusal messages above this line interpolate.
+    *projectRoot = rcProjectRootFor(callerCanonical);
 
     QFile rf(found);
     if (!rf.open(QIODevice::ReadOnly | QIODevice::Text)) {

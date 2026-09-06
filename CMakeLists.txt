@@ -2053,6 +2053,7 @@ if(ANTS_TESTS)
                 # migration left behind.
                 tests/features/roadmap_repair_trailers/test_roadmap_repair_trailers.cpp
                 tests/features/roadmap_alloc_store_floor/test_roadmap_alloc_store_floor.cpp
+                tests/features/roadmap_subdir_dispatch/test_roadmap_subdir_dispatch.cpp
                 # ANTS-4070 — rotate a closed minor into its archive, and
                 # retitle a section. Same shape as roadmap_write_half: through
                 # the verbs, against stores the migration actually built.

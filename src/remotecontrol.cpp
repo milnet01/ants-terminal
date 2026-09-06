@@ -172,6 +172,23 @@ QString findRoadmapUnder(const QString &canonicalRoot, QString *ownerDir) {
     return {};
 }
 
+// ANTS-4884 — the project root a path belongs to. The store keys a project on
+// its canonical ROOT, and every verb hands the dispatchers its caller_cwd,
+// which is at or below that root: from a subdirectory the lookup matched no row
+// and the dispatcher read "not migrated", taking the markdown path against a
+// file the store renders.
+//
+// Returns `path` unchanged when nothing at or above it holds a roadmap, so a
+// caller outside any project behaves exactly as before — the resolution can
+// only turn a miss into a hit.
+QString rcProjectRootFor(const QString &path) {
+    if (path.isEmpty())
+        return path;
+    QString owner;
+    findRoadmapUnder(path, &owner);
+    return owner.isEmpty() ? path : owner;
+}
+
 // ANTS-1548 — CHANGELOG.md resolver, same shape as findRoadmapUnder.
 QString findChangelogUnder(const QString &canonicalRoot) {
     if (canonicalRoot.isEmpty()) return {};

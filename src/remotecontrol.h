@@ -1002,6 +1002,11 @@ public:
     // tests/features/mcp_roadmap_log_atomicity/spec.md.
     static void setForceCounterCommitFailForTest(bool on);
     QJsonDocument cmdRoadmapLogAppendForTest(const QJsonObject &req);
+    // ANTS-4884 — the READ-side counterpart. roadmapBullets() is private and
+    // roadmap_query had no seam, so which backend served a read could only be
+    // observed from a live session. See
+    // tests/features/roadmap_subdir_dispatch/spec.md.
+    QJsonDocument cmdRoadmapQueryForTest(const QJsonObject &req);
     // ANTS-1962 / ANTS-1963 — test-only QSaveFile commit-failure seams,
     // mirroring setForceCounterCommitFailForTest. Force the atomic write
     // in cmdFeedbackLog / cmdSpecLog to fail so the atomicity tests can

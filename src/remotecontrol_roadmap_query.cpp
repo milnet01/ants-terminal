@@ -71,9 +71,13 @@ bool RemoteControl::roadmapStoreServes(const QString &projectRoot,
     // downgrade a refusal into "not migrated, parse the markdown".
     RoadmapSource::ReadError localWhy = RoadmapSource::ReadError::None;
     RoadmapStore *store = roadmapStoreOrNull(&localWhy, error);
+    // ANTS-4884 — as roadmapBullets() and roadmapWriteTarget(): resolve the
+    // caller's cwd to the root the store keys on before asking.
     const bool served =
-        store && RoadmapSource::migratedProject(*store, projectRoot, text,
-                                                error, &localWhy).has_value();
+        store && RoadmapSource::migratedProject(*store,
+                                                rcProjectRootFor(projectRoot),
+                                                text, error,
+                                                &localWhy).has_value();
     if (why)
         *why = localWhy;
     return served;
@@ -111,8 +115,11 @@ RemoteControl::roadmapWriteTarget(const QString &projectRoot,
     if (!store)
         return std::nullopt;
 
+    // ANTS-4884 — as roadmapBullets(): the caller's cwd is at or below the root
+    // the store keys on, and a subdirectory miss here silently splices markdown
+    // that the next store render discards.
     const auto projectId = RoadmapSource::migratedProject(
-        *store, projectRoot, text, error, &localWhy);
+        *store, rcProjectRootFor(projectRoot), text, error, &localWhy);
     if (why)
         *why = localWhy;
     if (!projectId)
@@ -2449,7 +2456,10 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
                 return QJsonDocument(out);
             }
             QString sqlErr;
-            const auto row = store->readProjectByRoot(callerCanonical, &sqlErr);
+            // ANTS-4884 — keyed on the project ROOT, so a subdirectory caller
+            // is not reported as an unregistered project.
+            const auto row = store->readProjectByRoot(
+                rcProjectRootFor(callerCanonical), &sqlErr);
             if (!row) {
                 out["ok"] = false;
                 out["error"] = sqlErr.isEmpty()
@@ -2632,8 +2642,9 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
         RoadmapSource::ReadError syncWhy = RoadmapSource::ReadError::None;
         bool measured = false;
         if (RoadmapStore *store = roadmapStoreOrNull(&syncWhy, nullptr)) {
-            if (const auto pid = RoadmapSource::migratedProject(
-                    *store, callerCanonical, text, nullptr, &syncWhy)) {
+            if (const auto pid = RoadmapSource::migratedProject(   // ANTS-4884
+                    *store, rcProjectRootFor(callerCanonical), text, nullptr,
+                    &syncWhy)) {
                 if (rcStampDriftFields(out, *store, *pid, callerCanonical, path))
                     measured = true;
             }
@@ -2684,8 +2695,9 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
         if (!callerCanonical.isEmpty()) {
             RoadmapSource::ReadError witnessWhy = RoadmapSource::ReadError::None;
             if (RoadmapStore *store = roadmapStoreOrNull(&witnessWhy, nullptr)) {
-                const auto pid = RoadmapSource::migratedProject(
-                    *store, callerCanonical, text, nullptr, &witnessWhy);
+                const auto pid = RoadmapSource::migratedProject(   // ANTS-4884
+                    *store, rcProjectRootFor(callerCanonical), text, nullptr,
+                    &witnessWhy);
                 if (pid) {
                     m_roadmapCacheSource = QStringLiteral("store");
                     const QString pfx = rcdetail::rlStoreCounterPrefix(
@@ -4108,8 +4120,9 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
         std::optional<QStringList> shippedIds;
         int shippedUndated = 0;
         if (RoadmapStore *store = roadmapStoreOrNull(&winWhy, nullptr)) {
-            if (const auto pid = RoadmapSource::migratedProject(
-                    *store, callerCanonical, text, nullptr, &winWhy)) {
+            if (const auto pid = RoadmapSource::migratedProject(   // ANTS-4884
+                    *store, rcProjectRootFor(callerCanonical), text, nullptr,
+                    &winWhy)) {
                 QString err;
                 shippedIds = store->idsShippedInWindow(*pid, shippedSince,
                                                        shippedUntil, &err);
@@ -4555,6 +4568,12 @@ void RemoteControl::setForceCounterCommitFailForTest(bool on) {
 QJsonDocument RemoteControl::cmdRoadmapLogAppendForTest(
         const QJsonObject &req) {
     return cmdRoadmapLogAppend(req);
+}
+
+// ANTS-4884 — test seam for the read path, which resolves its project from
+// caller_cwd and the filesystem alone, as the log seams above do.
+QJsonDocument RemoteControl::cmdRoadmapQueryForTest(const QJsonObject &req) {
+    return cmdRoadmapQuery(req);
 }
 
 // ANTS-1717/1793 — test seam for the flip/annotate path. Flip is

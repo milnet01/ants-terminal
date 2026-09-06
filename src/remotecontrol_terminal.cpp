@@ -1509,7 +1509,12 @@ RemoteControl::roadmapBullets(const QString &projectRoot,
     // A caller with no project root cannot ask the marker anything —
     // migratedProject() refuses a root it cannot canonicalise, and passing ""
     // would turn every focused-tab call into a refusal.
-    if (!projectRoot.isEmpty()) {
+    // ANTS-4884 — callers hand this their caller_cwd, which is at or below the
+    // root the store keys on. Resolve before asking, or a subdirectory caller
+    // reads as an unmigrated project of its own. idFormatFor() below reads
+    // .ants/project.json, which lives at the root, and missed the same way.
+    const QString root = rcProjectRootFor(projectRoot);
+    if (!root.isEmpty()) {
         // The local rather than `why` directly: a caller that passed nullptr
         // would otherwise turn rule 2's refusal into a fall-through to
         // markdown — the silent fallback INV-1 forbids, arriving through an
@@ -1524,9 +1529,9 @@ RemoteControl::roadmapBullets(const QString &projectRoot,
         if (store) {
             RoadmapSource::ReadError seamWhy = RoadmapSource::ReadError::None;
             auto records = RoadmapSource::bulletsFor(
-                *store, projectRoot, text, includeArchive,
+                *store, root, text, includeArchive,
                 &seamWhy, error,
-                ProjectSettings::idFormatFor(projectRoot));   // ANTS-3771
+                ProjectSettings::idFormatFor(root));   // ANTS-3771
             if (why)
                 *why = seamWhy;
             if (records)

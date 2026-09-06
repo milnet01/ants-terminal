@@ -14,6 +14,16 @@ for security-relevant changes.
 
 ### Fixed
 
+- **roadmap verbs called from a project subdirectory are now served by the roadmap store** (ANTS-4884)
+  The store-vs-markdown dispatch asked the store by `caller_cwd`, and a
+  project is keyed on its canonical root — so from a subdirectory the
+  lookup matched nothing and the verb fell back to reading and splicing
+  `ROADMAP.md`, which is an output of the store. Reads answered from a
+  file that could lag the store; writes reported `ok:true` and were
+  discarded by the next render. Both dispatchers, the render's
+  containment check and the project-row lookups now resolve the caller's
+  directory to the project root first.
+
 - **roadmap_log's id allocator now applies its store floor when called from a project subdirectory** (ANTS-4882)
   The floor that stops a migrated project reissuing an id the store
   already holds asked the store by `caller_cwd`. A project is keyed on

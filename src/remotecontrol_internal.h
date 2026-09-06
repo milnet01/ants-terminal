@@ -429,6 +429,9 @@ QString resolveRootCanonical(MainWindow *main, const QJsonObject &req);
 // `ownerDir` (ANTS-4882, optional) receives the directory the roadmap was found
 // under — the project root the store is keyed on. Cleared when nothing is found.
 QString findRoadmapUnder(const QString &canonicalRoot, QString *ownerDir = nullptr);
+// ANTS-4884 — resolves a path to the project root the store keys on, so a
+// caller in a subdirectory is not read as an unmigrated project of its own.
+QString rcProjectRootFor(const QString &path);
 QString findChangelogUnder(const QString &canonicalRoot);
 QString findYamlChangelogUnder(const QString &canonicalRoot);
 const QString &kUnrecognisedFormatHint();
