@@ -118,7 +118,9 @@ QStringList repoBoundedAncestors(const QString &canonicalRoot) {
 // Surfaced by a RetroArch CC session 2026-05-17 where the project
 // kept its roadmap at docs/private/ROADMAP.md and the prior
 // "repo-root only" search returned no_roadmap_loaded.
-QString findRoadmapUnder(const QString &canonicalRoot) {
+QString findRoadmapUnder(const QString &canonicalRoot, QString *ownerDir) {
+    if (ownerDir)
+        ownerDir->clear();
     if (canonicalRoot.isEmpty()) return {};
     // Single-directory probe: .ants/project.json roadmap override (ANTS-2160)
     // then the candidate list under `dir` (ANTS-1459 — docs/, docs/private/,
@@ -154,9 +156,18 @@ QString findRoadmapUnder(const QString &canonicalRoot) {
     // behaviour); only a subdir caller walks up. Matches the code read verbs,
     // which already resolve the project from a subdir. ANTS-4447 owns the
     // bound, so the non-git case cannot walk out of the project either.
+    //
+    // ANTS-4882 — `dir` is the project root the roadmap was resolved under, and
+    // the store keys a project on exactly that. It is NOT the roadmap file's own
+    // directory: the two coincide only while the roadmap sits at the root, and
+    // the candidate list above also matches docs/ and .github/.
     for (const QString &dir : repoBoundedAncestors(canonicalRoot)) {
         const QString hit = probeDir(dir);
-        if (!hit.isEmpty()) return hit;
+        if (!hit.isEmpty()) {
+            if (ownerDir)
+                *ownerDir = dir;
+            return hit;
+        }
     }
     return {};
 }

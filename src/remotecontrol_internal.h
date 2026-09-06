@@ -426,7 +426,9 @@ QString resolveRootCanonical(MainWindow *main);
 // one member already declared read as complete. 45 of the 85 residual errors
 // from the first cut attempt were this one function.
 QString resolveRootCanonical(MainWindow *main, const QJsonObject &req);
-QString findRoadmapUnder(const QString &canonicalRoot);
+// `ownerDir` (ANTS-4882, optional) receives the directory the roadmap was found
+// under — the project root the store is keyed on. Cleared when nothing is found.
+QString findRoadmapUnder(const QString &canonicalRoot, QString *ownerDir = nullptr);
 QString findChangelogUnder(const QString &canonicalRoot);
 QString findYamlChangelogUnder(const QString &canonicalRoot);
 const QString &kUnrecognisedFormatHint();

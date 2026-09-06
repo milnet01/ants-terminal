@@ -65,3 +65,15 @@ file is in.
   the subdirectory. The fixture needs a `.git`: without a repo boundary
   the ancestor walk returns the caller's own directory and the subdirectory
   case cannot arise.
+- **INV-6** — The store floor applies to a caller in a project
+  SUBDIRECTORY, in both allocating ops. `readProjectByRoot()` is keyed on
+  the canonical project ROOT, so asking it by `caller_cwd` matches nothing
+  from a subdirectory and the floor silently does not apply — reachable
+  since ANTS-3350 let a write verb resolve the roadmap from one. The key is
+  the directory `findRoadmapUnder()` matched the roadmap UNDER, not the
+  roadmap file's own directory: those coincide only while the roadmap sits
+  at the root, and that helper also resolves `docs/` and `.github/`.
+  *Test:* INV-1's and INV-4's fixtures called from a `sub/` directory of a
+  project carrying a `.git`; each new id is `DEMO-0004`. *Breaks when:* the
+  floor is looked up by `caller_cwd` — both ops then issue `DEMO-0002`,
+  which is INV-1's reported collision.

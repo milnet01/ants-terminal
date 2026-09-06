@@ -344,3 +344,86 @@ TEST(RoadmapAllocStoreFloor, Inv5AppendBatchCounterSitsBesideTheRoadmap) {
     EXPECT_EQ(readCounter(root), 2)
         << "the counter beside the roadmap was not the one allocated from";
 }
+
+// ----------------------------------------------------------------- INV-6 ----
+//
+// ANTS-4882 — the store floor asks readProjectByRoot(caller_cwd). The store
+// keys a project on its canonical ROOT, so from a subdirectory that lookup
+// matches nothing, the floor silently does not apply, and the allocator is back
+// to the collision INV-1 and INV-4 close. Reachable since ANTS-3350 let a write
+// verb resolve the roadmap from a subdirectory; before that a subdirectory
+// caller was refused outright and the two never met.
+//
+// The key is the directory findRoadmapUnder matched the roadmap UNDER, which is
+// the root the store was registered with. Not the roadmap file's own directory:
+// those coincide only while the roadmap sits at the root, and that helper also
+// resolves docs/ROADMAP.md and .github/ROADMAP.md.
+//
+// Both allocating ops carry the floor identically, so both are asserted — the
+// fix for ANTS-3350 and the fix for ANTS-4493 each landed in one op alone, and
+// INV-4 and INV-5 exist because of it.
+//
+// The fixture needs a .git for the same reason INV-5's does: with no repo
+// boundary the ancestor walk returns the caller's own directory and the
+// subdirectory case cannot arise.
+
+TEST(RoadmapAllocStoreFloor, Inv6AppendFloorsToTheStoreFromASubdirectory) {
+    ants_test::XdgGuard guard;
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString root = seedProject(guard, tmp);
+    ASSERT_FALSE(root.isEmpty());
+    ASSERT_TRUE(QDir().mkpath(QDir(root).filePath(QStringLiteral(".git"))));
+    const QString sub = QDir(root).filePath(QStringLiteral("sub"));
+    ASSERT_TRUE(QDir().mkpath(sub));
+
+    qint64 allocated = 0;
+    ASSERT_TRUE(migrate(root, &allocated));
+    ASSERT_EQ(allocated, 2)
+        << "the fixture's two id-less bullets must be synthesised, or this case "
+           "has no stored id to collide with";
+
+    QJsonObject req = appendReq(root);
+    req[QStringLiteral("caller_cwd")] = QFileInfo(sub).canonicalFilePath();
+
+    RemoteControl rc(nullptr);
+    const QJsonObject resp = rc.cmdRoadmapLogAppendForTest(req).object();
+    ASSERT_TRUE(resp.value(QStringLiteral("ok")).toBool())
+        << QJsonDocument(resp).toJson().toStdString();
+
+    EXPECT_EQ(resp.value(QStringLiteral("id")).toString(),
+              QStringLiteral("DEMO-0004"))
+        << "the store floor was looked up by caller_cwd, matched no project "
+           "row, and did not apply";
+}
+
+TEST(RoadmapAllocStoreFloor, Inv6AppendBatchFloorsToTheStoreFromASubdirectory) {
+    ants_test::XdgGuard guard;
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString root = seedProject(guard, tmp);
+    ASSERT_FALSE(root.isEmpty());
+    ASSERT_TRUE(QDir().mkpath(QDir(root).filePath(QStringLiteral(".git"))));
+    const QString sub = QDir(root).filePath(QStringLiteral("sub"));
+    ASSERT_TRUE(QDir().mkpath(sub));
+
+    qint64 allocated = 0;
+    ASSERT_TRUE(migrate(root, &allocated));
+    ASSERT_EQ(allocated, 2)
+        << "the fixture's two id-less bullets must be synthesised, or this case "
+           "has no stored id to collide with";
+
+    QJsonObject req = appendBatchReq(root);
+    req[QStringLiteral("caller_cwd")] = QFileInfo(sub).canonicalFilePath();
+
+    RemoteControl rc(nullptr);
+    const QJsonObject resp = rc.cmdRoadmapLogAppendBatchForTest(req).object();
+    ASSERT_TRUE(resp.value(QStringLiteral("ok")).toBool())
+        << QJsonDocument(resp).toJson().toStdString();
+
+    const QJsonArray ids = resp.value(QStringLiteral("ids")).toArray();
+    ASSERT_EQ(ids.size(), 1) << QJsonDocument(resp).toJson().toStdString();
+    EXPECT_EQ(ids.at(0).toString(), QStringLiteral("DEMO-0004"))
+        << "the store floor was looked up by caller_cwd, matched no project "
+           "row, and did not apply";
+}

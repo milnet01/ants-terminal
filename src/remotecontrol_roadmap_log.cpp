@@ -218,7 +218,12 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppend(const QJsonObject &req) {
     }
     // ANTS-1459 — shared findRoadmapUnder helper widens the search
     // to docs/, docs/private/, docs/internal/, .github/.
-    const QString roadmapPath = findRoadmapUnder(callerCanonical);
+    // ANTS-4882 — `projectRootDir` is the directory the roadmap was resolved
+    // under, which is the root the store keys this project on. From a
+    // subdirectory it is an ancestor of callerCanonical, and the store floor
+    // below has to ask by it or match nothing.
+    QString projectRootDir;
+    const QString roadmapPath = findRoadmapUnder(callerCanonical, &projectRootDir);
     if (roadmapPath.isEmpty()) {
         return rlErr(QStringLiteral("no_roadmap"),
             QStringLiteral("roadmap_log: no ROADMAP.md under \"%1\"")
@@ -957,7 +962,7 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppend(const QJsonObject &req) {
         if (RoadmapStore *store = roadmapStoreOrNull(nullptr, nullptr)) {
             QString storeErr;
             if (const auto row =
-                    store->readProjectByRoot(callerCanonical, &storeErr)) {
+                    store->readProjectByRoot(projectRootDir, &storeErr)) {
                 QString hwErr;
                 if (const auto hw = store->idHighWater(row->projectId, pfx, &hwErr))
                     maxFileId = std::max(maxFileId, *hw);

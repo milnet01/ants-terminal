@@ -14,6 +14,15 @@ for security-relevant changes.
 
 ### Fixed
 
+- **roadmap_log's id allocator now applies its store floor when called from a project subdirectory** (ANTS-4882)
+  The floor that stops a migrated project reissuing an id the store
+  already holds asked the store by `caller_cwd`. A project is keyed on
+  its canonical root, so from a subdirectory the lookup matched nothing
+  and the floor did not apply. Both `op:"append"` and
+  `op:"append_batch"` now ask by the directory the roadmap was resolved
+  under, which is the registered root in every layout the resolver
+  supports.
+
 - **`doc_citations` counts each quotation once when the document contains a fenced code block** (ANTS-4697)
   A blank line after a closing code fence used to open a scan window of
   its own, so every quotation in the paragraph below it was counted twice

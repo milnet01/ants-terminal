@@ -53004,7 +53004,7 @@ volume classes, and the tooling/documentation gaps the run exposed.
   Kind: fix.
   Source: in-session-2026-09-04.
 
-- 📋 [ANTS-4882] **The allocator's store floor is looked up by caller_cwd, so it does not apply to a subdirectory caller.**
+- ✅ [ANTS-4882] **The allocator's store floor is looked up by caller_cwd, so it does not apply to a subdirectory caller.**
   ANTS-4493's floor asks the store `readProjectByRoot(callerCanonical)`. The
   store keys a project on its canonical ROOT, so from a subdirectory that
   lookup matches nothing, returns no row, and the floor silently does not
@@ -53027,9 +53027,68 @@ volume classes, and the tooling/documentation gaps the run exposed.
 
   Silent by construction — the append succeeds with `ok:true` and a
   normal-looking id, which is why it wants a test rather than a read.
+  Resolved (2026-09-06): the floor is keyed on the project root in both
+  allocating ops. Red-proven first — both cases issued DEMO-0002, the
+  collision INV-1 closes, and are green on DEMO-0004. Pinned as INV-6 in
+  tests/features/roadmap_alloc_store_floor. Full suite green.
+
+  The repair this item PROPOSED was checked and not taken. The roadmap
+  file's own directory is the registered root only while the roadmap sits
+  at the root, and findRoadmapUnder also resolves docs/ and .github/ — so
+  that key would have swapped one silent miss for another. Instead the
+  helper now reports the directory it matched the roadmap UNDER, which is
+  the root the store was registered with in every layout it resolves.
+
+  The item asked whether any project's registered root differs from its
+  roadmap's directory. Measured across the store's registered projects:
+  none today, all carry ROADMAP.md at the root. That measures the present,
+  not the contract, which is why the owner-directory key was chosen anyway.
+
+  What this did NOT fix, filed as ANTS-4884: the same caller_cwd key is
+  used by the store-vs-markdown DISPATCH itself, so a subdirectory caller
+  silently takes the markdown path on read and write alike. Verified on
+  this project, which is store-served. Left out deliberately — it changes
+  which path a write takes and needs its own invariants.
   **Layman:** A safety check that stops item numbers being reused is skipped when you work from a sub-folder.
   Kind: fix.
   Source: in-session-2026-09-05, found while fixing the same floor in append_batch.
+  Lanes: mcp, roadmap-store.
+
+- 📋 [ANTS-4884] **Every roadmap verb's store dispatch is keyed on caller_cwd, so a subdirectory caller silently falls back to markdown.**
+  ANTS-4882 fixed this key for the ALLOCATOR FLOOR alone. The same miss
+  reaches the store-vs-markdown dispatch itself, which is the larger half.
+
+  `roadmapWriteTarget()` passes its `projectRoot` argument straight to
+  `RoadmapSource::migratedProject()`, which canonicalises and asks
+  `readProjectByRoot()`. Every call site in the two roadmap_log TUs passes
+  `callerCanonical`. The read side does the same. From a subdirectory that
+  lookup matches no row, `migratedProject()` returns nullopt, and the verb
+  takes the markdown path.
+
+  Measured on this project, which IS store-served: `roadmap_query` with
+  `caller_cwd` at the root reports `source:"store"`; the identical query with
+  `caller_cwd` at `src/` reports `source:"markdown"`. One call each, no
+  build needed.
+
+  Worse on the write side than the read side. ROADMAP.md is an OUTPUT of the
+  store, so a markdown splice from a subdirectory writes an item the store
+  never sees, and the next store-path write re-renders the whole file and
+  reports it as `discarded_external_edits`. The item is gone and the verb
+  said `ok:true`.
+
+  This is the silent fallback `roadmapsource.cpp` names INV-1 as forbidding,
+  arriving through the one door the invariant does not watch — its own
+  comment says so about a raw path, and a subdirectory path is the same
+  class.
+
+  The key is already available: `findRoadmapUnder(caller, &ownerDir)` reports
+  the directory it matched the roadmap under, which is the registered root
+  (added by ANTS-4882). What this item owes is the sweep of the dispatch call
+  sites plus its own invariants, because changing which PATH a write takes is
+  a behaviour change per verb rather than one floor going quiet.
+  **Layman:** Running a roadmap command from a sub-folder quietly reads and writes the file instead of the database.
+  Kind: fix.
+  Source: in-session-2026-09-06, found while fixing ANTS-4882.
   Lanes: mcp, roadmap-store.
 
 ### Ants MCP feedback from CC sessions — 2026-08-28 triage
