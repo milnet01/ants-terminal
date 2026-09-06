@@ -51016,7 +51016,7 @@ two projects).
   Kind: fix.
   Source: cc-feedback-2026-09-03 Rolodex.
 
-- 📋 [ANTS-4880] **find_definition reports a local variable initialisation as a definition, so a symbol appears to have several homes.**
+- ✅ [ANTS-4880] **find_definition reports a local variable initialisation as a definition, so a symbol appears to have several homes.**
   Repro: `find_definition {symbol:"counterPath", lang:"cpp"}`. The real
   definition is `QString counterPath(const QString &projectPath)` in
   `src/roadmapfoldin.cpp`. Alongside it the reply carries rows for
@@ -51039,6 +51039,23 @@ two projects).
 
   Not urgent: the wrong rows are recognisable by their signature, and the
   real definition was present in every case seen this session.
+  Resolved (2026-09-06). The item asked for a third kind; the fix turned
+  out to be the EXISTING rule reaching a shape that slipped past it,
+  which is smaller and does not add vocabulary. The anchor comments in
+  symbolquery.cpp say plainly that matching a local is a decision rather
+  than an oversight -- the ladder is line-based with no scope tracking,
+  and reporting where a name is declared beats reporting that a visible
+  name does not exist -- and the kind logic already tags a local
+  `declaration` because the single-line form ends in `;`. What escaped
+  was only the WRAPPED form: an initialiser continued on the next line
+  ends in `=`, which looksLikeDeclaration did not recognise. So the rows
+  are still reported and simply stop claiming to be the definition.
+  `operator=` is not caught by the new test: an operator declaration
+  ends in `)`, `;` or `{`, never a bare `=`. The test keeps the
+  single-line form beside the wrapped one so a later change cannot
+  quietly move the case that was already correct. ANTS-4828 (a false
+  NEGATIVE on a multi-line signature) is untouched and still open. Suite
+  4222/4222.
   **Layman:** Asking "where is X defined?" can list ordinary local variables of the same name as if each were the real definition.
   Kind: fix.
   Source: in-session-2026-09-05, hit while resolving pin homes for ANTS-4757.

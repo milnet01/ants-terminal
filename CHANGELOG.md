@@ -91,6 +91,15 @@ for security-relevant changes.
 
 ### Fixed
 
+- **"where is this defined?" no longer lists local variables as definitions** (ANTS-4880)
+  A function-local variable whose value continues on the next line was
+  reported with the same kind as the real definition, so a symbol appeared
+  to have several homes and a reader could be sent to any of them. Such
+  lines were already reported as declarations when they fitted on one line;
+  they are now treated the same way when they wrap. They are still listed —
+  knowing where a name is declared is the point — they just stop claiming to
+  be the definition.
+
 - **a feedback corpus in its own folder no longer causes a second, empty record** (ANTS-4900)
   The guard that stops a derived feedback file landing where no maintainer
   sweep reads it only looked UP the tree. Move the corpus into a folder of
