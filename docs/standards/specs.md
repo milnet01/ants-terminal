@@ -63,10 +63,10 @@ contracts that span subsystems.
 - The spec elaborates exactly one ROADMAP bullet. Cross-cutting work
   that spans several ids gets one spec per id, cross-referenced in the
   header, or one umbrella spec whose header lists the ids it covers.
-  **An umbrella spec's filename takes the id it primarily elaborates**,
-  and `**Covers:**` (§ 3) carries the rest. Only the filename id is
-  addressable by `spec_query`, and no tool reads `**Covers:**`, so each
-  other id needs its own ROADMAP bullet to name the spec.
+  **An umbrella spec's filename takes the id it primarily elaborates**;
+  `**Covers:**` (§ 3) lists them all. Only the filename id is addressable
+  by `spec_query`, and no tool reads `**Covers:**`, so each other id
+  needs its own ROADMAP bullet to name the spec.
 
 ## 3. Required structure
 
@@ -197,6 +197,13 @@ Rules for invariants:
 - Each carries a **test surface** (the `*Test:*` clause) — the feature
   test, source-grep, or manual recipe that locks it. An invariant with
   no test surface is a wish, not a contract.
+- **A command clause states what the command should return.** Where the
+  clause holds a code span opening with a command word (`grep`, `rg`,
+  `ctest`, `sed`, …), text carrying a letter or digit must follow the
+  last such span — `` `grep -c foo src/` `` alone is reported by
+  `spec_lint`'s `command_test_no_expectation`, where "3 hits" after it
+  is not. Trailing punctuation does not count. The corpus habit of an
+  arrow (`→ 3 hits`) reads well and is not required.
 - Number them `INV-1`, `INV-2`, … and **never renumber** once the spec
   is referenced elsewhere — invariants are cited by id from CHANGELOG,
   CLAUDE.md, and other specs. Add `INV-14`, don't reflow.
@@ -386,6 +393,17 @@ CHANGELOG / CLAUDE.md / another spec, its `INV-N` ids never change
 meaning. Amend by adding a new invariant or annotating the old one
 (`INV-7 amended by ANTS-NNNN`), never by reflowing the list.
 
+**Retire one with a tombstone.** `spec-format.md` § 3.7 owns the
+`*withdrawn — …*` form and its load-bearing dash; `*moved to ANTS-NNNN*`
+is the other form `spec_lint` accepts, as the body's opening text.
+Either way the id stays and still counts in the sequence, so retiring
+one opens no gap, and a tombstoned invariant owes no test surface.
+
+**A spec carrying a subset of a parent's ids keeps them**, holes
+included. Where the holes sit below your lowest id, declare the floor
+with `<!-- invariant-id-base: N -->`; interior holes are reported as
+candidates for a reader to triage.
+
 ### 5.6 Status lifecycle
 
 `spec draft` → `accepted` (design signed off, ready to implement) →
@@ -433,10 +451,10 @@ in the section. Where it names a record instead — `documentation.md`
 § 9.1's form, which this standard itself uses — the section keeps its
 heading and a one-line pointer, and the rows go to `docs/reviews/`.
 
-**This binds new logs.** A landed row is never edited, and a new row
-must match its table's existing header, so a log already running keeps
-the shape it has. Several other shapes are in use across this corpus
-from before this rule; they are correct as written and stay.
+**This binds new logs, and the rules above bind table logs only.** A
+landed row is never edited, so a log already running keeps the shape it
+has — a heading-form log stays heading-form, and a table keeps the
+columns its header already has.
 
 ## 6. Machine-readability (`spec_query`)
 
