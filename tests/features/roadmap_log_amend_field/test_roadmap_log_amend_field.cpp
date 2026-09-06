@@ -550,3 +550,59 @@ TEST(RoadmapLogAmendField, Inv8UnknownIdRefused) {
               QStringLiteral("bullet_not_found"))
         << QJsonDocument(resp).toJson().toStdString();
 }
+
+// ---------------------------------------------------------------------------
+// ANTS-4750 — an unrecognised Kind refuses `bad_kind`, not `bad_args`.
+//
+// Found by a cold lane on mcp-error-codes.md, which opened both call sites and
+// did not presume which was canonical. The taxonomy now says: a named code
+// owns its enum where one exists (the `bad_args` row was corrected during the
+// ANTS-4435 gate). roadmap_log's own `kind` argument already refuses
+// `bad_kind`; this path refused `bad_args` for the same bad value.
+//
+// The harm is a caller branching on `code` to re-prompt for a valid Kind: it
+// handles `bad_kind` and silently mis-handles this path — which is the split
+// `bad_kind` was minted to end.
+//
+// The item said to check the sibling fields in the same handler first. There
+// is no sibling split: `field` accepts layman|kind|source|lanes|evidence, and
+// `status` is not among them — it is op:"flip"'s. `kind` is the only enum this
+// op writes.
+TEST(RoadmapLogAmendField, Ants4750UnrecognisedKindIsBadKind) {
+    Fx fx; ASSERT_TRUE(fx.ok());
+    RemoteControl rc(nullptr);
+    const QJsonObject resp = rc.cmdRoadmapLogAmendFieldForTest(
+        fieldReq(fx.root, QStringLiteral("DEMO-0003"), QStringLiteral("kind"),
+                 QStringLiteral("weird"))).object();
+
+    EXPECT_FALSE(resp.value(QStringLiteral("ok")).toBool());
+    EXPECT_EQ(resp.value(QStringLiteral("code")).toString(),
+              QStringLiteral("bad_kind"))
+        << "the same bad value through roadmap_log's own `kind` argument "
+           "refuses bad_kind; one code per enum is the whole point";
+
+    // And name the vocabulary, as every other enum refusal in this MCP does —
+    // otherwise the caller that just learned the code still has to guess.
+    const QJsonArray accepted =
+        resp.value(QStringLiteral("accepted")).toArray();
+    ASSERT_FALSE(accepted.isEmpty());
+    bool sawFix = false;
+    for (const auto &v : accepted)
+        if (v.toString() == QStringLiteral("fix")) sawFix = true;
+    EXPECT_TRUE(sawFix) << "the accepted list must be the real Kind set";
+}
+
+// ANTS-4750 — the neighbouring NOT NULL refusal is a different failure and
+// keeps its own code. Guarding it here because the fix edits the branch
+// directly above it.
+TEST(RoadmapLogAmendField, Ants4750EmptyValueStillBadArgs) {
+    Fx fx; ASSERT_TRUE(fx.ok());
+    RemoteControl rc(nullptr);
+    const QJsonObject resp = rc.cmdRoadmapLogAmendFieldForTest(
+        fieldReq(fx.root, QStringLiteral("DEMO-0003"), QStringLiteral("kind"),
+                 QString())).object();
+    EXPECT_FALSE(resp.value(QStringLiteral("ok")).toBool());
+    EXPECT_EQ(resp.value(QStringLiteral("code")).toString(),
+              QStringLiteral("bad_args"))
+        << "an empty value is a NOT NULL violation, not an unknown enum value";
+}

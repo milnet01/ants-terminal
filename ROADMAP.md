@@ -3638,6 +3638,17 @@ in each named file carry the original indie-review citation.
   Layman: Split the largest source file into smaller ones so it is easier to work on.
   Kind: review-fix.
   Source: indie-review-2026-04-27.
+  Colony link (2026-09-06, project lead): this is a Colony ENABLER, not
+  unrelated tier-3 work. Colony's throughput is capped by how many
+  INDEPENDENT FILES the work can touch -- its orchestrator refuses to
+  deal a task whose lane overlaps one in flight -- so a 6,162-line
+  mainwindow.cpp means every task touching it excludes every other task
+  that would. Splitting it converts one serialised lane into several
+  parallel ones. Corollary worth knowing before ANTS-4913 runs:
+  measuring Colony's speedup on a codebase whose two largest files are
+  undivided measures the partition, not the design. Recorded in
+  docs/decisions/0005-colony-multi-session-orchestration.md under
+  Consequences.
 
 - 📋 [ANTS-1044] **`auditdialog.cpp` decomposition (5749 LoC).**
   `populateChecks`
@@ -3651,6 +3662,12 @@ in each named file carry the original indie-review citation.
   Layman: Split the code-checking screen's oversized source file into smaller pieces.
   Kind: review-fix.
   Source: indie-review-2026-04-27.
+  Colony link (2026-09-06, project lead): a Colony ENABLER for the same
+  reason as ANTS-1043. auditdialog.cpp is 5,749 lines, so any Colony
+  task touching it serialises against every other task that would.
+  Splitting it buys parallel lanes rather than only tidiness. See
+  docs/decisions/0005-colony-multi-session-orchestration.md under
+  Consequences.
 
 - ✅ [ANTS-1045] **`XcbPositionTracker` rename + Wayland-non-KWin abort + temp- file leak fix.**
   Shipped 2026-04-30 (post-0.7.60). Class +
@@ -3720,6 +3737,11 @@ in each named file carry the original indie-review citation.
   Layman: Turn a long hand-written list of audit checks into a simple data table.
   Kind: review-fix.
   Source: indie-review-2026-04-27.
+  Colony link (2026-09-06): turning populateChecks into a data table
+  shrinks the audit-pipeline lane the same way ANTS-1043 and ANTS-1044
+  shrink theirs -- fewer tasks forced through one file, so more of them
+  can run at once under Colony. See
+  docs/decisions/0005-colony-multi-session-orchestration.md.
 
 The 2026-04-27 review followed the same methodology as the 0.7.12
 sweep — no roadmap-internal short-cuts, every finding cites
@@ -67084,7 +67106,7 @@ here.)
   Source: review-contract loop 1 on mcp-error-codes.md, 2026-08-28.
   Lanes: mcp, roadmap-store.
 
-- 📋 [ANTS-4750] **amend_field refuses an unrecognised kind as bad_args, where bad_kind is that enum's named owner.**
+- ✅ [ANTS-4750] **amend_field refuses an unrecognised kind as bad_args, where bad_kind is that enum's named owner.**
   `roadmap_log kind:"weird"` refuses `bad_kind`. The same bad value
   through `op:"amend_field" field:"kind"` refuses `bad_args`.
 
@@ -67104,6 +67126,20 @@ here.)
 
   Check the sibling fields in the same handler before changing one —
   `status` has `bad_status` and may carry the same split.
+  Resolved (2026-09-06) the way the item said the taxonomy had already
+  decided: amend_field now refuses bad_kind, not bad_args. The item's
+  own instruction to check the sibling fields first RESOLVED CLEAN and
+  is worth recording so nobody re-checks it -- `field` accepts
+  layman|kind|source|lanes|evidence and `status` is not among them (that
+  is op:"flip"'s), so `kind` is the only enum this op writes and there
+  was no second split to fix. Added beyond the ask: the refusal carries
+  an `accepted` list, because a caller that has just learned the code
+  still has to guess the vocabulary otherwise -- and it is built from
+  RoadmapParse::canonicalKinds(), the same source the check itself uses,
+  so the refusal cannot drift from the test that produced it. A second
+  invariant guards the branch directly above, where an empty value is a
+  NOT NULL violation and correctly stays bad_args; that one is a
+  regression guard for the edit rather than a finding. Suite 4228/4228.
   **Layman:** Two parts of the same tool report the same mistake under two different names, so a caller cannot handle it in one place.
   Kind: fix.
   Source: review-contract loop 1 on mcp-error-codes.md, 2026-08-28.

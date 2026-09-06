@@ -3308,12 +3308,32 @@ QJsonDocument RemoteControl::cmdRoadmapLogAmendField(const QJsonObject &req) {
                 QStringLiteral("roadmap_log: `%1` is NOT NULL and has no absent "
                                "state, so it cannot be set empty. Only `layman` "
                                "is nullable.").arg(field));
+        // ANTS-4750 — `bad_kind`, not `bad_args`. roadmap_log's own `kind`
+        // argument already refuses that code for the same bad value, and the
+        // taxonomy says a named code owns its enum where one exists. The harm
+        // of the split is a caller branching on `code` to re-prompt for a
+        // valid Kind: it handles bad_kind and silently mis-handles this path,
+        // which is what bad_kind was minted to end.
+        //
+        // No sibling shares the split: `field` accepts
+        // layman|kind|source|lanes|evidence, and `status` is op:"flip"'s, so
+        // `kind` is the only enum this op writes.
+        //
+        // The accepted list comes from canonicalKinds() rather than a literal,
+        // so the refusal cannot drift from the test that produced it.
         if (field == QLatin1String("kind") &&
             !RoadmapParse::isRecognisedKind(stored)) {
-            return rlErr(QStringLiteral("bad_args"),
+            QJsonObject e;
+            e[QStringLiteral("ok")]    = false;
+            e[QStringLiteral("code")]  = QStringLiteral("bad_kind");
+            e[QStringLiteral("error")] =
                 QStringLiteral("roadmap_log: \"%1\" is not a recognised Kind — "
                                "the render drops an unrecognised one, so storing "
-                               "it would lose the value silently").arg(stored));
+                               "it would lose the value silently").arg(stored);
+            QStringList kinds = RoadmapParse::canonicalKinds().values();
+            kinds.sort();
+            e[QStringLiteral("accepted")] = QJsonArray::fromStringList(kinds);
+            return QJsonDocument(e);
         }
     }
 

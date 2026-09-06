@@ -99,6 +99,14 @@ for security-relevant changes.
 
 ### Fixed
 
+- **one refusal code for a bad kind, whichever route reported it** (ANTS-4750)
+  Setting an unrecognised kind of work was refused under one name through
+  `roadmap_log`'s own argument and a different one through
+  `op:"amend_field"`, so a caller that handles the first and re-prompts for
+  a valid kind silently mis-handled the second. Both now report `bad_kind`,
+  and the refusal lists the real kinds — taken from the same source the
+  check itself uses, so the two cannot drift.
+
 - **a batch of changelog entries now reads in the order it was written** (ANTS-4854)
   Each entry is inserted at the top of its category, so applying a batch
   front-to-back left the last entry on top and the release notes came out

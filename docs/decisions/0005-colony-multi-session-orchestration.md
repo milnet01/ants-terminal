@@ -256,6 +256,17 @@ keystroke injection. The verification path already exists.
 - **Partitioning is a first-class job.** Two tasks touching one file
   conflict however good the machinery is, so the orchestrator refuses to
   deal a task whose lane overlaps one in flight.
+
+  **This makes file SIZE a throughput variable, which is the strongest
+  argument this project has yet had for its structural refactors**
+  (project lead, 2026-09-06). `mainwindow.cpp` is 6,162 lines and
+  `auditdialog.cpp` 5,749; every task touching either one excludes every
+  other task that would. Splitting them does not merely tidy the tree —
+  it converts one serialised lane into several parallel ones, so
+  ANTS-1043, ANTS-1044 and ANTS-1049 are Colony ENABLERS rather than
+  unrelated tier-3 work. The corollary is worth stating too: measuring
+  Colony's speedup (D8) on a codebase whose two largest files are
+  undivided measures the partition, not the design.
 - **A worker can be wrong confidently.** D5 is the whole answer, and it
   is only as good as the suite.
 - **`launch` becomes reachable from the MCP**, with two guards it does
