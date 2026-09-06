@@ -13001,7 +13001,7 @@ fixes don't address. Roadmapped here as their own design tasks.
   Kind: fix.
   Source: in-session-2026-09-02 (ANTS-3668 fix).
 
-- 📋 [ANTS-4895] **`spec_lint` enforces the wrong required-sections list on this project.**
+- ✅ [ANTS-4895] **`spec_lint` enforces the wrong required-sections list on this project.**
   Two `required-sections` blocks exist under `docs/standards/`:
   `specs.md` carries five unnumbered entries (Problem / Surface /
   Invariants / Tests / Cold-eyes loop log); `spec-format.md`, a verbatim
@@ -13030,6 +13030,37 @@ fixes don't address. Roadmapped here as their own design tasks.
   block, or accept the twelve and rewrite `specs.md` § 3 and § 7. The
   first three change code or a mirrored file; the last changes every spec.
   `specs.md` § 3 now states the resolution truthfully and points here.
+  Resolved 2026-09-06 by reordering, user decision.
+
+  `specLintStandardCandidates()` now names a project's own standard before
+  the mirrored global one, in both layouts. The deciding evidence was that
+  `spec-format.md` § 3 already states this intent — "A project that ships
+  its own spec standard is checked against *that*, not this" — so the code
+  was failing its own standard's stated rule rather than expressing a
+  different one. The corpus agreed: sampled specs are written to this
+  project's Problem / Surface / Invariants / Tests / loop-log shape, which
+  the five-entry name-matched list passes and the global's twelve numbered
+  sections fail wholesale.
+
+  The other three options were considered and refused. Adopting the twelve
+  would rewrite every spec; dropping the mirror's block means editing a
+  mirrored file, which this repo forbids; leaving it documented keeps
+  `missing_section` unusable here.
+
+  Test asserts ORDER, in both layouts. The sibling ANTS-4390 test asserted
+  PRESENCE while its message claimed "must stay first" — passing against
+  either order, which is how this survived. Its message now says what it
+  checks. Red run confirmed before the fix, green after; full suite green.
+
+  Not confirmed behaviourally from this session: the verb is served by the
+  running binary, so `sections_source` still reports the old resolution
+  until Ants is relaunched. The expected reading afterwards is
+  `docs/standards/specs.md` with the `missing_section` share of the 3814
+  findings largely gone.
+
+  Left open, upstream: `spec-format.md` § 3 lists the resolution order with
+  `spec-format.md` first, which this change makes stale. That file is a
+  mirror and the config-lock hook confines the edit to a ~/.claude session.
   **Layman:** Our spec checker is grading specs against a different rulebook than the one we wrote for this project, so it reports sections missing that we deliberately do not require.
   Kind: fix.
   Source: review-contract loop 6 on docs/standards/specs.md, 2026-09-06.

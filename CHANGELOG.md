@@ -44,6 +44,13 @@ for security-relevant changes.
 
 ### Fixed
 
+- **`spec_lint` checks a project against its own spec standard, not a mirrored copy of the global one** (ANTS-4895)
+  Where a project keeps a verbatim mirror of the global spec standard
+  beside its own, the mirror was consulted first and the project's own
+  required-section list was never read — so specs were graded against a
+  rulebook the project had deliberately replaced. A project shipping no
+  standard of its own is unaffected.
+
 - **changelog_log's schema no longer tells callers that `summary` is ignored under add_from_roadmap** (ANTS-4888)
   It has overridden the cited bullet's headline since ANTS-4360, with
   category, id and the Layman body still inherited, but the schema still
