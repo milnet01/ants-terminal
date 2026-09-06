@@ -62053,10 +62053,196 @@ Project's own grep-rule corpus + fixture coverage: **55 pass,
 
   Not a licence to add a global mutex to every verb: most verbs are reads
   and a blanket lock would cost every session to protect a rare write.
+  Progress (2026-09-06): the design this item asked for is written, as
+  docs/decisions/0005-multi-session-orchestration.md, and the build
+  order is the new section "Multi-session orchestration"
+  (ANTS-4906..4913). It answers the question this item said had to be
+  decided explicitly -- one worktree each, not one shared working tree
+  -- and takes the consequence further than the item did: with a
+  worktree each, the remaining exposure is only the SHARED RECORDS, and
+  the design removes those from workers entirely rather than locking
+  them (ADR D2). That makes this item's write-collision work desirable
+  rather than blocking, and ANTS-4839 an improvement rather than a
+  prerequisite. Two findings from the survey worth keeping here:
+  `launch` / `new-tab` already exist over the remote-control socket, so
+  dealing work needs no keystroke injection and the parked actuator
+  (ANTS-1979, ANTS-2195) stays parked; and a lease fits in the existing
+  item.extras JSON column, so the queue needs no kSchemaVersion bump --
+  which matters because a bump is a one-way door across every project on
+  the machine. Status left planned: the ADR is Proposed and owes its
+  rule-14 gate before anything is built under it.
   **Layman:** Two Claude sessions on the same project can overwrite each other's work; this is about making that safe.
   Kind: investigate.
   Source: user-request-2026-09-05.
   Lanes: mcp, roadmap-store, claudeintegration.
+
+### Multi-session orchestration — one orchestrator, N workers (user-request 2026-09-06)
+
+Run several Claude Code sessions on one project at once: an orchestrator deals
+work out, verifies it mechanically, and merges it back. Design and reasoning in
+docs/decisions/0005-multi-session-orchestration.md, which this section
+implements.
+
+The shape in one line: one git worktree per worker, workers write only code and
+tests, the orchestrator owns every shared record and every merge, and work is
+dealt by spawning a fresh session rather than typing into a running one.
+
+Build order is phase 0 first. Phase 0 is not preparation for the feature -- it
+is the part that makes the rest safe, and each of its items stands on its own
+merit whether or not the rest is built.
+
+- 📋 [ANTS-4906] **Phase 0a: a machine-wide build lease, so two worktrees cannot build at once.**
+  The one constraint that scales with RAM rather than tokens, on a 32 GiB
+  host with an earlyoom history. JOB_POOLS caps parallelism WITHIN a build
+  and nothing caps builds ACROSS worktrees; two concurrent pre-push hooks
+  already produce what looks like linker corruption (`mold: unknown file
+  type`), recorded today as a standing caution rather than a fix.
+
+  A lease held in the roadmap store, acquired by any session about to
+  build, default limit 1. Expiry so a killed build does not wedge the
+  machine.
+
+  Worth building even if nothing else in this section is: it turns a
+  documented "do not do this" into something the machine enforces.
+  **Layman:** Stop two parallel sessions from compiling at the same time and running the machine out of memory.
+  Kind: implement.
+  Source: user-request-2026-09-06, ADR-0005 D6.
+  Lanes: mcp, roadmap-store, build.
+
+- 📋 [ANTS-4907] **Phase 0b: keep a roadmap write off worker branches -- the orchestrator owns every shared record.**
+  ADR-0005's load-bearing decision, and the one that dissolves the
+  write-collision problem instead of solving it. A roadmap_log write
+  re-renders the WHOLE store into whichever branch is checked out
+  (ANTS-4839), so a worker filing an item puts a large unrelated diff on
+  its branch and guarantees a conflict at merge.
+
+  Deliver the rule with teeth rather than as prose: a write from a
+  registered WORKTREE of a project refuses, and names the orchestrator
+  route. Depends on being able to tell a worktree from the main checkout,
+  which ANTS-4887 already resolves in the other direction.
+
+  Closes most of ANTS-4881's exposure without a lock, and makes ANTS-4839
+  an improvement rather than a blocker.
+  **Layman:** Only the coordinating session edits the roadmap and changelog, so parallel work has nothing to collide over.
+  Kind: implement.
+  Source: user-request-2026-09-06, ADR-0005 D2.
+  Lanes: mcp, roadmap-store.
+
+- 📋 [ANTS-4908] **Phase 1: a work queue with leases, in the store, with no schema bump.**
+  A task is a roadmap item plus a claim: owner, expiry, heartbeat, taken by
+  an atomic conditional UPDATE. An expired lease returns the task to the
+  queue, which is the whole answer to a worker that dies, hangs, or is
+  closed by the user.
+
+  The claim lives in the existing `item.extras` JSON column -- present
+  since user_version 1 and already carrying data on 191 of 6455 rows -- so
+  this needs NO kSchemaVersion bump. That is deliberate and not an
+  optimisation: a bump is a one-way door across every project on the
+  machine, because the first binary to upgrade the store locks every older
+  build out of every project. A parallel-work feature does not earn that.
+
+  Verbs: queue, claim, heartbeat, release, list. Reads must stay cheap --
+  the orchestrator polls.
+  **Layman:** A shared to-do list the sessions can safely take work from, one item at a time.
+  Kind: implement.
+  Source: user-request-2026-09-06, ADR-0005 D4.
+  Lanes: mcp, roadmap-store.
+
+- 📋 [ANTS-4909] **Phase 2: spawn a worker -- expose launch as a guarded MCP verb.**
+  The mechanism already exists: `launch` and `new-tab` over the
+  remote-control socket open a tab with a cwd and run a command, with
+  control-char filtering and cwd validation. They are simply not MCP verbs.
+
+  Spawning a FRESH session per task rather than typing into a running one
+  is what keeps the parked keystroke actuator parked (ANTS-1979,
+  ANTS-2195): no injection, so no mid-tool cancellation and no
+  unrequested-turn hazard. Fresh context per task is the second reason and
+  nearly as important -- a long-lived worker spends a growing share of
+  every task on compaction.
+
+  Guard it: refuse to launch outside a registered worktree of the calling
+  project. Same-UID trust (ADR-0004) means this is about confusion rather
+  than attack, which is exactly what a guard is for.
+  **Layman:** Let the coordinating session open a new terminal tab already running a Claude session on its own copy of the code.
+  Kind: implement.
+  Source: user-request-2026-09-06, ADR-0005 D3.
+  Lanes: mcp, remotecontrol, terminal.
+
+- 📋 [ANTS-4910] **Phase 3: the worker protocol -- claim, work, report, exit.**
+  A skill, not code: claim the task named in the brief (or the next queued
+  one), work only inside the lane it names, run the local gate, report the
+  outcome to the store, exit.
+
+  Two rules carry the design. A worker writes code and tests and NOTHING
+  else -- no roadmap, no changelog, no review records (D2). And when the
+  queue is empty it exits rather than inventing work (D7), which is what
+  keeps the standing billing-safety rule intact: the parallelism is
+  requested, the work inside it is not invented.
+
+  The report is a routing hint for the orchestrator's checks, never a
+  substitute for them.
+  **Layman:** The instructions a worker session follows, so it does one job and hands it back cleanly.
+  Kind: implement.
+  Source: user-request-2026-09-06, ADR-0005 D3, D7.
+  Lanes: skills, mcp.
+
+- 📋 [ANTS-4911] **Phase 4: the orchestrator -- partition, deal, verify on evidence, merge serially.**
+  Per task before merge: the branch builds, the suite is green, and the
+  diff stays inside the lane the task named. The worker's report routes the
+  checks; it never replaces them.
+
+  Merges are serial and the gate RE-RUNS after each one, because at volume
+  the dominant source of new defects stops being the original code and
+  becomes the previous fixes -- the premise close-findings is built on and
+  measured in this repo.
+
+  Partitioning is the part that decides whether any of this pays: two tasks
+  touching one file conflict however good the machinery is, so the
+  orchestrator must refuse to deal a task whose lane overlaps one in
+  flight. indie_review_partition and docs/subsystems.md are the existing
+  starting points, and the CLAUDE.md note that this project's own lane map
+  is too coarse in places applies here too.
+  **Layman:** The coordinating session: hand out work that cannot collide, check it really works, and merge it one at a time.
+  Kind: implement.
+  Source: user-request-2026-09-06, ADR-0005 D5.
+  Lanes: skills, mcp.
+
+- 📋 [ANTS-4912] **Phase 5: see the fleet -- worker state, spend and queue depth without reading four tabs.**
+  tab_list already reports per-tab claude_state (idle / thinking /
+  tool_use / compacting), awaiting_input and the active tool, and
+  token_usage already reports spend. What is missing is one view that puts
+  them beside the queue.
+
+  The two questions that matter in practice: which worker is stuck
+  (awaiting_input, or idle with an unfinished task), and what has this run
+  cost so far. Both are answerable from parts that exist.
+
+  Last on purpose. Nothing above it depends on this, and building it early
+  would mean designing a dashboard for a workflow nobody has run yet.
+  **Layman:** One place to see what every session is doing, what it has cost, and what is waiting.
+  Kind: feature.
+  Source: user-request-2026-09-06, ADR-0005.
+  Lanes: chrome, dialogs, mcp.
+
+- 📋 [ANTS-4913] **Measure whether parallel sessions actually finish work faster, before building phases 3 to 5.**
+  The premise is that N sessions finish more work per hour than one. It is
+  plausible and it is not measured, and three costs push against it: every
+  worktree pays its own build, the orchestrator pays supervision overhead,
+  and tokens scale linearly with workers.
+
+  Cheapest honest experiment, once phases 0-2 exist: take a batch of
+  similar backlog items -- the MCP feedback queue is ideal, since they are
+  independent by construction and land in different files -- and run one
+  batch serially and one with two workers. Compare wall-clock to merged,
+  tokens spent, and defects found in the follow-up sweep.
+
+  If the answer is that two workers are barely faster than one, the
+  valuable half is still phases 0-2 (isolation, the queue, the lease) and
+  phases 3-5 should not be built.
+  **Layman:** Check the idea really is quicker before investing in it.
+  Kind: investigate.
+  Source: user-request-2026-09-06.
+  Lanes: mcp.
 
 ### 📚 Methodology — adopted as standing practice
 
