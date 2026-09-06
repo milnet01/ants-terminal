@@ -1939,9 +1939,11 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
         } else if (idsVal.isString()) {
             const QString raw = idsVal.toString().trimmed();
             if (!raw.isEmpty()) {
-                const QStringList toks = raw.split(
-                    QRegularExpression(QStringLiteral("[,\\s]+")),
-                    Qt::SkipEmptyParts);
+                // ANTS-4784 — compiled once, not per call.
+                static const QRegularExpression kIdListSep(
+                    QStringLiteral("[,\\s]+"));
+                const QStringList toks =
+                    raw.split(kIdListSep, Qt::SkipEmptyParts);
                 for (const QString &t : toks) arr.append(t);
                 idsPresentNonEmpty = !arr.isEmpty();
             }

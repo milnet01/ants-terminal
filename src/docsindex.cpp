@@ -428,9 +428,10 @@ QJsonObject query(const Index &idx, const QueryParams &params,
         env[QStringLiteral("docs")] = docsArr;
         env[QStringLiteral("dirs")] = dirsArr;
     } else if (!params.topic.isEmpty()) {
+        // ANTS-4784 — compiled once, not per query.
+        static const QRegularExpression kTopicWords(QStringLiteral("\\s+"));
         const QStringList tokens =
-            params.topic.toLower().split(QRegularExpression(QStringLiteral("\\s+")),
-                                         Qt::SkipEmptyParts);
+            params.topic.toLower().split(kTopicWords, Qt::SkipEmptyParts);
         struct Hit { int score{}; QString path, id, title; QStringList evidence; };
         QVector<Hit> hits;
         for (const DocEntry &de : idx.docs) {

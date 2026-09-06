@@ -71,7 +71,8 @@ const QSet<QString> &commandWords() {
 bool isCommandSpan(const QString &content) {
     QString s = content.trimmed();
     if (s.startsWith(QLatin1String("$ "))) s = s.mid(2).trimmed();
-    const int sp = s.indexOf(QRegularExpression(QStringLiteral(R"(\s)")));
+    static const QRegularExpression kSpace(QStringLiteral(R"(\s)"));
+    const int sp = s.indexOf(kSpace);
     return commandWords().contains(sp < 0 ? s : s.left(sp));
 }
 

@@ -51275,6 +51275,40 @@ volume classes, and the tooling/documentation gaps the run exposed.
   use-static-qregularexpression sites — including the one already identified
   as a false positive, which belongs in the audit false-positive ledger rather
   than in a suppression.
+  Progress (2026-09-06): the use-static-qregularexpression third is CLOSED,
+  and the finding is that the class is almost entirely false positives.
+
+  Every site was read rather than sampled. Three shapes account for nearly
+  all of them, and none is a defect. A pattern built from a runtime value
+  cannot be static at all — a caller-supplied search or scope, a project's
+  declared id format, an id or prefix being escaped into the pattern, a
+  trailer label. An inner construction inside a static-const lambda
+  initialiser already compiles once; the flag is on the constructor, not on
+  the frequency. And the rule TABLES clazy points at — secretredact's
+  rules(), debtsweepengine's obsoleteQtIdioms(), buildfixhint's
+  undeclaredSymbol() — are each already a function-local static.
+
+  Five sites were genuine and are fixed: speclint's isCommandSpan, which
+  compiled a one-character pattern on every code span it judged;
+  buildtargets' parse, which built its token separator inside the per-line
+  loop; and the three id-list splits in docsindex, roadmap_query and
+  changelog_query. Each is now a function-local static const. Suite
+  4182/4182.
+
+  Deliberately NOT a shared accessor for the two identical id-list
+  separators: two occurrences is below the Rule of Three, and a
+  namespace-scope QRegularExpression would trade this class for
+  non-pod-global-static, which is this item's own third class.
+
+  No CHANGELOG bullet, on ANTS-4780's precedent: nothing here was measured
+  to be faster, and a note claiming a speed-up would not be true.
+
+  The one already-identified false positive belongs in the audit
+  false-positive ledger, which is gitignored and therefore local-only, so
+  this note is the durable record of the classification.
+
+  STILL OPEN: qcolor-from-literal and non-pod-global-static. Both need a
+  fresh clazy run to enumerate; neither was touched here.
   **Layman:** Assorted Qt habits that cost a little speed, plus one pattern that can bite at start-up.
   Kind: perf.
   Source: check-code-sweep-2026-09-01.

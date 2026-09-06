@@ -164,8 +164,11 @@ QJsonDocument RemoteControl::cmdChangelogQuery(const QJsonObject &req) {
             }
         } else if (idsv.isString() && !idsv.toString().trimmed().isEmpty()) {
             hasIds = true;
-            const auto parts = idsv.toString().split(
-                QRegularExpression(QStringLiteral("[,\\s]+")), Qt::SkipEmptyParts);
+            // ANTS-4784 — compiled once, not per call.
+            static const QRegularExpression kIdListSep(
+                QStringLiteral("[,\\s]+"));
+            const auto parts =
+                idsv.toString().split(kIdListSep, Qt::SkipEmptyParts);
             for (const QString &s : parts)
                 if (!reqIds.contains(s)) reqIds << s;
         }

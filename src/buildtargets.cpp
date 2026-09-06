@@ -82,9 +82,10 @@ QList<Target> parse(const QString &cmakeText) {
                 else if (c == QLatin1Char(')')) --depth;
             }
 
+            static const QRegularExpression kTokSep(
+                QStringLiteral(R"([\s()]+)"));
             const QStringList toks =
-                line.split(QRegularExpression(QStringLiteral(R"([\s()]+)")),
-                           Qt::SkipEmptyParts);
+                line.split(kTokSep, Qt::SkipEmptyParts);
             for (const QString &raw : toks) {
                 const QString tok = peel(raw);
                 if (looksLikeSource(tok) && !tok.contains(QLatin1Char('$')))
