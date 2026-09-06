@@ -831,7 +831,15 @@ Result check(const QString &text, const QString &relPath,
                     add(QStringLiteral("test_coverage_gap"),
                         anchorLine.value(e.id, hdr + 1),
                         QStringLiteral("%1 is declared but the Tests section "
-                                       "names no coverage for it (candidate)")
+                                       "names no coverage for it (candidate). "
+                                       "This compares against the Tests "
+                                       "section's id list ONLY — the "
+                                       "invariant's own *Test:* clause and its "
+                                       "What-checks-this row are not consulted "
+                                       "here, so a document that states "
+                                       "coverage there and not in the Tests "
+                                       "prose is reported and is not "
+                                       "uncovered (ANTS-4890)")
                             .arg(e.id));
                 }
             }

@@ -1524,3 +1524,41 @@ TEST(SpecLint, Ants4894CountsTheInvariantsItDoesRecognise) {
     EXPECT_EQ(r.invariantsFound, 2)
         << "the bullet form § 3.7 defines was not counted";
 }
+
+// --------------------------------------------------------------- ANTS-4890 --
+//
+// Reported as a false positive: an invariant whose coverage is named where
+// spec-format.md § 3.7 puts it — its own *Test:* clause and its
+// What-checks-this row — is still reported when the Tests section does not
+// repeat its id. Measured by the reporter as the precise complement of the ids
+// their Tests section mentioned.
+//
+// It is NOT a bug. ANTS-4623 designed this check to compare § Invariants
+// against the Tests section's id list independently of *Test:* clauses, and
+// Ants4623ReportsAnInvariantNoTestSectionNames and
+// Ants4623QualifiedListIsComparedNotWavedThrough both pin it with fixtures
+// where every invariant carries a clause. Skipping those would have made two
+// designed cases fail, and editing them to match would be overturning a
+// contract by rewriting its assertions.
+//
+// So the behaviour stands and the MESSAGE carries the scope — the reporter's
+// own cheaper-interim proposal. What is left is a design question for whoever
+// owns spec_lint's finding set, recorded on the item.
+
+TEST(SpecLint, Ants4890GapMessageNamesWhatItDidNotConsult) {
+    const QString doc = parityDoc(
+        QStringLiteral("- **INV-1** — one. *Test:* a.\n"
+                       "- **INV-2** — two. *Test:* b.\n"),
+        QStringLiteral("INV-1 is covered by the fixture.\n"));
+
+    const auto r = SpecLint::check(doc, QStringLiteral("s.md"), {});
+    const auto *f = firstOfKind(r, "test_coverage_gap");
+    ASSERT_NE(f, nullptr) << "the designed behaviour must still report INV-2";
+    EXPECT_TRUE(f->message.contains(QStringLiteral("Tests section's id list")))
+        << "the message does not say what it compared: "
+        << f->message.toStdString();
+    EXPECT_TRUE(f->message.contains(QStringLiteral("*Test:* clause")))
+        << "the message does not say what it did NOT consult, which is what "
+           "made it read as a coverage claim about the document: "
+        << f->message.toStdString();
+}

@@ -51273,6 +51273,41 @@ rather than refiled.
 
   Cheaper interim: have the message name the two places it did not look,
   as surfaces_skipped_hint already does for surfaces_checked.
+  Progress (2026-09-06): the reported behaviour is a DESIGN CONTRACT, not a
+  defect, and the interim fix shipped instead. The design question stays
+  open.
+
+  The requested change was built first: skip an invariant whose own
+  `test_surface` is non-empty, which is the *Test:* clause invariant_no_test
+  already reads. It made two existing cases fail —
+  Ants4623ReportsAnInvariantNoTestSectionNames and
+  Ants4623QualifiedListIsComparedNotWavedThrough — and reading them settled
+  it. Both use fixtures where EVERY invariant carries a *Test:* clause and
+  assert the gap is still reported. ANTS-4623 deliberately compares
+  § Invariants against the Tests section's id list independently of those
+  clauses; its measurement kept "names SOME ids and misses others" as the
+  real defect after an empty-set gate removed 59 true-but-useless findings.
+
+  So the change was reverted rather than the assertions edited. Making a
+  designed case pass by rewriting it is overturning a contract while looking
+  like a fix, and the contract lives in a spec — changing it owes rule 14's
+  gate, exactly as ANTS-4894's finding-kind half does.
+
+  Shipped instead: the reporter's own cheaper interim. The message now says
+  it compares against the Tests section's id list ONLY, and that the
+  invariant's *Test:* clause and What-checks-this row are not consulted — so
+  a reported invariant reads as "not named here" rather than as uncovered.
+  That was the actual cost they described: findings "emitted as though the
+  document were short of coverage". Pinned by a case. Suite 4194/4194.
+
+  The open question, for whoever owns spec_lint's finding set: should a
+  project whose Tests section is PROSE be expected to repeat every id there?
+  The reporter's directional argument is the strong one — the fix a caller
+  makes to satisfy the check adds a third place the same fact is stated, and
+  hands the next reviewer a real contradiction when one copy drifts. Against
+  that, this project's own specs do name ids there and ANTS-4623 measured
+  the check's value on that convention. It is a difference between projects,
+  which is what makes it a decision rather than a bug.
   **Layman:** A spec that names its tests in the two places the format asks for is still told its invariants have no tests.
   Kind: fix.
   Source: Pressless-feedback-2026-09-06.
