@@ -12168,7 +12168,7 @@ fixes don't address. Roadmapped here as their own design tasks.
   blocks, dispatch arms — and each needs its own end anchor chosen by
   reading it. A mechanical pass would change what some rows assert.
 
-- 📋 [ANTS-3682] **Define one loop-log format in specs.md § 5.7, so the balance check becomes checkable.**
+- ✅ [ANTS-3682] **Define one loop-log format in specs.md § 5.7, so the balance check becomes checkable.**
   /cold-eyes § 1e specifies two loop-log checks. ANTS-3662 ships the
   first (`loop_row_no_outcome`) and drops the second — the count
   enumerated in per-loop prose against the row's severity counts —
@@ -12199,6 +12199,38 @@ fixes don't address. Roadmapped here as their own design tasks.
   **Layman:** Our review logs come in two incompatible shapes; pick one so a script can check them.
   Kind: doc.
   Source: in-session-2026-07-28 (ANTS-3662 implementation, ANTS-3677 fold-in).
+  Resolved 2026-09-06 — but the conclusion is the opposite of this
+  bullet's, and that is the deliverable rather than a redefinition of it.
+
+  § 5.7 now fixes one table shape: one count per question in its own
+  column, `n/a` for a question its genre does not ask, outcome last
+  because that is the cell `loop_row_no_outcome` reads. § 7's skeleton
+  gained the header row — the skeleton was the actual drift source, since
+  it handed authors a placeholder instead of a table, so fixing § 5.7
+  alone would have left it generating new shapes.
+
+  **The balance check is WITHDRAWN, not enabled.** This bullet assumed
+  naming the count columns would make it computable. It does not, because
+  the check needs a per-loop prose enumeration to compare the counts
+  against, and the corpus shows the two forms are disjoint — no document
+  carries both. Requiring both would put every count in two places, which
+  is a drift source rather than a check. `check-doc-facts`' own `loop-log`
+  entry reaches the same conclusion independently: "Do not attempt a
+  balance the table cannot express. Counts alone are not outcomes, so a
+  doc with counts and prose outcomes is checkable only for the first." So
+  ANTS-3662 was right to drop it and it should stay dropped. Do not
+  re-file it.
+
+  What the rule does buy is the non-empty outcome cell, which
+  `loop_row_no_outcome` already checks, on a shape that no longer varies.
+
+  Gated per CLAUDE.md rule 14: `review-contract --genre standard`, three
+  loops, cap reached. 15 verified, 15 fixed, 0 dismissed; rows 4-6 of
+  docs/reviews/specs-review-log.md. The gate found far more than it was
+  armed for — two of the fifteen fall inside the change that triggered it.
+  Its largest single finding is filed as ANTS-4895: `spec_lint` resolves
+  `docs/standards/spec-format.md` before this project's own standard, so
+  § 3's required-sections block has never been the list enforced here.
 
 - ✅ [ANTS-3683] **parseSpecBody's table-row regex could span two rows and swallow an invariant.**
   `SpecParse::parseSpecBody`'s table-form regex separated cells with

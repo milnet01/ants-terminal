@@ -24,6 +24,13 @@ for security-relevant changes.
 
 ### Changed
 
+- **The spec standard fixes one review-log table shape, and the spec skeleton now carries it** (ANTS-3682)
+  Review logs had drifted into many incompatible column layouts because
+  the spec skeleton handed authors a placeholder where a table should be.
+  The skeleton now ships the header row, and § 5.7 fixes the columns: one
+  count per review question, `n/a` where a genre does not ask one, and the
+  outcome cell last. Existing logs keep the shape they have.
+
 - **roadmap_migrate's re-run refusals carry the project's registration as fields** (ANTS-4893)
   Its description names the dry run as the read-only way to ask "is this
   project already migrated?", but both re-run guards fire before the
