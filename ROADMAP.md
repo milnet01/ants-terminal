@@ -51374,7 +51374,7 @@ rather than refiled.
   Source: finbreak-feedback-2026-09-06.
   Lanes: mcp.
 
-- 📋 [ANTS-4893] **roadmap_migrate's dry run refuses on a slug mismatch, so it cannot answer the question its own description sends callers to it for.**
+- ✅ [ANTS-4893] **roadmap_migrate's dry run refuses on a slug mismatch, so it cannot answer the question its own description sends callers to it for.**
   The verb's description names the dry run as the read-only route to "is
   this project already migrated?" — project_id > 0 on a preview reads as
   already migrated. But the slug check runs BEFORE the preview is built, so
@@ -51399,6 +51399,27 @@ rather than refiled.
 
   Also requested: have the description name roadmap_query check_sync as the
   status route, which works on every project and is what that session used.
+  Resolved (2026-09-06) by the reporter's SECOND option, not their first.
+
+  Both re-run guards now carry project_id, store_backed, stored_export_slug
+  and stored_project_name on the refusal envelope, and the slug_collision
+  message says outright that those fields are the answer if the question was
+  whether the project is migrated.
+
+  The refusal itself stays, and returning a preview instead is deliberately
+  declined. A dry run reaching a different verdict from the real call is the
+  one thing a preview must not do — ANTS-4548 made these previews run every
+  gate for exactly that reason, so withdrawing a gate on the dry path would
+  undo it. The defect is that the refusal was unanswerable, not that it
+  fired.
+
+  Red-proven: with the change stashed out, Inv4NoRefusalTouchesARow fails on
+  the new assertions. Suite 4193/4193.
+
+  Not done: the reporter also asked that the description name roadmap_query
+  check_sync as the status route that works on every project. That is true
+  and worth saying, but it is a schema edit in a different verb's
+  description and belongs with a pass over that text rather than here.
   **Layman:** The safe preview that is supposed to tell you whether a project is already set up refuses to answer for the projects most likely to be.
   Kind: enhancement.
   Source: claude_config-feedback-2026-09-06.

@@ -22,6 +22,19 @@ for security-relevant changes.
   — and the hint that says `invariant_no_test` always runs now points at
   it rather than reading as evidence that any invariants were seen.
 
+### Changed
+
+- **roadmap_migrate's re-run refusals carry the project's registration as fields** (ANTS-4893)
+  Its description names the dry run as the read-only way to ask "is this
+  project already migrated?", but both re-run guards fire before the
+  preview is built — so on a project whose stored `export_slug` was not
+  derived from its directory name, that question came back as a refusal
+  with the answer only in the message. The refusal now carries
+  `project_id`, `store_backed`, `stored_export_slug` and
+  `stored_project_name`. It still refuses: a preview that reached a
+  different verdict from the real call would be worse than an
+  unanswerable one.
+
 ### Fixed
 
 - **changelog_log's schema no longer tells callers that `summary` is ignored under add_from_roadmap** (ANTS-4888)

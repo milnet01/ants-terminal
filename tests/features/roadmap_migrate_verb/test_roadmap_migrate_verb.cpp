@@ -535,6 +535,34 @@ TEST(RoadmapMigrateVerb, Inv4NoRefusalTouchesARow) {
             << "] after [" << describeCounts(after).toStdString() << "]";
     }
 
+    // ANTS-4893 — a re-run refusal must carry the registration as FIELDS.
+    // This verb's description names the dry run as the read-only route to "is
+    // this project already migrated?", and both re-run guards fire BEFORE the
+    // preview is built: on any project whose stored slug was not derived from
+    // its leaf directory, that question came back as a refusal with every
+    // requested field in fields_unmatched. Passing the slug is no workaround —
+    // a caller asking whether a project is migrated does not yet know it.
+    //
+    // The refusal STAYS. A dry run reaching a different verdict from the real
+    // call is what a preview must never do; the fix is to make the refusal
+    // answerable.
+    {
+        const QJsonObject env = RoadmapMigrateVerb::run(
+            storePath, named(QStringLiteral("renamed"), QStringLiteral("Demo")));
+        ASSERT_EQ(env.value(QStringLiteral("code")).toString(),
+                  QStringLiteral("slug_collision"));
+        EXPECT_GT(env.value(QStringLiteral("project_id")).toInt(), 0)
+            << "the refusal names the project in prose and nowhere a caller "
+               "can branch on";
+        EXPECT_TRUE(env.value(QStringLiteral("store_backed")).toBool());
+        EXPECT_EQ(env.value(QStringLiteral("stored_export_slug")).toString(),
+                  QStringLiteral("demo"))
+            << "the stored slug is the one thing the caller needs and could "
+               "only read out of the message";
+        EXPECT_EQ(env.value(QStringLiteral("stored_project_name")).toString(),
+                  QStringLiteral("Demo"));
+    }
+
     // Step 5, against a path that is a DIRECTORY, so open() cannot succeed. It
     // is a different store by construction, so it cannot touch the one above —
     // the assertion here is the refusal code.

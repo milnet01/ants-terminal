@@ -385,19 +385,47 @@ QJsonObject RoadmapMigrateVerb::run(const QString &storePath, const Request &req
     // project migrated under an explicit value would be quietly re-slugged or
     // renamed. Different codes because the consequences differ: an export path
     // hangs off the slug; the name is a display change nobody asked for.
+    // ANTS-4893 — carry the registration as FIELDS, not only in the prose.
+    // This verb's own description names the dry run as the read-only route to
+    // "is this project already migrated?", and both refusals below fire BEFORE
+    // the preview is built — so on any project whose stored export_slug was not
+    // derived from its leaf directory, the one question the dry run is
+    // advertised for came back as a refusal with every requested field in
+    // fields_unmatched. That is the population most likely to be deliberately
+    // registered, a non-default slug being something a person chose. Passing
+    // the slug is no answer: a caller asking whether a project is migrated does
+    // not yet know it.
+    //
+    // The refusal itself STAYS, and the reporter's first option — return the
+    // preview instead — is deliberately not taken. A dry run reaching a
+    // different verdict from the real call is the one thing a preview must not
+    // do; ANTS-4548 made these previews run every gate for that reason. So the
+    // fix is to make the refusal answerable rather than to withdraw it.
+    auto withOwner = [&owner](QJsonObject e) {
+        if (owner) {
+            e[QStringLiteral("project_id")]         = owner->projectId;
+            e[QStringLiteral("store_backed")]       = true;
+            e[QStringLiteral("stored_export_slug")] = owner->exportSlug;
+            e[QStringLiteral("stored_project_name")] = owner->name;
+        }
+        return e;
+    };
     if (owner && owner->exportSlug != slug) {
-        return rmErr(QStringLiteral("slug_collision"),
+        return withOwner(rmErr(QStringLiteral("slug_collision"),
                      QStringLiteral("roadmap_migrate: \"%1\" is already migrated "
                                     "under export_slug \"%2\"; re-running with "
-                                    "\"%3\" would re-slug it")
-                         .arg(req.projectRoot, owner->exportSlug, slug));
+                                    "\"%3\" would re-slug it — pass "
+                                    "export_slug:\"%2\" to re-run, or read "
+                                    "project_id / stored_export_slug here if "
+                                    "you were asking whether it is migrated")
+                         .arg(req.projectRoot, owner->exportSlug, slug)));
     }
     if (owner && owner->name != name) {
-        return rmErr(QStringLiteral("bad_args"),
+        return withOwner(rmErr(QStringLiteral("bad_args"),
                      QStringLiteral("roadmap_migrate: \"%1\" is already migrated "
                                     "as project_name \"%2\"; re-running with "
                                     "\"%3\" would rename it")
-                         .arg(req.projectRoot, owner->name, name));
+                         .arg(req.projectRoot, owner->name, name)));
     }
 
     // 7-8 — one plan, one project, one transaction. `changedAt` is the caller's
