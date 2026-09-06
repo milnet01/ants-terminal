@@ -280,20 +280,56 @@ most frequent during exactly the work Colony exists to parallelise** —
 the structural refactors of ANTS-1043 / ANTS-1044. A rule that refuses
 them refuses the main use case.
 
-**What must be declared** is scoped by one test: *would the compiler
-catch a stale reference?* If yes, the build already covers it and no
-declaration is owed. If no, declare it. That is:
+**What must be declared is decided by two questions, in this order.** The
+kind of thing renamed — variable, constant, function, method, class,
+field, module, type, enum member, macro — is NOT the axis; a list of
+kinds goes stale and invites the absurd reading that a loop counter needs
+declaring.
 
-- a renamed or removed **public C++ symbol** whose name is also reached
-  by string — a Lua binding, an MCP verb or argument, a test fixture
-  literal, a doc citation;
-- a renamed **config key** or JSON field;
-- a renamed or moved **file** that documents or tests cite by path;
-- a changed **default value or behaviour** behind an unchanged signature;
-- a changed **spec `INV-` id** or heading other documents cite.
+**Q1 — REACH: can anything outside this file refer to it by name?**
+A local, a private helper used in one file, a lambda's parameter: no.
+Nothing else can hold a stale reference, so nothing is owed however many
+of them a task renames. Everything below assumes the answer is yes.
 
-The declaration is `{old, new, kind}` and rides the task record (D4),
-which the orchestrator already reads.
+**Q2 — CHECKEDNESS: would this language's own checker catch a stale
+reference, in a run we already make?** If yes, D5's post-merge build
+covers it. If no, declare it.
+
+**The answer to Q2 is per-language, and that is the point rather than a
+caveat** — the same rename is free in one language and dangerous in
+another:
+
+| Language | Stale reference to a renamed public name | So a rename |
+|---|---|---|
+| C++, C, Rust, Go, Java | fails to BUILD | needs no declaration |
+| TypeScript | fails to type-check, where the project runs `tsc` | needs none if it does |
+| Python, Lua, JavaScript, Ruby | fails at RUNTIME, only on a path that executes — so only where a test covers it | **must be declared** |
+| Shell | fails at runtime, silently in many cases | **must be declared** |
+
+So a Python or Lua worker declares nearly every non-local rename, and a
+Rust worker declares almost none. That is not an inconsistency to iron
+out; it is the checker doing more work in one language than the other.
+
+**And some names are unchecked in EVERY language**, because nothing
+type-checks a string. These are always declared, whatever the source
+language is:
+
+- a name reached across a language boundary — a Lua binding, an FFI or
+  extension symbol, an MCP verb or argument name;
+- a **config key**, JSON/YAML field, environment variable or CLI flag;
+- a **string literal a test matches on**, which this project has been
+  bitten by more than once;
+- a renamed or moved **file** that documents, tests or build files cite
+  by path;
+- a **doc citation** or spec `INV-` id another document quotes;
+- a changed **default value or behaviour** behind an unchanged signature
+  — the one entry here that is not a rename at all, and the least
+  visible of them.
+
+The declaration is `{old, new, kind, language}` and rides the task record
+(D4), which the orchestrator already reads. `language` is there so the
+sweep can be scoped sensibly — a renamed Python method is worth grepping
+for across `.py`, docs and config, not across every `.cpp` in the tree.
 
 **The orchestrator verifies rather than trusts.** On each merge it sweeps
 the merged tree for every declared `old` token still present, across
@@ -303,11 +339,17 @@ D5's post-merge path.
 
 **And it derives what it can, so an undeclared change is still caught.**
 A declaration is a hint that makes the check precise and cheap, never the
-only line of defence: the post-merge build and suite catch the compiled
-cases regardless, and a token sweep over symbols the branch REMOVED
+only line of defence: the post-merge build and suite catch the checked
+cases regardless, and a token sweep over the symbols a branch REMOVED
 catches the common undeclared rename without anyone remembering to say
 so. A standard that relies on being remembered is a standard that fails
 silently, which is the failure this whole design is built to avoid.
+
+**The derive side is already multi-language here**, which is what makes
+that backstop credible rather than aspirational: `find_definition`
+resolves C++, Python, Lua, shell and GLSL, and `codebase_index` covers
+the brace family plus Python. The languages where Q2 says *declare* are
+largely the languages the index can still enumerate symbols for.
 
 **This wants its own standard**, not a paragraph here — ANTS-4915. An ADR
 records the decision; the rules a worker conforms to belong where a

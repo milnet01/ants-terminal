@@ -62314,10 +62314,15 @@ merit whether or not the rest is built.
   What it owns, and each of these is already a decision rather than an open
   question:
 
-  - The declaration contract (ADR-0005 D10). What must be declared, scoped
-  by one test -- would the compiler catch a stale reference? -- so the list
-  is derivable rather than memorised. The {old, new, kind} shape, and where
-  it rides.
+  - The declaration contract (ADR-0005 D10). What must be declared, decided
+  by two questions rather than a list of kinds: does the name REACH outside
+  its file, and would this language's own checker catch a stale reference?
+  Both matter and the second is per-language -- a rename is free in Rust or
+  C++ where the build catches it, and must be declared in Python, Lua,
+  JavaScript or shell where nothing does until runtime. Some names are
+  unchecked in every language (config keys, MCP verb names, cross-language
+  bindings, test-matched literals, cited paths) and are always declared.
+  The {old, new, kind, language} shape, and where it rides.
   - Ownership (D2). A worker writes code and tests; the orchestrator writes
   every rendered shared record. The store is not a rendered record, and a
   lease write must bypass the render.
