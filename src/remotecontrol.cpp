@@ -181,12 +181,69 @@ QString findRoadmapUnder(const QString &canonicalRoot, QString *ownerDir) {
 // Returns `path` unchanged when nothing at or above it holds a roadmap, so a
 // caller outside any project behaves exactly as before — the resolution can
 // only turn a miss into a hit.
+// ANTS-4887 — a git WORKTREE of a registered project. The store keys a project
+// on the main checkout's path, so a worktree is a different path with no row:
+// every roadmap verb fell through to the markdown path, and ROADMAP.md there is
+// generated output. A dry-run flip returned ok:true with write_path "patch" —
+// the write would edit the worktree's own file, the store would not record it,
+// and the next render from the main checkout would erase it. Reported by a
+// session using the roadmap as the ONLY coordination state between two parallel
+// sessions, where a claim written that way is invisible and then silently lost.
+//
+// No subprocess: git encodes this in the tree. A worktree's `.git` is a FILE
+// reading `gitdir: <main>/.git/worktrees/<name>`, so dropping the last two
+// components gives the main checkout's `.git` and its parent is the root.
+// `git rev-parse --git-common-dir` answers the same question and costs a
+// process on a path several read verbs take.
+//
+// Returns `dir` unchanged unless every step holds: a `.git` FILE, a parsable
+// gitdir, a `/worktrees/<name>` tail, and a main checkout that actually holds a
+// roadmap. So a non-worktree, and a worktree whose main checkout is gone,
+// behave exactly as before.
+static QString rcMainCheckoutOf(const QString &dir) {
+    const QString dotGit = dir + QStringLiteral("/.git");
+    const QFileInfo gi(dotGit);
+    if (!gi.exists() || !gi.isFile())
+        return dir;                       // ordinary checkout, or no repo
+    QFile f(dotGit);
+    if (!f.open(QIODevice::ReadOnly | QIODevice::Text))
+        return dir;
+    const QString first =
+        QString::fromUtf8(f.readLine()).trimmed();
+    f.close();
+    if (!first.startsWith(QStringLiteral("gitdir:")))
+        return dir;
+    QString gitDir = first.mid(7).trimmed();
+    if (gitDir.isEmpty())
+        return dir;
+    // git may write it relative to the worktree.
+    if (QFileInfo(gitDir).isRelative())
+        gitDir = QDir(dir).filePath(gitDir);
+    const QFileInfo wt(gitDir);
+    // <main>/.git/worktrees/<name> — the parent's own parent is <main>/.git.
+    if (wt.dir().dirName() != QStringLiteral("worktrees"))
+        return dir;
+    QDir common = wt.dir();               // .../.git/worktrees
+    if (!common.cdUp())                   // .../.git
+        return dir;
+    const QString mainRoot =
+        QFileInfo(common.absolutePath()).dir().absolutePath();
+    const QString canonical = QFileInfo(mainRoot).canonicalFilePath();
+    if (canonical.isEmpty())
+        return dir;
+    // Only when the main checkout is really the project: without this a
+    // worktree of a repository that holds no roadmap would be redirected to a
+    // root that answers nothing.
+    return findRoadmapUnder(canonical).isEmpty() ? dir : canonical;
+}
+
 QString rcProjectRootFor(const QString &path) {
     if (path.isEmpty())
         return path;
     QString owner;
     findRoadmapUnder(path, &owner);
-    return owner.isEmpty() ? path : owner;
+    const QString root = owner.isEmpty() ? path : owner;
+    return rcMainCheckoutOf(root);
 }
 
 // ANTS-1548 — CHANGELOG.md resolver, same shape as findRoadmapUnder.

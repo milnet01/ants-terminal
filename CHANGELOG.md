@@ -24,6 +24,15 @@ for security-relevant changes.
 
 ### Fixed
 
+- **roadmap verbs run from a git worktree are served by the project's store instead of patching the worktree's copy** (ANTS-4887)
+  The store keys a project on its main checkout, so a worktree was a path
+  with no entry: reads answered from the worktree's `ROADMAP.md`, which is
+  generated output, and a write patched that file, reported `ok:true`, and
+  was erased by the next render from the main checkout. A worktree now
+  resolves to its main checkout — read out of the `.git` file git already
+  writes, with no subprocess — provided that checkout really holds the
+  project's roadmap. Anything else is left exactly as it was.
+
 - **project_conventions no longer states a convention whose source document is not in your project** (ANTS-4460)
   The rule table is curated and cites Ants Terminal's own documents, so on
   another project it stated this project's conventions as that project's —

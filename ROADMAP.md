@@ -51082,7 +51082,7 @@ rather than refiled.
   Source: claude_config-feedback-2026-09-06.
   Lanes: mcp, specs.
 
-- 📋 [ANTS-4887] **roadmap_log from a git worktree patches that worktree's generated ROADMAP.md and the store never learns.**
+- ✅ [ANTS-4887] **roadmap_log from a git worktree patches that worktree's generated ROADMAP.md and the store never learns.**
   The store keys a project on the main checkout's canonical path. A git
   worktree is a different path with no store row, so every roadmap verb
   falls through to the markdown path — and ROADMAP.md there is generated
@@ -51114,6 +51114,36 @@ rather than refiled.
 
   Check against ANTS-3842 (pre-push gate cannot pass from a worktree) and
   ANTS-3841 before starting — same workflow, different failure.
+  Resolved (2026-09-06): the reporter's option 1, which is the one that
+  makes the supported workflow work rather than refusing it.
+
+  No subprocess. `git rev-parse --git-common-dir` answers the question and
+  costs a process on a path several read verbs take; git already encodes it
+  in the tree. A worktree's `.git` is a FILE reading
+  `gitdir: <main>/.git/worktrees/<name>`, so dropping the last two
+  components gives the main checkout's `.git` and its parent is the root.
+  Verified against a real `git worktree add` before building anything —
+  including that git may write the path relative, which the parse handles.
+
+  Guarded at every step: a `.git` FILE, a parsable gitdir, a
+  `/worktrees/<name>` tail, and a main checkout that actually holds a
+  roadmap. A worktree of a repository with no roadmap answers for itself
+  exactly as before, which is its own case rather than an assumption.
+
+  Red-proven by stashing the resolution out: the worktree case failed and
+  the leave-it-alone case passed, so the redirect is shown not to fire
+  where it should not. Pinned as INV-4 in tests/features/roadmap_subdir_dispatch,
+  whose fixture writes the `.git` file git itself writes rather than
+  shelling out. Suite 4192/4192.
+
+  Sits on ANTS-4884's resolver, which is why this was small: that one turns
+  a caller's cwd into the project root, and this extends the same function
+  with one more thing a project root can be. The two together mean a
+  subdirectory OF a worktree also resolves.
+
+  What this does NOT do, and the reporter did not ask for: their options 2
+  and 3, a refusal and a `store_bypassed` flag. Both exist to make the
+  divergence visible, and there is no longer a divergence to see.
   **Layman:** Working in a second checkout of the same project writes roadmap changes to a file that is later overwritten.
   Kind: fix.
   Source: UT_Ants-feedback-2026-09-06.

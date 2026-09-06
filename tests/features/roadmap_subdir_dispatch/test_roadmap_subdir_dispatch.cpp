@@ -214,3 +214,85 @@ TEST(RoadmapSubdirDispatch, Inv3CallerOutsideAnyProjectStillRefuses) {
               QStringLiteral("no_roadmap_loaded"))
         << QJsonDocument(resp).toJson().toStdString();
 }
+
+// --------------------------------------------------------------- ANTS-4887 --
+//
+// A git WORKTREE of a registered project is a different path with no store row,
+// so every roadmap verb fell through to the markdown path — against a
+// ROADMAP.md that is generated output. A flip from there returned ok:true with
+// write_path "patch": the store would not record it and the next render from
+// the main checkout would erase it. Reported by a session using the roadmap as
+// the only coordination state between two parallel sessions.
+//
+// The fixture writes the `.git` FILE git itself writes — `gitdir:
+// <main>/.git/worktrees/<name>` — rather than shelling out, which is also how
+// the resolution reads it.
+
+TEST(RoadmapSubdirDispatch, Inv4WorktreeResolvesToTheRegisteredMainCheckout) {
+    ants_test::XdgGuard guard;
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString root = seedProject(guard, tmp);
+    ASSERT_FALSE(root.isEmpty());
+    ASSERT_TRUE(migrate(root));
+
+    // The worktree: its own checkout of the same generated ROADMAP.md, and a
+    // `.git` file pointing back into the main checkout's administrative dir.
+    const QString wtRaw = QDir(tmp.path()).filePath(QStringLiteral("proj-wt"));
+    ASSERT_TRUE(writeFile(wtRaw + QStringLiteral("/ROADMAP.md"),
+                          QByteArray(kRoadmap)));
+    ASSERT_TRUE(QDir().mkpath(root + QStringLiteral("/.git/worktrees/proj-wt")));
+    ASSERT_TRUE(writeFile(
+        wtRaw + QStringLiteral("/.git"),
+        (QStringLiteral("gitdir: ") + root
+         + QStringLiteral("/.git/worktrees/proj-wt\n")).toUtf8()));
+    const QString wt = QFileInfo(wtRaw).canonicalFilePath();
+    ASSERT_FALSE(wt.isEmpty());
+
+    QJsonObject req;
+    req[QStringLiteral("caller_cwd")] = wt;
+    RemoteControl rc(nullptr);
+    const QJsonObject r = rc.cmdRoadmapQueryForTest(req).object();
+    ASSERT_TRUE(r.value(QStringLiteral("ok")).toBool())
+        << QJsonDocument(r).toJson().toStdString();
+
+    EXPECT_EQ(r.value(QStringLiteral("source")).toString(),
+              QStringLiteral("store"))
+        << "the worktree was read as an unregistered project of its own, so "
+           "the verb parsed a file the store renders";
+}
+
+TEST(RoadmapSubdirDispatch, Inv4WorktreeOfAProjectWithNoRoadmapIsUnchanged) {
+    // The redirect must hold only where the main checkout really is the
+    // project. Point the back-reference at a directory that holds no roadmap
+    // and the worktree must answer for itself, exactly as before.
+    ants_test::XdgGuard guard;
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    guard.setEnv("XDG_DATA_HOME",
+                 QDir(tmp.path()).filePath(QStringLiteral("xdg")).toUtf8());
+
+    const QString bare = QDir(tmp.path()).filePath(QStringLiteral("bare-main"));
+    ASSERT_TRUE(QDir().mkpath(bare + QStringLiteral("/.git/worktrees/wt")));
+
+    const QString wtRaw = QDir(tmp.path()).filePath(QStringLiteral("wt"));
+    ASSERT_TRUE(writeFile(wtRaw + QStringLiteral("/ROADMAP.md"),
+                          QByteArray(kRoadmap)));
+    ASSERT_TRUE(writeFile(
+        wtRaw + QStringLiteral("/.git"),
+        (QStringLiteral("gitdir: ") + bare
+         + QStringLiteral("/.git/worktrees/wt\n")).toUtf8()));
+    const QString wt = QFileInfo(wtRaw).canonicalFilePath();
+
+    QJsonObject req;
+    req[QStringLiteral("caller_cwd")] = wt;
+    RemoteControl rc(nullptr);
+    const QJsonObject r = rc.cmdRoadmapQueryForTest(req).object();
+
+    // It answers from its own file rather than being redirected to a root that
+    // has nothing to answer with.
+    EXPECT_TRUE(r.value(QStringLiteral("ok")).toBool())
+        << QJsonDocument(r).toJson().toStdString();
+    EXPECT_EQ(r.value(QStringLiteral("source")).toString(),
+              QStringLiteral("markdown"));
+}
