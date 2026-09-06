@@ -13257,7 +13257,8 @@ void ClaudeIntegration::onMcpConnection() {
                         "Changed). The `### <category>` heading is "
                         "created in canonical order if absent. "
                         "op:\"add_from_roadmap\" — cite a ROADMAP bullet "
-                        "by `id`; its headline becomes the summary and "
+                        "by `id`; its headline becomes the summary unless "
+                        "`summary` overrides it (ANTS-4360), and "
                         "its `Layman:` line the body (reused verbatim, "
                         "not regenerated — keeps CHANGELOG + ROADMAP in "
                         "lockstep), category derived from the bullet's "
@@ -13365,7 +13366,9 @@ void ClaudeIntegration::onMcpConnection() {
                     clOp["description"] = QStringLiteral(
                         "Verb mode. Default \"add\" (summary + optional "
                         "body). \"add_from_roadmap\" reuses the cited "
-                        "ROADMAP bullet's headline + Layman prose. "
+                        "ROADMAP bullet's headline + Layman prose; pass "
+                        "`summary` to rewrite the headline in changelog "
+                        "voice and keep the rest (ANTS-4360). "
                         "\"add_batch\" (ANTS-2044) writes N `entries[]` "
                         "in one read + one atomic commit — each entry "
                         "auto-detects mode (a `summary` → add; an "
@@ -13423,9 +13426,13 @@ void ClaudeIntegration::onMcpConnection() {
                     clSummary["type"] = "string";
                     clSummary["maxLength"] = 300;
                     clSummary["description"] = QStringLiteral(
-                        "Bold one-line entry summary (op:\"add\"). "
-                        "Ignored under add_from_roadmap (the ROADMAP "
-                        "headline is used).");
+                        "Bold one-line entry summary. Under "
+                        "add_from_roadmap it OVERRIDES the cited bullet's "
+                        "headline while category, id and the Layman body "
+                        "are still inherited (ANTS-4360) — a planned "
+                        "bullet names the DEFECT, which under `### Fixed` "
+                        "reads as if the bug is still there. Omit it to "
+                        "reuse the headline verbatim.");
 
                     QJsonObject clCategory;
                     clCategory["type"] = "string";

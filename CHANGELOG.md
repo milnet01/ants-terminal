@@ -24,6 +24,14 @@ for security-relevant changes.
 
 ### Fixed
 
+- **changelog_log's schema no longer tells callers that `summary` is ignored under add_from_roadmap** (ANTS-4888)
+  It has overridden the cited bullet's headline since ANTS-4360, with
+  category, id and the Layman body still inherited, but the schema still
+  described it as ignored. A session read that, took the roadmap headline
+  into its release notes, and hand-edited the file afterwards — the
+  round-trip the op exists to remove. Three descriptions corrected; the
+  behaviour was already right and is unchanged.
+
 - **roadmap verbs run from a git worktree are served by the project's store instead of patching the worktree's copy** (ANTS-4887)
   The store keys a project on its main checkout, so a worktree was a path
   with no entry: reads answered from the worktree's `ROADMAP.md`, which is

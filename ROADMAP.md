@@ -51149,7 +51149,7 @@ rather than refiled.
   Source: UT_Ants-feedback-2026-09-06.
   Lanes: mcp, roadmap-store.
 
-- 📋 [ANTS-4888] **changelog_log op:add_from_roadmap cannot override the headline, so a maintainer's sentence reaches the release notes.**
+- ✅ [ANTS-4888] **changelog_log op:add_from_roadmap cannot override the headline, so a maintainer's sentence reaches the release notes.**
   The op reuses the ROADMAP headline verbatim and documents `summary` as
   ignored. The two documents have different readers. The reporter's bullet
   read "Sundry small defects in the shared code and the tooling, kept so
@@ -51170,6 +51170,34 @@ rather than refiled.
   outright in the description that the roadmap headline becomes the
   user-facing entry, so the choice is deliberate rather than discovered
   afterwards.
+  Resolved (2026-09-06), and not by building what was asked for: the
+  override the reporter wanted has existed since ANTS-4360. `summary` is
+  honoured under add_from_roadmap and category, id and the Layman body are
+  still inherited — which is precisely the shape they described wanting.
+
+  What was actually broken was the SCHEMA. Its `summary` property still read
+  "Ignored under add_from_roadmap (the ROADMAP headline is used)", and the
+  op-enum and verb descriptions said the headline is reused with no mention
+  of an override. The reporter read that, believed it, and hand-edited
+  CHANGELOG.md after the write — the exact round-trip this op exists to
+  remove. They also wrote "passing `summary` alongside changes nothing",
+  which is what the documentation had told them to expect.
+
+  Three strings corrected. The behaviour needed no change and none was made.
+
+  Guarded rather than just fixed: the behaviour already had a test
+  (Ants4360SummaryOverridesTheRoadmapHeadline) and the DESCRIPTION had none,
+  which is how the two came apart for months. A source-scrape case now pins
+  that the schema neither calls `summary` ignored nor goes silent about the
+  override — so a revert to silence fails too, not only a revert to the
+  false claim. Suite 4193/4193.
+
+  Not done here, and it is the same staleness one document over: this
+  project's own CLAUDE.md release section still says add_from_roadmap
+  produces a problem-stating bullet by design and prescribes op:"add" as the
+  workaround. That advice is now wrong in the same way. It is a contract
+  document, so the edit owes rule 14's test and is a separate change rather
+  than a tail on this one.
   **Layman:** The shortcut for writing a changelog entry from a roadmap item always reuses the item's wording, even when it was written for maintainers.
   Kind: enhancement.
   Source: Games_Hub-feedback-2026-09-06.
@@ -51250,7 +51278,7 @@ rather than refiled.
   Source: Pressless-feedback-2026-09-06.
   Lanes: mcp, specs.
 
-- 📋 [ANTS-4891] **read_region and read_regions have no text encoding, so a routine multi-region read spills and costs more calls than the raw tool.**
+- 💭 [ANTS-4891] **read_region and read_regions have no text encoding, so a routine multi-region read spills and costs more calls than the raw tool.**
   Both verbs return content as `lines`, a JSON array of one string per
   line. For source that roughly doubles the payload against the same bytes
   as text — every line pays two quotes, a comma, a space and escaping — and
@@ -51276,6 +51304,46 @@ rather than refiled.
 
   Explicitly NOT a request to raise the threshold — the request is that the
   encoding stop inflating the thing being measured.
+  Measured and NOT built (2026-09-06). The premise does not hold.
+
+  The report says the `lines` array "roughly doubles the payload against
+  the same bytes as text". Measured over three real source regions of 56,
+  71 and 91 lines, joined text saves 3.2%, 4.6% and 3.2%. Not half.
+
+  The reason: both forms escape identically. A line in the array pays two
+  quotes and a comma; the same line in joined text pays an escaped newline,
+  `\\n`, which is two characters. The delta is about two bytes per line,
+  which on 60-column source is a few percent. Escaping is not extra in
+  either form, and that is what the estimate assumed.
+
+  Responses are serialised Compact (claudeintegration.cpp), so there is no
+  pretty-printing to remove either; the indented form would be LARGER than
+  both, and is not what ships.
+
+  What the reporter actually measured is a different comparison. Their
+  read_regions call carried NINE windows across three files and spilled at
+  18,952 bytes; the `sed -n` they replaced it with returned the THREE
+  regions they needed. That is nine regions against three, not one encoding
+  against another. Nine windows of 20 to 70 lines is roughly 20 KB of
+  content whichever way it is encoded, and a 3% saving does not move it
+  below a threshold.
+
+  So the request is declined as specified: a second response shape on two
+  verbs, with its own spill interactions and a second thing every caller
+  must handle, to save 3%. The content is the cost, and read_region already
+  has `max_bytes` and `max_line_bytes` to bound it — ANTS-4700 added the
+  second for exactly this, on a region whose weight sat in a few very long
+  lines.
+
+  Left as 💭 rather than closed: if a caller ever measures a case where the
+  encoding IS the difference — many very short lines, where the per-line
+  overhead stops being marginal — the argument changes and the numbers above
+  are what it has to beat.
+
+  Not re-examined here: the roadmap_query half, which asks that the offload
+  threshold count the joined body rather than the encoded array. Same
+  arithmetic applies to it, so it is likely the same answer, but it was not
+  measured.
   **Layman:** Reading several slices of a file returns them in a bulky format that trips the size limit, so a plain shell command wins.
   Kind: enhancement.
   Source: Pressless-feedback-2026-09-06.

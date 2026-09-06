@@ -1001,3 +1001,29 @@ TEST(changelog_log_writer, Ants4833ReleaseReportsTheDateItStamped) {
         << "the reported date must be the one in the heading, or it answers "
            "a different question than the caller asked";
 }
+
+// --------------------------------------------------------------- ANTS-4888 --
+//
+// ANTS-4360 made `summary` override the cited bullet's headline, and the
+// schema went on saying "Ignored under add_from_roadmap (the ROADMAP headline
+// is used)". A reporting session read that, believed it, and hand-edited
+// CHANGELOG.md after the write — which is exactly the round-trip this op
+// exists to remove. The behaviour was tested; the description was not.
+//
+// The pairing is the point: Ants4360SummaryOverridesTheRoadmapHeadline above
+// pins what the code DOES, and this pins that the schema does not tell callers
+// the opposite.
+
+TEST(changelog_log_writer, Ants4888SchemaDoesNotCallSummaryIgnored) {
+    const std::string ci = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    ASSERT_FALSE(ci.empty());
+
+    EXPECT_EQ(ci.find("Ignored under add_from_roadmap"), std::string::npos)
+        << "the schema tells callers `summary` is ignored under "
+           "add_from_roadmap, which ANTS-4360 made false";
+
+    // And says what it does instead, so the correction cannot be reverted to
+    // silence rather than to the truth.
+    EXPECT_NE(ci.find("it OVERRIDES the cited bullet's"), std::string::npos)
+        << "the schema no longer states that `summary` overrides the headline";
+}
