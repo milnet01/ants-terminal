@@ -8663,6 +8663,19 @@ class; the deferrals below cover the rest.
   Kind: audit-fix.
   Lanes: featurecoverage.
   Source: indie-review-2026-06-11 (featurecoverage H2) — deferred 2026-06-12.
+  Sequencing (2026-09-07): this is NOT ready to pick up, and the triage
+  sweep that called it live read only the headline. The body records it
+  as deferred after measurement -- a whole-tree boundary matcher
+  surfaced ~14 findings of which ~11 were imprecise spec wording rather
+  than real drift, so shipping it alone would add low-value audit
+  findings against an active false-positive reduction effort. It names
+  two ways out: a spec-wording cleanup first, or a softer matcher
+  accepting a camelCase-aligned prefix. The cleanup is already filed as
+  ANTS-4822 (specs citing C++ members that have since been renamed), so
+  the first route has an owner. Do ANTS-4822 first, re-measure the
+  boundary matcher against the cleaned lane, and only then decide
+  whether the softer matcher is still needed. Do not implement the
+  strict matcher before that measurement.
 
 - ✅ [ANTS-2123] **auditengine: populate countSuppressed for semgrep/cppcheck/clang-tidy (SARIF parity, ANTS-2118 M1).**
   summariseSarif counts SARIF suppressions[] into s.countSuppressed (ANTS-1254 INV-3) but summariseSemgrepJson / summariseClangTidyText / summariseCppcheckXml leave it at 0, so last_audit_summary reports `suppressed:0` for a semgrep run with N nosemgrep-ignored findings — contradicting the SARIF path for the same logical run. At minimum read semgrep `extra.is_ignored` (auditengine.cpp summariseSemgrepJson) and bump s.countSuppressed; document the clang-tidy(NOLINT)/cppcheck(inconclusive) gap in the header if left at 0. Needs its own test locking the suppression-count contract.
@@ -13601,6 +13614,19 @@ indie-review finding.
   Kind: refactor.
   Source: in-session-2026-05-15 (self-observed while reading
   ROADMAP for the bundle plan above).
+  Blocked (verified 2026-09-07) on ANTS-4081, and NOT doable by hand in
+  the meantime. Two things settle it. The rotation op exists but is
+  unreachable -- `rotate_minor` appears in its handler and in no
+  dispatch, so a call reaches bad_op_combo; ANTS-4081 owns wiring it,
+  and says explicitly that wiring it before the /bump recipe owns the
+  rotation-event check is the hole ANTS-4070 § 2.4 describes, because
+  the store cannot see a version transition and would happily archive
+  the minor still being shipped from. And this project is store-backed,
+  so snipping the markdown by hand is discarded at the next render,
+  silently and with no error -- roadmap-format.md § 3.9 says so in the
+  paragraph added for exactly this mistake.\n\nThe file has also grown
+  well past the size recorded in this item's body; treat that figure as
+  historical. Nothing here changes the action, only the urgency.
 
 - ✅ [ANTS-1409] **Per-tool MCP descriptor blurbs duplicate the "Pass `caller_cwd` to anchor to…" phrasing.**
   Shipped
