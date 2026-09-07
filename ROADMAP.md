@@ -31973,7 +31973,7 @@ against current source before filing.
   Kind: doc.
   Source: in-session-2026-08-07 — ANTS-3815 cold-eyes loop 5, both lanes independently.
 
-- 📋 [ANTS-4062] **Reconcile the 62 roadmap bullets whose Kind: is outside the taxonomy.**
+- ✅ [ANTS-4062] **Reconcile the 62 roadmap bullets whose Kind: is outside the taxonomy.**
   Surfaced by the first real migration of this project (2026-08-08,
   project_id 1), whose 433 notes included a `kind_unmapped` class that is
   genuine doc-drift rather than migration noise.
@@ -32002,6 +32002,14 @@ against current source before filing.
   **Layman:** Some roadmap entries are filed under labels that are not on the official list, so the database has to guess what they mean.
   Kind: doc-fix.
   Source: in-session-2026-08-08 (surfaced by the first real roadmap_migrate run).
+  Resolved (2026-09-07): closed by the store migration rather than by a
+  normalisation pass. `item.kind` now carries a CHECK constraint over
+  exactly the 21-value taxonomy, so an off-taxonomy value cannot be
+  stored; verified today that no rendered file -- the live roadmap or
+  either archive -- still carries one. The synonym-mapping work this
+  item describes is therefore unnecessary, and the three genuinely
+  compound values it flagged were resolved to single kinds during
+  migration. Verified by re-measurement, not by the item's own account.
 
 - ✅ [ANTS-4063] **RoadmapRender materialises "Source: planned." onto bullets that have no recorded provenance.**
   The first store-backed render of this project took bullets whose

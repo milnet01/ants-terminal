@@ -816,10 +816,9 @@ reasoning.
 
 The operation is **`roadmap_log op:"rotate_minor"`** (Ants ANTS-4070), taking
 the closed `<MAJOR>.<MINOR>` and nothing else. **It is implemented and it is
-not reachable** — the handler exists, but the verb's `op` dispatch carries
-only `append`, `append_batch`, `flip`, `flip_batch`, `annotate`,
-`amend_body`, `create_section` and `bundle_row`, so a call reaches
-`bad_op_combo` and none of the refusal codes below can fire. Do not build a
+not reachable** — the handler exists, but the verb's `op` dispatch does not
+carry it, so a call reaches `bad_op_combo` and none of the refusal codes
+below can fire. Do not build a
 `/bump` recipe on it yet; ANTS-4081 owns the wiring, and § 4.3's
 `retitle_section` is unreachable for the same reason and by the same commit.
 Three things about it are part of this convention rather than that project's
