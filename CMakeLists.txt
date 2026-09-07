@@ -1782,6 +1782,9 @@ if(ANTS_TESTS)
                 # ANTS-3663 — doc_lint verb layer: the refusals, the cap and the
                 # deliberate absence from isEtagSupportedTool.
                 tests/features/doc_lint_verb/test_doc_lint_verb.cpp
+                # ANTS-3669 — doc_lint FIX path: the autoFixable gate, the
+                # patch-not-regeneration contract and the write preconditions.
+                tests/features/doc_lint_fix/test_doc_lint_fix.cpp
                 # ANTS-2160 — per-project .ants/project.json settings file.
                 tests/features/project_settings/test_project_settings.cpp
                 # ANTS-2161 — layout auto-detect + project_settings verb.
@@ -2426,6 +2429,12 @@ if(ANTS_TESTS)
         # The calibration harness walks the spec corpus from the same root.
         DOCS_STANDARDS_SPECS_MD_PATH="${CMAKE_SOURCE_DIR}/docs/standards/specs.md"
         DOCS_SPECS_DIR_PATH="${CMAKE_SOURCE_DIR}/docs/specs")
+    set_property(SOURCE tests/features/doc_lint_fix/test_doc_lint_fix.cpp
+        APPEND PROPERTY COMPILE_DEFINITIONS
+        # ANTS-3669 INV-5 — the gate is the autoFixable FLAG, never the kind.
+        # While toc_gap is the only fixable kind the two are behaviourally
+        # identical, so the source is the only place that can tell them apart.
+        ANTS_DOCLINT_CPP_PATH="${CMAKE_SOURCE_DIR}/src/doclint.cpp")
     set_property(SOURCE tests/features/doc_lint/test_doc_lint.cpp
         APPEND PROPERTY COMPILE_DEFINITIONS
         # ANTS-3663 § 6 — the calibration harness walks the real corpus; every

@@ -14,6 +14,15 @@ for security-relevant changes.
 
 ### Added
 
+- **`doc_lint` can repair a drifted table of contents** (ANTS-3669)
+  Pass `fix:true` and the one auto-fixable finding is corrected in place: a
+  missing Contents entry is inserted in document order, a duplicated one is
+  removed. Every other line is left exactly as it was — sub-entries,
+  free-text rows and entries pointing at nothing are all preserved, because
+  a rebuild-from-headings would quietly delete them. `dry_run:true` shows
+  what would change without touching the file. Everything else the verb
+  reports stays report-only.
+
 - **`doc_lint` — every deterministic document check in one call** (ANTS-3663)
   Runs doc_integrity, doc_citations, doc_dedup, doc_symbols and spec_lint over one enumeration and one shared read, returning a single findings list in a total order so two runs diff cleanly. Narrow it with `checks[]`; an unknown name is refused rather than read as "all". `spec_lint` is applied only to documents under the project's specs directory, so a README is no longer flooded with findings about invariants it does not have. Reports only — nothing is written.
 

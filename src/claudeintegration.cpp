@@ -6408,7 +6408,10 @@ void ClaudeIntegration::onMcpConnection() {
                     "reading as all five. findings[] is in a TOTAL order (file, line, "
                     "verb, kind, message) so two runs diff cleanly, and max_findings "
                     "pages it AFTER that sort while counts describes the whole run. "
-                    "REPORT-ONLY: nothing is written. Read checks_run[] together with "
+                    "REPORT-ONLY unless you pass fix:true, which repairs the one "
+                    "auto-fixable kind (toc_gap) as a patch and leaves every other line "
+                    "byte-identical; dry_run:true previews that down the same path and "
+                    "writes nothing. Read checks_run[] together with "
                     "check_errors[] — a checker with entries there ran INCOMPLETELY and "
                     "its counts are a floor, not a total; skipped[] plus truncated say "
                     "the run did not cover the whole tree. spec_lint is applied only to "
@@ -6447,10 +6450,47 @@ void ClaudeIntegration::onMcpConnection() {
                             "AFTER the total sort, so the page is a deterministic prefix "
                             "and raising the cap only appends. `counts` is computed before "
                             "it and always describes the whole run.");
+                    QJsonObject dlFix; dlFix["type"] = "boolean";
+                        dlFix["description"] = QStringLiteral(
+                            "Repair what can be repaired (default false — the verb is "
+                            "REPORT-ONLY unless asked). Exactly one kind is auto-fixable: "
+                            "`toc_gap`, where a hand-maintained table of contents "
+                            "disagrees with the document's own headings and the document "
+                            "already contains the correct answer. The repair is a PATCH — "
+                            "it inserts or deletes the one entry the finding names and "
+                            "leaves every other line byte-identical, including H3 entries, "
+                            "free-text rows and entries matching no heading. Everything "
+                            "else is report-only by design: deleting one of two duplicated "
+                            "facts needs a decision about which is canonical, an "
+                            "unresolved symbol may be a forward reference, renumbering an "
+                            "INV-N breaks every citation of it, and a missing section "
+                            "needs prose only an author can write. Adds `fixed[]` (per "
+                            "finding), `files_written` (per file — three gaps in one "
+                            "document are three entries and one write) and, when a repair "
+                            "did not land, `fix_errors[]` with a reason: `stale` (the file "
+                            "changed between the walk and the write, so nothing was "
+                            "written for it), `read_failed`, `no_template` (a TOC with no "
+                            "existing entry whose form a new one could copy) or "
+                            "`write_failed`. Those keys are ABSENT under fix:false rather "
+                            "than zero, so \"nothing needed repairing\" is distinguishable "
+                            "from \"never asked\".");
+                    QJsonObject dlDry; dlDry["type"] = "boolean";
+                        dlDry["description"] = QStringLiteral(
+                            "Compute the repair and write NOTHING, down the same code "
+                            "path — a preview assembled separately is a preview that "
+                            "drifts. The response echoes `dry_run:true` so a stored "
+                            "envelope can be told from a run that really wrote, and "
+                            "`files_written` is then the would-be count. REFUSES bad_args "
+                            "without `fix:true`: the fix keys are absent under fix:false, "
+                            "so a silently-accepted preview would return exactly the "
+                            "envelope of a plain read and a mistyped flag pair would read "
+                            "as \"nothing to repair\".");
                     props["path"] = dlPath;
                     props["caller_cwd"] = dlCwd;
                     props["checks"] = dlChecks;
                     props["max_findings"] = dlMax;
+                    props["fix"] = dlFix;
+                    props["dry_run"] = dlDry;
                     // NO etag_match, deliberately: doc_lint is absent from
                     // isEtagSupportedTool (INV-13) and offering the argument
                     // would advertise a short-circuit it never performs.

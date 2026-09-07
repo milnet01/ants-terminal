@@ -11571,7 +11571,7 @@ fixes don't address. Roadmapped here as their own design tasks.
   because looksLikeDeclaration reads any brace as a body.
   Full suite green.
 
-- 📋 [ANTS-3669] **`doc_lint --fix`: the write half of the doc-lint composite, split out of ANTS-3663.**
+- ✅ [ANTS-3669] **`doc_lint --fix`: the write half of the doc-lint composite, split out of ANTS-3663.**
   Implementation phase 2 of one verb. ANTS-3663 keeps the walk, the
   five-checker composition, the adapters, the envelope and the ordering; this item
   owns everything behind `fix:true`.
@@ -11595,6 +11595,24 @@ fixes don't address. Roadmapped here as their own design tasks.
   **Layman:** The part of the document checker that actually repairs a file, kept as its own piece of work — because anything that edits your documents deserves a stricter review than anything that only reads them.
   Kind: implement.
   Source: cold-eyes-2026-07-28 ANTS-3663 loop 3 split.
+  Resolved (2026-09-07): shipped. Engine gains Options::fix / dryRun and
+  Result::fixed / filesWritten / fixErrors; the TOC repair is a patch, gated on
+  the autoFixable FLAG rather than on kind. The write re-reads and re-derives at
+  write time and refuses a diverged document whole (stale), using the project's
+  atomic idiom — open, write, short-write check, commit, fsyncParentDir. The verb
+  gains fix / dry_run, refusing bad_args on dry_run without fix; the fix keys are
+  absent under fix:false rather than zero.
+
+  tests/features/doc_lint_fix/ covers INV-5, 6, 12, 14, 15, 16, 18, 21. Every row
+  asserts an absence and every one passed on its first run, which is vacuous, so
+  each was re-proven by deleting the rule under test. Seven of eight reddened
+  immediately. The staleness mutation SURVIVED: with the check deleted the
+  missing-section fixture stayed green, because the patcher's own lookup refuses
+  on separate grounds. Sharpened with a duplicate-gap fixture, where the two
+  guards disagree and the unguarded path deletes an innocent line; it reddens now.
+  Recorded in that directory's spec.md rather than tidied away.
+
+  Suite 4260 passed, 0 failed.
 
 - 📋 [ANTS-3670] **`fix_ledger` verb — append-only edit record with a before/after finding diff.**
   Today's loop-3 fold was worked from a hand-written markdown ledger in the

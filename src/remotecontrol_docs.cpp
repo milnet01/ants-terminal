@@ -1730,6 +1730,22 @@ QJsonDocument RemoteControl::cmdDocLint(const QJsonObject &req) {
         checks.insert(n);
     }
 
+    // ANTS-3669 — the write half. dry_run WITHOUT fix refuses rather than
+    // quietly answering: the fix keys are absent under fix:false, so a
+    // silently-accepted preview returns exactly the envelope of a plain read,
+    // and a caller who mistyped the pair would read "nothing to repair" where
+    // the truth is "never asked to repair".
+    const bool wantFix = req.value(QStringLiteral("fix")).toBool();
+    const bool dryRun  = req.value(QStringLiteral("dry_run")).toBool();
+    if (dryRun && !wantFix) {
+        QJsonObject bad;
+        bad[QStringLiteral("ok")]    = false;
+        bad[QStringLiteral("code")]  = QStringLiteral("bad_args");
+        bad[QStringLiteral("error")] =
+            QStringLiteral("doc_lint: dry_run requires fix:true");
+        return QJsonDocument(bad);
+    }
+
     const ProjectSettings::Settings layout = ProjectSettings::load(rootCanonical);
     const QString docsDir  = layout.docsDir.value_or(QStringLiteral("docs"));
     const QString specsDir = layout.specsDir.value_or(QStringLiteral("docs/specs"));
@@ -1740,6 +1756,8 @@ QJsonDocument RemoteControl::cmdDocLint(const QJsonObject &req) {
     opts.rootCanonical = rootCanonical;
     opts.specsDirRel   = specsDir;
     opts.checks        = checks;
+    opts.fix           = wantFix;
+    opts.dryRun        = dryRun;
 
     // The four injected inputs § 2.5 enumerates. A composer that drops them does
     // not fail — it produces the verb-name false-positive flood ANTS-3661's own
@@ -1768,8 +1786,8 @@ QJsonDocument RemoteControl::cmdDocLint(const QJsonObject &req) {
 
     const int maxFindings =
         qBound(1, req.value(QStringLiteral("max_findings")).toInt(500), 5000);
-    return QJsonDocument(
-        docLintBuildResponse(DocLint::run(relDocs, opts), maxFindings));
+    return QJsonDocument(docLintBuildResponse(DocLint::run(relDocs, opts),
+                                              maxFindings, wantFix, dryRun));
 }
 
 // ANTS-3663 — pure: engine output → the response object.
@@ -1780,7 +1798,8 @@ QJsonDocument RemoteControl::cmdDocLint(const QJsonObject &req) {
 // also sets the flag, and only a comparison against the uncapped run tells the
 // two apart.
 QJsonObject RemoteControl::docLintBuildResponse(const DocLint::Result &result,
-                                                int maxFindings) {
+                                                int maxFindings, bool fix,
+                                                bool dryRun) {
     QJsonObject o;
     o[QStringLiteral("ok")] = true;
 
@@ -1886,6 +1905,42 @@ QJsonObject RemoteControl::docLintBuildResponse(const DocLint::Result &result,
             {QStringLiteral("passages_compared"), result.stats.passagesCompared},
             {QStringLiteral("truncated"), result.stats.dedupTruncated}};
     if (!stats.isEmpty()) o[QStringLiteral("check_stats")] = stats;
+
+    // ---- ANTS-3669: the fix keys ------------------------------------------
+    // ABSENT under fix:false, never zero. "Nothing needed repairing" and "you
+    // never asked me to repair" are different answers, and a caller reading a
+    // stored envelope has only these keys to tell them apart. Under fix:true
+    // they are present even when empty, which is what makes the zero readable.
+    //
+    // NEITHER IS PAGED BY max_findings (INV-15). That cap describes the
+    // findings PAGE; letting it bound the repairs would silently make the
+    // number of documents written depend on a display argument.
+    if (fix) {
+        // EXACTLY the four fields § 2.3 names, not DocFinding::toJson's six.
+        // This array reports what was repaired; it is not a description of the
+        // edit and not a join key. A caller reconciling against findings[]
+        // matches on these four and, where two agree on all of them, in order —
+        // both arrays are totally ordered by INV-7.
+        QJsonArray fixedArr;
+        for (const DocFinding::Finding &f : result.fixed)
+            fixedArr.append(QJsonObject{{QStringLiteral("verb"), f.verb},
+                                        {QStringLiteral("kind"), f.kind},
+                                        {QStringLiteral("file"), f.file},
+                                        {QStringLiteral("line"), f.line}});
+        o[QStringLiteral("fixed")]         = fixedArr;
+        o[QStringLiteral("files_written")] = result.filesWritten;
+        // Echoed so a caller reading a stored envelope can tell a preview from
+        // a run that really wrote. Under dry_run files_written is the would-be
+        // count, which is the point: the two envelopes must agree (INV-12).
+        if (dryRun) o[QStringLiteral("dry_run")] = true;
+        if (!result.fixErrors.isEmpty()) {
+            QJsonArray arr;
+            for (const DocLint::FixError &e : result.fixErrors)
+                arr.append(QJsonObject{{QStringLiteral("file"), e.file},
+                                       {QStringLiteral("reason"), e.reason}});
+            o[QStringLiteral("fix_errors")] = arr;
+        }
+    }
 
     return o;
 }

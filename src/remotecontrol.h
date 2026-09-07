@@ -669,8 +669,12 @@ public:
     // Pure, for the same headless-test reason as the pairs above. The cap is
     // applied after the engine's total sort and `counts` before it, so the
     // retained page is a deterministic prefix.
+    // `fix` and `dryRun` decide PRESENCE, not content: the fix keys are absent
+    // under fix:false so a report-only envelope cannot be misread as "nothing
+    // needed repairing" (ANTS-3669).
     static QJsonObject docLintBuildResponse(const DocLint::Result &result,
-                                            int maxFindings);
+                                            int maxFindings, bool fix = false,
+                                            bool dryRun = false);
     // ANTS-3661 § 2.4 — the registry-sourced half of DocSymbols'
     // `excludedNames`. Injected because ants_core_lib is Qt6::Core-only and the
     // library dependency runs core → claude: RemoteControl cannot see

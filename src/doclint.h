@@ -30,6 +30,8 @@
 #include <QStringList>
 #include <QVector>
 
+#include <functional>
+
 #include "doccitations.h"
 #include "docdedup.h"
 #include "docfinding.h"
@@ -79,7 +81,22 @@ struct Options {
     DocSymbols::Options   symbols;
     SpecLint::Options     spec;
 
+    // ANTS-3669 — the only part of this family that writes to a file. `dryRun`
+    // computes the identical result down the SAME path and writes nothing: a
+    // preview assembled separately is a preview that drifts (INV-12). It is
+    // meaningless without `fix`, and the VERB refuses that pair rather than
+    // this engine, which has no error channel (INV-16).
+    bool fix    = false;
+    bool dryRun = false;
+
     Probe *probe = nullptr;  // test-only
+
+    // INV-21's instrument, and test-only like Probe. Invoked once after the
+    // walk has finished and before the fix path opens anything — the exact
+    // window in which a user's save makes the findings describe a document that
+    // no longer exists. Nothing inside one call can produce that window, so
+    // spec § 6 requires the harness to expose a seam for it.
+    std::function<void()> afterWalkHook;
 };
 
 // A document the run did not check. No `verb`: a document either got read or it
@@ -100,6 +117,25 @@ struct CheckError {
     // them all as advisory misses a checker that never ran.
     QString reason;  // check_failed | read_budget_exhausted
                      // | basename_index_truncated | citations_truncated
+};
+
+// A repair that did not reach disk, and why. Deliberately NOT a CheckError:
+// that names a checker which produced nothing, this names a finding the fixer
+// declined or could not land. Same `file`, one phase later, and no `verb` —
+// only doc_integrity produces anything fixable today, so a verb column would
+// carry one value and read as though it discriminated.
+struct FixError {
+    QString file;
+    // stale       — the re-derivation no longer produces a walk-time gap, so
+    //               the document moved under us; nothing is written for it.
+    // read_failed — the file vanished or changed permissions between walk and
+    //               write. Same name skipped[] uses: the same event, later.
+    // no_template — a TOC region with no existing H2 entry whose form the
+    //               inserted one could copy. Guessing the convention is how a
+    //               fixer starts writing markdown the author did not choose.
+    // write_failed— open, short write, or commit() failed. QSaveFile leaves the
+    //               original byte-identical.
+    QString reason;
 };
 
 // Envelope-level signals the per-check envelopes would have carried. Each needs
@@ -151,6 +187,17 @@ struct Result {
     // caller the ungrouped output clustering was added to prevent.
     QVector<DocDedup::Pair>    pairs;
     QVector<DocDedup::Cluster> clusters;
+
+    // ANTS-3669. `fixed` is per FINDING and `filesWritten` per FILE, and they
+    // are not the same number: three TOC gaps in one document are three
+    // elements and one write. Each element carries its WALK-TIME location, so
+    // the array still correlates with findings[] where the re-read shifted
+    // lines. A finding whose write failed is absent — appending on intent
+    // rather than on success reports a repair that never happened (INV-14).
+    // Neither is paged by max_findings (INV-15).
+    QList<DocFinding::Finding> fixed;
+    int                        filesWritten = 0;
+    QList<FixError>            fixErrors;
 
     Stats stats;
 
