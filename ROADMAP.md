@@ -65543,7 +65543,7 @@ here.)
   Kind: doc-fix.
   Source: in-session-2026-08-04 (ANTS-3810 cold-eyes gate, /doc-lint observation).
 
-- 📋 [ANTS-3830] **`refactor_shell_quote_duplicate` is stale — it now flags every legitimate `shellQuote()` caller.**
+- ✅ [ANTS-3830] **`refactor_shell_quote_duplicate` is stale — it now flags every legitimate `shellQuote()` caller.**
   The rule in `audit_rules.json` says "`shellQuote` is implemented in
   sshdialog.cpp and re-implemented as a lambda in mainwindow.cpp ...
   consolidate into src/shellutils.h". That consolidation SHIPPED in 0.7.57
@@ -65571,6 +65571,18 @@ here.)
   **Layman:** An old code-checking rule now complains about correct code, so every audit run carries four false alarms.
   Kind: audit-fix.
   Source: in-session-2026-08-04 (found while fixing ANTS-3828).
+  Resolved (2026-09-07): the rule matched `shellQuote|shell.quote`
+  across src/, excluding only shellutils and sshdialog.cpp. The
+  consolidation its own description asked for had since happened --
+  src/shellutils.h holds the single definition -- so every remaining hit
+  was a CALLER of the consolidated helper, an include comment, or prose
+  naming it. The rule had come to punish its own fix. Rewritten to match
+  DEFINITIONS only, and renamed accordingly. Fixed test-first: new
+  fixtures under tests/audit_fixtures/refactor_shell_quote_duplicate/
+  were watched failing against the old pattern (6 false positives in
+  good.cpp) before the rule changed, and pass after. Root cause filed as
+  ANTS-4920 -- this rule had no false-positive canary, which is why the
+  drift was invisible.
 
 - 📋 [ANTS-3831] **Ctrl+Shift+V dereferences `clipboard->mimeData()` with no null check.**
   `src/terminalwidget.cpp`, the Ctrl+Shift+V handler:
@@ -68952,6 +68964,39 @@ contributors don't duplicate research.
   Kind: fix.
   Source: in-session-2026-08-19, observed while closing ANTS-4533.
   Lanes: ci, tests.
+
+- 📋 [ANTS-4920] **The JSON audit-rule pack has no false-positive canary, so a rule can rot unnoticed.**
+  tests/audit_self_test.sh canaries each rule against
+  tests/audit_fixtures/&lt;id&gt;/{bad,good}.*, asserting the bad file matches
+  exactly its @expect count and the good file matches zero. Its header
+  says the patterns mirror addGrepCheck() in auditdialog.cpp -- and that
+  is precisely its blind spot: the rules in audit_rules.json are not
+  addGrepCheck() calls, so none of them was covered.
+
+  That is how ANTS-3830 happened. refactor_shell_quote_duplicate came to
+  flag every caller of the helper whose consolidation it had asked for,
+  and nothing failed, because the rule had no good.* file to fail against.
+  It was found by a human reading the roadmap, not by the suite.
+
+  ANTS-3830 added a canary for that one rule. The rest of the pack still
+  has none:
+  perf_qfontmetrics_construction, perf_regex_non_static_in_function,
+  perf_vector_insert_erase_in_loop, perf_tostdstring_hot_path,
+  perf_debuglog_in_vt_hot_path, sec_ssh_argv_dash_host,
+  sec_qimage_load_without_peek, bug_hyperlink_sync_on_line_edits.
+
+  The work is a fixture pair per rule plus a run_rule line, and the
+  run_rule pattern is the rule's bare regex with the shell pipeline
+  stripped. Two of them (sec_*) look like near-duplicates of hardcoded
+  rules that DO have fixtures, so check for a merge before writing new
+  ones rather than canarying two copies of one check.
+
+  Worth doing as one pass: the value is the good.* half, and a rule
+  without one is a rule that can only ever get noisier.
+  **Layman:** Some code-checking rules have no test, so one can start crying wolf and nobody notices.
+  Kind: test.
+  Source: ANTS-3830-root-cause-2026-09-07.
+  Lanes: audit, tests.
 
 ### 📝 Cold-eyes 2026-05-11 (ANTS-1234 spec)
 

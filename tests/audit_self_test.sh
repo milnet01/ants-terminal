@@ -93,6 +93,7 @@ run_rule "cmake_no_version_floor" 'find_package\s*\(\s*[A-Za-z_][A-Za-z0-9_]*\s+
 run_rule "bash_c_non_literal" '\b(bash|sh)\b[^=]*"-c"\s*,\s*[A-Za-z_][A-Za-z0-9_]*'
 run_rule "ssh_argv_dash_host" '<<\s*shellQuote\s*\([^)]*\bhost\b'
 run_rule "qimage_load_without_peek" '\.loadFromData\s*\('
+run_rule "refactor_shell_quote_duplicate" '(QString|auto)[[:space:]]+shellQuote[[:space:]]*[=(]|shellQuote[[:space:]]*=[[:space:]]*\['
 run_rule "setPermissions_pair_no_helper" 'setPermissions\s*\([^)]*QFileDevice::ReadOwner\s*\|\s*QFileDevice::WriteOwner\s*\)'
 
 # ---------------------------------------------------------------------------

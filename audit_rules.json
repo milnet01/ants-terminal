@@ -101,10 +101,10 @@
     },
     {
       "id": "refactor_shell_quote_duplicate",
-      "name": "Shell-Quote Logic Duplicated Outside sshdialog.cpp",
-      "description": "`shellQuote` is implemented in sshdialog.cpp and re-implemented as a lambda in mainwindow.cpp. Two sources of truth drift apart. Consolidate into src/shellutils.h so a fix to one automatically benefits the other.",
+      "name": "Shell-Quote Logic Re-implemented Outside shellutils.h",
+      "description": "`shellQuote` has one canonical home, src/shellutils.h. A second definition or lambda elsewhere is a second source of truth that will drift from it. Flags DEFINITIONS only \u2014 calling the helper is the intended use, not a smell.",
       "category": "Refactoring",
-      "command": "grep -rnE 'shellQuote|shell.quote' src/ --include='*.cpp' --include='*.h' | grep -v 'src/shellutils\\|src/sshdialog\\.cpp:' || true",
+      "command": "grep -rnE '(QString|auto)[[:space:]]+shellQuote[[:space:]]*[=(]|shellQuote[[:space:]]*=[[:space:]]*\\[' src/ --include='*.cpp' --include='*.h' | grep -v 'src/shellutils\\.h:' || true",
       "type": "smell",
       "severity": "info",
       "auto_select": false,
