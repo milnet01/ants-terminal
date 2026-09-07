@@ -679,9 +679,9 @@ only place either is argued.**
   | Site | Disposition |
   |---|---|
   | `src/roadmapparse.cpp` | the grammar itself — **exempt** by definition |
-  | `src/remotecontrol.cpp:6576` and `:6749` (`rxBoldLayman`, ANTS-1933) | **exempt, and it cannot be otherwise.** Both deliberately capture the Layman sentence *including* its trailing period, because `rec.layman` is period-stripped by ANTS-1154 INV-4 and a period-less CHANGELOG body was the bug ANTS-1933 fixed. `trailerValuesIn()` returns the stripped value, so routing these through it re-introduces that defect. Two sites: the single-entry and batch `add_from_roadmap` paths carry the same block |
+  | `rxBoldLayman` in `src/remotecontrol_changelog.cpp` (ANTS-1933) | **exempt, and it cannot be otherwise.** Both deliberately capture the Layman sentence *including* its trailing period, because `rec.layman` is period-stripped by ANTS-1154 INV-4 and a period-less CHANGELOG body was the bug ANTS-1933 fixed. `trailerValuesIn()` returns the stripped value, so routing these through it re-introduces that defect. Two sites: the single-entry and batch `add_from_roadmap` paths carry the same block |
   | `src/roadmapdialog.cpp:640` (`rxKind`) | **moves to `RoadmapParse::trailerValuesIn(bodyFull).kind.value`** — a deliverable of this spec. It re-implements both the trailer regex *and* `parseBullets()`'s continuation-line assembly to build a kind-filter map, which is the second grammar this invariant exists to forbid. **Not behaviour-preserving** — the local pattern omits `CaseInsensitiveOption`; § 7 states the widening, § 4 the cost |
-  | `src/remotecontrol.cpp:22382` (`rxCommitSha()`) | **exempt.** Its pattern embeds `\bSource:\s*` as one alternative in a commit-SHA locator — the trailer key is a lead-in it skips past, not a value it extracts, so routing it through the accessor is meaningless. Listed because the scrape **will** match it |
+  | `src/remotecontrol_coldeyes.cpp` (`rxCommitSha()`) | **exempt.** Its pattern embeds `\bSource:\s*` as one alternative in a commit-SHA locator — the trailer key is a lead-in it skips past, not a value it extracts, so routing it through the accessor is meaningless. Listed because the scrape **will** match it |
 
   **The table above is today's inventory. The invariant's allowlist is a
   different, smaller list, and conflating the two would let the test pass with
@@ -864,7 +864,7 @@ guards it.
 § 2.2 says they move out of `parseBullets()`; it does not say they become
 namespace-scope globals. This project's own precedent for a shared compiled
 pattern is the function-local static behind an accessor —
-`rxCommitSha()` (`src/remotecontrol.cpp:22382`) returns a
+`rxCommitSha()` (`src/remotecontrol_coldeyes.cpp`) returns a
 `static const QRegularExpression &` — which keeps construction lazy and ordered.
 Follow it rather than introducing six non-POD globals.
 

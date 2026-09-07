@@ -437,7 +437,7 @@ move an anchor; the three asserted literals are untouched by this change.
 - `tests/features/mcp_spec_log/` — T1's comment reads "set_status rewrites only
   the Status line". Its assertions still pass (its fixture's Status is
   single-line), but the sentence is now wrong; it is reworded in the same
-  commit. `src/remotecontrol.cpp:17505`'s comment was checked and is **not**
+  commit. `src/remotecontrol_feedback.cpp`'s comment was checked and is **not**
   stale — it says where Status comes from, not how much of it is rewritten.
 - `src/claudeintegration.cpp` — the `spec_log` MCP tool-description strings say
   `set_status` rewrites "the text after `**Status:** `" and "the **Status:**
