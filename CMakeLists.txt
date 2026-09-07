@@ -564,6 +564,10 @@ add_library(ants_core_lib STATIC
     # ANTS-3653 — doc_citations scan layer: the path:line grammar as a pure
     # function (document text in, tokens out); Qt6::Core-only.
     src/doccitations.cpp
+    # ANTS-3663 — doc_lint engine: composes the five deterministic doc checkers
+    # over one enumeration and one shared read, so a review pre-pass is one call
+    # rather than five that each re-walk the tree. Qt6::Core-only.
+    src/doclint.cpp
     # ANTS-1961 / ANTS-1962 — feedback-file parse + render helpers.
     src/feedbackfile.cpp
     # ANTS-1963 — spec_log pure markdown transforms (Qt6::Core-only).
@@ -1775,6 +1779,9 @@ if(ANTS_TESTS)
                 # contract + refusal minimums).
                 tests/features/doc_dedup/test_doc_dedup.cpp
                 tests/features/doc_dedup_verb/test_doc_dedup_verb.cpp
+                # ANTS-3663 — doc_lint verb layer: the refusals, the cap and the
+                # deliberate absence from isEtagSupportedTool.
+                tests/features/doc_lint_verb/test_doc_lint_verb.cpp
                 # ANTS-2160 — per-project .ants/project.json settings file.
                 tests/features/project_settings/test_project_settings.cpp
                 # ANTS-2161 — layout auto-detect + project_settings verb.
@@ -2905,6 +2912,9 @@ if(ANTS_TESTS)
                 tests/features/flathub_manifest_transform/test_flathub_manifest_transform.cpp
                 # ANTS-3603 — shared MarkdownScan fence primitives (fenceMask contract).
                 tests/features/markdownscan/test_markdownscan.cpp
+                # ANTS-3663 — doc_lint engine: one enumeration, one shared read,
+                # five checkers composed into one findings list.
+                tests/features/doc_lint/test_doc_lint.cpp
                 # ANTS-3681 — structural bounds for source-scrape tests.
                 tests/features/srcgrep_region_bounds/test_srcgrep_region_bounds.cpp
                 # ANTS-4820 — the closer-length rule reaches the

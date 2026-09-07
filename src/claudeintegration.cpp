@@ -6391,6 +6391,74 @@ void ClaudeIntegration::onMcpConnection() {
                 }
                 tools.append(docDedup);
 
+                // ANTS-3663 — doc_lint: all five deterministic doc checkers in
+                // one call, over one enumeration and one shared read.
+                QJsonObject docLint;
+                docLint["name"] = "doc_lint";
+                docLint["description"] = QStringLiteral(
+                    "Run EVERY deterministic document check in one call and return one "
+                    "findings list: doc_integrity (dead anchors, broken links, TOC gaps, "
+                    "heading order, ungranted skill tools), doc_citations (path:line "
+                    "citations that no longer resolve), doc_dedup (the same passage "
+                    "written twice), doc_symbols (backticked identifiers that resolve "
+                    "nowhere) and spec_lint (the greppable half of the spec-format "
+                    "contract). One walk and one shared read serve the three native "
+                    "checkers, so this is cheaper than the five calls it replaces. "
+                    "Narrow with checks[]; an unknown name refuses bad_args rather than "
+                    "reading as all five. findings[] is in a TOTAL order (file, line, "
+                    "verb, kind, message) so two runs diff cleanly, and max_findings "
+                    "pages it AFTER that sort while counts describes the whole run. "
+                    "REPORT-ONLY: nothing is written. Read checks_run[] together with "
+                    "check_errors[] — a checker with entries there ran INCOMPLETELY and "
+                    "its counts are a floor, not a total; skipped[] plus truncated say "
+                    "the run did not cover the whole tree. spec_lint is applied only to "
+                    "documents under the project's specs dir, because a README has no "
+                    "invariants. caller_cwd required.");
+                docLint["selection_hint"] = QStringLiteral(
+                    "Use before any documentation review or pre-pass: it runs the whole "
+                    "deterministic layer in one call, where the five verbs it composes "
+                    "each re-walk the same tree when called separately.");
+                {
+                    QJsonObject schema;
+                    schema["type"] = "object";
+                    schema["additionalProperties"] = false;
+                    schema["required"] = QJsonArray{QStringLiteral("caller_cwd")};
+                    QJsonObject props;
+                    QJsonObject dlPath; dlPath["type"] = "string";
+                        dlPath["description"] = QStringLiteral(
+                            "Project-relative file or directory (a directory walks *.md "
+                            "recursively). Default: the project's docs dir, else docs/.");
+                    QJsonObject dlCwd; dlCwd["type"] = "string";
+                        dlCwd["description"] = QStringLiteral(
+                            "Your $PWD. Required — anchors the doc walk to your project.");
+                    QJsonObject dlChecks; dlChecks["type"] = "array";
+                        dlChecks["items"] = QJsonObject{{"type", "string"}};
+                        dlChecks["description"] = QStringLiteral(
+                            "Which checkers to run (default: all five). Values are exactly "
+                            "the `verb` strings the findings carry — doc_integrity, "
+                            "doc_citations, doc_dedup, doc_symbols, spec_lint — so a name "
+                            "read off a finding can be fed straight back. An unknown name "
+                            "REFUSES bad_args with the accepted list: a filter that "
+                            "silently widened would return a clean-looking report about a "
+                            "question nobody answered.");
+                    QJsonObject dlMax; dlMax["type"] = "integer";
+                        dlMax["description"] = QStringLiteral(
+                            "Cap on findings[] (default 500, clamped to [1,5000]). Applied "
+                            "AFTER the total sort, so the page is a deterministic prefix "
+                            "and raising the cap only appends. `counts` is computed before "
+                            "it and always describes the whole run.");
+                    props["path"] = dlPath;
+                    props["caller_cwd"] = dlCwd;
+                    props["checks"] = dlChecks;
+                    props["max_findings"] = dlMax;
+                    // NO etag_match, deliberately: doc_lint is absent from
+                    // isEtagSupportedTool (INV-13) and offering the argument
+                    // would advertise a short-circuit it never performs.
+                    schema["properties"] = props;
+                    docLint["inputSchema"] = schema;
+                }
+                tools.append(docLint);
+
                 // ANTS-3636 — doc_citations: resolve every path:line citation
                 // in one doc and return the line it points at, so a reviewer
                 // stops opening 33 files by hand to verify them.
@@ -14210,6 +14278,10 @@ void ClaudeIntegration::onMcpConnection() {
                         // per cluster, and a corpus-wide walk is the upper end
                         // (measured: 275 pairs / 128 clusters over docs/).
                         {QStringLiteral("doc_dedup"),         {1200, 12000}},
+                        // ANTS-3663 — doc_lint composes all five checkers, so
+                        // its ceiling is their union over one walk; max_findings
+                        // is what a caller bounds it with.
+                        {QStringLiteral("doc_lint"),          {1500, 16000}},
                         // Repo / docs.
                         {QStringLiteral("roadmap_query"),     {1700, 12000}},
                         {QStringLiteral("roadmap_log"),       {200,  600}},
@@ -14387,6 +14459,7 @@ void ClaudeIntegration::onMcpConnection() {
                         // sibling; same project-scoped document reader family.
                         name == QLatin1String("spec_conformance") ||
                         name == QLatin1String("doc_dedup") ||   // ANTS-3660
+                        name == QLatin1String("doc_lint") ||    // ANTS-3663
                         // ANTS-2161 — project_settings: project-scoped
                         // layout-config detect + create/update.
                         name == QLatin1String("project_settings") ||
@@ -15633,6 +15706,8 @@ ClaudeIntegration::callerCwdContractFor(const QString &toolName) {
     if (toolName == QStringLiteral("spec_conformance"))    return C::Required;
     // ANTS-3660 — doc_dedup walks the focused project's docs_dir; Required.
     if (toolName == QStringLiteral("doc_dedup"))           return C::Required;
+    // ANTS-3663 — doc_lint walks the focused project's docs_dir; Required.
+    if (toolName == QStringLiteral("doc_lint"))            return C::Required;
     // ANTS-2161 — project_settings reads/writes <root>/.ants/project.json
     // anchored on the resolved root; Required.
     if (toolName == QStringLiteral("project_settings"))    return C::Required;

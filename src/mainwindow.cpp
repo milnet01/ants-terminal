@@ -5276,6 +5276,10 @@ void MainWindow::setupClaudeMcpProviders() {
     m_claudeIntegration->registerToolProvider("doc_dedup",
         ClaudeIntegration::CallerCwdContract::Required,
         rcDelegate(&RemoteControl::cmdDocDedup));
+    // ANTS-3663 — doc_lint: the five deterministic doc checkers in one call.
+    m_claudeIntegration->registerToolProvider("doc_lint",
+        ClaudeIntegration::CallerCwdContract::Required,
+        rcDelegate(&RemoteControl::cmdDocLint));
     // ANTS-2161 — project_settings: detect layout + create/update .ants/project.json.
     m_claudeIntegration->registerToolProvider("project_settings",
         ClaudeIntegration::CallerCwdContract::Required,

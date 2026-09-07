@@ -271,6 +271,8 @@
         "src/doccitations.h",
         "src/docdedup.cpp",
         "src/docdedup.h",
+        "src/doclint.cpp",
+        "src/doclint.h",
         "src/docfinding.cpp",
         "src/docfinding.h",
         "src/docintegrity.cpp",

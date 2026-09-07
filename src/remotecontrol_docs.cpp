@@ -1680,3 +1680,212 @@ QJsonDocument RemoteControl::cmdProjectSettings(const QJsonObject &req) {
     return writeOut(*merged);
 }
 
+
+// ANTS-3663 — doc_lint: the five deterministic doc checkers in ONE call, over
+// one enumeration and one shared read, so a review pre-pass costs one call
+// rather than five that each re-walk the same tree. caller_cwd Required. `path`
+// routes through PathValidation and then the SAME enumeration doc_integrity
+// uses. Engine: DocLint::run. See docs/specs/ANTS-3663.md.
+//
+// DELIBERATELY ABSENT FROM isEtagSupportedTool, and this is not an oversight to
+// be tidied up by symmetry with the five siblings (INV-13). The short-circuit
+// runs AFTER the handler and hashes what it produced, so once ANTS-3669 adds the
+// write path a matching etag_match would report a COMPLETED repair as
+// "unchanged" — files moved on disk and the envelope says nothing did. There is
+// one registration entry, so the exclusion cannot be phased in later; it ships
+// unconditional from the first version. No `etag_match` property either.
+QJsonDocument RemoteControl::cmdDocLint(const QJsonObject &req) {
+    const QString rootCanonical = resolveRootCanonical(m_main, req);
+    if (rootCanonical.isEmpty()) {
+        QJsonObject o;
+        o[QStringLiteral("ok")]    = false;
+        o[QStringLiteral("error")] = QStringLiteral("doc_lint: no focused project");
+        o[QStringLiteral("code")]  = QStringLiteral("bad_path");
+        return QJsonDocument(o);
+    }
+    const QString rawPath = req.value(QStringLiteral("path")).toString();
+    if (!rawPath.isEmpty()) {
+        const auto check = PathValidation::validatePath(
+            rawPath, rootCanonical, QStringLiteral("doc_lint"),
+            QStringLiteral("path"));
+        if (check.bad) return QJsonDocument(check.err);  // root-escape → bad_path
+    }
+
+    // An unknown name REFUSES rather than reading as "all five". Silently
+    // running four checks for a caller who asked for a fifth returns a clean
+    // report about a question nobody answered.
+    QSet<QString> checks;
+    for (const QJsonValue &v : req.value(QStringLiteral("checks")).toArray()) {
+        const QString n = v.toString();
+        if (!DocLint::checkNames().contains(n)) {
+            QJsonObject bad;
+            bad[QStringLiteral("ok")]    = false;
+            bad[QStringLiteral("code")]  = QStringLiteral("bad_args");
+            bad[QStringLiteral("error")] =
+                QStringLiteral("doc_lint: unknown check \"%1\"").arg(n.left(64));
+            bad[QStringLiteral("accepted")] =
+                QJsonArray::fromStringList(DocLint::checkNames());
+            return QJsonDocument(bad);
+        }
+        checks.insert(n);
+    }
+
+    const ProjectSettings::Settings layout = ProjectSettings::load(rootCanonical);
+    const QString docsDir  = layout.docsDir.value_or(QStringLiteral("docs"));
+    const QString specsDir = layout.specsDir.value_or(QStringLiteral("docs/specs"));
+    const QStringList relDocs =
+        docIntegrityEnumerate(rootCanonical, rawPath, docsDir);
+
+    DocLint::Options opts;
+    opts.rootCanonical = rootCanonical;
+    opts.specsDirRel   = specsDir;
+    opts.checks        = checks;
+
+    // The four injected inputs § 2.5 enumerates. A composer that drops them does
+    // not fail — it produces the verb-name false-positive flood ANTS-3661's own
+    // loops removed, and a sections_checked:false that reads as a missing
+    // standard rather than a missing pass-through.
+    opts.symbols.rootCanonical = rootCanonical;
+    opts.symbols.excludedNames = docSymbolsRefusalCodes(rootCanonical);
+    if (m_mcpVerbVocabularyProvider)
+        for (const QString &n : m_mcpVerbVocabularyProvider())
+            opts.symbols.excludedNames.insert(n);
+
+    bool prefixMatch = false;
+    opts.spec.requiredSections =
+        specLintRequiredSections(rootCanonical, nullptr, &prefixMatch);
+    opts.spec.sectionsPrefixMatch = prefixMatch;
+    opts.spec.existingTestDirs    = specLintExistingTestDirs(rootCanonical);
+    opts.spec.wiredTestDirs =
+        specLintWiredTestDirs(rootCanonical, opts.spec.existingTestDirs);
+
+    // Generated and templated artifacts — the same set doc_dedup's own verb
+    // injects, and measured rather than chosen.
+    opts.dedup.excludedPathGlobs = QStringList{
+        QStringLiteral("*AUTOMATED_AUDIT_REPORT*"),
+        QStringLiteral("*superpowers/*"),
+    };
+
+    const int maxFindings =
+        qBound(1, req.value(QStringLiteral("max_findings")).toInt(500), 5000);
+    return QJsonDocument(
+        docLintBuildResponse(DocLint::run(relDocs, opts), maxFindings));
+}
+
+// ANTS-3663 — pure: engine output → the response object.
+//
+// The cap is applied AFTER the engine's total sort and `counts` is computed
+// BEFORE it, so the retained page is a deterministic prefix and raising the cap
+// only ever appends. A cap applied during collection also returns N findings and
+// also sets the flag, and only a comparison against the uncapped run tells the
+// two apart.
+QJsonObject RemoteControl::docLintBuildResponse(const DocLint::Result &result,
+                                                int maxFindings) {
+    QJsonObject o;
+    o[QStringLiteral("ok")] = true;
+
+    // Over the WHOLE list, before any cap: a consumer that caps first describes
+    // the page rather than the run.
+    o[QStringLiteral("counts")] = DocFinding::countsByVerbAndKind(result.findings);
+
+    QList<DocFinding::Finding> page = result.findings;
+    bool capped = false;
+    if (maxFindings > 0 && page.size() > maxFindings) {
+        page = page.mid(0, maxFindings);
+        capped = true;
+    }
+    o[QStringLiteral("findings")] = DocFinding::toJson(page);
+
+    // Always present, empty rather than absent: a caller distinguishing "clean"
+    // from "malformed" needs them unconditionally.
+    o[QStringLiteral("checked_docs")] = QJsonArray::fromStringList(result.checkedDocs);
+    o[QStringLiteral("checks_run")]   = QJsonArray::fromStringList(result.checksRun);
+
+    // One flag, two causes: max_findings elided findings, OR a cap elided a
+    // document. Both mean this response does not describe the whole tree.
+    if (capped || result.truncated) o[QStringLiteral("truncated")] = true;
+
+    if (!result.skipped.isEmpty()) {
+        QJsonArray arr;
+        for (const DocLint::Skip &s : result.skipped)
+            arr.append(QJsonObject{{QStringLiteral("file"), s.file},
+                                   {QStringLiteral("reason"), s.reason}});
+        o[QStringLiteral("skipped")] = arr;
+    }
+    if (!result.checkErrors.isEmpty()) {
+        QJsonArray arr;
+        for (const DocLint::CheckError &e : result.checkErrors)
+            arr.append(QJsonObject{{QStringLiteral("verb"), e.verb},
+                                   {QStringLiteral("file"), e.file},
+                                   {QStringLiteral("reason"), e.reason}});
+        o[QStringLiteral("check_errors")] = arr;
+    }
+
+    // doc_dedup's structured payload, hoisted whole. Hoisting only pairs hands
+    // the caller the ungrouped output clustering was added to prevent.
+    const auto passageObj = [](const DocDedup::Passage &p) {
+        return QJsonObject{{QStringLiteral("file"), p.file},
+                           {QStringLiteral("line"), p.line}};
+    };
+    const auto sim = [](double v) { return qRound(v * 1000.0) / 1000.0; };
+    if (!result.pairs.isEmpty()) {
+        QJsonArray arr;
+        for (const DocDedup::Pair &p : result.pairs)
+            arr.append(QJsonObject{{QStringLiteral("a"), passageObj(p.a)},
+                                   {QStringLiteral("b"), passageObj(p.b)},
+                                   {QStringLiteral("similarity"), sim(p.similarity)}});
+        o[QStringLiteral("pairs")] = arr;
+    }
+    if (!result.clusters.isEmpty()) {
+        QJsonArray arr;
+        for (const DocDedup::Cluster &c : result.clusters) {
+            QJsonArray ps;
+            for (const DocDedup::Passage &p : c.passages) ps.append(passageObj(p));
+            arr.append(QJsonObject{{QStringLiteral("passages"), ps},
+                                   {QStringLiteral("size"), ps.size()},
+                                   {QStringLiteral("max_similarity"), sim(c.maxSimilarity)}});
+        }
+        o[QStringLiteral("clusters")] = arr;
+    }
+
+    // check_stats: an entry per checker that RAN. The per-check envelopes are
+    // gone, so a value a checker would have returned at its own top level needs
+    // a route here or it is lost.
+    QJsonObject stats;
+    const QStringList &run = result.checksRun;
+    if (run.contains(QStringLiteral("doc_citations")))
+        stats[QStringLiteral("doc_citations")] = QJsonObject{
+            {QStringLiteral("unparsed_total"), result.stats.unparsedTotal},
+            {QStringLiteral("examples_suppressed"), result.stats.examplesSuppressed}};
+    if (run.contains(QStringLiteral("doc_symbols")))
+        // A NESTED counts object, not four dotted keys: it is doc_symbols' own
+        // shape, and flattening would collide by name with this envelope's
+        // top-level `counts`, which holds findings per verb per kind.
+        stats[QStringLiteral("doc_symbols")] = QJsonObject{
+            {QStringLiteral("counts"),
+             QJsonObject{{QStringLiteral("total"), result.stats.symbolsTotal},
+                         {QStringLiteral("resolved"), result.stats.symbolsResolved},
+                         {QStringLiteral("unresolved"), result.stats.symbolsUnresolved},
+                         {QStringLiteral("not_checked"), result.stats.symbolsNotChecked}}},
+            {QStringLiteral("truncated"), result.stats.symbolsTruncated}};
+    if (run.contains(QStringLiteral("spec_lint"))) {
+        QJsonObject lineCount;
+        for (auto it = result.stats.lineCount.cbegin();
+             it != result.stats.lineCount.cend(); ++it)
+            lineCount[it.key()] = it.value();
+        stats[QStringLiteral("spec_lint")] = QJsonObject{
+            {QStringLiteral("sections_checked"), result.stats.sectionsChecked},
+            {QStringLiteral("line_count"), lineCount},
+            {QStringLiteral("truncated"), result.stats.specLintTruncated}};
+    }
+    if (run.contains(QStringLiteral("doc_dedup")))
+        // RUN-scoped, taken verbatim. Summing these across documents would
+        // multiply each by the document count.
+        stats[QStringLiteral("doc_dedup")] = QJsonObject{
+            {QStringLiteral("passages_total"), result.stats.passagesTotal},
+            {QStringLiteral("passages_compared"), result.stats.passagesCompared},
+            {QStringLiteral("truncated"), result.stats.dedupTruncated}};
+    if (!stats.isEmpty()) o[QStringLiteral("check_stats")] = stats;
+
+    return o;
+}

@@ -14,6 +14,9 @@ for security-relevant changes.
 
 ### Added
 
+- **`doc_lint` — every deterministic document check in one call** (ANTS-3663)
+  Runs doc_integrity, doc_citations, doc_dedup, doc_symbols and spec_lint over one enumeration and one shared read, returning a single findings list in a total order so two runs diff cleanly. Narrow it with `checks[]`; an unknown name is refused rather than read as "all". `spec_lint` is applied only to documents under the project's specs directory, so a README is no longer flooded with findings about invariants it does not have. Reports only — nothing is written.
+
 - **search the roadmap by kind of work** (ANTS-4836)
   Every item records what kind of work it is, and nothing could select on
   it — so "which review fixes are still open?" meant fetching every open

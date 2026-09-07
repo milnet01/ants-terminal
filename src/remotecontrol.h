@@ -12,7 +12,8 @@
 #include "doccitations.h"  // ANTS-3636 — DocCitations::Options in helper sig
 #include "docsymbols.h"    // ANTS-3661 — DocSymbols::Symbol in helper sig
                            // (pulls docfinding.h for DocFinding::Finding)
-#include "docdedup.h"      // ANTS-3660 — DocDedup::Result in helper sig
+#include "docdedup.h"
+#include "doclint.h"      // ANTS-3660 — DocDedup::Result in helper sig
 #include "changelogquery.h"  // ANTS-3533 — changelog_query parse-cache member
 #include "coldeyesengine.h"  // ANTS-1319 — cold-eyes partition cache
 #include "roadmapindex.h"  // ANTS-1287 — heading-index cache members
@@ -659,6 +660,17 @@ public:
     // pair, and ANTS-3663 hoists both arrays whole.
     static QJsonObject docDedupBuildResponse(const DocDedup::Result &result,
                                              const QStringList &checkedDocs);
+    // ANTS-3663 — doc_lint: the five deterministic doc checkers in one call.
+    // Reuses docIntegrityEnumerate for the walk like its siblings; the CAPS
+    // belong to the engine, because eliding a document is an observable outcome
+    // a test must be able to drive. NOT ETag-eligible, by design: see the
+    // handler's comment and INV-13.
+    QJsonDocument cmdDocLint(const QJsonObject &req);
+    // Pure, for the same headless-test reason as the pairs above. The cap is
+    // applied after the engine's total sort and `counts` before it, so the
+    // retained page is a deterministic prefix.
+    static QJsonObject docLintBuildResponse(const DocLint::Result &result,
+                                            int maxFindings);
     // ANTS-3661 § 2.4 — the registry-sourced half of DocSymbols'
     // `excludedNames`. Injected because ants_core_lib is Qt6::Core-only and the
     // library dependency runs core → claude: RemoteControl cannot see

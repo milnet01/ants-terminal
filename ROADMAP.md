@@ -11283,7 +11283,7 @@ fixes don't address. Roadmapped here as their own design tasks.
   Kind: implement.
   Source: user-request-2026-07-27.
 
-- 📋 [ANTS-3663] **`doc_lint` — run every deterministic doc check in one call, and fix only what is provably safe.**
+- ✅ [ANTS-3663] **`doc_lint` — run every deterministic doc check in one call, and fix only what is provably safe.**
   Gated on ANTS-3660..3662 existing. Composes `doc_integrity` +
   `doc_citations` + `doc_dedup` + `doc_symbols` + `spec_lint` into one
   findings list, so a review pre-pass is one call rather than five — the
@@ -11303,6 +11303,21 @@ fixes don't address. Roadmapped here as their own design tasks.
   **Layman:** One button that runs all the document checks together, and repairs the handful it can repair without guessing.
   Kind: enhancement.
   Source: user-request-2026-07-27.
+  Resolved (2026-09-07): the READ half shipped. Engine
+  src/doclint.{h,cpp} in ants_core_lib; cmdDocLint plus the pure
+  docLintBuildResponse; the four registration hooks. Deliberately absent
+  from isEtagSupportedTool and declaring no etag_match (INV-13),
+  unconditional from this first version rather than deferred to the
+  write path. Phase-1 invariants are covered by tests/features/doc_lint
+  (test_core) and tests/features/doc_lint_verb (test_claude), and every
+  row was re-proven by mutation rather than by its first green run. Two
+  mutations are recorded rather than hidden: the emissionIndex tiebreak
+  is inert under stable_sort and is kept as the guard if that sort is
+  ever changed, and INV-2's refusal scrape survived once and was
+  sharpened until it reddened. The spec's section 6 was amended after
+  implementation because it put both test directories in test_core,
+  which does not build. The fix path (fix / dry_run, and the
+  doc_lint_fix directory) stays with ANTS-3669.
 
 - ✅ [ANTS-3664] **Shared doc-finding envelope, before the four lint verbs land on five different shapes.**
   Measured 2026-07-27, not assumed: there is NO shared finding type, no
@@ -13087,6 +13102,12 @@ fixes don't address. Roadmapped here as their own design tasks.
   Kind: fix.
   Source: review-contract loop 6 on docs/standards/specs.md, 2026-09-06.
   Lanes: speclint, docs/standards.
+
+- 📋 [ANTS-4916] **Teach the deterministic doc pre-pass to call `doc_lint` instead of its five parts.**
+  ANTS-3663 shipped `doc_lint`, which composes doc_integrity, doc_citations, doc_dedup, doc_symbols and spec_lint over one enumeration and one shared read. Nothing calls it yet: the global deterministic doc pre-pass still invokes the five verbs separately, so the saving the verb exists for is unrealised. ANTS-3663 § 7 names this as the caller-side follow-up. Two things to get right. The skill lives under ~/.claude, which the global config-lock hook blocks from a project session, so this needs a ~/.claude session or the documented bypass. And ANTS-1581's caveat is load-bearing: those skills are global while these verbs are not, so the skill may name `doc_lint` only alongside a stated hand-rolled fallback, or every non-Ants project regresses. Confirm which skill owns the pre-pass before editing: the global rules record that `check-doc-facts` replaced `/doc-lint` as the deterministic half, and ANTS-3663 § 7 still refers to the retired `/cold-eyes` § 1e by its old name.
+  **Layman:** The new one-call document checker exists but nothing calls it yet; the review skill still runs the five separate checks.
+  Kind: enhancement.
+  Source: in-session-2026-09-07, ANTS-3663 § 7.
 
 ### 🔬 Project Audit false-positive reduction (self-audit 2026-05-20)
 
