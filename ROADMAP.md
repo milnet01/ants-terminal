@@ -13115,6 +13115,24 @@ fixes don't address. Roadmapped here as their own design tasks.
   Kind: investigate.
   Source: in-session-2026-09-07, ANTS-3663 corpus calibration.
 
+- 📋 [ANTS-4918] **doc_citations reports stale line citations inside cold-eyes loop-log rows, which specs.md § 5.7 forbids fixing.**
+  A loop-log row records what a review pass found, citing file:line as it
+  stood then. specs.md § 5.7 makes a landed row immutable, and its own
+  coverage table notes nothing checks that rule. So when the cited file is
+  later split — ANTS-3833 decomposed remotecontrol.cpp — the citation goes
+  out of range permanently.
+
+  doc_citations cannot tell an immutable historical row from live prose, so
+  the finding is unactionable by rule. Measured on ANTS-3663.md, whose only
+  remaining finding after its coverage table was repaired is exactly this.
+
+  Decide between suppressing citations inside a Cold-eyes loop log section
+  and giving them a distinct kind a caller can filter. Do not simply raise
+  the line tolerance — that would hide genuine drift in live prose.
+  **Layman:** A documentation checker keeps flagging old review notes that we are not allowed to change, so the warning can never be cleared.
+  Kind: fix.
+  Source: in-session-2026-09-07 (found by the first corpus run of doc_lint).
+
 ### 🔬 Project Audit false-positive reduction (self-audit 2026-05-20)
 
 Ran the project's own `ants-audit` CLI against this repo (~300 findings,
