@@ -1909,3 +1909,85 @@ TEST(DocCitations, Ants4748SharedSuffixIsStillAmbiguous) {
            "4748/shared-suffix-counted-unchecked", render(r));
     ASSERT_EQ(0, expect_finish());
 }
+
+// ANTS-4939 — the QUOTE path caps its ambiguous candidate list, the way the
+// citation path has since INV-4.
+//
+// Measured on a config corpus: one `quotes:true` row whose attribution was a
+// bare `SKILL.md` returned every same-named file in the tree, and that single
+// row outweighed every real finding in the same response. No argument trimmed
+// it — `only:"stale"` keeps it (ambiguous IS a stale status) and `fields` is
+// top-level, so it can drop the whole `quotes` array but cannot reach
+// `quotes[].candidates`. The refusal to guess is right and stays; what was
+// wrong is the size of the evidence returned with it.
+TEST(DocCitations, Ants4939QuoteAmbiguousCandidatesAreCapped) {
+    expect_reset();
+    Fixture fx;
+    QStringList many;
+    for (int i = 0; i < 12; ++i) {
+        const QString rel =
+            QStringLiteral("plugins/cache/v%1/SKILL.md").arg(i, 2, 10, QLatin1Char('0'));
+        fx.write(rel, "eighteen dimensions in four families\n");
+        many.append(rel);
+    }
+
+    DocCitations::Options opts;
+    opts.quotes = true;
+    opts.basenameIndex.insert(QStringLiteral("SKILL.md"), many);
+
+    const QString doc = fx.doc(
+        "`SKILL.md` says \"eighteen dimensions in four families\".\n");
+
+    const QJsonObject r = DocCitations::check(fx.root, doc, opts);
+    const QJsonArray qs = r.value(QStringLiteral("quotes")).toArray();
+    ASSERT_EQ(qs.size(), 1) << qPrintable(render(r));
+    const QJsonObject q = qs.at(0).toObject();
+
+    expect(q.value(QStringLiteral("status")).toString()
+               == QStringLiteral("ambiguous"),
+           "4939: a basename matching many documents stays ambiguous",
+           render(r));
+    expect(q.value(QStringLiteral("candidates")).toArray().size()
+               == opts.maxCandidates,
+           "4939: the emitted list is capped at maxCandidates", render(r));
+    expect(q.value(QStringLiteral("candidates_total")).toInt() == many.size(),
+           "4939: candidates_total reports the TRUE count past the cap",
+           render(r));
+    expect(q.value(QStringLiteral("truncated_candidates")).toBool(),
+           "4939: and the cap announces itself", render(r));
+    ASSERT_EQ(0, expect_finish());
+}
+
+// The same emitter serves the other ambiguous arm — one table cell naming
+// several documents (ANTS-4640) — so the two cannot drift apart again. Under
+// the cap nothing is elided and the flag stays absent, which is what makes
+// `truncated_candidates` readable as an answer rather than as decoration.
+TEST(DocCitations, Ants4939UnderTheCapNothingIsElided) {
+    expect_reset();
+    Fixture fx;
+    fx.write(QStringLiteral("docs/a/dup.md"), "shared basename\n");
+    fx.write(QStringLiteral("docs/b/dup.md"), "shared basename\n");
+
+    DocCitations::Options opts;
+    opts.quotes = true;
+    opts.basenameIndex.insert(QStringLiteral("dup.md"),
+                              {QStringLiteral("docs/a/dup.md"),
+                               QStringLiteral("docs/b/dup.md")});
+
+    const QString doc = fx.doc(
+        "`dup.md` says \"a phrase attributed to a shared basename\".\n");
+
+    const QJsonObject r = DocCitations::check(fx.root, doc, opts);
+    const QJsonArray qs = r.value(QStringLiteral("quotes")).toArray();
+    ASSERT_EQ(qs.size(), 1) << qPrintable(render(r));
+    const QJsonObject q = qs.at(0).toObject();
+
+    expect(q.value(QStringLiteral("candidates")).toArray().size() == 2,
+           "4939: both candidates survive under the cap", render(r));
+    expect(q.value(QStringLiteral("candidates_total")).toInt() == 2,
+           "4939: candidates_total is emitted whether or not the cap bit",
+           render(r));
+    expect(!q.contains(QStringLiteral("truncated_candidates")),
+           "4939: the flag is ABSENT when nothing was elided", render(r));
+    ASSERT_EQ(0, expect_finish());
+}

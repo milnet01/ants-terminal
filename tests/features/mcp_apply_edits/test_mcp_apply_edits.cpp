@@ -651,3 +651,116 @@ TEST(McpApplyEdits, Ants4834DryRunReportsInTheFutureTense) {
            "control: the real call actually edited the file");
     EXPECT_EQ(0, expect_finish());
 }
+
+// ANTS-4936 — the SIBLING verb's spelling, and a batch-level path.
+//
+// ANTS-4089 already accepted old_string/new_string, the native Edit tool's
+// keys. The spelling still refused was old_text/new_text, which is what
+// roadmap_log op:"amend_body" calls the same pair — so a session that had used
+// amend_body an hour earlier guessed CONSISTENTLY and was refused. Three
+// spellings of one idea, two of them inside this MCP.
+TEST(McpApplyEdits, Ants4936OldTextNewTextAreAcceptedAliases) {
+    QTemporaryDir dir; ASSERT_TRUE(dir.isValid());
+    const QString p = seedDoc(dir); ASSERT_FALSE(p.isEmpty());
+
+    QJsonObject e;
+    e[QStringLiteral("path")]     = QStringLiteral("doc.txt");
+    e[QStringLiteral("old_text")] = QStringLiteral("gamma");
+    e[QStringLiteral("new_text")] = QStringLiteral("GAMMA");
+
+    const QJsonObject env = runEdit(dir.path(), e);
+    ASSERT_TRUE(env.value("ok").toBool())
+        << "ANTS-4936: old_text/new_text must apply, not refuse: "
+        << QJsonDocument(env).toJson(QJsonDocument::Compact).constData();
+    EXPECT_EQ(env.value("edits_applied").toInt(), 1);
+    EXPECT_EQ(slurp(p), QStringLiteral("alpha\nbeta\nGAMMA\ndelta\nepsilon\n"));
+}
+
+// Canonical `old`/`new` still win when a caller sends both spellings, so the
+// alias can never quietly redirect an edit the caller spelled canonically.
+TEST(McpApplyEdits, Ants4936CanonicalOldNewWinOverTheAliases) {
+    QTemporaryDir dir; ASSERT_TRUE(dir.isValid());
+    const QString p = seedDoc(dir); ASSERT_FALSE(p.isEmpty());
+
+    QJsonObject e;
+    e[QStringLiteral("path")]     = QStringLiteral("doc.txt");
+    e[QStringLiteral("old")]      = QStringLiteral("beta");
+    e[QStringLiteral("new")]      = QStringLiteral("BETA");
+    e[QStringLiteral("old_text")] = QStringLiteral("gamma");
+    e[QStringLiteral("new_text")] = QStringLiteral("WRONG");
+
+    const QJsonObject env = runEdit(dir.path(), e);
+    ASSERT_TRUE(env.value("ok").toBool());
+    EXPECT_EQ(slurp(p), QStringLiteral("alpha\nBETA\ngamma\ndelta\nepsilon\n"))
+        << "ANTS-4936: `old`/`new` are canonical and win over the aliases";
+}
+
+// A top-level `path` supplies the target for every edit that omits one. It used
+// to be accepted, dropped into ignored_args, and THEN refused for the missing
+// per-edit key — a refusal about the very argument the caller had supplied.
+TEST(McpApplyEdits, Ants4936TopLevelPathSuppliesTheTarget) {
+    QTemporaryDir dir; ASSERT_TRUE(dir.isValid());
+    const QString p = seedDoc(dir); ASSERT_FALSE(p.isEmpty());
+
+    RemoteControl rc(nullptr);
+    QJsonObject req;
+    req[QStringLiteral("caller_cwd")] = dir.path();
+    req[QStringLiteral("path")]       = QStringLiteral("doc.txt");
+    QJsonObject e1;
+    e1[QStringLiteral("old")] = QStringLiteral("alpha");
+    e1[QStringLiteral("new")] = QStringLiteral("ALPHA");
+    QJsonObject e2;
+    e2[QStringLiteral("old")] = QStringLiteral("epsilon");
+    e2[QStringLiteral("new")] = QStringLiteral("EPSILON");
+    QJsonArray edits; edits.append(e1); edits.append(e2);
+    req[QStringLiteral("edits")] = edits;
+
+    const QJsonObject env = rc.cmdApplyEdits(req).object();
+    ASSERT_TRUE(env.value("ok").toBool())
+        << "ANTS-4936: a batch-level path must supply the target: "
+        << QJsonDocument(env).toJson(QJsonDocument::Compact).constData();
+    EXPECT_EQ(env.value("edits_applied").toInt(), 2);
+    EXPECT_EQ(slurp(p), QStringLiteral("ALPHA\nbeta\ngamma\ndelta\nEPSILON\n"));
+}
+
+// A per-edit path still wins over the batch-level one, so the default can never
+// silently redirect an edit that named its own file.
+TEST(McpApplyEdits, Ants4936PerEditPathWinsOverTheBatchDefault) {
+    QTemporaryDir dir; ASSERT_TRUE(dir.isValid());
+    const QString p = seedDoc(dir); ASSERT_FALSE(p.isEmpty());
+    const QString other = dir.path() + QStringLiteral("/other.txt");
+    { QFile f(other); ASSERT_TRUE(f.open(QIODevice::WriteOnly)); f.write("zeta\n"); }
+
+    RemoteControl rc(nullptr);
+    QJsonObject req;
+    req[QStringLiteral("caller_cwd")] = dir.path();
+    req[QStringLiteral("path")]       = QStringLiteral("doc.txt");
+    QJsonObject e;
+    e[QStringLiteral("path")] = QStringLiteral("other.txt");
+    e[QStringLiteral("old")]  = QStringLiteral("zeta");
+    e[QStringLiteral("new")]  = QStringLiteral("ZETA");
+    QJsonArray edits; edits.append(e);
+    req[QStringLiteral("edits")] = edits;
+
+    const QJsonObject env = rc.cmdApplyEdits(req).object();
+    ASSERT_TRUE(env.value("ok").toBool());
+    EXPECT_EQ(slurp(other), QStringLiteral("ZETA\n"));
+    EXPECT_EQ(slurp(p), QStringLiteral("alpha\nbeta\ngamma\ndelta\nepsilon\n"))
+        << "ANTS-4936: the batch default must not touch a file the edit "
+           "named away from";
+}
+
+// An edit that resolves to NO path at all is still refused — the fallback adds
+// a default, it does not remove the requirement.
+TEST(McpApplyEdits, Ants4936NoPathAnywhereStillRefuses) {
+    QTemporaryDir dir; ASSERT_TRUE(dir.isValid());
+    ASSERT_FALSE(seedDoc(dir).isEmpty());
+
+    QJsonObject e;
+    e[QStringLiteral("old")] = QStringLiteral("beta");
+    e[QStringLiteral("new")] = QStringLiteral("BETA");
+
+    const QJsonObject env = runEdit(dir.path(), e);
+    EXPECT_FALSE(env.value("ok").toBool());
+    EXPECT_EQ(env.value("code").toString(), QStringLiteral("bad_args"));
+}

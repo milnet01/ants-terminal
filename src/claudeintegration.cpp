@@ -4079,8 +4079,8 @@ void ClaudeIntegration::onMcpConnection() {
                     "case, respect_gitignore, include_hidden, dedup, "
                     "timeout_sec [1,30], max_match_bytes, headline_only, "
                     "enclosing_symbol, match_wrapped. "
-                    "caller_cwd anchors the project root (or '~global' for "
-                    "~/.claude/). The query is ONE pattern, not "
+                    "caller_cwd picks the tree: ANY directory, not only "
+                    "this project. The query is ONE pattern, not "
                     "AND-combined words — a multi-word query that hits 0 "
                     "matches returns an advisory `hint` (a single token, "
                     "or regex:true with .* between terms). Hard-kill returns "
@@ -4100,6 +4100,24 @@ void ClaudeIntegration::onMcpConnection() {
                     "250-4500 tokens per query and avoids round-trips "
                     "for no-match cases. Args: pattern (required; "
                     "alias `query` — ANTS-2041), "
+                    // ANTS-4928 — the escape stated where the decision is
+                    // made. A session audited every Bash grep it ran and
+                    // found almost none needed to be one: another project's
+                    // tree, a non-project directory, counts, distinct files,
+                    // context, hidden files, ignoring gitignore all work
+                    // here. What it could not tell from the description is
+                    // that the verb is not confined to its own project —
+                    // `lane`'s prose says lane cannot escape the root, which
+                    // is true and is the sentence that misleads, because the
+                    // escape is caller_cwd, one argument away.
+                    "caller_cwd (REQUIRED) is what picks the tree: point it "
+                    "at any directory and THAT tree is searched — another "
+                    "project, or a path outside any repo entirely. Only "
+                    "`lane` is confined to the root; caller_cwd is the "
+                    "escape, and '~global' reaches ~/.claude/. What is NOT "
+                    "covered is non-file input — `git log | grep`, `ls | "
+                    "grep`, `command -v x | grep` are command output rather "
+                    "than a corpus, and git_state covers the git ones. "
                     "regex (false), lane (subdir under project root), "
                     "glob, max_results (default 50, cap 500), context "
                     "(default 0, server-clamped to [0,10] — when > 0, "
@@ -5643,7 +5661,12 @@ void ClaudeIntegration::onMcpConnection() {
                             "expect_last_line} — never both. ANTS-4089: "
                             "old_string/new_string are accepted as aliases for "
                             "old/new, so the native Edit tool's spelling works "
-                            "here unchanged.");
+                            "here unchanged. ANTS-4936: so are "
+                            "old_text/new_text, roadmap_log "
+                            "op:\"amend_body\"'s spelling — and `path` may be "
+                            "given ONCE at the top level instead of on every "
+                            "edit. Canonical old/new/per-edit path win when "
+                            "both are sent.");
                     QJsonObject items; items["type"] = "object";
                         items["additionalProperties"] = false;
                         QJsonObject ip;
@@ -5701,8 +5724,25 @@ void ClaudeIntegration::onMcpConnection() {
                             nsP["description"] = QStringLiteral(
                                 "Alias for `new` — the native Edit tool's "
                                 "spelling. `new` wins if both are sent.");
+                        // ANTS-4936 — old_text/new_text, the spelling
+                        // roadmap_log op:"amend_body" uses. Declared for the
+                        // same reason ANTS-4089's pair is: additionalProperties
+                        // is false, so an undeclared key is refused before the
+                        // handler ever sees it.
+                        QJsonObject otP; otP["type"] = "string";
+                            otP["description"] = QStringLiteral(
+                                "Alias for `old` — roadmap_log "
+                                "op:\"amend_body\"'s spelling, accepted so a "
+                                "caller arriving from that verb guesses "
+                                "consistently. `old` wins if both are sent.");
+                        QJsonObject ntP; ntP["type"] = "string";
+                            ntP["description"] = QStringLiteral(
+                                "Alias for `new` — roadmap_log "
+                                "op:\"amend_body\"'s spelling. `new` wins if "
+                                "both are sent.");
                         ip["path"] = pP; ip["old"] = oP; ip["new"] = nP;
                         ip["old_string"] = osP; ip["new_string"] = nsP;
+                        ip["old_text"] = otP; ip["new_text"] = ntP;
                         ip["replace_all"] = rP;
                         ip["start_line"] = slP; ip["end_line"] = elP;
                         ip["expect_first_line"] = efP;
@@ -5713,10 +5753,27 @@ void ClaudeIntegration::onMcpConnection() {
                         // and either spelling, and both rules are enforced
                         // there (ANTS-3711, ANTS-4089). `new` left in required
                         // would refuse every new_string call before it landed.
-                        QJsonArray ir; ir.append("path");
-                        items["required"] = ir;
+                        // ANTS-4936 — `path` is no longer schema-required per
+                        // edit: a top-level `path` may supply it. An edit that
+                        // resolves to NO path is still refused, by the handler,
+                        // whose message names both missing keys — a better
+                        // answer than a schema rejection that names neither.
+                        items["required"] = QJsonArray{};
                     editsProp["items"] = items;
                     props["edits"]      = editsProp;
+                    {   // ANTS-4936 — batch-level default for `path`.
+                        QJsonObject bp; bp["type"] = "string";
+                        bp["description"] = QStringLiteral(
+                            "Optional (ANTS-4936). Default `path` for every "
+                            "edit in `edits[]` that omits one — a per-edit "
+                            "`path` still wins. A single-file batch reads "
+                            "naturally with the path stated once, and that "
+                            "spelling used to be accepted, dropped into "
+                            "ignored_args, and THEN refused for the missing "
+                            "per-edit key. An edit left with no path either "
+                            "way is refused.");
+                        props["path"] = bp;
+                    }
                     {   // ANTS-4834 — the shared dry_run text plus what THIS
                         // verb's preview envelope looks like. A caller cannot
                         // see from the generic wording that the past-tense
@@ -6869,9 +6926,10 @@ void ClaudeIntegration::onMcpConnection() {
                         "\"compute an aggregate across files\" questions (count "
                         "TODOs, which files import X, sum sizes): the snippet "
                         "greps/filters/counts itself and you receive just the "
-                        "number/list. API (the whole surface): project.read("
-                        "relpath)->string, project.list(subdir?)->array of "
-                        "project-relative file paths (sorted, skips .git/), "
+                        "number/list. API (the whole surface): project.list("
+                        "subdir?)->array of project-relative file paths "
+                        "(sorted, skips .git/) — the Glob replacement; "
+                        "project.read(relpath)->string, "
                         "project.root()->string; plus the string/table/math/utf8 "
                         "stdlib. The snippet MUST `return` a value (the answer). "
                         "Sandboxed: read-only, confined to caller_cwd (no "
@@ -6885,9 +6943,11 @@ void ClaudeIntegration::onMcpConnection() {
                         "result_too_large (aggregate harder), query_disabled "
                         "(feature off). caller_cwd required.");
                     pqTool["selection_hint"] = QStringLiteral(
-                        "Use when you'd otherwise Read several files just to "
-                        "count/filter/aggregate over them — ship the count "
-                        "logic as a Lua snippet and get back only the number.");
+                        "Use when you'd otherwise Read several files to "
+                        "count/filter/aggregate over them, or Glob to list "
+                        "files by name: project.list enumerates paths "
+                        "server-side. Ship the logic as a Lua snippet, get "
+                        "back only the answer.");
                     QJsonObject schema;
                     schema["type"] = "object";
                     schema["additionalProperties"] = false;

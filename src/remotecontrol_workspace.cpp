@@ -2509,22 +2509,39 @@ QJsonDocument RemoteControl::cmdApplyEdits(const QJsonObject &req) {
     };
     for (int i = 0; i < edits.size(); ++i) {
         const QJsonObject e = edits.at(i).toObject();
-        const QString rawPath = e.value(QStringLiteral("path")).toString();
+        // ANTS-4936 — a top-level `path` is the default for any edit that
+        // omits one. A single-file batch reads naturally with the path stated
+        // once, and until now that spelling was accepted, dropped into
+        // ignored_args, and then refused for the missing per-edit key.
+        const QString batchPath = req.value(QStringLiteral("path")).toString();
+        const QString rawPath   = e.contains(QStringLiteral("path"))
+            ? e.value(QStringLiteral("path")).toString()
+            : batchPath;
         // ANTS-4089 — every session reaches this verb from the native Edit
         // tool, whose keys are old_string/new_string, so the first call is
         // written with those and refused on a message naming the key that is
         // missing but not the one that was sent. The pairing is unambiguous,
         // so accept both spellings; canonical `old`/`new` win if both arrive.
+        //
+        // ANTS-4936 — and old_text/new_text, which is what roadmap_log's
+        // op:"amend_body" calls the same pair. That is the OTHER sibling a
+        // session arrives from, and arriving from it was the one consistent
+        // guess this verb still refused: three spellings of one idea, two of
+        // them inside this MCP.
         const bool hasOld   = e.contains(QStringLiteral("old"))
-                           || e.contains(QStringLiteral("old_string"));
+                           || e.contains(QStringLiteral("old_string"))
+                           || e.contains(QStringLiteral("old_text"));
         const bool hasNew   = e.contains(QStringLiteral("new"))
-                           || e.contains(QStringLiteral("new_string"));
+                           || e.contains(QStringLiteral("new_string"))
+                           || e.contains(QStringLiteral("new_text"));
         const bool hasStart = e.contains(QStringLiteral("start_line"));
         const bool hasEnd   = e.contains(QStringLiteral("end_line"));
         const bool hasRange = hasStart || hasEnd;
         const QString oldStr = e.contains(QStringLiteral("old"))
             ? e.value(QStringLiteral("old")).toString()
-            : e.value(QStringLiteral("old_string")).toString();
+            : e.contains(QStringLiteral("old_string"))
+                ? e.value(QStringLiteral("old_string")).toString()
+                : e.value(QStringLiteral("old_text")).toString();
         if (rawPath.isEmpty() || !hasNew) {
             return argErr(QStringLiteral("apply_edits: edit %1 needs a non-empty "
                                          "\"path\" and a \"new\"").arg(i));
@@ -2544,7 +2561,9 @@ QJsonDocument RemoteControl::cmdApplyEdits(const QJsonObject &req) {
         rec.rawPath    = rawPath;
         rec.newStr     = e.contains(QStringLiteral("new"))
             ? e.value(QStringLiteral("new")).toString()
-            : e.value(QStringLiteral("new_string")).toString();
+            : e.contains(QStringLiteral("new_string"))
+                ? e.value(QStringLiteral("new_string")).toString()
+                : e.value(QStringLiteral("new_text")).toString();
         rec.replaceAll = e.value(QStringLiteral("replace_all")).toBool(false);
         if (hasOld) {
             if (oldStr.isEmpty())

@@ -984,6 +984,32 @@ static bool dcIsLoopLogRow(const QString &line,
 // ANTS-4639 (1) — the scanned document's own directory, ahead of the repo root
 // and the basename index. Never a widening of what resolves wrongly: a sibling
 // that is not there falls straight through to the ladder.
+// ANTS-4939 — ONE emitter for every ambiguous candidate list.
+//
+// The citation path has capped its list since ANTS-3636 INV-4; the quote path
+// (ANTS-4640's one-cell-names-several arm, and the ambiguous-basename arm
+// below it) emitted the whole thing. Measured on a config corpus: one bare
+// `SKILL.md` attribution returned every same-named file in the tree, and that
+// single row outweighed every real finding in the same response.
+//
+// It caps and reports; it does NOT sort. The two callers order their lists for
+// different reasons and both are deliberate — the resolver sorts by UTF-16
+// code unit (§ 2.4, never locale collation, so the cap selects the same set on
+// CI and on a desktop), while the one-cell arm is in document order because
+// that order IS the attribution's locality ("most local scope first").
+// Sorting here would silently discard the more likely candidate on the second.
+static void dcEmitCandidates(QJsonObject &o, const QStringList &cands,
+                             int maxCandidates)
+{
+    QJsonArray arr;
+    for (int i = 0; i < cands.size() && i < maxCandidates; ++i)
+        arr.append(cands.at(i));
+    o.insert(QStringLiteral("candidates"), arr);
+    o.insert(QStringLiteral("candidates_total"), cands.size());
+    if (cands.size() > maxCandidates)
+        o.insert(QStringLiteral("truncated_candidates"), true);
+}
+
 static Target dcResolveAttribution(const QString &root, const QString &docDirRel,
                                    const QString &attr, const Options &opts) {
     if (!docDirRel.isEmpty() && !attr.startsWith(QLatin1Char('/')) &&
@@ -1167,13 +1193,7 @@ QJsonObject check(const QString &rootCanonical, const QString &docAbsPath,
             break;
         case Target::Ambiguous: {
             status = QStringLiteral("ambiguous");
-            QJsonArray cand;
-            for (int i = 0; i < t.candidates.size() && i < opts.maxCandidates; ++i)
-                cand.append(t.candidates.at(i));
-            e.insert(QStringLiteral("candidates"), cand);
-            e.insert(QStringLiteral("candidates_total"), t.candidates.size());
-            if (t.candidates.size() > opts.maxCandidates)
-                e.insert(QStringLiteral("truncated_candidates"), true);
+            dcEmitCandidates(e, t.candidates, opts.maxCandidates);
             break;
         }
         case Target::MissingFile:
@@ -1578,8 +1598,8 @@ QJsonObject check(const QString &rootCanonical, const QString &docAbsPath,
                     // ANTS-4640 — one cell naming several documents. The
                     // envelope already carries this status for an ambiguous
                     // basename; reporting the candidates beats guessing.
-                    q[QStringLiteral("status")]     = QStringLiteral("ambiguous");
-                    q[QStringLiteral("candidates")] = QJsonArray::fromStringList(cand);
+                    q[QStringLiteral("status")] = QStringLiteral("ambiguous");
+                    dcEmitCandidates(q, cand, opts.maxCandidates);
                     ++qTally[QStringLiteral("ambiguous")];
                     quotesOut.append(q);
                     ++harvested;
@@ -1593,8 +1613,7 @@ QJsonObject check(const QString &rootCanonical, const QString &docAbsPath,
                     dcResolveAttribution(rootCanonical, docDirRel, attr, opts);
                 if (t.kind == Target::Ambiguous) {
                     q[QStringLiteral("status")] = QStringLiteral("ambiguous");
-                    q[QStringLiteral("candidates")] =
-                        QJsonArray::fromStringList(t.candidates);
+                    dcEmitCandidates(q, t.candidates, opts.maxCandidates);
                     ++qTally[QStringLiteral("ambiguous")];
                 } else if (t.kind != Target::Resolved) {
                     // ANTS-4639 (3) — the attribution PARSED and did not
