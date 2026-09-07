@@ -1717,3 +1717,101 @@ TEST(RoadmapMigrateVerb, Ants4740InitSkeletonIsParseableAndEmpty) {
         << "the slug roadmap_log's `section` argument takes";
     EXPECT_EQ(seeded.first().id.toStdString(), std::string("DEMO-0001"));
 }
+
+// ----------------------------------------------------------------- ANTS-4492 --
+//
+// Vestige's roadmap is genuinely two dialects in one file: a large historical
+// body of GFM task-list bullets and a small run of ants-v1 emoji bullets that
+// roadmap_log itself wrote. roadmap_migrate reported a single
+// sources:[{format:"github-task-list"}] and said nothing about the second
+// dialect anywhere in its notes.
+//
+// The majority call is defensible and is NOT what these rows change. The
+// silence is the defect: the minority is the only part carrying real
+// [PREFIX-NNNN] ids, and it is the part the store's own writer authored, so a
+// file the writer is steadily converting is exactly the case worth naming.
+//
+// Naming follows roadmap_query's ANTS-4604 precedent deliberately.
+// `non_gfm_bullets` is NOT claimed to be ants-v1: the per-bullet tag is
+// emitted for github-task-list, so the remainder is "everything else" and
+// calling it a dialect would be inventing one.
+
+// One file, both dialects — the shape the report is about.
+// No `ants-roadmap-format` marker, deliberately: detectRoadmapFormat returns
+// ants-v1 on that line before it examines a single bullet, so a marked file can
+// never reach the mixed case at all. Vestige's carries none.
+QByteArray mixedDialectRoadmap() {
+    QByteArray md =
+        "# Demo — Roadmap\n"
+        "\n"
+        "## Work\n"
+        "\n"
+        "- [x] A historical checklist item.\n"
+        "- [ ] A second historical checklist item.\n"
+        "- [ ] A third historical checklist item.\n"
+        "\n"
+        "- \xF0\x9F\x93\x8B [DEMO-0001] **The one item roadmap_log wrote.**\n"
+        "  Layman: A thing.\n"
+        "  Kind: implement.\n"
+        "  Source: test.\n";
+    return md;
+}
+
+TEST(RoadmapMigrateVerb, Ants4492MixedDialectIsNamedOnTheSource) {
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid());
+    const QString root =
+        makeProjectRoot(dir, QStringLiteral("proj"), mixedDialectRoadmap());
+    ASSERT_FALSE(root.isEmpty());
+    const QString storePath = dir.filePath(QStringLiteral("store.sqlite"));
+
+    auto req  = request(root);
+    req.dryRun = true;
+    const QJsonObject env = RoadmapMigrateVerb::run(storePath, req);
+    ASSERT_TRUE(env.value(QStringLiteral("ok")).toBool())
+        << env.value(QStringLiteral("error")).toString().toStdString();
+
+    const QJsonArray sources = env.value(QStringLiteral("sources")).toArray();
+    ASSERT_EQ(sources.size(), 1);
+    const QJsonObject src = sources.at(0).toObject();
+
+    // The majority call is unchanged and is not what this row is about.
+    EXPECT_EQ(src.value(QStringLiteral("format")).toString(),
+              QStringLiteral("github-task-list"));
+
+    EXPECT_TRUE(src.value(QStringLiteral("mixed")).toBool())
+        << "the file carries both dialects and the envelope must say so — a "
+           "single `format` for a demonstrably mixed file is the silence "
+           "ANTS-4492 reports";
+    EXPECT_EQ(src.value(QStringLiteral("gfm_bullets")).toInt(), 3);
+    EXPECT_EQ(src.value(QStringLiteral("non_gfm_bullets")).toInt(), 1)
+        << "the ants-v1 bullet roadmap_log authored is the minority that "
+           "carries the only real id, which is why it must be counted";
+}
+
+TEST(RoadmapMigrateVerb, Ants4492UniformSourceSaysNothing) {
+    // The other half of the contract, and the reason it is a separate row: the
+    // keys are emitted ONLY when the file actually carries both, so every
+    // uniform roadmap's envelope is byte-identical to what it was. A check
+    // that fires on every project is one nobody reads.
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid());
+    const QString root =
+        makeProjectRoot(dir, QStringLiteral("proj"), demoRoadmap());
+    ASSERT_FALSE(root.isEmpty());
+    const QString storePath = dir.filePath(QStringLiteral("store.sqlite"));
+
+    auto req  = request(root);
+    req.dryRun = true;
+    const QJsonObject env = RoadmapMigrateVerb::run(storePath, req);
+    ASSERT_TRUE(env.value(QStringLiteral("ok")).toBool())
+        << env.value(QStringLiteral("error")).toString().toStdString();
+
+    const QJsonObject src =
+        env.value(QStringLiteral("sources")).toArray().at(0).toObject();
+    EXPECT_EQ(src.value(QStringLiteral("format")).toString(),
+              QStringLiteral("ants-v1"));
+    EXPECT_FALSE(src.contains(QStringLiteral("mixed")));
+    EXPECT_FALSE(src.contains(QStringLiteral("gfm_bullets")));
+    EXPECT_FALSE(src.contains(QStringLiteral("non_gfm_bullets")));
+}

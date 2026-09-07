@@ -154,6 +154,20 @@ struct Note {
 struct Source {
     QString path, markdown;
     QString format;            // "ants-v1" | "github-task-list" | "pass-headings"
+
+    // ANTS-4492 — the per-bullet dialect tally, filled by walkSource().
+    //
+    // `format` above is ONE label for the whole file, and detectRoadmapFormat
+    // reaches it by PRECEDENCE rather than by majority: `hasGfm` is a boolean
+    // checked before the ants-v1 default, so a single `- [ ]` line outranks any
+    // number of ants-v1 bullets. It also stops scanning at 300 non-blank lines.
+    // Neither fact is visible in the label, so a demonstrably mixed file was
+    // reported as uniform.
+    //
+    // These come from parseBullets over the WHOLE source, so they are the
+    // accurate answer the label cannot give.
+    int bulletsTotal = 0;
+    int gfmBullets   = 0;
 };
 
 // ANTS-3766 § 2.1 — what discovery returns.

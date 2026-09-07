@@ -471,6 +471,23 @@ void walkSource(const Source &src, const SourceCtx &ctx, MigrationPlan &plan,
     for (const BulletRecord &rec : records)
         if (rec.firstLine >= 1) recordAt.insert(rec.firstLine, &rec);
 
+    // ANTS-4492 — tally the dialect this walk has already resolved per bullet,
+    // so `sources[]` can say a file carries both instead of naming one.
+    //
+    // Named as roadmap_query's ANTS-4604 names the same counts: the remainder
+    // is "everything else", NOT a claim of ants-v1, because the per-bullet tag
+    // is what is being read and only github-task-list sets it.
+    //
+    // Writing through `plan` while `src` aliases the same element is safe: the
+    // vector is not resized here, and `src.markdown` was consumed above.
+    {
+        int gfm = 0;
+        for (const BulletRecord &rec : records)
+            if (rec.format == QLatin1String("github-task-list")) ++gfm;
+        plan.sources[ctx.index].bulletsTotal = int(records.size());
+        plan.sources[ctx.index].gfmBullets   = gfm;
+    }
+
     // Fence extents. This is the one place the walk must not read a line at
     // face value: a `##` inside a fence is not a heading (§ 2.11).
     //

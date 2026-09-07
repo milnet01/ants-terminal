@@ -484,6 +484,26 @@ QJsonObject RoadmapMigrateVerb::run(const QString &storePath, const Request &req
         QJsonObject o;
         o[QStringLiteral("path")]   = rootDir.relativeFilePath(s.path);
         o[QStringLiteral("format")] = s.format;
+        // ANTS-4492 — a file carrying two dialects said so nowhere: `format` is
+        // one label, reached by precedence rather than majority, and the
+        // minority run is the part carrying the only real ids because it is the
+        // part roadmap_log itself wrote. A file the store's own writer is
+        // steadily converting is exactly the case worth naming.
+        //
+        // Emitted ONLY when the source actually carries both, so every uniform
+        // roadmap's envelope stays byte-identical. A key present on every
+        // project is one nobody reads.
+        //
+        // A top-level key on the source rather than a note: ANTS-4559 wants
+        // notes[] cut back and possibly made opt-in, and a signal a caller can
+        // switch off is not one this can rely on. `defaulted_fields` sits
+        // beside notes[] for the same reason.
+        const int nonGfm = s.bulletsTotal - s.gfmBullets;
+        if (s.gfmBullets > 0 && nonGfm > 0) {
+            o[QStringLiteral("mixed")]           = true;
+            o[QStringLiteral("gfm_bullets")]     = s.gfmBullets;
+            o[QStringLiteral("non_gfm_bullets")] = nonGfm;
+        }
         sources.append(o);
     }
     env[QStringLiteral("sources")] = sources;
