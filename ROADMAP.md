@@ -51240,8 +51240,23 @@ two projects).
   Kind: enhancement.
   Source: cc-feedback-2026-09-03 Snatch.
 
-- 📋 [ANTS-4848] **roadmap_log op:"create_section" at level 2 can adopt trailing level-3 siblings, producing a section append_batch then refuses.**
+- ✅ [ANTS-4848] **roadmap_log op:"create_section" at level 2 can adopt trailing level-3 siblings, producing a section append_batch then refuses.**
   The heading is inserted before a trailing run of deeper headings, silently re-parenting them; the follow-up append_batch then refuses section_has_subsections, correctly and with a good message. Nothing is corrupted, but create_section's success envelope is not evidence the section is usable, and the refusal's own remedies do not apply (a child slug is the wrong section, and creating again makes a second empty one). For level 2, compute the insertion point as the next heading of the same or shallower level: a caller asking for a top-level section after A means a peer of A, not a parent for A's trailing subsections. Failing that, report an adopted_subsections array in the success envelope and in dry_run.
+  Resolved (2026-09-07). Fixed in BOTH write paths through one shared rule, `RemoteControl::createSectionSkipCount`.
+
+  THE RULE. Step past the leading run of headings DEEPER than the new section's level, then insert. Keyed on the NEW level, not the anchor's — which is the whole fix, because asking for a level-2 after a level-3 means a peer of the level-3's PARENT and the anchor's own level cannot express that. A no-op whenever nothing deeper follows, so every ordinary call is unchanged, including a level-3 after a level-3 (the case that already worked, and which the existing Inv7 test still pins).
+
+  THIS ITEM'S OWN DIAGNOSIS WAS RIGHT and its prescription was taken: "compute the insertion point as the next heading of the same or shallower level". The fallback it offered — reporting an `adopted_subsections` array instead — was not needed, since the position could simply be correct.
+
+  PARENT_ID IS NOT THE MECHANISM, worth recording because it is the obvious place to look and it is wrong. create_section passes `std::nullopt` for it, and the render infers nesting from the (level, position) sequence, checking parent_id only for consistency. The defect was `afterRow->position + 1` in the store path and `sec->lineEnd` in the markdown path, both of which stop at the anchor's own extent.
+
+  ONE HELPER FOR BOTH PATHS, deliberately. The store path works in `position` and the markdown path in line numbers, but the question is identical and stating it twice is how the two drift.
+
+  COVERAGE IS UNEVEN AND THAT IS FILED, not glossed. The markdown path has an end-to-end test that reproduced this defect before the fix. The STORE path — the live one on a migrated project, so the more important half — has none, because every existing create_section test runs against a bare temp dir with no registered store and never enters that branch. What is covered directly is the shared rule; the store code around it is a positional scan feeding it. The harness is ANTS-4933.
+
+  The helper first went into `remotecontrol_internal.h` and ANTS-3833 INV-5 refused it: that header is barred from tests and its permitted set is the declared RC source list rather than a glob. The contract was right; the placement was mine to change. It is now a public static on RemoteControl, following specLintBuildResponse.
+
+  Suite 4266 passed, 0 failed.
   **Layman:** Creating a new roadmap section can swallow the sections below it, and you only find out when the next write fails.
   Kind: fix.
   Source: cc-feedback-2026-09-03 Vestige.
@@ -52646,6 +52661,25 @@ plus two gaps hit while sweeping stale spec citations under ANTS-4757.
   Kind: perf.
   Source: claude_config_Ants_MCP_Feedback.md, 2026-09-07.
   Lanes: mcp.
+
+- 📋 [ANTS-4933] **No roadmap_log test reaches the store write path, so the branch that actually runs on a migrated project is untested.**
+  Found while fixing ANTS-4848 and filed rather than papered over, because the gap is structural and not specific to that op.
+
+  THE SHAPE. `cmdRoadmapLogCreateSection` resolves `roadmapWriteTarget()`. When it returns a target — a project migrated into the store, which is every project on this machine — the handler returns from inside that branch and the markdown splice below is never reached. Every existing create_section test constructs a bare `QTemporaryDir` plus `RemoteControl(nullptr)` with no registered project, so `roadmapWriteTarget()` is always empty and the tests exercise ONLY the fallback.
+
+  So the branch under test is the one that does not run in production, and the branch that runs in production is under no test. ANTS-4848's defect existed in both; only one half could be covered end to end.
+
+  WHY IT MATTERS BEYOND ONE OP. The same split applies to the other roadmap_log write ops that grew a store path — append, flip, the batch forms, create_section. A store-path regression in any of them is invisible to this suite, and the markdown path passing is not evidence about it.
+
+  WHAT IS NEEDED. A fixture that registers a project in a TEMP store and drives the handler through the store branch. The pieces exist: `roadmap_migrate_verb`'s tests already migrate a temp root into a temp store, and the test binaries sandbox QStandardPaths so `RoadmapStore::defaultPath()` resolves under the sandbox rather than the developer's real store. What is missing is a shared helper the roadmap_log cases can call, not new capability.
+
+  CHECK FIRST, because it decides whether this is small or large: whether `roadmapWriteTarget()` reaches the same sandboxed path the migrate tests write to. If it resolves a different store the two halves will not meet, and that is the real work rather than the fixture.
+
+  DO NOT confuse this with ANTS-4848, which is shipped. This is the coverage that fix could not get.
+  **Layman:** Our roadmap-writing tests all run against a plain folder, which takes a different code path from the one real projects use — so the code that actually runs is the code nobody tests.
+  Kind: test.
+  Source: in-session-2026-09-07, found while fixing ANTS-4848.
+  Lanes: mcp, roadmap-store, tests.
 
 ### Ants MCP without a terminal relaunch (user request 2026-09-07)
 
