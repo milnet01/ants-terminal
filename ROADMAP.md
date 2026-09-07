@@ -39876,6 +39876,38 @@ are closed inline in the feedback files rather than filed here.
   the remaining hard one per the annotation above). So the gate question is off
   this item's critical path entirely; what stands between it and a start is
   ANTS-3771, and nothing else recorded here.
+  Status re-measured 2026-09-07: EVERY blocker this body names is closed,
+  and the paragraph immediately above is wrong. Read this one instead.
+
+  That paragraph ends "what stands between it and a start is ANTS-3771,
+  and nothing else recorded here". ANTS-3771 is shipped — the annotation
+  two above this one says so itself, on the same day it shipped, with
+  "Unblocks ANTS-4491" as its closing line. The sentence was stale when it
+  was written.
+
+  Live status of the three, from the store:
+    ANTS-4575  id provenance                    shipped
+    ANTS-3771  declared id format               shipped
+    ANTS-4628  render gate scoped to touched    shipped
+
+  So nothing blocks this item. What it is waiting on is a spec and someone
+  to build it, which its own body already says it needs — a one-way bulk
+  rewrite of a version-controlled file that allocates ids in bulk from a
+  counter other documents cite.
+
+  WHY THIS MATTERS BEYOND THE BOOKKEEPING. Vestige is the blocked consumer
+  and has been told, correctly, that migrating its roadmap hits an Ants MCP
+  limitation. Anyone checking this item to see whether that is still true
+  reads the last paragraph, finds a named open blocker, and stops. The item
+  has therefore looked blocked since 2026-08-24 while being ready to start.
+
+  The design constraints derived earlier in this body all still hold and
+  none of them are blockers: the emitter already exists in
+  RoadmapRender::render(), neither single-step ordering is safe so the
+  convert must ride commitAndRender()'s sequence, the source file is part
+  ants-v1 already so the convert must be idempotent per bullet, and the
+  store is a stale mirror so it is not a safe id source without
+  reconciliation.
 
 - ✅ [ANTS-4492] **roadmap_migrate classifies a mixed-format roadmap by majority with no note naming the second format.**
   Vestige's ROADMAP.md is genuinely two formats in one file: 989 GFM task-list bullets (`- [x]` /
