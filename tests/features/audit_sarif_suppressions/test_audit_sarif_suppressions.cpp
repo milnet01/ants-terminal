@@ -5,7 +5,6 @@
 // to skipping suppressed findings.
 
 #include <cstdio>
-#include <cstdlib>
 #include <regex>
 #include <string>
 

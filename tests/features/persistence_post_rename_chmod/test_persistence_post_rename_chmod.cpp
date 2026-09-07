@@ -13,7 +13,6 @@
 #include "../../_support/expect.h"
 
 #include <cstdio>
-#include <cstdlib>
 #include <string>
 
 

@@ -9,7 +9,6 @@
 
 #include "../../_support/expect.h"
 
-#include <cstdlib>
 #include <regex>
 #include <string>
 #include <gtest/gtest.h>

@@ -4,7 +4,6 @@
 // per-check buffers.
 
 #include <cstdio>
-#include <cstdlib>
 #include <regex>
 #include <string>
 

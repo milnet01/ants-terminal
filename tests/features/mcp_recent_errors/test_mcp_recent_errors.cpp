@@ -7,7 +7,6 @@
 
 #include <QString>
 
-#include <cstdio>
 #include <string>
 
 #include <gtest/gtest.h>

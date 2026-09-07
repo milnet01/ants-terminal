@@ -69007,7 +69007,7 @@ contributors don't duplicate research.
   tools/ci-parity.sh --lints would be the real fix and is its own item if
   it is ever worth the dependency.
 
-- 📋 [ANTS-4126] **Include residue in tests/ — the ANTS-4125 sweep covered src/remotecontrol*.cpp only.**
+- ✅ [ANTS-4126] **Include residue in tests/ — the ANTS-4125 sweep covered src/remotecontrol*.cpp only.**
   clangd reports `cstdio` unused at
   tests/features/mcp_audit_run/test_mcp_audit_run.cpp:27. Noticed while
   working in that file for ANTS-4124 and NOT folded in — it is orthogonal to
@@ -69026,6 +69026,23 @@ contributors don't duplicate research.
   **Layman:** Some test files list helper files they no longer use, the same tidy-up just done for the main source.
   Kind: refactor.
   Source: in-session-2026-08-12 (clangd, during ANTS-4124).
+  Resolved (2026-09-07): the tests/ half of ANTS-4125's sweep, done by
+  the method this item names as the only one that works -- remove every
+  candidate, build, restore what fails. Nothing needed restoring: all of
+  them compiled clean, which is the proof the name-grep could not
+  give.\n\nCandidates were chosen conservatively: a file was flagged
+  only when NO symbol from the header appeared anywhere in it, comments
+  and strings included. That under-reports rather than over-reports, and
+  the originally-reported case proves why it had to --
+  test_mcp_audit_run.cpp mentions `stderr` in a comment, so the
+  automatic pass skipped it; it was removed separately after checking by
+  hand that the only occurrence was that
+  comment.\n\ntests/audit_fixtures/ was deliberately excluded. Those
+  files are matched by audit-rule regexes rather than compiled, so an
+  include there is data, and removing one would silently change what a
+  rule matches.\n\nFolded into a pass that was already rebuilding the
+  test bundles, as the item asks, rather than paying a full build for it
+  alone. Verified: build clean, suite 4260/4260.
 
 - ✅ [ANTS-4533] **CI's build-asan job times out at its 30-minute cap on nearly every run, and a timeout reads as cancelled rather than red.**
   Measured 2026-08-19 over the last 30 ci.yml runs: build-asan was

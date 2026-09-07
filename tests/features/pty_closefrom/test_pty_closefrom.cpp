@@ -4,7 +4,6 @@
 // or skips the RLIMIT_NOFILE-bounded fallback.
 
 #include <cstdio>
-#include <cstdlib>
 #include <regex>
 #include <string>
 

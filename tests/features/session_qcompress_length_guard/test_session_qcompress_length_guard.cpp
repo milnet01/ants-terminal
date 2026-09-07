@@ -3,7 +3,6 @@
 // big-endian length prefix or reorders the check after qUncompress.
 
 #include <cstdio>
-#include <cstdlib>
 #include <regex>
 #include <string>
 

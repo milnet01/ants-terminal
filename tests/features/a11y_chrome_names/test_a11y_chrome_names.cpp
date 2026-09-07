@@ -18,7 +18,6 @@
 #include <QPointer>
 
 #include <cstdio>
-#include <cstdlib>
 #include <cstring>
 #include <memory>
 #include <string>

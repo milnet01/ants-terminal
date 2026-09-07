@@ -24,7 +24,6 @@
 #include <QStringList>
 #include <QTemporaryDir>
 
-#include <cstdio>
 #include <string>
 
 ANTS_TEST_SCOPE();

@@ -12,7 +12,6 @@
 #include <QTextStream>
 
 #include <cstdio>
-#include <cstdlib>
 
 #include "../../_support/expect.h"
 #include "commandpalette.h"

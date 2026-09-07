@@ -10,7 +10,6 @@
 
 #include "../../_support/expect.h"
 
-#include <cstdlib>
 #include <string>
 
 

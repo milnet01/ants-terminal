@@ -3,7 +3,6 @@
 // behaviour or the write-side notifier / queue / cap is removed.
 
 #include <cstdio>
-#include <cstdlib>
 #include <regex>
 #include <string>
 

@@ -37,7 +37,6 @@
 
 #include <QCoreApplication>
 
-#include <cstring>
 #include <string>
 
 

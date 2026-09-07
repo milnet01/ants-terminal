@@ -8,7 +8,6 @@
 #include <QProcess>
 #include <QString>
 
-#include <cstdlib>
 
 #include <gtest/gtest.h>
 

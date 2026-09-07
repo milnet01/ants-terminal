@@ -4,7 +4,6 @@
 // loop drops its status check.
 
 #include <cstdio>
-#include <cstdlib>
 #include <regex>
 #include <string>
 

@@ -5,7 +5,6 @@
 #include "../../_support/expect.h"
 
 #include <cstdio>
-#include <cstdlib>
 #include <regex>
 #include <string>
 #include <gtest/gtest.h>

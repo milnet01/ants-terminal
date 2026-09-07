@@ -7,7 +7,6 @@
 #include "../../_support/expect.h"
 
 #include <cstdio>
-#include <cstdlib>
 #include <string>
 #include <gtest/gtest.h>
 #include "../../_support/srcgrep.h"

@@ -3,7 +3,6 @@
 // restore stops verifying it, or the envelope constants drift.
 
 #include <cstdio>
-#include <cstdlib>
 #include <regex>
 #include <string>
 

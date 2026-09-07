@@ -9,8 +9,6 @@
 #include <cstdint>
 #include <cstdio>
 #include <gtest/gtest.h>
-#include <cstdlib>
-#include <cstring>
 #include <random>
 #include <string>
 #include <vector>

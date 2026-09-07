@@ -25,7 +25,6 @@
 #include <QString>
 
 #include <gtest/gtest.h>
-#include <cstring>
 
 namespace {
 // ANTS-1217 Phase 2: macros redirected to ADD_FAILURE_AT so existing
