@@ -14,6 +14,12 @@ for security-relevant changes.
 
 ### Added
 
+- **`apply_edits` accepts `old_text`/`new_text` and a batch-level `path`** (ANTS-4936)
+  The spelling roadmap_log's op:"amend_body" uses now works here too,
+  alongside the native Edit tool's old_string/new_string. A `path` given
+  once at the top level supplies every edit that omits one; a per-edit
+  path still wins.
+
 - **`doc_lint` can repair a drifted table of contents** (ANTS-3669)
   Pass `fix:true` and the one auto-fixable finding is corrected in place: a
   missing Contents entry is inserted in document order, a duplicated one is
@@ -73,6 +79,17 @@ for security-relevant changes.
 
 ### Changed
 
+- **`workspace_search` states that `caller_cwd` picks any tree to search** (ANTS-4928)
+  Pointing caller_cwd at another project, or at a path outside any repo,
+  searches that tree. That was documented only inside the `lane`
+  argument, so the verb read as project-scoped.
+
+- **`project_query` names file enumeration where the tool is chosen** (ANTS-4929)
+  Its one-line hint now covers listing files by name via project.list,
+  and project.list leads the API list. Previously the hint described
+  counting inside file contents, so the enumeration case was never
+  found.
+
 - **a refused absolute path now names the way to read that file** (ANTS-4899)
   A file handed to a session from elsewhere on the machine was refused by
   `file_outline` and `read_region` with nothing else to go on, so the
@@ -110,6 +127,12 @@ for security-relevant changes.
   unanswerable one.
 
 ### Fixed
+
+- **`doc_citations` caps an ambiguous quotation's candidate list** (ANTS-4939)
+  The citation path has capped its candidates since ANTS-3636; the quote
+  path returned every same-named file in the tree. All three ambiguous
+  arms now share one emitter and report `candidates_total` and
+  `truncated_candidates`.
 
 - **a checker that printed its help text is no longer reported as 92 findings** (ANTS-3846)
   When a code checker refuses to run it prints its usage banner and exits

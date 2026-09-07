@@ -52635,7 +52635,7 @@ plus two gaps hit while sweeping stale spec citations under ANTS-4757.
   Source: claude_config_Ants_MCP_Feedback.md, 2026-09-07.
   Lanes: mcp, roadmap.
 
-- 📋 [ANTS-4928] **workspace_search reads as project-scoped, so sessions reach for grep on any path outside their own tree.**
+- ✅ [ANTS-4928] **workspace_search reads as project-scoped, so sessions reach for grep on any path outside their own tree.**
   The reporter audited every Bash grep across a long session and found almost none needed to be a grep. Confirmed working: another project's tree via `caller_cwd`, a non-project /tmp directory, counts, distinct files, context, hidden files, ignoring gitignore, wrapped-quotation matching.
 
   The genuinely uncovered cases are all NON-file: `git log | grep`, `ls | grep`, `command -v x | grep`. Those are command output rather than a corpus, and `git_state` covers the git ones. The reporter does not think the verb should grow to cover pipes, and neither do I.
@@ -52645,12 +52645,23 @@ plus two gaps hit while sweeping stale spec citations under ANTS-4757.
   FIX IS ONE SENTENCE, at the point the decision is made rather than after it: say in the top-level description that the verb searches the tree at `caller_cwd`, and that pointing `caller_cwd` at any directory -- another project, or somewhere outside a repo entirely -- searches that instead.
 
   SECOND HALF, and it is ours to answer. The reporter measured that `ants-bash-veto.sh` fires only inside a tree carrying a `.ants-project` marker, and that exactly one project has one -- so the nudge has never fired anywhere else. They also note there is no PreToolUse hook on the harness `Grep` TOOL at all, only on Bash, and that subagents typically hold `Grep` without `Bash`, so no subagent has ever been nudged. They are adding a hook on their side and ask whether the pack should own both instead. Unverified from here; the marker gate is worth re-examining either way, since a token-saving nudge is not project-specific.
+  Resolved (2026-09-07, 40416f88). The wire description now says
+  caller_cwd picks the tree and that it is not limited to this project;
+  the full account — the escape being caller_cwd rather than lane, and
+  the non-file cases the verb deliberately does not cover — went into
+  `detail`, which the tools/list handler strips. That split was forced
+  rather than chosen: ANTS-2079 INV-5 caps this description at 800 bytes
+  and the baseline left 76, so the first attempt came to 938 and the
+  suite caught it. The hook-scope half of the report — the .ants-project
+  marker gate and the absence of a PreToolUse hook on the harness Grep
+  tool — is NOT addressed here; it is the reporter's own machine config,
+  not this verb.
   **Layman:** The search tool can search any folder on the machine, but nothing says so where you decide whether to use it, so people fall back to raw grep.
   Kind: doc.
   Source: claude_config_Ants_MCP_Feedback.md, 2026-09-07.
   Lanes: mcp, docs.
 
-- 📋 [ANTS-4929] **project_query's selection_hint frames it as a content tool, so project.list is never found and Glob reads as unreplaceable.**
+- ✅ [ANTS-4929] **project_query's selection_hint frames it as a content tool, so project.list is never found and Glob reads as unreplaceable.**
   `project_query` ships `project.list(subdir?)`, returning sorted project-relative paths a Lua snippet can filter by any name pattern. That is Glob's job, done server-side, returning the answer rather than the paths.
 
   Nothing at the decision point says so. The `selection_hint` reads "Use when you'd otherwise Read several files just to count/filter/aggregate over them" -- about file CONTENTS. `project.list` is named once, mid-description, inside a run-on listing the whole Lua API, AFTER `project.read`, which is what frames the verb as a content tool. A session reaching for "list files" has no reason to open it.
@@ -52660,6 +52671,13 @@ plus two gaps hit while sweeping stale spec citations under ANTS-4757.
   FIX IS ONE SENTENCE, same shape as the workspace_search finding: extend `selection_hint` to name the enumeration case -- listing files under a path by name pattern via `project.list`, which no other verb does. Optionally lift `project.list` out of the API run-on; its position after `project.read` is what makes the verb read as content-only.
 
   They offer to file it as a first-class `list_files` verb instead and argue against it themselves: the snippet is strictly more capable and the server-side filtering is where the saving is. Agreed -- do not build a verb here.
+  Resolved (2026-09-07, 40416f88). selection_hint now names the
+  enumeration case — listing files by name via project.list — at the
+  point the choice against Glob is made, and project.list leads the API
+  list instead of trailing project.read, which was what framed the verb
+  as content-only. 213 chars against HINT-3's 240 budget. No list_files
+  verb was built: the reporter argued against one themselves and the
+  snippet is strictly more capable.
   **Layman:** One tool can list files by name, which is what people use Glob for, but its one-line summary talks about counting things inside files — so nobody finds it.
   Kind: doc.
   Source: claude_config_Ants_MCP_Feedback.md, 2026-09-07.
@@ -52724,7 +52742,7 @@ plus two gaps hit while sweeping stale spec citations under ANTS-4757.
   Source: in-session-2026-09-07, found while fixing ANTS-4848.
   Lanes: mcp, roadmap-store, tests.
 
-- 📋 [ANTS-4936] **apply_edits refuses `old_text`/`new_text`, the spelling its sibling roadmap_log op:amend_body requires.**
+- ✅ [ANTS-4936] **apply_edits refuses `old_text`/`new_text`, the spelling its sibling roadmap_log op:amend_body requires.**
   ANTS-4089 already accepts `old_string`/`new_string` in apply_edits' per-edit argument parse (src/remotecontrol_workspace.cpp) — the NATIVE Edit tool's spelling —
   but not `old_text`/`new_text`, which is what roadmap_log op:"amend_body" and
   op:"amend_headline" require. So a session that used amend_body an hour earlier
@@ -52746,6 +52764,16 @@ plus two gaps hit while sweeping stale spec citations under ANTS-4757.
   for a cosmetic gain.
 
   Reported 2026-08-28, re-verified against source 2026-09-07.
+  Resolved (2026-09-07, 40416f88). old_text/new_text accepted as
+  aliases, extending ANTS-4089's pairing to the sibling verb's spelling;
+  canonical old/new still win. A top-level `path` now defaults any edit
+  that omits one, and a per-edit path still wins over it. Both declared
+  in the schema — additionalProperties is false, so an undeclared key
+  never reaches the handler — and `path` dropped from the per-edit
+  required list, with the handler still refusing an edit that resolves
+  to no path. amend_body was NOT changed to match, as the reporter
+  asked. Five tests; the two that matter went red first with the exact
+  error the report quoted.
   **Layman:** Two Ants tools that do the same kind of find-and-replace expect differently named settings, so a call written from one and sent to the other is rejected.
   Kind: enhancement.
   Source: cc-session-feedback claude-config 2026-08-28.
@@ -52811,7 +52839,7 @@ plus two gaps hit while sweeping stale spec citations under ANTS-4757.
   Source: cc-session-feedback claude-config 2026-08-28.
   Lanes: mcp, roadmap.
 
-- 📋 [ANTS-4939] **doc_citations caps ambiguous candidates on the citation path and not on the quote path.**
+- ✅ [ANTS-4939] **doc_citations caps ambiguous candidates on the citation path and not on the quote path.**
   The CITATION path caps candidates[] at `opts.maxCandidates` and reports
   `candidates_total` + `truncated_candidates` (src/doccitations.cpp). The
   QUOTE path does neither: both of its ambiguous arms — several documents
@@ -52840,6 +52868,20 @@ plus two gaps hit while sweeping stale spec citations under ANTS-4757.
   Second-order cost worth naming: a caller who meets this once learns to
   stop passing `quotes:true` on a whole-directory sweep, which loses the
   check altogether.
+  Resolved (2026-09-07, 40416f88). All three ambiguous arms share one
+  emitter — the citation arm plus the quote path's one-cell and
+  ambiguous-basename arms — so the quote path caps at maxCandidates and
+  reports candidates_total and truncated_candidates. The emitter caps
+  and reports but does NOT sort: the resolver's UTF-16 order and the
+  one-cell arm's document order are each deliberate, and sorting there
+  would discard the more likely candidate. The proximity ranking this
+  body suggested was NOT built — it is a second, unspecified behaviour,
+  and the reported defect is size. Two tests, proved red first: the
+  pre-fix run emitted twelve unbounded candidates with no totals,
+  exactly as reported. The cache/vendored-tree exclusion is also NOT
+  built: it changes the shared basename index and so reaches the
+  citation path and INV-4, which is a wider change than this item's
+  evidence supports.
   **Layman:** When the citation checker cannot tell which file a quote came from, it lists every same-named file it found — about 170 of them in one call — where the other half of the same tool lists ten and says how many there were.
   Kind: fix.
   Source: cc-session-feedback claude-config 2026-09-02.
@@ -52878,6 +52920,43 @@ plus two gaps hit while sweeping stale spec citations under ANTS-4757.
   RELATED: ANTS-4932 removes the ANTS-side rebuild-and-relaunch; this is the
   CLIENT-side half. Neither covers the other, and this one is why shipped fixes
   keep being reported against stale binaries.
+  First step DONE 2026-09-07, and it is the cheap branch this body said to
+  try before any code. Observed by the user in the /mcp panel, not inferred.
+
+  Reconnect IS OFFERED on this stdio server. The panel for "Ants MCP Server"
+  lists: 1. View tools, 2. Reconnect, 3. Disable. So the docs' silence about
+  stdio was silence, not absence, and the gesture exists.
+
+  The same panel supplies the rest of the test rig:
+    Status        connected
+    Command       tools/mcp-bridge.py
+    Capabilities  tools
+    Tools         95
+
+  `Capabilities: tools` with no listChanged is this body's claim confirmed
+  from the client side — the server advertises the tools capability and not
+  the notification, so nothing would be pushed even if the bridge could
+  carry it.
+
+  WHAT IS STILL UNANSWERED: whether Reconnect actually re-fetches the tool
+  list against this transport. Offering the gesture is not doing the work.
+
+  THE TEST IS NOW CHEAP, because two other items supply the instrument.
+  ANTS-4928 and ANTS-4929 each edit a tool DESCRIPTION, which is exactly the
+  class this body says needs a client re-fetch (a new verb, a rename, a
+  changed schema or description). So:
+
+    1. Edit the description, rebuild, restart Ants Terminal only.
+    2. In the SAME Claude Code session, re-read the verb's schema.
+       Old text  -> the session is still holding its start-of-session list.
+    3. Hit Reconnect in /mcp, re-read again.
+       New text  -> Reconnect re-fetches, this item closes for one gesture
+                    and NEITHER transport option below is needed.
+       Old text  -> Reconnect does not reach a stdio server's tool list, and
+                    the persistent-socket or HTTP/SSE work is real.
+
+  Tool count 95 is the second observable: a later item adding a verb should
+  move it, and the same three-step reading applies.
   **Layman:** Claude Code learns the tool list once when it starts. There is no way for Ants to tell it the list changed, so a brand-new tool stays invisible until Claude Code itself is restarted.
   Kind: investigate.
   Source: cc-session-feedback claude-config 2026-09-07.
