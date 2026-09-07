@@ -315,12 +315,16 @@ void GlobalShortcutsPortal::onBindShortcutsResponse(uint response,
 // signature-matches by exact type string at connect time.
 // Changing to const QString & would silently break the connect
 // at globalshortcutsportal.cpp:219. Cppcheck false-positive
-// class; suppress in-line.
-// cppcheck-suppress passedByValue
+// class; suppress in-line. The suppression must SPAN the signature
+// (ANTS-3850): an inline `cppcheck-suppress` covers only the next line, so
+// the single-line form silenced the first parameter and left shortcutId --
+// the one this comment is actually about -- still reported.
+// cppcheck-suppress-begin passedByValue
 void GlobalShortcutsPortal::onActivatedSignal(QDBusObjectPath sessionHandle,
                                               QString shortcutId,
                                               qulonglong timestamp,
                                               QVariantMap options) {
+    // cppcheck-suppress-end passedByValue
     Q_UNUSED(sessionHandle);
     Q_UNUSED(timestamp);
     Q_UNUSED(options);

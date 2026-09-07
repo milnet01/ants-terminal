@@ -68198,7 +68198,7 @@ contributors don't duplicate research.
   Kind: feature.
   Source: in-session-2026-06-25 (split from ANTS-1901 part (c) during its spec cold-eyes).
 
-- 📋 [ANTS-2173] **Unify the unknown-tool refusal label: envelope code `unknown_tool` vs telemetry `dispatchResult` `tool_not_found`.**
+- ✅ [ANTS-2173] **Unify the unknown-tool refusal label: envelope code `unknown_tool` vs telemetry `dispatchResult` `tool_not_found`.**
   The same unknown-tool refusal sets the caller-facing envelope
   `env["code"] = "unknown_tool"` (`src/claudeintegration.cpp:9072`, the
   value registered in `docs/standards/mcp-error-codes.md` §5) but the
@@ -68214,6 +68214,17 @@ contributors don't duplicate research.
   **Layman:** A tiny inconsistency in internal labels: when Claude calls a tool that doesn't exist, the error message it gets and the stats Ants records use two different names for the same thing. Harmless, just tidier to make them match.
   Kind: refactor.
   Source: in-session-2026-06-25 (noticed during ANTS-1901 cold-eyes).
+  Resolved (2026-09-07) as a documentation fix, and NOT by aligning the
+  labels -- which is what the item proposed first and would have been
+  wrong. `tool_not_found` is not an incidental telemetry string:
+  tests/features/mcp_record_dispatch_unification INV-4 requires the
+  failure branch to emit exactly that literal, and a test asserts it.
+  Renaming it to match the envelope would break a pinned invariant to
+  fix a cosmetic mismatch. Took the item's second option instead:
+  mcp-error-codes.md now records that the two layers name one refusal in
+  two vocabularies deliberately, points at INV-4 as the reason, and
+  tells a future reader to correlate by event rather than by string. No
+  code changed.
 
 - ✅ [ANTS-2174] **launch.sh runs a home-drive copy of the binary, never from the project tree (ANTS-2025 follow-up).**
   Previously launch.sh promoted build-fast/ → build/ and ran
@@ -68854,7 +68865,7 @@ contributors don't duplicate research.
   readable category today) from `docs/specs/` (1,111, where a spec's design
   vocabulary and its factual claims are not separable by token shape).
 
-- 📋 [ANTS-3850] **cppcheck: 24 structs with uninitialised POD members, plus 8 by-value/by-reference nits.**
+- ✅ [ANTS-3850] **cppcheck: 24 structs with uninitialised POD members, plus 8 by-value/by-reference nits.**
   From the 2026-08-06 audit. cppcheck reports, on the post-split tree:
   24  uninitMemberVarNoCtor   (struct POD member with no initialiser)
   6  returnByReference       (returning by value what could be a ref)
@@ -68883,6 +68894,15 @@ contributors don't duplicate research.
   **Layman:** Some small data structures do not give their number and true/false fields a starting value; nothing is broken today, but it is the kind of gap that becomes a bug later.
   Kind: refactor.
   Source: audit-2026-08-06.
+  Resolved (2026-09-07). Every finding in all three classes now has a disposition, which is what this item asked for.
+
+  uninitMemberVarNoCtor: cleared. The item filed 24; the tree had 40, so the class had grown while it sat. All 40 given default member initialisers except one -- an anonymous struct that is aggregate-initialised in full at its point of definition, so the warning is a false positive and is left reported deliberately. Finding::kind needed judgement rather than a token: its type is an enum whose zero value is DeadAnchor, a real classification, so value-initialising makes an unset kind reproducible rather than obviously wrong. Commented at the site.
+
+  passedByValue: assessed, and all four are CORRECT as they stand. finishToolDispatch takes its context by value because it runs on the off-thread dispatch path, where a reference is the lifetime hazard this item warns about. onActivatedSignal must match Qt's SLOT() signature by exact type string or the connect silently breaks -- that was already suppressed, but the inline suppression covers only the next line and the finding is a line further down, so it silenced the wrong parameter; now spans the signature. redactAndTruncate's signature is asserted verbatim by a source-scrape test, so changing it would break a pinned contract to satisfy a linter. trailerLine takes QLatin1String, which is a view -- by value is correct and const& would be a pessimisation.
+
+  returnByReference: assessed and declined, all six. Each is an accessor returning a copy of a member, used mainly by tests and log messages, so the gain is marginal; against that, returning a reference changes lifetime semantics, and one of them (sessionSavedBytesByProject) is reachable across threads. The item itself says this class is not a blind sweep. Declining is the assessment, not a deferral -- do not re-file it without a measurement showing the copy matters.
+
+  Verified: build clean, suite 4260/4260, cppcheck's uninit class down to the single known false positive.
 
 - ✅ [ANTS-3851] **ANTS-3833 § 2.4 undercounts the scrape anchors — seven named, fifteen real.**
   § 2.4 enumerates seven anchors, and § 6's NoSeamInsideAScrapeWindow row
