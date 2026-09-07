@@ -84,6 +84,12 @@ for security-relevant changes.
 
 ### Changed
 
+- **A narrowed response names the fields it does carry, not just the ones it doesn't** (ANTS-4930)
+  `fields_available` now accompanies `fields_unmatched`, so a misspelled
+  field name is visible rather than inferred, and a field that is simply
+  not populated on this call can be told from one this backend never
+  carries.
+
 - **The body-scrub warning names the text it removed** (ANTS-4938)
   `body_scrubbed_tool_xml` now carries `removed_fragments`, so a caller can
   confirm the strip from the envelope instead of re-reading the stored

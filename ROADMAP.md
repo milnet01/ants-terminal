@@ -52694,7 +52694,7 @@ plus two gaps hit while sweeping stale spec citations under ANTS-4757.
   Source: claude_config_Ants_MCP_Feedback.md, 2026-09-07.
   Lanes: mcp, docs.
 
-- 📋 [ANTS-4930] **fields_unmatched cannot distinguish a misspelled field from one this backend never carries from one simply not populated now.**
+- ✅ [ANTS-4930] **fields_unmatched cannot distinguish a misspelled field from one this backend never carries from one simply not populated now.**
   THE REPORTED DIAGNOSIS IS WRONG; THE DEFECT IS REAL AND SHARPER THAN FILED.
 
   Reported as "`warning` is a MARKDOWN-backend field, absent by construction on `source:\"store\"`". Not so. Verified in this session on this store-backed project: a `query` that matched nothing returned a populated `warning` naming the search and the bullet count. So `warning` is carried on the store backend.
@@ -52708,6 +52708,30 @@ plus two gaps hit while sweeping stale spec citations under ANTS-4757.
   SMALLEST FIX: separate the unknown-name case from the known-but-not-emitted case, so a caller can branch mechanically instead of inferring. A distinct key, or naming the reason per field. Their option 1 -- documenting it -- would have prevented their defect, but it does not make the branch checkable, and this envelope is read by skills rather than by people.
 
   Worth checking while in there: a `fields` list that omits `warning` still returned it in this session's call. If `fields` is meant to be exhaustive, that is a second defect in the same argument.
+  Resolved (2026-09-07, 85bee303). `fields_available` now rides beside
+  `fields_unmatched` whenever something went unmatched, naming the top-level
+  keys the envelope really carries. A misspelling becomes visible rather than
+  inferred; for the backend and not-populated-now cases the caller branches on
+  the envelope's actual shape instead of on an absence. Emitted only when
+  something is missing, so an exactly-matching request is byte-identical.
+
+  NOT built, and it is the part this item asks for in its purest form: a
+  mechanical never-emits-this answer. That needs a declared output-field
+  registry per verb, which no verb has and which is a far larger piece of work
+  than the evidence here supports.
+
+  THE REPORT'S SECOND HALF IS NOT A DEFECT, checked in the source. A `fields`
+  list omitting `warning` still returns it because of ANTS-4698's DIAGNOSTIC
+  floor, which force-carries `warning` and `parseable_bullets` past any
+  narrowing. That is deliberate and its comment says why: a narrowed reply
+  must not lose the field that says how to read the fields it kept. It exists
+  to prevent exactly the class of misreading this item is about, so `fields`
+  is intentionally not exhaustive.
+
+  Worth knowing for whoever reads the reporter's diagnosis: their conclusion
+  that `warning` is "a MARKDOWN-backend field, absent by construction on
+  source:store" is wrong, and this item already said so. The floor is generic
+  and `warning` names a diagnostic in any envelope carrying one.
   **Layman:** Ask for a diagnostic that does not come back and you cannot tell whether you typed it wrong, this kind of project never has it, or there was just nothing to report.
   Kind: fix.
   Source: claude_config_Ants_MCP_Feedback.md, 2026-09-07.
