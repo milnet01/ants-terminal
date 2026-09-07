@@ -3980,7 +3980,7 @@ minor tag (next: pre-0.8.0).
   cannot search for a literal without naming it, and spec.md quotes them too.
   Without the filter each case matches itself and can never pass.
 
-- 📋 [ANTS-3840] **Stale anonymous-namespace comment in remotecontrol.cpp misled two independent readers.**
+- ✅ [ANTS-3840] **Stale anonymous-namespace comment in remotecontrol.cpp misled two independent readers.**
   `src/remotecontrol.cpp`'s closing brace at line 16959 is annotated
   "`}  // namespace (anonymous from line 1320 — closed early so the
   ants::resolveCallerCwdRoot definition below has external linkage…)`".
@@ -4019,6 +4019,11 @@ minor tag (next: pre-0.8.0).
   closing — this item was filed about the citation, and the citation is
   gone, but the ANTS-3840 write-up may cover other stale annotations in
   the same region.
+  Resolved (verified 2026-09-07): closed by ANTS-3833's decomposition
+  rather than by a dedicated fix. The misleading comment no longer
+  asserts a location -- the namespace close in
+  remotecontrol_feedback.cpp now explains that it is closed early and
+  why, without a line number for a later edit to invalidate.
 
 - 📋 [ANTS-3841] **Git-fixture tests inherit an ambient GIT_DIR and write to the REAL repository.**
   Measured 2026-08-06 during ANTS-3833. Running the suite with GIT_DIR
@@ -14515,10 +14520,16 @@ indie-review finding.
   Kind: fix.
   Source: in-session-2026-09-04.
 
-- 📋 [ANTS-4866] **22 links inside the mirrored standards do not resolve for a reader on GitHub.**
+- ✅ [ANTS-4866] **22 links inside the mirrored standards do not resolve for a reader on GitHub.**
   check-standard-mirrors.sh reports them by rule and doc_integrity flags them correctly. Each points out of `standards/` into the owner's own tree — `../docs/history/<name>.md`, `../docs/reviews/<name>-loop-log.md`, `../workflow.md`, `skeletons/*.md` — none of which is mirrored, because the owner is not a standard. The count grew from 0 to 22 over the CFG-0309 pedigree move and the review-history move, which relocated text out of each standard and left a relative pointer behind.
 
   The mirrors exist because this repo is public and an outside reader cannot open a path in a private home directory; a link that 404s for that reader defeats the arrangement. Three routes worth weighing: mirror the pointed-at files too, rewrite the link to the owner's public URL at copy time, or drop the pointer line from the mirrored half. The first two need the owner's agreement since the text is verbatim.
+  Resolved (verified 2026-09-07): every relative link under
+  docs/standards/ resolves, and none escapes the repository root.
+  Checked both ways the item cared about -- local resolution, and
+  whether a reader on GitHub can follow the target -- because a link
+  into a private home directory resolves for the author and for nobody
+  else. No such link remains.
   **Layman:** Some links in the public copies of our coding standards point at files that only exist on the maintainer's machine.
   Kind: doc-fix.
   Source: in-session-2026-09-04.
@@ -27787,7 +27798,7 @@ against current source before filing.
 
   Also verified end to end: the dialog was launched on a virtual display through the e2e harness with the change in, opened, and rendered without crashing.
 
-- 📋 [ANTS-3763] **Three pre-existing doc-lint findings in older specs, surfaced by an unrelated run.**
+- ✅ [ANTS-3763] **Three pre-existing doc-lint findings in older specs, surfaced by an unrelated run.**
   Found by a `doc_integrity` run over `docs/specs/` that was scoped to a
   different document. Not caused by that work, and left unfixed so the
   run stayed in its lane — filed rather than dropped.
@@ -27807,6 +27818,10 @@ against current source before filing.
   **Layman:** Three small documentation faults in old spec files, noticed while checking a different one.
   Kind: doc-fix.
   Source: doc_integrity sweep during ANTS-3756 cold-eyes loop 5, 2026-07-30.
+  Resolved (verified 2026-09-07): all three named specs -- ANTS-1870,
+  ANTS-3636 and ANTS-1894 -- now return clean from the deterministic
+  document checks. Closed by the doc-lint work rather than by a pass
+  aimed at this item.
 
 - ✅ [ANTS-3764] **Extract the roadmap markdown reader out of the dialogs lib so the migration can share it.**
   Blocker for ANTS-3757. Verified 2026-07-31, not recalled:
@@ -47622,7 +47637,7 @@ it.
   Kind: fix.
   Source: in-session-2026-08-25 (found fixing ANTS-4666).
 
-- 📋 [ANTS-4680] **mcp-tools.md's quick-reference map is restatement by construction, and every bullet in it can drift from its owner.**
+- ✅ [ANTS-4680] **mcp-tools.md's quick-reference map is restatement by construction, and every bullet in it can drift from its owner.**
   THE DEFERRED TAIL of review-contract's 2026-08-25 run on
   docs/standards/mcp-tools.md. Filed rather than fixed because it is a
   restructuring job, not a review finding, and because the run reached a
@@ -47657,6 +47672,10 @@ it.
   1 against text whose last three loops were each repairing the one before.
   An authoring edit that changes direction -- which this item IS -- re-arms
   the gate normally, so gate the restructured document when it exists.
+  Resolved (verified 2026-09-07): mcp-tools.md's quick-reference is
+  pointers-only and says so in its own text, citing this item as what
+  removed the restatements. The drift surface the item was filed about
+  is gone -- a pointer cannot disagree with its owner.
   **Layman:** One documentation file repeats rules that other files own, so the copies keep going out of date; the fix is to stop repeating them.
   Kind: refactor.
   Source: in-session-2026-08-25, the deferred tail of review-contract's 2026-08-25 run.
@@ -65611,7 +65630,7 @@ here.)
 
   Also relevant to this bullet's item 4 (a check class in the catalogue but not in the verb): the same gap recurred. Three self-referential count defects were introduced by fix loops and caught by lanes at review prices — a stale "four call-shape rules" after a fifth was added, "three sibling specs" where the grep returns two, and "five text.contains()" where the case has five positive plus one negative. `spec_lint` still implements neither self-referential shape.
 
-- 📋 [ANTS-3829] **`specs.md` ships no `required-sections` block, so spec_lint's section check has never run here.**
+- ✅ [ANTS-3829] **`specs.md` ships no `required-sections` block, so spec_lint's section check has never run here.**
   Measured 2026-08-04: `grep -c required-sections docs/standards/specs.md`
   returns **0**, and every `spec_lint` call in this session returned
   `sections_checked: false`.
@@ -65643,6 +65662,11 @@ here.)
   **Layman:** One of the automatic spec checks has been silently switched off on this project the whole time, because the rulebook is missing a small marker it looks for.
   Kind: doc-fix.
   Source: in-session-2026-08-04 (ANTS-3810 cold-eyes gate, /doc-lint observation).
+  Resolved (verified 2026-09-07): docs/standards/specs.md now carries a
+  required-sections block, so spec_lint's section check runs here
+  instead of silently passing. Closed by ANTS-4345. The standard also
+  gained an opt-out marker for a document that legitimately has no such
+  sections.
 
 - ✅ [ANTS-3830] **`refactor_shell_quote_duplicate` is stale — it now flags every legitimate `shellQuote()` caller.**
   The rule in `audit_rules.json` says "`shellQuote` is implemented in
