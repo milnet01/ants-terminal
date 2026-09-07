@@ -37986,6 +37986,46 @@ whole files.
   Kind: investigate.
   Source: cold-sweep-2026-08-18 lanes vt-core + render-pty (UNVERIFIED — triage before work).
   Lanes: terminalgrid, terminalwidget, vtparser, ptyhandler.
+  Progress (2026-09-07): the Sixel repeat-bomb claim is VERIFIED against
+  source and FIXED. The item stays open for its other claims, which remain
+  unverified.
+
+  The reported mechanism holds exactly as written. The repeat introducer
+  clamps its count per group; nothing bounded the sum across groups. `$`
+  rewinds the column without advancing the band, so a repeat/`$`
+  alternation keeps every write inside a small declared image — the
+  dimension cap and the image budget both pass, and the decode scales with
+  payload length instead of image area. Displaying such a file pins the
+  decoder with no cap reached and no error shown.
+
+  A second shape the report did not name was found while designing the fix
+  and is covered by it: a raster header pins the height small and `-` then
+  advances the band past it, so every write fails the bounds check and no
+  pixel is ever painted, while the repeat loop still spins. That one is why
+  the budget is charged on the repeat GROUP rather than on the surviving
+  write. A cap counting only pixels written walks straight past it.
+
+  The fix gives the decode a whole-payload budget in column steps, sized at
+  one full-width pass per palette entry with an absolute backstop.
+  Exhausting it aborts and reports an inline error, in the same shape as
+  the dimension and image-budget caps. Sixel legitimately rescans a band
+  once per colour, so that multiplier is the honest bound rather than an
+  arbitrary one.
+
+  Contract and test at tests/features/sixel_repeat_work_cap. Both bomb
+  shapes are red without the fix; an ordinary Sixel and a legitimate
+  per-colour rescan stay green throughout, so the budget is shown to be
+  neither too loose nor too tight. Test inputs are sized to overshoot the
+  budget while still returning fast against the pre-fix decoder — the
+  full-size payload is the one that hangs and is deliberately not used as a
+  test input.
+
+  Verified: red run with the fix removed, green with it restored, full
+  suite green via the default preset.
+
+  The report's own caveat stands for everything else here — no lane could
+  execute anything, so the remaining performance claims are readings of an
+  algorithm rather than measurements.
 
 - 📋 [ANTS-4457] **Triage: Claude-integration findings from the cold sweep.**
   Reviewer claims carried forward as-is. NOT re-verified — check each against

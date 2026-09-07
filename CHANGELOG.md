@@ -145,6 +145,14 @@ for security-relevant changes.
 
 ### Fixed
 
+- **Sixel decoding is now bounded by a whole-payload work budget** (ANTS-4456)
+  Displaying a file containing a crafted Sixel image could hang the
+  terminal. The decoder now stops and reports an inline error when a
+  payload's work exceeds a budget derived from the image it declares,
+  alongside the existing dimension and image-size caps. Ordinary images,
+  including multi-colour ones that redraw a row once per colour, are
+  unaffected.
+
 - **`session_orient` counts findings that carry no Proposed ID slot** (ANTS-4941)
   A feedback finding with no `**Proposed ID:**` line at all is a different
   state from one whose slot is blank, and the session-start summary could

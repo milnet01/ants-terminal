@@ -1418,6 +1418,7 @@ if(ANTS_TESTS)
                 tests/features/scrollback_hyperlinks_reflow_lockstep/test_scrollback_hyperlinks_reflow_lockstep.cpp
                 tests/features/combining_at_wide_right_edge/test_combining_at_wide_right_edge.cpp
                 tests/features/sixel_raster_header_prebudget/test_sixel_raster_header_prebudget.cpp
+                tests/features/sixel_repeat_work_cap/test_sixel_repeat_work_cap.cpp
                 tests/features/hyperlink_resize_clamp/test_hyperlink_resize_clamp.cpp
                 tests/features/osc133_hmac_verification/test_osc133_hmac.cpp
                 tests/features/threaded_parse_equivalence/test_threaded_parse_equivalence.cpp

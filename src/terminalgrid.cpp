@@ -3146,6 +3146,22 @@ void TerminalGrid::handleDcs(const std::string &payload, bool truncated) {
     QImage image(imgWidth, imgHeight, QImage::Format_ARGB32);
     image.fill(Qt::transparent);
 
+    // ANTS-4456 — whole-payload work budget. The repeat introducer `!`
+    // clamps its count per group, but nothing bounds the SUM across
+    // groups, and `$` rewinds x without advancing the band. So a
+    // repeat/`$` alternation keeps every write in bounds and scales the
+    // decode with payload length rather than image area, clearing the
+    // dimension cap and the image budget on the way. Bound the decode
+    // itself: a well-formed Sixel rescans a band once per palette entry,
+    // so one full-width pass per colour is generous headroom, with an
+    // absolute backstop so a max-size image cannot spend minutes here.
+    const size_t sixelBands = (static_cast<size_t>(imgHeight) + 5) / 6;
+    constexpr size_t kSixelColumnCeiling = 128u * 1024u * 1024u;
+    const size_t maxColumnSteps =
+        std::min(static_cast<size_t>(imgWidth) * sixelBands * 256,
+                 kSixelColumnCeiling);
+    size_t columnSteps = 0;
+
     // Second pass: render pixels
     int x = 0, y = 0;
     for (size_t i = dataStart; i < payload.size(); ++i) {
@@ -3161,6 +3177,11 @@ void TerminalGrid::handleDcs(const std::string &payload, bool truncated) {
                 }
             }
             ++x;
+            if (++columnSteps > maxColumnSteps) {
+                writeInlineError(QStringLiteral(
+                    "[ants: sixel decode exceeded its work budget]"));
+                return;
+            }
         } else if (ch == '$') {
             x = 0;
         } else if (ch == '-') {
@@ -3177,6 +3198,12 @@ void TerminalGrid::handleDcs(const std::string &payload, bool truncated) {
             if (i < payload.size() && payload[i] >= '?' && payload[i] <= '~') {
                 int sixel = payload[i] - '?';
                 QColor col = palette[currentColor];
+                if (columnSteps + static_cast<size_t>(count) > maxColumnSteps) {
+                    writeInlineError(QStringLiteral(
+                        "[ants: sixel decode exceeded its work budget]"));
+                    return;
+                }
+                columnSteps += static_cast<size_t>(count);
                 for (int r = 0; r < count; ++r) {
                     for (int bit = 0; bit < 6; ++bit) {
                         if (sixel & (1 << bit)) {
