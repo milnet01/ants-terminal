@@ -52692,6 +52692,204 @@ plus two gaps hit while sweeping stale spec citations under ANTS-4757.
   Source: in-session-2026-09-07, found while fixing ANTS-4848.
   Lanes: mcp, roadmap-store, tests.
 
+- 📋 [ANTS-4936] **apply_edits refuses `old_text`/`new_text`, the spelling its sibling roadmap_log op:amend_body requires.**
+  ANTS-4089 already accepts `old_string`/`new_string` at
+  src/remotecontrol_workspace.cpp:2518-2527 — the NATIVE Edit tool's spelling —
+  but not `old_text`/`new_text`, which is what roadmap_log op:"amend_body" and
+  op:"amend_headline" require. So a session that used amend_body an hour earlier
+  guesses CONSISTENTLY and is still refused. Three spellings of one idea, two of
+  them inside this MCP.
+
+  Second half: `path` is read per edit element only (`e.value("path")`, same
+  site), so a top-level `path` lands in `ignored_args`.
+
+  FIX: extend the ANTS-4089 pairing to old_text/new_text (canonical old/new still
+  win when both arrive), and fall back to a top-level `path` for an edit that
+  omits one. Both purely additive; the existing refusal stands for a call
+  supplying neither spelling. The refusal is GOOD — it names both missing keys
+  and flags the ignored path, so the cost is bounded at one round-trip. The
+  defect is the inconsistency, not the error handling.
+
+  NOT proposing amend_body change to match: its arguments are top-level because
+  it takes one locator and one edit, and renaming a live argument breaks callers
+  for a cosmetic gain.
+
+  Reported 2026-08-28, re-verified against source 2026-09-07.
+  **Layman:** Two Ants tools that do the same kind of find-and-replace expect differently named settings, so a call written from one and sent to the other is rejected.
+  Kind: enhancement.
+  Source: cc-session-feedback claude-config 2026-08-28.
+  Lanes: mcp.
+
+- 📋 [ANTS-4937] **mcp_trace records argument shape but no caller, so a lane's brief-required argument cannot be verified.**
+  `McpTraceRecord` carries no caller identity: `ClaudeIntegration::recordToJson`
+  (src/claudeintegration.cpp:1430) emits id, ts_ms, tool, arg_keys, arg_bytes,
+  raw_bytes, args_sha16, resp_bytes, duration_us, cache_hit, result. The ring is
+  server-wide, so a parent session's calls, its subagents' and another tab's
+  interleave with nothing separating them.
+
+  `arg_keys` is ALREADY the right granularity — it shows whether a cold reader
+  carried the `exclude_glob` its brief required.
+  `skills/_shared/cold-reader-contamination.md` records that as permanently
+  unverifiable; half of that is now false, and only the missing attribution keeps
+  the other half true.
+
+  DESIGN NOTE, measured 2026-09-07: a per-CONNECTION id will NOT do it —
+  tools/mcp-bridge.py opens a fresh socket per request (`pick_socket()` is called
+  inside `forward()`), so every call is its own connection. The bridge PROCESS is
+  one per Claude Code session, so a bridge-supplied stable id (its pid, or an
+  env-provided session id) is the cheap route, with `session_only:true` as the
+  filter over it.
+
+  NOT asking for argument VALUES. "Raw argument values are never stored" is the
+  right call and the key list is the whole question — presence of `exclude_glob`
+  is what is asked, its contents are not.
+  **Layman:** The call log shows which settings each tool call carried but not who made it, so you cannot check that a dispatched reviewer actually obeyed its instructions.
+  Kind: enhancement.
+  Source: cc-session-feedback claude-config 2026-08-28.
+  Lanes: mcp.
+
+- 📋 [ANTS-4938] **body_scrubbed_tool_xml announces a strip it cannot show, so the re-read it asks for is usually wasted.**
+  The warning fires with `unnamed_fragments_removed:1` on multi-paragraph prose
+  bodies where a read-back shows the body complete, paragraph for paragraph, with
+  no angle bracket or tool-call fragment anywhere in what was sent. Measured
+  twice in one session (claude-config 2026-08-28, filed there as CFG-0271 /
+  CFG-0272).
+
+  Emitted at src/remotecontrol_roadmap_log.cpp:620-628 and
+  src/remotecontrol_roadmap_log_batch.cpp:2649-2656. The scrubber reports a COUNT
+  only, so the envelope cannot say what went.
+
+  WHY IT MATTERS: the message tells the caller to re-read the stored body, so
+  each occurrence costs a verification round-trip — and a warning that is usually
+  a false positive trains the caller to skip the one re-read that would catch a
+  true positive. That is the failure mode, not the round-trip.
+
+  FIX, cheapest first: carry the stripped fragment (or its first N characters and
+  offset) in the warning, which discharges it in the envelope with no re-read and
+  lets the caller confirm the strip was correct. Failing that, emit
+  `body_bytes_sent` vs `body_bytes_stored` — a zero delta beside a non-zero count
+  is itself the signal that the scrubber matched something inert. If the strip
+  genuinely removed no bytes, suppress the warning at zero delta.
+
+  NOT asking for the scrubber to be loosened: guarding a stored body against
+  leaked tool-call XML is right, and a false positive that announces itself beats
+  a silent strip. The defect is that the announcement cannot discharge itself.
+  **Layman:** A warning says something was stripped out of what you saved but never says what, so you go and check and find nothing missing — twice out of twice.
+  Kind: fix.
+  Source: cc-session-feedback claude-config 2026-08-28.
+  Lanes: mcp, roadmap.
+
+- 📋 [ANTS-4939] **doc_citations caps ambiguous candidates on the citation path and not on the quote path.**
+  src/doccitations.cpp:1171-1176 caps a CITATION's candidates[] at
+  `opts.maxCandidates` and reports `candidates_total` + `truncated_candidates`.
+  The QUOTE path does neither: line 1582 (several documents named in one cell)
+  and lines 1596-1597 (an ambiguous basename) both emit
+  `QJsonArray::fromStringList` over the whole list.
+
+  Measured claude-config 2026-09-02: one `quotes:true` row returned ~170 absolute
+  paths for a bare `SKILL.md` attribution, several times the size of the two
+  other calls in the same Phase 1 batch combined. No argument trims it —
+  `only:"stale"` keeps it (ambiguous IS a stale status), and `fields` is
+  top-level so it cannot reach `quotes[].candidates`.
+
+  FIX: reuse the citation path's cap and totals at BOTH quote sites, ranking by
+  proximity to the scanned document's own directory — the intended target is
+  nearly always a sibling, so a capped list ranked that way is more useful than
+  the full one. Independently worth having: exclude version-pinned cache and
+  vendored trees from the basename candidate set. Roughly 110 of the 170 were one
+  plugin file at different content hashes — one candidate wearing 110 costumes —
+  and workspace_search already treats those trees as ignorable by default.
+
+  NOT asking the resolver to guess. ANTS-4638's rule that an ambiguous
+  attribution stays ambiguous is right and stays. This is about the SIZE of the
+  evidence returned with the refusal.
+
+  Second-order cost worth naming: a caller who meets this once learns to stop
+  passing `quotes:true` on a whole-directory sweep, which loses the check
+  altogether.
+  **Layman:** When the citation checker cannot tell which file a quote came from, it lists every same-named file it found — about 170 of them in one call — where the other half of the same tool lists ten and says how many there were.
+  Kind: fix.
+  Source: cc-session-feedback claude-config 2026-09-02.
+  Lanes: mcp, docs.
+
+- 📋 [ANTS-4940] **The stdio bridge has no server-to-client path, so a new verb needs a full Claude Code relaunch.**
+  Verified 2026-09-07 by reading tools/mcp-bridge.py: `main()` is
+  `for line in sys.stdin:` and every `sys.stdout.write` sits inside that loop, so
+  the bridge only ever writes in REPLY to something it read. There is no channel
+  for a server-pushed `notifications/tools/list_changed`, which is the protocol's
+  only tool-list refresh mechanism. Claude Code caches the tool list at session
+  start.
+
+  THE OTHER HALF ALREADY WORKS, and it bounds the problem: `pick_socket()` is
+  called inside `forward()`, per request, and prefers a live-PID socket — so
+  restarting Ants Terminal ALONE is picked up by the very next verb call. A
+  behaviour fix inside an EXISTING verb is live-reloadable today. Only a new
+  verb, a rename, or a changed schema or description needs the client to
+  re-fetch.
+
+  BEFORE ANY CODE: /mcp reportedly offers a per-server Reconnect that discards
+  the cache and re-fetches the tool list. There is no `claude mcp reconnect`
+  subcommand (verified: add/get/list/login/logout/remove), so it is panel-only,
+  and the docs are silent on stdio. If Reconnect works against the bridge this
+  costs one gesture and neither option below is needed. Test that FIRST.
+
+  Then, in order of size:
+  1. Hold a PERSISTENT socket in the bridge and forward server-initiated messages
+     to stdout, with the server declaring `capabilities.tools.listChanged:true`
+     at initialize. This contradicts the "one fresh socket per request / one-shot
+     by design" note in claudeintegration.cpp, so it is a real server change.
+  2. Serve MCP over local HTTP/SSE instead, which deletes the bridge, its
+     socket-picking, its stale-socket handling and its post-relaunch settling
+     window outright.
+
+  RELATED: ANTS-4932 removes the ANTS-side rebuild-and-relaunch; this is the
+  CLIENT-side half. Neither covers the other, and this one is why shipped fixes
+  keep being reported against stale binaries.
+  **Layman:** Claude Code learns the tool list once when it starts. There is no way for Ants to tell it the list changed, so a brand-new tool stays invisible until Claude Code itself is restarted.
+  Kind: investigate.
+  Source: cc-session-feedback claude-config 2026-09-07.
+  Lanes: mcp.
+
+- 📋 [ANTS-4941] **feedback_pending ignores suspected_untagged, so a finding with no Proposed ID slot at all is invisible at session start.**
+  MEASURED TODAY on claude_config_Ants_MCP_Feedback.md. Four findings —
+  three from 2026-08-28, one from 2026-09-02 — carried NO
+  `**Proposed ID:**` line at all. feedback_query reported
+  delta_present:false while naming all four in `suspected_untagged`, so
+  the un-triaged tail read as empty and the file never listed in
+  session_orient's `feedback_pending`. They were found only because this
+  session read `suspected_untagged` by hand.
+
+  CAUSE. The v2 delta rule keys on an UNFILLED slot; a MISSING slot is a
+  different state and `suspected_untagged` is the surface for it.
+  `RemoteControl::buildFeedbackPendingBlock`
+  (src/remotecontrol_state.cpp:1555+) branches on `pr.deltaPresent` and
+  `pr.awaiting` only, and short-circuits on
+  `if (!pr.deltaPresent && awaitingHere == 0) continue;`. The parse result
+  carries the suspected list and nothing there consults it.
+
+  WHY IT MATTERS more than the count suggests. This block exists to answer
+  "which files have new contributor input" without a per-file round-trip,
+  and it is the ONLY always-on surface for that. A finding it cannot see is
+  not merely late — nothing else will ever raise it, because the next
+  maintainer sweep asks the same verb the same question. Silence and
+  "nothing pending" are byte-identical here, which is the reading
+  ANTS-4896 already fixed once for a relocated corpus.
+
+  FIX: count suspected_untagged into the entry, under its own key rather
+  than folded into `delta_line_count` — the two are different states and a
+  caller triaging them acts differently (one needs an id, the other needs
+  a slot inserted first, which op:"assign_id" does automatically). A file
+  whose only pending input is suspected should still LIST.
+
+  WORTH CHECKING IN THE SAME PASS: how the four lost their slot. The
+  corpus is written by op:"append_finding", which stamps a blank slot, so
+  these were appended by hand or by an older path. If a live write route
+  can still produce a slotless finding, that is the upstream half of this.
+  **Layman:** Four pieces of feedback sat unanswered for ten days because the session-start "you have new feedback" counter only looks for findings that have an empty ID box, not ones that never had a box at all.
+  Kind: fix.
+  Source: in-session-2026-09-07.
+  Lanes: mcp.
+
 ### Ants MCP without a terminal relaunch (user request 2026-09-07)
 
 Today every MCP verb is a C++ method compiled into the GUI binary and served
