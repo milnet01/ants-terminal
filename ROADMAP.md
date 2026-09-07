@@ -53003,6 +53003,58 @@ plus two gaps hit while sweeping stale spec citations under ANTS-4757.
 
   Tool count 95 is the second observable: a later item adding a verb should
   move it, and the same three-step reading applies.
+  RE-SCOPE, 2026-09-07, raised by the user and then measured. This item's
+  cost is far smaller than filed, and on the dominant workflow of this
+  machine the defect cannot occur at all.
+
+  THE MEASUREMENT. A Claude Code session running in an Ants tab is a
+  GRANDCHILD of the Ants process — ancestry walked live: the tool's bash,
+  then `claude`, then the tab's `-bash`, then
+  `~/.local/share/ants-terminal/bin/ants-terminal`, then systemd --user.
+  One ants-terminal process was running, so there was no second instance to
+  survive. The MCP server is bound inside that same GUI process
+  (ClaudeIntegration::startMcpServer).
+
+  SO THE CLIENT DIES WITH THE SERVER. Restarting Ants to pick up a rebuilt
+  verb necessarily terminates every session that could have been holding a
+  stale tool list, and the session that replaces it fetches the list at its
+  own start — already carrying the new verb. There is nothing left to
+  refresh.
+
+  WHICH SEPARATES TWO PROBLEMS THIS BODY CONFLATES, and only one of them
+  was ever real:
+    1. STALE SERVER BINARY — a verb change not picked up. Already solved,
+       and this body says so: pick_socket() runs per request inside
+       forward() and prefers a live-PID socket, so restarting Ants alone is
+       enough. This is what feedback_query's `possibly_stale_binary` flag
+       detects, and it is about the SERVER, not the tool list.
+    2. STALE CLIENT TOOL LIST — a new or re-shaped verb invisible to a
+       RUNNING session. Only reachable by a session that OUTLIVES the Ants
+       restart, i.e. one hosted outside the Ants instance being restarted:
+       another terminal emulator, an editor's terminal, a detached
+       tmux/screen, or a remote session. CLAUDE.md records that this
+       machine runs Claude Code "almost exclusively inside Ants Terminal",
+       so that population is small and may be empty.
+
+  WHAT THIS DOES NOT SAY. It is not a claim that the transport analysis is
+  wrong — the bridge genuinely has no server-to-client path, and that
+  finding stands. It narrows WHO PAYS, and therefore what the fix is worth.
+
+  HOW TO TEST RECONNECT NOW, corrected. The earlier procedure recorded here
+  is UNRUNNABLE from inside Ants for the reason above. It needs a client
+  that survives the restart: run `claude` in a non-Ants terminal (the
+  bridge is configured user-level in ~/.claude.json, so any session on this
+  machine reaches it), let it cache the tool list, then rebuild and restart
+  Ants, then in that surviving session re-read a changed verb's schema —
+  old text confirms the cache, then Reconnect and re-read.
+
+  RECOMMENDATION, not taken unilaterally because it is a judgement about
+  value rather than a fact: consider re-scoping this to 💭, or narrowing it
+  to "document that restarting Ants restarts its sessions, so a new verb is
+  picked up for free". Building a persistent-socket transport or moving to
+  HTTP/SSE to serve a population that may be empty is the wrong trade, and
+  the ONE thing that would justify it is evidence of a real out-of-Ants
+  session hitting this. Nobody has produced one.
   **Layman:** Claude Code learns the tool list once when it starts. There is no way for Ants to tell it the list changed, so a brand-new tool stays invisible until Claude Code itself is restarted.
   Kind: investigate.
   Source: cc-session-feedback claude-config 2026-09-07.
