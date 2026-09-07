@@ -26,6 +26,7 @@ make these rows pass or fail for reasons unrelated to `doc_lint`.
 | `Inv17EligibilityFiltersWithoutSkipping` | INV-17 | An ineligible document is not a skip and not an error; a run selecting no spec leaves `spec_lint` out of `checks_run[]`. Carries the `line_count` map-merge assertion. |
 | `Inv19UncheckedDocumentsAreNamed` | INV-19 | Every unchecked document is named with its reason, and the result says it is incomplete. |
 | `Inv20CitationFilesUnderItsDocument` | INV-20 | A citation finding is filed against the document that contains it; the target appears only in `message`. |
+| `DISABLED_CorpusCalibration` | — | Not a contract. Prints the figures § 6 asks for, measured against the real docs tree, so a later sweep can re-measure rather than trust a pasted number. Re-runnable. |
 
 ## Two fixture choices worth stating
 
@@ -67,6 +68,16 @@ The key is kept anyway, and the claim is not softened. It is what makes the
 order total rather than merely deterministic, and it is the guard if the sort is
 ever changed to an unstable one — at which point the mutation becomes reddenable
 and this row starts earning its place.
+
+## What the calibration is for
+
+Its figures are deliberately NOT copied into this document — a pasted number
+goes stale silently, and the whole point is that a later reader can re-run it.
+Two things its first run established that no fixture could. One open per
+document holds at corpus scale, not just over the three-file INV-1 tree. And the
+inherited symbol budget is exhausted early in a whole-corpus run, leaving most
+needles `not_checked` — reported honestly through the tri-state and the
+truncation flag, but thin enough to be worth a decision; ANTS-4917 carries it.
 
 ## Not covered here, deliberately
 

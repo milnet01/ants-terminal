@@ -17,6 +17,8 @@
 #include "../doc_citations/fixture.h"
 
 #include <QDir>
+#include <QDirIterator>
+#include <QElapsedTimer>
 #include <QString>
 #include <QStringList>
 
@@ -410,4 +412,62 @@ TEST(DocLint, Inv20CitationFilesUnderItsDocument) {
         << "the target is named in message, the only place it appears";
     EXPECT_TRUE(r.checkedDocs.contains(doc));
     EXPECT_FALSE(r.checkedDocs.contains(target));
+}
+
+// Not a contract — a re-runnable MEASUREMENT, so a later sweep can ask "does
+// this still produce these figures?" rather than "do these passages agree?".
+// Disabled by default because it walks the real corpus. qInfo is suppressed in
+// the test bundles, hence fprintf.
+//
+// Run with:
+//   ./test_core --gtest_also_run_disabled_tests --gtest_filter='DocLint.DISABLED_CorpusCalibration'
+TEST(DocLint, DISABLED_CorpusCalibration) {
+    const QString root = QString::fromUtf8(ANTS_PROJECT_ROOT_PATH);
+    const QDir rootDir(root);
+    QStringList docs;
+    QDirIterator it(rootDir.filePath(QStringLiteral("docs")),
+                    {QStringLiteral("*.md")}, QDir::Files, QDirIterator::Subdirectories);
+    while (it.hasNext()) docs << rootDir.relativeFilePath(it.next());
+    docs.sort();
+
+    DocLint::Probe probe;
+    DocLint::Options o;
+    o.rootCanonical         = root;
+    o.symbols.rootCanonical = root;
+    o.specsDirRel           = QStringLiteral("docs/specs");
+    o.probe                 = &probe;
+
+    QElapsedTimer timer;
+    timer.start();
+    const DocLint::Result r = DocLint::run(docs, o);
+    const qint64 ms = timer.elapsed();
+
+    fprintf(stderr, "\n=== doc_lint corpus calibration ===\n");
+    fprintf(stderr, "enumerated       %d\n", int(docs.size()));
+    fprintf(stderr, "checked          %d\n", int(r.checkedDocs.size()));
+    fprintf(stderr, "skipped          %d\n", int(r.skipped.size()));
+    fprintf(stderr, "check_errors     %d\n", int(r.checkErrors.size()));
+    fprintf(stderr, "findings         %d\n", int(r.findings.size()));
+    fprintf(stderr, "elapsed_ms       %lld\n", static_cast<long long>(ms));
+    // The SHARED read only. The two adapted engines open their own files and
+    // expose no counter, so six of the spec's nine-open budget are unobservable
+    // from here — which is why § 2.1 states it as a budget and asserts three.
+    fprintf(stderr, "shared_opens     %d  (adapters' opens are not instrumented)\n",
+            probe.opens);
+
+    for (const QString &verb : DocLint::checkNames()) {
+        int n = 0;
+        for (const DocFinding::Finding &f : r.findings) if (f.verb == verb) ++n;
+        fprintf(stderr, "  %-16s %5d  %s\n", qPrintable(verb), n,
+                r.checksRun.contains(verb) ? "ran" : "DID NOT RUN");
+    }
+    fprintf(stderr, "passages_total   %d\n", r.stats.passagesTotal);
+    fprintf(stderr, "passages_compared %d\n", r.stats.passagesCompared);
+    fprintf(stderr, "symbols total/resolved/unresolved/not_checked  %d/%d/%d/%d\n",
+            r.stats.symbolsTotal, r.stats.symbolsResolved,
+            r.stats.symbolsUnresolved, r.stats.symbolsNotChecked);
+    fprintf(stderr, "unparsed_total   %d\n", r.stats.unparsedTotal);
+    fprintf(stderr, "sections_checked %s\n", r.stats.sectionsChecked ? "true" : "false");
+    fprintf(stderr, "specs line_count entries %d\n", int(r.stats.lineCount.size()));
+    SUCCEED();
 }

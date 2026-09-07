@@ -2426,6 +2426,11 @@ if(ANTS_TESTS)
         # The calibration harness walks the spec corpus from the same root.
         DOCS_STANDARDS_SPECS_MD_PATH="${CMAKE_SOURCE_DIR}/docs/standards/specs.md"
         DOCS_SPECS_DIR_PATH="${CMAKE_SOURCE_DIR}/docs/specs")
+    set_property(SOURCE tests/features/doc_lint/test_doc_lint.cpp
+        APPEND PROPERTY COMPILE_DEFINITIONS
+        # ANTS-3663 § 6 — the calibration harness walks the real corpus; every
+        # contract row uses a seeded temp tree and needs no path.
+        ANTS_PROJECT_ROOT_PATH="${CMAKE_SOURCE_DIR}")
     set_property(SOURCE tests/features/doc_dedup/test_doc_dedup.cpp
         APPEND PROPERTY COMPILE_DEFINITIONS
         # ANTS-3660 § 2.3 — the corpus-calibration harness walks the whole docs

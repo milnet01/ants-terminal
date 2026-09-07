@@ -13109,6 +13109,12 @@ fixes don't address. Roadmapped here as their own design tasks.
   Kind: enhancement.
   Source: in-session-2026-09-07, ANTS-3663 § 7.
 
+- 📋 [ANTS-4917] **Decide the symbol budget a corpus-wide `doc_lint` run should use.**
+  Measured by DocLint.DISABLED_CorpusCalibration over this project's docs tree on 2026-09-07: the great majority of symbol occurrences came back not_checked, because doc_lint decrements DocSymbols::Options::maxSymbolsPerRun across every document and that default is sized for a single-document call. The run is honest about it — the state is a third one, not a flavour of unresolved, and check_stats carries the truncated flag — so nothing is falsely reported. But doc_lint's primary caller is a whole-corpus pre-pass, and at that scale the highest-yield checker in the pre-pass resolves only a small share of what it harvested. Re-measure before choosing: the figure above is one run of one corpus and the calibration case reprints it on demand. Options are to raise the budget for doc_lint specifically, expose it as a request argument alongside max_findings, or leave it and document the ceiling so a caller reads a thin doc_symbols result correctly. Note the cost side before raising it: DocSymbols walks the SOURCE tree per needle and carries its own wall-clock deadline, so a larger budget buys coverage with latency, and ANTS-3663 section 4 is where the RAM and time budget for this verb is stated.
+  **Layman:** The one-call document checker only manages to look up a small fraction of the code names in a whole-project run, because the budget it inherits was sized for one document.
+  Kind: investigate.
+  Source: in-session-2026-09-07, ANTS-3663 corpus calibration.
+
 ### 🔬 Project Audit false-positive reduction (self-audit 2026-05-20)
 
 Ran the project's own `ants-audit` CLI against this repo (~300 findings,
