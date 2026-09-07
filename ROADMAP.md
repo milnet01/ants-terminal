@@ -42951,6 +42951,17 @@ filed below.
   See also the add_subsection guard item in this section — that half of
   the trap is now gone, this is the half still standing.
   Progress (2026-08-26): mechanism found, so the item can stop being described by its symptom. NOT fixed -- the fix it proposes is not the fix the mechanism calls for. op:add DOES refuse a feature-grouped section (ANTS-3416, code feature_grouped_section). It did not refuse Vestige's because firstFeatureGroupedTopicLine's condition 2 returns -1 the moment ANY `### ` heading is a canonical category word -- its comment says so outright: "a single canonical heading means it is a flat (possibly messy) category layout ... not feature-grouped". Vestige's [Unreleased] is MIXED, dated topics on top and flat categories in the tail, so that one canonical heading declassifies the whole section, the refusal never fires, and the flat insert lands at the end of the legacy tail. So a MIXED section falls between the two guards, and this is the sharp statement of the defect. add_subsection's flat_section guard is an ORDER test and now TOLERATES a mixed section (see ANTS-4562). op:add's feature_grouped guard is a PRESENCE test and DECLASSIFIES the same section. One shape, two classifiers, opposite answers -- and the gap between them is exactly where the entry gets buried. WHY THE PROPOSED FIX IS THE WRONG SHAPE: there is no advisory on this path to add a distance to. The refusal returns early, and when it does not fire the insert simply proceeds. Reporting distance would mean inventing a new advisory, which buys a number while leaving the classifier split that caused it. THE DECISION IS WHICH CLASSIFIER IS RIGHT for a mixed section, and both guards should then use it. Given ANTS-4562 settled that a mixed section is SAFE to insert at the top of, the consistent answer is for op:add to route a mixed section to add_subsection rather than append to the tail. That is a behavioural change with a live caller, so it wants deciding, not assuming at the end of a session.
+  DECIDED (2026-09-07, user). This item's last note says the fix "wants deciding, not assuming at the end of a session", and the decision is now taken: op:add on a MIXED section routes to the top, as add_subsection does, instead of appending to the tail.
+
+  The reasoning offered and accepted: ANTS-4562 already settled that a mixed section is SAFE to insert at the top of, so this makes the two guards agree rather than leaving the classifier split that caused the defect. It fixes the burial instead of describing it.
+
+  REJECTED, and both were put explicitly. Reporting the DISTANCE in the advisory — this item's own earlier suggestion — buys a number while leaving the split in place, and a session reading ok:true still moves on. Refusing outright is consistent but hands the caller an error where the previous remedy text pointed them at op:add in the first place, and that loop is what buried the two entries.
+
+  NOT STARTED. It is a behavioural change with a live caller, so it needs a test pinning the new insert position before the behaviour moves. Nothing has been edited.
+
+  WHERE THE WORK IS. `changelog_log` op:add's guard is the `feature_grouped_section` refusal (ANTS-3416) and its classifier is `firstFeatureGroupedTopicLine`, whose condition 2 returns -1 the moment ANY `### ` heading is a canonical category word — the reason Vestige's section was not refused. That classifier is what both guards should share.
+
+  CHECK BEFORE BUILDING: whether add_subsection's own guard (ANTS-4356 flat_section / ANTS-4562's order test) already expresses the right classifier. If it does, the change is routing op:add through it rather than writing a third one.
   **Layman:** Adding a changelog entry can succeed while burying it 10,000 lines below where anyone reads.
   Kind: enhancement.
   Source: Vestige_Ants_MCP_Feedback.md 2026-08-20 (still-open recheck of their 2026-07-31 report).
@@ -52712,6 +52723,56 @@ it look feasible, and the one that bounds what is achievable, are on the item.
   Kind: refactor.
   Source: user-request-2026-09-07.
   Lanes: mcp, build.
+
+### Cold-eyes logs move to review history (user request 2026-09-07)
+
+A gated document should carry its rules, not its review history: the log moves
+to docs/reviews/ and the section keeps its heading plus a one-line pointer. The
+convention already exists and is partly applied; this section holds the work to
+finish it and to make it the default rather than the alternative.
+
+- 📋 [ANTS-4934] **specs.md 5.7 makes an inline loop log the default and the moved record the alternative; invert it.**
+  MEASURED 2026-09-07, and the rule already exists — it is the DEFAULT that is wrong, not the mechanism.
+
+  docs/standards/specs.md § 5.7 reads: "The rules above bind the rows, not their location. Rows NORMALLY sit in the section. Where it names a record instead — documentation.md § 9.1's form — the section keeps its heading and a one-line pointer, and the rows go to docs/reviews/."
+
+  So moving out is already sanctioned and already has a shape. What is asked for is inverting which arm is the default.
+
+  THE SHAPE IS ALREADY PROVEN, so nothing needs designing. docs/standards/roadmap-format.md carries the finished form: the `## Cold-eyes loop log` heading kept, body replaced by a pointer to docs/reviews/roadmap-format-review-log.md, and that file's own header states the reasoning. Eight owned standards are already converted this way and docs/reviews/ holds fifteen files.
+
+  WHY THE HEADING STAYS, from documentation.md § 9.1 and worth not rediscovering: contents tables link to its anchor, a required-section check needs it, and the loop-log tally check reads ROWS — so a section holding only a pointer fails nothing.
+
+  THE EDIT IS A CONTRACT CHANGE. Inverting the default changes what every conforming project writes, so it re-arms CLAUDE.md rule 14 and needs `review-contract --genre standard`. documentation.md § 9.1 states the same rule from the other side; it was verified 2026-09-07 to sit in THIS project's delta half, not the mirrored half, so it is editable here — but check that again before editing, since the mirror boundary moves.
+
+  DO THIS BEFORE THE MIGRATION ITEM BESIDE IT. Migrating documents against a standard that still calls the inline form normal produces a corpus disagreeing with its own rule.
+  **Layman:** Our rule says review history normally stays inside the document. We want the opposite: it moves out and leaves a pointer.
+  Kind: doc.
+  Source: user-request-2026-09-07.
+  Lanes: docs, standards.
+
+- 📋 [ANTS-4935] **128 specs and one owned standard still carry their loop log inline; 13 mirrored standards must be moved upstream instead.**
+  MEASURED 2026-09-07 by classifying every document under docs/ that carries a cold-eyes or loop-log heading into three states — an inline log, a pointer stub, or neither. Re-measure before starting; these are a snapshot.
+
+    docs/specs        128 inline, 22 already stubbed
+    docs/standards     14 inline, 7 already stubbed
+    docs/decisions      2 inline
+    docs/plans          1 inline (deprecated directory)
+
+  THE STANDARDS SPLIT IS THE LOAD-BEARING PART. Of the 14 inline standards, THIRTEEN ARE MIRRORS of ~/.claude/standards/ — changelog-format, coding, commits, documentation, languages/{cpp,python,qt}, local-gate, releases, security, spec-format, testing, versioning. CLAUDE.md forbids editing a mirrored half: the correction goes upstream, then tools/check-standard-mirrors.sh --write re-copies it down, and tools/hooks/pre-commit refuses a commit whose mirror has drifted. So those thirteen are NOT this project's work at all; they are a ~/.claude task. Only versioning-overrides.md is owned here and still inline.
+
+  A NAIVE HEADING GREP OVER-COUNTS, and this is the trap. A converted document keeps its heading and carries only a pointer, so grepping for the heading finds both states. Classify by the BODY under the last such heading — a stub says "Moved to" — or the count comes back roughly double. That error was made and corrected during the measurement above.
+
+  A HEADING GREP ALSO UNDER-COUNTS THE FROZEN SET. Review records also live under `### Loop N (date)` and `### Phase B (loops 1-3)` headings that a "Cold-eyes loop log" pattern misses, and under `## HIGH` in docs/reviews tails. That was measured while fixing ANTS-4757, where five pins sat in exactly those.
+
+  ORDER: the standard's default must be inverted first, by the item beside this one. Migrating against a standard that still calls the inline form normal produces a corpus that disagrees with its own rule.
+
+  DO NOT do this as one commit over 128 files. ANTS-3647 records why a bulk documentation rewrite is unreviewable, and its own exception is instructive: ANTS-4757 was allowed to sweep 32 files ONLY because the class was mechanically decidable and verifiable back to zero. A per-document judgement about what is history and what is live is not that.
+
+  THE MOTIVATING REASON, which is not in the standards and is why this is worth doing: a cold review lane receives a gated document IN FULL, its loop log included. So a lane reviewing CLAUDE.md or a standard holds every dated row of prior findings and fixes — the contamination the cold read exists to avoid. Reported by the claude-config session 2026-09-07 and recorded in their ~/.claude/skills/_shared/cold-reader-contamination.md; UNVERIFIED from this side, so verify before citing it as the justification.
+  **Layman:** Move the review history out of the documents that still hold it, leaving a pointer behind — but the copied-in standards have to be fixed in the place they are copied from.
+  Kind: doc-fix.
+  Source: user-request-2026-09-07.
+  Lanes: docs, standards, specs.
 
 ### 🎨 UI polish (user request 2026-09-04)
 
