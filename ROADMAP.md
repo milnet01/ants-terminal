@@ -53055,6 +53055,31 @@ plus two gaps hit while sweeping stale spec citations under ANTS-4757.
   HTTP/SSE to serve a population that may be empty is the wrong trade, and
   the ONE thing that would justify it is evidence of a real out-of-Ants
   session hitting this. Nobody has produced one.
+  DO NOT plan to "test this when we next add a verb". Adding one does not
+  create the divergence, and the reasoning is easy to re-derive wrongly —
+  it was, in conversation, immediately after the re-scope above.
+
+  Adding a verb changes what the SERVER offers. Making that live means
+  restarting Ants, which kills the in-Ants sessions, and the session that
+  replaces it fetches the list from the new server. The new verb is simply
+  there, for free. That is the same enumeration as before and a new verb
+  does not add a row to it:
+
+    restart nothing        server old, list old        no divergence
+    restart Claude Code    server old, list fresh      no divergence
+    restart Ants           server new, list fresh      no divergence
+    restart Ants + an out-of-Ants client  server new, list STALE   yes
+
+  Only the last row is the defect, and it is the only row that needs
+  Reconnect. It stays unreachable from inside Ants however many verbs are
+  added.
+
+  THE REAL TRIGGER to watch for is not a new verb, it is a new HOST: someone
+  running Claude Code outside the Ants instance being restarted — an
+  editor's integrated terminal, a detached tmux/screen, a remote or cloud
+  session. That is when the defect becomes reachable AND testable at the
+  same moment, which is the point at which this item is worth costing
+  again. Until then it has no reported sufferer.
   **Layman:** Claude Code learns the tool list once when it starts. There is no way for Ants to tell it the list changed, so a brand-new tool stays invisible until Claude Code itself is restarted.
   Kind: investigate.
   Source: cc-session-feedback claude-config 2026-09-07.
