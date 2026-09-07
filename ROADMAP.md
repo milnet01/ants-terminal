@@ -39877,7 +39877,7 @@ are closed inline in the feedback files rather than filed here.
   this item's critical path entirely; what stands between it and a start is
   ANTS-3771, and nothing else recorded here.
 
-- 📋 [ANTS-4492] **roadmap_migrate classifies a mixed-format roadmap by majority with no note naming the second format.**
+- ✅ [ANTS-4492] **roadmap_migrate classifies a mixed-format roadmap by majority with no note naming the second format.**
   Vestige's ROADMAP.md is genuinely two formats in one file: 989 GFM task-list bullets (`- [x]` /
   `- [ ]`, the historical bulk) and 36 ants-v1 emoji bullets (`- 📋 [3D_E-0046] **...**`, the ones
   roadmap_log itself writes). roadmap_migrate reported a single `sources:[{format:
@@ -39900,6 +39900,21 @@ are closed inline in the feedback files rather than filed here.
   Kind: enhancement.
   Source: cc-feedback-2026-08-18 (Vestige).
   Lanes: mcp, roadmap-store.
+  Resolved (2026-09-07). `sources[]` entries now carry `mixed`, `gfm_bullets` and `non_gfm_bullets`, emitted only when the source actually carries both dialects.
+
+  THE REPORTED CAUSE WAS WRONG, and the real one is worse. This item says roadmap_migrate "classifies by majority". `detectRoadmapFormat` does not count anything: `hasGfm` is a BOOLEAN checked before the ants-v1 default, so one `- [ ]` line anywhere outranks any number of ants-v1 bullets. It also stops at 300 non-blank lines, and an `ants-roadmap-format` marker returns before a single bullet is examined. Majority never enters it — on Vestige the two readings happened to coincide.
+
+  The label is left alone. The majority call is defensible, as this item says, and the counts are what was missing.
+
+  WHERE THE NUMBERS COME FROM. `walkSource` already built the per-bullet records via `parseBullets`; the dialect tag was on each record and thrown away for this purpose. So the tally is a loop over records already in memory, not a second parse — and because it reads the whole source rather than the classifier's 300-line window, it is more accurate than the label it sits beside.
+
+  A TOP-LEVEL KEY ON THE SOURCE, NOT A NOTE, and that was decided rather than defaulted. ANTS-4559 wants `notes[]` cut back and possibly made opt-in; a signal a caller can switch off is not one this can rely on. `defaulted_fields` sits beside `notes[]` for the same reason. This also answers the interaction the two items have with each other.
+
+  NAMING follows roadmap_query's ANTS-4604 precedent deliberately: `non_gfm_bullets` is NOT claimed to be ants-v1. The per-bullet tag is what is read and only github-task-list sets it, so the remainder is everything else, and calling it a dialect would be inventing one.
+
+  Tests in tests/features/roadmap_migrate_verb, which builds into test_core. The mixed row was red on the three new fields before the change. The uniform row asserts three absences and was re-proven by mutation — emitting unconditionally turns it red. Its fixture carries no format marker deliberately: a marked file returns early and can never reach the mixed case, which is worth knowing before writing another fixture here.
+
+  NOT DONE, and it is this item's second paragraph rather than its headline: `defaulted_fields` is still reported as a bare count and still reads as bookkeeping rather than \"N items were given invented metadata\". Surfacing it more prominently was asked for here and is not shipped. ANTS-4494 records why the defaulting itself is correct and must not be changed — it is the format standard's own reader-side fallback — so the remaining work is presentation only.
 
 - ✅ [ANTS-4493] **Id synthesis draws from the project's live id space and the allocator never consults the store, so the first post-migration append collides.**
   VERIFIED against src/remotecontrol_roadmap_log.cpp:717-745. The reporter diagnosed an
@@ -42739,6 +42754,21 @@ filed below.
         caller can ask for quarantined_id only). That composes with the
         existing fields= narrowing, which currently cannot help because
         notes is both the field you need and the field that is too big.
+  Progress (2026-09-07): the reported defect is LARGELY ALREADY FIXED, by work that shipped after this was filed. Re-scoped to the residue rather than closed, because the residue is the half the item calls the signal.
+
+  VERIFIED IN THE TREE, not taken from the investigation. `setNotes()` in `src/roadmapmigrateverb.cpp` collapses notes BEFORE the cap, keyed by (code, detail, source_index) in first-appearance order: a merged row carries `count` plus up to three `sample_lines` and NO `line`, a row of one keeps the old shape, and every row carries `count` so the counts sum to `notes_count`. The envelope emits `notes_collapsed` and `notes_truncated` as separate flags. That is ANTS-4649, shipped 2026-08-25 — five days after this item was filed on 2026-08-20.
+
+  Its own comment names this item's scenario almost exactly: 357 `field_defaulted` objects beside `defaulted_fields:{source:357}` and `notes_count:357`, stating the same fact twice, and paid twice by a caller who previews first.
+
+  SO FIX (a) IS DONE, by collapse rather than suppression. `field_defaulted` has a fixed detail per field, so across N items it folds to at most two rows instead of 2N notes. `id_allocation_owed` folds likewise. The "three-note groups repeating per item" this item describes cannot occur now.
+
+  WHAT REMAINS, and it is why this stays open. `quarantined_id` carries `rec.idToken` as its detail, so no two quarantined ids collapse together — the population stays as large as the number of quarantined ids and is still capable of hitting the 200-group cap and setting `notes_truncated`. That is precisely the note this item calls "the notes worth reading". So the noise is gone and the truncation of the signal is not.
+
+  Fix (b) is NOT implemented as written: there is no `notes_summary` code-to-count map and no per-code filter. `fields=` can drop `notes` wholesale, which is coarse — it cannot ask for `quarantined_id` only, which is the actual request.
+
+  RE-SCOPED to: let a caller ask for the note codes it wants, so a large quarantined_id population is reachable without raising the cap for everything else. A `codes:[...]` filter is the shape; measure whether the cap still binds after ANTS-4649 before building anything.
+
+  CONSTRAINT ON ANY CHANGE. `RoadmapMigrateVerb.Inv10NotesAreBoundedOnBothAxes` in tests/features/roadmap_migrate_verb pins the current contract — collapse under 20 rows for 250 identical notes, `notes_count` as the true total, per-row `count`, no `line` on a merged row, and the sum invariant. The shape is also pinned as INV-10 in docs/specs/ANTS-3855-roadmap-migrate-verb.md, so redesigning it needs a spec amendment and its gate, not just an edit.
   **Layman:** The migration preview buries its useful answers under thousands of repeated lines and then cuts off the useful ones.
   Kind: perf.
   Source: Vestige_Ants_MCP_Feedback.md 2026-08-20.
