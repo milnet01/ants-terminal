@@ -8676,6 +8676,19 @@ class; the deferrals below cover the rest.
   boundary matcher against the cleaned lane, and only then decide
   whether the softer matcher is still needed. Do not implement the
   strict matcher before that measurement.
+  Partially unblocked (2026-09-07): ANTS-4822 shipped, but it cleaned
+  DATA MEMBERS only, and this item's measured noise was broader than
+  that. Of the three examples its body names, only one
+  (`m_currentTerminal`) is a data member -- the others are a function
+  renamed to a longer name (`isCatastrophic` to `isCatastrophicRegex`)
+  and a moved method (`SessionManager::saveAll`). So roughly a third of
+  the noise population has been addressed and the rest has not. Next
+  step is unchanged and is a MEASUREMENT, not an implementation: run the
+  boundary matcher against the cleaned lane and count what survives.
+  Ship it only if the surviving findings are mostly real drift;
+  otherwise take the softer camelCase-aligned-prefix matcher this item
+  already proposes. Do not implement the strict matcher on the
+  assumption that ANTS-4822 was enough.
 
 - ✅ [ANTS-2123] **auditengine: populate countSuppressed for semgrep/cppcheck/clang-tidy (SARIF parity, ANTS-2118 M1).**
   summariseSarif counts SARIF suppressions[] into s.countSuppressed (ANTS-1254 INV-3) but summariseSemgrepJson / summariseClangTidyText / summariseCppcheckXml leave it at 0, so last_audit_summary reports `suppressed:0` for a semgrep run with N nosemgrep-ignored findings — contradicting the SARIF path for the same logical run. At minimum read semgrep `extra.is_ignored` (auditengine.cpp summariseSemgrepJson) and bump s.countSuppressed; document the clang-tidy(NOLINT)/cppcheck(inconclusive) gap in the header if left at 0. Needs its own test locking the suppression-count contract.
