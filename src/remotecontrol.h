@@ -617,6 +617,27 @@ public:
     // ANTS-4623 — `testCoverageChecked` is the § Invariants <-> § Tests
     // parity flag, reported for the reason its two siblings are: a check
     // that could not run must not read as one that ran clean.
+    // ANTS-4848 — how many of the headings FOLLOWING an `after_section` a new
+    // section at `newLevel` must be placed past, so it does not adopt them.
+    //
+    // `levelsAfter` is the heading levels that follow the anchor, in document
+    // order. The answer is the length of the leading run DEEPER than
+    // `newLevel`: those are the anchor's trailing children, and a heading
+    // spliced in front of them silently re-parents the lot.
+    //
+    // Keyed on the NEW section's level, not the anchor's. That is the whole
+    // fix: a caller asking for a level-2 section after a level-3 one means a
+    // peer of the level-3's PARENT, which the anchor's own level cannot say.
+    //
+    // ONE rule for both write paths deliberately — the store path works in
+    // `position` and the markdown path in line numbers, but the question is the
+    // same, and stating it twice is how the two would drift. Public and static
+    // for the reason specLintBuildResponse is: it is the part most worth
+    // testing directly, and remotecontrol_internal.h is barred from tests by
+    // ANTS-3833 INV-5.
+    static int createSectionSkipCount(const QVector<int> &levelsAfter,
+                                      int newLevel);
+
     static QJsonObject specLintBuildResponse(
         const QList<DocFinding::Finding> &findings, bool sectionsChecked,
         bool testCoverageChecked,

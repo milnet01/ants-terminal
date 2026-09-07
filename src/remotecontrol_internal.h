@@ -469,6 +469,7 @@ QString rlDetectCounterPrefix(const QString &markdown, const RoadmapParse::IdFor
 QString rlResolveCounterPrefix(const QString &idPrefixArg, const QString &markdown, const QString &callerCanonical);
 qint64 rlMaxExistingIdForPrefix(const QVector<RoadmapDialog::BulletRecord> &bullets, const QString &pfx);
 QStringList rcSectionChildSlugs(const QVector<RoadmapIndex::Section> &index, const RoadmapIndex::Section &sec);
+
 QJsonDocument rcSectionHasSubsectionsRefusal(const QString &slug, const QStringList &children);
 void rcProjectHeadlineOnly(QJsonArray &arr);
 void rcProjectChangelogHeadlineOnly(QJsonArray &arr);

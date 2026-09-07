@@ -12,6 +12,7 @@
 #include <QTemporaryDir>
 #include <cstdio>
 #include "remotecontrol.h"
+#include <QVector>
 
 #ifndef ANTS_RC_SOURCES
 #error "ANTS_RC_SOURCES compile definition required"
@@ -265,4 +266,92 @@ TEST(McpRoadmapLogCreateSection, SuccessEnvelopeShape) {
     EXPECT_TRUE(out.contains("line"));
     EXPECT_TRUE(out.contains("bytes_written"));
     EXPECT_GT(out["bytes_written"].toInt(), 0);
+}
+
+// ------------------------------------------------------------- ANTS-4848 --
+//
+// A level-2 section created after a level-3 anchor was spliced in FRONT of the
+// anchor's trailing level-3 siblings, silently re-parenting them. Nothing was
+// corrupted, but the success envelope was not evidence the section was usable:
+// the follow-up append_batch then refused section_has_subsections, correctly,
+// and that refusal's own remedies do not apply — a child slug is the wrong
+// section, and creating again just makes a second empty one.
+//
+// The rule is keyed on the NEW section's level, not the anchor's. That is the
+// whole fix: asking for a level-2 after a level-3 means a peer of the level-3's
+// PARENT, which the anchor's own level cannot express.
+
+TEST(McpRoadmapLogCreateSection, Ants4848SkipCountIsKeyedOnTheNewLevel) {
+    // The reported shape: anchor is level 3, three level-3 siblings follow, and
+    // the caller wants a level 2. All three must be stepped over.
+    EXPECT_EQ(RemoteControl::createSectionSkipCount({3, 3, 3, 2}, 2), 3);
+
+    // The same run, but the caller wants a level 3 — a peer of the siblings, so
+    // it belongs immediately after the anchor and nothing is skipped. This is
+    // the case that already worked, and it must keep working.
+    EXPECT_EQ(RemoteControl::createSectionSkipCount({3, 3, 3, 2}, 3), 0);
+
+    // Nothing deeper follows: a no-op, which is every ordinary call.
+    EXPECT_EQ(RemoteControl::createSectionSkipCount({2, 3}, 2), 0);
+    EXPECT_EQ(RemoteControl::createSectionSkipCount({}, 2), 0);
+
+    // The run stops at the first same-or-shallower heading; a deeper one after
+    // it belongs to that section, not to the anchor.
+    EXPECT_EQ(RemoteControl::createSectionSkipCount({3, 2, 3}, 2), 1);
+}
+
+TEST(McpRoadmapLogCreateSection, Ants4848Level2AfterLevel3DoesNotAdoptSiblings) {
+    // Anchor `sub-a` is level 3 with two level-3 siblings after it, all under
+    // one level-2 parent. A new level-2 section must land AFTER the siblings.
+    const QString md = QStringLiteral(
+        "# Test Roadmap\n"
+        "\n"
+        "## Parent\n"
+        "\n"
+        "### Sub A\n"
+        "\n"
+        "- 📋 [ANTS-9001] **One.**\n"
+        "  Kind: implement.\n"
+        "  Source: test.\n"
+        "\n"
+        "### Sub B\n"
+        "\n"
+        "- 📋 [ANTS-9002] **Two.**\n"
+        "  Kind: implement.\n"
+        "  Source: test.\n"
+        "\n"
+        "### Sub C\n"
+        "\n"
+        "- 📋 [ANTS-9003] **Three.**\n"
+        "  Kind: implement.\n"
+        "  Source: test.\n"
+        "\n");
+
+    QTemporaryDir dir;
+    writeRoadmap(dir.path(), md);
+    RemoteControl rc(nullptr);
+    QJsonObject req = baseReq(dir.path());
+    req["after_section"] = QStringLiteral("sub-a");
+    req["level"]         = 2;
+    req["title"]         = QStringLiteral("New Top Level");
+
+    const QJsonObject out =
+        rc.cmdRoadmapLogCreateSectionForTest(req).object();
+    ASSERT_TRUE(out["ok"].toBool())
+        << out["error"].toString().toStdString();
+
+    const QString updated = readRoadmap(dir.path());
+    const int newIdx = updated.indexOf(QStringLiteral("## New Top Level"));
+    const int subB   = updated.indexOf(QStringLiteral("### Sub B"));
+    const int subC   = updated.indexOf(QStringLiteral("### Sub C"));
+    ASSERT_NE(newIdx, -1);
+    ASSERT_NE(subB, -1);
+    ASSERT_NE(subC, -1);
+
+    EXPECT_GT(newIdx, subB)
+        << "a level-2 heading spliced before Sub B adopts it — that is the "
+           "silent re-parenting ANTS-4848 reports";
+    EXPECT_GT(newIdx, subC)
+        << "Sub C too: the whole trailing run belongs to Parent, not to the "
+           "new section";
 }

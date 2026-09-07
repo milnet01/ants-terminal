@@ -1054,6 +1054,14 @@ QString RemoteControl::formatRoadmapBullet(
 // ANTS-1878 — roadmap_log op:"create_section". Splice a new
 // ## / ### heading at after_section.lineEnd. No counter touch
 // (creating a section does not allocate an id). See docs/specs/ANTS-1878.md.
+int RemoteControl::createSectionSkipCount(const QVector<int> &levelsAfter,
+                                          int newLevel) {
+    int n = 0;
+    while (n < levelsAfter.size() && levelsAfter.at(n) > newLevel)
+        ++n;
+    return n;
+}
+
 QJsonDocument RemoteControl::cmdRoadmapLogCreateSection(const QJsonObject &req) {
     auto rlErr = [](const QString &code, const QString &message) {
         QJsonObject env;
@@ -1300,7 +1308,34 @@ QJsonDocument RemoteControl::cmdRoadmapLogCreateSection(const QJsonObject &req) 
                 const auto afterRow = store.readSection(*afterId, err);
                 if (!afterRow)
                     return false;
-                const int newPos = afterRow->position + 1;
+                // ANTS-4848 — step past the anchor's trailing DEEPER sections
+                // instead of splicing in front of them. `position + 1` alone
+                // re-parents them: the render infers nesting from the
+                // (level, position) sequence, so a level-2 row dropped ahead of
+                // a run of level-3 rows adopts the lot. The follow-up
+                // append_batch then refuses section_has_subsections — correctly,
+                // and with remedies that do not apply, because a child slug is
+                // the wrong section and creating again just makes a second
+                // empty one.
+                //
+                // parent_id is NOT the mechanism and setting it would fix
+                // nothing: create_section passes nullopt, and the render reads
+                // (position, slug) order, checking parent_id only for
+                // consistency.
+                const auto ordered = store.listSectionsOrdered(projectId, err);
+                if (!ordered)
+                    return false;
+                QVector<int> levelsAfter, positionsAfter;
+                for (const auto &s : *ordered) {
+                    if (s.position <= afterRow->position)
+                        continue;
+                    levelsAfter.append(s.level);
+                    positionsAfter.append(s.position);
+                }
+                const int skip =
+                    RemoteControl::createSectionSkipCount(levelsAfter, level);
+                const int newPos = skip > 0 ? positionsAfter.at(skip - 1) + 1
+                                            : afterRow->position + 1;
 
                 // The renumber. `section` is deliberately NOT
                 // UNIQUE (project_id, position) — the DDL comment says so
@@ -1354,9 +1389,24 @@ QJsonDocument RemoteControl::cmdRoadmapLogCreateSection(const QJsonObject &req) 
         }
     }
 
-    // 6. Splice at sec->lineEnd (0-indexed, exclusive).
+    // 6. Splice at the anchor's end (0-indexed, exclusive).
+    //
+    // ANTS-4848 — `sec->lineEnd` alone is the anchor's OWN end, computed as the
+    // next heading at the anchor's level or shallower. When the new section is
+    // SHALLOWER than the anchor, that lands it in front of the anchor's
+    // trailing siblings and silently re-parents them. The rule is keyed on the
+    // new section's level, which is the only one that can express "a peer of
+    // the anchor's parent".
+    //
+    // A no-op whenever nothing deeper follows, which is every ordinary call.
     QStringList lines = markdown.split(QChar('\n'));
-    const int insertAt = sec->lineEnd;
+    const int secIdx = int(sec - index.constData());
+    QVector<int> levelsAfter;
+    for (int j = secIdx + 1; j < index.size(); ++j)
+        levelsAfter.append(index.at(j).level);
+    const int skip = RemoteControl::createSectionSkipCount(levelsAfter, level);
+    const int insertAt =
+        skip > 0 ? index.at(secIdx + skip).lineEnd : sec->lineEnd;
     for (int i = toInsert.size() - 1; i >= 0; --i)
         lines.insert(insertAt, toInsert.at(i));
     const QString updated = lines.join(QChar('\n'));
