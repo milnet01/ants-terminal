@@ -449,7 +449,10 @@ private:
     // chars) and the confirm-multiline-paste setting is on, this shows a
     // non-modal QDialog and defers the actual paste to its Accept callback.
     // Otherwise pastes immediately.
-    void pasteToTerminal(const QByteArray &data);
+    // `submitAfter` sends the trailing Enter WITH the paste rather than
+    // after this call returns — the risky-payload arm is async, so a
+    // caller cannot sequence the Enter itself (ANTS-4456).
+    void pasteToTerminal(const QByteArray &data, bool submitAfter = false);
 private:
     // Unconditional paste — pasteToTerminal() funnels into this after the
     // (possibly-async) confirmation step.

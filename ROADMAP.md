@@ -38026,6 +38026,39 @@ whole files.
   The report's own caveat stands for everything else here — no lane could
   execute anything, so the remaining performance claims are readings of an
   algorithm rather than measurements.
+  Progress (2026-09-07, second pass): the sendScratchpad claim is VERIFIED
+  against source and FIXED. Both of this item's HIGH claims are now closed.
+  Its MEDIUM list remains unverified.
+
+  The reported mechanism holds. pasteToTerminal has two arms. With no risk
+  reason it pastes synchronously, and a following Enter is ordered
+  correctly. With one it builds the confirmation dialog and returns at once,
+  pasting later from the accept handler. sendScratchpad wrote the Enter as
+  its own statement after the call, so on the second arm the Enter reached
+  the shell alone — executing whatever the user had already typed — and the
+  scratchpad text then arrived unsubmitted. Cancel did not retract it,
+  exactly as reported.
+
+  Worse than the report implies, and the reason it is not an edge case: a
+  newline is itself a risk reason and the confirmation defaults on, so
+  composing a multi-line command — the scratchpad's whole purpose — took
+  the broken arm every time. Single-line sends took the synchronous arm and
+  worked, which is how this survived.
+
+  The fix moves the choice into pasteToTerminal as a defaulted parameter,
+  so the Enter is sent by whichever arm actually pastes. Cancel cannot
+  submit because the only write on that arm is in the accept handler. Every
+  other call site keeps the default and is unaffected.
+
+  Contract and test at tests/features/scratchpad_submit_ordering. It is a
+  source grep, and the spec says why: driving the real path needs a live PTY
+  and a click on a modeless dialog, which the unit harness has neither of.
+  The sibling paste_dialog_custom covers the same function the same way.
+
+  Verified: all four invariants red with the fix removed, green with it
+  restored, full suite green via the default preset. paste_dialog_custom
+  was re-run deliberately — it scrapes the accept lambda through a fixed
+  byte window that this edit lengthens — and passes in both states.
 
 - 📋 [ANTS-4457] **Triage: Claude-integration findings from the cold sweep.**
   Reviewer claims carried forward as-is. NOT re-verified — check each against

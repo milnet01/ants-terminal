@@ -2777,7 +2777,8 @@ QString TerminalWidget::imagePathsFromUrls(const QList<QUrl> &urls) {
     return paths.join(QLatin1Char(' '));
 }
 
-void TerminalWidget::pasteToTerminal(const QByteArray &data) {
+void TerminalWidget::pasteToTerminal(const QByteArray &data,
+                                     bool submitAfter) {
     if (!hasPty() || data.isEmpty()) return;
 
     // Defense-in-depth: paste-confirmation dialog is policy-independent of
@@ -2786,6 +2787,7 @@ void TerminalWidget::pasteToTerminal(const QByteArray &data) {
     QStringList reasons = pasteRiskReasons(data);
     if (reasons.isEmpty()) {
         performPaste(data);
+        if (submitAfter) ptyWrite("\r");
         return;
     }
 
@@ -2878,8 +2880,13 @@ void TerminalWidget::pasteToTerminal(const QByteArray &data) {
     QByteArray payload = data;
     QPointer<TerminalWidget> self(this);
     connect(pasteBtn, &QPushButton::clicked, dlg,
-            [self, dlg, payload]() {
-        if (self) self->performPaste(payload);
+            [self, dlg, payload, submitAfter]() {
+        if (self) {
+            self->performPaste(payload);
+            // The Enter belongs to the accepted paste. Sending it from the
+            // caller fired it on Cancel too (ANTS-4456).
+            if (submitAfter) self->ptyWrite("\r");
+        }
         dlg->close();
     });
 
@@ -4865,8 +4872,14 @@ void TerminalWidget::sendScratchpad() {
     if (!edit) return;
     QString text = edit->toPlainText();
     if (!text.isEmpty() && hasPty()) {
-        pasteToTerminal(text.toUtf8());
-        ptyWrite("\r");
+        // ANTS-4456 — the Enter must ride WITH the paste, not follow this
+        // call. pasteToTerminal returns immediately when the payload trips
+        // the confirmation dialog, so writing \r here sent a bare Enter to
+        // the shell first — executing whatever sat on the command line —
+        // and then delivered the scratchpad text with no Enter at all. On
+        // Cancel the Enter had already gone. A newline is itself a risk
+        // reason, so this was the scratchpad's normal path.
+        pasteToTerminal(text.toUtf8(), /*submitAfter=*/true);
     }
     edit->clear();
     hideScratchpad();

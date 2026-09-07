@@ -145,6 +145,15 @@ for security-relevant changes.
 
 ### Fixed
 
+- **Sending a multi-line scratchpad now submits the text, and only the text** (ANTS-4456)
+  Sending from the scratchpad sent the Enter before the paste confirmation
+  was answered. The shell received a bare Enter first, running whatever was
+  already typed at the prompt, and the scratchpad text then arrived without
+  being submitted; cancelling the confirmation did not take the Enter back.
+  The Enter now travels with the paste, so it is sent when the paste is and
+  not at all when it is cancelled. Multi-line sends always took this path,
+  since a newline is what raises the confirmation.
+
 - **Sixel decoding is now bounded by a whole-payload work budget** (ANTS-4456)
   Displaying a file containing a crafted Sixel image could hang the
   terminal. The decoder now stops and reports an inline error when a
