@@ -14398,7 +14398,7 @@ indie-review finding.
   Source: in-session-2026-08-26 (observed during an unrelated build).
   Lanes: claude.
 
-- 📋 [ANTS-4688] **remotecontrol_roadmap_publish.cpp claims the roadmap_log TU sits at the 6000-line cap; it is nowhere near it.**
+- ✅ [ANTS-4688] **remotecontrol_roadmap_publish.cpp claims the roadmap_log TU sits at the 6000-line cap; it is nowhere near it.**
   src/remotecontrol_roadmap_publish.cpp's header comment justifies being its
   own TU partly with: "(Nor would there be room -- that TU sits AT
   ANTS-3833 INV-6's 6000-line cap; see ANTS-4620.)", referring to
@@ -14417,6 +14417,14 @@ indie-review finding.
   session deciding where to put a new roadmap_log op reads it and concludes
   the obvious home is full, then creates a TU it did not need. That is the
   decision it was about to drive when it was checked.
+  Resolved (2026-09-07): the header of remotecontrol_roadmap_publish.cpp
+  justified its own existence partly on there being no room in
+  remotecontrol_roadmap_log.cpp, which it said sat AT INV-6's line cap.
+  Re-measured today that TU is a little over half the cap, so the claim
+  was false. The real reason -- the member never existed pre-split, so
+  appending it last cannot violate any pre-split relative order --
+  stands on its own and is now the whole justification. The correction
+  names itself so the next reader does not re-derive the old one.
   **Layman:** A code comment gives a reason for a past decision that is no longer true, which could mislead the next person.
   Kind: doc-fix.
   Source: in-session-2026-08-26 (found while deciding where to put op:amend_field).
@@ -28702,7 +28710,7 @@ against current source before filing.
   2's own fixes. Worth a split decision before implementation starts.
   Resolved (2026-08-02): scanDoc buffers the header block into a bounded QStringList and calls SpecParse::headerField once; statusRx deleted. SpecParse gains the exported isHeaderBlockEnd so the `^## ` bound has one expression and headerField uses it too. Options gains maxHeaderBlockLines (256, ~4x the 65-line corpus worst case), a silent cap per ANTS-2139 INV-19; the maxDocBytes break is distinguished from EOF by a budgetHit flag so a truncated buffer is never flushed as a complete block. New tests/features/docsindex_header_field/ covers INV-1..INV-9 (10 assertions, label features;fast); 8 of 10 verified RED against pre-fix docsindex.cpp, the other two being INV-6 (unchanged behaviour) and INV-9 (the survey tool). tools/spec-header-survey.py gains --scope=docs-index, which reproduces the spec's eight corpus figures byte-for-byte as an independent second implementation. Cross-doc: ANTS-2139 INV-17/INV-19 + its Options block amended; ANTS-3785 INV-6/INV-10 annotated and its two "does not adopt" clauses superseded.
 
-- 📋 [ANTS-3787] **ANTS-1253's header packs two fields onto one line, which ANTS-3785 makes a named nonconformance.**
+- ✅ [ANTS-3787] **ANTS-1253's header packs two fields onto one line, which ANTS-3785 makes a named nonconformance.**
   `docs/specs/ANTS-1253.md` line 9 reads:
 
   **Kind:** refactor (no behaviour change). **Lanes:** claudeintegration,
@@ -28723,6 +28731,10 @@ against current source before filing.
   **Layman:** One old spec writes two header labels on the same line; a new rule says one per line, so that spec needs a one-line rewrap.
   Kind: doc-fix.
   Source: in-session-2026-08-02, ANTS-3785 cold-eyes loop 3.
+  Resolved (2026-09-07): ANTS-1253's header packed Kind and Lanes onto
+  one line, which ANTS-3785 makes a named nonconformance. Split onto
+  separate lines, matching the one-field-per-line shape sibling specs
+  use. Unblocked because ANTS-3785 has since shipped.
   Lanes: claudeintegration, mainwindow.
 
 - 📋 [ANTS-3788] **Cold-eyes lanes spend ~100k tokens against a 60k budget even with a fully-built context packet.**
@@ -68848,7 +68860,7 @@ contributors don't duplicate research.
   Kind: refactor.
   Source: audit-2026-08-06.
 
-- 📋 [ANTS-3851] **ANTS-3833 § 2.4 undercounts the scrape anchors — seven named, fifteen real.**
+- ✅ [ANTS-3851] **ANTS-3833 § 2.4 undercounts the scrape anchors — seven named, fifteen real.**
   § 2.4 enumerates seven anchors, and § 6's NoSeamInsideAScrapeWindow row
   says "for each of § 2.4's seven anchors". Implementing INV-10's
   derivation measured 20 sites over 15 distinct anchors (2026-08-06).
@@ -68867,8 +68879,17 @@ contributors don't duplicate research.
   **Layman:** A design note undercounts how many places read the remote-control source through a fixed-size window; the real number is now measured.
   Kind: doc-fix.
   Source: in-session-2026-08-06 (ANTS-3833 commit 3).
+  Resolved (2026-09-07): fixed by removing the asserted count rather
+  than correcting it. The spec named a closed number of scrape anchors
+  in three places while INV-10's own test DERIVES its work-list by
+  scanning, so any number written down is stale the moment a window is
+  added -- which is what happened. The three sites now say the listed
+  anchors are a sample and the scan is authoritative, which the spec
+  already argued one paragraph further down. The surviving occurrence is
+  inside a loop-log row and was deliberately left: landed rows are never
+  edited.
 
-- 📋 [ANTS-3852] **test_core's CMake block comment still claims 28 tests.**
+- ✅ [ANTS-3852] **test_core's CMake block comment still claims 28 tests.**
   CMakeLists.txt ~line 2258 describes the test_core bundle as "28 tests";
   its SOURCES list is roughly double that and grows every time a core
   feature test lands. Nothing reads the number, so it has drifted in
@@ -68880,6 +68901,10 @@ contributors don't duplicate research.
   **Layman:** A comment in the build file names a test count that stopped being true a long time ago.
   Kind: doc-fix.
   Source: in-session-2026-08-06 (ANTS-3833 commit 3).
+  Resolved (2026-09-07): test_core's CMake block comment asserted a test
+  count that had drifted. Dropped the number rather than refreshing it
+  -- the sentence's real content is that the bundle is Qt::Core-only at
+  runtime, which does not go stale.
 
 - ✅ [ANTS-4125] **src/remotecontrol.cpp carries ~10 engine includes left behind by the per-subsystem decomposition.**
   clangd reports unused-includes for buildcache.h, coldeyesengine.h,

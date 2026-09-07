@@ -2877,7 +2877,7 @@ if(ANTS_TESTS)
 
     # ANTS-1217 Phase 6 — test_core bundle. Subject: core infrastructure —
     # PTY, sessionmanager, config, debuglog, remote-control IPC verbs,
-    # threading invariants, packaging manifests, helper-CLI. 28 tests, all
+    # threading invariants, packaging manifests, helper-CLI. All are
     # Qt::Core-only at runtime (the lib's transitive Widgets dep is unused).
     # ants_core_lib supplies Config / DebugLog / SessionManager / RemoteControl
     # symbols for behavioural tests; source-grep tests get their paths via

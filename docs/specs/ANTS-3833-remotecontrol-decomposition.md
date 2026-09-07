@@ -437,8 +437,8 @@ of 25 tests. The `rcdetail` promotion commit edits text elsewhere and is
 verified separately (§ 2.3).
 
 **What decides reach is window length against distance-to-seam, not where the
-anchor sits.** The seven anchors those windows use against remotecontrol text
-are `RemoteControl::start()`, `cmdSetTitle`, `cmdReadRegions`,
+anchor sits.** The anchors those windows use against remotecontrol text
+include `RemoteControl::start()`, `cmdSetTitle`, `cmdReadRegions`,
 `cmdLastAuditSummary`, `cmdIndieReviewOrchestrate`, `cmdRoadmapBranchDrift`,
 and a `find("sparse_partition_hint", fn)` offset. None is a TU-last member,
 which helps, but it does not settle anything on its own: `RemoteControl::start()`
@@ -721,8 +721,8 @@ reading TU 1 alone through macros the cut has deleted.
   `.substr(<ident>, <N>)` sites in files that also read remotecontrol text,
   recovers each site's anchor from the `find(...)` that produced `<ident>`,
   resolves that anchor's offset `A` in `slurpRemoteControl()`, and asserts no
-  TU-head offset lies in `[A, A+N)`. § 2.4's seven anchors are what that scan
-  returns *today*; hard-coding them would leave a window added tomorrow
+  TU-head offset lies in `[A, A+N)`. The anchors § 2.4 lists are a sample of
+  what that scan returns *today*; hard-coding them would leave a window added tomorrow
   silently uncovered — the exact class this invariant exists for.
   **Standing rather than migration-time** for two reasons: § 2.2 mandates
   splitting a TU that reaches INV-6's cap, and every split adds an insertion
@@ -834,7 +834,7 @@ table, and this case only reads files, so it needs Qt6::Core only. Never an
 | `NoSingleTuPathMacro` | INV-4 | two assertions, not one: under `tests/`, neither retired macro name nor a literal `src/remotecontrol.cpp` path, **excluding `tests/features/rc_tu_split/`**; in `CMakeLists.txt`, neither macro name — the literal is **not** asserted there, because § 2.4(a)'s `ANTS_RC_SOURCES_REL` list must carry it and INV-11 requires that list to exist (see INV-4) |
 | `InternalHeaderStaysInternal` | INV-5 | no file outside the `ANTS_RC_SOURCES` list includes `remotecontrol_internal.h`, scanning `src/` and `tests/` from `ANTS_RC_ROOT_DIR` |
 | `NoTuExceedsLineCap` | INV-6 | every source in `ANTS_RC_SOURCES` is ≤ 6,000 lines |
-| `NoSeamInsideAScrapeWindow` | INV-10 | for each of § 2.4's seven anchors, no TU-head offset lies inside that window's `[A, A+N)` |
+| `NoSeamInsideAScrapeWindow` | INV-10 | for each anchor the scan returns, no TU-head offset lies inside that window's `[A, A+N)` |
 | `LibraryConsumesTheList` | INV-11 | `CMakeLists.txt` carries no `src/remotecontrol_*.cpp` literal outside the `ANTS_RC_SOURCES_REL` `set(...)` block |
 
 Must-fail-first, per the project convention — each case is verified RED

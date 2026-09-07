@@ -4,8 +4,9 @@
 //
 // Its own TU for remotecontrol_roadmap_repair.cpp's reason: it is a member that
 // never existed in the pre-split remotecontrol_roadmap_log.cpp, so appending it
-// last cannot violate any pre-split relative order. (Nor would there be room —
-// that TU sits AT ANTS-3833 INV-6's 6000-line cap; see ANTS-4620.)
+// last cannot violate any pre-split relative order. That is the whole reason —
+// an earlier version of this comment also claimed the log TU sat AT ANTS-3833
+// INV-6's line cap, which was never true of it and is not true now (ANTS-4688).
 //
 // Why the op exists. roadmap_migrate honestly reports markdown_rewritten:false
 // (ANTS-4482 shipped the saying-so half) and nothing owned the DOING half: the
