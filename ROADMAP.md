@@ -52616,7 +52616,7 @@ plus two gaps hit while sweeping stale spec citations under ANTS-4757.
   Source: claude_config_Ants_MCP_Feedback.md, 2026-09-07.
   Lanes: mcp, docs.
 
-- 📋 [ANTS-4927] **roadmap_query silently ignores `q` where the working filter is `query`, and an unfiltered page reads as a result set.**
+- ✅ [ANTS-4927] **roadmap_query silently ignores `q` where the working filter is `query`, and an unfiltered page reads as a result set.**
   THE REPORT'S PREMISE IS WRONG AND THE DEFECT UNDER IT IS REAL. Filed as the second, not the first.
 
   Reported as "a store-backed roadmap has no full-text search, so the only route is grepping the render". It has one. `query` is a case-insensitive substring filter that the schema documents as matching "bullets whose headline (or headline_full) OR body contains this text", and it composes with status and section. Verified in this session on this store-backed project: a `query` call returned count:0 with a `warning` naming the search and the population size. So no grep over the render is needed and the store/render distinction is not being breached.
@@ -52630,6 +52630,17 @@ plus two gaps hit while sweeping stale spec citations under ANTS-4757.
   2. Accept `q` as an alias for `query`, the way `filter` aliases `status` and `max_results` aliases `limit` -- both precedents already exist on this verb for exactly this reason, a name a caller naturally carries across from a sibling verb.
 
   Do NOT build the body search. It is there.
+  Resolved (2026-09-07, 431fabd2). `q` accepted as an alias for `query`,
+  canonical `query` winning when both are sent, and DECLARED in the
+  schema rather than merely honoured — the dispatcher builds its
+  ignored_args advisory from the declared properties, so an undeclared
+  key reads as dropped even once the handler honours it. Two tests, red
+  first. The other half of this item is NOT done: refusing bad_args when
+  every selector a caller passed was ignored. That is a dispatcher-level
+  policy reaching every verb, and the dispatcher has no way to know
+  which of a verb's arguments are selectors — it needs its own decision,
+  not an assumption at the end of a session. The body search this item
+  warns against building was not built; it already exists.
   **Layman:** A near-miss argument name is accepted and quietly dropped, so the tool answers with the whole list and it looks like a search result.
   Kind: fix.
   Source: claude_config_Ants_MCP_Feedback.md, 2026-09-07.
@@ -52805,7 +52816,7 @@ plus two gaps hit while sweeping stale spec citations under ANTS-4757.
   Source: cc-session-feedback claude-config 2026-08-28.
   Lanes: mcp.
 
-- 📋 [ANTS-4938] **body_scrubbed_tool_xml announces a strip it cannot show, so the re-read it asks for is usually wasted.**
+- ✅ [ANTS-4938] **body_scrubbed_tool_xml announces a strip it cannot show, so the re-read it asks for is usually wasted.**
   The warning fires with `unnamed_fragments_removed` non-zero on
   multi-paragraph prose bodies where a read-back shows the body complete,
   paragraph for paragraph, with no angle bracket or tool-call fragment
@@ -52834,6 +52845,17 @@ plus two gaps hit while sweeping stale spec citations under ANTS-4757.
   against leaked tool-call XML is right, and a false positive that
   announces itself beats a silent strip. The defect is that the
   announcement cannot discharge itself.
+  Resolved (2026-09-07, 431fabd2). The warning carries
+  `removed_fragments` — the text taken, simplified, de-duplicated,
+  capped at eight fragments and 120 chars each so the echo cannot
+  reproduce the cost it exists to save. All three emit sites carry it:
+  the store path, the markdown path and the batch rollup. The old
+  message's remedy ("re-read the stored body if the count is
+  unexpected") is withdrawn, since the envelope now answers it. The
+  byte-delta fallback this body offered was NOT built and is not needed:
+  the scrubber only increments the count when the text actually changed,
+  so a zero delta beside a non-zero count cannot occur — the fragments
+  were inert, not absent. Two tests, red first.
   **Layman:** A warning says something was stripped out of what you saved but never says what, so you go and check and find nothing missing — twice out of twice.
   Kind: fix.
   Source: cc-session-feedback claude-config 2026-08-28.
@@ -52962,7 +52984,7 @@ plus two gaps hit while sweeping stale spec citations under ANTS-4757.
   Source: cc-session-feedback claude-config 2026-09-07.
   Lanes: mcp.
 
-- 📋 [ANTS-4941] **feedback_pending ignores suspected_untagged, so a finding with no Proposed ID slot at all is invisible at session start.**
+- ✅ [ANTS-4941] **feedback_pending ignores suspected_untagged, so a finding with no Proposed ID slot at all is invisible at session start.**
   MEASURED 2026-09-07 on claude_config_Ants_MCP_Feedback.md. Findings
   appended on 2026-08-28 and 2026-09-02 carried no `**Proposed ID:**` line
   at all. feedback_query reported `delta_present:false` while naming every
@@ -52996,6 +53018,18 @@ plus two gaps hit while sweeping stale spec citations under ANTS-4757.
   corpus is written by op:"append_finding", which stamps a blank slot, so
   they were appended by hand or by an older path. If a live write route can
   still produce a slotless finding, that is the upstream half of this.
+  Resolved (2026-09-07, 431fabd2). buildFeedbackPendingBlock now counts
+  suspectedUntagged, lists a file whose only pending input is slotless,
+  and emits total_suspected_untagged unconditionally so a zero is an
+  answer. Reported under its own key, never folded into
+  delta_line_count, because the two states have different remedies. Two
+  tests, red first — and the red run confirmed the premise as well as
+  the fix: the delta genuinely cannot see a slotless finding, so
+  suspected_untagged was the only surface carrying it. The upstream half
+  this body asks about is UNANSWERED: how those findings lost their
+  slot. op:append_finding stamps one, so they were hand-appended or
+  written by an older path; nothing here proves a live write route can
+  still produce one.
   **Layman:** Four pieces of feedback sat unanswered for ten days because the session-start "you have new feedback" counter only looks for findings that have an empty ID box, not ones that never had a box at all.
   Kind: fix.
   Source: in-session-2026-09-07.

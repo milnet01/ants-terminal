@@ -14,6 +14,11 @@ for security-relevant changes.
 
 ### Added
 
+- **`roadmap_query` accepts `q` as an alias for `query`** (ANTS-4927)
+  Unrecognised, `q` was dropped and the call answered with the whole list,
+  which reads as a search result. Follows the existing `filter`/`status`
+  and `max_results`/`limit` aliases; `query` wins when both are sent.
+
 - **`apply_edits` accepts `old_text`/`new_text` and a batch-level `path`** (ANTS-4936)
   The spelling roadmap_log's op:"amend_body" uses now works here too,
   alongside the native Edit tool's old_string/new_string. A `path` given
@@ -79,6 +84,12 @@ for security-relevant changes.
 
 ### Changed
 
+- **The body-scrub warning names the text it removed** (ANTS-4938)
+  `body_scrubbed_tool_xml` now carries `removed_fragments`, so a caller can
+  confirm the strip from the envelope instead of re-reading the stored
+  body. It reported a count alone, and the re-read it asked for usually
+  found nothing missing.
+
 - **`workspace_search` states that `caller_cwd` picks any tree to search** (ANTS-4928)
   Pointing caller_cwd at another project, or at a path outside any repo,
   searches that tree. That was documented only inside the `lane`
@@ -127,6 +138,12 @@ for security-relevant changes.
   unanswerable one.
 
 ### Fixed
+
+- **`session_orient` counts findings that carry no Proposed ID slot** (ANTS-4941)
+  A feedback finding with no `**Proposed ID:**` line at all is a different
+  state from one whose slot is blank, and the session-start summary could
+  see only the second. Files whose sole pending input is slotless now list,
+  under their own `suspected_untagged_count`.
 
 - **`doc_citations` caps an ambiguous quotation's candidate list** (ANTS-4939)
   The citation path has capped its candidates since ANTS-3636; the quote
