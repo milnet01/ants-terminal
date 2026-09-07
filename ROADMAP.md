@@ -35065,6 +35065,40 @@ in each bullet, not just the reporter's symptom.
   Source: in-session-2026-09-05, hit when the sanitizer leg could not complete on this machine.
   Lanes: ci, tests.
 
+- 📋 [ANTS-4942] **The pre-push ASan cost gate reads a pending CMake regen as a warm tree.**
+  ANTS-4118's INV-1 counts the sanitizer tree's pending ninja edges before
+  building and skips the leg above the cap, so a cold tree is refused rather
+  than SIGTERMed mid-build at a caller's timeout.
+
+  The count cannot see past a pending CMake regeneration. When a CMake input
+  has changed, `ninja -C build-asan -n` reports only its own re-run edge, so
+  the gate reads one edge — far under the cap — and proceeds. The real edge
+  list exists only after the regen, by which time the hook has committed to
+  the build.
+
+  Observed this session. A commit touching CMakeLists.txt to add two feature
+  tests left the tree reporting a single edge; warming it deliberately then
+  took longer than the caller's whole timeout budget. That is precisely the
+  case INV-1 exists to prevent, reached through the one input the measurement
+  cannot model.
+
+  Not the same as a stale tree, and the existing cap does not cover it: the
+  edge count is honest about what ninja currently knows and wrong about what
+  the build will cost.
+
+  Worth considering: treat a pending regen as unknown-cost rather than as one
+  edge — run the regen first and re-count, or skip the leg and say why. The
+  second is cheaper and matches the gate's existing bias toward refusing what
+  it cannot size.
+
+  The escape hatch is not a workaround here. Setting ANTS_PREPUSH_NO_ASAN
+  makes the suite's own prepush_asan_gate INV-2 fail, because that invariant
+  asserts a warm tree still runs the leg — so the hatch trades a slow gate
+  for a red one.
+  **Layman:** A safety check meant to skip a long build is fooled whenever the build files changed, so it starts the long build anyway.
+  Kind: fix.
+  Source: in-session-2026-09-07 (hit while pushing ANTS-4456).
+
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-08-14 triage
 
 Un-triaged findings drained from the shared `*_Ants_MCP_Feedback.md` corpus
