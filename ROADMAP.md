@@ -32973,6 +32973,19 @@ against current source before filing.
   Filed alongside: ANTS-4139 (two § 3.9 rotation rules disagree
   between the copies) and ANTS-4140 (this copy has never been gated
   against the global one; thirteen findings).
+  Progress (2026-09-07): the decision recorded on this item is still UNAPPLIED in this repo's copy, and an independent session has now reached the same call.
+
+  The 2026-08-10 user decision above says to drop § 3.2's phase-block advice. Re-read today, docs/standards/roadmap-format.md § 3.2 still reads "Pre-1.0 projects use phase blocks (`## P01 — Bootstrap`) since there's no real version to anchor to yet." So the decision was taken and never carried into the file.
+
+  The file also contradicts itself independently of that: its own § 3.2 table lists `## 0.7.0 — shell integration` as a `##` example, while the prose says a pre-1.0 project uses phase blocks. This project is 0.7.x and uses version blocks, so the table matches practice and the prose does not.
+
+  CONVERGENCE. The claude-config session reports CFG-0321 (its commit 9c01c7f) changed the downstream ~/.claude copy so a release block is the default at every version including pre-1.0, on the same ground this item's decision gives — that the no-version-to-anchor-to premise is false. It asks this project to take four § 3.2 rows upstream.
+
+  DIRECTION. roadmap-format.md carries an OWNED-HERE marker: this copy governs and ~/.claude is downstream (ANTS-4073, 2026-08-12). So this is not an adoption from downstream; it is executing a decision this project already made, which the downstream copy has independently reached.
+
+  User decision 2026-09-07: accept the substance, but gate it separately rather than folding it into an unrelated pass. Applying it changes direction for a standard, so it re-arms rule 14 and needs review-contract --genre standard. Not started.
+
+  The other three rows the requester names — the Priority: value form, the target date, and the Blocked-by: selection consequence — belong with ANTS-4140, which already tracks the Priority band-versus-word split.
 
 - ✅ [ANTS-4074] **`archiveNameRx()`'s "deliberately tighter" comment is stale — the standard now matches it exactly.**
   `src/roadmapmigrate.cpp:755` reads "The directory and the descending sort are
@@ -49165,6 +49178,19 @@ envelope dropped `source`/`path`/`etag`/`total`/`filter`.
   carries `main.cpp` / `mainwindow.cpp` line pins, which are a different file
   and a different cause than the ANTS-3833 split — unmeasured, so their
   staleness is unknown.
+  Progress (2026-09-07): the re-survey this item's last note asked for, and one full class closed.
+
+  RE-SURVEY RESULT. No large concentration is left, confirming the last note's prediction: 199 remotecontrol*.cpp:NNNN pins under docs/ spread over 73 files, the heaviest carrying thirteen. So "one verb family per pass" has no target any more and was replaced by a class that can be stated mechanically.
+
+  THE CLASS TAKEN: the pin points PAST END OF FILE. 100 of the 199 did, and every one of them named remotecontrol.cpp, which the ANTS-3833 split cut to 2,585 lines; some named line 22382. Past-EOF is decidable without judgement and verifiable back to zero, which is what made a 32-file diff reviewable rather than the bulk rewrite ANTS-3647 warns against.
+
+  CLOSED: all 64 live ones. Remaining past-EOF pins are 36 and all sit in frozen records, checked line by line against their heading.
+
+  METHOD NOTE WORTH KEEPING. The frozen set is wider than a "Cold-eyes loop log" heading grep finds. Five pins sat under `### Loop N (date)` and `### Phase B (loops 1-3)` headings that such a grep misses, and were only caught on a second classification pass. This item already records one run where a replacement hit a landed row; that is the same hazard by a different route.
+
+  STILL OPEN, and deliberately. A pin that is IN range can still point at unrelated code, and no mechanical check finds it — each needs a read. User decision 2026-09-07: leave that residue for per-file repair on next touch, which is ANTS-3647's own prescription. So this item's remaining scope is now exactly that residue, with no stateable class left in it.
+
+  Also left, unmeasured: ANTS-2049's main.cpp / mainwindow.cpp pins, and bare continuations of claudeintegration.cpp pins. Different files, different cause than the ANTS-3833 split.
   **Layman:** Many design documents still point at line numbers in a file that has since been split up, so following one lands on unrelated code.
   Kind: doc-fix.
   Source: in-session-2026-08-28, measured by ANTS-4711's classification lane.
@@ -52345,6 +52371,109 @@ rather than refiled.
   Kind: fix.
   Source: claude_config feedback 2026-09-06.
   Lanes: remotecontrol, claude-integration.
+
+### Ants MCP feedback from CC sessions — 2026-09-07 triage
+
+Filed from a cross-session message from the claude-config (~/.claude) session,
+plus two gaps hit while sweeping stale spec citations under ANTS-4757.
+
+- 📋 [ANTS-4922] **No roadmap_log op moves an item between sections, and none deletes an empty one.**
+  Requested by the claude-config session as the hard blocker on its
+  CFG-0321. That project's roadmap is a single phase block with theme
+  groups under it (Gate debt, Skills to write, Retirements). Those say
+  what KIND of work an item is, never which release it lands in, so
+  migrating to release blocks means moving its whole open set between
+  sections.
+
+  Asked for: `move_item` taking (id, target_section), and
+  `delete_section` refusing a non-empty section.
+
+  WHY A HAND EDIT IS NOT THE WORKAROUND, and this is the load-bearing
+  part: every roadmap_log write re-renders the whole file from the
+  store and reports `discarded_external_edits`. So an edit to
+  ROADMAP.md survives only until the next write of any kind.
+
+  CHECK BEFORE DESIGNING. The requester believes this is the same store
+  work as `retitle_section` and `rotate_minor`, which it understands to
+  be written but unwired. ANTS-4081 confirms that for both ops — they
+  are implemented, tested through their `*ForTest` seams, and in
+  neither `cmdRoadmapLog`'s op dispatch nor the tool schema. Whether
+  `move_item` shares their machinery is unverified and is the first
+  thing to establish; do not assume it from the requester's note.
+
+  SEQUENCING. ANTS-4081 owns wiring the existing two, and its § 2.4
+  reasoning is that an op must not be exposed as a routine verb until a
+  caller owns the guard that makes it safe. A `move_item` has the
+  mirror question: what stops an item being moved into a section whose
+  shape cannot hold it. Answer that before wiring, not after.
+
+  STORE COST. The roadmap store is machine-global. CLAUDE.md records
+  that a kSchemaVersion bump is a one-way door — the first binary to
+  upgrade locks every older build out of every project in the store.
+  So prefer an op that moves a row between existing sections over one
+  that needs a new column.
+  **Layman:** There is no way to move a roadmap entry from one section to another, so a project that wants to reorganise its roadmap has to do it by hand — and hand edits are thrown away.
+  Kind: implement.
+  Source: cross-session-message-2026-09-07 from claude-config (~/.claude), CFG-0321.
+  Lanes: mcp, roadmap.
+
+- 📋 [ANTS-4923] **doc_citations attributes a bare `:NNNN` continuation to whichever path it last saw, so it reports a status against the wrong file.**
+  Measured on docs/specs/ANTS-2160.md during the ANTS-4757 sweep. Two
+  citations came back `out_of_range` against `src/docsindex.cpp`
+  (666 lines) carrying `inherited_path:true` and raws `:9449` and
+  `:11942`. Neither belongs to that file: both are continuations of
+  `src/remotecontrol.cpp` pins for `cmdSpecLog` and `cmdSpecQuery`,
+  sitting in the document's Cold-eyes loop log.
+
+  The inheritance is documented behaviour — a bare `:NNNN` adopts the
+  nearest preceding path. The defect is that when the guess is wrong
+  the verb still reports a definite STATUS against it. `out_of_range`
+  against docsindex.cpp is not a weaker claim than the truth, it is a
+  different and false one, and it points a reader at a file with no
+  defect in it.
+
+  OPTIONS, not a decision: report an inherited citation whose target
+  cannot be corroborated as its own status rather than as out_of_range;
+  or scope inheritance to the paragraph, as ANTS-4638 already did for
+  quote attribution, so a continuation cannot reach across a heading.
+  The second matches an existing precedent in the same verb.
+
+  Related but distinct: ANTS-4918 is about stale citations inside
+  loop-log rows being unactionable. This one is about the citation
+  being attributed to the wrong file in the first place, which would
+  still be wrong outside a loop log.
+  **Layman:** When a document writes a line number on its own, the citation checker guesses which file it belongs to — and when it guesses wrong it reports a problem about a file that was never mentioned.
+  Kind: fix.
+  Source: in-session-2026-09-07, hit while sweeping ANTS-4757.
+  Lanes: mcp, docs.
+
+- 📋 [ANTS-4924] **find_definition reports a ternary continuation line as a declaration.**
+  `find_definition {symbol:"resolveRootCanonical"}` returned fifteen
+  rows. Two are the real definitions in
+  `src/remotecontrol_feedback.cpp`, and several are genuine
+  declarations. But six rows have `kind:"declaration"` with the
+  signature `: resolveRootCanonical(m_main, req);` — the second arm of
+  a ternary, wrapped so the line begins with a colon. That is a CALL
+  site, not a declaration.
+
+  Why it matters here rather than being cosmetic: the sweep used this
+  verb to decide which TU now owns a symbol. A call site presented as a
+  declaration inflates the candidate set and, for a symbol whose
+  definition sits elsewhere, invites naming the wrong file — which is
+  exactly the damage ANTS-4757 exists to repair.
+
+  The regex evidently anchors on a leading `[A-Za-z_...]*` type
+  followed by the name and `(`, and a line opening with `:` slips
+  through as if the leading token were a return type. A line whose
+  first non-space character is `:` cannot begin a declaration.
+
+  Unverified: whether the same shape produces false declarations for
+  other symbols, or only where a wrapped ternary is involved. Measure
+  before fixing.
+  **Layman:** The "where is this defined?" tool sometimes lists an ordinary line of code that merely calls a function as if it were the place the function is declared.
+  Kind: fix.
+  Source: in-session-2026-09-07, hit while resolving owning TUs for ANTS-4757.
+  Lanes: mcp.
 
 ### 🎨 UI polish (user request 2026-09-04)
 
@@ -59284,6 +59413,13 @@ to apply within a document. Follow-on work from that change.
   **Layman:** Our design docs point at code using "line 842", which goes wrong every time the code moves. Change them to name the function instead.
   Kind: doc-fix.
   Source: user-request-2026-07-26.
+  Progress (2026-09-07): one mechanically-decidable subset closed under ANTS-4757 — every live `remotecontrol.cpp:NNNN` citation pointing past that file's end, across 32 specs.
+
+  This did NOT breach this item's "per-file on the next touch, not one mega-sweep" rule, and the reason is worth keeping. The objection recorded here is that a bulk rewrite buries the exempt/live judgement each citation needs. That judgement was made first and recorded: 100 past-EOF pins classified into 64 live and 36 frozen, the frozen set left byte-identical and verified untouched line by line. The survey bounded the diff, not the file count.
+
+  The instrument this item names, doc_citations, was used to confirm the result. It also surfaced a defect of its own — ANTS-4923, a bare `:NNNN` continuation inheriting the wrong path and being reported out_of_range against a file that was never cited.
+
+  The rest of this item stands unchanged: in-range-but-drifted citations still need a read each, and remain per-file on next touch.
 
 - ✅ [ANTS-3648] **`dependencies.md` § 6 contradicts itself on line-number citations.**
   § 6 ("Where the versions live") states that symbol names "are the
