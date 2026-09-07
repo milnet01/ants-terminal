@@ -1525,6 +1525,47 @@ TEST(SpecLint, Ants4894CountsTheInvariantsItDoesRecognise) {
         << "the bullet form § 3.7 defines was not counted";
 }
 
+// --------------------------------------------------------------- ANTS-4413 --
+//
+// A spec with no `**Status:**` line is not merely undocumented: every
+// status-gated check reads the absence as "unknown" rather than as "shipped",
+// so a shipped spec's false claims are downgraded from findings to candidates
+// and never reach review-contract's verified list. The count is the cheap
+// first step the item asks for -- it fixes no document, but it stops the gap
+// being invisible without a walk of the corpus.
+
+TEST(SpecLint, Ants4413ReportsThatADocumentCarriesAStatus) {
+    const QString withStatus = QStringLiteral(
+        "# A spec\n"
+        "\n"
+        "**Status:** shipped\n"
+        "\n"
+        "## 5. Invariants\n"
+        "\n"
+        "- **INV-1** - The thing holds. *Test:* `test_thing`\n");
+
+    const SpecLint::Result r = SpecLint::check(withStatus, QStringLiteral("s.md"));
+    EXPECT_TRUE(r.statusPresent)
+        << "the document carries a **Status:** line and the engine already "
+           "parses it for the test-surface gate, so the flag must say so";
+}
+
+TEST(SpecLint, Ants4413ReportsThatADocumentCarriesNoStatus) {
+    // Byte-identical to the case above except for the Status line. The
+    // reporter's point is that these two runs are indistinguishable from the
+    // envelope; this flag is what separates them.
+    const QString noStatus = QStringLiteral(
+        "# A spec\n"
+        "\n"
+        "## 5. Invariants\n"
+        "\n"
+        "- **INV-1** - The thing holds. *Test:* `test_thing`\n");
+
+    const SpecLint::Result r = SpecLint::check(noStatus, QStringLiteral("s.md"));
+    EXPECT_FALSE(r.statusPresent)
+        << "no **Status:** line is present, so the flag must not claim one";
+}
+
 // --------------------------------------------------------------- ANTS-4890 --
 //
 // Reported as a false positive: an invariant whose coverage is named where

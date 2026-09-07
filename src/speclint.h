@@ -171,6 +171,16 @@ struct Result {
     // number is visible where a `true` is not.
     int  invariantsFound = 0;
 
+    // ANTS-4413 — does this document carry a `**Status:**` line at all.
+    // Reported because every status-gated check reads an ABSENT status as
+    // "unknown" rather than as "shipped", which silently downgrades this
+    // engine's own findings: a shipped spec with no status gets
+    // `test_surface_unresolved` (a CANDIDATE) where it has earned
+    // `test_surface_absent` (a FINDING), and review-contract routes those two
+    // to different places. So the gap is not cosmetic — it changes what this
+    // verb reports about documents it DID check.
+    bool statusPresent = false;
+
     int  lineCount = 0;   // reported, NEVER emitted as a finding (INV-6)
     bool truncated = false;
 };

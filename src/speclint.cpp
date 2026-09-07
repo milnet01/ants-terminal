@@ -486,8 +486,15 @@ Result check(const QString &text, const QString &relPath,
     // whether the spec claims to have shipped, so the bucket is chosen by the
     // document's OWN Status — a claim it makes about itself, which is why only a
     // confidently-shipped word yields a FINDING (spec § 2.5).
-    const QString docStatus =
-        statusWord(parsed.value(QStringLiteral("status")).toString());
+    const QString rawStatus = parsed.value(QStringLiteral("status")).toString();
+    const QString docStatus = statusWord(rawStatus);
+    // ANTS-4413 — whether the document carries a `**Status:**` line AT ALL,
+    // which is the raw value and deliberately NOT `docStatus`. statusWord()
+    // reduces to a leading `[a-z0-9]` run, so a line whose value is punctuation
+    // or an em dash reduces to empty and would read here as "no status line" --
+    // a different claim, and the wrong one. The question this answers is the
+    // one a reader asks of the file: is the claim made or missing.
+    r.statusPresent = !rawStatus.trimmed().isEmpty();
     const QJsonValue statusJson =
         docStatus.isEmpty() ? QJsonValue(QJsonValue::Null) : QJsonValue(docStatus);
 

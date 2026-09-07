@@ -724,6 +724,7 @@ QJsonDocument RemoteControl::cmdSpecLint(const QJsonObject &req) {
     // still reports honestly whether resolution was on.
     int  surfacesResolved = 0;
     int  invariantsFound  = 0;   // ANTS-4894
+    int  statusMissing    = 0;   // ANTS-4413
     bool surfacesChecked  = !opts.existingTestDirs.isEmpty();
     // ANTS-4737 — the walk scans EVERYTHING and the cap is applied at the end.
     //
@@ -767,6 +768,7 @@ QJsonDocument RemoteControl::cmdSpecLint(const QJsonObject &req) {
         if (r.sectionsExempt) ++sectionsExemptDocs;
         surfacesResolved += r.surfacesResolved;
         invariantsFound  += r.invariantsFound;   // ANTS-4894
+        if (!r.statusPresent) ++statusMissing;   // ANTS-4413
         for (DocFinding::Finding fnd : r.findings) {
             fnd.emissionIndex = findings.size();  // run-wide, not per-document
             findings.push_back(fnd);
@@ -804,6 +806,25 @@ QJsonDocument RemoteControl::cmdSpecLint(const QJsonObject &req) {
     // shipped accepted with every invariant invisible to every verb that reads
     // one, and the linting path said nothing.
     out[QStringLiteral("invariants_found")] = invariantsFound;
+    // ANTS-4413 — ALWAYS, like the row above and unlike the two conditional
+    // ones. An absent Status is not cosmetic: every status-gated check reads it
+    // as "unknown" rather than "shipped", so a shipped spec's false claims are
+    // downgraded from FINDING to CANDIDATE, and review-contract Phase 1d routes
+    // findings into its verified list while candidates go to a lane. Two specs
+    // were found reading `accepted` while implemented and citing test
+    // directories that do not exist; the other fifty were never looked at
+    // because nothing reported the number.
+    //
+    // Emitted unconditionally because a zero must be readable as "checked, all
+    // present" -- omitting it there makes absence mean either that or an older
+    // build, which is the ambiguity this key exists to remove. Its denominator
+    // is `checked_docs`, so a zero against an empty walk is not a clean result.
+    //
+    // A COUNT, not a finding and not a list: the item asks for the gap to stop
+    // being invisible, not for a per-document verdict. The honest status of any
+    // one spec is a claim about whether its code exists, which needs the code
+    // checked and cannot be decided here.
+    out[QStringLiteral("status_missing")] = statusMissing;
     return QJsonDocument(out);
 }
 
