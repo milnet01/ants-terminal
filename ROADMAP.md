@@ -52693,8 +52693,7 @@ plus two gaps hit while sweeping stale spec citations under ANTS-4757.
   Lanes: mcp, roadmap-store, tests.
 
 - 📋 [ANTS-4936] **apply_edits refuses `old_text`/`new_text`, the spelling its sibling roadmap_log op:amend_body requires.**
-  ANTS-4089 already accepts `old_string`/`new_string` at
-  src/remotecontrol_workspace.cpp:2518-2527 — the NATIVE Edit tool's spelling —
+  ANTS-4089 already accepts `old_string`/`new_string` in apply_edits' per-edit argument parse (src/remotecontrol_workspace.cpp) — the NATIVE Edit tool's spelling —
   but not `old_text`/`new_text`, which is what roadmap_log op:"amend_body" and
   op:"amend_headline" require. So a session that used amend_body an hour earlier
   guesses CONSISTENTLY and is still refused. Three spellings of one idea, two of
@@ -52721,9 +52720,7 @@ plus two gaps hit while sweeping stale spec citations under ANTS-4757.
   Lanes: mcp.
 
 - 📋 [ANTS-4937] **mcp_trace records argument shape but no caller, so a lane's brief-required argument cannot be verified.**
-  `McpTraceRecord` carries no caller identity: `ClaudeIntegration::recordToJson`
-  (src/claudeintegration.cpp:1430) emits id, ts_ms, tool, arg_keys, arg_bytes,
-  raw_bytes, args_sha16, resp_bytes, duration_us, cache_hit, result. The ring is
+  `McpTraceRecord` carries no caller identity: `ClaudeIntegration::recordToJson` (src/claudeintegration.cpp) emits id, ts_ms, tool, arg_keys, arg_bytes, raw_bytes, args_sha16, resp_bytes, duration_us, cache_hit and result — and nothing naming the caller. The ring is
   server-wide, so a parent session's calls, its subagents' and another tab's
   interleave with nothing separating them.
 
@@ -52749,64 +52746,68 @@ plus two gaps hit while sweeping stale spec citations under ANTS-4757.
   Lanes: mcp.
 
 - 📋 [ANTS-4938] **body_scrubbed_tool_xml announces a strip it cannot show, so the re-read it asks for is usually wasted.**
-  The warning fires with `unnamed_fragments_removed:1` on multi-paragraph prose
-  bodies where a read-back shows the body complete, paragraph for paragraph, with
-  no angle bracket or tool-call fragment anywhere in what was sent. Measured
-  twice in one session (claude-config 2026-08-28, filed there as CFG-0271 /
-  CFG-0272).
+  The warning fires with `unnamed_fragments_removed` non-zero on
+  multi-paragraph prose bodies where a read-back shows the body complete,
+  paragraph for paragraph, with no angle bracket or tool-call fragment
+  anywhere in what was sent. Reproduced on separate appends in one session
+  (claude-config 2026-08-28, filed there as CFG-0271 and CFG-0272).
 
-  Emitted at src/remotecontrol_roadmap_log.cpp:620-628 and
-  src/remotecontrol_roadmap_log_batch.cpp:2649-2656. The scrubber reports a COUNT
+  Emitted from the body-scrub warning arm in
+  src/remotecontrol_roadmap_log.cpp and from its rollup in
+  src/remotecontrol_roadmap_log_batch.cpp. The scrubber reports a count
   only, so the envelope cannot say what went.
 
-  WHY IT MATTERS: the message tells the caller to re-read the stored body, so
-  each occurrence costs a verification round-trip — and a warning that is usually
-  a false positive trains the caller to skip the one re-read that would catch a
-  true positive. That is the failure mode, not the round-trip.
+  WHY IT MATTERS: the message tells the caller to re-read the stored body,
+  so each occurrence costs a verification round-trip. Both times the answer
+  was "nothing missing". A warning that is usually a false positive trains
+  the caller to skip the one re-read that would catch a true positive. That
+  is the failure mode, not the round-trip.
 
-  FIX, cheapest first: carry the stripped fragment (or its first N characters and
-  offset) in the warning, which discharges it in the envelope with no re-read and
-  lets the caller confirm the strip was correct. Failing that, emit
-  `body_bytes_sent` vs `body_bytes_stored` — a zero delta beside a non-zero count
-  is itself the signal that the scrubber matched something inert. If the strip
-  genuinely removed no bytes, suppress the warning at zero delta.
+  FIX, cheapest first: carry the stripped fragment in the warning, which
+  discharges it in the envelope with no re-read and lets the caller confirm
+  the strip was correct. Failing that, emit the sent and stored body sizes
+  — a zero delta beside a non-zero count is itself the signal that the
+  scrubber matched something inert. If the strip genuinely removed no
+  bytes, suppress the warning at zero delta.
 
-  NOT asking for the scrubber to be loosened: guarding a stored body against
-  leaked tool-call XML is right, and a false positive that announces itself beats
-  a silent strip. The defect is that the announcement cannot discharge itself.
+  NOT asking for the scrubber to be loosened: guarding a stored body
+  against leaked tool-call XML is right, and a false positive that
+  announces itself beats a silent strip. The defect is that the
+  announcement cannot discharge itself.
   **Layman:** A warning says something was stripped out of what you saved but never says what, so you go and check and find nothing missing — twice out of twice.
   Kind: fix.
   Source: cc-session-feedback claude-config 2026-08-28.
   Lanes: mcp, roadmap.
 
 - 📋 [ANTS-4939] **doc_citations caps ambiguous candidates on the citation path and not on the quote path.**
-  src/doccitations.cpp:1171-1176 caps a CITATION's candidates[] at
-  `opts.maxCandidates` and reports `candidates_total` + `truncated_candidates`.
-  The QUOTE path does neither: line 1582 (several documents named in one cell)
-  and lines 1596-1597 (an ambiguous basename) both emit
+  The CITATION path caps candidates[] at `opts.maxCandidates` and reports
+  `candidates_total` + `truncated_candidates` (src/doccitations.cpp). The
+  QUOTE path does neither: both of its ambiguous arms — several documents
+  named in one cell, and an ambiguous basename — emit
   `QJsonArray::fromStringList` over the whole list.
 
-  Measured claude-config 2026-09-02: one `quotes:true` row returned ~170 absolute
-  paths for a bare `SKILL.md` attribution, several times the size of the two
-  other calls in the same Phase 1 batch combined. No argument trims it —
-  `only:"stale"` keeps it (ambiguous IS a stale status), and `fields` is
+  Measured claude-config 2026-09-02: one `quotes:true` row returned every
+  same-named file in the tree for a bare `SKILL.md` attribution, and that
+  single row dominated the size of its Phase 1 batch. No argument trims it
+  — `only:"stale"` keeps it (ambiguous IS a stale status), and `fields` is
   top-level so it cannot reach `quotes[].candidates`.
 
-  FIX: reuse the citation path's cap and totals at BOTH quote sites, ranking by
-  proximity to the scanned document's own directory — the intended target is
-  nearly always a sibling, so a capped list ranked that way is more useful than
-  the full one. Independently worth having: exclude version-pinned cache and
-  vendored trees from the basename candidate set. Roughly 110 of the 170 were one
-  plugin file at different content hashes — one candidate wearing 110 costumes —
-  and workspace_search already treats those trees as ignorable by default.
+  FIX: reuse the citation path's cap and totals at BOTH quote arms, ranking
+  by proximity to the scanned document's own directory — the intended
+  target is nearly always a sibling, so a capped list ranked that way is
+  more useful than the full one. Independently worth having: exclude
+  version-pinned cache and vendored trees from the basename candidate set.
+  The bulk of that measured list was one plugin file at different content
+  hashes — one candidate wearing many costumes — and workspace_search
+  already treats those trees as ignorable by default.
 
   NOT asking the resolver to guess. ANTS-4638's rule that an ambiguous
-  attribution stays ambiguous is right and stays. This is about the SIZE of the
-  evidence returned with the refusal.
+  attribution stays ambiguous is right and stays. This is about the SIZE of
+  the evidence returned with the refusal.
 
-  Second-order cost worth naming: a caller who meets this once learns to stop
-  passing `quotes:true` on a whole-directory sweep, which loses the check
-  altogether.
+  Second-order cost worth naming: a caller who meets this once learns to
+  stop passing `quotes:true` on a whole-directory sweep, which loses the
+  check altogether.
   **Layman:** When the citation checker cannot tell which file a quote came from, it lists every same-named file it found — about 170 of them in one call — where the other half of the same tool lists ten and says how many there were.
   Kind: fix.
   Source: cc-session-feedback claude-config 2026-09-02.
@@ -52851,40 +52852,39 @@ plus two gaps hit while sweeping stale spec citations under ANTS-4757.
   Lanes: mcp.
 
 - 📋 [ANTS-4941] **feedback_pending ignores suspected_untagged, so a finding with no Proposed ID slot at all is invisible at session start.**
-  MEASURED TODAY on claude_config_Ants_MCP_Feedback.md. Four findings —
-  three from 2026-08-28, one from 2026-09-02 — carried NO
-  `**Proposed ID:**` line at all. feedback_query reported
-  delta_present:false while naming all four in `suspected_untagged`, so
-  the un-triaged tail read as empty and the file never listed in
-  session_orient's `feedback_pending`. They were found only because this
-  session read `suspected_untagged` by hand.
+  MEASURED 2026-09-07 on claude_config_Ants_MCP_Feedback.md. Findings
+  appended on 2026-08-28 and 2026-09-02 carried no `**Proposed ID:**` line
+  at all. feedback_query reported `delta_present:false` while naming every
+  one of them in `suspected_untagged`, so the un-triaged tail read as empty
+  and the file never listed in session_orient's `feedback_pending`. They
+  were found only because this session read `suspected_untagged` by hand.
 
   CAUSE. The v2 delta rule keys on an UNFILLED slot; a MISSING slot is a
-  different state and `suspected_untagged` is the surface for it.
-  `RemoteControl::buildFeedbackPendingBlock`
-  (src/remotecontrol_state.cpp:1555+) branches on `pr.deltaPresent` and
-  `pr.awaiting` only, and short-circuits on
-  `if (!pr.deltaPresent && awaitingHere == 0) continue;`. The parse result
-  carries the suspected list and nothing there consults it.
+  different state, and `suspected_untagged` is the surface for it.
+  `RemoteControl::buildFeedbackPendingBlock` (src/remotecontrol_state.cpp)
+  branches on `pr.deltaPresent` and `pr.awaiting` only, and short-circuits
+  when neither holds. The parse result carries the suspected list and
+  nothing there consults it.
 
-  WHY IT MATTERS more than the count suggests. This block exists to answer
-  "which files have new contributor input" without a per-file round-trip,
-  and it is the ONLY always-on surface for that. A finding it cannot see is
-  not merely late — nothing else will ever raise it, because the next
-  maintainer sweep asks the same verb the same question. Silence and
-  "nothing pending" are byte-identical here, which is the reading
-  ANTS-4896 already fixed once for a relocated corpus.
+  WHY IT MATTERS more than the number of findings suggests. This block
+  exists to answer "which files have new contributor input" without a
+  per-file round-trip, and it is the ONLY always-on surface for that. A
+  finding it cannot see is not merely late — nothing else will ever raise
+  it, because the next maintainer sweep asks the same verb the same
+  question. Silence and "there is input nobody can see" are
+  byte-identical here, which is the reading ANTS-4896 already fixed once
+  for a relocated corpus.
 
   FIX: count suspected_untagged into the entry, under its own key rather
   than folded into `delta_line_count` — the two are different states and a
-  caller triaging them acts differently (one needs an id, the other needs
-  a slot inserted first, which op:"assign_id" does automatically). A file
+  caller triaging them acts differently (one needs an id, the other needs a
+  slot inserted first, which op:"assign_id" does automatically). A file
   whose only pending input is suspected should still LIST.
 
-  WORTH CHECKING IN THE SAME PASS: how the four lost their slot. The
+  WORTH CHECKING IN THE SAME PASS: how those findings lost their slot. The
   corpus is written by op:"append_finding", which stamps a blank slot, so
-  these were appended by hand or by an older path. If a live write route
-  can still produce a slotless finding, that is the upstream half of this.
+  they were appended by hand or by an older path. If a live write route can
+  still produce a slotless finding, that is the upstream half of this.
   **Layman:** Four pieces of feedback sat unanswered for ten days because the session-start "you have new feedback" counter only looks for findings that have an empty ID box, not ones that never had a box at all.
   Kind: fix.
   Source: in-session-2026-09-07.
