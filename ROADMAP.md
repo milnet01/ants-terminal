@@ -32986,6 +32986,24 @@ against current source before filing.
   User decision 2026-09-07: accept the substance, but gate it separately rather than folding it into an unrelated pass. Applying it changes direction for a standard, so it re-arms rule 14 and needs review-contract --genre standard. Not started.
 
   The other three rows the requester names — the Priority: value form, the target date, and the Blocked-by: selection consequence — belong with ANTS-4140, which already tracks the Priority band-versus-word split.
+  Measured (2026-09-07): the premise under the 2026-08-10 decision is FALSE today, and the decision stands anyway on different grounds.
+
+  That decision's stated reason includes "every project heads its release blocks with a version" and calls phase blocks "a shape the corpus survey found no project actually using". Counted directly in the machine-global store today, over 22 registered projects:
+
+    phase-shaped level-2 sections   67, across 9 projects
+    version-shaped level-2 sections 28
+
+  The 9: Vestige (about 40 sections), LocalWebServerManager, DOOM_Ants, Games_Hub, Ants_Projects_Hub_Website, LocalWebServerManager, finbreak, Pressless, UT_Ants, claude-config. Phase blocks are the MAJORITY shape in the corpus, not an unused one. Whether the original survey was wrong or the corpus changed after it is not established here; only the present count is.
+
+  The original decision text is left exactly as written. It is a dated record of what was decided and why, and rewriting it would destroy that. This note is the correction.
+
+  WHY IT MATTERS rather than being a footnote. The decision's cheapness rested on there being nothing to migrate. There is: 67 sections across 9 projects, and ANTS-4922 records that no roadmap_log op can move an item between sections at all. So "drop the advice" is still one paragraph, but "drop the shape" is nine migrations blocked on an op that does not exist. Those were conflated.
+
+  It also makes the failure mode concrete. This item already records that four sites enforce the version-only archive name and the viewer skips a non-conforming file SILENTLY. Under a drop-the-shape reading, that silent skip would apply to nine live projects rather than to none.
+
+  User decision 2026-09-07, having seen the count: version blocks become the DOCUMENTED DEFAULT at every version, including pre-1.0 — the direction this item already chose and the one CFG-0321 took downstream. The parser, the four archive sites and rotate_minor stay TOLERANT of existing phase blocks, so no project is stranded and the nine migrate as ANTS-4922 lands.
+
+  CONSEQUENCE FOR THIS ITEM'S REMAINING SCOPE. It reads "widen those four sites, and teach rotate_minor the second heading shape". Under the ruling above that work is still owed, because tolerance is the whole point — it is NOT deletable, which is what a reading of "we have moved on from phases" would wrongly suggest. What changes is only the ORDER: the § 3.2 paragraph can be edited now, and the widening is what lets the nine keep working until they migrate.
 
 - ✅ [ANTS-4074] **`archiveNameRx()`'s "deliberately tighter" comment is stale — the standard now matches it exactly.**
   `src/roadmapmigrate.cpp:755` reads "The directory and the descending sort are
