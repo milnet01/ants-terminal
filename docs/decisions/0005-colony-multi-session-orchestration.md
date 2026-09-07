@@ -1,6 +1,6 @@
 # ADR-0005: Colony — one orchestrator, N worker sessions in worktrees
 
-- **Status:** Proposed
+- **Status:** Accepted (2026-09-07)
 - **Date:** 2026-09-06
 - **Deciders:** Project lead, Claude
 - **Related:** ROADMAP.md ANTS-4881 (the substrate investigation this
@@ -128,18 +128,22 @@ and exits.** Three reasons, in order:
 Phase 2's actual content rather than incidental:
 
 - **`cwd` validation.** It anchors to the focused project root today, so
-  a D1 worktree is refused. The MCP surface must accept a *registered
-  worktree of the calling project* — NOT by passing
-  `allow_outside_root:true`, which is a blanket bypass and would let a
-  confused session launch anywhere.
+  a D1 worktree is refused. The MCP surface must accept a `cwd` whose
+  git common directory resolves to the calling project's main checkout —
+  ANTS-4887's own test, already implemented as `rcMainCheckoutOf()` in
+  `src/remotecontrol.cpp`, so phase 2 reuses it rather than inventing a
+  registry. NOT `allow_outside_root:true`, which is a blanket bypass and
+  would let a confused session launch anywhere.
 - **`raw`.** The MCP surface must not expose it. Control-char filtering
   is the property that makes this safe to reach from a verb.
 
 ### D4 — The work queue lives in the store, with a lease, and needs NO schema bump
 
-A task is a roadmap item plus a claim. The claim lives in the `item`
-table's existing `extras` JSON column, taken by an atomic conditional
-`UPDATE` — measured today, 191 of 6455 items already carry `extras`.
+A task is a roadmap item plus a claim. The claim lives under a reserved
+`$.colony` key inside the `item` table's existing `extras` JSON column,
+written with `json_set` in one atomic conditional `UPDATE`. **The key,
+not the column** — items already carry `extras` for other purposes, so
+replacing the column would discard them.
 
 This matters because **a `kSchemaVersion` bump is a one-way door across
 every project on the machine**: `RoadmapStore::open()` refuses outright
@@ -152,9 +156,11 @@ unique per task, stable for the worker's life, and — unlike a shell PID —
 neither ephemeral nor OS-reused. (D3 rules out addressing a worker by
 session, and `session_message` cannot name one either, so this is the
 only identity both sides can agree on.) It carries an expiry and a
-heartbeat, and **the expiry must exceed a D6 lock wait**: a worker
-legitimately blocks behind another build for minutes, and a reaper that
-cannot tell that from a hang will reclaim live work.
+heartbeat. **The heartbeat continues while the worker blocks on the D6
+build lease**, and expiry is measured against heartbeat freshness rather
+than against the wait: a D6 wait has no bound, so no fixed expiry could
+be guaranteed to exceed one. Without this a reaper cannot tell a queued
+build from a hang, and reclaims live work.
 
 **Every store write on this path owes a failure branch**, because a
 contended write FAILS at the deadline rather than retrying (see the table
@@ -172,6 +178,12 @@ orchestrator confirms the holder is gone (`tab_list` shows no live
 session at that `cwd`), then removes the worktree and deletes the branch,
 then re-deals. Deleting a directory under a worker that is still writing
 is the failure this ordering exists to prevent.
+
+**A successful merge is reaped the same way, minus the fence** — the
+worker has already exited. Once the post-merge gate is green the
+worktree is removed and `colony/<task-id>` deleted. Without this every
+finished task leaves a checkout and its build tree behind, on the
+machine problem 5 already names as the binding constraint.
 
 **The worker's report goes in the task record, not in the mail.**
 `session_message` addresses projects, and every worker resolves to the
@@ -214,7 +226,9 @@ merge commit that D9's rebase path never creates — requeues the task with
 the failure attached, and **stops dealing until a human answers**.
 Continuing would cut every subsequent worker branch from a known-broken
 `main`. The reset is safe because integration is serial: nothing else has
-landed since.
+landed since — and because **`main` is pushed only after the post-merge
+gate is green**, so the reset is always local and never rewrites
+published history.
 
 **Where the pre-merge gate runs: in the WORKER's worktree, not the main
 checkout.** The orchestrator's checkout must stay on `main` — D2 has it
@@ -246,14 +260,18 @@ by weight.**
   executed, and every defect then surfaces at merge, serially, in the
   most expensive place to find one.
 - **Only the orchestrator runs the FULL build and the FULL suite**, at
-  merge (D5). It runs in one warm tree, so ccache stays hot where it
-  matters most.
+  merge (D5). D5 owns which tree each of those runs uses: the pre-merge
+  gate in the worker's worktree, the post-merge gate in the
+  orchestrator's `main` checkout.
 
 Peak RAM is identical to forbidding worker builds outright — one build,
 ever — and the difference is bought entirely from ordering rather than
-from concurrency. Measured on this machine with ccache hot: a narrow
-target build is 5-60 s, a full build 1-2 minutes, the full suite ~55 s at
-`-j4`. Waiting for a turn is cheap; discovering a defect at merge is not.
+from concurrency. With ccache hot on this machine a narrow target build
+costs seconds, and a full build plus the full suite a few minutes:
+waiting for a turn is cheap, and discovering a defect at merge is not.
+**D8's measurement takes those figures fresh rather than inheriting
+them** — `CLAUDE.md`'s timings predate the current suite, so no number
+quoted here would survive being relied on.
 
 The orchestrator-only variant was considered and declined for the reason
 above: it is simpler to state and it makes every worker's output
@@ -271,6 +289,13 @@ of the same intent exclude nothing, and the failure is silent until two
 `cc1plus` storms meet the earlyoom ceiling. `$XDG_STATE_HOME` is commonly
 unset, so the fallback is named too rather than left to each caller to
 invent.
+
+**The first acquirer creates the directory and the lock file** — the
+path does not exist on a fresh machine. A pre-existing file is not an
+error, because an `flock` is held by a process rather than by the file.
+An acquirer that cannot create it **fails loudly rather than building
+unlocked**: an unlocked build is the failure the lease exists to
+prevent.
 
 **Extent: the lock covers the BUILD only, and is released before the test
 run and before any `git push`.** An orchestrator holding it across D5's
@@ -300,6 +325,16 @@ No session spawns itself. A **spawned** worker does one task and exits
 (D3). A **hand-started pull-mode** session — one the user opened and
 pointed at the queue — claims tasks until the queue is empty and then
 exits rather than inventing work.
+
+**A pull-mode session takes ONE worktree for its whole life, not one per
+task** — at `<project-parent>/<project>-colony/pull-<n>/`, cutting a
+fresh `colony/<task-id>` branch in it per task. Its lease `owner` is
+that worktree path, satisfying D4's requirement for a stable identity
+while being unique to the session rather than to the task. So D4's fence
+does not apply to it: "no live session at this cwd" is false of a
+pull-mode worker that is hung but alive. There the signal is a stale
+heartbeat on a living session, which the orchestrator **surfaces rather
+than reaps** — killing a session the user started is the user's call.
 
 Both keep the standing billing-safety rule intact: the parallelism is
 requested, and the work inside it is not invented.
@@ -424,6 +459,12 @@ language is:
 The declaration is `{old, new, kind, language}` and rides the task record
 (D4), which the orchestrator already reads.
 
+**The changed-default entry does not fit that shape**, being the one that
+renames nothing: there is no old token to sweep for, and putting a value
+like `false` in `old` would fail every merge on ubiquitous matches. It
+declares `kind: "behaviour"` with the call sites it changes, and the
+orchestrator routes it to human review instead of to the token sweep.
+
 **`language` narrows the sweep for a SOURCE-language rename only — never
 for the always-declare list above.** Those entries are declared precisely
 because they cross a boundary: a Lua binding's stale references live in
@@ -450,11 +491,13 @@ catches the common undeclared rename without anyone remembering to say
 so. A standard that relies on being remembered is a standard that fails
 silently, which is the failure this whole design is built to avoid.
 
-**The derive side is already multi-language here**, which is what makes
-that backstop credible rather than aspirational: `find_definition`
-resolves C++, Python, Lua, shell and GLSL, and `codebase_index` covers
-the brace family plus Python. The languages where Q2 says *declare* are
-largely the languages the index can still enumerate symbols for.
+**The derive side is already multi-language here** — but the two
+instruments differ, so phase 4 names one per language rather than
+reaching for "the index". `find_definition` resolves C++, Python, Lua,
+shell and GLSL. `codebase_index` inherits `file_outline`'s coverage:
+the brace family, Python and shell, but **not Lua**. So a Lua rename's
+backstop is `find_definition` alone — and Lua is the surface D9 names
+first.
 
 **This wants its own standard**, not a paragraph here — ANTS-4915. An ADR
 records the decision; the rules a worker conforms to belong where a
@@ -468,10 +511,10 @@ Project lead, 2026-09-06.
 |---|---|---|
 | 0a | Build lease (`flock` at the named path), build-only extent, hooks and `ci-parity.sh` included | D6 |
 | 0b | Orchestrator owns the rendered files; worker store writes bypass the render, with `BEGIN IMMEDIATE` and a failure branch | D2, D4 |
-| 1 | Queue + lease + task record in `extras` — owner, expiry, heartbeat, **lane as a file-path set, and D10's `{old, new, kind, language}` declaration slot** | D4, D5, **D10** |
+| 1 | Queue + lease + task record under `extras.$.colony` — owner, expiry, heartbeat, **lane as a file-path set, and D10's declaration slot in both its shapes** | D4, D5, **D10** |
 | 2 | `colony_spawn`: `launch` as a guarded MCP verb, worktree-aware `cwd`, no `raw` | D1, D3 |
-| 3 | `colony-worker` skill — claim, work (narrow builds under the lease), **write the declaration**, report, exit | D3, D6, D7, **D10** |
-| 4 | `colony-orchestrator` skill — partition, deal, verify in the worker's worktree, **sweep declared tokens**, merge serially, rebase or requeue, reset on red | D5, **D9**, **D10** |
+| 3 | `colony-worker` skill — claim, **heartbeat including while blocked on the lease**, work (narrow builds under it), **write the declaration**, report, exit | D3, D6, D7, **D10** |
+| 4 | `colony-orchestrator` skill — partition, deal, verify in the worker's worktree, **sweep declared tokens**, merge serially, rebase or requeue, reset on red, **push once green, then reap the worktree** | D5, **D9**, **D10** |
 | 5 | Fleet view — worker state, spend, queue depth | — |
 
 **D9 and D10 are split across phases rather than owning one**, which is
@@ -512,17 +555,19 @@ keystroke injection. The verification path already exists.
 
   **This makes file SIZE a throughput variable, which is the strongest
   argument this project has yet had for its structural refactors**
-  (project lead, 2026-09-06). **`mainwindow.cpp` is 8,020 lines and
-  `auditdialog.cpp` 6,332**, measured 2026-09-06; every task touching
-  either one excludes every other task that would. (ANTS-1043 and
-  ANTS-1044 still carry the 2026-04-27 review's figures of 6,162 and
-  5,749 — both files have grown by roughly a third since, which sharpens
-  the argument rather than weakening it.) Splitting them does not merely tidy the tree —
+  (project lead, 2026-09-06). **`mainwindow.cpp` and `auditdialog.cpp`
+  are large enough that a task touching either one excludes every other
+  task that would** — and they are not the largest: `claudeintegration.cpp`
+  exceeds both, so the same serialisation applies to it hardest. That had
+  no decomposition item until this ADR's gate filed ANTS-4919. Both
+  have grown since the 2026-04-27 review whose figures ANTS-1043 and
+  ANTS-1044 still carry — `mainwindow.cpp` by about a third — which
+  sharpens the argument rather than weakening it. Splitting them does not merely tidy the tree —
   it converts one serialised lane into several parallel ones, so
   ANTS-1043, ANTS-1044 and ANTS-1049 are Colony ENABLERS rather than
   unrelated tier-3 work. The corollary is worth stating too: measuring
-  Colony's speedup (D8) on a codebase whose two largest files are
-  undivided measures the partition, not the design.
+  Colony's speedup (D8) on a codebase whose largest files are undivided
+  measures the partition, not the design.
 - **A worker can be wrong confidently.** D5 is the whole answer, and it
   is only as good as the suite.
 - **`launch` becomes reachable from the MCP**, with two guards it does

@@ -3640,13 +3640,7 @@ in each named file carry the original indie-review citation.
   Source: indie-review-2026-04-27.
   Colony link (2026-09-06, project lead): this is a Colony ENABLER, not
   unrelated tier-3 work. Colony's throughput is capped by how many
-  INDEPENDENT FILES the work can touch -- its orchestrator refuses to
-  deal a task whose lane overlaps one in flight -- so a 6,162-line
-  mainwindow.cpp means every task touching it excludes every other task
-  that would. Splitting it converts one serialised lane into several
-  parallel ones. Corollary worth knowing before ANTS-4913 runs:
-  measuring Colony's speedup on a codebase whose two largest files are
-  undivided measures the partition, not the design. Recorded in
+  INDEPENDENT FILES the work can touch, so a file this size means every task touching it excludes every other task that would. Splitting it converts one serialised lane into several parallel ones. (The orchestrator PREFERS non-overlapping tasks; it does not refuse them. ADR-0005 D9 withdrew that refusal, and D10's declare-and-sweep replaced it.) Corollary worth knowing before ANTS-4913 runs: measuring Colony's speedup on a codebase whose largest files are undivided measures the partition, not the design. Recorded in
   docs/decisions/0005-colony-multi-session-orchestration.md under
   Consequences.
 
@@ -4089,6 +4083,25 @@ minor tag (next: pre-0.8.0).
   **Layman:** Every roadmap entry will have to carry its plain-English one-liner; right now that line is optional and often missing.
   Kind: implement.
   Source: user-request-2026-08-06.
+
+- 📋 [ANTS-4919] **`claudeintegration.cpp` decomposition — the largest file, and the only big one with no item.**
+  Found while sweeping ADR-0005's blast radius: the ADR argued file size is
+  a Colony throughput variable and named ANTS-1043 (mainwindow.cpp) and
+  ANTS-1044 (auditdialog.cpp) as the enablers. Measured 2026-09-07,
+  claudeintegration.cpp is substantially larger than either and carries no
+  decomposition item, so the serialisation the ADR describes applies to it
+  hardest and is recorded nowhere.
+
+  Peer precedent: ANTS-3833 decomposed remotecontrol.cpp and shipped, so
+  the pattern and the cost are both known here.
+
+  Not urgent on its own merits -- the same post-1.0 reasoning as ANTS-1043
+  applies. It is filed because ADR-0005 Consequences now names it, and an
+  ADR naming a file with no item is how a stated enabler goes unbuilt.
+  **Layman:** Split the biggest source file so parallel sessions can work on it without blocking each other.
+  Kind: refactor.
+  Source: adr-0005-gate-loop-3-2026-09-07.
+  Lanes: claude, structural.
 
 ### 🐛 Regressions + UX gaps reported post-0.7.55 (user, 2026-04-28)
 
@@ -62245,9 +62258,7 @@ merit whether or not the rest is built.
   queue, which is the whole answer to a worker that dies, hangs, or is
   closed by the user.
 
-  The claim lives in the existing `item.extras` JSON column -- present
-  since user_version 1 and already carrying data on 191 of 6455 rows -- so
-  this needs NO kSchemaVersion bump. That is deliberate and not an
+  The claim lives under a reserved `$.colony` key inside the existing `item.extras` JSON column -- present since user_version 1 -- so this needs NO kSchemaVersion bump. Write it with `json_set`, not by replacing the column: other tooling already stores `unresolved_path` and `source_kind` there, and replacing would discard them. That is deliberate and not an
   optimisation: a bump is a one-way door across every project on the
   machine, because the first binary to upgrade the store locks every older
   build out of every project. A parallel-work feature does not earn that.
@@ -62271,8 +62282,7 @@ merit whether or not the rest is built.
   nearly as important -- a long-lived worker spends a growing share of
   every task on compaction.
 
-  Guard it: refuse to launch outside a registered worktree of the calling
-  project. Same-UID trust (ADR-0004) means this is about confusion rather
+  Guard it: accept a cwd only where its git common directory resolves to the calling project's main checkout -- ANTS-4887's own test, already implemented as `rcMainCheckoutOf()` in src/remotecontrol.cpp. Not `allow_outside_root:true`, which is a blanket bypass. Same-UID trust (ADR-0004) means this is about confusion rather
   than attack, which is exactly what a guard is for.
   **Layman:** Let the coordinating session open a new terminal tab already running a Claude session on its own copy of the code.
   Kind: implement.
