@@ -1202,3 +1202,52 @@ TEST(McpProjection, Inv10NoDiagnosticLeavesNarrowingUnchanged) {
     EXPECT_EQ(o.size(), 1) << "no warning present, so nothing is added";
     EXPECT_EQ(o.value("count").toInt(), 3);
 }
+
+// ANTS-4930 — `fields_unmatched` collapsed three different facts into one
+// array, and its documentation ("names the envelope does not carry") reads as
+// the caller-error one, which is only the first of them: a name the verb never
+// carries, a name it carries only on another backend, and a name it carries
+// only when there is something to report.
+//
+// It cost a live defect in a shipped skill. A diagnostic branched on
+// `warning`'s presence, was written and verified against a markdown project,
+// and everywhere else read the field's absence as a clean parse — so the check
+// could not fire, and the reporter concluded `warning` was backend-specific. It
+// is not; it is conditionally populated. Naming the keys the envelope DOES
+// carry makes that branch mechanical without inventing an output schema.
+TEST(McpProjection, Ants4930UnmatchedNamesWhatIsAvailable) {
+    const QJsonObject o =
+        parse(mcp::projectFields(kBody, fields({"count", "nope"})));
+
+    const QJsonArray avail =
+        o.value(QStringLiteral("fields_available")).toArray();
+    ASSERT_FALSE(avail.isEmpty())
+        << "ANTS-4930: an unmatched name must come with the envelope's actual "
+           "shape, or the caller can only infer from an absence";
+    EXPECT_TRUE(avail.contains(QJsonValue(QStringLiteral("count"))))
+        << "ANTS-4930: the keys the envelope really carries are listed";
+    EXPECT_FALSE(avail.contains(QJsonValue(QStringLiteral("nope"))))
+        << "ANTS-4930: and a name it does not carry is not";
+
+    // The misspelling case is now readable directly: ask for a near-miss and
+    // the correct spelling is sitting in the available list.
+    const QJsonObject typo =
+        parse(mcp::projectFields(kBody, fields({"cont"})));
+    EXPECT_EQ(typo.value(QStringLiteral("fields_unmatched")).toArray(),
+              (QJsonArray{QStringLiteral("cont")}));
+    EXPECT_TRUE(typo.value(QStringLiteral("fields_available")).toArray()
+                    .contains(QJsonValue(QStringLiteral("count"))))
+        << "ANTS-4930: `count` is right there, so the typo is self-evident "
+           "rather than inferred";
+}
+
+// It rides the same rule as `fields_unmatched`: emitted only when something is
+// missing. An exactly-matching request must not grow, or every token-careful
+// caller pays for a diagnostic that has nothing to diagnose.
+TEST(McpProjection, Ants4930ExactRequestDoesNotGrow) {
+    const QJsonObject exact =
+        parse(mcp::projectFields(kBody, fields({"count"})));
+    EXPECT_FALSE(exact.contains(QStringLiteral("fields_available")))
+        << "ANTS-4930: nothing was unmatched, so there is nothing to explain";
+    EXPECT_EQ(exact.size(), 1);
+}

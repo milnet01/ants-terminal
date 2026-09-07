@@ -243,8 +243,39 @@ QString projectFields(const QString &responseText, const QJsonArray &fields) {
         const QString name = f.toString();
         if (!name.isEmpty() && !src.contains(name)) unmatched.append(name);
     }
-    if (!unmatched.isEmpty())
+    if (!unmatched.isEmpty()) {
         out.insert(QStringLiteral("fields_unmatched"), unmatched);
+        // ANTS-4930 — `fields_unmatched` alone collapses three different facts
+        // into one array: a name this verb never carries, a name it carries
+        // only on another backend, and a name it carries only when there is
+        // something to report. Its documentation ("names the envelope does not
+        // carry") reads as the first, which is the caller-error reading, and
+        // only one of the three IS one.
+        //
+        // That cost a live defect in a shipped skill: a diagnostic branched on
+        // `warning`'s presence, was written and verified against a markdown
+        // project, and everywhere else read the field's absence as a clean
+        // parse — so the check could not fire. The reporter concluded `warning`
+        // was backend-specific. It is not; it is conditionally populated.
+        //
+        // Naming the keys the envelope DOES carry makes the branch mechanical
+        // without inventing an output schema. A misspelling is now visible
+        // directly — ask for `warnign` and `warning` is sitting in this list —
+        // and for the other two the caller can read the envelope's actual shape
+        // (`source`, `count`) instead of inferring from an absence. A true
+        // never-emits-this answer would need a declared output-field registry
+        // per verb, which is a different and much larger piece of work.
+        //
+        // Top-level keys only, and envelopes carry few, so this is cheap. It
+        // rides the same "emitted only when something is missing" rule as
+        // `fields_unmatched`, so an exactly-matching request stays
+        // byte-identical.
+        QStringList present = src.keys();
+        present.sort();
+        QJsonArray available;
+        for (const QString &k : present) available.append(k);
+        out.insert(QStringLiteral("fields_available"), available);
+    }
     // ANTS-4877 — a fourth floor, and the narrowest: when NOT ONE requested
     // field matched, carry `ok`. The floors below cover a refusal and a
     // diagnostic, and the 304 returned above; a SUCCESS narrowed to nothing

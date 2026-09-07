@@ -2183,7 +2183,16 @@ void ClaudeIntegration::onMcpConnection() {
                         "when non-empty — so a narrowed reply that comes back "
                         "nearly empty says WHY, and a correct probe of an "
                         "inapplicable field is distinguishable from a misspelling "
-                        "or from the argument being dropped. An all-unknown list "
+                        "or from the argument being dropped. ANTS-4930: it "
+                        "arrives with `fields_available`, the top-level keys the "
+                        "envelope DOES carry, because `fields_unmatched` alone "
+                        "collapses three facts into one array — a name this verb "
+                        "never carries, one it carries only on another backend, "
+                        "and one it carries only when there is something to "
+                        "report. Read the two together: a misspelling shows up as "
+                        "the right name sitting in `fields_available`, and for "
+                        "the others the envelope's real shape is there to branch "
+                        "on instead of an absence. An all-unknown list "
                         "yields that field alone. Omit for the full "
                         "payload — fully backwards-compatible (ANTS-1720). "
                         "To keep the etag for a follow-up 304 call, "
@@ -14825,8 +14834,11 @@ void ClaudeIntegration::onMcpConnection() {
                                         "Optional. Return only these top-level "
                                         "response fields; names the envelope "
                                         "does not carry are listed in "
-                                        "`fields_unmatched`. Honoured by every "
-                                        "verb (ANTS-4524).");
+                                        "`fields_unmatched`, alongside "
+                                        "`fields_available` — the keys it does "
+                                        "carry, so a misspelling is visible "
+                                        "rather than inferred (ANTS-4930). "
+                                        "Honoured by every verb (ANTS-4524).");
                                 props[QStringLiteral("fields")] = p;
                                 schema[QStringLiteral("properties")] = props;
                                 t[QStringLiteral("inputSchema")] = schema;
