@@ -491,9 +491,13 @@ files). **That skill replaced both
 gone, not aliased, so a session invoking them gets nothing. Every cycle
 also **re-checks README.md's prose, not just its version banner** — a
 `bump.json` todo owns the criteria; update it only when a user-visible
-claim has actually drifted (the tool count is the one
-nothing else verifies). Completed `ROADMAP.md` items reach the CHANGELOG as a
-summary the copy rule below governs.
+claim has actually drifted. **The tool count is no longer the unverified
+one** — `tools/check-readme-claims.sh` (ANTS-4584) derives README's
+checkable numbers from the tree and the pre-push hook runs it, so adding an
+MCP verb now fails the push until README is updated. That script's header
+still quotes this sentence's old wording as its reason for existing.
+Completed `ROADMAP.md` items reach the CHANGELOG as a summary the copy rule
+below governs.
 Update `PLUGINS.md` in the same commit when the `ants.*` Lua surface
 changes.
 
