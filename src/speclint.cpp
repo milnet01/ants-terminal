@@ -465,7 +465,7 @@ Result check(const QString &text, const QString &relPath,
     // 3b is exactly how a sub-lettered id comes to exist, which put the blind
     // spot precisely where a contract had just been divided in two.
     struct InvId {
-        int     n;
+        int n = 0;
         QString letter;
         QString id;
     };

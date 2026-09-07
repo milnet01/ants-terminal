@@ -537,7 +537,7 @@ QJsonDocument RemoteControl::cmdWorkspaceSearch(const QJsonObject &req) {
     int lastMatchIdx = -1;  // ANTS-1304: index into matches[] for the
                             // most recent match in the current file
                             // (reset on each begin / end event).
-    struct PendingCtx { int line; QString text; };
+    struct PendingCtx { int line = 0; QString text; };
     QList<PendingCtx> pendingBefore;
     const QList<QByteArray> lines = stdoutBytes.split('\n');
     // ANTS-3405 — bound the parse loop by the wall budget too, not just the
@@ -1834,7 +1834,7 @@ QJsonDocument RemoteControl::cmdMutationProbe(const QJsonObject &req) {
     bf.close();
     const QString baseline = QString::fromUtf8(baselineBytes);
 
-    struct RunOut { bool started; bool timedOut; int exitCode; QString output; };
+    struct RunOut { bool started = false; bool timedOut = false; int exitCode = 0; QString output; };
     auto runTests = [&]() -> RunOut {
         QElapsedTimer runClock;
         runClock.start();
@@ -2492,7 +2492,7 @@ QJsonDocument RemoteControl::cmdApplyEdits(const QJsonObject &req) {
     // ANTS-3711 — an edit names its target EITHER by unique `old` text or by an
     // inclusive 1-based `start_line`/`end_line` range. Exactly one, never both.
     struct E {
-        int index; QString rawPath; QString resolved;
+        int index = 0; QString rawPath; QString resolved;
         QString oldStr; QString newStr; bool replaceAll = false;
         bool isRange = false;
         int startLine = 0, endLine = 0;

@@ -2239,7 +2239,7 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppendBatch(const QJsonObject &req) {
     };
 
     struct Accepted {
-        int     bulletIndex;
+        int bulletIndex = 0;
         QString idStr;
         QString emoji;
         QJsonObject bulletReq;

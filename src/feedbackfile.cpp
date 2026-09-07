@@ -55,9 +55,9 @@ bool isMaintainerHeading(const QString &line) {
 // parser contract has exactly one implementation (CLAUDE.md §3). Returns
 // one Boundary per heading in document order.
 struct Boundary {
-    int     line0;         // 0-based line index of the heading
+    int     line0 = 0;         // 0-based line index of the heading
     QString text;          // the heading line, verbatim
-    bool    isMaintainer;  // matches the maintainer anchor regex
+    bool    isMaintainer = false;  // matches the maintainer anchor regex
 };
 
 QVector<Boundary> scanBoundaries(const QStringList &lines) {

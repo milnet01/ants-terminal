@@ -3024,7 +3024,7 @@ QString tpExcerpt(const QString &body, const TpTerms &t,
 
 struct TpScored {
     QJsonObject obj;
-    int         score;
+    int score = 0;
     QString     sortKey;
 };
 
@@ -3562,7 +3562,7 @@ QJsonDocument RemoteControl::cmdFocusedTest(const QJsonObject &req) {
     QElapsedTimer wall;
     wall.start();
 
-    struct RunOut { bool started; bool timedOut; bool crashed; QString output; };
+    struct RunOut { bool started = false; bool timedOut = false; bool crashed = false; QString output; };
     auto runCtest = [&](const QString &regex) -> RunOut {
         QStringList argv;
         argv << QStringLiteral("--test-dir") << buildRel

@@ -302,7 +302,7 @@ QJsonDocument RemoteControl::cmdRoadmapLogBackfillDates(const QJsonObject &req) 
 
     // Decide every write before opening a transaction, so `dry_run` reports the
     // real run's counts rather than a second estimate of them.
-    struct Write { qint64 pk; QString created, shipped; };  // dates, empty = skip
+    struct Write { qint64 pk = 0; QString created, shipped; };  // dates, empty = skip
     QVector<Write> plan;
     QStringList undated;
     int createdWrites = 0, shippedWrites = 0;

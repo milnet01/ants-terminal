@@ -50,9 +50,13 @@ enum class Kind {
 };
 
 struct Finding {
-    Kind    kind;
+    // Value-initialised for determinism (ANTS-3850). Note the zero enumerator
+    // is DeadAnchor, a real classification — so this makes an unset `kind`
+    // reproducible, not obviously wrong. Every construction site sets it
+    // explicitly; if one ever stops, prefer failing loudly over trusting this.
+    Kind    kind {};
     QString file;     // project-relative path of the doc the link lives in
-    int     line;     // 1-based line of the offending link/entry
+    int     line = 0;     // 1-based line of the offending link/entry
     QString message;  // human-readable
 };
 

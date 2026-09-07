@@ -763,7 +763,7 @@ NormalizeResult normalizeUnreleased(const QString &markdown) {
     //    spans its heading line through the line before the next `### `
     //    (or sectionEnd) — so its bullets, blank spacer, and any wedged
     //    prose travel with it.
-    struct Block { int key; int origin; QStringList body; };
+    struct Block { int key = 0; int origin = 0; QStringList body; };
     QVector<Block> blocks;
     int i = firstCat;
     while (i < sectionEnd) {

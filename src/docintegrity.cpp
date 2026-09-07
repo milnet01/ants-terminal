@@ -50,14 +50,14 @@ bool isListItem(const QString &line) {
 
 struct Heading {
     QString slug;
-    int     level;
-    int     line;   // 1-based
+    int level = 0;
+    int     line = 0;   // 1-based
     QString text;
 };
 
 struct Link {
     QString target;  // raw target inside the parens, incl. any #anchor
-    int     line;    // 1-based
+    int     line = 0;    // 1-based
 };
 
 // ANTS-3700 — the leading section number of a heading, as its components:
@@ -345,7 +345,7 @@ void detectToc(const QStringList &lines, DocData &d) {
 // the caller) to an absolute path under root. Returns {skip=true} for external
 // / absolute / root-escaping / pure-anchor targets (no finding, no probe).
 struct Resolved {
-    bool    skip;
+    bool skip = false;
     QString absPath;
 };
 Resolved resolveRelative(const QString &rootCanonical, const QString &docAbsDir,

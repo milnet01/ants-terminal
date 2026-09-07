@@ -368,7 +368,7 @@ QStringList extractRelatedSpecsFromHeader(const QString &projectPath,
 // `spec.md`) get a distinct lane name derived from the parent dir
 // rather than colliding on the basename. mtime drives the cap.
 struct SpecLaneCandidate {
-    qint64  mtimeMs;
+    qint64 mtimeMs = 0;
     QString rel;        // project-relative path
     QString laneName;   // lane name suggestion (consumed by derivePartition)
 };

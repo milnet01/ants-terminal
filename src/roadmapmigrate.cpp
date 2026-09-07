@@ -1196,7 +1196,7 @@ void validatePaths(MigrationPlan &plan, const QString &projectRoot) {
     // point at the path rather than at the bullet's first line.
     struct Candidate {
         QString path;
-        int     line;
+        int line = 0;
     };
     for (PlannedItem &it : plan.items) {
         QVector<Candidate> cited;

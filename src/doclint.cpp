@@ -116,8 +116,8 @@ QVector<bool> fenceMap(const QStringList &lines) {
 struct Hd {
     QString text;
     QString slug;
-    int     level;
-    int     line;   // 1-based
+    int level = 0;
+    int     line = 0;   // 1-based
 };
 
 // Slugs are assigned in document order through one `seen` map, which is how
@@ -146,7 +146,7 @@ bool isTocListItem(const QString &s) {
 
 struct TocEntry {
     QString slug;
-    int     line;   // 1-based
+    int     line = 0;   // 1-based
 };
 
 struct TocRegion {

@@ -2655,7 +2655,7 @@ namespace {
 // rendered card of a section), not the header.
 struct RenderedCard {
     QString id;
-    int top;
+    int top = 0;
 };
 QVector<RenderedCard> scanRenderedCards(const QTextDocument *doc) {
     QVector<RenderedCard> cards;
@@ -3304,7 +3304,7 @@ QString RoadmapDialog::loadMarkdown(const QString &roadmapPath,
     QDir d(dir);
     const QStringList rawEntries =
         d.entryList(QDir::Files | QDir::Readable, QDir::NoSort);
-    struct Entry { int major; int minor; QString name; };
+    struct Entry { int major = 0; int minor = 0; QString name; };
     QVector<Entry> entries;
     entries.reserve(rawEntries.size());
     for (const QString &name : rawEntries) {

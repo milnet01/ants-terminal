@@ -83,7 +83,7 @@ QStringList rankSectionCandidates(const QString &wantSlug,
         else wantWords.insert(t);
     }
 
-    struct Scored { int score; int order; QString slug; };
+    struct Scored { int score = 0; int order = 0; QString slug; };
     QVector<Scored> scored;
     scored.reserve(slugs.size());
     for (int i = 0; i < slugs.size(); ++i) {

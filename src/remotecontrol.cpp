@@ -1744,7 +1744,7 @@ QJsonArray rcComputePossibleDuplicates(
     const QSet<QString> tokNew(tokNewList.begin(), tokNewList.end());
     if (tokNew.isEmpty()) return {};
 
-    struct Cand { QString id; QString headline; int score; };
+    struct Cand { QString id; QString headline; int score = 0; };
     QVector<Cand> cands;
     for (const auto &rec : existing) {
         if (rec.headline.isEmpty()) continue;

@@ -76,9 +76,9 @@ QString stripOneSpace(const QString &content) {
 struct Candidate {
     QString span;    // verbatim span content, echoed as Symbol::symbol
     QString needle;  // what the resolver is asked for
-    int     line;    // 1-based
-    int     col;     // 0-based
-    bool    ambiguous;  // bare lowercase word — see the emission rule (ANTS-3692)
+    int     line = 0;    // 1-based
+    int     col = 0;     // 0-based
+    bool    ambiguous = false;  // bare lowercase word — see the emission rule (ANTS-3692)
 };
 
 }  // namespace

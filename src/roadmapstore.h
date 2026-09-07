@@ -142,7 +142,7 @@ public:
     // ANTS-3781 § 2.1 — the upgrade ladder. One rung of it: the statements that
     // take a store from version `to - 1` to version `to`, in the order given.
     struct Upgrade {
-        int to;
+        int to = 0;
         QStringList statements;
     };
 

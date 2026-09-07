@@ -61,7 +61,7 @@ public:
 private:
     struct Key {
         QString text;
-        int variant;
+        int variant = 0;
         bool operator==(const Key &o) const {
             return variant == o.variant && text == o.text;
         }

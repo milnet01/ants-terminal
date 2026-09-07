@@ -372,7 +372,7 @@ public:
     // `text` is the raw heading text post-`#` strip (no inline
     // expansion), `anchor` is the same name renderHtml emits.
     struct TocEntry {
-        int level;
+        int level = 0;
         QString text;
         QString anchor;
     };
