@@ -52493,6 +52493,130 @@ plus two gaps hit while sweeping stale spec citations under ANTS-4757.
   Source: in-session-2026-09-07, hit while resolving owning TUs for ANTS-4757.
   Lanes: mcp.
 
+- ✅ [ANTS-4925] **ANTS-4895 reversed the standard-resolution order and left the old order asserted directly above the function.**
+  Reported by the claude-config session and verified against the tree before fixing.
+
+  The ANTS-3662 header comment above `specLintStandardCandidates()` read "`spec-format.md` wins over `specs.md` where both exist, matching /write-spec's resolution order." ANTS-4895 reversed exactly that. Its own comment block sits BELOW the stale sentence and states the live rule with its reasoning, and the list itself now puts `specs.md` first in each layout pair.
+
+  So one function carried both claims, and the false one came first and was stated flatly, while the correction was buried in a long rationale block. A reader answering "which standard wins?" got the pre-4895 answer.
+
+  Fixed as the reporter suggested: the clause is DELETED rather than amended. A second copy of the rule is what produced the defect, so the repair is to stop stating it twice. What replaces it says the order lives in ANTS-4895's block and says WHY it is not restated -- the previous sentence survived the change that falsified it, and a bare deletion invites the next editor to helpfully restate it.
+
+  Also true and worth keeping: the sentence named /write-spec as the thing the order matched, which made it a claim about a skill that would have had to change to stay true.
+  **Layman:** A comment above the code said the opposite of what the code does, and it was the first thing a reader met.
+  Kind: doc-fix.
+  Source: claude_config_Ants_MCP_Feedback.md, 2026-09-07.
+  Lanes: mcp, docs.
+
+- 📋 [ANTS-4926] **spec_lint's `sections_source` cannot distinguish a project that adopted the global format standard from one that adopted none.**
+  The resolver tries four project-local paths, then four under ~/.claude, and prefixes a global hit with `~global/`. A caller reads that prefix as "this project adopted no format standard" and drops the section findings.
+
+  THE BIND, and it is not an edge case. `spec-format.md` FORBIDS a project from keeping a copy: read it in place, write deltas to `docs/standards/spec-format-overrides.md`. That overrides file is not among the eight candidates. So a project that HAS adopted the global standard resolves to `~global/` too, and its section findings are real and get dropped. The affected population is every CONFORMING project.
+
+  The reporter measured the other arm: DOOM_Ants ships twelve standards, none a spec format, and produced 210 `missing_section` findings across 19 specs against a standard it never adopted. Unverified from here; take it as their measurement.
+
+  Both states emit the same `sections_source` string and nothing else in the envelope differs. `check-doc-facts` currently trusts the prefix, so the check is off for exactly the projects that follow the rule.
+
+  THREE ROUTES the reporter offers, smallest first, and they express no preference.
+  1. Report WHY resolution landed global -- a field separating "no local candidate existed" from "a local adoption marker pointed here". ANTS-4373's `skipped[]` already carries the consulted paths, so this names a branch the resolver has already taken.
+  2. Count `docs/standards/spec-format-overrides.md` as a local adoption signal. Incomplete alone: a project adopting with zero deltas writes no overrides file.
+  3. An explicit adoption marker in `.ants/project.json`.
+
+  Route 1 needs no new convention anywhere and is the one to cost first. This is the ANTS-4373 family exactly -- a skip reported without its cause -- so the shape is already settled here.
+  **Layman:** The checker cannot tell "this project follows the shared rules" from "this project has no rules", so callers either skip a real check or raise hundreds of false alarms.
+  Kind: fix.
+  Source: claude_config_Ants_MCP_Feedback.md, 2026-09-07.
+  Lanes: mcp, docs.
+
+- 📋 [ANTS-4927] **roadmap_query silently ignores `q` where the working filter is `query`, and an unfiltered page reads as a result set.**
+  THE REPORT'S PREMISE IS WRONG AND THE DEFECT UNDER IT IS REAL. Filed as the second, not the first.
+
+  Reported as "a store-backed roadmap has no full-text search, so the only route is grepping the render". It has one. `query` is a case-insensitive substring filter that the schema documents as matching "bullets whose headline (or headline_full) OR body contains this text", and it composes with status and section. Verified in this session on this store-backed project: a `query` call returned count:0 with a `warning` naming the search and the population size. So no grep over the render is needed and the store/render distinction is not being breached.
+
+  What actually happened is that the reporter passed `q`. That is not the parameter, so it landed in `ignored_args` and the call returned an unfiltered page -- which, as they say, reads like a result set at a glance.
+
+  SO THE FINDING IS THE SILENT-IGNORE, which is their own second suggestion and the half that survives: `ignored_args` warns where it should refuse when the ignored argument was the ONLY selector the caller passed. An unfiltered page is the one shape that cannot be told from an answer.
+
+  Two cheap parts:
+  1. Refuse `bad_args` when every selector a caller passed was ignored. Returning the full list there is the failure mode `workspace_search`'s zero-match hint already avoids.
+  2. Accept `q` as an alias for `query`, the way `filter` aliases `status` and `max_results` aliases `limit` -- both precedents already exist on this verb for exactly this reason, a name a caller naturally carries across from a sibling verb.
+
+  Do NOT build the body search. It is there.
+  **Layman:** A near-miss argument name is accepted and quietly dropped, so the tool answers with the whole list and it looks like a search result.
+  Kind: fix.
+  Source: claude_config_Ants_MCP_Feedback.md, 2026-09-07.
+  Lanes: mcp, roadmap.
+
+- 📋 [ANTS-4928] **workspace_search reads as project-scoped, so sessions reach for grep on any path outside their own tree.**
+  The reporter audited every Bash grep across a long session and found almost none needed to be a grep. Confirmed working: another project's tree via `caller_cwd`, a non-project /tmp directory, counts, distinct files, context, hidden files, ignoring gitignore, wrapped-quotation matching.
+
+  The genuinely uncovered cases are all NON-file: `git log | grep`, `ls | grep`, `command -v x | grep`. Those are command output rather than a corpus, and `git_state` covers the git ones. The reporter does not think the verb should grow to cover pipes, and neither do I.
+
+  SO THERE IS NO CAPABILITY GAP. The gap is that the verb READS as project-scoped and every skill mentioning it reinforces that. `lane`'s own description says lane cannot escape the project root -- true, and the sentence that misleads, because the escape is `caller_cwd`, one argument away, documented only inside `lane`'s prose.
+
+  FIX IS ONE SENTENCE, at the point the decision is made rather than after it: say in the top-level description that the verb searches the tree at `caller_cwd`, and that pointing `caller_cwd` at any directory -- another project, or somewhere outside a repo entirely -- searches that instead.
+
+  SECOND HALF, and it is ours to answer. The reporter measured that `ants-bash-veto.sh` fires only inside a tree carrying a `.ants-project` marker, and that exactly one project has one -- so the nudge has never fired anywhere else. They also note there is no PreToolUse hook on the harness `Grep` TOOL at all, only on Bash, and that subagents typically hold `Grep` without `Bash`, so no subagent has ever been nudged. They are adding a hook on their side and ask whether the pack should own both instead. Unverified from here; the marker gate is worth re-examining either way, since a token-saving nudge is not project-specific.
+  **Layman:** The search tool can search any folder on the machine, but nothing says so where you decide whether to use it, so people fall back to raw grep.
+  Kind: doc.
+  Source: claude_config_Ants_MCP_Feedback.md, 2026-09-07.
+  Lanes: mcp, docs.
+
+- 📋 [ANTS-4929] **project_query's selection_hint frames it as a content tool, so project.list is never found and Glob reads as unreplaceable.**
+  `project_query` ships `project.list(subdir?)`, returning sorted project-relative paths a Lua snippet can filter by any name pattern. That is Glob's job, done server-side, returning the answer rather than the paths.
+
+  Nothing at the decision point says so. The `selection_hint` reads "Use when you'd otherwise Read several files just to count/filter/aggregate over them" -- about file CONTENTS. `project.list` is named once, mid-description, inside a run-on listing the whole Lua API, AFTER `project.read`, which is what frames the verb as a content tool. A session reaching for "list files" has no reason to open it.
+
+  WHAT IT COST, and this is why it is filed as more than a nicety. The reporter shipped a PreToolUse hook (their CFG-0343) that blocks the harness `Grep` tool and routes it to `workspace_search`, deliberately leaving `Glob` untouched, with this in its header as justification: "No verb is a superset of 'list files matching a pattern': workspace_search needs a content pattern." That clause is false, and they had read `project_query`'s schema earlier in the same session. So a machine-wide hook's scope was drawn around a capability that exists, with the false claim written into it where the next reader takes it as settled. They are correcting the header regardless of what we decide.
+
+  FIX IS ONE SENTENCE, same shape as the workspace_search finding: extend `selection_hint` to name the enumeration case -- listing files under a path by name pattern via `project.list`, which no other verb does. Optionally lift `project.list` out of the API run-on; its position after `project.read` is what makes the verb read as content-only.
+
+  They offer to file it as a first-class `list_files` verb instead and argue against it themselves: the snippet is strictly more capable and the server-side filtering is where the saving is. Agreed -- do not build a verb here.
+  **Layman:** One tool can list files by name, which is what people use Glob for, but its one-line summary talks about counting things inside files — so nobody finds it.
+  Kind: doc.
+  Source: claude_config_Ants_MCP_Feedback.md, 2026-09-07.
+  Lanes: mcp, docs.
+
+- 📋 [ANTS-4930] **fields_unmatched cannot distinguish a misspelled field from one this backend never carries from one simply not populated now.**
+  THE REPORTED DIAGNOSIS IS WRONG; THE DEFECT IS REAL AND SHARPER THAN FILED.
+
+  Reported as "`warning` is a MARKDOWN-backend field, absent by construction on `source:\"store\"`". Not so. Verified in this session on this store-backed project: a `query` that matched nothing returned a populated `warning` naming the search and the bullet count. So `warning` is carried on the store backend.
+
+  It is CONDITIONALLY POPULATED, not backend-specific. The reporter's call asked for it when no warning condition held, so it was absent and landed in `fields_unmatched` -- and their own repro is consistent with that reading, they just attributed it to the backend.
+
+  THE COMPLAINT SURVIVES INTACT and is the thing to fix: `fields_unmatched` collapses at least three different facts into one array -- a name the verb does not know, a name it knows but this backend cannot carry, and a name it knows and simply has nothing to report for right now. Its documentation ("names the envelope does not carry") reads as a caller error, which is only one of the three.
+
+  IT COST A LIVE DEFECT IN A SHIPPED SKILL, which is the argument for fixing it rather than documenting it. Their `adopt-project` Phase 1 read a fourth diagnostic state out of `warning`'s presence. The rule was written and verified against a markdown project; everywhere else the field's absence read as a clean parse and the diagnostic could not fire. Fixed on their side (CFG-0344) by branching on `source` first, but only after being hit.
+
+  SMALLEST FIX: separate the unknown-name case from the known-but-not-emitted case, so a caller can branch mechanically instead of inferring. A distinct key, or naming the reason per field. Their option 1 -- documenting it -- would have prevented their defect, but it does not make the branch checkable, and this envelope is read by skills rather than by people.
+
+  Worth checking while in there: a `fields` list that omits `warning` still returned it in this session's call. If `fields` is meant to be exhaustive, that is a second defect in the same argument.
+  **Layman:** Ask for a diagnostic that does not come back and you cannot tell whether you typed it wrong, this kind of project never has it, or there was just nothing to report.
+  Kind: fix.
+  Source: claude_config_Ants_MCP_Feedback.md, 2026-09-07.
+  Lanes: mcp, roadmap.
+
+- 📋 [ANTS-4931] **The tool_info deferral moved per-op detail into the op parameter's description, which every session still pays for on every call.**
+  Several verbs end their description with "Full per-op detail via tool_info {name:...}" -- `changelog_log`, `workspace_search`, `roadmap_log`. The top-level descriptions really are short as a result.
+
+  For the multi-op writers the detail did not move to `tool_info`. It moved DOWN, into the `op` parameter's own `description`, which is part of `inputSchema` and is therefore delivered in full on every tools/list. That is exactly what the deferral was meant to avoid.
+
+  `roadmap_log` is the clearest case: a compact top-level description ending in the deferral, and an `op` description inlining the complete write-up for every operation in the enum -- each with its rationale, refusal codes and provenance. A caller that wants `op:"flip"` pays for all of them. The same shape sits on its `old_text`, `new_text` and `note` fields, which carry multi-paragraph rationale.
+
+  The reporter is explicit that the content is good and that they have relied on it. So is this item: DO NOT SHORTEN THE TEXT. The rationale paragraphs are why these verbs are usable without trial and error, and the ones recording a past failure -- `evidence` being comma-split, `--tags` versus `--follow-tags` -- are exactly the ones that stop a caller repeating it.
+
+  It also works against the deferral's own promise. A reader who sees "full per-op detail via tool_info" concludes the detail is not in front of them and does not need skimming. It is.
+
+  TWO ROUTES, no preference offered:
+  1. Apply the deferral to the `op` field too -- keep the enum and a one-line gloss per op, and point at `tool_info`, which already returns the whole descriptor. Needs no new argument.
+  2. Add an optional `op` to `tool_info` ({name, op}) returning just that operation's block, which would make the deferral sentence literally true and give the long text a home paid for only when wanted.
+
+  Measure the actual bytes before choosing. This is a per-session cost on practically every session on this machine, so it is worth costing properly rather than estimating.
+  **Layman:** Long help text was moved out of one place and into another that is still sent every time, so the saving did not happen.
+  Kind: perf.
+  Source: claude_config_Ants_MCP_Feedback.md, 2026-09-07.
+  Lanes: mcp.
+
 ### 🎨 UI polish (user request 2026-09-04)
 
 - ✅ [ANTS-4862] **The tab-colour context menu shows which colour the tab is currently set to.**

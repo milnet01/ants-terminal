@@ -496,8 +496,9 @@ QJsonObject RemoteControl::docSymbolsBuildResponse(
 }
 
 // ANTS-3662 — the required-section list, read from the project's OWN format
-// standard and never assumed. `spec-format.md` wins over `specs.md` where both
-// exist, matching /write-spec's resolution order.
+// standard and never assumed. The resolution ORDER is ANTS-4895's, stated in
+// its own block below; it is deliberately not restated here, because the claim
+// that used to sit on this line survived the change that reversed it.
 //
 // NO `_shared` FALLBACK. The canonical ~/.claude/skills/_shared/spec-format.md
 // lives outside the project root, which this verb's own bad_path contract
