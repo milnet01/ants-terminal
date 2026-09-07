@@ -59390,7 +59390,7 @@ to apply within a document. Follow-on work from that change.
   bullet mentions, `doc_citations` having no entry either, is left to
   ANTS-3636 § 7; adding it here would have been an orthogonal edit.
 
-- 📋 [ANTS-4822] **Specs cite C++ members that have since been renamed, and nothing acts on the report.**
+- ✅ [ANTS-4822] **Specs cite C++ members that have since been renamed, and nothing acts on the report.**
   ANTS-3661's corpus calibration classifies `cpp_data_member` as 15% of
   unresolved occurrences. Spot-checked one: `m_claudeLastState` is cited
   by docs/specs/ANTS-1146.md and docs/plans/ANTS-1146.md and resolves
@@ -59407,6 +59407,35 @@ to apply within a document. Follow-on work from that change.
   calibration's own `top unresolved needles` list for the queue —
   `qt_framework` (21%) is a separate population and mostly NOT rot, so
   do not fold the two together.
+  Resolved (2026-09-07). Every `m_*` member cited under docs/specs and
+  docs/plans was resolved against DECLARATIONS in src/ and classified.
+  The headline result is that the population is mostly not rot: six
+  genuine stale citations, roughly thirty-nine historical, four
+  placeholders.\n\nThe six fixed: `m_autoSwitchTicksStable` in ANTS-1893
+  and ANTS-1895 (folded into ModelAutoSwitch::StabilityState, now
+  `m_autoSwitchStability.ticksStable`); `m_bgTasks` in ANTS-1158 (now
+  `m_bgTrackers`, one tracker per shell PID); `m_pcallDeadlineMs` in
+  ANTS-1750 (shipped as `m_pcallTimer` plus `m_pcallBudgetMs`);
+  `m_claudeReviewBtn` in ANTS-1145 (moved onto the controller as
+  `m_reviewBtn`); `m_changelogCacheEntries` in ANTS-3533 (shipped as
+  `m_changelogCache`, and the type changed too). One code comment in
+  claudestatuswidgets.cpp named the same dead auto-switch field beside
+  two live ones and was corrected with them.\n\nWhat was deliberately
+  NOT touched, because naming a member that no longer exists is CORRECT
+  there: a spec describing a pre-change state, of which ANTS-1146 and
+  ANTS-1253 are the large cases -- ANTS-1146 is the extraction that
+  performed the renames and tabulates them, so its old names are the
+  whole point; a spec proposing a member never built; and generic
+  placeholders like `m_xProvider`.\n\nTwo method traps recorded, both of
+  which produce a wrong answer in the direction that hides work. A
+  name-grep matches COMMENTS, so a deleted member reads as live --
+  `m_claudeLastState` survives only in comment text. And an unanchored
+  match hits substrings, so `m_pk` appears inside `item_pk`;
+  boundary-anchoring dropped about twenty phantoms. Resolve
+  declarations, never mentions.\n\nThe other unresolved populations
+  doc_symbols reports (Qt framework names, helpers a planned spec
+  proposes) are out of this item's scope by its own terms and are
+  untouched.
   **Layman:** Some design docs name variables that no longer exist under that name; the tool that finds them has nobody acting on what it finds.
   Kind: doc-fix.
   Source: in-session-2026-09-03 (ANTS-3680 calibration run).

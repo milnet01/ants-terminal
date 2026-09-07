@@ -1880,7 +1880,7 @@ void ClaudeStatusBarController::refreshAutoModelSwitch()
     // append. The helper is mute-toggle-aware (three Config bools);
     // when ALL three are off it's a single Config read + early
     // returns. Reads controller state at call time; does NOT write
-    // any m_autoSwitchLastMs / m_autoSwitchTicksStable / m_autoSwitchLastTier
+    // any m_autoSwitchLastMs / m_autoSwitchStability / m_autoSwitchLastTier
     // fields — those are still owned by the post-helper updates below.
     emitSwitchSurfacing(current, dec.recommendedTier, rec.reason,
                         focused, projectRoot, nowMs);
