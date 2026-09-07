@@ -57391,6 +57391,23 @@ defect from different angles.
   **Layman:** A fifth of our design documents never say whether the work is done, so the automatic checkers cannot tell a finished document from a draft.
   Kind: doc-fix.
   Source: in-session-2026-08-15 (measured while closing ANTS-4135).
+  Progress (2026-09-07): the cheaper first step this item names is SHIPPED. The 51 documents are NOT fixed and that half stands.
+
+  WHAT SHIPPED. spec_lint emits `status_missing`, a count over the walk, alongside `line_count`. SpecLint::Result gains `statusPresent`, set from the RAW header value rather than from `docStatus` — `statusWord()` reduces to a leading `[a-z0-9]` run, so a value that is punctuation or an em dash reduces to empty and would read as "no status line", which is a different claim and the wrong one.
+
+  Emitted ALWAYS, following `invariants_found` rather than the two conditional rows beside it. A zero has to be readable as "checked, all present"; omitting it there makes absence mean either that or an older build, which is the ambiguity the key exists to remove. Its denominator is `checked_docs`, so a zero against an empty walk is not a clean result.
+
+  Tests: two rows in tests/features/spec_lint, which builds into test_claude. Written against a stub that never set the flag, so the first failed on an assertion rather than a compile error. The second asserts an absence and was re-proven by mutation — forcing `statusPresent` true turns it red. Suite 4262 passed, 0 failed, up from 4260.
+
+  RE-MEASURED, and the figure in this item's opening line is stale. It says 52 of 243, measured 2026-08-15. Today: 249 specs, of which 51 match no `^\*\*Status` and 53 lack the `^\*\*Status:\*\*` marker `headerField` actually requires. The verb's own number may exceed 53 again, because headerField also bounds its search to the header block and a grep does not. Do not carry any of these forward as fact — take the verb's number once it is callable.
+
+  THE MEASUREMENT FOUND A DEFECT, which is the argument for having shipped the count rather than reasoning about it. ANTS-1217 wrote `**Status**:` with the colon outside the bold. SpecParse's headerField matches `^\*\*<name>:\*\*`, so its Theme, Status, Kind and Source were ALL invisible — spec_query returned empty status and empty kind on a document a human reads as shipped. That is this item's defect class in its purest form. Fixed in its own commit and verified with spec_query before and after. It was the only spec in the corpus using that dialect against 199 conforming, so an outlier and not a second convention.
+
+  Expect ANTS-1217 to start reporting differently now that it is readable: it claims shipped, so its test-surface findings are entitled to be findings rather than candidates. That is the correction working.
+
+  NOT CALLABLE YET. The running Ants serves mcp__ants__* from the pre-build binary, so `status_missing` needs a relaunch. After relaunching, verify with spec_lint over docs/specs/ and expect a `status_missing` key on the envelope whether or not it is zero.
+
+  STILL OPEN, unchanged and deliberately: the 51-or-so documents themselves. This item already says why that is not a bulk edit — a status is a claim about whether code exists, the honest answer per document needs the code checked, and ANTS-4135 took four investigations to settle four documents. Nothing here changes that. What changed is only that the number is now visible without a walk.
 
 - 📋 [ANTS-4662] **Write ANTS-4348's decision into specs.md, then close the post-standard spec gaps.**
   ANTS-4348 asked which specs are worth going back to. Decided there; this is
