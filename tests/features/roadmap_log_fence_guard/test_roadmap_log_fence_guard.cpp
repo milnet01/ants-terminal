@@ -366,3 +366,63 @@ TEST(roadmap_log_fence_guard, Inv8BalancedLongFenceKeepsItsShortInnerLine) {
     EXPECT_TRUE(md.contains(QStringLiteral("  ````\n  ```\n  ````\n")))
         << "balanced block was not written verbatim:\n" << md.toStdString();
 }
+
+// ANTS-4938 — the warning must carry WHAT it removed, not only that it did.
+//
+// ANTS-4572 made the scrub announce itself; the announcement could not be
+// discharged. Its message told the caller to "re-read the stored body if the
+// count is unexpected", and measured twice in one session that re-read
+// answered "nothing missing" both times — because what had gone was inert.
+// A warning that is usually a false positive trains a caller to skip the one
+// re-read that would catch a true positive, and that is the failure mode
+// rather than the round-trip itself.
+TEST(roadmap_log_fence_guard, Ants4938ScrubWarningNamesWhatItRemoved) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    ASSERT_TRUE(seed(tmp, freshRoadmap()));
+
+    RemoteControl rc(nullptr);
+    const QJsonObject a = appendBullet(
+        rc, tmp.path(), QStringLiteral("Bullet whose body leaked a bare tag."),
+        QStringLiteral("The prose is fine and complete.\n</invoke>"));
+    ASSERT_TRUE(a.value(QStringLiteral("ok")).toBool())
+        << QJsonDocument(a).toJson().toStdString();
+
+    const QJsonArray warns = a.value(QStringLiteral("warnings")).toArray();
+    ASSERT_EQ(warns.size(), 1) << QJsonDocument(a).toJson().toStdString();
+    const QJsonObject w = warns.at(0).toObject();
+
+    const QJsonArray frags = w.value(QStringLiteral("removed_fragments")).toArray();
+    ASSERT_FALSE(frags.isEmpty())
+        << "ANTS-4938: the count says something went; only this says what: "
+        << QJsonDocument(a).toJson().toStdString();
+    bool sawTheTag = false;
+    for (const QJsonValue &v : frags)
+        if (v.toString().contains(QStringLiteral("</invoke>"))) sawTheTag = true;
+    EXPECT_TRUE(sawTheTag)
+        << "ANTS-4938: the echoed fragment must be the text that was taken, so "
+           "the caller can confirm the strip was correct from the envelope "
+           "alone: " << QJsonDocument(a).toJson().toStdString();
+
+    EXPECT_FALSE(w.value(QStringLiteral("message")).toString()
+                     .contains(QStringLiteral("re-read the stored body if")))
+        << "ANTS-4938: the old remedy is withdrawn — it asked for a round-trip "
+           "the envelope can now answer";
+}
+
+// An ordinary body still carries no fragment list at all, so its ABSENCE stays
+// readable as "nothing was taken" rather than as a field nobody populated.
+TEST(roadmap_log_fence_guard, Ants4938CleanBodyEchoesNoFragments) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    ASSERT_TRUE(seed(tmp, freshRoadmap()));
+
+    RemoteControl rc(nullptr);
+    const QJsonObject clean = appendBullet(
+        rc, tmp.path(), QStringLiteral("Bullet with an ordinary body."),
+        QStringLiteral("Plain prose, no markup at all.\n\n\nWith a gap."));
+    ASSERT_TRUE(clean.value(QStringLiteral("ok")).toBool());
+    EXPECT_TRUE(clean.value(QStringLiteral("warnings")).toArray().isEmpty())
+        << "the cosmetic half of the scrub must never read as leakage: "
+        << QJsonDocument(clean).toJson().toStdString();
+}

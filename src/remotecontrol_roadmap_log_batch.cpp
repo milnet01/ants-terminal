@@ -981,7 +981,8 @@ QString RemoteControl::formatRoadmapBullet(
     const QString    &idStr,
     const QString    &statusEmoji,
     QStringList      &scrubbedNames,
-    int              *unnamedRemovals)
+    int              *unnamedRemovals,
+    QStringList      *removedFragments)
 {
     const QString headline =
         bulletReq.value(QStringLiteral("headline")).toString();
@@ -999,7 +1000,8 @@ QString RemoteControl::formatRoadmapBullet(
 
     // ANTS-1551 — defensive scrub of leaked tool-call XML.
     QString body = bulletReq.value(QStringLiteral("body")).toString();
-    rcScrubLeakedToolXml(body, scrubbedNames, unnamedRemovals);
+    rcScrubLeakedToolXml(body, scrubbedNames, unnamedRemovals,
+                         removedFragments);   // ANTS-4938
     if (!body.isEmpty()) {
         const QStringList lines = body.split(QChar('\n'));
         for (const QString &ln : lines)
@@ -2304,6 +2306,7 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppendBatch(const QJsonObject &req) {
     QSet<QString> seenStableIds;   // ANTS-2078 — intra-batch dup guard
     QStringList scrubbedRollup;    // deduped across bullets, both paths
     int scrubbedUnnamedRollup = 0;  // ANTS-4572 — summed across bullets
+    QStringList scrubbedFragRollup; // ANTS-4938 — and WHAT went, capped
     QStringList evNotPathRollup;    // ANTS-4527 — collected across bullets
 
     // ANTS-2054 / ANTS-2076 — resolve the project's counter prefix once
@@ -2416,7 +2419,8 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppendBatch(const QJsonObject &req) {
             QStringList scrubbed;
             QString shadowErr;
             if (!rlFillItemBody(b, itemW, scrubbed, &shadowErr,
-                                &scrubbedUnnamedRollup, &evNotPathRollup)) {
+                                &scrubbedUnnamedRollup, &evNotPathRollup,
+                                &scrubbedFragRollup)) {
                 skip(QStringLiteral("body_shadowed"), shadowErr);
                 continue;
             }
@@ -2647,13 +2651,20 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppendBatch(const QJsonObject &req) {
             for (const QString &n : scrubbedRollup) names.append(n);
             QJsonObject warn;
             warn["code"]            = QStringLiteral("body_scrubbed_tool_xml");
+            // ANTS-4938 — name what went, batch-wide.
             warn["message"]         = QStringLiteral(
                 "Stripped leaked tool-call XML from bullet bodies; resend "
-                "any named siblings as proper JSON fields if intended, and "
-                "re-read the stored bodies if the count is unexpected.");
+                "any named siblings as proper JSON fields if intended. "
+                "`removed_fragments` carries what was taken across the "
+                "batch — check it here rather than re-reading the bodies.");
             if (!names.isEmpty()) warn["lost_parameters"] = names;
             if (scrubbedUnnamedRollup > 0)
                 warn["unnamed_fragments_removed"] = scrubbedUnnamedRollup;
+            if (!scrubbedFragRollup.isEmpty()) {
+                QJsonArray frags;
+                for (const QString &f : scrubbedFragRollup) frags.append(f);
+                warn["removed_fragments"] = frags;
+            }
             rlAddWarning(env, warn);
         }
         // ANTS-4527 — rolled up across the batch, as the scrub warning is.
@@ -2679,7 +2690,8 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppendBatch(const QJsonObject &req) {
     for (const Accepted &a : accepted) {
         QStringList scrubbed;
         const QString blk = formatRoadmapBullet(
-            a.bulletReq, a.idStr, a.emoji, scrubbed, &scrubbedUnnamedRollup);
+            a.bulletReq, a.idStr, a.emoji, scrubbed,
+            &scrubbedUnnamedRollup, &scrubbedFragRollup);
         bulletBlocks.append(blk);
         totalBytes += blk.toUtf8().size();
         // Dedup scrubbed names across all bullets.

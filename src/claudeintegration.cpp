@@ -3079,6 +3079,23 @@ void ClaudeIntegration::onMcpConnection() {
                         "`regex:true`) instead of raising `limit`, which grows "
                         "the payload at identical signal-to-noise.");
                     props["query"] = queryProp;
+                    {   // ANTS-4927 — `q` as an alias for `query`. It must be
+                        // DECLARED, not merely honoured: the dispatcher builds
+                        // its ignored_args advisory from these properties, so
+                        // an undeclared key is reported as dropped even once
+                        // the handler reads it.
+                        QJsonObject qAlias; qAlias["type"] = "string";
+                        qAlias["description"] = QStringLiteral(
+                            "Alias for `query` (ANTS-4927) — the short form a "
+                            "caller naturally reaches for. Accepted for the "
+                            "same reason `filter` aliases `status` and "
+                            "`max_results` aliases `limit`: unrecognised, it "
+                            "landed in ignored_args and the call returned an "
+                            "UNFILTERED page, which is the one result shape "
+                            "that cannot be told from an answer. `query` wins "
+                            "if both are sent.");
+                        props["q"] = qAlias;
+                    }
                     // ANTS-4367 — the two narrowing knobs.
                     QJsonObject wwProp; wwProp["type"] = "boolean";
                                         wwProp["default"] = false;

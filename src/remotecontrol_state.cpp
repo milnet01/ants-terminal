@@ -1576,7 +1576,7 @@ QJsonObject RemoteControl::buildFeedbackPendingBlock(const QString &rootCanonica
     QJsonArray searched;
     QSet<QString> seen;        // dedupe by file, not by directory: two roots
                                // can spell one directory two ways.
-    int totalAwaiting = 0, filesWithInbox = 0;
+    int totalAwaiting = 0, filesWithInbox = 0, totalSuspected = 0;
     int filesScanned = 0;
     int totalPendingLines = 0;
     // Bound the transient working set (largest corpus file ~150 KB
@@ -1605,6 +1605,18 @@ QJsonObject RemoteControl::buildFeedbackPendingBlock(const QString &rootCanonica
             const FeedbackFile::ParseResult pr = FeedbackFile::parse(content);
             const int awaitingHere = int(pr.awaiting.size());
             totalAwaiting += awaitingHere;
+            // ANTS-4941 -- a finding with NO `**Proposed ID:**` line at all is
+            // a THIRD state, and until now this block could not see it. The v2
+            // delta rule keys on an UNFILLED slot; a MISSING slot is what
+            // `suspectedUntagged` carries, and nothing here consulted it. So a
+            // file whose only pending input was slotless reported nothing
+            // waiting -- measured on claude_config, where findings appended on
+            // 2026-08-28 and 2026-09-02 were invisible here until a session
+            // read `suspected_untagged` by hand. This block is the ONLY
+            // always-on surface for "which files have new contributor input",
+            // so what it cannot see, nothing else raises.
+            const int suspectedHere = int(pr.suspectedUntagged.size());
+            totalSuspected += suspectedHere;
             // ANTS-3631 -- an awaiting marker is the MAINTAINER'S OUTBOX, not
             // their inbox: it is un-triaged so the question reaches the
             // reporter, and counting it here would put a permanently non-zero
@@ -1628,16 +1640,30 @@ QJsonObject RemoteControl::buildFeedbackPendingBlock(const QString &rootCanonica
             const bool inboxOnlyAwaiting =
                 pr.deltaPresent && awaitingHere > 0 &&
                 deltaFindings > 0 && deltaFindings == awaitingHere;
-            if (!pr.deltaPresent && awaitingHere == 0) continue;
+            if (!pr.deltaPresent && awaitingHere == 0 && suspectedHere == 0)
+                continue;
             QJsonObject entry;
             entry[QStringLiteral("file")] = name;
             if (awaitingHere > 0)
                 entry[QStringLiteral("awaiting_count")] = awaitingHere;
-            if (pr.deltaPresent && !inboxOnlyAwaiting) {
+            // ANTS-4941 -- reported under its OWN key, never folded into
+            // delta_line_count. The two are different states and a maintainer
+            // acts differently on each: an unfilled slot wants an id, a missing
+            // one wants a slot inserted first, which op:"assign_id" does on its
+            // own. Folding them would make the remedy unguessable from the row.
+            if (suspectedHere > 0)
+                entry[QStringLiteral("suspected_untagged_count")] = suspectedHere;
+            const bool hasDeltaInbox = pr.deltaPresent && !inboxOnlyAwaiting;
+            if (hasDeltaInbox) {
                 entry[QStringLiteral("delta_line_count")] = pr.deltaLineCount;
                 totalPendingLines += pr.deltaLineCount;
-                ++filesWithInbox;
             }
+            // A slotless finding IS pending input, so it counts toward
+            // files_with_pending exactly as an unfilled slot does -- otherwise
+            // the summary line still reads "nothing waiting" over a row that
+            // says otherwise, which is the defect one level up.
+            if (hasDeltaInbox || suspectedHere > 0)
+                ++filesWithInbox;
             pendingFiles.append(entry);
         }
     }
@@ -1659,6 +1685,11 @@ QJsonObject RemoteControl::buildFeedbackPendingBlock(const QString &rootCanonica
     fp[QStringLiteral("files_with_pending")]  = filesWithInbox;
     fp[QStringLiteral("total_pending_lines")] = totalPendingLines;
     fp[QStringLiteral("total_awaiting")]      = totalAwaiting;
+    // ANTS-4941 -- emitted unconditionally, so a zero is an ANSWER ("nothing
+    // slotless") rather than a key nobody looked for. That distinction is the
+    // whole point: before this, silence and "input nobody can see" were
+    // byte-identical here.
+    fp[QStringLiteral("total_suspected_untagged")] = totalSuspected;
     fp[QStringLiteral("files")]              = pendingFiles;
     return fp;
 }

@@ -489,10 +489,12 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppend(const QJsonObject &req) {
             // for a column the body would out-vote.
             QStringList scrubbedNames;
             int scrubbedUnnamed = 0;              // ANTS-4572
+            QStringList scrubbedFragments;        // ANTS-4938
             QString shadowErr;
             QStringList evNotPath;                // ANTS-4527
             if (!rlFillItemBody(req, w, scrubbedNames, &shadowErr,
-                                &scrubbedUnnamed, &evNotPath))
+                                &scrubbedUnnamed, &evNotPath,
+                                &scrubbedFragments))
                 return rlErr(QStringLiteral("body_shadowed"),
                     QStringLiteral("roadmap_log: %1").arg(shadowErr));
 
@@ -618,14 +620,24 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppend(const QJsonObject &req) {
                 for (const QString &n : scrubbedNames) names.append(n);
                 QJsonObject warn;
                 warn["code"]    = QStringLiteral("body_scrubbed_tool_xml");
+                // ANTS-4938 — the message used to end "re-read the stored body
+                // if the count is unexpected", which is a remedy the caller
+                // cannot discharge from the envelope. Measured twice in one
+                // session: both re-reads answered "nothing missing", because
+                // what went was inert. So the warning now CARRIES what it took.
                 warn["message"] = QStringLiteral(
                     "Stripped leaked tool-call XML from body; resend any "
                     "named siblings as proper JSON fields if you intended "
-                    "them, and re-read the stored body if the count is "
-                    "unexpected.");
+                    "them. `removed_fragments` carries what was taken — check "
+                    "it here rather than re-reading the stored body.");
                 if (!names.isEmpty()) warn["lost_parameters"] = names;
                 if (scrubbedUnnamed > 0)
                     warn["unnamed_fragments_removed"] = scrubbedUnnamed;
+                if (!scrubbedFragments.isEmpty()) {
+                    QJsonArray frags;
+                    for (const QString &f : scrubbedFragments) frags.append(f);
+                    warn["removed_fragments"] = frags;
+                }
                 rlAddWarning(env, warn);
             }
             // ANTS-4527
@@ -999,9 +1011,10 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppend(const QJsonObject &req) {
     }
     QStringList scrubbedNames;
     int scrubbedUnnamed = 0;                      // ANTS-4572
+    QStringList scrubbedFragments;                // ANTS-4938
     const QString bullet =
         formatRoadmapBullet(req, idStr, statusEmoji, scrubbedNames,
-                            &scrubbedUnnamed);
+                            &scrubbedUnnamed, &scrubbedFragments);
 
     // Splice bullet at the section's lineEnd. lineEnd is 0-indexed
     // and exclusive — i.e. the line index of the next heading (or
@@ -1141,13 +1154,20 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppend(const QJsonObject &req) {
         for (const QString &n : scrubbedNames) names.append(n);
         QJsonObject warn;
         warn["code"]    = QStringLiteral("body_scrubbed_tool_xml");
+        // ANTS-4938 — carry what was taken, so the warning discharges itself.
         warn["message"] = QStringLiteral(
             "Stripped leaked tool-call XML from body; resend any named "
-            "siblings as proper JSON fields if you intended them, and "
-            "re-read the stored body if the count is unexpected.");
+            "siblings as proper JSON fields if you intended them. "
+            "`removed_fragments` carries what was taken — check it here "
+            "rather than re-reading the stored body.");
         if (!names.isEmpty()) warn["lost_parameters"] = names;
         if (scrubbedUnnamed > 0)
             warn["unnamed_fragments_removed"] = scrubbedUnnamed;
+        if (!scrubbedFragments.isEmpty()) {
+            QJsonArray frags;
+            for (const QString &f : scrubbedFragments) frags.append(f);
+            warn["removed_fragments"] = frags;
+        }
         rlAddWarning(out, warn);
     }
     if (const QJsonObject ev = rlEvidenceAdvisoryForReq(req); !ev.isEmpty())

@@ -1094,10 +1094,12 @@ bool rcdetail::rlFillItemBody(const QJsonObject &bulletReq,
                            RoadmapStore::ItemWrite &w,
                            QStringList &scrubbedNames, QString *error,
                            int *unnamedRemovals,
-                           QStringList *evidenceNotPathShaped) {
+                           QStringList *evidenceNotPathShaped,
+                           QStringList *removedFragments) {
     // Scrubbed exactly as formatRoadmapBullet() scrubs it on the markdown path.
     QString body = bulletReq.value(QStringLiteral("body")).toString();
-    rcScrubLeakedToolXml(body, scrubbedNames, unnamedRemovals);
+    rcScrubLeakedToolXml(body, scrubbedNames, unnamedRemovals,
+                         removedFragments);   // ANTS-4938
     const RoadmapParse::TrailerValues tv = RoadmapParse::trailerValuesIn(body);
     w.body = body;
 
@@ -1831,7 +1833,16 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
     // include_body is false — but the body it sees is the same 2000-char-
     // capped list text, so a keyword living only in a longer body's tail
     // won't match (documented in the schema).
-    QString queryArg = req.value(QStringLiteral("query")).toString().trimmed();
+    // ANTS-4927 — `q` is accepted as an alias for `query`. Third instance of
+    // the same shape on this verb, after ANTS-3698's `filter`/`status` and
+    // ANTS-4701's `max_results`/`limit`: a name a caller naturally reaches for
+    // used to land in ignored_args, and the call then returned an UNFILTERED
+    // page. That is the one result shape indistinguishable from an answer —
+    // a full list reads as a search result at a glance — which is why this is
+    // a fix rather than a convenience. `query` still wins when both are sent.
+    QJsonValue queryVal = req.value(QStringLiteral("query"));
+    if (queryVal.isUndefined()) queryVal = req.value(QStringLiteral("q"));
+    QString queryArg = queryVal.toString().trimmed();
     if (queryArg.size() > 200) queryArg.truncate(200);
     for (int i = 0; i < queryArg.size(); ++i) {
         if (queryArg.at(i).unicode() < 0x20) queryArg[i] = QChar('?');

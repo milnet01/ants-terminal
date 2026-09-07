@@ -1260,13 +1260,35 @@ QString rcFenceOpenerHint(int fenceOpenLine) {
 }
 
 void rcScrubLeakedToolXml(QString &text, QStringList &scrubbedNames,
-                          int *unnamedRemovals) {
+                          int *unnamedRemovals, QStringList *removedFragments) {
     if (text.isEmpty()) return;
+    // ANTS-4938 — bounds on the echo. A handful of short fragments answers
+    // "what went"; echoing an unbounded set would reproduce inside the warning
+    // the very cost the warning is meant to save.
+    constexpr int kMaxEchoedFragments = 8;
+    constexpr int kMaxFragmentChars   = 120;
+    const auto recordFragment = [&](QString frag) {
+        if (!removedFragments || frag.isEmpty()) return;
+        if (removedFragments->size() >= kMaxEchoedFragments) return;
+        frag = frag.simplified();
+        if (frag.size() > kMaxFragmentChars) {
+            frag.truncate(kMaxFragmentChars);
+            frag.append(QStringLiteral("…"));
+        }
+        if (!frag.isEmpty() && !removedFragments->contains(frag))
+            removedFragments->append(frag);
+    };
     // ANTS-4572 — count only the removals that report themselves nowhere
     // else. A matched pair already surfaces as `lost_parameters`.
     const auto removeCounting = [&](const QRegularExpression &re) {
         if (!unnamedRemovals) { text.remove(re); return; }
         const QString before = text;
+        // ANTS-4938 — read the matches BEFORE removing them, so the warning
+        // carries the text rather than only a tally of it.
+        if (removedFragments) {
+            auto mit = re.globalMatch(text);
+            while (mit.hasNext()) recordFragment(mit.next().captured(0));
+        }
         text.remove(re);
         if (text != before) ++*unnamedRemovals;
     };

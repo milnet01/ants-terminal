@@ -160,3 +160,73 @@ TEST(roadmap_query_section_filter, Inv5WholeWordAndRegexCompose) {
         {QStringLiteral("regex"), true}});
     EXPECT_EQ(slugsOf(rx).size(), 2) << "INV-5: regex must apply to sections";
 }
+
+// ANTS-4927 — `q` is an alias for `query`.
+//
+// Third instance of the same shape on this verb, after ANTS-3698's
+// `filter`/`status` and ANTS-4701's `max_results`/`limit`. Unrecognised, `q`
+// landed in the dispatcher's ignored_args advisory and the call returned an
+// UNFILTERED page — which is the one result shape indistinguishable from an
+// answer, because a full list reads as a search result at a glance. That is
+// why this is a fix and not a convenience.
+namespace {
+
+QJsonObject bulletsWith(const QString &root, const QJsonObject &extra) {
+    RemoteControl rc(nullptr);
+    QJsonObject req;
+    req[QStringLiteral("caller_cwd")] = root;
+    req[QStringLiteral("status")]     = QStringLiteral("all");
+    for (auto it = extra.begin(); it != extra.end(); ++it)
+        req[it.key()] = it.value();
+    return rc.cmdRoadmapQuery(req).object();
+}
+
+QStringList idsOf(const QJsonObject &resp) {
+    QStringList out;
+    for (const QJsonValue &v : resp.value(QLatin1String("bullets")).toArray())
+        out << v.toObject().value(QStringLiteral("id")).toString();
+    return out;
+}
+
+}  // namespace
+
+TEST(roadmap_query_section_filter, Ants4927QAliasesQuery) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString root = seed(tmp);
+
+    const QJsonObject all = bulletsWith(root, {});
+    ASSERT_EQ(idsOf(all).size(), 3) << "fixture should carry 3 bullets";
+
+    QJsonObject viaQuery; viaQuery[QStringLiteral("query")] = QStringLiteral("Second");
+    QJsonObject viaQ;     viaQ[QStringLiteral("q")]         = QStringLiteral("Second");
+
+    const QJsonObject a = bulletsWith(root, viaQuery);
+    const QJsonObject b = bulletsWith(root, viaQ);
+
+    ASSERT_EQ(idsOf(a), QStringList{QStringLiteral("ANTS-0002")})
+        << "control: `query` filters";
+    EXPECT_EQ(idsOf(b), idsOf(a))
+        << "ANTS-4927: `q` must filter identically. Dropped, it returned the "
+           "whole list, which reads as a result set";
+    EXPECT_EQ(b.value(QStringLiteral("query")).toString(),
+              QStringLiteral("Second"))
+        << "ANTS-4927: and the envelope echoes the applied filter, so a caller "
+           "can see it took";
+}
+
+// `query` wins when both are sent, so the alias can never redirect a caller
+// who spelled it canonically.
+TEST(roadmap_query_section_filter, Ants4927CanonicalQueryWinsOverQ) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString root = seed(tmp);
+
+    QJsonObject both;
+    both[QStringLiteral("query")] = QStringLiteral("Second");
+    both[QStringLiteral("q")]     = QStringLiteral("Third");
+
+    EXPECT_EQ(idsOf(bulletsWith(root, both)),
+              QStringList{QStringLiteral("ANTS-0002")})
+        << "ANTS-4927: `query` is canonical and wins";
+}

@@ -345,3 +345,121 @@ TEST(feedback_query_shared_root, Inv7PendingKeepsDerivedRootAndDedupes) {
            "directory that was scanned before it existed";
     EXPECT_EQ(fp.value(QStringLiteral("files_with_pending")).toInt(), 2);
 }
+
+// ANTS-4941 — a finding with NO `**Proposed ID:**` line at all is a THIRD
+// state, and feedback_pending could not see it.
+//
+// The v2 delta rule keys on an UNFILLED slot. A MISSING slot is what
+// `suspectedUntagged` carries, and this block consulted only `deltaPresent`
+// and `awaiting`, short-circuiting before it. Measured 2026-09-07 on
+// claude_config: findings appended on 2026-08-28 and 2026-09-02 sat untriaged
+// until a session read `suspected_untagged` by hand, while both the delta and
+// this block said nothing was waiting.
+//
+// It matters more than the number of findings suggests: this block is the ONLY
+// always-on surface for "which files have new contributor input", so a finding
+// it cannot see is one nothing else will ever raise — the next sweep asks the
+// same verb the same question.
+namespace {
+
+// A v2 file whose single finding carries NO id line. Slotless, so the delta
+// rule cannot see it; finding-shaped, so `suspectedUntagged` can.
+QByteArray slotlessCorpus() {
+    return
+        "# Ants MCP feedback — other\n"
+        "\n"
+        "<!-- ants-mcp-feedback: 2 -->\n"
+        "\n"
+        "## 2026-08-28 — a session\n"
+        "\n"
+        "### a finding nobody stamped a slot onto\n"
+        "\n"
+        "- **What:** it was appended by hand, so no blank Proposed ID line\n"
+        "  was ever written under it.\n"
+        "- **Impact:** invisible to the delta, and until ANTS-4941 invisible\n"
+        "  to feedback_pending too.\n";
+}
+
+}  // namespace
+
+TEST(feedback_query_shared_root, Ants4941SlotlessFindingIsPendingInput) {
+    ants_test::XdgGuard g;
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const Layout l = makeLayout(tmp);
+    ASSERT_TRUE(makeMaintainerProject(l.callerProj));
+    {
+        Config cfg;
+        cfg.setClaudeMcpFeedbackRoot(l.corpusDir);
+    }
+    ASSERT_TRUE(writeFile(l.corpusFilePath, slotlessCorpus()));
+
+    // The premise: the delta genuinely cannot see it. If this ever fails the
+    // parser changed and this test is asserting the wrong thing.
+    RemoteControl rcq(nullptr);
+    QJsonObject qreq;
+    qreq[QStringLiteral("caller_cwd")] = l.callerProj;
+    qreq[QStringLiteral("path")]       = l.corpusFilePath;
+    const QJsonObject q = rcq.cmdFeedbackQuery(qreq).object();
+    ASSERT_TRUE(q.value(QStringLiteral("ok")).toBool())
+        << q.value(QStringLiteral("error")).toString().toStdString();
+    EXPECT_FALSE(q.value(QStringLiteral("delta_present")).toBool())
+        << "premise: a MISSING slot is not an unfilled one, so the v2 delta "
+           "rule does not fire on it";
+    EXPECT_EQ(q.value(QStringLiteral("suspected_untagged")).toArray().size(), 1)
+        << "premise: but suspected_untagged does carry it";
+
+    const QJsonObject fp = feedbackPendingFor(l.callerProj);
+    ASSERT_FALSE(fp.isEmpty()) << "the maintainer gate should be open here";
+
+    EXPECT_EQ(fp.value(QStringLiteral("total_suspected_untagged")).toInt(), 1)
+        << "ANTS-4941: the slotless finding is counted";
+
+    const QJsonArray files = fp.value(QStringLiteral("files")).toArray();
+    ASSERT_EQ(files.size(), 1)
+        << "ANTS-4941: the file must LIST — before this, a file whose only "
+           "pending input was slotless was skipped entirely, and silence read "
+           "as 'nothing is waiting'";
+    const QJsonObject row = files.at(0).toObject();
+    EXPECT_EQ(row.value(QStringLiteral("suspected_untagged_count")).toInt(), 1);
+    EXPECT_FALSE(row.contains(QStringLiteral("delta_line_count")))
+        << "ANTS-4941: reported under its OWN key — an unfilled slot wants an "
+           "id, a missing one wants a slot inserted first, and folding them "
+           "would make the remedy unguessable from the row";
+
+    EXPECT_EQ(fp.value(QStringLiteral("files_with_pending")).toInt(), 1)
+        << "ANTS-4941: the summary must agree with the row it is summarising";
+}
+
+// A fully triaged file stays silent, so the new counter cannot turn every
+// session start into a false to-do.
+TEST(feedback_query_shared_root, Ants4941TriagedFileStaysSilent) {
+    ants_test::XdgGuard g;
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const Layout l = makeLayout(tmp);
+    ASSERT_TRUE(makeMaintainerProject(l.callerProj));
+    {
+        Config cfg;
+        cfg.setClaudeMcpFeedbackRoot(l.corpusDir);
+    }
+    ASSERT_TRUE(writeFile(
+        l.corpusFilePath,
+        "# Ants MCP feedback — other\n"
+        "\n"
+        "<!-- ants-mcp-feedback: 2 -->\n"
+        "\n"
+        "## 2026-08-28 — a session\n"
+        "\n"
+        "### a finding that was triaged\n"
+        "\n"
+        "- **What:** it carries an assigned id.\n"
+        "- **Proposed ID:** ANTS-1234\n"));
+
+    const QJsonObject fp = feedbackPendingFor(l.callerProj);
+    ASSERT_FALSE(fp.isEmpty());
+    EXPECT_EQ(fp.value(QStringLiteral("total_suspected_untagged")).toInt(), 0);
+    EXPECT_EQ(fp.value(QStringLiteral("files")).toArray().size(), 0)
+        << "ANTS-4941: a triaged file is not pending input";
+    EXPECT_EQ(fp.value(QStringLiteral("files_with_pending")).toInt(), 0);
+}

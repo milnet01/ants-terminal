@@ -413,7 +413,7 @@ QJsonObject rlEvidenceAdvisory(const QStringList &notPathShaped);
 // rather than rlFillItemBody, and an advisory that fires only on migrated
 // projects would be a worse defect than the one it reports.
 QJsonObject rlEvidenceAdvisoryForReq(const QJsonObject &bulletReq);
-bool rlFillItemBody(const QJsonObject &bulletReq, RoadmapStore::ItemWrite &w, QStringList &scrubbedNames, QString *error, int *unnamedRemovals = nullptr, QStringList *evidenceNotPathShaped = nullptr);
+bool rlFillItemBody(const QJsonObject &bulletReq, RoadmapStore::ItemWrite &w, QStringList &scrubbedNames, QString *error, int *unnamedRemovals = nullptr, QStringList *evidenceNotPathShaped = nullptr, QStringList *removedFragments = nullptr);  // ANTS-4938
 QString changelogMalformedAdvisory(int line, bool plural, bool applied);
 QStringList rcShortBareAltTerms(const QString &pattern);
 bool rcLooksLikeRegexButLiteral(const QString &pattern);
@@ -498,8 +498,16 @@ QString rcFenceOpenerHint(int fenceOpenLine);
 // documented to scrub as "the body is clean". Cosmetic normalisation
 // (blank-run collapse, trailing whitespace, the final newline chop) is NOT
 // counted — it fires on almost every body and would make the signal noise.
+// ANTS-4938 — `removedFragments`, when given, collects the TEXT of each
+// unnamed removal (capped, each clipped) so the warning can say WHAT it took.
+// A count alone told a caller only that something went, and the message's own
+// remedy was to re-read the stored body; measured twice on one session, that
+// re-read answered "nothing missing" both times, because what had been removed
+// was inert. A warning that is usually a false positive trains a caller to skip
+// the one re-read that would catch a true positive.
 void rcScrubLeakedToolXml(QString &text, QStringList &scrubbedNames,
-                          int *unnamedRemovals = nullptr);
+                          int *unnamedRemovals = nullptr,
+                          QStringList *removedFragments = nullptr);
 QString rcRightStrip(QString s);
 void rcSetWriteBytes(QJsonObject &out, qint64 before, qint64 after);
 int appendBodyNote(QStringList &lines, int headlineLine, const QString &note, bool *alreadyPresent = nullptr);

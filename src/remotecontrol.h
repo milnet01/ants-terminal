@@ -1199,7 +1199,10 @@ private:
                                 const QString    &idStr,
                                 const QString    &statusEmoji,
                                 QStringList      &scrubbedNames,
-                                int              *unnamedRemovals = nullptr);
+                                int              *unnamedRemovals = nullptr,
+                                // ANTS-4938 — the TEXT of each unnamed
+                                // removal, so the warning can say what went.
+                                QStringList      *removedFragments = nullptr);
     QJsonDocument cmdLs();
     QJsonDocument cmdSendText(const QJsonObject &req);
     QJsonDocument cmdNewTab(const QJsonObject &req);
