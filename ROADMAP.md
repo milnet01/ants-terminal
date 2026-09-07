@@ -52647,6 +52647,38 @@ plus two gaps hit while sweeping stale spec citations under ANTS-4757.
   Source: claude_config_Ants_MCP_Feedback.md, 2026-09-07.
   Lanes: mcp.
 
+### Ants MCP without a terminal relaunch (user request 2026-09-07)
+
+Today every MCP verb is a C++ method compiled into the GUI binary and served
+in-process, so changing one costs a rebuild AND a hand relaunch of the terminal.
+This section holds the work to remove the relaunch. The measurements that make
+it look feasible, and the one that bounds what is achievable, are on the item.
+
+- 📋 [ANTS-4932] **Serve the project-scoped MCP verbs from a standalone process, so changing one costs no terminal relaunch.**
+  NEEDS A SPEC BEFORE ANY CODE. It is a one-way change touching a library boundary, the machine-global store's concurrency model, and where every verb lives. spec-format.md § 1's "expensive to undo" test is met on three counts, not one.
+
+  THE PROBLEM. `ClaudeIntegration::startMcpServer` binds a QLocalServer inside the GUI process, and every verb is a `RemoteControl` method registered by `rcDelegate` from `MainWindow`. Nothing is loaded at runtime, so a verb change is a rebuild of `ants-terminal` plus a hand relaunch. Measured today: a shipped `spec_lint` change could not be exercised over MCP in the session that wrote it.
+
+  TWO MEASUREMENTS SAY THIS IS FEASIBLE, and they are the reason to file rather than dismiss.
+  - 91 test files already construct `RemoteControl(nullptr)`. The handlers are, in the large majority, already MainWindow-independent — that shape was not designed for this but is what makes it reachable.
+  - The ENTIRE GUI dependency is eleven methods: `currentTabIndexForRemote`, `currentTerminal`, `newTabForRemote`, `roadmapPathForRemote`, `selectTabForRemote`, `setTabTitleForRemote`, `tabListForRemote`, `tabsAsJson`, `terminalAtTab`, `terminalForCaller`, `tokenSavingsSummary`. All tab or terminal state. So the split is along a seam that already exists.
+
+  THE BLOCKER IS THE LIBRARY, NOT THE SERVER. `ants_core_lib` links Qt6::Gui, Qt6::Widgets, Qt6::Network, Qt6::DBus and util PUBLICLY, and every `remotecontrol_*.cpp` is in it. The "headless" notes in CMakeLists are ANTS-3794's store publish path, NOT RemoteControl. Extracting a GUI-free library is the actual work; the standalone binary on top of it is small.
+
+  WHAT IS ACHIEVABLE, stated as a bound rather than a goal. An MCP client caches `tools/list` at connect, so ADDING a verb or changing its arguments needs a reconnect whatever is built. This removes the TERMINAL relaunch, not every restart. Worth stating in the spec so nobody measures the result against a target it cannot reach.
+
+  A NEW HAZARD THIS INTRODUCES. The roadmap store is machine-global and runs in WAL with a live GUI holding a connection. A second process writing it concurrently is a condition that does not exist today. The spec owns whether the standalone server writes at all, or reads and proxies writes to the terminal.
+
+  DRIFT RISK, and it is the one most likely to be got wrong. Two servers means two places a verb can live. There must be ONE registration list both consume, not a list per binary — a verb present in one and absent from the other is invisible until a caller hits it.
+
+  THE CHEAPER PARTIAL, recorded so the spec has to argue against it rather than miss it: Ants ships a Lua sandbox with hot-reload. A verb whose BEHAVIOUR changes without a schema change could be genuinely live, no rebuild and no reconnect. It does not help the existing C++ verbs and it is a second authoring model, which is why it is not the recommendation — but it is the only route that reaches zero restarts.
+
+  FIRST STEP is a measurement, not an edit: which verbs actually reach one of the eleven GUI methods, and which of those could take their answer from a project root instead. `roadmapPathForRemote` is the one to look at first — it is a project-scoped question routed through MainWindow, so it may not belong in the GUI half at all.
+  **Layman:** Right now every change to an Ants MCP tool means rebuilding the terminal and restarting it by hand. This would move most of those tools into a small separate program that Claude Code starts itself, so a rebuild is picked up without touching the terminal.
+  Kind: refactor.
+  Source: user-request-2026-09-07.
+  Lanes: mcp, build.
+
 ### 🎨 UI polish (user request 2026-09-04)
 
 - ✅ [ANTS-4862] **The tab-colour context menu shows which colour the tab is currently set to.**
