@@ -3643,6 +3643,13 @@ in each named file carry the original indie-review citation.
   INDEPENDENT FILES the work can touch, so a file this size means every task touching it excludes every other task that would. Splitting it converts one serialised lane into several parallel ones. (The orchestrator PREFERS non-overlapping tasks; it does not refuse them. ADR-0005 D9 withdrew that refusal, and D10's declare-and-sweep replaced it.) Corollary worth knowing before ANTS-4913 runs: measuring Colony's speedup on a codebase whose largest files are undivided measures the partition, not the design. Recorded in
   docs/decisions/0005-colony-multi-session-orchestration.md under
   Consequences.
+  Sequencing (2026-09-07, project lead): the four decompositions --
+  this, ANTS-1044, ANTS-1049 and ANTS-4919 -- run under ONE shared spec
+  rather than four, then each file follows it. They are the same problem
+  four times, so one contract fixes the extraction criteria, the
+  test-bundle rewiring and the proof that no behaviour changed.
+  Re-measured today: this file is past the 7000-line re-evaluate trigger
+  its own body names.
 
 - 📋 [ANTS-1044] **`auditdialog.cpp` decomposition (5749 LoC).**
   `populateChecks`
@@ -3662,6 +3669,10 @@ in each named file carry the original indie-review citation.
   Splitting it buys parallel lanes rather than only tidiness. See
   docs/decisions/0005-colony-multi-session-orchestration.md under
   Consequences.
+  Sequencing (2026-09-07, project lead): runs under the shared
+  decomposition spec covering ANTS-1043, ANTS-1044, ANTS-1049 and
+  ANTS-4919. ANTS-1049 is effectively this item's first step, since
+  populateChecks is the single largest block in the file.
 
 - ✅ [ANTS-1045] **`XcbPositionTracker` rename + Wayland-non-KWin abort + temp- file leak fix.**
   Shipped 2026-04-30 (post-0.7.60). Class +
@@ -3736,6 +3747,11 @@ in each named file carry the original indie-review citation.
   shrink theirs -- fewer tasks forced through one file, so more of them
   can run at once under Colony. See
   docs/decisions/0005-colony-multi-session-orchestration.md.
+  Sequencing (2026-09-07, project lead): runs under the shared
+  decomposition spec covering ANTS-1043, ANTS-1044, ANTS-1049 and
+  ANTS-4919, and is the natural first one to take -- it is
+  self-contained, and it is the largest single block inside the file
+  ANTS-1044 decomposes.
 
 The 2026-04-27 review followed the same methodology as the 0.7.12
 sweep — no roadmap-internal short-cuts, every finding cites
@@ -4098,6 +4114,9 @@ minor tag (next: pre-0.8.0).
   Not urgent on its own merits -- the same post-1.0 reasoning as ANTS-1043
   applies. It is filed because ADR-0005 Consequences now names it, and an
   ADR naming a file with no item is how a stated enabler goes unbuilt.
+  Sequencing (2026-09-07, project lead): runs under the shared
+  decomposition spec covering ANTS-1043, ANTS-1044, ANTS-1049 and
+  ANTS-4919. Largest of the four by a wide margin.
   **Layman:** Split the biggest source file so parallel sessions can work on it without blocking each other.
   Kind: refactor.
   Source: adr-0005-gate-loop-3-2026-09-07.
@@ -5870,6 +5889,11 @@ minor tag (next: pre-0.8.0).
   Lanes: VtParser, TerminalGrid, TerminalWidget,
   AuditDialog, RoadmapDialog, MainWindow, ptyhandler,
   build/CMake.
+  Parked (2026-09-07) behind ANTS-4921, which re-measures the baseline.
+  Verified today: row 1 of this sweep already shipped -- the SIMD scan
+  is live in src/vtparser.cpp and the strtol this item named is gone.
+  The remaining rows may or may not still be hot, and nothing here says
+  which. Kept filed for its reasoning; do not act on its numbers.
 
 ### ⚡ Freeze-focused hot-path sweep (user request 2026-07-09)
 
@@ -12072,7 +12096,7 @@ fixes don't address. Roadmapped here as their own design tasks.
   carry the same rule in their own copies. That is a larger change than
   this item and is not made here.
 
-- 📋 [ANTS-3679] **Extract the tools/list payload from onMcpConnection into an accessor.**
+- 💭 [ANTS-3679] **Extract the tools/list payload from onMcpConnection into an accessor.**
   The whole `tools/list` schema — ~74 verbs, each with its name,
   description, selection_hint and inputSchema — is constructed inline
   inside `ClaudeIntegration::onMcpConnection`, an ~8,000-line handler.
@@ -12117,6 +12141,13 @@ fixes don't address. Roadmapped here as their own design tasks.
   windows by that function's body (mcp_verb_offthread_guard scrapes
   `bodyAfter(ci, "void ClaudeIntegration::onMcpConnection() {")`), so the
   move has a real blast radius. Worth doing on evidence, not on shape.
+  Closed as no-longer-justified (2026-09-07, project lead). The
+  extraction is still a reasonable tidy, but the priority trigger this
+  item rested on was measured unable to fire, so the reason for doing it
+  has evaporated while the cost has not. Moved to considered rather than
+  shipped or deleted: the idea is sound and cheap to revive if a real
+  caller ever needs the payload separately. Do not treat this as work
+  outstanding.
 
 - ✅ [ANTS-3680] **Batched symbol resolution: answer N needles in one tree walk.**
   `SymbolQuery::findDefinition` resolves ONE symbol per call and walks
@@ -15349,6 +15380,13 @@ that shipped 6+ months ago — pure self-reference).
   Kind: refactor.
   Source: test-suite-audit-2026-05-15 (lane B).
   Status re-verified 2026-06-28: the LIVE-LEAK portion of this item is already fixed. (1) The shared RAII helper this item asked to "extract to tests/_support/sandbox.h" now exists as `tests/_support/xdg_guard.h` (ants_test::XdgGuard, shipped by ANTS-2062) — env save/restore + setTestMode + reverse-order restore + move-only. (2) Both specifically-named unrestored offenders are converged onto it: tab_color and kwin_position_tracker now `#include xdg_guard.h` (the permanent setTestModeEnabled(true) flip is gone). remote_control_opt_in, roadmap_density, audit_command_rule_trust, model_near_miss_ledger, dialog_chrome_affordances also migrated. RESIDUAL (not a live bug): ~10 config/feature tests still carry hand-rolled save/restore guards that DO restore (manually) but duplicate XdgGuard and aren't exception-safe on early gtest-ASSERT unwind — mcp_master_toggle, config_reload_loop_safety, config_tab_title_format, config_ai_review_concurrency, config_parse_failure_guard (NB: carries an explicit "do NOT use [guard] here" comment — needs per-file care), shell_command_wiring, session_persistence_default, debuglog_perms, claude_session_freshness, auto_switch_surfacing, ui_state_persistence, tool_detection_engine, claude_tab_status_indicator. This is an incremental convergence chore (dedup + exception-safety), best done one-file-at-a-time with per-file test verification, not a batch. Recommend a dedicated session.
+  Re-scoped (2026-09-07, project lead) after re-measurement. The leak
+  this item was filed for is FIXED: tests/_support/xdg_guard.h exists
+  and is used across the suite, so environment state no longer escapes a
+  test. What remains is narrower than the original headline suggests --
+  tests that still hand-roll their own guard instead of using the shared
+  one. Scope is now that dedup, not a bundle-wide RAII sweep. Do not
+  re-derive the original plan from the headline.
 
 - ✅ [ANTS-1380] **`concurrent_writer_lock` predictable `/tmp/ants-cwl-<pid>-<time>.dat` + symlink-attack exposure.**
   `tests/features/concurrent_writer_lock/
@@ -15565,6 +15603,14 @@ that shipped 6+ months ago — pure self-reference).
   it or restructure the libs.
   Kind: refactor.
   Source: in-session-2026-05-15 (ANTS-1365 implementation).
+  Re-scoped (2026-09-07, project lead) after re-measurement. The
+  link-closure limitation as described is gone: test_core now links the
+  roadmap store lib as well, and CMakeLists records that core supplies
+  the RemoteControl symbols the behavioural tests need. So the
+  restructure half of this item is moot. What is left is the document
+  half -- write down what test_core's link closure now actually covers,
+  so the next person hitting a missing symbol does not rediscover it.
+  Small.
 
 #### 🔌 MCP cross-project isolation (caller_cwd) — Phase 1 + Phase 2
 
@@ -54715,6 +54761,11 @@ volume classes, and the tooling/documentation gaps the run exposed.
   become and restate the spec around that. Do NOT split them into per-item
   dirs: they scrape one source through one helper, and separating them
   would multiply the slurp without buying isolation.
+  Decided (2026-09-07, project lead): RESTATE the spec, do not rename
+  the directory. The directory name is cited from elsewhere and renaming
+  breaks those citations; the spec is the cheaper thing to correct.
+  Scope is now: bring spec.md up to the contracts its test file actually
+  asserts.
   **Layman:** A test folder's written description still covers only the first thing it tested, though several more contracts have been added to it since.
   Kind: doc-fix.
   Source: in-session-2026-08-28, found while adding ANTS-4753's test.
@@ -64287,6 +64338,11 @@ a modern terminal" release.
   Layman: Track down the occasional stutter that happens when a lot of text is printing at once.
   Kind: refactor.
   Source: user-2026-04-20.
+  Parked (2026-09-07) behind ANTS-4921. Verified today: the
+  newline_stream hotspot this item names was addressed by the free-list
+  in terminalgrid.h, whose own comment says it avoids the per-scroll
+  allocation that dominated that benchmark. Whether throughput is still
+  a problem is now an open measurement, not a known defect.
 
 - 📋 [ANTS-1060] **Dynamic grid storage.**
   (Alacritty
@@ -64297,6 +64353,11 @@ a modern terminal" release.
   Layman: Use far less memory for scrollback by not reserving space for lines that are empty.
   Kind: refactor.
   Source: planned.
+  Parked (2026-09-07) behind ANTS-4921. Verified today: this item
+  assumes a pre-allocated grid whose memory could be reclaimed, and
+  scrollback is a deque grown on demand -- so the saving it describes
+  does not exist. Of what it proposed, only empty-row interning is
+  unbuilt, and that needs a measurement to justify.
 
 - 📋 [ANTS-1061] **Async image decoding.**
   Hand sixel/Kitty/iTerm2 payloads to
@@ -64312,6 +64373,34 @@ a modern terminal" release.
   Layman: Change how scrollback is stored so jumping to a point in history stays fast even in very long histories.
   Kind: refactor.
   Source: planned.
+
+- 📋 [ANTS-4921] **Re-measure the performance baseline before acting on any parked perf item.**
+  Three perf items were verified 2026-09-07 and all three had lost their
+  premise: the hotspot each named has since been addressed, so the work as
+  filed would be optimising against a measurement nobody has taken.
+
+  ANTS-1115's first row already shipped -- the SIMD scan is live in
+  src/vtparser.cpp and the strtol it named is gone. ANTS-1059's named
+  newline_stream hotspot is addressed by the free-list in terminalgrid.h,
+  whose own comment says it avoids the per-scroll allocation that
+  dominated it. ANTS-1060 assumed a pre-allocated grid to shrink;
+  scrollback is a deque grown on demand, so there is nothing to remove and
+  only empty-row interning is unbuilt.
+
+  None of that means the system is fast. It means the OLD numbers no
+  longer describe it, and re-deriving a plan from them would be guessing.
+
+  So: run the existing benchmarks (bench_paint, bench_search and the vt
+  throughput lane) against the current tree, record the numbers with the
+  date and the machine, and re-file only what they justify. Prefer
+  deleting a parked item over rewriting it on a hunch.
+
+  Blocks ANTS-1115, ANTS-1059 and ANTS-1060, which stay filed so the
+  reasoning behind them is not lost.
+  **Layman:** Check what is actually slow now, before optimising things that may already be fast.
+  Kind: perf.
+  Source: stale-premise-triage-2026-09-07.
+  Lanes: perf, vt, terminal.
 
 ### 🎨 Features — multiplexing
 
@@ -66683,6 +66772,14 @@ here.)
   Filed rather than fixed because the first question is the user's — it is
   about how the two documents are meant to relate, not about a defect in
   either.
+  Decided (2026-09-07, project lead): add a weaker containment check, do
+  NOT restructure this copy. Splitting the CHANGELOG half out here to
+  match the global copy would let the downstream shape dictate the
+  upstream's, which CFG-0069 forbids for content and this project
+  declines for structure. Scope is now: a check that fails when this
+  copy's section set stops being contained in the global one -- real
+  drift caught, no structure imposed. A full mirror check remains wrong
+  here, because the two bodies legitimately differ in extent.
   **Layman:** Two copies of the same rulebook have drifted apart and no check notices.
   Kind: doc-fix.
   Source: in-session-2026-08-21 (noticed while landing ANTS-3771's cross-doc impact).
@@ -67587,6 +67684,12 @@ here.)
   audit.
   Layman: Re-check the roughly 190 automated tests, to be sure they test the behaviour that was promised rather than just the code as it happens to be written.
   Kind: audit-fix. Source: user-2026-05-02.
+  Deferred (2026-09-07, project lead) until the fix queue is clear. This
+  is a review pass, not a fix: it produces NEW findings, so running it
+  mid-clearance enlarges the backlog it would be reported into.
+  Re-scoped by measurement at the same time -- the feature-test corpus
+  is now 566 spec dirs against the roughly 190 this item was filed
+  against, so the audit is materially larger than its estimate.
   Source: user-2026-05-02.
 
 - 📋 [ANTS-1086] **Documentation pass.**
@@ -67964,6 +68067,11 @@ contributors don't duplicate research.
   Kind: audit-fix.
   Lanes: claudeintegration, mcptooling.
   Source: in-session-2026-05-27 (ANTS-1897 spec § 4 follow-up)..
+  Deferred (2026-09-07, project lead) until the fix queue is clear, on
+  the same ground as ANTS-1153: this is a review pass whose output is
+  new findings. The contract it critiques is still shape-only -- the
+  selection-hint invariants check assignment, pass-through and the
+  length cap, and none of them judges whether a hint is useful.
 
 - 📋 [ANTS-1899] **mcp_catalog — structured catalog MCP tool callable in-session for cases the SessionStart prelude doesn't cover.**
   Add a new MCP tool `mcp__ants__mcp_catalog` returning `{categories: [{name, tools: [{name, selection_hint, est_token_cost, kind}]}]}`. Categories derived from tool name prefix (`get_*`, `find_*`, `roadmap_*`, ...) or an explicit `category` field on each descriptor. Accepts optional `category` arg to filter. ETag-supported, fields-supported per the standard MCP-tool contract. Pairs with ANTS-1897 (the SessionStart prelude points at this tool for 'full catalog'); pairs with ANTS-1898 (the per-hint quality audit consumes this same structured view).
