@@ -53566,6 +53566,41 @@ volume classes, and the tooling/documentation gaps the run exposed.
 
   STILL OPEN: qcolor-from-literal and non-pod-global-static. Both need a
   fresh clazy run to enumerate; neither was touched here.
+  Progress (2026-09-07): qcolor-from-literal is closed for src/ and
+  non-pod-global-static is answered there as a non-hazard. Neither needed
+  the sweep this item implies.
+
+  Enumerated with clazy-standalone over the project's own src/ translation
+  units from build/compile_commands.json. The figures in the headline come
+  from a whole-tree run and do not describe src/. A first pass here wrongly
+  matched the vendored googletest sources under build/_deps, which is the
+  trap for anyone repeating this.
+
+  qcolor-from-literal splits on whether the string form is a contract.
+  toggleswitch.h's m_onColor and m_offColor are private defaults that
+  setThemeColors overrides and no spec pins, so they now use the int
+  constructor. ClaudeTabIndicator::color in coloredtabbar.cpp is
+  DELIBERATELY unchanged: the claude_state_dot_palette feature test scrapes
+  that file as text for each hex string, so the literal form IS the
+  contract there. Converting it would fail a documented invariant to buy an
+  unmeasured micro-optimisation in a paint helper. This note is the durable
+  record of that classification, since the false-positive ledger is
+  gitignored.
+
+  non-pod-global-static needs no code change. This item asks whether one
+  such object is read during another's construction. Every src/ site has
+  internal linkage — an anonymous namespace, or a file-scope static in
+  claudeallowlist.cpp and remotecontrol.cpp — so no other translation unit
+  can name one and the cross-TU static-initialisation-order fiasco cannot
+  occur. Sweeping them would be a large diff against a verified non-defect,
+  which is the call ANTS-4780 already made in this family.
+
+  NOT covered, deliberately: tests/ was not enumerated. Both classes were
+  measured against src/ only, so a tests/ residue may remain and this item
+  stays open for it.
+
+  Verified: build clean, full suite green via the default preset, and the
+  palette conformance test passes unchanged.
   **Layman:** Assorted Qt habits that cost a little speed, plus one pattern that can bite at start-up.
   Kind: perf.
   Source: check-code-sweep-2026-09-01.

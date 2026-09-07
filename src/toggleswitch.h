@@ -35,6 +35,6 @@ private:
     void animate();
     int m_thumbX = 3;
     QPropertyAnimation *m_anim = nullptr;
-    QColor m_onColor{"#4CAF50"};
-    QColor m_offColor{"#888888"};
+    QColor m_onColor{0x4C, 0xAF, 0x50};   // green
+    QColor m_offColor{0x88, 0x88, 0x88};  // grey
 };
