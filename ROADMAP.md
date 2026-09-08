@@ -54107,6 +54107,60 @@ than re-filed; everything else lands here.
   there and not in the parse. Pin whichever answer with a
   round-trip fixture — one item whose Layman line ends in a full
   stop, through migrate and back, compared byte for byte.
+  Scoped 2026-09-08, before any code, and it is BIGGER than the report
+  suggests. Do not treat this as a one-line parse fix.
+
+  MEASURED against the live machine-global store, read-only. 4650 items
+  carry a layman. 1728 end in a terminal period; 2921 end bare. So the
+  corpus is already about 63% period-less, and those 2921 are the
+  parse-written population — the loss this item describes, already taken,
+  across every migrated project on the machine.
+
+  THE HARM IS ONE-TIME PER PROJECT, which the report could not see. A
+  project whose file carries periods loses them the first time it is
+  re-migrated; after that its stored values are bare and a further
+  re-migrate changes nothing. So this is not ongoing corruption. It is a
+  one-way trip that every project takes once, silently, on the call a
+  session reaches for as a repair.
+
+  WHY IT IS A FORMAT DECISION AND NOT A FIX. Both candidate repairs change
+  what the store holds or what the file says, for every project:
+
+    (a) Stop dropping in the parse. Round-trips become faithful. Fixes
+        nothing already stored — those 2921 stay bare — so the two
+        populations stay visibly different forever.
+    (b) Have the render always terminate the line. parse(render(x))
+        becomes identity for this field, which also removes one of
+        ANTS-4507's artefacts. But it rewrites 2921 lines across every
+        project's ROADMAP.md on their next render, which is a large silent
+        diff nobody asked for.
+
+  Neither is obviously right, and the choice belongs in roadmap-format.md
+  — which this project is UPSTREAM of (CLAUDE.md, CFG-0069), so this repo
+  decides for every project. That is a contract change of direction and
+  takes rule 14's gate before anyone builds.
+
+  A THIRD OPTION worth weighing rather than assuming: leave the parse
+  alone and treat the existing 2921 as the corpus norm, since a trailer
+  value arguably ends where its text ends and the stop belongs to the
+  LINE. Then the defect is only the ASYMMETRY, and the fix is to make the
+  VERB path drop it too — smallest change, no render diff, and it makes
+  the column consistent. It also loses author punctuation, which is what
+  the reporter objected to.
+
+  WHAT IS ALREADY ESTABLISHED and needs no re-deriving: the mechanism.
+  roadmapparse.cpp's Layman extraction drops one trailing period
+  (ANTS-4596's comment says so in those words) and roadmaprender.cpp
+  appends none. ANTS-1154 INV-4 does NOT require the drop — its test says
+  only that `layman` is \"populated correctly\" and its own notation writes
+  the source line as `Layman: <text>.` So the drop is an implementation
+  reading, not a pinned contract, which is what leaves all three options
+  open.
+
+  Whichever is chosen, a repair pass over the existing rows is a separate
+  question, and op:\"repair_trailers\" is the precedent for how to do one
+  safely — it writes only where the stored value is a strict prefix of the
+  re-parse, so it can only ever extend.
   **Layman:** Re-importing a roadmap quietly rewrites the wording of every item's plain-English summary.
   Kind: fix.
   Source: Pressless_Ants_MCP_Feedback.md 2026-09-08.
