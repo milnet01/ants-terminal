@@ -2016,7 +2016,16 @@ void ClaudeStatusBarController::pollModelSwitchConfirm(
 void ClaudeStatusBarController::maybeAutoConfirmUserModelSwitch() {
     if (m_unarmedPollActive) return;   // ANTS-1955 — burst already running
 
-    const bool enabled = Config().claudeAutoModelConfirmUserSwitch();
+    // ANTS-4457 — cachedConfig(), not a fresh Config. This runs on the 2 s
+    // tick and, when no dialog is on screen, arms a kSwitchConfirmMaxPolls
+    // burst that read the same setting the same way. The burst's budget is
+    // just under the tick interval, so in the steady state it never stops:
+    // one tick plus one full burst was seventeen open-read-parse cycles
+    // every two seconds — more than the five to seven per tick ANTS-2116
+    // removed, on the same timer, in the same file. It is the default
+    // configuration: the toggle defaults to true and the burst is armed by
+    // the ABSENCE of a dialog, so it ran whenever a terminal had focus.
+    const bool enabled = cachedConfig().claudeAutoModelConfirmUserSwitch();
     auto *focused = m_focusedTerminalProvider
         ? m_focusedTerminalProvider() : nullptr;
     if (!enabled || !focused) {
@@ -2068,7 +2077,9 @@ void ClaudeStatusBarController::pollUnarmedSwitchConfirm(int attempt) {
         return;
     }
 
-    const bool enabled = Config().claudeAutoModelConfirmUserSwitch();
+    // ANTS-4457 — see maybeAutoConfirmUserModelSwitch; this is the body
+    // that runs kSwitchConfirmMaxPolls times per burst.
+    const bool enabled = cachedConfig().claudeAutoModelConfirmUserSwitch();
     const bool visible = ModelAutoSwitch::switchConfirmVisible(
         focused->recentOutput(kSwitchConfirmScanLines));
 
@@ -2100,7 +2111,8 @@ void ClaudeStatusBarController::pollUnarmedSwitchConfirm(int attempt) {
             const QString recent = focused->recentOutput(kSwitchConfirmScanLines);
             if (ModelAutoSwitch::directModelSwitchVisible(recent)) {
                 const bool autoModeOn =
-                    Config().claudeAutoModel().value("switch_enabled").toBool();
+                    cachedConfig().claudeAutoModel()   // ANTS-4457
+                        .value("switch_enabled").toBool();
                 // ANTS-2186 — gate the continuation on an active turn, identically
                 // to sendUnarmedConfirm: a `/model` typed at idle (pre-picking a
                 // model for later) must NOT inject a continuation and start an
@@ -2112,7 +2124,8 @@ void ClaudeStatusBarController::pollUnarmedSwitchConfirm(int attempt) {
                     (st == ClaudeState::Thinking || st == ClaudeState::ToolUse);
                 if (ModelAutoSwitch::shouldContinueAfterDirectSwitch(autoModeOn,
                                                                      activeTurn)) {
-                    const QString cont = Config().claudeAutoModelContinuationPrompt();
+                    const QString cont =                       // ANTS-4457
+                        cachedConfig().claudeAutoModelContinuationPrompt();
                     if (!cont.isEmpty()) {
                         QPointer<TerminalWidget> g2(focused);
                         QTimer::singleShot(kSwitchContinuationDelayMs, this, [g2, cont]() {

@@ -1707,6 +1707,8 @@ if(ANTS_TESTS)
                 tests/features/caller_cwd_schema_truth/test_caller_cwd_schema_truth.cpp
                 # ANTS-4457 — token_usage books a dispatch by what happened.
                 tests/features/dispatch_result_accounting/test_dispatch_result_accounting.cpp
+                # ANTS-4457 — the switch-confirm poll reuses the cached Config.
+                tests/features/switch_confirm_config_reuse/test_switch_confirm_config_reuse.cpp
                 tests/features/allowlist_add/test_allowlist_add.cpp
                 # ANTS-1993 — permission-prompt structural gate (anti-spoof).
                 tests/features/claude_permission_prompt_structure/test_claude_permission_prompt_structure.cpp
