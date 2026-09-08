@@ -10,12 +10,14 @@
 
 #include <QDir>
 #include <QFile>
+#include <QFileInfo>
 #include <QJsonArray>
 #include <QJsonObject>
 #include <QRegularExpression>
 #include <QSet>
 #include <QString>
 #include <QStringList>
+#include <QTemporaryDir>
 
 #include <gtest/gtest.h>
 #include "../../_support/srcgrep.h"
@@ -537,6 +539,82 @@ TEST(SpecLintVerb, Ants4080GlobalTierAndTheTwoSkipCauses) {
         << h2.toStdString();
 }
 
+// ANTS-4926 — a `~global/` sections_source says the global standard answered.
+// It does NOT say the project adopted none. `spec-format.md` forbids a project
+// from keeping a copy — read it in place, write deltas to
+// `docs/standards/spec-format-overrides.md` — so a CONFORMING project lands on
+// the same prefix as one that never adopted anything. A caller that reads the
+// prefix as "no standard" drops section findings that are real, and the
+// affected population is every conforming project.
+//
+// Route 1 of the item: report WHY the project's own standard did not answer.
+// The marker is the overrides file the standard itself names, so this needs no
+// new convention. Resolution is UNCHANGED — the marker is reported, never read.
+TEST(SpecLintVerb, Ants4926SectionsSourceReasonSeparatesAdoptionFromAbsence) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString root = tmp.path();
+    const QString viaGlobal = QStringLiteral("~global/standards/spec-format.md");
+    const auto put = [&root](const QString &rel) {
+        QDir(root).mkpath(QFileInfo(rel).path());
+        QFile f(QDir(root).filePath(rel));
+        EXPECT_TRUE(f.open(QIODevice::WriteOnly)) << rel.toStdString();
+        f.write("# a standard carrying no required-sections block\n");
+    };
+
+    // Nothing local at all. This is the arm that admits the caller cannot tell
+    // adoption from absence — and saying so is the whole fix.
+    EXPECT_EQ(RemoteControl::specLintSectionsSourceReason(root, viaGlobal),
+              QStringLiteral("no_local_standard"));
+
+    // A project standard that declares no block: distinct, and actionable. The
+    // findings came from the global list, not from the standard this project
+    // ships — the ANTS-4895 hazard pointing the other way.
+    put(QStringLiteral("docs/standards/specs.md"));
+    EXPECT_EQ(RemoteControl::specLintSectionsSourceReason(root, viaGlobal),
+              QStringLiteral("local_standard_no_block"));
+
+    // The marker wins over it. Writing deltas IS adopting.
+    put(QStringLiteral("docs/standards/spec-format-overrides.md"));
+    EXPECT_EQ(RemoteControl::specLintSectionsSourceReason(root, viaGlobal),
+              QStringLiteral("adoption_marker"));
+
+    // A project-local hit is decided by the source alone; no disk state can
+    // change it.
+    EXPECT_EQ(RemoteControl::specLintSectionsSourceReason(
+                  root, QStringLiteral("docs/standards/specs.md")),
+              QStringLiteral("project_standard"));
+
+    // The envelope carries it, with a hint on the arms a caller can misread.
+    // The marker arm is the one the item is about: those findings are REAL.
+    const QJsonObject adopted = RemoteControl::specLintBuildResponse(
+        {}, true, false, QJsonObject{}, false,
+        QStringList{QStringLiteral("docs/specs/X.md")}, 0, false, viaGlobal,
+        500, QStringLiteral("adoption_marker"));
+    EXPECT_EQ(adopted.value(QStringLiteral("sections_source_reason")).toString(),
+              QStringLiteral("adoption_marker"));
+    EXPECT_TRUE(adopted.value(QStringLiteral("sections_source_hint")).toString()
+                    .contains(QStringLiteral("spec-format-overrides.md")))
+        << "the hint must name the marker it read, or a caller cannot check it";
+
+    // A project hit needs no hint: the path already answers the question.
+    const QJsonObject own = RemoteControl::specLintBuildResponse(
+        {}, true, false, QJsonObject{}, false,
+        QStringList{QStringLiteral("docs/specs/X.md")}, 0, false,
+        QStringLiteral("docs/standards/specs.md"), 500,
+        QStringLiteral("project_standard"));
+    EXPECT_EQ(own.value(QStringLiteral("sections_source_reason")).toString(),
+              QStringLiteral("project_standard"));
+    EXPECT_FALSE(own.contains(QStringLiteral("sections_source_hint")));
+
+    // An unsupplied reason invents nothing.
+    const QJsonObject bare = RemoteControl::specLintBuildResponse(
+        {}, true, false, QJsonObject{}, false,
+        QStringList{QStringLiteral("docs/specs/X.md")}, 0, false, viaGlobal);
+    EXPECT_FALSE(bare.contains(QStringLiteral("sections_source_reason")));
+    EXPECT_FALSE(bare.contains(QStringLiteral("sections_source_hint")));
+}
+
 // ---------------------------------------------------------------------------
 // ANTS-4737 — the cap must trim what is EMITTED and nothing else.
 //
@@ -610,6 +688,11 @@ TEST(SpecLintVerb, Ants4737WalkHandsTheCallerCapToTheBuilder) {
         ants_test::slurpRemoteControl(),
         "QJsonDocument RemoteControl::cmdSpecLint");
     ASSERT_FALSE(body.empty()) << "cmdSpecLint body not found";
-    EXPECT_NE(body.find("sectionsSource, callerCap)"), std::string::npos)
+    // Re-anchored 2026-09-08 (ANTS-4926): the needle carried the closing paren,
+    // so it pinned callerCap as the LAST argument rather than as an argument
+    // that arrives. Adding sectionsSourceReason after it reddened this row
+    // while the contract it states — the cap reaches the builder — held
+    // throughout. The pair is what that contract needs.
+    EXPECT_NE(body.find("sectionsSource, callerCap"), std::string::npos)
         << "max_findings must reach specLintBuildResponse, or nothing trims";
 }

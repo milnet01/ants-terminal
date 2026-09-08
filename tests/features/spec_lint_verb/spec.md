@@ -17,6 +17,7 @@ source-scrape the registration sites.
 | `Ants4127SurfaceFieldsReachTheWire` | ANTS-4127 INV-3..5, 7, 10 | `surfaces_resolved` / `surfaces_checked` always emitted (including the falsifying `true` + `0` pair); the three new kinds carry `invariant` / `surface` / `spec_status` on the wire, with `spec_status` a **present** key holding `null`; the handler gathers both sets and sums the counter; the live `tests/features/` scan is non-empty and `wired ⊆ existing`. |
 | `Ants4737CountsAreUncappedAndOnlyFindingsAreTrimmed` | ANTS-4737 | `counts` and `findings_total` are taken over the full list; `max_findings` trims `findings[]` alone and sets `truncated`. Two caps over one unchanged list report identical counts. An uncapped run trims nothing and leaves `truncated` unset. |
 | `Ants4737WalkHandsTheCallerCapToTheBuilder` | ANTS-4737 | The walk passes the caller's cap through, or nothing trims. |
+| `Ants4926SectionsSourceReasonSeparatesAdoptionFromAbsence` | ANTS-4926 | `sections_source_reason` says why the project's own standard did not answer: `project_standard`, `adoption_marker` (the overrides file `spec-format.md` names is present), `local_standard_no_block`, `no_local_standard`. `sections_source_hint` rides the three non-project arms and names the marker. Resolution is unchanged — the overrides file is reported, never read. An unsupplied reason emits neither key. |
 
 The last of those is the only row in either lane that asserts the **project's
 own state** rather than a fixture's, and it is there because an empty scan is

@@ -652,7 +652,20 @@ public:
         // `findings_total` are taken over the full list before findings[] is
         // trimmed: deriving the count from the trimmed list let the cap choose
         // the count, which silently voids a before/after comparison.
-        int maxFindings = std::numeric_limits<int>::max());
+        int maxFindings = std::numeric_limits<int>::max(),
+        // ANTS-4926 — WHY the project's own standard did not answer. Empty
+        // omits both keys; cmdSpecLint always supplies one.
+        const QString &sectionsSourceReason = QString());
+    // ANTS-4926 — `~global/` on sections_source says the global standard
+    // answered; it does NOT say the project adopted none. A conforming project
+    // keeps no local copy at all (spec-format.md forbids one), so it lands on
+    // the same prefix as a project that never adopted anything, and a caller
+    // that drops the section findings on that prefix drops REAL ones. Public
+    // and static for the reason specLintBuildResponse is: it reads the disk and
+    // nothing else, so it is the part worth testing directly, and
+    // remotecontrol_internal.h is barred from tests by ANTS-3833 INV-5.
+    static QString specLintSectionsSourceReason(const QString &rootCanonical,
+                                                const QString &sectionsSource);
     // ANTS-4108 — spec_conformance: RUN the patterns a spec prescribes against
     // the expectation table beside them (SpecConformance::run). Reads ONE
     // document, so `path` is required — there is no tree walk to default to.

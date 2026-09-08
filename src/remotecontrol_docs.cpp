@@ -586,6 +586,52 @@ static QStringList specLintRequiredSections(const QString &rootCanonical,
     return tryRoot(QDir(globalRoot), QStringLiteral("~global/"));
 }
 
+// ANTS-4926 — the delta file the spec-format standard names as where a
+// conforming project writes its overrides. Reported as an ADOPTION SIGNAL and
+// never read as a candidate: adding it to the resolution list above is the
+// item's route 2, which is not taken, because a project adopting with zero
+// deltas writes no such file and the list would still be incomplete.
+static QString specLintOverridesRel() {
+    return QStringLiteral("docs/standards/spec-format-overrides.md");
+}
+
+// ANTS-4926 — WHY the project's own standard did not answer.
+//
+// `sections_source` is honest about WHICH standard resolved and silent about
+// what that implies, and two opposite projects reach the same `~global/`
+// prefix. One has ADOPTED the global standard, which forbids keeping a local
+// copy and sends deltas to the file above; its `missing_section` findings are
+// real. The other adopted no format standard at all; its findings state a
+// shape it never signed up to. The reporter measured the second arm on
+// DOOM_Ants — twelve standards, none a spec format, `missing_section` findings
+// across every spec in the corpus (their measurement, not reproduced here).
+//
+// Nothing else in the envelope differed, so a caller either dropped real
+// findings or acted on manufactured ones — and `check-doc-facts` trusts the
+// prefix, which turns the check off for exactly the projects that follow the
+// rule. Same shape as ANTS-4373: a skip reported without its cause.
+QString RemoteControl::specLintSectionsSourceReason(const QString &rootCanonical,
+                                                    const QString &sectionsSource) {
+    // A project-local hit answers the question by itself, and no disk state can
+    // change that answer — so this arm is decided by the source alone.
+    if (!sectionsSource.isEmpty() &&
+        !sectionsSource.startsWith(QStringLiteral("~global/")))
+        return QStringLiteral("project_standard");
+
+    const QDir root(rootCanonical);
+    // Deltas are what adoption looks like under the standard's own rule.
+    if (QFile::exists(root.filePath(specLintOverridesRel())))
+        return QStringLiteral("adoption_marker");
+    // A standard that exists and declares no block is a THIRD state, and an
+    // actionable one: the findings came from the global list rather than from
+    // the standard this project ships — ANTS-4895's hazard pointing the other
+    // way.
+    for (const QString &rel : specLintStandardCandidates())
+        if (QFile::exists(root.filePath(rel)))
+            return QStringLiteral("local_standard_no_block");
+    return QStringLiteral("no_local_standard");
+}
+
 // ANTS-4127 — the two filesystem facts the spec_lint engine cannot gather for
 // itself: the `tests/features/<name>` directories that EXIST, and the subset
 // holding a `test_*.cpp` named in `CMakeLists.txt`. Both keyed by the BARE
@@ -786,7 +832,9 @@ QJsonDocument RemoteControl::cmdSpecLint(const QJsonObject &req) {
                                             testCoverageChecked,
                                             lineCounts, truncated, checked,
                                             surfacesResolved, surfacesChecked,
-                                            sectionsSource, callerCap);
+                                            sectionsSource, callerCap,
+                                            specLintSectionsSourceReason(
+                                                rootCanonical, sectionsSource));
     out[QStringLiteral("docs_digest")] = docSetDigest(rootCanonical, checked);
     // ANTS-4110 — say that gaps were suppressed and how many. Emitted only when
     // non-zero: a caller reading a short findings list is entitled to know a
@@ -835,7 +883,8 @@ QJsonObject RemoteControl::specLintBuildResponse(
     bool testCoverageChecked,
     const QJsonObject &lineCounts, bool truncated,
     const QStringList &checkedDocs, int surfacesResolved,
-    bool surfacesChecked, const QString &sectionsSource, int maxFindings) {
+    bool surfacesChecked, const QString &sectionsSource, int maxFindings,
+    const QString &sectionsSourceReason) {
     QJsonObject o;
     o[QStringLiteral("ok")] = true;
     // ANTS-4737 — the cap trims what is EMITTED and nothing else. Measured at
@@ -881,6 +930,37 @@ QJsonObject RemoteControl::specLintBuildResponse(
     o[QStringLiteral("sections_source")] =
         sectionsSource.isEmpty() ? QJsonValue(QJsonValue::Null)
                                  : QJsonValue(sectionsSource);
+    // ANTS-4926 — sections_source says which standard answered; this says why
+    // the project's OWN did not. A caller reads the `~global/` prefix as "this
+    // project adopted no format standard", and for a conforming project that is
+    // false — the standard forbids a local copy, so adoption is byte-identical
+    // to absence. Emitted only when supplied: cmdSpecLint always supplies one,
+    // and the pure builder invents nothing for a caller that passed none.
+    if (!sectionsSourceReason.isEmpty()) {
+        o[QStringLiteral("sections_source_reason")] = sectionsSourceReason;
+        // No hint on the project arm: there the path already answers it.
+        if (sectionsSourceReason == QLatin1String("adoption_marker"))
+            o[QStringLiteral("sections_source_hint")] = QStringLiteral(
+                "this project HAS adopted the global spec-format standard. It "
+                "keeps no local copy because the standard forbids one, and its "
+                "deltas are at docs/standards/spec-format-overrides.md, which "
+                "is present. The section findings are REAL: do NOT drop them "
+                "on the `~global/` prefix. Tracked as ANTS-4926.");
+        else if (sectionsSourceReason == QLatin1String("local_standard_no_block"))
+            o[QStringLiteral("sections_source_hint")] = QStringLiteral(
+                "this project ships a format standard of its own, but that "
+                "file carries no required-sections block, so the global list "
+                "answered instead. The findings state the global shape, not "
+                "the one this project wrote down. Add the block to the "
+                "project's own standard. Tracked as ANTS-4926.");
+        else if (sectionsSourceReason == QLatin1String("no_local_standard"))
+            o[QStringLiteral("sections_source_hint")] = QStringLiteral(
+                "no format standard was found under this project, and no "
+                "docs/standards/spec-format-overrides.md marks the global one "
+                "as adopted. The section findings therefore state a shape this "
+                "project may never have adopted — verify adoption before "
+                "acting on them. Tracked as ANTS-4926.");
+    }
     // ANTS-4393 — `surfaces_checked` has a DIFFERENT cause from
     // `sections_checked`, measured on a project where adding the format
     // standard flipped the first to true and left the second false. So the
