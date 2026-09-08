@@ -35099,6 +35099,38 @@ in each bullet, not just the reporter's symptom.
   Kind: fix.
   Source: in-session-2026-09-07 (hit while pushing ANTS-4456).
 
+- 📋 [ANTS-4943] **The pre-push ASan skip marker never expires, so a dark gate leg reads as a healthy push.**
+  Found while pushing ANTS-4456 fixes. tools/hooks/pre-push writes
+  build-asan/.ants-prepush-interrupted when a run is killed mid-build, and
+  skips the sanitizer leg while it exists. That guard is right: an
+  incremental result over a killed ninja is a false pass.
+
+  What is missing is any sense of age. The marker on this machine was
+  written 2026-09-05 and was still skipping the leg on 2026-09-08, across
+  every push in between. Its message is one line inside a long hook run
+  that a caller very commonly tails, and a three-day-old marker prints
+  identically to a three-minute-old one — so the leg had been dark for
+  days while each push still ended "correctness suite green — push
+  allowed".
+
+  Verified: the marker's mtime was 2026-09-05, the skip message appeared
+  on a 2026-09-08 push, and the healing command in that message had never
+  been run.
+
+  Two candidate repairs, neither designed yet. Report the marker's age in
+  the skip message, so a three-day skip is distinguishable from one taken
+  this session. Or make the skip louder as it ages. The point is not to
+  force the clean rebuild, which is deliberately the caller's call, but to
+  stop a stale skip being invisible.
+
+  Not a duplicate of ANTS-4942, which is about the edge count misreading a
+  pending CMake regen. This one is the marker branch, which runs before
+  that count is consulted.
+  **Layman:** A safety check can switch itself off after a crashed build and stay off for days without anyone noticing.
+  Kind: fix.
+  Source: in-session-2026-09-08.
+  Lanes: ci, tooling.
+
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-08-14 triage
 
 Un-triaged findings drained from the shared `*_Ants_MCP_Feedback.md` corpus
@@ -37989,7 +38021,7 @@ whole files.
 
   `doc_integrity` clean; suite 4177/4177 green with the map change in tree.
 
-- 📋 [ANTS-4456] **Triage: terminal-core and render/PTY findings from the cold sweep.**
+- ✅ [ANTS-4456] **Triage: terminal-core and render/PTY findings from the cold sweep.**
   Reviewer claims carried forward as-is. NOT re-verified in this session —
   check each against source before starting. Full text:
   `.audit_cache/cold-sweep-2026-08-18.md`.
@@ -38163,6 +38195,103 @@ whole files.
   Verified: every invariant red with the fix absent, green with it
   present, ctest count moved, full suite green via the default preset.
   Shipped in 2e72aee8.
+  Triage (2026-09-08): the search-debounce claim is NOT LIVE. Dismissed
+  with evidence rather than fixed.
+
+  The report says search runs the whole scrollback per keystroke with no
+  debounce. ANTS-2000 already shipped one: a single-shot 120 ms timer
+  between the search box's text-changed signal and performSearch, with an
+  explicit action — Enter, the regex toggle — cancelling the pending scan
+  and searching at once. The member, the interval and the reasoning are
+  all in place, and the header comment describes the exact freeze the
+  report predicts, in the past tense.
+
+  So the sweep's snapshot was already stale on this one. That is what the
+  item's own caveat is for.
+
+  MEDIUM tally after this pass. Two shipped earlier today: the OSC title
+  cap and the capture-file permissions. Four more verified against source
+  with fixes written and under test: RIS discarding the configured theme
+  and scrollback depth, the wide char adding a third cell width to a
+  background run, the per-style font setters not invalidating the
+  shaped-run cache, and the unsynchronised child PID. One not live, this
+  one. Both HIGH claims closed in earlier passes.
+
+  That leaves nothing unexamined in this item once the four land.
+  Progress (2026-09-08, fifth pass): the last four verified MEDIUM claims
+  are FIXED. Every claim in this item has now been examined against
+  source. Shipped in 1a53a81c.
+
+  RIS discarded configuration. The reset reconstructs the grid and
+  hand-restores the integration callbacks; everything else returned to
+  the values in the class declaration, including the theme's default
+  colours and the configured scrollback depth, both pushed on from
+  outside after construction. Cursor and selection colours live on the
+  widget and survive, so the visible result was one theme's text on
+  another theme's furniture. Restored through the setters, which also
+  re-point cells still carrying the constructor's colour.
+
+  The wide-char background run. Worse than reported: the lead cell
+  contributes two cell widths and the continuation cell added one more,
+  and the overshoot is per character rather than a single column, so a
+  selection over several of them spilled further with each. The guard
+  sits on the extend branch only — a continuation cell may still open a
+  run, which is a selection boundary splitting a glyph, and that fill is
+  meant to paint.
+
+  The per-style font setters. The shaped-run cache keys on run text and a
+  two-bit style variant and carries no font, so replacing the font behind
+  a variant left cached layouts shaped with the old family. Widening the
+  key was rejected: it would add a comparison to every lookup on the
+  paint path to serve a Settings click.
+
+  The child PID. The comment justifying the cross-thread read was simply
+  false — the read-notifier slot runs on the parse worker and clears the
+  PID when the child is reaped. Now atomic, and the comment corrected
+  rather than left to mislead. Both callers only open /proc, so the
+  visible effect was a lookup against a possibly-recycled PID, not a
+  signal to the wrong process.
+
+  Method note worth keeping. The first red run exposed a vacuous
+  invariant in my own test: the child-PID check for a leftover plain
+  declaration passed against the very declaration it forbids, because
+  std::regex defaults to ECMAScript without the multiline flag and a bare
+  caret anchors to the start of the whole string, not a line. A red run is
+  what caught it; the green run alone would have looked identical.
+
+  Verified: each fix red with it stashed, all green with them restored,
+  full suite green via the default preset, and this push cleared the
+  sanitized suite too — the first this session where that leg actually
+  ran (see ANTS-4943).
+  Resolved (2026-09-08): triage complete. Every claim in this item has
+  been checked against source and closed.
+
+  Both HIGH claims verified and fixed: the Sixel repeat bomb and the
+  scratchpad submit ordering.
+
+  Eight of the nine MEDIUM claims verified and fixed: the fatal PTY write
+  leaving the notifier armed, the same site dropping bytes unsignalled,
+  the uncapped and persisted OSC window title, the capture files created
+  world-readable, RIS discarding the configured theme and scrollback, the
+  wide char adding a third cell width to a background run, the per-style
+  font setters not invalidating the shaped-run cache, and the
+  unsynchronised child PID.
+
+  One MEDIUM claim was NOT live and was dismissed rather than fixed: the
+  search debounce, already shipped by ANTS-2000.
+
+  Nothing here was taken on trust. The item's own caveat said no lane
+  could execute anything, so every claim was a reading of an algorithm;
+  each was re-read against current source before any work started, and
+  the one that had since been fixed was found that way.
+
+  Each fix carries its own contract under tests/features, each was proved
+  red before the fix and green after, and each landed with the full suite
+  green. Two of the fixes turned out to be worse than reported — the
+  wide-char overshoot accumulates per character rather than being one
+  column, and the scratchpad ordering took the broken path every time
+  rather than rarely — and two turned up adjacent defects the report did
+  not name, both recorded in the passes above.
 
 - 📋 [ANTS-4457] **Triage: Claude-integration findings from the cold sweep.**
   Reviewer claims carried forward as-is. NOT re-verified — check each against

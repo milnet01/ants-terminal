@@ -145,6 +145,32 @@ for security-relevant changes.
 
 ### Fixed
 
+- **Resetting the terminal no longer throws away your theme and scrollback setting** (ANTS-4456)
+  Some programs reset the terminal when they finish, and `reset` does
+  it on purpose. That used to snap the text colours back to the
+  built-in ones and shrink your scrollback back to the default —
+  while the cursor and selection colours stayed on your theme, so you
+  were left with a mismatch. A reset now clears the screen and history
+  as it should, and leaves your settings alone.
+
+- **Selection highlight no longer runs past the end of Chinese, Japanese, Korean or emoji text** (ANTS-4456)
+  Characters that take up two columns were being counted as three
+  when the highlight behind them was drawn. The error added up, so a
+  selection containing several of them spilled further and further to
+  the right of the text it belonged to.
+
+- **Choosing a new bold or italic font now takes effect straight away** (ANTS-4456)
+  Text already on screen kept drawing in the previous font until
+  something else forced a redraw — resizing the window, or changing
+  the font size — so the setting looked like it had been ignored.
+
+- **Opening a file by name from the terminal can no longer consult the wrong process** (ANTS-4456)
+  The terminal looks up your shell's current folder to resolve a
+  short filename. The record of which shell to ask was being updated
+  on one thread and read on another without coordination, so just
+  after a shell exited the lookup could land on an unrelated program
+  that had been given the same identifier.
+
 - **A terminal whose shell has gone away no longer pins a CPU core** (ANTS-4456)
   When a write to the terminal failed for good — the shell reaped, the
   connection torn down — the code that retries queued keystrokes kept
