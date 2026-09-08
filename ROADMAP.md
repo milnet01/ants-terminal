@@ -52998,7 +52998,7 @@ plus two gaps hit while sweeping stale spec citations under ANTS-4757.
   Source: claude_config_Ants_MCP_Feedback.md, 2026-09-07.
   Lanes: mcp, docs.
 
-- 📋 [ANTS-4926] **spec_lint's `sections_source` cannot distinguish a project that adopted the global format standard from one that adopted none.**
+- ✅ [ANTS-4926] **spec_lint's `sections_source` cannot distinguish a project that adopted the global format standard from one that adopted none.**
   The resolver tries four project-local paths, then four under ~/.claude, and prefixes a global hit with `~global/`. A caller reads that prefix as "this project adopted no format standard" and drops the section findings.
 
   THE BIND, and it is not an edge case. `spec-format.md` FORBIDS a project from keeping a copy: read it in place, write deltas to `docs/standards/spec-format-overrides.md`. That overrides file is not among the eight candidates. So a project that HAS adopted the global standard resolves to `~global/` too, and its section findings are real and get dropped. The affected population is every CONFORMING project.
@@ -53013,6 +53013,42 @@ plus two gaps hit while sweeping stale spec citations under ANTS-4757.
   3. An explicit adoption marker in `.ants/project.json`.
 
   Route 1 needs no new convention anywhere and is the one to cost first. This is the ANTS-4373 family exactly -- a skip reported without its cause -- so the shape is already settled here.
+  Resolved (2026-09-08). Route 1, as the item recommended.
+  `sections_source_reason` is emitted on every run and names why the
+  project's OWN standard did not answer: project_standard,
+  adoption_marker, local_standard_no_block, no_local_standard.
+  `sections_source_hint` rides the three non-project arms; on
+  adoption_marker it says outright that the section findings are real and
+  must not be dropped on the `~global/` prefix.
+
+  The marker is `docs/standards/spec-format-overrides.md`, which
+  spec-format.md itself names as where a conforming project writes its
+  deltas, so this needed no new convention. Route 2 was NOT taken:
+  resolution is unchanged and the overrides file is reported rather than
+  read as a candidate, because a project adopting with zero deltas writes
+  no such file and the candidate list would still be incomplete. Route 3
+  (an .ants/project.json marker) is untouched and remains available if the
+  zero-delta case ever needs an answer.
+
+  local_standard_no_block was the third state and it was invisible: a
+  project shipping its own format standard that carries no
+  required-sections block is linted against the global list rather than
+  against its own.
+
+  Classifier is a public static, RemoteControl::specLintSectionsSourceReason
+  (ANTS-3833 INV-5 bars remotecontrol_internal.h from tests). New row
+  Ants4926SectionsSourceReasonSeparatesAdoptionFromAbsence in
+  tests/features/spec_lint_verb, proved red first against a stub.
+  Ants4737WalkHandsTheCallerCapToTheBuilder was re-anchored: its needle
+  carried the closing paren, so it pinned callerCap as the last argument
+  rather than as one that arrives. ANTS-3662 amended; spec_lint's tool
+  description states the distinction.
+
+  NOT done here, and it is the consuming half: check-doc-facts still
+  trusts the `~global/` prefix. Teaching it to read the new field is a
+  ~/.claude change and is outside this repository.
+
+  Verified: ctest --preset=default, 4321 passed, 0 failed.
   **Layman:** The checker cannot tell "this project follows the shared rules" from "this project has no rules", so callers either skip a real check or raise hundreds of false alarms.
   Kind: fix.
   Source: claude_config_Ants_MCP_Feedback.md, 2026-09-07.

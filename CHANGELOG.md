@@ -145,6 +145,17 @@ for security-relevant changes.
 
 ### Fixed
 
+- **`spec_lint` says whether a project ADOPTED the global spec-format standard or adopted none** (ANTS-4926)
+  `sections_source` prefixing a hit with `~global/` said which standard
+  answered and nothing more. A conforming project keeps no local copy —
+  the standard forbids one and sends deltas to
+  `docs/standards/spec-format-overrides.md` — so adoption looked identical
+  to a project with no format standard at all, and a caller dropping
+  section findings on that prefix dropped real ones.
+  `sections_source_reason` now separates the states, with
+  `sections_source_hint` on the three arms a caller can misread.
+  Resolution is unchanged: the overrides file is reported, never read.
+
 - **The MCP usage figures now count a call by what actually happened to it** (ANTS-4457)
   Two errors cancelled each other out badly. A call that returned
   "nothing changed since last time" — the cheapest possible result,
