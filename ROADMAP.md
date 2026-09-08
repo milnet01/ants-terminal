@@ -53961,7 +53961,7 @@ than re-filed; everything else lands here.
   Source: UT_Ants_Ants_MCP_Feedback.md 2026-09-08.
   Lanes: mcp.
 
-- 📋 [ANTS-4951] **similar_code takes `shape` where every sibling search verb takes `query`.**
+- ✅ [ANTS-4951] **similar_code takes `shape` where every sibling search verb takes `query`.**
   similar_code {query:...} refuses bad_args naming `shape`, with
   ignored_args:["query"]. The refusal is good and self-correcting in
   one cycle. `query` is the natural guess because workspace_search
@@ -53973,6 +53973,20 @@ than re-filed; everything else lands here.
   old_string/new_string for old/new (ANTS-4089), workspace_search
   accepts `query` for `pattern`. `shape` wins if both are sent, as
   every other alias here does.
+  Resolved (2026-09-08). `query` is accepted as an alias for `shape`, with
+  `shape` winning when both are sent — the house rule every other alias
+  here follows (roadmap_query status/filter, apply_edits old/old_string,
+  invariant_check files/paths).
+
+  Declared in the schema as well as read by the handler, which is not
+  optional: additionalProperties:false would refuse a strict client's call
+  outright, and ANTS-2175 would report `query` in ignored_args on a
+  permissive one — telling the caller its argument did nothing on the call
+  that argument had just steered.
+
+  Test is a source scrape, like that file's existing WiringContract, because
+  the alias lives in the handler and the bundle cannot link RemoteControl.
+  All four assertions proved red first. Suite green.
   **Layman:** One search tool names its main argument differently from the others, so the natural guess is refused.
   Kind: enhancement.
   Source: UT_Ants_Ants_MCP_Feedback.md 2026-09-08.
@@ -54098,7 +54112,7 @@ than re-filed; everything else lands here.
   Source: Pressless_Ants_MCP_Feedback.md 2026-09-08.
   Lanes: roadmap-store, roadmapparse.
 
-- 📋 [ANTS-4956] **roadmap_query check_sync omits file_in_sync on the drifted arm — the one arm the question is asked for.**
+- ✅ [ANTS-4956] **roadmap_query check_sync omits file_in_sync on the drifted arm — the one arm the question is asked for.**
   The verb documents `file_in_sync` as emitted on every arm — the
   "only" in "plus drift_lines / drift_restyled / drift_lost /
   drift_lost_text on the drifted arm only" qualifies the DRIFT
@@ -54128,6 +54142,37 @@ than re-filed; everything else lands here.
   `compact:true` would then drop it as a falsy value, and if so
   protect it the way ok / found / unchanged already are — an
   explicit false is the payload here, not dead weight.
+  Resolved (2026-09-08). The cause is NOT what either report inferred, and
+  the difference is the whole fix.
+
+  `rcStampDriftFields` in remotecontrol_roadmap_query.cpp sets
+  `file_in_sync` UNCONDITIONALLY, on both arms — the verb was always
+  correct. `mcp::compactObject` dropped it, because `false` is dead weight
+  and the key was not on `isProtectedCompactKey`'s list. And
+  `claude.mcp_terse_responses` DEFAULTS TRUE (config.cpp), so compaction
+  runs on every response: both reporters were compacted without passing
+  `compact`, and were right to say they had not.
+
+  FIXED BY PROTECTING THE KEY, which is what Pressless proposed as its
+  alternative.
+
+  TWO MORE FIELDS FOUND BY THE SAME MECHANISM and fixed in the same list,
+  because it is one defect rather than three. roadmap_migrate's
+  `store_backed` — ANTS-4490 added it so a caller could branch instead of
+  reading prose, and `false` is the arm that changes what happens next.
+  And `markdown_rewritten` — ANTS-4482, worse: INV-11 makes it ALWAYS
+  false, so under the default it never shipped at all, and three sessions
+  had already read a byte-identical ROADMAP.md as a migration that did not
+  run, which is the exact misreading that field was added to prevent.
+
+  The `_checked` suffix rule cannot reach these three — they share no
+  suffix — so they are named, and the comment on the list states the test
+  for a new one: does its FALSE answer a question a caller acts on?
+
+  Proved red first: `McpCompact.Ants4956ProtectsBooleansWhoseFalseIsThePayload`
+  failed on the assertion, not on compilation. Its third leg pins that an
+  ordinary `false` still folds, so the carve-out cannot become an opt-out
+  of compaction. Suite green, 4326 of 4326.
   **Layman:** The check that answers “is the roadmap file up to date?” leaves the answer out whenever the answer is no.
   Kind: fix.
   Source: Pressless_Ants_MCP_Feedback.md 2026-09-08.
@@ -54339,7 +54384,7 @@ than re-filed; everything else lands here.
   Source: claude_config_Ants_MCP_Feedback.md 2026-09-08.
   Lanes: mcp.
 
-- 📋 [ANTS-4962] **op:"init" writes a skeleton whose roadmap-format link cannot resolve in the kind of project that calls it.**
+- ✅ [ANTS-4962] **op:"init" writes a skeleton whose roadmap-format link cannot resolve in the kind of project that calls it.**
   CONFIRMED IN THE TREE. `RoadmapMigrateVerb::initSkeleton()` emits
   `> [roadmap-format.md](docs/standards/roadmap-format.md).` A
   project reaching for op:"init" is BY DEFINITION one with no
@@ -54361,6 +54406,16 @@ than re-filed; everything else lands here.
   nothing the file needs. Pin it with a fixture asserting the
   skeleton contains no relative link — the ANTS-4740 skeleton test
   already parses the output and is the place to add it.
+  Resolved (2026-09-08). `initSkeleton()` names roadmap-format.md in prose
+  instead of linking it. The format marker on line 1 is what a parser
+  reads; the line is for the person, and the name serves them without a
+  reference that cannot resolve.
+
+  The test asserts the absence of markdown link SYNTAX rather than of one
+  path, so a later edit cannot reintroduce the class under a different
+  target, and separately that the standard is still NAMED. Proved red
+  against the shipped skeleton, which printed the offending link in the
+  failure message. Suite green.
   **Layman:** The starter roadmap file it creates links to a document the new project does not have.
   Kind: fix.
   Source: demoreel_Ants_MCP_Feedback.md 2026-09-08.
@@ -54950,7 +55005,7 @@ than re-filed; everything else lands here.
   Source: DOOM_Ants_MCP_Feedback.md 2026-09-08.
   Lanes: mcp.
 
-- 📋 [ANTS-4980] **feedback_query's `path` description names a corpus root that holds no feedback file.**
+- ✅ [ANTS-4980] **feedback_query's `path` description names a corpus root that holds no feedback file.**
   The `path` argument reads "Absolute (the canonical case — files
   live at /mnt/Games/Scripts/Linux/)". The corpus is one level
   deeper, in Ants_MCP_Feedback_Files/, and nothing matching
@@ -54976,6 +55031,16 @@ than re-filed; everything else lands here.
   root is configurable (claude.mcp_feedback_root), so any literal
   path in a description is a claim that can go stale on another
   machine.
+  Resolved (2026-09-08). The literal root is gone rather than corrected.
+  The corpus root is configurable (claude.mcp_feedback_root), so any path
+  written into a description is a claim that goes stale on another machine
+  — the description now points at derivation and names session_orient's
+  `shared_root` as the way to see the resolved value.
+
+  The reporter's impact analysis is why this was worth more than a typo
+  fix: a session constructing an absolute path from a wrong hint routes
+  around ANTS-4647's guard, which fires on the derivation route only, so
+  feedback_log would have CREATED a stranded file rather than refusing.
   **Layman:** The tool's own help points at the wrong folder for the shared feedback files.
   Kind: doc-fix.
   Source: Games_Ants_MCP_Feedback.md 2026-09-08.

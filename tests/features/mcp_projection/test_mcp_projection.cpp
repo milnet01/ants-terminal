@@ -723,6 +723,69 @@ TEST(McpCompact, Ants4677ProtectsEveryCheckedSuffix) {
     EXPECT_EQ(o.value("total").toInt(), 3);
 }
 
+// ANTS-4956 — the third instance of one class, and the first where the
+// PAYLOAD is the false rather than a "nobody looked" admission.
+//
+// Reported independently by two projects on the same day, both saying
+// check_sync omits file_in_sync on the DRIFTED arm. It does not: the verb sets
+// it on both arms. Compaction drops it, because `false` is dead weight and this
+// key was not protected — and claude.mcp_terse_responses DEFAULTS TRUE, so both
+// reporters were compacted without passing `compact` and correctly said they
+// had not.
+//
+// Self-concealing, which is why it survived: `if (r.file_in_sync)` gets the
+// right answer by accident, since undefined is falsy. `=== false` never fires
+// and `"file_in_sync" in r` says the check did not run. The field's PRESENCE
+// ends up encoding the answer it is supposed to carry.
+//
+// The suffix rule cannot reach these three — they share no suffix — so they are
+// named, and the comment on the list says what to ask of a new one.
+TEST(McpCompact, Ants4956ProtectsBooleansWhoseFalseIsThePayload) {
+    // file_in_sync — roadmap_query check_sync. The reported case.
+    {
+        const QString body = QStringLiteral(
+            "{\"ok\":true,\"sync_checked\":true,\"file_in_sync\":false,"
+            "\"drift_lines\":38}");
+        const QJsonObject o = parse(mcp::compactEnvelope(body));
+        ASSERT_TRUE(o.contains("file_in_sync"))
+            << "the drifted arm is the arm the question is asked for";
+        EXPECT_FALSE(o.value("file_in_sync").toBool());
+        EXPECT_EQ(o.value("drift_lines").toInt(), 38);
+    }
+
+    // store_backed — roadmap_migrate. ANTS-4490 made it a field precisely so a
+    // caller could branch instead of reading prose, and `false` is the answer
+    // that changes what happens next: this project stays markdown-served.
+    // markdown_rewritten — ANTS-4482, and worse: INV-11 makes it ALWAYS false,
+    // so under the default it never appeared at all. Three sessions had already
+    // read a byte-identical ROADMAP.md as a migration that did not run, which
+    // is the exact misreading that field was added to prevent.
+    {
+        const QString body = QStringLiteral(
+            "{\"ok\":true,\"store_backed\":false,\"markdown_rewritten\":false,"
+            "\"items_inserted\":12}");
+        const QJsonObject o = parse(mcp::compactEnvelope(body));
+        ASSERT_TRUE(o.contains("store_backed"))
+            << "false is the answer a caller acts on: still served from markdown";
+        EXPECT_FALSE(o.value("store_backed").toBool());
+        ASSERT_TRUE(o.contains("markdown_rewritten"))
+            << "a constant false that is dropped is a field that never ships";
+        EXPECT_FALSE(o.value("markdown_rewritten").toBool());
+        EXPECT_EQ(o.value("items_inserted").toInt(), 12);
+    }
+
+    // Still a targeted carve-out. An ordinary false is dead weight and folds.
+    {
+        const QString body = QStringLiteral(
+            "{\"ok\":true,\"file_in_sync\":true,\"truncated\":false,\"total\":3}");
+        const QJsonObject o = parse(mcp::compactEnvelope(body));
+        EXPECT_TRUE(o.value("file_in_sync").toBool());
+        EXPECT_FALSE(o.contains("truncated"))
+            << "protecting a named key must not turn compaction off";
+        EXPECT_EQ(o.value("total").toInt(), 3);
+    }
+}
+
 // Recurses into nested objects AND array elements; a child emptied by
 // pruning is itself dropped.
 TEST(McpCompact, Ants2091RecursesAndPrunesEmptiedChildren) {

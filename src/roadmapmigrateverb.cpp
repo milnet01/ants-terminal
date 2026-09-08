@@ -274,8 +274,17 @@ QString RoadmapMigrateVerb::initSkeleton(const QString &projectName) {
     return QStringLiteral("<!") + QStringLiteral("-- ants-roadmap-format: 1 --")
          + QStringLiteral(">\n# %1 \u2014 Roadmap\n"
              "\n"
-             "> **Format:** v1 \u2014 see\n"
-             "> [roadmap-format.md](docs/standards/roadmap-format.md).\n"
+             // ANTS-4962 \u2014 NAMED, never linked. A project reaching for
+             // op:"init" is by definition one with no roadmap, and generally
+             // has no docs/standards/ either, so a relative link is dead on
+             // arrival in the file this call tells the project is now its
+             // source of truth. check-doc-facts then reports a defect the
+             // project did not introduce and cannot fix without editing a
+             // generated file \u2014 which also teaches that the file is
+             // hand-editable, the one thing the store model exists to stop.
+             // The marker on line 1 is what a parser reads; this line is for
+             // the person, and the name serves them without the dead link.
+             "> **Format:** v1 \u2014 see roadmap-format.md.\n"
              "> Every actionable bullet carries a stable ID; ID is identity,\n"
              "> position is priority.\n"
              "\n"

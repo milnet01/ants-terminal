@@ -14,6 +14,9 @@ for security-relevant changes.
 
 ### Added
 
+- **similar_code accepts `query` as an alias for `shape`** (ANTS-4951)
+  `shape` wins when both are sent, as every other alias here does.
+
 - **roadmap_migrate reports the note population it capped, and lets you raise the cap** (ANTS-4559)
   `notes_summary` maps each note code to its total count over all notes,
   tallied before the row cap and never truncated, so a truncated `notes[]`
@@ -150,6 +153,22 @@ for security-relevant changes.
   unanswerable one.
 
 ### Fixed
+
+- **Three MCP flags whose `false` is the answer now survive terse mode** (ANTS-4956)
+  `file_in_sync`, `store_backed` and `markdown_rewritten` were emitted
+  correctly and then dropped as dead weight, because terse responses are on
+  by default. `file_in_sync` was therefore present exactly when the roadmap
+  was in sync and absent when it had drifted; `markdown_rewritten` is always
+  false and so never appeared at all.
+
+- **roadmap_migrate op:"init" no longer writes a link that cannot resolve** (ANTS-4962)
+  The generated roadmap names the format standard in prose. A project
+  bootstrapping one has no docs/standards/ to link to, so the link was dead
+  in the file the project is told is its source of truth.
+
+- **feedback_query's `path` help no longer names a folder holding no feedback file** (ANTS-4980)
+  It points at derivation instead. The corpus root is configurable, so a
+  literal path in the help is wrong on any machine that moved it.
 
 - **`changelog_log` op:`add` writes at the top of a mixed changelog instead of into its tail** (ANTS-4563)
   A `## [Unreleased]` whose dated topics lead over a legacy flat tail fell

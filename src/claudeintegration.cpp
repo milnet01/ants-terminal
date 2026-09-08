@@ -7192,10 +7192,22 @@ void ClaudeIntegration::onMcpConnection() {
                     QJsonObject pathProp; pathProp["type"] = "string";
                         pathProp["description"] = QStringLiteral(
                             "Optional (ANTS-3376). Path to the "
-                            "*_Ants_MCP_Feedback.md file. Absolute (the "
-                            "canonical case — files live at "
-                            "/mnt/Games/Scripts/Linux/) or caller_cwd-"
-                            "relative. Omit to derive "
+                            "*_Ants_MCP_Feedback.md file. Absolute or "
+                            "caller_cwd-relative. ANTS-4980 — this named a "
+                            "corpus root holding no feedback file, and a "
+                            "session that CONSTRUCTS an absolute path from a "
+                            "wrong hint routes around ANTS-4647's guard, "
+                            "which fires on the derivation route only, so "
+                            "feedback_log would create a stranded file rather "
+                            "than refuse. No literal root is given now: the "
+                            "root is configurable "
+                            "(claude.mcp_feedback_root), so any path written "
+                            "here is a claim that goes stale on another "
+                            "machine. PREFER DERIVATION — omit `path` and the "
+                            "corpus file is resolved for you; "
+                            "session_orient's feedback_pending block reports "
+                            "the resolved `shared_root` if you need to see "
+                            "it. Omit to derive "
                             "<caller_cwd-leaf>_Ants_MCP_Feedback.md at the "
                             "shared root (parent of caller_cwd).");
                     QJsonObject mbProp; mbProp["type"] = "integer";
@@ -9557,6 +9569,27 @@ void ClaudeIntegration::onMcpConnection() {
                             "a signature (e.g. \"void cmdBar(const "
                             "QJsonObject&)\"). Tokenised, not a regex.");
                         props["shape"] = p;
+                    }
+                    {
+                        // ANTS-4951 — declared because the HANDLER READS IT,
+                        // on ANTS-4621's reasoning: this schema sets
+                        // additionalProperties:false, so an undeclared
+                        // argument is refused by a strict client before the
+                        // handler is reached, and on a permissive one
+                        // ANTS-2175 reports it in ignored_args — telling the
+                        // caller its argument did nothing, on the call that
+                        // argument had just steered.
+                        QJsonObject p;
+                        p["type"]        = "string";
+                        p["description"] = QStringLiteral(
+                            "Alias for `shape` (ANTS-4951) — same meaning, "
+                            "and `shape` wins if both are sent. Accepted "
+                            "because workspace_search takes `query` as its "
+                            "own alias for `pattern`, so the two "
+                            "search-shaped verbs in one family took "
+                            "different names for one idea and the natural "
+                            "guess was a refusal.");
+                        props["query"] = p;
                     }
                     {
                         QJsonObject p;

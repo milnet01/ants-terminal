@@ -4026,7 +4026,20 @@ QString scSymbolFromSignature(const QString &signature, const QString &kind) {
 }  // namespace rcdetail
 
 QJsonDocument RemoteControl::cmdSimilarCode(const QJsonObject &req) {
-    const QString shape = req.value(QStringLiteral("shape")).toString().trimmed();
+    // ANTS-4951 — `query` is an alias for `shape`.
+    //
+    // A session called this as {query:...} and got bad_args naming `shape`,
+    // with ignored_args:["query"]. The refusal is good and self-correcting in
+    // one cycle; the guess is natural because workspace_search takes `query` as
+    // an alias for `pattern`, so the two search-shaped verbs in one family took
+    // different names for one idea.
+    //
+    // `shape` wins when both are sent — the house rule for every alias here
+    // (roadmap_query's status/filter, apply_edits' old/old_string,
+    // invariant_check's files/paths).
+    QString shape = req.value(QStringLiteral("shape")).toString().trimmed();
+    if (shape.isEmpty())
+        shape = req.value(QStringLiteral("query")).toString().trimmed();
     if (shape.isEmpty() || shape.size() > 512 ||
         SimilarCode::tokenize(shape).isEmpty()) {
         return QJsonDocument(scArgErr());

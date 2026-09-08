@@ -305,6 +305,45 @@ TEST(McpSimilarCode, HardCapAndBadArgs) {
     EXPECT_EQ(0, expect_failures());
 }
 
+// ANTS-4951 — `query` is an alias for `shape`.
+//
+// Reported by a session that called similar_code {query:...} and got bad_args
+// with ignored_args:["query"]. The refusal is good and self-correcting in one
+// cycle; the reason `query` is the natural guess is that workspace_search takes
+// it as an alias for `pattern`, so the two search-shaped verbs in one family
+// took different names for the same idea.
+//
+// Scraped rather than driven: the alias lives in the HANDLER, and this bundle
+// cannot link RemoteControl — the same reason WiringContract below is a scrape.
+// The needles are chosen to be absent from the pre-fix tree and to survive a
+// re-wrap: each is a single short fragment on one source line.
+TEST(McpSimilarCode, Ants4951QueryIsAnAliasForShape) {
+    expect_reset();
+
+    const std::string rcCpp = ants_test::slurpRemoteControl();
+    const std::string ciCpp = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+
+    // The fallback itself, and that it is a FALLBACK: `shape` is read first and
+    // the alias consulted only when it is empty, which is the house rule for
+    // every alias here (roadmap_query status/filter, apply_edits old/old_string,
+    // invariant_check files/paths).
+    expect(contains(rcCpp, "shape = req.value(QStringLiteral(\"query\"))"),
+           "alias: cmdSimilarCode falls back to `query`");
+    expect(contains(rcCpp, "if (shape.isEmpty())"),
+           "alias: the fallback is guarded, so `shape` wins when both are sent");
+
+    // Declared, or additionalProperties:false refuses the call before the
+    // handler is reached, and ANTS-2175 reports it in ignored_args on a
+    // permissive client — telling the caller its argument did nothing on the
+    // call that argument had just steered (ANTS-4621's reasoning).
+    expect(contains(ciCpp, "props[\"query\"] = p;"),
+           "alias: `query` is declared in a tool schema");
+    expect(contains(ciCpp, "ANTS-4951"),
+           "alias: the schema says which argument it aliases");
+
+    EXPECT_EQ(0, expect_failures());
+}
+
 TEST(McpSimilarCode, WiringContract) {
     expect_reset();
 

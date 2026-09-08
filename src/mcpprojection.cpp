@@ -457,6 +457,33 @@ bool isProtectedCompactKey(const QString &key) {
     // branch on it. A name list needs each verb's author to remember this
     // one; a suffix does not.
     if (key.endsWith(QLatin1String("_checked"))) return true;
+    // ANTS-4956 — the same class where the PAYLOAD is the false, rather than an
+    // admission that nothing was examined. Two projects reported the same day
+    // that roadmap_query's check_sync omits `file_in_sync` on the DRIFTED arm.
+    // It does not: the verb sets it on both arms and this dropped it, because
+    // claude.mcp_terse_responses DEFAULTS TRUE — so both were compacted without
+    // passing `compact`, and correctly said they had not.
+    //
+    // The failure is self-concealing. `if (r.file_in_sync)` is right by
+    // accident (undefined is falsy); `=== false` never fires and a presence
+    // test reports the check as not run. The field's PRESENCE ends up encoding
+    // the answer it exists to carry.
+    //
+    // Found by the same mechanism while verifying, and fixed here rather than
+    // separately, because it is one defect: roadmap_migrate's `store_backed`
+    // (ANTS-4490 — false says the project stays markdown-served, which is the
+    // arm a caller acts on) and `markdown_rewritten` (ANTS-4482 — INV-11 makes
+    // it ALWAYS false, so under the default it never shipped at all, and three
+    // sessions had already read a byte-identical ROADMAP.md as a migration that
+    // did not run).
+    //
+    // NAMED rather than matched, unlike the suffix above: these three share no
+    // suffix and inventing one would be a rename in three verbs to serve this
+    // list. The question to ask of a new flag is whether its FALSE is an answer
+    // a caller acts on; if so it belongs here.
+    if (key == QStringLiteral("file_in_sync")
+        || key == QStringLiteral("store_backed")
+        || key == QStringLiteral("markdown_rewritten")) return true;
     return key == QStringLiteral("ok")
         || key == QStringLiteral("code")
         || key == QStringLiteral("error")

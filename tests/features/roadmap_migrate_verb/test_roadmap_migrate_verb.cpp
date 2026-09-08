@@ -1810,6 +1810,29 @@ TEST(RoadmapMigrateVerb, Ants4740InitSkeletonIsParseableAndEmpty) {
     EXPECT_EQ(seeded.first().sectionSlug.toStdString(), std::string("backlog"))
         << "the slug roadmap_log's `section` argument takes";
     EXPECT_EQ(seeded.first().id.toStdString(), std::string("DEMO-0001"));
+
+    // ANTS-4962 — no RELATIVE link. A project reaching for op:"init" is by
+    // definition one with no roadmap, and such a project generally has no
+    // docs/standards/ either — so a link there is dead on arrival, in the file
+    // the project is told is now its source of truth. check-doc-facts then
+    // reports a defect the project did not introduce and cannot fix without
+    // editing a generated file, which also teaches that the file is
+    // hand-editable — the one thing the store model exists to stop.
+    //
+    // Asserted as the absence of markdown link SYNTAX rather than of one path,
+    // so a later edit cannot reintroduce the class under a different target.
+    // An absolute URL is not what this forbids and is not what was there.
+    static const QRegularExpression rxRelLink(
+        QStringLiteral("\\[[^\\]]*\\]\\((?!https?://)[^)]+\\)"));
+    const auto rel = rxRelLink.match(sk);
+    EXPECT_FALSE(rel.hasMatch())
+        << "the skeleton ships a relative link that cannot resolve in a "
+           "project with no docs/: " << rel.captured(0).toStdString();
+
+    // The reference itself is not dropped, only the link — the format marker
+    // on line 1 is what a parser reads, and a reader still gets the name.
+    EXPECT_TRUE(sk.contains(QStringLiteral("roadmap-format.md")))
+        << "the standard is still named, just not linked";
 }
 
 // ----------------------------------------------------------------- ANTS-4492 --
