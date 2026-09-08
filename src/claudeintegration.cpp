@@ -1490,6 +1490,50 @@ void ClaudeIntegration::recordMcpTrace(
     }
 }
 
+// ANTS-4457 — which dispatch results count as successful byte spend.
+// A whitelist, so a result added later defaults to failure rather than
+// silently counting as success.
+bool ClaudeIntegration::dispatchResultIsSuccess(const QString &result) {
+    // "etag_unchanged" is the CHEAPEST successful outcome the server
+    // has: the caller got exactly what it asked for and the payload was
+    // skipped. Deriving success as equality with "ok" booked every 304
+    // into the failed accumulators — the counters ANTS-1432 added to
+    // measure waste on failure, which then counted the largest saving
+    // as waste.
+    return result == QLatin1String("ok")
+        || result == QLatin1String("etag_unchanged");
+}
+
+// ANTS-4457 — the refusal code a handler's OWN envelope carries, or
+// empty when the body is not a refusal. dispatchResult is set only by
+// dispatcher-level conditions, so a handler that ran and returned
+// ok:false (bad_args, bad_section, no_roadmap_loaded, …) was recorded
+// as "ok" by both token_usage and mcp_trace. There is no central
+// refusal-envelope helper, so the dispatch site is the only place this
+// can be observed.
+QString ClaudeIntegration::handlerRefusalCode(const QString &responseText) {
+    // Bounded deliberately. A refusal envelope carries a code, an error
+    // string and at most a short candidates/example block, so it is
+    // small; a successful payload can be megabytes, and parsing every
+    // one of those to ask a question whose answer is always "no" would
+    // put a second full JSON parse on the dispatch path. Above the
+    // bound the call is assumed successful — which is exactly the
+    // pre-fix behaviour, so the bound can only under-report, never
+    // mis-report.
+    constexpr int kMaxRefusalChars = 8 * 1024;
+    if (responseText.size() > kMaxRefusalChars) return {};
+    QJsonParseError perr{};
+    const QJsonDocument doc =
+        QJsonDocument::fromJson(responseText.toUtf8(), &perr);
+    if (perr.error != QJsonParseError::NoError || !doc.isObject()) return {};
+    const QJsonObject obj = doc.object();
+    // Default true: many payloads carry no `ok` field at all, and an
+    // absent field is not a refusal.
+    if (obj.value(QStringLiteral("ok")).toBool(true)) return {};
+    const QString code = obj.value(QStringLiteral("code")).toString();
+    return code.isEmpty() ? QStringLiteral("handler_refused") : code;
+}
+
 // ANTS-1402-INV-2 — single dispatch-observation hook. Tees the
 // same numbers to m_tokenUsage and recordMcpTrace.
 // ANTS-1432 — recordCall now fires on every dispatch with a
@@ -1506,7 +1550,7 @@ void ClaudeIntegration::recordDispatch(
     // entirely; that masked waste-on-failure cost (Vestige CC's
     // 2026-05-16 observation: "MCP cost tokens for the failed query
     // and saved none").
-    const bool succeeded = (result == QLatin1String("ok"));
+    const bool succeeded = dispatchResultIsSuccess(result);
     m_tokenUsage.recordCall(toolName, argBytes, outBytes,
                             wrapBytes, durUs, succeeded);
     recordMcpTrace(toolName, argsObj, argBytes, rawBytes, outBytes,
@@ -1941,6 +1985,15 @@ void ClaudeIntegration::finishToolDispatch(McpCallContext ctx,
         // wrapped payload (what actually crosses the wire).
         // ANTS-1355: wrap delta + dispatch latency captured
         // once at the dispatch site and forwarded verbatim.
+        // ANTS-4457 — a handler that ran and refused never reached
+        // dispatchResult, so the call was booked as a success and the
+        // trace said "ok". Only override the default: a dispatcher-level
+        // result (etag_unchanged, rate_limited, …) already describes the
+        // call more specifically than the envelope does.
+        if (dispatchResult == QLatin1String("ok")) {
+            const QString refusal = handlerRefusalCode(responseText);
+            if (!refusal.isEmpty()) dispatchResult = refusal;
+        }
         const qint64 argBytes = QJsonDocument(argsObj)
             .toJson(QJsonDocument::Compact).size();
         const qint64 outBytes  = wrapped.toUtf8().size();

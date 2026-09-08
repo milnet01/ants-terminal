@@ -57,9 +57,17 @@ TEST(mcp_record_dispatch_unification, Inv2BodyGatesRecordCall) {
            "INV-2: recordDispatch forwards to m_tokenUsage.recordCall");
     expect(contains(region, "recordMcpTrace"),
            "INV-2: recordDispatch forwards to recordMcpTrace");
+    // ANTS-4457 — the property is that the success flag handed to
+    // recordCall is DERIVED FROM `result`, not that the comparison is
+    // spelled inline here. ANTS-1432 had already replaced the gate with a
+    // flag, and ANTS-4457 moved the comparison into a named rule so it
+    // could be unit-tested and so "etag_unchanged" could join it. Accept
+    // either spelling; a constant flag still fails.
     expect(contains(region, "QLatin1String(\"ok\")") ||
-           contains(region, "== \"ok\""),
-           "INV-2: recordCall gated on result == \"ok\"");
+           contains(region, "== \"ok\"") ||
+           contains(region, "dispatchResultIsSuccess(result)"),
+           "INV-2: recordCall's success flag is derived from `result` — "
+           "inline against \"ok\", or via dispatchResultIsSuccess");
     EXPECT_EQ(0, expect_failures());
 }
 

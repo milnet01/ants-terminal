@@ -426,6 +426,16 @@ public:
     // server returned" from "instructions from the user". Embedded
     // </ants_mcp_data> close tags in the payload are replaced with
     // a sentinel to neutralise breakout. See docs/specs/ANTS-1294.md.
+    // ANTS-4457 — the two token_usage accounting rules, exposed as
+    // statics so each is testable without driving a dispatch.
+    // dispatchResultIsSuccess is a WHITELIST: a result added later
+    // defaults to failure rather than silently counting as success.
+    static bool dispatchResultIsSuccess(const QString &result);
+    // Returns the refusal code a handler's own envelope carries, or an
+    // empty string when the body is not a refusal. Bounded by size; see
+    // tests/features/dispatch_result_accounting/spec.md.
+    static QString handlerRefusalCode(const QString &responseText);
+
     static QString wrapMcpData(const QString &toolName,
                                const QString &payload);
 
