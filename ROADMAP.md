@@ -38337,6 +38337,59 @@ whole files.
   Kind: investigate.
   Source: cold-sweep-2026-08-18 lanes claude-session + claude-mcp-infra + claude-chips + model-switcher (UNVERIFIED — triage before work).
   Lanes: claudeintegration, claudestatuswidgets, modelautoswitch.
+  Progress (2026-09-08): four of the eight HIGH claims VERIFIED against
+  source and FIXED. Shipped in 6513570c, 565ed07e, 967706a3, aa7d8ffc.
+
+  Transcript latch. The conclusion holds; the stated mechanism does not.
+  The lookup does NOT sit outside the ordinary launch path — initial
+  detection IS a PID change from zero, so that branch runs. The defect is
+  that the PID is committed before the lookup, so one empty result leaves
+  the gate already satisfied and it never retries; the backstop is itself
+  gated on a non-empty path. An empty first result is ordinary: no project
+  directory yet on a first run, or Claude detected as a child of the shell
+  before its first transcript write. Correcting the mechanism is what made
+  the fix one condition rather than moving code. This broke
+  claude_pid_replacement INV-1, whose spec states a property while its test
+  pinned a spelling; the property and N3 both hold, recorded as an
+  amendment there.
+
+  PermissionRequest and PostToolUseFailure had handlers and no producer.
+  Confirmed: the installer's list carries five events, neither of these,
+  while processHookEvent branches on both and both emit signals with live
+  consumers. Checked against the official Claude Code hooks reference
+  before wiring, because the other candidate fix was deletion and a
+  confident wrong answer there destroys working code; both are documented
+  events. The live settings file on this host confirmed the absence
+  independently. The test compares the two sets BOTH ways so the class
+  cannot recur.
+
+  Project-path traversal. All three parts of the claim hold, and the
+  ordering is the sting: the ungated session-metadata cwd is tried FIRST,
+  so the gated transcript cwd never ran when both were present. The
+  decoder could also emit a traversal directly. All three sources now
+  gated, and decodeProjectPath is a public static so most of that contract
+  is a real behaviour test rather than a grep.
+
+  Close-tag scrub. Verified. The close pattern demanded the bracket right
+  after whitespace while the open pattern accepted anything up to it, and
+  both scrubs are written for a lenient consumer — a strict parser, which
+  is what rejects a close tag with attributes, is not the threat model.
+  The red run printed the breakout verbatim inside the wrapped result. The
+  word-boundary guard is what stops the widened pattern consuming its own
+  sentinel and has its own invariant. The doc-citation copy was widened in
+  the same change, since disclosure drifting from rewrite is its own
+  defect.
+
+  Process note. Two pushes were blocked by the Qt 6.2 guard on files I was
+  still writing: that guard compiles the WORKING TREE, not HEAD, so
+  editing during a push fails a push whose committed content is fine. A
+  third was killed for low memory, the supervisor misread this machine
+  shows as free 0 against available 18. Warm the sanitizer tree first,
+  keep the tree clean, push in the foreground.
+
+  Four HIGH claims remain, plus the MEDIUM list. One MEDIUM is already
+  confirmed in passing: the installed hook script hardcodes the socket
+  path under /tmp while the server side uses the temp-dir API.
 
 - 📋 [ANTS-4458] **Triage: LLM client/dispatcher and review-dialog findings from the cold sweep.**
   Reviewer claims carried forward as-is. NOT re-verified — check each against

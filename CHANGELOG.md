@@ -145,6 +145,24 @@ for security-relevant changes.
 
 ### Fixed
 
+- **Claude status no longer gets stuck needing a tab switch to wake up** (ANTS-4457)
+  Ants finds the Claude session's log file to follow what Claude is
+  doing. It looked exactly once, right after spotting Claude start —
+  and Claude often has not written that file yet at that moment. When
+  the first look came up empty, Ants never looked again for the rest of
+  the session, so the status stayed blank and every update from Claude
+  was ignored. Switching tabs and back was the only cure. It now keeps
+  looking until it finds the file, and stops as soon as it does.
+
+- **Permission prompts and failed tool calls now reach the status bar** (ANTS-4457)
+  Ants had working code to show when Claude is waiting for you to
+  approve something, and when a tool call failed — but it never asked
+  Claude to tell it about those two things, so neither ever happened.
+  Both are now requested. If you installed the Claude hooks before this
+  version, Settings will stop saying "Hooks installed" until you press
+  the button again; that is accurate rather than a new fault, because
+  the two new ones genuinely are not set up yet.
+
 - **Resetting the terminal no longer throws away your theme and scrollback setting** (ANTS-4456)
   Some programs reset the terminal when they finish, and `reset` does
   it on purpose. That used to snap the text colours back to the
@@ -389,6 +407,21 @@ for security-relevant changes.
   The run already stopped, but said nothing: the only text on screen was the hook's own refusal, which says nothing about the release, and a run piped through `tail` loses the exit status as well. It now reports which phase aborted, what did not happen (no tag, nothing pushed), and that the staged files are left as written so you can see what had been changed.
 
 ### Security
+
+- **Harder to forge the boundary around tool results** (ANTS-4457)
+  Results Ants sends to Claude are wrapped in a marker so Claude can
+  tell where the data ends. Text inside the data that looked like that
+  end-marker was being blanked out — but only in its plainest form. A
+  slightly dressed-up version slipped through, which a file or a commit
+  message could use to make the rest of its content look like it came
+  from Ants rather than from the file. Both forms are now blanked.
+
+- **Project folder paths from Claude's session files are now checked** (ANTS-4457)
+  Ants reads Claude's own records to work out where each project lives
+  on disk. One of the three places it reads was checked for paths that
+  climb out of their folder, and the other two were not — including the
+  one it consults first. All three are now checked, and a project whose
+  location cannot be trusted is skipped rather than shown.
 
 - **Session logs and session recordings are now readable only by you** (ANTS-4456)
   Turning on session logging, or hitting Record Session, saves a file
