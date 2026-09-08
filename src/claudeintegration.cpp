@@ -2122,14 +2122,28 @@ void ClaudeIntegration::onMcpConnection() {
 
                 // ANTS-1520 — shared schema property for tools that
                 // anchor on caller_cwd. Most project-scoped read and
-                // write tools now REQUIRE this (refused at the
-                // dispatcher with code `caller_cwd_required` when
-                // absent). The five terminal-state verbs
-                // (get_scrollback, get_text, get_last_command,
-                // get_environment, get_cwd) classified TabSpecific
-                // still anchor here when present but fall back to
-                // the focused Ants tab when absent — for those tools
-                // it remains a routing hint, not a refusal gate.
+                // write tools REQUIRE this (refused at the dispatcher
+                // with code `caller_cwd_required` when absent).
+                //
+                // ANTS-4457 — the SEVEN verbs classified TabSpecific are
+                // get_scrollback, get_text, recent_errors,
+                // last_selection, get_last_command, get_environment and
+                // get_cwd. They are a refusal gate too, not a routing
+                // hint: ANTS-1415 Phase 3b removed the focused-tab
+                // fallback and refuses `tab_or_cwd_required` when
+                // neither caller_cwd nor a usable `tab` index is
+                // present, because falling back to whichever tab is
+                // focused is the cross-tenant leak ANTS-1404 closed for
+                // the Required tools. Three of the seven — get_text,
+                // recent_errors, last_selection — take `tab` as the
+                // alternative key; on the other four the handler
+                // ignores it, so it is not a routing key there.
+                //
+                // This comment is the enumeration; the wire description
+                // below stays short because it rides on nearly every
+                // tool in the catalogue.
+                // tests/features/caller_cwd_schema_truth keeps the two
+                // honest against the classifier.
                 // Uniform schema opener so consumers see one
                 // canonical statement instead of N variants
                 // (ANTS-1520 spec: "per-tool docstring opens with
@@ -2144,10 +2158,12 @@ void ClaudeIntegration::onMcpConnection() {
                         "Your $PWD. Required by the dispatcher for "
                         "project-scoped read and write tools "
                         "(refuses with code `caller_cwd_required` "
-                        "when absent — ANTS-1520). The terminal-"
-                        "state verbs (`get_*`) still accept it as "
-                        "an Optional tab-routing anchor and fall "
-                        "back to the focused Ants tab when absent.");
+                        "when absent — ANTS-1520). The per-tab "
+                        "terminal-state verbs refuse "
+                        "`tab_or_cwd_required` instead (ANTS-1415); "
+                        "three of them (get_text, recent_errors, "
+                        "last_selection) also accept a `tab` index. "
+                        "There is no focused-tab fallback.");
                     return p;
                 };
 
@@ -15901,9 +15917,11 @@ ClaudeIntegration::callerCwdContractFor(const QString &toolName) {
     if (toolName == QStringLiteral("session_brief"))      return C::Required;
     if (toolName == QStringLiteral("session_orient"))     return C::Required;  // ANTS-1883
     if (toolName == QStringLiteral("workflow_state"))     return C::Required;
-    // TabSpecific — classified but not enforced in Phase 3a. The
-    // ANTS-1392 routing semantics (caller_cwd as a tab-routing key)
-    // need their own spec pass before refusal makes sense.
+    // TabSpecific — ENFORCED since ANTS-1415 Phase 3b: no caller_cwd and
+    // no usable `tab` index refuses `tab_or_cwd_required`. This comment
+    // read "classified but not enforced in Phase 3a" long after 3b
+    // shipped, which is the same stale-promise defect ANTS-4457 found in
+    // the shared schema description.
     if (toolName == QStringLiteral("get_scrollback"))     return C::TabSpecific;
     if (toolName == QStringLiteral("get_text"))           return C::TabSpecific;
     // ANTS-1301 — reads the focused terminal's scrollback.

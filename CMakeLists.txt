@@ -1703,6 +1703,8 @@ if(ANTS_TESTS)
                 tests/features/hook_events_wired/test_hook_events_wired.cpp
                 # ANTS-4457 — the close-tag scrub matches its open sibling.
                 tests/features/envelope_close_tag_scrub/test_envelope_close_tag_scrub.cpp
+                # ANTS-4457 — the shared caller_cwd description states the refusal.
+                tests/features/caller_cwd_schema_truth/test_caller_cwd_schema_truth.cpp
                 tests/features/allowlist_add/test_allowlist_add.cpp
                 # ANTS-1993 — permission-prompt structural gate (anti-spoof).
                 tests/features/claude_permission_prompt_structure/test_claude_permission_prompt_structure.cpp
