@@ -183,6 +183,11 @@ QJsonDocument RemoteControl::cmdRoadmapMigrate(const QJsonObject &req) {
     // (…THH:MM:SSZ); Qt::ISODateWithMs would add milliseconds it rejects.
     r.changedAt   = QDateTime::currentDateTimeUtc().toString(Qt::ISODate);
     r.dryRun      = req.value(QStringLiteral("dry_run")).toBool(false);
+    // ANTS-4559 — forwarded VERBATIM. run() owns the [1, 2000] clamp, so a test
+    // driving the seam directly is bounded identically; clamping here as well
+    // would be a second answer. An absent or non-numeric value leaves the
+    // Request default, which is where the 200 lives.
+    r.maxNotes    = req.value(QStringLiteral("max_notes")).toInt(r.maxNotes);
 
     QJsonObject out = RoadmapMigrateVerb::run(RoadmapStore::defaultPath(), r);
     // ANTS-4740 — say the file was created. Without it an init reply is

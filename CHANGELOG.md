@@ -14,6 +14,12 @@ for security-relevant changes.
 
 ### Added
 
+- **roadmap_migrate reports the note population it capped, and lets you raise the cap** (ANTS-4559)
+  `notes_summary` maps each note code to its total count over all notes,
+  tallied before the row cap and never truncated, so a truncated `notes[]`
+  can still name what it dropped. `max_notes` moves the row bound, default
+  200 and clamped to [1, 2000]; the envelope echoes the effective value.
+
 - **`roadmap_query` accepts `q` as an alias for `query`** (ANTS-4927)
   Unrecognised, `q` was dropped and the call answered with the whole list,
   which reads as a search result. Follows the existing `filter`/`status`

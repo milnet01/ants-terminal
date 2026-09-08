@@ -43161,7 +43161,7 @@ filed below.
   Source: Vestige_Ants_MCP_Feedback.md 2026-08-20.
   Lanes: remotecontrol, roadmapparse.
 
-- 📋 [ANTS-4559] **roadmap_migrate's notes[] runs ~3 entries per item and truncates away the only notes carrying signal.**
+- ✅ [ANTS-4559] **roadmap_migrate's notes[] runs ~3 entries per item and truncates away the only notes carrying signal.**
   One dry run on Vestige returned notes_count:2981 with
   notes_truncated:true. The emitted prefix is almost entirely three-note
   groups repeating per item: a quarantined_id or id_allocation_owed note,
@@ -43301,6 +43301,31 @@ filed below.
   inside the gate — the deregister op shipped and nobody builds
   differently — and it belongs to a check-doc-facts pass, which owns broken
   cross-references.
+  Resolved (2026-09-08). Built exactly as the gated contract specifies, no
+  contract change at implementation.
+
+  `Request::maxNotes` (default 200) is forwarded verbatim by the handler
+  and clamped to [1, 2000] inside `run()`, so a test driving the seam is
+  bounded identically to a live call. `setNotes()` takes the bound as an
+  argument, tallies `notes_summary` from `Outcome::notes` BEFORE grouping
+  and before the cap, and echoes the EFFECTIVE `max_notes`. The schema
+  declares `max_notes`, which `additionalProperties:false` made mandatory;
+  the tool description and its property description name both fields.
+
+  Proved red before green. `setNotes()` was stubbed back to a fixed 200
+  with the two new fields dropped, and INV-10's new leg failed on the
+  assertions rather than on compilation: `max_notes` absent (0),
+  `notes_summary.quarantined_id` 0, and the raised-bound run still
+  truncated at 200 of 250. Restoring the code turned all of it green.
+
+  The fixture is the one § 6 requires and could not be a repetitive one:
+  250 bullets whose leading-slot id tokens carry no `-<digits>` suffix, so
+  each raises a `quarantined_id` whose detail is the token and no two rows
+  ever collapse. Under the stub it reached the bound, which is what proves
+  the fixture exercises the thing.
+
+  Suite green: 4324 of 4324 at `ctest --preset=default`, 32 of 32 in
+  `RoadmapMigrateVerb`.
   **Layman:** The migration preview buries its useful answers under thousands of repeated lines and then cuts off the useful ones.
   Kind: perf.
   Source: Vestige_Ants_MCP_Feedback.md 2026-08-20.

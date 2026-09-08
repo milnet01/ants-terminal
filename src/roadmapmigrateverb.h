@@ -44,6 +44,10 @@ struct Request {
     // a test can pin `changed_at` by passing it.
     QString changedAt;
     bool    dryRun = false;
+    // ANTS-4559 — § 2.4's row bound for notes[], forwarded verbatim from the
+    // verb's `max_notes` argument. run() applies the [1, 2000] clamp, so a
+    // test driving this seam directly is bounded identically to a live call.
+    int     maxNotes = 200;
 };
 
 // Returns the success envelope, or a refusal carrying `code`. Opens its OWN

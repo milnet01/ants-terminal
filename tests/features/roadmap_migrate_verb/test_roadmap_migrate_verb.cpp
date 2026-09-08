@@ -804,9 +804,10 @@ TEST(RoadmapMigrateVerb, Inv9CreatedStoreIsOwnerOnly) {
 
 // --------------------------------------------------------------- INV-10 -----
 //
-// Both legs are needed because the two bounds are independent: capping the
-// entry count bounds no bytes, `Note::detail` being a QString with no length
-// rule of its own.
+// Three legs are needed because the bounds are independent: capping the entry
+// count bounds no bytes, `Note::detail` being a QString with no length rule of
+// its own, and neither of those exercises the row bound at all now that
+// repetition collapses below it (ANTS-4559's leg (c)).
 
 namespace {
 
@@ -829,6 +830,32 @@ QByteArray unmappedKindRoadmap(int items, const QString &kind) {
         md += ".**\n  Kind: ";
         md += kind.toUtf8();
         md += ".\n  Source: test.\n\n";
+    }
+    return md;
+}
+
+// ANTS-4559 — the fixture leg (c) needs, and it CANNOT be a repetitive one.
+// `quarantined_id` carries the offending token as its `detail`, so no two rows
+// ever collapse and the group population equals the bullet count — which is the
+// only shape that still reaches the row bound after ANTS-4649. A leading-slot
+// token is taken as written (`rxLeadToken` in roadmapparse.cpp) and classified
+// downstream, so a dash-less token is quarantined rather than rejected at read.
+QByteArray quarantinedIdRoadmap(int items) {
+    QByteArray md =
+        "<!-- ants-roadmap-format: 1 -->\n"
+        "\n"
+        "# Demo — Roadmap\n"
+        "\n"
+        "## Work\n"
+        "\n";
+    for (int i = 1; i <= items; ++i) {
+        // No `-<digits>` suffix, so isGrammaticalId() is false and the universal
+        // grammar is the only arm in play (a temp root declares no pattern).
+        md += "- \xE2\x9C\x85 [Q";
+        md += QStringLiteral("%1").arg(i, 4, 10, QLatin1Char('0')).toUtf8();
+        md += "x] **Item ";
+        md += QByteArray::number(i);
+        md += ".**\n  Kind: fix.\n  Source: test.\n\n";
     }
     return md;
 }
@@ -915,6 +942,73 @@ TEST(RoadmapMigrateVerb, Inv10NotesAreBoundedOnBothAxes) {
         }
         EXPECT_TRUE(sawClipped)
             << "the fixture raised no over-long note, so the cap is untested";
+    }
+
+    // (c) ANTS-4559 — the row bound is a DEFAULT, `notes_summary` names what it
+    // dropped, and `max_notes` reaches it. Measured on Vestige: 442 groups, of
+    // which 438 were `quarantined_id` at count 1, so 242 ids were dropped and
+    // named nowhere in the envelope.
+    {
+        constexpr int kItems = 250;
+        QTemporaryDir dir;
+        ASSERT_TRUE(dir.isValid());
+        const QString root = makeProjectRoot(dir, QStringLiteral("quarantined"),
+                                             quarantinedIdRoadmap(kItems));
+        ASSERT_FALSE(root.isEmpty());
+
+        // At the default the array is bounded and the population is not.
+        const QJsonObject def = RoadmapMigrateVerb::run(
+            dir.filePath(QStringLiteral("default.sqlite")), request(root));
+        ASSERT_TRUE(def.value(QStringLiteral("ok")).toBool())
+            << def.value(QStringLiteral("error")).toString().toStdString();
+
+        EXPECT_EQ(def.value(QStringLiteral("max_notes")).toInt(), 200)
+            << "the envelope must echo the effective bound";
+        EXPECT_EQ(def.value(QStringLiteral("notes")).toArray().size(), 200)
+            << "a non-collapsing population must fill the row bound exactly";
+        EXPECT_TRUE(def.value(QStringLiteral("notes_truncated")).toBool())
+            << "rows were dropped — the fixture does not exercise the bound "
+               "unless they were";
+
+        // The field the whole item is for: the TRUE population of a code whose
+        // rows the caller did not receive. `notes_count` is one scalar over
+        // every code and cannot answer this.
+        const QJsonObject sum =
+            def.value(QStringLiteral("notes_summary")).toObject();
+        EXPECT_EQ(sum.value(QStringLiteral("quarantined_id")).toInt(), kItems)
+            << "notes_summary must be tallied before the row cap";
+
+        // Raising the bound reaches the whole population in one further call.
+        RoadmapMigrateVerb::Request raised = request(root);
+        raised.maxNotes = 400;
+        const QJsonObject all = RoadmapMigrateVerb::run(
+            dir.filePath(QStringLiteral("raised.sqlite")), raised);
+        ASSERT_TRUE(all.value(QStringLiteral("ok")).toBool())
+            << all.value(QStringLiteral("error")).toString().toStdString();
+        EXPECT_EQ(all.value(QStringLiteral("max_notes")).toInt(), 400);
+        EXPECT_FALSE(all.value(QStringLiteral("notes_truncated")).toBool())
+            << "a bound above the group count drops nothing";
+        EXPECT_GE(all.value(QStringLiteral("notes")).toArray().size(), kItems)
+            << "every quarantined id must be reachable";
+        EXPECT_EQ(all.value(QStringLiteral("notes_summary")).toObject()
+                      .value(QStringLiteral("quarantined_id")).toInt(),
+                  kItems)
+            << "the summary is the same fact at either bound";
+
+        // The clamp is run()'s, so a seam caller is bounded identically to a
+        // live one — and the echo is how either learns its argument was reduced.
+        RoadmapMigrateVerb::Request over = request(root);
+        over.maxNotes = 5000;
+        const QJsonObject hi = RoadmapMigrateVerb::run(
+            dir.filePath(QStringLiteral("hi.sqlite")), over);
+        EXPECT_EQ(hi.value(QStringLiteral("max_notes")).toInt(), 2000);
+
+        RoadmapMigrateVerb::Request under = request(root);
+        under.maxNotes = 0;
+        const QJsonObject lo = RoadmapMigrateVerb::run(
+            dir.filePath(QStringLiteral("lo.sqlite")), under);
+        EXPECT_EQ(lo.value(QStringLiteral("max_notes")).toInt(), 1);
+        EXPECT_EQ(lo.value(QStringLiteral("notes")).toArray().size(), 1);
     }
 }
 

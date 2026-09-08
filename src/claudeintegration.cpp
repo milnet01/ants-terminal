@@ -13323,7 +13323,18 @@ void ClaudeIntegration::onMcpConnection() {
                         "whenever a row for this root already exists, on the dry "
                         "path too; 0 means only that the root is not registered "
                         "yet, so `project_id > 0` on a preview reads as \"already "
-                        "migrated\". The store is machine-global "
+                        "migrated\". ANTS-4559 — `notes[]`'s row bound is a "
+                        "DEFAULT of 200 and `max_notes` moves it (clamped to "
+                        "[1, 2000]; the envelope echoes the EFFECTIVE value). "
+                        "`notes_summary` maps each note `code` to its total "
+                        "count over ALL notes, tallied before the cap and "
+                        "never truncated, so a caller holding a truncated "
+                        "array can still name the population it did not "
+                        "receive — `notes_count` is one scalar over every code "
+                        "and cannot. Repetition collapses below the cap, so "
+                        "what overflows it is a code whose `detail` is unique "
+                        "per occurrence: `quarantined_id` carries the id "
+                        "token. The store is machine-global "
                         "(~/.local/share/ants-terminal/roadmap.sqlite), not "
                         "per-project. Refusals: "
                         "no_project, no_roadmap, case_ambiguous, not_utf8, "
@@ -13442,6 +13453,36 @@ void ClaudeIntegration::onMcpConnection() {
                             "relationships and citations. An absent root needs "
                             "no confirmation. Ignored by the migrate op.");
                         props["confirm"] = p;
+                    }
+                    {
+                        // ANTS-4559 — the escape hatch for a corpus whose note
+                        // groups exceed the default. Declared here as well as
+                        // read by the handler for ANTS-4621's reason: this
+                        // schema sets additionalProperties:false, so an
+                        // undeclared argument is a refusal on a strict client
+                        // and lands in `ignored_args` on a permissive one.
+                        QJsonObject p;
+                        p["type"] = "integer";
+                        p["minimum"] = 1;
+                        p["maximum"] = 2000;
+                        p["description"] = QStringLiteral(
+                            "Row bound for `notes[]`. Default 200, clamped to "
+                            "[1, 2000]; the envelope echoes the EFFECTIVE "
+                            "value after the clamp, so a caller passing 5000 "
+                            "learns it received 2000. Raise it when "
+                            "`notes_truncated` is true and `notes_summary` "
+                            "names a population you need: repetition is "
+                            "collapsed before this cap, so what overflows it "
+                            "is a code whose `detail` is unique per "
+                            "occurrence — `quarantined_id` carries the id "
+                            "token, and no two of those ever merge. Measured "
+                            "on one project: 442 groups against the default, "
+                            "of which 438 were quarantined ids at count 1, so "
+                            "242 ids were dropped and named nowhere. At the "
+                            "ceiling the reply is large enough to be offloaded "
+                            "and read back with read_spill, which is expected "
+                            "rather than a failure.");
+                        props["max_notes"] = p;
                     }
                     props["dry_run"] = makeDryRunProp();
                     // ANTS-4429 — declared for the same reason ANTS-4621

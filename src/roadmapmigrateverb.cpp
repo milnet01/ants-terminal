@@ -44,7 +44,15 @@ QJsonObject rmErr(const QString &code, const QString &message) {
 // length rule of its own, and one note is emitted per offending source line.
 // The detail bound is in characters, which is the unit the rest of this
 // project's note handling uses (rcdetail::kRcMaxNoteChars).
-constexpr int kMaxNoteEntries     = 200;
+// ANTS-4559 — the row bound is a DEFAULT and `max_notes` moves it. Measured on
+// Vestige: 442 groups against the old fixed 200, of which four collapsed rows
+// carried 2543 notes and the rest were `quarantined_id` at count 1, because the
+// detail is the id token and no two ever merge. So 242 ids were dropped and
+// named nowhere — the noise collapses, the signal is what overflows. The
+// DEFAULT is Request::maxNotes, in the header, so the schema's declared default
+// and the seam's have one home; these two are the clamp run() applies to it.
+constexpr int kMinNoteEntries     = 1;
+constexpr int kMaxNoteEntries     = 2000;
 constexpr int kMaxNoteDetailChars = 2048;
 // ANTS-4649 — enough to locate a repeated note without restating it. Three
 // lines answer "where does this happen?"; the fourth answers nothing new.
@@ -82,9 +90,19 @@ QJsonObject noteToJson(const RoadmapMigrate::Note &n) {
 // order. A row of one keeps the old shape exactly, so a genuine one-off is
 // untouched; a merged row carries `count` + up to kMaxNoteSampleLines
 // `sample_lines` and NO `line`, because it has no single line and must not
-// claim one. Every row carries `count`, so the counts sum to `notes_count`
-// and the collapse is checkably lossless in aggregate.
-void setNotes(QJsonObject &env, const QVector<RoadmapMigrate::Note> &notes) {
+// claim one. Every row carries `count`, so when nothing was DROPPED the counts
+// sum to `notes_count` and the collapse is checkably lossless in aggregate.
+//
+// ANTS-4559 — `maxNotes` is the caller's row bound, already clamped by run(),
+// and `notes_summary` is what makes a truncated array actionable rather than
+// merely honest. It is tallied from `notes` BEFORE grouping and before the cap,
+// so it reports the true population of a code whose rows were dropped —
+// `notes_count` is one scalar over every code and cannot say which.
+void setNotes(QJsonObject &env, const QVector<RoadmapMigrate::Note> &notes,
+              int maxNotes) {
+    QHash<QString, int> summary;
+    for (const RoadmapMigrate::Note &n : notes) ++summary[n.code];
+
     struct Group {
         RoadmapMigrate::Note first;
         int         count = 0;
@@ -113,7 +131,7 @@ void setNotes(QJsonObject &env, const QVector<RoadmapMigrate::Note> &notes) {
 
     bool collapsed = false;
     QJsonArray arr;
-    const int shown = std::min<int>(groups.size(), kMaxNoteEntries);
+    const int shown = std::min<int>(groups.size(), maxNotes);
     for (int i = 0; i < shown; ++i) {
         const Group &g = groups.at(i);
         QJsonObject o  = noteToJson(g.first);
@@ -130,8 +148,16 @@ void setNotes(QJsonObject &env, const QVector<RoadmapMigrate::Note> &notes) {
     // Two different facts, deliberately two fields: `notes_truncated` means
     // rows were DROPPED and are unrecoverable; `notes_collapsed` means rows
     // were MERGED and every note is still accounted for by a count.
-    env[QStringLiteral("notes_truncated")] = groups.size() > kMaxNoteEntries;
+    env[QStringLiteral("notes_truncated")] = groups.size() > maxNotes;
     env[QStringLiteral("notes_collapsed")] = collapsed;
+
+    QJsonObject summaryObj;
+    for (auto it = summary.constBegin(); it != summary.constEnd(); ++it)
+        summaryObj[it.key()] = it.value();
+    env[QStringLiteral("notes_summary")] = summaryObj;
+    // The EFFECTIVE bound, after run()'s clamp — a caller passing 5000 receives
+    // 2000 rows and has no other way to learn its argument was reduced.
+    env[QStringLiteral("max_notes")] = maxNotes;
 }
 
 // ANTS-4479 — WHICH items `items_updated` counted, and which columns moved.
@@ -156,7 +182,7 @@ void setUpdatedItems(QJsonObject &env, const RoadmapMigrateLoad::Outcome &out) {
 }
 
 // ANTS-4065 § 2.3 — the run-level tally, beside `notes_count`. A per-FIELD
-// count, and it must be complete: `notes[]` is capped at kMaxNoteEntries, so a
+// count, and it must be complete: `notes[]` is row-capped, so a
 // reader counting `field_defaulted` entries in the array would under-report
 // exactly the run that needed reporting most.
 //
@@ -274,6 +300,13 @@ bool RoadmapMigrateVerb::isTransientRoot(const QString &canonicalRoot) {
 }
 
 QJsonObject RoadmapMigrateVerb::run(const QString &storePath, const Request &req) {
+    // ANTS-4559 — the clamp lives HERE, not in the handler, so a test driving
+    // this seam directly is bounded identically to a live call. An out-of-range
+    // value is reduced rather than refused: the envelope echoes the effective
+    // bound, which is the answer a caller can act on.
+    const int maxNotes =
+        std::clamp(req.maxNotes, kMinNoteEntries, kMaxNoteEntries);
+
     // 1 — project_name. `project.name` is TEXT NOT NULL, and an all-whitespace
     // name would satisfy the column and identify nothing.
     const QString name = req.projectName.trimmed();
@@ -451,7 +484,7 @@ QJsonObject RoadmapMigrateVerb::run(const QString &storePath, const Request &req
         env[QStringLiteral("ok")]    = false;
         env[QStringLiteral("code")]  = QStringLiteral("migrate_failed");
         env[QStringLiteral("error")] = out.error;
-        setNotes(env, out.notes);
+        setNotes(env, out.notes, maxNotes);
         return env;
     }
 
@@ -603,7 +636,7 @@ QJsonObject RoadmapMigrateVerb::run(const QString &storePath, const Request &req
         }
     }
     env[QStringLiteral("history_rows")]     = out.historyRows;
-    setNotes(env, out.notes);
+    setNotes(env, out.notes, maxNotes);
     setUpdatedItems(env, out);
     env[QStringLiteral("defaulted_fields")] = defaultedFieldTally(plan);
     return env;
