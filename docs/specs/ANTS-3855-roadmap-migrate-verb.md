@@ -1,11 +1,11 @@
 # ANTS-3855 — Add `roadmap_migrate`, the verb that loads a project into the store
 
-**Status:** accepted (2026-08-06) — cold-eyes loops 1–3, converged by cap, no deferred findings. **Amended 2026-08-19** — § 2.4's envelope and § 3's invariants, for the four items **Covers:** names; cold-eyes loops 4–5, capped, 16 verified and 16 fixed. **Amended 2026-08-21** — § 2.5 step 0b and INV-14, recording ANTS-4600's `transient_root` guard as built; no gate, per `CLAUDE.md` rule 14's amendment-records-what-was-built instance.
+**Status:** accepted (2026-08-06) — cold-eyes loops 1–3, converged by cap, no deferred findings. **Amended 2026-08-19** — § 2.4's envelope and § 3's invariants, for the four items **Covers:** names; cold-eyes loops 4–5, capped, 16 verified and 16 fixed. **Amended 2026-08-21** — § 2.5 step 0b and INV-14, recording ANTS-4600's `transient_root` guard as built; no gate, per `CLAUDE.md` rule 14's amendment-records-what-was-built instance. **Amended 2026-09-08** — § 2.1, § 2.3, § 2.4, § 3's INV-10 and § 6, adding `notes_summary` and `max_notes` for **ANTS-4559**; this one DID change direction for work still to come, so it took the gate: cold-eyes loops 6–7, capped, 15 verified and 15 fixed. Still `accepted` — ready to implement.
 **Kind:** implement.
 **Source:** ROADMAP.md ANTS-3855 (in-session-2026-08-06, measured while starting ANTS-3853's first item).
 **Blocker for:** ANTS-3807 (per-project migration briefs), ANTS-3772, ANTS-3815.
 **Composes with:** ANTS-3757 (read half), ANTS-3765 (load half), ANTS-3793 (consumer cutover).
-**Covers:** ANTS-4478, ANTS-4479, ANTS-4482 (envelope half), ANTS-4490 (envelope half) — four cross-session reports that each want a different field of one enumerated envelope, so they share one contract rather than four documents that must agree forever. Plus **ANTS-4600**, which is not one of those four and is not an envelope report at all: it is the registration guard (§ 2.5 step 0b, INV-14), and it lives here because this verb is the only thing that registers a project.
+**Covers:** ANTS-4478, ANTS-4479, ANTS-4482 (envelope half), ANTS-4490 (envelope half) — four cross-session reports that each want a different field of one enumerated envelope, so they share one contract rather than four documents that must agree forever. Plus **ANTS-4600**, which is not one of those four and is not an envelope report at all: it is the registration guard (§ 2.5 step 0b, INV-14), and it lives here because this verb is the only thing that registers a project. And **ANTS-4559**, an envelope report like the first four — the `notes[]` bounds — joining them for the same reason.
 
 **Layman:** The roadmap database is built and tested but nothing can put a
 project into it. This adds the command that does — with a preview mode that
@@ -87,7 +87,7 @@ has nothing to fall back to when no project is named.
 | `dry_run` | bool | `false` | Plan every write, report the counts, roll back. Declared via `makeDryRunProp()`. |
 | `project_name` | string | leaf dir of the canonical root, verbatim | `project.name`. Must be non-empty after trimming — `project.name` is `TEXT NOT NULL`, and an all-whitespace name would satisfy the column and identify nothing. |
 | `export_slug` | string | slugified leaf dir | `project.export_slug`. |
-| `max_notes` | integer | `200` | Row bound for `notes[]`, clamped to `[1, 2000]` — § 2.4. Consumed by this verb's handler, not by the dispatcher. |
+| `max_notes` | integer | `200` | Row bound for `notes[]` — § 2.4. Forwarded verbatim as `Request::maxNotes`; **`run()` applies the `[1, 2000]` clamp**, so a test calling the seam directly is bounded identically. |
 | `op` | enum | `"migrate"` | `"deregister"` is the inverse — see § 2.8. Declared because the handler reads it (ANTS-4617 / ANTS-4621). |
 | `confirm` | bool | `false` | `op:"deregister"` only; clears `confirm_required`. Ignored by the migrate op. |
 | `fields` | array | — | Narrow the response to these top-level keys. Declared via `makeFieldsProp()` (ANTS-4429). |
@@ -145,6 +145,7 @@ struct Request {
     QString projectName, exportSlug;
     QString changedAt;        // the caller's single stamp
     bool    dryRun = false;
+    int     maxNotes = 200;   // § 2.4's row bound; run() clamps to [1, 2000]
 };
 
 // `storePath` is a PARAMETER, not RoadmapStore::defaultPath(). Returns the
@@ -214,7 +215,7 @@ HANDLER — RemoteControl::cmdRoadmapMigrate
  0b. RoadmapMigrateVerb::isTransientRoot(rr.cwd)      -> transient_root
      stamp = QDateTime::currentDateTimeUtc().toString(Qt::ISODate)  // ONE clock read
      RoadmapMigrateVerb::run(RoadmapStore::defaultPath(),
-                             {rr.cwd, name, slug, stamp, dryRun})
+                             {rr.cwd, name, slug, stamp, dryRun, maxNotes})
 
 SEAM — RoadmapMigrateVerb::run(storePath, req)
  1. name = req.projectName, trimmed                   // empty -> bad_args
@@ -374,7 +375,7 @@ downstream re-derives it.
   "updated_items": [], "updated_items_truncated": false,
   "defaulted_fields": {},
   "notes": [], "notes_count": 0, "notes_truncated": false,
-  "notes_collapsed": false, "notes_summary": {}
+  "notes_collapsed": false, "notes_summary": {}, "max_notes": 200
 }
 ```
 
@@ -552,6 +553,20 @@ considered and rejected**: with repetition already collapsed, narrowing to one
 code removes a handful of rows and leaves a large single-code population still
 against the cap, so it does not answer the question that motivated it.
 
+**The envelope echoes the EFFECTIVE `max_notes`** — the value after the clamp,
+not the one the caller sent. A caller passing 5000 receives 2000 rows and has
+no other way to learn its argument was reduced, which is the same reason
+`workspace_search` echoes its own clipped bound.
+
+**At the ceiling the reply does not arrive inline, and that is expected.**
+`claude.mcp_offload_large_results` defaults true and
+`claude.mcp_offload_threshold_bytes` defaults to 16384 (`mcp-config-keys.md`
+§ Result offload), so a response of the ~4 MiB this ceiling permits is spilled
+and returned as an `{offloaded:true, handle, head, …}` envelope to be read back
+with `read_spill`. So `max_notes: 2000` is deliverable, via the offload path
+rather than as an inline array. This verb adds no cap of its own on top: a
+second byte bound here would refuse a response the transport already handles.
+
 A refusal envelope that carries `notes` (only `migrate_failed` does) carries
 `notes_count`, `notes_truncated`, `notes_collapsed` and `notes_summary` too,
 under the same bounds. **Named rather than counted, corrected 2026-09-08
@@ -588,18 +603,25 @@ not reach it, so **its parity is asserted here instead**, at the envelope, by
 INV-3 — which is where this document's contract lives, and costs ANTS-3765 no
 wording change.
 
-**Four envelope values do not come from `Outcome`, and none of them is a
-tally.** `store_backed` is read off `plan.sources[0]`; `markdown_rewritten` is
+**Five envelope values do not come from `Outcome`, and `notes_summary` is the
+one of them that IS a tally** — computed by the verb from `Outcome::notes`, not
+an `Outcome` member, so it does not join ANTS-3765 INV-13's count-by-count
+comparison and owes that spec's feature test no change. `store_backed` is read
+off `plan.sources[0]`; `markdown_rewritten` is
 a constant INV-11 makes true; `defaulted_fields` is `defaultedFieldTally(plan)`;
 and `project_id` is step 6's `owner` where that row exists, which is why § 2.3
 names it at step 9 rather than leaving the sequence reading `envelope from
 `out``. The no-recompute rule binds the counts, and every count still comes from
 `Outcome` untouched.
 
-`notes[]` is `Outcome::notes` in order, one object per
-`RoadmapMigrate::Note`, carrying `source_index` verbatim including its `-1`
-sentinel (ANTS-3766 § 2.4). It is never filtered: the load's notes are already
-a superset of the plan's, so one envelope covers the whole migration.
+`notes[]` is `Outcome::notes` grouped by `(code, detail, source_index)` in
+first-appearance order — one object per GROUP, each carrying `count` and its
+`source_index` verbatim including the `-1` sentinel (ANTS-3766 § 2.4). No note
+CODE is filtered out: the load's notes are already a superset of the plan's, so
+one envelope covers the whole migration. Rows past `max_notes` ARE dropped,
+which is why `notes_summary` is tallied from `Outcome::notes` **before**
+grouping and never from the emitted array — tallying the array under-reports on
+exactly the truncated response that field exists to make actionable.
 
 `sources[]` is `plan.sources` reduced to `{path, format}` — `markdown` is
 deliberately dropped, being the multi-megabyte input the caller already has.
@@ -869,8 +891,15 @@ test's own `Access::Interactive` `RoadmapStore` at the same `storePath` after
   `notes_truncated: false` (nothing was dropped), a `notes_count` equal to the
   true total (>200), per-row `count`s summing to it, and no `line` on a merged
   row; a fixture whose note `detail` would exceed 2048 characters yields a
-  `detail` of exactly 2048 ending in the ellipsis. Both legs are needed because
-  the two bounds are independent — capping rows bounds no bytes.
+  `detail` of exactly 2048 ending in the ellipsis; and a fixture carrying more
+  than 200 bullets with NON-GRAMMATICAL id tokens — each raising a
+  `quarantined_id` whose `detail` is unique, so nothing collapses — yields
+  `notes_truncated: true` at the default, a `notes_summary` whose
+  `quarantined_id` count is the true uncapped population, and every group with
+  `notes_truncated: false` when the same call passes `max_notes` above it.
+  Three legs are needed because the bounds are independent — capping rows
+  bounds no bytes, and collapsing repetition does not bound a population that
+  cannot collapse.
 - **INV-11** — This verb writes no **source** file under `req.projectRoot`, and
   `markdown_rewritten` says so. *Test:* feature test — hash every file under the
   fixture root before `run()` and again after a successful **non-dry** run;
@@ -1125,7 +1154,8 @@ remaining legs against the declared-but-unimplemented seam.
   description now names them.
 - **The verb's schema and description again, for ANTS-4559.** The schema
   gains `max_notes`, or `additionalProperties: false` refuses every call that
-  passes it (§ 2.1). The description gains `notes_summary`. Both are owed in
+  passes it (§ 2.1). The description gains `notes_summary` and the echoed
+  effective `max_notes`. Both are owed in
   the same change as the code: a response field a caller cannot discover and
   an argument the schema rejects are each invisible in exactly the situation
   they exist for.
@@ -1147,6 +1177,7 @@ remaining legs against the declared-but-unimplemented seam.
 
 | Loop | Date | Lanes | Findings (C/H/M/L/I) | Resolution |
 |---|---|---|---|---|
+| 7 (cap) | 2026-09-08 | 3 cold `review-lane`, identical brief, packet and scrubbed copy rebuilt from disk after loop 6's fixes, line count re-measured | **Q1 1 · Q2 2 · Q3 3 · Q4 0** — verified 6, dismissed 1 | **Six verified, six fixed. Cap reached (2 loops for a spec); no deferred findings.** **CORRECTION TO ROW 6, which this run owes rather than edits:** that row states verified 8 / fixed 8. The true loop-6 figure was **verified 9, fixed 8**. Two lanes reported that § 2.4's tail still read "one object per `RoadmapMigrate::Note`"; the orchestrator confirmed the quotation, then omitted it from the fix batch and reconciled the row from recall instead of off the ledger — the one thing 4d's reconciliation exists to catch. All three lanes of THIS loop found it again, which is the cold re-read doing its job, and it is fixed here. **The rest of the loop is the new fields' second-order surface, and all three lanes converged on the sharpest of it:** `max_notes` was declared in § 2.1 and had no route to the code that applies it — § 2.1.1's `Request` carries five members, § 2.3 constructs it positionally, and the cap is applied inside `run()`, which § 6 says is the ONLY thing the tests drive. So INV-10's own new leg was unwritable, and two implementers would have produced two different `run()` signatures. Fixed by adding `maxNotes` to `Request`, passing it at step 0b, and naming `run()` as the clamp site so a direct seam caller is bounded identically. **One lane each for two more, both this amendment's own collateral:** § 2.4's "Four envelope values do not come from `Outcome`, and none of them is a tally" — `notes_summary` is a fifth and IS a tally, and left unstated it reads as an `Outcome` member that would join ANTS-3765 INV-13's count comparison; and INV-10's `*Test:*` routing line still enumerated two legs and said "Both", so a test author building from it would have shipped the whole ANTS-4559 contract with no coverage. **Two lane open questions settled rather than left:** the envelope now echoes the EFFECTIVE `max_notes` (a caller passing 5000 could not otherwise learn it received 2000), and the ~4 MiB ceiling is stated as deliverable VIA THE OFFLOAD PATH — `claude.mcp_offload_large_results` defaults true at a 16 KiB threshold, so no second byte cap is added here. **Dismissed on materiality (1):** `op`'s "see § 2.8" dangles — § 2 ends at § 2.6 — but the deregister op shipped and no one builds differently; routed to `check-doc-facts`, which owns broken cross-references. **Cap verdict — HIGH share, read as COMPLETION rather than oscillation, and the numbers are here so a reader can disagree:** 5 of this loop's 6 findings landed on text this run wrote or invalidated. What separates it from oscillation is their kind — loop 6 settled WHAT the two fields are, loop 7 settled how one REACHES the code, who echoes it, what the enumeration says and what the test asserts. That surface is now closed, and no finding in this loop repaired a loop-6 repair. **Second share (gate vs audit):** 11 of the run's 15 verified findings fall inside 1c's recorded span — the § 2.4 + INV-10 amendment — so this run gated far more than it audited. **Collateral, fixed in the same change:** `tests/features/roadmap_migrate_verb/spec.md` gains the third test leg. Doc 1154 → 1187 lines. **Next reviewer is the implementation**, per the spec cap's own rationale. |
 | 6 | 2026-09-08 | 3 cold `review-lane`, one byte-stable shared-context file, scrubbed copy, packet carrying 6 source windows + the Vestige measurement | **Q1 1 · Q2 5 · Q3 2 · Q4 0** — verified 8, dismissed 0 | **Eight verified, eight fixed. Loop 1 of a NEW run, gating the 2026-09-08 `notes[]` amendment (§ 2.4 + INV-10, for ANTS-4559) which adds `notes_summary` and `max_notes`.** The amendment was armed by a MEASUREMENT rather than by a report: `roadmap_migrate` dry-run on Vestige returned 442 note groups against a 200-row cap, of which 438 were `quarantined_id` at `count: 1` — so 242 ids were dropped, and § 2.4's justification ("A project exceeding 200 has a systemic problem the first 200 notes already describe") was false for any code whose `detail` is unique per occurrence. **All three lanes independently found the same four defects**, every one of them on text the amendment created or invalidated. **The worst is the argument table**: § 2.1 declares eight arguments and states that `additionalProperties: false` makes an undeclared argument a refusal, so an implementer building the schema from it would have shipped a verb that refuses every call passing `max_notes` — the escape hatch the amendment exists to add, unreachable, while INV-10 requires a run under a raised `max_notes`. Also three-lane: the enumerated envelope block omitted `notes_collapsed` (shipped with ANTS-4649) and `notes_summary`, in the block the document itself calls "the one place that claims to enumerate the envelope"; "carries all three fields" on the `migrate_failed` path, already wrong before this amendment and now naming none of five; and the ~400 KiB array bound plus § 4's "capped at 200", both derived at a cap that is now a default, understating the ceiling tenfold in the section an implementer sizes a memory budget against. **One lane each for the remaining two, and both are the sharp kind.** INV-10 asserted the per-row counts sum to `notes_count` UNCONDITIONALLY while the same invariant's new fixture truncates by design — this loop's own collateral, and it would have redded a correct implementation. And § 2.3's step 0b shows the stamp and the `run()` call with no `transient_root` guard, though § 2.5's refusal table assigns that code to step 0b and INV-14 requires it in the handler: pre-existing, and the guard is the one stopping a scratchpad being registered in a machine-global store. INV-4's "Two rows are out of the fixture's reach" was wrong by the same count. **Two lane open questions became findings rather than being answered**: `updated_items`' cap is documented "on `notes[]`'s pattern" and the two have now diverged (it takes no override), and § 6's fixture paragraph was never extended for INV-10's new leg, which needs >200 UNIQUE-detail notes — a repetitive fixture collapses to a handful of rows and passes without exercising anything. **One open question resolved clean** (whether `notes_summary` is emitted under `compact` when empty — `compact`'s documented behaviour already drops empty objects, so nothing is invented), counted nowhere. **1b yield: zero** — every citation windowed, none defective. **Collateral, fixed in the same change:** `tests/features/roadmap_migrate_verb/spec.md` restates INV-10 and carried the same unconditional sum clause. Doc 1120 → 1154 lines. |
 | 5 (cap) | 2026-08-19 | 3 cold `review-lane`, identical brief, packet and scrubbed copy rebuilt from disk after loop 4's fixes | **Q1 2 · Q2 5 · Q3 0 · Q4 1** — verified 8, dismissed 1 | **Eight verified, eight fixed. Cap reached (2 loops for a spec); the run ships and implementation is the third reviewer.** **A high-collateral cap, and saying so is the point: all eight landed on text THIS RUN wrote, and six on text loop 4 added** — the run was repairing its own repairs, not converging on a settled document. What makes shipping right anyway is the split § At the cap states: a spec is *implemented* next, and the build tests the contract against real code in a way a third cold read cannot. **All three lanes independently found the same [Q4], and it is the sharpest finding of either loop.** Loop 4 routed `updated_items`' dry-run/real-run parity to INV-3 — and INV-3's three runs are all over a store with no prior rows or an unchanged root, so `items_updated` is `0` and `updated_items` is `[]` on **both** sides of every comparison. Two empty arrays agreeing is not evidence, and an implementation collecting `updatedItems` on the committed path alone would have passed every leg while shipping the empty preview ANTS-4479 exists to prevent. INV-3 gains a fourth run over an EDITED source, on INV-5's pattern and for INV-5's stated reason — the identical trap, one invariant along, which loop 4 read past. **Loop 4's INV-12 leg (c) was wrong twice in one clause:** it was added under a `*Test:*` line still reading "two legs", and it said the two roots report "the same two values" when `store_backed` and `migratedProject()` **disagree on purpose** under `dry_run` — so the leg as written reds against a correct implementation, and an implementer building to the stated count drops it entirely. Now three legs, with (c) asserting `store_backed` alone and saying why. **The `project_id` rule had no home in the sequence:** § 2.3's unamended step 9 still read `envelope from `out``, and § 2.4 called `store_backed` and `markdown_rewritten` "the two exceptions" — so an implementer following either would have written back the pre-amendment `req.dryRun ? 0 : out.projectId`, the exact line INV-3's third run exists to red on. Step 9 now names `owner`, and the exceptions are four, `defaulted_fields` included. **Two Q1s, one of them the orchestrator's own:** § 6 called the `github-task-list` fixture "new" when `tests/features/roadmap_migrate_read/fixtures/archives/declaredformat/` already ships one with live bullets (two lanes), and loop 4's claim that the next `roadmap_log` write reports `files_written: ["ROADMAP.md"]` was disproved by running one during this session — it names the archives too. **Counts replaced by names in both places a lane caught one drifting** (§ 7's "four new response fields" against five, § 6's "five legs"), which is the same rule this skill applies to itself. **Dismissed on materiality, for the second consecutive loop:** `defaulted_fields` attributed to ANTS-4065 § 2.6 — recorded here so a later run does not spend on it again. **Two open questions resolved clean by reading source rather than by a lane:** `fieldsOf()` compares nine columns and neither `provenance` nor a headline edit moves a second one, so INV-13's "exactly the one column changed" holds; and `matchSections()` has no `continue` before its `found` test, so `sections_written + sections_unchanged` really is the plan's section count. Doc 988 → 1017 lines — **the growth is the concern the 2026-08-06 run flagged twice, and its recommendation to split at § 2's seams is now three runs old.** |
 | 4 | 2026-08-19 | 3 cold `review-lane`, one byte-stable shared-context file, scrubbed doc copy, packet carrying 13 verbatim source windows | **Q1 1 · Q2 3 · Q3 3 · Q4 1** — verified 8, dismissed 1 | **Eight verified, eight fixed. First loop of a NEW run, gating the 2026-08-19 envelope amendment** (§ 2.4 + § 3, for ANTS-4478 / 4479 / 4482 / 4490); the 2026-08-06 run closed at its cap on loop 3. Q-counts, not the retired C/H/M/L/I scale. **All three lanes independently found the same three defects**, which is the strongest signal any loop of this document has produced, and every one of them landed on text this amendment ADDED. **The worst is INV-11**: it told the implementer to "hash every file under the fixture root … assert every hash unchanged", while § 6's fixture puts the store "inside that same temp dir" and has the verb create it — so the new invariant reds against a correct implementation, on the one file the fixture REQUIRES the verb to write. Restated as *no pre-existing file changed and the only new path is the store*, with the `*.sqlite*` exclusion refused by name because it would hide a regression in the store's own location. **The Q1 was a false claim about a sibling spec**: § 2.4 and § 7 both said ANTS-3765 INV-13 is "stated over the whole `Outcome`", and that invariant reads "count by count, excluding `projectId`" — so `updatedItems`, a `QVector`, joined nothing and its dry-run parity was asserted nowhere. Now: `sectionsUnchanged` joins INV-13 as a count, `updatedItems` is asserted at the envelope by INV-3, and ANTS-3765 needs no wording change. **The third was `store_backed`'s dry-run value**, where the field's stated QUESTION ("will `roadmap_query` … serve this project from the store after this call?") and its stated FORMULA (`plan.sources[0].format == "ants-v1"`) answered differently under `dry_run`, one paragraph after the amendment settled exactly that shape for `project_id`; two builders would have built `true` and `!dry_run && …`. Stated explicitly, with the asymmetry against `project_id` argued from their subjects — a rolled-back row does not exist, a dialect on disk is unchanged by a rollback — and pinned by a new INV-12 leg (c). **Three more, one per lane.** `updated_items[].id` did not say WHICH id, where `applyPlanFields()` already branches `it.id.isEmpty() ? cur->id : it.id`, so a matched id-less bullet would have emitted an unusable empty id. `updated_items_truncated` was named nowhere in the `Outcome` extension list nor in the two stated exceptions, so one builder would have added a third member and another derived it — now explicitly derived by the verb. And § 3 said the third `project_id` leg is "the one the pre-amendment code passes only by reporting `0`" while § 6 says it reds, which would have had an implementer weaken the assertion back to the defect ANTS-4478 reported. **Dismissed on materiality:** § 2.4 attributes `defaulted_fields` to ANTS-4065 § 2.6, which is `itemsUpdatedGoverned`'s section — true-but-inert provenance, and the lane that raised it said so itself. **Two lane open questions, and only one resolved clean:** INV-12 leg (b) needs a `github-task-list` roadmap to yield non-zero counts, and `tests/features/roadmap_migrate_read/fixtures/archives/declaredformat/` already carries one with live bullets; the second — that the `updated_items` bound had no invariant while `notes[]`'s equivalent has INV-10 — was real, and is the run's one **[Q4]**: a stated bound with no falsifiable surface. It became INV-13's second leg, counted rather than filed as an open question. Doc 942 → 988 lines. |

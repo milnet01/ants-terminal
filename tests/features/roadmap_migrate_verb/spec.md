@@ -88,6 +88,10 @@ tested apart from is not a seam.
   `sample_lines` and no `line`; every row carries `count`, and when
   `notes_truncated` is `false` the counts sum to `notes_count`. Do not assert
   that sum unconditionally: on a truncating run the shown rows sum to less.
+  THREE legs, not two: the collapse fixture, the 2048-character `detail`
+  fixture, and a fixture of >200 bullets with non-grammatical id tokens, whose
+  `quarantined_id` details are unique so nothing collapses — that one is the
+  only leg that exercises `max_notes` and `notes_summary`.
   `notes_collapsed` (rows MERGED, nothing lost) and `notes_truncated` (rows
   DROPPED, unrecoverable) are two facts and stay two fields.
 
