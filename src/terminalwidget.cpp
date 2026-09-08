@@ -3,6 +3,7 @@
 #include "clipboardguard.h"  // ANTS-1014 — clipboard write funnel
 #include "debuglog.h"
 #include "regexharden.h"     // ANTS-1665 — harden user search / rule patterns
+#include "secureio.h"        // ANTS-4456 — ensurePrivateDir / setOwnerOnlyPerms
 #include "shellutils.h"      // ANTS-3828 — shellQuote() for pasted file paths
 
 #include <QImageReader>
@@ -579,7 +580,19 @@ void TerminalWidget::setSessionLogging(bool enabled) {
     if (enabled && !m_logFile) {
         QString dir = QStandardPaths::writableLocation(QStandardPaths::GenericDataLocation)
                       + "/ants-terminal/logs";
-        QDir().mkpath(dir);
+        // ANTS-4456 — this log is the terminal's whole byte stream: anything
+        // a command printed, anything pasted. QDir::mkpath creates at the
+        // process umask (0755 on a desktop), which lets any other local user
+        // traverse in. ensurePrivateDir makes it 0700 with no
+        // create-then-chmod window; secureio.h requires the false return be
+        // surfaced, and logging into a directory we could not secure is
+        // exactly what this guards.
+        if (!ensurePrivateDir(dir)) {
+            qWarning("Could not secure log directory %s — session logging off",
+                     qPrintable(dir));
+            m_loggingEnabled = false;
+            return;
+        }
         QString filename = dir + "/session_"
                            + QDateTime::currentDateTime().toString("yyyyMMdd_HHmmss")
                            + ".log";
@@ -587,6 +600,11 @@ void TerminalWidget::setSessionLogging(bool enabled) {
         if (!m_logFile->open(QIODevice::WriteOnly | QIODevice::Append)) {
             qWarning("Failed to open log file: %s", qPrintable(filename));
             m_logFile.reset();
+        } else if (!setOwnerOnlyPerms(*m_logFile)) {
+            // Defence in depth behind the 0700 directory above, so the log
+            // stays private if that directory is later loosened by hand.
+            qWarning("Could not set owner-only permissions on %s",
+                     qPrintable(filename));
         }
     } else if (!enabled && m_logFile) {
         m_logFile->close();
@@ -4914,6 +4932,12 @@ void TerminalWidget::startRecording(const QString &path) {
     if (!m_recordFile->open(QIODevice::WriteOnly | QIODevice::Truncate)) {
         m_recordFile.reset();
         return;
+    }
+    // ANTS-4456 — the cast carries the same byte stream as the session log.
+    // Applied here rather than at the caller so any future caller inherits it.
+    if (!setOwnerOnlyPerms(*m_recordFile)) {
+        qWarning("Could not set owner-only permissions on recording %s",
+                 qPrintable(path));
     }
 
     // Write asciicast v2 header

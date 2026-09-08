@@ -34,8 +34,11 @@ Any other user on the host can read a 0644 `debug.log` if the
 - Project convention: every other
   `$XDG_DATA_HOME/ants-terminal/` file
   (`sessions/*.bin`, `config.json`, `settings.local.json`,
-  `.remotecontrol.sock`) already calls `setOwnerOnlyPerms`. The
-  debug log was the last outlier.
+  `.remotecontrol.sock`) already calls `setOwnerOnlyPerms`.
+  This spec originally called the debug log "the last outlier". That
+  was not true — `logs/session_*.log` and `recordings/*.cast` had
+  never been enumerated, and were fixed under ANTS-4456. Their
+  contract is `tests/features/session_capture_perms/spec.md`.
 
 ## Contract
 

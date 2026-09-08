@@ -1533,6 +1533,8 @@ if(ANTS_TESTS)
                 tests/features/no_anim_style/test_no_anim_style.cpp
                 tests/features/paste_dialog_custom/test_paste_dialog_custom.cpp
                 tests/features/scratchpad_submit_ordering/test_scratchpad_submit_ordering.cpp
+                # ANTS-4456 — session log + recording land 0600 in a 0700 dir.
+                tests/features/session_capture_perms/test_session_capture_perms.cpp
                 # ANTS-3828 — copied image FILE pastes its path, not a file:// URI.
                 tests/features/image_paste_uri_list/test_image_paste_uri_list.cpp
                 tests/features/tab_rename_pin/test_tab_rename_pin.cpp

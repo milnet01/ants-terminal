@@ -19,6 +19,7 @@
 #include "sessionmanager.h"
 #include "remotecontrol.h"
 #include "resolvedroot.h"      // ANTS-1401 — terminalForCaller helper
+#include "secureio.h"          // ANTS-4456 — ensurePrivateDir (0700)
 #include "reviewbuttonstate.h" // ANTS-1874 — Review-button porcelain predicate
 #include "verifytrustmodal.h"  // ANTS-1337 Phase 2
 #include "branchchip.h"           // ANTS-1109 helper
@@ -1881,14 +1882,25 @@ void MainWindow::setupSettingsMenu() {
     QAction *recordAction = settingsMenu->addAction("&Record Session");
     recordAction->setCheckable(true);
     recordAction->setShortcut(QKeySequence(m_config.keybinding("record_session", "Ctrl+Shift+R")));
-    connect(recordAction, &QAction::toggled, this, [this](bool checked) {
+    connect(recordAction, &QAction::toggled, this, [this, recordAction](bool checked) {
         TerminalWidget *t = focusedTerminal();
         if (!t) t = currentTerminal();
         if (!t) return;
         if (checked) {
             QString dir = QStandardPaths::writableLocation(QStandardPaths::GenericDataLocation)
                           + "/ants-terminal/recordings";
-            QDir().mkpath(dir);
+            // ANTS-4456 — a recording is the terminal's whole byte stream, so
+            // its directory is born 0700 rather than created at umask. Signals
+            // are blocked while un-checking: setChecked re-enters this lambda
+            // on the false arm, which would overwrite the message below with
+            // "Recording stopped".
+            if (!ensurePrivateDir(dir)) {
+                const QSignalBlocker block(recordAction);
+                recordAction->setChecked(false);
+                showStatusMessage("Could not secure the recordings directory "
+                                  "— not recording", 5000);
+                return;
+            }
             QString path = dir + "/recording_"
                 + QDateTime::currentDateTime().toString("yyyyMMdd_HHmmss") + ".cast";
             t->startRecording(path);
