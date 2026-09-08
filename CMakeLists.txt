@@ -1695,6 +1695,8 @@ if(ANTS_TESTS)
                 tests/features/claude_plan_mode_detection/test_claude_plan_mode.cpp
                 tests/features/claude_tab_status_indicator/test_claude_tab_tracker.cpp
                 tests/features/claude_transcript_robustness/test_claude_transcript_robustness.cpp
+                # ANTS-4457 — retry transcript resolution until it succeeds.
+                tests/features/transcript_resolution_retry/test_transcript_resolution_retry.cpp
                 tests/features/allowlist_add/test_allowlist_add.cpp
                 # ANTS-1993 — permission-prompt structural gate (anti-spoof).
                 tests/features/claude_permission_prompt_structure/test_claude_permission_prompt_structure.cpp

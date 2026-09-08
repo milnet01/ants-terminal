@@ -302,10 +302,27 @@ void ClaudeIntegration::pollClaudeProcess() {
     // Pre-1225 this gate was `m_claudePid == 0`, missing the replacement
     // case — the status indicator would stay hidden until tab-switch
     // because setShellPid (line 88) zeroes m_claudePid as a side effect.
-    if (m_claudePid != foundPid) {
+    const bool pidChanged = (m_claudePid != foundPid);
+    if (pidChanged) {
         // Newly detected Claude process (or replacement of a dead one).
         m_claudePid = foundPid;
+    }
 
+    // ANTS-4457 — resolve on a PID change AND whenever we still hold no
+    // transcript. The PID is committed above whether or not the lookup
+    // below succeeds, so before this the attempt was made exactly once:
+    // a lookup returning empty left m_claudePid already equal to
+    // foundPid, the branch never re-ran, and the backstop at the end of
+    // this function is itself gated on m_transcriptPath being non-empty.
+    // Returning empty on the first attempt is ordinary — /proc/<pid>/cwd
+    // unreadable, no project directory yet on the first run in a repo,
+    // or Claude started but not yet past its first transcript write,
+    // which the process-anchored freshness filter rejects. The tab was
+    // then stranded for the life of the process, treating every hook as
+    // a cold start, recoverable only by switching tabs (setShellPid
+    // zeroes m_claudePid). Retrying costs one /proc read and one scoped
+    // directory listing per poll, and stops the moment it succeeds.
+    if (pidChanged || m_transcriptPath.isEmpty()) {
         // ANTS-1168: scope to the focused tab's project rather than
         // walking ALL ~/.claude/projects entries. Without scoping, the
         // tab whose Claude process JUST started momentarily reads the
@@ -340,10 +357,16 @@ void ClaudeIntegration::pollClaudeProcess() {
             parseTranscriptForState(m_transcriptPath);
         }
 
-        // Set initial Idle state, then let transcript parse refine it.
-        // ANTS-1225-INV-2: the m_state != Idle guard is mandatory —
-        // removing it makes the status indicator flap on every poll
-        // when steady-state Idle.
+    }
+
+    // Set initial Idle state, then let transcript parse refine it.
+    // ANTS-1225-INV-2: the m_state != Idle guard is mandatory —
+    // removing it makes the status indicator flap on every poll
+    // when steady-state Idle.
+    // ANTS-4457 — stays on the PID change alone. This is about a newly
+    // detected process, not about the transcript, so the retry condition
+    // above must not reach it.
+    if (pidChanged) {
         if (m_state != ClaudeState::Idle) {
             m_state = ClaudeState::Idle;
             emit stateChanged(m_state, "idle");

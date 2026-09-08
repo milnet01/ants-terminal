@@ -73,10 +73,21 @@ void testInv1ReplacementGate(const std::string &claudeintegration) {
 
     expect(bodyContains(claudeintegration, sig, "// ANTS-1225-INV-1"),
            "ANTS-1225-INV-1: anchor comment present in pollClaudeProcess");
-    expect(bodyContains(claudeintegration, sig,
-                        "if (m_claudePid != foundPid)"),
+    // ANTS-4457 widened the transcript-resolution condition, which meant
+    // naming the comparison instead of inlining it in the `if`. INV-1 is a
+    // property — the gate is the != comparison, not == 0 — so accept either
+    // spelling, while still requiring the comparison to GATE a branch
+    // rather than merely appear. A bare substring check on the comparison
+    // would pass against code that computed it and threw it away.
+    const bool inlineGate =
+        bodyContains(claudeintegration, sig, "if (m_claudePid != foundPid)");
+    const bool namedGate =
+        bodyContains(claudeintegration, sig, "= (m_claudePid != foundPid)") &&
+        bodyContains(claudeintegration, sig, "if (pidChanged)");
+    expect(inlineGate || namedGate,
            "ANTS-1225-INV-1: rebind gate is `m_claudePid != foundPid` "
-           "(handles both initial detection and live PID replacement)");
+           "(handles both initial detection and live PID replacement), "
+           "inlined in the if or named as pidChanged and branched on");
     // Defensive: the pre-fix gate `if (m_claudePid == 0)` MUST NOT be
     // present inside pollClaudeProcess — it would either replace INV-1
     // (regression) or co-exist as a redundant early-return that masks

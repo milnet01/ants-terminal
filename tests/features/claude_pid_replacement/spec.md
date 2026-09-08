@@ -27,6 +27,30 @@ INV labels qualified `ANTS-1225-INV-N`. Citations are against current `src/`.
 | N2 | Linux PID reuse MUST NOT silently retain a stale `m_claudePid` whose PID is now bound to a non-Claude process. | `findClaudeChildPid` matches argv[0] basename against `claude` / `claude-code` (`claudeintegration.cpp:174-208`); a non-Claude PID returns 0; INV-3's not-found branch fires and clears state. |
 | N3 | The fix MUST NOT regress same-PID rebind into a transcript flap. | INV-1's gate is `!=`, so `m_claudePid == foundPid` — the steady-state — never enters the rebind branch. The 10-tick backstop re-parse at `claudeintegration.cpp:275` continues to handle inotify-watch-loss recovery without touching `m_transcriptPath`. |
 
+## 3a. Amendment — ANTS-4457 (2026-09-08)
+
+The transcript-resolution block is no longer reached only by INV-1's
+gate. It now also runs when `m_transcriptPath` is empty, because the
+PID is committed before the resolution runs: a resolution that returned
+empty was never retried, and the tab was stranded for the life of the
+process. `tests/features/transcript_resolution_retry/spec.md` owns that
+contract.
+
+Every invariant here survives, and N3 is the one worth stating.
+
+- **N3 holds unchanged.** Its property is that the *steady state* —
+  same PID, transcript already resolved — does not re-enter and flap
+  the watcher. The added condition is `m_transcriptPath.isEmpty()`,
+  which is false in exactly that state. The new entries happen only
+  when there is no transcript to flap.
+- **INV-2 holds.** It says what happens when the rebind branch fires,
+  and does not forbid the resolver running at other times. The
+  `ClaudeState::Idle` emission stays gated on the PID change alone, so
+  it still fires once per detection rather than once per poll.
+- **INV-1's acceptance grep changed.** Naming the comparison
+  (`pidChanged`) rather than inlining it in the `if` is the same
+  property in a different spelling; §5 below accepts both.
+
 ## 4. Out of scope
 
 - **Resolver correctness post-rebind.** `sessionPathForCwd` selection logic (process-start anchor, freshness floor, stale-session liveness filter) is owned by `claude_session_freshness` (ANTS-1163). INV-2 asserts the rebind invokes the resolver — not that the resolver picks the right file given valid inputs.
@@ -40,7 +64,7 @@ INV labels qualified `ANTS-1225-INV-N`. Citations are against current `src/`.
 
 Test shape (source-grep, no GUI, no QTemporaryDir, no `ClaudeIntegration` instantiation; same pattern as ANTS-1219):
 
-1. **INV-1** — grep `src/claudeintegration.cpp` for `if (m_claudePid != foundPid)` inside the body of `pollClaudeProcess`. Anchored by `// ANTS-1225-INV-1`.
+1. **INV-1** — grep `src/claudeintegration.cpp` inside the body of `pollClaudeProcess` for the gate, in either spelling: `if (m_claudePid != foundPid)` inlined, or the comparison named (`= (m_claudePid != foundPid)`) together with `if (pidChanged)`. Both express the property; the second is required since ANTS-4457, see § 3a. Requiring the comparison to gate a branch is load-bearing — a bare substring check would pass against code that computed it and discarded it. Anchored by `// ANTS-1225-INV-1`.
 2. **INV-2** — grep for the load-bearing rebind sequence inside the same branch: `m_transcriptWatcher.removePaths`, `m_transcriptWatcher.addPath(m_transcriptPath)`, `parseTranscriptForState(m_transcriptPath)`, `emit stateChanged(m_state, "idle")`. Anchor: `// ANTS-1225-INV-2`.
 3. **INV-3** — grep for the not-found branch's clear sequence (`m_claudePid = 0`, `m_transcriptPath.clear()`, `emit stateChanged(m_state, m_currentTool)`) so a future refactor that collapses INV-1 into the not-found path is caught. Anchor: `// ANTS-1225-INV-3`.
 4. **INV-4** — grep for `if (m_shellPid <= 0) return;` at the top of `pollClaudeProcess`. Anchor: `// ANTS-1225-INV-4`.
