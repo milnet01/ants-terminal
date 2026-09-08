@@ -53809,6 +53809,1279 @@ plus two gaps hit while sweeping stale spec citations under ANTS-4757.
   Source: in-session-2026-09-07.
   Lanes: mcp.
 
+### Ants MCP feedback from CC sessions — 2026-09-08 triage
+
+Triage of the un-triaged tails across the shared feedback corpus. Findings that
+confirm an already-shipped id are closed inline with an `n/a` closure rather
+than re-filed; everything else lands here.
+
+- 📋 [ANTS-4947] **roadmap_log op:"annotate" discarded a note the same verb had written minutes earlier, and called it an external edit.**
+  Three op:"annotate" calls against one id, one session, one
+  caller_cwd, main checkout. All three returned ok:true,
+  note_appended:true, write_path:"render". The third also returned
+  discarded_external_edits:true, discarded_edit_lines:32, and a
+  discarded_text carrying VERBATIM the note the SECOND call had
+  written. Note 1 survived, note 2 was destroyed, note 3 landed.
+  Nothing external touched the file: the only intervening operations
+  were a git add + commit of the rendered file, plus builds.
+
+  WHAT THE FIELD MEANS is what makes this a defect rather than a
+  report. discarded_text is text present in the FILE and absent from
+  the fresh render, so at call 3 the STORE did not hold note 2 —
+  while call 2's own envelope said it did. Either that write never
+  reached the store, or the divergence check compares against
+  something staler than the last write.
+
+  THE SECOND HALF IS INDEPENDENT OF THE CAUSE. Loss is announced in
+  a field nobody reads on a successful write, under a name that
+  points at a hand edit. That project's own CLAUDE.md tells sessions
+  hand edits are dropped silently, so the flag reads as expected
+  behaviour. Either refuse the write and report the divergence as an
+  error, or preserve the discarded text somewhere recoverable and
+  say where.
+
+  Worth testing whether an intervening git commit of the rendered
+  file is what desynchronises the comparison — that is the one
+  unusual step in the reporter's sequence. Two sessions run that
+  project concurrently, which is the other hypothesis to rule out.
+  Suspect ANTS-4507's class (parse(render(x)) is not identity) if
+  the note's own text is what failed to round-trip.
+  **Layman:** A note written into the roadmap was silently thrown away by the next note, and the tool blamed a hand edit that never happened.
+  Kind: fix.
+  Source: UT_Ants_Ants_MCP_Feedback.md 2026-09-08.
+  Lanes: roadmap-store, mcp.
+
+- 📋 [ANTS-4948] **roadmap_log has no op that moves an existing item to another section.**
+  Every op either creates an item in a section or edits one in
+  place; none changes the section column. create_section can make
+  the destination and nothing can put an item in it. On a
+  store-backed project that is terminal rather than inconvenient:
+  the file is a render, so a hand edit that moves a bullet is
+  reverted on the next write and reported as
+  discarded_external_edits.
+
+  MEASURED, not hypothetical: 7 of 25 planned items in a 0.1.0
+  section turned out not to be required by that release's cut
+  condition. Re-filing them as new items allocates new ids and
+  abandons the bodies — one of the seven cites three other items by
+  id, so the cross-references break. Leaving them annotated in place
+  leaves the section count overstating the release. Flipping them to
+  considered was rejected as dishonest: roadmap-format.md defines
+  that as a research phase with scope or feasibility uncertain,
+  which they are not.
+
+  Shape: op:"move" taking a locator (id|anchor|headline) plus a
+  destination `section` slug, writing the column and re-rendering —
+  the path flip and annotate already take. op:"move_batch" over
+  locators[] for the common case, since re-scoping moves several at
+  once. On a markdown-backed project, splice the bullet between
+  headings or refuse unsupported_format as create_section does
+  there.
+  Corroboration (2026-09-08): reported independently the same day by THREE projects — UT_Ants, Pressless and demoreel. That is the strongest signal any item in this triage carries.
+
+  demoreel proposes the cheapest shape and it is worth preferring: add `section` to op:"amend_field"'s enum, refusing an unknown slug the way the append path does. Same locate-then-write path the other field writes take, and no new op. Pressless's measured case — 112 items across 8 destinations — is why a batch form is still wanted beside it, since N single moves cost N renders.
+
+  demoreel also names the workaround the other two did not: hand-edit the file into the wanted grouping and re-run roadmap_migrate, which DOES move items correctly. It is not a route to recommend — it reports items_updated on the layman column for every item it touches (ANTS-4507's re-parse artefact), so a caller cannot tell a real change from noise while doing it, and ANTS-4955 means it rewrites every Layman line as it goes.
+  **Layman:** There is no way to move a roadmap item into a different section, so re-scoping a release cannot be recorded.
+  Kind: feature.
+  Source: UT_Ants_Ants_MCP_Feedback.md 2026-09-08.
+  Lanes: roadmap-store, mcp.
+
+- 📋 [ANTS-4949] **roadmap_log has no op to amend an existing section's intro prose, and a hand edit there is discarded.**
+  The intro prose under a `##` heading is held in the store and
+  re-emitted on every render, and no op writes it. create_section's
+  `intro_body` is the near miss: the field exists and the renderer
+  round-trips it; what is missing is a verb that sets it on an
+  existing slug.
+
+  MEASURED 2026-09-08 on UT_Ants, section `0-1-0-bake-and-render`: a
+  line inserted by hand then op:"render" returned
+  discarded_external_edits:true, discarded_edit_lines:2,
+  discarded_text carrying the probe line, and the file came back
+  byte-identical (verified with diff). The discard is correct and
+  well reported — the gap is that no supported route makes the edit.
+
+  Shape: op:"amend_intro" taking `section` (with the existing
+  bad_case / candidates handling) and `intro_body`, dry_run
+  previewable, mirroring create_section's intro_body semantics —
+  same hard wrap, same bad_intro refusal on a heading-shaped line. A
+  set/replace is enough. Cheaper alternative if a new op is too
+  much: `create_section` gaining an `if_exists:"update_intro"` mode.
+
+  Pairs with the op:"move" gap filed alongside it: the agreed repair
+  for that project's mis-scoped section was one line in the section
+  intro saying so, and neither verb could write it.
+  Design constraint found during triage (2026-09-08), before any code: a
+  slug-keyed op CANNOT reach every section that has an intro.
+
+  Checked read-only against the live store. The LEVEL-0 root section — the
+  one whose intro carries the format marker, the H1 and the document
+  preamble — has an EMPTY slug and an empty title. So `section:"<slug>"`
+  addresses every `##` heading and nothing addresses the root.
+
+  That is ANTS-4968's whole problem reached from this end, and the two are
+  one design decision rather than two items: either this op gains a way to
+  name the root section, or the preamble gets its own op:"set_preamble" /
+  op:"set_title" and this one stays `##`-and-below. Decide it before
+  building either.
+  **Layman:** The paragraph under a roadmap heading can be written when the heading is created and never changed after.
+  Kind: feature.
+  Source: UT_Ants_Ants_MCP_Feedback.md 2026-09-08.
+  Lanes: roadmap-store, mcp.
+
+- 📋 [ANTS-4950] **mutation_probe cannot read a Catch2 summary, so require_green_baseline is unavailable to a Catch2 project.**
+  require_green_baseline:true refused a whole batch with
+  code:"baseline_unreadable" — the baseline exited 0 and its output
+  could not be parsed for pass/fail counts. The refusal is honest
+  and its reasoning is right; the gap is the recognised set. Every
+  result in the batch also came back passed:-1 failed:-1, so the
+  per-mutation counts are unavailable on Catch2 even with the gate
+  dropped.
+
+  Catch2 is one of the three mainstream C++ frameworks and its
+  summary lines are fixed: "All tests passed (<A> assertions in <N>
+  test cases)" and the singular forms on success, "test cases: <N> |
+  <P> passed | <F> failed" on failure. Both on stdout, stable across
+  v3.
+
+  The documented workaround is to route through ctest, but a Catch2
+  project using catch_discover_tests registers one test per case, so
+  a tag-scoped subset is awkward to express as a -R pattern.
+
+  SECOND, CHEAPER HALF, and it is independent: where the counts are
+  unparsable but the exit code is readable, run the batch with the
+  gate DOWNGRADED and say so — a `baseline_gate:"exit_code_only"`
+  field — rather than refusing. An exit code is weaker evidence than
+  counts and it is not no evidence; it is what the mutation verdicts
+  themselves already rest on. Without either, the reporter
+  established the baseline by hand, which is exactly the
+  unfalsifiable state ANTS-4401 was written to close.
+  **Layman:** On projects using the Catch2 test framework the mutation tool cannot check the suite was green first, so its verdicts rest on nobody's evidence.
+  Kind: enhancement.
+  Source: UT_Ants_Ants_MCP_Feedback.md 2026-09-08.
+  Lanes: mcp.
+
+- 📋 [ANTS-4951] **similar_code takes `shape` where every sibling search verb takes `query`.**
+  similar_code {query:...} refuses bad_args naming `shape`, with
+  ignored_args:["query"]. The refusal is good and self-correcting in
+  one cycle. `query` is the natural guess because workspace_search
+  takes it as an alias for `pattern`, so the two search-shaped verbs
+  in one family take different names for the same idea.
+
+  Fix: accept `query` as an alias for `shape`, on the precedent
+  already set in both directions — apply_edits accepts
+  old_string/new_string for old/new (ANTS-4089), workspace_search
+  accepts `query` for `pattern`. `shape` wins if both are sent, as
+  every other alias here does.
+  **Layman:** One search tool names its main argument differently from the others, so the natural guess is refused.
+  Kind: enhancement.
+  Source: UT_Ants_Ants_MCP_Feedback.md 2026-09-08.
+  Lanes: mcp.
+
+- 📋 [ANTS-4952] **The batch argument is `paths` on some verbs and `regions` on others, with no stated convention.**
+  read_regions refused bad_op_combo on a call carrying BOTH `paths`
+  and `regions` — aliases for the same batch key, pass exactly one —
+  with supplied[] echoing both. The refusal is good and the reporter
+  says so.
+
+  WHAT IS ASKED FOR IS NOT ANOTHER ALIAS. This is the third instance
+  of one class in that project's file alone: similar_code `shape` vs
+  `query`, invariant_check `files` vs `paths`, now this. The ask is
+  a single documented convention for the batch key across the
+  batch-capable verbs, so `paths` means the same thing wherever it
+  appears — a pass over the catalogue rather than another individual
+  fix.
+
+  The reporter's alternative — honour both when they are CONSISTENT,
+  as they were here — is recorded and not recommended: it makes the
+  inconsistency cheaper to live with rather than smaller.
+  **Layman:** Tools that take a list of files spell that list differently, so a session that just used one guesses wrong on the next.
+  Kind: doc.
+  Source: UT_Ants_Ants_MCP_Feedback.md 2026-09-08.
+  Lanes: mcp.
+
+- 📋 [ANTS-4953] **The worktree write guard refuses by naming path containment, so a session does not learn the worktree is the reason.**
+  ANTS-4887 is confirmed shipped from the reporting project: a read
+  from a worktree now returns source:"store" and the correct live
+  status, and op:"annotate" dry_run from that worktree REFUSES
+  instead of patching the worktree's rendered file.
+
+  THE CAVEAT IS THE ITEM. The refusal reads "render path escapes the
+  project root: <worktree>/ROADMAP.md" — path containment, not the
+  worktree. The probe worktree sat outside the project root, so that
+  single observation cannot separate a worktree guard from a generic
+  outside-the-root guard, and a worktree placed INSIDE the project
+  root is untested. Either way the silent patch is gone.
+
+  A session reading that message learns to retarget the PATH when
+  the fix is to retarget the CHECKOUT. If the guard does key on the
+  worktree, say so: caller_cwd is a git worktree, the roadmap store
+  is keyed to the main checkout at <path>. Check the
+  inside-the-root worktree case while there — if the guard is purely
+  containment, that one is unguarded.
+  **Layman:** The tool now correctly refuses to write from a temporary checkout, but its message points at the wrong thing to fix.
+  Kind: enhancement.
+  Source: UT_Ants_Ants_MCP_Feedback.md 2026-09-08 (ANTS-4887 confirmation caveat).
+  Lanes: roadmap-store, mcp.
+
+- 📋 [ANTS-4954] **An offloaded read_region spends its whole envelope on a preview truncated mid-array, and never says why it spilled.**
+  A read_region of a 331-line region returned offloaded:true with a
+  spill handle at bytes:19432, and the preview was the expensive
+  part: head_truncated:true and head_rows_truncated:true cut it
+  mid-array, and rows_preview_omitted:true said no per-row preview
+  was possible either. The reply cost its full framing, delivered
+  roughly the first 2 KB, and the region had to be fetched again.
+
+  REPORTED AS NON-REPRODUCIBLE and filed on the captured envelope
+  rather than a repro: the identical call later returned inline. No
+  size threshold is claimed.
+
+  TWO SEPARABLE ASKS, and the second is the one the non-repro points
+  at. (1) When the head cannot carry whole rows, drop the preview
+  rather than emitting a truncated one — the handle plus the hint is
+  the whole usable payload and the partial head is pure cost. (2)
+  Say WHY it spilled. 19432 bytes is over the offload threshold
+  (claude.mcp_offload_threshold_bytes, default 16384) and far under
+  read_region's own max_bytes default, so a caller comparing against
+  the bound it was given cannot tell a genuinely large region from a
+  transient condition worth retrying. If the decision depends on
+  anything other than the region's own bytes, the envelope is where
+  that belongs.
+
+  COST, which is the part worth acting on: the reporter dropped to
+  `sed -n` via Bash for every subsequent spec read that session —
+  the raw-tool fallback the verbs exist to replace.
+  **Layman:** When a file read is too big to return directly, the summary it returns instead is cut off mid-way and useless.
+  Kind: enhancement.
+  Source: UT_Ants_Ants_MCP_Feedback.md 2026-09-08.
+  Lanes: mcp.
+
+- 📋 [ANTS-4955] **A re-migrate strips the trailing full stop from every Layman line, because the parse drops it and the render never restores it.**
+  REPORTED with a byte-diff and CONFIRMED IN THE TREE, so this is a
+  mechanism rather than an observation. `parseTrailers()` in
+  src/roadmapparse.cpp ends the Layman extraction "trim, drop ONE
+  trailing period for INV-4, trim again" (ANTS-4596's comment says
+  so in those words), and src/roadmaprender.cpp emits
+  `**Layman:** ` + the value with nothing appended. So the stop is
+  dropped on the way in and never put back.
+
+  THE ASYMMETRY IS THE DEFECT. A value written through roadmap_log's
+  `layman` argument is stored verbatim, terminal stop included —
+  this project's own items render with one. A value PARSED from a
+  file loses it. So the column's content depends on which route
+  wrote it, and re-migrating an already-store-backed project rewrites
+  every verb-written value to the parse-written form.
+
+  MEASURED by the reporter on Pressless: back up the store, run
+  roadmap_migrate, op:"render", diff. Every `Layman:` line differs
+  and only in its trailing full stop; no other line differs.
+  Restoring the backup and re-rendering returned the file
+  byte-identical, which is what proves the loss is the migrate's and
+  not the render's.
+
+  WHY IT MATTERS BEYOND COSMETICS: it makes roadmap_migrate unsafe
+  to re-run on a migrated project, which is exactly when a session
+  reaches for it — as a repair or a re-import route. The damage is
+  silent, uniform, and irreversible without a backup taken first.
+  ANTS-4948's re-sectioning work is blocked by it for the same
+  reason.
+
+  WHAT TO DECIDE FIRST, before touching code: does the stored value
+  INCLUDE its terminal stop? roadmap-format.md is upstream in this
+  project and owns that. INV-4's drop presumably serves a display
+  surface that adds its own punctuation; if so the drop belongs
+  there and not in the parse. Pin whichever answer with a
+  round-trip fixture — one item whose Layman line ends in a full
+  stop, through migrate and back, compared byte for byte.
+  **Layman:** Re-importing a roadmap quietly rewrites the wording of every item's plain-English summary.
+  Kind: fix.
+  Source: Pressless_Ants_MCP_Feedback.md 2026-09-08.
+  Lanes: roadmap-store, roadmapparse.
+
+- 📋 [ANTS-4956] **roadmap_query check_sync omits file_in_sync on the drifted arm — the one arm the question is asked for.**
+  The verb documents `file_in_sync` as emitted on every arm — the
+  "only" in "plus drift_lines / drift_restyled / drift_lost /
+  drift_lost_text on the drifted arm only" qualifies the DRIFT
+  fields — and makes a point of saying `sync_checked` rides every arm
+  so absence means nobody looked.
+
+  MEASURED THE OPPOSITE on Pressless, 2026-09-07, without `compact`
+  and without `fields`. In sync: `file_in_sync:true` present.
+  Drifted: the key is ABSENT, not false, while sync_checked:true and
+  all four drift fields are present.
+
+  SELF-CONCEALING, which is why it survived. A caller writing
+  `if (reply.file_in_sync)` gets the right answer by accident
+  (undefined is falsy). The two careful shapes get the wrong one: a
+  caller branching on `=== false` never fires, and one testing
+  `"file_in_sync" in reply` to confirm the check ran is told it did
+  not. The verb's stated purpose is the two-directional answer
+  `file_ahead_of_store` cannot give, and the negative direction is
+  the unreportable one.
+
+  COMPOUNDING IT: `fields:["file_in_sync"]` on the drifted arm
+  returns a bare `{}` with NO `fields_unmatched`, because the name is
+  recognised and simply not in the envelope — the one shape
+  ANTS-4567 was built to make impossible.
+
+  Fix: emit `file_in_sync:false` on the drifted arm. Check whether
+  `compact:true` would then drop it as a falsy value, and if so
+  protect it the way ok / found / unchanged already are — an
+  explicit false is the payload here, not dead weight.
+  **Layman:** The check that answers “is the roadmap file up to date?” leaves the answer out whenever the answer is no.
+  Kind: fix.
+  Source: Pressless_Ants_MCP_Feedback.md 2026-09-08.
+  Lanes: mcp, roadmap-store.
+
+- 📋 [ANTS-4957] **would_discard_external_edits fires on a stale render nobody edited, so the flag warns hardest on the recovery path.**
+  The field is named for hand edits and reads as one. Measured, it
+  is also true on a file this verb itself produced and nobody
+  touched — an earlier render of the same store, restored from git.
+
+  THREE ARMS, and the information IS there, just not in the field a
+  caller branches on:
+
+    in sync       false, no discard fields at all
+    hand edit     true, discard_text_lines 1, would_discard_text
+                  carrying the edited line
+    stale render  true, discard_text_lines 0,
+                  discard_restyled_lines 1, would_discard_text ABSENT
+
+  So the only signal that nothing dies is a zero plus the ABSENCE of
+  a key — the shape ANTS-4567 exists to make unnecessary elsewhere.
+
+  WHERE IT BITES is the recovery path. `git checkout ROADMAP.md`
+  reverts the render and not the store, and op:"render" is the fix.
+  A session that has fallen into that trap and previews the recovery
+  is told its own about-to-be-corrected file is an external edit the
+  recovery will discard — which is backwards. Discarding it is the
+  point.
+
+  Fix, and it is reporting rather than new analysis since the verb
+  already computes both: emit a cause beside the boolean —
+  `would_discard_reason` of "hand_edit" vs "stale_render" — or name
+  would_discard_text_lines as the load-bearing one. If one boolean
+  must carry the answer, the honest question is whether any TEXT
+  dies.
+
+  Cheaply and separately: the in-sync arm omits the discard fields
+  rather than emitting zeros, so a caller reading
+  would_discard_text_lines gets undefined there. Zeros would make
+  all three arms readable from one set of keys.
+  **Layman:** The warning that says “this will throw away your hand edits” also fires when there are none, including while you are fixing the file.
+  Kind: enhancement.
+  Source: Pressless_Ants_MCP_Feedback.md 2026-09-08.
+  Lanes: roadmap-store, mcp.
+
+- 📋 [ANTS-4958] **Re-sectioning needs delete_section and a section order too, and section_index hands back neither ids nor positions.**
+  ANTS-4948 asks for op:"move". EXECUTING a re-section showed a move
+  op alone would not finish the job, so this is the rest of it,
+  measured rather than predicted — 112 items across 8 destinations
+  on Pressless, 2026-09-08.
+
+  The transaction actually required, in order: (1) reassign each
+  element's section and renumber position within each destination —
+  that is ANTS-4948; (2) DELETE the emptied source section; (3)
+  reposition all ten surviving sections into version order. Steps 2
+  and 3 have no verb at all: roadmap_log can CREATE a section and
+  nothing deletes or reorders one. A project that re-sections with a
+  move op is left holding an empty legacy section it cannot remove,
+  wherever it was created — the state the re-section existed to
+  leave behind.
+
+  WHY IT IS NOT EXOTIC: roadmap-format.md made release blocks the
+  default at every version on 2026-09-06, so a roadmap predating
+  that has to move its whole item set to conform. The standard
+  changed and the store offers no verb to follow it.
+
+  A FOURTH THING SURFACED ON THE RENDER: deleting the source section
+  also destroyed its INTRO, reported as discarded_external_edits
+  with the intro text in discarded_text. Correct here, and it is
+  ANTS-4949's write-once-intro gap reached from the other end — an
+  intro cannot be edited and can be destroyed as a side effect of a
+  delete asked for on unrelated grounds.
+
+  Shape: op:"delete_section" taking a slug, REFUSING while the
+  section still holds elements so it cannot be the destructive half
+  of a half-finished move, and echoing the intro text it removed.
+  op:"reorder_sections", or a `position` argument on create_section
+  and on ANTS-4949's amend op.
+
+  CHEAP AND INDEPENDENT, and it is the one to do first: have
+  roadmap_query mode:"section_index" return each section's id and
+  position beside its slug and counts. A caller forced to the SQL
+  fallback currently cannot even find the ids without querying the
+  store directly.
+
+  ONE MORE COST WORTH RECORDING: the SQL write was refused from the
+  agent side by the permission classifier, so a standard-mandated
+  restructure ended with the session composing SQL for the user to
+  paste into a shell — an atomic multi-statement write against the
+  project's datastore, outside every guard rail the verb layer
+  provides.
+  Corroboration (2026-09-08): demoreel reported the delete half independently, reaching it from the other end — a project restructured from one section into several, where the emptied original survives every render and shows in the Roadmap dialog.
+
+  It records the only route available today, and why it is not one: op:"deregister" with confirm:true followed by a fresh migrate, which discards the project's entire stored history to fix a presentation defect.
+
+  AND IT PROPOSES AN ALTERNATIVE TO delete_section worth deciding between rather than assuming: have roadmap_migrate PRUNE a section the incoming markdown no longer contains and that holds no items. That keeps the FILE authoritative for structure, which is what a caller restructuring the file expects — measured there, removing the heading and re-migrating reported sections_unchanged and the next render put the heading back. A rename would cover the adjacent case.
+
+  The two proposals differ in who owns structure: an explicit op keeps the store authoritative, a migrate prune hands structure back to the file. Pick one deliberately.
+  **Layman:** Even with a way to move items, an emptied section cannot be removed and sections cannot be put in order.
+  Kind: feature.
+  Source: Pressless_Ants_MCP_Feedback.md 2026-09-08.
+  Lanes: roadmap-store, mcp.
+
+- 📋 [ANTS-4959] **spec_log cannot APPEND to a Status field, so recording “this decision was later built” falls back to a raw edit.**
+  op:"set_status" takes `status` as the REPLACEMENT value, and
+  preserve_body:true rewrites the opener LINE only. Both are
+  documented and neither is wrong. The missing third shape is
+  additive: a Status that already carries a paragraph — when it was
+  accepted, how its gate converged, why it capped — and one clause
+  to add saying a decision in it is now built.
+
+  With the Status wrapped over several lines the two routes are:
+  retype the whole paragraph into `status`, which risks silently
+  rewording a review history (the loss ANTS-4136 added preserve_body
+  to prevent), or use preserve_body and accept that only the opener
+  is rewritten, severing a sentence wherever the opener ends
+  mid-clause. In hard-wrapped prose the wrap position is not a
+  sentence boundary and nothing makes it one.
+
+  MEASURED on docs/specs/PRESS-0019-insights.md: the Status opener
+  ended "…which is" and continued "not the direction a spec usually
+  runs;". set_status preserve_body dry_run returned previous_status
+  as the whole field joined (~490 chars) at line 3, so the kept
+  continuation would have begun mid-sentence. apply_edits on the
+  `**Status:** accepted (2026-09-06).` prefix did the job in one
+  call.
+
+  IMPACT IS A PAPERCUT and the fallback is clean — but it is a raw
+  text edit on the one structured field spec_log exists to own, so
+  it loses the atomic write, the previous_status echo and the line
+  resolution, on the field a later reader trusts most.
+
+  Shape: `status_append`, or op:"append_status", adding text at the
+  end of the resolved field and re-wrapping nothing. It needs no
+  prose parsing — the field's extent is already computed, which
+  `previous_status` proves — so appending is inserting before the
+  field's last line's end. That sidesteps the sentence-boundary
+  problem, which is why it beats a smarter preserve_body: no
+  delimiter this corpus agrees on separates the state word from the
+  prose after it, and a heuristic would drop text on the shapes it
+  guessed wrong.
+  **Layman:** Adding one sentence to a spec's status line means retyping the whole paragraph or cutting it mid-sentence.
+  Kind: enhancement.
+  Source: Pressless_Ants_MCP_Feedback.md 2026-09-08.
+  Lanes: mcp.
+
+- 📋 [ANTS-4960] **No verb answers “which projects mirror this standard”, and that question is the blocker on warning the owner side of a mirror.**
+  A public project may carry a verbatim copy of a global standard,
+  and the drift check scores it on the MIRROR side only — it fired
+  correctly three times on this project's own copies. The OWNER side
+  has no signal: a review pass changes a standard upstream and each
+  mirror finds out at its next commit, separately.
+
+  WHAT BLOCKS IT IS NOT THE CHECK. It is where the list of mirroring
+  projects lives. The reporting repo has no registry of downstream
+  projects, and inventing one is a design choice: a checked-in file
+  upstream, a marker each mirror writes back, or discovery by path.
+
+  WHY IT LANDS HERE: the roadmap store is machine-global and is the
+  only thing on this machine that already walks the project corpus.
+  A verb answering "which registered project roots carry a file
+  whose MIRROR BEGIN marker names this standard" dissolves the
+  blocker without anyone inventing a registry — the corpus IS the
+  registry.
+
+  SCOPE NOTE before building: the store holds roots, not file
+  contents, so this is a walk over N roots rather than a query, and
+  the cost is real. Measure it against the registered-project count
+  before choosing between a verb and a cached index. Nothing was
+  asked of the MCP as filed — the reporter logged it because the
+  question is cross-project and this is the only cross-project
+  surface.
+  **Layman:** When a shared rule document changes, nothing can tell you which projects are carrying a copy of it.
+  Kind: feature.
+  Source: claude_config_Ants_MCP_Feedback.md 2026-09-08 (CFG-0130).
+  Lanes: mcp, roadmap-store.
+
+- 📋 [ANTS-4961] **The SURVIVOR check — does the text a commit just deleted still exist elsewhere — has no verb, and it is the one its own project rates highest.**
+  One project now runs seven blocking check classes in its
+  pre-commit hook — PATH, SURVIVOR, ALLOWED-TOOLS, CITATION,
+  ROADMAP-ID, TABLE, SECTION — and every one is a check over
+  markdown documents, which is what doc_integrity, doc_citations and
+  spec_lint already do centrally. A hook is per-repository; a verb
+  is not.
+
+  CITATION and SECTION look closest to doc_citations and
+  doc_integrity and may already be covered — check before building.
+  SURVIVOR has no verb equivalent at all and is the one that project
+  rates highest, having caught a stale snippet a manual sweep had
+  missed for days.
+
+  SHAPE: given the text a commit removed, search the tree for it
+  still standing somewhere else. That is the fix-the-rule's-home
+  rule made checkable, and it is exactly the failure this project
+  keeps hitting from the other side — a corrected fact left copied
+  elsewhere.
+
+  The interesting design question is the INPUT: a hook has the diff
+  and a verb does not. Either take the removed text directly, or
+  read it from the working-tree diff the way git_state op:"diff"
+  already does. The second is what makes it callable without a hook.
+
+  Filed as a candidate rather than a commitment: the reporter asked
+  the question rather than requesting the verb, and the honest first
+  step is to measure the noise floor the way that project measured
+  every other class it declined.
+  **Layman:** After deleting a sentence from a document, nothing checks whether a stale copy of it is still sitting in another file.
+  Kind: feature.
+  Source: claude_config_Ants_MCP_Feedback.md 2026-09-08.
+  Lanes: mcp.
+
+- 📋 [ANTS-4962] **op:"init" writes a skeleton whose roadmap-format link cannot resolve in the kind of project that calls it.**
+  CONFIRMED IN THE TREE. `RoadmapMigrateVerb::initSkeleton()` emits
+  `> [roadmap-format.md](docs/standards/roadmap-format.md).` A
+  project reaching for op:"init" is BY DEFINITION one with no
+  roadmap, and such a project generally has no docs/standards/
+  either — so the generated file starts life with a dead relative
+  link, in the file the project is told is now its source of truth.
+
+  TWO COSTS, and the second is the one worth caring about.
+  check-doc-facts flags unresolvable links, so the first
+  documentation check after a bootstrap reports a defect the project
+  did not introduce and cannot fix without creating the file or
+  editing a generated one. And a link in a generated file teaches a
+  reader that ROADMAP.md is hand-editable, which is what the store
+  model exists to stop.
+
+  Fix: drop the link and name the standard in prose, or cite a path
+  that resolves from any project. The format marker on line 1 is
+  already the machine-readable reference, so the link is carrying
+  nothing the file needs. Pin it with a fixture asserting the
+  skeleton contains no relative link — the ANTS-4740 skeleton test
+  already parses the output and is the place to add it.
+  **Layman:** The starter roadmap file it creates links to a document the new project does not have.
+  Kind: fix.
+  Source: demoreel_Ants_MCP_Feedback.md 2026-09-08.
+  Lanes: roadmapmigrate, mcp.
+
+- 📋 [ANTS-4963] **project_settings op:"detect" counts no source in a project whose implementation is one extensionless executable script.**
+  detect reported total_source_count 0 with reason "no source files
+  found under the project root" and put source_roots in
+  unavailable[], for a project whose whole implementation is one
+  executable file named `demoreel` carrying a
+  `#!/usr/bin/env python3` shebang and no extension.
+
+  THE SECOND HALF IS WHAT MAKES IT A TRAP: because the count is
+  zero, source_roots cannot be declared at all — op:"set" would have
+  nothing valid to point at — so the key stays permanently
+  unavailable and every verb keying off it works from an empty set,
+  with no route for the project to correct it.
+
+  Single-file command-line tools are a common shape on this machine
+  and are routinely shipped without an extension so the command
+  reads well on PATH.
+
+  Fix: where a file is executable and has no extension, read its
+  shebang and classify by the interpreter named there. Cheap,
+  deterministic, and it does not loosen detection for ordinary data
+  files. Independently of that, op:"set" accepting the repository
+  root even when the walk found nothing would give a project the
+  route to declare the truth — worth doing anyway, since a detector
+  will always have shapes it misses.
+  **Layman:** A one-file command-line tool looks like an empty project, and there is no way to tell it otherwise.
+  Kind: enhancement.
+  Source: demoreel_Ants_MCP_Feedback.md 2026-09-08.
+  Lanes: mcp.
+
+- 📋 [ANTS-4964] **roadmap_query emits neither `warning` nor `parseable_bullets` on the store path, and adopt-project prescribes both as its parse-failure check.**
+  The adopt-project skill prescribes this call verbatim —
+  roadmap_query with fields including `warning` and
+  `parseable_bullets` — and says those two are what distinguish a
+  genuine count of zero from a roadmap the verb could not parse. On
+  a store-backed project neither is in the envelope: both come back
+  in fields_unmatched.
+
+  WHY THAT IS WORSE THAN A MISSING FEATURE: the ABSENCE of a warning
+  is indistinguishable from the field never existing, so the
+  prescribed diagnostic cannot do the job it is specified for. A run
+  reading a missing warning as evidence of a parseable roadmap is
+  reasoning from a field the backend does not emit. It was harmless
+  for the reporter because the roadmap really was parseable — the
+  check would have been equally silent had it not been.
+
+  TWO DOCUMENTS DISAGREE about what the envelope carries, so exactly
+  one of them changes. Either emit both on the store path —
+  `parseable_bullets` as the count, `warning` as null when there is
+  nothing to say — or state in the field descriptions that they are
+  markdown-only, in which case the skill must read `source` first
+  and branch.
+
+  SCOPE: adopt-project lives under ~/.claude and is outside this
+  repo, so if the answer is markdown-only then half the fix is a
+  change there and this item owns the description only. Decide which
+  way before touching either.
+  **Layman:** The check that is supposed to tell a broken roadmap from an empty one asks for two fields the tool does not send.
+  Kind: fix.
+  Source: demoreel_Ants_MCP_Feedback.md 2026-09-08.
+  Lanes: mcp, roadmap-store.
+
+- 📋 [ANTS-4965] **A render flattens indentation and column alignment inside a stored body, and the preview reports zero lines lost.**
+  Re-rendering the store over a drifted file re-flowed two bullet
+  bodies and destroyed their structure. A nested sub-list lost its
+  indent, so its continuation lines now sit flush with the bullet
+  marker and no longer read as belonging to it. A hand-aligned count
+  table lost its alignment entirely, and a wrapped description line
+  is now indistinguishable from a new row.
+
+  BOTH THE DRY RUN AND THE WRITE REPORTED discarded_text_lines:0,
+  against would_discard_restyled_lines:18. Literally true — no words
+  were lost — and materially misleading, because what was lost is
+  the whitespace that carried the structure.
+
+  THE DRY RUN IS THE SAFETY CHECK before a render, and on this input
+  it reads as safe. The counter-argument that restyled_lines already
+  signals it does NOT hold, and the reporter says why: a benign
+  re-wrap produces restyling too, so the two cases share one number
+  and nothing separates them.
+
+  Two fixes, and they are alternatives. Preserve leading whitespace
+  inside a stored body verbatim — the render already knows the
+  body's common indent, since it dedents on read (ANTS-4558). Or
+  split the restyled count, so a caller can tell an
+  indentation-destroying re-flow from a benign re-wrap: a
+  discarded_structure_lines figure over lines whose leading
+  whitespace or internal column runs changed.
+
+  RELATED AND NOT THE SAME: ANTS-4957 is about would_discard's
+  BOOLEAN firing on a stale render. This is about what the counts
+  beside it fail to say. ANTS-4612 already refuses an amend_body
+  span whose re-flow would destroy column alignment — the same
+  structure this render destroys without asking, which is worth
+  reading as the two halves disagreeing about how much whitespace
+  matters.
+  **Layman:** Re-rendering the roadmap can destroy the layout of a nested list or a lined-up table, and the safety preview says nothing was lost.
+  Kind: fix.
+  Source: Contact_List_Ants_MCP_Feedback.md 2026-09-08.
+  Lanes: roadmap-store, roadmapparse.
+
+- 📋 [ANTS-4966] **audit_dismiss has no class-wide form, so a false positive that is a property of the rule costs one call per site.**
+  The fingerprint ledger is keyed on rule + file + message, which is
+  right for a one-off and has no expression for a false positive
+  that is a property of the RULE against this project rather than of
+  one site.
+
+  MEASURED, two in one audit of a ~12k-line project: vulture reports
+  every Flask route handler and every config class attribute as
+  unused — 54 findings across 8 files, all the same fact about
+  decorators; and typos reports the project's domain vocabulary as
+  misspelled — 50 findings across 12 files, GTK introspection
+  package names of the form gir1.2-* and PyInstaller's datas=
+  parameter.
+
+  SO ROUGHLY A HUNDRED CALLS TO RECORD TWO FACTS. The realistic
+  outcome is that the triage is not recorded at all and the next
+  sweep re-litigates it — the exact cost the ledger exists to
+  remove. And it scales the wrong way: the bigger the project, the
+  less likely the dismissal is written down. A new file added later
+  re-raises the whole class.
+
+  Shape: accept a path glob in place of `file`, and optionally a
+  message pattern in place of the exact message, so
+  {rule:"vulture", file:"routes/*.py",
+  message_pattern:"unused function"} records the class once.
+  Fingerprint-keyed entries stay exactly as they are — this is a
+  second, coarser record shape the same reader consults.
+
+  Check against docs/standards/audit-false-positives.md before
+  building: that ledger's contract is the thing being extended, and
+  a coarser key changes what a stale entry can hide.
+  **Layman:** Dismissing one wrong warning that appears in fifty places takes fifty separate calls, so nobody records it.
+  Kind: enhancement.
+  Source: Contact_List_Ants_MCP_Feedback.md 2026-09-08.
+  Lanes: audit, mcp.
+
+- 📋 [ANTS-4967] **op:"set_body" caps new_text at 4096 characters, so a body can be read whole and not written back.**
+  set_body is the documented route back for a body no unique
+  old_text can express. Its `new_text` is capped at 4096 characters,
+  while roadmap_query's single-id fetch defaults to 16384 and
+  accepts up to 1048576. So there is a range of bodies that can be
+  read whole and not written back at all.
+
+  MEASURED: an ordinary shipped item, ~4.5 KB of body carrying a
+  progress note and a resolution note. roadmap_query with
+  max_body_bytes:20000 returns it whole; passing that same text back
+  corrected refuses too_large.
+
+  THE CAP IS BACKWARDS FOR THIS OP. A long body is exactly the one
+  most likely to need it — an append-only item accumulates progress
+  notes until it is precisely the shape set_body exists for, and
+  then exceeds the cap. The fallback is several surgical amend_body
+  calls, which is what set_body was added to avoid, and which
+  refuses body_match_wrapped_block on any span carrying column
+  alignment. The reporter hit this on a real item and fell back to
+  two amend_body calls.
+
+  4096 is right for amend_body's old_text / new_text, which are
+  FRAGMENTS. set_body takes a whole body and is a different shape.
+
+  Fix: raise the set_body cap to what the read side hands out on a
+  single-id fetch, or accept a `file_path` the way changelog_log and
+  the artifact db writes already do for large payloads, so a whole
+  body need not cross the JSON boundary inline. The second is
+  probably better here — ANTS-1853 says a large inline body can drop
+  in transit, which is a worse failure than a refusal.
+  **Layman:** The command for replacing a mangled roadmap entry refuses the long entries it exists to rescue.
+  Kind: fix.
+  Source: Contact_List_Ants_MCP_Feedback.md 2026-09-08.
+  Lanes: roadmap-store, mcp.
+
+- 📋 [ANTS-4968] **No verb writes a store-backed roadmap's title or preamble, and they are the root section's intro, which has no slug to address it by.**
+  REPORTED as two findings — the preamble being unwritable, and the
+  render "resolving this project to the drive root" so the H1 names
+  the wrong project. THE SECOND MECHANISM IS NOT WHAT HAPPENED, and
+  the correction changes the fix.
+
+  VERIFIED against the live store, read-only. That project's row is
+  CORRECT: name "UT Monster Hunt", root the project directory. The
+  render never consults it for a title. src/roadmaprender.cpp
+  replays the LEVEL-0 root section's `intro` verbatim — its own
+  comment says so, "it already carries § 3.1's marker and the H1,
+  because the migration builds intros from raw source lines and
+  filters neither". That project's root-section intro literally
+  holds the format marker, `# Roadmap — /mnt/Games` and a preamble
+  about the games drive, captured when the roadmap still lived at
+  the drive root.
+
+  SO THE RENDER IS FAITHFUL AND THE STORED CONTENT IS STALE. There
+  is no resolver bug and nothing reads the nearest ancestor
+  CLAUDE.md. What is missing is a route to rewrite that intro.
+
+  AND THE OBVIOUS ROUTE DOES NOT REACH IT. The root section row
+  carries an EMPTY slug and an empty title — checked in the store —
+  so ANTS-4949's op:"amend_intro", keyed by section slug, cannot
+  address it. Either that op needs a way to name the root section,
+  or this needs its own op:"set_preamble" / op:"set_title";
+  feedback_log already ships an op:"set_title", so the shape exists.
+  Decide that before building ANTS-4949, because the two are one
+  design.
+
+  SECOND HALF, independent of the route: a normal roadmap_log write
+  DISCARDS a hand edit to the preamble silently rather than
+  refusing. The drift IS detectable — check_sync and the render's
+  dry run both name the lines — but only if a session thinks to ask.
+  Refusing the way ANTS-4141's divergence guard does elsewhere would
+  at least say the header is store-owned.
+
+  AND THE REPAIR A SESSION REACHES FOR MAKES IT WORSE: re-applying
+  the discarded header produces a file with TWO H1s, because the
+  generated one is still there. roadmap_migrate is not the escape
+  either — its dry run on that project reports items_updated:13 with
+  fields:["layman"] on every one (ANTS-4507's artefact, and ANTS-4955
+  means it rewrites those columns as it goes).
+  **Layman:** A roadmap whose title names the wrong project cannot be corrected by any command, and fixing it by hand is undone silently.
+  Kind: fix.
+  Source: UT_MonsterHunt_Ants_MCP_Feedback.md 2026-09-08.
+  Lanes: roadmap-store, mcp.
+
+- 📋 [ANTS-4969] **op:"append" rewrites the tracked .roadmap-counter on a store-backed project, where nothing reads it.**
+  roadmap_query answers source:"store" on that project. An
+  op:"append" in the same session rewrote the repo-tracked
+  .roadmap-counter (48 -> 49) and reported counter_advanced_past:48
+  / counter_advanced_to:49 in its envelope, on a backend that does
+  not consume the file.
+
+  TWO COSTS. Git noise on every filed item, which a session then has
+  to explain or stage deliberately — it was noticed only because the
+  project owner read the diff and asked. And a divergence trap: if
+  the store and the counter file ever disagree, the file reads as
+  authoritative to anyone who opens it, and nothing says which
+  backend allocated the id.
+
+  DECIDE WHICH IT IS before changing anything, because the envelope
+  is the tell either way. If the file is dead weight on the store
+  path, skip it. If it is deliberately kept in step as a
+  markdown-compatibility MIRROR, then `counter_advanced_*` is the
+  wrong name for it — that reads as the allocation source. A
+  distinct field, or a `mirrored:true` beside it, separates the two.
+  **Layman:** Filing a roadmap item changes a tracked file the database backend does not use, so every item shows up as an extra change in git.
+  Kind: fix.
+  Source: UT_MonsterHunt_Ants_MCP_Feedback.md 2026-09-08.
+  Lanes: roadmap-store, mcp.
+
+- 📋 [ANTS-4970] **A wrapped amend_body match re-flows the lines it spanned into one long line, and nothing re-wraps them.**
+  Filed as an improvement request rather than a defect, and
+  correctly: ANTS-4550 documents this in as many words — "a wrapped
+  match re-flows the lines it spanned into one".
+
+  On a body hard-wrapped to about 70 columns, an old_text spanning a
+  line break matches with wrapped_match:true and joins every line
+  the match spanned. The renderer does not re-wrap, so the file ends
+  up with one line several times the width of its neighbours —
+  measured at roughly 145 characters against neighbours all under
+  80.
+
+  WHAT IT COSTS: the caller has to know in advance, and the
+  workaround is not obvious — widen old_text to span the whole
+  re-flowed region and hand-wrap the newlines into new_text. A
+  two-word correction becomes a three-line one. A caller who does
+  not notice leaves a visibly ragged paragraph in a file whose whole
+  value is being read by a person, and CANNOT fix it by hand
+  afterwards, because the store discards external edits. The
+  reporter caught it only because they happened to dry-run first.
+
+  Fix: after a wrapped match, re-wrap the affected paragraph to the
+  width the body already uses — inferable from the median or maximum
+  line length of the untouched lines in that body, so no new
+  configuration is needed and an unwrapped body is left alone.
+  Cheaper fallback: report the joined line's length beside
+  wrapped_match:true, so a caller sees it needs the wider form
+  without dry-running and eyeballing body_paragraph.
+
+  RELATED: ANTS-4965 is the render destroying structure this way
+  without being asked. Same underlying question — how much of a
+  body's whitespace is content.
+  **Layman:** Correcting two words in a roadmap note can leave one line stretched to twice the width of every line around it.
+  Kind: enhancement.
+  Source: UT_MonsterHunt_Ants_MCP_Feedback.md 2026-09-08.
+  Lanes: roadmap-store, mcp.
+
+- 📋 [ANTS-4971] **roadmap_query blames the ID filter for an empty result the `kind` filter caused, and calls a well-formed roadmap malformed.**
+  When `kind` matches nothing, the reply carries a warning
+  attributing the empty set to the DEFAULT ID filter and describing
+  every bullet in the roadmap as an id-less rollup or narrator line.
+
+  MEASURED, and the counter-evidence is in the same envelope pair.
+  On a store-backed project where every bullet carries an id:
+  kind:"review-fix" status:"active" returns count 0 with "default
+  ID-filter dropped all 39 bullet(s) (every entry was either a
+  rollup-summary or narrator-prose line with no [PROJ-NNNN] id)".
+  The same call with `kind` dropped returns those same 39 bullets,
+  with ids, and no warning. kind:"doc-fix" returns 2 and no warning —
+  so the EMPTY case is the only one that misreports.
+
+  WHY IT COSTS MORE THAN A WRONG ANSWER WOULD. The true answer — no
+  item carries that kind — is exactly what was asked and is the one
+  thing the envelope does not say. A session that believes the
+  warning files a roadmap defect that does not exist, or re-issues
+  with include_narrator_bullets:true, gets the same zero and is no
+  wiser. A session that disbelieves it spends a call proving the
+  roadmap is fine. A false EXPLANATION attached to a CORRECT result
+  is harder to notice than a wrong result.
+
+  Fix: attribute an empty set to the filter that actually emptied
+  it, and suppress the ID-filter warning when the ID filter was not
+  the cause. The shape already exists twice in sibling verbs —
+  mode:"section_index" echoes sections_considered /
+  sections_filtered_out (ANTS-4610), file_outline's filter echoes
+  symbols_considered / symbols_filtered_out (ANTS-3839), both so a
+  zero is distinguishable from an empty subject. A kind_considered /
+  kind_filtered_out pair is consistent with both.
+
+  The reporter's last point is the sharpest: `kind`'s own schema
+  note argues for REFUSING an unrecognised value on the ground that
+  a silently misexplained empty result reads as "nothing matches".
+  This is the second half of a guard already half built.
+  **Layman:** Asking for a kind of item that does not exist gets the right answer wrapped in a false claim that the roadmap is broken.
+  Kind: fix.
+  Source: Games_Hub_Ants_MCP_Feedback.md 2026-09-08.
+  Lanes: mcp, roadmap-store.
+
+- 📋 [ANTS-4972] **invariant_check names a spec that merely mentions the path, hiding the spec that governs the file by symbol.**
+  Every tier matches the PATH, so a spec that governs a file through
+  its SYMBOLS is invisible to this verb. The schema already handles
+  the dangerous zero — path_match_only:true fires on an empty result
+  and names the workspace_search fallback — but it cannot fire when
+  some OTHER spec matches the path incidentally, and that case is
+  quieter and no safer.
+
+  MEASURED: invariant_check on one source file returned exactly one
+  match, a PACKAGING spec. The spec actually governing the code
+  being edited cites that file only as `HubWindow::setGameActions()`
+  and `m_soundSeparator` — symbols, never the path — and
+  workspace_search finds it immediately. No path_match_only, no
+  basename_matches, no fallback_match: a confident matched_count 1
+  naming the spec that does not govern the edit.
+
+  WHY IT MATTERS: this is write-code's Phase 0 lookup 1. The skill's
+  own guidance says a non-empty result is not proof of what governs
+  an edit, and a session reading the envelope has nothing to act on
+  — the incidental match reads exactly like an answer. Here the
+  correct spec surfaced only because an unrelated workspace_search
+  happened on it, and it carried a claim the edit falsified. THE
+  ZERO CASE IS STRICTLY BETTER SERVED THAN THE ONE-WRONG-MATCH CASE,
+  which is the wrong way round.
+
+  Fix, cheapest first: emit path_match_only-style information beside
+  a NON-empty result too — a note that matching is path-only, so a
+  spec citing this module by symbol would not appear. Better: scan
+  for the file's stem as a symbol and report those specs in a
+  separate array, reported-and-never-merged the way
+  basename_matches already is, so a weaker match cannot hide among
+  path hits.
+  **Layman:** The check that finds which design document governs a file can confidently name the wrong one.
+  Kind: fix.
+  Source: Games_Hub_Ants_MCP_Feedback.md 2026-09-08.
+  Lanes: mcp.
+
+- 📋 [ANTS-4973] **apply_edits dry_run returns applied / edits_applied / files_written — three past-tense keys asserting a write that did not happen.**
+  RE-MEASURED by the reporter rather than re-read, and it still
+  reproduces: apply_edits {dry_run:true} on a real anchor returned
+  {"applied":[{"path":"CHANGELOG.md","replacements":1}],
+  "dry_run":true, "edits_applied":1, "files_written":1} and
+  `git status` was clean afterwards.
+
+  So nothing was written and three keys say otherwise. `dry_run:true`
+  is in the envelope, but a caller that branches on `files_written`
+  or `edits_applied` — the natural did-it-work test — reads a
+  preview as a completed write.
+
+  THIS EXACT CLASS IS ALREADY SETTLED ELSEWHERE. ANTS-4463 fixed it
+  for roadmap_log: a dry run there emits `would_write:[...]` and
+  `note_would_append`, with `files_written` and `note_appended`
+  ABSENT, precisely so a caller reading one field cannot mistake a
+  preview for a write. The same treatment applies here —
+  `would_apply`, `would_edit_count`, `would_write_files`, with the
+  past-tense keys absent.
+
+  The reporter's earlier entry on this carries no id, which is why
+  it was still open to re-measure; that is what this item closes.
+  **Layman:** The preview mode of the file-editing tool reports that it wrote the file, when it did not.
+  Kind: fix.
+  Source: LocalWebServerManager_Ants_MCP_Feedback.md 2026-09-08.
+  Lanes: mcp.
+
+- 📋 [ANTS-4974] **mutation_probe reports a mutant killed by a crash and one killed by an assertion with the same word.**
+  A mutation deleted a line DEFINING a name read further down. The
+  mutant raised NameError, 12 tests failed, and the verdict was
+  `killed` — the same word a mutant caught by a real assertion gets.
+
+  THOSE TWO OUTCOMES CARRY OPPOSITE INFORMATION. A mutant killed by
+  an assertion says the suite measures the behaviour. A mutant
+  killed by a crash says only that the edit was not valid code — it
+  proves nothing about coverage, and a caller counting `killed` as
+  evidence of a strong suite is counting it wrongly. The reporter
+  noticed only because the failure count was 12 where every other
+  mutant in the batch failed 1.
+
+  IT OVERSTATES TEST QUALITY QUIETLY, which is the worst direction
+  for a verb whose whole purpose is answering "would this suite
+  catch the defect?".
+
+  Fix, cheapest first: the envelope already knows `failed`, so a
+  `killed_by` distinguishing `assertion` from `error` is derivable
+  from the runner's output — pytest names NameError and collection
+  errors distinctly from assertion failures. The failure-count
+  outlier the reporter spotted is a second, weaker signal available
+  for free.
+
+  FAILING THAT, one sentence in the description: a mutant that makes
+  the module unimportable or raises a NameError is killed trivially
+  and is not evidence about the suite — prefer a mutation that
+  leaves the code valid and changes only what it MEANS. That is
+  worth adding whichever way the field goes, since it is guidance
+  about how to write a mutation and no field replaces it.
+
+  Related: ANTS-4950 wants a baseline gate this verb cannot
+  currently apply on some runners. Both are about the verdicts
+  resting on evidence a caller can see.
+  **Layman:** The tool that measures test strength counts a broken-on-purpose file as proof the tests are good.
+  Kind: enhancement.
+  Source: LocalWebServerManager_Ants_MCP_Feedback.md 2026-09-08.
+  Lanes: mcp.
+
+- 📋 [ANTS-4975] **mutation_probe takes one path per call, so a mechanism spanning two files cannot be probed as one mechanism.**
+  Every batch mutates a single file. Where a fix spans two — the
+  same defect at twin call sites, or a value in one file and its use
+  in another — the only route is two calls with the same
+  test_command.
+
+  THE ROUND TRIP IS THE SMALL COST. The substantive loss is that the
+  two halves can only be mutated SEPARATELY, so nothing can ask
+  whether they are held JOINTLY. A mutant that breaks half a
+  mechanism can be killed by a test that would also pass with the
+  other half broken, and the batch reports two independent `killed`
+  verdicts either way.
+
+  MEASURED TWICE IN ONE SESSION. One fix corrected an identical
+  `except BaseException` clause in two modules — two calls, each
+  with its own require_green_baseline run. Another pinned a checksum
+  in a shell env file and consumed it in a CI workflow, where the
+  interesting mutant is precisely "change one side only", which
+  cannot be expressed at all. Four calls where two would have done,
+  and the cross-file mutant unavailable in both.
+
+  WHY IT MATTERS THERE: that project mandates mutation before
+  believing an invariant is held, and its most-repeated trap is a
+  mechanism that looks covered because one of several redundant
+  guards was mutated in isolation. The per-file limit reproduces
+  exactly that blind spot at the file boundary.
+
+  Fix: let a mutation carry its own `path`, with the top-level
+  `path` as the default — so a batch stays one call, one baseline
+  and one verdict list, and a single batch can name two files. That
+  also makes "change one side only" expressible as two mutations in
+  one batch, which the current shape cannot reach.
+  **Layman:** A fix that touches two files has to be tested as two unrelated things, so nothing checks they hold together.
+  Kind: enhancement.
+  Source: LocalWebServerManager_Ants_MCP_Feedback.md 2026-09-08.
+  Lanes: mcp.
+
+- 📋 [ANTS-4976] **roadmap_query's bad_mode refusal explains the id lookup and never names `query`, the argument that answers the question being asked.**
+  A session tried mode:"search" to find a bullet by subject. The
+  refusal is helpful about IDS — "item lookup is an argument, not a
+  mode" — and never mentions `query`, so the reporter concluded no
+  argument answered the question and fell back to workspace_search
+  over the rendered ROADMAP.md: three calls and a judgement call to
+  recover an id, on the one access path the store exists to replace.
+
+  THE CAPABILITY EXISTS. `query` is a case-insensitive substring
+  filter over headline AND body on the bullets and headline_only
+  paths, composing with status and section, and it returns the same
+  structured rows those modes return — id, status, section_slug —
+  which is exactly what the fallback could not give. Verified from
+  this session on this project: query:"quarantined ids" returned two
+  bullets with ids and statuses.
+
+  SO THIS IS A DISCOVERABILITY DEFECT, not a missing feature, and
+  the refusal is where it lives. A refusal that explains ONE
+  adjacent argument reads as an exhaustive list of what the verb can
+  do. Name `query` (and `q`, and whole_word / regex) in the bad_mode
+  refusal, on the same reasoning ANTS-4556's candidates[] rests on:
+  the refusal is where a caller is already looking.
+
+  Worth checking the selection_hint and the mode enum's own
+  description for the same silence while there — the reporter read
+  both before reaching for an invented mode.
+  **Layman:** Someone looking for a roadmap item by what it is about was told the feature does not exist, when it does.
+  Kind: enhancement.
+  Source: LocalWebServerManager_Ants_MCP_Feedback.md 2026-09-08.
+  Lanes: mcp.
+
+- 📋 [ANTS-4977] **There is no status for “closed, deliberately not fixed”, so such an item is flipped to shipped and the roadmap overstates.**
+  The four statuses are planned / in-progress / shipped / considered.
+  An item whose correct outcome is "recorded, will not be fixed" has
+  no home, and flipping it to shipped is the only way out of the
+  open queue.
+
+  THE COST IS THAT A ✅ ON A SECURITY ITEM READS AS FIXED — to every
+  status scan, to review-ledger, and to compact_resolved — with only
+  the prose note saying otherwise. The reporter's case: findings in
+  dead code that nothing builds, closed because the trees were
+  excluded from the sweeps and the defects left in place on purpose.
+  They wrote the note so its first words are NOT FIXED, which is a
+  workaround.
+
+  CHEAPER THAN IT LOOKS, and this is the part worth knowing before
+  anyone scopes it. The store's `item.status` CHECK already permits
+  a fifth value: ('planned','in-progress','shipped','considered',
+  'dropped'). So the one-way door is already paid — no
+  kSchemaVersion bump, which CLAUDE.md rightly calls a one-way door
+  across every project on this machine. Verified read-only against
+  the live store.
+
+  WHAT IS MISSING is everything above the column: no emoji, no parse
+  mapping, no render, and the value is absent from every verb enum.
+  Grepped: nothing in the render or the write path handles it.
+
+  SO THE WORK IS: pick the marker, add it to roadmap-format.md
+  (upstream in this project, so this repo decides), map it in the
+  parse and render, add it to roadmap_log's to_status / status enums
+  and roadmap_query's status filter, and decide whether it counts as
+  active or closed in the aggregates — which is the one question
+  with no obvious answer, since it is closed for queue purposes and
+  not shipped for ledger purposes.
+
+  The reporter names the payoff exactly: it gives compact_resolved
+  and review-ledger something reliable to key on instead of prose.
+  **Layman:** An item decided against has to be marked done, so the roadmap claims work that was never carried out.
+  Kind: feature.
+  Source: DOOM_Ants_MCP_Feedback.md 2026-09-08.
+  Lanes: roadmap-store, mcp.
+
+- 📋 [ANTS-4978] **project_settings cannot record WHY a setting is what it is, so a rationale forces the hand edit the instruction forbids.**
+  op:"set" writes the six recognised keys and the schema is
+  additionalProperties:false, so no rationale can be attached.
+  Narrowing source_roots is exactly the decision that needs one —
+  the next session sees a short list and no reason for it.
+
+  THE FILE ALREADY TOLERATES IT AND ONLY THE VERB CANNOT WRITE IT.
+  Measured: adding a `_comment` key by hand works — op:"get" ignores
+  it and an op:"set" dry run shows it preserved through the merge.
+
+  WHICH PUTS TWO INSTRUCTIONS IN CONFLICT. The standing rule is
+  never to hand-write .ants/project.json, because the verb validates
+  paths. Recording a rationale forces exactly that hand edit,
+  against the instruction, on a file the verb otherwise owns.
+
+  Two fixes and either closes it: accept an optional free-text note
+  on op:"set" — writing the `_comment` the reader already tolerates
+  — and echo it from op:"get"; or document `_comment` as a supported
+  hand-maintained key so the instructions stop conflicting. The
+  first is better: it keeps the verb the only writer, which is what
+  the instruction is protecting.
+  **Layman:** There is nowhere to write down why a project setting was narrowed, so the next session sees the choice and not the reason.
+  Kind: enhancement.
+  Source: DOOM_Ants_MCP_Feedback.md 2026-09-08.
+  Lanes: mcp.
+
+- 📋 [ANTS-4979] **A refusal envelope echoes fields_unmatched naming every requested field, pointing at the wrong cause.**
+  feedback_query against a wrong path with a `fields` list returns
+  ok:false, code:"not_found", AND fields_unmatched listing every
+  name passed. The field names were fine; the file was absent.
+
+  Diagnostic noise rather than a defect in the answer — code:
+  "not_found" is right there — but it points at the wrong cause, and
+  fields_unmatched exists precisely so a narrowed reply says WHY it
+  came back nearly empty (ANTS-4567). On a refusal it says something
+  false instead.
+
+  Fix: omit fields_unmatched on a refusal envelope, since no field
+  could have matched.
+
+  CHECK THE WHOLE FAMILY, not just this verb. ANTS-4524 made
+  `fields` honoured by every verb and ANTS-4930 added
+  fields_available beside it, so this is likely shared machinery and
+  the same reply shape on any verb that refuses with a fields list
+  present. Fix it once at that layer.
+  **Layman:** When a file is missing, the reply also complains that every field you asked for is unrecognised.
+  Kind: fix.
+  Source: DOOM_Ants_MCP_Feedback.md 2026-09-08.
+  Lanes: mcp.
+
+- 📋 [ANTS-4980] **feedback_query's `path` description names a corpus root that holds no feedback file.**
+  The `path` argument reads "Absolute (the canonical case — files
+  live at /mnt/Games/Scripts/Linux/)". The corpus is one level
+  deeper, in Ants_MCP_Feedback_Files/, and nothing matching
+  *_Ants_MCP_Feedback.md exists at the stated root. feedback_log's
+  own `path` description states no root and is unaffected.
+
+  WHY IT IS NOT MERELY COSMETIC. Derivation (omitting `path`)
+  resolves correctly — verified by the reporter via dry_run, and
+  again from this session, where session_orient reports shared_root
+  as the Ants_MCP_Feedback_Files directory. The risk is a session
+  that reads the hint and CONSTRUCTS an explicit absolute path from
+  it: that targets a file which is not there, and op:append_finding
+  would then CREATE a stranded file at the wrong root rather than
+  refusing, because ANTS-4647's guard fires on the derivation route
+  only.
+
+  So the wrong hint routes a caller around the guard that exists for
+  exactly this mistake — which is what ANTS-4900 was filed about
+  from the other direction.
+
+  Fix: name the Ants_MCP_Feedback_Files/ subdirectory, or drop the
+  example root and point at derivation. The second is better: the
+  root is configurable (claude.mcp_feedback_root), so any literal
+  path in a description is a claim that can go stale on another
+  machine.
+  **Layman:** The tool's own help points at the wrong folder for the shared feedback files.
+  Kind: doc-fix.
+  Source: Games_Ants_MCP_Feedback.md 2026-09-08.
+  Lanes: mcp.
+
+- 📋 [ANTS-4981] **A max_body_bytes below the floor is silently raised, defeating the caller trying to keep the reply inline.**
+  On a multi-id ids[] fetch, max_body_bytes clamps to [2000, 16384].
+  The UPPER clamp is announced — `bytes_cap_clamped` exists
+  elsewhere in the MCP for exactly this — and the LOWER one is not.
+  A value under 2000 is raised silently and the envelope echoes
+  nothing.
+
+  IT DEFEATS PRECISELY THE CALLER WHO WAS BEING CAREFUL. Someone
+  passing a small cap is trying to keep the reply inline, and they
+  get a larger reply than they asked for with no signal that their
+  argument was overridden.
+
+  MEASURED: ten ids with ~2.3 KB bodies at max_body_bytes 1400.
+  Expected ~14 KB inline; the reply spilled to a handle at 23,634
+  bytes — about 2,363 per row, consistent with 1400 having been
+  raised to 2000. Nothing in the envelope named the clamp.
+
+  SAME SHAPE AS ANTS-4701, and the reporter names it: learning after
+  the call that the cap applied to nothing costs most exactly the
+  caller who was trying to bound the response.
+
+  Fix: echo the clamp — a `body_cap_clamped:true` mirroring the
+  existing `bytes_cap_clamped`, plus the effective value, so the
+  caller can accept the floor or switch to out_dir / paging
+  deliberately. Alternatively honour a smaller value on the ids
+  path: the floor's stated reason is that a body under it is not
+  worth returning, and a caller who says 1400 has already made that
+  judgement.
+
+  NOT A COMPLAINT, recorded because it is the other half: the spill
+  itself handled well — rows_preview gave one shape row per row with
+  per-row byte counts, which is what is needed to decide what to
+  fetch. Read that against ANTS-4954, where a read_region spill's
+  preview was truncated mid-array and carried nothing usable.
+  **Layman:** Asking for smaller item bodies is ignored without saying so, and the reply spills to a file anyway.
+  Kind: fix.
+  Source: LottoTracker_Ants_MCP_Feedback.md 2026-09-08.
+  Lanes: mcp, roadmap-store.
+
+- 📋 [ANTS-4982] **op:"append_batch" refuses every bullet when `status` is given at the call level, where `pass` falls back.**
+  HIT IN THIS SESSION. An append_batch of 8 bullets carrying a
+  call-level `status:"planned"` and no per-bullet status refused all
+  8 into skipped[], each with bad_status and 'unknown status ""'.
+  The whole batch — several hundred lines of composed bodies — had
+  to be re-sent.
+
+  WHY THE MISTAKE IS PREDICTABLE RATHER THAN CARELESS. `status` IS a
+  call-level argument on this verb, for op:"append". And the schema
+  establishes the fallback pattern explicitly for a sibling field:
+  ANTS-4354 made the call-level `pass` "the FALLBACK for any bullet
+  that carries none". So one field falls back and the other does
+  not, with nothing saying which is which.
+
+  THE REFUSAL DOES NOT HELP EITHER: 'unknown status ""' describes an
+  empty value rather than a missing one, so it reads as a malformed
+  per-bullet status instead of an absent one.
+
+  Two fixes and either would do. Make the call-level `status` the
+  per-bullet fallback, matching `pass`. Or refuse the CALL with a
+  message naming the call-level status as ignored, rather than
+  refusing each bullet for a value the caller did supply. The first
+  is better and costs nothing: a batch appended in one call almost
+  always shares one status.
+
+  If neither, then say it in the `status` description — that it is
+  op:"append" only and append_batch requires it per bullet.
+  **Layman:** Filing eight roadmap items at once fails entirely if the status is written once instead of eight times.
+  Kind: enhancement.
+  Source: in-session-2026-09-08, hit while triaging the feedback corpus.
+  Lanes: mcp, roadmap-store.
+
+- 📋 [ANTS-4983] **assign_id_batch fails a whole assignment on a heading that differs by one word, with no candidates to correct it from.**
+  HIT IN THIS SESSION. One assignment in a batch of seven refused
+  target_not_found because the heading I sent read "a hand edit is
+  discarded" where the file said "a hand edit to one is
+  discarded" — two words, in a heading over ninety characters. The
+  other six applied, which is the batch behaving correctly.
+
+  WHAT IT COST was a grep against the file to recover the exact
+  text, then a second call. The single-assignment op:"assign_id"
+  DOES carry `candidates` on target_ambiguous, so the machinery for
+  naming near matches exists; target_not_found in the batch form
+  carried none.
+
+  This is the shape ANTS-4556 settled for roadmap_log's `section`
+  and ANTS-4350 for read_region's `section_not_found`: an unknown
+  locator refuses AND names the closest candidates, because the
+  refusal is where the caller is already looking. A verbatim
+  ninety-character heading match is exactly the argument that wants
+  it — the caller is copying text, so a near miss is the likely
+  failure and the correction is mechanical.
+
+  Fix: carry `candidates` on target_not_found, in the batch form as
+  well as the single one, ranked by the shared ranker those two
+  items already use. Nothing about the refusal itself changes —
+  guessing which heading was meant is not wanted.
+  **Layman:** Assigning an id fails if the heading is copied with one word out, and the reply does not show the near match.
+  Kind: enhancement.
+  Source: in-session-2026-09-08, hit while triaging the feedback corpus.
+  Lanes: mcp.
+
 ### Ants MCP without a terminal relaunch (user request 2026-09-07)
 
 Today every MCP verb is a C++ method compiled into the GUI binary and served
