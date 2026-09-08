@@ -81,9 +81,13 @@ tested apart from is not a seam.
   for the duration of the call and restores it, or the leg passes vacuously on a
   machine already running `umask 077`.
 - **INV-10** — `notes[]` honours its bounds: 2048 characters of `detail` each,
-  and 200 DISTINCT `(code, detail, source_index)` rows after ANTS-4649 collapses
-  repetition. A merged row carries `count` + up to three `sample_lines` and no
-  `line`; every row carries `count`, so the counts sum to `notes_count`.
+  and 200 DISTINCT `(code, detail, source_index)` rows BY DEFAULT after
+  ANTS-4649 collapses repetition — `max_notes` moves that bound, clamped to
+  `[1, 2000]`, and `notes_summary` maps each note `code` to its total count
+  across all notes before the cap. A merged row carries `count` + up to three
+  `sample_lines` and no `line`; every row carries `count`, and when
+  `notes_truncated` is `false` the counts sum to `notes_count`. Do not assert
+  that sum unconditionally: on a truncating run the shown rows sum to less.
   `notes_collapsed` (rows MERGED, nothing lost) and `notes_truncated` (rows
   DROPPED, unrecoverable) are two facts and stay two fields.
 
