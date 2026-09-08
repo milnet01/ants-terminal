@@ -1068,7 +1068,9 @@ void TerminalGrid::handleOsc(const std::string &payload, bool truncated) {
             if (u >= 0x20 && u != 0x7F && !(u >= 0x80 && u <= 0x9F))
                 sanitized += ch;
         }
-        m_windowTitle = sanitized;
+        // ANTS-4456 — through setTitle, which owns the length bound, so
+        // this ingress and the session-restore path cannot drift apart.
+        setTitle(sanitized);
     }
     // OSC 10/11/12 — default fg/bg/cursor color query (xterm convention).
     // Apps (delta, neovim, bat, lazygit, fzf, jj, …) use the query form to

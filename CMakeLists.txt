@@ -1430,6 +1430,8 @@ if(ANTS_TESTS)
                 tests/features/themedstylesheet_extraction/test_themedstylesheet_extraction.cpp
                 tests/features/origin_mode_correctness/test_origin_mode.cpp
                 tests/features/osc_color_query/test_osc_color_query.cpp
+                # ANTS-4456 — OSC 0/2 title is bounded, both ways in.
+                tests/features/osc_title_cap/test_osc_title_cap.cpp
                 tests/features/decrqss/test_decrqss.cpp
                 # ANTS-2192 — query-response amplification cap.
                 tests/features/query_response_ratelimit/test_query_response_ratelimit.cpp

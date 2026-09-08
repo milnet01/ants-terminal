@@ -387,7 +387,25 @@ public:
     }
     TermLine &screenLine(int row) { return m_screenLines[row]; }
     void setCursorPosition(int row, int col) { m_cursorRow = row; m_cursorCol = col; }
-    void setTitle(const QString &title) { m_windowTitle = title; }
+    // ANTS-4456 — the one choke point for the window title, so both ways
+    // in are bounded: handleOsc's OSC 0/2 ingress, and SessionManager's
+    // restore. An OSC title rides VtParser's multi-megabyte accumulator,
+    // reaches the window manager and the tab bar, and is written into the
+    // session blob — so an uncapped one comes back at every launch until
+    // the session is discarded. Capping only the OSC side would leave a
+    // blob written by an earlier build free to reintroduce a title no OSC
+    // could set any more. 1024 is far past any real title (the sibling
+    // OSC 777 notification title caps at 256) and far below a size that
+    // costs anything. Contract: tests/features/osc_title_cap/spec.md.
+    static constexpr int kMaxWindowTitleChars = 1024;
+    void setTitle(const QString &title) {
+        m_windowTitle = title.left(kMaxWindowTitleChars);
+        // Cutting at a code-unit boundary can split a surrogate pair, and
+        // half a pair is not a character — drop it rather than hand an
+        // unpaired code unit to the window manager.
+        if (!m_windowTitle.isEmpty() && m_windowTitle.back().isHighSurrogate())
+            m_windowTitle.chop(1);
+    }
 
     // Clear screen content (keeps scrollback) — used after session restore
     void clearScreenContent();
