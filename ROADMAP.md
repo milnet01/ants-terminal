@@ -38390,6 +38390,49 @@ whole files.
   Four HIGH claims remain, plus the MEDIUM list. One MEDIUM is already
   confirmed in passing: the installed hook script hardcodes the socket
   path under /tmp while the server side uses the temp-dir API.
+  Progress (2026-09-08, second pass): ALL EIGHT HIGH claims are now
+  verified against source and fixed. The MEDIUM list remains untouched.
+  Shipped in d1234ca9, 88a2cfbd, 49d0d307.
+
+  token_usage, both directions. Confirmed. A 304 sets a result that is
+  not "ok" and success was derived by equality with it, so the cheapest
+  outcome the server has was booked by the counters ANTS-1432 added to
+  measure waste. And a handler's own ok:false never reached
+  dispatchResult, so a rejected call was booked as a success and traced
+  as "ok". Both rules are now named statics, which is what makes them
+  testable at all; the refusal probe is size-bounded so a large
+  successful payload does not pay a second JSON parse, and above the
+  bound it behaves exactly as before.
+
+  Config re-parse rate. The reported figure is right and the arithmetic
+  is exact: the poll constants are 120 ms and 16 attempts, so a burst
+  spans just under the 2 s tick that arms it, and one tick plus one burst
+  is seventeen open-read-parse cycles per two seconds. The toggle
+  defaults to true and the burst is armed by the ABSENCE of a dialog, so
+  it ran whenever a terminal had focus, Claude running or not. That is
+  more than the five to seven per tick ANTS-2116 removed, on the same
+  timer, in the same file. Both reads now go through cachedConfig.
+
+  Subsystem map. Confirmed, and worse than reported: the parked-actuator
+  return precedes the handshake and the firing-side surfacing as well as
+  the injection and the ledger append. The entry also presented the
+  config flag as what holds the feature back, while the park comment says
+  the guard exists so a config flip can never re-arm it — so the map
+  invited a reader to reach for the config to exercise a disarmed path.
+  The test is bidirectional against the constant, so un-parking forces
+  the map to change too.
+
+  Filed while here: ANTS-4944, the same poll loop scans the terminal tail
+  sixteen times per tick. Verified as a loop; NOT measured, and the item
+  says so.
+
+  Method note. Three separate tests of mine passed against the defect
+  they were written for, each caught by a red run rather than by
+  reasoning: a phrase split across two adjacent C++ string literals, a
+  phrase split across a hard-wrapped line in markdown, and a
+  case-sensitive search against an emphasised word. All three now
+  normalise before matching. A green run would have looked identical in
+  every case.
 
 - 📋 [ANTS-4458] **Triage: LLM client/dispatcher and review-dialog findings from the cold sweep.**
   Reviewer claims carried forward as-is. NOT re-verified — check each against
@@ -65790,6 +65833,44 @@ a modern terminal" release.
   Kind: perf.
   Source: stale-premise-triage-2026-09-07.
   Lanes: perf, vt, terminal.
+
+- 📋 [ANTS-4944] **The switch-confirm burst scans the terminal tail sixteen times per tick, forever.**
+  Found while fixing ANTS-4457's config-parse claim, which shares this
+  loop. Not the same defect and not fixed with it.
+
+  maybeAutoConfirmUserModelSwitch runs on the 2 s status tick and, when
+  no "Switch model?" dialog is on screen, arms a burst of
+  pollUnarmedSwitchConfirm — kSwitchConfirmMaxPolls attempts at
+  kSwitchConfirmPollMs. Each attempt calls recentOutput on the focused
+  terminal and runs switchConfirmVisible over the result. The burst
+  budget is just under the tick interval, so the next tick arms the next
+  burst and the loop never stops.
+
+  That is sixteen scrollback reads and sixteen pattern scans every two
+  seconds, on the GUI thread, in the default configuration — the toggle
+  defaults to true and the burst is armed by the ABSENCE of a dialog, so
+  it runs whenever a terminal has focus, whether or not Claude is
+  running.
+
+  The config half of this loop was ANTS-4457's claim and is fixed: both
+  reads now go through cachedConfig. The scan half was not claimed and
+  has not been measured.
+
+  Verified: the constants are kSwitchConfirmPollMs 120 and
+  kSwitchConfirmMaxPolls 16; the arming condition and the per-attempt
+  recentOutput call are both in claudestatuswidgets.cpp. NOT verified: the
+  actual cost of one recentOutput call at the configured scan width, which
+  is what decides whether this matters.
+
+  Measure before designing. If it is material, the shape of a fix is
+  probably to arm the burst on a signal that a dialog may have appeared
+  rather than on every tick that finds none — ANTS-1955 armed it this way
+  to catch a dialog rendering between ticks, and that goal does not
+  require polling when nothing has changed.
+  **Layman:** A background check reads the terminal's recent output many times a second even when nothing is happening.
+  Kind: perf.
+  Source: in-session-2026-09-08.
+  Lanes: claudestatuswidgets.
 
 ### 🎨 Features — multiplexing
 

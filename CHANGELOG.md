@@ -145,6 +145,23 @@ for security-relevant changes.
 
 ### Fixed
 
+- **The MCP usage figures now count a call by what actually happened to it** (ANTS-4457)
+  Two errors cancelled each other out badly. A call that returned
+  "nothing changed since last time" — the cheapest possible result,
+  where Ants sends no data at all — was filed under failures, which is
+  the column meant for wasted effort. And a call a tool rejected for
+  bad input was filed under successes, because only rejections made by
+  the dispatcher itself were counted. Both are now filed correctly, and
+  the diagnostic trace names the rejection instead of reporting "ok".
+
+- **Ants no longer re-reads its settings file about eight times a second** (ANTS-4457)
+  A background check that watches for the Claude "Switch model?"
+  prompt re-opened and re-parsed the whole settings file on every one
+  of its polls, and those polls run continuously by default whether or
+  not Claude is even running. It now reuses the copy already held in
+  memory, which is refreshed whenever the file changes on disk — so
+  changing a setting still takes effect as before.
+
 - **Claude status no longer gets stuck needing a tab switch to wake up** (ANTS-4457)
   Ants finds the Claude session's log file to follow what Claude is
   doing. It looked exactly once, right after spotting Claude start —
