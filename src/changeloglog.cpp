@@ -200,6 +200,60 @@ int firstFeatureGroupedTopicLine(const QStringList &lines,
 }
 }  // namespace
 
+// ANTS-4563 — see the header. Classify by POSITION, which is the question both
+// guards were really asking and neither shared.
+UnreleasedShape classifyUnreleased(const QStringList &lines, int sectionStart,
+                                   int sectionEnd) {
+    UnreleasedShape s;
+    s.unreleasedFound = true;   // the caller located the heading to get here
+    // A dated topic is `### YYYY-MM-DD …`. QDate PARSES it rather than a regex
+    // matching its shape, so `### 2026-13-45 Added — …` is not mistaken for one.
+    const auto isDatedTopic = [](const QString &t) {
+        return QDate::fromString(t.mid(4, 10),
+                                 QStringLiteral("yyyy-MM-dd")).isValid();
+    };
+    for (int i = sectionStart; i < sectionEnd && i < lines.size(); ++i) {
+        const QString t = lines.at(i).trimmed();
+        if (!t.startsWith(QStringLiteral("### "))) continue;
+        if (canonicalCategories().contains(t.mid(4).trimmed(),
+                                           Qt::CaseInsensitive)) {
+            ++s.flatCount;
+            if (s.flatCategoryLine < 0) s.flatCategoryLine = i + 1;  // 1-based
+        } else if (isDatedTopic(t)) {
+            ++s.datedCount;
+            if (s.datedTopicLine < 0) s.datedTopicLine = i + 1;
+        }
+    }
+    s.mixed = s.flatCount > 0 && s.datedCount > 0;
+    s.datedLeads =
+        s.datedTopicLine > 0 &&
+        (s.flatCategoryLine < 0 || s.datedTopicLine < s.flatCategoryLine);
+    return s;
+}
+
+UnreleasedShape classifyUnreleased(const QString &markdown) {
+    const QStringList lines = markdown.split(QLatin1Char('\n'));
+    int unrel = -1;
+    for (int i = 0; i < lines.size(); ++i) {
+        if (lines.at(i).trimmed().compare(QStringLiteral("## [Unreleased]"),
+                                          Qt::CaseInsensitive) == 0) {
+            unrel = i;
+            break;
+        }
+    }
+    // No section is its OWN answer, not a flat one — a caller branching on
+    // datedLeads must not read "absent" as "flat".
+    if (unrel < 0) return {};
+    int sectionEnd = lines.size();
+    for (int i = unrel + 1; i < lines.size(); ++i) {
+        if (lines.at(i).startsWith(QStringLiteral("## "))) {
+            sectionEnd = i;
+            break;
+        }
+    }
+    return classifyUnreleased(lines, unrel + 1, sectionEnd);
+}
+
 QString preRenderedSummaryReason(const QString &summary, const QString &id) {
     const QString t = summary.trimmed();
     if (t.startsWith(QLatin1String("**"))) {
@@ -310,6 +364,52 @@ InsertResult insertUnreleasedEntry(const QString &markdown,
             "To hand-edit, copy that shape exactly.")
             .arg(topicLine).arg(category);
         return r;
+    }
+
+    // ANTS-4563 — refuse a MIXED section whose dated topics LEAD. The guard
+    // above cannot see it: firstFeatureGroupedTopicLine is a PRESENCE test and
+    // returns -1 the moment any `### ` heading is a canonical category word, so
+    // one legacy `### Added` in the tail declassified the whole section. The
+    // flat insert then found a category heading IN that tail and appended
+    // there — measured on Vestige at ~10,900 lines below the newest entry, with
+    // ok:true, which is why two entries had to be undone by hand.
+    //
+    // Refused HERE rather than only at the verb, so no direct caller can bury
+    // an entry: op:"add_batch" shares this function and now reports the refusal
+    // per entry in skipped[] instead of writing into the tail. op:"add" itself
+    // still WRITES — the verb routes it to insertUnreleasedSubsection, which
+    // inserts at the TOP among the dated topics (decided by the user
+    // 2026-09-07; refusing outright was rejected, because the previous remedy
+    // text pointed callers at op:add in the first place and that loop is what
+    // buried the entries).
+    //
+    // Scoped to a MIXED section deliberately. A purely dated section is already
+    // refused above whenever it carries a bold run, which every dated corpus
+    // measured does; the no-bold-run case is a separate gap and is filed rather
+    // than widened into here on a shape nothing in the corpus has.
+    {
+        const UnreleasedShape shape =
+            classifyUnreleased(lines, unrel + 1, sectionEnd);
+        if (shape.mixed && shape.datedLeads) {
+            r.code = QStringLiteral("mixed_section");
+            r.error = QStringLiteral(
+                "changelog_log: `## [Unreleased]` is MIXED — %1 dated topic(s) "
+                "lead (first at line %2) with %3 flat Keep-a-Changelog "
+                "category heading(s) below them (first `### %4` at line %5). A "
+                "flat `### %6` insert would land in that tail, far below the "
+                "newest entry, where no reader looks. Use "
+                "op:\"add_subsection\", which writes the dated-topic form this "
+                "section leads with, at the top — op:\"add\" routes there for "
+                "you.")
+                .arg(shape.datedCount)
+                .arg(shape.datedTopicLine)
+                .arg(shape.flatCount)
+                .arg(lines.at(shape.flatCategoryLine - 1).trimmed().mid(4)
+                         .trimmed())
+                .arg(shape.flatCategoryLine)
+                .arg(category);
+            return r;
+        }
     }
 
     // ANTS-2125 — flag a pre-existing malformed section (non-heading
@@ -561,34 +661,20 @@ SubsectionResult insertUnreleasedSubsection(const QString &markdown,
         // Refuse only when no dated topic precedes the flat heading, which is
         // the genuinely flat section ANTS-4356 was protecting.
         //
-        // A dated topic is `### YYYY-MM-DD …`, which is what the block below
-        // emits. QDate parses it rather than a regex matching its shape, so a
-        // `### 2026-13-45 Added — …` is not mistaken for one.
-        const auto isDatedTopic = [](const QString &t) {
-            return QDate::fromString(t.mid(4, 10),
-                                     QStringLiteral("yyyy-MM-dd")).isValid();
-        };
-        int flatCategoryLine = -1;
-        int datedTopicLine   = -1;
-        int flatCount = 0, datedCount = 0;
-        for (int i = unrel + 1; i < sectionEnd && i < lines.size(); ++i) {
-            const QString t = lines.at(i).trimmed();
-            if (!t.startsWith(QStringLiteral("### "))) continue;
-            if (canonicalCategories().contains(t.mid(4).trimmed(),
-                                               Qt::CaseInsensitive)) {
-                ++flatCount;
-                if (flatCategoryLine < 0)
-                    flatCategoryLine = i + 1;   // 1-based, for humans
-            } else if (isDatedTopic(t)) {
-                ++datedCount;
-                if (datedTopicLine < 0) datedTopicLine = i + 1;
-            }
-        }
+        // ANTS-4563 — this scan moved to classifyUnreleased(), which op:"add"
+        // now reads too. The test is unchanged; what changed is that ONE
+        // function answers it, so the two guards can no longer drift apart the
+        // way they had (a presence test against an order test, opposite answers
+        // on one section, and the entry buried in the gap between them).
+        const UnreleasedShape shape =
+            classifyUnreleased(lines, unrel + 1, sectionEnd);
+        const int flatCategoryLine = shape.flatCategoryLine;
+        const int datedTopicLine   = shape.datedTopicLine;
+        const int flatCount        = shape.flatCount;
+        const int datedCount       = shape.datedCount;
         // A dated topic ABOVE the first flat heading = a dated section with a
         // legacy tail. The top insert is safe there, so allow it.
-        const bool datedLeads =
-            datedTopicLine > 0 &&
-            (flatCategoryLine < 0 || datedTopicLine < flatCategoryLine);
+        const bool datedLeads = shape.datedLeads;
         if (flatCategoryLine > 0 && !datedLeads) {
             const QString firstFlat =
                 lines.at(flatCategoryLine - 1).trimmed().mid(4).trimmed();

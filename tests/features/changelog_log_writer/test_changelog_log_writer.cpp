@@ -72,6 +72,23 @@ const char *kFeatureGroupedChangelog =
     "## [0.1.0] - 2026-01-01\n\n"
     "- old.\n";
 
+// ANTS-4563 — a MIXED `## [Unreleased]`: dated topics on top, a legacy flat
+// Keep-a-Changelog tail below. Vestige's reported shape, and the one that fell
+// between the two guards — `firstFeatureGroupedTopicLine` returns -1 the moment
+// it sees `### Added`, so the flat insert ran and appended into the TAIL. The
+// first dated topic is line 5, the first flat heading line 9 (1-based).
+const char *kMixedChangelog =
+    "# Changelog\n\n"                                          // 1, 2
+    "## [Unreleased]\n\n"                                      // 3, 4
+    "### 2026-09-01 Fixed \xE2\x80\x94 A dated topic. (P-1)\n\n"  // 5, 6
+    "Prose under the dated topic.\n\n"                         // 7, 8
+    "### Added\n\n"                                            // 9, 10
+    "- **Legacy added entry.** (P-0001)\n\n"                   // 11, 12
+    "### Fixed\n\n"                                            // 13, 14
+    "- **Legacy fix, down in the tail.** (P-0002)\n\n"         // 15, 16
+    "## [0.1.0] - 2026-01-01\n\n"
+    "- old.\n";
+
 // ants-v1 roadmap with one bullet carrying a Layman + Kind line.
 QByteArray roadmapBody() {
     return QByteArray(
@@ -634,6 +651,111 @@ TEST(changelog_log_writer, Ants3416FeatureGroupedRefusalHelper) {
     EXPECT_TRUE(malformed.ok)
         << "a flat category layout must never be mistaken for feature-grouped";
     EXPECT_TRUE(malformed.malformed_section);
+}
+
+// ANTS-4563 — one shape test, and the MIXED section that fell between two.
+//
+// `firstFeatureGroupedTopicLine` is a PRESENCE test: one canonical `### `
+// heading anywhere declassifies the whole section, so op:add's
+// `feature_grouped_section` refusal never fired on a dated-led section with a
+// legacy flat tail. The flat insert then found a category heading IN that tail
+// and appended there — measured on Vestige at ~10,900 lines below the newest
+// entry, reported ok:true. The subsection guard (ANTS-4562) is an ORDER test
+// and tolerates the same section. One shape, two classifiers, opposite answers.
+TEST(changelog_log_writer, Ants4563ClassifyUnreleasedReadsOrderNotPresence) {
+    const auto mixed =
+        ChangelogLog::classifyUnreleased(QString::fromUtf8(kMixedChangelog));
+    EXPECT_TRUE(mixed.unreleasedFound);
+    EXPECT_EQ(mixed.datedTopicLine, 5);
+    EXPECT_EQ(mixed.flatCategoryLine, 9);
+    EXPECT_EQ(mixed.datedCount, 1);
+    EXPECT_EQ(mixed.flatCount, 2);
+    EXPECT_TRUE(mixed.mixed);
+    EXPECT_TRUE(mixed.datedLeads)
+        << "a dated topic ABOVE the first flat heading is dated-led: the top "
+           "insert lands among its own kind and never touches the tail";
+
+    // A flat section: no dated topic, so nothing leads and nothing is mixed.
+    const auto flat =
+        ChangelogLog::classifyUnreleased(QString::fromUtf8(kChangelog));
+    EXPECT_TRUE(flat.unreleasedFound);
+    EXPECT_EQ(flat.datedTopicLine, -1);
+    EXPECT_GT(flat.flatCategoryLine, 0);
+    EXPECT_FALSE(flat.datedLeads);
+    EXPECT_FALSE(flat.mixed);
+
+    // No `## [Unreleased]` at all is its own answer, not a flat section.
+    const auto none = ChangelogLog::classifyUnreleased(
+        QStringLiteral("# Changelog\n\n## [0.1.0] - 2026-01-01\n"));
+    EXPECT_FALSE(none.unreleasedFound);
+    EXPECT_FALSE(none.datedLeads);
+}
+
+// The flat insert must REFUSE a dated-led section rather than bury the entry in
+// its tail. Refused in the engine so no direct caller can bury one —
+// op:"add_batch" included, where it lands in skipped[] instead of the tail.
+TEST(changelog_log_writer, Ants4563FlatInsertRefusesAMixedSection) {
+    const auto mixed = ChangelogLog::insertUnreleasedEntry(
+        QString::fromUtf8(kMixedChangelog), QStringLiteral("Fixed"),
+        QStringLiteral("- **New one.** (ANTS-9)"));
+    EXPECT_FALSE(mixed.ok)
+        << "the flat insert would land at line " << mixed.line
+        << ", inside the legacy tail";
+    EXPECT_EQ(mixed.code, QStringLiteral("mixed_section"));
+    EXPECT_TRUE(mixed.markdown.isEmpty())
+        << "a refusal must not produce a rewritten body";
+    EXPECT_TRUE(contains(mixed.error.toStdString(), "add_subsection"))
+        << "the refusal must name the route that works: "
+        << mixed.error.toStdString();
+
+    // A purely flat section is untouched by the new guard.
+    const auto flat = ChangelogLog::insertUnreleasedEntry(
+        QString::fromUtf8(kChangelog), QStringLiteral("Fixed"),
+        QStringLiteral("- **New one.** (ANTS-9)"));
+    EXPECT_TRUE(flat.ok) << flat.error.toStdString();
+}
+
+// And op:"add" still WRITES on a mixed section — routed to the dated-topic form
+// at the TOP, which is what the user decided (2026-09-07). Refusing outright
+// was rejected: the previous remedy text pointed callers at op:add in the first
+// place, and that loop is what buried the entries.
+TEST(changelog_log_writer, Ants4563AddRoutesAMixedSectionToTheTop) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    ASSERT_TRUE(writeFile(clPath(tmp.path()), QByteArray(kMixedChangelog)));
+    RemoteControl rc(nullptr);
+    QJsonObject req;
+    req[QStringLiteral("caller_cwd")] = tmp.path();
+    req[QStringLiteral("op")]         = QStringLiteral("add");
+    req[QStringLiteral("summary")]    = QStringLiteral("Routed entry.");
+    req[QStringLiteral("category")]   = QStringLiteral("Fixed");
+    req[QStringLiteral("id")]         = QStringLiteral("ANTS-4563");
+    const QJsonObject out =
+        rc.cmdChangelogLog(req).object();
+    ASSERT_TRUE(out.value(QStringLiteral("ok")).toBool())
+        << QJsonDocument(out).toJson(QJsonDocument::Compact).toStdString();
+    EXPECT_TRUE(out.value(QStringLiteral("routed_to_subsection")).toBool())
+        << "a routed write must SAY it changed shape, or the caller cannot "
+           "tell it from a flat insert";
+
+    const std::string md = readFileStd(clPath(tmp.path()));
+    const size_t entry  = md.find("Routed entry.");
+    const size_t dated  = md.find("### 2026-09-01 Fixed");
+    const size_t flatly = md.find("### Added");
+    ASSERT_NE(entry, std::string::npos) << md;
+    ASSERT_NE(flatly, std::string::npos);
+    EXPECT_LT(entry, dated)
+        << "the entry must land above the newest dated topic, not in the tail";
+    EXPECT_LT(entry, flatly)
+        << "the entry must land above the legacy flat tail";
+
+    // The section stays dated-led, so the next add_subsection is still allowed.
+    // A flat heading written at the top would have flipped that and disabled
+    // the other write path for good — the ANTS-4356 failure, mirrored.
+    const auto after = ChangelogLog::classifyUnreleased(
+        QString::fromUtf8(md.c_str()));
+    EXPECT_TRUE(after.datedLeads)
+        << "the routed write must not put a flat heading above the topics";
 }
 
 // ANTS-3416 — the handler propagates the refusal and leaves CHANGELOG.md

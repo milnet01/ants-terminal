@@ -1036,10 +1036,55 @@ QJsonDocument RemoteControl::cmdChangelogLog(const QJsonObject &req) {
     const QString clMarkdown = QString::fromUtf8(cf.readAll());
     cf.close();
 
-    const auto res = ChangelogLog::insertUnreleasedEntry(
-        clMarkdown, category, bullet);
+    // ANTS-4563 — a MIXED `## [Unreleased]` (dated topics leading, a legacy
+    // flat tail below) routes to the dated-topic form at the TOP instead of
+    // appending into that tail. Decided by the user 2026-09-07. Reporting the
+    // DISTANCE was rejected — it buys a number and leaves the burial — and so
+    // was refusing outright, because the previous remedy text pointed callers
+    // at op:add in the first place and that loop is what buried two entries.
+    //
+    // Writing a FLAT heading at the top would have been the other reading, and
+    // it is wrong: a flat heading above the topics flips the section to
+    // flat-led, after which op:"add_subsection" refuses `flat_section` and the
+    // dated write path is gone — the ANTS-4356 failure mirrored. Emitting the
+    // section's own shape keeps both guards agreeing, which is the stated
+    // reason the decision went this way.
+    const ChangelogLog::UnreleasedShape clShape =
+        ChangelogLog::classifyUnreleased(clMarkdown);
+    const bool routeToSubsection = clShape.mixed && clShape.datedLeads;
+    ChangelogLog::InsertResult res;
+    if (routeToSubsection) {
+        // The id rides the headline, which is where op:"add_subsection"
+        // documents ids belonging; `body` becomes the topic's prose. No bullet
+        // is emitted, so the summary is written once, not twice.
+        const QString headline =
+            id.isEmpty() ? summary
+                         : QStringLiteral("%1 (%2)").arg(summary, id);
+        const auto sub = ChangelogLog::insertUnreleasedSubsection(
+            clMarkdown,
+            QDate::currentDate().toString(QStringLiteral("yyyy-MM-dd")),
+            category, headline, body, QStringList());
+        res.ok       = sub.ok;
+        res.code     = sub.code;
+        res.error    = sub.error;
+        res.markdown = sub.markdown;
+        res.line     = sub.line;
+    } else {
+        res = ChangelogLog::insertUnreleasedEntry(clMarkdown, category, bullet);
+    }
     if (!res.ok) {
         return clErr(res.code, res.error);
+    }
+
+    // ANTS-4629 requires the echo to be what was ACTUALLY written, and on the
+    // routed arm no bullet is written at all — the entry is the dated heading
+    // plus its prose. Take the line from the produced body rather than
+    // re-deriving its format, so the echo cannot drift from the writer.
+    QString echoLine = bullet;
+    if (routeToSubsection && res.line > 0) {
+        const QStringList produced = res.markdown.split(QLatin1Char('\n'));
+        if (res.line - 1 < produced.size())
+            echoLine = produced.at(res.line - 1);
     }
 
     // ANTS-2136 — dry_run: return the resolved insert preview without
@@ -1056,7 +1101,11 @@ QJsonDocument RemoteControl::cmdChangelogLog(const QJsonObject &req) {
         out["line"]             = res.line;
         out["bytes"]            = static_cast<qint64>(res.markdown.toUtf8().size());
         out["created_category"] = res.created_category;
-        out["bullet"]           = bullet;
+        out["bullet"]           = echoLine;
+        // ANTS-4563 — a routed write changed SHAPE, so it says so. Silence here
+        // would leave a caller unable to tell it from a flat insert, and
+        // `bullet` then carries a dated heading rather than a bullet.
+        if (routeToSubsection) out["routed_to_subsection"] = true;
         if (!id.isEmpty()) out["id"] = id;
         if (res.malformed_section) {
             out["advisory"] = changelogMalformedAdvisory(
@@ -1097,7 +1146,9 @@ QJsonDocument RemoteControl::cmdChangelogLog(const QJsonObject &req) {
     // no way to see a malformed bullet: the write reported ok:true with a
     // plausible byte count and said nothing about its own output. Seven
     // malformed entries in one project outlived that silence by five days.
-    out["bullet"]           = bullet;
+    out["bullet"]           = echoLine;
+    // ANTS-4563 — same contract on the write path as on the preview.
+    if (routeToSubsection) out["routed_to_subsection"] = true;
     if (!id.isEmpty()) out["id"] = id;
     // ANTS-2125 — non-blocking advisory: the entry was inserted in
     // canonical order, but the Unreleased section already interleaves

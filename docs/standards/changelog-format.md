@@ -133,8 +133,11 @@ topics out and then writing flat.** Not by cutting a release: executed
 section verbatim, so the shape is relocated rather than removed — and § 4.2
 binds every dated section too. Do not hand-write a flat block beside a dated
 topic either: the verb's own refusal says a mixed section locks the file, and
-executed 2026-08-20, `op:"add"` against one succeeds — so nothing stops the mix
-and nothing reports it.
+executed 2026-08-20, `op:"add"` against one succeeded — writing a flat bullet
+into the tail, far below the newest entry. **Since ANTS-4563 the verb can no
+longer deepen a mix**: against a dated-led mixed section `op:"add"` routes to
+the dated-topic form at the top, and the flat writer refuses `mixed_section`. A
+hand-written flat block still can, and nothing reports that.
 
 **This is a scope decision, not a judgement about the layout.** Executed
 2026-08-20: `op:"add_subsection"` refuses `flat_section` against a flat
@@ -228,7 +231,7 @@ here went stale when the next row landed. `documentation.md` § 2.8 item 3.
 |------|----------------------|
 | § 4.1 the dated heading's ASCII hyphen | **Almost nothing.** `cut-release` Phase 0e matches either dash on purpose. A bump recipe's `post_check` may grep `^## \[$V\] - `, but `post_check` is optional, so a project without one catches nothing |
 | § 4.1 structure | Partial: `changelog_log`'s `add` / `add_from_roadmap` / `add_batch` write the flat shape. **Nothing** validates a hand-edited changelog at rest — `format_mismatch` fires on a *YAML* changelog and `no_changelog` on a missing one, neither on a malformed Markdown one |
-| § 4.1 nobody calls `op:"add_subsection"` | **Partial, and the gap is the state this standard leaves after every release.** The op refuses `flat_section` against a flat `[Unreleased]`, and `op:"add"` refuses `feature_grouped_section` against a dated-topic one. Both need existing `###` headings, so against an **empty** `[Unreleased]` the op writes and **nothing** catches it. A hand-written dated topic is caught by nothing either. Exercised 2026-08-20 |
+| § 4.1 nobody calls `op:"add_subsection"` | **Partial, and the gap is the state this standard leaves after every release.** The op refuses `flat_section` against a flat `[Unreleased]`, and `op:"add"` refuses `feature_grouped_section` against a dated-topic one. Both need existing `###` headings, so against an **empty** `[Unreleased]` the op writes and **nothing** catches it. A hand-written dated topic is caught by nothing either. Exercised 2026-08-20. ANTS-4563 added a third catcher — a MIXED section whose dated topics lead refuses `mixed_section` at the flat writer, with `op:"add"` routed to the top instead — which leaves the empty-section hole exactly as stated |
 | § 4.2 bullets terse — one line plus at most one continuation | **nothing.** `body` accepts 4000 characters and writes as many continuation lines as it is given; `add_from_roadmap` adds one by default. No op counts lines |
 | § 4.2 the six categories, and no invented ones | `changelog_log`'s own enum, for every op that takes a category. A hand-added `### Notes` heading is accepted by every reader |
 | § 4.2 the heading order | `op:"normalize"`, and **only inside `[Unreleased]`** — nothing orders a dated release section, so one written out of order stays that way. **And nothing calls that op**: no skill, hook or recipe here invokes it, so it runs only when someone does by hand |

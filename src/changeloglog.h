@@ -63,11 +63,50 @@ struct InsertResult {
     int     malformed_line = -1;
 };
 
+// ANTS-4563 — ONE shape test for `## [Unreleased]`, shared by the flat insert
+// and the dated-subsection insert. Two classifiers used to answer this one
+// question in opposite directions, and a MIXED section fell between them:
+// `firstFeatureGroupedTopicLine` is a PRESENCE test that returns -1 the moment
+// any `### ` heading is a canonical category word, so it DECLASSIFIED a
+// dated-led section with a legacy flat tail; the subsection guard is an ORDER
+// test (ANTS-4562) that TOLERATES the same section. The flat insert therefore
+// ran, found a category heading down in the tail, and appended there — measured
+// on Vestige at ~10,900 lines below the newest entry, with ok:true. Order is
+// the answer both need, so both now read it here.
+struct UnreleasedShape {
+    bool unreleasedFound  = false;
+    int  flatCategoryLine = -1;  // 1-based first `### <Category>`, else -1
+    int  datedTopicLine   = -1;  // 1-based first `### <YYYY-MM-DD> …`, else -1
+    int  flatCount        = 0;
+    int  datedCount       = 0;
+    // A dated topic sits ABOVE the first flat heading: a dated section with a
+    // legacy tail. An insert at the TOP lands among its own kind and provably
+    // never touches the tail, which is why ANTS-4562 allows it there.
+    bool datedLeads       = false;
+    // Both kinds present, in either order.
+    bool mixed            = false;
+};
+
+// A dated topic is `### YYYY-MM-DD …`, parsed by QDate rather than matched by
+// shape, so `### 2026-13-45 Added — …` is not mistaken for one.
+UnreleasedShape classifyUnreleased(const QString &markdown);
+UnreleasedShape classifyUnreleased(const QStringList &lines, int sectionStart,
+                                   int sectionEnd);
+
 // Insert `bulletBlock` (from formatBullet) at the TOP of `category`'s
 // list within the `## [Unreleased]` section of `markdown`. Creates the
 // `### <category>` heading in canonical order if it is absent. Refusals:
 //   not_unreleased  — no `## [Unreleased]` heading
 //   bad_category    — category not one of the six canonical values
+//   feature_grouped_section — dated `### ` topics with `**Bold**` runs
+//   mixed_section   — ANTS-4563: dated topics LEAD and a flat category tail
+//                     sits below them. A flat insert here lands in that tail,
+//                     which is the burial this refusal exists to stop. The
+//                     verb layer routes op:\"add\" to insertUnreleasedSubsection
+//                     instead, so a caller still gets a write — at the top.
+//                     Refused HERE as well so no direct caller can bury an
+//                     entry, op:\"add_batch\" included, where it lands in
+//                     skipped[] rather than in the tail.
 InsertResult insertUnreleasedEntry(const QString &markdown,
                                    const QString &category,
                                    const QString &bulletBlock);
