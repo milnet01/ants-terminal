@@ -330,18 +330,28 @@ Listed only where behavior isn't obvious from the name.
   gate (enabled / focused-tab Idle / composer-empty / clamped-target
   hysteresis / stability / dwell / per-project override cool-down →
   lowercase tier alias via `ModelRecommender::tierName`). In claude_lib
-  (not core) so the `tierName` reuse doesn't invert the layer DAG. The
-  live actuator (`ClaudeStatusBarController::refreshAutoModelSwitch`,
-  timer-driven) injects `/model <tier>\n` on `decide(...).act`, appends
-  a pending ledger record, and suppresses the Shape A chip when enabled
-  (INV-14). The per-project cool-down (`Gate::msSinceLastOverride` +
+  (not core) so the `tierName` reuse doesn't invert the layer DAG.
+  **The actuator is PARKED in code** (ANTS-2195,
+  `ModelAutoSwitch::kAutoSwitchActuatorParked`).
+  `ClaudeStatusBarController::refreshAutoModelSwitch` still runs the
+  decision and its near-miss telemetry, then returns on that constant —
+  before the `/model <tier>` keystroke injection, before the ESC+ENTER
+  handshake, before the firing-side surfacing and before the pending
+  ledger append. So nothing downstream of the decision happens. The
+  config flag does NOT hold it back and cannot re-arm it: the guard
+  exists precisely so a config-migration bug flipping
+  `claude.auto_model_switch` on stays inert. Un-parking means deleting
+  the guard, once a safe switch API exists. Chip suppression when
+  enabled (INV-14) is unaffected. The per-project cool-down (`Gate::msSinceLastOverride` +
   `kOverrideCooldownMs=10min`, ANTS-1890) is fed by a controller-side
   `QHash<QString, qint64> m_lastOverrideMsByProject` cache —
   bootstrap-seeded from the ledger at `attach()` (restart-safe) and
   incrementally populated by `fillPendingLedgerOutcomes` after each
   settled `userOverrideWithin5`. Default-OFF via
   `Config::claudeAutoModel().switch_enabled`; S2 (live composer-empty
-  proxy validation) gates the default-ON flip. ANTS-1735 + ANTS-1890.
+  proxy validation) gated the default-ON flip, which the park above
+  supersedes — the flag decides whether the DECISION runs, not whether
+  anything fires. ANTS-1735 + ANTS-1890 + ANTS-2195.
 - `modelswitchledger` (Qt6::Core, `ants_core_lib`) — model-switch
   effectiveness ledger: JSONL append + 256 KiB drop-oldest eviction with
   pending-record pinning (atomic, 0600), plus pure outcome detection

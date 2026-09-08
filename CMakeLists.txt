@@ -1709,6 +1709,8 @@ if(ANTS_TESTS)
                 tests/features/dispatch_result_accounting/test_dispatch_result_accounting.cpp
                 # ANTS-4457 — the switch-confirm poll reuses the cached Config.
                 tests/features/switch_confirm_config_reuse/test_switch_confirm_config_reuse.cpp
+                # ANTS-4457 — the subsystem map must not call a parked actuator live.
+                tests/features/parked_feature_doc_truth/test_parked_feature_doc_truth.cpp
                 tests/features/allowlist_add/test_allowlist_add.cpp
                 # ANTS-1993 — permission-prompt structural gate (anti-spoof).
                 tests/features/claude_permission_prompt_structure/test_claude_permission_prompt_structure.cpp
@@ -3322,6 +3324,10 @@ if(ANTS_TESTS)
     set_property(SOURCE tests/features/model_switch_confirm/test_switch_confirm_actuator.cpp
         APPEND PROPERTY COMPILE_DEFINITIONS
         SRC_MODELAUTOSWITCH_H_PATH="${CMAKE_SOURCE_DIR}/src/modelautoswitch.h")
+    set_property(SOURCE tests/features/parked_feature_doc_truth/test_parked_feature_doc_truth.cpp
+        APPEND PROPERTY COMPILE_DEFINITIONS
+        SRC_MODELAUTOSWITCH_H_PATH="${CMAKE_SOURCE_DIR}/src/modelautoswitch.h"
+        DOCS_SUBSYSTEMS_MD_PATH="${CMAKE_SOURCE_DIR}/docs/subsystems.md")
     set_property(SOURCE tests/features/flatpak_lua_module/test_flatpak_lua_module.cpp
         APPEND PROPERTY COMPILE_DEFINITIONS
         FLATPAK_MANIFEST_PATH="${CMAKE_SOURCE_DIR}/packaging/flatpak/za.co.antsprojectshub.AntsTerminal.yml")
