@@ -1701,6 +1701,8 @@ if(ANTS_TESTS)
                 tests/features/project_path_traversal_gate/test_project_path_traversal_gate.cpp
                 # ANTS-4457 — installed hook events and handled ones must agree.
                 tests/features/hook_events_wired/test_hook_events_wired.cpp
+                # ANTS-4457 — the close-tag scrub matches its open sibling.
+                tests/features/envelope_close_tag_scrub/test_envelope_close_tag_scrub.cpp
                 tests/features/allowlist_add/test_allowlist_add.cpp
                 # ANTS-1993 — permission-prompt structural gate (anti-spoof).
                 tests/features/claude_permission_prompt_structure/test_claude_permission_prompt_structure.cpp
@@ -3263,6 +3265,9 @@ if(ANTS_TESTS)
     set_property(SOURCE tests/features/pty_childpid_atomic/test_pty_childpid_atomic.cpp
         APPEND PROPERTY COMPILE_DEFINITIONS
         SRC_PTY_H_PATH="${CMAKE_SOURCE_DIR}/src/ptyhandler.h")
+    set_property(SOURCE tests/features/envelope_close_tag_scrub/test_envelope_close_tag_scrub.cpp
+        APPEND PROPERTY COMPILE_DEFINITIONS
+        SRC_DOCCITATIONS_CPP_PATH="${CMAKE_SOURCE_DIR}/src/doccitations.cpp")
     set_property(SOURCE tests/features/flatpak_host_shell/test_flatpak_host_shell.cpp
         APPEND PROPERTY COMPILE_DEFINITIONS
         SRC_PTYHANDLER_PATH="${CMAKE_SOURCE_DIR}/src/ptyhandler.cpp")

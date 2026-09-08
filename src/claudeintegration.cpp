@@ -15548,8 +15548,20 @@ QString ClaudeIntegration::wrapMcpData(const QString &toolName,
     // tokenisers normalise tag casing and whitespace before pattern
     // matching, so the strict-case sentinel from above isn't enough.
     // QRegularExpression i-flag + tolerant whitespace.
+    // ANTS-4457 — and tolerant TRAILING CONTENT, matching the open-tag
+    // scrub below. This pattern required `>` right after the whitespace,
+    // so a close tag carrying any other token passed through untouched
+    // and could forge the frame for exactly the lenient consumer both
+    // scrubs are written for. A strict XML parser is what would reject a
+    // close tag with attributes, and a strict parser is not the threat
+    // model. The `\b` is what makes the widening safe: the replacement
+    // sentinel continues `ants_mcp_data_`, and `data` followed by `_` is
+    // no word boundary, so the scrub cannot consume its own output.
+    // src/doccitations.cpp carries a copy of both patterns to disclose
+    // what will be rewritten; it was widened in the same change and
+    // tests/features/envelope_close_tag_scrub checks they still match.
     static const QRegularExpression closeTagVariantRe(
-        QStringLiteral(R"(</\s*ants_mcp_data\s*>)"),
+        QStringLiteral(R"(</\s*ants_mcp_data\b[^>]*>)"),
         QRegularExpression::CaseInsensitiveOption);
     sanitised.replace(closeTagVariantRe,
                       QStringLiteral("<ants_mcp_data_escaped/>"));

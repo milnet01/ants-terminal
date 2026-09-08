@@ -407,7 +407,7 @@ QString clipToBytes(const QString &line, int maxBytes, bool *clipped) {
 // The rewrite is correct and must not be bypassed — it is what stops a hostile
 // file line from closing the wrap — so the citation discloses instead.
 bool needsEscaping(const QString &line) {
-    static const QRegularExpression closeRe(QStringLiteral(R"(</\s*ants_mcp_data\s*>)"),
+    static const QRegularExpression closeRe(QStringLiteral(R"(</\s*ants_mcp_data\b[^>]*>)"),
                                             QRegularExpression::CaseInsensitiveOption);
     static const QRegularExpression openRe(QStringLiteral(R"(<\s*ants_mcp_data\b[^>]*>)"),
                                            QRegularExpression::CaseInsensitiveOption);
