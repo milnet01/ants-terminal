@@ -28,11 +28,14 @@ The rules for running a repository's CI pipeline on your own machine
 before a push. It binds every repository that has a pipeline, and every
 hook, skill or session that pushes on one's behalf.
 [commits.md](commits.md) § 4.2 states the obligation, points here and
-restates none of it. **Four documents do carry summaries and must be
-amended with any rule they restate**: `workflow.md` § 6,
-the machine's `CLAUDE.md` rule 6, [releases.md](releases.md) § 6 step 5,
-and this standard's own row in `commits.md` § What checks this. Editing a
-rule here and stopping is the re-encoding drift § 1.1 exists to prevent.
+restates none of it. **Anything that restates a rule from here is amended
+with it, and hooks count**: `workflow.md` § 6, the
+machine's `CLAUDE.md` rule 6, [releases.md](releases.md) § 6 step 5, this
+standard's own row in `commits.md` § What checks this, and both push hooks.
+`~/.claude/githooks/pre-push` cites §§ 2, 3, 5 and 6.1 in its own source
+and prints the § 3 citation to the user on a push it cannot gate;
+`skeleton/files/.githooks/pre-push` cites § 2. Editing a rule here and
+stopping is the re-encoding drift § 1.1 exists to prevent.
 
 ## 1. Principles
 
@@ -59,18 +62,22 @@ found on your machine costs seconds; the same failure found by CI costs
 a push, a wait, a red notification, a fix commit and a second push — and
 on a metered repository it costs the minutes twice.
 
-**A repository with a pipeline, a gate script and no reachable
-`pre-push` hook is in breach of this standard**, not merely unlucky.
+**A repository with a pipeline and a gate script that no push actually
+runs is in breach of this standard**, not merely unlucky. Two ways in: no
+reachable `pre-push` hook, or a reachable one that cannot find the script.
+§ 6.2's `ants.gate.command` is the second, and the hook says so and exits 0.
 
 **A repository with a pipeline and no way to run it locally has a gap
 worth fixing** before the next feature, not a rule to argue with.
 
-**A bypass is [commits.md](commits.md) § 2.3's, and this standard adds
-nothing to it** — including no summary, because the one written here on
-2026-08-31 narrowed that section's rule within the day. It covers
+**A bypass is [commits.md](commits.md) § 2.3's, and this standard adds no
+rule to it** — and no summary, because the one written here on 2026-08-31
+narrowed that section's rule within the day. It covers
 `git push --no-verify` and the `SKIP_LOCAL_CI=1` form a hook offers, and
 it is where a conformer finds out whether a skip needed the user and where
-the reason gets written. Read it there.
+the reason gets written. Read it there. **§ 7 classifies one act against
+it** — taking the complete skip by hand — so an editor of `commits.md`
+§ 2.3 sweeps that sentence too.
 
 ## 3. Execute the pipeline's own definition
 
@@ -85,11 +92,7 @@ had never run it.
 have `.github/workflows/ci.yml` set up a machine and call that script.**
 Then there is one list of steps, the local and remote runs cannot
 disagree, and the script can take a flag — which § 6 asks for where the
-gate can offer one, and a
-container full of YAML cannot offer. LocalWebServerManager is the worked
-example: its `ci.yml` header is reported to say outright that the script
-owns every actual check. That project is not on this machine, so the claim
-is carried from `workflow.md` § 6 rather than checked here.
+gate can offer one, and a container full of YAML cannot offer.
 
 **A repository-owned gate script is only a mirror when the workflow does
 not call it.** Without that distinction the paragraph above appears to
@@ -245,7 +248,7 @@ own hook.** Nothing checks that it did.
 
 ## 7. The complete skip — three conditions
 
-Where the pipeline has no job that acts on documentation, the
+Where the pipeline has nothing to run for the paths in this push, the
 documentation checks are the empty set and the push may skip the local
 run entirely — **if all three hold**:
 
@@ -303,11 +306,11 @@ those jobs, which is § 6's documentation mode, whatever the diff looks
 like.
 
 **This skip outranks the whole of § 6, documentation mode included.**
-Both fire on a docs-only push that meets all three conditions below, to a
-repository whose pipeline has no documentation job — whether or not its
-gate has a documentation mode — and they prescribe opposite things. Having
-a documentation mode is no more a reason to run it than lacking one is,
-when there is provably nothing in the pipeline for your paths.
+Both fire on a docs-only push that meets all three conditions above —
+whether or not the gate has a documentation mode — and they prescribe
+opposite things. Having a documentation mode is no more a reason to run it
+than lacking one is, when there is provably nothing in the pipeline for
+your paths.
 **§ 1.4's run-more-rather-than-less does not reach this**: condition 2 is
 proof, not uncertainty.
 
@@ -334,7 +337,7 @@ proof, not uncertainty.
 
 | Rule | What catches a breach |
 |------|----------------------|
-| § 2 the pipeline runs locally before a push | A `pre-push` hook, where one is installed **and reached**. It refuses the push, so it catches the breach rather than the failure. Three ways it fails to gate, **two of them silent**. `core.hooksPath` holds **one** value and the repository-local one wins, so a project setting it for its own `commit-msg` never runs `~/.claude/githooks/pre-push` unless a `pre-push` in its own hooks directory reaches it. `skeleton/files/.githooks/pre-push` does exactly that — it delegates — so a project scaffolded from 2026-08-21 is covered and one scaffolded before that date is not, silently, until somebody copies the file in. Nothing checks that `core.hooksPath` was set at all; it is per-clone and cannot be committed. The third is reached and is **not** silent: on discovering no gate script in a repository that has a pipeline, the machine-wide hook prints `NO LOCAL GATE, BUT THIS REPO HAS A PIPELINE — nothing was checked` and two lines citing this standard. What it lacks there is a *block*, not a voice — it exits 0, so § 2's "gap worth fixing" is announced on every push and stops none of them |
+| § 2 the pipeline runs locally before a push | A `pre-push` hook, where one is installed **and reached**. It refuses the push, so it catches the breach rather than the failure. Three ways it fails to gate, **two of them silent**. `core.hooksPath` holds **one** value and the repository-local one wins, so a project setting it for its own `commit-msg` never runs `~/.claude/githooks/pre-push` unless a `pre-push` in its own hooks directory reaches it. `skeleton/files/.githooks/pre-push` does exactly that — it delegates — so a project scaffolded from 2026-08-21 is covered and one scaffolded before that date is not, silently, until somebody copies the file in. Nothing checks that `core.hooksPath` was set at all; it is per-clone and cannot be committed. The third is reached and is **not** silent: on discovering no gate script in a repository that has a pipeline, the machine-wide hook prints `NO LOCAL GATE, BUT THIS REPO HAS A PIPELINE — nothing was checked` and two lines citing this standard. **That branch cannot tell § 2's two cases apart** — no gate script at all, which is the gap worth fixing, and a script the hook cannot find, which is the breach — so it prints the same thing for both. What it lacks there is a *block*, not a voice: it exits 0, so both are announced on every push and neither is stopped |
 | § 3 the local run executes the pipeline's own definition | **nothing** — whether `ci.yml` calls the repository's gate script is readable, and no check reads it |
 | § 4 uncovered jobs are named | **nothing** — the absence of a sentence is what would have to be detected |
 | § 5 the run is over the pushed commits, not the working tree | `~/.claude/githooks/pre-push` and LocalWebServerManager's hook take route 1 unconditionally, so where either runs the rule cannot be breached. Everywhere else **nothing**, and this one is invisible from both sides — a gate run over a dirty tree returns an ordinary verdict with no sign that it answered for a tree nobody is pushing. Checked 2026-08-21: no project has a test asserting its hook takes either route |
