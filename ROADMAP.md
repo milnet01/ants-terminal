@@ -43360,7 +43360,7 @@ filed below.
   Source: Vestige_Ants_MCP_Feedback.md 2026-08-20 (correction to their own 2026-08-18 report).
   Lanes: remotecontrol, changelog.
 
-- 📋 [ANTS-4563] **changelog_log op:add advises rather than refuses on a feature-grouped changelog, and the advisory does not say how far down it would write.**
+- ✅ [ANTS-4563] **changelog_log op:add advises rather than refuses on a feature-grouped changelog, and the advisory does not say how far down it would write.**
   Re-checked 2026-08-20 and unchanged since the 2026-07-31 report. op:add
   against Vestige's mixed [Unreleased] returns ok:true with an advisory,
   not a refusal, and would insert at line 10947 — inside the legacy tail,
@@ -43396,6 +43396,57 @@ filed below.
   WHERE THE WORK IS. `changelog_log` op:add's guard is the `feature_grouped_section` refusal (ANTS-3416) and its classifier is `firstFeatureGroupedTopicLine`, whose condition 2 returns -1 the moment ANY `### ` heading is a canonical category word — the reason Vestige's section was not refused. That classifier is what both guards should share.
 
   CHECK BEFORE BUILDING: whether add_subsection's own guard (ANTS-4356 flat_section / ANTS-4562's order test) already expresses the right classifier. If it does, the change is routing op:add through it rather than writing a third one.
+  Resolved (2026-09-08). Built as decided 2026-09-07: op:"add" on a
+  MIXED dated-led section routes to the top, as add_subsection does.
+
+  THE CLASSIFIER SPLIT IS GONE, which was this item's own diagnosis of
+  the mechanism. ChangelogLog::classifyUnreleased (changeloglog.h) is now
+  the single ORDER test, and insertUnreleasedSubsection's inline scan was
+  replaced by a call to it. The check named in "CHECK BEFORE BUILDING"
+  came back yes: add_subsection's ANTS-4562 guard already expressed the
+  right test, so this was extraction and routing, not a third classifier.
+
+  WHY THE ROUTE EMITS A DATED TOPIC rather than a flat heading at the top.
+  Both are readings of "route to the TOP". A flat heading above the dated
+  topics flips the section to flat-led, after which add_subsection refuses
+  flat_section and the dated write path is gone for good -- the ANTS-4356
+  failure mirrored. Only the dated form keeps both guards agreeing, which
+  is the stated reason the decision went this way. The test asserts the
+  section is still dated-led after the routed write, so that reading
+  cannot be reintroduced silently.
+
+  The route sets routed_to_subsection, and `bullet` echoes the heading
+  that actually landed (taken from the produced body, not re-derived) --
+  ANTS-4629 requires the echo to be what was written, and no bullet is
+  written on that arm.
+
+  insertUnreleasedEntry refuses the new mixed_section itself, so no direct
+  caller can bury an entry. Registered in mcp-error-codes.md.
+
+  POPULATION MEASURED, and it is currently ZERO. Across the 19 sibling
+  projects carrying a CHANGELOG on 2026-09-08: flat-only 15, empty 3,
+  dated-only 1 (Vestige). Vestige's legacy tail was cleaned by hand since
+  the 2026-08-20 recheck, and its dated section carries bold runs, so it
+  refuses feature_grouped_section correctly today. This therefore closes a
+  LATENT trap and is verified by fixture, not by corpus. The red run
+  reproduced the burial before the fix: "the flat insert would land at
+  line 15, inside the legacy tail".
+
+  WORTH KNOWING, since it changes what the earlier notes assumed: the
+  refusal loop those notes blame is independently gone. ANTS-4562 made
+  add_subsection accept a mixed section, so a caller told "use
+  add_subsection" now succeeds. Routing is therefore a convenience rather
+  than a necessity. The decision stands and routing is what shipped.
+
+  TWO GAPS FILED rather than widened into this change. ANTS-4945 --
+  op:"add_batch" shares insertUnreleasedEntry and now refuses per entry
+  into skipped[] where op:"add" routes; routing it needs the raw summary,
+  which ClBatchEntryResult discards, plus a decision about the group
+  headline. ANTS-4946 -- a dated section with NO bold run escapes both
+  guards and appends at the section end; not widened because the shape is
+  absent from the corpus and "mixed_section" would be the wrong name.
+
+  Verified: ctest --preset=default, 4324 passed, 0 failed.
   **Layman:** Adding a changelog entry can succeed while burying it 10,000 lines below where anyone reads.
   Kind: enhancement.
   Source: Vestige_Ants_MCP_Feedback.md 2026-08-20 (still-open recheck of their 2026-07-31 report).
@@ -46280,6 +46331,67 @@ filed below.
   Kind: test.
   Source: in-session-2026-08-25, split out of ANTS-4570 (reporter's own generalisation).
   Lanes: roadmap-store, test.
+
+- 📋 [ANTS-4945] **changelog_log op:add_batch refuses a mixed section per entry where op:add routes it.**
+  ANTS-4563 gave op:"add" a route: on a MIXED [Unreleased] (dated
+  topics leading, a legacy flat tail below) it writes the dated-topic
+  form at the TOP instead of appending into the tail. The refusal was
+  put in insertUnreleasedEntry so no direct caller can bury an entry,
+  and op:"add_batch" shares that function -- so a batch against such a
+  section now reports mixed_section per entry in skipped[] and writes
+  nothing.
+
+  That is a strict improvement on burying them, and it is visible
+  rather than silent, which is why it shipped that way. It is still an
+  asymmetry: the same content succeeds one entry at a time and fails
+  as a batch.
+
+  WHY IT WAS NOT DONE WITH ANTS-4563. The route needs the entry's raw
+  summary and body, and ClBatchEntryResult carries only {id, category,
+  bullet} -- resolveClBatchEntry renders the bullet and discards the
+  parts. Widening that struct is a second change with its own blast
+  radius, and ANTS-4563's decision was about op:add.
+
+  DESIGN QUESTION TO SETTLE FIRST, and it is the real work: N entries
+  share no headline. One dated topic per entry is the mechanical
+  answer and gives N topics for one commit. One topic carrying N
+  bullets is the shape add_subsection already supports (bulletBlocks)
+  and reads far better, but nothing supplies the group headline. Do
+  not start until that is decided.
+
+  Note the batch writes entries in REVERSE so the result reads in
+  input order (ANTS-4854); a per-entry route preserves that for free,
+  a grouped one has to build the bullet list in input order instead.
+  **Layman:** Adding many changelog entries at once still fails on a layout that adding one entry now handles.
+  Kind: enhancement.
+  Source: in-session-2026-09-08, found while shipping ANTS-4563.
+
+- 📋 [ANTS-4946] **A dated changelog section with no bold run escapes both guards and appends at the section end.**
+  firstFeatureGroupedTopicLine requires BOTH a `### ` heading and a
+  bold run (`**Bold**`, `- **`, `* **`) before it reports a
+  feature-grouped section. A section of dated topics whose bodies are
+  plain prose has no bold run, so it returns -1 and op:"add" proceeds:
+  no canonical `### <category>` heading exists, so the flat writer
+  CREATES one at sectionEnd -- the bottom of the section.
+
+  Less damaging than ANTS-4563's case, and for a specific reason: the
+  new heading lands BELOW every dated topic, so the section stays
+  dated-led and op:"add_subsection" keeps working. But the entry is
+  still written where nobody reads, and nothing says so.
+
+  NOT FIXED WITH ANTS-4563, deliberately. Widening that item's
+  mixed_section guard from `mixed && datedLeads` to `datedLeads` alone
+  would close this in one character -- and would attach the name
+  "mixed_section" to a section that is not mixed, on a shape MEASURED
+  AS ABSENT: across the 19 sibling projects carrying a CHANGELOG on
+  2026-09-08, [Unreleased] was flat-only in 15, empty in 3 and
+  dated-only in 1 (Vestige), and Vestige's dated section does carry
+  bold runs, so its feature_grouped_section refusal fires correctly
+  today. Re-measure before building: if the population is still empty,
+  the question is whether a guard is worth its name.
+  **Layman:** A changelog written as dated topics with prose but no bold bullets can still have an entry added far from the top.
+  Kind: fix.
+  Source: in-session-2026-09-08, found while shipping ANTS-4563.
 
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-08-21 triage
 

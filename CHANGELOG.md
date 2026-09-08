@@ -145,6 +145,16 @@ for security-relevant changes.
 
 ### Fixed
 
+- **`changelog_log` op:`add` writes at the top of a mixed changelog instead of into its tail** (ANTS-4563)
+  A `## [Unreleased]` whose dated topics lead over a legacy flat tail fell
+  between two guards that answered its shape in opposite directions, and
+  the entry landed in the gap — appended into the tail, reported `ok:true`,
+  measured on one project at roughly ten thousand lines below the newest
+  entry. Both guards now read one classifier, and `op:"add"` routes such a
+  section to the dated-topic form at the top, saying so with
+  `routed_to_subsection`. A direct call to the flat writer refuses the new
+  `mixed_section` rather than burying anything.
+
 - **`spec_lint` says whether a project ADOPTED the global spec-format standard or adopted none** (ANTS-4926)
   `sections_source` prefixing a hit with `~global/` said which standard
   answered and nothing more. A conforming project keeps no local copy —
