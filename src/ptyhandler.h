@@ -6,6 +6,8 @@
 #include <QSize>
 #include <sys/types.h>
 
+#include <atomic>
+
 class Pty : public QObject {
     Q_OBJECT
 
@@ -15,7 +17,9 @@ public:
 
     bool start(const QString &shell = QString(), const QString &workDir = QString(),
                int rows = 24, int cols = 80);
-    pid_t childPid() const { return m_childPid; }
+    // ANTS-4456 — read on the GUI thread (TerminalWidget::ptyChildPid),
+    // written on this object's own worker thread. See the member.
+    pid_t childPid() const { return m_childPid.load(std::memory_order_relaxed); }
     // Toggle the read notifier without tearing it down. Used by VtStream
     // for back-pressure: when the parse-batch queue is full, reads pause
     // so the kernel buffer applies natural flow control to the child
@@ -44,7 +48,16 @@ private slots:
 
 private:
     int m_masterFd = -1;
-    pid_t m_childPid = -1;
+    // ANTS-4456 — atomic because the two threads genuinely disagree about
+    // this. terminalwidget.h used to justify the cross-thread read with
+    // "written once during forkpty() and never changes afterwards", which
+    // is false: onReadReady is the read-notifier slot, runs on the parse
+    // worker, and clears this to -1 when the child is reaped at EOF. The
+    // GUI-side readers open /proc/<pid>, so a read that misses the clear
+    // consults a PID the kernel may already have recycled. Relaxed
+    // ordering is enough — the value stands alone and guards no other
+    // state. Contract: tests/features/pty_childpid_atomic/spec.md.
+    std::atomic<pid_t> m_childPid{-1};
     QSocketNotifier *m_readNotifier = nullptr;
     QSocketNotifier *m_writeNotifier = nullptr;
     // Bytes accepted by ::write() but not yet flushed to the kernel's

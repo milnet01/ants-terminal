@@ -1009,6 +1009,20 @@ void TerminalGrid::handleEsc(const VtAction &a) {
             auto userVarCb         = std::move(m_userVarCallback);
             auto osc133ForgeryCb   = std::move(m_osc133ForgeryCallback);
             QByteArray osc133Key   = m_osc133Key;
+            // ANTS-4456 — configuration pushed onto the grid from outside is
+            // part of the INITIAL state RIS returns to, not something it
+            // discards. xterm re-reads its resources on RIS rather than
+            // falling back to values compiled into the binary; the theme's
+            // default colours (TerminalWidget::applyThemeColors) and the
+            // configured scrollback depth (MainWindow, per terminal) are this
+            // terminal's equivalent. Without these, `reset(1)` in a shell
+            // reverted to the colours in this class's own declaration and
+            // shrank the scrollback cap — and since the cursor and selection
+            // colours live on TerminalWidget and survive, the result was one
+            // theme's text on another theme's furniture.
+            const QColor cfgFg     = m_defaultFg;
+            const QColor cfgBg     = m_defaultBg;
+            const int cfgScrollback = m_maxScrollback;
             *this = TerminalGrid(m_rows, m_cols);
             m_responseCallback        = std::move(responseCb);
             m_clipboardCallback       = std::move(clipboardCb);
@@ -1020,6 +1034,13 @@ void TerminalGrid::handleEsc(const VtAction &a) {
             m_userVarCallback         = std::move(userVarCb);
             m_osc133ForgeryCallback   = std::move(osc133ForgeryCb);
             m_osc133Key               = std::move(osc133Key);
+            // Through the setters, not by assigning the members back: they
+            // also re-point cells still carrying the constructor's default
+            // colour, which a bare assignment would leave at the
+            // compiled-in value.
+            setDefaultFg(cfgFg);
+            setDefaultBg(cfgBg);
+            setMaxScrollback(cfgScrollback);
             break;
         }
         }

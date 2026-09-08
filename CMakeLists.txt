@@ -1432,6 +1432,8 @@ if(ANTS_TESTS)
                 tests/features/osc_color_query/test_osc_color_query.cpp
                 # ANTS-4456 — OSC 0/2 title is bounded, both ways in.
                 tests/features/osc_title_cap/test_osc_title_cap.cpp
+                # ANTS-4456 — RIS keeps configured theme + scrollback depth.
+                tests/features/ris_preserves_configuration/test_ris_preserves_configuration.cpp
                 tests/features/decrqss/test_decrqss.cpp
                 # ANTS-2192 — query-response amplification cap.
                 tests/features/query_response_ratelimit/test_query_response_ratelimit.cpp
@@ -1544,6 +1546,10 @@ if(ANTS_TESTS)
                 tests/features/help_about_menu/test_help_about_menu.cpp
                 tests/features/portal_session_close/test_portal_session_close.cpp
                 tests/features/styled_font_kerning_off/test_styled_font_kerning_off.cpp
+                # ANTS-4456 — a new per-style family must invalidate shaped runs.
+                tests/features/styled_font_cache_invalidation/test_styled_font_cache_invalidation.cpp
+                # ANTS-4456 — a wide char adds two cell widths to a bg run, not three.
+                tests/features/wide_char_bg_run_width/test_wide_char_bg_run_width.cpp
                 tests/features/sigpipe_ignore/test_sigpipe_ignore.cpp
                 tests/features/pty_dtor_off_main_thread/test_pty_dtor_off_main_thread.cpp
                 tests/features/terminal_partial_update_mode/test_terminal_partial_update_mode.cpp
@@ -2900,6 +2906,8 @@ if(ANTS_TESTS)
                 tests/features/session_cell_loop_stream_status/test_session_cell_loop_stream_status.cpp
                 tests/features/pty_closefrom/test_pty_closefrom.cpp
                 tests/features/pty_write_eagain_queue/test_pty_write_eagain_queue.cpp
+                # ANTS-4456 — child PID is read cross-thread; must be atomic.
+                tests/features/pty_childpid_atomic/test_pty_childpid_atomic.cpp
                 tests/features/image_bomb_png_header_peek/test_image_bomb.cpp
                 tests/features/threaded_ptywrite_gating/test_threaded_ptywrite_gating.cpp
                 tests/features/threaded_resize_synchronous/test_threaded_resize_synchronous.cpp
@@ -3245,6 +3253,9 @@ if(ANTS_TESTS)
     set_property(SOURCE tests/features/pty_write_eagain_queue/test_pty_write_eagain_queue.cpp
         APPEND PROPERTY COMPILE_DEFINITIONS
         SRC_PTY_CPP_PATH="${CMAKE_SOURCE_DIR}/src/ptyhandler.cpp"
+        SRC_PTY_H_PATH="${CMAKE_SOURCE_DIR}/src/ptyhandler.h")
+    set_property(SOURCE tests/features/pty_childpid_atomic/test_pty_childpid_atomic.cpp
+        APPEND PROPERTY COMPILE_DEFINITIONS
         SRC_PTY_H_PATH="${CMAKE_SOURCE_DIR}/src/ptyhandler.h")
     set_property(SOURCE tests/features/flatpak_host_shell/test_flatpak_host_shell.cpp
         APPEND PROPERTY COMPILE_DEFINITIONS

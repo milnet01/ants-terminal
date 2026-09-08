@@ -497,10 +497,14 @@ private:
     // directly so future refactors don't silently break them.
     bool hasPty() const { return m_vtStream != nullptr; }
 
-    // Child-PID accessor. The Pty lives on the worker thread; reading
-    // its childPid() is safe because the PID is written once during
-    // forkpty() (synchronised by startShell's BlockingQueuedConnection)
-    // and never changes afterwards.
+    // Child-PID accessor. The Pty lives on the worker thread and DOES
+    // rewrite this: Pty::onReadReady clears it when the child is reaped
+    // at EOF. ANTS-4456 made the member atomic, which is what makes the
+    // cross-thread read safe — the previous justification here, that the
+    // PID never changes after forkpty(), was simply false. Callers still
+    // get a value that can go stale between the read and the use; both
+    // current callers only open /proc/<pid>, which fails harmlessly when
+    // it has.
     pid_t ptyChildPid() const;
 
     QFont m_font;

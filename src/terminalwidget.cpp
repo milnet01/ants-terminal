@@ -1067,7 +1067,16 @@ void TerminalWidget::paintEvent(QPaintEvent *event) {
                 wantBgFill = true;
             }
             if (wantBgFill && bgRunWidth > 0 && cellBg == bgRunColor) {
-                bgRunWidth += cellDrawWidth;
+                // ANTS-4456 — a wide char's LEAD cell already contributes
+                // both columns, so its continuation cell must add nothing
+                // when it extends the same run. Adding a third cell width
+                // per wide char pushed the fill one column right for each
+                // of them, cumulatively: a selection over CJK or emoji
+                // highlighted N columns too far. The continuation cell can
+                // still OPEN a run of its own in the else branch below,
+                // which is the split-selection case and is meant to paint.
+                if (!c.isWideCont)
+                    bgRunWidth += cellDrawWidth;
             } else {
                 if (bgRunWidth > 0) {
                     // ANTS-1864 — use Source mode so a semi-transparent cell
@@ -5949,6 +5958,12 @@ void TerminalWidget::setBoldFontFamily(const QString &family) {
     // re-asserts on all variants. A custom bold family with kerning
     // enabled drifts columns under styled runs.
     m_fontBold.setKerning(false);
+    // ANTS-4456 — the shaped-run cache is keyed by (run text, style
+    // variant) and carries no font, so a cached bold layout would keep
+    // drawing in the old family. Invalidation is the only mechanism the
+    // key leaves available; widening it would add a font comparison to
+    // every lookup on the paint path to serve a Settings click.
+    m_shapedRunCache.clear();
     update();
 }
 
@@ -5959,6 +5974,7 @@ void TerminalWidget::setItalicFontFamily(const QString &family) {
     m_fontItalic.setStyleHint(QFont::Monospace);
     m_fontItalic.setFixedPitch(true);
     m_fontItalic.setKerning(false);  // ANTS-1198 — same as bold setter
+    m_shapedRunCache.clear();        // ANTS-4456 — same as bold setter
     update();
 }
 
@@ -5970,6 +5986,7 @@ void TerminalWidget::setBoldItalicFontFamily(const QString &family) {
     m_fontBoldItalic.setStyleHint(QFont::Monospace);
     m_fontBoldItalic.setFixedPitch(true);
     m_fontBoldItalic.setKerning(false);  // ANTS-1198 — same as bold setter
+    m_shapedRunCache.clear();            // ANTS-4456 — same as bold setter
     update();
 }
 
