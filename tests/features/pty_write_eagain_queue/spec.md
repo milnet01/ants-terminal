@@ -79,14 +79,36 @@ test of the form `m_pendingWrite.isEmpty()` (or equivalent
 `empty()`/`!size()` check) so fresh writes are queued behind pending
 ones.
 
-**INV-8 — Every byte-dropping path emits `writeLost`.** When the queue
-is already full (a fresh write would exceed the cap) OR the EAGAIN
-remainder itself exceeds the cap, `Pty::write` drops those bytes — but
-it MUST emit `writeLost(n)` so the loss is observable, never silent.
-Source-grep: at least two `emit writeLost` sites in the `Pty::write`
-body. (ANTS-1349 added the first on the queue-full path; ANTS-1994(3)
-added the second on the EAGAIN-oversize path — previously a silent
-drop.)
+**INV-8 — Every byte-dropping path emits `writeLost`.** `Pty::write`
+drops bytes on three paths: the queue is already full (a fresh write
+would exceed the cap), the EAGAIN remainder itself exceeds the cap, and
+the write fails fatally (`EIO` on a torn-down master, `EPIPE` on a
+reaped slave). Each MUST emit `writeLost(n)` so the loss is observable,
+never silent. Source-grep: at least three `emit writeLost` sites in the
+`Pty::write` body. (ANTS-1349 added the first on the queue-full path;
+ANTS-1994(3) added the second on the EAGAIN-oversize path; ANTS-4456
+added the third on the fatal path, which had been dropping the
+remainder with only a debug-log line while its two siblings signalled.)
+
+**INV-9 — `Pty::onWriteReady` branches EAGAIN apart from a fatal
+error.** The drain loop must distinguish a kernel buffer that is full
+again — retry on the next fire — from a write that cannot ever succeed.
+Source-grep: the `Pty::onWriteReady` body must compare `errno` against
+`EAGAIN` or `EWOULDBLOCK`. Matching the bare token is NOT sufficient:
+pre-fix the loop had a single `break` for both cases, carrying the word
+`EAGAIN` in a comment on that very line — the comment also claimed the
+fatal case was handled "below", which nothing did.
+
+**INV-10 — a fatal drain error clears the pending queue.** The write
+notifier is disarmed only when `m_pendingWrite` is empty, and a dead
+master FD stays write-ready continuously (`Pty::start`'s own comment
+says so). So a fatal error that leaves bytes queued re-arms the slot
+forever: the notifier fires, the write fails, nothing is consumed, and
+the event loop spins at 100% CPU for the life of the process, with no
+error surfaced. Source-grep: the `Pty::onWriteReady` body must contain
+an `m_pendingWrite.clear()`, and must emit `writeLost` for the bytes it
+drops. Clearing is what makes the existing empty-queue tail disarm the
+notifier, so the fix needs no second disable site.
 
 ## Scope
 
@@ -120,3 +142,10 @@ drop.)
   bug; recommended `QSocketNotifier(QSocketNotifier::Write)` + queue.
 - **0.7.27 (this fix):** queue + write notifier + 4 MiB cap. Locked
   by this spec.
+- **ANTS-4456 (cold sweep 2026-08-18, verified 2026-09-08):** the two
+  fatal-error paths were still wrong after that fix. `Pty::write`'s
+  fatal branch dropped the caller's remainder silently, against this
+  spec's own INV-8 headline, which said *every* dropping path signals
+  while the test asserted only two sites. `Pty::onWriteReady`'s fatal
+  branch left the bytes queued and the notifier armed — an unbounded
+  CPU spin. INV-8 tightened to three sites; INV-9 and INV-10 added.

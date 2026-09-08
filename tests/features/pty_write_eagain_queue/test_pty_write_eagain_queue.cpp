@@ -120,21 +120,67 @@ static int runMain() {
         }
     }
 
-    // INV-8 (ANTS-1349 + ANTS-1994(3)) — every byte-dropping path in
-    // Pty::write emits writeLost so the loss is observable, not silent.
-    // There are two drops: the pending-queue-full path and the
-    // EAGAIN-oversize-remainder path; both must signal.
-    if (!writeBody.empty()) {
-        size_t emits = 0;
-        for (size_t p = writeBody.find("emit writeLost");
-             p != std::string::npos;
-             p = writeBody.find("emit writeLost", p + 1)) {
-            ++emits;
+    // Count non-overlapping occurrences of `needle` in `hay`.
+    auto countOf = [](const std::string &hay, const char *needle) {
+        size_t n = 0;
+        const size_t len = std::char_traits<char>::length(needle);
+        for (size_t p = hay.find(needle); p != std::string::npos;
+             p = hay.find(needle, p + len)) {
+            ++n;
         }
-        if (emits < 2) {
-            fail("INV-8: Pty::write has fewer than 2 'emit writeLost' "
-                 "sites. Both the queue-full drop and the EAGAIN-oversize "
-                 "drop must signal data loss (ANTS-1349 / ANTS-1994).");
+        return n;
+    };
+
+    // INV-8 (ANTS-1349 + ANTS-1994(3) + ANTS-4456) — every byte-dropping
+    // path in Pty::write emits writeLost so the loss is observable, not
+    // silent. There are three drops: the pending-queue-full path, the
+    // EAGAIN-oversize-remainder path, and the fatal-write path. All must
+    // signal.
+    if (!writeBody.empty()) {
+        if (countOf(writeBody, "emit writeLost") < 3) {
+            fail("INV-8: Pty::write has fewer than 3 'emit writeLost' "
+                 "sites. The queue-full drop, the EAGAIN-oversize drop and "
+                 "the fatal-error drop must each signal data loss "
+                 "(ANTS-1349 / ANTS-1994 / ANTS-4456). The fatal branch "
+                 "discards the caller's remainder with only a debug-log "
+                 "line, so a torn-down master loses keystrokes silently.");
+        }
+    }
+
+    // INV-9 / INV-10 (ANTS-4456) — the drain slot must tell a kernel
+    // buffer that is full again apart from a write that can never
+    // succeed, and must clear the queue on the latter. The notifier is
+    // disarmed only when m_pendingWrite is empty, and a dead master FD
+    // stays write-ready, so leaving bytes queued after a fatal error
+    // re-arms this slot forever and spins the event loop at 100% CPU.
+    const std::string drainBody = extractFnBody(cpp, "Pty::onWriteReady");
+    if (drainBody.empty()) {
+        fail("precondition: could not locate `void Pty::onWriteReady(...) "
+             "{ }` body in src/ptyhandler.cpp.");
+    } else {
+        // Match a comparison, not the bare token: the pre-fix body
+        // carried the word EAGAIN in a comment on the very `break` that
+        // failed to branch, so a token search passes against the defect.
+        std::regex eagainBranch(
+            R"(errno\s*==\s*(?:EAGAIN|EWOULDBLOCK))");
+        if (!std::regex_search(drainBody, eagainBranch)) {
+            fail("INV-9: Pty::onWriteReady never compares errno against "
+                 "EAGAIN/EWOULDBLOCK. Pre-fix the drain loop broke out "
+                 "identically for kernel back-pressure and for a fatal "
+                 "error, so the fatal case was never actually handled.");
+        }
+        std::regex clearQueue(R"(m_pendingWrite\s*\.\s*clear\s*\()");
+        if (!std::regex_search(drainBody, clearQueue)) {
+            fail("INV-10: Pty::onWriteReady never calls "
+                 "m_pendingWrite.clear(). A fatal drain error leaves the "
+                 "queue populated, the write notifier stays armed, and the "
+                 "event loop spins at 100% CPU for the life of the "
+                 "process with no error surfaced.");
+        }
+        if (drainBody.find("emit writeLost") == std::string::npos) {
+            fail("INV-10: Pty::onWriteReady drops queued bytes on a fatal "
+                 "error without emitting writeLost. The loss must be "
+                 "observable, as it is on Pty::write's three drop paths.");
         }
     }
 

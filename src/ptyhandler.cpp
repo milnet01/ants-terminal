@@ -532,6 +532,11 @@ void Pty::write(const QByteArray &data) {
             ANTS_LOG(DebugLog::Pty,
                      "write failed errno=%d; dropping %lld bytes",
                      errno, (long long)remaining);
+            // ANTS-4456 — the third drop path. The two above (queue-full,
+            // EAGAIN-oversize) both signal; this one discarded the
+            // caller's remainder with only a debug-log line, so a
+            // torn-down master lost keystrokes silently.
+            emit writeLost(remaining);
             return;
         }
     }
@@ -545,6 +550,8 @@ void Pty::onWriteReady() {
     const char *buf = m_pendingWrite.constData();
     qsizetype remaining = m_pendingWrite.size();
     qsizetype written = 0;
+    bool fatal = false;
+    int fatalErrno = 0;
     while (remaining > 0) {
         ssize_t n = ::write(m_masterFd, buf + written, remaining);
         if (n > 0) {
@@ -552,16 +559,43 @@ void Pty::onWriteReady() {
             remaining -= n;
         } else if (n < 0 && errno == EINTR) {
             continue;
+        } else if (n < 0 && (errno == EAGAIN || errno == EWOULDBLOCK)) {
+            break;  // Kernel buffer full again — retry on the next fire.
         } else {
-            break; // EAGAIN — try again next fire; fatal — give up below.
+            // Fatal (EIO on a torn-down master, EPIPE on a reaped slave,
+            // or a 0-byte short write that can never make progress).
+            // ANTS-4456: the pre-fix code shared the EAGAIN break here
+            // under a comment claiming the fatal case was handled below.
+            // Nothing handled it. The notifier is disarmed only when the
+            // queue empties, and a dead master stays write-ready (see
+            // Pty::start), so the slot re-fired forever: write fails,
+            // nothing is consumed, event loop spins at 100% CPU for the
+            // life of the process with no error surfaced.
+            fatalErrno = errno;
+            fatal = true;
+            break;
         }
     }
     if (written > 0) {
         m_pendingWrite.remove(0, written);
     }
+    qint64 lost = 0;
+    if (fatal) {
+        lost = m_pendingWrite.size();
+        ANTS_LOG(DebugLog::Pty,
+                 "drain failed errno=%d; dropping %lld queued bytes",
+                 fatalErrno, (long long)lost);
+        // Dropping the queue is what lets the tail below disarm the
+        // notifier — the bytes can never be written, so holding them
+        // only keeps the spin alive.
+        m_pendingWrite.clear();
+    }
     if (m_pendingWrite.isEmpty()) {
         if (m_writeNotifier) m_writeNotifier->setEnabled(false);
     }
+    // Emitted last, after every member is settled, so a slot that calls
+    // back into this object cannot observe a half-updated queue.
+    if (lost > 0) emit writeLost(lost);
 }
 
 void Pty::setReadEnabled(bool enabled) {
