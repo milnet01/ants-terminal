@@ -1413,11 +1413,22 @@ static QString claudeSettingsPath() {
 // (It previously checked only PreToolUse/PostToolUse/Stop, so the green
 // "Hooks installed" status lied when SessionStart / PreCompact were absent —
 // e.g. a pre-ANTS-1897 install or a foreign tool stripping an event array.)
+// ANTS-4457 — this list must also match the `hookName == "..."` chain in
+// ClaudeIntegration::processHookEvent, which nothing checked. It handled
+// PermissionRequest and PostToolUseFailure and this list wired neither, so
+// two branches with live consumers in the status widgets — one of them with
+// a hardening pass of its own (ANTS-2190) — could never receive an event.
+// Both are documented Claude Code hook events: "when a tool call needs a
+// permission decision" and "after a tool call fails". A missing entry is
+// silent in both directions: nothing logs an event that never arrives, and
+// the hooks status stays green because it verifies only what this list
+// says. tests/features/hook_events_wired now compares the two sets.
 static const QStringList &claudeHookEvents() {
     static const QStringList events{
-        QStringLiteral("SessionStart"), QStringLiteral("PreToolUse"),
-        QStringLiteral("PostToolUse"),  QStringLiteral("Stop"),
-        QStringLiteral("PreCompact")};
+        QStringLiteral("SessionStart"),   QStringLiteral("PreToolUse"),
+        QStringLiteral("PostToolUse"),    QStringLiteral("Stop"),
+        QStringLiteral("PreCompact"),     QStringLiteral("PermissionRequest"),
+        QStringLiteral("PostToolUseFailure")};
     return events;
 }
 
