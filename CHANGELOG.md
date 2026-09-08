@@ -14,6 +14,15 @@ for security-relevant changes.
 
 ### Added
 
+- **A roadmap publish that overwrites unrecoverable text now keeps a copy of the file and names it** (ANTS-4947)
+  `discarded_backup_paths[]` rides the lost-text arm of a store-backed
+  roadmap write. A lost line is text the render reproduces in no
+  styling, so the file on disk was its only copy and the capped
+  twenty-line `discarded_text` echo was all a caller had to retype
+  from. The copies go under the shared data directory, never beside
+  the project, so they cannot dirty `git status`. Restyled and
+  repunctuated drift keeps nothing — that text survives in the render.
+
 - **similar_code accepts `query` as an alias for `shape`** (ANTS-4951)
   `shape` wins when both are sent, as every other alias here does.
 

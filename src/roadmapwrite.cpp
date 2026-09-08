@@ -4,9 +4,14 @@
 
 #include "roadmapparse.h"
 
+#include <QCryptographicHash>
+#include <QDateTime>
+#include <QDir>
 #include <QFile>
+#include <QFileInfo>
 #include <QHash>
 #include <QSet>
+#include <QStandardPaths>
 #include <QStringView>
 
 #include <algorithm>
@@ -93,6 +98,10 @@ struct DriftBreakdown {
     int         repunctuated = 0;
     int         lost     = 0;
     QStringList lostText;
+    // ANTS-4947 — the files that lost TEXT, so the publish can keep a copy of
+    // each. Per file rather than a flag, because a project renders into several
+    // and only the ones that actually lose prose are worth keeping.
+    QStringList lostFiles;
 };
 
 // ANTS-4695 — the line with trailing sentence punctuation and surrounding
@@ -204,10 +213,64 @@ DriftBreakdown externalDrift(const QHash<QString, QString> &preImage) {
         all.restyled     += d.restyled;
         all.repunctuated += d.repunctuated;
         all.lost         += d.lost;
+        if (d.lost > 0)
+            all.lostFiles.append(it.key());
         for (const QString &t : d.lostText)
             if (all.lostText.size() < kLostTextCap) all.lostText.append(t);
     }
     return all;
+}
+
+// ANTS-4947 — keep the file the publish is about to overwrite.
+//
+// Only the LOST arm reaches here. A restyled or repunctuated line survives in
+// the render in another form, so the store still holds its content; a `lost`
+// line is by driftLines()'s own definition text the render reproduces in NO
+// styling, which makes the file on disk its only copy. Reporting that in a
+// capped twenty-line echo and then destroying it leaves a caller retyping their
+// own prose out of a response they may already have dropped.
+//
+// Written OUTSIDE the project, deliberately. A sibling file would appear in
+// `git status` every time this fires, in a repository the caller is typically
+// mid-commit on — which is how a safety net becomes something people delete on
+// sight. GenericDataLocation is the same root RoadmapStore uses, and this
+// library already links only Qt6::Core and Qt6::Sql, so it costs no link edge.
+//
+// Best-effort: a backup that cannot be written must not fail a write that is
+// otherwise correct. The envelope names what was kept, so an empty list says
+// nothing was — never that nothing was at stake, which the caller reads from
+// `discarded_text_lines` as before.
+QStringList keepDiscarded(const QStringList &paths) {
+    QStringList kept;
+    if (paths.isEmpty())
+        return kept;
+    const QString base =
+        QStandardPaths::writableLocation(QStandardPaths::GenericDataLocation);
+    if (base.isEmpty())
+        return kept;
+    const QString dir = base + QStringLiteral("/ants-terminal/discarded");
+    if (!QDir().mkpath(dir))
+        return kept;
+    // One stamp for the whole publish, so the files of a single write sort
+    // together rather than straddling a second boundary.
+    const QString stamp =
+        QDateTime::currentDateTimeUtc().toString(QStringLiteral("yyyyMMdd-HHmmsszzz"));
+    for (const QString &path : paths) {
+        // The basename alone collides across projects — every one of them calls
+        // it ROADMAP.md — so the absolute path is hashed in. Short: this
+        // disambiguates, it does not authenticate.
+        const QString tag = QString::fromLatin1(
+            QCryptographicHash::hash(path.toUtf8(), QCryptographicHash::Sha256)
+                .toHex()
+                .left(8));
+        const QString out = QStringLiteral("%1/%2.%3.%4.bak")
+                                .arg(dir, QFileInfo(path).fileName(), tag, stamp);
+        if (QFile::exists(out))
+            QFile::remove(out);
+        if (QFile::copy(path, out))
+            kept.append(out);
+    }
+    return kept;
 }
 
 }  // namespace
@@ -310,7 +373,6 @@ Result commitAndRender(RoadmapStore &store, qint64 projectId,
         RoadmapRender::Options pre;
         pre.liveRoadmapPath = liveRoadmapPath;
         pre.dialect = dialectOf(store, projectId);
-    pre.dialect = dialectOf(store, projectId);
         pre.dryRun = true;
         // ANTS-4628 — an ENGAGED EMPTY scope, so this diagnostic render judges
         // nothing. It has to: the pre-image exists only to measure drift, and
@@ -327,6 +389,12 @@ Result commitAndRender(RoadmapStore &store, qint64 projectId,
         }
     }
 
+    // ANTS-4947 — filled only once the commit has succeeded and the publish is
+    // about to run, so a dry run and every aborted write leave it empty. That is
+    // the ANTS-4463 tense rule applied to a file: nothing was overwritten, so
+    // nothing was kept.
+    QStringList keptBackups;
+
     // Every Outcome that leaves this function carries the measurement, so the
     // envelope sees it whichever render produced the rest of the fields.
     const auto publish = [&](const RoadmapRender::Outcome &o) {
@@ -340,6 +408,7 @@ Result commitAndRender(RoadmapStore &store, qint64 projectId,
         outcome->externalTextLines        = drift.lost;
         outcome->externalLostText         = drift.lostText;
         outcome->externalLostTextTruncated = drift.lost > drift.lostText.size();
+        outcome->externalLostBackups      = keptBackups;
     };
 
     // Step 2.
@@ -442,6 +511,10 @@ Result commitAndRender(RoadmapStore &store, qint64 projectId,
     // Step 6.
     if (!store.commit(error))
         return abort(Result::StoreFailed);
+
+    // ANTS-4947 — the last moment the overwritten text still exists. After the
+    // render below, the only copy of a `lost` line is whatever was kept here.
+    keptBackups = keepDiscarded(drift.lostFiles);
 
     // Steps 7–8 — publish. The store is committed from here on and STAYS so on
     // failure: see the header for why leaving the file stale-behind is the

@@ -53815,7 +53815,7 @@ Triage of the un-triaged tails across the shared feedback corpus. Findings that
 confirm an already-shipped id are closed inline with an `n/a` closure rather
 than re-filed; everything else lands here.
 
-- 📋 [ANTS-4947] **roadmap_log op:"annotate" discarded a note the same verb had written minutes earlier, and called it an external edit.**
+- 🚧 [ANTS-4947] **roadmap_log op:"annotate" discarded a note the same verb had written minutes earlier, and called it an external edit.**
   Three op:"annotate" calls against one id, one session, one
   caller_cwd, main checkout. All three returned ok:true,
   note_appended:true, write_path:"render". The third also returned
@@ -53846,6 +53846,47 @@ than re-filed; everything else lands here.
   project concurrently, which is the other hypothesis to rule out.
   Suspect ANTS-4507's class (parse(render(x)) is not identity) if
   the note's own text is what failed to round-trip.
+  Progress (2026-09-08): the SECOND half is shipped; the cause is not
+  reproduced and this item stays open for it.
+
+  Shipped. On the LOST arm the publish now copies the file before
+  overwriting it and names the copies in `discarded_backup_paths[]`,
+  written under GenericDataLocation/ants-terminal/discarded/ so they
+  never dirty git status in a repo the caller is mid-commit on. Only
+  that arm: a restyled or repunctuated line survives in the render, so
+  the file is not its only copy, and a backup there would fire on every
+  project's first post-migration write. No dry-run twin -- a preview
+  overwrites nothing. Best-effort: a copy that fails does not fail the
+  write, and an absent list says nothing was kept, never that nothing
+  was at stake. Tests Ants4947DiscardedTextIsRecoverable (RED on
+  assertion before the fix) and Ants4947RestyleOnlyDriftKeepsNoBackup.
+
+  Refusing instead was NOT available: roadmapwrite.cpp step 1b already
+  records that decision, and Ants4462ReportsDiscardedExternalEdits
+  asserts the report must not become a refusal -- one hand-edit anywhere
+  would brick every op on the project.
+
+  CAUSE: two of the report's three hypotheses are ELIMINATED, both by
+  tests that are green and kept as characterisation coverage.
+  Ants4947SequentialAnnotatesKeepEveryNote -- three annotates, one
+  session, all three notes survive. Ants4947InterleavedSessionsKeepEveryNote
+  -- two RemoteControl objects alive at once, each with its own cached
+  store connection, which is what two concurrent CC sessions are; all
+  three notes survive.
+
+  What the source rules out: the render reads liveRoadmapPath only to
+  ROUTE a section with a NULL source_path, never for content, so
+  render(store) is a pure function of the store; gateScope feeds
+  out.gateFailures alone and cannot change emitted text; RoadmapStore
+  holds no row cache, only SQLite's page cache. So the two renders
+  either side of a healthy write are byte-identical, and the file can
+  hold text the render lacks ONLY if the store lost it. The remaining
+  untested variable is the reporter's intervening git add/commit, which
+  does not rewrite the working tree, so it is the weakest of the three.
+
+  Also note discarded_edit_lines was 32 -- far more than one note --
+  which points at a long multi-line note rather than the one-liners
+  these tests use.
   **Layman:** A note written into the roadmap was silently thrown away by the next note, and the tool blamed a hand edit that never happened.
   Kind: fix.
   Source: UT_Ants_Ants_MCP_Feedback.md 2026-09-08.
@@ -55200,6 +55241,33 @@ than re-filed; everything else lands here.
   Kind: enhancement.
   Source: in-session-2026-09-08, hit while triaging the feedback corpus.
   Lanes: mcp.
+
+- 📋 [ANTS-4984] **`discarded_external_edits` asserts a cause the check cannot know.**
+  Split out of ANTS-4947, whose backup half shipped 2026-09-08. The
+  flag measures a DIVERGENCE between the file and the store's render.
+  It cannot tell which side moved: a hand edit, a store that fell
+  behind the file, or a write that did not persist all produce it.
+  The name asserts the first.
+
+  Why that matters rather than being a wording nit. Every project's
+  CLAUDE.md tells sessions that hand edits to a rendered roadmap are
+  dropped, so the flag reads as expected behaviour and is skimmed --
+  which is exactly what happened in ANTS-4947, where it was announcing
+  real data loss on a successful write.
+
+  The rename is breaking. The key is emitted at one point
+  (rcRoadmapWriteFields) but is documented in the roadmap_log and
+  roadmap_query descriptions, asserted by name in the write-half tests,
+  and read by other CC sessions' tooling. So this needs a deprecation
+  shape -- emit both for a release, or pick a name whose claim is only
+  what is measured (`publish_overwrote_file_text`) -- not a sed.
+
+  Note the boolean is already narrower than its name in the other
+  direction: ANTS-4729 made it true only when the FILE's own lines were
+  classified, so render-only additions no longer fire it.
+  **Layman:** A warning about lost text blames a hand edit, even when nobody edited by hand — so readers dismiss it.
+  Kind: fix.
+  Source: in-session-2026-09-08, split out of ANTS-4947.
 
 ### Ants MCP without a terminal relaunch (user request 2026-09-07)
 

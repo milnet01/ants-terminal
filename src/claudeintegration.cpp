@@ -12242,7 +12242,16 @@ void ClaudeIntegration::onMcpConnection() {
                         "file had deleted. Nothing is suppressed: an "
                         "unclassifiable line counts as TEXT, because "
                         "over-reporting loss costs a look and under-reporting "
-                        "hides data loss.");
+                        "hides data loss. ANTS-4947 — on the LOST arm the "
+                        "overwritten file is COPIED first and "
+                        "`discarded_backup_paths[]` names the copies, outside "
+                        "the project so they never dirty git status. A lost "
+                        "line is text the render reproduces in no styling, so "
+                        "the file was its only copy and the capped echo above "
+                        "was all a caller had to retype from. Restyled and "
+                        "repunctuated drift keeps nothing: that text survives "
+                        "in the render. No dry-run twin — a preview overwrites "
+                        "nothing, so there is no copy to name.");
                     t["selection_hint"] = QStringLiteral(
                         "Use to append a new bullet or flip an "
                         "existing one's status on ROADMAP.md. "

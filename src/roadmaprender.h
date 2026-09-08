@@ -126,6 +126,12 @@ struct Outcome {
     int         externalTextLines     = 0;
     QStringList externalLostText;              // capped; see kLostTextCap
     bool        externalLostTextTruncated = false;
+    // ANTS-4947 — where the overwritten file was kept, absolute, one entry per
+    // file. Only the LOST arm fills this: a restyled or repunctuated line
+    // survives in the render, so the file is not its only copy and a backup
+    // there would fire on every project's first post-migration write. Empty on
+    // a dry run, which overwrites nothing (the ANTS-4463 tense rule).
+    QStringList externalLostBackups;
 };
 
 // ANTS-3808 § 2.4 — one bullet's markdown, byte-identical to what the file

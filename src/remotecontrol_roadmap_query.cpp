@@ -267,6 +267,21 @@ void rcdetail::rcRoadmapWriteFields(QJsonObject &out,
                                : QStringLiteral("discarded_text_truncated")] = true;
                 }
             }
+            // ANTS-4947 — where the overwritten file was kept. The echo above
+            // is capped at twenty lines and is the caller's only copy of prose
+            // the render reproduces nowhere; a report of destroyed text that
+            // leaves nothing to restore it from is what made this loss silent
+            // in practice even though a field announced it.
+            //
+            // No dry-run twin: a preview overwrites nothing, so there is no
+            // backup to name and a future-tense key would promise a file that
+            // is never written. Absent also when the copy failed — the list
+            // says what WAS kept, never what was at stake, which
+            // `discarded_text_lines` already answers.
+            if (!outcome.externalLostBackups.isEmpty()) {
+                out[QStringLiteral("discarded_backup_paths")] =
+                    QJsonArray::fromStringList(outcome.externalLostBackups);
+            }
         }
     }
 }

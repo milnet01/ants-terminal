@@ -1828,3 +1828,217 @@ TEST(RoadmapWriteHalf, Ants4475OpAliasAcceptsTheSiblingSpelling) {
         << "ANTS-4475: `add` must route to the append path rather than being "
            "refused as an unknown op";
 }
+
+// ANTS-4947 — three op:"annotate" calls in one session against one id, on a
+// project whose file is already the store's own render. The reporter saw all
+// three return ok, and the THIRD report discarded_external_edits with
+// discarded_text carrying note 2 verbatim: the file held a note the fresh
+// render did not, so the store had lost a write its own envelope had confirmed.
+// Nothing outside the store touched the file.
+TEST(RoadmapWriteHalf, Ants4947SequentialAnnotatesKeepEveryNote) {
+    ants_test::XdgGuard guard;
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    qint64 projectId = 0;
+    const QString root = seedMigrated(guard, tmp, fixture(), &projectId);
+    ASSERT_FALSE(root.isEmpty());
+    const QString roadmap = root + QStringLiteral("/ROADMAP.md");
+
+    // Canonicalise first. A just-migrated file has never been rendered, so its
+    // first write legitimately reports the migration's own normalisation
+    // (Ants4462ReportsDiscardedExternalEdits step 1). The reported sequence ran
+    // on a long-migrated project, so it starts from an already-rendered file.
+    {
+        RemoteControl rc(nullptr);
+        const QJsonObject seed = rc.cmdRoadmapLogAppendForTest(
+            appendReq(root, QStringLiteral("A canonicalising bullet."))).object();
+        ASSERT_TRUE(seed.value(QStringLiteral("ok")).toBool());
+    }
+
+    const auto annotate = [&](const QString &note) {
+        RemoteControl rc(nullptr);
+        QJsonObject req;
+        req[QStringLiteral("caller_cwd")] = root;
+        req[QStringLiteral("op")]         = QStringLiteral("annotate");
+        req[QStringLiteral("id")]         = QStringLiteral("DEMO-0007");
+        req[QStringLiteral("note")]       = note;
+        return rc.cmdRoadmapLogFlipForTest(req).object();
+    };
+
+    const QStringList notes = {
+        QStringLiteral("Progress (2026-09-08): the first note."),
+        QStringLiteral("Progress (2026-09-08): the second note."),
+        QStringLiteral("Progress (2026-09-08): the third note."),
+    };
+
+    for (const QString &n : notes) {
+        const QJsonObject r = annotate(n);
+        ASSERT_TRUE(r.value(QStringLiteral("ok")).toBool())
+            << "code=" << r.value(QStringLiteral("code")).toString().toStdString()
+            << " error=" << r.value(QStringLiteral("error")).toString().toStdString();
+        EXPECT_TRUE(r.value(QStringLiteral("note_appended")).toBool())
+            << "the envelope claimed the note landed: " << n.toStdString();
+        EXPECT_FALSE(r.value(QStringLiteral("discarded_external_edits")).toBool())
+            << "nothing outside the store touched this file, so a discard here "
+               "is the verb overwriting a write it made itself; discarded_text="
+            << QJsonDocument(r.value(QStringLiteral("discarded_text")).toArray())
+                   .toJson(QJsonDocument::Compact).toStdString();
+    }
+
+    // The whole point: every confirmed note is still in the published file.
+    const QByteArray published = readAll(roadmap);
+    ASSERT_FALSE(published.isEmpty());
+    for (const QString &n : notes)
+        EXPECT_TRUE(published.contains(n.toUtf8()))
+            << "a note the verb confirmed is absent from the file it published: "
+            << n.toStdString();
+}
+
+// ANTS-4947, the second hypothesis the report names: two sessions on one
+// project. Each RemoteControl owns its own cached RoadmapStore connection
+// (m_roadmapStore), so this is what two concurrent CC sessions are, reduced to
+// one process. The reported signature is note 1 surviving, note 2 destroyed,
+// note 3 landing — which is what a connection reading a body that predates the
+// other's commit produces exactly.
+TEST(RoadmapWriteHalf, Ants4947InterleavedSessionsKeepEveryNote) {
+    ants_test::XdgGuard guard;
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    qint64 projectId = 0;
+    const QString root = seedMigrated(guard, tmp, fixture(), &projectId);
+    ASSERT_FALSE(root.isEmpty());
+    const QString roadmap = root + QStringLiteral("/ROADMAP.md");
+
+    // Both connections are open for the whole sequence — that is the variable
+    // under test. A fresh RemoteControl per call re-opens the store and cannot
+    // hold a stale snapshot.
+    RemoteControl a(nullptr);
+    RemoteControl b(nullptr);
+
+    {
+        const QJsonObject seed = a.cmdRoadmapLogAppendForTest(
+            appendReq(root, QStringLiteral("A canonicalising bullet."))).object();
+        ASSERT_TRUE(seed.value(QStringLiteral("ok")).toBool());
+    }
+
+    const auto annotate = [&](RemoteControl &rc, const QString &note) {
+        QJsonObject req;
+        req[QStringLiteral("caller_cwd")] = root;
+        req[QStringLiteral("op")]         = QStringLiteral("annotate");
+        req[QStringLiteral("id")]         = QStringLiteral("DEMO-0007");
+        req[QStringLiteral("note")]       = note;
+        return rc.cmdRoadmapLogFlipForTest(req).object();
+    };
+
+    const QString n1 = QStringLiteral("Progress (2026-09-08): the first note.");
+    const QString n2 = QStringLiteral("Progress (2026-09-08): the second note.");
+    const QString n3 = QStringLiteral("Progress (2026-09-08): the third note.");
+
+    const QJsonObject r1 = annotate(a, n1);
+    ASSERT_TRUE(r1.value(QStringLiteral("ok")).toBool());
+    const QJsonObject r2 = annotate(b, n2);
+    ASSERT_TRUE(r2.value(QStringLiteral("ok")).toBool());
+    EXPECT_TRUE(r2.value(QStringLiteral("note_appended")).toBool());
+    const QJsonObject r3 = annotate(a, n3);
+    ASSERT_TRUE(r3.value(QStringLiteral("ok")).toBool());
+
+    EXPECT_FALSE(r3.value(QStringLiteral("discarded_external_edits")).toBool())
+        << "the third write reported discarding text nobody outside the store "
+           "wrote; discarded_text="
+        << QJsonDocument(r3.value(QStringLiteral("discarded_text")).toArray())
+               .toJson(QJsonDocument::Compact).toStdString();
+
+    const QByteArray published = readAll(roadmap);
+    ASSERT_FALSE(published.isEmpty());
+    EXPECT_TRUE(published.contains(n1.toUtf8())) << "note 1 lost";
+    EXPECT_TRUE(published.contains(n2.toUtf8()))
+        << "note 2 was confirmed by its own envelope and is absent from the "
+           "file — the reported data loss";
+    EXPECT_TRUE(published.contains(n3.toUtf8())) << "note 3 lost";
+}
+
+// ANTS-4947, the half that is independent of the cause. Text the publish
+// overwrites is announced in discarded_text — capped, and then gone. A caller
+// told their prose was destroyed has nothing left to restore it from but a
+// twenty-line echo in a response they may already have discarded.
+//
+// `lost` lines are by driftLines()'s own definition text the render reproduces
+// in NO styling, so the file about to be overwritten is the only copy. Keep it,
+// and name where.
+TEST(RoadmapWriteHalf, Ants4947DiscardedTextIsRecoverable) {
+    ants_test::XdgGuard guard;
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    qint64 projectId = 0;
+    const QString root = seedMigrated(guard, tmp, fixture(), &projectId);
+    ASSERT_FALSE(root.isEmpty());
+    const QString roadmap = root + QStringLiteral("/ROADMAP.md");
+
+    RemoteControl rc(nullptr);
+
+    // Canonicalise, so the drift under test is the hand-edit and not the
+    // migration's own normalisation.
+    ASSERT_TRUE(rc.cmdRoadmapLogAppendForTest(
+        appendReq(root, QStringLiteral("A canonicalising bullet."))).object()
+        .value(QStringLiteral("ok")).toBool());
+
+    // Prose the render reproduces nowhere, so it classifies as lost rather than
+    // restyled — the arm where the file is the only copy.
+    const QByteArray marker =
+        "> A sentence that exists in no store column and in no other styling.\n";
+    QByteArray hand = readAll(roadmap);
+    ASSERT_FALSE(hand.isEmpty());
+    const int cut = hand.indexOf('\n');
+    ASSERT_GT(cut, 0);
+    hand.insert(cut + 1, marker);
+    ASSERT_TRUE(writeFile(roadmap, hand));
+
+    const QJsonObject dirty = rc.cmdRoadmapLogAppendForTest(
+        appendReq(root, QStringLiteral("A bullet after the hand-edit."))).object();
+    ASSERT_TRUE(dirty.value(QStringLiteral("ok")).toBool());
+    ASSERT_GE(dirty.value(QStringLiteral("discarded_text_lines")).toInt(), 1)
+        << "precondition: this case only means anything on the lost-text arm";
+    ASSERT_FALSE(readAll(roadmap).contains(marker))
+        << "precondition: the publish really did overwrite it";
+
+    const QJsonArray backups =
+        dirty.value(QStringLiteral("discarded_backup_paths")).toArray();
+    ASSERT_EQ(backups.size(), 1)
+        << "ANTS-4947: text the publish destroyed must be recoverable, and the "
+           "envelope must say from where";
+    const QString kept = backups.at(0).toString();
+    EXPECT_TRUE(QFileInfo::exists(kept))
+        << "the named backup does not exist: " << kept.toStdString();
+    EXPECT_TRUE(readAll(kept).contains(marker))
+        << "the backup exists but does not carry the discarded text";
+
+    // Outside the project: a sibling file would dirty git status on every
+    // occurrence, in a repository the caller is usually mid-commit on.
+    EXPECT_FALSE(kept.startsWith(root))
+        << "the backup was written into the project tree: " << kept.toStdString();
+}
+
+// A write that discards only RESTYLED or REPUNCTUATED lines destroys nothing —
+// that text survives in the render, in another styling. Copying the file there
+// would put a backup beside every project's first post-migration write and
+// train the reader to ignore the field that matters.
+TEST(RoadmapWriteHalf, Ants4947RestyleOnlyDriftKeepsNoBackup) {
+    ants_test::XdgGuard guard;
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    qint64 projectId = 0;
+    const QString root = seedMigrated(guard, tmp, fixture(), &projectId);
+    ASSERT_FALSE(root.isEmpty());
+
+    RemoteControl rc(nullptr);
+    const QJsonObject first = rc.cmdRoadmapLogAppendForTest(
+        appendReq(root, QStringLiteral("A first bullet."))).object();
+    ASSERT_TRUE(first.value(QStringLiteral("ok")).toBool());
+    ASSERT_TRUE(first.value(QStringLiteral("discarded_external_edits")).toBool())
+        << "precondition: the migration's own normalisation is reported";
+    ASSERT_EQ(first.value(QStringLiteral("discarded_text_lines")).toInt(), 0)
+        << "precondition: this fixture's first write restyles and loses nothing";
+
+    EXPECT_FALSE(first.contains(QStringLiteral("discarded_backup_paths")))
+        << "a restyle destroys no text, so there is nothing to keep";
+}
