@@ -1697,6 +1697,8 @@ if(ANTS_TESTS)
                 tests/features/claude_transcript_robustness/test_claude_transcript_robustness.cpp
                 # ANTS-4457 — retry transcript resolution until it succeeds.
                 tests/features/transcript_resolution_retry/test_transcript_resolution_retry.cpp
+                # ANTS-4457 — every source of a project path is traversal-checked.
+                tests/features/project_path_traversal_gate/test_project_path_traversal_gate.cpp
                 tests/features/allowlist_add/test_allowlist_add.cpp
                 # ANTS-1993 — permission-prompt structural gate (anti-spoof).
                 tests/features/claude_permission_prompt_structure/test_claude_permission_prompt_structure.cpp

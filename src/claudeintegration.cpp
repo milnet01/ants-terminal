@@ -16460,9 +16460,18 @@ QString ClaudeIntegration::decodeProjectPath(const QString &encoded) {
     // reached as a last resort (session metadata + transcript cwd both
     // failed). No write, no symlink follow — pure existence checks — so
     // the attacker-influence surface is negligible.
-    if (!encoded.startsWith('-')) return encoded;
+    // ANTS-4457 — the value returned here is published by the caller as a
+    // project root, so it must not be a traversal or a relative path. The
+    // ANTS-1845 assessment above covers the existence PROBING and stands;
+    // it is not an argument about the value. A name that is not an encoded
+    // absolute path, or that decodes to a `..` component, has no safe
+    // answer — return empty and let the caller's existing
+    // empty-means-unresolved branch deal with it.
+    if (!encoded.startsWith('-')) return {};
     const QStringList tokens = encoded.mid(1).split('-');
     if (tokens.isEmpty() || tokens.first().isEmpty()) return QStringLiteral("/");
+    for (const QString &t : tokens)
+        if (t == QLatin1String("..")) return {};
 
     QString path = QLatin1Char('/') + tokens.first();
     for (int i = 1; i < tokens.size(); ++i) {
@@ -16566,7 +16575,14 @@ QList<ClaudeProject> ClaudeIntegration::discoverProjects() const {
             QString name = obj.value("name").toString();
             QString cwd = obj.value("cwd").toString();
             if (!name.isEmpty()) sessionNames[sid] = name;
-            if (!cwd.isEmpty()) sessionCwds[sid] = cwd;
+            // ANTS-4457 — gate this the way ANTS-1670 M3 gates the
+            // transcript's cwd. Same threat model, same consumption as a
+            // process working directory and a project root — and this one
+            // is tried FIRST, so leaving it ungated meant the checked
+            // source never ran when both were present. Checking at store
+            // time keeps the map safe by construction, so an unsafe value
+            // falls through to the next source instead of shadowing it.
+            if (!cwd.isEmpty() && isSafeAbsolutePath(cwd)) sessionCwds[sid] = cwd;
             // Check if the process is actually running
             int pid = obj.value("pid").toInt();
             if (pid > 0 && QFile::exists(QString("/proc/%1/cmdline").arg(pid)))
@@ -16600,6 +16616,11 @@ QList<ClaudeProject> ClaudeIntegration::discoverProjects() const {
             // Last resort: naive decode
             realPath = decodeProjectPath(dirName);
         }
+        // ANTS-4457 — one gate over the resolved value, whichever of the
+        // three sources produced it, so a source added later inherits it.
+        // A project whose path cannot be trusted is skipped rather than
+        // published with a path nobody validated.
+        if (!isSafeAbsolutePath(realPath)) continue;
         project.path = realPath;
 
         // Read project memory snippet
