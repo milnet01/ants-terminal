@@ -29,13 +29,20 @@ before a push. It binds every repository that has a pipeline, and every
 hook, skill or session that pushes on one's behalf.
 [commits.md](commits.md) § 4.2 states the obligation, points here and
 restates none of it. **Anything that restates a rule from here is amended
-with it, and hooks count**: `workflow.md` § 6, the
-machine's `CLAUDE.md` rule 6, [releases.md](releases.md) § 6 step 5, this
-standard's own row in `commits.md` § What checks this, and both push hooks.
-`~/.claude/githooks/pre-push` cites §§ 2, 3, 5 and 6.1 in its own source
-and prints the § 3 citation to the user on a push it cannot gate;
-`skeleton/files/.githooks/pre-push` cites § 2. Editing a rule here and
-stopping is the re-encoding drift § 1.1 exists to prevent.
+with it — a document, a hook, a skill or a command alike — and the way to
+find them is to search the tree for `local-gate.md` and read every hit.**
+There is deliberately no list here: a list of restatement sites is itself a
+re-encoding, it was wrong twice in two review loops, and it makes a sweep
+look complete when it is not. Two bounds on the search. Records are outside
+it — a roadmap, a changelog, a loop log, a dated run record. **Decide by
+what a file IS, never by where it sits**, which is § 6.1's own rule applied
+to this sweep: `docs/` holds both kinds, records beside contract documents —
+specs, plans, decisions, a design doc, this repository's charters — and
+every one of the second kind is amended like any other restatement. And a
+restatement that never names this file is not reachable by the search at
+all, so a rule with distinctive phrasing is worth searching for by that
+phrasing too. Editing a rule here and stopping is the drift
+§ 1.1 exists to prevent.
 
 ## 1. Principles
 
@@ -65,7 +72,8 @@ on a metered repository it costs the minutes twice.
 **A repository with a pipeline and a gate script that no push actually
 runs is in breach of this standard**, not merely unlucky. Two ways in: no
 reachable `pre-push` hook, or a reachable one that cannot find the script.
-§ 6.2's `ants.gate.command` is the second, and the hook says so and exits 0.
+§ 6.2's `ants.gate.command` is the second. The hook announces that nothing
+was checked and exits 0, without saying which of the two you are in.
 
 **A repository with a pipeline and no way to run it locally has a gap
 worth fixing** before the next feature, not a rule to argue with.
@@ -234,8 +242,8 @@ still gets documentation mode. A gate spelling it otherwise pays for the
 full run. That is not a breach — § 1.4 spends time rather than coverage —
 but setting the key removes the cost.
 
-**A third key is not about documentation and is named here because nothing
-else names it**: `ants.gate.command` tells the hook where the gate script
+**A third key is not about documentation and is named here because no other
+standard names it**: `ants.gate.command` tells the hook where the gate script
 is. A repository whose script sits outside the hook's own discovery list
 and has not set it is reported as having no gate at all, which is § 2's
 breach with a gate script present.
