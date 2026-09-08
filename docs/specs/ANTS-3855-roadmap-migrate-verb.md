@@ -495,7 +495,7 @@ bounds no bytes — `Note::detail` is a `QString` with no length rule of its own
 
 | Bound | Value | On breach |
 |---|---|---|
-| rows | 200 DISTINCT `(code, detail, source_index)` groups | `notes_truncated: true`; `notes_count` stays the TRUE total |
+| rows | 200 DISTINCT `(code, detail, source_index)` groups by default; the caller raises it with `max_notes`, clamped to `[1, 2000]` | `notes_truncated: true`; `notes_count` stays the TRUE total |
 | repetition | collapsed before the row cap (ANTS-4649) | `notes_collapsed: true`; the merged row carries `count` + up to 3 `sample_lines` and NO `line` |
 | `detail` | 2048 characters each | that entry's `detail` is clipped to exactly 2048 with an ellipsis as the last character |
 
@@ -511,8 +511,37 @@ is still bounded and still ~200× smaller than the roadmap it came from.
 So the array is ≤ ~400 KiB for ASCII input and typically a few KiB. The cap
 exists because one note is emitted per offending line — ANTS-3772's 3D_Engine
 produced 17 id collisions on its own — and this project ships no unbounded
-growth without a named cap. A project exceeding 200 has a systemic problem the
-first 200 notes already describe.
+growth without a named cap.
+
+**The default is a default, not a verdict on the project — corrected 2026-09-08
+(ANTS-4559).** This paragraph used to end "A project exceeding 200 has a
+systemic problem the first 200 notes already describe", and that is false for
+any code whose `detail` is unique per occurrence. Measured on Vestige: 442
+groups, of which four collapsed rows carried 2543 notes and the rest were
+`quarantined_id` at `count: 1` each, because the detail is the id token and no
+two ever merge. The shown rows described 196 ids and the 242 dropped ones were
+named nowhere — so the first 200 notes describe the dropped notes only when the
+population is repetitive, which after ANTS-4649 is exactly the population that
+has already been collapsed away. The cap now bounds the DEFAULT response; a
+caller that wants the whole population asks for it.
+
+Two fields serve that, and they are additive:
+
+`notes_summary` is a map of note `code` to its total count across ALL notes,
+computed BEFORE the row cap and never truncated. It is bounded by the number of
+distinct codes the loader emits, so it costs tens of bytes whatever the corpus
+does. It exists because `notes_count` is one scalar over every code: a caller
+holding a truncated array cannot tell whether the rows it lost were the
+repetitive ones or the only ones carrying signal. This is the field that makes
+`notes_truncated` actionable rather than merely honest.
+
+`max_notes` is the caller's override of the row bound, defaulting to 200 and
+clamped to `[1, 2000]`, on the `max_findings` / `max_results` pattern the rest
+of this project's verbs already use. `notes_summary` names the population and
+`max_notes` reaches it, in one further call. **A filter over note codes was
+considered and rejected**: with repetition already collapsed, narrowing to one
+code removes a handful of rows and leaves a large single-code population still
+against the cap, so it does not answer the question that motivated it.
 
 A refusal envelope that carries `notes` (only `migrate_failed` does) carries
 all three fields, under the same bounds.
@@ -789,7 +818,17 @@ test's own `Access::Interactive` `RoadmapStore` at the same `storePath` after
   re-asserting it here would duplicate another spec's invariant with a fixture
   that cannot see it.
 - **INV-10** — `notes[]` honours the bounds in § 2.4. *(Amended 2026-08-25,
-  ANTS-4649.)* Repetition is collapsed BEFORE the row cap: rows are keyed by
+  ANTS-4649; amended again 2026-09-08, ANTS-4559.)* **The row bound is the
+  DEFAULT and `max_notes` moves it**, clamped to `[1, 2000]`, so a corpus whose
+  groups exceed the default is reachable in one further call rather than
+  unrecoverable. **`notes_summary` maps every note `code` to its total count
+  across all notes, is computed before the row cap and is never truncated** — so
+  a caller holding a truncated array can still name the population it did not
+  receive, which `notes_count` alone cannot do. Both are asserted against a
+  fixture whose groups exceed the default with a code that CANNOT collapse
+  (unique `detail` per occurrence): the default run truncates, `notes_summary`
+  reports the true per-code total either way, and the same call under a raised
+  `max_notes` returns every group with `notes_truncated: false`. Repetition is collapsed BEFORE the row cap: rows are keyed by
   `(code, detail, source_index)` in first-appearance order, a row of one keeps
   the pre-ANTS-4649 shape exactly, and a merged row carries `count` plus up to
   three `sample_lines` and omits `line` — it has no single line and must not
