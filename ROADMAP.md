@@ -43246,6 +43246,61 @@ filed below.
   DIFFERENT id, so the shown rows describe none of the 242 missing. That
   sentence is the amendment's hook, alongside the § 2.4 bound table and
   INV-10.
+  GATE DONE 2026-09-08. review-contract on
+  docs/specs/ANTS-3855-roadmap-migrate-verb.md, genre spec, cap 2. Two
+  loops, three cold lanes each. 15 verified, 15 fixed, 1 dismissed on
+  materiality. Loop rows 6 and 7 in that spec carry the detail.
+
+  THE CONTRACT IS SETTLED AND THE ITEM IS READY TO IMPLEMENT. What the
+  spec now specifies, none of which existed when this item was re-scoped:
+
+    notes_summary  a map of note code to its total count over ALL notes,
+                   tallied from Outcome::notes BEFORE grouping and before
+                   the row cap, never truncated. It is what lets a caller
+                   name the population it did not receive.
+    max_notes      an integer argument, default 200, forwarded verbatim as
+                   Request::maxNotes; run() applies the [1, 2000] clamp so
+                   a test driving the seam directly is bounded identically.
+                   The envelope echoes the EFFECTIVE value after the clamp.
+
+  Three things the gate changed that an implementer would otherwise have
+  got wrong:
+
+  1. max_notes had no route to the code that applies it. Request carried
+     five members, § 2.3 constructs it positionally, and the cap is applied
+     inside run() — which § 6 says is the only thing the tests drive. All
+     three lanes of loop 2 found it. INV-10's own new leg was unwritable.
+  2. INV-10 asserted the per-row counts sum to notes_count
+     UNCONDITIONALLY, while the fixture it now requires truncates by
+     design. That assertion reds against a correct implementation.
+  3. INV-10's Test: routing line enumerated two legs and said "Both", so a
+     test author building from it would have shipped this whole contract
+     with no coverage.
+
+  THE FIXTURE THIS NEEDS IS SPECIFIC AND § 6 NOW NAMES IT: more than 200
+  bullets whose id tokens are non-grammatical, so each raises a
+  quarantined_id whose detail is unique and nothing collapses. A fixture of
+  REPEATED notes cannot serve it — collapse folds those to a handful of
+  rows, the default bound is never reached, and the leg passes without
+  exercising anything.
+
+  DELIVERABILITY, checked rather than assumed: at the 2000 ceiling the
+  reply is ~4 MiB, which exceeds the offload threshold
+  (claude.mcp_offload_large_results defaults true,
+  claude.mcp_offload_threshold_bytes defaults to 16384). So the caller gets
+  an offloaded envelope plus a handle and reads it back with read_spill.
+  That is deliverable, and the spec says so rather than adding a second
+  byte cap on top.
+
+  NOT BUILT YET. No code has been written; the contract went first
+  deliberately, and two of the gate's findings would have produced wrong
+  code and one a red test.
+
+  FILED SEPARATELY, not fixed here: § 2.1's `op` row points at "§ 2.8" and
+  that section does not exist (§ 2 ends at § 2.6). Dismissed on materiality
+  inside the gate — the deregister op shipped and nobody builds
+  differently — and it belongs to a check-doc-facts pass, which owns broken
+  cross-references.
   **Layman:** The migration preview buries its useful answers under thousands of repeated lines and then cuts off the useful ones.
   Kind: perf.
   Source: Vestige_Ants_MCP_Feedback.md 2026-08-20.
