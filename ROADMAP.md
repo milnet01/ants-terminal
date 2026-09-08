@@ -43203,6 +43203,49 @@ filed below.
   RE-SCOPED to: let a caller ask for the note codes it wants, so a large quarantined_id population is reachable without raising the cap for everything else. A `codes:[...]` filter is the shape; measure whether the cap still binds after ANTS-4649 before building anything.
 
   CONSTRAINT ON ANY CHANGE. `RoadmapMigrateVerb.Inv10NotesAreBoundedOnBothAxes` in tests/features/roadmap_migrate_verb pins the current contract — collapse under 20 rows for 250 identical notes, `notes_count` as the true total, per-row `count`, no `line` on a merged row, and the sum invariant. The shape is also pinned as INV-10 in docs/specs/ANTS-3855-roadmap-migrate-verb.md, so redesigning it needs a spec amendment and its gate, not just an edit.
+  MEASURED 2026-09-08, which is the step this body set as the gate before
+  any code. Run: roadmap_migrate dry_run on Vestige, fields narrowed, then
+  a second call with encoding "tabular" to read the rows without paying for
+  them. Both envelopes are the evidence.
+
+  THE CAP STILL BINDS. notes_count 2981, notes_collapsed true,
+  notes_truncated true. So ANTS-4649's collapse did not remove the
+  truncation, exactly as this body predicted.
+
+  THE DISTRIBUTION, read off the 200 shown rows. Four collapsed rows carry
+  2543 notes between them: field_defaulted kind 989, field_defaulted source
+  989, id_allocation_owed closed 108, id_allocation_owed open 457. The
+  other 196 rows are quarantined_id, every one of them count 1, because the
+  detail is the id token and no two collapse. So the group population is
+  442, of which 200 are shown and 242 quarantined ids are DROPPED and
+  unrecoverable. The noise is gone and the signal is what overflows —
+  this body's residue claim is confirmed, not merely still plausible.
+
+  THE PROPOSED FIX DOES NOT WORK, and that is the new finding. A
+  codes:[...] filter narrowing to quarantined_id leaves 438 groups against
+  a 200-row cap, so it recovers four slots and still drops 238 ids. With
+  collapse already folding the noise into four rows, filtering saves almost
+  nothing. Do not build it as specified.
+
+  WHAT THE MEASUREMENT SAYS TO BUILD INSTEAD, two additive fields:
+    1. A summary map of note code to total count over ALL notes, before the
+       row cap. It is bounded by the number of distinct codes, so it costs
+       a few dozen bytes, and it is the only way a caller learns the true
+       population of a code it cannot see. Today nothing in the envelope
+       reports it: notes_count is one scalar over every code.
+    2. A caller cap override on the row bound, defaulting to the current
+       value and clamped, on the max_findings / max_results pattern every
+       other verb here already uses. With the summary naming the
+       population, this is what makes it reachable in one more call.
+  The filter is dropped. Two fields, both additive, and the pair solves
+  what the filter could not.
+
+  SPEC IMPACT, and it is a real one. § 2.4 justifies the row cap with "A
+  project exceeding 200 has a systemic problem the first 200 notes already
+  describe." Vestige measurably falsifies that: each dropped note names a
+  DIFFERENT id, so the shown rows describe none of the 242 missing. That
+  sentence is the amendment's hook, alongside the § 2.4 bound table and
+  INV-10.
   **Layman:** The migration preview buries its useful answers under thousands of repeated lines and then cuts off the useful ones.
   Kind: perf.
   Source: Vestige_Ants_MCP_Feedback.md 2026-08-20.
