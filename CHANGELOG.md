@@ -362,6 +362,20 @@ for security-relevant changes.
 - **`cut-rc.sh` now names the release phase it abandoned when a pre-commit hook refuses one of its commits.** (ANTS-4865)
   The run already stopped, but said nothing: the only text on screen was the hook's own refusal, which says nothing about the release, and a run piped through `tail` loses the exit status as well. It now reports which phase aborted, what did not happen (no tag, nothing pushed), and that the staged files are left as written so you can see what had been changed.
 
+### Security
+
+- **Session logs and session recordings are now readable only by you** (ANTS-4456)
+  Turning on session logging, or hitting Record Session, saves a file
+  holding everything the terminal printed — which can include keys or
+  tokens a command happened to display. Those files, and the folders
+  holding them, were being created with the system default that lets
+  any other account on the machine read them. Both are now locked to
+  your account only. Files saved by an earlier version keep the
+  permissions they were created with; delete them or tighten them by
+  hand if that matters to you. The three "Export..." menu items are
+  unchanged, since you choose where those go and may mean to share
+  them.
+
 ## [0.7.108] — unreleased (Patron RC preview)
 ### Added
 

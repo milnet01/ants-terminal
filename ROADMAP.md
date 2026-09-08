@@ -38126,6 +38126,43 @@ whole files.
 
   Verified: four invariants red with the fix removed, green with it
   restored, full suite green via the default preset. Shipped in 2a626016.
+  Progress (2026-09-08, fourth pass): the capture-file permissions claim
+  is VERIFIED against source and FIXED. Six MEDIUM claims remain
+  unverified.
+
+  Both files named by the report are auto-created in the app's own data
+  directory at a path the user never chooses, and both hold the whole PTY
+  byte stream. Neither asked for owner-only permissions, and both
+  directories came from mkpath, so file and directory alike landed at the
+  process umask — 0644 inside 0755 on a desktop.
+
+  The project already owns this class. The helper header creates a
+  directory at 0700 with no create-then-chmod window and applies 0600 to
+  a file, and its own comment names session blobs and scrollback as what
+  it was written for. Both sites now use it, with the directory helper's
+  false return surfaced rather than swallowed, which that header
+  requires.
+
+  Two things found while fixing that the report did not name. The Record
+  Session handler re-enters its own toggled lambda when it unchecks the
+  action on failure, so the failure message was overwritten by the
+  stop-recording one; signals are blocked across that. And the sibling
+  contract for the debug log claimed that file was the last outlier among
+  files in this directory, which was false — these two were never
+  enumerated. Corrected there with a pointer to the new contract.
+
+  Left alone deliberately: the three export actions writing through a
+  save dialog. The user picks those paths and may intend to share the
+  file, so forcing owner-only on a chosen path is a different decision.
+  Recorded in the spec rather than taken silently.
+
+  Contract and test at tests/features/session_capture_perms. Source grep,
+  because these paths need a constructed widget and main window that the
+  unit harness has neither of.
+
+  Verified: every invariant red with the fix absent, green with it
+  present, ctest count moved, full suite green via the default preset.
+  Shipped in 2e72aee8.
 
 - 📋 [ANTS-4457] **Triage: Claude-integration findings from the cold sweep.**
   Reviewer claims carried forward as-is. NOT re-verified — check each against
