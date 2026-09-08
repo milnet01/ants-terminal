@@ -550,12 +550,17 @@ is a better next reviewer than another cold read — `review-contract` routes a
 spec to implementation at the cap and never to a split, so **nothing splits a
 spec after the loops begin.**
 
-**Who makes the pre-loop call is unsettled, and that is worth knowing before
-you rely on it.** This section addresses the author, before dispatch.
-`write-spec` tells its runner the opposite — that the split is the gate's
-call and the size figure does not make it theirs — and the gate does not
-split a spec at all. So an oversized spec can reach the loops with no one
-having owned the decision. Filed as CFG-0323.
+**`write-spec` Step 4 makes the pre-loop call.** It is the only actor holding
+the spec before dispatch. And `review-contract` § At the cap routes an
+oversized spec to implementation rather than to a split, so the gate has said
+in writing that it will not make this call.
+
+**Scope: the call before dispatch, and nothing at the cap.** What a capped run
+does with its tail is `review-contract` § At the cap's.
+
+Settled 2026-09-08 (CFG-0323). Until then this section recorded the ownership
+as unsettled, and an oversized spec could reach the loops with nobody having
+owned the decision.
 
 **`spec_lint` reports it as `line_count`; no check judges it.** The `size`
 check that did was dropped on 2026-08-10 and nothing replaced it.
