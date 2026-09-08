@@ -145,6 +145,15 @@ for security-relevant changes.
 
 ### Fixed
 
+- **A terminal whose shell has gone away no longer pins a CPU core** (ANTS-4456)
+  When a write to the terminal failed for good — the shell reaped, the
+  connection torn down — the code that retries queued keystrokes kept
+  being woken, kept failing, and never stopped, burning a whole CPU
+  core silently for as long as the window stayed open. It now gives up
+  on the first unrecoverable error. Keystrokes discarded that way are
+  also reported in the log, as they already were on the two other paths
+  that can drop them.
+
 - **Sending a multi-line scratchpad now submits the text, and only the text** (ANTS-4456)
   Sending from the scratchpad sent the Enter before the paste confirmation
   was answered. The shell received a bare Enter first, running whatever was

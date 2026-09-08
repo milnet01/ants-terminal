@@ -38093,6 +38093,39 @@ whole files.
   restored, full suite green via the default preset. paste_dialog_custom
   was re-run deliberately — it scrapes the accept lambda through a fixed
   byte window that this edit lengthens — and passes in both states.
+  Progress (2026-09-08, third pass): two MEDIUM claims VERIFIED against
+  source and FIXED — the fatal PTY write error leaving the write notifier
+  armed, and the same area dropping queued bytes with no writeLost signal.
+  Seven MEDIUM claims remain unverified.
+
+  Both mechanisms hold as reported. Pty::onWriteReady shared one break
+  between EAGAIN and a fatal error, under a comment saying the fatal case
+  was handled below; nothing handled it. The notifier is disarmed only
+  when the pending queue empties, and a dead master FD stays write-ready
+  — Pty::start's own comment says so — so the slot re-fired forever with
+  no error surfaced. That is the unbounded spin the report named.
+
+  Pty::write's fatal branch dropped the caller's remainder with only a
+  debug-log line, while its two sibling drop paths both signal. The
+  existing spec's INV-8 headline already required every dropping path to
+  signal; only the test's count was short, so the contract was ahead of
+  the code.
+
+  The fix branches EAGAIN apart in the drain loop and drops the
+  unwritable queue on a fatal error, which lets the existing empty-queue
+  tail disarm the notifier — no second disable site. Both writeLost
+  emissions are last on their path, after every member is settled.
+
+  Contract extended in place at tests/features/pty_write_eagain_queue
+  rather than opening a new feature dir, since the behaviour is the same
+  one that spec already owns. INV-9 matches an errno comparison rather
+  than the bare token: the pre-fix body carried the word EAGAIN in a
+  comment on the very break that failed to branch, so a token search
+  passed against the defect and had to be tightened before the red run
+  meant anything.
+
+  Verified: four invariants red with the fix removed, green with it
+  restored, full suite green via the default preset. Shipped in 2a626016.
 
 - 📋 [ANTS-4457] **Triage: Claude-integration findings from the cold sweep.**
   Reviewer claims carried forward as-is. NOT re-verified — check each against
