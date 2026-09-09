@@ -71351,6 +71351,47 @@ here.)
   Source: in-session-2026-09-09 (found in the 0.7.109 release doc sweep).
   Lanes: mcp, docs.
 
+- 📋 [ANTS-4992] **roadmap_migrate dry_run cannot answer whether ONE id still moves.**
+  Hit while verifying ANTS-4405. The repair's acceptance question is
+  narrow — does THIS id still move on a round trip — and the only
+  instrument is a whole-project dry-run migrate. That returned 1548
+  moved items with `updated_items[]` truncated, so the one row that
+  mattered could not be located at any budget.
+
+  What would answer it: an `only_ids[]` (or `filter_ids[]`) argument
+  scoping the reported diff to named ids. The migrate still runs whole —
+  the diff is a full-corpus computation — but the REPORT is scoped, so
+  the reply is bounded and the truncation cannot hide the answer.
+
+  Note this is a reporting gap, not a correctness one, and it compounds
+  ANTS-4507 rather than duplicating it: 4507 says the COUNT has no zero
+  point, this says the per-id detail behind the count is unreachable.
+  Either one alone leaves a single-item repair unverifiable.
+  **Layman:** After fixing one roadmap item, there is no cheap way to ask whether that item specifically still drifts.
+  Kind: enhancement.
+  Source: in-session-2026-09-09.
+
+- 📋 [ANTS-4993] **No verb enumerates the distinct `Source:` values, so the new source filter's prefixes are guesswork.**
+  ANTS-4985 shipped a prefix filter over the provenance column. Choosing
+  a prefix requires knowing the vocabulary, and the column is free text
+  with no closed set — the argument's own description cites a distinct-value
+  count measured on 2026-09-09, which means it was measured by opening
+  the store directly rather than through any verb.
+
+  Cost paid this session: asked for every open review-derived item, the
+  only route was to GUESS a list of prefixes and pass them as an array.
+  The result cannot be checked for completeness, because a review family
+  spelled differently is indistinguishable from one with no open items.
+
+  What would answer it: a facet mode on roadmap_query returning each
+  distinct value (or each distinct prefix up to the first date segment)
+  with its item count. `kind` needs no such thing — it has a store CHECK
+  constraint and a published enum. This column has neither, which is
+  exactly why it needs the facet.
+  **Layman:** You can filter roadmap items by where they came from, but nothing lists what the available origins actually are.
+  Kind: enhancement.
+  Source: in-session-2026-09-09.
+
 ## 0.9.0 — platform + a11y (target: 2026-10)
 
 **Theme:** reach new users. Port, accessibility, internationalization.
