@@ -403,8 +403,9 @@ TEST(RoadmapWriteHalf, Ants4628SingleItemRepairNowCommits) {
         seedMigrated(guard, tmp, fixture(/*gateOffenders=*/2), &projectId);
     ASSERT_FALSE(root.isEmpty());
 
-    // A note whose FIRST line declares the trailer key is what writes the
-    // column; mid-line it would be prose, and the column would stay empty.
+    // A note declares the trailer key when `Layman:` is first on its own
+    // line — whichever line that is; mid-line it would be prose, and the
+    // column would stay empty.
     const QString repair = QStringLiteral("Layman: A plain-language summary.");
 
     const auto repairOne = [&](const QString &id) {

@@ -454,9 +454,10 @@ Result commitAndRender(RoadmapStore &store, qint64 projectId,
             // needed, and the message no longer prescribes it.
             *error = QStringLiteral("the roadmap render refuses this write: %1 open "
                                     "item(s) it touches carry no Layman: line (%2). Give "
-                                    "each one a one-sentence summary — a note whose FIRST "
-                                    "line declares the Layman: trailer sets the column, so "
-                                    "it can ride along in this same call. Only items this "
+                                    "each one a one-sentence summary — a note sets the column "
+                                    "when `Layman:` is first on its own line, whichever line of "
+                                    "the note that is, so it can ride along in this same call. "
+                                    "Only items this "
                                     "write touches are judged; the project's other items "
                                     "are not, and cannot block it.")
                          .arg(dry->gateFailures.size())

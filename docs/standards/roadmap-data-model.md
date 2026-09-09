@@ -222,9 +222,10 @@ need not back-fill `priority`, but does have to give it a one-sentence
 `internal` one is never gated (§ 3.2), so the exemption holds there unchanged;
 demanding `layman` on a closed item is § 10's anti-pattern and this paragraph
 does not create an exception to it. The line can ride along in the same call
-— a `roadmap_log` note whose first line declares the `Layman:` trailer sets the
-column — so the cost is one sentence on an item already being edited, and
-legacy debt is repaired as the corpus is touched rather than in one sweep.
+— a `roadmap_log` note sets the column when `Layman:` is first on its own
+line, whichever line of the note that is — so the cost is one sentence on an
+item already being edited, and legacy debt is repaired as the corpus is
+touched rather than in one sweep.
 Amended 2026-08-24 with § 3.2's scope decision; before it, that write was
 refused anyway, by every *other* item's missing line as well as its own.
 
