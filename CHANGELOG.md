@@ -163,6 +163,13 @@ for security-relevant changes.
 
 ### Fixed
 
+- **`ants.notify()` now shows a notification instead of doing nothing** (ANTS-4273)
+  The plugin API's notification signal reached the plugin manager and stopped
+  there — the call was accepted, raised no error and had no effect. It now
+  goes to the desktop notification service, falling back to the status bar
+  when that does not take it. Plugin authors: the "currently a no-op" note
+  is gone from PLUGINS.md.
+
 - **The Ctrl+Shift+V paste handler guards the clipboard pointer Qt documents as nullable** (ANTS-3831)
   All three paste branches dereferenced `QClipboard::mimeData()` without a
   check. A null now makes the paste a no-op instead of undefined behaviour.

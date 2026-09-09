@@ -565,6 +565,20 @@ MainWindow::MainWindow(bool quakeMode, bool e2eMode, QWidget *parent)
     connect(m_pluginManager, &PluginManager::sendToTerminal, this, [this](const QString &text) {
         if (auto *t = focusedTerminal()) t->writeCommand(text);
     });
+    // ANTS-4273 — PluginManager re-emits the engine's showNotification, and
+    // nothing consumed it, so ants.notify() accepted its arguments and did
+    // nothing. PLUGINS.md promises a desktop notification "or falls back to
+    // the status bar", so the status bar is used when delivery fails rather
+    // than as well as it.
+    connect(m_pluginManager, &PluginManager::showNotification, this,
+            [this](const QString &title, const QString &message) {
+        if (!showDesktopNotification(title, message)) {
+            showStatusMessage(title.isEmpty() ? message
+                                              : title + QStringLiteral(" — ") + message,
+                              5000);
+        }
+    });
+
     connect(m_pluginManager, &PluginManager::statusMessage, this, [this](const QString &msg) {
         showStatusMessage(msg, 5000);
     });
@@ -2374,18 +2388,8 @@ void MainWindow::connectTerminal(TerminalWidget *terminal) {
     connect(terminal, &TerminalWidget::desktopNotification, this,
             [this](const QString &title, const QString &body) {
         // Only show notification if window is not focused (avoid distracting the user)
-        if (!isActiveWindow()) {
-            auto *tray = QSystemTrayIcon::isSystemTrayAvailable()
-                ? findChild<QSystemTrayIcon *>() : nullptr;
-            if (tray) {
-                tray->showMessage(title.isEmpty() ? "Ants Terminal" : title, body);
-            } else {
-                // Fallback: use notify-send
-                QProcess::startDetached("notify-send", {
-                    title.isEmpty() ? "Ants Terminal" : title, body
-                });
-            }
-        }
+        if (!isActiveWindow())
+            showDesktopNotification(title, body);
     });
 
     // Apply highlight and trigger rules from config
@@ -6061,6 +6065,22 @@ TokenSavingsSummary MainWindow::tokenSavingsSummary() const {
 }
 
 // --- Status bar ---
+
+// ANTS-4273 — extracted from the OSC 9/777 lambda when ants.notify() became a
+// second caller, rather than copying it. The focus gate is deliberately NOT in
+// here: the terminal path suppresses a notification while the window is
+// focused, and an explicit ants.notify() call from a plugin is an intentional
+// act that PLUGINS.md documents no gate for.
+bool MainWindow::showDesktopNotification(const QString &title, const QString &body) {
+    const QString shown = title.isEmpty() ? QStringLiteral("Ants Terminal") : title;
+    auto *tray = QSystemTrayIcon::isSystemTrayAvailable()
+        ? findChild<QSystemTrayIcon *>() : nullptr;
+    if (tray) {
+        tray->showMessage(shown, body);
+        return true;
+    }
+    return QProcess::startDetached(QStringLiteral("notify-send"), {shown, body});
+}
 
 void MainWindow::showStatusMessage(const QString &msg, int timeoutMs) {
     // Label is created in the constructor before anything that can emit a status

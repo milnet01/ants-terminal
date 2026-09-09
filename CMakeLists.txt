@@ -1587,12 +1587,16 @@ if(ANTS_TESTS)
                 # ANTS-1318 frozen-RC pipeline (release.yml + cut-rc.sh).
                 tests/features/release_rc_pipeline/test_release_rc_pipeline.cpp
                 # ANTS-4529 the bump recipe must not edit a rendered file.
-                tests/features/bump_recipe_no_generated_files/test_bump_recipe_no_generated_files.cpp)
+                tests/features/bump_recipe_no_generated_files/test_bump_recipe_no_generated_files.cpp
+                # ANTS-4273 ants.notify() must reach the host, not stop at PluginManager.
+                tests/features/plugin_notify_wiring/test_plugin_notify_wiring.cpp)
     # command_palette_ghost_completion uses QSignalSpy (Qt6::Test).
     target_link_libraries(test_chrome PRIVATE Qt6::Test)
     target_compile_definitions(test_chrome PRIVATE
         SRC_MAIN_PATH="${CMAKE_SOURCE_DIR}/src/main.cpp"
         SRC_MAINWINDOW_PATH="${CMAKE_SOURCE_DIR}/src/mainwindow.cpp"
+        # ANTS-4273 INV-5 — the doc claimed ants.notify() was a no-op.
+        PLUGINS_MD_PATH="${CMAKE_SOURCE_DIR}/PLUGINS.md"
         SRC_MAINWINDOW_CPP="${CMAKE_SOURCE_DIR}/src/mainwindow.cpp"
         SRC_MAINWINDOW_CPP_PATH="${CMAKE_SOURCE_DIR}/src/mainwindow.cpp"
         SRC_MAINWINDOW_H_PATH="${CMAKE_SOURCE_DIR}/src/mainwindow.h"

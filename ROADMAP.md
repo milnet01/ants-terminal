@@ -16847,10 +16847,50 @@ Deferred (code-side, not doc): wire 7 legacy plugin events (output, line, prompt
   Source: cold-eyes-2026-05-21.
   Cross-ref (ANTS-1750 § 2.6): events are now delivered async on a worker thread. The only veto-capable event is `keypress` (swallow a key by returning `false`); when wired it MUST use a `Qt::BlockingQueuedConnection` with a bounded ~5–10 ms timeout (`QSemaphore::tryAcquire`/wait-condition — Qt has no native timeout), and on timeout proceed un-vetoed + demote the plugin to observe-only, so a slow keypress handler degrades to a single sub-frame hiccup rather than re-introducing the freeze. The other six stay fire-and-forget.
 
-- 📋 [ANTS-4273] **[ANTS-1737] Connect `PluginManager::showNotification` to `MainWindow` so `ants.notify()` is functional.**
+- ✅ [ANTS-4273] **[ANTS-1737] Connect `PluginManager::showNotification` to `MainWindow` so `ants.notify()` is functional.**
   Layman: `ants.notify()` is the plugin API for desktop notifications but is currently a complete no-op — calling it from a plugin does nothing. The function exists and is documented; it just needs to be wired to the notification path in MainWindow.
   Kind: fix.
   Source: cold-eyes-2026-05-21.
+  Shipped 2026-09-09. `MainWindow` now connects `PluginManager::showNotification`.
+
+  The bullet's claim was verified against the source before building, not
+  taken on trust. The chain was real and stopped exactly where it said:
+  `lua_ants_notify` emits `LuaEngine::showNotification`,
+  `PluginManager::wireEngine` re-emits it as
+  `PluginManager::showNotification`, and nothing consumed that signal.
+
+  Not a bare connection. `MainWindow` already had a desktop-notification
+  implementation — tray, else `notify-send` — inline in the OSC 9/777 lambda.
+  Wiring the plugin path to a second copy is what the Rule of Three exists to
+  stop, so it was extracted as `MainWindow::showDesktopNotification` and the
+  OSC lambda now calls it. Both callers, one implementation. INV-3 pins that
+  by asserting the tray probe appears exactly once.
+
+  Two design calls, both recorded because a later reader would otherwise
+  reasonably reverse them.
+
+  The FOCUS GATE stays outside the helper. The terminal path suppresses a
+  notification while the window is focused; an explicit `ants.notify()` from a
+  plugin is an intentional act and PLUGINS.md documents no gate. Inside the
+  helper it would silently drop every plugin notification whenever the window
+  is focused. INV-4 asserts `isActiveWindow` does not appear in the helper.
+
+  The STATUS BAR is a fallback, not an addition. PLUGINS.md promises a desktop
+  notification "or falls back to the status bar", so the helper returns
+  whether delivery happened and the plugin connection uses the status bar only
+  when it did not. Firing both for one call is a different defect.
+
+  PLUGINS.md's "⚠ Note (0.7.92): `ants.notify()` is currently a no-op" is
+  removed; INV-5 fails if it returns.
+
+  Tests: tests/features/plugin_notify_wiring/, five invariants, all five
+  proved RED against the pre-fix source (reverted via git stash, rebuilt, run)
+  and green after.
+
+  NOT VERIFIED, and worth stating: no notification was observed being
+  delivered. These are wiring invariants read from the source, which is what
+  the defect was; end-to-end delivery depends on the tray or on `notify-send`
+  (present on this machine) and would need a running GUI to see.
 
 ### 📦 Bundle plan for pulls 34+ (logged 2026-05-19)
 

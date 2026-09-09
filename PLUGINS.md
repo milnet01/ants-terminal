@@ -198,12 +198,6 @@ injects into that command's stdin. Use responsibly.
 Shows a desktop notification (via the host's native notification service)
 or falls back to the status bar.
 
-> **⚠ Note (0.7.92):** `ants.notify()` is currently a no-op. The
-> `PluginManager::showNotification` signal is connected within the engine
-> but is not connected to the host notification service or status bar in
-> `MainWindow`. Calling this function is accepted without error but has
-> no visible effect. This is tracked for fix in the ROADMAP.
-
 ```lua
 ants.notify("Build finished", "Exit 0 · 1m 14s")
 ```

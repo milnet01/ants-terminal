@@ -343,6 +343,10 @@ private:
     //                             approves/declines.
     //   timeoutMs  > 0          : clear after that many milliseconds.
     void showStatusMessage(const QString &msg, int timeoutMs = -1);
+    // ANTS-4273 — one desktop-notification path for every caller. Returns
+    // false when neither the tray nor notify-send took it, so a caller that
+    // has a fallback (the plugin API promises the status bar) can use one.
+    bool showDesktopNotification(const QString &title, const QString &body);
     void clearStatusMessage();
 
     // Quake mode
