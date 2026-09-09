@@ -14044,13 +14044,12 @@ indie-review finding.
   Source: in-session-2026-05-25 (ANTS-1858 was hard to diagnose with no hook lines in the log).
   Resolved (2026-05-25): added a single "hook recv: hook=.. tool=.. session=.. focused=.." line at the top of ClaudeIntegration::processHookEvent, guarded by DebugLog::enabled(DebugLog::Claude). Covers every hook (PreToolUse/PostToolUse/Stop/PermissionRequest/SessionStart) in one place; the success path was previously silent. Builds clean; takes effect on relaunch.
 
-- ✅ [ANTS-1861] **parseBullets rxLayman doesn't match the bold**
-  Layman:** form that roadmap_log writes.**
+- ✅ [ANTS-1861] **parseBullets rxLayman doesn't match the bold `Layman:` form that roadmap_log writes.**
   **Layman:** The roadmap card view pulls a plain-English one-liner from each item, but the pattern it looks for misses the bold-styled label the logging tool actually writes, so those one-liners can come back blank.
   Kind: fix.
   Lanes: roadmapdialog.
   Source: in-session-2026-05-25 (found building ANTS-1548 add_from_roadmap).
-  Fixed 2026-05-29: updated rxLayman regex in parseBullets to match both plain "Layman:" and bold "**Layman:**" forms. Now correctly extracts the plain-English field from roadmap bullets created by roadmap_log.
+  Fixed 2026-05-29: updated rxLayman regex in parseBullets to match both the plain and bold-styled spellings of the `Layman` label. Now correctly extracts the plain-English field from roadmap bullets created by roadmap_log.
 
 - ✅ [ANTS-1863] **Persist the debug-log category selection across relaunch (currently resets to off every restart).**
   The DebugLog category enable state is runtime-only and resets on
@@ -69973,6 +69972,15 @@ here.)
   Kind: fix.
   Source: review-contract-2026-08-15 (ANTS-4065 plan gate).
   Lanes: roadmap, mcp.
+  Progress (2026-09-09): the DATA half is done and verified; the plan half is blocked, and the blocker is a different open item.
+
+  Repaired ANTS-1861 itself. Its headline had already been severed at the quoted key and the tail orphaned into the body as a line reading `Layman:** form that roadmap_log writes.**`, which is what the re-parse kept re-reading. The headline is whole again and now spells the key inside backticks; the orphan line is gone; and the body's closing sentence, which quoted both spellings in DOUBLE quotes, is reworded — `maskQuotedRegions` blanks inline code spans only, so double quotes were never protection. Verified: no unmasked mid-line trailer key remains on the item, and `check_sync` reports `file_in_sync: true`.
+
+  The CODE cause this item names was fixed elsewhere: `trailerValuesIn` masks quoted regions (ANTS-4504) and prefers a line-initial match (ANTS-4497). What was left was damaged stored data, which no code fix repairs retroactively.
+
+  The plan's exception is NOT deleted, and should not be until ANTS-4507 lands. `docs/plans/ANTS-4065-import-mapping-contract.md` D3 says the exception goes "when that ships", but its criterion counts items that MOVE, and a dry-run migrate today reports 1548 moved — nearly all `body`. That is ANTS-4507's subject: the counter has no zero point, so this item's movement cannot be observed against it either way. Deleting the exception now would rest on a measurement that cannot currently distinguish a fixed item from a moving one.
+
+  Blocked-by: ANTS-4507.
 
 - ✅ [ANTS-4406] **The store-divergence witness compares two different quantities, so it warns forever and both its numbers are wrong.**
   ANTS-4402 shipped `file_ahead_of_store` with `file_highest_id` and
