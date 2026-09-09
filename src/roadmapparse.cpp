@@ -49,7 +49,10 @@ quint64 fnv1a64(const QString &normalised) {
 
 // Lowercase, collapse whitespace, drop trailing punctuation.
 QString normaliseHeadline(const QString &raw) {
-    QString s = raw.toLower();
+    // ANTS-4780 — const so the range-for below takes the const begin().
+    // toLower() returns a copy SHARING with `raw` when the text is already
+    // lowercase, in which case a non-const loop deep-copies it per bullet.
+    const QString s = raw.toLower();
     QString out;
     out.reserve(s.size());
     bool prevSpace = false;

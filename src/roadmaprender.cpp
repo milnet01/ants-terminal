@@ -16,6 +16,7 @@
 
 #include <algorithm>
 #include <memory>
+#include <utility>
 #include <vector>
 
 namespace RoadmapRender {
@@ -437,7 +438,14 @@ std::optional<Outcome> render(RoadmapStore &store, qint64 projectId,
         QStringList blocks;
         bool sawRoot = false;
 
-        for (const RoadmapStore::SectionRow &s : byFile.value(path)) {
+        // ANTS-4780 — `value()` returns a copy that SHARES with the hash, so
+        // a non-const range-for detaches and deep-copies the section vector
+        // once per file, on every render. A named const local takes the const
+        // begin() instead. Deliberately not std::as_const(byFile.value(path)):
+        // that references a temporary this C++20 range-for does not
+        // lifetime-extend, which dangles.
+        const QVector<RoadmapStore::SectionRow> rows = byFile.value(path);
+        for (const RoadmapStore::SectionRow &s : rows) {
             const bool isRoot = s.level == 0;
             if (isRoot) {
                 sawRoot = true;
@@ -542,7 +550,10 @@ std::optional<Outcome> render(RoadmapStore &store, qint64 projectId,
     // rendering, gating or serialising can leave a half-updated project.
     std::vector<std::unique_ptr<QSaveFile>> staged;
     staged.reserve(size_t(fileOrder.size()));
-    for (const QString &path : fileOrder) {
+    // ANTS-4780 — shared by now: `out.filesWritten = fileOrder` above bumped
+    // the refcount, so this loop would otherwise detach. The earlier loop over
+    // the same list runs BEFORE that assignment and is genuinely unshared.
+    for (const QString &path : std::as_const(fileOrder)) {
         auto f = std::make_unique<QSaveFile>(path);
         if (!f->open(QIODevice::WriteOnly | QIODevice::Text)) {
             fail(error, QStringLiteral("could not open %1: %2").arg(path, f->errorString()));
