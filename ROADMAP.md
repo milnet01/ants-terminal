@@ -62353,6 +62353,17 @@ that needs them.
   SO THE LIVE SCOPE IS THREE PARTS, NOT FOUR, and they want different treatment. (b) is a missing test and needs no documentation change at all — the standard already states the rule correctly, so the right fix is to enforce it rather than to weaken the sentence. (c) and (d) are additions to a standard, which changes what a conformer must do, so they carry a rule 14 gate.
 
   Do not re-derive part (a) as still open from this body's original text: that text was accurate when written and is not now.
+  Part (b) mechanism corrected (2026-09-09), read from the source rather than from this item's own account of it.
+
+  This body says a new verb "can ship with a doubled `[<kind>]` prefix". It cannot. The prefix loop in `ClaudeIntegration`'s tools/list handler is explicitly idempotent — it prepends only `if (!desc.startsWith('['))`, and its own comment says the guard exists so a hot-reload or repeated tools/list call does not double-prefix.
+
+  So the real harm is the opposite shape, and it is quieter. A description that already begins with a bracket SUPPRESSES its own kind tag: the guard sees a bracket, skips, and whatever the author wrote stands where `[<kind>] ` belonged. The verb then lists in the catalogue under a tag nobody assigned — the discovery surface CLAUDE.md points every session at. Nothing is doubled and nothing looks wrong at a glance, which is why no test noticing it matters more here than it would for a doubling.
+
+  The standard's own sentence is fine and should not be touched: it says do not begin the description with the bracket, and gives the reason parenthetically. Only the enforcement is missing, so the fix stays a test.
+
+  Shape for that test, worked out but not yet written. Anchor on the tool NAME, not on a variable name: descriptor descriptions are authored under `t["description"]` and several dozen one-off locals, so no single spelling covers them. `mcp_tool_prefix_tags` already collects every registered name from the registration calls, and `mcp_tool_detail_field`'s scrape helper already takes an optional out-parameter for the description's first character — which nothing currently reads. The invariant is that character, over every registered tool, asserted not to be a bracket.
+
+  Prove it red the usual way: give one descriptor a leading bracket and confirm the new invariant fails before restoring.
 
 - 💭 [ANTS-3646] **Support the `~:N` approximate-citation spelling in doc_citations.**
   ANTS-3636 s 2.2 handles the approximate form `file.cpp:~197` but not
