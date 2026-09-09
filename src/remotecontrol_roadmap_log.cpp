@@ -643,6 +643,10 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppend(const QJsonObject &req) {
             // ANTS-4527
             if (const QJsonObject ev = rlEvidenceAdvisory(evNotPath); !ev.isEmpty())
                 rlAddWarning(env, ev);
+            // ANTS-4989 — the review-provenance advisory, on the same footing.
+            if (const QJsonObject rk = rlReviewKindAdvisory(kind, source);
+                !rk.isEmpty())
+                rlAddWarning(env, rk);
             if (rcReturnHeadlineOnly(req))
                 env[QStringLiteral("post_bullets")] =
                     QJsonArray{ rcCompactBullet(idStr, status, headline) };
@@ -1172,6 +1176,8 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppend(const QJsonObject &req) {
     }
     if (const QJsonObject ev = rlEvidenceAdvisoryForReq(req); !ev.isEmpty())
         rlAddWarning(out, ev);                                  // ANTS-4527
+    if (const QJsonObject rk = rlReviewKindAdvisory(kind, source); !rk.isEmpty())
+        rlAddWarning(out, rk);                                  // ANTS-4989
     // ANTS-2080 — confirm-after compact echo of the appended bullet.
     if (rcReturnHeadlineOnly(req)) {
         out["post_bullets"] =

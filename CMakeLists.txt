@@ -1886,6 +1886,8 @@ if(ANTS_TESTS)
                 tests/features/roadmap_query_kind_filter/test_roadmap_query_kind_filter.cpp
                 # ANTS-4985 — the provenance axis `kind` cannot carry.
                 tests/features/roadmap_query_source_filter/test_roadmap_query_source_filter.cpp
+                # ANTS-4989 — the observable for 3.5.3's review-fix rule.
+                tests/features/roadmap_log_review_kind_advisory/test_roadmap_log_review_kind_advisory.cpp
                 tests/features/mcp_feedback_log/test_mcp_feedback_log.cpp
                 # ANTS-3421 feedback_log op:compact_shipped (maintainer compaction).
                 tests/features/feedback_log_compact_shipped/test_feedback_log_compact_shipped.cpp

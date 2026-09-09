@@ -2861,6 +2861,29 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppendBatch(const QJsonObject &req) {
         if (const QJsonObject ev = rlEvidenceAdvisory(bad); !ev.isEmpty())
             rlAddWarning(out, ev);
     }
+    // ANTS-4989 — the review-provenance advisory, rolled up the same way. One
+    // warning for the batch, naming the ids rather than repeating itself per
+    // bullet: a batch filing a review's findings is exactly where every bullet
+    // shares the pairing, and N identical advisories would bury the reply.
+    {
+        QJsonArray ids;
+        QJsonObject first;
+        for (const QJsonValue &bv : req.value(QStringLiteral("bullets")).toArray()) {
+            const QJsonObject b = bv.toObject();
+            const QJsonObject rk = rlReviewKindAdvisory(
+                b.value(QStringLiteral("kind")).toString(),
+                b.value(QStringLiteral("source")).toString());
+            if (rk.isEmpty()) continue;
+            if (first.isEmpty()) first = rk;
+            const QString id = b.value(QStringLiteral("id_hint")).toString();
+            ids.append(id.isEmpty() ? b.value(QStringLiteral("headline")).toString()
+                                    : id);
+        }
+        if (!first.isEmpty()) {
+            first[QStringLiteral("bullets")] = ids;
+            rlAddWarning(out, first);
+        }
+    }
     // ANTS-2080 — confirm-after compact echo of every applied bullet.
     if (rcReturnHeadlineOnly(req)) {
         QJsonArray postBullets;

@@ -14,6 +14,18 @@ for security-relevant changes.
 
 ### Added
 
+- **Roadmap items can now be searched by where they came from** (ANTS-4985)
+  `roadmap_query` gained a `source` filter — a case-insensitive prefix, or a
+  list of them — so "how much review work is still open?" is one call. Each
+  item now reports its `source` as a field alongside its kind and lanes. The
+  provenance was always recorded and nothing could read it.
+
+- **Filing a review's fix under the wrong label now says so** (ANTS-4989)
+  Adding a roadmap item whose origin is a review but whose kind is a plain
+  `fix` returns an advisory suggesting `review-fix` or `audit-fix`. It never
+  refuses the write — the label may be deliberate — and it names which
+  origin it matched.
+
 - **A roadmap publish that overwrites unrecoverable text now keeps a copy of the file and names it** (ANTS-4947)
   `discarded_backup_paths[]` rides the lost-text arm of a store-backed
   roadmap write. A lost line is text the render reproduces in no
@@ -101,6 +113,12 @@ for security-relevant changes.
   it rather than reading as evidence that any invariants were seen.
 
 ### Changed
+
+- **The roadmap format standard now requires every item to record where it came from** (ANTS-4985)
+  `Source:` moves from optional to required (format v1.2), matching what the
+  writing tool has always enforced, and the standard now states that an
+  item's kind and its origin are separate questions — a review legitimately
+  produces work of any kind.
 
 - **A narrowed response names the fields it does carry, not just the ones it doesn't** (ANTS-4930)
   `fields_available` now accompanies `fields_unmatched`, so a misspelled

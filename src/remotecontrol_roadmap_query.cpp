@@ -1,5 +1,6 @@
 // ANTS-3833 TU 3/17 — Roadmap read ops.
 #include "remotecontrol.h"
+#include "roadmapparse.h"   // ANTS-4989
 #include <QRegularExpression>
 #include "remotecontrol_internal.h"
 #include "guithread.h"
@@ -1076,6 +1077,27 @@ QJsonObject rcdetail::rlEvidenceAdvisory(const QStringList &notPathShaped) {
         "fragments rather than as the sentence you wrote. Move the explanation "
         "into the body and leave Evidence: for paths.");
     warn[QStringLiteral("elements")] = vals;
+    return warn;
+}
+
+QJsonObject rcdetail::rlReviewKindAdvisory(const QString &kind,
+                                           const QString &source) {
+    // ANTS-4989 — the DECISION is RoadmapParse's (it is a roadmap-convention
+    // rule, and lives where tests can reach it); this builds the envelope.
+    const RoadmapParse::ReviewKindMismatch m =
+        RoadmapParse::reviewKindMismatch(kind, source);
+    if (m.matchedPrefix.isEmpty()) return {};
+
+    QJsonObject warn;
+    warn[QStringLiteral("code")] = QStringLiteral("kind_ignores_review_provenance");
+    warn[QStringLiteral("message")] = QStringLiteral(
+        "roadmap-format.md v1.2 3.5.3: a fix arising from a review takes "
+        "`review-fix` (or `audit-fix`), not a plain `fix` — those kinds carry a "
+        "different follow-through, citing the finding source. This item's "
+        "Source: names a review origin. Written, not refused: the kind may be "
+        "deliberate, and provenance is recorded either way.");
+    warn[QStringLiteral("source_prefix")]  = m.matchedPrefix;
+    warn[QStringLiteral("suggested_kind")] = m.suggestedKind;
     return warn;
 }
 

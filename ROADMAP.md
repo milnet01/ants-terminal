@@ -71112,7 +71112,7 @@ here.)
   Source: in-session-2026-09-09 (hit while building ANTS-4985).
   Lanes: mcp, roadmap-store.
 
-- 📋 [ANTS-4989] **roadmap_log op:append does not warn when a review-shaped Source is filed as a plain `fix`.**
+- ✅ [ANTS-4989] **roadmap_log op:append does not warn when a review-shaped Source is filed as a plain `fix`.**
   roadmap-format.md v1.2 § 3.5.3 narrows `review-fix` to a fix arising from a
   review. The rule needs an observable or it is a rule nobody can tell they
   breached — which is exactly what the `standard` genre calls a Q3 finding.
@@ -71146,6 +71146,78 @@ here.)
   Both write paths need it — `op:append` and `op:append_batch`, which is
   where ANTS-4527's own advisory had to be duplicated. Prefer the shared
   helper over a second copy.
+  Shipped 2026-09-09. `rlReviewKindAdvisory` emits
+  `kind_ignores_review_provenance` from both write paths — `op:"append"` on
+  each backend, and `op:"append_batch"` rolled up once for the batch naming the
+  bullets, because a batch filing one review's findings is where every bullet
+  shares the pairing and N identical advisories would bury the reply.
+
+  Advisory, never a refusal, as this item specified and ANTS-4527 precedents.
+  It carries the matched `source_prefix` and a `suggested_kind` that follows the
+  origin: an `audit-` or `check-code` source suggests `audit-fix`, a review
+  source `review-fix`.
+
+  MEASURED FIRST, as the item demanded. Over the machine-global store, items
+  with `kind='fix'` and a review-shaped source outnumber the review-derived
+  items correctly carrying `review-fix`/`audit-fix` by about three to one,
+  while the trigger fires on well under a tenth of all items. So it is not a
+  flood, and the rule is breached far more often than followed — which is the
+  argument for having the check at all.
+
+  ONE CLAIM IN THIS ITEM WAS WRONG AND IS CORRECTED HERE. It said the prefix
+  set "is the same one ANTS-4985's `source` filter reads, so it belongs in ONE
+  place". That filter reads CALLER-supplied prefixes and holds no list of its
+  own, so there was nothing to share. The list is defined once in
+  `rlReviewKindAdvisory` and is the canonical one.
+
+  `audit-` keeps its hyphen deliberately, so the prefix cannot swallow an
+  unrelated source that merely starts with the word; a test asserts
+  `auditor-tooling-…` does not warn.
+
+  Tests: `tests/features/roadmap_log_review_kind_advisory/`. BEHAVIOURAL on the
+  predicate, SCRAPE on the wiring, and the split was forced by a real failure
+  rather than chosen. The first draft drove `cmdRoadmapLog` directly; that verb
+  refuses `no_main` without a MainWindow, so every call returned a refusal —
+  and the cases asserting NO advisory all passed vacuously against it. The
+  predicate is pure and is what decides, so that half is real; the wiring is
+  asserted on both files' source. Proved red by stubbing the predicate: the
+  three cases asserting it fires go red, the silent ones stay green by
+  construction, which is exactly why they cannot be the only evidence.
+
+  roadmap-format.md § 3.5.3 is updated in the same commit — it said "Nothing
+  checks this today" and cited this item, which this change makes false. That
+  is the same trap the gate caught the first time round, avoided by fixing the
+  claim in the commit that changes the fact.
+  Correction (2026-09-09, same session): the note above described the
+  predicate as living in `rlReviewKindAdvisory`. It does not, and the reason is
+  worth keeping.
+
+  The pre-push gate refused the first version on TWO of `rc_tu_split`'s
+  architectural invariants, both correct.
+
+  INV-5: no file outside `ANTS_RC_SOURCES` may include
+  `remotecontrol_internal.h`, so a predicate declared there can only ever be
+  scrape-tested. The one other test that mentions that header does so in a
+  comment and scrapes.
+
+  INV-11: every RemoteControl TU literal must live in the
+  `ANTS_RC_SOURCES_REL` block and nowhere else — so the two CMake defines the
+  wiring scrape used, naming `remotecontrol_roadmap_log.cpp` and its batch
+  sibling, broke it too.
+
+  Both pushed the design somewhere better rather than needing a workaround.
+  The DECISION is now `RoadmapParse::reviewKindMismatch`, returning a
+  `{matchedPrefix, suggestedKind}` struct — it is a rule about roadmap
+  conventions, so it belongs beside the trailer regexes rather than in
+  RemoteControl, and it is behaviourally testable there.
+  `rcdetail::rlReviewKindAdvisory` keeps only the envelope, so the parser stays
+  free of the MCP wire shape. The wiring scrape reads
+  `ants_test::slurpRemoteControl()`, the project's existing helper for exactly
+  this, naming no TU.
+
+  One implementation trap for the next reader: the definition first landed
+  inside `roadmapparse.cpp`'s anonymous namespace, which compiles and then
+  fails at link with an undefined symbol. It sits after that namespace closes.
   **Layman:** Nothing reminds you to label a fix that came from a review, so the label keeps being left off.
   Kind: enhancement.
   Source: in-session-2026-09-09 (found by the ANTS-4985 rule 14 gate).

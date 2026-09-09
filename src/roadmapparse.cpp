@@ -1547,6 +1547,44 @@ void fillBulletRecord(BulletRecord &rec, const QString &head, const QString &bod
 }
 }  // namespace
 
+ReviewKindMismatch reviewKindMismatch(const QString &kind,
+                                      const QString &source) {
+    ReviewKindMismatch out;
+    if (kind.trimmed().toLower() != QLatin1String("fix")) return out;
+
+    // The prefixes roadmap-format.md § 3.5.3's vocabulary table names for a
+    // review or audit origin, INCLUDING the older spellings it keeps live —
+    // a check recognising only the current skill name misses most of the
+    // corpus. `audit-` keeps its hyphen so it cannot swallow an unrelated
+    // source that merely starts with the word.
+    static const QStringList kAuditish = {
+        QStringLiteral("audit-"), QStringLiteral("check-code"),
+    };
+    static const QStringList kReviewish = {
+        QStringLiteral("indie-review"), QStringLiteral("code-quality-review"),
+        QStringLiteral("review-code"),  QStringLiteral("cold-eyes"),
+        QStringLiteral("review-contract"), QStringLiteral("test-audit"),
+        QStringLiteral("review-tests"), QStringLiteral("doc-review"),
+    };
+    const QString src = source.trimmed().toLower();
+    for (const QString &pfx : kAuditish) {
+        if (src.startsWith(pfx)) {
+            out.matchedPrefix = pfx;
+            out.suggestedKind = QStringLiteral("audit-fix");
+            return out;
+        }
+    }
+    for (const QString &pfx : kReviewish) {
+        if (src.startsWith(pfx)) {
+            out.matchedPrefix = pfx;
+            out.suggestedKind = QStringLiteral("review-fix");
+            return out;
+        }
+    }
+    return out;
+}
+
+
 // ANTS-1438 — split `head` on the first em-dash separator (` — `,
 // preferred; ` -- ` / ` - ` accepted as lenient fallbacks for
 // projects that haven't typographic-em-dashed). Returns the trimmed

@@ -542,9 +542,12 @@ on it.
 differs — the table above requires them to cite the finding source. This
 rule reaches only items that would otherwise be `Kind: fix`; an item of
 any other kind keeps its natural kind and records the review in
-`Source:` alone. **Nothing checks this today** — `roadmap_log op:append`
-correlates `kind` with `source` nowhere, so the rule is remembered rather
-than observable. ANTS-4989 would add the advisory.
+`Source:` alone. **`roadmap_log` warns when the pairing occurs** — both
+`op:"append"` and `op:"append_batch"` emit a
+`kind_ignores_review_provenance` advisory naming the matched source prefix
+and the kind it suggests (ANTS-4989). It is an ADVISORY on a successful
+write, never a refusal: the kind may be deliberate, and the provenance is
+recorded either way.
 
 **A bullet with no `Kind:` / `Source:` reads as implementation work
 for the planned roadmap (`Kind: implement`, `Source: planned`).** This is a

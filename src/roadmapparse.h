@@ -70,6 +70,25 @@ inline constexpr int kIdFormatPatternMaxBytes = 512;
 // order; plain narration bullets without an emoji are omitted (they
 // don't have stable IDs and so are out of contract). See
 // `docs/specs/ANTS-1117.md` § Acceptance criteria.
+// ANTS-4989 — does this `Kind:` / `Source:` pairing breach roadmap-format.md
+// v1.2 § 3.5.3's rule that a fix arising from a review takes `review-fix` (or
+// `audit-fix`) rather than a plain `fix`?
+//
+// Lives HERE rather than in RemoteControl because it is a rule about roadmap
+// CONVENTIONS, like the trailer regexes beside it, and because
+// remotecontrol_internal.h is off-limits to tests by rc_tu_split INV-5 — so a
+// predicate declared there can only ever be scrape-tested. It returns the
+// DECISION, not an envelope: the caller builds the warning, so the parser
+// stays free of the MCP wire shape.
+//
+// `matchedPrefix` is empty when the pairing does not apply, which is the
+// no-finding case.
+struct ReviewKindMismatch {
+    QString matchedPrefix;   // the review-origin prefix that matched
+    QString suggestedKind;   // "review-fix" or "audit-fix"
+};
+ReviewKindMismatch reviewKindMismatch(const QString &kind, const QString &source);
+
 struct BulletRecord {
     QString id;          // <PREFIX>-NNNN; empty if no `[<PREFIX>-NNNN]` token (ANTS-1405)
     QString status;      // "✅" | "🚧" | "📋" | "💭"

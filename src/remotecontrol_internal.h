@@ -408,6 +408,20 @@ void rlAddWarning(QJsonObject &env, const QJsonObject &warn);
 // null object when the list is empty. Built once so all four write paths say
 // the same thing.
 QJsonObject rlEvidenceAdvisory(const QStringList &notPathShaped);
+// ANTS-4989 — the advisory for a review-shaped `Source:` filed as a plain
+// `fix`. roadmap-format.md v1.2 § 3.5.3 narrows `review-fix` to a fix arising
+// from a review, and a rule with no observable is one a conformer cannot tell
+// they breached. Returns a null object when the pairing does not apply.
+//
+// ADVISORY, never a refusal — the ANTS-4527 precedent. A refusal here would
+// reject correctly-filed work over a labelling convention.
+//
+// Measured before shipping, over the machine-global store: 382 of 6709 items
+// would warn (5.7%), against 116 review-derived items already carrying
+// `review-fix` or `audit-fix`. So it fires on roughly one append in
+// eighteen, and the rule is currently breached about three times as often as
+// it is followed — which is the case for having the check at all.
+QJsonObject rlReviewKindAdvisory(const QString &kind, const QString &source);
 // ANTS-4527 — the same advisory computed from a request's `evidence` array,
 // for the MARKDOWN write paths. They render through formatRoadmapBullet
 // rather than rlFillItemBody, and an advisory that fires only on migrated
