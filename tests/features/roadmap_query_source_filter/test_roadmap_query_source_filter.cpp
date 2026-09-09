@@ -40,6 +40,8 @@ QByteArray roadmapWithSources() {
         "- \xF0\x9F\x93\x8B [ANTS-9106] **A perf item from elsewhere.**\n"
         "  Kind: perf.\n"
         "  Source: user-request-2026-07-01.\n"
+        "- \xF0\x9F\x93\x8B [ANTS-9107] **A bullet with no Source line at all.**\n"
+        "  Kind: implement.\n"
         "- \xF0\x9F\x93\x8B [ANTS-9104] **Planned work, no review.**\n"
         "  Kind: implement.\n"
         "  Source: planned.\n"
@@ -195,4 +197,35 @@ TEST(RoadmapQuerySourceFilter, Inv6BulletsCarrySourceAsAField) {
     EXPECT_EQ(bullets.at(0).toObject().value(QStringLiteral("source")).toString(),
               QStringLiteral("indie-review-2026-06-04"))
         << "source must be readable without parsing it back out of `body`";
+}
+
+// ANTS-4985 — what a bullet with NO `Source:` line reports. The standard
+// states two rules that both reach it: 3.5.3 says such a bullet "reads as"
+// Source: planned, and 3.10.2 says missing fields come back as empty
+// strings. They prescribe different values on the same read, so the document
+// cannot name a winner without knowing which the code does. This is that
+// answer, locked.
+TEST(RoadmapQuerySourceFilter, Inv7AbsentSourceReportsEmptyNotTheDefault) {
+    QTemporaryDir tmp; const QString root = seed(tmp);
+
+    QJsonObject a;
+    a[QStringLiteral("id")] = QStringLiteral("ANTS-9107");
+    const QJsonObject r = queryWith(root, a);
+    ASSERT_TRUE(r.value(QStringLiteral("ok")).toBool());
+    const QJsonArray bullets = r.value(QStringLiteral("bullets")).toArray();
+    ASSERT_EQ(bullets.size(), 1);
+    EXPECT_EQ(bullets.at(0).toObject().value(QStringLiteral("source")).toString(),
+              QString())
+        << "the envelope reports the ABSENCE; `planned` is a reader-side "
+           "classification, not a value the parser invents. If this ever "
+           "returns \"planned\", roadmap-format.md 3.10.2 is the passage to "
+           "change, not this test.";
+
+    // ...and therefore a source:"planned" filter does NOT collect it.
+    QJsonObject f;
+    f[QStringLiteral("source")] = QStringLiteral("planned");
+    EXPECT_FALSE(idsOf(queryWith(root, f)).contains(QStringLiteral("ANTS-9107")))
+        << "a bullet with no Source line must not be swept up by a filter for "
+           "the default value — that would make the filter answer a question "
+           "about classification rather than about what is written.";
 }

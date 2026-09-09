@@ -71151,6 +71151,41 @@ here.)
   Source: in-session-2026-09-09 (found by the ANTS-4985 rule 14 gate).
   Lanes: mcp, roadmap-store.
 
+- 📋 [ANTS-4990] **The doc tree still tells a reader to invoke `/bump` and `/release`, deleted 2026-08-13.**
+  Both skills were deleted 2026-08-13 and replaced by `cut-release`
+  (`--bump-only` for the bump). The project CLAUDE.md and
+  `docs/standards/commits.md` both record the deletion and say the old names
+  are gone rather than aliased, so a session invoking one gets nothing.
+
+  FOUND BY A COLD LANE during the ANTS-4985 gate, as a Q1 against
+  `roadmap-format.md`. Fixed there in that run — §§ 3.9 and 4.3 now name
+  `cut-release`. The references BEYOND that file were swept and are filed here
+  rather than carried into the gated document, which is the rule for a defect
+  whose home is a document next door.
+
+  Where they survive, from one sweep excluding the review log, the deprecated
+  plans directory and the changelog: `docs/standards/roadmap-data-model.md`,
+  `docs/decisions/0003-cc-fold-relax-gate-and-draw-boundary.md`, and several
+  `docs/specs/` files, of which `ANTS-4070-rotation-and-section-title.md` is
+  the densest.
+
+  NOT ALL OF THEM SHOULD BE EDITED, and that is the decision this item holds.
+  A shipped spec is a historical contract with its own loop log, and rewriting
+  its prose to name a tool that did not exist when it was written falsifies the
+  record. `docs/roadmap/0.5.md` and `0.6.md` are RENDERED archives — the store
+  rewrites them, so an edit is reverted at the next publish. The live standards
+  are the ones that instruct a reader today.
+
+  Suggested split, unmeasured: fix `roadmap-data-model.md` (a live standard,
+  and it names the same § 3.9 rule the gate just corrected). Leave the specs
+  and the ADR as records. Confirm the archives are generated before touching
+  them — the note at the head of each says `/bump` rotated it, which is a true
+  statement about the past.
+  **Layman:** Several documents name two tools that no longer exist, so following them does nothing.
+  Kind: doc-fix.
+  Source: in-session-2026-09-09 (found by the ANTS-4985 rule 14 gate).
+  Lanes: docs.
+
 ## 0.9.0 — platform + a11y (target: 2026-10)
 
 **Theme:** reach new users. Port, accessibility, internationalization.

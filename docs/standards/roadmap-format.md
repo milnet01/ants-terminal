@@ -156,6 +156,7 @@ filter panel surfaces any emoji it sees in any `###` heading.
   spanning as many lines as needed; lines wrapped to roughly 70
   columns. Cite `file:line` in backticks when relevant.
   Kind: implement.
+  Source: planned.
   Lanes: SubsystemA, SubsystemB.
 ```
 
@@ -170,17 +171,10 @@ Required pieces:
   values in §3.5.3. **Required as of v1.1** so the Roadmap
   viewer (and any tooling that consumes the file
   deterministically) can categorise without inferring from the
-  surrounding section heading. The dominant Kind for a section
-  may be inherited implicitly via a section-level convention,
-  but the canonical bullet form carries the field explicitly
-  to make every bullet self-describing.
-
-- **`Source: <source>`** — declares where the item came from. **Required
-  as of v1.2** (2026-09-09), on the same footing as `Kind:`; it was
-  optional, and "when the section heading doesn't already make that clear"
-  was its old condition. A section heading is not a machine-readable field,
-  and a reader cannot filter on one. See §3.5.3 for the vocabulary, for
-  whether it is a closed set, and for the measurement that forced this.
+  surrounding section heading. A section-level convention may make the
+  value obvious to a human reader; it is never inherited by a parser and
+  never omitted, so the canonical bullet form carries the field explicitly
+  and every bullet is self-describing.
 
   Two properties of the label, both settled by ANTS-4065 § 2.2:
 
@@ -198,6 +192,17 @@ Required pieces:
     tolerance for the same reason. So a hand-typed `kind:` / `KIND:`
     no longer parses — accepted because once a project is on the
     roadmap store the render is the sole writer of this file.
+
+- **`Source: <source>`** — declares where the item came from. **Required
+  as of v1.2** (2026-09-09), on the same footing as `Kind:`; it was
+  optional, and "when the section heading doesn't already make that clear"
+  was its old condition. A section heading is not a machine-readable field,
+  and a reader cannot filter on one. See §3.5.3 for the vocabulary, for
+  whether it is a closed set, and for the measurement that forced this.
+  **`Source:` shares both properties above**: it may be written inline, and
+  its label is case-sensitive. They are stated on `Kind:` because that is
+  the field whose parser they were settled against (ANTS-4065 § 2.2).
+
 
   Two guards limit what un-anchoring admits, and **their scopes
   differ.** Both are stated here because both were settled by the same
@@ -447,8 +452,8 @@ until 2026-09-09; the reason it stopped being is below.
 | `feature` | User-visible capability addition (alias for implement; preferred in UX-facing bullets) | tests + changelog + docs |
 | `enhancement` | Incremental improvement to an existing feature | tests + changelog |
 | `fix` | Code change to repair a bug | regression test + changelog |
-| `audit-fix` | Code change in response to an audit finding | regression test + changelog (cite finding source) |
-| `review-fix` | Code change in response to an indie-review or peer review | regression test + changelog (cite reviewer source) |
+| `audit-fix` | Code change in response to an audit finding **that would otherwise be `fix`** | regression test + changelog (cite finding source) |
+| `review-fix` | Code change in response to an indie-review or peer review **that would otherwise be `fix`** | regression test + changelog (cite reviewer source) |
 | `doc` | New / updated documentation, no code | changelog if user-facing |
 | `doc-fix` | Documentation correction (typo, stale ref, drift) | no test, changelog optional |
 | `refactor` | Code reshape with no behavior change | tests must still pass; usually no changelog |
@@ -493,8 +498,9 @@ item.
 conforms, provided it is a stable lowercase-dash token — date-suffixed where
 the origin is an event. `Kind:` is closed (§ 3.5 pins it to the values
 above, and the store enforces them with a CHECK constraint); `source` has no
-such constraint in the store and none is intended. Measured 2026-09-09:
-2599 distinct values across 6706 items, so the set is open in practice and a
+such constraint in the store and none is intended. The store holds far more
+distinct values than this table lists — reproduce with
+`SELECT COUNT(DISTINCT source) FROM item` against the roadmap store — so a
 validator that rejects an unrecognised value would reject most of the
 corpus. What the table fixes is the PREFIX conventions, because
 `roadmap_query`'s `source` filter matches by prefix — an origin spelled two
@@ -513,10 +519,11 @@ the other.** `Kind:` says what sort of work an item is; `Source:` says
 where it came from. A review, an audit or a user report can produce work
 of any kind, so provenance cannot be expressed by choosing a kind.
 
-Measured 2026-09-09 against the store, on this project's active items:
-36 were review-derived by `Source:` while only 6 carried `review-fix` or
-`audit-fix`. The remaining 30 were `perf`, `doc`, `refactor`,
-`marketing`, `implement` and `enhancement`. Those are correctly filed —
+Measured against the store: most review-derived items carry a kind that is
+NOT review-shaped — `perf`, `doc`, `refactor`, `marketing`, `implement`,
+`enhancement`. Reproduce by comparing `roadmap_query` with
+`source:"indie-review"` against the same query adding `kind:"review-fix"`.
+Those are correctly filed —
 the under-count is what happens when one field is asked to carry two
 questions. Do not answer a provenance question by adding a
 provenance-shaped `kind`; record the provenance in `Source:` and filter
@@ -532,16 +539,21 @@ correlates `kind` with `source` nowhere, so the rule is remembered rather
 than observable. ANTS-4989 would add the advisory.
 
 **A bullet with no `Kind:` / `Source:` reads as implementation work
-for the planned roadmap (`Kind: implement`, `Source: planned`) — and
-that is a reader-side fallback for pre-v1.1 bullets, not permission
-to omit the field.** § 3.5 makes `Kind:` a required piece as of v1.1 and
+for the planned roadmap (`Kind: implement`, `Source: planned`).** This is a
+CLASSIFICATION rule for a reader, not a value any parser invents: an absent
+`Source:` comes back from `roadmap_query` as the EMPTY STRING, which is what
+§ 3.10.2's adapter contract states, and a `source:"planned"` filter does not
+collect such a bullet. Verified 2026-09-09 and locked by
+`tests/features/roadmap_query_source_filter` INV-7. Read the two together —
+the classification says how to interpret an absence, the envelope reports
+that it is an absence. **The rule is a reader-side fallback and
+not permission to omit the field.** § 3.5 makes `Kind:` a required piece as of v1.1 and
 `Source:` as of v1.2; a newly authored bullet missing either does not
 conform, even though every reader will still classify it. The fallback
 covers bullets predating each field — pre-v1.1 for `Kind:`, pre-v1.2 for
-`Source:`. The fallback exists
-because the field was introduced against a corpus that predates it —
-two in five items carry no `Kind:` — and dropping those items or
-refusing to read them was never an option.
+`Source:` — because each was introduced against a corpus that predates it,
+and a large share of that corpus carries no `Kind:` at all. Dropping those
+items, or refusing to read them, was never an option.
 
 #### 3.5.4 LLM-agent execution contract
 
@@ -665,6 +677,7 @@ and heading wording change.
 - 📋 [ANTS-0530] **PLUGINS.md OSC 8 surface mismatches code.**
   Doc says `osc-8-handler`, code uses `osc8-handler`.
   Kind: doc-fix.
+  Source: doc-review-2026-04-15.
   Lanes: docs.
 
 ### 🐛 Static-analysis fold-in (2026-04-12)
@@ -678,9 +691,11 @@ Trivial findings were fixed inline during the sweep — see
 the "behavioural" findings the user opted to defer.
 
 - 📋 [ANTS-0540] **`tests/features/vt_throughput/` invariant
-  list grew but spec.md unchanged.** Kind: test. Lanes: tests.
+  list grew but spec.md unchanged.** Kind: test.
+  Source: debt-sweep-2026-04-28. Lanes: tests.
 - 📋 [ANTS-0541] **`README.md § Plugins` references removed
-  `ants.fs.read`.** Kind: doc-fix. Lanes: docs.
+  `ants.fs.read`.** Kind: doc-fix.
+  Source: debt-sweep-2026-04-28. Lanes: docs.
 
 ### 📝 Cold-eyes 2026-04-30
 
@@ -722,7 +737,7 @@ into per-minor archive files.
 **The size figure is a review trigger, not a rotation event.** On a
 versioned roadmap the only rotation event is a minor or major bump
 (below) — a phase-block roadmap's occasion is phase closure instead,
-owned by the phase bullet, and every unqualified mention of `/bump`
+owned by the phase bullet, and every unqualified mention of `cut-release`
 in this section is the versioned rule. So a file
 that crosses 150 KiB part-way through a minor has nothing eligible
 to rotate — every section under the open minor stays put — and it
@@ -769,7 +784,7 @@ The convention:
 
   **The occasion is the phase closing, not a bump.** A pre-1.0
   project on phase blocks may never bump a version at all, so
-  keying rotation to `/bump` as the next bullet does would mean it
+  keying rotation to `cut-release` as the next bullet does would mean it
   never fires. A phase is closed when every actionable bullet under
   it is ✅ — no 📋, no 🚧 and **no 💭**, that last being live
   research-phase work (§ 3.3) which archiving would hide from
@@ -818,8 +833,8 @@ The convention:
   > avoiding — a second archive naming scheme — is one added regex
   > reusing the sort contract already stated. Decided here per
   > CFG-0069 and raised into the global copy (ANTS-4073).
-- **On a versioned roadmap** rotation happens at `/bump` time on a
-  minor or major bump only. Patch bumps don't rotate. The `/bump` recipe (`.claude/bump.json`
+- **On a versioned roadmap** rotation happens at bump time on a
+  minor or major bump only. Patch bumps don't rotate. The bump recipe (`.claude/bump.json`
   on each project) owns the snip-and-create step. Rotation is
   content-preserving: every bullet under the closed minor's
   `## <closed>.0 — …` heading and its sub-headings moves to
@@ -861,7 +876,7 @@ the closed `<MAJOR>.<MINOR>` and nothing else. **It is implemented and it is
 not reachable** — the handler exists, but the verb's `op` dispatch does not
 carry it, so a call reaches `bad_op_combo` and none of the refusal codes
 below can fire. Do not build a
-`/bump` recipe on it yet; ANTS-4081 owns the wiring, and § 4.3's
+bump recipe on it yet; ANTS-4081 owns the wiring, and § 4.3's
 `retitle_section` is unreachable for the same reason and by the same commit.
 Three things about it are part of this convention rather than that project's
 implementation detail:
@@ -888,8 +903,8 @@ step above is still the answer).
 
 **It does not enforce the rotation event.** This section says rotation happens on
 a minor or major bump only, and the operation cannot see a version transition —
-a minor holds zero open bullets routinely, just after a patch release. `/bump`
-owns that check, because `/bump` is the only caller that knows a minor just
+a minor holds zero open bullets routinely, just after a patch release.
+`cut-release` owns that check, because it is the only caller that knows a minor just
 closed.
 
 ### 3.10 Compatibility with GFM task lists
@@ -1175,7 +1190,7 @@ When a release ships:
 4. Released ROADMAP block changes from `(target: YYYY-MM)` to
    `shipped (YYYY-MM-DD)`.
 
-The `/release` skill (if used) automates steps 1–4.
+The `cut-release` skill automates steps 1–4.
 
 On a store-migrated project (§ 3.5.1), the four steps split three
 ways. Steps 1–2 are unchanged: `CHANGELOG.md` is not generated from
