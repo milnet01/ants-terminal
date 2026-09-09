@@ -71300,6 +71300,44 @@ here.)
   Source: in-session-2026-09-09 (found by the ANTS-4985 rule 14 gate).
   Lanes: docs.
 
+- 📋 [ANTS-4991] **doc_integrity's heading_sequence check fires on a RELEASE-HISTORY heading, where the gap is the truth.**
+  `PLUGINS.md` carries a per-version history whose headings are VERSION
+  NUMBERS, not section numbers. `doc_integrity` reports "section 0.6.13 skips
+  0.6.10, 0.6.11, 0.6.12" — true, and correct: those releases shipped no
+  plugin-API change, so they have no section. The only way to satisfy the check
+  is to renumber releases that happened, which falsifies the history.
+
+  The check is right about section numbering and wrong about this shape. A
+  `## 5.7 Foo` heading in a standard genuinely should not skip 5.6; a
+  `### 0.6.13` heading in a changelog-shaped history legitimately does.
+
+  ANTS-4641 already built the suppression mechanism for the neighbouring case —
+  a numbering gap the document ACCOUNTS FOR, via a Retired/Removed section
+  listing the missing numbers, reported in `heading_sequence_suppressed`. This
+  is a second shape needing the same treatment, and it cannot use that one: a
+  release history does not list the versions it skipped, because there is
+  nothing to say about them.
+
+  CANDIDATE DIRECTIONS, unmeasured. Recognise a heading whose number is a
+  SEMVER TRIPLE and exempt it — releases are the only thing numbered that way,
+  and the check's own examples are all dotted pairs. Or key on the enclosing
+  section (a `## Versioning`/`## History` ancestor). Or let a document declare
+  the exemption, the way ANTS-4641's suppression is earned.
+
+  MEASURE FIRST: how many documents in this corpus carry version-numbered
+  headings, and how many currently report this. One finding in one file is a
+  weak case for a new rule; if it is the only instance, the honest answer may
+  be to leave it and note it here.
+
+  Found while sweeping the docs for the 0.7.109 release. The other two
+  `PLUGINS.md` findings in that sweep were REAL and were fixed: a dead anchor
+  that dropped an underscore from its target slug, and the final section
+  missing from the table of contents.
+  **Layman:** A document checker asks us to renumber a list of past releases, which would make the history wrong.
+  Kind: fix.
+  Source: in-session-2026-09-09 (found in the 0.7.109 release doc sweep).
+  Lanes: mcp, docs.
+
 ## 0.9.0 — platform + a11y (target: 2026-10)
 
 **Theme:** reach new users. Port, accessibility, internationalization.

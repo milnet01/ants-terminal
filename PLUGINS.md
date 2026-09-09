@@ -32,6 +32,7 @@ those drift from this doc, the doc wins and an issue should be filed.
 10. [Distribution](#distribution)
 11. [Examples](#examples)
 12. [Roadmap (planned APIs — not yet available)](#roadmap-planned-apis--not-yet-available)
+13. [Contributing to this Document](#contributing-to-this-document)
 
 ---
 
@@ -529,7 +530,7 @@ end
 ```
 
 > **⚠ Lexicographic caveat:** same as the warning in
-> [§ `ants._version`](#antsversion--ants_plugin_name) above — string
+> [§ `ants._version`](#ants_version--ants_plugin_name) above — string
 > comparison breaks for minor ≥ 10. Prefer a numeric split.
 
 ## Error Handling

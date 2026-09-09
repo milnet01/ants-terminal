@@ -662,9 +662,25 @@ which heading you expect it under.
   continuation lines, dedented by their common indent — the head is already
   `headline` / `headline_oneline`, and the indentation below the common edge
   is the author's structure. The trailer lines stay: they are continuation
-  lines on both backends, and `Source:` / `Layman:` text is carried by no
-  other field the list emits, so dropping them would blind the `query=`
-  filter to it.
+  lines on both backends. `Layman:` text is carried by no other field the
+  list emits, so dropping the trailers would blind the `query=` filter to it.
+  **`Source:` no longer belongs in that sentence** — ANTS-4985 made it a
+  field of its own beside `kind` and `lanes`, so it is readable without
+  parsing the body. The trailer line stays regardless: it is what the render
+  writes, and `composed_trailers` reports when the render composed it rather
+  than an author writing it.
+- **An ABSENT `Source:` reports the empty string, not the `planned` default
+  (ANTS-4985, 2026-09-09)** — and which you get depends on the BACKEND, which
+  is the part no schema can tell you. On a file-parsed bullet nothing invents
+  the value, so `source` comes back empty and a `source:"planned"` filter does
+  not collect it: `roadmap-format.md` § 3.5.3's `planned` default is a
+  CLASSIFICATION rule for a reader, and § 3.10.2's adapter contract is the one
+  describing the envelope. Migration into the store materialises it — that
+  column is `NOT NULL` — so a store-migrated project's pre-v1.2 items DO
+  collect under that filter. The consequence for a conformance sweep: do not
+  look for an empty `source`. It finds every missing bullet on a file-backed
+  project and none on a migrated one. Locked by
+  `tests/features/roadmap_query_source_filter` INV-7.
 - **The store record is still rendered and re-parsed, and a trailer line can
   be COMPOSED (ANTS-4599, 2026-08-20)** — ANTS-4557 dropped the head line
   from the field, not the round trip: `RoadmapSource::appendRecord()` still
