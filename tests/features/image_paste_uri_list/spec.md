@@ -57,6 +57,20 @@ the `hasImage()` branch and **before** the plain-text fallback.
   handler and sits after the `hasImage()` branch. Deleting either the
   call or the ordering silently restores the bug.
   *Test:* `HandlerWiredAfterRasterBranch`.
+- **INV-6** (ANTS-3831) — the `Ctrl+Shift+V` handler guards
+  `clipboard->mimeData()` before dereferencing it, and the guard precedes
+  the first `mime->` use. Qt documents the return as nullable ("can be
+  `nullptr` if the given mode is not supported by the platform"), and all
+  three branches — `hasImage()`, INV-5's `hasUrls()`, `hasText()` —
+  dereference it. Verified against the Qt 6 documentation before the guard
+  was added, because the originating bullet recorded a suspicion rather than
+  a reproduction; the item required that check and would have been closed
+  `n/a` had the pointer been non-nullable.
+  **No crash is demonstrated.** The documented trigger is an unsupported
+  *mode*, and this call site uses the default `Clipboard` mode. The
+  invariant holds the documented contract, not an observed failure, and the
+  cost is one branch.
+  *Test:* `NullMimeDataGuardedBeforeAnyDereference`.
 
 ## Scope
 

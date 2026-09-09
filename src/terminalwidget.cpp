@@ -1883,6 +1883,16 @@ void TerminalWidget::keyPressEvent(QKeyEvent *event) {
     if (key == Qt::Key_V && (mods & Qt::ControlModifier) && (mods & Qt::ShiftModifier)) {
         const QClipboard *clipboard = QApplication::clipboard();
         const QMimeData *mime = clipboard->mimeData();
+        // ANTS-3831 — QClipboard::mimeData() is documented nullable ("can be
+        // nullptr if the given mode is not supported by the platform"), and
+        // every branch below dereferences it. Verified against the Qt 6 docs
+        // before adding this, because the bullet recorded a suspicion rather
+        // than a reproduction: the documented trigger is an unsupported MODE,
+        // and this call uses the default Clipboard mode, so no crash is
+        // demonstrated here. The guard is for the documented contract, not an
+        // observed failure — a null paste becomes a no-op instead of UB.
+        if (!mime)
+            return;
         if (mime->hasImage()) {
             QImage img = clipboard->image();
             if (!img.isNull()) {

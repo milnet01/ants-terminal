@@ -68977,7 +68977,7 @@ here.)
   ANTS-4920 -- this rule had no false-positive canary, which is why the
   drift was invisible.
 
-- 📋 [ANTS-3831] **Ctrl+Shift+V dereferences `clipboard->mimeData()` with no null check.**
+- ✅ [ANTS-3831] **Ctrl+Shift+V dereferences `clipboard->mimeData()` with no null check.**
   `src/terminalwidget.cpp`, the Ctrl+Shift+V handler:
 
   const QMimeData *mime = clipboard->mimeData();
@@ -69005,6 +69005,33 @@ here.)
   **Layman:** A rare empty-clipboard state could crash the terminal on paste; one line guards it.
   Kind: fix.
   Source: in-session-2026-08-04 (noticed while fixing ANTS-3828).
+  Shipped 2026-09-09. `if (!mime) return;` after the assignment in the
+  Ctrl+Shift+V handler, before any of the three branches dereferences it.
+
+  THE ITEM'S VERIFY-FIRST INSTRUCTION WAS FOLLOWED, and it changed the
+  justification rather than the outcome. Qt 6 documents the return as nullable
+  — "can be nullptr if the given mode is not supported by the platform" —
+  so the n/a branch this bullet offered does not apply and the guard goes in.
+
+  But the bullet's stated trigger is NOT what the documentation says. It
+  proposed an empty or racing clipboard, or the source application going away.
+  The documented cause is an unsupported MODE, and the one call site
+  (src/terminalwidget.cpp, `mimeData()` with no argument) uses the default
+  Clipboard mode, which is supported everywhere this ships. So NO CRASH IS
+  DEMONSTRATED. The guard holds a documented API contract, not an observed
+  failure, and it is worth exactly its one branch — not more.
+
+  Test: image_paste_uri_list INV-6,
+  `ImagePasteUriList.NullMimeDataGuardedBeforeAnyDereference`. It asserts the
+  guard exists AND precedes the first `mime->` use, since a guard after the
+  first dereference guards nothing. Proved red by removing the guard and
+  rebuilding: the test fails on its assertion, then passes restored.
+
+  Placed in the existing image_paste_uri_list suite rather than a new feature
+  dir: same handler, same pointer, and that suite's INV-5 already scrapes
+  these lines for branch ordering. A scrape rather than a behavioural case for
+  the same reason INV-5 is one — the null can only come from the platform
+  plugin, and keyPressEvent is protected on a QOpenGLWidget with a live PTY.
 
 - ✅ [ANTS-4141] **A single `roadmap_log op:flip` re-rendered the whole of ROADMAP.md from a store that has diverged from the file by ~200 ids.**
   Hit 2026-08-13 flipping two bullets. The write reported
@@ -70741,6 +70768,82 @@ here.)
   **Layman:** Two parts of the same tool report the same mistake under two different names, so a caller cannot handle it in one place.
   Kind: fix.
   Source: review-contract loop 1 on mcp-error-codes.md, 2026-08-28.
+  Lanes: mcp, roadmap-store.
+
+- 📋 [ANTS-4985] **roadmap_query cannot filter by `Source:`, so provenance is write-only and "how many review fixes remain?" has no answer.**
+  Asked directly by the user on 2026-09-09 and answerable only with a
+  caveat. `kind` is filterable (ANTS-4571-era `kind:` arg) and `Source:` is
+  not, so the only clean count is by `kind`, which gives 4 `review-fix` and 4
+  `audit-fix` — while the review-derived backlog is plainly larger and sits
+  under `Source: indie-review-*` / `code-quality-review-*` and in review
+  fold-in sections.
+
+  roadmap-format.md § 3.5.3 states the cause outright, in the
+  `code-quality-review-YYYY-MM-DD` row: **"nothing reads `Source:` values, so
+  this is traceability, not a format break."** That was written to justify
+  accepting two spellings. Its side effect is that the field a session fills
+  in on every append is unreadable by every query surface.
+
+  Why this is the right axis and a new `kind` is not. `kind` answers WHAT
+  KIND OF WORK an item is; `Source:` answers WHERE IT CAME FROM. They are
+  orthogonal, and `review-fix` / `audit-fix` already blur them — they are
+  provenance wearing a kind's clothes, which is why most review-derived
+  defects are filed as plain `fix` and the labelled count under-reports.
+  Adding more provenance-shaped kinds deepens the overload; making the
+  provenance field queryable removes the need for them.
+
+  Proposed: a `source` filter on roadmap_query's list path, matching the
+  way `kind` does — case-folded, composing with `status` / `section` /
+  `query`, refusing an unrecognised value rather than silently returning the
+  full set (the `bad_kind` precedent). Prefix matching matters more than
+  equality here, since the recognised values are dated
+  (`indie-review-2026-05-14`), so a `source_prefix` or a documented prefix
+  semantics is the useful shape. `source` is already a stored column, so
+  this is a read-side change and needs no schema rung — which matters,
+  because CLAUDE.md records a kSchemaVersion bump as a one-way door across
+  every project on the machine.
+
+  MEASURE BEFORE BUILDING. Two spellings are live (`indie-review-*` and
+  `code-quality-review-*`), plus free-text sources this project writes by
+  hand (`in-session-2026-09-05`, `UT_Ants_Ants_MCP_Feedback.md 2026-09-08`).
+  So a filter's value depends on how disciplined the stored column actually
+  is. ANTS-4595 already reports 1789 migrated items holding a LIFECYCLE WORD
+  in the source column, and ANTS-4660 three more captured from a scope
+  operator — count the distinct values first; a filter over a corrupted
+  column answers confidently and wrongly.
+  **Layman:** The roadmap records where each item came from, but nothing can search on it, so we cannot count how much review work is left.
+  Kind: enhancement.
+  Source: in-session-2026-09-09.
+  Lanes: mcp, roadmap-store.
+
+- 📋 [ANTS-4986] **section_index counts roll descendants into the parent, so the sections cannot be summed and a total is silently wrong.**
+  Hit on 2026-09-09 while answering "how many review fixes remain?".
+  mode:"section_index" with a `query` narrowing to review sections returns
+  both level-2 release buckets and the level-3 fold-in sections nested inside
+  them. Per ANTS-4819 a section's counts INCLUDE its descendants, so adding
+  the rows up double-counts — five level-2 review sections alone report 161
+  active items, most of which are also counted in the level-3 rows beside
+  them.
+
+  The rollup itself is correct and deliberate; the gap is that there is no
+  way to get a section's OWN count. `active_count_id_only` parallels the
+  default bullets predicate, not the nesting, so neither field answers "how
+  many items are declared directly under this heading". A caller wanting a
+  total has to fetch the bullets and de-duplicate by id, which defeats the
+  point of an index designed to answer counts cheaply.
+
+  Proposed: a `direct_active_count` / `direct_total_count` pair beside the
+  existing rolled-up fields, or a `nesting:"direct"` argument on the mode.
+  Additive to the envelope either way, so no reader changes.
+
+  SECOND-ORDER, and the reason this is filed rather than shrugged at: a
+  session that sums the rows gets a plausible number with no signal that it
+  is wrong. That is the shape ANTS-4507 was filed for — a figure with no zero
+  point that reads as actionable. Whatever is built should make the
+  double-count visible, not merely avoidable.
+  **Layman:** Counting roadmap items by section double-counts, because a heading's count already includes the headings underneath it.
+  Kind: enhancement.
+  Source: in-session-2026-09-09.
   Lanes: mcp, roadmap-store.
 
 ## 0.9.0 — platform + a11y (target: 2026-10)

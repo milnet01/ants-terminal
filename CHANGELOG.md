@@ -163,6 +163,12 @@ for security-relevant changes.
 
 ### Fixed
 
+- **The Ctrl+Shift+V paste handler guards the clipboard pointer Qt documents as nullable** (ANTS-3831)
+  All three paste branches dereferenced `QClipboard::mimeData()` without a
+  check. A null now makes the paste a no-op instead of undefined behaviour.
+  No crash was reproduced — the documented trigger does not apply to this
+  call site — so this closes a documented contract, not an observed bug.
+
 - **A test run can no longer write to the developer's real git repository** (ANTS-3841)
   Both test-bundle entry points now scrub the git environment variables
   that redirect which repository git acts on, and the shell tests that run

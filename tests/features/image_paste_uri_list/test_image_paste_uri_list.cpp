@@ -140,6 +140,36 @@ TEST(ImagePasteUriList, JoinsMultipleImages) {
 // the raster branch. Either half missing silently restores the bug: the
 // helper would be correct and unreachable, or a raster paste would be
 // intercepted by the URL branch.
+// ANTS-3831 — QClipboard::mimeData() is documented nullable, and the three
+// branches below it all dereference the result. Same handler, same pointer,
+// so the invariant lives with the scrape that already reads these lines.
+//
+// A scrape rather than a behavioural case: the null can only be produced by
+// the platform plugin, and keyPressEvent is protected on a QOpenGLWidget with
+// a live PTY — the same reason HandlerWiredAfterRasterBranch is a scrape.
+TEST(ImagePasteUriList, NullMimeDataGuardedBeforeAnyDereference) {
+    const QString src = readTerminalWidgetSource();
+    if (src.isEmpty()) return;
+
+    const int assignPos =
+        src.indexOf(QStringLiteral("const QMimeData *mime = clipboard->mimeData();"));
+    CHECK(assignPos > 0, "the Ctrl+Shift+V mimeData() assignment was not "
+                         "found — handler restructured?");
+    if (assignPos <= 0) return;
+
+    const int guardPos = src.indexOf(QStringLiteral("if (!mime)"), assignPos);
+    const int firstDeref = src.indexOf(QStringLiteral("mime->"), assignPos);
+
+    CHECK(guardPos > 0,
+          "ANTS-3831: mimeData() is documented nullable, so the handler must "
+          "guard the pointer before using it");
+    if (guardPos > 0 && firstDeref > 0) {
+        CHECK(guardPos < firstDeref,
+              "ANTS-3831: the null guard must come BEFORE the first mime-> "
+              "dereference, or it guards nothing");
+    }
+}
+
 TEST(ImagePasteUriList, HandlerWiredAfterRasterBranch) {
     const QString src = readTerminalWidgetSource();
     if (src.isEmpty()) return;
