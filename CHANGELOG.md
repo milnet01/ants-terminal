@@ -12,6 +12,15 @@ for security-relevant changes.
 
 ## [Unreleased]
 
+### Changed
+
+- **Audit: the Contract-Doc ↔ Code Drift check now reports standards and specs as two separate lanes** (ANTS-3849)
+  One category held both, and the specs half outnumbered the standards
+  half by more than fifteen to one — over 80% of the whole report. Nobody
+  reads a category that size, so the real findings in it were invisible.
+  Splitting suppresses nothing: both lanes still report every finding, and
+  the small, readable half can now be acted on by itself.
+
 ### Fixed
 
 - **The blocked-roadmap-write message now describes the rule the code actually enforces** (ANTS-4749)

@@ -72681,7 +72681,7 @@ contributors don't duplicate research.
   Kind: test.
   Source: in-session-2026-08-06.
 
-- 📋 [ANTS-3849] **Contract-Doc drift check emits 2,325 findings in one category — unusable as a signal.**
+- ✅ [ANTS-3849] **Contract-Doc drift check emits 2,325 findings in one category — unusable as a signal.**
   Measured in the 2026-08-06 audit report: `[MINOR] Contract-Doc <-> Code
   Drift (smell / General) [grep]` returns **2,325 findings** — over 80% of
   the report's 2,766 non-INFO findings, and roughly 800 lines of the file.
@@ -72792,6 +72792,19 @@ contributors don't duplicate research.
   instead SPLIT the lane by directory: `docs/standards/` (64 findings, a
   readable category today) from `docs/specs/` (1,111, where a spec's design
   vocabulary and its factual claims are not separable by token shape).
+  Resolved (2026-09-09) by taking this bullet's own stated next pass: stop filtering, split the lane by directory.
+
+  Two registered lanes now — `contract_doc_drift_standards` and `contract_doc_drift_specs` — sharing a file-local `contractDocDriftIn` so their extraction contract cannot drift apart. Registered in BOTH surfaces: the dialog's `populateChecks` and `AuditRunner`'s `kInProcessLanes`. The spec said no auditrunner change was in scope, which was true when it was written and is not now — ANTS-3605 closed, so a registration made in one place only would leave the two surfaces disagreeing about which lanes exist. Recorded in the spec as an amendment.
+
+  Nothing is suppressed. Both lanes report every finding they did before; what changed is that the readable half is no longer buried under the large one. That was the goal this bullet set: "a category this large is not read, so anything genuine inside it is invisible."
+
+  Verified rather than assumed. ContractDocDrift went 7 to 8 tests, so the new one is genuinely wired in rather than silently unbuilt. INV-12 proven red with `mutation_probe` — pointing the specs lane back at the standards directory gives outcome `killed` with two tests failing and `restored_clean: true`. Full suite 4359/4359.
+
+  Two things worth knowing for whoever touches this next. INV-9 had to be AMENDED, not merely inherited: "scans whichever of the two exists" licenses the standards lane to report specs findings, which is precisely what the split exists to stop. And INV-10's source-grep needles are now the two quoted ids, because the shared prefix matches the first block twice and reports the second as covered without ever inspecting it.
+
+  Checked before splitting: no suppression ledger entry and no allowlist references the old id, so there was no migration to do.
+
+  The specs half is still large and still hard to triage. That is a different problem from the one this bullet names, and it is filed separately rather than left holding this one open.
 
 - ✅ [ANTS-3850] **cppcheck: 24 structs with uninitialised POD members, plus 8 by-value/by-reference nits.**
   From the 2026-08-06 audit. cppcheck reports, on the post-split tree:
@@ -73149,6 +73162,22 @@ contributors don't duplicate research.
   Kind: test.
   Source: ANTS-3830-root-cause-2026-09-07.
   Lanes: audit, tests.
+
+- 📋 [ANTS-4994] **The specs half of the contract-doc drift lane is isolated but still not triageable.**
+  Split out of ANTS-3849, which closed the half it could: the standards lane is now small and readable. This is the half that is not.
+
+  State at the split: roughly a thousand findings under `contract_doc_drift_specs`, after two passes of shape filtering took the combined lane from 2,325 to 1,000. ANTS-3849 established two things that constrain any fix here, both measured rather than assumed.
+
+  The lane must NOT be dropped below the reporting threshold. That was ANTS-3849's own fallback proposal and its measurement ruled it out: a 40-finding hand read of the plain-identifier bucket split roughly three ways, and one of the three is genuinely absent identifiers asserted as fact. Three were verified individually — each occurs exactly once in the repo, in the accepted spec naming it as an invariant's test, with no such test existing.
+
+  Further shape filtering is spent. The residual is two populations wanting opposite treatment: references to `~/.claude` global standards this repo does not mirror, which are kept ON PURPOSE because that is ANTS-4138's signal, and stale prose inside accepted specs, which is the real signal and has no owner. Neither is separable from the other by token shape, which is why three filtering passes plateaued.
+
+  So the next move is not another filter. Candidates, unranked: age the findings so a spec's design vocabulary stops re-reporting once accepted; separate `docs/specs/` claims-of-fact from design vocabulary by position rather than token shape; or give the stale-spec-prose class an owner of its own and let this lane report only what that owner does not.
+
+  Do not start by re-measuring the volume — ANTS-3849 carries three passes of measurement and the numbers above are from a probe that linked `ants_audit_lib` and called the real lane, not a replica.
+  **Layman:** One audit lane still produces about a thousand results, too many for anyone to read through.
+  Kind: audit-fix.
+  Source: audit-2026-08-06.
 
 ### 📝 Cold-eyes 2026-05-11 (ANTS-1234 spec)
 
