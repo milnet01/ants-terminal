@@ -175,6 +175,13 @@ Required pieces:
   but the canonical bullet form carries the field explicitly
   to make every bullet self-describing.
 
+- **`Source: <source>`** — declares where the item came from. **Required
+  as of v1.2** (2026-09-09), on the same footing as `Kind:`; it was
+  optional, and "when the section heading doesn't already make that clear"
+  was its old condition. A section heading is not a machine-readable field,
+  and a reader cannot filter on one. See §3.5.3 for the vocabulary, for
+  whether it is a closed set, and for the measurement that forced this.
+
   Two properties of the label, both settled by ANTS-4065 § 2.2:
 
   - **The trailer may be written INLINE**, trailing a prose sentence
@@ -224,12 +231,6 @@ Optional pieces:
 - **Body prose** — free-form, after the bold headline.
 - **`Lanes: X, Y, Z`** — declares ownership; helps subagents
   find test files.
-- **`Source: <source>`** — declares where the item came from. **Required
-  as of v1.2** (2026-09-09), on the same footing as `Kind:`; it was
-  optional, and "when the section heading doesn't already make that clear"
-  was its old condition. A section heading is not a machine-readable field,
-  and a reader cannot filter on one. See §3.5.3 for the vocabulary and for
-  the measurement that forced this.
 - **`Layman: <one-sentence summary>.`** — a non-technical
   one-line summary, written for a vibe-coder / non-programmer
   reader. When present, the Ants Roadmap dialog (ANTS-1154)
@@ -477,7 +478,7 @@ item.
 
 | Source | Meaning |
 |--------|---------|
-| `planned` | On the roadmap from project design (default; usually omitted) |
+| `planned` | On the roadmap from project design. The default value, and **written explicitly as of v1.2** — it is assumed only for bullets predating that version. |
 | `user-YYYY-MM-DD` | User report on date YYYY-MM-DD |
 | `audit-YYYY-MM-DD` | `/audit` skill output on date YYYY-MM-DD |
 | `code-quality-review-YYYY-MM-DD` | `/code-quality-review` skill output on date YYYY-MM-DD. **Adopted from the global standard 2026-08-12**; the old spelling `indie-review-YYYY-MM-DD` still parses and existing bullets keep it. Write the new one. **Both spellings are live and a reader must accept either** — `roadmap_query`'s `source` filter takes an array for exactly this reason. The clause that used to end this row, "nothing reads `Source:` values, so this is traceability, not a format break", was true when written and is false as of ANTS-4985; it is what made the field unqueryable for as long as it stood. |
@@ -488,13 +489,24 @@ item.
 | `external-CVE-NNNN-NNNN` | Public CVE / advisory triggering this work |
 | `upstream-<dep>` | Driven by a dep / library upstream change |
 
+**This table is an OPEN vocabulary, not an enum.** A value outside it
+conforms, provided it is a stable lowercase-dash token — date-suffixed where
+the origin is an event. `Kind:` is closed (§ 3.5 pins it to the values
+above, and the store enforces them with a CHECK constraint); `source` has no
+such constraint in the store and none is intended. Measured 2026-09-09:
+2599 distinct values across 6706 items, so the set is open in practice and a
+validator that rejects an unrecognised value would reject most of the
+corpus. What the table fixes is the PREFIX conventions, because
+`roadmap_query`'s `source` filter matches by prefix — an origin spelled two
+ways partitions into buckets that never meet.
+
 Most `/debt-sweep` findings get fixed inline during the sweep
 itself (the skill's "trivial" bucket goes straight into a
 `chore: post-X.Y.Z debt sweep` commit) and never reach the
 roadmap. Only items the user must rule on (the "behavioural"
 bucket) or items deferred as out-of-scope land here. Use
 `🧹 Debt-sweep fold-in (YYYY-MM-DD)` as the section heading and
-`Source: debt-sweep-YYYY-MM-DD` if declared explicitly.
+`Source: debt-sweep-YYYY-MM-DD` on every bullet.
 
 **`Kind:` and `Source:` are ORTHOGONAL axes and neither substitutes for
 the other.** `Kind:` says what sort of work an item is; `Source:` says
@@ -515,16 +527,18 @@ on it.
 differs — the table above requires them to cite the finding source. This
 rule reaches only items that would otherwise be `Kind: fix`; an item of
 any other kind keeps its natural kind and records the review in
-`Source:` alone. `roadmap_log op:append` warns when a review-shaped
-`Source:` is paired with a plain `fix`, so the rule is observable rather
-than remembered.
+`Source:` alone. **Nothing checks this today** — `roadmap_log op:append`
+correlates `kind` with `source` nowhere, so the rule is remembered rather
+than observable. ANTS-4989 would add the advisory.
 
 **A bullet with no `Kind:` / `Source:` reads as implementation work
 for the planned roadmap (`Kind: implement`, `Source: planned`) — and
 that is a reader-side fallback for pre-v1.1 bullets, not permission
-to omit the field.** § 3.5 makes `Kind:` a required piece as of
-v1.1; a newly authored bullet without one does not conform, even
-though every reader will still classify it. The fallback exists
+to omit the field.** § 3.5 makes `Kind:` a required piece as of v1.1 and
+`Source:` as of v1.2; a newly authored bullet missing either does not
+conform, even though every reader will still classify it. The fallback
+covers bullets predating each field — pre-v1.1 for `Kind:`, pre-v1.2 for
+`Source:`. The fallback exists
 because the field was introduced against a corpus that predates it —
 two in five items carry no `Kind:` — and dropping those items or
 refusing to read them was never an option.
@@ -693,11 +707,12 @@ Conventions for any findings fold-in:
   `**HIGH — …**`, `**MEDIUM — …**`, `**LOW — …**`.
 - **Position by priority** — Tier-1 / CRITICAL items go above
   existing Tier-2 / HIGH items.
-- **Kind/Source lines are usually inherited from the section**
-  for readability — but the canonical bullet still carries
-  `Kind:` explicitly on every actionable item (§3.5.3); section
-  context is only a human hint, never a substitute for the
-  required field.
+- **A section heading never substitutes for `Kind:` or `Source:`.** The
+  canonical bullet carries `Kind:` **and** `Source:` explicitly on every
+  actionable item (§3.5.3); section context is only a human hint, never a
+  substitute for a required field. A source-stamped fold-in heading is the
+  case this is most often got wrong on, and it is the case v1.2 exists to
+  end.
 
 ### 3.9 Archive rotation
 
@@ -895,9 +910,8 @@ extensions are the parts that GFM doesn't model:
 - A four-state taxonomy (✅ 🚧 📋 💭) instead of the GFM
   two-state checkbox (`[x]` / `[ ]`).
 - Stable IDs (`[PROJ-NNNN]`) for cross-doc reference.
-- Required `Kind:` metadata line per bullet (§ 3.5); optional
-  `Source:` / `Layman:` metadata for provenance and
-  non-technical readers.
+- Required `Kind:` and `Source:` metadata lines per bullet (§ 3.5);
+  optional `Layman:` metadata for non-technical readers.
 
 #### 3.10.1 Semantic equivalence
 

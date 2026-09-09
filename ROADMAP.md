@@ -71112,6 +71112,45 @@ here.)
   Source: in-session-2026-09-09 (hit while building ANTS-4985).
   Lanes: mcp, roadmap-store.
 
+- 📋 [ANTS-4989] **roadmap_log op:append does not warn when a review-shaped Source is filed as a plain `fix`.**
+  roadmap-format.md v1.2 § 3.5.3 narrows `review-fix` to a fix arising from a
+  review. The rule needs an observable or it is a rule nobody can tell they
+  breached — which is exactly what the `standard` genre calls a Q3 finding.
+
+  FOUND BY THE GATE, AND THE FINDING WAS AGAINST ME. The § 3.5.3 fix I wrote
+  asserted that `op:append` already warns on this pairing. It does not, and all
+  THREE cold lanes caught it independently and rated it Q1. `rlAddWarning` has
+  call sites in the append path for `body_scrubbed_tool_xml` (ANTS-4938) and
+  the ANTS-4527 evidence advisory; nothing correlates `kind` with `source`
+  anywhere. The standard now states the rule as unchecked and cites this item,
+  which is the honest wording until the check exists.
+
+  Shape, from the precedent already in that verb. An ADVISORY on a successful
+  write, never a refusal — ANTS-4527's `evidence_not_path_shaped` is the model,
+  and a refusal here would reject correctly-filed work over a labelling
+  convention. Emit through `rlAddWarning`, which ANTS-4938 already fixed to
+  carry more than one advisory without dropping the first.
+
+  Trigger: `kind == "fix"` AND `source` starts with a review-shaped prefix.
+  Both live review spellings must hit — `indie-review-` and
+  `code-quality-review-` — plus `audit-`, `check-code`, `cold-eyes`,
+  `review-code`, `test-audit`, `review-tests`, `doc-review`. That prefix set
+  is the same one ANTS-4985's `source` filter reads, so it belongs in ONE place
+  rather than two that will disagree.
+
+  MEASURE BEFORE SHIPPING: run the trigger over the existing corpus and count
+  how many stored items would have warned. A warning that fires on a large
+  share of historical appends is noise, and the answer decides whether it
+  warns on `fix` alone or also suggests `audit-fix` for an `audit-` source.
+
+  Both write paths need it — `op:append` and `op:append_batch`, which is
+  where ANTS-4527's own advisory had to be duplicated. Prefer the shared
+  helper over a second copy.
+  **Layman:** Nothing reminds you to label a fix that came from a review, so the label keeps being left off.
+  Kind: enhancement.
+  Source: in-session-2026-09-09 (found by the ANTS-4985 rule 14 gate).
+  Lanes: mcp, roadmap-store.
+
 ## 0.9.0 — platform + a11y (target: 2026-10)
 
 **Theme:** reach new users. Port, accessibility, internationalization.

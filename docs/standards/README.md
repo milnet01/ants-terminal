@@ -188,11 +188,12 @@ bookmarked a section anchor now finds two documents under one path.
 `security.md` stays at `: mirror` — it has no delta half to version.
 
 **Exception — sub-specs.** `roadmap-format.md` uses
-`ants-roadmap-format-spec: 1.1` rather than the standard
+`ants-roadmap-format-spec: 1.2` rather than the standard
 `ants-<name>-standards: N` pattern. The `spec` suffix signals
 it tracks the *data-file format* (what conforming `ROADMAP.md`
 files must look like), not an authoring guideline for
-practitioners. The `1.1` subversion marks one additive revision
-(the `Layman:` field). This is the only sub-spec exception;
+practitioners. The subversion tracks additive revisions to the
+data format: `1.1` added the `Layman:` field, and `1.2`
+(2026-09-09) made `Source:` a required piece. This is the only sub-spec exception;
 all other files in this directory follow the `-standards: N`
 form.
