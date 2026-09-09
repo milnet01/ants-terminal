@@ -35398,6 +35398,27 @@ in each bullet, not just the reporter's symptom.
   Source: in-session-2026-09-08.
   Lanes: ci, tooling.
 
+- 📋 [ANTS-4995] **Four ids the 0.7.109 CHANGELOG cites are not marked shipped, and the release gate will stop on them.**
+  Found by checking every id cited in the `[0.7.109]` section against its bullet marker: 68 of 72 are shipped, four are not.
+
+    ANTS-4457  planned      Triage: Claude-integration findings from the cold sweep
+    ANTS-4460  planned      Triage: MCP verb and IPC findings from the cold sweep
+    ANTS-4894  planned      spec_lint clean envelope on unparsed invariants
+    ANTS-4947  in-progress  roadmap_log annotate discarded a note it had written
+
+  NOT ASSERTED TO BE FOUR ERRORS, and that is the point of filing rather than flipping. Two are `Triage:` umbrellas, and a changelog bullet citing an umbrella for one delivered piece while the umbrella stays open is legitimate. ANTS-4947 is in-progress, which is the same shape. Only ANTS-4894 looks like a plain missed flip, and even that was not opened here.
+
+  WHY IT MATTERS ANYWAY: this is the direction the release skill's own gate checks — that every id the CHANGELOG claims is really shipped — so it fails a cut rather than passing quietly. `tools/check-shipped-coverage.sh` cannot see it: that walks the other direction, from shipped items to uncited ones.
+
+  A fifth was found the same way and is already fixed: ANTS-4985 shipped in 0.7.109 with two CHANGELOG entries and its bullet still read planned. Flipped, with the divergence recorded on it.
+
+  WORK: one line per id — either flip it, or confirm the citation is a partial against an open parent and record that on the bullet so the next cut does not re-ask. Do this BEFORE the next `cut-rc.sh` run, not during it.
+
+  Related context: this cycle's release sweep is already known to have left records out of step (the seven late entries that read as 0.7.109 though the work shipped in 0.7.108), so a second record-level divergence in the same section is consistent with that rather than a new class.
+  **Layman:** The release notes credit four pieces of work the roadmap still lists as unfinished; each needs a yes-or-no before the next release.
+  Kind: chore.
+  Source: in-session-2026-09-09.
+
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-08-14 triage
 
 Un-triaged findings drained from the shared `*_Ants_MCP_Feedback.md` corpus
@@ -71095,7 +71116,7 @@ here.)
   Source: review-contract loop 1 on mcp-error-codes.md, 2026-08-28.
   Lanes: mcp, roadmap-store.
 
-- 📋 [ANTS-4985] **roadmap_query cannot filter by `Source:`, so provenance is write-only and "how many review fixes remain?" has no answer.**
+- ✅ [ANTS-4985] **roadmap_query cannot filter by `Source:`, so provenance is write-only and "how many review fixes remain?" has no answer.**
   Asked directly by the user on 2026-09-09 and answerable only with a
   caveat. `kind` is filterable (ANTS-4571-era `kind:` arg) and `Source:` is
   not, so the only clean count is by `kind`, which gives 4 `review-fix` and 4
@@ -71136,6 +71157,19 @@ here.)
   in the source column, and ANTS-4660 three more captured from a scope
   operator — count the distinct values first; a filter over a corrupted
   column answers confidently and wrongly.
+  Verified live (2026-09-09) after the terminal relaunch that made it
+  reachable. The `source` argument is present in the served schema, the
+  array-of-prefixes form matched 22 of 405 active items with 383
+  filtered out, and a present-but-empty value refuses `bad_args` with
+  the documented message rather than returning the full set. Recorded
+  because a verb fix cannot be trusted from the session that shipped it
+  — the running server is the previous binary until Ants restarts — so
+  this is the first run against a build that actually contains it.
+  Status corrected (2026-09-09): this shipped in 0.7.109 and the flip was missed.
+
+  Caught while recording the post-relaunch verification above, which reported the item as still planned. Three independent confirmations that it is not: the `source` argument is present in the tool schema the running server serves, a filtered query answers correctly against the live store, and CHANGELOG 0.7.109 already carries TWO entries citing this id, one under Added for the filter and one under Changed for the format requirement.
+
+  Worth noting which way this divergence points. `tools/check-shipped-coverage.sh` looks for work the store says shipped that no CHANGELOG bullet cites. This is the mirror: a CHANGELOG bullet citing an id the roadmap still called planned, which is the direction the release skill's own gate checks — so it would have failed the next cut rather than passing silently. It was introduced in the same cycle whose release sweep is already known to have left records out of step.
   **Layman:** The roadmap records where each item came from, but nothing can search on it, so we cannot count how much review work is left.
   Kind: enhancement.
   Source: in-session-2026-09-09.
@@ -71351,6 +71385,9 @@ here.)
   One implementation trap for the next reader: the definition first landed
   inside `roadmapparse.cpp`'s anonymous namespace, which compiles and then
   fails at link with an undefined symbol. It sits after that namespace closes.
+  Verified live (2026-09-09) after the relaunch, both arms. A `fix` kind with a review-shaped provenance emits `kind_ignores_review_provenance` carrying the matched prefix and a suggested kind, as an advisory on a successful write rather than a refusal; the same provenance with `review-fix` emits nothing. The control arm is the half worth having — it shows the warning discriminates rather than firing on every write. Both runs were previews and wrote nothing.
+
+  Then it caught a REAL write the same day, which is better evidence than either probe. Filing ANTS-4994 I inherited a plain `fix` from its parent item while its provenance named an audit origin; the warning fired, was right, and the kind was corrected with `amend_field`. First live catch on record.
   **Layman:** Nothing reminds you to label a fix that came from a review, so the label keeps being left off.
   Kind: enhancement.
   Source: in-session-2026-09-09 (found by the ANTS-4985 rule 14 gate).
