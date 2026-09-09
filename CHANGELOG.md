@@ -608,7 +608,7 @@ for security-relevant changes.
   unchanged, since you choose where those go and may mean to share
   them.
 
-## [0.7.108] — unreleased (Patron RC preview)
+## [0.7.108] — 2026-09-09
 ### Added
 
 - **Roadmaps written as numbered passes can now use the database** (ANTS-4803)

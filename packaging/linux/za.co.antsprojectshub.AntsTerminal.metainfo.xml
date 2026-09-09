@@ -103,7 +103,7 @@
   </screenshots>
 
   <releases>
-    <release version="0.7.108" date="2026-09-04">
+    <release version="0.7.108" date="2026-09-09">
       <description>
         <p>Roadmap database for numbered-pass projects, review-system multi-file corroboration, shell-script coverage, and a broad sweep of MCP tooling, documentation analysis and release-gate maturity.</p>
         <ul>

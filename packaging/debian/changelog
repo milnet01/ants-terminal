@@ -36,7 +36,7 @@ ants-terminal (0.7.108-1) unstable; urgency=medium
     the release workflows default to read-only with write granted to one
     job only. (ANTS-4448, 4447, 4795, 4792)
 
- -- Anthony Schemel <aant.schemel@gmail.com>  Fri, 04 Sep 2026 00:00:00 +0200
+ -- Anthony Schemel <aant.schemel@gmail.com>  Wed, 09 Sep 2026 00:00:00 +0200
 
 ants-terminal (0.7.107-1) unstable; urgency=medium
 
