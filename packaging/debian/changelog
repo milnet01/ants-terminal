@@ -1,3 +1,99 @@
+ants-terminal (0.7.109-1) unstable; urgency=medium
+
+  * Roadmap items now record and can be searched by where they came from
+    and what kind of work they are, and a long item's latest note can be
+    read in one call. (ANTS-4985, 4836, 4904)
+  * Filing a review's fix under the wrong label now says so, and a
+    roadmap publish that would overwrite unrecoverable text keeps a copy
+    and names it. (ANTS-4989, 4947)
+  * doc_lint runs every deterministic document check in one call and can
+    repair a drifted table of contents; spec_lint reports how many
+    invariants it recognised. (ANTS-3663, 3669, 4894)
+  * UnrealScript files are outlined, indexed and searchable;
+    project_settings gains a named read; roadmap_migrate reports the
+    note population it capped and lets you raise the cap. (ANTS-4902,
+    4903, 4559)
+  * Shorter spellings for arguments callers reach for: q on roadmap
+    search, query on similar_code, and old_text/new_text with a batch-
+    level path on apply_edits. (ANTS-4927, 4951, 4936)
+  * The roadmap format standard now requires every item to record where
+    it came from, and a narrowed reply names the fields it does carry
+    rather than only those it does not. (ANTS-4985, 4930)
+  * Tool descriptions and warnings say more: the body-scrub warning
+    names the text it removed, a refused absolute path names the way to
+    read that file, and search says what its symbol annotation managed.
+    (ANTS-4938, 4899, 4901)
+  * Search states that its working directory picks any tree;
+    project_query names file enumeration where the tool is chosen;
+    migration refusals carry the project's registration; the spec
+    skeleton ships the review-log table shape. (ANTS-4928, 4929, 4893,
+    3682)
+  * Terminal behaviour - resetting no longer discards your theme and
+    scrollback setting, selection highlight no longer runs past CJK or
+    emoji text, a new bold or italic font takes effect at once, opening
+    a file by name consults the right process, a terminal whose shell
+    has gone no longer pins a CPU core, and Sixel decoding is bounded.
+    (ANTS-4456)
+  * Claude status no longer needs a tab switch to wake up, permission
+    prompts and failed tool calls reach the status bar, and the usage
+    figures count a call by what actually happened to it. (ANTS-4457)
+  * ants.notify() shows a notification instead of doing nothing, and the
+    paste handler guards the clipboard pointer Qt documents as nullable.
+    (ANTS-4273, 3831)
+  * A test run can no longer write to your real git repository, and the
+    pre-push gate now passes from a git worktree. (ANTS-3841, 3842)
+  * The pre-push sanitizer gate resolves a pending build-file
+    regeneration instead of standing down, states how old an interrupt
+    marker is, and its documented skip switch can be used for the push
+    it documents. (ANTS-4536, 4943, 4883)
+  * Roadmap writes - creating a level-2 section no longer swallows the
+    level-3 sections below it, verbs called from a subdirectory or a
+    worktree are served by the project's store, and the id allocator
+    applies its store floor there too. (ANTS-4848, 4884, 4887, 4882)
+  * Roadmap and changelog reads - one project's storage backend is no
+    longer reported to another caller, a mixed-format roadmap names its
+    second format, op:"add" writes at the top of a mixed changelog, and
+    a batch reads in the order it was written. (ANTS-4885, 4492, 4563,
+    4854)
+  * Document analysis - mirrored standards no longer carry dead links or
+    report false duplicate headings, quotations are counted once per
+    document and their candidate lists capped, and the changelog and
+    test-audit parsers use the shared code-fence rules. (ANTS-4875,
+    4878, 4697, 4939, 4404)
+  * spec_lint checks a project against its own spec standard, says
+    whether the project adopted the global one, and no longer blames a
+    document for a check it did not run. (ANTS-4895, 4926, 4889)
+  * Refusals and replies - one code for a bad kind whichever route
+    reported it, an unknown tool reports the same code in envelope and
+    telemetry, a narrowed reply that matched nothing still says it
+    succeeded, and three flags whose false is the answer survive terse
+    mode. (ANTS-4750, 2173, 4877, 4956)
+  * Feedback and session start - a corpus in its own folder no longer
+    causes a second empty record, cross-project id resolution survives
+    the move, the backlog follows the configured root, and findings
+    carrying no id slot are counted. (ANTS-4900, 4905, 4896, 4941)
+  * Descriptions that misled a caller - roadmap_log names every op that
+    refuses on a pass-headings roadmap, changelog_log no longer says a
+    summary is ignored, feedback help no longer names a folder holding
+    no file, and a migration no longer writes a link that cannot
+    resolve. (ANTS-4863, 4888, 4980, 4962)
+  * Analysis accuracy - a checker that printed its help text is no
+    longer reported as many findings, definition lookup no longer lists
+    local variables, conventions are not stated from a document absent
+    from your project, and appending a review-log row refuses rather
+    than discarding cells. (ANTS-3846, 4880, 4460, 4886)
+  * Test bundles no longer read your live settings. (ANTS-4898)
+  * Release tooling - an emergency release resumes when already tagged,
+    a cycle no longer skips its second phase after an interruption, a
+    new candidate resumes instead of refusing, an abandoned phase is
+    named when a hook refuses, and the Fedora 44 package builds via a
+    backport carried in the spec. (ANTS-4872, 4871, 4869, 4865, 4870)
+  * Tool-result boundaries are harder to forge, project folder paths
+    from session files are checked, and session logs and recordings are
+    readable only by you. (ANTS-4457, 4456)
+
+ -- Anthony Schemel <aant.schemel@gmail.com>  Wed, 09 Sep 2026 14:54:39 +0200
+
 ants-terminal (0.7.108-1) unstable; urgency=medium
 
   * The roadmap database now reads and writes roadmaps organised as
