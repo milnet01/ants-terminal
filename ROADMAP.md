@@ -62327,6 +62327,17 @@ that needs them.
   not the description's first character. Either say so, or add the
   check; today a new verb can ship with a doubled `[<kind>]` prefix and
   the suite stays green.
+  Re-measured (2026-09-09) against the current files before implementing. Two of this item's four parts have moved since it was written; the other two stand exactly as filed.
+
+  CLOSED ALREADY, by someone else, and this item never noticed. Part (a) says step 2 is stale on contract-drift enforcement — that it still reads "asserts (via `Q_ASSERT_X`, i.e. debug builds)" and so tells an implementer a Release build tolerates drift silently. It no longer reads that. The step now says the registration "asserts via `Q_ASSERT_X` (debug) **and refuses the registration in every build config**", cites both originating ids, and adds that the tool goes missing, which is loud in its own right. That is what part (a) asked for. Nothing to do.
+
+  STANDS, verified rather than assumed. Part (b): step 11 states two prohibitions in ONE sentence — do not begin the short description with the bracket the runtime prefix loop adds, and do not write the schema-prop literal inside a descriptor comment. The second names its own scraper. The first has no test anywhere: `mcp_tool_prefix_tags` asserts bucket resolution and per-tool bucket coverage, not any description's first character, and `mcp_tool_detail_field`'s wire-budget invariant merely ASSUMES a bracket prefix of bounded size rather than asserting the description lacks one. So a new verb can still ship with a doubled prefix and the suite stays green, exactly as filed.
+
+  STANDS, unchanged. Parts (c) and (d): the standard mentions neither the per-verb token-cost table nor `selection_hint` anywhere — confirmed by name search over the whole file. The format rules the loop-6 correction identified are still documented nowhere in it, while two feature tests enforce them.
+
+  SO THE LIVE SCOPE IS THREE PARTS, NOT FOUR, and they want different treatment. (b) is a missing test and needs no documentation change at all — the standard already states the rule correctly, so the right fix is to enforce it rather than to weaken the sentence. (c) and (d) are additions to a standard, which changes what a conformer must do, so they carry a rule 14 gate.
+
+  Do not re-derive part (a) as still open from this body's original text: that text was accurate when written and is not now.
 
 - 💭 [ANTS-3646] **Support the `~:N` approximate-citation spelling in doc_citations.**
   ANTS-3636 s 2.2 handles the approximate form `file.cpp:~197` but not
