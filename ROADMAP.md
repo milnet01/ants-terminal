@@ -35036,7 +35036,7 @@ in each bullet, not just the reporter's symptom.
   Source: in-session-2026-08-31, found while triaging the gate's own uncovered list.
   Lanes: ci, changelog.
 
-- 📋 [ANTS-4883] **Using the documented ANTS_PREPUSH_NO_ASAN escape hatch fails the very suite the hook runs.**
+- ✅ [ANTS-4883] **Using the documented ANTS_PREPUSH_NO_ASAN escape hatch fails the very suite the hook runs.**
   `tools/hooks/pre-push` documents `ANTS_PREPUSH_NO_ASAN=1` as the way to
   skip the sanitizer leg for one push. Setting it and pushing fails
   `prepush_asan_gate`, so the push is refused — the escape hatch cannot be
@@ -35060,12 +35060,26 @@ in each bullet, not just the reporter's symptom.
   which on this 32 GiB host is also when memory is tightest. Two pushes were
   OOM-killed here before the hatch was tried; the ninja trees survived both
   (`-n` exit 0, `-t recompact` clean) but that is luck rather than design.
+  Shipped 2026-09-09. Repaired on the test side, as the item prescribed.
+  `run_hook` now scrubs the hook's own tunables with `env -u` —
+  ANTS_PREPUSH_NO_ASAN, ANTS_PREPUSH_NO_QT62 and ANTS_PREPUSH_ASAN_MAX_EDGES
+  — so each case sets only what it exercises. INV-5 still sets the hatch
+  explicitly, so both branches stay testable.
+
+  Widened past the one variable the item named: the edge cap is the same
+  class of leak and would silently move INV-1 and INV-2's boundary.
+
+  Proved red rather than reasoned. The PRE-FIX test with
+  `ANTS_PREPUSH_NO_ASAN=1` exported fails 7 assertions; with the scrub in
+  place only the 5 genuine ANTS-4536 / ANTS-4943 failures remain. New INV-9
+  locks it: the leg still runs with the hatch exported by the caller, and the
+  hatch's own skip message is absent.
   **Layman:** The official way to skip the slow sanitizer check makes a test fail, so the push is blocked either way.
   Kind: fix.
   Source: in-session-2026-09-05, hit when the sanitizer leg could not complete on this machine.
   Lanes: ci, tests.
 
-- 📋 [ANTS-4942] **The pre-push ASan cost gate reads a pending CMake regen as a warm tree.**
+- ✅ [ANTS-4942] **The pre-push ASan cost gate reads a pending CMake regen as a warm tree.**
   ANTS-4118's INV-1 counts the sanitizer tree's pending ninja edges before
   building and skips the leg above the cap, so a cold tree is refused rather
   than SIGTERMed mid-build at a caller's timeout.
@@ -35095,11 +35109,27 @@ in each bullet, not just the reporter's symptom.
   makes the suite's own prepush_asan_gate INV-2 fail, because that invariant
   asserts a warm tree still runs the leg — so the hatch trades a slow gate
   for a red one.
+  Closed 2026-09-09 as a DUPLICATE of ANTS-4536, with its stated cause
+  disproved.
+
+  This item claims the gate reads a pending regen as one edge and PROCEEDS.
+  The source says otherwise: `tools/hooks/pre-push` has carried a
+  `grep -q 'Re-running CMake'` guard since commit 12c3b84b (2026-08-12),
+  which is before this item was filed on 2026-09-07. The gate SKIPPED. The
+  reporter's observation — that warming the tree by hand then blew the
+  timeout budget — is what follows a skip, not a proceed.
+
+  The real complaint is identical to ANTS-4536's and is fixed there: the leg
+  went dark on every push touching CMakeLists.txt. Both items proposed the
+  same repair, and 4536 states the mechanism correctly.
+
+  A report's stated CAUSE is a claim. This one was checked against the source
+  and the guard's commit date rather than built from.
   **Layman:** A safety check meant to skip a long build is fooled whenever the build files changed, so it starts the long build anyway.
   Kind: fix.
   Source: in-session-2026-09-07 (hit while pushing ANTS-4456).
 
-- 📋 [ANTS-4943] **The pre-push ASan skip marker never expires, so a dark gate leg reads as a healthy push.**
+- ✅ [ANTS-4943] **The pre-push ASan skip marker never expires, so a dark gate leg reads as a healthy push.**
   Found while pushing ANTS-4456 fixes. tools/hooks/pre-push writes
   build-asan/.ants-prepush-interrupted when a run is killed mid-build, and
   skips the sanitizer leg while it exists. That guard is right: an
@@ -35126,6 +35156,19 @@ in each bullet, not just the reporter's symptom.
   Not a duplicate of ANTS-4942, which is about the edge count misreading a
   pending CMake regen. This one is the marker branch, which runs before
   that count is consulted.
+  Shipped 2026-09-09. The interrupt-marker skip now states the marker's age,
+  from its mtime — days, hours or minutes, singular where it is one.
+
+  Expiring the marker was deliberately NOT built: the item says healing the
+  tree stays the caller's call, and an auto-expiry would resume incremental
+  builds over a tree killed mid-ninja, which is the false pass the marker
+  exists to prevent. Making the skip louder as it ages was also left out —
+  the age alone answers the complaint, which was that a three-day-old marker
+  printed identically to a three-minute-old one.
+
+  Test: spec.md INV-8, two arms — a marker backdated with `touch -d '3 days
+  ago'` reports "3 days ago", and a marker written this session does NOT read
+  as days old while still reporting an age. Proved red on assertions.
   **Layman:** A safety check can switch itself off after a crashed build and stay off for days without anyone noticing.
   Kind: fix.
   Source: in-session-2026-09-08.
@@ -72292,7 +72335,7 @@ contributors don't duplicate research.
   Source: in-session-2026-08-19, found checking CI after the ANTS-4505/4506 push.
   Lanes: ci, tests.
 
-- 📋 [ANTS-4536] **A CMakeLists.txt edit guarantees the pre-push ASan gate skips, so the riskiest pushes are the unguarded ones.**
+- ✅ [ANTS-4536] **A CMakeLists.txt edit guarantees the pre-push ASan gate skips, so the riskiest pushes are the unguarded ones.**
   ANTS-4118 gates the pre-push hook's ASan leg on being able to
   MEASURE the pending work in build-asan, and refuses when it cannot
   -- an unmeasured build is the one a caller timeout kills. Correct as
@@ -72324,6 +72367,26 @@ contributors don't duplicate research.
   report an explicit "regen pending, run it yourself" with the exact
   command, rather than the current generic skip that reads as a
   tooling fault.
+  Shipped 2026-09-09. The hook now RESOLVES a pending regen instead of
+  standing down on it: `ninja -C <dir> build.ninja` runs the regen edge (a
+  CMake re-run, not a build), the dry run is re-counted, and that count is
+  gated like any other. Only a regen that fails, or one that does not clear,
+  is still unmeasurable. The branch condition dropped its own
+  `Re-running CMake` test, since an unresolved regen is now collapsed to an
+  empty count upstream.
+
+  Of the item's three candidate directions, the first was taken. Measuring
+  against `cmake --build -n` was not: it delegates to ninja and hits the same
+  regen. Reporting "regen pending, run it yourself" leaves the leg dark,
+  which is the defect.
+
+  Tests: spec.md INV-6 REVERSED (it had mandated the skip), plus INV-6b (a
+  cold tree behind the regen is still refused) and INV-6c (a failing regen
+  still skips). Proved red on assertions before the fix. The stub ninja
+  models the regen as a STATE, not a constant reading — a stateless stub
+  reports the regen forever and cannot tell the two arms apart. The
+  "regen was run" assertion reads ninja's own argv log, not a word in the
+  hook's message, which had matched pre-fix against the skip text.
   **Layman:** The safety check that runs before we upload code quietly stands down on exactly the kind of change most likely to need it.
   Kind: fix.
   Source: in-session-2026-08-19, observed while closing ANTS-4533.

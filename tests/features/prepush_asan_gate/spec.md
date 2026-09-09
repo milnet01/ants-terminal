@@ -1,6 +1,7 @@
 # Feature: pre-push hook — the ASan leg's cost gate
 
-Test contract for ANTS-4118. Locks the three behaviours that stop
+Test contract for ANTS-4118, extended by ANTS-4536 / ANTS-4943 /
+ANTS-4883. Locks the behaviours that stop
 `tools/hooks/pre-push`'s `build-asan` leg from being killed mid-build by a
 caller's command timeout.
 
@@ -46,11 +47,34 @@ Two costs, and the second is the one that bites:
   SIGTERM mid-ninja is a false pass, not a cheap one.
 - **INV-5** — the skip paths still exit 0 (the push proceeds; CI remains
   the backstop) and the Release leg is unaffected in every case.
-- **INV-6** — a pending CMake regeneration is NOT a warm reading. When the
-  dry run is just `[0/1] Re-running CMake...`, every real edge is hidden
-  behind that regen, so the count is 1 for what may be a full rebuild —
-  precisely the case a changed `CMakeLists.txt` produces. The hook must
-  treat it as unmeasurable and skip, not as one cheap edge.
+- **INV-6** — a pending CMake regeneration is MEASURED, not skipped. When
+  the dry run is just `[0/1] Re-running CMake...`, every real edge is hidden
+  behind that regen, so the count reads as one cheap edge for what may be a
+  full rebuild — precisely the case a changed `CMakeLists.txt` produces. The
+  hook runs the regen (`ninja -C <dir> build.ninja`, a CMake re-run rather
+  than a build) and re-counts against what it reveals, then gates on that
+  count like any other. Treating the regen as unmeasurable and skipping was
+  the original repair, and it was wrong in the other direction: it stood the
+  leg down on every push touching `CMakeLists.txt`, which is the change most
+  likely to introduce a sanitizer-visible defect (ANTS-4536). The skip
+  survives only where the regen itself fails, or where the re-count still
+  reads as a regen — those remain genuinely unmeasurable.
+
+- **INV-8** — the interrupt-marker skip (INV-4) states the marker's AGE.
+  The marker never expires and the skip is one line inside a long run that
+  callers commonly tail, so a marker written days ago printed identically to
+  one written this session, and the leg stayed dark across every push in
+  between while each still ended "push allowed". Expiring the marker is
+  deliberately NOT the repair — healing the tree stays the caller's call —
+  but a stale skip must not be invisible (ANTS-4943).
+
+- **INV-9** — the test's own result does not depend on the ambient
+  environment. The hook reads `ANTS_PREPUSH_NO_ASAN`, `ANTS_PREPUSH_NO_QT62`
+  and `ANTS_PREPUSH_ASAN_MAX_EDGES`; the hook runs as a child of whatever
+  set them. A caller who exported the documented hatch to skip the slow leg
+  for one push therefore failed this suite, so the documented escape hatch
+  could not be used for the thing it documents. Each case scrubs those
+  names and sets only what it is exercising (ANTS-4883).
 - **INV-7** — a truncated deps log is REPORTED, never gated on. `ninja`
   warning `premature end of file; recovering` looks like the signature of a
   killed build, and an earlier draft of this gate skipped the leg on it.
@@ -83,5 +107,11 @@ stub `cmake` appends its argv to a log, which is how "never invokes cmake
 
 Pre-fix the hook has no edge count, no marker check and prints the hatch
 only when skipping, so INV-1/3/4 fail on assertions and INV-2/5 pass.
+
+The stub `ninja` models the regen as a STATE, not a constant reading: mode
+`regen` reports `[0/1] Re-running CMake...` until the hook actually runs the
+regen edge, after which the dry run reports real edges. A stateless stub
+would report the regen forever and could not tell INV-6's two arms apart.
+Mode `regen_fails` never clears, which is the arm that still skips.
 
 Label: `features;fast`.

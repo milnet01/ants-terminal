@@ -38,11 +38,25 @@ exit 0
 EOF
 cat > "$tmp/bin/ninja" <<'EOF'
 #!/bin/bash
+echo "ninja $*" >> "$NINJA_CALL_LOG"
 # Only the dry run is stubbed. MODE reproduces the two readings observed on
 # this repo's own build-asan on 2026-08-12: a pending CMake regen (which hides
 # every real edge behind it) and a deps file damaged by a killed build.
 case "${ANTS_TEST_NINJA_MODE:-normal}" in
-  regen)   echo "[0/1] Re-running CMake..."; exit 0 ;;
+  regen|regen_fails)
+           # The regen is a STATE, not a constant reading: `ninja -C <dir>
+           # build.ninja` is the regen edge itself, and after it runs the dry
+           # run reports the real edges it was hiding. A stateless stub would
+           # report the regen forever and could not tell the two arms apart.
+           if [[ "$*" == *build.ninja* ]]; then
+               [[ "$ANTS_TEST_NINJA_MODE" == regen_fails ]] && exit 1
+               touch "$ANTS_TEST_NINJA_REGEN_DONE"
+               exit 0
+           fi
+           if [[ ! -f "$ANTS_TEST_NINJA_REGEN_DONE" ]]; then
+               echo "[0/1] Re-running CMake..."; exit 0
+           fi
+           ;;
   damaged) echo "ninja: warning: premature end of file; recovering" >&2
            echo "[1/2] Building CXX object src/thing_1.cpp.o"
            echo "[2/2] Linking CXX executable thing"
@@ -80,16 +94,25 @@ touch "$repo/build-asan/build.ninja"
 run_hook() {
     local edges="$1"
     local mode="${2:-normal}"
-    rm -f "$tmp/cmake-calls"
-    touch "$tmp/cmake-calls"
+    rm -f "$tmp/cmake-calls" "$tmp/ninja-calls" "$tmp/regen-done"
+    touch "$tmp/cmake-calls" "$tmp/ninja-calls"
+    # ANTS-4883 — scrub the hook's OWN tunables. The hook runs as a child of
+    # whoever set them, so a caller who exported the documented escape hatch
+    # to skip the slow leg for one push failed this suite instead. Each case
+    # sets only what it is exercising; INV-9 asserts the scrub holds.
     out=$(cd "$repo" && \
+        env -u ANTS_PREPUSH_NO_ASAN -u ANTS_PREPUSH_NO_QT62 \
+            -u ANTS_PREPUSH_ASAN_MAX_EDGES \
         PATH="$tmp/bin:$PATH" \
         CMAKE_CALL_LOG="$tmp/cmake-calls" \
+        NINJA_CALL_LOG="$tmp/ninja-calls" \
         ANTS_TEST_NINJA_EDGES="$edges" \
         ANTS_TEST_NINJA_MODE="$mode" \
+        ANTS_TEST_NINJA_REGEN_DONE="$tmp/regen-done" \
         bash "$PREPUSH_HOOK" origin git@example:x <<<"refs/heads/main $sha refs/heads/main 0000000000000000000000000000000000000000" 2>&1)
     rc=$?
     calls=$(cat "$tmp/cmake-calls")
+    ninja_calls=$(cat "$tmp/ninja-calls")
 }
 
 echo "INV-1 — a cold sanitizer tree is refused, not built"
@@ -127,6 +150,7 @@ rm -f "$repo/build-asan/.ants-prepush-interrupted"
 
 echo "INV-5 — the Release leg is unaffected and the hatch still short-circuits"
 out=$(cd "$repo" && PATH="$tmp/bin:$PATH" CMAKE_CALL_LOG="$tmp/cmake-calls" \
+      NINJA_CALL_LOG="$tmp/ninja-calls" \
       ANTS_PREPUSH_NO_ASAN=1 bash "$PREPUSH_HOOK" origin git@example:x \
       <<<"refs/heads/main $sha refs/heads/main 0000000000000000000000000000000000000000" 2>&1)
 rc=$?
@@ -134,13 +158,52 @@ check "exit 0 with the hatch set" "$([[ $rc -eq 0 ]] && echo 0 || echo 1)"
 check "hatch branch still reports the skip" \
       "$(grep -q 'ANTS_PREPUSH_NO_ASAN set' <<<"$out" && echo 0 || echo 1)"
 
-echo "INV-6 — a pending CMake regen is not a warm reading"
-run_hook 1 regen
+echo "INV-6 — a pending CMake regen is measured, not skipped (ANTS-4536)"
+run_hook 3 regen
 check "exit 0" "$([[ $rc -eq 0 ]] && echo 0 || echo 1)"
-check "cmake --build was NOT run behind the regen edge" \
+check "the regen edge itself was run (asserted on ninja's argv)" \
+      "$(grep -q 'build.ninja' <<<"$ninja_calls" && echo 0 || echo 1)"
+check "the leg RUNS on the warm count the regen revealed" \
+      "$(grep -q -- '--build build-asan' <<<"$calls" && echo 0 || echo 1)"
+
+echo "INV-6b — the count the regen reveals is gated like any other"
+run_hook 200 regen
+check "exit 0" "$([[ $rc -eq 0 ]] && echo 0 || echo 1)"
+check "a cold tree behind the regen is still refused" \
+      "$(grep -q -- '--build build-asan' <<<"$calls" && echo 1 || echo 0)"
+check "output names the count the regen revealed" \
+      "$(grep -q '200' <<<"$out" && echo 0 || echo 1)"
+
+echo "INV-6c — a regen that FAILS is genuinely unmeasurable and skips"
+run_hook 3 regen_fails
+check "exit 0" "$([[ $rc -eq 0 ]] && echo 0 || echo 1)"
+check "cmake --build was NOT run behind an unresolved regen" \
       "$(grep -q -- '--build build-asan' <<<"$calls" && echo 1 || echo 0)"
 check "output says the pending work could not be measured" \
       "$(grep -qi 'measure' <<<"$out" && echo 0 || echo 1)"
+
+echo "INV-8 — the interrupt-marker skip states the marker's age (ANTS-4943)"
+touch -d '3 days ago' "$repo/build-asan/.ants-prepush-interrupted"
+run_hook 3
+check "the age is reported, so a stale skip is not invisible" \
+      "$(grep -q '3 days ago' <<<"$out" && echo 0 || echo 1)"
+touch "$repo/build-asan/.ants-prepush-interrupted"
+run_hook 3
+check "a marker written this session does not read as days old" \
+      "$(grep -q 'days ago' <<<"$out" && echo 1 || echo 0)"
+check "and it still reports an age rather than nothing" \
+      "$(grep -qE '[0-9]+ (hour|hours|minute|minutes|day|days) ago' <<<"$out" \
+         && echo 0 || echo 1)"
+rm -f "$repo/build-asan/.ants-prepush-interrupted"
+
+echo "INV-9 — an ambient escape hatch does not decide this suite (ANTS-4883)"
+export ANTS_PREPUSH_NO_ASAN=1
+run_hook 3
+unset ANTS_PREPUSH_NO_ASAN
+check "the leg still runs with the hatch exported by the CALLER" \
+      "$(grep -q -- '--build build-asan' <<<"$calls" && echo 0 || echo 1)"
+check "and the hatch's own skip message is absent" \
+      "$(grep -q 'ANTS_PREPUSH_NO_ASAN set' <<<"$out" && echo 1 || echo 0)"
 
 echo "INV-7 — a truncated deps log is reported, never gated on"
 run_hook 2 damaged

@@ -195,11 +195,20 @@ the change most likely to reach for a Qt API newer than the floor; it is
 now caught before the push rather than by CI.
 Escape hatches: `git push --no-verify`, `ANTS_PREPUSH_NO_ASAN=1`,
 `ANTS_PREPUSH_NO_QT62=1`. The ASan
-leg is cost-gated (ANTS-4118): it runs only over a tree that is warm
-(≤ `ANTS_PREPUSH_ASAN_MAX_EDGES`, default 25 pending steps), skipping with
-a loud message when the tree is cold, mid-CMake-regen, or carries a damaged
-deps log from a killed build — so a caller's command timeout can no longer
-SIGTERM a push mid-ninja.
+leg is cost-gated (ANTS-4118): it runs only over a tree whose pending ninja
+edges are under `ANTS_PREPUSH_ASAN_MAX_EDGES`, skipping with a loud message
+on a cold tree — so a caller's command timeout can no longer SIGTERM a push
+mid-ninja. **A pending CMake regen is resolved, not skipped** (ANTS-4536):
+the regen hides every real edge behind it, so the hook runs it (a CMake
+re-run, not a build) and gates on what it reveals. Skipping there stood the
+leg down on every push touching `CMakeLists.txt`. Two other conditions are
+NOT the same: a damaged deps log is reported and the leg still runs (its
+warning survives a `--clean-first` rebuild, so gating on it would never
+clear), while `build-asan/.ants-prepush-interrupted` — written when a run is
+killed mid-build — does skip, because an incremental result over a killed
+ninja is a false pass. That marker never expires, so the skip message states
+its age (ANTS-4943); healing the tree stays your call. Contract and
+invariants: `tests/features/prepush_asan_gate/spec.md`.
 
 ## Test harnesses
 

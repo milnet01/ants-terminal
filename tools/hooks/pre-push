@@ -210,22 +210,68 @@ else
     if command -v ninja >/dev/null 2>&1 && [[ -f "$asan_dir/build.ninja" ]]; then
         asan_dry="$(ninja -C "$asan_dir" -n 2>&1 || true)"
         asan_edges="$(grep -cE '^\[[0-9]+/[0-9]+\]' <<<"$asan_dry" || true)"
+
+        # ANTS-4536 — a pending regen hides every real edge behind it, so the
+        # dry run reads `[0/1] Re-running CMake...` for what may be a full
+        # rebuild. Treating that as unmeasurable stood the leg down on EVERY
+        # push touching CMakeLists.txt — the change most likely to introduce a
+        # sanitizer-visible defect, and the same shape ANTS-4131's Qt-floor
+        # guard exists to close. The regen is a CMake re-run, not a build, so
+        # run it and measure what it reveals. Only a regen that fails, or one
+        # that does not clear, is genuinely unmeasurable.
+        if grep -q 'Re-running CMake' <<<"$asan_dry"; then
+            echo "pre-push: build-asan has a pending CMake regeneration, which"
+            echo "          hides the real edge count. Running the regen to"
+            echo "          measure it (a CMake re-run, not a build)."
+            if ninja -C "$asan_dir" build.ninja >/dev/null 2>&1; then
+                asan_dry="$(ninja -C "$asan_dir" -n 2>&1 || true)"
+                asan_edges="$(grep -cE '^\[[0-9]+/[0-9]+\]' <<<"$asan_dry" || true)"
+                if grep -q 'Re-running CMake' <<<"$asan_dry"; then
+                    asan_edges=""
+                fi
+            else
+                echo "pre-push: the regen itself failed — treating the tree as"
+                echo "          unmeasurable."
+                asan_edges=""
+            fi
+        fi
     fi
 
     if [[ -f "$asan_marker" ]]; then
+        # ANTS-4943 — the marker never expires, and this skip is one line
+        # inside a long run that callers commonly tail. A marker written days
+        # ago printed identically to one written this session, so the leg
+        # stayed dark across every push in between while each still ended
+        # "push allowed". Expiring it is deliberately NOT the repair — healing
+        # the tree stays the caller's call — but the age has to be visible.
+        asan_marker_age="age unknown"
+        marker_epoch="$(stat -c %Y "$asan_marker" 2>/dev/null || true)"
+        if [[ -n "$marker_epoch" ]]; then
+            marker_secs=$(( $(date +%s) - marker_epoch ))
+            (( marker_secs < 0 )) && marker_secs=0
+            if (( marker_secs >= 86400 )); then
+                marker_n=$(( marker_secs / 86400 )); marker_unit=days
+            elif (( marker_secs >= 3600 )); then
+                marker_n=$(( marker_secs / 3600 )); marker_unit=hours
+            else
+                marker_n=$(( marker_secs / 60 )); marker_unit=minutes
+            fi
+            (( marker_n == 1 )) && marker_unit="${marker_unit%s}"
+            asan_marker_age="$marker_n $marker_unit ago"
+        fi
         echo "pre-push: ⊘ build-asan gate SKIPPED — an earlier run was killed"
-        echo "          mid-build in $asan_dir, so an incremental result over it"
+        echo "          mid-build in $asan_dir $asan_marker_age, so an"
+        echo "          incremental result over it"
         echo "          is a false pass, not a cheap one. Heal the tree and clear"
         echo "          the marker in one go:"
         echo "            cmake --build $asan_dir --clean-first && rm $asan_marker"
         echo "          CI's build-asan job still covers this push."
-    elif [[ -z "$asan_edges" ]] || grep -q 'Re-running CMake' <<<"$asan_dry"; then
-        # A pending regen hides every real edge behind it: the count reads 1
-        # for what may be a full rebuild, which is what a changed CMakeLists.txt
-        # produces. Unmeasurable, not cheap.
+    elif [[ -z "$asan_edges" ]]; then
+        # No ninja, no build.ninja, or a regen that would not resolve. An
+        # unmeasured build is the one a caller timeout kills.
         echo "pre-push: ⊘ build-asan gate SKIPPED — cannot measure pending work"
-        echo "          in $asan_dir (no ninja / no build.ninja, or a pending"
-        echo "          CMake regen hiding the real edges), and an unmeasured"
+        echo "          in $asan_dir (no ninja / no build.ninja, or a CMake"
+        echo "          regeneration that would not resolve), and an unmeasured"
         echo "          build is the one a caller timeout kills."
         echo "          Run it deliberately: tools/ci-parity.sh --full."
     elif (( asan_edges > asan_max_edges )); then

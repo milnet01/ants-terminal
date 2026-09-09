@@ -163,6 +163,25 @@ for security-relevant changes.
 
 ### Fixed
 
+- **The pre-push ASan gate now resolves a pending CMake regeneration and gates on the real edge count** (ANTS-4536)
+  A changed `CMakeLists.txt` leaves a pending regen that hides every
+  pending build step behind it, and the gate stood the sanitizer leg down
+  whenever it saw one — so the leg went dark on exactly the pushes most
+  likely to need it. The hook now runs the regen (a CMake re-run, not a
+  build) and measures what it reveals.
+
+- **The pre-push interrupt-marker skip now states how old the marker is** (ANTS-4943)
+  The marker that disables the sanitizer leg after a killed build never
+  expires, and its skip message read identically whether it was written
+  minutes or days earlier. It now reports the marker's age, so a long-dark
+  gate is visible in a run that still ends "push allowed".
+
+- **ANTS_PREPUSH_NO_ASAN can now be used for the push it documents** (ANTS-4883)
+  The hook's own test inherited the variable from the caller, so exporting
+  the documented escape hatch made the suite the hook runs go red — the
+  push was refused either way. The test now scrubs the hook's tunables and
+  sets only what each case exercises.
+
 - **Three MCP flags whose `false` is the answer now survive terse mode** (ANTS-4956)
   `file_in_sync`, `store_backed` and `markdown_rewritten` were emitted
   correctly and then dropped as dead weight, because terse responses are on
