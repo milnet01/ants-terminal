@@ -1,6 +1,6 @@
-<!-- ants-roadmap-format-spec: 1.1 -->
+<!-- ants-roadmap-format-spec: 1.2 -->
 <!-- OWNED-HERE roadmap-format.md - this project's parser, store and migration live here, so this copy governs and ~/.claude/standards/ is the downstream one; decided 2026-08-12 (ANTS-4073) -->
-# ROADMAP.md & CHANGELOG.md format spec (v1.1)
+# ROADMAP.md & CHANGELOG.md format spec (v1.2)
 
 > Detailed format spec for the two files the Ants Terminal Roadmap
 > dialog parses deterministically. Extracted from
@@ -224,9 +224,12 @@ Optional pieces:
 - **Body prose** — free-form, after the bold headline.
 - **`Lanes: X, Y, Z`** — declares ownership; helps subagents
   find test files.
-- **`Source: <source>`** — declares where the item came from,
-  when the section heading doesn't already make that clear. See
-  §3.5.3.
+- **`Source: <source>`** — declares where the item came from. **Required
+  as of v1.2** (2026-09-09), on the same footing as `Kind:`; it was
+  optional, and "when the section heading doesn't already make that clear"
+  was its old condition. A section heading is not a machine-readable field,
+  and a reader cannot filter on one. See §3.5.3 for the vocabulary and for
+  the measurement that forced this.
 - **`Layman: <one-sentence summary>.`** — a non-technical
   one-line summary, written for a vibe-coder / non-programmer
   reader. When present, the Ants Roadmap dialog (ANTS-1154)
@@ -432,7 +435,8 @@ test; an audit-fix does), and different sources need
 traceability (a finding from a user report should remain
 attributable years later). Two metadata fields cover this without
 adding complexity to the bullet's surface form — `Kind:` required
-as of v1.1 (§ 3.5), `Source:` optional.
+as of v1.1 and `Source:` as of v1.2 (§ 3.5). `Source:` was optional
+until 2026-09-09; the reason it stopped being is below.
 
 **Recognised `Kind:` values:**
 
@@ -476,7 +480,7 @@ item.
 | `planned` | On the roadmap from project design (default; usually omitted) |
 | `user-YYYY-MM-DD` | User report on date YYYY-MM-DD |
 | `audit-YYYY-MM-DD` | `/audit` skill output on date YYYY-MM-DD |
-| `code-quality-review-YYYY-MM-DD` | `/code-quality-review` skill output on date YYYY-MM-DD. **Adopted from the global standard 2026-08-12**; the old spelling `indie-review-YYYY-MM-DD` still parses and existing bullets keep it — nothing reads `Source:` values, so this is traceability, not a format break. Write the new one. |
+| `code-quality-review-YYYY-MM-DD` | `/code-quality-review` skill output on date YYYY-MM-DD. **Adopted from the global standard 2026-08-12**; the old spelling `indie-review-YYYY-MM-DD` still parses and existing bullets keep it. Write the new one. **Both spellings are live and a reader must accept either** — `roadmap_query`'s `source` filter takes an array for exactly this reason. The clause that used to end this row, "nothing reads `Source:` values, so this is traceability, not a format break", was true when written and is false as of ANTS-4985; it is what made the field unqueryable for as long as it stood. |
 | `debt-sweep-YYYY-MM-DD` | `/debt-sweep` skill output on date YYYY-MM-DD |
 | `doc-review-YYYY-MM-DD` | Documentation review on date YYYY-MM-DD |
 | `static-analysis` | cppcheck / clazy / semgrep / ruff / bandit ad-hoc |
@@ -491,6 +495,29 @@ roadmap. Only items the user must rule on (the "behavioural"
 bucket) or items deferred as out-of-scope land here. Use
 `🧹 Debt-sweep fold-in (YYYY-MM-DD)` as the section heading and
 `Source: debt-sweep-YYYY-MM-DD` if declared explicitly.
+
+**`Kind:` and `Source:` are ORTHOGONAL axes and neither substitutes for
+the other.** `Kind:` says what sort of work an item is; `Source:` says
+where it came from. A review, an audit or a user report can produce work
+of any kind, so provenance cannot be expressed by choosing a kind.
+
+Measured 2026-09-09 against the store, on this project's active items:
+36 were review-derived by `Source:` while only 6 carried `review-fix` or
+`audit-fix`. The remaining 30 were `perf`, `doc`, `refactor`,
+`marketing`, `implement` and `enhancement`. Those are correctly filed —
+the under-count is what happens when one field is asked to carry two
+questions. Do not answer a provenance question by adding a
+provenance-shaped `kind`; record the provenance in `Source:` and filter
+on it.
+
+**Where a review produces a FIX, use `review-fix` (or `audit-fix`), not
+`fix`.** Those two kinds earn their place because their follow-through
+differs — the table above requires them to cite the finding source. This
+rule reaches only items that would otherwise be `Kind: fix`; an item of
+any other kind keeps its natural kind and records the review in
+`Source:` alone. `roadmap_log op:append` warns when a review-shaped
+`Source:` is paired with a plain `fix`, so the rule is observable rather
+than remembered.
 
 **A bullet with no `Kind:` / `Source:` reads as implementation work
 for the planned roadmap (`Kind: implement`, `Source: planned`) — and
