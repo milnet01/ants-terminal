@@ -20,6 +20,12 @@
 # Exit 0 = every assertion held. Non-zero = a guard regressed.
 
 set -u
+
+# ANTS-3841 — a shell test does not pass through a bundle main, so it scrubs
+# the git environment itself. With GIT_DIR exported, `git init` / `git commit`
+# below land on the caller's real repository instead of this test's fixture.
+unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_COMMON_DIR
+
 # CUTRC overridable (env) so the suite can be pointed at a pre-fix copy to
 # confirm the reproduce-before-fix property; defaults to the repo's script.
 CUTRC="${CUTRC:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)/packaging/cut-rc.sh}"

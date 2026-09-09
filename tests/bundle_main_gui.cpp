@@ -10,8 +10,15 @@
 
 #include <cstdio>
 
+#include "_support/git_env_guard.h"
+
 int main(int argc, char *argv[]) {
     qputenv("QT_QPA_PLATFORM", "offscreen");
+    // ANTS-3841 — a git environment inherited from the caller redirects every
+    // git-fixture test onto the developer's real repository. Scrub it before
+    // any test runs; see tests/_support/git_env_guard.h for the measurement.
+    ants_test::scrubInheritedGitEnv();
+
     // ANTS-3856 — see tests/bundle_main_core.cpp for the whole reasoning: a
     // per-process XDG_DATA_HOME, so a test that omits its store path opens a
     // throwaway roadmap store instead of the user's live one.

@@ -1249,6 +1249,30 @@ if(ANTS_TESTS)
             PROPERTIES LABELS "features;fast" TIMEOUT 60)
     endfunction()
 
+    # ANTS-3841 — gtest_discover_tests uses DISCOVERY_MODE PRE_TEST, so no
+    # individual test exists at configure time for set_tests_properties to
+    # name, and the guard would only ever run in a clean environment where it
+    # passes without exercising anything. Register it a second time with the
+    # redirecting variables pointed at a decoy: THIS is the entry that goes red
+    # if the scrub in tests/_support/git_env_guard.h is removed.
+    #
+    # The decoy path is never created. If the scrub fails, `git init` builds a
+    # repository there and the fixture assertion fails — which is the point.
+    # ENVIRONMENT_MODIFICATION would say this more directly but needs CMake
+    # 3.22; this project's floor is 3.20.
+    # The decoy work tree must EXIST, or git refuses before it can be
+    # diverted and INV-2 fails on its setup assertion instead of on the
+    # behavioural one. We want the red to say "init landed outside the
+    # fixture", not "git could not start".
+    file(MAKE_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/ants-git-env-decoy)
+    add_test(NAME git_env_guard_polluted
+             COMMAND test_core --gtest_filter=GitEnvGuard.*)
+    set_tests_properties(git_env_guard_polluted PROPERTIES
+        ENVIRONMENT
+            "GIT_DIR=${CMAKE_CURRENT_BINARY_DIR}/ants-git-env-decoy/.git;GIT_WORK_TREE=${CMAKE_CURRENT_BINARY_DIR}/ants-git-env-decoy;GIT_INDEX_FILE=${CMAKE_CURRENT_BINARY_DIR}/ants-git-env-decoy/index;GIT_COMMON_DIR=${CMAKE_CURRENT_BINARY_DIR}/ants-git-env-decoy"
+        LABELS "features;fast"
+        TIMEOUT 60)
+
     add_test(NAME audit_rule_fixtures
              COMMAND bash ${CMAKE_SOURCE_DIR}/tests/audit_self_test.sh)
     set_tests_properties(audit_rule_fixtures PROPERTIES
@@ -2941,6 +2965,8 @@ if(ANTS_TESTS)
                 # a twelfth TU needs no edit here. Reads files at run time, so
                 # it needs Qt6::Core only.
                 tests/features/rc_tu_split/test_rc_tu_split.cpp
+                # ANTS-3841 — a test run must not reach the real repository.
+                tests/features/git_env_guard/test_git_env_guard.cpp
         tests/features/qt_version_guard/test_qt_version_guard.cpp
                 tests/features/verify_trust_gate/test_verify_trust_gate.cpp
                 tests/features/claude_dot_restored_tabs/test_claude_dot_restored_tabs.cpp

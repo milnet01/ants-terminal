@@ -15,6 +15,12 @@
 
 set -eu
 
+# ANTS-3841 — a shell test does not pass through a bundle main, so it scrubs
+# the git environment itself. With GIT_DIR exported, `git init` / `git commit`
+# below land on the caller's real repository instead of this test's fixture.
+unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_COMMON_DIR
+
+
 : "${SRC_SETTINGSDIALOG_CPP:?SRC_SETTINGSDIALOG_CPP env var must be set by CMake}"
 if ! command -v python3 >/dev/null 2>&1; then
     echo "SKIP: python3 not available (needed to extract script from C++ source)"

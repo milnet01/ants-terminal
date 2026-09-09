@@ -163,6 +163,19 @@ for security-relevant changes.
 
 ### Fixed
 
+- **A test run can no longer write to the developer's real git repository** (ANTS-3841)
+  Both test-bundle entry points now scrub the git environment variables
+  that redirect which repository git acts on, and the shell tests that run
+  git do the same. Without it, a session with `GIT_DIR` exported had its
+  git-fixture tests operate on the real repo — one such run rewrote local
+  `main` onto fixture commits and left stray branches behind.
+
+- **The pre-push gate now passes from a git worktree** (ANTS-3842)
+  Git hands a worktree's hooks an absolute `GIT_DIR`, which reached the
+  test suite and pointed its git fixtures at the real repository, so the
+  gate failed for a reason that appeared nowhere in the diff. Fixed by the
+  same scrub as ANTS-3841.
+
 - **The pre-push ASan gate now resolves a pending CMake regeneration and gates on the real edge count** (ANTS-4536)
   A changed `CMakeLists.txt` leaves a pending regen that hides every
   pending build step behind it, and the gate stood the sanitizer leg down

@@ -7,7 +7,14 @@
 
 #include <cstdio>
 
+#include "_support/git_env_guard.h"
+
 int main(int argc, char *argv[]) {
+    // ANTS-3841 — a git environment inherited from the caller redirects every
+    // git-fixture test onto the developer's real repository. Scrub it before
+    // any test runs; see tests/_support/git_env_guard.h for the measurement.
+    ants_test::scrubInheritedGitEnv();
+
     // ANTS-3856 — sandbox XDG_DATA_HOME before any test runs, so nothing in
     // this process can reach the user's real data directory.
     //

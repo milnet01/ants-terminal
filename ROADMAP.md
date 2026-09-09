@@ -4025,7 +4025,7 @@ minor tag (next: pre-0.8.0).
   remotecontrol_feedback.cpp now explains that it is closed early and
   why, without a line number for a later edit to invalidate.
 
-- 📋 [ANTS-3841] **Git-fixture tests inherit an ambient GIT_DIR and write to the REAL repository.**
+- ✅ [ANTS-3841] **Git-fixture tests inherit an ambient GIT_DIR and write to the REAL repository.**
   Measured 2026-08-06 during ANTS-3833. Running the suite with GIT_DIR
   exported makes every git-fixture test operate on whatever repo that
   variable names rather than its temp fixture: `git init`, `git commit`,
@@ -4051,8 +4051,41 @@ minor tag (next: pre-0.8.0).
   **Layman:** If a certain git setting is present in the environment, the tests scribble on your actual project history instead of their own throwaway copies.
   Kind: fix.
   Source: in-session-2026-08-06.
+  Shipped 2026-09-09. `tests/_support/git_env_guard.h` unsets GIT_DIR,
+  GIT_WORK_TREE, GIT_INDEX_FILE and GIT_COMMON_DIR, called from both
+  `tests/bundle_main_core.cpp` and `tests/bundle_main_gui.cpp` — the one place
+  every C++ bundle passes through, beside the XDG_DATA_HOME (ANTS-3856) and
+  XDG_CONFIG_HOME (ANTS-4898) sandboxes this is the third instance of. The
+  three shell tests that run git and bypass a bundle main scrub their own
+  environment: cut_rc_behaviour, claude_git_context_script, prepush_asan_gate.
 
-- 📋 [ANTS-3842] **Pre-push gate cannot pass from a git worktree.**
+  Scoped to the variables that redirect WHICH repository git acts on.
+  Identity and config variables cannot send a write elsewhere and the fixtures
+  set their own identity, so scrubbing them would be unexplained scope.
+
+  MECHANISM MEASURED, not assumed. With GIT_DIR set, `git -C <fixture> init`
+  builds the repository at GIT_DIR and leaves <fixture>/.git absent — the -C
+  argument does not win. That is the assertion INV-2 makes.
+
+  The item's blast radius was NARROWER than it reads, and this is worth
+  keeping. Git does not export these to the hooks that run this suite from a
+  primary checkout: a pre-push hook there receives none of them, and a
+  pre-commit hook receives only a relative GIT_INDEX_FILE. Both measured
+  2026-09-09 against throwaway repositories. So the trigger is a session or
+  wrapper exporting the variable — which is what happened on 2026-08-06 —
+  AND the worktree case, see ANTS-3842.
+
+  Tests: tests/features/git_env_guard/. Registered TWICE, because under an
+  ordinary run nothing exports these and the guard passes without exercising
+  anything: `git_env_guard_polluted` re-runs the same cases with the four
+  variables pointed at a decoy through ctest's ENVIRONMENT property. That
+  entry goes red if the scrub is removed, and did — proved on both
+  assertions, not on a setup failure (the decoy work tree is created at
+  configure time so git can be diverted rather than refusing to start).
+  ENVIRONMENT_MODIFICATION would say it more directly but needs CMake 3.22
+  against this project's 3.20 floor.
+
+- ✅ [ANTS-3842] **Pre-push gate cannot pass from a git worktree.**
   Consequence of the bullet above; filed separately because it is the
   symptom a developer actually hits. Git runs hooks with GIT_DIR
   exported. In the primary checkout that value is the relative `.git`,
@@ -4072,6 +4105,28 @@ minor tag (next: pre-0.8.0).
   **Layman:** The safety check that runs before a push always fails if you are working in a second checkout of the project, for a reason unrelated to your changes.
   Kind: fix.
   Source: in-session-2026-08-06.
+  Shipped 2026-09-09 by ANTS-3841's scrub, as that item predicted. Proved
+  rather than inferred, because green under pollution can equally mean "never
+  affected".
+
+  Measured both directions on 2026-09-09. With the scrub STUBBED and
+  GIT_DIR set to a worktree-style absolute path, the suites this item names go
+  RED — AuditScopeFlatLayout, DebtSweepEngine (six cases),
+  RoadmapInProgressAge and VerifyChangesBuildCache among them. With the scrub
+  restored, all 79 selected cases pass under the same variable.
+
+  ONE DETAIL IN THIS ITEM IS WRONG and the correction matters, because it is
+  the reason the primary checkout was never affected. It says git runs hooks
+  with GIT_DIR exported, relative in the primary checkout. Measured: from a
+  primary checkout a pre-push hook receives GIT_DIR UNSET, not relative. From
+  a worktree it receives it as an ABSOLUTE path
+  (<main>/.git/worktrees/<name>), exactly as this item says. So the
+  conclusion stands and the asymmetry is real; only the primary-checkout half
+  of the explanation was wrong.
+
+  The CLAUDE.md worktree note this item asks for is NOT needed now: the gate
+  passes from a worktree, so there is nothing to warn about. Adding a warning
+  about a fixed defect would be worse than silence.
 
 - 📋 [ANTS-3843] **Make `layman` a mandatory roadmap-item field, at the verb and in the store.**
   User-decided 2026-08-06, after being shown that the seven other item
