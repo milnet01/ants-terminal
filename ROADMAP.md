@@ -55921,7 +55921,7 @@ volume classes, and the tooling/documentation gaps the run exposed.
   Source: check-code-sweep-2026-09-01.
   Lanes: tests.
 
-- 📋 [ANTS-4784] **clazy Qt-idiom residue: 26 qstring-arg, 26 qcolor-from-literal, 166 non-pod-global-static.**
+- ✅ [ANTS-4784] **clazy Qt-idiom residue: 26 qstring-arg, 26 qcolor-from-literal, 166 non-pod-global-static.**
   The clazy tail after ANTS-4776 takes the two verified regex sites. Three classes:
 
   qstring-arg (26, 22 in src/) — .arg(a).arg(b) chains. Performance, but carries a latent correctness edge: if the FIRST substituted value itself contains %2, the second .arg() substitutes into it. Worth checking the sites that interpolate user or file text.
@@ -56041,6 +56041,21 @@ volume classes, and the tooling/documentation gaps the run exposed.
 
   Verified: build clean, full suite green via the default preset, and the
   palette conformance test passes unchanged.
+  Resolved (2026-09-09). The last open piece was the `tests/` residue the 2026-09-07 note deliberately left unmeasured. Measured now, and the answer for both classes is that no code change is warranted — the same verdict `src/` reached, but established rather than carried over.
+
+  Method: clazy-standalone over all 621 test translation units from the compile database, vendored `_deps` excluded (the trap the 2026-09-07 note names). 168 hits — 150 static-initialisation, 18 colour-literal.
+
+  STATIC-INITIALISATION, 150, no change. Roughly a hundred are not author code at all: they are the registration object inside a test-registration macro expansion, gtest's own `TEST` plus this project's `HYGIENE_TEST` and `RQ_TEST` wrappers. Those cannot be "fixed" without changing the framework, and gtest declares them with internal linkage by design. The remaining ~38 are genuine author-written constants — fixture strings, id lists, sample bodies — and every one sits inside its file's anonymous namespace, checked by locating the enclosing block rather than inferred. So no other unit can name one and this item's actual question, whether one such object is read during another's construction, cannot arise.
+
+  COLOUR LITERAL, 18, no change, and one part of it would be a REGRESSION. All 18 are test inputs — a hex string handed to the code under test or set on a fixture — not stored state, in code that runs once. NINE of them are in `claude_state_dot_palette`, which is precisely the test the 2026-09-07 note identified as one whose literal form IS the contract: it scrapes source as text for each hex string. Converting those would fail a documented invariant to buy an unmeasured micro-optimisation, which is the same call already made for the `coloredtabbar` site in `src/`. The other nine are equally readable as written and equally cold.
+
+  So the class that looked largest in the headline is, in test code, entirely framework noise and deliberate test inputs.
+
+  A CORRECTION TO MY OWN WORKING, recorded because the shape recurs. The first classification pass reported all 150 as anonymous-namespace by a heuristic, and the second reported all 150 as gtest macros; both were wrong, and the true split is roughly 100 macro to 38 author-written. The heuristic agreed with the right answer for the wrong reason. Spot-checking three sites against the source is what separated them — the count was never the thing to trust.
+
+  No CHANGELOG bullet, on this item's established precedent: nothing was measured faster, and nothing changed.
+
+  The one already-identified false positive from the regular-expression third remains classified in this item's notes rather than in the false-positive ledger, which is gitignored and therefore local-only.
   **Layman:** Assorted Qt habits that cost a little speed, plus one pattern that can bite at start-up.
   Kind: perf.
   Source: check-code-sweep-2026-09-01.
