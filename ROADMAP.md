@@ -70939,7 +70939,7 @@ here.)
   Source: in-session-2026-08-28, closing ANTS-4406/4410/4430.
   Lanes: mcp, roadmap.
 
-- 📋 [ANTS-4749] **The render_gate_unmet refusal message narrows the trailer rule to the note's first line, where any line works.**
+- ✅ [ANTS-4749] **The render_gate_unmet refusal message narrows the trailer rule to the note's first line, where any line works.**
   `rlNoteDeclaresTrailer` computes the start of the line CARRYING the
   match and requires only that the label precede the value on THAT line,
   whichever line it is. Its own refusal text says so: "put `%3:` first on
@@ -70960,6 +70960,11 @@ here.)
   should go in the same change.
 
   Small and low risk: the behaviour is right, the sentence is wrong.
+  Resolved (2026-09-09): the `render_gate_unmet` message in `RoadmapWrite::commitAndRender` now says a note sets the column when the key is first on its own line, whichever line that is — matching what `rlNoteDeclaresTrailer` actually enforces. The test comment in `roadmap_write_half` went in the same change.
+
+  A THIRD copy of the narrowing was still live and is fixed here too: `roadmap-data-model.md` § 3.1's ride-along sentence. The item recorded only two documents and both were indeed already fixed, so this one had gone unnoticed.
+
+  Behaviour unchanged — prose only. `RoadmapWriteHalf` green; shipped in 8d1a1d4f.
   **Layman:** The error message telling you how to fix a blocked roadmap write describes a stricter rule than the code actually enforces.
   Kind: fix.
   Source: review-contract loop 1 on mcp-error-codes.md, 2026-08-28.

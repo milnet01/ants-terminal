@@ -12,6 +12,15 @@ for security-relevant changes.
 
 ## [Unreleased]
 
+### Fixed
+
+- **The blocked-roadmap-write message now describes the rule the code actually enforces** (ANTS-4749)
+  A roadmap write blocked for a missing plain-language summary told you
+  the summary had to be the first line of your note. It never did — the
+  key may lead any line of the note. Following the old wording cost
+  nothing; reading it as exhaustive led you to conclude a fix would not
+  work when it would.
+
 ## [0.7.109] — unreleased (Patron RC preview)
 ### Added
 
