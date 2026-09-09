@@ -70,7 +70,7 @@ required for the behavioural INVs).
   link footprint small — the test includes `dialogfocus.h`
   alone, no transitive Ants headers required.
 
-- **INV-2a** Helper returns `true` for a `QClose` event on a
+- **INV-2a** Helper returns `true` for a `QEvent::Close` event on a
   `QDialog`-derived object whose closing leaves no other
   `QDialog` visible. Asserted by behavioural drive: construct
   a `QDialog`, post a `QEvent::Close`, call the helper, check

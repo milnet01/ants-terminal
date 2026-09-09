@@ -8744,6 +8744,65 @@ class; the deferrals below cover the rest.
   otherwise take the softer camelCase-aligned-prefix matcher this item
   already proposes. Do not implement the strict matcher on the
   assumption that ANTS-4822 was enough.
+  MEASURED 2026-09-09, which is what this item's own next step demanded. The
+  strict matcher must NOT ship, and the softer matcher this item proposes as
+  the alternative does not fix the reported defect. Both conclusions are new.
+
+  Method: a throwaway harness LINKED against the real lane —
+  `buildProjectSourceBlob` with the ANTS-4098 path manifest, then
+  `findDriftTokens` driven twice through its `std::function` predicate, once
+  with `existsInSource` and once with an identifier-boundary matcher. The lane
+  was not replicated. Harness removed after the run.
+
+  Numbers, over 584 specs. Current matcher 54 findings; boundary matcher 75;
+  so it adds 21, not the ~14 the 2026-06-12 measurement recorded. Of those 21,
+  15 are absorbed by a left-boundary/prefix rule and 6 survive it.
+
+  THE SOFTER MATCHER DOES NOT FIX THE REPORTED DEFECT. This item opens with
+  `parse` being masked by `parseRequest`. A prefix-aligned rule accepts exactly
+  that, because `parse` sits at a left boundary in `parseRequest`. It fixes
+  only MID-identifier masking — and there is a real instance:
+  `VtStream::onStart` is masked by `SessionStart` (`Sessi|onStart`), and that
+  symbol exists nowhere in src/. So the softer matcher is a partial fix, not a
+  cheaper equivalent one.
+
+  THE REMAINING NOISE IS NOT SPEC WORDING, WHICH IS WHERE THIS ITEM'S PLAN WAS
+  WRONG. Resolving each of the 15 absorbed findings to the identifier it
+  prefixes shows most are not symbol citations at all: invariant-ID shorthand
+  (`Inv4`, `Inv3b`, `Inv5`, `Inv10`, `Ants3815`), a placeholder (`ANTS-NN` ->
+  `ANTS-NNNN`), a generic word (`Expression`), and a file:LINE reference
+  (`claudeintegration.cpp:229`, "resolved" against `:2294` — matching a line
+  number by prefix is meaningless). Those are the TOKEN EXTRACTOR emitting
+  non-symbols, which only pass today because substring matching resolves them
+  by accident. A spec-wording cleanup cannot fix them.
+
+  AND ONE CLASS NO MATCHER CAN FIX. `git_diff_hunks/spec.md:15` reads "Rather
+  than add a parallel `git_diff` verb that would clone". The spec is CORRECTLY
+  naming something that deliberately does not exist. Same shape at
+  `audit_regex_dos_watchdog/spec.md:67`, where `isCatastrophic` names a
+  NAMING PATTERN, and `ris_preserves_callbacks/spec.md:38`, where `osc9` is a
+  concept. A drift lane that flags a rejected alternative is wrong by
+  construction.
+
+  RE-SEQUENCED. The route is no longer "clean the spec wording, then ship the
+  strict matcher". It is: (1) stop the extractor emitting invariant IDs,
+  placeholders and file:line references as identifier tokens — that is the
+  bulk of the noise and it is a lane fix, not a docs fix; (2) decide how a spec
+  marks a deliberate reference to something that does not exist; (3) correct
+  the genuinely imprecise citations, of which only a handful are real; (4)
+  re-measure and only then ship the strict matcher. ANTS-4822 is not the
+  unblocker this item's 2026-09-07 note hoped for.
+
+  SHIPPED HERE, because both were verified against source and are true
+  regardless of what the lane does: `settings_dialog_config_reload/spec.md`
+  cited `applyFontSize`, and the member is `applyFontSizeToAll`;
+  `dialog_close_focus_return/spec.md` INV-2a said "a `QClose` event" where the
+  type is `QEvent::Close`, which that invariant's own next line already uses.
+
+  Real drift the boundary matcher would catch, left for step (3):
+  `updateAvailableLabel` (github_status_bar) exists nowhere in src/, and
+  `VtStream::onStart` (shell_command_wiring) is the `SessionStart` masking
+  above.
 
 - ✅ [ANTS-2123] **auditengine: populate countSuppressed for semgrep/cppcheck/clang-tidy (SARIF parity, ANTS-2118 M1).**
   summariseSarif counts SARIF suppressions[] into s.countSuppressed (ANTS-1254 INV-3) but summariseSemgrepJson / summariseClangTidyText / summariseCppcheckXml leave it at 0, so last_audit_summary reports `suppressed:0` for a semgrep run with N nosemgrep-ignored findings — contradicting the SARIF path for the same logical run. At minimum read semgrep `extra.is_ignored` (auditengine.cpp summariseSemgrepJson) and bump s.countSuppressed; document the clang-tidy(NOLINT)/cppcheck(inconclusive) gap in the header if left at 0. Needs its own test locking the suppression-count contract.

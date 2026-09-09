@@ -21,7 +21,7 @@ dialog's widgets still hold the pre-reload values. A subsequent
 Preferences... open shows a dialog whose font spinbox, theme combo,
 keybindings table, and trigger/highlight grids all show what the
 config *was* before the external edit. If the user then clicks OK,
-`settingsChanged` fires and `applyTheme`/`applyFontSize` replay those
+`settingsChanged` fires and `applyTheme`/`applyFontSizeToAll` replay those
 stale values over the just-reloaded fresh ones — the external edit
 is silently undone.
 
