@@ -181,6 +181,36 @@ for security-relevant changes.
 
 ### Fixed
 
+- **Creating a level-2 roadmap section no longer swallows the level-3 sections below it** (ANTS-4848)
+  `roadmap_log op:"create_section"` could adopt trailing subsections, producing
+  a section whose later appends landed somewhere unexpected.
+
+- **`roadmap_log`'s description now names every op that refuses on a pass-headings roadmap** (ANTS-4863)
+  It said only `create_section` refuses; `amend_body` refuses too, so a caller
+  planned around a limit the tool did not actually have.
+
+- **`doc_integrity` no longer reports false duplicate headings in a mirrored standard** (ANTS-4878)
+  Heading numbers were counted across the MIRROR boundary, so every standard
+  carrying a project delta plus its upstream copy reported duplicates that
+  were not there.
+
+- **`roadmap_query` no longer reports one project's storage backend to another caller** (ANTS-4885)
+  The backend witness was cached on the roadmap's path alone, so a second
+  caller could be told which backend a different project was using.
+
+- **`spec_lint` no longer blames a document for a check it did not run** (ANTS-4889)
+  Its single-file path reported test coverage as unchecked and attributed that
+  to the spec, while the same spec passed the same check on the other path.
+
+- **`roadmap_migrate` now names the second format when a roadmap mixes two** (ANTS-4492)
+  A mixed-format roadmap was classified by majority with nothing saying the
+  other format was present, so the items written in it were silently
+  reinterpreted.
+
+- **An unknown MCP tool now reports the same code in the envelope and in telemetry** (ANTS-2173)
+  The refusal envelope said `unknown_tool` while telemetry recorded
+  `tool_not_found`, so the two could not be correlated.
+
 - **The changelog and test-audit parsers now use the shared CommonMark fence rules** (ANTS-4404)
   Both hand-rolled their own "is this a code block?" test, and both got it
   wrong in ways that can swallow the rest of a document — a line quoting

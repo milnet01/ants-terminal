@@ -4024,6 +4024,8 @@ minor tag (next: pre-0.8.0).
   asserts a location -- the namespace close in
   remotecontrol_feedback.cpp now explains that it is closed early and
   why, without a line number for a later edit to invalidate.
+  Release note (2026-09-09): no CHANGELOG entry, deliberately — a stale
+  source comment. No behaviour.
 
 - ✅ [ANTS-3841] **Git-fixture tests inherit an ambient GIT_DIR and write to the REAL repository.**
   Measured 2026-08-06 during ANTS-3833. Running the suite with GIT_DIR
@@ -14583,6 +14585,8 @@ indie-review finding.
   appending it last cannot violate any pre-split relative order --
   stands on its own and is now the whole justification. The correction
   names itself so the next reader does not re-derive the old one.
+  Release note (2026-09-09): no CHANGELOG entry, deliberately — a false
+  claim in a source comment about a file's size.
   **Layman:** A code comment gives a reason for a past decision that is no longer true, which could mislead the next person.
   Kind: doc-fix.
   Source: in-session-2026-08-26 (found while deciding where to put op:amend_field).
@@ -14683,6 +14687,10 @@ indie-review finding.
   whether a reader on GitHub can follow the target -- because a link
   into a private home directory resolves for the author and for nobody
   else. No such link remains.
+  Release note (2026-09-09): no CHANGELOG entry, deliberately — repairs
+  links inside the mirrored standards under docs/standards/.
+  Contributor-facing rather than a change to the software; a broken link
+  in README or PLUGINS.md would be noted.
   **Layman:** Some links in the public copies of our coding standards point at files that only exist on the maintainer's machine.
   Kind: doc-fix.
   Source: in-session-2026-09-04.
@@ -14751,6 +14759,10 @@ indie-review finding.
   docs/reviews/versioning-overrides-review-log.md.\n\nThis headline is
   what the run made stale, which is why it is closed here rather than
   left open: a 1.0 exit condition IS now written down.
+  Release note (2026-09-09): no CHANGELOG entry, deliberately — writes
+  down a 1.0 exit condition. A project decision recorded in the roadmap,
+  with no released change; the release that MEETS it is what a user
+  reads about.
   **Layman:** Our version number starts with 0, but nobody has written down what would make it 1.0, so the zero has stopped meaning anything.
   Kind: doc.
   Source: in-session-2026-09-04.
@@ -28062,6 +28074,9 @@ against current source before filing.
   ANTS-3636 and ANTS-1894 -- now return clean from the deterministic
   document checks. Closed by the doc-lint work rather than by a pass
   aimed at this item.
+  Release note (2026-09-09): no CHANGELOG entry, deliberately — doc-lint
+  findings in older specs. Nothing a user of the app or its MCP can
+  observe.
 
 - ✅ [ANTS-3764] **Extract the roadmap markdown reader out of the dialogs lib so the migration can share it.**
   Blocker for ANTS-3757. Verified 2026-07-31, not recalled:
@@ -28990,6 +29005,8 @@ against current source before filing.
   one line, which ANTS-3785 makes a named nonconformance. Split onto
   separate lines, matching the one-field-per-line shape sibling specs
   use. Unblocked because ANTS-3785 has since shipped.
+  Release note (2026-09-09): no CHANGELOG entry, deliberately — a spec
+  header's field layout, internal to the doc set.
   Lanes: claudeintegration, mainwindow.
 
 - 📋 [ANTS-3788] **Cold-eyes lanes spend ~100k tokens against a 60k budget even with a fully-built context packet.**
@@ -32323,6 +32340,9 @@ against current source before filing.
   item describes is therefore unnecessary, and the three genuinely
   compound values it flagged were resolved to single kinds during
   migration. Verified by re-measurement, not by the item's own account.
+  Release note (2026-09-09): no CHANGELOG entry, deliberately —
+  reconciles roadmap bullets' own `Kind:` values. Internal
+  record-keeping.
 
 - ✅ [ANTS-4063] **RoadmapRender materialises "Source: planned." onto bullets that have no recorded provenance.**
   The first store-backed render of this project took bullets whose
@@ -35326,6 +35346,10 @@ in each bullet, not just the reporter's symptom.
 
   A report's stated CAUSE is a claim. This one was checked against the source
   and the guard's commit date rather than built from.
+  Release note (2026-09-09): no CHANGELOG entry, deliberately — closed
+  as a DUPLICATE of ANTS-4536 with its stated cause disproved. The
+  behaviour a user sees is covered by ANTS-4536's entry; a second bullet
+  for the same fix would over-report it.
   **Layman:** A safety check meant to skip a long build is fooled whenever the build files changed, so it starts the long build anyway.
   Kind: fix.
   Source: in-session-2026-09-07 (hit while pushing ANTS-4456).
@@ -38264,6 +38288,9 @@ whole files.
   that rule, and it is now in the map.
 
   `doc_integrity` clean; suite 4177/4177 green with the map change in tree.
+  Release note (2026-09-09): no CHANGELOG entry, deliberately — corrects
+  the module map's presentation of two subsystems. A contributor-facing
+  document.
 
 - ✅ [ANTS-4456] **Triage: terminal-core and render/PTY findings from the cold sweep.**
   Reviewer claims carried forward as-is. NOT re-verified in this session —
@@ -48700,6 +48727,8 @@ it.
   pointers-only and says so in its own text, citing this item as what
   removed the restatements. The drift surface the item was filed about
   is gone -- a pointer cannot disagree with its owner.
+  Release note (2026-09-09): no CHANGELOG entry, deliberately — removes
+  a restating quick-reference map from an internal authoring standard.
   **Layman:** One documentation file repeats rules that other files own, so the copies keep going out of date; the fix is to stop repeating them.
   Kind: refactor.
   Source: in-session-2026-08-25, the deferred tail of review-contract's 2026-08-25 run.
@@ -50291,6 +50320,9 @@ envelope dropped `source`/`path`/`etag`/`total`/`filter`.
   `rows_preview.size() < row_count`, so the false case is checked too; the
   `if` is gone, and with it the warning. Proven live by mutation: negating
   the comparison reddens the test, restoring it greens.
+  Release note (2026-09-09): no CHANGELOG entry, deliberately — a
+  compiler warning in a test file. It decided what that test asserted,
+  so it mattered; nothing ships from it.
   **Layman:** A test has an if/else the compiler says could be read two ways, so which branch the else belongs to is not obvious from the code.
   Kind: fix.
   Source: in-session-2026-09-04.
@@ -53472,6 +53504,8 @@ plus two gaps hit while sweeping stale spec citations under ANTS-4757.
   Fixed as the reporter suggested: the clause is DELETED rather than amended. A second copy of the rule is what produced the defect, so the repair is to stop stating it twice. What replaces it says the order lives in ANTS-4895's block and says WHY it is not restated -- the previous sentence survived the change that falsified it, and a bare deletion invites the next editor to helpfully restate it.
 
   Also true and worth keeping: the sentence named /write-spec as the thing the order matched, which made it a claim about a skill that would have had to change to stay true.
+  Release note (2026-09-09): no CHANGELOG entry, deliberately — corrects
+  an assertion in a source comment left stale by ANTS-4895.
   **Layman:** A comment above the code said the opposite of what the code does, and it was the first thing a reader met.
   Kind: doc-fix.
   Source: claude_config_Ants_MCP_Feedback.md, 2026-09-07.
@@ -62757,6 +62791,8 @@ to apply within a document. Follow-on work from that change.
   doc_symbols reports (Qt framework names, helpers a planned spec
   proposes) are out of this item's scope by its own terms and are
   untouched.
+  Release note (2026-09-09): no CHANGELOG entry, deliberately — corrects
+  C++ member names cited in specs. Contributor-facing.
   **Layman:** Some design docs name variables that no longer exist under that name; the tool that finds them has nobody acting on what it finds.
   Kind: doc-fix.
   Source: in-session-2026-09-03 (ANTS-3680 calibration run).
@@ -69081,6 +69117,9 @@ here.)
   instead of silently passing. Closed by ANTS-4345. The standard also
   gained an opt-out marker for a document that legitimately has no such
   sections.
+  Release note (2026-09-09): no CHANGELOG entry, deliberately — adds a
+  required-sections block to this project's own spec standard. Changes
+  what spec_lint checks here, not what the verb does for anyone else.
 
 - ✅ [ANTS-3830] **`refactor_shell_quote_duplicate` is stale — it now flags every legitimate `shellQuote()` caller.**
   The rule in `audit_rules.json` says "`shellQuote` is implemented in
@@ -69122,6 +69161,9 @@ here.)
   good.cpp) before the rule changed, and pass after. Root cause filed as
   ANTS-4920 -- this rule had no false-positive canary, which is why the
   drift was invisible.
+  Release note (2026-09-09): no CHANGELOG entry, deliberately — an
+  internal audit rule's own accuracy. The rule is not part of the
+  shipped surface.
 
 - ✅ [ANTS-3831] **Ctrl+Shift+V dereferences `clipboard->mimeData()` with no null check.**
   `src/terminalwidget.cpp`, the Ctrl+Shift+V handler:
@@ -72686,6 +72728,10 @@ contributors don't duplicate research.
   returnByReference: assessed and declined, all six. Each is an accessor returning a copy of a member, used mainly by tests and log messages, so the gain is marginal; against that, returning a reference changes lifetime semantics, and one of them (sessionSavedBytesByProject) is reachable across threads. The item itself says this class is not a blind sweep. Declining is the assessment, not a deferral -- do not re-file it without a measurement showing the copy matters.
 
   Verified: build clean, suite 4260/4260, cppcheck's uninit class down to the single known false positive.
+  Release note (2026-09-09): no CHANGELOG entry, deliberately — cppcheck
+  hygiene on uninitialised POD members and parameter passing. No
+  observable behaviour change; a real defect found here would have been
+  filed and noted separately.
 
 - ✅ [ANTS-3851] **ANTS-3833 § 2.4 undercounts the scrape anchors — seven named, fifteen real.**
   § 2.4 enumerates seven anchors, and § 6's NoSeamInsideAScrapeWindow row
@@ -72715,6 +72761,8 @@ contributors don't duplicate research.
   already argued one paragraph further down. The surviving occurrence is
   inside a loop-log row and was deliberately left: landed rows are never
   edited.
+  Release note (2026-09-09): no CHANGELOG entry, deliberately — corrects
+  a count inside a spec.
 
 - ✅ [ANTS-3852] **test_core's CMake block comment still claims 28 tests.**
   CMakeLists.txt ~line 2258 describes the test_core bundle as "28 tests";
@@ -72732,6 +72780,8 @@ contributors don't duplicate research.
   count that had drifted. Dropped the number rather than refreshing it
   -- the sentence's real content is that the bundle is Qt::Core-only at
   runtime, which does not go stale.
+  Release note (2026-09-09): no CHANGELOG entry, deliberately — a stale
+  comment in the test build file.
 
 - ✅ [ANTS-4125] **src/remotecontrol.cpp carries ~10 engine includes left behind by the per-subsystem decomposition.**
   clangd reports unused-includes for buildcache.h, coldeyesengine.h,
@@ -72826,6 +72876,8 @@ contributors don't duplicate research.
   rule matches.\n\nFolded into a pass that was already rebuilding the
   test bundles, as the item asks, rather than paying a full build for it
   alone. Verified: build clean, suite 4260/4260.
+  Release note (2026-09-09): no CHANGELOG entry, deliberately —
+  include-residue cleanup under tests/. No shipped code.
 
 - ✅ [ANTS-4533] **CI's build-asan job times out at its 30-minute cap on nearly every run, and a timeout reads as cancelled rather than red.**
   Measured 2026-08-19 over the last 30 ci.yml runs: build-asan was
