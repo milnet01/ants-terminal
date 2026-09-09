@@ -55848,6 +55848,25 @@ volume classes, and the tooling/documentation gaps the run exposed.
 
   What is NOT done: the remaining sites across the rest of src/. Nothing
   here measured them, and the sweep was deliberately not run.
+  Progress (2026-09-09, 4a9bfe31): a second hot path measured — the roadmap write path — and three real sites fixed. Item stays open.
+
+  Why this path and not the alphabetical sweep: the 2026-09-03 pass measured the paint and VT loops because those were the ones this item named. The render runs over the whole corpus on EVERY `roadmap_log` write, which is at least as hot on this machine's actual workload, and nothing had looked at it.
+
+  clazy reports 14 sites across the render, parse, write, store and migrate units. Eleven iterate an unshared temporary or local, where `detach()` returns immediately — the same no-op class the earlier pass identified, and left for the same reason. Three were genuinely shared:
+
+  - The render's staging loop. `fileOrder` is a local, but the assignment into the outcome's file list above it bumps the refcount, so by that loop it is shared and the range-for deep-copies. The EARLIER loop over the same list sits before that assignment and is a genuine no-op. The two are textually identical and differ only by position, which is worth knowing before trusting any per-site rule of thumb.
+  - The render's section loop. `QHash::value()` returns a copy that shares with the hash, so it deep-copied the section vector once per file on every render.
+  - `normaliseHeadline` in the parser. `toLower()` returns a copy SHARING with its argument when the text is already lowercase, and the function runs once per bullet.
+
+  THE FINDING WORTH CARRYING FORWARD, and it is an argument for the call this item already made. The section-loop fix is a named const local, NOT `std::as_const(byFile.value(path))`. That form binds a reference to a temporary which a C++20 range-for does not lifetime-extend — P2718 fixes it in C++23 — so it dangles. The idiomatic per-site fix this item's own body names is therefore UNSAFE wherever the container is a temporary rather than a named variable, and a blanket sweep applying it mechanically would have introduced a dangling read at every such site while reporting a clean clazy run. That is a second, independent reason not to sweep, beyond the diff-size one already recorded.
+
+  Method note for whoever repeats this: clazy writes its warnings to STDERR. A pipeline that redirects stderr away and greps stdout returns EMPTY and reads exactly like a clean file. It did here, on the first attempt, and the mistake was caught only by re-running against a file already known to have hits. Run a positive control before believing a zero.
+
+  No CHANGELOG bullet, on this item's established precedent: nothing was measured faster.
+
+  Verified: the same clazy invocation that reported the three reports none after; build clean; full suite 4359/4359.
+
+  STILL NOT DONE, unchanged: the remaining sites across the rest of `src/`. They are cold by inspection and the sweep is still deliberately not run.
   **Layman:** Loops over Qt lists quietly copy the whole list because the loop is not marked read-only.
   Kind: perf.
   Source: check-code-sweep-2026-09-01.
