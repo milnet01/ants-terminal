@@ -485,8 +485,9 @@ item.
 |--------|---------|
 | `planned` | On the roadmap from project design. The default value, and **written explicitly as of v1.2** — it is assumed only for bullets predating that version. |
 | `user-YYYY-MM-DD` | User report on date YYYY-MM-DD |
-| `audit-YYYY-MM-DD` | `/audit` skill output on date YYYY-MM-DD |
-| `code-quality-review-YYYY-MM-DD` | `/code-quality-review` skill output on date YYYY-MM-DD. **Adopted from the global standard 2026-08-12**; the old spelling `indie-review-YYYY-MM-DD` still parses and existing bullets keep it. Write the new one. **Both spellings are live and a reader must accept either** — `roadmap_query`'s `source` filter takes an array for exactly this reason. The clause that used to end this row, "nothing reads `Source:` values, so this is traceability, not a format break", was true when written and is false as of ANTS-4985; it is what made the field unqueryable for as long as it stood. |
+| `audit-YYYY-MM-DD` | `check-code` output on date YYYY-MM-DD. The skill was `/audit` until it was promoted. `check-code-YYYY-MM-DD` is also live in the corpus — query both prefixes. |
+| `code-quality-review-YYYY-MM-DD` | `review-code` output on date YYYY-MM-DD. The skill was `/code-quality-review` until it was promoted; the token keeps the old spelling because it is stored data, and renaming it would orphan every bullet already carrying it. **Adopted from the global standard 2026-08-12**; `indie-review-YYYY-MM-DD` is the older spelling still, and existing bullets keep it. **All of these are live and a reader must accept every one** — which is why `roadmap_query`'s `source` filter takes an array. The clause that used to end this row, "nothing reads `Source:` values, so this is traceability, not a format break", was true when written and is false as of ANTS-4985; it is what made the field unqueryable for as long as it stood, and what made this drift harmless until now. |
+| `cold-eyes-YYYY-MM-DD` | `review-contract` output on date YYYY-MM-DD. The skill was `/cold-eyes`; the token is unchanged for the same reason. |
 | `debt-sweep-YYYY-MM-DD` | `/debt-sweep` skill output on date YYYY-MM-DD |
 | `doc-review-YYYY-MM-DD` | Documentation review on date YYYY-MM-DD |
 | `static-analysis` | cppcheck / clazy / semgrep / ruff / bandit ad-hoc |
@@ -498,7 +499,14 @@ item.
 conforms, provided it is a stable lowercase-dash token — date-suffixed where
 the origin is an event. `Kind:` is closed (§ 3.5 pins it to the values
 above, and the store enforces them with a CHECK constraint); `source` has no
-such constraint in the store and none is intended. The store holds far more
+such constraint in the store and none is intended. **A trailing period is
+stripped at extraction**, so `Source: planned.` and `Source: planned` store
+the same value — the canonical bullet writes the period because the trailer
+ends a sentence, and the tokens here are listed bare. Verified by
+`roadmap_query_source_filter` INV-6, whose fixture writes the period and
+asserts the value without it. It matters for the recipe below: a
+`COUNT(DISTINCT source)` would otherwise split one origin in two. The store
+holds far more
 distinct values than this table lists — reproduce with
 `SELECT COUNT(DISTINCT source) FROM item` against the roadmap store — so a
 validator that rejects an unrecognised value would reject most of the
@@ -540,13 +548,25 @@ than observable. ANTS-4989 would add the advisory.
 
 **A bullet with no `Kind:` / `Source:` reads as implementation work
 for the planned roadmap (`Kind: implement`, `Source: planned`).** This is a
-CLASSIFICATION rule for a reader, not a value any parser invents: an absent
-`Source:` comes back from `roadmap_query` as the EMPTY STRING, which is what
-§ 3.10.2's adapter contract states, and a `source:"planned"` filter does not
-collect such a bullet. Verified 2026-09-09 and locked by
-`tests/features/roadmap_query_source_filter` INV-7. Read the two together —
-the classification says how to interpret an absence, the envelope reports
-that it is an absence. **The rule is a reader-side fallback and
+CLASSIFICATION rule, and WHERE IT IS MATERIALISED DIFFERS BY BACKEND — a
+reader that assumes one behaviour on both is wrong on one of them.
+
+**On a file-parsed bullet nothing invents the value.** An absent `Source:`
+comes back from `roadmap_query` as the EMPTY STRING, which is what § 3.10.2's
+adapter contract states, and a `source:"planned"` filter does not collect
+such a bullet. Verified 2026-09-09 and locked by
+`tests/features/roadmap_query_source_filter` INV-7.
+
+**On migration into the store it IS materialised.** The `source` column is
+`NOT NULL`, so migration applies the default and records that it did —
+`roadmap-data-model.md` § 3.3 owns that rule. So a store-migrated project's
+pre-v1.2 items DO collect under `source:"planned"`, and the same logical
+bullet answers that query differently either side of a cutover.
+
+The consequence for anyone writing a v1.2 conformance sweep: **do not look
+for an empty `source`.** It finds every missing bullet on a file-backed
+project and none on a migrated one, where the defaulted flag is the thing to
+read. **The rule is a reader-side fallback and
 not permission to omit the field.** § 3.5 makes `Kind:` a required piece as of v1.1 and
 `Source:` as of v1.2; a newly authored bullet missing either does not
 conform, even though every reader will still classify it. The fallback
