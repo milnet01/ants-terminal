@@ -17741,6 +17741,53 @@ own design + test cycles.
   Kind: review-fix.
   Source: indie-review-2026-05-13.
   Re-confirmed deferred (2026-06-28): the architectural blocker still holds — grep of src/claudeintegration.h shows ClaudeTabTracker referenced only in comments, with no tracker member/pointer on ClaudeIntegration (which owns the single shared hook UDS). So the session_id→shell cross-check (shellForSessionId) still has no path to the hook owner without threading a ClaudeTabTracker* into it — the same hot hook-routing change the 2026-05-25 note flagged. Mitigations unchanged and intact (SO_PEERCRED same-UID gate, isFocusedTabSession per-event gate, cold-start drop). Left planned for a focused session that can wire the tracker pointer + add a feature test on the gate.
+  Third assessment (2026-09-09), and it re-scopes the item rather than
+  deferring it again. NOT STARTED at the code, deliberately.
+
+  THE PROPOSED FIX (a) DOES NOT CLOSE THE ATTACK THIS ITEM DESCRIBES. Read
+  from source, not from this body: `isFocusedTabSession` (claudeintegration.h)
+  returns true only when `sessionId` equals the BASENAME of
+  `m_transcriptPath` — the focused tab's own session — and the body already
+  records that it gates every state-mutating branch. The threat described here
+  is a same-UID process forging "a hook `session_id` matching the focused
+  tab's transcript basename". That id belongs to the focused tab, so it is by
+  definition a LIVE, TRACKED shell, and `shellForSessionId(...) != 0` returns
+  non-zero for exactly the value the forger must use. The cross-check passes.
+
+  So fix (a) rejects only a `session_id` belonging to no live shell — and such
+  an id already fails `isFocusedTabSession`. It is redundant against this
+  threat, at the cost of threading a `ClaudeTabTracker*` through the hot
+  hook-routing path. That is a bad trade, and it is why this should not be
+  built as written.
+
+  The blocker itself still holds and was re-verified: `ClaudeTabTracker`
+  appears in claudeintegration.{h,cpp} only in comments — no member, no
+  pointer.
+
+  FIX (b) WAS DISMISSED TOO NARROWLY, and this is the direction worth
+  measuring. The body rules it out because the connecting pid is a transient
+  helper (nc / a script) that `findClaudeChildPid` will not match. True of a
+  DIRECT match. But that helper is spawned BY Claude, so walking /proc PPid
+  upward from the SO_PEERCRED pid should reach the `claude` process and then
+  the tab's shell. Ancestry is a different question from identity and the
+  dismissal did not consider it. UNMEASURED — the walk races the helper's
+  exit, and whether /proc/<pid> survives long enough to read is the first
+  thing to measure, not to assume.
+
+  The other candidate nobody has costed: a token. SO_PEERCRED cannot
+  distinguish two same-UID processes by construction, so no amount of pid work
+  authenticates the peer in general. A secret written into the hook command
+  when Ants installs it, and echoed in the payload, does — and is what the
+  threat model actually calls for.
+
+  Residual risk is unchanged and the mitigations are intact, so the item stays
+  planned rather than urgent. What has changed is that the "next step" the
+  2026-05-25 note left behind is now known to be the wrong build.
+
+  Not attempted here for a second reason worth stating: this is the hot path
+  driving the Claude status UX, and this session has no way to exercise that
+  UX. A change here that silently drops legitimate hook events would look
+  exactly like a working build.
 
 - ✅ [ANTS-1273] **`/tmp/ants-terminal-<uid>.sock` fallback TOCTOU (remotecontrol).**
   `src/remotecontrol.cpp:82`. The XDG-runtime-dir
