@@ -1,6 +1,7 @@
 // ANTS-3533: Keep-a-Changelog reader — see changelogquery.h + docs/specs/ANTS-3533.md.
 
 #include "changelogquery.h"
+#include "markdownscan.h"
 
 #include "changeloglog.h"  // canonicalCategories() (ANTS-3533 public)
 
@@ -14,6 +15,27 @@ namespace {
 // A code-fence marker line ( ``` / ~~~, optionally indented, optionally
 // with an info string). Returns the marker char, run length, and whether
 // an info string follows (CommonMark: a close fence carries no info).
+//
+// ANTS-4404 — the OPENER test is MarkdownScan's (ANTS-3603), not a local
+// one. The hand-rolled version this replaces was wrong three ways: it
+// admitted a TAB as fence indent, where CommonMark is space-only and a tab
+// never opens a fence (ANTS-3598); it bounded the indent at nothing, where
+// the allowance is three spaces; and it ignored § 4.5, which forbids a
+// backtick in a BACKTICK fence's info string precisely so that
+// ```` ```json ```` — how a document quotes fence syntax — stays a
+// paragraph (ANTS-3655). That third fault is the one that hid a quarter of
+// the roadmap in ANTS-4403.
+//
+// Measured 2026-09-09 before changing anything: this project's CHANGELOG.md
+// carries NO line that any of the three faults misreads, so the defect here
+// was latent, not active. Adopted anyway — the same class has now cost two
+// real bugs (ANTS-4403, ANTS-4450), and the shared rule cannot drift.
+//
+// `hasInfo` stays LOCAL, deliberately. CommonMark § 4.5 also says a CLOSING
+// fence carries no info string, and MarkdownScan::fenceCloses does not
+// implement that rule — see ANTS-4987. Calling it here would close a block
+// on a ```` ```json ```` line, which is looser than what this parser does
+// today, so adopting it would be a regression rather than a fix.
 struct FenceInfo {
     bool  isFence = false;
     QChar ch;
@@ -23,18 +45,19 @@ struct FenceInfo {
 
 FenceInfo fenceInfoOf(const QString &line) {
     FenceInfo fi;
-    int i = 0;
-    while (i < line.size() && (line[i] == QLatin1Char(' ') || line[i] == QLatin1Char('\t')))
-        ++i;
-    if (i >= line.size()) return fi;
-    const QChar c = line[i];
-    if (c != QLatin1Char('`') && c != QLatin1Char('~')) return fi;
     int run = 0;
-    while (i < line.size() && line[i] == c) { ++run; ++i; }
-    if (run < 3) return fi;
+    const QChar c = MarkdownScan::fenceOpenerChar(line, 3, &run);
+    if (c.isNull()) return fi;
     fi.isFence = true;
     fi.ch = c;
     fi.len = run;
+
+    // The info string is whatever follows the fence run. Re-derive the run's
+    // end from the same space-only indent rule MarkdownScan applied, so the
+    // two cannot disagree about where the info string starts.
+    int i = 0;
+    while (i < line.size() && line[i] == QLatin1Char(' ')) ++i;
+    i += run;
     fi.hasInfo = !line.mid(i).trimmed().isEmpty();
     return fi;
 }

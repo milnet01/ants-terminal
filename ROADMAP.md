@@ -69392,7 +69392,7 @@ here.)
   Lanes: roadmap, mcp.
   Source: in-session-2026-08-15 (found while characterising ANTS-4065 Phase E's 446 orphans).
 
-- 📋 [ANTS-4404] **Four more markdown walkers hand-roll the same fence test ANTS-4403 just removed from the migration.**
+- ✅ [ANTS-4404] **Four more markdown walkers hand-roll the same fence test ANTS-4403 just removed from the migration.**
   ANTS-4403 fixed `walkSource()` by adopting `MarkdownScan`. The identical
   naive predicate — `trimmed().startsWith("```")` toggling a bool — is still
   live at `remotecontrol.cpp:1595` (`walkGfmBullets`),
@@ -69414,6 +69414,52 @@ here.)
   Kind: fix.
   Lanes: mcp, roadmap, audit.
   Source: in-session-2026-08-15 (found while fixing ANTS-4403).
+  Shipped 2026-09-09. The item's first step was a MEASUREMENT, not a code
+  change, and it revised the item twice.
+
+  TWO OF THE FOUR SITES WERE ALREADY DONE. `remotecontrol.cpp`'s
+  `walkGfmBullets` and `walkAntsV1Bullets` adopted `MarkdownScan::fenceMask` on
+  2026-08-15 in commit 2fcea0fc ("ANTS-4404: the same fence bug again, and this
+  one refused writes"). The work landed under this id and the item was never
+  flipped, so it read as untouched.
+
+  THE THIRD SITE WAS NOT THE PREDICATE THE ITEM DESCRIBES.
+  `changelogquery.cpp` did not carry `trimmed().startsWith("```")`; it had its
+  own `fenceInfoOf`, which already handled run length and the info string on a
+  CLOSER. Its faults were different and were read off the source: it admitted a
+  TAB as fence indent (space-only per ANTS-3598), bounded the indent at nothing
+  (the allowance is three), and had no backtick-in-info rule for an OPENER
+  (§ 4.5 / ANTS-3655) — the last being the ANTS-4403 defect.
+
+  CORPUS MEASURED BEFORE FIXING, because the item required it and forbade
+  assuming: this project's CHANGELOG.md carries ZERO lines that any of the
+  three faults misreads. ROADMAP.md carries exactly one (line 69351, a line
+  that describes the rule), and the walkers that read it were already fixed.
+  So both remaining defects were LATENT, not active. Adopted anyway — this
+  class has now cost two real bugs, ANTS-4403 and ANTS-4450, and a shared rule
+  cannot drift the way four copies did.
+
+  The fourth site, `testauditengine.cpp`, is a different SHAPE and got a
+  different primitive. It is not a whole-document mask but a state machine
+  pairing one opener with its closer, so it takes `fenceOpenerChar` +
+  `fenceCloses` rather than `fenceMask`. It had neither a run-length nor an
+  info-string rule, so a ``` line inside a Findings(JSON) body ended the block
+  early, truncating the JSON and losing every finding in it silently.
+
+  ONE ADOPTION WAS REFUSED, and ANTS-4987 carries it. `fenceCloses` does not
+  implement § 4.5's rule that a CLOSING fence carries no info string, which
+  `changelogquery`'s local code DID. Swapping it in wholesale would have
+  loosened that parser, so the local `hasInfo` check stays and its comment
+  points at the new item. Fixing the primitive would change what thirteen
+  callers mask and is its own piece of work.
+
+  Tests. Behavioural where the parser allows it: four cases in
+  `ChangelogQueryParse` — one per fault, plus one asserting a GENUINE fence
+  still opens and closes, which is the over-correction guard. The three fault
+  cases were proved RED against the old predicate. The testauditengine change
+  is a scrape (`mcp_test_audit_trio.Ants4404FindingsJsonUsesSharedFenceRules`),
+  also proved red, because driving `synthesize` needs a whole lane-report
+  corpus and what changed is which predicate bounds the block.
 
 - ✅ [ANTS-4142] **A migration re-run aborted on an id the store and the file both claimed, and both halves of why are fixed.**
   ANTS-4141 called the collision before it happened — "this bullet's own id
@@ -70885,6 +70931,46 @@ here.)
   Kind: enhancement.
   Source: in-session-2026-09-09.
   Lanes: mcp, roadmap-store.
+
+- 📋 [ANTS-4987] **MarkdownScan::fenceCloses accepts a closing fence carrying an info string, which CommonMark forbids.**
+  CommonMark § 4.5: a CLOSING code fence may not carry an info string.
+  `MarkdownScan::fenceCloses` implements only the character and run-length
+  halves — it delegates to `fenceOpenerChar`, which by construction accepts an
+  info string, since an opener may have one. So a line reading ```` ```json ````
+  closes a block that CommonMark says it does not, and the block's remaining
+  lines are read as prose.
+
+  Found while adopting the shared primitives for ANTS-4404.
+  `changelogquery.cpp`'s local `fenceInfoOf` had this rule and `fenceCloses`
+  does not, so swapping it in wholesale would have LOOSENED that parser. The
+  local `hasInfo` check was kept for exactly this reason and its comment
+  points here; delete it when this lands.
+
+  MEASURED 2026-09-09 across 1061 markdown files in this repo: ONE line sits
+  in closer position carrying an info string — `docs/plans/ANTS-1160.md:1133`
+  (```` ```json ````), in a directory the project marks deprecated. So the
+  defect is real and its current corpus impact is one line in a historical
+  file. That is the argument for fixing it as a correctness change on its own
+  schedule, not as an urgent repair.
+
+  BLAST RADIUS IS THE REASON THIS IS FILED SEPARATELY, not folded into
+  ANTS-4404. Thirteen production call sites across six files — docsindex,
+  feedbackfile (six), fileoutline, speclint, speclog (three) — plus a
+  dedicated suite, `tests/features/fence_closer_run_consumers`. Tightening the
+  predicate makes some fences run LONGER, which changes what every one of
+  those verbs masks as code. ANTS-4404 is a surgical adoption at two sites;
+  widening it to change a primitive under thirteen callers would have made it
+  a sweep, which is the same mistake ANTS-4404 itself records not making.
+
+  FIRST STEP when picked up is not the code. Re-run the corpus measurement,
+  then check each of the thirteen callers for one that DEPENDS on the loose
+  behaviour — a caller that pairs a fence by character alone and would now
+  run to EOF. `fence_closer_run_consumers` is the suite to extend, since it
+  already owns the closer contract.
+  **Layman:** The shared rule for "where does this code block end" ends it one line too early when that line has a label on it.
+  Kind: fix.
+  Source: in-session-2026-09-09 (found while closing ANTS-4404).
+  Lanes: mcp, docs.
 
 ## 0.9.0 — platform + a11y (target: 2026-10)
 

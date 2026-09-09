@@ -33,6 +33,82 @@ const Entry *findEntry(const ParseResult &r, const char *needle) {
 
 }  // namespace
 
+// ANTS-4404 — CommonMark fence rules, adopted from MarkdownScan. Each case
+// feeds a line the OLD hand-rolled predicate read as a fence opener but
+// CommonMark does not, and asserts the entry AFTER it still parses. Under the
+// old rule the bogus fence never closed, so every remaining entry vanished.
+//
+// Behavioural, not a scrape: ChangelogQuery::parse is pure, so the swallowing
+// is directly observable.
+TEST(ChangelogQueryParse, Ants4404BacktickInInfoStringIsNotAFence) {
+    // ```` ```json ```` is how a document quotes fence syntax. CommonMark
+    // § 4.5 forbids a backtick in a BACKTICK fence's info string precisely so
+    // this stays a paragraph. This is the exact shape that hid a quarter of
+    // the roadmap in ANTS-4403.
+    const QString md = QString::fromUtf8(
+        "# Changelog\n\n"
+        "## [Unreleased]\n\n"
+        "### Added\n\n"
+        "- **Before the trap.** (ANTS-4001)\n"
+        "  ```` ```json ```` is how you quote a fence.\n\n"
+        "- **After the trap.** (ANTS-4002)\n");
+    const ParseResult r = ChangelogQuery::parse(md, kPrefix);
+    EXPECT_NE(findEntry(r, "After the trap"), nullptr)
+        << "ANTS-4404: a multi-backtick inline span opened a fence that never "
+        << "closed, so every entry after it was swallowed.";
+}
+
+TEST(ChangelogQueryParse, Ants4404TabIndentDoesNotOpenAFence) {
+    // CommonMark's fence indent is space-only; a tab never opens one
+    // (ANTS-3598). The old predicate skipped tabs as indent.
+    const QString md = QString::fromUtf8(
+        "# Changelog\n\n"
+        "## [Unreleased]\n\n"
+        "### Added\n\n"
+        "- **Before the tab.** (ANTS-4003)\n"
+        "\t```\n\n"
+        "- **After the tab.** (ANTS-4004)\n");
+    const ParseResult r = ChangelogQuery::parse(md, kPrefix);
+    EXPECT_NE(findEntry(r, "After the tab"), nullptr)
+        << "ANTS-4404: a tab-indented ``` opened a fence. CommonMark's indent "
+        << "is space-only.";
+}
+
+TEST(ChangelogQueryParse, Ants4404IndentPastThreeSpacesDoesNotOpenAFence) {
+    // Four spaces is indented code, not a fence opener. The old predicate
+    // accepted any indent.
+    const QString md = QString::fromUtf8(
+        "# Changelog\n\n"
+        "## [Unreleased]\n\n"
+        "### Added\n\n"
+        "- **Before the indent.** (ANTS-4005)\n"
+        "    ```\n\n"
+        "- **After the indent.** (ANTS-4006)\n");
+    const ParseResult r = ChangelogQuery::parse(md, kPrefix);
+    EXPECT_NE(findEntry(r, "After the indent"), nullptr)
+        << "ANTS-4404: a 4-space-indented ``` opened a fence. The allowance "
+        << "is three spaces.";
+}
+
+// A genuine fence must still work — the fix must not stop fences opening.
+TEST(ChangelogQueryParse, Ants4404GenuineFenceStillHidesItsContents) {
+    const QString md = QString::fromUtf8(
+        "# Changelog\n\n"
+        "## [Unreleased]\n\n"
+        "### Added\n\n"
+        "- **Has a code block.** (ANTS-4007)\n"
+        "  ```\n"
+        "  - **Not an entry, it is sample text.** (ANTS-9999)\n"
+        "  ```\n\n"
+        "- **After the block.** (ANTS-4008)\n");
+    const ParseResult r = ChangelogQuery::parse(md, kPrefix);
+    EXPECT_EQ(findEntry(r, "Not an entry"), nullptr)
+        << "ANTS-4404: a real fence must still hide its contents — the fix "
+        << "must not stop fences opening at all.";
+    EXPECT_NE(findEntry(r, "After the block"), nullptr)
+        << "ANTS-4404: a real fence must still close.";
+}
+
 // INV-2 — headings, categories, bullets, dates parsed; version_index rollup.
 TEST(ChangelogQueryParse, BasicStructureAndCounts) {
     // fromUtf8 so the em-dash bytes decode to U+2014 (a QStringLiteral

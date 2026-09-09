@@ -132,6 +132,30 @@ TEST(mcp_test_audit_trio, Inv8SynthFence) {
     EXPECT_EQ(0, expect_failures());
 }
 
+// ANTS-4404 — the Findings(JSON) state machine pairs its opener with a
+// CommonMark closer instead of "any line starting with three backticks".
+// A findings body is JSON, and a finding that quotes fenced markdown puts
+// such a line inside it; the old test ended the block there, truncating the
+// JSON so every finding in it was lost with no error.
+//
+// A scrape: driving synthesize() needs a whole lane-report corpus, and what
+// changed is which predicate decides the block's extent.
+TEST(mcp_test_audit_trio, Ants4404FindingsJsonUsesSharedFenceRules) {
+    expect_reset();
+    const std::string cpp = ants_test::slurpFile(SRC_TESTAUDITENGINE_CPP_PATH);
+    expect(contains(cpp, "MarkdownScan::fenceCloses(line, jsonFenceChar, jsonFenceRun)"),
+           "ANTS-4404: the Findings(JSON) closer must match the opener's "
+           "character AND run length (CommonMark 4.5), not any ``` line");
+    expect(contains(cpp, "MarkdownScan::fenceOpenerChar(line, 3, &openRun)"),
+           "ANTS-4404: the opener must use the shared rule, which bounds the "
+           "indent at three spaces, rejects a tab and rejects a backtick in a "
+           "backtick fence's info string");
+    expect(!contains(cpp, "line.trimmed().startsWith(QStringLiteral(\"```\"))"),
+           "ANTS-4404: the hand-rolled fence predicate is back. It was wrong "
+           "three ways and the shared rule exists so it cannot drift again");
+    EXPECT_EQ(0, expect_failures());
+}
+
 // INV-9 — chunk-size clamp constants.
 TEST(mcp_test_audit_trio, Inv9ChunkSizeClamp) {
     expect_reset();

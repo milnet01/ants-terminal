@@ -163,6 +163,14 @@ for security-relevant changes.
 
 ### Fixed
 
+- **The changelog and test-audit parsers now use the shared CommonMark fence rules** (ANTS-4404)
+  Both hand-rolled their own "is this a code block?" test, and both got it
+  wrong in ways that can swallow the rest of a document — a line quoting
+  fence syntax opened a block that never closed. Measured before changing
+  anything: neither fault currently bites on this project's own files, so
+  this closes a latent defect of a class that has already caused two real
+  bugs.
+
 - **`ants.notify()` now shows a notification instead of doing nothing** (ANTS-4273)
   The plugin API's notification signal reached the plugin manager and stopped
   there — the call was accepted, raised no error and had no effect. It now

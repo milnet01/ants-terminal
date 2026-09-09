@@ -2,6 +2,7 @@
 // See header for v1 scope + deferred items.
 
 #include "testauditengine.h"
+#include "markdownscan.h"   // ANTS-4404 — shared CommonMark fence rules
 
 #include "falseposledger.h"
 #include "pathvalidation.h"
@@ -1574,6 +1575,14 @@ SynthResult synthesize(const SynthRequest &req) {
         // 0 = normal; 1 = saw `## Findings (JSON)` header, awaiting
         // ``` fence opener; 2 = inside fence, accumulating body.
         int jsonFenceState = 0;
+        // ANTS-4404 — the fence this state machine opened, so its CLOSER can
+        // be matched by CommonMark's rule rather than by "any line starting
+        // with three backticks". A Findings(JSON) body is JSON, and a finding
+        // that quotes fenced markdown puts such a line inside it; the old test
+        // closed the block there, truncating the JSON and losing every finding
+        // in it silently.
+        QChar jsonFenceChar;
+        int   jsonFenceRun = 0;
         QString findingsJsonBuf;
         auto parseFindingsJson = [&](const QString &buf) {
             QJsonParseError err{};
@@ -1601,7 +1610,7 @@ SynthResult synthesize(const SynthRequest &req) {
         for (const QString &line : lines) {
             // — Findings(JSON) fenced-block state machine.
             if (jsonFenceState == 2) {
-                if (line.trimmed().startsWith(QStringLiteral("```"))) {
+                if (MarkdownScan::fenceCloses(line, jsonFenceChar, jsonFenceRun)) {
                     parseFindingsJson(findingsJsonBuf);
                     jsonFenceState = 0;
                     findingsJsonBuf.clear();
@@ -1611,9 +1620,17 @@ SynthResult synthesize(const SynthRequest &req) {
                 continue;
             }
             if (jsonFenceState == 1) {
-                if (line.trimmed().startsWith(QStringLiteral("```"))) {
+                int openRun = 0;
+                const QChar openCh =
+                    MarkdownScan::fenceOpenerChar(line, 3, &openRun);
+                if (!openCh.isNull()) {
                     // Fence opener — flip into accumulation mode. The
                     // opener line itself isn't part of the JSON body.
+                    // Remember the character and run length: the closer must
+                    // match both (CommonMark § 4.5), so a shorter run inside
+                    // the JSON no longer ends the block.
+                    jsonFenceChar = openCh;
+                    jsonFenceRun  = openRun;
                     jsonFenceState = 2;
                     continue;
                 }
