@@ -62298,7 +62298,7 @@ that needs them.
   check; today a new verb can ship with a doubled `[<kind>]` prefix and
   the suite stays green.
 
-- 📋 [ANTS-3646] **Support the `~:N` approximate-citation spelling in doc_citations.**
+- 💭 [ANTS-3646] **Support the `~:N` approximate-citation spelling in doc_citations.**
   ANTS-3636 s 2.2 handles the approximate form `file.cpp:~197` but not
   `file.cpp ~:11985` (tilde BEFORE the colon). The corpus holds 10 such
   tokens across 4 files (docs/specs/ANTS-2161.md x3, ANTS-3579.md,
@@ -62319,6 +62319,17 @@ that needs them.
   **Layman:** Our docs write "about line 200" two different ways; the new checker only understands one of them.
   Kind: enhancement.
   Source: cold-eyes-2026-07-26 ANTS-3636 loop 4 lane C.
+  Not built (2026-09-09) — the premise was overtaken by a standard correction, and building it would add checker support for an anti-pattern.
+
+  This item asks `doc_citations` to recognise the `~:N` approximate spelling. It was filed 2026-07-26. On 2026-08-12 `documentation.md` § 1.7 was corrected the other way: the section "used to permit an approximate line hint alongside the symbol, spelled `~:N`", and now says global § 10 lists a path-and-line citation as an anti-pattern without that carve-out — "Don't write the hint." So the spelling this item would teach the checker to read is one the project's own standard now forbids authors to write.
+
+  Implementing it would also have cost more than the item suggests. `ANTS-3653.md` INV-24 deliberately ASSERTS the invisibility, with its own reason: "Asserted because 'invisible' is otherwise indistinguishable from 'not yet implemented'." So the gap is a locked tripwire, not an oversight, and closing it means amending that invariant and its fixture in `doc_citations_scan` as well as the grammar.
+
+  The item's second option — emit the token to the unparsed array so the gap is countable — is also not worth taking now. Countability existed to decide whether to build support; that decision is made, and the answer is no.
+
+  The corpus tokens that prompted it are being handled the way § 1.7 prescribes rather than by the checker: ANTS-3596 already converted the drift-prone ones in `docs/specs/ANTS-2161.md` to symbol references. What remains sits mostly in cold-eyes loop-log rows and dated progress notes, which are historical records and are deliberately left as written.
+
+  Reopen only if § 1.7 is reversed.
 
 - ✅ [ANTS-3650] **`spec_log op:set_status` strands the continuation of a multi-line Status block.**
   `specs.md` § 3 permits a Status block that wraps onto continuation lines,
