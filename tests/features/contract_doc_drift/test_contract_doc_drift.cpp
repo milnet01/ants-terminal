@@ -1,7 +1,7 @@
 // ANTS-3600 — contract-doc ↔ code literal-drift lane, conformance test.
 // See spec.md for the full contract. Headless: drives
-// FeatureCoverage::runContractDocDriftCheck directly over a temp fixture
-// tree (no QtWidgets, no AuditDialog), asserting INV-1 … INV-10.
+// FeatureCoverage's two directory-scoped drift lanes directly over a temp
+// fixture tree (no QtWidgets, no AuditDialog), asserting INV-1 … INV-12.
 
 #include "featurecoverage.h"
 
@@ -65,7 +65,7 @@ TEST(ContractDocDrift, DriftAndResolve) {
     ASSERT_TRUE(writeFile(root + "/docs/standards/docB.md",
                           "Here madeUpToken appears only as prose.\n"));
 
-    const QString out = FeatureCoverage::runContractDocDriftCheck(root);
+    const QString out = FeatureCoverage::runContractDocDriftStandardsCheck(root);
 
     EXPECT_EQ(countMentions(out, "nonexistent_symbol_xyz"), 1);
     EXPECT_EQ(countMentions(out, "archived/unknown"), 1);
@@ -90,7 +90,7 @@ TEST(ContractDocDrift, RealFilenamesResolveViaManifest) {
     ASSERT_TRUE(writeFile(root + "/docs/standards/doc.md",
                           "See `ROADMAP.md`, `CHANGELOG.md` and `LICENSE`.\n"));
 
-    QString out = FeatureCoverage::runContractDocDriftCheck(root);
+    QString out = FeatureCoverage::runContractDocDriftStandardsCheck(root);
     EXPECT_EQ(countMentions(out, "ROADMAP.md"), 0);
     EXPECT_EQ(countMentions(out, "CHANGELOG.md"), 0);
     EXPECT_EQ(countMentions(out, "LICENSE"), 0);
@@ -99,7 +99,7 @@ TEST(ContractDocDrift, RealFilenamesResolveViaManifest) {
     ASSERT_TRUE(QFile::remove(root + "/ROADMAP.md"));
     ASSERT_TRUE(QFile::remove(root + "/CHANGELOG.md"));
     ASSERT_TRUE(QFile::remove(root + "/LICENSE"));
-    out = FeatureCoverage::runContractDocDriftCheck(root);
+    out = FeatureCoverage::runContractDocDriftStandardsCheck(root);
     EXPECT_EQ(countMentions(out, "ROADMAP.md"), 1);
     EXPECT_EQ(countMentions(out, "CHANGELOG.md"), 1);
     EXPECT_EQ(countMentions(out, "LICENSE"), 1);
@@ -120,7 +120,7 @@ TEST(ContractDocDrift, FencedTokensSkipped) {
                           "echo `driftFenced`\n"
                           "```\n"));
 
-    const QString out = FeatureCoverage::runContractDocDriftCheck(root);
+    const QString out = FeatureCoverage::runContractDocDriftStandardsCheck(root);
     EXPECT_EQ(countMentions(out, "driftInline"), 1);
     EXPECT_EQ(countMentions(out, "driftFenced"), 0);
 }
@@ -142,23 +142,26 @@ TEST(ContractDocDrift, AllowlistSuppresses) {
                           "\n"
                           "  someDriftToken  \n"));
 
-    QString out = FeatureCoverage::runContractDocDriftCheck(root);
+    QString out = FeatureCoverage::runContractDocDriftStandardsCheck(root);
     EXPECT_EQ(countMentions(out, "someDriftToken"), 0);
 
     // Drop the allowlist entirely — the token now drifts.
     ASSERT_TRUE(QFile::remove(root + "/.ants_doc_drift_allow.txt"));
-    out = FeatureCoverage::runContractDocDriftCheck(root);
+    out = FeatureCoverage::runContractDocDriftStandardsCheck(root);
     EXPECT_EQ(countMentions(out, "someDriftToken"), 1);
 }
 
-// INV-9 — silent no-op with neither docs/standards nor docs/specs; scans
-// whichever exists when only one is present.
+// INV-9 (ANTS-3849 form) — each lane is silent when ITS OWN directory is
+// absent, and reports when it is present. Before the split one runner scanned
+// whichever of the two existed; now the standards lane must stay empty for a
+// specs-only tree, which is what makes the two categories separable.
 TEST(ContractDocDrift, NoOpAndPartialDir) {
     {
         QTemporaryDir tmp;
         ASSERT_TRUE(tmp.isValid());
         ASSERT_TRUE(writeFile(tmp.path() + "/src/code.cpp", "int x;\n"));
-        EXPECT_TRUE(FeatureCoverage::runContractDocDriftCheck(tmp.path()).isEmpty());
+        EXPECT_TRUE(FeatureCoverage::runContractDocDriftStandardsCheck(tmp.path()).isEmpty());
+        EXPECT_TRUE(FeatureCoverage::runContractDocDriftSpecsCheck(tmp.path()).isEmpty());
     }
     {
         QTemporaryDir tmp;
@@ -168,9 +171,36 @@ TEST(ContractDocDrift, NoOpAndPartialDir) {
         // Only docs/specs/ present (no docs/standards/).
         ASSERT_TRUE(writeFile(root + "/docs/specs/ANTS-9001.md",
                               "Cites `driftInSpecsOnly` token.\n"));
-        const QString out = FeatureCoverage::runContractDocDriftCheck(root);
-        EXPECT_EQ(countMentions(out, "driftInSpecsOnly"), 1);
+        EXPECT_EQ(countMentions(FeatureCoverage::runContractDocDriftSpecsCheck(root),
+                                "driftInSpecsOnly"), 1);
+        EXPECT_TRUE(FeatureCoverage::runContractDocDriftStandardsCheck(root).isEmpty())
+            << "the standards lane must not report a docs/specs/ finding";
     }
+}
+
+// INV-12 (ANTS-3849) — the two lanes partition the corpus: a drifting token in
+// each directory is reported by its own lane and by neither the other. This is
+// the whole point of the split, and it is what a single shared category could
+// not give. Asserted in BOTH directions, because a lane that scanned both dirs
+// would pass a one-directional check.
+TEST(ContractDocDrift, LanesPartitionByDirectory) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString root = tmp.path();
+
+    ASSERT_TRUE(writeFile(root + "/src/code.cpp", "int x;\n"));
+    ASSERT_TRUE(writeFile(root + "/docs/standards/std.md",
+                          "Cites `driftOnlyInStandards` token.\n"));
+    ASSERT_TRUE(writeFile(root + "/docs/specs/ANTS-9002.md",
+                          "Cites `driftOnlyInSpecs` token.\n"));
+
+    const QString std_ = FeatureCoverage::runContractDocDriftStandardsCheck(root);
+    const QString spec = FeatureCoverage::runContractDocDriftSpecsCheck(root);
+
+    EXPECT_EQ(countMentions(std_, "driftOnlyInStandards"), 1);
+    EXPECT_EQ(countMentions(std_, "driftOnlyInSpecs"), 0);
+    EXPECT_EQ(countMentions(spec, "driftOnlyInSpecs"), 1);
+    EXPECT_EQ(countMentions(spec, "driftOnlyInStandards"), 0);
 }
 
 // INV-11 (ANTS-3849) — a `<head>:<line|json-literal>` citation is not
@@ -194,7 +224,7 @@ TEST(ContractDocDrift, PathLineCitationsSkipped) {
                           "Cites `src/gone.cpp` (bare path, still flags).\n"
                           "Cites `Gone::method` (scoped name, still flags).\n"));
 
-    const QString out = FeatureCoverage::runContractDocDriftCheck(root);
+    const QString out = FeatureCoverage::runContractDocDriftStandardsCheck(root);
     EXPECT_EQ(countMentions(out, "src/gone.cpp:2540"), 0);
     EXPECT_EQ(countMentions(out, "gone.cpp:39-49"), 0);
     EXPECT_EQ(countMentions(out, "applyGone:3118"), 0);
@@ -210,10 +240,16 @@ TEST(ContractDocDrift, PathLineCitationsSkipped) {
 TEST(ContractDocDrift, RegistrationUncapped) {
     const QString src = readAll(QStringLiteral(SRC_AUDIT_CPP_PATH));
     ASSERT_FALSE(src.isEmpty());
-    const int idx = src.indexOf(QStringLiteral("contract_doc_drift"));
-    ASSERT_GE(idx, 0) << "contract_doc_drift not registered in auditdialog.cpp";
-    // The maxLines = 0 line must appear within the registration block.
-    const QString window = src.mid(idx, 800);
-    EXPECT_TRUE(window.contains(QStringLiteral("maxLines = 0")))
-        << "contract_doc_drift must set c.filter.maxLines = 0 (INV-10)";
+    // ANTS-3849 — BOTH lanes are registered and both must stay uncapped. The
+    // needle is the quoted id, not the bare prefix: "contract_doc_drift" is a
+    // prefix of both ids, so a prefix search would find the first block twice
+    // and report the second as covered without ever looking at it.
+    for (const char *id : {"\"contract_doc_drift_standards\"",
+                           "\"contract_doc_drift_specs\""}) {
+        const int idx = src.indexOf(QString::fromLatin1(id));
+        ASSERT_GE(idx, 0) << id << " not registered in auditdialog.cpp";
+        const QString window = src.mid(idx, 800);
+        EXPECT_TRUE(window.contains(QStringLiteral("maxLines = 0")))
+            << id << " must set c.filter.maxLines = 0 (INV-10)";
+    }
 }

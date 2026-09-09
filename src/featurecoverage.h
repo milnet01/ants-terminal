@@ -220,14 +220,19 @@ QString runChangelogCoverageCheck(const QString &projectPath);
 QSet<QString> loadAllowlist(const QString &projectPath);
 
 // ANTS-3600 — Lane 3: contract-doc ↔ code literal drift. For each `*.md`
-// under `<projectPath>/docs/standards/` and `docs/specs/`, extract
-// back-ticked literals (extractDocLiteralTokens) and report the ones that
-// appear in no non-`.md` source file and match no real file path in the
-// tree (buildProjectSourceBlob with markdown bodies excluded + a path
-// manifest). Allowlisted tokens (loadAllowlist) are suppressed. Silent
-// no-op ("") for a project with neither docs dir. A pure free function,
-// dispatched by the GUI Audit dialog's inProcessRunner path — see
-// docs/specs/ANTS-3600.md.
-QString runContractDocDriftCheck(const QString &projectPath);
+// under the lane's directory, extract back-ticked literals
+// (extractDocLiteralTokens) and report the ones that appear in no non-`.md`
+// source file and match no real file path in the tree
+// (buildProjectSourceBlob with markdown bodies excluded + a path manifest).
+// Allowlisted tokens (loadAllowlist) are suppressed. Silent no-op ("") when
+// the lane's own directory is absent. Pure free functions, dispatched by the
+// GUI Audit dialog's inProcessRunner path — see docs/specs/ANTS-3600.md.
+//
+// ANTS-3849 — ONE lane per directory, not one over both. The two populations
+// want opposite treatment and differ by more than an order of magnitude in
+// volume, so a shared category buried the readable half. Splitting is what
+// makes docs/standards/ reportable without suppressing docs/specs/.
+QString runContractDocDriftStandardsCheck(const QString &projectPath);
+QString runContractDocDriftSpecsCheck(const QString &projectPath);
 
 } // namespace FeatureCoverage

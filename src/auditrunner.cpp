@@ -2472,7 +2472,8 @@ RunResult runAudit(const RunRequest &req) {
         };
         static const InProcessLane kInProcessLanes[] = {
             { "spec_code_drift",         &FeatureCoverage::runSpecDriftCheck },
-            { "contract_doc_drift",      &FeatureCoverage::runContractDocDriftCheck },
+            { "contract_doc_drift_standards", &FeatureCoverage::runContractDocDriftStandardsCheck },
+            { "contract_doc_drift_specs",     &FeatureCoverage::runContractDocDriftSpecsCheck },
             { "changelog_test_coverage", &FeatureCoverage::runChangelogCoverageCheck },
         };
         for (const auto &lane : kInProcessLanes) {

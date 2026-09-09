@@ -569,13 +569,20 @@ QSet<QString> loadAllowlist(const QString &projectPath) {
     return allow;
 }
 
-QString runContractDocDriftCheck(const QString &projectPath) {
-    // Silent no-op ("" == "no findings") when neither contract-doc dir exists;
-    // scans whichever of the two is present (INV-9).
+// ANTS-3849 — one contract-doc directory's scan. Split out of the former
+// combined runner so the two lanes below report as separate audit categories.
+// Measured on this corpus the specs half carries ~1,100 findings against the
+// standards half's ~64, and a single shared category made the readable half
+// unreadable: anything genuine in it was invisible under by-construction
+// noise. The extraction contract is identical for both — only the scope
+// differs, so the two lanes cannot drift apart.
+static QString contractDocDriftIn(const QString &projectPath,
+                                  const QString &sub) {
+    // Silent no-op ("" == "no findings") when THIS lane's dir is absent
+    // (INV-9); each lane answers only for its own directory.
     const QDir projectDir(projectPath);
-    const bool hasStandards = projectDir.exists(QStringLiteral("docs/standards"));
-    const bool hasSpecs     = projectDir.exists(QStringLiteral("docs/specs"));
-    if (!hasStandards && !hasSpecs) return {};
+    const QString dirPath = projectPath + '/' + sub;
+    if (!QDir(dirPath).exists()) return {};
 
     // *.md bodies excluded so doc prose can't self-satisfy a literal; a path
     // manifest so quoted filenames still resolve (§ 2.3). Designated
@@ -588,33 +595,39 @@ QString runContractDocDriftCheck(const QString &projectPath) {
     const QSet<QString> allow = loadAllowlist(projectPath);
 
     QString out;
-    const QStringList subdirs = {QStringLiteral("docs/standards"),
-                                 QStringLiteral("docs/specs")};
-    for (const QString &sub : subdirs) {
-        const QString dirPath = projectPath + '/' + sub;
-        if (!QDir(dirPath).exists()) continue;
-        // Every *.md under the dir (recursive), sorted for stable output order.
-        QStringList docPaths;
-        QDirIterator it(dirPath, {QStringLiteral("*.md")}, QDir::Files,
-                        QDirIterator::Subdirectories);
-        while (it.hasNext()) docPaths << it.next();
-        docPaths.sort();
-        for (const QString &docPath : docPaths) {
-            QFile docFile(docPath);
-            if (!docFile.open(QIODevice::ReadOnly)) continue;
-            const QString docText = QString::fromUtf8(docFile.readAll());
-            docFile.close();
-            const QString relPath = projectDir.relativeFilePath(docPath);
-            for (const SpecToken &t : extractDocLiteralTokens(docText)) {
-                if (allow.contains(t.token)) continue;
-                if (existsInSource(blob, t.token)) continue;
-                out += QString("%1:%2: doc references `%3` but no match in "
-                               "project sources\n")
-                           .arg(relPath, QString::number(t.line)).arg(t.token);
-            }
+    // Every *.md under the dir (recursive), sorted for stable output order.
+    QStringList docPaths;
+    QDirIterator it(dirPath, {QStringLiteral("*.md")}, QDir::Files,
+                    QDirIterator::Subdirectories);
+    while (it.hasNext()) docPaths << it.next();
+    docPaths.sort();
+    for (const QString &docPath : docPaths) {
+        QFile docFile(docPath);
+        if (!docFile.open(QIODevice::ReadOnly)) continue;
+        const QString docText = QString::fromUtf8(docFile.readAll());
+        docFile.close();
+        const QString relPath = projectDir.relativeFilePath(docPath);
+        for (const SpecToken &t : extractDocLiteralTokens(docText)) {
+            if (allow.contains(t.token)) continue;
+            if (existsInSource(blob, t.token)) continue;
+            out += QString("%1:%2: doc references `%3` but no match in "
+                           "project sources\n")
+                       .arg(relPath, QString::number(t.line)).arg(t.token);
         }
     }
     return out.trimmed();
+}
+
+// ANTS-3849 — the two registered lanes. Standards is the readable half and is
+// where ANTS-4138's signal lives (docs citing unmirrored global standards);
+// specs is the large half, kept reporting because a 40-finding hand-read found
+// genuinely absent identifiers asserted as fact inside it.
+QString runContractDocDriftStandardsCheck(const QString &projectPath) {
+    return contractDocDriftIn(projectPath, QStringLiteral("docs/standards"));
+}
+
+QString runContractDocDriftSpecsCheck(const QString &projectPath) {
+    return contractDocDriftIn(projectPath, QStringLiteral("docs/specs"));
 }
 
 QString runChangelogCoverageCheck(const QString &projectPath) {

@@ -474,23 +474,44 @@ void AuditDialog::populateChecks() {
     }
 
     // Lane 1b — contract-doc ↔ code literal drift (ANTS-3600). Back-ticked
-    // literals in docs/standards + docs/specs that no longer appear in
-    // project sources. Human-triage (Minor), never auto-fixed, non-blocking.
-    // The filter is left UNCAPPED (maxLines = 0): the FP-heavier docs/specs
-    // corpus can exceed the default 100-line cap, which would silently drop
-    // every alphabetically-later doc's findings (docs/specs/ANTS-3600.md § 2.2).
+    // literals in a contract-doc directory that no longer appear in project
+    // sources. Human-triage (Minor), never auto-fixed, non-blocking.
+    //
+    // ANTS-3849 — TWO lanes, one per directory, deliberately not one over
+    // both. Measured: the specs half ran ~1,100 findings against the
+    // standards half's ~64, so a shared category was over 80% of the whole
+    // report and nobody read it. Splitting does not suppress anything — both
+    // lanes still report — it makes the small half legible on its own.
+    //
+    // Both are left UNCAPPED (maxLines = 0): the FP-heavier docs/specs corpus
+    // exceeds the default 100-line cap, which would silently drop every
+    // alphabetically-later doc's findings (docs/specs/ANTS-3600.md § 2.2).
     {
         AuditCheck c;
-        c.id          = "contract_doc_drift";
-        c.name        = "Contract-Doc ↔ Code Drift";
-        c.description = "Back-ticked literals in docs/standards + docs/specs that no longer appear in project sources";
+        c.id          = "contract_doc_drift_standards";
+        c.name        = "Contract-Doc ↔ Code Drift (standards)";
+        c.description = "Back-ticked literals in docs/standards that no longer appear in project sources";
         c.category    = "General";
         c.type        = CheckType::CodeSmell;
         c.severity    = Severity::Minor;
         c.autoSelect  = true;
         c.available   = true;
         c.filter.maxLines = 0;   // UNCAPPED — see § 2.2 / INV-10
-        c.inProcessRunner = &AuditDialog::runContractDocDriftCheck;
+        c.inProcessRunner = &AuditDialog::runContractDocDriftStandardsCheck;
+        m_checks.append(std::move(c));
+    }
+    {
+        AuditCheck c;
+        c.id          = "contract_doc_drift_specs";
+        c.name        = "Contract-Doc ↔ Code Drift (specs)";
+        c.description = "Back-ticked literals in docs/specs that no longer appear in project sources";
+        c.category    = "General";
+        c.type        = CheckType::CodeSmell;
+        c.severity    = Severity::Minor;
+        c.autoSelect  = true;
+        c.available   = true;
+        c.filter.maxLines = 0;   // UNCAPPED — see § 2.2 / INV-10
+        c.inProcessRunner = &AuditDialog::runContractDocDriftSpecsCheck;
         m_checks.append(std::move(c));
     }
 
@@ -6322,8 +6343,12 @@ QString AuditDialog::runSpecDriftCheck(const QString &projectPath) {
 // ANTS-3600 — thin forwarder to the pure runner in ants_audit_lib, mirroring
 // runSpecDriftCheck. All logic lives in FeatureCoverage so it is headless-
 // testable without QtWidgets.
-QString AuditDialog::runContractDocDriftCheck(const QString &projectPath) {
-    return FeatureCoverage::runContractDocDriftCheck(projectPath);
+QString AuditDialog::runContractDocDriftStandardsCheck(const QString &projectPath) {
+    return FeatureCoverage::runContractDocDriftStandardsCheck(projectPath);
+}
+
+QString AuditDialog::runContractDocDriftSpecsCheck(const QString &projectPath) {
+    return FeatureCoverage::runContractDocDriftSpecsCheck(projectPath);
 }
 
 QString AuditDialog::runChangelogCoverageCheck(const QString &projectPath) {

@@ -80,7 +80,8 @@ private:
     // stdout the same way a shell-based check would. Defined out-of-line
     // so populateChecks() stays focused on registration.
     static QString runSpecDriftCheck(const QString &projectPath);
-    static QString runContractDocDriftCheck(const QString &projectPath);
+    static QString runContractDocDriftStandardsCheck(const QString &projectPath);
+    static QString runContractDocDriftSpecsCheck(const QString &projectPath);
     static QString runChangelogCoverageCheck(const QString &projectPath);
 
     // External-tool calibration helpers. Each reads a project-local config
