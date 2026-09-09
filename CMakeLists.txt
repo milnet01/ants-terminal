@@ -1884,6 +1884,8 @@ if(ANTS_TESTS)
                 # ANTS-4836 roadmap_query filters by kind, and refuses an
                 # unrecognised one rather than returning the full set.
                 tests/features/roadmap_query_kind_filter/test_roadmap_query_kind_filter.cpp
+                # ANTS-4985 — the provenance axis `kind` cannot carry.
+                tests/features/roadmap_query_source_filter/test_roadmap_query_source_filter.cpp
                 tests/features/mcp_feedback_log/test_mcp_feedback_log.cpp
                 # ANTS-3421 feedback_log op:compact_shipped (maintainer compaction).
                 tests/features/feedback_log_compact_shipped/test_feedback_log_compact_shipped.cpp

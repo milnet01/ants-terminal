@@ -71078,6 +71078,40 @@ here.)
   Source: in-session-2026-09-09 (found while closing ANTS-4404).
   Lanes: mcp, docs.
 
+- 📋 [ANTS-4988] **roadmap_query serialises a bullet in five places, so adding a field silently ships it on some paths and not others.**
+  `src/remotecontrol_roadmap_query.cpp` builds a bullet's JSON object at FIVE
+  separate places — the emitters carrying `o["kind"] = b.kind;`. They are
+  near-identical and hand-maintained.
+
+  HIT DIRECTLY, which is the argument for fixing it. Adding `source` to the
+  bullet for ANTS-4985 looked complete after patching one emitter: the code
+  compiled, the verb ran, and the field was simply ABSENT from four of the five
+  paths. Nothing failed. The behavioural test caught it — `source` came back
+  empty on an id fetch — but only because that test existed. A field added
+  without one ships half-present, and a caller reading it gets a null that
+  means "not on this code path" while looking exactly like "this item has no
+  source".
+
+  Not a hypothetical drift risk: it already happened here, in the same session,
+  to the person who had just read the file.
+
+  The repair is one serialiser the five call sites share, taking the record and
+  the emit options each path varies (body cap, headline_full, evidence,
+  composed trailers). Those variations are why five copies exist, and they are
+  parameters, not reasons.
+
+  MEASURE FIRST: diff the five emitters and list what each one actually varies,
+  before assuming a single function covers them. If one path deliberately omits
+  a field, that omission is part of the contract and belongs in the options
+  struct rather than being erased.
+
+  Related: the same shape ANTS-4404 closed for fence predicates and ANTS-3603
+  closed for markdown scanning — a rule copied N times drifts at N-1 of them.
+  **Layman:** The code that turns a roadmap item into a reply is copy-pasted five times, so a new detail can appear in some answers and be missing from others.
+  Kind: refactor.
+  Source: in-session-2026-09-09 (hit while building ANTS-4985).
+  Lanes: mcp, roadmap-store.
+
 ## 0.9.0 — platform + a11y (target: 2026-10)
 
 **Theme:** reach new users. Port, accessibility, internationalization.

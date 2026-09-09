@@ -3143,6 +3143,38 @@ void ClaudeIntegration::onMcpConnection() {
                         "\"headline_only\" too — filtering runs before the "
                         "projection that drops the field.");
                     props["kind"] = kindFilterProp;
+                    // ANTS-4985 — `source` provenance filter.
+                    QJsonObject sourceFilterProp;
+                    sourceFilterProp["description"] = QStringLiteral(
+                        "Keep only bullets whose `Source:` starts with this "
+                        "PREFIX, case-folded. Prefix rather than equality "
+                        "because the recognised values are DATED "
+                        "(`indie-review-2026-05-13`), so equality answers "
+                        "nothing a caller asks; and there is no `accepted` "
+                        "list to refuse against the way `kind` has one, "
+                        "because the column is free text (2599 distinct "
+                        "values over 6706 items, measured 2026-09-09). "
+                        "Accepts a STRING or an ARRAY of strings, matching if "
+                        "ANY prefix hits \u2014 the standard keeps two live "
+                        "spellings for one provenance (`code-quality-review-*` "
+                        "was adopted 2026-08-12 and existing `indie-review-*` "
+                        "bullets keep theirs), so a scalar-only filter cannot "
+                        "ask \"from any review\" in one call. This is the "
+                        "axis `kind` cannot carry: measured on this project's "
+                        "active items, 36 are review-derived by source and "
+                        "only 6 carry `review-fix`/`audit-fix` \u2014 the rest "
+                        "are `perf`, `doc`, `refactor`, `marketing`, because a "
+                        "review legitimately produces work of any kind. "
+                        "Composes with `status`, `kind`, `section` and "
+                        "`query`. Present-but-empty REFUSES `bad_args` rather "
+                        "than returning the full set, which reads as "
+                        "\"everything came from there\". The envelope echoes "
+                        "the applied prefixes as `source` plus "
+                        "`source_filtered_out`, so a zero-row answer is "
+                        "distinguishable from a filter that did nothing. Each "
+                        "bullet now carries `source` as a field, beside `kind` "
+                        "and `lanes`.");
+                    props["source"] = sourceFilterProp;
                     // ANTS-3391 — `query` keyword text-filter.
                     QJsonObject queryProp;
                     queryProp["type"] = "string";

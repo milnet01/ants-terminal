@@ -1203,6 +1203,14 @@ static QJsonArray rcBuildBulletCacheArray(
         rcSetBodyFields(o, b.bodyProse, kRoadmapQueryBodyCacheCap);  // ANTS-4557  // ANTS-3402
         rcMaybeEmitComposedTrailers(o, b);  // ANTS-4813
         o["kind"] = b.kind;
+        // ANTS-4985 — `source` is emitted like `kind` and `lanes`. It was the
+        // only trailer column carrying a stored value with no field of its
+        // own, which is why provenance was unreadable: roadmap-format.md
+        // § 3.5.3 says outright that "nothing reads `Source:` values", and
+        // that was true of every query surface. The value already appears in
+        // `body` as a composed trailer when include_body is set, so this
+        // exposes nothing new — it makes it selectable.
+        o["source"] = b.source;
         QJsonArray lanes;
         for (const QString &l : b.lanes) lanes.append(l);
         o["lanes"] = lanes;
@@ -1948,6 +1956,68 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
             if (v.toObject().value(QStringLiteral("kind")).toString().toLower()
                 == kindArg)
                 kept.append(v);
+        }
+        arr = kept;
+    };
+
+    // ANTS-4985 — `source` provenance filter. PREFIX, not equality, and not an
+    // enum: the recognised values are DATED (`indie-review-2026-05-13`), so
+    // equality answers nothing a caller wants to ask, and the column is free
+    // text — 2599 distinct values over 6706 items, measured 2026-09-09 — so
+    // there is no accepted-list to refuse against the way `kind` has one.
+    //
+    // Accepts an ARRAY because the standard keeps two live spellings for one
+    // provenance: § 3.5.3 adopted `code-quality-review-*` on 2026-08-12 and
+    // says existing `indie-review-*` bullets keep theirs. A scalar-only filter
+    // cannot ask "from any review" in one call.
+    //
+    // Why this is the right axis, recorded because a future reader will be
+    // tempted to add provenance-shaped `kind` values instead: measured on this
+    // project's active items, 36 are review-derived by source and only 6 carry
+    // `review-fix` or `audit-fix`. The other 30 are `perf`, `doc`, `refactor`,
+    // `marketing` — a review legitimately produces work of any kind, so
+    // provenance and kind are orthogonal and `kind` cannot carry both.
+    QStringList sourceArgs;
+    {
+        const QJsonValue sv = req.value(QStringLiteral("source"));
+        QStringList raw;
+        if (sv.isString()) {
+            raw << sv.toString();
+        } else if (sv.isArray()) {
+            for (const auto &e : sv.toArray()) raw << e.toString();
+        }
+        for (QString one : raw) {
+            one = one.trimmed();
+            if (one.isEmpty()) continue;   // an empty prefix matches everything
+            if (one.size() > 64) one.truncate(64);
+            for (int i = 0; i < one.size(); ++i)
+                if (one.at(i).unicode() < 0x20) one[i] = QChar('?');
+            sourceArgs << one.toLower();
+        }
+        // Present but empty after scrubbing: refuse rather than return the FULL
+        // set, which reads as "everything came from there" and cannot be told
+        // from no filter at all — the bad_kind reasoning.
+        if (!sv.isUndefined() && !sv.isNull() && sourceArgs.isEmpty()) {
+            out["ok"]    = false;
+            out["error"] = QStringLiteral(
+                "source filter is present but empty after trimming; an empty "
+                "prefix matches every item, which cannot be told from no "
+                "filter. Pass a prefix such as 'indie-review', or omit it.");
+            out["code"]  = QStringLiteral("bad_args");
+            return QJsonDocument(out);
+        }
+    }
+    int sourceFilteredOut = 0;
+    auto applySourceFilter = [&sourceArgs, &sourceFilteredOut](QJsonArray &arr) {
+        if (sourceArgs.isEmpty()) return;
+        QJsonArray kept;
+        for (const auto &v : std::as_const(arr)) {
+            const QString src =
+                v.toObject().value(QStringLiteral("source")).toString().toLower();
+            bool hit = false;
+            for (const QString &pfx : std::as_const(sourceArgs))
+                if (src.startsWith(pfx)) { hit = true; break; }
+            if (hit) kept.append(v); else ++sourceFilteredOut;
         }
         arr = kept;
     };
@@ -2859,6 +2929,8 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
                 rcSetBodyFields(o, b.bodyProse, kRoadmapQueryBodyCacheCap);  // ANTS-4557
                 rcMaybeEmitComposedTrailers(o, b);  // ANTS-4813
                 o["kind"] = b.kind;
+                // ANTS-4985 — beside `kind`, at every emitter.
+                o["source"] = b.source;
                 QJsonArray lanes;
                 for (const QString &l : b.lanes) lanes.append(l);
                 o["lanes"] = lanes;
@@ -2939,6 +3011,8 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
                     rcSetBodyFields(o, b.bodyProse, kRoadmapQueryBodyCacheCap);  // ANTS-4557
                     rcMaybeEmitComposedTrailers(o, b);  // ANTS-4813
                     o["kind"] = b.kind;
+                    // ANTS-4985 — beside `kind`, at every emitter.
+                    o["source"] = b.source;
                     o["section_slug"] = b.sectionSlug;
                     QJsonArray lanes;
                     for (const QString &l : b.lanes) lanes.append(l);
@@ -3535,6 +3609,8 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
                 rcSetBodyFields(o, b.bodyProse);  // ANTS-4557
                 rcMaybeEmitComposedTrailers(o, b);  // ANTS-4813
                 o["kind"] = b.kind;
+                // ANTS-4985 — beside `kind`, at every emitter.
+                o["source"] = b.source;
                 QJsonArray lanes;
                 for (const QString &l : b.lanes) lanes.append(l);
                 o["lanes"] = lanes;
@@ -3656,6 +3732,7 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
         // pagination (so count / next_offset reflect the narrowed set).
         applyQueryFilter(filtered);
         applyKindFilter(filtered);   // ANTS-4836
+        applySourceFilter(filtered); // ANTS-4985
         // ANTS-1436-INV-11 — pagination via PaginationEngine helper.
         // One call site per emission branch (section + full-file).
         // ANTS-3543 — auto-downshift a would-be-truncated fat list to its
@@ -3724,6 +3801,10 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
         out["filter"] = filter;
         if (!queryArg.isEmpty()) out["query"] = queryArg;  // ANTS-3391
         if (!kindArg.isEmpty())  out["kind"]  = kindArg;   // ANTS-4836
+        if (!sourceArgs.isEmpty()) {   // ANTS-4985
+            out["source"] = QJsonArray::fromStringList(sourceArgs);
+            out["source_filtered_out"] = sourceFilteredOut;
+        }
         out["section"] = sec->slug;
         // ANTS-1907 — always echo the section's etag on a section=
         // response so the caller can hand it back as section_etag_match
@@ -3857,6 +3938,8 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
                 rcSetBodyFields(o, b.bodyProse, kRoadmapQueryBodyCacheCap);  // ANTS-4557
                 rcMaybeEmitComposedTrailers(o, b);  // ANTS-4813
                 o["kind"] = b.kind;
+                // ANTS-4985 — beside `kind`, at every emitter.
+                o["source"] = b.source;
                 QJsonArray lanes;
                 for (const QString &l : b.lanes) lanes.append(l);
                 o["lanes"] = lanes;
@@ -4290,6 +4373,7 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
     // (so count / next_offset reflect the narrowed set).
     applyQueryFilter(filtered);
     applyKindFilter(filtered);   // ANTS-4836
+    applySourceFilter(filtered); // ANTS-4985
 
     // ANTS-1436-INV-11 — pagination via PaginationEngine helper.
     // Second of two call sites (the other is in the section-mode
@@ -4352,6 +4436,10 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
     out["filter"] = filter;
     if (!queryArg.isEmpty()) out["query"] = queryArg;  // ANTS-3391
     if (!kindArg.isEmpty())  out["kind"]  = kindArg;   // ANTS-4836
+    if (!sourceArgs.isEmpty()) {   // ANTS-4985
+        out["source"] = QJsonArray::fromStringList(sourceArgs);
+        out["source_filtered_out"] = sourceFilteredOut;
+    }
     if (emitPagination) {
         out["offset"]    = page.offset;
         out["limit"]     = page.limit;
