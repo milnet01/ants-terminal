@@ -53883,7 +53883,7 @@ plus two gaps hit while sweeping stale spec citations under ANTS-4757.
   Source: cc-session-feedback claude-config 2026-09-02.
   Lanes: mcp, docs.
 
-- 📋 [ANTS-4940] **The stdio bridge has no server-to-client path, so a new verb needs a full Claude Code relaunch.**
+- 💭 [ANTS-4940] **The stdio bridge has no server-to-client path, so a new verb needs a full Claude Code relaunch.**
   Verified 2026-09-07 by reading tools/mcp-bridge.py: `main()` is
   `for line in sys.stdin:` and every `sys.stdout.write` sits inside that loop, so
   the bridge only ever writes in REPLY to something it read. There is no channel
@@ -54030,6 +54030,17 @@ plus two gaps hit while sweeping stale spec citations under ANTS-4757.
   session. That is when the defect becomes reachable AND testable at the
   same moment, which is the point at which this item is worth costing
   again. Until then it has no reported sufferer.
+  Re-scoped to considered (2026-09-09) on the user's confirmation. This body already recommended it and deliberately left the call open, saying the one thing that would justify the transport work is evidence of a real out-of-Ants session and that nobody had produced one. That evidence has now been sought and does not exist.
+
+  Asked directly, the user confirmed two things. Every Claude Code session is disconnected the moment the terminal closes, so no in-Ants session can outlive the restart — the ancestry measurement recorded above, from their side. And they do not run Claude Code outside Ants Terminal at present: no editor terminal, no detached multiplexer, no second emulator. Ants Terminal was built from scratch for this workflow, so the out-of-Ants host is not an accident of setup that might drift back.
+
+  That empties the only broken row in this body's own enumeration. The other three rows are consistent without any change, and a new verb is picked up for free because restarting Ants restarts the sessions that would otherwise hold a stale list.
+
+  Also settled while closing: `claude -c` does NOT provide the missing client. It continues the conversation in a NEW process, and a new process fetches the tool list at its own startup, so it would show the new tools whatever Reconnect does. The test needs a process that predates the restart, which only a non-Ants host can supply. Confirmed the bridge is registered user-level in `~/.claude.json` as a stdio command, so such a host WOULD reach the server — the obstacle is the host, not the wiring.
+
+  Not closed as wrong. The transport finding stands: the bridge has no server-to-client path, the panel reports the tools capability without listChanged, and nothing would be pushed even if the bridge could carry it. What changed is who pays, which is nobody.
+
+  REOPEN TRIGGER, unchanged from this body and now the whole of what to watch: a new HOST, not a new verb. If Claude Code is ever run outside the Ants instance being restarted — an editor's integrated terminal, a detached session, a remote or cloud one — the defect becomes reachable and testable at the same moment, and the three-step Reconnect procedure recorded above is the first thing to run. The user's answer was "not at present", which is a statement about now rather than forever.
   **Layman:** Claude Code learns the tool list once when it starts. There is no way for Ants to tell it the list changed, so a brand-new tool stays invisible until Claude Code itself is restarted.
   Kind: investigate.
   Source: cc-session-feedback claude-config 2026-09-07.
