@@ -39236,13 +39236,17 @@ whole files.
   Source: cold-sweep-2026-08-18 triaged in-session-2026-09-10.
   Lanes: llmdispatcher, reviewdialogbase.
 
-- 💭 [ANTS-5010] **A keyless http endpoint on a remote host sends the whole review brief unencrypted.**
+- 📋 [ANTS-5010] **A keyless http endpoint on a remote host sends the whole review brief unencrypted.**
   LlmClient::endpointEgressError refuses cleartext only when an API key
   is set, to protect the key. With no key, a remote http endpoint
   receives the prompt, which carries project source and docs, in the
   clear. Private-range hosts are already refused, so this is a public
   http host. Needs a user decision: warn, refuse, or allow. From
   ANTS-4458.
+  User decision (2026-09-10): warn, still allow. A keyless request to a
+  remote plain-http endpoint goes ahead, and the user is told the prompt
+  travels unencrypted. Do not refuse it: that would break a keyless AI
+  server reached over plain http.
   **Layman:** Without an API key, the app will send your project's files to a remote AI server without encryption.
   Kind: security.
   Source: cold-sweep-2026-08-18 triaged in-session-2026-09-10.
