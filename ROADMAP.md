@@ -54196,6 +54196,13 @@ than re-filed; everything else lands here.
   Also note discarded_edit_lines was 32 -- far more than one note --
   which points at a long multi-line note rather than the one-liners
   these tests use.
+  Progress (2026-09-10): the long-note lead is tested and ELIMINATED.
+  Ants4947LongMultiParagraphNoteSurvives runs short, long, short on one
+  id, twice. The long note is several paragraphs split by blank lines;
+  the variant has a line opening on the `Source:` key. Both keep every
+  line in the published file, and no call reports a discard. No live
+  lead remains. The item stays in progress for the cause; the backup
+  half (discarded_backup_paths) is what protects a caller meanwhile.
   **Layman:** A note written into the roadmap was silently thrown away by the next note, and the tool blamed a hand edit that never happened.
   Kind: fix.
   Source: UT_Ants_Ants_MCP_Feedback.md 2026-09-08.
@@ -62385,6 +62392,16 @@ that needs them.
   Shape for that test, worked out but not yet written. Anchor on the tool NAME, not on a variable name: descriptor descriptions are authored under `t["description"]` and several dozen one-off locals, so no single spelling covers them. `mcp_tool_prefix_tags` already collects every registered name from the registration calls, and `mcp_tool_detail_field`'s scrape helper already takes an optional out-parameter for the description's first character — which nothing currently reads. The invariant is that character, over every registered tool, asserted not to be a bracket.
 
   Prove it red the usual way: give one descriptor a leading bracket and confirm the new invariant fails before restoring.
+  Progress (2026-09-10): part (b) is done. `mcp_tool_prefix_tags`
+  INV-4 asserts no tool's authored short description begins with a
+  bracket, over every tool the tools/list handler lists. It went red on
+  the tree for exactly `build_target_for` and `test_audit_recheck`,
+  which authored `[build]` and `[test-audit]` themselves. Both brackets
+  are removed. The wire text is unchanged, because `kindForName` maps
+  both tools to those same tags. mutation_probe killed all three
+  mutations: that bracket restored, a bracket on the bare-literal
+  descriptor `get_session_info`, and one on the inline-built
+  `tool_info`. Parts (c) and (d) remain, and carry a rule 14 gate.
 
 - 💭 [ANTS-3646] **Support the `~:N` approximate-citation spelling in doc_citations.**
   ANTS-3636 s 2.2 handles the approximate form `file.cpp:~197` but not
@@ -64261,6 +64278,34 @@ partition (11 lanes) is documented in this fold-in for reuse.
   Documentation half fixed too: the schema's dry_run description now enumerates all eight ops (append, append_batch, flip, flip_batch, annotate, create_section, amend_body, bundle_row) instead of reading "when true on op:append / append_batch", which is how this gap stayed invisible from ANTS-2136 onward.
 
   Tests: two behavioural legs in tests/features/roadmap_log_bundle_row/ (INV-14). Both verified RED against two mutations -- no gate at all, and a gate that fires EARLY before placement is resolved and returns a plausible ok:true envelope. The second is why the sorted-placement leg exists: without it the suite would pass against a preview that fakes its answer.
+
+- 📋 [ANTS-4996] **mutation_probe and verify_changes cannot read an all-green ctest summary.**
+  ctest 4.4.3 prints `100% tests passed out of N` when nothing
+  failed. The `, M tests failed` clause appears only when something
+  fails. `parseCounts` in src/mutationprobe.cpp matches only
+  `tests failed out of`, so a green baseline parses as unknown and
+  `require_green_baseline` refuses `baseline_unreadable` on every
+  green suite. The gate can never pass. `parseCtest` in
+  src/verifyengine.cpp requires the full clause too, so a green run
+  leaves its totals unset. What verify_changes then reports is
+  unverified. Fix: one matcher accepting both summary shapes, used by
+  both parsers, with a test feeding each shape. Hit while proving
+  ANTS-3645 INV-4: the probe ran only with the gate off.
+  **Layman:** The mutation checker refuses to start on any test run where everything passes, because it cannot read the passing summary line.
+  Kind: fix.
+  Source: in-session-2026-09-10.
+  Lanes: mcp.
+
+- 📋 [ANTS-4997] **mutation_probe's baseline_unreadable refusal returns none of the output it could not read.**
+  The refusal names the class of cause but carries no excerpt of
+  the baseline's output. So a caller cannot tell a filter that
+  matched no tests from a summary the parser does not recognise
+  without re-running the command by hand. Echo a bounded tail of the
+  baseline output in the refusal envelope.
+  **Layman:** When the mutation checker cannot read a test run, it does not show the run's output, so you have to re-run it by hand to see why.
+  Kind: enhancement.
+  Source: in-session-2026-09-10.
+  Lanes: mcp.
 
 ### 🔥 Cross-cutting themes (patterns caught by ≥2 reviewers)
 
