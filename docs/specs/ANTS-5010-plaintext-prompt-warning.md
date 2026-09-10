@@ -54,18 +54,22 @@ front of it. `llmclient` stays widget-free (ANTS-1727 INV-16).
 ### 2.2 AI chat
 
 `AiDialog::sendRequest` shows the warning as `appendMessage("System", …)`,
-after its keyed-cleartext refusal and before `m_client->send(req)`. It
-shows it once per endpoint per dialog: a new member
-`m_plaintextWarnedEndpoint` holds the endpoint last warned about, and a
-send to that endpoint adds no second copy. The request is sent either way.
+after its keyed-cleartext refusal and before `m_client->send(req)`. A new
+member `m_plaintextWarnedEndpoint` holds the endpoint it last warned about.
+A send to that endpoint adds no second copy; a send to any other endpoint
+warns again and replaces it. The request is sent either way.
 
 ### 2.3 Review dialogs
 
 `ReviewDialogBase::beginRound` sets `m_statusLabel` to the warning, after
 its `updateDispatchEnabled()` call, when
 `plaintextPromptWarning(m_config->aiEndpoint(), m_config->aiApiKey())` is
-non-empty. Each subclass's `composeBrief` puts that same endpoint and key
-in its request.
+non-empty. When it is empty, `beginRound` clears the label if the label
+still shows the warning an earlier round set: `MainWindow` reloads `Config`
+in place while the dialog is open, so the endpoint can change between
+rounds. A member holds the text it set, as `m_failureStatus` does for
+`onAllFinished`. Each subclass's `composeBrief` puts that same endpoint and
+key in its request.
 
 `startDispatch` and `redispatch` both call `beginRound`, so every round
 warns. `dispatchOne` does not warn: its callers,
@@ -102,9 +106,9 @@ the field explains itself.
 
 - Warn and still send, rather than refuse — the user, 2026-09-10.
 - Warn in every sending window — the user, 2026-09-10.
-- Once per endpoint per chat dialog — Claude, 2026-09-10. A chat sends a
-  request per message, and one line repeated on each buries the
-  conversation. The user may overrule it.
+- In a chat dialog, no repeat while the endpoint stays the one last warned
+  about — Claude, 2026-09-10. A chat sends a request per message, and one
+  line repeated on each buries the conversation. The user may overrule it.
 - The warning's wording — Claude, 2026-09-10.
 
 ### 2.7 Alternatives rejected
@@ -125,14 +129,15 @@ the field explains itself.
 
 - **INV-1** — `LlmClient::plaintextPromptWarning` returns non-empty text naming the host exactly when the key is empty, the endpoint is plain http to a non-loopback host, and `endpointEgressError` passes. It returns empty for a non-empty key, for https, for `localhost` and loopback addresses, for a private or link-local IP literal, and for an endpoint with URL userinfo. Broken by text for any of those, or by empty for a keyless remote plain-http endpoint. *Test:* `tests/features/llm_client`.
 - **INV-2** — `AiDialog::sendRequest` with a keyless remote plain-http endpoint adds one "System" message carrying the INV-1 text and still sends the request. A second send to the same endpoint adds no second copy. An https or loopback endpoint adds none. Broken by no message, a message on every send, or a refusal. *Test:* `tests/features/plaintext_prompt_warning`.
-- **INV-3** — after `ReviewDialogBase::startDispatch` or `ReviewDialogBase::redispatch` with a keyless remote plain-http endpoint, the status label shows the INV-1 text and the jobs are enqueued. With https, a loopback endpoint or a key, the label does not show it. Broken by a warning from only one of the two entry points, or by a round that does not run. *Test:* `tests/features/review_dialog_base`.
+- **INV-3** — after `ReviewDialogBase::startDispatch` or `ReviewDialogBase::redispatch` with a keyless remote plain-http endpoint, the status label shows the INV-1 text and the jobs are enqueued. With https, a loopback endpoint or a key, the label does not show it, including after an earlier plain-http round in the same dialog. Broken by a warning from only one of the two entry points, a warning that survives a switch to https, or a round that does not run. *Test:* `tests/features/review_dialog_base`.
 - **INV-4** — the bodies of `AuditDialog::onBatchTriageClicked`, `AuditDialog::onDebtTriageClicked` and `AuditDialog::requestAiTriage` each call `LlmClient::plaintextPromptWarning` and put its result in the text shown there. Broken by any of the three omitting it. *Test:* `tests/features/plaintext_prompt_warning`, a source-grep of the three bodies.
 - **INV-5** — `RemoteControl::cmdIndieReviewDispatch` sets the success envelope's `warning` from `LlmClient::plaintextPromptWarning`, after its refusal return, and sets no other warning key. Broken by a missing key, a different key name, or an assignment a refusal can reach. *Test:* `tests/features/indie_review_dispatch`, a source-grep of the handler body.
 
 ## 4. RAM / build cost
 
-None. One static function joins `ants_core_lib` and one string member
-joins `AiDialog`. No new target, library or dependency.
+None. One static function joins `ants_core_lib`, and one string member
+each joins `AiDialog` and `ReviewDialogBase`. No new target, library or
+dependency.
 
 ## 5. Out of scope
 
@@ -180,3 +185,4 @@ host.
 
 | Loop | Date | Lanes | Q1 | Q2 | Q3 | Q4 | Outcome |
 |---|---|---|---|---|---|---|---|
+| 1 | 2026-09-10 | 3 | 0 | 2 | 0 | 0 | 2 findings, 2 verified / 0 dismissed, both fixed. Q2: § 2.2 said once per endpoint while naming one member for the last endpoint; now states the last-endpoint rule. Q2: § 2.3 set the review warning and nothing cleared it after an endpoint change; beginRound now clears it, INV-3 covers plain-http then https. Five open questions resolved clean, none a finding. Packet build found no defect. Loop 2 dispatched. |
