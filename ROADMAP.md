@@ -39285,6 +39285,10 @@ whole files.
   two triage confirmations and its debt triage, and the
   indie_review_dispatch reply. It spans four subsystems, so a spec comes
   first. Do ANTS-5018 before it: the MCP path has no egress checks yet.
+  Spec accepted (2026-09-10): docs/specs/ANTS-5010-plaintext-prompt-warning.md.
+  review-contract ran two loops of three cold lanes. Four findings were
+  verified and fixed; the cap was reached calm, with no deferred tail.
+  Ready to build, test-first.
   **Layman:** Without an API key, the app will send your project's files to a remote AI server without encryption.
   Kind: security.
   Source: cold-sweep-2026-08-18 triaged in-session-2026-09-10.

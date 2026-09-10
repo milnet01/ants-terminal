@@ -1,6 +1,6 @@
 # ANTS-5010 — Warn when a keyless AI request goes out over plain http
 
-**Status:** spec draft (2026-09-10).
+**Status:** accepted (2026-09-10).
 **Kind:** security.
 **Source:** ROADMAP.md ANTS-5010 (cold-sweep-2026-08-18, triaged in-session-2026-09-10; user decisions 2026-09-10).
 **Composes with:** ANTS-1727 (`LlmClient`, `ReviewDialogBase`), ANTS-1352 (`indie_review_dispatch`), ANTS-2121 (`LlmClient::endpointEgressError`), ANTS-5018.
@@ -85,8 +85,11 @@ it on success.
   line, when it applies. They compute it from `Config::aiEndpoint()` and
   `Config::aiApiKey()`, the values the request uses. Choosing Yes still
   sends.
-- `AuditDialog::requestAiTriage` has no confirmation. It appends the
-  warning to its "AI triage: querying <host>…" status text.
+- `AuditDialog::requestAiTriage` has no confirmation. It puts the warning
+  first in its status text, ahead of "AI triage: querying <host>…":
+  `m_statusLabel` is an `ElidedLabel` set to `Qt::ElideRight`, so text
+  appended at the end is the first cut. The reply's own status text later
+  replaces the line.
 - `AuditDialog::requestAiTriageBatch` needs nothing of its own. Its only
   caller is `onBatchTriageClicked`.
 
@@ -152,8 +155,8 @@ dependency.
 ## 6. Tests
 
 Label `features;fast`. Verify each test fails against pre-fix source first.
-Test endpoints use TEST-NET-1 (RFC 5737) addresses, so no request reaches a
-host.
+Remote test endpoints use TEST-NET-1 (RFC 5737) addresses, and loopback ones
+a port nothing listens on, so no request reaches a server.
 
 - `tests/features/llm_client` — INV-1, a table over the endpoint and key
   cases.
@@ -186,3 +189,4 @@ host.
 | Loop | Date | Lanes | Q1 | Q2 | Q3 | Q4 | Outcome |
 |---|---|---|---|---|---|---|---|
 | 1 | 2026-09-10 | 3 | 0 | 2 | 0 | 0 | 2 findings, 2 verified / 0 dismissed, both fixed. Q2: § 2.2 said once per endpoint while naming one member for the last endpoint; now states the last-endpoint rule. Q2: § 2.3 set the review warning and nothing cleared it after an endpoint change; beginRound now clears it, INV-3 covers plain-http then https. Five open questions resolved clean, none a finding. Packet build found no defect. Loop 2 dispatched. |
+| 2 | 2026-09-10 | 3 | 1 | 0 | 0 | 1 | 2 findings, 2 verified / 0 dismissed, both fixed. Q4 (lane 3): § 6 put every test endpoint on TEST-NET-1, which INV-2's loopback case cannot be; loopback now uses a port nothing listens on. Q1 (orchestrator, from a lane's open question): § 2.4 appended the triage warning to a label set to Qt::ElideRight, so it was cut first; it now comes first. Two lanes had no findings; five open questions resolved clean. Final-loop share on text this run wrote earlier: 0 of 2, a calm cap. Gated-span share: 4 of 4 run findings, the whole document being new. Cap reached; spec accepted, no deferred tail. |
