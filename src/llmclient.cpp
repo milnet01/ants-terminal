@@ -233,6 +233,9 @@ void LlmClient::send(const LlmRequest &req) {
     m_textBytes = 0;  // ANTS-1846 — reset the byte counter alongside m_text
     m_truncated = false;
     m_redactedCount = 0;
+    m_rawBody.clear();
+    m_sawSse = false;
+    m_stoppedAtCap = false;
 
     // ANTS-2121 — all four egress gates (scheme / URL-userinfo / SSRF /
     // cleartext-remote Bearer) live in one shared validator so the AuditDialog
@@ -284,7 +287,11 @@ void LlmClient::emitDeferredError(const QString &error) {
 
 void LlmClient::drain() {
     if (!m_reply) return;
-    m_sseLineBuffer += m_reply->readAll();
+    const QByteArray bytes = m_reply->readAll();
+    // ANTS-5007 — keep the raw body until a data line proves this is a stream.
+    if (!m_sawSse)
+        m_rawBody += bytes.left(kMaxBytes - m_rawBody.size());
+    m_sseLineBuffer += bytes;
 
     // Cap the line buffer to guard against a misbehaving server. A single
     // SSE frame larger than the cap (no newline in kMaxBytes of bytes) is
@@ -292,20 +299,26 @@ void LlmClient::drain() {
     // as truncated so onFinished() doesn't report it as complete. Without
     // the flag the caller silently resumes parsing on a corrupted offset
     // and treats a mangled answer as whole (ANTS-1754).
+    // Cap per-tick iterations + re-arm via singleShot(0) so a flood of
+    // tiny SSE lines can't hold the event loop (UI freeze).
+    constexpr int kMaxLinesPerTick = 256;
     if (m_sseLineBuffer.size() > kMaxBytes) {
         m_sseLineBuffer.clear();
         if (!m_truncated) {
             m_truncated = true;
             m_text += QStringLiteral("\n[response truncated]");
         }
-        return;
+    } else if (consumeLines(kMaxLinesPerTick) && !m_truncated) {
+        QTimer::singleShot(0, this, &LlmClient::drain);
     }
 
-    // Cap per-tick iterations + re-arm via singleShot(0) so a flood of
-    // tiny SSE lines can't hold the event loop (UI freeze).
-    constexpr int kMaxLinesPerTick = 256;
-    if (consumeLines(kMaxLinesPerTick))
-        QTimer::singleShot(0, this, &LlmClient::drain);
+    // ANTS-5008 — the cap ends the download, not just the appending. abort()
+    // delivers finished() to onFinished(), which reports the capped answer.
+    // Last statement: a finished() slot may delete this client.
+    if (m_truncated) {
+        m_stoppedAtCap = true;
+        m_reply->abort();
+    }
 }
 
 bool LlmClient::consumeLines(int maxLines) {
@@ -318,6 +331,12 @@ bool LlmClient::consumeLines(int maxLines) {
         const QString line = QString::fromUtf8(
             m_sseLineBuffer.constData() + consumed, nlPos - consumed);
         consumed = nlPos + 1;
+
+        // ANTS-5007 — a data line proves the reply is a stream.
+        if (!m_sawSse && line.trimmed().startsWith(QStringLiteral("data:"))) {
+            m_sawSse = true;
+            m_rawBody.clear();
+        }
 
         const QString delta = sseContentDelta(line);
         if (accumulateCapped(m_text, m_textBytes, m_truncated, delta))
@@ -338,37 +357,40 @@ void LlmClient::onFinished() {
     LlmResult result;
     result.httpStatus =
         m_reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
-    bool hadError = m_reply->error() != QNetworkReply::NoError;
+    // ANTS-5008 — an abort drain() made at the cap is not a failed request.
+    bool hadError =
+        m_reply->error() != QNetworkReply::NoError && !m_stoppedAtCap;
 
-    if (hadError) {
-        // Some APIs don't stream — try a non-streaming JSON response.
-        const QByteArray data = m_reply->read(kMaxBytes);  // honour the 10 MiB cap on the non-streaming fallback (indie-review 2026-06-04)
-        if (!data.isEmpty()) {
-            const QJsonDocument doc = QJsonDocument::fromJson(data);
-            if (doc.isObject()) {
-                const QJsonObject obj = doc.object();
-                const QJsonArray choices = obj.value("choices").toArray();
-                if (!choices.isEmpty()) {
-                    const QString content = choices[0].toObject()
-                        .value("message").toObject().value("content").toString();
-                    if (!content.isEmpty()) {
-                        m_text = content;
-                        hadError = false;  // valid response despite HTTP error
-                    }
-                } else if (obj.contains("error")) {
-                    // Scrub the server-supplied error like every other error
-                    // surface here — a 4xx body can echo a submitted key back
-                    // (OWASP LLM06). indie-review 2026-06-04.
-                    result.error = scrubErrorString(
-                        obj.value("error").toObject().value("message").toString());
+    // ANTS-5007 — no SSE data line arrived, so this is a plain JSON body: a
+    // provider that ignores "stream": true, or an error body. Read it on
+    // success and error alike, from the copy drain() kept (capped at
+    // kMaxBytes, indie-review 2026-06-04).
+    if (!m_sawSse && !m_rawBody.isEmpty()) {
+        const QJsonDocument doc = QJsonDocument::fromJson(m_rawBody);
+        if (doc.isObject()) {
+            const QJsonObject obj = doc.object();
+            const QJsonArray choices = obj.value("choices").toArray();
+            if (!choices.isEmpty()) {
+                const QString content = choices[0].toObject()
+                    .value("message").toObject().value("content").toString();
+                if (!content.isEmpty()) {
+                    m_text = content;
+                    hadError = false;  // valid response despite HTTP error
                 }
+            } else if (obj.contains("error")) {
+                // Scrub the server-supplied error like every other error
+                // surface here — a 4xx body can echo a submitted key back
+                // (OWASP LLM06). indie-review 2026-06-04.
+                result.error = scrubErrorString(
+                    obj.value("error").toObject().value("message").toString());
+                hadError = true;  // an error body with no answer fails, even on 2xx
             }
         }
-        if (hadError && m_text.isEmpty() && result.error.isEmpty())
-            result.error = scrubErrorString(m_reply->errorString());
-        else if (hadError && !m_text.isEmpty())
-            m_text += QStringLiteral("\n[response may be incomplete]");
     }
+    if (hadError && m_text.isEmpty() && result.error.isEmpty())
+        result.error = scrubErrorString(m_reply->errorString());
+    else if (hadError && !m_text.isEmpty())
+        m_text += QStringLiteral("\n[response may be incomplete]");
 
     result.ok = !hadError;
     result.text = m_text;

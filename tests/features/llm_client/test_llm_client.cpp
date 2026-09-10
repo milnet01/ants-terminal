@@ -15,6 +15,8 @@
 // INV-16 the three LLM modules are widget-free (source-grep).
 // INV-17 ~LlmClient neither crashes nor emits finished() mid-teardown.
 // INV-18 a reply finishing mid-drain must not drop already-buffered lines.
+// INV-19 a reply with no SSE data line is read as plain JSON, success or error.
+// INV-20 reaching the size cap ends the download, not just the appending.
 
 #include "llmclient.h"
 
@@ -42,12 +44,19 @@ namespace {
 // can't reach ~LlmClient's reply-teardown path or drain()'s per-tick
 // re-arm). Listens on 127.0.0.1:0 (kernel-assigned port). Two modes:
 //
-//   Hold    — accepts the connection, reads the full request, and never
-//             answers (for the destructor/teardown test: the reply must
-//             still be in flight when the client is destroyed).
-//   Respond — once the full request (headers up to "\r\n\r\n" plus
-//             Content-Length body bytes) has arrived, writes `response`
-//             verbatim and disconnects.
+//   Hold           — accepts the connection, reads the full request, and
+//                     never answers (for the destructor/teardown test: the
+//                     reply must still be in flight when the client is
+//                     destroyed).
+//   Respond        — once the full request (headers up to "\r\n\r\n" plus
+//                     Content-Length body bytes) has arrived, writes
+//                     `response` verbatim and disconnects.
+//   RespondKeepOpen — same as Respond, but never disconnects: the
+//                     connection is left open exactly as a real streaming
+//                     server would if it never terminates the body (for
+//                     INV-20/ANTS-5008: only the client itself, not the
+//                     server closing the socket, may be what ends the
+//                     transfer once the cap is hit).
 //
 // The client (QNetworkAccessManager) shares this thread, so it only
 // ever progresses while the Qt event loop runs — waitUntil() pumps
@@ -56,7 +65,7 @@ namespace {
 // that blocks the very event loop the client needs to connect.
 class FakeHttpServer {
 public:
-    enum class Mode { Hold, Respond };
+    enum class Mode { Hold, Respond, RespondKeepOpen };
 
     explicit FakeHttpServer(Mode mode, QByteArray response = QByteArray())
         : m_mode(mode), m_response(std::move(response)) {
@@ -66,6 +75,10 @@ public:
     bool isListening() const { return m_listening; }
     quint16 port() const { return m_server.serverPort(); }
     bool connectionAccepted() const { return m_socket != nullptr; }
+    // True once the client has closed the accepted connection.
+    bool peerClosed() const {
+        return m_socket && m_socket->state() == QAbstractSocket::UnconnectedState;
+    }
 
     // Service the server and pump the event loop until `pred()` is true
     // or `timeoutMs` elapses. Returns pred()'s final value.
@@ -106,6 +119,11 @@ private:
             m_socket->write(m_response);
             m_socket->disconnectFromHost();
             m_responded = true;
+        } else if (m_mode == Mode::RespondKeepOpen) {
+            m_socket->write(m_response);
+            m_responded = true;
+            // Deliberately no disconnectFromHost() — the whole point of
+            // this mode is that the server never ends the connection.
         }
         // Mode::Hold: the full request has arrived; deliberately never
         // answer it, so the reply stays in flight.
@@ -527,4 +545,159 @@ TEST(LlmClient, INV18_DrainReassemblesMultiTickSse) {
     EXPECT_TRUE(captured.ok) << captured.error.toStdString();
     EXPECT_FALSE(captured.truncated);
     EXPECT_EQ(captured.text.toStdString(), expected.toStdString());
+}
+
+// INV-19 (ANTS-5007, regression) — a provider that ignores
+// "stream": true and returns a single plain-JSON 200 must still surface its
+// answer. Pre-fix: onFinished()'s non-streaming fallback (the
+// choices[0].message.content parse) sits entirely inside `if (hadError)`,
+// and a 200 OK reply has hadError == false, so that branch never runs at
+// all. drain() had already tried to parse the raw JSON body as SSE lines
+// on readyRead and found none (no "data:" prefix), so m_text stays empty.
+// Pre-fix result: ok == true with text empty.
+TEST(LlmClient, ANTS5007_NonStreamingJsonReplySurfacesText) {
+    const QByteArray jsonBody =
+        "{\"choices\":[{\"message\":{\"content\":\"plain hello\"}}]}";
+    const QByteArray response =
+        "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n"
+        "Connection: close\r\n\r\n" + jsonBody;
+
+    FakeHttpServer server(FakeHttpServer::Mode::Respond, response);
+    ASSERT_TRUE(server.isListening());
+
+    LlmClient client;
+    LlmResult captured;
+    int finishedCount = 0;
+    QObject::connect(&client, &LlmClient::finished, &client,
+                     [&](const LlmResult &r) { captured = r; ++finishedCount; });
+
+    LlmRequest req;
+    req.endpoint =
+        QString("http://127.0.0.1:%1/v1/chat/completions").arg(server.port());
+    req.model = QStringLiteral("test-model");
+    req.systemPrompt = QStringLiteral("sys");
+    req.userPrompt = QStringLiteral("user");
+    client.send(req);
+
+    ASSERT_TRUE(server.waitUntil([&]() { return finishedCount == 1; }))
+        << "client never reported finished()";
+
+    EXPECT_TRUE(captured.ok) << captured.error.toStdString();
+    EXPECT_EQ(captured.text.toStdString(), std::string("plain hello"))
+        << "expected the non-streaming JSON body's message content; got '"
+        << captured.text.toStdString()
+        << "' — the non-streaming fallback in onFinished() only runs "
+           "inside `if (hadError)`, so a 200 OK plain-JSON reply never "
+           "reaches it (ANTS-5007)";
+}
+
+// INV-19 (ANTS-5007, regression) — an error body must surface the server's
+// own message, with ok false, whatever the HTTP status. Pre-fix, drain() had
+// consumed the body before onFinished()'s fallback read it, so a 4xx
+// reported Qt's generic errorString(); and the fallback ran only on an HTTP
+// error, so a 200 carrying an error body reported ok with nothing.
+TEST(LlmClient, ANTS5007_ErrorBodyMessageSurfaced) {
+    const QByteArray jsonBody =
+        "{\"error\":{\"message\":\"quota exceeded for this API key\"}}";
+    for (const QByteArray &status : {QByteArrayLiteral("404 Not Found"),
+                                     QByteArrayLiteral("200 OK")}) {
+        const QByteArray response =
+            "HTTP/1.1 " + status + "\r\nContent-Type: application/json\r\n"
+            "Connection: close\r\n\r\n" + jsonBody;
+
+        FakeHttpServer server(FakeHttpServer::Mode::Respond, response);
+        ASSERT_TRUE(server.isListening());
+
+        LlmClient client;
+        LlmResult captured;
+        int finishedCount = 0;
+        QObject::connect(&client, &LlmClient::finished, &client,
+                         [&](const LlmResult &r) { captured = r; ++finishedCount; });
+
+        LlmRequest req;
+        req.endpoint =
+            QString("http://127.0.0.1:%1/v1/chat/completions").arg(server.port());
+        req.model = QStringLiteral("test-model");
+        req.systemPrompt = QStringLiteral("sys");
+        req.userPrompt = QStringLiteral("user");
+        client.send(req);
+
+        ASSERT_TRUE(server.waitUntil([&]() { return finishedCount == 1; }))
+            << status.toStdString() << ": client never reported finished()";
+
+        EXPECT_FALSE(captured.ok) << status.toStdString();
+        EXPECT_TRUE(captured.error.contains(
+            QStringLiteral("quota exceeded for this API key")))
+            << status.toStdString()
+            << ": expected the server's error message in `error`; got '"
+            << captured.error.toStdString() << "' (ANTS-5007)";
+    }
+}
+
+// INV-20 (ANTS-5008, regression) — hitting kMaxBytes must
+// end the request, not merely stop appending to the accumulated answer.
+// The server here sends well over kMaxBytes of SSE content and then holds
+// the connection open forever (RespondKeepOpen — no disconnect), so
+// nothing but the client itself can end the transfer. Pre-fix, neither
+// accumulateCapped nor drain()'s raw-buffer-overflow guard calls abort()
+// on cap overflow, so the reply just keeps streaming; finished() only
+// arrives if the server disconnects (it never does here) or the transfer
+// timeout fires. req.timeoutMs is set far above the wait bound below so a
+// pass cannot be the timeout quietly doing the job the cap should do.
+TEST(LlmClient, ANTS5008_CapHitEndsRequestPromptly) {
+    // 64 KiB of content per SSE line keeps the line count (and JSON-parse
+    // cost) low while the aggregate comfortably exceeds kMaxBytes.
+    constexpr int kChunkBytes = 64 * 1024;
+    constexpr int kLineCount = 200;  // 200 * 64 KiB ~= 12.5 MiB > kMaxBytes (10 MiB)
+    static_assert(qint64(kLineCount) * kChunkBytes > LlmClient::kMaxBytes,
+                  "the SSE payload must exceed kMaxBytes for this test to "
+                  "exercise the cap");
+    const QByteArray chunk(kChunkBytes, 'x');
+
+    QByteArray sseBody;
+    sseBody.reserve(qsizetype(kLineCount) * (kChunkBytes + 64));
+    for (int i = 0; i < kLineCount; ++i) {
+        sseBody += "data: {\"choices\":[{\"delta\":{\"content\":\"" + chunk +
+                   "\"}}]}\n";
+    }
+
+    const QByteArray response =
+        "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\n\r\n" + sseBody;
+
+    FakeHttpServer server(FakeHttpServer::Mode::RespondKeepOpen, response);
+    ASSERT_TRUE(server.isListening());
+
+    LlmClient client;
+    LlmResult captured;
+    int finishedCount = 0;
+    QObject::connect(&client, &LlmClient::finished, &client,
+                     [&](const LlmResult &r) { captured = r; ++finishedCount; });
+
+    LlmRequest req;
+    req.endpoint =
+        QString("http://127.0.0.1:%1/v1/chat/completions").arg(server.port());
+    req.model = QStringLiteral("test-model");
+    req.systemPrompt = QStringLiteral("sys");
+    req.userPrompt = QStringLiteral("user");
+    // Far above the wait bound below, so the transfer timeout cannot be
+    // what ends the request in a passing run.
+    req.timeoutMs = 120000;
+    client.send(req);
+
+    // Generous for a sanitizer build, and two orders of magnitude under
+    // the transfer timeout above.
+    ASSERT_TRUE(server.waitUntil([&]() { return finishedCount == 1; }, 15000))
+        << "finished() never arrived after the accumulation cap was hit; "
+           "the fake server is still holding the connection open (it never "
+           "disconnects in RespondKeepOpen mode) — hitting kMaxBytes must "
+           "end the request itself rather than rely on the server closing "
+           "the connection or the transfer timeout firing (ANTS-5008)";
+
+    EXPECT_TRUE(captured.ok) << captured.error.toStdString();
+    EXPECT_TRUE(captured.truncated);
+    // The download itself must stop, not just the reporting: the client
+    // closes the connection the server is still holding open.
+    EXPECT_TRUE(server.waitUntil([&]() { return server.peerClosed(); }))
+        << "finished() arrived but the client left the connection open, so "
+           "the download is still running (ANTS-5008)";
 }

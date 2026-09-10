@@ -30,6 +30,14 @@ for security-relevant changes.
 
 ### Fixed
 
+- **AI answers from a provider that ignores streaming now appear, and a server's own error message now reaches you** (ANTS-5007)
+  LlmClient keeps the raw reply until an SSE line proves it is a stream,
+  then reads a plain JSON answer or error body whatever the HTTP status.
+
+- **Reaching the AI answer size cap now ends the download** (ANTS-5008)
+  The request is aborted at LlmClient::kMaxBytes and reported as a
+  truncated answer, even while the server holds the connection open.
+
 - **Closing an AI-backed window mid-request no longer crashes the app** (ANTS-5002)
   An AI client destroyed with a request in flight now shuts down
   quietly. The audit dialog's AI triage could reach this when closed

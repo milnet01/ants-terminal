@@ -136,4 +136,9 @@ private:
     qint64         m_textBytes = 0;   // running UTF-8 byte total of m_text (ANTS-1846)
     bool           m_truncated = false;
     int            m_redactedCount = 0;
+    // ANTS-5007 — the reply's raw bytes, kept until an SSE data line proves
+    // it is a stream, so a plain-JSON answer or error body can still be read.
+    QByteArray     m_rawBody;
+    bool           m_sawSse = false;
+    bool           m_stoppedAtCap = false;  // ANTS-5008 — drain() aborted at kMaxBytes
 };

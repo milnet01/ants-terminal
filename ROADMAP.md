@@ -39197,23 +39197,30 @@ whole files.
   Source: cold-sweep-2026-08-18 triaged in-session-2026-09-10.
   Lanes: llmdispatcher, reviewdialogbase.
 
-- 📋 [ANTS-5007] **LlmClient returns a blank answer from a provider that ignores streaming, and loses the server's error message.**
+- ✅ [ANTS-5007] **LlmClient returns a blank answer from a provider that ignores streaming, and loses the server's error message.**
   drain() reads every byte on readyRead, so onFinished's non-streaming
   fallback reads nothing. A provider that ignores "stream": true and
   returns plain JSON yields ok with empty text, and a 4xx body's error
   message never reaches the user. A fix keeps the raw body until the
   first SSE line proves the reply is a stream. From ANTS-4458.
+  Resolved (2026-09-10): drain() keeps the raw reply until an SSE data line
+  proves it is a stream; onFinished() reads a plain JSON answer or error
+  body whatever the HTTP status, and an error body with no answer fails
+  even on a 2xx. Locked by llm_client INV-19, red first, mutation-probed.
   **Layman:** Some AI services' answers show up blank, and their error messages are lost.
   Kind: fix.
   Source: cold-sweep-2026-08-18 triaged in-session-2026-09-10.
   Lanes: llmclient.
 
-- 📋 [ANTS-5008] **Hitting LlmClient's size cap stops keeping data but never stops the download.**
+- ✅ [ANTS-5008] **Hitting LlmClient's size cap stops keeping data but never stops the download.**
   drain() clears the buffer and marks the answer truncated, and
   accumulateCapped stops appending, but the reply keeps streaming until
   the server closes it. The transfer timeout only catches silence. A fix
   ends the request on cap and finishes with the truncated result. From
   ANTS-4458.
+  Resolved (2026-09-10): drain() aborts the reply once the cap is hit, and
+  onFinished() reports that abort as a truncated answer, not a failure.
+  Locked by llm_client INV-20, which also checks the connection closes.
   **Layman:** A misbehaving AI server can keep sending data long after the app stopped reading it.
   Kind: fix.
   Source: cold-sweep-2026-08-18 triaged in-session-2026-09-10.

@@ -82,14 +82,33 @@ without a live network.
   `m_sseLineBuffer` via a single offset walk instead of a repeated
   `.mid()` copy per line): that refactor must not change which lines get
   parsed before an early finish, so it must stay green across it too.
+- **INV-19** (ANTS-5007, regression) — a reply with no SSE data line is
+  read as one plain JSON body, whatever its HTTP status. A
+  `choices[0].message.content` answer surfaces as `text`, with `ok` true.
+  An `error.message` body surfaces as `error`, with `ok` false. `drain()`
+  keeps the raw bytes, capped at `kMaxBytes`, until a data line proves the
+  reply is a stream. Pre-fix, `drain()` consumed the body and the fallback
+  ran only on an HTTP error: a success came back blank, and an error came
+  back as Qt's generic `errorString()`.
+- **INV-20** (ANTS-5008, regression) — reaching `kMaxBytes` ends the
+  download. `drain()` aborts the reply, and `finished()` reports the capped
+  answer with `ok` and `truncated` both true. The client closes the
+  connection even while the server holds it open. Pre-fix, the cap only
+  stopped the appending; the transfer ran on until the server closed it or
+  the transfer timeout fired.
 
 ## Test notes
 
 Most cases are static-helper + scrub only — no live network, no event
-loop. INV-17 and INV-18 are the exception: they need a real `QNetworkReply`
-in flight, which the static kernels can't produce, so they drive
-`LlmClient::send` against a fake HTTP server (`FakeHttpServer`, in the test
-file's anonymous namespace) bound to `127.0.0.1` (loopback). Loopback
-passes every `LlmClient` egress gate (`isEndpointHostBlocked` and
+loop. INV-17, INV-18, INV-19 and INV-20 are the exception: they need a
+real `QNetworkReply` in flight, which the static kernels can't produce, so
+they drive `LlmClient::send` against a fake HTTP server (`FakeHttpServer`,
+in the test file's anonymous namespace) bound to `127.0.0.1` (loopback).
+Loopback passes every `LlmClient` egress gate (`isEndpointHostBlocked` and
 `isPlaintextRemote` both exempt it — see INV-2b/INV-2c above), so this is
 not live network access: no packet leaves the host. Label `features;fast`.
+
+INV-20's server holds the connection open (`FakeHttpServer` mode
+`RespondKeepOpen`), so only the client can end the transfer. Its request
+sets `timeoutMs` well past the test's wait bound, so the transfer timeout
+cannot be what ends it.
