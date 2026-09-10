@@ -13357,6 +13357,24 @@ fixes don't address. Roadmapped here as their own design tasks.
   Kind: enhancement.
   Source: in-session-2026-09-10.
 
+- 📋 [ANTS-5019] **file_outline's C++ parser skips gtest TEST() blocks and reports local object declarations as functions.**
+  Measured 2026-09-10. On
+  tests/features/indie_review_dispatch/test_indie_review_dispatch.cpp,
+  which holds an anonymous namespace and gtest TEST() blocks, the verb
+  returned no symbols and `parse_empty`. Its own hint calls that a parser
+  gap worth reporting. On tests/features/llm_client/test_llm_client.cpp it
+  found the FakeHttpServer class and its methods, but no TEST() block. It
+  also emitted `FakeHttpServer server(...)` and
+  `const QByteArray chunk(kChunkBytes, 'x');`, local declarations inside
+  test bodies, as kind func. So an outline of a test file cannot answer
+  "which tests are here", and its func rows are not all functions. A fix
+  outlines TEST, TEST_F and TEST_P as symbols named Suite.Case, and stops
+  treating a declaration inside a function body as a new function.
+  **Layman:** The file-map tool can't see the tests in a test file, and mistakes some variables for functions.
+  Kind: fix.
+  Source: in-session-2026-09-10.
+  Lanes: mcp.
+
 ### 🔬 Project Audit false-positive reduction (self-audit 2026-05-20)
 
 Ran the project's own `ants-audit` CLI against this repo (~300 findings,
