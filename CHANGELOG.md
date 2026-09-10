@@ -14,6 +14,11 @@ for security-relevant changes.
 
 ### Changed
 
+- **The AI review windows keep one copy of the code that stops their requests on close** (ANTS-5009)
+  LlmDispatcher now only schedules jobs. ReviewDialogBase's runner
+  creates the LlmClients and aborts them when the window closes. The
+  dispatcher's own copy never ran, so nothing changes for the user.
+
 - **Streaming AI answers are parsed without re-copying the buffer for every line** (ANTS-5005)
 
 - **Cold-eyes re-reviews now run cold and keep a round-by-round log** (ANTS-2011)

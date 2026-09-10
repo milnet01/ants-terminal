@@ -7,6 +7,8 @@
 // `maxConcurrent` at once, emits jobFinished per job, and allFinished when
 // the last completes. It retains no result text after emitting jobFinished
 // (INV-8) — only in-flight LlmClient stream buffers consume memory.
+// It holds no LlmClient: the owner's runner creates them, and the owner
+// aborts them (ANTS-5009).
 
 #pragma once
 
@@ -14,7 +16,6 @@
 
 #include <QList>
 #include <QObject>
-#include <QPointer>
 #include <QString>
 
 #include <functional>
@@ -27,14 +28,15 @@ struct LlmJob {
 class LlmDispatcher : public QObject {
     Q_OBJECT
 public:
-    // Test seam: a runner drives one job and reports completion via the
-    // supplied callback. The default runner uses a real LlmClient.
+    // A runner drives one job and reports completion via the supplied
+    // callback. There is no default: the owner sets one before the first
+    // enqueue (ReviewDialogBase in production; tests inject a fake).
     using JobRunner =
         std::function<void(const LlmJob &, std::function<void(const LlmResult &)>)>;
 
     explicit LlmDispatcher(int maxConcurrent = 2, QObject *parent = nullptr);
 
-    void setRunner(JobRunner runner);   // tests inject a fake
+    void setRunner(JobRunner runner);   // required before enqueue
     void enqueue(const QList<LlmJob> &jobs);
     void cancelAll();
     int  inFlight() const { return m_inFlight; }
@@ -47,12 +49,10 @@ signals:
 
 private:
     void pump();
-    void installDefaultRunner();
 
     int            m_max = 2;
     int            m_inFlight = 0;
     bool           m_cancelled = false;
     QList<LlmJob>  m_queue;
     JobRunner      m_runner;
-    QList<QPointer<LlmClient>> m_activeClients;  // default runner only
 };

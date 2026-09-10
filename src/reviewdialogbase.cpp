@@ -107,12 +107,12 @@ ReviewDialogBase::ReviewDialogBase(QString projectCwd, QWidget *parent,
 
 ReviewDialogBase::~ReviewDialogBase() {
     // ANTS-2111 — abort our own in-flight clients FIRST. They are parented to
-    // this dialog but never registered with the dispatcher, so cancelAll()
+    // this dialog and the dispatcher holds none (ANTS-5009), so cancelAll()
     // below can't reach them; left alone, ~QDialog's child teardown calls
     // ~LlmClient → m_reply->abort(), which can emit finished() synchronously
     // and re-enter onJobFinished / a dispatchOne callback on a half-destroyed
     // dialog. Disconnect each from this before abort() (which itself nulls
-    // m_reply to suppress finished — see LlmDispatcher ANTS-1755) so no late
+    // m_reply to suppress finished — see LlmClient::abort) so no late
     // completion lambda fires, then drop the handles.
     const auto clients = m_activeClients;
     m_activeClients.clear();

@@ -39274,11 +39274,16 @@ whole files.
   Source: cold-sweep-2026-08-18 triaged in-session-2026-09-10.
   Lanes: llmclient.
 
-- 📋 [ANTS-5009] **LlmDispatcher's built-in runner and client tracking are dead in production.**
+- ✅ [ANTS-5009] **LlmDispatcher's built-in runner and client tracking are dead in production.**
   ReviewDialogBase replaces the default runner with its own, so
   LlmDispatcher::m_activeClients is never filled and cancelAll's abort
   block never runs outside tests. The dialog tracks its own clients
   (ANTS-2111). Two mechanisms do one job; keep one. From ANTS-4458.
+  Resolved (2026-09-10): kept ReviewDialogBase's runner and client
+  tracking (user decision). LlmDispatcher lost its default runner, its
+  client list and cancelAll's abort block; the owner must now set a
+  runner. ANTS-1727 section 2.2 and INV-9 amended to match. No test
+  changed; full suite green.
   **Layman:** Two copies of the same safety code exist, and only one is ever used.
   Kind: refactor.
   Source: cold-sweep-2026-08-18 triaged in-session-2026-09-10.

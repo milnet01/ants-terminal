@@ -106,8 +106,8 @@ private:
 
     LlmDispatcher           *m_dispatcher = nullptr;
     LlmDispatcher::JobRunner m_runner;        // shared by batch + dispatchOne
-    // ANTS-2111 — clients spawned by m_runner are parented to this dialog but
-    // bypass the dispatcher's m_activeClients, so cancelAll() can't abort them.
+    // ANTS-2111 — clients spawned by m_runner are parented to this dialog and
+    // the dispatcher holds none (ANTS-5009), so cancelAll() can't abort them.
     // Track them here and abort in ~ReviewDialogBase before cancelAll so a
     // synchronous finished() from QNetworkReply::abort() can't re-enter a
     // half-destroyed dialog (the close-mid-review UAF).
