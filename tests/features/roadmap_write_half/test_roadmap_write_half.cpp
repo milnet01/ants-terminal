@@ -1895,6 +1895,80 @@ TEST(RoadmapWriteHalf, Ants4947SequentialAnnotatesKeepEveryNote) {
             << n.toStdString();
 }
 
+// ANTS-4947, the lead the one-line tests above cannot reach: the report's
+// discard was 32 lines, so the lost note was long and multi-line. Same
+// sequence shape as the report — short, LONG, short — run twice: once with
+// blank lines inside the long note, once with a line inside it opening on a
+// trailer key, which ANTS-4549 reads as a declaration rather than prose.
+TEST(RoadmapWriteHalf, Ants4947LongMultiParagraphNoteSurvives) {
+    const auto runSequence = [](const QString &longNote, const char *label) {
+        ants_test::XdgGuard guard;
+        QTemporaryDir tmp;
+        ASSERT_TRUE(tmp.isValid());
+        qint64 projectId = 0;
+        const QString root = seedMigrated(guard, tmp, fixture(), &projectId);
+        ASSERT_FALSE(root.isEmpty());
+        {
+            RemoteControl rc(nullptr);
+            ASSERT_TRUE(rc.cmdRoadmapLogAppendForTest(
+                            appendReq(root, QStringLiteral("A canonicalising bullet.")))
+                            .object().value(QStringLiteral("ok")).toBool());
+        }
+        const QStringList notes = {
+            QStringLiteral("Progress (2026-09-08): the first note."),
+            longNote,
+            QStringLiteral("Progress (2026-09-08): the third note."),
+        };
+        for (const QString &n : notes) {
+            RemoteControl rc(nullptr);
+            QJsonObject req;
+            req[QStringLiteral("caller_cwd")] = root;
+            req[QStringLiteral("op")]         = QStringLiteral("annotate");
+            req[QStringLiteral("id")]         = QStringLiteral("DEMO-0007");
+            req[QStringLiteral("note")]       = n;
+            const QJsonObject r = rc.cmdRoadmapLogFlipForTest(req).object();
+            ASSERT_TRUE(r.value(QStringLiteral("ok")).toBool())
+                << label << ": code="
+                << r.value(QStringLiteral("code")).toString().toStdString()
+                << " error=" << r.value(QStringLiteral("error")).toString().toStdString();
+            EXPECT_FALSE(r.value(QStringLiteral("discarded_external_edits")).toBool())
+                << label << ": the verb discarded text it wrote itself; discarded_text="
+                << QJsonDocument(r.value(QStringLiteral("discarded_text")).toArray())
+                       .toJson(QJsonDocument::Compact).toStdString();
+        }
+        // Compare line by line: the render indents a body, so a multi-line
+        // note is never one contiguous substring of the file.
+        const QByteArray published = readAll(root + QStringLiteral("/ROADMAP.md"));
+        ASSERT_FALSE(published.isEmpty());
+        for (const QString &n : notes)
+            for (const QString &line : n.split(QLatin1Char('\n'))) {
+                const QString t = line.trimmed();
+                if (t.isEmpty()) continue;
+                EXPECT_TRUE(published.contains(t.toUtf8()))
+                    << label << ": a confirmed note line is absent from the file: "
+                    << t.toStdString();
+            }
+    };
+
+    QStringList paras;
+    for (int p = 1; p <= 3; ++p) {
+        QStringList lines;
+        for (int l = 1; l <= 9; ++l)
+            lines << QStringLiteral("Paragraph %1, line %2 of a long progress note that")
+                         .arg(p).arg(l)
+                  + QStringLiteral(" wraps.");
+        paras << lines.join(QLatin1Char('\n'));
+    }
+    const QString blankLines =
+        QStringLiteral("Progress (2026-09-08): a long note.\n") + paras.join(QStringLiteral("\n\n"));
+    runSequence(blankLines, "blank-line paragraphs");
+
+    const QString trailerKey = QStringLiteral("Progress (2026-09-08): a long note.\n")
+        + paras.at(0) + QStringLiteral("\nSource: a line opening on a trailer key.\n")
+        + paras.at(1);
+    runSequence(trailerKey, "line opening on Source:");
+}
+
 // ANTS-4947, the second hypothesis the report names: two sessions on one
 // project. Each RemoteControl owns its own cached RoadmapStore connection
 // (m_roadmapStore), so this is what two concurrent CC sessions are, reduced to
