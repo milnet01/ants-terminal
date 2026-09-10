@@ -116,6 +116,7 @@ private:
     QHash<QString, QString>  m_reports;       // accumulated, keyed by lane id
     QHash<QString, QString>  m_failedLanes;   // lane id → error, this round (ANTS-5003)
     QString                  m_failureStatus; // failure text last shown (ANTS-5003)
+    QString                  m_plaintextStatus; // plain-http warning last shown (ANTS-5010)
     bool                     m_roundInFlight = false;  // ANTS-5004
     QString                  m_lastFoldInError;
 

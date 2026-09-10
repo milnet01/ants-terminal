@@ -39269,7 +39269,7 @@ whole files.
   Source: cold-sweep-2026-08-18 triaged in-session-2026-09-10.
   Lanes: llmdispatcher, reviewdialogbase.
 
-- 📋 [ANTS-5010] **A keyless http endpoint on a remote host sends the whole review brief unencrypted.**
+- ✅ [ANTS-5010] **A keyless http endpoint on a remote host sends the whole review brief unencrypted.**
   LlmClient::endpointEgressError refuses cleartext only when an API key
   is set, to protect the key. With no key, a remote http endpoint
   receives the prompt, which carries project source and docs, in the
@@ -39289,6 +39289,13 @@ whole files.
   review-contract ran two loops of three cold lanes. Four findings were
   verified and fixed; the cap was reached calm, with no deferred tail.
   Ready to build, test-first.
+  Resolved (2026-09-10): LlmClient::plaintextPromptWarning is the one
+  predicate and text. The AI chat, the review dialogs, the audit dialog's
+  triage and the indie_review_dispatch reply each show it, per
+  docs/specs/ANTS-5010-plaintext-prompt-warning.md. Tests went red first on
+  a stub. mutation_probe killed 10 of 12: one survivor was a redundant key
+  check, now removed; the other is the triage-text placement, filed as
+  ANTS-5020. Full suite green.
   **Layman:** Without an API key, the app will send your project's files to a remote AI server without encryption.
   Kind: security.
   Source: cold-sweep-2026-08-18 triaged in-session-2026-09-10.
@@ -39336,6 +39343,20 @@ whole files.
   Kind: security.
   Source: in-session-2026-09-10.
   Lanes: llmclient, mcp.
+
+- 📋 [ANTS-5020] **No test checks where the ANTS-5010 warning lands in the audit dialog's triage text.**
+  tests/features/plaintext_prompt_warning INV-2 source-greps the three
+  AuditDialog triage functions for the plaintextPromptWarning call, as the
+  spec's § 7 records as Partial. A mutation that moved the
+  requestAiTriage warning from the front of its status text to the end
+  survived on 2026-09-10. m_statusLabel elides from the right, so an
+  appended warning is the first text cut. A test that drives
+  requestAiTriage (and reads the two QMessageBox::question texts through a
+  seam) would check placement as well as presence.
+  **Layman:** A test only checks that the audit dialog asks for the warning, not that the user can actually see it.
+  Kind: test.
+  Source: in-session-2026-09-10.
+  Lanes: audit-dialog.
 
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-08-18 triage
 

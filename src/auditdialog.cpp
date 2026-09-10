@@ -3018,11 +3018,16 @@ void AuditDialog::onDebtTriageClicked() {
     int llmCount = 0;
     for (const DebtSweepEngine::Finding &d : std::as_const(m_debtFindings))
         if (!d.autoFixable) ++llmCount;
+    // ANTS-5010 — a keyless plain-http endpoint gets the findings unencrypted.
+    const QString plaintextWarning =
+        LlmClient::plaintextPromptWarning(cfg.aiEndpoint(), cfg.aiApiKey());
     const auto reply = QMessageBox::question(this, "Triage with AI",
         QString("Send %1 non-mechanical finding%2 to %3 for triage?")
             .arg(llmCount).arg(llmCount == 1 ? "" : "s")
             .arg(QUrl(cfg.aiEndpoint()).host().isEmpty()
-                 ? cfg.aiEndpoint() : QUrl(cfg.aiEndpoint()).host()),
+                 ? cfg.aiEndpoint() : QUrl(cfg.aiEndpoint()).host())
+            + (plaintextWarning.isEmpty()
+                   ? QString() : QStringLiteral("\n\n") + plaintextWarning),
         QMessageBox::Yes | QMessageBox::No, QMessageBox::Yes);
     if (reply != QMessageBox::Yes) return;
 
@@ -5299,9 +5304,15 @@ void AuditDialog::requestAiTriage(const QString &dedupKey) {
     // ANTS-4448 — say when the prompt was scrubbed. A silent redaction
     // changes what the model was shown, so a verdict that looks wrong would
     // otherwise have no visible cause.
+    // ANTS-5010 — the plain-http warning goes FIRST: m_statusLabel elides
+    // from the right, so text appended at the end is the first cut.
+    const QString plaintextWarning =
+        LlmClient::plaintextPromptWarning(endpointUrl.toString(), apiKey);
     if (m_statusLabel)
         m_statusLabel->setFullText(
-            "AI triage: querying " + endpointUrl.host()
+            (plaintextWarning.isEmpty()
+                 ? QString() : plaintextWarning + QLatin1Char(' '))
+            + "AI triage: querying " + endpointUrl.host()
             + (scrubbedUser.redactedCount > 0
                    ? QStringLiteral(" (%1 secret(s) redacted)")
                          .arg(scrubbedUser.redactedCount)
@@ -5452,6 +5463,9 @@ void AuditDialog::onBatchTriageClicked() {
     // Confirmation — exact count visible, and a heads-up that tokens
     // will be spent. Don't try to estimate cost (varies by model /
     // provider); the count is the honest signal the user can act on.
+    // ANTS-5010 — a keyless plain-http endpoint gets the findings unencrypted.
+    const QString plaintextWarning =
+        LlmClient::plaintextPromptWarning(cfg.aiEndpoint(), cfg.aiApiKey());
     const auto reply = QMessageBox::question(this, "Batch AI triage",
         QString("Send %1 finding%2 to %3 for triage?\n\n"
                 "Each finding sends its rule, file:line, snippet, and git-"
@@ -5460,7 +5474,9 @@ void AuditDialog::onBatchTriageClicked() {
             .arg(keys.size())
             .arg(keys.size() == 1 ? "" : "s")
             .arg(QUrl(cfg.aiEndpoint()).host().isEmpty()
-                 ? cfg.aiEndpoint() : QUrl(cfg.aiEndpoint()).host()),
+                 ? cfg.aiEndpoint() : QUrl(cfg.aiEndpoint()).host())
+            + (plaintextWarning.isEmpty()
+                   ? QString() : QStringLiteral("\n\n") + plaintextWarning),
         QMessageBox::Yes | QMessageBox::No, QMessageBox::Yes);
     if (reply != QMessageBox::Yes) return;
 

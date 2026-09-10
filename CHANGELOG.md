@@ -78,6 +78,11 @@ for security-relevant changes.
 
 ### Security
 
+- **A keyless AI request sent over plain http to another machine now warns that it is not encrypted, and still sends** (ANTS-5010)
+  The AI chat, the review dialogs, the audit dialog's triage and the
+  indie_review_dispatch reply each show the same warning naming the host.
+  Localhost and https endpoints are unaffected.
+
 - **The indie_review_dispatch MCP tool now runs the same AI send checks as the rest of the app** (ANTS-5018)
   It refuses an API key over plain http to a remote host, private and
   link-local IP addresses, and credentials embedded in the URL, and it no

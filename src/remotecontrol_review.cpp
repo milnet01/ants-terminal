@@ -6,6 +6,7 @@
 #include "claudeintegration.h"
 #include "config.h"
 #include "indiereviewdispatcher.h"
+#include "llmclient.h"
 #include "mainwindow.h"
 #include "pathvalidation.h"
 #include "plantemplateengine.h"
@@ -1270,6 +1271,11 @@ QJsonDocument RemoteControl::cmdIndieReviewDispatch(const QJsonObject &req) {
     env["total_output_tokens"] = totalOut;
     env["total_elapsed_ms"]    = result.totalElapsedMs;
     env["model"]               = result.resolvedModel;
+    // ANTS-5010 — a keyless plain-http endpoint received every brief
+    // unencrypted. `warning` survives a fields= narrowing (ANTS-4698).
+    const QString plaintextWarning =
+        LlmClient::plaintextPromptWarning(endpoint, dr.apiKey);
+    if (!plaintextWarning.isEmpty()) env["warning"] = plaintextWarning;
     return QJsonDocument(env);
 }
 

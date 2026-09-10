@@ -79,6 +79,7 @@ private:
     QString m_model;
     int m_contextLines = 50;
     QString m_lastResponse;   // Last complete AI response (for insert)
+    QString m_plaintextWarnedEndpoint;   // ANTS-5010 — endpoint last warned about
 
 public:
     ~AiDialog() override;

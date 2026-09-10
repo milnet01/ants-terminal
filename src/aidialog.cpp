@@ -247,6 +247,15 @@ void AiDialog::sendRequest(const QString &userMessage) {
         return;
     }
 
+    // ANTS-5010 — a keyless request to a remote plain-http endpoint still
+    // goes out; say so, once per endpoint rather than on every message.
+    const QString plaintextWarning =
+        LlmClient::plaintextPromptWarning(m_endpoint, m_apiKey);
+    if (!plaintextWarning.isEmpty() && m_endpoint != m_plaintextWarnedEndpoint) {
+        appendMessage("System", plaintextWarning);
+        m_plaintextWarnedEndpoint = m_endpoint;
+    }
+
     // Prompts are already scrubbed above (UX-coupled notice), so the
     // client doesn't re-scrub — scrubSecrets=false avoids double work.
     LlmRequest req;

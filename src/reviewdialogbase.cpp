@@ -265,6 +265,19 @@ void ReviewDialogBase::beginRound() {
     m_failedLanes.clear();
     m_roundInFlight = true;
     updateDispatchEnabled();
+    // ANTS-5010 — warn that a keyless plain-http round goes out unencrypted.
+    // Config is reloaded in place while the dialog is open, so an earlier
+    // round's warning is cleared once it no longer applies.
+    if (m_statusLabel && m_config) {
+        const QString warning = LlmClient::plaintextPromptWarning(
+            m_config->aiEndpoint(), m_config->aiApiKey());
+        if (!warning.isEmpty())
+            m_statusLabel->setText(warning);
+        else if (!m_plaintextStatus.isEmpty()
+                 && m_statusLabel->text() == m_plaintextStatus)
+            m_statusLabel->clear();
+        m_plaintextStatus = warning;
+    }
 }
 
 void ReviewDialogBase::dispatchOne(const LlmJob &job,

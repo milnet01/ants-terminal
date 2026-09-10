@@ -227,10 +227,19 @@ QString LlmClient::endpointEgressError(const QString &endpoint,
 
 QString LlmClient::plaintextPromptWarning(const QString &endpoint,
                                          const QString &apiKey) {
-    // ANTS-5010 — stub for the test-first run; § 2.1 of the spec lands next.
-    Q_UNUSED(endpoint);
-    Q_UNUSED(apiKey);
-    return QString();
+    // ANTS-5010 — warn exactly when the request goes out unencrypted: it
+    // passes every egress gate and is plain http to a remote host. No key
+    // check is needed, because the egress gate refuses a KEYED request of
+    // that shape; the user decided a keyless one still goes (warn, don't
+    // refuse).
+    if (!endpointEgressError(endpoint, apiKey).isEmpty()
+        || !isPlaintextRemote(endpoint))
+        return QString();
+    return QStringLiteral(
+               "Not encrypted: this request goes to %1 over plain http, so "
+               "anyone on the network path can read it. Use https:// to "
+               "protect it.")
+        .arg(QUrl(endpoint).host());
 }
 
 void LlmClient::send(const LlmRequest &req) {
