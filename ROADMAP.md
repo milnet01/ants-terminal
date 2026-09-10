@@ -39309,7 +39309,7 @@ whole files.
   Source: in-session-2026-09-10 (found by the ANTS-5005 guard test).
   Lanes: llmclient.
 
-- 📋 [ANTS-5018] **indie_review_dispatch skips the shared AI egress checks, so it sends the key over cleartext and follows redirects.**
+- ✅ [ANTS-5018] **indie_review_dispatch skips the shared AI egress checks, so it sends the key over cleartext and follows redirects.**
   IndieReviewDispatcher::dispatchLanes checks only that the endpoint's
   scheme is http or https. It then sets the Bearer header and posts
   through its own QNetworkAccessManager, with no redirect policy set.
@@ -39323,6 +39323,11 @@ whole files.
   MCP caller. A fix calls endpointEgressError and sets
   ManualRedirectPolicy, as ANTS-2121 did for the triage POSTs. Found
   while mapping send paths for ANTS-5010.
+  Resolved (2026-09-10): dispatchLanes runs LlmClient::endpointEgressError
+  in place of its scheme-only check, keeping the bad_args code, and each
+  request sets ManualRedirectPolicy. Locked by indie_review_dispatch INV-1
+  to INV-4, red first and mutation-probed. The test endpoints are
+  unreachable or loopback, so no run reaches a real host.
   **Layman:** One of the AI review tools skips the safety checks the rest of the app uses before sending your API key.
   Kind: security.
   Source: in-session-2026-09-10.

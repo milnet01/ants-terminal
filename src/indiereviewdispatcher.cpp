@@ -17,6 +17,8 @@
 
 #include "indiereviewdispatcher.h"
 
+#include "llmclient.h"
+
 #include <QByteArray>
 #include <QDateTime>
 #include <QDir>
@@ -150,18 +152,20 @@ DispatchResult dispatchLanes(const DispatchRequest &req) {
     QElapsedTimer total;
     total.start();
 
-    // ANTS-1352 INV-15 — endpoint scheme check.
-    const QUrl endpointUrl = resolveEndpoint(req.endpoint);
-    const QString scheme = endpointUrl.scheme().toLower();
-    if (scheme != QStringLiteral("http")
-        && scheme != QStringLiteral("https")) {
+    // ANTS-5018 — the shared egress validator every AI send path runs
+    // (ANTS-2121): scheme, URL userinfo, SSRF host block, and the
+    // cleartext-remote Bearer refusal. It replaces the scheme-only check
+    // (ANTS-1352 INV-15), so a refusal keeps that check's code.
+    const QString egressErr =
+        LlmClient::endpointEgressError(req.endpoint, req.apiKey);
+    if (!egressErr.isEmpty()) {
         r.ok    = false;
         r.code  = QStringLiteral("bad_args");
         r.error = QStringLiteral(
-            "indie_review_dispatch: endpoint scheme \"%1\" must be "
-            "http or https").arg(scheme);
+            "indie_review_dispatch: AI endpoint rejected — ") + egressErr;
         return r;
     }
+    const QUrl endpointUrl = resolveEndpoint(req.endpoint);
 
     if (req.lanes.isEmpty()) {
         // INV-18 — empty lanes is permitted by the spec (caller
@@ -272,6 +276,10 @@ DispatchResult dispatchLanes(const DispatchRequest &req) {
         }
         // INV-8 — per-lane timeout.
         nreq.setTransferTimeout(req.perLaneTimeoutMs);
+        // ANTS-5018 — refuse redirects, as LlmClient::send does (ANTS-1798):
+        // Qt 6 follows one by default, into a host no guard re-validates.
+        nreq.setAttribute(QNetworkRequest::RedirectPolicyAttribute,
+                          QNetworkRequest::ManualRedirectPolicy);
         const QByteArray body = buildRequestBody(lr, req);
         QNetworkReply *reply = nam.post(nreq, body);
         replyToIdx[reply] = idx;

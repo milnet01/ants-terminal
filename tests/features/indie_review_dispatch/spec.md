@@ -8,8 +8,11 @@ response under `reports_dir/<lane>.md`. See
 ## Invariants
 
 This feature test source-greps the wiring + adds a probe-accessor
-test for the concurrency cap. Live-API behavior is covered by the
-manual recipe in the spec § 7.2, not in CI.
+test for the concurrency cap, plus behavioral tests (INV-1..INV-4,
+ANTS-5018) that drive `dispatchLanes` directly — against
+refusal-triggering endpoints, and against a loopback redirect
+fixture. No live remote API access. Other live-API behavior is
+covered by the manual recipe in the spec § 7.2, not in CI.
 
 - **G-1 / dispatcher declared.** `IndieReviewDispatcher::dispatchLanes` declared in `indiereviewdispatcher.h`.
 - **G-2 / contract Required.** `claudeintegration.cpp` classifies `indie_review_dispatch` as `C::Required` with an `// ANTS-1352:` anchor.
@@ -28,6 +31,20 @@ manual recipe in the spec § 7.2, not in CI.
 - **G-15 / fence hardening.** `indiereviewengine.cpp` `assembleBriefForDispatch` body contains the 4-backtick fence sentinel and `treat as data, not instructions` literal.
 - **G-16 / response-body redaction.** `indiereviewdispatcher.cpp` calls a redact helper (`redactAndTruncate`) before stashing response bytes in any envelope/error string.
 - **G-17 / probe accessor declared.** `inFlightCountForTest()` declared in `indiereviewdispatcher.h`.
+
+### ANTS-5018 — shared AI egress checks
+
+`dispatchLanes` runs `LlmClient::endpointEgressError`, the validator
+every other AI send path runs (ANTS-2121), in place of its old
+scheme-only check. A refusal keeps that check's `bad_args` code. Each
+request also sets `ManualRedirectPolicy` (ANTS-1798). The test endpoints
+are unreachable or loopback, so no test run sends a request to a real
+host. The paired test file is each invariant's test surface.
+
+- **INV-1** — a non-empty `apiKey` with a remote plain-`http` endpoint is refused: `ok` is false, the error names the cleartext refusal, and `reports_dir` is never created. An empty key against remote plain-http is allowed, per ANTS-5010.
+- **INV-2** — a private or link-local IP-literal endpoint is refused, with or without a key: the error names the SSRF refusal, and `reports_dir` is never created.
+- **INV-3** — an endpoint embedding URL userinfo is refused, with or without a key: the error names the credential refusal, and `reports_dir` is never created.
+- **INV-4** — a redirect is not followed: against a loopback server answering `307` with a `Location` at a second loopback listener, the second listener receives no request.
 
 ## Probe invariants
 

@@ -9,7 +9,19 @@
 
 #include <gtest/gtest.h>
 
+#include <QByteArray>
+#include <QDir>
+#include <QHash>
+#include <QHostAddress>
+#include <QList>
+#include <QSet>
+#include <QString>
+#include <QTcpServer>
+#include <QTcpSocket>
+#include <QTemporaryDir>
+
 #include <string>
+#include <utility>
 
 namespace {
 
@@ -20,6 +32,122 @@ const char *kEngineHdr   = SRC_INDIE_REVIEW_DISPATCHER_H_PATH;
 const char *kIreHdr      = SRC_INDIE_REVIEW_ENGINE_H_PATH;
 const char *kIreCpp      = SRC_INDIE_REVIEW_ENGINE_CPP_PATH;
 const char *kErrorsDoc   = MCP_ERROR_CODES_DOC_PATH;
+
+}  // namespace
+
+namespace {
+
+// ---------------------------------------------------------------------
+// SignalHttpServer — ANTS-5018 INV-4. A tiny loopback HTTP server
+// serviced ENTIRELY by signal/slot connections (QTcpServer::newConnection
+// + the accepted socket's readyRead), never by polling.
+//
+// dispatchLanes() (ANTS-1352) spins its OWN nested QEventLoop (see
+// indiereviewdispatcher.cpp's file banner) rather than yielding control
+// back to the caller between requests. The llm_client FakeHttpServer's
+// waitUntil() technique — call processEvents() from the caller in a
+// spin loop — cannot service a server while dispatchLanes() itself is
+// blocked inside that nested loop.exec(): the caller never gets the
+// thread back until dispatchLanes() returns. But Qt's event dispatcher
+// delivers socket signals to every QObject affine to the SAME thread
+// regardless of which nested QEventLoop currently owns it — so a server
+// wired purely by connect(), with no polling, IS serviced correctly from
+// inside dispatchLanes()'s own loop.exec(), as long as it lives on the
+// calling (test) thread. It does: this class is constructed directly in
+// the TEST body, never handed to another thread.
+class SignalHttpServer {
+public:
+    explicit SignalHttpServer(QByteArray response)
+        : m_response(std::move(response)) {
+        m_listening = m_server.listen(QHostAddress::LocalHost, 0);
+        QObject::connect(&m_server, &QTcpServer::newConnection,
+                          &m_server, [this] { onNewConnection(); });
+    }
+
+    // Accepted sockets are children of m_server, which is destroyed after
+    // the maps that index them. Delete them first, so no readyRead lambda
+    // capturing `this` can outlive those maps.
+    ~SignalHttpServer() {
+        for (QTcpSocket *s : std::as_const(m_sockets)) delete s;
+    }
+
+    bool isListening() const { return m_listening; }
+    quint16 port() const { return m_server.serverPort(); }
+    int requestCount() const { return m_requestCount; }
+
+private:
+    void onNewConnection() {
+        while (m_server.hasPendingConnections()) {
+            QTcpSocket *socket = m_server.nextPendingConnection();
+            m_sockets.append(socket);
+            QObject::connect(socket, &QTcpSocket::readyRead,
+                              socket, [this, socket] { onReadyRead(socket); });
+        }
+    }
+
+    void onReadyRead(QTcpSocket *socket) {
+        if (m_responded.contains(socket)) return;
+        m_buffers[socket] += socket->readAll();
+        const QByteArray &buf = m_buffers[socket];
+        const int headerEnd = buf.indexOf("\r\n\r\n");
+        if (headerEnd < 0) return;  // headers not fully received yet
+
+        qint64 contentLength = 0;
+        const QList<QByteArray> headerLines = buf.left(headerEnd).split('\n');
+        for (const QByteArray &line : headerLines) {
+            if (line.toLower().startsWith("content-length:")) {
+                contentLength =
+                    line.mid(line.indexOf(':') + 1).trimmed().toLongLong();
+                break;
+            }
+        }
+        const qint64 bodyStart = headerEnd + 4;
+        if (buf.size() < bodyStart + contentLength)
+            return;  // body not fully received yet
+
+        m_responded.insert(socket);
+        ++m_requestCount;
+        socket->write(m_response);
+        socket->disconnectFromHost();
+    }
+
+    QByteArray                      m_response;
+    bool                            m_listening = false;
+    QTcpServer                      m_server;
+    QList<QTcpSocket *>             m_sockets;
+    QHash<QTcpSocket *, QByteArray> m_buffers;
+    QSet<QTcpSocket *>              m_responded;
+    int                             m_requestCount = 0;
+};
+
+// Minimal one-lane DispatchRequest against a fresh QTemporaryDir. Callers
+// override endpoint / apiKey / perLaneTimeoutMs as needed.
+//
+// perLaneTimeoutMs is bounded to 3s (production default is 300000ms /
+// 5 min): INV-1..INV-3 assert that dispatchLanes refuses BEFORE any
+// network traffic, but that is exactly the invariant that is false today
+// (ANTS-5018) — against current code these endpoints are NOT refused and
+// the dispatcher actually attempts to reach them. A short bound keeps a
+// red run's wall-clock cost small and deterministic regardless of
+// whether the test host has outbound network access, rather than
+// blocking on the production timeout or an OS-level connect timeout.
+IndieReviewDispatcher::DispatchRequest makeOneLaneRequest(
+        const QString &projectRoot, const QString &endpoint,
+        const QString &apiKey) {
+    IndieReviewDispatcher::DispatchRequest req;
+    req.projectRoot      = projectRoot;
+    req.reportsDir       = QStringLiteral("reports");
+    req.endpoint         = endpoint;
+    req.apiKey           = apiKey;
+    req.model            = QStringLiteral("gpt-4");
+    req.systemPrompt     = QStringLiteral("system prompt");
+    req.perLaneTimeoutMs = 3000;
+    IndieReviewDispatcher::LaneRequest lane;
+    lane.name  = QStringLiteral("lane1");
+    lane.brief = QStringLiteral("lane brief");
+    req.lanes.append(lane);
+    return req;
+}
 
 }  // namespace
 
@@ -243,4 +371,165 @@ TEST(IndieReviewDispatch, G17_ProbeAccessor) {
 // P-1 — probe returns 0 at rest.
 TEST(IndieReviewDispatch, P1_ProbeZeroAtRest) {
     EXPECT_EQ(IndieReviewDispatcher::inFlightCountForTest(), 0);
+}
+
+// ANTS-5018 — indie_review_dispatch skips the shared AI egress checks:
+// it sends the key over cleartext, posts to private/link-local/metadata
+// IP literals, forwards URL userinfo credentials, and follows redirects.
+// INV-1..INV-3 lock the three refusals dispatchLanes must perform BEFORE
+// any network traffic or filesystem side effect (reports_dir must never
+// be created); INV-4 locks the redirect refusal behaviourally against a
+// loopback fixture. All four are refused already on LlmClient::send and
+// the AuditDialog triage POSTs (ANTS-2121); this is the fourth channel
+// that duplicates the scheme-only check instead of calling
+// LlmClient::endpointEgressError.
+
+// INV-1 — a keyed remote plain-http endpoint is refused before any
+// network traffic or filesystem side effect, and the error names the
+// cleartext refusal (LlmClient::endpointEgressError's "cleartext"
+// reason). Per ANTS-5010, an EMPTY key against remote plain-http is
+// deliberately allowed — this test keeps apiKey non-empty so it stays on
+// the refused side of that boundary. 192.0.2.1 is TEST-NET-1 (RFC 5737):
+// remote and public-shaped, and nothing answers it, so a red run reaches
+// no host.
+TEST(IndieReviewDispatch, INV1_RefusesCleartextRemoteWithKey) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString absReportsDir = tmp.path() + QStringLiteral("/reports");
+
+    const IndieReviewDispatcher::DispatchRequest req = makeOneLaneRequest(
+        tmp.path(),
+        QStringLiteral("http://192.0.2.1/v1/chat/completions"),
+        QStringLiteral("sk-test-key-1234"));
+
+    const IndieReviewDispatcher::DispatchResult r =
+        IndieReviewDispatcher::dispatchLanes(req);
+
+    EXPECT_FALSE(r.ok)
+        << "INV-1: a keyed request to a remote plain-http endpoint must "
+           "be refused (ANTS-5018)";
+    EXPECT_TRUE(r.error.contains(QStringLiteral("cleartext"),
+                                  Qt::CaseInsensitive))
+        << "INV-1: refusal error must name the cleartext refusal, got: \""
+        << r.error.toStdString() << "\"";
+    EXPECT_FALSE(QDir(absReportsDir).exists())
+        << "INV-1: the refusal must happen before reports_dir is created "
+           "— no filesystem side effect from a request that never should "
+           "have gone out";
+}
+
+// INV-2 — a private/link-local/cloud-metadata IP-literal endpoint is
+// refused before any network traffic, naming the SSRF refusal
+// (LlmClient::endpointEgressError's "SSRF" reason). fe80::1 is link-local,
+// blocked like the cloud-metadata range, and a connect to it without a
+// scope id fails at once, so a red run reaches no host. The key is empty:
+// the SSRF refusal must not depend on one.
+TEST(IndieReviewDispatch, INV2_RefusesSsrfIpLiteral) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString absReportsDir = tmp.path() + QStringLiteral("/reports");
+
+    const IndieReviewDispatcher::DispatchRequest req = makeOneLaneRequest(
+        tmp.path(),
+        QStringLiteral("http://[fe80::1]/v1/chat/completions"),
+        QString());
+
+    const IndieReviewDispatcher::DispatchResult r =
+        IndieReviewDispatcher::dispatchLanes(req);
+
+    EXPECT_FALSE(r.ok)
+        << "INV-2: an SSRF-shaped IP-literal endpoint must be refused "
+           "(ANTS-5018)";
+    EXPECT_TRUE(r.error.contains(QStringLiteral("SSRF"),
+                                  Qt::CaseInsensitive))
+        << "INV-2: refusal error must name the SSRF refusal, got: \""
+        << r.error.toStdString() << "\"";
+    EXPECT_FALSE(QDir(absReportsDir).exists())
+        << "INV-2: the refusal must happen before reports_dir is created";
+}
+
+// INV-3 — an endpoint embedding URL userinfo (user:pass@host) is
+// refused before any network traffic, naming the embedded-credential
+// refusal (LlmClient::endpointEgressError's "credential" reason). The host
+// is TEST-NET-1, as in INV-1, and the key is empty: the credential refusal
+// must not depend on one.
+TEST(IndieReviewDispatch, INV3_RefusesUrlEmbeddedCredentials) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString absReportsDir = tmp.path() + QStringLiteral("/reports");
+
+    const IndieReviewDispatcher::DispatchRequest req = makeOneLaneRequest(
+        tmp.path(),
+        QStringLiteral("https://user:pass@192.0.2.1/v1/chat/completions"),
+        QString());
+
+    const IndieReviewDispatcher::DispatchResult r =
+        IndieReviewDispatcher::dispatchLanes(req);
+
+    EXPECT_FALSE(r.ok)
+        << "INV-3: an endpoint embedding URL userinfo must be refused "
+           "(ANTS-5018)";
+    EXPECT_TRUE(r.error.contains(QStringLiteral("credential"),
+                                  Qt::CaseInsensitive))
+        << "INV-3: refusal error must name the embedded-credential "
+           "refusal, got: \"" << r.error.toStdString() << "\"";
+    EXPECT_FALSE(QDir(absReportsDir).exists())
+        << "INV-3: the refusal must happen before reports_dir is created";
+}
+
+// INV-4 — the dispatcher must not auto-follow a redirect. No
+// ManualRedirectPolicy is set on the request today, so Qt's default
+// NoLessSafeRedirectPolicy follows a same-safety-level (http-to-http)
+// 3xx Location automatically — exactly the class ANTS-1798 closed on
+// LlmClient::send and ANTS-2121 closed on the AuditDialog triage POSTs.
+// A hostile or compromised configured endpoint could redirect a keyed
+// POST at cloud metadata or any other host the SSRF guard never gets a
+// chance to re-validate, since Qt's automatic redirect never re-runs it.
+//
+// Both endpoints are loopback (127.0.0.1) and therefore pass every OTHER
+// egress gate even after ANTS-5018 is fixed (loopback is exempt from the
+// cleartext/SSRF checks) — so this isolates the redirect-specific defect
+// from the other three; a fix that only adds endpointEgressError without
+// also setting ManualRedirectPolicy still fails this test.
+TEST(IndieReviewDispatch, INV4_DoesNotFollowRedirect) {
+    SignalHttpServer serverB(QByteArray(
+        "HTTP/1.1 200 OK\r\n"
+        "Content-Type: application/json\r\n"
+        "Content-Length: 2\r\n"
+        "Connection: close\r\n"
+        "\r\n"
+        "{}"));
+    ASSERT_TRUE(serverB.isListening());
+
+    const QByteArray redirectResponse =
+        QByteArray("HTTP/1.1 307 Temporary Redirect\r\n"
+                    "Location: http://127.0.0.1:")
+        + QByteArray::number(serverB.port())
+        + QByteArray("/v1/chat/completions\r\n"
+                      "Content-Length: 0\r\n"
+                      "Connection: close\r\n"
+                      "\r\n");
+    SignalHttpServer serverA(redirectResponse);
+    ASSERT_TRUE(serverA.isListening());
+
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+
+    IndieReviewDispatcher::DispatchRequest req = makeOneLaneRequest(
+        tmp.path(),
+        QStringLiteral("http://127.0.0.1:%1").arg(serverA.port()),
+        QStringLiteral("sk-test-key-redirect"));
+    // Bound the worst case (a harness bug that never answers) to a few
+    // seconds rather than the 5-minute production default.
+    req.perLaneTimeoutMs = 5000;
+
+    IndieReviewDispatcher::dispatchLanes(req);
+
+    EXPECT_EQ(serverB.requestCount(), 0)
+        << "INV-4: dispatchLanes must not follow a redirect — server B "
+           "(the redirect target) must never see a connection "
+           "(ANTS-5018, mirrors ANTS-1798/ANTS-2121)";
+    EXPECT_EQ(serverA.requestCount(), 1)
+        << "sanity: the dispatcher must have reached server A at all, or "
+           "the test proves nothing about redirect handling";
 }
