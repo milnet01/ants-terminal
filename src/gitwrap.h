@@ -22,9 +22,15 @@
 
 namespace GitWrap {
 
-// ANTS-4999 — the environment for a read-only git call.
+// ANTS-4999 — the environment for a read-only git call. A plain
+// `git status` refreshes the index and may hold .git/index.lock while it
+// does, so a user's `git commit` in that window fails. GIT_OPTIONAL_LOCKS=0
+// is git's switch for polling tools: it skips optional locks and still
+// takes every lock a write needs. Header-only, so any library can use it.
 inline QProcessEnvironment readOnlyEnvironment() {
-    return QProcessEnvironment::systemEnvironment();
+    QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
+    env.insert(QStringLiteral("GIT_OPTIONAL_LOCKS"), QStringLiteral("0"));
+    return env;
 }
 
 struct Result {

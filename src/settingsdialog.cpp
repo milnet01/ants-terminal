@@ -1722,7 +1722,7 @@ void SettingsDialog::installClaudeGitContextHook() {
         "    fi\n"
         "fi\n"
         "\n"
-        "porcelain=$(git status --porcelain 2>/dev/null || true)\n"
+        "porcelain=$(GIT_OPTIONAL_LOCKS=0 git status --porcelain 2>/dev/null || true)\n"
         "staged=0; unstaged=0; untracked=0\n"
         "if [[ -n \"$porcelain\" ]]; then\n"
         "    while IFS= read -r line; do\n"

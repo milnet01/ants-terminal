@@ -16,6 +16,7 @@
 #include "roadmapfoldin.h"
 #include "subsystemmap.h"
 #include "verifyengine.h"
+#include "gitwrap.h"
 #include "debuglog.h"
 #include <QTimeZone>
 #include "fileoutline.h"   // ANTS-4814 — enclosing-symbol grouping
@@ -1717,6 +1718,7 @@ namespace rcdetail {
 QByteArray runGit(const QString &root, const QStringList &argv) {
     QProcess p;
     p.setProcessChannelMode(QProcess::SeparateChannels);
+    p.setProcessEnvironment(GitWrap::readOnlyEnvironment());   // ANTS-4999
     QStringList full;
     full << QStringLiteral("-C") << root;
     full.append(argv);

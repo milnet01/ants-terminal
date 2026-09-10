@@ -35,6 +35,12 @@ for security-relevant changes.
 
 ### Fixed
 
+- **Ants's own git checks can no longer make your git commit fail with "index.lock: File exists"** (ANTS-4999)
+  Every read-only git check Ants runs now skips git's optional index
+  lock. That covers the Review button's two-second check, the git MCP
+  verbs, audit scoping and the Claude git-context hook. A hook that is
+  already installed picks this up when reinstalled from Settings.
+
 - **The AI review job pool reports a finished round exactly once, even when a job completes the moment it starts** (ANTS-5000)
   Before, each nested step announced the same round again. Only test
   code reached this path; live AI requests always finish later.

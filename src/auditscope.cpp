@@ -2,6 +2,8 @@
 
 #include "auditscope.h"
 
+#include "gitwrap.h"
+
 #include <QFileInfo>
 #include <QProcess>
 #include <QSet>
@@ -19,6 +21,7 @@ QString runGit(const QString &root, const QStringList &args) {
     QProcess p;
     p.setWorkingDirectory(root);
     p.setProcessChannelMode(QProcess::SeparateChannels);
+    p.setProcessEnvironment(GitWrap::readOnlyEnvironment());   // ANTS-4999
     p.start(QStringLiteral("git"), args);
     if (!p.waitForStarted(kGitTimeoutMs)) return {};
     if (!p.waitForFinished(kGitTimeoutMs)) {
@@ -37,6 +40,7 @@ QString runGitRaw(const QString &root, const QStringList &args) {
     QProcess p;
     p.setWorkingDirectory(root);
     p.setProcessChannelMode(QProcess::SeparateChannels);
+    p.setProcessEnvironment(GitWrap::readOnlyEnvironment());   // ANTS-4999
     p.start(QStringLiteral("git"), args);
     if (!p.waitForStarted(kGitTimeoutMs)) return {};
     if (!p.waitForFinished(kGitTimeoutMs)) {
@@ -54,6 +58,7 @@ bool runGitSucceeds(const QString &root, const QStringList &args) {
     QProcess p;
     p.setWorkingDirectory(root);
     p.setProcessChannelMode(QProcess::SeparateChannels);
+    p.setProcessEnvironment(GitWrap::readOnlyEnvironment());   // ANTS-4999
     p.start(QStringLiteral("git"), args);
     if (!p.waitForStarted(kGitTimeoutMs)) return false;
     if (!p.waitForFinished(kGitTimeoutMs)) {

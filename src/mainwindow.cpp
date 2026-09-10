@@ -21,6 +21,7 @@
 #include "resolvedroot.h"      // ANTS-1401 — terminalForCaller helper
 #include "secureio.h"          // ANTS-4456 — ensurePrivateDir (0700)
 #include "reviewbuttonstate.h" // ANTS-1874 — Review-button porcelain predicate
+#include "gitwrap.h"           // ANTS-4999 — readOnlyEnvironment for git probes
 #include "verifytrustmodal.h"  // ANTS-1337 Phase 2
 #include "branchchip.h"           // ANTS-1109 helper
 #include "clipboardguard.h"       // ANTS-1014 clipboard funnel
@@ -4410,8 +4411,11 @@ void MainWindow::setupClaudeMcpProviders() {
             // together they run in parallel, so the worst-case GUI block
             // is one 2 s timeout, not three. Output format unchanged.
             QProcess branchProc, statusProc, logProc;
-            for (QProcess *p : {&branchProc, &statusProc, &logProc})
+            const QProcessEnvironment gitEnv = GitWrap::readOnlyEnvironment();  // ANTS-4999
+            for (QProcess *p : {&branchProc, &statusProc, &logProc}) {
                 p->setWorkingDirectory(cwd);
+                p->setProcessEnvironment(gitEnv);
+            }
             branchProc.start("git", {"rev-parse", "--abbrev-ref", "HEAD"});
             statusProc.start("git", {"status", "--porcelain", "-sb"});
             logProc.start("git", {"log", "--oneline", "-5"});
@@ -6999,6 +7003,9 @@ void MainWindow::refreshReviewButton() {
     // delta and missed unpushed commits.
     auto *proc = new QProcess(this);
     proc->setWorkingDirectory(cwd);
+    // ANTS-4999 — a plain status may take .git/index.lock to refresh the
+    // index, and on a 2 s timer that makes the user's git commit fail.
+    proc->setProcessEnvironment(GitWrap::readOnlyEnvironment());
     proc->setProgram("git");
     proc->setArguments({"status", "--porcelain=v1", "-b"});
 

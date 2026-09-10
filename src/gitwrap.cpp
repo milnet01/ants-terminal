@@ -13,6 +13,7 @@ Result run(const QString &workingDir, const QStringList &argv,
     QProcess p;
     p.setWorkingDirectory(workingDir);
     p.setProcessChannelMode(QProcess::SeparateChannels);
+    p.setProcessEnvironment(readOnlyEnvironment());   // ANTS-4999
     // ANTS-1250-INV-6: argv form of QProcess::start. Never the
     // shell-interpolated single-string form. Mirrors the
     // cmdWorkspaceSearch invocation from ANTS-1248.

@@ -64676,7 +64676,7 @@ partition (11 lanes) is documented in this fold-in for reuse.
   Source: in-session-2026-09-10.
   Lanes: mcp.
 
-- 📋 [ANTS-4999] **The Review button's 2-second git probe can hold index.lock and make a user's git commit fail.**
+- ✅ [ANTS-4999] **The Review button's 2-second git probe can hold index.lock and make a user's git commit fail.**
   `MainWindow::refreshReviewButton` runs on the 2 s status timer and
   starts `git status --porcelain=v1 -b` in the focused tab's cwd. It
   does not set GIT_OPTIONAL_LOCKS=0. A plain `git status` may take
@@ -64694,6 +64694,17 @@ partition (11 lanes) is documented in this fold-in for reuse.
   `git status` callers in src/ should be checked for the same gap:
   setupClaudeMcpProviders, collectGitSnapshot in remotecontrol_review,
   runStatusOp in remotecontrol_feedback. Unverified per site.
+  Resolved (2026-09-10): GitWrap::readOnlyEnvironment(), header-only in
+  gitwrap.h, returns the environment with GIT_OPTIONAL_LOCKS=0.
+  GitWrap::run, the Review-button probe, the get_git_status provider,
+  RemoteControl's shared runGit and auditscope's three runners use it.
+  The Claude git-context hook script prefixes its git status with it.
+  tests/features/git_optional_locks proves it: red against a stub, then
+  green, including a check that git's child process sees the variable.
+  The diff viewer already had it (ANTS-3509). Two limits. The probe was
+  never proven to be the lock holder, so this removes Ants as a possible
+  cause rather than a confirmed one. A hook script already installed
+  keeps its old text until reinstalled from Settings.
   **Layman:** Ants checks your project's git state every two seconds in a way that can briefly lock it, so a commit made at that moment fails.
   Kind: fix.
   Source: in-session-2026-09-10.
@@ -73841,6 +73852,29 @@ contributors don't duplicate research.
   Kind: perf.
   Source: in-session-2026-09-10.
   Lanes: ci.
+
+- 📋 [ANTS-5023] **clangd's clang-tidy reports older warnings in mainwindow.cpp and settingsdialog.cpp.**
+  Seen 2026-09-10 while editing both files for ANTS-4999; none sit on the
+  lines that change touched. Checks reported, in both files unless noted:
+  performance-implicit-conversion-in-loop (QJsonValueRef loop variables),
+  performance-use-std-move, and misc-use-anonymous-namespace on static
+  helpers. mainwindow.cpp only: misc-no-recursion on
+  cleanupEmptySplitters, misc-override-with-different-visibility on
+  eventFilter, and bugprone-incorrect-roundings on a (double + 0.5) cast.
+  The rounding one is the only possible behaviour defect; check it first.
+  Triage the rest with the mainwindow decomposition (ANTS-1043) rather
+  than as a separate sweep.
+  Progress (2026-09-10): more reported while building ANTS-4999.
+  remotecontrol_review.cpp flags misc-use-internal-linkage on several
+  helpers; check whether remotecontrol_internal.h declares them before
+  acting, since then these are false positives. mainwindow.cpp adds
+  bugprone-branch-clone in refreshReviewButton's finished handler (two
+  branches both hide the button), performance-unnecessary-copy-initialization,
+  and more implicit-conversion loops.
+  **Layman:** The code checker built into the editor flags a set of small, older style and speed issues in two large files.
+  Kind: chore.
+  Source: in-session-2026-09-10.
+  Lanes: mainwindow, settingsdialog.
 
 ### 📝 Cold-eyes 2026-05-11 (ANTS-1234 spec)
 
