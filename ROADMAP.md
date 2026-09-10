@@ -73848,6 +73848,27 @@ contributors don't duplicate research.
   bought only 1.31x. Raising the budget is the documented stopgap. A
   lasting fix lowers the startup cost per test, for example by running a
   bundle's tests in one process under ASan. Measure before choosing.
+  Progress (2026-09-10): measured locally in build-asan with CI's ASan
+  options.
+  - Each ctest entry launches its bundle through CMake's LaunchTest.cmake.
+    The wrapper adds about 8 ms. ctest's PRE_TEST discovery costs about
+    3.5 s once per invocation, not per test.
+  - The per-test cost is the bundle's own startup under ASan: 48 ms for
+    test_lua up to 193 ms for test_claude, against 22-37 ms in Release.
+    Startup times test count is about 640 s serial, 490 s of it
+    test_claude.
+  - One process per bundle is memory-bound. test_vt ran whole in 12.8 s at
+    429 MB. test_chrome's whole run left the host short of memory and was
+    stopped. test_core's whole run passed 1 GB and did not finish inside
+    120 s.
+  - gtest_discover_tests has no grouping option, so batching by suite
+    needs a project-local discovery step for the sanitized build only. A
+    sanitized failure would then name a suite rather than a test.
+  - A per-suite measurement was started and is INVALID. systemd-run
+    expanded the loop's suite variable to empty, so each run was the whole
+    bundle. Per-suite batching is not measured yet.
+  Next: rerun the per-suite measurement from a script file under a memory
+  cap, then take the choice to the user.
   **Layman:** The memory-checking test run keeps getting slower as tests are added.
   Kind: perf.
   Source: in-session-2026-09-10.
