@@ -9250,7 +9250,7 @@ void ClaudeIntegration::onMcpConnection() {
                     QJsonObject t;
                     t["name"] = "build_target_for";
                     t["description"] = QStringLiteral(
-                        "[build] Which build target owns this source file, "
+                        "Which build target owns this source file, "
                         "read statically from CMakeLists.txt — plus the "
                         "`cmake --build --target` line and, for a gtest "
                         "source, the `ctest -R` filter its suites imply. "
@@ -11271,7 +11271,7 @@ void ClaudeIntegration::onMcpConnection() {
                     QJsonObject t;
                     t["name"] = "test_audit_recheck";
                     t["description"] = QStringLiteral(
-                        "[test-audit] Recheck a deferred test-audit "
+                        "Recheck a deferred test-audit "
                         "finding's cite before resuming the work days "
                         "later. Parses ROADMAP.md for the bullet "
                         "`[<finding_id>]`, extracts the first `path:line` "

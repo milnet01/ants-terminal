@@ -3,15 +3,21 @@
 // Source-scrape against claudeintegration.cpp and mainwindow.cpp:
 // asserts the two label renames and that no registered tool falls
 // into the `"other"` bucket.
+//
+// ANTS-3645 part (b) adds INV-4: the complementary failure mode, where a
+// tool's own description already begins with `[` and silently suppresses
+// the prefix loop's tag instead of falling into `other`. See spec.md.
 
 #include "../../_support/expect.h"
 
 #include <gtest/gtest.h>
 #include "../../_support/srcgrep.h"
 
+#include <cctype>
 #include <cstdio>
 #include <set>
 #include <string>
+#include <vector>
 
 ANTS_TEST_SCOPE();
 
@@ -58,6 +64,95 @@ std::set<std::string> collectRegisteredToolNames(const std::string &src) {
         p = q + 1;
     }
     return names;
+}
+
+// Every `<var>["name"] = "<value>";` assignment in claudeintegration.cpp,
+// skipping the one whose variable is `serverInfo` (the MCP server's own
+// self-descriptor, not a tool). Anchored on the NAME VALUE rather than on
+// the assigning variable's spelling — descriptor locals are one-off per
+// tool (`wsTool`, `sessionTool`, plain `t`, ...), so no single variable
+// name covers every registration, and the value string is the only
+// constant across all of them.
+//
+// Deliberately does NOT reuse `collectRegisteredToolNames` above: that
+// walks mainwindow.cpp's `registerToolProvider(...)` calls, which misses
+// `tool_info` and `get_session_info` — both built inline in the tools/list
+// handler rather than registered through a provider. INV-4 below needs
+// every tool actually written to the wire, so it scans
+// claudeintegration.cpp itself.
+std::vector<std::string> collectAllToolNamesInClaudeIntegration(
+    const std::string &ci) {
+    std::vector<std::string> names;
+    const std::string marker = "[\"name\"] = \"";
+    std::size_t p = 0;
+    while ((p = ci.find(marker, p)) != std::string::npos) {
+        std::size_t idStart = p;
+        while (idStart > 0 &&
+               (std::isalnum(static_cast<unsigned char>(ci[idStart - 1])) ||
+                ci[idStart - 1] == '_')) {
+            --idStart;
+        }
+        const std::string var = ci.substr(idStart, p - idStart);
+        const std::size_t valStart = p + marker.size();
+        const std::size_t valEnd = ci.find('"', valStart);
+        if (valEnd == std::string::npos) break;
+        if (var != "serverInfo") {
+            names.push_back(ci.substr(valStart, valEnd - valStart));
+        }
+        p = valEnd + 1;
+    }
+    return names;
+}
+
+// The decoded first character of a tool's short `description` literal.
+// Handles both shapes seen in claudeintegration.cpp: the common
+// `QStringLiteral("...")` (including adjacent-segment continuations
+// across lines) and a bare `"...";` literal — the one exception,
+// `get_session_info`. Returns false, rather than a guessed character,
+// when the assignment matches neither shape: a description authored a
+// third way must fail this loudly, not get silently attributed to
+// whatever QStringLiteral happens to follow it (the trap a naive
+// find("QStringLiteral(", ...) falls into on `get_session_info`, whose
+// plain literal has no QStringLiteral for the scan to stop at — it would
+// walk on into the next tool's `selection_hint`).
+bool descriptionFirstChar(const std::string &ci, const std::string &tool,
+                           char *out) {
+    const std::string anchor = "[\"name\"] = \"" + tool + "\"";
+    const std::size_t np = ci.find(anchor);
+    if (np == std::string::npos) return false;
+    const std::size_t ds = ci.find("[\"description\"]", np);
+    if (ds == std::string::npos) return false;
+    // A description past the NEXT tool's name belongs to that tool. Reading
+    // it would attribute another tool's text to this one, silently.
+    const std::size_t nextName = ci.find("[\"name\"] = \"", np + anchor.size());
+    if (nextName != std::string::npos && nextName < ds) return false;
+    const std::size_t eq = ci.find('=', ds);
+    if (eq == std::string::npos) return false;
+    std::size_t i = eq + 1;
+    while (i < ci.size() &&
+           std::isspace(static_cast<unsigned char>(ci[i]))) {
+        ++i;
+    }
+    const std::string qsl = "QStringLiteral(";
+    if (ci.compare(i, qsl.size(), qsl) == 0) {
+        i += qsl.size();
+        while (i < ci.size() &&
+               std::isspace(static_cast<unsigned char>(ci[i]))) {
+            ++i;
+        }
+        if (i >= ci.size() || ci[i] != '"') return false;
+        ++i;
+        if (i >= ci.size()) return false;
+        *out = (ci[i] == '\\' && i + 1 < ci.size()) ? ci[i + 1] : ci[i];
+        return true;
+    }
+    if (ci[i] == '"') {
+        ++i;
+        if (i >= ci.size()) return false;
+        *out = (ci[i] == '\\' && i + 1 < ci.size()) ? ci[i + 1] : ci[i];
+        return true;
+    }
+    return false;  // neither recognised literal shape
 }
 
 }  // namespace
@@ -158,4 +253,38 @@ TEST(mcp_tool_prefix_tags, Inv3EveryRegisteredToolHasBucket) {
                           << " not bucketed in kindForName";
         }
     }
+}
+
+// INV-4 — no registered MCP tool's short `description` literal begins
+// with `[`. The tools/list prefix loop only prepends `[<kind>] ` when
+// `!desc.startsWith('[')` (idempotent, so a repeated tools/list call
+// cannot double it) — so a description an author writes with a leading
+// bracket silently SUPPRESSES its own kind tag instead of doubling it:
+// the guard sees the bracket, skips, and the tool lists under whatever
+// text the author wrote instead of the tag `kindForName` assigned it.
+// ANTS-3645 part (b).
+TEST(mcp_tool_prefix_tags, Inv4NoDescriptionPreBracketed) {
+    expect_reset();
+    const std::string ci =
+        ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::vector<std::string> names =
+        collectAllToolNamesInClaudeIntegration(ci);
+    expect(names.size() >= 90,
+           "INV-4 setup: at least 90 tool name registrations seen "
+           "(sanity check)");
+    for (const std::string &name : names) {
+        char first = '\0';
+        const bool ok = descriptionFirstChar(ci, name, &first);
+        expect(ok,
+               (std::string("INV-4 setup: description literal not "
+                   "recognised (neither QStringLiteral(...) nor a bare "
+                   "literal) for ") + name).c_str());
+        if (!ok) continue;
+        expect(first != '[',
+               (std::string("INV-4: ") + name +
+                   " description must not begin with '[' — it would "
+                   "suppress the runtime [<kind>] prefix instead of "
+                   "letting it apply").c_str());
+    }
+    EXPECT_EQ(0, expect_failures());
 }
