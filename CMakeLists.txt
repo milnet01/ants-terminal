@@ -1919,6 +1919,8 @@ if(ANTS_TESTS)
                 tests/features/mcp_git_state/test_mcp_git_state.cpp
                 # ANTS-1839 — GitWrap per-caller stdout budget.
                 tests/features/gitwrap_stdout_cap/test_gitwrap_stdout_cap.cpp
+                # ANTS-4999 — read-only git calls skip optional index locks.
+                tests/features/git_optional_locks/test_git_optional_locks.cpp
                 # ANTS-3377 — git_state op:diff hunk-header parser.
                 tests/features/git_diff_hunks/test_git_diff_hunks.cpp
                 tests/features/mcp_subsystem/test_mcp_subsystem.cpp
@@ -2521,6 +2523,14 @@ if(ANTS_TESTS)
         APPEND PROPERTY COMPILE_DEFINITIONS
         SRC_GITWRAP_CPP_PATH="${CMAKE_SOURCE_DIR}/src/gitwrap.cpp"
         SRC_GITWRAP_H_PATH="${CMAKE_SOURCE_DIR}/src/gitwrap.h")
+    set_property(SOURCE tests/features/git_optional_locks/test_git_optional_locks.cpp
+        APPEND PROPERTY COMPILE_DEFINITIONS
+        # ANTS-4999 — every read-only git runner uses readOnlyEnvironment().
+        SRC_MAINWINDOW_CPP_PATH="${CMAKE_SOURCE_DIR}/src/mainwindow.cpp"
+        SRC_AUDITSCOPE_CPP_PATH="${CMAKE_SOURCE_DIR}/src/auditscope.cpp"
+        SRC_SETTINGSDIALOG_CPP_PATH="${CMAKE_SOURCE_DIR}/src/settingsdialog.cpp"
+        # Quoted as ONE argument: the value contains ";" separators.
+        "ANTS_RC_SOURCES=\"${_ants_rc_joined}\"")
     set_property(SOURCE tests/features/mcp_subsystem/test_mcp_subsystem.cpp
         APPEND PROPERTY COMPILE_DEFINITIONS
         SRC_SUBSYSTEMMAP_CPP_PATH="${CMAKE_SOURCE_DIR}/src/subsystemmap.cpp"

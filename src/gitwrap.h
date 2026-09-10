@@ -15,11 +15,17 @@
 #define ANTS_GITWRAP_H
 
 #include <QByteArray>
+#include <QProcessEnvironment>
 #include <QString>
 #include <QStringList>
 #include <QVector>
 
 namespace GitWrap {
+
+// ANTS-4999 — the environment for a read-only git call.
+inline QProcessEnvironment readOnlyEnvironment() {
+    return QProcessEnvironment::systemEnvironment();
+}
 
 struct Result {
     int        exitCode    = -1;
