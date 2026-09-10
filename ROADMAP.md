@@ -55386,6 +55386,14 @@ than re-filed; everything else lands here.
   either — its dry run on that project reports items_updated:13 with
   fields:["layman"] on every one (ANTS-4507's artefact, and ANTS-4955
   means it rewrites those columns as it goes).
+  Seen 2026-09-10 in UT_MonsterHunt. The stored root intro still said
+  `# Roadmap — /mnt/Games`, from before commit bef35d2 moved the project
+  out. Commit 6ffdbb1 fixed the file by hand, and every render reverted
+  it. Re-migrating was not usable: its dry run would also have rewritten
+  39 items' layman column (ANTS-4507). Fixed by a one-row UPDATE of
+  section.intro, guarded on the old text, after a .backup of the store.
+  check_sync then reported file_in_sync. Same gap as ANTS-4539,
+  ANTS-4766, ANTS-4832 and ANTS-4949.
   **Layman:** A roadmap whose title names the wrong project cannot be corrected by any command, and fixing it by hand is undone silently.
   Kind: fix.
   Source: UT_MonsterHunt_Ants_MCP_Feedback.md 2026-09-08.
