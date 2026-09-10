@@ -6,6 +6,8 @@
 // INV-20 a failed job is not stored in reports(); status names it.
 // INV-21 Dispatch button disabled for the duration of a round.
 // INV-22 startDispatch with no lanes starts no round.
+// INV-23 (ANTS-5010) plaintext-prompt-warning label from both dispatch
+//        entry points; cleared on switch to https/loopback/keyed.
 
 #include "reviewdialogbase.h"
 
@@ -330,4 +332,108 @@ TEST(ReviewDialogBase, INV22_StartDispatchNoLanesStartsNoRound) {
     EXPECT_EQ(dlg.allCollectedCalls, 0);
     EXPECT_TRUE(dispatchBtn->isEnabled())
         << "no round started; Dispatch must stay enabled";
+}
+
+namespace {
+// A synchronous "every job succeeds" runner — shared by the two INV-23
+// cases below. Records how many jobs it ran so a test can assert the
+// round still executed despite (or without) the warning.
+LlmDispatcher::JobRunner countingOkRunner(int *calls) {
+    return [calls](const LlmJob &, std::function<void(const LlmResult &)> done) {
+        ++*calls;
+        LlmResult r;
+        r.ok = true;
+        r.text = QStringLiteral("ok");
+        done(r);
+    };
+}
+}  // namespace
+
+// ANTS-5010 — INV-23: startDispatch/redispatch with a keyless remote
+// plain-http endpoint show LlmClient::plaintextPromptWarning's text on
+// statusLabel(), from BOTH dispatch entry points, and the round still
+// runs. The warning must not survive a live switch to https (MainWindow
+// reloads Config in place while the dialog is open). Stub source-first:
+// beginRound() does not yet call plaintextPromptWarning at all, so this
+// test is expected to fail RED against src/reviewdialogbase.cpp.
+TEST(ReviewDialogBase, INV23_PlaintextPromptWarningLabelBothEntryPoints) {
+    Config cfg;
+    const QString host = QStringLiteral("192.0.2.1");   // TEST-NET-1
+    cfg.setAiEndpoint(QStringLiteral("http://%1/v1/chat/completions").arg(host));
+    TestReviewDialog dlg(QString(), nullptr, &cfg);
+
+    int calls = 0;
+    dlg.setJobRunner(countingOkRunner(&calls));
+    dlg.setLanes({ ReviewLane{"a", "a", ""} });
+
+    const QString expected = QStringLiteral(
+        "Not encrypted: this request goes to %1 over plain http, so anyone "
+        "on the network path can read it. Use https:// to protect it.")
+        .arg(host);
+
+    // Entry point 1: startDispatch.
+    dlg.startDispatch();
+    ASSERT_NE(dlg.statusLabel(), nullptr);
+    EXPECT_EQ(dlg.statusLabel()->text(), expected)
+        << "INV-23: startDispatch must show the plaintext-prompt warning; "
+           "got: " << dlg.statusLabel()->text().toStdString();
+    EXPECT_EQ(calls, 1) << "INV-23: the round must still run despite the warning";
+
+    // Entry point 2: redispatch. Reset the label first so a stale value
+    // from the previous round can't make this assertion pass vacuously.
+    calls = 0;
+    dlg.redispatch({ "a" });
+    EXPECT_EQ(dlg.statusLabel()->text(), expected)
+        << "INV-23: redispatch must show the same warning as startDispatch";
+    EXPECT_EQ(calls, 1);
+
+    // Live switch to https between rounds (MainWindow reloads Config in
+    // place while the dialog is open) — the warning from the earlier
+    // plain-http round must not survive.
+    cfg.setAiEndpoint(QStringLiteral("https://%1/v1/chat/completions").arg(host));
+    calls = 0;
+    dlg.redispatch({ "a" });
+    EXPECT_NE(dlg.statusLabel()->text(), expected)
+        << "INV-23: a stale plaintext warning from an earlier plain-http "
+           "round must not survive a switch to https";
+    EXPECT_EQ(calls, 1) << "INV-23: the https round must still run";
+}
+
+// ANTS-5010 — INV-23 (negative cases): a loopback endpoint and a keyed
+// endpoint must never show the warning, even though both are otherwise
+// dispatchable.
+TEST(ReviewDialogBase, INV23_NoWarningForLoopbackOrKeyedEndpoint) {
+    const QString expectedSubstring = QStringLiteral("Not encrypted");
+
+    {
+        Config cfg;
+        // Loopback, port nothing listens on — no request ever reaches a
+        // server, per the spec's § 6 test-endpoint convention.
+        cfg.setAiEndpoint(QStringLiteral("http://127.0.0.1:9/v1/chat/completions"));
+        TestReviewDialog dlg(QString(), nullptr, &cfg);
+        int calls = 0;
+        dlg.setJobRunner(countingOkRunner(&calls));
+        dlg.setLanes({ ReviewLane{"a", "a", ""} });
+        dlg.startDispatch();
+        ASSERT_NE(dlg.statusLabel(), nullptr);
+        EXPECT_FALSE(dlg.statusLabel()->text().contains(expectedSubstring))
+            << "INV-23: a loopback endpoint must not warn; got: "
+            << dlg.statusLabel()->text().toStdString();
+        EXPECT_EQ(calls, 1);
+    }
+    {
+        Config cfg;
+        cfg.setAiEndpoint(QStringLiteral("http://192.0.2.1/v1/chat/completions"));
+        cfg.setAiApiKey(QStringLiteral("sk-secret"));
+        TestReviewDialog dlg(QString(), nullptr, &cfg);
+        int calls = 0;
+        dlg.setJobRunner(countingOkRunner(&calls));
+        dlg.setLanes({ ReviewLane{"a", "a", ""} });
+        dlg.startDispatch();
+        ASSERT_NE(dlg.statusLabel(), nullptr);
+        EXPECT_FALSE(dlg.statusLabel()->text().contains(expectedSubstring))
+            << "INV-23: a keyed endpoint must not warn; got: "
+            << dlg.statusLabel()->text().toStdString();
+        EXPECT_EQ(calls, 1);
+    }
 }

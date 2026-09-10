@@ -17,6 +17,8 @@
 // INV-18 a reply finishing mid-drain must not drop already-buffered lines.
 // INV-19 a reply with no SSE data line is read as plain JSON, success or error.
 // INV-20 reaching the size cap ends the download, not just the appending.
+// INV-21 (ANTS-5010) plaintextPromptWarning — keyless plain-http-to-remote
+//        warning text, empty for every exempt case.
 
 #include "llmclient.h"
 
@@ -426,6 +428,72 @@ TEST(LlmClient, Ants2121_AuditTriageRoutesThroughEgressValidator) {
         << "audit triage must set ManualRedirectPolicy";
     EXPECT_NE(src.find(mrp, firstMrp + mrp.size()), std::string::npos)
         << "both triage POSTs must set ManualRedirectPolicy";
+}
+
+// ANTS-5010 — INV-21: plaintextPromptWarning is a table over the endpoint /
+// key cases the spec's § 2.1 and § 3 INV-1 name. Stub source-first: this
+// test is expected to fail RED, since plaintextPromptWarning currently
+// always returns an empty QString (src/llmclient.cpp).
+TEST(LlmClient, INV21_PlaintextPromptWarning) {
+    // Positive: keyless, plain http, remote host, endpointEgressError
+    // passes (no userinfo, not SSRF-blocked). Text names the host verbatim,
+    // per § 2.1's exact wording.
+    const QString host = QStringLiteral("192.0.2.1");   // TEST-NET-1 (RFC 5737)
+    const QString endpoint =
+        QStringLiteral("http://%1/v1/chat/completions").arg(host);
+    const QString expected = QStringLiteral(
+        "Not encrypted: this request goes to %1 over plain http, so anyone "
+        "on the network path can read it. Use https:// to protect it.")
+        .arg(host);
+    EXPECT_EQ(LlmClient::plaintextPromptWarning(endpoint, QString()), expected)
+        << "INV-21: a keyless remote plain-http endpoint must warn, naming "
+           "the host, in the spec's exact wording (ANTS-5010 § 2.1)";
+
+    // Negative: non-empty key — endpointEgressError would refuse this
+    // request outright (cleartext-remote Bearer), so nothing is sent.
+    EXPECT_TRUE(LlmClient::plaintextPromptWarning(
+        endpoint, QStringLiteral("sk-secret")).isEmpty())
+        << "INV-21: a keyed endpoint must not warn — the request never goes "
+           "out with the key in cleartext";
+
+    // Negative: https — encrypted, nothing to warn about.
+    EXPECT_TRUE(LlmClient::plaintextPromptWarning(
+        QStringLiteral("https://%1/v1/chat/completions").arg(host),
+        QString()).isEmpty())
+        << "INV-21: https must not warn";
+
+    // Negative: localhost / loopback literals — isPlaintextRemote exempts
+    // them, matching ANTS-1846.
+    for (const QString &ep : {
+             QStringLiteral("http://localhost:11434/v1"),
+             QStringLiteral("http://127.0.0.1:11434/v1"),
+             QStringLiteral("http://127.0.0.2/v1"),
+             QStringLiteral("http://[::1]:11434/v1"),
+         }) {
+        EXPECT_TRUE(LlmClient::plaintextPromptWarning(ep, QString()).isEmpty())
+            << "INV-21: loopback/localhost must not warn: " << ep.toStdString();
+    }
+
+    // Negative: private / link-local IP literal — endpointEgressError
+    // refuses via the SSRF gate before plaintextPromptWarning would
+    // otherwise consider this endpoint, so the request never goes out.
+    for (const QString &ep : {
+             QStringLiteral("http://169.254.169.254/v1"),
+             QStringLiteral("http://10.0.0.5/v1"),
+             QStringLiteral("http://[fe80::1]/v1"),
+         }) {
+        EXPECT_TRUE(LlmClient::plaintextPromptWarning(ep, QString()).isEmpty())
+            << "INV-21: an SSRF-blocked host must not warn (the request "
+               "never goes out at all): " << ep.toStdString();
+    }
+
+    // Negative: URL userinfo — endpointEgressError refuses this
+    // scheme-agnostically, whatever the key.
+    EXPECT_TRUE(LlmClient::plaintextPromptWarning(
+        QStringLiteral("http://user:pass@%1/v1").arg(host), QString())
+        .isEmpty())
+        << "INV-21: an endpoint carrying URL userinfo must not warn — "
+           "endpointEgressError refuses it before this predicate applies";
 }
 
 // INV-16 — the three LLM modules include no Qt Widgets header.

@@ -96,6 +96,15 @@ without a live network.
   connection even while the server holds it open. Pre-fix, the cap only
   stopped the appending; the transfer ran on until the server closed it or
   the transfer timeout fired.
+- **INV-21** (ANTS-5010) — `plaintextPromptWarning(endpoint, apiKey)`
+  returns non-empty text naming the host exactly when `apiKey` is empty,
+  `endpoint` is plain http to a non-loopback host, and `endpointEgressError`
+  passes for that pair. It returns empty for a non-empty key, for https, for
+  `localhost` and loopback literals (`127.0.0.1`, `127.0.0.2`, `::1`), for a
+  private/link-local IP literal (blocked by the SSRF gate before this
+  predicate would otherwise fire), and for an endpoint carrying URL
+  userinfo. See `docs/specs/ANTS-5010-plaintext-prompt-warning.md` § 2.1 for
+  the exact wording and § 3 INV-1 for the full contract.
 
 ## Test notes
 

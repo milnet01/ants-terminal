@@ -96,6 +96,13 @@ public:
     static QString endpointEgressError(const QString &endpoint,
                                        const QString &apiKey);
 
+    // ANTS-5010 — non-empty when a request to `endpoint` would carry its
+    // prompt unencrypted: no API key, plain http, a non-loopback host, and
+    // every endpointEgressError gate passed. The text names the host.
+    // docs/specs/ANTS-5010-plaintext-prompt-warning.md § 2.1.
+    static QString plaintextPromptWarning(const QString &endpoint,
+                                          const QString &apiKey);
+
     // Parse one SSE "data:{…}" line → choices[0].delta.content. Empty for
     // "[DONE]", non-data lines, and non-content events.
     static QString sseContentDelta(const QString &dataLine);

@@ -40,6 +40,16 @@ subclasses fill four hooks and use the base services.
   the guard `redispatch` already has (`if (!jobs.isEmpty())`). Depends on
   `LlmDispatcher::enqueue` ignoring an empty list (INV-15 in
   `tests/features/llm_dispatcher/spec.md`).
+- **INV-23** (ANTS-5010) — after `startDispatch` or `redispatch` with a
+  keyless remote plain-http endpoint (`m_config->aiEndpoint()` /
+  `aiApiKey()`), `statusLabel()` shows
+  `LlmClient::plaintextPromptWarning`'s text and the round still runs (the
+  job runner is still invoked). With https, a loopback endpoint, or a
+  non-empty key, the label does not show it — including right after an
+  earlier plain-http round in the same dialog set it, so a live endpoint
+  edit between rounds (`MainWindow` reloads `Config` in place while the
+  dialog is open) clears a stale warning. See
+  `docs/specs/ANTS-5010-plaintext-prompt-warning.md` § 2.3 and § 3 INV-3.
 
 ## Test notes
 

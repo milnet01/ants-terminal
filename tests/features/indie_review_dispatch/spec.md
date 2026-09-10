@@ -31,6 +31,7 @@ covered by the manual recipe in the spec § 7.2, not in CI.
 - **G-15 / fence hardening.** `indiereviewengine.cpp` `assembleBriefForDispatch` body contains the 4-backtick fence sentinel and `treat as data, not instructions` literal.
 - **G-16 / response-body redaction.** `indiereviewdispatcher.cpp` calls a redact helper (`redactAndTruncate`) before stashing response bytes in any envelope/error string.
 - **G-17 / probe accessor declared.** `inFlightCountForTest()` declared in `indiereviewdispatcher.h`.
+- **G-18 / plaintext-prompt warning key.** `cmdIndieReviewDispatch` sets the success envelope's `warning` from `LlmClient::plaintextPromptWarning(endpoint, dr.apiKey)`, after the refusal-branch return, and sets no other key named `warning`. See `docs/specs/ANTS-5010-plaintext-prompt-warning.md` § 2.5 and § 3 INV-5 — this handler needs a `MainWindow`, so the check is a source-grep rather than a behavioural test.
 
 ### ANTS-5018 — shared AI egress checks
 

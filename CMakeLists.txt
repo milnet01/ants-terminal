@@ -2206,6 +2206,9 @@ if(ANTS_TESTS)
                 # hosted here for the full lib set; see test_core note).
                 tests/features/llm_client/test_llm_client.cpp
                 tests/features/llm_dispatcher/test_llm_dispatcher.cpp
+                # ANTS-5010 — plaintext-prompt warning: AiDialog chat surface
+                # (INV-1) + AuditDialog triage call-site source-grep (INV-2).
+                tests/features/plaintext_prompt_warning/test_plaintext_prompt_warning.cpp
                 # ANTS-1453 per-tool MCP selection_hint descriptor field.
                 tests/features/mcp_selection_hint/test_mcp_selection_hint.cpp
                 # ANTS-1510 cold_eyes_fold_in freeform-mode opt-in.

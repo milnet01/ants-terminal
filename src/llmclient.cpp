@@ -225,6 +225,14 @@ QString LlmClient::endpointEgressError(const QString &endpoint,
     return QString();
 }
 
+QString LlmClient::plaintextPromptWarning(const QString &endpoint,
+                                         const QString &apiKey) {
+    // ANTS-5010 — stub for the test-first run; § 2.1 of the spec lands next.
+    Q_UNUSED(endpoint);
+    Q_UNUSED(apiKey);
+    return QString();
+}
+
 void LlmClient::send(const LlmRequest &req) {
     abort();
     ++m_sendGeneration;   // ANTS-2019 — invalidate any pending deferred error

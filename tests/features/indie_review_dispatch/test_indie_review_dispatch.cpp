@@ -368,6 +368,53 @@ TEST(IndieReviewDispatch, G17_ProbeAccessor) {
               std::string::npos);
 }
 
+// G-18 (ANTS-5010) — cmdIndieReviewDispatch sets the success envelope's
+// `warning` key from LlmClient::plaintextPromptWarning, after the
+// refusal-branch return, and sets no other key named `warning`. Source-grep
+// only: the handler needs a MainWindow (docs/specs/ANTS-5010 § 2.5, § 3
+// INV-5). Stub source-first: no call to plaintextPromptWarning exists yet
+// in remotecontrol_review.cpp, so this test is expected to fail RED.
+TEST(IndieReviewDispatch, G18_PlaintextPromptWarningKey) {
+    const std::string handler =
+        ants_test::slurpFunctionBody(
+            ants_test::slurpRemoteControl(),
+            "RemoteControl::cmdIndieReviewDispatch");
+    ASSERT_FALSE(handler.empty());
+
+    const std::string callNeedle = "LlmClient::plaintextPromptWarning(";
+    const auto callPos = handler.find(callNeedle);
+    ASSERT_NE(callPos, std::string::npos)
+        << "G-18: cmdIndieReviewDispatch must call "
+           "LlmClient::plaintextPromptWarning to populate the success "
+           "envelope's warning key (ANTS-5010)";
+
+    // The call must come strictly after the refusal-branch return —
+    // env["code"] is set only on that branch (result.ok == false), so its
+    // position anchors "after the refusal return" without needing to
+    // locate every early-return site in the handler.
+    const std::string refusalNeedle = "env[\"code\"]";
+    const auto refusalPos = handler.find(refusalNeedle);
+    ASSERT_NE(refusalPos, std::string::npos)
+        << "test bug: refusal-branch anchor \"env[\\\"code\\\"]\" not found "
+           "in cmdIndieReviewDispatch — has the refusal envelope shape "
+           "changed?";
+    EXPECT_GT(callPos, refusalPos)
+        << "G-18: plaintextPromptWarning must be called after the refusal "
+           "return, never on a path a refusal can reach";
+
+    // The envelope key itself must be literally "warning" — a different
+    // key name is invisible to callers narrowing with fields= (ANTS-4698
+    // re-inserts exactly this key name into a narrowed reply).
+    const std::string warningKeyNeedle = "env[\"warning\"]";
+    EXPECT_NE(handler.find(warningKeyNeedle), std::string::npos)
+        << "G-18: the success envelope must set env[\"warning\"] literally";
+    // Exactly one such assignment — no second/duplicate warning key.
+    EXPECT_EQ(ants_test::countOccurrences(handler, warningKeyNeedle),
+              std::size_t(1))
+        << "G-18: exactly one env[\"warning\"] assignment expected, set "
+           "from plaintextPromptWarning";
+}
+
 // P-1 — probe returns 0 at rest.
 TEST(IndieReviewDispatch, P1_ProbeZeroAtRest) {
     EXPECT_EQ(IndieReviewDispatcher::inFlightCountForTest(), 0);
