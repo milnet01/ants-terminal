@@ -13375,6 +13375,21 @@ fixes don't address. Roadmapped here as their own design tasks.
   Source: in-session-2026-09-10.
   Lanes: mcp.
 
+- 📋 [ANTS-5021] **file_outline omits out-of-line C++ constructors and destructors, so read_region symbol= cannot reach them.**
+  Measured 2026-09-10 on src/llmclient.cpp. The file defines
+  `LlmClient::LlmClient(QObject *parent) : QObject(parent) {}` and
+  `LlmClient::~LlmClient() {`. file_outline with filter "LlmClient"
+  lists every other member (busy, abort, send, onFinished and the rest)
+  but neither of those two. read_region then refuses symbol_not_found for
+  both `~LlmClient` and `LlmClient::~LlmClient`, because it resolves
+  through the same outline. A destructor is where teardown bugs live, so
+  it is a slice a session asks for by name. A fix outlines `X::X` and
+  `X::~X` as symbols, and read_region accepts the bare `~X` form.
+  **Layman:** The file-map tool can't see a class's setup and teardown functions, so you can't ask for them by name.
+  Kind: fix.
+  Source: in-session-2026-09-10.
+  Lanes: mcp.
+
 ### 🔬 Project Audit false-positive reduction (self-audit 2026-05-20)
 
 Ran the project's own `ants-audit` CLI against this repo (~300 findings,
@@ -39357,6 +39372,19 @@ whole files.
   Kind: test.
   Source: in-session-2026-09-10.
   Lanes: audit-dialog.
+
+- 📋 [ANTS-5022] **clangd's clang-tidy reports three minor warnings in reviewdialogbase.**
+  Seen 2026-09-10 while editing for ANTS-5009; none is on a line that
+  change touched. bugprone-implicit-widening-of-multiplication-result on
+  `kPromptCapBytes = 200 * 1024` in src/reviewdialogbase.h (the value
+  fits in int, so this is noise). performance-unnecessary-value-param on
+  the runner lambda's `done` in the ReviewDialogBase constructor.
+  performance-no-automatic-move on `const QList<int> ids` in
+  ReviewDialogBase::allocateFoldInIds. Fix or suppress each.
+  **Layman:** The code checker flagged three small tidy-ups in the review-window code; none is a bug.
+  Kind: chore.
+  Source: in-session-2026-09-10.
+  Lanes: reviewdialogbase.
 
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-08-18 triage
 
