@@ -39262,6 +39262,11 @@ whole files.
   remote plain-http endpoint goes ahead, and the user is told the prompt
   travels unencrypted. Do not refuse it: that would break a keyless AI
   server reached over plain http.
+  User decision (2026-09-10): the warning appears in every sending
+  window: the AI chat, the review dialogs' status line, the audit dialog's
+  two triage confirmations and its debt triage, and the
+  indie_review_dispatch reply. It spans four subsystems, so a spec comes
+  first. Do ANTS-5018 before it: the MCP path has no egress checks yet.
   **Layman:** Without an API key, the app will send your project's files to a remote AI server without encryption.
   Kind: security.
   Source: cold-sweep-2026-08-18 triaged in-session-2026-09-10.
@@ -39285,6 +39290,25 @@ whole files.
   Kind: fix.
   Source: in-session-2026-09-10 (found by the ANTS-5005 guard test).
   Lanes: llmclient.
+
+- 📋 [ANTS-5018] **indie_review_dispatch skips the shared AI egress checks, so it sends the key over cleartext and follows redirects.**
+  IndieReviewDispatcher::dispatchLanes checks only that the endpoint's
+  scheme is http or https. It then sets the Bearer header and posts
+  through its own QNetworkAccessManager, with no redirect policy set.
+  It never calls LlmClient::endpointEgressError. So the MCP path sends
+  the key in cleartext to a remote http host, posts to private and
+  link-local IP literals, and forwards URL userinfo credentials. All
+  four are refused on LlmClient::send and on the AuditDialog triage
+  POSTs (ANTS-2121). Qt 6's default redirect policy follows a redirect,
+  which ANTS-1798 closed elsewhere. The endpoint and key come from the
+  user's config via RemoteControl::cmdIndieReviewDispatch, not from the
+  MCP caller. A fix calls endpointEgressError and sets
+  ManualRedirectPolicy, as ANTS-2121 did for the triage POSTs. Found
+  while mapping send paths for ANTS-5010.
+  **Layman:** One of the AI review tools skips the safety checks the rest of the app uses before sending your API key.
+  Kind: security.
+  Source: in-session-2026-09-10.
+  Lanes: llmclient, mcp.
 
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-08-18 triage
 
