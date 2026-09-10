@@ -73756,12 +73756,19 @@ contributors don't duplicate research.
   Source: in-session-2026-09-10 (user-reported CI failure emails).
   Lanes: e2e.
 
-- 📋 [ANTS-5013] **Several e2e cases match text already present in the typed command, so they pass without the command running.**
+- ✅ [ANTS-5013] **Several e2e cases match text already present in the typed command, so they pass without the command running.**
   The typed line is echoed to the screen before the shell runs it.
   COLORSAFE, CJK_中文_END, SCROLLTOP and SCROLLBOT, and AFTER_RESIZE_OK all
   appear in the command text itself, so each check is satisfied by the
   echo. TB_42_END, YYXX and the long W line avoid this by producing text
   only execution can. Rework each needle the same way.
+  Resolved (2026-09-10): the ANSI SGR, CJK, scrollback and resize needles
+  in tools/e2e/cases.sh are now produced only by running the command:
+  escapes between the letters, octal UTF-8 bytes, and shell arithmetic.
+  docs/qa/e2e/cases.md follows. Checked by typing each command behind a
+  comment, so the shell echoes it but never runs it: all four old needles
+  still matched, all four new ones did not. The three lanes pass against
+  the built binary.
   **Layman:** Some automatic checks would pass even if the app never ran the command.
   Kind: test.
   Source: in-session-2026-09-10.

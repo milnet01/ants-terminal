@@ -67,10 +67,12 @@ lane_terminal() {
     has "$t" 'TB_42_END' && pass "terminal: echo + arithmetic" \
         || fail "terminal: echo/arithmetic sentinel absent"
 
-    # ANSI SGR: the colour escape is consumed by the parser, the text survives.
-    send_cmd terminal "printf '\\033[1;31mCOLORSAFE\\033[0m\\n'"
-    t=$(wait_text terminal 'COLORSAFE')
-    has "$t" 'COLORSAFE' && pass "terminal: ANSI SGR text intact" \
+    # ANSI SGR: the colour escapes are consumed by the parser, the text
+    # survives. The needle exists only once the escapes between its letters
+    # are gone, so the echoed command line cannot satisfy it (ANTS-5013).
+    send_cmd terminal "printf 'SGR_A\\033[1;31mB\\033[0mC_END\\n'"
+    t=$(wait_text terminal 'SGR_ABC_END')
+    has "$t" 'SGR_ABC_END' && pass "terminal: ANSI SGR text intact" \
         || fail "terminal: ANSI SGR sentinel absent"
 
     # Carriage-return overwrite: 'XXXX\rYY' → the row reads 'YYXX'.
@@ -79,10 +81,13 @@ lane_terminal() {
     has "$t" 'YYXX' && pass "terminal: CR overwrite" \
         || fail "terminal: CR overwrite (expected YYXX)"
 
-    # UTF-8 round-trip: literal multibyte bytes survive PTY→parser→grid→get-text.
-    # A CJK char is double-width — get-text pads its second cell with a space
-    # (中文 → "中 文 "), so assert each codepoint is present, not contiguous.
-    send_cmd terminal 'echo CJK_中文_END'
+    # UTF-8 round-trip: multibyte bytes survive PTY→parser→grid→get-text. The
+    # typed command carries only octal escapes (中 = \344\270\255,
+    # 文 = \346\226\207), so the characters appear only once printf has run
+    # (ANTS-5013). A CJK char is double-width — get-text pads its second cell
+    # with a space (中文 → "中 文 "), so assert each codepoint is present, not
+    # contiguous.
+    send_cmd terminal "printf 'CJK_\\344\\270\\255\\346\\226\\207_END\\n'"
     t=$(wait_text terminal '文')
     { has "$t" '中' && has "$t" '文'; } && pass "terminal: UTF-8/CJK round-trip" \
         || fail "terminal: UTF-8 bytes not observed"
@@ -104,9 +109,11 @@ lane_scrollback() {
     echo "── lane: scrollback ──"
     launch_e2e scrollback || { fail "scrollback: launch"; return; }
 
-    send_cmd scrollback 'echo SCROLLTOP; seq 1 300; echo SCROLLBOT'
-    local t; t=$(wait_text scrollback 'SCROLLBOT' 400)
-    if has "$t" 'SCROLLTOP' && has "$t" 'SCROLLBOT'; then
+    # Shell arithmetic builds both markers, so the echoed command line cannot
+    # satisfy them (ANTS-5013).
+    send_cmd scrollback 'echo SCROLL_$((1))_TOP; seq 1 300; echo SCROLL_$((2))_BOT'
+    local t; t=$(wait_text scrollback 'SCROLL_2_BOT' 400)
+    if has "$t" 'SCROLL_1_TOP' && has "$t" 'SCROLL_2_BOT'; then
         pass "scrollback: 300-line history retained (both markers)"
     else
         fail "scrollback: a boundary marker fell out of history"
@@ -129,9 +136,10 @@ lane_resize() {
     has "$r" '"ok":true' && pass "resize: tiny request clamps (ok)" \
         || fail "resize: tiny clamp reply=$r"
 
-    # PTY still live after the reflow.
-    send_cmd resize 'echo AFTER_RESIZE_OK'
-    has "$(wait_text resize 'AFTER_RESIZE_OK')" 'AFTER_RESIZE_OK' \
+    # PTY still live after the reflow. Arithmetic makes the needle something
+    # only execution can print (ANTS-5013).
+    send_cmd resize 'echo AFTER_RESIZE_$((40+2))'
+    has "$(wait_text resize 'AFTER_RESIZE_42')" 'AFTER_RESIZE_42' \
         && pass "resize: PTY echoes after reflow" \
         || fail "resize: PTY silent after reflow"
 }

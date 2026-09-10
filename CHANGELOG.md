@@ -30,6 +30,11 @@ for security-relevant changes.
 
 ### Fixed
 
+- **Four end-to-end checks now fail when the typed command never runs** (ANTS-5013)
+  The ANSI colour, CJK, scrollback and resize cases looked for text the
+  typed command already contained, so the terminal's echo satisfied them.
+  Each now looks for text only running the command can produce.
+
 - **AI answers from a provider that ignores streaming now appear, and a server's own error message now reaches you** (ANTS-5007)
   LlmClient keeps the raw reply until an SSE line proves it is a stream,
   then reads a plain JSON answer or error body whatever the HTTP status.

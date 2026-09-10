@@ -45,9 +45,9 @@ Harness-contract guards (bad widget → `widget_not_found`, non-`--e2e` gate →
 | Case | Steps → Expected observable | Status |
 |---|---|---|
 | Echo + shell | Type `echo TB_$((6*7))_END` → `get-text` shows `TB_42_END`. | ✅ |
-| ANSI SGR | `printf '\033[1;31mCOLORSAFE\033[0m\n'` → text `COLORSAFE` survives (escape consumed). | ✅ |
+| ANSI SGR | `printf 'SGR_A\033[1;31mB\033[0mC_END\n'` → row reads `SGR_ABC_END` (escapes consumed, text intact). | ✅ |
 | CR overwrite | `printf 'XXXX\rYY\n'` → row reads `YYXX`. | ✅ |
-| UTF-8 / CJK width | `echo CJK_中文_END` → both `中` and `文` present; each padded to 2 cells (`中 文 `). | ✅ |
+| UTF-8 / CJK width | `printf 'CJK_\344\270\255\346\226\207_END\n'` (中文 as octal bytes) → both `中` and `文` present; each padded to 2 cells (`中 文 `). | ✅ |
 | Long-line integrity | Print a 200-char line → all 200 chars survive (wraps, none dropped). | ✅ |
 | Combining chars | Print `e` + U+0301 (é via combining accent) → renders as one cell, no width drift on the rest of the row. | 🖐 |
 | Ligatures | In a ligature font, type `=>` `!=` `->` → glyphs shape as ligatures, cursor still lands on the right cell. | 🖐 |
@@ -56,7 +56,7 @@ Harness-contract guards (bad widget → `widget_not_found`, non-`--e2e` gate →
 
 | Case | Steps → Expected observable | Status |
 |---|---|---|
-| History retained | `echo SCROLLTOP; seq 1 300; echo SCROLLBOT` → both markers in `get-text -lines 400`. | ✅ |
+| History retained | `echo SCROLL_$((1))_TOP; seq 1 300; echo SCROLL_$((2))_BOT` → `SCROLL_1_TOP` and `SCROLL_2_BOT` in `get-text -lines 400`. | ✅ |
 | Find-in-scrollback | Open find, search a known string → match highlighted, count shown, next/prev cycles matches. | 🔧 |
 | Back-to-bottom | Scroll up, then press the back-to-bottom control → view returns to the prompt. | 🔧 |
 | Prompt-jump | With shell-integration marks, jump prev/next prompt → viewport lands on each prompt line. | 🔧 |
