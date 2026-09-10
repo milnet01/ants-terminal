@@ -13342,6 +13342,21 @@ fixes don't address. Roadmapped here as their own design tasks.
   Kind: fix.
   Source: in-session-2026-09-07 (found by the first corpus run of doc_lint).
 
+- 📋 [ANTS-5017] **spec_lint reports invariant_no_test on every invariant of a test's own contract, whose paired test file is the test surface.**
+  Run on tests/features/llm_client/spec.md on 2026-09-10, spec_lint
+  returned invariant_no_test for every invariant. That document is a
+  test's own contract: the paired test file beside it is its test surface,
+  so no invariant carries an inline test clause. The test-writer agent
+  lints each contract it writes, so every write-test run reports this
+  noise, and a real untested invariant hides in it. ANTS-4739's
+  `spec-lint: no-required-sections` marker exempts missing_section only.
+  A fix lets a document name its paired test file as the surface for all
+  its invariants, echoing the exemption in the envelope as ANTS-4739 does.
+  Related, not the same: ANTS-4890.
+  **Layman:** The spec checker wrongly says every rule in a test's own notes has no test, though the test sits right beside it.
+  Kind: enhancement.
+  Source: in-session-2026-09-10.
+
 ### 🔬 Project Audit false-positive reduction (self-audit 2026-05-20)
 
 Ran the project's own `ants-audit` CLI against this repo (~300 findings,
@@ -71843,6 +71858,18 @@ here.)
   **Layman:** You can filter roadmap items by where they came from, but nothing lists what the available origins actually are.
   Kind: enhancement.
   Source: in-session-2026-09-09.
+
+- 📋 [ANTS-5016] **roadmap_log rewrites unchanged archive files on every write, and lists them as written.**
+  A flip of ANTS-5010 on 2026-09-10 moved the modification time of
+  docs/roadmap/0.5.md and docs/roadmap/0.6.md to the moment of the write.
+  git showed both byte-identical to their last commit. So the render writes
+  every file it owns, not only the ones whose bytes changed, and
+  `files_written` names them all. A touched mtime wakes anything keyed on
+  it, and a caller staging from `files_written` stages no-ops. A fix
+  compares before writing and reports written and unchanged files apart.
+  **Layman:** Every roadmap update touches the old archive files even when nothing in them changed.
+  Kind: fix.
+  Source: in-session-2026-09-10.
 
 ## 0.9.0 — platform + a11y (target: 2026-10)
 
