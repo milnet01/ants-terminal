@@ -35398,7 +35398,7 @@ in each bullet, not just the reporter's symptom.
   Source: in-session-2026-09-08.
   Lanes: ci, tooling.
 
-- 📋 [ANTS-4995] **Four ids the 0.7.109 CHANGELOG cites are not marked shipped, and the release gate will stop on them.**
+- ✅ [ANTS-4995] **Four ids the 0.7.109 CHANGELOG cites are not marked shipped, and the release gate will stop on them.**
   Found by checking every id cited in the `[0.7.109]` section against its bullet marker: 68 of 72 are shipped, four are not.
 
     ANTS-4457  planned      Triage: Claude-integration findings from the cold sweep
@@ -35415,6 +35415,10 @@ in each bullet, not just the reporter's symptom.
   WORK: one line per id — either flip it, or confirm the citation is a partial against an open parent and record that on the bullet so the next cut does not re-ask. Do this BEFORE the next `cut-rc.sh` run, not during it.
 
   Related context: this cycle's release sweep is already known to have left records out of step (the seven late entries that read as 0.7.109 though the work shipped in 0.7.108), so a second record-level divergence in the same section is consistent with that rather than a new class.
+  Resolved (2026-09-10, user decision): ANTS-4894 shipped, and its
+  remaining half is filed as ANTS-4998. ANTS-4457, 4460 and 4947 stay
+  open, each noted as a partial delivery the 0.7.109 CHANGELOG cites.
+  No CHANGELOG entry, deliberately: release records only.
   **Layman:** The release notes credit four pieces of work the roadmap still lists as unfinished; each needs a yes-or-no before the next release.
   Kind: chore.
   Source: in-session-2026-09-09.
@@ -38724,6 +38728,9 @@ whole files.
   case-sensitive search against an emphasised word. All three now
   normalise before matching. A green run would have looked identical in
   every case.
+  Release record (2026-09-10): the 0.7.109 CHANGELOG cites this
+  umbrella for pieces it delivered. The umbrella stays open for the
+  rest. That is a partial delivery, not a missed flip (ANTS-4995).
 
 - 📋 [ANTS-4458] **Triage: LLM client/dispatcher and review-dialog findings from the cold sweep.**
   Reviewer claims carried forward as-is. NOT re-verified — check each against
@@ -39016,6 +39023,9 @@ whole files.
   MainWindow. The file held a source-scrape drift guard and no behavioural
   case. Two behavioural cases now, red-proven by stashing the source change
   out. Suite 4188/4188.
+  Release record (2026-09-10): the 0.7.109 CHANGELOG cites this
+  umbrella for pieces it delivered. The umbrella stays open for the
+  rest. That is a partial delivery, not a missed flip (ANTS-4995).
 
 - 📋 [ANTS-4461] **Triage: roadmap store/export and plugin-manager findings from the cold sweep.**
   Reviewer claims carried forward as-is. NOT re-verified — check each against
@@ -52969,7 +52979,7 @@ rather than refiled.
   Source: claude_config-feedback-2026-09-06.
   Lanes: mcp, roadmap-store.
 
-- 📋 [ANTS-4894] **spec_lint returns a clean envelope on a spec whose invariants parse as zero, and nothing in the envelope says none were recognised.**
+- ✅ [ANTS-4894] **spec_lint returns a clean envelope on a spec whose invariants parse as zero, and nothing in the envelope says none were recognised.**
   A spec wrote its thirteen invariants as `**INV-1.** <claim>` paragraphs
   with a `*Test:*` line under each. spec-format.md § 3.7 defines two forms,
   the `- **INV-1** — <claim>` bullet and the GFM table; that shape is
@@ -53043,6 +53053,10 @@ rather than refiled.
   visible.
 
   Suite 4190/4190.
+  Resolved (2026-09-10): shipped in 0.7.109 as the `invariants_found`
+  count. That is what the headline asks for: the envelope now says when
+  none were recognised. The stronger half, a finding when the
+  invariants section parses to zero, moves to ANTS-4998 (ANTS-4995).
   **Layman:** A spec whose rules are written in a slightly different style is reported as fully checked when none of them were read at all.
   Kind: fix.
   Source: UT_Ants-feedback-2026-09-06.
@@ -53410,6 +53424,21 @@ rather than refiled.
   Kind: fix.
   Source: claude_config feedback 2026-09-06.
   Lanes: remotecontrol, claude-integration.
+
+- 📋 [ANTS-4998] **spec_lint raises no finding when a spec's invariants section parses to zero invariants.**
+  Split from ANTS-4894 on 2026-09-10 (ANTS-4995). ANTS-4894 shipped
+  the `invariants_found` count, which makes the zero visible. This is
+  the stronger half it left open: a finding.
+
+  It is mechanically decidable. The section the format designates for
+  invariants is present, a search finds INV ids in it, and the parser
+  recognised none. But a new finding kind changes what
+  docs/specs/ANTS-3662.md promises, so it owes that amendment and its
+  rule 14 gate before anyone builds it.
+  **Layman:** A spec whose rules the checker could not read is still not flagged as a problem; only a count shows it.
+  Kind: fix.
+  Source: UT_Ants-feedback-2026-09-06.
+  Lanes: mcp, specs.
 
 ### Ants MCP feedback from CC sessions — 2026-09-07 triage
 
@@ -54203,6 +54232,9 @@ than re-filed; everything else lands here.
   line in the published file, and no call reports a discard. No live
   lead remains. The item stays in progress for the cause; the backup
   half (discarded_backup_paths) is what protects a caller meanwhile.
+  Release record (2026-09-10): the 0.7.109 CHANGELOG cites this item
+  for the backup half only (discarded_backup_paths). The cause is
+  still unfound, so the item stays in progress (ANTS-4995).
   **Layman:** A note written into the roadmap was silently thrown away by the next note, and the tool blamed a hand edit that never happened.
   Kind: fix.
   Source: UT_Ants_Ants_MCP_Feedback.md 2026-09-08.
@@ -54518,6 +54550,14 @@ than re-filed; everything else lands here.
   question, and op:\"repair_trailers\" is the precedent for how to do one
   safely — it writes only where the stored value is a strict prefix of the
   re-parse, so it can only ever extend.
+  Decided (2026-09-10, user): store the summary without its terminal
+  full stop on every write route, and have the render add one when the
+  text does not already end in terminal punctuation. Re-migration
+  becomes lossless and the column consistent. Each project's file gains
+  stops on its bare lines at its next render: a one-time diff. This
+  changes roadmap-format.md, so it takes rule 14's gate before anyone
+  builds. Sync the global copy once, after this lands, in a ~/.claude
+  session.
   **Layman:** Re-importing a roadmap quietly rewrites the wording of every item's plain-English summary.
   Kind: fix.
   Source: Pressless_Ants_MCP_Feedback.md 2026-09-08.
@@ -56268,7 +56308,7 @@ volume classes, and the tooling/documentation gaps the run exposed.
   Kind: chore.
   Source: check-code-sweep-2026-09-01.
 
-- 📋 [ANTS-4791] **CMake build files are analysed by no linter, and the eleven tools/*.py have never been type-checked.**
+- ✅ [ANTS-4791] **CMake build files are analysed by no linter, and the eleven tools/*.py have never been type-checked.**
   TWO GAPS, both "no tool ran" rather than "a tool found nothing".
 
   CMake: CMakeLists.txt (900+ lines) plus cmake/GenerateBuildInfoValues.cmake, cmake/QtVersionGuard.cmake and tests/slow_test_timeouts.cmake are read by nothing. cmakelint / cmake-format exist and are not installed here. CMakeLists.txt carries load-bearing logic — JOB_POOLS, the PCH application, ANTS_RC_SOURCES_REL ordering — that a syntax-level linter would at least parse.
@@ -56302,6 +56342,13 @@ volume classes, and the tooling/documentation gaps the run exposed.
   about what CI runs.
 
   The Python half stays closed.
+  Resolved (2026-09-10): the Python half shipped (mypy.ini, one real
+  defect fixed). The CMake half is declined on the user's decision.
+  Every build runs CMake's own parser, and every CI job configures it,
+  so a broken build file cannot reach a push. A linter would mostly add
+  style rules, and installing one changes the machine. Reopen if a
+  CMake defect ships that a linter would have caught. No CHANGELOG
+  entry, deliberately: contributor tooling.
   **Layman:** Two kinds of file in the project have no automated checking at all.
   Kind: chore.
   Source: check-code-sweep-2026-09-01.
