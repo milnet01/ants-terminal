@@ -29,8 +29,12 @@ loop. INV-8 is a construction smoke assertion.
   lanes lands in `results().corroborated`, a single-lane cite in
   `results().uncorroborated` (not dropped).
 - **INV-6** — after results, `lanesToReReview()` is the set of lanes
-  that produced findings; `markFindingFixed(f)` threads the fix into the
-  next `composeBrief` as a "do not re-raise" prior-fix line.
+  that produced findings. The re-review brief for one of those lanes runs
+  **cold** (ANTS-2011): `composeBrief` carries no "Previously fixed in a
+  prior loop" block. A finding that comes back is the signal that the
+  earlier fix didn't hold — nothing tells the reviewer to skip it. (Not
+  tested by absence of the string "re-raise" alone: the unrelated prior-FP
+  block INV-2 requires legitimately contains that word too.)
 - **INV-7** — `performFoldIn()` in `Narrative` mode allocates no IDs
   (`.roadmap-counter` unchanged); in `PerFinding` mode it allocates
   exactly one ID per actionable corroborated finding (counter advances
@@ -38,3 +42,24 @@ loop. INV-8 is a construction smoke assertion.
 - **INV-8** — constructing the dialog with an unset/invalid `ai_endpoint`
   config leaves dispatch disabled (`endpointDispatchable` false); the
   dialog constructs without crashing.
+- **INV-9** — each **dispatched round** — a full dispatch
+  (`startDispatch()`) or a re-review (`redispatch()`, via the "Re-review
+  lanes with findings" button) — appends exactly one `LoopEntry` to
+  `loopLog()` (ANTS-2011): `loop` is the 1-based round number; `lanes` is
+  the lanes **that round dispatched**, sorted; `corroborated` /
+  `uncorroborated` are `results().corroborated.size()` /
+  `results().uncorroborated.size()` after that round's collection. A
+  re-review merges its reports into the earlier ones
+  (`ReviewDialogBase::redispatch` accumulates into `reports()`, and
+  `onAllFinished` always hands `onAllReportsCollected` the whole merged
+  map), so the counts cover every lane's latest report — but `lanes`
+  is *not* `reportsById.keys()`: it is the set that round actually
+  dispatched, tracked separately (e.g. via `prepareDispatch()` for a full
+  dispatch, and the re-review's own lane set), or a re-review's entry
+  would wrongly list every lane ever dispatched instead of just the ones
+  re-checked. Exactly one entry is appended per round even though a
+  synchronous job runner can make `LlmDispatcher::pump()` re-enter and
+  emit `allFinished` more than once for the same round — a round with no
+  dispatch pending appends nothing on a spurious extra signal. The log is
+  also rendered into a `QPlainTextEdit` results view, one line per round,
+  each containing the text `"Round N"`.

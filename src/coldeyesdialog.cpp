@@ -188,22 +188,6 @@ QStringList ColdEyesDialog::laneKeywords(const ColdEyesEngine::Lane &lane) const
     return kw;
 }
 
-QString ColdEyesDialog::renderPriorFixes() const {
-    if (m_priorFixes.isEmpty()) return {};
-    QString s = QStringLiteral(
-        "\n## Previously fixed in a prior loop (do not re-raise)\n\n");
-    for (const ColdEyesEngine::PriorLoopFix &fix : m_priorFixes) {
-        s += QStringLiteral("- ");
-        if (!fix.title.isEmpty()) {
-            s += QStringLiteral("**") + fix.title + QStringLiteral("**");
-            if (!fix.summary.isEmpty()) s += QStringLiteral(" — ");
-        }
-        if (!fix.summary.isEmpty()) s += fix.summary;
-        s += QChar('\n');
-    }
-    return s;
-}
-
 QString ColdEyesDialog::staleFindingLine(const QString &cite,
                                         const QString &lane) const {
     return QStringLiteral(
@@ -229,7 +213,6 @@ QString ColdEyesDialog::assembleCappedPrompt(const ColdEyesEngine::Lane &lane,
         "accuracy against cited code, and drift versus the cross-reference "
         "excerpts. The bodies ARE inlined — you have no Read tool. Emit "
         "findings as `- [SEV] file:line — description`.\n");
-    head += renderPriorFixes();
     if (!staleFindings.isEmpty()) {
         head += QStringLiteral(
             "\n## Pre-found accuracy findings (cited code missing on "
@@ -287,7 +270,7 @@ LlmRequest ColdEyesDialog::composeBrief(const ReviewLane &laneRef) {
     // The manifest already embeds an FP block, the prior-fix block, and
     // Read-tool instructions — all of which are wrong for a raw inlined-
     // bodies endpoint. Use it only for its structured fields and compose
-    // our own prompt; pass no prior fixes so it doesn't duplicate ours.
+    // our own prompt; pass no prior fixes — a re-review runs cold (ANTS-2011).
     const auto m = ColdEyesEngine::assembleBriefManifest(projectCwd(), *lane);
 
     // Stash stale citations so onAllReportsCollected can surface them even
@@ -334,6 +317,20 @@ void ColdEyesDialog::onAllReportsCollected(
          ++it)
         m_results.staleFindings << it.value();
 
+    // ANTS-2011 — one entry per dispatched round. A synchronous job runner
+    // makes LlmDispatcher report "all finished" more than once per round,
+    // so only a round still pending is logged.
+    if (!m_roundLanes.isEmpty()) {
+        LoopEntry entry;
+        entry.loop = static_cast<int>(m_loopLog.size()) + 1;
+        entry.lanes = m_roundLanes;
+        entry.lanes.sort();
+        entry.corroborated = static_cast<int>(m_results.corroborated.size());
+        entry.uncorroborated = static_cast<int>(m_results.uncorroborated.size());
+        m_loopLog << entry;
+        m_roundLanes.clear();
+    }
+
     renderResultsWidget();
 }
 
@@ -351,13 +348,10 @@ QStringList ColdEyesDialog::lanesToReReview() const {
     return out;
 }
 
-void ColdEyesDialog::markFindingFixed(
-    const IndieReviewEngine::CorroboratedFinding &f) {
-    ColdEyesEngine::PriorLoopFix fix;
-    fix.title = f.file + QChar(':') + QString::number(f.line);
-    fix.summary = f.contexts.isEmpty() ? QString()
-                                       : f.contexts.join(QStringLiteral(" / "));
-    m_priorFixes << fix;
+void ColdEyesDialog::prepareDispatch() {
+    // A full dispatch sends every selected lane (ANTS-2011 loop log).
+    m_roundLanes.clear();
+    for (const ReviewLane &lane : selectedReviewLanes()) m_roundLanes << lane.id;
 }
 
 void ColdEyesDialog::onReReviewClicked() {
@@ -367,6 +361,7 @@ void ColdEyesDialog::onReReviewClicked() {
             statusLabel()->setText(tr("No findings to re-review."));
         return;
     }
+    m_roundLanes = lanes;
     redispatch(lanes);
 }
 
@@ -442,6 +437,15 @@ void ColdEyesDialog::renderResultsWidget() {
                  .arg(m_results.staleFindings.size());
         for (const QString &line : m_results.staleFindings)
             s += QStringLiteral("  %1\n").arg(line);
+    }
+    if (!m_loopLog.isEmpty()) {
+        s += tr("\nLoop log:\n");
+        for (const LoopEntry &e : m_loopLog)
+            s += tr("  Round %1 — %2 — %3 corroborated, %4 uncorroborated\n")
+                     .arg(QString::number(e.loop),
+                          e.lanes.join(QStringLiteral(", ")),
+                          QString::number(e.corroborated),
+                          QString::number(e.uncorroborated));
     }
     m_resultsView->setPlainText(s);
 }

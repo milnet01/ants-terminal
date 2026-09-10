@@ -14,6 +14,11 @@ for security-relevant changes.
 
 ### Changed
 
+- **Cold-eyes re-reviews now run cold and keep a round-by-round log** (ANTS-2011)
+  A re-review no longer tells the reviewer what was fixed, so a fix that
+  did not hold shows up again. The results view lists each round: the
+  lanes it checked and how many findings it produced.
+
 - **Audit: the Contract-Doc ↔ Code Drift check now reports standards and specs as two separate lanes** (ANTS-3849)
   One category held both, and the specs half outnumbered the standards
   half by more than fifteen to one — over 80% of the whole report. Nobody

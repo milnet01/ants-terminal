@@ -2,11 +2,17 @@
 //
 // Exercises the non-GUI composition / corroboration / fold-in paths of
 // ColdEyesDialog : ReviewDialogBase. INV-1..7 drive the engine + brief +
-// fold-in logic directly; INV-8 is a construction smoke assertion.
+// fold-in logic directly; INV-8 is a construction smoke assertion. INV-6
+// and INV-9 lock ANTS-2011 (cold re-review + loop log); INV-9 drives real
+// dispatch rounds (ReviewDialogBase::startDispatch / redispatch via a
+// synchronous fake LlmDispatcher::JobRunner) rather than calling
+// onAllReportsCollected directly, because the loop log must track what
+// each round DISPATCHED, not ReviewDialogBase's accumulated reports().
 // See tests/features/cold_eyes_dialog/spec.md + docs/specs/ANTS-1721.md.
 
 #include "coldeyesdialog.h"
 #include "coldeyesengine.h"
+#include "config.h"
 #include "reviewdialogbase.h"
 
 #include <gtest/gtest.h>
@@ -15,6 +21,8 @@
 #include <QFile>
 #include <QFileInfo>
 #include <QHash>
+#include <QPlainTextEdit>
+#include <QPushButton>
 #include <QSet>
 #include <QString>
 #include <QStringList>
@@ -31,6 +39,12 @@ public:
     using ColdEyesDialog::derivePartition;
     using ColdEyesDialog::onAllReportsCollected;
     using ColdEyesDialog::performFoldIn;
+    // INV-9 — real-dispatch surface (ANTS-2011): drive startDispatch() /
+    // the real re-review button with a synchronous fake runner instead of
+    // calling onAllReportsCollected directly, so the test exercises
+    // ReviewDialogBase::redispatch's merge-into-m_reports path.
+    using ColdEyesDialog::setJobRunner;
+    using ColdEyesDialog::startDispatch;
 };
 
 bool writeFile(const QString &path, const QString &body) {
@@ -215,8 +229,11 @@ TEST(ColdEyesDialog, INV5_CorroborationAndUncorroborated) {
     EXPECT_TRUE(uncorrBar) << "single-lane bar.cpp:7 → uncorroborated, not dropped";
 }
 
-// INV-6 — re-review covers only finding lanes; fixes thread forward.
-TEST(ColdEyesDialog, INV6_ReReviewSubsetAndPriorFix) {
+// INV-6 — re-review covers only finding lanes; the re-review brief runs
+// cold (ANTS-2011: no "prior fix" / "do not re-raise" block — a returning
+// finding IS the signal that a fix didn't hold, so nothing tells the
+// reviewer what to skip).
+TEST(ColdEyesDialog, INV6_ReReviewSubsetRunsCold) {
     QTemporaryDir tmp; ASSERT_TRUE(tmp.isValid());
     buildDocTree(tmp.path());
     Dlg dlg(tmp.path(), nullptr, nullptr);
@@ -231,19 +248,18 @@ TEST(ColdEyesDialog, INV6_ReReviewSubsetAndPriorFix) {
     EXPECT_TRUE(toRe.contains("standards")) << "lane with findings re-reviewed";
     EXPECT_FALSE(toRe.contains("contracts")) << "clean lane skipped";
 
-    ASSERT_FALSE(dlg.results().corroborated.isEmpty()
-                 && dlg.results().uncorroborated.isEmpty());
-    const auto f = dlg.results().uncorroborated.isEmpty()
-                       ? dlg.results().corroborated.first()
-                       : dlg.results().uncorroborated.first();
-    dlg.markFindingFixed(f);
-
+    // Re-review brief for the finding lane: cold, no matter what the prior
+    // round found. No markFindingFixed call exists any more (ANTS-2011).
+    // Assert absence of the prior-fix header text only — NOT "re-raise":
+    // falseposledger.cpp's formatForBrief legitimately emits its own
+    // "do not re-raise" phrase inside the (unrelated) prior-FP block that
+    // INV-2 requires, so that needle would fail for the wrong reason
+    // whenever a false-positive ledger entry is present.
     const ReviewLane std = laneById(dlg.derivePartition(), QStringLiteral("standards"));
     const LlmRequest req = dlg.composeBrief(std);
-    EXPECT_TRUE(req.userPrompt.contains("foo.cpp"))
-        << "fixed finding must thread into the next brief as a prior fix";
-    EXPECT_TRUE(req.userPrompt.contains("re-raise"))
-        << "prior-fix section header present";
+    EXPECT_FALSE(req.userPrompt.contains("Previously fixed"))
+        << "re-review must carry no prior-fix block — the reviewer is told "
+           "nothing about what happened last round";
 }
 
 // INV-7 — narrative fold-in: no IDs; per-finding: one ID per finding.
@@ -288,4 +304,94 @@ TEST(ColdEyesDialog, INV8_DispatchDisabledSmoke) {
     EXPECT_FALSE(ReviewDialogBase::endpointDispatchable(QString()));
     Dlg dlg(tmp.path(), nullptr, nullptr);  // null config = no endpoint
     SUCCEED();
+}
+
+// INV-9 — each DISPATCHED round (a full dispatch or a re-review) appends
+// exactly one loop-log entry: loop number, the lanes THAT ROUND dispatched
+// (not reports().keys() — ReviewDialogBase::redispatch merges into the
+// accumulated map, so after a re-review that map holds every lane, and
+// onAllFinished always hands onAllReportsCollected the whole merged
+// thing), and the corroborated/uncorroborated counts after that round's
+// collection. The results view renders one "Round N" line per round
+// (ANTS-2011).
+TEST(ColdEyesDialog, INV9_LoopLogTracksDispatchedRoundsNotMergedReports) {
+    QTemporaryDir tmp; ASSERT_TRUE(tmp.isValid());
+    buildDocTree(tmp.path());
+
+    Config cfg;
+    cfg.setAiEndpoint(QStringLiteral("http://127.0.0.1:9/v1/chat/completions"));
+    Dlg dlg(tmp.path(), nullptr, &cfg);
+
+    ASSERT_GE(dlg.engineLanes().size(), 2)
+        << "fixture must produce >= 2 lanes so round 1's dispatched-lane "
+           "list isn't trivially equal to round 2's single-lane re-review";
+
+    // Synchronous fake runner: round 1 gives "standards" a finding, every
+    // other lane an empty (clean) report; round 2 flips "standards" clean
+    // too, so round 2's counts differ from round 1's and can't pass by
+    // the log simply re-reporting stale numbers.
+    int round = 1;
+    dlg.setJobRunner([&round](const LlmJob &job,
+                              std::function<void(const LlmResult &)> done) {
+        LlmResult r; r.ok = true;
+        if (job.id == QStringLiteral("standards") && round == 1)
+            r.text = QStringLiteral("- [LOW] src/bar.cpp:7 — only here\n");
+        else
+            r.text = QString();
+        done(r);
+    });
+
+    // Round 1 — full dispatch of every selected lane.
+    dlg.startDispatch();
+
+    // Round 2 — flip the canned reply, then drive the REAL re-review
+    // button (not a direct onAllReportsCollected call) so the test
+    // exercises ReviewDialogBase::redispatch's merge-into-m_reports path
+    // and LlmDispatcher's synchronous-runner re-entrancy, not a shortcut
+    // around either.
+    round = 2;
+    QPushButton *reReviewBtn = nullptr;
+    for (QPushButton *b : dlg.findChildren<QPushButton *>())
+        if (b->text() == QStringLiteral("Re-review lanes with findings"))
+            reReviewBtn = b;
+    ASSERT_TRUE(reReviewBtn != nullptr) << "re-review button must exist";
+    reReviewBtn->click();
+
+    const QList<ColdEyesDialog::LoopEntry> &log = dlg.loopLog();
+    ASSERT_EQ(log.size(), 2)
+        << "exactly one entry per dispatched round — also locks against "
+           "LlmDispatcher::pump() re-entering and firing allFinished more "
+           "than once per round under a synchronous runner";
+
+    QStringList allLaneNames;
+    for (const auto &l : dlg.engineLanes()) allLaneNames << l.name;
+    allLaneNames.sort();
+
+    EXPECT_EQ(log.at(0).loop, 1) << "first round is loop 1";
+    EXPECT_EQ(log.at(0).lanes, allLaneNames)
+        << "round 1 was a full dispatch — lanes is every selected lane, "
+           "sorted";
+    EXPECT_EQ(log.at(0).corroborated, 0);
+    EXPECT_EQ(log.at(0).uncorroborated, 1)
+        << "single-lane bar.cpp:7 finding, round 1";
+
+    EXPECT_EQ(log.at(1).loop, 2) << "second round is loop 2";
+    EXPECT_EQ(log.at(1).lanes, QStringList{QStringLiteral("standards")})
+        << "round 2 was a re-review of only the finding lane — lanes must "
+           "be the DISPATCHED set, not reports().keys(), which after the "
+           "redispatch merge holds every lane from round 1 too";
+    EXPECT_EQ(log.at(1).corroborated, 0);
+    EXPECT_EQ(log.at(1).uncorroborated, 0)
+        << "the finding was fixed — round 2's report is clean";
+
+    bool foundRound1 = false, foundRound2 = false;
+    for (QPlainTextEdit *edit : dlg.findChildren<QPlainTextEdit *>()) {
+        const QString text = edit->toPlainText();
+        if (text.contains("Round 1")) foundRound1 = true;
+        if (text.contains("Round 2")) foundRound2 = true;
+    }
+    EXPECT_TRUE(foundRound1)
+        << "loop log must be rendered into a results view: round 1 missing";
+    EXPECT_TRUE(foundRound2)
+        << "loop log must be rendered into a results view: round 2 missing";
 }

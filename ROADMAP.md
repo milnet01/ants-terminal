@@ -15211,11 +15211,28 @@ under one guard). The deferrals below.
   Source: indie-review-2026-06-04.
   Lanes: modelrecommender.
 
-- 📋 [ANTS-2011] **Review-dialog family polish.**
+- ✅ [ANTS-2011] **Review-dialog family polish.**
   `m_foldInBtn` is never disabled after a fold-in → a double-click inserts two identical blocks (wasted IDs); `testauditdialog` resume (`loadResume`/`unreviewedChunkIds`, ANTS-1722 §2.5) and `coldeyesdialog` `markFindingFixed` / loop-log (ANTS-1721 §2.4) are zombie — fully implemented but no button wires them, so every re-dispatch re-raises fixed findings; `QTextEdit` leak on re-partition (`QTabWidget::clear()` doesn't delete pages); status-label hardcoded `"color: gray"` violates dialogs.md D1.
   Layman: Fixes for the review screens: a button that can be double-clicked into doing the work twice, plus two half-finished features.
   Kind: fix. Lanes: reviewdialogbase, testauditdialog, coldeyesdialog, indiereviewdialog. Source: indie-review-2026-06-04.
   Progress (2026-06-05): 3 of 4 sub-issues fixed — (a) m_foldInBtn is disabled after a successful fold-in (re-enabled on a fresh partition) so a double-click can't insert two identical blocks; (b) the QTextEdit lane pages are deleted before the tab rebuild (was a leak on every re-partition — QTabWidget::clear() leaves pages parented); (c) the status label drops its hard-coded "color: gray" for the theme-derived PlaceholderText role (dialogs.md D1). STILL OPEN: wiring the zombie resume / markFindingFixed / loop-log buttons (testauditdialog loadResume/unreviewedChunkIds ANTS-1722 §2.5; coldeyesdialog markFindingFixed + loop-log ANTS-1721 §2.4) — fully-implemented logic with no button, so re-dispatch re-raises fixed findings. That is feature-wiring, deferred to a focused pass.
+  Re-measured (2026-09-10). The test-audit resume half is done:
+  ANTS-2114 wired loadResume() and unreviewedChunkIds() into
+  TestAuditDialog::prepareDispatch(). The cold-eyes Re-review button is
+  wired to onReReviewClicked(). markFindingFixed() still has no
+  production caller. The loop log in docs/specs/ANTS-1721.md § 2.4 was
+  never built, so "fully implemented" was wrong for it. Open: § 2.4
+  briefs the next loop's reviewer on prior fixes, which the cold-loop
+  rule forbids for review loops elsewhere.
+  Resolved (2026-09-10). The resume half was already done by ANTS-2114.
+  The cold-eyes half went by user decision: a re-review runs cold, so
+  markFindingFixed and its prior-fix brief block are deleted rather than
+  wired. A loop log records one entry per dispatched round, and the
+  results view shows it. Regression: cold_eyes_dialog INV-6 (no
+  prior-fix block) and INV-9 (loop log through a real full dispatch and
+  a real re-review). INV-9 was red on the stub, and mutation_probe
+  killed 7 of 7 mutants. docs/specs/ANTS-1721.md section 2.4 is amended
+  to match.
   Source: indie-review-2026-06-04.
   Lanes: reviewdialogbase, testauditdialog, coldeyesdialog, indiereviewdialog.
 
@@ -38764,6 +38781,10 @@ whole files.
   Kind: investigate.
   Source: cold-sweep-2026-08-18 lanes llm-network + review-dialogs (UNVERIFIED — triage before work).
   Lanes: llmclient, llmdispatcher, reviewdialogbase, coldeyesdialog.
+  Partly resolved (2026-09-10) by ANTS-2011: the coldeyesdialog.cpp
+  bullet. markFindingFixed and the prior-fix block are deleted; by user
+  decision a re-review now runs cold and each round is logged. The other
+  bullets are untouched.
 
 - 📋 [ANTS-4459] **Triage: audit-subsystem findings from the cold sweep.**
   Reviewer claims carried forward as-is. NOT re-verified — check each against
@@ -55292,6 +55313,13 @@ than re-filed; everything else lands here.
   Related: ANTS-4950 wants a baseline gate this verb cannot
   currently apply on some runners. Both are about the verdicts
   resting on evidence a caller can see.
+  Companion ask (2026-09-10, ANTS-2011 run): name the failing tests.
+  Seven mutants on src/coldeyesdialog.cpp each came back killed with
+  failed 1 of 9. The envelope does not say which test failed, so
+  confirming that the intended invariant caught each mutant took
+  reasoning rather than reading. ctest and gtest both print the failing
+  test names, so a failed_tests list is derivable from output the verb
+  already runs.
   **Layman:** The tool that measures test strength counts a broken-on-purpose file as proof the tests are good.
   Kind: enhancement.
   Source: LocalWebServerManager_Ants_MCP_Feedback.md 2026-09-08.
@@ -64376,6 +64404,41 @@ partition (11 lanes) is documented in this fold-in for reuse.
   Kind: fix.
   Source: in-session-2026-09-10.
   Lanes: mainwindow, claudestatuswidgets.
+
+- 📋 [ANTS-5000] **LlmDispatcher fires allFinished more than once per round when a job runner finishes synchronously.**
+  Measured 2026-09-10 (ANTS-2011). pump() re-enters itself from a job's
+  done callback. With a runner that calls done before returning, the
+  innermost pump emits allFinished when the queue drains, and each outer
+  pump emits it again as it unwinds. The dispatcher's own contract,
+  tests/features/llm_dispatcher/spec.md INV-7, says it fires exactly once.
+
+  Proof by mutation: a mutant that dropped ColdEyesDialog's pending-round
+  guard was killed by cold_eyes_dialog INV-9 under a synchronous fake
+  runner. With one allFinished per round that mutant cannot fail.
+
+  The production runner is asynchronous, because LlmClient::send defers
+  even its error, so today only test seams hit this. A test counting
+  onAllReportsCollected calls under a synchronous runner reads a wrong
+  number. Fix candidates: guard allFinished with a pending flag, or emit
+  only from the outermost pump frame. Related: ANTS-4458.
+  **Layman:** The part that runs review jobs can announce all done several times when a job finishes instantly.
+  Kind: fix.
+  Source: in-session-2026-09-10.
+  Lanes: llmdispatcher.
+
+- 📋 [ANTS-5001] **find_caller on a type returns zero callers with no hint that a type's uses are not calls.**
+  Measured 2026-09-10: find_caller symbol:PriorLoopFix returned
+  callers_count 0 beside a struct definition in src/coldeyesengine.h.
+  workspace_search finds the type in use in src/coldeyesengine.cpp and
+  src/remotecontrol_coldeyes.cpp, as a parameter and as locals. A zero
+  reads as unused, so a caller deciding whether to delete the type is
+  misled. When the resolved definition is a struct, class or enum, add a
+  hint that its uses are declarations rather than calls, and name
+  workspace_search.
+  **Layman:** The who-uses-this tool says nobody uses a data type that is in fact used.
+  Kind: enhancement.
+  Source: in-session-2026-09-10.
+  Lanes: mcp.
 
 ### 🔥 Cross-cutting themes (patterns caught by ≥2 reviewers)
 

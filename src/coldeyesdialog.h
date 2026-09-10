@@ -10,7 +10,8 @@
 // LLM endpoint in parallel, corroborates the returned reports, and folds
 // findings into ROADMAP.md — all without spending Claude orchestration
 // tokens. The review→fix→re-review loop runs in-dialog and re-dispatches
-// only the lanes that produced findings.
+// only the lanes that produced findings. A re-review runs cold, and each
+// round is logged (ANTS-2011).
 
 #pragma once
 
@@ -43,6 +44,14 @@ public:
         QStringList staleFindings;  // pre-found accuracy findings (no model)
     };
 
+    // ANTS-2011 — one entry per dispatched round, oldest first.
+    struct LoopEntry {
+        int         loop = 0;          // 1-based round number
+        QStringList lanes;             // lanes that round dispatched, sorted
+        int         corroborated = 0;
+        int         uncorroborated = 0;
+    };
+
     // INV-4 — sum-gate cap over the whole composed user prompt is the
     // inherited ReviewDialogBase::kPromptCapBytes (ANTS-2205).
     static constexpr qint64 kPerFileCapBytes = 64 * 1024;   // lane bodies
@@ -55,21 +64,21 @@ public:
     bool isLaneSelected(const QString &laneName) const;
     const Results &results() const { return m_results; }
     QStringList lanesToReReview() const;
-    void markFindingFixed(const IndieReviewEngine::CorroboratedFinding &f);
     void setFoldInMode(FoldInMode m) { m_foldInMode = m; }
     void setNarrativeText(const QString &md) { m_narrative = md; }
+    const QList<LoopEntry> &loopLog() const { return m_loopLog; }
 
 protected:
     QList<ReviewLane> derivePartition() override;
     LlmRequest        composeBrief(const ReviewLane &lane) override;
     void onAllReportsCollected(const QHash<QString, QString> &reportsById) override;
     void performFoldIn() override;
+    void prepareDispatch() override;
 
 private:
     QList<ReviewLane> selectedReviewLanes() const;
     const ColdEyesEngine::Lane *laneByName(const QString &name) const;
     QStringList laneKeywords(const ColdEyesEngine::Lane &lane) const;
-    QString     renderPriorFixes() const;
     QString     staleFindingLine(const QString &cite, const QString &lane) const;
     QString     assembleCappedPrompt(const ColdEyesEngine::Lane &lane,
                                      const QString &summary,
@@ -86,10 +95,11 @@ private:
     QList<ColdEyesEngine::Lane>         m_allLanes;
     QSet<QString>                       m_deselected;
     QHash<QString, QStringList>         m_staleByLane;   // laneName → findings
-    QList<ColdEyesEngine::PriorLoopFix> m_priorFixes;
     Results                             m_results;
     FoldInMode                          m_foldInMode = FoldInMode::PerFinding;
     QString                             m_narrative;
+    QList<LoopEntry>                    m_loopLog;
+    QStringList                         m_roundLanes;  // lanes the pending round dispatched
 
     // GUI (populated lazily; tests drive the logic via the public surface).
     QComboBox      *m_scopeCombo = nullptr;
