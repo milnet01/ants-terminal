@@ -28,6 +28,20 @@ fail() { echo "FAIL  $*"; fails=$((fails + 1)); }
 # has HAYSTACK NEEDLE — plain-substring match (needle is not a regex).
 has()  { grep -qF "$2" <<<"$1"; }
 
+# wait_text TAG NEEDLE [LINES] — poll get-text until NEEDLE appears, or ~15 s
+# pass, and print the last text read. ANTS-5012: one read after a fixed sleep
+# failed under ASan in CI, where the instance can take longer than the sleep.
+wait_text() {
+    local tag="$1" needle="$2" req='{"cmd":"get-text"}' t=""
+    [[ -n "${3:-}" ]] && req="{\"cmd\":\"get-text\",\"lines\":$3}"
+    for _ in $(seq 1 60); do
+        t=$(call_e2e "$req" "$tag")
+        has "$t" "$needle" && break
+        sleep 0.25
+    done
+    printf '%s' "$t"
+}
+
 # send_cmd TAG SHELL_LINE — type a shell command into the instance's PTY and
 # press Enter. SHELL_LINE is a raw command (single-quote the bash literal to
 # keep $(...) / $((...)) / escapes like \033 literal for the *remote* shell);
@@ -49,22 +63,19 @@ lane_terminal() {
 
     # echo + shell arithmetic.
     send_cmd terminal 'echo TB_$((6*7))_END'
-    sleep 1
-    t=$(call_e2e '{"cmd":"get-text"}' terminal)
+    t=$(wait_text terminal 'TB_42_END')
     has "$t" 'TB_42_END' && pass "terminal: echo + arithmetic" \
         || fail "terminal: echo/arithmetic sentinel absent"
 
     # ANSI SGR: the colour escape is consumed by the parser, the text survives.
     send_cmd terminal "printf '\\033[1;31mCOLORSAFE\\033[0m\\n'"
-    sleep 1
-    t=$(call_e2e '{"cmd":"get-text"}' terminal)
+    t=$(wait_text terminal 'COLORSAFE')
     has "$t" 'COLORSAFE' && pass "terminal: ANSI SGR text intact" \
         || fail "terminal: ANSI SGR sentinel absent"
 
     # Carriage-return overwrite: 'XXXX\rYY' → the row reads 'YYXX'.
     send_cmd terminal "printf 'XXXX\\rYY\\n'"
-    sleep 1
-    t=$(call_e2e '{"cmd":"get-text"}' terminal)
+    t=$(wait_text terminal 'YYXX')
     has "$t" 'YYXX' && pass "terminal: CR overwrite" \
         || fail "terminal: CR overwrite (expected YYXX)"
 
@@ -72,8 +83,7 @@ lane_terminal() {
     # A CJK char is double-width — get-text pads its second cell with a space
     # (中文 → "中 文 "), so assert each codepoint is present, not contiguous.
     send_cmd terminal 'echo CJK_中文_END'
-    sleep 1
-    t=$(call_e2e '{"cmd":"get-text"}' terminal)
+    t=$(wait_text terminal '文')
     { has "$t" '中' && has "$t" '文'; } && pass "terminal: UTF-8/CJK round-trip" \
         || fail "terminal: UTF-8 bytes not observed"
 
@@ -81,9 +91,8 @@ lane_terminal() {
     # across rows, so count the W's rather than expecting one contiguous run
     # (get-text joins wrapped rows with a newline). ≥200 = nothing dropped (the
     # extra one is the literal W in the echoed printf command).
-    send_cmd terminal "printf 'W%.0s' \$(seq 1 200); printf '\\n'"
-    sleep 1
-    local wc; wc=$(call_e2e '{"cmd":"get-text","lines":60}' terminal | tr -cd 'W' | wc -c)
+    send_cmd terminal "printf 'W%.0s' \$(seq 1 200); printf '\\n'; echo LL_\$((2+3))_END"
+    local wc; wc=$(wait_text terminal 'LL_5_END' 60 | tr -cd 'W' | wc -c)
     (( wc >= 200 )) && pass "terminal: 200-char long line intact (W count=$wc)" \
         || fail "terminal: long line truncated (W count=$wc, want ≥200)"
 }
@@ -96,8 +105,7 @@ lane_scrollback() {
     launch_e2e scrollback || { fail "scrollback: launch"; return; }
 
     send_cmd scrollback 'echo SCROLLTOP; seq 1 300; echo SCROLLBOT'
-    sleep 2
-    local t; t=$(call_e2e '{"cmd":"get-text","lines":400}' scrollback)
+    local t; t=$(wait_text scrollback 'SCROLLBOT' 400)
     if has "$t" 'SCROLLTOP' && has "$t" 'SCROLLBOT'; then
         pass "scrollback: 300-line history retained (both markers)"
     else
@@ -123,8 +131,7 @@ lane_resize() {
 
     # PTY still live after the reflow.
     send_cmd resize 'echo AFTER_RESIZE_OK'
-    sleep 1
-    has "$(call_e2e '{"cmd":"get-text"}' resize)" 'AFTER_RESIZE_OK' \
+    has "$(wait_text resize 'AFTER_RESIZE_OK')" 'AFTER_RESIZE_OK' \
         && pass "resize: PTY echoes after reflow" \
         || fail "resize: PTY silent after reflow"
 }

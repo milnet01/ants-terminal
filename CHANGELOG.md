@@ -28,6 +28,16 @@ for security-relevant changes.
 
 ### Fixed
 
+- **The sanitizer CI job's test step has room to finish again** (ANTS-5011)
+  Passing runs were finishing within a minute of the 16-minute limit,
+  and three were cut off at it. The limit is now 22 minutes, re-measured
+  from recent runs, and the job's overall cap rises to match.
+
+- **The end-to-end test cases wait for the screen instead of sleeping a fixed second** (ANTS-5012)
+  A slow instance, such as the sanitizer build in CI, no longer fails
+  them. Each case now polls for its expected text for up to about 15
+  seconds.
+
 - **The blocked-roadmap-write message now describes the rule the code actually enforces** (ANTS-4749)
   A roadmap write blocked for a missing plain-language summary told you
   the summary had to be the first line of your note. It never did — the

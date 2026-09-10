@@ -39112,6 +39112,118 @@ whole files.
   Source: in-session-2026-08-25 (found while fixing ANTS-4446).
   Lanes: docs, mcp.
 
+- 📋 [ANTS-5002] **LlmClient's destructor can emit finished from a dying client and then dereference null.**
+  ~LlmClient aborts m_reply while the pointer is still set. If
+  QNetworkReply::abort reports finished synchronously, onFinished runs,
+  emits finished and nulls m_reply, and the destructor then calls
+  deleteLater through null. LlmClient::abort() nulls first for exactly this
+  reason. AuditDialog owns an LlmClient (m_debtLlm) and aborts nothing on
+  close, so closing it mid-triage reaches this path; AiDialog aborts first
+  as a workaround. Verified by reading 2026-09-10; the red run decides
+  whether Qt's abort is synchronous. From ANTS-4458.
+  **Layman:** Closing an AI-backed window in the middle of a request could crash the app.
+  Kind: fix.
+  Source: cold-sweep-2026-08-18 triaged in-session-2026-09-10.
+  Lanes: llmclient.
+
+- 📋 [ANTS-5003] **A review lane whose AI request failed is recorded as an empty report, which reads as a clean review.**
+  ReviewDialogBase::onJobFinished stores result.text and ignores
+  result.ok, so a network failure becomes an empty report with no
+  findings. Test audit then persists the failed chunk as reviewed, so
+  resume never retries it. From ANTS-4458.
+  **Layman:** When the AI cannot be reached, the review screen says everything is fine.
+  Kind: fix.
+  Source: cold-sweep-2026-08-18 triaged in-session-2026-09-10.
+  Lanes: reviewdialogbase.
+
+- 📋 [ANTS-5004] **The review dialogs' Dispatch button stays enabled during a run, so a second click wipes the reports and pays again.**
+  Nothing disables Dispatch while a round is in flight. A second click
+  runs ReviewDialogBase::startDispatch again, which clears the collected
+  reports and sends every lane a second time. From ANTS-4458.
+  **Layman:** Clicking Dispatch twice pays for the whole AI review twice.
+  Kind: fix.
+  Source: cold-sweep-2026-08-18 triaged in-session-2026-09-10.
+  Lanes: reviewdialogbase.
+
+- 📋 [ANTS-5005] **LlmClient::drain copies the whole remaining buffer for every streamed line.**
+  Each SSE line is removed with m_sseLineBuffer.mid(), which copies the
+  rest of the buffer, so a tick of lines costs the buffer size times the
+  line count. The buffer may hold up to the client's size cap. Walk by
+  offset and trim once per tick. From ANTS-4458.
+  **Layman:** Reading a long AI answer does far more copying than it needs to.
+  Kind: perf.
+  Source: cold-sweep-2026-08-18 triaged in-session-2026-09-10.
+  Lanes: llmclient.
+
+- 📋 [ANTS-5006] **Dispatching with no lanes reports a finished round, because enqueue emits allFinished for an empty batch.**
+  LlmDispatcher::enqueue runs pump() on an empty list, and pump() emits
+  allFinished for a batch that never existed. ReviewDialogBase::startDispatch
+  enqueues even with no lanes, while redispatch guards against it. From
+  ANTS-4458.
+  **Layman:** Starting a review with nothing to review claims it finished.
+  Kind: fix.
+  Source: cold-sweep-2026-08-18 triaged in-session-2026-09-10.
+  Lanes: llmdispatcher, reviewdialogbase.
+
+- 📋 [ANTS-5007] **LlmClient returns a blank answer from a provider that ignores streaming, and loses the server's error message.**
+  drain() reads every byte on readyRead, so onFinished's non-streaming
+  fallback reads nothing. A provider that ignores "stream": true and
+  returns plain JSON yields ok with empty text, and a 4xx body's error
+  message never reaches the user. A fix keeps the raw body until the
+  first SSE line proves the reply is a stream. From ANTS-4458.
+  **Layman:** Some AI services' answers show up blank, and their error messages are lost.
+  Kind: fix.
+  Source: cold-sweep-2026-08-18 triaged in-session-2026-09-10.
+  Lanes: llmclient.
+
+- 📋 [ANTS-5008] **Hitting LlmClient's size cap stops keeping data but never stops the download.**
+  drain() clears the buffer and marks the answer truncated, and
+  accumulateCapped stops appending, but the reply keeps streaming until
+  the server closes it. The transfer timeout only catches silence. A fix
+  ends the request on cap and finishes with the truncated result. From
+  ANTS-4458.
+  **Layman:** A misbehaving AI server can keep sending data long after the app stopped reading it.
+  Kind: fix.
+  Source: cold-sweep-2026-08-18 triaged in-session-2026-09-10.
+  Lanes: llmclient.
+
+- 📋 [ANTS-5009] **LlmDispatcher's built-in runner and client tracking are dead in production.**
+  ReviewDialogBase replaces the default runner with its own, so
+  LlmDispatcher::m_activeClients is never filled and cancelAll's abort
+  block never runs outside tests. The dialog tracks its own clients
+  (ANTS-2111). Two mechanisms do one job; keep one. From ANTS-4458.
+  **Layman:** Two copies of the same safety code exist, and only one is ever used.
+  Kind: refactor.
+  Source: cold-sweep-2026-08-18 triaged in-session-2026-09-10.
+  Lanes: llmdispatcher, reviewdialogbase.
+
+- 💭 [ANTS-5010] **A keyless http endpoint on a remote host sends the whole review brief unencrypted.**
+  LlmClient::endpointEgressError refuses cleartext only when an API key
+  is set, to protect the key. With no key, a remote http endpoint
+  receives the prompt, which carries project source and docs, in the
+  clear. Private-range hosts are already refused, so this is a public
+  http host. Needs a user decision: warn, refuse, or allow. From
+  ANTS-4458.
+  **Layman:** Without an API key, the app will send your project's files to a remote AI server without encryption.
+  Kind: security.
+  Source: cold-sweep-2026-08-18 triaged in-session-2026-09-10.
+  Lanes: llmclient.
+
+- 📋 [ANTS-5015] **LlmClient drops every streamed line past the first 256 when the reply finishes in the same burst.**
+  Found 2026-09-10 by a new llm_client test (INV-18). drain() parses at
+  most kMaxLinesPerTick lines, then re-arms itself with a zero-delay timer.
+  When the whole answer arrives at once and the connection closes,
+  onFinished() runs before the re-armed call, nulls m_reply and emits
+  finished; the re-armed drain() then returns early. Measured on a
+  loopback server: a 600-line answer came back as its first 256 pieces
+  with ok true, so the loss is silent. A fast local AI server can hit
+  this on any long answer. Fix: onFinished() parses whatever complete
+  lines remain buffered before it builds the result.
+  **Layman:** A long AI answer can come back cut short with no warning when the server sends it all at once.
+  Kind: fix.
+  Source: in-session-2026-09-10 (found by the ANTS-5005 guard test).
+  Lanes: llmclient.
+
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-08-18 triage
 
 Five files carried un-triaged input: LocalWebServerManager (254 lines), OneUp
@@ -73460,6 +73572,65 @@ contributors don't duplicate research.
   **Layman:** One audit lane still produces about a thousand results, too many for anyone to read through.
   Kind: audit-fix.
   Source: audit-2026-08-06.
+
+- ✅ [ANTS-5011] **CI's sanitized test step outgrew its 16-minute budget, so passing runs finish seconds short of a kill.**
+  Measured 2026-09-10 across recent main runs: the build-asan ctest step
+  passed in 14m49s to 15m35s on most runs, and was killed at exactly 16m
+  on b0c68214 and e73aff2, as 703f863 was before them. The suite grows with
+  every test added. tests/features/ci_asan_budget/spec.md names the
+  remedy: re-measure and raise both numbers together at about 1.4x. Raise
+  the step guard to 22m and the job cap to 50m. Related: ANTS-4533.
+  Resolved (2026-09-10). ci.yml's build-asan ctest guard rises from 16m
+  to 22m, about 1.4x the slowest recent passing run, and the job cap
+  from 42 to 50 so it stays above the 24m + 22m step sum. The ci.yml
+  comment records the measurement. tests/features/ci_asan_budget passes
+  4 of 4 against the new numbers. ANTS-5014 tracks the lasting fix.
+  **Layman:** The memory-checking CI job runs out of time on some pushes, so they go red at random.
+  Kind: fix.
+  Source: in-session-2026-09-10 (user-reported CI failure emails).
+  Lanes: ci.
+
+- ✅ [ANTS-5012] **The e2e cases read the screen once after a fixed sleep, so a slow instance fails them.**
+  tools/e2e/cases.sh types a command, sleeps a fixed interval and reads
+  get-text once. Under ASan the instance can take longer, and d495f8c's
+  CI run failed with "terminal: echo/arithmetic sentinel absent".
+  Reproduced 2026-09-10: the ASan binary pinned to a loaded core failed
+  that case in two of three runs. Poll for the expected text with a
+  deadline instead.
+  Resolved (2026-09-10). tools/e2e/cases.sh gains wait_text, which polls
+  get-text for the expected text for up to about 15 seconds, and all
+  seven sleep-then-read spots use it. The long-line case gains an
+  execution-only end marker, so the poll cannot return before the W run
+  has printed. Red then green on the same load: the ASan binary pinned
+  to a core busy with three yes processes failed the terminal lane in
+  two of three runs before, and passed three of three plus every lane
+  after.
+  **Layman:** An automatic test that drives the real app gives up too soon when the machine is slow.
+  Kind: fix.
+  Source: in-session-2026-09-10 (user-reported CI failure emails).
+  Lanes: e2e.
+
+- 📋 [ANTS-5013] **Several e2e cases match text already present in the typed command, so they pass without the command running.**
+  The typed line is echoed to the screen before the shell runs it.
+  COLORSAFE, CJK_中文_END, SCROLLTOP and SCROLLBOT, and AFTER_RESIZE_OK all
+  appear in the command text itself, so each check is satisfied by the
+  echo. TB_42_END, YYXX and the long W line avoid this by producing text
+  only execution can. Rework each needle the same way.
+  **Layman:** Some automatic checks would pass even if the app never ran the command.
+  Kind: test.
+  Source: in-session-2026-09-10.
+  Lanes: e2e.
+
+- 📋 [ANTS-5014] **The sanitized CI suite's run time grows with every test, because each test runs as its own process under ASan.**
+  tests/features/ci_asan_budget/spec.md measured the cost as dominated by
+  per-process startup under ASan rather than by any one test, and -j2
+  bought only 1.31x. Raising the budget is the documented stopgap. A
+  lasting fix lowers the startup cost per test, for example by running a
+  bundle's tests in one process under ASan. Measure before choosing.
+  **Layman:** The memory-checking test run keeps getting slower as tests are added.
+  Kind: perf.
+  Source: in-session-2026-09-10.
+  Lanes: ci.
 
 ### 📝 Cold-eyes 2026-05-11 (ANTS-1234 spec)
 

@@ -213,13 +213,13 @@ jobs:
     name: Build and test (ASan/UBSan)
     runs-on: ubuntu-24.04
     # ANTS-4533 — this cap is a BACKSTOP, not the gate. It must stay above
-    # the sum of the per-step `timeout` guards below (24m + 16m), because a
+    # the sum of the per-step `timeout` guards below (24m + 22m), because a
     # job killed by timeout-minutes concludes `cancelled` rather than
     # `failure`: the run does not read as red and nothing notifies. That is
     # how this job went 36-of-40 cancelled over two days unnoticed. The step
     # guards exit 124 and go red; tests/features/ci_asan_budget/ locks the
     # ordering so a later bump cannot quietly undo it.
-    timeout-minutes: 42
+    timeout-minutes: 50
     env:
       CCACHE_DIR: ${{ github.workspace }}/.ccache
       # ANTS-4652 — 500M was thrashing. build-test's own stats step reported
@@ -311,9 +311,13 @@ jobs:
         # 1.31x, not the ~2x a halving would predict, so this suite does not
         # parallelise cleanly and raising -j further is unproven rather than
         # obviously better. The first budget here was 12m and finished with
-        # 16s to spare, which is a coin flip rather than a gate; 16m is ~1.4x
+        # 16s to spare, which is a coin flip rather than a gate; 16m was ~1.4x
         # the measured cost. Re-measure before narrowing it again.
-        run: timeout 16m ctest -j2 --output-on-failure --timeout 300
+        #
+        # ANTS-5011 — re-measured 2026-09-10: the suite grew, passing runs took
+        # 14m49s to 15m35s, and three runs were killed at exactly 16m. 22m is
+        # ~1.4x the slowest passing run. The lasting fix is ANTS-5014.
+        run: timeout 22m ctest -j2 --output-on-failure --timeout 300
 
       - name: Smoke-test binary init paths
         working-directory: build-asan
