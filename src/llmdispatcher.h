@@ -53,6 +53,7 @@ private:
     int            m_max = 2;
     int            m_inFlight = 0;
     bool           m_cancelled = false;
+    bool           m_batchOpen = false;   // enqueued, allFinished not yet sent
     QList<LlmJob>  m_queue;
     JobRunner      m_runner;
 };

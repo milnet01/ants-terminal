@@ -394,4 +394,9 @@ TEST(ColdEyesDialog, INV9_LoopLogTracksDispatchedRoundsNotMergedReports) {
         << "loop log must be rendered into a results view: round 1 missing";
     EXPECT_TRUE(foundRound2)
         << "loop log must be rendered into a results view: round 2 missing";
+
+    // No round pending: a further collection logs nothing.
+    dlg.onAllReportsCollected(QHash<QString, QString>{});
+    EXPECT_EQ(dlg.loopLog().size(), 2)
+        << "a collection with no dispatched round pending must not log";
 }

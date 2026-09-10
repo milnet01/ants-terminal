@@ -15,6 +15,7 @@ void LlmDispatcher::setRunner(JobRunner runner) {
 void LlmDispatcher::enqueue(const QList<LlmJob> &jobs) {
     if (jobs.isEmpty()) return;   // ANTS-5006 — no batch, so no allFinished
     m_cancelled = false;
+    m_batchOpen = true;
     m_queue.append(jobs);
     pump();
 }
@@ -30,13 +31,7 @@ void LlmDispatcher::cancelAll() {
 }
 
 void LlmDispatcher::pump() {
-    if (m_cancelled) {
-        if (m_inFlight == 0)
-            emit allFinished();
-        return;
-    }
-
-    while (m_inFlight < m_max && !m_queue.isEmpty()) {
+    while (!m_cancelled && m_inFlight < m_max && !m_queue.isEmpty()) {
         const LlmJob job = m_queue.takeFirst();
         ++m_inFlight;
         const QString id = job.id;
@@ -48,6 +43,12 @@ void LlmDispatcher::pump() {
         });
     }
 
-    if (m_inFlight == 0 && m_queue.isEmpty())
+    // A runner that calls done before returning re-enters pump(), and every
+    // frame then sees the batch drained; only the first reports it
+    // (ANTS-5000). cancelAll() emptied the queue, so a cancelled batch ends
+    // here too once in-flight drains.
+    if (m_batchOpen && m_inFlight == 0 && m_queue.isEmpty()) {
+        m_batchOpen = false;
         emit allFinished();
+    }
 }

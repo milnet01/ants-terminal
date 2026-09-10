@@ -39386,6 +39386,13 @@ whole files.
   the runner lambda's `done` in the ReviewDialogBase constructor.
   performance-no-automatic-move on `const QList<int> ids` in
   ReviewDialogBase::allocateFoldInIds. Fix or suppress each.
+  Progress (2026-09-10): clangd's clang-tidy also flags two older nits in
+  tests/features/cold_eyes_dialog/test_cold_eyes_dialog.cpp. The INV-9
+  runner lambda takes `done` by value
+  (performance-unnecessary-value-param), and an earlier test multiplies
+  in int before widening to qsizetype
+  (bugprone-implicit-widening-of-multiplication-result). Neither came
+  from ANTS-5000.
   **Layman:** The code checker flagged three small tidy-ups in the review-window code; none is a bug.
   Kind: chore.
   Source: in-session-2026-09-10.
@@ -64692,7 +64699,7 @@ partition (11 lanes) is documented in this fold-in for reuse.
   Source: in-session-2026-09-10.
   Lanes: mainwindow, claudestatuswidgets.
 
-- 📋 [ANTS-5000] **LlmDispatcher fires allFinished more than once per round when a job runner finishes synchronously.**
+- ✅ [ANTS-5000] **LlmDispatcher fires allFinished more than once per round when a job runner finishes synchronously.**
   Measured 2026-09-10 (ANTS-2011). pump() re-enters itself from a job's
   done callback. With a runner that calls done before returning, the
   innermost pump emits allFinished when the queue drains, and each outer
@@ -64708,6 +64715,15 @@ partition (11 lanes) is documented in this fold-in for reuse.
   onAllReportsCollected calls under a synchronous runner reads a wrong
   number. Fix candidates: guard allFinished with a pending flag, or emit
   only from the outermost pump frame. Related: ANTS-4458.
+  Resolved (2026-09-10): enqueue opens a batch and the first pump() frame
+  to see it drained closes it, so allFinished fires once per batch. A
+  cancelled batch ends through the same check. Proved red first: a
+  synchronous runner fired it once per unwinding frame, and a cancelAll
+  from inside a completion fired it twice. Two regression tests in
+  llm_dispatcher now pass. ColdEyesDialog keeps its round guard as a
+  check that a call with no round pending logs nothing. Its INV-9 test
+  gained a direct call, and a mutant dropping the guard now fails it.
+  Full suite green.
   **Layman:** The part that runs review jobs can announce all done several times when a job finishes instantly.
   Kind: fix.
   Source: in-session-2026-09-10.

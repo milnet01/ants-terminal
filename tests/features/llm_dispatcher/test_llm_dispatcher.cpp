@@ -5,6 +5,7 @@
 // INV-7  every job runs once; allFinished fires once.
 // INV-8  dispatcher stores no result (source-grep).
 // INV-9  cancelAll clears the queue + drains to allFinished.
+//        INV-7 and INV-9 also hold under a synchronous runner (ANTS-5000).
 // INV-14 maxConcurrent clamped to [1, 4].
 // INV-15 enqueue({}) emits nothing (regression).
 
@@ -33,6 +34,14 @@ QList<LlmJob> nJobs(int n) {
     QList<LlmJob> jobs;
     for (int i = 0; i < n; ++i) jobs << job(QString::number(i));
     return jobs;
+}
+
+// A runner that reports each job done before it returns.
+void runSynchronously(const LlmJob &,
+                      const std::function<void(const LlmResult &)> &done) {
+    LlmResult r;
+    r.ok = true;
+    done(r);
 }
 
 }  // namespace
@@ -127,6 +136,55 @@ TEST(LlmDispatcher, INV9_CancelAll) {
     }
     EXPECT_EQ(jobFinished, 0);
     EXPECT_EQ(allFinished, 1);
+    EXPECT_EQ(disp.inFlight(), 0);
+}
+
+// INV-7 (regression, ANTS-5000) — a synchronous runner re-enters pump()
+// from the done callback. Pre-fix, every unwinding frame saw the batch
+// drained and emitted allFinished again. A second batch must still get
+// its own single allFinished.
+TEST(LlmDispatcher, INV7_SynchronousRunnerFinishesOncePerBatch) {
+    for (int max : {1, 2}) {
+        LlmDispatcher disp(max);
+        disp.setRunner(runSynchronously);
+        int jobFinished = 0;
+        int allFinished = 0;
+        QObject::connect(&disp, &LlmDispatcher::jobFinished,
+                         [&](const QString &, const LlmResult &) { ++jobFinished; });
+        QObject::connect(&disp, &LlmDispatcher::allFinished,
+                         [&]() { ++allFinished; });
+
+        disp.enqueue(nJobs(3));
+        EXPECT_EQ(jobFinished, 3) << "maxConcurrent " << max;
+        EXPECT_EQ(allFinished, 1) << "maxConcurrent " << max;
+
+        disp.enqueue(nJobs(2));
+        EXPECT_EQ(jobFinished, 5) << "maxConcurrent " << max;
+        EXPECT_EQ(allFinished, 2) << "maxConcurrent " << max;
+        EXPECT_EQ(disp.inFlight(), 0);
+    }
+}
+
+// INV-9 (regression, ANTS-5000) — cancelAll() from a jobFinished handler
+// under a synchronous runner ends the batch with one allFinished.
+TEST(LlmDispatcher, INV9_CancelDuringSynchronousCompletionFinishesOnce) {
+    LlmDispatcher disp(1);
+    disp.setRunner(runSynchronously);
+    int jobFinished = 0;
+    int allFinished = 0;
+    QObject::connect(&disp, &LlmDispatcher::jobFinished,
+                     [&](const QString &, const LlmResult &) {
+                         ++jobFinished;
+                         disp.cancelAll();
+                     });
+    QObject::connect(&disp, &LlmDispatcher::allFinished,
+                     [&]() { ++allFinished; });
+
+    disp.enqueue(nJobs(3));
+
+    EXPECT_EQ(jobFinished, 1);
+    EXPECT_EQ(allFinished, 1);
+    EXPECT_EQ(disp.pending(), 0);
     EXPECT_EQ(disp.inFlight(), 0);
 }
 

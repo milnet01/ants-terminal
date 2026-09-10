@@ -317,9 +317,8 @@ void ColdEyesDialog::onAllReportsCollected(
          ++it)
         m_results.staleFindings << it.value();
 
-    // ANTS-2011 — one entry per dispatched round. A synchronous job runner
-    // makes LlmDispatcher report "all finished" more than once per round,
-    // so only a round still pending is logged.
+    // ANTS-2011 — one entry per dispatched round. A call with no round
+    // pending logs nothing.
     if (!m_roundLanes.isEmpty()) {
         LoopEntry entry;
         entry.loop = static_cast<int>(m_loopLog.size()) + 1;

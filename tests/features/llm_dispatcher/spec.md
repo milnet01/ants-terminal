@@ -13,11 +13,14 @@ testable without a network.
 
 - **INV-6** — never more than `maxConcurrent` jobs in flight.
 - **INV-7** — every enqueued job runs exactly once; `allFinished` fires
-  exactly once after the last completes.
+  exactly once after the last completes. This holds for a runner that
+  calls `done` before it returns, which re-enters `pump()` (ANTS-5000).
 - **INV-8** — the dispatcher retains no `result.text` after emitting
   `jobFinished` (result forwarded by const-ref, never stored).
 - **INV-9** — `cancelAll` clears the queue and emits `allFinished` once
-  the in-flight set drains; no `jobFinished` for cancelled jobs.
+  the in-flight set drains; no `jobFinished` for cancelled jobs. A
+  `cancelAll` from inside a synchronous completion also ends the batch
+  with one `allFinished` (ANTS-5000).
 - **INV-14 (clamp)** — `maxConcurrent` is clamped to `[1, 4]`.
 - **INV-15** (regression) — `enqueue` ignores an empty job list: it must
   not run `pump()` (and so must not emit `allFinished`) for a batch that

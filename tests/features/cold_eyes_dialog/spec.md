@@ -57,9 +57,7 @@ loop. INV-8 is a construction smoke assertion.
   dispatched, tracked separately (e.g. via `prepareDispatch()` for a full
   dispatch, and the re-review's own lane set), or a re-review's entry
   would wrongly list every lane ever dispatched instead of just the ones
-  re-checked. Exactly one entry is appended per round even though a
-  synchronous job runner can make `LlmDispatcher::pump()` re-enter and
-  emit `allFinished` more than once for the same round — a round with no
-  dispatch pending appends nothing on a spurious extra signal. The log is
+  re-checked. Exactly one entry is appended per round. A call to
+  `onAllReportsCollected` with no round pending appends nothing. The log is
   also rendered into a `QPlainTextEdit` results view, one line per round,
   each containing the text `"Round N"`.

@@ -35,6 +35,10 @@ for security-relevant changes.
 
 ### Fixed
 
+- **The AI review job pool reports a finished round exactly once, even when a job completes the moment it starts** (ANTS-5000)
+  Before, each nested step announced the same round again. Only test
+  code reached this path; live AI requests always finish later.
+
 - **Four end-to-end checks now fail when the typed command never runs** (ANTS-5013)
   The ANSI colour, CJK, scrollback and resize cases looked for text the
   typed command already contained, so the terminal's echo satisfied them.
