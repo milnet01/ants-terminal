@@ -14,6 +14,8 @@ for security-relevant changes.
 
 ### Changed
 
+- **Streaming AI answers are parsed without re-copying the buffer for every line** (ANTS-5005)
+
 - **Cold-eyes re-reviews now run cold and keep a round-by-round log** (ANTS-2011)
   A re-review no longer tells the reviewer what was fixed, so a fix that
   did not hold shows up again. The results view lists each round: the
@@ -27,6 +29,27 @@ for security-relevant changes.
   the small, readable half can now be acted on by itself.
 
 ### Fixed
+
+- **Closing an AI-backed window mid-request no longer crashes the app** (ANTS-5002)
+  An AI client destroyed with a request in flight now shuts down
+  quietly. The audit dialog's AI triage could reach this when closed
+  mid-answer.
+
+- **Long AI answers that arrive all at once are delivered whole** (ANTS-5015)
+  An answer longer than one parsing pass, sent in a single burst by a
+  fast or local AI server, used to come back cut short with no warning.
+
+- **Review dialogs report a failed AI request as a failure, not a clean review** (ANTS-5003)
+  A lane whose request failed now shows the error in its tab and is
+  named in the status line, and it is left out of the results. Test
+  audit's resume now retries such a chunk instead of treating it as
+  reviewed.
+
+- **The review dialogs' Dispatch button is disabled while a round runs** (ANTS-5004)
+  A second click mid-round used to wipe the collected reports and pay
+  for every lane again.
+
+- **Dispatching a review with no lanes says so instead of reporting a finished review** (ANTS-5006)
 
 - **The sanitizer CI job's test step has room to finish again** (ANTS-5011)
   Passing runs were finishing within a minute of the 16-minute limit,

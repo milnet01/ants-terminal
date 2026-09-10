@@ -3,21 +3,31 @@
 // INV-12 endpointDispatchable predicate.
 // INV-13 allocateFoldInIds returns [] + reason on counter failure, no write.
 // INV-15 dispatchOne fires its callback without onAllReportsCollected.
+// INV-20 a failed job is not stored in reports(); status names it.
+// INV-21 Dispatch button disabled for the duration of a round.
+// INV-22 startDispatch with no lanes starts no round.
 
 #include "reviewdialogbase.h"
+
+#include "config.h"
 
 #include <gtest/gtest.h>
 
 #include <QFile>
 #include <QHash>
+#include <QLabel>
+#include <QPushButton>
 #include <QString>
 #include <QTemporaryDir>
+
+#include <functional>
+#include <vector>
 
 namespace {
 
 // Minimal concrete subclass exposing the protected services the test
 // drives. derivePartition/composeBrief are trivial; onAllReportsCollected
-// records its call count so INV-15 can assert it never fires.
+// records its call count so INV-15/INV-22 can assert it (never) fires.
 class TestReviewDialog : public ReviewDialogBase {
 public:
     using ReviewDialogBase::ReviewDialogBase;  // inherit (cwd, parent, config)
@@ -29,6 +39,8 @@ public:
     using ReviewDialogBase::reports;
     using ReviewDialogBase::setJobRunner;
     using ReviewDialogBase::setLanes;
+    using ReviewDialogBase::startDispatch;
+    using ReviewDialogBase::statusLabel;
 
     int allCollectedCalls = 0;
 
@@ -40,6 +52,15 @@ protected:
     }
     void performFoldIn() override {}
 };
+
+// INV-21/INV-22 — the "Dispatch to AI" button has no dedicated accessor;
+// find it by its label, as both new tests need to.
+QPushButton *findDispatchButton(QWidget *w) {
+    for (QPushButton *b : w->findChildren<QPushButton *>()) {
+        if (b->text() == QStringLiteral("Dispatch to AI")) return b;
+    }
+    return nullptr;
+}
 
 QString readFile(const QString &path) {
     QFile f(path);
@@ -195,4 +216,118 @@ TEST(ReviewDialogBase, INV19_DtorAbortsOwnClientsBeforeCancelAll) {
     ASSERT_GE(cancelPos, 0) << "destructor must still cancelAll the dispatcher";
     EXPECT_LT(abortPos, cancelPos)
         << "own-client abort must precede dispatcher cancelAll";
+}
+
+// INV-20 (regression) — onJobFinished must not store a failed job's
+// result.text in reports() (nor leave a stale one behind from a prior
+// success), and the status label must name the failed lane(s). Pre-fix
+// onJobFinished stored result.text unconditionally, so a failed lane
+// became an empty "clean" report — indistinguishable from a lane that
+// genuinely had nothing to say — and test-audit's resume logic then
+// treated it as reviewed and never retried it.
+TEST(ReviewDialogBase, INV20_FailedJobNotStoredStatusNamesFailure) {
+    TestReviewDialog dlg(QString(), nullptr, nullptr);
+    bool bravoSucceeds = false;
+    dlg.setJobRunner([&](const LlmJob &job,
+                        std::function<void(const LlmResult &)> done) {
+        LlmResult r;
+        if (job.id == QStringLiteral("lane-alpha")) {
+            r.ok = true;
+            r.text = QStringLiteral("REPORT-A");
+        } else if (bravoSucceeds) {
+            r.ok = true;
+            r.text = QStringLiteral("REPORT-B");
+        } else {
+            r.ok = false;
+            r.error = QStringLiteral("connection refused");
+        }
+        done(r);
+    });
+
+    dlg.setLanes({ ReviewLane{"lane-alpha", "lane-alpha", ""},
+                   ReviewLane{"lane-bravo", "lane-bravo", ""} });
+    dlg.redispatch({ "lane-alpha", "lane-bravo" });
+
+    ASSERT_TRUE(dlg.reports().contains(QStringLiteral("lane-alpha")));
+    EXPECT_EQ(dlg.reports().value(QStringLiteral("lane-alpha")), QStringLiteral("REPORT-A"));
+    EXPECT_FALSE(dlg.reports().contains(QStringLiteral("lane-bravo")))
+        << "a failed job must not leave a (possibly empty) report behind";
+    ASSERT_NE(dlg.statusLabel(), nullptr);
+    const QString status1 = dlg.statusLabel()->text();
+    EXPECT_TRUE(status1.contains(QStringLiteral("lane-bravo"))) << status1.toStdString();
+    EXPECT_TRUE(status1.contains(QStringLiteral("failed"), Qt::CaseInsensitive))
+        << status1.toStdString();
+    EXPECT_GE(dlg.allCollectedCalls, 1);
+
+    // A later round where lane-bravo succeeds must populate its report.
+    bravoSucceeds = true;
+    dlg.redispatch({ "lane-bravo" });
+    ASSERT_TRUE(dlg.reports().contains(QStringLiteral("lane-bravo")));
+    EXPECT_EQ(dlg.reports().value(QStringLiteral("lane-bravo")), QStringLiteral("REPORT-B"));
+
+    // And a stale success must not survive a later failure — "(a stale
+    // report for that lane is removed too)" in the fix's own description.
+    bravoSucceeds = false;
+    dlg.redispatch({ "lane-bravo" });
+    EXPECT_FALSE(dlg.reports().contains(QStringLiteral("lane-bravo")))
+        << "a stale report from a prior success must be dropped on failure";
+}
+
+// INV-21 (regression) — starting a dispatch round disables the "Dispatch
+// to AI" button so a second click cannot re-run startDispatch mid-round
+// (which would clear m_reports and pay for every lane twice); the button
+// re-enables once the round finishes (endpoint still dispatchable).
+TEST(ReviewDialogBase, INV21_DispatchButtonDisabledDuringRound) {
+    Config cfg;
+    cfg.setAiEndpoint(QStringLiteral("http://127.0.0.1:9/v1/chat/completions"));
+    TestReviewDialog dlg(QString(), nullptr, &cfg);
+
+    std::vector<std::function<void(const LlmResult &)>> pending;
+    dlg.setJobRunner([&](const LlmJob &,
+                        std::function<void(const LlmResult &)> done) {
+        pending.push_back(std::move(done));
+    });
+    dlg.setLanes({ ReviewLane{"a", "a", ""}, ReviewLane{"b", "b", ""} });
+
+    QPushButton *dispatchBtn = findDispatchButton(&dlg);
+    ASSERT_NE(dispatchBtn, nullptr) << "Dispatch to AI button not found";
+    ASSERT_TRUE(dispatchBtn->isEnabled());
+
+    dlg.startDispatch();
+    EXPECT_FALSE(dispatchBtn->isEnabled())
+        << "Dispatch must be disabled once a round is in flight";
+
+    ASSERT_EQ(pending.size(), 2u);
+    for (auto &done : pending) {
+        LlmResult r;
+        r.ok = true;
+        r.text = QStringLiteral("ok");
+        done(r);
+    }
+    EXPECT_TRUE(dispatchBtn->isEnabled())
+        << "Dispatch must re-enable once the round finishes";
+}
+
+// INV-22 (regression) — startDispatch with no lanes must not start a
+// round at all. LlmDispatcher::enqueue({}) used to run pump()
+// unconditionally and emit allFinished for a batch that never existed;
+// redispatch already guards on `!jobs.isEmpty()` (see INV-15 in
+// tests/features/llm_dispatcher/spec.md) but startDispatch did not.
+TEST(ReviewDialogBase, INV22_StartDispatchNoLanesStartsNoRound) {
+    Config cfg;
+    cfg.setAiEndpoint(QStringLiteral("http://127.0.0.1:9/v1/chat/completions"));
+    TestReviewDialog dlg(QString(), nullptr, &cfg);
+    dlg.setJobRunner([](const LlmJob &, std::function<void(const LlmResult &)>) {
+        FAIL() << "no lane means no job should ever be run";
+    });
+    // No setLanes call: m_lanes stays empty.
+
+    QPushButton *dispatchBtn = findDispatchButton(&dlg);
+    ASSERT_NE(dispatchBtn, nullptr) << "Dispatch to AI button not found";
+
+    dlg.startDispatch();
+
+    EXPECT_EQ(dlg.allCollectedCalls, 0);
+    EXPECT_TRUE(dispatchBtn->isEnabled())
+        << "no round started; Dispatch must stay enabled";
 }

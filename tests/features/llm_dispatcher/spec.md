@@ -19,6 +19,11 @@ testable without a network.
 - **INV-9** — `cancelAll` clears the queue and emits `allFinished` once
   the in-flight set drains; no `jobFinished` for cancelled jobs.
 - **INV-14 (clamp)** — `maxConcurrent` is clamped to `[1, 4]`.
+- **INV-15** (regression) — `enqueue` ignores an empty job list: it must
+  not run `pump()` (and so must not emit `allFinished`) for a batch that
+  was never queued. `ReviewDialogBase::startDispatch` relies on this so
+  that dispatching with no lanes starts no round (see
+  `tests/features/review_dialog_base/spec.md` INV-22).
 
 ## Test notes
 

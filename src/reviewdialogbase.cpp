@@ -144,7 +144,8 @@ void ReviewDialogBase::setJobRunner(LlmDispatcher::JobRunner runner) {
 
 void ReviewDialogBase::updateDispatchEnabled() {
     const bool ok = m_config && endpointDispatchable(m_config->aiEndpoint());
-    if (m_dispatchBtn) m_dispatchBtn->setEnabled(ok);
+    // ANTS-5004 — a second click mid-round wiped the reports and paid again.
+    if (m_dispatchBtn) m_dispatchBtn->setEnabled(ok && !m_roundInFlight);
     if (m_statusLabel) {
         const QString disabledMsg =
             tr("Dispatch disabled — set ai_endpoint (http/https) in "
@@ -234,11 +235,18 @@ void ReviewDialogBase::startDispatch() {
     // stale_partition (post-restart cache miss), diverging the token/lanes
     // from jobs already enqueued.
     prepareDispatch();
+    // ANTS-5006 — no lanes, no round. An empty batch used to "finish" at once
+    // and report an empty review.
+    if (m_lanes.isEmpty()) {
+        if (m_statusLabel) m_statusLabel->setText(tr("No lanes to dispatch."));
+        return;
+    }
     m_reports.clear();
     QList<LlmJob> jobs;
     jobs.reserve(m_lanes.size());
     for (const ReviewLane &lane : m_lanes)
         jobs << LlmJob{ lane.id, composeBrief(lane) };
+    beginRound();
     m_dispatcher->enqueue(jobs);
 }
 
@@ -248,7 +256,15 @@ void ReviewDialogBase::redispatch(const QStringList &laneIds) {
         if (laneIds.contains(lane.id))
             jobs << LlmJob{ lane.id, composeBrief(lane) };
     }
-    if (!jobs.isEmpty()) m_dispatcher->enqueue(jobs);
+    if (jobs.isEmpty()) return;
+    beginRound();
+    m_dispatcher->enqueue(jobs);
+}
+
+void ReviewDialogBase::beginRound() {
+    m_failedLanes.clear();
+    m_roundInFlight = true;
+    updateDispatchEnabled();
 }
 
 void ReviewDialogBase::dispatchOne(const LlmJob &job,
@@ -259,12 +275,24 @@ void ReviewDialogBase::dispatchOne(const LlmJob &job,
 }
 
 void ReviewDialogBase::onJobFinished(const QString &id, const LlmResult &result) {
-    m_reports.insert(id, result.text);
+    // ANTS-5003 — a failed request is not an empty report, which every
+    // subclass reads as a clean lane. Keep it out of m_reports, drop any
+    // earlier report for the lane, and show the error in its tab.
+    QString shown = result.text;
+    if (result.ok) {
+        m_reports.insert(id, result.text);
+    } else {
+        const QString err = result.error.isEmpty() ? tr("no error message")
+                                                   : result.error;
+        m_reports.remove(id);
+        m_failedLanes.insert(id, err);
+        shown = tr("[AI request failed] %1").arg(err);
+    }
     if (m_laneTabs) {
         for (int i = 0; i < m_lanes.size(); ++i) {
             if (m_lanes[i].id == id) {
                 if (auto *view = qobject_cast<QTextEdit *>(m_laneTabs->widget(i)))
-                    view->setPlainText(result.text);
+                    view->setPlainText(shown);
                 break;
             }
         }
@@ -272,6 +300,26 @@ void ReviewDialogBase::onJobFinished(const QString &id, const LlmResult &result)
 }
 
 void ReviewDialogBase::onAllFinished() {
+    m_roundInFlight = false;   // ANTS-5004
+    updateDispatchEnabled();
+    // ANTS-5003 — name this round's failed lanes, or their missing reports
+    // read as a clean review. Clear an earlier failure message on success.
+    if (m_statusLabel) {
+        if (!m_failedLanes.isEmpty()) {
+            QStringList parts;
+            for (auto it = m_failedLanes.constBegin(); it != m_failedLanes.constEnd(); ++it)
+                parts << QStringLiteral("%1 (%2)").arg(it.key(), it.value());
+            parts.sort();
+            m_failureStatus =
+                tr("AI request failed for %1 — those lanes are missing from the "
+                   "results.").arg(parts.join(QStringLiteral(", ")));
+            m_statusLabel->setText(m_failureStatus);
+        } else if (!m_failureStatus.isEmpty()
+                   && m_statusLabel->text() == m_failureStatus) {
+            m_statusLabel->clear();
+            m_failureStatus.clear();
+        }
+    }
     onAllReportsCollected(m_reports);
 }
 

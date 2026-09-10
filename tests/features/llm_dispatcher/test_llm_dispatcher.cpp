@@ -6,6 +6,7 @@
 // INV-8  dispatcher stores no result (source-grep).
 // INV-9  cancelAll clears the queue + drains to allFinished.
 // INV-14 maxConcurrent clamped to [1, 4].
+// INV-15 enqueue({}) emits nothing (regression).
 
 #include "llmdispatcher.h"
 
@@ -155,4 +156,21 @@ TEST(LlmDispatcher, INV8_NoResultRetention) {
     ASSERT_FALSE(cpp.empty());
     // Completion forwards `r` straight to the jobFinished signal.
     EXPECT_NE(cpp.find("emit jobFinished(id, r)"), std::string::npos);
+}
+
+// INV-15 (regression) — enqueue({}) must not run (or "finish") a batch
+// that was never queued. Pre-fix, enqueue() called pump()
+// unconditionally; pump() found m_inFlight==0 and m_queue empty and
+// emitted allFinished for a caller that enqueued nothing.
+TEST(LlmDispatcher, INV15_EnqueueEmptyListEmitsNothing) {
+    LlmDispatcher disp;
+    int allFinished = 0;
+    QObject::connect(&disp, &LlmDispatcher::allFinished,
+                     [&]() { ++allFinished; });
+
+    disp.enqueue({});
+
+    EXPECT_EQ(allFinished, 0);
+    EXPECT_EQ(disp.inFlight(), 0);
+    EXPECT_EQ(disp.pending(), 0);
 }

@@ -97,6 +97,7 @@ protected:
 
 private:
     void updateDispatchEnabled();
+    void beginRound();
     void onJobFinished(const QString &id, const LlmResult &result);
     void onAllFinished();
 
@@ -113,6 +114,9 @@ private:
     QList<QPointer<LlmClient>> m_activeClients;
     QList<ReviewLane>        m_lanes;
     QHash<QString, QString>  m_reports;       // accumulated, keyed by lane id
+    QHash<QString, QString>  m_failedLanes;   // lane id → error, this round (ANTS-5003)
+    QString                  m_failureStatus; // failure text last shown (ANTS-5003)
+    bool                     m_roundInFlight = false;  // ANTS-5004
     QString                  m_lastFoldInError;
 
     QLabel      *m_statusLabel = nullptr;

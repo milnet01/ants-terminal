@@ -120,6 +120,7 @@ signals:
 
 private:
     void drain();
+    bool consumeLines(int maxLines);  // true if a complete line remains buffered
     void onFinished();
     void emitDeferredError(const QString &error);
 

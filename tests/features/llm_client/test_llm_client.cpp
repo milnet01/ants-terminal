@@ -1,4 +1,11 @@
-// ANTS-1727 — LlmClient static-kernel feature test (no live network).
+// ANTS-1727 — LlmClient static-kernel feature test. Most cases are
+// static-helper / scrub only, no live network, no event loop. INV-17 and
+// INV-18 are the exception: they drive LlmClient's real
+// QNetworkAccessManager path against a fake HTTP server bound to
+// 127.0.0.1 (loopback) — see the FakeHttpServer harness below. Loopback
+// passes every LlmClient egress gate (isEndpointHostBlocked and
+// isPlaintextRemote both exempt it), so this is not live network access:
+// no packet ever leaves the host.
 //
 // INV-2  isEndpointAllowed scheme allowlist.
 // INV-3  buildRequestBody scrubs secrets out of the serialised body.
@@ -6,6 +13,8 @@
 // INV-5  sseContentDelta SSE line parsing.
 // INV-8  endpointEgressError shared 4-gate validator + auditdialog wiring.
 // INV-16 the three LLM modules are widget-free (source-grep).
+// INV-17 ~LlmClient neither crashes nor emits finished() mid-teardown.
+// INV-18 a reply finishing mid-drain must not drop already-buffered lines.
 
 #include "llmclient.h"
 
@@ -15,8 +24,103 @@
 
 #include <QByteArray>
 #include <QCoreApplication>
+#include <QElapsedTimer>
+#include <QHostAddress>
 #include <QObject>
 #include <QString>
+#include <QTcpServer>
+#include <QTcpSocket>
+
+#include <cstdlib>
+#include <functional>
+
+namespace {
+
+// ---------------------------------------------------------------------
+// FakeHttpServer — a tiny loopback HTTP server for INV-17/INV-18, which
+// need a real QNetworkReply in flight (the static-kernel tests above
+// can't reach ~LlmClient's reply-teardown path or drain()'s per-tick
+// re-arm). Listens on 127.0.0.1:0 (kernel-assigned port). Two modes:
+//
+//   Hold    — accepts the connection, reads the full request, and never
+//             answers (for the destructor/teardown test: the reply must
+//             still be in flight when the client is destroyed).
+//   Respond — once the full request (headers up to "\r\n\r\n" plus
+//             Content-Length body bytes) has arrived, writes `response`
+//             verbatim and disconnects.
+//
+// The client (QNetworkAccessManager) shares this thread, so it only
+// ever progresses while the Qt event loop runs — waitUntil() pumps
+// QCoreApplication::processEvents() in a bounded loop and services the
+// server socket on each iteration. Never QTcpServer::waitForNewConnection:
+// that blocks the very event loop the client needs to connect.
+class FakeHttpServer {
+public:
+    enum class Mode { Hold, Respond };
+
+    explicit FakeHttpServer(Mode mode, QByteArray response = QByteArray())
+        : m_mode(mode), m_response(std::move(response)) {
+        m_listening = m_server.listen(QHostAddress::LocalHost, 0);
+    }
+
+    bool isListening() const { return m_listening; }
+    quint16 port() const { return m_server.serverPort(); }
+    bool connectionAccepted() const { return m_socket != nullptr; }
+
+    // Service the server and pump the event loop until `pred()` is true
+    // or `timeoutMs` elapses. Returns pred()'s final value.
+    bool waitUntil(const std::function<bool()> &pred, int timeoutMs = 5000) {
+        QElapsedTimer timer;
+        timer.start();
+        while (!pred()) {
+            service();
+            if (timer.hasExpired(timeoutMs)) return pred();
+            QCoreApplication::processEvents(QEventLoop::AllEvents, 50);
+        }
+        return true;
+    }
+
+private:
+    void service() {
+        if (!m_socket && m_server.hasPendingConnections())
+            m_socket = m_server.nextPendingConnection();
+        if (!m_socket || m_responded) return;
+
+        m_buffer += m_socket->readAll();
+        const int headerEnd = m_buffer.indexOf("\r\n\r\n");
+        if (headerEnd < 0) return;  // headers not fully received yet
+
+        qint64 contentLength = 0;
+        const QList<QByteArray> headerLines = m_buffer.left(headerEnd).split('\n');
+        for (const QByteArray &line : headerLines) {
+            if (line.toLower().startsWith("content-length:")) {
+                contentLength = line.mid(line.indexOf(':') + 1).trimmed().toLongLong();
+                break;
+            }
+        }
+        const qint64 bodyStart = headerEnd + 4;
+        if (m_buffer.size() < bodyStart + contentLength)
+            return;  // body not fully received yet
+
+        if (m_mode == Mode::Respond) {
+            m_socket->write(m_response);
+            m_socket->disconnectFromHost();
+            m_responded = true;
+        }
+        // Mode::Hold: the full request has arrived; deliberately never
+        // answer it, so the reply stays in flight.
+    }
+
+    Mode        m_mode;
+    QByteArray  m_response;
+    bool        m_listening = false;
+    QTcpServer  m_server;
+    QTcpSocket *m_socket = nullptr;
+    QByteArray  m_buffer;
+    bool        m_responded = false;
+};
+
+}  // namespace
 
 // INV-2 — scheme allowlist.
 TEST(LlmClient, INV2_EndpointAllowlist) {
@@ -321,4 +425,106 @@ TEST(LlmClient, INV16_WidgetFree) {
         EXPECT_EQ(src.find("#include <QWidget"), std::string::npos) << p;
         EXPECT_EQ(src.find("#include <QDialog"), std::string::npos) << p;
     }
+}
+
+// INV-17 (regression) — ~LlmClient with a request in flight must neither
+// crash nor emit finished(). Pre-fix the destructor did
+// `m_reply->abort(); m_reply->deleteLater(); m_reply = nullptr;` — if
+// QNetworkReply::abort() emits finished() synchronously, the connected
+// LlmClient::onFinished() runs first: it emits LlmClient::finished from
+// the half-destructed object and nulls the m_reply MEMBER, so the
+// destructor's own subsequent `m_reply->deleteLater()` then dereferences
+// a null pointer. The fix routes the destructor through abort() (which
+// nulls m_reply before aborting, so a re-entrant onFinished() no-ops).
+// Wrapped in a death test so a pre-fix crash fails as a diagnosable
+// assertion ("died due to signal") instead of aborting the whole shared
+// gtest binary and every other test in it.
+TEST(LlmClient, INV17_DtorInFlightNoCrashNoFinished) {
+    GTEST_FLAG_SET(death_test_style, "threadsafe");
+    EXPECT_EXIT(
+        {
+            FakeHttpServer server(FakeHttpServer::Mode::Hold);
+            if (!server.isListening()) std::_Exit(2);
+
+            auto *client = new LlmClient;
+            int finishedCount = 0;
+            QObject::connect(client, &LlmClient::finished, client,
+                             [&](const LlmResult &) { ++finishedCount; });
+
+            LlmRequest req;
+            req.endpoint = QString("http://127.0.0.1:%1/v1/chat/completions")
+                               .arg(server.port());
+            req.model = QStringLiteral("test-model");
+            req.systemPrompt = QStringLiteral("sys");
+            req.userPrompt = QStringLiteral("user");
+            client->send(req);
+
+            // Wait until the request has actually reached the server AND
+            // the client still considers itself in flight, so the
+            // destructor below races a live QNetworkReply rather than
+            // one that never opened.
+            server.waitUntil(
+                [&]() { return server.connectionAccepted() && client->busy(); });
+
+            delete client;  // DEFECT 1 site.
+            std::_Exit(finishedCount == 0 ? 0 : 1);
+        },
+        ::testing::ExitedWithCode(0), "");
+}
+
+// INV-18 (regression — the drain-on-finish truncation) — a reply that
+// finishes while more complete lines are still buffered must still
+// deliver every line, in order. drain() parses at most kMaxLinesPerTick
+// (256) lines per tick and re-arms the rest via QTimer::singleShot(0);
+// when the underlying QNetworkReply's finished() is delivered before
+// that re-armed drain() runs, onFinished() nulls m_reply and emits, so
+// drain()'s early `if (!m_reply) return;` guard fires and the remaining
+// buffered lines are never parsed. Measured pre-fix: a 600-line response
+// (well over the 256-per-tick cap, so the re-arm boundary is exercised)
+// came back as only the first 256 lines' content, with `ok` still true —
+// a silent truncation, not a visible failure. This test also guards the
+// offset-walk refactor of drain()'s per-tick loop (trimming
+// m_sseLineBuffer via a single offset walk instead of a repeated
+// QByteArray::mid() copy per line): that refactor must not change which
+// lines get parsed before an early finish, so this test must stay green
+// across it too.
+TEST(LlmClient, INV18_DrainReassemblesMultiTickSse) {
+    QString expected;
+    QByteArray sseBody;
+    for (int i = 0; i < 600; ++i) {
+        const QString piece = QString::number(i) + QStringLiteral(",");
+        expected += piece;
+        sseBody += "data: {\"choices\":[{\"delta\":{\"content\":\"" +
+                   piece.toUtf8() + "\"}}]}\n";
+    }
+    sseBody += "data: [DONE]\n";
+
+    const QByteArray response =
+        "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\n"
+        "Connection: close\r\n\r\n" +
+        sseBody;
+
+    FakeHttpServer server(FakeHttpServer::Mode::Respond, response);
+    ASSERT_TRUE(server.isListening());
+
+    LlmClient client;
+    LlmResult captured;
+    int finishedCount = 0;
+    QObject::connect(&client, &LlmClient::finished, &client,
+                     [&](const LlmResult &r) { captured = r; ++finishedCount; });
+
+    LlmRequest req;
+    req.endpoint =
+        QString("http://127.0.0.1:%1/v1/chat/completions").arg(server.port());
+    req.model = QStringLiteral("test-model");
+    req.systemPrompt = QStringLiteral("sys");
+    req.userPrompt = QStringLiteral("user");
+    client.send(req);
+
+    ASSERT_TRUE(server.waitUntil([&]() { return finishedCount == 1; }))
+        << "client never reported finished()";
+
+    EXPECT_TRUE(captured.ok) << captured.error.toStdString();
+    EXPECT_FALSE(captured.truncated);
+    EXPECT_EQ(captured.text.toStdString(), expected.toStdString());
 }

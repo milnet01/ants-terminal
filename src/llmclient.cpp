@@ -15,6 +15,8 @@
 #include <QTimer>
 #include <QUrl>
 
+#include <limits>
+
 namespace {
 // Qt's QNetworkReply::errorString() can embed the full endpoint URL —
 // including any `user:pass@` userinfo from a credentialed ai_endpoint —
@@ -34,11 +36,11 @@ LlmClient::LlmClient(QObject *parent) : QObject(parent) {}
 LlmClient::~LlmClient() {
     // Abort and drop any in-flight reply before member teardown so a late
     // readyRead/finished can't fire on a partially-destructed client.
-    if (m_reply) {
-        m_reply->abort();
-        m_reply->deleteLater();
-        m_reply = nullptr;
-    }
+    // ANTS-5002 — go through abort(), which nulls m_reply BEFORE aborting:
+    // QNetworkReply::abort() emits finished() synchronously, and with the
+    // pointer still set onFinished() emitted from this dying object and then
+    // left the destructor dereferencing null.
+    abort();
 }
 
 bool LlmClient::busy() const { return m_reply != nullptr; }
@@ -302,26 +304,36 @@ void LlmClient::drain() {
     // Cap per-tick iterations + re-arm via singleShot(0) so a flood of
     // tiny SSE lines can't hold the event loop (UI freeze).
     constexpr int kMaxLinesPerTick = 256;
-    int processed = 0;
-    while (processed < kMaxLinesPerTick) {
-        const int nlPos = m_sseLineBuffer.indexOf('\n');
+    if (consumeLines(kMaxLinesPerTick))
+        QTimer::singleShot(0, this, &LlmClient::drain);
+}
+
+bool LlmClient::consumeLines(int maxLines) {
+    // ANTS-5005 — walk by offset and trim once: a per-line mid() copied the
+    // whole remaining buffer for every line.
+    qsizetype consumed = 0;
+    for (int processed = 0; processed < maxLines; ++processed) {
+        const qsizetype nlPos = m_sseLineBuffer.indexOf('\n', consumed);
         if (nlPos < 0) break;
-        ++processed;
-        const QString line =
-            QString::fromUtf8(m_sseLineBuffer.left(nlPos));
-        m_sseLineBuffer = m_sseLineBuffer.mid(nlPos + 1);
+        const QString line = QString::fromUtf8(
+            m_sseLineBuffer.constData() + consumed, nlPos - consumed);
+        consumed = nlPos + 1;
 
         const QString delta = sseContentDelta(line);
         if (accumulateCapped(m_text, m_textBytes, m_truncated, delta))
             emit chunk(delta);
     }
-
-    if (processed >= kMaxLinesPerTick && m_sseLineBuffer.indexOf('\n') >= 0)
-        QTimer::singleShot(0, this, &LlmClient::drain);
+    m_sseLineBuffer.remove(0, consumed);
+    return m_sseLineBuffer.contains('\n');
 }
 
 void LlmClient::onFinished() {
     if (!m_reply) return;
+
+    // ANTS-5015 — drain() parses kMaxLinesPerTick lines and re-arms itself,
+    // and the reply can finish before the re-armed call runs; that call then
+    // returns on the null m_reply. Parse every complete line still buffered.
+    consumeLines(std::numeric_limits<int>::max());
 
     LlmResult result;
     result.httpStatus =

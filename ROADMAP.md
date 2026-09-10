@@ -38749,7 +38749,7 @@ whole files.
   umbrella for pieces it delivered. The umbrella stays open for the
   rest. That is a partial delivery, not a missed flip (ANTS-4995).
 
-- 📋 [ANTS-4458] **Triage: LLM client/dispatcher and review-dialog findings from the cold sweep.**
+- ✅ [ANTS-4458] **Triage: LLM client/dispatcher and review-dialog findings from the cold sweep.**
   Reviewer claims carried forward as-is. NOT re-verified — check each against
   source first. Filed separately as VERIFIED: ANTS-4445 (test-audit fold-in).
   HIGH:
@@ -38785,6 +38785,16 @@ whole files.
   bullet. markFindingFixed and the prior-fix block are deleted; by user
   decision a re-review now runs cold and each round is logged. The other
   bullets are untouched.
+  Triaged (2026-09-10) against current source; every claim held. The
+  llmclient destructor crash is ANTS-5002, confirmed red by a death test
+  (signal 11). The non-streaming fallback is ANTS-5007. The dead default
+  runner is ANTS-5009. The failed-dispatch-reads-clean and
+  Dispatch-not-disabled claims are ANTS-5003 and ANTS-5004. The
+  coldeyesdialog bullet was resolved by ANTS-2011. Of the MEDIUM claims,
+  cleartext without a key is ANTS-5010 (awaiting a user decision), the
+  per-line buffer copy is ANTS-5005, the cap not aborting is ANTS-5008,
+  and the empty enqueue is ANTS-5006. A test written for ANTS-5005 found
+  one more, ANTS-5015.
 
 - 📋 [ANTS-4459] **Triage: audit-subsystem findings from the cold sweep.**
   Reviewer claims carried forward as-is. NOT re-verified — check each against
@@ -39112,7 +39122,7 @@ whole files.
   Source: in-session-2026-08-25 (found while fixing ANTS-4446).
   Lanes: docs, mcp.
 
-- 📋 [ANTS-5002] **LlmClient's destructor can emit finished from a dying client and then dereference null.**
+- ✅ [ANTS-5002] **LlmClient's destructor can emit finished from a dying client and then dereference null.**
   ~LlmClient aborts m_reply while the pointer is still set. If
   QNetworkReply::abort reports finished synchronously, onFinished runs,
   emits finished and nulls m_reply, and the destructor then calls
@@ -39121,45 +39131,67 @@ whole files.
   close, so closing it mid-triage reaches this path; AiDialog aborts first
   as a workaround. Verified by reading 2026-09-10; the red run decides
   whether Qt's abort is synchronous. From ANTS-4458.
+  Resolved (2026-09-10). ~LlmClient calls abort(), which nulls m_reply
+  before aborting. Regression: llm_client INV-17, a death test against a
+  loopback server that holds the request; red on the old code (signal
+  11), green after, and a mutant restoring the old destructor was
+  killed.
   **Layman:** Closing an AI-backed window in the middle of a request could crash the app.
   Kind: fix.
   Source: cold-sweep-2026-08-18 triaged in-session-2026-09-10.
   Lanes: llmclient.
 
-- 📋 [ANTS-5003] **A review lane whose AI request failed is recorded as an empty report, which reads as a clean review.**
+- ✅ [ANTS-5003] **A review lane whose AI request failed is recorded as an empty report, which reads as a clean review.**
   ReviewDialogBase::onJobFinished stores result.text and ignores
   result.ok, so a network failure becomes an empty report with no
   findings. Test audit then persists the failed chunk as reviewed, so
   resume never retries it. From ANTS-4458.
+  Resolved (2026-09-10). ReviewDialogBase::onJobFinished keeps a failed
+  job out of reports(), drops any earlier report for the lane, shows the
+  error in its tab, and onAllFinished names the round's failed lanes in
+  the status line. Regression: review_dialog_base INV-20, red before and
+  green after; three mutants killed.
   **Layman:** When the AI cannot be reached, the review screen says everything is fine.
   Kind: fix.
   Source: cold-sweep-2026-08-18 triaged in-session-2026-09-10.
   Lanes: reviewdialogbase.
 
-- 📋 [ANTS-5004] **The review dialogs' Dispatch button stays enabled during a run, so a second click wipes the reports and pays again.**
+- ✅ [ANTS-5004] **The review dialogs' Dispatch button stays enabled during a run, so a second click wipes the reports and pays again.**
   Nothing disables Dispatch while a round is in flight. A second click
   runs ReviewDialogBase::startDispatch again, which clears the collected
   reports and sends every lane a second time. From ANTS-4458.
+  Resolved (2026-09-10). A round in flight disables Dispatch through
+  updateDispatchEnabled, and allFinished re-enables it. Regression:
+  review_dialog_base INV-21, red before and green after; two mutants
+  killed.
   **Layman:** Clicking Dispatch twice pays for the whole AI review twice.
   Kind: fix.
   Source: cold-sweep-2026-08-18 triaged in-session-2026-09-10.
   Lanes: reviewdialogbase.
 
-- 📋 [ANTS-5005] **LlmClient::drain copies the whole remaining buffer for every streamed line.**
+- ✅ [ANTS-5005] **LlmClient::drain copies the whole remaining buffer for every streamed line.**
   Each SSE line is removed with m_sseLineBuffer.mid(), which copies the
   rest of the buffer, so a tick of lines costs the buffer size times the
   line count. The buffer may hold up to the client's size cap. Walk by
   offset and trim once per tick. From ANTS-4458.
+  Resolved (2026-09-10). drain() delegates to consumeLines(), which
+  walks by offset and trims once per call. Guarded by llm_client INV-18;
+  a mutant that skipped the trim was killed.
   **Layman:** Reading a long AI answer does far more copying than it needs to.
   Kind: perf.
   Source: cold-sweep-2026-08-18 triaged in-session-2026-09-10.
   Lanes: llmclient.
 
-- 📋 [ANTS-5006] **Dispatching with no lanes reports a finished round, because enqueue emits allFinished for an empty batch.**
+- ✅ [ANTS-5006] **Dispatching with no lanes reports a finished round, because enqueue emits allFinished for an empty batch.**
   LlmDispatcher::enqueue runs pump() on an empty list, and pump() emits
   allFinished for a batch that never existed. ReviewDialogBase::startDispatch
   enqueues even with no lanes, while redispatch guards against it. From
   ANTS-4458.
+  Resolved (2026-09-10). LlmDispatcher::enqueue ignores an empty batch,
+  and startDispatch with no lanes posts a status message and starts
+  nothing. Regression: llm_dispatcher INV-15 and review_dialog_base
+  INV-22, both red before and green after; a mutant for each guard was
+  killed.
   **Layman:** Starting a review with nothing to review claims it finished.
   Kind: fix.
   Source: cold-sweep-2026-08-18 triaged in-session-2026-09-10.
@@ -39209,7 +39241,7 @@ whole files.
   Source: cold-sweep-2026-08-18 triaged in-session-2026-09-10.
   Lanes: llmclient.
 
-- 📋 [ANTS-5015] **LlmClient drops every streamed line past the first 256 when the reply finishes in the same burst.**
+- ✅ [ANTS-5015] **LlmClient drops every streamed line past the first 256 when the reply finishes in the same burst.**
   Found 2026-09-10 by a new llm_client test (INV-18). drain() parses at
   most kMaxLinesPerTick lines, then re-arms itself with a zero-delay timer.
   When the whole answer arrives at once and the connection closes,
@@ -39219,6 +39251,10 @@ whole files.
   with ok true, so the loss is silent. A fast local AI server can hit
   this on any long answer. Fix: onFinished() parses whatever complete
   lines remain buffered before it builds the result.
+  Resolved (2026-09-10). onFinished() parses every complete line still
+  buffered before it builds the result. Regression: llm_client INV-18,
+  red before (a 600-line answer came back as its first 256 pieces) and
+  green after; a mutant dropping the call was killed.
   **Layman:** A long AI answer can come back cut short with no warning when the server sends it all at once.
   Kind: fix.
   Source: in-session-2026-09-10 (found by the ANTS-5005 guard test).

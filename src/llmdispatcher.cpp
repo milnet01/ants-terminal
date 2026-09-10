@@ -33,6 +33,7 @@ void LlmDispatcher::installDefaultRunner() {
 }
 
 void LlmDispatcher::enqueue(const QList<LlmJob> &jobs) {
+    if (jobs.isEmpty()) return;   // ANTS-5006 — no batch, so no allFinished
     m_cancelled = false;
     m_queue.append(jobs);
     pump();

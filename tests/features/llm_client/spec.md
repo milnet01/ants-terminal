@@ -62,8 +62,34 @@ without a live network.
 - **INV-16** — `llmclient` / `llmdispatcher` / `briefdispatch` headers +
   sources include no Qt Widgets header (widget-free discipline; the lib
   links Qt6::Widgets PUBLIC so this is not enforced by the lib boundary).
+- **INV-17** (regression) — `~LlmClient` with a request in flight neither
+  crashes nor emits `finished()`. The destructor calls `abort()` (which
+  nulls `m_reply` *before* aborting, so a synchronous `finished()` emitted
+  by `QNetworkReply::abort()` reaches `onFinished()` with `m_reply` already
+  null and no-ops) rather than aborting a still-connected `m_reply` and
+  then dereferencing it via `m_reply->deleteLater()` after `onFinished()`
+  has already nulled that member.
+- **INV-18** (regression — the drain-on-finish truncation) — a reply that
+  finishes while more complete SSE lines are still buffered must still
+  deliver every line, in order. `drain()` parses at most
+  `kMaxLinesPerTick` (256) lines per tick and re-arms the remainder via
+  `QTimer::singleShot(0)`; when the underlying `QNetworkReply`'s
+  `finished()` is delivered before that re-armed `drain()` runs,
+  `onFinished()` nulls `m_reply` and emits, so `drain()`'s early
+  `if (!m_reply) return;` guard fires and the remaining buffered lines
+  are silently dropped (`ok` still true). This invariant also guards the
+  offset-walk refactor of `drain()`'s per-tick loop (trimming
+  `m_sseLineBuffer` via a single offset walk instead of a repeated
+  `.mid()` copy per line): that refactor must not change which lines get
+  parsed before an early finish, so it must stay green across it too.
 
 ## Test notes
 
-Static-helper + scrub only; no live network, no event loop. Label
-`features;fast`.
+Most cases are static-helper + scrub only — no live network, no event
+loop. INV-17 and INV-18 are the exception: they need a real `QNetworkReply`
+in flight, which the static kernels can't produce, so they drive
+`LlmClient::send` against a fake HTTP server (`FakeHttpServer`, in the test
+file's anonymous namespace) bound to `127.0.0.1` (loopback). Loopback
+passes every `LlmClient` egress gate (`isEndpointHostBlocked` and
+`isPlaintextRemote` both exempt it — see INV-2b/INV-2c above), so this is
+not live network access: no packet leaves the host. Label `features;fast`.
