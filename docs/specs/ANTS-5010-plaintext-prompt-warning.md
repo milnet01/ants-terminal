@@ -159,17 +159,17 @@ host.
 - `tests/features/indie_review_dispatch` — INV-5, a source-grep, because the
   handler needs a `MainWindow`.
 
-What checks this:
+## 7. What checks this
 
-| Invariant | Check | Coverage |
-|---|---|---|
-| INV-1 | `llm_client` table | Full |
-| INV-2 | `plaintext_prompt_warning`, driven | Full |
-| INV-3 | `review_dialog_base`, driven | Full |
-| INV-4 | source-grep | Partial: the text reaching the dialog is not driven |
-| INV-5 | source-grep | Partial: no test produces the envelope |
+| Rule | What catches a breach |
+|------|----------------------|
+| INV-1 | `tests/features/llm_client`, a gtest table over the endpoint and key cases |
+| INV-2 | `tests/features/plaintext_prompt_warning`, a gtest that drives a real `AiDialog` |
+| INV-3 | `tests/features/review_dialog_base`, a gtest through the synchronous fake runner |
+| INV-4 | **Partial:** `tests/features/plaintext_prompt_warning`, a source-grep of the three bodies. It does not show the text reaching either confirmation box or the status line. |
+| INV-5 | **Partial:** `tests/features/indie_review_dispatch`, a source-grep of the handler body. No test produces the envelope, and whether `projectFields` keeps `warning` under `fields=` rests on ANTS-4698's own test. |
 
-## 7. Cross-doc impact
+## 8. Cross-doc impact
 
 - `docs/specs/ANTS-1352.md` — its success envelope gains `warning`; add one
   sentence when this ships.
