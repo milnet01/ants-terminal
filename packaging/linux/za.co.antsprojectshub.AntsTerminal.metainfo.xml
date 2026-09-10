@@ -131,6 +131,7 @@
           <li><em>Fixed:</em> Test bundles no longer read your live settings. (ANTS-4898)</li>
           <li><em>Fixed:</em> Release tooling — an emergency release resumes when already tagged, a cycle no longer skips its second phase after an interruption, a new candidate resumes instead of refusing, an abandoned phase is named when a hook refuses, and the Fedora 44 package builds via a backport carried in the spec. (ANTS-4872, 4871, 4869, 4865, 4870)</li>
           <li><em>Security:</em> Tool-result boundaries are harder to forge, project folder paths from session files are checked, and session logs and recordings are readable only by you. (ANTS-4457, 4456)</li>
+          <li><em>Note:</em> The fixes for ANTS-4848, 4863, 4878, 4885, 4889, 4492 and 2173 above already shipped in 0.7.108 and are recorded here late.</li>
         </ul>
       </description>
     </release>
