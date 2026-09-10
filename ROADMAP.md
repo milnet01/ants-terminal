@@ -64354,6 +64354,29 @@ partition (11 lanes) is documented in this fold-in for reuse.
   Source: in-session-2026-09-10.
   Lanes: mcp.
 
+- 📋 [ANTS-4999] **The Review button's 2-second git probe can hold index.lock and make a user's git commit fail.**
+  `MainWindow::refreshReviewButton` runs on the 2 s status timer and
+  starts `git status --porcelain=v1 -b` in the focused tab's cwd. It
+  does not set GIT_OPTIONAL_LOCKS=0. A plain `git status` may take
+  `.git/index.lock` to refresh the index, so a `git add` or
+  `git commit` in the same repo inside that window fails with
+  "index.lock: File exists".
+
+  Hit 2026-09-10: a session's `git add` and `git commit` both failed on
+  that lock, and it was gone moments later. The probe is the likely
+  holder but NOT proven: the session's prompt hook and git MCP verbs
+  also run git.
+
+  ANTS-3509 already set GIT_OPTIONAL_LOCKS=0 for the diff viewer only.
+  The fix is the same environment on this probe. Other read-only
+  `git status` callers in src/ should be checked for the same gap:
+  setupClaudeMcpProviders, collectGitSnapshot in remotecontrol_review,
+  runStatusOp in remotecontrol_feedback. Unverified per site.
+  **Layman:** Ants checks your project's git state every two seconds in a way that can briefly lock it, so a commit made at that moment fails.
+  Kind: fix.
+  Source: in-session-2026-09-10.
+  Lanes: mainwindow, claudestatuswidgets.
+
 ### 🔥 Cross-cutting themes (patterns caught by ≥2 reviewers)
 
 - 📋 [ANTS-4274] **Trust-model gaps in IPC sockets.**
