@@ -6222,7 +6222,7 @@ extends an existing item, that item carries it instead.
   Source: code-quality-review-2026-09-11 perf pass (lane terminal-widget-b).
   Lanes: terminalwidget.
 
-- 📋 [ANTS-5029] **Program output can forge the last command's OSC 133 markers, and Re-run Last Command types that text into the shell unconfirmed.**
+- ✅ [ANTS-5029] **Program output can forge the last command's OSC 133 markers, and Re-run Last Command types that text into the shell unconfirmed.**
   rerunLastCommand picks the newest completed prompt region, and
   rerunCommandAt writes its command text plus a carriage return to the
   PTY with no paste confirmation and no bracketed paste. The OSC 133
@@ -6239,6 +6239,15 @@ extends an existing item, that item carries it instead.
   User decision 2026-09-11: re-run shows the exact command and asks
   before running it, only when the OSC 133 markers are unsigned
   ($ANTS_OSC133_KEY unset). Signed markers re-run at once.
+  Shipped 2026-09-11 (2d919f77): rerunCommandAt writes straight to the
+  PTY only when osc133HmacEnforced(); otherwise it shows the exact
+  command in the shared showSendConfirmation dialog and writes it on
+  accept. The paste dialog moved into that helper; its preview is plain
+  text now. Prompt regions follow scrollback eviction: the evicting
+  paths count, applyPromptRegionShift() settles the count before any
+  region is read or written, and a region whose prompt line was evicted
+  is dropped. Osc133RerunSafety INV-1 to INV-3 were red before the fix;
+  the default suite passed 4404.
   **Layman:** Printing a booby-trapped file could make 'Re-run last command' type and run something you never typed.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lanes terminal-widget-b, terminal-grid).

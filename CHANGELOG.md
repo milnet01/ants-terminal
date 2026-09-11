@@ -40,6 +40,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **Re-running a command reads the right line after the scroll history has filled up** (ANTS-5029)
+
 - **Opening a link from the suspicious-link warning is safe while output keeps streaming** (ANTS-5028)
 
 - **Dialogs keep remembering their size after a second window closes** (ANTS-5036)
@@ -131,6 +133,8 @@ for security-relevant changes.
   work when it would.
 
 ### Security
+
+- **Re-run Last Command shows the command and asks before running it, unless prompt signing proves the command came from your shell** (ANTS-5029)
 
 - **Audits no longer take tool options from the audited project's .audit-config.json, so a downloaded project cannot use them to write files or run code** (ANTS-5045)
 
