@@ -6463,7 +6463,7 @@ extends an existing item, that item carries it instead.
   Source: code-quality-review-2026-09-11 perf pass (lane dialog-chrome-theme).
   Lanes: dialogs.
 
-- 📋 [ANTS-5038] **Timed-out or cancelled audit tools keep running, because only the wrapper process is killed.**
+- ✅ [ANTS-5038] **Timed-out or cancelled audit tools keep running, because only the wrapper process is killed.**
   The audit dialog runs every check as /bin/bash -c with a pipeline,
   and its timeout, cancel and output-overflow paths kill only bash, so
   cppcheck, clazy, semgrep and the rest are re-parented and keep
@@ -6477,6 +6477,10 @@ extends an existing item, that item carries it instead.
   Found by three lanes.
   Fix: start each tool in its own process group (setChildProcessModifier
   with setsid, available at the Qt 6.2 floor) and signal the group.
+  Resolved (2026-09-11, cbb4e35b): every audit tool starts in its own
+  process group, and each kill path in AuditRunner and AuditDialog
+  signals the group before its own kill. Tests:
+  audit_tool_process_group_kill.
   **Layman:** When an audit check times out, the checker it started keeps running in the background and eating memory.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lanes audit-dialog-a, audit-dialog-b, audit-engine).
@@ -6765,7 +6769,7 @@ extends an existing item, that item carries it instead.
   Source: code-quality-review-2026-09-11 perf pass (lanes mcp-state-workspace, code-index-search).
   Lanes: mcp, search.
 
-- 📋 [ANTS-5053] **recent_errors runs up to 25 whole-tree symbol searches on the GUI thread after a failed build.**
+- ✅ [ANTS-5053] **recent_errors runs up to 25 whole-tree symbol searches on the GUI thread after a failed build.**
   recent_errors is TabSpecific, so ANTS-2132 keeps it on the GUI
   thread. Its enrichLikelyFixes makes up to 25 calls to
   BuildFixHint::resolveHeader, and each runs a full-tree
@@ -6777,6 +6781,10 @@ extends an existing item, that item carries it instead.
   enrichment off the GUI thread and keep only the scrollback read on it.
   Related: recent_errors also reads output one screen row at a time,
   filed separately.
+  Resolved (2026-09-11, 343e8866): BuildFixHint::resolveHeaders resolves
+  every symbol in one SymbolQuery::findDefinitions walk, and
+  enrichLikelyFixes calls it once. Tests: mcp_likely_fix INV-6 and
+  INV-7.
   **Layman:** Asking Ants for the latest build errors can freeze the window for a couple of seconds.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lane mcp-content-verbs).
@@ -6820,7 +6828,7 @@ extends an existing item, that item carries it instead.
   Source: code-quality-review-2026-09-11 perf pass (lane doc-engines).
   Lanes: docs, mcp.
 
-- 📋 [ANTS-5056] **Four file-content caches in the review engines are written from the GUI thread and the MCP worker with no lock.**
+- ✅ [ANTS-5056] **Four file-content caches in the review engines are written from the GUI thread and the MCP worker with no lock.**
   BriefDispatch, ColdEyesEngine, IndieReviewEngine and DebtSweepEngine
   each keep a function-static QHash of file contents keyed by path and
   mtime, commented as single-threaded. Since ANTS-2132 the brief,
@@ -6833,6 +6841,9 @@ extends an existing item, that item carries it instead.
   clears at 64 entries), so a debt sweep keeps every source body it
   read for the life of the process.
   Fix: one shared cache with a lock and a byte budget.
+  Resolved (2026-09-11, 6b69cd0b): src/filecontentcache.h is one cache
+  with a lock and a byte budget; the four engines call it, BriefDispatch
+  in text mode. Tests: file_content_cache.
   **Layman:** Two parts of Ants can update the same internal file cache at once, which can crash the app.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lane review-engines).
@@ -6920,7 +6931,7 @@ extends an existing item, that item carries it instead.
   Source: code-quality-review-2026-09-11 perf pass (lanes app-entry-dialogs, shared-utilities).
   Lanes: ssh, security.
 
-- 📋 [ANTS-5061] **recent_errors parses one screen row per line, so errors wider than the pane are missed or cut off.**
+- ✅ [ANTS-5061] **recent_errors parses one screen row per line, so errors wider than the pane are missed or cut off.**
   ScrollbackErrors splits its input on newlines, but it receives one
   grid row per line from TerminalWidget::recentOutput, so any output
   line wider than the pane arrives in pieces. A compiler error whose
@@ -6931,6 +6942,10 @@ extends an existing item, that item carries it instead.
   common.
   Fix: join soft-wrapped rows before parsing, using the grid's per-line
   wrap flag that reflow already uses.
+  Resolved (2026-09-11, d2141fa2): recent_errors reads
+  TerminalWidget::recentLogicalOutput, which joins each soft-wrapped row
+  to the next and widens the window to the start of its line.
+  recentOutput is unchanged. Tests: mcp_recent_errors INV-12 to INV-16.
   **Layman:** When a build error is wider than the terminal pane, Ants' error reader can miss it.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lane diagnostics-logging).
@@ -6955,7 +6970,7 @@ extends an existing item, that item carries it instead.
   Source: code-quality-review-2026-09-11 perf pass (lane test-audit-verify).
   Lanes: test-audit, threading.
 
-- 📋 [ANTS-5063] **A verify_changes gate timeout kills only the shell, leaving the build running or dying mid-write.**
+- ✅ [ANTS-5063] **A verify_changes gate timeout kills only the shell, leaving the build running or dying mid-write.**
   VerifyEngine runs each gate through /bin/sh and, on timeout, kills
   only that shell. Ninja, the compilers and ctest's test processes
   survive. They either die of SIGPIPE when the pipe closes, which for
@@ -6966,6 +6981,10 @@ extends an existing item, that item carries it instead.
   Same class as the orphaned audit tools, in a different engine.
   Fix: run each gate in its own process group and, on timeout, SIGTERM
   the group, then SIGKILL, then reap.
+  Resolved (2026-09-11, 33d00860): each gate starts in its own process
+  group (src/processgroup.h). A timeout sends the group SIGTERM, waits
+  for it to stop, then sends SIGKILL and reaps. Tests:
+  verify_changes_engine INV-11, INV-12 and INV-13.
   **Layman:** If a code check runs out of time, the build it started can keep running in the background or damage the build folder.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lane test-audit-verify).
@@ -7010,7 +7029,7 @@ extends an existing item, that item carries it instead.
   Source: code-quality-review-2026-09-11 perf pass (lane test-audit-verify).
   Lanes: test-audit.
 
-- 📋 [ANTS-5066] **co_change_family trims each match one character at a time, re-encoding the whole line each step, before any cap.**
+- ✅ [ANTS-5066] **co_change_family trims each match one character at a time, re-encoding the whole line each step, before any cap.**
   CoChangeFamily's clipUtf8 loops chop(1) and re-encodes the whole
   string until it fits, which is quadratic in the line length, and it
   runs on every raw submatch before dedup and before the result cap.
@@ -7021,6 +7040,8 @@ extends an existing item, that item carries it instead.
   a lone high surrogate at the cut.
   Fix: clip once with ReadRegion::clipToBytes, after dedup and the
   cap, or pass --max-columns to rg.
+  Resolved (2026-09-11, 9be7fe12): clipUtf8 encodes once and cuts at a
+  code-point start. Tests: co_change_family's clip cases.
   **Layman:** One very long line in a project can make a Claude search tool hang for minutes.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lane code-index-search).

@@ -40,6 +40,18 @@ for security-relevant changes.
 
 ### Fixed
 
+- **A verify_changes gate that times out stops everything it started, with SIGTERM first so a build can stop cleanly** (ANTS-5063)
+
+- **A timed-out or cancelled audit check, and an audit_run tool past its time cap, stop every process the tool started** (ANTS-5038)
+
+- **The review engines share one locked file cache with a size limit, so the window and the MCP worker no longer write one cache at once** (ANTS-5056)
+
+- **recent_errors finds every missing-include hint in one project scan instead of one scan per symbol** (ANTS-5053)
+
+- **recent_errors reads a line the terminal wrapped as one line, so an error wider than the pane is reported whole** (ANTS-5061)
+
+- **co_change_family clips a long match in one pass, so a very long line no longer stalls it** (ANTS-5066)
+
 - **Closing a tab while its Background Tasks window is open no longer risks a crash; the window closes with the tab.** (ANTS-5049)
 
 - **The test-result tools now name the tests that failed, not just how many failed.** (ANTS-5064)
