@@ -138,3 +138,75 @@ edge where the user opens the prior session's `.jsonl` in an
 editor (mtime bumped, content unchanged). Content-based
 last-event timestamp is the principled signal; mtime is the
 fallback. The two-layer approach handles both robustly.
+
+## 7. ANTS-5048 — every status tick opens every transcript
+
+### Rationale
+
+**Source:** roadmap item ANTS-5048, found independently by two
+review lanes. `ClaudeStatusBarController` calls `activeSessionPath`
+several times per 2-second tick, whether or not Claude is running
+for the focused shell. `sessionPathForCwd` already lists a
+project's transcripts newest-mtime-first (`QDir::Time`) but never
+uses that order: it opens and JSON-parses every `*.jsonl` in the
+directory on every call. A project with over a hundred top-level
+transcripts pays for all of them, every tick, on the GUI thread.
+
+### Scope
+
+In scope: the observable return value of `sessionPathForCwd` under
+fixtures designed to prove a candidate transcript was never
+*opened* — the only way to observe that from outside the function.
+Out of scope: the actual per-call cost (not measured here), the
+`activeSessionPath` call-count reduction and the per-cwd/pid
+memoisation named in the roadmap item's fix — those are un-shipped
+follow-up work, not locked by this spec.
+
+### Regression history
+
+Not yet fixed as of this writing. The defect is in the loop body
+of `sessionPathForCwd` in `src/claudeintegration.cpp`, which the
+prior sections of this document (§§ 1-6) already describe and test
+for filtering *correctness* — this section locks a *cost* contract
+on top of that: a candidate ruled out by mtime alone must never be
+opened, whatever its content claims.
+
+### Invariants
+
+The numbering continues §4's INV map — ANTS-1192-INV-16 was the
+last id in use. A transcript's content timestamp can never
+legitimately be newer than its own mtime (an event is written when
+the file is appended to), so a candidate already ruled out by mtime
+cannot legitimately win once opened either. Each invariant below
+forges a transcript whose content timestamp lies about being newer
+than its own mtime — impossible for a real transcript, but the only
+way to observe, from the returned path alone, whether a candidate
+was ever opened.
+
+- **INV-17** — `sessionPathForCwd(cwd, 0, now)`: a transcript whose
+  mtime already fails the liveness floor is never opened, even when
+  its content claims a last event newer than a fresh transcript's.
+  *Test:* `ClaudeSessionFreshness.MtimeShortCircuit`.
+- **INV-18** — `sessionPathForCwd(cwd, minLastEventMs, 0)`: a
+  transcript whose mtime is older than `minLastEventMs` minus the
+  clock-skew leeway is never opened, even with a forged-fresh
+  content timestamp. *Test:* `ClaudeSessionFreshness.MtimeShortCircuit`.
+- **INV-19** — among mtime-sorted candidates, one whose mtime
+  cannot beat the best effective timestamp already found is never
+  opened, even with a forged-newer content timestamp. *Test:*
+  `ClaudeSessionFreshness.MtimeShortCircuit`.
+- **INV-20** (guard) — the freshest valid transcript is still
+  returned among several valid candidates. *Test:*
+  `ClaudeSessionFreshness.MtimeShortCircuit`.
+- **INV-21** (guard) — a transcript with no content timestamp
+  still falls back to mtime when no PID anchor is known. *Test:*
+  `ClaudeSessionFreshness.MtimeShortCircuit`.
+- **INV-22** (guard) — a directory holding only stale transcripts
+  still returns empty. *Test:*
+  `ClaudeSessionFreshness.MtimeShortCircuit`.
+
+INV-17 through INV-19 are expected to fail against the current
+implementation — the loop opens every candidate regardless of mtime
+order, so the forged content timestamp wins. INV-20 through INV-22
+are guards: they carry no forged fixture and must pass both before
+and after a fix.

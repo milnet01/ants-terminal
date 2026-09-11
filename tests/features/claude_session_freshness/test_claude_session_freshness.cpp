@@ -1,14 +1,22 @@
 // Feature-conformance test for ANTS-1163 — Task List dialog
 // surfaces stale tasks from the previous Claude Code session
-// after a fresh launch.
+// after a fresh launch. Extended for ANTS-5048 — sessionPathForCwd
+// opens and JSON-parses every transcript in the project dir on
+// every call instead of stopping once mtime order rules a
+// candidate out.
 //
-// INV labels qualified ANTS-1163-INV-N. See spec.md.
+// INV labels qualified ANTS-1163-INV-N / ANTS-5048-INV-N (same
+// running sequence, see spec.md § Invariants). See spec.md.
 //
 // Test shape:
 //  * INV-1 / INV-9 / INV-10: live-PID probe + source-grep.
 //  * INV-2..8 / INV-11: build a tmp HOME with two JSONL fixtures
 //    of controlled mtimes + tail content, call
 //    ClaudeIntegration::sessionPathForCwd directly.
+//  * INV-17..22 (ANTS-5048): per-case tmp HOME with a forged
+//    content timestamp that lies about being newer than its own
+//    mtime — the only way to observe, from the return value
+//    alone, whether a candidate was ever opened.
 
 #include "../../_support/expect.h"
 #include "claudeintegration.h"
@@ -19,6 +27,7 @@
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
+#include <QPair>
 #include <QScopeGuard>
 #include <QString>
 #include <QTemporaryDir>
@@ -327,6 +336,244 @@ void testFilterAndPick(QTemporaryDir &home) {
     }
 }
 
+// ANTS-5048 — status-tick cost: sessionPathForCwd reads and JSON-parses
+// EVERY *.jsonl in a project dir on every call, even though the loop
+// already asks the filesystem for newest-mtime-first order and never
+// uses it. The fix (not made here — locked against current code):
+// break the mtime-sorted loop once a file's mtime (+ leeway) can no
+// longer pass the floor, the identity filter, or beat the best
+// effective-timestamp already found — because a transcript's content
+// timestamp is never later than its own mtime (an event is written
+// when appended), so a file that already fails on mtime alone cannot
+// legitimately win once opened either.
+//
+// Each case below forges a transcript whose CONTENT timestamp lies
+// about being newer than its own mtime — impossible for a real
+// Claude Code transcript, but the only way to observe, from the
+// return value alone, whether a file was ever opened at all. Current
+// (unfixed) code opens every file regardless of mtime order, so the
+// forged content timestamp wins and these assertions fail red.
+void testMtimeShortCircuit(QTemporaryDir &home) {
+    const bool hadHome = qEnvironmentVariableIsSet("HOME");
+    const QByteArray priorHome = hadHome ? qgetenv("HOME") : QByteArray();
+    auto restoreHome = qScopeGuard([hadHome, priorHome]() {
+        if (hadHome) qputenv("HOME", priorHome);
+        else qunsetenv("HOME");
+    });
+    ::setenv("HOME", home.path().toLocal8Bit().constData(), 1);
+
+    const QString projectsRoot = home.path() + "/.claude/projects";
+    const qint64 nowMs = QDateTime::currentMSecsSinceEpoch();
+    const qint64 nowSec = nowMs / 1000;
+
+    // Each sub-case gets its own cwd (hence its own encoded project
+    // dir) so leftover fixtures from one case can never be scanned by
+    // another — sessionPathForCwd reads every *.jsonl in the dir.
+    auto mkCase = [&](const QString &name) {
+        const QString cwd = home.path() + "/" + name;
+        DIE_IF_FALSE(QDir().mkpath(cwd), cwd.toStdString());
+        const QString projDir = encodedDir(projectsRoot, cwd);
+        DIE_IF_FALSE(QDir().mkpath(projDir), projDir.toStdString());
+        return QPair<QString, QString>(cwd, projDir);
+    };
+
+    // --- ANTS-5048-INV-17: no PID known (minLastEventMs == 0), tight
+    // 5-minute floor. A day-old mtime fails that floor outright; a
+    // transcript this stale must never be opened, whatever its
+    // content claims.
+    {
+        const auto [cwd, projDir] = mkCase("inv1");
+        const QString freshPath = projDir + "/fresh.jsonl";
+        const QString stalePath = projDir + "/stale.jsonl";
+
+        const qint64 freshTsMs = nowMs - 10'000;   // 10 s ago
+        const qint64 staleMtimeSec = nowSec - 86'400;  // 1 day ago
+        const qint64 staleForgedTsMs = nowMs - 2'000;  // forged: 2 s ago
+
+        DIE_IF_FALSE(writeWithMtime(freshPath,
+                          fixtureBody({timestampedAssistantEvent(isoUtc(freshTsMs))}),
+                          nowSec - 10),
+                     "write " + freshPath.toStdString());
+        DIE_IF_FALSE(writeWithMtime(stalePath,
+                          fixtureBody({timestampedAssistantEvent(isoUtc(staleForgedTsMs))}),
+                          staleMtimeSec),
+                     "write " + stalePath.toStdString());
+
+        const QString picked = ClaudeIntegration::sessionPathForCwd(
+            cwd, /*minLastEventMs=*/0, /*nowMs=*/nowMs);
+        expect(picked == freshPath,
+               "ANTS-5048-INV-17: a transcript whose mtime already fails "
+               "the liveness floor is never opened, even with a "
+               "forged-fresh content timestamp",
+               "picked=" + picked.toStdString() +
+                   " fresh(mtime=" + std::to_string(nowSec - 10) +
+                   ",contentTsMs=" + std::to_string(freshTsMs) + ")=" +
+                   freshPath.toStdString() +
+                   " stale(mtime=" + std::to_string(staleMtimeSec) +
+                   ",forgedContentTsMs=" + std::to_string(staleForgedTsMs) +
+                   ")=" + stalePath.toStdString());
+    }
+
+    // --- ANTS-5048-INV-18: PID known (minLastEventMs = claudeStartMs).
+    // The identity floor is claudeStartMs - kLeewayMs (5 s). A day-old
+    // mtime fails that floor by a wide margin; must never be opened.
+    {
+        const auto [cwd, projDir] = mkCase("inv2");
+        const QString freshPath = projDir + "/fresh.jsonl";
+        const QString stalePath = projDir + "/stale.jsonl";
+
+        const qint64 claudeStartMs = nowMs - 30'000;  // Claude started 30 s ago
+        const qint64 freshTsMs = nowMs - 10'000;
+        const qint64 staleMtimeSec = nowSec - 86'400;
+        const qint64 staleForgedTsMs = nowMs - 2'000;
+
+        DIE_IF_FALSE(writeWithMtime(freshPath,
+                          fixtureBody({timestampedAssistantEvent(isoUtc(freshTsMs))}),
+                          nowSec - 10),
+                     "write " + freshPath.toStdString());
+        DIE_IF_FALSE(writeWithMtime(stalePath,
+                          fixtureBody({timestampedAssistantEvent(isoUtc(staleForgedTsMs))}),
+                          staleMtimeSec),
+                     "write " + stalePath.toStdString());
+
+        const QString picked = ClaudeIntegration::sessionPathForCwd(
+            cwd, /*minLastEventMs=*/claudeStartMs, /*nowMs=*/0);
+        expect(picked == freshPath,
+               "ANTS-5048-INV-18: a transcript whose mtime is older than "
+               "minLastEventMs minus the leeway is never opened, even "
+               "with a forged-fresh content timestamp",
+               "picked=" + picked.toStdString() +
+                   " claudeStartMs=" + std::to_string(claudeStartMs) +
+                   " fresh(mtime=" + std::to_string(nowSec - 10) +
+                   ",contentTsMs=" + std::to_string(freshTsMs) + ")=" +
+                   freshPath.toStdString() +
+                   " stale(mtime=" + std::to_string(staleMtimeSec) +
+                   ",forgedContentTsMs=" + std::to_string(staleForgedTsMs) +
+                   ")=" + stalePath.toStdString());
+    }
+
+    // --- ANTS-5048-INV-19: both candidates are within the floor, but
+    // B's mtime (+ leeway) cannot beat A's already-found best — A was
+    // opened first (newer mtime), so B must never be opened even
+    // though its forged content claims a later event than A's.
+    {
+        const auto [cwd, projDir] = mkCase("inv3");
+        const QString pathA = projDir + "/a.jsonl";
+        const QString pathB = projDir + "/b.jsonl";
+
+        const qint64 tMs = nowMs - 10'000;       // A: honest content == mtime
+        const qint64 aMtimeSec = nowSec - 10;
+        const qint64 bMtimeSec = nowSec - 20;    // < (tMs - leeway) = nowMs-15000
+        const qint64 bForgedTsMs = tMs + 2'000;  // forged: "newer than A"
+
+        DIE_IF_FALSE(writeWithMtime(pathA,
+                          fixtureBody({timestampedAssistantEvent(isoUtc(tMs))}),
+                          aMtimeSec),
+                     "write " + pathA.toStdString());
+        DIE_IF_FALSE(writeWithMtime(pathB,
+                          fixtureBody({timestampedAssistantEvent(isoUtc(bForgedTsMs))}),
+                          bMtimeSec),
+                     "write " + pathB.toStdString());
+
+        const QString picked = ClaudeIntegration::sessionPathForCwd(
+            cwd, /*minLastEventMs=*/0, /*nowMs=*/nowMs);
+        expect(picked == pathA,
+               "ANTS-5048-INV-19: a candidate whose mtime cannot beat the "
+               "best effective timestamp already found is never opened, "
+               "even with a forged-newer content timestamp",
+               "picked=" + picked.toStdString() +
+                   " A(mtime=" + std::to_string(aMtimeSec) +
+                   ",contentTsMs=" + std::to_string(tMs) + ")=" +
+                   pathA.toStdString() +
+                   " B(mtime=" + std::to_string(bMtimeSec) +
+                   ",forgedContentTsMs=" + std::to_string(bForgedTsMs) +
+                   ")=" + pathB.toStdString());
+    }
+
+    // --- Guards (ANTS-5048-INV-20/21/22): must pass before AND after
+    // the mtime-short-circuit fix — they exercise no forged fixture.
+
+    // INV-20: freshest valid transcript still wins among several, all
+    // honest (content ts == mtime).
+    {
+        const auto [cwd, projDir] = mkCase("inv4a");
+        const QString p1 = projDir + "/p1.jsonl";
+        const QString p2 = projDir + "/p2.jsonl";
+        const QString p3 = projDir + "/p3.jsonl";  // freshest
+
+        DIE_IF_FALSE(writeWithMtime(p1,
+                          fixtureBody({timestampedAssistantEvent(isoUtc(nowMs - 30'000))}),
+                          nowSec - 30),
+                     "write " + p1.toStdString());
+        DIE_IF_FALSE(writeWithMtime(p2,
+                          fixtureBody({timestampedAssistantEvent(isoUtc(nowMs - 20'000))}),
+                          nowSec - 20),
+                     "write " + p2.toStdString());
+        DIE_IF_FALSE(writeWithMtime(p3,
+                          fixtureBody({timestampedAssistantEvent(isoUtc(nowMs - 5'000))}),
+                          nowSec - 5),
+                     "write " + p3.toStdString());
+
+        const QString picked = ClaudeIntegration::sessionPathForCwd(
+            cwd, /*minLastEventMs=*/0, /*nowMs=*/nowMs);
+        expect(picked == p3,
+               "ANTS-5048-INV-20 (guard): freshest valid transcript still "
+               "returned among several",
+               "picked=" + picked.toStdString() +
+                   " p1(mtime=" + std::to_string(nowSec - 30) + ")=" +
+                   p1.toStdString() +
+                   " p2(mtime=" + std::to_string(nowSec - 20) + ")=" +
+                   p2.toStdString() +
+                   " p3(mtime=" + std::to_string(nowSec - 5) + ")=" +
+                   p3.toStdString());
+    }
+
+    // INV-21: metadata-only file (no content timestamp) still falls back
+    // to mtime when no PID anchor is known.
+    {
+        const auto [cwd, projDir] = mkCase("inv4b");
+        const QString metaPath = projDir + "/meta.jsonl";
+        const qint64 metaMtimeSec = nowSec - 5;
+
+        DIE_IF_FALSE(writeWithMtime(metaPath,
+                          fixtureBody({metadataEvent(), metadataEvent()}),
+                          metaMtimeSec),
+                     "write " + metaPath.toStdString());
+
+        const QString picked = ClaudeIntegration::sessionPathForCwd(
+            cwd, /*minLastEventMs=*/0, /*nowMs=*/nowMs);
+        expect(picked == metaPath,
+               "ANTS-5048-INV-21 (guard): metadata-only transcript still "
+               "falls back to mtime when no PID anchor is known",
+               "picked=" + picked.toStdString() +
+                   " meta(mtime=" + std::to_string(metaMtimeSec) + ")=" +
+                   metaPath.toStdString());
+    }
+
+    // INV-22: an all-stale directory still returns empty.
+    {
+        const auto [cwd, projDir] = mkCase("inv4c");
+        const QString stalePath = projDir + "/ancient.jsonl";
+        const qint64 ancientTsMs = nowMs - 2LL * 24 * 60 * 60 * 1000;  // 2 days
+        const qint64 ancientMtimeSec = ancientTsMs / 1000;
+
+        DIE_IF_FALSE(writeWithMtime(stalePath,
+                          fixtureBody({timestampedAssistantEvent(isoUtc(ancientTsMs))}),
+                          ancientMtimeSec),
+                     "write " + stalePath.toStdString());
+
+        const QString picked = ClaudeIntegration::sessionPathForCwd(
+            cwd, /*minLastEventMs=*/0, /*nowMs=*/nowMs);
+        expect(picked.isEmpty(),
+               "ANTS-5048-INV-22 (guard): an all-stale directory still "
+               "returns empty",
+               "picked=" + picked.toStdString() +
+                   " ancient(mtime=" + std::to_string(ancientMtimeSec) +
+                   ",contentTsMs=" + std::to_string(ancientTsMs) + ")=" +
+                   stalePath.toStdString());
+    }
+}
+
 // ANTS-1192: encodeProjectPath must collapse BOTH `/` AND `_` into `-`,
 // matching Claude Code's actual on-disk encoding under
 // ~/.claude/projects/<encoded>/. Latent for any cwd containing
@@ -401,6 +648,14 @@ TEST(ClaudeSessionFreshness, FilterAndPick) {
     if (!home.isValid()) FAIL() << "cannot create QTemporaryDir";
     const int before = expect_failures();
     testFilterAndPick(home);
+    if (expect_failures() > before) FAIL();
+}
+
+TEST(ClaudeSessionFreshness, MtimeShortCircuit) {
+    QTemporaryDir home;
+    if (!home.isValid()) FAIL() << "cannot create QTemporaryDir";
+    const int before = expect_failures();
+    testMtimeShortCircuit(home);
     if (expect_failures() > before) FAIL();
 }
 

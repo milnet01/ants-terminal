@@ -552,19 +552,27 @@ QString ClaudeIntegration::sessionPathForCwd(const QString &projectCwd,
         if (proj.exists()) {
             QFileInfo bestInfo;
             qint64 bestEffMs = 0;
+            // Liveness floor (b). Tight when (a) is inactive (no PID known);
+            // wide otherwise.
+            const qint64 floor = (minLastEventMs > 0) ? kStaleMaxMsWithPid
+                                                      : kStaleMaxMsNoPid;
             for (const QFileInfo &fi : proj.entryInfoList({"*.jsonl"}, QDir::Files, QDir::Time)) {
+                // ANTS-5048 — newest mtime first, and a transcript's last
+                // event is never later than its mtime (within the leeway).
+                // Once a file's mtime can no longer pass a filter or beat the
+                // best found, no later file can either: stop before reading.
+                const qint64 mtimeCeil =
+                    fi.lastModified().toMSecsSinceEpoch() + kLeewayMs;
+                if (minLastEventMs > 0 && mtimeCeil < minLastEventMs - kLeewayMs)
+                    break;
+                if (nowMs > 0 && mtimeCeil < nowMs - floor) break;
+                if (bestInfo.exists() && mtimeCeil <= bestEffMs) break;
+
                 const qint64 effMs = effectiveLastEventMs(fi, minLastEventMs > 0);
                 // Process-anchored identity filter (a).
                 if (minLastEventMs > 0 && effMs < minLastEventMs - kLeewayMs)
                     continue;
-                // Liveness floor (b). Tight when (a) is inactive
-                // (no PID known); wide otherwise.
-                if (nowMs > 0) {
-                    const qint64 floor = (minLastEventMs > 0)
-                                             ? kStaleMaxMsWithPid
-                                             : kStaleMaxMsNoPid;
-                    if (effMs < nowMs - floor) continue;
-                }
+                if (nowMs > 0 && effMs < nowMs - floor) continue;
                 if (effMs > bestEffMs) {
                     bestEffMs = effMs;
                     bestInfo = fi;
