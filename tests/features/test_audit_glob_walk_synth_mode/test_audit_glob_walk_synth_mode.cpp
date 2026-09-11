@@ -333,6 +333,141 @@ TEST(TestAuditSynth, G9FullModePaginates) {
     EXPECT_FALSE(r3.truncatedByLimit);
 }
 
+// ---------- G-19 / G-20 / G-21 (ANTS-5065) — an omitted limit must
+// give the mode default, not "all" -----------------------------------
+//
+// ANTS-1455 INV-13 gives mode:"full" two distinct behaviours: an
+// omitted limit gets the mode default (5); an explicit limit:-1 is a
+// deliberate opt-in to "return every chunk" (caller accepts the size
+// risk). The engine's branch logic (limit==0 -> 5, limit<0 -> all)
+// implements that contract; test_audit_synthesis_prompt (mainwindow.cpp)
+// only assigns req.limit when the caller's JSON contains a "limit" key,
+// so an omitted limit falls through to whatever SynthRequest::limit's
+// struct default is — and that default is what ANTS-5065 fixes. G19
+// pins the omitted-limit side of the contract without asserting which
+// sentinel value gets it there; G20 guards the ordinary explicit-limit
+// path; G21 guards the explicit limit:-1 "all" opt-in itself, so a fix
+// for G19 cannot satisfy it by deleting that opt-in.
+
+TEST(TestAuditSynth, G19OmittedLimitDefaultsToFiveNotAll) {
+    QTemporaryDir tmpProject; ASSERT_TRUE(tmpProject.isValid());
+    QTemporaryDir tmpReports; ASSERT_TRUE(tmpReports.isValid());
+    // 8 reports — more than the documented full-mode default of 5
+    // (ANTS-1455 §4: "~80 KiB per page at default limit:5").
+    for (int i = 1; i <= 8; ++i) {
+        ASSERT_TRUE(writeFile(tmpReports.path()
+                              + QStringLiteral("/c-00%1.md").arg(i),
+                              QStringLiteral("chunk %1\n").arg(i)));
+    }
+    ASSERT_TRUE(writeFile(tmpProject.path() + "/CMakeLists.txt",
+                          "project(t)\nenable_testing()\n"));
+    ASSERT_TRUE(writeFile(tmpProject.path() + "/tests/test_x.cpp",
+                          "int main() { return 0; }\n"));
+    TestAuditEngine::PartitionRequest preq;
+    preq.callerCwd = tmpProject.path();
+    const auto p = TestAuditEngine::partition(preq);
+    ASSERT_TRUE(p.ok) << p.error.toStdString();
+
+    TestAuditEngine::SynthRequest req;
+    req.callerCwd = tmpProject.path();
+    req.partitionToken = p.partitionToken;
+    req.reportsDir = tmpReports.path();
+    req.allowOutsideProject = true;
+    req.mode = QStringLiteral("full");
+    // `limit` deliberately left UNSET, mirroring an ordinary MCP call
+    // whose JSON has no "limit" key (test_audit_synthesis_prompt only
+    // assigns req.limit when the caller's args contain "limit" —
+    // mainwindow.cpp). Per ANTS-1455 INV-13 an omitted limit MUST yield
+    // the mode:"full" default of 5 — this does not assert which sentinel
+    // value the struct default uses to get there. offset defaults to 0.
+    const auto r = TestAuditEngine::synthesize(req);
+    ASSERT_TRUE(r.ok) << r.code.toStdString();
+    // INV-1 — default page size, not all 8.
+    EXPECT_EQ(r.chunksReturned, 5)
+        << "ANTS-5065: omitted limit must default to 5, got "
+        << r.chunksReturned;
+    EXPECT_TRUE(r.truncatedByLimit)
+        << "5-of-8 must signal more remain; truncatedByLimit="
+        << r.truncatedByLimit;
+    EXPECT_EQ(r.nextOffset, 5)
+        << "next_offset must resume after the 5 returned, got "
+        << r.nextOffset;
+}
+
+TEST(TestAuditSynth, G20ExplicitLimitStillHonoured) {
+    QTemporaryDir tmpProject; ASSERT_TRUE(tmpProject.isValid());
+    QTemporaryDir tmpReports; ASSERT_TRUE(tmpReports.isValid());
+    for (int i = 1; i <= 8; ++i) {
+        ASSERT_TRUE(writeFile(tmpReports.path()
+                              + QStringLiteral("/c-00%1.md").arg(i),
+                              QStringLiteral("chunk %1\n").arg(i)));
+    }
+    ASSERT_TRUE(writeFile(tmpProject.path() + "/CMakeLists.txt",
+                          "project(t)\nenable_testing()\n"));
+    ASSERT_TRUE(writeFile(tmpProject.path() + "/tests/test_x.cpp",
+                          "int main() { return 0; }\n"));
+    TestAuditEngine::PartitionRequest preq;
+    preq.callerCwd = tmpProject.path();
+    const auto p = TestAuditEngine::partition(preq);
+    ASSERT_TRUE(p.ok) << p.error.toStdString();
+
+    TestAuditEngine::SynthRequest req;
+    req.callerCwd = tmpProject.path();
+    req.partitionToken = p.partitionToken;
+    req.reportsDir = tmpReports.path();
+    req.allowOutsideProject = true;
+    req.mode = QStringLiteral("full");
+    req.limit = 3;  // explicit positive limit, unaffected by the fix
+    const auto r = TestAuditEngine::synthesize(req);
+    ASSERT_TRUE(r.ok) << r.code.toStdString();
+    // INV-2 — guard: explicit limit is unaffected.
+    EXPECT_EQ(r.chunksReturned, 3)
+        << "explicit limit:3 must return exactly 3, got "
+        << r.chunksReturned;
+}
+
+TEST(TestAuditSynth, G21ExplicitMinusOneStillReturnsAll) {
+    QTemporaryDir tmpProject; ASSERT_TRUE(tmpProject.isValid());
+    QTemporaryDir tmpReports; ASSERT_TRUE(tmpReports.isValid());
+    for (int i = 1; i <= 8; ++i) {
+        ASSERT_TRUE(writeFile(tmpReports.path()
+                              + QStringLiteral("/c-00%1.md").arg(i),
+                              QStringLiteral("chunk %1\n").arg(i)));
+    }
+    ASSERT_TRUE(writeFile(tmpProject.path() + "/CMakeLists.txt",
+                          "project(t)\nenable_testing()\n"));
+    ASSERT_TRUE(writeFile(tmpProject.path() + "/tests/test_x.cpp",
+                          "int main() { return 0; }\n"));
+    TestAuditEngine::PartitionRequest preq;
+    preq.callerCwd = tmpProject.path();
+    const auto p = TestAuditEngine::partition(preq);
+    ASSERT_TRUE(p.ok) << p.error.toStdString();
+
+    TestAuditEngine::SynthRequest req;
+    req.callerCwd = tmpProject.path();
+    req.partitionToken = p.partitionToken;
+    req.reportsDir = tmpReports.path();
+    req.allowOutsideProject = true;
+    req.mode = QStringLiteral("full");
+    // EXPLICIT opt-in per ANTS-1455 INV-13 — distinct from G19's
+    // omitted case above, and unaffected by the ANTS-5065 fix (which
+    // touches only the struct default, not this explicit assignment).
+    req.limit = -1;
+    const auto r = TestAuditEngine::synthesize(req);
+    ASSERT_TRUE(r.ok) << r.code.toStdString();
+    // INV-3 — guard: the explicit "return all" opt-in must survive the
+    // INV-1 fix unchanged.
+    EXPECT_EQ(r.chunksReturned, 8)
+        << "explicit limit:-1 must still return all 8, got "
+        << r.chunksReturned;
+    EXPECT_FALSE(r.truncatedByLimit)
+        << "all 8 returned means nothing was truncated; truncatedByLimit="
+        << r.truncatedByLimit;
+    EXPECT_EQ(r.nextOffset, -1)
+        << "all 8 returned means exhausted; next_offset got "
+        << r.nextOffset;
+}
+
 // ---------- G-13 — mcp-error-codes.md doc rows --------------------
 
 TEST(TestAuditDocs, G13ErrorCodesPresentInTaxonomy) {

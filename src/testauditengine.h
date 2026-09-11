@@ -169,7 +169,10 @@ struct SynthRequest {
     bool        allowOutsideProject = false;  // ANTS-1455 — opt-in escape hatch
     QString     mode;                    // ANTS-1455 — "summary" (default) | "full"
     int         offset = 0;              // ANTS-1455 — pagination cursor (full mode)
-    int         limit = -1;              // ANTS-1455 — page size; -1=default
+    // ANTS-1455 INV-13 / ANTS-5065 — page size. 0 (unset) = the mode's
+    // default (5 in full mode); an explicit -1 = every chunk. The default
+    // was -1, so a caller that omitted limit got every chunk.
+    int         limit = 0;
 };
 
 struct SynthResult {
