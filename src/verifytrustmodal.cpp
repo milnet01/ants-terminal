@@ -68,6 +68,12 @@ ModalClient::ModalClient(QWidget *parent, const QString &trustFilePath)
 Decision ModalClient::prompt(const QString &projectPath,
                              const QString &shaHex,
                              const QByteArray &configBytes) {
+    return showPrompt(projectPath, shaHex, configBytes);
+}
+
+Decision ModalClient::showPrompt(const QString &projectPath,
+                                 const QString &shaHex,
+                                 const QByteArray &configBytes) {
     QMessageBox box(m_parent);
     box.setIcon(QMessageBox::Question);
     box.setWindowTitle(QObject::tr("Trust .ants/verify.json?"));

@@ -28,6 +28,13 @@ protected:
                     const QString &shaHex,
                     const QByteArray &configBytes) override;
 
+    // ANTS-5025 — the dialog itself: builds the QMessageBox, runs it and
+    // persists a trust choice. Virtual so a test can see which thread runs
+    // it without showing a dialog.
+    virtual Decision showPrompt(const QString &projectPath,
+                                const QString &shaHex,
+                                const QByteArray &configBytes);
+
 private:
     QPointer<QWidget> m_parent;
 };

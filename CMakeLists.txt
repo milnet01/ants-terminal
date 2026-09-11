@@ -1589,7 +1589,11 @@ if(ANTS_TESTS)
                 # ANTS-4529 the bump recipe must not edit a rendered file.
                 tests/features/bump_recipe_no_generated_files/test_bump_recipe_no_generated_files.cpp
                 # ANTS-4273 ants.notify() must reach the host, not stop at PluginManager.
-                tests/features/plugin_notify_wiring/test_plugin_notify_wiring.cpp)
+                tests/features/plugin_notify_wiring/test_plugin_notify_wiring.cpp
+                # ANTS-5025 — VerifyTrust::ModalClient::prompt must marshal its
+                # dialog body onto the GUI thread when called from a worker, and
+                # a refused GUI marshal must yield Headless without running it.
+                tests/features/verify_trust_modal_gui_thread/test_verify_trust_modal_gui_thread.cpp)
     # command_palette_ghost_completion uses QSignalSpy (Qt6::Test).
     target_link_libraries(test_chrome PRIVATE Qt6::Test)
     target_compile_definitions(test_chrome PRIVATE
