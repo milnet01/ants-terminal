@@ -316,8 +316,13 @@ jobs:
         #
         # ANTS-5011 — re-measured 2026-09-10: the suite grew, passing runs took
         # 14m49s to 15m35s, and three runs were killed at exactly 16m. 22m is
-        # ~1.4x the slowest passing run. The lasting fix is ANTS-5014.
-        run: timeout 22m ctest -j2 --output-on-failure --timeout 300
+        # ~1.4x the slowest passing run.
+        #
+        # ANTS-5014 — -LE perf skips the benchmarks, as the pre-push hook's
+        # sanitized leg does. Measured 2026-09-11: they cost 285 s of a 1121 s
+        # serial sanitized run, and a benchmark under ASan measures the
+        # sanitizer. The 22m budget stays until a run is re-measured.
+        run: timeout 22m ctest -j2 --output-on-failure --timeout 300 -LE perf
 
       - name: Smoke-test binary init paths
         working-directory: build-asan

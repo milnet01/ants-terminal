@@ -75895,7 +75895,7 @@ contributors don't duplicate research.
   Source: in-session-2026-09-10.
   Lanes: e2e.
 
-- 📋 [ANTS-5014] **The sanitized CI suite's run time grows with every test, because each test runs as its own process under ASan.**
+- ✅ [ANTS-5014] **The sanitized CI suite's run time grows with every test, because each test runs as its own process under ASan.**
   tests/features/ci_asan_budget/spec.md measured the cost as dominated by
   per-process startup under ASan rather than by any one test, and -j2
   bought only 1.31x. Raising the budget is the documented stopgap. A
@@ -75928,6 +75928,13 @@ contributors don't duplicate research.
   - CI's ASan step runs `ctest -j2 --timeout 300` with no label filter, so it runs the perf-labelled tests the pre-push ASan leg excludes with -LE 'e2e|perf'. Under ASan those cost 285 s.
   - Two of them are correctness tests labelled perf only for their 2 MiB fixtures: RoadmapReadSeam.Ants3863Inv1ByteCapBoundsAnAllBlankRoadmap and RoadmapReadSeam.Ants3863Inv2BothProducersAgree. Each takes about 139 s under ASan, against 0.7 s and 0.2 s in Release measured the same day.
   Options for the user: (a) add -LE 'e2e|perf' to the CI ASan step, matching the pre-push leg; about 300 s less serial, but no sanitizer run of those tests. (b) batch by suite in the sanitized build only; about 500 s less serial, needs a project-local discovery step, and a sanitized failure then names a suite. (c) both. Separately, the 200-700x ASan slowdown of the two RoadmapReadSeam tests deserves a profile.
+  Shipped (2026-09-11): the user chose option (a). ci.yml's build-asan
+  ctest and tools/ci-parity.sh now pass -LE perf, matching the pre-push
+  hook's sanitized leg. tests/features/ci_asan_budget gained INV-5, seen
+  red against the old line and green after. Per-suite batching (option
+  b) was not taken; its measurement stays in the 2026-09-11 note in case
+  the run grows again. The 22m budget is unchanged until a CI run is
+  re-measured.
   **Layman:** The memory-checking test run keeps getting slower as tests are added.
   Kind: perf.
   Source: in-session-2026-09-10.

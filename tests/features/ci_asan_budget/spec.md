@@ -65,6 +65,14 @@ job-level `timeout-minutes` would fire first and the run would read
 `cancelled` again, silently undoing INV-2. This is the invariant that keeps
 INV-2 true after someone raises a number.
 
+**INV-5 — the sanitized `ctest` skips the `perf` label (ANTS-5014).** The
+`build-asan` job's `ctest` invocation excludes `perf`, as the pre-push hook's
+sanitized leg already does. A benchmark under a sanitizer measures the
+sanitizer. Measured 2026-09-11: the perf-labelled tests cost 285 s of a
+1121 s serial sanitized run. Two of them are correctness tests labelled
+`perf` for their multi-megabyte fixtures; they still run in CI's Release job
+and under `ctest --preset=perf`.
+
 ## What this check does NOT cover, stated so it is not mistaken for coverage
 
 - **It does not verify the budgets are big enough.** INV-4 checks ordering,

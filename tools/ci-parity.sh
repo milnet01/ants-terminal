@@ -215,10 +215,11 @@ asan_ctest() {
     # failed test rather than the whole budget. Unlike ci.yml there is no
     # outer `timeout` wrapper: a killed ninja corrupts .ninja_deps, and a
     # local gate reports its own result without a cancelled/failed ambiguity.
+    # ANTS-5014 — -LE perf skips the benchmarks, as ci.yml does.
     ASAN_OPTIONS=detect_leaks=0:halt_on_error=1 \
     UBSAN_OPTIONS=print_stacktrace=1:halt_on_error=1 \
     LC_ALL="$locale" ctest --test-dir "$asan_dir" -j2 --output-on-failure \
-                           --timeout 300
+                           --timeout 300 -LE perf
 }
 asan_smoke() {
     local pre=(QT_QPA_PLATFORM=offscreen

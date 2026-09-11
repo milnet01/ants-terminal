@@ -83,6 +83,22 @@ TEST(CiAsanBudget, Inv1SanitizedCtestIsParallelAndPerTestCapped) {
            "run reports nothing about which test hung.";
 }
 
+// INV-5 — the sanitized suite skips the perf label, as the pre-push leg does.
+TEST(CiAsanBudget, Inv5SanitizedCtestSkipsThePerfLabel) {
+    const std::string job = asanJob(ants_test::slurpFile(SRC_CI_WORKFLOW_PATH));
+    ASSERT_FALSE(job.empty());
+
+    const std::string line = ctestLine(job);
+    ASSERT_FALSE(line.empty()) << "build-asan runs no ctest at all";
+
+    EXPECT_TRUE(std::regex_search(line, std::regex(R"(-LE\s+'?[^'\s]*\bperf\b)")))
+        << "build-asan's ctest runs the perf-labelled tests: " << line
+        << "\n  A benchmark under ASan measures the sanitizer; the perf-labelled "
+           "tests cost 285 s of a 1121 s serial sanitized run on 2026-09-11 "
+           "(ANTS-5014). The pre-push hook's sanitized leg already passes "
+           "-LE 'e2e|perf'.";
+}
+
 // INV-2 — an overrun exits non-zero, so the run is RED and not `cancelled`.
 TEST(CiAsanBudget, Inv2AnOverrunFailsRatherThanCancels) {
     const std::string job = asanJob(ants_test::slurpFile(SRC_CI_WORKFLOW_PATH));

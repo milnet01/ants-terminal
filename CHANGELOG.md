@@ -14,6 +14,11 @@ for security-relevant changes.
 
 ### Changed
 
+- **CI's memory-checked test run skips the benchmark tests, as the local pre-push check already does** (ANTS-5014)
+  The benchmarks cost 285 s of a 1121 s serial sanitized run
+  (measured 2026-09-11). Two correctness tests labelled perf for their
+  large fixtures still run in CI's Release job.
+
 - **The AI review windows keep one copy of the code that stops their requests on close** (ANTS-5009)
   LlmDispatcher now only schedules jobs. ReviewDialogBase's runner
   creates the LlmClients and aborts them when the window closes. The
