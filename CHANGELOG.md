@@ -218,6 +218,8 @@ for security-relevant changes.
 
 ### Security
 
+- **Resetting the terminal no longer lets a program get around the clipboard-write and user-variable limits** (ANTS-5122)
+
 - **Re-run Last Command shows the command and asks before running it, unless prompt signing proves the command came from your shell** (ANTS-5029)
 
 - **Audits no longer take tool options from the audited project's .audit-config.json, so a downloaded project cannot use them to write files or run code** (ANTS-5045)

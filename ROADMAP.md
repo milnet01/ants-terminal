@@ -8554,12 +8554,27 @@ extends an existing item, that item carries it instead.
   then reads or creates tabs in a window nobody can see.
   Fix direction: hand the listener to a surviving window on close, or
   resolve tab verbs against the active MainWindow rather than the owner.
+  Progress (2026-09-11): verified in source. Every MainWindow constructs
+  its own RemoteControl(this, this) and calls start(); only the first
+  binds the socket. RemoteControl holds `MainWindow *m_main`, a raw
+  non-owning pointer, used across the remotecontrol sources. Closing the
+  first window hides it (ANTS-5118), so its RemoteControl keeps serving
+  the hidden window. Re-pointing m_main to a surviving window is not
+  enough on its own: several MCP tools are inline lambdas in
+  MainWindow::setupClaudeMcpProviders that use the first window directly
+  (tab_list among them), and a raw pointer to a later-closed survivor
+  would dangle. Deferred pending a design decision: (1) hand off on
+  close, making m_main a QPointer that falls back to its owner and
+  routing the inline providers through RemoteControl; or (2) resolve the
+  target window per call (the most recently active visible MainWindow)
+  inside RemoteControl and in those providers. Recommended: (2), since a
+  per-call lookup has no stale state to hand off.
   **Layman:** If you close the original Ants window, Claude's terminal tools keep pointing at that invisible window.
   Kind: fix.
   Source: in-session-2026-09-11 (ANTS-5118 fix).
   Lanes: remotecontrol, mainwindow.
 
-- 📋 [ANTS-5122] **A full terminal reset (RIS) refills the OSC 52 clipboard and OSC 1337 user-var quotas, so a stream that resets between writes is never limited.**
+- ✅ [ANTS-5122] **A full terminal reset (RIS) refills the OSC 52 clipboard and OSC 1337 user-var quotas, so a stream that resets between writes is never limited.**
   Found by reading, 2026-09-11, while fixing ANTS-5033. RIS in
   src/terminalgrid.cpp rebuilds the grid with
   `*this = TerminalGrid(m_rows, m_cols)` and carries only the callbacks,
@@ -8571,6 +8586,10 @@ extends an existing item, that item carries it instead.
   counters across RIS the same way the callbacks are carried.
   Not reproduced: confirm with a test that interleaves ESC c with OSC 52
   writes, then carry the counters across.
+  Resolved (2026-09-11, a245dab4): RIS carries the OSC 52 write count,
+  byte budget and window start, and the OSC 1337 SetUserVar count and
+  window start, across the grid rebuild, as it carries the notification
+  budget. Tests: osc_notify_quota INV-6 to INV-9.
   **Layman:** A program can get around Ants' clipboard-write limit by resetting the terminal between writes.
   Kind: fix.
   Source: in-session-2026-09-11 (ANTS-5033 fix).
