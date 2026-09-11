@@ -8149,7 +8149,7 @@ extends an existing item, that item carries it instead.
   Source: in-session-2026-09-11 (found fixing ANTS-3847).
   Lanes: lua, mcp.
 
-- 📋 [ANTS-5116] **spec_lint holds per-test contracts under tests/features/ to the full-spec section list and finds none of their invariants.**
+- 💭 [ANTS-5116] **spec_lint holds per-test contracts under tests/features/ to the full-spec section list and finds none of their invariants.**
   Run on the shipped contract tests/features/session_sha256_checksum/
   spec.md (2026-09-11), spec_lint returns ok:true with four
   missing_section findings (## Problem, ## Surface, ## Tests,
@@ -8166,6 +8166,16 @@ extends an existing item, that item carries it instead.
   flagged one is noise. Fix direction, unverified: recognise the
   tests/features/ genre (skip or swap the section list) and parse its
   bullet invariants.
+  Reconsidered (2026-09-11): not a defect. docs/standards/specs.md § 1
+  already says a feature-test contract "carries no loop log, and is not
+  gated. A default `spec_lint` run walks `docs/specs/` and never reaches
+  it; pointed at one directly it reports the whole required set as
+  absent, which is not a defect in that file." The missing sections and
+  invariants_found:0 both follow from pointing the tool where the
+  standard says it does not apply. What remains is an idea, not a bug:
+  spec_lint could say a tests/features/ path is outside its genre
+  instead of listing absences. Filed without reading that section;
+  found when a write-test agent quoted it.
   **Layman:** The checker for design documents grades small per-test notes against the rules for full designs, so its report on them is meaningless.
   Kind: fix.
   Source: in-session-2026-09-11 (write-test run for ANTS-5025).
