@@ -2,7 +2,8 @@
 // wiring. Pure source-grep (no link, no MainWindow construction — see
 // spec.md's "Why source-grep" section).
 //
-// INV labels qualified ANTS-5032-INV-N. See spec.md.
+// INV labels are qualified by the roadmap item that added them
+// (ANTS-5032-INV-N, ANTS-5118-INV-N). See spec.md.
 
 #include "../../_support/expect.h"
 #include "../../_support/srcgrep.h"
@@ -225,6 +226,63 @@ TEST(MultiWindowSession, Inv9_saveProcessTabOrderIgnoresVisibility) {
            "ANTS-5032-INV-9: saveProcessTabOrder does not filter windows on visibility — a "
            "Quake-mode window hides but still owns its tabs");
     EXPECT_EQ(0, expect_failures()) << "Inv9_saveProcessTabOrderIgnoresVisibility failed";
+}
+
+TEST(MultiWindowSession, Ants5118Inv1_closeEventEndsTabsWhileAnotherWindowStaysOpen) {
+    expect_reset();
+    const std::string cp = ants_test::slurpFile(SRC_MAINWINDOW_CPP_PATH);
+    ASSERT_FALSE(cp.empty()) << "ANTS-5118-INV-1: read mainwindow.cpp";
+    const std::string stripped = ants_test::stripComments(cp);
+
+    const std::string body = ants_test::slurpFunctionBody(stripped, "void MainWindow::closeEvent(");
+    expect(!body.empty(), "ANTS-5118-INV-1: MainWindow::closeEvent body extracted");
+
+    const auto npos = std::string::npos;
+    const auto gatePos = body.find("anotherWindowStaysOpen()");
+    const auto shotPos = gatePos == npos ? npos : body.find("QTimer::singleShot(0", gatePos);
+    const auto recheckPos = shotPos == npos ? npos : body.find("anotherWindowStaysOpen()", shotPos);
+    const auto closePos = recheckPos == npos ? npos : body.find("performTabClose(", recheckPos);
+    expect(gatePos != npos && gatePos > 0 && body[gatePos - 1] != '!',
+           "ANTS-5118-INV-1: closeEvent ends its tabs only when anotherWindowStaysOpen() — "
+           "the last window keeps its tabs so the restart can bring them back");
+    expect(shotPos != npos,
+           "ANTS-5118-INV-1: the close-down is deferred one event-loop turn "
+           "(QTimer::singleShot(0 …)), the timing of the deleteLater that ends a New Window "
+           "window's tabs, so closes arriving together leave the last window to save them all");
+    expect(recheckPos != npos,
+           "ANTS-5118-INV-1: the deferred close-down re-checks anotherWindowStaysOpen() when it "
+           "fires");
+    expect(closePos != npos,
+           "ANTS-5118-INV-1: it then closes the tabs through performTabClose, whose deleted "
+           "widgets end their shells");
+    EXPECT_EQ(0, expect_failures())
+        << "Ants5118Inv1_closeEventEndsTabsWhileAnotherWindowStaysOpen failed";
+}
+
+TEST(MultiWindowSession, Ants5118Inv2_anotherWindowStaysOpenCountsOnlyVisibleWindows) {
+    expect_reset();
+    const std::string cp = ants_test::slurpFile(SRC_MAINWINDOW_CPP_PATH);
+    ASSERT_FALSE(cp.empty()) << "ANTS-5118-INV-2: read mainwindow.cpp";
+    const std::string stripped = ants_test::stripComments(cp);
+
+    const std::string body =
+        ants_test::slurpFunctionBody(stripped, "bool MainWindow::anotherWindowStaysOpen(");
+    expect(!body.empty(), "ANTS-5118-INV-2: MainWindow::anotherWindowStaysOpen body extracted");
+
+    const auto castPos = body.find("qobject_cast");
+    const std::string afterCast =
+        castPos == std::string::npos ? std::string() : body.substr(castPos);
+    expect(contains(body, "QApplication::topLevelWidgets()"),
+           "ANTS-5118-INV-2: anotherWindowStaysOpen walks QApplication::topLevelWidgets()");
+    expect(contains(afterCast.substr(0, std::min<std::size_t>(80, afterCast.size())), "MainWindow"),
+           "ANTS-5118-INV-2: it qobject_casts each top-level widget to MainWindow");
+    expect(contains(afterCast, "!= this") || contains(afterCast, "== this"),
+           "ANTS-5118-INV-2: it does not count this window");
+    expect(contains(afterCast, "isVisible()"),
+           "ANTS-5118-INV-2: it counts only visible windows — Qt quits once none is visible, so "
+           "a hidden Quake window must not make the last visible window discard its tabs");
+    EXPECT_EQ(0, expect_failures())
+        << "Ants5118Inv2_anotherWindowStaysOpenCountsOnlyVisibleWindows failed";
 }
 
 }  // namespace

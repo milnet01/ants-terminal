@@ -3802,6 +3802,18 @@ void MainWindow::saveProcessTabOrder(QStringList tabOrder, int activeIndex) cons
     SessionManager::saveTabOrder(tabOrder, activeIndex);
 }
 
+// ANTS-5118 — whether closing this window leaves another on screen.
+// Visible only: Qt quits once no visible window remains, so a hidden
+// Quake window keeps neither the app nor this window's tabs alive.
+bool MainWindow::anotherWindowStaysOpen() const {
+    for (QWidget *top : QApplication::topLevelWidgets()) {
+        const auto *other = qobject_cast<const MainWindow *>(top);
+        if (other && other != this && other->isVisible())
+            return true;
+    }
+    return false;
+}
+
 void MainWindow::restoreSessions() {
     // ANTS-5032 — once per process. A later window (File → New Window)
     // keeps the fresh tab newTab gave it instead of reopening the saved
@@ -6017,6 +6029,21 @@ void MainWindow::closeEvent(QCloseEvent *event) {
     // a tick landing mid-shutdown can't re-enter the save path
     // and race the explicit shutdown save below.
     if (m_sessionSaveTimer) m_sessionSaveTimer->stop();
+
+    // ANTS-5118 — closing a window while another visible one stays open is
+    // final for its tabs: close them, which ends their shells. The first
+    // window only hides on close (it owns the remote-control listener), so
+    // without this its programs ran on unseen. Deferred one event-loop
+    // turn, when a New Window window's deleteLater ends its tabs, and
+    // re-checked then: closes that arrive together (a Plasma logout closes
+    // every window) leave the last window to save every tab first.
+    if (anotherWindowStaysOpen()) {
+        QTimer::singleShot(0, this, [this] {
+            if (isVisible() || !anotherWindowStaysOpen()) return;
+            while (m_tabWidget->count() > 0)
+                performTabClose(m_tabWidget->count() - 1);
+        });
+    }
 
     QPoint realPos = m_posTracker->currentPos();
     m_config.setWindowGeometry(realPos.x(), realPos.y(), width(), height());

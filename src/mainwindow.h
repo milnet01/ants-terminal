@@ -259,6 +259,8 @@ private:
     // ANTS-5032 — every window's tabs go into the one tab_order.txt.
     QStringList sessionTabIds(int *activeIndex = nullptr) const;
     void saveProcessTabOrder(QStringList tabOrder, int activeIndex) const;
+    // ANTS-5118 — another visible MainWindow stays open after this closes.
+    bool anotherWindowStaysOpen() const;
 
     TitleBar *m_titleBar = nullptr;
     OpaqueMenuBar *m_menuBar = nullptr;

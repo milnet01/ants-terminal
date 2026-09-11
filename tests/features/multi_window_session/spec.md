@@ -8,9 +8,9 @@ decide which tabs survive a restart.
 
 ## Invariants
 
-INV labels qualified `ANTS-5032-INV-N`.
+INV labels are qualified by the roadmap item that added them.
 
-| #  | Statement |
+| ANTS-5032 | Statement |
 |----|-----------|
 | 1  | `MainWindow::restoreSessions` declares a function-local `static bool` guard. Before the function's call to `SessionManager::loadTabOrder`, it returns when the guard is set, and sets it. |
 | 2  | `mainwindow.cpp` calls `SessionManager::saveTabOrder(` exactly once. |
@@ -21,6 +21,11 @@ INV labels qualified `ANTS-5032-INV-N`.
 | 7  | `MainWindow::saveTabOrderOnly` calls `saveProcessTabOrder`. |
 | 8  | `MainWindow::saveProcessTabOrder` adds each other window's `sessionTabIds()` to the list it saves. |
 | 9  | `MainWindow::saveProcessTabOrder` does not filter windows on `isVisible` or `isHidden`. |
+
+| ANTS-5118 | Statement |
+|----|-----------|
+| 1  | When `anotherWindowStaysOpen()` is true, `MainWindow::closeEvent` defers a close-down by one event-loop turn (`QTimer::singleShot(0 …)`). The close-down re-checks `anotherWindowStaysOpen()`, then closes every tab through `performTabClose`. |
+| 2  | `MainWindow::anotherWindowStaysOpen` walks `QApplication::topLevelWidgets()`, casts each to `MainWindow`, skips `this`, and counts only visible windows. |
 
 ## Rationale
 
@@ -45,6 +50,18 @@ saving — so the file always reflects every window, not just the last
 one to save. Hidden windows are folded in on purpose: a Quake-mode
 window is hidden but still owns tabs, so only `this` is excluded, not
 every non-visible widget.
+
+ANTS-5118: the first window is built on the stack in `main.cpp`, so
+closing it only hides it. It also owns the remote-control listener,
+so it cannot be deleted. Its tabs and their shells used to run on
+with no way back. Now a window closed while another visible window
+stays open closes its tabs; deleting a tab ends its shell. The
+close-down waits one event-loop turn, when a New Window window's
+`deleteLater` would end its tabs, and checks again then. So when
+every window is closed at once, the last one still saves every tab.
+The last visible window keeps its tabs, because Qt then quits and the
+restart must bring them back. A hidden Quake window does not count as
+open, because Qt does not count it either.
 
 ## Scope
 
