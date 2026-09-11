@@ -40,6 +40,10 @@ for security-relevant changes.
 
 ### Fixed
 
+- **Changing View -> Opacity updates terminals that are already open** (ANTS-5034)
+
+- **audit_run reports a tool that ran out of time as timed out, not crashed, and ignores its half-finished output** (ANTS-5044)
+
 - **A saved tab that cannot be restored keeps its session file, restores all or nothing, and very large scroll histories save only what can be restored** (ANTS-5031)
 
 - **Re-running a command reads the right line after the scroll history has filled up** (ANTS-5029)

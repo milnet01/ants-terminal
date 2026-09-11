@@ -6338,7 +6338,7 @@ extends an existing item, that item carries it instead.
   Source: code-quality-review-2026-09-11 perf pass (lane mainwindow-a).
   Lanes: mainwindow, terminalgrid, security.
 
-- 📋 [ANTS-5034] **View → Opacity does nothing for terminals that are already open.**
+- ✅ [ANTS-5034] **View → Opacity does nothing for terminals that are already open.**
   The action saves the value and calls applyTheme(m_currentTheme), but
   applyTheme returns early when the theme name is unchanged, and the
   config watcher skips the reload because the write is its own. Only
@@ -6346,6 +6346,10 @@ extends an existing item, that item carries it instead.
   says it re-applies the theme to update every background.
   Fix: call setWindowOpacityLevel on every live terminal inside the
   action.
+  Shipped 2026-09-11 (ef57eee4): the View -> Opacity action calls
+  setWindowOpacityLevel on every live terminal instead of the applyTheme
+  call that returned early. ViewOpacityLive INV-1 was red before the
+  fix.
   **Layman:** Changing the window see-through level only affects new tabs, not the ones already open.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lane mainwindow-a).
@@ -6516,7 +6520,7 @@ extends an existing item, that item carries it instead.
   Source: code-quality-review-2026-09-11 perf pass (lane audit-engine).
   Lanes: audit.
 
-- 📋 [ANTS-5044] **audit_run reports a timed-out tool as crashed, because the SIGTERM crash exit is recorded before the timeout.**
+- ✅ [ANTS-5044] **audit_run reports a timed-out tool as crashed, because the SIGTERM crash exit is recorded before the timeout.**
   The per-tool cap calls terminate(). A tool that dies of the signal
   reaches Qt as CrashExit and errorOccurred(Crashed), whose handlers
   record crashed first, and the grace timer's timed_out result is then
@@ -6528,6 +6532,11 @@ extends an existing item, that item carries it instead.
   ANTS-1351 section 2.2 is right and the code is wrong.
   Fix: set a per-tool timedOut flag before terminate() and map to
   timed_out in both handlers.
+  Shipped 2026-09-11 (25005190): the per-tool cap marks the tool in
+  timedOut before proc->terminate(); the finished and errorOccurred
+  handlers ask AuditRunner::internal::toolExitStatus, and a timed-out
+  tool's partial output is not parsed. AuditRunIncompleteDetail INV-10
+  was red before the fix; the default suite passed 4409.
   **Layman:** When an audit tool runs out of time, the report says it crashed instead, and counts its half-finished output.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lane audit-engine).
