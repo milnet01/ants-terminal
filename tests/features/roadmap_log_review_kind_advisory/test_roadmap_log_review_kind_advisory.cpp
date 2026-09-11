@@ -108,7 +108,9 @@ TEST(RoadmapLogReviewKindAdvisory, Inv2AndInv6WiredIntoBothWritePaths) {
 
     EXPECT_NE(rc.find("rlReviewKindAdvisory(kind, source)"), std::string::npos)
         << "ANTS-4989 INV-2: op:append must call the advisory";
-    EXPECT_NE(rc.find("first[QStringLiteral(\"bullets\")] = ids;"),
+    // No variable name in the needle: ANTS-5114 renamed the list this
+    // assigns, and the wiring, not the local's name, is the contract.
+    EXPECT_NE(rc.find("first[QStringLiteral(\"bullets\")] = "),
               std::string::npos)
         << "ANTS-4989 INV-6: op:append_batch must roll the advisory up over "
            "its bullets — a batch filing one review's findings is where the "
