@@ -3,6 +3,7 @@
 #include "verifyengine.h"
 #include "verifytrust.h"
 #include "projectsettings.h"   // ANTS-3373 — isNoiseDir for orphan-lint pruning
+#include "processgroup.h"      // ANTS-5063 — stop a timed-out gate's whole tree
 
 #include <QDir>
 #include <QElapsedTimer>
@@ -294,6 +295,7 @@ GateResult runOneGate(const QString &projectPath,
     QElapsedTimer wallClock;
     wallClock.start();
 
+    ProcessGroup::startsOwnGroup(p);
     p.start(QStringLiteral("/bin/sh"),
             {QStringLiteral("-c"), gc.command});
     if (!p.waitForStarted(2000)) {
@@ -307,6 +309,15 @@ GateResult runOneGate(const QString &projectPath,
     // tests can drive a sub-floor budget without a second clamp here.
     const int perGateMs = perGateTimeoutSec * 1000;
     if (!p.waitForFinished(perGateMs)) {
+        // ANTS-5063 — stop the gate's whole process group: TERM first, so a
+        // build tool can stop cleanly (a SIGKILLed ninja can corrupt
+        // .ninja_deps), then KILL whatever is left, then reap.
+        constexpr int kTermGraceMs = 2000;
+        const qint64 pgid = p.processId();
+        ProcessGroup::signalGroup(pgid, SIGTERM);
+        p.waitForFinished(kTermGraceMs);
+        ProcessGroup::waitGroupGone(pgid, kTermGraceMs);
+        ProcessGroup::signalGroup(pgid, SIGKILL);
         p.kill();
         p.waitForFinished(2000);
         r.ran = true;

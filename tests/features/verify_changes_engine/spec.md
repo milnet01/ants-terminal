@@ -44,6 +44,23 @@ Pairs with docs/specs/ANTS-1289.md.
   does NOT flip `all_passed` (the build passed; the file just isn't in
   it), and is emitted only when non-empty so the default envelope stays
   byte-identical.
+- **INV-11 (timeout reaps the whole tree, ANTS-5063)** — a gate whose
+  command backgrounds a long-lived child and then `wait`s on it is a
+  process the gate shell started but is not itself: on timeout, that
+  child does not survive. Runs each gate in its own process group and
+  signals the group, not just the `/bin/sh` leader QProcess knows
+  about — the same class of gap as the orphaned audit tools
+  (INV-10's neighbour in a different engine), here in `runOneGate`.
+- **INV-12 (SIGTERM before SIGKILL, ANTS-5063)** — the timeout kill
+  gives a tool its chance to shut down cleanly before it is forced:
+  a descendant of the gate shell that traps TERM and writes a marker
+  before exiting sees that TERM, even though it is two levels below
+  the pid QProcess reports. A grace window separates the SIGTERM from
+  the eventual SIGKILL.
+- **INV-13 (guard: real exit code survives, ANTS-5063)** — a gate that
+  finishes inside its budget is unaffected by how the timeout path is
+  implemented: its real exit code and passed/failed state are reported
+  exactly as before.
 
 ## Out of scope
 

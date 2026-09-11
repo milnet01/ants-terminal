@@ -13,6 +13,11 @@
 #include <QString>
 #include <QStringList>
 #include <QTemporaryDir>
+#include <QThread>
+
+#include <csignal>
+#include <cerrno>
+#include <sys/types.h>
 
 namespace {
 
@@ -31,6 +36,35 @@ VerifyEngine::GateResult *findGate(VerifyEngine::VerifyReport &r,
         if (gr.name == g) return &gr;
     }
     return nullptr;
+}
+
+// ANTS-5063 — poll for `pid` being gone (ESRCH on kill(pid,0)) or zombied
+// (/proc/<pid>/stat state 'Z'), up to `maxMs`. `outState` receives the last
+// observed state for diagnostics on failure.
+bool waitForPidGone(qint64 pid, int maxMs, QString *outState) {
+    const int stepMs = 100;
+    for (int waited = 0; waited <= maxMs; waited += stepMs) {
+        if (::kill(static_cast<pid_t>(pid), 0) != 0 && errno == ESRCH) {
+            *outState = QStringLiteral("(no such process — ESRCH)");
+            return true;
+        }
+        QFile statFile(QStringLiteral("/proc/%1/stat").arg(pid));
+        if (statFile.open(QIODevice::ReadOnly)) {
+            const QString stat = QString::fromUtf8(statFile.readAll());
+            // Fields are "pid (comm) state ...". comm may contain spaces
+            // or parens, so anchor on the LAST ')' before reading state.
+            const int close = stat.lastIndexOf(QChar(')'));
+            if (close >= 0 && close + 2 < stat.size()) {
+                *outState = stat.mid(close + 2, 1);
+                if (*outState == QStringLiteral("Z")) return true;
+            }
+        } else {
+            *outState = QStringLiteral("(/proc entry gone)");
+            return true;
+        }
+        QThread::msleep(stepMs);
+    }
+    return false;
 }
 
 }  // namespace
@@ -319,6 +353,168 @@ TEST(VerifyEngine, Inv10OrphanedSourceLint) {
 
     // Empty input → empty (fast path, no tree walk).
     EXPECT_TRUE(VerifyEngine::findUnreferencedSources(root, {}).isEmpty());
+}
+
+// ---------------------------------------------------------------------------
+// INV-11 (ANTS-5063) — a timed-out gate's backgrounded, still-running child
+// does not survive the timeout. runOneGate today kills only the /bin/sh
+// leader (the gate shell); a grandchild it backgrounded and detached from
+// via `wait` is reparented and keeps running. Locks the reap, whichever
+// mechanism provides it (process group, pid tracking, ...).
+// ---------------------------------------------------------------------------
+TEST(VerifyEngine, Inv11TimedOutGateReapsBackgroundedChild) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString pidFile = tmp.path() + QStringLiteral("/child.pid");
+    // The gate shell backgrounds `sleep 30`, records its pid, then `wait`s
+    // for it — so the recorded pid is a grandchild of QProcess, not the
+    // /bin/sh leader itself.
+    const QString cmd =
+        QStringLiteral("sleep 30 & echo $! > '%1'; wait").arg(pidFile);
+    const QString json =
+        QStringLiteral(R"({"build": {"command": "%1", "format": "plain"}})")
+            .arg(cmd);
+    writeFile(tmp.path(), ".ants/verify.json", json.toUtf8());
+
+    VerifyEngine::VerifyOptions opts;
+    opts.timeoutSec         = 1;  // 1 / 1 gate = 1 s per gate
+    opts.minPerGateSec      = 1;
+    opts.minTotalTimeoutSec = 1;
+    const auto rep = VerifyEngine::runVerify(tmp.path(), opts);
+
+    auto *g = findGate(const_cast<VerifyEngine::VerifyReport &>(rep),
+                       VerifyEngine::GateName::Build);
+    ASSERT_NE(g, nullptr);
+    ASSERT_TRUE(g->ran);
+    ASSERT_FALSE(g->passed);
+    EXPECT_TRUE(g->skippedReason.contains(QLatin1String("timeout")))
+        << "skippedReason: " << g->skippedReason.toStdString();
+
+    QFile pf(pidFile);
+    ASSERT_TRUE(pf.open(QIODevice::ReadOnly))
+        << "child.pid at " << pidFile.toStdString()
+        << " was never written — the gate never reached the background+wait "
+           "line before being killed, so this test's own setup is broken";
+    bool parsedOk = false;
+    const qint64 pid = pf.readAll().trimmed().toLongLong(&parsedOk);
+    pf.close();
+    ASSERT_TRUE(parsedOk && pid > 0) << "unparsable child pid in " << pidFile.toStdString();
+
+    QString state;
+    const bool gone = waitForPidGone(pid, 2000, &state);
+    EXPECT_TRUE(gone)
+        << "backgrounded child pid " << pid
+        << " is still alive ~2s after its gate was reported timed out "
+           "(last /proc state: " << state.toStdString() << ") — "
+           "runOneGate killed only the gate shell, not what it started";
+
+    // Always reap: never leave a leaked `sleep 30` running regardless of
+    // which branch above executed.
+    ::kill(static_cast<pid_t>(pid), SIGKILL);
+}
+
+// ---------------------------------------------------------------------------
+// INV-12 (ANTS-5063) — the timeout kill sends SIGTERM before SIGKILL, so a
+// tool that traps TERM gets a chance to clean up. The trapping process is a
+// DESCENDANT of the gate shell (a nested `sh` it backgrounds), not the gate
+// shell itself, so this also exercises reaching into the process tree
+// rather than merely signalling the one pid QProcess knows about.
+// ---------------------------------------------------------------------------
+TEST(VerifyEngine, Inv12TimeoutSendsTermBeforeKillToDescendant) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString scriptPath = tmp.path() + QStringLiteral("/trap_child.sh");
+    const QString markerPath = tmp.path() + QStringLiteral("/marker");
+    const QString descPidFile = tmp.path() + QStringLiteral("/descendant.pid");
+
+    // The descendant: traps TERM (writes a marker + exits cleanly), and
+    // itself backgrounds a further child so it isn't just sitting in a
+    // single blocking syscall.
+    const QString script = QStringLiteral(
+        "#!/bin/sh\n"
+        "trap 'echo term > \"%1\"; exit 0' TERM\n"
+        "sleep 30 &\n"
+        "wait\n").arg(markerPath);
+    writeFile(tmp.path(), "trap_child.sh", script.toUtf8());
+
+    // Gate shell: backgrounds the trapping descendant via `sh <script>`,
+    // records ITS pid (not its own), then waits on it.
+    const QString cmd = QStringLiteral("sh '%1' & echo $! > '%2'; wait")
+                             .arg(scriptPath, descPidFile);
+    const QString json =
+        QStringLiteral(R"({"build": {"command": "%1", "format": "plain"}})")
+            .arg(cmd);
+    writeFile(tmp.path(), ".ants/verify.json", json.toUtf8());
+
+    VerifyEngine::VerifyOptions opts;
+    opts.timeoutSec         = 1;
+    opts.minPerGateSec      = 1;
+    opts.minTotalTimeoutSec = 1;
+    const auto rep = VerifyEngine::runVerify(tmp.path(), opts);
+
+    auto *g = findGate(const_cast<VerifyEngine::VerifyReport &>(rep),
+                       VerifyEngine::GateName::Build);
+    ASSERT_NE(g, nullptr);
+    ASSERT_TRUE(g->ran);
+    ASSERT_FALSE(g->passed);
+    EXPECT_TRUE(g->skippedReason.contains(QLatin1String("timeout")))
+        << "skippedReason: " << g->skippedReason.toStdString();
+
+    QFile pf(descPidFile);
+    ASSERT_TRUE(pf.open(QIODevice::ReadOnly))
+        << "descendant.pid at " << descPidFile.toStdString()
+        << " was never written — this test's own setup is broken";
+    bool parsedOk = false;
+    const qint64 descPid = pf.readAll().trimmed().toLongLong(&parsedOk);
+    pf.close();
+    ASSERT_TRUE(parsedOk && descPid > 0)
+        << "unparsable descendant pid in " << descPidFile.toStdString();
+
+    bool markerSeen = false;
+    for (int i = 0; i < 20 && !markerSeen; ++i) {
+        if (QFileInfo::exists(markerPath)) { markerSeen = true; break; }
+        QThread::msleep(100);
+    }
+    EXPECT_TRUE(markerSeen)
+        << "marker " << markerPath.toStdString() << " was never written for "
+           "descendant pid " << descPid << " (alive: "
+        << (::kill(static_cast<pid_t>(descPid), 0) == 0 ? "yes" : "no")
+        << ") — the descendant never received SIGTERM, so a build tool "
+           "trapping TERM gets no chance to clean up before SIGKILL";
+
+    // Always reap the descendant regardless of which branch above executed.
+    ::kill(static_cast<pid_t>(descPid), SIGKILL);
+}
+
+// ---------------------------------------------------------------------------
+// INV-13 (ANTS-5063) — guard: a gate that finishes inside its budget still
+// reports its real exit code and passed state. Must hold before AND after
+// any process-group change to the timeout path — this locks that the
+// happy path is untouched by it.
+// ---------------------------------------------------------------------------
+TEST(VerifyEngine, Inv13GuardFastGateReportsRealExitCode) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    writeFile(tmp.path(), ".ants/verify.json", R"({
+        "build": {"command": "exit 7", "format": "plain"}
+    })");
+
+    VerifyEngine::VerifyOptions opts;
+    opts.timeoutSec         = 30;
+    opts.minPerGateSec      = 1;
+    opts.minTotalTimeoutSec = 1;
+    const auto rep = VerifyEngine::runVerify(tmp.path(), opts);
+
+    auto *g = findGate(const_cast<VerifyEngine::VerifyReport &>(rep),
+                       VerifyEngine::GateName::Build);
+    ASSERT_NE(g, nullptr);
+    EXPECT_TRUE(g->ran);
+    EXPECT_FALSE(g->passed);
+    EXPECT_EQ(g->exitCode, 7)
+        << "expected the real exit code 7 to survive; got " << g->exitCode;
+    EXPECT_TRUE(g->skippedReason.isEmpty())
+        << "unexpected skippedReason on a completed gate: "
+        << g->skippedReason.toStdString();
 }
 
 // ---------------------------------------------------------------------------

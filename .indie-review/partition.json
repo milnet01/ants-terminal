@@ -115,6 +115,7 @@
         "src/auditrulequality.h",
         "src/auditrunner.cpp",
         "src/auditrunner.h",
+        "src/processgroup.h",
         "src/auditscope.cpp",
         "src/auditscope.h",
         "src/falseposledger.cpp",
