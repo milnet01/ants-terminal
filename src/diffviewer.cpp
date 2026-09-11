@@ -281,6 +281,8 @@ QDialog *show(QWidget *parent,
         QString branches;        // git for-each-ref refs/heads
         QString crossUnpushed;   // git log --branches --not --remotes
         int pending = 5;
+        quint64 generation = 0;      // ANTS-5059 — which refresh round
+        bool diffTruncated = false;  // ANTS-5059 — diff cut at the cap
     };
 
     QPointer<QDialog> dlgGuard(dialog);
@@ -298,6 +300,11 @@ QDialog *show(QWidget *parent,
     // the text means that if I scroll, it resets to the beginning
     // every refresh."
     auto lastHtml = std::make_shared<QString>();
+    // ANTS-5059 — the newest refresh round, so an older round's probes
+    // finishing late cannot overwrite a newer view; and the last round's raw
+    // probe output, so an unchanged round skips building the HTML at all.
+    auto generation = std::make_shared<quint64>(0);
+    auto lastRaw = std::make_shared<QString>();
 
     // ANTS-3509 — every git command this dialog runs sets GIT_OPTIONAL_LOCKS=0
     // so a read-only probe never refreshes/rewrites the index as a side effect
@@ -313,8 +320,9 @@ QDialog *show(QWidget *parent,
     // OR the user clicks Refresh. Each call constructs a fresh
     // ProbeState so concurrent in-flight probes from a previous
     // refresh can't poison the new render.
-    auto runProbes = [parent, cwd, dlgGuard, viewerGuard, copyGuard,
-                      liveStatusGuard, themeName, lastHtml, gitEnv]() {
+    auto runProbes = [dialog, cwd, dlgGuard, viewerGuard, copyGuard,
+                      liveStatusGuard, themeName, lastHtml, gitEnv,
+                      generation, lastRaw]() {
         if (!dlgGuard) return;
         if (liveStatusGuard) {
             liveStatusGuard->setText(QStringLiteral("● refreshing…"));
@@ -324,19 +332,46 @@ QDialog *show(QWidget *parent,
 
         auto state = std::make_shared<ProbeState>();
         state->cwd = cwd;
+        quint64 &currentGeneration = *generation;
+        state->generation = ++currentGeneration;   // ANTS-5059
 
     // Finalizer: called once per probe. When pending hits 0, render
     // the full HTML.
     auto finalize = [state, dlgGuard, viewerGuard, copyGuard,
-                     liveStatusGuard, themeName, lastHtml]() {
+                     liveStatusGuard, themeName, lastHtml, generation,
+                     lastRaw]() {
         if (--state->pending > 0) return;
         if (!dlgGuard || !viewerGuard) return;
+        // ANTS-5059 — a newer round has started; its render wins.
+        if (state->generation != *generation) return;
         if (liveStatusGuard) {
             liveStatusGuard->setText(QStringLiteral(
                 "● live — auto-refresh on git changes"));
             liveStatusGuard->setStyleSheet(
                 "color: #4aa84a; font-size: 11px;");
         }
+
+        // ANTS-5059 — bound what the GUI thread turns into HTML and lays out:
+        // a rewritten lockfile or bundle is tens of thousands of lines.
+        constexpr qsizetype kMaxDiffChars = 1024 * 1024;
+        if (state->diff.size() > kMaxDiffChars) {
+            const qsizetype cut =
+                state->diff.lastIndexOf(QLatin1Char('\n'), kMaxDiffChars);
+            state->diff.truncate(cut > 0 ? cut : kMaxDiffChars);
+            state->diffTruncated = true;
+        }
+        // ANTS-5059 — skip the build when no probe's output changed. Not when
+        // untracked files are listed: their content is read from disk below,
+        // and an edit to one changes nothing a probe reports.
+        const bool listsUntracked =
+            state->status.startsWith(QStringLiteral("?? "))
+            || state->status.contains(QStringLiteral("\n?? "));
+        const QString rawKey = state->status + QChar(0x1f) + state->diff
+            + QChar(0x1f) + state->unpushed + QChar(0x1f) + state->branches
+            + QChar(0x1f) + state->crossUnpushed;
+        if (!listsUntracked && !lastHtml->isEmpty() && *lastRaw == rawKey)
+            return;
+        *lastRaw = rawKey;
 
         // Lambda-local alias `lth` (lambda theme) — avoids shadowing the
         // outer `th` at the enclosing function scope.
@@ -547,6 +582,11 @@ QDialog *show(QWidget *parent,
                 else
                     html += esc + "\n";
             }
+            if (state->diffTruncated)   // ANTS-5059
+                html += QStringLiteral(
+                    "<span style='color: %1;'>… diff truncated at 1 MiB — run "
+                    "git diff in a terminal for the rest.</span>\n")
+                    .arg(lth.ansi[3].name());
         }
         // ANTS-1886 — new (untracked) files: render each as a synthetic
         // addition diff so their content is visible, not just a bare path.
@@ -675,6 +715,8 @@ QDialog *show(QWidget *parent,
                               + state->crossUnpushed + "\n\n";
                 if (!state->diff.isEmpty())
                     combined += "# Diff\n" + state->diff;
+                if (state->diffTruncated)   // ANTS-5059
+                    combined += QStringLiteral("\n[diff truncated at 1 MiB]\n");
                 clipboardguard::writeText(combined,
                     clipboardguard::Source::Trusted);
             });
@@ -684,10 +726,12 @@ QDialog *show(QWidget *parent,
     // Spawn one async QProcess per probe. Each one writes into its
     // slot on the shared ProbeState when it finishes, then calls
     // finalize(). No blocking on the UI thread.
-    auto runAsync = [parent, cwd, gitEnv, finalize](const QStringList &args,
+    // ANTS-5059 — parented to the dialog, not the caller: closing it kills
+    // the probes, and their callbacks cannot outlive it.
+    auto runAsync = [dialog, cwd, gitEnv, finalize](const QStringList &args,
                                                     QString ProbeState::*slot,
                                                     ProbeState *st) {
-        auto *p = new QProcess(parent);
+        auto *p = new QProcess(dialog);
         p->setWorkingDirectory(cwd);
         p->setProcessEnvironment(gitEnv);
         p->setProgram("git");
@@ -696,13 +740,13 @@ QDialog *show(QWidget *parent,
         auto st_ptr = st;  // raw — lifetime is held by the shared_ptr
                            // captured through `finalize`
         QObject::connect(p,
-            QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished), parent,
+            QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished), dialog,
             [st_ptr, slot, pg, finalize](int /*code*/, QProcess::ExitStatus /*es*/) {
                 if (pg) st_ptr->*slot = QString::fromUtf8(pg->readAllStandardOutput()).trimmed();
                 if (pg) pg->deleteLater();
                 finalize();
             });
-        QObject::connect(p, &QProcess::errorOccurred, parent,
+        QObject::connect(p, &QProcess::errorOccurred, dialog,
             [pg, finalize](QProcess::ProcessError) {
                 if (pg) pg->deleteLater();
                 finalize();
@@ -756,9 +800,9 @@ QDialog *show(QWidget *parent,
     // (build/, node_modules/, …), so they are excluded by construction — never
     // handed to the watcher. Re-run on every change so new non-ignored dirs
     // start being watched (ignored ones never appear here).
-    auto enumerate = [parent, gitEnv, watcherGuard](const QString &topLevel) {
+    auto enumerate = [dialog, gitEnv, watcherGuard](const QString &topLevel) {
         if (!watcherGuard || topLevel.isEmpty()) return;
-        auto *ls = new QProcess(parent);
+        auto *ls = new QProcess(dialog);
         ls->setWorkingDirectory(topLevel);
         ls->setProcessEnvironment(gitEnv);
         ls->setProgram(QStringLiteral("git"));
@@ -767,7 +811,7 @@ QDialog *show(QWidget *parent,
                           QStringLiteral("--exclude-standard")});
         QPointer<QProcess> lsg = ls;
         QObject::connect(ls,
-            QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished), parent,
+            QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished), dialog,
             [lsg, topLevel, watcherGuard](int code, QProcess::ExitStatus) {
                 if (lsg && code == 0 && watcherGuard) {
                     watcherGuard->addDirs(DirTreeWatcher::directoriesContaining(
@@ -781,9 +825,9 @@ QDialog *show(QWidget *parent,
     // Re-seed: resolve the git paths once (then cache), watch the .git
     // metadata dirs once, and (re)enumerate the working tree. Called at open
     // and on every change burst.
-    auto reseed = [parent, cwd, gitEnv, gp, watcherGuard, enumerate]() {
+    auto reseed = [dialog, cwd, gitEnv, gp, watcherGuard, enumerate]() {
         if (gp->resolved) { enumerate(gp->topLevel); return; }
-        auto *rp = new QProcess(parent);
+        auto *rp = new QProcess(dialog);
         rp->setWorkingDirectory(cwd);
         rp->setProcessEnvironment(gitEnv);
         rp->setProgram(QStringLiteral("git"));
@@ -792,7 +836,7 @@ QDialog *show(QWidget *parent,
                           QStringLiteral("--show-toplevel")});
         QPointer<QProcess> rpg = rp;
         QObject::connect(rp,
-            QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished), parent,
+            QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished), dialog,
             [rpg, cwd, gp, watcherGuard, enumerate](int code, QProcess::ExitStatus) {
                 gp->gitDir = cwd + QStringLiteral("/.git");
                 gp->topLevel = cwd;

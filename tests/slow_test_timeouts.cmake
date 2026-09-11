@@ -52,3 +52,14 @@ set_tests_properties(RoadmapReadSeam.Ants3863Inv1DispatchReadsOnlyTheDetectorWin
                      RoadmapReadSeam.Ants3863Inv1ByteCapBoundsAnAllBlankRoadmap
                      RoadmapReadSeam.Ants3863Inv2BothProducersAgree
                      PROPERTIES LABELS "perf" TIMEOUT 300)
+
+# ANTS-5059 — pre-fix, this test's fixture (a real git repo, a tracked file
+# rewritten to ~100,000 lines) drives diffviewer::show() through the exact
+# GUI-thread HTML-build-per-line freeze the roadmap item describes as
+# "multi-second". The test still has to reach that freeze and complete
+# through it to assert the diff comes back uncapped, so it needs headroom
+# above the bundle default (60 s) rather than being killed mid-freeze and
+# reported as a hang instead of a diagnosable assertion failure. Post-fix
+# (byte cap + off-thread render) this returns in well under the default.
+set_tests_properties(ReviewChangesDiffCap.LargeDiffIsCappedAndTruncated
+                     PROPERTIES TIMEOUT 120)

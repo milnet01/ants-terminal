@@ -2906,7 +2906,15 @@ if(ANTS_TESTS)
                 # moc co-references RemoteControl/VtStream — same reason
                 # LlmClient/LlmDispatcher live off test_core). GUI bundle ⇒
                 # QApplication event loop drives inotify + debounce delivery.
-                tests/features/tree_watcher/test_tree_watcher.cpp)
+                tests/features/tree_watcher/test_tree_watcher.cpp
+                # ANTS-5059 — Review Changes diff has no size cap and is
+                # rebuilt/rendered as HTML on the GUI thread on every change
+                # burst. Behavioural (real git repo + real diffviewer::show())
+                # plus one source-scrape for the generation guard. Same
+                # bundle as diffviewer_extraction: diffviewer.cpp is
+                # ants_dialogs_lib, and SRC_DIFFVIEWER_CPP_PATH is already
+                # defined target-wide below.
+                tests/features/review_changes_diff_cap/test_review_changes_diff_cap.cpp)
     target_compile_definitions(test_dialogs PRIVATE
         # ANTS-3346 — debt-sweep bulk-defer gate source-grep lock.
         SRC_AUDITDIALOG_CPP_PATH="${CMAKE_SOURCE_DIR}/src/auditdialog.cpp"
