@@ -40,6 +40,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **project_query refuses a file too large for its memory limit before reading it, and its Lua callbacks no longer leak memory when a query runs out of room** (ANTS-5070)
+
 - **Code searches stop reading ripgrep's output past a size limit and say the answer is partial, instead of holding all of it in memory** (ANTS-5052)
 
 - **The Claude status tick stops reading saved conversations once none of the rest can be the live one** (ANTS-5048)

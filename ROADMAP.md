@@ -7149,7 +7149,7 @@ extends an existing item, that item carries it instead.
   Source: code-quality-review-2026-09-11 perf pass (lane plugins-lua).
   Lanes: lua, security.
 
-- 📋 [ANTS-5070] **project_query's file and list callbacks allocate past the Lua memory cap, and Lua errors longjmp across live C++ objects.**
+- ✅ [ANTS-5070] **project_query's file and list callbacks allocate past the Lua memory cap, and Lua errors longjmp across live C++ objects.**
   project.read calls readAll() on the whole file in one C call, before
   the push that the 10 MiB cap guards, so a large file such as a git
   pack or a disc image is allocated in full in the Ants process. When
@@ -7176,6 +7176,14 @@ extends an existing item, that item carries it instead.
   the last raising call; project.read checks the file size against
   MAX_LUA_MEMORY minus m_luaMemUsage before reading. The leaks are
   visible only to LeakSanitizer, so the red run must use build-asan.
+  Resolved (2026-09-11, 09cff784): project.read refuses a file larger
+  than the query's Lua memory left before reading it; every push in
+  project.read, project.list, ants.get_output and ants.settings.get runs
+  inside a protected call, and ants.warn joins its arguments with
+  luaL_Buffer before making a C++ string. Tests: project_query INV-11
+  and INV-12 (red in Release and under LeakSanitizer);
+  lua_oom_event_dispatch INV-6 is a guard, since warn's raise cannot be
+  forced from a test, so warn's change is verified by review.
   **Layman:** Some Lua query operations can leak memory or read huge files into memory before any safety limit applies.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lane plugins-lua).
