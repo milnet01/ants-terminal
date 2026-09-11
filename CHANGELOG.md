@@ -40,6 +40,11 @@ for security-relevant changes.
 
 ### Fixed
 
+- **Closing Ants while a Claude tool call waits on the window no longer hangs** (ANTS-5113)
+  At shutdown, a tool call already waiting for the window thread used
+  to wait forever while the window waited for it. Shutdown now releases
+  that call without running it, so Ants exits.
+
 - **The verify.json trust prompt opens on the main thread** (ANTS-5025)
   verify_changes runs off the GUI thread, so the "Trust
   .ants/verify.json?" prompt used to be built and run on a background

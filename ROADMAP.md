@@ -8086,7 +8086,7 @@ extends an existing item, that item carries it instead.
   Source: code-quality-review-2026-09-11 perf pass (lane shared-utilities).
   Lanes: shared.
 
-- 📋 [ANTS-5113] **Ants can hang on exit when an MCP verb is waiting on the GUI thread as shutdown begins.**
+- ✅ [ANTS-5113] **Ants can hang on exit when an MCP verb is waiting on the GUI thread as shutdown begins.**
   ClaudeIntegration::shutdownDispatchWorker sets the marshal-refused
   flag, then joins the dispatch worker with a bare wait(). The flag only
   stops marshals not yet posted. A worker already parked in
@@ -8099,6 +8099,14 @@ extends an existing item, that item carries it instead.
   Proposed fix, unverified: the queued marshal skips its callable once
   the flag is set, and the join serves posted meta-calls for the
   application object until the worker exits.
+  Resolved (2026-09-11): onGuiThread's queued lambda skips its callable
+  once the refused flag is set, and shutdownDispatchWorker joins through
+  ants::joinRefusingMarshals, which delivers posted meta-calls for the
+  application object between short waits. Test:
+  tests/features/guithread_join_parked_marshal, red at 17071dcb (INV-1,
+  the join timed out) and green at 542f1626. A mutant running the
+  callable regardless of the flag fails INV-2 and INV-3.
+  McpVerbOffthreadGuard INV-7 now pins the join through the helper.
   **Layman:** Closing Ants while Claude is using it can leave the app stuck instead of quitting.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (split from ANTS-5024).
@@ -75435,6 +75443,15 @@ contributors don't duplicate research.
   ("re-enable once we have a real unit-test suite that does full app
   lifecycle") and its "narrow, --version only" description are stale,
   since that job runs the whole sanitized suite.
+  Measured (2026-09-11): `ctest --preset=debug -j2 -LE perf` with
+  detect_leaks=1 and the suppression file: no leak report anywhere; the
+  one failure was McpVerbOffthreadGuard.Main, caused by editing a file
+  it scrapes mid-run and green once rebuilt. Test discovery did not
+  time out this run. Not measured: the serial preset or the perf label.
+  Decision (user, 2026-09-11): turn leak detection on in the everyday
+  gates — the pre-push sanitized suite, tools/ci-parity.sh's asan_ctest
+  and the ci.yml build-asan test step — with the suppression file. The
+  --version/--help smoke steps keep detect_leaks=0.
 
 - 📋 [ANTS-3848] **`tools/rc-namespace-scan.py` is a load-bearing precondition with no test.**
   Found 2026-08-06 during ANTS-3833 commit 2. The scanner is the gate the
