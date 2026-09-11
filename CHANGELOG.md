@@ -40,6 +40,14 @@ for security-relevant changes.
 
 ### Fixed
 
+- **Closing a tab while its Background Tasks window is open no longer risks a crash; the window closes with the tab.** (ANTS-5049)
+
+- **The test-result tools now name the tests that failed, not just how many failed.** (ANTS-5064)
+
+- **The link checker no longer reports false broken links in a document too large for it to read; it skips that document instead of reading part of it.** (ANTS-5055)
+
+- **The test-audit summary returns one page of reports when no page size is given, instead of all of them.** (ANTS-5065)
+
 - **An audit of recent changes checks the whole project when git fails, instead of reporting a clean result.** (ANTS-5043)
   This covers a repository with no branch called main, a mistyped tag,
   and a git call that times out.

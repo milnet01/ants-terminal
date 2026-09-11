@@ -6687,7 +6687,7 @@ extends an existing item, that item carries it instead.
   Source: code-quality-review-2026-09-11 perf pass (lanes claude-integration-a, claude-session-widgets).
   Lanes: claude, status-bar.
 
-- 📋 [ANTS-5049] **The Background Tasks dialog keeps using its tracker after the tab that owns it closes.**
+- ✅ [ANTS-5049] **The Background Tasks dialog keeps using its tracker after the tab that owns it closes.**
   ClaudeBgTasksDialog holds a raw ClaudeBgTaskTracker pointer and is
   shown non-modally. Closing the tab calls untrackBgShell, which
   deletes the tracker, but the dialog's file watcher, its 200 ms
@@ -6697,6 +6697,10 @@ extends an existing item, that item carries it instead.
   is open. Not reproduced.
   Fix: hold a QPointer and close the dialog when the tracker is
   destroyed.
+  Resolved (2026-09-11): m_tracker is a QPointer and the dialog
+  closes on the tracker's destroyed signal. ClaudeTaskListDialog was
+  checked: its tracker is one per controller, so no tab close deletes it.
+  Test: claude_bg_tasks_button INV-16/17, red before and green after.
   **Layman:** Closing a tab while its Background Tasks window is open can crash Ants.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lane claude-session-widgets).
@@ -6797,7 +6801,7 @@ extends an existing item, that item carries it instead.
   Source: code-quality-review-2026-09-11 perf pass (lane doc-engines).
   Lanes: docs, mcp.
 
-- 📋 [ANTS-5055] **doc_integrity silently cuts a document at 2 MiB and reports its later headings' links as dead.**
+- ✅ [ANTS-5055] **doc_integrity silently cuts a document at 2 MiB and reports its later headings' links as dead.**
   DocIntegrity::check reads each document with read(maxDocBytes) and
   still lists it as checked, with no truncation flag. ROADMAP.md is
   larger than that, and its table of contents links to headings past
@@ -6807,6 +6811,10 @@ extends an existing item, that item carries it instead.
   Fix: skip and report an oversize document as too_large, as doc_lint
   already does, or mark its slug set partial and suppress anchor
   findings against it.
+  Resolved (2026-09-11): a document over maxDocBytes is skipped before
+  it is opened and not listed as checked; anchors into it go unchecked.
+  Not done: the reply does not name it too_large.
+  Test: doc_integrity INV-23..25; ANTS-3601 records them.
   **Layman:** The link checker wrongly reports broken links in the roadmap because it stops reading it partway.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lane doc-engines).
@@ -6963,7 +6971,7 @@ extends an existing item, that item carries it instead.
   Source: code-quality-review-2026-09-11 perf pass (lane test-audit-verify).
   Lanes: verify.
 
-- 📋 [ANTS-5064] **test_results and focused_test never report which tests failed, because the ctest failure-line pattern cannot match.**
+- ✅ [ANTS-5064] **test_results and focused_test never report which tests failed, because the ctest failure-line pattern cannot match.**
   TestResCache's failure-line pattern requires whitespace after the dot
   fill, but ctest prints ***Failed flush against the dots, which is the
   file's own documented example. So no failure line ever matches,
@@ -6974,12 +6982,17 @@ extends an existing item, that item carries it instead.
   format.
   Fix: allow zero or more spaces after the dots and accept multi-word
   statuses, with a test built from real ctest output.
+  Resolved (2026-09-11): the per-test pattern allows ***Failed flush
+  against the dots and takes the whole status; isFailureStatus uses the
+  status's first word.
+  Test: testrescache_parse (new), built from real ctest lines, red
+  before and green after.
   **Layman:** Ants' test-result readers say tests failed but never say which ones.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lane test-audit-verify).
   Lanes: test-results.
 
-- 📋 [ANTS-5065] **Test-audit report paging treats the default limit of -1 as all reports, so an ordinary call returns every report.**
+- ✅ [ANTS-5065] **Test-audit report paging treats the default limit of -1 as all reports, so an ordinary call returns every report.**
   The TestAuditEngine header and the MCP provider both pass -1 to mean
   use the default, which is 5 in full mode, but the engine reads a
   negative limit as all. So omitting limit returns every collected
@@ -6987,6 +7000,11 @@ extends an existing item, that item carries it instead.
   section 4's bound of about 80 KiB per page at the default limit of 5.
   The engine is the wrong side.
   Fix: treat -1 as 5 and add an explicit opt-in for all.
+  Resolved (2026-09-11), differently from the proposed fix:
+  SynthRequest::limit now defaults to 0 (unset), so an omitted limit
+  gets 5, and an explicit -1 still returns all, as ANTS-1455 INV-13
+  documents. Treating -1 as 5 would have removed that opt-in.
+  Test: test_audit_glob_walk_synth_mode G19-G21.
   **Layman:** One test-audit command returns far more than intended by default, which is slow and wasteful.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lane test-audit-verify).
@@ -7035,6 +7053,10 @@ extends an existing item, that item carries it instead.
   what false should produce, so decide that first.
   Fix: implement it by dropping the test line and steps 1 and 2, or
   remove it from the schema and the spec.
+  Deferred 2026-09-11 (autonomous session, user away): ANTS-1290
+  never says what includes_tests:false should produce, so the choice
+  between implementing it and removing it is a contract decision this
+  item itself says to make first.
   **Layman:** A setting on the plan-template tool does nothing, even though it's documented.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lane spec-engines).
@@ -7087,6 +7109,11 @@ extends an existing item, that item carries it instead.
   the dated layout (ANTS-3584), so amend the spec first.
   Fix: amend ANTS-3533 section 3 so a dated heading sets its category,
   then change the parser to match.
+  Deferred 2026-09-11 (autonomous session, user away): the fix
+  starts with an amendment to ANTS-3533 section 3, as this item says.
+  That changes a spec's direction, so CLAUDE.md rule 14 runs
+  review-contract on it before the parser change is built. Left for a
+  session that can run that gate.
   **Layman:** The changelog search tool can't see entries written in the newer dated style.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lane changelog-feedback).
