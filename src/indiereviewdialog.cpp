@@ -186,18 +186,11 @@ void IndieReviewDialog::onAllReportsCollected(
     const QHash<QString, QString> &reportsById) {
     m_lastReports = reportsById;
     m_results = Results{};
-    m_results.corroborated =
-        IndieReviewEngine::corroboratedFindings(projectCwd(), reportsById, 2);
-
-    const auto all =
-        IndieReviewEngine::corroboratedFindings(projectCwd(), reportsById, 1);
-    QSet<QString> corrKeys;
-    for (const auto &f : m_results.corroborated)
-        corrKeys.insert(f.file + QChar(':') + QString::number(f.line));
-    for (const auto &f : all) {
-        const QString k = f.file + QChar(':') + QString::number(f.line);
-        if (!corrKeys.contains(k)) m_results.uncorroborated << f;
-    }
+    // ANTS-5125 — one walk, split by lane count.
+    auto split = IndieReviewEngine::splitByLaneCount(
+        IndieReviewEngine::corroboratedFindings(projectCwd(), reportsById, 1));
+    m_results.corroborated = std::move(split.corroborated);
+    m_results.uncorroborated = std::move(split.singleLane);
 
     renderResultsWidget();
     maybeDispatchSynthesis();

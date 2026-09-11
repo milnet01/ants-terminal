@@ -378,6 +378,18 @@ QList<CorroboratedFinding> corroboratedFindings(
     CorroborateStats *stats = nullptr,
     int lineSlop = 0);
 
+// ANTS-5125 — split one corroboratedFindings(..., minLanes = 1) result into
+// the findings `minLanes` or more lanes cited and the rest, so a caller that
+// wants both halves walks the tree once. At the default lineSlop the lane
+// minimum only filters, so `corroborated` equals a second call at minLanes.
+// Order is kept.
+struct CorroborationSplit {
+    QList<CorroboratedFinding> corroborated;
+    QList<CorroboratedFinding> singleLane;
+};
+CorroborationSplit splitByLaneCount(const QList<CorroboratedFinding> &all,
+                                    int minLanes = 2);
+
 // ANTS-1282: read reports from disk, then corroborate. The directory
 // is resolved relative to projectPath; lane name = filename stem of
 // each top-level `*.md` file. Sub-directories are not recursed. Each

@@ -1342,6 +1342,19 @@ QList<CorroboratedFinding> corroboratedFindings(
     return out;
 }
 
+// ANTS-5125 — see the header.
+CorroborationSplit splitByLaneCount(const QList<CorroboratedFinding> &all,
+                                    int minLanes) {
+    CorroborationSplit s;
+    for (const CorroboratedFinding &f : all) {
+        if (f.citingLanes.size() >= minLanes)
+            s.corroborated.append(f);
+        else
+            s.singleLane.append(f);
+    }
+    return s;
+}
+
 QList<CorroboratedFinding> corroboratedFindingsFromDir(
     const QString &projectPath,
     const QString &reportsDirRelative,

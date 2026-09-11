@@ -1955,6 +1955,9 @@ if(ANTS_TESTS)
                 tests/features/mcp_indie_review_tools/test_mcp_indie_review_tools.cpp
                 tests/features/indie_review_brief_manifest/test_indie_review_brief_manifest.cpp
                 tests/features/indie_review_corroborate_dir/test_indie_review_corroborate_dir.cpp
+                # ANTS-5125 — one corroboration walk per round, split by
+                # lane count, instead of two walks diffed by (file, line).
+                tests/features/review_corroboration_single_pass/test_review_corroboration_single_pass.cpp
                 tests/features/indie_review_near_miss/test_indie_review_near_miss.cpp
                 tests/features/indie_review_shared_symbol/test_indie_review_shared_symbol.cpp
                 tests/features/mcp_debt_sweep_tools/test_mcp_debt_sweep_tools.cpp
@@ -2492,6 +2495,12 @@ if(ANTS_TESTS)
     set_property(SOURCE tests/features/audit_learned_fp_filtering/test_audit_learned_fp_filtering.cpp
         APPEND PROPERTY COMPILE_DEFINITIONS
         SRC_AUDITDIALOG_CPP_PATH="${CMAKE_SOURCE_DIR}/src/auditdialog.cpp")
+    set_property(SOURCE tests/features/review_corroboration_single_pass/test_review_corroboration_single_pass.cpp
+        APPEND PROPERTY COMPILE_DEFINITIONS
+        # ANTS-5125 INV-2 — the two dialog bodies whose corroboration call
+        # count this test scrapes.
+        SRC_INDIEREVIEWDIALOG_CPP_PATH="${CMAKE_SOURCE_DIR}/src/indiereviewdialog.cpp"
+        SRC_COLDEYESDIALOG_CPP_PATH="${CMAKE_SOURCE_DIR}/src/coldeyesdialog.cpp")
     set_property(SOURCE tests/features/audit_provenance_redaction/test_audit_provenance_redaction.cpp
         APPEND PROPERTY COMPILE_DEFINITIONS
         SRC_AUDITENGINE_CPP_PATH="${CMAKE_SOURCE_DIR}/src/auditengine.cpp"
