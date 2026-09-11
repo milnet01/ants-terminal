@@ -16,6 +16,7 @@
 #include <QElapsedTimer>
 #include <QJsonArray>
 #include <QScrollBar>
+#include <functional>
 #include <unordered_map>
 #include <memory>
 #include <sys/types.h>
@@ -460,6 +461,15 @@ private:
     // Unconditional paste — pasteToTerminal() funnels into this after the
     // (possibly-async) confirmation step.
     void performPaste(const QByteArray &data);
+    // ANTS-5029 — the non-modal confirm-before-send dialog shared by a risky
+    // paste and an unsigned re-run. Shows `preview` as plain text under
+    // `headlineHtml`; `onAccept` runs only on the accept button, never on
+    // Cancel.
+    void showSendConfirmation(const QString &objectName, const QString &title,
+                              const QString &headlineHtml,
+                              const QString &preview,
+                              const QString &acceptLabel,
+                              std::function<void()> onAccept);
     // Classify a payload as risky and, if so, return a reason list for the
     // confirmation dialog headline. Empty list = safe to paste without prompt.
     QStringList pasteRiskReasons(const QByteArray &data) const;

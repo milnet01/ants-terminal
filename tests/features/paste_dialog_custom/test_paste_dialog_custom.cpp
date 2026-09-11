@@ -44,45 +44,59 @@ TEST(PasteDialogCustom, Main) {
         fail("pasteToTerminal() body not found — signature changed?");
         FAIL();
     }
+    // ANTS-5029 — the dialog itself moved into showSendConfirmation(), which
+    // an unsigned re-run shares. INV-1 to INV-7 read that helper's body;
+    // INV-4 and INV-8 still read pasteToTerminal's.
+    const std::string dlgBody = extractBlockAfter(
+        src, "TerminalWidget::showSendConfirmation(const QString");
+    if (dlgBody.empty()) {
+        fail("showSendConfirmation() body not found — signature changed?");
+        FAIL();
+    }
 
     // INV-1: a QDialog is heap-allocated with `new`, not a stack QDialog.
     // Async lifetime requires heap + WA_DeleteOnClose — a stack dialog
-    // would destruct when pasteToTerminal() returns.
+    // would destruct when the function returns.
     std::regex dialogCtor(R"(new\s+QDialog\s*\(\s*this\s*\))");
-    if (!std::regex_search(body, dialogCtor)) {
-        fail("INV-1: pasteToTerminal must construct `new QDialog(this)` on the heap "
-             "— a stack QDialog destructs when the function returns, orphaning the "
-             "user's pending paste decision");
+    if (!std::regex_search(dlgBody, dialogCtor)) {
+        fail("INV-1: showSendConfirmation must construct `new QDialog(this)` on "
+             "the heap — a stack QDialog destructs when the function returns, "
+             "orphaning the user's pending decision");
     }
 
     // INV-2: WA_DeleteOnClose — required for heap-allocated async dialog.
-    if (body.find("WA_DeleteOnClose") == std::string::npos) {
+    if (dlgBody.find("WA_DeleteOnClose") == std::string::npos) {
         fail("INV-2: Qt::WA_DeleteOnClose must be set on the heap-allocated dialog "
              "or it will leak on every risky paste");
     }
 
-    // INV-3: two explicit QPushButtons (Cancel + Paste) with setDefault
+    // INV-3: two explicit QPushButtons (Cancel + accept) with setDefault
     // and setAutoDefault wired for safety (Cancel is default on Enter).
     std::regex cancelDefault(R"(cancelBtn->setDefault\s*\(\s*true\s*\))");
-    std::regex pasteNotDefault(R"(pasteBtn->setAutoDefault\s*\(\s*false\s*\))");
-    if (!std::regex_search(body, cancelDefault)) {
+    std::regex acceptNotDefault(R"(acceptBtn->setAutoDefault\s*\(\s*false\s*\))");
+    if (!std::regex_search(dlgBody, cancelDefault)) {
         fail("INV-3: Cancel button must be setDefault(true) — Enter must not "
              "dangerously accept");
     }
-    if (!std::regex_search(body, pasteNotDefault)) {
-        fail("INV-3: Paste button must be setAutoDefault(false) — otherwise "
+    if (!std::regex_search(dlgBody, acceptNotDefault)) {
+        fail("INV-3: the accept button must be setAutoDefault(false) — otherwise "
              "Enter can dangerously accept via auto-default propagation");
     }
 
-    // INV-4: `accepted` signal wired to a lambda that calls performPaste()
-    // and then closes the dialog. This is the async paste trigger —
-    // there is no blocking exec() or event loop that waits for a bool.
-    std::regex pasteClickedLambda(
-        R"(connect\s*\(\s*pasteBtn\s*,\s*&QPushButton::clicked[\s\S]{0,400}?performPaste\s*\()");
-    if (!std::regex_search(body, pasteClickedLambda)) {
-        fail("INV-4: Paste button clicked() must be wired to a lambda that "
-             "calls performPaste() — this is the only path by which a "
-             "confirmed paste actually reaches the PTY");
+    // INV-4: the accept button's clicked() runs the caller's action and then
+    // closes the dialog, and pasteToTerminal's action calls performPaste().
+    // This is the async paste trigger — there is no blocking exec() or event
+    // loop that waits for a bool.
+    std::regex acceptClickedLambda(
+        R"(connect\s*\(\s*acceptBtn\s*,\s*&QPushButton::clicked[\s\S]{0,200}?onAccept\s*\()");
+    if (!std::regex_search(dlgBody, acceptClickedLambda)) {
+        fail("INV-4: the accept button's clicked() must run the onAccept action");
+    }
+    std::regex pasteAction(
+        R"(showSendConfirmation\s*\([\s\S]{0,600}?performPaste\s*\()");
+    if (!std::regex_search(body, pasteAction)) {
+        fail("INV-4: pasteToTerminal's accept action must call performPaste() — "
+             "this is the only path by which a confirmed paste reaches the PTY");
     }
 
     // INV-5: show() + raise() + activateWindow() to land the dialog on
@@ -90,29 +104,30 @@ TEST(PasteDialogCustom, Main) {
     // on the heap pointer `dlg`, not a stack variable.
     std::regex showRaiseActivate(
         R"(dlg->show\s*\(\s*\)[\s\S]{0,80}?dlg->raise\s*\(\s*\)[\s\S]{0,80}?dlg->activateWindow\s*\(\s*\))");
-    if (!std::regex_search(body, showRaiseActivate)) {
-        fail("INV-5: pasteToTerminal must call dlg->show() + dlg->raise() + "
+    if (!std::regex_search(dlgBody, showRaiseActivate)) {
+        fail("INV-5: showSendConfirmation must call dlg->show() + dlg->raise() + "
              "dlg->activateWindow() in order, matching the Review-Changes pattern");
     }
 
     // INV-6: explicit setFocus on the Cancel button after activation.
     std::regex setFocusCall(R"(cancelBtn->setFocus\s*\()");
-    if (!std::regex_search(body, setFocusCall)) {
+    if (!std::regex_search(dlgBody, setFocusCall)) {
         fail("INV-6: explicit cancelBtn->setFocus(...) missing after activation");
     }
 
-    // INV-7 (negative): no QDialog::exec() and no QEventLoop on the
-    // async paste path. Either one re-opens the ApplicationModal-vs-
-    // frameless-parent click-swallow regression.
+    // INV-7 (negative): no QDialog::exec() and no QEventLoop on either
+    // body. Either one re-opens the ApplicationModal-vs-frameless-parent
+    // click-swallow regression.
     std::regex dlgExec(R"(\bdlg->exec\s*\()");
-    if (std::regex_search(body, dlgExec)) {
-        fail("INV-7 (neg): pasteToTerminal still calls dlg->exec() — drops "
+    if (std::regex_search(body, dlgExec) || std::regex_search(dlgBody, dlgExec)) {
+        fail("INV-7 (neg): the paste path still calls dlg->exec() — drops "
              "back into the blocking-modal path that swallowed button clicks");
     }
     // Match `QEventLoop <ident>` declarations, not the word in comments.
     std::regex qeventLoopDecl(R"(\bQEventLoop\s+\w+\s*[;{(])");
-    if (std::regex_search(body, qeventLoopDecl)) {
-        fail("INV-7 (neg): pasteToTerminal must not instantiate a QEventLoop — "
+    if (std::regex_search(body, qeventLoopDecl)
+        || std::regex_search(dlgBody, qeventLoopDecl)) {
+        fail("INV-7 (neg): the paste path must not instantiate a QEventLoop — "
              "the 0.7.4 mid-session attempt had the same click-swallow regression "
              "as QDialog::exec(); the Review-Changes pattern is fully async");
     }

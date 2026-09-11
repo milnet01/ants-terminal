@@ -262,6 +262,7 @@ void TerminalGrid::setMaxScrollback(int lines) {
     // same cap but could not re-align them once they had diverged.
     while (static_cast<int>(m_scrollback.size()) > m_maxScrollback) {
         m_scrollback.pop_front();
+        ++m_promptRegionShift;  // ANTS-5029
         if (!m_scrollbackHyperlinks.empty())
             m_scrollbackHyperlinks.pop_front();
     }
@@ -269,6 +270,32 @@ void TerminalGrid::setMaxScrollback(int lines) {
     // the cap even after the lockstep trim above — bound it too.
     while (static_cast<int>(m_scrollbackHyperlinks.size()) > m_maxScrollback)
         m_scrollbackHyperlinks.pop_front();
+}
+
+// ANTS-5029 — prompt regions hold global line numbers (scrollback index plus
+// screen row), so each line evicted from the front of the scrollback moves
+// every region up by one. A region whose prompt line was evicted is dropped:
+// its command text is gone, and a re-run would read some other line.
+void TerminalGrid::applyPromptRegionShift() const {
+    if (m_promptRegionShift == 0) return;
+    const qint64 n = m_promptRegionShift;
+    m_promptRegionShift = 0;
+    auto shift = [n](std::vector<PromptRegion> &regions) {
+        for (PromptRegion &r : regions) {
+            r.startLine = static_cast<int>(std::max<qint64>(r.startLine - n, -1));
+            r.endLine   = static_cast<int>(std::max<qint64>(r.endLine - n, -1));
+            if (r.outputStartLine >= 0)
+                r.outputStartLine =
+                    static_cast<int>(std::max<qint64>(r.outputStartLine - n, -1));
+        }
+        regions.erase(std::remove_if(regions.begin(), regions.end(),
+                                     [](const PromptRegion &r) {
+                                         return r.startLine < 0;
+                                     }),
+                      regions.end());
+    };
+    shift(m_promptRegions);
+    shift(m_altPromptRegions);
 }
 
 void TerminalGrid::setDefaultFg(const QColor &c) {
@@ -734,6 +761,7 @@ void TerminalGrid::handleCsi(const VtAction &a) {
                         m_altScreen = m_screenLines;
                         m_altScreenHyperlinks = m_screenHyperlinks;
                         m_altInlineImages = m_inlineImages;
+                        applyPromptRegionShift();  // ANTS-5029
                         m_altPromptRegions = m_promptRegions;
                         // DECSC-equivalent: save SGR + origin + wrap
                         // alongside cursor — only meaningful for mode
@@ -800,6 +828,7 @@ void TerminalGrid::handleCsi(const VtAction &a) {
                         m_screenLines = m_altScreen;
                         m_screenHyperlinks = m_altScreenHyperlinks;
                         m_inlineImages = m_altInlineImages;
+                        applyPromptRegionShift();  // ANTS-5029
                         m_promptRegions = m_altPromptRegions;
                         m_scrollTop = m_altScrollTop;
                         m_scrollBottom = m_altScrollBottom;
@@ -1390,6 +1419,9 @@ void TerminalGrid::handleOsc(const std::string &payload, bool truncated) {
             carriageReturn();
             newLine();
         }
+        // ANTS-5029 — settle pending eviction before `globalLine` is compared
+        // with, or written beside, the stored regions' line numbers.
+        applyPromptRegionShift();
         const int globalLine = static_cast<int>(m_scrollback.size()) + m_cursorRow;
         switch (marker) {
         case 'A': // Prompt start
@@ -2130,6 +2162,7 @@ void TerminalGrid::scrollUp(int count) {
     while (static_cast<int>(m_scrollback.size()) > m_maxScrollback) {
         returnCellsRow(std::move(m_scrollback.front().cells));
         m_scrollback.pop_front();
+        ++m_promptRegionShift;  // ANTS-5029
     }
     while (static_cast<int>(m_scrollbackHyperlinks.size()) > m_maxScrollback)
         m_scrollbackHyperlinks.pop_front();
@@ -2738,6 +2771,7 @@ void TerminalGrid::resize(int rows, int cols) {
         // Trim to limit — INV-5 pops both deques in lockstep.
         while (static_cast<int>(m_scrollback.size()) > m_maxScrollback) {
             m_scrollback.pop_front();
+            ++m_promptRegionShift;  // ANTS-5029
             if (!m_scrollbackHyperlinks.empty())
                 m_scrollbackHyperlinks.pop_front();
         }

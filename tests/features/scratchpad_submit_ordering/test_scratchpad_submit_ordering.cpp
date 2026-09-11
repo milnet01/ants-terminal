@@ -76,9 +76,10 @@ TEST(ScratchpadSubmitOrdering, Main) {
     }
 
     // INV-3: the accept handler sends the Enter. Because this is the only
-    // write, Cancel cannot submit anything.
+    // write, Cancel cannot submit anything. ANTS-5029: the dialog lives in
+    // showSendConfirmation(); pasteToTerminal hands it the accept action.
     std::regex acceptSubmits(
-        R"(&QPushButton::clicked[\s\S]{0,400}?submitAfter[\s\S]{0,200}?ptyWrite)");
+        R"(showSendConfirmation\s*\([\s\S]{0,700}?submitAfter[\s\S]{0,200}?ptyWrite)");
     if (!std::regex_search(paste, acceptSubmits)) {
         fail("INV-3: the paste-confirmation accept handler does not send the "
              "Enter — a confirmed scratchpad send would paste without "

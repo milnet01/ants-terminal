@@ -1470,7 +1470,10 @@ if(ANTS_TESTS)
                 # ANTS-2024 — theme-change DeferredDelete flush ordering guard.
                 tests/features/theme_change_deferred_delete_flush/test_theme_change_deferred_delete_flush.cpp
                 # ANTS-3453 — shaped-run cache (hit/miss, eviction, clear).
-                tests/features/shaped_run_cache/test_shaped_run_cache.cpp)
+                tests/features/shaped_run_cache/test_shaped_run_cache.cpp
+                # ANTS-5029 — prompt regions follow scrollback eviction;
+                # an unsigned re-run confirms (source-scrape).
+                tests/features/osc133_rerun_safety/test_osc133_rerun_safety.cpp)
     # scrollback_frozen_view test reads terminalwidget.cpp source via grep —
     # the path must be passed as a compile definition same as the standalone
     # had it. Apply target-wide so any future bundle source can reuse.

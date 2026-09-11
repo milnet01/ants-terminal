@@ -2828,18 +2828,47 @@ void TerminalWidget::pasteToTerminal(const QByteArray &data,
         return;
     }
 
-    // Fully async confirmation dialog, matching
-    // mainwindow.cpp::showDiffViewer's pattern exactly: heap-allocated
-    // QDialog + WA_DeleteOnClose + show()/raise()/activateWindow(),
-    // caller returns immediately, the actual paste happens in the
-    // accepted() callback. Two prior 0.7.4 attempts (QDialog::exec(),
-    // then show() + local QEventLoop) both re-opened the same
-    // ApplicationModal-vs-frameless-parent regression that bit
-    // showDiffViewer at 0.6.29 — any time we drive the dialog from
-    // a blocking nested loop on the same call stack as the paste
-    // gesture, every button-click reaching the dialog is swallowed.
-    // The Review-Changes pattern is the only shape that works under
-    // our frameless + translucent main window on KWin.
+    // Capture `data` by value into the accept action — the heap-allocated
+    // dialog outlives the pasteToTerminal() call, and `data` is consumed
+    // when the user accepts (not before). The preview is normalised for
+    // display only; the write uses the original bytes (see
+    // showSendConfirmation).
+    QByteArray payload = data;
+    QPointer<TerminalWidget> self(this);
+    showSendConfirmation(
+        QStringLiteral("confirmPasteDialog"), QStringLiteral("Confirm paste"),
+        QString("<b>Paste looks risky: %1.</b><br>Review before confirming.")
+            .arg(reasons.join(", ")),
+        QString::fromUtf8(data), QStringLiteral("&Paste"),
+        [self, payload, submitAfter]() {
+            if (!self) return;
+            self->performPaste(payload);
+            // The Enter belongs to the accepted paste. Sending it from the
+            // caller fired it on Cancel too (ANTS-4456).
+            if (submitAfter) self->ptyWrite("\r");
+        });
+}
+
+// Fully async confirmation dialog, matching mainwindow.cpp::showDiffViewer's
+// pattern exactly: heap-allocated QDialog + WA_DeleteOnClose +
+// show()/raise()/activateWindow(), caller returns immediately, the send
+// happens in the accept callback. Two prior 0.7.4 attempts (QDialog::exec(),
+// then show() + local QEventLoop) both re-opened the same
+// ApplicationModal-vs-frameless-parent regression that bit showDiffViewer at
+// 0.6.29 — any time we drive the dialog from a blocking nested loop on the
+// same call stack as the gesture, every button-click reaching the dialog is
+// swallowed. The Review-Changes pattern is the only shape that works under
+// our frameless + translucent main window on KWin.
+//
+// ANTS-5029 — shared by a risky paste and an unsigned re-run. The preview is
+// plain text: QLabel's default auto-detects HTML, so a forged command could
+// render as something other than what is sent.
+void TerminalWidget::showSendConfirmation(const QString &objectName,
+                                          const QString &title,
+                                          const QString &headlineHtml,
+                                          const QString &preview,
+                                          const QString &acceptLabel,
+                                          std::function<void()> onAccept) {
     // 0.7.53 (2026-04-27 indie-review HIGH) — preview must split on
     // CR + CRLF + LF, not LF only. A clipboard payload using bare
     // \r as the line terminator (older Mac, some Windows tools, or
@@ -2847,11 +2876,10 @@ void TerminalWidget::pasteToTerminal(const QByteArray &data,
     // a single line in the dialog while still being multi-line at
     // paste time — the user OKs what they think is one safe line
     // and gets a multi-line script executed. Normalise to \n for
-    // *preview rendering only*; the actual paste write below uses
-    // the original `data` bytes verbatim so legitimate \r-using
-    // shells (zsh raw mode, ed) still work.
-    QString previewText = QString::fromUtf8(data);
-    QString previewNormalised = previewText;
+    // *preview rendering only*; the caller's accept action writes
+    // the original bytes verbatim so legitimate \r-using shells
+    // (zsh raw mode, ed) still work.
+    QString previewNormalised = preview;
     previewNormalised.replace(QStringLiteral("\r\n"), QStringLiteral("\n"));
     previewNormalised.replace('\r', '\n');
     QStringList lines = previewNormalised.split('\n');
@@ -2870,22 +2898,21 @@ void TerminalWidget::pasteToTerminal(const QByteArray &data,
     }
 
     auto *dlg = new QDialog(this);
-    dlg->setObjectName(QStringLiteral("confirmPasteDialog"));
-    dlg->setWindowTitle("Confirm paste");
+    dlg->setObjectName(objectName);
+    dlg->setWindowTitle(title);
     dlg->setAttribute(Qt::WA_DeleteOnClose);
 
     auto *layout = new QVBoxLayout(dlg);
     layout->setContentsMargins(16, 16, 16, 12);
     layout->setSpacing(10);
 
-    auto *headline = new QLabel(
-        QString("<b>Paste looks risky: %1.</b><br>Review before confirming.")
-            .arg(reasons.join(", ")), dlg);
+    auto *headline = new QLabel(headlineHtml, dlg);
     headline->setTextFormat(Qt::RichText);
     headline->setWordWrap(true);
     layout->addWidget(headline);
 
     auto *previewLabel = new QLabel(lines.join('\n'), dlg);
+    previewLabel->setTextFormat(Qt::PlainText);
     previewLabel->setTextInteractionFlags(Qt::TextSelectableByMouse);
     previewLabel->setStyleSheet(
         "QLabel { font-family: monospace; padding: 6px 8px;"
@@ -2896,14 +2923,14 @@ void TerminalWidget::pasteToTerminal(const QByteArray &data,
 
     auto *btnRow = new QHBoxLayout;
     auto *cancelBtn = new QPushButton("Cancel", dlg);
-    auto *pasteBtn  = new QPushButton("&Paste", dlg);
+    auto *acceptBtn = new QPushButton(acceptLabel, dlg);
     cancelBtn->setDefault(true);
     cancelBtn->setAutoDefault(true);
-    pasteBtn->setDefault(false);
-    pasteBtn->setAutoDefault(false);
+    acceptBtn->setDefault(false);
+    acceptBtn->setAutoDefault(false);
     btnRow->addStretch();
     btnRow->addWidget(cancelBtn);
-    btnRow->addWidget(pasteBtn);
+    btnRow->addWidget(acceptBtn);
     layout->addLayout(btnRow);
 
     // Same activation dance as showDiffViewer — raise() fixes stacking
@@ -2911,19 +2938,11 @@ void TerminalWidget::pasteToTerminal(const QByteArray &data,
     // dialog the input-focus target so the focusChanged redirect's
     // visible-dialog check sees it and bails.
     connect(cancelBtn, &QPushButton::clicked, dlg, &QDialog::close);
-    // Capture `data` by value into the lambda — the heap-allocated
-    // dialog outlives the pasteToTerminal() call, and `data` is
-    // consumed when the user accepts (not before).
-    QByteArray payload = data;
-    QPointer<TerminalWidget> self(this);
-    connect(pasteBtn, &QPushButton::clicked, dlg,
-            [self, dlg, payload, submitAfter]() {
-        if (self) {
-            self->performPaste(payload);
-            // The Enter belongs to the accepted paste. Sending it from the
-            // caller fired it on Cancel too (ANTS-4456).
-            if (submitAfter) self->ptyWrite("\r");
-        }
+    // The accept action carries its own QPointer guard (the dialog is a
+    // child of this widget, so it cannot outlive it, but the action may).
+    connect(acceptBtn, &QPushButton::clicked, dlg,
+            [dlg, onAccept = std::move(onAccept)]() {
+        onAccept();
         dlg->close();
     });
 
@@ -6134,11 +6153,28 @@ void TerminalWidget::rerunCommandAt(int index) {
     QString cmd = commandTextAt(index);
     if (cmd.isEmpty() || !hasPty()) return;
     // Write the command followed by carriage return (Enter). pasteToTerminal
-    // is not used here because we want the command executed, not pasted — and
-    // the multi-line paste confirmation would be wrong for user-initiated
-    // re-runs of their own history.
-    ptyWrite(cmd.toUtf8());
-    ptyWrite(QByteArray("\r"));
+    // is not used here because we want the command executed, not pasted.
+    const QByteArray bytes = cmd.toUtf8();
+    // ANTS-5029 — only signed OSC 133 markers prove this block came from the
+    // shell; program output can print unsigned ones. So an unsigned re-run
+    // shows the exact command first and writes it only when accepted.
+    if (m_grid->osc133HmacEnforced()) {
+        ptyWrite(bytes);
+        ptyWrite(QByteArray("\r"));
+        return;
+    }
+    QPointer<TerminalWidget> self(this);
+    showSendConfirmation(
+        QStringLiteral("confirmRerunDialog"), QStringLiteral("Re-run command"),
+        QStringLiteral("<b>Run this command again?</b><br>"
+                       "Ants cannot confirm it came from your shell, because "
+                       "prompt signing is not set up."),
+        cmd, QStringLiteral("&Run"),
+        [self, bytes]() {
+            if (!self) return;
+            self->ptyWrite(bytes);
+            self->ptyWrite(QByteArray("\r"));
+        });
 }
 
 void TerminalWidget::toggleFoldAt(int index) {

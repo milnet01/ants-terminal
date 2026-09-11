@@ -364,9 +364,17 @@ public:
     // reset chunk state so a subsequent `m=0` is ignored.
     static constexpr size_t MAX_KITTY_CHUNK_BYTES = 32ULL * 1024ULL * 1024ULL;
 
-    // Shell integration (OSC 133)
-    const std::vector<PromptRegion> &promptRegions() const { return m_promptRegions; }
-    std::vector<PromptRegion> &promptRegions() { return m_promptRegions; }
+    // Shell integration (OSC 133). ANTS-5029 — both accessors apply any
+    // pending eviction shift first, so a region's line numbers always match
+    // the scrollback as it is now.
+    const std::vector<PromptRegion> &promptRegions() const {
+        applyPromptRegionShift();
+        return m_promptRegions;
+    }
+    std::vector<PromptRegion> &promptRegions() {
+        applyPromptRegionShift();
+        return m_promptRegions;
+    }
 
     // Session restore: direct access for SessionManager (respects max scrollback)
     void pushScrollbackLine(TermLine &&line) {
@@ -381,6 +389,7 @@ public:
         m_scrollbackHyperlinks.emplace_back();
         while (static_cast<int>(m_scrollback.size()) > m_maxScrollback) {
             m_scrollback.pop_front();
+            ++m_promptRegionShift;  // ANTS-5029
             if (!m_scrollbackHyperlinks.empty())
                 m_scrollbackHyperlinks.pop_front();
         }
@@ -697,7 +706,7 @@ private:
     int m_altScrollTop = 0, m_altScrollBottom = 0;
     std::vector<std::vector<HyperlinkSpan>> m_altScreenHyperlinks;
     std::vector<InlineImage> m_altInlineImages;
-    std::vector<PromptRegion> m_altPromptRegions;
+    mutable std::vector<PromptRegion> m_altPromptRegions;  // ANTS-5029: see m_promptRegionShift
     // DECSC state checkpointed on 1049 entry, restored on 1049 exit.
     // 47 / 1047 do NOT save or restore the cursor / SGR / origin / wrap —
     // per xterm ctlseqs, only 1049 carries DECSC semantics. ANTS-1130
@@ -728,7 +737,13 @@ private:
     int m_hyperlinkStartRow = 0;
 
     // Shell integration (OSC 133)
-    std::vector<PromptRegion> m_promptRegions;
+    mutable std::vector<PromptRegion> m_promptRegions;
+    // ANTS-5029 — lines evicted from the front of the scrollback since the
+    // regions' line numbers were last shifted. The evicting paths only add
+    // to it, so the hot scroll path stays O(1); applyPromptRegionShift()
+    // settles it before any region is read or written.
+    mutable qint64 m_promptRegionShift = 0;
+    void applyPromptRegionShift() const;
     int m_shellIntegState = 0; // 0=none, 'A'=prompt start, 'B'=command start, 'C'=output start
 
     // OSC 133 HMAC verifier state (0.7.0 shell-integration HMAC item).

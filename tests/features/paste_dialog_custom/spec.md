@@ -50,19 +50,23 @@ Source-grep — reproducing the click-swallow needs a live KWin +
 Wayland + translucent-parent stack, which CI doesn't have. These
 pin the implementation contract.
 
-- **INV-1:** `pasteToTerminal()` constructs `new QDialog(this)` on
+ANTS-5029 moved the dialog into `showSendConfirmation()`, which an
+unsigned re-run shares. INV-1 to INV-3, INV-5 and INV-6 read that
+helper's body. The accept button is `acceptBtn`, labelled by the caller.
+
+- **INV-1:** `showSendConfirmation()` constructs `new QDialog(this)` on
   the heap (not a stack `QDialog`).
 - **INV-2:** `Qt::WA_DeleteOnClose` is set on the dialog.
-- **INV-3:** Cancel has `setDefault(true)`, Paste has
+- **INV-3:** Cancel has `setDefault(true)`, the accept button has
   `setAutoDefault(false)` so Enter cannot dangerous-accept.
-- **INV-4:** The Paste button's `clicked()` signal is wired to a
-  lambda that calls `performPaste()`.
+- **INV-4:** The accept button's `clicked()` signal runs the caller's
+  action, and `pasteToTerminal()`'s action calls `performPaste()`.
 - **INV-5:** `dlg->show() + dlg->raise() + dlg->activateWindow()`
   appear in that order.
 - **INV-6:** Explicit `cancelBtn->setFocus(...)` after activation.
 - **INV-7 (neg):** `dlg->exec()` does not appear, and `QEventLoop`
-  is not instantiated anywhere in the `pasteToTerminal()` body. Both
-  are regression attractors.
+  is not instantiated, in either the `pasteToTerminal()` or the
+  `showSendConfirmation()` body. Both are regression attractors.
 - **INV-8:** A `QPointer<TerminalWidget>` guard is captured into
   the Paste-clicked lambda.
 - **INV-9:** `TerminalWidget::performPaste(const QByteArray&)`
