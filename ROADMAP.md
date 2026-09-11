@@ -6774,7 +6774,7 @@ extends an existing item, that item carries it instead.
   Source: code-quality-review-2026-09-11 perf pass (lanes roadmap-store, mcp-transport, mcp-roadmap-query-log, mcp-roadmap-batch).
   Lanes: roadmap, mcp, threading.
 
-- 📋 [ANTS-5052] **Every ripgrep-backed verb holds rg's entire output in memory, twice, against three specs' RAM budgets.**
+- ✅ [ANTS-5052] **Every ripgrep-backed verb holds rg's entire output in memory, twice, against three specs' RAM budgets.**
   rcRunRg waits for rg to finish and takes all of stdout, and
   workspace_search, cited_by and co_change_family each split it into a
   second full copy; the only bound is rg's wall-time budget. The modes
@@ -6788,6 +6788,13 @@ extends an existing item, that item carries it instead.
   Fix: parse stdout line by line while rg runs, kill rg past a byte
   ceiling and set truncated, use rg --count for the counting modes,
   and build co_change_family's heap as its spec states.
+  Resolved (2026-09-11, 759993f9): rcRunRg drains rg's stdout as it runs
+  and stops rg past a byte ceiling, setting outputCapped;
+  workspace_search and co_change_family report it as truncated and
+  cited_by refuses naming the ceiling. Line-by-line parsing, rg --count
+  for the counting modes and co_change_family's heap are filed as
+  ANTS-5127. Tests: workspace_search_payload_knobs, cited_by INV-14,
+  co_change_family.
   **Layman:** Searching a big project can make Ants hold huge amounts of search results in memory at once.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lanes mcp-state-workspace, code-index-search).
@@ -8599,6 +8606,19 @@ extends an existing item, that item carries it instead.
   Kind: perf.
   Source: in-session-2026-09-11 (ANTS-5062 remainder).
   Lanes: test-audit, threading.
+
+- 📋 [ANTS-5127] **The ripgrep-backed verbs still parse rg's output only after it ends, count by collecting matches, and co_change_family sorts every site.**
+  ANTS-5052 bounds rg's output with a byte ceiling, so memory no longer
+  grows without limit. Three parts of that item's fix remain: parse
+  stdout line by line while rg runs (ANTS-3716 section 4), use rg --count
+  or --files-with-matches for count_only and files_only instead of
+  collecting every match, and build co_change_family's bounded min-heap
+  as ANTS-3368 section 4 states instead of keeping every site and sorting
+  at the end.
+  **Layman:** Some code searches still do more work and hold more memory than they need to, though no longer without limit.
+  Kind: perf.
+  Source: in-session-2026-09-11 (ANTS-5052 remainder).
+  Lanes: mcp, search.
 
 ## Memory-efficiency sweep (user request 2026-08-19)
 

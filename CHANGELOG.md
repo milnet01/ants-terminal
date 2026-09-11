@@ -40,6 +40,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **Code searches stop reading ripgrep's output past a size limit and say the answer is partial, instead of holding all of it in memory** (ANTS-5052)
+
 - **The Claude status tick stops reading saved conversations once none of the rest can be the live one** (ANTS-5048)
 
 - **project_query stops building a result as soon as it is over its size limit, so a small Lua snippet can no longer exhaust memory** (ANTS-5069)
