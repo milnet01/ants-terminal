@@ -3,12 +3,19 @@
 // (INV-1..INV-7, INV-9..INV-14; INV-8 is withdrawn and has no case).
 // Pure-seam cases drive CoChangeFamily::* directly; the wiring cases
 // source-grep the registration, the schema and the handler.
+//
+// ANTS-5066 adds three cases pinning Site::text clipping — cost, surrogate
+// safety and the ASCII-prefix guard (see spec.md's "ANTS-5066" section).
+// These are this test file's own local invariants: clipUtf8() is a
+// file-local implementation detail of assemble(), not part of the owner
+// spec's numbered sequence above.
 
 #include "../../_support/expect.h"
 #include "../../_support/srcgrep.h"
 
 #include "cochangefamily.h"
 
+#include <QElapsedTimer>
 #include <QRegularExpression>
 #include <QString>
 #include <QStringList>
@@ -61,6 +68,15 @@ Stem stemOf(const char *name, int minRun) {
     s.words  = splitWords(s.name);
     s.minRun = minRun;
     return s;
+}
+
+// ANTS-5066 — the last two UTF-16 code units, as hex, for a failure message.
+QString tailCodeUnitsHex(const QString &s) {
+    QStringList out;
+    for (int i = qMax(0, s.size() - 2); i < s.size(); ++i) {
+        out << QStringLiteral("%1").arg(uint(s.at(i).unicode()), 4, 16, QLatin1Char('0'));
+    }
+    return out.join(QStringLiteral(","));
 }
 
 }  // namespace
@@ -390,4 +406,171 @@ TEST(CoChangeFamily, ScanIgnoresDeclaredSourceRoots) {
     EXPECT_FALSE(has(body, "sourceRoots"));
     EXPECT_FALSE(has(body, "testRoots"));
     EXPECT_FALSE(has(body, "collectCandidates"));
+}
+
+// ANTS-5066 — Site::text clipping must cost O(line_length), not
+// O(line_length^2). Today's clipUtf8() (src/cochangefamily.cpp, file-local)
+// calls out.chop(1) in a loop and re-encodes the WHOLE shrinking string to
+// UTF-8 on every iteration, unbounded by anything before it runs, so one
+// long raw-match line is quadratic in its own length.
+//
+// Sizing (reasoned, not measured — no build/run available to this writer):
+// a several-hundred-thousand-ASCII-byte filler line with a small byte
+// budget forces roughly (line_bytes - budget) chop+re-encode iterations,
+// each re-encoding a string whose length shrinks from line_bytes down to
+// budget — total work on the order of line_bytes^2 / 2 byte-conversions.
+// Even at an optimistic ~2 GB/s sustained QString::toUtf8() throughput for
+// this shrinking-buffer pattern that lands in the low tens of seconds;
+// even at a pessimistic ~1 GB/s (a busy desktop) it stays comfortably under
+// a minute. A correct linear pass does exactly one O(line_bytes) encode —
+// well under a millisecond at any of those throughputs — plus a boundary
+// scan, so it clears the bound below with orders-of-magnitude of margin.
+// kCostBoundMs is chosen generously for the FIXED code, not tightly against
+// the buggy one: the point is "fast" vs. "not remotely fast", not a precise
+// threshold.
+TEST(CoChangeFamily, ClipCostIsBoundedNotQuadratic) {
+    // Measured on the first red run: an ASCII filler stayed inside the bound,
+    // because Qt encodes ASCII to UTF-8 on a vectorised fast path. A 3-byte
+    // character takes the per-character path, so the quadratic loop costs
+    // seconds here while a linear clip costs microseconds.
+    constexpr int kFillerChars   = 80000;   // ~240 KB of UTF-8 filler
+    constexpr int kClipBudget    = 64;      // small budget -> almost all chopped
+    constexpr qint64 kCostBoundMs = 2000;   // generous bound for the linear fix
+
+    const QString identifier = QStringLiteral("claudeMcpEnabled");
+    // Filler is U+2014 EM DASH (not a word char), so widenToCandidate widens
+    // to exactly the identifier and no further — the huge tail plays no part
+    // in matching, only in the clip that runs afterward.
+    QString line = identifier + QString(kFillerChars, QChar(0x2014));
+
+    RawMatch match;
+    match.path       = QStringLiteral("src/long_line.cpp");
+    match.line       = 1;
+    match.text       = line;
+    match.matchStart = 0;
+    match.matchEnd   = identifier.size();
+
+    const QVector<Stem> stems = {stemOf("claudeMcpEnabled", 2)};
+    Options opts;
+    opts.maxTextBytes = kClipBudget;
+
+    QElapsedTimer timer;
+    timer.start();
+    const Result r = assemble({match}, stems, opts);
+    const qint64 elapsedMs = timer.elapsed();
+
+    ASSERT_EQ(r.sites.size(), 1) << "the long line must still be accepted as one site";
+    const int textBytes = r.sites[0].text.toUtf8().size();
+
+    EXPECT_LE(elapsedMs, kCostBoundMs)
+        << "elapsed_ms=" << elapsedMs << " bound_ms=" << kCostBoundMs
+        << " line_bytes=" << line.toUtf8().size()
+        << " -- clipUtf8 must be linear in line length, not quadratic";
+    EXPECT_LE(textBytes, kClipBudget)
+        << "clipped_text_bytes=" << textBytes << " budget=" << kClipBudget;
+}
+
+// ANTS-5066 — clipUtf8's chop(1) removes one UTF-16 code unit at a time and
+// re-measures the UTF-8 byte length after each chop. When the budget lands
+// one replacement-character's width inside a surrogate pair, the re-measured
+// length can fit BEFORE the trailing lone high surrogate is itself chopped
+// away, leaving that dangling surrogate inside the returned QString — never
+// splitting the pair is exactly what a correct clip must guarantee instead.
+//
+// Reasoned trigger for today's code (not run here): the line is
+// "claudeMcpEnabled" (17 ASCII bytes) followed by ONE 4-byte emoji
+// (U+1F600) as the very last content, so its low surrogate is the string's
+// last code unit. A budget of identifier_bytes + 3 — 3 being the width of
+// Qt's U+FFFD substitution for an unpaired surrogate — is exactly one chop
+// too few for today's code: the first chop removes the low surrogate,
+// leaving a lone high surrogate whose re-encoded length (17 ASCII bytes +
+// a 3-byte replacement char = budget) no longer exceeds the budget, so the
+// loop stops with that lone surrogate still in the string. Expected RED
+// today; the linear fix must drop the whole emoji rather than split it, so
+// the returned text is the 17-byte identifier alone.
+TEST(CoChangeFamily, ClipNeverSplitsASurrogatePair) {
+    const QString identifier = QStringLiteral("claudeMcpEnabled");
+    QString line = identifier;
+    line += QChar(0xD83D);  // high surrogate of U+1F600 (grinning face)
+    line += QChar(0xDE00);  // low surrogate — the string's last code unit
+
+    RawMatch match;
+    match.path       = QStringLiteral("src/emoji_line.cpp");
+    match.line       = 1;
+    match.text       = line;
+    match.matchStart = 0;
+    match.matchEnd   = identifier.size();
+
+    const QVector<Stem> stems = {stemOf("claudeMcpEnabled", 2)};
+    Options opts;
+    opts.maxTextBytes = identifier.toUtf8().size() + 3;  // lands inside the pair
+
+    const Result r = assemble({match}, stems, opts);
+    ASSERT_EQ(r.sites.size(), 1);
+    const QString &text = r.sites[0].text;
+    const int textBytes = text.toUtf8().size();
+
+    const bool endsInLoneHighSurrogate =
+        !text.isEmpty() && text.at(text.size() - 1).isHighSurrogate();
+    EXPECT_FALSE(endsInLoneHighSurrogate)
+        << "text ends in a lone (unpaired) high surrogate; tail_hex="
+        << qPrintable(tailCodeUnitsHex(text)) << " byte_size=" << textBytes
+        << " budget=" << opts.maxTextBytes;
+
+    // A valid clip round-trips through UTF-8 unchanged; a dangling surrogate
+    // re-encodes to U+FFFD and does not equal the original.
+    EXPECT_EQ(QString::fromUtf8(text.toUtf8()), text)
+        << "clipped text does not round-trip through UTF-8 unchanged; tail_hex="
+        << qPrintable(tailCodeUnitsHex(text)) << " byte_size=" << textBytes;
+
+    EXPECT_LE(textBytes, opts.maxTextBytes)
+        << "byte_size=" << textBytes << " budget=" << opts.maxTextBytes;
+}
+
+// ANTS-5066 — guard: the fix must not change output for ordinary input. A
+// line within budget returns unchanged; a line over budget is cut to the
+// longest byte-fitting ASCII prefix, with no marker added — the same result
+// today's chop loop gives for ASCII, since every char is exactly one byte.
+TEST(CoChangeFamily, ClipIsAByteBudgetPrefix) {
+    const QString identifier = QStringLiteral("claudeMcpEnabled");
+    const QString line = identifier + QStringLiteral(" 0123456789abcdefghij");
+
+    RawMatch match;
+    match.path       = QStringLiteral("src/guard_line.cpp");
+    match.line       = 1;
+    match.text       = line;
+    match.matchStart = 0;
+    match.matchEnd   = identifier.size();
+
+    const QVector<Stem> stems = {stemOf("claudeMcpEnabled", 2)};
+
+    // Within budget: returned unchanged.
+    {
+        Options opts;
+        opts.maxTextBytes = line.toUtf8().size() + 10;
+        const Result r = assemble({match}, stems, opts);
+        ASSERT_EQ(r.sites.size(), 1);
+        EXPECT_EQ(r.sites[0].text, line)
+            << "byte_size=" << r.sites[0].text.toUtf8().size()
+            << " line_bytes=" << line.toUtf8().size();
+    }
+    // Over budget: cut to the longest fitting prefix, no ellipsis.
+    {
+        Options opts;
+        const int budget  = identifier.size() + 5;  // "claudeMcpEnabled 0123"
+        opts.maxTextBytes = budget;
+        const Result r = assemble({match}, stems, opts);
+        ASSERT_EQ(r.sites.size(), 1);
+        const QString &text = r.sites[0].text;
+        const int textBytes = text.toUtf8().size();
+
+        EXPECT_EQ(text, line.left(budget))
+            << "clipped=" << qPrintable(text)
+            << " expected_prefix=" << qPrintable(line.left(budget))
+            << " byte_size=" << textBytes << " budget=" << budget;
+        EXPECT_LE(textBytes, budget)
+            << "byte_size=" << textBytes << " budget=" << budget;
+        EXPECT_FALSE(text.endsWith(QChar(0x2026)))
+            << "no ellipsis marker expected; tail_hex=" << qPrintable(tailCodeUnitsHex(text));
+    }
 }

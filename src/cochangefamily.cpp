@@ -37,12 +37,18 @@ const QStringList &stopwords() {
     return kWords;
 }
 
-// Clip to a UTF-8 byte budget without splitting a code point.
+// Clip to a UTF-8 byte budget without splitting a code point. ANTS-5066 —
+// one encode, then the cut moves back to a code-point start: the old
+// chop-and-re-encode loop was quadratic in the line length and could
+// leave a lone high surrogate at the cut.
 QString clipUtf8(const QString &s, int maxBytes) {
-    if (maxBytes <= 0 || s.toUtf8().size() <= maxBytes) return s;
-    QString out = s;
-    while (!out.isEmpty() && out.toUtf8().size() > maxBytes) out.chop(1);
-    return out;
+    if (maxBytes <= 0) return s;
+    const QByteArray utf8 = s.toUtf8();
+    if (utf8.size() <= maxBytes) return s;
+    int cut = maxBytes;
+    while (cut > 0 && (static_cast<unsigned char>(utf8.at(cut)) & 0xC0) == 0x80)
+        --cut;
+    return QString::fromUtf8(utf8.constData(), cut);
 }
 
 }  // namespace

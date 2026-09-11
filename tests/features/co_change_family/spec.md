@@ -29,6 +29,23 @@ One per live invariant. INV-8 is withdrawn and has no case.
 | `MatchWidensToCandidate` | INV-13 | a match widens to the candidate the filter reads |
 | `ScanIgnoresDeclaredSourceRoots` | INV-14 | the scan is repo-wide, not root-scoped |
 
+## ANTS-5066 — Site::text clipping
+
+Three more cases, local to this test file rather than the owner spec above.
+`clipUtf8()` (the file-local helper behind `Site::text` in
+`src/cochangefamily.cpp`) is an implementation detail of `assemble()`, not
+part of the verb's public contract — the owner spec's § 4 already says every
+record's text is clipped to a byte budget, and the fix changes only how that
+clip is computed, not what it produces for ordinary input. So these are
+pinned here as this test's own contract rather than promoted into the owner
+spec's numbered sequence.
+
+| Case | Locks |
+|---|---|
+| `ClipCostIsBoundedNotQuadratic` | clipping a long line to a small budget finishes within a generous, fixed time bound |
+| `ClipNeverSplitsASurrogatePair` | when the budget lands inside a multi-byte character, the clip ends before that character; it never leaves a dangling surrogate, and it round-trips through UTF-8 unchanged |
+| `ClipIsAByteBudgetPrefix` | a line within budget is returned unchanged; a line over budget is cut to the longest fitting prefix, with no marker added |
+
 ## Why two of these are source-greps, not behaviour
 
 `SeamTuHasNoChromeSymbols` and `ScanIgnoresDeclaredSourceRoots` assert
@@ -46,4 +63,5 @@ records the reasoning.
 
 Compiled into the **`test_claude`** bundle — not a standalone target. Label
 `features;fast`. Run with `ctest --test-dir build -R CoChangeFamily`; check
-`ctest -N -R CoChangeFamily` lists 13 before trusting a green run.
+`ctest -N -R CoChangeFamily` lists every case from both tables above before
+trusting a green run.
