@@ -1584,6 +1584,8 @@ if(ANTS_TESTS)
                 tests/features/terminal_partial_update_mode/test_terminal_partial_update_mode.cpp
                 tests/features/command_mark_gutter/test_command_mark_gutter.cpp
                 tests/features/osc133_last_command/test_osc133_last_command.cpp
+                # ANTS-5034 — View → Opacity reaches open terminals (source-scrape).
+                tests/features/view_opacity_live/test_view_opacity_live.cpp
                 tests/features/scroll_snapshot_intent/test_scroll_snapshot_intent.cpp
                 tests/features/sync_output_snapshot/test_sync_output_snapshot.cpp
                 tests/features/vtbatch_zero_copy/test_vtbatch_zero_copy.cpp

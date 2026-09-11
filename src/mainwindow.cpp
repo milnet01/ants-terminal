@@ -1413,8 +1413,11 @@ void MainWindow::setupViewMenu() {
         connect(a, &QAction::triggered, this, [this, pct]() {
             double val = pct / 100.0;
             m_config.setOpacity(val);
-            // Re-apply theme to update all background colors with new opacity
-            applyTheme(m_currentTheme);
+            // ANTS-5034 — apply it to the open terminals directly: applyTheme
+            // returns early for an unchanged theme, and the config watcher
+            // skips our own write.
+            for (TerminalWidget *t : liveTerminals())
+                t->setWindowOpacityLevel(val);
         });
     }
 
