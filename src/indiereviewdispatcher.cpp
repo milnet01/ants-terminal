@@ -18,6 +18,7 @@
 #include "indiereviewdispatcher.h"
 
 #include "llmclient.h"
+#include "secretredact.h"
 
 #include <QByteArray>
 #include <QDateTime>
@@ -110,16 +111,25 @@ QUrl resolveEndpoint(const QString &raw) {
     return u;
 }
 
-QByteArray buildRequestBody(const LaneRequest &lr,
-                            const DispatchRequest &dr) {
+}  // namespace
+
+QByteArray buildRequestBody(const LaneRequest &lr, const DispatchRequest &dr,
+                            int *redactedCount) {
+    // ANTS-5042 — the brief is verbatim project source, so it can carry a
+    // credential. This path POSTs through its own QNetworkAccessManager and
+    // never reaches LlmClient::buildRequestBody, which scrubs, so it scrubs
+    // here the same way.
+    const auto sys   = SecretRedact::scrub(dr.systemPrompt);
+    const auto brief = SecretRedact::scrub(lr.brief);
+    if (redactedCount) *redactedCount = sys.redactedCount + brief.redactedCount;
     QJsonArray messages;
     messages.append(QJsonObject{
         {QStringLiteral("role"),    QStringLiteral("system")},
-        {QStringLiteral("content"), dr.systemPrompt},
+        {QStringLiteral("content"), sys.text},
     });
     messages.append(QJsonObject{
         {QStringLiteral("role"),    QStringLiteral("user")},
-        {QStringLiteral("content"), lr.brief},
+        {QStringLiteral("content"), brief.text},
     });
     QJsonObject body;
     body[QStringLiteral("model")]       = dr.model;
@@ -128,6 +138,8 @@ QByteArray buildRequestBody(const LaneRequest &lr,
     body[QStringLiteral("messages")]    = messages;
     return QJsonDocument(body).toJson(QJsonDocument::Compact);
 }
+
+namespace {
 
 // Extract assistant text from an OpenAI Chat Completions response.
 QString extractAssistantText(const QJsonObject &root) {
@@ -280,7 +292,8 @@ DispatchResult dispatchLanes(const DispatchRequest &req) {
         // Qt 6 follows one by default, into a host no guard re-validates.
         nreq.setAttribute(QNetworkRequest::RedirectPolicyAttribute,
                           QNetworkRequest::ManualRedirectPolicy);
-        const QByteArray body = buildRequestBody(lr, req);
+        const QByteArray body =
+            buildRequestBody(lr, req, &r.reports[idx].redactedCount);
         QNetworkReply *reply = nam.post(nreq, body);
         replyToIdx[reply] = idx;
         QElapsedTimer t;

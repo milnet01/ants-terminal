@@ -146,3 +146,18 @@ TEST(AuditProvenanceRedaction, Inv5AiTriageScrubsPrompt) {
            "INV-5: the request body carries the scrubbed user message");
     EXPECT_EQ(0, expect_failures());
 }
+
+// INV-6 — the batch triage path scrubs too (ANTS-5042). Scoped to its own
+// body: INV-5's file-wide match is satisfied by the single-finding path.
+TEST(AuditProvenanceRedaction, Inv6BatchTriageScrubsPrompt) {
+    expect_reset();
+    const std::string body = ants_test::slurpFunctionBody(
+        SRC_AUDITDIALOG_CPP_PATH, "void AuditDialog::requestAiTriageBatch(");
+    ASSERT_FALSE(body.empty()) << "INV-6: requestAiTriageBatch not found";
+
+    expect(contains(body, "SecretRedact::scrub(userMsg)"),
+           "INV-6: batch triage scrubs its user message");
+    expect(!contains(body, "{\"content\", userMsg}"),
+           "INV-6: the raw user message never reaches the request body");
+    EXPECT_EQ(0, expect_failures());
+}

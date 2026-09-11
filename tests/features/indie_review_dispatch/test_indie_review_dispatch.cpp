@@ -613,3 +613,27 @@ TEST(IndieReviewDispatch, INV4_DoesNotFollowRedirect) {
         << "sanity: the dispatcher must have reached server A at all, or "
            "the test proves nothing about redirect handling";
 }
+
+// ANTS-5042 INV-5 — a lane's POST body carries no secret from the system
+// prompt or the brief. The token is built at runtime so no credential-shaped
+// literal sits in the source for a scanner to flag.
+TEST(IndieReviewDispatch, Ants5042RequestBodyScrubsSecrets) {
+    const QString token = QStringLiteral("ghp_") + QString(36, QLatin1Char('a'));
+    IndieReviewDispatcher::DispatchRequest dr;
+    dr.model        = QStringLiteral("gpt-4");
+    dr.systemPrompt = QStringLiteral("system ") + token;
+    IndieReviewDispatcher::LaneRequest lane;
+    lane.name  = QStringLiteral("lane1");
+    lane.brief = QStringLiteral("const char *key = \"") + token
+                 + QStringLiteral("\";");
+
+    int redacted = -1;
+    const QByteArray body =
+        IndieReviewDispatcher::buildRequestBody(lane, dr, &redacted);
+
+    EXPECT_FALSE(body.contains(token.toUtf8()))
+        << "the token must not reach the POST body: " << body.constData();
+    EXPECT_TRUE(body.contains("[REDACTED:github_pat]"))
+        << "the scrubber's marker must replace it: " << body.constData();
+    EXPECT_EQ(redacted, 2) << "one token in the system prompt, one in the brief";
+}

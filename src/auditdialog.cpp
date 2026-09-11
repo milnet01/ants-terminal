@@ -5563,10 +5563,14 @@ void AuditDialog::requestAiTriageBatch(const QStringList &dedupKeys) {
     }
     const QString userMsg = QString::fromUtf8(
         QJsonDocument(QJsonObject{{"findings", findingsArr}}).toJson(QJsonDocument::Compact));
+    // ANTS-5042 — scrub as the single-finding path does (ANTS-4448): each
+    // snippet is verbatim project source, and for a secrets finding it IS the
+    // credential. `sys` is a compile-time literal.
+    const auto scrubbedUser = SecretRedact::scrub(userMsg);
 
     QJsonArray messages;
     messages.append(QJsonObject{{"role", "system"}, {"content", sys}});
-    messages.append(QJsonObject{{"role", "user"},   {"content", userMsg}});
+    messages.append(QJsonObject{{"role", "user"},   {"content", scrubbedUser.text}});
 
     QJsonObject body;
     body["model"]           = model;
@@ -5611,8 +5615,9 @@ void AuditDialog::requestAiTriageBatch(const QStringList &dedupKeys) {
         QJsonDocument(body).toJson(QJsonDocument::Compact));
 
     const int batchSize = batch.size();
+    const int redacted = scrubbedUser.redactedCount;
     connect(reply, &QNetworkReply::finished, this,
-            [this, reply, mgr, batchSize]() {
+            [this, reply, mgr, batchSize, redacted]() {
         reply->deleteLater();
         mgr->deleteLater();
         if (reply->error() != QNetworkReply::NoError) {
@@ -5681,9 +5686,12 @@ void AuditDialog::requestAiTriageBatch(const QStringList &dedupKeys) {
         refreshBatchTriageButton();
         if (m_statusLabel)
             m_statusLabel->setFullText(QString(
-                "AI batch triage: %1 of %2 verdict%3 applied")
+                "AI batch triage: %1 of %2 verdict%3 applied%4")
                 .arg(applied).arg(batchSize)
-                .arg(batchSize == 1 ? "" : "s"));
+                .arg(batchSize == 1 ? "" : "s")
+                .arg(redacted > 0
+                         ? QStringLiteral(" (%1 secret(s) redacted)").arg(redacted)
+                         : QString()));
     });
 }
 

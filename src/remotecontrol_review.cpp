@@ -1254,6 +1254,8 @@ QJsonDocument RemoteControl::cmdIndieReviewDispatch(const QJsonObject &req,
         if (lr.bytes > 0)        o["bytes"]  = lr.bytes;
         if (lr.inputTokens > 0)  o["input_tokens"]  = lr.inputTokens;
         if (lr.outputTokens > 0) o["output_tokens"] = lr.outputTokens;
+        // ANTS-5042 — secrets scrubbed from this lane's POST.
+        if (lr.redactedCount > 0) o["redacted_count"] = lr.redactedCount;
         if (!lr.error.isEmpty()) o["error"]  = lr.error;
         reportsArr.append(o);
         if (lr.status == QStringLiteral("ok")) {

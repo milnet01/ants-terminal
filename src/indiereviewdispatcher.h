@@ -9,6 +9,7 @@
 
 #pragma once
 
+#include <QByteArray>
 #include <QList>
 #include <QString>
 #include <QStringList>
@@ -31,6 +32,7 @@ struct LaneResult {
     qint64  elapsedMs = 0;
     qint64  inputTokens = 0;
     qint64  outputTokens = 0;
+    int     redactedCount = 0;   // ANTS-5042 — secrets scrubbed from the POST.
 };
 
 struct DispatchRequest {
@@ -56,6 +58,12 @@ struct DispatchResult {
 };
 
 DispatchResult dispatchLanes(const DispatchRequest &req);
+
+// ANTS-5042 — the exact JSON body one lane POSTs, with secrets scrubbed from
+// the system prompt and the brief, as LlmClient::buildRequestBody does. When
+// `redactedCount` is given it receives how many secrets were removed.
+QByteArray buildRequestBody(const LaneRequest &lr, const DispatchRequest &dr,
+                            int *redactedCount = nullptr);
 
 // ANTS-1352-INV-9 — test probe. Returns the dispatcher's current
 // in-flight queue depth (process-global; safe under

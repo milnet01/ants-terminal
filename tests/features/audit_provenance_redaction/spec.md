@@ -47,3 +47,9 @@ before the fix are still on disk.
 `src/auditdialog.cpp`: the file must reference `SecretRedact`, and the user
 message placed into the request body must be the scrubbed text rather than
 the raw one.
+
+**INV-6 — batch AI triage scrubs its prompt too (ANTS-5042).** Source-grep
+scoped to `AuditDialog::requestAiTriageBatch`'s body: it must call
+`SecretRedact::scrub(userMsg)`, and the raw `userMsg` must not be placed in
+the request body. INV-5's file-wide match cannot see this path, because the
+single-finding path already satisfies it.

@@ -48,6 +48,10 @@ host. The paired test file is each invariant's test surface.
 - **INV-3** — an endpoint embedding URL userinfo is refused, with or without a key: the error names the credential refusal, and `reports_dir` is never created.
 - **INV-4** — a redirect is not followed: against a loopback server answering `307` with a `Location` at a second loopback listener, the second listener receives no request.
 
+### ANTS-5042 — secrets scrubbed from the POST
+
+- **INV-5** — `IndieReviewDispatcher::buildRequestBody` scrubs the system prompt and the brief through `SecretRedact::scrub`, as `LlmClient::buildRequestBody` does. With a GitHub token in both, the body carries neither copy, carries the `[REDACTED:github_pat]` marker, and the redacted count is 2. `cmdIndieReviewDispatch` reports a lane's count as `redacted_count` when it is non-zero.
+
 ## Probe invariants
 
 - **P-1 / probe returns 0 at rest.** `IndieReviewDispatcher::inFlightCountForTest()` returns 0 when no dispatch is in flight.
