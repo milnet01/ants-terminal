@@ -315,49 +315,12 @@ bool toolHonoursChecks(const QString &tool) {
     return tool == QLatin1String("clang-tidy");
 }
 
-// ANTS-1456 / ANTS-1464 — load project-side audit-config.json if
-// present. Probed locations (first wins):
-//   <root>/.audit-config.json                   canonical dotfile
-//   <root>/docs/private/audit/audit-config.json RetroArch-style
-// Schema (per-tool args override): {"<tool>": {"args": ["...","..."]}}.
-// When matched, the tool's argv is replaced wholesale by the array.
-// Malformed JSON / missing file → empty object (default argv used).
-//
-// ANTS-1456 cold-eyes follow-up — config file is bounded to
-// kAuditConfigMaxBytes (64 KiB) and per-arg sanitisation is applied
-// by isAuditArgSafe() at toolArgv() consume time. The config lives
-// inside the project root which IS the audit target, so an
-// attacker who can edit the file already controls the tree being
-// audited; the cap + regex are defence in depth against a
-// wrong-tab CC session auditing untrusted third-party clones.
-constexpr qint64 kAuditConfigMaxBytes = 64 * 1024;
-
-QJsonObject loadProjectAuditConfig(const QString &projectRoot) {
-    const QStringList candidates = {
-        projectRoot + QLatin1String("/.audit-config.json"),
-        projectRoot + QLatin1String("/docs/private/audit/audit-config.json"),
-    };
-    for (const QString &p : candidates) {
-        QFile f(p);
-        if (!f.open(QIODevice::ReadOnly)) continue;
-        if (f.size() > kAuditConfigMaxBytes) continue;
-        const QByteArray raw = f.readAll();
-        QJsonParseError err;
-        const QJsonDocument doc = QJsonDocument::fromJson(raw, &err);
-        if (err.error == QJsonParseError::NoError && doc.isObject()) {
-            return doc.object();
-        }
-    }
-    return {};
-}
-
-// ANTS-1456 cold-eyes follow-up — per-arg argv-injection guard
-// for the audit-config.json override path. Same shape as
-// isScopeTagSafe() (ANTS-1351-INV-15). Allowlist of safe chars,
-// length cap, and explicit reject of `-o`/`-O` (the canonical
-// argv-injection gadget: ssh-style `-o ProxyCommand=…`). Args
-// that fail validation cause the tool's whole override to be
-// discarded and the default argv runs — fail-safe over fail-open.
+// ANTS-1456 cold-eyes follow-up — per-arg argv-injection guard, same
+// shape as isScopeTagSafe() (ANTS-1351-INV-15): an allowlist of safe
+// chars, a length cap, and an explicit reject of `-o`/`-O`. It guards the
+// caller's `paths` and `exclude_paths`. ANTS-5045 removed the project-side
+// argv override it was first written for: a cloned project could use that
+// override to make a tool write any file or run code.
 bool isAuditArgSafe(const QString &arg) {
     if (arg.isEmpty() || arg.size() > 256) return false;
     static const QRegularExpression rx(
@@ -401,11 +364,8 @@ QString flagSafeScopedPathImpl(const QString &p) {
 // the /audit skill's step 5). ANTS-1456 — `src/` existence is
 // auto-detected so flat-layout projects (RetroArch et al.) no longer
 // pass `-I src/` against a missing directory and silently parse no
-// sources. ANTS-1464 — `projectConfig` overrides argv per-tool when
-// the project ships a `.audit-config.json` or
-// `docs/private/audit/audit-config.json`.
+// sources.
 QStringList toolArgv(const QString &tool, const QString &projectRoot,
-                     const QJsonObject &projectConfig = {},
                      const QStringList &scopedPaths = {},
                      const QStringList &scopedChecks = {},
                      const QString &gitleaksConfig = {},
@@ -418,35 +378,6 @@ QStringList toolArgv(const QString &tool, const QString &projectRoot,
     scoped.reserve(scopedPaths.size());
     for (const QString &p : scopedPaths)
         scoped += flagSafeScopedPathImpl(p);
-    // ANTS-1464 — project-side override wins. ANTS-1456 cold-eyes
-    // follow-up: every arg is validated through isAuditArgSafe()
-    // before it reaches child argv. If ANY arg fails, the whole
-    // override is discarded (fail-safe — the tool falls back to the
-    // hardened built-in argv) so a single bad entry can't silently
-    // drop adjacent safe-looking flags.
-    //
-    // ANTS-1512 — when scopedPaths/scopedChecks are passed, the
-    // project-config override is BYPASSED. Scoped invocations are a
-    // narrow-on-purpose mode; the project's full-run defaults would
-    // re-broaden the scope.
-    if (projectConfig.contains(tool) && scoped.isEmpty()
-        && scopedChecks.isEmpty()) {
-        const QJsonObject cfg =
-            projectConfig.value(tool).toObject();
-        const QJsonValue v = cfg.value(QStringLiteral("args"));
-        if (v.isArray()) {
-            QStringList args;
-            bool allSafe = true;
-            const QJsonArray arr = v.toArray();
-            for (const QJsonValue &av : arr) {
-                const QString s = av.toString();
-                if (!isAuditArgSafe(s)) { allSafe = false; break; }
-                args.append(s);
-            }
-            if (allSafe && !args.isEmpty()) return args;
-            // else: fall through to the default argv path.
-        }
-    }
     // ANTS-1456 — auto-detect src/ for flat-layout projects.
     const bool hasSrcDir = QFileInfo(
         projectRoot + QLatin1String("/src")).isDir();
@@ -1811,7 +1742,7 @@ QString flagSafeScopedPath(const QString &p) {
 QStringList toolArgv(const QString &tool, const QString &projectRoot,
                      const QStringList &scopedPaths,
                      const QStringList &excludePaths) {   // ANTS-3710
-    return AuditRunner::toolArgv(tool, projectRoot, {}, scopedPaths, {}, {},
+    return AuditRunner::toolArgv(tool, projectRoot, scopedPaths, {}, {},
                                  excludePaths);
 }
 
@@ -1906,7 +1837,7 @@ RunResult runAudit(const RunRequest &req) {
     }
 
     // ── ANTS-1512 / scoped-paths sanitisation. Each path is run through
-    // the same isAuditArgSafe gate as audit-config.json args. Refuse the
+    // the isAuditArgSafe gate. Refuse the
     // whole call on any unsafe entry — silently dropping bad paths would
     // mask a typo + still run the unscoped tool, which violates "narrow
     // means narrow".
@@ -1996,11 +1927,6 @@ RunResult runAudit(const RunRequest &req) {
         return r;
     }
     slot.held = true;
-
-    // ── ANTS-1456 / ANTS-1464 — load project audit-config.json
-    // once per run so toolArgv() can override defaults.
-    const QJsonObject projectConfig =
-        loadProjectAuditConfig(canonProject);
 
     // ── ANTS-3615 — honour `suppressions`. Before this the field was parsed
     // into req.suppressionsMode and then never read: a caller passing
@@ -2431,7 +2357,7 @@ RunResult runAudit(const RunRequest &req) {
         perToolTimer[tool].start();
         ++pending;
         proc->start(it.value(),
-                    toolArgv(tool, canonProject, projectConfig,
+                    toolArgv(tool, canonProject,
                              perToolPaths.value(tool), req.checks,
                              gitleaksConfig, req.excludePaths));
     }

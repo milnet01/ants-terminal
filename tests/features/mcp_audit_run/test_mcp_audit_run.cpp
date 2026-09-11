@@ -226,20 +226,21 @@ TEST(mcp_audit_run, Ants1456SrcAutoDetect) {
     EXPECT_EQ(0, expect_failures());
 }
 
-// ANTS-1456 AR-3/AR-4 — loadProjectAuditConfig + per-tool override.
-TEST(mcp_audit_run, Ants1456ProjectAuditConfig) {
+// ANTS-5045 — ANTS-1456 AR-3/AR-4 let the audited project's
+// .audit-config.json replace a tool's argv. A cloned project could use it to
+// make a tool write any file or run code (cppcheck --addon), so it is gone.
+// Comments are stripped: the history may still name the old loader.
+TEST(mcp_audit_run, Ants5045NoProjectArgvOverride) {
     expect_reset();
-    const std::string cpp = ants_test::slurpFile(SRC_AUDITRUNNER_CPP_PATH);
-    expect(contains(cpp, "loadProjectAuditConfig"),
-           "AR-3: loadProjectAuditConfig helper present");
-    expect(contains(cpp, ".audit-config.json"),
-           "AR-3: canonical .audit-config.json path probed");
-    expect(contains(cpp,
-               "docs/private/audit/audit-config.json"),
-           "AR-3: RetroArch-style fallback path probed");
-    expect(contains(cpp, "projectConfig.contains(tool)"),
-           "AR-4: toolArgv consults projectConfig before default "
-           "argv");
+    const std::string cpp = ants_test::stripComments(
+        ants_test::slurpFile(SRC_AUDITRUNNER_CPP_PATH));
+    expect(!cpp.empty(), "ANTS-5045: auditrunner.cpp readable");
+    expect(!contains(cpp, "loadProjectAuditConfig"),
+           "ANTS-5045: no project audit-config loader");
+    expect(!contains(cpp, "audit-config.json"),
+           "ANTS-5045: no audit-config.json path is probed");
+    expect(!contains(cpp, "projectConfig"),
+           "ANTS-5045: toolArgv takes no project argv override");
     EXPECT_EQ(0, expect_failures());
 }
 

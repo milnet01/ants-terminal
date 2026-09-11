@@ -31,10 +31,9 @@ check-and-subdir matrix.
   - `toolArgv()` accepts `scopedPaths` + `scopedChecks` parameters.
     For `clang-tidy`, scoped checks render as
     `--checks=-*,<comma-joined>`; for both `clang-tidy` and `cppcheck`,
-    scoped paths append as positional args. When either is present,
-    the project's `.audit-config.json` override path is bypassed
-    (scoped invocations are narrow-on-purpose; the project-wide
-    override would re-broaden the scope).
+    scoped paths append as positional args. (The project-side
+    `.audit-config.json` argv override this once bypassed was removed
+    by ANTS-5045.)
 - `src/mainwindow.cpp` `audit_run` provider — extracts `paths` and
   `checks` from the args object.
 - `src/claudeintegration.cpp` `audit_run` descriptor — declares `paths`
