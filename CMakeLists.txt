@@ -2872,6 +2872,14 @@ if(ANTS_TESTS)
                 tests/features/roadmap_filter_bar/test_roadmap_filter_bar.cpp
                 tests/features/roadmap_toc_toggle/test_roadmap_toc_toggle.cpp
                 tests/features/roadmap_last_touch_async/test_roadmap_last_touch_async.cpp
+                # ANTS-5047 — lastTouchFromBlame() must take its bullet text
+                # from blame's own content lines (never a re-read of
+                # ROADMAP.md, which races a concurrent write), must key a
+                # --porcelain group's author-time by commit sha rather than
+                # a running variable, must pass --porcelain not
+                # --line-porcelain, and the finished handler's parse must
+                # run on a QThread::create() worker, not the GUI thread.
+                tests/features/roadmap_last_touch_blame_worker/test_roadmap_last_touch_blame_worker.cpp
                 # ANTS-3793 § 2.3 — the per-project stored legend. HERE and not
                 # in roadmap_read_seam/ beside its five siblings: that directory
                 # compiles into test_core, which does not link ants_dialogs_lib

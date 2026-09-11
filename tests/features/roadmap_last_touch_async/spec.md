@@ -50,8 +50,9 @@ of which this roadmap has 4 out of 2,031.
 - **INV-3.** The result reaches the screen. Landing dates triggers a re-render
   rather than sitting in a hash nobody reads.
 
-- **INV-4.** `lastTouchFromBlame()` is a pure function of (blame output,
-  roadmap file) and takes MAX over the bullet's block — the bullet line plus
+- **INV-4.** `lastTouchFromBlame()` is a pure function of blame's output
+  (since ANTS-5047 the line text comes from blame's content lines, not the
+  file) and takes MAX over the bullet's block — the bullet line plus
   every contiguous 2-space-indented continuation, stopping at a blank line, a
   new bullet, or EOF. This is the half that was previously unreachable without
   spawning git; splitting it out is what makes the rule testable.

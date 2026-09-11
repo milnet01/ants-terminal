@@ -35,6 +35,7 @@
 #include <QMenu>
 #include <QPalette>
 #include <QProcess>
+#include <QThread>
 #include <QPushButton>
 #include <QRegularExpression>
 #include <QScrollBar>
@@ -51,6 +52,8 @@
 #include <QTextFrame>
 #include <functional>
 #include <QTimer>
+
+#include <cctype>
 #include <QVBoxLayout>
 
 namespace {
@@ -1778,15 +1781,17 @@ RoadmapDialog::parseShippedDates(const QString &changelogPath) {
 // ANTS-4414 — the blame ARGUMENTS, in one place so the synchronous helper below
 // and the dialog's asynchronous path cannot drift into blaming different things.
 QStringList RoadmapDialog::lastTouchBlameArgs(const QString &fileName) {
-    // --line-porcelain repeats header fields (incl. author-time) for every
-    // source line — easy to index by line number. QProcess pipes already
-    // suppress git's stderr progress, so no --no-progress needed.
+    // ANTS-5047 — --porcelain, not --line-porcelain: a commit's headers
+    // appear once, on its first group, instead of on every line, so the
+    // output is about the file's own size rather than several times it.
+    // lastTouchFromBlame() looks author-time up by sha. QProcess pipes
+    // already suppress git's stderr progress, so no --no-progress needed.
     //
     // Deliberately NOT -L-restricted to the 🚧 blocks. Measured 2026-08-17 on
     // this project: whole-file 3.71 s, four -L ranges 3.12 s — 16%. The cost is
     // history traversal, not line count, so restricting the range buys almost
     // nothing and costs the ability to blame one file in one call.
-    return {QStringLiteral("blame"), QStringLiteral("--line-porcelain"),
+    return {QStringLiteral("blame"), QStringLiteral("--porcelain"),
             QStringLiteral("--"), fileName};
 }
 
@@ -1795,51 +1800,59 @@ QStringList RoadmapDialog::lastTouchBlameArgs(const QString &fileName) {
 // share one implementation. A second copy here would be a copy of the block
 // walk, which is the part with the rules in it.
 QHash<QString, qint64>
-RoadmapDialog::lastTouchFromBlame(const QByteArray &blameOut,
-                                  const QString &roadmapPath) {
+RoadmapDialog::lastTouchFromBlame(const QByteArray &blameOut) {
     QHash<QString, qint64> out;
 
-    // Build a 1-indexed vector of author-times per source line.
-    QVector<qint64> lineAuthorTime;
-    lineAuthorTime.append(0);  // placeholder so index 1 == line 1
-    qint64 currentAuthorTime = 0;
-    int currentSourceLine = 0;
-    // Porcelain format: lines starting with a 40-char hex hash
-    // begin a record. Header lines `author-time NNNN` follow.
-    // Content line begins with TAB.
+    // ANTS-5047 — two things are taken from blame's own output and nothing
+    // else. Author-time is looked up by sha, because --porcelain prints a
+    // commit's headers only on its first group. And each line's TEXT comes
+    // from blame's tab-prefixed content line, never from a re-read of the
+    // file: a write between blame and the re-read used to put dates on the
+    // wrong cards.
+    //
+    // Header: "<hash> <orig> <final> [count]", then `key value` lines, then
+    // the content line prefixed with TAB. A header's first field must be a
+    // whole hash — a `summary` line can have a space at column 40 too.
+    const auto isHash = [](const QByteArray &s) {
+        if (s.size() != 40 && s.size() != 64) return false;
+        for (char c : s)
+            if (!std::isxdigit(static_cast<unsigned char>(c))) return false;
+        return true;
+    };
+    QHash<QByteArray, qint64> timeBySha;
+    QVector<qint64> lineAuthorTime{0};      // index 1 == line 1
+    QList<QByteArray> mdLines{QByteArray()};
+    QByteArray sha;
+    int finalLine = 0;
     for (const QByteArray &raw : blameOut.split('\n')) {
         if (raw.startsWith('\t')) {
-            // Content line — assign the current author-time to
-            // the recorded final-line number.
-            while (lineAuthorTime.size() <= currentSourceLine)
-                lineAuthorTime.append(0);
-            if (currentSourceLine > 0)
-                lineAuthorTime[currentSourceLine] = currentAuthorTime;
-            continue;
-        }
-        if (raw.size() >= 41 && raw.at(40) == ' ') {
-            // Hash header: "<hash> <orig> <final> [count]"
-            const QList<QByteArray> parts = raw.split(' ');
-            if (parts.size() >= 3) {
-                currentSourceLine = parts.at(2).toInt();
+            if (finalLine > 0) {
+                while (lineAuthorTime.size() <= finalLine) {
+                    lineAuthorTime.append(0);
+                    mdLines.append(QByteArray());
+                }
+                lineAuthorTime[finalLine] = timeBySha.value(sha);
+                mdLines[finalLine] = raw.mid(1);
             }
             continue;
         }
-        if (raw.startsWith("author-time ")) {
-            currentAuthorTime =
-                QByteArray(raw.mid(12)).trimmed().toLongLong();
+        const QList<QByteArray> parts = raw.split(' ');
+        if (parts.size() >= 3 && isHash(parts.at(0))) {
+            sha = parts.at(0);
+            finalLine = parts.at(2).toInt();
+            continue;
         }
+        if (raw.startsWith("author-time "))
+            timeBySha.insert(sha, QByteArray(raw.mid(12)).trimmed().toLongLong());
     }
+    // Index 0 is a placeholder; the walk below is 0-indexed over real lines.
+    mdLines.removeFirst();
+    lineAuthorTime.removeFirst();
 
-    // Walk the markdown, identify each `- 🚧 [ANTS-NNNN]` bullet,
+    // Walk the text, identify each `- 🚧 [ANTS-NNNN]` bullet,
     // take MAX over its block (the bullet line + every contiguous
     // 2-space-indented continuation line until blank or next-bullet
     // or EOF). See spec § 3.b.2.
-    QFile f(roadmapPath);
-    if (!f.open(QIODevice::ReadOnly | QIODevice::Text)) return out;
-    const QByteArray body = f.readAll();
-    f.close();
-    const QList<QByteArray> mdLines = body.split('\n');
     // ANTS-1660 — match any project-ID prefix, not just ANTS-.
     static const QRegularExpression rxInProgress(
         // ANTS-3492 — digit-led-but-letter-containing prefix.
@@ -1860,9 +1873,8 @@ RoadmapDialog::lastTouchFromBlame(const QByteArray &blameOut,
                     || cont.startsWith(QStringLiteral("* "))) break;
                 if (!cont.startsWith(QStringLiteral("  "))) break;
             }
-            const int lineNo = j + 1;  // 1-indexed
-            if (lineNo < lineAuthorTime.size()) {
-                const qint64 t = lineAuthorTime.at(lineNo);
+            if (j < lineAuthorTime.size()) {
+                const qint64 t = lineAuthorTime.at(j);
                 if (t > maxTime) maxTime = t;
             }
             ++j;
@@ -1897,7 +1909,7 @@ RoadmapDialog::parseLastTouchDates(const QString &roadmapPath) {
         // Not a git repo, file not tracked, etc. — graceful.
         return out;
     }
-    return lastTouchFromBlame(git.readAllStandardOutput(), roadmapPath);
+    return lastTouchFromBlame(git.readAllStandardOutput());
 }
 
 RoadmapDialog::RoadmapDialog(const QString &roadmapPath,
@@ -3008,7 +3020,8 @@ void RoadmapDialog::refreshLastTouchDatesIfStale() {
     // One in flight at a time. rebuild() runs on every filter toggle and every
     // debounced search keystroke, so without this a typing burst would spawn a
     // blame per keystroke — the ANTS-2012 failure, one layer down.
-    if (m_lastTouchProc) return;
+    // ANTS-5047 — the parse that follows the process counts as in flight too.
+    if (m_lastTouchProc || m_lastTouchParsing) return;
 
     const QFileInfo fi(m_roadmapPath);
     if (!fi.exists()) return;
@@ -3027,21 +3040,34 @@ void RoadmapDialog::refreshLastTouchDatesIfStale() {
     connect(git, &QProcess::finished, this,
             [this, git](int code, QProcess::ExitStatus status) {
         m_lastTouchProc = nullptr;
-        m_lastTouchRan = true;   // answered, even if the answer is "nothing"
         git->deleteLater();
         if (status != QProcess::NormalExit || code != 0) {
             // Not a git repo, file not tracked — the same graceful empty the
             // synchronous path returns. No re-render: nothing moved.
+            m_lastTouchRan = true;   // answered, even if the answer is "nothing"
             return;
         }
-        const auto dates = lastTouchFromBlame(git->readAllStandardOutput(),
-                                              m_roadmapPath);
-        if (dates == m_lastTouchDates) return;   // nothing to repaint
-        m_lastTouchDates = dates;
-        // Re-render through the debounce rather than calling rebuild()
-        // directly, so a blame landing mid-typing coalesces with the keystroke
-        // rebuild instead of racing it.
-        scheduleRebuild();
+        // ANTS-5047 — the parse walks every blamed line, so it runs on a
+        // worker. The thread deletes itself even if the dialog closes first;
+        // the result connection then simply never fires.
+        m_lastTouchParsing = true;
+        auto dates = std::make_shared<QHash<QString, qint64>>();
+        QThread *worker = QThread::create(
+            [blameOut = git->readAllStandardOutput(), dates]() {
+                *dates = lastTouchFromBlame(blameOut);
+            });
+        connect(worker, &QThread::finished, worker, &QObject::deleteLater);
+        connect(worker, &QThread::finished, this, [this, dates]() {
+            m_lastTouchParsing = false;
+            m_lastTouchRan = true;   // answered, even if the answer is "nothing"
+            if (*dates == m_lastTouchDates) return;   // nothing to repaint
+            m_lastTouchDates = *dates;
+            // Re-render through the debounce rather than calling rebuild()
+            // directly, so a blame landing mid-typing coalesces with the
+            // keystroke rebuild instead of racing it.
+            scheduleRebuild();
+        }, Qt::QueuedConnection);
+        worker->start();
     });
     connect(git, &QProcess::errorOccurred, this, [this, git] {
         m_lastTouchProc = nullptr;

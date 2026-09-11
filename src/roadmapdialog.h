@@ -319,8 +319,10 @@ public:
     // synchronous form above and the dialog's asynchronous path share one
     // argument list and one parser rather than drifting apart.
     static QStringList lastTouchBlameArgs(const QString &fileName);
+    // ANTS-5047 — a pure function of blame's output: line text comes from
+    // its content lines, so no file is read.
     static QHash<QString, qint64>
-    lastTouchFromBlame(const QByteArray &blameOut, const QString &roadmapPath);
+    lastTouchFromBlame(const QByteArray &blameOut);
 
     // ANTS-1237 — refresh m_lastTouchDates from m_roadmapPath when
     // its mtime has changed since the last call. Public (diverges
@@ -350,7 +352,7 @@ public:
         return m_lastTouchDates;
     }
     bool lastTouchBlameInFlight() const noexcept {
-        return !m_lastTouchProc.isNull();
+        return !m_lastTouchProc.isNull() || m_lastTouchParsing;   // ANTS-5047
     }
     // Re-arms the guard so a test can observe a dispatch it owns, rather than
     // racing the one the constructor's first rebuild() already started.
@@ -657,6 +659,8 @@ private:
     // git repo" are both real answers that produce an empty hash, and a guard
     // keyed on the hash would re-run forever on either.
     bool m_lastTouchRan = false;
+    // ANTS-5047 — the blame's output is being parsed on a worker.
+    bool m_lastTouchParsing = false;
     // ANTS-2012 — collectCurrentBullets() shells out to `git log` (blocking).
     // rebuild() runs per search keystroke, so cache the external signals with
     // a short TTL to kill the per-keystroke git jank (mutable: filled from a

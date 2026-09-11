@@ -118,7 +118,7 @@ TEST(RoadmapLastTouchAsync, ParserTakesMaxOverTheBulletBlock) {
             .arg(QString(40, QLatin1Char('a')))
             .arg(line)
             .arg(when)
-            .arg(QLatin1String(text));
+            .arg(QString::fromUtf8(text));   // ANTS-5047: the parser reads this text
     };
     QString blame;
     blame += rec(1, 1000, "# ROADMAP");
@@ -133,7 +133,7 @@ TEST(RoadmapLastTouchAsync, ParserTakesMaxOverTheBulletBlock) {
     blame += rec(10, 7777, "  Kind: fix.");
 
     const auto out =
-        RoadmapDialog::lastTouchFromBlame(blame.toUtf8(), h.path);
+        RoadmapDialog::lastTouchFromBlame(blame.toUtf8());
 
     ASSERT_TRUE(out.contains(QStringLiteral("ANTS-0001")))
         << "the in-progress bullet got no date at all";
