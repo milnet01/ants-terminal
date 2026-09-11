@@ -1700,10 +1700,12 @@ bool ClaudeIntegration::postToolDispatch(const McpCallContext &ctx,
 
 // ANTS-2132 — teardown, in the one order that cannot deadlock.
 //
-// Refuse new GUI marshals BEFORE joining. A worker parked in a
-// BlockingQueuedConnection while this thread sits in wait() would deadlock;
-// refusing first lets it unwind. This join is INV-7's sole exception: the GUI
-// thread never blocks on the worker while SERVING a request.
+// Refuse new GUI marshals BEFORE joining, so none is posted after this point.
+// A worker already parked in a BlockingQueuedConnection is waiting for this
+// thread, so a bare wait() would deadlock (ANTS-5113); joinRefusingMarshals
+// delivers that marshal without running it, which releases the worker. This
+// join is INV-7's sole exception: the GUI thread never blocks on the worker
+// while SERVING a request.
 void ClaudeIntegration::shutdownDispatchWorker() {
     m_dispatchShuttingDown = true;
     ants::setGuiMarshalRefused(true);

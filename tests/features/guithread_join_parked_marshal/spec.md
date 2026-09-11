@@ -86,8 +86,8 @@ Out of scope:
 
 INV-1/2/3 only test something when the worker is genuinely parked inside
 `onGuiThread` *before* the refused flag is set — the note atop
-`joinRefusingMarshals` in `guithread.h` says as much: "the flag above refuses
-only marshals not yet posted; one already posted is ANTS-5113." If the flag
+`onGuiThread` in `guithread.h` said as much before the fix: "the flag above
+refuses only marshals not yet posted; one already posted is ANTS-5113." If the flag
 is set first, `onGuiThread` refuses at its own top-of-function check before
 ever posting, the worker returns immediately, and every one of INV-1/2/3
 holds trivially — the test would pass whether or not `joinRefusingMarshals`

@@ -51,8 +51,8 @@ inline bool guiMarshalRefused() {
 // dispatch worker is safe while it serves requests, because the GUI thread
 // never waits on it then (spec § 2.1). A verb that runs its own worker and
 // joins it on the GUI thread is not covered by that argument. The dispatch
-// worker's one join is at teardown, where the flag above refuses only
-// marshals not yet posted; one already posted is ANTS-5113.
+// worker's one join is at teardown, through joinRefusingMarshals below, which
+// releases a marshal already parked when the flag was set (ANTS-5113).
 template <class F>
 auto onGuiThread(F &&f) -> std::optional<std::invoke_result_t<F>> {
     using R = std::invoke_result_t<F>;
@@ -72,17 +72,35 @@ auto onGuiThread(F &&f) -> std::optional<std::invoke_result_t<F>> {
 
     if (guiMarshalRefused()) return std::nullopt;
 
+    // ANTS-5113 — a marshal delivered after the flag is set must not run `f`:
+    // at teardown what it reads is being destroyed. `out` stays empty, so the
+    // caller sees a refusal.
     std::optional<R> out;
     QMetaObject::invokeMethod(
-        app, [&out, &f]() { out.emplace(f()); }, Qt::BlockingQueuedConnection);
+        app,
+        [&out, &f]() {
+            if (!guiMarshalRefused()) out.emplace(f());
+        },
+        Qt::BlockingQueuedConnection);
     return out;
 }
 
-// ANTS-5113 — join `worker` from the GUI thread at teardown. Returns false
-// when it has not exited within `timeoutMs`; a negative value waits forever.
+// ANTS-5113 — join `worker` from the GUI thread at teardown. A worker already
+// parked in onGuiThread is waiting for this thread, so a bare wait() never
+// returns. Between short waits, deliver the posted marshals: with the refused
+// flag set they release the worker without running their callables. Only
+// onGuiThread queues calls on the application object (src/ surveyed
+// 2026-09-11); anything queued there later would run here too. Returns false
+// when the worker has not exited within `timeoutMs`; negative waits forever.
 inline bool joinRefusingMarshals(QThread *worker, int timeoutMs = -1) {
-    return timeoutMs < 0 ? worker->wait()
-                         : worker->wait(QDeadlineTimer(timeoutMs));
+    constexpr int kSliceMs = 20;
+    const QDeadlineTimer deadline(timeoutMs);
+    QObject *app = QCoreApplication::instance();
+    while (!worker->wait(QDeadlineTimer(kSliceMs))) {
+        if (app) QCoreApplication::sendPostedEvents(app, QEvent::MetaCall);
+        if (deadline.hasExpired()) return false;
+    }
+    return true;
 }
 
 }  // namespace ants
