@@ -8615,7 +8615,7 @@ extends an existing item, that item carries it instead.
   Source: in-session-2026-09-11 (ANTS-5120 fix).
   Lanes: mainwindow, dialogs.
 
-- 📋 [ANTS-5124] **A push killed mid-hook leaves the Qt 6.2 guard's container compiling on its own, holding memory after the gate is gone.**
+- ✅ [ANTS-5124] **A push killed mid-hook leaves the Qt 6.2 guard's container compiling on its own, holding memory after the gate is gone.**
   Seen 2026-09-11. A background `git push` was stopped for low memory
   while tools/hooks/pre-push was in tools/qt62-guard.sh's container
   build. The push process died, but the podman container kept running
@@ -8626,16 +8626,26 @@ extends an existing item, that item carries it instead.
   container, and mark the volume the way build-asan's
   .ants-prepush-interrupted marker does, so the next run heals or skips
   it instead of trusting it.
+  Resolved (2026-09-11, 4357c2f3): the compile container is named and
+  runs under --init; a trap on INT, TERM and HUP stops it; podman run is
+  waited on in the background so the trap fires at once. A marker spans
+  the compile. --warm-only skips a marked tree and a normal run rebuilds
+  it cold. Checked live: SIGTERM mid-ninja exits 130 and leaves no
+  container. Test: tests/features/qt62_guard_interrupt.
   **Layman:** If a code upload is interrupted, a background compatibility build keeps running and using memory.
   Kind: fix.
   Source: in-session-2026-09-11 (pre-push killed for low memory).
   Lanes: tooling, ci.
 
-- 📋 [ANTS-5125] **The Independent Review and Cold-eyes dialogs still run the corroboration walk twice per round, on the GUI thread.**
+- ✅ [ANTS-5125] **The Independent Review and Cold-eyes dialogs still run the corroboration walk twice per round, on the GUI thread.**
   ANTS-5058 made each corroboration walk prune noise directories, so a walk
   no longer enters build trees. The dialogs still call it twice per round,
   at minimum lanes 2 and then 1.
   Fix: corroborate once at minimum 1 and split the result by lane count.
+  Resolved (2026-09-11, d00b710f): both dialogs corroborate once at
+  minimum 1 and divide the result with
+  IndieReviewEngine::splitByLaneCount. Test:
+  tests/features/review_corroboration_single_pass.
   **Layman:** After each AI review round, Ants still searches the project twice where once would do.
   Kind: perf.
   Source: in-session-2026-09-11 (ANTS-5058 remainder).

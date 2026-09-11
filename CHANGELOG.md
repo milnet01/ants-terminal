@@ -14,6 +14,8 @@ for security-relevant changes.
 
 ### Changed
 
+- **The Independent Review and Cold-eyes dialogs search the project once per review round instead of twice** (ANTS-5125)
+
 - **CI's memory-checked test run skips the benchmark tests, as the local pre-push check already does** (ANTS-5014)
   The benchmarks cost 285 s of a 1121 s serial sanitized run
   (measured 2026-09-11). Two correctness tests labelled perf for their
@@ -39,6 +41,8 @@ for security-relevant changes.
   the small, readable half can now be acted on by itself.
 
 ### Fixed
+
+- **A push interrupted during its Qt 6.2 compile check now stops that check's container, and the next check does not trust the half-built tree** (ANTS-5124)
 
 - **The "Close tab?" question box now matches the Ants theme, can be resized and remembers its size** (ANTS-5123)
 
