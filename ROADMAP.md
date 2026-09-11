@@ -6134,7 +6134,7 @@ extends an existing item, that item carries it instead.
   Source: code-quality-review-2026-09-11 perf pass (lanes mainwindow-b, mcp-review-verbs).
   Lanes: mcp, threading.
 
-- 📋 [ANTS-5025] **verify_changes builds and runs its trust dialog on the MCP worker thread, which Qt forbids.**
+- ✅ [ANTS-5025] **verify_changes builds and runs its trust dialog on the MCP worker thread, which Qt forbids.**
   verify_changes is registered through rcDelegate with a Required
   contract, so ANTS-2132 runs it off the GUI thread. On an untrusted
   .ants/verify.json, VerifyEngine::loadGateConfig reaches
@@ -6148,6 +6148,14 @@ extends an existing item, that item carries it instead.
   Found independently by two lanes. Not reproduced.
   Fix: run the prompt body through ants::onGuiThread and treat a
   refused marshal as Headless.
+  Resolved (2026-09-11): ModalClient::prompt runs the dialog body,
+  now the protected virtual showPrompt, through ants::onGuiThread; a
+  refused marshal returns Headless. Tests:
+  tests/features/verify_trust_modal_gui_thread INV-1 and INV-2, red at
+  eaca2601 and green at 7ca39f36. Two mutants of the refused branch
+  (fall back to showPrompt on the worker; return UntrustedFellBack) are
+  both caught by INV-2. None of the QThread::create workers in src/
+  reaches verify_changes, so the marshal cannot hang like ANTS-5024.
   **Layman:** The first code check in a new project can crash Ants, because its 'do you trust this?' popup is built on the wrong thread.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lanes dialog-chrome-theme, mcp-review-verbs).

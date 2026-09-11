@@ -40,6 +40,13 @@ for security-relevant changes.
 
 ### Fixed
 
+- **The verify.json trust prompt opens on the main thread** (ANTS-5025)
+  verify_changes runs off the GUI thread, so the "Trust
+  .ants/verify.json?" prompt used to be built and run on a background
+  thread, which Qt does not allow. It now always opens on the main
+  thread. If Ants is shutting down, no prompt is shown and the
+  untrusted commands are not run.
+
 - **indie_review_dispatch replies instead of hanging Ants** (ANTS-5024)
   The verb's worker now receives the project root the provider has
   already resolved on the GUI thread. It used to resolve the root
