@@ -615,6 +615,11 @@ QList<Finding> check(const QString &rootCanonical, const QStringList &relDocs,
                                 : QDir::cleanPath(rootDir.filePath(raw));
         const QString rel = rootDir.relativeFilePath(abs);
         if (byRel.contains(rel)) continue;  // dedup
+        // ANTS-5055 — a document over the read budget is skipped whole, as
+        // doc_lint skips it, never read cut short: a cut document's slug set
+        // is partial, so its own links past the cut came back dead. Being
+        // outside inScope, anchors into it from other docs go unchecked.
+        if (QFileInfo(abs).size() > opts.maxDocBytes) continue;
         QFile f(abs);
         if (!f.open(QIODevice::ReadOnly)) continue;  // INV-15 — silently skip
         const QByteArray bytes = f.read(opts.maxDocBytes);

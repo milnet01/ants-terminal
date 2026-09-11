@@ -11,6 +11,8 @@
 #include <QStringList>
 #include <QTemporaryDir>
 
+#include <string>
+
 #include <gtest/gtest.h>
 
 using DocIntegrity::Finding;
@@ -43,6 +45,32 @@ bool hasMention(const QList<Finding> &fs, Kind k, const QString &needle) {
 // Canonical root path for a temp dir (resolves /tmp symlinks etc.).
 QString canon(const QTemporaryDir &d) {
     return QFileInfo(d.path()).canonicalFilePath();
+}
+
+// Failure detail: a red line should say what the run actually saw, not only
+// which predicate failed (ANTS-5055).
+std::string render(const QList<Finding> &fs) {
+    if (fs.isEmpty()) return "(no findings)";
+    QStringList out;
+    for (const Finding &f : fs)
+        out << QStringLiteral("kind=%1 %2:%3 %4")
+                   .arg(int(f.kind)).arg(f.file, QString::number(f.line), f.message);
+    return out.join(QStringLiteral(" | ")).toStdString();
+}
+
+// ANTS-5055 — a doc with an early link to a heading that appears only after
+// a small byte offset. Real bug: ROADMAP.md exceeds maxDocBytes and its own
+// links to later headings come back as false dead_anchor findings. A small
+// maxDocBytes (an Options field, not a fixture size) stands in for the real
+// 2 MiB budget so the fixture stays a few hundred bytes.
+QString writeOversizeFixture(const QString &root) {
+    QString body = QStringLiteral("# Title\n\n");
+    body += QStringLiteral("See [Section B](#section-b) below.\n\n");
+    body += QString(100, QLatin1Char('x')) + QStringLiteral("\n");  // padding past the cut
+    body += QStringLiteral("## Section B\n\ncontent\n");
+    const QString rel = QStringLiteral("docs/oversize.md");
+    writeFile(root + "/" + rel, body);
+    return rel;
 }
 
 }  // namespace
@@ -434,6 +462,79 @@ TEST(DocIntegrity, PerDocCaps) {
     opts.maxDocBytes = 64;                    // read only the first 64 bytes
     const auto fs = DocIntegrity::check(root, {"docs/a.md"}, opts);
     EXPECT_EQ(countKind(fs, Kind::DeadAnchor), 0);  // the link was never read
+}
+
+// ---- ANTS-5055 — oversize documents are skipped, not truncated-and-checked -
+
+// INV-23 (ANTS-5055, docs/specs/ANTS-3601.md) — a document over maxDocBytes is
+// not opened or parsed at all, so it contributes no finding — including no
+// DeadAnchor for its own earlier link to a heading that sits past the cut.
+// Before this fix, DocIntegrity::check read only the first maxDocBytes bytes
+// and still ran every checker over that partial read, so the heading past the
+// cut was never extracted and the earlier link resolved against an
+// incomplete slug set — a false dead_anchor. ROADMAP.md hits this for real:
+// it regularly exceeds maxDocBytes and its own links to later sections come
+// back as false positives.
+TEST(DocIntegrity, Ants5055OversizeDocNoDeadAnchorForLateHeading) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString root = canon(tmp);
+    const QString rel = writeOversizeFixture(root);
+
+    DocIntegrity::Options opts;
+    opts.maxDocBytes = 60;  // cuts inside the padding, well before "Section B"
+    ASSERT_GT(QFileInfo(root + "/" + rel).size(), opts.maxDocBytes)
+        << "fixture must genuinely exceed the budget or this test proves nothing";
+
+    const auto fs = DocIntegrity::check(root, {rel}, opts);
+    EXPECT_EQ(countKind(fs, Kind::DeadAnchor), 0)
+        << "an oversize document must not be parsed at all: " << render(fs);
+}
+
+// INV-24 (ANTS-5055) — an oversize document is excluded from checkedDocs — it
+// was never read, so it is not "checked". Mirrors doc_lint's too_large skip
+// (doclint.cpp: a file over the byte cap is never opened, and never appended
+// to Result::checkedDocs) rather than silently truncating it and still
+// listing it as checked.
+TEST(DocIntegrity, Ants5055OversizeDocExcludedFromCheckedDocs) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString root = canon(tmp);
+    const QString rel = writeOversizeFixture(root);
+
+    DocIntegrity::Options opts;
+    opts.maxDocBytes = 60;
+    ASSERT_GT(QFileInfo(root + "/" + rel).size(), opts.maxDocBytes);
+
+    QStringList checked;
+    DocIntegrity::check(root, {rel}, opts, &checked);
+    EXPECT_FALSE(checked.contains(rel))
+        << "an oversize document must not be listed as checked; checkedDocs="
+        << checked.join(", ").toStdString();
+}
+
+// INV-25 (ANTS-5055) — guard: a document AT OR UNDER maxDocBytes is
+// unaffected by the size gate. A genuine dead anchor in such a document is
+// still reported, and the document is still listed as checked — the fix
+// changes behaviour only for documents that exceed the budget.
+TEST(DocIntegrity, Ants5055UnderLimitDeadAnchorStillReported) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString root = canon(tmp);
+    const QString body = QStringLiteral("# Title\n\n[a](#really-missing)\n");
+    ASSERT_TRUE(writeFile(root + "/docs/small.md", body));
+
+    DocIntegrity::Options opts;
+    opts.maxDocBytes = 1024;  // comfortably over this doc's actual size
+    ASSERT_LE(QFileInfo(root + "/docs/small.md").size(), opts.maxDocBytes);
+
+    QStringList checked;
+    const auto fs = DocIntegrity::check(root, {"docs/small.md"}, opts, &checked);
+    EXPECT_EQ(countKind(fs, Kind::DeadAnchor), 1)
+        << "a genuinely dead anchor in an under-limit doc must still be "
+           "reported: " << render(fs);
+    EXPECT_TRUE(checked.contains(QStringLiteral("docs/small.md")))
+        << "an under-limit doc must still be listed as checked";
 }
 
 // ---- ANTS-3700 — heading_sequence ------------------------------------------
