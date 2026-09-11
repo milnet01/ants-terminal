@@ -50,6 +50,7 @@
 #include "featurecoverage.h"  // ANTS-3605 in-process drift lanes (GUI parity)
 #include "secureio.h"       // setOwnerOnlyPerms — 0600 on SARIF/HTML
 #include "secretredact.h"   // ANTS-2188 scrub secret shapes from raw output
+#include "processgroup.h"   // ANTS-5038 stop a tool's whole process tree
 
 #include <QCoreApplication>
 #include <QDateTime>
@@ -2348,13 +2349,18 @@ RunResult runAudit(const RunRequest &req) {
             });
 
         // Per-tool wall-clock cap (INV-5): SIGTERM at cap, SIGKILL +2s.
+        // ANTS-5038 — both reach the tool's process group, so a helper it
+        // forked stops with it. The pid is taken while the tool runs.
         QTimer::singleShot(perToolMs, proc,
                            [tool, proc, &finish, &perToolTimer, &timedOut]() {
             if (proc->state() == QProcess::NotRunning) return;
             timedOut.insert(tool);
+            const qint64 pgid = proc->processId();
+            ProcessGroup::signalGroup(pgid, SIGTERM);
             proc->terminate();
             QTimer::singleShot(kKillGraceMs, proc,
-                [tool, proc, &finish, &perToolTimer]() {
+                [tool, proc, pgid, &finish, &perToolTimer]() {
+                ProcessGroup::signalGroup(pgid, SIGKILL);
                 if (proc->state() != QProcess::NotRunning) {
                     proc->kill();
                 }
@@ -2366,6 +2372,7 @@ RunResult runAudit(const RunRequest &req) {
         procs[tool] = owned;
         perToolTimer[tool].start();
         ++pending;
+        ProcessGroup::startsOwnGroup(*proc);
         proc->start(it.value(),
                     toolArgv(tool, canonProject,
                              perToolPaths.value(tool), req.checks,
@@ -2377,6 +2384,7 @@ RunResult runAudit(const RunRequest &req) {
         // Kill all still-running.
         for (auto it = procs.begin(); it != procs.end(); ++it) {
             if (it.value()->state() != QProcess::NotRunning) {
+                ProcessGroup::signalGroup(*it.value(), SIGKILL);
                 it.value()->kill();
                 if (!r.byTool.contains(it.key())) {
                     const qint64 ms = perToolTimer.value(it.key()).elapsed();
@@ -2399,6 +2407,7 @@ RunResult runAudit(const RunRequest &req) {
     for (const auto &p : std::as_const(procs)) {
         p->disconnect();
         if (p->state() != QProcess::NotRunning) {
+            ProcessGroup::signalGroup(*p, SIGKILL);
             p->kill();
             p->waitForFinished(kKillGraceMs);
         }

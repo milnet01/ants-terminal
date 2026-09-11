@@ -2713,7 +2713,15 @@ if(ANTS_TESTS)
                 tests/features/audit_low_confidence_autofix/test_audit_low_confidence_autofix.cpp
                 # ANTS-1826/1830 — AI-triage cleartext-key refusal + verdict-badge
                 # title double-quote escaping.
-                tests/features/audit_dialog_render_hardening/test_audit_dialog_render_hardening.cpp)
+                tests/features/audit_dialog_render_hardening/test_audit_dialog_render_hardening.cpp
+                # ANTS-5038 — AuditRunner's per-tool cap must stop a tool's
+                # whole process tree, not just its direct QProcess child.
+                tests/features/audit_tool_process_group_kill/test_auditrunner_group_kill.cpp
+                # ANTS-5038 — AuditDialog starts each check's process in its
+                # own group and signals the group before every kill site
+                # (source-scrape: AuditDialog is a QDialog, not constructed
+                # here).
+                tests/features/audit_tool_process_group_kill/test_auditdialog_group_kill_scrape.cpp)
     target_compile_definitions(test_audit PRIVATE
         SRC_AUDIT_CPP_PATH="${CMAKE_SOURCE_DIR}/src/auditdialog.cpp"
         SRC_AUDIT_H_PATH="${CMAKE_SOURCE_DIR}/src/auditdialog.h"
@@ -3006,6 +3014,10 @@ if(ANTS_TESTS)
                 # ants::onGuiThread must not deadlock once the refused flag
                 # is set. Qt6::Core-only (guithread.h needs no widget code).
                 tests/features/guithread_join_parked_marshal/test_guithread_join_parked_marshal.cpp
+                # ANTS-5038 — ProcessGroup::signalGroup must reach a forked
+                # grandchild, not just the group leader. Qt6::Core-only
+                # (processgroup.h needs no widget code).
+                tests/features/audit_tool_process_group_kill/test_processgroup_helper.cpp
                 tests/features/remote_control_tab_list/test_remote_control_tab_list.cpp
                 tests/features/remote_control_ls/test_remote_control_ls.cpp
                 tests/features/remote_control_send_text/test_remote_control_send_text.cpp

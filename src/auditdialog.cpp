@@ -13,6 +13,7 @@
 #include "toggleswitch.h"
 #include "tooldetectionengine.h"
 #include "config.h"
+#include "processgroup.h"  // ANTS-5038 — stop a check's whole process tree
 
 #include <QVBoxLayout>
 #include <QHBoxLayout>
@@ -149,6 +150,12 @@ AuditDialog::AuditDialog(const QString &projectPath,
             // advance after kill, then re-establish the full set
             // (finished + drain slots) before the next check.
             disconnect(m_process, nullptr, this, nullptr);
+            // ANTS-5038 — stop the check's whole process group: TERM with a
+            // short grace (this is the GUI thread), then KILL the rest.
+            const qint64 pgid = m_process->processId();
+            ProcessGroup::signalGroup(pgid, SIGTERM);
+            m_process->waitForFinished(500);
+            ProcessGroup::signalGroup(pgid, SIGKILL);
             m_process->kill();
             m_process->waitForFinished(1000);
             connectProcessSignals();
@@ -4243,6 +4250,11 @@ void AuditDialog::cancelAudit() {
         // finished() from firing with the partial output we're about to
         // discard.
         disconnect(m_process, nullptr, this, nullptr);
+        // ANTS-5038 — the whole process group, TERM first (see the timeout).
+        const qint64 pgid = m_process->processId();
+        ProcessGroup::signalGroup(pgid, SIGTERM);
+        m_process->waitForFinished(500);
+        ProcessGroup::signalGroup(pgid, SIGKILL);
         m_process->kill();
         m_process->waitForFinished(1000);
         // Reconnect so a follow-up Run Audit works normally — full set
@@ -4394,6 +4406,7 @@ void AuditDialog::runNextCheck() {
     m_outputOverflowed = false;
 
     m_timeout->start(check.timeoutMs);
+    ProcessGroup::startsOwnGroup(*m_process);
     m_process->start("/bin/bash", {"-c", check.command});
     if (!m_process->waitForStarted(5000)) {
         m_timeout->stop();
@@ -4416,8 +4429,10 @@ void AuditDialog::onCheckOutputReady() {
     m_currentOutput.append(m_process->readAllStandardOutput());
     if (m_currentOutput.size() + m_currentError.size() > MAX_TOOL_OUTPUT_BYTES) {
         m_outputOverflowed = true;
-        if (m_process->state() != QProcess::NotRunning)
+        if (m_process->state() != QProcess::NotRunning) {
+            ProcessGroup::signalGroup(*m_process, SIGKILL);
             m_process->kill();
+        }
     }
 }
 
@@ -4426,8 +4441,10 @@ void AuditDialog::onCheckErrorReady() {
     m_currentError.append(m_process->readAllStandardError());
     if (m_currentOutput.size() + m_currentError.size() > MAX_TOOL_OUTPUT_BYTES) {
         m_outputOverflowed = true;
-        if (m_process->state() != QProcess::NotRunning)
+        if (m_process->state() != QProcess::NotRunning) {
+            ProcessGroup::signalGroup(*m_process, SIGKILL);
             m_process->kill();
+        }
     }
 }
 
