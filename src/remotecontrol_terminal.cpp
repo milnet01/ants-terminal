@@ -203,24 +203,25 @@ void RemoteControl::enrichLikelyFixes(QJsonArray &errors,
     // can't fan out into an unbounded SymbolQuery tree-walk.
     if (root.isEmpty() || errors.isEmpty()) return;
     constexpr int kMaxLookups = 25;
-    QHash<QString, QString> headerBySym;  // symbol → header ("" = miss)
-    int lookups = 0;
+    // ANTS-5053 — gather the distinct symbols first (up to the cap), then
+    // resolve them in ONE tree walk: a walk per symbol cost seconds on the
+    // GUI thread right after a failed build.
+    QStringList wanted;
+    for (const QJsonValue &v : std::as_const(errors)) {
+        const QString sym = BuildFixHint::undeclaredSymbol(
+            v.toObject().value("message").toString());
+        if (!sym.isEmpty() && !wanted.contains(sym) && wanted.size() < kMaxLookups)
+            wanted << sym;
+    }
+    if (wanted.isEmpty()) return;
+    const QHash<QString, QString> headerBySym =
+        BuildFixHint::resolveHeaders(root, wanted);  // symbol → header ("" = miss)
     for (int i = 0; i < errors.size(); ++i) {
         QJsonObject e = errors.at(i).toObject();
         const QString sym =
             BuildFixHint::undeclaredSymbol(e.value("message").toString());
-        if (sym.isEmpty()) continue;
-        QString header;
-        if (const auto it = headerBySym.constFind(sym);
-            it != headerBySym.constEnd()) {
-            header = it.value();
-        } else if (lookups < kMaxLookups) {
-            header = BuildFixHint::resolveHeader(root, sym);
-            headerBySym.insert(sym, header);
-            ++lookups;
-        } else {
-            continue;  // lookup budget spent — leave the rest un-enriched
-        }
+        // Empty for a miss, and for a symbol past the lookup cap.
+        const QString header = headerBySym.value(sym);
         if (header.isEmpty()) continue;
         QJsonObject lf;
         lf["add_include"] = header;

@@ -17,7 +17,9 @@
 #ifndef ANTS_BUILDFIXHINT_H
 #define ANTS_BUILDFIXHINT_H
 
+#include <QHash>
 #include <QString>
+#include <QStringList>
 
 namespace BuildFixHint {
 
@@ -37,6 +39,13 @@ QString undeclaredSymbol(const QString &message);
 // definition (foo.cpp → foo.h). Returns the repo-relative path (e.g.
 // "src/foo.h"), consistent with find_definition's file reporting.
 QString resolveHeader(const QString &rootCanonical, const QString &symbol);
+
+// ANTS-5053 — resolveHeader for many symbols in ONE tree walk
+// (SymbolQuery::findDefinitions). Keyed by symbol; each value equals
+// resolveHeader(rootCanonical, symbol). A diagnostics burst names many
+// symbols, and a walk per symbol cost seconds on the GUI thread.
+QHash<QString, QString> resolveHeaders(const QString &rootCanonical,
+                                       const QStringList &symbols);
 
 }  // namespace BuildFixHint
 

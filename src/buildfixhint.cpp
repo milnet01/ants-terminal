@@ -66,14 +66,10 @@ QString undeclaredSymbol(const QString &message) {
     return {};
 }
 
-QString resolveHeader(const QString &rootCanonical, const QString &symbol) {
-    if (rootCanonical.isEmpty() || !SymbolQuery::isValidSymbol(symbol))
-        return {};
+namespace {
 
-    SymbolQuery::Options opts;  // tool defaults (maxResults 50, maxFiles 5000)
-    const SymbolQuery::DefResult res =
-        SymbolQuery::findDefinition(rootCanonical, symbol, opts);
-
+// The header to suggest from one symbol's definitions.
+QString pickHeader(const QString &rootCanonical, const SymbolQuery::DefResult &res) {
     // 1. First header-suffixed match — the include you actually want.
     for (const SymbolQuery::DefMatch &d : res.definitions)
         if (isHeaderPath(d.file)) return d.file;
@@ -87,6 +83,32 @@ QString resolveHeader(const QString &rootCanonical, const QString &symbol) {
             return sib;
     }
     return {};
+}
+
+}  // namespace
+
+QString resolveHeader(const QString &rootCanonical, const QString &symbol) {
+    if (rootCanonical.isEmpty() || !SymbolQuery::isValidSymbol(symbol))
+        return {};
+
+    SymbolQuery::Options opts;  // tool defaults (maxResults 50, maxFiles 5000)
+    return pickHeader(rootCanonical,
+                      SymbolQuery::findDefinition(rootCanonical, symbol, opts));
+}
+
+QHash<QString, QString> resolveHeaders(const QString &rootCanonical,
+                                       const QStringList &symbols) {
+    QHash<QString, QString> out;
+    for (const QString &sym : symbols) out.insert(sym, QString());
+    if (rootCanonical.isEmpty() || symbols.isEmpty()) return out;
+
+    // One walk for every symbol; an invalid one comes back !ok and stays "".
+    SymbolQuery::Options opts;  // same defaults as resolveHeader
+    const QHash<QString, SymbolQuery::DefResult> defs =
+        SymbolQuery::findDefinitions(rootCanonical, symbols, opts);
+    for (auto it = defs.constBegin(); it != defs.constEnd(); ++it)
+        if (it->ok) out[it.key()] = pickHeader(rootCanonical, it.value());
+    return out;
 }
 
 }  // namespace BuildFixHint
