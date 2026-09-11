@@ -36,10 +36,24 @@ function dialogs need no `Config` plumbing).
   only registered Config, a keyed dialog's first show reads no size.
 - **INV-8 / window wiring (ANTS-5036).** `~MainWindow` calls
   `DialogChrome::releaseConfig(&m_config)`.
+- **INV-9 / D3 save on reject (ANTS-5037).** Closing a resizable+keyed
+  dialog with `reject()` — what the chrome's title-bar close button and
+  Esc both call — persists its current size under that key, the same as
+  an explicit close.
+- **INV-10 / D3 save on accept (ANTS-5037).** Closing a resizable+keyed
+  dialog with `accept()` persists its current size under that key.
+- **INV-11 / D3 save on close still holds (ANTS-5037 guard).** After
+  whatever fixes INV-9/INV-10, an explicit `close()` on a resizable+keyed
+  dialog still persists its current size under that key.
 
 ## Test scope
 
-Behavioral, offscreen Qt. Synthetic `QShowEvent` / `QCloseEvent` drive the
-guard. INV-8 is a source scrape of `~MainWindow`, because this bundle cannot
-build a `MainWindow` headless. The global `Config` registration is reset to `nullptr` after each
-test that sets it so bundle-sibling dialog tests stay isolated.
+Behavioral, offscreen Qt. Synthetic `QShowEvent` / `QCloseEvent` drive INV-1
+through INV-7. INV-9 through INV-11 drive the dialog through its real
+lifecycle calls — `show()`, `reject()`, `accept()`, `close()` — with events
+processed between steps, because the defect they lock is about which of
+those calls actually deliver an event `DialogChrome` can act on. INV-8 is a
+source scrape of `~MainWindow`, because this bundle cannot build a
+`MainWindow` headless. The global `Config` registration is reset to
+`nullptr` after each test that sets it so bundle-sibling dialog tests stay
+isolated.

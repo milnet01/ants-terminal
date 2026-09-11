@@ -148,3 +148,93 @@ TEST(DialogChromeAffordances, INV8_MainWindowDtorReleasesConfig) {
               std::string::npos)
         << "~MainWindow must release the Config it registered";
 }
+
+// Why this exists: ANTS-5037 — ChromeGuard only saves on QEvent::Close.
+// The chrome's title-bar close button and Esc call QDialog::reject(), which
+// (per dialogs.md D3's own claim that reject() "routes through" close/done)
+// is supposed to save too. INV-9/INV-10 lock reject()/accept(); INV-11 is a
+// same-shape regression guard that the pre-existing close() path still
+// saves after any fix.
+
+// INV-9 — reject() (title-bar close button / Esc) persists the size (D3).
+TEST(DialogChromeAffordances, INV9_RejectSavesSize) {
+    ants_test::XdgGuard xdg;
+    xdg.setTestMode(true);  // isolate config.json; restored on scope exit
+    Config cfg;
+    ConfigGuard cg(&cfg);
+
+    QDialog dlg;
+    DialogChrome::install(&dlg, QString(), /*resizable=*/true,
+                          QStringLiteral("RejectMe"));
+    dlg.show();
+    QApplication::processEvents();
+    const QSize expected(650, 490);
+    dlg.resize(expected);
+    QApplication::processEvents();
+
+    dlg.reject();
+    QApplication::processEvents();
+
+    const QSize saved = cfg.dialogSize(QStringLiteral("RejectMe"));
+    EXPECT_EQ(saved, expected)
+        << "reject() (chrome close button / Esc) must persist the chosen "
+           "size under the key — saved "
+        << saved.width() << "x" << saved.height() << ", expected "
+        << expected.width() << "x" << expected.height();
+}
+
+// INV-10 — accept() persists the size (D3), same defect class as reject().
+TEST(DialogChromeAffordances, INV10_AcceptSavesSize) {
+    ants_test::XdgGuard xdg;
+    xdg.setTestMode(true);  // restored on scope exit
+    Config cfg;
+    ConfigGuard cg(&cfg);
+
+    QDialog dlg;
+    DialogChrome::install(&dlg, QString(), /*resizable=*/true,
+                          QStringLiteral("AcceptMe"));
+    dlg.show();
+    QApplication::processEvents();
+    const QSize expected(700, 520);
+    dlg.resize(expected);
+    QApplication::processEvents();
+
+    dlg.accept();
+    QApplication::processEvents();
+
+    const QSize saved = cfg.dialogSize(QStringLiteral("AcceptMe"));
+    EXPECT_EQ(saved, expected)
+        << "accept() must persist the chosen size under the key — saved "
+        << saved.width() << "x" << saved.height() << ", expected "
+        << expected.width() << "x" << expected.height();
+}
+
+// INV-11 — regression guard: an explicit close() (via QWidget::close(), not
+// a synthetic QCloseEvent) must still persist the size after any INV-9/
+// INV-10 fix. Same shape as INV-9/INV-10 (show, resize, process events,
+// act, process events) so it exercises the same code path they do.
+TEST(DialogChromeAffordances, INV11_CloseStillSavesSize) {
+    ants_test::XdgGuard xdg;
+    xdg.setTestMode(true);  // restored on scope exit
+    Config cfg;
+    ConfigGuard cg(&cfg);
+
+    QDialog dlg;
+    DialogChrome::install(&dlg, QString(), /*resizable=*/true,
+                          QStringLiteral("CloseStill"));
+    dlg.show();
+    QApplication::processEvents();
+    const QSize expected(660, 500);
+    dlg.resize(expected);
+    QApplication::processEvents();
+
+    dlg.close();
+    QApplication::processEvents();
+
+    const QSize saved = cfg.dialogSize(QStringLiteral("CloseStill"));
+    EXPECT_EQ(saved, expected)
+        << "close() must still persist the chosen size under the key — "
+           "saved "
+        << saved.width() << "x" << saved.height() << ", expected "
+        << expected.width() << "x" << expected.height();
+}

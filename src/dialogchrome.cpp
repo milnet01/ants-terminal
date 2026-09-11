@@ -62,7 +62,10 @@ protected:
             switch (ev->type()) {
             case QEvent::Show:   onShow();      break;
             case QEvent::Resize: positionGrip(); break;
-            case QEvent::Close:  saveSize();    break;
+            // ANTS-5037 — reject(), accept() and done() hide the dialog
+            // without a Close reaching this filter, so save on hide too.
+            case QEvent::Close:
+            case QEvent::Hide:   saveSize();    break;
             default: break;
             }
         }
