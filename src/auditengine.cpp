@@ -1349,6 +1349,18 @@ void applyCorroborationShift(QList<Finding> &findings,
     }
 }
 
+// ANTS-5041 — see the header. One combined list, so a line two checks both
+// flag counts as corroborated; the shifted severities go back in order.
+void applyCorroborationShiftAcross(QList<CheckResult> &results,
+                                   const QSet<QString> &noisyRules) {
+    QList<Finding> all;
+    for (const CheckResult &r : results) all += r.findings;
+    applyCorroborationShift(all, noisyRules);
+    qsizetype i = 0;
+    for (CheckResult &r : results)
+        for (Finding &f : r.findings) f.severity = all[i++].severity;
+}
+
 // ANTS-1111 — render a fold-in subsection block per
 // roadmap-format.md § 3.8 + § 3.5.
 QString templateRoadmapFoldInBlock(const QList<Finding> &actionable,

@@ -4281,6 +4281,15 @@ void AuditDialog::cancelAudit() {
     // runNextCheck cycle-completion flush only covers clean
     // completion.
     if (m_qualityTracker) m_qualityTracker->save();
+    // ANTS-5041 — the corroboration shift, once per run, over every check's
+    // findings, before the first render. Never per render: it is not
+    // idempotent.
+    {
+        QSet<QString> noisy;
+        if (m_qualityTracker)
+            for (const QString &id : m_qualityTracker->noisyRuleIds()) noisy.insert(id);
+        AuditEngine::applyCorroborationShiftAcross(m_completedResults, noisy);
+    }
     // Render whatever completed + restore the UI to the idle state.
     renderResults();
     m_runBtn->setEnabled(true);
@@ -4321,6 +4330,13 @@ void AuditDialog::runNextCheck() {
         // shutdown. One save() per run keeps disk traffic bounded
         // while making the data durable.
         if (m_qualityTracker) m_qualityTracker->save();
+        // ANTS-5041 — once per run, before the first render (see cancelAudit).
+        {
+            QSet<QString> noisy;
+            if (m_qualityTracker)
+                for (const QString &id : m_qualityTracker->noisyRuleIds()) noisy.insert(id);
+            AuditEngine::applyCorroborationShiftAcross(m_completedResults, noisy);
+        }
         renderResults();
         m_runBtn->setEnabled(true);
         if (m_cancelBtn)   m_cancelBtn->setVisible(false);
@@ -4712,19 +4728,9 @@ void AuditDialog::renderResults() {
         for (Finding &f : r.findings)
             f.confidence = computeConfidence(f);
 
-    // ANTS-1111 — severity-tier shift on cross-tool corroboration.
-    // Two-tier promotion (>=2 distinct tools at the same file:line)
-    // and one-tier demotion (single-tool finding from a known-noisy
-    // rule). Runs after enrichment so coverageCount is settled.
-    {
-        QSet<QString> noisy;
-        if (m_qualityTracker) {
-            const QStringList ids = m_qualityTracker->noisyRuleIds();
-            for (const QString &id : ids) noisy.insert(id);
-        }
-        for (auto &r : m_completedResults)
-            AuditEngine::applyCorroborationShift(r.findings, noisy);
-    }
+    // ANTS-1111's corroboration shift is not applied here. This runs on
+    // every filter keystroke and the shift is not idempotent, so ANTS-5041
+    // moved it to the run-completion paths (cancelAudit, runNextCheck).
 
     // Populate key→finding lookup for the anchor click handler. Done after
     // correlation so the lookup reflects the highConfidence flag.

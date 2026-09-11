@@ -473,6 +473,12 @@ QJsonArray buildVcsProvenanceBlock(const QString &rootCanonical);
 void applyCorroborationShift(QList<Finding> &findings,
                              const QSet<QString> &noisyRules);
 
+// ANTS-5041 — the shift over a whole run: every check's findings at
+// once, so two tools flagging one line corroborate each other. Call it
+// once per run, never per render: the shift is not idempotent.
+void applyCorroborationShiftAcross(QList<CheckResult> &results,
+                                   const QSet<QString> &noisyRules);
+
 // ANTS-1111 — render a single ROADMAP fold-in subsection block, ready
 // to splice into ROADMAP.md by RoadmapFoldIn::insertBlock. Subsection
 // shape per roadmap-format.md § 3.8; per-bullet fields per § 3.5.
