@@ -1546,6 +1546,10 @@ if(ANTS_TESTS)
                 tests/features/roadmap_status_bar_refresh/test_roadmap_status_bar_refresh.cpp
                 tests/features/ui_state_persistence/test_ui_state_persistence.cpp
                 tests/features/crash_safe_session_persist/test_crash_safe_session_persist.cpp
+                # ANTS-5032 — a once-per-process restore guard, and one
+                # owning save site across every open MainWindow
+                # (source-scrape; no test constructs a MainWindow).
+                tests/features/multi_window_session/test_multi_window_session.cpp
                 tests/features/dialog_close_focus_return/test_dialog_close_focus_return.cpp
                 tests/features/dialog_pseudo_modal/test_dialog_pseudo_modal.cpp
                 tests/features/clipboard_redaction/test_clipboard_redaction.cpp

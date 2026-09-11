@@ -252,11 +252,13 @@ private:
     // ANTS-1159 — cheap tab-order-only save, called on every tab
     // create / close / reorder so the tab list survives a crash
     // even when the periodic timer hasn't ticked yet. Subset of
-    // saveAllSessions: walks m_tabWidget, builds the tabOrder
-    // QStringList + active index, calls
-    // SessionManager::saveTabOrder. Honors the same
+    // saveAllSessions: writes this window's tab order + active index
+    // through saveProcessTabOrder. Honors the same
     // sessionPersistence + 5 s uptime guards.
     void saveTabOrderOnly();
+    // ANTS-5032 — every window's tabs go into the one tab_order.txt.
+    QStringList sessionTabIds(int *activeIndex = nullptr) const;
+    void saveProcessTabOrder(QStringList tabOrder, int activeIndex) const;
 
     TitleBar *m_titleBar = nullptr;
     OpaqueMenuBar *m_menuBar = nullptr;

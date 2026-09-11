@@ -3748,12 +3748,12 @@ void MainWindow::saveAllSessions() {
         const QString pinnedTitle = m_tabTitlePins.value(w);
         SessionManager::saveSession(tabId, t->grid(), t->shellCwd(), pinnedTitle);
     }
-    SessionManager::saveTabOrder(tabOrder, activeIndex);
+    saveProcessTabOrder(tabOrder, activeIndex);
 }
 
-// ANTS-1159 — cheap tab-order-only save. Walks the tab widget,
-// builds the tabOrder QStringList + active index, calls
-// SessionManager::saveTabOrder. Does NOT touch the per-tab
+// ANTS-1159 — cheap tab-order-only save. Builds this window's tab
+// order + active index and writes it through saveProcessTabOrder.
+// Does NOT touch the per-tab
 // scrollback `.dat` files (saveAllSessions handles those, on
 // the 30 s timer + closeEvent). Mirrors saveAllSessions's
 // guards — sessionPersistence + 5 s uptime floor.
@@ -3761,8 +3761,15 @@ void MainWindow::saveTabOrderOnly() {
     if (!m_config.sessionPersistence()) return;
     if (m_uptimeTimer.elapsed() < 5000) return;
 
-    QStringList tabOrder;
     int activeIndex = 0;
+    const QStringList tabOrder = sessionTabIds(&activeIndex);
+    saveProcessTabOrder(tabOrder, activeIndex);
+}
+
+// ANTS-5032 — this window's tabs as session ids, in tab-bar order.
+// *activeIndex, when given, becomes the current tab's position in it.
+QStringList MainWindow::sessionTabIds(int *activeIndex) const {
+    QStringList ids;
     const int currentIdx = m_tabWidget->currentIndex();
 
     for (int i = 0; i < m_tabWidget->count(); ++i) {
@@ -3775,14 +3782,33 @@ void MainWindow::saveTabOrderOnly() {
             tabId = m_tabSessionIds.value(t);
         if (tabId.isEmpty()) continue;
 
-        if (i == currentIdx)
-            activeIndex = tabOrder.size();
-        tabOrder.append(tabId);
+        if (activeIndex && i == currentIdx)
+            *activeIndex = ids.size();
+        ids.append(tabId);
+    }
+    return ids;
+}
+
+// ANTS-5032 — tab_order.txt is one file per process, so each window
+// writes every window's tabs, its own first so activeIndex still points
+// at its current tab. Hidden windows count: a Quake window hides but
+// keeps its tabs. Restore reopens the whole list in the first window.
+void MainWindow::saveProcessTabOrder(QStringList tabOrder, int activeIndex) const {
+    for (QWidget *top : QApplication::topLevelWidgets()) {
+        const auto *other = qobject_cast<const MainWindow *>(top);
+        if (other && other != this)
+            tabOrder += other->sessionTabIds();
     }
     SessionManager::saveTabOrder(tabOrder, activeIndex);
 }
 
 void MainWindow::restoreSessions() {
+    // ANTS-5032 — once per process. A later window (File → New Window)
+    // keeps the fresh tab newTab gave it instead of reopening the saved
+    // tabs under ids the first window already owns.
+    static bool restored = false;
+    if (restored) return;
+    restored = true;
     if (!m_config.sessionPersistence()) return;
 
     // Use saved tab order if available, fall back to file modification time
