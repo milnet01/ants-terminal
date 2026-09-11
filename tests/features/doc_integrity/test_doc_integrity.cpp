@@ -727,9 +727,11 @@ TEST(DocIntegrity, UngrantedToolDeduplicatesPerVerb) {
                           "And once more: `mcp__ants__spec_query`.\n"));
     const auto fs = DocIntegrity::check(root, {"docs/s.md"});
     ASSERT_EQ(countKind(fs, Kind::UngrantedTool), 1);
-    for (const Finding &f : fs)
-        if (f.kind == Kind::UngrantedTool)
+    for (const Finding &f : fs) {
+        if (f.kind == Kind::UngrantedTool) {
             EXPECT_EQ(f.line, 5) << "reported at the FIRST mention";
+        }
+    }
 }
 
 // INV-25 — the quiet cases, each of which would make this check unusable if it

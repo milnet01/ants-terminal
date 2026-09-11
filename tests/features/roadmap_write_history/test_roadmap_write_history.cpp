@@ -350,14 +350,15 @@ TEST(RoadmapWriteHistory, Inv2OneStampAndContiguousSeqPerItem) {
         stamps.insert(after[i].changedAt);
         seqs.push_back(after[i].seq);
     }
-    EXPECT_EQ(stamps.size(), 1)
+    ASSERT_EQ(stamps.size(), 1)
         << "one op must be one revision: its rows share a single changed_at";
     std::sort(seqs.begin(), seqs.end());
     for (int i = 1; i < seqs.size(); ++i)
         EXPECT_EQ(seqs[i], seqs[i - 1] + 1) << "seq must be contiguous, no gaps";
 
     // The migration stamped 2026-08-14T10:00:00Z; this op's stamp is its own.
-    EXPECT_NE(*stamps.cbegin(), QStringLiteral("2026-08-14T10:00:00Z"))
+    // With exactly one stamp, "not that one" is "the set does not hold it".
+    EXPECT_FALSE(stamps.contains(QStringLiteral("2026-08-14T10:00:00Z")))
         << "the consumer write reused the migration's stamp";
 }
 

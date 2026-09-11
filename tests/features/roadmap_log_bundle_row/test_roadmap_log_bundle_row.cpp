@@ -400,8 +400,9 @@ TEST(RoadmapLogBundleRow, Inv14DryRunResolvesSortedPlacement) {
         if (!ln.startsWith(QChar('|')) || ln.contains(QStringLiteral("---")) ||
             ln.contains(QStringLiteral("Bundle |")))
             continue;
-        if (++dataRow == 2)
+        if (++dataRow == 2) {
             EXPECT_TRUE(ln.startsWith(QStringLiteral("| 40 |"))) << ln.toStdString();
+        }
     }
     EXPECT_EQ(dataRow, 3);
 }

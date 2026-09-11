@@ -2866,7 +2866,7 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppendBatch(const QJsonObject &req) {
     // bullet: a batch filing a review's findings is exactly where every bullet
     // shares the pairing, and N identical advisories would bury the reply.
     {
-        QJsonArray ids;
+        QJsonArray advisoryIds;
         QJsonObject first;
         for (const QJsonValue &bv : req.value(QStringLiteral("bullets")).toArray()) {
             const QJsonObject b = bv.toObject();
@@ -2876,11 +2876,11 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppendBatch(const QJsonObject &req) {
             if (rk.isEmpty()) continue;
             if (first.isEmpty()) first = rk;
             const QString id = b.value(QStringLiteral("id_hint")).toString();
-            ids.append(id.isEmpty() ? b.value(QStringLiteral("headline")).toString()
-                                    : id);
+            advisoryIds.append(id.isEmpty() ? b.value(QStringLiteral("headline")).toString()
+                                            : id);
         }
         if (!first.isEmpty()) {
-            first[QStringLiteral("bullets")] = ids;
+            first[QStringLiteral("bullets")] = advisoryIds;
             rlAddWarning(out, first);
         }
     }

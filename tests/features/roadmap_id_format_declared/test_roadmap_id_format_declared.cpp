@@ -254,10 +254,12 @@ TEST(roadmap_id_format_declared, Inv4NonMatchKeepsTodaysId) {
 
     // And no bullet anywhere loses an id, which is the invariant's teeth: an
     // emptied id makes the bullet a narrator and roadmap_query drops it.
-    for (int i = 0; i < plain.size(); ++i)
-        if (!plain.at(i).id.isEmpty())
+    for (int i = 0; i < plain.size(); ++i) {
+        if (!plain.at(i).id.isEmpty()) {
             EXPECT_FALSE(decl.at(i).id.isEmpty())
                 << "INV-4: bullet " << i << " lost its id under a declaration";
+        }
+    }
 }
 
 // ---------------------------------------------------------------- INV-5 ----

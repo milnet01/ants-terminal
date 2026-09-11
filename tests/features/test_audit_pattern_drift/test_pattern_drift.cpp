@@ -95,10 +95,12 @@ TEST(TestAuditPatternDrift, Ants4112LanguageGateMatchesEngine) {
     // The two the report named, and no silent third: a gate that spreads is a
     // coverage loss nobody would see, since a gated-out pattern reports nothing.
     EXPECT_EQ(gated, 2) << "exactly cpp_exit and system_shell_out are gated";
-    for (const auto &p : engine)
+    for (const auto &p : engine) {
         if (p.id == QLatin1String("cpp_exit")
-            || p.id == QLatin1String("system_shell_out"))
+            || p.id == QLatin1String("system_shell_out")) {
             EXPECT_EQ(p.languages, QStringLiteral("cpp"));
+        }
+    }
 }
 
 // INV-D6 — ANTS-4111: `default_dimensions` is what dimensions:"auto" resolves

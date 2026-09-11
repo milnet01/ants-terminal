@@ -77,9 +77,9 @@ TEST(TerminalA11y, InterfaceRoleAndTextInterface) {
     QAccessibleInterface *iface = QAccessible::queryAccessibleInterface(&h.w);
     ASSERT_NE(iface, nullptr);
     EXPECT_EQ(iface->role(), QAccessible::Terminal);
-    ASSERT_NE(iface->textInterface(), nullptr);
-    EXPECT_EQ(iface->textInterface()->text(0, iface->textInterface()->characterCount()),
-              h.w.accessibleText());
+    QAccessibleTextInterface *text = iface->textInterface();
+    ASSERT_NE(text, nullptr);
+    EXPECT_EQ(text->text(0, text->characterCount()), h.w.accessibleText());
 }
 
 // INV-4 — caret offset tracks the cursor within the viewport text.
