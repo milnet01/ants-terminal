@@ -6199,7 +6199,7 @@ extends an existing item, that item carries it instead.
   Source: code-quality-review-2026-09-11 perf pass (lane terminal-widget-a).
   Lanes: terminalwidget.
 
-- 📋 [ANTS-5028] **Ctrl+clicking a suspicious link while output streams reads a freed URL span.**
+- ✅ [ANTS-5028] **Ctrl+clicking a suspicious link while output streams reads a freed URL span.**
   TerminalWidget::mousePressEvent takes a reference into
   urlSpansForLine()'s cached vector and passes the element to
   openHyperlink by reference. For a suspicious target openHyperlink
@@ -6212,6 +6212,11 @@ extends an existing item, that item carries it instead.
   supplies the invalidation. Not reproduced.
   Fix: copy the span by value in mousePressEvent, as contextMenuEvent
   already does, or take UrlSpan by value in openHyperlink.
+  Shipped 2026-09-11 (4c33868a): openHyperlink takes its UrlSpan by
+  value, so the warning dialog's nested event loop cannot free it.
+  Osc8HomographGuard INV-7 locks it; red before the fix. openFileAtPath
+  also takes a reference into the cache but runs no nested loop, so it
+  was left alone.
   **Layman:** Clicking a warned-about link while text is scrolling can crash the terminal.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lane terminal-widget-b).
@@ -6231,6 +6236,9 @@ extends an existing item, that item carries it instead.
   Fix: route re-run through pasteToTerminal's confirmation showing the
   text, or refuse re-run on unverified markers; shift or drop regions
   on eviction.
+  User decision 2026-09-11: re-run shows the exact command and asks
+  before running it, only when the OSC 133 markers are unsigned
+  ($ANTS_OSC133_KEY unset). Signed markers re-run at once.
   **Layman:** Printing a booby-trapped file could make 'Re-run last command' type and run something you never typed.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lanes terminal-widget-b, terminal-grid).
@@ -6335,7 +6343,7 @@ extends an existing item, that item carries it instead.
   Source: code-quality-review-2026-09-11 perf pass (lane mainwindow-b).
   Lanes: mcp, threading, audit.
 
-- 📋 [ANTS-5036] **Closing a second window leaves DialogChrome's global Config pointer dangling, so later dialogs read and write freed memory.**
+- ✅ [ANTS-5036] **Closing a second window leaves DialogChrome's global Config pointer dangling, so later dialogs read and write freed memory.**
   Every MainWindow constructor calls DialogChrome::setConfig with its
   own Config, overwriting one global pointer, and nothing resets it.
   File → New Window creates a MainWindow with WA_DeleteOnClose. Open a
@@ -6346,6 +6354,10 @@ extends an existing item, that item carries it instead.
   Fix: clear or re-point the pointer in ~MainWindow when it points at
   this window's Config; better, have ChromeGuard take the Config from
   the dialog's owning window at install time.
+  Shipped 2026-09-11 (df32e59d): DialogChrome keeps the registered
+  Configs in order; ~MainWindow releases its own and D3 falls back to
+  the one registered before it. DialogChromeAffordances INV-6 to INV-8;
+  red before the fix.
   **Layman:** After opening and closing a second Ants window, opening any dialog can crash the app.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lane dialog-chrome-theme).
@@ -6499,6 +6511,9 @@ extends an existing item, that item carries it instead.
   an untrusted third-party clone.
   Fix: an allowlist of flag names per tool, or reject output and fix
   flags in both the equals and the glued forms.
+  User decision 2026-09-11: remove the per-tool args override entirely.
+  No project on this machine uses that schema; RetroArch's
+  audit-config.json uses a tools/flags layout the runner never read.
   **Layman:** Auditing a downloaded project could let that project overwrite one of your files.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lane audit-engine).
@@ -6753,7 +6768,7 @@ extends an existing item, that item carries it instead.
   Source: code-quality-review-2026-09-11 perf pass (lanes app-entry-dialogs, shared-utilities).
   Lanes: diffviewer, threading.
 
-- 📋 [ANTS-5060] **SSH bookmark extra arguments can smuggle a ProxyCommand or a second shell line past the dialog's protections.**
+- ✅ [ANTS-5060] **SSH bookmark extra arguments can smuggle a ProxyCommand or a second shell line past the dialog's protections.**
   Two independent bypasses in the SSH connect path, both reachable from
   bookmark data, which the code's own threat model treats as untrusted
   (plugins, synced dotfiles).
@@ -6771,6 +6786,14 @@ extends an existing item, that item carries it instead.
   Fix: split the key on whitespace or equals after trimming and reject
   -F, or switch to an option allowlist; anchor shellQuote's pattern
   with \A and \z.
+  Shipped 2026-09-11 (6d5d9886): the -o key splits at whitespace or '='
+  after trimming and strips a double-quoted keyword; short flags are
+  walked as getopt does, so -4oProxyCommand= is caught; -F, -I, -E and
+  the Include, PKCS11Provider and SecurityKeyProvider keys are refused;
+  shellQuote anchors with \A and \z. Combined flags, the quoted keyword
+  and the library options were open beyond the finding. The four
+  whitespace and quote cases were not run against the old code; the old
+  key parser splits at '=' only, so each would have survived.
   **Layman:** A bad SSH bookmark could make Ants run a hidden command when you connect.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lanes app-entry-dialogs, shared-utilities).
@@ -8131,6 +8154,8 @@ extends an existing item, that item carries it instead.
   Unverified whether either dangling else changes what is asserted;
   ANTS-4879 found one that did. Unverified whether the shadowed `ids`
   is read where the outer one was meant.
+  Also seen 2026-09-11: test_terminal_a11y.cpp raises -Wnull-dereference
+  when a terminalwidget.h edit recompiles test_chrome.
   **Layman:** The build prints four warnings; two sit in tests and may mean those tests check less than they appear to.
   Kind: fix.
   Source: in-session-2026-09-11.

@@ -40,6 +40,10 @@ for security-relevant changes.
 
 ### Fixed
 
+- **Opening a link from the suspicious-link warning is safe while output keeps streaming** (ANTS-5028)
+
+- **Dialogs keep remembering their size after a second window closes** (ANTS-5036)
+
 - **Audit runs and project queries no longer leak memory, and the everyday checks now catch new leaks** (ANTS-3847)
   Each audit tool's process kept itself alive and was never freed, and
   a refused project.read or project.list skipped its cleanup. Both are
@@ -127,6 +131,8 @@ for security-relevant changes.
   work when it would.
 
 ### Security
+
+- **SSH bookmark extra arguments are checked the way ssh reads them, including spaced, quoted and combined option forms, config files and library-loading options** (ANTS-5060)
 
 - **A keyless AI request sent over plain http to another machine now warns that it is not encrypted, and still sends** (ANTS-5010)
   The AI chat, the review dialogs, the audit dialog's triage and the
