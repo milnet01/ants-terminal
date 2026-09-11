@@ -2356,7 +2356,12 @@ if(ANTS_TESTS)
                 tests/features/tokens_saved_chip/test_tokens_saved_chip.cpp
                 # ANTS-3579 — per-project pill wiring scrapes (recordDispatch /
                 # widget / mainwindow fold + tab refresh).
-                tests/features/tokens_saved_by_project/test_tokens_saved_by_project_wiring.cpp)
+                tests/features/tokens_saved_by_project/test_tokens_saved_by_project_wiring.cpp
+                # ANTS-5124 — qt62-guard.sh compile-interrupt containment
+                # (named+init container, INT/TERM/HUP trap around the
+                # compile, interrupted marker, --warm-only skip) source
+                # scrape lock.
+                tests/features/qt62_guard_interrupt/test_qt62_guard_interrupt.cpp)
     # claude_status_bar et al. use QSignalSpy (Qt6::Test); also pulls
     # Qt6::Network for ClaudeIntegration's QLocalSocket/QLocalServer
     # MCP-server hooks.
@@ -2455,6 +2460,11 @@ if(ANTS_TESTS)
         APPEND PROPERTY COMPILE_DEFINITIONS
         # ANTS-4726 — the hook whose docs-only list must match ci.yml's.
         SRC_PREPUSH_HOOK_PATH="${CMAKE_SOURCE_DIR}/tools/hooks/pre-push")
+    set_property(SOURCE tests/features/qt62_guard_interrupt/test_qt62_guard_interrupt.cpp
+        APPEND PROPERTY COMPILE_DEFINITIONS
+        # ANTS-5124 — the Qt 6.2 floor guard whose interrupted-compile
+        # containment this test locks.
+        SRC_QT62_GUARD_PATH="${CMAKE_SOURCE_DIR}/tools/qt62-guard.sh")
     set_property(SOURCE tests/features/allowlist_add/test_allowlist_add.cpp
         APPEND PROPERTY COMPILE_DEFINITIONS
         SRC_CLAUDESTATUSWIDGETS_PATH="${CMAKE_SOURCE_DIR}/src/claudestatuswidgets.cpp")

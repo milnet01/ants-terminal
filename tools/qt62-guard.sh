@@ -48,6 +48,16 @@
 #
 # Disk: ~1.2 GB image + ~3.5 GB build volume. Reclaim with --clean.
 #
+# ── Interruption (ANTS-5124) ─────────────────────────────────────────────────
+#
+# A killed push must not leave the compile running, nor leave a tree the next
+# run trusts. The container is named and runs under --init, and a trap on
+# INT, TERM and HUP stops it. `podman run` is started in the background and
+# waited on, because bash runs a trap only after a foreground command returns.
+# A marker is written as the compile starts and removed only when it finishes,
+# so a run killed by a signal no trap sees leaves it too. --warm-only skips a
+# marked tree; a normal run discards the volume and builds cold.
+#
 # ── Usage ────────────────────────────────────────────────────────────────────
 #
 #   tools/qt62-guard.sh              # run the guard; build the image if needed
@@ -55,7 +65,8 @@
 #   tools/qt62-guard.sh --clean      # drop every cached image + build volume
 #   tools/qt62-guard.sh --print      # show the resolved image/volume/packages
 #
-# Exit: 0 pass (or skipped under --warm-only), 1 compile failure or refusal.
+# Exit: 0 pass (or skipped under --warm-only), 1 compile failure or refusal,
+# 130 interrupted.
 set -uo pipefail
 cd "$(dirname "$(readlink -f "$0")")/.." || {
     echo "qt62-guard: cannot cd to repo root" >&2; exit 1; }
@@ -69,6 +80,9 @@ qt62_base="docker.io/library/ubuntu:22.04"
 # HTTPS when no system GTest is found. The runner has none either, so CI takes
 # the same FetchContent path. These reproduce the runner ENV.
 qt62_extra_pkgs="git ca-certificates"
+
+# Host-side, beside nothing else: the markers must outlive a killed run.
+qt62_state_dir="${XDG_CACHE_HOME:-$HOME/.cache}/ants-terminal/qt62-guard"
 
 mode="run"
 case "${1:-}" in
@@ -95,6 +109,7 @@ if [[ "$mode" == "clean" ]]; then
         | grep '^localhost/ants-qt62-baseline:' | xargs -r podman image rm -f
     podman volume ls --format '{{.Name}}' \
         | grep '^ants-qt62-build-' | xargs -r podman volume rm -f
+    rm -rf "$qt62_state_dir"
     echo "qt62-guard: cache cleared."
     exit 0
 fi
@@ -129,6 +144,7 @@ qt62_ci_packages() {
 }
 
 qt62_pkgs=""; qt62_tag=""; qt62_image=""; qt62_volume=""
+qt62_container=""; qt62_interrupted_marker=""
 qt62_resolve() {
     local list
     list="$(qt62_ci_packages)" || return 1
@@ -136,6 +152,8 @@ qt62_resolve() {
     qt62_tag="$(printf '%s\n%s\n' "$qt62_base" "$qt62_pkgs" | sha256sum | cut -c1-12)"
     qt62_image="localhost/ants-qt62-baseline:$qt62_tag"
     qt62_volume="ants-qt62-build-$qt62_tag"
+    qt62_container="ants-qt62-guard-$qt62_tag"
+    qt62_interrupted_marker="$qt62_state_dir/$qt62_volume.interrupted"
 }
 
 qt62_resolve || exit 1
@@ -158,6 +176,17 @@ if ! need_podman; then
     exit 1
 fi
 
+# --- an earlier compile still running (ANTS-5124) ----------------------------
+# Its run died without stopping it. Two compiles must not share one tree.
+if [[ "$(podman container inspect -f '{{.State.Running}}' "$qt62_container" \
+         2>/dev/null)" == "true" ]]; then
+    echo "qt62-guard: ⊘ an earlier Qt 6.2 compile is still running ($qt62_container)."
+    echo "            Wait for it (podman wait $qt62_container), or stop it"
+    echo "            (podman stop $qt62_container); the next run then builds cold."
+    [[ "$mode" == "warm-only" ]] && exit 0
+    exit 1
+fi
+
 # --- warm-only precondition -------------------------------------------------
 # The hook must never pay a 10-minute cold build: that is how a hook gets
 # bypassed, and a caller timeout killing it mid-ninja leaves a tree this
@@ -172,6 +201,15 @@ if [[ "$mode" == "warm-only" ]]; then
         echo "            current ci.yml package set. Building it is a one-off ~11 min"
         echo "            (61 s image + ~10 min first compile), too long to sit inside"
         echo "            a push. Warm it once, then this check costs ~7 s:"
+        echo "              tools/qt62-guard.sh"
+        echo "            CI's qt62-baseline job still covers this push."
+        exit 0
+    fi
+    # ANTS-5124 — an incremental result over a killed compile is a false pass.
+    if [[ -e "$qt62_interrupted_marker" ]]; then
+        echo "qt62-guard: ⊘ Qt 6.2 floor guard SKIPPED — the cached build tree was"
+        echo "            interrupted mid-compile, so it cannot be trusted. Rebuild"
+        echo "            it once, cold:"
         echo "              tools/qt62-guard.sh"
         echo "            CI's qt62-baseline job still covers this push."
         exit 0
@@ -207,14 +245,32 @@ qt62_ensure_image || {
 # Source is bind-mounted READ-ONLY, so a stray write fails loudly and the host
 # repo and its build*/ trees are never touched. The build tree lives in the
 # named volume, which is what makes a re-run incremental.
+if [[ -e "$qt62_interrupted_marker" ]]; then
+    echo "qt62-guard: the cached build tree was interrupted mid-compile;"
+    echo "            discarding it and building cold."
+    if podman volume exists "$qt62_volume"; then
+        podman volume rm -f "$qt62_volume" >/dev/null || {
+            echo "qt62-guard: cannot remove $qt62_volume" >&2; exit 1; }
+    fi
+    rm -f "$qt62_interrupted_marker"
+fi
+
+trap 'echo "qt62-guard: interrupted — stopping $qt62_container; the build tree stays marked interrupted." >&2
+      podman stop -t 5 "$qt62_container" >/dev/null 2>&1
+      exit 130' INT TERM HUP
+mkdir -p "$qt62_state_dir" && : > "$qt62_interrupted_marker" || {
+    echo "qt62-guard: cannot write $qt62_interrupted_marker" >&2; exit 1; }
 echo "qt62-guard: compiling against Qt 6.2 ($qt62_base, tag $qt62_tag)…"
-podman run --rm --security-opt label=disable \
+podman run --rm --security-opt label=disable --init --name "$qt62_container" \
     -v "$PWD:/src:ro" -v "$qt62_volume:/build" -w /src "$qt62_image" \
     bash -euo pipefail -c '
         cmake -S /src -B /build -G Ninja -DCMAKE_BUILD_TYPE=Release
         cmake --build /build --parallel
-    '
+    ' &
+wait $!
 rc=$?
+trap - INT TERM HUP
+rm -f "$qt62_interrupted_marker"
 
 if (( rc != 0 )); then
     echo >&2
