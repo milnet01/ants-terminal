@@ -411,7 +411,10 @@ private:
     QString lineText(int globalLine) const;
     void openFileAtPath(const QString &path);
     // Opens a hyperlink, with an OSC 8 phishing warning (see classifyHyperlink).
-    void openHyperlink(const UrlSpan &span, int globalLine);
+    // Takes the span by value (ANTS-5028): the warning dialog runs a nested
+    // event loop, and output during it can clear the span cache a caller's
+    // reference points into.
+    void openHyperlink(UrlSpan span, int globalLine);
 
 public:
     // ANTS-2119 M2 — OSC 8 phishing classification, split out of openHyperlink so

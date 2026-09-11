@@ -42,8 +42,13 @@ Split the policy out of the modal dialog into a pure, unit-testable
   (`click here` → `http://203.0.113.7/x`); loopback (`127.0.0.1`) and
   link-local stay `None` (dev-server links must not nag).
 - **INV-6** — no host at all (e.g. `mailto:`) → `None`.
+- **INV-7 (ANTS-5028)** — `openHyperlink` takes its `UrlSpan` by value. The
+  warning dialog runs a nested event loop, during which output can clear the
+  span cache. A span held by reference into that cache would then be freed
+  before the URL is opened.
 
 ## Test
 
-Pure calls to the static `classifyHyperlink` — no widget instance, no modal
-dialog. Label + URL in, verdict out.
+INV-1 to INV-6 are pure calls to the static `classifyHyperlink` — no widget
+instance, no modal dialog. Label + URL in, verdict out. INV-7 is a source
+scrape of `terminalwidget.h`, because the dialog path needs a modal.

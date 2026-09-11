@@ -4277,7 +4277,8 @@ TerminalWidget::classifyHyperlink(const QString &visibleLabel, const QString &ur
     return HyperlinkWarning::None;
 }
 
-void TerminalWidget::openHyperlink(const UrlSpan &span, int globalLine) {
+// NOLINTNEXTLINE(performance-unnecessary-value-param) — by value on purpose (ANTS-5028)
+void TerminalWidget::openHyperlink(UrlSpan span, int globalLine) {
     // Phishing check: only relevant for OSC 8 where the visible text ≠ URL.
     if (span.isOsc8) {
         const QString visible = lineText(globalLine).mid(

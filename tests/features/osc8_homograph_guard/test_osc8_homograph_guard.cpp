@@ -5,6 +5,7 @@
 
 #include <gtest/gtest.h>
 #include "terminalwidget.h"
+#include "../../_support/srcgrep.h"
 
 #include <QString>
 
@@ -63,4 +64,16 @@ TEST(Osc8HomographGuard, Inv5RawIpDestination) {
 // INV-6 — no host at all (mailto:) → None.
 TEST(Osc8HomographGuard, Inv6NoHostNoWarn) {
     EXPECT_EQ(classify("email me", "mailto:someone@example.com"), HW::None);
+}
+
+// INV-7 — openHyperlink owns its span (ANTS-5028). The warning dialog runs a
+// nested event loop that can clear the span cache, so a reference into the
+// cache would dangle. Source scrape: the dialog path needs a modal.
+TEST(Osc8HomographGuard, Inv7OpenHyperlinkTakesSpanByValue) {
+    const std::string header = ants_test::squashWhitespace(
+        ants_test::slurpFile(SRC_TERMINALWIDGET_H_PATH));
+    ASSERT_FALSE(header.empty()) << "terminalwidget.h not readable";
+    EXPECT_NE(header.find("void openHyperlink(UrlSpan span, int globalLine);"),
+              std::string::npos)
+        << "openHyperlink must take its UrlSpan by value";
 }
