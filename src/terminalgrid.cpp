@@ -1040,8 +1040,16 @@ void TerminalGrid::handleEsc(const VtAction &a) {
             QByteArray osc133Key   = m_osc133Key;
             // ANTS-5033 — the notification budget survives too, or a stream
             // that resets before each notification would refill it every time.
+            // ANTS-5122 — so do the OSC 52 clipboard and OSC 1337 user-var
+            // budgets, window start included: a zeroed start reads as an
+            // expired window and would reset the count on the next write.
             const qint64 notifyWindowStartMs = m_notifyWindowStartMs;
             const int notifyCount  = m_notifyCount;
+            const qint64 osc52WindowStartMs = m_osc52WindowStartMs;
+            const int osc52WriteCount = m_osc52WriteCount;
+            const qint64 osc52WriteBytes = m_osc52WriteBytes;
+            const qint64 userVarWindowStartMs = m_userVarWindowStartMs;
+            const int userVarWriteCount = m_userVarWriteCount;
             // ANTS-4456 — configuration pushed onto the grid from outside is
             // part of the INITIAL state RIS returns to, not something it
             // discards. xterm re-reads its resources on RIS rather than
@@ -1069,6 +1077,11 @@ void TerminalGrid::handleEsc(const VtAction &a) {
             m_osc133Key               = std::move(osc133Key);
             m_notifyWindowStartMs     = notifyWindowStartMs;
             m_notifyCount             = notifyCount;
+            m_osc52WindowStartMs      = osc52WindowStartMs;
+            m_osc52WriteCount         = osc52WriteCount;
+            m_osc52WriteBytes         = osc52WriteBytes;
+            m_userVarWindowStartMs    = userVarWindowStartMs;
+            m_userVarWriteCount       = userVarWriteCount;
             // Through the setters, not by assigning the members back: they
             // also re-point cells still carrying the constructor's default
             // colour, which a bare assignment would leave at the
