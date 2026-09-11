@@ -40,6 +40,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **A saved tab that cannot be restored keeps its session file, restores all or nothing, and very large scroll histories save only what can be restored** (ANTS-5031)
+
 - **Re-running a command reads the right line after the scroll history has filled up** (ANTS-5029)
 
 - **Opening a link from the suspicious-link warning is safe while output keeps streaming** (ANTS-5028)

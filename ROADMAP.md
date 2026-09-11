@@ -6270,7 +6270,7 @@ extends an existing item, that item carries it instead.
   Source: code-quality-review-2026-09-11 perf pass (lanes mainwindow-a, config-session-project).
   Lanes: session, mainwindow.
 
-- 📋 [ANTS-5031] **A session that saves can be refused on restore, and the next save then overwrites the intact file.**
+- ✅ [ANTS-5031] **A session that saves can be refused on restore, and the next save then overwrites the intact file.**
   Save has no size cap, but SessionManager::restore refuses a blob
   whose uncompressed size exceeds MAX_UNCOMPRESSED, and the scrollback
   setting allows more lines than that cap admits at ordinary widths.
@@ -6286,6 +6286,14 @@ extends an existing item, that item carries it instead.
   Fix: cap what save writes to what restore accepts, and rotate a
   refused blob aside, or issue a new tab id, before any save can
   reuse the path.
+  Shipped 2026-09-11 (3e30824a): loadSession copies a refused file aside
+  with rotateCorruptFileAside; restore() parses the whole stream into
+  locals before it touches the grid; serialize() takes stream and file
+  caps defaulting to restore's limits (MAX_RESTORE_RAW_BYTES,
+  MAX_RESTORE_FILE_BYTES), keeps the newest scrollback lines that fit,
+  and shrinks further when compression still exceeds the file cap.
+  SessionRestoreRefusal INV-A to INV-C were red before the fix; 41
+  session tests pass.
   **Layman:** With a very large scroll history, a tab can fail to come back after a restart, and Ants then deletes its saved copy.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lane config-session-project).
@@ -6302,6 +6310,14 @@ extends an existing item, that item carries it instead.
   ids.
   Related: a second window also leaves DialogChrome's global Config
   pointer dangling, filed separately.
+  Measured 2026-09-11: the stated fix is incomplete. A once-per-process
+  restore guard stops the duplicate restore, and later windows then get
+  fresh ids from newTab. But saveAllSessions and saveTabOrderOnly each
+  write only their own window's tabs into the single tab_order.txt, so
+  the last window to save decides which tabs return after a restart. The
+  complete fix is the guard plus a tab order gathered from every
+  MainWindow (this window's tabs first, so the active index still refers
+  to it). Restore then opens every tab in the first window.
   **Layman:** Opening a second Ants window duplicates your saved tabs and can lose some of them on the next restart.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lane mainwindow-a).
