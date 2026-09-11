@@ -214,3 +214,30 @@ TEST(AuditRunIncompleteDetail, Inv6EnvelopeSurfaces) {
     EXPECT_TRUE(contains(ci, "parse_failures"))
         << "INV-6: async-poll done-branch emits parse_failures";
 }
+
+// INV-10 (ANTS-5044) — a tool the per-tool cap killed is timed_out, not
+// crashed. The cap's SIGTERM surfaces as CrashExit, whose handlers used to
+// record `crashed` before the grace timer's `timed_out` could land.
+TEST(AuditRunIncompleteDetail, Inv10CapKillIsTimedOut) {
+    using AuditRunner::internal::toolExitStatus;
+    EXPECT_EQ(toolExitStatus(/*timedOut=*/true, /*crashExit=*/true),
+              QStringLiteral("timed_out"));
+    EXPECT_EQ(toolExitStatus(/*timedOut=*/true, /*crashExit=*/false),
+              QStringLiteral("timed_out"));
+    EXPECT_EQ(toolExitStatus(/*timedOut=*/false, /*crashExit=*/true),
+              QStringLiteral("crashed"));
+    EXPECT_EQ(toolExitStatus(/*timedOut=*/false, /*crashExit=*/false),
+              QStringLiteral("ok"));
+
+    // Wiring: the cap marks the tool before it signals it, and both process
+    // handlers ask toolExitStatus.
+    const std::string rn = ants_test::stripComments(
+        ants_test::slurpFile(SRC_AUDITRUNNER_CPP_PATH));
+    const size_t mark = rn.find("timedOut.insert(tool);");
+    const size_t term = rn.find("proc->terminate();");
+    ASSERT_NE(term, std::string::npos) << "the per-tool cap's SIGTERM moved";
+    ASSERT_NE(mark, std::string::npos) << "the cap must mark the tool timed out";
+    EXPECT_LT(mark, term) << "the mark must precede the SIGTERM";
+    EXPECT_GE(ants_test::countOccurrences(rn, "toolExitStatus("), 2u)
+        << "the finished and errorOccurred handlers must both use toolExitStatus";
+}

@@ -237,6 +237,13 @@ QStringList incompleteToolNames(const QHash<QString, ToolResult> &byTool);
 // Pure over byTool so the feature test can assert the derivation.
 QJsonArray incompleteToolsDetail(const QHash<QString, ToolResult> &byTool);
 
+// ANTS-5044 — a tool's status from how its process ended. `timedOut` is set
+// when the per-tool cap signalled it; that SIGTERM surfaces as CrashExit.
+inline QString toolExitStatus(bool timedOut, bool crashExit) {
+    if (timedOut) return QStringLiteral("timed_out");
+    return crashExit ? QStringLiteral("crashed") : QStringLiteral("ok");
+}
+
 // ANTS-3585 — deduped, ascending union of every tool's parseFailureFiles.
 QStringList parseFailureFiles(const QHash<QString, ToolResult> &byTool);
 

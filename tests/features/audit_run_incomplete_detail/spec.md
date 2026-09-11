@@ -70,6 +70,13 @@ and the two envelope surfaces (mirrors the `audit_run_partial_envelope` /
 - **INV-6** — both envelope surfaces serialise the new fields: the sync provider
   (`mainwindow.cpp`) and the async-poll done-branch (`claudeintegration.cpp`)
   both emit `incomplete_tools_detail` and `parse_failures`.
+- **INV-10** (ANTS-5044) — a tool the per-tool cap killed is `timed_out`, not
+  `crashed`. `internal::toolExitStatus(timedOut, crashExit)` returns
+  `timed_out` whenever `timedOut` is set, else `crashed` for a crash exit,
+  else `ok`. The cap records the tool in `timedOut` before
+  `proc->terminate()`, and both the `finished` and `errorOccurred` handlers
+  call `toolExitStatus` (source-anchored). A timed-out tool's partial output
+  is not parsed.
 
 ## Pre-fix check
 

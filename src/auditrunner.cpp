@@ -40,6 +40,8 @@
 
 #include "auditrunner.h"
 
+#include <QSet>
+
 #include "auditcache.h"     // ANTS-1555
 #include "auditdelta.h"     // ANTS-1870 since-last-run findings delta
 #include "auditscope.h"     // ANTS-1504 changed-file resolver
@@ -2240,6 +2242,9 @@ RunResult runAudit(const RunRequest &req) {
     QHash<QString, QString>            rawByTool;
     QHash<QString, std::shared_ptr<QProcess>> procs;
     QHash<QString, QElapsedTimer>      perToolTimer;
+    // ANTS-5044 — tools the per-tool cap signalled. Their SIGTERM surfaces as
+    // CrashExit, so the handlers consult this before calling it a crash.
+    QSet<QString>                      timedOut;
     // ANTS-1870 — the FULL per-tool finding set (uncapped, with fp), kept
     // out of ToolResult so the envelope stays lean. Feeds the carry-forward
     // SARIF, the delta, and the recorded sidecar.
@@ -2311,12 +2316,11 @@ RunResult runAudit(const RunRequest &req) {
         proc->closeWriteChannel();
         QProcess::connect(proc,
             qOverload<int, QProcess::ExitStatus>(&QProcess::finished),
-            [tool, proc, &finish, &perToolTimer](
+            [tool, proc, &finish, &perToolTimer, &timedOut](
                 int code, QProcess::ExitStatus es) {
                 const qint64 ms = perToolTimer.value(tool).elapsed();
-                const QString status = (es == QProcess::CrashExit)
-                    ? QStringLiteral("crashed")
-                    : QStringLiteral("ok");
+                const QString status = AuditRunner::internal::toolExitStatus(
+                    timedOut.contains(tool), es == QProcess::CrashExit);
                 Q_UNUSED(code);
                 const QByteArray out = proc->readAllStandardOutput();
                 const QByteArray err = proc->readAllStandardError();
@@ -2329,19 +2333,25 @@ RunResult runAudit(const RunRequest &req) {
                 // dropped stderr for a tool that wrote findings to BOTH.
                 const QString raw = AuditEngine::mergeToolChannels(
                     QString::fromUtf8(out), QString::fromUtf8(err));
-                finish(tool, status, raw, ms);
+                // A timed-out tool's output is partial; it is not parsed.
+                finish(tool, status,
+                       status == QLatin1String("timed_out") ? QString() : raw, ms);
             });
         QProcess::connect(proc, &QProcess::errorOccurred,
-            [tool, proc, &finish, &perToolTimer](QProcess::ProcessError) {
+            [tool, proc, &finish, &perToolTimer, &timedOut](QProcess::ProcessError) {
                 const qint64 ms = perToolTimer.value(tool).elapsed();
-                finish(tool, QStringLiteral("crashed"),
-                       QString::fromUtf8(proc->readAllStandardError()),
+                const bool cut = timedOut.contains(tool);
+                finish(tool, AuditRunner::internal::toolExitStatus(cut, true),
+                       cut ? QString()
+                           : QString::fromUtf8(proc->readAllStandardError()),
                        ms);
             });
 
         // Per-tool wall-clock cap (INV-5): SIGTERM at cap, SIGKILL +2s.
-        QTimer::singleShot(perToolMs, proc, [tool, proc, &finish, &perToolTimer]() {
+        QTimer::singleShot(perToolMs, proc,
+                           [tool, proc, &finish, &perToolTimer, &timedOut]() {
             if (proc->state() == QProcess::NotRunning) return;
+            timedOut.insert(tool);
             proc->terminate();
             QTimer::singleShot(kKillGraceMs, proc,
                 [tool, proc, &finish, &perToolTimer]() {
