@@ -78,4 +78,11 @@ auto onGuiThread(F &&f) -> std::optional<std::invoke_result_t<F>> {
     return out;
 }
 
+// ANTS-5113 — join `worker` from the GUI thread at teardown. Returns false
+// when it has not exited within `timeoutMs`; a negative value waits forever.
+inline bool joinRefusingMarshals(QThread *worker, int timeoutMs = -1) {
+    return timeoutMs < 0 ? worker->wait()
+                         : worker->wait(QDeadlineTimer(timeoutMs));
+}
+
 }  // namespace ants

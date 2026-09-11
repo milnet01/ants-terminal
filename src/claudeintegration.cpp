@@ -1709,7 +1709,7 @@ void ClaudeIntegration::shutdownDispatchWorker() {
     ants::setGuiMarshalRefused(true);
     if (!m_dispatchWorker) return;
     m_dispatchWorker->quit();
-    m_dispatchWorker->wait();
+    ants::joinRefusingMarshals(m_dispatchWorker);
     delete m_dispatchSink;
     m_dispatchSink = nullptr;
     // ~QObject removes events still posted to `this`, so a result that

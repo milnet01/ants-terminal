@@ -2976,6 +2976,10 @@ if(ANTS_TESTS)
                 tests/features/image_bomb_png_header_peek/test_image_bomb.cpp
                 tests/features/threaded_ptywrite_gating/test_threaded_ptywrite_gating.cpp
                 tests/features/threaded_resize_synchronous/test_threaded_resize_synchronous.cpp
+                # ANTS-5113 — joining a worker already parked inside
+                # ants::onGuiThread must not deadlock once the refused flag
+                # is set. Qt6::Core-only (guithread.h needs no widget code).
+                tests/features/guithread_join_parked_marshal/test_guithread_join_parked_marshal.cpp
                 tests/features/remote_control_tab_list/test_remote_control_tab_list.cpp
                 tests/features/remote_control_ls/test_remote_control_ls.cpp
                 tests/features/remote_control_send_text/test_remote_control_send_text.cpp

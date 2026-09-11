@@ -162,20 +162,25 @@ TEST(McpVerbOffthreadGuard, Main) {
     // INV-7 — the GUI thread never blocks on the dispatch worker while
     // serving a request. The teardown join is the sole exception, and it is
     // reached only from the destructor.
+    // ANTS-5113 — the join goes through ants::joinRefusingMarshals, which
+    // serves marshals the refused flag arrived too late to stop.
+    const std::string join = "joinRefusingMarshals(m_dispatchWorker)";
     expect(!teardown.empty(), "INV-7/shutdownDispatchWorker-found");
-    expect(teardown.find("m_dispatchWorker->wait()") != std::string::npos,
-           "INV-7/teardown-joins");
+    expect(teardown.find(join) != std::string::npos, "INV-7/teardown-joins");
     {
         size_t joins = 0;
-        for (size_t at = ci.find("m_dispatchWorker->wait()");
-             at != std::string::npos;
-             at = ci.find("m_dispatchWorker->wait()", at + 1))
+        for (size_t at = ci.find(join); at != std::string::npos;
+             at = ci.find(join, at + 1))
             ++joins;
         expect(joins == 1, "INV-7/exactly-one-join-in-the-file");
     }
-    expect(!post.empty() && post.find("->wait()") == std::string::npos,
+    expect(ci.find("m_dispatchWorker->wait(") == std::string::npos,
+           "INV-7/no-bare-join-that-cannot-serve-marshals");
+    expect(!post.empty() && post.find("->wait()") == std::string::npos &&
+               post.find("joinRefusingMarshals(") == std::string::npos,
            "INV-7/postToolDispatch-does-not-join");
-    expect(!finish.empty() && finish.find("->wait()") == std::string::npos,
+    expect(!finish.empty() && finish.find("->wait()") == std::string::npos &&
+               finish.find("joinRefusingMarshals(") == std::string::npos,
            "INV-7/finishToolDispatch-does-not-join");
     expect(bodyAfter(ci, "ClaudeIntegration::~ClaudeIntegration() {")
                    .find("shutdownDispatchWorker()") != std::string::npos,
