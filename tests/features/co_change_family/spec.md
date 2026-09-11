@@ -46,6 +46,34 @@ spec's numbered sequence.
 | `ClipNeverSplitsASurrogatePair` | when the budget lands inside a multi-byte character, the clip ends before that character; it never leaves a dangling surrogate, and it round-trips through UTF-8 unchanged |
 | `ClipIsAByteBudgetPrefix` | a line within budget is returned unchanged; a line over budget is cut to the longest fitting prefix, with no marker added |
 
+## ANTS-5052 — rg stdout byte ceiling
+
+`cmdCoChangeFamily` shares `rcRunRg` — the one rg call site — with
+`cmdWorkspaceSearch` and `cmdCitedBy`. `rcRunRg` waits for rg to finish and
+takes its whole stdout, bounded only by rg's wall-time budget. The fix reads
+stdout while rg runs and kills it once a byte ceiling is passed; this verb's
+share of that contract is `truncated`.
+
+`RemoteControl::setRgStdoutCapOverride(bytes)` is a test-only seam (STUB
+today: it sets a field `rcRunRg` never reads) that reaches the ceiling from
+a small fixture. These are this test file's own local cases, the same way
+the ANTS-5066 clipping cases above are: the shared rg runner is plumbing
+this verb sits behind, not part of the owner spec's numbered `assemble()`
+contract.
+
+| Case | Locks |
+|---|---|
+| `Ants5052OutputCapSetsTruncated` | `truncated:true` once the output ceiling is hit, over a fixture with many more matching lines than `max_sites` would need to explain a cap on its own. |
+| `Ants5052GuardNoOverrideNotTruncated` | Guard, must hold before and after the fix: with no override, `truncated` stays false over the same fixture. |
+
+**Pre-fix state:** expected RED — nothing in `cmdCoChangeFamily` reads
+`RgRun::outputCapped` today, so `res.truncated || run.hardKilled` stays
+false however small the override.
+
+**Out of scope for this section**, filed separately: the bounded min-heap
+this verb's own spec calls for, line-by-line stdout parsing, and
+`rg --count`.
+
 ## Why two of these are source-greps, not behaviour
 
 `SeamTuHasNoChromeSymbols` and `ScanIgnoresDeclaredSourceRoots` assert

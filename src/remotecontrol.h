@@ -450,6 +450,9 @@ public:
     // (0 = use PaginationEngine::kSoftCapBytes). The pure builder above
     // takes the cap directly; this lets a live-verb path force truncation.
     void setBundleSoftCapOverride(int bytes) { m_bundleSoftCapOverride = bytes; }
+    // ANTS-5052 — test-only override for the rg stdout byte ceiling
+    // (0 = use the default). Lets a test reach the cap with a small tree.
+    void setRgStdoutCapOverride(qint64 bytes) { m_rgStdoutCapOverride = bytes; }
     // ANTS-1583 — roadmap_branch_drift: compare ROADMAP ✅ entries'
     // cited commit SHAs against HEAD's reachable history. Reuses
     // findRoadmapUnder + collectGitSnapshot + runGit. See
@@ -1377,6 +1380,9 @@ private:
     // default PaginationEngine::kSoftCapBytes). Set via
     // setBundleSoftCapOverride; never written on the live path.
     int m_bundleSoftCapOverride = 0;
+    // ANTS-5052 — test-only rg stdout ceiling override (0 = default). Set via
+    // setRgStdoutCapOverride; never written on the live path.
+    qint64 m_rgStdoutCapOverride = 0;
     // ANTS-1287 — heading index + section-slice bullet cache. Shares
     // (path, mtime, stamp) keys with the bullets cache; cleared on
     // mtime advance or TTL expiry. See docs/specs/ANTS-1287.md § 2.3.

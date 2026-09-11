@@ -467,3 +467,85 @@ TEST(CitedBy, Inv13EmptyAnchorRefuses) {
     EXPECT_TRUE(good.value(QStringLiteral("ok")).toBool());
     EXPECT_EQ(cellCount(good), 1);
 }
+
+// --------------------------------------------------------------- INV-14 -----
+// ANTS-5052 — the rg stdout byte ceiling.
+//
+// rcRunRg (the one rg call site this verb shares with cmdWorkspaceSearch and
+// cmdCoChangeFamily) waits for rg to finish and takes its whole stdout,
+// bounded only by rg's wall-time budget. RemoteControl::setRgStdoutCapOverride
+// is a test-only seam (STUB today: sets a field rcRunRg never reads) that lets
+// a small fixture reach a small ceiling. Once the fix reads stdout while rg
+// runs and kills it past the ceiling, cited_by must treat that the same way
+// it treats a hard-killed run (INV-10 above): refuse, never return a partial
+// cell set. These cases build their own RemoteControl directly rather than
+// through this file's `run()` helper, because `run()` does not expose a way
+// to set the override.
+//
+// SCOPE: only the byte-ceiling half is locked here — line-by-line parsing and
+// rg --count are filed separately (ANTS-5052 roadmap item).
+
+namespace {
+
+// One anchor cited on many long lines, so the real stdout is many times the
+// small override below.
+bool writeAnts5052CitedByFixture(const QString &root) {
+    QByteArray body;
+    for (int i = 0; i < 30; ++i) {
+        body += "capAnchorANTS5052 filler filler filler filler filler "
+                "filler filler filler filler line_index_marker\n";
+    }
+    return writeFile(root + QStringLiteral("/docs/cap_fixture.md"), body);
+}
+
+constexpr qint64 kAnts5052SmallCapBytes = 300;
+
+}  // namespace
+
+TEST(CitedBy, Ants5052OutputCapRefusesLikeHardKill) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString root = canon(tmp.path());
+    ASSERT_TRUE(writeAnts5052CitedByFixture(root));
+
+    RemoteControl rc(nullptr);
+    rc.setRgStdoutCapOverride(kAnts5052SmallCapBytes);
+    const QJsonObject resp =
+        rc.cmdCitedBy(reqFor(root, {QStringLiteral("capAnchorANTS5052")}))
+            .object();
+
+    EXPECT_FALSE(resp.value(QStringLiteral("ok")).toBool())
+        << "ANTS-5052 INV-14: an output-capped run must refuse, the same way "
+           "a hard-killed run does today (INV-10) — a partial cell set is "
+           "indistinguishable from a complete one; full envelope="
+        << QJsonDocument(resp).toJson(QJsonDocument::Compact).toStdString();
+    EXPECT_EQ(resp.value(QStringLiteral("code")).toString(),
+              QStringLiteral("rg_failed"))
+        << "ANTS-5052 INV-14: expected code \"rg_failed\"; saw code=\""
+        << resp.value(QStringLiteral("code")).toString().toStdString()
+        << "\" full envelope="
+        << QJsonDocument(resp).toJson(QJsonDocument::Compact).toStdString();
+}
+
+// GUARD — with no override, the same fixture still returns ok:true with a
+// full cell set. Must pass both before and after the fix.
+TEST(CitedBy, Ants5052GuardNoOverrideStillOk) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString root = canon(tmp.path());
+    ASSERT_TRUE(writeAnts5052CitedByFixture(root));
+
+    RemoteControl rc(nullptr);  // no override — default ceiling.
+    const QJsonObject resp =
+        rc.cmdCitedBy(reqFor(root, {QStringLiteral("capAnchorANTS5052")}))
+            .object();
+
+    ASSERT_TRUE(resp.value(QStringLiteral("ok")).toBool())
+        << "GUARD: unmodified default must still succeed: "
+        << QJsonDocument(resp).toJson(QJsonDocument::Compact).toStdString();
+    EXPECT_FALSE(resp.value(QStringLiteral("truncated")).toBool());
+    ASSERT_EQ(cellCount(resp), 1);
+    EXPECT_EQ(cellAt(resp, 0).value("count").toInt(), 30)
+        << "GUARD: every one of the 30 citation lines must be tallied with "
+           "no override";
+}

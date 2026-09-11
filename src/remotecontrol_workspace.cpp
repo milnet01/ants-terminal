@@ -57,6 +57,9 @@ struct RgRun {
     QString startDiagnosis;       // ANTS-4650 — non-empty only when startFailed
     bool crashed     = false;     // abnormal exit that was not our own kill
     bool hardKilled  = false;
+    // ANTS-5052 — stopped because stdout passed the byte ceiling; the caller
+    // reports its result as it reports a run cut short.
+    bool outputCapped = false;
 };
 
 // How long to wait for the fork+exec to report started. Deliberately unchanged
@@ -64,7 +67,16 @@ struct RgRun {
 // and the diagnosis now says so in the reply rather than guessing here.
 constexpr int kRgStartWaitMs = 500;
 
-RgRun rcRunRg(const QStringList &argv, const QString &workingDir, int budgetMs) {
+// ANTS-5052 — the most rg stdout one call holds. The modes that scan past
+// max_results would otherwise hold all of it, in the process that hosts
+// every terminal tab.
+constexpr qint64 kRgStdoutCapBytes = qint64(64) * 1024 * 1024;
+
+// How long one wait for rg output lasts before the caps are checked again.
+constexpr int kRgReadSliceMs = 50;
+
+RgRun rcRunRg(const QStringList &argv, const QString &workingDir, int budgetMs,
+              qint64 stdoutCapBytes) {
     RgRun out;
     QProcess rg;
     rg.setWorkingDirectory(workingDir);
@@ -89,16 +101,44 @@ RgRun rcRunRg(const QStringList &argv, const QString &workingDir, int budgetMs) 
         return out;
     }
 
-    // ANTS-1248-INV-5: hard kill via budgetMs. waitForFinished returns false
-    // on timeout. On timeout we terminate(), then grant 200 ms grace, then
-    // kill().
-    if (!rg.waitForFinished(budgetMs)) {
-        out.hardKilled = true;
+    // ANTS-1248-INV-5: hard kill via budgetMs — on timeout we terminate(),
+    // then grant 200 ms grace, then kill(). ANTS-5052 — stdout is drained as
+    // rg writes it, and rg is stopped the same way once it has written more
+    // than stdoutCapBytes, so the output is never held whole past the cap.
+    const auto overCap = [&] {
+        if (stdoutCapBytes <= 0 || out.stdoutBytes.size() <= stdoutCapBytes)
+            return false;
+        out.stdoutBytes.truncate(stdoutCapBytes);
+        out.outputCapped = true;
+        return true;
+    };
+    QElapsedTimer clock;
+    clock.start();
+    bool stop = false;
+    while (rg.state() != QProcess::NotRunning) {
+        const qint64 left = budgetMs - clock.elapsed();
+        if (left <= 0) {
+            out.hardKilled = true;
+            stop = true;
+            break;
+        }
+        rg.waitForReadyRead(static_cast<int>(qMin<qint64>(left, kRgReadSliceMs)));
+        out.stdoutBytes += rg.readAllStandardOutput();
+        if (overCap()) {
+            stop = true;
+            break;
+        }
+    }
+    if (stop && rg.state() != QProcess::NotRunning) {
         rg.terminate();
         if (!rg.waitForFinished(kWorkspaceSearchKillGraceMs)) {
             rg.kill();
             rg.waitForFinished(kWorkspaceSearchKillGraceMs);
         }
+    }
+    if (!out.outputCapped) {
+        out.stdoutBytes += rg.readAllStandardOutput();  // what arrived last
+        overCap();
     }
 
     // ANTS-1248-INV-8: stderr cap. Read up to 4 KiB; the CALLER decides
@@ -106,9 +146,9 @@ RgRun rcRunRg(const QStringList &argv, const QString &workingDir, int budgetMs) 
     out.stderrTail = rg.readAllStandardError();
     if (out.stderrTail.size() > kWorkspaceSearchStderrCapBytes)
         out.stderrTail.truncate(kWorkspaceSearchStderrCapBytes);
-    out.stdoutBytes = rg.readAllStandardOutput();
     out.exitCode    = rg.exitCode();
-    out.crashed     = (rg.exitStatus() != QProcess::NormalExit) && !out.hardKilled;
+    out.crashed     = (rg.exitStatus() != QProcess::NormalExit)
+                      && !out.hardKilled && !out.outputCapped;
     return out;
 }
 
@@ -495,12 +535,15 @@ QJsonDocument RemoteControl::cmdWorkspaceSearch(const QJsonObject &req) {
     // moved to rcRunRg() so `cited_by` shares one rg call site (INV-9). The
     // classification below stays here: it reads the parsed `matches`, which do
     // not exist until this handler has parsed the stdout the helper returned.
-    const RgRun run = rcRunRg(argv, rootCanonical, budgetMs);
+    const RgRun run = rcRunRg(argv, rootCanonical, budgetMs,
+        m_rgStdoutCapOverride > 0 ? m_rgStdoutCapOverride : kRgStdoutCapBytes);
     if (run.startFailed) {
         return QJsonDocument(wsErr("rg_failed",
             QStringLiteral("workspace-search: %1").arg(run.startDiagnosis)));
     }
-    const bool hardKilled          = run.hardKilled;
+    // ANTS-5052 — a run stopped at the output ceiling is a partial answer,
+    // reported as a hard-killed one is: truncated, in every mode.
+    const bool hardKilled          = run.hardKilled || run.outputCapped;
     const QByteArray &stderrTail   = run.stderrTail;
     const QByteArray &stdoutBytes  = run.stdoutBytes;
 
@@ -727,7 +770,10 @@ QJsonDocument RemoteControl::cmdWorkspaceSearch(const QJsonObject &req) {
         if (!stderrTail.isEmpty()) o["stderr"] = QString::fromUtf8(stderrTail);
         return QJsonDocument(o);
     }
-    if (hardKilled && matches.isEmpty()) {
+    // A REAL hard kill only: a run stopped at the output ceiling (ANTS-5052)
+    // has output, just not all of it, and falls through to a truncated reply
+    // — reporting it as a wall-budget timeout would name the wrong limit.
+    if (run.hardKilled && matches.isEmpty()) {
         // No partial results — surface the hard kill rather than
         // pretending the search finished cleanly. ANTS-1565-INV-3/4 —
         // include the effective budget and a fallback hint so callers
@@ -1352,7 +1398,9 @@ QJsonDocument RemoteControl::cmdCitedBy(const QJsonObject &req) {
         argv += keptArgv;
 
         const int remainingMs = budgetMs - static_cast<int>(wall.elapsed());
-        const RgRun run = rcRunRg(argv, rootCanonical, qMax(1, remainingMs));
+        const qint64 capBytes =
+            m_rgStdoutCapOverride > 0 ? m_rgStdoutCapOverride : kRgStdoutCapBytes;
+        const RgRun run = rcRunRg(argv, rootCanonical, qMax(1, remainingMs), capBytes);
 
         // INV-10 — ANY failed run refuses, and cells tallied from earlier
         // anchors are discarded. This drops the `matches.isEmpty()` guard
@@ -1379,6 +1427,16 @@ QJsonDocument RemoteControl::cmdCitedBy(const QJsonObject &req) {
             o["timeout_sec"] = budgetSec;
             o["hint"] = QStringLiteral(
                 "narrow `scope`, send fewer anchors, or raise timeout_sec (max 30)");
+            return QJsonDocument(o);
+        }
+        // ANTS-5052 — a run stopped at the output ceiling is partial, and a
+        // partial cell set cannot be told from a complete one (INV-10).
+        if (run.outputCapped) {
+            QJsonObject o = wsErr("rg_failed",
+                QStringLiteral("cited_by: ripgrep output for anchor \"%1\" passed "
+                               "the %2-byte ceiling").arg(anchor).arg(capBytes));
+            o["hint"] = QStringLiteral(
+                "narrow `scope` or send a more specific anchor");
             return QJsonDocument(o);
         }
         // rg exit codes: 0 = matches, 1 = no matches (still fine), >= 2 = error.
@@ -3470,7 +3528,11 @@ QJsonDocument RemoteControl::cmdCoChangeFamily(const QJsonObject &req) {
     for (const QString &p : patterns) argv << QStringLiteral("-e") << p;
     argv << QStringLiteral("--") << rootCanonical;
 
-    const RgRun run = rcRunRg(argv, rootCanonical, kWorkspaceSearchHardKillMs);
+    const RgRun run = rcRunRg(argv, rootCanonical, kWorkspaceSearchHardKillMs,
+        m_rgStdoutCapOverride > 0 ? m_rgStdoutCapOverride : kRgStdoutCapBytes);
+    // ANTS-5052 — a run stopped at the output ceiling is partial: reported
+    // through `truncated`, as a hard kill is.
+    const bool cutShort = run.hardKilled || run.outputCapped;
     if (run.startFailed || run.crashed) {
         return QJsonDocument(wsErr("rg_failed",
             QStringLiteral("co_change_family: %1")
@@ -3480,7 +3542,7 @@ QJsonDocument RemoteControl::cmdCoChangeFamily(const QJsonObject &req) {
     // Exit 1 is ripgrep's "no matches" — a valid empty answer, not a failure.
     // A hard kill is a PARTIAL answer and is reported through `truncated`;
     // rg_failed is reserved for a scanner that did not run (INV-7).
-    if (run.exitCode != 0 && run.exitCode != 1 && !run.hardKilled) {
+    if (run.exitCode != 0 && run.exitCode != 1 && !cutShort) {
         return QJsonDocument(wsErr("rg_failed",
             QStringLiteral("co_change_family: ripgrep exited %1")
                 .arg(run.exitCode)));
@@ -3586,7 +3648,7 @@ QJsonDocument RemoteControl::cmdCoChangeFamily(const QJsonObject &req) {
     out[QStringLiteral("files")]       = files;
     out[QStringLiteral("files_count")] = files.size();
     out[QStringLiteral("sites_count")] = static_cast<int>(res.sites.size());
-    out[QStringLiteral("truncated")]   = res.truncated || run.hardKilled;
+    out[QStringLiteral("truncated")]   = res.truncated || cutShort;
     // `etag` is NOT emitted here: the dispatcher injects it (mcp-tools.md
     // step 7), and a handler-written one would be overwritten or doubled.
     return QJsonDocument(out);

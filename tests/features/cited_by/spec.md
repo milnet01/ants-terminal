@@ -33,6 +33,8 @@ every `file` absolute and fails every cell assertion for the wrong reason.
 | `Inv11MissingScopeEntriesArePruned` | INV-11 | A project with no `README.md` / `CLAUDE.md` returns `ok:true` on the **default** call with `scope_resolved:["docs"]`; `scope:["nope"]` → `ok:true`, `scope_resolved:[]`, every anchor unmatched. |
 | `Inv12OverlappingScopeIsDeOverlapped` | INV-12 | `scope:["docs","docs/sub"]` over one matching file under `docs/sub/` → one cell with `count` 1, not 2, and `scope_resolved:["docs"]`. |
 | `Inv13EmptyAnchorRefuses` | INV-13 | `anchors:["", "oldName"]` → `bad_args`; paired with the positive control `anchors:["oldName"]` → `ok:true`. |
+| `Ants5052OutputCapRefusesLikeHardKill` | INV-14 | With a small rg stdout byte ceiling, `cited_by` reports the run as incomplete the same way it reports a hard-killed run today: `ok:false`, `code:"rg_failed"` — never a partial cell set. |
+| `Ants5052GuardNoOverrideStillOk` | INV-14 (guard) | With no override, the same fixture returns `ok:true` with a full cell set — must hold before and after the fix. |
 
 ## Must-fail-first — run, not asserted
 
@@ -48,6 +50,16 @@ batches, built, observed, then reverted (2026-08-14):
 | INV-3 | `QRegularExpression::escape` applied to the anchor | `foo.cpp` stopped matching itself and the accented anchor found nothing |
 | INV-7 | the emitted cell order reversed after the sort | `cells[0].anchor` came back `zeta`; INV-1's ordering assertions went red with it, as collateral |
 | INV-12 | the scope de-overlap dropped | `count` doubled to 2 and `scope_resolved` echoed both entries |
+
+**INV-14 (ANTS-5052)** shares `rcRunRg` — the one rg call site this verb and
+`cmdWorkspaceSearch` / `cmdCoChangeFamily` share — with the byte-ceiling fix
+tracked at ANTS-5052. `RemoteControl::setRgStdoutCapOverride(bytes)` is a
+test-only seam that overrides the default ceiling; today it is a stub (sets
+a field `rcRunRg` never reads), so `Ants5052OutputCapRefusesLikeHardKill` is
+expected to fail against the current tree — the run completes normally
+instead of being reported incomplete. The guard case must pass both before
+and after the fix. Out of scope here, filed separately: line-by-line stdout
+parsing and `rg --count`.
 
 INV-9 and INV-10 are source scrapes and cannot fail before the code exists:
 INV-9 asserts a refit, and INV-10's trigger is unprovokable from a committable

@@ -31,3 +31,36 @@ so its RED proof is different — pre-3548 `maxMatchBytes` inits to `0`
 `Inv20DefaultOnClip` (expects init `kDefaultMaxMatchBytes`) and
 `Inv21ExplicitOptOut` (expects schema `default 512` / `minimum 0`) fail
 against pre-3548 code and turn GREEN only after the default flips.
+
+## ANTS-5052 — rg stdout byte ceiling
+
+`rcRunRg` (the one rg call site `cmdWorkspaceSearch`, `cmdCitedBy` and
+`cmdCoChangeFamily` share) waits for rg to finish and takes its whole
+stdout, bounded only by rg's wall-time budget — not by output size. The
+fix reads stdout while rg runs and kills it once a byte ceiling is
+passed. This section locks `cmdWorkspaceSearch`'s share of that contract;
+`cited_by` and `co_change_family` carry their own case in their own
+`spec.md`.
+
+A test-only seam makes the ceiling reachable from a small fixture:
+`RemoteControl::setRgStdoutCapOverride(bytes)` overrides the default
+ceiling for the instance it is called on. Behavioural, against a real
+fixture tree and a real rg, guarded on rg's presence — same pattern as
+the ANTS-4901 cases in `workspace_search_enclosing_symbol`.
+
+| Test | What it checks |
+|---|---|
+| `Ants5052CountOnlyReportsOutputCap` | `count_only` reports `truncated:true` once the output ceiling is hit. |
+| `Ants5052FilesOnlyReportsOutputCap` | `files_only` reports `truncated:true` once the output ceiling is hit. |
+| `Ants5052DefaultModeReportsOutputCap` | The default row mode reports `truncated:true` once the ceiling is hit, even when `max_results` would not otherwise have been reached. |
+| `Ants5052GuardNoOverrideReturnsEverything` | Guard, must hold before and after the fix: with no override, every match comes back, `truncated` stays false, and `count_only`'s `count` equals the real match total. |
+
+**Pre-fix state:** `setRgStdoutCapOverride` is a stub — it sets a field
+`rcRunRg` never reads, and `RgRun::outputCapped` is never set. None of
+the three envelopes above folds an output-cap signal into `truncated`
+today, so every case except the guard is expected to fail against the
+current tree.
+
+**Out of scope for this section**, filed separately: line-by-line
+parsing of rg's stdout, `rg --count` for the counting modes, and
+`co_change_family`'s bounded min-heap.

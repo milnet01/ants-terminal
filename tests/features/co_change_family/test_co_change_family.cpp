@@ -14,11 +14,21 @@
 #include "../../_support/srcgrep.h"
 
 #include "cochangefamily.h"
+#include "remotecontrol.h"
 
+#include <QByteArray>
+#include <QDir>
 #include <QElapsedTimer>
+#include <QFile>
+#include <QFileInfo>
+#include <QIODevice>
+#include <QJsonDocument>
+#include <QJsonObject>
 #include <QRegularExpression>
+#include <QStandardPaths>
 #include <QString>
 #include <QStringList>
+#include <QTemporaryDir>
 
 #include <string>
 
@@ -573,4 +583,100 @@ TEST(CoChangeFamily, ClipIsAByteBudgetPrefix) {
         EXPECT_FALSE(text.endsWith(QChar(0x2026)))
             << "no ellipsis marker expected; tail_hex=" << qPrintable(tailCodeUnitsHex(text));
     }
+}
+
+// ---------------------------------------------------------------------------
+// ANTS-5052 — the rg stdout byte ceiling.
+//
+// cmdCoChangeFamily shares rcRunRg (the one rg call site) with
+// cmdWorkspaceSearch and cmdCitedBy. rcRunRg waits for rg to finish and takes
+// its whole stdout, bounded only by rg's wall-time budget.
+// RemoteControl::setRgStdoutCapOverride is a test-only seam (STUB today: sets
+// a field rcRunRg never reads) that lets a small fixture reach a small
+// ceiling. Unlike every other case in this file, these two drive
+// RemoteControl::cmdCoChangeFamily behaviourally against a real fixture tree
+// and a real rg — the shared rg runner is what is under test, not
+// CoChangeFamily::assemble() in isolation.
+//
+// SCOPE: only the byte-ceiling half is locked here. The bounded min-heap
+// this verb's own spec (ANTS-3368) calls for, line-by-line stdout parsing,
+// and rg --count are filed separately (ANTS-5052 roadmap item).
+
+namespace {
+
+// Many lines matching the "claudeMcpEnabled" scan pattern in one file, so the
+// real stdout is many times the small override below. max_sites defaults to
+// 200 (CoChangeFamily::Options), far above this fixture's line count, so a
+// truncation here cannot be explained by the site cap — only the output cap.
+bool writeAnts5052CoChangeFixture(const QString &root) {
+    QDir().mkpath(root);
+    QFile f(root + QStringLiteral("/cap_fixture.cpp"));
+    if (!f.open(QIODevice::WriteOnly | QIODevice::Truncate)) return false;
+    QByteArray body;
+    for (int i = 0; i < 30; ++i) {
+        body += "void claudeMcpEnabledVariant() { /* filler filler filler "
+                "filler filler filler filler filler line_index_marker */ }\n";
+    }
+    const bool ok = (f.write(body) == body.size());
+    f.close();
+    return ok;
+}
+
+QJsonObject ants5052CoChangeReq(const QString &root) {
+    QJsonObject r;
+    r[QStringLiteral("caller_cwd")] = root;
+    r[QStringLiteral("stem")]       = QStringLiteral("claudeMcpEnabled");
+    return r;
+}
+
+constexpr qint64 kAnts5052SmallCapBytes = 300;
+
+}  // namespace
+
+TEST(CoChangeFamily, Ants5052OutputCapSetsTruncated) {
+    if (QStandardPaths::findExecutable(QStringLiteral("rg")).isEmpty())
+        GTEST_SKIP() << "ripgrep not installed";
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString root = QFileInfo(tmp.path()).canonicalFilePath();
+    ASSERT_TRUE(writeAnts5052CoChangeFixture(root));
+
+    RemoteControl rc(nullptr);
+    rc.setRgStdoutCapOverride(kAnts5052SmallCapBytes);
+    const QJsonObject resp =
+        rc.cmdCoChangeFamily(ants5052CoChangeReq(root)).object();
+
+    ASSERT_TRUE(resp.value(QStringLiteral("ok")).toBool())
+        << QJsonDocument(resp).toJson(QJsonDocument::Compact).toStdString();
+    EXPECT_TRUE(resp.value(QStringLiteral("truncated")).toBool())
+        << "ANTS-5052: co_change_family truncated must be true once the "
+           "output ceiling is hit; saw truncated="
+        << resp.value(QStringLiteral("truncated")).toBool()
+        << " sites_count=" << resp.value(QStringLiteral("sites_count")).toInt()
+        << " full envelope="
+        << QJsonDocument(resp).toJson(QJsonDocument::Compact).toStdString();
+}
+
+// GUARD — with no override, the same fixture returns truncated:false. Must
+// pass both before and after the fix.
+TEST(CoChangeFamily, Ants5052GuardNoOverrideNotTruncated) {
+    if (QStandardPaths::findExecutable(QStringLiteral("rg")).isEmpty())
+        GTEST_SKIP() << "ripgrep not installed";
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString root = QFileInfo(tmp.path()).canonicalFilePath();
+    ASSERT_TRUE(writeAnts5052CoChangeFixture(root));
+
+    RemoteControl rc(nullptr);  // no override — default ceiling.
+    const QJsonObject resp =
+        rc.cmdCoChangeFamily(ants5052CoChangeReq(root)).object();
+
+    ASSERT_TRUE(resp.value(QStringLiteral("ok")).toBool())
+        << "GUARD: unmodified default must still succeed: "
+        << QJsonDocument(resp).toJson(QJsonDocument::Compact).toStdString();
+    EXPECT_FALSE(resp.value(QStringLiteral("truncated")).toBool())
+        << "GUARD: unmodified default must not report truncated: "
+        << QJsonDocument(resp).toJson(QJsonDocument::Compact).toStdString();
+    EXPECT_GT(resp.value(QStringLiteral("sites_count")).toInt(), 0)
+        << "GUARD: the fixture must actually produce sites";
 }

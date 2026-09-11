@@ -1,5 +1,10 @@
 // ANTS-1876 — workspace_search payload knobs.
 // Source-grep style + focused helper tests where feasible.
+//
+// ANTS-5052 adds a behavioural section at the end of this file: the rg
+// stdout byte ceiling. Those cases construct a real RemoteControl over a
+// real fixture tree and a real rg, matching the pattern established by
+// workspace_search_enclosing_symbol's ANTS-4901 addendum.
 
 #include "../../_support/expect.h"
 
@@ -7,6 +12,20 @@
 #include "../../_support/srcgrep.h"
 
 #include <string>
+
+#include "remotecontrol.h"
+
+#include <QByteArray>
+#include <QDir>
+#include <QFile>
+#include <QFileInfo>
+#include <QIODevice>
+#include <QJsonArray>
+#include <QJsonDocument>
+#include <QJsonObject>
+#include <QStandardPaths>
+#include <QString>
+#include <QTemporaryDir>
 
 #ifndef ANTS_RC_SOURCES
 #error "ANTS_RC_SOURCES compile definition required"
@@ -501,4 +520,184 @@ TEST(workspace_search_payload_knobs, Ants4388DistinctMatchMode) {
                "ANTS-4388: `count` is the uncapped total, like count_only's");
     }
     EXPECT_EQ(0, expect_failures());
+}
+
+// ---------------------------------------------------------------------------
+// ANTS-5052 — the rg stdout byte ceiling.
+//
+// rcRunRg waits for rg to finish and takes readAllStandardOutput() whole,
+// bounded only by rg's wall-time budget. `setRgStdoutCapOverride` (STUB,
+// src/remotecontrol.h) exists so a test can reach a small ceiling with a
+// small fixture rather than needing a multi-GB tree to blow the real
+// default. Today the override sets `m_rgStdoutCapOverride`, which nothing
+// reads: `rcRunRg` never sees it, `RgRun::outputCapped` is never set, and
+// none of the three envelopes below folds it into `truncated`. So every
+// case in this section is expected RED against the current tree.
+//
+// SCOPE (ANTS-5052 roadmap item): only the byte-ceiling half is locked
+// here. Line-by-line parsing, `rg --count` for the counting modes, and
+// co_change_family's min-heap are filed separately.
+//
+// Behavioural, like workspace_search_enclosing_symbol's ANTS-4901 cases:
+// a real RemoteControl over a real fixture tree and a real rg, guarded on
+// rg's presence.
+
+namespace {
+
+// One file with kAnts5052Lines matching lines, each long enough that a
+// tiny byte ceiling is exceeded many times over well before the file (and
+// well before max_results, default 50) is exhausted. Deliberately fewer
+// than max_results so a red run in the default row-mode case (INV-3 below)
+// cannot be explained by the pre-existing max_results truncation path —
+// only the (unwired) output cap can explain it.
+constexpr int kAnts5052Lines = 30;
+constexpr qint64 kAnts5052SmallCapBytes = 300;
+
+bool writeAnts5052Fixture(const QString &root) {
+    QDir().mkpath(root + QStringLiteral("/docs"));
+    QFile f(root + QStringLiteral("/docs/cap_fixture.md"));
+    if (!f.open(QIODevice::WriteOnly | QIODevice::Truncate)) return false;
+    QByteArray body;
+    for (int i = 0; i < kAnts5052Lines; ++i) {
+        body += "capmarker_ants5052 filler filler filler filler filler "
+                "filler filler filler filler line_index_marker\n";
+    }
+    const bool ok = (f.write(body) == body.size());
+    f.close();
+    return ok;
+}
+
+QJsonObject ants5052Req(const QString &root) {
+    QJsonObject r;
+    r[QStringLiteral("caller_cwd")] = root;
+    r[QStringLiteral("pattern")]    = QStringLiteral("capmarker_ants5052");
+    return r;
+}
+
+bool rgAvailable() {
+    return !QStandardPaths::findExecutable(QStringLiteral("rg")).isEmpty();
+}
+
+}  // namespace
+
+// INV-1 — count_only: truncated is true when the output ceiling is hit.
+// Only `truncated` is asserted — the fix's own field/reason for WHY is not
+// guessed at here (the roadmap item leaves that field's name to the fix).
+TEST(workspace_search_payload_knobs, Ants5052CountOnlyReportsOutputCap) {
+    if (!rgAvailable()) GTEST_SKIP() << "ripgrep not installed";
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString root = QFileInfo(tmp.path()).canonicalFilePath();
+    ASSERT_TRUE(writeAnts5052Fixture(root));
+
+    RemoteControl rc(nullptr);
+    rc.setRgStdoutCapOverride(kAnts5052SmallCapBytes);
+    QJsonObject req = ants5052Req(root);
+    req[QStringLiteral("count_only")] = true;
+    const QJsonObject resp = rc.cmdWorkspaceSearch(req).object();
+    ASSERT_TRUE(resp.value(QStringLiteral("ok")).toBool())
+        << QJsonDocument(resp).toJson(QJsonDocument::Compact).toStdString();
+
+    EXPECT_TRUE(resp.value(QStringLiteral("truncated")).toBool())
+        << "ANTS-5052 INV-1: count_only truncated must be true once the "
+           "output ceiling is hit; saw truncated="
+        << resp.value(QStringLiteral("truncated")).toBool()
+        << " count=" << resp.value(QStringLiteral("count")).toInt()
+        << " full envelope="
+        << QJsonDocument(resp).toJson(QJsonDocument::Compact).toStdString();
+}
+
+// INV-2 — files_only: same, truncated is true when the ceiling is hit.
+TEST(workspace_search_payload_knobs, Ants5052FilesOnlyReportsOutputCap) {
+    if (!rgAvailable()) GTEST_SKIP() << "ripgrep not installed";
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString root = QFileInfo(tmp.path()).canonicalFilePath();
+    ASSERT_TRUE(writeAnts5052Fixture(root));
+
+    RemoteControl rc(nullptr);
+    rc.setRgStdoutCapOverride(kAnts5052SmallCapBytes);
+    QJsonObject req = ants5052Req(root);
+    req[QStringLiteral("files_only")] = true;
+    const QJsonObject resp = rc.cmdWorkspaceSearch(req).object();
+    ASSERT_TRUE(resp.value(QStringLiteral("ok")).toBool())
+        << QJsonDocument(resp).toJson(QJsonDocument::Compact).toStdString();
+
+    EXPECT_TRUE(resp.value(QStringLiteral("truncated")).toBool())
+        << "ANTS-5052 INV-2: files_only truncated must be true once the "
+           "output ceiling is hit; saw truncated="
+        << resp.value(QStringLiteral("truncated")).toBool()
+        << " full envelope="
+        << QJsonDocument(resp).toJson(QJsonDocument::Compact).toStdString();
+}
+
+// INV-3 — default row mode: truncated is true even though max_results (50)
+// would not otherwise have been reached (kAnts5052Lines is 30). If this
+// case ever comes back green FOR THE WRONG REASON, matches.size() < 50 must
+// hold too — checked explicitly so a future max_results bump can't make
+// this pass by way of the unrelated existing truncation path.
+TEST(workspace_search_payload_knobs, Ants5052DefaultModeReportsOutputCap) {
+    if (!rgAvailable()) GTEST_SKIP() << "ripgrep not installed";
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString root = QFileInfo(tmp.path()).canonicalFilePath();
+    ASSERT_TRUE(writeAnts5052Fixture(root));
+
+    RemoteControl rc(nullptr);
+    rc.setRgStdoutCapOverride(kAnts5052SmallCapBytes);
+    const QJsonObject resp = rc.cmdWorkspaceSearch(ants5052Req(root)).object();
+    ASSERT_TRUE(resp.value(QStringLiteral("ok")).toBool())
+        << QJsonDocument(resp).toJson(QJsonDocument::Compact).toStdString();
+
+    const int matchCount =
+        resp.value(QStringLiteral("matches")).toArray().size();
+    EXPECT_LT(matchCount, 50)
+        << "fixture grew past max_results — this case would no longer "
+           "isolate the output-cap truncation path from the existing "
+           "max_results one; matchCount=" << matchCount;
+    EXPECT_TRUE(resp.value(QStringLiteral("truncated")).toBool())
+        << "ANTS-5052 INV-3: default-mode truncated must be true once the "
+           "output ceiling is hit, independent of max_results; saw "
+           "truncated=" << resp.value(QStringLiteral("truncated")).toBool()
+        << " matchCount=" << matchCount
+        << " full envelope="
+        << QJsonDocument(resp).toJson(QJsonDocument::Compact).toStdString();
+}
+
+// INV-6 (workspace_search's share of the guard) — with NO override, the
+// same fixture returns every match, truncated:false, and count_only's
+// count equals the real number of matches. Must pass both BEFORE and
+// AFTER the fix.
+TEST(workspace_search_payload_knobs, Ants5052GuardNoOverrideReturnsEverything) {
+    if (!rgAvailable()) GTEST_SKIP() << "ripgrep not installed";
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString root = QFileInfo(tmp.path()).canonicalFilePath();
+    ASSERT_TRUE(writeAnts5052Fixture(root));
+
+    RemoteControl rc(nullptr);  // no setRgStdoutCapOverride call — default.
+    // The fixture's lines are identical, so the default dedup would fold
+    // them into one row; count rows without it.
+    QJsonObject rowsReq = ants5052Req(root);
+    rowsReq[QStringLiteral("dedup")] = false;
+    const QJsonObject resp = rc.cmdWorkspaceSearch(rowsReq).object();
+    ASSERT_TRUE(resp.value(QStringLiteral("ok")).toBool())
+        << QJsonDocument(resp).toJson(QJsonDocument::Compact).toStdString();
+    EXPECT_FALSE(resp.value(QStringLiteral("truncated")).toBool())
+        << "GUARD: unmodified default must not report truncated; saw "
+        << QJsonDocument(resp).toJson(QJsonDocument::Compact).toStdString();
+    EXPECT_EQ(resp.value(QStringLiteral("matches")).toArray().size(),
+              kAnts5052Lines)
+        << "GUARD: every match must come back with no cap override";
+
+    RemoteControl rcCount(nullptr);
+    QJsonObject countReq = ants5052Req(root);
+    countReq[QStringLiteral("count_only")] = true;
+    const QJsonObject countResp = rcCount.cmdWorkspaceSearch(countReq).object();
+    ASSERT_TRUE(countResp.value(QStringLiteral("ok")).toBool());
+    EXPECT_EQ(countResp.value(QStringLiteral("count")).toInt(), kAnts5052Lines)
+        << "GUARD: count_only's count must equal the real match count with "
+           "no override; saw count="
+        << countResp.value(QStringLiteral("count")).toInt();
+    EXPECT_FALSE(countResp.value(QStringLiteral("truncated")).toBool());
 }
