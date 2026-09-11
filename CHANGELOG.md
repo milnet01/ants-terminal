@@ -42,6 +42,10 @@ for security-relevant changes.
 
 ### Fixed
 
+- **The Review Changes window no longer freezes on a huge diff: it shows the first 1 MiB with a note, skips redrawing when nothing changed, and ignores an older refresh that finishes after a newer one** (ANTS-5059)
+
+- **The roadmap window reads its "last touched" dates in the background and can no longer put a date on the wrong card when the roadmap changes mid-read** (ANTS-5047)
+
 - **The audit window's Debt Sweep tab scans in the background, so the window stays usable while it runs and after every fix or allow click** (ANTS-5057)
 
 - **The audit window no longer freezes after a run while it looks up who last changed each flagged line; it asks git once per file in the background and fills the names in when they arrive** (ANTS-5040)

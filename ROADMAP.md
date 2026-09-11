@@ -6667,7 +6667,7 @@ extends an existing item, that item carries it instead.
   Source: code-quality-review-2026-09-11 perf pass (lane roadmap-store).
   Lanes: roadmap.
 
-- 📋 [ANTS-5047] **The roadmap dialog parses whole-file git blame output on the GUI thread on every open and every roadmap write.**
+- ✅ [ANTS-5047] **The roadmap dialog parses whole-file git blame output on the GUI thread on every open and every roadmap write.**
   ANTS-4414 moved git blame into a background process, but the
   finished handler still splits all of its --line-porcelain output,
   re-reads the whole ROADMAP.md with no size cap, and runs a decode and
@@ -6681,6 +6681,11 @@ extends an existing item, that item carries it instead.
   wrong cards.
   Fix: blame only the in-progress blocks' line ranges, parse on a
   worker, and take line text from blame's own content lines.
+  Resolved (2026-09-11): lastTouchFromBlame() takes line text from
+  blame's own content lines and reads no file, and runs in a
+  QThread::create worker; blame uses --porcelain with author-time looked
+  up by sha. -L ranges were not adopted: ANTS-4414 measured little git
+  saving. Test: tests/features/roadmap_last_touch_blame_worker.
   **Layman:** Opening the roadmap window freezes Ants briefly, and more so as the roadmap grows.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lane roadmap-dialog).
@@ -6938,7 +6943,7 @@ extends an existing item, that item carries it instead.
   Source: code-quality-review-2026-09-11 perf pass (lane review-engines).
   Lanes: review, threading.
 
-- 📋 [ANTS-5059] **The Review Changes diff has no size cap and is re-rendered as HTML on the GUI thread on every change burst.**
+- ✅ [ANTS-5059] **The Review Changes diff has no size cap and is re-rendered as HTML on the GUI thread on every change burst.**
   The diff viewer reads the whole git diff --stat --patch HEAD output,
   splits it twice, builds a styled span per line and calls setHtml,
   all on the GUI thread, and repeats that on every watcher burst; the
@@ -6952,6 +6957,12 @@ extends an existing item, that item carries it instead.
   probe processes are parented to MainWindow rather than the dialog.
   Fix: cap the patch bytes with a notice, build the HTML off the GUI
   thread, and cancel superseded probes with a generation counter.
+  Resolved (2026-09-11): the diff is cut at a line boundary past 1 MiB
+  with a notice (Copy Diff says so too); an unchanged round returns
+  before building HTML unless untracked files are listed; a generation
+  counter stops a superseded round rendering; every git probe is
+  parented to the dialog. The cap bounds the GUI-thread work, so the
+  HTML build stays there. Test: tests/features/review_changes_diff_cap.
   **Layman:** The Review Changes window can freeze Ants when a big file has changed, and keeps doing so while edits continue.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lanes app-entry-dialogs, shared-utilities).
