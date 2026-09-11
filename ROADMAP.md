@@ -8120,6 +8120,44 @@ extends an existing item, that item carries it instead.
   Source: in-session-2026-09-11.
   Lanes: roadmap, tests.
 
+- 📋 [ANTS-5115] **project.read can still leak its file buffer when a Lua allocation fails while the result is pushed.**
+  LuaEngine::lua_project_read calls lua_pushlstring while the QFile and
+  the QByteArray holding the file are alive. lua_pushlstring raises a
+  memory error when the query's allocator cap is hit, and the raise
+  longjmps past both destructors. ANTS-3847 moved the refusal paths out
+  of that frame but left this one, because the bytes must be alive for
+  the push.
+  Not reproduced. Unverified whether lua_project_list has the same
+  route: its body builds a result table while C++ containers are alive.
+  Possible fix, unverified: read the file into a Lua-owned buffer
+  (luaL_Buffer) after the C++ objects are released.
+  **Layman:** A project query that runs out of memory while reading a file can leave a little memory unfreed.
+  Kind: fix.
+  Source: in-session-2026-09-11 (found fixing ANTS-3847).
+  Lanes: lua, mcp.
+
+- 📋 [ANTS-5116] **spec_lint holds per-test contracts under tests/features/ to the full-spec section list and finds none of their invariants.**
+  Run on the shipped contract tests/features/session_sha256_checksum/
+  spec.md (2026-09-11), spec_lint returns ok:true with four
+  missing_section findings (## Problem, ## Surface, ## Tests,
+  ## Cold-eyes loop log), sections_source docs/standards/specs.md,
+  and invariants_found:0. The contract carries invariants as
+  `- **INV-N — ...**` bullets under `## Invariants`, the house shape for
+  tests/features/, so the invariant checks compare against nothing.
+  A new contract written today in the same shape
+  (tests/features/verify_trust_modal_gui_thread/spec.md) gets the same
+  result. ANTS-4345 added the required-sections block for full specs;
+  rule 14 and the project CLAUDE.md treat a test's contract as a
+  different genre that does not carry those sections.
+  So a clean-looking lint on a test contract says nothing, and a
+  flagged one is noise. Fix direction, unverified: recognise the
+  tests/features/ genre (skip or swap the section list) and parse its
+  bullet invariants.
+  **Layman:** The checker for design documents grades small per-test notes against the rules for full designs, so its report on them is meaningless.
+  Kind: fix.
+  Source: in-session-2026-09-11 (write-test run for ANTS-5025).
+  Lanes: mcp, speclint.
+
 ## Memory-efficiency sweep (user request 2026-08-19)
 
 The speed sweeps above ask how fast Ants is. This one asks how much it costs to
