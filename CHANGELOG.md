@@ -40,6 +40,14 @@ for security-relevant changes.
 
 ### Fixed
 
+- **The Claude status tick stops reading saved conversations once none of the rest can be the live one** (ANTS-5048)
+
+- **project_query stops building a result as soon as it is over its size limit, so a small Lua snippet can no longer exhaust memory** (ANTS-5069)
+
+- **Independent Review and Cold-eyes never walk into build and dependency folders** (ANTS-5058)
+
+- **The test-audit partition never walks into build folders, walks the project once for all patterns, and keeps a project that sits inside a folder named build** (ANTS-5062)
+
 - **doc_citations reads each quoted document once per call, inside its read budget and size limit** (ANTS-5054)
 
 - **The subsystem lane cache is locked, so the window and the MCP worker can read it at the same time safely** (ANTS-5074)

@@ -6676,7 +6676,7 @@ extends an existing item, that item carries it instead.
   Source: code-quality-review-2026-09-11 perf pass (lane roadmap-dialog).
   Lanes: roadmap, threading.
 
-- 📋 [ANTS-5048] **Every 2-second status tick opens and parses every transcript in the project, four times over, on the GUI thread.**
+- ✅ [ANTS-5048] **Every 2-second status tick opens and parses every transcript in the project, four times over, on the GUI thread.**
   ClaudeIntegration::sessionPathForCwd lists the project's Claude
   directory and, for every top-level transcript, reads a 32 KiB tail
   and JSON-parses lines backwards; the loop never uses the mtime order
@@ -6690,6 +6690,11 @@ extends an existing item, that item carries it instead.
   Fix: break the loop once a file's mtime is older than the active
   floor, resolve once per tick and share the result, and memoise per
   cwd and Claude pid, invalidated on the directory's mtime.
+  Resolved (2026-09-11, e4c770b1): the newest-first loop stops at the
+  first transcript whose mtime can no longer pass the filters or beat
+  the best found, so later files are never opened. One resolution per
+  tick and a per-cwd memo were not needed. Tests:
+  claude_session_freshness INV-17 to INV-22.
   **Layman:** Ants re-reads every saved Claude conversation for the project every two seconds, which wastes time on the main window.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lanes claude-integration-a, claude-session-widgets).
@@ -6872,7 +6877,7 @@ extends an existing item, that item carries it instead.
   Source: code-quality-review-2026-09-11 perf pass (lanes review-engines, audit-dialog-a).
   Lanes: audit, review, threading.
 
-- 📋 [ANTS-5058] **The review corroboration walk descends into every build tree, twice per round on the GUI thread, because its cap counts accepted files.**
+- ✅ [ANTS-5058] **The review corroboration walk descends into every build tree, twice per round on the GUI thread, because its cap counts accepted files.**
   IndieReviewEngine's corroboration walk iterates the project with
   QDirIterator and counts a file only after the suffix, generated-file
   and noise filters, so it visits every file under build/, build-fast/,
@@ -6884,6 +6889,11 @@ extends an existing item, that item carries it instead.
   the pattern on the MCP worker.
   Fix: prune noise directories during recursion and cap entries
   visited; corroborate once at minimum 1 and split by lane count.
+  Resolved (2026-09-11, 9597f980): every IndieReviewEngine walk goes
+  through src/prunedwalk.h, which never lists a noise directory and caps
+  the entries it touches. The dialogs' double corroboration per round is
+  filed as ANTS-5125. Tests: pruned_walk, test_audit_walk_exclusions
+  INV-7.
   **Layman:** After each AI review round, Ants searches through all the build folders twice, which freezes the window.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lane review-engines).
@@ -6959,7 +6969,7 @@ extends an existing item, that item carries it instead.
   Source: code-quality-review-2026-09-11 perf pass (lane diagnostics-logging).
   Lanes: mcp, terminalgrid.
 
-- 📋 [ANTS-5062] **The test-audit partition walks into every build tree on the GUI thread, once per glob, before excluding anything.**
+- ✅ [ANTS-5062] **The test-audit partition walks into every build tree on the GUI thread, once per glob, before excluding anything.**
   TestAuditEngine's partition walk excludes build and dependency trees
   per file, after QDirIterator has already descended, so any glob with
   no path prefix walks the whole project, once per glob: ctest's
@@ -6973,6 +6983,11 @@ extends an existing item, that item carries it instead.
   Fix: prune excluded directories while descending, walk once testing
   every glob, match relative paths, and move partition off the GUI
   thread.
+  Resolved (2026-09-11, 9597f980): walkTestFiles prunes excluded
+  directories through src/prunedwalk.h, walks each root once for every
+  glob, and matches the exclusion against the path relative to the scope
+  root. Running partition off the GUI thread is filed as ANTS-5126.
+  Tests: test_audit_walk_exclusions INV-6 and INV-7.
   **Layman:** Opening the test-audit window can freeze Ants while it searches through build folders.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lane test-audit-verify).
@@ -7091,7 +7106,7 @@ extends an existing item, that item carries it instead.
   Source: code-quality-review-2026-09-11 perf pass (lane spec-engines).
   Lanes: spec, mcp.
 
-- 📋 [ANTS-5069] **project_query's result marshaller copies a shared Lua table once per path, so a short snippet can exhaust memory.**
+- ✅ [ANTS-5069] **project_query's result marshaller copies a shared Lua table once per path, so a short snippet can exhaust memory.**
   LuaEngine's marshalLuaValue caps nesting depth at 32 but not repeated
   references, and the output cap is checked only after marshalling. A
   snippet that nests one table inside itself twice per level, 31 levels
@@ -7103,6 +7118,10 @@ extends an existing item, that item carries it instead.
   and snippets are model-supplied.
   Fix: carry a node and byte budget through the marshal and refuse with
   result_too_large once it passes resultCapBytes.
+  Resolved (2026-09-11, 372ac2c6): each value and object key charges a
+  lower bound of its JSON size against resultCapBytes as the marshal
+  walks, and the query is refused with result_too_large once it is
+  spent; QueryResult reports marshalNodes. Tests: project_query INV-10.
   **Layman:** A tiny Lua query can make Ants run out of memory and be killed.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lane plugins-lua).
@@ -7122,6 +7141,19 @@ extends an existing item, that item carries it instead.
   Fix: check the file size against the remaining Lua budget before
   reading, read with a bound, and use the protected-push pattern that
   luaPushHandlerAndArg already uses (ANTS-4442).
+  Progress (2026-09-11): verified in source. Five callbacks raise while
+  C++ objects are alive: lua_project_read (QFile, the readAll QByteArray
+  and the validatePath result during lua_pushlstring), lua_project_list
+  (the collected path list and the iterator during table building),
+  lua_ants_get_output (the split line list during pushQString),
+  lua_ants_settings_get (the out string during pushQString) and
+  lua_ants_warn (the message string while luaL_tolstring runs a
+  __tostring). Planned fix: finish the C++ work, then push inside a
+  protected call with a light-userdata context (the luaPushHandlerAndArg
+  pattern), or build warn's text on the Lua side and copy it out after
+  the last raising call; project.read checks the file size against
+  MAX_LUA_MEMORY minus m_luaMemUsage before reading. The leaks are
+  visible only to LeakSanitizer, so the red run must use build-asan.
   **Layman:** Some Lua query operations can leak memory or read huge files into memory before any safety limit applies.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lane plugins-lua).
@@ -8521,6 +8553,29 @@ extends an existing item, that item carries it instead.
   Kind: fix.
   Source: in-session-2026-09-11 (pre-push killed for low memory).
   Lanes: tooling, ci.
+
+- 📋 [ANTS-5125] **The Independent Review and Cold-eyes dialogs still run the corroboration walk twice per round, on the GUI thread.**
+  ANTS-5058 made each corroboration walk prune noise directories, so a walk
+  no longer enters build trees. The dialogs still call it twice per round,
+  at minimum lanes 2 and then 1.
+  Fix: corroborate once at minimum 1 and split the result by lane count.
+  **Layman:** After each AI review round, Ants still searches the project twice where once would do.
+  Kind: perf.
+  Source: in-session-2026-09-11 (ANTS-5058 remainder).
+  Lanes: review, threading.
+
+- 📋 [ANTS-5126] **The test-audit partition still runs on the GUI thread, on dialog open and before every dispatch.**
+  ANTS-5062 made the walk prune excluded directories, walk once per root
+  and match relative paths. Partition still runs on the GUI thread on
+  dialog open, on editingFinished and before dispatch. ANTS-1397 section 6
+  accepts that only while the walk fits about 50 ms, which is not measured
+  on a large tree.
+  Fix: measure the pruned walk on a large tree; if it is over budget, run
+  partition off the GUI thread.
+  **Layman:** Opening the test-audit window may still pause Ants briefly on a very large project.
+  Kind: perf.
+  Source: in-session-2026-09-11 (ANTS-5062 remainder).
+  Lanes: test-audit, threading.
 
 ## Memory-efficiency sweep (user request 2026-08-19)
 
