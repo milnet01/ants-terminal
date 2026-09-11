@@ -27,3 +27,23 @@ through.
 - **INV-5 / single source of truth.** `walkTestFiles` uses one
   compiled `QRegularExpression` for the full exclusion set; no
   hand-rolled `if … || … || …` chain reintroduced.
+
+## ANTS-5062 — the walk descended before excluding anything
+
+`walkTestFiles` matched the exclusion regex against the candidate's
+**absolute** path, and walked with `QDirIterator::Subdirectories` before
+deciding anything was excluded, once per glob. A project rooted under a
+directory that happens to be named `build` had every file inside it
+excluded, because the project root's own path satisfied the pattern — not
+because anything under it was build output.
+
+- **INV-6 / exclusion matches the relative path.** The exclusion regex is
+  matched against the path relative to the walk, not the absolute path.
+  A project whose root sits under a directory literally named `build`
+  still returns its own test files.
+- **INV-7 / routes through the shared pruning walk.** Neither
+  `walkTestFiles` (`src/testauditengine.cpp`) nor the review engine's
+  whole-tree walks (`src/indiereviewengine.cpp`) contain
+  `QDirIterator::Subdirectories` — a walk that lists every file before
+  excluding it. Both contain a call to `PrunedWalk::walkFiles(`, the
+  primitive that decides at the directory, before recursing into it.

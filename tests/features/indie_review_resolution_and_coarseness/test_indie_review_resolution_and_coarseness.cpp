@@ -244,3 +244,22 @@ TEST(IndieReviewCoarseness, Inv7SmallLaneIsNotCoarse) {
     EXPECT_NE(rc.find("file_count"), std::string::npos);
     EXPECT_NE(rc.find("too_coarse_lanes"), std::string::npos);
 }
+
+// INV-8 — GUARD (ANTS-5058). Build output must never enter the basename
+// index, whether walked eagerly (today, via QDirIterator + a post-hoc noise
+// check) or through the shared pruning walk. This already passes; it must
+// keep passing once buildBasenameIndex routes through PrunedWalk::walkFiles.
+TEST(IndieReviewResolution, Inv8BuildBasenameIndexIgnoresBuildTree) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString root = seedRoot(tmp, {
+        QStringLiteral("src/foo.cpp"),
+        QStringLiteral("build/foo.cpp"),
+    });
+
+    const auto index = IndieReviewEngine::buildBasenameIndex(root);
+    ASSERT_TRUE(index.contains(QStringLiteral("foo.cpp")));
+    EXPECT_EQ(index.value(QStringLiteral("foo.cpp")), QStringLiteral("src/foo.cpp"))
+        << "build/foo.cpp must not make the basename ambiguous; got: "
+        << qPrintable(index.value(QStringLiteral("foo.cpp")));
+}

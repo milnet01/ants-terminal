@@ -8,6 +8,9 @@
 #include "pathvalidation.h"
 #include "projectsettings.h"   // ANTS-3708 — declared test_roots override
 #include "roadmapfoldin.h"
+#include "prunedwalk.h"      // ANTS-5062 — never descend an excluded directory
+
+#include <QMap>
 
 #include <QCryptographicHash>
 #include <QDateTime>
@@ -446,38 +449,50 @@ QStringList walkTestFiles(const QString &projectRoot,
         "/(node_modules|\\.venv|__pycache__|build[^/]*|dist|_deps"
         "|CMakeFiles|autogen)/"));
 
-    // ANTS-1455: per-glob walk with path-prefix optimisation +
-    // full-glob re-filter.
-    QSet<QString> seen;
+    // ANTS-1455: path-prefix optimisation + full-glob re-filter.
+    // ANTS-5062 — one walk per distinct walk root, testing every glob that
+    // roots there, and an excluded directory is never descended into. The
+    // exclusion is matched against the path RELATIVE to scopeRoot, so a
+    // project that itself sits under a directory named build keeps its files.
+    struct GlobMatcher {
+        bool               hasSlash;
+        QRegularExpression rx;
+    };
+    QMap<QString, QList<GlobMatcher>> byWalkRoot;
     for (const QString &glob : testGlobs) {
         if (glob.isEmpty()) continue;
-        const bool hasSlash = glob.contains(QLatin1Char('/'));
         const QString prefix = globPathPrefix(glob);
         const QString walkRoot = prefix.isEmpty()
             ? scopeRoot
             : QDir::cleanPath(scopeRoot + QLatin1Char('/') + prefix);
         if (!QFileInfo(walkRoot).isDir()) continue;
-        const QRegularExpression rx = globToRegex(glob);
-        QDirIterator it(walkRoot, QDir::Files,
-                        QDirIterator::Subdirectories);
-        while (it.hasNext()) {
-            const QString p = it.next();
-            if (excludeRx.match(p).hasMatch()) continue;
-            if (seen.contains(p)) continue;
-            // For bare-basename globs (no `/`), match against the
-            // candidate's basename. For path-bearing globs, match
-            // against the candidate-relative path under scopeRoot.
-            QString matchTarget;
-            if (hasSlash) {
-                if (!p.startsWith(scopeRoot + QLatin1Char('/'))) continue;
-                matchTarget = p.mid(scopeRoot.size() + 1);
-            } else {
-                matchTarget = QFileInfo(p).fileName();
+        byWalkRoot[walkRoot].append({glob.contains(QLatin1Char('/')), globToRegex(glob)});
+    }
+    const auto excludedDir = [](const QString &name) {
+        return excludeRx.match(QLatin1Char('/') + name + QLatin1Char('/')).hasMatch();
+    };
+    QSet<QString> seen;
+    for (auto w = byWalkRoot.constBegin(); w != byWalkRoot.constEnd(); ++w) {
+        PrunedWalk::walkFiles(w.key(), excludedDir, [&](const QString &p) {
+            if (seen.contains(p)) return true;
+            // "/<path under scopeRoot>", or empty when p is not under it.
+            const QString rel = p.startsWith(scopeRoot + QLatin1Char('/'))
+                ? p.mid(scopeRoot.size()) : QString();
+            if (excludeRx.match(rel).hasMatch()) return true;
+            for (const GlobMatcher &g : w.value()) {
+                // For bare-basename globs (no `/`), match against the
+                // candidate's basename. For path-bearing globs, match
+                // against the candidate-relative path under scopeRoot.
+                if (g.hasSlash && rel.isEmpty()) continue;
+                const QString target = g.hasSlash ? rel.mid(1) : QFileInfo(p).fileName();
+                if (g.rx.match(target).hasMatch()) {
+                    seen.insert(p);
+                    result.append(p);
+                    break;
+                }
             }
-            if (!rx.match(matchTarget).hasMatch()) continue;
-            seen.insert(p);
-            result.append(p);
-        }
+            return true;
+        });
     }
     std::sort(result.begin(), result.end());
     return result;

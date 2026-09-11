@@ -5,6 +5,7 @@
 #include "testauditengine.h"
 
 #include <gtest/gtest.h>
+#include "../../_support/srcgrep.h"
 
 #include <QDir>
 #include <QFile>
@@ -156,4 +157,48 @@ TEST(TestAuditWalkExclusions, Inv5SingleRegexSourceOfTruth) {
     EXPECT_EQ(cpp.find("p.contains(QLatin1String(\"/build/\"))"),
               std::string::npos)
         << "INV-5: old chained-if /build/ exclusion must not return";
+}
+
+// INV-6 (ANTS-5062) — the exclusion regex matched the candidate's ABSOLUTE
+// path, so a project rooted under a directory literally named "build" had
+// every file inside it excluded, whether or not it was build output.
+TEST(TestAuditWalkExclusions, Inv6ExclusionMatchesRelativePath) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    touch(tmp.path(), "build/proj/tests/test_x.cpp");
+    const QString projectRoot = QDir(tmp.path()).filePath("build/proj");
+
+    const QStringList out = TestAuditEngine::internal::walkTestFiles(
+        projectRoot, ctestGlobs(), QStringLiteral("auto"));
+
+    EXPECT_TRUE(contains(out, "/tests/test_x.cpp"))
+        << "INV-6: a project root sitting under a directory named \"build\" "
+           "must not exclude every file inside it; out="
+        << out.join(QStringLiteral(", ")).toStdString();
+}
+
+// INV-7 (ANTS-5058 / ANTS-5062) — both walks route through the shared
+// pruning primitive rather than listing every file with
+// QDirIterator::Subdirectories and excluding after the fact.
+TEST(TestAuditWalkExclusions, Inv7RoutesThroughPrunedWalk) {
+    const std::string testAudit =
+        ants_test::slurpFile(SRC_TESTAUDITENGINE_CPP_PATH);
+    ASSERT_FALSE(testAudit.empty())
+        << "cannot open " << SRC_TESTAUDITENGINE_CPP_PATH;
+    const std::string indieReview =
+        ants_test::slurpFile(SRC_INDIE_REVIEW_ENGINE_CPP_PATH);
+    ASSERT_FALSE(indieReview.empty())
+        << "cannot open " << SRC_INDIE_REVIEW_ENGINE_CPP_PATH;
+
+    EXPECT_EQ(testAudit.find("QDirIterator::Subdirectories"), std::string::npos)
+        << "INV-7: walkTestFiles must not list every file before excluding";
+    EXPECT_NE(testAudit.find("PrunedWalk::walkFiles("), std::string::npos)
+        << "INV-7: walkTestFiles must route through the shared pruning walk";
+
+    EXPECT_EQ(indieReview.find("QDirIterator::Subdirectories"), std::string::npos)
+        << "INV-7: the review engine's whole-tree walks must not list every "
+           "file before excluding";
+    EXPECT_NE(indieReview.find("PrunedWalk::walkFiles("), std::string::npos)
+        << "INV-7: the review engine's whole-tree walks must route through "
+           "the shared pruning walk";
 }

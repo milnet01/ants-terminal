@@ -97,3 +97,16 @@ directory names, which is the same mistake one level down.
   *Test:* `Inv7SmallLaneIsNotCoarse`.
   *Breaks when:* the threshold is lowered to where a declared partition
   fires, which would train callers to ignore it.
+
+- **INV-8** (build output never enters the basename index) — GUARD.
+  `buildBasenameIndex` on a tree carrying both `src/foo.cpp` and
+  `build/foo.cpp` maps `foo.cpp` to `src/foo.cpp` alone; the build tree
+  does not make the basename ambiguous. This already holds today (the
+  noise-directory check runs before a build-tree file is admitted, even
+  though the walk still visits it); it must keep holding once
+  `buildBasenameIndex` routes through ANTS-5058's shared pruning walk
+  (`PrunedWalk::walkFiles`) instead of walking everything and filtering
+  after.
+  *Test:* `Inv8BuildBasenameIndexIgnoresBuildTree`.
+  *Breaks when:* the noise-directory exclusion is dropped, or moving onto
+  the pruning walk changes which directory name is treated as noise.

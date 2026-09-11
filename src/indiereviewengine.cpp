@@ -6,6 +6,7 @@
 #include "filecontentcache.h"  // ANTS-5056 — shared, locked file cache
 #include "pathvalidation.h"
 #include "projectsettings.h"   // ANTS-3709 — declared source_roots
+#include "prunedwalk.h"        // ANTS-5058 — never descend a noise directory
 #include "roadmapfoldin.h"
 #include "subsystemmap.h"
 
@@ -316,6 +317,11 @@ QString laneKindForDir(const QString &projectPath, const QString &dir) {
 // isNoiseDir, whose other callers (codebase_index, layout detection) have no
 // reason to start walking it. Widening the dot rule globally is the change
 // this deliberately is not.
+// ANTS-5058 — backstop on the entries (files and directories) one tree walk
+// may touch, counted before any filter, so a pathological tree cannot make a
+// walk run on whatever its accepted-file cap says.
+constexpr int kMaxWalkEntries = 200000;
+
 bool isPartitionNoiseDir(const QString &name) {
     if (name == QLatin1String(".github")) return false;
     return ProjectSettings::isNoiseDir(name);
@@ -341,21 +347,22 @@ QSet<QString> ignoredDirPrefixes(const QString &projectPath,
     for (const QString &root : roots) {
         const QString rootAbs = QDir::cleanPath(
             projectPath + QLatin1Char('/') + root);
-        QDirIterator it(rootAbs, QDir::Dirs | QDir::NoDotAndDotDot,
-                        QDirIterator::Subdirectories);
-        while (it.hasNext() && candidates.size() < kMaxDirsChecked) {
-            const QString abs = it.next();
-            if (!abs.startsWith(projectPath + QLatin1Char('/'))) continue;
-            const QString rel = abs.mid(projectPath.size() + 1);
-            // A noise dir is pruned by the walk anyway; asking git about it
-            // spends the cap on an answer nobody reads.
-            const QStringList segs = rel.split(QLatin1Char('/'));
-            bool noise = false;
-            for (const QString &s : segs)
-                if (isPartitionNoiseDir(s)) noise = true;
-            if (noise) continue;
-            candidates << rel;
-        }
+        // ANTS-5058 — directories only; a noise directory is never entered.
+        PrunedWalk::walkFiles(
+            rootAbs, isPartitionNoiseDir, [](const QString &) { return true; },
+            kMaxWalkEntries, [&](const QString &abs) {
+                if (candidates.size() >= kMaxDirsChecked) return false;
+                if (!abs.startsWith(projectPath + QLatin1Char('/'))) return true;
+                const QString rel = abs.mid(projectPath.size() + 1);
+                // A noise dir is pruned by the walk anyway; asking git about
+                // it spends the cap on an answer nobody reads. The segment
+                // check still covers noise above rootAbs.
+                const QStringList segs = rel.split(QLatin1Char('/'));
+                for (const QString &s : segs)
+                    if (isPartitionNoiseDir(s)) return true;
+                candidates << rel;
+                return true;
+            });
     }
     return ProjectSettings::gitIgnoredPaths(projectPath, candidates);
 }
@@ -395,23 +402,21 @@ void collectLaneFiles(const QString &projectPath, const Lane &lane,
             continue;
         }
         if (!fi.isDir()) continue;
-        QDirIterator it(canon, QDir::Files, QDirIterator::Subdirectories);
-        while (it.hasNext() && out->size() < cap) {
-            const QString f = it.next();
+        PrunedWalk::walkFiles(canon, isPartitionNoiseDir, [&](const QString &f) {
+            if (out->size() >= cap) return false;
             const QFileInfo ffi(f);
             if (!CodebaseIndex::isIndexableSuffix(ffi.suffix().toLower()))
-                continue;
-            if (isGeneratedSource(ffi.fileName())) continue;
+                return true;
+            if (isGeneratedSource(ffi.fileName())) return true;
             const QString rel = f.startsWith(rootCanon + QLatin1Char('/'))
                                     ? f.mid(rootCanon.size() + 1) : QString();
-            bool noise = false;
             const QStringList segs = rel.split(QLatin1Char('/'));
             for (int i = 0; i + 1 < segs.size(); ++i)
-                if (isPartitionNoiseDir(segs.at(i))) noise = true;
-            if (noise) continue;
+                if (isPartitionNoiseDir(segs.at(i))) return true;
             const QString fcanon = QFileInfo(f).canonicalFilePath();
             out->insert(fcanon.isEmpty() ? f : fcanon);
-        }
+            return true;
+        }, kMaxWalkEntries);
     }
 }
 
@@ -447,10 +452,9 @@ QList<Lane> deriveComputedPartition(const QString &projectPath,
     for (const QString &root : roots) {
         const QString rootAbs = QDir::cleanPath(
             projectPath + QLatin1Char('/') + root);
-        QDirIterator it(rootAbs, QDir::Files, QDirIterator::Subdirectories);
-        while (it.hasNext() && seen < kMaxFilesTotal) {
-            const QString abs = it.next();
-            if (!abs.startsWith(projectPath + QLatin1Char('/'))) continue;
+        PrunedWalk::walkFiles(rootAbs, isPartitionNoiseDir, [&](const QString &abs) {
+            if (seen >= kMaxFilesTotal) return false;
+            if (!abs.startsWith(projectPath + QLatin1Char('/'))) return true;
             const QString rel = abs.mid(projectPath.size() + 1);
             const QFileInfo fi(abs);
             // ANTS-4771 — the three filters below accept exactly the same set
@@ -459,12 +463,10 @@ QList<Lane> deriveComputedPartition(const QString &projectPath,
             // gate while build output was still in the walk would bury the one
             // signal this exists to surface under a mountain of artifacts.
             const QStringList segs = rel.split(QLatin1Char('/'));
-            bool noise = false;
             for (int i = 0; i + 1 < segs.size(); ++i)
-                if (isPartitionNoiseDir(segs.at(i))) noise = true;
-            if (noise) continue;
-            if (underIgnoredDir(rel, ignoredDirs)) continue;   // ANTS-4809
-            if (isGeneratedSource(fi.fileName())) continue;
+                if (isPartitionNoiseDir(segs.at(i))) return true;
+            if (underIgnoredDir(rel, ignoredDirs)) return true;   // ANTS-4809
+            if (isGeneratedSource(fi.fileName())) return true;
             // The suffix gate is the surprising one: it is narrower than
             // "source" on purpose (see UnassignedSources in the header), so a
             // hand-written shell script is dropped here. Report it.
@@ -474,13 +476,14 @@ QList<Lane> deriveComputedPartition(const QString &projectPath,
                     ++unassigned->count;
                     ++unassigned->bySuffix[suffix];
                 }
-                continue;
+                return true;
             }
             const QString dir = segs.size() > 1
                 ? rel.section(QLatin1Char('/'), 0, -2) : QStringLiteral(".");
             byDir[dir] << rel;
             ++seen;
-        }
+            return true;
+        }, kMaxWalkEntries);
     }
 
     QList<Lane> out;
@@ -588,21 +591,19 @@ int laneUncountedFiles(const QString &projectPath, const Lane &lane) {
             continue;
         }
         if (!fi.isDir()) continue;
-        QDirIterator it(canon, QDir::Files, QDirIterator::Subdirectories);
-        while (it.hasNext() && all.size() < kCountCap) {
-            const QString f = it.next();
+        PrunedWalk::walkFiles(canon, isPartitionNoiseDir, [&](const QString &f) {
+            if (all.size() >= kCountCap) return false;
             const QFileInfo ffi(f);
-            if (isGeneratedSource(ffi.fileName())) continue;
+            if (isGeneratedSource(ffi.fileName())) return true;
             const QString rel = f.startsWith(rootCanon + QLatin1Char('/'))
                                     ? f.mid(rootCanon.size() + 1) : QString();
-            bool noise = false;
             const QStringList segs = rel.split(QLatin1Char('/'));
             for (int i = 0; i + 1 < segs.size(); ++i)
-                if (isPartitionNoiseDir(segs.at(i))) noise = true;
-            if (noise) continue;
+                if (isPartitionNoiseDir(segs.at(i))) return true;
             const QString fcanon = QFileInfo(f).canonicalFilePath();
             all.insert(fcanon.isEmpty() ? f : fcanon);
-        }
+            return true;
+        }, kMaxWalkEntries);
     }
     return qMax(0, all.size() - admitted.size());
 }
@@ -669,28 +670,27 @@ UnassignedSources unassignedForLanes(const QString &projectPath,
     for (const QString &root : roots) {
         const QString rootAbs = QDir::cleanPath(
             projectPath + QLatin1Char('/') + root);
-        QDirIterator it(rootAbs, QDir::Files, QDirIterator::Subdirectories);
-        while (it.hasNext() && seen < kMaxFilesTotal) {
-            const QString canon = QFileInfo(it.next()).canonicalFilePath();
-            if (canon.isEmpty()) continue;
-            if (!canon.startsWith(rootCanon + QLatin1Char('/'))) continue;
+        PrunedWalk::walkFiles(rootAbs, isPartitionNoiseDir, [&](const QString &path) {
+            if (seen >= kMaxFilesTotal) return false;
+            const QString canon = QFileInfo(path).canonicalFilePath();
+            if (canon.isEmpty()) return true;
+            if (!canon.startsWith(rootCanon + QLatin1Char('/'))) return true;
             const QString rel = canon.mid(rootCanon.size() + 1);
             const QFileInfo fi(canon);
             // Same elimination order as the computed walk: noise and generated
             // output go first, so what is REPORTED is never build artifacts.
             const QStringList segs = rel.split(QLatin1Char('/'));
-            bool noise = false;
             for (int i = 0; i + 1 < segs.size(); ++i)
-                if (isPartitionNoiseDir(segs.at(i))) noise = true;
-            if (noise) continue;
-            if (underIgnoredDir(rel, ignoredDirs)) continue;   // ANTS-4809
-            if (isGeneratedSource(fi.fileName())) continue;
+                if (isPartitionNoiseDir(segs.at(i))) return true;
+            if (underIgnoredDir(rel, ignoredDirs)) return true;   // ANTS-4809
+            if (isGeneratedSource(fi.fileName())) return true;
             ++seen;
-            if (covered.contains(canon)) continue;
+            if (covered.contains(canon)) return true;
             ++out.count;
             ++out.bySuffix[fi.suffix().toLower()];
             if (sample) uncovered << rel;
-        }
+            return true;
+        }, kMaxWalkEntries);
     }
     // Sort BEFORE capping, so the sample does not depend on directory-walk
     // order: two runs on the same tree must name the same files, which is what
@@ -1055,27 +1055,25 @@ QHash<QString, QString> buildBasenameIndex(const QString &projectPath) {
     const QString rootCanon = QFileInfo(projectPath).canonicalFilePath();
     if (rootCanon.isEmpty()) return out;
 
-    QDirIterator it(rootCanon, QDir::Files, QDirIterator::Subdirectories);
     int seen = 0;
-    while (it.hasNext() && seen < kMaxFilesTotal) {
-        const QString abs = it.next();
-        if (!abs.startsWith(rootCanon + QLatin1Char('/'))) continue;
+    PrunedWalk::walkFiles(rootCanon, isPartitionNoiseDir, [&](const QString &abs) {
+        if (seen >= kMaxFilesTotal) return false;
+        if (!abs.startsWith(rootCanon + QLatin1Char('/'))) return true;
         const QString rel = abs.mid(rootCanon.size() + 1);
         const QFileInfo fi(abs);
-        if (!CodebaseIndex::isIndexableSuffix(fi.suffix().toLower())) continue;
-        if (isGeneratedSource(fi.fileName())) continue;
+        if (!CodebaseIndex::isIndexableSuffix(fi.suffix().toLower())) return true;
+        if (isGeneratedSource(fi.fileName())) return true;
         const QStringList segs = rel.split(QLatin1Char('/'));
-        bool noise = false;
         for (int i = 0; i + 1 < segs.size(); ++i)
-            if (isPartitionNoiseDir(segs.at(i))) noise = true;
-        if (noise) continue;
+            if (isPartitionNoiseDir(segs.at(i))) return true;
         ++seen;
         const QString base = fi.fileName();
         auto existing = out.constFind(base);
         if (existing == out.constEnd()) out.insert(base, rel);
         else if (existing.value() != rel)
             out.insert(base, QString());   // ambiguous — resolves to nothing
-    }
+        return true;
+    }, kMaxWalkEntries);
     return out;
 }
 

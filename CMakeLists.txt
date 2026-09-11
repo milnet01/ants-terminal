@@ -3271,6 +3271,11 @@ if(ANTS_TESTS)
                 # freshness/read-mode keying, a concurrency guard, and the
                 # four review engines' wiring to it. Qt6::Core only.
                 tests/features/file_content_cache/test_file_content_cache.cpp
+                # ANTS-5058 / ANTS-5062 — the shared pruning-walk primitive:
+                # a pruned directory is never descended, and the entry cap
+                # counts what the walk visits, not what it accepts.
+                # Qt6::Core only: prunedwalk.h needs QDirIterator/QString.
+                tests/features/pruned_walk/test_pruned_walk.cpp
                 $<$<NOT:$<BOOL:${ANTS_ENABLE_HELPER_CLI}>>:src/antshelper.cpp>)
     target_compile_definitions(test_core PRIVATE
         # ANTS-3757 INV-1/INV-2/INV-11 — the committed fixture roots and the

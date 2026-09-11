@@ -503,6 +503,7 @@
         "src/guithread.h",
         "src/pathvalidation.cpp",
         "src/pathvalidation.h",
+        "src/prunedwalk.h",
         "src/reviewbuttonstate.h",
         "src/shellutils.h",
         "src/subsystemmap.cpp",
