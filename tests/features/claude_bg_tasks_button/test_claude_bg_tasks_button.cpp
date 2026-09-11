@@ -10,12 +10,19 @@
 // ANTS-1840 — behavioral half: sweepLiveness un-latch. Drives the real
 // ClaudeBgTaskTracker (the rest of this file is source-grep).
 #include "claudebgtasks.h"
+// ANTS-5049 — behavioral half: dialog-outlives-tracker. Drives a real
+// ClaudeBgTasksDialog against a real ClaudeBgTaskTracker, offscreen.
+#include "claudebgtasksdialog.h"
+#include <QApplication>
 #include <QDateTime>
+#include <QEvent>
 #include <QFile>
 #include <QFileInfo>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QPointer>
+#include <QPushButton>
 #include <QStringLiteral>
 #include <QTemporaryDir>
 #include <utime.h>
@@ -598,5 +605,106 @@ TEST(ClaudeBgTasksButton, SweepLivenessKeepsTranscriptFinish) {
     tracker.sweepLiveness();
     EXPECT_EQ(tracker.runningCount(), 0)
         << "transcript-authoritative finish must never un-latch";
+}
+
+// --- ANTS-5049 arm-3: dialog outlives its tracker (behavioral) ----------
+//
+// Why this exists: ClaudeStatusBarController::untrackBgShell does
+// `delete tracker;` with no signal and nothing else cleared, but
+// ClaudeBgTasksDialog holds that same tracker as a raw pointer
+// (m_tracker). Closing the owning tab while the dialog is open leaves
+// m_tracker dangling; the dialog's null checks never catch it because
+// the pointer itself is never set to null. Locks the fix: hold a
+// QPointer (or equivalent) and close the dialog once its tracker is
+// destroyed.
+
+// INV-16: destroying the tracker while the dialog is open must not
+// leave the dialog open and using it.
+TEST(ClaudeBgTasksButton, DialogClosesWhenTrackerDestroyed) {
+    auto *tracker = new ClaudeBgTaskTracker();
+    auto *dlg = new ClaudeBgTasksDialog(tracker, QStringLiteral("Dark"),
+                                        nullptr);
+    QPointer<ClaudeBgTasksDialog> dlgGuard(dlg);
+    dlg->show();
+    QApplication::processEvents();
+    ASSERT_TRUE(!dlgGuard.isNull() && dlgGuard->isVisible())
+        << "setup: dialog must be open and visible before its tracker dies";
+
+    // Reproduce untrackBgShell's cleanup exactly: no signal, no pointer
+    // anywhere cleared, the tracker is simply freed.
+    delete tracker;
+
+    // Give the event loop a chance to run whatever the fix schedules
+    // (close()/deleteLater are both processed here).
+    QApplication::processEvents();
+    QApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
+    QApplication::processEvents();
+
+    const bool deleted = dlgGuard.isNull();
+    const bool hidden = !deleted && !dlgGuard->isVisible();
+    if (!deleted && !hidden) {
+        ADD_FAILURE() << "INV-16: dialog is still open and visible after "
+            "its tracker was destroyed the way untrackBgShell destroys it "
+            "(`delete tracker;`) — expected the dialog to close or hide; "
+            "instead ClaudeBgTasksDialog::m_tracker is left dangling. "
+            "saw: deleted=false visible=true";
+    } else {
+        std::printf("OK: INV-16 — dialog %s once its tracker was destroyed\n",
+                    deleted ? "was deleted" : "was hidden");
+    }
+    if (!deleted) delete dlg;  // test cleanup if the dialog survived
+}
+
+// INV-17: a Refresh click after the tracker is gone must not dereference
+// it. Under Release this can only be observed cleanly when INV-16's fix
+// already closed the dialog (Refresh becomes unreachable); while the
+// defect is live the dialog stays open with the button still wired to a
+// dead tracker, which is itself the failure this reports — a click is
+// then attempted as a best-effort probe (reliable under ASan, not
+// guaranteed under Release, which matches the bug report's own "Not
+// reproduced").
+TEST(ClaudeBgTasksButton, RefreshAfterTrackerDestroyedDoesNotCrash) {
+    auto *tracker = new ClaudeBgTaskTracker();
+    auto *dlg = new ClaudeBgTasksDialog(tracker, QStringLiteral("Dark"),
+                                        nullptr);
+    QPointer<ClaudeBgTasksDialog> dlgGuard(dlg);
+    dlg->show();
+    QApplication::processEvents();
+
+    delete tracker;
+    QApplication::processEvents();
+    QApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
+    QApplication::processEvents();
+
+    if (dlgGuard.isNull()) {
+        std::printf("OK: INV-17 — dialog already gone, Refresh is "
+                    "unreachable, cannot dereference the dead tracker\n");
+        return;
+    }
+
+    auto *refreshBtn = dlgGuard->findChild<QPushButton *>(
+        QStringLiteral("bgTasksRefreshBtn"));
+    if (!refreshBtn) {
+        ADD_FAILURE() << "INV-17/setup: dialog is still open but its "
+            "Refresh button (objectName bgTasksRefreshBtn) cannot be "
+            "found — cannot exercise the refresh path";
+        delete dlg;
+        return;
+    }
+
+    ADD_FAILURE() << "INV-17: dialog outlived its tracker and still "
+        "exposes a live Refresh button — clicking it runs "
+        "ClaudeBgTasksDialog::rebuild(), which dereferences the freed "
+        "ClaudeBgTaskTracker through m_tracker->tasks(). This is a "
+        "use-after-free: reliably caught under a sanitizer build, "
+        "silent or non-deterministic under Release. Clicking now as a "
+        "best-effort probe. saw: dialog still open, Refresh still wired "
+        "to a dead tracker";
+    refreshBtn->click();
+    QApplication::processEvents();
+    std::printf("INV-17: refresh click returned without crashing this "
+                "Release run (non-deterministic use-after-free; see a "
+                "sanitizer build for a reliable signal)\n");
+    delete dlg;
 }
 

@@ -197,6 +197,40 @@ the wire-up that, if reverted, breaks the user-visible behavior.
   Behavioral (link-based): `SweepLivenessUnlatchesResumedTask` and
   `SweepLivenessKeepsTranscriptFinish`.
 
+- **INV-16** (dialog does not outlive its tracker, ANTS-5049): closing
+  the tab that owns a `ClaudeBgTaskTracker` calls
+  `ClaudeStatusBarController::untrackBgShell`, which does `delete
+  tracker;` with no signal and no pointer anywhere cleared. `ClaudeBgTasksDialog` holds that
+  tracker as a raw `ClaudeBgTaskTracker *m_tracker`, so a dialog left
+  open across the delete keeps a dangling pointer; its null checks
+  (`if (!m_viewer || !m_tracker) return;`) never catch this because
+  the pointer is never set to null. Bug report: "open Background
+  Tasks, then close that tab while the dialog is open. Not
+  reproduced" — a dangling-pointer read is undefined behavior and does
+  not reliably crash in a Release build, which is why the reporter
+  could not reproduce it by eye. The intended fix holds a `QPointer`
+  (or equivalent) and closes the dialog once its tracker is destroyed.
+  Behavioral (link-based): `DialogClosesWhenTrackerDestroyed` —
+  constructs a real `ClaudeBgTasksDialog` against a real
+  `ClaudeBgTaskTracker`, offscreen, deletes the tracker the way
+  `untrackBgShell` does, and checks the dialog is no longer open
+  (deleted or hidden).
+
+- **INV-17** (refresh path does not dereference a dead tracker,
+  ANTS-5049): the dialog's Refresh button (`bgTasksRefreshBtn`) is
+  wired straight to `rebuild()`, which reads `m_tracker->tasks()`.
+  Once the tracker behind it is destroyed, a Refresh click walks into
+  the same dangling pointer as INV-16. In a Release build this may or
+  may not crash depending on what the allocator has done with the
+  freed memory — a build with sanitizers turned on is what catches it
+  reliably, by aborting on the use-after-free. The behavioral check
+  therefore leans on INV-16: once the dialog has closed for INV-16,
+  the Refresh button is unreachable and the invariant holds trivially;
+  while the dialog is still open (the live defect), finding the button
+  still wired to a dead tracker is itself the failure this invariant
+  reports, and the test clicks it anyway as a best-effort probe.
+  Behavioral (link-based): `RefreshAfterTrackerDestroyedDoesNotCrash`.
+
 ## How to verify pre-fix code fails
 
 ```bash

@@ -37,7 +37,9 @@ private slots:
 private:
     void rewatch();
 
-    ClaudeBgTaskTracker *m_tracker;
+    // ANTS-5049 — the owning tab can close while this dialog is open, and
+    // untrackBgShell deletes the tracker; a QPointer nulls itself then.
+    QPointer<ClaudeBgTaskTracker> m_tracker;
     QString m_themeName;
     QFileSystemWatcher m_watcher;
     QTimer m_debounce;

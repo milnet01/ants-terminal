@@ -154,9 +154,11 @@ ClaudeBgTasksDialog::ClaudeBgTasksDialog(ClaudeBgTaskTracker *tracker,
     connect(&m_watcher, &QFileSystemWatcher::fileChanged,
             this, &ClaudeBgTasksDialog::scheduleRebuild);
 
-    if (m_tracker) {
-        connect(m_tracker, &ClaudeBgTaskTracker::tasksChanged,
+    if (tracker) {
+        connect(tracker, &ClaudeBgTaskTracker::tasksChanged,
                 this, &ClaudeBgTasksDialog::scheduleRebuild);
+        // ANTS-5049 — close with the tracker: every refresh path reads it.
+        connect(tracker, &QObject::destroyed, this, &QDialog::close);
     }
 
     rewatch();
