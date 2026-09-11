@@ -86,8 +86,11 @@ TEST(ReviewChangesBranches, Main) {
     // *inside* the lambda body, not before it. ANTS-1145 (0.7.73):
     // capture changed from `[this, ...]` to `[parent, ...]` when the
     // function moved from MainWindow::showDiffViewer to a free
-    // diffviewer::show — `this` doesn't exist in the free form.
-    expect(contains(src, "auto runProbes = [parent, cwd, dlgGuard"),
+    // diffviewer::show — `this` doesn't exist in the free form. ANTS-5059
+    // changed it again, to `[dialog, ...]`, when the probes moved onto the
+    // dialog; the needle stops at the lambda so a capture change cannot
+    // read as the lambda going missing.
+    expect(contains(src, "auto runProbes = ["),
            "I6/runProbes-lambda-defined");
     expect(contains(src, "auto state = std::make_shared<ProbeState>();"),
            "I6/runProbes-constructs-fresh-state-per-call");
