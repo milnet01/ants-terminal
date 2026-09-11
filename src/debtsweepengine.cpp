@@ -167,6 +167,9 @@ QList<Finding> detectStaleTypeComments(
         QStringLiteral(R"(^(.*?)\*/)"));
 
     QList<Finding> out;
+    // ANTS-5057 — each existsInSource() call scans the whole blob, and one
+    // token recurs across many comments; answer each once per run.
+    QHash<QString, bool> inSource;
     for (const QString &rel : files) {
         const QString abs = projectPath + QChar('/') + rel;
         QFile f(abs);
@@ -222,7 +225,10 @@ QList<Finding> detectStaleTypeComments(
                 if (stop.contains(tok)) continue;
                 if (seenThisLine.contains(tok)) continue;
                 seenThisLine.insert(tok);
-                if (FeatureCoverage::existsInSource(blob, tok)) continue;
+                auto known = inSource.constFind(tok);
+                if (known == inSource.constEnd())
+                    known = inSource.insert(tok, FeatureCoverage::existsInSource(blob, tok));
+                if (*known) continue;
                 Finding fnd;
                 fnd.category    = QStringLiteral("code_drift");
                 fnd.detectorId  = QStringLiteral("stale_type_comment");

@@ -153,9 +153,11 @@ protected:
     // ANTS-1259 — Debt Sweep tab orchestration (testable seams; the
     // QTextBrowser anchors + buttons are thin wrappers over these).
     //
-    // debtScan — run DebtSweepEngine::scanAll, drop entries already in
-    //   the project allowlist, store + return the survivors (m_debtFindings).
-    QList<DebtSweepEngine::Finding> debtScan();
+    // requestDebtScan — ANTS-5057: run DebtSweepEngine::scanAll on a worker,
+    //   then drop entries already in the project allowlist, store the
+    //   survivors (m_debtFindings) and render. One scan at a time; a request
+    //   made while one runs is served by one more scan afterwards.
+    void requestDebtScan();
     // debtFixInline — apply one mechanical fix via the engine; true iff
     //   the file was mutated.
     bool debtFixInline(const DebtSweepEngine::Finding &f);
@@ -536,6 +538,8 @@ private:
     QList<DebtSweepEngine::Finding> m_debtFindings;
     LlmClient   *m_debtLlm = nullptr;            // lazily created on first triage
     bool         m_debtScanned = false;
+    bool         m_debtScanRunning = false;   // ANTS-5057
+    bool         m_debtScanAgain = false;     // ANTS-5057
     // Populate m_recentFiles (+ m_recentLines when includeLines) from the
     // last m_recentCommits commits. No-op outside a git repo. Shared by
     // runAudit's scope mode and the "Since baseline" pill.

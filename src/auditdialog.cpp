@@ -45,6 +45,7 @@
 #include <QNetworkRequest>
 #include <QNetworkReply>
 #include <QRegularExpression>
+#include <QThread>
 #include "secretredact.h"   // ANTS-4448 — scrub the AI-triage prompt
 
 #include <algorithm>
@@ -2748,18 +2749,45 @@ Finding AuditDialog::debtToAuditFinding(const DebtSweepEngine::Finding &d) {
     return f;
 }
 
-QList<DebtSweepEngine::Finding> AuditDialog::debtScan() {
-    DebtSweepEngine::ScanOptions opt;   // engine defaults
-    const QList<DebtSweepEngine::Finding> all =
-        DebtSweepEngine::scanAll(m_projectPath, opt);
-    // Reuse the project allowlist so an Allowed debt finding stays hidden
-    // across scans (the engine itself doesn't consult the allowlist).
-    m_debtFindings.clear();
-    for (const DebtSweepEngine::Finding &d : all)
-        if (!allowlisted(debtToAuditFinding(d)))
-            m_debtFindings.append(d);
-    m_debtScanned = true;
-    return m_debtFindings;
+// ANTS-5057 — the sweep reads the whole tree, blames every file holding a
+// TODO and runs the packaging script, so it runs on a worker; the allowlist
+// filter and the render run here when it finishes. One scan at a time: a
+// request made while one runs is served by one more scan afterwards.
+void AuditDialog::requestDebtScan() {
+    if (m_debtScanRunning) {
+        m_debtScanAgain = true;
+        return;
+    }
+    m_debtScanRunning = true;
+    if (m_debtScanBtn) m_debtScanBtn->setEnabled(false);
+    auto result = std::make_shared<QList<DebtSweepEngine::Finding>>();
+    const QString root = m_projectPath;
+    QThread *worker = QThread::create([root, result]() {
+        DebtSweepEngine::ScanOptions opt;   // engine defaults
+        *result = DebtSweepEngine::scanAll(root, opt);
+    });
+    // The thread deletes itself even if the dialog closes first; the result
+    // connection below then simply never fires.
+    connect(worker, &QThread::finished, worker, &QObject::deleteLater);
+    connect(worker, &QThread::finished, this, [this, result]() {
+        // Reuse the project allowlist so an Allowed debt finding stays hidden
+        // across scans (the engine itself doesn't consult the allowlist).
+        m_debtFindings.clear();
+        for (const DebtSweepEngine::Finding &d : std::as_const(*result))
+            if (!allowlisted(debtToAuditFinding(d)))
+                m_debtFindings.append(d);
+        m_debtScanned = true;
+        m_debtScanRunning = false;
+        if (m_debtScanBtn) m_debtScanBtn->setEnabled(true);
+        renderDebtResults();
+        if (m_debtStatus)
+            m_debtStatus->setFullText(QString("Debt sweep — %1 finding%2")
+                .arg(m_debtFindings.size())
+                .arg(m_debtFindings.size() == 1 ? "" : "s"));
+        if (std::exchange(m_debtScanAgain, false))
+            requestDebtScan();
+    }, Qt::QueuedConnection);
+    worker->start();
 }
 
 bool AuditDialog::debtFixInline(const DebtSweepEngine::Finding &f) {
@@ -2899,13 +2927,7 @@ void AuditDialog::buildDebtSweepTab() {
 
 void AuditDialog::onDebtScanClicked() {
     if (m_debtStatus) m_debtStatus->setFullText("Scanning for debt…");
-    QApplication::processEvents();
-    debtScan();
-    renderDebtResults();
-    if (m_debtStatus)
-        m_debtStatus->setFullText(QString("Debt sweep — %1 finding%2")
-            .arg(m_debtFindings.size())
-            .arg(m_debtFindings.size() == 1 ? "" : "s"));
+    requestDebtScan();   // ANTS-5057 — renders when the worker finishes
 }
 
 void AuditDialog::renderDebtResults() {
@@ -2984,7 +3006,9 @@ void AuditDialog::onDebtAnchorClicked(const QUrl &url) {
             if (m_debtStatus)
                 m_debtStatus->setFullText(QString("Fixed: %1 (%2)")
                     .arg(f.file, f.detectorId));
-            debtScan();   // re-scan: the fixed finding is gone from the file
+            // ANTS-5057 — drop it now; the background re-scan confirms.
+            m_debtFindings.removeAt(idx);
+            requestDebtScan();
         } else if (m_debtStatus) {
             m_debtStatus->setFullText(
                 "Fix did not apply (file changed under the scan?) — re-scan");
@@ -3007,7 +3031,9 @@ void AuditDialog::onDebtAnchorClicked(const QUrl &url) {
         if (debtAllow(f, reason)) {
             if (m_debtStatus)
                 m_debtStatus->setFullText(QString("Allowlisted %1").arg(f.detectorId));
-            debtScan();   // re-scan: now filtered out by the allowlist
+            // ANTS-5057 — drop it now; the background re-scan confirms.
+            m_debtFindings.removeAt(idx);
+            requestDebtScan();
         }
         renderDebtResults();
         return;

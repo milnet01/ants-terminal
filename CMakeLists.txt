@@ -2750,7 +2750,11 @@ if(ANTS_TESTS)
                 # batched (one --line-porcelain call per file, several -L
                 # ranges) and off the GUI thread, not one waitForFinished
                 # QProcess per finding.
-                tests/features/audit_blame_bulk_async/test_audit_blame_bulk_async.cpp)
+                tests/features/audit_blame_bulk_async/test_audit_blame_bulk_async.cpp
+                # ANTS-5057 — the Debt Sweep scan must run on a QThread::create
+                # worker, not synchronously on the GUI thread on every click,
+                # fix and allow.
+                tests/features/audit_debt_scan_async/test_audit_debt_scan_async.cpp)
     target_compile_definitions(test_audit PRIVATE
         SRC_AUDIT_CPP_PATH="${CMAKE_SOURCE_DIR}/src/auditdialog.cpp"
         SRC_AUDIT_H_PATH="${CMAKE_SOURCE_DIR}/src/auditdialog.h"
