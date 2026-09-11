@@ -1,4 +1,5 @@
 #include "sessionmanager.h"
+#include "configbackup.h"
 #include "secureio.h"
 #include "terminalgrid.h"
 
@@ -40,9 +41,10 @@ QString SessionManager::sessionPath(const QString &tabId) {
     return sessionDir() + "/session_" + tabId + ".dat";
 }
 
-QByteArray SessionManager::serialize(const TerminalGrid *grid,
-                                     const QString &cwd,
-                                     const QString &pinnedTitle) {
+QByteArray SessionManager::serializeStream(const TerminalGrid *grid,
+                                           const QString &cwd,
+                                           const QString &pinnedTitle,
+                                           int firstLine) {
     QByteArray raw;
     QDataStream out(&raw, QIODevice::WriteOnly);
     out.setVersion(QDataStream::Qt_6_0);
@@ -56,9 +58,9 @@ QByteArray SessionManager::serialize(const TerminalGrid *grid,
 
     // Scrollback lines
     int sbSize = grid->scrollbackSize();
-    out << static_cast<int32_t>(sbSize);
+    out << static_cast<int32_t>(sbSize - firstLine);
 
-    for (int i = 0; i < sbSize; ++i) {
+    for (int i = firstLine; i < sbSize; ++i) {
         const auto &cells = grid->scrollbackLine(i);
         bool wrapped = grid->scrollbackLineWrapped(i);
         out << static_cast<int32_t>(cells.size());
@@ -132,9 +134,58 @@ QByteArray SessionManager::serialize(const TerminalGrid *grid,
     // V3: Manual tab rename pin (empty string when user hasn't renamed
     // the tab). Trailing field — V2 readers simply stop here.
     out << pinnedTitle;
+    return raw;
+}
+
+QByteArray SessionManager::serialize(const TerminalGrid *grid,
+                                     const QString &cwd,
+                                     const QString &pinnedTitle,
+                                     qint64 maxRawBytes,
+                                     qint64 maxFileBytes) {
+    // ANTS-5031 — never write what restore() refuses. A line's stream size
+    // is exact (int32 cell count, bool wrapped, 13 bytes per cell, int32
+    // combining count, 8 + 4n per combining entry), so the newest scrollback
+    // lines that fit the uncompressed cap are kept and the oldest are left
+    // out first.
+    const int sbSize = grid->scrollbackSize();
+    auto combiningBytes = [](const auto &combining) {
+        qint64 b = 4;
+        for (const auto &entry : combining)
+            b += 8 + 4 * qint64(entry.second.size());
+        return b;
+    };
+    auto stringBytes = [](const QString &s) { return 4 + 2 * qint64(s.size()); };
+    qint64 fixedBytes = 6 * 4 + 4 + 4;  // header, scrollback count, row count
+    for (int row = 0; row < grid->rows(); ++row)
+        fixedBytes += 4 + 13 * qint64(grid->cols())
+                      + combiningBytes(grid->screenCombining(row));
+    fixedBytes += stringBytes(grid->windowTitle()) + stringBytes(cwd)
+                  + stringBytes(pinnedTitle);
+
+    int first = sbSize;
+    for (qint64 used = fixedBytes; first > 0; --first) {
+        const qint64 b = 4 + 1 + 13 * qint64(grid->scrollbackLine(first - 1).size())
+                         + combiningBytes(grid->scrollbackCombining(first - 1));
+        if (used + b > maxRawBytes) break;
+        used += b;
+    }
 
     // Compress
-    QByteArray compressed = qCompress(raw, 6);
+    QByteArray compressed = qCompress(serializeStream(grid, cwd, pinnedTitle, first), 6);
+    // Compression can still leave the file over its cap. Keep fewer lines in
+    // proportion to the overshoot and rebuild; each pass keeps strictly
+    // fewer, and after eight passes none are kept.
+    for (int attempt = 0;
+         qint64(ENVELOPE_HEADER_SIZE) + compressed.size() > maxFileBytes && first < sbSize;
+         ++attempt) {
+        const qint64 kept = sbSize - first;
+        const qint64 fileBytes = qint64(ENVELOPE_HEADER_SIZE) + compressed.size();
+        const qint64 keep = attempt < 8
+            ? qint64(double(kept) * double(maxFileBytes) / double(fileBytes) * 0.9)
+            : 0;
+        first = sbSize - static_cast<int>(std::min(keep, kept - 1));
+        compressed = qCompress(serializeStream(grid, cwd, pinnedTitle, first), 6);
+    }
 
     // V4 envelope: SHEC magic + envelope version + SHA-256(compressed)
     // + payload length + compressed payload. ANTS-1778 — this is an
@@ -169,7 +220,7 @@ bool SessionManager::restore(TerminalGrid *grid, const QByteArray &input,
     if (pinnedTitle) *pinnedTitle = QString();
 
     // Reject excessively large input (100MB limit)
-    if (input.size() > 100 * 1024 * 1024) return false;
+    if (input.size() > MAX_RESTORE_FILE_BYTES) return false;
 
     // Detect V4 envelope: peek the first uint32. qCompress's first 4
     // bytes are the big-endian uncompressed length, which for any real
@@ -194,7 +245,7 @@ bool SessionManager::restore(TerminalGrid *grid, const QByteArray &input,
             // to legacy files, and require the envelope to declare a
             // length that exactly matches the trailing bytes — refuses
             // truncated or padded files before we hash anything.
-            if (payloadLen > 100u * 1024u * 1024u) return false;
+            if (qint64(payloadLen) > MAX_RESTORE_FILE_BYTES) return false;
             const qsizetype expectedSize = qsizetype(ENVELOPE_HEADER_SIZE)
                                          + qsizetype(payloadLen);
             if (input.size() != expectedSize) return false;
@@ -270,8 +321,9 @@ bool SessionManager::restore(TerminalGrid *grid, const QByteArray &input,
         return false;
     }
 
-    // Resize grid to match saved dimensions
-    grid->resize(rows, cols);
+    // ANTS-5031 — parse everything into locals first; the grid is touched
+    // only once the whole stream has been read. Resizing up front left a
+    // refused stream's tab part-restored.
 
     // Read a cell from the stream. Returns false if the stream went bad
     // mid-cell — refusing to commit half-decoded codepoints/colors/flags
@@ -323,6 +375,7 @@ bool SessionManager::restore(TerminalGrid *grid, const QByteArray &input,
     in >> sbSize;
     if (in.status() != QDataStream::Ok || sbSize < 0 || sbSize > 1000000) return false;
 
+    std::vector<TermLine> scrollback;
     for (int i = 0; i < sbSize; ++i) {
         int32_t cellCount;
         bool wrapped;
@@ -337,7 +390,7 @@ bool SessionManager::restore(TerminalGrid *grid, const QByteArray &input,
         }
         if (!readCombining(line.combining)) return false;
 
-        grid->pushScrollbackLine(std::move(line));
+        scrollback.push_back(std::move(line));
     }
 
     // Read and restore screen lines
@@ -350,12 +403,15 @@ bool SessionManager::restore(TerminalGrid *grid, const QByteArray &input,
     if (in.status() != QDataStream::Ok || screenRows < 0 ||
         screenRows > kMaxRestoreRows) return false;
 
+    std::vector<TermLine> screen;
     for (int row = 0; row < screenRows && row < rows; ++row) {
         int32_t colCount;
         in >> colCount;
         if (in.status() != QDataStream::Ok || colCount < 0 || colCount > 10000) return false;
 
-        TermLine &screenLine = grid->screenLine(row);
+        screen.emplace_back();
+        TermLine &screenLine = screen.back();
+        screenLine.cells.resize(std::min<int>(colCount, cols));
         for (int col = 0; col < colCount && col < cols; ++col) {
             if (!readCell(screenLine.cells[col])) return false;
         }
@@ -379,34 +435,42 @@ bool SessionManager::restore(TerminalGrid *grid, const QByteArray &input,
         if (!readCombining(skipComb)) return false;
     }
 
-    // Restore cursor position and title
-    grid->setCursorPosition(std::clamp(curRow, 0, rows - 1),
-                            std::clamp(curCol, 0, cols - 1));
-
     QString title;
     in >> title;
-    if (!title.isEmpty())
-        grid->setTitle(title);
 
     // V2: Read working directory if present
-    if (version >= 2 && !in.atEnd()) {
-        QString savedCwd;
+    QString savedCwd;
+    if (version >= 2 && !in.atEnd())
         in >> savedCwd;
-        if (cwd && !savedCwd.isEmpty())
-            *cwd = savedCwd;
-    }
 
     // V3: Read pinned tab title if present. Older V2 files end after
     // cwd; atEnd() gates so the stream-status check below doesn't flip
     // to ReadPastEnd and fail the restore for pre-V3 files.
-    if (version >= 3 && !in.atEnd()) {
-        QString savedPinned;
+    QString savedPinned;
+    if (version >= 3 && !in.atEnd())
         in >> savedPinned;
-        if (pinnedTitle)
-            *pinnedTitle = savedPinned;
-    }
 
-    return in.status() == QDataStream::Ok;
+    if (in.status() != QDataStream::Ok) return false;
+
+    // Commit: the whole stream parsed.
+    grid->resize(rows, cols);
+    for (TermLine &line : scrollback)
+        grid->pushScrollbackLine(std::move(line));
+    for (int row = 0; row < static_cast<int>(screen.size()); ++row) {
+        TermLine &dst = grid->screenLine(row);
+        for (int col = 0; col < static_cast<int>(screen[row].cells.size()); ++col)
+            dst.cells[col] = screen[row].cells[col];
+        dst.combining = std::move(screen[row].combining);
+    }
+    grid->setCursorPosition(std::clamp(curRow, 0, rows - 1),
+                            std::clamp(curCol, 0, cols - 1));
+    if (!title.isEmpty())
+        grid->setTitle(title);
+    if (cwd && !savedCwd.isEmpty())
+        *cwd = savedCwd;
+    if (pinnedTitle)
+        *pinnedTitle = savedPinned;
+    return true;
 }
 
 void SessionManager::saveSession(const QString &tabId, const TerminalGrid *grid,
@@ -475,9 +539,20 @@ bool SessionManager::loadSession(const QString &tabId, TerminalGrid *grid,
     if (path.isEmpty()) return false;
     QFile file(path);
     if (!file.open(QIODevice::ReadOnly)) return false;
-    if (file.size() > 100 * 1024 * 1024) return false; // 100MB limit before reading
-    QByteArray data = file.readAll();
-    return restore(grid, data, cwd, pinnedTitle);
+    // ANTS-5031 — keep a file restore() refuses. The caller still opens the
+    // tab under this id, so its next save would overwrite the only copy.
+    const bool ok = file.size() <= MAX_RESTORE_FILE_BYTES  // before reading
+                    && restore(grid, file.readAll(), cwd, pinnedTitle);
+    if (!ok) {
+        const QString aside = rotateCorruptFileAside(path);
+        if (aside.isEmpty())
+            qWarning("SessionManager::loadSession: %s was refused and could "
+                     "not be copied aside", qUtf8Printable(path));
+        else
+            qWarning("SessionManager::loadSession: %s was refused; kept as %s",
+                     qUtf8Printable(path), qUtf8Printable(aside));
+    }
+    return ok;
 }
 
 void SessionManager::removeSession(const QString &tabId) {

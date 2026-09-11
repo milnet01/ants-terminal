@@ -1473,7 +1473,9 @@ if(ANTS_TESTS)
                 tests/features/shaped_run_cache/test_shaped_run_cache.cpp
                 # ANTS-5029 — prompt regions follow scrollback eviction;
                 # an unsigned re-run confirms (source-scrape).
-                tests/features/osc133_rerun_safety/test_osc133_rerun_safety.cpp)
+                tests/features/osc133_rerun_safety/test_osc133_rerun_safety.cpp
+                # ANTS-5031 — a refused session never costs the good file.
+                tests/features/session_restore_refusal/test_session_restore_refusal.cpp)
     # scrollback_frozen_view test reads terminalwidget.cpp source via grep —
     # the path must be passed as a compile definition same as the standalone
     # had it. Apply target-wide so any future bundle source can reuse.
