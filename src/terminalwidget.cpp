@@ -5,6 +5,7 @@
 #include "regexharden.h"     // ANTS-1665 — harden user search / rule patterns
 #include "secureio.h"        // ANTS-4456 — ensurePrivateDir / setOwnerOnlyPerms
 #include "shellutils.h"      // ANTS-3828 — shellQuote() for pasted file paths
+#include "stickycommandtext.h" // ANTS-5027 — sticky-header command text
 
 #include <QImageReader>
 #include <QPainter>
@@ -1642,14 +1643,12 @@ void TerminalWidget::paintEvent(QPaintEvent *event) {
                             : scrollbackSize + rows - 1;
             // Viewport top line
             if (outputStart <= viewStart && outputEnd >= viewStart && pr.hasOutput) {
-                // Extract the command text from the prompt region (startLine to endLine)
-                QString cmdText;
-                for (int gl = pr.startLine; gl <= pr.endLine; ++gl) {
-                    cmdText += lineText(gl).trimmed();
-                    if (gl < pr.endLine) cmdText += " ";
-                }
-                cmdText = cmdText.trimmed();
-                if (cmdText.isEmpty()) break;
+                // ANTS-5027 — the command text, cut to the header's width.
+                const int maxChars = (width() - m_padding * 2 - 80) / m_cellWidth;
+                const QString truncated = stickyCommandText(
+                    pr.startLine, pr.endLine, maxChars,
+                    [this](int gl) { return lineText(gl); });
+                if (truncated.isEmpty()) break;
 
                 // Draw sticky header bar at top
                 QColor headerBg = m_grid->defaultBg().lighter(120);
@@ -1666,10 +1665,6 @@ void TerminalWidget::paintEvent(QPaintEvent *event) {
                 // Command text
                 p.setPen(m_grid->defaultFg());
                 p.setFont(m_font);
-                QString truncated = cmdText;
-                int maxChars = (width() - m_padding * 2 - 80) / m_cellWidth;
-                if (truncated.length() > maxChars)
-                    truncated = truncated.left(maxChars - 1) + QChar(0x2026); // ellipsis
                 p.drawText(m_padding + 4, 2 + m_fontAscent, truncated);
 
                 // Duration (right side)

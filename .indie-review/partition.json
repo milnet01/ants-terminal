@@ -27,6 +27,7 @@
       "sourcePaths": [
         "src/shapedruncache.cpp",
         "src/shapedruncache.h",
+        "src/stickycommandtext.h",
         "src/terminalaccessible.cpp",
         "src/terminalaccessible.h",
         "src/terminalwidget.cpp",
