@@ -2314,6 +2314,10 @@ if(ANTS_TESTS)
                 tests/features/mcp_build_status/test_mcp_build_status.cpp
                 # ANTS-1300 test_results MCP tool.
                 tests/features/mcp_test_results/test_mcp_test_results.cpp
+                # ANTS-5064 — TestResCache::parseCtestOutput behavioural
+                # coverage against real ctest output (mcp_test_results above
+                # is wiring-only source-grep and never calls the parser).
+                tests/features/testrescache_parse/test_testrescache_parse.cpp
                 # ANTS-1303 find_definition + find_caller MCP tools.
                 tests/features/mcp_symbol_query/test_mcp_symbol_query.cpp
                 # ANTS-1305 similar_code shape matcher.

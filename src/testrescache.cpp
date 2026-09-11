@@ -38,10 +38,13 @@ QString cacheDirLocal(const QString &canonProject) {
 // Per-test status line (see § 3.4 of ANTS-1300.md).
 //   "   1/1221 Test #N: TestName ...   Passed    1.03 sec"
 //   "   1/1221 Test #N: TestName ...***Failed   1.03 sec"
+//   "   1/1221 Test #N: TestName ...***Exception: SegFault   1.03 sec"
+// ANTS-5064 — the marker sits flush against the dots, and a status can be
+// several words, so the status is everything up to the time column.
 const QRegularExpression &perTestRe() {
     static const QRegularExpression re(
         QStringLiteral(
-            R"(^\s*\d+/\d+\s+Test\s+#\d+:\s+(\S+)\s+\.+\s+(?:\*\*\*)?\s*(\S+)\s+\d+\.\d+\s+sec\s*$)"),
+            R"(^\s*\d+/\d+\s+Test\s+#\d+:\s+(\S+)\s+\.+\s*(?:\*\*\*)?(\S.*?)\s+\d+\.\d+\s+sec\s*$)"),
         QRegularExpression::MultilineOption);
     return re;
 }
@@ -62,11 +65,16 @@ const QRegularExpression &totalTimeRe() {
     return re;
 }
 
-bool isFailureStatus(const QString &tok) {
-    return tok == QLatin1String("Failed") ||
-           tok == QLatin1String("Subprocess") ||
-           tok == QLatin1String("Timeout") ||
-           tok == QLatin1String("Exception");
+// ANTS-5064 — a status may carry a reason ("Exception: SegFault",
+// "Subprocess aborted"); its first word decides.
+bool isFailureStatus(const QString &status) {
+    qsizetype n = 0;
+    while (n < status.size() && !status.at(n).isSpace()
+           && status.at(n) != QLatin1Char(':'))
+        ++n;
+    const QStringView tok = QStringView(status).left(n);
+    return tok == u"Failed" || tok == u"Subprocess" ||
+           tok == u"Timeout" || tok == u"Exception";
 }
 
 // Truncate per-line to kLineCap, join with \n, then truncate the
