@@ -6299,7 +6299,7 @@ extends an existing item, that item carries it instead.
   Source: code-quality-review-2026-09-11 perf pass (lane config-session-project).
   Lanes: session.
 
-- 📋 [ANTS-5032] **File → New Window restores every saved tab again under the same session ids, so two windows overwrite each other's sessions.**
+- ✅ [ANTS-5032] **File → New Window restores every saved tab again under the same session ids, so two windows overwrite each other's sessions.**
   The MainWindow constructor calls restoreSessions() with no
   once-per-process guard, so a second window re-opens every saved tab
   under the ids the first window already uses. Both windows' 30-second
@@ -6318,6 +6318,14 @@ extends an existing item, that item carries it instead.
   complete fix is the guard plus a tab order gathered from every
   MainWindow (this window's tabs first, so the active index still refers
   to it). Restore then opens every tab in the first window.
+  Resolved (2026-09-11): restoreSessions runs once per process, and
+  saveAllSessions and saveTabOrderOnly both write tab_order.txt through
+  saveProcessTabOrder, which adds every other MainWindow's tabs after
+  this window's own. Hidden windows count, for Quake mode.
+  Test: tests/features/multi_window_session, red before the fix and
+  green after; a mutation probe killed all seven routes back.
+  User decision: a closed window's tabs do not come back. The first
+  window only hides on close, so its tabs still do; ANTS-5118.
   **Layman:** Opening a second Ants window duplicates your saved tabs and can lose some of them on the next restart.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lane mainwindow-a).
@@ -8261,6 +8269,29 @@ extends an existing item, that item carries it instead.
   Kind: fix.
   Source: in-session-2026-09-11 (write-test run for ANTS-5025).
   Lanes: mcp, speclint.
+
+- 📋 [ANTS-5118] **Closing the first window while a second is open hides it but leaves every one of its shells running, with no way back to them.**
+  Found by reading, 2026-09-11, while fixing ANTS-5032; not yet
+  reproduced. main.cpp builds the first MainWindow on the stack with
+  no WA_DeleteOnClose. File → Exit connects to QWidget::close, and
+  MainWindow::closeEvent saves and accepts. A closed window is only
+  hidden, and the app keeps running while File → New Window's window
+  is open. So the first window's TerminalWidgets, their PTYs and their
+  shells live on until the process exits, and no menu reaches them.
+  ANTS-5032 saves the tab order from every MainWindow the process
+  holds, so those tabs also return after a restart.
+  Decide the intended behaviour first: tear the tabs down on close, or
+  keep the window re-openable.
+  User decision (2026-09-11): close it like any other window. Its
+  tabs close and their programs end, with the usual confirmation when
+  something is still running. Also decided: a closed window's tabs do
+  not come back after a restart. Until this item ships, the hidden
+  first window still counts as open, so ANTS-5032's saved tab order
+  still includes its tabs.
+  **Layman:** If you close the original Ants window but keep a second one open, the closed window's programs keep running invisibly.
+  Kind: fix.
+  Source: in-session-2026-09-11 (ANTS-5032 fix).
+  Lanes: mainwindow, session.
 
 ## Memory-efficiency sweep (user request 2026-08-19)
 
@@ -58173,6 +58204,40 @@ than re-filed; everything else lands here.
   **Layman:** A warning about lost text blames a hand edit, even when nobody edited by hand — so readers dismiss it.
   Kind: fix.
   Source: in-session-2026-09-08, split out of ANTS-4947.
+
+- 📋 [ANTS-5117] **workspace_search returns a silent zero when a glob or exclude_glob containing a slash is combined with lane.**
+  Measured 2026-09-11. With lane "tests/features", glob
+  "{claude_dot_restored_tabs,tab_rename_persist}/*.cpp" returned no
+  matches. The same files do match: the root-relative glob
+  "tests/features/{claude_dot_restored_tabs,tab_rename_persist}/*.cpp"
+  with no lane found them. exclude_glob "crash_safe_session_persist/**"
+  under the same lane excluded nothing. A glob with no slash
+  ("{main,mainwindow}.cpp" under lane "src") works.
+  So a path glob is resolved against the project root while lane
+  narrows the search root, and the pair silently disagrees. Either
+  resolve glob and exclude_glob relative to lane, or refuse the
+  combination with a hint naming the root-relative spelling.
+  A zero-row answer here reads as "no such code".
+  **Layman:** Searching inside one folder with a file pattern that names sub-folders finds nothing, even when matches exist.
+  Kind: fix.
+  Source: in-session-2026-09-11.
+  Lanes: mcp, workspace_search.
+
+- 📋 [ANTS-5119] **mutation_probe cannot read a green ctest run, so require_green_baseline refuses every ctest batch.**
+  Measured 2026-09-11. test_command ["ctest", "--test-dir", "build",
+  "-R", "^MultiWindowSession\\."] with require_green_baseline:true
+  refused baseline_unreadable: exit 0, counts -1/-1. The run was green.
+  This ctest prints its summary as "100% tests passed out of 7" when
+  nothing failed. It omits the ", 0 tests failed" clause, which the
+  parser evidently requires. The refusal names ctest as a recognised
+  runner, so the advice it gives is the call that just failed.
+  Fix: accept the zero-failure form, and add a fixture for it beside
+  the form that carries a failure count. Workaround: run the gtest
+  binary directly with --gtest_filter.
+  **Layman:** The mutation checker can't tell that a passing test run passed, when the run comes from this project's test runner.
+  Kind: fix.
+  Source: in-session-2026-09-11.
+  Lanes: mcp, mutation_probe.
 
 ### Ants MCP without a terminal relaunch (user request 2026-09-07)
 

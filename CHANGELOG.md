@@ -40,6 +40,11 @@ for security-relevant changes.
 
 ### Fixed
 
+- **A second window (File → New Window) opens with one fresh tab instead of reopening every saved tab, and a restart brings back the tabs of every open window.** (ANTS-5032)
+  Saved tabs are restored once per run, into the first window. Each
+  window now saves the whole run's tab list rather than only its own,
+  so the last window to save no longer drops the others' tabs.
+
 - **Changing View -> Opacity updates terminals that are already open** (ANTS-5034)
 
 - **audit_run reports a tool that ran out of time as timed out, not crashed, and ignores its half-finished output** (ANTS-5044)
