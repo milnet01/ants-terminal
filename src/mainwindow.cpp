@@ -5534,11 +5534,14 @@ void MainWindow::setupClaudeMcpProviders() {
             // class as audit_run. The nam/loop are locals, so they construct
             // on the worker; QThread::wait() is a join (no event pump), so no
             // foreign socket notification fires during the dispatch.
+            // ANTS-5024 — the worker gets `canon`, resolved on this thread.
+            // wait() parks the GUI thread, so a GUI-thread marshal from the
+            // worker is never served and Ants hangs for good.
             QJsonDocument doc;
             {
                 QThread *worker = QThread::create(
-                    [this, &args, &doc]() {
-                        doc = m_remoteControl->cmdIndieReviewDispatch(args);
+                    [this, &args, &canon, &doc]() {
+                        doc = m_remoteControl->cmdIndieReviewDispatch(args, canon);
                     });
                 worker->start();
                 worker->wait();

@@ -6096,7 +6096,7 @@ Findings from a whole-codebase performance review, one reviewer per subsystem.
 Each item is a review fix to investigate and then implement. Where a finding
 extends an existing item, that item carries it instead.
 
-- 📋 [ANTS-5024] **indie_review_dispatch hangs Ants permanently on every call: the GUI thread joins a worker that waits on the GUI thread.**
+- ✅ [ANTS-5024] **indie_review_dispatch hangs Ants permanently on every call: the GUI thread joins a worker that waits on the GUI thread.**
   The provider registered in MainWindow::setupClaudeMcpProviders is a
   plain handler, so it runs on the GUI thread. It starts a QThread that
   runs RemoteControl::cmdIndieReviewDispatch and then calls wait().
@@ -6121,6 +6121,14 @@ extends an existing item, that item carries it instead.
   worker with a bare wait(). The flag only stops marshals not yet
   posted, so a worker already parked in a blocking queued call hangs
   exit, against ANTS-2132 section 2.6 and INV-8(b).
+  Resolved (2026-09-11): the provider passes the root it already
+  canonicalised on the GUI thread into cmdIndieReviewDispatch, so the
+  worker no longer marshals. guithread.h's claim now covers the
+  ANTS-2132 dispatch worker only. G-19 in tests/features/
+  indie_review_dispatch, red before and green after. On a throwaway
+  --e2e instance the old binary never replied and froze the app; the
+  fixed binary replied at once with ai_not_configured. The exit hang
+  in this body is split out as ANTS-5113.
   **Layman:** Asking Ants to run its built-in AI review hangs the whole app, and it never recovers.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lanes mainwindow-b, mcp-review-verbs).
@@ -8069,6 +8077,48 @@ extends an existing item, that item carries it instead.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lane shared-utilities).
   Lanes: shared.
+
+- 📋 [ANTS-5113] **Ants can hang on exit when an MCP verb is waiting on the GUI thread as shutdown begins.**
+  ClaudeIntegration::shutdownDispatchWorker sets the marshal-refused
+  flag, then joins the dispatch worker with a bare wait(). The flag only
+  stops marshals not yet posted. A worker already parked in
+  ants::onGuiThread's blocking queued call waits for the GUI thread,
+  and the GUI thread is parked in wait(). Neither returns.
+  This breaks ANTS-2132 section 2.6, which says refusing first keeps
+  the join from deadlocking.
+  Found by two lanes of the 2026-09-11 performance pass; split out of
+  ANTS-5024, whose headline is the per-call hang. Not reproduced.
+  Proposed fix, unverified: the queued marshal skips its callable once
+  the flag is set, and the join serves posted meta-calls for the
+  application object until the worker exits.
+  **Layman:** Closing Ants while Claude is using it can leave the app stuck instead of quitting.
+  Kind: review-fix.
+  Source: code-quality-review-2026-09-11 perf pass (split from ANTS-5024).
+  Lanes: mcp, threading.
+
+- 📋 [ANTS-5114] **Four GCC warnings stand in the build: one -Wshadow, one -Wnull-dereference and two -Wdangling-else.**
+  Seen 2026-09-11 in `cmake --build build --target test_claude
+  ants-terminal`, after a remotecontrol.h edit recompiled these TUs.
+  - src/remotecontrol_roadmap_log_batch.cpp, cmdRoadmapLogAppendBatch:
+    a declaration of `ids` shadows a previous local
+    (-Wshadow=compatible-local).
+  - tests/features/roadmap_write_history/test_roadmap_write_history.cpp,
+    RoadmapWriteHistory.Inv2OneStampAndContiguousSeqPerItem: a QSet
+    iterator dereference inlines to a potential null dereference in
+    qhash.h (-Wnull-dereference).
+  - tests/features/roadmap_log_bundle_row/test_roadmap_log_bundle_row.cpp,
+    RoadmapLogBundleRow.Inv14DryRunResolvesSortedPlacement:
+    -Wdangling-else.
+  - tests/features/roadmap_id_format_declared/test_roadmap_id_format_declared.cpp,
+    roadmap_id_format_declared.Inv4NonMatchKeepsTodaysId:
+    -Wdangling-else.
+  Unverified whether either dangling else changes what is asserted;
+  ANTS-4879 found one that did. Unverified whether the shadowed `ids`
+  is read where the outer one was meant.
+  **Layman:** The build prints four warnings; two sit in tests and may mean those tests check less than they appear to.
+  Kind: fix.
+  Source: in-session-2026-09-11.
+  Lanes: roadmap, tests.
 
 ## Memory-efficiency sweep (user request 2026-08-19)
 
@@ -75935,6 +75985,13 @@ contributors don't duplicate research.
   b) was not taken; its measurement stays in the 2026-09-11 note in case
   the run grows again. The 22m budget is unchanged until a CI run is
   re-measured.
+  CI measured (2026-09-11), first run with -LE perf, 9bd318f3, run
+  34573356546, all three jobs green. The build-asan step "Run
+  audit-rule tests under sanitizers" took 11m55s (07:22:11 to
+  07:34:06) against its `timeout 22m` guard; Build took 8m19s and
+  the whole job 20m58s. The ci.yml comment records 14m49s to 15m35s
+  for earlier runs. The 22m budget is left as it is; one run is not
+  enough to tighten it.
   **Layman:** The memory-checking test run keeps getting slower as tests are added.
   Kind: perf.
   Source: in-session-2026-09-10.

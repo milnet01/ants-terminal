@@ -40,6 +40,12 @@ for security-relevant changes.
 
 ### Fixed
 
+- **indie_review_dispatch replies instead of hanging Ants** (ANTS-5024)
+  The verb's worker now receives the project root the provider has
+  already resolved on the GUI thread. It used to resolve the root
+  itself, which asked the GUI thread for every tab's cwd while the GUI
+  thread was waiting for that worker, so every call froze Ants for good.
+
 - **Ants's own git checks can no longer make your git commit fail with "index.lock: File exists"** (ANTS-4999)
   Every read-only git check Ants runs now skips git's optional index
   lock. That covers the Review button's two-second check, the git MCP

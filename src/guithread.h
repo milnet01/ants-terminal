@@ -46,9 +46,13 @@ inline bool guiMarshalRefused() {
 // constructed value: an empty project root is a silently wrong answer, which
 // is worse than a refusal the caller can see.
 //
-// Cannot deadlock during dispatch, because the GUI thread never waits on the
-// worker while serving a request (spec § 2.1); the one join is at teardown and
-// is guarded by the flag above.
+// Never call it from a thread the GUI thread is blocked joining: the queued
+// call is never served and both threads hang (ANTS-5024). The ANTS-2132
+// dispatch worker is safe while it serves requests, because the GUI thread
+// never waits on it then (spec § 2.1). A verb that runs its own worker and
+// joins it on the GUI thread is not covered by that argument. The dispatch
+// worker's one join is at teardown, where the flag above refuses only
+// marshals not yet posted; one already posted is ANTS-5113.
 template <class F>
 auto onGuiThread(F &&f) -> std::optional<std::invoke_result_t<F>> {
     using R = std::invoke_result_t<F>;

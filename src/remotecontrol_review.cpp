@@ -1102,12 +1102,14 @@ const char *kReviewerSystemPrompt =
 
 }  // namespace rcdetail
 
-QJsonDocument RemoteControl::cmdIndieReviewDispatch(const QJsonObject &req) {
+QJsonDocument RemoteControl::cmdIndieReviewDispatch(const QJsonObject &req,
+                                                    const QString &root) {
     if (!m_main) return QJsonDocument(irErr(QStringLiteral("no_window"),
         QStringLiteral("indie_review_dispatch: no MainWindow")));
 
-    // ANTS-1404 — caller_cwd Required.
-    const QString root = resolveRootCanonical(m_main, req);
+    // ANTS-1404 — caller_cwd Required. ANTS-5024 — the provider resolves it
+    // on the GUI thread and passes it in: this runs on a worker the GUI thread
+    // joins, so resolving it here marshalled to a thread that never answered.
     if (root.isEmpty()) return QJsonDocument(irErr(
         QStringLiteral("no_project"),
         QStringLiteral("indie_review_dispatch: no focused project")));

@@ -908,8 +908,11 @@ public:
 
     // ANTS-1352 — server-side dispatch orchestrator. Fires N parallel
     // HTTP POSTs to Config::aiEndpoint, saves each response under
-    // reports_dir. See docs/specs/ANTS-1352.md.
-    QJsonDocument cmdIndieReviewDispatch(const QJsonObject &req);
+    // reports_dir. See docs/specs/ANTS-1352.md. ANTS-5024 — `root` is resolved
+    // by the caller on the GUI thread; this runs on a worker the GUI thread
+    // joins, so it must not marshal to the GUI thread.
+    QJsonDocument cmdIndieReviewDispatch(const QJsonObject &req,
+                                         const QString &root);
 
     // ANTS-1279 — single-call dispatch manifest for a Claude-Code-driven
     // /indie-review sweep: derivePartition + per-lane brief manifest +
