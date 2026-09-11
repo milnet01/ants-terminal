@@ -89,6 +89,10 @@ public:
 
     // Extract recent terminal output as plain text (for AI context)
     QString recentOutput(int lines = 50) const;
+    // ANTS-5061 — the same window, with each soft-wrapped row joined to the
+    // row it continues, so one output line wider than the pane reads as one
+    // line. For parsers (recent_errors); recentOutput stays row-per-line.
+    QString recentLogicalOutput(int lines = 50) const;
 
     // Write a command string to the PTY (for SSH manager, plugins)
     void writeCommand(const QString &cmd);

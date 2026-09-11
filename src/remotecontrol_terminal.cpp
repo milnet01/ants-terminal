@@ -266,7 +266,7 @@ QJsonDocument RemoteControl::cmdRecentErrors(const QJsonObject &req) {
     if (mr.isDouble()) opts.maxResults = mr.toInt();  // lib clamps ≤0 / >1000
 
     const ScrollbackErrors::Result res =
-        ScrollbackErrors::parse(target->recentOutput(lines), opts);
+        ScrollbackErrors::parse(target->recentLogicalOutput(lines), opts);
 
     QJsonArray errors;
     for (const ScrollbackErrors::ErrorEntry &e : res.errors) {

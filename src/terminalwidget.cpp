@@ -5104,6 +5104,34 @@ QString TerminalWidget::recentOutput(int lines) const {
     return result.join('\n');
 }
 
+// ANTS-5061 — one line per LOGICAL line: a row the grid soft-wrapped is
+// joined to the row after it. The window is recentOutput's last `lines`
+// rows, widened backwards to the start of the line it opens in.
+QString TerminalWidget::recentLogicalOutput(int lines) const {
+    constexpr int kMaxBackRows = 1000;  // bound the widening on a huge line
+    const int scrollbackSize = m_grid->scrollbackSize();
+    const int totalLines = scrollbackSize + m_grid->rows();
+    const auto wrapped = [&](int i) {
+        return i < scrollbackSize ? m_grid->scrollbackLineWrapped(i)
+                                  : m_grid->screenLineWrapped(i - scrollbackSize);
+    };
+
+    int start = std::max(0, totalLines - lines);
+    for (int back = 0; start > 0 && back < kMaxBackRows && wrapped(start - 1); ++back)
+        --start;
+
+    QStringList result;
+    QString current;
+    for (int i = start; i < totalLines; ++i) {
+        current += lineText(i);
+        if (!wrapped(i) || i == totalLines - 1) {
+            result.append(current);
+            current.clear();
+        }
+    }
+    return result.join('\n');
+}
+
 // --- Shell CWD ---
 
 QString TerminalWidget::shellCwd() const {

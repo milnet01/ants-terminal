@@ -1,6 +1,7 @@
 #pragma once
 
 #include "vtparser.h"
+#include <algorithm>
 #include <cstdint>
 #include <string>
 #include <vector>
@@ -182,6 +183,7 @@ public:
     int scrollbackSize() const { return static_cast<int>(m_scrollback.size()); }
     const std::vector<Cell> &scrollbackLine(int index) const { return m_scrollback[index].cells; }
     bool scrollbackLineWrapped(int index) const { return m_scrollback[index].softWrapped; }
+    bool screenLineWrapped(int row) const { return m_screenLines[std::clamp(row, 0, m_rows - 1)].softWrapped; }
     // Monotonic counter of lines ever pushed into scrollback — unlike scrollbackSize()
     // it keeps incrementing after the buffer hits m_maxScrollback (where a push pops a
     // stale line off the front). Scroll-anchor math must diff this, not the size, or
