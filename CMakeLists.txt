@@ -2721,7 +2721,12 @@ if(ANTS_TESTS)
                 # own group and signals the group before every kill site
                 # (source-scrape: AuditDialog is a QDialog, not constructed
                 # here).
-                tests/features/audit_tool_process_group_kill/test_auditdialog_group_kill_scrape.cpp)
+                tests/features/audit_tool_process_group_kill/test_auditdialog_group_kill_scrape.cpp
+                # ANTS-5039 — compiler_warnings check must carry an explicit
+                # minutes-scale timeout, clean up its scratch dir via a trap
+                # on EXIT, and never use mktemp -d for the build dir
+                # (source-scrape, same reasoning as ANTS-5038 above).
+                tests/features/audit_compiler_warnings_check/test_audit_compiler_warnings_check.cpp)
     target_compile_definitions(test_audit PRIVATE
         SRC_AUDIT_CPP_PATH="${CMAKE_SOURCE_DIR}/src/auditdialog.cpp"
         SRC_AUDIT_H_PATH="${CMAKE_SOURCE_DIR}/src/auditdialog.h"

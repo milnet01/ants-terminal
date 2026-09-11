@@ -1264,15 +1264,22 @@ void AuditDialog::populateChecks() {
 
         m_checks.append({
             "compiler_warnings", "Compiler Warnings",
-            "Build with -Wall -Wextra and capture warnings", "C/C++",
+            "Build from scratch with -Wall -Wextra and capture warnings (slow: a full build)",
+            "C/C++",
+            // ANTS-5039 — one scratch tree per user and project, removed
+            // before the build (a run killed mid-way leaves at most this
+            // one, which the next run clears) and on exit. TERM and INT
+            // exit so the EXIT trap runs when the dialog stops the group.
             "if [ -f CMakeLists.txt ]; then"
-            " tmpdir=$(mktemp -d) && cd \"$tmpdir\""
-            " && cmake -DCMAKE_CXX_FLAGS='-Wall -Wextra -Wno-unused-parameter' \"$OLDPWD\" 2>/dev/null"
-            " && cmake --build . -j$(( ($(nproc)+3)/4 )) 2>&1 | grep -E '(warning:|error:)' | head -60;"
-            " rm -rf \"$tmpdir\";"
+            " d=\"${TMPDIR:-/tmp}/ants-audit-warnings-$(id -u)-$(pwd | cksum | cut -d' ' -f1)\";"
+            " rm -rf \"$d\"; trap 'rm -rf \"$d\"' EXIT; trap 'exit 143' TERM INT;"
+            " mkdir -p \"$d\""
+            " && cmake -S . -B \"$d\" -DCMAKE_CXX_FLAGS='-Wall -Wextra -Wno-unused-parameter' >/dev/null 2>&1"
+            " && cmake --build \"$d\" -j$(( ($(nproc)+3)/4 )) 2>&1 | grep -E '(warning:|error:)' | head -60;"
             " fi",
             CheckType::Bug, Severity::Major, { {}, "", {}, 60 },
-            false, true, nullptr
+            false, true, nullptr, {},
+            20 * 60 * 1000  // a full build is the whole job; the check is opt-in
         });
 
         // Memory pattern check — Qt-aware. The old approach matched any
