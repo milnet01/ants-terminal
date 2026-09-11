@@ -6754,6 +6754,21 @@ extends an existing item, that item carries it instead.
   one shared connection predates ANTS-2132.
   Fix: route the socket's MCP-registered routes through the worker
   queue, or give each thread its own connection and lock the caches.
+  Progress (2026-09-11): verified in source. MainWindow's rcDelegate
+  forwards MCP verbs to its own m_remoteControl, the same object the
+  socket's RemoteControl::dispatch uses; roadmap_query is registered
+  through it with a Required contract, so it is off-thread eligible and
+  runs on the dispatch worker, while the socket's roadmap-query runs on
+  the GUI thread. Both reach roadmapStoreOrNull's lazily created store
+  and the mutable roadmap caches. A mutex alone is not a fix, because a
+  Qt SQL connection may be used only on the thread that created it.
+  Deferred pending a contract decision: (1) one connection per thread
+  plus locked caches changes ANTS-3809 section 4's one-shared-connection
+  rule; (2) running the socket's MCP-registered routes on the dispatch
+  worker with a deferred reply extends ANTS-2132's dispatch design, and
+  is also ANTS-5073's fix. Recommended: (2), since it keeps one
+  connection and closes both items; it needs an amendment to ANTS-2132
+  through review-contract before any code.
   **Layman:** Two parts of Ants can use the roadmap database at the same moment, which can crash it or corrupt what it returns.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lanes roadmap-store, mcp-transport, mcp-roadmap-query-log, mcp-roadmap-batch).
@@ -7216,6 +7231,14 @@ extends an existing item, that item carries it instead.
   store race filed as ANTS-5051.
   Fix: route the socket's MCP-registered verbs through the dispatch
   worker with a deferred reply, or refuse them on the socket.
+  Progress (2026-09-11): shares a fix with ANTS-5051. The socket's
+  RemoteControl::dispatch and the MCP dispatch worker call the same
+  MainWindow-owned RemoteControl (rcDelegate forwards to
+  m_remoteControl). Running the socket's MCP-registered routes on the
+  dispatch worker with a deferred reply would take the tree walks,
+  ripgrep and git off the GUI thread here and keep the roadmap store on
+  one thread for ANTS-5051. Deferred with ANTS-5051 until ANTS-2132's
+  dispatch design is amended through review-contract.
   **Layman:** Scripts that control Ants from outside can make its window freeze while they search.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lanes mcp-transport, mcp-state-workspace, code-index-search).
