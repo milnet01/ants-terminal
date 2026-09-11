@@ -8139,6 +8139,11 @@ extends an existing item, that item carries it instead.
   route: its body builds a result table while C++ containers are alive.
   Possible fix, unverified: read the file into a Lua-owned buffer
   (luaL_Buffer) after the C++ objects are released.
+  Checked (2026-09-11), by reading LuaEngine::lua_project_list: it
+  has the same route. It calls lua_createtable and then lua_pushlstring
+  per entry while `rels` (QList<QByteArray>), the QDirIterator, `base`,
+  `rootDir` and `canonRoot` are alive, so a memory error raised by
+  either push longjmps past all of them. Not reproduced.
   **Layman:** A project query that runs out of memory while reading a file can leave a little memory unfreed.
   Kind: fix.
   Source: in-session-2026-09-11 (found fixing ANTS-3847).
@@ -75406,6 +75411,20 @@ contributors don't duplicate research.
   weak pointer, disconnect after the loop, and kill and reap anything
   still running. ProjectQuery.ConfinementAndList starts no process and
   needs its own trace.
+  Progress (2026-09-11): the four leaks are fixed. runAudit's
+  callbacks capture a plain pointer and the processes are reaped after
+  the loop; lua_project_read and lua_project_list raise only after their
+  C++ objects are gone. Red and then green by running each build-asan
+  binary directly with the debug preset's ASAN/LSAN options, one test
+  per process. `ctest --preset=debug -R ...` ran nothing that time:
+  gtest discovery of the sanitized test_claude timed out. ProjectQuery
+  gained a project.list refusal assertion, seen red before its fix.
+  Still open: whether the WHOLE debug preset is green with leaks on
+  (not yet run), and the policy half. pre-push, tools/ci-parity.sh and
+  the ci.yml build-asan job all set detect_leaks=0; ci.yml's reason
+  ("re-enable once we have a real unit-test suite that does full app
+  lifecycle") and its "narrow, --version only" description are stale,
+  since that job runs the whole sanitized suite.
 
 - 📋 [ANTS-3848] **`tools/rc-namespace-scan.py` is a load-bearing precondition with no test.**
   Found 2026-08-06 during ANTS-3833 commit 2. The scanner is the gate the

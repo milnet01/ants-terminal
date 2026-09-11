@@ -987,32 +987,74 @@ int LuaEngine::lua_project_read(lua_State *L) {
     LuaEngine *engine = getEngine(L);
     const char *rel = luaL_checkstring(L, 1);
     if (!engine) return luaL_error(L, "project.read: no engine");
-    const auto chk = PathValidation::validatePath(
-        QString::fromUtf8(rel), engine->m_queryRoot,
-        QStringLiteral("project_query"), QStringLiteral("path"));
-    if (chk.bad) return luaL_error(L, "project.read: \"%s\" escapes project root", rel);
-    if (chk.resolved.isEmpty()) return luaL_error(L, "project.read: no such file: %s", rel);
-    QFile f(chk.resolved);
-    if (!f.open(QIODevice::ReadOnly)) return luaL_error(L, "project.read: cannot open %s", rel);
-    const QByteArray data = f.readAll();  // VM 10 MiB cap bounds the push below
-    lua_pushlstring(L, data.constData(), static_cast<size_t>(data.size()));
+    // ANTS-3847 — luaL_error longjmps, so no destructor in this frame runs.
+    // Settle the outcome in a scope and raise only after its C++ objects are
+    // gone; raising with `chk` alive leaked it on every refused read.
+    enum class Refusal : unsigned char { None, Escapes, Missing, Unopenable };
+    Refusal refusal = Refusal::None;
+    {
+        const auto chk = PathValidation::validatePath(
+            QString::fromUtf8(rel), engine->m_queryRoot,
+            QStringLiteral("project_query"), QStringLiteral("path"));
+        if (chk.bad) {
+            refusal = Refusal::Escapes;
+        } else if (chk.resolved.isEmpty()) {
+            refusal = Refusal::Missing;
+        } else {
+            QFile f(chk.resolved);
+            if (!f.open(QIODevice::ReadOnly)) {
+                refusal = Refusal::Unopenable;
+            } else {
+                const QByteArray data = f.readAll();  // VM 10 MiB cap bounds the push below
+                lua_pushlstring(L, data.constData(), static_cast<size_t>(data.size()));
+            }
+        }
+    }
+    switch (refusal) {
+    case Refusal::Escapes:
+        return luaL_error(L, "project.read: \"%s\" escapes project root", rel);
+    case Refusal::Missing:
+        return luaL_error(L, "project.read: no such file: %s", rel);
+    case Refusal::Unopenable:
+        return luaL_error(L, "project.read: cannot open %s", rel);
+    case Refusal::None:
+        break;
+    }
     return 1;
 }
 
 int LuaEngine::lua_project_list(lua_State *L) {
     LuaEngine *engine = getEngine(L);
     if (!engine) return luaL_error(L, "project.list: no engine");
-    QString base = engine->m_queryRoot;
-    if (lua_gettop(L) >= 1 && !lua_isnoneornil(L, 1)) {
-        const char *sub = luaL_checkstring(L, 1);
+    const char *sub = (lua_gettop(L) >= 1 && !lua_isnoneornil(L, 1))
+        ? luaL_checkstring(L, 1) : nullptr;
+    // ANTS-3847 — as in lua_project_read: luaL_error longjmps past this
+    // frame's destructors, so settle the refusal in a scope and raise with no
+    // C++ object alive. `resolvedSub` stays null on every refusal, and a null
+    // QString owns no heap memory.
+    enum class Refusal : unsigned char { None, Escapes, NotADirectory };
+    Refusal refusal = Refusal::None;
+    QString resolvedSub;
+    if (sub) {
         const auto chk = PathValidation::validatePath(
             QString::fromUtf8(sub), engine->m_queryRoot,
             QStringLiteral("project_query"), QStringLiteral("subdir"));
-        if (chk.bad) return luaL_error(L, "project.list: \"%s\" escapes project root", sub);
-        if (chk.resolved.isEmpty() || !QFileInfo(chk.resolved).isDir())
-            return luaL_error(L, "project.list: not a directory: %s", sub);
-        base = chk.resolved;
+        if (chk.bad)
+            refusal = Refusal::Escapes;
+        else if (chk.resolved.isEmpty() || !QFileInfo(chk.resolved).isDir())
+            refusal = Refusal::NotADirectory;
+        else
+            resolvedSub = chk.resolved;
     }
+    switch (refusal) {
+    case Refusal::Escapes:
+        return luaL_error(L, "project.list: \"%s\" escapes project root", sub);
+    case Refusal::NotADirectory:
+        return luaL_error(L, "project.list: not a directory: %s", sub);
+    case Refusal::None:
+        break;
+    }
+    const QString base = sub ? resolvedSub : engine->m_queryRoot;
     // Enumerate regular files (incl. dotfiles like .gitignore — project
     // content), skipping only .git/ (internal metadata; perf on big repos).
     const QDir rootDir(engine->m_queryRoot);

@@ -200,6 +200,10 @@ TEST(ProjectQuery, ConfinementAndList) {
     QFile::link("/etc", root + "/escape");  // symlink whose target is outside root
     EXPECT_EQ(run("return project.read('escape/passwd')", root).code,
               QStringLiteral("query_error"));
+    // ANTS-3847 — list's refusal raises too; under LeakSanitizer this also
+    // proves the refusal leaks nothing.
+    EXPECT_EQ(run("return project.list('../..')", root).code,
+              QStringLiteral("query_error"));
 
     // list is deterministic (byte-identical across calls) and finds the files
     const auto l1 = run("return project.list()", root);

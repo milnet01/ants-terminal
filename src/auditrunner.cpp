@@ -2374,11 +2374,16 @@ RunResult runAudit(const RunRequest &req) {
     for (auto it = toolAbsPath.constBegin();
          it != toolAbsPath.constEnd(); ++it) {
         const QString tool = it.key();
-        auto proc = std::make_shared<QProcess>();
+        auto owned = std::make_shared<QProcess>();
+        // ANTS-3847 — the callbacks capture this plain pointer. Capturing the
+        // shared_ptr made each QProcess own the connections and timers that
+        // owned it, so it was never freed. `procs` owns it; the reap after the
+        // loop ends its callbacks before this function's locals go away.
+        QProcess *proc = owned.get();
         proc->setProcessEnvironment(childEnv);
         proc->setWorkingDirectory(canonProject);  // INV-2
         proc->closeWriteChannel();
-        QProcess::connect(proc.get(),
+        QProcess::connect(proc,
             qOverload<int, QProcess::ExitStatus>(&QProcess::finished),
             [tool, proc, &finish, &perToolTimer](
                 int code, QProcess::ExitStatus es) {
@@ -2400,7 +2405,7 @@ RunResult runAudit(const RunRequest &req) {
                     QString::fromUtf8(out), QString::fromUtf8(err));
                 finish(tool, status, raw, ms);
             });
-        QProcess::connect(proc.get(), &QProcess::errorOccurred,
+        QProcess::connect(proc, &QProcess::errorOccurred,
             [tool, proc, &finish, &perToolTimer](QProcess::ProcessError) {
                 const qint64 ms = perToolTimer.value(tool).elapsed();
                 finish(tool, QStringLiteral("crashed"),
@@ -2409,10 +2414,10 @@ RunResult runAudit(const RunRequest &req) {
             });
 
         // Per-tool wall-clock cap (INV-5): SIGTERM at cap, SIGKILL +2s.
-        QTimer::singleShot(perToolMs, proc.get(), [tool, proc, &finish, &perToolTimer]() {
+        QTimer::singleShot(perToolMs, proc, [tool, proc, &finish, &perToolTimer]() {
             if (proc->state() == QProcess::NotRunning) return;
             proc->terminate();
-            QTimer::singleShot(kKillGraceMs, proc.get(),
+            QTimer::singleShot(kKillGraceMs, proc,
                 [tool, proc, &finish, &perToolTimer]() {
                 if (proc->state() != QProcess::NotRunning) {
                     proc->kill();
@@ -2422,7 +2427,7 @@ RunResult runAudit(const RunRequest &req) {
             });
         });
 
-        procs[tool] = proc;
+        procs[tool] = owned;
         perToolTimer[tool].start();
         ++pending;
         proc->start(it.value(),
@@ -2450,6 +2455,18 @@ RunResult runAudit(const RunRequest &req) {
 
     if (pending > 0) loop.exec();
     aggTimer.stop();
+
+    // ANTS-3847 — end every tool's callbacks while the locals they capture
+    // are alive. Disconnect so a late exit cannot call finish() again, then
+    // kill and wait out anything still running. `procs` frees each process
+    // on return, which cancels the timers it is the context of.
+    for (const auto &p : std::as_const(procs)) {
+        p->disconnect();
+        if (p->state() != QProcess::NotRunning) {
+            p->kill();
+            p->waitForFinished(kKillGraceMs);
+        }
+    }
 
     // ── ANTS-3605 — in-process audit lanes (spec↔code / contract-doc /
     // changelog↔test drift). These are GUI-free FeatureCoverage free functions,
