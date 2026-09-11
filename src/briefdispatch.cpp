@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 #include "briefdispatch.h"
+#include "filecontentcache.h"
 
 #include <QChar>
 #include <QFile>
@@ -13,25 +14,10 @@ namespace BriefDispatch {
 
 namespace {
 
+// ANTS-5056 — the review engines' shared cache (locked, byte-bounded), in
+// text mode as this dispatcher has always read.
 QString slurpUtf8(const QString &absPath) {
-    // ANTS-1674 — cache by (absPath, mtime_ms). Single-threaded dispatcher.
-    static QHash<QString, QPair<qint64, QString>> s_cache;
-    const qint64 mtime =
-        QFileInfo(absPath).lastModified().toMSecsSinceEpoch();
-    auto it = s_cache.find(absPath);
-    if (it != s_cache.end() && mtime != 0 && it->first == mtime)
-        return it->second;
-    QFile f(absPath);
-    if (!f.open(QIODevice::ReadOnly | QIODevice::Text)) return {};
-    const QString content = QString::fromUtf8(f.readAll());
-    // ANTS-2119 — bound the cache: it holds full file bodies keyed by absPath,
-    // so an unbounded static grows with every distinct doc dispatched over a
-    // long session. Clear on overflow — a brief-dispatch cache is a within-run
-    // optimisation, so a cold re-read on the rare overflow is cheap.
-    if (s_cache.size() >= 64)
-        s_cache.clear();
-    s_cache.insert(absPath, {mtime, content});
-    return content;
+    return FileContentCache::slurpUtf8(absPath, /*textMode=*/true);
 }
 
 // Canonicalise `path` (project-relative OR already-absolute) under

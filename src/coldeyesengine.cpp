@@ -2,6 +2,7 @@
 
 #include "docintegrity.h"      // ANTS-3601 — doc-integrity findings in the brief
 #include "falseposledger.h"
+#include "filecontentcache.h"   // ANTS-5056 — shared, locked file cache
 #include "indiereviewengine.h"
 #include "markdownscan.h"       // ANTS-3740 — shared ATX-heading collector
 #include "pathvalidation.h"
@@ -27,21 +28,10 @@ namespace ColdEyesEngine {
 
 namespace {
 
+// ANTS-1674 — cached, because ROADMAP.md appears in every lane's cross-refs.
+// ANTS-5056 — the review engines' shared cache, locked and byte-bounded.
 QString slurpUtf8(const QString &absPath) {
-    // ANTS-1674 — cache by (absPath, mtime_ms). ROADMAP.md appears in every
-    // lane's cross-refs, so without a cache it is read once per lane during
-    // multi-lane brief assembly. Single-threaded dispatcher — no mutex needed.
-    static QHash<QString, QPair<qint64, QString>> s_cache;
-    const qint64 mtime =
-        QFileInfo(absPath).lastModified().toMSecsSinceEpoch();
-    auto it = s_cache.find(absPath);
-    if (it != s_cache.end() && mtime != 0 && it->first == mtime)
-        return it->second;
-    QFile f(absPath);
-    if (!f.open(QIODevice::ReadOnly)) return {};
-    const QString content = QString::fromUtf8(f.readAll());
-    s_cache.insert(absPath, {mtime, content});
-    return content;
+    return FileContentCache::slurpUtf8(absPath);
 }
 
 // INV-13 path-rule defence now lives in the shared, NFC-aware

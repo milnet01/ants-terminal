@@ -3,6 +3,7 @@
 #include "briefdispatch.h"
 #include "codebaseindex.h"     // ANTS-3709 — indexable-suffix filter
 #include "falseposledger.h"
+#include "filecontentcache.h"  // ANTS-5056 — shared, locked file cache
 #include "pathvalidation.h"
 #include "projectsettings.h"   // ANTS-3709 — declared source_roots
 #include "roadmapfoldin.h"
@@ -30,19 +31,9 @@ namespace IndieReviewEngine {
 
 namespace {
 
+// ANTS-5056 — the review engines' shared cache, locked and byte-bounded.
 QString slurpUtf8(const QString &absPath) {
-    // ANTS-1674 — cache by (absPath, mtime_ms). Single-threaded dispatcher.
-    static QHash<QString, QPair<qint64, QString>> s_cache;
-    const qint64 mtime =
-        QFileInfo(absPath).lastModified().toMSecsSinceEpoch();
-    auto it = s_cache.find(absPath);
-    if (it != s_cache.end() && mtime != 0 && it->first == mtime)
-        return it->second;
-    QFile f(absPath);
-    if (!f.open(QIODevice::ReadOnly)) return {};
-    const QString content = QString::fromUtf8(f.readAll());
-    s_cache.insert(absPath, {mtime, content});
-    return content;
+    return FileContentCache::slurpUtf8(absPath);
 }
 
 // Walk src/ to find files matching `<name>.{h,cpp}` + `<name>*.{h,cpp}`.

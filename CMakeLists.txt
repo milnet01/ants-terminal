@@ -3262,6 +3262,10 @@ if(ANTS_TESTS)
                 # (behavioural call-count test on stickyCommandText).
                 # Qt6::Core only: stickycommandtext.h needs only QString.
                 tests/features/sticky_header_bound/test_sticky_header_bound.cpp
+                # ANTS-5056 — shared file-content cache: byte budget,
+                # freshness/read-mode keying, a concurrency guard, and the
+                # four review engines' wiring to it. Qt6::Core only.
+                tests/features/file_content_cache/test_file_content_cache.cpp
                 $<$<NOT:$<BOOL:${ANTS_ENABLE_HELPER_CLI}>>:src/antshelper.cpp>)
     target_compile_definitions(test_core PRIVATE
         # ANTS-3757 INV-1/INV-2/INV-11 — the committed fixture roots and the
@@ -3452,6 +3456,15 @@ if(ANTS_TESTS)
         # which is applied at ctest time and silently ignored if it names a case
         # that no longer exists.
         ANTS_SLOW_TEST_TIMEOUTS_CMAKE="${CMAKE_SOURCE_DIR}/tests/slow_test_timeouts.cmake")
+    set_property(SOURCE tests/features/file_content_cache/test_file_content_cache.cpp
+        APPEND PROPERTY COMPILE_DEFINITIONS
+        # ANTS-5056 INV-5 — the four review engines' source, scraped for the
+        # retired per-engine static cache (must be gone) and the shared
+        # FileContentCache::slurpUtf8 call (must be present).
+        SRC_BRIEFDISPATCH_CPP_PATH="${CMAKE_SOURCE_DIR}/src/briefdispatch.cpp"
+        SRC_COLDEYESENGINE_CPP_PATH="${CMAKE_SOURCE_DIR}/src/coldeyesengine.cpp"
+        SRC_INDIE_REVIEW_ENGINE_CPP_PATH="${CMAKE_SOURCE_DIR}/src/indiereviewengine.cpp"
+        SRC_DEBTSWEEPENGINE_CPP_PATH="${CMAKE_SOURCE_DIR}/src/debtsweepengine.cpp")
 
     # ANTS-3658 — per-test TIMEOUT overrides. PRE_TEST discovery means the
     # gtest test names do not exist at configure time, so the properties are

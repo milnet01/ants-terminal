@@ -7,6 +7,7 @@
 #include "debtsweepengine.h"
 
 #include "featurecoverage.h"
+#include "filecontentcache.h"  // ANTS-5056 — shared, locked file cache
 #include "roadmapfoldin.h"  // ANTS-3497 — shared renderId() for padded, project-prefixed IDs
 
 #include <QByteArray>
@@ -39,19 +40,9 @@ constexpr int kPackagingScriptTimeoutMs = 30000;
 // diff that wants a different tool.
 constexpr int kMaxDiffPaths = 500;
 
+// ANTS-5056 — the review engines' shared cache, locked and byte-bounded.
 QString slurpUtf8(const QString &absPath) {
-    // ANTS-1674 — cache by (absPath, mtime_ms). Single-threaded dispatcher.
-    static QHash<QString, QPair<qint64, QString>> s_cache;
-    const qint64 mtime =
-        QFileInfo(absPath).lastModified().toMSecsSinceEpoch();
-    auto it = s_cache.find(absPath);
-    if (it != s_cache.end() && mtime != 0 && it->first == mtime)
-        return it->second;
-    QFile f(absPath);
-    if (!f.open(QIODevice::ReadOnly)) return {};
-    const QString content = QString::fromUtf8(f.readAll());
-    s_cache.insert(absPath, {mtime, content});
-    return content;
+    return FileContentCache::slurpUtf8(absPath);
 }
 
 // Run a git command in projectPath; return stdout (capped).

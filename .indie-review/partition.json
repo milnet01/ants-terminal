@@ -317,6 +317,7 @@
         "src/coldeyesengine.h",
         "src/debtsweepengine.cpp",
         "src/debtsweepengine.h",
+        "src/filecontentcache.h",
         "src/indiereviewdialog.cpp",
         "src/indiereviewdialog.h",
         "src/indiereviewdispatcher.cpp",
