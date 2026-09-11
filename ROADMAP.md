@@ -15388,6 +15388,25 @@ fixes don't address. Roadmapped here as their own design tasks.
   Source: in-session-2026-09-10.
   Lanes: mcp.
 
+- 📋 [ANTS-5112] **workspace_search's rate limit is shared by every subagent of one project, so parallel review lanes are mostly refused.**
+  During the 2026-09-11 performance pass, up to 20 review subagents ran
+  at once against one project, and workspace_search refused most of
+  their calls with rate_limited (10 calls in 60 s). The limit is keyed
+  on the caller's resolved caller_cwd, so every subagent of one project
+  shares a single bucket. The global ants-verb-redirect.sh hook also
+  blocks raw Grep, so lanes were left with no search at all: they fell
+  back to reading whole files, and several list checks they could not
+  run.
+  The limit exists to protect the GUI process from a runaway caller,
+  and a fan-out of well-behaved callers trips it just the same.
+  Fix: key the bucket on the connection or session as well as the
+  cwd, or raise the cap for read-only verbs; and have the refusal say
+  how many callers share the bucket.
+  **Layman:** When many Claude helpers search one project at once, Ants' search tool turns most of them away.
+  Kind: fix.
+  Source: in-session-2026-09-11 (performance pass).
+  Lanes: mcp.
+
 ### 🔬 Project Audit false-positive reduction (self-audit 2026-05-20)
 
 Ran the project's own `ants-audit` CLI against this repo (~300 findings,
