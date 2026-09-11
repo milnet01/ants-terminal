@@ -103,6 +103,7 @@ public:
         QString    code;       // refusal code — set iff !ok (INV-8)
         QString    error;      // operator-facing message — set iff !ok
         qint64     elapsedMs = 0;  // wall-clock around the lua_pcall
+        qint64     marshalNodes = 0;  // values the §2.4 marshal visited (ANTS-5069)
     };
 
     // Install ONLY the read-only `project` table (read/list/root, §2.2)

@@ -173,6 +173,98 @@ TEST(ProjectQuery, OutputCap) {
     EXPECT_TRUE(big.result.isNull());  // no value emitted
 }
 
+// ---- INV-10 — marshal budget bounds visited-node count (ANTS-5069) ----
+// Why this exists: the marshal used to visit every value reachable by PATH
+// before ever checking resultCapBytes. A table that shares one sub-table
+// down both of its branches has few distinct values but exponentially many
+// paths, so a snippet a few tables deep inside the (10 MiB-capped) Lua VM
+// could still make the C++ marshal allocate millions of JSON nodes before
+// the byte-size check ran — the watchdog can't interrupt it because the
+// query already returned; only the marshal step is unbounded. The fix must
+// charge each value's approximate serialised size against resultCapBytes as
+// it walks, refusing with result_too_large as soon as the budget is spent,
+// so marshalNodes stays bounded by the budget regardless of sharing.
+namespace {
+// "A few KiB" — small enough that even a bounded marshal visits only a few
+// thousand values.
+constexpr int kBudgetCapBytes = 4096;
+// Every visited value costs at least one serialised byte, so a bounded
+// marshal cannot visit more values than the budget allows. This multiplier
+// is deliberately generous — it exists so the guard isn't flaky against
+// whatever per-node charging the fix uses, not to pin an exact scheme.
+constexpr qint64 kBudgetSlackMultiplier = 8;
+constexpr qint64 kBudgetSlackAdditive = 256;
+qint64 budgetBound(int capBytes) {
+    return static_cast<qint64>(capBytes) * kBudgetSlackMultiplier + kBudgetSlackAdditive;
+}
+}  // namespace
+
+TEST(ProjectQuery, MarshalBudgetSharedTable) {
+    const QString r = anyRoot();
+    // t = {1}; 18 rounds of t = {t, t} — the same sub-table referenced by
+    // both slots at every level. ~2^18 (262144) leaf values are reachable
+    // by path (~786k total values counting internal nodes along every
+    // path), but only ~2*18+1 distinct table objects ever exist inside the
+    // VM (few tables in Lua, 2^18 JSON leaves in C++ memory — the defect's
+    // own description). D=18 is chosen so the STUB's full (unbounded)
+    // marshal still finishes in about a second and well under a GB on this
+    // run, while landing orders of magnitude past a few-KiB cap.
+    const auto qr = run("local t = {1} for i = 1, 18 do t = {t, t} end return t",
+                        r, /*timeoutMs=*/1500, kBudgetCapBytes);
+    EXPECT_EQ(qr.code, QStringLiteral("result_too_large"))
+        << "code=" << qr.code.toStdString() << " error=" << qr.error.toStdString()
+        << " marshalNodes=" << qr.marshalNodes;
+    EXPECT_LE(qr.marshalNodes, budgetBound(kBudgetCapBytes))
+        << "ANTS-5069: a doubly-shared table must not cost one visit per PATH — "
+           "marshalNodes=" << qr.marshalNodes << " cap=" << kBudgetCapBytes
+        << " bound=" << budgetBound(kBudgetCapBytes)
+        << " (a bounded marshal should have stopped once the byte budget was spent)";
+}
+
+TEST(ProjectQuery, MarshalBudgetFlatArray) {
+    const QString r = anyRoot();
+    // No sharing at all: a plain flat array whose serialised size alone
+    // exceeds the cap. Same bound applies — the marshal must stop early
+    // rather than visit all 200000 elements before checking the byte size.
+    const auto qr = run("local t = {} for i = 1, 200000 do t[i] = i end return t",
+                        r, /*timeoutMs=*/1500, kBudgetCapBytes);
+    EXPECT_EQ(qr.code, QStringLiteral("result_too_large"))
+        << "code=" << qr.code.toStdString() << " error=" << qr.error.toStdString()
+        << " marshalNodes=" << qr.marshalNodes;
+    EXPECT_LE(qr.marshalNodes, budgetBound(kBudgetCapBytes))
+        << "marshalNodes=" << qr.marshalNodes << " cap=" << kBudgetCapBytes
+        << " bound=" << budgetBound(kBudgetCapBytes);
+}
+
+TEST(ProjectQuery, MarshalBudgetUnderCapNodeCount) {
+    const QString r = anyRoot();
+    // Guard: a small result well under the cap is unaffected by the budget
+    // — it still succeeds, matches its expected JSON, and marshalNodes
+    // still counts every value in it (root + a + b-table + 2 + 3 = 5).
+    const auto qr = run("return {a = 1, b = {2, 3}}", r, 1500, 65536);
+    ASSERT_TRUE(qr.ok) << "code=" << qr.code.toStdString()
+                        << " error=" << qr.error.toStdString();
+    ASSERT_TRUE(qr.result.isObject());
+    const QJsonObject obj = qr.result.toObject();
+    EXPECT_EQ(obj.value("a").toInteger(), 1);
+    ASSERT_TRUE(obj.value("b").isArray());
+    const QJsonArray b = obj.value("b").toArray();
+    ASSERT_EQ(b.size(), 2);
+    EXPECT_EQ(b.at(0).toInteger(), 2);
+    EXPECT_EQ(b.at(1).toInteger(), 3);
+    EXPECT_EQ(qr.marshalNodes, 5) << "marshalNodes=" << qr.marshalNodes;
+}
+
+TEST(ProjectQuery, MarshalBudgetCircularStillRefuses) {
+    const QString r = anyRoot();
+    // Guard: the size budget must not interfere with the existing depth
+    // bound (INV-6) that catches a circular table — same refusal code,
+    // whatever resultCapBytes is set to.
+    const auto qr = run("local t = {} t.self = t return t", r, 1500, 65536);
+    EXPECT_EQ(qr.code, QStringLiteral("query_error"))
+        << "code=" << qr.code.toStdString() << " error=" << qr.error.toStdString();
+}
+
 // ---- INV-2 — filesystem confinement + INV-7 list determinism ----
 TEST(ProjectQuery, ConfinementAndList) {
     QTemporaryDir tmp;

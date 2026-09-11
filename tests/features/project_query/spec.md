@@ -5,7 +5,7 @@ contract; the C++ test drives `LuaEngine::runQuery` /
 `LuaEngine::projectQueryVerb` directly against `QTemporaryDir` fixtures and
 source-scrapes the wiring.
 
-## Invariants under test
+## Invariants
 
 - **INV-1 (no write surface)** — A query VM exposes only
   `project.read`/`list`/`root` + the read-only stdlib. `ants`, `os`, `io`,
@@ -32,6 +32,23 @@ source-scrapes the wiring.
   (checked before arg validation); `missing_field` when `code` is absent.
 - **INV-9 (offload composition)** — `project_query` is in
   `isOffloadEligible` (source-scrape for the literal).
+- **INV-10** (marshal budget, ANTS-5069) — The §2.4 marshal charges each
+  value's approximate serialised size against `resultCapBytes` as it walks
+  the return value, and refuses with `result_too_large` as soon as the
+  budget is spent. `marshalNodes` therefore stays bounded by the budget no
+  matter how many paths a shared table has — a table referencing the same
+  sub-table down every branch has few *distinct* values but many *paths*,
+  and counting paths rather than distinct values is what let a small
+  snippet exhaust memory before the byte-size check ever ran. *Tested:* a
+  table sharing one sub-table down both branches at every level (so the
+  full walk has far more paths than the VM holds distinct tables) refuses
+  `result_too_large` with `marshalNodes` bounded to a small multiple of the
+  cap; a flat array with no sharing at all, whose serialised size alone
+  exceeds the cap, refuses the same way with `marshalNodes` bounded the
+  same way; a result under the cap still succeeds, matches its expected
+  JSON, and visits exactly as many values as it contains; a circular table
+  (`t.self=t`) still refuses via the depth bound (INV-6), unaffected by the
+  budget change.
 
 ## Wiring (source-scrape — the verb glue isn't unit-testable standalone)
 

@@ -835,6 +835,23 @@ bool isValidUtf8(const char *s, size_t len) {
 // recursive call short-circuits and the caller refuses with query_error.
 constexpr int kMarshalMaxDepth = 32;
 
+// ANTS-5069 — per-query marshal accounting. runQuery runs each query on its
+// own worker thread, so thread-local state is per query. Each value charges
+// a lower bound of its serialised size against resultCapBytes, so a result is
+// refused only when its JSON is certainly over the cap, and the walk stops
+// as soon as it is — a table shared along many paths cannot run it away.
+thread_local qint64 t_marshalNodes = 0;
+thread_local qint64 t_marshalBudget = 0;
+thread_local bool   t_marshalOverBudget = false;
+
+bool chargeMarshal(qint64 bytes, QString &err) {
+    t_marshalBudget -= bytes;
+    if (t_marshalBudget >= 0) return true;
+    t_marshalOverBudget = true;
+    err = QStringLiteral("result is over the byte cap");
+    return false;
+}
+
 QJsonValue marshalLuaValue(lua_State *L, int idx, int depth, QString &err);
 
 QJsonValue marshalLuaTable(lua_State *L, int idx, int depth, QString &err) {
@@ -899,6 +916,11 @@ QJsonValue marshalLuaTable(lua_State *L, int idx, int depth, QString &err) {
             err = QStringLiteral("object key is not valid UTF-8");
             return {};
         }
+        // ANTS-5069 — a key costs its bytes plus its quotes and colon.
+        if (!chargeMarshal(static_cast<qint64>(klen) + 3, err)) {
+            lua_pop(L, 2);
+            return {};
+        }
         const QString key = QString::fromUtf8(ks, static_cast<int>(klen));
         const QJsonValue v = marshalLuaValue(L, -1, depth + 1, err);
         lua_pop(L, 1);  // pop value, keep key for next lua_next
@@ -910,7 +932,16 @@ QJsonValue marshalLuaTable(lua_State *L, int idx, int depth, QString &err) {
 
 QJsonValue marshalLuaValue(lua_State *L, int idx, int depth, QString &err) {
     if (!err.isEmpty()) return {};
-    switch (lua_type(L, idx)) {
+    ++t_marshalNodes;
+    // A lower bound of the value's JSON size: null or a boolean 4, a number
+    // 1, a string its bytes plus quotes, a table its brackets.
+    const int type = lua_type(L, idx);
+    qint64 cost = 1;
+    if (type == LUA_TNIL || type == LUA_TNONE || type == LUA_TBOOLEAN) cost = 4;
+    else if (type == LUA_TSTRING) cost = static_cast<qint64>(lua_rawlen(L, idx)) + 2;
+    else if (type == LUA_TTABLE) cost = 2;
+    if (!chargeMarshal(cost, err)) return {};
+    switch (type) {
         case LUA_TNIL:
         case LUA_TNONE:
             return QJsonValue(QJsonValue::Null);
@@ -1155,7 +1186,16 @@ LuaEngine::QueryResult LuaEngine::runQuery(const QString &code, const QString &r
 
     // Marshal the single top-of-stack value.
     QString merr;
+    t_marshalNodes = 0;
+    t_marshalBudget = resultCapBytes;
+    t_marshalOverBudget = false;
     const QJsonValue value = marshalLuaValue(m_state, lua_gettop(m_state), 1, merr);
+    qr.marshalNodes = t_marshalNodes;
+    if (t_marshalOverBudget)
+        return fail(QStringLiteral("result_too_large"),
+                    QStringLiteral("project_query: result is over the cap of %1 bytes — "
+                                   "aggregate further (return a count, not the rows)")
+                        .arg(resultCapBytes));
     if (!merr.isEmpty())
         return fail(QStringLiteral("query_error"),
                     QStringLiteral("project_query: %1").arg(merr));
