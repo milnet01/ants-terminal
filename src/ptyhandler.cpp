@@ -599,7 +599,9 @@ void Pty::onWriteReady() {
 }
 
 void Pty::setReadEnabled(bool enabled) {
-    if (m_readNotifier) {
+    // ANTS-5026 — after EOF there is nothing left to read or reap, and
+    // VtStream::drainAck re-enables on every ack, including one after EOF.
+    if (m_readNotifier && !m_readEof) {
         m_readNotifier->setEnabled(enabled);
     }
 }
@@ -619,7 +621,9 @@ void Pty::onReadReady() {
     // the fd was closed (destructor / start-failure / write-error paths set
     // m_masterFd = -1). Reading a closed fd returns EBADF, which would fall
     // through to the child-exit branch and spuriously emit finished(); bail.
-    if (m_masterFd < 0)
+    // ANTS-5026 — EOF is handled once. A second pass would reap with
+    // m_childPid already -1, i.e. waitpid(-1): any child of the process.
+    if (m_masterFd < 0 || m_readEof)
         return;
     char buf[16384];
     while (true) {
@@ -627,10 +631,16 @@ void Pty::onReadReady() {
         if (n > 0) {
             ANTS_LOG(DebugLog::Pty, "read %zd bytes", n);
             emit dataReceived(QByteArray(buf, static_cast<int>(n)));
+            // ANTS-5026 — a dataReceived handler may have paused reads
+            // (VtStream's back-pressure). Stop now; the level-triggered
+            // notifier fires again once reads are re-enabled.
+            if (!m_readNotifier->isEnabled())
+                break;
         } else if (n == 0 || (errno != EAGAIN && errno != EINTR)) {
             // n == 0 → EOF (child closed the PTY).
             // n < 0  → read error; EAGAIN/EINTR hit the final else below,
             //          anything else means the child has exited.
+            m_readEof = true;
             m_readNotifier->setEnabled(false);
             int status = 0;
             int exitCode = -1;

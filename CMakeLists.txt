@@ -1554,6 +1554,11 @@ if(ANTS_TESTS)
                 # programs running in its tabs, like closing one tab does
                 # (source-scrape; no test constructs a MainWindow).
                 tests/features/window_close_confirm/test_window_close_confirm.cpp
+                # ANTS-5026 — behavioural: the read loop must honour a pause
+                # requested mid-drain and must not double-reap at EOF. Here,
+                # not test_core: linking Pty pulls in objects that need the
+                # chrome, claude, audit and vt libraries.
+                tests/features/pty_read_backpressure/test_pty_read_backpressure.cpp
                 tests/features/dialog_close_focus_return/test_dialog_close_focus_return.cpp
                 tests/features/dialog_pseudo_modal/test_dialog_pseudo_modal.cpp
                 tests/features/clipboard_redaction/test_clipboard_redaction.cpp

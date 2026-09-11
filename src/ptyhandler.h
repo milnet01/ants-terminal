@@ -59,6 +59,9 @@ private:
     // state. Contract: tests/features/pty_childpid_atomic/spec.md.
     std::atomic<pid_t> m_childPid{-1};
     QSocketNotifier *m_readNotifier = nullptr;
+    // ANTS-5026 — set when onReadReady handles EOF. No read, reap or
+    // re-enable happens after it.
+    bool m_readEof = false;
     QSocketNotifier *m_writeNotifier = nullptr;
     // Bytes accepted by ::write() but not yet flushed to the kernel's
     // PTY buffer (master side returned EAGAIN). Drained by onWriteReady
