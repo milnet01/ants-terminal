@@ -2949,7 +2949,12 @@ void MainWindow::showCloseTabConfirmDialog(QWidget *tabWidget,
     dlg->setAttribute(Qt::WA_DeleteOnClose);
     dlg->setWindowTitle(tr("Close tab?"));
     dlg->setObjectName(QStringLiteral("confirmCloseTabDialog"));
-    auto *layout = new QVBoxLayout(dlg);
+    // ANTS-5123 — dialogs.md D1–D4: theme chrome, resizable, size persisted,
+    // re-centred, as the window-close dialog has.
+    auto chrome = DialogChrome::install(dlg, QString(),
+                                        /*resizable=*/true,
+                                        QStringLiteral("CloseTabConfirmDialog"));
+    auto *layout = new QVBoxLayout(chrome.contentArea);
 
     auto *label = new QLabel(
         tr("This tab is running <b>%1</b>.<br>Close anyway? Long-running "

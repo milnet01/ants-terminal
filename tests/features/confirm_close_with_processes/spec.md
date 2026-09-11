@@ -90,6 +90,31 @@ no `setModal`, no `QDialogButtonBox`).
   Source: ANTS-1102 + the cancel/rollback contract from 0.7.32
   (settings_profile_cancel_rollback).
 
+- **INV-12**: `MainWindow::showCloseTabConfirmDialog` calls
+  `DialogChrome::install(` with the resizable flag set to `true` and a
+  non-empty size key distinct from `showCloseWindowConfirmDialog`'s
+  `"CloseWindowConfirmDialog"` key. Source: ANTS-5123 (dialogs.md
+  D1–D4).
+- **INV-13**: Its layout is built on the chrome's `contentArea`, not
+  directly on the `QDialog` — `new QVBoxLayout(chrome.contentArea)`,
+  never `new QVBoxLayout(dlg)`. Source: ANTS-5123.
+- **INV-14**: Guard — the dialog stays non-modal after adopting
+  `DialogChrome::install`: no `exec(`, no `setModal(true)`, and it
+  still calls `dlg->show()`. Reuses INV-9's non-modal check so
+  installing the chrome cannot silently reintroduce a modal dialog.
+  Source: ANTS-5123.
+
+## Regression history — ANTS-5123
+
+`showCloseTabConfirmDialog` built a bare `new QDialog(this)` with a
+plain `QVBoxLayout(dlg)` and never called `DialogChrome::install`, so
+it ignored the user's theme and never remembered its size — a breach
+of `dialogs.md` D1–D4. Found by reading, 2026-09-11, while writing
+ANTS-5120's window-close dialog
+(`showCloseWindowConfirmDialog`), which does call
+`DialogChrome::install` and is the reference shape INV-12/INV-13
+grep against. The fix keeps the non-modal pattern INV-9/INV-14 pin.
+
 ## Out of scope
 
 - Restoring the *PTY itself* across close → reopen (long-running
