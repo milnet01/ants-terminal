@@ -587,6 +587,20 @@ public:
 
     bool budgetHit() const { return m_budgetHit; }
 
+    // ANTS-5054 — admit one whole-document read made outside read() (the
+    // quotation pass folds a document whole). It counts against the same
+    // read budget and size cap, and the probe sees it.
+    bool admitWholeRead(const QString &absPath) {
+        if (m_reads >= m_opts.maxTargetReads) {
+            m_budgetHit = true;
+            return false;
+        }
+        if (QFileInfo(absPath).size() > m_opts.maxTargetBytes) return false;
+        ++m_reads;
+        if (m_opts.probe) ++m_opts.probe->opens;
+        return true;
+    }
+
 private:
     // One line onto the slice. A clip past the emitted prefix is real but
     // invisible to the caller, so it must not raise `text_clipped`.
@@ -1403,6 +1417,9 @@ QJsonObject check(const QString &rootCanonical, const QString &docAbsPath,
 
         QJsonArray quotesOut;
         QHash<QString, int> qTally;
+        // ANTS-5054 — each attributed document is read and folded once per
+        // call: resolved path → {read ok, folded body}.
+        QHash<QString, QPair<bool, QString>> foldedByPath;
         int harvested = 0;
         int skipped   = 0;
 
@@ -1624,16 +1641,27 @@ QJsonObject check(const QString &rootCanonical, const QString &docAbsPath,
                     q[QStringLiteral("status")] = QStringLiteral("target_unresolved");
                     ++qTally[QStringLiteral("target_unresolved")];
                 } else {
-                    QFile tf(t.absPath);
-                    QString body;
-                    if (tf.open(QIODevice::ReadOnly) &&
-                        decodeChecked(tf.readAll(), &body)) {
+                    auto folded = foldedByPath.constFind(t.absPath);
+                    if (folded == foldedByPath.constEnd()) {
+                        // ANTS-5054 — one read per document per call, inside
+                        // the reader's read budget and size cap.
+                        QPair<bool, QString> entry{false, QString()};
+                        if (reader.admitWholeRead(t.absPath)) {
+                            QFile tf(t.absPath);
+                            QString body;
+                            if (tf.open(QIODevice::ReadOnly) &&
+                                decodeChecked(tf.readAll(), &body))
+                                entry = {true, dcFoldWhitespace(body)};
+                        }
+                        folded = foldedByPath.insert(t.absPath, entry);
+                    }
+                    if (folded->first) {
                         // Fold whitespace on BOTH sides. Without this a
                         // hard-wrapped target reports not_found for a phrase
                         // that is present, which is the false negative that
                         // makes the hand-rolled version unsafe.
                         const bool found =
-                            dcFoldWhitespace(body).contains(dcFoldWhitespace(text));
+                            folded->second.contains(dcFoldWhitespace(text));
                         q[QStringLiteral("status")] = found
                             ? QStringLiteral("ok")
                             : QStringLiteral("not_found");

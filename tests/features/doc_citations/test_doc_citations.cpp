@@ -1991,3 +1991,202 @@ TEST(DocCitations, Ants4939UnderTheCapNothingIsElided) {
            "4939: the flag is ABSENT when nothing was elided", render(r));
     ASSERT_EQ(0, expect_finish());
 }
+
+// ANTS-5054 — the quotation pass (ANTS-4386) reads its attributed target
+// through its own bare `QFile`, once per QUOTATION rather than once per
+// distinct TARGET, and touches none of the citation path's read machinery:
+// not `Options::maxTargetReads`, not `Options::maxTargetBytes`, not
+// `TargetReader`'s cache, not `Probe::opens`. A doc quoted 200 times against
+// one target (ROADMAP.md, say) re-opens and re-folds that whole file 200
+// times, uncounted and unbounded, on the single MCP worker.
+//
+// One target, three quotations against it: a shared reader opens it once.
+TEST(DocCitations, Ants5054QuotationSharesOneReadPerTarget) {
+    expect_reset();
+    Fixture fx;
+    fx.write(QStringLiteral("docs/target5054.md"),
+             "# Target\n"
+             "\n"
+             "the first phrase that quote one will match exactly here\n"
+             "and a second phrase that quote three will match exactly too\n");
+
+    DocCitations::Probe probe;
+    DocCitations::Options opts;
+    opts.quotes = true;
+    opts.probe  = &probe;
+
+    const QString doc = fx.doc(
+        "`docs/target5054.md` says \"the first phrase that quote one will "
+        "match exactly here\".\n"
+        "\n"
+        "`docs/target5054.md` also says \"a phrase this target does not "
+        "contain at all, anywhere\".\n"
+        "\n"
+        "`docs/target5054.md` restates \"and a second phrase that quote "
+        "three will match exactly too\".\n");
+
+    const QJsonObject r = DocCitations::check(fx.root, doc, opts);
+    const QJsonArray qs = r.value(QStringLiteral("quotes")).toArray();
+
+    expect(qs.size() == 3, "ANTS-5054: three quotations harvested",
+           QStringLiteral("size=%1 %2").arg(qs.size()).arg(render(r)));
+    if (qs.size() == 3) {
+        expect(qs.at(0).toObject().value(QStringLiteral("status")).toString()
+                   == QStringLiteral("ok"),
+               "ANTS-5054: the first quotation is present in the target",
+               render(r));
+        expect(qs.at(1).toObject().value(QStringLiteral("status")).toString()
+                   == QStringLiteral("not_found"),
+               "ANTS-5054: the second is genuinely absent", render(r));
+        expect(qs.at(2).toObject().value(QStringLiteral("status")).toString()
+                   == QStringLiteral("ok"),
+               "ANTS-5054: the third is present too — a shared read must "
+               "not corrupt any one quotation's own verdict", render(r));
+    }
+    // Exact, not a floor: 0 is today's pass (it never touches the reader at
+    // all), and 3 would be one open per quotation instead of per target —
+    // only 1 is the fix.
+    expect(probe.opens == 1,
+           "ANTS-5054: one target opened once for three quotations against it",
+           QStringLiteral("opens=%1").arg(probe.opens));
+    ASSERT_EQ(0, expect_finish());
+}
+
+// ANTS-5054 — a quotation's attributed target is checked against
+// `Options::maxTargetBytes` before it is opened, the same gate
+// `TargetReader::read` already applies on the citation path. Today's
+// quotation pass has no such check, so a target over the cap — including a
+// `.txt` file, which counts as a document here — is folded anyway and has no
+// size bound in this call at all.
+TEST(DocCitations, Ants5054QuotationTargetOverSizeCapIsUnresolved) {
+    expect_reset();
+    Fixture fx;
+    // A real, readable target whose quoted phrase really is inside it, so a
+    // pass that skips the size gate would still find it and report `ok` —
+    // the wrong-for-the-wrong-reason failure this test rules out.
+    fx.write(QStringLiteral("docs/big5054.md"),
+             QByteArray(300, 'x') + "\n"
+             "the size-bound phrase appears here exactly as quoted\n");
+
+    DocCitations::Probe probe;
+    DocCitations::Options opts;
+    opts.quotes         = true;
+    opts.probe          = &probe;
+    opts.maxTargetBytes = 64;   // the target is well over this
+
+    const QString doc = fx.doc(
+        "`docs/big5054.md` says \"the size-bound phrase appears here "
+        "exactly as quoted\".\n");
+
+    const QJsonObject r = DocCitations::check(fx.root, doc, opts);
+    const QJsonArray qs = r.value(QStringLiteral("quotes")).toArray();
+    expect(qs.size() == 1, "ANTS-5054: one quotation harvested", render(r));
+    if (qs.size() == 1) {
+        expect(qs.at(0).toObject().value(QStringLiteral("status")).toString()
+                   == QStringLiteral("target_unresolved"),
+               "ANTS-5054: a target over maxTargetBytes is refused, not "
+               "read — even though the phrase really is inside it", render(r));
+    }
+    expect(probe.opens == 0, "ANTS-5054: the oversized target was never opened",
+           QStringLiteral("opens=%1").arg(probe.opens));
+    ASSERT_EQ(0, expect_finish());
+}
+
+// ANTS-5054 — a quotation read spends the SAME absolute budget the citation
+// path already enforces (`Options::maxTargetReads`), and sets
+// `read_budget_exhausted` once it is spent. Today's pass has no budget of its
+// own, so a call already near its read budget on citations can still open an
+// unbounded number of further targets for quotations.
+TEST(DocCitations, Ants5054QuotationReadsCountAgainstTheBudget) {
+    expect_reset();
+    Fixture fx;
+    fx.write(QStringLiteral("docs/a5054.md"),
+             "# A\n\nthe first budgeted target reads successfully here\n");
+    fx.write(QStringLiteral("docs/b5054.md"),
+             "# B\n\nthe second budgeted target also reads successfully\n");
+    // Exists (so attribution resolves) but must never be OPENED — the budget
+    // refuses the read before any content comparison happens.
+    fx.write(QStringLiteral("docs/c5054.md"),
+             "# C\n\nthe third budgeted target exceeds the read budget\n");
+
+    DocCitations::Probe probe;
+    DocCitations::Options opts;
+    opts.quotes         = true;
+    opts.probe          = &probe;
+    opts.maxTargetReads = 2;   // fewer than the three distinct targets below
+
+    const QString doc = fx.doc(
+        "`docs/a5054.md` says \"the first budgeted target reads "
+        "successfully here\".\n"
+        "\n"
+        "`docs/b5054.md` says \"the second budgeted target also reads "
+        "successfully\".\n"
+        "\n"
+        "`docs/c5054.md` says \"the third budgeted target exceeds the "
+        "read budget\".\n");
+
+    const QJsonObject r = DocCitations::check(fx.root, doc, opts);
+    const QJsonArray qs = r.value(QStringLiteral("quotes")).toArray();
+    expect(qs.size() == 3, "ANTS-5054: three quotations harvested", render(r));
+    if (qs.size() == 3) {
+        expect(qs.at(0).toObject().value(QStringLiteral("status")).toString()
+                   == QStringLiteral("ok"),
+               "ANTS-5054: the first distinct target fits the budget",
+               render(r));
+        expect(qs.at(1).toObject().value(QStringLiteral("status")).toString()
+                   == QStringLiteral("ok"),
+               "ANTS-5054: the second distinct target fits the budget too",
+               render(r));
+        expect(qs.at(2).toObject().value(QStringLiteral("status")).toString()
+                   == QStringLiteral("target_unresolved"),
+               "ANTS-5054: the third distinct target is past the budget",
+               render(r));
+    }
+    expect(r.value(QStringLiteral("read_budget_exhausted")).toBool(),
+           "ANTS-5054: the envelope says the budget was exhausted", render(r));
+    expect(probe.opens == 2,
+           "ANTS-5054: exactly the two budgeted targets were opened",
+           QStringLiteral("opens=%1").arg(probe.opens));
+    ASSERT_EQ(0, expect_finish());
+}
+
+// ANTS-5054 — guard: a quotation present in its target is `ok`, one
+// genuinely absent is `not_found`, including across a hard wrap in the
+// target. This must hold both before AND after the fix routes the quotation
+// read through the shared reader — a correctness regression hidden inside
+// that refactor would be worse than the unbounded-read defect it fixes.
+TEST(DocCitations, Ants5054QuotationOkAndNotFoundAcrossHardWrap) {
+    expect_reset();
+    Fixture fx;
+    // Hard-wrapped in the target: the phrase spans a real line break.
+    fx.write(QStringLiteral("docs/wrapped5054.md"),
+             "# Wrapped\n"
+             "\n"
+             "the fifty-fourth guard phrase spans a genuine line break in\n"
+             "its own target document, and must still be matched\n");
+
+    DocCitations::Options opts;
+    opts.quotes = true;
+
+    const QString doc = fx.doc(
+        "`docs/wrapped5054.md` puts it as \"the fifty-fourth guard phrase "
+        "spans a genuine line break in its own target document, and must "
+        "still be matched\".\n"
+        "\n"
+        "`docs/wrapped5054.md` also claims \"a phrase this document has "
+        "never contained, wrap or no wrap\".\n");
+
+    const QJsonObject r = DocCitations::check(fx.root, doc, opts);
+    const QJsonArray qs = r.value(QStringLiteral("quotes")).toArray();
+    expect(qs.size() == 2, "ANTS-5054: two quotations harvested", render(r));
+    if (qs.size() == 2) {
+        expect(qs.at(0).toObject().value(QStringLiteral("status")).toString()
+                   == QStringLiteral("ok"),
+               "ANTS-5054: present, and matched across its own line wrap",
+               render(r));
+        expect(qs.at(1).toObject().value(QStringLiteral("status")).toString()
+                   == QStringLiteral("not_found"),
+               "ANTS-5054: genuinely absent, and still reported so", render(r));
+    }
+    ASSERT_EQ(0, expect_finish());
+}

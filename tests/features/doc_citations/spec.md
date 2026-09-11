@@ -101,6 +101,25 @@ The citation grammar itself is `tests/features/doc_citations_scan/`; the
 - **INV-42** — `count` and `counts` are whole-doc even when an emission cap binds.
   *Test:* `DocCitations.Inv42CountsAreWholeDoc`.
 
+## Quotation pass (ANTS-4386)
+
+`Options::quotes` opt-in. Nothing here has ever carried an `INV-N` id: the
+pass has no spec of its own, and `docs/specs/ANTS-3636.md`'s ladder does not
+cover it (its numbering already runs to `INV-48`, spent on a verb-layer
+refusal, so the tests below are named by ticket rather than risking an id
+collision). Read the top-of-test comment on each for the defect it locks.
+
+- A target attributed by several quotations is read at most once per call —
+  the same target-size cap and read budget the citation path already
+  enforces apply here too, and a refused read never opens the file.
+  *Tests:* `DocCitations.Ants5054QuotationSharesOneReadPerTarget`,
+  `DocCitations.Ants5054QuotationTargetOverSizeCapIsUnresolved`,
+  `DocCitations.Ants5054QuotationReadsCountAgainstTheBudget`.
+- A quotation present in its target is `ok`, one genuinely absent is
+  `not_found`, including across a hard wrap in the target — before and after
+  the read path above changes.
+  *Test:* `DocCitations.Ants5054QuotationOkAndNotFoundAcrossHardWrap`.
+
 ## Trap cases
 
 | INV | What passes without the fixture |
