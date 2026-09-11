@@ -8270,7 +8270,7 @@ extends an existing item, that item carries it instead.
   Source: in-session-2026-09-11 (write-test run for ANTS-5025).
   Lanes: mcp, speclint.
 
-- 📋 [ANTS-5118] **Closing the first window while a second is open hides it but leaves every one of its shells running, with no way back to them.**
+- ✅ [ANTS-5118] **Closing the first window while a second is open hides it but leaves every one of its shells running, with no way back to them.**
   Found by reading, 2026-09-11, while fixing ANTS-5032; not yet
   reproduced. main.cpp builds the first MainWindow on the stack with
   no WA_DeleteOnClose. File → Exit connects to QWidget::close, and
@@ -8288,10 +8288,69 @@ extends an existing item, that item carries it instead.
   not come back after a restart. Until this item ships, the hidden
   first window still counts as open, so ANTS-5032's saved tab order
   still includes its tabs.
+  Design (2026-09-11): the first window cannot be deleted on close,
+  because it owns the remote-control listener that later windows fail
+  to bind. So closeEvent ends its tabs instead: while another visible
+  MainWindow stays open, it closes every tab through performTabClose
+  before saveAllSessions. Pty::~Pty sends SIGHUP, so the programs end.
+  The last visible window keeps its tabs for the restart. The
+  confirmation prompt is split out as its own item.
+  Logout (2026-09-11): KWin's D-Bus /Session interface exposes
+  closeWaylandWindows, and src has no logout or SIGTERM handling. So a
+  Plasma Wayland logout closes each Ants window like the close button.
+  An immediate close-down would drop every window's tabs but the last.
+  Decision: defer the close-down one event-loop turn, the timing of the
+  deleteLater that ends a New Window window's tabs, and re-check
+  anotherWindowStaysOpen() then. Closes that arrive together leave the
+  last window to save every tab. Unverified: that logout's close
+  requests reach Ants in one batch; New Window windows depend on the
+  same timing today.
+  Resolved (2026-09-11): when another visible window stays open,
+  closeEvent defers a close-down one event-loop turn, re-checks
+  anotherWindowStaysOpen(), then closes every tab through
+  performTabClose. The last visible window keeps its tabs.
+  Test: multi_window_session Ants5118Inv1/Inv2, red before the fix and
+  green after; a mutation probe killed all seven routes back.
+  Unverified: that a Plasma logout's close requests reach Ants in one
+  batch.
   **Layman:** If you close the original Ants window but keep a second one open, the closed window's programs keep running invisibly.
   Kind: fix.
   Source: in-session-2026-09-11 (ANTS-5032 fix).
   Lanes: mainwindow, session.
+
+- 📋 [ANTS-5120] **Closing a window ends every program running in its tabs without the confirmation a single tab close gives.**
+  Found 2026-09-11 while fixing ANTS-5118. MainWindow::closeTab asks
+  first (ANTS-1102, confirmCloseWithProcesses) when a tab's shell has a
+  non-shell descendant such as vim. MainWindow::closeEvent never asks,
+  so closing a window kills the same programs silently.
+  User decision (2026-09-11): closing a window asks first when
+  something is still running, like a tab close.
+  Design: reuse firstNonShellDescendant and the confirmCloseWithProcesses
+  setting; the dialog must stay non-modal (showCloseTabConfirmDialog's
+  pattern), so closeEvent ignores the event, shows it, and re-closes on
+  Close anyway.
+  Consequence to accept: src has no session-manager handling, so Qt's
+  default logout path closes every window and cancels the logout when
+  one ignores its close. A running program then pauses KDE logout
+  behind the dialog, as Konsole does.
+  **Layman:** Closing a whole window can kill a running program like an unsaved editor without asking, even though closing one tab asks.
+  Kind: fix.
+  Source: in-session-2026-09-11 (ANTS-5118 fix).
+  Lanes: mainwindow.
+
+- 📋 [ANTS-5121] **After the first window is closed, the remote-control server and every MCP tab verb keep serving that hidden window.**
+  Found by reading, 2026-09-11. Every MainWindow constructor calls
+  m_remoteControl->start(), and the comment beside that call says a
+  later window fails to bind the socket the first one holds. So the
+  listener, and every tab-addressed verb it serves, belong to the first
+  window. Closing that window only hides it (ANTS-5118), so a tab verb
+  then reads or creates tabs in a window nobody can see.
+  Fix direction: hand the listener to a surviving window on close, or
+  resolve tab verbs against the active MainWindow rather than the owner.
+  **Layman:** If you close the original Ants window, Claude's terminal tools keep pointing at that invisible window.
+  Kind: fix.
+  Source: in-session-2026-09-11 (ANTS-5118 fix).
+  Lanes: remotecontrol, mainwindow.
 
 ## Memory-efficiency sweep (user request 2026-08-19)
 

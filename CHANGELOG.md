@@ -40,6 +40,11 @@ for security-relevant changes.
 
 ### Fixed
 
+- **Closing one of several windows closes its tabs and ends their programs, including the original window, which used to keep them running out of sight.** (ANTS-5118)
+  The last window still keeps its tabs for the next start. The tabs
+  close a moment after their window, so a logout that closes every
+  window still saves them all.
+
 - **A second window (File → New Window) opens with one fresh tab instead of reopening every saved tab, and a restart brings back the tabs of every open window.** (ANTS-5032)
   Saved tabs are restored once per run, into the first window. Each
   window now saves the whole run's tab list rather than only its own,
