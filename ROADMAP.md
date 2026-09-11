@@ -8377,7 +8377,7 @@ extends an existing item, that item carries it instead.
   Source: code-quality-review-2026-09-11 perf pass (split from ANTS-5024).
   Lanes: mcp, threading.
 
-- 📋 [ANTS-5114] **Four GCC warnings stand in the build: one -Wshadow, one -Wnull-dereference and two -Wdangling-else.**
+- ✅ [ANTS-5114] **Four GCC warnings stand in the build: one -Wshadow, one -Wnull-dereference and two -Wdangling-else.**
   Seen 2026-09-11 in `cmake --build build --target test_claude
   ants-terminal`, after a remotecontrol.h edit recompiled these TUs.
   - src/remotecontrol_roadmap_log_batch.cpp, cmdRoadmapLogAppendBatch:
@@ -8398,12 +8398,20 @@ extends an existing item, that item carries it instead.
   is read where the outer one was meant.
   Also seen 2026-09-11: test_terminal_a11y.cpp raises -Wnull-dereference
   when a terminalwidget.h edit recompiles test_chrome.
+  Resolved (2026-09-11, 86ef5da0): the shadowed ids renamed; braces on
+  the unbraced ifs in roadmap_id_format_declared,
+  roadmap_log_bundle_row, doc_integrity and test_audit_pattern_drift,
+  none of which asserted less than it read (no else, and gtest guards
+  its own); terminal_a11y stores textInterface() once;
+  roadmap_write_history's size check is fatal and its stamp check uses
+  contains. The build logs showed three sites beyond the four listed.
+  All seven recompile with no warning and their suites pass.
   **Layman:** The build prints four warnings; two sit in tests and may mean those tests check less than they appear to.
   Kind: fix.
   Source: in-session-2026-09-11.
   Lanes: roadmap, tests.
 
-- 📋 [ANTS-5115] **project.read can still leak its file buffer when a Lua allocation fails while the result is pushed.**
+- ✅ [ANTS-5115] **project.read can still leak its file buffer when a Lua allocation fails while the result is pushed.**
   LuaEngine::lua_project_read calls lua_pushlstring while the QFile and
   the QByteArray holding the file are alive. lua_pushlstring raises a
   memory error when the query's allocator cap is hit, and the raise
@@ -8419,6 +8427,13 @@ extends an existing item, that item carries it instead.
   per entry while `rels` (QList<QByteArray>), the QDirIterator, `base`,
   `rootDir` and `canonRoot` are alive, so a memory error raised by
   either push longjmps past all of them. Not reproduced.
+  Resolved (2026-09-11, 09cff784, ANTS-5070): lua_project_read and
+  lua_project_list now push their results inside a protected call, so a
+  memory error comes back as a return code and is raised only after the
+  QFile, the buffer and the path list are gone; project.read also
+  refuses a file larger than the query's memory left before reading it.
+  Reproduced by project_query INV-11 and INV-12, which leaked under
+  LeakSanitizer before the fix and pass after.
   **Layman:** A project query that runs out of memory while reading a file can leave a little memory unfreed.
   Kind: fix.
   Source: in-session-2026-09-11 (found fixing ANTS-3847).
@@ -8561,7 +8576,7 @@ extends an existing item, that item carries it instead.
   Source: in-session-2026-09-11 (ANTS-5033 fix).
   Lanes: terminalgrid, security.
 
-- 📋 [ANTS-5123] **The close-tab confirmation dialog skips DialogChrome, so it ignores the theme and never remembers its size, against dialogs.md D1–D4.**
+- ✅ [ANTS-5123] **The close-tab confirmation dialog skips DialogChrome, so it ignores the theme and never remembers its size, against dialogs.md D1–D4.**
   Found by reading, 2026-09-11, while writing ANTS-5120's window-close
   dialog. MainWindow::showCloseTabConfirmDialog builds a bare
   `new QDialog(this)` with a plain QVBoxLayout. Dialogs meet
@@ -8571,6 +8586,11 @@ extends an existing item, that item carries it instead.
   Fix: install DialogChrome with resizable and a size key, and build
   the layout on chrome.contentArea. Keep the non-modal pattern that
   tests/features/confirm_close_with_processes pins.
+  Resolved (2026-09-11, c063b1cc): showCloseTabConfirmDialog calls
+  DialogChrome::install resizable under the size key
+  CloseTabConfirmDialog and builds its layout on the chrome's content
+  area; it stays non-modal. Tests: confirm_close_with_processes INV-12
+  to INV-14.
   **Layman:** The "close this tab?" question box doesn't match the Ants theme and forgets its size.
   Kind: fix.
   Source: in-session-2026-09-11 (ANTS-5120 fix).

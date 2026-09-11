@@ -40,6 +40,10 @@ for security-relevant changes.
 
 ### Fixed
 
+- **The "Close tab?" question box now matches the Ants theme, can be resized and remembers its size** (ANTS-5123)
+
+- **The build no longer prints its GCC warnings, and the tests they pointed at still check what they read** (ANTS-5114)
+
 - **project_query refuses a file too large for its memory limit before reading it, and its Lua callbacks no longer leak memory when a query runs out of room** (ANTS-5070)
 
 - **Code searches stop reading ripgrep's output past a size limit and say the answer is partial, instead of holding all of it in memory** (ANTS-5052)
