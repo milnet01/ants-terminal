@@ -7,6 +7,7 @@
 #include "elidedlabel.h"
 #include "auditrulequality.h"
 #include "debtsweepengine.h"
+#include "gitblameparse.h"
 
 #include <memory>
 
@@ -454,12 +455,17 @@ private:
     // same file; reading once is much cheaper than per-finding disk I/O.
     mutable QHash<QString, QStringList> m_fileLineCache;
 
-    // Git-blame enrichment — shells out to `git blame --porcelain -L N,N`,
-    // caches by (relPath:line) so multiple findings on the same line are
-    // free. Populates Finding::blameAuthor/Date/Sha in place.
-    void enrichWithBlame(Finding &f) const;
-    struct BlameEntry { QString author; QString date; QString sha; };
+    // Git-blame enrichment, cached by (relPath:line). ANTS-5040 — nothing
+    // here waits on the GUI thread: renderResults() applies what the cache
+    // holds and queues the rest per file; startQueuedBlame() runs one
+    // asynchronous `git blame --line-porcelain` per file with one -L per
+    // queued line, a few at a time, and re-renders once the last finishes.
+    bool applyCachedBlame(Finding &f) const;   // false: queue it
+    void startQueuedBlame();
+    using BlameEntry = GitBlame::Entry;
     mutable QHash<QString, BlameEntry> m_blameCache;
+    QHash<QString, QSet<int>> m_blameQueue;    // relPath -> lines to blame
+    int m_blameInFlight = 0;
     bool m_blameEnabled = true;   // auto-disabled if not a git repo
 
     // Confidence score (0-100) computed from severity, multi-tool agreement,

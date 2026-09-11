@@ -2232,59 +2232,76 @@ QString AuditDialog::readSnippet(const QString &absPath, int line, int radius,
 // Git blame enrichment — per (file, line) cached
 // ---------------------------------------------------------------------------
 
-void AuditDialog::enrichWithBlame(Finding &f) const {
-    if (!m_blameEnabled) return;
-    if (f.file.isEmpty() || f.line <= 0) return;
-    // ANTS-2003 — f.file is scanner-supplied. The `--` separator below already
-    // stops argv-injection, but refuse an absolute path or a `..` traversal so
-    // `git blame` can never be pointed outside the project tree.
+// ANTS-5040 — the cache half of blame enrichment. True when there is nothing
+// to ask git for: blame is off, the finding has no usable location, or the
+// line is cached (an empty entry records a blame that failed).
+bool AuditDialog::applyCachedBlame(Finding &f) const {
+    if (!m_blameEnabled) return true;
+    if (f.file.isEmpty() || f.line <= 0) return true;
+    // ANTS-2003 — f.file is scanner-supplied. The `--` separator in
+    // startQueuedBlame() already stops argv-injection, but refuse an absolute
+    // path or a `..` traversal so `git blame` can never be pointed outside the
+    // project tree.
     if (QDir::isAbsolutePath(f.file) ||
         f.file.split(QLatin1Char('/')).contains(QStringLiteral("..")))
-        return;
-    const QString key = f.file + ":" + QString::number(f.line);
-    auto it = m_blameCache.constFind(key);
-    if (it != m_blameCache.constEnd()) {
-        f.blameAuthor = it->author;
-        f.blameDate   = it->date;
-        f.blameSha    = it->sha;
-        return;
-    }
+        return true;
+    const auto it =
+        m_blameCache.constFind(f.file + QLatin1Char(':') + QString::number(f.line));
+    if (it == m_blameCache.constEnd()) return false;
+    f.blameAuthor = it->author;
+    f.blameDate   = it->date;
+    f.blameSha    = it->sha;
+    return true;
+}
 
-    QProcess git;
-    git.setWorkingDirectory(m_projectPath);
-    git.start("git", {"blame", "--porcelain",
-                      "-L", QString("%1,%1").arg(f.line),
-                      "HEAD", "--", f.file});
-    if (!git.waitForFinished(2000)) {
-        git.kill();
-        m_blameCache.insert(key, {});
-        return;
-    }
-    if (git.exitCode() != 0) {
-        m_blameCache.insert(key, {});
-        return;
-    }
-    BlameEntry b;
-    const QStringList out =
-        QString::fromUtf8(git.readAllStandardOutput()).split('\n', Qt::SkipEmptyParts);
-    if (out.isEmpty()) { m_blameCache.insert(key, {}); return; }
+// ANTS-5040 — one `git blame --line-porcelain` per file, a few at a time,
+// never waited on. A finished job caches every line it was asked about (an
+// empty entry where git gave none, so no line is asked twice), and the last
+// one re-renders to apply them. Mid-run it does not: the run's own final
+// render applies the cache.
+void AuditDialog::startQueuedBlame() {
+    constexpr int kMaxBlameJobs = 4;
+    constexpr int kBlameTimeoutMs = 30000;
+    while (m_blameInFlight < kMaxBlameJobs && !m_blameQueue.isEmpty()) {
+        const auto next = m_blameQueue.begin();
+        const QString file = next.key();
+        QList<int> lines = next.value().values();
+        m_blameQueue.erase(next);
+        std::sort(lines.begin(), lines.end());
 
-    // First line: <sha> <old-line> <new-line> [group-size]
-    const QStringList firstParts = out.first().split(' ');
-    if (!firstParts.isEmpty()) b.sha = firstParts.first().left(8);
+        QStringList args{QStringLiteral("blame"), QStringLiteral("--line-porcelain")};
+        for (int line : std::as_const(lines))
+            args << QStringLiteral("-L") << QStringLiteral("%1,%1").arg(line);
+        args << QStringLiteral("HEAD") << QStringLiteral("--") << file;
 
-    for (const QString &ln : out) {
-        if (ln.startsWith("author ")) b.author = ln.mid(7).trimmed();
-        else if (ln.startsWith("author-time ")) {
-            const qint64 t = ln.mid(12).trimmed().toLongLong();
-            if (t > 0)
-                b.date = QDateTime::fromSecsSinceEpoch(t).toString("yyyy-MM-dd");
-        }
+        auto *git = new QProcess(this);
+        git->setWorkingDirectory(m_projectPath);
+        ++m_blameInFlight;
+        auto done = [this, git, file, lines](bool ok) {
+            const QHash<int, BlameEntry> parsed =
+                ok ? GitBlame::parseLinePorcelain(git->readAllStandardOutput())
+                   : QHash<int, BlameEntry>{};
+            for (int line : lines)
+                m_blameCache.insert(file + QLatin1Char(':') + QString::number(line),
+                                    parsed.value(line));
+            git->deleteLater();
+            --m_blameInFlight;
+            startQueuedBlame();
+            if (m_blameInFlight == 0 && m_blameQueue.isEmpty() &&
+                m_runBtn->isEnabled() && !m_completedResults.isEmpty())
+                renderResults();
+        };
+        connect(git, &QProcess::finished, this,
+                [done](int code, QProcess::ExitStatus st) {
+                    done(st == QProcess::NormalExit && code == 0);
+                });
+        connect(git, &QProcess::errorOccurred, this,
+                [done](QProcess::ProcessError e) {
+                    if (e == QProcess::FailedToStart) done(false);
+                });
+        QTimer::singleShot(kBlameTimeoutMs, git, [git] { git->kill(); });
+        git->start(QStringLiteral("git"), args);
     }
-    m_blameCache.insert(key, b);
-    f.blameAuthor = b.author;
-    f.blameDate   = b.date;
-    f.blameSha    = b.sha;
 }
 
 // ---------------------------------------------------------------------------
@@ -4744,10 +4761,12 @@ void AuditDialog::renderResults() {
             if (abs.isEmpty()) continue;  // traversal: skip enrichment entirely
             if (f.snippet.isEmpty())
                 f.snippet = readSnippet(abs, f.line, 3, &f.snippetStart);
-            if (f.blameSha.isEmpty()) enrichWithBlame(f);
+            if (f.blameSha.isEmpty() && !applyCachedBlame(f))
+                m_blameQueue[f.file].insert(f.line);   // ANTS-5040
             ++enriched;
         }
     }
+    startQueuedBlame();
     for (auto &r : m_completedResults)
         for (Finding &f : r.findings)
             f.confidence = computeConfidence(f);

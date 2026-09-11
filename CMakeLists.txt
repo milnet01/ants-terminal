@@ -2745,7 +2745,12 @@ if(ANTS_TESTS)
                 # minutes-scale timeout, clean up its scratch dir via a trap
                 # on EXIT, and never use mktemp -d for the build dir
                 # (source-scrape, same reasoning as ANTS-5038 above).
-                tests/features/audit_compiler_warnings_check/test_audit_compiler_warnings_check.cpp)
+                tests/features/audit_compiler_warnings_check/test_audit_compiler_warnings_check.cpp
+                # ANTS-5040 — renderResults()'s blame enrichment must be
+                # batched (one --line-porcelain call per file, several -L
+                # ranges) and off the GUI thread, not one waitForFinished
+                # QProcess per finding.
+                tests/features/audit_blame_bulk_async/test_audit_blame_bulk_async.cpp)
     target_compile_definitions(test_audit PRIVATE
         SRC_AUDIT_CPP_PATH="${CMAKE_SOURCE_DIR}/src/auditdialog.cpp"
         SRC_AUDIT_H_PATH="${CMAKE_SOURCE_DIR}/src/auditdialog.h"
