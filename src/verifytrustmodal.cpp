@@ -3,6 +3,8 @@
 
 #include "verifytrustmodal.h"
 
+#include "guithread.h"
+
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QJsonParseError>
@@ -68,7 +70,14 @@ ModalClient::ModalClient(QWidget *parent, const QString &trustFilePath)
 Decision ModalClient::prompt(const QString &projectPath,
                              const QString &shaHex,
                              const QByteArray &configBytes) {
-    return showPrompt(projectPath, shaHex, configBytes);
+    // ANTS-5025 — verify_changes runs off the GUI thread (ANTS-2132), and a
+    // widget may only be built and run there (ANTS-1337 INV-8). A refused
+    // marshal means Ants is shutting down: nobody can answer, so Headless.
+    const auto decision = ants::onGuiThread([&]() {
+        return showPrompt(projectPath, shaHex, configBytes);
+    });
+    if (!decision) return {Outcome::Headless, shaHex};
+    return *decision;
 }
 
 Decision ModalClient::showPrompt(const QString &projectPath,
