@@ -132,6 +132,10 @@ for security-relevant changes.
 
 ### Security
 
+- **Audits no longer take tool options from the audited project's .audit-config.json, so a downloaded project cannot use them to write files or run code** (ANTS-5045)
+
+- **Batch AI triage and indie_review_dispatch remove passwords and keys from source text before sending it to the AI endpoint** (ANTS-5042)
+
 - **SSH bookmark extra arguments are checked the way ssh reads them, including spaced, quoted and combined option forms, config files and library-loading options** (ANTS-5060)
 
 - **A keyless AI request sent over plain http to another machine now warns that it is not encrypted, and still sends** (ANTS-5010)

@@ -6447,7 +6447,7 @@ extends an existing item, that item carries it instead.
   Source: code-quality-review-2026-09-11 perf pass (lane audit-dialog-b).
   Lanes: audit.
 
-- 📋 [ANTS-5042] **Two AI-bound paths send source text without secret scrubbing: audit batch triage and indie_review_dispatch.**
+- ✅ [ANTS-5042] **Two AI-bound paths send source text without secret scrubbing: audit batch triage and indie_review_dispatch.**
   The audit dialog's batch triage (requestAiTriageBatch) puts verbatim
   source snippets and matched lines into the request with no
   SecretRedact::scrub. Its single-finding path does scrub, and says why:
@@ -6459,6 +6459,13 @@ extends an existing item, that item carries it instead.
   Found by two lanes.
   Fix: build both requests through one function that scrubs and
   reports the redacted count, as the single-finding path does.
+  Shipped 2026-09-11 (e79888b1): batch triage scrubs its user message
+  and reports the count in its status line;
+  IndieReviewDispatcher::buildRequestBody scrubs the system prompt and
+  the brief, and indie_review_dispatch reports redacted_count per lane.
+  AuditProvenanceRedaction INV-6 and
+  IndieReviewDispatch.Ants5042RequestBodyScrubsSecrets were red before
+  the fix.
   **Layman:** Two ways of sending code to the AI reviewer skip the step that hides passwords and keys.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lanes audit-dialog-b, review-engines).
@@ -6501,7 +6508,7 @@ extends an existing item, that item carries it instead.
   Source: code-quality-review-2026-09-11 perf pass (lane audit-engine).
   Lanes: audit.
 
-- 📋 [ANTS-5045] **A project's .audit-config.json can make an audit tool write to any file the user can write.**
+- ✅ [ANTS-5045] **A project's .audit-config.json can make an audit tool write to any file the user can write.**
   AuditRunner's extra-argument check rejects only the exact strings -o
   and -O, and its allowlist regex admits slashes, equals signs and
   dashes. So a cloned project's config can pass --output-file=,
@@ -6514,6 +6521,13 @@ extends an existing item, that item carries it instead.
   User decision 2026-09-11: remove the per-tool args override entirely.
   No project on this machine uses that schema; RetroArch's
   audit-config.json uses a tools/flags layout the runner never read.
+  Shipped 2026-09-11 (701d85c9): the per-tool args override is removed,
+  as the user decided. loadProjectAuditConfig, the toolArgv parameter
+  and the runAudit load are gone; isAuditArgSafe still guards the
+  caller's paths and exclude_paths.
+  mcp_audit_run.Ants5045NoProjectArgvOverride replaces AR-3/AR-4 and was
+  red before the removal. docs/specs/ANTS-1456.md marks AR-3/AR-4
+  withdrawn.
   **Layman:** Auditing a downloaded project could let that project overwrite one of your files.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lane audit-engine).
