@@ -6161,7 +6161,7 @@ extends an existing item, that item carries it instead.
   Source: code-quality-review-2026-09-11 perf pass (lanes dialog-chrome-theme, mcp-review-verbs).
   Lanes: mcp, threading.
 
-- 📋 [ANTS-5026] **The PTY read loop ignores back-pressure, so a flooding program grows the parse queue without bound and starves keystrokes.**
+- ✅ [ANTS-5026] **The PTY read loop ignores back-pressure, so a flooding program grows the parse queue without bound and starves keystrokes.**
   Pty::onReadReady reads until EAGAIN. When VtStream has too many
   batches in flight it only disables the read notifier, which does not
   stop the loop already running. Every further read appends to
@@ -6178,12 +6178,19 @@ extends an existing item, that item carries it instead.
   disabled; the notifier is level-triggered, so it re-fires. The same
   fix closes the path to a second EOF pass, where waitpid(-1) could
   reap an unrelated child process.
+  Resolved (2026-09-11): the read loop breaks once a dataReceived
+  handler disables the notifier, and a sticky m_readEof stops a second
+  EOF pass and any re-arm after EOF. No separate read budget: acks reach
+  the worker only through its event loop.
+  Test: pty_read_backpressure (real Pty, in test_chrome), red before
+  (18 chunks after the pause, finished twice, unrelated child reaped)
+  and green after. No mutation probe: each needs a recompile.
   **Layman:** A program that prints very fast can make the terminal ignore Ctrl+C and balloon in memory.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lane vt-parser-pty).
   Lanes: vt, pty.
 
-- 📋 [ANTS-5027] **The sticky command header joins every line of an OSC 133 command span on every paint, and program output controls the span.**
+- ✅ [ANTS-5027] **The sticky command header joins every line of an OSC 133 command span on every paint, and program output controls the span.**
   TerminalWidget::paintEvent rebuilds the pinned header by joining
   lineText() for every line from a prompt region's A marker to its B
   marker, and truncates to maxChars only afterwards. B lands wherever
@@ -6194,6 +6201,14 @@ extends an existing item, that item carries it instead.
   GUI thread. Estimated, not measured: seconds at the 1M-line cap.
   Fix: stop the loop once maxChars is reached, cache the header per
   region, and optionally reject a B far below its A.
+  Resolved (2026-09-11): the header text comes from stickyCommandText
+  (src/stickycommandtext.h), which stops reading once the text is past
+  the header's width; each line adds at least its separator, so the
+  lines read are bounded too. Not done: the per-region cache and a
+  limit on how far B may sit below A. The bound alone removes the
+  unbounded read.
+  Test: sticky_header_bound, red before (100000 reads against a limit
+  of 82) and green after.
   **Layman:** A file that prints fake prompt markers can make every screen redraw slow.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lane terminal-widget-a).
@@ -6331,7 +6346,7 @@ extends an existing item, that item carries it instead.
   Source: code-quality-review-2026-09-11 perf pass (lane mainwindow-a).
   Lanes: session, mainwindow.
 
-- 📋 [ANTS-5033] **Terminal output can spawn one notify-send process per OSC 9/777 sequence, with no rate limit.**
+- ✅ [ANTS-5033] **Terminal output can spawn one notify-send process per OSC 9/777 sequence, with no rate limit.**
   When the window is unfocused and there is no tray,
   MainWindow::showDesktopNotification starts notify-send through
   QProcess::startDetached for each desktop-notification escape
@@ -6341,6 +6356,10 @@ extends an existing item, that item carries it instead.
   without bound from the GUI thread.
   Fix: a per-terminal quota in the grid like OSC 52's, or collapse
   notifications to one per interval.
+  Resolved (2026-09-11): one budget shared by OSC 9 and OSC 777, ten
+  per minute per terminal, same window as OSC 52, carried across RIS.
+  Test: osc_notify_quota, red before (300 of 300) and green after;
+  INV-5 proved by a mutation that let RIS refill the budget.
   **Layman:** A program can make Ants fire off thousands of desktop notifications, each starting a new process.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lane mainwindow-a).
@@ -6375,6 +6394,28 @@ extends an existing item, that item carries it instead.
   thread; if they do, this deadlocks like indie_review_dispatch.
   Fix: reply through the deferred finishToolDispatch path, or make
   async the default.
+  Researched 2026-09-11; deferred pending a contract decision.
+  The stall is wider than stated: finishToolDispatch and the
+  onMcpConnection socket lambda both run on the GUI thread, so while it
+  sits in wait() no off-thread reply is written and no request is read.
+  The "Not checked" line is settled: runAudit and its includes never
+  marshal to the GUI thread, so no deadlock like indie_review_dispatch.
+  Routes:
+  (1) async by default. Smallest change, but every caller gets a job id
+  to poll instead of results, and mcp_audit_run_async INV-1 changes.
+  (2) Reply later. A ToolHandler must return its QString synchronously;
+  McpCallContext, postToolDispatch and finishToolDispatch are private,
+  and no verb has a continuation. Needs a new handler type and a
+  dispatcher branch, and it changes ANTS-2132 section 5, which keeps
+  audit_run inline, so that spec's review gate runs first.
+  (3) RcHandler (off-thread). Not a fix. runAudit's nested QEventLoop
+  would pump the dispatch sink, so it needs its own worker and join.
+  That parks the single dispatch worker for up to 900 s, and it fails
+  mcp_verb_offthread_guard INV-11 on m_claudeIntegration.
+  Found stale while here: ANTS-2132 section 5 says 5-600 s; the cap is
+  900 s (kAggregateCapMs). mcp_audit_run_async Inv1SyncPathUnchanged is
+  a whole-file search, so indie_review_dispatch's own worker->wait()
+  keeps it green whatever audit_run does.
   **Layman:** Running a code audit from Claude freezes the Ants window until the audit ends.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lane mainwindow-b).
@@ -8318,7 +8359,7 @@ extends an existing item, that item carries it instead.
   Source: in-session-2026-09-11 (ANTS-5032 fix).
   Lanes: mainwindow, session.
 
-- 📋 [ANTS-5120] **Closing a window ends every program running in its tabs without the confirmation a single tab close gives.**
+- ✅ [ANTS-5120] **Closing a window ends every program running in its tabs without the confirmation a single tab close gives.**
   Found 2026-09-11 while fixing ANTS-5118. MainWindow::closeTab asks
   first (ANTS-1102, confirmCloseWithProcesses) when a tab's shell has a
   non-shell descendant such as vim. MainWindow::closeEvent never asks,
@@ -8333,6 +8374,12 @@ extends an existing item, that item carries it instead.
   default logout path closes every window and cancels the logout when
   one ignores its close. A running program then pauses KDE logout
   behind the dialog, as Konsole does.
+  Resolved (2026-09-11): closeEvent checks every pane (liveTerminals)
+  with firstNonShellDescendant when confirmCloseWithProcesses is on,
+  refuses the close, and shows a non-modal dialog with DialogChrome.
+  Close anyway sets m_closeConfirmed and closes again.
+  Test: window_close_confirm INV-1..5, red before and green after; a
+  mutation probe killed all seven routes back.
   **Layman:** Closing a whole window can kill a running program like an unsaved editor without asking, even though closing one tab asks.
   Kind: fix.
   Source: in-session-2026-09-11 (ANTS-5118 fix).
@@ -8351,6 +8398,38 @@ extends an existing item, that item carries it instead.
   Kind: fix.
   Source: in-session-2026-09-11 (ANTS-5118 fix).
   Lanes: remotecontrol, mainwindow.
+
+- 📋 [ANTS-5122] **A full terminal reset (RIS) refills the OSC 52 clipboard and OSC 1337 user-var quotas, so a stream that resets between writes is never limited.**
+  Found by reading, 2026-09-11, while fixing ANTS-5033. RIS in
+  src/terminalgrid.cpp rebuilds the grid with
+  `*this = TerminalGrid(m_rows, m_cols)` and carries only the callbacks,
+  m_osc133Key, the theme colours and the scrollback cap across. The OSC
+  52 write counters (m_osc52WindowStartMs, m_osc52WriteCount,
+  m_osc52WriteBytes) and the OSC 1337 SetUserVar counters start again
+  from zero. So ESC c before each OSC 52 write resets the per-minute
+  clipboard quota every time. ANTS-5033 carries its own notification
+  counters across RIS the same way the callbacks are carried.
+  Not reproduced: confirm with a test that interleaves ESC c with OSC 52
+  writes, then carry the counters across.
+  **Layman:** A program can get around Ants' clipboard-write limit by resetting the terminal between writes.
+  Kind: fix.
+  Source: in-session-2026-09-11 (ANTS-5033 fix).
+  Lanes: terminalgrid, security.
+
+- 📋 [ANTS-5123] **The close-tab confirmation dialog skips DialogChrome, so it ignores the theme and never remembers its size, against dialogs.md D1–D4.**
+  Found by reading, 2026-09-11, while writing ANTS-5120's window-close
+  dialog. MainWindow::showCloseTabConfirmDialog builds a bare
+  `new QDialog(this)` with a plain QVBoxLayout. Dialogs meet
+  dialogs.md D1–D4 by calling DialogChrome::install (aboutdialogs.cpp,
+  settingsdialog.cpp, sshdialog.cpp and others do). Nothing applies it
+  automatically. ANTS-5120's window-close dialog calls it.
+  Fix: install DialogChrome with resizable and a size key, and build
+  the layout on chrome.contentArea. Keep the non-modal pattern that
+  tests/features/confirm_close_with_processes pins.
+  **Layman:** The "close this tab?" question box doesn't match the Ants theme and forgets its size.
+  Kind: fix.
+  Source: in-session-2026-09-11 (ANTS-5120 fix).
+  Lanes: mainwindow, dialogs.
 
 ## Memory-efficiency sweep (user request 2026-08-19)
 

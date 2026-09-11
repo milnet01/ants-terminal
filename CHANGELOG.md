@@ -40,6 +40,23 @@ for security-relevant changes.
 
 ### Fixed
 
+- **Scrolling back through a command's output stays smooth even when that output is huge.** (ANTS-5027)
+  The command name pinned at the top while you scroll is now built from
+  only as much text as fits, instead of rereading the whole output on
+  every redraw.
+
+- **Closing a window now asks first when a program such as an editor is still running in any of its tabs, as closing one tab does.** (ANTS-5120)
+  The question offers the same "don't ask again" choice as the tab one,
+  and turning it off applies to both.
+
+- **A program that floods the terminal with output no longer holds up Ctrl+C and other keys, and a finished shell is reported once.** (ANTS-5026)
+  Ants stops reading as soon as it falls behind and resumes when it
+  catches up, instead of queueing output without limit.
+
+- **Terminal output can raise at most ten desktop notifications a minute per tab.** (ANTS-5033)
+  A program or file that prints notification codes in a loop no longer
+  starts a notification process for each one.
+
 - **Closing one of several windows closes its tabs and ends their programs, including the original window, which used to keep them running out of sight.** (ANTS-5118)
   The last window still keeps its tabs for the next start. The tabs
   close a moment after their window, so a logout that closes every
