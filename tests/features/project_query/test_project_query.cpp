@@ -332,6 +332,124 @@ TEST(ProjectQuery, ConfinementAndList) {
     EXPECT_TRUE(hasInlink) << "an in-root symlink must stay listed";
 }
 
+// ---- INV-11 — project.read of an oversize file refuses without leaking
+// (ANTS-5070) ----
+// Why this exists: project.read's readAll() copies the whole file into a
+// C++ buffer BEFORE the push that the Lua memory cap actually guards, so a
+// file bigger than what's left is read in full regardless; the push that
+// then fails longjmps past that buffer and the open QFile, leaking both —
+// visible only to LeakSanitizer (build-asan). Route 1 (ANTS-5070): the fix
+// (check the size against the remaining budget before reading) is not in
+// the tree, so the behavioural check below is expected red in ANY build;
+// the leak itself is red only under ASan.
+TEST(ProjectQuery, ReadOversizeFileRefusesWithoutLeaking) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString root = QFileInfo(tmp.path()).canonicalFilePath();
+
+    // Sparse and well past the whole 10 MiB Lua budget, so the push must
+    // fail regardless of the fresh VM's own baseline usage. Resizing a
+    // freshly opened file punches a hole rather than writing real bytes.
+    constexpr qint64 kOversizeBytes = 20LL * 1024 * 1024;
+    {
+        QFile f(root + "/huge.bin");
+        ASSERT_TRUE(f.open(QIODevice::WriteOnly));
+        ASSERT_TRUE(f.resize(kOversizeBytes));
+    }
+
+    // Repeated inside pcall first (each refused read leaks again under
+    // ASan), then one unprotected call to surface the refusal's own
+    // code/message for the behavioural check below.
+    const auto qr = run(
+        "for i = 1, 5 do pcall(project.read, 'huge.bin') end\n"
+        "return project.read('huge.bin')",
+        root);
+
+    EXPECT_FALSE(qr.ok);
+    EXPECT_TRUE(qr.code == QStringLiteral("query_oom") ||
+                qr.code == QStringLiteral("query_error"))
+        << "code=" << qr.code.toStdString() << " error=" << qr.error.toStdString();
+
+    // Behavioural half — today's push failure is Lua's own bare "not
+    // enough memory", carrying none of project.read's context (every OTHER
+    // refusal in that function is prefixed "project.read: ..."). A fix
+    // that checks the size first and refuses before reading should raise
+    // through that same convention, naming the file. NOT an ASan-only
+    // check — this is expected red in a Release build too until the fix
+    // lands.
+    EXPECT_TRUE(qr.error.contains(QStringLiteral("project.read:")))
+        << "ANTS-5070: expected a size-limit refusal in project.read's own "
+           "message convention; today's OOM push instead raises Lua's bare "
+           "\"not enough memory\" with no project.read context — error="
+        << qr.error.toStdString();
+}
+
+// ---- Guard — project.read round-trips an embedded NUL byte exactly
+// (ANTS-5070's size check must not truncate or misread at a NUL) ----
+TEST(ProjectQuery, ReadRoundTripsEmbeddedNul) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString root = QFileInfo(tmp.path()).canonicalFilePath();
+    {
+        QFile f(root + "/nul.bin");
+        ASSERT_TRUE(f.open(QIODevice::WriteOnly));
+        f.write(QByteArray("ab\0cd", 5));
+    }
+    const auto qr = run("return project.read('nul.bin')", root);
+    ASSERT_TRUE(qr.ok) << "code=" << qr.code.toStdString()
+                        << " error=" << qr.error.toStdString();
+    EXPECT_EQ(qr.result.toString(), QString::fromUtf8("ab\0cd", 5));
+}
+
+// ---- INV-12 — project.list under memory pressure refuses without leaking
+// (ANTS-5070) ----
+// Why this exists: project.list gathers every accepted path into a C++
+// QList before building the Lua result table, and a push failing partway
+// through that build longjmps past the list and the QDirIterator — the
+// same shape as INV-11, for the listing path. Only LeakSanitizer
+// (build-asan) sees it; a Release run can complete cleanly either way, so
+// the signal here is the process-exit leak check, not these assertions —
+// what these confirm is that the run reaches an ordinary refusal rather
+// than crashing.
+TEST(ProjectQuery, ListUnderMemoryPressureRefusesWithoutLeaking) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString root = QFileInfo(tmp.path()).canonicalFilePath();
+
+    // Long names so a modest file count carries enough bytes to matter —
+    // their total size counts against the same budget the fill loop below
+    // claims, not the file count alone.
+    constexpr int kFileCount = 500;
+    for (int i = 0; i < kFileCount; ++i) {
+        const QString name = QStringLiteral("f_%1_%2.txt")
+                                  .arg(i, 4, 10, QChar('0'))
+                                  .arg(QString(140, QChar('a')));
+        QFile f(root + "/" + name);
+        ASSERT_TRUE(f.open(QIODevice::WriteOnly));
+    }
+
+    // Claim the VM's budget down to a small remainder via a bounded pcall
+    // loop that stops itself the moment one more chunk won't fit — no
+    // dependency on the fresh VM's exact baseline usage. Repeated under
+    // pcall first, then one unprotected call for the outcome.
+    const auto qr = run(
+        "_G.hog = {}\n"
+        "local i = 1\n"
+        "local function grow() _G.hog[i] = string.rep('x', 8192) i = i + 1 end\n"
+        "while pcall(grow) do end\n"
+        "for j = 1, 5 do pcall(project.list) end\n"
+        "return project.list()",
+        root);
+
+    EXPECT_FALSE(qr.ok)
+        << "expected the table build to fail under the remaining budget "
+           "with " << kFileCount << " entries; code=" << qr.code.toStdString()
+        << " error=" << qr.error.toStdString();
+    EXPECT_TRUE(qr.code == QStringLiteral("query_oom") ||
+                qr.code == QStringLiteral("query_error"))
+        << "code=" << qr.code.toStdString();
+}
+
 // ---- INV-8 — verb-layer gating + envelope (projectQueryVerb) ----
 TEST(ProjectQuery, VerbEnvelopeAndGate) {
     QTemporaryDir tmp;

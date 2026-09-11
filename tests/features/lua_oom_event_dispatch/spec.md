@@ -46,3 +46,26 @@ into a protected call, so this guards the refactor rather than the defect.
 `src/luaengine.cpp`: `fireEvent`'s body must reach `lua_pcall` before it
 pushes the handler, and must secure stack space with `lua_checkstack`, whose
 failure is reported by return value rather than raised.
+
+## ANTS-5070 — the same push-while-alive shape in three more callbacks
+
+`fireEvent`'s own pushes were fixed by INV-5 above. ANTS-5070 found the
+identical shape in Lua C functions a plugin calls directly:
+`lua_ants_warn`'s accumulating message, `lua_ants_get_output`'s split line
+list, and `lua_ants_settings_get`'s out string are all live in their C++
+frame while a later push in the same call can still raise. `runQuery`'s
+`project.*` callbacks carry the same finding; those tests live in
+`tests/features/project_query/` (INV-11, INV-12).
+
+**INV-6 (guard) — `warn` under memory pressure returns to its caller.**
+The raise the fix removes cannot be reached from a test. ANTS-5070 names
+an argument whose `__tostring` metamethod errors, but the sandbox strips
+`setmetatable` and `getmetatable` from every Lua VM, so a script cannot
+attach one. Exhausting memory inside `warn`'s loop does not reach it
+either: the emergency collection reclaims each coercion's discarded
+string before the next one needs the room. Measured: with the VM filled,
+every `warn` call succeeded. `warn`'s change is verified by review.
+*Tested:* fill the VM's budget inside a handler, call `warn` with numeric
+arguments inside `pcall`, and the handler gets past the calls; then
+`ants.get_output` and `ants.settings.get` still return their configured
+values.

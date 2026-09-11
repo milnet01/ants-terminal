@@ -74,6 +74,46 @@ static int luaPushHandlerAndArg(lua_State *L) {
     return 2;   // the handler, then its string argument
 }
 
+// ANTS-5070 — the same protected-push pattern for a callback's result. A
+// push that runs out of memory raises; raised in the callback's own frame it
+// would longjmp past that frame's C++ objects. Inside lua_pcall it comes
+// back as a return code, and the callback raises once its objects are gone.
+struct BytesPushCtx {
+    const char *data;
+    size_t      len;
+};
+
+static int luaPushBytes(lua_State *L) {
+    auto *ctx = static_cast<BytesPushCtx *>(lua_touserdata(L, 1));
+    lua_pushlstring(L, ctx->data, ctx->len);
+    return 1;
+}
+
+// True with the string on the stack; false with nothing left on it.
+static bool pushBytesProtected(lua_State *L, const char *data, size_t len) {
+    if (!lua_checkstack(L, 3)) return false;
+    BytesPushCtx ctx{data, len};
+    lua_pushcfunction(L, luaPushBytes);
+    lua_pushlightuserdata(L, &ctx);
+    if (lua_pcall(L, 1, 1, 0) != LUA_OK) {
+        lua_pop(L, 1);  // the error object
+        return false;
+    }
+    return true;
+}
+
+// Builds a sequence of strings; the loop holds no C++ object that owns memory.
+static int luaPushStringList(lua_State *L) {
+    const auto *rels = static_cast<const QList<QByteArray> *>(lua_touserdata(L, 1));
+    lua_createtable(L, static_cast<int>(rels->size()), 0);
+    int i = 1;
+    for (const QByteArray &r : *rels) {
+        lua_pushlstring(L, r.constData(), static_cast<size_t>(r.size()));
+        lua_rawseti(L, -2, i++);
+    }
+    return 1;
+}
+
 // Custom Lua allocator with memory limit (prevents string.rep OOM)
 void *LuaEngine::luaAlloc(void *ud, void *ptr, size_t osize, size_t nsize) {
     auto *engine = static_cast<LuaEngine *>(ud);
@@ -634,11 +674,18 @@ int LuaEngine::lua_ants_get_output(lua_State *L) {
     if (engine) {
         int n = luaL_optinteger(L, 1, 50);
         if (n < 0) n = 0;  // negative count would over-run lines.mid()
-        QStringList lines = engine->m_recentOutput.split('\n');
-        if (lines.size() > n) {
-            lines = lines.mid(lines.size() - n);
+        // ANTS-5070 — build the result in a scope and push it protected, so
+        // a push that runs out of memory raises only once the list is gone.
+        bool pushed = false;
+        {
+            QStringList lines = engine->m_recentOutput.split('\n');
+            if (lines.size() > n) {
+                lines = lines.mid(lines.size() - n);
+            }
+            const QByteArray ba = lines.join('\n').toUtf8();
+            pushed = pushBytesProtected(L, ba.constData(), static_cast<size_t>(ba.size()));
         }
-        pushQString(L, lines.join('\n'));
+        if (!pushed) return luaL_error(L, "ants.get_output: not enough memory");
     } else {
         lua_pushstring(L, "");
     }
@@ -714,14 +761,20 @@ int LuaEngine::lua_ants_warn(lua_State *L) {
     }
     LuaEngine *engine = getEngine(L);
     if (!engine) return 0;
-    QString msg;
+    // ANTS-5070 — join the arguments on the Lua side. luaL_tolstring
+    // allocates and so can raise, and a raise must find no C++ object alive
+    // in this frame; the message becomes a QString only after the last call
+    // that can raise.
+    luaL_Buffer b;
+    luaL_buffinit(L, &b);
     for (int i = 1; i <= n; ++i) {
-        size_t len = 0;
-        const char *s = luaL_tolstring(L, i, &len);  // coerce + push
-        msg += QString::fromUtf8(s, static_cast<int>(len));
-        lua_pop(L, 1);  // pop the string luaL_tolstring pushed
+        luaL_tolstring(L, i, nullptr);  // coerce + push
+        luaL_addvalue(&b);
     }
-    emit engine->logMessage(msg);
+    luaL_pushresult(&b);
+    size_t len = 0;
+    const char *s = lua_tolstring(L, -1, &len);
+    emit engine->logMessage(QString::fromUtf8(s, static_cast<int>(len)));
     return 0;
 }
 
@@ -738,13 +791,26 @@ int LuaEngine::lua_ants_settings_get(lua_State *L) {
     LuaEngine *engine = getEngine(L);
     const char *key = luaL_checkstring(L, 1);
     if (engine && engine->hasPermission("settings")) {
-        QString out;
-        emit engine->settingsGetRequested(engine->pluginName(),
-                                           QString::fromUtf8(key), out);
-        if (out.isNull()) {
+        // ANTS-5070 — the value is pushed protected, so running out of
+        // memory raises only once `out` and its bytes are gone.
+        bool isNull = false;
+        bool pushed = false;
+        {
+            QString out;
+            emit engine->settingsGetRequested(engine->pluginName(),
+                                               QString::fromUtf8(key), out);
+            isNull = out.isNull();
+            if (!isNull) {
+                // ANTS-1802 — NUL-safe length-counted push
+                const QByteArray ba = out.toUtf8();
+                pushed = pushBytesProtected(L, ba.constData(),
+                                            static_cast<size_t>(ba.size()));
+            }
+        }
+        if (isNull) {
             lua_pushnil(L);
-        } else {
-            pushQString(L, out);  // ANTS-1802 — NUL-safe length-counted push
+        } else if (!pushed) {
+            return luaL_error(L, "ants.settings.get: not enough memory");
         }
         return 1;
     }
@@ -1021,8 +1087,12 @@ int LuaEngine::lua_project_read(lua_State *L) {
     // ANTS-3847 — luaL_error longjmps, so no destructor in this frame runs.
     // Settle the outcome in a scope and raise only after its C++ objects are
     // gone; raising with `chk` alive leaked it on every refused read.
-    enum class Refusal : unsigned char { None, Escapes, Missing, Unopenable };
+    enum class Refusal : unsigned char {
+        None, Escapes, Missing, Unopenable, TooLarge, NoMemory
+    };
     Refusal refusal = Refusal::None;
+    qint64 fileBytes = 0;
+    qint64 roomBytes = 0;
     {
         const auto chk = PathValidation::validatePath(
             QString::fromUtf8(rel), engine->m_queryRoot,
@@ -1032,12 +1102,22 @@ int LuaEngine::lua_project_read(lua_State *L) {
         } else if (chk.resolved.isEmpty()) {
             refusal = Refusal::Missing;
         } else {
+            // ANTS-5070 — a file larger than the query's Lua memory left is
+            // refused before any of it is read: reading it whole would be an
+            // allocation the Lua cap never sees.
+            fileBytes = QFileInfo(chk.resolved).size();
+            roomBytes = engine->m_luaMemUsage < MAX_LUA_MEMORY
+                ? static_cast<qint64>(MAX_LUA_MEMORY - engine->m_luaMemUsage) : 0;
             QFile f(chk.resolved);
-            if (!f.open(QIODevice::ReadOnly)) {
+            if (fileBytes > roomBytes) {
+                refusal = Refusal::TooLarge;
+            } else if (!f.open(QIODevice::ReadOnly)) {
                 refusal = Refusal::Unopenable;
             } else {
-                const QByteArray data = f.readAll();  // VM 10 MiB cap bounds the push below
-                lua_pushlstring(L, data.constData(), static_cast<size_t>(data.size()));
+                const QByteArray data = f.read(roomBytes);  // bounded if the file grew
+                if (!pushBytesProtected(L, data.constData(),
+                                        static_cast<size_t>(data.size())))
+                    refusal = Refusal::NoMemory;
             }
         }
     }
@@ -1048,6 +1128,13 @@ int LuaEngine::lua_project_read(lua_State *L) {
         return luaL_error(L, "project.read: no such file: %s", rel);
     case Refusal::Unopenable:
         return luaL_error(L, "project.read: cannot open %s", rel);
+    case Refusal::TooLarge:
+        return luaL_error(L, "project.read: %s is %I bytes, over the %I bytes of "
+                             "query memory left", rel,
+                          static_cast<lua_Integer>(fileBytes),
+                          static_cast<lua_Integer>(roomBytes));
+    case Refusal::NoMemory:
+        return luaL_error(L, "project.read: not enough memory for %s", rel);
     case Refusal::None:
         break;
     }
@@ -1085,44 +1172,57 @@ int LuaEngine::lua_project_list(lua_State *L) {
     case Refusal::None:
         break;
     }
-    const QString base = sub ? resolvedSub : engine->m_queryRoot;
-    // Enumerate regular files (incl. dotfiles like .gitignore — project
-    // content), skipping only .git/ (internal metadata; perf on big repos).
-    const QDir rootDir(engine->m_queryRoot);
-    // ANTS-2203 — canonical root for the per-entry containment check below.
-    const QString canonRoot = QFileInfo(engine->m_queryRoot).canonicalFilePath();
-    QList<QByteArray> rels;
-    QDirIterator it(base,
-                    QDir::Files | QDir::NoDotAndDotDot | QDir::Hidden,
-                    QDirIterator::Subdirectories);
-    while (it.hasNext()) {
-        const QString abs = it.next();
-        const QString rel = rootDir.relativeFilePath(abs);
-        if (rel == QStringLiteral(".git") ||
-            rel.startsWith(QStringLiteral(".git/")) ||
-            rel.contains(QStringLiteral("/.git/")))
-            continue;
-        // ANTS-2203 — re-validate each entry's canonical path against the root so
-        // a symlink (leaf file OR an ancestor dir QDirIterator followed) whose
-        // target escapes the project is not disclosed even by name. project.read
-        // already canonicalises+validates, so this keeps list ⊆ read-acceptable;
-        // an empty canonical path (broken/escaping link) is skipped.
-        const QString canon = QFileInfo(abs).canonicalFilePath();
-        if (canon.isEmpty() ||
-            (canon != canonRoot &&
-             !canon.startsWith(canonRoot + QLatin1Char('/'))))
-            continue;
-        rels.append(rel.toUtf8());
+    // ANTS-5070 — every C++ object that owns memory lives in this scope, and
+    // the table is built inside a protected call, so a push that runs out of
+    // memory raises only after the scope has ended.
+    bool pushed = false;
+    {
+        const QString base = sub ? resolvedSub : engine->m_queryRoot;
+        // Enumerate regular files (incl. dotfiles like .gitignore — project
+        // content), skipping only .git/ (internal metadata; perf on big repos).
+        const QDir rootDir(engine->m_queryRoot);
+        // ANTS-2203 — canonical root for the per-entry containment check below.
+        const QString canonRoot = QFileInfo(engine->m_queryRoot).canonicalFilePath();
+        QList<QByteArray> rels;
+        QDirIterator it(base,
+                        QDir::Files | QDir::NoDotAndDotDot | QDir::Hidden,
+                        QDirIterator::Subdirectories);
+        while (it.hasNext()) {
+            const QString abs = it.next();
+            const QString rel = rootDir.relativeFilePath(abs);
+            if (rel == QStringLiteral(".git") ||
+                rel.startsWith(QStringLiteral(".git/")) ||
+                rel.contains(QStringLiteral("/.git/")))
+                continue;
+            // ANTS-2203 — re-validate each entry's canonical path against the
+            // root so a symlink (leaf file OR an ancestor dir QDirIterator
+            // followed) whose target escapes the project is not disclosed even
+            // by name. project.read already canonicalises+validates, so this
+            // keeps list ⊆ read-acceptable; an empty canonical path
+            // (broken/escaping link) is skipped.
+            const QString canon = QFileInfo(abs).canonicalFilePath();
+            if (canon.isEmpty() ||
+                (canon != canonRoot &&
+                 !canon.startsWith(canonRoot + QLatin1Char('/'))))
+                continue;
+            rels.append(rel.toUtf8());
+        }
+        // Sort by raw UTF-8 bytes (QByteArray operator< is memcmp) — codepoint
+        // order, locale-independent, so identical snapshots yield identical
+        // bytes regardless of the runner's collation (INV-7; guards ANTS-2120).
+        std::sort(rels.begin(), rels.end());
+        if (lua_checkstack(L, 3)) {
+            lua_pushcfunction(L, luaPushStringList);
+            lua_pushlightuserdata(L, &rels);
+            if (lua_pcall(L, 1, 1, 0) == LUA_OK)
+                pushed = true;
+            else
+                lua_pop(L, 1);  // the error object
+        }
     }
-    // Sort by raw UTF-8 bytes (QByteArray operator< is memcmp) — codepoint
-    // order, locale-independent, so identical snapshots yield identical
-    // bytes regardless of the runner's collation (INV-7; guards ANTS-2120).
-    std::sort(rels.begin(), rels.end());
-    lua_createtable(L, static_cast<int>(rels.size()), 0);
-    int i = 1;
-    for (const QByteArray &r : rels) {
-        lua_pushlstring(L, r.constData(), static_cast<size_t>(r.size()));
-        lua_rawseti(L, -2, i++);
+    if (!pushed) {
+        resolvedSub = QString();  // a null QString owns no heap memory
+        return luaL_error(L, "project.list: not enough memory");
     }
     return 1;
 }

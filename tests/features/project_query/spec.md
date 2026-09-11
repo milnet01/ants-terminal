@@ -49,6 +49,25 @@ source-scrapes the wiring.
   JSON, and visits exactly as many values as it contains; a circular table
   (`t.self=t`) still refuses via the depth bound (INV-6), unaffected by the
   budget change.
+- **INV-11 (ANTS-5070, oversize read)** — `project.read` of a file larger
+  than the memory the VM has left is refused, not allocated in full first;
+  the refusal names the size limit rather than surfacing Lua's own bare
+  out-of-memory wording. Repeating a refused read inside `pcall` in a loop
+  leaks nothing (LeakSanitizer; `build-asan` only — a Release run can pass
+  either way regardless of the fix). *Tested:* a sparse file well past the
+  VM's memory cap refuses in `project.read`'s own message convention
+  (naming the file, the way every other refusal in that function does),
+  called both directly and repeatedly under `pcall`; a small file with an
+  embedded NUL byte still round-trips exactly (guard).
+- **INV-12 (ANTS-5070, list under pressure)** — `project.list` building
+  its result table while the VM is near its memory budget ends in an
+  ordinary refusal, not a crash, whatever point in the table build the
+  budget runs out at. Repeating the refusal inside `pcall` in a loop leaks
+  nothing (LeakSanitizer; `build-asan` only). *Tested:* a snippet claims
+  most of the VM's budget first, then calls `project.list` on a tree with
+  enough entries that the table build can't fit in what's left, called
+  both directly and repeatedly under `pcall`; INV-7's existing determinism
+  check already guards ordinary listing, unaffected by this change.
 
 ## Wiring (source-scrape — the verb glue isn't unit-testable standalone)
 
