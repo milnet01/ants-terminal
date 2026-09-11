@@ -6794,7 +6794,7 @@ extends an existing item, that item carries it instead.
   Source: code-quality-review-2026-09-11 perf pass (lane mcp-content-verbs).
   Lanes: mcp, threading.
 
-- 📋 [ANTS-5054] **doc_citations re-reads and re-folds the whole attributed document for every quotation, outside its read budget.**
+- ✅ [ANTS-5054] **doc_citations re-reads and re-folds the whole attributed document for every quotation, outside its read budget.**
   The quotation pass opens the attributed document, reads it whole,
   decodes it, strips blockquotes, then simplifies and regex-replaces
   it, once per quotation. The read is never counted against
@@ -6808,6 +6808,10 @@ extends an existing item, that item carries it instead.
   Fix: check the size against maxTargetBytes, count the read against
   maxTargetReads, and keep the folded body per resolved path for the
   call.
+  Resolved (2026-09-11, e68cd2ec): each attributed document is read and
+  folded once per call, through TargetReader::admitWholeRead, which
+  counts the read against maxTargetReads and skips a file over
+  maxTargetBytes. Tests: doc_citations quotation pass section.
   **Layman:** Checking quotes in the docs can re-read one huge file hundreds of times.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lane doc-engines).

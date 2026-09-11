@@ -40,6 +40,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **doc_citations reads each quoted document once per call, inside its read budget and size limit** (ANTS-5054)
+
 - **The subsystem lane cache is locked, so the window and the MCP worker can read it at the same time safely** (ANTS-5074)
 
 - **The Compiler Warnings audit check can finish, and no longer leaves a build folder behind in /tmp** (ANTS-5039)
