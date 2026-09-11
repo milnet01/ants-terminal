@@ -142,6 +142,59 @@ void testSanitize() {
     }
 }
 
+// ANTS-5060 — spellings ssh accepts that the key-up-to-`=` check missed.
+void testBypassForms() {
+    auto rejected = [](const char *extra, const char *label) {
+        const QStringList safe = SshBookmark::sanitizeExtraArgs(extra);
+        for (const QString &t : safe)
+            if (t.contains("ProxyCommand", Qt::CaseInsensitive)
+                || t.startsWith("-F") || t.contains("Provider")
+                || t.contains("Include")) {
+                expect(false, label, QString("survived: %1").arg(safe.join(QStringLiteral(" | "))));
+                return;
+            }
+        expect(true, label);
+    };
+    // ssh splits a keyword from its value at whitespace as well as `=`.
+    // QProcess::splitCommand honours double quotes only, so these use them.
+    rejected("-o \"ProxyCommand sh -c id\"", "bypass: -o KEY<space>VAL");
+    rejected("\"-oProxyCommand sh -c id\"", "bypass: glued -oKEY<space>VAL");
+    rejected("-o \" ProxyCommand=x\"", "bypass: leading space before key");
+    // ssh's config parser strips double quotes from a keyword. splitCommand
+    // reads `"""` as one literal quote, giving the token "ProxyCommand"=x.
+    rejected("-o \"\"\"ProxyCommand\"\"\"=x", "bypass: quoted keyword");
+    // getopt reads combined flags: -4oX is -4 then -o X.
+    rejected("-4oProxyCommand=x", "bypass: combined -4oKEY=VAL");
+    rejected("-4o ProxyCommand=x", "bypass: combined -4o KEY=VAL");
+    // -F reads a whole config file, which can set ProxyCommand.
+    rejected("-F /tmp/evil_config", "bypass: -F path");
+    rejected("-F/tmp/evil_config", "bypass: glued -Fpath");
+    rejected("-vF /tmp/evil_config", "bypass: combined -vF path");
+    rejected("-o Include=/tmp/evil_config", "bypass: -o Include");
+    // Options that load a shared library run local code as well.
+    rejected("-oPKCS11Provider=/tmp/x.so", "bypass: PKCS11Provider");
+    rejected("-o SecurityKeyProvider=/tmp/x.so", "bypass: SecurityKeyProvider");
+    {
+        QStringList rej;
+        const auto safe = SshBookmark::sanitizeExtraArgs("-I /tmp/x.so", &rej);
+        expect(safe.isEmpty(), "bypass: -I library path rejected",
+               QString("got: %1").arg(safe.join(QStringLiteral(" | "))));
+        expect(rej.size() == 2, "bypass: -I reports both tokens");
+    }
+    {
+        const auto safe = SshBookmark::sanitizeExtraArgs("-E /home/u/.bashrc");
+        expect(safe.isEmpty(), "bypass: -E log path rejected",
+               QString("got: %1").arg(safe.join(QStringLiteral(" | "))));
+    }
+    // Legitimate combined and argument-taking flags still pass.
+    {
+        const auto safe = SshBookmark::sanitizeExtraArgs(
+            "-4v -i /home/u/.ssh/id_ed25519 -o ServerAliveInterval=30");
+        expect(safe.size() == 5, "safe: -4v, -i path, -o key=val preserved",
+               QString("got: %1").arg(safe.join(QStringLiteral(" | "))));
+    }
+}
+
 void testEndToEnd() {
     // A poisoned bookmark must NOT produce a ProxyCommand in the final
     // ssh command. This is the invariant that actually protects users.
@@ -168,6 +221,12 @@ void testEndToEnd() {
 TEST(SshExtraArgsSanitize, Sanitize) {
     const int before = expect_failures();
     testSanitize();
+    if (expect_failures() > before) FAIL();
+}
+
+TEST(SshExtraArgsSanitize, BypassForms) {
+    const int before = expect_failures();
+    testBypassForms();
     if (expect_failures() > before) FAIL();
 }
 

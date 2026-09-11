@@ -97,12 +97,27 @@ QStringList SshBookmark::sanitizeExtraArgs(const QString &extraArgs,
         QStringLiteral("PermitLocalCommand"),  // value=yes enables LocalCommand
         QStringLiteral("KnownHostsCommand"),   // OpenSSH 8.5+, runs via /bin/sh -c
         QStringLiteral("Match"),               // `Match exec "<cmd>"` shells out
+        // ANTS-5060 — each of these loads a config file or a library of the
+        // bookmark's choosing: local code execution by another route.
+        QStringLiteral("Include"),
+        QStringLiteral("PKCS11Provider"),
+        QStringLiteral("SecurityKeyProvider"),
     };
 
+    // ANTS-5060 — ssh_config splits a keyword from its value at `=` OR
+    // whitespace, after leading whitespace, and strips double quotes from
+    // the keyword. Splitting at `=` alone let `-o "ProxyCommand sh -c id"`
+    // through as an unknown key.
     auto optionKey = [](const QString &s) -> QString {
-        // Extract "X" from "X=value"
-        int eq = s.indexOf('=');
-        return (eq < 0) ? s : s.left(eq);
+        const QString t = s.trimmed();
+        if (t.startsWith(QLatin1Char('"'))) {
+            const int close = t.indexOf(QLatin1Char('"'), 1);
+            return close < 0 ? t.mid(1) : t.mid(1, close - 1);
+        }
+        int end = 0;
+        while (end < t.size() && t[end] != QLatin1Char('=') && !t[end].isSpace())
+            ++end;
+        return t.left(end);
     };
 
     auto isDangerousKey = [&](const QString &key) {
@@ -116,39 +131,52 @@ QStringList SshBookmark::sanitizeExtraArgs(const QString &extraArgs,
     // arguments, which let `-o "ProxyCommand=…"` slip past the
     // dangerous-key check (the leading quote attaches to "ProxyCommand,
     // which doesn't match the case-insensitive keyword). QProcess::
-    // splitCommand mirrors POSIX shell quoting: handles single + double
-    // quotes, backslash escapes, and rejects unterminated quotes (returns
-    // empty list — caller treats as nothing-to-add, safe-fail).
+    // splitCommand honours double quotes only (`"""` is a literal quote);
+    // a single quote is an ordinary character, as SshExtraArgsSanitize
+    // measured (ANTS-5060).
     const QStringList tokens = QProcess::splitCommand(extraArgs);
 
+    // ANTS-5060 — read short options the way ssh's getopt does. Flag
+    // letters combine (`-4oKEY=VAL` is -4 then -o KEY=VAL), and the first
+    // letter that takes an argument owns the rest of the token, or the next
+    // token when the rest is empty. These are the letters ssh(1)'s SYNOPSIS
+    // shows with an argument.
+    static const QString kTakesArg = QStringLiteral("BDEFIJLOPQRSWbceilmopw");
+    // -F reads a config file, which can set any option; -I loads a PKCS#11
+    // library; -E appends ssh's log to a file. The bookmark picks each path.
+    static const QString kRejectedLetters = QStringLiteral("EFI");
+
     QStringList safe;
-    int i = 0;
-    while (i < tokens.size()) {
+    for (int i = 0; i < tokens.size(); ++i) {
         const QString &t = tokens[i];
-
-        // Single-token form: -oKEY=VAL
-        if (t.startsWith(QStringLiteral("-o")) && t.size() > 2) {
-            const QString payload = t.mid(2);  // "KEY=VAL"
-            if (isDangerousKey(optionKey(payload))) {
-                if (out_rejected) out_rejected->append(t);
-                ++i;
-                continue;
-            }
-        }
-        // Two-token form: -o KEY=VAL
-        else if (t == QStringLiteral("-o") && i + 1 < tokens.size()) {
-            if (isDangerousKey(optionKey(tokens[i + 1]))) {
-                if (out_rejected) {
-                    out_rejected->append(t);
-                    out_rejected->append(tokens[i + 1]);
+        QChar opt;
+        QString optArg;
+        bool argIsNext = false;
+        if (t.size() > 1 && t.startsWith(QLatin1Char('-'))) {
+            for (int c = 1; c < t.size(); ++c) {
+                if (!kTakesArg.contains(t[c])) continue;
+                opt = t[c];
+                if (c + 1 < t.size()) {
+                    optArg = t.mid(c + 1);
+                } else if (i + 1 < tokens.size()) {
+                    optArg = tokens[i + 1];
+                    argIsNext = true;
                 }
-                i += 2;
-                continue;
+                break;
             }
         }
-
-        safe << t;
-        ++i;
+        const bool reject = kRejectedLetters.contains(opt)
+            || (opt == QLatin1Char('o') && isDangerousKey(optionKey(optArg)));
+        if (reject) {
+            if (out_rejected) {
+                out_rejected->append(t);
+                if (argIsNext) out_rejected->append(tokens[i + 1]);
+            }
+        } else {
+            safe << t;
+            if (argIsNext) safe << tokens[i + 1];
+        }
+        if (argIsNext) ++i;
     }
     return safe;
 }

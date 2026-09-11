@@ -66,6 +66,13 @@ output, when fed to `/bin/sh -c 'echo X'` via interpolation, recovers
 `it's` verbatim. Verified by literal comparison in the test, not by
 spawning a shell.
 
+### Invariant 5 — a trailing newline forces quoting (ANTS-5060)
+
+`shellQuote("host\n")` returns `'host\n'`. The safe-set pattern is anchored
+with `\A` and `\z`, because `$` also matches before a final newline. An
+unquoted token ending in a newline splits the joined command into two
+shell lines.
+
 ## Architectural invariants
 
 1. **Single source of truth.** All callers go through

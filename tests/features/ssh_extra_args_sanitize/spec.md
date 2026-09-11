@@ -52,6 +52,21 @@ When `out_rejected` is non-null, the function MUST append each
 rejected raw token in source order. Callers surface this to the user
 via debug-log or UI warning.
 
+### Invariant 1b — every spelling ssh accepts is caught (ANTS-5060)
+
+The check reads options the way ssh does, so none of these reaches ssh:
+
+- a keyword split from its value by whitespace: `-o "ProxyCommand sh -c id"`;
+- leading whitespace before the keyword, and a double-quoted keyword;
+- combined short flags, which getopt reads as separate options:
+  `-4oProxyCommand=x` and `-4o ProxyCommand=x`;
+- `-F <file>` in any form, because a config file can set any option;
+- the keys `Include`, `KnownHostsCommand`, `Match`, `PKCS11Provider` and
+  `SecurityKeyProvider`, because each runs a command, loads a file or loads
+  a library;
+- `-I <library>` and `-E <file>`, which load a library and append to a file
+  of the bookmark's choosing.
+
 ### Invariant 4 — safe options pass through
 
 Legitimate options like `-oStrictHostKeyChecking=no`, `-p 2222`,

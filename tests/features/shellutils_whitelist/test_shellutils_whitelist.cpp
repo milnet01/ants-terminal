@@ -72,3 +72,11 @@ TEST(ShellutilsWhitelist, Main) {
     if (rc) FAIL();
 }
 
+// INV-5 (ANTS-5060): a trailing newline forces quoting. A pattern anchored
+// with `$` also matches before a final newline, which returned the token
+// unquoted and split the joined command into two shell lines.
+TEST(ShellutilsWhitelist, Inv5TrailingNewlineIsQuoted) {
+    EXPECT_EQ(shellQuote(QStringLiteral("host\n")), QStringLiteral("'host\n'"));
+    EXPECT_EQ(shellQuote(QStringLiteral("-p\n")), QStringLiteral("'-p\n'"));
+}
+

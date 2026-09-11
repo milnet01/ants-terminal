@@ -18,10 +18,13 @@
 // Whitelist closes the class — anything not `[A-Za-z0-9_\-./:@%+,]+`
 // gets quoted. Single quotes inside the value are escaped as `'\''`
 // (close-quote, escaped quote, reopen-quote) — POSIX shell standard.
+//
+// ANTS-5060 — anchored with \A and \z, not ^ and $: `$` also matches before
+// a final newline, so "host\n" came back unquoted and split the command.
 inline QString shellQuote(const QString &s) {
     if (s.isEmpty()) return QStringLiteral("''");
     static const QRegularExpression kShellSafe(
-        QStringLiteral("^[A-Za-z0-9_\\-./:@%+,]+$"));
+        QStringLiteral("\\A[A-Za-z0-9_\\-./:@%+,]+\\z"));
     if (kShellSafe.match(s).hasMatch())
         return s;
     QString quoted = s;
