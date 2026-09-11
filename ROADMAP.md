@@ -6009,6 +6009,14 @@ deferred 0.8.x), ANTS-1781 (span-cache wipe + resize BlockingQueuedConnection).
   **Layman:** Resizing the window while there is a lot of scrollback can hang for seconds; this makes that reflow not block.
   Kind: perf.
   Source: user-request-2026-07-09.
+  Performance pass (2026-09-11), terminal-grid lane: still live and a
+  freeze. Every resize event re-wraps the whole scrollback on the GUI
+  thread, nothing coalesces back-to-back events, and the widening path
+  reallocates every row, so dragging a window edge freezes repeatedly.
+  The same lane found that joinLogical copies cells instead of moving
+  them, and trims trailing spaces from wrapped rows, which glues words
+  together after any width change. Fix direction: apply the resize after
+  resizing settles, and re-wrap lazily or off the GUI thread.
 
 - ✅ [ANTS-3457] **Per-cell search-match std::lower_bound → precompute per-row match ranges once per frame.**
   isCellSearchMatch / isCellCurrentMatch (terminalwidget.cpp:4276) do a std::lower_bound per cell (:864,:868) → O(cols×rows×log matches) per frame during an active find. Correctly short-circuits when no search is active, so low priority. Precompute the matching column spans per visible row once per frame instead of per cell.
@@ -6082,6 +6090,1986 @@ deferred 0.8.x), ANTS-1781 (span-cache wipe + resize BlockingQueuedConnection).
   Kind: perf.
   Source: in-session-2026-07-09.
 
+### ⚡ Performance pass fold-in (user request 2026-09-11)
+
+Findings from a whole-codebase performance review, one reviewer per subsystem.
+Each item is a review fix to investigate and then implement. Where a finding
+extends an existing item, that item carries it instead.
+
+- 📋 [ANTS-5024] **indie_review_dispatch hangs Ants permanently on every call: the GUI thread joins a worker that waits on the GUI thread.**
+  The provider registered in MainWindow::setupClaudeMcpProviders is a
+  plain handler, so it runs on the GUI thread. It starts a QThread that
+  runs RemoteControl::cmdIndieReviewDispatch and then calls wait().
+  The worker's first step, resolveRootCanonical(main, req), calls
+  ants::resolveCallerCwdRoot, which snapshots every tab's cwd through
+  ants::onGuiThread. Off the GUI thread that is a blocking queued call
+  to the application object. The GUI thread is parked in wait() and
+  processes no events, so neither side returns.
+  The verb requires caller_cwd, so every valid call reaches the
+  marshal, and it does so before the AI-enabled check.
+  Found by two lanes; the orchestrator confirmed each link in source.
+  Not reproduced: a repro would hang the live instance, so use an
+  --e2e throwaway.
+  Fix: resolve the root on the GUI thread before spawning the worker
+  and pass it in, or reply through the deferred finishToolDispatch
+  path. Extends ANTS-3515 from a freeze into a permanent hang.
+  guithread.h's comment that onGuiThread cannot deadlock during
+  dispatch is false for verb-owned workers.
+  A third lane (shared-utilities) reached the same deadlock
+  independently. Related, from two other lanes: ClaudeIntegration's
+  shutdown sets the marshal-refused flag and then joins the dispatch
+  worker with a bare wait(). The flag only stops marshals not yet
+  posted, so a worker already parked in a blocking queued call hangs
+  exit, against ANTS-2132 section 2.6 and INV-8(b).
+  **Layman:** Asking Ants to run its built-in AI review hangs the whole app, and it never recovers.
+  Kind: review-fix.
+  Source: code-quality-review-2026-09-11 perf pass (lanes mainwindow-b, mcp-review-verbs).
+  Lanes: mcp, threading.
+
+- 📋 [ANTS-5025] **verify_changes builds and runs its trust dialog on the MCP worker thread, which Qt forbids.**
+  verify_changes is registered through rcDelegate with a Required
+  contract, so ANTS-2132 runs it off the GUI thread. On an untrusted
+  .ants/verify.json, VerifyEngine::loadGateConfig reaches
+  VerifyTrust::ModalClient::prompt, which constructs a QMessageBox
+  parented to the main window and calls exec() on the worker.
+  Creating a widget off the GUI thread is undefined behaviour, most
+  likely a crash. exec() also runs an event loop on the worker, which
+  can run queued MCP jobs out of order and break ANTS-2132 INV-2.
+  This breaks ANTS-1337 INV-8, which requires the prompt to reach the
+  main window through a blocking queued call.
+  Found independently by two lanes. Not reproduced.
+  Fix: run the prompt body through ants::onGuiThread and treat a
+  refused marshal as Headless.
+  **Layman:** The first code check in a new project can crash Ants, because its 'do you trust this?' popup is built on the wrong thread.
+  Kind: review-fix.
+  Source: code-quality-review-2026-09-11 perf pass (lanes dialog-chrome-theme, mcp-review-verbs).
+  Lanes: mcp, threading.
+
+- 📋 [ANTS-5026] **The PTY read loop ignores back-pressure, so a flooding program grows the parse queue without bound and starves keystrokes.**
+  Pty::onReadReady reads until EAGAIN. When VtStream has too many
+  batches in flight it only disables the read notifier, which does not
+  stop the loop already running. Every further read appends to
+  VtStream's pending actions, about one per printable byte, and the
+  next ack ships the whole backlog as one batch that the GUI applies
+  in one loop.
+  While the loop runs, events queued to the worker wait. Keystrokes,
+  Ctrl+C included, cannot reach the PTY, and resize, invoked with a
+  blocking queued connection, freezes the GUI thread.
+  This breaks vtstream.h's stated bound on in-flight bytes.
+  Trigger: any producer faster than the parser, such as yes, cat of a
+  large log, or a runaway build. Loop duration not measured.
+  Fix: give the loop a read budget and break once the notifier is
+  disabled; the notifier is level-triggered, so it re-fires. The same
+  fix closes the path to a second EOF pass, where waitpid(-1) could
+  reap an unrelated child process.
+  **Layman:** A program that prints very fast can make the terminal ignore Ctrl+C and balloon in memory.
+  Kind: review-fix.
+  Source: code-quality-review-2026-09-11 perf pass (lane vt-parser-pty).
+  Lanes: vt, pty.
+
+- 📋 [ANTS-5027] **The sticky command header joins every line of an OSC 133 command span on every paint, and program output controls the span.**
+  TerminalWidget::paintEvent rebuilds the pinned header by joining
+  lineText() for every line from a prompt region's A marker to its B
+  marker, and truncates to maxChars only afterwards. B lands wherever
+  the cursor is, and the forgery check is off unless ANTS_OSC133_KEY
+  is set, so any printed file can stretch the span over the whole
+  scrollback.
+  The cost is every cell of every line in the span, per paint, on the
+  GUI thread. Estimated, not measured: seconds at the 1M-line cap.
+  Fix: stop the loop once maxChars is reached, cache the header per
+  region, and optionally reject a B far below its A.
+  **Layman:** A file that prints fake prompt markers can make every screen redraw slow.
+  Kind: review-fix.
+  Source: code-quality-review-2026-09-11 perf pass (lane terminal-widget-a).
+  Lanes: terminalwidget.
+
+- 📋 [ANTS-5028] **Ctrl+clicking a suspicious link while output streams reads a freed URL span.**
+  TerminalWidget::mousePressEvent takes a reference into
+  urlSpansForLine()'s cached vector and passes the element to
+  openHyperlink by reference. For a suspicious target openHyperlink
+  runs a QMessageBox::exec() nested event loop. A VT batch during it
+  marks the span cache dirty, the next paint clears m_urlSpanCache,
+  and after the dialog closes openHyperlink reads the freed span to
+  open the URL.
+  Terminal output controls the label and the target, so a hostile
+  program can force the dialog branch, and any concurrent output
+  supplies the invalidation. Not reproduced.
+  Fix: copy the span by value in mousePressEvent, as contextMenuEvent
+  already does, or take UrlSpan by value in openHyperlink.
+  **Layman:** Clicking a warned-about link while text is scrolling can crash the terminal.
+  Kind: review-fix.
+  Source: code-quality-review-2026-09-11 perf pass (lane terminal-widget-b).
+  Lanes: terminalwidget.
+
+- 📋 [ANTS-5029] **Program output can forge the last command's OSC 133 markers, and Re-run Last Command types that text into the shell unconfirmed.**
+  rerunLastCommand picks the newest completed prompt region, and
+  rerunCommandAt writes its command text plus a carriage return to the
+  PTY with no paste confirmation and no bracketed paste. The OSC 133
+  verifier is off by default, so cat-ing a crafted file can emit its
+  own A/B/C/D markers with an arbitrary command on the B line.
+  Unverified: whether the real shell's trailing D leaves the forged
+  block as the newest completed one.
+  Related, raised by two lanes: prompt regions store absolute line
+  numbers that are never shifted when scrollback evicts at its cap, so
+  once scrollback is full a re-run can read text from the wrong line.
+  Fix: route re-run through pasteToTerminal's confirmation showing the
+  text, or refuse re-run on unverified markers; shift or drop regions
+  on eviction.
+  **Layman:** Printing a booby-trapped file could make 'Re-run last command' type and run something you never typed.
+  Kind: review-fix.
+  Source: code-quality-review-2026-09-11 perf pass (lanes terminal-widget-b, terminal-grid).
+  Lanes: terminalwidget, terminalgrid, security.
+
+- 📋 [ANTS-5030] **The 30-second session save re-serialises every tab's whole scrollback on the GUI thread, changed or not.**
+  MainWindow's session-save timer fires every 30 s and calls
+  SessionManager::saveSession for every tab. Each call streams every
+  cell of the grid, scrollback included, into one buffer, then runs
+  qCompress, SHA-256, a write, fsync and a parent-directory fsync, all
+  on the GUI thread. Nothing checks whether the tab changed.
+  Scrollback rows are stored at full width, so the raw blob is about
+  13 bytes per cell: tens of MB per tab at the 50k default and over a
+  GB at the 1M maximum, every 30 s. Time not measured.
+  Found independently by two lanes.
+  Fix: a per-grid generation counter so unchanged tabs are skipped,
+  and compress, hash and write a snapshot on a worker.
+  **Layman:** Every 30 seconds Ants re-saves every tab's full history, even when nothing changed, which can freeze the window.
+  Kind: review-fix.
+  Source: code-quality-review-2026-09-11 perf pass (lanes mainwindow-a, config-session-project).
+  Lanes: session, mainwindow.
+
+- 📋 [ANTS-5031] **A session that saves can be refused on restore, and the next save then overwrites the intact file.**
+  Save has no size cap, but SessionManager::restore refuses a blob
+  whose uncompressed size exceeds MAX_UNCOMPRESSED, and the scrollback
+  setting allows more lines than that cap admits at ordinary widths.
+  MainWindow::restoreSessions ignores loadSession's result, opens the
+  tab fresh under the same id, and the next 30-second save overwrites
+  the good file.
+  Every other restore failure takes the same path: a hash mismatch, a
+  newer version after a downgrade, or a stream that fails partway,
+  which also leaves the grid part-restored because restore resizes
+  before it validates.
+  configbackup.h names SessionManager as a user of its rotate-aside
+  helper, but sessionmanager.cpp never calls it.
+  Fix: cap what save writes to what restore accepts, and rotate a
+  refused blob aside, or issue a new tab id, before any save can
+  reuse the path.
+  **Layman:** With a very large scroll history, a tab can fail to come back after a restart, and Ants then deletes its saved copy.
+  Kind: review-fix.
+  Source: code-quality-review-2026-09-11 perf pass (lane config-session-project).
+  Lanes: session.
+
+- 📋 [ANTS-5032] **File → New Window restores every saved tab again under the same session ids, so two windows overwrite each other's sessions.**
+  The MainWindow constructor calls restoreSessions() with no
+  once-per-process guard, so a second window re-opens every saved tab
+  under the ids the first window already uses. Both windows' 30-second
+  saves then write the same files, and each overwrites the tab-order
+  file with its own list; after a restart only the last saver's tabs
+  return. It also doubles scrollback memory.
+  Fix: restore only in the first window and give later windows fresh
+  ids.
+  Related: a second window also leaves DialogChrome's global Config
+  pointer dangling, filed separately.
+  **Layman:** Opening a second Ants window duplicates your saved tabs and can lose some of them on the next restart.
+  Kind: review-fix.
+  Source: code-quality-review-2026-09-11 perf pass (lane mainwindow-a).
+  Lanes: session, mainwindow.
+
+- 📋 [ANTS-5033] **Terminal output can spawn one notify-send process per OSC 9/777 sequence, with no rate limit.**
+  When the window is unfocused and there is no tray,
+  MainWindow::showDesktopNotification starts notify-send through
+  QProcess::startDetached for each desktop-notification escape
+  sequence. TerminalGrid caps only the body size, while its siblings
+  (OSC 52, OSC 1337 user vars, OSC 133 forgery) all carry rate limits.
+  So cat-ing a hostile file, or a runaway loop, spawns processes
+  without bound from the GUI thread.
+  Fix: a per-terminal quota in the grid like OSC 52's, or collapse
+  notifications to one per interval.
+  **Layman:** A program can make Ants fire off thousands of desktop notifications, each starting a new process.
+  Kind: review-fix.
+  Source: code-quality-review-2026-09-11 perf pass (lane mainwindow-a).
+  Lanes: mainwindow, terminalgrid, security.
+
+- 📋 [ANTS-5034] **View → Opacity does nothing for terminals that are already open.**
+  The action saves the value and calls applyTheme(m_currentTheme), but
+  applyTheme returns early when the theme name is unchanged, and the
+  config watcher skips the reload because the write is its own. Only
+  tabs opened afterwards read the new value. The code's own comment
+  says it re-applies the theme to update every background.
+  Fix: call setWindowOpacityLevel on every live terminal inside the
+  action.
+  **Layman:** Changing the window see-through level only affects new tabs, not the ones already open.
+  Kind: review-fix.
+  Source: code-quality-review-2026-09-11 perf pass (lane mainwindow-a).
+  Lanes: mainwindow.
+
+- 📋 [ANTS-5035] **audit_run without async:true joins its worker on the GUI thread, freezing the window for the whole sweep.**
+  The audit_run provider takes the async path only when async is true.
+  Otherwise it runs AuditRunner::runAudit on a QThread and calls
+  wait() on the GUI thread, and ANTS-1351 section 6 caps a sweep at
+  900 s. While the GUI is joined, every off-thread verb that marshals
+  to it blocks the single dispatch worker, so every session's MCP
+  traffic stalls as well.
+  ANTS-2132 section 5 names this site and ANTS-4682 deferred it.
+  Not checked: whether runAudit's in-process lanes marshal to the GUI
+  thread; if they do, this deadlocks like indie_review_dispatch.
+  Fix: reply through the deferred finishToolDispatch path, or make
+  async the default.
+  **Layman:** Running a code audit from Claude freezes the Ants window until the audit ends.
+  Kind: review-fix.
+  Source: code-quality-review-2026-09-11 perf pass (lane mainwindow-b).
+  Lanes: mcp, threading, audit.
+
+- 📋 [ANTS-5036] **Closing a second window leaves DialogChrome's global Config pointer dangling, so later dialogs read and write freed memory.**
+  Every MainWindow constructor calls DialogChrome::setConfig with its
+  own Config, overwriting one global pointer, and nothing resets it.
+  File → New Window creates a MainWindow with WA_DeleteOnClose. Open a
+  second window, close it, then open Settings, About or a review
+  dialog in the first window: ChromeGuard reads the saved size through
+  the freed Config on open and writes through it on close.
+  Not reproduced.
+  Fix: clear or re-point the pointer in ~MainWindow when it points at
+  this window's Config; better, have ChromeGuard take the Config from
+  the dialog's owning window at install time.
+  **Layman:** After opening and closing a second Ants window, opening any dialog can crash the app.
+  Kind: review-fix.
+  Source: code-quality-review-2026-09-11 perf pass (lane dialog-chrome-theme).
+  Lanes: dialogs, mainwindow.
+
+- 📋 [ANTS-5037] **Dialogs closed with the title-bar close button or Esc never save their size, against dialogs.md D3.**
+  ChromeGuard saves the size on QEvent::Close only. The chrome's close
+  button and Esc call QDialog::reject. On Qt 6.2, done() hides without
+  a close event; on later Qt the close event passes through a temporary
+  filter installed after ChromeGuard, which runs first and swallows it.
+  So review dialogs and Settings closed with the close button or Esc
+  keep their old size, and only an explicit close() saves.
+  The Qt mechanism is from the reviewer's knowledge, not checked in
+  Qt's source. Confirm by resizing a review dialog, closing it with the
+  close button, and reopening it.
+  Fix: save on QDialog::finished or on QEvent::Hide.
+  Related: ANTS-1734 (dialogs.md D2-D4 conformance).
+  **Layman:** Resizing a dialog and closing it with the X button doesn't remember the new size.
+  Kind: review-fix.
+  Source: code-quality-review-2026-09-11 perf pass (lane dialog-chrome-theme).
+  Lanes: dialogs.
+
+- 📋 [ANTS-5038] **Timed-out or cancelled audit tools keep running, because only the wrapper process is killed.**
+  The audit dialog runs every check as /bin/bash -c with a pipeline,
+  and its timeout, cancel and output-overflow paths kill only bash, so
+  cppcheck, clazy, semgrep and the rest are re-parented and keep
+  running while the next check starts. AuditRunner, behind the
+  audit_run verb, has the same gap: terminate() and kill() reach only
+  the direct child, so semgrep's semgrep-core can outlive the cap.
+  Checks that routinely hit their timeout on a real tree include
+  cppcheck with -j$(nproc), clazy over every source, and the
+  spawn-per-file finds. Each run can stack hundreds of MB of tool
+  memory onto the next, on an earlyoom host.
+  Found by three lanes.
+  Fix: start each tool in its own process group (setChildProcessModifier
+  with setsid, available at the Qt 6.2 floor) and signal the group.
+  **Layman:** When an audit check times out, the checker it started keeps running in the background and eating memory.
+  Kind: review-fix.
+  Source: code-quality-review-2026-09-11 perf pass (lanes audit-dialog-a, audit-dialog-b, audit-engine).
+  Lanes: audit.
+
+- 📋 [ANTS-5039] **The compiler_warnings audit check can never finish, and every attempt leaves a build tree behind in /tmp.**
+  The check configures and builds the project from scratch in a
+  mktemp -d directory under the default 30-second check timeout, which
+  a non-trivial project cannot meet, so it never returns warnings. The
+  timeout kills bash before its trailing rm -rf, so each run leaves a
+  temporary build tree, and the orphaned cmake, ninja and compiler
+  processes keep filling it (see the orphaned-process item).
+  Fix: give it a realistic timeout or remove it, clean up with a trap
+  on EXIT, and build into a configured build directory.
+  **Layman:** One audit check always times out and leaves a copy of the whole build in the temp folder each time.
+  Kind: review-fix.
+  Source: code-quality-review-2026-09-11 perf pass (lane audit-dialog-a).
+  Lanes: audit.
+
+- 📋 [ANTS-5040] **The audit dialog runs up to 300 synchronous git blame calls on the GUI thread after every run.**
+  AuditDialog::renderResults enriches up to kSnippetBudget findings
+  through enrichWithBlame, and each call starts git blame -L N,N HEAD
+  and waits up to 2 s for it. The first render after every run or
+  cancel therefore runs up to 300 processes one after another on the
+  GUI thread. Blame on an old line walks the file's history, so on a
+  large repository this is tens of seconds to minutes; not measured.
+  The comment calling it bounded is true only as a worst case.
+  Found by two lanes.
+  Fix: one git blame --porcelain per file with several -L ranges, run
+  off the GUI thread and patched in when it arrives; or blame only
+  when a finding is expanded.
+  **Layman:** After each code audit the window can freeze for a long time while it looks up who last changed each flagged line.
+  Kind: review-fix.
+  Source: code-quality-review-2026-09-11 perf pass (lanes audit-dialog-a, audit-dialog-b).
+  Lanes: audit, threading.
+
+- 📋 [ANTS-5041] **Every audit filter keystroke lowers noisy findings' severity again, because the corroboration shift is re-applied per render.**
+  renderResults calls AuditEngine::applyCorroborationShift on every
+  completed result each time it runs, and it runs on every filter
+  keystroke, pill toggle, sort toggle and AI verdict. The shift edits
+  severity in place with no guard against repeats, so a noisy-rule
+  finding drops a tier per render; after two keystrokes a MAJOR is
+  INFO, and the INFO pill can then hide it. The drifted severity feeds
+  the confidence score and the SARIF, HTML and text exports.
+  The call is also scoped per check, so ANTS-1111 INV-1's cross-tool
+  promotion (two distinct check ids on one line) cannot fire.
+  Fix: apply the shift once per run, over the combined list from all
+  checks, in the run-completion path rather than in renderResults.
+  **Layman:** Typing in the audit filter box quietly downgrades how serious some findings look.
+  Kind: review-fix.
+  Source: code-quality-review-2026-09-11 perf pass (lane audit-dialog-b).
+  Lanes: audit.
+
+- 📋 [ANTS-5042] **Two AI-bound paths send source text without secret scrubbing: audit batch triage and indie_review_dispatch.**
+  The audit dialog's batch triage (requestAiTriageBatch) puts verbatim
+  source snippets and matched lines into the request with no
+  SecretRedact::scrub. Its single-finding path does scrub, and says why:
+  for a secrets or gitleaks finding the snippet is the credential. The
+  batch confirmation dialog promises nothing else leaves the machine.
+  IndieReviewDispatcher builds each lane's request body straight from
+  the brief, while the dialog path goes through LlmClient, which
+  scrubs before sending.
+  Found by two lanes.
+  Fix: build both requests through one function that scrubs and
+  reports the redacted count, as the single-finding path does.
+  **Layman:** Two ways of sending code to the AI reviewer skip the step that hides passwords and keys.
+  Kind: review-fix.
+  Source: code-quality-review-2026-09-11 perf pass (lanes audit-dialog-b, review-engines).
+  Lanes: audit, review, security.
+
+- 📋 [ANTS-5043] **audit_run's narrowed scopes read a failed or timed-out git call as no changes and report a clean result.**
+  AuditScope's git runners return an empty string on a non-zero exit
+  or a timeout, and resolveChangedFiles then sets noChanges when the
+  file list is empty, so runAudit returns ok with no_changes and runs
+  no tool.
+  Triggers: branch-diff hardcodes main, so a repo whose default branch
+  is master fails and reads clean; since-tag with a mistyped or
+  unfetched tag on a clean tree; since-last-run on a large repo whose
+  git status passes the 1.5 s timeout, which silently drops
+  uncommitted edits.
+  ANTS-1504 section 2.8 defines the short-circuit for a clean tree,
+  not for a git failure.
+  Fix: return success separately from output, demote to a full scan
+  with a reason such as git_failed or ref_unresolved, and check that
+  the base ref exists before diffing.
+  **Layman:** A code audit limited to recent changes can wrongly report 'nothing changed' when git has a problem.
+  Kind: review-fix.
+  Source: code-quality-review-2026-09-11 perf pass (lane audit-engine).
+  Lanes: audit.
+
+- 📋 [ANTS-5044] **audit_run reports a timed-out tool as crashed, because the SIGTERM crash exit is recorded before the timeout.**
+  The per-tool cap calls terminate(). A tool that dies of the signal
+  reaches Qt as CrashExit and errorOccurred(Crashed), whose handlers
+  record crashed first, and the grace timer's timed_out result is then
+  dropped by the dedup at the top of finish. So timed_out, the SARIF
+  exit code 124 and ANTS-3585's truncated flag fire only for tools that
+  survive SIGTERM for 2 s, and a killed tool's partial stderr is parsed
+  and counted as findings. This is common: cppcheck on this project's
+  own tree needs more than the default 30 s.
+  ANTS-1351 section 2.2 is right and the code is wrong.
+  Fix: set a per-tool timedOut flag before terminate() and map to
+  timed_out in both handlers.
+  **Layman:** When an audit tool runs out of time, the report says it crashed instead, and counts its half-finished output.
+  Kind: review-fix.
+  Source: code-quality-review-2026-09-11 perf pass (lane audit-engine).
+  Lanes: audit.
+
+- 📋 [ANTS-5045] **A project's .audit-config.json can make an audit tool write to any file the user can write.**
+  AuditRunner's extra-argument check rejects only the exact strings -o
+  and -O, and its allowlist regex admits slashes, equals signs and
+  dashes. So a cloned project's config can pass --output-file=,
+  --output=, --report-path= or a glued -o with a path to cppcheck,
+  semgrep, bandit, trivy or gitleaks, and the tool overwrites that
+  path. The code's own comment names this threat: a session auditing
+  an untrusted third-party clone.
+  Fix: an allowlist of flag names per tool, or reject output and fix
+  flags in both the equals and the glued forms.
+  **Layman:** Auditing a downloaded project could let that project overwrite one of your files.
+  Kind: review-fix.
+  Source: code-quality-review-2026-09-11 perf pass (lane audit-engine).
+  Lanes: audit, security.
+
+- 📋 [ANTS-5046] **Every roadmap history write re-sums the whole history table, against ANTS-3756's running-total rule.**
+  RoadmapStore::historyWouldExceedCap calls historyBytes(), which sums
+  the byte length of every history row, and appendHistory calls it for
+  each row it writes; the migration loader checks a second time after
+  a refusal. So one migration costs rows written times total history
+  bytes, inside BEGIN IMMEDIATE on the machine-global store and on the
+  single MCP worker.
+  ANTS-3756 section 4 says the writer keeps a running total rather than
+  re-summing per write. A failed measurement also returns 0, which
+  reads as an empty history and turns the cap off.
+  Fix: compute the total once per transaction, add each insert, drop
+  it on commit or rollback, and return std::optional from historyBytes.
+  **Layman:** Saving roadmap changes gets slower and slower as the change history grows.
+  Kind: review-fix.
+  Source: code-quality-review-2026-09-11 perf pass (lane roadmap-store).
+  Lanes: roadmap.
+
+- 📋 [ANTS-5047] **The roadmap dialog parses whole-file git blame output on the GUI thread on every open and every roadmap write.**
+  ANTS-4414 moved git blame into a background process, but the
+  finished handler still splits all of its --line-porcelain output,
+  re-reads the whole ROADMAP.md with no size cap, and runs a decode and
+  a regex on every line, on the GUI thread. ANTS-1237 section 6
+  budgets about 4 MB transient once per mtime change; at today's file
+  size the blame output alone is tens of MB. It runs on every open,
+  since the dialog is deleted on close, and on every write, since each
+  roadmap write re-renders the file.
+  It also races: blame line numbers are applied to a copy of the file
+  read after blame finishes, so a write in between puts dates on the
+  wrong cards.
+  Fix: blame only the in-progress blocks' line ranges, parse on a
+  worker, and take line text from blame's own content lines.
+  **Layman:** Opening the roadmap window freezes Ants briefly, and more so as the roadmap grows.
+  Kind: review-fix.
+  Source: code-quality-review-2026-09-11 perf pass (lane roadmap-dialog).
+  Lanes: roadmap, threading.
+
+- 📋 [ANTS-5048] **Every 2-second status tick opens and parses every transcript in the project, four times over, on the GUI thread.**
+  ClaudeIntegration::sessionPathForCwd lists the project's Claude
+  directory and, for every top-level transcript, reads a 32 KiB tail
+  and JSON-parses lines backwards; the loop never uses the mtime order
+  it asked for. ClaudeStatusBarController calls activeSessionPath four
+  times per 2 s tick, five with auto-switch on, and pollClaudeProcess
+  adds more while the path is empty. It runs whenever the focused
+  shell's cwd has a Claude project directory, Claude running or not.
+  This project holds over a hundred top-level transcripts, so each tick
+  is hundreds of file opens and JSON parses; cost not measured.
+  Found independently by two lanes.
+  Fix: break the loop once a file's mtime is older than the active
+  floor, resolve once per tick and share the result, and memoise per
+  cwd and Claude pid, invalidated on the directory's mtime.
+  **Layman:** Ants re-reads every saved Claude conversation for the project every two seconds, which wastes time on the main window.
+  Kind: review-fix.
+  Source: code-quality-review-2026-09-11 perf pass (lanes claude-integration-a, claude-session-widgets).
+  Lanes: claude, status-bar.
+
+- 📋 [ANTS-5049] **The Background Tasks dialog keeps using its tracker after the tab that owns it closes.**
+  ClaudeBgTasksDialog holds a raw ClaudeBgTaskTracker pointer and is
+  shown non-modally. Closing the tab calls untrackBgShell, which
+  deletes the tracker, but the dialog's file watcher, its 200 ms
+  debounce and its Refresh button still dereference the pointer. The
+  null checks cannot catch it, because the pointer is never cleared.
+  Trigger: open Background Tasks, then close that tab while the dialog
+  is open. Not reproduced.
+  Fix: hold a QPointer and close the dialog when the tracker is
+  destroyed.
+  **Layman:** Closing a tab while its Background Tasks window is open can crash Ants.
+  Kind: review-fix.
+  Source: code-quality-review-2026-09-11 perf pass (lane claude-session-widgets).
+  Lanes: claude.
+
+- 📋 [ANTS-5050] **Every append to a Claude transcript re-reads up to 16 MiB of it on the GUI thread, once for each tracker watching it.**
+  ClaudeTaskList and ClaudeBgTaskTracker both connect their file
+  watcher straight to a full rescan with no debounce, and each rescan
+  walks up to a 16 MiB tail, JSON-parsing every line. Claude streams
+  into the transcript continuously, so the 2 s poll's mtime shortcut
+  never helps while it works. One background-task tracker exists per
+  shell ever focused and keeps its watch after losing focus, so N panes
+  in one project mean N+1 walks per append, and every tab switch adds
+  one more. Cost per walk not measured.
+  Extends ANTS-1285 and ANTS-3516, which count watchers, and the
+  incremental parse ANTS-1458 deferred.
+  Fix: parse only appended bytes from the last offset, re-walking only
+  if the file shrinks or is replaced; debounce fileChanged; and share
+  one tracker per transcript path.
+  **Layman:** While Claude is working, Ants keeps re-reading its whole conversation log, and more so with more panes open.
+  Kind: review-fix.
+  Source: code-quality-review-2026-09-11 perf pass (lane claude-session-widgets).
+  Lanes: claude.
+
+- 📋 [ANTS-5051] **The roadmap store connection and roadmap_query's caches are used from the GUI thread and the MCP worker with no lock.**
+  RemoteControl::roadmapStoreOrNull lazily creates one RoadmapStore,
+  whose QSqlDatabase belongs to whichever thread opens it first, and
+  the roadmap caches are mutable members with no lock. The MCP worker
+  reaches them through roadmap_query, roadmap_log and the batch verbs.
+  The remote-control socket dispatches roadmap-query on the GUI thread
+  from its readyRead handler, and roadmapBullets reaches the same
+  store.
+  Since ANTS-2132 the GUI thread no longer waits on the worker, so the
+  two can overlap. Qt SQL allows a connection only on its creating
+  thread, and two first calls race the lazy assignment, destroying a
+  store the other thread may be using.
+  Found independently by four lanes. ANTS-3809 section 4's premise of
+  one shared connection predates ANTS-2132.
+  Fix: route the socket's MCP-registered routes through the worker
+  queue, or give each thread its own connection and lock the caches.
+  **Layman:** Two parts of Ants can use the roadmap database at the same moment, which can crash it or corrupt what it returns.
+  Kind: review-fix.
+  Source: code-quality-review-2026-09-11 perf pass (lanes roadmap-store, mcp-transport, mcp-roadmap-query-log, mcp-roadmap-batch).
+  Lanes: roadmap, mcp, threading.
+
+- 📋 [ANTS-5052] **Every ripgrep-backed verb holds rg's entire output in memory, twice, against three specs' RAM budgets.**
+  rcRunRg waits for rg to finish and takes all of stdout, and
+  workspace_search, cited_by and co_change_family each split it into a
+  second full copy; the only bound is rg's wall-time budget. The modes
+  that exist to scan past max_results (count_only, files_only,
+  matches_only, offset) therefore grow memory with total match volume,
+  in the process that hosts every terminal tab. co_change_family also
+  keeps every site and sorts at the end.
+  This misses ANTS-1248 section 5, ANTS-3716 section 4 (output never
+  buffered whole) and ANTS-3368 section 4 (a bounded min-heap).
+  Found by two lanes.
+  Fix: parse stdout line by line while rg runs, kill rg past a byte
+  ceiling and set truncated, use rg --count for the counting modes,
+  and build co_change_family's heap as its spec states.
+  **Layman:** Searching a big project can make Ants hold huge amounts of search results in memory at once.
+  Kind: review-fix.
+  Source: code-quality-review-2026-09-11 perf pass (lanes mcp-state-workspace, code-index-search).
+  Lanes: mcp, search.
+
+- 📋 [ANTS-5053] **recent_errors runs up to 25 whole-tree symbol searches on the GUI thread after a failed build.**
+  recent_errors is TabSpecific, so ANTS-2132 keeps it on the GUI
+  thread. Its enrichLikelyFixes makes up to 25 calls to
+  BuildFixHint::resolveHeader, and each runs a full-tree
+  SymbolQuery::findDefinition walk. symbolquery.cpp's own comment puts
+  one needle at about 81 ms on this tree, so roughly 2 s per call, more
+  on a larger tree. It is called right after a failed build, where a
+  missing include produces many undeclared symbols.
+  Fix: use the one-walk batch SymbolQuery::findDefinitions, or run the
+  enrichment off the GUI thread and keep only the scrollback read on it.
+  Related: recent_errors also reads output one screen row at a time,
+  filed separately.
+  **Layman:** Asking Ants for the latest build errors can freeze the window for a couple of seconds.
+  Kind: review-fix.
+  Source: code-quality-review-2026-09-11 perf pass (lane mcp-content-verbs).
+  Lanes: mcp, threading.
+
+- 📋 [ANTS-5054] **doc_citations re-reads and re-folds the whole attributed document for every quotation, outside its read budget.**
+  The quotation pass opens the attributed document, reads it whole,
+  decodes it, strips blockquotes, then simplifies and regex-replaces
+  it, once per quotation. The read is never counted against
+  maxTargetReads, checked against maxTargetBytes, or cached in
+  TargetReader. With up to 200 quotations a call, a quotation credited
+  to ROADMAP.md re-folds a multi-megabyte file each time, and .txt
+  counts as a document, so a large in-tree text file has no size bound
+  at all. It runs on the single MCP worker.
+  This sits outside ANTS-3636 section 5's worst-case table, and
+  ANTS-4386 has no spec.
+  Fix: check the size against maxTargetBytes, count the read against
+  maxTargetReads, and keep the folded body per resolved path for the
+  call.
+  **Layman:** Checking quotes in the docs can re-read one huge file hundreds of times.
+  Kind: review-fix.
+  Source: code-quality-review-2026-09-11 perf pass (lane doc-engines).
+  Lanes: docs, mcp.
+
+- 📋 [ANTS-5055] **doc_integrity silently cuts a document at 2 MiB and reports its later headings' links as dead.**
+  DocIntegrity::check reads each document with read(maxDocBytes) and
+  still lists it as checked, with no truncation flag. ROADMAP.md is
+  larger than that, and its table of contents links to headings past
+  the cut, so those entries come back as false dead_anchor findings,
+  while links and coverage past the cut go silently unchecked. Fix
+  passes send ROADMAP.md to this verb.
+  Fix: skip and report an oversize document as too_large, as doc_lint
+  already does, or mark its slug set partial and suppress anchor
+  findings against it.
+  **Layman:** The link checker wrongly reports broken links in the roadmap because it stops reading it partway.
+  Kind: review-fix.
+  Source: code-quality-review-2026-09-11 perf pass (lane doc-engines).
+  Lanes: docs, mcp.
+
+- 📋 [ANTS-5056] **Four file-content caches in the review engines are written from the GUI thread and the MCP worker with no lock.**
+  BriefDispatch, ColdEyesEngine, IndieReviewEngine and DebtSweepEngine
+  each keep a function-static QHash of file contents keyed by path and
+  mtime, commented as single-threaded. Since ANTS-2132 the brief,
+  partition and sweep verbs run on the MCP worker, while the Cold-eyes
+  and Independent Review dialogs, the audit dialog's debt scan and the
+  inline indie_review_dispatch fill the same caches on the GUI thread.
+  A concurrent insert or clear is undefined behaviour and can corrupt
+  the heap in the process that holds every tab.
+  Three of the four copies also have no size bound (only BriefDispatch
+  clears at 64 entries), so a debt sweep keeps every source body it
+  read for the life of the process.
+  Fix: one shared cache with a lock and a byte budget.
+  **Layman:** Two parts of Ants can update the same internal file cache at once, which can crash the app.
+  Kind: review-fix.
+  Source: code-quality-review-2026-09-11 perf pass (lane review-engines).
+  Lanes: review, threading.
+
+- 📋 [ANTS-5057] **The audit dialog's Debt scan runs the whole sweep on the GUI thread, and again after every fix or allow click.**
+  AuditDialog::debtScan calls DebtSweepEngine::scanAll synchronously
+  after one processEvents. The sweep reads the whole project tree into
+  one string, scans that string once per comment token, runs one git
+  blame per file holding a TODO with a 30 s timeout each and no total
+  bound, and runs the packaging script. The window is frozen for the
+  duration, and every fix and allowlist click re-runs it. Duration not
+  measured. The MCP path was moved off the GUI thread; this one was not.
+  Fix: run the scan on a worker and render on completion, and memoise
+  the token lookups per run.
+  **Layman:** The technical-debt tab in the audit window freezes Ants while it scans, every time you click.
+  Kind: review-fix.
+  Source: code-quality-review-2026-09-11 perf pass (lanes review-engines, audit-dialog-a).
+  Lanes: audit, review, threading.
+
+- 📋 [ANTS-5058] **The review corroboration walk descends into every build tree, twice per round on the GUI thread, because its cap counts accepted files.**
+  IndieReviewEngine's corroboration walk iterates the project with
+  QDirIterator and counts a file only after the suffix, generated-file
+  and noise filters, so it visits every file under build/, build-fast/,
+  build-asan/ and the other build trees before the cap means anything;
+  isNoiseDir runs per file, after the descent. The Independent Review
+  and Cold-eyes dialogs call it twice per round on the GUI thread, at
+  minimum lanes 2 and then 1. deriveComputedPartition,
+  ignoredDirPrefixes, collectLaneFiles and unassignedForLanes repeat
+  the pattern on the MCP worker.
+  Fix: prune noise directories during recursion and cap entries
+  visited; corroborate once at minimum 1 and split by lane count.
+  **Layman:** After each AI review round, Ants searches through all the build folders twice, which freezes the window.
+  Kind: review-fix.
+  Source: code-quality-review-2026-09-11 perf pass (lane review-engines).
+  Lanes: review, threading.
+
+- 📋 [ANTS-5059] **The Review Changes diff has no size cap and is re-rendered as HTML on the GUI thread on every change burst.**
+  The diff viewer reads the whole git diff --stat --patch HEAD output,
+  splits it twice, builds a styled span per line and calls setHtml,
+  all on the GUI thread, and repeats that on every watcher burst; the
+  byte-identical skip runs only after the HTML is built. A rewrite of a
+  large text file (a lockfile, a minified bundle, a regenerated
+  ROADMAP.md) gives tens of thousands of lines and a multi-second
+  freeze that recurs while an agent keeps editing. New files are
+  capped at 200 KB each; the diff is not.
+  Related, same dialog: probes from overlapping refreshes are never
+  cancelled, so an older slow diff can overwrite a newer view, and the
+  probe processes are parented to MainWindow rather than the dialog.
+  Fix: cap the patch bytes with a notice, build the HTML off the GUI
+  thread, and cancel superseded probes with a generation counter.
+  **Layman:** The Review Changes window can freeze Ants when a big file has changed, and keeps doing so while edits continue.
+  Kind: review-fix.
+  Source: code-quality-review-2026-09-11 perf pass (lanes app-entry-dialogs, shared-utilities).
+  Lanes: diffviewer, threading.
+
+- 📋 [ANTS-5060] **SSH bookmark extra arguments can smuggle a ProxyCommand or a second shell line past the dialog's protections.**
+  Two independent bypasses in the SSH connect path, both reachable from
+  bookmark data, which the code's own threat model treats as untrusted
+  (plugins, synced dotfiles).
+  sanitizeExtraArgs takes an -o option's key up to the equals sign
+  only, but ssh accepts whitespace between keyword and value, so
+  -o "ProxyCommand sh -c id" passes as an unknown key. A leading space,
+  the glued -oProxyCommand form and -F with a crafted config file also
+  pass.
+  shellQuote's safe-character check uses a pattern whose dollar anchor
+  also matches before a final newline, so a token ending in a newline
+  is returned unquoted and the joined command splits into two shell
+  lines. Unverified: whether the form field keeps a newline, and the
+  PCRE2 detail, which a one-line test settles.
+  Found by two lanes.
+  Fix: split the key on whitespace or equals after trimming and reject
+  -F, or switch to an option allowlist; anchor shellQuote's pattern
+  with \A and \z.
+  **Layman:** A bad SSH bookmark could make Ants run a hidden command when you connect.
+  Kind: review-fix.
+  Source: code-quality-review-2026-09-11 perf pass (lanes app-entry-dialogs, shared-utilities).
+  Lanes: ssh, security.
+
+- 📋 [ANTS-5061] **recent_errors parses one screen row per line, so errors wider than the pane are missed or cut off.**
+  ScrollbackErrors splits its input on newlines, but it receives one
+  grid row per line from TerminalWidget::recentOutput, so any output
+  line wider than the pane arrives in pieces. A compiler error whose
+  wrap falls before error: is not reported, one wrapped after it is cut
+  at the pane edge, and a Python traceback frame that wraps before its
+  line number fails the frame pattern, so the whole traceback is
+  dropped. Long absolute paths and 80-120 column split panes make this
+  common.
+  Fix: join soft-wrapped rows before parsing, using the grid's per-line
+  wrap flag that reflow already uses.
+  **Layman:** When a build error is wider than the terminal pane, Ants' error reader can miss it.
+  Kind: review-fix.
+  Source: code-quality-review-2026-09-11 perf pass (lane diagnostics-logging).
+  Lanes: mcp, terminalgrid.
+
+- 📋 [ANTS-5062] **The test-audit partition walks into every build tree on the GUI thread, once per glob, before excluding anything.**
+  TestAuditEngine's partition walk excludes build and dependency trees
+  per file, after QDirIterator has already descended, so any glob with
+  no path prefix walks the whole project, once per glob: ctest's
+  test_*.cpp walks this project's build trees, pytest walks twice, and
+  jest and vitest walk eight times through node_modules. Partition runs
+  on the GUI thread on dialog open, on editingFinished and before
+  dispatch. ANTS-1397 section 6 accepts blocking the GUI only because
+  the walk fits about 50 ms.
+  The exclusion is also matched against the absolute path, so a
+  project under a directory named build or dist excludes every file.
+  Fix: prune excluded directories while descending, walk once testing
+  every glob, match relative paths, and move partition off the GUI
+  thread.
+  **Layman:** Opening the test-audit window can freeze Ants while it searches through build folders.
+  Kind: review-fix.
+  Source: code-quality-review-2026-09-11 perf pass (lane test-audit-verify).
+  Lanes: test-audit, threading.
+
+- 📋 [ANTS-5063] **A verify_changes gate timeout kills only the shell, leaving the build running or dying mid-write.**
+  VerifyEngine runs each gate through /bin/sh and, on timeout, kills
+  only that shell. Ninja, the compilers and ctest's test processes
+  survive. They either die of SIGPIPE when the pipe closes, which for
+  ninja is the mid-build kill CLAUDE.md says corrupts .ninja_deps, or
+  keep running, so the next verify_changes starts a second ninja in the
+  same tree. An auto-detected cmake gate gets 600 s, which a cold
+  rebuild after a version bump can exceed.
+  Same class as the orphaned audit tools, in a different engine.
+  Fix: run each gate in its own process group and, on timeout, SIGTERM
+  the group, then SIGKILL, then reap.
+  **Layman:** If a code check runs out of time, the build it started can keep running in the background or damage the build folder.
+  Kind: review-fix.
+  Source: code-quality-review-2026-09-11 perf pass (lane test-audit-verify).
+  Lanes: verify.
+
+- 📋 [ANTS-5064] **test_results and focused_test never report which tests failed, because the ctest failure-line pattern cannot match.**
+  TestResCache's failure-line pattern requires whitespace after the dot
+  fill, but ctest prints ***Failed flush against the dots, which is the
+  file's own documented example. So no failure line ever matches,
+  failing_tests is always empty, and the per-failure excerpts never
+  exist; only the summary counts survive. Multi-word statuses such as
+  Exception: SegFault and Not Run are not accepted either.
+  Not run against ctest; the evidence is the file's own documented
+  format.
+  Fix: allow zero or more spaces after the dots and accept multi-word
+  statuses, with a test built from real ctest output.
+  **Layman:** Ants' test-result readers say tests failed but never say which ones.
+  Kind: review-fix.
+  Source: code-quality-review-2026-09-11 perf pass (lane test-audit-verify).
+  Lanes: test-results.
+
+- 📋 [ANTS-5065] **Test-audit report paging treats the default limit of -1 as all reports, so an ordinary call returns every report.**
+  The TestAuditEngine header and the MCP provider both pass -1 to mean
+  use the default, which is 5 in full mode, but the engine reads a
+  negative limit as all. So omitting limit returns every collected
+  report, up to 64 KiB each, built on the GUI thread, against ANTS-1455
+  section 4's bound of about 80 KiB per page at the default limit of 5.
+  The engine is the wrong side.
+  Fix: treat -1 as 5 and add an explicit opt-in for all.
+  **Layman:** One test-audit command returns far more than intended by default, which is slow and wasteful.
+  Kind: review-fix.
+  Source: code-quality-review-2026-09-11 perf pass (lane test-audit-verify).
+  Lanes: test-audit.
+
+- 📋 [ANTS-5066] **co_change_family trims each match one character at a time, re-encoding the whole line each step, before any cap.**
+  CoChangeFamily's clipUtf8 loops chop(1) and re-encodes the whole
+  string until it fits, which is quadratic in the line length, and it
+  runs on every raw submatch before dedup and before the result cap.
+  The handler passes ripgrep's line through unclipped, rg runs without
+  --max-columns, and the scan is repo-wide including prose, so long
+  lines are ordinary input: a one-megabyte minified or single-line data
+  file costs minutes, on the single MCP worker. chop(1) can also leave
+  a lone high surrogate at the cut.
+  Fix: clip once with ReadRegion::clipToBytes, after dedup and the
+  cap, or pass --max-columns to rg.
+  **Layman:** One very long line in a project can make a Claude search tool hang for minutes.
+  Kind: review-fix.
+  Source: code-quality-review-2026-09-11 perf pass (lane code-index-search).
+  Lanes: mcp, search.
+
+- 📋 [ANTS-5067] **The audit dialog runs its in-process drift lanes on the GUI thread, reading the whole project three times.**
+  AuditDialog runs each in-process lane runner synchronously from a
+  zero-delay timer on the GUI thread. Three of the four lanes build a
+  whole-tree source blob, and the two contract-doc lanes build
+  byte-identical ones; every token then scans that blob linearly, with
+  fallbacks that scan it up to three times, and the specs lane alone
+  raises about 1,100 findings. While this runs every tab stops draining
+  terminal output and Cancel cannot be clicked. Duration not measured.
+  In audit_run the same lanes run after the aggregate timer has
+  stopped, with no cap and no cancel.
+  Found by two lanes.
+  Fix: run the runners with QtConcurrent and post results back, build
+  the blob once per audit, cache existsInSource per token, and bring
+  the lanes under audit_run's aggregate cap.
+  **Layman:** Some audit checks read the whole project on the main window's thread, freezing every tab until they finish.
+  Kind: review-fix.
+  Source: code-quality-review-2026-09-11 perf pass (lanes spec-engines, audit-dialog-b).
+  Lanes: audit, spec, threading.
+
+- 📋 [ANTS-5068] **plan_template's includes_tests option is documented and parsed but never used.**
+  ANTS-1290 documents includes_tests with a default of true, the
+  handler parses it into the options, and PlanTemplateEngine declares
+  the field, but the engine never reads it, so includes_tests:false
+  returns the same skeleton with its test steps. ANTS-1290 never says
+  what false should produce, so decide that first.
+  Fix: implement it by dropping the test line and steps 1 and 2, or
+  remove it from the schema and the spec.
+  **Layman:** A setting on the plan-template tool does nothing, even though it's documented.
+  Kind: review-fix.
+  Source: code-quality-review-2026-09-11 perf pass (lane spec-engines).
+  Lanes: spec, mcp.
+
+- 📋 [ANTS-5069] **project_query's result marshaller copies a shared Lua table once per path, so a short snippet can exhaust memory.**
+  LuaEngine's marshalLuaValue caps nesting depth at 32 but not repeated
+  references, and the output cap is checked only after marshalling. A
+  snippet that nests one table inside itself twice per level, 31 levels
+  deep, is a few tables inside the Lua VM but 2^31 JSON leaves in C++
+  memory, which the 10 MiB Lua cap does not count and the watchdog
+  cannot interrupt. After the join gives up, the worker keeps
+  allocating until the process is killed, taking every tab with it.
+  ANTS-2093 section 1.1 says the sandbox bounds unbounded allocation,
+  and snippets are model-supplied.
+  Fix: carry a node and byte budget through the marshal and refuse with
+  result_too_large once it passes resultCapBytes.
+  **Layman:** A tiny Lua query can make Ants run out of memory and be killed.
+  Kind: review-fix.
+  Source: code-quality-review-2026-09-11 perf pass (lane plugins-lua).
+  Lanes: lua, security.
+
+- 📋 [ANTS-5070] **project_query's file and list callbacks allocate past the Lua memory cap, and Lua errors longjmp across live C++ objects.**
+  project.read calls readAll() on the whole file in one C call, before
+  the push that the 10 MiB cap guards, so a large file such as a git
+  pack or a disc image is allocated in full in the Ants process. When
+  the push then trips the cap, Lua's error longjmps past the buffer and
+  the open QFile, leaking both, and pcall in a loop repeats the leak.
+  project.list gathers every path in C++ first, and the same longjmp
+  skips its destructors past about 100k files. The pattern recurs at
+  every luaL_error raised while C++ objects are alive in these
+  callbacks, and in ants.warn, ants.settings.get and ants.get_output.
+  Depends on liblua5.4 being built as C, which was not verified.
+  Fix: check the file size against the remaining Lua budget before
+  reading, read with a bound, and use the protected-push pattern that
+  luaPushHandlerAndArg already uses (ANTS-4442).
+  **Layman:** Some Lua query operations can leak memory or read huge files into memory before any safety limit applies.
+  Kind: review-fix.
+  Source: code-quality-review-2026-09-11 perf pass (lane plugins-lua).
+  Lanes: lua.
+
+- 📋 [ANTS-5071] **changelog_query drops every entry under a dated topic heading, so dated-layout changelogs read as missing entries.**
+  changelog_log's add_subsection writes dated topic headings, a ###
+  heading that starts with a date and a category, and
+  ChangelogQuery::parse treats each as a non-canonical category and
+  skips every bullet under it, returning ok:true with no warning. On a
+  dated-layout project an id lookup reports not in changelog for
+  entries that exist, and version_index undercounts.
+  The code follows ANTS-3533 section 3 exactly, and that spec predates
+  the dated layout (ANTS-3584), so amend the spec first.
+  Fix: amend ANTS-3533 section 3 so a dated heading sets its category,
+  then change the parser to match.
+  **Layman:** The changelog search tool can't see entries written in the newer dated style.
+  Kind: review-fix.
+  Source: code-quality-review-2026-09-11 perf pass (lane changelog-feedback).
+  Lanes: changelog, mcp.
+
+- 📋 [ANTS-5072] **MCP reply post-processing runs on the GUI thread for every verb, off-thread ones included, with no size bound.**
+  Off-thread verbs run only their handler on the worker. The reply is
+  marshalled back and finishToolDispatch runs the whole tail on the
+  GUI thread: applyEtagPattern parses, hashes and re-serialises the
+  body, appendReadHints parses every successful body with no size
+  gate, compactEnvelope parses and re-serialises, offloadBody copies,
+  hashes and writes the whole body, wrapMcpData copies and runs regex
+  replaces, and sendMcpResponse escapes it again.
+  read_region and workspace_search allow 4 MiB replies and
+  get_scrollback has no cap, so a large reply costs several full-body
+  passes on the GUI thread; not measured. ANTS-2132 kept this tail on
+  the GUI thread by design and never sized it, and ANTS-2094 section 4
+  promises that offload holds only the head prefix.
+  Found by three lanes.
+  Fix: time each phase on a 4 MiB reply first. If the cost is visible,
+  run the pure transforms inside the worker job and keep only the cache
+  insert, recordDispatch and the socket write on the GUI thread. At
+  minimum, size-gate appendReadHints' parse and stream the spill write.
+  **Layman:** Every answer Ants sends back to Claude is processed on the main window's thread, which can stutter the window on big answers.
+  Kind: review-fix.
+  Source: code-quality-review-2026-09-11 perf pass (lanes claude-integration-a, claude-integration-b, mcp-infra).
+  Lanes: mcp, threading.
+
+- 📋 [ANTS-5073] **The remote-control socket runs tree walks, ripgrep and git verbs on the GUI thread, freezing the window.**
+  RemoteControl's readyRead handler calls dispatch() inline on the GUI
+  thread, and routes workspace-search, find-definition, find-caller,
+  similar-code, git-state and subsystem there. rcRunRg blocks for up to
+  the 30 s search budget plus the parse budget, the symbol and
+  similar-code walks list every directory entry, and git-state forks
+  git under GitWrap's 5 s limit. So one --remote call can freeze every
+  tab for seconds and delay every MCP reply, which is also written from
+  the GUI thread. ANTS-2132 moved only the MCP path off the GUI thread.
+  Found by three lanes. The same inline dispatch causes the roadmap
+  store race filed as ANTS-5051.
+  Fix: route the socket's MCP-registered verbs through the dispatch
+  worker with a deferred reply, or refuse them on the socket.
+  **Layman:** Scripts that control Ants from outside can make its window freeze while they search.
+  Kind: review-fix.
+  Source: code-quality-review-2026-09-11 perf pass (lanes mcp-transport, mcp-state-workspace, code-index-search).
+  Lanes: mcp, threading.
+
+- 📋 [ANTS-5074] **SubsystemMap's lane cache is read and written from the GUI thread and the MCP worker with no lock.**
+  SubsystemMap::cachedLanes keeps a static QHash with no lock, and its
+  header still says it is called from one thread. The Independent
+  Review dialog reaches it on the GUI thread through derivePartition,
+  the subsystem and indie_review_partition verbs reach it on the MCP
+  worker, and the remote-control socket's subsystem route reaches it on
+  the GUI thread. A find concurrent with an insert that rehashes is
+  undefined behaviour.
+  Found by two lanes.
+  Fix: a QMutex around the cache.
+  **Layman:** Two parts of Ants can use the same internal lookup table at once, which can crash the app.
+  Kind: review-fix.
+  Source: code-quality-review-2026-09-11 perf pass (lanes mcp-state-workspace, shared-utilities).
+  Lanes: mcp, threading.
+
+- 📋 [ANTS-5075] **Performance pass findings for the VT parser and PTY (medium and low).**
+  Medium:
+  - Pty::onReadReady's EOF branch can run twice when back-pressure
+    re-enables a dead notifier; the second pass calls waitpid(-1), which
+    can reap an unrelated child such as a git QProcess, and emits
+    finished twice. Guard m_childPid > 0 and latch EOF.
+  - The child environment is still truncated past kEnvpCap entries.
+    setenv appends, so ANTS_MCP_SOCKET is among the first dropped,
+    against ANTS-1897 INV-14. Size the array from environ before fork.
+  - A paste over MAX_PENDING_WRITE_BYTES is silently truncated after
+    the kernel's first few KB, and the queue-full branch can drop the
+    bracketed-paste end marker. Back-pressure the writer or tell the
+    user.
+  Low:
+  - A DEL or a stray 0x3C-0x3F byte inside a CSI aborts to Ground and
+    prints the rest literally; ECMA-48 ignores them (add CsiIgnore).
+  - The clear-screen selection hint misses a sequence split across two
+    reads and the 8-bit CSI form; derive it from parsed actions.
+  - vtstream.h says the child pid never changes, but it is cleared on
+    the worker; the comment is stale.
+  - argv0 is built with snprintf between fork and exec; build it before
+    the fork.
+  - The read notifier is deleted directly while parented, against
+    qt.md.
+  **Layman:** Smaller fixes to how the terminal talks to the shell: pastes, environment variables and escape codes.
+  Kind: review-fix.
+  Source: code-quality-review-2026-09-11 perf pass (lane vt-parser-pty).
+  Lanes: vt, pty.
+
+- 📋 [ANTS-5076] **Performance pass findings for the terminal grid (medium and low).**
+  The resize freeze and the 1M memory bound are on ANTS-3456 and
+  ANTS-4534.
+  Medium:
+  - OSC 8 link spans pile up per row forever: clearRow never clears
+    them, printing over a link does not remove it, and there is no per
+    row cap, so in-place redraws grow them and stale links stay
+    clickable after clear. Clear spans in clearRow and on overprint,
+    and cap them per row.
+  - A crafted Sixel image under the 4 MiB cap can reach the 128M
+    column-step ceiling, about 768M setPixelColor calls on the GUI
+    thread. Budget by image area, write through scanLine, or decode
+    off the GUI thread.
+  - joinLogical trims trailing spaces from wrapped rows, so re-wrapping
+    glues words together. Trim only the last row of each logical line.
+  Low:
+  - terminalgrid.h's scroll-pause comment says lines are dropped; they
+    are pushed with the duplicate-line guard off.
+  - OSC 133 prompt regions store absolute line numbers that are not
+    shifted on eviction, ED 3 or re-wrap (see ANTS-5029).
+  - A link opened on the bottom row that then wraps gets a wrong span.
+  - ANTS-1362's RAM budget assumes a 40-byte cell; it is about 64, so
+    the document is wrong.
+  - A Kitty transmit-and-display counts one image twice against the
+    image budget, so the refusal hits at about half the real bytes.
+  - wcwidth depends on the process locale (see ANTS-3792).
+  - The opt-in debug log flushes per underlined character and has no
+    size cap.
+  **Layman:** Smaller terminal-display fixes: clickable links that pile up, a slow image format and a word-wrapping bug.
+  Kind: review-fix.
+  Source: code-quality-review-2026-09-11 perf pass (lane terminal-grid).
+  Lanes: terminalgrid.
+
+- 📋 [ANTS-5077] **Performance pass findings for the terminal renderer and key handling (medium and low).**
+  Medium:
+  - Pasting a clipboard image reads and PNG-encodes it inside
+    keyPressEvent on the GUI thread with no size cap; encode on a
+    worker.
+  - ShapedRunCache caps entries, not bytes. A space-free line is one
+    whole-row run with up to nine codepoints per cell, so tens of MB
+    per tab stay cached after output stops, and the header's budget is
+    wrong. Budget by codepoints and skip very long runs.
+  - Closing a tab waits up to 2 s on the parse thread and then calls
+    QThread::terminate(), which can deadlock the GUI on a held lock.
+    Detach on timeout instead.
+  - Ctrl+arrows, Ctrl+letters and autocomplete accept skip the
+    clear-selection and broadcast ending the other key paths share, so
+    broadcast mode sends Ctrl+C to one pane only. Use one sendKeyData
+    helper.
+  - The pasted-image path is pasted without shellQuote, unlike the
+    uri-list path, so a configured directory with a space or $( splits
+    or expands at the prompt.
+  Low:
+  - The highlight span cache adds two entries per painted line even
+    with no rules configured.
+  - The background image is stretched on every paint, undoing its
+    aspect-preserving pre-scale.
+  - Pasted screenshots are saved with default permissions, unlike the
+    session log.
+  - imagePasted fires even when saving failed.
+  - Input logging records keystroke text, including passwords.
+  - hasPty() is true after a failed start.
+  - A backwards clock step shows a negative command duration.
+  **Layman:** Smaller fixes to drawing and typing in the terminal, including a screenshot-paste freeze.
+  Kind: review-fix.
+  Source: code-quality-review-2026-09-11 perf pass (lane terminal-widget-a).
+  Lanes: terminalwidget.
+
+- 📋 [ANTS-5078] **Performance pass findings for terminal input, selection, search and export (medium and low).**
+  Search at the 1M cap and the per-tab history load are on ANTS-2000.
+  Medium:
+  - Rich copy writes one styled span per non-blank cell with no size
+    bound, hundreds of MB after Select All at the default scrollback.
+    Merge same-style runs, as exportAsHtml does, and fall back to plain
+    text above a cell cap.
+  - A right-click builds the whole selection just to test its length
+    against 200; decide from the selection bounds instead.
+  - Whole-scrollback text and HTML export, outputTextAt and
+    exportBlockAsCast run synchronously on the GUI thread and hold
+    several full copies; stream them to the file from a worker.
+  Low:
+  - Context-menu lambdas keep a prompt block index across menu.exec();
+    once the prompt ring is full a new prompt shifts it, so Re-run can
+    act on the neighbouring block.
+  - scrollToMatch and bookmark navigation skip updateScrollBar().
+  - A zero-width regex match drops every later match on the line.
+  - invalidateSpanCaches mid-batch leaves stale spans on rows redrawn
+    after the batch's last newline.
+  - Recording decodes UTF-8 per batch, so a split sequence becomes
+    U+FFFD; use a QStringDecoder member.
+  - Exports use QFile with Truncate, not QSaveFile, and ignore write
+    errors; a failed export gives no message.
+  - Autocomplete matches the whole cursor line, prompt included.
+  - User-visible strings are not wrapped in tr(), against qt.md.
+  **Layman:** Smaller fixes to copying, exporting and searching in the terminal, which can freeze on very long histories.
+  Kind: review-fix.
+  Source: code-quality-review-2026-09-11 perf pass (lane terminal-widget-b).
+  Lanes: terminalwidget.
+
+- 📋 [ANTS-5079] **Performance pass findings for the main window's tab, pane and export code (medium and low).**
+  Medium:
+  - The 2 s status timer drives refreshTasksButton, which re-parses up
+    to a 16 MiB transcript tail whenever it changed, and it changes
+    continuously while Claude works (see ANTS-5050).
+  - splitCurrentPane never registers the new pane's PID with the tab or
+    background-task trackers, and pane removal releases nothing, so
+    closing a split tab leaves PIDs in three trackers and Claude in a
+    split pane never lights its tab dot.
+  - CommandFinished and PaletteAction plugin events fire with no rate
+    limit, and terminal output drives both (see the plugin findings).
+  - HTML export builds the whole document as one string on the GUI
+    thread; stream it from a worker.
+  - Scrollback export returns silently when the file will not open and
+    reports success after a short write; use QSaveFile and report
+    failure.
+  Low:
+  - The SSH connect timer captures a raw TerminalWidget pointer, while
+    its sibling guards the same pattern with QPointer.
+  - OSC 9;4 progress rebuilds the tab icon on every sequence.
+  - runKWinScript connects only finished, so a dbus-send that fails to
+    start leaks the process and the temp script.
+  - resultsFile is put inside double quotes unescaped before the PTY
+    write.
+  - restoreSessions decompresses every saved tab in the constructor.
+  **Layman:** Smaller main-window fixes: split panes that are never tidied up, slow exports and plugin event floods.
+  Kind: review-fix.
+  Source: code-quality-review-2026-09-11 perf pass (lane mainwindow-a).
+  Lanes: mainwindow.
+
+- 📋 [ANTS-5080] **Performance pass findings for the main window's MCP providers and status probes (medium and low).**
+  The get_git_status bound and its false clean status are on ANTS-4686.
+  Medium:
+  - get_scrollback has no line cap and runs on the GUI thread; its
+    since_cursor path is bounded only by scrollback capacity, so a
+    poller whose cursor predates a large build asks for hundreds of
+    thousands of lines. Cap both paths and mark the result truncated.
+  - m_reviewProbeInFlight is one flag shared by all tabs, so a tab
+    switch during a probe keeps the button and then shows the previous
+    tab's git state, against the comment's promise. Key the probe to
+    its cwd and hide the button on a skipped probe.
+  Low:
+  - The review probe has no timeout, so a git status that never exits
+    leaves the flag set for the session.
+  - The gh repo view probe has no timeout and no errorOccurred handler.
+  - .git/HEAD reads, exists checks and repo-root lookups run on the GUI
+    thread every tick, which blocks on a hung network mount.
+  - The async audit worker is freed only through a slot on
+    ClaudeIntegration, so quitting mid-sweep leaks a running thread.
+  - The socket reaper's comment promises an S_ISSOCK check the code
+    does not make.
+  - The resume command puts sessionId in a shell line unquoted.
+  - ANTS-2132 section 5 still lists verbs as synchronous that now run
+    off-thread; the document is wrong.
+  **Layman:** Smaller fixes to how the main window answers Claude and checks git, including a stuck Review Changes button.
+  Kind: review-fix.
+  Source: code-quality-review-2026-09-11 perf pass (lane mainwindow-b).
+  Lanes: mainwindow, mcp.
+
+- 📋 [ANTS-5081] **Performance pass findings for the title bar, tab bar, palette and desktop integration (medium and low).**
+  Medium:
+  - GlobalShortcutsPortal discards the BindShortcuts reply, so an error
+    reply never fires sessionFailed and the Global hotkey unavailable
+    message never appears; watch the reply as createSession does.
+  - isAvailable() asks only whether the portal is registered, which is
+    false for an on-demand portal not yet started, so the portal is
+    never built and nothing retries while quake mode stays on. Accept
+    activatable names or let CreateSession start it.
+  Low:
+  - The tab bar's paint overwrites the per-tool tooltip that
+    ClaudeStatusBarController sets; keep one writer.
+  - The KWin script chain exists in two copies that have diverged;
+    MainWindow's lacks the failure handling the tracker's has.
+  - KWinPositionTracker's second stage has no errorOccurred handler,
+    and the first leaks its QProcess on a start failure.
+  - CreateSession has no timeout, so a missing Response queues every
+    later bind silently.
+  - One request-path slot means a second flush loses the first result.
+  - sessionReady fires before BindShortcuts is sent.
+  - ElidedLabel, OpaqueMenuBar and OpaqueStatusBar lack Q_OBJECT.
+  - Palette placeholder, title-bar accessible names and tab tooltips
+    are not wrapped in tr().
+  **Layman:** Smaller window-chrome fixes, including a global hotkey that can silently fail to register.
+  Kind: review-fix.
+  Source: code-quality-review-2026-09-11 perf pass (lane chrome-widgets).
+  Lanes: chrome.
+
+- 📋 [ANTS-5082] **Performance pass findings for dialog chrome, review dialogs, themes and the trust store (medium and low).**
+  Medium:
+  - ReviewDialogBase composes every lane's brief on the GUI thread and
+    queues them all, so peak memory is lanes times the 200 KiB cap,
+    against the 2 x 200 KiB budget in ANTS-1722 and ANTS-1258.
+    Compose each brief when its job is pumped, or restate the budget.
+  - redispatch and setLanes do not check m_roundInFlight and Re-review
+    is never disabled, so a click mid-round clears the round's
+    failures and brings back ANTS-5003's failed-lane-reads-clean.
+    Found by two lanes (this one and review-engines).
+  - VerifyTrust's save checks neither write nor close before renaming,
+    so a full disk replaces the trust store with truncated JSON; use
+    QSaveFile.
+  - The trust prompt lacks ANTS-1337's re-prompt checkbox, its gates
+    line and the 0644 warning, and exec() is application-modal where
+    the spec says it is not.
+  Low:
+  - first_trusted is overwritten on every save.
+  - A corrupt trust file is overwritten; rotate it aside first.
+  - Theme files are read whole on the GUI thread with no cap.
+  - A mistyped theme colour becomes black instead of the fallback.
+  - The review view keeps a second copy of each report.
+  - DialogShowTracer and ChromeGuard lack Q_OBJECT.
+  - The About text still mentions the retired GPU renderer.
+  - themedstylesheet.h describes a rule the source says is absent.
+  - About dialog strings are not wrapped in tr().
+  **Layman:** Smaller dialog fixes, including a review button that can undo its own error reporting and a trust file that can be lost.
+  Kind: review-fix.
+  Source: code-quality-review-2026-09-11 perf pass (lane dialog-chrome-theme).
+  Lanes: dialogs, review.
+
+- 📋 [ANTS-5083] **Performance pass findings for the audit dialog's catalogue and run pipeline (medium and low).**
+  The Debt scan freeze is filed as ANTS-5057.
+  Medium:
+  - The constructor walks the whole non-hidden tree twice on the GUI
+    thread before the dialog appears, because QDirIterator descends
+    into build trees and the depth limit only filters matches.
+  - ANTS-3600 INV-10 uncaps the specs lane, but capFindings still cuts
+    every check at 100, so the same later docs stay masked.
+  - m_fileLineCache is never cleared by runAudit, so an inline
+    suppression added between runs is ignored on the next run.
+  - Auto-fix skips on the cached suppressed flag, not isSuppressed(),
+    so it repairs findings the user suppressed after the run.
+  - Auto-fix reads every flagged file whole on the GUI thread before
+    deciding whether it cares; filter first and cap at 4 MB.
+  Low:
+  - audit_rules.json, .audit_suppress, baseline.json and trend.json
+    are read with no size cap, the first before the trust gate.
+  - A stack QProcess destroyed after a timed-out wait can block again
+    on a hung mount.
+  - saveSuppression ignores QSaveFile::commit() and takes no lock.
+  - Semgrep registry packs run without --metrics=off (unverified).
+  **Layman:** Smaller audit-window fixes: a slow opening, suppressions that don't take effect, and auto-fix touching files it shouldn't.
+  Kind: review-fix.
+  Source: code-quality-review-2026-09-11 perf pass (lane audit-dialog-a).
+  Lanes: audit.
+
+- 📋 [ANTS-5084] **Performance pass findings for the audit dialog's results, triage and export (medium and low).**
+  Filed separately: ANTS-5040, 5041, 5042, 5067.
+  Medium:
+  - Re-running with the Since baseline pill on clears the changed-line
+    sets but keeps the pill, so every finding with a file is hidden,
+    and that near-zero count is written to the trend file as real.
+  - The recent-lines git diff against HEAD~N fails on a short repo or
+    times out on a big one silently, and Changed lines only then shows
+    zero findings, which looks like a clean run.
+  - Two blocking git runs, up to 13 s, sit on the GUI thread in
+    runAudit and the pill toggle, and the diff output has no size cap.
+  - Batch triage sends every batch at once, each with its own
+    QNetworkAccessManager, bypassing LlmDispatcher's concurrency
+    limit, and each success re-renders the whole list.
+  - The triage replies are read whole with no size cap; LlmClient caps
+    at 10 MiB and these hand-built paths do not.
+  Low:
+  - Filter typing re-renders with no debounce.
+  - The HTML report escapes </ but not <!--, so a payload can blank the
+    report page.
+  - Changed-file matching has no path-separator boundary.
+  - Every warning kind is labelled (timeout).
+  - The banner prints a literal %% sign.
+  - SARIF artifact URIs are not percent-encoded and relative ones lack
+    uriBaseId.
+  - A failed export open gives no message.
+  - User-visible strings are not wrapped in tr().
+  **Layman:** Smaller audit-window fixes: a filter that can hide everything, AI triage that floods the server, and export glitches.
+  Kind: review-fix.
+  Source: code-quality-review-2026-09-11 perf pass (lane audit-dialog-b).
+  Lanes: audit.
+
+- 📋 [ANTS-5085] **Performance pass findings for the audit engine and runner (medium and low).**
+  Filed separately: ANTS-5038, 5043, 5044, 5045; the QProcess leak is
+  on ANTS-3847.
+  Medium:
+  - Tool output is read whole with no byte cap, copied several times,
+    split twice, and kept until the SARIF is written; the SARIF message
+    can embed megabytes per run, against ANTS-1351 section 6.
+  - The since-last-run delta counts findings from included headers as
+    added every run and appends them to merged again with no dedup,
+    and the sidecar is written uncapped, so mergedTruncated sticks.
+  - RuleQualityTracker rewrites and fsyncs its whole file on every
+    suppression and on dialog close, on the GUI thread, and sits at
+    its 50,000-record cap after a few runs.
+  Low:
+  - applyFilter reads referenced files whole; lineIsCode caps at 2 MB.
+  - .audit_cache is created with umask permissions before
+    ensurePrivateDir runs.
+  - Auto-fix opens files in text mode, which mangles CRLF files.
+  - FalsePosLedger's static cache is commented single-threaded and is
+    reached from several brief builders.
+  - auditscope.cpp's pointer to AuditCache::runGit is stale.
+  **Layman:** Smaller audit-engine fixes: unbounded tool output, a change list that keeps growing, and slow saves on the main window.
+  Kind: review-fix.
+  Source: code-quality-review-2026-09-11 perf pass (lane audit-engine).
+  Lanes: audit.
+
+- 📋 [ANTS-5086] **Performance pass findings for the roadmap store and migration (medium and low).**
+  Filed separately: ANTS-5046, 5051.
+  Medium:
+  - RoadmapStore::open's fast path returns early only when the schema
+    version is equal, so a store written by a newer build makes every
+    older-build call wait for the write lock before refusing, and the
+    failed open is not remembered. Refuse a newer version in the fast
+    path.
+  Low:
+  - The migration's read half probably exceeds ANTS-3757's 4x budget;
+    measure peak RSS first.
+  - A new store file exists with umask permissions until the schema
+    commits; create it 0600 first.
+  - Migration reads the live roadmap and archives with no byte ceiling.
+  - The bulk profile's 30 s busy deadline on the single worker can stall
+    every session's verbs behind a long peer transaction.
+  - ANTS-3765 section 4 says the loader builds no in-memory map; it does
+    (document wrong).
+  - ANTS-3756 section 4's history formula counts characters; the code
+    counts bytes (document wrong).
+  - findRoadmaps, planFrom and load lack [[nodiscard]].
+  **Layman:** Smaller roadmap-database fixes, including a slow refusal when an older Ants meets a newer database.
+  Kind: review-fix.
+  Source: code-quality-review-2026-09-11 perf pass (lane roadmap-store).
+  Lanes: roadmap.
+
+- 📋 [ANTS-5087] **Performance pass findings for roadmap parsing, rendering, writing and export (medium and low).**
+  Medium:
+  - commitAndRender holds BEGIN IMMEDIATE across three render walks and
+    a full reparse; ANTS-3809 section 4 says two. Run the pre-image
+    render before begin() and use readItems().
+  - RoadmapFoldIn's counter lock sleeps up to 5 s, twice per fold, on
+    the GUI thread when flock fails systemically (NFS, FUSE).
+  - fileIds() reads idToken, which pass-headings parsing never sets, so
+    ANTS-4141's render_would_drop guard never fires there and a
+    hand-added pass block is deleted by the next publish.
+  - Store-built records for a pass-headings project say ants-v1 and
+    carry the wrong body, unlike the markdown path.
+  - render's path guard canonicalises only the parent, so a symlinked
+    leaf lets QSaveFile write outside the root, against INV-13.
+  - roadmapexport keys id_fold with QString::toLower, not SQLite
+    lower(), so a rebuild mis-links non-ASCII ids.
+  - corpusHighWater reads only files, so a GUI fold-in on a migrated
+    project can reissue a store-held id and block later writes.
+  - The composed-trailer predicates in roadmapsource and roadmaprender
+    have diverged, so composed_trailers can misstate what was composed.
+  Low:
+  - parseBullets' thread_local memo keeps about 14 MiB on the worker.
+  - render calls mkpath before its containment check, even on a dry run.
+  - A crashed process's .roadmap-counter.lock never expires.
+  - A read error in the format lookup silently selects ants-v1.
+  - A corrupt legend is dropped silently from the published file.
+  - The first export schema bump will refuse every older export.
+  - archivedIds re-reads every archive on every query.
+  - The discarded-text directory is never pruned.
+  - Documents out of date: INV-8's marker repair, roadmap-format
+    section 3.5's fenced-key claim, roadmapsource.h's table and ANTS-3809
+    section 2.1.
+  **Layman:** Roadmap-engine fixes: writes that hold a lock too long, a safety check that never fires, and a restore that can mislink items.
+  Kind: review-fix.
+  Source: code-quality-review-2026-09-11 perf pass (lane roadmap-parse-render).
+  Lanes: roadmap.
+
+- 📋 [ANTS-5088] **Performance pass findings for the roadmap dialog (medium and low).**
+  Filed separately: ANTS-5047.
+  Medium:
+  - loadMarkdown's 8 MiB per-file cap silently truncates the live
+    ROADMAP.md, and this project's file is growing toward it; past the
+    cut every later section disappears without notice. Report the cut
+    through m_sourceError and raise the live-file cap.
+  - Every rebuild (each debounced keystroke, toggle and click) re-reads
+    the store and the whole file and splits the text three times;
+    ANTS-1154 section 6.1 promises a BulletRecord cache. Cache on the
+    file's mtime.
+  - The kind filter lists 12 kinds against 21 canonical ones, so perf,
+    security, feature and others cannot be filtered, and any kind
+    filter hides them.
+  Low:
+  - A blocking git log waits up to 1.5 s on the GUI thread, and the
+    whole CHANGELOG is scanned past [Unreleased].
+  - The external-signals cache uses a wall-clock TTL.
+  - A CHANGELOG with no dated release is re-parsed every rebuild.
+  - A thread_local history memo keeps two large strings for the life of
+    the process.
+  - An unreadable roadmap renders empty with no notice.
+  - One stylesheet colour is a literal, against dialogs.md D1.
+  - Stale references: ANTS-1238's line citation, roadmapdialog.h's
+    table-mode links and a card-markup comment.
+  **Layman:** Roadmap-window fixes: a size limit that will soon cut off this project's roadmap, and slow redraws while typing.
+  Kind: review-fix.
+  Source: code-quality-review-2026-09-11 perf pass (lane roadmap-dialog).
+  Lanes: roadmap.
+
+- 📋 [ANTS-5089] **Performance pass findings for Claude hook ingestion, transcripts and the MCP front end (medium and low).**
+  Filed separately: ANTS-5048, 5072; the shutdown hang is on ANTS-5024.
+  Medium:
+  - findClaudeChildPid falls back to a full /proc scan for every shell
+    with no Claude child, every 2 s, from the status poll and from each
+    tracked shell.
+  - loadTranscript parses a transcript of up to 100 MiB into a
+    QJsonArray on the GUI thread for the transcript dialog.
+  - readLine with a 64 KiB limit splits longer records into fragments
+    that fail to parse and are dropped silently, and tool results
+    routinely exceed that.
+  Low:
+  - When the last record passes 4 MiB, the tail read finds no event and
+    the status freezes, the case ANTS-1169 fixed for smaller records.
+  - Each readyRead re-parses the whole buffer, and neither server caps
+    concurrent connections.
+  - A malformed request gets no JSON-RPC error, only a 5 s abort.
+  - The peer-check comments claim a same-UID attacker is blocked; the
+    check is uid only.
+  - The hook socket uses a guessable /tmp name another user can squat;
+    move it under XDG_RUNTIME_DIR.
+  - pollClaudeProcess resolves from the shell's cwd, while the tab
+    tracker uses Claude's own cwd first, so a subshell launch never
+    resolves a transcript.
+  **Layman:** Smaller Claude-integration fixes: slow process scans, a slow transcript window and dropped long messages.
+  Kind: review-fix.
+  Source: code-quality-review-2026-09-11 perf pass (lane claude-integration-a).
+  Lanes: claude, mcp.
+
+- 📋 [ANTS-5090] **Performance pass findings for MCP tool-call dispatch (low).**
+  The reply pipeline on the GUI thread is filed as ANTS-5072.
+  Low:
+  - A dispatch_queue_full refusal is stored in the idempotent-read
+    cache, against ANTS-1357 INV-5's rationale; clear cacheable on that
+    branch.
+  - The cache TTL and the in-flight and audit-job reapers use the wall
+    clock, so a suspend can reap a live slot and let two sweeps run on
+    one project, and a backward step serves stale reads. Use a
+    monotonic clock, as rateLimitCheck does.
+  - The rate check canonicalises caller_cwd on the GUI thread, which
+    blocks on a stalled mount.
+  - No refusal sets MCP's isError; confirm against the MCP spec.
+  - rcDelegate reads MainWindow's m_remoteControl on the worker;
+    RemoteControl's lifetime against the worker join is unchecked.
+  - Documents out of date: mcp-error-codes.md credits unknown_tool to
+    the dispatcher, ANTS-3396 states the wrong reap window, and
+    mcp-tools.md restates a one-at-a-time guarantee ANTS-2132 narrowed.
+  **Layman:** Small fixes to how Ants routes Claude's tool calls: a cached refusal, clock handling and error flags.
+  Kind: review-fix.
+  Source: code-quality-review-2026-09-11 perf pass (lane claude-integration-b).
+  Lanes: mcp.
+
+- 📋 [ANTS-5091] **Performance pass findings for the MCP tools/list schema block (medium and low).**
+  Medium:
+  - cold_eyes_brief's description is several times the 800-byte
+    budget in mcp-tools.md, and last_audit_summary's is well over it
+    once the runtime prefix and Etag tip are added; neither has a
+    detail split. Move the provenance prose into detail, and widen
+    ANTS-2079 INV-5's ceiling test to every tool, measured after the
+    runtime additions.
+  Low:
+  - The tool_info snapshot is far past ANTS-1399's 5 KiB budget, and
+    claudeintegration.h's comment still says 5 KiB; the budget is the
+    stale side.
+  - ANTS-2079's claim that the snapshot shares storage copy-on-write is
+    false for QJsonObject, which copies every string (document wrong).
+  - The tools/list reply is rebuilt from scratch on every request; its
+    size and GUI-thread time have never been measured, so measure once
+    before deciding anything.
+  **Layman:** Two of Ants' tool descriptions break their size limit, which costs every Claude session tokens.
+  Kind: review-fix.
+  Source: code-quality-review-2026-09-11 perf pass (lane claude-integration-schema).
+  Lanes: mcp.
+
+- 📋 [ANTS-5092] **Performance pass findings for Claude session widgets, trackers and dialogs (medium and low).**
+  Filed separately: ANTS-5048, 5049, 5050.
+  Medium:
+  - Background-task trackers leak for split panes: closing a pane never
+    untracks it, and each tracker owns a QFileSystemWatcher, which on
+    Linux is its own inotify instance.
+  - The Background Tasks dialog re-reads and re-renders every task's
+    output every 200 ms, finished tasks included.
+  - The transcript dialog loads the whole transcript on the GUI thread,
+    and its render cap counts entries, not bytes.
+  - When the scoped lookup finds nothing, a fresh Claude falls back to
+    the newest transcript on the machine, usually another tab's live
+    session, and the binding is never corrected, so this tab shows that
+    session and can receive its permission prompts.
+  Low:
+  - Saving the allowlist can wait up to 5 s for its lock on the GUI
+    thread.
+  - A Claude restart within one poll keeps the old transcript.
+  - The MCP-call nudge path canonicalises a path and stats config.json,
+    against ANTS-3572 INV-7.
+  - The Projects dialog re-reads session headers on every click.
+  - A corrupt allowlist shows empty lists with no message.
+  - The transcript dialog renders an empty User line per tool result.
+  - The task-output path check validates the canonical path but opens
+    the original.
+  - Documents out of date: status-bar.md's tokens-saved pill rule and
+    ANTS-1458's single-instance claim.
+  **Layman:** Smaller fixes to Ants' Claude status displays: leaking trackers, slow windows, and a tab showing another session.
+  Kind: review-fix.
+  Source: code-quality-review-2026-09-11 perf pass (lane claude-session-widgets).
+  Lanes: claude, status-bar.
+
+- 📋 [ANTS-5093] **Performance pass findings for the remote-control socket transport (medium and low).**
+  Filed separately: ANTS-5051, 5073.
+  Medium:
+  - A second instance takes over a live instance's socket:
+    safeToUnlinkLocalSocket checks only the file type and owner, never
+    whether anything is listening, so the second process unlinks the
+    live socket and binds its own, and the first keeps accepting on an
+    unreachable inode. This contradicts remotecontrol.h. Try to
+    connect first and unlink only on ECONNREFUSED. The hook and MCP
+    servers share the helper, so check them too.
+  Low:
+  - The get-text trim copies the whole dropped prefix, about twice the
+    input, against ANTS-1348 section 9.
+  - There is no cap on live connections, and no write timeout after
+    disconnect, so a peer that never reads pins its reply.
+  - The dispatch log writes the peer's cmd unescaped (CWE-117).
+  - docs/subsystems.md lists a roadmap-branch-drift socket verb that
+    does not exist.
+  - remotecontrol.h's protocol comment and socket path are stale.
+  - The parented QLocalServer is deleted manually, against qt.md.
+  - RcGate::checkCallerCwd lacks [[nodiscard]].
+  **Layman:** Starting a second Ants can silently take over the first one's control socket.
+  Kind: review-fix.
+  Source: code-quality-review-2026-09-11 perf pass (lane mcp-transport).
+  Lanes: mcp.
+
+- 📋 [ANTS-5094] **Performance pass findings for roadmap_query and roadmap_log (medium and low).**
+  Filed separately: ANTS-5051.
+  Medium:
+  - The section cache now stores bodies and, for a parent heading, its
+    whole subtree, far past ANTS-1346 section 4's budget; cache bullets
+    without bodies or restate the budget.
+  - amend_field skips append's sanitiser and caps, so a newline in
+    layman publishes an extra line in ROADMAP.md and a comma splits an
+    evidence element.
+  - The GFM flip's anchor counter is not floored to the anchors already
+    in the file, so a fresh clone re-issues an existing anchor.
+  - In report mode a malformed since or until silently changes the
+    window, while the list path refuses the same input.
+  Low:
+  - counter_write_failed is returned after ROADMAP.md is committed, with
+    no rollback.
+  - A failed rollback is silent.
+  - The source filter array has no element cap.
+  - Every store write runs three full renders (see ANTS-4681).
+  **Layman:** Smaller roadmap-tool fixes: a memory budget blown by caching, and one edit command that can corrupt the roadmap file.
+  Kind: review-fix.
+  Source: code-quality-review-2026-09-11 perf pass (lane mcp-roadmap-query-log).
+  Lanes: roadmap, mcp.
+
+- 📋 [ANTS-5095] **Performance pass findings for roadmap batch, backfill, migrate, publish and repair (medium and low).**
+  Filed separately: ANTS-5051.
+  Medium:
+  - backfill_dates holds the single MCP worker for up to 180 s and can
+    commit after the 60 s bridge timeout has already failed the call;
+    its comment says otherwise. Budget under the bridge timeout.
+  - flip_batch's markdown path re-walks the whole file for every target
+    and re-reads project.json each time, and locators have no count cap.
+  - flip_batch and annotate_batch's store path return ok:true when every
+    target fails, the false success ANTS-4109 fixed, and report op
+    flip_batch under annotate_batch.
+  Low:
+  - append_batch's markdown path never raises the ANTS-4572 scrub
+    warning.
+  - The id_hint advisory reads a number as a string, so it lists
+    headlines instead of ids.
+  - Bullet bodies and the bullets count are uncapped before the
+    backtracking scrub.
+  - The markdown writers never check that the file is unchanged between
+    read and commit.
+  - backfill swallows a store error and reports ids as undated.
+  - publish reports an SQL error as an unregistered project.
+  **Layman:** Smaller roadmap batch-tool fixes, including one that reports success when nothing changed.
+  Kind: review-fix.
+  Source: code-quality-review-2026-09-11 perf pass (lane mcp-roadmap-batch).
+  Lanes: roadmap, mcp.
+
+- 📋 [ANTS-5096] **Performance pass findings for session_orient, workspace verbs, focused_test and mutation_probe (medium and low).**
+  Filed separately: ANTS-5052, 5073, 5074.
+  Medium:
+  - focused_test and mutation_probe hold the single MCP worker past the
+    60 s transport limit: focused_test defaults to 300 s plus a
+    full-suite re-run, and mutation_probe's first run has no deadline,
+    so one hung test stalls every session's verbs and a mutant can stay
+    on disk after the caller has gone. Budget every run within the
+    transport budget.
+  - mutation_probe writes the mutant and the restore with QFile and
+    Truncate, and the original lives only in memory, so a full disk or
+    a crash loses the file. Use QSaveFile and a sidecar baseline, as
+    apply_edits already does.
+  Low:
+  - cited_by's scope has no size cap and its overlap check is
+    quadratic, against ANTS-3716 section 4.
+  - file_outline's paths array has no count cap.
+  - co_change_family's rg call lacks --threads, --max-columns and the
+    parse budget its siblings use.
+  - spec_query's gate_drift mode runs one git per spec, up to 500, with
+    no overall deadline.
+  - build_target_for's cmake_path skips path validation.
+  - An unreadable spec is counted inconsistently between gate_drift and
+    invariant_check.
+  - Documents out of date: ANTS-1302 section 3.4's in-flight refusal
+    can no longer fire, and ANTS-1248 section 5 still says 2 s.
+  **Layman:** Smaller fixes to Ants' workspace tools, including a test runner that can tie up every Claude session and a file write that isn't safe.
+  Kind: review-fix.
+  Source: code-quality-review-2026-09-11 perf pass (lane mcp-state-workspace).
+  Lanes: mcp.
+
+- 📋 [ANTS-5097] **Performance pass findings for the cold-eyes, indie-review and verify MCP verbs (medium and low).**
+  Filed separately: ANTS-5024, 5025.
+  Medium:
+  - roadmap_branch_drift reads a git log timeout as no reachable
+    history and reports every cited SHA as drifted, then spends up to
+    3 s checking each, against ANTS-1583 section 2.3's truncated flag.
+  - against_refs keeps up to 10 more commit sets of up to 200K commits
+    each in memory, against ANTS-1583 section 7's single-set budget.
+  - A failed or timed-out git status is hashed as a clean tree, so
+    verify_changes can serve a cached pass for a tree it never
+    checked. Mark the snapshot uncacheable when status fails.
+  - indie_review_fold_in ignores dry_run in narrative mode and writes
+    ROADMAP.md, unlike its cold-eyes sibling and its own structured
+    path.
+  Low:
+  - cold_eyes_cross_doc_diff's comment claims the same engine and
+    envelope as cross_doc_diff; they have diverged.
+  - An existsInGit timeout reports sha_not_in_git for an object that
+    exists.
+  - verify_changes can hold the single worker for up to 1800 s; decide
+    whether that is acceptable.
+  **Layman:** Smaller review-tool fixes, including a code check that can report a stale pass and a dry run that writes anyway.
+  Kind: review-fix.
+  Source: code-quality-review-2026-09-11 perf pass (lane mcp-review-verbs).
+  Lanes: mcp, review.
+
+- 📋 [ANTS-5098] **Performance pass findings for the feedback, changelog, docs, terminal and message verbs (medium and low).**
+  Filed separately: ANTS-5053.
+  Medium:
+  - feedback_query trims its delta 64 characters at a time, re-encoding
+    the whole prefix each step, which is quadratic and can split a
+    surrogate pair; back off once at the byte level, as the changelog
+    verb does.
+  - last_selection has no size cap and builds the selection on the GUI
+    thread; reuse get_text's trim and cap.
+  - git_state's status and numstat branches ignore GitWrap's truncation
+    flag, so a large repo returns incomplete files and totals unmarked.
+  - changelog_log's add_batch never applies ANTS-4563's routing, and
+    its comment's claim of matching sequential adds is now false.
+  Low:
+  - session_message passes limit through, so 0 or -1 returns the whole
+    mailbox.
+  - add_batch's entries array has no cap.
+  - add_from_roadmap's summary override skips the ANTS-4629 guard.
+  - Two docs walks cap results, not entries visited.
+  - A refused marshal falls back to the process cwd, against ANTS-2132
+    section 2.5.
+  - message_id is cast from a double without a range check.
+  **Layman:** Smaller fixes to Ants' content tools, including a slow trimming loop and outputs cut short without saying so.
+  Kind: review-fix.
+  Source: code-quality-review-2026-09-11 perf pass (lane mcp-content-verbs).
+  Lanes: mcp.
+
+- 📋 [ANTS-5099] **Performance pass findings for the documentation engines (medium and low).**
+  Filed separately: ANTS-5054, 5055.
+  Medium:
+  - Past its file or byte cap, docs_index counts the uncached files as
+    added on every call, so every query rewrites the whole cache,
+    against ANTS-2139 section 4's warm query. Compare against the capped
+    prefix.
+  - doc_lint spends a run-wide needle budget but DocSymbols restarts
+    its deadline on every scan(), so a run can make hundreds of tree
+    walks with nothing stopping it (ANTS-3661 section 4).
+  - doclint's private fence rule has drifted from
+    MarkdownScan::fenceMask, so patchTocRegion can write a TOC row into
+    the wrong position of a user's file. Use fenceMask.
+  Low:
+  - docs_index reads a line with no bound before its byte checks.
+  - doc_lint checks the size and reads later, so a growing file is read
+    without limit.
+  - docs_index ignores QSaveFile::commit()'s result.
+  - DocFinding's extra-key guard misses auto_fixable.
+  - Parser returns lack [[nodiscard]].
+  - ANTS-3660 section 4 leaves the shingle-key memory unquantified.
+  **Layman:** Smaller doc-tool fixes, including one that can write a table of contents entry in the wrong place.
+  Kind: review-fix.
+  Source: code-quality-review-2026-09-11 perf pass (lane doc-engines).
+  Lanes: docs, mcp.
+
+- 📋 [ANTS-5100] **Performance pass findings for the spec engines (medium and low).**
+  Filed separately: ANTS-5067, 5068.
+  Medium:
+  - spec_conformance never checks isValid() on a fence's pattern, so a
+    pattern that fails to compile makes every no-match row pass,
+    against INV-3. Refuse with a bad_pattern code.
+  - specparse and speclint disagree on where the Invariants section
+    ends (fences) and on bullet indentation, so the lint files false
+    invariant_no_test findings for invariants the parser never saw.
+  Low:
+  - plan_template's output exceeds ANTS-1290 INV-8, and goal,
+    architecture and tech_stack are uncapped.
+  - speclint's id-gap check loops over every number between the lowest
+    and highest id, so one mistyped id can wedge the worker.
+  - The source blob has no size cap and ignores .gitignore.
+  - spec_conformance reads the file whole and does not count malformed
+    rows against max_cases.
+  - speclog's appendInv duplicate guard misses the table form and
+    fences; appendLoop's section scan ignores fences.
+  - Documents out of date: ANTS-3600 section 5's latency premise,
+    featurecoverage.h's skip list and speclog.h's append_loop claim.
+  **Layman:** Smaller spec-tool fixes, including a pattern check that passes when the pattern itself is broken.
+  Kind: review-fix.
+  Source: code-quality-review-2026-09-11 perf pass (lane spec-engines).
+  Lanes: spec, mcp.
+
+- 📋 [ANTS-5101] **Performance pass findings for the review engines and dispatcher (medium and low).**
+  Filed separately: ANTS-5042, 5056, 5057, 5058; the mid-round
+  Re-review click is in the dialog-chrome findings.
+  Medium:
+  - IndieReviewDispatcher's per-lane timeout is Qt's transfer
+    (inactivity) timeout, so a trickling endpoint keeps a lane open
+    indefinitely; add a per-reply deadline.
+  - The dispatcher reads LLM replies whole with no size cap, against
+    ANTS-1352 section 5; reuse LlmClient's cap.
+  - Every lane's brief is composed on the GUI thread; each Independent
+    Review brief re-splits ROADMAP.md, and each Cold-eyes brief runs
+    DocIntegrity and hashes every cited file.
+  Low:
+  - The debt sweep's mechanical fix re-encodes the whole file as UTF-8,
+    corrupting any non-UTF-8 byte.
+  - A git timeout reads as a clean detector result.
+  - Stale TODOs past about 4 MiB of blame output are skipped, and the
+    cap applies only after the output is buffered.
+  - Cold-eyes stale citations survive a re-partition.
+  - ANTS-3601 section 2.7 says the big logs never reach check, but the
+    contracts lane passes them; decide which side is wrong.
+  **Layman:** Smaller AI-review fixes: a timeout that isn't really a limit, unbounded replies, and slow brief building.
+  Kind: review-fix.
+  Source: code-quality-review-2026-09-11 perf pass (lane review-engines).
+  Lanes: review.
+
+- 📋 [ANTS-5102] **Performance pass findings for test audit, focused tests, mutation probe and verify gates (medium and low).**
+  Filed separately: ANTS-5062, 5063, 5064, 5065.
+  Medium:
+  - The test-audit pre-pass reads each test file whole with no cap and
+    holds three UTF-16 copies; cap each read at about 1 MiB.
+  - VerifyEngine checks its 32 KiB line cap before splitting on
+    newlines, so one large read becomes a single line and the ctest
+    FAILED list inside it is lost.
+  - VerifyEngine's CMake scan follows directory symlinks with no
+    visited set, so a link to an ancestor or to / re-walks the tree.
+  - The fold-in's counter lock can wait 5 s on the GUI thread.
+  - The test-audit dialog never clears collected reports on
+    re-partition, so stale reports are folded into ROADMAP under fresh
+    ids, against ANTS-1722 section 4.
+  - BuildFixHint accepts ASCII quotes only, so GCC's UTF-8 quoting
+    never matches on this machine.
+  - The fold-in writes ROADMAP.md directly, even on a store-backed
+    project (consequence unverified).
+  Low:
+  - The partition cache returns a pointer that outlives its mutex.
+  - Report files are read whole before clipping, with no count cap.
+  - The mtime-recheck map is never evicted, and per-token report
+    directories are never pruned.
+  - Build output is decoded per read, splitting UTF-8 sequences.
+  - The fold-in heading is dated in UTC, not local time.
+  - focused_test validates ctest -R patterns as PCRE, not CMake regex.
+  - Parser returns lack [[nodiscard]].
+  **Layman:** Smaller test-tool fixes, including stale reports folded into the roadmap and a verify step that loses its failure list.
+  Kind: review-fix.
+  Source: code-quality-review-2026-09-11 perf pass (lane test-audit-verify).
+  Lanes: test-audit, verify.
+
+- 📋 [ANTS-5103] **Performance pass findings for the codebase index, outlines, region reads and edits (medium and low).**
+  Filed separately: ANTS-5052, 5066, 5073.
+  Medium:
+  - Past maxIndexFiles or maxCacheBytes, the codebase index counts the
+    uncached files as added on every call, so each call rewrites the
+    cache, never returns a 304 and misreports refreshed_files.
+  - read_region always keeps the first line whatever its length, so a
+    single-line huge file is returned whole, against ANTS-2021 INV-9;
+    read_regions repeats it per item.
+  - find_sources has no file-count cap; its header records 52 s cold on
+    this repo. Add maxFiles with walk_capped.
+  - The codebase index ignores QSaveFile::commit()'s result, so an
+    unwritable cache means a silent cold build on every call.
+  Low:
+  - Per-line reads are unbounded where ANTS-1249 and ANTS-1303 promise
+    1 KiB buffers.
+  - WrapMatch's separator pattern nests quantifiers with no match limit
+    (backtracking unverified).
+  - A first row larger than the page leaves next_offset equal to offset,
+    so a client that follows it loops forever.
+  - apply_edits counts overlapping matches but replaces non-overlapping
+    ones.
+  - find_sources follows symlinked files, unlike the walk it mirrors.
+  **Layman:** Smaller code-search fixes, including a cache that rewrites itself on every call on big projects.
+  Kind: review-fix.
+  Source: code-quality-review-2026-09-11 perf pass (lane code-index-search).
+  Lanes: mcp, search.
+
+- 📋 [ANTS-5104] **Performance pass findings for MCP spill, projection, token accounting and redaction (medium and low).**
+  Filed separately: ANTS-5072.
+  Medium:
+  - read_spill's byte paging never steps back to a UTF-8 boundary,
+    because utf8BoundaryLen is handed a window exactly the requested
+    length, so a page can end in U+FFFD and bytes stops matching the
+    content, against INV-6. Check the boundary against the full body
+    and read the window with a seek instead of readAll.
+  Low:
+  - The token tracker records every unknown tool name for the session,
+    against ANTS-1284 INV-8, and rebuilds its report on every dispatch.
+  - One spill over 64 MiB evicts every other spill and still leaves the
+    directory over its cap.
+  - Every read_spill page loads the whole spill file.
+  - The offload head ladder is quadratic at the largest head budget.
+  - roadmap_query compiles a caller's regex once per bullet, with no
+    match limit, on the worker.
+  - Token counts just under a million render as 1000K.
+  - ~/.claude/settings.json is rewritten on every launch with no lock,
+    and a wrong-typed hooks value is silently replaced.
+  - The sk- key pattern misses newer key forms.
+  - secretredact.h still says it has one consumer.
+  - setOwnerOnlyPerms results are ignored.
+  **Layman:** Smaller fixes to how Ants packages big answers for Claude, including paging that can corrupt text.
+  Kind: review-fix.
+  Source: code-quality-review-2026-09-11 perf pass (lane mcp-infra).
+  Lanes: mcp.
+
+- 📋 [ANTS-5105] **Performance pass findings for the AI dialog, LLM client and dispatcher (medium and low).**
+  Medium:
+  - LlmClient returns ok with empty text for a 2xx reply that is
+    neither SSE nor a known JSON shape, so the chat shows nothing and a
+    review lane reads clean. Fail with an unrecognised-response error,
+    and flag a body cut at the cap.
+  - AiDialog disables Send before the plaintext refusal returns, and
+    resetTransient's abort suppresses finished, so Send stays dead and
+    the pending reply is lost silently.
+  - LlmClient has only an inactivity timeout, so a stream of keep-alive
+    comments or empty deltas never ends; add a wall-clock deadline.
+  - The drain on finish removes the per-tick line cap, so a large
+    backlog is parsed in one GUI-thread slot.
+  - thinkingLevelFromLatestUserTurn stops at tool-result user lines,
+    which score() skips, so the chip drops its thinking label.
+  Low:
+  - ANTS-1727 section 4's buffer budget omits the raw-body buffer and
+    multiplies by the default concurrency, not the maximum.
+  - A reply of up to 10 MiB is appended as HTML on the GUI thread.
+  - LlmDispatcher assumes every runner calls done; an abort without it
+    pins in-flight, and late results of a cancelled batch can reach the
+    next round.
+  - ANTS-5000's single allFinished fires while outer pump frames are
+    still on the stack, so a slot that deletes the dispatcher leaves
+    them on a destroyed object, and recursion grows with queue length.
+  - The switch ledgers lock for up to 5 s on the GUI thread, and a
+    concurrent append can be lost; both are off by default.
+  - ANTS-1735 INV-2 and INV-3 still describe retired rules.
+  - The chunk signal has no connection.
+  - AI dialog strings are not wrapped in tr().
+  **Layman:** Smaller AI-client fixes: empty answers that look successful, a Send button that stays disabled, and requests that never time out.
+  Kind: review-fix.
+  Source: code-quality-review-2026-09-11 perf pass (lane model-switching).
+  Lanes: ai, llm.
+
+- 📋 [ANTS-5106] **Performance pass findings for config, sessions, project settings and session memory (medium and low).**
+  Filed separately: ANTS-5030, 5031.
+  Medium:
+  - ProjectSettings::detect counts only source files against its
+    ceiling, so a tree of other files is walked in full on
+    session_orient and codebase_index, against ANTS-2161.
+  - Two running copies share one .tmp name and no lock on
+    tab_order.txt, so their 30-second saves can tear a session file,
+    which then fails its hash on restore; ANTS-1159's claim that atomic
+    rename handles this is false.
+  - saveTabOrder renames without checking its writes, so a full disk
+    replaces the tab order with a truncated file.
+  Low:
+  - Startup decodes every saved tab synchronously, with an extra full
+    copy of each blob.
+  - umask(0077) is changed on the GUI thread across fsyncs, so files
+    other threads create in that window get the wrong mode.
+  - An older build stamps its own schema version on save, so a newer
+    build later re-runs migrations.
+  - ANTS-1430's RAM budget is stale, and an unbounded standards list
+    can disable layout caching.
+  - Session memory and Config::save can each wait 5 s for a lock.
+  - id_format.pattern accepts catastrophic regexes from a cloned
+    project.json.
+  - Temp-file open failures are silent.
+  **Layman:** Smaller settings and session fixes, including two Ants windows corrupting each other's saved tabs.
+  Kind: review-fix.
+  Source: code-quality-review-2026-09-11 perf pass (lane config-session-project).
+  Lanes: config, session.
+
+- 📋 [ANTS-5107] **Performance pass findings for the Lua plugin manager and project_query engine (medium and low).**
+  Filed separately: ANTS-5069, 5070.
+  Medium:
+  - g_queryZombies never drops finished workers, so after 64 slow
+    queries project_query refuses for the process, and its stated
+    memory bound counts stacks only.
+  - project.list walks with no entry cap and no time check.
+  - PluginManager's teardown waits on each plugin in turn on the GUI
+    thread, against ANTS-1750 INV-4, and a queued Unload can zombify a
+    healthy plugin.
+  - Disconnecting settings.get does not cancel a call already queued,
+    so teardown can deadlock for 2 s and leak a plugin.
+  - A plugin wedged while loading init.lua is never detected.
+  - The health check times a whole event while the budget restarts per
+    handler, so healthy multi-handler plugins get demoted.
+  - Nothing limits how fast a plugin sends log, notify, status or
+    palette signals to the GUI.
+  - Broadcasts post to every worker whether or not it handles the
+    event, and terminal output drives several of them.
+  - A plugin that wedges adds a new zombie on every reload, against
+    ANTS-1750 section 4.
+  Low:
+  - Handler timing uses the wall clock, unlike the engine.
+  - Dev-mode reload runs once per change event.
+  - project.read blocks forever on a FIFO.
+  - Time blocked in settings.get counts against the handler budget.
+  - ANTS-2093 and luaengine.h describe the join and the zombie total as
+    they were before ANTS-4682.
+  **Layman:** Smaller plugin fixes: a query limit that never resets, reloads that freeze the window, and plugins that can flood it.
+  Kind: review-fix.
+  Source: code-quality-review-2026-09-11 perf pass (lane plugins-lua).
+  Lanes: lua, plugins.
+
+- 📋 [ANTS-5108] **Performance pass findings for the changelog writer and feedback-file engine (medium and low).**
+  Filed separately: ANTS-5071; the feedback_query trim loop and the
+  uncapped add_batch are in the content-verbs findings.
+  Medium:
+  - retireTrackingHeadings tests for the literal Proposed ID slot,
+    while parse() harvests mapped ids from the Tracked in ROADMAP line
+    whenever no finding carries a real id. So appending one finding
+    with a blank slot to a condensed file lets compact_resolved delete
+    that heading, the file's only record of its shipped ids. Retire
+    only when a finding yields a real id.
+  - formatBullet and insertUnreleasedSubsection do not fold newlines
+    in the summary, id or headline, so text escapes the bullet and a
+    line starting ### or ## [ becomes a fake heading. Fold them as
+    renderFindingBlock does.
+  Low:
+  - The v1 tracking-table reader splits on the escaped pipe its own
+    writer emits.
+  - The changelog writer finds ### headings after trimming and ignores
+    fences, while the reader requires column 0, so an indented body
+    line becomes an insert target and a normalize boundary.
+  - ChangelogQuery's static regex cache has no lock; only one thread
+    reaches it today.
+  - The release op accepts a section holding only a heading or a
+    comment as non-empty.
+  **Layman:** Smaller changelog and feedback-file fixes, including one that can delete a project's only record of which fixes shipped.
+  Kind: review-fix.
+  Source: code-quality-review-2026-09-11 perf pass (lane changelog-feedback).
+  Lanes: changelog, feedback.
+
+- 📋 [ANTS-5109] **Performance pass findings for the diff viewer, settings, SSH dialog and helper (medium and low).**
+  Filed separately: ANTS-5059, 5060.
+  Medium:
+  - On every refresh the diff viewer reads each Status entry's file in
+    full, up to 64 MiB each, only to count lines, plus 200 KB per
+    untracked file, on the GUI thread with no cap on entries.
+  - The unpushed-commits git log excludes nothing when no remote refs
+    exist, so it lists the whole history on every refresh; its comment
+    says milliseconds. Add a max count.
+  - Every change burst re-runs git ls-files over the whole tree and
+    parses it on the GUI thread.
+  - The hook forwarder sends every hook event to any socket at the
+    /tmp hooks path without checking its owner, so another user can
+    squat it; check ownership or use XDG_RUNTIME_DIR.
+  Low:
+  - The forwarder hardcodes /tmp while the server uses
+    QDir::tempPath(), so with TMPDIR set hooks never arrive.
+  - Settings reports a pre-fix git-context hook script as installed,
+    because it never compares content, so the ANTS-4999 reinstall is
+    never prompted.
+  - When git crashes, errorOccurred and finished both call finalize.
+  - The settings installers read the file before taking the lock.
+  - ants-helper list blocks on an open stdin, and its file read has no
+    cap.
+  - Branch names go into the hook prompt verbatim.
+  - Dialog colour literals, a missing minimum size and an unparented
+    QColorDialog go against dialogs.md.
+  - ANTS-1145 INV-2a and the --remote help text are out of date.
+  **Layman:** Smaller dialog fixes, including a Review Changes window that reads every changed file in full and a hook that trusts any socket.
+  Kind: review-fix.
+  Source: code-quality-review-2026-09-11 perf pass (lane app-entry-dialogs).
+  Lanes: diffviewer, settings.
+
+- 📋 [ANTS-5110] **Performance pass findings for the debug log, read_log, build cache and tool detection (medium and low).**
+  Filed separately: ANTS-5061.
+  Medium:
+  - DebugLog checks its size cap only when it opens the file, so a
+    long session with a category on grows debug.log without limit, and
+    the category mask persists across launches. Rotate in write() when
+    the running total passes the cap.
+  - read_log keeps an oversized first line whatever max_bytes says,
+    because readLine has no bound, against ANTS-1855 INV-12; JSONL
+    transcripts reached through ~global have such lines.
+  Low:
+  - The build-log note regex swallows blank lines, so a note after a
+    blank line folds into the previous error.
+  - After the 50th error, a 51st error's notes are appended to the 50th.
+  - read_log's line cost ignores JSON escapes.
+  - DebugLog's active mask is read without a lock from worker threads;
+    make it atomic.
+  - DebugLog changes the process-wide umask while opening.
+  - ANTS_LOG_ALWAYS writes nowhere when no category is active.
+  - Two instances' rotation can delete each other's open log.
+  - read_log opens a FIFO and blocks the worker, and has no wall-clock
+    budget.
+  - Tool detection caches not-found until restart.
+  **Layman:** Smaller diagnostics fixes, including a debug log that can grow until the disk fills.
+  Kind: review-fix.
+  Source: code-quality-review-2026-09-11 perf pass (lane diagnostics-logging).
+  Lanes: diagnostics.
+
+- 📋 [ANTS-5111] **Performance pass findings for GitWrap, the tree watcher and path validation (medium and low).**
+  Filed separately: ANTS-5060, 5074; the shutdown marshal hang is on
+  ANTS-5024.
+  Medium:
+  - GitWrap applies its 1 MiB stdout cap only after git exits, so
+    QProcess buffers all of a large diff and git runs to completion on
+    the single worker, against ANTS-1250 section 3. Read in a loop and
+    terminate git once the cap is hit.
+  - A git stuck in the kernel survives SIGKILL, and ~QProcess then
+    waits again, well past INV-12's budget.
+  - DirTreeWatcher watches only directories that directly hold a file,
+    so a new file under a directory holding only subdirectories raises
+    no event and the diff goes stale. Watch ancestors too.
+  - GitWrap's diff parser treats merge-conflict diff --cc sections as
+    part of the previous file.
+  Low:
+  - IN_MOVE_SELF drops the watch from the maps without removing it.
+  - The debounce restarts with no maximum wait.
+  - At the 20,000-watch cap further directories are dropped silently.
+  - A slow start is reported as git missing.
+  - Path validation falls back to cleanPath for a missing path, so a
+    symlinked parent passes the anchoring check.
+  - Diff headers assume default prefixes and unquoted names.
+  - ClipboardGuard's truncation can split a surrogate pair.
+  - mcp-caches.md has no row for the SubsystemMap cache.
+  **Layman:** Smaller shared-helper fixes: git output held in full, a folder watcher that misses changes, and a merge-conflict diff misread.
+  Kind: review-fix.
+  Source: code-quality-review-2026-09-11 perf pass (lane shared-utilities).
+  Lanes: shared.
+
 ## Memory-efficiency sweep (user request 2026-08-19)
 
 The speed sweeps above ask how fast Ants is. This one asks how much it costs to
@@ -6135,6 +8123,12 @@ they are one change.
   What this sets as a rule: state a per-tab scrollback memory ceiling
   the default configuration honours, and make it checkable rather than
   asserted.
+  Performance pass (2026-09-11), terminal-grid lane: the 1M scrollback
+  maximum is not a memory bound. Scrollback keeps full-width rows
+  including trailing blanks, and each cell carries three QColor values,
+  so 1M lines is several GB per tab. Levers the lane suggests: store
+  rows trimmed to content width, a compact attribute encoding, or a byte
+  budget alongside the line cap.
   **Layman:** Ants keeps a lot of your scrolled-back text in memory, and each character costs far more than it needs to — this is the plan to shrink that.
   Kind: perf.
   Source: user-request-2026-08-19.
@@ -7861,6 +9855,10 @@ larger than a one-loop fix. Tiered: 🔒 security/data-loss · ⚡ hardening
   Update (2026-07-09): span-cache half SHIPPED as ANTS-3452 (band-erase instead of wholesale wipe on every scrollback push; commit 69ec5885). This item stays OPEN for the remaining half — the resize BlockingQueuedConnection to the parse worker (terminalwidget.cpp:576,:3027) — whose reflow-cost sibling is ANTS-3456.
   Layman: Link detection re-scans every visible line on every frame, and resizing the window blocks the interface while it works.
   Kind: implement.
+  Performance pass (2026-09-11): the resize BlockingQueuedConnection
+  half is now also a freeze while the PTY read loop floods, because the
+  worker cannot serve the resize until the loop ends; filed as
+  ANTS-5026.
 
 - ✅ [ANTS-1782] **`setupClaudeMcpProviders()` is a 1000-line method registering ~45 byte-identical RC-delegate shims.**
   `mainwindow.cpp:3751` — add `registerRcDelegate(name, contract, &RemoteControl::cmdX)` to collapse them.
@@ -14442,6 +16440,11 @@ indie-review finding.
   **Layman:** The AI code-review sweep runs on a background thread now (so it no longer crashes), but the app window still freezes for however long the sweep takes — up to five minutes. Make it truly async so the UI stays responsive.
   Kind: enhancement.
   Source: indie-review-2026-06-11 (remotecontrol M1) — deferred from ANTS-2119 surgical sweep 2026-07-14..
+  Performance pass (2026-09-11): the join is worse than a freeze.
+  cmdIndieReviewDispatch's first step marshals to the GUI thread while
+  the GUI thread waits in wait(), so every call deadlocks permanently;
+  filed as ANTS-5024. audit_run's synchronous path has the same join
+  shape; filed as ANTS-5035.
 
 - 📋 [ANTS-3516] **Extract a shared ClaudeTranscriptTracker base for claudetasklist + claudebgtasks (ANTS-2119 transcript-watch dedup).**
   Spun out of ANTS-2119 (deferred-set; the reviewer explicitly said "defer-and-log rather than do mid-review"). claudetasklist.cpp and claudebgtasks.cpp duplicate rescan()/setTranscriptPath()/poll()/the watch-loss re-add block/the mtime short-circuit/the 16 MiB-cap seek-discard-partial-line preamble near-verbatim (claudetasklist.cpp:77-187 ≈ claudebgtasks.cpp:37-159), and the comments cross-reference each other by line number ("Same shape as claudebgtasks.cpp:91-95") — a maintenance smell that rots on any edit. A ClaudeTranscriptTracker<T> CRTP/template base (or a shared TranscriptWatch helper owning the QFileSystemWatcher + poll + cap-seek) would remove ~80 lines and the cross-file line-number coupling (dimension #6). ALSO fold in L1: parseTranscript's tail-liveness pass (claudebgtasks.cpp:394-410) and sweepLiveness() (:66-105) duplicate the same kStaleSecs=60 staleness predicate — extract a static isOutputStale(task, now) so the un-latch semantics stay in lockstep. Higher-risk than the surgical bundle (both trackers are live QObject file-watchers driving the UI chip), so it wants its own spec + cold-eyes + test pass before touching. Detail: .indie-review/reports-2026-06-11/claudetasklist.md L1/L2.
@@ -14577,6 +16580,11 @@ indie-review finding.
   ANTS-2132 section 5's concurrency hazard remains open for it -- as it does
   for audit_run / audit_poll / indie_review_dispatch, which are the
   separately-deferred freeze work.
+  Performance pass (2026-09-11), mainwindow-b lane: the three probes'
+  waits run one after another, so three stalled probes block the GUI for
+  6 s, not the 2 s the comment claims. waitForFinished's result and the
+  exit codes are never checked, so a git status that timed out is
+  returned as an empty section, which reads as a clean tree.
   **Layman:** One command can freeze the window for two seconds, and fixing it needs the command to be able to report an error first.
   Kind: fix.
   Source: in-session-2026-08-26 (ANTS-4682 residue).
@@ -15173,6 +17181,14 @@ under one guard). The deferrals below.
   tests/perf/bench_search_throughput.cpp reproduces the scan loop standalone
   rather than driving the widget's wiring, so it does not cover the debounce
   and was unaffected.
+  Performance pass (2026-09-11), terminal-widget-b lane, extending the
+  still-open parts: search is still one synchronous scan per debounced
+  query, seconds at the 1M cap, and its match list is unbounded; a query
+  of a single space matches every blank cell. loadHistory runs from
+  onVtBatch on each tab's first output, once per widget, with no size
+  cap on readAll. The lane doubts the O(N^2) prepend claim, since Qt 6's
+  QList::prepend is amortised constant, so re-measure before fixing that
+  part.
   Source: indie-review-2026-06-04.
   Lanes: terminalwidget.
 
@@ -64705,6 +66721,13 @@ partition (11 lanes) is documented in this fold-in for reuse.
   never proven to be the lock holder, so this removes Ants as a possible
   cause rather than a confirmed one. A hook script already installed
   keeps its old text until reinstalled from Settings.
+  Follow-up (2026-09-11): two lanes of the performance pass asked
+  whether GIT_OPTIONAL_LOCKS=0 makes git status slower, because status
+  can no longer save its refreshed index. Measured on this repo: git
+  status --porcelain took 11-12 ms with and without the variable, three
+  runs each. The cost applies only while the index holds stale stat
+  data, and any locking git command refreshes it. No change needed;
+  revisit if a slow status is reported.
   **Layman:** Ants checks your project's git state every two seconds in a way that can briefly lock it, so a commit made at that moment fails.
   Kind: fix.
   Source: in-session-2026-09-10.
@@ -73257,6 +75280,17 @@ contributors don't duplicate research.
   **Layman:** Four tests quietly lose memory when run with the leak checker on; the everyday checks have that detector switched off, so nobody has been seeing it.
   Kind: fix.
   Source: in-session-2026-08-06.
+  Cause found (2026-09-11), confirmed independently by the audit-engine
+  lane: AuditRunner::runAudit holds each tool QProcess in a shared_ptr,
+  and every connection and single-shot timer attached to that process
+  captures the same shared_ptr, so each QProcess keeps itself alive and
+  is never freed, on the success path too; its environment copy leaks
+  with it. The leaked process also keeps its timers, and the kill-grace
+  timer calls runAudit's stack-local finish helper, so a timer delivered
+  after runAudit returns touches freed memory. Fix: capture a raw or
+  weak pointer, disconnect after the loop, and kill and reap anything
+  still running. ProjectQuery.ConfinementAndList starts no process and
+  needs its own trace.
 
 - 📋 [ANTS-3848] **`tools/rc-namespace-scan.py` is a load-bearing precondition with no test.**
   Found 2026-08-06 during ANTS-3833 commit 2. The scanner is the gate the
@@ -73869,6 +75903,12 @@ contributors don't duplicate research.
     bundle. Per-suite batching is not measured yet.
   Next: rerun the per-suite measurement from a script file under a memory
   cap, then take the choice to the user.
+  Progress (2026-09-11): per-suite batching measured, from a script file under a 3 GB memory cap, with CI's ASan options, serial. Review subagents shared the machine, so absolute times are noisy; both runs shared that load.
+  - One process per test (today): 1086 s for the gtest entries, plus 28 s for the other 11 ctest entries. All passed.
+  - One process per suite: 584 s for the same gtest entries, no failures, peak RSS 846 MB in test_core. That is 46% less.
+  - CI's ASan step runs `ctest -j2 --timeout 300` with no label filter, so it runs the perf-labelled tests the pre-push ASan leg excludes with -LE 'e2e|perf'. Under ASan those cost 285 s.
+  - Two of them are correctness tests labelled perf only for their 2 MiB fixtures: RoadmapReadSeam.Ants3863Inv1ByteCapBoundsAnAllBlankRoadmap and RoadmapReadSeam.Ants3863Inv2BothProducersAgree. Each takes about 139 s under ASan, against 0.7 s and 0.2 s in Release measured the same day.
+  Options for the user: (a) add -LE 'e2e|perf' to the CI ASan step, matching the pre-push leg; about 300 s less serial, but no sanitizer run of those tests. (b) batch by suite in the sanitized build only; about 500 s less serial, needs a project-local discovery step, and a sanitized failure then names a suite. (c) both. Separately, the 200-700x ASan slowdown of the two RoadmapReadSeam tests deserves a profile.
   **Layman:** The memory-checking test run keeps getting slower as tests are added.
   Kind: perf.
   Source: in-session-2026-09-10.
