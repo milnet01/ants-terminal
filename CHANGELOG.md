@@ -40,6 +40,13 @@ for security-relevant changes.
 
 ### Fixed
 
+- **Audit runs and project queries no longer leak memory, and the everyday checks now catch new leaks** (ANTS-3847)
+  Each audit tool's process kept itself alive and was never freed, and
+  a refused project.read or project.list skipped its cleanup. Both are
+  fixed. The sanitized test runs before a push, in tools/ci-parity.sh
+  and on CI now check for leaks, so a new one fails the run instead of
+  going unnoticed.
+
 - **Closing Ants while a Claude tool call waits on the window no longer hangs** (ANTS-5113)
   At shutdown, a tool call already waiting for the window thread used
   to wait forever while the window waited for it. Shutdown now releases

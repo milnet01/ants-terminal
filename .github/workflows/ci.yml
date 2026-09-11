@@ -199,16 +199,13 @@ jobs:
           zsh  -n packaging/completions/_ants-terminal
           fish --no-execute packaging/completions/ants-terminal.fish
 
-  # Dedicated ASan + UBSan build. Smoke-tests the binary under sanitizers
-  # so initialization-path bugs (config load, command-line parsing, Qt setup)
-  # are caught on every push. Runtime coverage today is narrow — `--version`
-  # exits before GUI bring-up — but the compile itself validates that no code
-  # path is sanitizer-incompatible, and `QT_QPA_PLATFORM=offscreen` means we
-  # can broaden later without a display.
+  # Dedicated ASan + UBSan build. Runs the test suite (minus the perf label)
+  # under the sanitizers with leak detection on (ANTS-3847), then smoke-tests
+  # the binary's init paths (config load, command-line parsing, Qt setup).
   #
-  # detect_leaks=0: Qt initializes global singletons with bounded lifetimes
-  # that look like leaks to LSan on a fast-exit path. Re-enable once we
-  # have a real unit-test suite that does full app lifecycle.
+  # The smoke step alone keeps detect_leaks=0: `--version` and `--help` exit
+  # on a fast path where Qt's global singletons, which have bounded lifetimes,
+  # look like leaks to LSan.
   build-asan:
     name: Build and test (ASan/UBSan)
     runs-on: ubuntu-24.04
@@ -299,7 +296,11 @@ jobs:
       - name: Run audit-rule tests under sanitizers
         working-directory: build-asan
         env:
-          ASAN_OPTIONS: detect_leaks=0:halt_on_error=1
+          # ANTS-3847 — leak detection on, with the suppression file the debug
+          # preset loads. The whole sanitized suite passed this way on
+          # 2026-09-11; with it off, four leaks went unseen for weeks.
+          ASAN_OPTIONS: detect_leaks=1:halt_on_error=1
+          LSAN_OPTIONS: suppressions=${{ github.workspace }}/tests/lsan-suppressions.txt:print_suppressions=0
           UBSAN_OPTIONS: print_stacktrace=1:halt_on_error=1
         # ANTS-4533 — was serial: 922s for 3650 tests on a 4-vCPU runner,
         # dominated by per-process startup under ASan rather than by any one

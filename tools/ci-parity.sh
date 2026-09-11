@@ -216,7 +216,10 @@ asan_ctest() {
     # outer `timeout` wrapper: a killed ninja corrupts .ninja_deps, and a
     # local gate reports its own result without a cancelled/failed ambiguity.
     # ANTS-5014 — -LE perf skips the benchmarks, as ci.yml does.
-    ASAN_OPTIONS=detect_leaks=0:halt_on_error=1 \
+    # ANTS-3847 — leak detection on, with the debug preset's suppressions.
+    # The script cd'd to the repo root at the top, so $PWD is the root.
+    ASAN_OPTIONS=detect_leaks=1:halt_on_error=1 \
+    LSAN_OPTIONS="suppressions=$PWD/tests/lsan-suppressions.txt:print_suppressions=0" \
     UBSAN_OPTIONS=print_stacktrace=1:halt_on_error=1 \
     LC_ALL="$locale" ctest --test-dir "$asan_dir" -j2 --output-on-failure \
                            --timeout 300 -LE perf

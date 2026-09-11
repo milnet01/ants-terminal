@@ -75370,7 +75370,7 @@ contributors don't duplicate research.
   which is what proves it is a guard rather than an accident. The
   fixture is clang-tidy's real captured bytes. Suite 4233/4233.
 
-- 📋 [ANTS-3847] **Four audit/project-query tests leak under LeakSanitizer; `ctest --preset=debug` is not green.**
+- ✅ [ANTS-3847] **Four audit/project-query tests leak under LeakSanitizer; `ctest --preset=debug` is not green.**
   Measured 2026-08-06 while running the ASan leg for ANTS-3833 commit 2.
   `ctest --preset=debug` reports 4 failures out of 3273, all LeakSanitizer:
 
@@ -75452,6 +75452,14 @@ contributors don't duplicate research.
   gates — the pre-push sanitized suite, tools/ci-parity.sh's asan_ctest
   and the ci.yml build-asan test step — with the suppression file. The
   --version/--help smoke steps keep detect_leaks=0.
+  Resolved (2026-09-11): the four leaks are fixed (17fb6bd1, CI green),
+  and the whole sanitized suite then passed with detect_leaks=1. Per the
+  user's decision, leak detection is on in the pre-push sanitized suite,
+  tools/ci-parity.sh's asan_ctest and the ci.yml build-asan test step,
+  each loading tests/lsan-suppressions.txt; the --version/--help smoke
+  steps keep detect_leaks=0. ci_asan_budget INV-6 red at e1e4ff9f, green
+  after; full Release suite green. Not measured: the CI step's time with
+  leak detection on, against its 22-minute guard.
 
 - 📋 [ANTS-3848] **`tools/rc-namespace-scan.py` is a load-bearing precondition with no test.**
   Found 2026-08-06 during ANTS-3833 commit 2. The scanner is the gate the

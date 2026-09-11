@@ -311,7 +311,9 @@ else
             echo "          ('git push --no-verify' to override.)" >&2
             exit 1
         fi
-        if ! ASAN_OPTIONS=detect_leaks=0:halt_on_error=1 \
+        # ANTS-3847 — leak detection on, with the debug preset's suppressions.
+        if ! ASAN_OPTIONS=detect_leaks=1:halt_on_error=1 \
+             LSAN_OPTIONS="suppressions=$repo_root/tests/lsan-suppressions.txt:print_suppressions=0" \
              UBSAN_OPTIONS=print_stacktrace=1:halt_on_error=1 \
              LC_ALL=C.UTF-8 ctest --test-dir "$asan_dir" -j2 --output-on-failure \
                                   --timeout 300 -LE 'e2e|perf'; then
