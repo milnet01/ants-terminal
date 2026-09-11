@@ -99,6 +99,42 @@ TEST(CiAsanBudget, Inv5SanitizedCtestSkipsThePerfLabel) {
            "-LE 'e2e|perf'.";
 }
 
+// INV-6 — every sanitized suite run detects leaks (ANTS-3847). The three
+// carriers are sliced to the one command that runs the suite, so a flag on a
+// smoke step or elsewhere in the file cannot satisfy the check.
+TEST(CiAsanBudget, Inv6SanitizedSuiteDetectsLeaks) {
+    const auto checkLeaksOn = [](const std::string &where,
+                                 const std::string &cmd) {
+        ASSERT_FALSE(cmd.empty()) << where << ": sanitized ctest not found";
+        EXPECT_TRUE(has(cmd, "detect_leaks=1"))
+            << where << " runs the sanitized suite without leak detection:\n"
+            << cmd << "\n  The whole suite passed with detect_leaks=1 on "
+               "2026-09-11; with it off, four leaks went unseen for weeks "
+               "(ANTS-3847).";
+        EXPECT_FALSE(has(cmd, "detect_leaks=0"))
+            << where << " still turns leak detection off:\n" << cmd;
+        EXPECT_TRUE(has(cmd, "LSAN_OPTIONS") &&
+                    has(cmd, "tests/lsan-suppressions.txt"))
+            << where << " does not load tests/lsan-suppressions.txt:\n"
+            << cmd << "\n  Without it, Qt-internal allocations the file "
+               "suppresses fail the run.";
+    };
+
+    const std::string job = asanJob(ants_test::slurpFile(SRC_CI_WORKFLOW_PATH));
+    ASSERT_FALSE(job.empty());
+    checkLeaksOn("ci.yml build-asan", stepBlockContaining(job, "ctest "));
+
+    const std::string root = ANTS_SOURCE_DIR;
+    checkLeaksOn("tools/ci-parity.sh asan_ctest",
+                 ants_test::regionBetween(
+                     ants_test::slurpFile(root + "/tools/ci-parity.sh"),
+                     "asan_ctest() {", "\n}"));
+    checkLeaksOn("tools/hooks/pre-push",
+                 ants_test::regionBetween(
+                     ants_test::slurpFile(root + "/tools/hooks/pre-push"),
+                     "if ! ASAN_OPTIONS=", "; then"));
+}
+
 // INV-2 — an overrun exits non-zero, so the run is RED and not `cancelled`.
 TEST(CiAsanBudget, Inv2AnOverrunFailsRatherThanCancels) {
     const std::string job = asanJob(ants_test::slurpFile(SRC_CI_WORKFLOW_PATH));

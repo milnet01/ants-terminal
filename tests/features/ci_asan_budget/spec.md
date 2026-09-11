@@ -73,6 +73,14 @@ sanitizer. Measured 2026-09-11: the perf-labelled tests cost 285 s of a
 `perf` for their multi-megabyte fixtures; they still run in CI's Release job
 and under `ctest --preset=perf`.
 
+**INV-6 — every sanitized suite run detects leaks (ANTS-3847).** The
+`build-asan` job's `ctest` step, `tools/ci-parity.sh`'s `asan_ctest` and the
+pre-push hook's sanitized `ctest` each run with `detect_leaks=1` and load
+`tests/lsan-suppressions.txt` through `LSAN_OPTIONS`, as the `debug` preset
+does. With leaks off in all three, four leaking tests went unseen for weeks.
+Measured 2026-09-11: the whole sanitized suite passed with leaks on. The
+`--version`/`--help` smoke steps keep `detect_leaks=0` and are out of scope.
+
 ## What this check does NOT cover, stated so it is not mistaken for coverage
 
 - **It does not verify the budgets are big enough.** INV-4 checks ordering,
