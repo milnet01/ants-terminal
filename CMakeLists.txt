@@ -1550,6 +1550,10 @@ if(ANTS_TESTS)
                 # owning save site across every open MainWindow
                 # (source-scrape; no test constructs a MainWindow).
                 tests/features/multi_window_session/test_multi_window_session.cpp
+                # ANTS-5120 — closing a window must ask before ending the
+                # programs running in its tabs, like closing one tab does
+                # (source-scrape; no test constructs a MainWindow).
+                tests/features/window_close_confirm/test_window_close_confirm.cpp
                 tests/features/dialog_close_focus_return/test_dialog_close_focus_return.cpp
                 tests/features/dialog_pseudo_modal/test_dialog_pseudo_modal.cpp
                 tests/features/clipboard_redaction/test_clipboard_redaction.cpp

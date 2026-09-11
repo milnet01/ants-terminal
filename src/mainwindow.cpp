@@ -3001,6 +3001,63 @@ void MainWindow::showCloseTabConfirmDialog(QWidget *tabWidget,
     dlg->activateWindow();
 }
 
+// ANTS-5120 — the window-close counterpart of showCloseTabConfirmDialog:
+// the same non-modal pattern and the same "don't ask again" setting.
+void MainWindow::showCloseWindowConfirmDialog(const QString &processName) {
+    auto *dlg = new QDialog(this);
+    dlg->setAttribute(Qt::WA_DeleteOnClose);
+    dlg->setWindowTitle(tr("Close window?"));
+    dlg->setObjectName(QStringLiteral("confirmCloseWindowDialog"));
+    // dialogs.md D1–D4: theme chrome, resizable, size persisted, re-centred.
+    auto chrome = DialogChrome::install(dlg, QString(),
+                                        /*resizable=*/true,
+                                        QStringLiteral("CloseWindowConfirmDialog"));
+    auto *layout = new QVBoxLayout(chrome.contentArea);
+
+    auto *label = new QLabel(
+        tr("This window is running <b>%1</b>.<br>Close anyway? Every program "
+           "in its tabs will be terminated.")
+            .arg(processName.toHtmlEscaped()),
+        dlg);
+    label->setObjectName(QStringLiteral("confirmCloseWindowBody"));
+    label->setTextFormat(Qt::RichText);
+    label->setWordWrap(true);
+    label->setAccessibleName(tr("Confirm window close"));
+    label->setAccessibleDescription(label->text());
+
+    auto *dontAsk = new QCheckBox(
+        tr("Don't ask again (close silently in future)"), dlg);
+    dontAsk->setObjectName(QStringLiteral("confirmCloseWindowDontAsk"));
+
+    auto *btnRow = new QHBoxLayout;
+    btnRow->addStretch();
+    auto *cancelBtn = new QPushButton(tr("Cancel"), dlg);
+    cancelBtn->setObjectName(QStringLiteral("confirmCloseWindowCancelBtn"));
+    cancelBtn->setDefault(true);
+    cancelBtn->setAutoDefault(true);
+    auto *closeBtn = new QPushButton(tr("Close anyway"), dlg);
+    closeBtn->setObjectName(QStringLiteral("confirmCloseWindowProceedBtn"));
+    btnRow->addWidget(cancelBtn);
+    btnRow->addWidget(closeBtn);
+
+    layout->addWidget(label);
+    layout->addWidget(dontAsk);
+    layout->addLayout(btnRow);
+
+    connect(cancelBtn, &QPushButton::clicked, dlg, &QDialog::close);
+    connect(closeBtn, &QPushButton::clicked, this, [this, dlg, dontAsk]() {
+        if (dontAsk->isChecked())
+            m_config.setConfirmCloseWithProcesses(false);
+        dlg->close();
+        m_closeConfirmed = true;
+        close();
+    });
+
+    dlg->show();
+    dlg->raise();
+    dlg->activateWindow();
+}
+
 void MainWindow::closeCurrentTab() {
     closeTab(m_tabWidget->currentIndex());
 }
@@ -6025,6 +6082,22 @@ bool MainWindow::eventFilter(QObject *watched, QEvent *event) {
 }
 
 void MainWindow::closeEvent(QCloseEvent *event) {
+    // ANTS-5120 — ask first, as closing one tab does, when a program other
+    // than a shell runs in any pane of this window. The dialog is
+    // non-modal, so this close is refused and Close anyway closes again.
+    if (!m_closeConfirmed && m_config.confirmCloseWithProcesses()) {
+        for (TerminalWidget *t : liveTerminals()) {
+            const QString running =
+                t->shellPid() > 0 ? firstNonShellDescendant(t->shellPid()) : QString();
+            if (!running.isEmpty()) {
+                event->ignore();
+                showCloseWindowConfirmDialog(running);
+                return;
+            }
+        }
+    }
+    m_closeConfirmed = false;
+
     // ANTS-1159 — stop the periodic session-save timer first so
     // a tick landing mid-shutdown can't re-enter the save path
     // and race the explicit shutdown save below.

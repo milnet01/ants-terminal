@@ -91,6 +91,8 @@ private slots:
     void performTabClose(int index);
     void showCloseTabConfirmDialog(QWidget *tabWidget,
                                    const QString &processName);
+    // ANTS-5120 — asks before a window close ends a running program.
+    void showCloseWindowConfirmDialog(const QString &processName);
     void onTabChanged(int index);
 
     // Split pane
@@ -261,6 +263,9 @@ private:
     void saveProcessTabOrder(QStringList tabOrder, int activeIndex) const;
     // ANTS-5118 — another visible MainWindow stays open after this closes.
     bool anotherWindowStaysOpen() const;
+    // ANTS-5120 — set by the window-close dialog's Close anyway, so the
+    // re-close it triggers does not ask again.
+    bool m_closeConfirmed = false;
 
     TitleBar *m_titleBar = nullptr;
     OpaqueMenuBar *m_menuBar = nullptr;
