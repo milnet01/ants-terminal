@@ -8700,6 +8700,13 @@ extends an existing item, that item carries it instead.
   collecting every match, and build co_change_family's bounded min-heap
   as ANTS-3368 section 4 states instead of keeping every site and sorting
   at the end.
+  Deferred (2026-09-11): needs a spec decision before a fix. Switching
+  count_only / files_only to rg's own counting changes what they count:
+  workspace_search de-duplicates identical lines and caps bytes, and
+  ANTS-3716 and ANTS-3537 pin that behaviour. Decide whether those
+  counts may change meaning, or keep the match parse and only stream it.
+  The co_change_family bounded heap (ANTS-3368 section 4) is independent
+  of that decision.
   **Layman:** Some code searches still do more work and hold more memory than they need to, though no longer without limit.
   Kind: perf.
   Source: in-session-2026-09-11 (ANTS-5052 remainder).
