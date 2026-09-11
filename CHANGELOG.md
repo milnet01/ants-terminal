@@ -40,6 +40,15 @@ for security-relevant changes.
 
 ### Fixed
 
+- **An audit of recent changes checks the whole project when git fails, instead of reporting a clean result.** (ANTS-5043)
+  This covers a repository with no branch called main, a mistyped tag,
+  and a git call that times out.
+
+- **Dialogs remember their size when you close them with the close button or Esc.** (ANTS-5037)
+
+- **Filtering or sorting audit results no longer lowers how serious findings look.** (ANTS-5041)
+  A line that two tools both flag is now ranked higher, as intended.
+
 - **Scrolling back through a command's output stays smooth even when that output is huge.** (ANTS-5027)
   The command name pinned at the top while you scroll is now built from
   only as much text as fits, instead of rereading the whole output on

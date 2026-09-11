@@ -6441,7 +6441,7 @@ extends an existing item, that item carries it instead.
   Source: code-quality-review-2026-09-11 perf pass (lane dialog-chrome-theme).
   Lanes: dialogs, mainwindow.
 
-- 📋 [ANTS-5037] **Dialogs closed with the title-bar close button or Esc never save their size, against dialogs.md D3.**
+- ✅ [ANTS-5037] **Dialogs closed with the title-bar close button or Esc never save their size, against dialogs.md D3.**
   ChromeGuard saves the size on QEvent::Close only. The chrome's close
   button and Esc call QDialog::reject. On Qt 6.2, done() hides without
   a close event; on later Qt the close event passes through a temporary
@@ -6453,6 +6453,11 @@ extends an existing item, that item carries it instead.
   close button, and reopening it.
   Fix: save on QDialog::finished or on QEvent::Hide.
   Related: ANTS-1734 (dialogs.md D2-D4 conformance).
+  Resolved (2026-09-11): ChromeGuard saves on Hide as well as Close.
+  The red run confirmed the Qt behaviour: reject() and accept() left
+  the stored size unset.
+  Test: dialog_chrome_affordances INV-9..11, red before and green
+  after.
   **Layman:** Resizing a dialog and closing it with the X button doesn't remember the new size.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lane dialog-chrome-theme).
@@ -6508,7 +6513,7 @@ extends an existing item, that item carries it instead.
   Source: code-quality-review-2026-09-11 perf pass (lanes audit-dialog-a, audit-dialog-b).
   Lanes: audit, threading.
 
-- 📋 [ANTS-5041] **Every audit filter keystroke lowers noisy findings' severity again, because the corroboration shift is re-applied per render.**
+- ✅ [ANTS-5041] **Every audit filter keystroke lowers noisy findings' severity again, because the corroboration shift is re-applied per render.**
   renderResults calls AuditEngine::applyCorroborationShift on every
   completed result each time it runs, and it runs on every filter
   keystroke, pill toggle, sort toggle and AI verdict. The shift edits
@@ -6520,6 +6525,11 @@ extends an existing item, that item carries it instead.
   promotion (two distinct check ids on one line) cannot fire.
   Fix: apply the shift once per run, over the combined list from all
   checks, in the run-completion path rather than in renderResults.
+  Resolved (2026-09-11): applyCorroborationShiftAcross shifts every
+  check's findings as one list; cancelAudit and runNextCheck call it
+  once before the first render, and renderResults no longer shifts.
+  Test: audit_corroboration_shift INV-4..6b, red before and green
+  after; a mutation probe killed all four call-site routes.
   **Layman:** Typing in the audit filter box quietly downgrades how serious some findings look.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lane audit-dialog-b).
@@ -6549,7 +6559,7 @@ extends an existing item, that item carries it instead.
   Source: code-quality-review-2026-09-11 perf pass (lanes audit-dialog-b, review-engines).
   Lanes: audit, review, security.
 
-- 📋 [ANTS-5043] **audit_run's narrowed scopes read a failed or timed-out git call as no changes and report a clean result.**
+- ✅ [ANTS-5043] **audit_run's narrowed scopes read a failed or timed-out git call as no changes and report a clean result.**
   AuditScope's git runners return an empty string on a non-zero exit
   or a timeout, and resolveChangedFiles then sets noChanges when the
   file list is empty, so runAudit returns ok with no_changes and runs
@@ -6564,6 +6574,12 @@ extends an existing item, that item carries it instead.
   Fix: return success separately from output, demote to a full scan
   with a reason such as git_failed or ref_unresolved, and check that
   the base ref exists before diffing.
+  Resolved (2026-09-11): resolveChangedFiles checks the base commit
+  resolves (ref_unresolved otherwise), and runGit / runGitRaw report
+  success so a failed diff or status demotes with git_failed. Not
+  done: default-branch detection for branch-diff.
+  Test: audit_run_since_last_run INV-10..13, red before and green
+  after. A git status timeout is not test-covered.
   **Layman:** A code audit limited to recent changes can wrongly report 'nothing changed' when git has a problem.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lane audit-engine).
@@ -8430,6 +8446,22 @@ extends an existing item, that item carries it instead.
   Kind: fix.
   Source: in-session-2026-09-11 (ANTS-5120 fix).
   Lanes: mainwindow, dialogs.
+
+- 📋 [ANTS-5124] **A push killed mid-hook leaves the Qt 6.2 guard's container compiling on its own, holding memory after the gate is gone.**
+  Seen 2026-09-11. A background `git push` was stopped for low memory
+  while tools/hooks/pre-push was in tools/qt62-guard.sh's container
+  build. The push process died, but the podman container kept running
+  ninja and cc1plus against the named build volume. Stopping it by hand
+  kills ninja mid-build, which is the tree-corruption case CLAUDE.md
+  warns about, so the only safe move was to wait for it.
+  Fix direction: have qt62-guard.sh trap INT, TERM and HUP and stop the
+  container, and mark the volume the way build-asan's
+  .ants-prepush-interrupted marker does, so the next run heals or skips
+  it instead of trusting it.
+  **Layman:** If a code upload is interrupted, a background compatibility build keeps running and using memory.
+  Kind: fix.
+  Source: in-session-2026-09-11 (pre-push killed for low memory).
+  Lanes: tooling, ci.
 
 ## Memory-efficiency sweep (user request 2026-08-19)
 
