@@ -415,6 +415,39 @@ TEST(IndieReviewDispatch, G18_PlaintextPromptWarningKey) {
            "from plaintextPromptWarning";
 }
 
+// G-19 (ANTS-5024) — the provider runs cmdIndieReviewDispatch on a worker and
+// joins it with QThread::wait() on the GUI thread. A GUI-thread marshal from
+// that worker is a blocking queued call the parked GUI thread never serves, so
+// every call hung Ants for good. The handler must therefore reach no marshal,
+// and the provider must pass in the root it resolved on the GUI thread.
+// Source-grep: reproducing the hang needs a live MainWindow. Comments are
+// stripped so an explanation naming a banned call cannot fail the test.
+TEST(IndieReviewDispatch, G19_WorkerNeverMarshalsToGuiThread) {
+    const std::string handler = ants_test::stripComments(
+        ants_test::slurpFunctionBody(
+            ants_test::slurpRemoteControl(),
+            "RemoteControl::cmdIndieReviewDispatch"));
+    ASSERT_FALSE(handler.empty());
+    for (const char *marshal : {"resolveRootCanonical(",
+                                "resolveCallerCwdRoot(",
+                                "onGuiThread(",
+                                "m_main->"}) {
+        EXPECT_EQ(handler.find(marshal), std::string::npos)
+            << "G-19: cmdIndieReviewDispatch runs on a worker the GUI thread "
+               "joins, so it must not call " << marshal;
+    }
+
+    const std::string provider = ants_test::regionBetween(
+        ants_test::stripComments(ants_test::slurpFile(kMainPath)),
+        "registerToolProvider(\"indie_review_dispatch\"",
+        "registerToolProvider(");
+    ASSERT_FALSE(provider.empty());
+    EXPECT_NE(provider.find("cmdIndieReviewDispatch(args, canon)"),
+              std::string::npos)
+        << "G-19: the provider must hand the worker the root it already "
+           "resolved on the GUI thread";
+}
+
 // P-1 — probe returns 0 at rest.
 TEST(IndieReviewDispatch, P1_ProbeZeroAtRest) {
     EXPECT_EQ(IndieReviewDispatcher::inFlightCountForTest(), 0);
