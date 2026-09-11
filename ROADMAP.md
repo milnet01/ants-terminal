@@ -6894,7 +6894,7 @@ extends an existing item, that item carries it instead.
   Source: code-quality-review-2026-09-11 perf pass (lane review-engines).
   Lanes: review, threading.
 
-- 📋 [ANTS-5057] **The audit dialog's Debt scan runs the whole sweep on the GUI thread, and again after every fix or allow click.**
+- ✅ [ANTS-5057] **The audit dialog's Debt scan runs the whole sweep on the GUI thread, and again after every fix or allow click.**
   AuditDialog::debtScan calls DebtSweepEngine::scanAll synchronously
   after one processEvents. The sweep reads the whole project tree into
   one string, scans that string once per comment token, runs one git
@@ -6904,6 +6904,13 @@ extends an existing item, that item carries it instead.
   measured. The MCP path was moved off the GUI thread; this one was not.
   Fix: run the scan on a worker and render on completion, and memoise
   the token lookups per run.
+  Resolved (2026-09-11): requestDebtScan() runs scanAll in a
+  QThread::create worker and filters, renders and reports on the GUI
+  thread when it finishes; one scan at a time, a request during one
+  served by one more afterwards; fix and allow drop the row at once and
+  re-scan in the background. detectStaleTypeComments memoises
+  existsInSource per token per run. Test:
+  tests/features/audit_debt_scan_async.
   **Layman:** The technical-debt tab in the audit window freezes Ants while it scans, every time you click.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lanes review-engines, audit-dialog-a).

@@ -42,6 +42,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **The audit window's Debt Sweep tab scans in the background, so the window stays usable while it runs and after every fix or allow click** (ANTS-5057)
+
 - **The audit window no longer freezes after a run while it looks up who last changed each flagged line; it asks git once per file in the background and fills the names in when they arrive** (ANTS-5040)
 
 - **Saving roadmap changes no longer re-adds up the whole change history for every row it writes, and a history size that cannot be measured now refuses the write instead of switching the size limit off** (ANTS-5046)
