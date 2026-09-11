@@ -1039,7 +1039,12 @@ bool RoadmapStore::relateCrossProject(const QString &type, qint64 srcPk,
     return true;
 }
 
-qint64 RoadmapStore::historyBytes() const {
+std::optional<qint64> RoadmapStore::historyBytes() const {
+    // ANTS-5046 — begin()'s write lock means no other connection can change
+    // `history`, so the first sum in a transaction serves the rest of it.
+    if (m_inTransaction && m_historyTotal)
+        return m_historyTotal;
+    ++m_historyMeasures;
     // The measure is pinned to the three text columns rather than dbstat, which
     // needs SQLITE_ENABLE_DBSTAT_VTAB — a build flag, and the schema deliberately
     // depends on none.
@@ -1055,9 +1060,15 @@ qint64 RoadmapStore::historyBytes() const {
             "SELECT COALESCE(SUM(length(CAST(field AS BLOB)) "
             "+ length(CAST(coalesce(old_value,'') AS BLOB)) "
             "+ length(CAST(coalesce(new_value,'') AS BLOB))), 0) FROM history")) &&
-        q.next())
-        return q.value(0).toLongLong();
-    return 0;
+        q.next()) {
+        const qint64 total = q.value(0).toLongLong();
+        if (m_inTransaction)
+            m_historyTotal = total;
+        return total;
+    }
+    // ANTS-5046 — never 0: a failed sum read as an empty history turned the
+    // cap off.
+    return std::nullopt;
 }
 
 bool RoadmapStore::appendHistory(qint64 itemPk, const QString &changedAt, int seq,
@@ -1076,9 +1087,12 @@ bool RoadmapStore::appendHistory(qint64 itemPk, const QString &changedAt, int se
     const qint64 incoming = field.toUtf8().size() + oldValue.toUtf8().size()
                             + newValue.toUtf8().size();
     if (historyWouldExceedCap(incoming)) {
+        // ANTS-5046 — the predicate fails closed, so say which refusal this is.
         if (error)
-            *error = QStringLiteral("history cap reached (%1 bytes); revision refused")
-                         .arg(m_historyCap);
+            *error = historyBytes()
+                ? QStringLiteral("history cap reached (%1 bytes); revision refused")
+                      .arg(m_historyCap)
+                : QStringLiteral("history size could not be measured; revision refused");
         return false;
     }
 
@@ -1099,6 +1113,8 @@ bool RoadmapStore::appendHistory(qint64 itemPk, const QString &changedAt, int se
             *error = lastErr(q);
         return false;
     }
+    if (m_historyTotal)
+        *m_historyTotal += incoming;   // ANTS-5046 — the running total
     return true;
 }
 
@@ -1117,6 +1133,7 @@ bool RoadmapStore::begin(QString *error) {
     if (!exec(m_db, QStringLiteral("BEGIN IMMEDIATE"), error))
         return false;
     m_inTransaction = true;
+    m_historyTotal.reset();   // ANTS-5046 — measured afresh under this lock
     // ANTS-4628 — the gate scope is per transaction, so it starts empty here.
     // Cleared on BEGIN rather than on COMMIT/ROLLBACK because the reader runs
     // before either of those; see itemsWrittenSinceBegin().
@@ -1139,6 +1156,7 @@ bool RoadmapStore::commit(QString *error) {
     if (!exec(m_db, QStringLiteral("COMMIT"), error))
         return false;
     m_inTransaction = false;
+    m_historyTotal.reset();   // ANTS-5046 — the lock that made it valid is gone
     return true;
 }
 
@@ -1154,6 +1172,7 @@ bool RoadmapStore::rollback(QString *error) {
     // set there would deny the caller any way back to a usable connection.
     const bool ok = exec(m_db, QStringLiteral("ROLLBACK"), error);
     m_inTransaction = false;
+    m_historyTotal.reset();   // ANTS-5046 — the rolled-back rows are gone
     return ok;
 }
 
@@ -1456,6 +1475,8 @@ bool RoadmapStore::deregisterProject(qint64 projectId,
     const bool ownTransaction = !m_inTransaction;
     if (ownTransaction && !begin(error))
         return false;
+    // ANTS-5046 — the history DELETE below bypasses appendHistory().
+    m_historyTotal.reset();
     // Connection-scoped and reset below, because a leaked deferral would turn
     // every later write's FK enforcement into a commit-time surprise.
     if (!exec(m_db, QStringLiteral("PRAGMA defer_foreign_keys = ON"), error)) {

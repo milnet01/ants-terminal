@@ -1023,3 +1023,185 @@ TEST(RoadmapStoreSchema, Ants4503CapPredicateUsesTheSameUnit) {
                                        0, QStringLiteral("kind"), oldV, oldV, &err))
         << "the write must refuse on the same unit the predicate answered on";
 }
+
+// ANTS-5046 — RoadmapStore::historyWouldExceedCap() calls historyBytes(),
+// which sums the byte length of every history row, and appendHistory() calls
+// it for EACH row it writes; the migration loader checks a second time after
+// a refusal. So one migration costs (rows written × total history bytes),
+// inside BEGIN IMMEDIATE on the machine-global store, on the single MCP
+// worker. ANTS-3756 § 4 says the writer keeps a running total rather than
+// re-summing per write.
+//
+// historyMeasureCount() is the observable — it counts calls to
+// historyBytes(). Under a running total, one begin()...commit() spanning N
+// appendHistory() calls measures the table AT MOST ONCE (the first call
+// establishes the total; every later append only adds to it, never re-sums).
+// Contract: spec.md INV-26 leg one.
+TEST(RoadmapStoreSchema, Ants5046RunningTotalMeasuresAtMostOncePerTransaction) {
+    Fixture f(1024 * 1024);  // generous cap: nothing here is meant to refuse
+    QString err;
+    ASSERT_TRUE(f.store.open(&err)) << err.toStdString();
+    const qint64 p  = f.project(QStringLiteral("alpha"));
+    const qint64 s  = f.section(p);
+    const qint64 pk = f.item(p, s, QStringLiteral("A-1"), 0);
+
+    ASSERT_TRUE(f.store.begin(&err)) << err.toStdString();
+    const int before = f.store.historyMeasureCount();
+    const int kRows = 5;
+    for (int i = 0; i < kRows; ++i) {
+        ASSERT_TRUE(f.store.appendHistory(pk, QStringLiteral("2026-09-11T00:00:00Z"), i,
+                                          QStringLiteral("status"), QStringLiteral("planned"),
+                                          QStringLiteral("shipped"), &err))
+            << "revision " << i << ": " << err.toStdString();
+    }
+    const int after = f.store.historyMeasureCount();
+    ASSERT_TRUE(f.store.commit(&err)) << err.toStdString();
+
+    EXPECT_LE(after - before, 1)
+        << "ANTS-3756 § 4: a running total measures once per transaction, not "
+           "once per row — " << kRows
+        << " appendHistory() calls inside one begin()...commit() raised "
+           "historyMeasureCount() by "
+        << (after - before) << ", expected at most 1";
+}
+
+// ANTS-5046 GUARD — already true today (historyBytes() re-sums the live
+// table on every call, so its VALUE is always exact — only its cost is
+// wrong). Whatever measurement strategy the fix uses, this must keep holding:
+// the total across a transaction must stay exact — checked with a multi-byte
+// UTF-8 value (an em dash) so a running total that drifted by counting
+// characters or UTF-16 units instead of bytes would fail this too — and a
+// write landing exactly on the cap is still refused. Contract: spec.md
+// INV-26 leg two.
+TEST(RoadmapStoreSchema, Ants5046RunningTotalStaysExactAndCapStillBinds) {
+    const QString field = QStringLiteral("status");           // 6 bytes
+    const QString oldV  = QString::fromUtf8("\xE2\x80\x94");  // U+2014 EM DASH, 3 bytes
+    const QString newV  = QStringLiteral("shipped");          // 7 bytes
+    const qint64 perRow = field.toUtf8().size() + oldV.toUtf8().size() + newV.toUtf8().size();
+    ASSERT_EQ(perRow, 16);
+
+    const int kRows = 5;
+    // Cap fits exactly kRows rows and refuses the (kRows+1)th.
+    Fixture f(perRow * kRows);
+    QString err;
+    ASSERT_TRUE(f.store.open(&err)) << err.toStdString();
+    const qint64 p  = f.project(QStringLiteral("alpha"));
+    const qint64 s  = f.section(p);
+    const qint64 pk = f.item(p, s, QStringLiteral("A-1"), 0);
+
+    ASSERT_TRUE(f.store.begin(&err)) << err.toStdString();
+    for (int i = 0; i < kRows; ++i) {
+        ASSERT_TRUE(f.store.appendHistory(pk, QStringLiteral("2026-09-11T00:00:00Z"), i,
+                                          field, oldV, newV, &err))
+            << "revision " << i << ": " << err.toStdString();
+    }
+    EXPECT_EQ(f.store.historyBytes(), perRow * kRows)
+        << "the total must equal the exact UTF-8 byte sum of what was "
+           "written, mid-transaction";
+
+    err.clear();
+    EXPECT_FALSE(f.store.appendHistory(pk, QStringLiteral("2026-09-11T00:00:00Z"), kRows,
+                                       field, oldV, newV, &err))
+        << "a write landing exactly on the cap must still be refused";
+    EXPECT_FALSE(err.isEmpty());
+
+    ASSERT_TRUE(f.store.commit(&err)) << err.toStdString();
+    EXPECT_EQ(f.store.historyBytes(), perRow * kRows)
+        << "the total after commit must still be exact — the refused row must "
+           "not have been added to it";
+}
+
+// ANTS-5046 GUARD — deregisterProject() deletes a project's history rows
+// inside the CALLER's open transaction when one is open. A write that only
+// fits once those rows are gone must be judged against the post-delete
+// total. Already true today (historyBytes() re-measures live on every call,
+// so the delete is always visible to the next check); the fix must keep it
+// true — a running-total cache the delete does not know to drop or adjust
+// would keep refusing a write that now fits. Contract: spec.md INV-26 leg
+// three.
+TEST(RoadmapStoreSchema, Ants5046DeregisterInsideTransactionUnblocksTheCap) {
+    const QString field = QStringLiteral("status");
+    const QString oldV  = QStringLiteral("planned");
+    const QString newV  = QStringLiteral("shipped");
+    const qint64 perRow = field.toUtf8().size() + oldV.toUtf8().size()
+                          + newV.toUtf8().size();  // 20
+
+    Fixture f(perRow);  // room for exactly one row
+    QString err;
+    ASSERT_TRUE(f.store.open(&err)) << err.toStdString();
+
+    const qint64 pOld  = f.project(QStringLiteral("old"));
+    const qint64 sOld  = f.section(pOld);
+    const qint64 pkOld = f.item(pOld, sOld, QStringLiteral("O-1"), 0);
+    ASSERT_TRUE(f.store.appendHistory(pkOld, QStringLiteral("2026-09-11T00:00:00Z"), 0,
+                                      field, oldV, newV, &err))
+        << "fills the cap exactly: " << err.toStdString();
+
+    const qint64 pNew  = f.project(QStringLiteral("new"));
+    const qint64 sNew  = f.section(pNew);
+    const qint64 pkNew = f.item(pNew, sNew, QStringLiteral("N-1"), 0);
+
+    ASSERT_TRUE(f.store.begin(&err)) << err.toStdString();
+    err.clear();
+    EXPECT_FALSE(f.store.appendHistory(pkNew, QStringLiteral("2026-09-11T00:00:00Z"), 0,
+                                       field, oldV, newV, &err))
+        << "the cap is already full from the old project's row";
+
+    RoadmapStore::DeregisterCounts counts;
+    err.clear();
+    ASSERT_TRUE(f.store.deregisterProject(pOld, &counts, &err)) << err.toStdString();
+    EXPECT_EQ(counts.history, 1);
+
+    err.clear();
+    EXPECT_TRUE(f.store.appendHistory(pkNew, QStringLiteral("2026-09-11T00:00:00Z"), 0,
+                                      field, oldV, newV, &err))
+        << "the old project's history row is gone; the same write must now "
+           "fit: " << err.toStdString();
+    ASSERT_TRUE(f.store.commit(&err)) << err.toStdString();
+}
+
+// ANTS-5046 RED — a failed measurement is not "no history": historyBytes()
+// must return std::nullopt, never an engaged 0, and historyWouldExceedCap()
+// must fail CLOSED (refuse) rather than read nullopt as "nothing to compare
+// against, so admit the write". Forces a REAL failure: no transaction is
+// open on the primary connection, so a second connection on the same file
+// can drop the `history` table out from under it and the SUM query then
+// fails for real — not a mock, the same shape of failure a corrupted or
+// mid-migration store would produce. Contract: spec.md INV-26 leg four.
+TEST(RoadmapStoreSchema, Ants5046FailedMeasurementIsNotEmpty) {
+    Fixture f(1024 * 1024);
+    QString err;
+    ASSERT_TRUE(f.store.open(&err)) << err.toStdString();
+    const qint64 p  = f.project(QStringLiteral("alpha"));
+    const qint64 s  = f.section(p);
+    const qint64 pk = f.item(p, s, QStringLiteral("A-1"), 0);
+    ASSERT_TRUE(f.store.appendHistory(pk, QStringLiteral("2026-09-11T00:00:00Z"), 0,
+                                      QStringLiteral("status"), QStringLiteral("planned"),
+                                      QStringLiteral("shipped"), &err))
+        << err.toStdString();
+
+    ASSERT_TRUE(f.store.historyBytes().has_value())
+        << "sanity: the measure must succeed before it is made to fail for real";
+
+    {
+        const QString connName = QStringLiteral("ants5046-drop-history");
+        QSqlDatabase db = QSqlDatabase::addDatabase(QStringLiteral("QSQLITE"), connName);
+        db.setDatabaseName(f.dir.path() + QStringLiteral("/roadmap.sqlite"));
+        ASSERT_TRUE(db.open()) << db.lastError().text().toStdString();
+        QSqlQuery drop(db);
+        ASSERT_TRUE(drop.exec(QStringLiteral("DROP TABLE history")))
+            << drop.lastError().text().toStdString();
+        db.close();
+    }
+    QSqlDatabase::removeDatabase(QStringLiteral("ants5046-drop-history"));
+
+    const auto measured = f.store.historyBytes();
+    EXPECT_FALSE(measured.has_value())
+        << "a SUM over a table that no longer exists is a FAILED measurement, "
+           "not an empty history; got "
+        << (measured ? *measured : -1) << " instead of nullopt";
+
+    EXPECT_TRUE(f.store.historyWouldExceedCap(1))
+        << "ANTS-5046: a failed measurement must fail CLOSED (refuse), not "
+           "read as an empty history that turns the cap off";
+}

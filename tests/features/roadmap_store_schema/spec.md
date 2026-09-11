@@ -9,6 +9,12 @@ three of which mean something else — so they are filed here under ANTS-3756's
 next free numbers, and the test names use those. Spec:
 [`docs/specs/ANTS-3765-roadmap-migration-load.md`](../../../docs/specs/ANTS-3765-roadmap-migration-load.md)
 
+INV-26 arrives with **ANTS-5046** — a roadmap item, not a spec, so it has no
+parent-spec INV number to borrow and takes this directory's next free one.
+ANTS-3756 § 4 already states the running-total rule INV-14's `historyBytes()`
+/ `historyWouldExceedCap()` were meant to satisfy; ANTS-5046 is the review-fix
+that makes them actually satisfy it.
+
 ## What this locks
 
 **INV-6 — `relates-to` is stored once, normalised on stable identity.** The test
@@ -108,6 +114,25 @@ What distinguishes them is which layer spoke — a reported misuse, or a
 constraint violation the caller must now parse — so the error text is where the
 invariant is observable.
 
+**INV-26 (ANTS-5046) — history measurement is a running total inside one
+transaction, and a failed measurement fails CLOSED.** Four legs.
+First: inside one `begin()`…`commit()`, N `appendHistory()` calls raise
+`historyMeasureCount()` by **at most 1** — ANTS-3756 § 4's running-total rule,
+restated as a call-count observable rather than as a wall-clock cost argument,
+since timing is not deterministic enough to assert on. Second: whatever
+strategy produces that count, the total itself stays **exact** across the
+transaction — asserted with a multi-byte UTF-8 value (an em dash), so a
+running total that drifted by counting characters or UTF-16 units instead of
+bytes shows up here too — and a write landing exactly on the cap is still
+refused. Third: `deregisterProject()`'s delete, run **inside** a caller's open
+transaction, unblocks a write that only fits once the deleted project's rows
+are gone — a cache the delete does not know to drop would keep refusing it.
+Fourth: `historyBytes()` returns `std::nullopt` on a real failed measurement
+(forced by dropping the `history` table out from under the connection through
+a second one on the same file), never an engaged `0`, and
+`historyWouldExceedCap()` reads that `nullopt` as "refuse" — never as "nothing
+to compare against, so admit the write".
+
 ## Must fail first
 
 Verified by mutating the implementation per each *Breaks when* clause:
@@ -139,3 +164,16 @@ Verified by mutating the implementation per each *Breaks when* clause:
   failed: element.item_pk` in place of the two API refusals.
 - `unfileItem()` deleting by the item's **section** rather than by the item →
   INV-25's third leg finds the section's narration row gone with it.
+- `historyWouldExceedCap()` calling `historyBytes()` on every `appendHistory()`
+  row instead of a running total kept for the open transaction — the shipped
+  shape — → INV-26 leg one finds `historyMeasureCount()` rising by one per row
+  instead of by at most one.
+- a running-total cache, once one exists, not dropped on `commit()` /
+  `rollback()` or not adjusted by `deregisterProject()`'s delete → INV-26 leg
+  three's write is refused even after the blocking project's history rows are
+  gone, because the cache still reports the pre-delete total.
+- `historyBytes()` returning an engaged `0` when its SUM query fails — the
+  shipped shape — → INV-26 leg four reads a real measurement failure (the
+  `history` table dropped out from under the connection) as `0`, not
+  `nullopt`, and `historyWouldExceedCap()` then reads the failure as "nothing
+  to compare against" and admits the write.

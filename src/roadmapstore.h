@@ -321,7 +321,14 @@ public:
     bool appendHistory(qint64 itemPk, const QString &changedAt, int seq,
                        const QString &field, const QString &oldValue,
                        const QString &newValue, QString *error = nullptr);
-    qint64 historyBytes() const;
+    // ANTS-5046 — nullopt when the measure fails. Inside a transaction opened
+    // by begin() the table is summed once and appendHistory() adds to that
+    // total (ANTS-3756 § 4); outside one every call sums, since another
+    // connection may have written.
+    std::optional<qint64> historyBytes() const;
+    // ANTS-5046 — how many times the history table has been summed: the
+    // observable for ANTS-3756 § 4's running-total rule.
+    int historyMeasureCount() const { return m_historyMeasures; }
     qint64 historyCapBytes() const { return m_historyCap; }
 
     // ANTS-3822 § 2.3.1 — would writing `bytes` more history bytes cross the
@@ -343,7 +350,9 @@ public:
     // old_value be refused while a shorter later row for the same item still
     // fits — leaving a revision holding some of its fields and claiming all.
     bool historyWouldExceedCap(qint64 bytes) const {
-        return historyBytes() + bytes > m_historyCap;
+        // ANTS-5046 — fails closed: an unmeasured history is not an empty one.
+        const auto stored = historyBytes();
+        return !stored || *stored + bytes > m_historyCap;
     }
 
     // --- ANTS-3765 § 2.4 — what the migration load half needs -----------------
@@ -956,6 +965,11 @@ private:
     bool m_inTransaction = false;
     // ANTS-4628 — see itemsWrittenSinceBegin().
     QSet<qint64> m_writtenItems;
+    // ANTS-5046 — see historyMeasureCount() and historyBytes(). The total is
+    // held only while begin()'s write lock is, and dropped by begin(),
+    // commit(), rollback() and any delete that bypasses appendHistory().
+    mutable int m_historyMeasures = 0;
+    mutable std::optional<qint64> m_historyTotal;
 };
 
 // ANTS-3796 § 2.2 — the section sort key, (position, slug). A free function
