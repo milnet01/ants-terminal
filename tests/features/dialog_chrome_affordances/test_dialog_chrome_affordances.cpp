@@ -13,6 +13,7 @@
 #include <QSize>
 #include <QSizeGrip>
 
+#include "../../_support/srcgrep.h"
 #include "../../_support/xdg_guard.h"
 
 namespace {
@@ -91,4 +92,59 @@ TEST(DialogChromeAffordances, INV5_ConfigSizeRoundTrip) {
     // Invalid / empty sizes are not stored.
     cfg.setDialogSize(QStringLiteral("e"), QSize());
     EXPECT_FALSE(cfg.dialogSize(QStringLiteral("e")).isValid());
+}
+
+// INV-6 — releasing a Config falls back to the one registered before it
+// (ANTS-5036). A second window closing must not leave D3 on its Config.
+TEST(DialogChromeAffordances, INV6_ReleaseFallsBackToEarlierConfig) {
+    ants_test::XdgGuard xdg;
+    xdg.setTestMode(true);  // restored on scope exit
+    Config first;
+    first.setDialogSize(QStringLiteral("Fallback"), QSize(700, 500));
+    ConfigGuard cg(&first);
+    Config second;
+    second.setDialogSize(QStringLiteral("Fallback"), QSize(800, 600));
+    DialogChrome::setConfig(&second);
+    DialogChrome::releaseConfig(&second);
+
+    QDialog dlg;
+    DialogChrome::install(&dlg, QString(), /*resizable=*/true,
+                          QStringLiteral("Fallback"));
+    QShowEvent se;
+    QApplication::sendEvent(&dlg, &se);
+
+    EXPECT_EQ(dlg.size(), QSize(700, 500))
+        << "after releasing the second Config, D3 must use the first";
+}
+
+// INV-7 — releasing the only Config leaves D3 inert (ANTS-5036).
+TEST(DialogChromeAffordances, INV7_ReleasingLastConfigLeavesD3Inert) {
+    ants_test::XdgGuard xdg;
+    xdg.setTestMode(true);  // restored on scope exit
+    Config only;
+    only.setDialogSize(QStringLiteral("Inert"), QSize(700, 500));
+    ConfigGuard cg(&only);
+    DialogChrome::releaseConfig(&only);
+
+    QDialog dlg;
+    dlg.resize(300, 200);
+    DialogChrome::install(&dlg, QString(), /*resizable=*/true,
+                          QStringLiteral("Inert"));
+    QShowEvent se;
+    QApplication::sendEvent(&dlg, &se);
+
+    EXPECT_EQ(dlg.size(), QSize(300, 200))
+        << "a released Config must not be read on show";
+}
+
+// INV-8 — ~MainWindow releases its own Config (ANTS-5036). Source scrape:
+// a MainWindow cannot be built headless in this bundle.
+TEST(DialogChromeAffordances, INV8_MainWindowDtorReleasesConfig) {
+    const std::string body = ants_test::squashWhitespace(
+        ants_test::slurpFunctionBody(SRC_MAINWINDOW_CPP_PATH,
+                                     "MainWindow::~MainWindow()"));
+    ASSERT_FALSE(body.empty()) << "~MainWindow not found";
+    EXPECT_NE(body.find("DialogChrome::releaseConfig(&m_config);"),
+              std::string::npos)
+        << "~MainWindow must release the Config it registered";
 }

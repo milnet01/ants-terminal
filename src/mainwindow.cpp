@@ -1152,6 +1152,10 @@ MainWindow::MainWindow(bool quakeMode, bool e2eMode, QWidget *parent)
 }
 
 MainWindow::~MainWindow() {
+    // ANTS-5036 — m_config dies with this window; dialogs opened from
+    // another window must not persist their size through it.
+    DialogChrome::releaseConfig(&m_config);
+
     // ANTS-1320 (review-button probe path): any in-flight QProcess
     // child (the `git status` review-changes probe, started by
     // refreshReviewChangesButton) emits finished/errorOccurred from

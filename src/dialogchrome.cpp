@@ -27,9 +27,14 @@ namespace {
 // setActiveTheme() on every theme change.
 QString g_activeTheme;
 
-// ANTS-1842 — process-wide Config for D3 size persistence. Set once by
-// MainWindow (mirrors g_activeTheme). nullptr → D3 silently inert.
-Config *g_config = nullptr;
+// ANTS-1842 — process-wide Configs for D3 size persistence, one per
+// MainWindow, newest last (ANTS-5036: a closed window releases its own, so
+// D3 never reaches a freed Config). Empty → D3 silently inert.
+QList<Config *> g_configs;
+
+Config *currentConfig() {
+    return g_configs.isEmpty() ? nullptr : g_configs.constLast();
+}
 
 // ANTS-1842 — D2–D4 affordance driver attached to a dialog as an event
 // filter (no Q_OBJECT needed: only the virtual eventFilter() is used).
@@ -83,8 +88,9 @@ private:
             // D3 — restore AFTER the ctor (which may resize() to a
             // default); persisted size wins, absent size falls through to
             // the dialog's default. First show only, before first paint.
-            if (g_config && !m_sizeKey.isEmpty() && m_dlg) {
-                const QSize sz = g_config->dialogSize(m_sizeKey);
+            Config *cfg = currentConfig();
+            if (cfg && !m_sizeKey.isEmpty() && m_dlg) {
+                const QSize sz = cfg->dialogSize(m_sizeKey);
                 if (sz.isValid()) m_dlg->resize(sz);
             }
         }
@@ -112,8 +118,9 @@ private:
     }
 
     void saveSize() {
-        if (g_config && !m_sizeKey.isEmpty() && m_dlg)
-            g_config->setDialogSize(m_sizeKey, m_dlg->size());
+        Config *cfg = currentConfig();
+        if (cfg && !m_sizeKey.isEmpty() && m_dlg)
+            cfg->setDialogSize(m_sizeKey, m_dlg->size());
     }
 #if defined(__GNUC__) && !defined(__clang__)
 #  pragma GCC diagnostic pop
@@ -132,7 +139,16 @@ void setActiveTheme(const QString &name) {
 }
 
 void setConfig(Config *config) {
-    g_config = config;
+    if (!config) {
+        g_configs.clear();
+        return;
+    }
+    g_configs.removeAll(config);
+    g_configs.append(config);
+}
+
+void releaseConfig(Config *config) {
+    g_configs.removeAll(config);
 }
 
 QString activeTheme() {

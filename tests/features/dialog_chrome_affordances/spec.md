@@ -29,9 +29,17 @@ function dialogs need no `Config` plumbing).
   saved size is resized to it on first show.
 - **INV-5 / Config round-trip.** `Config::setDialogSize` /
   `dialogSize` round-trips a `QSize`; position is never stored.
+- **INV-6 / release falls back (ANTS-5036).** With two Configs registered,
+  `releaseConfig` on the later one makes D3 use the earlier one. Each
+  window registers its own Config, and closing a second window frees it.
+- **INV-7 / release the last (ANTS-5036).** After `releaseConfig` on the
+  only registered Config, a keyed dialog's first show reads no size.
+- **INV-8 / window wiring (ANTS-5036).** `~MainWindow` calls
+  `DialogChrome::releaseConfig(&m_config)`.
 
 ## Test scope
 
 Behavioral, offscreen Qt. Synthetic `QShowEvent` / `QCloseEvent` drive the
-guard. The global `Config` registration is reset to `nullptr` after each
+guard. INV-8 is a source scrape of `~MainWindow`, because this bundle cannot
+build a `MainWindow` headless. The global `Config` registration is reset to `nullptr` after each
 test that sets it so bundle-sibling dialog tests stay isolated.

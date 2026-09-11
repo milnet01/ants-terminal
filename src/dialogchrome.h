@@ -54,9 +54,16 @@ InstallResult install(QDialog *dlg, const QString &themeName = QString(),
                       const QString &sizeKey = QString());
 
 // Registers the process-wide Config used for D3 size persistence (see
-// `install`'s `sizeKey`). MainWindow calls this once at startup; mirrors
+// `install`'s `sizeKey`). Each MainWindow calls this at startup; mirrors
 // the setActiveTheme() pattern so dialog ctors need not plumb a Config.
+// The most recently registered Config is the one D3 uses. nullptr clears
+// every registration.
 void setConfig(Config *config);
+
+// ANTS-5036 — unregisters `config`, so D3 falls back to the Config
+// registered before it. ~MainWindow calls this: a closed window's Config
+// is freed, and D3 must never reach it.
+void releaseConfig(Config *config);
 
 // Re-applies the named theme to a chrome bar (and its parent
 // dialog's QPalette). Use from a dialog that supports live theme
