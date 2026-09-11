@@ -1038,6 +1038,10 @@ void TerminalGrid::handleEsc(const VtAction &a) {
             auto userVarCb         = std::move(m_userVarCallback);
             auto osc133ForgeryCb   = std::move(m_osc133ForgeryCallback);
             QByteArray osc133Key   = m_osc133Key;
+            // ANTS-5033 — the notification budget survives too, or a stream
+            // that resets before each notification would refill it every time.
+            const qint64 notifyWindowStartMs = m_notifyWindowStartMs;
+            const int notifyCount  = m_notifyCount;
             // ANTS-4456 — configuration pushed onto the grid from outside is
             // part of the INITIAL state RIS returns to, not something it
             // discards. xterm re-reads its resources on RIS rather than
@@ -1063,6 +1067,8 @@ void TerminalGrid::handleEsc(const VtAction &a) {
             m_userVarCallback         = std::move(userVarCb);
             m_osc133ForgeryCallback   = std::move(osc133ForgeryCb);
             m_osc133Key               = std::move(osc133Key);
+            m_notifyWindowStartMs     = notifyWindowStartMs;
+            m_notifyCount             = notifyCount;
             // Through the setters, not by assigning the members back: they
             // also re-point cells still carrying the constructor's default
             // colour, which a bare assignment would leave at the
@@ -1577,6 +1583,7 @@ void TerminalGrid::handleOsc(const std::string &payload, bool truncated) {
     // multi-MB body here is either a mistake or an attempt to spam the
     // freedesktop notification daemon. Clamp aggressively before forwarding.
     else if (oscNum == "9" && semi != std::string::npos && m_notifyCallback) {
+        if (!takeNotifyQuota()) return;
         constexpr int kMaxNotifyBody = 1024;
         QString body = stripC1Controls(QString::fromUtf8(payload.c_str() + semi + 1).left(kMaxNotifyBody));
         m_notifyCallback(QString(), body);
@@ -1588,6 +1595,7 @@ void TerminalGrid::handleOsc(const std::string &payload, bool truncated) {
         std::string rest = payload.substr(semi + 1);
         // Format: notify;title;body
         if (rest.compare(0, 7, "notify;") == 0) {
+            if (!takeNotifyQuota()) return;
             rest = rest.substr(7);
             size_t semi2 = rest.find(';');
             if (semi2 != std::string::npos) {
@@ -1599,6 +1607,19 @@ void TerminalGrid::handleOsc(const std::string &payload, bool truncated) {
             }
         }
     }
+}
+
+// ANTS-5033 — spend one desktop notification from the shared OSC 9 / OSC 777
+// budget. False once the minute's budget is gone; the caller drops it.
+bool TerminalGrid::takeNotifyQuota() {
+    const qint64 now = QDateTime::currentMSecsSinceEpoch();
+    if (now - m_notifyWindowStartMs >= 60'000) {
+        m_notifyWindowStartMs = now;
+        m_notifyCount = 0;
+    }
+    if (m_notifyCount >= NOTIFY_MAX_PER_MIN) return false;
+    ++m_notifyCount;
+    return true;
 }
 
 void TerminalGrid::handleOscImage(const std::string &payload) {

@@ -635,6 +635,14 @@ private:
     static constexpr int OSC52_MAX_WRITES_PER_MIN = 32;
     static constexpr qint64 OSC52_MAX_BYTES_PER_MIN = 1 * 1024 * 1024;
 
+    // ANTS-5033 — desktop-notification quota, one budget shared by OSC 9 and
+    // OSC 777. Each notification can start a notify-send process, so a flood
+    // is cut to a few per minute. Same minute window as the OSC 52 quota.
+    qint64 m_notifyWindowStartMs = 0;
+    int m_notifyCount = 0;
+    static constexpr int NOTIFY_MAX_PER_MIN = 10;
+    bool takeNotifyQuota();
+
     // OSC 1337 SetUserVar per-terminal rolling write quota — mirrors OSC 52.
     // Each value is already capped at 4 KiB; this bounds spam. ANTS-1655.
     qint64 m_userVarWindowStartMs = 0;
