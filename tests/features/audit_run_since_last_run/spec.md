@@ -3,7 +3,9 @@
 Conformance test for `scope:"since-last-run"` (and the shared narrowing
 resolver) on the `audit_run` MCP tool. Full design + invariant contract:
 [`docs/specs/ANTS-1504.md`](../../../docs/specs/ANTS-1504.md). This file
-records what the C++ test pins; INV numbers mirror the spec.
+records what the C++ test pins; INV-1..9 mirror that spec's own numbers.
+INV-10..13 (ANTS-5043) are additions of this file's own, locking a
+base-ref-existence gap ANTS-1504 never covered.
 
 The resolver lives in `src/auditscope.{h,cpp}`, split pure/impure so the
 parsing/filtering is testable without spawning git; only
@@ -46,6 +48,34 @@ zero files reports `noChanges` and (in runAudit) spawns nothing and skips
 **INV-9 (pure/impure split)** — only `resolveChangedFiles` references
 `QProcess` in `auditscope.cpp`; `parseChangedFiles` / `filterForTool` /
 `isFileScopedTool` are pure (source-scrape).
+
+## ANTS-5043 — a failed base-ref resolution must not read as no changes
+
+`branch-diff` hardcodes `main`; `since-tag:<tag>` diffs against the tag as
+given. Neither checks the base ref resolves before diffing. The impure git
+runners return an empty string both on a genuinely empty diff and on a
+failed or timed-out git call, and `resolveChangedFiles` cannot currently
+tell the two apart — an unresolvable base reads the same as a clean tree.
+ANTS-1504 § 2.8 licenses the `noChanges` short-circuit only for a real
+clean tree, never for a failed diff.
+
+**INV-10 (branch-diff needs an actual `main`)** — `branch-diff` on a repo
+whose only branch is not `main`, with a clean committed tree, does not
+report `noChanges`; it carries a non-empty `demotedReason`.
+
+**INV-11 (since-tag needs a resolvable tag)** — `since-tag:<tag>` for a tag
+that does not exist in the repo does not report `noChanges`; it carries a
+non-empty `demotedReason`.
+
+**INV-12 (guard: exact-tag tree stays clean)** — `since-tag:<tag>` where
+HEAD is exactly the tagged commit, on a clean tree, still reports
+`noChanges` with an empty `demotedReason` — the ANTS-1504 § 2.8
+short-circuit is preserved for a genuinely empty diff.
+
+**INV-13 (guard: branch-diff with a real `main` still resolves)** —
+`branch-diff` on a repo that has a `main` branch, diffed from a feature
+branch carrying one real committed change since `main`, returns that file
+with an empty `demotedReason`.
 
 ## Out of scope
 

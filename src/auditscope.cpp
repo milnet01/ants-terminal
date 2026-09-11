@@ -16,8 +16,11 @@ constexpr int kGitTimeoutMs = 1'500;  // matches AuditCache::runGit
 
 // Run git, return trimmed stdout ({} on non-zero exit / timeout). Mirrors
 // the AuditCache::runGit pattern (auditcache.cpp:39); duplicated rather than
-// coupling auditscope to auditcache internals.
-QString runGit(const QString &root, const QStringList &args) {
+// coupling auditscope to auditcache internals. ANTS-5043 — `ok`, when given,
+// tells a failure apart from an empty but successful output.
+QString runGit(const QString &root, const QStringList &args,
+               bool *ok = nullptr) {
+    if (ok) *ok = false;
     QProcess p;
     p.setWorkingDirectory(root);
     p.setProcessChannelMode(QProcess::SeparateChannels);
@@ -30,13 +33,16 @@ QString runGit(const QString &root, const QStringList &args) {
         return {};
     }
     if (p.exitCode() != 0) return {};
+    if (ok) *ok = true;
     return QString::fromUtf8(p.readAllStandardOutput()).trimmed();
 }
 
 // Like runGit but WITHOUT trimming — `git status --porcelain` leads each
 // line with a significant 2-column XY status, and a whole-output trim would
 // eat the first line's leading space and mis-parse that entry.
-QString runGitRaw(const QString &root, const QStringList &args) {
+QString runGitRaw(const QString &root, const QStringList &args,
+                  bool *ok = nullptr) {
+    if (ok) *ok = false;
     QProcess p;
     p.setWorkingDirectory(root);
     p.setProcessChannelMode(QProcess::SeparateChannels);
@@ -49,6 +55,7 @@ QString runGitRaw(const QString &root, const QStringList &args) {
         return {};
     }
     if (p.exitCode() != 0) return {};
+    if (ok) *ok = true;
     return QString::fromUtf8(p.readAllStandardOutput());
 }
 
@@ -224,13 +231,32 @@ Resolution resolveChangedFiles(const QString &canonProject,
         return res;
     }
 
+    // ANTS-5043 — a failed git call returns the same "" as a clean tree, so
+    // an unresolvable base (branch-diff's "main" on a master-only repo, a
+    // mistyped tag) or a diff/status that fails or times out used to read
+    // as "no changes" and skip every tool. Demote to a full scan instead.
+    if (!runGitSucceeds(canonProject,
+            {QStringLiteral("rev-parse"), QStringLiteral("--verify"),
+             QStringLiteral("--quiet"), base + QStringLiteral("^{commit}")})) {
+        res.anchorCommit.clear();
+        res.demotedReason = QStringLiteral("ref_unresolved");
+        return res;
+    }
+
+    bool diffOk = false;
     const QString diff = runGit(canonProject,
         {QStringLiteral("diff"), QStringLiteral("--name-only"), diffFilter,
-         base + QStringLiteral("..HEAD")});
+         base + QStringLiteral("..HEAD")}, &diffOk);
+    bool statusOk = !includeWorkTree;
     const QString status = includeWorkTree
         ? runGitRaw(canonProject, {QStringLiteral("status"),
-                                   QStringLiteral("--porcelain")})
+                                   QStringLiteral("--porcelain")}, &statusOk)
         : QString();
+    if (!diffOk || !statusOk) {
+        res.anchorCommit.clear();
+        res.demotedReason = QStringLiteral("git_failed");
+        return res;
+    }
 
     res.files = parseChangedFiles(diff, status, includeWorkTree);
     res.noChanges = res.files.isEmpty();

@@ -1,5 +1,8 @@
 // Feature-conformance test for spec.md — ANTS-1504 audit_run
 // since-last-run scope + the shared narrowing resolver (auditscope).
+// INV-10..13 (ANTS-5043) lock the base-ref-existence gap: branch-diff and
+// since-tag read a failed git call the same way they read a genuinely
+// empty diff, both as noChanges.
 //
 // Pure helpers are exercised directly; resolveChangedFiles is exercised
 // against a real git repo in a QTemporaryDir; the runAudit/envelope wiring
@@ -77,6 +80,25 @@ bool commitAll(const QString &dir, const QString &msg) {
 
 bool has(const std::string &hay, const char *needle) {
     return hay.find(needle) != std::string::npos;
+}
+
+// ANTS-5043 — one line naming what each base-ref resolution actually did,
+// so a failing assertion is diagnosable from the gtest log alone.
+std::string describe(const AuditScope::Resolution &r) {
+    std::string s = "noChanges=";
+    s += r.noChanges ? "true" : "false";
+    s += " demotedReason=\"" + r.demotedReason.toStdString() + "\"";
+    s += " files=[" + r.files.join(QStringLiteral(",")).toStdString() + "]";
+    return s;
+}
+
+// Force the initial (unborn) branch's name before the first commit, so a
+// fixture's branch name doesn't depend on the host's `init.defaultBranch`
+// git config — deterministic whether this machine defaults to "main" or
+// "master". Valid on an unborn HEAD (no commits yet).
+bool forceInitialBranch(const QString &dir, const QString &branch) {
+    return runGit(dir, {QStringLiteral("symbolic-ref"), QStringLiteral("HEAD"),
+                         QStringLiteral("refs/heads/") + branch});
 }
 
 }  // namespace
@@ -268,4 +290,100 @@ TEST(AuditScopeSinceLastRun, Inv8EnvelopeFields) {
                             "scope_anchor_commit", "scope_demoted",
                             "scope_demoted_reason", "no_changes"})
         EXPECT_TRUE(has(src, key)) << key;
+}
+
+// ── INV-10 — branch-diff demotes when no "main" ref exists (ANTS-5043) ─
+
+// Why this exists: branch-diff hardcodes base="main"; on a repo whose only
+// branch is "master", `git diff main..HEAD` fails, runGit swallows the
+// non-zero exit as "", and the empty diff reads as noChanges=true with no
+// demotion — a clean-looking result on a repo that was never actually
+// diffed. ANTS-1504 § 2.8 licenses the short-circuit only for a genuinely
+// clean tree, not for a failed git call.
+TEST(AuditScopeSinceLastRun, Inv10BranchDiffNoMainBranchDemotes) {
+    if (!gitAvailable()) GTEST_SKIP() << "git not on PATH";
+    QTemporaryDir repo;
+    ASSERT_TRUE(repo.isValid());
+    ASSERT_TRUE(initRepo(repo.path()));
+    ASSERT_TRUE(forceInitialBranch(repo.path(), QStringLiteral("master")));
+    ASSERT_TRUE(writeFile(repo.path(), QStringLiteral("a.cpp"), QStringLiteral("int x;\n")));
+    ASSERT_TRUE(commitAll(repo.path(), QStringLiteral("init")));
+    // Sanity: this repo really has no "main" ref.
+    ASSERT_FALSE(runGit(repo.path(), {QStringLiteral("rev-parse"),
+                                       QStringLiteral("--verify"),
+                                       QStringLiteral("main")}));
+
+    const auto r = AuditScope::resolveChangedFiles(repo.path(),
+        QStringLiteral("branch-diff"), QString());
+    EXPECT_FALSE(r.noChanges) << describe(r);
+    EXPECT_FALSE(r.demotedReason.isEmpty()) << describe(r);
+}
+
+// ── INV-11 — since-tag demotes when the tag is unresolvable (ANTS-5043) ─
+
+// Why this exists: a mistyped or unfetched tag makes `git diff <tag>..HEAD`
+// fail; runGit returns "" on the non-zero exit, and the empty diff reads as
+// noChanges=true on a repo that was never actually diffed.
+TEST(AuditScopeSinceLastRun, Inv11SinceTagUnresolvableDemotes) {
+    if (!gitAvailable()) GTEST_SKIP() << "git not on PATH";
+    QTemporaryDir repo;
+    ASSERT_TRUE(repo.isValid());
+    ASSERT_TRUE(initRepo(repo.path()));
+    ASSERT_TRUE(writeFile(repo.path(), QStringLiteral("a.cpp"), QStringLiteral("int x;\n")));
+    ASSERT_TRUE(commitAll(repo.path(), QStringLiteral("init")));
+    // Sanity: this tag really doesn't exist in the repo.
+    ASSERT_FALSE(runGit(repo.path(), {QStringLiteral("rev-parse"),
+                                       QStringLiteral("--verify"),
+                                       QStringLiteral("does-not-exist-v1")}));
+
+    const auto r = AuditScope::resolveChangedFiles(repo.path(),
+        QStringLiteral("since-tag:does-not-exist-v1"), QString());
+    EXPECT_FALSE(r.noChanges) << describe(r);
+    EXPECT_FALSE(r.demotedReason.isEmpty()) << describe(r);
+}
+
+// ── INV-12 — guard: since-tag at the exact tag still short-circuits ────
+
+// Why this exists: the fix for INV-11 must not over-demote — a clean tree
+// whose HEAD IS the tagged commit has genuinely zero changes, and the
+// ANTS-1504 § 2.8 short-circuit (noChanges, no demotion) must still hold.
+TEST(AuditScopeSinceLastRun, Inv12SinceTagAtExactTagStaysNoChanges) {
+    if (!gitAvailable()) GTEST_SKIP() << "git not on PATH";
+    QTemporaryDir repo;
+    ASSERT_TRUE(repo.isValid());
+    ASSERT_TRUE(initRepo(repo.path()));
+    ASSERT_TRUE(writeFile(repo.path(), QStringLiteral("a.cpp"), QStringLiteral("int x;\n")));
+    ASSERT_TRUE(commitAll(repo.path(), QStringLiteral("init")));
+    ASSERT_TRUE(runGit(repo.path(), {QStringLiteral("tag"), QStringLiteral("v1")}));
+
+    const auto r = AuditScope::resolveChangedFiles(repo.path(),
+        QStringLiteral("since-tag:v1"), QString());
+    EXPECT_TRUE(r.noChanges) << describe(r);
+    EXPECT_TRUE(r.demotedReason.isEmpty()) << describe(r);
+}
+
+// ── INV-13 — guard: branch-diff resolves normally when "main" exists ───
+
+// Why this exists: the fix for INV-10 must not over-demote a repo that
+// genuinely has a "main" branch — a feature branch with a real committed
+// change since main must still resolve to that file, undemoted.
+TEST(AuditScopeSinceLastRun, Inv13BranchDiffWithMainResolvesNormally) {
+    if (!gitAvailable()) GTEST_SKIP() << "git not on PATH";
+    QTemporaryDir repo;
+    ASSERT_TRUE(repo.isValid());
+    ASSERT_TRUE(initRepo(repo.path()));
+    ASSERT_TRUE(forceInitialBranch(repo.path(), QStringLiteral("main")));
+    ASSERT_TRUE(writeFile(repo.path(), QStringLiteral("a.cpp"), QStringLiteral("int x;\n")));
+    ASSERT_TRUE(commitAll(repo.path(), QStringLiteral("init")));
+    ASSERT_TRUE(runGit(repo.path(), {QStringLiteral("checkout"), QStringLiteral("-q"),
+                                      QStringLiteral("-b"), QStringLiteral("feature")}));
+    ASSERT_TRUE(writeFile(repo.path(), QStringLiteral("feature.cpp"),
+                          QStringLiteral("int y;\n")));
+    ASSERT_TRUE(commitAll(repo.path(), QStringLiteral("feature work")));
+
+    const auto r = AuditScope::resolveChangedFiles(repo.path(),
+        QStringLiteral("branch-diff"), QString());
+    EXPECT_TRUE(r.demotedReason.isEmpty()) << describe(r);
+    EXPECT_FALSE(r.noChanges) << describe(r);
+    EXPECT_TRUE(r.files.contains(QStringLiteral("feature.cpp"))) << describe(r);
 }
