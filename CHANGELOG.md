@@ -42,6 +42,10 @@ for security-relevant changes.
 
 ### Fixed
 
+- **The audit window no longer freezes after a run while it looks up who last changed each flagged line; it asks git once per file in the background and fills the names in when they arrive** (ANTS-5040)
+
+- **Saving roadmap changes no longer re-adds up the whole change history for every row it writes, and a history size that cannot be measured now refuses the write instead of switching the size limit off** (ANTS-5046)
+
 - **A push interrupted during its Qt 6.2 compile check now stops that check's container, and the next check does not trust the half-built tree** (ANTS-5124)
 
 - **The "Close tab?" question box now matches the Ants theme, can be resized and remembers its size** (ANTS-5123)

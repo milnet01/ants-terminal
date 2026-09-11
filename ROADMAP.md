@@ -6504,7 +6504,7 @@ extends an existing item, that item carries it instead.
   Source: code-quality-review-2026-09-11 perf pass (lane audit-dialog-a).
   Lanes: audit.
 
-- 📋 [ANTS-5040] **The audit dialog runs up to 300 synchronous git blame calls on the GUI thread after every run.**
+- ✅ [ANTS-5040] **The audit dialog runs up to 300 synchronous git blame calls on the GUI thread after every run.**
   AuditDialog::renderResults enriches up to kSnippetBudget findings
   through enrichWithBlame, and each call starts git blame -L N,N HEAD
   and waits up to 2 s for it. The first render after every run or
@@ -6516,6 +6516,11 @@ extends an existing item, that item carries it instead.
   Fix: one git blame --porcelain per file with several -L ranges, run
   off the GUI thread and patched in when it arrives; or blame only
   when a finding is expanded.
+  Resolved (2026-09-11): renderResults() applies cached blame and queues
+  the rest per file; one asynchronous git blame --line-porcelain per
+  file, at most four at a time with a 30 s kill, fills the cache and
+  re-renders once, not mid-run. Parser: src/gitblameparse.h. Test:
+  tests/features/audit_blame_bulk_async.
   **Layman:** After each code audit the window can freeze for a long time while it looks up who last changed each flagged line.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lanes audit-dialog-a, audit-dialog-b).
@@ -6640,7 +6645,7 @@ extends an existing item, that item carries it instead.
   Source: code-quality-review-2026-09-11 perf pass (lane audit-engine).
   Lanes: audit, security.
 
-- 📋 [ANTS-5046] **Every roadmap history write re-sums the whole history table, against ANTS-3756's running-total rule.**
+- ✅ [ANTS-5046] **Every roadmap history write re-sums the whole history table, against ANTS-3756's running-total rule.**
   RoadmapStore::historyWouldExceedCap calls historyBytes(), which sums
   the byte length of every history row, and appendHistory calls it for
   each row it writes; the migration loader checks a second time after
@@ -6652,6 +6657,11 @@ extends an existing item, that item carries it instead.
   reads as an empty history and turns the cap off.
   Fix: compute the total once per transaction, add each insert, drop
   it on commit or rollback, and return std::optional from historyBytes.
+  Resolved (2026-09-11): inside a begin() transaction historyBytes()
+  sums once and appendHistory() adds each row; begin, commit, rollback
+  and deregisterProject drop the total. A failed sum is std::nullopt,
+  historyWouldExceedCap() fails closed, and appendHistory() names that
+  refusal. Test: tests/features/roadmap_store_schema INV-26.
   **Layman:** Saving roadmap changes gets slower and slower as the change history grows.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lane roadmap-store).
