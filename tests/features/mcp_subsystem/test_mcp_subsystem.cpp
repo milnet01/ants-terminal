@@ -11,6 +11,7 @@
 #include <gtest/gtest.h>
 #include "../../_support/srcgrep.h"
 
+#include <QByteArray>
 #include <QFile>
 #include <QString>
 #include <QStringList>
@@ -19,6 +20,15 @@
 
 #include "../../_support/expect.h"
 #include "subsystemmap.h"
+
+// ANTS-5074 — concurrency-guard support.
+#include <fcntl.h>
+#include <sys/stat.h>
+
+#include <atomic>
+#include <chrono>
+#include <thread>
+#include <vector>
 
 #ifndef SRC_CLAUDE_INTEGRATION_CPP_PATH
 #error "SRC_CLAUDE_INTEGRATION_CPP_PATH compile definition required"
@@ -372,4 +382,319 @@ TEST(McpSubsystem, SourceHasModuleMapDetectsHeading) {
 
     EXPECT_EQ(0, expect_failures()) << expect_failures()
         << " ANTS-3481 invariant(s) failed";
+}
+
+// ANTS-5074 — SubsystemMap::cachedLanes()'s cache (a function-static QHash)
+// is read and written with no lock, from the GUI thread (Independent Review
+// dialog → derivePartition) and the MCP worker (subsystem / indie_review_partition
+// verbs) alike, and from the GUI thread again via the remote-control socket's
+// subsystem route. A find concurrent with an insert that rehashes the QHash
+// is undefined behaviour. Fix: a QMutex held around every cache access.
+namespace ants5074 {
+
+// Write `bytes` to `path` and pin its mtime to exactly `mtimeMs` via
+// utimensat — ms-precision mtime control, matching
+// tests/features/file_content_cache's writeFileAt. QFile::setFileTime
+// proved unreliable on the test sandbox. Ants is Linux-only.
+//
+// No GTEST macros in here deliberately — this is also called from the
+// rewriter background thread in the concurrency guard below, and gtest's
+// fatal/non-fatal assertion macros are for the main test thread. Failures
+// are reported via the plain bool return; callers on the main thread wrap
+// it in ASSERT_TRUE, and the background-thread caller counts failures in
+// an atomic instead (see Ants5074ConcurrentAccessDoesNotCorruptOrCrash).
+bool writeFileAtQuiet(const QString &path, const QByteArray &bytes, qint64 mtimeMs) {
+    QFile f(path);
+    if (!f.open(QIODevice::WriteOnly | QIODevice::Truncate)) return false;
+    f.write(bytes);
+    f.close();
+    struct timespec ts[2];
+    ts[0].tv_sec  = mtimeMs / 1000;
+    ts[0].tv_nsec = (mtimeMs % 1000) * 1000000;
+    ts[1] = ts[0];
+    const int rc = utimensat(AT_FDCWD, path.toLocal8Bit().constData(), ts, 0);
+    return rc == 0;
+}
+
+// Main-thread convenience wrapper: same as writeFileAtQuiet, but records a
+// gtest failure with a diagnosis on error.
+bool writeFileAt(const QString &path, const QByteArray &bytes, qint64 mtimeMs) {
+    const bool ok = writeFileAtQuiet(path, bytes, mtimeMs);
+    EXPECT_TRUE(ok) << "ants5074::writeFileAt: open/write/utimensat failed for "
+                     << qUtf8Printable(path);
+    return ok;
+}
+
+// Atomically replace `path`'s content+mtime: write to a sibling temp file,
+// pin ITS mtime, then rename() over `path`. rename() is atomic on the same
+// filesystem, so a concurrent reader sees either the whole old file or the
+// whole new one — never a torn write — which keeps the concurrency guard
+// below honest about what it is testing (the cache's own locking) rather
+// than picking up noise from a non-atomic in-place rewrite. No GTEST
+// macros — background-thread-safe, see writeFileAtQuiet above.
+bool replaceFileAtomicallyQuiet(const QString &path, const QByteArray &bytes, qint64 mtimeMs) {
+    const QString tmp = path + QStringLiteral(".tmp-ants5074");
+    if (!writeFileAtQuiet(tmp, bytes, mtimeMs)) return false;
+    return ::rename(tmp.toLocal8Bit().constData(),
+                    path.toLocal8Bit().constData()) == 0;
+}
+
+// A one-bullet module-map body naming a single lane `laneName`, matching
+// the bullet shape SubsystemMap::parse() reads.
+QByteArray moduleMapBody(const QString &laneName) {
+    const QString text = QStringLiteral("## Module map (src/)\n\n"
+                                        "- `%1` -- lane %1 summary.\n")
+                              .arg(laneName);
+    return text.toUtf8();
+}
+
+// True iff `lanes` is exactly the single lane parsed from `moduleMapBody(laneName)`.
+bool isExactlyLane(const QVector<SubsystemMap::Lane> &lanes, const QString &laneName) {
+    if (lanes.size() != 1) return false;
+    return lanes.at(0).name == laneName;
+}
+
+}  // namespace ants5074
+
+// ANTS-5074/wiring — cachedLanes() takes a lock before its first access to
+// the shared cache. Source-grepped, comment-stripped (ANTS-3662) so a
+// comment mentioning "QMutexLocker" cannot pass this by accident, and
+// anchored on the FIRST "cachedLanes(" match (srcgrep.h contract) — there
+// is exactly one function of that name in subsystemmap.cpp.
+//
+// Pre-fix: cachedLanes() calls `cache()` (returns the function-static
+// QHash) and then `c.find(key)` / `c.insert(key, entry)` with no lock
+// construct anywhere in the body, so this is red against the current tree.
+TEST(McpSubsystem, Ants5074CacheAccessIsLocked) {
+    expect_reset();
+
+    const std::string smCppNoComments =
+        ants_test::stripComments(ants_test::slurpFile(SRC_SUBSYSTEMMAP_CPP_PATH));
+    const std::string body =
+        ants_test::slurpFunctionBody(smCppNoComments, "QVector<Lane> cachedLanes(");
+
+    bool haveBody = !body.empty();
+    expect(haveBody, "ANTS-5074/wiring-body-found",
+           "could not locate the cachedLanes() function body in "
+           "subsystemmap.cpp (anchor \"QVector<Lane> cachedLanes(\" not "
+           "found, or braces unbalanced) — cannot check locking without it");
+
+    if (haveBody) {
+        // First point the body touches the shared cache: the call to
+        // cache(), which returns the function-static QHash by reference.
+        // Both the pre-fix code and the described fix still call cache()
+        // to obtain the QHash, so this is a stable anchor across the fix.
+        const std::size_t cachePos = body.find("cache()");
+
+        // Earliest lock-construct keyword in the body, if any.
+        std::size_t lockPos = std::string::npos;
+        for (const char *kw : {"QMutexLocker", "std::lock_guard", "std::scoped_lock"}) {
+            const std::size_t p = body.find(kw);
+            if (p != std::string::npos && (lockPos == std::string::npos || p < lockPos)) {
+                lockPos = p;
+            }
+        }
+
+        const bool cacheFound = cachePos != std::string::npos;
+        const bool lockFound  = lockPos != std::string::npos;
+        const bool lockedBeforeCacheAccess =
+            cacheFound && lockFound && lockPos < cachePos;
+
+        char detail[320];
+        std::snprintf(detail, sizeof detail,
+                      "cachedLanes() body: cache() call %s (pos %lld), "
+                      "lock construct (QMutexLocker/std::lock_guard/"
+                      "std::scoped_lock) %s (pos %lld) — lock must appear "
+                      "strictly before the cache() call",
+                      cacheFound ? "found" : "NOT found",
+                      cacheFound ? static_cast<long long>(cachePos) : -1LL,
+                      lockFound ? "found" : "NOT found",
+                      lockFound ? static_cast<long long>(lockPos) : -1LL);
+        expect(lockedBeforeCacheAccess, "ANTS-5074/wiring-lock-before-access", detail);
+    }
+
+    EXPECT_EQ(0, expect_failures()) << expect_failures()
+        << " ANTS-5074 wiring invariant(s) failed";
+}
+
+// ANTS-5074/mtime-guard — a locked cache must still honour its existing
+// mtime-only invalidation contract (ANTS-1251-INV-2): an unchanged mtime
+// serves the cached lanes even if the underlying bytes changed underneath
+// it (proves the cache is consulted, not bypassed), and a changed mtime
+// re-parses and returns the new lanes. Single-threaded and deterministic —
+// this is not the concurrency guard below, it is a regression guard against
+// a lock fix that accidentally reworks the invalidation logic it wraps.
+TEST(McpSubsystem, Ants5074MtimeStillGatesInvalidationUnderTheLock) {
+    expect_reset();
+    SubsystemMap::clearCacheForTests();
+
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid());
+    const QString path = dir.filePath(QStringLiteral("guard.md"));
+    constexpr qint64 kBaseMtimeMs = 1700000000000LL;
+
+    ASSERT_TRUE(ants5074::writeFileAt(path, ants5074::moduleMapBody(QStringLiteral("alpha")),
+                                      kBaseMtimeMs));
+    const QVector<SubsystemMap::Lane> first = SubsystemMap::cachedLanes(path);
+    expect(ants5074::isExactlyLane(first, QStringLiteral("alpha")),
+           "ANTS-5074/mtime-guard-initial-parse",
+           "first cachedLanes() call did not parse the seeded content into "
+           "lane \"alpha\"");
+
+    // Overwrite the BYTES but pin the SAME mtime. A correct cache serves
+    // the stale "alpha" entry (mtime-keyed, no wall-clock TTL); it must not
+    // silently re-read the file just because it was asked again.
+    ASSERT_TRUE(ants5074::writeFileAt(path, ants5074::moduleMapBody(QStringLiteral("beta")),
+                                      kBaseMtimeMs));
+    const QVector<SubsystemMap::Lane> stillCached = SubsystemMap::cachedLanes(path);
+    expect(ants5074::isExactlyLane(stillCached, QStringLiteral("alpha")),
+           "ANTS-5074/mtime-guard-unchanged-mtime-serves-cache",
+           "an unchanged mtime must still return the cached \"alpha\" lanes "
+           "even though the file's bytes now say \"beta\"");
+
+    // Now bump the mtime along with the content: the cache must invalidate
+    // and return the new lanes.
+    ASSERT_TRUE(ants5074::writeFileAt(path, ants5074::moduleMapBody(QStringLiteral("beta")),
+                                      kBaseMtimeMs + 1000));
+    const QVector<SubsystemMap::Lane> reparsed = SubsystemMap::cachedLanes(path);
+    expect(ants5074::isExactlyLane(reparsed, QStringLiteral("beta")),
+           "ANTS-5074/mtime-guard-changed-mtime-reparses",
+           "a changed mtime must invalidate the cache and return the new "
+           "\"beta\" lanes");
+
+    EXPECT_EQ(0, expect_failures()) << expect_failures()
+        << " ANTS-5074 mtime-guard invariant(s) failed";
+}
+
+// ANTS-5074/concurrency-guard — several threads call cachedLanes() on a
+// handful of distinct temporary module-map files, many times each, while
+// one thread keeps replacing one file's content (and bumping its mtime)
+// underneath the readers. Every result a reader gets back must equal the
+// lanes that some content the file legitimately held (at time of read)
+// parses to — never a mixed/garbage read — and the process must not crash.
+//
+// This is a GUARD, not a strict pass/fail lock on the pre-fix code: an
+// unlocked QHash rehash race is undefined behaviour, and undefined
+// behaviour can run clean by luck under light load exactly as easily as it
+// can corrupt state or crash. A clean run here does NOT prove the fix is
+// in; a mismatch or a crash DOES prove the race is still live. Per spec.md,
+// this guard is most reliably tripped under the ASan sanitizer build
+// (`debug` preset / `tools/ci-parity.sh --full`), which turns the heap
+// corruption from a concurrent QHash rehash into a deterministic abort with
+// a diagnosis — plain Release execution may pass by chance even against
+// the unlocked code.
+TEST(McpSubsystem, Ants5074ConcurrentAccessDoesNotCorruptOrCrash) {
+    expect_reset();
+    SubsystemMap::clearCacheForTests();
+
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid());
+
+    // Three files whose content never changes for the duration of the test.
+    constexpr int kStaticFileCount = 3;
+    const QStringList staticLaneNames = {QStringLiteral("one"), QStringLiteral("two"),
+                                         QStringLiteral("three")};
+    QStringList staticPaths;
+    for (int i = 0; i < kStaticFileCount; ++i) {
+        const QString path = dir.filePath(QStringLiteral("static_%1.md").arg(i));
+        ASSERT_TRUE(ants5074::writeFileAt(path, ants5074::moduleMapBody(staticLaneNames[i]),
+                                          1700000004000LL + i));
+        staticPaths << path;
+    }
+
+    // One file a dedicated writer thread keeps replacing, cycling through a
+    // small CLOSED set of known-valid variants. Any non-empty result a
+    // reader gets for this path must equal exactly one of these variants —
+    // membership, not a single expected value, because a read can legally
+    // land on the content that was current a moment ago.
+    const QString rotatingPath = dir.filePath(QStringLiteral("rotating.md"));
+    const QStringList rotatingVariants = {QStringLiteral("rot-a"), QStringLiteral("rot-b"),
+                                          QStringLiteral("rot-c")};
+    ASSERT_TRUE(ants5074::writeFileAt(rotatingPath,
+                                      ants5074::moduleMapBody(rotatingVariants[0]),
+                                      1700000009000LL));
+
+    constexpr int kReaderThreads       = 6;
+    constexpr int kIterationsPerReader = 400;
+    constexpr auto kWallClockCap       = std::chrono::seconds(25);
+
+    std::atomic<bool> stop{false};
+    std::atomic<int>  mismatches{0};
+    std::atomic<int>  writeFailures{0};
+    std::atomic<int>  crashCanary{0};  // incremented just before/after each call
+
+    std::vector<std::thread> readers;
+    readers.reserve(kReaderThreads);
+    for (int t = 0; t < kReaderThreads; ++t) {
+        readers.emplace_back([&, t]() {
+            for (int it = 0; it < kIterationsPerReader && !stop.load(); ++it) {
+                const int which = (t + it) % (kStaticFileCount + 1);
+                crashCanary.fetch_add(1, std::memory_order_relaxed);
+                if (which < kStaticFileCount) {
+                    const QVector<SubsystemMap::Lane> got =
+                        SubsystemMap::cachedLanes(staticPaths[which]);
+                    if (!got.isEmpty() &&
+                        !ants5074::isExactlyLane(got, staticLaneNames[which])) {
+                        mismatches.fetch_add(1, std::memory_order_relaxed);
+                    }
+                } else {
+                    const QVector<SubsystemMap::Lane> got =
+                        SubsystemMap::cachedLanes(rotatingPath);
+                    if (!got.isEmpty()) {
+                        bool matchesSomeVariant = false;
+                        for (const QString &variant : rotatingVariants) {
+                            if (ants5074::isExactlyLane(got, variant)) {
+                                matchesSomeVariant = true;
+                                break;
+                            }
+                        }
+                        if (!matchesSomeVariant) {
+                            mismatches.fetch_add(1, std::memory_order_relaxed);
+                        }
+                    }
+                }
+                crashCanary.fetch_add(1, std::memory_order_relaxed);
+            }
+        });
+    }
+
+    std::thread rewriter([&]() {
+        const auto deadline = std::chrono::steady_clock::now() + kWallClockCap;
+        int i = 1;
+        qint64 mtime = 1700000009000LL;
+        while (!stop.load() && std::chrono::steady_clock::now() < deadline) {
+            mtime += 1;  // strictly increasing: never two writes share an mtime
+            const bool ok = ants5074::replaceFileAtomicallyQuiet(
+                rotatingPath, ants5074::moduleMapBody(rotatingVariants[i % rotatingVariants.size()]),
+                mtime);
+            if (!ok) writeFailures.fetch_add(1, std::memory_order_relaxed);
+            ++i;
+        }
+    });
+
+    for (auto &r : readers) r.join();
+    stop.store(true);
+    rewriter.join();
+
+    expect(writeFailures.load() == 0, "ANTS-5074/concurrency-rewrites-succeeded",
+           "the rewriter thread's atomic replace (write-temp + rename) failed "
+           "at least once — a setup problem, not the race under test");
+
+    const std::string mismatchDetail =
+        "a cachedLanes() read returned lanes that did not match ANY "
+        "content the file legitimately held while a concurrent write "
+        "was in flight — indicates the shared QHash cache was "
+        "corrupted by a racing find/insert. mismatches=" +
+        std::to_string(mismatches.load());
+    expect(mismatches.load() == 0, "ANTS-5074/concurrency-no-mismatch", mismatchDetail);
+
+    // Reaching here at all (rather than a sanitizer abort / segfault killing
+    // the test process) is itself part of what this guard checks; ctest
+    // records a crash as its own distinct failure for this entry.
+    expect(crashCanary.load() > 0, "ANTS-5074/concurrency-completed",
+           "reader threads made no cachedLanes() calls at all — the guard "
+           "did not actually exercise the race");
+
+    EXPECT_EQ(0, expect_failures()) << expect_failures()
+        << " ANTS-5074 concurrency-guard invariant(s) failed";
 }

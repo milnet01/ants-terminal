@@ -6,6 +6,8 @@
 #include <QFile>
 #include <QFileInfo>
 #include <QHash>
+#include <QMutex>
+#include <QMutexLocker>
 #include <QRegularExpression>
 #include <QStringList>
 
@@ -20,10 +22,16 @@ struct CacheEntry {
 
 // Cache keyed on canonical CLAUDE.md path. Multiple projects in one
 // session would each get an entry; bounded by number of projects
-// (small).
+// (small). ANTS-5074 — reached from the GUI thread and the MCP worker,
+// so every access holds cacheMutex().
 QHash<QString, CacheEntry> &cache() {
     static QHash<QString, CacheEntry> g;
     return g;
+}
+
+QMutex &cacheMutex() {
+    static QMutex m;
+    return m;
 }
 
 // Bullet shape:  "- `name` [(qualifier)] [/ `name2`] — summary..."
@@ -148,13 +156,17 @@ QVector<Lane> cachedLanes(const QString &claudeMdPath) {
     if (key.isEmpty()) return {};
 
     const qint64 mtimeMs = fi.lastModified().toMSecsSinceEpoch();
-    auto &c = cache();
-    auto it = c.find(key);
-    // ANTS-1251-INV-2: invalidate on mtime change only — no wall-clock TTL.
-    if (it != c.end() && it->mtimeMs == mtimeMs) {
-        return it->lanes;
+    {
+        QMutexLocker lock(&cacheMutex());
+        const auto &c = cache();
+        const auto it = c.constFind(key);
+        // ANTS-1251-INV-2: invalidate on mtime change only — no wall-clock TTL.
+        if (it != c.constEnd() && it->mtimeMs == mtimeMs) {
+            return it->lanes;
+        }
     }
 
+    // Read and parse outside the lock.
     QFile f(claudeMdPath);
     if (!f.open(QIODevice::ReadOnly | QIODevice::Text)) {
         return {};
@@ -165,7 +177,8 @@ QVector<Lane> cachedLanes(const QString &claudeMdPath) {
     CacheEntry entry;
     entry.mtimeMs = mtimeMs;
     entry.lanes   = parse(body);
-    c.insert(key, entry);
+    QMutexLocker lock(&cacheMutex());
+    cache().insert(key, entry);
     return entry.lanes;
 }
 
@@ -194,6 +207,7 @@ bool sourceHasModuleMap(const QString &sourcePath) {
 }
 
 void clearCacheForTests() {
+    QMutexLocker lock(&cacheMutex());
     cache().clear();
 }
 

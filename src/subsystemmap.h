@@ -30,8 +30,8 @@ QVector<Lane> parse(const QString &claudeMdBody);
 
 // Synchronous mtime-keyed cache. Returns the parsed lanes for
 // `sourcePath`. Re-reads only when mtime changes (INV-2).
-// On read error returns an empty vector. Thread-unsafe; intended to
-// be called from the IPC thread (RemoteControl::dispatch chain).
+// On read error returns an empty vector. Thread-safe (ANTS-5074): the
+// GUI thread and the MCP worker both call it, and the cache is locked.
 QVector<Lane> cachedLanes(const QString &sourcePath);
 
 // ANTS-1292 — resolve the canonical module-map source for a project,
