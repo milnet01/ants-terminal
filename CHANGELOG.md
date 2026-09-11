@@ -40,6 +40,10 @@ for security-relevant changes.
 
 ### Fixed
 
+- **The subsystem lane cache is locked, so the window and the MCP worker can read it at the same time safely** (ANTS-5074)
+
+- **The Compiler Warnings audit check can finish, and no longer leaves a build folder behind in /tmp** (ANTS-5039)
+
 - **A verify_changes gate that times out stops everything it started, with SIGTERM first so a build can stop cleanly** (ANTS-5063)
 
 - **A timed-out or cancelled audit check, and an audit_run tool past its time cap, stop every process the tool started** (ANTS-5038)

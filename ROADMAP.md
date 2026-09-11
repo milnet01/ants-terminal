@@ -6486,7 +6486,7 @@ extends an existing item, that item carries it instead.
   Source: code-quality-review-2026-09-11 perf pass (lanes audit-dialog-a, audit-dialog-b, audit-engine).
   Lanes: audit.
 
-- 📋 [ANTS-5039] **The compiler_warnings audit check can never finish, and every attempt leaves a build tree behind in /tmp.**
+- ✅ [ANTS-5039] **The compiler_warnings audit check can never finish, and every attempt leaves a build tree behind in /tmp.**
   The check configures and builds the project from scratch in a
   mktemp -d directory under the default 30-second check timeout, which
   a non-trivial project cannot meet, so it never returns warnings. The
@@ -6495,6 +6495,10 @@ extends an existing item, that item carries it instead.
   processes keep filling it (see the orphaned-process item).
   Fix: give it a realistic timeout or remove it, clean up with a trap
   on EXIT, and build into a configured build directory.
+  Resolved (2026-09-11, 531310ea): the check builds in one scratch
+  directory per user and project, removed before the build and by an
+  EXIT trap, under a 20-minute timeout. Tests:
+  audit_compiler_warnings_check.
   **Layman:** One audit check always times out and leaves a copy of the whole build in the temp folder each time.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lane audit-dialog-a).
@@ -7181,7 +7185,7 @@ extends an existing item, that item carries it instead.
   Source: code-quality-review-2026-09-11 perf pass (lanes mcp-transport, mcp-state-workspace, code-index-search).
   Lanes: mcp, threading.
 
-- 📋 [ANTS-5074] **SubsystemMap's lane cache is read and written from the GUI thread and the MCP worker with no lock.**
+- ✅ [ANTS-5074] **SubsystemMap's lane cache is read and written from the GUI thread and the MCP worker with no lock.**
   SubsystemMap::cachedLanes keeps a static QHash with no lock, and its
   header still says it is called from one thread. The Independent
   Review dialog reaches it on the GUI thread through derivePartition,
@@ -7191,6 +7195,9 @@ extends an existing item, that item carries it instead.
   undefined behaviour.
   Found by two lanes.
   Fix: a QMutex around the cache.
+  Resolved (2026-09-11, 35da492f): a function-static mutex guards
+  cachedLanes' lookup and insert and clearCacheForTests; the file is
+  read and parsed outside it. Tests: mcp_subsystem ANTS-5074 addendum.
   **Layman:** Two parts of Ants can use the same internal lookup table at once, which can crash the app.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lanes mcp-state-workspace, shared-utilities).
