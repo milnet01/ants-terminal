@@ -1430,6 +1430,41 @@ if(ANTS_TESTS)
         LABELS "perf"
         TIMEOUT 300)
 
+    # bench_full_paint — wall time of the WHOLE of TerminalWidget::paintEvent
+    # (ANTS-5134). Links the real widget and renders it offscreen, so the
+    # number is the frame the terminal actually paints rather than a
+    # reproduction of its shaping step (which bench_paint_throughput covers).
+    add_executable(bench_full_paint
+        tests/perf/bench_full_paint.cpp
+    )
+    # ANTS-1444 — the static-lib graph has symbol cycles (chrome<->claude<->
+    # dialogs via mainwindow.cpp, chrome<->audit_dialog via the AuditDialog
+    # ctor), so the archives must sit inside --start-group for the linker to
+    # re-scan until every symbol resolves. Same guard ants-terminal and the
+    # test bundles use. Linking TerminalWidget pulls mainwindow.cpp.o in with
+    # it, which is what makes the cycle reachable from a benchmark.
+    #
+    # An ordered link resolved here with mold and failed on the Qt 6.2 floor's
+    # GNU ld, which is stricter about archive order — caught by the pre-push
+    # qt62-guard, not by any local build.
+    target_link_libraries(bench_full_paint PRIVATE
+        -Wl,--start-group
+        ants_chrome_lib ants_vt_lib ants_core_lib
+        ants_claude_lib ants_dialogs_lib ants_audit_lib ants_audit_dialog_lib
+        $<$<BOOL:${LUA_FOUND}>:ants_lua_lib>
+        -Wl,--end-group
+        Qt6::Widgets Qt6::Core Qt6::Gui
+    )
+    target_include_directories(bench_full_paint PRIVATE ${CMAKE_SOURCE_DIR}/tests/perf)
+    target_compile_options(bench_full_paint PRIVATE
+        -Wall -Wextra -Wpedantic -O2
+    )
+    add_test(NAME full_paint COMMAND bench_full_paint)
+    set_tests_properties(full_paint PROPERTIES
+        LABELS "perf"
+        TIMEOUT 300)
+
+
     # ----------------------------------------------------------------------
     # ANTS-2049 — e2e harness smoke suite. Opt-in (label "e2e"), excluded from
     # the default / workstation / fast / debug presets (like "perf") — it

@@ -1,33 +1,37 @@
 # ANTS-5133 perf baseline — regenerate with tools/perf-report.sh --save-baseline
-# date	2026-09-12T09:54:41Z
+# date	2026-09-12T10:02:36Z
 # machine	AMD Ryzen 5 5600 6-Core Processor | 12 cores | 31GiB
-# commit	a030b112
-audit.drift.changelog_coverage	82.5495	ms	lower_is_better
-audit.drift.contract_doc_specs	742.5618	ms	lower_is_better
-audit.drift.contract_doc_standards	358.0695	ms	lower_is_better
-audit.drift.spec_drift	546.0837	ms	lower_is_better
-audit.drift.total	1729.2645	ms	lower_is_better
-audit.partition_walk.cold_ms	440.2458	ms	lower_is_better
-audit.partition_walk.warm_ms	438.2739	ms	lower_is_better
-paint.ascii_words.cached_ms	323.8247	ms	lower_is_better
+# commit	b67b4c16
+audit.drift.changelog_coverage	83.0912	ms	lower_is_better
+audit.drift.contract_doc_specs	748.6141	ms	lower_is_better
+audit.drift.contract_doc_standards	364.1325	ms	lower_is_better
+audit.drift.spec_drift	556.8088	ms	lower_is_better
+audit.drift.total	1752.6466	ms	lower_is_better
+audit.partition_walk.cold_ms	441.2659	ms	lower_is_better
+audit.partition_walk.warm_ms	442.7769	ms	lower_is_better
+paint.ascii_words.cached_ms	309.0624	ms	lower_is_better
 paint.ascii_words.hit_rate	0.9998	ratio	higher_is_better
-paint.ascii_words.speedup	1.6244	x	higher_is_better
-paint.cjk_words.cached_ms	577.1015	ms	lower_is_better
+paint.ascii_words.speedup	1.7447	x	higher_is_better
+paint.cjk_words.cached_ms	585.2148	ms	lower_is_better
 paint.cjk_words.hit_rate	1.0000	ratio	higher_is_better
-paint.cjk_words.speedup	1.9889	x	higher_is_better
-paint.repeated_frame.cached_ms	321.1427	ms	lower_is_better
+paint.cjk_words.speedup	2.0065	x	higher_is_better
+paint.full.cjk.ms_per_frame	15.1436	ms	lower_is_better
+paint.full.plain.ms_per_frame	4.0035	ms	lower_is_better
+paint.full.scrolled_back.ms_per_frame	5.1185	ms	lower_is_better
+paint.full.styled.ms_per_frame	7.2258	ms	lower_is_better
+paint.repeated_frame.cached_ms	319.7408	ms	lower_is_better
 paint.repeated_frame.hit_rate	0.9993	ratio	higher_is_better
-paint.repeated_frame.speedup	1.6401	x	higher_is_better
-paint.sgr_styled.cached_ms	334.1545	ms	lower_is_better
+paint.repeated_frame.speedup	1.7032	x	higher_is_better
+paint.sgr_styled.cached_ms	328.0322	ms	lower_is_better
 paint.sgr_styled.hit_rate	0.9993	ratio	higher_is_better
-paint.sgr_styled.speedup	1.6314	x	higher_is_better
+paint.sgr_styled.speedup	1.6597	x	higher_is_better
 search.ci_literal.lookup_ms	0.0519	ms	lower_is_better
-search.ci_literal.scan_lines_per_sec	6792285.9194	lines/s	higher_is_better
+search.ci_literal.scan_lines_per_sec	6650626.2429	lines/s	higher_is_better
 search.literal_term.lookup_ms	0.0522	ms	lower_is_better
-search.literal_term.scan_lines_per_sec	6895307.7155	lines/s	higher_is_better
-search.regex_term.lookup_ms	0.0635	ms	lower_is_better
-search.regex_term.scan_lines_per_sec	6851267.2104	lines/s	higher_is_better
-vt.throughput.ansi_sgr	17.8759	MB/s	higher_is_better
-vt.throughput.ascii_print	28.6293	MB/s	higher_is_better
-vt.throughput.newline_stream	6.0855	MB/s	higher_is_better
-vt.throughput.utf8_cjk	8.5434	MB/s	higher_is_better
+search.literal_term.scan_lines_per_sec	6657187.7190	lines/s	higher_is_better
+search.regex_term.lookup_ms	0.0519	ms	lower_is_better
+search.regex_term.scan_lines_per_sec	6685736.1691	lines/s	higher_is_better
+vt.throughput.ansi_sgr	17.9952	MB/s	higher_is_better
+vt.throughput.ascii_print	28.6678	MB/s	higher_is_better
+vt.throughput.newline_stream	5.8975	MB/s	higher_is_better
+vt.throughput.utf8_cjk	8.3994	MB/s	higher_is_better

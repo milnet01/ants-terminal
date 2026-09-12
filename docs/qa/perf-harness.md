@@ -94,9 +94,30 @@ improve while the cache quietly stops working.
 |---|---|
 | `bench_vt_throughput` | PTY → VtParser → TerminalGrid parse and apply, four corpora |
 | `bench_paint_throughput` | the QTextLayout shaping `paintEvent` runs, cached vs not |
+| `bench_full_paint` | the WHOLE of `TerminalWidget::paintEvent`, real widget rendered offscreen |
 | `bench_search_throughput` | scrollback scan and per-cell match lookup |
 | `bench_partition_walk` | the test-audit tree walk run on the GUI thread |
 | `bench_drift_lanes` | the four in-process audit lanes run on the GUI thread |
 
-Known gaps, not yet covered: full `paintEvent` (only the shaping step is
-measured), scrollback seek, resize reflow, and startup time.
+Known gaps, not yet covered: scrollback seek, resize reflow, startup time,
+and selection/copy over a large region.
+
+## A benchmark that measures nothing
+
+`bench_full_paint` counts the non-background pixels it rendered and fails
+outright if there are almost none. A paint benchmark pointed at an empty
+widget reports an excellent frame time, and an excellent frame time is exactly
+what it would report if everything were fine — the two are indistinguishable
+from the number alone, so the number has to be defended.
+
+The same care applies to the corpora. Each is built to fill the grid width,
+because a corpus whose lines are short simply paints less and then reads as
+faster. Measured while writing it: the CJK corpus painted 11,641 ink pixels
+against plain's 36,564 and duly reported the better frame time. It was
+comparing content volume, not cost. Widths are stated in **cells**, not bytes
+— a Han character is 3 UTF-8 bytes and 2 columns.
+
+And report what actually happened rather than what was asked for:
+`bench_full_paint` prints the grid size the widget ended up with, not the one
+requested, because the widget sizes its own grid from its pixel geometry. A
+request for 50x200 becomes 52x210 here.

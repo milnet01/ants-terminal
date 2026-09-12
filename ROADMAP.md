@@ -71563,7 +71563,7 @@ a modern terminal" release.
   Source: in-session-2026-09-08.
   Lanes: claudestatuswidgets.
 
-- 🚧 [ANTS-5133] **One perf harness that runs every benchmark and reports it against a saved baseline.**
+- ✅ [ANTS-5133] **One perf harness that runs every benchmark and reports it against a saved baseline.**
   User request: a benchmarking tool, in the shape game engines use, to find
   where the terminal is slowest so the slow parts can be worked on. User
   decision (2026-09-12), asked before building: the readout wanted is a
@@ -71607,9 +71607,76 @@ a modern terminal" release.
   five do not touch full paintEvent (only the shaping step), scrollback
   seek, or resize reflow — and is filed separately rather than bundled,
   so the harness lands usable.
+  Shipped (b67b4c16). tools/perf-report.sh runs every tests/perf benchmark
+  and reports each metric against tests/perf/baseline.tsv, flagging moves
+  past a threshold and exiting non-zero on a regression. Benchmarks are
+  discovered from the source tree and their numbers read from the uniform
+  lines tests/perf/perf_metric.h emits, so no list of benchmarks or
+  metrics is kept anywhere. Docs: docs/qa/perf-harness.md.
+
+  First baseline on this machine at a030b112: 29 metrics.
+
+  Verified by driving each path, not by inspection — a doctored baseline
+  produces REGRESSION rows and exit 1, the inverse produces improved rows
+  and exit 0, and a foreign machine line produces the NOT COMPARED block
+  with no percentages.
+
+  COVERAGE is the follow-up and is filed as its own item: the five
+  benchmarks that exist do not touch full paintEvent (only the shaping
+  step), scrollback seek, resize reflow, or startup, so the harness cannot
+  yet answer the question that prompted it — where the terminal is
+  slowest.
   **Layman:** One command that measures the terminal everywhere it matters and tells you what got faster or slower since last time.
   Kind: perf.
   Source: user-request-2026-09-12.
+
+- 🚧 [ANTS-5134] **The perf suite does not measure the paths a user actually waits on.**
+  ANTS-5133 built the harness. This is its coverage, and without it the
+  harness cannot answer the question that prompted it — where the terminal
+  is slowest.
+
+  What the five existing benchmarks measure, and what they leave out:
+
+  - bench_paint_throughput measures the QTextLayout SHAPING step alone,
+    against an offscreen QImage. The real paintEvent also walks every
+    visible cell, resolves per-cell colours and attributes, coalesces
+    background fills (ANTS-1180), tests each cell against the URL,
+    highlight and search spans (ANTS-3459 is filed about that linear
+    scan), and draws. None of that is measured, so the one number the
+    terminal's smoothness most depends on is absent.
+  - bench_vt_throughput measures parse + grid apply, which is the right
+    path, but only for a grid that is not scrolled and never resized.
+  - bench_search_throughput reproduces the scan algorithm rather than
+    linking it, so it cannot catch a regression in the real code.
+  - Nothing measures scrollback seek, resize reflow, or startup.
+
+  Benchmarks to add, in the order a user notices them:
+
+  1. FULL paintEvent, not the shaping step. Needs a real TerminalWidget
+     rendered into a QImage rather than a reproduction, since a
+     reproduction cannot catch a regression in the widget. Vary the axes
+     that plausibly cost: plain vs heavily styled rows, with and without
+     URL/highlight/search spans present, and a wide grid.
+  2. Resize reflow at the 50k default and the 1M maximum. This is the
+     longest single operation the terminal performs and it is on the GUI
+     thread; a user dragging a window edge feels it directly.
+  3. Scrollback seek — jump to the top of a full buffer, page through it.
+  4. Startup to first paint.
+  5. Selection and copy over a large region.
+
+  Method note, learnt the expensive way on ANTS-5067 and worth stating
+  before these are written: measure the REAL code path by linking it, and
+  keep the baseline call out of the timed loop. A first attempt at
+  measuring that fix timed the new implementation and the old one in the
+  same loop and reported the new one as slower than what it replaced.
+
+  Do NOT tune anything from these numbers until they exist and are
+  recorded — ANTS-4921 is open precisely because three parked perf items
+  were written against numbers that aged with nothing to re-run. This
+  item, plus the harness, is what closes that.
+  **Layman:** The benchmark suite does not yet cover the things that actually make the terminal feel slow, so it cannot tell us where to look.
+  Kind: perf.
+  Source: user-request-2026-09-12 (ANTS-5133 follow-up).
 
 ### 🎨 Features — multiplexing
 
