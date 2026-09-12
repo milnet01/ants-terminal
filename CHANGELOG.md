@@ -46,6 +46,11 @@ for security-relevant changes.
 
 ### Fixed
 
+- **A malformed colour escape no longer leaves the text after it dim** (ANTS-5130)
+  An extended-colour sequence too short to carry its colour had its own
+  selector run as an attribute code, switching dim on for every cell that
+  followed until the next reset. Such a sequence is now abandoned whole.
+
 - **Closing Review Changes now cancels its background git probes before they are torn down** (ANTS-5128)
   Closing the window while a probe was still running destroyed it mid-flight,
   which ran the probe's completion handler against the half-closed window.

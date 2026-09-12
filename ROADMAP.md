@@ -8860,6 +8860,36 @@ extends an existing item, that item carries it instead.
   Source: user-request-2026-09-12.
   Lanes: diffviewer, clipboard.
 
+- ✅ [ANTS-5130] **A truncated extended-colour SGR executes its own selector as SGR 2, rendering later text dim.**
+  parse256Color and parseRGBColor returned m_defaultFg WITHOUT advancing
+  `i` when the operand list was too short to hold the colour. handleSGR's
+  loop then stepped onto the selector operand and executed it as an
+  attribute code: for `38;2` / `48;2` that is `case 2`, which sets dim.
+  Every later cell renders dim (paint applies fg.darker(150)) until the
+  next SGR 0 or 22.
+  Reported by the user: text darker than it should be, with a typed line
+  part dim and part correct.
+  Fix: on the short path both walkers consume the remainder of the
+  parameter list, so a malformed colour spec abandons the rest of the
+  sequence instead of running its operands as attributes.
+  Proven red then green in tests/features/sgr_attribute_reset
+  (TruncatedTruecolorDoesNotSetDim, TruncatedTruecolorBackgroundDoesNotSetDim).
+  NOT yet confirmed as the cause of the user's specific case: the byte
+  sequence Claude Code emits was not captured, so the emitter that sends a
+  short triple is unidentified.
+  Resolved (2026-09-12): both walkers consume the remainder of the
+  parameter list on the short path (6df94255). Red-then-green in
+  tests/features/sgr_attribute_reset; suite 4544/4544. Whether this was
+  the cause of the user's reported dim text is still unconfirmed — the
+  emitting byte sequence was never captured. If dim text still reads as
+  crushed after a relaunch, the remaining candidate is the render-side
+  fg.darker(150), which on a dark theme takes a grey foreground to about
+  #555555.
+  **Layman:** Text could turn grey when it should be normal, and stay grey until something reset the colour.
+  Kind: fix.
+  Source: user-report-2026-09-12.
+  Lanes: vt, terminalgrid.
+
 ## Memory-efficiency sweep (user request 2026-08-19)
 
 The speed sweeps above ask how fast Ants is. This one asks how much it costs to
