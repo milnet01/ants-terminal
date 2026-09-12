@@ -1466,6 +1466,30 @@ if(ANTS_TESTS)
         LABELS "perf"
         TIMEOUT 120)
 
+    # bench_widget_search — the REAL TerminalWidget::performSearch over a full
+    # scrollback (ANTS-2000). bench_search_throughput reproduces the scan over
+    # pre-built strings and so never pays for building line text from cells.
+    # Same --start-group link as bench_full_paint, for the same reason.
+    add_executable(bench_widget_search
+        tests/perf/bench_widget_search.cpp
+    )
+    target_link_libraries(bench_widget_search PRIVATE
+        -Wl,--start-group
+        ants_chrome_lib ants_vt_lib ants_core_lib
+        ants_claude_lib ants_dialogs_lib ants_audit_lib ants_audit_dialog_lib
+        $<$<BOOL:${LUA_FOUND}>:ants_lua_lib>
+        -Wl,--end-group
+        Qt6::Widgets Qt6::Core Qt6::Gui
+    )
+    target_include_directories(bench_widget_search PRIVATE ${CMAKE_SOURCE_DIR}/tests/perf)
+    target_compile_options(bench_widget_search PRIVATE
+        -Wall -Wextra -Wpedantic -O2
+    )
+    add_test(NAME widget_search COMMAND bench_widget_search)
+    set_tests_properties(widget_search PROPERTIES
+        LABELS "perf"
+        TIMEOUT 300)
+
     # bench_full_paint — wall time of the WHOLE of TerminalWidget::paintEvent
     # (ANTS-5134). Links the real widget and renders it offscreen, so the
     # number is the frame the terminal actually paints rather than a
@@ -1694,6 +1718,8 @@ if(ANTS_TESTS)
                 # TerminalWidget transitively pulls remotecontrol -> MainWindow,
                 # whose symbols are in ants_chrome_lib.
                 tests/features/terminal_a11y/test_terminal_a11y.cpp
+                # ANTS-2000 — search results are fixed by the grid.
+                tests/features/terminal_search_scan/test_terminal_search_scan.cpp
                 # ANTS-2119 M2 — OSC 8 phishing classifier (static; needs the full
                 # TerminalWidget link set, same as terminal_a11y above).
                 tests/features/osc8_homograph_guard/test_osc8_homograph_guard.cpp

@@ -4139,6 +4139,49 @@ QString TerminalWidget::lineText(int globalLine) const {
         }
     };
 
+    // ANTS-2000 — search builds this for every scrollback line on every
+    // query. A history line is read directly: one row lookup and one
+    // combining-map check per line, instead of a bounds-checked lookup of
+    // both per cell, and written through a pointer into a buffer sized for
+    // the worst case (two UTF-16 units per codepoint), trimmed once. Output
+    // is identical to the per-cell loop below
+    // (tests/features/terminal_search_scan).
+    if (globalLine >= 0 && globalLine < m_grid->scrollbackSize()) {
+        const auto &cells = m_grid->scrollbackLine(globalLine);
+        const auto &combining = m_grid->scrollbackCombining(globalLine);
+        const int stored = std::min(cols, static_cast<int>(cells.size()));
+
+        qsizetype capacity = qsizetype(cols) * 2;
+        for (const auto &entry : combining)
+            capacity += qsizetype(entry.second.size()) * 2;
+        text.resize(capacity);
+        const char16_t *const begin = reinterpret_cast<char16_t *>(text.data());
+        char16_t *out = reinterpret_cast<char16_t *>(text.data());
+        auto put = [&out](uint32_t cp) {
+            if (cp < 0x10000) {
+                *out++ = static_cast<char16_t>(cp);
+            } else {
+                cp -= 0x10000;
+                *out++ = static_cast<char16_t>(0xD800 + (cp >> 10));
+                *out++ = static_cast<char16_t>(0xDC00 + (cp & 0x3FF));
+            }
+        };
+
+        for (int c = 0; c < cols; ++c) {
+            uint32_t cp = c < stored ? cells[c].codepoint : ' ';
+            if (cp == 0) cp = ' ';
+            put(cp);
+            if (!combining.empty()) {
+                auto it = combining.find(c);
+                if (it != combining.end())
+                    for (uint32_t combCp : it->second)
+                        put(combCp);
+            }
+        }
+        text.resize(out - begin);
+        return text;
+    }
+
     for (int c = 0; c < cols; ++c) {
         uint32_t cp = cellAtGlobal(globalLine, c).codepoint;
         if (cp == 0) cp = ' ';

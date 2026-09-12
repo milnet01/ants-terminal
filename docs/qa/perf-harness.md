@@ -22,8 +22,8 @@ The benchmarks are ctest label `perf` and are excluded from the `default` and
 
 ```bash
 cmake --build build --target bench_vt_throughput bench_paint_throughput \
-                             bench_search_throughput bench_partition_walk \
-                             bench_drift_lanes
+                             bench_search_throughput bench_widget_search \
+                             bench_partition_walk bench_drift_lanes
 ```
 
 A benchmark whose source exists but whose executable does not is reported as
@@ -95,7 +95,8 @@ improve while the cache quietly stops working.
 | `bench_vt_throughput` | PTY → VtParser → TerminalGrid parse and apply, four corpora |
 | `bench_paint_throughput` | the QTextLayout shaping `paintEvent` runs, cached vs not |
 | `bench_full_paint` | the WHOLE of `TerminalWidget::paintEvent`, real widget rendered offscreen |
-| `bench_search_throughput` | scrollback scan and per-cell match lookup |
+| `bench_search_throughput` | scrollback scan and per-cell match lookup, reproduced over pre-built strings |
+| `bench_widget_search` | the REAL `TerminalWidget::performSearch`, driven through the search bar |
 | `bench_partition_walk` | the test-audit tree walk run on the GUI thread |
 | `bench_drift_lanes` | the four in-process audit lanes run on the GUI thread |
 
