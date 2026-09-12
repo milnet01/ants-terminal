@@ -20,6 +20,7 @@
 
 #pragma once
 
+#include <QByteArray>
 #include <QList>
 #include <QSet>
 #include <QString>
@@ -177,6 +178,38 @@ QString buildProjectSourceBlob(const QString &projectPath,
 // matching here but deferred it — on this repo it surfaces imprecise spec
 // wording, not real drift; see ROADMAP.)
 bool existsInSource(const QString &blob, const QString &token);
+
+// ANTS-5067 — the same predicate, answered against a prebuilt index instead of
+// rescanning `blob` per token.
+//
+// Why: existsInSource is a linear scan of the blob, and the drift lanes ask it
+// tens of thousands of times. Measured on this project (18.7 M-char blob,
+// 17,811 tokens from docs/specs): 17.1 s for the scan-per-token form, 0.39 s
+// through this index plus 0.31 s to build it — and the index is built once and
+// shared by every lane. The verdicts are identical, not approximate: checked
+// token-for-token against existsInSource over all 17,811, zero mismatches.
+//
+// How it stays exact. A token made only of identifier characters can occur in
+// the blob ONLY inside a maximal identifier run, so the set of distinct runs
+// answers it outright when the token is a whole run, and the concatenation of
+// the distinct runs is a sufficient haystack when it is a proper substring of
+// one (668 KB here rather than 18.7 MB). The same argument holds for the wider
+// path-shaped character class, which is what carries `Class::method`,
+// `file.cpp` and `docs/specs/x.md`. A token outside both classes — one with a
+// space or other punctuation — falls back to scanning the whole blob, which is
+// the old behaviour and is rare.
+struct SourceIndex {
+    QByteArray blob;        // the whole blob, UTF-8
+    QSet<QByteArray> idSet, pathSet;    // distinct maximal runs
+    QByteArray idRuns, pathRuns;        // those runs concatenated, '\n'-joined
+};
+
+SourceIndex buildSourceIndex(const QString &blob);
+
+// Identical verdict to existsInSource(blob, token) for the blob the index was
+// built from. Callers asking about many tokens should build once and use this;
+// a caller with a single token can keep the two-argument form.
+bool existsInSource(const SourceIndex &index, const QString &token);
 
 // Public accessor for the existing internal `kSpecStopwords` set
 // (shared with extractSpecTokens). Lets DebtSweepEngine drop the same

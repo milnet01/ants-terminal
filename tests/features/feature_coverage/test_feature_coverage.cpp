@@ -364,6 +364,89 @@ void testChangelogCoverageByEntryId() {
 
 } // namespace
 
+
+// ---------------------------------------------------------------------------
+// ANTS-5067 — the indexed predicate must agree with the unindexed one
+// ---------------------------------------------------------------------------
+//
+// buildSourceIndex/existsInSource(index, …) exist only to answer
+// existsInSource(blob, …) faster. Their whole licence is that the verdict is
+// IDENTICAL, not merely usually the same: a divergence does not crash, it
+// silently adds or removes a drift finding, which is the one failure nobody
+// reading the audit output could detect.
+//
+// So assert equivalence directly, over inputs chosen to hit every branch the
+// index takes — a whole identifier run, a proper substring of one (which the
+// run-set cannot answer and the run-concatenation must), a path-shaped token,
+// a token spanning characters in neither class (which must fall through to the
+// full blob), the `::` and `.` tail fallbacks, and absent tokens of each shape.
+void testIndexedLookupMatchesUnindexed() {
+    const QString blob = QStringLiteral(
+        "class RemoteControl { void dispatch(); };\n"
+        "#include \"featurecoverage.h\"\n"
+        "docs/specs/ANTS-3600.md\n"
+        "int alpha_beta = 3;  // trailing comment here\n"
+        "lua54-devel x-checker-data\n"
+        "some words with spaces between them\n");
+
+    const FeatureCoverage::SourceIndex index = FeatureCoverage::buildSourceIndex(blob);
+
+    const QStringList probes = {
+        // Present, whole identifier run — answered by the run set.
+        QStringLiteral("RemoteControl"), QStringLiteral("dispatch"),
+        QStringLiteral("alpha_beta"),
+        // Present, proper substring of a run — the run set misses, the
+        // run-concatenation must find it.
+        QStringLiteral("Control"), QStringLiteral("emoteCont"),
+        QStringLiteral("beta"), QStringLiteral("lpha"),
+        // Present, path-shaped (crosses '.', ':', '/', '-').
+        QStringLiteral("featurecoverage.h"), QStringLiteral("docs/specs"),
+        QStringLiteral("docs/specs/ANTS-3600.md"), QStringLiteral("lua54-devel"),
+        QStringLiteral("x-checker-data"),
+        // Present, but outside both character classes — must reach the blob.
+        QStringLiteral("words with spaces"), QStringLiteral("comment here"),
+        QStringLiteral("{ void dispatch"),
+        // The `::` tail fallback: compound absent, tail present.
+        QStringLiteral("RemoteControl::dispatch"),
+        QStringLiteral("Nowhere::dispatch"),
+        // …and a tail too short to qualify (<3), which must NOT resolve.
+        QStringLiteral("Nowhere::ab"),
+        // The `.` tail fallback: identifier-shaped tail of 4+ alpha chars.
+        QStringLiteral("module.dispatch"),
+        // …and one whose tail is a file extension, which must NOT resolve via
+        // the tail rule (guards the `*.cpp` → `cpp` false pass).
+        QStringLiteral("nosuchfile.cpp"),
+        // Absent, of each shape.
+        QStringLiteral("NoSuchSymbolAnywhere"), QStringLiteral("zzz/not/a/path.md"),
+        QStringLiteral("absent with spaces"), QStringLiteral("Zq"),
+        // Degenerate.
+        QStringLiteral(""), QStringLiteral("a"),
+    };
+
+    for (const QString &tok : probes) {
+        const bool unindexed = FeatureCoverage::existsInSource(blob, tok);
+        const bool indexed   = FeatureCoverage::existsInSource(index, tok);
+        if (unindexed != indexed) {
+            std::fprintf(stderr,
+                         "FAIL indexed lookup disagrees for `%s`: "
+                         "unindexed=%d indexed=%d\n",
+                         qPrintable(tok), int(unindexed), int(indexed));
+            ++failures;
+        }
+    }
+
+    // An index built from an empty blob answers false rather than crashing —
+    // contractDocDriftIn returns early on an empty blob, but buildSourceIndex
+    // is public and must not depend on that.
+    const FeatureCoverage::SourceIndex empty = FeatureCoverage::buildSourceIndex(QString());
+    CHECK(!FeatureCoverage::existsInSource(empty, QStringLiteral("anything")),
+          "empty index must resolve nothing");
+    CHECK(FeatureCoverage::existsInSource(empty, QStringLiteral("anything"))
+              == FeatureCoverage::existsInSource(QString(), QStringLiteral("anything")),
+          "empty index must agree with an empty blob");
+}
+
+
 static int runMain() {
     // Reset counter so `--gtest_repeat` and re-entry from a single
     // binary don't accumulate failures across runs (the variable is
@@ -392,6 +475,7 @@ static int runMain() {
     testMatchEmptyTitleList();
 
     testSpecDriftCitedFilenameResolves();
+    testIndexedLookupMatchesUnindexed();
     testChangelogEntryIdExtraction();
     testChangelogCoverageByEntryId();
 

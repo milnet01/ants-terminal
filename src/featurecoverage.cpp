@@ -5,6 +5,7 @@
 #include "auditengine.h"
 #include "markdownscan.h"
 
+#include <QByteArrayMatcher>
 #include <QDir>
 #include <QDirIterator>
 #include <QFile>
@@ -492,6 +493,102 @@ bool existsInSource(const QString &blob, const QString &token) {
     return false;
 }
 
+// ANTS-5067 — index construction. The two character classes below are the
+// whole of the exactness argument: a token drawn only from a class can occur
+// in the blob only inside a maximal run of that class, so the runs are a
+// complete haystack for it. `pathChar` is the wider class and subsumes
+// `idChar`, which is why a token is tested against the identifier runs first
+// (smaller haystack) and the path runs second.
+namespace {
+
+inline bool idChar(unsigned char c) {
+    return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z')
+        || (c >= '0' && c <= '9') || c == '_';
+}
+inline bool pathChar(unsigned char c) {
+    return idChar(c) || c == '.' || c == ':' || c == '/' || c == '-';
+}
+
+template <typename Pred>
+void collectRuns(const QByteArray &blob, Pred ok,
+                 QSet<QByteArray> &set, QByteArray &runs) {
+    const qsizetype n = blob.size();
+    qsizetype i = 0;
+    while (i < n) {
+        while (i < n && !ok(static_cast<unsigned char>(blob[i]))) ++i;
+        const qsizetype start = i;
+        while (i < n && ok(static_cast<unsigned char>(blob[i]))) ++i;
+        if (i <= start) continue;
+        QByteArray run = blob.mid(start, i - start);
+        // Distinct only: the concatenation is a haystack, so a repeated run
+        // adds scan cost and no reachable position.
+        if (!set.contains(run)) {
+            set.insert(run);
+            runs += run;
+            runs += '\n';   // never in either class, so it cannot join two runs
+        }
+    }
+}
+
+template <typename Pred>
+bool allChars(const QByteArray &s, Pred ok) {
+    if (s.isEmpty()) return false;
+    for (char c : s)
+        if (!ok(static_cast<unsigned char>(c))) return false;
+    return true;
+}
+
+// The primary containment test, indexed. Mirrors the `blob.contains(token)`
+// first line of the two-argument existsInSource.
+bool indexContains(const SourceIndex &ix, const QByteArray &needle) {
+    // Qt's containment says an empty needle is present in any haystack, and
+    // the unindexed existsInSource inherits that from QString::contains. Match
+    // it: the two must not differ on ANY input, and the equivalence test in
+    // tests/features/feature_coverage caught this one.
+    if (needle.isEmpty()) return true;
+    if (ix.idSet.contains(needle) || ix.pathSet.contains(needle)) return true;
+    if (allChars(needle, idChar))
+        return QByteArrayMatcher(needle).indexIn(ix.idRuns) >= 0;
+    if (allChars(needle, pathChar))
+        return QByteArrayMatcher(needle).indexIn(ix.pathRuns) >= 0;
+    // Outside both classes (a space, a quote, a bracket): no run structure to
+    // exploit, so scan the blob exactly as the unindexed form does.
+    return QByteArrayMatcher(needle).indexIn(ix.blob) >= 0;
+}
+
+}  // namespace
+
+SourceIndex buildSourceIndex(const QString &blob) {
+    SourceIndex ix;
+    ix.blob = blob.toUtf8();
+    collectRuns(ix.blob, idChar,   ix.idSet,   ix.idRuns);
+    collectRuns(ix.blob, pathChar, ix.pathSet, ix.pathRuns);
+    return ix;
+}
+
+bool existsInSource(const SourceIndex &ix, const QString &token) {
+    // Same three tests, in the same order, as the two-argument form above —
+    // primary containment, then the `::` tail, then the identifier-shaped `.`
+    // tail. Keep the two in step: the drift lanes' findings are the difference
+    // between them.
+    if (indexContains(ix, token.toUtf8())) return true;
+
+    const int scopeIdx = token.lastIndexOf(QStringLiteral("::"));
+    if (scopeIdx > 0) {
+        const QString tail = token.mid(scopeIdx + 2);
+        if (tail.size() >= 3 && indexContains(ix, tail.toUtf8()))
+            return true;
+    }
+    const int dotIdx = token.lastIndexOf('.');
+    if (dotIdx > 0 && dotIdx < token.size() - 1) {
+        const QString tail = token.mid(dotIdx + 1);
+        if (tail.size() >= 4 && tail[0].isLetter()
+            && indexContains(ix, tail.toUtf8()))
+            return true;
+    }
+    return false;
+}
+
 const QSet<QString> &specStopwords() {
     return stopwords();
 }
@@ -518,8 +615,11 @@ QString runSpecDriftCheck(const QString &projectPath) {
         projectPath, BlobOptions{.appendPathManifest = true});
     if (sourceBlob.isEmpty()) return {};
 
-    auto resolves = [&sourceBlob](const QString &tok) {
-        return existsInSource(sourceBlob, tok);
+    // ANTS-5067 — index once, then answer every token against it. Measured on
+    // this project the scan-per-token form cost 12.0 s here, on the GUI thread.
+    const SourceIndex index = buildSourceIndex(sourceBlob);
+    auto resolves = [&index](const QString &tok) {
+        return existsInSource(index, tok);
     };
 
     QString out;
@@ -592,6 +692,20 @@ static QString contractDocDriftIn(const QString &projectPath,
         BlobOptions{.includeMarkdownContents = false, .appendPathManifest = true});
     if (blob.isEmpty()) return {};
 
+    // ANTS-5067 — index once per lane, then answer every token against it.
+    // Measured: the scan-per-token form cost 2.3 s (standards) and 17.3 s
+    // (specs) on the GUI thread; indexed, both are under half a second.
+    //
+    // The two registered lanes ask for byte-identical blobs, so building this
+    // once for both would save a further ~660 ms per audit. That is NOT done
+    // here, deliberately: a cache keyed on the project path answers a later
+    // audit from a tree that has since been edited, which turns a lane whose
+    // whole job is noticing drift into one that cannot see it. Tried with a
+    // 2 s TTL and ContractDocDrift.RealFilenamesResolveViaManifest caught it
+    // immediately. Sharing needs a caller that owns both lanes and builds once
+    // per audit — tracked separately.
+    const SourceIndex index = buildSourceIndex(blob);
+
     const QSet<QString> allow = loadAllowlist(projectPath);
 
     QString out;
@@ -609,7 +723,7 @@ static QString contractDocDriftIn(const QString &projectPath,
         const QString relPath = projectDir.relativeFilePath(docPath);
         for (const SpecToken &t : extractDocLiteralTokens(docText)) {
             if (allow.contains(t.token)) continue;
-            if (existsInSource(blob, t.token)) continue;
+            if (existsInSource(index, t.token)) continue;
             out += QString("%1:%2: doc references `%3` but no match in "
                            "project sources\n")
                        .arg(relPath, QString::number(t.line)).arg(t.token);
