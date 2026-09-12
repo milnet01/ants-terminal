@@ -78,7 +78,11 @@ protected:
 
 private:
     void    buildControls();
-    void    runEnginePartition();
+    // ANTS-5126 — withPrePass=false skips the grep pre-pass and the
+    // partition cache. The panel refresh needs only the chunk set and the
+    // token; the dispatch path needs the cache, because the briefs that
+    // follow read each chunk's pre-pass findings out of it.
+    void    runEnginePartition(bool withPrePass = true);
     void    rebuildPanel();
     void    renderResults();
     void    persistResumeState();

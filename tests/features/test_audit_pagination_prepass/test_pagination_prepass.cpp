@@ -95,3 +95,92 @@ TEST(TestAuditPaginationPrePass, Inv2EnvelopeOmitsCachedMap) {
         << "INV-2: envelope must omit the inline pre_pass map when "
            "prePassCached (page 2+), not only on the size cap";
 }
+
+// ───────────────────────────────────────────────────────────────────
+// ANTS-5126 — a partition run without the pre-pass. The dialog's panel
+// refresh needs only the chunk set and the token, and the pre-pass (which
+// reads and regex-scans every file in every chunk) is where partition's
+// cost is: ~430 ms against the ~50 ms ANTS-1397 § 6 allows for a
+// GUI-thread call. Skipping it must change nothing else.
+// ───────────────────────────────────────────────────────────────────
+
+// INV-3 — skipping the pre-pass yields the same chunk set and the same
+// token. The dialog derives the token on the refresh path and dispatches
+// against it later; a different token there would strand every brief.
+TEST(TestAuditPaginationPrePass, Inv3NoPrePassKeepsChunksAndToken) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString root = scaffoldPytestSuite(tmp.path());
+
+    TestAuditEngine::PartitionRequest base;
+    base.callerCwd  = root;
+    base.scope      = QStringLiteral("auto");
+    base.dimensions = QStringLiteral("auto");
+    base.chunkSize  = 4;
+
+    const TestAuditEngine::PartitionResult withPre =
+        TestAuditEngine::partition(base);
+    ASSERT_TRUE(withPre.ok) << withPre.error.toStdString();
+
+    TestAuditEngine::PartitionRequest lean = base;
+    lean.prePass = false;
+    const TestAuditEngine::PartitionResult noPre =
+        TestAuditEngine::partition(lean);
+    ASSERT_TRUE(noPre.ok) << noPre.error.toStdString();
+
+    EXPECT_EQ(noPre.partitionToken, withPre.partitionToken)
+        << "a pre-pass-free partition must derive the same token";
+    ASSERT_EQ(noPre.chunks.size(), withPre.chunks.size())
+        << "a pre-pass-free partition must produce the same chunk set";
+    for (int i = 0; i < noPre.chunks.size(); ++i) {
+        EXPECT_EQ(noPre.chunks[i].id, withPre.chunks[i].id);
+        EXPECT_EQ(noPre.chunks[i].paths, withPre.chunks[i].paths);
+    }
+    EXPECT_EQ(noPre.framework, withPre.framework);
+    EXPECT_TRUE(noPre.prePassFindingsByChunk.isEmpty())
+        << "the pre-pass was asked to be skipped but ran anyway";
+    EXPECT_FALSE(withPre.prePassFindingsByChunk.isEmpty())
+        << "fixture no longer produces pre-pass findings — test is vacuous";
+}
+
+// INV-4 — a pre-pass-free partition seeds the cache but must not displace
+// an entry already there. It has to seed: synthesis looks the partition up
+// by token, and the dialog's panel refresh is what seeds it on open. It
+// must not displace: test_audit_brief serves each chunk's findings out of
+// this cache, so replacing a full entry with a lean one would empty every
+// brief — the ANTS-2096 failure reached by another route.
+TEST(TestAuditPaginationPrePass, Inv4NoPrePassDoesNotPoisonTheBriefCache) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString root = scaffoldPytestSuite(tmp.path());
+
+    TestAuditEngine::PartitionRequest base;
+    base.callerCwd  = root;
+    base.scope      = QStringLiteral("auto");
+    base.dimensions = QStringLiteral("auto");
+    base.chunkSize  = 4;
+
+    const TestAuditEngine::PartitionResult withPre =
+        TestAuditEngine::partition(base);
+    ASSERT_TRUE(withPre.ok) << withPre.error.toStdString();
+    ASSERT_FALSE(withPre.chunks.isEmpty());
+    const QString chunkId = withPre.chunks.first().id;
+
+    // The panel refresh the dialog runs, after the dispatch path cached.
+    TestAuditEngine::PartitionRequest lean = base;
+    lean.prePass = false;
+    const TestAuditEngine::PartitionResult noPre =
+        TestAuditEngine::partition(lean);
+    ASSERT_TRUE(noPre.ok) << noPre.error.toStdString();
+
+    TestAuditEngine::BriefRequest breq;
+    breq.callerCwd      = root;
+    breq.partitionToken = withPre.partitionToken;
+    breq.chunkId        = chunkId;
+
+    const TestAuditEngine::BriefResult b = TestAuditEngine::brief(breq);
+    ASSERT_TRUE(b.ok) << "brief failed: " << b.error.toStdString();
+    EXPECT_FALSE(b.prePassFindings.isEmpty())
+        << "a pre-pass-free partition displaced the cached one, so chunk "
+        << chunkId.toStdString() << " lost its pre_pass_findings";
+}

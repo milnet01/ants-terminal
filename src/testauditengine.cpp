@@ -234,8 +234,16 @@ QMutex                          g_partitionCacheMutex;
 QHash<QString, qint64>          g_lastMtimeRecheckByToken;
 QMutex                          g_recheckMutex;
 
-void cachePartition(const PartitionResult &p) {
+// ANTS-5126 — `keepExisting` seeds the cache without displacing what is
+// already there. A pre-pass-free partition still has to populate the cache,
+// because synthesis looks the partition up by token and the dialog's panel
+// refresh is what seeds it on open. But it must never overwrite an entry
+// that carries pre-pass findings: test_audit_brief serves those out of this
+// cache, and replacing a full entry with a lean one empties every brief.
+void cachePartition(const PartitionResult &p, bool keepExisting = false) {
     QMutexLocker lk(&g_partitionCacheMutex);
+    if (keepExisting && g_partitionCache.contains(p.partitionToken))
+        return;
     if (g_partitionCache.contains(p.partitionToken)) {
         g_partitionCacheLru.removeAll(p.partitionToken);
     }
@@ -1240,6 +1248,14 @@ PartitionResult partition(const PartitionRequest &req) {
     }();
     // Pre-pass per chunk; cap at kPrePassPerChunkCap per chunk.
     for (const Chunk &c : chunks) {
+        // ANTS-5126 — the chunk set is built in this loop, so a skipped
+        // pre-pass still appends; only the per-file scan is dropped. The
+        // chunk then carries no prePassDimensions hints, which are read by
+        // the brief and not by the dialog's panel.
+        if (!req.prePass) {
+            r.chunks.append(c);
+            continue;
+        }
         QJsonArray findings;
         int remaining = kPrePassPerChunkCap;
         for (const QString &path : c.paths) {
@@ -1296,8 +1312,13 @@ PartitionResult partition(const PartitionRequest &req) {
             r.prePassCached = true;
         }
     }
-    // Cache partition for brief/synth lookup.
-    cachePartition(r);
+    // Cache partition for brief/synth lookup. ANTS-5126 — a pre-pass-free
+    // result seeds the cache but never displaces a full one: synthesis looks
+    // the partition up by token, and the dialog's panel refresh is what
+    // seeds it on open, so skipping the insert entirely left synthesis with
+    // no partition. Displacing a full entry would instead empty every brief,
+    // which is the ANTS-2096 failure by another route.
+    cachePartition(r, /*keepExisting=*/!req.prePass);
     // Byte count (informational).
     QJsonObject env;
     env["framework"]    = r.framework;

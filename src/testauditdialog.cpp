@@ -136,8 +136,9 @@ void TestAuditDialog::setDimensionsCsv(const QString &csv) {
     runPartition();
 }
 
-void TestAuditDialog::runEnginePartition() {
+void TestAuditDialog::runEnginePartition(bool withPrePass) {
     TestAuditEngine::PartitionRequest preq;
+    preq.prePass = withPrePass;
     preq.callerCwd  = projectCwd();
     preq.scope      = QStringLiteral("auto");
     preq.dimensions = m_dimensionsCsv.isEmpty() ? QStringLiteral("auto")
@@ -167,7 +168,10 @@ void TestAuditDialog::runEnginePartition() {
 }
 
 QList<ReviewLane> TestAuditDialog::derivePartition() {
-    runEnginePartition();
+    // ANTS-5126 — the panel refresh runs on the GUI thread, on dialog open
+    // and on every editingFinished. It needs the chunk set and the token,
+    // not the pre-pass findings, which is where partition's cost is.
+    runEnginePartition(/*withPrePass=*/false);
     QList<ReviewLane> out;
     out.reserve(m_chunks.size());
     for (const TestAuditEngine::Chunk &c : m_chunks)

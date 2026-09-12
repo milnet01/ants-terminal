@@ -1381,6 +1381,28 @@ if(ANTS_TESTS)
         LABELS "perf"
         TIMEOUT 60)
 
+    # bench_partition_walk — wall time of TestAuditEngine::partition, the
+    # tree walk TestAuditDialog runs on the GUI thread (ANTS-5126). Links
+    # the real engine so the number is the walk the dialog runs, not a
+    # reproduction of it. ANTS_PERF_ROOT=<path> measures a bigger tree.
+    add_executable(bench_partition_walk
+        tests/perf/bench_partition_walk.cpp
+    )
+    target_link_libraries(bench_partition_walk PRIVATE
+        ants_core_lib
+        Qt6::Core
+    )
+    target_compile_definitions(bench_partition_walk PRIVATE
+        ANTS_PROJECT_ROOT="${CMAKE_SOURCE_DIR}"
+    )
+    target_compile_options(bench_partition_walk PRIVATE
+        -Wall -Wextra -Wpedantic -O2
+    )
+    add_test(NAME partition_walk COMMAND bench_partition_walk)
+    set_tests_properties(partition_walk PROPERTIES
+        LABELS "perf"
+        TIMEOUT 120)
+
     # ----------------------------------------------------------------------
     # ANTS-2049 — e2e harness smoke suite. Opt-in (label "e2e"), excluded from
     # the default / workstation / fast / debug presets (like "perf") — it

@@ -104,6 +104,18 @@ struct PartitionRequest {
     // subagent phase; the grep pre-pass is the audit).
     int     offset = 0;
     int     limit = -1;        // -1 → no caller limit
+    // ANTS-5126 — run the grep pre-pass, and cache the result for
+    // test_audit_brief. Both belong together: the brief serves each chunk's
+    // findings out of the cached partition (ANTS-2096), so a result computed
+    // without the pre-pass must not be cached in its place.
+    //
+    // The pre-pass reads and regex-scans every file in every chunk, and it
+    // is what makes partition expensive — measured at ~430 ms on this
+    // project against the ~50 ms ANTS-1397 § 6 allows for a GUI-thread call,
+    // where the directory walk itself is a small part of that. A caller that
+    // only needs the chunk set and the token — the dialog refreshing its
+    // panel on open and on editingFinished — passes false and pays neither.
+    bool    prePass = true;
 };
 
 struct PartitionResult {
