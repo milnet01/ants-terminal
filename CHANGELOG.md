@@ -57,6 +57,14 @@ for security-relevant changes.
 
 ### Fixed
 
+- **Leftover text styling is cleared when a foreground program exits.** (ANTS-5135)
+  A program interrupted while printing dimmed text used to leave the dim
+  attribute set, and on distributions whose shell prompt carries no colour
+  reset of its own — openSUSE's default among them — every later prompt and
+  everything typed stayed dim. Ants now clears the character attributes when
+  a program hands the foreground back to the shell. Shell builtins keep their
+  styling, since they never leave the shell's own process group.
+
 - **A malformed colour escape no longer leaves the text after it dim** (ANTS-5130)
   An extended-colour sequence too short to carry its colour had its own
   selector run as an attribute code, switching dim on for every cell that

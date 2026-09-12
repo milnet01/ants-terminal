@@ -9143,7 +9143,7 @@ extends an existing item, that item carries it instead.
   Kind: fix.
   Source: in-session-2026-09-12 (found driving the e2e harness).
 
-- 📋 [ANTS-5135] **Dim left set by an exiting program stays set, and this host's prompt emits no reset to clear it.**
+- ✅ [ANTS-5135] **Dim left set by an exiting program stays set, and this host's prompt emits no reset to clear it.**
   The real cause behind the dim text the user reported twice. ANTS-5130
   fixed a genuine truncated-SGR defect, then concluded the user's case was
   Claude Code's own #999999 and could be left. That conclusion rested on a
@@ -9210,10 +9210,86 @@ extends an existing item, that item carries it instead.
   during ANTS-5130 and declined then on a premise now withdrawn. (c) Soften
   darker(150), which reduces severity without fixing persistence. Option
   (a) is the recommendation.
+  Resolved (2026-09-12): option (a) from the candidate list, chosen by
+  the user. Pty::onReadReady samples tcgetpgrp on the master fd and, when
+  the foreground process group has returned to the shell's own pgid from
+  something else, emits a reset ahead of the bytes it is about to
+  deliver. Injected as data rather than as its own signal: a signal can
+  overtake queued parse batches, and the reset must reach the parser
+  before the prompt it is meant to clean.
+
+  The state machine is a public static taking its previous sample by
+  reference, so all eight rows of its table are tested without a pty.
+  Only the transition fires; an unreadable tcgetpgrp records -1 so the
+  next sample cannot read as a transition, biasing it to miss one rather
+  than invent one.
+
+  Red-first proven: with the seam stubbed, 3 of 9 failed (the exit
+  transition, the wiring, and the recording half of the first-sample
+  rule) while the five negative invariants passed vacuously against a
+  stub that always returned false. Green after. Suite 4570/4570.
+
+  Verified end to end as well, because the unit test cannot show the
+  reset reaching the screen: a throwaway --e2e instance on the user's own
+  theme and font, driven with an external /usr/bin/printf that sets dim
+  and exits, now peaks at (220,215,186) on every line where the same
+  probe before the fix left two lines at (147,143,124).
+
+  Two known limits, both in the spec. Shell BUILTINS run in the shell's
+  own process group, so no transition occurs and their leftover styling
+  is not cleared — which is why the original reproduction script, using
+  bash's printf, is not fixed by this and the real case is. And a program
+  that sets a colour and exits expecting it to persist (tput setaf 1) now
+  has it cleared; accepted as the cost.
+
+  The residual handleSGR hole noted above is NOT fixed here and is still
+  open: in case 38 and 48, an operand after the introducer that is
+  neither 2 nor 5 leaves the parse index unadvanced, so ESC[38;1m applies
+  bold. It cannot set dim, because the value that would is the one value
+  handled, so it is cosmetic rather than this defect. Filed separately
+  rather than folded in, to keep this commit to one concern.
   **Layman:** When a program is interrupted while printing greyed-out text, everything you type afterwards stays grey until something resets it.
   Kind: fix.
   Source: user-report-2026-09-12.
   Lanes: vt, terminalgrid, terminalwidget.
+
+- 📋 [ANTS-5136] **handleSGR runs an unrecognised extended-colour selector as an attribute code, so ESC[38;1m applies bold.**
+  Found while reading handleSGR for ANTS-5135; not that defect's cause and
+  deliberately not folded into its commit.
+
+  In terminalgrid.cpp handleSGR, case 38 and case 48 read the operand
+  after the introducer and dispatch on it:
+
+    if (i + 1 < params.size()) {
+        if (params[i + 1] == 5) ... parse256Color(params, i);
+        else if (params[i + 1] == 2) ... parseRGBColor(params, colonSep, i);
+    }
+    break;
+
+  When that operand is neither 2 nor 5 no branch runs, `i` is never
+  advanced, and the enclosing loop steps onto the operand and executes it
+  as an ordinary attribute code. So ESC[38;1m applies bold, ESC[38;3m
+  applies italic, and so on.
+
+  It CANNOT produce the dim leak ANTS-5130 fixed: reaching case 2 would
+  need the operand to be 2, which is the one value that IS handled and
+  routed to parseRGBColor. That is why this is cosmetic and was left out
+  of the ANTS-5135 fix rather than bundled with it.
+
+  ANTS-5130 closed the adjacent hole — a well-formed selector whose
+  operand list is too short — by having both walkers consume the
+  remainder of the parameter list. This is the same shape one step out:
+  an unrecognised selector. The fix is the same move, an else branch that
+  consumes the rest of the sequence, so a malformed colour spec abandons
+  the rest rather than running its operands as attributes.
+
+  Worth a test per selector form, since the existing sgr_attribute_reset
+  contract covers set and reset code PAIRS and says nothing about
+  malformed extended-colour introducers.
+  **Layman:** A malformed colour instruction can make the next bit of text bold when it should not be.
+  Kind: fix.
+  Source: in-session-2026-09-12.
+  Lanes: vt, terminalgrid.
 
 ## Memory-efficiency sweep (user request 2026-08-19)
 
