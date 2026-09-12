@@ -134,9 +134,11 @@ void checkI3() {
 void checkI4I5() {
     const QString src = slurp(QStringLiteral(SRC_MAINWINDOW_CPP_PATH));
 
-    // I4: saveSession call in the save loop passes a pin lookup.
-    expect(src.contains(QStringLiteral(
-               "SessionManager::saveSession(tabId, t->grid(), t->shellCwd(), pinnedTitle)")),
+    // I4: saveSession call in the save loop passes a pin lookup. Anchored
+    // on the construct rather than the full argument list — ANTS-5030
+    // renamed the locals the call reads from, which is not a regression.
+    expect(src.contains(QStringLiteral("SessionManager::saveSession("))
+               && src.contains(QStringLiteral(", pinnedTitle);")),
            "I4/saveSession-threads-pinnedTitle",
            QStringLiteral("mainwindow.cpp saveAllSessions loop no longer "
                           "passes a pinnedTitle to SessionManager::"

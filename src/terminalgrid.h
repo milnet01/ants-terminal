@@ -190,6 +190,25 @@ public:
     // the viewport drifts by one content-line per push once the buffer is full.
     uint64_t scrollbackPushed() const { return m_scrollbackPushed; }
 
+    // ANTS-5030 — monotonic counter bumped by every path that can mutate
+    // what the session blob records. The bump sits at the INGRESS, not at
+    // the individual writes: processAction is the one door every
+    // PTY-driven mutation comes through, and many of those writes reach
+    // m_screenLines directly rather than via cell(), so per-write bumping
+    // would miss them and rot as new writes are added. The restore and
+    // host-driven entries (resize, setMaxScrollback, applyRowAttrs, the
+    // session-restore setters) bump for the same reason.
+    //
+    // Conservative by design: an action that mutates nothing, such as a
+    // cursor-position report, still bumps. Over-counting costs one
+    // redundant save; under-counting drops a save the user needed. An
+    // idle tab runs none of these paths at all, which is the case this
+    // exists to skip.
+    //
+    // Not a substitute for the per-line dirty flags: those gate the span
+    // caches, while the paint loop redraws every visible row regardless.
+    uint64_t contentRevision() const { return m_contentRevision; }
+
     // Configurable scrollback limit
     void setMaxScrollback(int lines);
     int maxScrollback() const { return m_maxScrollback; }
@@ -380,6 +399,7 @@ public:
 
     // Session restore: direct access for SessionManager (respects max scrollback)
     void pushScrollbackLine(TermLine &&line) {
+        ++m_contentRevision;  // ANTS-5030
         m_scrollback.push_back(std::move(line));
         // ANTS-2119 M1 — restore counts as "pushed" too, so a restored session's
         // scrollbackPushed() reflects its scrollback depth (the get_scrollback
@@ -396,8 +416,8 @@ public:
                 m_scrollbackHyperlinks.pop_front();
         }
     }
-    TermLine &screenLine(int row) { return m_screenLines[row]; }
-    void setCursorPosition(int row, int col) { m_cursorRow = row; m_cursorCol = col; }
+    TermLine &screenLine(int row) { ++m_contentRevision; return m_screenLines[row]; }  // ANTS-5030
+    void setCursorPosition(int row, int col) { ++m_contentRevision; m_cursorRow = row; m_cursorCol = col; }  // ANTS-5030
     // ANTS-4456 — the one choke point for the window title, so both ways
     // in are bounded: handleOsc's OSC 0/2 ingress, and SessionManager's
     // restore. An OSC title rides VtParser's multi-megabyte accumulator,
@@ -410,6 +430,7 @@ public:
     // costs anything. Contract: tests/features/osc_title_cap/spec.md.
     static constexpr int kMaxWindowTitleChars = 1024;
     void setTitle(const QString &title) {
+        ++m_contentRevision;  // ANTS-5030
         m_windowTitle = title.left(kMaxWindowTitleChars);
         // Cutting at a code-unit boundary can split a surrogate pair, and
         // half a pair is not a character — drop it rather than hand an
@@ -525,6 +546,7 @@ private:
     int m_maxScrollback = 50000;
     // Monotonic — total lines ever pushed (for scroll-anchor drift correction when capped)
     uint64_t m_scrollbackPushed = 0;
+    uint64_t m_contentRevision = 0;  // ANTS-5030
 
     // Free-list of m_cols-sized cell buffers salvaged from discarded rows
     // (scrollback eviction, insertLines/deleteLines erase, scrollDown erase).

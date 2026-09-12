@@ -656,7 +656,7 @@ MainWindow::MainWindow(bool quakeMode, bool e2eMode, QWidget *parent)
     m_sessionSaveTimer = new QTimer(this);
     m_sessionSaveTimer->setInterval(30000);
     connect(m_sessionSaveTimer, &QTimer::timeout,
-            this, &MainWindow::saveAllSessions);
+            this, [this] { saveAllSessions(); });
     m_sessionSaveTimer->start();
 
     // ANTS-1159 — tab-order saved on every tab move. (Create /
@@ -3776,7 +3776,7 @@ void MainWindow::collectActions(QMenu *menu, QObject *proxyParent,
 
 // --- Session persistence ---
 
-void MainWindow::saveAllSessions() {
+void MainWindow::saveAllSessions(bool force) {
     if (!m_config.sessionPersistence()) return;
     // Don't overwrite saved sessions if the app ran for less than 5 seconds —
     // this protects against test launches and immediate crashes wiping real data
@@ -3808,7 +3808,41 @@ void MainWindow::saveAllSessions() {
         // the outer tab widget (may be a QSplitter for split tabs —
         // the pin is stored at tab-widget granularity, not per-pane).
         const QString pinnedTitle = m_tabTitlePins.value(w);
-        SessionManager::saveSession(tabId, t->grid(), t->shellCwd(), pinnedTitle);
+
+        // ANTS-5030 — skip a tab whose blob would be byte-identical to the
+        // one already on disk. serialize() streams every cell of the grid,
+        // scrollback included, then compresses, hashes, writes and fsyncs
+        // it, all on the GUI thread; at the 50k default that is tens of MB
+        // per tab every 30 s for a tab nobody has touched.
+        const TerminalGrid *g = t->grid();
+        SessionSaveKey key;
+        key.revision = g->contentRevision();
+        key.scrollbackPushed = g->scrollbackPushed();
+        key.rows = g->rows();
+        key.cols = g->cols();
+        key.cursorRow = g->cursorRow();
+        key.cursorCol = g->cursorCol();
+        key.title = g->windowTitle();
+        key.cwd = t->shellCwd();
+        key.pinnedTitle = pinnedTitle;
+
+        const auto seen = m_sessionSaveKeys.constFind(tabId);
+        if (!force && seen != m_sessionSaveKeys.cend() && *seen == key)
+            continue;
+
+        SessionManager::saveSession(tabId, g, key.cwd, pinnedTitle);
+        m_sessionSaveKeys.insert(tabId, key);
+    }
+    // Drop keys for tabs this window no longer holds, so the cache cannot
+    // outgrow the tab set over a long-lived session.
+    if (m_sessionSaveKeys.size() > tabOrder.size()) {
+        const QSet<QString> live(tabOrder.cbegin(), tabOrder.cend());
+        for (auto it = m_sessionSaveKeys.begin(); it != m_sessionSaveKeys.end();) {
+            if (live.contains(it.key()))
+                ++it;
+            else
+                it = m_sessionSaveKeys.erase(it);
+        }
     }
     saveProcessTabOrder(tabOrder, activeIndex);
 }
@@ -6129,7 +6163,7 @@ void MainWindow::closeEvent(QCloseEvent *event) {
     // session persistence, so the fallback restore path can apply
     // colors at next launch even when scrollback isn't saved.
     saveTabColorSequence();
-    saveAllSessions();
+    saveAllSessions(/*force=*/true);
     // ANTS-3572 — fold the final MCP session's savings before we exit; the
     // case the initialize-time fold can't cover (a new process starts empty).
     // endTokenSession folds (via tokenSessionEnding) then resets.

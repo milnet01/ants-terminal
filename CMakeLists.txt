@@ -1421,7 +1421,8 @@ if(ANTS_TESTS)
     # ----------------------------------------------------------------------
     ants_add_gui_bundle(test_vt
         LIBS    ants_vt_lib ants_core_lib
-        SOURCES tests/features/scrollback_redraw/test_redraw.cpp
+        SOURCES tests/features/grid_content_revision/test_grid_content_revision.cpp
+                tests/features/scrollback_redraw/test_redraw.cpp
                 tests/features/scrollback_redraw/test_viewport_stable.cpp
                 tests/features/scrollback_frozen_view/test_frozen_view.cpp
                 tests/features/scroll_region_rotate/test_scroll_region_rotate.cpp

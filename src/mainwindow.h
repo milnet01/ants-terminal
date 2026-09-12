@@ -249,7 +249,10 @@ private:
     void applyConfigToTerminal(TerminalWidget *terminal);
 
     // Session persistence
-    void saveAllSessions();
+    // ANTS-5030 — `force` writes every tab regardless of the unchanged-tab
+    // skip below. Set on the close path, where a redundant write costs one
+    // shutdown and a missed one costs the user's scrollback.
+    void saveAllSessions(bool force = false);
     void restoreSessions();
     // ANTS-1159 — cheap tab-order-only save, called on every tab
     // create / close / reorder so the tab list survives a crash
@@ -588,6 +591,33 @@ private:
 
     // Tab UUIDs for session persistence
     QHash<QWidget *, QString> m_tabSessionIds;
+
+    // ANTS-5030 — what was last written to each tab's session blob. The
+    // 30 s timer re-serialised every tab's whole scrollback, compressed,
+    // hashed and fsynced it on the GUI thread whether or not anything had
+    // changed; an idle tab now compares equal here and is skipped. Every
+    // field the blob carries is in the key, so equality means the bytes
+    // would be identical. Pruned to the live tab set on each save.
+    struct SessionSaveKey {
+        quint64 revision = 0;
+        quint64 scrollbackPushed = 0;
+        int rows = -1;
+        int cols = -1;
+        int cursorRow = -1;
+        int cursorCol = -1;
+        QString title;
+        QString cwd;
+        QString pinnedTitle;
+        bool operator==(const SessionSaveKey &o) const {
+            return revision == o.revision
+                   && scrollbackPushed == o.scrollbackPushed
+                   && rows == o.rows && cols == o.cols
+                   && cursorRow == o.cursorRow && cursorCol == o.cursorCol
+                   && title == o.title && cwd == o.cwd
+                   && pinnedTitle == o.pinnedTitle;
+        }
+    };
+    QHash<QString, SessionSaveKey> m_sessionSaveKeys;
 
     // Per-tab manual title pins (set by rc_protocol `set-title`).
     // When a tab's QWidget* is in this map, the per-shell

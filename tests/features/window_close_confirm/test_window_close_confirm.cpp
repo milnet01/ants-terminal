@@ -44,7 +44,10 @@ TEST(WindowCloseConfirm, Inv1_closeEventChecksAndIgnoresBeforeSaveAndDeferral) {
     const auto confirmPos = body.find("confirmCloseWithProcesses()");
     const auto descendantPos = body.find("firstNonShellDescendant(");
     const auto ignorePos = body.find("event->ignore()");
-    const auto saveAllSessionsPos = body.find("saveAllSessions()");
+    // ANTS-5030 — match the call, not one argument list: saveAllSessions
+    // took a `force` flag, and the invariant is that closeEvent still
+    // calls it at all.
+    const auto saveAllSessionsPos = body.find("saveAllSessions(");
     const auto anotherWindowPos = body.find("anotherWindowStaysOpen()");
 
     expect(confirmPos != npos,
@@ -56,7 +59,7 @@ TEST(WindowCloseConfirm, Inv1_closeEventChecksAndIgnoresBeforeSaveAndDeferral) {
            "ANTS-5120-INV-1: closeEvent calls event->ignore() on a hit, so the window stays open "
            "for the dialog's answer instead of finishing the close silently");
     ASSERT_TRUE(saveAllSessionsPos != npos) << "ANTS-5120-INV-1: closeEvent still calls "
-        "saveAllSessions() (ANTS-1159 regression: this must survive the fix, not be replaced)";
+        "saveAllSessions (ANTS-1159 regression: this must survive the fix, not be replaced)";
     ASSERT_TRUE(anotherWindowPos != npos) << "ANTS-5120-INV-1: closeEvent still calls "
         "anotherWindowStaysOpen() (ANTS-5118 regression: this must survive the fix)";
 

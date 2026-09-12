@@ -253,6 +253,7 @@ const std::vector<HyperlinkSpan> &TerminalGrid::scrollbackHyperlinks(int idx) co
 }
 
 void TerminalGrid::setMaxScrollback(int lines) {
+    ++m_contentRevision;  // ANTS-5030 — may evict scrollback the blob holds
     // Clamp to the documented [1000, 1M] range. The 1M ceiling is the
     // memory bound the rest of the grid relies on (per-image/per-chunk
     // budgeting is undone if scrollback is unbounded). indie-review-2026-05-21.
@@ -321,6 +322,7 @@ void TerminalGrid::setDefaultBg(const QColor &c) {
 }
 
 void TerminalGrid::processAction(const VtAction &action) {
+    ++m_contentRevision;  // ANTS-5030 — the one ingress for PTY-driven mutation
     switch (action.type) {
     case VtAction::Print:
         if (action.printRun != nullptr) {
@@ -2420,6 +2422,7 @@ void TerminalGrid::newLine() {
 // wider than the grid after line wrap).
 void TerminalGrid::applyRowAttrs(int row, int startCol, int endCol,
                                  const QColor &fg, const QColor &bg) {
+    ++m_contentRevision;  // ANTS-5030
     if (row < 0 || row >= m_rows) return;
     auto &line = m_screenLines[row];
     int maxCol = static_cast<int>(line.cells.size());
@@ -2583,6 +2586,7 @@ void TerminalGrid::clearRow(int row, int startCol, int endCol) {
 }
 
 void TerminalGrid::clearScreenContent() {
+    ++m_contentRevision;  // ANTS-5030
     for (int r = 0; r < m_rows; ++r)
         clearRow(r);
     m_cursorRow = 0;
@@ -2591,6 +2595,7 @@ void TerminalGrid::clearScreenContent() {
 }
 
 void TerminalGrid::resize(int rows, int cols) {
+    ++m_contentRevision;  // ANTS-5030
     if (rows == m_rows && cols == m_cols) return;
 
     // Drop any half-staged Kitty m=1 chunked transfer — the chunk
