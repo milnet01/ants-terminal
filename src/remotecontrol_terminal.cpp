@@ -10,6 +10,7 @@
 #include "passheadingwrite.h"
 #include "terminalwidget.h"
 #include <QCoreApplication>
+#include <QDir>
 #include <QFileInfo>
 #include <QSaveFile>
 #include <QApplication>
@@ -837,7 +838,18 @@ QJsonDocument RemoteControl::cmdGrabImage(const QJsonObject &req) {
                           QStringLiteral("bad_args"),
                           QStringLiteral("no live top-level window"));
 
-    const QString out = chk.argvForm;
+    // ANTS-5132 — anchor the write under the artifact root. `argvForm` is the
+    // NFC-normalised INPUT, not the validated location: validatePath computes
+    // `QDir(root).filePath(nfc)` for its containment check and discards it, and
+    // `resolved` is empty for a file that does not exist yet, which a PNG about
+    // to be written never does. Saving argvForm therefore resolved a relative
+    // path against the Ants process's CWD, so the grab landed outside the
+    // artifact dir it had just been proved to be inside — measured writing into
+    // the launching shell's project root. An absolute path is already anchored
+    // by the check above and must not be re-joined.
+    const QString out = QFileInfo(chk.argvForm).isAbsolute()
+                            ? chk.argvForm
+                            : QDir(root).filePath(chk.argvForm);
     if (!target->grab().save(out, "PNG"))
         return e2eRefusal(QStringLiteral("grab-image"),
                           QStringLiteral("bad_args"),

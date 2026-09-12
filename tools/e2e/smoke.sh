@@ -86,6 +86,25 @@ else
     fail "7 grab guards — esc=$esc noart=$noart"
 fi
 
+# ── Case 7b: a RELATIVE grab path lands under the artifact dir (ANTS-5132) ──
+# Case 3 above passes an ABSOLUTE path, which is why it never saw this: the
+# verb validated the path against ANTS_E2E_ARTIFACT_DIR and then saved
+# `argvForm` — the raw input — so a relative one resolved against the Ants
+# process's CWD and the PNG landed wherever the instance happened to be
+# launched from (measured: the launching shell's project root). The reply
+# still said ok, naming a file that did not exist at that location.
+# Assert both halves: the file is under the artifact dir, and the echoed
+# path is the one actually written.
+rm -f "$(e2e_art)/rel.png"
+relout=$(call_e2e '{"cmd":"grab-image","path":"rel.png"}')
+relpath=$(printf '%s' "$relout" | sed -n 's/.*"path":"\([^"]*\)".*/\1/p')
+if has "$relout" '"ok":true' && [[ -s "$(e2e_art)/rel.png" ]] \
+   && [[ "$relpath" == "$(e2e_art)/rel.png" ]] && [[ -s "$relpath" ]]; then
+    pass "7b relative grab path anchored under the artifact dir"
+else
+    fail "7b relative grab path — reply=$relout echoed=$relpath"
+fi
+
 # ── Case 8: teardown reaps instances + temp dirs (INV-6) ──
 d_main=$(dirname "$(e2e_art main)")
 d_gate=$(dirname "$(e2e_art gate)")
