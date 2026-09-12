@@ -6785,6 +6785,23 @@ extends an existing item, that item carries it instead.
   Fix: parse only appended bytes from the last offset, re-walking only
   if the file shrinks or is replaced; debounce fileChanged; and share
   one tracker per transcript path.
+  Progress (2026-09-12): the debounce half landed (8c54551e). Both
+  trackers now schedule the rescan on a single-shot timer restarted per
+  fileChanged, so a burst of appends costs one transcript walk instead of
+  one per append; setTranscriptPath still rescans immediately and cancels
+  a pending one. Suite 4551/4551.
+  STILL OPEN, and the item does not close on this:
+  - The incremental parse. parseTranscript rebuilds its whole list from
+    scratch on every call, so reading only appended bytes from the last
+    offset means making the parse resumable and handling truncation and
+    replacement — the redesign ANTS-1458 deferred, not a tweak.
+  - One tracker per transcript path. Today there is one background-task
+    tracker per shell ever focused, each keeping its watch after losing
+    focus, so N panes in one project still mean N walks per debounce tick.
+    That is an ownership change in MainWindow.
+  No test was added for the debounce: it changes timing, not behaviour,
+  and a real-filesystem watcher test would be timing-flaky for no contract
+  gained.
   **Layman:** While Claude is working, Ants keeps re-reading its whole conversation log, and more so with more panes open.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lane claude-session-widgets).
