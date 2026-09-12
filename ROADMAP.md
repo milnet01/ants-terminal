@@ -7237,6 +7237,28 @@ extends an existing item, that item carries it instead.
      At 32 s it plainly does; if step 1 brings it under ANTS-1397 § 6's
      ~50 ms the threading change may be unnecessary, which is the cheaper
      outcome for code that has a cancel path to keep correct.
+  Progress (2026-09-12): the INDEX half landed (a030b112). 31.7 s -> 1.8 s
+  (17x), findings byte-identical at 58/140/897/3. FeatureCoverage gained
+  SourceIndex + buildSourceIndex + existsInSource(index, token);
+  DebtSweepEngine moved onto it too. Equivalence is asserted by
+  tests/features/feature_coverage, verified non-vacuous by mutation.
+
+  ITEM STAYS OPEN. What remains, and why it is now a different decision:
+  - QtConcurrent + posting results back, and bringing the lanes under
+    audit_run's aggregate cap. Both were prescribed against a 31.7 s
+    freeze. At 1.8 s they are worth re-deciding rather than executing:
+    threading this code adds a cancel path to keep correct, and the
+    freeze it was buying off is now 17x smaller.
+  - Sharing one blob + index across the two contract-doc lanes, worth a
+    further ~660 ms. Deliberately NOT done: a cache keyed on the project
+    path answers a later audit from a tree that has since been edited,
+    which turns a lane whose whole job is noticing drift into one that
+    cannot see it. Tried with a 2 s TTL and
+    ContractDocDrift.RealFilenamesResolveViaManifest caught it at once.
+    Needs a caller that owns both lanes and builds once per audit.
+
+  Measure with tests/perf/bench_drift_lanes (ANTS-5133's harness runs it)
+  rather than re-deriving the numbers.
   **Layman:** Some audit checks read the whole project on the main window's thread, freezing every tab until they finish.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lanes spec-engines, audit-dialog-b).
@@ -9053,7 +9075,7 @@ extends an existing item, that item carries it instead.
   Kind: perf.
   Source: in-session-2026-09-12 (ANTS-5030 remainder).
 
-- 📋 [ANTS-5132] **grab-image validates its path against the artifact dir and then writes it relative to the process CWD.**
+- ✅ [ANTS-5132] **grab-image validates its path against the artifact dir and then writes it relative to the process CWD.**
   handleGrabImage (src/remotecontrol_terminal.cpp) resolves
   ANTS_E2E_ARTIFACT_DIR as `root`, runs PathValidation::validatePath(path,
   root, ...) — and then saves to `chk.argvForm`.
@@ -9080,6 +9102,15 @@ extends an existing item, that item carries it instead.
   Fix: save to the anchored form. Either have validatePath carry the
   lexically-joined path for the non-existent-file case, or join
   root + argvForm at this call site; then echo the anchored path.
+  Shipped (fe6a3696). handleGrabImage now saves the path anchored under the
+  artifact root and echoes that anchored path; an absolute path is already
+  anchored by the containment check and is not re-joined.
+
+  Regression: tools/e2e/smoke.sh case 7b. Case 3 already grabbed a PNG but
+  passed an ABSOLUTE path, which is why it never saw this — the defect only
+  bites relative ones. Verified red against the pre-fix binary (reply ok,
+  path "rel.png", artifact dir empty), green with the fix, full smoke suite
+  passing.
   **Layman:** A test screenshot lands in whatever folder Ants was started from instead of the throwaway test folder.
   Kind: fix.
   Source: in-session-2026-09-12 (found driving the e2e harness).
@@ -71674,6 +71705,35 @@ a modern terminal" release.
   recorded — ANTS-4921 is open precisely because three parked perf items
   were written against numbers that aged with nothing to re-run. This
   item, plus the harness, is what closes that.
+  Progress (2026-09-12): bench_full_paint landed (d566dffe) — the whole of
+  TerminalWidget::paintEvent on the REAL widget, rendered offscreen.
+
+  Finding, this machine, 52x210 grid, 60 frames: plain 3.9 ms/frame,
+  styled 6.4, scrolled_back 4.9, cjk 14.9. A full-width CJK screen costs
+  about 15 ms against the 16.7 ms a 60 fps budget allows — the terminal is
+  closest to dropping frames on double-width text, and nothing measured it
+  before. NOT acted on: ANTS-4921 is open because parked perf items were
+  tuned against numbers with nothing to re-run, and the point of this pass
+  is to produce numbers first.
+
+  STILL TO WRITE, in the order a user notices them:
+  1. Resize reflow at the 50k default and the 1M maximum. The longest
+     single operation the terminal performs, on the GUI thread; a user
+     dragging a window edge feels it directly. Do this one next.
+  2. Scrollback seek — jump to the top of a full buffer, page through it.
+  3. Startup to first paint.
+  4. Selection and copy over a large region.
+
+  Also still true of bench_search_throughput: it REPRODUCES the scan
+  algorithm rather than linking it, so it cannot catch a regression in the
+  real code. Worth converting when touched.
+
+  Method, learnt twice the expensive way this session and restated because
+  both failures looked like success: keep the baseline call OUT of the
+  timed loop (timing the old implementation alongside the new one reported
+  the new one as slower than what it replaced), and make every corpus fill
+  the grid WIDTH in cells (a short corpus paints less and reads as faster —
+  the CJK corpus reported the most expensive case as the cheapest).
   **Layman:** The benchmark suite does not yet cover the things that actually make the terminal feel slow, so it cannot tell us where to look.
   Kind: perf.
   Source: user-request-2026-09-12 (ANTS-5133 follow-up).
