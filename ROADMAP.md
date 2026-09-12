@@ -6422,6 +6422,24 @@ extends an existing item, that item carries it instead.
   amendment first, gated through review-contract. Shares that amendment
   with ANTS-5051 and ANTS-5073; async-by-default is not taken, so the
   sync contract stands.
+  Source map for the amendment (measured 2026-09-12). The deferred-reply
+  machinery already exists on the MCP side and the amendment extends it
+  rather than inventing it. McpCallContext is public in
+  claudeintegration.h; postToolDispatch and finishToolDispatch are
+  private slots. There is NO signal: the result returns by two nested
+  QMetaObject::invokeMethod calls with explicit Qt::QueuedConnection,
+  outbound to m_dispatchSink on the worker and inbound to
+  ClaudeIntegration on the GUI thread, so a contract saying the worker
+  emits something would be wrong. finishToolDispatch takes its context
+  and body by value, and both the synchronous and deferred paths call
+  it, so the one-pipeline rule INV-9 states is already held. What is
+  missing for a verb to defer its OWN reply is a handler type that can
+  return later plus a dispatcher branch, since ToolHandler must return
+  its QString synchronously. Also relevant: ants::onGuiThread
+  short-circuits to a direct call when already on the GUI thread, so
+  moving a route onto the worker silently converts every MainWindow read
+  in its body from a direct call into a blocking marshal, with no source
+  edit to mark it.
   **Layman:** Running a code audit from Claude freezes the Ants window until the audit ends.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lane mainwindow-b).
@@ -6796,6 +6814,18 @@ extends an existing item, that item carries it instead.
   before any code. Keeps one connection, so ANTS-3809 section 4 is
   unchanged. Closes with ANTS-5073, and the same amendment carries
   ANTS-5035.
+  Measured (2026-09-12) before the amendment. Two things this item does
+  not say. The socket route the race actually turns on is roadmap-query,
+  which ANTS-5073's route list omits. And ANTS-3809 section 4's
+  one-shared-connection rule is one per owning object rather than one
+  per process: RoadmapDialog holds its own RoadmapStore and its own
+  roadmapBullets, so a running Ants already has two connections to
+  roadmap.sqlite, both opened on the GUI thread. Route 2 keeps
+  RemoteControl's connection single-threaded, which is what this item
+  needs; an amendment sentence claiming the process has one connection
+  would be false. Also measured: there is no QMutex, QReadWriteLock or
+  std::mutex anywhere in src/remotecontrol*.{h,cpp}, so the no-lock
+  claim holds for the whole file family, not only the named members.
   **Layman:** Two parts of Ants can use the roadmap database at the same moment, which can crash it or corrupt what it returns.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lanes roadmap-store, mcp-transport, mcp-roadmap-query-log, mcp-roadmap-batch).
@@ -7306,6 +7336,39 @@ extends an existing item, that item carries it instead.
   MCP-registered routes move onto the dispatch worker with a deferred
   reply, after the ANTS-2132 amendment is gated. Refusing them on the
   socket is not taken.
+  Correction (2026-09-12), measured in source before writing the
+  amendment: the route list in this item is four short.
+  RemoteControl::dispatch is a flat if-chain, not a table, and ten of
+  its routes have MCP-registered twins, not six. The four unnamed are
+  roadmap-query, file-outline, get-text and tab-list. Two of them are
+  movable on the same terms as the six: roadmap-query and file-outline
+  are Required plus rcDelegate, so their MCP twins already run off the
+  GUI thread. Two must NOT move, and the amendment has to say so:
+  get_text is TabSpecific with an inline lambda, so it fails both halves
+  of the eligibility rule, and tab_list registers through the plain
+  ToolHandler overload, which stamps offThread false. So the movable set
+  is eight routes: roadmap-query, workspace-search, file-outline,
+  find-definition, find-caller, similar-code, git-state, subsystem.
+  Source map for the amendment (measured 2026-09-12). The socket's reply
+  path makes four assumptions a deferred reply breaks, and each needs a
+  contract sentence. First, the reply IS dispatch()'s return value: resp
+  is a stack local in the readyRead lambda, consumed four lines later,
+  so there is no context object and no request id to park. The
+  QJsonDocument return type is the seam, and a socket equivalent of
+  McpCallContext has to be invented. Second, the idle timer is already
+  stopped before dispatch (ANTS-2026), so once a route defers, nothing
+  bounds how long an unanswered connection stays open; today that is
+  harmless because the reply is immediate. Third, socket liveness is one
+  synchronous QPointer check on the GUI thread, written for the
+  nested-event-loop case, not a cross-thread one, and a QPointer must
+  not be dereferenced from the worker, so the check and the write both
+  have to stay on the GUI thread. Fourth, it is one request per
+  connection: disconnectFromServer plus a disconnected-to-deleteLater,
+  with a per-socket handled latch. A deferred reply holds the socket
+  open across the whole verb, which is the window ANTS-2101 and
+  ANTS-2132 widened on the MCP side. The MCP side already has the
+  hardened writer this path lacks: ClaudeIntegration::sendMcpResponse
+  checks state before writing.
   **Layman:** Scripts that control Ants from outside can make its window freeze while they search.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lanes mcp-transport, mcp-state-workspace, code-index-search).
