@@ -106,3 +106,28 @@ TEST(SgrAttributeReset, FullReset) {
     EXPECT_FALSE(b.bold || b.italic || b.underline || b.inverse || b.strikethrough)
         << "SGR 0 did not reset all attrs";
 }
+
+// ANTS-5130 — a truncated extended-colour operand list must not have its
+// operands executed as attribute codes. `38;2` introduces a truecolor
+// triple; when the triple is short the colour is abandoned, and the `2`
+// that selected it must not fall through to `case 2` (dim). Any emitter
+// that sends a short triple reaches this; the leak persists until the
+// next SGR 0 or 22, so a whole run of later text renders dim.
+TEST(SgrAttributeReset, TruncatedTruecolorDoesNotSetDim) {
+    Probe probe;
+    probe.reset();
+
+    // Missing green and blue: the triple cannot be read.
+    probe.feed("\x1b[38;2;100mX");
+    EXPECT_FALSE(probe.cellAt(0, 0).dim)
+        << "truncated 38;2 truecolor leaked its selector into SGR 2 (dim)";
+}
+
+TEST(SgrAttributeReset, TruncatedTruecolorBackgroundDoesNotSetDim) {
+    Probe probe;
+    probe.reset();
+
+    probe.feed("\x1b[48;2;100mX");
+    EXPECT_FALSE(probe.cellAt(0, 0).dim)
+        << "truncated 48;2 truecolor leaked its selector into SGR 2 (dim)";
+}

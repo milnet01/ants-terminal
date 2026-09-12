@@ -1873,7 +1873,13 @@ QColor TerminalGrid::parse256Color(const std::vector<int> &params, size_t &i) {
         int idx = params[i + 2];
         i += 2;
         if (idx >= 0 && idx < 256) return s_palette256[idx];
+        return m_defaultFg;
     }
+    // ANTS-5130 — the index operand is missing, so the colour cannot be
+    // read. Consume the rest of the sequence rather than returning with `i`
+    // still on the introducer: the caller's loop would otherwise step onto
+    // the `5` that selected this form and execute it as an attribute code.
+    i = params.size();
     return m_defaultFg;
 }
 
@@ -1916,6 +1922,12 @@ QColor TerminalGrid::parseRGBColor(const std::vector<int> &params,
         i += 4;
         return QColor(r, g, b);
     }
+    // ANTS-5130 — the triple is short, so the colour cannot be read.
+    // Consume the rest of the sequence rather than returning with `i` still
+    // on the introducer: the caller's loop would otherwise step onto the `2`
+    // that selected this form and execute it as SGR 2 (dim), leaving every
+    // later cell dim until the next SGR 0 or 22.
+    i = params.size();
     return m_defaultFg;
 }
 
