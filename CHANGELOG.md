@@ -14,6 +14,10 @@ for security-relevant changes.
 
 ### Changed
 
+- **The diff viewer and clipboard guard build clean under the project's clang-tidy check set** (ANTS-5129)
+  Internal tidy-up with no change to behaviour: helper linkage, two byte-cap
+  constants, one avoidable string copy, and the size of an internal enum.
+
 - **The Independent Review and Cold-eyes dialogs search the project once per review round instead of twice** (ANTS-5125)
 
 - **CI's memory-checked test run skips the benchmark tests, as the local pre-push check already does** (ANTS-5014)

@@ -6416,6 +6416,12 @@ extends an existing item, that item carries it instead.
   900 s (kAggregateCapMs). mcp_audit_run_async Inv1SyncPathUnchanged is
   a whole-file search, so indie_review_dispatch's own worker->wait()
   keeps it green whatever audit_run does.
+  Decided by the user (2026-09-12): route 2, the deferred reply. The
+  socket's MCP-registered routes and audit_run both move onto the
+  dispatch worker with a deferred reply, which needs the ANTS-2132
+  amendment first, gated through review-contract. Shares that amendment
+  with ANTS-5051 and ANTS-5073; async-by-default is not taken, so the
+  sync contract stands.
   **Layman:** Running a code audit from Claude freezes the Ants window until the audit ends.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lane mainwindow-b).
@@ -6784,6 +6790,12 @@ extends an existing item, that item carries it instead.
   is also ANTS-5073's fix. Recommended: (2), since it keeps one
   connection and closes both items; it needs an amendment to ANTS-2132
   through review-contract before any code.
+  Decided by the user (2026-09-12): route 2, as recommended in this
+  item. Amend ANTS-2132 so the socket's MCP-registered routes run on the
+  dispatch worker with a deferred reply, gated through review-contract
+  before any code. Keeps one connection, so ANTS-3809 section 4 is
+  unchanged. Closes with ANTS-5073, and the same amendment carries
+  ANTS-5035.
   **Layman:** Two parts of Ants can use the roadmap database at the same moment, which can crash it or corrupt what it returns.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lanes roadmap-store, mcp-transport, mcp-roadmap-query-log, mcp-roadmap-batch).
@@ -7151,6 +7163,10 @@ extends an existing item, that item carries it instead.
   never says what includes_tests:false should produce, so the choice
   between implementing it and removing it is a contract decision this
   item itself says to make first.
+  Decided by the user (2026-09-12): implement it rather than remove it.
+  includes_tests:false drops the test line and steps 1 and 2 from the
+  generated plan; the option stays in the schema and ANTS-1290 gains the
+  definition it never carried.
   **Layman:** A setting on the plan-template tool does nothing, even though it's documented.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lane spec-engines).
@@ -7233,6 +7249,10 @@ extends an existing item, that item carries it instead.
   That changes a spec's direction, so CLAUDE.md rule 14 runs
   review-contract on it before the parser change is built. Left for a
   session that can run that gate.
+  Decided by the user (2026-09-12): amend the spec, then fix the parser.
+  Amend ANTS-3533 section 3 so a dated topic heading sets its category,
+  gate that through review-contract, then change ChangelogQuery::parse
+  to match. Warning without amending is not taken.
   **Layman:** The changelog search tool can't see entries written in the newer dated style.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lane changelog-feedback).
@@ -7282,6 +7302,10 @@ extends an existing item, that item carries it instead.
   ripgrep and git off the GUI thread here and keep the roadmap store on
   one thread for ANTS-5051. Deferred with ANTS-5051 until ANTS-2132's
   dispatch design is amended through review-contract.
+  Decided by the user (2026-09-12): shares ANTS-5051's fix. The socket's
+  MCP-registered routes move onto the dispatch worker with a deferred
+  reply, after the ANTS-2132 amendment is gated. Refusing them on the
+  socket is not taken.
   **Layman:** Scripts that control Ants from outside can make its window freeze while they search.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lanes mcp-transport, mcp-state-workspace, code-index-search).
@@ -8597,6 +8621,11 @@ extends an existing item, that item carries it instead.
   target window per call (the most recently active visible MainWindow)
   inside RemoteControl and in those providers. Recommended: (2), since a
   per-call lookup has no stale state to hand off.
+  Decided by the user (2026-09-12): route 2, as recommended in this
+  item. RemoteControl and the inline tab providers in
+  MainWindow::setupClaudeMcpProviders resolve the target window per
+  call, the most recently active visible MainWindow. No hand-off on
+  close, so there is no stale pointer to keep valid.
   **Layman:** If you close the original Ants window, Claude's terminal tools keep pointing at that invisible window.
   Kind: fix.
   Source: in-session-2026-09-11 (ANTS-5118 fix).
@@ -8707,6 +8736,12 @@ extends an existing item, that item carries it instead.
   counts may change meaning, or keep the match parse and only stream it.
   The co_change_family bounded heap (ANTS-3368 section 4) is independent
   of that decision.
+  Decided by the user (2026-09-12): keep the counts as they are. Parse
+  rg's output line by line while it runs, and give co_change_family its
+  bounded min-heap per ANTS-3368 section 4. count_only and files_only
+  keep the de-duplicated, byte-capped semantics ANTS-3716 and ANTS-3537
+  pin, so rg --count and --files-with-matches are not taken and no spec
+  amendment is needed.
   **Layman:** Some code searches still do more work and hold more memory than they need to, though no longer without limit.
   Kind: perf.
   Source: in-session-2026-09-11 (ANTS-5052 remainder).
@@ -8741,6 +8776,26 @@ extends an existing item, that item carries it instead.
   Kind: fix.
   Source: ci-red-2026-09-11 run 34650028988 (ASan/UBSan).
   Lanes: diffviewer, threading.
+
+- ✅ [ANTS-5129] **The diff viewer and the clipboard guard carry clang-tidy warnings from checks .clang-tidy enables.**
+  Eight in src/diffviewer.cpp and one in src/clipboardguard.h, all
+  from check families .clang-tidy turns on: misc-use-anonymous-namespace
+  and misc-use-internal-linkage on this unit's helpers and ProbeHost,
+  bugprone-implicit-widening-of-multiplication-result on two byte caps,
+  performance-no-automatic-move on a returned escaped string, and
+  performance-enum-size on clipboardguard::Source.
+
+  Found while fixing ANTS-5128 in the same file. Scope is these two
+  files: a tree-wide clang-tidy sweep is check-code's job and is not
+  attempted here.
+  Resolved (2026-09-12): all nine cleared. clang-tidy over
+  src/diffviewer.cpp reports nothing; the remaining warning that run
+  surfaced was clipboardguard.h's enum size, fixed in the same commit.
+  Full Release suite green, source-scrape tests included.
+  **Layman:** Tidy-up of code warnings the project's own checker reports in the Review Changes viewer.
+  Kind: chore.
+  Source: user-request-2026-09-12.
+  Lanes: diffviewer, clipboard.
 
 ## Memory-efficiency sweep (user request 2026-08-19)
 
