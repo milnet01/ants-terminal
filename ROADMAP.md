@@ -7336,6 +7336,23 @@ extends an existing item, that item carries it instead.
   run the pure transforms inside the worker job and keep only the cache
   insert, recordDispatch and the socket write on the GUI thread. At
   minimum, size-gate appendReadHints' parse and stream the spill write.
+  Progress (2026-09-12): the stated minimum landed (998f7c13).
+  appendReadHints now returns a body over 256 KiB untouched instead of
+  parsing and re-serialising it on the GUI thread to decide on an advisory
+  string. Both nudges are emitted at most once per tool, so a giant reply
+  is the one least worth that parse; skipping does not burn the latch, so
+  a later ordinary reply from the same tool still teaches the hint.
+  Contract: tests/features/mcp_projection (Ants5072OversizedBodyIsNotParsed,
+  Ants5072SkipDoesNotBurnTheLatch). Suite 4553/4553.
+  STILL OPEN:
+  - The measurement this item asks for FIRST and nobody has done: time each
+    phase of finishToolDispatch (applyEtagPattern, compactEnvelope,
+    offloadBody, wrapMcpData, sendMcpResponse) on a 4 MiB reply. The other
+    phases are still unbounded and still on the GUI thread.
+  - Moving the pure transforms into the worker job, keeping only the cache
+    insert, recordDispatch and the socket write on the GUI thread.
+  - Streaming the spill write in offloadBody rather than copying and
+    hashing the whole body.
   **Layman:** Every answer Ants sends back to Claude is processed on the main window's thread, which can stutter the window on big answers.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lanes claude-integration-a, claude-integration-b, mcp-infra).
