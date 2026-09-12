@@ -1403,6 +1403,28 @@ if(ANTS_TESTS)
         LABELS "perf"
         TIMEOUT 120)
 
+    # bench_drift_lanes — wall time of the four in-process audit lanes
+    # AuditDialog runs synchronously on the GUI thread (ANTS-5067). Links
+    # the real FeatureCoverage runners, so the number is the work the
+    # dialog does. ANTS_PERF_ROOT=<path> measures a bigger tree.
+    add_executable(bench_drift_lanes
+        tests/perf/bench_drift_lanes.cpp
+    )
+    target_link_libraries(bench_drift_lanes PRIVATE
+        ants_audit_lib
+        Qt6::Core
+    )
+    target_compile_definitions(bench_drift_lanes PRIVATE
+        ANTS_PROJECT_ROOT="${CMAKE_SOURCE_DIR}"
+    )
+    target_compile_options(bench_drift_lanes PRIVATE
+        -Wall -Wextra -Wpedantic -O2
+    )
+    add_test(NAME drift_lanes COMMAND bench_drift_lanes)
+    set_tests_properties(drift_lanes PROPERTIES
+        LABELS "perf"
+        TIMEOUT 300)
+
     # ----------------------------------------------------------------------
     # ANTS-2049 — e2e harness smoke suite. Opt-in (label "e2e"), excluded from
     # the default / workstation / fast / debug presets (like "perf") — it

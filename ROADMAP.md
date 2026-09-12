@@ -8979,6 +8979,37 @@ extends an existing item, that item carries it instead.
   Kind: perf.
   Source: in-session-2026-09-12 (ANTS-5030 remainder).
 
+- 📋 [ANTS-5132] **grab-image validates its path against the artifact dir and then writes it relative to the process CWD.**
+  handleGrabImage (src/remotecontrol_terminal.cpp) resolves
+  ANTS_E2E_ARTIFACT_DIR as `root`, runs PathValidation::validatePath(path,
+  root, ...) — and then saves to `chk.argvForm`.
+
+  argvForm is the NFC-normalised INPUT, not the path anchored under root
+  (pathvalidation.cpp: `joined = QDir(rootCanonical).filePath(nfc)` is
+  computed for the containment check and then discarded; `pc.resolved` is
+  set only when the file already canonicalises, which a not-yet-written
+  PNG never does). So `QWidget::grab().save("shot.png")` resolves against
+  the process CWD.
+
+  Measured 2026-09-12: a grab-image call with path "shot.png" against an
+  isolated e2e instance returned {"ok":true,"path":"shot.png"} and wrote
+  70 KiB into /mnt/Games/Scripts/Linux/Ants_Terminal/shot.png — the
+  project root, because that was the launching shell's cwd. The artifact
+  dir stayed empty.
+
+  Two consequences. The containment check is decorative for any relative
+  path: it proves the path WOULD be inside the artifact dir, then writes
+  somewhere else. And the reply's `path` field names a file that does not
+  exist at that location, so a harness that reads back what it grabbed
+  finds nothing.
+
+  Fix: save to the anchored form. Either have validatePath carry the
+  lexically-joined path for the non-existent-file case, or join
+  root + argvForm at this call site; then echo the anchored path.
+  **Layman:** A test screenshot lands in whatever folder Ants was started from instead of the throwaway test folder.
+  Kind: fix.
+  Source: in-session-2026-09-12 (found driving the e2e harness).
+
 ## Memory-efficiency sweep (user request 2026-08-19)
 
 The speed sweeps above ask how fast Ants is. This one asks how much it costs to
