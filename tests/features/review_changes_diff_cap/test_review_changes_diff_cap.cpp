@@ -173,7 +173,7 @@ TEST(ReviewChangesDiffCap, LargeDiffIsCappedAndTruncated) {
     // thread.
     QString big;
     constexpr int kLines = 100000;
-    big.reserve(kLines * 28);
+    big.reserve(qsizetype{kLines} * 28);
     for (int i = 0; i < kLines; ++i) {
         big += QStringLiteral("line %1 xxxxxxxxxxxxxxxxxxxxx\n")
                    .arg(i, 6, 10, QLatin1Char('0'));

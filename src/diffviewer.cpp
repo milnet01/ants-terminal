@@ -31,6 +31,11 @@
 
 namespace diffviewer {
 
+// Everything between here and show() is internal to this translation unit.
+// An anonymous namespace rather than `static` on each: same linkage, and it
+// covers ProbeHost, which `static` cannot express for a class.
+namespace {
+
 // ANTS-1965 / ANTS-1966 — deterministic, anchor-safe id for a repo-
 // relative path. Hex-encoding the UTF-8 bytes is injective (no two
 // distinct paths collide) and yields only [0-9a-f], so the result is
@@ -38,7 +43,7 @@ namespace diffviewer {
 // Status / diffstat lists and the `<a name="…">` target at the file's
 // patch are built from this, so a click always lands on the matching
 // hunk.
-static QString fileAnchorId(const QString &path) {
+QString fileAnchorId(const QString &path) {
     return QStringLiteral("f-") + QString::fromLatin1(path.toUtf8().toHex());
 }
 
@@ -76,7 +81,7 @@ public:
 
 // New-side path from a `diff --git a/<old> b/<new>` header line; empty if
 // the line isn't a diff header. Used to key the jump-target anchors.
-static QString diffHeaderPath(const QString &line) {
+QString diffHeaderPath(const QString &line) {
     if (!line.startsWith(QStringLiteral("diff --git "))) return {};
     const int b = line.indexOf(QStringLiteral(" b/"));
     if (b < 0) return {};
@@ -93,7 +98,7 @@ static QString diffHeaderPath(const QString &line) {
 // Read in fixed-size chunks rather than readAll(): the Status list routinely
 // includes multi-MiB files (this repo's own ROADMAP.md is ~2.4 MiB), and the
 // dialog should not hold a whole file in memory just to count newlines.
-static int fileLineCount(const QString &absPath) {
+int fileLineCount(const QString &absPath) {
     QFile f(absPath);
     if (!f.open(QIODevice::ReadOnly)) return -1;
     constexpr qint64 kMaxScanBytes = 64LL * 1024 * 1024;
@@ -125,13 +130,15 @@ static int fileLineCount(const QString &absPath) {
 
 // " (N lines)" for a repo-relative path, or empty when the count is
 // unavailable (see fileLineCount).
-static QString lineCountSuffix(const QString &baseDir, const QString &rel) {
+QString lineCountSuffix(const QString &baseDir, const QString &rel) {
     const QString key = rel.trimmed();
     if (key.isEmpty() || key.endsWith('/')) return {};
     const int n = fileLineCount(baseDir + QLatin1Char('/') + key);
     if (n < 0) return {};
     return QStringLiteral(" (%1 line%2)").arg(n).arg(n == 1 ? "" : "s");
 }
+
+}  // namespace
 
 QDialog *show(QWidget *parent,
               const QString &cwd,
@@ -390,7 +397,7 @@ QDialog *show(QWidget *parent,
 
         // ANTS-5059 — bound what the GUI thread turns into HTML and lays out:
         // a rewritten lockfile or bundle is tens of thousands of lines.
-        constexpr qsizetype kMaxDiffChars = 1024 * 1024;
+        constexpr qsizetype kMaxDiffChars = 1024LL * 1024;
         if (state->diff.size() > kMaxDiffChars) {
             const qsizetype cut =
                 state->diff.lastIndexOf(QLatin1Char('\n'), kMaxDiffChars);
@@ -443,7 +450,7 @@ QDialog *show(QWidget *parent,
         // section's colour; the underline signals it's clickable.
         auto fileLink = [&anchoredPaths](const QString &path) -> QString {
             const QString key = path.trimmed();
-            const QString esc = path.toHtmlEscaped();
+            QString esc = path.toHtmlEscaped();   // non-const: `return esc` moves
             if (!anchoredPaths.contains(key)) return esc;
             return QStringLiteral("<a href='#%1'>%2</a>")
                 .arg(fileAnchorId(key), esc);
@@ -651,7 +658,7 @@ QDialog *show(QWidget *parent,
                                     .arg(lth.textSecondary.name(), rel.toHtmlEscaped());
                         continue;
                     }
-                    constexpr qint64 kCap = 200 * 1024;
+                    constexpr qint64 kCap = 200LL * 1024;
                     const QByteArray raw = nf.read(kCap + 1);
                     nf.close();
                     const bool truncated = (raw.size() > kCap);

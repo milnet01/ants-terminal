@@ -14,10 +14,12 @@
 #include <QClipboard>
 #include <QString>
 
+#include <cstdint>
+
 namespace clipboardguard {
 
 // Trust shape of the call site. Picks the sanitisation policy.
-enum class Source {
+enum class Source : std::uint8_t {
     Trusted,          // user UI action — selection, context menu,
                       //   copy-last-output, URL quick-select copy
     UntrustedPty,     // OSC 52 from the shell process
