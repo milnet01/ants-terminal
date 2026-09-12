@@ -33,6 +33,8 @@
 #include <cstdlib>
 #include <vector>
 
+#include "perf_metric.h"
+
 namespace {
 
 double runOnce(const QString &root, int *files, int *chunks) {
@@ -97,6 +99,13 @@ int main(int argc, char **argv) {
     std::printf("%s,%d,%d,%.1f,%.1f,%d\n",
                 root.toUtf8().constData(), files, chunks,
                 firstMs, warmMs, iters);
+
+    // ANTS-5133 — the warm median is the dialog's repeat-call cost and the
+    // cold call its open cost; both are tracked, because ANTS-1397 § 6 accepts
+    // this placement only while the walk stays small and the two can move
+    // independently.
+    AntsPerf::reportLowerBetter("audit.partition_walk.warm_ms", warmMs, "ms");
+    AntsPerf::reportLowerBetter("audit.partition_walk.cold_ms", firstMs, "ms");
 
     const int maxMs = envInt("ANTS_PERF_MAX_MS", 0);
     if (maxMs > 0 && warmMs > double(maxMs)) {

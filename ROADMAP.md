@@ -7206,6 +7206,37 @@ extends an existing item, that item carries it instead.
   Fix: run the runners with QtConcurrent and post results back, build
   the blob once per audit, cache existsInSource per token, and bring
   the lanes under audit_run's aggregate cap.
+  Measured (2026-09-12), via tests/perf/bench_drift_lanes which links the
+  real runners: the four lanes cost 31.7 s on the GUI thread on this
+  project. blob_build_only 354 ms, spec_drift 12.0 s,
+  contract_doc_standards 2.3 s, contract_doc_specs 17.3 s,
+  changelog_coverage 0.09 s.
+
+  This REORDERS the fix this item prescribes. "Build the blob once per
+  audit" targets 354 ms of 31,664 — about 1%. Deduplicating the two
+  byte-identical contract-doc blobs saves ~350 ms of a 32 s freeze.
+
+  The cost is in `existsInSource` — a linear scan of an 18.7 M-char blob
+  per token, where a token that is ABSENT (precisely what a finding is)
+  pays three full scans (primary, `::` tail, `.` tail) before it can be
+  reported. The specs lane raises ~900 findings, which is why it is the
+  most expensive lane despite reading the same blob as the cheaper one.
+
+  So the ordering that actually pays:
+  1. Make the lookup sublinear. The semantics to preserve are substring
+     containment plus the two tail fallbacks. Candidates not yet chosen
+     between: a Boyer-Moore matcher per token (QByteArrayMatcher over a
+     UTF-8 blob, skip distance ~ token length); or an n-gram presence
+     filter built once per blob to reject absent tokens without scanning.
+     Measure both — the absent-token path is the one that matters.
+  2. Memoise per token within a run: the standards and specs lanes share a
+     blob shape and many tokens.
+  3. Build the blob once per audit (the ~1%, still worth taking once the
+     above lands, since it is trivial).
+  4. Only then decide whether the remainder still needs a worker thread.
+     At 32 s it plainly does; if step 1 brings it under ANTS-1397 § 6's
+     ~50 ms the threading change may be unnecessary, which is the cheaper
+     outcome for code that has a cancel path to keep correct.
   **Layman:** Some audit checks read the whole project on the main window's thread, freezing every tab until they finish.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lanes spec-engines, audit-dialog-b).
@@ -8954,6 +8985,49 @@ extends an existing item, that item carries it instead.
   crushed after a relaunch, the remaining candidate is the render-side
   fg.darker(150), which on a dark theme takes a grey foreground to about
   #555555.
+  Resolved (2026-09-12): the "UNCONFIRMED cause" this item was left with is
+  now settled, and the answer is that neither remaining candidate was the
+  user's cause. The user reported after relaunching on 0.7.109 that text
+  still read dim; investigating that produced the evidence nobody had.
+
+  What Claude Code actually emits, captured for the first time (a TUI run
+  under `script` in a pty, SGR sequences extracted from the raw bytes):
+
+    ESC[38;2;153;153;153m   truecolor #999999 — its secondary text
+    ESC[38;2;255;193;7m     amber — the spinner
+    ESC[38;2;177;185;249m   lavender
+    ESC[1m / ESC[22m        bold on / off
+    ESC[39m                 default foreground
+
+  There is NO ESC[2m anywhere. Claude Code never sets the dim attribute,
+  so the render-side `fg.darker(150)` in terminalwidget.cpp — the other
+  live candidate, and the one the user was asked to wait and see on — is
+  never reached by its output. Its prose carries no SGR at all and renders
+  at the terminal's default foreground.
+
+  What Ants renders, measured rather than reasoned about: a throwaway
+  `--e2e` instance was driven over its socket, fed those exact sequences,
+  and grabbed; the PNG's pixels were read back.
+
+    plain text     -> (205,214,244) = the theme's full default foreground
+    #999999        -> (153,153,153) exactly
+    amber          -> (255,193,7)   exactly
+    SGR 2 (dim)    -> darkened, as designed
+
+  So the parser fix in this item is correct and complete, and Ants
+  reproduces Claude Code's colours faithfully. Two further checks closed
+  the remaining theories: the user's Kanagawa theme has textPrimary
+  #DCD7BA, BRIGHTER than the default theme's #CDD6F4, so the theme dims
+  nothing; and `opacity` sets the alpha of the terminal-area background
+  fill only (terminalwidget.cpp `effectiveAlpha`), with glyphs painted at
+  full alpha over it and chrome opaque, so opacity cannot dim text either.
+
+  Conclusion: #999999 on the Kanagawa background is about 5.6:1 contrast —
+  legible, deliberate, and Claude Code's own choice. User decision
+  (2026-09-12): leave it. A minimum-contrast setting (iTerm2 /
+  Windows Terminal style, boosting any incoming colour below a contrast
+  threshold) was offered as the Ants-side fix and declined; it is not
+  filed, so anyone reaching for it later starts from this note.
   **Layman:** Text could turn grey when it should be normal, and stay grey until something reset the colour.
   Kind: fix.
   Source: user-report-2026-09-12.
@@ -71488,6 +71562,54 @@ a modern terminal" release.
   Kind: perf.
   Source: in-session-2026-09-08.
   Lanes: claudestatuswidgets.
+
+- 🚧 [ANTS-5133] **One perf harness that runs every benchmark and reports it against a saved baseline.**
+  User request: a benchmarking tool, in the shape game engines use, to find
+  where the terminal is slowest so the slow parts can be worked on. User
+  decision (2026-09-12), asked before building: the readout wanted is a
+  benchmark suite that can be run and compared, NOT a live overlay or a
+  recorded flame-graph trace; and the tool is for development, not for
+  users, so nothing needs to ship in the user binary and no shipped-build
+  overhead budget applies.
+
+  What exists today (surveyed 2026-09-12): five benchmarks under
+  tests/perf, all ctest label `perf`, all excluded from the default and
+  fast presets, each printing its OWN CSV schema to stdout —
+  bench_vt_throughput (MB/s, actions/s), bench_paint_throughput (speedup,
+  hit rate), bench_search_throughput (scan ms), bench_partition_walk
+  (warm ms), bench_drift_lanes (ms per lane). Each takes its own
+  ANTS_PERF_* env knobs and some carry a single-number floor or ceiling.
+
+  What does NOT exist, and is the whole of this item: a runner, a baseline
+  file, and a comparison. Nothing in tools/ matches *perf*. Recorded
+  numbers live only in roadmap bodies, which is why ANTS-4921 exists at
+  all — it asks for a re-measurement before any parked perf item is acted
+  on, and it blocks ANTS-1115, ANTS-1059 and ANTS-1060. Those three lost
+  their premise because their numbers aged with nothing to re-run.
+
+  Design, so a new benchmark cannot silently fall out of the report: each
+  benchmark emits uniform, self-describing metric lines ALONGSIDE its
+  existing CSV, and the runner reads those rather than knowing each
+  schema. Adding a benchmark is then adding its metric lines; there is no
+  central registry to drift, which is the ANTS-4392 lesson about
+  hand-maintained parallel recipes applied here before it can bite.
+
+  A metric declares its own direction, because the suite mixes
+  lower-is-better (ms) with higher-is-better (MB/s, hit rate) and a
+  comparison that assumes one is wrong for half the suite.
+
+  The baseline records the machine and the date with the numbers. These
+  are wall-clock measurements on a shared desktop, so a comparison across
+  machines is meaningless and must say so rather than print a percentage.
+
+  Scope of the first pass: the harness over the five benchmarks that
+  already exist. Scenario COVERAGE is a separate question — the current
+  five do not touch full paintEvent (only the shaping step), scrollback
+  seek, or resize reflow — and is filed separately rather than bundled,
+  so the harness lands usable.
+  **Layman:** One command that measures the terminal everywhere it matters and tells you what got faster or slower since last time.
+  Kind: perf.
+  Source: user-request-2026-09-12.
 
 ### 🎨 Features — multiplexing
 

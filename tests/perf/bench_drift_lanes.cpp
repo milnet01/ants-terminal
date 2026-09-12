@@ -23,6 +23,10 @@
 #include <cstdio>
 #include <cstdlib>
 
+#include "perf_metric.h"
+
+#include <string>
+
 namespace {
 
 struct Timed {
@@ -74,8 +78,13 @@ int main(int argc, char **argv) {
         const Timed t = timeLane(l.fn, root);
         total += t.ms;
         std::printf("%s,%.1f,%d\n", l.name, t.ms, t.lines);
+        // ANTS-5133 — per lane, since they are separately optimisable and the
+        // total hides one lane regressing while another improves.
+        AntsPerf::reportLowerBetter((std::string("audit.drift.") + l.name).c_str(),
+                                    t.ms, "ms");
     }
     std::printf("TOTAL,%.1f,0\n", total);
+    AntsPerf::reportLowerBetter("audit.drift.total", total, "ms");
 
     const char *maxEnv = std::getenv("ANTS_PERF_MAX_MS");
     const int maxMs = (maxEnv && *maxEnv) ? std::atoi(maxEnv) : 0;

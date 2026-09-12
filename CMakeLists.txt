@@ -1332,6 +1332,7 @@ if(ANTS_TESTS)
         Qt6::Gui
     )
     target_include_directories(bench_vt_throughput PRIVATE src)
+    target_include_directories(bench_vt_throughput PRIVATE ${CMAKE_SOURCE_DIR}/tests/perf)
     target_compile_options(bench_vt_throughput PRIVATE
         -Wall -Wextra -Wpedantic -O2
     )
@@ -1355,6 +1356,7 @@ if(ANTS_TESTS)
         Qt6::Gui
     )
     target_include_directories(bench_paint_throughput PRIVATE src)
+    target_include_directories(bench_paint_throughput PRIVATE ${CMAKE_SOURCE_DIR}/tests/perf)
     target_compile_options(bench_paint_throughput PRIVATE
         -Wall -Wextra -Wpedantic -O2
     )
@@ -1373,6 +1375,7 @@ if(ANTS_TESTS)
     target_link_libraries(bench_search_throughput PRIVATE
         Qt6::Core
     )
+    target_include_directories(bench_search_throughput PRIVATE ${CMAKE_SOURCE_DIR}/tests/perf)
     target_compile_options(bench_search_throughput PRIVATE
         -Wall -Wextra -Wpedantic -O2
     )
@@ -1395,6 +1398,7 @@ if(ANTS_TESTS)
     target_compile_definitions(bench_partition_walk PRIVATE
         ANTS_PROJECT_ROOT="${CMAKE_SOURCE_DIR}"
     )
+    target_include_directories(bench_partition_walk PRIVATE ${CMAKE_SOURCE_DIR}/tests/perf)
     target_compile_options(bench_partition_walk PRIVATE
         -Wall -Wextra -Wpedantic -O2
     )
@@ -1417,6 +1421,7 @@ if(ANTS_TESTS)
     target_compile_definitions(bench_drift_lanes PRIVATE
         ANTS_PROJECT_ROOT="${CMAKE_SOURCE_DIR}"
     )
+    target_include_directories(bench_drift_lanes PRIVATE ${CMAKE_SOURCE_DIR}/tests/perf)
     target_compile_options(bench_drift_lanes PRIVATE
         -Wall -Wextra -Wpedantic -O2
     )

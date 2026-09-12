@@ -46,6 +46,10 @@
 #include <iterator>
 #include <vector>
 
+#include "perf_metric.h"
+
+#include <string>
+
 namespace {
 
 // One styled run: the text plus the font variant it shapes in.
@@ -198,6 +202,15 @@ int main(int argc, char *argv[]) {
         const double hitRate = (total > 0.0) ? cache.hits() / total : 0.0;
         std::printf("%s,%zu,%d,%.2f,%.2f,%.2f,%.3f\n", c.name, c.runs.size(),
                     frames, uncachedMs, cachedMs, speedup, hitRate);
+        // ANTS-5133 — the cached time is what a frame actually costs, so it is
+        // the metric to track; the speedup and hit rate are reported too
+        // because a cached time can improve while the cache stops working.
+        {
+            const std::string base = std::string("paint.") + c.name;
+            AntsPerf::reportLowerBetter((base + ".cached_ms").c_str(), cachedMs, "ms");
+            AntsPerf::reportHigherBetter((base + ".speedup").c_str(), speedup, "x");
+            AntsPerf::reportHigherBetter((base + ".hit_rate").c_str(), hitRate, "ratio");
+        }
         if (minSpeedup > 0.0 && speedup < minSpeedup) {
             std::fprintf(stderr,
                          "REGRESSION: corpus '%s' cache speedup %.2fx is below "

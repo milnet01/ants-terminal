@@ -46,6 +46,8 @@
 #include <string>
 #include <vector>
 
+#include "perf_metric.h"
+
 namespace {
 
 struct BenchResult {
@@ -135,6 +137,12 @@ void printCsvLine(const BenchResult &r) {
     std::printf("%s,%zu,%zu,%.2f,%.2f,%.2f\n",
                 r.corpus.c_str(), r.bytes, r.actions, r.wallMs,
                 mbPerSec(r), actionsPerSec);
+    // ANTS-5133 — headline metric for the harness. Throughput rather than
+    // wall time, because the corpus size is an env knob: a run with
+    // ANTS_PERF_MB set would otherwise compare against a baseline taken at a
+    // different size and read as an enormous regression.
+    AntsPerf::reportHigherBetter(("vt.throughput." + r.corpus).c_str(),
+                                 mbPerSec(r), "MB/s");
 }
 
 }  // namespace

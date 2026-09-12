@@ -234,6 +234,15 @@ invariants: `tests/features/prepush_asan_gate/spec.md`.
   into `test_claude`, not `test_core`. The old recipe (`grep -n <feature>
   CMakeLists.txt`, then read upward for the enclosing `ants_add_*_bundle(`)
   still works and is the fallback outside an Ants session.
+- **Perf harness** (`tools/perf-report.sh`, `tests/perf/`, label `perf`,
+  ANTS-5133) — runs every `bench_*` benchmark and reports each metric
+  against a saved baseline (`tests/perf/baseline.tsv`), flagging moves past
+  a threshold. Excluded from the `default` / `fast` presets, so an ordinary
+  test run never pays for it, and not run in CI (wall-clock numbers a shared
+  runner cannot reproduce). Benchmarks are discovered from `tests/perf/`
+  and their numbers read from the uniform lines `tests/perf/perf_metric.h`
+  emits, so neither list is written down anywhere. How-to, including how to
+  add one: [`docs/qa/perf-harness.md`](docs/qa/perf-harness.md).
 - **E2E harness** (`tools/e2e/`, label `e2e`, ANTS-2049) — drive a
   throwaway `--e2e` instance as a user (inject-key/click, resize-window,
   grab-image over its socket via `--remote-json`) and observe it. Opt-in:

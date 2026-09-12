@@ -29,6 +29,10 @@
 #include <iterator>
 #include <vector>
 
+#include "perf_metric.h"
+
+#include <string>
+
 namespace {
 
 struct Match {
@@ -132,6 +136,13 @@ int main(int argc, char *argv[]) {
         const double lps = (scanMs > 0.0) ? lines / (scanMs / 1000.0) : 0.0;
         std::printf("%s,%d,%zu,%.2f,%d,%.3f,%.2f\n", c.name, lines,
                     matches.size(), scanMs, kRows * kCols, lookupMs, lps);
+        // ANTS-5133 — scan reported as a rate (the line count is an env knob);
+        // the per-cell lookup as time, since its cell count is fixed.
+        {
+            const std::string base = std::string("search.") + c.name;
+            AntsPerf::reportHigherBetter((base + ".scan_lines_per_sec").c_str(), lps, "lines/s");
+            AntsPerf::reportLowerBetter((base + ".lookup_ms").c_str(), lookupMs, "ms");
+        }
         if (minLps > 0.0 && lps < minLps) {
             std::fprintf(stderr,
                          "REGRESSION: corpus '%s' at %.0f lines/s is below the "
