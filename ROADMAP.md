@@ -6873,6 +6873,10 @@ extends an existing item, that item carries it instead.
   duplicate cold walks across bg trackers without changing who owns
   them. Worth weighing against tracker-sharing rather than assuming the
   Fix line above is still the best route.
+  Decided by the user (2026-09-12): cache the walk cursor per
+  transcript path, so a tab-switch re-bind resumes instead of
+  cold-walking. Sharing one tracker per path was the alternative and was
+  not taken.
   **Layman:** While Claude is working, Ants keeps re-reading its whole conversation log, and more so with more panes open.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lane claude-session-widgets).
@@ -6927,6 +6931,44 @@ extends an existing item, that item carries it instead.
   would be false. Also measured: there is no QMutex, QReadWriteLock or
   std::mutex anywhere in src/remotecontrol*.{h,cpp}, so the no-lock
   claim holds for the whole file family, not only the named members.
+  Amendment prep (2026-09-12), write-spec run paused before drafting.
+  Target: extend docs/specs/ANTS-2132-async-mcp-dispatch.md in place (one
+  contract all three items bind to; 5073 and 5035 cite its sections).
+  No draft written yet; nothing gated.
+
+  VERIFIED in source:
+  - RemoteControl cannot see ClaudeIntegration (ants_core_lib is below
+    the claude lib). MainWindow must inject a hook right after
+    `new RemoteControl`, the setMcpVerbVocabularyProvider pattern, whose
+    position tests/features/doc_symbols_verb asserts.
+  - ClaudeIntegration is built unconditionally in setupStatusBarChrome,
+    before RemoteControl. Its worker starts lazily in postToolDispatch,
+    which is private and bound to finishToolDispatch's MCP pipeline, so
+    the socket needs a new narrow entry that shares the in-flight cap.
+  - All eight movable routes' MCP twins are Required + rcDelegate over
+    the same RemoteControl::cmd* the socket calls, so their bodies
+    already run off-thread under INV-6.
+  - No test calls RemoteControl::dispatch and reads its return value
+    (search of tests/ for .dispatch( and ->dispatch(: zero files).
+  - The socket reply is the readyRead lambda's local `resp`, written
+    after a QPointer + ConnectedState check; idle timer stopped first.
+  - ANTS-5024 and ANTS-5113 shipped: shutdown now joins through
+    ants::joinRefusingMarshals.
+
+  NOT YET CHECKED, must be before the amendment claims 5051 closes:
+  - every roadmapStoreOrNull caller and every GUI-thread
+    m_remoteControl-> call outside registrations. If the GUI thread
+    still reaches that store or its caches directly, moving the socket
+    routes does not close this item.
+  - where claudeintegration.cpp branches to postToolDispatch.
+
+  PROPOSED, not yet confirmed by the user or the gate: audit_run replies
+  later from its OWN audit QThread (deferred reply), not from the shared
+  dispatch worker. A sweep can run 900 s and would stall every session's
+  MCP traffic on the one worker, which this item's sibling 5035 already
+  measured as route 3's defect. tests/features/mcp_audit_run_async
+  Inv1SyncPathUnchanged scrapes `worker->wait();` file-wide and must be
+  reworded with it.
   **Layman:** Two parts of Ants can use the roadmap database at the same moment, which can crash it or corrupt what it returns.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lanes roadmap-store, mcp-transport, mcp-roadmap-query-log, mcp-roadmap-batch).
@@ -18527,6 +18569,11 @@ under one guard). The deferrals below.
   match list or skipping padding would fix it, but either changes what
   search finds, so it waits for a user decision. loadHistory and the
   four mediums are untouched.
+  Decided by the user (2026-09-12): skip trailing blanks. A search
+  ignores the empty cells after the end of each line, so a single-space
+  query stops matching padding. Accepted cost: a search can no longer
+  find trailing spaces a program really printed. Capping the match list
+  was the alternative and was not taken.
   Source: indie-review-2026-06-04.
   Lanes: terminalwidget.
 
