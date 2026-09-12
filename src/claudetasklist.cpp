@@ -56,8 +56,13 @@ constexpr qint64 kStaleInProgressMs = 24LL * 3600LL * 1000LL;
 
 ClaudeTaskListTracker::ClaudeTaskListTracker(QObject *parent)
     : QObject(parent) {
+    // ANTS-5050 — the watcher fires per append; the debounce collapses a
+    // burst into one rescan instead of one full transcript walk each.
+    m_rescanDebounce.setSingleShot(true);
+    m_rescanDebounce.setInterval(kRescanDebounceMs);
+    connect(&m_rescanDebounce, &QTimer::timeout, this, &ClaudeTaskListTracker::rescan);
     connect(&m_watcher, &QFileSystemWatcher::fileChanged,
-            this, &ClaudeTaskListTracker::rescan);
+            this, [this] { m_rescanDebounce.start(); });
 }
 
 ClaudeTaskListTracker::~ClaudeTaskListTracker() = default;
@@ -75,6 +80,7 @@ void ClaudeTaskListTracker::setTranscriptPath(const QString &path) {
     m_lastRescanSizeBytes = 0;
     if (!m_transcriptPath.isEmpty() && QFileInfo::exists(m_transcriptPath))
         m_watcher.addPath(m_transcriptPath);
+    m_rescanDebounce.stop();  // ANTS-5050 — this rescan supersedes a pending one
     rescan();
 }
 

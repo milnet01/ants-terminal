@@ -27,8 +27,13 @@ QString squashOneLine(QString s, int maxLen = 200) {
 } // namespace
 
 ClaudeBgTaskTracker::ClaudeBgTaskTracker(QObject *parent) : QObject(parent) {
+    // ANTS-5050 — the watcher fires per append; the debounce collapses a
+    // burst into one rescan instead of one full transcript walk each.
+    m_rescanDebounce.setSingleShot(true);
+    m_rescanDebounce.setInterval(kRescanDebounceMs);
+    connect(&m_rescanDebounce, &QTimer::timeout, this, &ClaudeBgTaskTracker::rescan);
     connect(&m_watcher, &QFileSystemWatcher::fileChanged,
-            this, &ClaudeBgTaskTracker::rescan);
+            this, [this] { m_rescanDebounce.start(); });
 }
 
 ClaudeBgTaskTracker::~ClaudeBgTaskTracker() = default;
@@ -44,6 +49,7 @@ void ClaudeBgTaskTracker::setTranscriptPath(const QString &path) {
     m_lastRescanSizeBytes = 0;
     if (!m_transcriptPath.isEmpty() && QFileInfo::exists(m_transcriptPath))
         m_watcher.addPath(m_transcriptPath);
+    m_rescanDebounce.stop();  // ANTS-5050 — this rescan supersedes a pending one
     rescan();
 }
 

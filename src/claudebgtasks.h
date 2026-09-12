@@ -5,6 +5,7 @@
 #include <QDateTime>
 #include <QList>
 #include <QFileSystemWatcher>
+#include <QTimer>
 
 // One Claude Code background task, derived from a transcript scan.
 //
@@ -99,6 +100,19 @@ public slots:
 private:
     QString m_transcriptPath;
     QFileSystemWatcher m_watcher;
+
+    // ANTS-5050 — coalesce the fileChanged storm. Claude appends to the
+    // transcript continuously while it works, and each signal drove a
+    // full rescan, which walks up to a 16 MiB tail and JSON-parses every
+    // line. The watcher fires far faster than that walk is worth
+    // repeating, so a burst of appends now costs one walk instead of one
+    // per append. Single-shot and restarted per signal, so a steady
+    // stream settles into one walk per interval rather than starving.
+    // The poll() mtime/size shortcut is unaffected, and
+    // setTranscriptPath still rescans immediately rather than waiting.
+    QTimer m_rescanDebounce;
+    static constexpr int kRescanDebounceMs = 250;
+
     QList<ClaudeBackgroundTask> m_tasks;
     qint64 m_lastRescanMtimeMs = 0;
     // ANTS-1458 phase 2 — mirror ClaudeTaskListTracker: size is a second
