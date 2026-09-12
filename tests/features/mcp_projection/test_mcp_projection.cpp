@@ -1314,3 +1314,52 @@ TEST(McpProjection, Ants4930ExactRequestDoesNotGrow) {
         << "ANTS-4930: nothing was unmatched, so there is nothing to explain";
     EXPECT_EQ(exact.size(), 1);
 }
+
+// ───────────────────────────────────────────────────────────────────
+// ANTS-5072 — appendReadHints parsed and re-serialised EVERY successful
+// body on the GUI thread, with no upper bound, just to decide whether to
+// add an advisory string. read_region and workspace_search allow multi-MiB
+// replies. Both nudges are advisory and emitted at most once per tool, so
+// the giant reply is precisely the one where that parse is not worth it.
+// ───────────────────────────────────────────────────────────────────
+
+namespace {
+// Comfortably past the parse gate, with an etag so the nudge would
+// otherwise fire regardless of size (ANTS-2180).
+QString oversizedBodyWithEtag() {
+    QString filler;
+    filler.reserve(400 * 1024);
+    while (filler.size() < 400 * 1024) filler += QChar('x');
+    return QStringLiteral("{\"ok\":true,\"etag\":\"abc123\",\"pad\":\"")
+         + filler + QStringLiteral("\"}");
+}
+}  // namespace
+
+TEST(McpReadHints, Ants5072OversizedBodyIsNotParsed) {
+    const QString body = oversizedBodyWithEtag();
+    EXPECT_EQ(mcp::appendReadHints(QStringLiteral("read_region"),
+                                   QJsonObject{}, body,
+                                   /*etagUnchanged=*/false),
+              body)
+        << "an oversized body must come back byte-for-byte, unparsed";
+}
+
+// Skipping must not burn the latch: the tool has not been taught, so a
+// later ordinary reply from it still carries the nudge.
+TEST(McpReadHints, Ants5072SkipDoesNotBurnTheLatch) {
+    mcp::resetHintLatch();
+    mcp::setHintLatchEnabled(true);
+
+    (void)mcp::appendReadHints(QStringLiteral("read_region"), QJsonObject{},
+                               oversizedBodyWithEtag(), false);
+
+    const QString small = QStringLiteral("{\"ok\":true,\"etag\":\"abc123\"}");
+    const QJsonObject o = parse(mcp::appendReadHints(
+        QStringLiteral("read_region"), QJsonObject{}, small, false));
+
+    mcp::setHintLatchEnabled(false);
+    mcp::resetHintLatch();
+
+    ASSERT_TRUE(o.contains("next_call_hint"))
+        << "the skipped oversized reply consumed the tool's one nudge";
+}

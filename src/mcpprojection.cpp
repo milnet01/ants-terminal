@@ -403,6 +403,16 @@ QString appendReadHints(const QString &tool, const QJsonObject &args,
     if (etagUnchanged) return responseText;
     if (args.contains(QStringLiteral("fields"))) return responseText;
     const QByteArray utf8 = responseText.toUtf8();
+    // ANTS-5072 — upper bound on the parse. Everything below parses the
+    // whole body and re-serialises it, on the GUI thread, to decide whether
+    // to add one advisory string; read_region and workspace_search allow
+    // multi-MiB replies, so that cost is unbounded and paid per call. Both
+    // nudges are advisory and emitted at most once per tool, which makes the
+    // giant reply exactly the one not worth parsing for them. Skipping does
+    // NOT burn the latch — claimHint is only reached on an emission — so a
+    // later ordinary reply from the same tool still teaches the hint.
+    constexpr int kMaxHintParseBytes = 256 * 1024;
+    if (utf8.size() > kMaxHintParseBytes) return responseText;
     QJsonParseError pe{};
     const QJsonDocument d = QJsonDocument::fromJson(utf8, &pe);
     if (pe.error != QJsonParseError::NoError || !d.isObject())
