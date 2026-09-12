@@ -42,6 +42,38 @@ static QString fileAnchorId(const QString &path) {
     return QStringLiteral("f-") + QString::fromLatin1(path.toUtf8().toHex());
 }
 
+// ANTS-5128 — owner of the dialog's git probe QProcesses, which cancels
+// them in its own destructor. A QProcess still running when it is
+// destroyed is killed by ~QProcess, which emits finished() from inside
+// that destructor — straight into the probe handlers below, which touch
+// the dialog they are parented to. By then the dialog is mid-teardown:
+// ~QWidget is what deletes the children, so the object has already
+// degraded to QWidget and the handlers' QPointer<QDialog> downcast is
+// undefined behaviour (UBSan vptr, CI run 34650028988; green locally
+// only because a probe on a small repo finishes before the close).
+// Cancelling here runs before any of that, on every destruction path —
+// the Close button, the parent window, application exit.
+class ProbeHost : public QObject {
+public:
+    explicit ProbeHost(QObject *parent) : QObject(parent) {}
+
+    ~ProbeHost() override {
+        const auto procs = findChildren<QProcess *>();
+        for (QProcess *p : procs) {
+            // Disconnect FIRST: kill() below makes the process finish, and
+            // a still-connected handler would run exactly as it does in
+            // the defect.
+            p->disconnect();
+            if (p->state() == QProcess::NotRunning) continue;
+            p->kill();
+            // Reap it, so ~QProcess sees a finished process and neither
+            // warns nor emits. The child is already dead; this is a bound,
+            // not a wait.
+            p->waitForFinished(200);
+        }
+    }
+};
+
 // New-side path from a `diff --git a/<old> b/<new>` header line; empty if
 // the line isn't a diff header. Used to key the jump-target anchors.
 static QString diffHeaderPath(const QString &line) {
@@ -115,6 +147,11 @@ QDialog *show(QWidget *parent,
     // satisfies the user spec "preventing further clicks until
     // the dialog is closed" at the binding site (the button).
     auto *dialog = new QDialog(parent);
+    // ANTS-5128 — the probes live under this host, not directly under the
+    // dialog, so ProbeHost's destructor cancels them while the dialog is
+    // still whole. Recursive findChildren still reports them as the
+    // dialog's (ANTS-5059's parentage contract is unchanged).
+    auto *probeHost = new ProbeHost(dialog);
     dialog->setObjectName(QStringLiteral("reviewChangesDialog"));
     dialog->setWindowTitle("Review Changes");
     dialog->resize(800, 600);
@@ -320,7 +357,7 @@ QDialog *show(QWidget *parent,
     // OR the user clicks Refresh. Each call constructs a fresh
     // ProbeState so concurrent in-flight probes from a previous
     // refresh can't poison the new render.
-    auto runProbes = [dialog, cwd, dlgGuard, viewerGuard, copyGuard,
+    auto runProbes = [dialog, probeHost, cwd, dlgGuard, viewerGuard, copyGuard,
                       liveStatusGuard, themeName, lastHtml, gitEnv,
                       generation, lastRaw]() {
         if (!dlgGuard) return;
@@ -727,11 +764,14 @@ QDialog *show(QWidget *parent,
     // slot on the shared ProbeState when it finishes, then calls
     // finalize(). No blocking on the UI thread.
     // ANTS-5059 — parented to the dialog, not the caller: closing it kills
-    // the probes, and their callbacks cannot outlive it.
-    auto runAsync = [dialog, cwd, gitEnv, finalize](const QStringList &args,
+    // the probes, and their callbacks cannot outlive it. ANTS-5128 — via
+    // the ProbeHost child, which does the killing before they are
+    // destroyed rather than leaving it to ~QProcess.
+    auto runAsync = [dialog, probeHost, cwd, gitEnv, finalize](
+                                                    const QStringList &args,
                                                     QString ProbeState::*slot,
                                                     ProbeState *st) {
-        auto *p = new QProcess(dialog);
+        auto *p = new QProcess(probeHost);
         p->setWorkingDirectory(cwd);
         p->setProcessEnvironment(gitEnv);
         p->setProgram("git");
@@ -800,9 +840,10 @@ QDialog *show(QWidget *parent,
     // (build/, node_modules/, …), so they are excluded by construction — never
     // handed to the watcher. Re-run on every change so new non-ignored dirs
     // start being watched (ignored ones never appear here).
-    auto enumerate = [dialog, gitEnv, watcherGuard](const QString &topLevel) {
+    auto enumerate = [dialog, probeHost, gitEnv, watcherGuard](
+                                                    const QString &topLevel) {
         if (!watcherGuard || topLevel.isEmpty()) return;
-        auto *ls = new QProcess(dialog);
+        auto *ls = new QProcess(probeHost);
         ls->setWorkingDirectory(topLevel);
         ls->setProcessEnvironment(gitEnv);
         ls->setProgram(QStringLiteral("git"));
@@ -825,9 +866,10 @@ QDialog *show(QWidget *parent,
     // Re-seed: resolve the git paths once (then cache), watch the .git
     // metadata dirs once, and (re)enumerate the working tree. Called at open
     // and on every change burst.
-    auto reseed = [dialog, cwd, gitEnv, gp, watcherGuard, enumerate]() {
+    auto reseed = [dialog, probeHost, cwd, gitEnv, gp, watcherGuard,
+                   enumerate]() {
         if (gp->resolved) { enumerate(gp->topLevel); return; }
-        auto *rp = new QProcess(dialog);
+        auto *rp = new QProcess(probeHost);
         rp->setWorkingDirectory(cwd);
         rp->setProcessEnvironment(gitEnv);
         rp->setProgram(QStringLiteral("git"));

@@ -13,6 +13,13 @@
 //   INV-4 (GUARD, behavioural) — an ordinary small diff still renders in
 //                                 full, with no truncation notice.
 //
+// A fifth, separately-reported RED invariant (ANTS-5128, still live):
+//   INV-5 (RED, behavioural)   — closing the dialog must cancel its probe
+//                                 QProcesses before they are destroyed, so
+//                                 none is destroyed while still running and
+//                                 no probe handler runs against a dialog
+//                                 mid-teardown.
+//
 // See spec.md for the full contract, rationale, and why each check is
 // shaped the way it is.
 
@@ -25,6 +32,7 @@
 #include <QElapsedTimer>
 #include <QEventLoop>
 #include <QFile>
+#include <QPointer>
 #include <QProcess>
 #include <QStandardPaths>
 #include <QString>
@@ -37,6 +45,7 @@
 #include <cstdio>
 #include <regex>
 #include <string>
+#include <utility>
 
 #include <gtest/gtest.h>
 
@@ -126,6 +135,19 @@ std::string showBodyRaw(const std::string &src) {
     const auto end = src.find("}  // namespace diffviewer", start);
     return src.substr(start, end == std::string::npos ? std::string::npos
                                                        : end - start);
+}
+
+// Sink for Qt's own warnings during the close-while-running window.
+// qInstallMessageHandler takes a plain function pointer, so the captured
+// text has to live at file scope.
+QStringList g_qtMessages;
+bool g_capturing = false;
+
+void captureQtMessage(QtMsgType type, const QMessageLogContext &ctx,
+                      const QString &msg) {
+    if (g_capturing) g_qtMessages << msg;
+    Q_UNUSED(type);
+    Q_UNUSED(ctx);
 }
 
 }  // namespace
@@ -368,4 +390,104 @@ TEST(ReviewChangesDiffCap, SmallDiffRendersFullyNoTruncationNotice) {
 
     dialog->close();
     QCoreApplication::processEvents();
+}
+
+// ---------------------------------------------------------------------
+// INV-5 (RED, behavioural — ANTS-5128) — closing the dialog while its
+// probe QProcesses are still running must not block the GUI thread in
+// ~QProcess::waitForFinished(), and must not re-enter a probe's
+// finished/errorOccurred handler against a dialog mid-teardown.
+// ---------------------------------------------------------------------
+TEST(ReviewChangesDiffCap, ClosingDoesNotDestroyRunningProbes) {
+    if (!gitOnPath()) GTEST_SKIP() << "git not in PATH";
+
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString dir = tmp.path();
+    // Built with the REAL git — runGit()/makeRepoAndCommit() resolve "git"
+    // via the untouched process PATH, before the slow shim below exists.
+    ASSERT_TRUE(makeRepoAndCommit(dir, QStringLiteral("f.txt"),
+                                  QStringLiteral("v1\n")))
+        << "git fixture setup failed";
+    ASSERT_TRUE(writeTextFile(dir + QStringLiteral("/f.txt"),
+                              QStringLiteral("v2\n")));
+
+    // A slow `git` shim, first on PATH, so every probe is still running
+    // when the dialog closes. A real probe on a one-file repo finishes in
+    // milliseconds, which is why this defect reached main: it is only
+    // reachable while a probe is in flight, and only a loaded CI runner
+    // was slow enough to get there.
+    QTemporaryDir shimDir;
+    ASSERT_TRUE(shimDir.isValid());
+    const QString shimPath = shimDir.path() + QStringLiteral("/git");
+    ASSERT_TRUE(writeTextFile(shimPath, QStringLiteral("#!/bin/sh\nsleep 6\n")))
+        << "could not write the slow git shim";
+    ASSERT_TRUE(QFile::setPermissions(shimPath,
+        QFile::ReadOwner | QFile::WriteOwner | QFile::ExeOwner |
+        QFile::ReadGroup | QFile::ExeGroup | QFile::ReadOther | QFile::ExeOther))
+        << "could not make the slow git shim executable";
+
+    const QByteArray originalPath = qgetenv("PATH");
+    qputenv("PATH", shimDir.path().toUtf8() + ":" + originalPath);
+
+    QWidget host;
+    QDialog *dialog = diffviewer::show(&host, dir, QStringLiteral("Dark"));
+
+    // Every QProcess show() starts is launched synchronously inside that
+    // call, so the real PATH goes back now — before any assertion that
+    // could return early and leave a later test in this binary running
+    // against the shim.
+    qputenv("PATH", originalPath);
+
+    ASSERT_NE(dialog, nullptr);
+    QPointer<QDialog> guard(dialog);
+
+    const auto probes = dialog->findChildren<QProcess *>();
+    ASSERT_FALSE(probes.isEmpty())
+        << "no QProcess is parented to the dialog right after show() — "
+           "cannot exercise the close-while-running path (fixture or "
+           "parentage regressed)";
+
+    // The probes must be RUNNING, not merely Starting. ~QProcess takes a
+    // different path for a process that never reached Running: it emits
+    // nothing, so closing during Starting exercises none of this and the
+    // test would pass while the defect is live. Measured 2026-09-12.
+    ASSERT_TRUE(pumpUntil([&probes] {
+        for (QProcess *p : probes)
+            if (p->state() != QProcess::Running) return false;
+        return true;
+    }, 10000))
+        << "the probe processes never reached Running — the slow-git shim "
+           "did not take effect, so this run cannot discriminate the defect";
+
+    g_qtMessages.clear();
+    g_capturing = true;
+    QtMessageHandler previous = qInstallMessageHandler(captureQtMessage);
+    dialog->close();
+    const bool destroyed = pumpUntil([&guard] { return guard.isNull(); }, 20000);
+    g_capturing = false;
+    qInstallMessageHandler(previous);
+
+    ASSERT_TRUE(destroyed)
+        << "the dialog was not destroyed after close() while its git probes "
+           "were still running (ANTS-5128)";
+
+    // Qt warns whenever a QProcess is destroyed in a running state — which
+    // is the defect itself: the dialog's destructor deletes its running
+    // probe children, and ~QProcess then re-emits finished() into a handler
+    // that dereferences QPointer<QDialog> on a dialog already degraded to
+    // QWidget (UBSan: "downcast of address ... object is of type QWidget").
+    // Closing must cancel the probes BEFORE they are destroyed, so no probe
+    // is ever destroyed while running.
+    QStringList destroyedWhileRunning;
+    for (const QString &m : std::as_const(g_qtMessages)) {
+        if (m.contains(QStringLiteral("Destroyed while process")))
+            destroyedWhileRunning << m;
+    }
+    EXPECT_TRUE(destroyedWhileRunning.isEmpty())
+        << "closing the dialog destroyed " << destroyedWhileRunning.size()
+        << " still-running probe process(es) of " << probes.size()
+        << "; Qt reported: "
+        << destroyedWhileRunning.join(QStringLiteral(" | ")).toStdString()
+        << " (ANTS-5128)";
 }
