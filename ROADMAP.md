@@ -8818,7 +8818,7 @@ extends an existing item, that item carries it instead.
   Source: in-session-2026-09-11 (ANTS-5058 remainder).
   Lanes: review, threading.
 
-- 📋 [ANTS-5126] **The test-audit partition still runs on the GUI thread, on dialog open and before every dispatch.**
+- ✅ [ANTS-5126] **The test-audit partition still runs on the GUI thread, on dialog open and before every dispatch.**
   ANTS-5062 made the walk prune excluded directories, walk once per root
   and match relative paths. Partition still runs on the GUI thread on
   dialog open, on editingFinished and before dispatch. ANTS-1397 section 6
@@ -8826,6 +8826,28 @@ extends an existing item, that item carries it instead.
   on a large tree.
   Fix: measure the pruned walk on a large tree; if it is over budget, run
   partition off the GUI thread.
+  Resolved (2026-09-12) (12906c35). The measurement this item asked for now
+  exists as tests/perf/bench_partition_walk, which links the real engine:
+  about 430 ms on this project against the ~50 ms ANTS-1397 section 6
+  allows for a GUI-thread call.
+  The measurement corrected the item's premise. The cost is NOT the pruned
+  walk ANTS-5062 fixed — it is the grep pre-pass, which reads and
+  regex-scans every file in every chunk. So the item's proposed remedy,
+  running partition off the GUI thread, would have hidden the cost rather
+  than removed it.
+  PartitionRequest gains prePass. derivePartition (the panel refresh, run
+  on dialog open and on every editingFinished) passes false and measures
+  about 23 ms, inside the budget, with the same chunk set and token. The
+  dispatch path and its stale-partition recovery keep the pre-pass, since
+  the briefs that follow read each chunk's findings from the cached
+  partition.
+  A lean partition seeds the cache but never displaces an entry already
+  there. Seeding is required — synthesis looks the partition up by token
+  and the panel refresh seeds it on open; omitting it broke
+  TestAuditDialog.INV3_ReportsWrittenAndSynthesized, which is how this was
+  found. Displacing would empty every brief (ANTS-2096 by another route).
+  Contract: tests/features/test_audit_pagination_prepass/spec.md INV-3 and
+  INV-4. Suite 4555/4555.
   **Layman:** Opening the test-audit window may still pause Ants briefly on a very large project.
   Kind: perf.
   Source: in-session-2026-09-11 (ANTS-5062 remainder).

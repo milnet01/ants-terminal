@@ -14,6 +14,12 @@ for security-relevant changes.
 
 ### Changed
 
+- **The test-audit window opens without the pause it used to have** (ANTS-5126)
+  Opening the window, and editing its dimensions field, ran a content scan
+  over every test file before drawing the panel. The panel now asks only
+  for the file grouping it displays, and the scan runs when an audit is
+  actually dispatched.
+
 - **The periodic session save now skips tabs that have not changed** (ANTS-5030)
   Every thirty seconds each tab's whole history was re-serialised,
   compressed and written even when nothing had happened in it. A tab is
