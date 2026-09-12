@@ -42,6 +42,12 @@ for security-relevant changes.
 
 ### Fixed
 
+- **Closing Review Changes now cancels its background git probes before they are torn down** (ANTS-5128)
+  Closing the window while a probe was still running destroyed it mid-flight,
+  which ran the probe's completion handler against the half-closed window.
+  The probes are now stopped first, on every way the window can close —
+  the Close button, the parent window, and quitting the app.
+
 - **The Review Changes window no longer freezes on a huge diff: it shows the first 1 MiB with a note, skips redrawing when nothing changed, and ignores an older refresh that finishes after a newer one** (ANTS-5059)
 
 - **The roadmap window reads its "last touched" dates in the background and can no longer put a date on the wrong card when the roadmap changes mid-read** (ANTS-5047)

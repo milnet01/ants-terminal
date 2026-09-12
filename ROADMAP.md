@@ -8712,6 +8712,36 @@ extends an existing item, that item carries it instead.
   Source: in-session-2026-09-11 (ANTS-5052 remainder).
   Lanes: mcp, search.
 
+- ✅ [ANTS-5128] **Closing the Review Changes dialog waits for its running git probes instead of killing them, and their callbacks run against the half-destroyed dialog.**
+  ANTS-5059 parented the probe QProcesses to the dialog so closing
+  it would kill them. It does not kill them: ~QDialog deletes the
+  still-running children, and ~QProcess blocks the GUI thread in
+  waitForFinished() (30 s default) and then emits finished(), whose
+  handler dereferences QPointer&lt;QDialog&gt; on an object already
+  degraded to QWidget. CI run 34650028988 caught the downcast
+  (UBSan vptr) in ReviewChangesDiffCap.ProbeProcessesParentedToDialog;
+  the loaded runner leaves the probes running at close where a local
+  box finishes them first, so every local gate was green.
+
+  Fix: own the probes with a QObject host child that kills and
+  disconnects them in its own destructor, so no callback runs during
+  teardown and close is prompt on every destruction path, app exit
+  included.
+  Resolved (2026-09-12): the probes moved under a ProbeHost child of
+  the dialog, which disconnects and kills them in its own destructor.
+  Test ClosingDoesNotDestroyRunningProbes, red before the fix in both
+  configurations. Two claims in this item's original body were wrong
+  and are corrected here by measurement. ~QProcess does not block for
+  its 30 s timeout: it kills the child and reaps it, and close measured
+  1 ms with six running probes. So the harm was the undefined behaviour
+  alone, not a GUI freeze. And a probe destroyed in Starting state
+  emits nothing, so the test pumps until every probe is Running or it
+  would pass while the defect was live.
+  **Layman:** Closing the Review Changes window can freeze the app until its background git commands finish; it should stop them instead.
+  Kind: fix.
+  Source: ci-red-2026-09-11 run 34650028988 (ASan/UBSan).
+  Lanes: diffviewer, threading.
+
 ## Memory-efficiency sweep (user request 2026-08-19)
 
 The speed sweeps above ask how fast Ants is. This one asks how much it costs to
