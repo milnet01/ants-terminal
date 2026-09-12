@@ -6268,7 +6268,7 @@ extends an existing item, that item carries it instead.
   Source: code-quality-review-2026-09-11 perf pass (lanes terminal-widget-b, terminal-grid).
   Lanes: terminalwidget, terminalgrid, security.
 
-- 📋 [ANTS-5030] **The 30-second session save re-serialises every tab's whole scrollback on the GUI thread, changed or not.**
+- ✅ [ANTS-5030] **The 30-second session save re-serialises every tab's whole scrollback on the GUI thread, changed or not.**
   MainWindow's session-save timer fires every 30 s and calls
   SessionManager::saveSession for every tab. Each call streams every
   cell of the grid, scrollback included, into one buffer, then runs
@@ -6280,6 +6280,19 @@ extends an existing item, that item carries it instead.
   Found independently by two lanes.
   Fix: a per-grid generation counter so unchanged tabs are skipped,
   and compress, hash and write a snapshot on a worker.
+  Resolved (2026-09-12), skip half only (6d8e59f0). TerminalGrid carries a
+  content revision bumped at processAction — the one ingress for
+  PTY-driven mutation — plus resize, setMaxScrollback, applyRowAttrs and
+  the restore setters. Per-write bumping was tried first and rejected: many
+  writes reach m_screenLines directly rather than through cell(), and the
+  per-line dirty flags gate only the span caches, since the paint loop
+  redraws every visible row regardless. MainWindow keeps the last-written
+  key per tab and skips an equal one; the close path forces a write.
+  Contract: tests/features/grid_content_revision/spec.md. Suite 4551/4551.
+  The worker half is NOT done and is ANTS-5131: compress, hash and write
+  still run on the GUI thread for a tab that changed, and the item's own
+  "time not measured" is the reason to measure before restructuring
+  durability-critical code.
   **Layman:** Every 30 seconds Ants re-saves every tab's full history, even when nothing changed, which can freeze the window.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lanes mainwindow-a, config-session-project).
@@ -8889,6 +8902,26 @@ extends an existing item, that item carries it instead.
   Kind: fix.
   Source: user-report-2026-09-12.
   Lanes: vt, terminalgrid.
+
+- 📋 [ANTS-5131] **The session save still compresses, hashes and writes a changed tab on the GUI thread.**
+  ANTS-5030 removed the save entirely for tabs whose blob would be
+  unchanged, which is the common case. A tab that DID change still runs
+  the whole of SessionManager::saveSession on the GUI thread: qCompress
+  (which serialize() can run more than once, re-serialising when the
+  compressed blob overshoots its cap), SHA-256, the write, the fsync and
+  the parent-directory fsync.
+  serializeStream must stay on the GUI thread — it reads the live grid.
+  Everything after it is a pure function of the produced byte buffer and
+  could run on a worker.
+  Measure FIRST, as ANTS-5030 asked and nobody has: time serialize() and
+  the write separately on a tab at the 50k default and at the 1M maximum.
+  This is durability-critical code (the ANTS-1141 fsync ordering and the
+  0.7.52 std::rename fix both live in it), so it is not worth
+  restructuring on an unmeasured assumption.
+  Lanes: session, threading.
+  **Layman:** Saving a tab that has changed still happens on the main window's thread, so a very large scrollback can still pause the window.
+  Kind: perf.
+  Source: in-session-2026-09-12 (ANTS-5030 remainder).
 
 ## Memory-efficiency sweep (user request 2026-08-19)
 

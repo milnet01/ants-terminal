@@ -14,6 +14,11 @@ for security-relevant changes.
 
 ### Changed
 
+- **The periodic session save now skips tabs that have not changed** (ANTS-5030)
+  Every thirty seconds each tab's whole history was re-serialised,
+  compressed and written even when nothing had happened in it. A tab is
+  now written only when something it stores has actually changed.
+
 - **The diff viewer and clipboard guard build clean under the project's clang-tidy check set** (ANTS-5129)
   Internal tidy-up with no change to behaviour: helper linkage, two byte-cap
   constants, one avoidable string copy, and the size of an internal enum.
