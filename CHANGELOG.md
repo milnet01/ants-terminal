@@ -14,6 +14,10 @@ for security-relevant changes.
 
 ### Changed
 
+- **Searching the terminal's history is more than twice as fast.** (ANTS-2000)
+  Each search reads history lines directly instead of one cell at a
+  time. What a search finds is unchanged.
+
 - **The test-audit window opens without the pause it used to have** (ANTS-5126)
   Opening the window, and editing its dimensions field, ran a content scan
   over every test file before drawing the panel. The panel now asks only

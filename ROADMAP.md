@@ -18500,6 +18500,33 @@ under one guard). The deferrals below.
   cap on readAll. The lane doubts the O(N^2) prepend claim, since Qt 6's
   QList::prepend is amortised constant, so re-measure before fixing that
   part.
+  Progress (2026-09-12): the scan itself is faster. The item stays open.
+
+  Measured first with tests/perf/bench_widget_search, which drives the
+  REAL performSearch through the search bar. bench_search_throughput
+  copies the loop over pre-built strings, so it never paid for building
+  line text from cells, which turned out to be most of the cost. The
+  regex engine was a small share.
+
+  Fix, in TerminalWidget::lineText: a history line is read with one row
+  lookup and one combining-map check, and written through a pointer into
+  a worst-case buffer trimmed once. Output is identical to the per-cell
+  path, which still serves screen lines.
+
+  200-column grid, literal needle: 50k lines 119 ms to 49 ms per search;
+  1M lines 2.4 s to 0.98 s. Match counts unchanged in every case.
+
+  Pinned by tests/features/terminal_search_scan, which drives the search
+  bar. Proven red twice: skipping combining marks fails INV-2, misreading
+  padding fails INV-5. Padding past a stored line is reachable only via
+  pushScrollbackLine (session restore); resize pads every history line,
+  so a resize-based test could not reach it.
+
+  STILL OPEN: a single-space query matches every blank cell, about 1 s
+  at 50k lines and 24 s with about 1.8 GB of matches at 1M. Capping the
+  match list or skipping padding would fix it, but either changes what
+  search finds, so it waits for a user decision. loadHistory and the
+  four mediums are untouched.
   Source: indie-review-2026-06-04.
   Lanes: terminalwidget.
 
@@ -57172,6 +57199,14 @@ plus two gaps hit while sweeping stale spec citations under ANTS-4757.
   Unverified: whether the same shape produces false declarations for
   other symbols, or only where a wrapped ternary is involved. Measure
   before fixing.
+  Second shape (2026-09-12, ANTS-2000 session): a stream-insertion
+  call site is also reported as a declaration, and carries the body of
+  the real definition. find_definition symbol=lineText returned
+  `claudeRecentLines << lineText(i);` in src/terminalwidget.cpp with
+  kind "declaration" and TerminalWidget::lineText's whole body
+  attached. So the defect is not ternary-specific: a statement that
+  mentions the symbol and ends in `;` classifies as a declaration.
+  A fix keyed on the ternary shape alone would leave this one.
   **Layman:** The "where is this defined?" tool sometimes lists an ordinary line of code that merely calls a function as if it were the place the function is declared.
   Kind: fix.
   Source: in-session-2026-09-07, hit while resolving owning TUs for ANTS-4757.
@@ -72000,9 +72035,32 @@ a modern terminal" release.
   one sample. This is a second reason to do the conversion this item
   already names — bench_search_throughput does not link the real search
   lane, so it is measuring a reproduction AND measuring it noisily.
+  Progress (2026-09-12): added tests/perf/bench_widget_search, which
+  links the real TerminalWidget::performSearch and drives it through the
+  search bar. It covers the conversion this item named for
+  bench_search_throughput, as a new benchmark beside it rather than a
+  replacement: that one's per-cell lookup metric has no widget
+  equivalent yet. Metrics: search.widget.<case>.scan_lines_per_sec.
+  ANTS_PERF_CASE runs one case; a profile of all three is dominated by
+  single_space's match-list allocations. It showed the reproduction
+  understated the real scan cost by roughly a factor of seven.
   **Layman:** The benchmark suite does not yet cover the things that actually make the terminal feel slow, so it cannot tell us where to look.
   Kind: perf.
   Source: user-request-2026-09-12 (ANTS-5133 follow-up).
+
+- 📋 [ANTS-5137] **perf-report --save-baseline under -R overwrites the whole baseline with only the filtered metrics.**
+  tools/perf-report.sh skips any benchmark not matching -R before it
+  runs, so VALUE[] holds only the filtered metrics. The save block then
+  writes tests/perf/baseline.tsv from VALUE[] alone, replacing the file.
+  So `-R widget_search --save-baseline`, the natural way to record one
+  new benchmark, deletes every other metric's baseline without a word.
+  Found by reading the script, not by running it.
+
+  Fix candidates: merge into the existing baseline when a filter is
+  set, or refuse --save-baseline together with -R.
+  **Layman:** Saving performance numbers for one benchmark silently throws away the saved numbers for all the others.
+  Kind: fix.
+  Source: in-session-2026-09-12 (ANTS-2000).
 
 ### 🎨 Features — multiplexing
 
@@ -76458,6 +76516,11 @@ contributors don't duplicate research.
   Kind: enhancement.
   Lanes: remotecontrol.
   Source: in-session-2026-08-12.
+  Observed again 2026-09-12 (ANTS-2000 session): pattern
+  `performSearch|search\.literal_term|m_searchDebounce`, regex:true,
+  context:2, whole repo, default budget. elapsed_ms 5013 and
+  truncated:true, on the session's first search. A narrower lane or
+  glob answered in tens of milliseconds for the rest of the session.
 
 ### 🔒 Security
 
