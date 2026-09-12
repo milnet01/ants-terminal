@@ -1646,6 +1646,7 @@ if(ANTS_TESTS)
                 # not test_core: linking Pty pulls in objects that need the
                 # chrome, claude, audit and vt libraries.
                 tests/features/pty_read_backpressure/test_pty_read_backpressure.cpp
+                tests/features/pty_foreground_attr_reset/test_pty_foreground_attr_reset.cpp
                 tests/features/dialog_close_focus_return/test_dialog_close_focus_return.cpp
                 tests/features/dialog_pseudo_modal/test_dialog_pseudo_modal.cpp
                 tests/features/clipboard_redaction/test_clipboard_redaction.cpp
@@ -3513,6 +3514,9 @@ if(ANTS_TESTS)
     set_property(SOURCE tests/features/pty_childpid_atomic/test_pty_childpid_atomic.cpp
         APPEND PROPERTY COMPILE_DEFINITIONS
         SRC_PTY_H_PATH="${CMAKE_SOURCE_DIR}/src/ptyhandler.h")
+    set_property(SOURCE tests/features/pty_foreground_attr_reset/test_pty_foreground_attr_reset.cpp
+        APPEND PROPERTY COMPILE_DEFINITIONS
+        SRC_PTY_CPP_PATH="${CMAKE_SOURCE_DIR}/src/ptyhandler.cpp")
     set_property(SOURCE tests/features/envelope_close_tag_scrub/test_envelope_close_tag_scrub.cpp
         APPEND PROPERTY COMPILE_DEFINITIONS
         SRC_DOCCITATIONS_CPP_PATH="${CMAKE_SOURCE_DIR}/src/doccitations.cpp")

@@ -616,6 +616,29 @@ void Pty::resize(int rows, int cols) {
     }
 }
 
+// ANTS-5135 — the header carries the state machine; the full table is in
+// tests/features/pty_foreground_attr_reset/spec.md.
+bool Pty::foregroundReturnedToShell(pid_t fg, pid_t shellPgid,
+                                    pid_t &lastSeen) {
+    const pid_t previous = lastSeen;
+    // Record EVERY sample, the unusable ones included. Leaving lastSeen alone
+    // when tcgetpgrp() cannot answer would make the next sample read as a
+    // transition out of a stale value — inventing a reset rather than missing
+    // one, which is the wrong direction for a check that strips styling.
+    lastSeen = fg;
+
+    // No readable foreground, or the child has been reaped: nothing to
+    // conclude, and no shell left to return to.
+    if (fg <= 0 || shellPgid <= 0)
+        return false;
+    // First sample, or the one after an unreadable sample. Cannot distinguish
+    // "was a program" from "was always the shell", so stay silent.
+    if (previous <= 0)
+        return false;
+
+    return previous != shellPgid && fg == shellPgid;
+}
+
 void Pty::onReadReady() {
     // ANTS-2119 — defensive guard: a QSocketNotifier can fire once more after
     // the fd was closed (destructor / start-failure / write-error paths set
@@ -625,6 +648,27 @@ void Pty::onReadReady() {
     // m_childPid already -1, i.e. waitpid(-1): any child of the process.
     if (m_masterFd < 0 || m_readEof)
         return;
+
+    // ANTS-5135 — a foreground program that has exited may have left
+    // character attributes set: Claude Code emits ESC[2m around its dim
+    // status lines, and killing it before the matching ESC[22m leaves dim on.
+    // That is correct VT behaviour, so no parser fix reaches it, and this
+    // host's prompt ("${USER}@${HOST}:${PWD}> ") carries no SGR reset of its
+    // own — so every later prompt and everything typed renders dim.
+    //
+    // Sampled once per wake, BEFORE draining: the bytes waiting are usually
+    // the prompt the shell is about to write, and the reset has to reach the
+    // parser ahead of them. Emitted as DATA rather than as its own signal for
+    // that same reason — a signal can overtake queued parse batches, and this
+    // ordering is the whole point. Safe to inject here because the verdict is
+    // only true once the foreground is the shell again, so no program is
+    // mid-sequence.
+    if (foregroundReturnedToShell(::tcgetpgrp(m_masterFd), childPid(),
+                                  m_lastForegroundPgid)) {
+        ANTS_LOG(DebugLog::Pty, "foreground back to shell - clearing SGR");
+        emit dataReceived(QByteArrayLiteral("\033[0m"));
+    }
+
     char buf[16384];
     while (true) {
         ssize_t n = ::read(m_masterFd, buf, sizeof(buf));

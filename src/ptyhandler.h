@@ -26,6 +26,23 @@ public:
     // process; when the GUI drains a batch, reads re-enable.
     void setReadEnabled(bool enabled);
 
+    // ANTS-5135 — does the pty's foreground process group show that a
+    // foreground program has just EXITED? `fg` is tcgetpgrp()'s answer,
+    // `shellPgid` the forkpty child's pgid (that child calls setsid(), so its
+    // pgid is its pid), and `lastSeen` the previous sample, updated in place.
+    //
+    // True only on the TRANSITION back to the shell: something else held the
+    // foreground and now the shell does. Steady state is false either way, so
+    // an idle shell does not reset on every read, and a program still running
+    // does not reset mid-output. The first sample can never fire it, because
+    // `lastSeen` starts -1 — otherwise a terminal opening with the shell
+    // already idle would reset on its very first read.
+    //
+    // Static and free of member state so the state machine is testable
+    // without a pty: tests/features/pty_foreground_attr_reset/spec.md.
+    static bool foregroundReturnedToShell(pid_t fg, pid_t shellPgid,
+                                          pid_t &lastSeen);
+
 public slots:
     // `write` and `resize` are slots so they can be invoked cross-thread
     // via QMetaObject::invokeMethod with Qt::QueuedConnection (for writes)
@@ -58,6 +75,10 @@ private:
     // ordering is enough — the value stands alone and guards no other
     // state. Contract: tests/features/pty_childpid_atomic/spec.md.
     std::atomic<pid_t> m_childPid{-1};
+    // ANTS-5135 — previous tcgetpgrp() sample. -1 until the first read, and
+    // reset to -1 whenever the syscall cannot answer, which costs at most one
+    // missed transition and can never invent one.
+    pid_t m_lastForegroundPgid = -1;
     QSocketNotifier *m_readNotifier = nullptr;
     // ANTS-5026 — set when onReadReady handles EOF. No read, reap or
     // re-enable happens after it.
