@@ -9050,6 +9050,34 @@ extends an existing item, that item carries it instead.
   Windows Terminal style, boosting any incoming colour below a contrast
   threshold) was offered as the Ants-side fix and declined; it is not
   filed, so anyone reaching for it later starts from this note.
+  CORRECTION (2026-09-12, later the same day): two claims in the
+  note above are FALSE and must not be relied on. This item's
+  parser fix is still correct and complete; the CONCLUSION drawn
+  after it is not.
+
+  The note says "There is NO ESC[2m anywhere" and "Claude Code
+  never sets the dim attribute, so the render-side fg.darker(150)
+  is never reached by its output". Both are wrong. Claude Code
+  DOES emit the dim attribute, wrapped as ESC[2m ... ESC[22m, for
+  its secondary status lines - captured verbatim from a live
+  session's own stdout:
+
+    ESC[2mCompacted (ctrl+o to see full summary)ESC[22m
+    ESC[2mPreCompact [<hook path>] completed successfullyESC[22m
+
+  The earlier capture that found none was a SHORT TUI run that
+  never reached a line of that kind, and absence in that sample
+  was read as absence in the emitter. A negative from one capture
+  window is not a property of the program.
+
+  The user then reported the dim text happening to the TERMINAL's
+  own text with no Claude Code session running, which is what
+  reopened it. That report is correct and is now explained; see
+  the new item filed alongside this one for the real defect and
+  its measurements. The user decision recorded above ("leave it",
+  on the grounds that #999999 was Claude Code's own choice) rested
+  on the false premise and should be treated as withdrawn rather
+  than as a standing decision.
   **Layman:** Text could turn grey when it should be normal, and stay grey until something reset the colour.
   Kind: fix.
   Source: user-report-2026-09-12.
@@ -9114,6 +9142,78 @@ extends an existing item, that item carries it instead.
   **Layman:** A test screenshot lands in whatever folder Ants was started from instead of the throwaway test folder.
   Kind: fix.
   Source: in-session-2026-09-12 (found driving the e2e harness).
+
+- 📋 [ANTS-5135] **Dim left set by an exiting program stays set, and this host's prompt emits no reset to clear it.**
+  The real cause behind the dim text the user reported twice. ANTS-5130
+  fixed a genuine truncated-SGR defect, then concluded the user's case was
+  Claude Code's own #999999 and could be left. That conclusion rested on a
+  false premise and is corrected on that item.
+
+  MECHANISM, each step measured rather than argued.
+
+  1. Claude Code emits the dim attribute as ESC[2m ... ESC[22m around its
+     secondary status lines. Captured verbatim from a live session's own
+     stdout (the "Compacted ..." and "PreCompact ... completed
+     successfully" lines). The earlier capture reporting none sampled a
+     short TUI run that never printed such a line.
+
+  2. If the program exits or is interrupted between ESC[2m and its
+     matching ESC[22m, dim stays set. That is correct VT behaviour - SGR
+     is terminal state, not process state - so no parser fix reaches it.
+
+  3. This host's prompt cannot clear it. openSUSE's default PS1 in
+     /etc/bash.bashrc is "${USER}@${HOST}:${PWD}> " with NO SGR escapes at
+     all, not even a reset. Most distributions' prompts emit one and
+     self-heal on the next prompt; this one never does. So the dim sticks
+     across every later command until something emits SGR 0 or 22, which
+     is why the user saw it with no session running.
+
+  4. Rendering applies it: terminalwidget.cpp paintEvent does
+     "if (c.attrs.dim) fg = fg.darker(150)". darker() scales HSV value,
+     which scales RGB uniformly, so Kanagawa textPrimary #DCD7BA
+     (220,215,186) becomes exactly (147,143,124).
+
+  PROOF the user's screenshot is this and not something else. Fitting the
+  screenshot's peak glyph pixel (137,134,117) over background (31,31,40)
+  as a coverage blend gives, against the FULL colour, 0.561/0.560/0.527
+  (spread 0.033 - inconsistent, so not that colour), and against the DIM
+  colour 0.916/0.917/0.917 (spread 0.000). Hue also rules out a leftover
+  #999999: measured chromaticity 1.000/0.966/0.724 matches dimmed #DCD7BA
+  and not neutral grey (1.000/1.000/0.926).
+
+  REPRODUCED in a throwaway --e2e instance on the user's theme and font:
+  plain text printed after an unterminated ESC[2m renders at exactly
+  (147,143,124), coverage 1.00/1.00/1.00, while the control line before it
+  is exactly (220,215,186).
+
+  NOT the cause, each ruled out by measurement: the ANTS-5130 parser fix
+  is present and correct in the running binary; gpu_rendering is a dead
+  config key removed in an earlier release and ignored; opacity touches
+  only the background fill; the Kanagawa theme is brighter than the
+  default; and a downscaled screenshot dims thin strokes but cannot
+  produce the channel-consistent fit above.
+
+  A residual parser hole found while reading, NOT the user's trigger and
+  not reachable from Claude Code's output: in handleSGR case 38 and 48, if
+  the operand after the introducer is neither 2 nor 5, no branch runs and
+  `i` is never advanced, so the loop steps onto that operand and executes
+  it as an attribute code. ESC[38;1m therefore applies bold. Worth
+  closing while here; it cannot set dim, since the value that would do so
+  is the one value that IS handled.
+
+  FIX NOT CHOSEN YET - it is a behaviour trade-off and the user's call.
+  Candidates, cheapest first. (a) Reset the character attributes when the
+  shell's foreground process group returns to the shell's own pgid, which
+  is the point a program has exited; this targets the actual defect and
+  needs no shell integration, at the cost of discarding attributes a
+  program deliberately left set. (b) A minimum-contrast floor, offered
+  during ANTS-5130 and declined then on a premise now withdrawn. (c) Soften
+  darker(150), which reduces severity without fixing persistence. Option
+  (a) is the recommendation.
+  **Layman:** When a program is interrupted while printing greyed-out text, everything you type afterwards stays grey until something resets it.
+  Kind: fix.
+  Source: user-report-2026-09-12.
+  Lanes: vt, terminalgrid, terminalwidget.
 
 ## Memory-efficiency sweep (user request 2026-08-19)
 
