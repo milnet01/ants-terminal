@@ -6824,6 +6824,55 @@ extends an existing item, that item carries it instead.
   thread. It removes the freeze without touching parse correctness, but
   keeps 257 ms of CPU per append per tracker, and this item's own Fix
   line names the incremental parse.
+  Progress (2026-09-12): the incremental parse landed (e05ecb74). One
+  debounced append on a 65 MiB transcript costs 0.09 ms, down from
+  258 ms; suite 4576/4576. ClaudeTranscript gained Cursor / canResume /
+  walkFrom, following ANTS-1500's cursor-with-stale-fallback shape, and
+  walk() is now expressed over walkFrom so the gating has one
+  implementation. Contract and invariants:
+  tests/features/claude_transcript_incremental_parse/spec.md.
+  STILL OPEN, and the item does not close: one tracker per transcript
+  path.
+  Its RATIONALE has changed, and the old one no longer holds. This item
+  was filed saying N panes mean N walks per append. That is no longer
+  the cost: each of those walks is now 0.09 ms, so sharing a tracker to
+  avoid duplicating them would buy nothing measurable.
+  What sharing still buys is the COLD walk. A tracker pays one full
+  parse when it first binds a path, and that is the 258 ms number. One
+  background-task tracker exists per shell ever focused, so focusing a
+  pane that has never been focused still pays a cold walk. Sharing a
+  primed tracker per transcript path removes that, and nothing else
+  does — the incremental parse cannot help a cursor that has never been
+  primed.
+  So the remaining half is worth doing, for a different reason than the
+  one written above it: it is a tab-switch cost now, not a
+  per-append one. Whoever picks it up should measure a first focus of a
+  new pane rather than a burst of appends.
+  Corrections to this body, measured in source 2026-09-12 before
+  picking up the remaining half.
+  The owner is NOT MainWindow. Both trackers belong to
+  ClaudeStatusBarController (src/claudestatuswidgets.cpp): the bg ones
+  live in a QHash keyed by shell pid, created in trackBgShell and freed
+  in untrackBgShell. MainWindow only reaches them through
+  m_claudeStatusBarController to open a dialog. So the change is
+  confined to that controller and its header.
+  There is only ONE task-list tracker, not one per pane. m_tasks is
+  constructed once. The N-per-pane problem is the bg tracker's alone,
+  which halves the remaining half.
+  The shared-path premise holds: refreshBgTasksButton resolves the path
+  with activeSessionPath(cwd), so two panes with the same cwd resolve
+  to the SAME transcript and today get one tracker each on it.
+  Found while checking, and it may be the better shape than sharing
+  trackers: resetForTabSwitch sets the task tracker's path to EMPTY on
+  every tab switch, and refreshTasksButton re-binds it on the next tick.
+  Since setTranscriptPath resets the cursor, every tab switch now costs
+  a cold walk. That was a full walk before this item too, so it is not a
+  regression — but it is newly fixable. Caching the cursor and
+  accumulator PER TRANSCRIPT PATH would let a re-bind to a
+  recently-seen path resume instead of cold-walking, and would cut the
+  duplicate cold walks across bg trackers without changing who owns
+  them. Worth weighing against tracker-sharing rather than assuming the
+  Fix line above is still the best route.
   **Layman:** While Claude is working, Ants keeps re-reading its whole conversation log, and more so with more panes open.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lane claude-session-widgets).
