@@ -72044,6 +72044,16 @@ a modern terminal" release.
   ANTS_PERF_CASE runs one case; a profile of all three is dominated by
   single_space's match-list allocations. It showed the reproduction
   understated the real scan cost by roughly a factor of seven.
+  Evidence for the best-of-N fix (2026-09-12): a plain
+  `tools/perf-report.sh --save-baseline` taken while a game held a core
+  (load average about 5) recorded audit.drift.spec_drift at 3480 ms.
+  The same benchmark, same load, best of 3 (`--repeat 3`), gave 565 ms,
+  matching the old baseline's 557 ms. No featurecoverage source changed
+  between the two baselines. So a single-sample save can record a
+  sixfold outlier and make it the reference every later run compares
+  against. The bad baseline was reverted, not committed. That argues
+  for --save-baseline taking the best of several runs by default, and
+  for refusing or warning when the load average is high.
   **Layman:** The benchmark suite does not yet cover the things that actually make the terminal feel slow, so it cannot tell us where to look.
   Kind: perf.
   Source: user-request-2026-09-12 (ANTS-5133 follow-up).
