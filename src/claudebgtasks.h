@@ -3,9 +3,12 @@
 #include <QObject>
 #include <QString>
 #include <QDateTime>
+#include <QHash>
 #include <QList>
 #include <QFileSystemWatcher>
 #include <QTimer>
+
+#include "claudetranscriptwalker.h"
 
 // One Claude Code background task, derived from a transcript scan.
 //
@@ -42,11 +45,25 @@ struct ClaudeBackgroundTask {
     bool finishedByLiveness = false;
 };
 
+// ANTS-5050 — the parse state that survives between incremental walks.
+//
+// `raw` is the list BEFORE the end-of-parse filters: a launch with no
+// backgroundTaskId yet stays here, because the id arrives in a LATER event
+// and dropping it at accumulate time would lose the entry the confirmation
+// refers to. The liveness sweep is wall-clock dependent, so it is re-applied
+// on every emit rather than baked into `raw`.
+struct ClaudeBgTaskAccum {
+    QList<ClaudeBackgroundTask> raw;
+    QHash<QString, int>         idxByToolUseId;  // tool_use_id → index
+    QHash<QString, int>         idxByBgId;       // backgroundTaskId → index
+};
+
 // Per-session tracker for Claude Code background tasks.
 //
 // Owns a QFileSystemWatcher on the active transcript path and re-parses
 // on change. Emits `tasksChanged()` when the running-count or the task
 // list shape changes.
+
 class ClaudeBgTaskTracker : public QObject {
     Q_OBJECT
 
@@ -70,6 +87,14 @@ public:
     // matching completion or kill event appears later in the same
     // transcript. Stateless and safe to call concurrently.
     static QList<ClaudeBackgroundTask> parseTranscript(const QString &path);
+
+    // ANTS-5050 — parse only what has been appended since `cursor`, folding
+    // it into `acc`, and return the tracker's visible list. The caller must
+    // call ClaudeTranscript::canResume first and, on false, reset BOTH
+    // `cursor` and `acc`.
+    static QList<ClaudeBackgroundTask> parseIncremental(
+        const QString &path, ClaudeTranscript::Cursor &cursor,
+        ClaudeBgTaskAccum &acc);
 
 signals:
     void tasksChanged();
@@ -114,6 +139,12 @@ private:
     static constexpr int kRescanDebounceMs = 250;
 
     QList<ClaudeBackgroundTask> m_tasks;
+
+    // ANTS-5050 — the resumable parse position and its accumulated state.
+    // Reset together, and only together.
+    ClaudeTranscript::Cursor m_cursor;
+    ClaudeBgTaskAccum m_acc;
+
     qint64 m_lastRescanMtimeMs = 0;
     // ANTS-1458 phase 2 — mirror ClaudeTaskListTracker: size is a second
     // change-signal so poll() re-parses on a same-mtime append.

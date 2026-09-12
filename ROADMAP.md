@@ -6802,6 +6802,28 @@ extends an existing item, that item carries it instead.
   No test was added for the debounce: it changes timing, not behaviour,
   and a real-filesystem watcher test would be timing-flaky for no contract
   gained.
+  Measured 2026-09-12, closing this item's own "cost per walk not
+  measured" line. tests/perf/bench_transcript_walk links both real
+  trackers and times parseTranscript; run it with
+  ANTS_PERF_TRANSCRIPT=<path> against a real transcript.
+  One walk PAIR (both trackers, one transcript, one debounced append):
+  - 65 MiB real transcript (capped to the 16 MiB tail): 257 ms
+  - 5.6 MiB real transcript (walked whole): 98 ms
+  - 20 MiB synthetic: 108 ms
+  Per-MiB cost is consistent across the two real files, and real
+  transcript JSON is denser than the synthetic filler, so the cap does
+  not bound the cost as cheaply as byte count suggests.
+  So one append stalls the GUI thread for a quarter second on a large
+  session, against a 16 ms frame budget. That is the freeze.
+  What this settles about the two remaining halves. The incremental
+  parse is the win and the tracker-sharing is not: sharing removes
+  (N-1) of N duplicate walk pairs and does NOTHING at one pane, which
+  is the common case, whereas the incremental parse takes every pane's
+  cost to the appended delta. Do the incremental parse first.
+  Considered and not taken: running the existing full walk off the GUI
+  thread. It removes the freeze without touching parse correctness, but
+  keeps 257 ms of CPU per append per tracker, and this item's own Fix
+  line names the incremental parse.
   **Layman:** While Claude is working, Ants keeps re-reading its whole conversation log, and more so with more panes open.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lane claude-session-widgets).
@@ -71910,6 +71932,25 @@ a modern terminal" release.
   the new one as slower than what it replaced), and make every corpus fill
   the grid WIDTH in cells (a short corpus paints less and reads as faster —
   the CJK corpus reported the most expensive case as the cheapest).
+  Progress (2026-09-12): added tests/perf/bench_transcript_walk, one of
+  the benchmarks this item still wanted. It links both real Claude task
+  trackers and times a transcript walk; ANTS_PERF_TRANSCRIPT=<path>
+  points it at a real transcript, and it writes to a COPY so a real one
+  is never appended to. Metrics: claude.transcript.tasklist_walk_ms,
+  bgtasks_walk_ms, both_walks_ms, append_both_ms, append_speedup.
+  Found while measuring, and it is a harness defect rather than a
+  result: bench_search_throughput's numbers are too noisy for the
+  +/-5% threshold, so perf-report reports regressions that are not
+  real. Three consecutive runs with NO change to the search path gave
+  lookup_ms 0.0521, 0.0525, 0.0581 against a 0.0522 baseline, and
+  scan_lines_per_sec 5.49M, 5.57M, 6.47M against 6.66M — roughly an
+  18 percent spread run to run, where the threshold is 5. A gate that
+  cries wolf on every run is one nobody reads.
+  Two candidate fixes, not yet decided: give a metric its own
+  threshold, or have the benchmark take the best of N runs rather than
+  one sample. This is a second reason to do the conversion this item
+  already names — bench_search_throughput does not link the real search
+  lane, so it is measuring a reproduction AND measuring it noisily.
   **Layman:** The benchmark suite does not yet cover the things that actually make the terminal feel slow, so it cannot tell us where to look.
   Kind: perf.
   Source: user-request-2026-09-12 (ANTS-5133 follow-up).

@@ -57,6 +57,14 @@ for security-relevant changes.
 
 ### Fixed
 
+- **The window no longer stalls while Claude writes to its transcript.** (ANTS-5050)
+  The task and background-task trackers now read only the newly
+  appended part of the conversation log instead of re-reading up to
+  16 MiB of it every time Claude writes. Measured on a 65 MiB
+  transcript, one update went from 258 ms of frozen window to 0.09 ms.
+  Whenever the log cannot be resumed safely — truncated, replaced or
+  rewritten — the full read still happens, so nothing is missed.
+
 - **Leftover text styling is cleared when a foreground program exits.** (ANTS-5135)
   A program interrupted while printing dimmed text used to leave the dim
   attribute set, and on distributions whose shell prompt carries no colour

@@ -47,6 +47,9 @@ void ClaudeBgTaskTracker::setTranscriptPath(const QString &path) {
     // a path re-bind always reparses.
     m_lastRescanMtimeMs   = 0;
     m_lastRescanSizeBytes = 0;
+    // ANTS-5050 INV-6 — the cursor and accumulator belong to the OLD path.
+    m_cursor = {};
+    m_acc = {};
     if (!m_transcriptPath.isEmpty() && QFileInfo::exists(m_transcriptPath))
         m_watcher.addPath(m_transcriptPath);
     m_rescanDebounce.stop();  // ANTS-5050 — this rescan supersedes a pending one
@@ -129,8 +132,16 @@ void ClaudeBgTaskTracker::rescan() {
     }
 
     QList<ClaudeBackgroundTask> next;
-    if (!m_transcriptPath.isEmpty())
-        next = parseTranscript(m_transcriptPath);
+    if (!m_transcriptPath.isEmpty()) {
+        // ANTS-5050 — resume from the cursor instead of re-walking the
+        // 16 MiB tail. Cursor and accumulator reset together whenever the
+        // cursor cannot be trusted; see ClaudeTranscript::canResume.
+        if (!ClaudeTranscript::canResume(m_transcriptPath, m_cursor)) {
+            m_cursor = {};
+            m_acc = {};
+        }
+        next = parseIncremental(m_transcriptPath, m_cursor, m_acc);
+    }
 
     // QFileSystemWatcher drops the path on atomic-rewrite; re-add if it
     // disappeared between rescans (Claude writes JSONL append-only, but
@@ -207,154 +218,157 @@ void ClaudeBgTaskTracker::poll() {
 // Out-of-scope (deliberate MVP limits):
 //   • Cross-session correlation (each session is parsed in isolation).
 //   • Recovering output paths after /tmp purge (we trust the transcript).
-QList<ClaudeBackgroundTask> ClaudeBgTaskTracker::parseTranscript(const QString &path) {
-    QList<ClaudeBackgroundTask> out;
-    // Map tool_use_id (toolu_...) → index into `out`. Used to correlate
-    // tool_use start with tool_result confirmation.
-    QHash<QString, int> idxByToolUseId;
-    // Map backgroundTaskId (e.g. "babmwvc5h") → index into `out`. Used
-    // by completion/kill matchers.
-    QHash<QString, int> idxByBgId;
+namespace {
 
-    // ANTS-1261 — the 16 MiB tail cap, the blank-line / non-object skip,
-    // and the isSidechain / isCompactSummary gating live in
-    // ClaudeTranscript::walk (shared with ClaudeTaskListTracker; the
-    // compact-summary skip is the ANTS-1327 full-history parity). Background
-    // tasks track no per-event time, so the handler ignores `evMs` and the
-    // returned latest-event clock is discarded.
-    ClaudeTranscript::walk(path, [&](const QJsonObject &ev, qint64 /*evMs*/) {
-        const QString type = ev.value(QStringLiteral("type")).toString();
+// ANTS-5050 — fold one event into the accumulator. Extracted verbatim from
+// parseTranscript's walk handler so the full and incremental paths share one
+// implementation; nothing about the per-event semantics changed.
+void applyBgEvent(ClaudeBgTaskAccum &acc, const QJsonObject &ev) {
+    QList<ClaudeBackgroundTask> &out = acc.raw;
+    QHash<QString, int> &idxByToolUseId = acc.idxByToolUseId;
+    QHash<QString, int> &idxByBgId = acc.idxByBgId;
 
-        if (type == QLatin1String("assistant")) {
-            const QJsonObject msg = ev.value(QStringLiteral("message")).toObject();
-            const QJsonArray content = msg.value(QStringLiteral("content")).toArray();
-            for (const QJsonValue &cv : content) {
-                const QJsonObject c = cv.toObject();
-                if (c.value(QStringLiteral("type")).toString() != QLatin1String("tool_use"))
-                    continue;
-                const QString toolName = c.value(QStringLiteral("name")).toString();
-                const QString toolUseId = c.value(QStringLiteral("id")).toString();
-                const QJsonObject input = c.value(QStringLiteral("input")).toObject();
+    const QString type = ev.value(QStringLiteral("type")).toString();
 
-                // KillShell — finishes a tracked task by id.
-                if (toolName == QLatin1String("KillShell")) {
-                    const QString killId = input.value(QStringLiteral("shell_id")).toString();
-                    auto it = idxByBgId.find(killId);
+    if (type == QLatin1String("assistant")) {
+        const QJsonObject msg = ev.value(QStringLiteral("message")).toObject();
+        const QJsonArray content = msg.value(QStringLiteral("content")).toArray();
+        for (const QJsonValue &cv : content) {
+            const QJsonObject c = cv.toObject();
+            if (c.value(QStringLiteral("type")).toString() != QLatin1String("tool_use"))
+                continue;
+            const QString toolName = c.value(QStringLiteral("name")).toString();
+            const QString toolUseId = c.value(QStringLiteral("id")).toString();
+            const QJsonObject input = c.value(QStringLiteral("input")).toObject();
+
+            // KillShell — finishes a tracked task by id.
+            if (toolName == QLatin1String("KillShell")) {
+                const QString killId = input.value(QStringLiteral("shell_id")).toString();
+                auto it = idxByBgId.find(killId);
+                if (it != idxByBgId.end()) {
+                    out[it.value()].finished = true;
+                }
+                continue;
+            }
+
+            // BackgroundTask launch.
+            if (input.value(QStringLiteral("run_in_background")).toBool()) {
+                ClaudeBackgroundTask t;
+                t.tool = toolName;
+                t.description = input.value(QStringLiteral("description")).toString();
+                t.command = input.value(QStringLiteral("command")).toString();
+                if (t.command.isEmpty())
+                    t.command = input.value(QStringLiteral("prompt")).toString();
+                t.command = squashOneLine(t.command, 400);
+                if (t.description.isEmpty()) {
+                    // Task tool: description fallback to subagent_type.
+                    t.description = input.value(QStringLiteral("subagent_type")).toString();
+                }
+                if (t.description.isEmpty()) t.description = t.command;
+                const QString ts = ev.value(QStringLiteral("timestamp")).toString();
+                t.startedAt = QDateTime::fromString(ts, Qt::ISODateWithMs);
+                out.append(t);
+                if (!toolUseId.isEmpty())
+                    idxByToolUseId.insert(toolUseId, out.size() - 1);
+            }
+        }
+    } else if (type == QLatin1String("user")) {
+        const QJsonObject msg = ev.value(QStringLiteral("message")).toObject();
+        const QJsonArray content = msg.value(QStringLiteral("content")).toArray();
+        const QJsonObject tur = ev.value(QStringLiteral("toolUseResult")).toObject();
+        const QString bgId = tur.value(QStringLiteral("backgroundTaskId")).toString();
+        const QString trStatus = tur.value(QStringLiteral("status")).toString();
+        for (const QJsonValue &cv : content) {
+            const QJsonObject c = cv.toObject();
+            if (c.value(QStringLiteral("type")).toString() != QLatin1String("tool_result"))
+                continue;
+            const QString tuId = c.value(QStringLiteral("tool_use_id")).toString();
+
+            // Confirmation of a launched background task.
+            if (!bgId.isEmpty()) {
+                auto it = idxByToolUseId.find(tuId);
+                if (it != idxByToolUseId.end()) {
+                    ClaudeBackgroundTask &t = out[it.value()];
+                    t.id = bgId;
+                    // The tool_result text is "Command running in
+                    // background with ID: <id>. Output is being
+                    // written to: <path>". Extract the path.
+                    const QString resultText = ClaudeContent::toText(c.value(QStringLiteral("content")));
+                    const int marker = resultText.indexOf(QStringLiteral("written to: "));
+                    if (marker >= 0) {
+                        QString p = resultText.mid(marker + 12).trimmed();
+                        // Strip trailing punctuation if any.
+                        while (p.endsWith('.') || p.endsWith(' ')) p.chop(1);
+                        t.outputPath = p;
+                    }
+                    idxByBgId.insert(bgId, it.value());
+                }
+            }
+
+            // BashOutput / Task tool_result with a completion status.
+            // The `tool_use_id` here points at the *BashOutput* call,
+            // not the original launch — but the result text echoes
+            // the bash_id, so we also do a substring scan over
+            // running ids.
+            const bool isComplete = (trStatus == QLatin1String("completed")
+                                     || trStatus == QLatin1String("killed")
+                                     || trStatus == QLatin1String("failed"));
+            if (isComplete) {
+                // Some payloads carry the id in toolUseResult.shellId
+                // / toolUseResult.bash_id.
+                QString idHint = tur.value(QStringLiteral("shellId")).toString();
+                if (idHint.isEmpty())
+                    idHint = tur.value(QStringLiteral("bash_id")).toString();
+                if (!idHint.isEmpty()) {
+                    auto it = idxByBgId.find(idHint);
                     if (it != idxByBgId.end()) {
                         out[it.value()].finished = true;
                     }
-                    continue;
-                }
-
-                // BackgroundTask launch.
-                if (input.value(QStringLiteral("run_in_background")).toBool()) {
-                    ClaudeBackgroundTask t;
-                    t.tool = toolName;
-                    t.description = input.value(QStringLiteral("description")).toString();
-                    t.command = input.value(QStringLiteral("command")).toString();
-                    if (t.command.isEmpty())
-                        t.command = input.value(QStringLiteral("prompt")).toString();
-                    t.command = squashOneLine(t.command, 400);
-                    if (t.description.isEmpty()) {
-                        // Task tool: description fallback to subagent_type.
-                        t.description = input.value(QStringLiteral("subagent_type")).toString();
-                    }
-                    if (t.description.isEmpty()) t.description = t.command;
-                    const QString ts = ev.value(QStringLiteral("timestamp")).toString();
-                    t.startedAt = QDateTime::fromString(ts, Qt::ISODateWithMs);
-                    out.append(t);
-                    if (!toolUseId.isEmpty())
-                        idxByToolUseId.insert(toolUseId, out.size() - 1);
-                }
-            }
-        } else if (type == QLatin1String("user")) {
-            const QJsonObject msg = ev.value(QStringLiteral("message")).toObject();
-            const QJsonArray content = msg.value(QStringLiteral("content")).toArray();
-            const QJsonObject tur = ev.value(QStringLiteral("toolUseResult")).toObject();
-            const QString bgId = tur.value(QStringLiteral("backgroundTaskId")).toString();
-            const QString trStatus = tur.value(QStringLiteral("status")).toString();
-            for (const QJsonValue &cv : content) {
-                const QJsonObject c = cv.toObject();
-                if (c.value(QStringLiteral("type")).toString() != QLatin1String("tool_result"))
-                    continue;
-                const QString tuId = c.value(QStringLiteral("tool_use_id")).toString();
-
-                // Confirmation of a launched background task.
-                if (!bgId.isEmpty()) {
-                    auto it = idxByToolUseId.find(tuId);
-                    if (it != idxByToolUseId.end()) {
-                        ClaudeBackgroundTask &t = out[it.value()];
-                        t.id = bgId;
-                        // The tool_result text is "Command running in
-                        // background with ID: <id>. Output is being
-                        // written to: <path>". Extract the path.
-                        const QString resultText = ClaudeContent::toText(c.value(QStringLiteral("content")));
-                        const int marker = resultText.indexOf(QStringLiteral("written to: "));
-                        if (marker >= 0) {
-                            QString p = resultText.mid(marker + 12).trimmed();
-                            // Strip trailing punctuation if any.
-                            while (p.endsWith('.') || p.endsWith(' ')) p.chop(1);
-                            t.outputPath = p;
-                        }
-                        idxByBgId.insert(bgId, it.value());
-                    }
-                }
-
-                // BashOutput / Task tool_result with a completion status.
-                // The `tool_use_id` here points at the *BashOutput* call,
-                // not the original launch — but the result text echoes
-                // the bash_id, so we also do a substring scan over
-                // running ids.
-                const bool isComplete = (trStatus == QLatin1String("completed")
-                                         || trStatus == QLatin1String("killed")
-                                         || trStatus == QLatin1String("failed"));
-                if (isComplete) {
-                    // Some payloads carry the id in toolUseResult.shellId
-                    // / toolUseResult.bash_id.
-                    QString idHint = tur.value(QStringLiteral("shellId")).toString();
-                    if (idHint.isEmpty())
-                        idHint = tur.value(QStringLiteral("bash_id")).toString();
-                    if (!idHint.isEmpty()) {
-                        auto it = idxByBgId.find(idHint);
-                        if (it != idxByBgId.end()) {
+                } else {
+                    // Fallback: scan result text for any tracked id.
+                    // ANTS-1669 — match on a word boundary so a short id
+                    // ("abc") isn't falsely flipped finished by a result
+                    // that merely contains a longer id ("abc123") as a
+                    // substring. Ids are escaped so regex metacharacters in
+                    // an id are matched literally.
+                    const QString resultText = ClaudeContent::toText(c.value(QStringLiteral("content")));
+                    for (auto it = idxByBgId.begin(); it != idxByBgId.end(); ++it) {
+                        // ANTS-1817 — cheap substring pre-filter before the
+                        // word-boundary regex. Avoids compiling a fresh
+                        // QRegularExpression per tracked id per completion
+                        // event on every transcript-append rescan (the
+                        // id isn't even present in the 99% no-match case).
+                        if (!resultText.contains(it.key())) continue;
+                        const QRegularExpression rx(
+                            QStringLiteral("\\b") +
+                            QRegularExpression::escape(it.key()) +
+                            QStringLiteral("\\b"));
+                        if (rx.match(resultText).hasMatch()) {
                             out[it.value()].finished = true;
-                        }
-                    } else {
-                        // Fallback: scan result text for any tracked id.
-                        // ANTS-1669 — match on a word boundary so a short id
-                        // ("abc") isn't falsely flipped finished by a result
-                        // that merely contains a longer id ("abc123") as a
-                        // substring. Ids are escaped so regex metacharacters in
-                        // an id are matched literally.
-                        const QString resultText = ClaudeContent::toText(c.value(QStringLiteral("content")));
-                        for (auto it = idxByBgId.begin(); it != idxByBgId.end(); ++it) {
-                            // ANTS-1817 — cheap substring pre-filter before the
-                            // word-boundary regex. Avoids compiling a fresh
-                            // QRegularExpression per tracked id per completion
-                            // event on every transcript-append rescan (the
-                            // id isn't even present in the 99% no-match case).
-                            if (!resultText.contains(it.key())) continue;
-                            const QRegularExpression rx(
-                                QStringLiteral("\\b") +
-                                QRegularExpression::escape(it.key()) +
-                                QStringLiteral("\\b"));
-                            if (rx.match(resultText).hasMatch()) {
-                                out[it.value()].finished = true;
-                            }
                         }
                     }
                 }
             }
         }
-    });
+    }
+}
+
+// ANTS-5050 — the end-of-parse filters. Re-runnable over the accumulator on
+// every emit: the id filter cannot be baked in (the backgroundTaskId arrives
+// in a later event than the launch), and the liveness sweep reads wall clock
+// and the output files, so its answer legitimately changes between walks.
+QList<ClaudeBackgroundTask> finalizeBgTasks(const ClaudeBgTaskAccum &acc) {
 
     // Drop entries that never received a backgroundTaskId — those are
     // launches that crashed before the user-side confirmation, and we
     // can't display them meaningfully (no output path).
+    // ANTS-5050 — COPY, never move. `acc.raw` outlives this call and a later
+    // append still needs every launch in it; moving out of it would empty the
+    // accumulator on the first emit and lose every task on the next walk.
     QList<ClaudeBackgroundTask> filtered;
-    filtered.reserve(out.size());
-    for (auto &t : out) {
-        if (!t.id.isEmpty()) filtered.append(std::move(t));
+    filtered.reserve(acc.raw.size());
+    for (const auto &t : acc.raw) {
+        if (!t.id.isEmpty()) filtered.append(t);
     }
 
     // Liveness sweep — bug 2026-04-27.
@@ -405,4 +419,22 @@ QList<ClaudeBackgroundTask> ClaudeBgTaskTracker::parseTranscript(const QString &
     }
 
     return filtered;
+}
+
+}  // namespace
+
+QList<ClaudeBackgroundTask> ClaudeBgTaskTracker::parseIncremental(
+        const QString &path, ClaudeTranscript::Cursor &cursor,
+        ClaudeBgTaskAccum &acc) {
+    ClaudeTranscript::walkFrom(path, cursor,
+        [&acc](const QJsonObject &ev, qint64) { applyBgEvent(acc, ev); });
+    return finalizeBgTasks(acc);
+}
+
+QList<ClaudeBackgroundTask> ClaudeBgTaskTracker::parseTranscript(const QString &path) {
+    // The full parse is the incremental one from a fresh cursor, so ANTS-5050
+    // INV-8 holds by construction rather than by a second copy of the walk.
+    ClaudeTranscript::Cursor cursor;
+    ClaudeBgTaskAccum acc;
+    return parseIncremental(path, cursor, acc);
 }

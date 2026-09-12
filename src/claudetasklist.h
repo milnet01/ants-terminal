@@ -2,9 +2,12 @@
 
 #include <QObject>
 #include <QString>
+#include <QHash>
 #include <QList>
 #include <QFileSystemWatcher>
 #include <QTimer>
+
+#include "claudetranscriptwalker.h"
 
 // One row in a Claude Code session's user-visible task list.
 //
@@ -39,6 +42,19 @@ struct ClaudeTask {
                                 // preserves the task (abandonment INV-7).
 };
 
+// ANTS-5050 — the parse state that survives between incremental walks.
+//
+// `raw` is the list BEFORE the end-of-parse filters: `deleted` entries live
+// here so a later TaskUpdate-by-id can still find them (ANTS-1407), and the
+// abandonment filter is re-applied on each emit rather than baked in. So the
+// finalize step is pure and re-runnable, which is what lets a resumed walk
+// produce the same answer as a cold one.
+struct ClaudeTaskAccum {
+    QList<ClaudeTask>   raw;
+    bool                sawTodoWrite = false;
+    QHash<QString, int> idxByToolUseId;  // tool_use_id → index into `raw`
+};
+
 // Per-session tracker mirroring ClaudeBgTaskTracker's shape:
 //   * One QFileSystemWatcher on the focused tab's transcript path.
 //   * fileChanged → rescan() → emit tasksChanged() iff the
@@ -69,6 +85,17 @@ public:
     // tail of `path`. Stateless, GUI-thread-only (Qt I/O classes
     // aren't reentrant on the same handle).
     static QList<ClaudeTask> parseTranscript(const QString &path);
+
+    // ANTS-5050 — parse only what has been appended since `cursor`, folding
+    // it into `acc`, and return the tracker's visible list.
+    //
+    // The caller must call ClaudeTranscript::canResume first and, on false,
+    // reset BOTH `cursor` and `acc` — a cursor without its accumulator
+    // resumes into a half-built list. `parseTranscript` above is this with a
+    // fresh cursor and accumulator, and remains the full-parse contract.
+    static QList<ClaudeTask> parseIncremental(const QString &path,
+                                              ClaudeTranscript::Cursor &cursor,
+                                              ClaudeTaskAccum &acc);
 
 signals:
     void tasksChanged();
@@ -111,6 +138,13 @@ private:
     static constexpr int kRescanDebounceMs = 250;
 
     QList<ClaudeTask> m_tasks;
+
+    // ANTS-5050 — the resumable parse position and its accumulated state.
+    // Reset together, and only together: setTranscriptPath clears both, and
+    // rescan() clears both whenever canResume says the cursor is stale.
+    ClaudeTranscript::Cursor m_cursor;
+    ClaudeTaskAccum m_acc;
+
     qint64 m_lastRescanMtimeMs = 0;
     // ANTS-1458 phase 2 — size is the second change-signal alongside
     // mtime. poll() re-parses when EITHER differs, so a same-millisecond

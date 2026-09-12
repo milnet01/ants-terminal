@@ -78,6 +78,11 @@ void ClaudeTaskListTracker::setTranscriptPath(const QString &path) {
     // legitimate rescan.
     m_lastRescanMtimeMs   = 0;
     m_lastRescanSizeBytes = 0;
+    // ANTS-5050 INV-6 — the parse cursor and its accumulator belong to the
+    // OLD path. Resuming either against a different file would fold one
+    // session's events into another's list.
+    m_cursor = {};
+    m_acc = {};
     if (!m_transcriptPath.isEmpty() && QFileInfo::exists(m_transcriptPath))
         m_watcher.addPath(m_transcriptPath);
     m_rescanDebounce.stop();  // ANTS-5050 — this rescan supersedes a pending one
@@ -147,9 +152,20 @@ void ClaudeTaskListTracker::rescan() {
         }
     }
 
+    // ANTS-5050 — parse only what was appended since the last rescan.
+    // Measured 2026-09-12: a full walk pair cost 257 ms on a 65 MiB
+    // transcript, on this thread, per debounced append. The cursor and the
+    // accumulator reset together whenever the cursor cannot be trusted
+    // (truncated, replaced, rewritten), which is the one branch that covers
+    // every such case — see ClaudeTranscript::canResume.
     QList<ClaudeTask> next;
-    if (!m_transcriptPath.isEmpty())
-        next = parseTranscript(m_transcriptPath);
+    if (!m_transcriptPath.isEmpty()) {
+        if (!ClaudeTranscript::canResume(m_transcriptPath, m_cursor)) {
+            m_cursor = {};
+            m_acc = {};
+        }
+        next = parseIncremental(m_transcriptPath, m_cursor, m_acc);
+    }
 
     // QFileSystemWatcher drops the path on atomic-rewrite; re-add if
     // it disappeared between rescans. Same shape as
@@ -229,167 +245,169 @@ qint64 ClaudeTaskListTracker::lastRescanMtimeMs() const {
 //   * Events with isSidechain == true skipped (subagent inline turns).
 //   * Task tool_use with `subagent_type` filtered (subagent dispatch,
 //     not a plan add).
-QList<ClaudeTask> ClaudeTaskListTracker::parseTranscript(const QString &path) {
-    QList<ClaudeTask> out;
-    bool sawTodoWrite = false;
-    QHash<QString, int> idxByToolUseId;   // tool_use_id → index in `out`
+namespace {
 
-    // ANTS-1261 — the 16 MiB tail cap, the blank-line / non-object skip,
-    // and the isSidechain / isCompactSummary gating now live in
-    // ClaudeTranscript::walk (shared with ClaudeBgTaskTracker). The handler
-    // runs once per surviving event with that event's own timestamp `evMs`
-    // — ANTS-1341: TodoWrite / TaskCreate / TaskUpdate stamp it onto the
-    // touched task as `lastEventAtMs`. The returned latestEventMs is the
-    // deterministic abandonment reference time: advanced over every
-    // non-sidechain event INCLUDING compact summaries (ANTS-2115), so a
-    // task stranded just before a `/compact` stays eligible for the
-    // threshold applied after the walk.
-    const qint64 latestEventMs = ClaudeTranscript::walk(path,
-        [&](const QJsonObject &ev, qint64 evMs) {
-        const QString type = ev.value(QStringLiteral("type")).toString();
+// ANTS-5050 — fold one event into the accumulator. Extracted verbatim from
+// parseTranscript's walk handler so the full and incremental paths share one
+// implementation; nothing about the per-event semantics changed.
+void applyTaskEvent(ClaudeTaskAccum &acc, const QJsonObject &ev,
+                           qint64 evMs) {
+    QList<ClaudeTask> &out = acc.raw;
+    bool &sawTodoWrite = acc.sawTodoWrite;
+    QHash<QString, int> &idxByToolUseId = acc.idxByToolUseId;
 
-        if (type == QLatin1String("assistant")) {
-            const QJsonObject msg =
-                ev.value(QStringLiteral("message")).toObject();
-            const QJsonArray content =
-                msg.value(QStringLiteral("content")).toArray();
-            for (const QJsonValue &cv : content) {
-                const QJsonObject c = cv.toObject();
-                if (c.value(QStringLiteral("type")).toString()
-                        != QLatin1String("tool_use"))
-                    continue;
-                const QString name =
-                    c.value(QStringLiteral("name")).toString();
-                const QString toolUseId =
-                    c.value(QStringLiteral("id")).toString();
-                const QJsonObject input =
-                    c.value(QStringLiteral("input")).toObject();
+    const QString type = ev.value(QStringLiteral("type")).toString();
 
-                // Subagent-dispatch filter. Both `Task` and `Agent`
-                // tool families share the `subagent_type` discriminant.
-                if (input.contains(QStringLiteral("subagent_type")))
-                    continue;
+    if (type == QLatin1String("assistant")) {
+        const QJsonObject msg =
+            ev.value(QStringLiteral("message")).toObject();
+        const QJsonArray content =
+            msg.value(QStringLiteral("content")).toArray();
+        for (const QJsonValue &cv : content) {
+            const QJsonObject c = cv.toObject();
+            if (c.value(QStringLiteral("type")).toString()
+                    != QLatin1String("tool_use"))
+                continue;
+            const QString name =
+                c.value(QStringLiteral("name")).toString();
+            const QString toolUseId =
+                c.value(QStringLiteral("id")).toString();
+            const QJsonObject input =
+                c.value(QStringLiteral("input")).toObject();
 
-                if (name == QLatin1String("TodoWrite")) {
-                    // Snapshot replaces the list.
-                    out.clear();
-                    idxByToolUseId.clear();
-                    const QJsonArray todos =
-                        input.value(QStringLiteral("todos")).toArray();
-                    // ANTS-1407: an empty TodoWrite is a "no active todos"
-                    // signal, not a mode commitment. Only lock out Mode B
-                    // when CC actually listed items via TodoWrite; an empty
-                    // list lets a subsequent TaskCreate resume Mode B.
-                    sawTodoWrite = !todos.isEmpty();
-                    for (const QJsonValue &tv : todos) {
-                        ClaudeTask t = taskFromTodoEntry(tv.toObject());
-                        // ANTS-1341: stamp every entry with the snapshot's
-                        // event timestamp; TodoWrite is itself an event
-                        // affecting every entry it lists.
-                        t.lastEventAtMs = evMs;
-                        out.append(std::move(t));
-                    }
-                    continue;
-                }
+            // Subagent-dispatch filter. Both `Task` and `Agent`
+            // tool families share the `subagent_type` discriminant.
+            if (input.contains(QStringLiteral("subagent_type")))
+                continue;
 
-                if (name == QLatin1String("TaskCreate")) {
-                    if (sawTodoWrite) continue;  // Mode A wins
-                    // ANTS-1246 batch-reset (2026-05-12 user report):
-                    // a TaskCreate event that follows a fully-completed
-                    // prior batch starts a fresh logical batch. Without
-                    // this, completed work piles up forever in Mode B —
-                    // user opens the Tasks dialog mid-session and sees
-                    // 15 entries when the current logical batch is 4.
-                    // TodoWrite (Mode A) already clears on snapshot;
-                    // this brings TaskCreate to parity.
-                    //
-                    // ANTS-1407: widen the terminal predicate from
-                    // `completed` only to `completed OR deleted`.
-                    // Both are terminal in TaskUpdate semantics; a
-                    // `deleted` task should not block a fresh burst.
-                    if (!out.isEmpty()) {
-                        bool allTerminal = true;
-                        for (const auto &existing : out) {
-                            if (existing.status
-                                    != QLatin1String("completed")
-                                && existing.status
-                                    != QLatin1String("deleted")) {
-                                allTerminal = false;
-                                break;
-                            }
-                        }
-                        if (allTerminal) {
-                            out.clear();
-                            idxByToolUseId.clear();
-                        }
-                    }
-                    ClaudeTask t;
-                    t.subject =
-                        input.value(QStringLiteral("subject")).toString();
-                    t.description =
-                        input.value(QStringLiteral("description")).toString();
-                    t.activeForm =
-                        input.value(QStringLiteral("activeForm")).toString();
-                    t.status = QStringLiteral("pending");
-                    // ANTS-1341: stamp the create-time event timestamp.
+            if (name == QLatin1String("TodoWrite")) {
+                // Snapshot replaces the list.
+                out.clear();
+                idxByToolUseId.clear();
+                const QJsonArray todos =
+                    input.value(QStringLiteral("todos")).toArray();
+                // ANTS-1407: an empty TodoWrite is a "no active todos"
+                // signal, not a mode commitment. Only lock out Mode B
+                // when CC actually listed items via TodoWrite; an empty
+                // list lets a subsequent TaskCreate resume Mode B.
+                sawTodoWrite = !todos.isEmpty();
+                for (const QJsonValue &tv : todos) {
+                    ClaudeTask t = taskFromTodoEntry(tv.toObject());
+                    // ANTS-1341: stamp every entry with the snapshot's
+                    // event timestamp; TodoWrite is itself an event
+                    // affecting every entry it lists.
                     t.lastEventAtMs = evMs;
-                    out.append(t);
-                    if (!toolUseId.isEmpty())
-                        idxByToolUseId.insert(toolUseId, out.size() - 1);
-                    continue;
+                    out.append(std::move(t));
                 }
+                continue;
+            }
 
-                if (name == QLatin1String("TaskUpdate")) {
-                    if (sawTodoWrite) continue;  // Mode A wins
-                    const QString taskId =
-                        input.value(QStringLiteral("taskId")).toString();
-                    if (taskId.isEmpty()) continue;
-                    for (auto &t : out) {
-                        if (t.id == taskId) {
-                            const QString s =
-                                input.value(QStringLiteral("status")).toString();
-                            if (!s.isEmpty()) t.status = s;
-                            const QString sub =
-                                input.value(QStringLiteral("subject")).toString();
-                            if (!sub.isEmpty()) t.subject = sub;
-                            const QString desc =
-                                input.value(QStringLiteral("description")).toString();
-                            if (!desc.isEmpty()) t.description = desc;
-                            // ANTS-1341: bump the touched task's last-event
-                            // timestamp. This is what keeps an
-                            // actively-updated `in_progress` task out of
-                            // the abandonment filter.
-                            t.lastEventAtMs = evMs;
+            if (name == QLatin1String("TaskCreate")) {
+                if (sawTodoWrite) continue;  // Mode A wins
+                // ANTS-1246 batch-reset (2026-05-12 user report):
+                // a TaskCreate event that follows a fully-completed
+                // prior batch starts a fresh logical batch. Without
+                // this, completed work piles up forever in Mode B —
+                // user opens the Tasks dialog mid-session and sees
+                // 15 entries when the current logical batch is 4.
+                // TodoWrite (Mode A) already clears on snapshot;
+                // this brings TaskCreate to parity.
+                //
+                // ANTS-1407: widen the terminal predicate from
+                // `completed` only to `completed OR deleted`.
+                // Both are terminal in TaskUpdate semantics; a
+                // `deleted` task should not block a fresh burst.
+                if (!out.isEmpty()) {
+                    bool allTerminal = true;
+                    for (const auto &existing : out) {
+                        if (existing.status
+                                != QLatin1String("completed")
+                            && existing.status
+                                != QLatin1String("deleted")) {
+                            allTerminal = false;
                             break;
                         }
                     }
-                    continue;
+                    if (allTerminal) {
+                        out.clear();
+                        idxByToolUseId.clear();
+                    }
                 }
+                ClaudeTask t;
+                t.subject =
+                    input.value(QStringLiteral("subject")).toString();
+                t.description =
+                    input.value(QStringLiteral("description")).toString();
+                t.activeForm =
+                    input.value(QStringLiteral("activeForm")).toString();
+                t.status = QStringLiteral("pending");
+                // ANTS-1341: stamp the create-time event timestamp.
+                t.lastEventAtMs = evMs;
+                out.append(t);
+                if (!toolUseId.isEmpty())
+                    idxByToolUseId.insert(toolUseId, out.size() - 1);
+                continue;
             }
-        } else if (type == QLatin1String("user") && !sawTodoWrite) {
-            // Pair tool_result with the TaskCreate that preceded it
-            // — id only available here.
-            const QJsonObject msg =
-                ev.value(QStringLiteral("message")).toObject();
-            const QJsonArray content =
-                msg.value(QStringLiteral("content")).toArray();
-            for (const QJsonValue &cv : content) {
-                const QJsonObject c = cv.toObject();
-                if (c.value(QStringLiteral("type")).toString()
-                        != QLatin1String("tool_result"))
-                    continue;
-                const QString tuId =
-                    c.value(QStringLiteral("tool_use_id")).toString();
-                if (tuId.isEmpty()) continue;
-                auto it = idxByToolUseId.find(tuId);
-                if (it == idxByToolUseId.end()) continue;
-                const QString body =
-                    ClaudeContent::toText(c.value(QStringLiteral("content")));
-                const QString id = extractIdFromResultBody(body);
-                if (!id.isEmpty()) out[it.value()].id = id;
+
+            if (name == QLatin1String("TaskUpdate")) {
+                if (sawTodoWrite) continue;  // Mode A wins
+                const QString taskId =
+                    input.value(QStringLiteral("taskId")).toString();
+                if (taskId.isEmpty()) continue;
+                for (auto &t : out) {
+                    if (t.id == taskId) {
+                        const QString s =
+                            input.value(QStringLiteral("status")).toString();
+                        if (!s.isEmpty()) t.status = s;
+                        const QString sub =
+                            input.value(QStringLiteral("subject")).toString();
+                        if (!sub.isEmpty()) t.subject = sub;
+                        const QString desc =
+                            input.value(QStringLiteral("description")).toString();
+                        if (!desc.isEmpty()) t.description = desc;
+                        // ANTS-1341: bump the touched task's last-event
+                        // timestamp. This is what keeps an
+                        // actively-updated `in_progress` task out of
+                        // the abandonment filter.
+                        t.lastEventAtMs = evMs;
+                        break;
+                    }
+                }
+                continue;
             }
         }
-    });
+    } else if (type == QLatin1String("user") && !sawTodoWrite) {
+        // Pair tool_result with the TaskCreate that preceded it
+        // — id only available here.
+        const QJsonObject msg =
+            ev.value(QStringLiteral("message")).toObject();
+        const QJsonArray content =
+            msg.value(QStringLiteral("content")).toArray();
+        for (const QJsonValue &cv : content) {
+            const QJsonObject c = cv.toObject();
+            if (c.value(QStringLiteral("type")).toString()
+                    != QLatin1String("tool_result"))
+                continue;
+            const QString tuId =
+                c.value(QStringLiteral("tool_use_id")).toString();
+            if (tuId.isEmpty()) continue;
+            auto it = idxByToolUseId.find(tuId);
+            if (it == idxByToolUseId.end()) continue;
+            const QString body =
+                ClaudeContent::toText(c.value(QStringLiteral("content")));
+            const QString id = extractIdFromResultBody(body);
+            if (!id.isEmpty()) out[it.value()].id = id;
+        }
+    }
+}
+
+// ANTS-5050 — the end-of-parse filters. Pure and re-runnable over the
+// accumulator, which is what lets a resumed walk produce the same answer as a
+// cold one: `acc.raw` keeps the `deleted` entries a later TaskUpdate needs,
+// and both filters are applied to a copy on every emit.
+QList<ClaudeTask> finalizeTasks(const ClaudeTaskAccum &acc,
+                                       qint64 latestEventMs) {
+    QList<ClaudeTask> out = acc.raw;
 
     // ANTS-1407: `deleted` tasks live in `out` during the walk so
     // that later TaskUpdate-by-id can find them, but the visible
@@ -423,4 +441,25 @@ QList<ClaudeTask> ClaudeTaskListTracker::parseTranscript(const QString &path) {
     }
 
     return out;
+}
+
+}  // namespace
+
+QList<ClaudeTask> ClaudeTaskListTracker::parseIncremental(
+        const QString &path, ClaudeTranscript::Cursor &cursor,
+        ClaudeTaskAccum &acc) {
+    ClaudeTranscript::walkFrom(path, cursor,
+        [&acc](const QJsonObject &ev, qint64 evMs) {
+            applyTaskEvent(acc, ev, evMs);
+        });
+    return finalizeTasks(acc, cursor.latestEventMs);
+}
+
+QList<ClaudeTask> ClaudeTaskListTracker::parseTranscript(const QString &path) {
+    // The full parse is the incremental one from a fresh cursor. Keeping it
+    // expressed that way is what makes ANTS-5050 INV-8 hold by construction
+    // rather than by a second copy of the same walk.
+    ClaudeTranscript::Cursor cursor;
+    ClaudeTaskAccum acc;
+    return parseIncremental(path, cursor, acc);
 }

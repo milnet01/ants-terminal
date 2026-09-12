@@ -1430,6 +1430,42 @@ if(ANTS_TESTS)
         LABELS "perf"
         TIMEOUT 300)
 
+    # bench_transcript_walk — wall time of a Claude-transcript walk, the
+    # parse both task trackers run on the GUI thread per debounced append
+    # (ANTS-5050, whose body recorded this cost as unmeasured). Links the
+    # real trackers so the number is their walk, not a reproduction.
+    # Synthetic 20 MiB transcript by default (over the walker's 16 MiB cap,
+    # matching real transcripts); ANTS_PERF_TRANSCRIPT=<path> measures a
+    # real one, ANTS_PERF_ITERATIONS=<n> changes the repeat count.
+    add_executable(bench_transcript_walk
+        tests/perf/bench_transcript_walk.cpp
+    )
+    # ANTS-1444 — ants_claude_lib is PUBLIC-linked to ants_chrome_lib, so
+    # linking the trackers pulls mainwindow.cpp.o in and makes the
+    # chrome<->claude<->dialogs symbol cycle reachable. Same --start-group
+    # guard bench_full_paint uses, and for the same reason: an ordered link
+    # resolves under mold here and fails on the Qt 6.2 floor's GNU ld.
+    target_link_libraries(bench_transcript_walk PRIVATE
+        -Wl,--start-group
+        ants_chrome_lib ants_vt_lib ants_core_lib
+        ants_claude_lib ants_dialogs_lib ants_audit_lib ants_audit_dialog_lib
+        ants_roadmapstore_lib
+        $<$<BOOL:${LUA_FOUND}>:ants_lua_lib>
+        -Wl,--end-group
+        Qt6::Widgets Qt6::Core Qt6::Gui
+    )
+    target_compile_definitions(bench_transcript_walk PRIVATE
+        ANTS_PROJECT_ROOT="${CMAKE_SOURCE_DIR}"
+    )
+    target_include_directories(bench_transcript_walk PRIVATE ${CMAKE_SOURCE_DIR}/tests/perf)
+    target_compile_options(bench_transcript_walk PRIVATE
+        -Wall -Wextra -Wpedantic -O2
+    )
+    add_test(NAME transcript_walk COMMAND bench_transcript_walk)
+    set_tests_properties(transcript_walk PROPERTIES
+        LABELS "perf"
+        TIMEOUT 120)
+
     # bench_full_paint — wall time of the WHOLE of TerminalWidget::paintEvent
     # (ANTS-5134). Links the real widget and renders it offscreen, so the
     # number is the frame the terminal actually paints rather than a
@@ -1871,6 +1907,7 @@ if(ANTS_TESTS)
                 tests/features/ai_context_redaction/test_ai_context_redaction.cpp
                 tests/features/ssh_control_master/test_ssh_control_master.cpp
                 tests/features/claude_bg_tasks_button/test_claude_bg_tasks_button.cpp
+                tests/features/claude_transcript_incremental_parse/test_claude_transcript_incremental_parse.cpp
                 # ANTS-1835/1840/1849 — prompt routing + model-chip focus.
                 tests/features/claude_statusbar_focus_routing/test_claude_statusbar_focus_routing.cpp
                 # ANTS-1850/1851 — per-shell prompt dedup + tab-switch re-show.
@@ -2604,6 +2641,9 @@ if(ANTS_TESTS)
         SRC_BGTASKS_H_PATH="${CMAKE_SOURCE_DIR}/src/claudebgtasks.h"
         SRC_BGDIALOG_CPP_PATH="${CMAKE_SOURCE_DIR}/src/claudebgtasksdialog.cpp"
         SRC_BGDIALOG_H_PATH="${CMAKE_SOURCE_DIR}/src/claudebgtasksdialog.h")
+    set_property(SOURCE tests/features/claude_transcript_incremental_parse/test_claude_transcript_incremental_parse.cpp
+        APPEND PROPERTY COMPILE_DEFINITIONS
+        SRC_CLAUDETASKLIST_CPP_PATH="${CMAKE_SOURCE_DIR}/src/claudetasklist.cpp")
     set_property(SOURCE tests/features/spec_field_extent/test_spec_field_extent.cpp
         APPEND PROPERTY COMPILE_DEFINITIONS
         # ANTS-3785 INV-6 — both consumers of the header-field extent rule are
