@@ -361,3 +361,51 @@ TEST(PlanTemplateEngine, SaveTrueWritesAtomicallyToDisk) {
     EXPECT_TRUE(disk.contains("ANTS-9999"))
         << "skeleton should embed the provided ANTS-ID";
 }
+
+// ---------------------------------------------------------------------------
+// INV-11 (ANTS-5068) — includes_tests:false drops each task block's test line
+// and the two test-first steps, renumbers the rest from 1, and leaves
+// everything outside the task blocks as it is.
+// ---------------------------------------------------------------------------
+TEST(PlanTemplateEngine, Inv11IncludesTestsFalseDropsTestSteps) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+
+    auto withTests = defaultOpts(QStringLiteral("foo"));
+    withTests.taskCountHint = 2;
+    auto withoutTests = withTests;
+    withoutTests.includesTests = false;
+
+    const auto on = PlanTemplateEngine::buildPlan(tmp.path(), withTests);
+    const auto off = PlanTemplateEngine::buildPlan(tmp.path(), withoutTests);
+    ASSERT_TRUE(on.ok) << "err=" << on.errorCode.toStdString();
+    ASSERT_TRUE(off.ok) << "err=" << off.errorCode.toStdString();
+
+    // The default keeps the full test-first task block.
+    EXPECT_EQ(on.planMarkdown.count(QStringLiteral("- Test: `tests/features/foo/")), 2);
+    EXPECT_EQ(on.planMarkdown.count(QStringLiteral("**Step 1: Write the failing test**")), 2);
+    EXPECT_EQ(on.planMarkdown.count(QStringLiteral("**Step 5: Commit**")), 2);
+
+    const QString &md = off.planMarkdown;
+    EXPECT_FALSE(md.contains(QStringLiteral("- Test: `")))
+        << "includes_tests:false still emits the test file line";
+    EXPECT_FALSE(md.contains(QStringLiteral("Write the failing test")))
+        << "includes_tests:false still emits the failing-test step";
+    EXPECT_FALSE(md.contains(QStringLiteral("Run test to verify it fails")))
+        << "includes_tests:false still emits the red-run step";
+    EXPECT_EQ(md.count(QStringLiteral("**Step 1: Write minimal implementation**")), 2)
+        << "remaining steps must be renumbered from 1 in every task block";
+    EXPECT_EQ(md.count(QStringLiteral("**Step 2: Run test to verify it passes**")), 2);
+    EXPECT_EQ(md.count(QStringLiteral("**Step 3: Commit**")), 2);
+    EXPECT_FALSE(md.contains(QStringLiteral("**Step 4:")));
+
+    // Outside the task blocks nothing changes.
+    const auto tail = [](const QString &s) {
+        return s.mid(s.indexOf(QStringLiteral("## Self-Review Checklist")));
+    };
+    const auto head = [](const QString &s) {
+        return s.left(s.indexOf(QStringLiteral("### Task 1:")));
+    };
+    EXPECT_EQ(head(md), head(on.planMarkdown));
+    EXPECT_EQ(tail(md), tail(on.planMarkdown));
+}

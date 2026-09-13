@@ -61,6 +61,11 @@ for security-relevant changes.
 
 ### Fixed
 
+- **plan_template's includes_tests:false now drops each task's test file line and test-first steps** (ANTS-5068)
+  The option was documented and parsed but never read, so false returned
+  the same skeleton. The remaining steps are numbered from 1; the default
+  output is unchanged.
+
 - **The window no longer freezes while a --remote search, tree walk or git command runs, and the roadmap store is no longer used from two threads at once** (ANTS-5073)
   Remote-control socket routes whose MCP twin already runs off the GUI
   thread now run on the same MCP dispatch worker, with the reply written

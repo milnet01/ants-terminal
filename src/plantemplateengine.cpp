@@ -97,32 +97,45 @@ bool pathStrictlyBelowPlans(const QString &absPath,
     return true;
 }
 
-QString renderTaskBlock(int n, const QString &featureName, const QString &antsIdLabel) {
+QString renderTaskBlock(int n, const QString &featureName,
+                        const QString &antsIdLabel, bool includesTests) {
+    // ANTS-5068 — includes_tests:false drops the test file line and the two
+    // test-first steps, and numbers the remaining steps from 1 (ANTS-1290
+    // § 2.3, INV-11).
+    int step = 0;
+    const auto stepHeading = [&step](const char *title) {
+        return QStringLiteral("- [ ] **Step %1: %2**\n\n")
+            .arg(QString::number(++step), QLatin1String(title));
+    };
     QString out;
     out += QStringLiteral("### Task %1: [Component Name]\n\n").arg(n);
     out += QStringLiteral("**Files:**\n");
     out += QStringLiteral("- Create: `[exact/path/to/file.cpp]`\n");
     out += QStringLiteral("- Modify: `[exact/path/to/existing.cpp:NNN-NNN]`\n");
-    out += QStringLiteral("- Test: `tests/features/%1/test_%1.cpp`\n\n").arg(featureName);
-    out += QStringLiteral("- [ ] **Step 1: Write the failing test**\n\n");
-    out += QStringLiteral("```cpp\n");
-    out += QStringLiteral("TEST(SuiteName, FeatureName) {\n");
-    out += QStringLiteral("    // arrange\n");
-    out += QStringLiteral("    // act\n");
-    out += QStringLiteral("    // assert\n");
-    out += QStringLiteral("}\n");
-    out += QStringLiteral("```\n\n");
-    out += QStringLiteral("- [ ] **Step 2: Run test to verify it fails**\n\n");
-    out += QStringLiteral("Run: `ctest --test-dir build -R %1 --output-on-failure`\n").arg(featureName);
-    out += QStringLiteral("Expected: FAIL with \"[expected failure message]\"\n\n");
-    out += QStringLiteral("- [ ] **Step 3: Write minimal implementation**\n\n");
+    if (includesTests)
+        out += QStringLiteral("- Test: `tests/features/%1/test_%1.cpp`\n").arg(featureName);
+    out += QLatin1Char('\n');
+    if (includesTests) {
+        out += stepHeading("Write the failing test");
+        out += QStringLiteral("```cpp\n");
+        out += QStringLiteral("TEST(SuiteName, FeatureName) {\n");
+        out += QStringLiteral("    // arrange\n");
+        out += QStringLiteral("    // act\n");
+        out += QStringLiteral("    // assert\n");
+        out += QStringLiteral("}\n");
+        out += QStringLiteral("```\n\n");
+        out += stepHeading("Run test to verify it fails");
+        out += QStringLiteral("Run: `ctest --test-dir build -R %1 --output-on-failure`\n").arg(featureName);
+        out += QStringLiteral("Expected: FAIL with \"[expected failure message]\"\n\n");
+    }
+    out += stepHeading("Write minimal implementation");
     out += QStringLiteral("```cpp\n");
     out += QStringLiteral("// minimal code that makes the test pass\n");
     out += QStringLiteral("```\n\n");
-    out += QStringLiteral("- [ ] **Step 4: Run test to verify it passes**\n\n");
+    out += stepHeading("Run test to verify it passes");
     out += QStringLiteral("Run: `ctest --test-dir build -R %1 --output-on-failure`\n").arg(featureName);
     out += QStringLiteral("Expected: PASS\n\n");
-    out += QStringLiteral("- [ ] **Step 5: Commit**\n\n");
+    out += stepHeading("Commit");
     out += QStringLiteral("```bash\n");
     out += QStringLiteral("git add tests/features/%1/ src/[path]/\n").arg(featureName);
     out += QStringLiteral("git commit -m \"%1: [present-tense description]\"\n").arg(antsIdLabel);
@@ -159,7 +172,8 @@ QString renderSkeleton(const PlanOptions &opts,
     out += QStringLiteral("---\n\n");
 
     for (int i = 1; i <= taskCount; ++i) {
-        out += renderTaskBlock(i, opts.featureName, antsIdLabel);
+        out += renderTaskBlock(i, opts.featureName, antsIdLabel,
+                               opts.includesTests);
     }
 
     out += QStringLiteral("## Self-Review Checklist\n\n");

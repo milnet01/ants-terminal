@@ -27,6 +27,9 @@ The test ensures the engine:
   (INV-10, ANTS-1838)
 - maps `AntsIdSource` to the lowercase JSON key strings the MCP
   response uses
+- with `includes_tests:false`, drops each task block's `- Test:` line and
+  its two test-first steps, numbers the remaining steps from 1, and
+  leaves the header, checklist and handoff unchanged (INV-11, ANTS-5068)
 
 ## What this test does NOT cover
 

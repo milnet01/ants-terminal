@@ -11409,8 +11409,9 @@ void ClaudeIntegration::onMcpConnection() {
                     QJsonObject testsProp;
                     testsProp["type"] = "boolean";
                     testsProp["description"] = QStringLiteral(
-                        "Whether to include test-scaffolding hints in "
-                        "the skeleton. Default true.");
+                        "Whether each task block carries its test file "
+                        "line and test-first steps. Default true; false "
+                        "drops them and numbers the rest from 1.");
                     QJsonObject antsProp;
                     antsProp["type"] = "string";
                     antsProp["description"] = QStringLiteral(
