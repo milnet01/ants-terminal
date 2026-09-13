@@ -35,3 +35,6 @@ point and the success/failure call-site collapse.
   (anchor `ANTS-1402-INV-4`).
 - **INV-5.** Anchor comments present at recordDispatch
   definition + two call sites.
+- **INV-6 (ANTS-5104).** `recordDispatch` runs on every MCP call, so
+  its body calls no `buildReport(` and takes the chip total from
+  `m_tokenUsage.totalSaved()`.

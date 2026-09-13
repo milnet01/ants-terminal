@@ -51,8 +51,10 @@ TEST(TokensSavedChip, SignalsAndSingleEmitHook) {
         << "ClaudeIntegration must declare tokenSessionEnding()";
     // The non-zero (report-valued) emit — distinct from the (0) refresh in
     // endTokenSession — proves the live signal fires from the dispatch hook.
+    // ANTS-5104 — totalSaved() is the report's total without building the
+    // report on every dispatch (TokenSavingsHelpers.TotalSavedMatchesTheReport).
     EXPECT_TRUE(has(cpp,
-        "emit tokensSavedUpdated(m_tokenUsage.buildReport(false).totalSaved)"))
+        "emit tokensSavedUpdated(m_tokenUsage.totalSaved())"))
         << "recordDispatch must emit the live session total (ANTS-3572 INV-6)";
 }
 

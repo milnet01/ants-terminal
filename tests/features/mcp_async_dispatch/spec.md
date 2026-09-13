@@ -71,6 +71,12 @@ explicit socket path and the GUI bundle's `main` already builds a
   refusal of a cached verb is not stored, so the call made after the queue
   drains runs the verb.
 
+*Amendment, 2026-09-13 (ANTS-5104):*
+
+- Calls naming no registered tool share one token-tracker entry, counted as
+  failures, so arbitrary names cannot grow the tracker (ANTS-1284 INV-8).
+  Driven through the real dispatcher, where the tracked name is chosen.
+
 Numbering follows the parent spec's, so a reader can move between them without
 a mapping table.
 

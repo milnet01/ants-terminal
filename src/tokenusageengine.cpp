@@ -170,6 +170,18 @@ Snapshot Tracker::buildReport(bool includeZero) const {
     return snap;
 }
 
+qint64 Tracker::totalSaved() const {
+    // ANTS-5104 — buildReport(false).totalSaved without the per-tool list or
+    // the sort: the same floor-at-0 arithmetic, summed.
+    qint64 total = 0;
+    for (auto it = m_counters.cbegin(); it != m_counters.cend(); ++it) {
+        const qint64 saved = baselineFor(it.key()) * it.value().nCalls
+                             - (it.value().bytesIn + it.value().bytesOut);
+        if (saved > 0) total += saved / kCharsPerToken;
+    }
+    return total;
+}
+
 // ---- ANTS-3572 pure persistence helpers ---------------------------------
 
 QJsonObject foldMonthlyBucket(QJsonObject monthly, const QString &monthKey,

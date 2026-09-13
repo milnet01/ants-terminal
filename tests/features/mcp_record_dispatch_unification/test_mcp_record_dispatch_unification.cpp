@@ -123,3 +123,18 @@ TEST(mcp_record_dispatch_unification, Inv5RecordCallSingleSiteInCpp) {
             "Found: " + std::to_string(n)).c_str());
     EXPECT_EQ(0, expect_failures());
 }
+
+// INV-6 (ANTS-5104) — recordDispatch runs on every MCP call, so it reads the
+// chip total without building and sorting the per-tool report.
+TEST(mcp_record_dispatch_unification, Inv6ChipTotalDoesNotBuildTheReport) {
+    expect_reset();
+    const std::string cc = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string region =
+        ants_test::slurpFunctionBody(cc, "ClaudeIntegration::recordDispatch");
+    expect(!region.empty(), "INV-6: recordDispatch body found");
+    expect(!contains(region, "buildReport("),
+           "INV-6: recordDispatch does not build the per-tool report");
+    expect(contains(region, "m_tokenUsage.totalSaved()"),
+           "INV-6: the chip total comes from Tracker::totalSaved");
+    EXPECT_EQ(0, expect_failures());
+}

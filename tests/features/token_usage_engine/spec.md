@@ -25,6 +25,9 @@ The in-process per-tool MCP dispatch counter:
   (`mcp_token_usage_tool/`), not here (engine doesn't serialise).
 - **INV-9 / Pure-read `buildReport`** — repeated calls return
   byte-identical snapshots.
+- **ANTS-5104 / `totalSaved`** — `Tracker::totalSaved()` equals
+  `buildReport(false).totalSaved` over a mix of saving, over-baseline,
+  no-baseline and failed calls, without building the report.
 - **INV-10 / Self-counted** — `recordCall("token_usage", …)`
   increments the `token_usage` counter (baseline 0 means 0 saved).
 - **Sort order** — `calls[]` is sorted by `est_tokens_saved`

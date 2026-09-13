@@ -402,3 +402,17 @@ TEST(TokenSavingsHelpers, HumanizeBranchEdges) {
     EXPECT_EQ(humanizeCount(999999),     QString("1M"));
     EXPECT_EQ(humanizeCount(999999999),  QString("1B"));
 }
+
+// ANTS-5104 — totalSaved() is buildReport(false).totalSaved without building
+// the report; recordDispatch reads it on every dispatch.
+TEST(TokenSavingsHelpers, TotalSavedMatchesTheReport) {
+    TokenUsageEngine::Tracker t;
+    EXPECT_EQ(t.totalSaved(), 0);
+    t.recordCall(QStringLiteral("roadmap_query"), 100, 2000);
+    t.recordCall(QStringLiteral("roadmap_query"), 100, 3000);
+    t.recordCall(QStringLiteral("read_region"), 50, 900000);  // over baseline: saves 0
+    t.recordCall(QStringLiteral("no_baseline_verb"), 10, 10);
+    t.recordCall(QStringLiteral("file_outline"), 10, 10, 0, 0, /*success=*/false);
+    EXPECT_GT(t.totalSaved(), 0);
+    EXPECT_EQ(t.totalSaved(), t.buildReport(false).totalSaved);
+}

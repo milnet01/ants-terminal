@@ -80,6 +80,8 @@ public:
     void reset();
 
     Snapshot buildReport(bool includeZero) const;
+    // ANTS-5104 — buildReport(false).totalSaved without building the report.
+    qint64 totalSaved() const;
 
     static qint64 baselineFor(const QString &toolName);
 

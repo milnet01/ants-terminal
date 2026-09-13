@@ -643,3 +643,25 @@ TEST(McpAsyncDispatch, Inv14QueueFullRefusalIsNotCached) {
     EXPECT_FALSE(served.contains("dispatch_queue_full"))
         << "the cached dispatch_queue_full refusal was served again";
 }
+
+// ANTS-5104 — calls naming no registered tool share one token-tracker entry,
+// so arbitrary names cannot grow the tracker (ANTS-1284 INV-8). Driven through
+// the real dispatcher because that is where the tool name is chosen.
+TEST(McpAsyncDispatch, Ants5104UnknownToolNamesShareOneTrackerEntry) {
+    Harness h;
+    ASSERT_TRUE(h.dir.isValid());
+    ASSERT_TRUE(h.start());
+
+    for (int i = 0; i < 5; ++i) {
+        const QByteArray reply = callVerb(
+            h.sockPath, QStringLiteral("ants_no_such_verb_%1").arg(i), h.dir.path());
+        ASSERT_TRUE(reply.contains("-32602"))
+            << "setup: expected an unknown-tool error; got: " << reply.constData();
+    }
+    const TokenUsageEngine::Snapshot snap = h.ci.tokenUsageReport(true);
+    EXPECT_EQ(snap.toolsCalled, 1)
+        << "each unknown tool name added its own tracker entry";
+    ASSERT_EQ(snap.calls.size(), 1);
+    EXPECT_EQ(snap.calls.first().failedCalls, 5)
+        << "the unknown-tool calls were not all counted as failures";
+}

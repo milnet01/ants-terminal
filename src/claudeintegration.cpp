@@ -1561,7 +1561,12 @@ void ClaudeIntegration::recordDispatch(
     // 2026-05-16 observation: "MCP cost tokens for the failed query
     // and saved none").
     const bool succeeded = dispatchResultIsSuccess(result);
-    m_tokenUsage.recordCall(toolName, argBytes, outBytes,
+    // ANTS-5104 — a call naming no registered tool is counted under one
+    // entry, so arbitrary names cannot grow the counter map past the
+    // registered tools (ANTS-1284 INV-8). Its failed-call bytes still show.
+    const QString trackedTool = result == QLatin1String("tool_not_found")
+        ? QStringLiteral("(unknown tool)") : toolName;
+    m_tokenUsage.recordCall(trackedTool, argBytes, outBytes,
                             wrapBytes, durUs, succeeded);
     recordMcpTrace(toolName, argsObj, argBytes, rawBytes, outBytes,
                    durUs, cachedHit, result);
@@ -1624,7 +1629,9 @@ void ClaudeIntegration::recordDispatch(
         }
     }
     // ANTS-3572 — drive the tokens-saved chip from the single dispatch hook.
-    emit tokensSavedUpdated(m_tokenUsage.buildReport(false).totalSaved);
+    // ANTS-5104 — the total alone; building and sorting the per-tool report
+    // on every dispatch cost more than the one number the chip shows.
+    emit tokensSavedUpdated(m_tokenUsage.totalSaved());
 }
 
 void ClaudeIntegration::endTokenSession() {

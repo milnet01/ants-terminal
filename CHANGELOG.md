@@ -70,6 +70,12 @@ for security-relevant changes.
 
 ### Fixed
 
+- **Calls to tool names that do not exist no longer grow the token usage counter, and each MCP call does less bookkeeping** (ANTS-5104)
+  Every made-up tool name used to add its own permanent entry to the
+  per-session token counter. They now share one "(unknown tool)" entry,
+  still counted as failures. The tokens-saved chip also reads its total
+  directly instead of rebuilding and sorting the full report on every call.
+
 - **The tokens-saved chip shows 1M instead of 1000K for counts just under a million** (ANTS-5104)
   A count that rounds up to the next unit (999,950 and above) now moves to
   that unit, so it reads 1M rather than 1000K, and the same for M to B.
