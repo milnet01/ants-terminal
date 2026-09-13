@@ -6453,6 +6453,12 @@ extends an existing item, that item carries it instead.
   moving a route onto the worker silently converts every MainWindow read
   in its body from a direct call into a blocking marshal, with no source
   edit to mark it.
+  Spec gated (2026-09-13) with ANTS-5051:
+  docs/specs/ANTS-2132-async-mcp-dispatch.md section 2.8 gives audit_run
+  a DeferredToolHandler; the sweep keeps its own thread and the GUI
+  thread stops joining it (INV-15, INV-16). A second synchronous
+  same-root call is now refused already_running. Accepted;
+  implementation is next.
   **Layman:** Running a code audit from Claude freezes the Ants window until the audit ends.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lane mainwindow-b).
@@ -6969,6 +6975,14 @@ extends an existing item, that item carries it instead.
   measured as route 3's defect. tests/features/mcp_audit_run_async
   Inv1SyncPathUnchanged scrapes `worker->wait();` file-wide and must be
   reworded with it.
+  Spec gated (2026-09-13). The ANTS-2132 amendment
+  (docs/specs/ANTS-2132-async-mcp-dispatch.md sections 1.2, 2.7, 2.8,
+  INV-11..17) passed review-contract at its cap of two loops: eight
+  findings verified and fixed, two dismissed, no deferred tail. Status
+  accepted; implementation is next. Section 1.2's census confirms the
+  socket's roadmap-query route is the only GUI-thread path to
+  RemoteControl's store. Filed on the way: ANTS-5138, 5139, 5140, 5141,
+  5142.
   **Layman:** Two parts of Ants can use the roadmap database at the same moment, which can crash it or corrupt what it returns.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lanes roadmap-store, mcp-transport, mcp-roadmap-query-log, mcp-roadmap-batch).
@@ -7582,6 +7596,11 @@ extends an existing item, that item carries it instead.
   ANTS-2132 widened on the MCP side. The MCP side already has the
   hardened writer this path lacks: ClaudeIntegration::sendMcpResponse
   checks state before writing.
+  Spec gated (2026-09-13) with ANTS-5051:
+  docs/specs/ANTS-2132-async-mcp-dispatch.md section 2.7 moves the eight
+  MCP-twinned socket routes onto the dispatch worker with a deferred
+  reply (INV-12..14). Accepted; implementation is next. ANTS-5138 tracks
+  the --remote client giving up before a slow reply.
   **Layman:** Scripts that control Ants from outside can make its window freeze while they search.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lanes mcp-transport, mcp-state-workspace, code-index-search).
@@ -18239,6 +18258,42 @@ indie-review finding.
   Kind: doc-fix.
   Source: in-session-2026-09-13 (ANTS-2132 amendment gate, loop 1 sweep).
   Lanes: mcp, docs, threading.
+
+- 📋 [ANTS-5141] **RemoteControl's roadmap store is opened on the MCP dispatch worker but queried and closed on the GUI thread at shutdown.**
+  RemoteControl::roadmapStoreOrNull opens m_roadmapStore lazily on the
+  first caller's thread, which is the dispatch worker since ANTS-2132
+  (and every caller once the ANTS-2132 amendment moves the socket's
+  roadmap-query route). m_roadmapStore is a std::unique_ptr member, so it
+  is destroyed in ~RemoteControl on the GUI thread, after the worker has
+  been joined. RoadmapStore::~RoadmapStore then runs
+  QSqlQuery(m_db).exec("PRAGMA optimize"), close() and removeDatabase()
+  on that connection. Qt SQL documents that a connection may be used only
+  from the thread that created it.
+  No two threads overlap here, since the worker is already joined, so this
+  is a misuse rather than a race. Fix candidates: reset m_roadmapStore on
+  the worker before the join (a queued job from shutdown), or open the
+  store on the thread that will destroy it.
+  **Layman:** When Ants closes, it tidies the roadmap database from a different thread than the one that opened it, which Qt does not support.
+  Kind: fix.
+  Source: in-session-2026-09-13 (ANTS-2132 amendment gate, loop 2 lane question).
+  Lanes: roadmap, threading.
+
+- 📋 [ANTS-5142] **Closing a second Ants window makes the first window's off-thread MCP verbs refuse every MainWindow read for the rest of the session.**
+  ants::setGuiMarshalRefused (src/guithread.h) stores one process-wide
+  atomic. ClaudeIntegration::shutdownDispatchWorker sets it to true before
+  checking whether that instance ever started a worker. File > New Window
+  builds a second MainWindow with Qt::WA_DeleteOnClose, and that window owns
+  its own ClaudeIntegration. Closing it runs that destructor, so every later
+  ants::onGuiThread call in the process returns nullopt: an off-thread verb
+  in the remaining window that reads MainWindow state refuses with its
+  anchor-failure code.
+  Not reproduced at runtime; read from source. The ANTS-2132 amendment scopes
+  the refusal to the destroyed instance's own worker and adds INV-17 to
+  test it, so this closes when that amendment is built.
+  **Layman:** If you open a second Ants window and close it, some Claude commands in the window you kept stop working until you restart Ants.
+  Kind: fix.
+  Source: in-session-2026-09-13 (ANTS-2132 amendment gate, loop 2 lane 1).
+  Lanes: mcp, threading.
 
 ### 🎨 Review Changes dialog UX (user request 2026-06-03)
 
