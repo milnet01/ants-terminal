@@ -8167,6 +8167,25 @@ extends an existing item, that item carries it instead.
   STILL OPEN: monotonic clock for the cache TTL and the reapers; the rate
   check canonicalising caller_cwd on the GUI thread; isError on refusals;
   m_remoteControl read on the worker.
+  Progress (2026-09-13, 6e61da0e): the monotonic clock is in. The
+  read-cache TTL, the in-flight reaper and the audit-job reaper compare
+  monotonicNowMs(); running_since_ms and started_at_ms stay epoch. Locked by
+  mcp_audit_run INV-9c and McpIdempotentReadCache.TtlUsesTheMonotonicClock.
+  m_remoteControl read on the worker: checked, safe by creation order.
+  MainWindow creates ClaudeIntegration (setupStatusBarChrome) before
+  RemoteControl, Qt deletes children in creation order, so the worker is
+  joined first. That order is now commented and scraped
+  (mcp_verb_offthread_guard INV-7).
+  NEEDS A DECISION, not built:
+  - Rate check canonicalising caller_cwd on the GUI thread.
+    canonicaliseCallerKey stats the path on every call so symlink synonyms
+    share a bucket (ANTS-1771). A memo only spares repeat calls; a stalled
+    mount still blocks the first. The full fix is a lexical key, which gives
+    up ANTS-1771's synonym protection.
+  - isError. The MCP spec (2025-06-18, server/tools, Error Handling) reports
+    tool execution errors as isError:true in the result. Ants refusals
+    ({ok:false, code}) never set it. Setting it changes what every client
+    sees for every verb's refusals.
   **Layman:** Small fixes to how Ants routes Claude's tool calls: a cached refusal, clock handling and error flags.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lane claude-integration-b).
