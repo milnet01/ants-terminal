@@ -9284,6 +9284,12 @@ extends an existing item, that item carries it instead.
   0.7.52 std::rename fix both live in it), so it is not worth
   restructuring on an unmeasured assumption.
   Lanes: session, threading.
+  Measured 2026-09-13 with tests/perf/bench_session_save (50000 lines x
+  80 cols): serialize 492 ms, made of the grid walk into the stream 255
+  ms (52 MiB raw; must stay on the GUI thread), qCompress level 6 233 ms
+  and SHA-256 4 ms. Write + fsync + rename 2-7 ms. Moving compress, hash
+  and write to a worker takes about half the stall off the GUI thread.
+  The other half is the stream walk itself, worth its own look.
   **Layman:** Saving a tab that has changed still happens on the main window's thread, so a very large scrollback can still pause the window.
   Kind: perf.
   Source: in-session-2026-09-12 (ANTS-5030 remainder).
@@ -18396,6 +18402,10 @@ indie-review finding.
   Not yet checked: why CI's build-asan job, on a different toolchain,
   reported success on commits after this benchmark landed. Verifying either
   fix needs a full build-asan build.
+  Decided by the user (2026-09-13): do not build the perf benchmarks
+  when ANTS_SANITIZERS is on. Verify with one full build-asan build,
+  then clear build-asan/.ants-prepush-interrupted so the pre-push ASan
+  leg runs again.
   **Layman:** A speed-test program added last week breaks the memory-checking build, which blocks one of the safety checks that runs before code is pushed.
   Kind: fix.
   Source: in-session-2026-09-13 (ASan tree verification for the pre-push marker).
@@ -18424,6 +18434,12 @@ indie-review finding.
   Contradicts ANTS-5121's premise that the first window keeps the
   listener. Needs a decision on listener ownership, for example one
   process-wide server rather than one per window.
+  Decided by the user (2026-09-13): one process-wide listener for MCP
+  and the remote-control socket, owned outside any MainWindow, so
+  opening or closing a window never moves or removes it. Each request
+  resolves its target window per call. Unblocks ANTS-5121. The change
+  spans MCP, remote control and MainWindow, so it gets a spec through
+  review-contract before it is built.
   **Layman:** If you open a second Ants window and then close it, Claude loses its connection to Ants in every window until you restart Ants.
   Kind: fix.
   Source: in-session-2026-09-13 (ANTS-5121 investigation).
@@ -18440,6 +18456,10 @@ indie-review finding.
   missing. Needs a decision: make a dated topic heading an entry of its
   own (text = headline, body = its prose), or leave headline-only topics
   unindexed and say so in the verb's description.
+  Decided by the user (2026-09-13): a dated topic heading becomes an
+  entry of its own, with text = the headline, body = its prose and
+  category from the heading. Amend ANTS-3533 section 3 and gate it
+  through review-contract before changing ChangelogQuery::parse.
   **Layman:** The changelog search still can't find a change that was written up as a dated paragraph with no bullet points under it.
   Kind: enhancement.
   Source: in-session-2026-09-13 (ANTS-5071 spec amendment).
@@ -18472,6 +18492,10 @@ indie-review finding.
   override pagination. Needs a decision on which is right: amend the spec
   to say id results are paged, or change the handler to skip paging for an
   id lookup, as roadmap_query does.
+  Decided by the user (2026-09-13): return every match. The handler
+  skips paging for an id or ids lookup, as ANTS-3533 and roadmap_query
+  already do. This brings the code into line with the gated spec, so no
+  gate.
   **Layman:** The changelog search and its written design disagree about whether looking up a specific id can return only part of the results.
   Kind: investigate.
   Source: review-contract loop 1 on ANTS-3533 (ANTS-5071 amendment), 2026-09-13.
