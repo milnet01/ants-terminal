@@ -70,6 +70,16 @@ for security-relevant changes.
 
 ### Fixed
 
+- **A garbled terminal control code no longer spills its leftover characters onto the screen** (ANTS-5075)
+  When a program sent a control code with a stray byte in it, the terminal
+  gave up on the code and printed the rest of it as text. It now discards
+  the whole code, the way other terminals do.
+
+- **Clearing the screen now always clears a text selection, even when the clear arrives in two pieces** (ANTS-5075)
+  The terminal looked for the clear-screen code inside each chunk of output
+  it read, so a code split across two chunks was missed and the old
+  selection stayed highlighted.
+
 - **A shell opened on a desktop session with a very large environment now receives every variable, including the one Claude Code uses to find the terminal** (ANTS-5075)
   The terminal copied its environment into a fixed-size list and stopped
   when the list filled, so the variables added last were lost. The list

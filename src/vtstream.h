@@ -68,9 +68,10 @@ class Pty;
 struct VtBatch {
     std::vector<VtAction> actions;
     QByteArray rawBytes;
-    // Set when the raw stream contained a full-screen clear sequence
-    // (ESC[2J / ESC[3J / 0x0C). GUI uses this to clear the selection,
-    // matching the pre-thread byte scan in TerminalWidget::onPtyData.
+    // Set when the parser saw a full-screen clear (ED 2 / ED 3 or form feed)
+    // in this batch's input. GUI uses this to clear the selection. Taken
+    // from parsed actions, so a sequence split across reads counts
+    // (ANTS-5075).
     bool clearSelectionHint = false;
     // Milliseconds elapsed since the worker started — sampled at flush
     // time. GUI uses this as the event timestamp for asciicast recording

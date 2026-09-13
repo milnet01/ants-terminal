@@ -20,11 +20,10 @@ Pty::Pty(QObject *parent) : QObject(parent) {}
 
 Pty::~Pty() {
     // Disable notifiers before closing FD to prevent reads/writes on a
-    // closed/reused FD.
-    delete m_readNotifier;
-    m_readNotifier = nullptr;
-    delete m_writeNotifier;
-    m_writeNotifier = nullptr;
+    // closed/reused FD. Both are children of this Pty, so ~QObject deletes
+    // them after this body (qt.md: never delete a parented child, ANTS-5075).
+    if (m_readNotifier) m_readNotifier->setEnabled(false);
+    if (m_writeNotifier) m_writeNotifier->setEnabled(false);
 
     if (m_childPid > 0) {
         ::kill(m_childPid, SIGHUP);

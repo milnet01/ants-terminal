@@ -1675,6 +1675,8 @@ if(ANTS_TESTS)
                 tests/features/query_response_ratelimit/test_query_response_ratelimit.cpp
                 # ANTS-1827 — CSI param-truncation flag.
                 tests/features/vtparser_csi_param_truncation/test_csi_param_truncation.cpp
+                # ANTS-5075 — a malformed CSI is swallowed up to its final byte.
+                tests/features/vtparser_csi_ignore/test_csi_ignore.cpp
                 # ANTS-1828/1829 — inline-image budget + iTerm2 base64 hardening.
                 tests/features/terminalgrid_image_budget_hardening/test_terminalgrid_image_budget_hardening.cpp
                 # ANTS-1841 — terminalwidget hot-path hygiene (source-scrape).
@@ -1776,6 +1778,9 @@ if(ANTS_TESTS)
                 # ANTS-5075 — behavioural: the child shell receives every
                 # environment entry, however many there are.
                 tests/features/pty_child_env/test_pty_child_env.cpp
+                # ANTS-5075 — behavioural: a screen clear split across two
+                # PTY reads still sets the selection-clear hint.
+                tests/features/vtstream_clear_hint/test_vtstream_clear_hint.cpp
                 tests/features/pty_foreground_attr_reset/test_pty_foreground_attr_reset.cpp
                 tests/features/dialog_close_focus_return/test_dialog_close_focus_return.cpp
                 tests/features/dialog_pseudo_modal/test_dialog_pseudo_modal.cpp

@@ -448,6 +448,13 @@ void VtParser::processChar(uint32_t ch) {
             a.type = VtAction::Execute;
             a.controlChar = static_cast<char>(ch);
             m_callback(a);
+        } else if (ch == 0x7F) {
+            // ANTS-5075 — DEL is ignored in every CSI state (ECMA-48 /
+            // Williams parser table).
+        } else if (ch >= 0x3C && ch <= 0x3F) {
+            // ANTS-5075 — a private-marker byte after parameters makes the
+            // sequence malformed: swallow it up to its final byte.
+            m_state = CsiIgnore;
         } else {
             // Unexpected — abort
             transition(Ground);
@@ -481,7 +488,27 @@ void VtParser::processChar(uint32_t ch) {
             a.type = VtAction::Execute;
             a.controlChar = static_cast<char>(ch);
             m_callback(a);
+        } else if (ch == 0x7F) {
+            // ANTS-5075 — DEL ignored, as in CsiParam.
+        } else if (ch >= 0x30 && ch <= 0x3F) {
+            // ANTS-5075 — a parameter byte after an intermediate is malformed.
+            m_state = CsiIgnore;
         } else {
+            transition(Ground);
+        }
+        break;
+
+    case CsiIgnore:
+        // ANTS-5075 — csi_ignore: C0 controls still execute, 0x20-0x3F and
+        // DEL are consumed, a final byte ends the sequence with no dispatch.
+        if (ch < 0x20) {
+            VtAction a;
+            a.type = VtAction::Execute;
+            a.controlChar = static_cast<char>(ch);
+            m_callback(a);
+        } else if (ch >= 0x40 && ch <= 0x7E) {
+            transition(Ground);
+        } else if (ch > 0x7F) {
             transition(Ground);
         }
         break;

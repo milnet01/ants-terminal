@@ -25,6 +25,14 @@ bool VtStream::start(const QString &shell, const QString &workDir, int rows, int
     // on another thread triggers a Qt warning on first activation.
     m_pty = new Pty(this);
     m_parser = std::make_unique<VtParser>([this](const VtAction &a) {
+        // ANTS-5075 — the selection-clear hint comes from parsed actions, so a
+        // clear split across two reads still counts: ED 2, ED 3, or form feed.
+        if ((a.type == VtAction::CsiDispatch && a.finalChar == 'J' &&
+             a.intermediate.empty() && a.params.size() == 1 &&
+             (a.params[0] == 2 || a.params[0] == 3)) ||
+            (a.type == VtAction::Execute && a.controlChar == '\x0C')) {
+            m_pendingClearSelection = true;
+        }
         // Coalesced Print runs (printRun pointing into the feed buffer)
         // do NOT outlive this callback — `data` in onPtyData is freed
         // when that frame returns, so any pointer into it is dangling
@@ -96,16 +104,6 @@ void VtStream::drainAck() {
 }
 
 void VtStream::onPtyData(const QByteArray &data) {
-
-    // Selection-clear hint: single-pass byte scan, matching the pre-thread
-    // logic in TerminalWidget::onPtyData. Delivered with the batch so GUI
-    // can clear selection without re-scanning.
-    if (!m_pendingClearSelection) {
-        if (data.contains("\x1B[2J") || data.contains("\x1B[3J") || data.contains("\x0C")) {
-            m_pendingClearSelection = true;
-        }
-    }
-
     m_pendingRaw.append(data);
     // Feed the parser. Its action-callback appends to m_pending (set up in
     // start()). This runs synchronously on the worker; no cross-thread hop.

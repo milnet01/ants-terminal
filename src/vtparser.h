@@ -72,6 +72,7 @@ private:
         CsiEntry,
         CsiParam,
         CsiIntermediate,
+        CsiIgnore,      // malformed CSI: consumed up to its final byte, not dispatched
         OscString,
         OscStringEsc,   // peek-state: just saw ESC inside OSC body — see vtparser.cpp
         DcsString,      // DCS sequence (Sixel graphics)
