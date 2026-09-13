@@ -237,6 +237,48 @@ void testTrustFile() {
                "TF-3 corrupt file replaced by valid JSON");
     }
 
+    // TF-5 (ANTS-5082) — saveToDisk checks the write, flush, close and
+    // permissions before renaming. Source-scrape: a full disk cannot be
+    // simulated here.
+    {
+        const QString srcPath =
+            QFileInfo(QString::fromUtf8(__FILE__)).absolutePath()
+            + QStringLiteral("/../../../src/verifytrust.cpp");
+        QFile sf(srcPath);
+        ASSERT_TRUE(sf.open(QIODevice::ReadOnly | QIODevice::Text))
+            << "cannot read " << srcPath.toStdString();
+        const QString code = QString::fromUtf8(sf.readAll());
+        const int s = code.indexOf(QStringLiteral("::saveToDisk("));
+        ASSERT_GE(s, 0);
+        const QString body = code.mid(s, 3000);
+        expect(body.contains(QStringLiteral("f.write(bytes) == bytes.size()"))
+                   && body.contains(QStringLiteral("f.flush()"))
+                   && body.contains(QStringLiteral("!setOwnerOnlyPerms(tmp)")),
+               "TF-5 save checks write, flush and permissions before rename");
+    }
+
+    // TF-6 (ANTS-5082) — a corrupt trust file is moved aside, not destroyed.
+    {
+        QTemporaryDir tmp; ASSERT_TRUE(tmp.isValid());
+        const QString path =
+            tmp.path() + QStringLiteral("/verify-trust.json");
+        QFile bad(path);
+        ASSERT_TRUE(bad.open(QIODevice::WriteOnly));
+        ASSERT_GT(bad.write("corrupt trust {{{"), 0);
+        bad.close();
+
+        VerifyTrust::FilePersistedTrustClient client(path);
+        const QStringList aside = QDir(tmp.path()).entryList(
+            { QStringLiteral("verify-trust.json.corrupt.*") }, QDir::Files);
+        expect(aside.size() == 1, "TF-6 corrupt file moved aside");
+        if (aside.size() == 1) {
+            QFile kept(QDir(tmp.path()).filePath(aside.first()));
+            ASSERT_TRUE(kept.open(QIODevice::ReadOnly));
+            expect(kept.readAll() == QByteArray("corrupt trust {{{"),
+                   "TF-6 moved-aside copy keeps the original bytes");
+        }
+    }
+
     // TF-4 (ANTS-1825) — a trust file stamped with a FUTURE schema
     // version is refused: the v1 reader honours none of its entries
     // (fail-closed) and a subsequent write no-ops, leaving the newer

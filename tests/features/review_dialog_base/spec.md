@@ -50,6 +50,10 @@ subclasses fill four hooks and use the base services.
   edit between rounds (`MainWindow` reloads `Config` in place while the
   dialog is open) clears a stale warning. See
   `docs/specs/ANTS-5010-plaintext-prompt-warning.md` § 2.3 and § 3 INV-3.
+- **INV-24** (ANTS-5082) — while a round is in flight, `redispatch` and
+  `setLanes` change nothing: no job is queued, the round's failures are not
+  cleared, and the lanes are not replaced. Once the round finishes, both
+  work again.
 
 ## Test notes
 

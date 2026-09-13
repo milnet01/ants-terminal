@@ -151,11 +151,17 @@ bool FilePersistedTrustClient::loadFromDisk() {
     if (err.error != QJsonParseError::NoError || !doc.isObject()) {
         // Corrupt file: log to stderr (caller's logger is out of
         // scope here — this is core_lib, no DebugLog access by
-        // design), then start fresh. Next write replaces the
-        // corrupt file.
+        // design), then start fresh. ANTS-5082 — move the file aside
+        // first, so the next write does not destroy the only copy of
+        // whatever it still holds.
+        // Same naming as the config.cpp / themes.cpp rotation (ANTS-1179).
+        const QString aside = m_path
+            + QStringLiteral(".corrupt.%1").arg(QDateTime::currentSecsSinceEpoch());
+        const bool moved = QFile::rename(m_path, aside);
         std::fprintf(stderr,
-            "verifytrust: corrupt %s — starting with empty trust set\n",
-            qUtf8Printable(m_path));
+            "verifytrust: corrupt %s — starting with empty trust set%s%s\n",
+            qUtf8Printable(m_path), moved ? "; moved aside to " : "",
+            moved ? qUtf8Printable(aside) : "");
         return false;
     }
 
@@ -257,10 +263,16 @@ bool FilePersistedTrustClient::saveToDisk() const {
     if (!f.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
         return false;
     }
-    f.write(QJsonDocument(root).toJson(QJsonDocument::Indented));
+    // ANTS-5082 — a short write, a failed flush or close, or permissions that
+    // cannot be narrowed must not reach the rename: on a full disk that
+    // replaced the trust store with truncated JSON.
+    const QByteArray bytes = QJsonDocument(root).toJson(QJsonDocument::Indented);
+    const bool written = f.write(bytes) == bytes.size() && f.flush();
     f.close();
-
-    setOwnerOnlyPerms(tmp);
+    if (!written || f.error() != QFileDevice::NoError || !setOwnerOnlyPerms(tmp)) {
+        QFile::remove(tmp);
+        return false;
+    }
 
     if (std::rename(tmp.toLocal8Bit().constData(),
                     m_path.toLocal8Bit().constData()) != 0) {

@@ -33,6 +33,13 @@ callers (nullptr client) see no behavior change. Phase 2 wires
   half-written file (test simulates via direct rename check).
 - **TF-3** Corrupt JSON tolerated — bad file loads as empty trust
   set; next write replaces it.
+- **TF-5** (ANTS-5082) `saveToDisk` checks the write's byte count, the
+  flush, the close and `setOwnerOnlyPerms` before the rename, and removes
+  the temp file on any failure. Source-scrape: a full disk cannot be
+  simulated in a unit test.
+- **TF-6** (ANTS-5082) A corrupt trust file is renamed aside
+  (`<path>.corrupt.<epoch>`, the ANTS-1179 naming) when loaded, keeping its bytes, before
+  the next write creates a fresh file.
 - **TF-4** (ANTS-1825) Schema-version gate. `saveToDisk` stamps
   `version`; `loadFromDisk` reads it. A file whose `version` exceeds
   `kSchemaVersion` (written by a newer Ants) is refused: no entries

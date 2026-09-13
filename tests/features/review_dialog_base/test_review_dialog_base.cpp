@@ -437,3 +437,44 @@ TEST(ReviewDialogBase, INV23_NoWarningForLoopbackOrKeyedEndpoint) {
         EXPECT_EQ(calls, 1);
     }
 }
+
+// INV-24 (ANTS-5082) — redispatch and setLanes are ignored while a round is
+// in flight, so a mid-round click cannot clear the round's failures, queue a
+// second job, or swap the lanes out from under it.
+TEST(ReviewDialogBase, INV24_MidRoundRedispatchAndSetLanesIgnored) {
+    TestReviewDialog dlg(QString(), nullptr, nullptr);
+    std::vector<std::function<void(const LlmResult &)>> pending;
+    int runs = 0;
+    dlg.setJobRunner([&](const LlmJob &, std::function<void(const LlmResult &)> done) {
+        ++runs;
+        pending.push_back(std::move(done));
+    });
+    dlg.setLanes({ ReviewLane{"A", "A", ""}, ReviewLane{"B", "B", ""} });
+    dlg.redispatch({ "A" });
+    ASSERT_EQ(runs, 1) << "round A did not start";
+
+    // Mid-round: both calls must be no-ops.
+    dlg.redispatch({ "B" });
+    dlg.setLanes({ ReviewLane{"C", "C", ""} });
+
+    LlmResult ok;
+    ok.ok = true;
+    ok.text = QStringLiteral("REPORT-A");
+    ASSERT_FALSE(pending.empty());
+    {
+        auto done = std::move(pending.front());
+        pending.erase(pending.begin());
+        done(ok);
+    }
+    EXPECT_EQ(runs, 1) << "a mid-round redispatch queued a second job";
+    EXPECT_TRUE(dlg.reports().contains(QStringLiteral("A")));
+
+    // After the round, lane B must still exist: setLanes did not swap lanes.
+    dlg.redispatch({ "B" });
+    EXPECT_EQ(runs, 2) << "lane B is gone: setLanes replaced the lanes mid-round";
+    while (!pending.empty()) {
+        auto done = std::move(pending.front());
+        pending.erase(pending.begin());
+        done(ok);
+    }
+}

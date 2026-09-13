@@ -70,6 +70,10 @@ for security-relevant changes.
 
 ### Fixed
 
+- **Clicking Re-review while a review is still running no longer wipes that round's failures, so a failed lane can't be mistaken for a clean one** (ANTS-5082)
+
+- **A full disk can no longer replace the verify trust list with a cut-off file, and a damaged trust file is kept aside instead of being overwritten** (ANTS-5082)
+
 - **A global hotkey that the desktop refuses to register now shows the 'Global hotkey unavailable' message instead of failing silently** (ANTS-5081)
 
 - **The global hotkey now works on desktops that start their shortcut service on demand** (ANTS-5081)

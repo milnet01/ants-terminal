@@ -189,6 +189,12 @@ void ReviewDialogBase::runPartition() {
 }
 
 void ReviewDialogBase::setLanes(const QList<ReviewLane> &lanes) {
+    // ANTS-5082 — a round in flight owns m_lanes and m_reports; replacing
+    // them mid-round loses what the round is about to report.
+    if (m_roundInFlight) {
+        if (m_statusLabel) m_statusLabel->setText(tr("A review round is still running."));
+        return;
+    }
     // ANTS-1843 — preserve already-collected reports for lanes that survive
     // a re-partition or lane-checkbox toggle; only drop reports whose lane
     // is gone. Previously this cleared EVERY report on any toggle, throwing
@@ -251,6 +257,12 @@ void ReviewDialogBase::startDispatch() {
 }
 
 void ReviewDialogBase::redispatch(const QStringList &laneIds) {
+    // ANTS-5082 — beginRound() clears the round's failures, so a Re-review
+    // click mid-round made its failed lanes read as clean (ANTS-5003).
+    if (m_roundInFlight) {
+        if (m_statusLabel) m_statusLabel->setText(tr("A review round is still running."));
+        return;
+    }
     QList<LlmJob> jobs;
     for (const ReviewLane &lane : m_lanes) {
         if (laneIds.contains(lane.id))
