@@ -18352,6 +18352,22 @@ indie-review finding.
   indirect, through another core-lib member. Next step: rerun the link
   with an archive-extraction trace to name that member. Stopped there as
   out of scope for the ANTS-2132 build.
+  Root cause (2026-09-13, GNU ld -Map over the failing build-asan link):
+  bench_drift_lanes.cpp.o leaves std::__cxx11::basic_string::_M_dispose()
+  undefined, because this Debug + sanitizer build does not inline it. The
+  linker satisfies it from the first archive member that defines it,
+  libants_core_lib.a(remotecontrol_state.cpp.o). That member pulls in the
+  remote-control graph by cmdProjectLayout -> findRoadmapUnder -> cmdLs ->
+  roadmapStoreOrNull, which references MainWindow, TerminalWidget and
+  ClaudeIntegration. No real dependency of the benchmark causes it; in the
+  Release tree the member is inlined and nothing is pulled.
+  Fix options, not yet chosen: (1) skip the perf benchmarks when
+  ANTS_SANITIZERS is on, since a sanitized benchmark measures nothing and
+  the debug test preset does not run perf; (2) link the benchmark against
+  the full app libraries, as the test bundles do.
+  Not yet checked: why CI's build-asan job, on a different toolchain,
+  reported success on commits after this benchmark landed. Verifying either
+  fix needs a full build-asan build.
   **Layman:** A speed-test program added last week breaks the memory-checking build, which blocks one of the safety checks that runs before code is pushed.
   Kind: fix.
   Source: in-session-2026-09-13 (ASan tree verification for the pre-push marker).
