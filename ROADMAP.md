@@ -8567,6 +8567,20 @@ extends an existing item, that item carries it instead.
   - The sk- key pattern misses newer key forms.
   - secretredact.h still says it has one consumer.
   - setOwnerOnlyPerms results are ignored.
+  Progress (2026-09-13, 4b0bb33e): read_spill pages now end on a
+  character boundary of the body (seek-read of the page plus three bytes;
+  a max_bytes smaller than one character returns that character), which
+  also removes the whole-file read per page. humanizeCount rolls 999,950
+  over to 1M. secretredact.h no longer claims one consumer.
+  NEEDS A DECISION: a single spill over kSpillMaxBytes. evict() never
+  removes the handle just written, so it empties the directory and the
+  byte cap still fails, against ANTS-2094 INV-7 ("both caps hold"). Either
+  the byte cap yields for the one oversized spill or such a body is not
+  spilled (fail-open inline). Changing INV-7 needs review-contract first.
+  STILL OPEN: token tracker unknown names and per-dispatch buildReport (in
+  progress); offload head ladder; roadmap_query regex per bullet;
+  settings.json rewrite without a lock; sk- key forms; setOwnerOnlyPerms
+  results ignored.
   **Layman:** Smaller fixes to how Ants packages big answers for Claude, including paging that can corrupt text.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lane mcp-infra).
