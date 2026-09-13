@@ -18454,6 +18454,15 @@ indie-review finding.
   resolves its target window per call. Unblocks ANTS-5121. The change
   spans MCP, remote control and MainWindow, so it gets a spec through
   review-contract before it is built.
+  Progress (2026-09-13): spec
+  docs/specs/ANTS-5144-shared-socket-listener.md accepted after
+  review-contract loops 1 and 2 (cap reached, calm; 11 verified findings
+  fixed). A process-wide LocalSocketHub keyed by path owns the MCP, hook
+  and remote-control servers; a live path is never unlinked; MCP and
+  remote-control connections go to the most recently activated visible
+  window; a hook event goes to the window whose tracker owns its
+  session, else that window. Next: build with write-code, tests first.
+  ANTS-5121's defect closes with this build.
   **Layman:** If you open a second Ants window and then close it, Claude loses its connection to Ants in every window until you restart Ants.
   Kind: fix.
   Source: in-session-2026-09-13 (ANTS-5121 investigation).
