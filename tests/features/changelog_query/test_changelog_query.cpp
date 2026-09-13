@@ -242,6 +242,48 @@ TEST(ChangelogQueryParse, NonCanonicalCategoryResets) {
     EXPECT_EQ(r.entries[0].ids[0], QStringLiteral("ANTS-3000"));
 }
 
+// INV-10 (ANTS-5071) — a dated topic heading `### <date> <Category> — <headline>`
+// sets the category named by the word after the date, so its bullets are
+// entries. Before this, the whole heading text was read as the category and
+// every bullet under a dated topic was dropped with ok:true.
+TEST(ChangelogQueryParse, Inv10DatedTopicHeadingSetsItsCategory) {
+    const QString md = QString::fromUtf8(
+        "## [Unreleased]\n\n"
+        "### 2026-09-13 Fixed \xE2\x80\x94 A topic\n\n"
+        "- **Dated bullet.** (ANTS-5001)\n");
+    const ParseResult r = ChangelogQuery::parse(md, kPrefix);
+    ASSERT_EQ(r.entries.size(), 1)
+        << "INV-10: a bullet under a dated topic heading must be an entry.";
+    EXPECT_EQ(r.entries[0].category, QStringLiteral("Fixed"));
+    EXPECT_TRUE(r.entries[0].ids.contains(QStringLiteral("ANTS-5001")));
+    ASSERT_EQ(r.versions.size(), 1);
+    ASSERT_EQ(r.versions[0].categories.size(), 1);
+    EXPECT_EQ(r.versions[0].categories[0].first, QStringLiteral("Fixed"));
+    EXPECT_EQ(r.versions[0].categories[0].second, 1);
+}
+
+// INV-10 negatives — an unparseable date, or a word that is not a canonical
+// category, resets the category. Each follows an `### Added` bullet, so a
+// parser that left the previous category in place would yield extra entries.
+TEST(ChangelogQueryParse, Inv10BadDateOrCategoryResets) {
+    const QString md = QString::fromUtf8(
+        "## [Unreleased]\n\n"
+        "### Added\n\n"
+        "- **First added.** (ANTS-5002)\n\n"
+        "### 2026-13-45 Fixed \xE2\x80\x94 A topic\n\n"
+        "- **Under a bad date.** (ANTS-5003)\n\n"
+        "### Added\n\n"
+        "- **Second added.** (ANTS-5004)\n\n"
+        "### 2026-09-13 Notes \xE2\x80\x94 A topic\n\n"
+        "- **Under a non-category.** (ANTS-5005)\n");
+    const ParseResult r = ChangelogQuery::parse(md, kPrefix);
+    EXPECT_EQ(findEntry(r, "Under a bad date"), nullptr);
+    EXPECT_EQ(findEntry(r, "Under a non-category"), nullptr);
+    ASSERT_EQ(r.entries.size(), 2);
+    EXPECT_EQ(r.entries[0].ids[0], QStringLiteral("ANTS-5002"));
+    EXPECT_EQ(r.entries[1].ids[0], QStringLiteral("ANTS-5004"));
+}
+
 // §3 degenerate — a bullet before any version heading is skipped; empty input.
 TEST(ChangelogQueryParse, DegenerateInputs) {
     const ParseResult empty = ChangelogQuery::parse(QString(), kPrefix);

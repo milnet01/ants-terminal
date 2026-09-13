@@ -5,6 +5,7 @@
 
 #include "changeloglog.h"  // canonicalCategories() (ANTS-3533 public)
 
+#include <QDate>
 #include <QHash>
 #include <QRegularExpression>
 
@@ -130,6 +131,21 @@ bool parseCategoryHeading(const QString &line, QString &cat) {
     return false;
 }
 
+// ANTS-5071 — the category a `### ` heading sets, or "" for none. A dated topic
+// `<YYYY-MM-DD> <Category> — <headline>` (changelog_log op:add_subsection)
+// takes the word after the date. The date is PARSED, as
+// ChangelogLog::classifyUnreleased does, so `2026-13-45` is not one.
+QString categoryForHeading(const QString &cat) {
+    if (ChangelogLog::isValidCategory(cat)) return cat;
+    if (cat.size() > 10 && cat.at(10).isSpace() &&
+        QDate::fromString(cat.left(10), QStringLiteral("yyyy-MM-dd")).isValid()) {
+        const QString word =
+            cat.mid(10).simplified().section(QLatin1Char(' '), 0, 0);
+        if (ChangelogLog::isValidCategory(word)) return word;
+    }
+    return QString();
+}
+
 }  // namespace
 
 ParseResult parse(const QString &markdown, const QString &idPrefix) {
@@ -216,7 +232,7 @@ ParseResult parse(const QString &markdown, const QString &idPrefix) {
         QString cat;
         if (parseCategoryHeading(line, cat)) {
             finalizeEntry();
-            curCategory = ChangelogLog::isValidCategory(cat) ? cat : QString();
+            curCategory = categoryForHeading(cat);
             continue;
         }
 

@@ -65,6 +65,12 @@ for security-relevant changes.
 
 ### Fixed
 
+- **changelog_query reads entries under dated topic headings** (ANTS-5071)
+  A `### <date> <Category> — <headline>` heading, the form
+  changelog_log op:add_subsection writes, now sets the category named
+  after a valid date. Its bullets are returned, found by id lookups and
+  counted in version_index. ANTS-3533 § 3 and INV-10 were amended first.
+
 - **plan_template's includes_tests:false now drops each task's test file line and test-first steps** (ANTS-5068)
   The option was documented and parsed but never read, so false returned
   the same skeleton. The remaining steps are numbered from 1; the default
