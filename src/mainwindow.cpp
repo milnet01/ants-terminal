@@ -7622,8 +7622,26 @@ void MainWindow::refreshRepoVisibility() {
     // ANTS-1137 — mark in-flight before start so a re-entry within
     // this 2 s tick (or any fast tab-switch before the QProcess
     // completes) drops the redundant probe.
+    // ANTS-5080 — a gh that fails to start never emits finished, which left
+    // the in-flight flag set for the session. Clear it here (assignment, not
+    // remove(): the remove() above sits in ANTS-1554's pragma block) and
+    // cache the negative result like any other failure.
+    connect(proc, &QProcess::errorOccurred, this,
+            [self, proc, repoRoot](QProcess::ProcessError error) {
+        if (error != QProcess::FailedToStart) return;  // finished follows otherwise
+        proc->deleteLater();
+        if (!self) return;
+        self->m_repoVisibilityCache[repoRoot] = {
+            QString(), QDateTime::currentMSecsSinceEpoch()};
+        self->m_repoVisibilityProbeInFlight[repoRoot] = false;
+    });
     m_repoVisibilityProbeInFlight[repoRoot] = true;
     proc->start();
+    // ANTS-5080 — a gh that never exits (no network, a prompt) is killed;
+    // kill() delivers finished, which caches the failure and clears the flag.
+    QTimer::singleShot(15000, proc, [proc]() {
+        if (proc->state() != QProcess::NotRunning) proc->kill();
+    });
 }
 
 void MainWindow::checkForUpdates(bool userInitiated) {

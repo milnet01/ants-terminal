@@ -100,6 +100,19 @@ void KWinPositionTracker::setPosition(int x, int y) {
             return;
         }
         auto *proc2 = new QProcess(proc->parent());
+        // ANTS-5081 — a second stage that fails to start never emits
+        // finished: unload the script and remove the file here instead.
+        QObject::connect(proc2, &QProcess::errorOccurred, proc2,
+                         [proc2, scriptPath](QProcess::ProcessError error) {
+            if (error != QProcess::FailedToStart) return;
+            proc2->deleteLater();
+            QProcess::startDetached("dbus-send", {
+                "--session", "--dest=org.kde.KWin", "--print-reply",
+                "/Scripting", "org.kde.kwin.Scripting.unloadScript",
+                "string:ants_terminal_pos"
+            });
+            QFile::remove(scriptPath);
+        });
         proc2->start("dbus-send", {
             "--session", "--dest=org.kde.KWin", "--print-reply",
             "/Scripting", "org.kde.kwin.Scripting.start"
@@ -116,10 +129,12 @@ void KWinPositionTracker::setPosition(int x, int y) {
         });
     });
     QObject::connect(proc, &QProcess::errorOccurred, m_window,
-                     [scriptPath](QProcess::ProcessError) {
+                     [proc, scriptPath](QProcess::ProcessError error) {
         // dbus-send failed to even start (PATH empty, binary
         // missing, etc.) — the `finished` signal won't fire, so
-        // remove explicitly here.
+        // remove explicitly here. ANTS-5081: and free the QProcess,
+        // which nothing else would.
+        if (error == QProcess::FailedToStart) proc->deleteLater();
         QFile::remove(scriptPath);
     });
 

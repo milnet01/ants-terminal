@@ -70,6 +70,10 @@ for security-relevant changes.
 
 ### Fixed
 
+- **The Public/Private repository badge recovers when the gh tool is missing or stops responding, instead of never updating again** (ANTS-5080)
+
+- **Restoring the window position through KWin no longer leaks a helper process or leaves the loaded script behind when a step cannot start** (ANTS-5081)
+
 - **The Review Changes button no longer shows the previous tab's git state after a quick tab switch, and a stuck git check can no longer freeze it for the session** (ANTS-5080)
 
 - **Start-up cleanup of old MCP sockets now removes only real sockets owned by you** (ANTS-5080)
