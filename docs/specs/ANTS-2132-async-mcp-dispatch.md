@@ -204,8 +204,7 @@ struct RcHandler {
 offThread = handler.offThreadEligible && contract != CallerCwdContract::TabSpecific
 ```
 
-The bare-`ToolHandler` overload — every hand-written inline lambda — sets
-`offThread = false`. Two facts justify each half:
+The bare-`ToolHandler` overload sets `offThread = false`. Two facts justify each half:
 
 - **Built by an rc factory** means the handler body is the ANTS-1427
   lambda-enter wrapper around `(m_remoteControl->*fn)(args)`, and nothing else.
@@ -226,8 +225,9 @@ Counted from `src/mainwindow.cpp` with
 inline TabSpecific.
 
 So **every rc-factory verb outside the TabSpecific pair becomes off-thread**,
-and that set contains every verb the § 1 measurements name. The inline
-handlers and the TabSpecific verbs stay synchronous.
+and that set contains every verb the § 1 measurements name. The TabSpecific
+verbs stay synchronous, and so does an inline handler unless it registers
+through `RcHandler{` (§ 5).
 
 `rcDelegateWorker` is deleted. Under this design it would be
 byte-for-byte `rcDelegate`, and two factories doing one thing is the
@@ -318,9 +318,9 @@ than hard-coding a list**, or it rots the first time a verb moves.
 *Amendment, 2026-09-13 — ANTS-5051, ANTS-5073.*
 
 **Which routes.** A `RemoteControl::dispatch` route runs on the worker when its
-MCP twin is off-thread under § 2.4: the twin is registered through an rc factory
-over the same `cmd*`, and is not `TabSpecific`. That is § 1.2's list. These stay
-inline:
+MCP twin is off-thread under § 2.4: a handler over the same `cmd*`, registered
+through the `RcHandler` overload with a contract other than `TabSpecific`. That
+is § 1.2's list. These stay inline:
 
 - `get-text`, whose twin is `TabSpecific`.
 - `tab-list`, whose twin registers through the bare `ToolHandler` overload.
@@ -394,8 +394,9 @@ void registerToolProvider(const QString &name,
 ```
 
 A deferred handler runs on the GUI thread, like a bare `ToolHandler`, and must
-return promptly. The dispatcher builds the § 2.2 `McpCallContext` and passes a
-`reply` that calls `finishToolDispatch` with it. A second call to `reply` writes
+return promptly. The dispatcher builds the `McpCallContext` as its off-thread
+branch does, `toolHandled` included, and passes a `reply` that calls
+`finishToolDispatch` with it. A second call to `reply` writes
 nothing. A deferred verb does not count against the § 2.6 cap.
 
 **`audit_run`.** It registers through that overload. Its refusals and its
@@ -403,7 +404,9 @@ nothing. A deferred verb does not count against the § 2.6 cap.
 the sweep's `QThread`, connects `QThread::finished` to a queued slot whose
 context object is `ClaudeIntegration`, and returns. That slot builds the
 envelope the synchronous branch builds today, releases the in-flight slot and
-calls `reply`. The response shape does not change.
+calls `reply`. The response shape does not change. What changes is timing: a
+second synchronous call for the same root now arrives while the first runs, and
+is refused `already_running`, as a call during an `async:true` job already is.
 
 **Shutdown.** A sweep still running when `ClaudeIntegration` is destroyed gets
 no reply, because the context object severs the connection. The `async:true`
@@ -485,8 +488,10 @@ branch already works this way.
   the GUI thread, and heartbeat ticks during the sleep. Breaks if the route runs
   inline: the wrapper never runs and no tick lands.
 - **INV-13** — `routeRunsOnDispatchWorker` is true exactly for the `dispatch()`
-  routes whose `cmd*` is registered in `mainwindow.cpp` through
-  `rcDelegate(&RemoteControl::…)` with a contract other than `TabSpecific`.
+  routes whose `cmd*` is called by a handler registered in `mainwindow.cpp`
+  through the `RcHandler` overload — `rcDelegate(&RemoteControl::…)` or a
+  `ClaudeIntegration::RcHandler{` lambda — with a contract other than
+  `TabSpecific`.
   *Test:* `tests/features/mcp_verb_offthread_guard/` — source scrape of
   `RemoteControl::dispatch`, `routeRunsOnDispatchWorker` and the registration
   table. Breaks when a route or a registration changes on one side only.
@@ -500,12 +505,16 @@ branch already works this way.
   JSON-RPC reply through `finishToolDispatch`, and the GUI thread is not blocked
   before it. *Test:* `tests/features/mcp_async_dispatch/` — register a deferred
   verb that calls `reply` twice from a single-shot timer. Assert heartbeat ticks
-  during the wait and exactly one reply line. Breaks if the dispatcher waits for
-  the handler, or if `reply` is not latched.
+  during the wait, one reply line, and `mcpTraceSizeForTest()` grown by exactly
+  one. Breaks if the dispatcher waits for the handler, or if `reply` is not
+  latched: the reply-line count cannot show that, because the first reply
+  disconnects, but a second `recordDispatch` adds a second trace entry.
 - **INV-16** — `audit_run`'s synchronous branch never joins its worker on the
   GUI thread. *Test:* `tests/features/mcp_audit_run_async/` — `Inv1SyncPathUnchanged`
   rewritten to scrape the `audit_run` registration body, asserting no `wait()`
-  and a `QThread::finished` connection. Breaks if the join returns. The
+  and a `QThread::finished` connection in each of its two branches. Breaks if
+  the join returns, or if the synchronous branch connects no completion slot.
+  The
   whole-file scrape it replaces stays green on `indie_review_dispatch`'s join
   whatever `audit_run` does.
 
@@ -650,6 +659,9 @@ the change is restored.
   - `docs/standards/mcp-tools.md` — a verb's socket route, if it has one, runs
     on its MCP twin's thread (§ 2.7).
   - `tests/features/mcp_audit_run_async/spec.md` — its INV-1 row (§ 6).
+  - `tests/features/mcp_verb_offthread_guard/spec.md` § Out of scope, and the
+    comment above the `audit_run` registration in `src/mainwindow.cpp` — both
+    say `audit_run` still freezes the window.
   - `CHANGELOG.md` — the window no longer freezes during a `--remote` search or
     a synchronous `audit_run`. It must not claim more: `indie_review_dispatch`
     still freezes it (§ 5).
@@ -661,3 +673,4 @@ the change is restored.
 |---|---|---|---|---|
 | 1 | 2026-08-26 | 3, cold — genre pinned `spec`; one byte-stable shared packet carrying the two delegate factories, the dispatch site, the whole post-dispatch tail, every `MainWindow` reach-back window, and the `mcp_verb_offthread_guard` spec + test | **Q1 3 · Q2 6 · Q3 0 · Q4 3** (12 verified / 12 fixed / 1 dismissed) | **Twelve verified, twelve fixed.** **All three lanes independently found the same defect**, and it is the run's worst: § 2.6 had the destructor join the worker while INV-7 forbade the GUI thread ever blocking on it — in the same file INV-7's scrape covers — so an implementer's own test would red their own shutdown code, and a worker parked in a `BlockingQueuedConnection` would deadlock against that join. INV-7 is now scoped to the dispatch path and § 2.6 owns the exception, refusing in-flight marshals before joining. **Two lanes each found two more.** § 2.1 promised "no pair of verbs that cannot currently overlap begins to" while § 5 said an inline verb can now overlap an off-thread one — narrowed to the off-thread set, with § 5 cross-referenced where the guarantee is stated. And INV-1/2/8/10 were unreachable: `RcHandler` was declared in `mainwindow.cpp` and only an rc factory could produce an off-thread handler, so a test verb would always dispatch synchronously and the tests would pass for the wrong reason — the type moves to `claudeintegration.h` and is directly constructible. **Three Q1s, all false claims about existing code.** `onGuiThread` was specified as a `RemoteControl` member, but `resolveRootCanonical` (`remotecontrol_internal.h`) and `ants::resolveCallerCwdRoot` (`resolvedroot.h`) are free functions carrying five of the nine reach-backs — a member helper leaves INV-6 unsatisfiable. The superseded GUI-responsiveness claim is in the guard spec's § Background, not § Mechanism, cited wrongly twice. And "the handler body is `(m_remoteControl->*fn)(args)` and nothing else" is false — `registerToolProvider` re-wraps every handler in the ANTS-1427 `ANTS_LOG` lambda; verified safe off-thread because `DebugLog::write` takes a `std::lock_guard` on a static mutex, and the spec now says so rather than assuming it. **The sharpest scope finding came from two lanes:** `audit_run` and `indie_review_dispatch` are the two verbs ANTS-2132's headline names and the two this spec defers — confirmed by reading their sync path, which is `QThread::create` + `worker->wait()` on the GUI thread, so they genuinely still freeze for a whole sweep. § 5 now says so outright and § 7 requires the ROADMAP headline be reworded rather than letting the item close on work it left undone. **One lane found a third test nobody had counted:** `tests/features/mutation_probe/` asserts `rcDelegateWorker(&RemoteControl::cmdMutationProbe)`, so deleting the factory reds a suite named in none of the guard test's invariants; § 6 now carries a table of all three binding tests, found by a whole-tree scrape. **Two orchestrator findings, both caught building the packet rather than by a lane:** the reach-back enumeration used a grep pattern too narrow to see `focusedTerminal()` and `tabCount()`, and the guard spec has four invariants where the draft said three. **Dismissed:** "this design marshals seven call sites" — true of the distinct-accessor count, contradicted by six table rows and nine sites; all three lanes raised it and all three judged it immaterial, since § 2.5 orders enumeration from source. Removed anyway under the census-count rule rather than corrected to a number that rots. **Open questions resolved clean:** `rawRequested` is recomputed inside the tail from `toolName` + args, so `McpCallContext` need not carry it; `DebugLog` is mutex-guarded. **Resolved into a finding:** whether the queue cap counts the in-flight job — it does, stated, because otherwise INV-10's fixture cannot say what it expects. |
 | 2 | 2026-08-26 | 3, cold — identical brief, scrubbed copy and packet rebuilt from disk | **Q1 2 · Q2 1 · Q3 1 · Q4 3** (7 verified / 7 fixed / 0 dismissed) | **Seven verified, seven fixed. Cap reached (2 for a spec); shipped to implementation.** **The run's best finding overturned § 1.1's premise.** It said the `QThread::wait()` join is what makes today's off-thread `MainWindow` access safe. False: `workspace_search` and `cited_by` are `Required`, the dispatcher refuses a `Required` verb with no `caller_cwd`, and their registration comments say the fallback is therefore unreachable. The hazard is real but arrives elsewhere — `ants::resolveCallerCwdRoot` walks the tab list on the branch where `caller_cwd` IS supplied, and `feedback_query` is `Required`, `rcDelegate`, and reaches it. § 1.1 rewritten around what actually holds. **All three lanes found the second:** § 2.5 exempted `remotecontrol_terminal.cpp` as a file, and that file holds `cmdFindSources` (`Required`, `rcDelegate`) and the `cmdRoadmapLogPass*` helpers `roadmap_log` calls — all off-thread. INV-6's scrape would have skipped exactly the bodies it exists to watch. Exemption is now per body, derived from the registration table. No live race today: none of that file's current reach-backs sit in those bodies. **Five of the seven landed on loop 1's own fixes** — a high share, so the run is oscillating rather than converging, and the cap is the right exit. INV-5 still keyed on factory provenance after loop 1 made `RcHandler` directly constructible for tests; `onGuiThread` had no refusal channel though loop 1's shutdown rule requires one, so nine call sites would each have invented an answer; loop 1's harness fallback sanctioned re-cutting runtime invariants as scrapes that cannot falsify them; and INV-3's reworded test no longer reached the only two verbs that spin a `QEventLoop`. INV-8 gained the clause that can catch § 2.6's refuse-then-join ordering, which INV-7's scrape cannot see. **Disclosure:** two lanes reported that an unscoped `workspace_search` returned a truncated headline from the unscrubbed loop-log table; both say they read no further and used nothing from it. Scrubbing the copy does not stop a lane's search reaching the original. |
+| 3 | 2026-09-13 | 3, cold — genre pinned `spec`; first loop of the gate on the 2026-09-13 amendment (§ 1.2, § 2.7, § 2.8, INV-11..16) | **Q1 1 · Q2 2 · Q3 1 · Q4 2** (6 verified / 6 fixed / 1 dismissed) | **Six verified, six fixed; loop 2 of this run dispatched.** Two lanes found INV-15 could not catch an unlatched `reply`: the first reply disconnects, so a second writes nothing either way. It now counts trace entries. INV-16's `QThread::finished` check passed on the `async:true` branch alone; it now wants one per branch. § 2.7's route rule and INV-13 keyed on factory spelling, which misses inline `RcHandler{` twins that ANTS-4682 moved off-thread; both now key on the `RcHandler` overload, and § 2.4's inline-lambda sentence was corrected with them. § 2.8 now builds the context as the off-thread branch does, because `finishToolDispatch` skips its transforms when `toolHandled` is false. § 2.8 now states that a second same-root synchronous `audit_run` is refused `already_running`. § 7 now lists the guard spec and the `audit_run` comment that still say it freezes. **Dismissed:** § 1.2's census, raised by two lanes because the packet omitted `roadmapWriteTarget`. Its callers are all `roadmap_log` handlers, so the claim holds; the gap was the packet's. Out of scope, filed separately: three pre-existing copies elsewhere of "every hand-written inline lambda" runs on the GUI thread. |
