@@ -71,14 +71,20 @@ the `hasImage()` branch and **before** the plain-text fallback.
   invariant holds the documented contract, not an observed failure, and the
   cost is one branch.
   *Test:* `NullMimeDataGuardedBeforeAnyDereference`.
+- **INV-7** (ANTS-5077) — in the raster (`hasImage()`) branch, the block
+  run after `img.save(filename)` succeeds narrows the saved file to
+  owner-only with `setOwnerOnlyPerms(filename)`, pastes
+  `shellQuote(filename)`, and emits `imagePasted`. `imagePasted` is emitted
+  nowhere else in `terminalwidget.cpp`, so a failed save announces nothing.
+  *Test:* `RasterPasteIsPrivateQuotedAndAnnouncedOnSave`.
 
 ## Scope
 
-The raster (`hasImage()`) path is not exercised here. Driving it needs a
+The raster (`hasImage()`) path is not driven here. Driving it needs a
 live `QClipboard` with an `image/png` payload and a constructed
-`TerminalWidget` — a QOpenGLWidget with a live PTY — and this fix does
-not change that path. INV-5's ordering check is what pins the two
-branches' relationship.
+`TerminalWidget` — a QOpenGLWidget with a live PTY. INV-5's ordering check
+pins the two branches' relationship, and INV-7 is a scrape of the raster
+branch's save block.
 
 ## Red-first proof
 

@@ -70,6 +70,19 @@ for security-relevant changes.
 
 ### Fixed
 
+- **In broadcast mode, Ctrl key combinations and accepted suggestions now reach every pane** (ANTS-5077)
+  Ctrl+C, Ctrl+arrows and accepting an autocomplete suggestion went only
+  to the focused pane, and did not clear a highlighted selection.
+
+- **A pasted screenshot's path works at the prompt even when the paste folder has spaces, and the saved file is private to you** (ANTS-5077)
+  The saved screenshot's path is now quoted like a copied image file's,
+  the file is readable only by you, and nothing is announced when saving
+  fails.
+
+- **A tab whose shell failed to start no longer behaves as if a shell were running** (ANTS-5077)
+
+- **Turning on the underline debug log no longer slows output, and the log stops growing past a fixed size** (ANTS-5076)
+
 - **Resizing the window no longer glues together words that were split across two lines** (ANTS-5076)
   When a line wrapped exactly at a space, resizing dropped that space and
   the words on either side ran together.

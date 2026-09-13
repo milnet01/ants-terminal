@@ -170,6 +170,39 @@ TEST(ImagePasteUriList, NullMimeDataGuardedBeforeAnyDereference) {
     }
 }
 
+// INV-7 (ANTS-5077) — the raster branch's save-success block is the only
+// place a pasted screenshot is made private, pasted and announced.
+TEST(ImagePasteUriList, RasterPasteIsPrivateQuotedAndAnnouncedOnSave) {
+    const QString src = readTerminalWidgetSource();
+    if (src.isEmpty()) return;
+
+    const QString head = QStringLiteral("if (img.save(filename)) {");
+    const int start = src.indexOf(head);
+    CHECK(start > 0, "the raster branch's img.save(filename) block was not "
+                     "found — handler restructured?");
+    if (start <= 0) return;
+
+    // Brace-match from the block's opening '{' to its closing '}'.
+    int depth = 0;
+    int end = -1;
+    for (int i = start + head.size() - 1; i < src.size(); ++i) {
+        if (src.at(i) == QLatin1Char('{')) ++depth;
+        else if (src.at(i) == QLatin1Char('}') && --depth == 0) { end = i; break; }
+    }
+    CHECK(end > start, "the img.save(filename) block has no closing brace");
+    if (end <= start) return;
+    const QString block = src.mid(start, end - start);
+
+    CHECK(block.contains(QStringLiteral("setOwnerOnlyPerms(filename)")),
+          "ANTS-5077: a pasted screenshot must be narrowed to owner-only");
+    CHECK(block.contains(QStringLiteral("shellQuote(filename)")),
+          "ANTS-5077: the pasted screenshot path must go through shellQuote()");
+    CHECK(block.contains(QStringLiteral("emit imagePasted(img);")),
+          "ANTS-5077: imagePasted must be emitted inside the save-success block");
+    CHECK(src.count(QStringLiteral("emit imagePasted(")) == 1,
+          "ANTS-5077: imagePasted must be emitted only once, after a good save");
+}
+
 TEST(ImagePasteUriList, HandlerWiredAfterRasterBranch) {
     const QString src = readTerminalWidgetSource();
     if (src.isEmpty()) return;

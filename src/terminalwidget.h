@@ -508,6 +508,10 @@ private:
     // keystroke / response-callback / paste call sites route through
     // here.
     void ptyWrite(const QByteArray &data);
+    // ANTS-5077 — the one ending for a key sent to the shell: clears a stale
+    // selection, writes, and copies the bytes to the other panes in
+    // broadcast mode. keyPressEvent sends keys through here only.
+    void sendKeyData(const QByteArray &data);
 
     // "Is a PTY available to write to?" — true once startShell() has
     // succeeded. Call sites must guard on this rather than m_vtStream

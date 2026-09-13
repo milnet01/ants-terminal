@@ -280,16 +280,13 @@ public:
     // Alt screen active (vim, htop, etc.)
     bool altScreenActive() const { return m_altScreenActive; }
 
-    // Scrollback-insert pause. When true, lines that scroll off the top of
-    // the screen are NOT pushed into scrollback — they're just dropped.
-    // The TerminalWidget sets this while the user is scrolled up into
-    // history so that TUI-redraw traffic (Claude Code, spinners, progress
-    // bars that re-emit their content via cursor movement on the main
-    // screen) doesn't interleave intermediate frames into scrollback and
-    // shift the user's reading position. Scrollback growth resumes when
-    // the user scrolls back to the bottom. This is a policy knob, not a
-    // mode-toggle: grid semantics are unchanged while paused; we simply
-    // choose not to persist lines that are about to fall off.
+    // Scrollback-insert pause. The TerminalWidget sets this while the user is
+    // scrolled up into history. Lines that scroll off the top are STILL
+    // pushed into scrollback while paused: the flag only switches off the
+    // post-full-clear doubling guard (suppressForDoublingGuard in the scroll
+    // path), so no line is dropped from under the reader. Grid semantics are
+    // otherwise unchanged. (ANTS-5076: this comment used to say paused lines
+    // were dropped.)
     void setScrollbackInsertPaused(bool paused) { m_scrollbackInsertPaused = paused; }
     bool scrollbackInsertPaused() const { return m_scrollbackInsertPaused; }
 

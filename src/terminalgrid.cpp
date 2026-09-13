@@ -17,7 +17,10 @@
 
 // ANTS-1792 — C++20 __VA_OPT__ instead of the GNU `, ##__VA_ARGS__`
 // comma-elision extension (clang -Wgnu-zero-variadic-macro-arguments).
-#define DBGLOG(fmt, ...) do { if (m_debugLog && m_debugFile) { fprintf(m_debugFile, fmt "\n" __VA_OPT__(,) __VA_ARGS__); fflush(m_debugFile); } } while(0)
+// ANTS-5076 — the opt-in SGR log is buffered (no flush per line, it ran once
+// per underlined character) and stops growing past kDebugSgrLogCapBytes.
+static constexpr long kDebugSgrLogCapBytes = 32L * 1024 * 1024;
+#define DBGLOG(fmt, ...) do { if (m_debugLog && m_debugFile && ftell(m_debugFile) < kDebugSgrLogCapBytes) { fprintf(m_debugFile, fmt "\n" __VA_OPT__(,) __VA_ARGS__); } } while(0)
 
 void TerminalGrid::setDebugLog(bool enabled) {
     m_debugLog = enabled;

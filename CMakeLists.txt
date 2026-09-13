@@ -1813,6 +1813,9 @@ if(ANTS_TESTS)
                 tests/features/session_capture_perms/test_session_capture_perms.cpp
                 # ANTS-3828 — copied image FILE pastes its path, not a file:// URI.
                 tests/features/image_paste_uri_list/test_image_paste_uri_list.cpp
+                # ANTS-5077 — keys reach the shell through sendKeyData only; a failed
+                # shell start leaves no stream behind (source-scrape).
+                tests/features/terminalwidget_input_contracts/test_terminalwidget_input_contracts.cpp
                 tests/features/tab_rename_pin/test_tab_rename_pin.cpp
                 tests/features/confirm_close_with_processes/test_confirm_close_with_processes.cpp
                 tests/features/help_about_menu/test_help_about_menu.cpp

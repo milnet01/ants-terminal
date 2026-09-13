@@ -629,6 +629,16 @@ void TerminalWidget::ptyWrite(const QByteArray &data) {
                               Q_ARG(QByteArray, data));
 }
 
+void TerminalWidget::sendKeyData(const QByteArray &data) {
+    // ANTS-5077 — every key that reaches the shell ends the same way: a stale
+    // selection is cleared and broadcast mode copies the bytes to the other
+    // panes. Ctrl+arrows, Ctrl+letters and autocomplete used to skip both,
+    // so broadcast sent Ctrl+C to one pane only.
+    if (m_hasSelection) clearSelection();
+    ptyWrite(data);
+    if (m_broadcastCallback) m_broadcastCallback(this, data);
+}
+
 bool TerminalWidget::startShell(const QString &workDir, const QString &shell) {
     recalcGridSize();
     int rows = m_grid->rows();
@@ -661,8 +671,13 @@ bool TerminalWidget::startShell(const QString &workDir, const QString &shell) {
                               Q_ARG(int, rows),
                               Q_ARG(int, cols));
     if (!ok) {
-        // Teardown on failure so the widget is in a clean state
-        // (the destructor will wait/quit the thread).
+        // ANTS-5077 — tear the failed stream down now, so hasPty() is false
+        // and nothing is queued to a stream with no shell behind it. The
+        // stream is deleted on the worker (finished → deleteLater above).
+        disconnect(m_vtStream, nullptr, this, nullptr);
+        m_parseThread->quit();
+        m_parseThread->wait();
+        m_vtStream = nullptr;
         return false;
     }
     // Ensure PTY matches grid; resize is blocking-queued so the
@@ -1959,10 +1974,18 @@ void TerminalWidget::keyPressEvent(QKeyEvent *event) {
                     + QDateTime::currentDateTime().toString("yyyyMMdd_HHmmss_zzz")
                     + "_" + uid + ".png";
                 if (img.save(filename)) {
-                    // Insert the filepath into the terminal (respect bracket paste)
-                    pasteToTerminal(filename.toUtf8());
+                    // ANTS-5077 — owner-only like the session log, quoted like
+                    // the uri-list path (a configured directory may hold a
+                    // space or `$(`), and announced only once the file
+                    // exists. A file whose permissions cannot be narrowed is
+                    // removed rather than left readable.
+                    if (setOwnerOnlyPerms(filename)) {
+                        pasteToTerminal(shellQuote(filename).toUtf8());
+                        emit imagePasted(img);
+                    } else {
+                        QFile::remove(filename);
+                    }
                 }
-                emit imagePasted(img);
                 return;
             }
         }
@@ -2126,8 +2149,7 @@ void TerminalWidget::keyPressEvent(QKeyEvent *event) {
         } else {
             seq = QByteArrayLiteral("\x16\n");
         }
-        ptyWrite(seq);
-        if (m_broadcastCallback) m_broadcastCallback(this, seq);
+        sendKeyData(seq);
         return;
     }
 
@@ -2136,9 +2158,7 @@ void TerminalWidget::keyPressEvent(QKeyEvent *event) {
     if (m_grid->kittyKeyFlags() > 0) {
         QByteArray kittyData = encodeKittyKey(event);
         if (!kittyData.isEmpty()) {
-            if (m_hasSelection) clearSelection();
-            ptyWrite(kittyData);
-            if (m_broadcastCallback) m_broadcastCallback(this, kittyData);
+            sendKeyData(kittyData);
             return;
         }
         // Fall through to legacy encoding for keys not handled by Kitty
@@ -2146,10 +2166,10 @@ void TerminalWidget::keyPressEvent(QKeyEvent *event) {
 
     // Ctrl+arrow keys — word movement (xterm modifier encoding: CSI 1;5 X)
     if ((mods & Qt::ControlModifier) && !(mods & Qt::ShiftModifier)) {
-        if (key == Qt::Key_Left)  { ptyWrite("\x1B[1;5D"); return; }
-        if (key == Qt::Key_Right) { ptyWrite("\x1B[1;5C"); return; }
-        if (key == Qt::Key_Up)    { ptyWrite("\x1B[1;5A"); return; }
-        if (key == Qt::Key_Down)  { ptyWrite("\x1B[1;5B"); return; }
+        if (key == Qt::Key_Left)  { sendKeyData("\x1B[1;5D"); return; }
+        if (key == Qt::Key_Right) { sendKeyData("\x1B[1;5C"); return; }
+        if (key == Qt::Key_Up)    { sendKeyData("\x1B[1;5A"); return; }
+        if (key == Qt::Key_Down)  { sendKeyData("\x1B[1;5B"); return; }
     }
 
     // Ctrl+key combinations
@@ -2157,12 +2177,12 @@ void TerminalWidget::keyPressEvent(QKeyEvent *event) {
         if (key >= Qt::Key_A && key <= Qt::Key_Z) {
             char ch = static_cast<char>(key - Qt::Key_A + 1);
             data.append(ch);
-            ptyWrite(data);
+            sendKeyData(data);
             return;
         }
-        if (key == Qt::Key_BracketLeft) { data = "\x1B"; ptyWrite(data); return; }
-        if (key == Qt::Key_Backslash)   { data = "\x1C"; ptyWrite(data); return; }
-        if (key == Qt::Key_BracketRight){ data = "\x1D"; ptyWrite(data); return; }
+        if (key == Qt::Key_BracketLeft) { data = "\x1B"; sendKeyData(data); return; }
+        if (key == Qt::Key_Backslash)   { data = "\x1C"; sendKeyData(data); return; }
+        if (key == Qt::Key_BracketRight){ data = "\x1D"; sendKeyData(data); return; }
     }
 
     // Accept autocomplete suggestion with Right arrow (only when suggestion is showing)
@@ -2173,7 +2193,7 @@ void TerminalWidget::keyPressEvent(QKeyEvent *event) {
         int cursorCol = m_grid->cursorCol();
         const Cell &nextCell = cellAtGlobal(cursorLine, cursorCol);
         if (nextCell.codepoint == ' ' || nextCell.codepoint == 0) {
-            ptyWrite(m_currentSuggestion.toUtf8());
+            sendKeyData(m_currentSuggestion.toUtf8());
             m_currentSuggestion.clear();
             update();
             return;
@@ -2283,13 +2303,7 @@ void TerminalWidget::keyPressEvent(QKeyEvent *event) {
     }
 
     if (!data.isEmpty() && hasPty()) {
-        // Clear selection when user types (selection is now stale)
-        if (m_hasSelection)
-            clearSelection();
-        ptyWrite(data);
-        // Broadcast to other terminals if callback is set
-        if (m_broadcastCallback)
-            m_broadcastCallback(this, data);
+        sendKeyData(data);
     }
 }
 
