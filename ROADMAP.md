@@ -7971,6 +7971,12 @@ extends an existing item, that item carries it instead.
   miss; moving it to a worker is a larger change.
   Not started: the async audit worker freed only through a ClaudeIntegration
   slot, and ANTS-2132 section 5 listing verbs that now run off-thread.
+  Progress (2026-09-14): shipped the gh repo view probe low. A gh that
+  fails to start now clears the in-flight flag and caches the failure,
+  and a gh still running after a fixed delay is killed. The flag is
+  cleared by assignment, because build_warning_repo_visibility_null_deref
+  pins the first remove() inside ANTS-1554's pragma block. Test:
+  status_process_start_failure.
   **Layman:** Smaller fixes to how the main window answers Claude and checks git, including a stuck Review Changes button.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lane mainwindow-b).
@@ -7999,6 +8005,18 @@ extends an existing item, that item carries it instead.
   - ElidedLabel, OpaqueMenuBar and OpaqueStatusBar lack Q_OBJECT.
   - Palette placeholder, title-bar accessible names and tab tooltips
     are not wrapped in tr().
+  Progress (2026-09-14): shipped the KWinPositionTracker lows (the first
+  stage frees its QProcess on FailedToStart; the second stage has an
+  errorOccurred handler). MainWindow's copy of the chain gained the same
+  handling under ANTS-5079, so the two copies no longer differ in failure
+  handling. Test: status_process_start_failure.
+  Next, prepared: the BindShortcuts reply medium, the on-demand portal
+  isAvailable medium, the single tab-tooltip writer low, and sending
+  BindShortcuts before sessionReady.
+  Not quick: ElidedLabel, OpaqueMenuBar and OpaqueStatusBar are header-only
+  and not listed in any target, so adding Q_OBJECT needs the headers added
+  to a target's sources for AUTOMOC or the vtable is undefined.
+  Not started: CreateSession timeout, the single request-path slot, tr().
   **Layman:** Smaller window-chrome fixes, including a global hotkey that can silently fail to register.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lane chrome-widgets).
