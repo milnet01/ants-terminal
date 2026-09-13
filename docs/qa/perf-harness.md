@@ -99,6 +99,7 @@ improve while the cache quietly stops working.
 | `bench_widget_search` | the REAL `TerminalWidget::performSearch`, driven through the search bar |
 | `bench_partition_walk` | the test-audit tree walk run on the GUI thread |
 | `bench_drift_lanes` | the four in-process audit lanes run on the GUI thread |
+| `bench_session_save` | `SessionManager::saveSession` on a full scrollback, split into `serialize()` and the write |
 
 Known gaps, not yet covered: scrollback seek, resize reflow, startup time,
 and selection/copy over a large region.

@@ -1466,6 +1466,30 @@ if(ANTS_TESTS)
         LABELS "perf"
         TIMEOUT 120)
 
+    # bench_session_save — wall time of SessionManager::saveSession on a full
+    # scrollback, split into serialize() and the write + fsync + rename
+    # (ANTS-5131 asks for this before moving any of it off the GUI thread).
+    # Links the real SessionManager and TerminalGrid. Writes only inside a temp
+    # XDG_DATA_HOME. ANTS_PERF_SCROLLBACK / ANTS_PERF_COLS size the grid.
+    add_executable(bench_session_save
+        tests/perf/bench_session_save.cpp
+    )
+    target_link_libraries(bench_session_save PRIVATE
+        -Wl,--start-group
+        ants_core_lib ants_vt_lib
+        -Wl,--end-group
+        Qt6::Core Qt6::Gui
+    )
+    target_include_directories(bench_session_save PRIVATE src)
+    target_include_directories(bench_session_save PRIVATE ${CMAKE_SOURCE_DIR}/tests/perf)
+    target_compile_options(bench_session_save PRIVATE
+        -Wall -Wextra -Wpedantic -O2
+    )
+    add_test(NAME session_save COMMAND bench_session_save)
+    set_tests_properties(session_save PROPERTIES
+        LABELS "perf"
+        TIMEOUT 300)
+
     # bench_widget_search — the REAL TerminalWidget::performSearch over a full
     # scrollback (ANTS-2000). bench_search_throughput reproduces the scan over
     # pre-built strings and so never pays for building line text from cells.
