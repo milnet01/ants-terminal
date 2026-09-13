@@ -12,9 +12,12 @@
 #ifndef ANTS_COCHANGEFAMILY_H
 #define ANTS_COCHANGEFAMILY_H
 
+#include <QHash>
 #include <QString>
 #include <QStringList>
 #include <QVector>
+
+#include <set>
 
 namespace CoChangeFamily {
 
@@ -121,6 +124,37 @@ int clampMaxSites(int requested);
 Result assemble(const QVector<RawMatch> &matches,
                 const QVector<Stem> &stems,
                 const Options &opts = {});
+
+// ANTS-3368 § 4 — assemble() fed one raw hit at a time, so the handler can
+// consume rg's stream as it arrives. Holds at most max_sites sites while it
+// runs: a newcomer weaker than every held site by INV-7's order is dropped,
+// and a stronger one evicts the weakest, so the repo-wide candidate set is
+// never resident. assemble() is this with a vector as the source.
+class Assembler {
+public:
+    explicit Assembler(QVector<Stem> stems, const Options &opts = {});
+    void add(const RawMatch &m);
+    // The sites held so far; never more than clampMaxSites(opts.maxSites).
+    int retainedCount() const { return static_cast<int>(m_byKey.size()); }
+    Result finish() const;
+
+private:
+    // INV-7's strength order: run_len descending, then path, then line.
+    struct Rank {
+        int     runLen = 0;
+        QString path;
+        int     line   = 0;
+    };
+    struct StrongerFirst {
+        bool operator()(const Rank &a, const Rank &b) const;
+    };
+    QVector<Stem>                 m_stems;
+    Options                       m_opts;
+    int                           m_cap = 1;
+    QHash<QString, Site>          m_byKey;   // one site per (path, line), INV-6
+    std::set<Rank, StrongerFirst> m_ranked;  // the same sites, weakest last
+    bool                          m_truncated = false;
+};
 
 }  // namespace CoChangeFamily
 

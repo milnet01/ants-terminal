@@ -221,63 +221,84 @@ int clampMaxSites(int requested) {
 
 Result assemble(const QVector<RawMatch> &matches, const QVector<Stem> &stems,
                 const Options &opts) {
-    Result out;
-    if (stems.isEmpty()) return out;
+    Assembler assembler(stems, opts);
+    for (const RawMatch &m : matches) assembler.add(m);
+    return assembler.finish();
+}
+
+bool Assembler::StrongerFirst::operator()(const Rank &a, const Rank &b) const {
+    if (a.runLen != b.runLen) return a.runLen > b.runLen;
+    if (a.path != b.path)     return a.path < b.path;
+    return a.line < b.line;
+}
+
+Assembler::Assembler(QVector<Stem> stems, const Options &opts)
+    : m_stems(std::move(stems)), m_opts(opts),
+      m_cap(clampMaxSites(opts.maxSites)) {}
+
+void Assembler::add(const RawMatch &m) {
+    if (m_stems.isEmpty()) return;
 
     // INV-6 — one row per (path, line). A line matching several stems is
     // owned by the longest run, ties by position in `stems`.
-    QHash<QString, Site> byKey;
-    for (const RawMatch &m : matches) {
-        const Candidate cand =
-            widenToCandidate(m.text, m.matchStart, m.matchEnd);
-        if (cand.name.isEmpty()) continue;
-        const QStringList candWords = splitWords(cand.name);
-        if (candWords.isEmpty()) continue;
+    const Candidate cand = widenToCandidate(m.text, m.matchStart, m.matchEnd);
+    if (cand.name.isEmpty()) return;
+    const QStringList candWords = splitWords(cand.name);
+    if (candWords.isEmpty()) return;
 
-        int bestIdx = -1;
-        Run bestRun;
-        for (int si = 0; si < stems.size(); ++si) {
-            const Run r = longestRun(stems.at(si).words, candWords);
-            if (r.len <= 0 || r.len < stems.at(si).minRun) continue;
-            if (r.len > bestRun.len) {   // strict: first stem wins a tie
-                bestRun = r;
-                bestIdx = si;
-            }
+    int bestIdx = -1;
+    Run bestRun;
+    for (int si = 0; si < m_stems.size(); ++si) {
+        const Run r = longestRun(m_stems.at(si).words, candWords);
+        if (r.len <= 0 || r.len < m_stems.at(si).minRun) continue;
+        if (r.len > bestRun.len) {   // strict: first stem wins a tie
+            bestRun = r;
+            bestIdx = si;
         }
-        if (bestIdx < 0) continue;
-
-        Site s;
-        s.path   = m.path;
-        s.line   = m.line;
-        s.stem   = stems.at(bestIdx).name;
-        s.name   = cand.name;
-        s.role   = classifyRole(m.text, cand);
-        s.run    = stems.at(bestIdx).words.mid(bestRun.stemStart, bestRun.len);
-        s.runLen = bestRun.len;
-        s.text   = clipUtf8(m.text, opts.maxTextBytes);
-
-        const QString key =
-            s.path + QLatin1Char(':') + QString::number(s.line);
-        const auto it = byKey.constFind(key);
-        if (it == byKey.constEnd() || it->runLen < s.runLen) byKey.insert(key, s);
     }
+    if (bestIdx < 0) return;
 
+    Site s;
+    s.path   = m.path;
+    s.line   = m.line;
+    s.stem   = m_stems.at(bestIdx).name;
+    s.name   = cand.name;
+    s.role   = classifyRole(m.text, cand);
+    s.run    = m_stems.at(bestIdx).words.mid(bestRun.stemStart, bestRun.len);
+    s.runLen = bestRun.len;
+    s.text   = clipUtf8(m.text, m_opts.maxTextBytes);
+
+    const QString key = s.path + QLatin1Char(':') + QString::number(s.line);
+    const Rank rank{s.runLen, s.path, s.line};
+    const auto held = m_byKey.find(key);
+    if (held != m_byKey.end()) {
+        // INV-6 — the longest run owns the row; an equal one keeps the first.
+        if (held->runLen >= s.runLen) return;
+        m_ranked.erase(Rank{held->runLen, held->path, held->line});
+        *held = std::move(s);
+        m_ranked.insert(rank);
+        return;
+    }
+    // INV-7 — at the cap a newcomer is kept only if it is stronger than the
+    // weakest held site, which it evicts. A site is dropped either way.
+    if (m_byKey.size() >= m_cap) {
+        m_truncated = true;
+        const auto weakest = std::prev(m_ranked.end());
+        if (!StrongerFirst{}(rank, *weakest)) return;
+        m_byKey.remove(weakest->path + QLatin1Char(':') +
+                       QString::number(weakest->line));
+        m_ranked.erase(weakest);
+    }
+    m_byKey.insert(key, std::move(s));
+    m_ranked.insert(rank);
+}
+
+Result Assembler::finish() const {
+    Result out;
+    out.truncated = m_truncated;
     QVector<Site> all;
-    all.reserve(byKey.size());
-    for (auto it = byKey.cbegin(); it != byKey.cend(); ++it) all.append(*it);
-
-    // INV-7 — when the cap binds, retain the highest run_len. Sorting by
-    // strength first makes the truncation a prefix of this order.
-    std::sort(all.begin(), all.end(), [](const Site &a, const Site &b) {
-        if (a.runLen != b.runLen) return a.runLen > b.runLen;
-        if (a.path != b.path)     return a.path < b.path;
-        return a.line < b.line;
-    });
-    const int cap = clampMaxSites(opts.maxSites);
-    if (all.size() > cap) {
-        all.resize(cap);
-        out.truncated = true;
-    }
+    all.reserve(m_byKey.size());
+    for (auto it = m_byKey.cbegin(); it != m_byKey.cend(); ++it) all.append(*it);
 
     // INV-6 — final order: file by max run_len desc, then path, then line.
     QHash<QString, int> maxRunPerFile;

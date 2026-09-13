@@ -22,6 +22,7 @@ One per live invariant. INV-8 is withdrawn and has no case.
 | `RoleVocabularyIsClosed` | INV-5 | six roles, that precedence, no seventh |
 | `OrderingIsDeterministic` | INV-6 | one row per `(path, line)`; file order by max `run_len` |
 | `PartialAnswersAreFlagged` | INV-7 | a capped answer says so and keeps the strongest sites |
+| `AssemblerHoldsAtMostMaxSites` | INV-7 (§ 4, ANTS-5127) | fed one hit at a time, `Assembler` never holds more than `max_sites` sites, and still keeps the strongest |
 | `RefusalCodes` | INV-9 | stem charset gate; the handler emits `bad_args` / `rg_failed` |
 | `SeamTuHasNoChromeSymbols` | INV-10 | the seam TU stays pure, so it links into `test_core` alone |
 | `RegistrationAndSchema` | INV-11 | registration, contract table, schema opt-ins |

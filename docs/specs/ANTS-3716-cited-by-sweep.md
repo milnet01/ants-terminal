@@ -194,12 +194,13 @@ window — `waitForStarted(500)`, the hard kill with its terminate/kill grace, t
 stderr cap, and `readAllStandardOutput()`. A helper owning only the start leaves
 `QProcess` in both handlers.
 
-**The helper returns the raw completed run and classifies nothing:** stdout
-bytes, stderr tail, exit code, exit status, and whether it was hard killed.
-Classification stays in each handler, for a reason that is not style —
-`workspace_search`'s classification *reads its parsed matches*, which only exist
-after the handler has parsed the stdout the helper returned, so it cannot move
-into a process-runner even in principle.
+**The helper returns the raw completed run and classifies nothing:** stderr
+tail, exit code, exit status, and whether it was hard killed. Stdout is handed
+to the handler's line callback while rg runs, never returned whole (§ 4;
+corrected 2026-09-13 by ANTS-5127, which built that). Classification stays in
+each handler, for a reason that is not style — `workspace_search`'s
+classification *reads its parsed matches*, which only exist once the handler has
+parsed every line, so it cannot move into a process-runner even in principle.
 
 **And the two verbs must classify differently, which is why a shared classifier
 would be wrong anyway.** Read live, only the crash branch is unconditional

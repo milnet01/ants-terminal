@@ -14,6 +14,10 @@ for security-relevant changes.
 
 ### Changed
 
+- **workspace_search, cited_by and co_change_family now read ripgrep's output line by line instead of holding it whole** (ANTS-5127)
+  co_change_family also keeps only its strongest max_sites sites while it
+  scans, instead of every candidate. Results and counts are unchanged.
+
 - **Searching the terminal's history is more than twice as fast.** (ANTS-2000)
   Each search reads history lines directly instead of one cell at a
   time. What a search finds is unchanged.

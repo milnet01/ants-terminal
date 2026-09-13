@@ -355,6 +355,11 @@ TEST(CitedBy, Inv9OneRgCallSiteAndNoProcessInHandlers) {
     // classification cannot silently migrate into it.
     const std::string rgRun = ants_test::slurpFunctionBody(rc, "struct RgRun");
     expect(!rgRun.empty(), "INV-9: RgRun struct found");
+    // ANTS-5127 — rg's output is handed to the handler one line at a time while
+    // rg runs and is never held whole (ANTS-3716 § 4), so the run result
+    // carries no stdout buffer.
+    expect(rgRun.find("stdoutBytes") == std::string::npos,
+           "ANTS-5127: RgRun holds rg's whole stdout");
     expect(rgRun.find("QJsonObject") == std::string::npos,
            "INV-9: RgRun carries a refusal envelope");
     EXPECT_EQ(0, expect_failures());

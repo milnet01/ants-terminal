@@ -28,7 +28,7 @@ every `file` absolute and fails every cell assertion for the wrong reason.
 | `Inv6ScopeEscapeAndAnchorArityRefuse` | INV-6 | `scope:["../outside"]` → `bad_path`; `anchors:[]` → `bad_args`; paired with a positive control over the same fixture. |
 | `Inv7SortedBeforeCapAndStable` | INV-7 | `cells` is sorted by (anchor, file) and the cap runs after the sort: `cells[0].anchor == "alpha"` on a **single-file** fixture where `zeta` is cited on an earlier line, two files under one anchor in path order, and two truncated calls returning byte-identical envelopes. |
 | `Inv8CappedCellsUncappedFilesCount` | INV-8 | 5 cells over **4 distinct files** with `max_cells:2` → `cells.size()==2`, `cells_count==2`, `truncated:true`, **`files_count==4`**. |
-| `Inv9OneRgCallSiteAndNoProcessInHandlers` | INV-9 | Exactly one `rg.start(` across the RemoteControl TUs; neither handler's body names `QProcess`; the `RgRun` return type carries no refusal envelope. |
+| `Inv9OneRgCallSiteAndNoProcessInHandlers` | INV-9 | Exactly one `rg.start(` across the RemoteControl TUs; neither handler's body names `QProcess`; the `RgRun` return type carries no refusal envelope, and no `stdoutBytes` buffer: rg's output reaches the handler one line at a time (ANTS-5127). |
 | `Inv10FailedRunRefusesWithNoPartialGuard` | INV-10 | `cmdCitedBy` carries **no** `matches.isEmpty()` guard on a failure branch and its `rg_failed` message names this verb. Comments are stripped first — the handler's own comment names the guard it deliberately drops. |
 | `Inv11MissingScopeEntriesArePruned` | INV-11 | A project with no `README.md` / `CLAUDE.md` returns `ok:true` on the **default** call with `scope_resolved:["docs"]`; `scope:["nope"]` → `ok:true`, `scope_resolved:[]`, every anchor unmatched. |
 | `Inv12OverlappingScopeIsDeOverlapped` | INV-12 | `scope:["docs","docs/sub"]` over one matching file under `docs/sub/` → one cell with `count` 1, not 2, and `scope_resolved:["docs"]`. |
@@ -58,8 +58,8 @@ test-only seam that overrides the default ceiling; today it is a stub (sets
 a field `rcRunRg` never reads), so `Ants5052OutputCapRefusesLikeHardKill` is
 expected to fail against the current tree — the run completes normally
 instead of being reported incomplete. The guard case must pass both before
-and after the fix. Out of scope here, filed separately: line-by-line stdout
-parsing and `rg --count`.
+and after the fix. Line-by-line stdout parsing shipped separately (ANTS-5127);
+`rg --count` was not taken, so `count` keeps its de-duplicated meaning.
 
 INV-9 and INV-10 are source scrapes and cannot fail before the code exists:
 INV-9 asserts a refit, and INV-10's trigger is unprovokable from a committable

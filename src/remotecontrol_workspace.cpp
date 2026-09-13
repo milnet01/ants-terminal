@@ -33,6 +33,7 @@
 #include <QMap>
 #include <QSet>
 #include <algorithm>
+#include <functional>
 
 using namespace rcdetail;  // ANTS-3833
 
@@ -40,7 +41,9 @@ namespace {
 
 // ANTS-3716 § 2.4 — the ONE rg call site in this TU (INV-9). Runs a ripgrep
 // invocation to completion — start, wall budget, terminate/kill grace, stderr
-// cap — and returns the raw result.
+// cap — and returns the raw result. ANTS-5127 — stdout is not part of that
+// result: each complete line goes to `onLine` while rg runs, so the stream is
+// never held whole (§ 4).
 //
 // It classifies NOTHING, and that is not style. `workspace_search`'s
 // classification reads its PARSED matches, which only exist after the caller
@@ -50,7 +53,6 @@ namespace {
 // when no matches were parsed, while `cited_by` refuses on any failed run,
 // because a partial cell set is indistinguishable from a complete one.
 struct RgRun {
-    QByteArray stdoutBytes;
     QByteArray stderrTail;        // capped at kWorkspaceSearchStderrCapBytes
     int  exitCode    = 0;
     bool startFailed = false;
@@ -76,7 +78,8 @@ constexpr qint64 kRgStdoutCapBytes = qint64(64) * 1024 * 1024;
 constexpr int kRgReadSliceMs = 50;
 
 RgRun rcRunRg(const QStringList &argv, const QString &workingDir, int budgetMs,
-              qint64 stdoutCapBytes) {
+              qint64 stdoutCapBytes,
+              const std::function<void(const QByteArray &line)> &onLine) {
     RgRun out;
     QProcess rg;
     rg.setWorkingDirectory(workingDir);
@@ -104,13 +107,28 @@ RgRun rcRunRg(const QStringList &argv, const QString &workingDir, int budgetMs,
     // ANTS-1248-INV-5: hard kill via budgetMs — on timeout we terminate(),
     // then grant 200 ms grace, then kill(). ANTS-5052 — stdout is drained as
     // rg writes it, and rg is stopped the same way once it has written more
-    // than stdoutCapBytes, so the output is never held whole past the cap.
-    const auto overCap = [&] {
-        if (stdoutCapBytes <= 0 || out.stdoutBytes.size() <= stdoutCapBytes)
-            return false;
-        out.stdoutBytes.truncate(stdoutCapBytes);
-        out.outputCapped = true;
-        return true;
+    // than stdoutCapBytes. ANTS-5127 — each complete line goes to onLine as it
+    // arrives; only the unfinished line is held.
+    QByteArray pending;
+    qint64 written = 0;
+    // Takes one read of stdout. Returns true once the ceiling is passed; the
+    // bytes past it are dropped, as truncating a whole buffer dropped them.
+    const auto take = [&](const QByteArray &chunk) {
+        qsizetype usable = chunk.size();
+        const bool capped =
+            stdoutCapBytes > 0 && written + usable > stdoutCapBytes;
+        if (capped) usable = static_cast<qsizetype>(stdoutCapBytes - written);
+        written += usable;
+        pending.append(chunk.constData(), usable);
+        qsizetype start = 0;
+        for (qsizetype nl = pending.indexOf('\n'); nl >= 0;
+             nl = pending.indexOf('\n', start)) {
+            onLine(pending.mid(start, nl - start));
+            start = nl + 1;
+        }
+        pending.remove(0, start);
+        if (capped) out.outputCapped = true;
+        return capped;
     };
     QElapsedTimer clock;
     clock.start();
@@ -123,8 +141,7 @@ RgRun rcRunRg(const QStringList &argv, const QString &workingDir, int budgetMs,
             break;
         }
         rg.waitForReadyRead(static_cast<int>(qMin<qint64>(left, kRgReadSliceMs)));
-        out.stdoutBytes += rg.readAllStandardOutput();
-        if (overCap()) {
+        if (take(rg.readAllStandardOutput())) {
             stop = true;
             break;
         }
@@ -136,10 +153,12 @@ RgRun rcRunRg(const QStringList &argv, const QString &workingDir, int budgetMs,
             rg.waitForFinished(kWorkspaceSearchKillGraceMs);
         }
     }
-    if (!out.outputCapped) {
-        out.stdoutBytes += rg.readAllStandardOutput();  // what arrived last
-        overCap();
-    }
+    if (!out.outputCapped)
+        take(rg.readAllStandardOutput());  // what arrived last
+    // rg --json ends every line, so a remainder is a line cut at the ceiling.
+    // It is handed on as the truncated buffer's last line was; the parse drops
+    // it if it is not a whole event.
+    if (!pending.isEmpty()) onLine(pending);
 
     // ANTS-1248-INV-8: stderr cap. Read up to 4 KiB; the CALLER decides
     // whether to emit it — emitting on success leaks path enumeration.
@@ -531,26 +550,11 @@ QJsonDocument RemoteControl::cmdWorkspaceSearch(const QJsonObject &req) {
     }
     argv << QStringLiteral("--") << rgPattern << laneAbs;
 
-    // ANTS-3716 § 2.4 — the process run (start, budget, hard kill, stderr cap)
-    // moved to rcRunRg() so `cited_by` shares one rg call site (INV-9). The
-    // classification below stays here: it reads the parsed `matches`, which do
-    // not exist until this handler has parsed the stdout the helper returned.
-    const RgRun run = rcRunRg(argv, rootCanonical, budgetMs,
-        m_rgStdoutCapOverride > 0 ? m_rgStdoutCapOverride : kRgStdoutCapBytes);
-    if (run.startFailed) {
-        return QJsonDocument(wsErr("rg_failed",
-            QStringLiteral("workspace-search: %1").arg(run.startDiagnosis)));
-    }
-    // ANTS-5052 — a run stopped at the output ceiling is a partial answer,
-    // reported as a hard-killed one is: truncated, in every mode.
-    const bool hardKilled          = run.hardKilled || run.outputCapped;
-    const QByteArray &stderrTail   = run.stderrTail;
-    const QByteArray &stdoutBytes  = run.stdoutBytes;
-
     // rg --json emits one event per line. We want type=="match" events.
     // Each match event has data.path.text, data.line_number, and
-    // data.lines.text. NDJSON-style parse: split on '\n', QJsonDocument
-    // per line.
+    // data.lines.text. ANTS-5127 — rcRunRg hands each line to onLine below
+    // while rg runs, one QJsonDocument per line, so the stream is never held
+    // whole (ANTS-3716 § 4).
     //
     // ANTS-1304: when context > 0, rg also emits type=="context" events
     // around each match. Attribute them to the surrounding match by
@@ -582,7 +586,6 @@ QJsonDocument RemoteControl::cmdWorkspaceSearch(const QJsonObject &req) {
                             // (reset on each begin / end event).
     struct PendingCtx { int line = 0; QString text; };
     QList<PendingCtx> pendingBefore;
-    const QList<QByteArray> lines = stdoutBytes.split('\n');
     // ANTS-3405 — bound the parse loop by the wall budget too, not just the
     // rg process. rg --json over a repo with large data blobs (a ~1.2 MB
     // YAML, per-locale files, *.mo binaries) can emit an enormous match
@@ -595,15 +598,17 @@ QJsonDocument RemoteControl::cmdWorkspaceSearch(const QJsonObject &req) {
     const qint64 totalBudgetMs = static_cast<qint64>(budgetMs) * 2;
     bool parseBudgetExceeded = false;
     int scanCounter = 0;
-    for (const QByteArray &line : lines) {
-        if (line.isEmpty()) continue;
+    // Once the parse budget is blown the rest of the stream is ignored; rg
+    // itself stays bounded by its own wall budget.
+    const auto onLine = [&](const QByteArray &line) {
+        if (parseBudgetExceeded || line.isEmpty()) return;
         if ((++scanCounter & 0x7FF) == 0 && wall.hasExpired(totalBudgetMs)) {
             parseBudgetExceeded = true;
-            break;
+            return;
         }
         QJsonParseError perr{};
         const QJsonDocument doc = QJsonDocument::fromJson(line, &perr);
-        if (perr.error != QJsonParseError::NoError || !doc.isObject()) continue;
+        if (perr.error != QJsonParseError::NoError || !doc.isObject()) return;
         const QJsonObject ev = doc.object();
         const QString evType = ev.value("type").toString();
 
@@ -629,7 +634,7 @@ QJsonDocument RemoteControl::cmdWorkspaceSearch(const QJsonObject &req) {
             }
             lastMatchIdx = -1;
             pendingBefore.clear();
-            continue;
+            return;
         }
 
         // ANTS-1304: type=="context" — buffer if no prior match in this
@@ -652,21 +657,21 @@ QJsonDocument RemoteControl::cmdWorkspaceSearch(const QJsonObject &req) {
                     after.append(c);
                     prim["context_after"] = after;
                     matches.replace(lastMatchIdx, prim);
-                    continue;
+                    return;
                 }
             }
             pendingBefore.append({ctxLine, ctxText});
-            continue;
+            return;
         }
 
-        if (evType != QLatin1String("match")) continue;
+        if (evType != QLatin1String("match")) return;
         ++seenMatchEvents;
         // ANTS-3549 — files_only: attribute the match to its file and skip
         // building the row. The increment sits BEFORE the max_results cap so
         // a file's count reflects ALL its matches, not just the first N.
         if (filesOnly) {
             if (filesOnlyCurIdx >= 0) ++filesOnlyHits[filesOnlyCurIdx];
-            continue;
+            return;
         }
         // ANTS-4388 — harvest the distinct matched substrings. rg --json
         // already carries each match's own text in data.submatches[].match,
@@ -699,7 +704,7 @@ QJsonDocument RemoteControl::cmdWorkspaceSearch(const QJsonObject &req) {
                 ++distinctHits[idx];
                 distinctFiles[idx].insert(mpath);
             }
-            continue;
+            return;
         }
         // ANTS-3547 — offset cursor: skip the first `offset` matches. Placed
         // after ++seenMatchEvents (the total count stays uncapped and
@@ -707,8 +712,8 @@ QJsonDocument RemoteControl::cmdWorkspaceSearch(const QJsonObject &req) {
         // within the same cap). Context lines buffered for a skipped match are
         // bounded out by the per-match line-distance filter when the first
         // kept match drains pendingBefore.
-        if (seenMatchEvents <= offset) continue;
-        if (matches.size() >= maxResults) { truncated = true; continue; }
+        if (seenMatchEvents <= offset) return;
+        if (matches.size() >= maxResults) { truncated = true; return; }
 
         const QJsonObject data = ev.value("data").toObject();
         QString path = data.value("path").toObject().value("text").toString();
@@ -752,7 +757,23 @@ QJsonDocument RemoteControl::cmdWorkspaceSearch(const QJsonObject &req) {
         }
         matches.append(m);
         lastMatchIdx = matches.size() - 1;
+    };
+
+    // ANTS-3716 § 2.4 — the process run (start, budget, hard kill, stderr cap)
+    // lives in rcRunRg() so `cited_by` shares one rg call site (INV-9). The
+    // classification below stays here: it reads the parsed `matches`, which do
+    // not exist until every line has been through onLine.
+    const RgRun run = rcRunRg(argv, rootCanonical, budgetMs,
+        m_rgStdoutCapOverride > 0 ? m_rgStdoutCapOverride : kRgStdoutCapBytes,
+        onLine);
+    if (run.startFailed) {
+        return QJsonDocument(wsErr("rg_failed",
+            QStringLiteral("workspace-search: %1").arg(run.startDiagnosis)));
     }
+    // ANTS-5052 — a run stopped at the output ceiling is a partial answer,
+    // reported as a hard-killed one is: truncated, in every mode.
+    const bool hardKilled        = run.hardKilled || run.outputCapped;
+    const QByteArray &stderrTail = run.stderrTail;
 
     if (run.crashed) {
         QJsonObject o = wsErr("rg_failed",
@@ -1400,7 +1421,52 @@ QJsonDocument RemoteControl::cmdCitedBy(const QJsonObject &req) {
         const int remainingMs = budgetMs - static_cast<int>(wall.elapsed());
         const qint64 capBytes =
             m_rgStdoutCapOverride > 0 ? m_rgStdoutCapOverride : kRgStdoutCapBytes;
-        const RgRun run = rcRunRg(argv, rootCanonical, qMax(1, remainingMs), capBytes);
+        // ANTS-5127 — every line is tallied as rg writes it. A run that then
+        // fails still refuses below, and INV-10 discards what was tallied.
+        bool parseBudgetBlown = false;
+        const auto onLine = [&](const QByteArray &line) {
+            if (parseBudgetBlown || line.isEmpty()) return;
+            if ((++scanCounter & 0x7FF) == 0 && wall.hasExpired(totalBudgetMs)) {
+                parseBudgetBlown = true;
+                return;
+            }
+            QJsonParseError perr{};
+            const QJsonDocument doc = QJsonDocument::fromJson(line, &perr);
+            if (perr.error != QJsonParseError::NoError || !doc.isObject()) return;
+            const QJsonObject ev = doc.object();
+            if (ev.value(QStringLiteral("type")).toString() != QLatin1String("match"))
+                return;
+
+            const QJsonObject data = ev.value(QStringLiteral("data")).toObject();
+            QString path = data.value(QStringLiteral("path")).toObject()
+                               .value(QStringLiteral("text")).toString();
+            if (path.startsWith(rootCanonical + QLatin1Char('/')))
+                path = path.mid(rootCanonical.size() + 1);
+            const int lineNo = data.value(QStringLiteral("line_number")).toInt();
+            // § 2.6 — `count` is OCCURRENCES: the summed length of submatches[],
+            // so an anchor named twice on one line counts 2. The two readings
+            // are one `++` apart and the field name does not disambiguate them.
+            const int hits =
+                qMax(1, data.value(QStringLiteral("submatches")).toArray().size());
+
+            // Before the ceiling check, on purpose (INV-2 / INV-8): these two
+            // are what survive a truncated collection.
+            matchedAnchors.insert(anchor);
+            matchingFiles.insert(path);
+
+            QMap<QString, CitedByCell> &files = byAnchor[anchor];
+            const auto it = files.find(path);
+            if (it == files.end()) {
+                if (collectedCells >= kCitedByCellCeiling) { truncated = true; return; }
+                files.insert(path, CitedByCell{hits, lineNo});
+                ++collectedCells;
+            } else {
+                it->count += hits;
+                if (lineNo < it->firstLine) it->firstLine = lineNo;
+            }
+        };
+        const RgRun run = rcRunRg(argv, rootCanonical, qMax(1, remainingMs), capBytes,
+                                  onLine);
 
         // INV-10 — ANY failed run refuses, and cells tallied from earlier
         // anchors are discarded. This drops the `matches.isEmpty()` guard
@@ -1448,52 +1514,14 @@ QJsonDocument RemoteControl::cmdCitedBy(const QJsonObject &req) {
             return QJsonDocument(o);
         }
 
-        const QList<QByteArray> lines = run.stdoutBytes.split('\n');
-        for (const QByteArray &line : lines) {
-            if (line.isEmpty()) continue;
-            if ((++scanCounter & 0x7FF) == 0 && wall.hasExpired(totalBudgetMs)) {
-                QJsonObject o = wsErr("rg_failed",
-                    QStringLiteral("cited_by: match stream too large to parse within "
-                                   "the %1 s wall budget").arg(budgetSec));
-                o["timeout_sec"] = budgetSec;
-                o["hint"] = QStringLiteral(
-                    "narrow `scope`, send fewer anchors, or raise timeout_sec (max 30)");
-                return QJsonDocument(o);
-            }
-            QJsonParseError perr{};
-            const QJsonDocument doc = QJsonDocument::fromJson(line, &perr);
-            if (perr.error != QJsonParseError::NoError || !doc.isObject()) continue;
-            const QJsonObject ev = doc.object();
-            if (ev.value(QStringLiteral("type")).toString() != QLatin1String("match"))
-                continue;
-
-            const QJsonObject data = ev.value(QStringLiteral("data")).toObject();
-            QString path = data.value(QStringLiteral("path")).toObject()
-                               .value(QStringLiteral("text")).toString();
-            if (path.startsWith(rootCanonical + QLatin1Char('/')))
-                path = path.mid(rootCanonical.size() + 1);
-            const int lineNo = data.value(QStringLiteral("line_number")).toInt();
-            // § 2.6 — `count` is OCCURRENCES: the summed length of submatches[],
-            // so an anchor named twice on one line counts 2. The two readings
-            // are one `++` apart and the field name does not disambiguate them.
-            const int hits =
-                qMax(1, data.value(QStringLiteral("submatches")).toArray().size());
-
-            // Before the ceiling check, on purpose (INV-2 / INV-8): these two
-            // are what survive a truncated collection.
-            matchedAnchors.insert(anchor);
-            matchingFiles.insert(path);
-
-            QMap<QString, CitedByCell> &files = byAnchor[anchor];
-            const auto it = files.find(path);
-            if (it == files.end()) {
-                if (collectedCells >= kCitedByCellCeiling) { truncated = true; continue; }
-                files.insert(path, CitedByCell{hits, lineNo});
-                ++collectedCells;
-            } else {
-                it->count += hits;
-                if (lineNo < it->firstLine) it->firstLine = lineNo;
-            }
+        if (parseBudgetBlown) {
+            QJsonObject o = wsErr("rg_failed",
+                QStringLiteral("cited_by: match stream too large to parse within "
+                               "the %1 s wall budget").arg(budgetSec));
+            o["timeout_sec"] = budgetSec;
+            o["hint"] = QStringLiteral(
+                "narrow `scope`, send fewer anchors, or raise timeout_sec (max 30)");
+            return QJsonDocument(o);
         }
     }
 
@@ -3528,34 +3556,21 @@ QJsonDocument RemoteControl::cmdCoChangeFamily(const QJsonObject &req) {
     for (const QString &p : patterns) argv << QStringLiteral("-e") << p;
     argv << QStringLiteral("--") << rootCanonical;
 
-    const RgRun run = rcRunRg(argv, rootCanonical, kWorkspaceSearchHardKillMs,
-        m_rgStdoutCapOverride > 0 ? m_rgStdoutCapOverride : kRgStdoutCapBytes);
-    // ANTS-5052 — a run stopped at the output ceiling is partial: reported
-    // through `truncated`, as a hard kill is.
-    const bool cutShort = run.hardKilled || run.outputCapped;
-    if (run.startFailed || run.crashed) {
-        return QJsonDocument(wsErr("rg_failed",
-            QStringLiteral("co_change_family: %1")
-                .arg(run.startFailed ? run.startDiagnosis
-                                     : QStringLiteral("ripgrep crashed mid-scan"))));
+    CoChangeFamily::Options opts;
+    if (req.contains(QStringLiteral("max_sites"))) {
+        opts.maxSites = CoChangeFamily::clampMaxSites(
+            req.value(QStringLiteral("max_sites")).toInt());
     }
-    // Exit 1 is ripgrep's "no matches" — a valid empty answer, not a failure.
-    // A hard kill is a PARTIAL answer and is reported through `truncated`;
-    // rg_failed is reserved for a scanner that did not run (INV-7).
-    if (run.exitCode != 0 && run.exitCode != 1 && !cutShort) {
-        return QJsonDocument(wsErr("rg_failed",
-            QStringLiteral("co_change_family: ripgrep exited %1")
-                .arg(run.exitCode)));
-    }
-
-    QVector<CoChangeFamily::RawMatch> raws;
-    const QList<QByteArray> events = run.stdoutBytes.split('\n');
-    for (const QByteArray &evBytes : events) {
-        if (evBytes.isEmpty()) continue;
+    // ANTS-3368 § 4, ANTS-5127 — each event is parsed and fed to the bounded
+    // assembler as rg writes it, so neither the stream nor every candidate
+    // site is held.
+    CoChangeFamily::Assembler assembler(stems, opts);
+    const auto onLine = [&](const QByteArray &evBytes) {
+        if (evBytes.isEmpty()) return;
         const QJsonObject ev = QJsonDocument::fromJson(evBytes).object();
         if (ev.value(QStringLiteral("type")).toString() !=
             QLatin1String("match")) {
-            continue;
+            return;
         }
         const QJsonObject data = ev.value(QStringLiteral("data")).toObject();
         QString path = data.value(QStringLiteral("path"))
@@ -3585,17 +3600,32 @@ QJsonDocument RemoteControl::cmdCoChangeFamily(const QJsonObject &req) {
                 QString::fromUtf8(textUtf8.left(bs)).size());
             m.matchEnd = static_cast<int>(
                 QString::fromUtf8(textUtf8.left(be)).size());
-            raws.append(m);
+            assembler.add(m);
         }
+    };
+
+    const RgRun run = rcRunRg(argv, rootCanonical, kWorkspaceSearchHardKillMs,
+        m_rgStdoutCapOverride > 0 ? m_rgStdoutCapOverride : kRgStdoutCapBytes,
+        onLine);
+    // ANTS-5052 — a run stopped at the output ceiling is partial: reported
+    // through `truncated`, as a hard kill is.
+    const bool cutShort = run.hardKilled || run.outputCapped;
+    if (run.startFailed || run.crashed) {
+        return QJsonDocument(wsErr("rg_failed",
+            QStringLiteral("co_change_family: %1")
+                .arg(run.startFailed ? run.startDiagnosis
+                                     : QStringLiteral("ripgrep crashed mid-scan"))));
+    }
+    // Exit 1 is ripgrep's "no matches" — a valid empty answer, not a failure.
+    // A hard kill is a PARTIAL answer and is reported through `truncated`;
+    // rg_failed is reserved for a scanner that did not run (INV-7).
+    if (run.exitCode != 0 && run.exitCode != 1 && !cutShort) {
+        return QJsonDocument(wsErr("rg_failed",
+            QStringLiteral("co_change_family: ripgrep exited %1")
+                .arg(run.exitCode)));
     }
 
-    CoChangeFamily::Options opts;
-    if (req.contains(QStringLiteral("max_sites"))) {
-        opts.maxSites = CoChangeFamily::clampMaxSites(
-            req.value(QStringLiteral("max_sites")).toInt());
-    }
-    const CoChangeFamily::Result res =
-        CoChangeFamily::assemble(raws, stems, opts);
+    const CoChangeFamily::Result res = assembler.finish();
 
     // assemble() already ordered the sites, so grouping is a single pass:
     // every row of one file is contiguous.

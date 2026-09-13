@@ -288,6 +288,42 @@ TEST(CoChangeFamily, PartialAnswersAreFlagged) {
     EXPECT_EQ(clampMaxSites(200), 200);
 }
 
+// ANTS-3368 § 4 (INV-7's retention, ANTS-5127) — fed one hit at a time, the
+// assembler never holds more than max_sites sites, and still keeps the
+// strongest. Weak (2-word run) sites vastly outnumber strong (3-word run)
+// ones, and the strong ones arrive late, so an assembler that held every
+// candidate and sorted at the end is the only way this test's bound fails.
+TEST(CoChangeFamily, AssemblerHoldsAtMostMaxSites) {
+    const QVector<Stem> stems = {stemOf("claudeMcpEnabled", 2)};
+    Options opts;
+    opts.maxSites = 5;
+    Assembler assembler(stems, opts);
+
+    QStringList strongPaths;
+    for (int i = 0; i < 40; ++i) {
+        const QByteArray path = QStringLiteral("src/f%1.cpp")
+                                    .arg(i, 2, 10, QLatin1Char('0')).toLatin1();
+        const bool strong = (i % 10 == 7);
+        if (strong) strongPaths << QString::fromLatin1(path);
+        assembler.add(strong
+            ? mk(path.constData(), 1, "  claudeMcpEnabled();", 2, 18)
+            : mk(path.constData(), 1, "  setMcpEnabled(true);", 2, 15));
+        ASSERT_LE(assembler.retainedCount(), opts.maxSites)
+            << "the assembler held more than max_sites after hit " << i;
+    }
+
+    const Result r = assembler.finish();
+    EXPECT_TRUE(r.truncated);
+    // Every strong site survives, then the weak site with the smallest path.
+    ASSERT_EQ(r.sites.size(), 5);
+    for (int i = 0; i < strongPaths.size(); ++i) {
+        EXPECT_EQ(r.sites[i].path, strongPaths[i]);
+        EXPECT_EQ(r.sites[i].runLen, 3);
+    }
+    EXPECT_EQ(r.sites[4].path, QStringLiteral("src/f00.cpp"));
+    EXPECT_EQ(r.sites[4].runLen, 2);
+}
+
 // INV-9 — the refusal gates, and the handler emits the documented codes.
 TEST(CoChangeFamily, RefusalCodes) {
     EXPECT_TRUE(isValidStem(QStringLiteral("claudeMcpEnabled")));
