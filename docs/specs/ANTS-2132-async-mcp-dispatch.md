@@ -1,7 +1,8 @@
 # ANTS-2132 — Dispatch MCP verbs off the GUI thread
 
-**Status:** spec draft (2026-09-13). § 1.2, § 2.7 and § 2.8 amend the design
-accepted on 2026-08-26 and await review. The rest is implemented
+**Status:** accepted (2026-09-13). Cold-eyes loops 3 + 4 folded; cap reached.
+§ 1.2, § 2.7 and § 2.8 amend the design accepted on 2026-08-26 and are not yet
+built. The rest is implemented
 (`ClaudeIntegration::postToolDispatch`, `tests/features/mcp_async_dispatch/`).
 **Kind:** perf.
 **Source:** ROADMAP.md ANTS-2132 (user report of intermittent whole-window
@@ -263,8 +264,8 @@ would leave INV-6 unsatisfiable.
 
 ```cpp
 // namespace ants — runs f on the GUI thread. Direct call when already there;
-// a blocking queued invocation otherwise. nullopt means the dispatcher is
-// shutting down and refused the marshal (§ 2.6).
+// a blocking queued invocation otherwise. nullopt means the calling worker's
+// own dispatcher is shutting down and refused the marshal (§ 2.6).
 template <class F>
 auto onGuiThread(F &&f) -> std::optional<std::invoke_result_t<F>>;
 ```
@@ -306,9 +307,12 @@ than hard-coding a list**, or it rots the first time a verb moves.
   in-flight job is stated because otherwise the boundary is off by one and
   INV-10's fixture cannot say what it expects.
 - **Shutdown — the one place the GUI thread does wait on the worker.**
-  `ClaudeIntegration`'s destructor stops accepting jobs, refuses any in-flight
-  `onGuiThread` marshal rather than serving it, then quits the worker's event
-  loop and joins it. Refusing the marshal first is what keeps the join from
+  `ClaudeIntegration`'s destructor stops accepting jobs, refuses in-flight
+  `onGuiThread` marshals from its own worker rather than serving them, then
+  quits the worker's event loop and joins it. **Only its own worker's:** File →
+  New Window builds a second `MainWindow`, which deletes itself on close along
+  with its own `ClaudeIntegration`, and the first window's marshals must still
+  be served afterwards (INV-17). Refusing the marshal first is what keeps the join from
   deadlocking against a worker parked in a `BlockingQueuedConnection`. A result
   arriving after shutdown has begun is dropped, not written. INV-7 is scoped to
   the dispatch path for exactly this reason.
@@ -326,10 +330,11 @@ is § 1.2's list. These stay inline:
 - `tab-list`, whose twin registers through the bare `ToolHandler` overload.
 - Every route with no MCP twin.
 
-`RemoteControl` cannot read `ClaudeIntegration`'s registry, because
-`ants_core_lib` sits below the Claude library. So the set is written out once,
-in `static bool RemoteControl::routeRunsOnDispatchWorker(const QString &cmd)`,
-and INV-13 keeps it equal to the rule.
+`RemoteControl` is built and tested without a `ClaudeIntegration`, and
+`ants_core_lib` does not link the Claude library, so it does not ask the
+registry. The set is written out once, in
+`static bool RemoteControl::routeRunsOnDispatchWorker(const QString &cmd)`, and
+INV-13 keeps it equal to the rule.
 
 **The worker entry.** `ClaudeIntegration` gains a public method:
 
@@ -450,9 +455,9 @@ branch already works this way.
   request**. The destructor's shutdown join (§ 2.6) is the sole exception and
   runs only after job acceptance has stopped. *Test:*
   `tests/features/mcp_verb_offthread_guard/` — source scrape asserting that the
-  only `wait()` on the worker in `claudeintegration.cpp` is lexically inside
-  `~ClaudeIntegration`, and that `finishToolDispatch` and the dispatch path
-  contain none.
+  only join of the worker in `claudeintegration.cpp` is in
+  `shutdownDispatchWorker`, reached only from `~ClaudeIntegration`, and that
+  `finishToolDispatch` and the dispatch path contain none.
 - **INV-8** — Exactly one JSON-RPC reply is written per request carrying an
   `id`, and none is written after the socket is gone or after shutdown has
   begun. *Test:* `tests/features/mcp_async_dispatch/`, two clauses — (a)
@@ -517,6 +522,13 @@ branch already works this way.
   The
   whole-file scrape it replaces stays green on `indie_review_dispatch`'s join
   whatever `audit_run` does.
+- **INV-17** — Destroying one `ClaudeIntegration` refuses `onGuiThread`
+  marshals from its own worker only; another instance's off-thread verbs are
+  still served. *Test:* `tests/features/mcp_async_dispatch/` — two harness
+  instances, each registering an off-thread verb that returns the result of an
+  `onGuiThread` call. Destroy the second, call the first's verb, and assert it
+  returns the marshalled value. Breaks if the refusal is one process-wide flag:
+  the call is refused.
 
 ## 4. RAM / build cost
 
@@ -624,7 +636,7 @@ a larger follow-up that must keep one-request-at-a-time semantics. This spec is
 that follow-up, and § 2.1 keeps those semantics.
 
 **Amendment (2026-09-13).** `tests/features/mcp_async_dispatch/` gains INV-12,
-INV-14 and INV-15, driving a bare `RemoteControl` beside the existing
+INV-14, INV-15 and INV-17, driving a bare `RemoteControl` beside the existing
 `ClaudeIntegration` harness. `tests/features/mcp_verb_offthread_guard/` gains
 INV-13, beside the INV-11 it already carries. `tests/features/mcp_audit_run_async/`'s `Inv1SyncPathUnchanged` is
 rewritten for INV-16, and that test's `spec.md` INV-1 row changes with it.
@@ -662,6 +674,10 @@ the change is restored.
   - `tests/features/mcp_verb_offthread_guard/spec.md` § Out of scope, and the
     comment above the `audit_run` registration in `src/mainwindow.cpp` — both
     say `audit_run` still freezes the window.
+  - `tests/features/guithread_join_parked_marshal/spec.md` and
+    `tests/features/verify_trust_modal_gui_thread/spec.md` — both bind to
+    `ants::setGuiMarshalRefused` as one process-wide flag, which § 2.6 now
+    scopes to the shutting-down instance's own worker.
   - `CHANGELOG.md` — the window no longer freezes during a `--remote` search or
     a synchronous `audit_run`. It must not claim more: `indie_review_dispatch`
     still freezes it (§ 5).
@@ -674,3 +690,4 @@ the change is restored.
 | 1 | 2026-08-26 | 3, cold — genre pinned `spec`; one byte-stable shared packet carrying the two delegate factories, the dispatch site, the whole post-dispatch tail, every `MainWindow` reach-back window, and the `mcp_verb_offthread_guard` spec + test | **Q1 3 · Q2 6 · Q3 0 · Q4 3** (12 verified / 12 fixed / 1 dismissed) | **Twelve verified, twelve fixed.** **All three lanes independently found the same defect**, and it is the run's worst: § 2.6 had the destructor join the worker while INV-7 forbade the GUI thread ever blocking on it — in the same file INV-7's scrape covers — so an implementer's own test would red their own shutdown code, and a worker parked in a `BlockingQueuedConnection` would deadlock against that join. INV-7 is now scoped to the dispatch path and § 2.6 owns the exception, refusing in-flight marshals before joining. **Two lanes each found two more.** § 2.1 promised "no pair of verbs that cannot currently overlap begins to" while § 5 said an inline verb can now overlap an off-thread one — narrowed to the off-thread set, with § 5 cross-referenced where the guarantee is stated. And INV-1/2/8/10 were unreachable: `RcHandler` was declared in `mainwindow.cpp` and only an rc factory could produce an off-thread handler, so a test verb would always dispatch synchronously and the tests would pass for the wrong reason — the type moves to `claudeintegration.h` and is directly constructible. **Three Q1s, all false claims about existing code.** `onGuiThread` was specified as a `RemoteControl` member, but `resolveRootCanonical` (`remotecontrol_internal.h`) and `ants::resolveCallerCwdRoot` (`resolvedroot.h`) are free functions carrying five of the nine reach-backs — a member helper leaves INV-6 unsatisfiable. The superseded GUI-responsiveness claim is in the guard spec's § Background, not § Mechanism, cited wrongly twice. And "the handler body is `(m_remoteControl->*fn)(args)` and nothing else" is false — `registerToolProvider` re-wraps every handler in the ANTS-1427 `ANTS_LOG` lambda; verified safe off-thread because `DebugLog::write` takes a `std::lock_guard` on a static mutex, and the spec now says so rather than assuming it. **The sharpest scope finding came from two lanes:** `audit_run` and `indie_review_dispatch` are the two verbs ANTS-2132's headline names and the two this spec defers — confirmed by reading their sync path, which is `QThread::create` + `worker->wait()` on the GUI thread, so they genuinely still freeze for a whole sweep. § 5 now says so outright and § 7 requires the ROADMAP headline be reworded rather than letting the item close on work it left undone. **One lane found a third test nobody had counted:** `tests/features/mutation_probe/` asserts `rcDelegateWorker(&RemoteControl::cmdMutationProbe)`, so deleting the factory reds a suite named in none of the guard test's invariants; § 6 now carries a table of all three binding tests, found by a whole-tree scrape. **Two orchestrator findings, both caught building the packet rather than by a lane:** the reach-back enumeration used a grep pattern too narrow to see `focusedTerminal()` and `tabCount()`, and the guard spec has four invariants where the draft said three. **Dismissed:** "this design marshals seven call sites" — true of the distinct-accessor count, contradicted by six table rows and nine sites; all three lanes raised it and all three judged it immaterial, since § 2.5 orders enumeration from source. Removed anyway under the census-count rule rather than corrected to a number that rots. **Open questions resolved clean:** `rawRequested` is recomputed inside the tail from `toolName` + args, so `McpCallContext` need not carry it; `DebugLog` is mutex-guarded. **Resolved into a finding:** whether the queue cap counts the in-flight job — it does, stated, because otherwise INV-10's fixture cannot say what it expects. |
 | 2 | 2026-08-26 | 3, cold — identical brief, scrubbed copy and packet rebuilt from disk | **Q1 2 · Q2 1 · Q3 1 · Q4 3** (7 verified / 7 fixed / 0 dismissed) | **Seven verified, seven fixed. Cap reached (2 for a spec); shipped to implementation.** **The run's best finding overturned § 1.1's premise.** It said the `QThread::wait()` join is what makes today's off-thread `MainWindow` access safe. False: `workspace_search` and `cited_by` are `Required`, the dispatcher refuses a `Required` verb with no `caller_cwd`, and their registration comments say the fallback is therefore unreachable. The hazard is real but arrives elsewhere — `ants::resolveCallerCwdRoot` walks the tab list on the branch where `caller_cwd` IS supplied, and `feedback_query` is `Required`, `rcDelegate`, and reaches it. § 1.1 rewritten around what actually holds. **All three lanes found the second:** § 2.5 exempted `remotecontrol_terminal.cpp` as a file, and that file holds `cmdFindSources` (`Required`, `rcDelegate`) and the `cmdRoadmapLogPass*` helpers `roadmap_log` calls — all off-thread. INV-6's scrape would have skipped exactly the bodies it exists to watch. Exemption is now per body, derived from the registration table. No live race today: none of that file's current reach-backs sit in those bodies. **Five of the seven landed on loop 1's own fixes** — a high share, so the run is oscillating rather than converging, and the cap is the right exit. INV-5 still keyed on factory provenance after loop 1 made `RcHandler` directly constructible for tests; `onGuiThread` had no refusal channel though loop 1's shutdown rule requires one, so nine call sites would each have invented an answer; loop 1's harness fallback sanctioned re-cutting runtime invariants as scrapes that cannot falsify them; and INV-3's reworded test no longer reached the only two verbs that spin a `QEventLoop`. INV-8 gained the clause that can catch § 2.6's refuse-then-join ordering, which INV-7's scrape cannot see. **Disclosure:** two lanes reported that an unscoped `workspace_search` returned a truncated headline from the unscrubbed loop-log table; both say they read no further and used nothing from it. Scrubbing the copy does not stop a lane's search reaching the original. |
 | 3 | 2026-09-13 | 3, cold — genre pinned `spec`; first loop of the gate on the 2026-09-13 amendment (§ 1.2, § 2.7, § 2.8, INV-11..16) | **Q1 1 · Q2 2 · Q3 1 · Q4 2** (6 verified / 6 fixed / 1 dismissed) | **Six verified, six fixed; loop 2 of this run dispatched.** Two lanes found INV-15 could not catch an unlatched `reply`: the first reply disconnects, so a second writes nothing either way. It now counts trace entries. INV-16's `QThread::finished` check passed on the `async:true` branch alone; it now wants one per branch. § 2.7's route rule and INV-13 keyed on factory spelling, which misses inline `RcHandler{` twins that ANTS-4682 moved off-thread; both now key on the `RcHandler` overload, and § 2.4's inline-lambda sentence was corrected with them. § 2.8 now builds the context as the off-thread branch does, because `finishToolDispatch` skips its transforms when `toolHandled` is false. § 2.8 now states that a second same-root synchronous `audit_run` is refused `already_running`. § 7 now lists the guard spec and the `audit_run` comment that still say it freezes. **Dismissed:** § 1.2's census, raised by two lanes because the packet omitted `roadmapWriteTarget`. Its callers are all `roadmap_log` handlers, so the claim holds; the gap was the packet's. Out of scope, filed separately: three pre-existing copies elsewhere of "every hand-written inline lambda" runs on the GUI thread. |
+| 4 | 2026-09-13 | 3, cold — identical brief; scrubbed copy, packet and source facts rebuilt from disk | **Q1 1 · Q2 0 · Q3 1 · Q4 0** (2 verified / 2 fixed / 1 dismissed) | **Two verified, two fixed. Cap reached (2 for a spec); shipped to implementation.** § 2.7 blamed library layering for the static route list; `RemoteControl` files already include `claudeintegration.h`, so the true reason is that `RemoteControl` is built and tested without a `ClaudeIntegration`. § 2.6's shutdown refusal was unscoped, and the shipped flag is process-wide: closing a second window refuses every later marshal in the first (filed ANTS-5142). The refusal is now scoped to the instance's own worker, INV-17 tests it, and § 7 names the two test contracts bound to the global flag. **Dismissed:** INV-7's test clause named a `wait()` in the destructor where the built join is in `shutdownDispatchWorker`. Two lanes raised it; nothing built changes, so it was corrected as a record of the code. **Calm cap:** 0 of this loop's 2 verified findings landed on text a loop-1 fix wrote. **Gate against audit:** 7 of this run's 8 verified findings anchor in the amendment draft (`b198f557..f8ece108`); the § 2.6 refusal scope predates it. Out of scope, filed: ANTS-5141, the store destroyed on the GUI thread. |
