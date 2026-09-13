@@ -7717,6 +7717,20 @@ extends an existing item, that item carries it instead.
   pty_read_backpressure INV-2 and INV-3. The envp medium, the argv0 low
   and the stale vtstream.h comment are being fixed together (new test
   tests/features/pty_child_env).
+  Progress (2026-09-14): shipped the envp medium (childEnvp sized from
+  environ) with the argv0 and vtstream.h comment lows (49349b84); CsiIgnore
+  state for DEL and out-of-place parameter bytes, the selection-clear hint
+  taken from parsed actions (split reads and the 8-bit form), and the
+  notifier delete (setEnabled(false), parent deletes) in the next commit.
+  Tests: pty_child_env, vtparser_csi_ignore, vtstream_clear_hint.
+  NEEDS A DECISION, not built: paste truncation. performPaste sends the
+  start marker, the body and the end marker as three queued writes, and
+  Pty::write drops any write that would take its queue past
+  MAX_PENDING_WRITE_BYTES. A large paste can therefore lose its end marker,
+  leaving the shell in bracketed-paste mode, or lose its tail. The only
+  signal is a qWarning in VtStream. Options: back-pressure the paste
+  (write it in chunks as the queue drains) or tell the user the paste was
+  cut.
   **Layman:** Smaller fixes to how the terminal talks to the shell: pastes, environment variables and escape codes.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lane vt-parser-pty).
