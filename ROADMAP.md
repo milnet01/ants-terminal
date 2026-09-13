@@ -8581,6 +8581,14 @@ extends an existing item, that item carries it instead.
   progress); offload head ladder; roadmap_query regex per bullet;
   settings.json rewrite without a lock; sk- key forms; setOwnerOnlyPerms
   results ignored.
+  Progress (2026-09-13, bc47253d): the token tracker counts a
+  tool_not_found call under one "(unknown tool)" entry, so unknown names no
+  longer grow it (ANTS-1284 INV-8), and recordDispatch reads the chip total
+  from Tracker::totalSaved() instead of building the report per call.
+  setOwnerOnlyPerms results are split out as ANTS-5151 (the pattern is
+  project-wide). STILL OPEN here: offload head ladder, roadmap_query regex
+  per bullet, settings.json rewrite and wrong-typed hooks, sk- key forms,
+  and the eviction decision above.
   **Layman:** Smaller fixes to how Ants packages big answers for Claude, including paging that can corrupt text.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lane mcp-infra).
