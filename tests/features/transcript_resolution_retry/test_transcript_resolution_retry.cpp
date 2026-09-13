@@ -119,6 +119,20 @@ TEST(TranscriptResolutionRetry, Main) {
         }
     }
 
+    // INV-4 (ANTS-5089) — Claude's own cwd is read before the shell's.
+    {
+        const size_t claudeCwd = body.find("/proc/%1/cwd\").arg(m_claudePid)");
+        const size_t shellCwd = body.find("/proc/%1/cwd\").arg(m_shellPid)");
+        if (claudeCwd == std::string::npos) {
+            fail("INV-4: the resolution never reads Claude's own /proc/<pid>/cwd, "
+                 "so a Claude started from a subshell after a cd resolves "
+                 "against the shell's project and finds no transcript.");
+        } else if (shellCwd != std::string::npos && shellCwd < claudeCwd) {
+            fail("INV-4: the shell's cwd is read before Claude's own; it must "
+                 "be the fallback.");
+        }
+    }
+
     if (failures > 0) {
         std::fprintf(stderr,
             "\n%d invariant(s) failed — see "

@@ -366,9 +366,15 @@ void ClaudeIntegration::pollClaudeProcess() {
         // recently active globally — same shape as ANTS-1163's stale-
         // session bug, which fixed `sessionPathForCwd` but not this
         // second site.
-        const QFileInfo cwdInfo(QString("/proc/%1/cwd").arg(m_shellPid));
-        const QString projectCwd =
-            cwdInfo.exists() ? cwdInfo.symLinkTarget() : QString();
+        // ANTS-5089 — Claude's own cwd first, the shell's as the fallback,
+        // the order ClaudeTabTracker::detectClaudeChild uses. A Claude started
+        // from a subshell after a `cd` runs in another project than the
+        // shell's cwd, and resolving from the shell alone found no transcript.
+        QString projectCwd =
+            QFile::symLinkTarget(QString("/proc/%1/cwd").arg(m_claudePid));
+        if (projectCwd.isEmpty())
+            projectCwd =
+                QFile::symLinkTarget(QString("/proc/%1/cwd").arg(m_shellPid));
         const qint64 procStartMs = processStartTimeMs(m_claudePid);
         const qint64 nowMs = QDateTime::currentMSecsSinceEpoch();
         const QString scoped =

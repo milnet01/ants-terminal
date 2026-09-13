@@ -70,6 +70,13 @@ for security-relevant changes.
 
 ### Fixed
 
+- **Claude's status shows up for a Claude session started from a subfolder or subshell** (ANTS-5089)
+  Ants found the Claude session's transcript by looking at the shell's
+  current folder. If Claude was started after changing folders in a
+  subshell, that folder belonged to a different project, so no transcript
+  was found and the status stayed blank. Ants now looks at the folder
+  Claude itself is running in first.
+
 - **Reading terminal text over remote control no longer copies the part it throws away** (ANTS-5093)
   When a get-text reply was over its size limit, Ants copied the whole
   dropped part just to count its lines. It now counts them from what it

@@ -75,6 +75,13 @@ one.
 `ClaudeState::Idle` assignment is not reached by the
 transcript-emptiness condition.
 
+**INV-4 — the resolution reads Claude's own cwd first (ANTS-5089).**
+Source-grep: the `/proc/%1/cwd` read for `m_claudePid` comes before the
+one for `m_shellPid`, which stays as the fallback. A Claude started from a
+subshell after a `cd` then resolves against the project it runs in, as
+`ClaudeTabTracker::detectClaudeChild` already does; resolving from the
+shell's cwd alone left such a tab with no transcript.
+
 ## Scope
 
 ### In scope
