@@ -8057,6 +8057,22 @@ extends an existing item, that item carries it instead.
   - The About text still mentions the retired GPU renderer.
   - themedstylesheet.h describes a rule the source says is absent.
   - About dialog strings are not wrapped in tr().
+  Progress (2026-09-14): shipped the mid-round redispatch medium
+  (redispatch and setLanes return while m_roundInFlight) and the
+  trust-store save medium (saveToDisk checks write, flush, close and
+  permissions before the rename). Also shipped the corrupt-trust-file low:
+  the file is renamed to .corrupt.<epoch>, as ANTS-1179 does for config
+  and themes. Tests: review_dialog_base INV-24, verify_trust_gate TF-5
+  and TF-6.
+  Next, prepared: the mistyped theme colour and theme file size lows, and
+  the About text GPU claim.
+  Not started:
+  - The trust prompt medium (ANTS-1337 checkbox, gates line, 0644 warning,
+    application-modal exec).
+  - The brief-composition memory medium.
+  - first_trusted overwrite, the second copy of reports, the
+    DialogShowTracer and ChromeGuard Q_OBJECT lows, the themedstylesheet.h
+    comment, and tr().
   **Layman:** Smaller dialog fixes, including a review button that can undo its own error reporting and a trust file that can be lost.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lane dialog-chrome-theme).
