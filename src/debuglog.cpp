@@ -195,3 +195,21 @@ const char *DebugLog::nameFor(Category c) {
     }
     return "?";
 }
+
+QString DebugLog::escapeForLog(const QString &s) {
+    QString out;
+    out.reserve(s.size());
+    for (const QChar ch : s) {
+        const char16_t u = ch.unicode();
+        if (u == u'\\') {
+            out += QStringLiteral("\\\\");
+        } else if (u < 0x20 || (u >= 0x7F && u <= 0x9F)) {
+            out += QStringLiteral("\\x%1").arg(int(u), 2, 16, QLatin1Char('0'));
+        } else if (u == 0x2028 || u == 0x2029) {
+            out += QStringLiteral("\\u%1").arg(int(u), 4, 16, QLatin1Char('0'));
+        } else {
+            out += ch;
+        }
+    }
+    return out;
+}

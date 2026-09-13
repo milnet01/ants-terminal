@@ -68,6 +68,13 @@ public:
     static Category categoryFor(const QString &name);
     static const char *nameFor(Category c);
 
+    // ANTS-5093 — make a peer-supplied string safe inside one log line
+    // (CWE-117). A control character (C0, DEL, C1) becomes \xHH and a Unicode
+    // line or paragraph separator becomes \uHHHH, so none can start a forged
+    // line or drive a terminal that later shows the log. A backslash is
+    // doubled so escaped and literal text stay distinguishable.
+    static QString escapeForLog(const QString &s);
+
 private:
     // Open the log file. Caller must hold s_mutex. Idempotent — does
     // nothing if `s_active == 0` or `s_file.isOpen()`. Used by both

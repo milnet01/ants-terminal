@@ -189,3 +189,25 @@ TEST(DebuglogPerms, AutoSwitchCategoryRoundTrips) {
     EXPECT_TRUE(DebugLog::categoryNames().contains(
         QStringLiteral("autoswitch")));
 }
+
+// ANTS-5093 — escapeForLog neutralises everything that could start a forged
+// log line or drive a terminal showing the log (CWE-117), and leaves an
+// ordinary verb name unchanged.
+TEST(DebuglogPerms, Ants5093EscapeForLogNeutralisesControls) {
+    EXPECT_EQ(DebugLog::escapeForLog(QStringLiteral("send-text")),
+              QStringLiteral("send-text"));
+    EXPECT_EQ(DebugLog::escapeForLog(QStringLiteral("ls\nrc dispatch cmd=forged")),
+              QStringLiteral("ls\\x0arc dispatch cmd=forged"))
+        << "a newline must not survive into the log line";
+    EXPECT_EQ(DebugLog::escapeForLog(QStringLiteral("a\rb\tc")),
+              QStringLiteral("a\\x0db\\x09c"));
+    EXPECT_EQ(DebugLog::escapeForLog(QStringLiteral("\x1b[31mred")),
+              QStringLiteral("\\x1b[31mred"))
+        << "an ANSI escape must not reach a terminal showing the log";
+    EXPECT_EQ(DebugLog::escapeForLog(QString(QChar(0x9B))), QStringLiteral("\\x9b"))
+        << "a C1 CSI byte is a control too";
+    EXPECT_EQ(DebugLog::escapeForLog(QString(QChar(0x2028))), QStringLiteral("\\u2028"));
+    EXPECT_EQ(DebugLog::escapeForLog(QStringLiteral("a\\x0ab")),
+              QStringLiteral("a\\\\x0ab"))
+        << "literal text that looks like an escape stays distinguishable";
+}

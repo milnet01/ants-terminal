@@ -38,9 +38,10 @@ struct CallerCwdGate {
 // with the verb name and both canonical paths. Other refusal codes do
 // NOT log (per INV-11) — they're caller-side bugs, not cross-project
 // incidents.
-CallerCwdGate checkCallerCwd(const QString &focusedRaw,
-                             const QJsonObject &req,
-                             const QString &verb);
+// ANTS-5093 — [[nodiscard]]: a verdict nobody reads is a gate that never ran.
+[[nodiscard]] CallerCwdGate checkCallerCwd(const QString &focusedRaw,
+                                           const QJsonObject &req,
+                                           const QString &verb);
 
 // Materialise the standard JSON-RPC error envelope from a gate
 // verdict. Key order matches ANTS-1295: {ok, error, code}.

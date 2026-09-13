@@ -413,6 +413,13 @@ for security-relevant changes.
 
 ### Security
 
+- **A remote-control command name can no longer add fake lines to the debug log** (ANTS-5093)
+  The remote-control socket wrote the command name it received straight
+  into the debug log, so a name containing a newline could add a line that
+  looked like a real log entry, and an escape sequence could affect a
+  terminal showing the log. Control characters are now written as visible
+  escape codes.
+
 - **OpenAI service-account and admin keys are now scrubbed before text is sent to an AI model** (ANTS-5104)
   The secret scrubber recognised OpenAI project keys and the old key
   format but not the sk-svcacct- and sk-admin- keys OpenAI now issues. Both

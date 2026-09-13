@@ -150,6 +150,12 @@ void testSourceInvariants() {
     expect(rc.find("text_bytes=%d raw=%d") != std::string::npos,
            "source: dispatch log records the raw-bypass flag (raw=%d)");
 
+    // ANTS-5093 — the peer's `cmd` is escaped before it reaches that log
+    // line, so a newline in it cannot forge a line (CWE-117). The escape
+    // itself is tested in debuglog_perms.
+    expect(rc.find("qUtf8Printable(DebugLog::escapeForLog(cmd))") != std::string::npos,
+           "source: dispatch log escapes the peer's cmd");
+
     // INV-C (structural): start() call must appear inside a conditional
     // rather than at statement-top. Look backward 200 chars from the
     // first `m_remoteControl->start()` and confirm an `if (` is in

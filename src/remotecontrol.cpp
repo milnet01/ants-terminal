@@ -2546,9 +2546,12 @@ QJsonDocument RemoteControl::dispatch(const QJsonObject &req) {
     // post-mortem of a same-UID attack can't distinguish a benign filtered send
     // from a raw control-byte injection — the exact threat this log exists for.
     const int rawBypass = req.value("raw").toBool(false) ? 1 : 0;
+    // ANTS-5093 — `cmd` is the peer's, so it is escaped: a newline in it
+    // would otherwise start a forged log line (CWE-117).
     ANTS_LOG(DebugLog::Network,
              "rc dispatch cmd=%s tab=%d text_bytes=%d raw=%d",
-             qUtf8Printable(cmd), tabId, textBytes, rawBypass);
+             qUtf8Printable(DebugLog::escapeForLog(cmd)), tabId, textBytes,
+             rawBypass);
     if (cmd == QLatin1String("ls")) {
         return cmdLs();
     }

@@ -44,11 +44,9 @@ namespace RoadmapSource { enum class ReadError; class RoadmapText; }
 
 // Remote-control server for Ants Terminal. Kitty-style JSON envelopes
 // over a Unix domain socket — unlocks scripting, IDE integration, CI.
-// See ROADMAP.md § 0.8.0 > 🎨 Features — multiplexing for the full
-// command list; this first slice implements only `ls`, with the socket
-// + envelope + client infrastructure in place for the next commands
-// (`send-text`, `set-title`, `select-window`, `get-text`, `new-tab`,
-// `launch`) to land one-by-one.
+// The command set is RemoteControl::dispatch's `cmd` chain, summarised in
+// docs/subsystems.md § remotecontrol (ANTS-5093: this comment used to say
+// only `ls` existed).
 //
 // Protocol: one JSON object per line (LF-terminated). Request shape:
 //   {"cmd": "<name>", ...args}
@@ -62,9 +60,9 @@ namespace RoadmapSource { enum class ReadError; class RoadmapText; }
 //      client + server together for multi-instance scenarios
 //   2. `$XDG_RUNTIME_DIR/ants-terminal.sock` — XDG standard dir,
 //      user-scoped, survives tmp-cleaner sweeps
-//   3. `/tmp/ants-terminal-<uid>.sock` — fallback when XDG runtime
-//      dir is unset (very unusual on modern Linux, but keeps the
-//      fallback deterministic instead of failing silently)
+//   3. `/tmp/ants-<uid>/ants-terminal.sock` — fallback when XDG runtime
+//      dir is unset, inside a per-user 0700 directory (ANTS-1365) so
+//      another user cannot pre-create the path
 //
 // Server-side: if `listen()` fails because the path is already in use
 // (another Ants instance owns it), we log and give up — remote-control

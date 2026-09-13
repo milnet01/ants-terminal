@@ -203,7 +203,9 @@ Listed only where behavior isn't obvious from the name.
   `send-text`, `new-tab`, `select-window`, `set-title`, `get-text`,
   `launch`, `tab-list`, `roadmap-query`, `workspace-search`,
   `file-outline`, `find-definition`, `find-caller`, `similar-code`,
-  `git-state`, `subsystem`, `roadmap-branch-drift`. Trust model:
+  `git-state`, `subsystem`; and, only on an instance launched with
+  `--e2e`, `inject-key`, `inject-click`, `resize-window`, `grab-image`.
+  Trust model:
   UID-scoped + 0700 perms + `lstat`-checked `S_ISSOCK`.
   **The class is split across `remotecontrol_*.cpp` translation units
   (ANTS-3833, ANTS-3855, ANTS-4620, ANTS-4622), each with its own entry
