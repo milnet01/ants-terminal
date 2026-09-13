@@ -1,9 +1,12 @@
 # ANTS-2132 — Dispatch MCP verbs off the GUI thread
 
-**Status:** accepted (2026-08-26). Cold-eyes loops 1 + 2 folded; cap reached.
+**Status:** spec draft (2026-09-13). § 1.2, § 2.7 and § 2.8 amend the design
+accepted on 2026-08-26 and await review. The rest is implemented
+(`ClaudeIntegration::postToolDispatch`, `tests/features/mcp_async_dispatch/`).
 **Kind:** perf.
 **Source:** ROADMAP.md ANTS-2132 (user report of intermittent whole-window
-freeze; diagnosed in-session 2026-08-25).
+freeze; diagnosed in-session 2026-08-25). Amended for ANTS-5051, ANTS-5073 and
+ANTS-5035 (code-quality-review-2026-09-11 perf pass).
 **Pairs with:** ANTS-4681 (`roadmap_log` render + write cost — the largest
 repeatable contributor to the per-verb duration this spec stops blocking on).
 **Supersedes:** the GUI-responsiveness claim in
@@ -60,6 +63,48 @@ their `Required` contract makes unreachable, since the dispatcher refuses a
 makes it unreachable — and `feedback_query` is `Required`, `rcDelegate`, and
 reaches it. § 2.4's eligibility rule does not test for `Required`, so § 2.5's
 marshalling is what carries the guarantee.
+
+### 1.2 What the first cut left on the GUI thread
+
+*Amendment, 2026-09-13.*
+
+**The remote-control socket.** `RemoteControl::onNewConnection`'s `readyRead`
+handler calls `RemoteControl::dispatch` inline and writes its return value.
+These routes call the same `RemoteControl` `cmd*` that an off-thread MCP twin
+calls: `roadmap-query`, `workspace-search`, `file-outline`, `find-definition`,
+`find-caller`, `similar-code`, `git-state` and `subsystem`. That causes two
+defects:
+
+- A socket search, tree walk or `git` fork freezes the window for its whole run
+  (ANTS-5073).
+- `RemoteControl::cmdRoadmapQuery` reaches `RemoteControl::roadmapStoreOrNull`
+  and the `m_roadmap*` cache members from both threads (ANTS-5051). The store's
+  `QSqlDatabase` may be used only on the thread that opened it. Neither the
+  store pointer nor the caches are locked. Once § 2.1 stopped the GUI thread
+  waiting on the worker, the two calls could overlap.
+
+**The socket route is the only GUI-thread path to that store.** Checked
+2026-09-13 with `find_caller` on `roadmapStoreOrNull`, `roadmapBullets` and
+`cmdRoadmapQuery`:
+
+- Every caller sits in a `RemoteControl` `cmd*`, or in a helper only those
+  reach.
+- Each of those `cmd*` is registered `Required` through `rcDelegate`, so it runs
+  off-thread under § 2.4.
+- `mainwindow.cpp` calls `m_remoteControl->` directly only for `cmdTabList`,
+  `cmdGetText`, `cmdIndieReviewDispatch` and `cmdTokenUsage`. None reaches the
+  store.
+- `RoadmapDialog` calls its own `roadmapBullets` over its own store.
+- `session_orient`'s pre-warm thread runs only `FindSources::prewarm`.
+
+So moving the socket route closes the race. A future GUI-thread path to the
+store would reopen it; § 5 says why no runtime guard is added.
+
+**`audit_run`.** Its synchronous branch starts a `QThread` and calls
+`worker->wait()` on the GUI thread for the whole sweep (ANTS-5035). Every
+off-thread reply is written from the GUI thread, so MCP traffic stalls with the
+window. `indie_review_dispatch` joins the same way and stays out of scope
+(ANTS-3515).
 
 ## 2. Surface
 
@@ -268,6 +313,102 @@ than hard-coding a list**, or it rots the first time a verb moves.
   arriving after shutdown has begun is dropped, not written. INV-7 is scoped to
   the dispatch path for exactly this reason.
 
+### 2.7 Socket routes on the dispatch worker
+
+*Amendment, 2026-09-13 — ANTS-5051, ANTS-5073.*
+
+**Which routes.** A `RemoteControl::dispatch` route runs on the worker when its
+MCP twin is off-thread under § 2.4: the twin is registered through an rc factory
+over the same `cmd*`, and is not `TabSpecific`. That is § 1.2's list. These stay
+inline:
+
+- `get-text`, whose twin is `TabSpecific`.
+- `tab-list`, whose twin registers through the bare `ToolHandler` overload.
+- Every route with no MCP twin.
+
+`RemoteControl` cannot read `ClaudeIntegration`'s registry, because
+`ants_core_lib` sits below the Claude library. So the set is written out once,
+in `static bool RemoteControl::routeRunsOnDispatchWorker(const QString &cmd)`,
+and INV-13 keeps it equal to the rule.
+
+**The worker entry.** `ClaudeIntegration` gains a public method:
+
+```cpp
+// Runs job on the § 2.3 worker, behind any queued MCP job. Counts against the
+// § 2.6 cap until job returns. Returns false, and job never runs, when the
+// queue is full or shutdown has begun.
+bool postWorkerJob(std::function<void()> job);
+```
+
+MCP and socket jobs share one queue and one cap, so INV-2 and INV-10 hold across
+both.
+
+**The hook.** `RemoteControl` gains
+`void setDispatchWorkerPoster(std::function<bool(std::function<void()>)> poster)`.
+`MainWindow` installs it after `m_remoteControl = new RemoteControl(` and before
+`m_remoteControl->start()`, forwarding to `m_claudeIntegration->postWorkerJob`.
+With no poster installed, every route runs inline as it does today.
+
+**The reply.** The `readyRead` handler keeps its parse, its `_handled` latch and
+its idle-timer stop. For a worker route with a poster installed it then:
+
+1. Posts a job that runs `dispatch()` on the worker and queues the write back
+   with `QMetaObject::invokeMethod(this, …, Qt::QueuedConnection)`.
+2. On the GUI thread, runs the existing `QPointer` and `ConnectedState` check,
+   then writes, flushes and disconnects, as the inline path does.
+
+The job carries the `QPointer` but never tests or dereferences it on the worker.
+If the poster returns false, the handler replies at once with
+`{ok:false, code:"dispatch_queue_full", error, retry_after_ms}`: § 2.6's refusal
+without the JSON-RPC envelope.
+
+**Lifetime.** `MainWindow`'s constructor calls `setupStatusBarChrome`, which
+creates `ClaudeIntegration`, before it creates `RemoteControl`. Both are children
+of `MainWindow`, and `QObject` deletes children in the order they were added. So
+§ 2.6's join finishes before `RemoteControl` is freed. A write still queued to a
+freed `RemoteControl` is discarded by `~QObject`.
+
+**What moves with it.** A socket request may omit `caller_cwd`, because the
+`Required` refusal is an MCP-dispatcher step. So the `currentTerminal()`
+fallbacks § 1.1 calls unreachable are reachable from the socket, and now run on
+the worker. INV-6 already requires them marshalled, reachable or not.
+
+### 2.8 `audit_run` replies later
+
+*Amendment, 2026-09-13 — ANTS-5035.*
+
+A sweep runs for minutes. On the shared worker it would hold every session's MCP
+traffic for its whole run. So `audit_run` keeps its own `QThread`, and the GUI
+thread stops joining it.
+
+**Handler type.** `claudeintegration.h` gains:
+
+```cpp
+// reply must be called exactly once, on the GUI thread, on every path.
+using DeferredToolHandler =
+    std::function<void(const QJsonObject &args,
+                       std::function<void(QString)> reply)>;
+void registerToolProvider(const QString &name,
+                          CallerCwdContract contract,
+                          DeferredToolHandler handler);
+```
+
+A deferred handler runs on the GUI thread, like a bare `ToolHandler`, and must
+return promptly. The dispatcher builds the § 2.2 `McpCallContext` and passes a
+`reply` that calls `finishToolDispatch` with it. A second call to `reply` writes
+nothing. A deferred verb does not count against the § 2.6 cap.
+
+**`audit_run`.** It registers through that overload. Its refusals and its
+`async:true` branch call `reply` before returning. The synchronous branch starts
+the sweep's `QThread`, connects `QThread::finished` to a queued slot whose
+context object is `ClaudeIntegration`, and returns. That slot builds the
+envelope the synchronous branch builds today, releases the in-flight slot and
+calls `reply`. The response shape does not change.
+
+**Shutdown.** A sweep still running when `ClaudeIntegration` is destroyed gets
+no reply, because the context object severs the connection. The `async:true`
+branch already works this way.
+
 ## 3. Invariants
 
 - **INV-1** — For a verb registered off-thread, the GUI thread processes at
@@ -327,6 +468,46 @@ than hard-coding a list**, or it rots the first time a verb moves.
   `tests/features/mcp_async_dispatch/` — hold the worker on job 1, post jobs
   until one is refused, and assert the refusal is the 65th (the cap counts the
   in-flight job, § 2.6) and that the first 64 all complete.
+- **INV-11** — an inline handler registered off-thread reads no `MainWindow`
+  member except through `ants::onGuiThread` (ANTS-4682). Owned by
+  `tests/features/mcp_verb_offthread_guard/spec.md`; recorded here so the number
+  is not reused. *Test:* `tests/features/mcp_verb_offthread_guard/`.
+
+*Amendment, 2026-09-13:*
+
+- **INV-12** — With a poster installed, a socket route for which
+  `routeRunsOnDispatchWorker` is true runs on the dispatch worker, and the GUI
+  thread processes events while it runs. *Test:*
+  `tests/features/mcp_async_dispatch/` — a bare `RemoteControl` listening on an
+  `ANTS_REMOTE_SOCKET` path in a temporary directory, whose poster wraps
+  `postWorkerJob`, recording the job's thread and sleeping before running it.
+  Send `git-state` over the socket. Assert a reply, a job thread other than
+  the GUI thread, and heartbeat ticks during the sleep. Breaks if the route runs
+  inline: the wrapper never runs and no tick lands.
+- **INV-13** — `routeRunsOnDispatchWorker` is true exactly for the `dispatch()`
+  routes whose `cmd*` is registered in `mainwindow.cpp` through
+  `rcDelegate(&RemoteControl::…)` with a contract other than `TabSpecific`.
+  *Test:* `tests/features/mcp_verb_offthread_guard/` — source scrape of
+  `RemoteControl::dispatch`, `routeRunsOnDispatchWorker` and the registration
+  table. Breaks when a route or a registration changes on one side only.
+- **INV-14** — A socket request to a worker route that finds the queue full is
+  refused at once with `dispatch_queue_full`. *Test:*
+  `tests/features/mcp_async_dispatch/` — hold the worker and fill the cap with
+  MCP jobs, send `git-state` over the socket, and assert the refusal arrives
+  before the held job is released. Breaks if the poster's `false` is ignored:
+  no reply arrives.
+- **INV-15** — A `DeferredToolHandler`'s first `reply` writes exactly one
+  JSON-RPC reply through `finishToolDispatch`, and the GUI thread is not blocked
+  before it. *Test:* `tests/features/mcp_async_dispatch/` — register a deferred
+  verb that calls `reply` twice from a single-shot timer. Assert heartbeat ticks
+  during the wait and exactly one reply line. Breaks if the dispatcher waits for
+  the handler, or if `reply` is not latched.
+- **INV-16** — `audit_run`'s synchronous branch never joins its worker on the
+  GUI thread. *Test:* `tests/features/mcp_audit_run_async/` — `Inv1SyncPathUnchanged`
+  rewritten to scrape the `audit_run` registration body, asserting no `wait()`
+  and a `QThread::finished` connection. Breaks if the join returns. The
+  whole-file scrape it replaces stays green on `indie_review_dispatch`'s join
+  whatever `audit_run` does.
 
 ## 4. RAM / build cost
 
@@ -342,27 +523,40 @@ bounded at roughly 16 MiB and its realistic case is a few kilobytes.
 No new build target, no new external library. `finishToolDispatch` is moved
 code, not added code.
 
+The amendment adds no thread and no queue. A queued socket job holds one parsed
+request, already bounded by the socket's receive cap. A synchronous `audit_run`
+holds its `RunResult` until the reply, as the `async:true` branch does.
+
 ## 5. Out of scope
 
-- **The inline non-TabSpecific verbs stay synchronous** — `audit_run`,
-  `audit_poll`, `indie_review_dispatch`, `project_query`, `get_git_status`, the
-  five `test_audit_*`, and the Ants-internal `tab_list` / `token_usage` /
-  `mcp_trace` / `caller_cwd_info`. Their handlers capture `MainWindow` and each
-  needs its own audit. Tracked by ANTS-4682.
+- **Some inline verbs stay synchronous.** ANTS-4682 audited the inline handlers
+  after the first cut and moved the GUI-free ones off-thread: the `test_audit_*`
+  verbs, `project_query` and `caller_cwd_info`. The rest stay, each verdict
+  recorded at its registration.
 
-  **That set includes `audit_run` and `indie_review_dispatch` — the two verbs
-  ANTS-2132's own headline names — so this spec does not fix them.** Their
-  synchronous path builds a `QThread::create` worker and then `worker->wait()`s
-  on the GUI thread, so the window still freezes for a whole sweep (5–600 s).
-  What this spec fixes is the symptom actually reported: the intermittent
-  freeze from ordinary verbs, which § 1 measures. **ANTS-2132's headline must
-  be reworded when this ships**, or the item reads as closing work it left
-  undone.
+  **`indie_review_dispatch` still joins its worker on the GUI thread**, so the
+  window freezes for a review (ANTS-3515). `get_git_status` still blocks it,
+  because it has no refusal channel (ANTS-4686). § 2.8 fixes `audit_run` only.
 
-  **The residual hazard is stated rather than hidden:** after this change a
-  synchronous inline verb that touches project files (`project_query`,
-  `get_git_status`) can run on the GUI thread while an off-thread verb touches
-  the same files, which cannot happen today. ANTS-4682 closes it.
+  **The residual hazard is stated rather than hidden:** a synchronous inline
+  verb that reads project files can run on the GUI thread while an off-thread
+  verb writes the same tree. ANTS-4686 carries it for `get_git_status`.
+- **A second worker for socket requests** — rejected, for the reason a thread
+  per verb is. The socket's worker routes call the same `cmd*` as their MCP
+  twins, so they must serialise with them.
+- **One store connection per thread, with locked caches** — rejected. It
+  changes ANTS-3809 § 4's connection rule and still needs every cache guarded.
+  Routing keeps `RemoteControl`'s store on one thread.
+- **A runtime thread check in `roadmapStoreOrNull`** — not added. The store
+  pointer it would read is itself unguarded, so the check races with what it
+  checks. § 1.2's census is the evidence instead.
+- **`audit_run` on the shared worker** — rejected. A sweep would hold every
+  session's MCP traffic for its whole run.
+- **`async:true` by default for `audit_run`** — rejected (ANTS-5035). Every
+  caller would get a job id to poll instead of results.
+- **The `--remote` client's read wait.** `RemoteControl::runClient` gives up
+  when the first byte of a reply is later than its per-read wait, and queue
+  time now counts toward that. Tracked by ANTS-5138.
 - **Per-verb cost.** Making `roadmap_log` cheaper is ANTS-4681. This spec stops
   the GUI *waiting* for a verb; it makes no verb faster.
 - **A thread per verb** — rejected. It would let verbs that cannot currently
@@ -416,10 +610,15 @@ Leaving `mutation_probe` alone ships a red suite, and it is named in none of
 the guard test's own invariants — a scrape of the whole `tests/` tree is the
 only thing that finds it.
 
-That file's own § Out of scope already names this work — *"Full async dispatch
-(no join at all) — a larger follow-up; the join keeps the existing
-one-request-at-a-time semantics."* This spec is that follow-up, and § 2.1 keeps
-the one-request-at-a-time semantics it names.
+Before its rewrite, that file's § Out of scope deferred full async dispatch as
+a larger follow-up that must keep one-request-at-a-time semantics. This spec is
+that follow-up, and § 2.1 keeps those semantics.
+
+**Amendment (2026-09-13).** `tests/features/mcp_async_dispatch/` gains INV-12,
+INV-14 and INV-15, driving a bare `RemoteControl` beside the existing
+`ClaudeIntegration` harness. `tests/features/mcp_verb_offthread_guard/` gains
+INV-13, beside the INV-11 it already carries. `tests/features/mcp_audit_run_async/`'s `Inv1SyncPathUnchanged` is
+rewritten for INV-16, and that test's `spec.md` INV-1 row changes with it.
 
 Per the project test convention, add each source to the owning bundle's
 `SOURCES` (ask `build_target_for`, do not guess), verify the ctest count moved
@@ -447,6 +646,14 @@ the change is restored.
 - ROADMAP.md — ANTS-2132 to 🚧 on start, and its headline reworded off
   `audit_run` / `indie_review_dispatch`, which § 5 defers; ANTS-4682 filed for
   the deferred inline verbs.
+- **Amendment (2026-09-13):**
+  - `docs/standards/mcp-tools.md` — a verb's socket route, if it has one, runs
+    on its MCP twin's thread (§ 2.7).
+  - `tests/features/mcp_audit_run_async/spec.md` — its INV-1 row (§ 6).
+  - `CHANGELOG.md` — the window no longer freezes during a `--remote` search or
+    a synchronous `audit_run`. It must not claim more: `indie_review_dispatch`
+    still freezes it (§ 5).
+  - ROADMAP.md — ANTS-5051, ANTS-5073 and ANTS-5035 close with the build.
 
 ## Cold-eyes loop log
 
