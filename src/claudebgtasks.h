@@ -141,9 +141,13 @@ private:
     QList<ClaudeBackgroundTask> m_tasks;
 
     // ANTS-5050 — the resumable parse position and its accumulated state.
-    // Reset together, and only together.
+    // Replaced together, and only together.
     ClaudeTranscript::Cursor m_cursor;
     ClaudeBgTaskAccum m_acc;
+
+    // ANTS-5050 INV-9 — kept walk state per transcript path, shared by every
+    // background-task tracker.
+    static ClaudeTranscript::WalkCache<ClaudeBgTaskAccum> &walkCache();
 
     qint64 m_lastRescanMtimeMs = 0;
     // ANTS-1458 phase 2 — mirror ClaudeTaskListTracker: size is a second

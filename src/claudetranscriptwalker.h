@@ -6,6 +6,7 @@
 #include <QIODevice>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QList>
 #include <QString>
 
 #include <utility>
@@ -171,6 +172,58 @@ void walkFrom(const QString &path, Cursor &cur, Handler &&handler) {
     }
     cur.primed = true;
 }
+
+// ANTS-5050 INV-9 / INV-10 — resumable walk state kept per transcript path.
+//
+// A tracker that re-binds a path it, or a sibling tracker of the same type,
+// has already read resumes from the kept cursor instead of cold-walking: a tab
+// switch back, or a second pane on the same transcript. Keyed by path, so no
+// path resumes against another file's offset, and `canResume` still decides
+// whether a kept cursor holds.
+//
+// Bounded to kMaxPaths entries, most recent first. Each entry is a cursor and
+// one tracker's accumulator, a task list and its index. GUI-thread only, like
+// the trackers that own one.
+template <typename Accum>
+class WalkCache {
+public:
+    static constexpr int kMaxPaths = 8;
+
+    // Keep `cursor` and `acc` for `path`. An unprimed cursor is not kept.
+    void store(const QString &path, const Cursor &cursor, const Accum &acc) {
+        if (path.isEmpty() || !cursor.primed) return;
+        for (int i = 0; i < m_entries.size(); ++i) {
+            if (m_entries.at(i).path == path) {
+                m_entries.removeAt(i);
+                break;
+            }
+        }
+        m_entries.prepend(Entry{path, cursor, acc});
+        while (m_entries.size() > kMaxPaths) m_entries.removeLast();
+    }
+
+    // Copy the state kept for `path` into `cursor` and `acc`. Returns false,
+    // leaving both untouched, when nothing is kept for it.
+    bool restore(const QString &path, Cursor &cursor, Accum &acc) const {
+        if (path.isEmpty()) return false;
+        for (const Entry &e : m_entries) {
+            if (e.path == path) {
+                cursor = e.cursor;
+                acc = e.acc;
+                return true;
+            }
+        }
+        return false;
+    }
+
+private:
+    struct Entry {
+        QString path;
+        Cursor  cursor;
+        Accum   acc;
+    };
+    QList<Entry> m_entries;  // most recent first
+};
 
 // The full walk, unchanged in contract: walk the whole file and return the
 // latest-event clock. Expressed over `walkFrom` with a fresh cursor so the

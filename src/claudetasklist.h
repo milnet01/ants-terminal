@@ -140,10 +140,15 @@ private:
     QList<ClaudeTask> m_tasks;
 
     // ANTS-5050 — the resumable parse position and its accumulated state.
-    // Reset together, and only together: setTranscriptPath clears both, and
-    // rescan() clears both whenever canResume says the cursor is stale.
+    // Replaced together, and only together: setTranscriptPath swaps in the
+    // new path's kept pair (or a fresh one), and rescan() clears both
+    // whenever canResume says the cursor is stale.
     ClaudeTranscript::Cursor m_cursor;
     ClaudeTaskAccum m_acc;
+
+    // ANTS-5050 INV-9 — kept walk state per transcript path, shared by every
+    // task-list tracker.
+    static ClaudeTranscript::WalkCache<ClaudeTaskAccum> &walkCache();
 
     qint64 m_lastRescanMtimeMs = 0;
     // ANTS-1458 phase 2 — size is the second change-signal alongside

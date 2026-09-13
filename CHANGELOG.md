@@ -14,6 +14,11 @@ for security-relevant changes.
 
 ### Changed
 
+- **Switching back to a Claude tab resumes its task lists instead of re-reading the transcript** (ANTS-5050)
+  The task and background-task trackers keep each recently read
+  transcript's parse position, so a tab switch back, or a second pane on
+  the same session, carries on from where reading stopped.
+
 - **workspace_search, cited_by and co_change_family now read ripgrep's output line by line instead of holding it whole** (ANTS-5127)
   co_change_family also keeps only its strongest max_sites sites while it
   scans, instead of every candidate. Results and counts are unchanged.

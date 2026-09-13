@@ -80,13 +80,23 @@ void ClaudeTaskListTracker::setTranscriptPath(const QString &path) {
     m_lastRescanSizeBytes = 0;
     // ANTS-5050 INV-6 — the parse cursor and its accumulator belong to the
     // OLD path. Resuming either against a different file would fold one
-    // session's events into another's list.
+    // session's events into another's list. INV-9 — take the state kept for
+    // the NEW path instead, so a tab-switch re-bind resumes rather than
+    // cold-walking; rescan()'s canResume still re-walks if the file changed.
     m_cursor = {};
     m_acc = {};
+    walkCache().restore(m_transcriptPath, m_cursor, m_acc);
     if (!m_transcriptPath.isEmpty() && QFileInfo::exists(m_transcriptPath))
         m_watcher.addPath(m_transcriptPath);
     m_rescanDebounce.stop();  // ANTS-5050 — this rescan supersedes a pending one
     rescan();
+}
+
+// ANTS-5050 INV-9 — one cache for every task-list tracker, so a sibling bound
+// to the same transcript resumes too.
+ClaudeTranscript::WalkCache<ClaudeTaskAccum> &ClaudeTaskListTracker::walkCache() {
+    static ClaudeTranscript::WalkCache<ClaudeTaskAccum> cache;
+    return cache;
 }
 
 int ClaudeTaskListTracker::unfinishedCount() const {
@@ -165,6 +175,7 @@ void ClaudeTaskListTracker::rescan() {
             m_acc = {};
         }
         next = parseIncremental(m_transcriptPath, m_cursor, m_acc);
+        walkCache().store(m_transcriptPath, m_cursor, m_acc);  // ANTS-5050 INV-9
     }
 
     // QFileSystemWatcher drops the path on atomic-rewrite; re-add if

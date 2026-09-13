@@ -45,9 +45,11 @@ handler, so the full-parse contract is unchanged by construction.
 | INV-3 | The cursor's offset is what the walk **actually consumed**, never the pre-read size sample. A write landing during the read leaves a strictly newer on-disk signal, which is what ANTS-1458 INV-4 relies on; recording the sample as the offset would skip those bytes permanently. |
 | INV-4 | `canResume` is false when the cursor is not primed, when the file is shorter than the offset (truncated or replaced by something smaller), or when the byte before the offset is not a newline (rewritten in place). A false answer obliges the caller to clear its accumulator before walking. |
 | INV-5 | The 16 MiB tail cap applies to a **cold** walk only. A resumed walk starts at the cursor and reads to EOF, so an append is never dropped for sitting below the cap. |
-| INV-6 | `setTranscriptPath` resets the cursor and the accumulator with the existing `m_lastRescan*` reset, so a path change can never resume against another file's offset. |
+| INV-6 | `setTranscriptPath` resets the cursor and the accumulator with the existing `m_lastRescan*` reset, then takes the state kept for the new path, if any (INV-9). State kept for one path is never used for another, so a path change can never resume against another file's offset. |
 | INV-7 | For any transcript, walking it cold and walking it in arbitrary append-sized steps yield the **same tracker result** — the parse is resumable, not merely cheaper. Holds for files under the cap; over the cap a stepped walk legitimately retains history a cold walk drops, which INV-5 permits. |
 | INV-8 | `parseTranscript(path)`'s signature and result are unchanged. |
+| INV-9 | After each parse a tracker keeps its cursor and accumulator under the transcript path, in a `ClaudeTranscript::WalkCache` shared by every tracker of its type. A tracker binding a path with kept state resumes from it: a tab switch back, or a second pane on the same transcript. `rescan`'s `canResume` check still walks cold when the kept cursor no longer holds. |
+| INV-10 | The cache keeps at most `WalkCache::kMaxPaths` paths, most recent first, and never keeps an unprimed cursor. Each entry is a cursor and one tracker's accumulator. |
 
 ## What checks this
 
@@ -58,17 +60,18 @@ handler, so the full-parse contract is unchanged by construction.
 | INV-3 | `CursorTracksConsumedNotSampledSize` |
 | INV-4 | `TruncationForcesFullRewalk`, `ShrinkForcesFullRewalk`, `RewriteInPlaceForcesFullRewalk` |
 | INV-5 | `ResumedWalkIgnoresTailCap` |
-| INV-6 | `PathChangeResetsCursor` |
+| INV-6 | `PathChangeResetsCursor`, `PathChangeNeverTakesAnotherPathsState` |
 | INV-7 | `SteppedParseEqualsColdParse` (both trackers) |
 | INV-8 | `FullParseContractUnchanged` |
+| INV-9 | `RebindResumesTaskListFromKeptState`, `RebindResumesBgTasksFromKeptState`, `SiblingTrackerResumesFromKeptState` |
+| INV-10 | `WalkCacheKeepsOnlyTheMostRecentPaths` |
 
 ## Scope
 
-Covers the incremental parse only. The other half ANTS-5050 still names —
-one tracker per transcript path, so N panes stop meaning N walks — is an
-ownership change in `MainWindow` and is not touched here. Measurement says it
-is the smaller win: it removes duplicate walks but does nothing at one pane,
-where this fix takes the cost to the appended delta.
+Covers the incremental parse and the per-path cache of its state (INV-9,
+INV-10). The user chose that cache on 2026-09-12 over sharing one tracker per
+transcript path. It removes the cold walk a tab switch back or a second pane
+on the same transcript used to pay, and leaves tracker ownership unchanged.
 
 Not covered: moving the walk off the GUI thread. Considered and not taken —
 it hides the cost rather than removing it, and this item's own Fix line names

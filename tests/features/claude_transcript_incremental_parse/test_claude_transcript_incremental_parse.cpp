@@ -66,6 +66,16 @@ void appendTo(const QString &path, const QByteArray &bytes) {
     ASSERT_EQ(f.write(bytes), bytes.size());
 }
 
+// The same bytes with every character but the newlines blanked. The file keeps
+// its size and its line breaks, so canResume still accepts a cursor into it,
+// but a cold walk finds only blank lines where the events were. INV-9 uses it
+// to tell a resumed tracker from one that walked again.
+QByteArray blankedSameShape(QByteArray bytes) {
+    for (char &c : bytes)
+        if (c != '\n') c = ' ';
+    return bytes;
+}
+
 // Count the events a walk yields, so INV-2 can be stated about visits rather
 // than about a tracker's filtered output.
 int visitCount(const QString &path, ClaudeTranscript::Cursor &cur) {
@@ -346,4 +356,112 @@ TEST(TranscriptIncremental, PathChangeResetsCursor) {
         << "setTranscriptPath does not reset the parse cursor";
     EXPECT_NE(body.find("m_acc"), std::string::npos)
         << "setTranscriptPath does not reset the parse accumulator";
+}
+
+// --- INV-6 — kept state is never used for another path ----------------
+//
+// q holds p's bytes blanked, then one new launch. If p's kept cursor were used
+// for q, canResume would accept it and the tracker would report p's tasks.
+
+TEST(TranscriptIncremental, PathChangeNeverTakesAnotherPathsState) {
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid());
+    const QString p = dir.filePath("p.jsonl");
+    const QString q = dir.filePath("q.jsonl");
+    const QByteArray pBytes = bgLaunch("1") + bgLaunch("2");
+    writeAll(p, pBytes);
+    writeAll(q, blankedSameShape(pBytes) + bgLaunch("3"));
+
+    ClaudeBgTaskTracker tracker;
+    tracker.setTranscriptPath(p);
+    ASSERT_EQ(tracker.tasks().size(), 2);
+    tracker.setTranscriptPath(q);
+    EXPECT_EQ(tracker.tasks().size(), 1)
+        << "binding q resumed from the state kept for p";
+}
+
+// --- INV-9 — a re-bound path resumes from its kept state --------------
+
+TEST(TranscriptIncremental, RebindResumesTaskListFromKeptState) {
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid());
+    const QString p = dir.filePath("tasks.jsonl");
+    const QByteArray first = todoWrite("pending", "one");
+    writeAll(p, first);
+
+    ClaudeTaskListTracker tracker;
+    tracker.setTranscriptPath(p);
+    ASSERT_EQ(tracker.tasks().size(), 1);
+    tracker.setTranscriptPath(QString());  // the tab-switch clear (ANTS-1219-INV-4)
+    ASSERT_TRUE(tracker.tasks().isEmpty());
+
+    // The consumed snapshot is blanked and junk appended: only a tracker that
+    // resumed still holds the task.
+    writeAll(p, blankedSameShape(first) + blankAndJunk());
+    tracker.setTranscriptPath(p);
+    EXPECT_EQ(tracker.tasks().size(), 1)
+        << "re-binding the path walked it again instead of resuming";
+}
+
+TEST(TranscriptIncremental, RebindResumesBgTasksFromKeptState) {
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid());
+    const QString p = dir.filePath("bg.jsonl");
+    const QByteArray first = bgLaunch("1");
+    writeAll(p, first);
+
+    ClaudeBgTaskTracker tracker;
+    tracker.setTranscriptPath(p);
+    ASSERT_EQ(tracker.tasks().size(), 1);
+    tracker.setTranscriptPath(QString());
+    ASSERT_TRUE(tracker.tasks().isEmpty());
+
+    writeAll(p, blankedSameShape(first) + bgLaunch("2"));
+    tracker.setTranscriptPath(p);
+    EXPECT_EQ(tracker.tasks().size(), 2)
+        << "re-binding the path walked it again instead of resuming";
+}
+
+TEST(TranscriptIncremental, SiblingTrackerResumesFromKeptState) {
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid());
+    const QString p = dir.filePath("shared.jsonl");
+    const QByteArray first = bgLaunch("1");
+    writeAll(p, first);
+
+    ClaudeBgTaskTracker a;
+    a.setTranscriptPath(p);
+    ASSERT_EQ(a.tasks().size(), 1);
+
+    writeAll(p, blankedSameShape(first) + bgLaunch("2"));
+    ClaudeBgTaskTracker b;
+    b.setTranscriptPath(p);
+    EXPECT_EQ(b.tasks().size(), 2)
+        << "a second tracker on the same transcript walked it cold";
+}
+
+// --- INV-10 — the cache is bounded ------------------------------------
+
+TEST(TranscriptIncremental, WalkCacheKeepsOnlyTheMostRecentPaths) {
+    ClaudeTranscript::WalkCache<int> cache;
+    const int max = ClaudeTranscript::WalkCache<int>::kMaxPaths;
+    for (int i = 0; i <= max; ++i) {
+        ClaudeTranscript::Cursor c;
+        c.primed = true;
+        c.offset = i + 1;
+        cache.store(QStringLiteral("/p%1").arg(i), c, i);
+    }
+
+    ClaudeTranscript::Cursor c;
+    int acc = -1;
+    EXPECT_FALSE(cache.restore(QStringLiteral("/p0"), c, acc))
+        << "the least recently stored path was not evicted";
+    ASSERT_TRUE(cache.restore(QStringLiteral("/p%1").arg(max), c, acc));
+    EXPECT_EQ(acc, max);
+    EXPECT_EQ(c.offset, max + 1);
+
+    ClaudeTranscript::Cursor unprimed;
+    cache.store(QStringLiteral("/fresh"), unprimed, 7);
+    EXPECT_FALSE(cache.restore(QStringLiteral("/fresh"), c, acc))
+        << "an unprimed cursor was kept";
 }
