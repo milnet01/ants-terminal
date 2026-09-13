@@ -9430,7 +9430,7 @@ extends an existing item, that item carries it instead.
   Source: user-report-2026-09-12.
   Lanes: vt, terminalgrid, terminalwidget.
 
-- 📋 [ANTS-5136] **handleSGR runs an unrecognised extended-colour selector as an attribute code, so ESC[38;1m applies bold.**
+- ✅ [ANTS-5136] **handleSGR runs an unrecognised extended-colour selector as an attribute code, so ESC[38;1m applies bold.**
   Found while reading handleSGR for ANTS-5135; not that defect's cause and
   deliberately not folded into its commit.
 
@@ -9463,6 +9463,11 @@ extends an existing item, that item carries it instead.
   Worth a test per selector form, since the existing sgr_attribute_reset
   contract covers set and reset code PAIRS and says nothing about
   malformed extended-colour introducers.
+  Resolved (2026-09-13): TerminalGrid::handleSGR cases 38, 48 and 58
+  abandon the rest of the sequence on an unrecognised selector (and 58
+  on a `5` with no index), as ANTS-5130 did for a short operand list.
+  Three SgrAttributeReset.Unknown* tests proven red. Commit 49098a78;
+  suite green.
   **Layman:** A malformed colour instruction can make the next bit of text bold when it should not be.
   Kind: fix.
   Source: in-session-2026-09-12.
