@@ -1919,9 +1919,11 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
     }
     auto applyQueryFilter = [&queryArg, queryMode](QJsonArray &arr) {
         if (queryArg.isEmpty()) return;  // no filter → keep all, skip iteration
+        // ANTS-5104 — compiled once for the whole array, not per bullet.
+        const mcp::QueryMatcher matcher(queryArg, queryMode);
         QJsonArray kept;
         for (const auto &v : std::as_const(arr)) {
-            if (mcp::bulletMatchesQuery(v.toObject(), queryArg, queryMode))
+            if (matcher.matchesBullet(v.toObject()))
                 kept.append(v);
         }
         arr = kept;
@@ -3306,14 +3308,14 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
         // from nothing to match against.
         if (!queryArg.isEmpty()) {
             const int considered = sections.size();
+            const mcp::QueryMatcher matcher(queryArg, queryMode);  // ANTS-5104
             QJsonArray kept;
             for (const auto &v : std::as_const(sections)) {
                 const QJsonObject s = v.toObject();
-                if (mcp::textMatchesQuery(
+                if (matcher.matches(
                         s.value(QStringLiteral("headline")).toString() +
                             QChar('\n') +
-                            s.value(QStringLiteral("slug")).toString(),
-                        queryArg, queryMode)) {
+                            s.value(QStringLiteral("slug")).toString())) {
                     kept.append(v);
                 }
             }

@@ -700,23 +700,43 @@ QString withIgnoredArgs(const QString &responseJson, const QStringList &ignored)
 
 bool bulletMatchesQuery(const QJsonObject &bullet, const QString &needle,
                         QueryMode mode) {
+    return QueryMatcher(needle, mode).matchesBullet(bullet);
+}
+
+bool textMatchesQuery(const QString &hayRaw, const QString &needle,
+                      QueryMode mode) {
+    return QueryMatcher(needle, mode).matches(hayRaw);
+}
+
+bool QueryMatcher::matchesBullet(const QJsonObject &bullet) const {
     // headline + headline_full + body — the text surfaces the list emits.
     // headline_full is present only when a long headline was capped; absent
     // keys stringify to "" and drop out harmlessly. body is present at the
     // pre-pagination filter point (rcStripBodyFields runs post-slice), so
     // the match works even when include_body is false.
-    return textMatchesQuery(
+    return matches(
         bullet.value(QStringLiteral("headline")).toString() + QChar('\n') +
-            bullet.value(QStringLiteral("headline_full")).toString() +
-            QChar('\n') + bullet.value(QStringLiteral("body")).toString(),
-        needle, mode);
+        bullet.value(QStringLiteral("headline_full")).toString() +
+        QChar('\n') + bullet.value(QStringLiteral("body")).toString());
 }
 
-bool textMatchesQuery(const QString &hayRaw, const QString &needle,
-                      QueryMode mode) {
-    const QString needleLower = needle.toLower();
+bool QueryMatcher::matches(const QString &hayRaw) const {
     const QString hay = hayRaw.toLower();
-    if (mode == QueryMode::Substring) return hay.contains(needleLower);
+    if (m_mode == QueryMode::Substring) return hay.contains(m_needleLower);
+    // An invalid pattern matches NOTHING rather than everything: a typo that
+    // returned every bullet would read as "the roadmap is entirely about X",
+    // which is the more expensive wrong answer. The caller-facing refusal for
+    // a malformed pattern is the verb's job, not this predicate's.
+    if (!m_re.isValid()) return false;
+    return m_re.match(hay).hasMatch();
+}
+
+// ANTS-5104 — the needle is lowercased and the pattern compiled HERE, once,
+// rather than once per bullet: roadmap_query filters every bullet with the
+// same query, and a caller's regex was recompiled for each of them.
+QueryMatcher::QueryMatcher(const QString &needle, QueryMode mode)
+    : m_mode(mode), m_needleLower(needle.toLower()) {
+    if (mode == QueryMode::Substring) return;
 
     // ANTS-4367 — the two narrowing modes. Both are case-insensitive, like
     // the default: what they narrow is the BOUNDARY (or the pattern), never
@@ -733,14 +753,9 @@ bool textMatchesQuery(const QString &hayRaw, const QString &needle,
             ? QStringLiteral("\\b") + QRegularExpression::escape(needle) +
                   QStringLiteral("\\b")
             : needle;
-    QRegularExpression re(pattern,
-                          QRegularExpression::CaseInsensitiveOption);
-    // An invalid pattern matches NOTHING rather than everything: a typo that
-    // returned every bullet would read as "the roadmap is entirely about X",
-    // which is the more expensive wrong answer. The caller-facing refusal for
-    // a malformed pattern is the verb's job, not this predicate's.
-    if (!re.isValid()) return false;
-    return re.match(hay).hasMatch();
+    m_re = QRegularExpression(pattern,
+                              QRegularExpression::CaseInsensitiveOption);
+    m_re.optimize();
 }
 
 }  // namespace mcp

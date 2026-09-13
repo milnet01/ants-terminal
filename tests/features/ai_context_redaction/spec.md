@@ -118,6 +118,8 @@ contract break):
 | GitHub fine-grained PAT | `github_pat_[A-Za-z0-9_]{82}` | `github_fine_grained_pat` |
 | Anthropic API key | `sk-ant-[A-Za-z0-9_\-]{90,}` | `anthropic` |
 | OpenAI project key | `sk-proj-[A-Za-z0-9_\-]{80,}` | `openai_project` |
+| OpenAI service-account key | `sk-svcacct-[A-Za-z0-9_\-]{80,}` (ANTS-5104) | `openai_service_account` |
+| OpenAI admin key | `sk-admin-[A-Za-z0-9_\-]{80,}` (ANTS-5104) | `openai_admin` |
 | OpenAI legacy key | `sk-[A-Za-z0-9]{48}` (when not already matched as `sk-ant-` or `sk-proj-`) | `openai` |
 | Slack token | `xox[abpros]-[A-Za-z0-9-]{10,}` | `slack` |
 | Stripe live key | `(sk\|rk)_live_[A-Za-z0-9]{24,}` | `stripe` |

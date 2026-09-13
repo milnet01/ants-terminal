@@ -117,6 +117,13 @@ inline const std::vector<Rule> &rules()
         // `sk-proj-`. Must precede the legacy `sk-` shape.
         { QRegularExpression(QStringLiteral("\\bsk-proj-[A-Za-z0-9_\\-]{80,}")),
           QStringLiteral("openai_project"), 0 },
+        // ANTS-5104 — OpenAI service-account and admin keys, issued beside
+        // `sk-proj-` with the same base64url body. Neither matches the legacy
+        // shape, whose run of alphanumerics stops at the second `-`.
+        { QRegularExpression(QStringLiteral("\\bsk-svcacct-[A-Za-z0-9_\\-]{80,}")),
+          QStringLiteral("openai_service_account"), 0 },
+        { QRegularExpression(QStringLiteral("\\bsk-admin-[A-Za-z0-9_\\-]{80,}")),
+          QStringLiteral("openai_admin"), 0 },
         // OpenAI legacy key: `sk-` + 48 alphanum. The priority-resolve
         // step drops this when `sk-ant-` or `sk-proj-` already covered
         // the range.

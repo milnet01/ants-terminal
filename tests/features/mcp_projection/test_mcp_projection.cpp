@@ -1230,6 +1230,36 @@ TEST(McpProjection, Ants4367WholeWordAndRegexNarrowTheQuery) {
                                          mcp::QueryMode::Regex));
 }
 
+// ANTS-5104 — one QueryMatcher is built per filter and reused for every
+// haystack, so it must carry no state between calls: each answer here is the
+// one a fresh match gives.
+TEST(QueryMatcher, Ants5104OneMatcherAnswersEveryHaystack) {
+    const QString real   = QStringLiteral("CI is red on main");
+    const QString noise  = QStringLiteral("A design decision about efficiency");
+    const QString hyphen = QStringLiteral("the CI-parity script");
+    const QString lower  = QStringLiteral("ci runs on every push");
+
+    const mcp::QueryMatcher sub(QStringLiteral("CI"), mcp::QueryMode::Substring);
+    EXPECT_TRUE(sub.matches(real));
+    EXPECT_TRUE(sub.matches(noise));
+
+    const mcp::QueryMatcher word(QStringLiteral("CI"), mcp::QueryMode::WholeWord);
+    EXPECT_TRUE(word.matches(real));
+    EXPECT_FALSE(word.matches(noise));
+    EXPECT_TRUE(word.matches(hyphen));
+    EXPECT_TRUE(word.matches(lower));
+    EXPECT_FALSE(word.matches(noise)) << "a reused matcher changed its answer";
+
+    const mcp::QueryMatcher rx(QStringLiteral("^CI is"), mcp::QueryMode::Regex);
+    EXPECT_TRUE(rx.matches(real));
+    EXPECT_FALSE(rx.matches(noise));
+    EXPECT_TRUE(rx.matches(real)) << "a reused matcher changed its answer";
+
+    const mcp::QueryMatcher bad(QStringLiteral("CI("), mcp::QueryMode::Regex);
+    EXPECT_FALSE(bad.matches(real));
+    EXPECT_FALSE(bad.matches(noise));
+}
+
 
 // ANTS-4698 — the DIAGNOSTIC floor. `warning` and `parseable_bullets` survive
 // a `fields` narrowing that does not name them.

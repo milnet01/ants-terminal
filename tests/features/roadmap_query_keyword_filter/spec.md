@@ -21,7 +21,8 @@ It is a list-path filter, not a targeted selector.
   the cap is still findable.
 - **INV-4** — a needle absent from all three text surfaces returns false.
 - **INV-5** — `cmdRoadmapQuery` wires the filter on BOTH emission branches
-  via `applyQueryFilter` / `mcp::bulletMatchesQuery`, refuses to combine
+  via `applyQueryFilter`, building one `mcp::QueryMatcher` per filter rather
+  than a per-bullet `mcp::bulletMatchesQuery` call (ANTS-5104), refuses to combine
   `query` with the targeted / aggregate surfaces (`bad_mode_combo` for
   `id` / `ids` / `mode:section_index` / `mode:bundles`), and echoes the
   applied `query` back in the envelope.

@@ -394,6 +394,11 @@ for security-relevant changes.
 
 ### Security
 
+- **OpenAI service-account and admin keys are now scrubbed before text is sent to an AI model** (ANTS-5104)
+  The secret scrubber recognised OpenAI project keys and the old key
+  format but not the sk-svcacct- and sk-admin- keys OpenAI now issues. Both
+  are now replaced with a [REDACTED] marker.
+
 - **A large MCP answer saved to disk is discarded if Ants cannot make the file private** (ANTS-5104)
   The saved copy holds the answer itself. If its permissions cannot be
   set to owner-only, the file is removed and the answer is returned

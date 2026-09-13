@@ -84,8 +84,16 @@ TEST(RoadmapQueryKeywordFilter, Inv5HandlerWiring) {
     ASSERT_FALSE(rc.isEmpty());
     EXPECT_TRUE(rc.contains(QStringLiteral("applyQueryFilter")))
         << "query filter helper must be applied in cmdRoadmapQuery";
-    EXPECT_TRUE(rc.contains(QStringLiteral("mcp::bulletMatchesQuery(")))
-        << "handler must delegate to the shared pure matcher";
+    // ANTS-5104 — the shared matcher, compiled once per filter. A per-bullet
+    // bulletMatchesQuery / textMatchesQuery call recompiles the query for
+    // every bullet.
+    EXPECT_TRUE(rc.contains(QStringLiteral(
+        "const mcp::QueryMatcher matcher(queryArg, queryMode);")))
+        << "handler must delegate to the shared pure matcher, built once";
+    EXPECT_FALSE(rc.contains(QStringLiteral("mcp::bulletMatchesQuery(")))
+        << "handler must not rebuild the matcher per bullet";
+    EXPECT_FALSE(rc.contains(QStringLiteral("mcp::textMatchesQuery(")))
+        << "handler must not rebuild the matcher per section";
     EXPECT_TRUE(rc.contains(QStringLiteral(
         "query keyword filter does not combine")))
         << "bad_mode_combo guard for query + targeted/aggregate surfaces";

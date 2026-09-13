@@ -1,5 +1,6 @@
 #pragma once
 
+#include <QRegularExpression>
 #include <QSet>
 #include <QString>
 #include <QStringList>
@@ -239,5 +240,21 @@ bool textMatchesQuery(const QString &hay, const QString &needle,
 
 bool bulletMatchesQuery(const QJsonObject &bullet, const QString &needle,
                         QueryMode mode = QueryMode::Substring);
+
+// ANTS-5104 — a query compiled once: the lowercased needle and, for the two
+// narrowing modes, the pattern. roadmap_query filters every bullet with one
+// query, and the two functions above rebuilt it per call; they remain as
+// one-shot wrappers over this.
+class QueryMatcher {
+public:
+    QueryMatcher(const QString &needle, QueryMode mode);
+    bool matches(const QString &hay) const;
+    bool matchesBullet(const QJsonObject &bullet) const;
+
+private:
+    QueryMode          m_mode;
+    QString            m_needleLower;
+    QRegularExpression m_re;
+};
 
 }  // namespace mcp

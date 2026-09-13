@@ -107,6 +107,9 @@ TEST(AiContextRedaction, Main) {
         QStringLiteral("-_") +            //  2 → 64
         QStringLiteral("abcdefghijklmnop"); // 16 → 80
     const QString openaiProjKey = QStringLiteral("sk-proj-") + openaiProjPayload80;
+    // ANTS-5104 — service-account and admin keys share the project body.
+    const QString openaiSvcKey   = QStringLiteral("sk-svcacct-") + openaiProjPayload80;
+    const QString openaiAdminKey = QStringLiteral("sk-admin-") + openaiProjPayload80;
     // 48-char payload for legacy OpenAI.
     const QString openaiLegacyKey = QStringLiteral("sk-") +
         QStringLiteral("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUV"); // 48 chars
@@ -178,6 +181,16 @@ TEST(AiContextRedaction, Main) {
           openaiProjKey,
           QStringLiteral("openai_project"),
           QStringLiteral("OPENAI_API_KEY=") },
+        { "OpenAI_service_account",
+          QStringLiteral("OPENAI_API_KEY=") + openaiSvcKey,
+          openaiSvcKey,
+          QStringLiteral("openai_service_account"),
+          QStringLiteral("OPENAI_API_KEY=") },
+        { "OpenAI_admin",
+          QStringLiteral("OPENAI_ADMIN_KEY=") + openaiAdminKey,
+          openaiAdminKey,
+          QStringLiteral("openai_admin"),
+          QStringLiteral("OPENAI_ADMIN_KEY=") },
         { "OpenAI_legacy",
           openaiLegacyKey,
           openaiLegacyKey,
