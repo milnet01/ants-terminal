@@ -18494,7 +18494,7 @@ indie-review finding.
   Source: review-contract loop 1 on ANTS-3533 (ANTS-5071 amendment), 2026-09-13.
   Lanes: changelog, mcp.
 
-- 📋 [ANTS-5149] **ci.yml says a cancelled run on main is abnormal, but GitHub cancels a still-pending run when a newer push joins its group.**
+- ✅ [ANTS-5149] **ci.yml says a cancelled run on main is abnormal, but GitHub cancels a still-pending run when a newer push joins its group.**
   Seen 2026-09-13: the CI run for 4d07736d finished `cancelled` with no
   jobs, after 49098a78 was pushed while it was still pending. The
   `concurrency` block in .github/workflows/ci.yml sets cancel-in-progress
@@ -18504,6 +18504,11 @@ indie-review finding.
   `cancelled` on main. A watcher following the comment would flag it.
   Fix: say in the comment that a superseded pending run cancels with no
   jobs, and that the abnormal case is a cancelled run whose jobs started.
+  Resolved (2026-09-13): the ci.yml concurrency comment now says a run
+  still pending when a newer push joins the group is cancelled with no
+  jobs even on main, and that the abnormal case is a cancelled run whose
+  jobs started. YAML parse, actionlint and CiWorkflowDeps green. Commit
+  dd8baf40.
   **Layman:** The build checker's notes say a cancelled check on the main branch means trouble, but a check can be cancelled harmlessly when a newer change replaces it before it starts.
   Kind: doc-fix.
   Source: in-session-2026-09-13.
