@@ -520,6 +520,36 @@ int inv11LongRecordsAreReadWhole() {
     return ok ? 0 : 1;
 }
 
+// ANTS-5089: the transcript dialog's tail loader parses only the last
+// maxEntries records and still reports how many there are in total.
+int inv13TailLoaderReturnsLastEntriesAndTotal() {
+    QTemporaryDir tmp;
+    if (!tmp.isValid()) return 1;
+    const QString path = tmp.path() + "/ten.jsonl";
+    {
+        QFile f(path);
+        if (!f.open(QIODevice::WriteOnly)) return 1;
+        for (int i = 1; i <= 10; ++i)
+            f.write(QByteArray(R"({"type":"user","n":)") + QByteArray::number(i) + "}\n");
+    }
+    ClaudeIntegration ci;
+    int total = -1;
+    const QJsonArray tail = ci.loadTranscriptTail(path, 4, &total);
+    const bool capped = tail.size() == 4 && total == 10 &&
+        tail.first().toObject().value("n").toInt() == 7 &&
+        tail.last().toObject().value("n").toInt() == 10;
+    int totalAll = -1;
+    const QJsonArray all = ci.loadTranscriptTail(path, 50, &totalAll);
+    const bool uncapped = all.size() == 10 && totalAll == 10;
+    std::fprintf(stderr,
+                 "[inv13 transcript-tail-loader] capped size=%d total=%d, "
+                 "uncapped size=%d total=%d  %s\n",
+                 static_cast<int>(tail.size()), total,
+                 static_cast<int>(all.size()), totalAll,
+                 (capped && uncapped) ? "PASS" : "FAIL");
+    return (capped && uncapped) ? 0 : 1;
+}
+
 }  // namespace
 
 TEST(ClaudeTranscriptRobustness, Main) {
@@ -535,6 +565,7 @@ TEST(ClaudeTranscriptRobustness, Main) {
     failures += inv9FindClaudeChildAfterForkingThreadExits();
     failures += inv10SidechainEndTurnDoesNotIdle();
     failures += inv11LongRecordsAreReadWhole();
+    failures += inv13TailLoaderReturnsLastEntriesAndTotal();
     if (failures) FAIL();
 }
 

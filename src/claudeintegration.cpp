@@ -694,6 +694,41 @@ QJsonArray ClaudeIntegration::loadTranscript(const QString &path) const {
     return entries;
 }
 
+QJsonArray ClaudeIntegration::loadTranscriptTail(const QString &path,
+                                                 int maxEntries,
+                                                 int *totalRecords) const {
+    QJsonArray entries;
+    int total = 0;
+    const auto finish = [&]() {
+        if (totalRecords) *totalRecords = total;
+        return entries;
+    };
+    QFile file(path);
+    if (maxEntries <= 0 || !file.open(QIODevice::ReadOnly)) return finish();
+    // Same whole-file cap as loadTranscript.
+    if (file.size() > 100LL * 1024 * 1024) return finish();
+
+    // Pass 1: walk record boundaries, keeping only the offsets of the last
+    // maxEntries non-empty records. Nothing is parsed here.
+    QList<qint64> starts;
+    while (!file.atEnd()) {
+        const qint64 pos = file.pos();
+        if (readJsonlRecord(file, kMaxTranscriptRecordBytes).isEmpty()) continue;
+        ++total;
+        starts.append(pos);
+        if (starts.size() > maxEntries) starts.removeFirst();
+    }
+    // Pass 2: parse from the oldest kept record to the end.
+    if (starts.isEmpty() || !file.seek(starts.first())) return finish();
+    while (!file.atEnd()) {
+        const QByteArray line = readJsonlRecord(file, kMaxTranscriptRecordBytes);
+        if (line.isEmpty()) continue;
+        const QJsonDocument doc = QJsonDocument::fromJson(line);
+        if (doc.isObject()) entries.append(doc.object());
+    }
+    return finish();
+}
+
 QStringList ClaudeIntegration::recentSessions() const {
     QStringList sessions;
     QDir claudeDir(ConfigPaths::claudeProjectsDir());

@@ -70,6 +70,11 @@ for security-relevant changes.
 
 ### Fixed
 
+- **Opening a long Claude transcript no longer freezes the window while the whole file is decoded** (ANTS-5089)
+  The transcript viewer shows only the last 2000 entries, but it decoded
+  every entry in the file first, on the window's own thread. It now decodes
+  just the entries it shows and only counts the rest.
+
 - **Claude's status shows up for a Claude session started from a subfolder or subshell** (ANTS-5089)
   Ants found the Claude session's transcript by looking at the shell's
   current folder. If Claude was started after changing folders in a

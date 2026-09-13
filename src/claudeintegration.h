@@ -177,6 +177,13 @@ public:
     static constexpr int kOrphanScanEveryPolls = 5;
 
     QJsonArray loadTranscript(const QString &path) const;
+    // ANTS-5089 — the last `maxEntries` records only, for the transcript
+    // dialog, which renders no more than that. Earlier records are counted by
+    // walking record boundaries, not JSON-parsed, so a large transcript is not
+    // parsed whole on the GUI thread. `*totalRecords` counts every non-empty
+    // record, a malformed one included.
+    QJsonArray loadTranscriptTail(const QString &path, int maxEntries,
+                                  int *totalRecords) const;
     QStringList recentSessions() const;
     // ANTS-1168: project-scoped variant. When projectCwd is non-empty,
     // restrict the result to the encoded project directory matching

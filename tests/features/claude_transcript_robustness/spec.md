@@ -104,6 +104,13 @@ with the periodic callers, `pollClaudeProcess` and
 `ClaudeTabTracker::detectClaudeChild`, asking for the scan while a Claude
 child is tracked or once every `kOrphanScanEveryPolls` polls.
 
+**INV-13** — `loadTranscriptTail(path, maxEntries, &total)` returns only the
+last `maxEntries` records and counts every non-empty record in `total`
+(ANTS-5089). For a ten-record transcript and a cap of four it returns
+records 7–10 with a total of 10; with a cap above the count it returns all
+ten. The transcript dialog uses it so it no longer JSON-parses a whole
+transcript it renders only the end of.
+
 ## Out of scope
 
 - Rendering/presentation of `thinking` blocks in the transcript
