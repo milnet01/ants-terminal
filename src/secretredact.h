@@ -6,9 +6,9 @@
 //
 // Contract: tests/features/ai_context_redaction/spec.md.
 //
-// Header-only because there's exactly one consumer today (AiDialog) and
-// a .cpp would buy us nothing the compiler's COMDAT dedup doesn't
-// already give us. The regex objects are static-initialised once per
+// Header-only because a .cpp would buy us nothing the compiler's COMDAT
+// dedup doesn't already give us, however many files include it. The
+// regex objects are static-initialised once per
 // process (C++11 magic-statics).
 
 #pragma once

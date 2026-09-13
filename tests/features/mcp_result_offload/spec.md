@@ -16,6 +16,7 @@ dispatch-site and verb-wiring invariants.
 | `Inv4OwnerOnlyPerms` | INV-4 — spill file is 0600 (group/other bits clear). |
 | `Inv12HeadCharBoundary` | INV-12 — head cut never splits a UTF-8 multi-byte sequence. |
 | `Inv5And6ReadSpillPaging` | INV-5/INV-6 — `readSpill` round-trips, byte-pages by returned `offset+bytes`, offset-past-end → empty/`!truncated`, unknown handle → `not_found`. |
+| `Ants5104ReadSpillPageEndsOnACharacterBoundary` | INV-6 (ANTS-5104) — a multi-byte body paged at a `max_bytes` that is not a multiple of the character width returns no U+FFFD, `bytes` equals `content`'s UTF-8 length, pages reassemble the body, and a 1-byte `max_bytes` returns one whole character. |
 | `Inv8IdempotentReSpill` | INV-8 — same body twice → one file, stable handle. |
 | `Inv7EvictionAndSweep` | INV-7 — file cap holds, just-written handle survives; 24 h `spillSweep()` drops a backdated file. |
 | `Inv9OffloadPrecedesRecordDispatch` | INV-9 — `mcp::offloadBody(` precedes `recordDispatch(` in the dispatch body; `read_spill` schema registered. |

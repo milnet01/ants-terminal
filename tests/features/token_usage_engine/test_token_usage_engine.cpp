@@ -396,4 +396,9 @@ TEST(TokenSavingsHelpers, HumanizeBranchEdges) {
     EXPECT_EQ(humanizeCount(1000000),    QString("1M"));
     EXPECT_EQ(humanizeCount(1200000),    QString("1.2M"));
     EXPECT_EQ(humanizeCount(1000000000), QString("1B"));
+    // ANTS-5104 — a value that rounds up to 1000 moves to the next unit.
+    EXPECT_EQ(humanizeCount(999949),     QString("999.9K"));
+    EXPECT_EQ(humanizeCount(999950),     QString("1M"));
+    EXPECT_EQ(humanizeCount(999999),     QString("1M"));
+    EXPECT_EQ(humanizeCount(999999999),  QString("1B"));
 }

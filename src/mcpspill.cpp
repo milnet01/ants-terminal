@@ -529,10 +529,8 @@ SpillSlice readSpill(const QString &handle, qint64 offset, qint64 maxBytes) {
     QFile f(spillPath(handle));
     if (!f.exists()) { s.code = QStringLiteral("not_found"); return s; }
     if (!f.open(QIODevice::ReadOnly)) { s.code = QStringLiteral("not_found"); return s; }
-    const QByteArray full = f.readAll();
-    f.close();
 
-    const qint64 total = full.size();
+    const qint64 total = f.size();
     const qint64 cap = (maxBytes <= 0) ? kReadDefaultBytes
                                        : qMin(maxBytes, kReadCeilingBytes);
     s.ok         = true;
@@ -544,9 +542,22 @@ SpillSlice readSpill(const QString &handle, qint64 offset, qint64 maxBytes) {
         return s;
     }
     const qint64 want = qMin(cap, total - offset);
-    const QByteArray window = full.mid(static_cast<int>(offset),
-                                       static_cast<int>(want));
-    const qint64 keep = utf8BoundaryLen(window, want);
+    // ANTS-5104 — read only this page, not the whole spill, and cut on a
+    // character boundary of the BODY. A window exactly `want` bytes long left
+    // utf8BoundaryLen nothing past its end to inspect, so a page could end
+    // mid-character. Three more bytes show whether it does, and finish a
+    // character that alone outruns a tiny max_bytes.
+    if (!f.seek(offset)) { s = SpillSlice{}; s.code = QStringLiteral("not_found"); return s; }
+    const QByteArray window = f.read(want + 3);
+    qint64 keep = utf8BoundaryLen(window, want);
+    if (keep == 0) {
+        // max_bytes is smaller than the character at `offset`: return that
+        // one character rather than an empty page the caller cannot advance past.
+        keep = 1;
+        while (keep < window.size() &&
+               (static_cast<unsigned char>(window.at(static_cast<int>(keep))) & 0xC0) == 0x80)
+            ++keep;
+    }
     s.content   = QString::fromUtf8(window.left(static_cast<int>(keep)));
     s.bytes     = keep;
     s.truncated = (offset + keep) < total;

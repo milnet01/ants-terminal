@@ -70,6 +70,16 @@ for security-relevant changes.
 
 ### Fixed
 
+- **The tokens-saved chip shows 1M instead of 1000K for counts just under a million** (ANTS-5104)
+  A count that rounds up to the next unit (999,950 and above) now moves to
+  that unit, so it reads 1M rather than 1000K, and the same for M to B.
+
+- **Reading a large saved MCP answer page by page no longer garbles characters at page edges** (ANTS-5104)
+  read_spill could end a page in the middle of a multi-byte character,
+  which showed as a replacement character and threw the page length off.
+  Pages now end on a whole character, and each page reads only its own
+  part of the saved file instead of the whole file.
+
 - **Suspending the computer or changing its clock no longer lets two audits run on one project** (ANTS-5090)
   The short read cache, the "already running" guard for audit_run and
   indie_review_dispatch, and the async audit job list now measure elapsed

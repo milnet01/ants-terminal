@@ -201,6 +201,43 @@ TEST_F(McpResultOffload, Inv5And6ReadSpillPaging) {
     EXPECT_EQ(missing.code, QStringLiteral("not_found"));
 }
 
+// INV-6 (ANTS-5104) — a byte page ends on a character boundary of the body.
+// A window exactly max_bytes long let the cut land mid-character, so a page
+// ended in U+FFFD and `bytes` stopped matching `content`.
+TEST_F(McpResultOffload, Ants5104ReadSpillPageEndsOnACharacterBoundary) {
+    const QString euro = QString::fromUtf8("\xE2\x82\xAC");
+    QString body;
+    for (int i = 0; i < 20000; ++i) body += euro;
+    const QString handle =
+        QJsonDocument::fromJson(
+            mcp::offloadBody(QStringLiteral("codebase_index"), body).toUtf8())
+            .object().value("handle").toString();
+    ASSERT_FALSE(handle.isEmpty()) << "setup: the body was not spilled";
+
+    // 4096 is not a multiple of 3, so a page cut at max_bytes ends mid-'€'.
+    QString reassembled;
+    qint64 off = 0;
+    for (int guard = 0; guard < 100; ++guard) {
+        const mcp::SpillSlice s = mcp::readSpill(handle, off, 4096);
+        ASSERT_TRUE(s.ok);
+        EXPECT_FALSE(s.content.contains(QChar(0xFFFD)))
+            << "the page at offset " << off << " ends mid-character";
+        EXPECT_EQ(s.bytes, s.content.toUtf8().size())
+            << "bytes does not match content at offset " << off;
+        reassembled += s.content;
+        off += s.bytes;
+        if (!s.truncated) break;
+    }
+    EXPECT_EQ(reassembled, body);
+
+    // A max_bytes smaller than one character still returns that character,
+    // so a caller advancing by `bytes` makes progress.
+    const mcp::SpillSlice tiny = mcp::readSpill(handle, 0, 1);
+    ASSERT_TRUE(tiny.ok);
+    EXPECT_EQ(tiny.bytes, 3);
+    EXPECT_EQ(tiny.content, euro);
+}
+
 // ───────────────────────────────────────────────────────────────────
 // ANTS-3552 — edge assertions the ANTS-2094 spec listed as INV-1/INV-6
 // follow-ups (behaviour was already correct but unexercised).

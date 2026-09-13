@@ -250,6 +250,12 @@ QString humanizeCount(qint64 n) {
         suffix = QLatin1Char('B');
     }
     QString s = QString::number(v, 'f', 1);
+    // ANTS-5104 — a value that rounds up to 1000 belongs to the next unit:
+    // 999,950 reads "1M", not "1000K".
+    if (s == QLatin1String("1000.0") && suffix != QLatin1Char('B')) {
+        s = QStringLiteral("1.0");
+        suffix = QLatin1Char(suffix == QLatin1Char('K') ? 'M' : 'B');
+    }
     if (s.endsWith(QLatin1String(".0"))) s.chop(2);  // "1.0K" → "1K"
     return s + suffix;
 }
