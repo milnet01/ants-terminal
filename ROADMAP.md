@@ -18483,7 +18483,7 @@ indie-review finding.
   Source: review-contract loop 1 on ANTS-3533 (ANTS-5071 amendment), 2026-09-13.
   Lanes: changelog, mcp.
 
-- 📋 [ANTS-5147] **changelog_query pages id lookups, while ANTS-3533 says an id lookup overrides pagination.**
+- ✅ [ANTS-5147] **changelog_query pages id lookups, while ANTS-3533 says an id lookup overrides pagination.**
   Found 2026-09-13 by the ANTS-3533 review gate (loop 1), verified in
   RemoteControl::cmdChangelogQuery: the id path collects matches and then
   calls PaginationEngine::pageBullets with offset and limit like every
@@ -18496,6 +18496,11 @@ indie-review finding.
   skips paging for an id or ids lookup, as ANTS-3533 and roadmap_query
   already do. This brings the code into line with the gated spec, so no
   gate.
+  Resolved (2026-09-13): cmdChangelogQuery returns every match for an id
+  or ids lookup and ignores offset / limit values after shape-checking
+  them, as ANTS-3533 section 2.4 and INV-5 say. Test
+  ChangelogQueryHandler.Ants5147IdLookupIgnoresPagination proven red.
+  Commit c6f84707; suite green.
   **Layman:** The changelog search and its written design disagree about whether looking up a specific id can return only part of the results.
   Kind: investigate.
   Source: review-contract loop 1 on ANTS-3533 (ANTS-5071 amendment), 2026-09-13.
