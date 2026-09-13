@@ -467,6 +467,9 @@ private:
     // cold cache once). Guard skips the spawn while a probe is in
     // flight; cleared by both the finished and errorOccurred handlers.
     bool m_reviewProbeInFlight = false;
+    // ANTS-5080 — the cwd the in-flight probe is for. A probe's result is
+    // shown only while the active tab still has that cwd.
+    QString m_reviewProbeCwd;
     // ANTS-1147 — cache-and-compare guard for the branch-chip
     // restyle. The 2 s status timer used to call setStyleSheet
     // every tick even when neither theme nor primary-branch flag

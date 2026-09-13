@@ -4341,10 +4341,11 @@ void MainWindow::setupClaudeMcpProviders() {
             if (::kill(static_cast<pid_t>(pid), 0) == 0) continue;
             if (errno != ESRCH) continue;
             const QString full = tmp + QChar('/') + name;
-            // S_ISSOCK guard prevents removing a regular file that
-            // happens to share the name (defensive — unlikely).
-            QFileInfo fi(full);
-            if (fi.exists() && QFile(full).remove()) {
+            // ANTS-5080 — safeToUnlinkLocalSocket is the S_ISSOCK + owner
+            // check: a regular file or another user's socket that happens
+            // to share the name is left alone.
+            if (QFileInfo::exists(full) && safeToUnlinkLocalSocket(full) &&
+                QFile(full).remove()) {
                 qDebug() << "Reaped stale MCP socket:" << full;
             }
         }
@@ -5980,8 +5981,9 @@ void MainWindow::openClaudeProjectsDialog() {
                 this, [this](const QString &projectPath, const QString &sessionId, bool fork) {
             auto *t = focusedTerminal();
             if (!t) return;
+            // ANTS-5080 — the session id is quoted like the path.
             QString cmd = QString("cd %1 && claude --resume %2")
-                          .arg(shellQuote(projectPath), sessionId);
+                          .arg(shellQuote(projectPath), shellQuote(sessionId));
             if (fork) cmd += " --fork-session";
             t->writeCommand(cmd);
         });
@@ -7238,7 +7240,12 @@ void MainWindow::refreshReviewButton() {
     // probe that takes longer than 2 s (cold-cache git status on a
     // big repo, NFS-mounted cwd, etc.); without this guard each tick
     // accumulated processes.
-    if (m_reviewProbeInFlight) return;
+    if (m_reviewProbeInFlight) {
+        // ANTS-5080 — the running probe is for another cwd, and its result
+        // will not be shown here, so do not leave that tab's state on screen.
+        if (m_reviewProbeCwd != cwd) reviewBtn->hide();
+        return;
+    }
 
     // Policy (user spec 2026-04-18):
     //   - Not a git repo                      → hide entirely
@@ -7274,9 +7281,17 @@ void MainWindow::refreshReviewButton() {
     QPointer<QProcess> guard = proc;
     QPointer<MainWindow> self(this);
     m_reviewProbeInFlight = true;
+    m_reviewProbeCwd = cwd;
     connect(proc, &QProcess::finished, this,
-            [btn, guard, self](int exitCode, QProcess::ExitStatus status) {
-        if (btn) {
+            [btn, guard, self, cwd](int exitCode, QProcess::ExitStatus status) {
+        // ANTS-5080 — apply the result only to the tab it was probed for.
+        bool stillCurrent = false;
+        if (auto *p = self.data()) {
+            TerminalWidget *now = p->focusedTerminal();
+            if (!now) now = p->currentTerminal();
+            stillCurrent = now && now->shellCwd() == cwd;
+        }
+        if (btn && stillCurrent) {
             if (status != QProcess::NormalExit || exitCode == 128) {
                 btn->hide();           // not a git repo / git crash
             } else if (exitCode != 0) {
@@ -7303,6 +7318,11 @@ void MainWindow::refreshReviewButton() {
         if (guard) guard->deleteLater();
     });
     proc->start();
+    // ANTS-5080 — a git status that never exits must not hold the flag for
+    // the rest of the session. kill() delivers finished, which clears it.
+    QTimer::singleShot(10000, proc, [guard]() {
+        if (guard && guard->state() != QProcess::NotRunning) guard->kill();
+    });
 }
 
 void MainWindow::showBgTasksDialog() {

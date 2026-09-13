@@ -1820,6 +1820,8 @@ if(ANTS_TESTS)
                 tests/features/split_pane_shell_tracking/test_split_pane_shell_tracking.cpp
                 # ANTS-5079 — review command quoting, export failure, KWin cleanup, SSH timer guard.
                 tests/features/mainwindow_command_safety/test_mainwindow_command_safety.cpp
+                # ANTS-5080 — resume quoting, socket reaper check, tab-keyed review probe.
+                tests/features/mainwindow_status_probes/test_mainwindow_status_probes.cpp
                 tests/features/tab_rename_pin/test_tab_rename_pin.cpp
                 tests/features/confirm_close_with_processes/test_confirm_close_with_processes.cpp
                 tests/features/help_about_menu/test_help_about_menu.cpp

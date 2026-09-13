@@ -70,6 +70,10 @@ for security-relevant changes.
 
 ### Fixed
 
+- **The Review Changes button no longer shows the previous tab's git state after a quick tab switch, and a stuck git check can no longer freeze it for the session** (ANTS-5080)
+
+- **Start-up cleanup of old MCP sockets now removes only real sockets owned by you** (ANTS-5080)
+
 - **Exporting scrollback now tells you when the file could not be written, instead of reporting success** (ANTS-5079)
 
 - **Moving or centring the window through KWin no longer leaves a stray process and temp file behind when the helper cannot start** (ANTS-5079)
@@ -498,6 +502,8 @@ for security-relevant changes.
   work when it would.
 
 ### Security
+
+- **Resuming a Claude session quotes the session id in the command it types** (ANTS-5080)
 
 - **The command that asks Claude to review an audit quotes its prompt, so an unusual results path cannot run shell code** (ANTS-5079)
 
