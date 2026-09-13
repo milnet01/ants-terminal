@@ -18432,7 +18432,7 @@ indie-review finding.
   Source: in-session-2026-09-13 (ANTS-5071 spec amendment).
   Lanes: changelog, mcp.
 
-- 📋 [ANTS-5146] **changelog_query returns the full entry list for an ids argument that is neither an array nor a string.**
+- ✅ [ANTS-5146] **changelog_query returns the full entry list for an ids argument that is neither an array nor a string.**
   Found 2026-09-13 by the ANTS-3533 review gate (loop 1), verified in
   RemoteControl::cmdChangelogQuery: `ids` is read only when it is an array
   or a non-empty string, so `ids:42` or `ids:{}` leaves hasIds false and the
@@ -18440,6 +18440,11 @@ indie-review finding.
   string the same way. ANTS-3533 INV-8 requires a malformed `ids` to refuse
   bad_args rather than dump the list, the ANTS-3541 failure. Fix: refuse
   bad_args for a present `id` or `ids` of the wrong JSON type.
+  Resolved (2026-09-13): cmdChangelogQuery refuses bad_args for a
+  present `id` that is not a string or `ids` that is neither an array
+  nor a string; JSON null reads as absent. Test
+  ChangelogQueryHandler.Ants5146WrongTypeIdOrIdsRefuses proven red.
+  Commit 4d07736d.
   **Layman:** Asking the changelog search for entries with a badly formed list of ids returns the whole changelog instead of an error.
   Kind: fix.
   Source: review-contract loop 1 on ANTS-3533 (ANTS-5071 amendment), 2026-09-13.
@@ -18459,7 +18464,7 @@ indie-review finding.
   Source: review-contract loop 1 on ANTS-3533 (ANTS-5071 amendment), 2026-09-13.
   Lanes: changelog, mcp.
 
-- 📋 [ANTS-5148] **changelog_log add_subsection writes any date string it is given, so it can write a dated heading changelog_query will not recognise.**
+- ✅ [ANTS-5148] **changelog_log add_subsection writes any date string it is given, so it can write a dated heading changelog_query will not recognise.**
   Found 2026-09-13 by the ANTS-3533 review gate (loop 1), verified: the
   add_subsection branch of RemoteControl::cmdChangelogLog takes `date` as a
   trimmed string, and ChangelogLog::insertUnreleasedSubsection validates the
@@ -18467,6 +18472,10 @@ indie-review finding.
   heading whose date QDate cannot parse, and the ANTS-5071 reader then treats
   it as non-canonical and skips its bullets. Fix: refuse a `date` that does
   not parse as yyyy-MM-dd.
+  Resolved (2026-09-13): the add_subsection branch of cmdChangelogLog
+  refuses bad_args for a `date` QDate cannot parse as yyyy-MM-dd.
+  Extended changelog_log_subsection.Inv9Guards proven red. Commit
+  4d07736d.
   **Layman:** The changelog writer accepts badly formatted dates, which makes those entries invisible to the changelog search.
   Kind: fix.
   Source: review-contract loop 1 on ANTS-3533 (ANTS-5071 amendment), 2026-09-13.
