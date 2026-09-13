@@ -255,6 +255,13 @@ void testWiring() {
         expect(body.find("\"truncated\"") != std::string::npos,
                "WI-3 cmdGetText sets out[\"truncated\"]");
     }
+
+    // WI-4 (ANTS-5093) — the trim counts dropped lines without copying the
+    // dropped prefix. GT-1..GT-10 keep the counts themselves pinned.
+    {
+        expect(hdr.find("utf8.left(snap)") == std::string::npos,
+               "WI-4 trimScrollbackForGetText does not copy the dropped prefix");
+    }
 }
 
 int runMain() {

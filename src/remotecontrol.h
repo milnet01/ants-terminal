@@ -248,7 +248,9 @@ public:
 
         const QByteArray kept = utf8.mid(snap);
         r.bytesDropped = snap;
-        r.linesDropped = utf8.left(snap).count('\n');
+        // ANTS-5093 — counted without copying the dropped prefix: every
+        // newline is either in the dropped part or in `kept`.
+        r.linesDropped = static_cast<int>(utf8.count('\n') - kept.count('\n'));
         r.text = QStringLiteral("<truncated %1 bytes / %2 lines>\n")
                      .arg(r.bytesDropped).arg(r.linesDropped)
                  + QString::fromUtf8(kept);

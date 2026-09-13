@@ -70,6 +70,11 @@ for security-relevant changes.
 
 ### Fixed
 
+- **Reading terminal text over remote control no longer copies the part it throws away** (ANTS-5093)
+  When a get-text reply was over its size limit, Ants copied the whole
+  dropped part just to count its lines. It now counts them from what it
+  already holds.
+
 - **Tabs without Claude running no longer make Ants read every process's details every two seconds** (ANTS-5089)
   To spot Claude Code in a tab, Ants checks the shell's child processes
   every two seconds, and when none was Claude it also read the details of
