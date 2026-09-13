@@ -65,6 +65,11 @@ for security-relevant changes.
 
 ### Fixed
 
+- **A malformed extended-colour code no longer sets text attributes** (ANTS-5136)
+  An SGR 38, 48 or 58 introducer whose selector is neither 2 nor 5 now
+  abandons the rest of the sequence. Before, `ESC[38;1m` applied bold
+  and `ESC[48;3m` italic.
+
 - **changelog_query refuses an id or ids of the wrong JSON type** (ANTS-5146)
   A number, boolean or object passed as `id` or `ids` now refuses
   `bad_args` instead of returning the whole changelog.

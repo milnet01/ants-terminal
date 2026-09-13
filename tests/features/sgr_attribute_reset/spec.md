@@ -53,6 +53,16 @@ And for SGR 0:
 3. Emit `ESC [ 0 m`.
 4. Write another character; all five attrs must be cleared.
 
+## Malformed extended-colour introducers
+
+An extended-colour introducer (`38`, `48`, `58`) whose operands cannot be
+read abandons the rest of the sequence. None of its operands may run as an
+attribute code:
+
+- A short operand list: `38;2;100` and `48;2;100` set no dim (ANTS-5130).
+- A selector that is neither `2` nor `5`: `38;1` sets no bold, `48;3` no
+  italic, and `58;7` no inverse (ANTS-5136).
+
 ## Scope
 
 ### In scope

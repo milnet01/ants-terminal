@@ -131,3 +131,30 @@ TEST(SgrAttributeReset, TruncatedTruecolorBackgroundDoesNotSetDim) {
     EXPECT_FALSE(probe.cellAt(0, 0).dim)
         << "truncated 48;2 truecolor leaked its selector into SGR 2 (dim)";
 }
+
+// ANTS-5136 — an extended-colour introducer whose selector is neither 2 nor
+// 5 cannot be read either. The selector must not run as an attribute code:
+// before the fix `38;1` applied bold, `48;3` italic and `58;7` inverse.
+TEST(SgrAttributeReset, UnknownForegroundSelectorIsNotAnAttribute) {
+    Probe probe;
+    probe.reset();
+    probe.feed("\x1b[38;1mX");
+    EXPECT_FALSE(probe.cellAt(0, 0).bold)
+        << "38 with selector 1 ran the selector as SGR 1 (bold)";
+}
+
+TEST(SgrAttributeReset, UnknownBackgroundSelectorIsNotAnAttribute) {
+    Probe probe;
+    probe.reset();
+    probe.feed("\x1b[48;3mX");
+    EXPECT_FALSE(probe.cellAt(0, 0).italic)
+        << "48 with selector 3 ran the selector as SGR 3 (italic)";
+}
+
+TEST(SgrAttributeReset, UnknownUnderlineColourSelectorIsNotAnAttribute) {
+    Probe probe;
+    probe.reset();
+    probe.feed("\x1b[58;7mX");
+    EXPECT_FALSE(probe.cellAt(0, 0).inverse)
+        << "58 with selector 7 ran the selector as SGR 7 (inverse)";
+}

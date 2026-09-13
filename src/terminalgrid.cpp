@@ -1826,6 +1826,11 @@ void TerminalGrid::handleSGR(const std::vector<int> &params, const std::vector<b
                     if (idx >= 0 && idx < 256)
                         m_currentAttrs.underlineColor = s_palette256[idx];
                     i += 2;
+                } else {
+                    // ANTS-5136 — an unrecognised selector, or a `5` with no
+                    // index, cannot be read. Abandon the rest of the sequence
+                    // so no operand runs as an attribute code.
+                    i = params.size();
                 }
             }
             break;
@@ -1841,6 +1846,9 @@ void TerminalGrid::handleSGR(const std::vector<int> &params, const std::vector<b
             if (i + 1 < params.size()) {
                 if (params[i + 1] == 5) m_currentAttrs.fg = parse256Color(params, i);
                 else if (params[i + 1] == 2) m_currentAttrs.fg = parseRGBColor(params, colonSep, i);
+                // ANTS-5136 — an unrecognised selector cannot be read; abandon
+                // the rest so it does not run as an attribute code.
+                else i = params.size();
             }
             break;
         case 39: m_currentAttrs.fg = m_defaultFg; break;
@@ -1853,6 +1861,8 @@ void TerminalGrid::handleSGR(const std::vector<int> &params, const std::vector<b
             if (i + 1 < params.size()) {
                 if (params[i + 1] == 5) m_currentAttrs.bg = parse256Color(params, i);
                 else if (params[i + 1] == 2) m_currentAttrs.bg = parseRGBColor(params, colonSep, i);
+                // ANTS-5136 — as case 38.
+                else i = params.size();
             }
             break;
         case 49: m_currentAttrs.bg = m_defaultBg; break;
