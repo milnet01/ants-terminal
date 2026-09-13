@@ -70,6 +70,10 @@ for security-relevant changes.
 
 ### Fixed
 
+- **Remote-control and MCP tab tools act on the window you last used, not on a hidden first window** (ANTS-5121)
+  Delivered by the shared listener (ANTS-5144): each request goes to the
+  most recently active visible window, whose tools act on that window.
+
 - **Closing a New Window window no longer cuts MCP, Claude hooks and remote control off for every other window** (ANTS-5144)
   Each window used to take the three socket paths from the window before
   it, and closing it removed the socket files. Now one listener per path

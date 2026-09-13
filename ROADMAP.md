@@ -8928,7 +8928,7 @@ extends an existing item, that item carries it instead.
   Source: in-session-2026-09-11 (ANTS-5118 fix).
   Lanes: mainwindow.
 
-- 📋 [ANTS-5121] **After the first window is closed, the remote-control server and every MCP tab verb keep serving that hidden window.**
+- ✅ [ANTS-5121] **After the first window is closed, the remote-control server and every MCP tab verb keep serving that hidden window.**
   Found by reading, 2026-09-11. Every MainWindow constructor calls
   m_remoteControl->start(), and the comment beside that call says a
   later window fails to bind the socket the first one holds. So the
@@ -8967,6 +8967,15 @@ extends an existing item, that item carries it instead.
   owned by the process rather than per window, reshapes where that
   resolution lives. Not built; resume once ANTS-5144's ownership is
   decided.
+  Resolved (2026-09-13): closed by ANTS-5144 (1c05a195),
+  docs/specs/ANTS-5144-shared-socket-listener.md section 2.3. One
+  listener per path serves the process; each connection goes to the most
+  recently activated visible window's RemoteControl or
+  ClaudeIntegration, and that owner's verbs and inline MCP providers act
+  on their own window. A hidden first window serves only when no visible
+  window is attached. The ranking is tested (SharedSocketListener.Inv4);
+  the MainWindow wiring (isVisible probe, noteActivated on
+  WindowActivate) is not exercised by a test.
   **Layman:** If you close the original Ants window, Claude's terminal tools keep pointing at that invisible window.
   Kind: fix.
   Source: in-session-2026-09-11 (ANTS-5118 fix).
@@ -18425,7 +18434,7 @@ indie-review finding.
   Source: in-session-2026-09-13 (ASan tree verification for the pre-push marker).
   Lanes: build, perf.
 
-- 📋 [ANTS-5144] **Opening a second window moves the MCP and remote-control sockets to it, and closing it leaves both dead for the process.**
+- ✅ [ANTS-5144] **Opening a second window moves the MCP and remote-control sockets to it, and closing it leaves both dead for the process.**
   Read from source 2026-09-13 and confirmed with a throwaway QLocalServer
   probe making the same calls; not reproduced in the running app.
   ClaudeIntegration::startMcpServer always calls
@@ -18463,6 +18472,15 @@ indie-review finding.
   window; a hook event goes to the window whose tracker owns its
   session, else that window. Next: build with write-code, tests first.
   ANTS-5121's defect closes with this build.
+  Resolved (2026-09-13): shipped in 1c05a195. src/localsockethub.{h,cpp}
+  holds one QLocalServer per socket path for the process;
+  ClaudeIntegration and RemoteControl acquire and attach. Connections go
+  to the most recently activated visible window; a hook event goes to
+  the window tracking its session. Tests:
+  tests/features/shared_socket_listener (INV-1 to INV-7), red first,
+  mutants per part. Found in the build: QLocalServer::listen with
+  UserAccessOption renames over a live path, so the liveness probe runs
+  before listen (spec section 2.2 amended).
   **Layman:** If you open a second Ants window and then close it, Claude loses its connection to Ants in every window until you restart Ants.
   Kind: fix.
   Source: in-session-2026-09-13 (ANTS-5121 investigation).
