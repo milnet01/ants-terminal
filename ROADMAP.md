@@ -7576,6 +7576,11 @@ extends an existing item, that item carries it instead.
   (etag, compact, hints, offload, wrap) inside the worker job and keep
   only the cache insert, recordDispatch and the socket write on the GUI
   thread.
+  Progress (2026-09-13): docs/specs/ANTS-2132-async-mcp-dispatch.md
+  amended (section 1.3 measured tail, section 2.9 transformReply split,
+  INV-7 and INV-9 amended, INV-18 added) and gated by review-contract at
+  its cap, loops 5 and 6 (7 verified findings, all fixed; calm). Next:
+  build it with write-code, INV-18 and the INV-9 scrape red first.
   **Layman:** Every answer Ants sends back to Claude is processed on the main window's thread, which can stutter the window on big answers.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lanes claude-integration-a, claude-integration-b, mcp-infra).
