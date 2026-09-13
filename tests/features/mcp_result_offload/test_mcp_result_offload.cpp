@@ -421,6 +421,20 @@ TEST_F(McpResultOffload, Inv11FailOpenWiring) {
         "if (!setOwnerOnlyPerms(path)) { QFile::remove(path); return body; }")));
 }
 
+// ANTS-5104 — the rows_preview ladder builds each row's JSON once and sums row
+// lengths on each rung. Copying and re-serialising the growing array for every
+// row made each rung quadratic in the row count. The preview's content is
+// pinned by Ants4397, Ants4474 and Ants4519, which this change leaves passing;
+// this scrape pins the shape of the loop, since time is not asserted here.
+TEST_F(McpResultOffload, Ants5104PreviewLadderIsLinearPerRung) {
+    const QString src = readSource(SRC_MCPSPILL_CPP_PATH);
+    ASSERT_FALSE(src.isEmpty());
+    EXPECT_FALSE(src.contains(QStringLiteral("QJsonArray probeShape = acc;")))
+        << "the ladder copies and re-serialises the whole preview for each row";
+    EXPECT_TRUE(src.contains(QStringLiteral("const QByteArray &elBytes = elBytesByRow.at(i);")))
+        << "each row's JSON must be built once, not once per rung";
+}
+
 // INV-11 — fail-open, behavioural: when the spill dir can't be created (its
 // parent is a regular FILE, so ensurePrivateDir's mkpath can never succeed),
 // offloadBody returns the original body verbatim — no offloaded:true envelope,

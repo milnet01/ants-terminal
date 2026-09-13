@@ -408,14 +408,26 @@ QString offloadBody(const QString &toolName, const QString &body) {
                     // `headChars` of 0 means no head at all. That rung is kept
                     // only to decide the ANTS-4519 omission below — a headless
                     // shape is never emitted.
+                    // ANTS-5104 — each row's JSON is built once for every rung,
+                    // and a rung sums row lengths instead of re-serialising the
+                    // growing array for each row, which made every rung
+                    // quadratic in the row count. Compact JSON puts only a comma
+                    // between elements, so the array is 2 + rows + (rows - 1)
+                    // bytes long: the same length the old probe measured.
+                    QList<QByteArray> elBytesByRow;
+                    if (shapeBudget > 0) {
+                        elBytesByRow.reserve(fullArr.size());
+                        for (int i = 0; i < fullArr.size(); ++i)
+                            elBytesByRow.append(QJsonDocument(QJsonObject{
+                                {QStringLiteral("v"), fullArr.at(i)}})
+                                .toJson(QJsonDocument::Compact));
+                    }
                     const auto buildShape = [&](int headChars) {
                         QJsonArray acc;
                         if (shapeBudget <= 0) return acc;
+                        qint64 contentLen = 0;   // the array's length minus "[]"
                         for (int i = 0; i < fullArr.size(); ++i) {
-                            const QByteArray elBytes =
-                                QJsonDocument(QJsonObject{
-                                    {QStringLiteral("v"), fullArr.at(i)}})
-                                    .toJson(QJsonDocument::Compact);
+                            const QByteArray &elBytes = elBytesByRow.at(i);
                             QJsonObject r;
                             r[QStringLiteral("index")] = i;
                             r[QStringLiteral("bytes")] =
@@ -431,12 +443,12 @@ QString offloadBody(const QString &toolName, const QString &body) {
                                 }
                                 r[QStringLiteral("head")] = firstChars;
                             }
-                            QJsonArray probeShape = acc;
-                            probeShape.append(r);
-                            const qint64 shapeLen = QJsonDocument(probeShape)
-                                .toJson(QJsonDocument::Compact).size();
-                            if (shapeLen - 2 > shapeBudget) break;
-                            acc = probeShape;
+                            const qint64 next = contentLen
+                                + (acc.isEmpty() ? 0 : 1)
+                                + QJsonDocument(r).toJson(QJsonDocument::Compact).size();
+                            if (next > shapeBudget) break;
+                            contentLen = next;
+                            acc.append(r);
                         }
                         return acc;
                     };

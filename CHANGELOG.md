@@ -70,6 +70,13 @@ for security-relevant changes.
 
 ### Fixed
 
+- **Saving a large answer with many rows to disk no longer slows down sharply as the row count grows** (ANTS-5104)
+  When a big MCP answer is saved aside, Ants builds a short per-row preview
+  that has to fit a size budget. It rechecked the size by rebuilding the
+  whole preview after every row, so the cost grew with the square of the row
+  count. It now keeps a running total and builds each row once, with the
+  same preview as before.
+
 - **Ants no longer rewrites Claude Code's settings.json on every launch, and no longer replaces a hooks value it cannot read** (ANTS-5104)
   When the Ants session hook is already in place, starting Ants now leaves
   ~/.claude/settings.json untouched instead of rewriting it. A "hooks" value
