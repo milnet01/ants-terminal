@@ -8944,6 +8944,16 @@ extends an existing item, that item carries it instead.
   MainWindow::setupClaudeMcpProviders resolve the target window per
   call, the most recently active visible MainWindow. No hand-off on
   close, so there is no stale pointer to keep valid.
+  Paused (2026-09-13): the premise is contradicted. Every MainWindow
+  starts RemoteControl, and RemoteControl::start unlinks a live socket and
+  rebinds, so the NEWEST window takes the listener, not the first. MCP does
+  the same on a per-process path. Deleting that window removes the socket
+  file and leaves both dead (ANTS-5144, measured with a QLocalServer
+  probe). Resolving the target window per call is still sound, but it does
+  not fix the dead socket, and the fix for ANTS-5144, likely one listener
+  owned by the process rather than per window, reshapes where that
+  resolution lives. Not built; resume once ANTS-5144's ownership is
+  decided.
   **Layman:** If you close the original Ants window, Claude's terminal tools keep pointing at that invisible window.
   Kind: fix.
   Source: in-session-2026-09-11 (ANTS-5118 fix).
@@ -18372,6 +18382,34 @@ indie-review finding.
   Kind: fix.
   Source: in-session-2026-09-13 (ASan tree verification for the pre-push marker).
   Lanes: build, perf.
+
+- 📋 [ANTS-5144] **Opening a second window moves the MCP and remote-control sockets to it, and closing it leaves both dead for the process.**
+  Read from source 2026-09-13 and confirmed with a throwaway QLocalServer
+  probe making the same calls; not reproduced in the running app.
+  ClaudeIntegration::startMcpServer always calls
+  QLocalServer::removeServer and then listen on
+  QDir::tempPath() + "/ants-terminal-mcp-" + applicationPid, a path every
+  MainWindow in the process shares. RemoteControl::start does the same
+  whenever listen fails: safeToUnlinkLocalSocket only checks ownership,
+  not liveness, and the gate that starts it is one process-wide static,
+  so every window starts it. The comment claiming a live instance makes
+  the takeover fail is false.
+  Probe results: a second server's listen over a live path fails with
+  AddressInUse; after removeServer it binds; a client then reaches only
+  the second server; deleting the second server removes the socket file;
+  afterwards no client can connect, while the first server still reports
+  isListening.
+  Consequence: File > New Window takes over MCP (and the socket, when
+  enabled) and binds MCP tab verbs to the new window's providers. Closing
+  that window, which is WA_DeleteOnClose, removes the socket files, so
+  every Claude session in the process loses MCP until Ants restarts.
+  Contradicts ANTS-5121's premise that the first window keeps the
+  listener. Needs a decision on listener ownership, for example one
+  process-wide server rather than one per window.
+  **Layman:** If you open a second Ants window and then close it, Claude loses its connection to Ants in every window until you restart Ants.
+  Kind: fix.
+  Source: in-session-2026-09-13 (ANTS-5121 investigation).
+  Lanes: mcp, remotecontrol, mainwindow.
 
 ### 🎨 Review Changes dialog UX (user request 2026-06-03)
 
