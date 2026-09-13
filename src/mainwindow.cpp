@@ -51,6 +51,7 @@
 #include "testauditdialog.h"  // ANTS-1722 — native test-suite review dialog.
 #include "indiereviewdialog.h"  // ANTS-1258 — native independent code review.
 #include "shellutils.h"
+#include <QSaveFile>
 #include "elidedlabel.h"
 #include "globalshortcutsportal.h"
 #include "debuglog.h"
@@ -1609,10 +1610,13 @@ void MainWindow::setupToolsMenu() {
             if (!t) t = currentTerminal();
             if (!t) return;
             // Send a Claude Code command that reads the audit file and fixes issues
-            QString cmd = QString("claude \"Read %1 and fix any real issues found in the project audit."
+            // ANTS-5079 — the whole prompt is shell-quoted, so a `"` or `$(`
+            // in the audit results path cannot reach the shell.
+            const QString prompt = QString("Read %1 and fix any real issues found in the project audit."
                                   " Focus on bugs, security vulnerabilities, and code quality problems."
                                   " Ignore informational items like line counts and file sizes."
-                                  " For each fix, explain what you changed and why.\"\n").arg(resultsFile);
+                                  " For each fix, explain what you changed and why.").arg(resultsFile);
+            QString cmd = QStringLiteral("claude ") + shellQuote(prompt) + QLatin1Char('\n');
             t->writeCommand(cmd);
         });
         dlg->show();
@@ -2042,13 +2046,20 @@ void MainWindow::setupSettingsMenu() {
         QString path = QFileDialog::getSaveFileName(this, "Export Scrollback", QString(),
                                                      "Text Files (*.txt);;HTML Files (*.html)");
         if (path.isEmpty()) return;
-        QFile file(path);
-        if (!file.open(QIODevice::WriteOnly | QIODevice::Text)) return;
-        QTextStream stream(&file);
-        if (path.endsWith(".html", Qt::CaseInsensitive))
-            stream << t->exportAsHtml();
-        else
-            stream << t->exportAsText();
+        // ANTS-5079 — QSaveFile, so a failed or short write leaves no partial
+        // file behind and is reported instead of announced as a success.
+        QSaveFile file(path);
+        if (!file.open(QIODevice::WriteOnly | QIODevice::Text)) {
+            showStatusMessage("Could not open " + path + " for export", 5000);
+            return;
+        }
+        const QByteArray bytes = (path.endsWith(".html", Qt::CaseInsensitive)
+                                      ? t->exportAsHtml()
+                                      : t->exportAsText()).toUtf8();
+        if (file.write(bytes) != bytes.size() || !file.commit()) {
+            showStatusMessage("Export to " + path + " failed", 5000);
+            return;
+        }
         showStatusMessage("Scrollback exported to " + path, 5000);
     });
 
@@ -2635,8 +2646,11 @@ void MainWindow::onSshConnect(const QString &sshCommand, bool inNewTab) {
     if (!t) t = currentTerminal();
     if (t) {
         // Small delay to let shell start
-        QTimer::singleShot(200, this, [t, sshCommand]() {
-            t->writeCommand(sshCommand);
+        // ANTS-5079 — guarded like newTabForRemote's settle timer: the tab
+        // can close inside the 200 ms.
+        QPointer<TerminalWidget> guard(t);
+        QTimer::singleShot(200, this, [guard, sshCommand]() {
+            if (guard) guard->writeCommand(sshCommand);
         });
     }
 }
@@ -3700,6 +3714,14 @@ void MainWindow::runKWinScript(const QString &kwinJs, const QString &tag) {
 
     // Run KWin script asynchronously to avoid blocking the event loop.
     auto *proc = new QProcess(this);
+    // ANTS-5079 — a dbus-send that fails to start never emits finished, so
+    // without this the process object and the temp script leaked.
+    connect(proc, &QProcess::errorOccurred, this,
+            [proc, scriptPath](QProcess::ProcessError error) {
+        if (error != QProcess::FailedToStart) return;
+        proc->deleteLater();
+        QFile::remove(scriptPath);
+    });
     proc->start("dbus-send", {
         "--session", "--dest=org.kde.KWin", "--print-reply",
         "/Scripting", "org.kde.kwin.Scripting.loadScript",
@@ -3709,6 +3731,12 @@ void MainWindow::runKWinScript(const QString &kwinJs, const QString &tag) {
     connect(proc, &QProcess::finished, this, [this, proc, scriptPath, scriptName]() {
         proc->deleteLater();
         auto *proc2 = new QProcess(this);
+        connect(proc2, &QProcess::errorOccurred, this,
+                [proc2, scriptPath](QProcess::ProcessError error) {
+            if (error != QProcess::FailedToStart) return;  // ANTS-5079
+            proc2->deleteLater();
+            QFile::remove(scriptPath);
+        });
         proc2->start("dbus-send", {
             "--session", "--dest=org.kde.KWin", "--print-reply",
             "/Scripting", "org.kde.kwin.Scripting.start"

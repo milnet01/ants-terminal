@@ -70,6 +70,12 @@ for security-relevant changes.
 
 ### Fixed
 
+- **Exporting scrollback now tells you when the file could not be written, instead of reporting success** (ANTS-5079)
+
+- **Moving or centring the window through KWin no longer leaves a stray process and temp file behind when the helper cannot start** (ANTS-5079)
+
+- **Connecting to an SSH host no longer risks a crash if the new tab closes straight away** (ANTS-5079)
+
 - **Copying a very large selection with formatting no longer builds hundreds of megabytes of styled text** (ANTS-5078)
   Formatted copy now groups characters that share a style, and above a
   size limit copies plain text only.
@@ -492,6 +498,8 @@ for security-relevant changes.
   work when it would.
 
 ### Security
+
+- **The command that asks Claude to review an audit quotes its prompt, so an unusual results path cannot run shell code** (ANTS-5079)
 
 - **The optional key-press debug log no longer records what you type, so passwords typed at a prompt stay out of it** (ANTS-5077)
 

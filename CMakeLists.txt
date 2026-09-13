@@ -1818,6 +1818,8 @@ if(ANTS_TESTS)
                 tests/features/terminalwidget_input_contracts/test_terminalwidget_input_contracts.cpp
                 # ANTS-5079 — split panes are tracked and released like tabs (source-scrape).
                 tests/features/split_pane_shell_tracking/test_split_pane_shell_tracking.cpp
+                # ANTS-5079 — review command quoting, export failure, KWin cleanup, SSH timer guard.
+                tests/features/mainwindow_command_safety/test_mainwindow_command_safety.cpp
                 tests/features/tab_rename_pin/test_tab_rename_pin.cpp
                 tests/features/confirm_close_with_processes/test_confirm_close_with_processes.cpp
                 tests/features/help_about_menu/test_help_about_menu.cpp
