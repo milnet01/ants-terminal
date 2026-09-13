@@ -7562,6 +7562,20 @@ extends an existing item, that item carries it instead.
     insert, recordDispatch and the socket write on the GUI thread.
   - Streaming the spill write in offloadBody rather than copying and
     hashing the whole body.
+  Measured (2026-09-13) with tests/perf/bench_mcp_reply_tail on a
+  4298134-byte read_region reply built from real source, 5 iterations,
+  load 0.56: applyEtagPattern 68.5 ms, offloadBody 23.2 ms, wrapMcpData
+  13.1 ms on the whole body (0.008 ms on the offloaded head), the
+  response envelope 12.3 ms whole (0.01 ms offloaded), appendReadHints
+  0.39 ms (the 256 KiB gate), body toUtf8 0.22 ms; compactEnvelope 56.5
+  ms when compact is requested. Total on the GUI thread: 92.4 ms when
+  the reply is offloaded, 94.5 ms when sent whole, so the cost is
+  visible. applyEtagPattern (parse, hash, re-serialise) is the largest
+  phase and runs before the offload, which leaves most of the stall in
+  place either way. Next per the fix direction: run the pure transforms
+  (etag, compact, hints, offload, wrap) inside the worker job and keep
+  only the cache insert, recordDispatch and the socket write on the GUI
+  thread.
   **Layman:** Every answer Ants sends back to Claude is processed on the main window's thread, which can stutter the window on big answers.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lanes claude-integration-a, claude-integration-b, mcp-infra).

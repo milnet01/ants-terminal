@@ -1500,6 +1500,37 @@ if(ANTS_TESTS)
         LABELS "perf"
         TIMEOUT 300)
 
+    # bench_mcp_reply_tail — wall time of each phase finishToolDispatch runs on
+    # the GUI thread for a large MCP reply (ANTS-5072 asks for this before any
+    # of it moves off that thread). Links the real ClaudeIntegration statics and
+    # mcp:: transforms; spill files go to a temp dir. ANTS_PERF_MB sizes the
+    # body. Same --start-group link as bench_transcript_walk, for the same
+    # reason: ants_claude_lib pulls the chrome<->claude<->dialogs cycle in.
+    add_executable(bench_mcp_reply_tail
+        tests/perf/bench_mcp_reply_tail.cpp
+    )
+    target_link_libraries(bench_mcp_reply_tail PRIVATE
+        -Wl,--start-group
+        ants_chrome_lib ants_vt_lib ants_core_lib
+        ants_claude_lib ants_dialogs_lib ants_audit_lib ants_audit_dialog_lib
+        ants_roadmapstore_lib
+        $<$<BOOL:${LUA_FOUND}>:ants_lua_lib>
+        -Wl,--end-group
+        Qt6::Widgets Qt6::Core Qt6::Gui
+    )
+    target_compile_definitions(bench_mcp_reply_tail PRIVATE
+        ANTS_PROJECT_ROOT="${CMAKE_SOURCE_DIR}"
+    )
+    target_include_directories(bench_mcp_reply_tail PRIVATE src)
+    target_include_directories(bench_mcp_reply_tail PRIVATE ${CMAKE_SOURCE_DIR}/tests/perf)
+    target_compile_options(bench_mcp_reply_tail PRIVATE
+        -Wall -Wextra -Wpedantic -O2
+    )
+    add_test(NAME mcp_reply_tail COMMAND bench_mcp_reply_tail)
+    set_tests_properties(mcp_reply_tail PROPERTIES
+        LABELS "perf"
+        TIMEOUT 300)
+
     # bench_widget_search — the REAL TerminalWidget::performSearch over a full
     # scrollback (ANTS-2000). bench_search_throughput reproduces the scan over
     # pre-built strings and so never pays for building line text from cells.
