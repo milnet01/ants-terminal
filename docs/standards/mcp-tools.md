@@ -139,6 +139,13 @@ place when it saves a Claude session real tokens or round-trips
    over-cap call is refused with `dispatch_queue_full` before the handler runs
    — nothing for the handler to do, but a caller may see it.
 
+   **A verb's remote-control socket route, if it has one, runs on its MCP
+   twin's thread** (ANTS-2132 § 2.7). `RemoteControl::routeRunsOnDispatchWorker`
+   lists the routes whose twin is off-thread, and the socket posts those to the
+   same dispatch worker. So a `cmd*()` must be safe off the GUI thread whichever
+   caller reaches it. Adding or re-registering a twin changes that list, and
+   `mcp_verb_offthread_guard` INV-13 fails until it is updated.
+
    `tests/features/mcp_verb_offthread_guard/` locks the structure and
    `tests/features/mcp_async_dispatch/` the runtime behaviour.
 

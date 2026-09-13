@@ -1387,7 +1387,7 @@ void ClaudeIntegration::registerToolProvider(
                      static_cast<long long>(args.size()));
             return inner(args);
         };
-    m_toolProviders[name] = RegisteredTool{std::move(wrapped), contract, false};
+    m_toolProviders[name] = RegisteredTool{std::move(wrapped), contract, false, {}};
 }
 
 // ANTS-2132 — the rc-factory overload. Same registration, plus the one bit
@@ -1410,6 +1410,18 @@ void ClaudeIntegration::registerToolProvider(
     // inserting, so only stamp the flag on an entry that actually landed.
     if (auto it = m_toolProviders.find(name); it != m_toolProviders.end())
         it->second.offThread = offThread;
+}
+
+// ANTS-2132 § 2.8 — the reply-later overload. Same registration and the same
+// contract-drift refusal. The entry's `handler` is left empty: the dispatcher
+// checks `deferred` first and never calls it.
+void ClaudeIntegration::registerToolProvider(
+    const QString &name,
+    CallerCwdContract contract,
+    DeferredToolHandler handler) {
+    registerToolProvider(name, contract, ToolHandler{});
+    if (auto it = m_toolProviders.find(name); it != m_toolProviders.end())
+        it->second.deferred = std::move(handler);
 }
 
 // ANTS-1360 — MCP debug-log tap. Top-level shape only — no recursion
@@ -1676,6 +1688,22 @@ QJsonObject ClaudeIntegration::queryMcpTrace(
 // no reply is coming from this path.
 bool ClaudeIntegration::postToolDispatch(const McpCallContext &ctx,
                                          const ToolHandler &handler) {
+    return postWorkerJob([this, ctx, handler]() {
+        // On the worker. The handler forwards to a RemoteControl cmd*(); any
+        // MainWindow read inside it goes through ants::onGuiThread.
+        const QString body = handler(ctx.args);
+        // Back to the GUI thread to finish the reply. The socket is only ever
+        // written from there.
+        QMetaObject::invokeMethod(this, [this, ctx, body]() {
+            finishToolDispatch(ctx, body);
+        }, Qt::QueuedConnection);
+    });
+}
+
+// ANTS-2132 § 2.7 — the one entry onto the dispatch worker, shared by MCP
+// verbs and the remote-control socket's worker routes, so both serialise on
+// one thread and count against one cap.
+bool ClaudeIntegration::postWorkerJob(std::function<void()> job) {
     if (m_dispatchShuttingDown) return false;
     // The cap counts the executing job as well as the queued ones, so the
     // 65th outstanding call is the first refused (spec § 2.6, INV-10).
@@ -1692,34 +1720,34 @@ bool ClaudeIntegration::postToolDispatch(const McpCallContext &ctx,
     }
 
     m_dispatchInFlight.fetchAndAddOrdered(1);
-    QMetaObject::invokeMethod(m_dispatchSink, [this, ctx, handler]() {
-        // On the worker. The handler forwards to a RemoteControl cmd*(); any
-        // MainWindow read inside it goes through ants::onGuiThread.
-        const QString body = handler(ctx.args);
-        // Back to the GUI thread to finish the reply. The socket is only ever
-        // written from there.
-        QMetaObject::invokeMethod(this, [this, ctx, body]() {
-            m_dispatchInFlight.fetchAndSubOrdered(1);
-            finishToolDispatch(ctx, body);
-        }, Qt::QueuedConnection);
+    QMetaObject::invokeMethod(m_dispatchSink, [this, job = std::move(job)]() {
+        job();
+        m_dispatchInFlight.fetchAndSubOrdered(1);
     }, Qt::QueuedConnection);
     return true;
 }
 
 // ANTS-2132 — teardown, in the one order that cannot deadlock.
 //
-// Refuse new GUI marshals BEFORE joining, so none is posted after this point.
-// A worker already parked in a BlockingQueuedConnection is waiting for this
-// thread, so a bare wait() would deadlock (ANTS-5113); joinRefusingMarshals
-// delivers that marshal without running it, which releases the worker. This
-// join is INV-7's sole exception: the GUI thread never blocks on the worker
-// while SERVING a request.
+// Refuse this worker's GUI marshals BEFORE joining, so none is posted after
+// this point. A worker already parked in a BlockingQueuedConnection is waiting
+// for this thread, so a bare wait() would deadlock (ANTS-5113);
+// joinRefusingMarshals delivers that marshal without running it, which releases
+// the worker. This join is INV-7's sole exception: the GUI thread never blocks
+// on the worker while SERVING a request.
+//
+// Only this instance's worker is refused. File → New Window builds a second
+// MainWindow with its own ClaudeIntegration, and the first window's marshals
+// must still be served after the second closes (ANTS-5142, spec INV-17).
 void ClaudeIntegration::shutdownDispatchWorker() {
     m_dispatchShuttingDown = true;
-    ants::setGuiMarshalRefused(true);
     if (!m_dispatchWorker) return;
+    ants::setGuiMarshalRefused(m_dispatchWorker, true);
     m_dispatchWorker->quit();
     ants::joinRefusingMarshals(m_dispatchWorker);
+    // Joined, so drop the entry: a later thread reusing the address must not
+    // inherit the refusal.
+    ants::setGuiMarshalRefused(m_dispatchWorker, false);
     delete m_dispatchSink;
     m_dispatchSink = nullptr;
     // ~QObject removes events still posted to `this`, so a result that
@@ -15686,6 +15714,32 @@ void ClaudeIntegration::onMcpConnection() {
                         // marked it so. postToolDispatch returns having
                         // queued the work; the reply is written later, from
                         // finishToolDispatch, on this thread.
+                        if (it->second.deferred) {
+                            // ANTS-2132 § 2.8 — the verb replies later, on
+                            // this thread, through the same pipeline.
+                            McpCallContext dctx;
+                            dctx.socket         = guard;
+                            dctx.requestId      = reqId;
+                            dctx.toolName       = toolName;
+                            dctx.args           = argsObj;
+                            dctx.requestBytes   = buf.size();
+                            dctx.cachedHit      = cachedHit;
+                            dctx.cacheable      = cacheable;
+                            dctx.toolHandled    = true;
+                            dctx.dispatchResult = dispatchResult;
+                            dctx.traceTimer     = mcpTraceTimer;
+                            const QPointer<ClaudeIntegration> self(this);
+                            const auto replied = std::make_shared<bool>(false);
+                            it->second.deferred(argsObj,
+                                [self, dctx, replied](QString body) {
+                                    // The first reply is written; any later
+                                    // one is dropped.
+                                    if (*replied || !self) return;
+                                    *replied = true;
+                                    self->finishToolDispatch(dctx, body);
+                                });
+                            return;  // the reply follows from the verb
+                        }
                         if (it->second.offThread) {
                             McpCallContext octx;
                             octx.socket         = guard;

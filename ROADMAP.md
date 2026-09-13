@@ -18295,6 +18295,34 @@ indie-review finding.
   Source: in-session-2026-09-13 (ANTS-2132 amendment gate, loop 2 lane 1).
   Lanes: mcp, threading.
 
+- 📋 [ANTS-5143] **bench_drift_lanes fails to link in the ASan tree, so a full build-asan build stops.**
+  Measured 2026-09-13: `cmake --build build-asan` stops at "Linking CXX
+  executable bench_drift_lanes" with mold undefined symbols, among them
+  MainWindow::tabCount, TerminalWidget::shellCwd and typeinfo for
+  ClaudeIntegration. Referenced from libants_core_lib.a
+  (remotecontrol_feedback.cpp.o), reached through
+  ants::resolveCallerCwdRoot's onGuiThread lambda. The target links only
+  ants_audit_lib and Qt6::Core (CMakeLists.txt, bench_drift_lanes block,
+  ANTS-5067). The Release tree links it: build/bench_drift_lanes exists.
+  Not yet checked: why the Debug + sanitizer build pulls that archive
+  member when Release does not. Consequence: the pre-push hook's
+  incremental build-asan leg cannot go green, and the
+  build-asan/.ants-prepush-interrupted marker cannot be verified away.
+  Progress (2026-09-13): the missing symbols are referenced from core-lib
+  members remotecontrol_terminal, remotecontrol_review,
+  remotecontrol_feedback, remotecontrol_roadmap_query and vtstream (mold
+  "referenced by" lines in the failed link). Neither
+  bench_drift_lanes.cpp.o nor libants_audit_lib.a leaves undefined a
+  symbol those remotecontrol objects define (nm intersection, build-asan):
+  the only shared name is an inline std::string member. So the pull is
+  indirect, through another core-lib member. Next step: rerun the link
+  with an archive-extraction trace to name that member. Stopped there as
+  out of scope for the ANTS-2132 build.
+  **Layman:** A speed-test program added last week breaks the memory-checking build, which blocks one of the safety checks that runs before code is pushed.
+  Kind: fix.
+  Source: in-session-2026-09-13 (ASan tree verification for the pre-push marker).
+  Lanes: build, perf.
+
 ### 🎨 Review Changes dialog UX (user request 2026-06-03)
 
 Navigation + scroll affordances for the Review Changes dialog, requested

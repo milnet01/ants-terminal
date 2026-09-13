@@ -238,6 +238,23 @@ public:
                               CallerCwdContract contract,
                               RcHandler handler);
 
+    // ANTS-2132 § 2.8 — a verb that replies later. The handler runs on the GUI
+    // thread, like a bare ToolHandler, and must return promptly. `reply` must
+    // be called exactly once, on the GUI thread, on every path; a second call
+    // writes nothing. Not counted against the dispatch queue cap.
+    using DeferredToolHandler =
+        std::function<void(const QJsonObject &args,
+                           std::function<void(QString)> reply)>;
+    void registerToolProvider(const QString &name,
+                              CallerCwdContract contract,
+                              DeferredToolHandler handler);
+
+    // ANTS-2132 § 2.7 — runs `job` on the dispatch worker, behind any queued
+    // MCP job. Counts against the § 2.6 cap until `job` returns. Returns false,
+    // and `job` never runs, when the queue is full or shutdown has begun. The
+    // remote-control socket's worker routes post here.
+    bool postWorkerJob(std::function<void()> job);
+
     // ANTS-2132 — everything the response pipeline needs after the tool
     // handler has produced its body. Captured by value so the reply can be
     // finished later, on the GUI thread, once the handler has run off it.
@@ -658,6 +675,9 @@ private:
         // Set at registration from the handler's provenance AND its contract;
         // a TabSpecific verb reads live terminal state and never qualifies.
         bool offThread = false;
+        // ANTS-2132 § 2.8 — set only by the DeferredToolHandler overload. When
+        // set, the dispatcher calls it instead of `handler`, which is empty.
+        DeferredToolHandler deferred;
     };
     std::map<QString, RegisteredTool> m_toolProviders;
 

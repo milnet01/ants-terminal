@@ -729,6 +729,22 @@ public:
     void setMcpVerbVocabularyProvider(std::function<QStringList()> p) {
         m_mcpVerbVocabularyProvider = std::move(p);
     }
+    // ANTS-2132 § 2.7 — how the socket reaches the MCP dispatch worker.
+    // Injected for the same reason as the provider above: MainWindow installs
+    // it, forwarding to ClaudeIntegration::postWorkerJob, before start(). The
+    // poster returns false when the queue is full or shutting down. With none
+    // installed every route runs inline, which is what a bare RemoteControl in
+    // a test gets.
+    void setDispatchWorkerPoster(
+            std::function<bool(std::function<void()>)> poster) {
+        m_dispatchWorkerPoster = std::move(poster);
+    }
+    // ANTS-2132 § 2.7 — true for a dispatch() route whose MCP twin runs off the
+    // GUI thread: a handler over the same cmd*, registered through the
+    // RcHandler overload with a contract other than TabSpecific. Written out
+    // because RemoteControl cannot ask the registry; INV-13 keeps it equal to
+    // that rule.
+    static bool routeRunsOnDispatchWorker(const QString &cmd);
     // ANTS-3636 — doc_citations: resolve a doc's path:line citations against the
     // files and return the cited line text (DocCitations::check).
     QJsonDocument cmdDocCitations(const QJsonObject &req);
@@ -1138,6 +1154,8 @@ private slots:
 private:
     // ANTS-3661 — see setMcpVerbVocabularyProvider.
     std::function<QStringList()> m_mcpVerbVocabularyProvider;
+    // ANTS-2132 § 2.7 — see setDispatchWorkerPoster.
+    std::function<bool(std::function<void()>)> m_dispatchWorkerPoster;
 
     QJsonDocument dispatch(const QJsonObject &req);
     // ANTS-1428 — adapter-mode write path for GFM-format roadmaps.

@@ -38,6 +38,23 @@ explicit socket path and the GUI bundle's `main` already builds a
   never runs off the GUI thread. That overload is what every hand-written
   inline lambda in `mainwindow.cpp` uses, and those capture `MainWindow`.
 
+*Amendment, 2026-09-13 (ANTS-5051, ANTS-5073, ANTS-5035, ANTS-5142):*
+
+- **INV-12** — with a dispatch-worker poster installed, a remote-control socket
+  route whose MCP twin runs off the GUI thread runs on the dispatch worker, and
+  the GUI thread keeps processing events while it runs. Driven over a bare
+  `RemoteControl` bound at a socket in a `QTemporaryDir`, with `git-state`.
+- **INV-14** — such a route finding the shared queue full is refused at once
+  with `dispatch_queue_full`. One held MCP call plus direct `postWorkerJob`
+  calls fill the cap, so the test shows the socket and MCP share it.
+- **INV-15** — a `DeferredToolHandler`'s first `reply` writes one JSON-RPC reply
+  through `finishToolDispatch`, and the GUI thread is not blocked before it. A
+  second `reply` writes nothing; the trace ring is what shows it, because the
+  first reply disconnects the client.
+- **INV-17** — destroying one `ClaudeIntegration` refuses `onGuiThread`
+  marshals from its own worker only. Another instance's off-thread verbs are
+  still served.
+
 Numbering follows the parent spec's, so a reader can move between them without
 a mapping table.
 
@@ -56,6 +73,22 @@ the GUI thread was not processing events while the verb ran (ticks=1)
 **`ticks=1` is the reported bug, measured.** A 10 ms heartbeat timer fired
 exactly once across a 200 ms verb, because the GUI thread was inside the
 handler for all of it. With the fix the same timer fires ~20 times.
+
+**Amendment red run (2026-09-13).** Built against the pre-amendment behaviour:
+the global refused flag in `src/guithread.h`, an empty
+`routeRunsOnDispatchWorker` set, no reply latch, and `audit_run` unchanged.
+
+```
+INV-12: git-state ran inline on the GUI thread: the poster was never called
+INV-14: expected an immediate dispatch_queue_full refusal while the worker is
+        held; got: {"code":"not_git_repo",...}
+INV-15: reply is not latched: a second call reached recordDispatch
+INV-17: destroying the second ClaudeIntegration refused the first's marshals;
+        got: ...{\"ok\":false,\"code\":\"marshal_refused\"}...
+```
+
+INV-17 was run alone. In a full bundle run the old flag is already set by an
+earlier test's harness teardown, so its setup step fails first.
 
 ## Known limits of this test
 

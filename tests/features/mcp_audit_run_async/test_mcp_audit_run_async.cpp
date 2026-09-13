@@ -58,17 +58,38 @@ ClaudeIntegration::AuditJob doneJob(const QString &cache, int raw, int act) {
 
 }  // namespace
 
-// ---- INV-1 — synchronous path unchanged, async branch is opt-in ----------
+// ---- INV-1 — synchronous path replies later, async branch is opt-in ------
+//
+// ANTS-2132 § 2.8, INV-16. Scoped to the audit_run registration: a whole-file
+// search stays green on indie_review_dispatch's own join whatever audit_run
+// does.
 
 TEST(McpAuditRunAsync, Inv1SyncPathUnchanged) {
     const std::string mw = mainwindowSrc();
-    // The synchronous join is still present verbatim.
-    EXPECT_TRUE(has(mw, "worker->start();")) << "sync start() must remain";
-    EXPECT_TRUE(has(mw, "worker->wait();"))
-        << "sync join (wait()) must remain for the default path";
+    const size_t at = mw.find("registerToolProvider(\"audit_run\",");
+    ASSERT_NE(at, std::string::npos) << "audit_run registration not found";
+    const size_t end = mw.find("\n    m_claudeIntegration->", at);
+    const std::string body =
+        mw.substr(at, end == std::string::npos ? std::string::npos : end - at);
+
     // The async branch is gated on the per-call arg (default false).
-    EXPECT_TRUE(has(mw, "QStringLiteral(\"async\")).toBool()"))
+    const size_t asyncAt = body.find("QStringLiteral(\"async\")).toBool()");
+    ASSERT_NE(asyncAt, std::string::npos)
         << "async branch must be guarded by args(\"async\").toBool()";
+    // Each branch starts its own worker; the synchronous one is the second.
+    const size_t asyncCreate = body.find("QThread::create(", asyncAt);
+    const size_t syncCreate = asyncCreate == std::string::npos
+        ? std::string::npos : body.find("QThread::create(", asyncCreate + 1);
+    ASSERT_NE(syncCreate, std::string::npos)
+        << "audit_run must start a worker in each branch";
+
+    EXPECT_EQ(body.find("wait()"), std::string::npos)
+        << "audit_run joins its worker on the GUI thread (INV-16)";
+    EXPECT_LT(body.find("&QThread::finished", asyncCreate), syncCreate)
+        << "the async branch connects no completion slot";
+    EXPECT_NE(body.find("&QThread::finished", syncCreate), std::string::npos)
+        << "the synchronous branch connects no completion slot, so nothing "
+           "replies";
 }
 
 // ---- INV-2 — async branch returns a handle without joining ---------------

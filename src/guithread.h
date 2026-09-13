@@ -12,30 +12,41 @@
 
 #include <QCoreApplication>
 #include <QMetaObject>
+#include <QMutex>
+#include <QMutexLocker>
 #include <QObject>
+#include <QSet>
 #include <QThread>
 
-#include <atomic>
 #include <optional>
 #include <type_traits>
 #include <utility>
 
 namespace ants {
 
-// Set by ~ClaudeIntegration before it joins the dispatch worker. A worker
-// parked in a BlockingQueuedConnection while the GUI thread waits in that join
-// would deadlock, so teardown refuses new marshals first and only then joins.
-// An inline variable rather than a .cpp symbol: the readers live in core_lib
-// and the writer in the Claude layer, and one definition keeps that link
-// direction from mattering.
-inline std::atomic<bool> g_guiMarshalRefused{false};
+// The threads whose marshals are refused. ~ClaudeIntegration adds its own
+// dispatch worker before joining it: a worker parked in a
+// BlockingQueuedConnection while the GUI thread waits in that join would
+// deadlock, so teardown refuses that worker's marshals first and only then
+// joins. Keyed by thread, not one flag, so closing a second window refuses
+// nothing for the first window's worker (ANTS-5142, ANTS-2132 spec INV-17).
+// Inline variables rather than .cpp symbols: the readers live in core_lib and
+// the writer in the Claude layer, and one definition keeps that link direction
+// from mattering.
+inline QMutex g_guiMarshalRefusedMutex;
+inline QSet<const QThread *> g_guiMarshalRefusedThreads;
 
-inline void setGuiMarshalRefused(bool refused) {
-    g_guiMarshalRefused.store(refused, std::memory_order_release);
+inline void setGuiMarshalRefused(const QThread *caller, bool refused) {
+    const QMutexLocker lock(&g_guiMarshalRefusedMutex);
+    if (refused)
+        g_guiMarshalRefusedThreads.insert(caller);
+    else
+        g_guiMarshalRefusedThreads.remove(caller);
 }
 
-inline bool guiMarshalRefused() {
-    return g_guiMarshalRefused.load(std::memory_order_acquire);
+inline bool guiMarshalRefused(const QThread *caller) {
+    const QMutexLocker lock(&g_guiMarshalRefusedMutex);
+    return g_guiMarshalRefusedThreads.contains(caller);
 }
 
 // Runs `f` on the GUI thread and returns its result.
@@ -70,16 +81,17 @@ auto onGuiThread(F &&f) -> std::optional<std::invoke_result_t<F>> {
     if (QThread::currentThread() == app->thread())
         return std::optional<R>(std::forward<F>(f)());
 
-    if (guiMarshalRefused()) return std::nullopt;
+    const QThread *const caller = QThread::currentThread();
+    if (guiMarshalRefused(caller)) return std::nullopt;
 
-    // ANTS-5113 — a marshal delivered after the flag is set must not run `f`:
-    // at teardown what it reads is being destroyed. `out` stays empty, so the
-    // caller sees a refusal.
+    // ANTS-5113 — a marshal delivered after its thread is refused must not run
+    // `f`: at teardown what it reads is being destroyed. `out` stays empty, so
+    // the caller sees a refusal.
     std::optional<R> out;
     QMetaObject::invokeMethod(
         app,
-        [&out, &f]() {
-            if (!guiMarshalRefused()) out.emplace(f());
+        [&out, &f, caller]() {
+            if (!guiMarshalRefused(caller)) out.emplace(f());
         },
         Qt::BlockingQueuedConnection);
     return out;
@@ -87,11 +99,12 @@ auto onGuiThread(F &&f) -> std::optional<std::invoke_result_t<F>> {
 
 // ANTS-5113 — join `worker` from the GUI thread at teardown. A worker already
 // parked in onGuiThread is waiting for this thread, so a bare wait() never
-// returns. Between short waits, deliver the posted marshals: with the refused
-// flag set they release the worker without running their callables. Only
-// onGuiThread queues calls on the application object (src/ surveyed
-// 2026-09-11); anything queued there later would run here too. Returns false
-// when the worker has not exited within `timeoutMs`; negative waits forever.
+// returns. Between short waits, deliver the posted marshals: with `worker`
+// refused, its own release it without running their callables. A marshal
+// from any other thread is served normally. Only onGuiThread queues calls on
+// the application object (src/ surveyed 2026-09-11); anything queued there
+// later would run here too. Returns false when the worker has not exited
+// within `timeoutMs`; negative waits forever.
 inline bool joinRefusingMarshals(QThread *worker, int timeoutMs = -1) {
     constexpr int kSliceMs = 20;
     const QDeadlineTimer deadline(timeoutMs);

@@ -58,14 +58,6 @@ protected:
     }
 };
 
-// Resets the process-global refused-marshal flag on every exit path
-// (src/guithread.h: "the refused flag is process-global; a test that sets it
-// must reset it on every exit path").
-struct GuiMarshalRefusedGuard {
-    explicit GuiMarshalRefusedGuard(bool value) { ants::setGuiMarshalRefused(value); }
-    ~GuiMarshalRefusedGuard() { ants::setGuiMarshalRefused(false); }
-};
-
 // Everything a worker thread's call into outcomeForConfig() touches, heap-
 // allocated so an abandoned (timed-out, detached) worker can never run past
 // the end of a stack frame.
@@ -77,6 +69,9 @@ struct WorkerState {
     QString                             projectPath;
     QByteArray                          cfgBytes;
     std::promise<VerifyTrust::Decision> prom;
+    // The refusal is keyed by thread (src/guithread.h, ANTS-5142), so only the
+    // worker itself can refuse its own marshals.
+    bool                                refuseOwnMarshals = false;
 };
 
 struct WaitResult {
@@ -104,8 +99,14 @@ WaitResult waitOrAbandon(std::unique_ptr<WorkerState> state, int boundMs) {
     std::future<VerifyTrust::Decision> fut = state->prom.get_future();
     WorkerState *const raw = state.get();
     std::thread worker([raw]() {
-        raw->prom.set_value(
-            raw->client.outcomeForConfig(raw->projectPath, raw->cfgBytes));
+        const QThread *const self = QThread::currentThread();
+        if (raw->refuseOwnMarshals) ants::setGuiMarshalRefused(self, true);
+        const VerifyTrust::Decision decision =
+            raw->client.outcomeForConfig(raw->projectPath, raw->cfgBytes);
+        // Removed before the thread exits, so no later thread reusing the
+        // address inherits the refusal.
+        if (raw->refuseOwnMarshals) ants::setGuiMarshalRefused(self, false);
+        raw->prom.set_value(decision);
     });
 
     QElapsedTimer clock;
@@ -184,8 +185,7 @@ TEST(VerifyTrustModalGuiThread, Inv2RefusedMarshalYieldsHeadlessWithoutRunningBo
     state->client.returnOutcome = VerifyTrust::Outcome::UntrustedFellBack;
     state->projectPath = QStringLiteral("/some/proj-inv2");
     state->cfgBytes = "{\"build\":{\"command\":\"echo inv2-refused-marshal\"}}";
-
-    GuiMarshalRefusedGuard refusedGuard(/*value*/ true);
+    state->refuseOwnMarshals = true;
 
     WaitResult result = waitOrAbandon(std::move(state), kBoundMs);
     if (!result.completed) {

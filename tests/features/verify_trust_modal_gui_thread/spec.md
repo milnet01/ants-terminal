@@ -51,8 +51,9 @@ written; only their calling convention is checked from outside.
   never on the calling worker thread. *Test:* `verify_trust_modal_gui_thread`
   (paired test file).
 - **INV-2 — a refused GUI marshal yields `Headless` without running the
-  body.** When `ants::guiMarshalRefused()` is true and `outcomeForConfig()`
-  is called from a thread other than the GUI thread, the call returns
+  body.** When the calling thread's marshals are refused
+  (`ants::guiMarshalRefused(thread)` is true) and `outcomeForConfig()` is
+  called from that thread, which is not the GUI thread, the call returns
   `Decision{Outcome::Headless, shaHex}` and `showPrompt()` is never invoked.
   *Test:* `verify_trust_modal_gui_thread` (paired test file).
 
@@ -100,9 +101,9 @@ because the `test_chrome` bundle's `QApplication` never runs `exec()`
 bound, the test fails with a diagnosable message instead of joining
 unboundedly — a hang must not join the test process to page-out.
 
-INV-2's `ants::guiMarshalRefused()` flag is process-global
-(`src/guithread.h`); the test sets it through an RAII guard that resets it to
-`false` on every exit path, including an early `ASSERT_*` return.
+The refusal is keyed by thread (`src/guithread.h`, ANTS-5142). For INV-2 the
+worker refuses its own marshals before calling `outcomeForConfig()` and removes
+that entry before it exits.
 
 ## Regression history
 

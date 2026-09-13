@@ -1,8 +1,10 @@
 # ANTS-2132 — Dispatch MCP verbs off the GUI thread
 
 **Status:** accepted (2026-09-13). Cold-eyes loops 3 + 4 folded; cap reached.
-§ 1.2, § 2.7 and § 2.8 amend the design accepted on 2026-08-26 and are not yet
-built. The rest is implemented
+§ 1.2, § 2.7 and § 2.8 amend the design accepted on 2026-08-26, and were built
+on 2026-09-13 (`ClaudeIntegration::postWorkerJob`,
+`RemoteControl::routeRunsOnDispatchWorker`, the `audit_run` registration). The
+rest is implemented
 (`ClaudeIntegration::postToolDispatch`, `tests/features/mcp_async_dispatch/`).
 **Kind:** perf.
 **Source:** ROADMAP.md ANTS-2132 (user report of intermittent whole-window

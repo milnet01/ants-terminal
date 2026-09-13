@@ -61,15 +61,24 @@ for a queued connection passes against code that still joins.
   more inline verb off-thread enrols it here rather than needing a list
   edited. Passing a bare `this` to a free function that marshals internally
   (`ants::resolveCallerCwdRoot`) is not a member read and is not matched.
+- **INV-13** — `RemoteControl::routeRunsOnDispatchWorker` is true exactly for
+  the `dispatch()` routes whose `cmd*` an off-thread MCP twin calls: a handler
+  registered through the `RcHandler` overload, by `rcDelegate` or a
+  `RcHandler{` lambda, with a contract other than `TabSpecific`. Both sides are
+  derived — the routes from `RemoteControl::dispatch`, the twins from the
+  registration table — so a route or a registration that changes on one side
+  only fails here. The socket runs those routes on the dispatch worker
+  (ANTS-2132 § 2.7), so the list must never name a route whose twin stays on
+  the GUI thread.
 
 ## Out of scope
 
-- `audit_run` / `audit_poll` / `indie_review_dispatch` — still synchronous,
-  still freeze the window for a sweep. ANTS-4682 audited all fourteen inline
-  handlers and moved the GUI-free ones; these three keep a GUI-thread job
-  registry and build their own workers, so they were recorded as staying
-  rather than moved, and the § 5 tree-access hazard is **not** closed for
-  them. Their nested loops are locked by
+- `audit_poll` / `indie_review_dispatch` — still registered inline.
+  `indie_review_dispatch` still joins its worker and freezes the window for a
+  review. `audit_run` is inline too, but since the ANTS-2132 amendment it
+  replies later (§ 2.8), so its sweep no longer blocks the GUI thread. All
+  three keep a GUI-thread job registry, so the § 5 tree-access hazard is
+  **not** closed for them. Their nested loops are locked by
   `tests/features/socket_readyread_uaf_guard/` (ANTS-2102).
 - `get_git_status` — also stays. It returns a plain text blob with no refusal
   channel, so a refused marshal could not be distinguished from "no

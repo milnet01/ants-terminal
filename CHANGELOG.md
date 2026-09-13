@@ -61,6 +61,19 @@ for security-relevant changes.
 
 ### Fixed
 
+- **The window no longer freezes while a --remote search, tree walk or git command runs, and the roadmap store is no longer used from two threads at once** (ANTS-5073)
+  Remote-control socket routes whose MCP twin already runs off the GUI
+  thread now run on the same MCP dispatch worker, with the reply written
+  later. ANTS-5051 closes with it. indie_review_dispatch still freezes
+  the window for a review.
+
+- **A synchronous audit_run no longer freezes the window for the whole sweep** (ANTS-5035)
+  It replies from a completion slot instead of joining its worker on the
+  GUI thread. A second synchronous call for the same project while a
+  sweep runs is now refused with already_running.
+
+- **Closing a second Ants window no longer makes Claude commands in the remaining window refuse** (ANTS-5142)
+
 - **The window no longer stalls while Claude writes to its transcript.** (ANTS-5050)
   The task and background-task trackers now read only the newly
   appended part of the conversation log instead of re-reading up to

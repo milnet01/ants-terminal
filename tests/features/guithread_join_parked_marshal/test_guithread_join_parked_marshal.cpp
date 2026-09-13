@@ -34,12 +34,14 @@
 
 namespace {
 
-// Resets the process-global refused-marshal flag on every exit path — it is
-// shared across every TEST() in this bundle (src/guithread.h;
-// tests/features/verify_trust_modal_gui_thread's GuiMarshalRefusedGuard does
-// the same).
+// Removes the worker's refused-marshal entry on every exit path. The refusal is
+// keyed by thread (src/guithread.h, ANTS-5142), and a stale entry would refuse
+// a later thread that happens to reuse the address.
 struct GuiMarshalRefusedResetGuard {
-    ~GuiMarshalRefusedResetGuard() { ants::setGuiMarshalRefused(false); }
+    const QThread *worker = nullptr;
+    ~GuiMarshalRefusedResetGuard() {
+        if (worker) ants::setGuiMarshalRefused(worker, false);
+    }
 };
 
 // Everything the worker thread's lambda and the callable it hands to
@@ -83,7 +85,6 @@ TEST(GuithreadJoinParkedMarshal, JoinReturnsWithoutRunningParkedCallable) {
            "tests/bundle_main_core.cpp), not the defect this test targets.";
 
     GuiMarshalRefusedResetGuard resetGuard;
-    ants::setGuiMarshalRefused(false);  // start clean regardless of run order
 
     auto state = std::make_unique<SharedState>();
     SharedState *const raw = state.get();
@@ -109,6 +110,7 @@ TEST(GuithreadJoinParkedMarshal, JoinReturnsWithoutRunningParkedCallable) {
             raw->gotNullopt.store(true, std::memory_order_release);
         raw->workerFinished.store(true, std::memory_order_release);
     }));
+    resetGuard.worker = worker.get();
     worker->start();
 
     // Wait for the worker to reach onGuiThread() — no event pumping here,
@@ -132,7 +134,7 @@ TEST(GuithreadJoinParkedMarshal, JoinReturnsWithoutRunningParkedCallable) {
     // before we flip the flag. See spec.md "Timing" — the one soft spot.
     std::this_thread::sleep_for(std::chrono::milliseconds(kParkSettleMs));
 
-    ants::setGuiMarshalRefused(true);
+    ants::setGuiMarshalRefused(worker.get(), true);
 
     QElapsedTimer joinClock;
     joinClock.start();

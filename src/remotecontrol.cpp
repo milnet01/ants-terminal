@@ -2482,6 +2482,16 @@ void RemoteControl::onNewConnection() {
             // deleteLater chain. A QPointer lets the post-dispatch write bail
             // instead of touching a dangling pointer.
             QPointer<QLocalSocket> guard(socket);
+            // ANTS-2132 § 2.7 — the reply write, shared by the inline path and
+            // a worker route's deferred one. Both run it on the GUI thread.
+            const auto writeReply = [](const QPointer<QLocalSocket> &sock,
+                                       const QJsonDocument &doc) {
+                if (!sock || sock->state() != QLocalSocket::ConnectedState)
+                    return;
+                sock->write(doc.toJson(QJsonDocument::Compact) + '\n');
+                sock->flush();
+                sock->disconnectFromServer();
+            };
             if (err.error != QJsonParseError::NoError || !req.isObject()) {
                 QJsonObject e;
                 e["ok"] = false;
@@ -2489,17 +2499,52 @@ void RemoteControl::onNewConnection() {
                     .arg(err.errorString());
                 resp = QJsonDocument(e);
             } else {
-                resp = dispatch(req.object());
+                const QJsonObject reqObj = req.object();
+                const QString cmd = reqObj.value(QStringLiteral("cmd")).toString();
+                if (m_dispatchWorkerPoster && routeRunsOnDispatchWorker(cmd)) {
+                    // dispatch() runs on the worker and the write is queued
+                    // back here. The job carries `guard` but never tests it: a
+                    // QPointer may only be dereferenced on the socket's thread.
+                    const bool posted = m_dispatchWorkerPoster(
+                        [this, guard, reqObj, writeReply]() {
+                            const QJsonDocument out = dispatch(reqObj);
+                            QMetaObject::invokeMethod(this,
+                                [guard, out, writeReply]() {
+                                    writeReply(guard, out);
+                                }, Qt::QueuedConnection);
+                        });
+                    if (posted) return;  // the reply follows from the worker
+                    QJsonObject e;
+                    e["ok"]             = false;
+                    e["code"]           = QStringLiteral("dispatch_queue_full");
+                    e["error"]          = QStringLiteral(
+                        "%1: too many MCP calls are already in flight; retry "
+                        "shortly").arg(cmd);
+                    e["retry_after_ms"] = 250;
+                    resp = QJsonDocument(e);
+                } else {
+                    resp = dispatch(reqObj);
+                }
             }
-            if (!guard || socket->state() != QLocalSocket::ConnectedState)
-                return;
-            socket->write(resp.toJson(QJsonDocument::Compact) + '\n');
-            socket->flush();
-            socket->disconnectFromServer();
+            writeReply(guard, resp);
         });
         connect(socket, &QLocalSocket::disconnected,
                 socket, &QLocalSocket::deleteLater);
     }
+}
+
+bool RemoteControl::routeRunsOnDispatchWorker(const QString &cmd) {
+    static const QSet<QString> kWorkerRoutes = {
+        QStringLiteral("roadmap-query"),
+        QStringLiteral("workspace-search"),
+        QStringLiteral("file-outline"),
+        QStringLiteral("find-definition"),
+        QStringLiteral("find-caller"),
+        QStringLiteral("similar-code"),
+        QStringLiteral("git-state"),
+        QStringLiteral("subsystem"),
+    };
+    return kWorkerRoutes.contains(cmd);
 }
 
 QJsonDocument RemoteControl::dispatch(const QJsonObject &req) {

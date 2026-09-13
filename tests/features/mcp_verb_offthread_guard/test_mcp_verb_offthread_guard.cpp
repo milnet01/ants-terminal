@@ -321,5 +321,79 @@ TEST(McpVerbOffthreadGuard, Main) {
         expect(seen > 0, "INV-11/off-thread-inline-registrations-found");
     }
 
+    // INV-13 — ANTS-2132 § 2.7. RemoteControl::routeRunsOnDispatchWorker is
+    // true exactly for the dispatch() routes whose cmd* an off-thread MCP twin
+    // calls: a handler registered through the RcHandler overload, by
+    // rcDelegate or a RcHandler{ lambda, with a contract other than
+    // TabSpecific. Both sides are derived, so a route or a registration that
+    // changes on one side only fails here.
+    {
+        // The rcDelegate half is INV-6's offThreadCmds. Add the RcHandler{
+        // lambdas, segmented by registration statement as INV-11 does.
+        std::set<std::string> twinCmds = offThreadCmds;
+        static const std::regex contractRx(R"RX(CallerCwdContract::(\w+))RX");
+        static const std::regex rcCallRx(R"RX(m_remoteControl->(cmd\w+)\()RX");
+        static const std::string kStmt = "\n    m_claudeIntegration->";
+        std::vector<size_t> bounds;
+        for (size_t b = mw.find(kStmt); b != std::string::npos;
+             b = mw.find(kStmt, b + 1))
+            bounds.push_back(b);
+        bounds.push_back(mw.size());
+        for (size_t i = 0; i + 1 < bounds.size(); ++i) {
+            const std::string seg = mw.substr(bounds[i], bounds[i + 1] - bounds[i]);
+            if (seg.find("registerToolProvider(") == std::string::npos ||
+                seg.find("RcHandler{") == std::string::npos)
+                continue;
+            std::smatch contract;
+            if (!std::regex_search(seg, contract, contractRx) ||
+                contract[1].str() == "TabSpecific")
+                continue;
+            for (auto it = std::sregex_iterator(seg.begin(), seg.end(), rcCallRx);
+                 it != std::sregex_iterator(); ++it)
+                twinCmds.insert((*it)[1].str());
+        }
+
+        std::string rc;
+        for (const std::string &path : rcSourcePaths())
+            rc += ants_test::slurpFile(path);
+        const std::string routes = bodyAfter(
+            rc, "QJsonDocument RemoteControl::dispatch(const QJsonObject &req) {");
+        const std::string routeSet = bodyAfter(
+            rc, "bool RemoteControl::routeRunsOnDispatchWorker(const QString &cmd) {");
+        expect(!routes.empty(), "INV-13/dispatch-found");
+        expect(!routeSet.empty(), "INV-13/routeRunsOnDispatchWorker-found");
+
+        // A route maps to the cmd* its branch returns first. A branch whose
+        // first return is not a cmd* call, like the e2e gate's refusal, maps to
+        // none.
+        std::set<std::string> eligible;
+        static const std::regex routeRx(R"RX(cmd == QLatin1String\("([^"]+)"\))RX");
+        static const std::regex returnRx(R"RX(^return (cmd\w+)\()RX");
+        for (auto it = std::sregex_iterator(routes.begin(), routes.end(), routeRx);
+             it != std::sregex_iterator(); ++it) {
+            const size_t ret = routes.find(
+                "return ", static_cast<size_t>(it->position(0) + it->length(0)));
+            if (ret == std::string::npos) continue;
+            const std::string tail = routes.substr(ret, 80);
+            std::smatch called;
+            if (std::regex_search(tail, called, returnRx) &&
+                twinCmds.count(called[1].str()))
+                eligible.insert((*it)[1].str());
+        }
+        std::set<std::string> listed;
+        static const std::regex literalRx(R"RX(QStringLiteral\("([^"]+)"\))RX");
+        for (auto it = std::sregex_iterator(routeSet.begin(), routeSet.end(), literalRx);
+             it != std::sregex_iterator(); ++it)
+            listed.insert((*it)[1].str());
+
+        expect(!eligible.empty(), "INV-13/eligible-routes-found");
+        for (const std::string &r : eligible)
+            expect(listed.count(r) == 1, "INV-13/eligible-route-missing-from-set",
+                   r.c_str());
+        for (const std::string &r : listed)
+            expect(eligible.count(r) == 1, "INV-13/set-names-an-ineligible-route",
+                   r.c_str());
+    }
+
     EXPECT_EQ(0, expect_failures());
 }

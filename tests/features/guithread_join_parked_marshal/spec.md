@@ -46,7 +46,7 @@ free functions `shutdownDispatchWorker` calls.
 ## Invariants
 
 - **INV-1 — joining a parked marshal returns.** Once
-  `ants::setGuiMarshalRefused(true)` has been called, a call to
+  `ants::setGuiMarshalRefused(worker, true)` has been called, a call to
   `ants::joinRefusingMarshals(worker, timeoutMs)` on the GUI thread returns
   within `timeoutMs`, even when `worker` is already parked inside
   `ants::onGuiThread`'s `Qt::BlockingQueuedConnection` wait (posted before the
@@ -134,7 +134,7 @@ no `ants_chrome_lib`). One `TEST()` drives the whole scenario:
 2. The main/GUI thread busy-waits on `workerAboutToCall` (bounded, with a
    diagnosable `ASSERT_LT` on timeout — this bound is setup-only and is not
    itself part of any invariant), then sleeps 150ms without pumping events
-   (see Timing above), then calls `ants::setGuiMarshalRefused(true)`.
+   (see Timing above), then calls `ants::setGuiMarshalRefused(worker, true)`.
 3. The main/GUI thread calls `ants::joinRefusingMarshals(worker, 500)` and
    times it.
    - If it returns `false` (does not join within 500ms): `ADD_FAILURE()`
@@ -155,10 +155,9 @@ no `ants_chrome_lib`). One `TEST()` drives the whole scenario:
      without further synchronisation, and INV-2 / INV-3 are checked with
      `EXPECT_*`, each naming expected vs. actual on failure.
 
-`ants::setGuiMarshalRefused(false)` is reset on every exit path via an RAII
-guard (mirrors `verify_trust_modal_gui_thread`'s `GuiMarshalRefusedGuard` —
-the flag is process-global, and this bundle runs many `TEST()`s in one
-binary).
+The refusal is keyed by thread (ANTS-5142), so the test refuses its own worker
+and an RAII guard removes that entry on every exit path. A stale entry would
+refuse a later thread that happens to reuse the address.
 
 ## Regression history
 
@@ -173,3 +172,7 @@ binary).
   currently a stub (`worker->wait(...)` and nothing else) — this test is
   written to fail against that stub and pass once it can unblock a worker
   already parked in `onGuiThread`.
+- **ANTS-5142 (2026-09-13):** the refused flag was one process-wide atomic, so
+  destroying a second window's `ClaudeIntegration` refused the first window's
+  marshals too. The refusal is now per thread, and this test refuses its own
+  worker by pointer.
