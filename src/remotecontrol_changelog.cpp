@@ -431,12 +431,21 @@ QJsonDocument RemoteControl::cmdChangelogQuery(const QJsonObject &req) {
     // (headline_only) or explicitly wants bodies (include_body). The
     // version_index site above has no lean form and stays 3-arg.
     const bool wantDownshift = !headlineOnly && !includeBody;
-    const PaginationEngine::PageResult page =
-        PaginationEngine::pageBullets(
+    PaginationEngine::PageResult page;
+    if (idMode) {
+        // ANTS-5147 — an id lookup OVERRIDES pagination (ANTS-3533 § 2.4,
+        // INV-5), as roadmap_query's does: the caller wants every entry citing
+        // the id, and `ids` is capped at 100. offset / limit were shape-checked
+        // above and are ignored here.
+        page.slice = arr;
+        page.total = int(arr.size());
+    } else {
+        page = PaginationEngine::pageBullets(
             arr, offset, passedLimit ? limitArg : -1,
             wantDownshift
                 ? PaginationEngine::RowProjector(&rcProjectChangelogHeadlineOnly)
                 : PaginationEngine::RowProjector{});
+    }
     out[QStringLiteral("entries")] = page.slice;
     out[QStringLiteral("count")]   = page.slice.size();
     out[QStringLiteral("total")]   = page.total;

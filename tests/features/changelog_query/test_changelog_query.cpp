@@ -12,6 +12,7 @@
 #include "../../_support/srcgrep.h"
 
 #include <QFile>
+#include <QJsonArray>
 #include <QJsonObject>
 #include <QJsonValue>
 #include <QString>
@@ -331,6 +332,40 @@ TEST(ChangelogQueryHandler, Ants5146WrongTypeIdOrIdsRefuses) {
         EXPECT_FALSE(resp.value(QStringLiteral("ok")).toBool());
         EXPECT_EQ(resp.value(QStringLiteral("code")).toString(),
                   QStringLiteral("bad_args"));
+    }
+}
+
+// ANTS-5147 (§ 2.4, INV-5) — an id lookup overrides pagination: every entry
+// citing the id comes back whatever `offset` or `limit` says. It used to be
+// paged like a list, so `offset:10` returned an empty page with found:true.
+TEST(ChangelogQueryHandler, Ants5147IdLookupIgnoresPagination) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    QFile f(tmp.path() + QStringLiteral("/CHANGELOG.md"));
+    ASSERT_TRUE(f.open(QIODevice::WriteOnly));
+    f.write("# Changelog\n\n## [Unreleased]\n\n### Added\n\n"
+            "- **One.** (ANTS-7)\n\n- **Two.** (ANTS-7)\n\n"
+            "## [0.1.0] - 2026-01-01\n\n### Fixed\n\n- **Three.** (ANTS-7)\n");
+    f.close();
+
+    RemoteControl rc(nullptr);
+    auto call = [&](const QString &key, int value) {
+        QJsonObject req;
+        req[QStringLiteral("caller_cwd")] = tmp.path();
+        req[QStringLiteral("id")] = QStringLiteral("ANTS-7");
+        req[key] = value;
+        return rc.cmdChangelogQuery(req).object();
+    };
+    const QJsonObject cases[] = {
+        call(QStringLiteral("limit"), 1),
+        call(QStringLiteral("offset"), 10),
+    };
+    for (const QJsonObject &resp : cases) {
+        EXPECT_TRUE(resp.value(QStringLiteral("ok")).toBool());
+        EXPECT_EQ(resp.value(QStringLiteral("entries")).toArray().size(), 3)
+            << "an id lookup was paged";
+        EXPECT_EQ(resp.value(QStringLiteral("total")).toInt(), 3);
+        EXPECT_FALSE(resp.value(QStringLiteral("truncated")).toBool());
     }
 }
 

@@ -70,6 +70,11 @@ for security-relevant changes.
 
 ### Fixed
 
+- **changelog_query returns every entry for an id lookup** (ANTS-5147)
+  An `id` or `ids` lookup now ignores `offset` and `limit`, as its
+  design and roadmap_query do, so `offset:10` no longer returns an empty
+  page for an id that is present.
+
 - **A malformed extended-colour code no longer sets text attributes** (ANTS-5136)
   An SGR 38, 48 or 58 introducer whose selector is neither 2 nor 5 now
   abandons the rest of the sequence. Before, `ESC[38;1m` applied bold
