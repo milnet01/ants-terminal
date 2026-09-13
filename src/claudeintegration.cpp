@@ -1108,11 +1108,12 @@ void ClaudeIntegration::onHookConnection() {
         // ANTS-1151 — extend the SO_PEERCRED + idle-timeout pattern
         // from RemoteControl::onNewConnection to the Claude hook
         // socket. UserAccessOption + safeToUnlinkLocalSocket
-        // already cover the file-side guarantees, but the peer
-        // side needs explicit getsockopt(SO_PEERCRED) — a
-        // same-UID-but-different-process attacker (e.g. a
-        // malicious browser plugin) could otherwise inject hook
-        // events shaped like processHookEvent consumes.
+        // already cover the file-side guarantees; the peer check
+        // refuses a connection from a process running as a DIFFERENT
+        // user. ANTS-5089 — it compares uids only, so a process running
+        // as this user (a browser plugin included) is admitted and can
+        // send hook events; that is the same-UID trust model
+        // (ADR-0004), not a gap this check closes.
         // ANTS-1797 — fail CLOSED: an unavailable socket fd means the peer
         // UID cannot be verified, so the connection must be refused rather
         // than served unauthenticated. (A bare `if (fd >= 0)` guard would
