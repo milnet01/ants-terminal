@@ -16702,6 +16702,11 @@ fixes don't address. Roadmapped here as their own design tasks.
   "which tests are here", and its func rows are not all functions. A fix
   outlines TEST, TEST_F and TEST_P as symbols named Suite.Case, and stops
   treating a declaration inside a function body as a new function.
+  Knock-on seen 2026-09-13: workspace_search enclosing_symbol and find_caller
+  inherit the misparse. A roadmapBullets call inside a helper in
+  src/remotecontrol_feedback.cpp came back with enclosing "sf", which is the
+  local `QFile sf(sibRoadmap);`, so the containing function could not be read
+  from the reply. Fixing the parser fixes both verbs.
   **Layman:** The file-map tool can't see the tests in a test file, and mistakes some variables for functions.
   Kind: fix.
   Source: in-session-2026-09-10.
@@ -18185,6 +18190,37 @@ indie-review finding.
   **Layman:** A temporary packaging fix was added so the current release builds on Fedora; delete it after the next release ships.
   Kind: chore.
   Source: in-session-2026-09-04.
+
+- 📋 [ANTS-5138] **ants-terminal --remote prints "no response" when a reply takes longer than its per-read wait, though the server still answers.**
+  RemoteControl::runClient loops on socket.waitForReadyRead with a short
+  per-read wait and leaves the loop on the first timeout. Its overall
+  deadline (ANTS-1671 M5) is checked only after bytes arrive. So when the
+  first byte of a reply is later than one per-read wait, the client prints
+  "no response" and exits 1, and the reply is lost.
+  Reachable today: workspace-search runs ripgrep under its search budget
+  and git-state forks git, both inline on the socket. The ANTS-2132
+  amendment for ANTS-5073 queues those routes behind MCP calls on the
+  dispatch worker, so queue time adds to the wait.
+  Fix: wait for the first byte up to the overall deadline, and keep the
+  per-read wait between later chunks so the slow-drip defence stands.
+  **Layman:** A script asking Ants to search can be told "no response" while Ants is still working on the answer.
+  Kind: fix.
+  Source: in-session-2026-09-13 (ANTS-2132 amendment research).
+  Lanes: remote-control, mcp.
+
+- 📋 [ANTS-5139] **workspace_search's short-term regex advisory fires on an alternation already anchored by word boundaries around its group.**
+  Seen 2026-09-13. The pattern `\b(TODO|FIXME|TBD|XXX)\b` returned
+  regex_advisory saying the alternation "contains short bare term(s) [TBD]
+  that match inside longer words" and suggesting `\bTBD\b`. The boundaries
+  around the group already anchor every alternative, so the advice is wrong
+  and invites a caller to rewrite a correct pattern.
+  The ANTS-2181 check looks at each alternative in isolation. It should treat
+  a term as anchored when the group it sits in is bounded by `\b` on both
+  sides.
+  **Layman:** The search tool warns about a pattern mistake the user did not make.
+  Kind: fix.
+  Source: in-session-2026-09-13.
+  Lanes: mcp, search.
 
 ### 🎨 Review Changes dialog UX (user request 2026-06-03)
 
