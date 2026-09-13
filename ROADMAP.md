@@ -18411,6 +18411,22 @@ indie-review finding.
   Source: in-session-2026-09-13 (ANTS-5121 investigation).
   Lanes: mcp, remotecontrol, mainwindow.
 
+- 📋 [ANTS-5145] **changelog_query cannot find an id cited only in a dated topic's headline or prose.**
+  Found 2026-09-13 while amending ANTS-3533 for ANTS-5071. changelog_log
+  op:add_subsection writes `### <date> <Category> — <headline>`, then prose,
+  then optional bullets, and the headline often carries the ids.
+  ChangelogQuery::parse makes an entry only from a column-0 `- ` bullet, so
+  a dated topic with no bullets yields no entry. ANTS-5071's decision (a
+  dated topic heading sets its category) indexes the bullets under a topic
+  and leaves this case unindexed: an id lookup still reports such an id
+  missing. Needs a decision: make a dated topic heading an entry of its
+  own (text = headline, body = its prose), or leave headline-only topics
+  unindexed and say so in the verb's description.
+  **Layman:** The changelog search still can't find a change that was written up as a dated paragraph with no bullet points under it.
+  Kind: enhancement.
+  Source: in-session-2026-09-13 (ANTS-5071 spec amendment).
+  Lanes: changelog, mcp.
+
 ### 🎨 Review Changes dialog UX (user request 2026-06-03)
 
 Navigation + scroll affordances for the Review Changes dialog, requested
