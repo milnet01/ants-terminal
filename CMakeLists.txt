@@ -1773,6 +1773,9 @@ if(ANTS_TESTS)
                 # not test_core: linking Pty pulls in objects that need the
                 # chrome, claude, audit and vt libraries.
                 tests/features/pty_read_backpressure/test_pty_read_backpressure.cpp
+                # ANTS-5075 — behavioural: the child shell receives every
+                # environment entry, however many there are.
+                tests/features/pty_child_env/test_pty_child_env.cpp
                 tests/features/pty_foreground_attr_reset/test_pty_foreground_attr_reset.cpp
                 tests/features/dialog_close_focus_return/test_dialog_close_focus_return.cpp
                 tests/features/dialog_pseudo_modal/test_dialog_pseudo_modal.cpp

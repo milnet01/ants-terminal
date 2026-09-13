@@ -70,6 +70,11 @@ for security-relevant changes.
 
 ### Fixed
 
+- **A shell opened on a desktop session with a very large environment now receives every variable, including the one Claude Code uses to find the terminal** (ANTS-5075)
+  The terminal copied its environment into a fixed-size list and stopped
+  when the list filled, so the variables added last were lost. The list
+  is now sized to fit.
+
 - **Opening a long Claude transcript no longer freezes the window while the whole file is decoded** (ANTS-5089)
   The transcript viewer shows only the last 2000 entries, but it decoded
   every entry in the file first, on the window's own thread. It now decodes

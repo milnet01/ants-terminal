@@ -14,6 +14,7 @@
 #include <sys/wait.h>
 #include <unistd.h>
 #include <pwd.h>
+#include <vector>
 
 Pty::Pty(QObject *parent) : QObject(parent) {}
 
@@ -181,21 +182,21 @@ bool Pty::start(const QString &shell, const QString &workDir, int rows, int cols
     char termProgramVerArg[128];
     (void)::snprintf(termProgramVerArg, sizeof(termProgramVerArg),
                      "TERM_PROGRAM_VERSION=%s", ANTS_VERSION);
-    constexpr size_t kEnvpCap = 512;
-    // ANTS-2119 — reserve tail slots for the fixed overrides appended after the
-    // copy loop (5 KEY=VALUE strings) + the NUL terminator, with slack. Keep in
-    // sync with the append block below.
-    constexpr size_t kEnvpOverrideReserve = 8;
-    static_assert(kEnvpOverrideReserve >= 6,
-                  "reserve must cover the 5 appended overrides + NUL");
-    const char *childEnvp[kEnvpCap];
-    size_t envpCount = 0;
+    // ANTS-5075 — the pointer table is sized from environ, so no entry is
+    // dropped. A fixed table lost the entries added last, and variables set
+    // at run time (ANTS_MCP_SOCKET, ANTS-1897 INV-14) are exactly those.
+    // Allocated here, before the fork; the child only reads it.
+    extern char **environ;
+    size_t environCount = 0;
+    for (char **e = environ; *e != nullptr; ++e) ++environCount;
+    // The 5 appended overrides + the NUL terminator.
+    constexpr size_t kEnvpOverrideCount = 6;
+    std::vector<const char *> childEnvp;
+    childEnvp.reserve(environCount + kEnvpOverrideCount);
     // Copy parent's environ entries, skipping the 5 keys we
     // override. const_cast is safe — we only read the pointers,
     // not their contents, and POSIX guarantees `environ` entries
     // are NUL-terminated KEY=VALUE strings.
-    extern char **environ;
-    bool envpTruncated = false;
     for (char **e = environ; *e != nullptr; ++e) {
         const char *entry = *e;
         const auto startsWith = [entry](const char *prefix) {
@@ -210,32 +211,17 @@ bool Pty::start(const QString &shell, const QString &workDir, int rows, int cols
             startsWith("COLORFGBG=")) {
             continue;
         }
-        if (envpCount >= kEnvpCap - kEnvpOverrideReserve) {
-            // ANTS-1175: surface the silent truncation that produced
-            // the user-reported "ants-terminal sometimes opens a
-            // shell with no PATH" symptom on environments with 500+
-            // entries (modern desktop sessions hit this routinely).
-            // Only warn once per fork.
-            envpTruncated = true;
-            break;
-        }
-        childEnvp[envpCount++] = entry;
-    }
-    if (envpTruncated) {
-        ANTS_LOG_ALWAYS(
-            "Pty: parent environ exceeded %zu entries; "
-            "child shell may be missing PATH/HOME/etc.",
-            kEnvpCap);
+        childEnvp.push_back(entry);
     }
     // Append our 5 overrides (5 string literals + 1 snprintf'd
     // buffer). The string-literal pointers live in the binary's
     // .rodata so they outlive forkpty trivially.
-    childEnvp[envpCount++] = "TERM=xterm-256color";
-    childEnvp[envpCount++] = "COLORTERM=truecolor";
-    childEnvp[envpCount++] = "TERM_PROGRAM=AntsTerminal";
-    childEnvp[envpCount++] = termProgramVerArg;
-    childEnvp[envpCount++] = "COLORFGBG=15;0";
-    childEnvp[envpCount] = nullptr;
+    childEnvp.push_back("TERM=xterm-256color");
+    childEnvp.push_back("COLORTERM=truecolor");
+    childEnvp.push_back("TERM_PROGRAM=AntsTerminal");
+    childEnvp.push_back(termProgramVerArg);
+    childEnvp.push_back("COLORFGBG=15;0");
+    childEnvp.push_back(nullptr);
 
     // ANTS-1135 follow-up (indie-review-2026-05-21): pre-fork the shell-path
     // and workdir byte conversions. toLocal8Bit() heap-allocates, which is
@@ -253,6 +239,18 @@ bool Pty::start(const QString &shell, const QString &workDir, int rows, int cols
     const char *homeEnvPre = ::getenv("HOME");
     const QByteArray homeBytesPre =
         homeEnvPre ? QByteArray(homeEnvPre) : QByteArray();
+
+    // ANTS-5075 — argv[0] is built here too, so the child does no snprintf
+    // between fork and exec. Login shell: the basename prefixed with "-".
+    // Truncation is acceptable — argv[0] is a display/login marker, not a
+    // lookup key (same-UID trust, ADR-0004), so the cast silences
+    // cert-err33-c without losing a real guarantee.
+    char argv0[256];
+    {
+        const char *shellName = ::strrchr(shellBytesPre.constData(), '/');
+        shellName = shellName ? shellName + 1 : shellBytesPre.constData();
+        (void)::snprintf(argv0, sizeof(argv0), "-%s", shellName);
+    }
 
     // indie-review-2026-05-19 ptyhandler M1 — explicit -1 init.
     // POSIX forkpty does not guarantee `*amaster` is untouched on -1.
@@ -360,21 +358,6 @@ bool Pty::start(const QString &shell, const QString &workDir, int rows, int cols
         // "child only does execvp"; this matches the flatpak
         // path's pre-fork-allocation discipline.
 
-        // Get just the shell name for argv[0]
-        const char *shellName = ::strrchr(shellCStr, '/');
-        shellName = shellName ? shellName + 1 : shellCStr;
-
-        // Login shell (prefix with -). Truncation is acceptable —
-        // shellName is the basename of `shellCStr`, which the parent
-        // resolved from (in order): caller arg → $SHELL → getpwuid()
-        // → "/bin/bash" literal fallback. No separate validation step;
-        // the same-UID trust model (ADR-0004) accepts $SHELL as the
-        // primary source. argv[0] here is a display/login-marker, not
-        // a lookup key, so the cast silences the cert-err33-c
-        // diagnostic without losing any real guarantee.
-        char argv0[256];
-        (void)::snprintf(argv0, sizeof(argv0), "-%s", shellName);
-
         // Flatpak: execute the user's shell on the host via
         // `flatpak-spawn --host` so the sandbox doesn't cut off $PATH,
         // tools, and the real home directory. flatpak-spawn does NOT
@@ -418,7 +401,7 @@ bool Pty::start(const QString &shell, const QString &workDir, int rows, int cols
             // spawn does not forward its own env across the sandbox boundary.
             ::execvpe("flatpak-spawn",
                       const_cast<char *const *>(argv),
-                      const_cast<char *const *>(childEnvp));
+                      const_cast<char *const *>(childEnvp.data()));
             ::_exit(127);
         }
 
@@ -431,7 +414,7 @@ bool Pty::start(const QString &shell, const QString &workDir, int rows, int cols
         // the address space.
         ::execle(shellCStr, argv0,
                  static_cast<const char *>(nullptr),
-                 const_cast<char *const *>(childEnvp));
+                 const_cast<char *const *>(childEnvp.data()));
         ::_exit(127);
     }
 

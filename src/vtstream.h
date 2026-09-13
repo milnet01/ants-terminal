@@ -91,12 +91,12 @@ public:
     // go through invokeMethod → write/resize slots so the FD is only
     // touched on the worker thread.
 
-    // Thread-safe child-PID accessor. The PID is written once by
-    // `forkpty()` inside `start()` — which GUI invokes via
-    // Qt::BlockingQueuedConnection, forming a synchronization point —
-    // and never changes afterwards. Safe to read from GUI without a
-    // mutex. Returns -1 if start() has not completed or the shell has
-    // exited.
+    // Thread-safe child-PID accessor. The PID is written by `forkpty()`
+    // inside `start()` — which GUI invokes via Qt::BlockingQueuedConnection —
+    // and cleared to -1 on the worker when the child is reaped at EOF
+    // (ANTS-5075). The member is atomic (ptyhandler.h, ANTS-4456), so GUI
+    // reads need no mutex. Returns -1 if start() has not completed or the
+    // shell has been reaped.
     pid_t childPid() const;
 
 signals:
