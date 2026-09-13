@@ -7527,7 +7527,7 @@ extends an existing item, that item carries it instead.
   Source: code-quality-review-2026-09-11 perf pass (lane changelog-feedback).
   Lanes: changelog, mcp.
 
-- 📋 [ANTS-5072] **MCP reply post-processing runs on the GUI thread for every verb, off-thread ones included, with no size bound.**
+- ✅ [ANTS-5072] **MCP reply post-processing runs on the GUI thread for every verb, off-thread ones included, with no size bound.**
   Off-thread verbs run only their handler on the worker. The reply is
   marshalled back and finishToolDispatch runs the whole tail on the
   GUI thread: applyEtagPattern parses, hashes and re-serialises the
@@ -7581,6 +7581,14 @@ extends an existing item, that item carries it instead.
   INV-7 and INV-9 amended, INV-18 added) and gated by review-contract at
   its cap, loops 5 and 6 (7 verified findings, all fixed; calm). Next:
   build it with write-code, INV-18 and the INV-9 scrape red first.
+  Resolved (2026-09-13, fc349d4e): the ANTS-2132 section 2.9 split is
+  built. transformReply runs the etag, projection, compact, hints,
+  tabularize, offload and wrap steps inside the worker job for an
+  off-thread verb; finishToolDispatch keeps the cache insert,
+  recordDispatch and the socket write on the GUI thread. Contract:
+  tests/features/mcp_async_dispatch (INV-18, advisory test) and the
+  mcp_verb_offthread_guard INV-7/INV-9 scrape. The streamed spill write
+  is split out as ANTS-5150.
   **Layman:** Every answer Ants sends back to Claude is processed on the main window's thread, which can stutter the window on big answers.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lanes claude-integration-a, claude-integration-b, mcp-infra).
@@ -9523,6 +9531,18 @@ extends an existing item, that item carries it instead.
   Kind: fix.
   Source: in-session-2026-09-12.
   Lanes: vt, terminalgrid.
+
+- 📋 [ANTS-5150] **MCP result offload copies and hashes the whole body before writing the spill file.**
+  Split out of ANTS-5072, which moved the reply transforms onto the
+  dispatch worker and left this part of its fix direction open.
+  mcp::offloadBody still holds the full body, hashes it and writes it in
+  one piece. bench_mcp_reply_tail's offload phase measures it.
+  Fix direction: stream the hash and the spill write rather than copying
+  the whole body.
+  **Layman:** Saving a very large answer to a file on the side still reads the whole answer into memory more than it needs to.
+  Kind: perf.
+  Source: in-session-2026-09-13 split from ANTS-5072.
+  Lanes: mcp.
 
 ## Memory-efficiency sweep (user request 2026-08-19)
 
