@@ -8,7 +8,8 @@ rest is implemented
 (`ClaudeIntegration::postToolDispatch`, `tests/features/mcp_async_dispatch/`).
 **Amendment (2026-09-13, ANTS-5072):** § 1.3 and § 2.9 run an off-thread verb's
 reply transforms on the worker; § 2.2, INV-7 and INV-9 change with them, and
-INV-18 is added. Not yet built.
+INV-18 is added. Gated by review-contract at its cap (loops 5 and 6). Not yet
+built.
 **Kind:** perf.
 **Source:** ROADMAP.md ANTS-2132 (user report of intermittent whole-window
 freeze; diagnosed in-session 2026-08-25). Amended for ANTS-5051, ANTS-5073,
@@ -485,7 +486,9 @@ false it returns an empty `ReplyTransform`; `finishToolDispatch` branches on
 `finishToolDispatch` runs the ANTS-1357 cache insert from `cacheBody`, so the
 cache still stores the body as it stood before the ETag step. It then sets
 `dispatchResult` to `etag_unchanged` or to the refusal code, as today, calls
-`recordDispatch`, and writes the reply.
+`recordDispatch`, and writes the reply. Writing it serialises the JSON-RPC
+envelope around `wrapped` on the GUI thread: 12.3 ms for a 4 MiB reply sent
+whole, next to nothing for an offloaded one (§ 1.3).
 
 **The ignored-args keys.** The advisory reads `m_toolParamKeys`, which
 `tools/list` writes on the GUI thread. The dispatcher computes the keys on the
@@ -514,8 +517,9 @@ a whole spill write on the worker. The hint latch's `QMutex` is held only for
 one set lookup and insert (`claimHint`).
 
 **Test seam.** `ClaudeIntegration` gains
-`static QThread *lastReplyTransformThreadForTest()`, which `transformReply`
-sets on entry.
+`static QThread *lastReplyTransformThreadForTest()` and
+`static void resetReplyTransformThreadForTest()`, over a
+`std::atomic<QThread *>` that `transformReply` sets on entry.
 
 ## 3. Invariants
 
@@ -571,8 +575,9 @@ sets on entry.
   runs identically on every path: one definition of `transformReply` and one of
   `finishToolDispatch` (§ 2.9, amended 2026-09-13 for ANTS-5072). *Test:*
   `tests/features/mcp_verb_offthread_guard/` — source scrape asserting one
-  definition of each, a `wrapMcpData(` call inside `transformReply`, and none in
-  `finishToolDispatch` or the dispatcher.
+  definition of each, a `wrapMcpData(` call inside `transformReply`, none in
+  `finishToolDispatch`, `postToolDispatch` or the dispatcher, and a
+  `transformReply(` call inside `postToolDispatch`.
 - **INV-10** — A job arriving at a full queue is refused with
   `dispatch_queue_full` and no job is dropped silently. *Test:*
   `tests/features/mcp_async_dispatch/` — hold the worker on job 1, post jobs
@@ -635,11 +640,13 @@ sets on entry.
   ran on the dispatch worker, the reply transforms run there too; a verb
   registered through the bare
   `ToolHandler` overload runs them on the GUI thread. *Test:*
-  `tests/features/mcp_async_dispatch/` — call an `RcHandler` verb and assert
-  `lastReplyTransformThreadForTest()` is not the GUI thread; call a bare
-  `ToolHandler` verb and assert it is. Breaks if `postToolDispatch` queues the
-  handler's body back before `transformReply` runs: the first assertion reads
-  the GUI thread.
+  `tests/features/mcp_async_dispatch/` — reset the seam, call an `RcHandler`
+  verb that records `QThread::currentThread()`, and assert the seam equals that
+  thread; reset it again, call a bare `ToolHandler` verb, and assert the seam
+  equals the GUI thread. Breaks if `postToolDispatch` queues the handler's body
+  back before `transformReply` runs (the first assertion reads the GUI thread),
+  or if the worker job transforms the reply without calling `transformReply`
+  (the seam stays `nullptr`).
 
 ## 4. RAM / build cost
 
@@ -710,6 +717,8 @@ holds its `RunResult` until the reply, as the `async:true` branch does.
 - **Reply transforms for synchronous, cached and deferred verbs** stay on the
   GUI thread (§ 2.9, ANTS-5072). Moving them would put a reply that is ready now
   behind the worker queue.
+- **Serialising the JSON-RPC envelope** stays on the GUI thread for every verb
+  (§ 2.9, ANTS-5072). It costs 12.3 ms only for a 4 MiB reply sent whole.
 
 ## 6. Tests
 
@@ -813,8 +822,9 @@ the change is restored.
   - `tests/features/mcp_verb_offthread_guard/spec.md` — its INV-7 and INV-9
     rows name `transformReply`.
   - `CHANGELOG.md` — a large reply from an off-thread verb no longer stalls the
-    window while it is prepared. It must not claim more: synchronous, cached
-    and deferred verbs still prepare theirs on the GUI thread (§ 5).
+    window for its ETag, compaction, offload and wrap steps. It must not claim
+    more: the envelope is still serialised on the GUI thread (§ 2.9), and
+    synchronous, cached and deferred verbs still prepare theirs there (§ 5).
   - ROADMAP.md — ANTS-5072 closes with the build.
 
 ## Cold-eyes loop log
@@ -826,3 +836,4 @@ the change is restored.
 | 3 | 2026-09-13 | 3, cold — genre pinned `spec`; first loop of the gate on the 2026-09-13 amendment (§ 1.2, § 2.7, § 2.8, INV-11..16) | **Q1 1 · Q2 2 · Q3 1 · Q4 2** (6 verified / 6 fixed / 1 dismissed) | **Six verified, six fixed; loop 2 of this run dispatched.** Two lanes found INV-15 could not catch an unlatched `reply`: the first reply disconnects, so a second writes nothing either way. It now counts trace entries. INV-16's `QThread::finished` check passed on the `async:true` branch alone; it now wants one per branch. § 2.7's route rule and INV-13 keyed on factory spelling, which misses inline `RcHandler{` twins that ANTS-4682 moved off-thread; both now key on the `RcHandler` overload, and § 2.4's inline-lambda sentence was corrected with them. § 2.8 now builds the context as the off-thread branch does, because `finishToolDispatch` skips its transforms when `toolHandled` is false. § 2.8 now states that a second same-root synchronous `audit_run` is refused `already_running`. § 7 now lists the guard spec and the `audit_run` comment that still say it freezes. **Dismissed:** § 1.2's census, raised by two lanes because the packet omitted `roadmapWriteTarget`. Its callers are all `roadmap_log` handlers, so the claim holds; the gap was the packet's. Out of scope, filed separately: three pre-existing copies elsewhere of "every hand-written inline lambda" runs on the GUI thread. |
 | 4 | 2026-09-13 | 3, cold — identical brief; scrubbed copy, packet and source facts rebuilt from disk | **Q1 1 · Q2 0 · Q3 1 · Q4 0** (2 verified / 2 fixed / 1 dismissed) | **Two verified, two fixed. Cap reached (2 for a spec); shipped to implementation.** § 2.7 blamed library layering for the static route list; `RemoteControl` files already include `claudeintegration.h`, so the true reason is that `RemoteControl` is built and tested without a `ClaudeIntegration`. § 2.6's shutdown refusal was unscoped, and the shipped flag is process-wide: closing a second window refuses every later marshal in the first (filed ANTS-5142). The refusal is now scoped to the instance's own worker, INV-17 tests it, and § 7 names the two test contracts bound to the global flag. **Dismissed:** INV-7's test clause named a `wait()` in the destructor where the built join is in `shutdownDispatchWorker`. Two lanes raised it; nothing built changes, so it was corrected as a record of the code. **Calm cap:** 0 of this loop's 2 verified findings landed on text a loop-1 fix wrote. **Gate against audit:** 7 of this run's 8 verified findings anchor in the amendment draft (`b198f557..f8ece108`); the § 2.6 refusal scope predates it. Out of scope, filed: ANTS-5141, the store destroyed on the GUI thread. |
 | 5 | 2026-09-13 | 3, cold — genre pinned `spec`; first loop of the gate on the ANTS-5072 amendment (§ 1.3, § 2.9, INV-7, INV-9, INV-18) | **Q1 1 · Q2 3 · Q3 0 · Q4 0** (4 verified / 4 fixed / 0 dismissed) | **Four verified, four fixed; loop 2 of this run dispatched.** All three lanes found § 2.2's struct had lost `toolHandled`, which § 2.8 and § 2.9 rely on, so `finishToolDispatch` would have read an empty control-plane body as an unknown tool; the field is back and `finishToolDispatch` branches on it. All three lanes found § 4's peak-memory sentence false: `ReplyTransform` carried the pre-ETag body on every call, beside the transformed body and the wrapped text. The transformed body is no longer carried, and `cacheBody` is filled only for a handled, cacheable, uncached call. Two lanes found INV-18 claimed worker transforms for every off-thread verb, while a cache hit or a queue-full refusal finishes on the GUI thread; it is now scoped to a call whose handler ran on the worker. One lane found the spill directory's no-lock reason contradicted the hint latch's `QMutex`; the reason is now the length of the wait. **Open questions resolved clean:** the scrape tests § 6 requires to pass unmodified (`mcp_projection`, `mcp_rate_limit`, `mcp_ignored_args`) key on spellings a split can keep; whether `read_region` is cacheable stops mattering once `cacheBody` is conditional. |
+| 6 | 2026-09-13 | 3, cold — identical brief; scrubbed copy, packet and source facts rebuilt from disk | **Q1 0 · Q2 1 · Q3 0 · Q4 2** (3 verified / 3 fixed / 1 dismissed) | **Three verified, three fixed. Cap reached (2 for a spec); shipped to implementation.** Two lanes found § 7's CHANGELOG line promised a large off-thread reply no longer stalls the window, while § 2.9 still serialises the JSON-RPC envelope on the GUI thread, which § 1.3 measures at 12.3 ms for a reply sent whole. § 2.9 and § 5 now say the envelope stays there, and the CHANGELOG line names only the steps that move. One lane found INV-18's test would pass with its seam never set, since `nullptr` is not the GUI thread; the seam is now atomic and reset before each call, and the test asserts it equals the thread the verb recorded. The same lane found INV-9's scrape never looked at `postToolDispatch`, where the off-thread transforms now run, so a second pipeline there would pass; the scrape now covers it. **Dismissed:** § 2.1's "client-visible latency is unchanged" no longer holds for a queued off-thread verb, which now waits behind the previous job's transforms; nothing built differs. **Checked by the orchestrator:** every function-local static in `claudeintegration.cpp`, `mcpprojection.cpp` and `mcpspill.cpp` is `const` or `constexpr`, so § 2.9's list of what the transforms read off the GUI thread holds. **Calm cap:** 0 of this loop's 3 verified findings landed on text loop 5 wrote. **Gate against audit:** 6 of this run's 7 verified findings anchor in the amendment commit `f60c24e0`; the missing `toolHandled` predates it. Tail filed: none. |
