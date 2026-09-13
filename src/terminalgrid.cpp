@@ -413,6 +413,7 @@ void TerminalGrid::handleAsciiPrintRun(const char *data, int len) {
         // Sanitize any wide-char pair at either edge of this write span
         // BEFORE writing — see breakWidePairsAround for the contract.
         breakWidePairsAround(row, startCol, startCol + span);
+        dropHyperlinkSpans(row, startCol, startCol + span);  // ANTS-5076
         auto &cells = line.cells;
         const CellAttrs attrs = m_currentAttrs;
         bool rowHasCombining = !line.combining.empty();
@@ -500,6 +501,9 @@ void TerminalGrid::handlePrint(uint32_t cp) {
     // clobber the cell(s). Write region is [cursorCol, cursorCol+charWidth).
     // See breakWidePairsAround + tests/features/wide_char_overwrite_mate.
     breakWidePairsAround(m_cursorRow, m_cursorCol, m_cursorCol + charWidth);
+    // ANTS-5076 — text printed over a link replaces it. The active link's
+    // own span is only pushed when it closes, so it is not touched here.
+    dropHyperlinkSpans(m_cursorRow, m_cursorCol, m_cursorCol + charWidth);
 
     auto &c = cell(m_cursorRow, m_cursorCol);
     c.codepoint = cp;
@@ -2367,7 +2371,9 @@ void TerminalGrid::pushHyperlinkSpansForActive() {
         s.endCol = m_cursorCol > 0 ? m_cursorCol - 1 : 0;
         s.uri = m_hyperlinkUri;
         s.id = m_hyperlinkId;
-        if (startRow >= 0 && startRow < m_rows)
+        // ANTS-5076 — a link closed with no text covers no column; storing
+        // it let repeated empty links grow the row's span list unbounded.
+        if (startRow >= 0 && startRow < m_rows && s.endCol >= s.startCol)
             m_screenHyperlinks[startRow].push_back(std::move(s));
     } else {
         // Forward wrap (startRow < endRow) — emit per-row spans so
@@ -2593,6 +2599,20 @@ void TerminalGrid::clearRow(int row, int startCol, int endCol) {
         for (int c = startCol; c < endCol && c < m_cols; ++c)
             m_screenLines[row].combining.erase(c);
     }
+    // ANTS-5076 — cleared text loses its links too.
+    dropHyperlinkSpans(row, startCol, std::min(endCol, m_cols));
+}
+
+void TerminalGrid::dropHyperlinkSpans(int row, int startCol, int endCol) {
+    if (row < 0 || row >= static_cast<int>(m_screenHyperlinks.size())) return;
+    auto &spans = m_screenHyperlinks[row];
+    if (spans.empty()) return;
+    spans.erase(std::remove_if(spans.begin(), spans.end(),
+                               [startCol, endCol](const HyperlinkSpan &sp) {
+                                   return sp.startCol < endCol &&
+                                          sp.endCol >= startCol;
+                               }),
+                spans.end());
 }
 
 void TerminalGrid::clearScreenContent() {
@@ -2657,7 +2677,11 @@ void TerminalGrid::resize(int rows, int cols) {
         for (auto &sl : lines) {
             auto &cells = sl.cells;
             int len = static_cast<int>(cells.size());
-            while (len > 0 && cells[len - 1].codepoint == ' ') --len;
+            // ANTS-5076 — trim only the row that ends a logical line. A
+            // space in a soft-wrapped row's last column is content, and
+            // dropping it glued the words either side together on re-wrap.
+            if (!sl.softWrapped)
+                while (len > 0 && cells[len - 1].codepoint == ' ') --len;
             int before = static_cast<int>(cur.cells.size());
             cur.cells.insert(cur.cells.end(), cells.begin(), cells.begin() + len);
             // Merge combining entries, shifted by the logical-line offset.
@@ -3286,12 +3310,14 @@ void TerminalGrid::handleDcs(const std::string &payload, bool truncated) {
         char ch = payload[i];
         if (ch >= '?' && ch <= '~') {
             int sixel = ch - '?';
-            QColor col = palette[currentColor];
-            for (int bit = 0; bit < 6; ++bit) {
-                if (sixel & (1 << bit)) {
+            // ANTS-5076 — one QRgb per sixel and a direct scanLine write;
+            // setPixelColor per pixel dominated a crafted image's decode.
+            const QRgb rgb = palette[currentColor].rgba();
+            if (x < imgWidth) {
+                for (int bit = 0; bit < 6; ++bit) {
                     int py = y + bit;
-                    if (x < imgWidth && py < imgHeight)
-                        image.setPixelColor(x, py, col);
+                    if ((sixel & (1 << bit)) && py < imgHeight)
+                        reinterpret_cast<QRgb *>(image.scanLine(py))[x] = rgb;
                 }
             }
             ++x;
@@ -3315,23 +3341,23 @@ void TerminalGrid::handleDcs(const std::string &payload, bool truncated) {
             }
             if (i < payload.size() && payload[i] >= '?' && payload[i] <= '~') {
                 int sixel = payload[i] - '?';
-                QColor col = palette[currentColor];
+                const QRgb rgb = palette[currentColor].rgba();
                 if (columnSteps + static_cast<size_t>(count) > maxColumnSteps) {
                     writeInlineError(QStringLiteral(
                         "[ants: sixel decode exceeded its work budget]"));
                     return;
                 }
+                // The budget charges the whole group (ANTS-4456 INV-4);
+                // only the columns inside the image are drawn (ANTS-5076).
                 columnSteps += static_cast<size_t>(count);
-                for (int r = 0; r < count; ++r) {
-                    for (int bit = 0; bit < 6; ++bit) {
-                        if (sixel & (1 << bit)) {
-                            int py = y + bit;
-                            if (x < imgWidth && py < imgHeight)
-                                image.setPixelColor(x, py, col);
-                        }
-                    }
-                    ++x;
+                const int drawEnd = std::min(x + count, imgWidth);
+                for (int bit = 0; bit < 6; ++bit) {
+                    int py = y + bit;
+                    if (!(sixel & (1 << bit)) || py >= imgHeight) continue;
+                    auto *line = reinterpret_cast<QRgb *>(image.scanLine(py));
+                    for (int px = x; px < drawEnd; ++px) line[px] = rgb;
                 }
+                x += count;
             }
         } else if (ch == '#') {
             // Color command: #idx or #idx;2;r;g;b

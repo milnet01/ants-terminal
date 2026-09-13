@@ -70,6 +70,19 @@ for security-relevant changes.
 
 ### Fixed
 
+- **Resizing the window no longer glues together words that were split across two lines** (ANTS-5076)
+  When a line wrapped exactly at a space, resizing dropped that space and
+  the words on either side ran together.
+
+- **Clickable links disappear when the text under them is cleared or overwritten** (ANTS-5076)
+  A link stayed clickable over blank space after the screen or line was
+  cleared, and redrawing the same link over and over kept piling up
+  copies of it.
+
+- **Sixel images decode faster, so a crafted image can no longer stall the window as long** (ANTS-5076)
+  Each pixel was set through a slow general-purpose call; the decoder now
+  writes pixels directly and skips drawing past the image edge.
+
 - **A garbled terminal control code no longer spills its leftover characters onto the screen** (ANTS-5075)
   When a program sent a control code with a stray byte in it, the terminal
   gave up on the code and printed the rest of it as text. It now discards

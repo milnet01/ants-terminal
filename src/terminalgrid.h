@@ -527,6 +527,9 @@ private:
     void reverseIndex();
     Cell &cell(int row, int col);
     void clearRow(int row, int startCol = 0, int endCol = -1);
+    // ANTS-5076 — remove the OSC 8 spans on `row` that cover any column in
+    // [startCol, endCol). Called when those cells are cleared or overprinted.
+    void dropHyperlinkSpans(int row, int startCol, int endCol);
 
     // OSC 1337 (iTerm2 inline images)
     void handleOscImage(const std::string &payload);
