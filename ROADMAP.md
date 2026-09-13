@@ -7711,6 +7711,12 @@ extends an existing item, that item carries it instead.
     the fork.
   - The read notifier is deleted directly while parented, against
     qt.md.
+  Progress (2026-09-14): the first medium (EOF branch running twice and
+  reaping with waitpid(-1)) was already closed by ANTS-5026: Pty's
+  m_readEof latch returns from onReadReady once EOF is handled, pinned by
+  pty_read_backpressure INV-2 and INV-3. The envp medium, the argv0 low
+  and the stale vtstream.h comment are being fixed together (new test
+  tests/features/pty_child_env).
   **Layman:** Smaller fixes to how the terminal talks to the shell: pastes, environment variables and escape codes.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lane vt-parser-pty).
