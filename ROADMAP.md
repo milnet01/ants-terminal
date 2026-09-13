@@ -6783,7 +6783,7 @@ extends an existing item, that item carries it instead.
   Source: code-quality-review-2026-09-11 perf pass (lane claude-session-widgets).
   Lanes: claude.
 
-- 📋 [ANTS-5050] **Every append to a Claude transcript re-reads up to 16 MiB of it on the GUI thread, once for each tracker watching it.**
+- ✅ [ANTS-5050] **Every append to a Claude transcript re-reads up to 16 MiB of it on the GUI thread, once for each tracker watching it.**
   ClaudeTaskList and ClaudeBgTaskTracker both connect their file
   watcher straight to a full rescan with no debounce, and each rescan
   walks up to a 16 MiB tail, JSON-parsing every line. Claude streams
@@ -6889,6 +6889,14 @@ extends an existing item, that item carries it instead.
   transcript path, so a tab-switch re-bind resumes instead of
   cold-walking. Sharing one tracker per path was the alternative and was
   not taken.
+  Resolved (2026-09-13): the remaining half landed as the user decided.
+  ClaudeTranscript::WalkCache keeps the walk cursor and accumulator per
+  transcript path, shared per tracker type; setTranscriptPath restores
+  it and canResume still gates, so a tab-switch re-bind or a second pane
+  resumes instead of cold-walking. Contract:
+  tests/features/claude_transcript_incremental_parse INV-6, INV-9,
+  INV-10. Tests proven red against a stub and a path-ignoring mutant.
+  Commit c05fbe92; suite green.
   **Layman:** While Claude is working, Ants keeps re-reading its whole conversation log, and more so with more panes open.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lane claude-session-widgets).
