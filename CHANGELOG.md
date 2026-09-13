@@ -70,6 +70,12 @@ for security-relevant changes.
 
 ### Fixed
 
+- **The Claude transcript viewer and session summaries no longer drop messages longer than 64 KiB** (ANTS-5089)
+  Ants read Claude Code's transcript one record at a time but stopped at
+  64 KiB, so a long tool result or a pasted file was split into pieces that
+  could not be read and was silently left out. Records up to 16 MiB are now
+  read whole, and a larger one is skipped cleanly instead of in fragments.
+
 - **Saving a large answer with many rows to disk no longer slows down sharply as the row count grows** (ANTS-5104)
   When a big MCP answer is saved aside, Ants builds a short per-row preview
   that has to fit a size budget. It rechecked the size by rebuilding the

@@ -57,6 +57,24 @@ static bool tabSpecificAcceptsTabIndex(const QString &toolName) {
            toolName == QLatin1String("last_selection");
 }
 
+// ANTS-5089 — one JSONL transcript record. Tool results routinely exceed
+// the old 64 KiB readLine cap, and a capped readLine hands the rest of the
+// record back as further "lines" that fail to parse, so the record was
+// dropped silently and each fragment counted against a caller's line budget.
+// A record longer than `cap` is now skipped whole: its remainder is drained
+// to the newline. The cap still bounds memory against a corrupt multi-GiB
+// line (ANTS-1806).
+static constexpr qint64 kMaxTranscriptRecordBytes = 16LL * 1024 * 1024;
+
+static QByteArray readJsonlRecord(QFile &file, qint64 cap) {
+    QByteArray line = file.readLine(cap);
+    if (line.endsWith('\n') || file.atEnd()) return line.trimmed();
+    while (!file.atEnd()) {
+        if (file.readLine(cap).endsWith('\n')) break;
+    }
+    return {};
+}
+
 ClaudeIntegration::ClaudeIntegration(QObject *parent) : QObject(parent) {
     // ANTS-1356 — start the monotonic clock used by rateLimitCheck.
     // QElapsedTimer::start() is idempotent; calling it on already-
@@ -643,13 +661,13 @@ QJsonArray ClaudeIntegration::loadTranscript(const QString &path) const {
         return entries;
     }
 
-    // ANTS-1806 — cap per-line read. The transcript is written by an external
-    // process (Claude Code) and is an untrusted parse boundary; a corrupt
-    // multi-GiB single line would otherwise OOM the process even under the
-    // whole-file guard above. Matches extractCwdFromTranscript's cap.
-    constexpr qint64 kMaxLineBytes = 64 * 1024;
+    // ANTS-1806 — cap per-record read. The transcript is written by an
+    // external process (Claude Code) and is an untrusted parse boundary; a
+    // corrupt multi-GiB single line would otherwise OOM the process even under
+    // the whole-file guard above. ANTS-5089 — an over-cap record is skipped
+    // whole rather than returned in fragments.
     while (!file.atEnd()) {
-        QByteArray line = file.readLine(kMaxLineBytes).trimmed();
+        QByteArray line = readJsonlRecord(file, kMaxTranscriptRecordBytes);
         if (line.isEmpty()) continue;
         QJsonDocument doc = QJsonDocument::fromJson(line);
         if (doc.isObject())
@@ -16874,17 +16892,15 @@ static QString extractCwdFromTranscript(const QString &transcriptPath) {
     QFile file(transcriptPath);
     if (!file.open(QIODevice::ReadOnly)) return {};
 
-    // 0.7.52 (2026-04-27 indie-review HIGH) — cap readLine at 64 KiB. The
+    // 0.7.52 (2026-04-27 indie-review HIGH) — cap the per-record read. The
     // transcript is a JSONL file written by Claude Code; pathological /
     // corrupted input could put a multi-GiB single line at the head and
-    // OOM the process before we get to the early-return cap. 64 KiB is
-    // generous: real transcript records are <2 KiB, and any object whose
-    // serialized form exceeds 64 KiB has no `cwd` field worth recovering.
-    constexpr qint64 kMaxLineBytes = 64 * 1024;
-
+    // OOM the process before we get to the early-return cap. ANTS-5089 —
+    // an over-cap record is skipped whole, so it costs one of the 30 records
+    // rather than one per fragment.
     int linesRead = 0;
     while (!file.atEnd() && linesRead < 30) {
-        QByteArray line = file.readLine(kMaxLineBytes).trimmed();
+        QByteArray line = readJsonlRecord(file, kMaxTranscriptRecordBytes);
         ++linesRead;
         if (line.isEmpty()) continue;
         QJsonDocument doc = QJsonDocument::fromJson(line);
@@ -17019,12 +17035,12 @@ QString ClaudeIntegration::sessionSummary(const QString &transcriptPath) const {
     if (!file.open(QIODevice::ReadOnly)) return {};
 
     // Read up to 50 lines to find the first user message
-    // ANTS-1806 — cap per-line read (untrusted transcript, no file-size guard
-    // on this path); a single huge line would OOM otherwise.
-    constexpr qint64 kMaxLineBytes = 64 * 1024;
+    // ANTS-1806 — cap per-record read (untrusted transcript, no file-size
+    // guard on this path); a single huge line would OOM otherwise. ANTS-5089 —
+    // a first user message longer than 64 KiB (a pasted file) is still found.
     int linesRead = 0;
     while (!file.atEnd() && linesRead < 50) {
-        QByteArray line = file.readLine(kMaxLineBytes).trimmed();
+        QByteArray line = readJsonlRecord(file, kMaxTranscriptRecordBytes);
         ++linesRead;
         if (line.isEmpty()) continue;
 

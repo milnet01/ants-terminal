@@ -87,6 +87,13 @@ CI redness), and the function must not return 0 without the scan.
 QThread that has since exited. Skips gracefully when no `sleep` binary is
 on PATH.
 
+**INV-11** — A transcript record longer than the old 64 KiB readLine cap is
+read whole (ANTS-5089). `loadTranscript` returns all three records of a
+transcript whose middle record is 200 KiB, and `sessionSummary` finds a
+first user message longer than 64 KiB. A record over the 16 MiB cap is
+skipped as one unit rather than handed back in fragments; that case is not
+exercised here, because it needs a 16 MiB fixture.
+
 ## Out of scope
 
 - Rendering/presentation of `thinking` blocks in the transcript

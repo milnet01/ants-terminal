@@ -474,6 +474,45 @@ int inv10SidechainEndTurnDoesNotIdle() {
     return ok ? 0 : 1;
 }
 
+// ANTS-5089: a record longer than the old 64 KiB readLine cap is read whole.
+// The cap used to hand the rest of the record back as further lines, each of
+// which failed to parse, so the record was dropped.
+int inv11LongRecordsAreReadWhole() {
+    QTemporaryDir tmp;
+    if (!tmp.isValid()) return 1;
+    bool ok = true;
+
+    const QString longText(200 * 1024, QLatin1Char('a'));
+    const QString transcript = tmp.path() + "/long.jsonl";
+    {
+        QFile f(transcript);
+        if (!f.open(QIODevice::WriteOnly)) return 1;
+        f.write(R"({"type":"user","message":{"content":"first"}})" "\n");
+        f.write(QByteArray(R"({"type":"assistant","message":{"content":[{"type":"text","text":")")
+                + longText.toUtf8() + QByteArray(R"("}]}})") + "\n");
+        f.write(R"({"type":"user","message":{"content":"last"}})" "\n");
+    }
+    ClaudeIntegration ci;
+    const int entries = ci.loadTranscript(transcript).size();
+    if (entries != 3) ok = false;
+    std::fprintf(stderr, "[inv11 long-record loadTranscript] entries=%d (want 3)  %s\n",
+                 entries, entries == 3 ? "PASS" : "FAIL");
+
+    const QString summaryPath = tmp.path() + "/summary.jsonl";
+    {
+        QFile f(summaryPath);
+        if (!f.open(QIODevice::WriteOnly)) return 1;
+        f.write(QByteArray(R"({"type":"user","message":{"content":"hello )")
+                + QByteArray(100 * 1024, 'x') + QByteArray(R"("}})") + "\n");
+    }
+    const QString summary = ci.sessionSummary(summaryPath);
+    const bool summaryOk = summary.startsWith(QStringLiteral("hello"));
+    if (!summaryOk) ok = false;
+    std::fprintf(stderr, "[inv11 long-record sessionSummary] summary starts \"hello\": %s\n",
+                 summaryOk ? "PASS" : "FAIL");
+    return ok ? 0 : 1;
+}
+
 }  // namespace
 
 TEST(ClaudeTranscriptRobustness, Main) {
@@ -488,6 +527,7 @@ TEST(ClaudeTranscriptRobustness, Main) {
     failures += inv8FindClaudeChildFromWorkerThread();
     failures += inv9FindClaudeChildAfterForkingThreadExits();
     failures += inv10SidechainEndTurnDoesNotIdle();
+    failures += inv11LongRecordsAreReadWhole();
     if (failures) FAIL();
 }
 
