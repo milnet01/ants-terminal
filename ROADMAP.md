@@ -7402,7 +7402,7 @@ extends an existing item, that item carries it instead.
   Source: code-quality-review-2026-09-11 perf pass (lanes spec-engines, audit-dialog-b).
   Lanes: audit, spec, threading.
 
-- 📋 [ANTS-5068] **plan_template's includes_tests option is documented and parsed but never used.**
+- ✅ [ANTS-5068] **plan_template's includes_tests option is documented and parsed but never used.**
   ANTS-1290 documents includes_tests with a default of true, the
   handler parses it into the options, and PlanTemplateEngine declares
   the field, but the engine never reads it, so includes_tests:false
@@ -7418,6 +7418,11 @@ extends an existing item, that item carries it instead.
   includes_tests:false drops the test line and steps 1 and 2 from the
   generated plan; the option stays in the schema and ANTS-1290 gains the
   definition it never carried.
+  Resolved (2026-09-13, 58e5d47a): includes_tests:false now drops each
+  task block's test file line and its two test-first steps, and numbers
+  the remaining steps from 1. The default output is unchanged. ANTS-1290
+  section 2.3 and INV-11 carry the definition; plan_template_engine
+  Inv11IncludesTestsFalseDropsTestSteps was red first.
   **Layman:** A setting on the plan-template tool does nothing, even though it's documented.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lane spec-engines).
@@ -9056,7 +9061,7 @@ extends an existing item, that item carries it instead.
   Source: in-session-2026-09-11 (ANTS-5062 remainder).
   Lanes: test-audit, threading.
 
-- 📋 [ANTS-5127] **The ripgrep-backed verbs still parse rg's output only after it ends, count by collecting matches, and co_change_family sorts every site.**
+- ✅ [ANTS-5127] **The ripgrep-backed verbs still parse rg's output only after it ends, count by collecting matches, and co_change_family sorts every site.**
   ANTS-5052 bounds rg's output with a byte ceiling, so memory no longer
   grows without limit. Three parts of that item's fix remain: parse
   stdout line by line while rg runs (ANTS-3716 section 4), use rg --count
@@ -9077,6 +9082,13 @@ extends an existing item, that item carries it instead.
   keep the de-duplicated, byte-capped semantics ANTS-3716 and ANTS-3537
   pin, so rg --count and --files-with-matches are not taken and no spec
   amendment is needed.
+  Resolved (2026-09-13, c5fb8aca): rcRunRg hands rg's stdout to an
+  onLine callback as it arrives and RgRun holds no whole buffer, so
+  workspace_search, cited_by and co_change_family parse while rg runs.
+  CoChangeFamily::Assembler keeps at most max_sites sites, evicting the
+  weakest by INV-7's order. Counts keep their de-duplicated meaning.
+  cited_by Inv9 and co_change_family AssemblerHoldsAtMostMaxSites were
+  red first; disabling the eviction fails the latter.
   **Layman:** Some code searches still do more work and hold more memory than they need to, though no longer without limit.
   Kind: perf.
   Source: in-session-2026-09-11 (ANTS-5052 remainder).
