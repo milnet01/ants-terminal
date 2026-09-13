@@ -149,6 +149,21 @@ QJsonDocument RemoteControl::cmdChangelogQuery(const QJsonObject &req) {
     }
 
     // (4) id / ids parse — id+ids → bad_args; >100 → bad_args (§ 2.3).
+    // ANTS-5146 — a present `id` or `ids` of the wrong JSON type is malformed,
+    // not absent. Reading it as absent fell through to the full list, the
+    // ANTS-3541 failure INV-8 forbids. JSON null still reads as absent.
+    {
+        const QJsonValue idv  = req.value(QStringLiteral("id"));
+        const QJsonValue idsv = req.value(QStringLiteral("ids"));
+        const auto present = [](const QJsonValue &v) {
+            return !v.isUndefined() && !v.isNull();
+        };
+        if ((present(idv) && !idv.isString()) ||
+            (present(idsv) && !idsv.isString() && !idsv.isArray()))
+            return err(QStringLiteral("bad_args"),
+                       QStringLiteral("changelog_query: `id` must be a string "
+                                      "and `ids` an array or a string"));
+    }
     const QString singleId = req.value(QStringLiteral("id")).toString().trimmed();
     const bool hasId = !singleId.isEmpty();
     QStringList reqIds;
@@ -795,6 +810,14 @@ QJsonDocument RemoteControl::cmdChangelogLog(const QJsonObject &req) {
         QString date = req.value(QStringLiteral("date")).toString().trimmed();
         if (date.isEmpty())
             date = QDate::currentDate().toString(QStringLiteral("yyyy-MM-dd"));
+        // ANTS-5148 — changelog_query reads a heading as a dated topic only
+        // when QDate parses its date (ANTS-3533 § 3), so refuse one it cannot.
+        if (!QDate::fromString(date, QStringLiteral("yyyy-MM-dd")).isValid()) {
+            return clErr(QStringLiteral("bad_args"),
+                QStringLiteral("changelog_log: op:\"add_subsection\" `date` "
+                               "\"%1\" is not a yyyy-MM-dd date")
+                    .arg(date.left(64)));
+        }
         QString subBody = req.value(QStringLiteral("body")).toString();
 
         // Render optional bullets — each a bare string summary, or an object

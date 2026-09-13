@@ -34,7 +34,8 @@ Mirrors the `changelog_log_normalize` harness.
   `dry_run:true`, `written:false`, and the would-be `heading`/`line`/`bytes`.
 - **INV-9** — handler guards: absent `headline` → `missing_field`; a bad
   `category` → `bad_category`; `category` omitted but `kind` supplied → derived
-  (e.g. `kind:"fix"` → `Fixed`).
+  (e.g. `kind:"fix"` → `Fixed`); a `date` that does not parse as `yyyy-MM-dd`
+  → `bad_args` (ANTS-5148).
 
 ## Pre-fix check
 

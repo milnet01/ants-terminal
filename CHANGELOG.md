@@ -65,6 +65,14 @@ for security-relevant changes.
 
 ### Fixed
 
+- **changelog_query refuses an id or ids of the wrong JSON type** (ANTS-5146)
+  A number, boolean or object passed as `id` or `ids` now refuses
+  `bad_args` instead of returning the whole changelog.
+
+- **changelog_log add_subsection refuses a date it cannot parse** (ANTS-5148)
+  A `date` that is not a valid yyyy-MM-dd date now refuses `bad_args`,
+  so every dated heading it writes is one changelog_query can read.
+
 - **changelog_query reads entries under dated topic headings** (ANTS-5071)
   A `### <date> <Category> — <headline>` heading, the form
   changelog_log op:add_subsection writes, now sets the category named

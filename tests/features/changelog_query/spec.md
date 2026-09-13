@@ -27,6 +27,11 @@ and source-scrapes the handler wiring.
   version/category heading is skipped; per-version category rollup omits
   zero-count categories in canonical order.
 
+## Handler refusals (INV-8)
+
+- **ANTS-5146** — a present `id` or `ids` of the wrong JSON type (a number, a
+  boolean, an object) refuses `bad_args` instead of returning the full list.
+
 ## Wiring (source-scrape, INV-1/6/9)
 
 - `changelog_query` registered via `rcDelegate(&RemoteControl::cmdChangelogQuery)`.

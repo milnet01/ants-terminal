@@ -6,12 +6,17 @@
 #include "changelogquery.h"
 #include "changeloglog.h"
 #include "mcpprojection.h"
+#include "remotecontrol.h"
 
 #include <gtest/gtest.h>
 #include "../../_support/srcgrep.h"
 
+#include <QFile>
+#include <QJsonObject>
+#include <QJsonValue>
 #include <QString>
 #include <QStringLiteral>
+#include <QTemporaryDir>
 
 #include <string>
 
@@ -295,6 +300,38 @@ TEST(ChangelogQueryParse, DegenerateInputs) {
         "- **Orphan bullet before any version.** (ANTS-4000)\n");
     const ParseResult r = ChangelogQuery::parse(md, kPrefix);
     EXPECT_TRUE(r.entries.isEmpty());
+}
+
+// ANTS-5146 (INV-8) — a present `id` or `ids` of the wrong JSON type refuses
+// bad_args. It used to be read as absent, so the call fell through to the
+// full unfiltered list: the ANTS-3541 failure.
+TEST(ChangelogQueryHandler, Ants5146WrongTypeIdOrIdsRefuses) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    QFile f(tmp.path() + QStringLiteral("/CHANGELOG.md"));
+    ASSERT_TRUE(f.open(QIODevice::WriteOnly));
+    f.write("# Changelog\n\n## [Unreleased]\n\n### Added\n\n"
+            "- **A thing.** (ANTS-1)\n");
+    f.close();
+
+    RemoteControl rc(nullptr);
+    auto call = [&](const QString &key, const QJsonValue &value) {
+        QJsonObject req;
+        req[QStringLiteral("caller_cwd")] = tmp.path();
+        req[key] = value;
+        return rc.cmdChangelogQuery(req).object();
+    };
+    const QJsonObject cases[] = {
+        call(QStringLiteral("ids"), 42),
+        call(QStringLiteral("ids"), QJsonObject{}),
+        call(QStringLiteral("id"), 7),
+        call(QStringLiteral("id"), true),
+    };
+    for (const QJsonObject &resp : cases) {
+        EXPECT_FALSE(resp.value(QStringLiteral("ok")).toBool());
+        EXPECT_EQ(resp.value(QStringLiteral("code")).toString(),
+                  QStringLiteral("bad_args"));
+    }
 }
 
 // ---- Wiring source-scrape (INV-1 / INV-6 / INV-9) ----

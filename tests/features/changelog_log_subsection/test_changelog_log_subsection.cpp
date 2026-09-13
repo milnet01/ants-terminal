@@ -259,6 +259,19 @@ TEST(changelog_log_subsection, Inv9Guards) {
         << r3.value(QStringLiteral("error")).toString().toStdString();
     EXPECT_EQ(r3.value(QStringLiteral("category")).toString(),
               QStringLiteral("Fixed"));
+
+    // ANTS-5148 — a date QDate cannot parse as yyyy-MM-dd → bad_args. Written
+    // as-is, it made a heading changelog_query does not read as a dated topic.
+    for (const char *bad : {"2026-9-13", "2026-13-45", "yesterday"}) {
+        QJsonObject badDate;
+        badDate[QStringLiteral("headline")] = QStringLiteral("H");
+        badDate[QStringLiteral("category")] = QStringLiteral("Fixed");
+        badDate[QStringLiteral("date")]     = QString::fromLatin1(bad);
+        const auto r4 = call(badDate);
+        EXPECT_FALSE(r4.value(QStringLiteral("ok")).toBool()) << bad;
+        EXPECT_EQ(r4.value(QStringLiteral("code")).toString(),
+                  QStringLiteral("bad_args")) << bad;
+    }
 }
 
 // ANTS-4356 — the layout guard existed in ONE direction only, and one call
