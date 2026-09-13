@@ -242,6 +242,10 @@ private:
     TerminalWidget *createTerminal();
     void connectTerminal(TerminalWidget *terminal);
     void splitCurrentPane(Qt::Orientation orientation);
+    // ANTS-5079 — register a terminal's shell with the per-tab Claude
+    // tracker and the background-task tracker, and release it again.
+    void trackTerminalShell(TerminalWidget *terminal);
+    void releaseTerminalShell(TerminalWidget *terminal);
     QSplitter *findParentSplitter(QWidget *w) const;
     void cleanupEmptySplitters(QWidget *tabRoot);
 

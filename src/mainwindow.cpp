@@ -2611,10 +2611,7 @@ void MainWindow::newTab() {
     // Track shell process for Claude Code integration
     if (m_claudeIntegration)
         m_claudeIntegration->setShellPid(terminal->shellPid());
-    if (m_claudeTabTracker && terminal->shellPid() > 0)
-        m_claudeTabTracker->trackShell(terminal->shellPid());
-    if (m_claudeStatusBarController && terminal->shellPid() > 0)
-        m_claudeStatusBarController->trackBgShell(terminal->shellPid());
+    trackTerminalShell(terminal);
 
     // Hide tab bar when only one tab
     m_tabWidget->tabBar()->setVisible(m_tabWidget->count() > 1);
@@ -2722,6 +2719,9 @@ void MainWindow::splitCurrentPane(Qt::Orientation orientation) {
     if (!newTerm->startShell(QString(), m_config.shellCommand())) {
         showStatusMessage("Failed to start shell!");
     }
+    // ANTS-5079 — a split pane's shell is tracked like a tab's, so Claude in
+    // it lights the tab dot and its tasks are counted.
+    trackTerminalShell(newTerm);
     newTerm->setFocus();
 }
 
@@ -2731,6 +2731,23 @@ void MainWindow::splitHorizontal() {
 
 void MainWindow::splitVertical() {
     splitCurrentPane(Qt::Horizontal); // Horizontal splitter = vertical split (panes side by side)
+}
+
+void MainWindow::trackTerminalShell(TerminalWidget *terminal) {
+    const pid_t pid = terminal ? terminal->shellPid() : 0;
+    if (pid <= 0) return;
+    if (m_claudeTabTracker) m_claudeTabTracker->trackShell(pid);
+    if (m_claudeStatusBarController) m_claudeStatusBarController->trackBgShell(pid);
+}
+
+void MainWindow::releaseTerminalShell(TerminalWidget *terminal) {
+    const pid_t pid = terminal ? terminal->shellPid() : 0;
+    if (pid <= 0) return;
+    if (m_claudeTabTracker) m_claudeTabTracker->untrackShell(pid);
+    if (m_claudeStatusBarController) m_claudeStatusBarController->untrackBgShell(pid);
+    // ANTS-1131 — also prune the ClaudeIntegration plan-mode cache for the
+    // PID, so Linux PID reuse cannot hand a new shell a stale plan-mode flag.
+    if (m_claudeIntegration) m_claudeIntegration->forgetShell(pid);
 }
 
 void MainWindow::closeFocusedPane() {
@@ -2744,6 +2761,7 @@ void MainWindow::closeFocusedPane() {
         return;
     }
 
+    releaseTerminalShell(focused);  // ANTS-5079
     focused->setParent(nullptr);
     focused->deleteLater();
     cleanupEmptySplitters(m_tabWidget->currentWidget());
@@ -2931,19 +2949,14 @@ void MainWindow::performTabClose(int index) {
         }
     }
 
-    // Release the per-tab Claude tracker entry BEFORE removeTab — once
-    // the widget is detached we can't recover its shell PID.
-    if (m_claudeTabTracker && term && term->shellPid() > 0)
-        m_claudeTabTracker->untrackShell(term->shellPid());
-    if (m_claudeStatusBarController && term && term->shellPid() > 0)
-        m_claudeStatusBarController->untrackBgShell(term->shellPid());
-    // ANTS-1131 — also prune the ClaudeIntegration plan-mode cache
-    // for the same PID. Without this, m_planModeByPid grows
-    // unbounded over a long session and Linux PID reuse can poison
-    // a freshly-launched shell with a stale plan-mode flag from a
-    // closed Claude tab.
-    if (m_claudeIntegration && term && term->shellPid() > 0)
-        m_claudeIntegration->forgetShell(term->shellPid());
+    // Release every pane's Claude tracker entries BEFORE removeTab — once
+    // the widget is detached we can't recover the shell PIDs. ANTS-5079: a
+    // split tab holds several terminals, and only the active one used to be
+    // released, leaving the rest in all three trackers.
+    if (auto *single = qobject_cast<TerminalWidget *>(w))
+        releaseTerminalShell(single);
+    for (auto *pane : w->findChildren<TerminalWidget *>(QString()))
+        releaseTerminalShell(pane);
 
     m_tabSessionIds.remove(w);
     m_tabTitlePins.remove(w);  // free pin alongside session id
@@ -3260,10 +3273,7 @@ int MainWindow::newTabForRemote(const QString &cwd, const QString &command) {
 
     if (m_claudeIntegration)
         m_claudeIntegration->setShellPid(terminal->shellPid());
-    if (m_claudeTabTracker && terminal->shellPid() > 0)
-        m_claudeTabTracker->trackShell(terminal->shellPid());
-    if (m_claudeStatusBarController && terminal->shellPid() > 0)
-        m_claudeStatusBarController->trackBgShell(terminal->shellPid());
+    trackTerminalShell(terminal);
 
     // Hide tab bar when only one tab (same logic as newTab slot).
     m_tabWidget->tabBar()->setVisible(m_tabWidget->count() > 1);

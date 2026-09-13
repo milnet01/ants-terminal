@@ -3166,7 +3166,6 @@ void TerminalWidget::copySelectionRich() {
 
     // Build both plain text and HTML
     QString plainText = selectedText();
-    QString html = QStringLiteral("<pre style='font-family: monospace;'>");
 
     // m_selStart/m_selEnd: x() = globalLine, y() = col
     int startLine = std::min(m_selStart.x(), m_selEnd.x());
@@ -3174,41 +3173,63 @@ void TerminalWidget::copySelectionRich() {
     int startCol = (m_selStart.x() <= m_selEnd.x()) ? m_selStart.y() : m_selEnd.y();
     int endCol = (m_selStart.x() <= m_selEnd.x()) ? m_selEnd.y() : m_selStart.y();
 
-    for (int line = startLine; line <= endLine; ++line) {
-        int colStart = (line == startLine) ? startCol : 0;
-        int colEnd = (line == endLine) ? endCol : m_grid->cols() - 1;
-
-        for (int col = colStart; col <= colEnd; ++col) {
-            const Cell &c = cellAtGlobal(line, col);
-            if (c.isWideCont) continue;
-
-            QColor fg = c.attrs.fg;
-            QColor bg = c.attrs.bg;
-            if (c.attrs.inverse) std::swap(fg, bg);
-
-            QString style;
-            style += QStringLiteral("color:%1;").arg(fg.name());
-            if (bg != m_grid->defaultBg())
-                style += QStringLiteral("background:%1;").arg(bg.name());
-            if (c.attrs.bold) style += "font-weight:bold;";
-            if (c.attrs.italic) style += "font-style:italic;";
-
-            uint32_t cp = c.codepoint;
-            if (cp == 0 || cp == ' ') {
-                html += ' ';
-            } else {
-                QString ch = QString::fromUcs4(reinterpret_cast<const char32_t *>(&cp), 1);
-                html += QStringLiteral("<span style='%1'>%2</span>")
-                            .arg(style, ch.toHtmlEscaped());
-            }
-        }
-        if (line < endLine) html += '\n';
-    }
-    html += QStringLiteral("</pre>");
-
     auto *mimeData = new QMimeData();
     mimeData->setText(plainText);
-    mimeData->setHtml(html);
+
+    // ANTS-5078 — above this many cells only plain text is copied. A Select
+    // All over the default scrollback produced hundreds of MB of markup.
+    constexpr qint64 kRichCopyCellCap = 200000;
+    const qint64 selCells = qint64(endLine - startLine + 1) * m_grid->cols();
+    if (selCells <= kRichCopyCellCap) {
+        QString html = QStringLiteral("<pre style='font-family: monospace;'>");
+        for (int line = startLine; line <= endLine; ++line) {
+            int colStart = (line == startLine) ? startCol : 0;
+            int colEnd = (line == endLine) ? endCol : m_grid->cols() - 1;
+
+            // ANTS-5078 — one span per run of same-style cells, as
+            // exportAsHtml does, instead of one span per character.
+            QString runStyle;
+            QString runText;
+            const auto flushRun = [&]() {
+                if (runText.isEmpty()) return;
+                html += QStringLiteral("<span style='%1'>%2</span>")
+                            .arg(runStyle, runText.toHtmlEscaped());
+                runText.clear();
+            };
+            for (int col = colStart; col <= colEnd; ++col) {
+                const Cell &c = cellAtGlobal(line, col);
+                if (c.isWideCont) continue;
+
+                uint32_t cp = c.codepoint;
+                if (cp == 0 || cp == ' ') {
+                    flushRun();
+                    html += ' ';
+                    continue;
+                }
+
+                QColor fg = c.attrs.fg;
+                QColor bg = c.attrs.bg;
+                if (c.attrs.inverse) std::swap(fg, bg);
+
+                QString style;
+                style += QStringLiteral("color:%1;").arg(fg.name());
+                if (bg != m_grid->defaultBg())
+                    style += QStringLiteral("background:%1;").arg(bg.name());
+                if (c.attrs.bold) style += "font-weight:bold;";
+                if (c.attrs.italic) style += "font-style:italic;";
+
+                if (style != runStyle) {
+                    flushRun();
+                    runStyle = style;
+                }
+                runText += QString::fromUcs4(reinterpret_cast<const char32_t *>(&cp), 1);
+            }
+            flushRun();
+            if (line < endLine) html += '\n';
+        }
+        html += QStringLiteral("</pre>");
+        mimeData->setHtml(html);
+    }
     QApplication::clipboard()->setMimeData(mimeData);
 }
 

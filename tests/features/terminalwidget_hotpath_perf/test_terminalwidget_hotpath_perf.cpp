@@ -216,3 +216,16 @@ TEST(TerminalWidgetHotPathPerf, Inv13RecordingDecodesAcrossBatches) {
     EXPECT_FALSE(body.contains(QStringLiteral("QString::fromUtf8(batch->rawBytes)")))
         << "recording decodes each batch alone, so a split sequence becomes U+FFFD";
 }
+
+// INV-14 (ANTS-5078) — rich copy merges same-style runs and has a size cap.
+TEST(TerminalWidgetHotPathPerf, Inv14RichCopyMergesRunsAndCaps) {
+    const QString body = functionBody(
+        tw(), QStringLiteral("void TerminalWidget::copySelectionRich("));
+    ASSERT_FALSE(body.isEmpty()) << "copySelectionRich not found";
+    EXPECT_TRUE(body.contains(QStringLiteral("kRichCopyCellCap")))
+        << "rich copy has no cell cap, so Select All builds unbounded HTML";
+    EXPECT_TRUE(body.contains(QStringLiteral("flushRun()")))
+        << "rich copy writes one span per character instead of per run";
+    EXPECT_FALSE(body.contains(QStringLiteral(".arg(style, ch.toHtmlEscaped())")))
+        << "the per-character span is still there";
+}

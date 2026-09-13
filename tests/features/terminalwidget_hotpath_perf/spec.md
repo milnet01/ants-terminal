@@ -73,6 +73,10 @@ the invariants are source-scrape assertions against
 - **INV-13 / recording decodes across batches** (ANTS-5078). `onVtBatch`
   decodes through `m_recordDecoder`, not `QString::fromUtf8` per batch.
 
+- **INV-14 / rich copy is bounded** (ANTS-5078). `copySelectionRich` writes
+  one span per run of same-style cells (`flushRun()`) and copies plain text
+  only when the selection's bounds exceed `kRichCopyCellCap` cells.
+
 ## Test scope
 
 Source-scrape against `src/terminalwidget.cpp` via `SRC_TERMINALWIDGET_PATH`.

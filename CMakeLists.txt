@@ -1816,6 +1816,8 @@ if(ANTS_TESTS)
                 # ANTS-5077 — keys reach the shell through sendKeyData only; a failed
                 # shell start leaves no stream behind (source-scrape).
                 tests/features/terminalwidget_input_contracts/test_terminalwidget_input_contracts.cpp
+                # ANTS-5079 — split panes are tracked and released like tabs (source-scrape).
+                tests/features/split_pane_shell_tracking/test_split_pane_shell_tracking.cpp
                 tests/features/tab_rename_pin/test_tab_rename_pin.cpp
                 tests/features/confirm_close_with_processes/test_confirm_close_with_processes.cpp
                 tests/features/help_about_menu/test_help_about_menu.cpp

@@ -70,6 +70,14 @@ for security-relevant changes.
 
 ### Fixed
 
+- **Copying a very large selection with formatting no longer builds hundreds of megabytes of styled text** (ANTS-5078)
+  Formatted copy now groups characters that share a style, and above a
+  size limit copies plain text only.
+
+- **Claude running in a split pane now lights its tab's status dot, and closing a pane or a split tab releases what it was tracking** (ANTS-5079)
+  Split panes were never registered with the Claude and background-task
+  trackers, and closing one left its shell listed in them.
+
 - **A search pattern that can match an empty spot no longer hides the real matches later on the same line** (ANTS-5078)
 
 - **Jumping to a search match or a bookmark now moves the scroll bar too** (ANTS-5078)
