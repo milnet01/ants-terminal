@@ -22,11 +22,13 @@
 
 #include <QByteArray>
 #include <QCoreApplication>
+#include <QCryptographicHash>
 #include <QElapsedTimer>
 #include <QFile>
 #include <QFileInfo>
 #include <QString>
 #include <QTemporaryDir>
+#include <QtEndian>
 
 #include <cstdio>
 #include <string>
@@ -130,6 +132,46 @@ int main(int argc, char **argv) {
         blobBytes = SessionManager::serialize(&grid, cwd, {}).size();
     const double serializeMs = double(t.nsecsElapsed()) / 1e6 / iterations;
 
+    // Split serialize() without reaching into SessionManager. Its blob is a
+    // fixed header — magic, version, SHA-256, payload length, the layout
+    // ENVELOPE_HEADER_SIZE describes in sessionmanager.h — then the qCompress
+    // payload, and qUncompress of that payload is exactly the stream
+    // serializeStream built. So timing qCompress and the hash over those real
+    // bytes leaves the grid walk as the rest of serialize(). The walk has to
+    // stay on the GUI thread; the other two do not.
+    //
+    // serialize() compresses again only when a blob overshoots its file cap;
+    // the length check below fails loudly rather than mis-splitting if the
+    // layout ever changes.
+    constexpr int kHeaderBytes = 4 + 4 + 32 + 4;
+    const QByteArray blob = SessionManager::serialize(&grid, cwd, {});
+    const bool layoutOk =
+        blob.size() > kHeaderBytes && blob.startsWith("SHEC")
+        && qFromBigEndian<quint32>(blob.constData() + kHeaderBytes - 4)
+               == quint32(blob.size() - kHeaderBytes);
+    if (!layoutOk) {
+        std::fprintf(stderr, "bench_session_save: session blob layout is not "
+                             "the one this split assumes; update the split\n");
+        return 1;
+    }
+    const QByteArray payload = blob.mid(kHeaderBytes);
+    const QByteArray raw = qUncompress(payload);
+    if (raw.isEmpty()) {
+        std::fprintf(stderr, "bench_session_save: payload did not decompress\n");
+        return 1;
+    }
+
+    t.start();
+    for (int i = 0; i < iterations; ++i) (void)qCompress(raw, 6);
+    const double compressMs = double(t.nsecsElapsed()) / 1e6 / iterations;
+
+    t.start();
+    for (int i = 0; i < iterations; ++i)
+        (void)QCryptographicHash::hash(payload, QCryptographicHash::Sha256);
+    const double hashMs = double(t.nsecsElapsed()) / 1e6 / iterations;
+
+    const double streamMs = serializeMs - compressMs - hashMs;
+
     t.start();
     for (int i = 0; i < iterations; ++i)
         SessionManager::saveSession(tabId, &grid, cwd, {});
@@ -144,11 +186,19 @@ int main(int argc, char **argv) {
 
     std::printf("phase,ms,bytes\n");
     std::printf("serialize,%.4f,%lld\n", serializeMs, (long long)blobBytes);
+    std::printf("  grid_walk_stream,%.4f,%lld\n", streamMs, (long long)raw.size());
+    std::printf("  qcompress_level6,%.4f,%lld\n", compressMs, (long long)payload.size());
+    std::printf("  sha256,%.4f,%lld\n", hashMs, (long long)payload.size());
     std::printf("save_total,%.4f,%lld\n", saveMs, (long long)fileBytes);
     std::printf("write_fsync_rename,%.4f,%lld\n", writeMs, (long long)fileBytes);
     std::printf("scrollback_lines,%d,0\n", filled);
 
     AntsPerf::reportLowerBetter("session.serialize_ms", serializeMs, "ms");
+    // The part of serialize() that must stay on the GUI thread, and the two
+    // parts that could leave it.
+    AntsPerf::reportLowerBetter("session.stream_ms", streamMs, "ms");
+    AntsPerf::reportLowerBetter("session.compress_ms", compressMs, "ms");
+    AntsPerf::reportLowerBetter("session.hash_ms", hashMs, "ms");
     AntsPerf::reportLowerBetter("session.save_total_ms", saveMs, "ms");
     AntsPerf::reportLowerBetter("session.write_ms", writeMs, "ms");
     return 0;
