@@ -8301,6 +8301,23 @@ extends an existing item, that item carries it instead.
   removeServer and returns nullptr for a live socket, so a second instance
   no longer takes over the first one's socket. Locked by
   tests/features/shared_socket_listener. STILL OPEN: the low findings.
+  Progress (2026-09-14, 8677a72b, bf7336d8): the dispatch log escapes
+  the peer's cmd (DebugLog::escapeForLog, CWE-117); RcGate::checkCallerCwd
+  is [[nodiscard]]; remotecontrol.h's protocol comment and socket-path
+  fallback and docs/subsystems.md's verb list are corrected; get-text's
+  trim counts dropped lines without copying the dropped prefix. The
+  manually deleted parented QLocalServer is already gone: since ANTS-5144
+  RemoteControl only detaches from the shared hub.
+  NEEDS A DECISION, not built:
+  - No write timeout after the reply. onNewConnection stops the 5 s idle
+    timer before dispatch, and writeReply writes, flushes and disconnects,
+    so a peer that never reads a large reply (get-text allows 16 MiB) pins
+    the socket and its buffer. A post-reply abort timer fixes it, but its
+    length decides whether a slow legitimate reader of a large reply is cut.
+  - No cap on live connections. Since ANTS-5144 the remote-control, MCP and
+    hook servers share LocalSocketHub, and ANTS-5089 reports the same gap
+    for the other two, so the cap belongs in the hub: an ANTS-5144 contract
+    change.
   **Layman:** Starting a second Ants can silently take over the first one's control socket.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lane mcp-transport).
