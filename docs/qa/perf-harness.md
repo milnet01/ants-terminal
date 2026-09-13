@@ -19,12 +19,14 @@ wall-clock on a developer desktop and a shared runner cannot reproduce them.
 
 The benchmarks are ctest label `perf` and are excluded from the `default` and
 `fast` presets, so an ordinary test run never pays for them. Build them first:
+each `tests/perf/bench_<name>.cpp` is a target of the same name.
 
 ```bash
-cmake --build build --target bench_vt_throughput bench_paint_throughput \
-                             bench_search_throughput bench_widget_search \
-                             bench_partition_walk bench_drift_lanes
+cmake --build build --target bench_vt_throughput   # one of them
 ```
+
+They are not built when `ANTS_SANITIZERS` is on, so a `build-asan` tree has
+none (ANTS-5143): a sanitized benchmark measures the sanitizer.
 
 A benchmark whose source exists but whose executable does not is reported as
 **not built**, with the command to build it. It is not skipped silently: "you

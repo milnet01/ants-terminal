@@ -1312,6 +1312,15 @@ if(ANTS_TESTS)
         LABELS "features;fast"
         TIMEOUT 120)
 
+    # ANTS-5143 — the perf benchmarks are not built under ANTS_SANITIZERS.
+    # A sanitized benchmark measures the sanitizer, and the debug preset never
+    # runs the perf label. Building them there also broke the tree: in the
+    # Debug + sanitizer build bench_drift_lanes leaves a std::string member
+    # undefined, and the linker takes it from a core-lib archive member that
+    # drags in the whole remote-control graph, which the benchmark does not
+    # link.
+    if(NOT ANTS_SANITIZERS)
+
     # bench_vt_throughput — VT parse + grid-apply throughput harness.
     # Drives the 0.8.0 "Terminal throughput slowdowns" investigation
     # (ROADMAP.md § 0.8.0 > ⚡ Performance). Linked against only
@@ -1547,6 +1556,8 @@ if(ANTS_TESTS)
     set_tests_properties(full_paint PROPERTIES
         LABELS "perf"
         TIMEOUT 300)
+
+    endif()  # NOT ANTS_SANITIZERS — ANTS-5143
 
 
     # ----------------------------------------------------------------------
