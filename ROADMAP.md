@@ -8158,6 +8158,18 @@ extends an existing item, that item carries it instead.
   tail freeze, readyRead re-parse and connection caps, the
   malformed-request abort, and pollClaudeProcess resolving from the
   shell's cwd.
+  Checked (2026-09-14), not built: the malformed-request and
+  whole-buffer re-parse findings share one cause. onMcpConnection has no
+  framing: each readyRead re-parses the whole buffer and waits while it
+  does not parse, so an incomplete request and a malformed one are the same
+  to the server, and neither gets a JSON-RPC error. Replying -32700 needs a
+  rule for "the request is complete". Newline framing would give one and
+  also end the re-parse, but it is a contract change for direct socket
+  clients: tests/features/mcp_async_dispatch's toolsCall sends no newline.
+  Impact is low for normal use: tools/mcp-bridge.py sends one
+  newline-terminated request per connection and answers invalid JSON from
+  the client with -32700 itself, so only a direct socket client reaches the
+  silent 5 s abort. Needs a decision on framing before building.
   **Layman:** Smaller Claude-integration fixes: slow process scans, a slow transcript window and dropped long messages.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lane claude-integration-a).
