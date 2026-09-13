@@ -18501,6 +18501,11 @@ indie-review finding.
   entry of its own, with text = the headline, body = its prose and
   category from the heading. Amend ANTS-3533 section 3 and gate it
   through review-contract before changing ChangelogQuery::parse.
+  Progress (2026-09-13): docs/specs/ANTS-3533.md amended (section 3
+  topic entry, INV-11, INV-10 test surface) and gated by review-contract
+  at its cap, loops 8 and 9 (3 verified findings, all fixed; calm).
+  Next: build the topic entry in ChangelogQuery::parse with write-code,
+  the INV-11 test red first, and re-fixture the INV-10 positive test.
   **Layman:** The changelog search still can't find a change that was written up as a dated paragraph with no bullet points under it.
   Kind: enhancement.
   Source: in-session-2026-09-13 (ANTS-5071 spec amendment).
