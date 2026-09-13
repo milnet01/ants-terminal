@@ -8598,6 +8598,13 @@ extends an existing item, that item carries it instead.
   regex compiled per bullet (in progress; Qt exposes no PCRE2 match limit,
   so only the per-bullet compile can be fixed), offload head ladder, and
   the eviction decision above.
+  Progress (2026-09-14, 9d51d166, b7e1f2f5): sk-svcacct- and sk-admin-
+  keys are scrubbed; roadmap_query compiles its filter once
+  (mcp::QueryMatcher) instead of per bullet, and Qt exposes no PCRE2 match
+  limit, so that half is recorded rather than built; the offload
+  rows_preview ladder is linear per rung. Every finding on this item is now
+  built except one. STILL OPEN, NEEDS A DECISION: a single spill over
+  kSpillMaxBytes (see the note above).
   **Layman:** Smaller fixes to how Ants packages big answers for Claude, including paging that can corrupt text.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lane mcp-infra).
