@@ -6,10 +6,13 @@ on 2026-09-13 (`ClaudeIntegration::postWorkerJob`,
 `RemoteControl::routeRunsOnDispatchWorker`, the `audit_run` registration). The
 rest is implemented
 (`ClaudeIntegration::postToolDispatch`, `tests/features/mcp_async_dispatch/`).
+**Amendment (2026-09-13, ANTS-5072):** § 1.3 and § 2.9 run an off-thread verb's
+reply transforms on the worker; § 2.2, INV-7 and INV-9 change with them, and
+INV-18 is added. Not yet built.
 **Kind:** perf.
 **Source:** ROADMAP.md ANTS-2132 (user report of intermittent whole-window
-freeze; diagnosed in-session 2026-08-25). Amended for ANTS-5051, ANTS-5073 and
-ANTS-5035 (code-quality-review-2026-09-11 perf pass).
+freeze; diagnosed in-session 2026-08-25). Amended for ANTS-5051, ANTS-5073,
+ANTS-5035 and ANTS-5072 (code-quality-review-2026-09-11 perf pass).
 **Pairs with:** ANTS-4681 (`roadmap_log` render + write cost — the largest
 repeatable contributor to the per-verb duration this spec stops blocking on).
 **Supersedes:** the GUI-responsiveness claim in
@@ -109,6 +112,27 @@ off-thread reply is written from the GUI thread, so MCP traffic stalls with the
 window. `indie_review_dispatch` joins the same way and stays out of scope
 (ANTS-3515).
 
+### 1.3 What the second cut left on the GUI thread
+
+*Amendment, 2026-09-13 — ANTS-5072.*
+
+An off-thread verb runs only its handler on the worker. `postToolDispatch`
+queues the handler's body back, and `finishToolDispatch` runs every reply
+transform on the GUI thread. Measured with `tests/perf/bench_mcp_reply_tail` on a
+4298134-byte `read_region` reply, 5 iterations, load average 0.56:
+
+| Phase | ms |
+|---|---|
+| `applyEtagPattern` | 68.5 |
+| `mcp::compactEnvelope`, when compaction applies | 56.5 |
+| `mcp::offloadBody` | 23.2 |
+| `wrapMcpData` on the whole body | 13.1 |
+| the JSON-RPC envelope on the whole body | 12.3 |
+| `mcp::appendReadHints` | 0.39 |
+
+Without compaction the tail is 92.4 ms when the reply is offloaded and 94.5 ms
+when it is sent whole. The window paints nothing for that long.
+
 ## 2. Surface
 
 ### 2.1 Shape of the change
@@ -148,6 +172,7 @@ struct McpCallContext {
     bool         cacheable    = false;
     QString      dispatchResult;
     QElapsedTimer traceTimer;
+    QStringList  ignoredArgKeys;  // amendment, ANTS-5072 — § 2.9
 };
 ```
 
@@ -167,6 +192,10 @@ newline terminator and disconnects.
 
 Synchronous dispatch calls it inline. Deferred dispatch calls it from a queued
 slot on the GUI thread. **Neither path may have its own copy of the pipeline.**
+
+*Amendment, 2026-09-13 — ANTS-5072:* § 2.9 splits this pipeline into
+`transformReply` and `finishToolDispatch`, keeps its order, and replaces the
+signature above.
 
 ### 2.3 The worker
 
@@ -419,6 +448,72 @@ is refused `already_running`, as a call during an `async:true` job already is.
 no reply, because the context object severs the connection. The `async:true`
 branch already works this way.
 
+### 2.9 Reply transforms on the worker
+
+*Amendment, 2026-09-13 — ANTS-5072.*
+
+**The split.** § 2.2's pipeline becomes two functions. The transforms depend
+only on the handler's body, the call's context and process-wide settings, so
+they move into a static function. The steps that touch `ClaudeIntegration`
+state stay in `finishToolDispatch`.
+
+```cpp
+// claudeintegration.h
+struct ReplyTransform {
+    QString cacheBody;      // after the ignored-args advisory, before the ETag step
+    QString body;           // after every transform, before the wrap
+    QString wrapped;        // the text the JSON-RPC result carries
+    bool    etagUnchanged = false;
+    QString refusalCode;    // handlerRefusalCode(body); "" when the body is no refusal
+    qint64  argBytes = 0;
+    qint64  outBytes = 0;
+    qint64  wrapBytes = 0;
+};
+static ReplyTransform transformReply(const McpCallContext &ctx,
+                                     QString responseText);
+void finishToolDispatch(McpCallContext ctx, ReplyTransform reply);
+```
+
+`transformReply` runs, in § 2.2's order: the ignored-args advisory, the ETag
+step, `mcp::projectFields`, `mcp::compactEnvelope`, `mcp::appendReadHints`,
+`mcp::tabularize`, the offload with its ANTS-4626 re-apply, the wrap, and the
+byte counts. It reads no `ClaudeIntegration` member. For a call that no handler
+served it returns an empty `ReplyTransform`.
+
+`finishToolDispatch` runs the ANTS-1357 cache insert from `cacheBody`, so the
+cache still stores the body as it stood before the ETag step. It then sets
+`dispatchResult` to `etag_unchanged` or to the refusal code, as today, calls
+`recordDispatch`, and writes the reply.
+
+**The ignored-args keys.** The advisory reads `m_toolParamKeys`, which
+`tools/list` writes on the GUI thread. The dispatcher computes the keys on the
+GUI thread, stores them in `McpCallContext::ignoredArgKeys` before it chooses a
+path, and `transformReply` reads only the context.
+
+**Which thread.** An off-thread verb (§ 2.4) calls `transformReply` inside its
+worker job, straight after the handler, and queues `finishToolDispatch` with the
+result. A synchronous verb, a cache hit and a deferred verb's `reply` call
+`transformReply` on the GUI thread, then `finishToolDispatch`.
+
+**What the transforms read off the GUI thread.** `mcp::terseDefault` and the
+offload settings are `std::atomic`; the hint latch is guarded by a `QMutex`.
+`isEtagSupportedTool`, `mcp::isOffloadEligible` and `mcp::isRawEligible`
+compare the tool name only; `mcp::isCompactArgTool` and
+`mcp::isDefaultCompactTool` look it up in the `const` table
+`kDispatchProjection`.
+
+**The spill directory.** An off-thread verb can now offload while a GUI-thread
+verb offloads too. Each writes its own content-addressed file through
+`QSaveFile`. `evict` spares only the file its own call wrote and moves on when a
+removal fails, so at the eviction cap one thread can remove the file the other
+has just written; a later `read_spill` of that handle refuses `not_found`. No
+lock is added: a lock the worker holds would make the GUI thread wait on it,
+which INV-7 forbids.
+
+**Test seam.** `ClaudeIntegration` gains
+`static QThread *lastReplyTransformThreadForTest()`, which `transformReply`
+sets on entry.
+
 ## 3. Invariants
 
 - **INV-1** — For a verb registered off-thread, the GUI thread processes at
@@ -459,7 +554,8 @@ branch already works this way.
   `tests/features/mcp_verb_offthread_guard/` — source scrape asserting that the
   only join of the worker in `claudeintegration.cpp` is in
   `shutdownDispatchWorker`, reached only from `~ClaudeIntegration`, and that
-  `finishToolDispatch` and the dispatch path contain none.
+  `finishToolDispatch`, `transformReply` (§ 2.9) and the dispatch path contain
+  none.
 - **INV-8** — Exactly one JSON-RPC reply is written per request carrying an
   `id`, and none is written after the socket is gone or after shutdown has
   begun. *Test:* `tests/features/mcp_async_dispatch/`, two clauses — (a)
@@ -469,10 +565,11 @@ branch already works this way.
   the only thing that can catch § 2.6's refuse-then-join ordering: INV-7's
   scrape sees where `wait()` sits, never whether it deadlocks.
 - **INV-9** — The response pipeline of § 2.2 exists in exactly one place and
-  runs identically on the synchronous and deferred paths. *Test:*
+  runs identically on every path: one definition of `transformReply` and one of
+  `finishToolDispatch` (§ 2.9, amended 2026-09-13 for ANTS-5072). *Test:*
   `tests/features/mcp_verb_offthread_guard/` — source scrape asserting one
-  definition of `finishToolDispatch` and no second `wrapMcpData(` call site in
-  the dispatch path.
+  definition of each, a `wrapMcpData(` call inside `transformReply`, and none in
+  `finishToolDispatch` or the dispatcher.
 - **INV-10** — A job arriving at a full queue is refused with
   `dispatch_queue_full` and no job is dropped silently. *Test:*
   `tests/features/mcp_async_dispatch/` — hold the worker on job 1, post jobs
@@ -531,6 +628,14 @@ branch already works this way.
   `onGuiThread` call. Destroy the second, call the first's verb, and assert it
   returns the marshalled value. Breaks if the refusal is one process-wide flag:
   the call is refused.
+- **INV-18** *(amendment, 2026-09-13 — ANTS-5072)* — An off-thread verb's reply
+  transforms run on the dispatch worker; a verb registered through the bare
+  `ToolHandler` overload runs them on the GUI thread. *Test:*
+  `tests/features/mcp_async_dispatch/` — call an `RcHandler` verb and assert
+  `lastReplyTransformThreadForTest()` is not the GUI thread; call a bare
+  `ToolHandler` verb and assert it is. Breaks if `postToolDispatch` queues the
+  handler's body back before `transformReply` runs: the first assertion reads
+  the GUI thread.
 
 ## 4. RAM / build cost
 
@@ -545,6 +650,11 @@ bounded at roughly 16 MiB and its realistic case is a few kilobytes.
 
 No new build target, no new external library. `finishToolDispatch` is moved
 code, not added code.
+
+*Amendment (ANTS-5072):* an off-thread verb's queued continuation carries a
+`ReplyTransform` instead of the handler's body. `finishToolDispatch` already
+holds the pre-ETag body and the wrapped text at once, so peak memory per reply
+does not rise.
 
 The amendment adds no thread and no queue. A queued socket job holds one parsed
 request, already bounded by the socket's receive cap. A synchronous `audit_run`
@@ -592,6 +702,9 @@ holds its `RunResult` until the reply, as the `async:true` branch does.
 - **Pumping the event loop during a verb** — forbidden, permanently. That is
   the nested-loop socket use-after-free class ANTS-2131 closed. Not deferred
   work; a boundary. No id.
+- **Reply transforms for synchronous, cached and deferred verbs** stay on the
+  GUI thread (§ 2.9, ANTS-5072). Moving them would put a reply that is ready now
+  behind the worker queue.
 
 ## 6. Tests
 
@@ -643,6 +756,13 @@ INV-14, INV-15 and INV-17, driving a bare `RemoteControl` beside the existing
 INV-13, beside the INV-11 it already carries. `tests/features/mcp_audit_run_async/`'s `Inv1SyncPathUnchanged` is
 rewritten for INV-16, and that test's `spec.md` INV-1 row changes with it.
 
+**Amendment (2026-09-13, ANTS-5072).** `tests/features/mcp_async_dispatch/`
+gains INV-18. `tests/features/mcp_verb_offthread_guard/`'s INV-7 and INV-9
+scrapes change with § 2.9. The pipeline's output is held by its existing tests,
+which must pass unmodified: `mcp_projection`, `mcp_etag_refusal`,
+`mcp_etag_tip_memo`, `mcp_idempotent_read_cache`, `mcp_ignored_args`,
+`mcp_offload_keeps_advisory` and `mcp_result_offload`.
+
 Per the project test convention, add each source to the owning bundle's
 `SOURCES` (ask `build_target_for`, do not guess), verify the ctest count moved
 with `ctest -N -R`, and verify each test fails against pre-change source before
@@ -684,6 +804,13 @@ the change is restored.
     a synchronous `audit_run`. It must not claim more: `indie_review_dispatch`
     still freezes it (§ 5).
   - ROADMAP.md — ANTS-5051, ANTS-5073 and ANTS-5035 close with the build.
+- **Amendment (2026-09-13, ANTS-5072):**
+  - `tests/features/mcp_verb_offthread_guard/spec.md` — its INV-7 and INV-9
+    rows name `transformReply`.
+  - `CHANGELOG.md` — a large reply from an off-thread verb no longer stalls the
+    window while it is prepared. It must not claim more: synchronous, cached
+    and deferred verbs still prepare theirs on the GUI thread (§ 5).
+  - ROADMAP.md — ANTS-5072 closes with the build.
 
 ## Cold-eyes loop log
 
