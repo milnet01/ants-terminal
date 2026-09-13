@@ -38,9 +38,12 @@ permissions:
 
 # Supersede a still-running CI for the same ref, EXCEPT on main.
 # On a branch or PR the older run is answering a question nobody is
-# asking any more. On main it is not cancelled: ANTS-4533 records
-# build-asan going cancelled-and-unnoticed for two days, and that is
-# only spottable while `cancelled` on main stays an abnormal outcome.
+# asking any more. On main a started run is not cancelled: ANTS-4533
+# records build-asan going cancelled-and-unnoticed for two days, and that
+# is only spottable while a cancelled run on main whose jobs STARTED stays
+# an abnormal outcome. A run still PENDING when a newer push joins the
+# group is cancelled with no jobs even here, which is normal: the newer
+# run carries its commits (ANTS-5149).
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
