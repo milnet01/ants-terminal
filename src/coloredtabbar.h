@@ -60,15 +60,6 @@ struct ClaudeTabIndicator {
     // Glyph). A semi-transparent stroke, dark on light backgrounds and
     // light on dark ones, so every dot keeps a crisp edge on any theme.
     static QColor ringColor(const QColor &background);
-
-    // ANTS-1185: human-readable glyph name for screen-reader exposure.
-    // ANTS-1818 — exposed via `QTabBar::setTabToolTip()`, NOT
-    // setTabAccessibleName (Qt6's QTabBar has no per-tab accessible-name
-    // setter; AT-SPI / Orca read the tab tooltip). AT-SPI / Orca read tab
-    // labels verbatim and the dot is invisible to them; the tooltip keeps
-    // assistive surfaces in sync with the visual state. None returns an
-    // empty string — caller suppresses the suffix in that case.
-    static QString glyphName(Glyph g);
 };
 
 // QTabBar subclass that renders an optional per-tab colour strip along

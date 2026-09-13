@@ -57,7 +57,12 @@ bool GlobalShortcutsPortal::isAvailable() {
     if (!iface) return false;
     // isServiceRegistered returns a QDBusReply<bool>; .value() returns
     // false on D-Bus error which is the right default for "unavailable".
-    return iface->isServiceRegistered(QString::fromLatin1(kService)).value();
+    const QString service = QString::fromLatin1(kService);
+    if (iface->isServiceRegistered(service).value()) return true;
+    // ANTS-5081 — an on-demand (D-Bus activatable) portal is not registered
+    // until something calls it, so accept an activatable name too;
+    // CreateSession then starts it.
+    return iface->activatableServiceNames().value().contains(service);
 }
 
 GlobalShortcutsPortal::GlobalShortcutsPortal(QObject *parent)
@@ -237,8 +242,10 @@ void GlobalShortcutsPortal::onCreateSessionResponse(uint response,
                   SLOT(onActivatedSignal(QDBusObjectPath, QString,
                                          qulonglong, QVariantMap)));
 
-    emit sessionReady();
+    // ANTS-5081 — send BindShortcuts before announcing the session is ready,
+    // so a listener never sees "ready" with nothing bound yet.
     flushPending();
+    emit sessionReady();
 }
 
 void GlobalShortcutsPortal::flushPending() {
@@ -280,8 +287,24 @@ void GlobalShortcutsPortal::flushPending() {
         << QVariant::fromValue(shortcuts)
         << QString()   // parent_window — portal prompt has no parent window
         << opts;
-    m_bus.asyncCall(msg);
-    // BindShortcuts response arrives at onBindShortcutsResponse.
+    // BindShortcuts response arrives at onBindShortcutsResponse. ANTS-5081 —
+    // an error reply never reaches it, so watch the call the way
+    // CreateSession's is watched and fail the same way (ANTS-1142: drain and
+    // stay failed).
+    QDBusPendingReply<QDBusObjectPath> reply = m_bus.asyncCall(msg);
+    auto *watcher = new QDBusPendingCallWatcher(reply, this);
+    connect(watcher, &QDBusPendingCallWatcher::finished, this,
+        [this](QDBusPendingCallWatcher *w) {
+            QDBusPendingReply<QDBusObjectPath> r = *w;
+            w->deleteLater();
+            if (!r.isError()) return;  // success: wait for onBindShortcutsResponse
+            detachResponseSlots(m_bindShortcutsReqPath);
+            m_bindShortcutsReqPath.clear();
+            m_pending.clear();
+            m_sessionHandle.clear();
+            m_permanentlyFailed = true;  // ANTS-1152
+            emit sessionFailed(r.error().message());
+        });
 }
 
 void GlobalShortcutsPortal::onBindShortcutsResponse(uint response,

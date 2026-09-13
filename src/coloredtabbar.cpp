@@ -137,21 +137,6 @@ QColor ClaudeTabIndicator::ringColor(const QColor &background) {
     return ring;
 }
 
-QString ClaudeTabIndicator::glyphName(Glyph g) {
-    switch (g) {
-        case Glyph::None:           return QString();
-        case Glyph::Idle:           return QStringLiteral("idle");
-        case Glyph::Thinking:       return QStringLiteral("thinking");
-        case Glyph::ToolUse:        return QStringLiteral("tool use");
-        case Glyph::Bash:           return QStringLiteral("bash");
-        case Glyph::Planning:       return QStringLiteral("planning");
-        case Glyph::Auditing:       return QStringLiteral("auditing");
-        case Glyph::Compacting:     return QStringLiteral("compacting");
-        case Glyph::AwaitingInput:  return QStringLiteral("awaiting input");
-    }
-    return QString();
-}
-
 ColoredTabBar::ColoredTabBar(QWidget *parent) : QTabBar(parent) {}
 
 ColoredTabWidget::ColoredTabWidget(QWidget *parent)
@@ -326,19 +311,10 @@ void ColoredTabBar::paintEvent(QPaintEvent *event) {
     constexpr int kDotRadius = 4;
     for (int i = 0; i < count(); ++i) {
         const ClaudeTabIndicator ind = m_indicatorProvider(i);
-        // ANTS-1185: expose the Claude state via the tab tooltip so
-        // AT-SPI / Orca / Windows Narrator can announce it alongside
-        // the tab title. QTabBar in Qt 6 doesn't surface a direct
-        // setTabAccessibleName; tooltips fill that role (screen
-        // readers honour tab tooltips). None blanks the tooltip;
-        // non-None reads "Claude: <state>". Cheap — only fires when
-        // the string actually changes.
-        const QString stateName = ClaudeTabIndicator::glyphName(ind.glyph);
-        const QString tip = stateName.isEmpty()
-            ? QString()
-            : (QStringLiteral("Claude: ") + stateName);
-        if (tabToolTip(i) != tip)
-            setTabToolTip(i, tip);
+        // ANTS-5081 — the tab tooltip (the screen-reader surface, ANTS-1185)
+        // has one writer, ClaudeStatusBarController, which names the tool in
+        // use. Writing a coarser "Claude: <state>" here on every paint
+        // overwrote it.
 
         // ANTS-1847 — contrast-adapt the fill against the tab background
         // so the hue stays perceptible on light themes (the base palette

@@ -1751,6 +1751,10 @@ if(ANTS_TESTS)
                 tests/features/shell_command_wiring/test_shell_command_wiring.cpp
                 tests/features/wayland_quake_mode/test_wayland_quake_mode.cpp
                 tests/features/global_shortcuts_portal/test_global_shortcuts_portal.cpp
+                # ANTS-5081 — BindShortcuts errors fail the session; on-demand portals count.
+                tests/features/portal_failure_paths/test_portal_failure_paths.cpp
+                # ANTS-5081 — ClaudeStatusBarController is the only tab-tooltip writer.
+                tests/features/tab_tooltip_single_writer/test_tab_tooltip_single_writer.cpp
                 tests/features/focus_redirect_menu_guard/test_focus_redirect_menu_guard.cpp
                 tests/features/menubar_hover_stylesheet/test_menubar_hover_stylesheet.cpp
                 tests/features/tabbar_statusbar_opaque/test_tabbar_statusbar_opaque.cpp

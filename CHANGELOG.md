@@ -70,6 +70,12 @@ for security-relevant changes.
 
 ### Fixed
 
+- **A global hotkey that the desktop refuses to register now shows the 'Global hotkey unavailable' message instead of failing silently** (ANTS-5081)
+
+- **The global hotkey now works on desktops that start their shortcut service on demand** (ANTS-5081)
+
+- **A tab's tooltip keeps naming the tool Claude is using instead of being reset to a generic state on every redraw** (ANTS-5081)
+
 - **The Public/Private repository badge recovers when the gh tool is missing or stops responding, instead of never updating again** (ANTS-5080)
 
 - **Restoring the window position through KWin no longer leaks a helper process or leaves the loaded script behind when a step cannot start** (ANTS-5081)
