@@ -180,3 +180,39 @@ TEST(TerminalWidgetHotPathPerf, Inv10DurationNeverNegative) {
     EXPECT_FALSE(src.contains(QStringLiteral("= pr.commandEndMs - pr.commandStartMs;")))
         << "a command duration is computed from wall-clock stamps unclamped";
 }
+
+// INV-11 (ANTS-5078) — search and bookmark navigation update the scroll bar.
+TEST(TerminalWidgetHotPathPerf, Inv11NavigationUpdatesScrollBar) {
+    const QString src = tw();
+    for (const char *sig : {"void TerminalWidget::scrollToMatch()",
+                            "void TerminalWidget::nextBookmark()",
+                            "void TerminalWidget::prevBookmark()"}) {
+        const QString body = functionBody(src, QString::fromLatin1(sig));
+        ASSERT_FALSE(body.isEmpty()) << sig << " not found";
+        EXPECT_TRUE(body.contains(QStringLiteral("updateScrollBar()")))
+            << sig << " moves the view without updating the scroll bar";
+    }
+}
+
+// INV-12 (ANTS-5078) — the right-click menu bounds the selection before
+// building its text.
+TEST(TerminalWidgetHotPathPerf, Inv12RightClickBoundsSelectionFirst) {
+    const QString body = functionBody(
+        tw(), QStringLiteral("void TerminalWidget::contextMenuEvent("));
+    ASSERT_FALSE(body.isEmpty()) << "contextMenuEvent not found";
+    const int bound = body.indexOf(QStringLiteral("selCellBound"));
+    const int text = body.indexOf(QStringLiteral("selectedText()"));
+    ASSERT_GE(bound, 0) << "no selection bound before the Search Web text";
+    ASSERT_GE(text, 0);
+    EXPECT_LT(bound, text);
+}
+
+// INV-13 (ANTS-5078) — recording decodes UTF-8 with a stateful decoder.
+TEST(TerminalWidgetHotPathPerf, Inv13RecordingDecodesAcrossBatches) {
+    const QString body = functionBody(
+        tw(), QStringLiteral("void TerminalWidget::onVtBatch("));
+    ASSERT_FALSE(body.isEmpty()) << "onVtBatch not found";
+    EXPECT_TRUE(body.contains(QStringLiteral("m_recordDecoder.decode(")));
+    EXPECT_FALSE(body.contains(QStringLiteral("QString::fromUtf8(batch->rawBytes)")))
+        << "recording decodes each batch alone, so a split sequence becomes U+FFFD";
+}

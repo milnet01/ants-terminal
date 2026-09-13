@@ -63,6 +63,16 @@ the invariants are source-scrape assertions against
   computed as a bare `pr.commandEndMs - pr.commandStartMs`; both display sites
   clamp at zero.
 
+- **INV-11 / navigation updates the scroll bar** (ANTS-5078).
+  `scrollToMatch`, `nextBookmark` and `prevBookmark` each call
+  `updateScrollBar()`.
+
+- **INV-12 / right-click bounds the selection first** (ANTS-5078).
+  `contextMenuEvent` computes `selCellBound` before calling `selectedText()`.
+
+- **INV-13 / recording decodes across batches** (ANTS-5078). `onVtBatch`
+  decodes through `m_recordDecoder`, not `QString::fromUtf8` per batch.
+
 ## Test scope
 
 Source-scrape against `src/terminalwidget.cpp` via `SRC_TERMINALWIDGET_PATH`.

@@ -14,6 +14,7 @@
 #include <QTextLayout>
 #include <QFile>
 #include <QElapsedTimer>
+#include <QStringDecoder>
 #include <QJsonArray>
 #include <QScrollBar>
 #include <functional>
@@ -682,6 +683,8 @@ private:
     bool m_recording = false;
     std::unique_ptr<QFile> m_recordFile;
     QElapsedTimer m_recordTimer;
+    // ANTS-5078 — carries a UTF-8 sequence split across two batches.
+    QStringDecoder m_recordDecoder{QStringDecoder::Utf8};
 
     // Line bookmarks
     std::vector<int> m_bookmarks; // global line numbers

@@ -67,7 +67,7 @@ std::vector<Match> scan(const std::vector<QString> &sb, const QRegularExpression
         while (it.hasNext()) {
             auto m = it.next();
             const int len = static_cast<int>(m.capturedLength());
-            if (len <= 0) break;  // zero-width guard, as in performSearch
+            if (len <= 0) continue;  // zero-width guard, as in performSearch
             matches.push_back({gl, static_cast<int>(m.capturedStart()), len});
         }
     }

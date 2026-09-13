@@ -2614,7 +2614,9 @@ void TerminalWidget::onVtBatch(VtBatchPtr batch) {
         // is more accurate than re-sampling here (paint latency would skew
         // it). Elapsed seconds since worker start.
         double elapsed = batch->wallClockMs / 1000.0;
-        QString raw = QString::fromUtf8(batch->rawBytes);
+        // ANTS-5078 — a stateful decoder, so a UTF-8 sequence split across
+        // two batches decodes whole instead of as U+FFFD.
+        QString raw = m_recordDecoder.decode(batch->rawBytes);
         QString escaped;
         escaped.reserve(raw.size() + raw.size() / 4);
         for (QChar ch : raw) {
@@ -4656,8 +4658,11 @@ void TerminalWidget::performSearch() {
             auto m = it.next();
             int len = static_cast<int>(m.capturedLength());
             if (len <= 0) {
-                // Guard against zero-width matches (e.g. `\b`, `^`) — skip to avoid infinite loop
-                break;
+                // Zero-width match (e.g. `\b`, `^`): nothing to highlight. Skip
+                // it and keep scanning; the iterator advances past an empty
+                // match itself. `break` here dropped every later match on the
+                // line (ANTS-5078).
+                continue;
             }
             m_searchMatches.push_back({gl, static_cast<int>(m.capturedStart()), len});
         }
@@ -4691,6 +4696,7 @@ void TerminalWidget::scrollToMatch() {
     if (m.globalLine < viewStart || m.globalLine > viewEnd) {
         m_scrollOffset = std::clamp(scrollbackSize - m.globalLine + rows / 2,
                                      0, scrollbackSize);
+        updateScrollBar();  // ANTS-5078 — keep the bar in step with the view
     }
 }
 
@@ -5057,6 +5063,7 @@ void TerminalWidget::startRecording(const QString &path) {
     m_recordFile->write(header.toUtf8() + "\n");
 
     m_recordTimer.start();
+    m_recordDecoder = QStringDecoder(QStringDecoder::Utf8);  // ANTS-5078
     m_recording = true;
 }
 
@@ -5091,6 +5098,7 @@ void TerminalWidget::nextBookmark() {
         if (bm > viewTop + 1) {
             m_scrollOffset = scrollbackSize - bm;
             m_scrollOffset = std::clamp(m_scrollOffset, 0, scrollbackSize);
+            updateScrollBar();  // ANTS-5078
             update();
             return;
         }
@@ -5098,6 +5106,7 @@ void TerminalWidget::nextBookmark() {
     // Wrap to first bookmark
     m_scrollOffset = scrollbackSize - m_bookmarks.front();
     m_scrollOffset = std::clamp(m_scrollOffset, 0, scrollbackSize);
+    updateScrollBar();  // ANTS-5078
     update();
 }
 
@@ -5109,6 +5118,7 @@ void TerminalWidget::prevBookmark() {
         if (m_bookmarks[i] < viewTop - 1) {
             m_scrollOffset = scrollbackSize - m_bookmarks[i];
             m_scrollOffset = std::clamp(m_scrollOffset, 0, scrollbackSize);
+            updateScrollBar();  // ANTS-5078
             update();
             return;
         }
@@ -5116,6 +5126,7 @@ void TerminalWidget::prevBookmark() {
     // Wrap to last bookmark
     m_scrollOffset = scrollbackSize - m_bookmarks.back();
     m_scrollOffset = std::clamp(m_scrollOffset, 0, scrollbackSize);
+    updateScrollBar();  // ANTS-5078
     update();
 }
 
@@ -5496,7 +5507,12 @@ void TerminalWidget::contextMenuEvent(QContextMenuEvent *event) {
 
     // Search Web (if there's a selection)
     if (m_hasSelection) {
-        QString sel = selectedText().trimmed();
+        // ANTS-5078 — decide from the selection's bounds before building its
+        // text. After Select All over a long scrollback, every right-click
+        // copied the whole history just to compare its length with 200.
+        const qint64 selCellBound =
+            (qint64(std::abs(m_selEnd.x() - m_selStart.x())) + 1) * m_grid->cols();
+        QString sel = selCellBound <= 800 ? selectedText().trimmed() : QString();
         if (!sel.isEmpty() && sel.length() < 200) {
             QAction *searchAction = menu.addAction("Search Web");
             connect(searchAction, &QAction::triggered, this, [sel]() {

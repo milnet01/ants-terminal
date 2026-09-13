@@ -70,6 +70,14 @@ for security-relevant changes.
 
 ### Fixed
 
+- **A search pattern that can match an empty spot no longer hides the real matches later on the same line** (ANTS-5078)
+
+- **Jumping to a search match or a bookmark now moves the scroll bar too** (ANTS-5078)
+
+- **Right-clicking with a very large selection no longer pauses while the whole selection is copied just to measure it** (ANTS-5078)
+
+- **A terminal recording no longer garbles a character whose bytes arrived in two pieces** (ANTS-5078)
+
 - **A background image keeps its shape instead of being stretched to fit the window** (ANTS-5077)
 
 - **A command's duration never shows as negative when the system clock steps backwards** (ANTS-5077)

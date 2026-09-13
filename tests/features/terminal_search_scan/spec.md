@@ -25,6 +25,9 @@ bar's `current/total` label.
   what it stores read as spaces, so `short +$` matches a stored `short`.
   `TerminalGrid::resize` pads every history line, so a resize cannot reach
   this case.
+- **INV-6 — a zero-width match does not end the line's scan** (ANTS-5078).
+  `(?=o)|one` finds an empty match at `o` before `one` on the same line; the
+  `one` match is still counted.
 
 ## Test
 
