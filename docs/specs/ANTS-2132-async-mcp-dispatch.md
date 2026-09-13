@@ -170,6 +170,7 @@ struct McpCallContext {
     qint64       requestBytes = 0;
     bool         cachedHit    = false;
     bool         cacheable    = false;
+    bool         toolHandled  = false;
     QString      dispatchResult;
     QElapsedTimer traceTimer;
     QStringList  ignoredArgKeys;  // amendment, ANTS-5072 — § 2.9
@@ -460,11 +461,11 @@ state stay in `finishToolDispatch`.
 ```cpp
 // claudeintegration.h
 struct ReplyTransform {
-    QString cacheBody;      // after the ignored-args advisory, before the ETag step
-    QString body;           // after every transform, before the wrap
+    QString cacheBody;      // a handled, cacheable, uncached call only: the body
+                            // after the ignored-args advisory, before the ETag step
     QString wrapped;        // the text the JSON-RPC result carries
     bool    etagUnchanged = false;
-    QString refusalCode;    // handlerRefusalCode(body); "" when the body is no refusal
+    QString refusalCode;    // handlerRefusalCode of the transformed body; "" when none
     qint64  argBytes = 0;
     qint64  outBytes = 0;
     qint64  wrapBytes = 0;
@@ -477,8 +478,9 @@ void finishToolDispatch(McpCallContext ctx, ReplyTransform reply);
 `transformReply` runs, in § 2.2's order: the ignored-args advisory, the ETag
 step, `mcp::projectFields`, `mcp::compactEnvelope`, `mcp::appendReadHints`,
 `mcp::tabularize`, the offload with its ANTS-4626 re-apply, the wrap, and the
-byte counts. It reads no `ClaudeIntegration` member. For a call that no handler
-served it returns an empty `ReplyTransform`.
+byte counts. It reads no `ClaudeIntegration` member. When `ctx.toolHandled` is
+false it returns an empty `ReplyTransform`; `finishToolDispatch` branches on
+`ctx.toolHandled`, never on an empty field.
 
 `finishToolDispatch` runs the ANTS-1357 cache insert from `cacheBody`, so the
 cache still stores the body as it stood before the ETag step. It then sets
@@ -507,8 +509,9 @@ verb offloads too. Each writes its own content-addressed file through
 `QSaveFile`. `evict` spares only the file its own call wrote and moves on when a
 removal fails, so at the eviction cap one thread can remove the file the other
 has just written; a later `read_spill` of that handle refuses `not_found`. No
-lock is added: a lock the worker holds would make the GUI thread wait on it,
-which INV-7 forbids.
+lock is added around the write and the eviction: the GUI thread would wait out
+a whole spill write on the worker. The hint latch's `QMutex` is held only for
+one set lookup and insert (`claimHint`).
 
 **Test seam.** `ClaudeIntegration` gains
 `static QThread *lastReplyTransformThreadForTest()`, which `transformReply`
@@ -628,8 +631,9 @@ sets on entry.
   `onGuiThread` call. Destroy the second, call the first's verb, and assert it
   returns the marshalled value. Breaks if the refusal is one process-wide flag:
   the call is refused.
-- **INV-18** *(amendment, 2026-09-13 — ANTS-5072)* — An off-thread verb's reply
-  transforms run on the dispatch worker; a verb registered through the bare
+- **INV-18** *(amendment, 2026-09-13 — ANTS-5072)* — For a call whose handler
+  ran on the dispatch worker, the reply transforms run there too; a verb
+  registered through the bare
   `ToolHandler` overload runs them on the GUI thread. *Test:*
   `tests/features/mcp_async_dispatch/` — call an `RcHandler` verb and assert
   `lastReplyTransformThreadForTest()` is not the GUI thread; call a bare
@@ -652,9 +656,10 @@ No new build target, no new external library. `finishToolDispatch` is moved
 code, not added code.
 
 *Amendment (ANTS-5072):* an off-thread verb's queued continuation carries a
-`ReplyTransform` instead of the handler's body. `finishToolDispatch` already
-holds the pre-ETag body and the wrapped text at once, so peak memory per reply
-does not rise.
+`ReplyTransform` instead of the handler's body: the wrapped text, plus the
+pre-ETag body only for a handled, cacheable, uncached call. No transformed body
+is carried, so at most two reply-sized strings cross the queue, as
+`finishToolDispatch` holds two at its wrap today.
 
 The amendment adds no thread and no queue. A queued socket job holds one parsed
 request, already bounded by the socket's receive cap. A synchronous `audit_run`
@@ -820,3 +825,4 @@ the change is restored.
 | 2 | 2026-08-26 | 3, cold — identical brief, scrubbed copy and packet rebuilt from disk | **Q1 2 · Q2 1 · Q3 1 · Q4 3** (7 verified / 7 fixed / 0 dismissed) | **Seven verified, seven fixed. Cap reached (2 for a spec); shipped to implementation.** **The run's best finding overturned § 1.1's premise.** It said the `QThread::wait()` join is what makes today's off-thread `MainWindow` access safe. False: `workspace_search` and `cited_by` are `Required`, the dispatcher refuses a `Required` verb with no `caller_cwd`, and their registration comments say the fallback is therefore unreachable. The hazard is real but arrives elsewhere — `ants::resolveCallerCwdRoot` walks the tab list on the branch where `caller_cwd` IS supplied, and `feedback_query` is `Required`, `rcDelegate`, and reaches it. § 1.1 rewritten around what actually holds. **All three lanes found the second:** § 2.5 exempted `remotecontrol_terminal.cpp` as a file, and that file holds `cmdFindSources` (`Required`, `rcDelegate`) and the `cmdRoadmapLogPass*` helpers `roadmap_log` calls — all off-thread. INV-6's scrape would have skipped exactly the bodies it exists to watch. Exemption is now per body, derived from the registration table. No live race today: none of that file's current reach-backs sit in those bodies. **Five of the seven landed on loop 1's own fixes** — a high share, so the run is oscillating rather than converging, and the cap is the right exit. INV-5 still keyed on factory provenance after loop 1 made `RcHandler` directly constructible for tests; `onGuiThread` had no refusal channel though loop 1's shutdown rule requires one, so nine call sites would each have invented an answer; loop 1's harness fallback sanctioned re-cutting runtime invariants as scrapes that cannot falsify them; and INV-3's reworded test no longer reached the only two verbs that spin a `QEventLoop`. INV-8 gained the clause that can catch § 2.6's refuse-then-join ordering, which INV-7's scrape cannot see. **Disclosure:** two lanes reported that an unscoped `workspace_search` returned a truncated headline from the unscrubbed loop-log table; both say they read no further and used nothing from it. Scrubbing the copy does not stop a lane's search reaching the original. |
 | 3 | 2026-09-13 | 3, cold — genre pinned `spec`; first loop of the gate on the 2026-09-13 amendment (§ 1.2, § 2.7, § 2.8, INV-11..16) | **Q1 1 · Q2 2 · Q3 1 · Q4 2** (6 verified / 6 fixed / 1 dismissed) | **Six verified, six fixed; loop 2 of this run dispatched.** Two lanes found INV-15 could not catch an unlatched `reply`: the first reply disconnects, so a second writes nothing either way. It now counts trace entries. INV-16's `QThread::finished` check passed on the `async:true` branch alone; it now wants one per branch. § 2.7's route rule and INV-13 keyed on factory spelling, which misses inline `RcHandler{` twins that ANTS-4682 moved off-thread; both now key on the `RcHandler` overload, and § 2.4's inline-lambda sentence was corrected with them. § 2.8 now builds the context as the off-thread branch does, because `finishToolDispatch` skips its transforms when `toolHandled` is false. § 2.8 now states that a second same-root synchronous `audit_run` is refused `already_running`. § 7 now lists the guard spec and the `audit_run` comment that still say it freezes. **Dismissed:** § 1.2's census, raised by two lanes because the packet omitted `roadmapWriteTarget`. Its callers are all `roadmap_log` handlers, so the claim holds; the gap was the packet's. Out of scope, filed separately: three pre-existing copies elsewhere of "every hand-written inline lambda" runs on the GUI thread. |
 | 4 | 2026-09-13 | 3, cold — identical brief; scrubbed copy, packet and source facts rebuilt from disk | **Q1 1 · Q2 0 · Q3 1 · Q4 0** (2 verified / 2 fixed / 1 dismissed) | **Two verified, two fixed. Cap reached (2 for a spec); shipped to implementation.** § 2.7 blamed library layering for the static route list; `RemoteControl` files already include `claudeintegration.h`, so the true reason is that `RemoteControl` is built and tested without a `ClaudeIntegration`. § 2.6's shutdown refusal was unscoped, and the shipped flag is process-wide: closing a second window refuses every later marshal in the first (filed ANTS-5142). The refusal is now scoped to the instance's own worker, INV-17 tests it, and § 7 names the two test contracts bound to the global flag. **Dismissed:** INV-7's test clause named a `wait()` in the destructor where the built join is in `shutdownDispatchWorker`. Two lanes raised it; nothing built changes, so it was corrected as a record of the code. **Calm cap:** 0 of this loop's 2 verified findings landed on text a loop-1 fix wrote. **Gate against audit:** 7 of this run's 8 verified findings anchor in the amendment draft (`b198f557..f8ece108`); the § 2.6 refusal scope predates it. Out of scope, filed: ANTS-5141, the store destroyed on the GUI thread. |
+| 5 | 2026-09-13 | 3, cold — genre pinned `spec`; first loop of the gate on the ANTS-5072 amendment (§ 1.3, § 2.9, INV-7, INV-9, INV-18) | **Q1 1 · Q2 3 · Q3 0 · Q4 0** (4 verified / 4 fixed / 0 dismissed) | **Four verified, four fixed; loop 2 of this run dispatched.** All three lanes found § 2.2's struct had lost `toolHandled`, which § 2.8 and § 2.9 rely on, so `finishToolDispatch` would have read an empty control-plane body as an unknown tool; the field is back and `finishToolDispatch` branches on it. All three lanes found § 4's peak-memory sentence false: `ReplyTransform` carried the pre-ETag body on every call, beside the transformed body and the wrapped text. The transformed body is no longer carried, and `cacheBody` is filled only for a handled, cacheable, uncached call. Two lanes found INV-18 claimed worker transforms for every off-thread verb, while a cache hit or a queue-full refusal finishes on the GUI thread; it is now scoped to a call whose handler ran on the worker. One lane found the spill directory's no-lock reason contradicted the hint latch's `QMutex`; the reason is now the length of the wait. **Open questions resolved clean:** the scrape tests § 6 requires to pass unmodified (`mcp_projection`, `mcp_rate_limit`, `mcp_ignored_args`) key on spellings a split can keep; whether `read_region` is cacheable stops mattering once `cacheBody` is conditional. |
