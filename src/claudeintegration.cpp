@@ -176,6 +176,7 @@ void ClaudeIntegration::setShellPid(pid_t pid) {
         emit contextUpdated(0);
     }
     m_shellPid = pid;
+    m_orphanScanCountdown = 0;   // ANTS-5089 — a newly focused shell scans at once
     if (pid > 0) {
         m_pollTimer.start();
         // Run one poll immediately so the Claude status label shows the
@@ -192,7 +193,7 @@ void ClaudeIntegration::setShellPid(pid_t pid) {
 
 // Shared with ClaudeTabTracker. /proc-walking moved here in 0.7.57
 // (ANTS-1048) — see header for context.
-pid_t ClaudeIntegration::findClaudeChildPid(pid_t shellPid) {
+pid_t ClaudeIntegration::findClaudeChildPid(pid_t shellPid, bool scanOrphans) {
     if (shellPid <= 0) return 0;
 
     // Match the executable, not any substring. "grep claude file" or a
@@ -268,6 +269,9 @@ pid_t ClaudeIntegration::findClaudeChildPid(pid_t shellPid) {
         }
     }
 
+    // ANTS-5089 — the caller asked for the fast path only.
+    if (!scanOrphans) return 0;
+
     // Authoritative fallback: scan /proc, checking each ppid match's binary
     // inline. Catches orphaned children (forking thread gone) and kernels /
     // containers that don't expose /proc/<pid>/task/<tid>/children at all.
@@ -298,7 +302,15 @@ void ClaudeIntegration::pollClaudeProcess() {
     // /proc/0/task/0/children which is meaningless.
     if (m_shellPid <= 0) return;
 
-    const pid_t foundPid = findClaudeChildPid(m_shellPid);
+    // ANTS-5089 — the orphan /proc scan reads every process's stat file.
+    // While a Claude child is tracked it runs every poll, so an orphaned one
+    // never reads as exited; with none tracked it runs once every
+    // kOrphanScanEveryPolls polls, since a real shell's Claude child is found
+    // on the fast path the moment it exists.
+    const bool scanOrphans = m_claudePid != 0 || m_orphanScanCountdown <= 0;
+    m_orphanScanCountdown = scanOrphans ? kOrphanScanEveryPolls - 1
+                                        : m_orphanScanCountdown - 1;
+    const pid_t foundPid = findClaudeChildPid(m_shellPid, scanOrphans);
     const bool found = foundPid > 0;
 
     if (!found) {

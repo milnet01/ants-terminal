@@ -153,7 +153,17 @@ void ClaudeTabTracker::detectClaudeChild(ShellEntry &entry) {
     // ClaudeIntegration::findClaudeChildPid as of 0.7.57 (ANTS-1048).
     // Same semantics this site used to inline, plus the /proc fallback
     // for when /proc/<pid>/task/<pid>/children isn't available.
-    const pid_t found = ClaudeIntegration::findClaudeChildPid(entry.shellPid);
+    // ANTS-5089 — the orphan /proc scan reads every process's stat file. It
+    // runs every poll while a Claude child is tracked, and once every
+    // kOrphanScanEveryPolls polls otherwise; ClaudeIntegration::
+    // pollClaudeProcess uses the same cadence and says why.
+    const bool scanOrphans =
+        entry.claudePid != 0 || entry.orphanScanCountdown <= 0;
+    entry.orphanScanCountdown = scanOrphans
+        ? ClaudeIntegration::kOrphanScanEveryPolls - 1
+        : entry.orphanScanCountdown - 1;
+    const pid_t found =
+        ClaudeIntegration::findClaudeChildPid(entry.shellPid, scanOrphans);
 
     if (found == 0) {
         if (entry.claudePid != 0) {

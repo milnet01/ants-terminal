@@ -71,7 +71,7 @@ threads, then falls back to the `/proc` ppid scan (ANTS-1867). The
 kernel's `children` file is per-TID: a child forked by a non-leader thread
 appears only under that thread's `/proc/<pid>/task/<tid>/children`, never
 the leader's. The function unions over every `task/<tid>/children` as a
-fast positive path, and on a miss **always** falls through to the `/proc`
+fast positive path, and on a miss falls through to the `/proc` (unless the caller passes `scanOrphans=false`, ANTS-5089)
 ppid scan (the complete view). `findClaudeChildPid(getpid())` must return
 a `claude` child forked from a live non-leader thread (union path). Skips
 gracefully when no `sleep` binary is on PATH.
@@ -93,6 +93,16 @@ transcript whose middle record is 200 KiB, and `sessionSummary` finds a
 first user message longer than 64 KiB. A record over the 16 MiB cap is
 skipped as one unit rather than handed back in fragments; that case is not
 exercised here, because it needs a 16 MiB fixture.
+
+**INV-12** — `findClaudeChildPid(pid, scanOrphans=false)` skips the `/proc`
+ppid scan (ANTS-5089). A child forked from a live worker thread is still
+found (INV-8's fixture). Whether a child orphaned by its forking thread is
+visible without the scan depends on whether the kernel lists it under a
+live thread, so INV-9 does not assert it; the skip itself is pinned by
+`claude_tab_status_indicator`'s `checkOrphanScanCadence` source-grep, along
+with the periodic callers, `pollClaudeProcess` and
+`ClaudeTabTracker::detectClaudeChild`, asking for the scan while a Claude
+child is tracked or once every `kOrphanScanEveryPolls` polls.
 
 ## Out of scope
 

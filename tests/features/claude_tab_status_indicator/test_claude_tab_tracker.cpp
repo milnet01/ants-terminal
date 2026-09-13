@@ -410,6 +410,42 @@ int checkBashToolSurfacing() {
     return 0;
 }
 
+// ANTS-5089 — both periodic Claude-detection callers throttle the /proc orphan
+// scan: they pass scanOrphans to findClaudeChildPid, keep it on while a Claude
+// child is tracked (so an orphaned child never reads as exited), and otherwise
+// count down kOrphanScanEveryPolls. Source-grep: the cadence needs real
+// processes over several poll ticks to observe.
+int checkOrphanScanCadence() {
+    QFile trackerFile(QString::fromUtf8(ANTS_SOURCE_DIR "/src/claudetabtracker.cpp"));
+    QFile ciFile(QString::fromUtf8(ANTS_SOURCE_DIR "/src/claudeintegration.cpp"));
+    if (!trackerFile.open(QIODevice::ReadOnly) || !ciFile.open(QIODevice::ReadOnly)) {
+        std::fprintf(stderr, "[ANTS-5089] FAIL cannot open the tracker or integration source\n");
+        return 1;
+    }
+    const QByteArray tracker = trackerFile.readAll();
+    const QByteArray ci = ciFile.readAll();
+    const bool trackerOk =
+        tracker.contains("ClaudeIntegration::findClaudeChildPid(entry.shellPid, scanOrphans)") &&
+        tracker.contains("entry.claudePid != 0 || entry.orphanScanCountdown <= 0") &&
+        tracker.contains("ClaudeIntegration::kOrphanScanEveryPolls - 1");
+    // The function's own skip is pinned here too: whether an orphaned child
+    // is visible without the scan depends on the kernel reparenting it to a
+    // live thread, so no behavioural fixture observes it portably.
+    const bool pollOk =
+        ci.contains("if (!scanOrphans) return 0;") &&
+        ci.contains("findClaudeChildPid(m_shellPid, scanOrphans)") &&
+        ci.contains("m_claudePid != 0 || m_orphanScanCountdown <= 0") &&
+        ci.contains("kOrphanScanEveryPolls - 1");
+    if (!trackerOk || !pollOk) {
+        std::fprintf(stderr, "[ANTS-5089] FAIL orphan-scan cadence: tracker=%s poll=%s\n",
+                     trackerOk ? "ok" : "missing", pollOk ? "ok" : "missing");
+        return 1;
+    }
+    std::printf("[%-32s] both callers throttle the orphan scan  PASS\n",
+                "ANTS-5089-orphan-scan-cadence");
+    return 0;
+}
+
 // INV-8 Per-shell transcript path is project-cwd-scoped. Two cwds → two
 // distinct project subdirs under ~/.claude/projects/ → sessionPathForCwd
 // must return each subdir's own .jsonl, not collapse them onto whichever
@@ -543,6 +579,7 @@ TEST(ClaudeTabStatusIndicator, Main) {
     failures += checkSessionIdRouting();
     failures += checkBashToolSurfacing();
     failures += checkProjectCwdScopedTranscript();
+    failures += checkOrphanScanCadence();
 
     if (failures) {
         std::fprintf(stderr, "\n%d check(s) failed\n", failures);

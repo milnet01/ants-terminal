@@ -360,12 +360,19 @@ int inv8FindClaudeChildFromWorkerThread() {
     if (child > 0) waitForCmdlineReady(child);
 
     pid_t found = -1;
-    if (child > 0) found = ClaudeIntegration::findClaudeChildPid(::getpid());
+    pid_t foundFastOnly = -1;
+    if (child > 0) {
+        found = ClaudeIntegration::findClaudeChildPid(::getpid());
+        // ANTS-5089 — the forking thread is alive, so the per-thread union
+        // finds the child without the orphan scan.
+        foundFastOnly = ClaudeIntegration::findClaudeChildPid(
+            ::getpid(), /*scanOrphans=*/false);
+    }
 
     launcher.quit();
     launcher.wait(5000);
 
-    const bool ok = (child > 0 && found == child);
+    const bool ok = (child > 0 && found == child && foundFastOnly == child);
     std::fprintf(stderr,
                  "[inv8 findclaudechildpid-worker-thread-fork] child=%d found=%d  %s\n",
                  static_cast<int>(child), static_cast<int>(found),

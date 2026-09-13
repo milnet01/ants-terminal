@@ -159,6 +159,16 @@ tracker class) rather than pixel-level painting:
      `ClaudeIntegration::sessionPathForCwd(cwdA)` /
      `(cwdB)`, assert each returns the file from its own subdir.
 
+9. **The /proc orphan scan runs on a cadence** *(ANTS-5089)*.
+   `detectClaudeChild` passes `scanOrphans` to
+   `ClaudeIntegration::findClaudeChildPid`. The scan runs on every poll
+   while the shell has a tracked Claude child, so an orphaned child never
+   reads as exited, and once every `kOrphanScanEveryPolls` polls otherwise.
+   `pollClaudeProcess` follows the same rule for the focused shell. Tested
+   by a source-grep (`checkOrphanScanCadence`) over both callers; the
+   function's `scanOrphans=false` behaviour is tested in
+   `claude_transcript_robustness` INV-12.
+
 ## Rationale
 
 The existing single-global `ClaudeIntegration` design assumes one

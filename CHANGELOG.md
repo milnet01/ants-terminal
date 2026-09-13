@@ -70,6 +70,12 @@ for security-relevant changes.
 
 ### Fixed
 
+- **Tabs without Claude running no longer make Ants read every process's details every two seconds** (ANTS-5089)
+  To spot Claude Code in a tab, Ants checks the shell's child processes
+  every two seconds, and when none was Claude it also read the details of
+  every process on the system. That full scan now runs once every five
+  checks for a tab with no Claude running, and on every check while one is.
+
 - **The Claude transcript viewer and session summaries no longer drop messages longer than 64 KiB** (ANTS-5089)
   Ants read Claude Code's transcript one record at a time but stopped at
   64 KiB, so a long tool result or a pasted file was split into pieces that

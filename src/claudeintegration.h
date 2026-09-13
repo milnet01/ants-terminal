@@ -169,7 +169,12 @@ public:
     // identical copies of this walk. Rule of three (two near-identical
     // copies plus the obvious next caller — the planned local-subagent
     // framework) says extract now.
-    static pid_t findClaudeChildPid(pid_t shellPid);
+    // ANTS-5089 — `scanOrphans` false skips the /proc ppid scan, which reads
+    // every process's stat file; the per-thread children fast path still
+    // runs. The periodic callers ask for the scan only while a Claude child
+    // is tracked or once every kOrphanScanEveryPolls polls.
+    static pid_t findClaudeChildPid(pid_t shellPid, bool scanOrphans = true);
+    static constexpr int kOrphanScanEveryPolls = 5;
 
     QJsonArray loadTranscript(const QString &path) const;
     QStringList recentSessions() const;
@@ -670,6 +675,7 @@ private:
     bool isFocusedTabSession(const QString &sessionId) const;
 
     pid_t m_shellPid = 0;
+    int   m_orphanScanCountdown = 0;   // ANTS-5089 — see pollClaudeProcess
     ClaudeState m_state = ClaudeState::NotRunning;
     QString m_currentTool;
     int m_contextPercent = 0;

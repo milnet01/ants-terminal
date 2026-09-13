@@ -111,6 +111,7 @@ private:
     struct ShellEntry {
         pid_t shellPid = 0;
         pid_t claudePid = 0;
+        int   orphanScanCountdown = 0;   // ANTS-5089 — see detectClaudeChild
         QString transcriptPath;
         ShellState state;
     };
