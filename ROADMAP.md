@@ -8134,6 +8134,14 @@ extends an existing item, that item carries it instead.
   - pollClaudeProcess resolves from the shell's cwd, while the tab
     tracker uses Claude's own cwd first, so a subshell launch never
     resolves a transcript.
+  Progress (2026-09-14, 3ff828d3): transcript records longer than
+  64 KiB are read whole (readJsonlRecord, 16 MiB cap, an over-cap record
+  skipped as one unit) in loadTranscript, extractCwdFromTranscript and
+  sessionSummary. In progress: the per-poll /proc scan in
+  findClaudeChildPid. STILL OPEN: loadTranscript on the GUI thread, the
+  4 MiB tail freeze, readyRead re-parse and connection caps, the
+  malformed-request abort, the peer-check comment, the /tmp hook socket
+  name, and pollClaudeProcess resolving from the shell's cwd.
   **Layman:** Smaller Claude-integration fixes: slow process scans, a slow transcript window and dropped long messages.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lane claude-integration-a).
