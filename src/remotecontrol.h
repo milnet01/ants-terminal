@@ -87,6 +87,13 @@ public:
     // Default socket path — see header doc for resolution order.
     static QString defaultSocketPath();
 
+    // ANTS-5144 — whether this window is on screen. The shared listener
+    // prefers a visible window when it picks who serves a connection. Read
+    // each time; unset reads as visible.
+    void setWindowVisibleProbe(std::function<bool()> probe) {
+        m_windowVisibleProbe = std::move(probe);
+    }
+
     // ANTS-1337 Phase 2 — install the verify-changes trust client.
     // Called from MainWindow construction with a chrome-layer
     // VerifyTrustModalClient. RemoteControl takes ownership. nullptr
@@ -1468,7 +1475,11 @@ private:
     QJsonDocument cmdVerifyChangesImpl(const QString &root,
                                         const QJsonObject &req);
 
+    // ANTS-5144 — non-owning: ants::LocalSocketHub owns the server, and other
+    // windows may be serving it.
     QLocalServer *m_server = nullptr;
+    QString m_socketPath;
+    std::function<bool()> m_windowVisibleProbe;
     MainWindow *m_main;  // non-owning; MainWindow owns us via QObject parent
     bool m_e2eMode = false;  // ANTS-2049 — inject-verb gate (see setE2eMode)
 

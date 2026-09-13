@@ -514,6 +514,7 @@ add_library(ants_core_lib STATIC
     # INV-4 cannot see.
     ${ANTS_RC_SOURCES_REL}
     src/remotecontrolgate.cpp
+    src/localsockethub.cpp       # ANTS-5144
     src/fileoutline.cpp
     src/mutationprobe.cpp        # ANTS-4398
     # ANTS-1993 — Claude permission-prompt structural gate (Qt6::Core-only).
@@ -1959,6 +1960,8 @@ if(ANTS_TESTS)
                 # ANTS-2131 — blocking MCP verbs dispatch off the main thread.
                 tests/features/mcp_verb_offthread_guard/test_mcp_verb_offthread_guard.cpp
     tests/features/mcp_async_dispatch/test_mcp_async_dispatch.cpp
+                # ANTS-5144 — one socket listener per path, shared by windows.
+                tests/features/shared_socket_listener/test_shared_socket_listener.cpp
                 tests/features/allowlist_perms_postcommit/test_allowlist_perms_postcommit.cpp
                 tests/features/ssh_dash_host_rejected/test_ssh_dash.cpp
                 tests/features/ssh_extra_args_sanitize/test_ssh_extra_args.cpp

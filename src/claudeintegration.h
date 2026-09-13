@@ -181,13 +181,28 @@ public:
     // touched session.
     QStringList recentSessionsForCwd(const QString &projectCwd) const;
 
-    // Hook server (receives events from Claude Code hooks)
-    bool startHookServer();
+    // Hook server (receives events from Claude Code hooks). ANTS-5144 — the
+    // path is a parameter so a test can bind its own.
+    static QString defaultHookSocketPath();
+    bool startHookServer(const QString &socketPath = defaultHookSocketPath());
     void stopHookServer();
 
     // MCP server for terminal capabilities
     bool startMcpServer(const QString &socketPath);
     void stopMcpServer();
+
+    // ANTS-5144 — whether this integration's window is on screen. The shared
+    // listener prefers a visible window when it picks who serves a
+    // connection. Read each time; unset reads as visible.
+    void setWindowVisibleProbe(std::function<bool()> probe) {
+        m_windowVisibleProbe = std::move(probe);
+    }
+    // ANTS-5144 — whether this integration's window tracks a Claude session.
+    // A hook event goes to the window that claims its session_id. Read each
+    // time; unset claims nothing.
+    void setSessionOwnerProbe(std::function<bool(const QString &)> probe) {
+        m_sessionOwnerProbe = std::move(probe);
+    }
 
     // ANTS-1901 — master MCP gate mirror. MainWindow seeds this from
     // Config::claudeMcpEnabled() at startup and updates it on a live
@@ -539,6 +554,9 @@ public:
     void processHookEventForTest(const QJsonObject &event) {
         processHookEvent(event);
     }
+    // ANTS-5144 — calls into processHookEvent, counted on entry before any
+    // gate, so a test can see which of two windows received a hook event.
+    int hookEventsProcessedForTest() const { return m_hookEventsProcessed; }
     // Exposed so the same test can seed a focused-tab transcript path
     // without staging a real Claude process under /proc.
     void setTranscriptPathForTest(const QString &path) {
@@ -656,11 +674,18 @@ private:
     QTimer m_transcriptDebounce;
     int m_transcriptBackstopTicks = 0;
 
-    // Hook server
+    // Hook server. ANTS-5144 — non-owning: ants::LocalSocketHub owns it, and
+    // other windows may be serving it.
     QLocalServer *m_hookServer = nullptr;
+    QString m_hookSocketPath;
+    int m_hookEventsProcessed = 0;
 
-    // MCP server
+    // MCP server (non-owning, as above)
     QLocalServer *m_mcpServer = nullptr;
+    QString m_mcpSocketPath;
+    // ANTS-5144 — see setWindowVisibleProbe / setSessionOwnerProbe.
+    std::function<bool()> m_windowVisibleProbe;
+    std::function<bool(const QString &)> m_sessionOwnerProbe;
     // ANTS-1901 — master MCP gate mirror (default true). See setMcpEnabled().
     bool m_mcpEnabled = true;
     // ANTS-1253: per-tool providers consolidated into a single

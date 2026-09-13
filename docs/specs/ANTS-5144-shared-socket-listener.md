@@ -114,14 +114,19 @@ may still be serving. Destroying an owner detaches it the same way.
 
 1. A server this hub already holds for `path` is returned as is. Nothing is
    removed or rebound.
-2. Otherwise `listen(path)`. On success the server is kept and returned.
-3. On failure, if `safeToUnlinkLocalSocket(path)` holds, the hub connects to
-   `path` with a `QLocalSocket`, waiting at most 200 ms (the author's setting,
-   not measured: the probe runs once per path at start-up, and a local socket
-   that is listening accepts at once). A connection that
-   succeeds means a live server holds the path: disconnect and return nullptr.
-   A connection that fails means a stale file: `removeServer`, `listen` again,
-   and return the server or nullptr.
+2. Otherwise, when a file exists at `path`: return nullptr unless
+   `safeToUnlinkLocalSocket(path)` holds. Then connect to `path` with a
+   `QLocalSocket`, waiting at most 200 ms (the author's setting, not
+   measured: the probe runs once per path at start-up, and a local socket
+   that is listening accepts at once). A connection that succeeds means a
+   live server holds the path: disconnect and return nullptr. A connection
+   that fails means a stale file: `removeServer`.
+3. `listen(path)`, and return the server or nullptr.
+
+The check precedes `listen` because `listen` cannot report a held path here.
+With `UserAccessOption` set, `QLocalServer::listen` binds in a private
+directory and renames the socket over `path`, replacing a live server's
+socket (traced with `strace` during this build, 2026-09-13).
 
 `acquire` sets `UserAccessOption` before each `listen` and runs
 `setOwnerOnlyPerms(path)` after each successful one, as the three start

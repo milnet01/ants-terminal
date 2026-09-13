@@ -217,7 +217,9 @@
         "src/remotecontrol.h",
         "src/remotecontrol_internal.h",
         "src/remotecontrolgate.cpp",
-        "src/remotecontrolgate.h"
+        "src/remotecontrolgate.h",
+        "src/localsockethub.cpp",
+        "src/localsockethub.h"
       ]
     },
     {

@@ -70,6 +70,14 @@ for security-relevant changes.
 
 ### Fixed
 
+- **Closing a New Window window no longer cuts MCP, Claude hooks and remote control off for every other window** (ANTS-5144)
+  Each window used to take the three socket paths from the window before
+  it, and closing it removed the socket files. Now one listener per path
+  serves the whole process: requests go to the most recently active
+  visible window, and a hook event goes to the window whose tabs track
+  its session. A second Ants process no longer takes the remote-control
+  socket from the first.
+
 - **The sanitizer build builds again** (ANTS-5143)
   The perf benchmarks are no longer built when ANTS_SANITIZERS is on, so a
   full build-asan build and its test suite complete, and the pre-push

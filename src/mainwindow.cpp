@@ -18,6 +18,7 @@
 #include "settingsdialog.h"
 #include "sessionmanager.h"
 #include "remotecontrol.h"
+#include "localsockethub.h"
 #include "resolvedroot.h"      // ANTS-1401 — terminalForCaller helper
 #include "secureio.h"          // ANTS-4456 — ensurePrivateDir (0700)
 #include "reviewbuttonstate.h" // ANTS-1874 — Review-button porcelain predicate
@@ -1107,6 +1108,9 @@ MainWindow::MainWindow(bool quakeMode, bool e2eMode, QWidget *parent)
     // already owns the socket) is non-fatal: the log notes it and
     // the main window boots normally.
     m_remoteControl = new RemoteControl(this, this);
+    // ANTS-5144 — the listener is shared by every window and prefers a
+    // visible one when it picks who serves a request.
+    m_remoteControl->setWindowVisibleProbe([this] { return isVisible(); });
     // ANTS-3661 § 2.4 / ANTS-3688 — inject the verb vocabulary doc_symbols
     // excludes from its candidate harvest. Here rather than in the MCP
     // provider-setup function, because that runs from setupStatusBarChrome
@@ -4092,6 +4096,14 @@ void MainWindow::showEvent(QShowEvent *event) {
 void MainWindow::setupStatusBarChrome() {
     m_claudeIntegration = new ClaudeIntegration(this);
     m_claudeTabTracker  = new ClaudeTabTracker(this);
+    // ANTS-5144 — the MCP and hook listeners are shared by every window. They
+    // prefer a visible window, and a hook event goes to the window whose tabs
+    // track its session.
+    m_claudeIntegration->setWindowVisibleProbe([this] { return isVisible(); });
+    m_claudeIntegration->setSessionOwnerProbe([this](const QString &sessionId) {
+        return m_claudeTabTracker &&
+               m_claudeTabTracker->shellForSessionId(sessionId) > 0;
+    });
 
     m_claudeStatusBarController =
         new ClaudeStatusBarController(statusBar(), this);
@@ -5984,6 +5996,10 @@ bool MainWindow::event(QEvent *event) {
     if (m_statusTimer) {
         if (event->type() == QEvent::WindowActivate) {
             if (!m_statusTimer->isActive()) m_statusTimer->start();
+            // ANTS-5144 § 2.3 — the shared listeners serve the most recently
+            // activated window.
+            ants::LocalSocketHub::instance().noteActivated(m_claudeIntegration);
+            ants::LocalSocketHub::instance().noteActivated(m_remoteControl);
         } else if (event->type() == QEvent::WindowDeactivate) {
             m_statusTimer->stop();
         }
@@ -6171,9 +6187,8 @@ void MainWindow::closeEvent(QCloseEvent *event) {
 
     // ANTS-5118 — closing a window while another visible one stays open is
     // final for its tabs: close them, which ends their shells. The first
-    // window only hides on close (it owns the remote-control listener), so
-    // without this its programs ran on unseen. Deferred one event-loop
-    // turn, when a New Window window's deleteLater ends its tabs, and
+    // window only hides on close, so without this its programs ran on
+    // unseen. Deferred one event-loop turn, when a New Window window's deleteLater ends its tabs, and
     // re-checked then: closes that arrive together (a Plasma logout closes
     // every window) leave the last window to save every tab first.
     if (anotherWindowStaysOpen()) {

@@ -10,6 +10,7 @@
 #include "remotecontrol.h"
 #include "readregion.h"   // ANTS-4700 — shared clipToBytes
 #include "remotecontrol_internal.h"  // ANTS-3833 — shared rcdetail helpers
+#include "localsockethub.h"  // ANTS-5144 — one listener per path, shared
 #include "mcpspill.h"        // ANTS-2094 — read_spill
 #include "mainwindow.h"
 #include "mcpprojection.h"
@@ -2280,8 +2281,11 @@ void RemoteControl::setVerifyTrustClient(
 }
 
 RemoteControl::~RemoteControl() {
+    // ANTS-5144 — detach only: other windows may still serve the server.
     if (m_server) {
-        m_server->close();
+        if (auto *hub = ants::LocalSocketHub::existing())
+            hub->detach(m_socketPath, this);
+        m_server = nullptr;
     }
 }
 
@@ -2326,44 +2330,23 @@ bool RemoteControl::start() {
         return false;
     }
 
-    m_server = new QLocalServer(this);
-    // Restrict access to the owning user — matches the hook/MCP
-    // sockets' posture. Must be set before listen() on Unix; Qt
-    // enforces this on the socket itself.
-    m_server->setSocketOptions(QLocalServer::UserAccessOption);
-
-    // If a stale socket file exists (previous crash didn't clean up),
-    // remove it. `removeServer` is a no-op if no socket exists and
-    // succeeds when the path exists but is not actively bound.
-    // If another live instance holds the lock, listen() fails and
-    // we skip the takeover (see outer `if` below).
-    if (!m_server->listen(path)) {
-        if (safeToUnlinkLocalSocket(path)) {
-            QLocalServer::removeServer(path);
-        } else {
-            ANTS_LOG(DebugLog::Network,
-                "remote-control: refusing to unlink %s — not a socket "
-                "owned by this user (possible symlink or foreign file); "
-                "remote-control disabled for this process",
-                qUtf8Printable(path));
-            delete m_server;
-            m_server = nullptr;
-            return false;
-        }
-        if (!m_server->listen(path)) {
-            ANTS_LOG(DebugLog::Network,
-                "remote-control: listen(%s) failed — another instance "
-                "may own the socket; remote-control disabled for this "
-                "process", qUtf8Printable(path));
-            delete m_server;
-            m_server = nullptr;
-            return false;
-        }
+    // ANTS-5144 § 2.2 — every window shares one server per path. A stale
+    // socket file is replaced; a path a live server holds (another Ants
+    // process) is never taken over, and remote control stays off here. The
+    // hub keeps ANTS-1132's UserAccessOption and safe-unlink guards.
+    m_server = ants::LocalSocketHub::instance().acquire(path);
+    if (!m_server) {
+        ANTS_LOG(DebugLog::Network,
+            "remote-control: cannot listen on %s — another instance owns "
+            "it, or it is not a socket owned by this user; remote-control "
+            "disabled for this process", qUtf8Printable(path));
+        return false;
     }
-    setOwnerOnlyPerms(path);
-
-    connect(m_server, &QLocalServer::newConnection,
-            this, &RemoteControl::onNewConnection);
+    m_socketPath = path;
+    ants::LocalSocketHub::instance().attach(
+        path, this,
+        [this] { return !m_windowVisibleProbe || m_windowVisibleProbe(); },
+        [this] { onNewConnection(); });
     ANTS_LOG(DebugLog::Network,
         "remote-control: listening on %s", qUtf8Printable(path));
     return true;
@@ -2372,6 +2355,9 @@ bool RemoteControl::start() {
 void RemoteControl::onNewConnection() {
     while (m_server->hasPendingConnections()) {
         QLocalSocket *socket = m_server->nextPendingConnection();
+        // ANTS-5144 § 2.5 — take the socket from the shared server, so
+        // destroying this window's RemoteControl closes what it was serving.
+        socket->setParent(this);
         // ANTS-1132 — SO_PEERCRED UID match. The trust-model comment
         // at the top of this file claims "UID-scoped + 0700 perms +
         // lstat-checked S_ISSOCK"; UserAccessOption + safeToUnlink

@@ -1,5 +1,6 @@
 #include "claudeintegration.h"
 #include "guithread.h"
+#include "localsockethub.h"  // ANTS-5144 — one listener per path, shared
 
 #include "build_info.h"  // ANTS-1952 — git SHA + build time for serverInfo
 #include "configpaths.h"
@@ -1028,47 +1029,36 @@ void ClaudeIntegration::updateChangedFiles(const QString &toolName,
 
 // --- Hook Server ---
 
-bool ClaudeIntegration::startHookServer() {
+QString ClaudeIntegration::defaultHookSocketPath() {
+    return QDir::tempPath() + "/ants-claude-hooks-" +
+           QString::number(QCoreApplication::applicationPid());
+}
+
+bool ClaudeIntegration::startHookServer(const QString &socketPath) {
     if (m_hookServer) return true;
 
-    m_hookServer = new QLocalServer(this);
-    // ANTS-1132 — UserAccessOption applies the 0700 perms at the
-    // socket layer BEFORE bind+listen, closing the TOCTOU window
-    // between listen() and the post-listen setOwnerOnlyPerms call.
-    // Matches the remote-control trust model.
-    m_hookServer->setSocketOptions(QLocalServer::UserAccessOption);
-    QString socketPath = QDir::tempPath() + "/ants-claude-hooks-" +
-                         QString::number(QCoreApplication::applicationPid());
-    // ANTS-1132 — gate removeServer() behind the lstat-checked
-    // S_ISSOCK + UID match guard. Without this, a hostile same-UID
-    // process could pre-create a symlink at socketPath pointing at
-    // e.g. ~/.ssh/known_hosts and removeServer would unlink the
-    // target. Same defence-in-depth shape as remotecontrol.
-    if (!safeToUnlinkLocalSocket(socketPath)) {
-        delete m_hookServer;
-        m_hookServer = nullptr;
-        return false;
-    }
-    QLocalServer::removeServer(socketPath);
-
-    if (!m_hookServer->listen(socketPath)) {
-        delete m_hookServer;
-        m_hookServer = nullptr;
-        return false;
-    }
-    // Restrict socket permissions to owner only (belt-and-braces
-    // alongside UserAccessOption above).
-    setOwnerOnlyPerms(socketPath);
-
-    connect(m_hookServer, &QLocalServer::newConnection,
-            this, &ClaudeIntegration::onHookConnection);
+    // ANTS-5144 § 2.2 — every window shares one server per path, so a second
+    // window attaches instead of taking the path from the first. The hub
+    // keeps ANTS-1132's UserAccessOption and safe-unlink guards.
+    m_hookServer = ants::LocalSocketHub::instance().acquire(socketPath);
+    if (!m_hookServer) return false;
+    m_hookSocketPath = socketPath;
+    ants::LocalSocketHub::instance().attach(
+        socketPath, this,
+        [this] { return !m_windowVisibleProbe || m_windowVisibleProbe(); },
+        [this] { onHookConnection(); },
+        [this](const QString &sessionId) {
+            return m_sessionOwnerProbe && m_sessionOwnerProbe(sessionId);
+        },
+        [this](const QJsonObject &event) { processHookEvent(event); });
     return true;
 }
 
 void ClaudeIntegration::stopHookServer() {
+    // ANTS-5144 — detach only: other windows may still serve the server.
     if (m_hookServer) {
-        m_hookServer->close();
-        delete m_hookServer;
+        if (auto *hub = ants::LocalSocketHub::existing())
+            hub->detach(m_hookSocketPath, this);
         m_hookServer = nullptr;
     }
 }
@@ -1077,6 +1067,9 @@ void ClaudeIntegration::stopHookServer() {
 void ClaudeIntegration::onHookConnection() {
     while (m_hookServer->hasPendingConnections()) {
         QLocalSocket *socket = m_hookServer->nextPendingConnection();
+        // ANTS-5144 § 2.5 — the server is shared; this owner takes the
+        // socket, so destroying the owner closes what it was serving.
+        socket->setParent(this);
         // ANTS-1151 — extend the SO_PEERCRED + idle-timeout pattern
         // from RemoteControl::onNewConnection to the Claude hook
         // socket. UserAccessOption + safeToUnlinkLocalSocket
@@ -1139,8 +1132,11 @@ void ClaudeIntegration::onHookConnection() {
         connect(socket, &QLocalSocket::disconnected, this, [this, socket]() {
             QByteArray data = socket->property("_buf").toByteArray();
             QJsonDocument doc = QJsonDocument::fromJson(data);
+            // ANTS-5144 § 2.4 — one window processes the event: the one whose
+            // tabs track its session, else this connection's target.
             if (doc.isObject())
-                processHookEvent(doc.object());
+                ants::LocalSocketHub::instance().deliverHookEvent(
+                    m_hookSocketPath, doc.object());
             socket->deleteLater();
         });
     }
@@ -1159,6 +1155,7 @@ bool ClaudeIntegration::isFocusedTabSession(const QString &sessionId) const {
 }
 
 void ClaudeIntegration::processHookEvent(const QJsonObject &event) {
+    ++m_hookEventsProcessed;  // ANTS-5144 — on entry, before any gate
     QString hookName = event.value("hook_event_name").toString();
     QString toolName = event.value("tool_name").toString();
     QJsonObject toolInput = event.value("tool_input").toObject();
@@ -1286,34 +1283,22 @@ void ClaudeIntegration::processHookEvent(const QJsonObject &event) {
 bool ClaudeIntegration::startMcpServer(const QString &socketPath) {
     if (m_mcpServer) return true;
 
-    m_mcpServer = new QLocalServer(this);
-    // ANTS-1132 — same trust-model pre-checks as the hook server.
-    m_mcpServer->setSocketOptions(QLocalServer::UserAccessOption);
-    if (!safeToUnlinkLocalSocket(socketPath)) {
-        delete m_mcpServer;
-        m_mcpServer = nullptr;
-        return false;
-    }
-    QLocalServer::removeServer(socketPath);
-
-    if (!m_mcpServer->listen(socketPath)) {
-        delete m_mcpServer;
-        m_mcpServer = nullptr;
-        return false;
-    }
-    // Restrict socket permissions to owner only (belt-and-braces
-    // alongside UserAccessOption above).
-    setOwnerOnlyPerms(socketPath);
-
-    connect(m_mcpServer, &QLocalServer::newConnection,
-            this, &ClaudeIntegration::onMcpConnection);
+    // ANTS-5144 § 2.2 — shared per path, as startHookServer.
+    m_mcpServer = ants::LocalSocketHub::instance().acquire(socketPath);
+    if (!m_mcpServer) return false;
+    m_mcpSocketPath = socketPath;
+    ants::LocalSocketHub::instance().attach(
+        socketPath, this,
+        [this] { return !m_windowVisibleProbe || m_windowVisibleProbe(); },
+        [this] { onMcpConnection(); });
     return true;
 }
 
 void ClaudeIntegration::stopMcpServer() {
+    // ANTS-5144 — detach only: other windows may still serve the server.
     if (m_mcpServer) {
-        m_mcpServer->close();
-        delete m_mcpServer;
+        if (auto *hub = ants::LocalSocketHub::existing())
+            hub->detach(m_mcpSocketPath, this);
         m_mcpServer = nullptr;
     }
 }
@@ -2109,6 +2094,8 @@ void ClaudeIntegration::sendMcpResponse(const QPointer<QLocalSocket> &socket,
 void ClaudeIntegration::onMcpConnection() {
     while (m_mcpServer->hasPendingConnections()) {
         QLocalSocket *socket = m_mcpServer->nextPendingConnection();
+        // ANTS-5144 § 2.5 — take the socket from the shared server.
+        socket->setParent(this);
         // ANTS-1151 — same SO_PEERCRED + idle-timeout pattern as
         // onHookConnection. MCP socket carries higher-leverage
         // verbs (filesystem reads, git status, environment),
