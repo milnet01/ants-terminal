@@ -297,9 +297,26 @@ MergeOutcome mergeSettings(const QString &settingsPath,
         return MergeOutcome::Kept;
     }
 
-    QJsonObject hooks = root.value(QStringLiteral("hooks")).toObject();
-    QJsonArray sessionStart = hooks.value(QStringLiteral("SessionStart"))
-                                   .toArray();
+    // ANTS-5104 — refuse a hooks value of the wrong type. toObject() and
+    // toArray() read it as empty, so the write below would silently drop the
+    // user's value: the same clobber INV-13 refuses for unparseable JSON.
+    const QJsonValue hooksValue = root.value(QStringLiteral("hooks"));
+    const QJsonValue startValue =
+        hooksValue.toObject().value(QStringLiteral("SessionStart"));
+    if ((!hooksValue.isUndefined() && !hooksValue.isObject()) ||
+        (!startValue.isUndefined() && !startValue.isArray())) {
+        if (warn) {
+            *warn = QStringLiteral(
+                "settings.json \"hooks\" is not an object, or its "
+                "\"SessionStart\" is not an array — Ants will not overwrite. "
+                "Fix the value to retry the merge.");
+        }
+        return MergeOutcome::ParseFail;
+    }
+    const QJsonObject original = root;
+
+    QJsonObject hooks = hooksValue.toObject();
+    QJsonArray sessionStart = startValue.toArray();
 
     // ANTS-1901 — sweep every existing entry whose `command` carries
     // the marker. The add-path then appends a single canonical entry;
@@ -318,6 +335,11 @@ MergeOutcome mergeSettings(const QString &settingsPath,
 
     hooks.insert(QStringLiteral("SessionStart"), sessionStart);
     root.insert(QStringLiteral("hooks"), hooks);
+
+    // ANTS-5104 — nothing changed: leave the file alone. Every launch used to
+    // rewrite it, and each rewrite is a window in which an edit Claude Code
+    // makes to the same file can be lost.
+    if (fileExisted && root == original) return MergeOutcome::Kept;
 
     // Write back atomically.
     QFileInfo fi(settingsPath);

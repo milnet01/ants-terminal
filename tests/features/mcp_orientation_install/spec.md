@@ -27,6 +27,8 @@ Cases:
 - `Inv2_FirstLaunchWritesFresh` — first install writes the file fresh.
 - `Inv3_SettingsMergeIdempotent` — second install does not duplicate
   the SessionStart entry.
+- `Inv3_NoOpInstallLeavesSettingsUntouched` — an install with nothing to
+  change leaves settings.json byte-identical (ANTS-5104).
 - `Inv3_SweepsExistingDuplicates` — pre-existing duplicate entries
   (capital-cased `Ants Terminal` path) are swept down to one
   canonical entry on install (ANTS-1902 self-healing).
@@ -51,6 +53,9 @@ Cases:
   equals `orientationScriptTemplate().arg(ANTS_VERSION).toUtf8()`.
 - `Inv13_BadJsonNoClobber` — when settings.json fails to parse, the
   installer refuses + reports a warning + leaves the file untouched.
+- `Inv13_WrongTypedHooksNoClobber` — valid JSON whose `hooks` is not an
+  object, or whose `SessionStart` is not an array, is refused the same way
+  (ANTS-5104).
 - `Inv14_MainWindowExportsSocket` — source-grep on
   `src/mainwindow.cpp` proves `qputenv("ANTS_MCP_SOCKET"…)` is called
   immediately after `startMcpServer(mcpSocket)`.

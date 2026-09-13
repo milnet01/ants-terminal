@@ -252,7 +252,10 @@ QString offloadBody(const QString &toolName, const QString &body) {
         if (f.write(utf8) != utf8.size()) { f.cancelWriting(); return body; }
         if (!f.commit()) return body;   // commit-or-nothing: no orphan temp
     }
-    setOwnerOnlyPerms(path);            // 0600 on the final path, post-commit
+    // 0600 on the final path, post-commit. ANTS-5104 — the spill holds the
+    // response body, so one that cannot be made owner-only is removed and
+    // the call fails open (INV-11) rather than leaving it readable.
+    if (!setOwnerOnlyPerms(path)) { QFile::remove(path); return body; }
     evict(handle);
 
     // Build the head+pointer envelope. The head guard (offload only fires

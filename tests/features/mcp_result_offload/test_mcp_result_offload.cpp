@@ -415,6 +415,10 @@ TEST_F(McpResultOffload, Inv11FailOpenWiring) {
     EXPECT_TRUE(src.contains(QStringLiteral("if (!f.open(QIODevice::WriteOnly)) return body;")));
     EXPECT_TRUE(src.contains(QStringLiteral("f.cancelWriting(); return body;")));
     EXPECT_TRUE(src.contains(QStringLiteral("if (!f.commit()) return body;")));
+    // ANTS-5104 — a spill that cannot be made owner-only is removed and the
+    // call fails open. A permissions failure cannot be staged portably here.
+    EXPECT_TRUE(src.contains(QStringLiteral(
+        "if (!setOwnerOnlyPerms(path)) { QFile::remove(path); return body; }")));
 }
 
 // INV-11 — fail-open, behavioural: when the spill dir can't be created (its

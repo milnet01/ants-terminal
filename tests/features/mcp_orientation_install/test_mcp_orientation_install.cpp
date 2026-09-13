@@ -190,6 +190,21 @@ TEST(McpOrientation_Inv3, SettingsMergeIdempotent) {
     EXPECT_EQ(countAntsEntries(readSettings(tmp.path())), 1);
 }
 
+// ANTS-5104 — an install that changes nothing does not rewrite settings.json.
+// The merged file is re-saved compactly; a rewrite would re-indent it, so the
+// check needs no file timestamps.
+TEST(McpOrientation_Inv3, NoOpInstallLeavesSettingsUntouched) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(MO::installAt(tmp.path()).ok);
+    const QString sp = settingsPathIn(tmp.path());
+    const QByteArray compact =
+        QJsonDocument(readSettings(tmp.path())).toJson(QJsonDocument::Compact);
+    ASSERT_TRUE(writeFileBytes(sp, compact));
+    ASSERT_TRUE(MO::installAt(tmp.path()).ok);
+    EXPECT_EQ(readFileBytes(sp), compact)
+        << "an install with nothing to change rewrote settings.json";
+}
+
 // ANTS-1901 — installAt must sweep ALL pre-existing marker-matching
 // entries (not just update the first one), then append a single
 // canonical entry. Mimics a settings.json that accumulated duplicates
@@ -471,6 +486,24 @@ TEST(McpOrientation_Inv13, BadJsonNoClobber) {
     EXPECT_FALSE(r.warning.isEmpty());
     // File still on disk + byte-identical to garbage.
     EXPECT_EQ(readFileBytes(sp), garbage);
+}
+
+// ANTS-5104 — valid JSON whose hooks value has the wrong type is refused the
+// same way: read as empty, it would be replaced and the user's value lost.
+TEST(McpOrientation_Inv13, WrongTypedHooksNoClobber) {
+    const QByteArray bodies[] = {
+        QByteArray(R"({"hooks":["not","an","object"]})"),
+        QByteArray(R"({"hooks":{"SessionStart":"not an array"}})"),
+    };
+    for (const QByteArray &body : bodies) {
+        QTemporaryDir tmp;
+        const QString sp = settingsPathIn(tmp.path());
+        ASSERT_TRUE(writeFileBytes(sp, body));
+        auto r = MO::installAt(tmp.path());
+        EXPECT_FALSE(r.ok) << body.constData();
+        EXPECT_FALSE(r.warning.isEmpty()) << body.constData();
+        EXPECT_EQ(readFileBytes(sp), body) << "overwrote " << body.constData();
+    }
 }
 
 // INV-6 / INV-7 / INV-14 — source-grep contracts.

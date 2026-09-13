@@ -70,6 +70,12 @@ for security-relevant changes.
 
 ### Fixed
 
+- **Ants no longer rewrites Claude Code's settings.json on every launch, and no longer replaces a hooks value it cannot read** (ANTS-5104)
+  When the Ants session hook is already in place, starting Ants now leaves
+  ~/.claude/settings.json untouched instead of rewriting it. A "hooks" value
+  that is not an object, or a "SessionStart" value that is not a list, is
+  now refused with a warning instead of being silently replaced.
+
 - **Calls to tool names that do not exist no longer grow the token usage counter, and each MCP call does less bookkeeping** (ANTS-5104)
   Every made-up tool name used to add its own permanent entry to the
   per-session token counter. They now share one "(unknown tool)" entry,
@@ -387,6 +393,11 @@ for security-relevant changes.
   work when it would.
 
 ### Security
+
+- **A large MCP answer saved to disk is discarded if Ants cannot make the file private** (ANTS-5104)
+  The saved copy holds the answer itself. If its permissions cannot be
+  set to owner-only, the file is removed and the answer is returned
+  directly instead.
 
 - **Resetting the terminal no longer lets a program get around the clipboard-write and user-variable limits** (ANTS-5122)
 
