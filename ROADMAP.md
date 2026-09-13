@@ -8017,6 +8017,15 @@ extends an existing item, that item carries it instead.
   and not listed in any target, so adding Q_OBJECT needs the headers added
   to a target's sources for AUTOMOC or the vtable is undefined.
   Not started: CreateSession timeout, the single request-path slot, tr().
+  Progress (2026-09-14): shipped both mediums and two lows.
+  - BindShortcuts reply: watched like CreateSession's; an error reply
+    drains, marks the portal failed and emits sessionFailed.
+  - isAvailable: also accepts a D-Bus activatable portal.
+  - Tab tooltip: ClaudeStatusBarController is the only writer;
+    ColoredTabBar::paintEvent no longer overwrites it, and the unused
+    glyphName helper was removed.
+  - sessionReady: now emitted after flushPending sends the binds.
+  Tests: portal_failure_paths, tab_tooltip_single_writer.
   **Layman:** Smaller window-chrome fixes, including a global hotkey that can silently fail to register.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lane chrome-widgets).
