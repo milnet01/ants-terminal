@@ -4,6 +4,7 @@
 #include <gtest/gtest.h>
 
 #include "claudeintegration.h"
+#include "../../_support/srcgrep.h"
 
 #include <QJsonObject>
 #include <QString>
@@ -25,6 +26,25 @@ QJsonObject argsB() {
 }
 
 }  // namespace
+
+// INV-2 (ANTS-5090) — the TTL is measured on a monotonic clock, so a
+// wall-clock step backward cannot keep an entry fresh. A clock step cannot
+// be staged from a test, so this is a source scrape.
+TEST(McpIdempotentReadCache, TtlUsesTheMonotonicClock) {
+    const std::string cpp = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string get = ants_test::slurpFunctionBody(
+        cpp, "QString ClaudeIntegration::tryGetIdempotentReadCache(");
+    const std::string put = ants_test::slurpFunctionBody(
+        cpp, "void ClaudeIntegration::maybeInsertIdempotentReadCache(");
+    ASSERT_FALSE(get.empty()) << "tryGetIdempotentReadCache definition not found";
+    ASSERT_FALSE(put.empty()) << "maybeInsertIdempotentReadCache definition not found";
+    EXPECT_NE(get.find("monotonicNowMs()"), std::string::npos)
+        << "the TTL check does not read the monotonic clock";
+    EXPECT_EQ(get.find("currentMSecsSinceEpoch"), std::string::npos)
+        << "the TTL check still reads the wall clock";
+    EXPECT_NE(put.find("IdempotentReadEntry{monotonicNowMs(),"), std::string::npos)
+        << "the cache stamp is not taken from the monotonic clock";
+}
 
 // INV-1 — hit returns the same response bytes put.
 TEST(McpIdempotentReadCache, HitWithinTtl) {

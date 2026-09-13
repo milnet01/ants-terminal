@@ -14,7 +14,9 @@ in isolation via the test-only seam (`tryGetIdempotentReadCacheForTest`,
 
 - **INV-1** Hit response is byte-identical to the put response (no
   transform).
-- **INV-2** TTL ≤ 100 ms wall-clock. Entries past 100 ms read as miss.
+- **INV-2** TTL ≤ 100 ms on a monotonic clock. Entries past 100 ms read as
+  miss. The TTL check and the stamp read `monotonicNowMs()`, locked by a
+  source scrape because a clock step cannot be staged (ANTS-5090).
 - **INV-3** Cache size ≤ 32 entries. Insert past cap evicts LRU.
 - **INV-4** Allowlist enforced at lookup AND insert; non-allowlisted
   tools never enter the cache.

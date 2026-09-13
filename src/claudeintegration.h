@@ -780,7 +780,7 @@ private:
     // Key: SHA256-hex16(toolName + '\0' + QJsonDocument(args).toJson(Compact)).
     // INVs in docs/specs/ANTS-1357.md.
     struct IdempotentReadEntry {
-        qint64  stampMs = 0;
+        qint64  stampMs = 0;   // monotonicNowMs() (ANTS-5090)
         QString response;
     };
     mutable QHash<QString, IdempotentReadEntry> m_idempotentReadCache;
@@ -811,7 +811,11 @@ private:
     // guard removes the slot on return; stale-slot reaper sweeps
     // entries older than aggregate-cap + 30 s on each tryAcquire
     // so a worker-death orphan can't permanently brick the slot.
-    mutable QHash<QPair<QString, QString>, qint64> m_verbInFlight;
+    struct InFlightSlot {
+        qint64 startedEpochMs = 0;  // reported as running_since_ms
+        qint64 startedMonoMs  = 0;  // ANTS-5090 — what the reaper compares
+    };
+    mutable QHash<QPair<QString, QString>, InFlightSlot> m_verbInFlight;
     mutable QMutex                                 m_verbInFlightMutex;
     // ANTS-3611 — DERIVED from the runner's aggregate cap, never hardcoded.
     // A run may legitimately occupy its slot for the whole aggregate cap;
@@ -843,6 +847,7 @@ public:
         QString     cachePath;     // r.cachePath on done, else r.sarifPath
         QString     code, error;   // set on error
         qint64      startedMs = 0;
+        qint64      startedMonoMs = 0;  // ANTS-5090 — reap and elapsed_ms clock
         int         totalRaw = 0, totalActionable = 0;
         bool        partial = false, noChanges = false;
         QStringList incompleteTools;

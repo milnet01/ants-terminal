@@ -115,6 +115,31 @@ TEST(mcp_audit_run, Inv9bReapWindowsDeriveFromAggregateCap) {
     EXPECT_EQ(0, expect_failures());
 }
 
+// INV-9c (ANTS-5090) — the reapers compare a monotonic clock. A wall-clock
+// step or a suspend otherwise reads as elapsed time and reaps a live slot,
+// letting two sweeps run on one project. A clock step cannot be staged from
+// a test, so this is a source scrape.
+TEST(mcp_audit_run, Inv9cReapersUseTheMonotonicClock) {
+    expect_reset();
+    const std::string cpp = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string acquire = ants_test::slurpFunctionBody(
+        cpp, "ClaudeIntegration::verbInFlightTryAcquire(");
+    const std::string reg = ants_test::slurpFunctionBody(
+        cpp, "ClaudeIntegration::auditJobRegister(");
+    const std::string poll = ants_test::slurpFunctionBody(
+        cpp, "ClaudeIntegration::auditJobPollEnvelope(");
+    expect(contains(acquire, "const qint64 now = monotonicNowMs();") &&
+               contains(acquire, "now - it.value().startedMonoMs > kVerbInFlightReapMs"),
+           "INV-9c: the in-flight reaper compares monotonic starts");
+    expect(contains(reg, "const qint64 now = monotonicNowMs();") &&
+               contains(reg, "now - it.value().startedMonoMs > kAuditJobReapMs") &&
+               !contains(reg, "currentMSecsSinceEpoch"),
+           "INV-9c: the audit-job reaper compares monotonic starts");
+    expect(contains(poll, "monotonicNowMs() - j.startedMonoMs"),
+           "INV-9c: a running job's elapsed_ms is monotonic");
+    EXPECT_EQ(0, expect_failures());
+}
+
 // INV-10 — env allowlist/blocklist + tool resolve cache.
 TEST(mcp_audit_run, Inv10EnvScrubToolResolve) {
     expect_reset();

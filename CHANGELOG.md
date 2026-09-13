@@ -70,6 +70,13 @@ for security-relevant changes.
 
 ### Fixed
 
+- **Suspending the computer or changing its clock no longer lets two audits run on one project** (ANTS-5090)
+  The short read cache, the "already running" guard for audit_run and
+  indie_review_dispatch, and the async audit job list now measure elapsed
+  time on a monotonic clock. A clock step backward could keep a cached read
+  fresh, and a suspend could free a guard slot while its sweep was still
+  running.
+
 - **A "too busy, retry shortly" answer is no longer remembered and repeated for a cached MCP verb** (ANTS-5090)
   When the dispatch queue was full, the refusal for a cached read verb
   was stored in the short-lived read cache, so the next call got the

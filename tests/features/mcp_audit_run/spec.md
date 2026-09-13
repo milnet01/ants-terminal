@@ -20,6 +20,10 @@ in v2 (roadmap follow-up).
   SIGKILL grace.
 - **INV-9 / Inline in-flight gate.** `verbInFlightTryAcquire` /
   `verbInFlightRelease` on ClaudeIntegration.
+- **INV-9c / Reapers compare a monotonic clock (ANTS-5090).**
+  `verbInFlightTryAcquire` and `auditJobRegister` reap on `startedMonoMs`
+  against `monotonicNowMs()`, and a running job's `elapsed_ms` uses the same
+  clock. Source scrape: a wall-clock step cannot be staged from a test.
 - **INV-9b / Reap windows track the aggregate cap (ANTS-3611).**
   `kVerbInFlightReapMs` is `AuditRunner::kAggregateCapMs + 30'000` and
   `kAuditJobReapMs` is an alias of it — never a hardcoded literal. Before

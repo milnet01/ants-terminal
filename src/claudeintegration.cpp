@@ -38,6 +38,10 @@
 // the synthetic-nowMs parameter so this clock is never read during
 // pure-function tests.
 static QElapsedTimer s_rateLimitClock;
+// ANTS-5090 — the same monotonic clock for the read-cache TTL and the
+// in-flight and audit-job reapers, so a suspend or a wall-clock step can
+// neither reap a live slot nor serve a stale read.
+static qint64 monotonicNowMs() { return s_rateLimitClock.elapsed(); }
 #include <unistd.h>
 
 // ANTS-1415 — the CallerCwdContract::TabSpecific tools whose handler
@@ -15996,10 +16000,10 @@ QString ClaudeIntegration::wrapMcpDataRaw(const QString &toolName,
 qint64 ClaudeIntegration::verbInFlightTryAcquire(
         const QString &verb, const QString &projectRoot) {
     QMutexLocker lk(&m_verbInFlightMutex);
-    const qint64 now = QDateTime::currentMSecsSinceEpoch();
+    const qint64 now = monotonicNowMs();
     // Stale-slot reap: drop any entries older than the reap window.
     for (auto it = m_verbInFlight.begin(); it != m_verbInFlight.end(); ) {
-        if (now - it.value() > kVerbInFlightReapMs) {
+        if (now - it.value().startedMonoMs > kVerbInFlightReapMs) {
             it = m_verbInFlight.erase(it);
         } else {
             ++it;
@@ -16007,8 +16011,10 @@ qint64 ClaudeIntegration::verbInFlightTryAcquire(
     }
     const auto key = qMakePair(verb, projectRoot);
     auto it = m_verbInFlight.find(key);
-    if (it != m_verbInFlight.end()) return it.value();  // already running
-    m_verbInFlight.insert(key, now);
+    if (it != m_verbInFlight.end())
+        return it.value().startedEpochMs;  // already running
+    m_verbInFlight.insert(
+        key, InFlightSlot{QDateTime::currentMSecsSinceEpoch(), now});
     return -1;
 }
 
@@ -16023,12 +16029,12 @@ void ClaudeIntegration::verbInFlightRelease(
 QString ClaudeIntegration::auditJobRegister(
         const QString &root, qint64 startedMs) {
     QMutexLocker lk(&m_auditJobsMutex);
-    const qint64 now = QDateTime::currentMSecsSinceEpoch();
+    const qint64 now = monotonicNowMs();
     // (1) Reap entries older than the reap window (same as the in-flight
     // gate). A stale running entry ages out too — its result stays durable
     // on disk and the poll then reads `expired`.
     for (auto it = m_auditJobs.begin(); it != m_auditJobs.end(); ) {
-        if (now - it.value().startedMs > kAuditJobReapMs)
+        if (now - it.value().startedMonoMs > kAuditJobReapMs)
             it = m_auditJobs.erase(it);
         else
             ++it;
@@ -16060,6 +16066,7 @@ QString ClaudeIntegration::auditJobRegister(
     j.status    = QStringLiteral("running");
     j.root      = root;
     j.startedMs = startedMs;
+    j.startedMonoMs = now;
     m_auditJobs.insert(jobId, j);
     return jobId;
 }
@@ -16073,6 +16080,7 @@ void ClaudeIntegration::auditJobComplete(
     // Overlay the terminal fields; keep the original start time + root.
     AuditJob j     = result;
     j.startedMs    = it.value().startedMs;
+    j.startedMonoMs = it.value().startedMonoMs;
     j.root         = it.value().root;
     it.value()     = j;
 }
@@ -16100,7 +16108,7 @@ QJsonObject ClaudeIntegration::auditJobPollEnvelope(
     if (j.status == QLatin1String("running")) {
         env["started_at_ms"] = j.startedMs;
         env["elapsed_ms"]    =
-            QDateTime::currentMSecsSinceEpoch() - j.startedMs;
+            monotonicNowMs() - j.startedMonoMs;
     } else if (j.status == QLatin1String("error")) {
         // Branch on `status`, not `ok` — the poll itself succeeded.
         // `code` is job-scoped; omit when runAudit left it empty (error
@@ -16543,7 +16551,7 @@ QString ClaudeIntegration::tryGetIdempotentReadCache(
     const QString key = idempotentReadCacheKey(toolName, args);
     auto it = m_idempotentReadCache.find(key);
     if (it == m_idempotentReadCache.end()) return QString();
-    const qint64 nowMs = QDateTime::currentMSecsSinceEpoch();
+    const qint64 nowMs = monotonicNowMs();
     if (nowMs - it->stampMs > kIdempotentReadTtlMs) {
         // INV-2 — entries past TTL are treated as miss (the next
         // insert will overwrite).
@@ -16566,7 +16574,7 @@ void ClaudeIntegration::maybeInsertIdempotentReadCache(
     if (response == QString::fromUtf8(kMcpRcUnavailable)) return;
     const QString key = idempotentReadCacheKey(toolName, args);
     m_idempotentReadCache.insert(key,
-        IdempotentReadEntry{QDateTime::currentMSecsSinceEpoch(), response});
+        IdempotentReadEntry{monotonicNowMs(), response});
     m_idempotentReadLru.removeOne(key);
     m_idempotentReadLru.prepend(key);
     while (m_idempotentReadLru.size() > kIdempotentReadCacheCap) {
