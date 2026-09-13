@@ -1482,7 +1482,8 @@ void TerminalGrid::handleOsc(const std::string &payload, bool truncated) {
             if (!m_promptRegions.empty()) {
                 m_promptRegions.back().commandEndMs = endMs;
                 qint64 startMs = m_promptRegions.back().commandStartMs;
-                if (startMs > 0) durationMs = endMs - startMs;
+                // ANTS-5077 — wall-clock stamps; clamp a backwards clock step.
+                if (startMs > 0) durationMs = qMax<qint64>(0, endMs - startMs);
             }
             if (!exitCodeStr.empty()) {
                 try {

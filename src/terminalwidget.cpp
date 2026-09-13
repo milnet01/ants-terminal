@@ -869,7 +869,14 @@ void TerminalWidget::paintEvent(QPaintEvent *event) {
     // Background image (rendered behind all content)
     if (!m_backgroundImage.isNull()) {
         p.setOpacity(0.15); // subtle background
-        p.drawImage(rect(), m_backgroundImage);
+        // ANTS-5077 — the image was pre-scaled to cover the widget with its
+        // aspect kept (setBackgroundImage); draw its centred widget-sized
+        // part instead of stretching the whole image back onto rect().
+        const QRect bgSrc(QPoint((m_backgroundImage.width() - width()) / 2,
+                                 (m_backgroundImage.height() - height()) / 2),
+                          size());
+        p.drawImage(rect(), m_backgroundImage,
+                    bgSrc.intersected(m_backgroundImage.rect()));
         p.setOpacity(1.0);
     }
 
@@ -944,11 +951,15 @@ void TerminalWidget::paintEvent(QPaintEvent *event) {
         // URL spans — use cache to avoid per-frame regex matching
         const auto &urlSpans = urlSpansForLine(globalLine);
 
-        // Highlight spans — use cache to avoid per-frame regex matching
-        auto hlCacheIt = m_hlSpanCache.find(globalLine);
-        if (hlCacheIt == m_hlSpanCache.end()) {
-            std::vector<PaintHighlightSpan> computed;
-            if (!m_highlightRules.empty()) {
+        // Highlight spans — use cache to avoid per-frame regex matching.
+        // ANTS-5077 — with no rules there is nothing to match, so no cache
+        // entry is made for the line.
+        static const std::vector<PaintHighlightSpan> kNoHighlightSpans;
+        const std::vector<PaintHighlightSpan> *hlSpansPtr = &kNoHighlightSpans;
+        if (!m_highlightRules.empty()) {
+            auto hlCacheIt = m_hlSpanCache.find(globalLine);
+            if (hlCacheIt == m_hlSpanCache.end()) {
+                std::vector<PaintHighlightSpan> computed;
                 QString lt = lineText(globalLine);
                 for (const auto &rule : m_highlightRules) {
                     auto it = rule.pattern.globalMatch(lt);
@@ -959,10 +970,11 @@ void TerminalWidget::paintEvent(QPaintEvent *event) {
                                             rule.fg, rule.bg});
                     }
                 }
+                hlCacheIt = m_hlSpanCache.emplace(globalLine, std::move(computed)).first;
             }
-            hlCacheIt = m_hlSpanCache.emplace(globalLine, std::move(computed)).first;
+            hlSpansPtr = &hlCacheIt->second;
         }
-        const auto &hlSpans = hlCacheIt->second;
+        const auto &hlSpans = *hlSpansPtr;
 
         // ANTS-3457 — precompute this row's search-match spans once instead
         // of a per-cell std::lower_bound (isCellSearchMatch was probed for
@@ -1367,7 +1379,9 @@ void TerminalWidget::paintEvent(QPaintEvent *event) {
 
                 QString info;
                 if (pr.commandEndMs > 0) {
-                    qint64 durationMs = pr.commandEndMs - pr.commandStartMs;
+                    // ANTS-5077 — wall-clock stamps; a backwards clock step
+                    // must not show a negative duration.
+                    qint64 durationMs = qMax<qint64>(0, pr.commandEndMs - pr.commandStartMs);
                     if (durationMs < 1000)
                         info = QString("%1ms").arg(durationMs);
                     else if (durationMs < 60000)
@@ -1684,7 +1698,7 @@ void TerminalWidget::paintEvent(QPaintEvent *event) {
 
                 // Duration (right side)
                 if (pr.commandStartMs > 0 && pr.commandEndMs > 0) {
-                    qint64 dur = pr.commandEndMs - pr.commandStartMs;
+                    qint64 dur = qMax<qint64>(0, pr.commandEndMs - pr.commandStartMs);  // ANTS-5077
                     QString durStr;
                     if (dur < 1000) durStr = QString("%1ms").arg(dur);
                     else if (dur < 60000) durStr = QString("%1s").arg(dur / 1000.0, 0, 'f', 1);
@@ -1820,9 +1834,13 @@ void TerminalWidget::keyPressEvent(QKeyEvent *event) {
     // composerEmpty proxy (lastUserKeystrokeMs < shellState.idleSinceMs)
     // sees the freshest signal possible.
     m_lastUserKeystrokeMs = QDateTime::currentMSecsSinceEpoch();
-    ANTS_LOG(DebugLog::Input, "key press: key=0x%x mods=0x%x text=%s",
-             event->key(), int(event->modifiers()),
-             event->text().toUtf8().toPercentEncoding().constData());
+    // ANTS-5077 — never log what was typed: this is the path a password
+    // takes. A key that produces text is logged without its key code too,
+    // since key plus Shift would spell it out.
+    ANTS_LOG(DebugLog::Input, "key press: key=0x%x mods=0x%x text_len=%lld",
+             event->text().isEmpty() ? event->key() : 0,
+             int(event->modifiers()),
+             static_cast<long long>(event->text().size()));
     // URL quick-select mode input handling
     if (m_urlQuickSelectActive) {
         if (event->key() == Qt::Key_Escape) {

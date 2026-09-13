@@ -42,6 +42,27 @@ the invariants are source-scrape assertions against
   that reintroduces the per-cell `isCellSearchMatch(globalLine, col)`
   probe (O(cols·log matches) per frame) reverts the fix.
 
+- **INV-5 / paint honours the damage rect** (ANTS-3454). `paintEvent` reads
+  `event->rect()` and starts its row loop at the first damaged row.
+
+- **INV-6 / the suggestion scan does not detach history** (ANTS-4780).
+  `updateSuggestion` iterates `std::as_const(m_historyEntries)`.
+
+- **INV-7 / no highlight cache without rules** (ANTS-5077). In `paintEvent`
+  the `if (!m_highlightRules.empty())` guard precedes `m_hlSpanCache.find(`,
+  so a session with no rules adds no cache entry per painted line.
+
+- **INV-8 / background drawn, not stretched** (ANTS-5077). The pre-scaled
+  background image is drawn through a source rect
+  (`p.drawImage(rect(), m_backgroundImage, …)`), not stretched onto `rect()`.
+
+- **INV-9 / key log records no typed text** (ANTS-5077). `keyPressEvent`'s
+  debug log records the text's length, not the text (`text=%s` is gone).
+
+- **INV-10 / durations never negative** (ANTS-5077). No command duration is
+  computed as a bare `pr.commandEndMs - pr.commandStartMs`; both display sites
+  clamp at zero.
+
 ## Test scope
 
 Source-scrape against `src/terminalwidget.cpp` via `SRC_TERMINALWIDGET_PATH`.

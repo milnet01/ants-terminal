@@ -136,3 +136,47 @@ TEST(TerminalWidgetHotPathPerf, Inv6SuggestionScanDoesNotDetachHistory) {
     EXPECT_FALSE(body.contains(QStringLiteral(": m_historyEntries)")))
         << "updateSuggestion still range-fors the member directly";
 }
+
+// INV-7 (ANTS-5077) — paintEvent touches the highlight span cache only when
+// highlight rules exist.
+TEST(TerminalWidgetHotPathPerf, Inv7NoHighlightCacheWithoutRules) {
+    const QString body = functionBody(
+        tw(), QStringLiteral("void TerminalWidget::paintEvent("));
+    ASSERT_FALSE(body.isEmpty()) << "paintEvent not found";
+    const int guard = body.indexOf(QStringLiteral("if (!m_highlightRules.empty())"));
+    const int find = body.indexOf(QStringLiteral("m_hlSpanCache.find("));
+    ASSERT_GE(guard, 0) << "highlight-rules guard missing";
+    ASSERT_GE(find, 0) << "highlight span cache lookup missing";
+    EXPECT_LT(guard, find)
+        << "paintEvent looks up (and fills) the highlight cache before checking "
+           "for rules, adding an entry per painted line with no rules";
+}
+
+// INV-8 (ANTS-5077) — the pre-scaled background is drawn through a source
+// rect, not stretched onto the widget.
+TEST(TerminalWidgetHotPathPerf, Inv8BackgroundNotStretched) {
+    const QString body = functionBody(
+        tw(), QStringLiteral("void TerminalWidget::paintEvent("));
+    ASSERT_FALSE(body.isEmpty()) << "paintEvent not found";
+    EXPECT_FALSE(body.contains(QStringLiteral("p.drawImage(rect(), m_backgroundImage);")))
+        << "the background image is stretched onto rect() every paint";
+    EXPECT_TRUE(body.contains(QStringLiteral("p.drawImage(rect(), m_backgroundImage,")));
+}
+
+// INV-9 (ANTS-5077) — the key-press debug log records no typed text.
+TEST(TerminalWidgetHotPathPerf, Inv9KeyLogRecordsNoText) {
+    const QString body = functionBody(
+        tw(), QStringLiteral("void TerminalWidget::keyPressEvent("));
+    ASSERT_FALSE(body.isEmpty()) << "keyPressEvent not found";
+    EXPECT_FALSE(body.contains(QStringLiteral("text=%s")))
+        << "the key-press log still records the typed text";
+    EXPECT_TRUE(body.contains(QStringLiteral("text_len=")));
+}
+
+// INV-10 (ANTS-5077) — displayed command durations are clamped at zero.
+TEST(TerminalWidgetHotPathPerf, Inv10DurationNeverNegative) {
+    const QString src = tw();
+    ASSERT_FALSE(src.isEmpty());
+    EXPECT_FALSE(src.contains(QStringLiteral("= pr.commandEndMs - pr.commandStartMs;")))
+        << "a command duration is computed from wall-clock stamps unclamped";
+}

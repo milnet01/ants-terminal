@@ -70,6 +70,12 @@ for security-relevant changes.
 
 ### Fixed
 
+- **A background image keeps its shape instead of being stretched to fit the window** (ANTS-5077)
+
+- **A command's duration never shows as negative when the system clock steps backwards** (ANTS-5077)
+
+- **Drawing the terminal no longer builds a highlight cache entry for every line when no highlight rules are set** (ANTS-5077)
+
 - **In broadcast mode, Ctrl key combinations and accepted suggestions now reach every pane** (ANTS-5077)
   Ctrl+C, Ctrl+arrows and accepting an autocomplete suggestion went only
   to the focused pane, and did not clear a highlighted selection.
@@ -470,6 +476,8 @@ for security-relevant changes.
   work when it would.
 
 ### Security
+
+- **The optional key-press debug log no longer records what you type, so passwords typed at a prompt stay out of it** (ANTS-5077)
 
 - **A remote-control command name can no longer add fake lines to the debug log** (ANTS-5093)
   The remote-control socket wrote the command name it received straight
