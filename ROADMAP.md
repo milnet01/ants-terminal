@@ -7830,6 +7830,12 @@ extends an existing item, that item carries it instead.
   (detaching instead changes the teardown path ANTS-1189 hardened, so it
   needs its own change); clipboard image encode still runs on the GUI
   thread; ShapedRunCache still caps entries, not bytes.
+  Progress (2026-09-14): shipped the negative-duration low (both display
+  sites and the grid clamp at zero), the background-stretch low (drawn
+  through a centred source rect), the input-logging low (the key-press
+  log records the text's length, and no key code for keys that produce
+  text) and the highlight-cache low (no cache entry without rules).
+  Tests: terminalwidget_hotpath_perf INV-7 to INV-10.
   **Layman:** Smaller fixes to drawing and typing in the terminal, including a screenshot-paste freeze.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lane terminal-widget-a).
