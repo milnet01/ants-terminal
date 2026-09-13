@@ -8589,6 +8589,15 @@ extends an existing item, that item carries it instead.
   project-wide). STILL OPEN here: offload head ladder, roadmap_query regex
   per bullet, settings.json rewrite and wrong-typed hooks, sk- key forms,
   and the eviction decision above.
+  Progress (2026-09-13, 68e1186c): mergeSettings no longer rewrites
+  settings.json when the merge changes nothing, and refuses a hooks value
+  that is not an object or a SessionStart that is not an array. A
+  cooperative lock is not built: Claude Code writes the same file and takes
+  none. offloadBody removes a spill it cannot make owner-only and returns
+  the body inline. STILL OPEN: sk- key forms (in progress), roadmap_query
+  regex compiled per bullet (in progress; Qt exposes no PCRE2 match limit,
+  so only the per-bullet compile can be fixed), offload head ladder, and
+  the eviction decision above.
   **Layman:** Smaller fixes to how Ants packages big answers for Claude, including paging that can corrupt text.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lane mcp-infra).
