@@ -8170,6 +8170,18 @@ extends an existing item, that item carries it instead.
   newline-terminated request per connection and answers invalid JSON from
   the client with -32700 itself, so only a direct socket client reaches the
   silent 5 s abort. Needs a decision on framing before building.
+  Progress (2026-09-14, e59c7c4a): pollClaudeProcess resolves the
+  transcript from Claude's own /proc/<pid>/cwd first and the shell's as the
+  fallback, the order ClaudeTabTracker already used, so a Claude started
+  from a subshell after a cd finds its transcript.
+  NEEDS A DECISION, not built: the status freeze when the last record
+  passes 4 MiB. parseTranscriptTail's ANTS-1169 fallback keeps the last
+  complete record in the window, but a record larger than the window has no
+  newline in it, so the fallback hands the parser a fragment from the
+  middle of that record, nothing parses and no event is returned. Recovering
+  means scanning back past 4 MiB to the record's start, or classifying the
+  record from a partial JSON prefix; both change what the tail parser
+  promises.
   **Layman:** Smaller Claude-integration fixes: slow process scans, a slow transcript window and dropped long messages.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lane claude-integration-a).
