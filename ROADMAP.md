@@ -9290,6 +9290,15 @@ extends an existing item, that item carries it instead.
   and SHA-256 4 ms. Write + fsync + rename 2-7 ms. Moving compress, hash
   and write to a worker takes about half the stall off the GUI thread.
   The other half is the stream walk itself, worth its own look.
+  Design facts (2026-09-13), read from source before choosing a shape:
+  MainWindow::saveAllSessions is the only caller of
+  SessionManager::saveSession, from the periodic session-save timer and,
+  forced, from MainWindow::closeEvent, which has to stay synchronous.
+  serialize()'s file-cap retry loop calls serializeStream again, and
+  serializeStream reads the live grid, so compression cannot simply move
+  to a worker: a blob that overshoots needs the grid again. Decide that
+  case before building; it is concurrency on durability-critical code,
+  which is spec territory.
   **Layman:** Saving a tab that has changed still happens on the main window's thread, so a very large scrollback can still pause the window.
   Kind: perf.
   Source: in-session-2026-09-12 (ANTS-5030 remainder).
@@ -18363,7 +18372,7 @@ indie-review finding.
   Source: in-session-2026-09-13 (ANTS-2132 amendment gate, loop 2 lane 1).
   Lanes: mcp, threading.
 
-- 📋 [ANTS-5143] **bench_drift_lanes fails to link in the ASan tree, so a full build-asan build stops.**
+- ✅ [ANTS-5143] **bench_drift_lanes fails to link in the ASan tree, so a full build-asan build stops.**
   Measured 2026-09-13: `cmake --build build-asan` stops at "Linking CXX
   executable bench_drift_lanes" with mold undefined symbols, among them
   MainWindow::tabCount, TerminalWidget::shellCwd and typeinfo for
@@ -18406,6 +18415,11 @@ indie-review finding.
   when ANTS_SANITIZERS is on. Verify with one full build-asan build,
   then clear build-asan/.ants-prepush-interrupted so the pre-push ASan
   leg runs again.
+  Resolved (2026-09-13): the benchmark block in CMakeLists.txt is inside
+  if(NOT ANTS_SANITIZERS), as the user decided (commit 31c6e311).
+  Verified: a full `cmake --build build-asan` completed and `ctest
+  --preset=debug` passed; build-asan/.ants-prepush-interrupted removed,
+  so the pre-push ASan leg runs again.
   **Layman:** A speed-test program added last week breaks the memory-checking build, which blocks one of the safety checks that runs before code is pushed.
   Kind: fix.
   Source: in-session-2026-09-13 (ASan tree verification for the pre-push marker).

@@ -70,6 +70,11 @@ for security-relevant changes.
 
 ### Fixed
 
+- **The sanitizer build builds again** (ANTS-5143)
+  The perf benchmarks are no longer built when ANTS_SANITIZERS is on, so a
+  full build-asan build and its test suite complete, and the pre-push
+  hook's ASan leg runs again.
+
 - **changelog_query returns every entry for an id lookup** (ANTS-5147)
   An `id` or `ids` lookup now ignores `offset` and `limit`, as its
   design and roadmap_query do, so `offset:10` no longer returns an empty
