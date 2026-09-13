@@ -7489,7 +7489,7 @@ extends an existing item, that item carries it instead.
   Source: code-quality-review-2026-09-11 perf pass (lane plugins-lua).
   Lanes: lua.
 
-- 📋 [ANTS-5071] **changelog_query drops every entry under a dated topic heading, so dated-layout changelogs read as missing entries.**
+- ✅ [ANTS-5071] **changelog_query drops every entry under a dated topic heading, so dated-layout changelogs read as missing entries.**
   changelog_log's add_subsection writes dated topic headings, a ###
   heading that starts with a date and a category, and
   ChangelogQuery::parse treats each as a non-canonical category and
@@ -7509,6 +7509,11 @@ extends an existing item, that item carries it instead.
   Amend ANTS-3533 section 3 so a dated topic heading sets its category,
   gate that through review-contract, then change ChangelogQuery::parse
   to match. Warning without amending is not taken.
+  Resolved (2026-09-13): ANTS-3533 § 3 amended (INV-10) and gated by
+  review-contract (2 loops, cap). ChangelogQuery::parse now takes a
+  dated topic heading's category from the word after a date QDate parses
+  (categoryForHeading). Commit b5beeb3f; INV-10 tests proven red; full
+  suite green.
   **Layman:** The changelog search tool can't see entries written in the newer dated style.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lane changelog-feedback).
