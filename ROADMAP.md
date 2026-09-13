@@ -8208,6 +8208,11 @@ extends an existing item, that item carries it instead.
   - The tools/list reply is rebuilt from scratch on every request; its
     size and GUI-thread time have never been measured, so measure once
     before deciding anything.
+  Progress (2026-09-14): the description-budget finding is wider than
+  the two tools named here, so it is filed on its own as ANTS-5152: about
+  half of the registered tools exceed 800 B, and ANTS-2079 INV-5 measures
+  only seven. That item carries the medium finding; the low findings stay
+  here.
   **Layman:** Two of Ants' tool descriptions break their size limit, which costs every Claude session tokens.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lane claude-integration-schema).
@@ -8266,6 +8271,12 @@ extends an existing item, that item carries it instead.
   - remotecontrol.h's protocol comment and socket path are stale.
   - The parented QLocalServer is deleted manually, against qt.md.
   - RcGate::checkCallerCwd lacks [[nodiscard]].
+  Progress (2026-09-14): the medium finding is closed by ANTS-5144
+  (1c05a195). The hook, MCP and remote-control servers all bind through
+  ants::LocalSocketHub::acquire, which runs a connect probe before
+  removeServer and returns nullptr for a live socket, so a second instance
+  no longer takes over the first one's socket. Locked by
+  tests/features/shared_socket_listener. STILL OPEN: the low findings.
   **Layman:** Starting a second Ants can silently take over the first one's control socket.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lane mcp-transport).
@@ -9626,6 +9637,26 @@ extends an existing item, that item carries it instead.
   Kind: security.
   Source: in-session-2026-09-13 split from ANTS-5104.
   Lanes: security.
+
+- 📋 [ANTS-5152] **About half of the MCP tool descriptions exceed the 800-byte wire budget, and the budget test measures only seven tools.**
+  Found while checking ANTS-5091, which named two tools; the problem is
+  much wider. A scan of src/claudeintegration.cpp using the same
+  short-description walk as tests/features/mcp_tool_detail_field put 47 of
+  95 descriptors over 776 B before the runtime kind prefix (largest:
+  spec_lint, roadmap_migrate, feedback_query, project_settings,
+  apply_edits). The live tool_info reply for spec_lint confirms the scan:
+  its description alone is several kilobytes. docs/standards/mcp-tools.md
+  sets 800 B, and ANTS-2079 INV-5 checks only its seven in-scope tools, so
+  none of the rest can fail a test.
+  Every Claude session loads these descriptions with tools/list, so the
+  cost is paid per session.
+  Fix direction: move each over-budget description's provenance and
+  per-op prose into its `detail` field, then widen INV-5 to every
+  registered tool, measured after the runtime kind prefix and Etag tip.
+  **Layman:** Many of Ants' tool descriptions are far longer than their limit, and every Claude session pays for that in tokens.
+  Kind: perf.
+  Source: in-session-2026-09-14 while checking ANTS-5091.
+  Lanes: mcp.
 
 ## Memory-efficiency sweep (user request 2026-08-19)
 
