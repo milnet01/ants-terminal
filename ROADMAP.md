@@ -7780,6 +7780,10 @@ extends an existing item, that item carries it instead.
   Still open: scroll-pause comment, debug log flush and size cap (next),
   bottom-row wrapped link span, and the prompt-region and wcwidth lows that
   point at ANTS-5029 and ANTS-3792.
+  Progress (2026-09-14, d83a8baa): the debug-log low (DBGLOG no longer
+  flushes per line and stops writing past a size cap) and the scroll-pause
+  comment low (terminalgrid.h now says paused lines are still pushed, with
+  only the post-clear doubling guard switched off) are fixed.
   **Layman:** Smaller terminal-display fixes: clickable links that pile up, a slow image format and a word-wrapping bug.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lane terminal-grid).
@@ -7815,6 +7819,17 @@ extends an existing item, that item carries it instead.
   - Input logging records keystroke text, including passwords.
   - hasPty() is true after a failed start.
   - A backwards clock step shows a negative command duration.
+  Progress (2026-09-14): shipped the key-path medium (sendKeyData used by
+  every key path in keyPressEvent), the pasted-image shellQuote medium
+  (with owner-only permissions and imagePasted only after a good save),
+  and the hasPty-after-failed-start low. Tests:
+  terminalwidget_input_contracts, image_paste_uri_list INV-7.
+  Next, prepared: the negative-duration, background-stretch, input-logging
+  and highlight-cache lows.
+  Not started: tab close still waits 2 s then calls QThread::terminate()
+  (detaching instead changes the teardown path ANTS-1189 hardened, so it
+  needs its own change); clipboard image encode still runs on the GUI
+  thread; ShapedRunCache still caps entries, not bytes.
   **Layman:** Smaller fixes to drawing and typing in the terminal, including a screenshot-paste freeze.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lane terminal-widget-a).
