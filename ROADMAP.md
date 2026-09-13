@@ -9587,6 +9587,22 @@ extends an existing item, that item carries it instead.
   Source: in-session-2026-09-13 split from ANTS-5072.
   Lanes: mcp.
 
+- 📋 [ANTS-5151] **Most setOwnerOnlyPerms calls discard its result, so a file meant to be owner-only can stay readable with no signal.**
+  Split out of ANTS-5104, whose finding named the MCP spill and
+  settings writers. A search for calls made as a bare statement finds the
+  same pattern across config, session, audit, cache, roadmap store, debug
+  log and hook-install writers. The terminal session log and recording
+  already check the result and warn.
+  Each site needs a choice: warn, fail the write, or accept because the
+  directory is already private. A spill or cache file holding response or
+  project content is the case to fail on.
+  Fix direction: decide the policy once in src/secureio.h, then apply it
+  per site; an audit rule can flag a new discarded call.
+  **Layman:** Ants tries to make its private files readable only by you, but in most places it never checks whether that worked.
+  Kind: security.
+  Source: in-session-2026-09-13 split from ANTS-5104.
+  Lanes: security.
+
 ## Memory-efficiency sweep (user request 2026-08-19)
 
 The speed sweeps above ask how fast Ants is. This one asks how much it costs to
