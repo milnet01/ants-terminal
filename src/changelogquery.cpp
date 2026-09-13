@@ -146,6 +146,18 @@ QString categoryForHeading(const QString &cat) {
     return QString();
 }
 
+// ANTS-5145 — a dated topic's headline: the heading after its date and category
+// word, with a single leading `—` or `-` and the whitespace around it stripped.
+QString topicHeadline(const QString &cat) {
+    QString rest = cat.mid(10).trimmed();
+    int wordEnd = 0;
+    while (wordEnd < rest.size() && !rest.at(wordEnd).isSpace()) ++wordEnd;
+    rest = rest.mid(wordEnd).trimmed();
+    if (rest.startsWith(QChar(0x2014)) || rest.startsWith(QLatin1Char('-')))
+        rest = rest.mid(1).trimmed();
+    return rest;
+}
+
 }  // namespace
 
 ParseResult parse(const QString &markdown, const QString &idPrefix) {
@@ -163,6 +175,7 @@ ParseResult parse(const QString &markdown, const QString &idPrefix) {
     int curVersionIdx = -1;
 
     bool building = false;
+    bool topic = false;  // ANTS-5145 — the entry being built is a dated topic
     Entry curEntry;
     QStringList curBody;
 
@@ -171,6 +184,17 @@ ParseResult parse(const QString &markdown, const QString &idPrefix) {
         // Trim trailing blank continuation lines.
         while (!curBody.isEmpty() && curBody.last().trimmed().isEmpty())
             curBody.removeLast();
+        if (topic) {
+            // ANTS-5145 — a topic's prose also drops its leading blank lines,
+            // and a topic with neither a headline nor prose makes no entry.
+            while (!curBody.isEmpty() && curBody.first().trimmed().isEmpty())
+                curBody.removeFirst();
+            topic = false;
+            if (curEntry.text.isEmpty() && curBody.isEmpty()) {
+                building = false;
+                return;
+            }
+        }
         curEntry.body = curBody.join(QLatin1Char('\n'));
         curEntry.ids = extractIds(curEntry.text + QLatin1Char('\n') + curEntry.body,
                                   idPrefix);
@@ -233,6 +257,20 @@ ParseResult parse(const QString &markdown, const QString &idPrefix) {
         if (parseCategoryHeading(line, cat)) {
             finalizeEntry();
             curCategory = categoryForHeading(cat);
+            // ANTS-5145 — a dated topic heading that sets a category is an
+            // entry of its own, ahead of its bullets. A canonical `### Fixed`
+            // returns its own text, so it is not a topic.
+            if (haveVersion && !curCategory.isEmpty() && curCategory != cat) {
+                curEntry = Entry{};
+                curEntry.version = curVersion;
+                curEntry.date = curDate;
+                curEntry.unreleased = curUnreleased;
+                curEntry.category = curCategory;
+                curEntry.text = topicHeadline(cat);
+                building = true;
+                topic = true;
+                curBody.clear();
+            }
             continue;
         }
 
@@ -255,7 +293,9 @@ ParseResult parse(const QString &markdown, const QString &idPrefix) {
 
         // --- continuation / stray ---
         if (building) {
-            if (isContinuation(line)) {
+            // ANTS-5145 — a topic's prose is flush-left, so every line up to
+            // the next bullet or heading is its body.
+            if (topic || isContinuation(line)) {
                 curBody.append(deindent(line));
             } else {
                 finalizeEntry();  // non-indented, non-structural line ends the entry

@@ -37,6 +37,13 @@ const Entry *findEntry(const ParseResult &r, const char *needle) {
     return nullptr;
 }
 
+// Find the first entry whose ids hold `id`.
+const Entry *findEntryWithId(const ParseResult &r, const char *id) {
+    for (const Entry &e : r.entries)
+        if (e.ids.contains(QLatin1String(id))) return &e;
+    return nullptr;
+}
+
 }  // namespace
 
 // ANTS-4404 — CommonMark fence rules, adopted from MarkdownScan. Each case
@@ -258,14 +265,60 @@ TEST(ChangelogQueryParse, Inv10DatedTopicHeadingSetsItsCategory) {
         "### 2026-09-13 Fixed \xE2\x80\x94 A topic\n\n"
         "- **Dated bullet.** (ANTS-5001)\n");
     const ParseResult r = ChangelogQuery::parse(md, kPrefix);
-    ASSERT_EQ(r.entries.size(), 1)
+    const Entry *bullet = findEntryWithId(r, "ANTS-5001");
+    ASSERT_NE(bullet, nullptr)
         << "INV-10: a bullet under a dated topic heading must be an entry.";
-    EXPECT_EQ(r.entries[0].category, QStringLiteral("Fixed"));
-    EXPECT_TRUE(r.entries[0].ids.contains(QStringLiteral("ANTS-5001")));
+    EXPECT_EQ(bullet->category, QStringLiteral("Fixed"));
     ASSERT_EQ(r.versions.size(), 1);
     ASSERT_EQ(r.versions[0].categories.size(), 1);
     EXPECT_EQ(r.versions[0].categories[0].first, QStringLiteral("Fixed"));
-    EXPECT_EQ(r.versions[0].categories[0].second, 1);
+    // The bullet and the topic heading's own entry (INV-11).
+    EXPECT_EQ(r.versions[0].categories[0].second, 2);
+}
+
+// INV-11 (ANTS-5145) — a dated topic heading that sets a category is an entry
+// of its own: text is its headline and body its prose, so an id cited only
+// there is indexed. Before this, such an id was reported missing.
+TEST(ChangelogQueryParse, Inv11DatedTopicHeadingIsAnEntry) {
+    const QString md = QString::fromUtf8(
+        "## [Unreleased]\n\n"
+        "### 2026-09-13 Fixed \xE2\x80\x94 Topic (ANTS-9001)\n\n"
+        "Prose citing ANTS-9002.\n\n"
+        "- **Bullet.** (ANTS-9003)\n");
+    const ParseResult r = ChangelogQuery::parse(md, kPrefix);
+    ASSERT_EQ(r.entries.size(), 2)
+        << "INV-11: the topic heading and the bullet under it are two entries.";
+    EXPECT_EQ(r.entries[0].text, QStringLiteral("Topic (ANTS-9001)"));
+    EXPECT_EQ(r.entries[0].category, QStringLiteral("Fixed"));
+    EXPECT_EQ(r.entries[0].body, QStringLiteral("Prose citing ANTS-9002."));
+    EXPECT_EQ(r.entries[0].ids,
+              QStringList({QStringLiteral("ANTS-9001"), QStringLiteral("ANTS-9002")}));
+    EXPECT_EQ(r.entries[1].ids, QStringList({QStringLiteral("ANTS-9003")}));
+    ASSERT_EQ(r.versions.size(), 1);
+    ASSERT_EQ(r.versions[0].categories.size(), 1);
+    EXPECT_EQ(r.versions[0].categories[0].second, 2);
+}
+
+// INV-11 negatives — a heading whose date does not parse sets no category, so
+// it makes no entry and its bullet is skipped; a heading with neither a
+// headline nor prose makes no entry (§ 3), leaving only its bullet.
+TEST(ChangelogQueryParse, Inv11BadDateOrEmptyTopicMakesNoEntry) {
+    const QString badDate = QString::fromUtf8(
+        "## [Unreleased]\n\n"
+        "### 2026-13-45 Fixed \xE2\x80\x94 Topic (ANTS-9001)\n\n"
+        "Prose citing ANTS-9002.\n\n"
+        "- **Bullet.** (ANTS-9003)\n");
+    EXPECT_TRUE(ChangelogQuery::parse(badDate, kPrefix).entries.isEmpty())
+        << "INV-11: a dated heading with an unparseable date makes no entry.";
+
+    const QString bare = QString::fromUtf8(
+        "## [Unreleased]\n\n"
+        "### 2026-09-13 Fixed\n\n"
+        "- **Bullet.** (ANTS-9004)\n");
+    const ParseResult r = ChangelogQuery::parse(bare, kPrefix);
+    ASSERT_EQ(r.entries.size(), 1)
+        << "INV-11: a heading with neither a headline nor prose makes no entry.";
+    EXPECT_EQ(r.entries[0].ids, QStringList({QStringLiteral("ANTS-9004")}));
 }
 
 // INV-10 negatives — an unparseable date, or a word that is not a canonical

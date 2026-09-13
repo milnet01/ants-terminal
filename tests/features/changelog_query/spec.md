@@ -6,7 +6,7 @@ mirroring `roadmap_query`. Full contract: `docs/specs/ANTS-3533.md`.
 This test asserts the pure `ChangelogQuery::parse` parser (the net-new logic)
 and source-scrapes the handler wiring.
 
-## Parser invariants exercised (docs/specs/ANTS-3533.md § 3, INV-2, INV-3, INV-10)
+## Parser invariants exercised (docs/specs/ANTS-3533.md § 3, INV-2, INV-3, INV-10, INV-11)
 
 - **INV-2** — recognises `## [<version>]` headings (em-dash / hyphen / no
   separator; bare `## [Unreleased]` → `unreleased=true` + version normalised),
@@ -20,9 +20,13 @@ and source-scrapes the handler wiring.
   `(SHA-256)` (prefix ≠ P).
 - **INV-10** — a dated topic heading `### <YYYY-MM-DD> <Category> — <headline>`
   sets the category when the word after a valid date is canonical, so its
-  bullets are entries counted in that version's rollup. An invalid date or a
-  non-canonical word resets the category: after an `### Added` bullet, the
-  bullets under such headings yield no entry.
+  bullets are entries counted in that version's rollup, beside the topic's own
+  entry. An invalid date or a non-canonical word resets the category: after an
+  `### Added` bullet, the bullets under such headings yield no entry.
+- **INV-11** — such a heading is also an entry of its own, ahead of its
+  bullets: `text` is the headline with the separator stripped, `body` its
+  flush-left prose, and its `ids` come from both. An unparseable date, or a
+  heading with neither a headline nor prose, makes no entry.
 - Degenerate inputs (§ 3): empty changelog → no entries; a bullet before any
   version/category heading is skipped; per-version category rollup omits
   zero-count categories in canonical order.

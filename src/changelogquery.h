@@ -14,16 +14,16 @@
 
 namespace ChangelogQuery {
 
-// One changelog entry (a `- ` bullet under a `### <category>` inside a
-// `## [<version>]` block). See ANTS-3533 § 2.2 / § 3.
+// One changelog entry inside a `## [<version>]` block: a `- ` bullet under a
+// `### <category>`, or a dated topic heading (ANTS-5145). See ANTS-3533 § 2.2 / § 3.
 struct Entry {
     QString     version;            // "0.7.100" | "Unreleased"
     QString     date;               // text after ']', separator stripped; "" if none
     bool        unreleased = false; // true iff version == "Unreleased"
     QString     category;           // "Added" | … (canonical)
-    QString     text;               // bullet's first line (bold summary), markdown kept
+    QString     text;               // bullet's first line, or a topic's headline; markdown kept
     QStringList ids;                // every <P>-NNNN cited in text+body, doc order
-    QString     body;               // continuation lines, de-indented, joined "\n"
+    QString     body;               // continuation lines (a topic's prose), de-indented, joined "\n"
 };
 
 // A version block skeleton for `version_index` mode (§ 2.2). `categories`
