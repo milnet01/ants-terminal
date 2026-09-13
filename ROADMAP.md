@@ -7867,6 +7867,18 @@ extends an existing item, that item carries it instead.
     errors; a failed export gives no message.
   - Autocomplete matches the whole cursor line, prompt included.
   - User-visible strings are not wrapped in tr(), against qt.md.
+  Progress (2026-09-14): shipped the right-click medium (Search Web builds
+  the selection's text only when its bounds are small), and the
+  zero-width search, scroll-bar navigation and recording UTF-8 lows
+  (performSearch skips an empty match instead of ending the line;
+  scrollToMatch and next/prevBookmark call updateScrollBar; recording
+  decodes through a QStringDecoder member). Tests: terminal_search_scan
+  INV-6, terminalwidget_hotpath_perf INV-11 to INV-13.
+  Next, prepared: the rich-copy medium (merged same-style runs and a cell
+  cap).
+  Not started: exports on the GUI thread, the prompt-block index held
+  across menu.exec, invalidateSpanCaches mid-batch, QSaveFile and error
+  reporting for exports, autocomplete matching the prompt, tr().
   **Layman:** Smaller fixes to copying, exporting and searching in the terminal, which can freeze on very long histories.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lane terminal-widget-b).
