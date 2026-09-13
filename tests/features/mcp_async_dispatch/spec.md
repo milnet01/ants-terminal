@@ -65,6 +65,12 @@ explicit socket path and the GUI bundle's `main` already builds a
   off-thread verb's reply still carries the `ignored_args` advisory for an
   argument its `tools/list` schema does not declare.
 
+*Amendment, 2026-09-13 (ANTS-5090):*
+
+- **INV-14** also holds for the idempotent-read cache: a `dispatch_queue_full`
+  refusal of a cached verb is not stored, so the call made after the queue
+  drains runs the verb.
+
 Numbering follows the parent spec's, so a reader can move between them without
 a mapping table.
 

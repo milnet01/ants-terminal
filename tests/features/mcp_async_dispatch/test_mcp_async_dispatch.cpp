@@ -575,3 +575,71 @@ TEST(McpAsyncDispatch, Inv18OffThreadReplyKeepsTheIgnoredArgsAdvisory) {
         << "an off-thread verb's reply lost the ignored_args advisory; got: "
         << reply.constData();
 }
+
+// INV-14 (ANTS-5090) — a dispatch_queue_full refusal is not stored in the
+// idempotent-read cache. The probe takes last_audit_summary's name, a cached
+// verb, so a stored refusal would answer the call made after the queue drains.
+TEST(McpAsyncDispatch, Inv14QueueFullRefusalIsNotCached) {
+    std::atomic<bool> holding{false};
+    std::atomic<bool> release{false};
+    std::atomic<int> fillersRan{0};
+    std::atomic<int> summaryRan{0};
+    Harness h;
+    ASSERT_TRUE(h.dir.isValid());
+    ASSERT_TRUE(h.start());
+    // Every exit path lets the held job finish, or ~ClaudeIntegration's join
+    // would wait for it forever.
+    const auto releaseOnExit = qScopeGuard([&release]() { release.store(true); });
+
+    h.ci.registerToolProvider(
+        QStringLiteral("ants_hold_probe"),
+        ClaudeIntegration::CallerCwdContract::Required,
+        ClaudeIntegration::RcHandler{
+            [&holding, &release](const QJsonObject &) -> QString {
+                holding.store(true);
+                while (!release.load()) QThread::msleep(5);
+                return QStringLiteral("{\"ok\":true}");
+            }});
+    h.ci.registerToolProvider(
+        QStringLiteral("last_audit_summary"),
+        ClaudeIntegration::CallerCwdContract::Required,
+        ClaudeIntegration::RcHandler{[&summaryRan](const QJsonObject &) -> QString {
+            ++summaryRan;
+            return QStringLiteral("{\"ok\":true,\"summary\":\"fresh\"}");
+        }});
+
+    QLocalSocket mcp;
+    mcp.connectToServer(h.sockPath);
+    ASSERT_TRUE(mcp.waitForConnected(2000));
+    mcp.write(toolsCall(QStringLiteral("ants_hold_probe"), h.dir.path()));
+    mcp.flush();
+    QElapsedTimer clock;
+    clock.start();
+    while (!holding.load() && clock.elapsed() < 5000)
+        QCoreApplication::processEvents(QEventLoop::AllEvents, 5);
+    ASSERT_TRUE(holding.load()) << "setup: the held MCP call never started";
+    for (int i = 1; i < 64; ++i) {
+        ASSERT_TRUE(h.ci.postWorkerJob([&fillersRan]() { ++fillersRan; }))
+            << "setup: job " << i + 1 << " was refused below the cap";
+    }
+
+    const QByteArray refused = callVerb(
+        h.sockPath, QStringLiteral("last_audit_summary"), h.dir.path(), 3000);
+    ASSERT_TRUE(refused.contains("dispatch_queue_full"))
+        << "setup: expected a dispatch_queue_full refusal; got: "
+        << refused.constData();
+
+    release.store(true);
+    clock.restart();
+    while (fillersRan.load() < 63 && clock.elapsed() < 5000)
+        QCoreApplication::processEvents(QEventLoop::AllEvents, 5);
+    ASSERT_EQ(fillersRan.load(), 63) << "setup: the queue never drained";
+
+    const QByteArray served = callVerb(
+        h.sockPath, QStringLiteral("last_audit_summary"), h.dir.path());
+    EXPECT_EQ(summaryRan.load(), 1)
+        << "the call after the queue drained was answered from the cache; got: "
+        << served.constData();
+    EXPECT_FALSE(served.contains("dispatch_queue_full"))
+        << "the cached dispatch_queue_full refusal was served again";
+}

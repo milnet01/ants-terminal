@@ -134,10 +134,12 @@ place when it saves a Claude session real tokens or round-trips
    anchor-failure code — never fall back to a default-constructed value, which
    answers with a silently wrong project instead of an error the caller sees.
 
-   Two consequences worth knowing. Verbs still execute one at a time, in
-   arrival order, so nothing that could not overlap before begins to. And an
-   over-cap call is refused with `dispatch_queue_full` before the handler runs
-   — nothing for the handler to do, but a caller may see it.
+   Two consequences worth knowing. Off-thread verbs execute one at a time, in
+   arrival order, so no two of them overlap. A GUI-thread verb is not in that
+   set: it can run while an off-thread verb is running, so state both can
+   reach needs its own guard (ANTS-2132 § 2.1, § 5). And an over-cap call is
+   refused with `dispatch_queue_full` before the handler runs — nothing for
+   the handler to do, but a caller may see it.
 
    **A verb's remote-control socket route, if it has one, runs on its MCP
    twin's thread** (ANTS-2132 § 2.7). `RemoteControl::routeRunsOnDispatchWorker`

@@ -15573,7 +15573,8 @@ void ClaudeIntegration::onMcpConnection() {
                 // falls through to the registry below. INV-1: cache
                 // hit response is byte-identical to a miss at stampMs.
                 bool cachedHit = false;
-                const bool cacheable =
+                // Cleared on the dispatch_queue_full branch below.
+                bool cacheable =
                     !toolHandled && isIdempotentReadTool(toolName);
                 if (cacheable) {
                     const QString hit = tryGetIdempotentReadCache(
@@ -15813,6 +15814,10 @@ void ClaudeIntegration::onMcpConnection() {
                             responseText   = QString::fromUtf8(
                                 QJsonDocument(env).toJson(QJsonDocument::Compact));
                             dispatchResult = QStringLiteral("dispatch_queue_full");
+                            // ANTS-5090 — a transient refusal is not an answer
+                            // (ANTS-1357 INV-5); caching it would serve it to the
+                            // next caller after the queue has drained.
+                            cacheable = false;
                         } else {
                             responseText = it->second.handler(argsObj);
                         }

@@ -70,6 +70,12 @@ for security-relevant changes.
 
 ### Fixed
 
+- **A "too busy, retry shortly" answer is no longer remembered and repeated for a cached MCP verb** (ANTS-5090)
+  When the dispatch queue was full, the refusal for a cached read verb
+  was stored in the short-lived read cache, so the next call got the
+  same refusal after the queue had drained. The refusal is no longer
+  cached.
+
 - **Large answers from background MCP verbs no longer stall the Ants window while they are prepared** (ANTS-5072)
   The reply transforms (etag, field projection, compaction, hints,
   offload and the data wrap) now run on the dispatch worker for verbs that
