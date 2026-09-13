@@ -7764,6 +7764,22 @@ extends an existing item, that item carries it instead.
   - wcwidth depends on the process locale (see ANTS-3792).
   - The opt-in debug log flushes per underlined character and has no
     size cap.
+  Progress (2026-09-14): shipped the OSC 8 span medium (spans dropped on
+  clear and overprint, empty links store nothing), the joinLogical medium
+  (trim only the row ending a logical line), the Sixel medium (QRgb +
+  scanLine writes, no drawing past the width, group still charged) and the
+  ANTS-1362 cell-size low. Tests: osc8_clear_row, grid_reflow_wrapped_spaces,
+  sixel_decode_pixels.
+  NEEDS A DECISION, not built: the Kitty double count. The ImageBudget
+  comment in terminalgrid.h calls counting a shared QImage once per
+  container deliberate (reject early, never late), while
+  recomputeImageBudget (ANTS-1265) counts each pixel buffer once. Deduping
+  only at the a=T placement would under-count, because every eviction and
+  delete site releases an image's full cost while another container may
+  still hold the same buffer; a correct fix recomputes at all of them.
+  Still open: scroll-pause comment, debug log flush and size cap (next),
+  bottom-row wrapped link span, and the prompt-region and wcwidth lows that
+  point at ANTS-5029 and ANTS-3792.
   **Layman:** Smaller terminal-display fixes: clickable links that pile up, a slow image format and a word-wrapping bug.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lane terminal-grid).
