@@ -7957,6 +7957,20 @@ extends an existing item, that item carries it instead.
   - The resume command puts sessionId in a shell line unquoted.
   - ANTS-2132 section 5 still lists verbs as synchronous that now run
     off-thread; the document is wrong.
+  Progress (2026-09-14): shipped the review-probe medium (the probe is
+  keyed to its cwd, the button hides while another tab's probe runs, a
+  result applies only while the tab still has that cwd) with its timeout
+  low, the resume-command sessionId quoting low, and the socket-reaper
+  S_ISSOCK low (safeToUnlinkLocalSocket). Test: mainwindow_status_probes.
+  Next, prepared: the gh repo view probe's timeout and errorOccurred.
+  NEEDS A DECISION, not built: (1) the get_scrollback cap. The tool
+  description promises "the last N lines", the legacy raw-text response
+  has no field to mark truncation, and no spec pins the count, so a cap
+  changes what callers are told. (2) The .git/HEAD walk in updateStatusBar
+  is cached per cwd for 5 s but still reads on the GUI thread on a cache
+  miss; moving it to a worker is a larger change.
+  Not started: the async audit worker freed only through a ClaudeIntegration
+  slot, and ANTS-2132 section 5 listing verbs that now run off-thread.
   **Layman:** Smaller fixes to how the main window answers Claude and checks git, including a stuck Review Changes button.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lane mainwindow-b).
