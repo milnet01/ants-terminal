@@ -35,9 +35,10 @@ Spec source: `docs/specs/ANTS-1294.md`.
   `claudeintegration.cpp` and `claudeintegration.h` pins:
   - `wrapMcpData` is declared `static` on `ClaudeIntegration` in
     the header.
-  - The dispatch block at `// ANTS-1284 — record dispatch` is
-    preceded by a `wrapMcpData(toolName, responseText)` call gated
-    by an `isControlPlane` check.
+  - `ClaudeIntegration::transformReply`'s body carries a
+    `wrapMcpData(toolName, responseText)` call gated by an
+    `isControlPlane` check (ANTS-5072 moved the wrap there from the
+    dispatch block).
   - The control-plane exempt set is exactly
     `{get_session_info, token_usage}`.
   - `CLAUDE.md` "Conventions" mentions `ants_mcp_data` so the

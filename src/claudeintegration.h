@@ -285,7 +285,29 @@ public:
         bool          toolHandled  = false;
         QString       dispatchResult;
         QElapsedTimer traceTimer;
+        // ANTS-5072 — the unknown-arg advisory's keys, computed on the GUI
+        // thread (they read m_toolParamKeys) before the call is dispatched.
+        QStringList   ignoredArgKeys;
     };
+
+    // ANTS-5072 — what transformReply hands finishToolDispatch: the reply
+    // after every body transform, plus what the GUI-thread half still needs.
+    // See docs/specs/ANTS-2132-async-mcp-dispatch.md § 2.9.
+    struct ReplyTransform {
+        QString cacheBody;      // a handled, cacheable, uncached call only: the body
+                                // after the ignored-args advisory, before the ETag step
+        QString wrapped;
+        bool    etagUnchanged = false;
+        QString refusalCode;    // handlerRefusalCode of the transformed body; "" when none
+        qint64  argBytes = 0; qint64 outBytes = 0; qint64 wrapBytes = 0;
+    };
+    // ANTS-5072 — the reply transforms. Reads no member, so it runs on the
+    // dispatch worker for an off-thread verb and on the GUI thread otherwise.
+    static ReplyTransform transformReply(const McpCallContext &ctx,
+                                         QString responseText);
+    // ANTS-5072 — the keys McpCallContext::ignoredArgKeys carries.
+    QStringList ignoredArgKeysFor(const QString &toolName,
+                                  const QJsonObject &argsObj) const;
 
     // ANTS-1404 — per-tool caller_cwd contract. Recorded once per
     // tool at registration time and consulted by the dispatcher
@@ -525,6 +547,10 @@ public:
     int mcpTraceSizeForTest() const {
         return m_mcpTraceRing.size();
     }
+    // ANTS-5072 — the thread transformReply last ran on (ANTS-2132 § 2.9,
+    // INV-18). Reset before a call so a transform that bypassed it reads null.
+    static QThread *lastReplyTransformThreadForTest();
+    static void resetReplyTransformThreadForTest();
     void clearMcpTraceForTest() {
         m_mcpTraceRing.clear();
         m_mcpTraceNextId = 1;
@@ -604,14 +630,14 @@ private slots:
     void pollClaudeProcess();
     void onHookConnection();
     void onMcpConnection();
-    // ANTS-2132 — the response pipeline, from the tool handler's body
-    // through to the socket write. Runs on the GUI thread on both the
-    // synchronous and the deferred path; neither has its own copy.
-    void finishToolDispatch(McpCallContext ctx, QString responseText);
+    // ANTS-2132 / ANTS-5072 — the GUI-thread half of the reply: the
+    // idempotent-read cache insert, recordDispatch and the socket write.
+    // Every path reaches it with a transformReply result.
+    void finishToolDispatch(McpCallContext ctx, ReplyTransform reply);
     // ANTS-2132 — hand a verb to the dispatch worker and return immediately.
     // false = the queue is full and the caller must refuse; the reply is NOT
-    // coming. On true the worker runs `handler`, then queues
-    // finishToolDispatch back onto the GUI thread.
+    // coming. On true the worker runs `handler` and transformReply, then
+    // queues finishToolDispatch back onto the GUI thread.
     bool postToolDispatch(const McpCallContext &ctx, const ToolHandler &handler);
     // ANTS-2132 — stop accepting work, refuse in-flight GUI marshals, join.
     void shutdownDispatchWorker();

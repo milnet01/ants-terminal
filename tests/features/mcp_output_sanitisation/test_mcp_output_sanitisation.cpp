@@ -174,21 +174,21 @@ TEST(McpOutputSanitisationWiring, HelperDefinitionContainsWrapTemplate) {
 }
 
 // REG-3 — dispatch site calls wrapMcpData with the right args and
-// gates on isControlPlane. We anchor to the existing
-// `// ANTS-1284 — record dispatch` comment so future refactors that
-// move the call elsewhere are flagged.
+// gates on isControlPlane. ANTS-5072 split the reply pipeline: the wrap
+// lives in transformReply, recordDispatch in finishToolDispatch. So the
+// scan covers transformReply's body, and a refactor that moves the wrap
+// out of it is flagged.
 TEST(McpOutputSanitisationWiring, DispatchSiteCallsHelper) {
     const std::string ci = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
     ASSERT_FALSE(ci.empty());
 
-    auto pos1284 = ci.find("// ANTS-1284 — record dispatch");
-    ASSERT_NE(pos1284, std::string::npos)
-        << "ANTS-1284 dispatch anchor missing — refactor likely moved it";
-
-    // Walk back to the enclosing `if (toolHandled)` and scan that block.
-    auto blockStart = ci.rfind("if (toolHandled) {", pos1284);
-    ASSERT_NE(blockStart, std::string::npos);
-    const std::string block = ci.substr(blockStart, pos1284 - blockStart);
+    auto blockStart = ci.find(
+        "ClaudeIntegration::ReplyTransform ClaudeIntegration::transformReply(");
+    ASSERT_NE(blockStart, std::string::npos)
+        << "transformReply definition missing — refactor likely moved the wrap";
+    auto blockEnd = ci.find("\n}\n", blockStart);
+    ASSERT_NE(blockEnd, std::string::npos);
+    const std::string block = ci.substr(blockStart, blockEnd - blockStart);
 
     EXPECT_NE(block.find("wrapMcpData(toolName, responseText)"),
               std::string::npos)

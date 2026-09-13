@@ -27,6 +27,7 @@
 #include <QTimer>
 #include <QCoreApplication>
 
+#include <atomic>
 #include <climits>
 #include <limits>
 #include <utility>
@@ -1665,6 +1666,19 @@ QJsonObject ClaudeIntegration::queryMcpTrace(
     return out;
 }
 
+namespace {
+// ANTS-5072 — INV-18's test seam: the thread transformReply last ran on.
+std::atomic<QThread *> s_lastReplyTransformThread{nullptr};
+}  // namespace
+
+QThread *ClaudeIntegration::lastReplyTransformThreadForTest() {
+    return s_lastReplyTransformThread.load();
+}
+
+void ClaudeIntegration::resetReplyTransformThreadForTest() {
+    s_lastReplyTransformThread.store(nullptr);
+}
+
 // ANTS-2132 — hand a verb to the dispatch worker and return to the event
 // loop. The GUI thread neither runs the verb nor waits for it, which is the
 // whole point: it stops being blocked for the verb's duration.
@@ -1676,11 +1690,13 @@ bool ClaudeIntegration::postToolDispatch(const McpCallContext &ctx,
     return postWorkerJob([this, ctx, handler]() {
         // On the worker. The handler forwards to a RemoteControl cmd*(); any
         // MainWindow read inside it goes through ants::onGuiThread.
-        const QString body = handler(ctx.args);
+        // ANTS-5072 — the reply transforms run here too, so a large body is
+        // not re-shaped on the GUI thread (spec § 2.9).
+        const ReplyTransform reply = transformReply(ctx, handler(ctx.args));
         // Back to the GUI thread to finish the reply. The socket is only ever
         // written from there.
-        QMetaObject::invokeMethod(this, [this, ctx, body]() {
-            finishToolDispatch(ctx, body);
+        QMetaObject::invokeMethod(this, [this, ctx, reply]() {
+            finishToolDispatch(ctx, reply);
         }, Qt::QueuedConnection);
     });
 }
@@ -1739,10 +1755,39 @@ void ClaudeIntegration::shutdownDispatchWorker() {
     // finished after the join never reaches a half-destroyed object.
 }
 
-// ANTS-2132 — the MCP response pipeline, lifted out of onMcpConnection()'s
-// readyRead lambda so a reply can be finished after the handler has run
-// somewhere else. The body below is the inline code VERBATIM and in the same
-// order; neither dispatch path keeps its own copy (spec § 2.2).
+// ANTS-5072 — the unknown-arg advisory's key set. It reads m_toolParamKeys,
+// which onMcpConnection writes, so the dispatcher computes it on the GUI
+// thread and transformReply only applies it (spec § 2.9).
+QStringList ClaudeIntegration::ignoredArgKeysFor(
+    const QString &toolName, const QJsonObject &argsObj) const {
+    QStringList ignoredArgKeys;
+    if (m_toolParamKeys.contains(toolName)) {
+        // ANTS-4578 — which dispatch-layer args THIS verb actually
+        // honours. The predicates live here, so the pure helper
+        // cannot ask them; previously it exempted all four
+        // unconditionally and a `fields` sent to a verb with no
+        // projection support did nothing and said nothing.
+        QSet<QString> honoured;
+        if (isEtagSupportedTool(toolName))
+            honoured.insert(QStringLiteral("etag_match"));
+        // ANTS-4524 — `fields` is not here: it is universal now
+        // (mcp::isUniversalDispatchArg), so it can never be the
+        // dropped argument this advisory exists to name.
+        if (mcp::isCompactArgTool(toolName))
+            honoured.insert(QStringLiteral("compact"));
+        if (mcp::isOffloadEligible(toolName))
+            honoured.insert(QStringLiteral("offload"));
+        ignoredArgKeys = mcp::ignoredArgs(
+            argsObj, m_toolParamKeys.value(toolName), honoured);
+    }
+    return ignoredArgKeys;
+}
+
+// ANTS-2132 / ANTS-5072 — the MCP reply transforms, lifted out of
+// onMcpConnection()'s readyRead lambda. The body below is the inline code in
+// the same order. It reads no member, so an off-thread verb runs it on the
+// dispatch worker; finishToolDispatch keeps only what touches this object
+// (spec § 2.9). No path keeps its own copy.
 //
 // The locals the lambda held are re-bound as aliases rather than rewritten to
 // ctx.* on purpose: a rename would change the argument spellings that many
@@ -1750,29 +1795,16 @@ void ClaudeIntegration::shutdownDispatchWorker() {
 // a guard that stops guarding. For the same reason this comment must not quote
 // one of those literals -- doing so plants a false first match ahead of the
 // real call site and breaks the ordering assertions.
-void ClaudeIntegration::finishToolDispatch(McpCallContext ctx,
-                                           QString responseText) {
+ClaudeIntegration::ReplyTransform ClaudeIntegration::transformReply(
+    const McpCallContext &ctx, QString responseText) {
+    s_lastReplyTransformThread.store(QThread::currentThread());
+    ReplyTransform reply;
     const QString     &toolName    = ctx.toolName;
     const QJsonObject &argsObj     = ctx.args;
     const bool         cachedHit   = ctx.cachedHit;
     const bool         cacheable   = ctx.cacheable;
     const bool         toolHandled = ctx.toolHandled;
-    const QElapsedTimer &mcpTraceTimer = ctx.traceTimer;
-    // Written to by the etag short-circuit below, then read by recordDispatch;
-    // the mutation never needs to escape this function.
-    QString dispatchResult = ctx.dispatchResult;
-
-    auto makeTextContent = [](const QString &text) {
-        QJsonObject block;
-        block["type"] = "text";
-        block["text"] = text;
-        QJsonArray arr;
-        arr.append(block);
-        return arr;
-    };
-    QJsonObject result;
-    QJsonObject error;
-    bool haveResult = false;
+    const QStringList &ignoredArgKeys = ctx.ignoredArgKeys;
     // ANTS-2175 — unknown-arg advisory. Diff the call's arg keys
     // against the verb's declared inputSchema properties (plus the
     // universal dispatch-layer args, handled inside mcp::ignoredArgs)
@@ -1797,43 +1829,22 @@ void ClaudeIntegration::finishToolDispatch(McpCallContext ctx,
     // refused. mcp::withIgnoredArgs only ADDS a key, so the
     // ANTS-2112 refusal floor is untouched by construction.
     //
-    // ANTS-4626 — computed into a local because it is applied on
+    // ANTS-4626 — carried as a key list because it is applied on
     // BOTH sides of the offload below. It is computed even on a
     // cache hit, where the pre-offload apply is skipped (the
     // cached body already carries it) but the post-offload one is
     // still owed, since the offload discards it either way.
-    QStringList ignoredArgKeys;
-    if (toolHandled && m_toolParamKeys.contains(toolName)) {
-        // ANTS-4578 — which dispatch-layer args THIS verb actually
-        // honours. The predicates live here, so the pure helper
-        // cannot ask them; previously it exempted all four
-        // unconditionally and a `fields` sent to a verb with no
-        // projection support did nothing and said nothing.
-        QSet<QString> honoured;
-        if (isEtagSupportedTool(toolName))
-            honoured.insert(QStringLiteral("etag_match"));
-        // ANTS-4524 — `fields` is not here: it is universal now
-        // (mcp::isUniversalDispatchArg), so it can never be the
-        // dropped argument this advisory exists to name.
-        if (mcp::isCompactArgTool(toolName))
-            honoured.insert(QStringLiteral("compact"));
-        if (mcp::isOffloadEligible(toolName))
-            honoured.insert(QStringLiteral("offload"));
-        ignoredArgKeys = mcp::ignoredArgs(
-            argsObj, m_toolParamKeys.value(toolName), honoured);
-    }
     if (toolHandled && !cachedHit && !ignoredArgKeys.isEmpty()) {
         responseText =
             mcp::withIgnoredArgs(responseText, ignoredArgKeys);
     }
-    // ANTS-1357 — populate cache on miss-success. INV-5
-    // exclusions enforced inside maybeInsertIdempotentReadCache.
-    // The cache stores the un-etagged response so subsequent
-    // callers can either reuse it verbatim OR short-circuit
-    // via etag_match against the same fingerprint.
+    // ANTS-1357 — the body the cache stores on miss-success. The
+    // insert itself is finishToolDispatch's, on the GUI thread
+    // (ANTS-5072). The cache stores the un-etagged response so
+    // subsequent callers can either reuse it verbatim OR
+    // short-circuit via etag_match against the same fingerprint.
     if (toolHandled && cacheable && !cachedHit) {
-        maybeInsertIdempotentReadCache(
-            toolName, argsObj, responseText);
+        reply.cacheBody = responseText;
     }
     // ANTS-1499 — ETag short-circuit. Runs after the
     // idempotent-read cache so the cached body stays in its
@@ -1845,9 +1856,6 @@ void ClaudeIntegration::finishToolDispatch(McpCallContext ctx,
     if (toolHandled && isEtagSupportedTool(toolName)) {
         responseText = applyEtagPattern(
             toolName, argsObj, responseText, &etagUnchanged);
-        if (etagUnchanged) {
-            dispatchResult = QStringLiteral("etag_unchanged");
-        }
     }
     // ANTS-1720 — `fields=` projection. Runs after the etag
     // short-circuit (so the etag is computed on the
@@ -1999,13 +2007,64 @@ void ClaudeIntegration::finishToolDispatch(McpCallContext ctx,
             isControlPlane ? responseText
             : rawRequested ? wrapMcpDataRaw(toolName, responseText)
                            : wrapMcpData(toolName, responseText);
-        result["content"] = makeTextContent(wrapped);
+        reply.wrapped       = wrapped;
+        reply.etagUnchanged = etagUnchanged;
+        // ANTS-4457 — the handler's own refusal, read here while the
+        // transformed body is in hand; finishToolDispatch decides whether
+        // it overrides the dispatcher's result.
+        reply.refusalCode = handlerRefusalCode(responseText);
+        // ANTS-1284 byte-count contract: arg/out bytes measure the
+        // wrapped payload (what actually crosses the wire).
+        reply.argBytes  = QJsonDocument(argsObj)
+            .toJson(QJsonDocument::Compact).size();
+        reply.outBytes  = wrapped.toUtf8().size();
+        const qint64 rawBytes = responseText.toUtf8().size();
+        reply.wrapBytes = reply.outBytes - rawBytes;        // ANTS-1355 INV-3
+    }
+    return reply;
+}
+
+// ANTS-2132 / ANTS-5072 — the GUI-thread half of the reply: the cache insert,
+// recordDispatch and the socket write. The transforms already ran in
+// transformReply, wherever the handler ran.
+void ClaudeIntegration::finishToolDispatch(McpCallContext ctx,
+                                           ReplyTransform reply) {
+    const QString     &toolName    = ctx.toolName;
+    const QJsonObject &argsObj     = ctx.args;
+    const bool         cachedHit   = ctx.cachedHit;
+    const bool         cacheable   = ctx.cacheable;
+    const bool         toolHandled = ctx.toolHandled;
+    const QElapsedTimer &mcpTraceTimer = ctx.traceTimer;
+    // Written to by the etag short-circuit below, then read by recordDispatch;
+    // the mutation never needs to escape this function.
+    QString dispatchResult = ctx.dispatchResult;
+
+    auto makeTextContent = [](const QString &text) {
+        QJsonObject block;
+        block["type"] = "text";
+        block["text"] = text;
+        QJsonArray arr;
+        arr.append(block);
+        return arr;
+    };
+    QJsonObject result;
+    QJsonObject error;
+    bool haveResult = false;
+    // ANTS-1357 — populate cache on miss-success. INV-5
+    // exclusions enforced inside maybeInsertIdempotentReadCache.
+    if (toolHandled && cacheable && !cachedHit) {
+        maybeInsertIdempotentReadCache(
+            toolName, argsObj, reply.cacheBody);
+    }
+    if (toolHandled) {
+        result["content"] = makeTextContent(reply.wrapped);
+        if (reply.etagUnchanged) {
+            dispatchResult = QStringLiteral("etag_unchanged");
+        }
         // ANTS-1284 — record dispatch (token_usage +
         // mcp_trace). ANTS-1402-INV-3: now teed through
         // a single recordDispatch hook so both observers
-        // see byte-identical numbers. ANTS-1284 byte-count
-        // contract preserved: arg/out bytes measure the
-        // wrapped payload (what actually crosses the wire).
+        // see byte-identical numbers.
         // ANTS-1355: wrap delta + dispatch latency captured
         // once at the dispatch site and forwarded verbatim.
         // ANTS-4457 — a handler that ran and refused never reached
@@ -2014,14 +2073,11 @@ void ClaudeIntegration::finishToolDispatch(McpCallContext ctx,
         // result (etag_unchanged, rate_limited, …) already describes the
         // call more specifically than the envelope does.
         if (dispatchResult == QLatin1String("ok")) {
-            const QString refusal = handlerRefusalCode(responseText);
-            if (!refusal.isEmpty()) dispatchResult = refusal;
+            if (!reply.refusalCode.isEmpty()) dispatchResult = reply.refusalCode;
         }
-        const qint64 argBytes = QJsonDocument(argsObj)
-            .toJson(QJsonDocument::Compact).size();
-        const qint64 outBytes  = wrapped.toUtf8().size();
-        const qint64 rawBytes  = responseText.toUtf8().size();
-        const qint64 wrapBytes = outBytes - rawBytes;       // ANTS-1355 INV-3
+        const qint64 argBytes  = reply.argBytes;
+        const qint64 outBytes  = reply.outBytes;
+        const qint64 wrapBytes = reply.wrapBytes;
         const qint64 durUs     = mcpTraceTimer.nsecsElapsed() / 1000;
         // ANTS-1356 + ANTS-1454 — dispatchResult is "ok"
         // for normal success, "caller_cwd_required" for
@@ -15716,6 +15772,7 @@ void ClaudeIntegration::onMcpConnection() {
                             dctx.toolHandled    = true;
                             dctx.dispatchResult = dispatchResult;
                             dctx.traceTimer     = mcpTraceTimer;
+                            dctx.ignoredArgKeys = ignoredArgKeysFor(toolName, argsObj);
                             const QPointer<ClaudeIntegration> self(this);
                             const auto replied = std::make_shared<bool>(false);
                             it->second.deferred(argsObj,
@@ -15724,7 +15781,8 @@ void ClaudeIntegration::onMcpConnection() {
                                     // one is dropped.
                                     if (*replied || !self) return;
                                     *replied = true;
-                                    self->finishToolDispatch(dctx, body);
+                                    self->finishToolDispatch(
+                                        dctx, transformReply(dctx, body));
                                 });
                             return;  // the reply follows from the verb
                         }
@@ -15740,6 +15798,7 @@ void ClaudeIntegration::onMcpConnection() {
                             octx.toolHandled    = true;
                             octx.dispatchResult = dispatchResult;
                             octx.traceTimer     = mcpTraceTimer;
+                            octx.ignoredArgKeys = ignoredArgKeysFor(toolName, argsObj);
                             if (postToolDispatch(octx, it->second.handler))
                                 return;  // reply follows from the worker
                             // Queue full — refuse rather than drop it, so a
@@ -15774,7 +15833,9 @@ void ClaudeIntegration::onMcpConnection() {
                 ctx.toolHandled    = toolHandled;
                 ctx.dispatchResult = dispatchResult;
                 ctx.traceTimer     = mcpTraceTimer;
-                finishToolDispatch(ctx, responseText);
+                if (toolHandled)
+                    ctx.ignoredArgKeys = ignoredArgKeysFor(toolName, argsObj);
+                finishToolDispatch(ctx, transformReply(ctx, responseText));
                 return;
             } else {
                 // JSON-RPC -32601 = Method not found

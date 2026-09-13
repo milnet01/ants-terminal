@@ -46,10 +46,13 @@ for a queued connection passes against code that still joins.
   `MainWindow` accessor cannot be added without this test noticing.
 - **INV-7** — the GUI thread never blocks on the dispatch worker while serving
   a request. `shutdownDispatchWorker`'s join is the sole exception, it is the
-  only join in the file, and only the destructor reaches it.
-- **INV-9** — one `finishToolDispatch` definition, the wrap lives inside it,
-  and the dispatcher keeps no second copy. Two pipelines would let the
-  synchronous and deferred replies drift apart.
+  only join in the file, and only the destructor reaches it. Neither
+  `finishToolDispatch` nor `transformReply` joins.
+- **INV-9** — one `transformReply` and one `finishToolDispatch` definition
+  (ANTS-5072). The wrap lives in `transformReply`; `finishToolDispatch`,
+  `postToolDispatch` and the dispatcher keep no copy, and `postToolDispatch`
+  calls `transformReply` on the worker. Two pipelines would let the replies
+  drift apart.
 - **INV-11** — an INLINE handler registered off-thread reads no `MainWindow`
   member except through `ants::onGuiThread`. INV-6 cannot hold this: its
   scrape covers `remotecontrol*.cpp` and matches `m_main->`, while an inline

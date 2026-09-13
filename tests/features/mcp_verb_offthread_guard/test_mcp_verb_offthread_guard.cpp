@@ -132,6 +132,10 @@ TEST(McpVerbOffthreadGuard, Main) {
         bodyAfter(ci, "void ClaudeIntegration::finishToolDispatch(");
     const std::string post =
         bodyAfter(ci, "bool ClaudeIntegration::postToolDispatch(");
+    // ANTS-5072 — the pipeline's transforms, split out of finishToolDispatch.
+    const std::string transformMarker =
+        "ClaudeIntegration::ReplyTransform ClaudeIntegration::transformReply(";
+    const std::string transform = bodyAfter(ci, transformMarker);
     const std::string teardown =
         bodyAfter(ci, "void ClaudeIntegration::shutdownDispatchWorker() {");
     // The factory is a lambda nested inside setupClaudeMcpProviders(), so its
@@ -182,23 +186,38 @@ TEST(McpVerbOffthreadGuard, Main) {
     expect(!finish.empty() && finish.find("->wait()") == std::string::npos &&
                finish.find("joinRefusingMarshals(") == std::string::npos,
            "INV-7/finishToolDispatch-does-not-join");
+    expect(!transform.empty() && transform.find("->wait()") == std::string::npos &&
+               transform.find("joinRefusingMarshals(") == std::string::npos,
+           "INV-7/transformReply-does-not-join");
     expect(bodyAfter(ci, "ClaudeIntegration::~ClaudeIntegration() {")
                    .find("shutdownDispatchWorker()") != std::string::npos,
            "INV-7/destructor-runs-the-teardown");
 
-    // INV-9 — one response pipeline, shared by both paths. A second
-    // definition, or a wrap done inside the dispatcher, would let the
-    // synchronous and deferred replies drift apart.
+    // INV-9 — one response pipeline, shared by every path: one transformReply
+    // and one finishToolDispatch (ANTS-5072). A second copy of the transforms,
+    // in the dispatcher or in the worker job postToolDispatch builds, would let
+    // the replies drift apart.
     {
-        size_t defs = 0;
-        const std::string marker = "void ClaudeIntegration::finishToolDispatch(";
-        for (size_t at = ci.find(marker); at != std::string::npos;
-             at = ci.find(marker, at + 1))
-            ++defs;
-        expect(defs == 1, "INV-9/one-finishToolDispatch-definition");
+        const auto definitions = [&ci](const std::string &marker) {
+            size_t defs = 0;
+            for (size_t at = ci.find(marker); at != std::string::npos;
+                 at = ci.find(marker, at + 1))
+                ++defs;
+            return defs;
+        };
+        expect(definitions("void ClaudeIntegration::finishToolDispatch(") == 1,
+               "INV-9/one-finishToolDispatch-definition");
+        expect(definitions(transformMarker) == 1,
+               "INV-9/one-transformReply-definition");
     }
-    expect(finish.find("wrapMcpData(") != std::string::npos,
-           "INV-9/the-wrap-lives-in-the-pipeline");
+    expect(transform.find("wrapMcpData(") != std::string::npos,
+           "INV-9/the-wrap-lives-in-transformReply");
+    expect(finish.find("wrapMcpData(") == std::string::npos,
+           "INV-9/finishToolDispatch-keeps-no-wrap");
+    expect(post.find("wrapMcpData(") == std::string::npos,
+           "INV-9/postToolDispatch-keeps-no-wrap");
+    expect(post.find("transformReply(") != std::string::npos,
+           "INV-9/postToolDispatch-transforms-on-the-worker");
     expect(dispatcher.find("wrapMcpData(") == std::string::npos,
            "INV-9/dispatcher-keeps-no-second-wrap");
     expect(dispatcher.find("finishToolDispatch(ctx,") != std::string::npos,

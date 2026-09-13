@@ -70,6 +70,13 @@ for security-relevant changes.
 
 ### Fixed
 
+- **Large answers from background MCP verbs no longer stall the Ants window while they are prepared** (ANTS-5072)
+  The reply transforms (etag, field projection, compaction, hints,
+  offload and the data wrap) now run on the dispatch worker for verbs that
+  already run there. The window thread keeps only the cache insert, the
+  usage record and the socket write. Measured before the change: a 4 MiB
+  reply cost about 92-95 ms on the window thread.
+
 - **changelog_query finds an id cited only in a dated topic's headline or prose** (ANTS-5145)
   A dated topic heading written by changelog_log op:add_subsection is now
   an entry of its own: its text is the headline and its body the prose

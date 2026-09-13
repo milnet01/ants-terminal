@@ -55,6 +55,16 @@ explicit socket path and the GUI bundle's `main` already builds a
   marshals from its own worker only. Another instance's off-thread verbs are
   still served.
 
+*Amendment, 2026-09-13 (ANTS-5072):*
+
+- **INV-18** — for a call whose handler ran on the dispatch worker, the reply
+  transforms run there too; a bare `ToolHandler` verb runs them on the GUI
+  thread. The seam `lastReplyTransformThreadForTest()` is reset before each
+  call and compared for equality with the thread the verb recorded, so a
+  transform that bypassed `transformReply` reads null and fails. An
+  off-thread verb's reply still carries the `ignored_args` advisory for an
+  argument its `tools/list` schema does not declare.
+
 Numbering follows the parent spec's, so a reader can move between them without
 a mapping table.
 

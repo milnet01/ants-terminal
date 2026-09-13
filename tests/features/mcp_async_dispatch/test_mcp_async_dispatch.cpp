@@ -484,3 +484,94 @@ TEST(McpAsyncDispatch, Inv17DestroyingOneInstanceRefusesOnlyItsOwnWorker) {
         << "destroying the second ClaudeIntegration refused the first's "
            "marshals; got: " << after.constData();
 }
+
+// INV-18 (ANTS-5072) — for a call whose handler ran on the dispatch worker, the
+// reply transforms run there too; a bare ToolHandler verb runs them on the GUI
+// thread. The seam is reset before each call, so a transform that never went
+// through transformReply leaves it null and fails the equality.
+TEST(McpAsyncDispatch, Inv18ReplyTransformsRunWhereTheHandlerRan) {
+    Harness h;
+    ASSERT_TRUE(h.dir.isValid());
+    ASSERT_TRUE(h.start());
+
+    std::atomic<QThread *> handlerThread{nullptr};
+    h.ci.registerToolProvider(
+        QStringLiteral("ants_async_probe"),
+        ClaudeIntegration::CallerCwdContract::Required,
+        ClaudeIntegration::RcHandler{[&handlerThread](const QJsonObject &) -> QString {
+            handlerThread.store(QThread::currentThread());
+            return QStringLiteral("{\"ok\":true}");
+        }});
+    h.ci.registerToolProvider(
+        QStringLiteral("ants_inline_probe"),
+        ClaudeIntegration::CallerCwdContract::Required,
+        ClaudeIntegration::ToolHandler{[](const QJsonObject &) -> QString {
+            return QStringLiteral("{\"ok\":true}");
+        }});
+
+    ClaudeIntegration::resetReplyTransformThreadForTest();
+    ASSERT_FALSE(callVerb(h.sockPath, QStringLiteral("ants_async_probe"),
+                          h.dir.path()).isEmpty());
+    ASSERT_NE(handlerThread.load(), nullptr) << "the handler never ran";
+    ASSERT_NE(handlerThread.load(), QThread::currentThread())
+        << "setup: the RcHandler verb ran on the GUI thread";
+    EXPECT_EQ(ClaudeIntegration::lastReplyTransformThreadForTest(),
+              handlerThread.load())
+        << "the reply transforms of an off-thread verb did not run on the "
+           "worker that ran its handler";
+
+    ClaudeIntegration::resetReplyTransformThreadForTest();
+    ASSERT_FALSE(callVerb(h.sockPath, QStringLiteral("ants_inline_probe"),
+                          h.dir.path()).isEmpty());
+    EXPECT_EQ(ClaudeIntegration::lastReplyTransformThreadForTest(),
+              QThread::currentThread())
+        << "a bare ToolHandler verb's reply transforms did not run on the GUI "
+           "thread";
+}
+
+// INV-18 (ANTS-5072) — moving the transforms onto the worker keeps the
+// ignored-args advisory. Its keys read m_toolParamKeys, which only tools/list
+// fills, so the dispatcher computes them on the GUI thread and hands them over
+// in the context. The probe takes a listed verb's name so the list declares
+// its parameters.
+TEST(McpAsyncDispatch, Inv18OffThreadReplyKeepsTheIgnoredArgsAdvisory) {
+    Harness h;
+    ASSERT_TRUE(h.dir.isValid());
+    ASSERT_TRUE(h.start());
+
+    std::atomic<QThread *> handlerThread{nullptr};
+    h.ci.registerToolProvider(
+        QStringLiteral("git_state"),
+        ClaudeIntegration::CallerCwdContract::Required,
+        ClaudeIntegration::RcHandler{[&handlerThread](const QJsonObject &) -> QString {
+            handlerThread.store(QThread::currentThread());
+            return QStringLiteral("{\"ok\":true}");
+        }});
+
+    QJsonObject list;
+    list["jsonrpc"] = "2.0";
+    list["id"]      = 1;
+    list["method"]  = "tools/list";
+    ASSERT_TRUE(callRemote(h.sockPath, list).contains("\"git_state\""))
+        << "setup: tools/list does not declare git_state";
+
+    QJsonObject args;
+    args["caller_cwd"]     = h.dir.path();
+    args["ants_bogus_arg"] = 1;
+    QJsonObject params;
+    params["name"]      = "git_state";
+    params["arguments"] = args;
+    QJsonObject call;
+    call["jsonrpc"] = "2.0";
+    call["id"]      = 2;
+    call["method"]  = "tools/call";
+    call["params"]  = params;
+    const QByteArray reply = callRemote(h.sockPath, call);
+
+    ASSERT_NE(handlerThread.load(), nullptr) << "the handler never ran";
+    ASSERT_NE(handlerThread.load(), QThread::currentThread())
+        << "setup: the RcHandler verb ran on the GUI thread";
+    EXPECT_TRUE(reply.contains("ignored_args") && reply.contains("ants_bogus_arg"))
+        << "an off-thread verb's reply lost the ignored_args advisory; got: "
+        << reply.constData();
+}
