@@ -67,9 +67,17 @@ public:
 
     // Register `owner` as a target for connections on `path`. `serve` pulls
     // and serves the pending connections; `visible` says whether the owner's
-    // window is on screen. Detaches automatically when `owner` is destroyed.
+    // window is on screen. On the hook path, `ownsSession` says whether the
+    // owner's window tracks a session and `onHookEvent` processes an event
+    // (§ 2.4); elsewhere both stay empty. Detaches automatically when `owner`
+    // is destroyed.
     void attach(const QString &path, QObject *owner,
-                std::function<bool()> visible, std::function<void()> serve);
+                std::function<bool()> visible, std::function<void()> serve,
+                std::function<bool(const QString &)> ownsSession = {},
+                std::function<void(const QJsonObject &)> onHookEvent = {});
+
+    // Run `onHookEvent` for exactly one owner on `path` (§ 2.4).
+    void deliverHookEvent(const QString &path, const QJsonObject &event);
 
     // `owner`'s window became active (§ 2.3).
     void noteActivated(QObject *owner);
@@ -90,6 +98,15 @@ that owner's `serve`.
 `startHookServer` gains a `const QString &path` parameter defaulting to the
 current path, so a test can bind its own.
 
+Both classes gain `setWindowVisibleProbe(std::function<bool()>)`. `MainWindow`
+calls it with its own `isVisible` before starting its sockets, the start
+functions pass it to `attach` as `visible`, and with none set `visible` returns
+true. A test sets a stub.
+
+`stopMcpServer` and `stopHookServer` detach their owner from the path and clear
+the pointer. They never close or delete the hub's server, which other owners
+may still be serving. Destroying an owner detaches it the same way.
+
 ### 2.2 Binding without taking over
 
 `acquire(path)`:
@@ -105,9 +122,13 @@ current path, so a test can bind its own.
    A connection that fails means a stale file: `removeServer`, `listen` again,
    and return the server or nullptr.
 
-The socket-directory and permission steps each class runs today (ANTS-1365
-`ensureSocketDir`, `UserAccessOption`, `setOwnerOnlyPerms`) run once, inside
-`acquire`, before step 2.
+`acquire` sets `UserAccessOption` before each `listen` and runs
+`setOwnerOnlyPerms(path)` after each successful one, as the three start
+functions do today. `ensureSocketDir` (ANTS-1365) stays in
+`RemoteControl::start`, which runs it on its socket's directory before calling
+`acquire`. `acquire` never runs it: it refuses any directory that is not mode
+0700 and owned by the user, and the MCP and hook sockets sit directly in the
+system temp directory.
 
 ### 2.3 Choosing the target of a connection
 
@@ -128,13 +149,22 @@ tool providers registered in `MainWindow::setupClaudeMcpProviders` (whose
 lambdas capture their own window), serve the most recently active window.
 That is the per-call resolution ANTS-5121 decided.
 
-### 2.4 Hook events reach every window
+### 2.4 A hook event reaches the window that owns its session
 
-A hook connection carries one event, parsed on disconnect. The hub serves it
-through one owner, as § 2.3 does, but the parsed event goes to
-`processHookEvent` on every `ClaudeIntegration` attached to the hook path.
-Each already drops an event that is not for its own focused tab
-(`isFocusedTabSession`), so delivering to all keeps today's per-window result.
+A hook connection carries one event, parsed on disconnect. The owner § 2.3
+chose accepts the connection, and `onHookConnection` hands the parsed event to
+`LocalSocketHub::deliverHookEvent(path, event)`. That calls `processHookEvent`
+on exactly one `ClaudeIntegration`: the one whose window tracks the event's
+`session_id`, else § 2.3's target.
+
+A window answers through `ClaudeIntegration::setSessionOwnerProbe(std::function<bool(const QString &)>)`.
+`MainWindow` sets it to ask its status-bar tracker's `shellForSessionId` for a
+shell, the routing the `permissionRequested` slot already uses within a window.
+
+Delivering to every window would be wrong. `processHookEvent` does not gate a
+`PermissionRequest` on `isFocusedTabSession`, and `isFocusedTabSession` accepts
+any session while a window has no transcript path, so every window would show
+the prompt and change its Claude state.
 
 ### 2.5 Lifetime of a connection
 
@@ -196,25 +226,35 @@ connection without a reply.
 - **INV-4** — An MCP or remote-control connection is served by the most
   recently activated visible owner, else the most recently activated owner.
   *Test:* A and B attached to one MCP path, each registering a verb under one
-  name that returns its own label, with `visible` stubbed. Activate B, then A:
+  name that returns its own label, each with `setWindowVisibleProbe` stubbed.
+  Call `noteActivated` for B, then A:
   a call returns A's label. Make A invisible: B's label. Breaks if the target is
   fixed when the server is bound.
-- **INV-5** — A hook event reaches `processHookEvent` on every
-  `ClaudeIntegration` attached to the hook path, once each. *Test:* two
-  instances on one temporary hook path; send one event; each instance's
-  `hookEventsProcessedForTest()` rises by one. Breaks if only the serving owner
-  processes it: the other count stays put.
-- **INV-6** — Destroying an owner closes the connections it was serving.
-  *Test:* A serves a deferred MCP verb that never replies; destroy A while a
-  client waits. The client sees a disconnect well inside the 5 s idle bound, and
-  the `debug` (ASan) preset reports no leak. Breaks if the sockets stay parented
-  to the hub's server: they stay open until the idle timer aborts them and are
-  never deleted.
+- **INV-5** — A hook event reaches `processHookEvent` on exactly one
+  `ClaudeIntegration` attached to the hook path: the one whose session probe
+  claims its `session_id`, else § 2.3's target. *Test:* two instances on one
+  temporary hook path. B's `setSessionOwnerProbe` claims `S1`, A's claims
+  nothing, and A was activated last. An event for `S1` raises B's
+  `hookEventsProcessedForTest()` by one and leaves A's alone; an event for an
+  unclaimed `S2` raises A's. Breaks if every instance processes the event, or
+  if the probe is ignored: A's count rises for `S1` either way.
+- **INV-6** — Destroying an owner closes and deletes the connections it was
+  serving. *Test:* A serves a deferred MCP verb that never replies. Hold a
+  `QPointer` to the `QLocalSocket` A took (`findChildren<QLocalSocket *>`), then
+  destroy A while the client waits. The client sees a disconnect, and the
+  `QPointer` reads null once events are processed. Breaks if the sockets stay
+  parented to the hub's server: `onMcpConnection` stopped the idle timer before
+  dispatch, so the client waits and the `QPointer` stays set.
 - **INV-7** — The accept-time checks stay ahead of reading any request, in each
   connection handler. *Test:* source scrape of `ClaudeIntegration::onMcpConnection`,
   `ClaudeIntegration::onHookConnection` and `RemoteControl::onNewConnection`:
   each contains `SO_PEERCRED` and `setInterval(5000)`, before its `readyRead`
-  connection. Breaks if serving is moved into a path that skips them.
+  connection. It also scrapes the `attach` calls in `claudeintegration.cpp` and
+  `remotecontrol.cpp`, which pass those three handlers as `serve`, and
+  `src/localsockethub.cpp`, where `nextPendingConnection` appears only in the
+  no-owner close path. Breaks if connections are pulled and read in the hub, or
+  through a `serve` other than those handlers: the checks are then skipped while
+  the handler bodies still scrape clean.
 - **INV-8** — The MCP start-up call site and export in `mainwindow.cpp` are
   unchanged. *Test:* `McpMasterToggle.INV2_StartupGate` and
   `McpOrientation_Inv14.MainWindowExportsSocket` pass unmodified.
@@ -259,3 +299,4 @@ Label `features;fast`. Verify each test fails against pre-fix source first.
 
 | Loop | Date | Lanes | Q1 | Q2 | Q3 | Q4 | Outcome |
 |---|---|---|---|---|---|---|---|
+| 1 | 2026-09-13 | 3 cold `review-lane` | 2 | 0 | 2 | 2 | Verified 6, fixed 6, dismissed 1. Fixed: `acquire` no longer runs `ensureSocketDir` and runs `setOwnerOnlyPerms` after `listen` (§ 2.2); a hook event reaches the one window that owns its session, with `ownsSession`, `onHookEvent` and `deliverHookEvent` in the hub API (§ 2.1, § 2.4, INV-5); `setWindowVisibleProbe` named as the `visible` seam (§ 2.1, INV-4); stop functions detach and never delete the shared server (§ 2.1); INV-7 also scrapes the `attach` calls and the hub; INV-6 asserts the socket object is gone rather than a leak report. Dismissed: token accounting follows the serving window (true, changes nothing built). Four open questions resolved with no finding. |
