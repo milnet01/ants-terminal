@@ -7924,6 +7924,10 @@ extends an existing item, that item carries it instead.
   (ANTS-5050 area), the plugin event rate limit, HTML export streaming,
   the per-sequence progress tab icon, and restoreSessions decompressing
   every tab in the constructor.
+  Progress (2026-09-14): shipped the scrollback-export medium (QSaveFile,
+  commit checked, failure reported) and the review-command quoting,
+  runKWinScript FailedToStart cleanup and SSH timer QPointer lows. Test:
+  mainwindow_command_safety.
   **Layman:** Smaller main-window fixes: split panes that are never tidied up, slow exports and plugin event floods.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lane mainwindow-a).
