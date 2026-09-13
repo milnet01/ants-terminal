@@ -8157,6 +8157,16 @@ extends an existing item, that item carries it instead.
   - Documents out of date: mcp-error-codes.md credits unknown_tool to
     the dispatcher, ANTS-3396 states the wrong reap window, and
     mcp-tools.md restates a one-at-a-time guarantee ANTS-2132 narrowed.
+  Progress (2026-09-13, 3aa45f43): the cached dispatch_queue_full
+  refusal is fixed (the queue-full branch clears cacheable; test
+  McpAsyncDispatch.Inv14QueueFullRefusalIsNotCached). The three documents
+  are corrected: mcp-error-codes.md (unknown_tool is tool_info's; a
+  tools/call for no registered tool is JSON-RPC -32602 recorded as
+  tool_not_found), ANTS-3396 (reap window derived from the aggregate cap),
+  mcp-tools.md (only off-thread verbs run one at a time).
+  STILL OPEN: monotonic clock for the cache TTL and the reapers; the rate
+  check canonicalising caller_cwd on the GUI thread; isError on refusals;
+  m_remoteControl read on the worker.
   **Layman:** Small fixes to how Ants routes Claude's tool calls: a cached refusal, clock handling and error flags.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lane claude-integration-b).
