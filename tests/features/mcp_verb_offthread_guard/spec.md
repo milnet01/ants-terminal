@@ -47,7 +47,10 @@ for a queued connection passes against code that still joins.
 - **INV-7** — the GUI thread never blocks on the dispatch worker while serving
   a request. `shutdownDispatchWorker`'s join is the sole exception, it is the
   only join in the file, and only the destructor reaches it. Neither
-  `finishToolDispatch` nor `transformReply` joins.
+  `finishToolDispatch` nor `transformReply` joins. `MainWindow` creates its
+  `ClaudeIntegration` (in `setupStatusBarChrome`) before its `RemoteControl`,
+  so the worker is joined before the `RemoteControl` an off-thread verb
+  calls is destroyed (ANTS-5090).
 - **INV-9** — one `transformReply` and one `finishToolDispatch` definition
   (ANTS-5072). The wrap lives in `transformReply`; `finishToolDispatch`,
   `postToolDispatch` and the dispatcher keep no copy, and `postToolDispatch`

@@ -192,6 +192,22 @@ TEST(McpVerbOffthreadGuard, Main) {
     expect(bodyAfter(ci, "ClaudeIntegration::~ClaudeIntegration() {")
                    .find("shutdownDispatchWorker()") != std::string::npos,
            "INV-7/destructor-runs-the-teardown");
+    // ANTS-5090 — ~MainWindow never stops the worker itself. It is joined
+    // from ~ClaudeIntegration, and Qt deletes children in creation order, so
+    // RemoteControl outlives the join only while ClaudeIntegration is the
+    // earlier child. rcDelegate calls m_remoteControl from the worker.
+    {
+        const size_t chrome = mw.find("    setupStatusBarChrome();");
+        const size_t rc = mw.find("m_remoteControl = new RemoteControl(");
+        expect(mw.find("m_claudeIntegration = new ClaudeIntegration(this)") !=
+                       std::string::npos &&
+                   bodyAfter(mw, "void MainWindow::setupStatusBarChrome() {")
+                           .find("m_claudeIntegration = new ClaudeIntegration(") !=
+                       std::string::npos,
+               "INV-7/ClaudeIntegration-created-in-status-bar-chrome");
+        expect(chrome != std::string::npos && rc != std::string::npos && chrome < rc,
+               "INV-7/ClaudeIntegration-is-the-earlier-child-than-RemoteControl");
+    }
 
     // INV-9 — one response pipeline, shared by every path: one transformReply
     // and one finishToolDispatch (ANTS-5072). A second copy of the transforms,

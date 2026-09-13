@@ -1107,6 +1107,12 @@ MainWindow::MainWindow(bool quakeMode, bool e2eMode, QWidget *parent)
     // land one-by-one. Failure to bind (another Ants instance
     // already owns the socket) is non-fatal: the log notes it and
     // the main window boots normally.
+    //
+    // ANTS-5090 — keep this AFTER the status-bar chrome setup above, which
+    // creates m_claudeIntegration. Qt deletes children in creation order, so
+    // ~ClaudeIntegration joins the dispatch worker before RemoteControl is
+    // destroyed; an off-thread verb running a cmd*() at teardown still finds
+    // it alive. Locked by mcp_verb_offthread_guard INV-7.
     m_remoteControl = new RemoteControl(this, this);
     // ANTS-5144 — the listener is shared by every window and prefers a
     // visible one when it picks who serves a request.
