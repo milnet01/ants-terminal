@@ -8142,6 +8142,22 @@ extends an existing item, that item carries it instead.
   4 MiB tail freeze, readyRead re-parse and connection caps, the
   malformed-request abort, the peer-check comment, the /tmp hook socket
   name, and pollClaudeProcess resolving from the shell's cwd.
+  Progress (2026-09-14, 28f7150b, 523157ca): the /proc orphan scan in
+  findClaudeChildPid runs every poll only while a Claude child is tracked,
+  and once every kOrphanScanEveryPolls (5) polls otherwise, in both
+  pollClaudeProcess and ClaudeTabTracker::detectClaudeChild. The
+  hook-socket peer-check comment no longer claims to stop a same-UID
+  process; it states the uid-only check and the ADR-0004 trust model.
+  NOT A QUICK FIX, recorded: moving the hook and MCP sockets out of /tmp.
+  The installed Claude hook script hardcodes /tmp/ants-claude-hooks-$pid,
+  and the MCP path is bound by the ANTS_MCP_SOCKET export, the stale-socket
+  sweep and ANTS-1897 INV-14, so it needs a spec and a migration for
+  scripts already in users' ~/.claude. Since ANTS-5144 a squatter can stop
+  the socket binding (acquire refuses a foreign-owned socket) but cannot
+  intercept it. STILL OPEN: loadTranscript on the GUI thread, the 4 MiB
+  tail freeze, readyRead re-parse and connection caps, the
+  malformed-request abort, and pollClaudeProcess resolving from the
+  shell's cwd.
   **Layman:** Smaller Claude-integration fixes: slow process scans, a slow transcript window and dropped long messages.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lane claude-integration-a).
