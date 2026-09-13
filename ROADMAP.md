@@ -18486,7 +18486,7 @@ indie-review finding.
   Source: in-session-2026-09-13 (ANTS-5121 investigation).
   Lanes: mcp, remotecontrol, mainwindow.
 
-- 📋 [ANTS-5145] **changelog_query cannot find an id cited only in a dated topic's headline or prose.**
+- ✅ [ANTS-5145] **changelog_query cannot find an id cited only in a dated topic's headline or prose.**
   Found 2026-09-13 while amending ANTS-3533 for ANTS-5071. changelog_log
   op:add_subsection writes `### <date> <Category> — <headline>`, then prose,
   then optional bullets, and the headline often carries the ids.
@@ -18506,6 +18506,13 @@ indie-review finding.
   at its cap, loops 8 and 9 (3 verified findings, all fixed; calm).
   Next: build the topic entry in ChangelogQuery::parse with write-code,
   the INV-11 test red first, and re-fixture the INV-10 positive test.
+  Resolved (2026-09-13): shipped in e4e2999f. ChangelogQuery::parse
+  makes an entry for a dated topic heading that sets a category
+  (docs/specs/ANTS-3533.md section 3, INV-11): text is the headline,
+  body its flush-left prose, ids from both; a heading with neither
+  headline nor prose makes none. Inv11DatedTopicHeadingIsAnEntry proven
+  red first; three mutants (empty-topic check, prose append, separator
+  strip) each reddened their own assertion; default suite 4604/4604.
   **Layman:** The changelog search still can't find a change that was written up as a dated paragraph with no bullet points under it.
   Kind: enhancement.
   Source: in-session-2026-09-13 (ANTS-5071 spec amendment).
