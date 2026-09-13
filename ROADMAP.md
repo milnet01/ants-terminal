@@ -18427,6 +18427,46 @@ indie-review finding.
   Source: in-session-2026-09-13 (ANTS-5071 spec amendment).
   Lanes: changelog, mcp.
 
+- 📋 [ANTS-5146] **changelog_query returns the full entry list for an ids argument that is neither an array nor a string.**
+  Found 2026-09-13 by the ANTS-3533 review gate (loop 1), verified in
+  RemoteControl::cmdChangelogQuery: `ids` is read only when it is an array
+  or a non-empty string, so `ids:42` or `ids:{}` leaves hasIds false and the
+  call falls through to the unfiltered list. A numeric `id` becomes an empty
+  string the same way. ANTS-3533 INV-8 requires a malformed `ids` to refuse
+  bad_args rather than dump the list, the ANTS-3541 failure. Fix: refuse
+  bad_args for a present `id` or `ids` of the wrong JSON type.
+  **Layman:** Asking the changelog search for entries with a badly formed list of ids returns the whole changelog instead of an error.
+  Kind: fix.
+  Source: review-contract loop 1 on ANTS-3533 (ANTS-5071 amendment), 2026-09-13.
+  Lanes: changelog, mcp.
+
+- 📋 [ANTS-5147] **changelog_query pages id lookups, while ANTS-3533 says an id lookup overrides pagination.**
+  Found 2026-09-13 by the ANTS-3533 review gate (loop 1), verified in
+  RemoteControl::cmdChangelogQuery: the id path collects matches and then
+  calls PaginationEngine::pageBullets with offset and limit like every
+  other path, so `id` plus `offset:10` returns an empty page with
+  found:true. ANTS-3533 § 2.1, § 2.3, § 2.4 and INV-5 say id and ids
+  override pagination. Needs a decision on which is right: amend the spec
+  to say id results are paged, or change the handler to skip paging for an
+  id lookup, as roadmap_query does.
+  **Layman:** The changelog search and its written design disagree about whether looking up a specific id can return only part of the results.
+  Kind: investigate.
+  Source: review-contract loop 1 on ANTS-3533 (ANTS-5071 amendment), 2026-09-13.
+  Lanes: changelog, mcp.
+
+- 📋 [ANTS-5148] **changelog_log add_subsection writes any date string it is given, so it can write a dated heading changelog_query will not recognise.**
+  Found 2026-09-13 by the ANTS-3533 review gate (loop 1), verified: the
+  add_subsection branch of RemoteControl::cmdChangelogLog takes `date` as a
+  trimmed string, and ChangelogLog::insertUnreleasedSubsection validates the
+  category but not the date. A caller passing `date:"2026-9-13"` gets a
+  heading whose date QDate cannot parse, and the ANTS-5071 reader then treats
+  it as non-canonical and skips its bullets. Fix: refuse a `date` that does
+  not parse as yyyy-MM-dd.
+  **Layman:** The changelog writer accepts badly formatted dates, which makes those entries invisible to the changelog search.
+  Kind: fix.
+  Source: review-contract loop 1 on ANTS-3533 (ANTS-5071 amendment), 2026-09-13.
+  Lanes: changelog, mcp.
+
 ### 🎨 Review Changes dialog UX (user request 2026-06-03)
 
 Navigation + scroll affordances for the Review Changes dialog, requested
