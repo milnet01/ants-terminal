@@ -7879,6 +7879,9 @@ extends an existing item, that item carries it instead.
   Not started: exports on the GUI thread, the prompt-block index held
   across menu.exec, invalidateSpanCaches mid-batch, QSaveFile and error
   reporting for exports, autocomplete matching the prompt, tr().
+  Progress (2026-09-14): shipped the rich-copy medium. copySelectionRich
+  merges same-style cells into one span and copies plain text only above
+  kRichCopyCellCap cells. Test: terminalwidget_hotpath_perf INV-14.
   **Layman:** Smaller fixes to copying, exporting and searching in the terminal, which can freeze on very long histories.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lane terminal-widget-b).
@@ -7909,6 +7912,18 @@ extends an existing item, that item carries it instead.
   - resultsFile is put inside double quotes unescaped before the PTY
     write.
   - restoreSessions decompresses every saved tab in the constructor.
+  Progress (2026-09-14): shipped the split-pane medium.
+  MainWindow::trackTerminalShell and releaseTerminalShell are used by
+  newTab, newTabForRemote, splitCurrentPane, closeFocusedPane and
+  performTabClose, which now releases every pane in the tab.
+  restoreSessions keeps its direct trackShell call, pinned by
+  claude_dot_restored_tabs WI-1. Test: split_pane_shell_tracking.
+  Next, prepared: the review-command quoting, scrollback export QSaveFile,
+  runKWinScript FailedToStart and SSH timer QPointer lows.
+  Not started: refreshTasksButton re-parsing on the status timer
+  (ANTS-5050 area), the plugin event rate limit, HTML export streaming,
+  the per-sequence progress tab icon, and restoreSessions decompressing
+  every tab in the constructor.
   **Layman:** Smaller main-window fixes: split panes that are never tidied up, slow exports and plugin event floods.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lane mainwindow-a).
