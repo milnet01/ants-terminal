@@ -1286,7 +1286,7 @@ for the rotation contract.
   [§0.6.39](CHANGELOG.md#0639--2026-04-18).
   Kind: implement.
 
-- 📋 [ANTS-4541] **Scrub a stale Claude session's environment from every new shell tab.**
+- ✅ [ANTS-4541] **Scrub a stale Claude session's environment from every new shell tab.**
   Observed 2026-08-19. Claude Code started in a fresh tab reported
   "Transcript saving is off — inherited CLAUDE_CODE_CHILD_SESSION marker"
   and wrote no .jsonl, so the session could not be resumed.
@@ -1315,6 +1315,14 @@ for the rotation contract.
   Open question for design: strip unconditionally, or only when the named
   CLAUDE_PID is no longer alive. Unconditional is simpler and matches the
   "a tab is a fresh shell" model.
+  Resolved (2026-09-14), unconditional strip, identity keys only.
+  Pty::start's pre-fork environment copy skips CLAUDECODE,
+  CLAUDE_CODE_CHILD_SESSION, CLAUDE_CODE_SESSION_ID, CLAUDE_PID,
+  CLAUDE_CODE_MESSAGING_SOCKET, CLAUDE_CODE_EXECPATH and AI_AGENT. The
+  whole CLAUDE_* prefix is NOT stripped, because configuration such as
+  CLAUDE_CODE_USE_BEDROCK reaches the terminal the same way. Test:
+  PtyChildEnv.Main INV-3; the red run printed C=1 K=1 U=kept, the fixed
+  run C= K= U=kept.
   **Layman:** A new terminal tab can inherit a dead Claude session's identity, which silently switches off transcript saving in the Claude you start there.
   Kind: fix.
   Source: in-session-2026-08-19.

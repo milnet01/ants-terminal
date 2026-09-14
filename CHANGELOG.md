@@ -78,6 +78,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **New tab shells no longer inherit a dead Claude Code session's identity variables, which switched transcript saving off in a claude started there; other CLAUDE_CODE_ settings still pass through.** (ANTS-4541)
+
 - **The per-tab thinking-level chip reads the last prompt a person typed instead of stopping at a tool reply, so it no longer shows Unknown on almost every live tab.** (ANTS-1892)
 
 - **invariant_check's scope note now says on every reply that specs are matched by path, so a spec citing the module only by symbol is known to be missing even when another spec matched.** (ANTS-4972)
