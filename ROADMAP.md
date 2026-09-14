@@ -9117,6 +9117,15 @@ extends an existing item, that item carries it instead.
   - Time blocked in settings.get counts against the handler budget.
   - ANTS-2093 and luaengine.h describe the join and the zombie total as
     they were before ANTS-4682.
+  Progress (2026-09-14): runQueryThreaded deletes and removes finished
+  detached workers before checking kMaxQueryZombies; project.read
+  refuses a path that is not a regular file (project_query
+  Ants5107ReadRefusesFifo, Ants5107FinishedZombiesAreReaped). The
+  detached worker's result slot is still leaked once it finishes. Still
+  open: project.list's entry cap, PluginManager's teardown waits and
+  queued Unload, settings.get teardown deadlock, init.lua wedge
+  detection, per-handler budget timing, plugin signal rate limits,
+  broadcast fan-out, zombies per reload, and the lows.
   **Layman:** Smaller plugin fixes: a query limit that never resets, reloads that freeze the window, and plugins that can flood it.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lane plugins-lua).
