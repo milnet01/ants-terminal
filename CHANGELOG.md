@@ -95,6 +95,11 @@ for security-relevant changes.
 
 ### Fixed
 
+- **A clickable link that wraps off the bottom row stays clickable on both lines** (ANTS-5076)
+  A link printed near the end of the last row wraps and scrolls the screen.
+  Its recorded start row did not move with the scroll, so the link was
+  dropped from both lines. It now keeps a span on each.
+
 - **A large paste now reaches the shell whole, closing marker included** (ANTS-5075)
   A paste bigger than the terminal's write queue used to lose its tail, and
   could lose the bracketed-paste end marker, leaving the shell stuck in paste

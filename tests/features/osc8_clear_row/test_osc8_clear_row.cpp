@@ -108,3 +108,25 @@ TEST(Osc8ClearRow, EmptyLinkAddsNoSpan) {
         h.feed(cup(9, 5) + osc8Link("https://h.example/", ""));
     EXPECT_TRUE(h.grid.screenHyperlinks(9).empty());
 }
+
+// INV-8
+TEST(Osc8ClearRow, LinkWrappingOffTheBottomRowKeepsItsSpan) {
+    std::setlocale(LC_CTYPE, "");
+    Harness h;
+    // Opened five columns from the end of the last row: the label wraps, and
+    // the wrap scrolls the screen up one row before the link closes.
+    h.feed(cup(kRows - 1, kCols - 5) + osc8Link("https://i.example/", "0123456789"));
+    const auto spanOn = [&](int row) -> const HyperlinkSpan * {
+        for (const auto &s : h.grid.screenHyperlinks(row))
+            if (s.uri == "https://i.example/") return &s;
+        return nullptr;
+    };
+    const HyperlinkSpan *head = spanOn(kRows - 2);
+    const HyperlinkSpan *tail = spanOn(kRows - 1);
+    ASSERT_NE(head, nullptr) << "INV-8: the label's first half lost its link";
+    ASSERT_NE(tail, nullptr) << "INV-8: the label's second half lost its link";
+    EXPECT_EQ(head->startCol, kCols - 5);
+    EXPECT_EQ(head->endCol, kCols - 1);
+    EXPECT_EQ(tail->startCol, 0);
+    EXPECT_EQ(tail->endCol, 4);
+}

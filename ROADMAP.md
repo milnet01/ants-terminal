@@ -7838,7 +7838,7 @@ extends an existing item, that item carries it instead.
   Source: code-quality-review-2026-09-11 perf pass (lane vt-parser-pty).
   Lanes: vt, pty.
 
-- 📋 [ANTS-5076] **Performance pass findings for the terminal grid (medium and low).**
+- ✅ [ANTS-5076] **Performance pass findings for the terminal grid (medium and low).**
   The resize freeze and the 1M memory bound are on ANTS-3456 and
   ANTS-4534.
   Medium:
@@ -7889,6 +7889,14 @@ extends an existing item, that item carries it instead.
   Decided (2026-09-14, user): the Kitty double count against the image
   budget stays. terminalgrid.h records it as deliberate (reject early,
   never late); that finding is closed with no code change.
+  Resolved (2026-09-14): the bottom-row wrapped link span is fixed.
+  TerminalGrid::scrollUp moves an open link's m_hyperlinkStartRow with
+  the rows it shifts and clamps it to the region top when it scrolls
+  off. Locked by tests/features/osc8_clear_row INV-8, red first; full
+  default suite green. The remaining lows are closed elsewhere: the
+  prompt-region shift shipped in ANTS-5029, and wcwidth's locale
+  dependence stays open as ANTS-3792. The same class under scrollDown,
+  insertLines and deleteLines is filed as ANTS-5218, unverified.
   **Layman:** Smaller terminal-display fixes: clickable links that pile up, a slow image format and a word-wrapping bug.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lane terminal-grid).
@@ -10382,6 +10390,19 @@ extends an existing item, that item carries it instead.
   Kind: fix.
   Source: in-session-2026-09-14.
   Lanes: audit.
+
+- 📋 [ANTS-5218] **An open OSC 8 link's start row may go stale under reverse scroll, insert line and delete line.**
+  Found 2026-09-14 while fixing ANTS-5076's wrapped-link low, which moves
+  m_hyperlinkStartRow inside TerminalGrid::scrollUp. A search for
+  m_hyperlinkStartRow finds it set when a link opens, read by
+  pushHyperlinkSpansForActive, and reset for the alt screen, and nowhere
+  else. So scrollDown, insertLines and deleteLines shift rows under an open
+  link without moving its start row. Unverified: whether real output opens a
+  link across those operations, and what span results.
+  **Layman:** A clickable link might point at the wrong line if the screen scrolls backwards while it is being printed.
+  Kind: fix.
+  Source: in-session-2026-09-14.
+  Lanes: terminalgrid.
 
 ## Memory-efficiency sweep (user request 2026-08-19)
 

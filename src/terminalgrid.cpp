@@ -2174,6 +2174,20 @@ void TerminalGrid::scrollUp(int count) {
     // into scrollback).
     count = std::min(count, regionSize);
 
+    // ANTS-5076 — an open OSC 8 link's start row moves with the rows it sits
+    // on. Left in place, a link that wraps off the bottom row closes with its
+    // start on the cursor row and an end column before its start column, and
+    // pushHyperlinkSpansForActive drops it. A start that scrolls off the top
+    // of the region is clamped to the region's top, column 0.
+    if (m_hyperlinkActive && m_hyperlinkStartRow >= m_scrollTop &&
+        m_hyperlinkStartRow <= m_scrollBottom) {
+        m_hyperlinkStartRow -= count;
+        if (m_hyperlinkStartRow < m_scrollTop) {
+            m_hyperlinkStartRow = m_scrollTop;
+            m_hyperlinkStartCol = 0;
+        }
+    }
+
     // 0.6.22 — sliding-window check for the CSI 2J redraw suppression.
     // The whole batch of `count` shifts happens in microseconds within
     // a single CSI S call, so the window-extend / window-close decision

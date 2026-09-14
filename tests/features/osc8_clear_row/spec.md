@@ -24,6 +24,12 @@ plain `XXXX` printed from column 0, reports no span for that link.
 **INV-7 — an empty link adds no span.** A link opened and closed with no text
 between, 200 times, leaves no span on its row.
 
+**INV-8 — a link that wraps off the bottom row keeps its span.** A link opened
+five columns from the end of the last row, with a ten-character label, wraps
+and scrolls the screen up one row before it closes. Its first five characters
+report a span on the second-to-last row, columns 75–79, and its last five a
+span on the last row, columns 0–4.
+
 ## Rationale
 
 `TerminalGrid::clearRow` reset cells and combining characters but left the
@@ -40,3 +46,6 @@ without bound.
 
 - **ANTS-5076:** `clearRow` never cleared OSC 8 spans, so cleared text kept
   its links. Locked by this spec.
+- **ANTS-5076 (INV-8):** `scrollUp` moved rows and their spans but not the open
+  link's start row, so a link that wrapped off the bottom row closed as a
+  single-row span that ended before it began and was dropped.
