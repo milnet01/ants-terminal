@@ -78,6 +78,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **roadmap_log op:"set_body" accepts a replacement body up to 65536 characters, so long bodies can be written back whole; amend_body keeps its 4096-character fragment cap.** (ANTS-4841)
+
 - **co_change_family, docs_index, feedback_query and session_orient now declare the `compact` argument they already honoured, so a caller can pass compact:false to them.** (ANTS-4657)
 
 - **roadmap_query's tool detail now says when `parseable_bullets` and its warning appear, and that a store-served read never carries them, so their absence can be read correctly on either backend.** (ANTS-4964)

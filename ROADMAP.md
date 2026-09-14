@@ -57058,8 +57058,16 @@ two projects).
   Kind: enhancement.
   Source: cc-feedback-2026-09-03 OneUp.
 
-- 📋 [ANTS-4841] **roadmap_log op:"set_body"'s 4096-char cap excludes the bodies the op was written for.**
+- ✅ [ANTS-4841] **roadmap_log op:"set_body"'s 4096-char cap excludes the bodies the op was written for.**
   ANTS-4808 shipped set_body as the route back for a body no match can express; the reporting project's own case was exactly that and was refused too_large at 6805 characters. The two properties correlate: a body large enough to accumulate unmatched garbage is likely over the cap, and one that fits is usually within amend_body's reach. set_body replaces a whole body by definition, so the match-safety argument for a 4096-char old_text does not apply to new_text. A file_path for new_text, as write_db and changelog_log already take, also keeps a long body out of the conversation. The workaround was three calls, each an extra chance to lose a paragraph.
+  Resolved (2026-09-14): set_body's new_text now has its own cap,
+  kRcMaxSetBodyChars (65536), above the longest body the store held when
+  measured. amend_body and amend_headline keep the 4096-character
+  fragment cap that bounds the leaked-XML scrub. The shared schema
+  property's maxLength matches, and its description states both caps.
+  Test: RoadmapLogSetBody.Ants4841WholeBodyCapIsNotTheFragmentCap. The
+  file_path alternative was not built; a long body still crosses the
+  JSON boundary inline.
   **Layman:** The tool for replacing a mangled roadmap entry refuses the entries most likely to be mangled.
   Kind: fix.
   Source: cc-feedback-2026-09-03 Pressless.
@@ -58434,6 +58442,19 @@ plus two gaps hit while sweeping stale spec citations under ANTS-4757.
   loop-log rows being unactionable. This one is about the citation
   being attributed to the wrong file in the first place, which would
   still be wrong outside a loop log.
+  Progress (2026-09-14): mechanism confirmed, fix prepared, NOT built.
+  In docs/specs/ANTS-2160.md the reported `:9449` / `:11942` sit in a
+  loop-log bullet whose paragraph names no source path; the antecedent
+  was a citation above two headings and several blank lines. Resetting
+  the antecedent at a blank line or an ATX heading reports them
+  unresolved. That changes docs/specs/ANTS-3636.md § 2.4's sticky-path
+  rule ("inherits from the most recent antecedent earlier in the same
+  document"), which weighed a narrower scope against 727 real
+  continuations. So it needs a corpus count of continuations that cross
+  a paragraph, a spec amendment, and rule 14's gate before building. The
+  prepared patch (a paragraph-end check beside the fence and example
+  reset in check(), plus a three-case test) is ready once the amendment
+  passes.
   **Layman:** When a document writes a line number on its own, the citation checker guesses which file it belongs to — and when it guesses wrong it reports a problem about a file that was never mentioned.
   Kind: fix.
   Source: in-session-2026-09-07, hit while sweeping ANTS-4757.
@@ -59957,7 +59978,7 @@ than re-filed; everything else lands here.
   Source: Contact_List_Ants_MCP_Feedback.md 2026-09-08.
   Lanes: audit, mcp.
 
-- 📋 [ANTS-4967] **op:"set_body" caps new_text at 4096 characters, so a body can be read whole and not written back.**
+- ✅ [ANTS-4967] **op:"set_body" caps new_text at 4096 characters, so a body can be read whole and not written back.**
   set_body is the documented route back for a body no unique
   old_text can express. Its `new_text` is capped at 4096 characters,
   while roadmap_query's single-id fetch defaults to 16384 and
@@ -59987,6 +60008,8 @@ than re-filed; everything else lands here.
   body need not cross the JSON boundary inline. The second is
   probably better here — ANTS-1853 says a large inline body can drop
   in transit, which is a worse failure than a refusal.
+  Closed (2026-09-14) as a duplicate of ANTS-4841, which shipped the
+  same fix: set_body's new_text cap rose to 65536 characters.
   **Layman:** The command for replacing a mangled roadmap entry refuses the long entries it exists to rescue.
   Kind: fix.
   Source: Contact_List_Ants_MCP_Feedback.md 2026-09-08.
