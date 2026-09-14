@@ -72,6 +72,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **workspace_search resolves a `glob` or `exclude_glob` containing `/` against `lane` when one is set, instead of returning no matches.** (ANTS-5117)
+
 - **A refused MCP call narrowed with `fields` no longer lists every requested field as unmatched, so the refusal's own `code` is the only cause shown.** (ANTS-4979)
 
 - **find_definition finds C functions whose return type, name and parameter list sit on separate lines, the style common in older C code such as DOOM.** (ANTS-4828)

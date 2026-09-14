@@ -57124,6 +57124,20 @@ two projects).
 
 - 📋 [ANTS-4859] **feedback_query's etag varies with include_tracking, so a 304 probe reports an unchanged file as changed.**
   Measured with mtime identical either side, and confirmed by re-issuing with the same include_tracking, which did short-circuit. The schema anticipates this for `fields` only, stating the etag is computed on the unfiltered body so a narrowed call still short-circuits; include_tracking is not a narrowing argument and is not covered. Misleading in the alarming direction: the probe came straight after a transport timeout on a write, where the etag is the natural way to ask whether the write landed, and it answered that the file had changed. Key the etag on the file bytes plus the external state the envelope resolves, or echo an etag_inputs so a mismatch is self-diagnosing.
+  NEEDS A DECISION, not built (2026-09-14). Mechanism, read in source:
+  ClaudeIntegration::applyEtagPattern sets the etag to
+  etagFor(responseText), the first 16 hex digits of SHA-256 over the
+  WHOLE reply. `fields` escapes it only because projection runs after
+  the etag. So any argument that changes the reply (include_tracking,
+  max_bytes, a mode) changes the etag by construction, on every etag
+  verb, not only feedback_query. Keying the etag on file bytes plus
+  external state instead changes the shared ETag-304 contract in
+  docs/standards/mcp-tools.md, which runs rule 14's gate. Options: (a)
+  state in the shared etag_match property that a 304 needs the same
+  arguments as the call that issued the etag; (b) echo the reply-shaping
+  arguments as etag_inputs so a mismatch explains itself; (c) re-key per
+  verb. Recommendation: (a) now, since it only describes current
+  behaviour; (b) or (c) only through the gate.
   **Layman:** The cheap "has this file changed?" check answers yes when nothing changed.
   Kind: fix.
   Source: cc-feedback-2026-09-03 Rolodex.
@@ -60037,7 +60051,7 @@ than re-filed; everything else lands here.
   Source: Games_Hub_Ants_MCP_Feedback.md 2026-09-08.
   Lanes: mcp.
 
-- 📋 [ANTS-4973] **apply_edits dry_run returns applied / edits_applied / files_written — three past-tense keys asserting a write that did not happen.**
+- ✅ [ANTS-4973] **apply_edits dry_run returns applied / edits_applied / files_written — three past-tense keys asserting a write that did not happen.**
   RE-MEASURED by the reporter rather than re-read, and it still
   reproduces: apply_edits {dry_run:true} on a real anchor returned
   {"applied":[{"path":"CHANGELOG.md","replacements":1}],
@@ -60059,6 +60073,13 @@ than re-filed; everything else lands here.
 
   The reporter's earlier entry on this carries no id, which is why
   it was still open to re-measure; that is what this item closes.
+  Resolved (2026-09-14) as a duplicate of ANTS-4834, which shipped this
+  fix on 2026-09-03: cmdApplyEdits' dry-run branch emits would_write /
+  would_apply / would_apply_count and omits files_written / applied /
+  edits_applied, and McpApplyEdits.Ants4834DryRunReportsInTheFutureTense
+  pins all three absences with a real-write control. Read in current
+  source and test. The 2026-09-08 measurement must have run an instance
+  built before that fix. No code change and no separate changelog entry.
   **Layman:** The preview mode of the file-editing tool reports that it wrote the file, when it did not.
   Kind: fix.
   Source: LocalWebServerManager_Ants_MCP_Feedback.md 2026-09-08.
@@ -60445,7 +60466,7 @@ than re-filed; everything else lands here.
   Kind: fix.
   Source: in-session-2026-09-08, split out of ANTS-4947.
 
-- 📋 [ANTS-5117] **workspace_search returns a silent zero when a glob or exclude_glob containing a slash is combined with lane.**
+- ✅ [ANTS-5117] **workspace_search returns a silent zero when a glob or exclude_glob containing a slash is combined with lane.**
   Measured 2026-09-11. With lane "tests/features", glob
   "{claude_dot_restored_tabs,tab_rename_persist}/*.cpp" returned no
   matches. The same files do match: the root-relative glob
@@ -60458,6 +60479,18 @@ than re-filed; everything else lands here.
   resolve glob and exclude_glob relative to lane, or refuse the
   combination with a hint naming the root-relative spelling.
   A zero-row answer here reads as "no such code".
+  Resolved (2026-09-14): reproduced on the live verb (lane
+  tests/features + glob
+  {claude_dot_restored_tabs,tab_rename_persist}/*.cpp returned 0; the
+  root-relative glob with no lane returned 4). Cause: rg runs from the
+  project root with the lane as its path argument, and a glob holding
+  `/` anchors at rg's working directory. A slash-bearing glob or
+  exclude_glob entry is now prefixed with the lane's project-relative
+  path at the argv lines, unless it already names the lane or starts
+  with `**/`; the hidden-path check still reads the glob as given. Test
+  McpWorkspaceSearch.Ants5117SlashGlobResolvesUnderLane runs the real
+  verb and ripgrep on a fixture tree; it fails on the old source and
+  passes now; full suite green.
   **Layman:** Searching inside one folder with a file pattern that names sub-folders finds nothing, even when matches exist.
   Kind: fix.
   Source: in-session-2026-09-11.
