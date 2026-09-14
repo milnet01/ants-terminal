@@ -72,6 +72,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **find_definition finds C functions whose return type, name and parameter list sit on separate lines, the style common in older C code such as DOOM.** (ANTS-4828)
+
 - **find_definition no longer lists a wrapped ternary arm (`: sym(a);`) or a stream insertion (`out << sym(i);`) as a declaration of the symbol.** (ANTS-4924)
 
 - **An offloaded reply's per-row preview now samples each object row's own JSON, so every head shows what its row is instead of the same `{"v":` prefix.** (ANTS-5153)

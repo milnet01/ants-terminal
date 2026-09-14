@@ -56821,7 +56821,7 @@ two projects).
   Kind: enhancement.
   Source: cc-feedback-2026-09-03 RetroDB.
 
-- 📋 [ANTS-4828] **find_definition returns zero for a C function whose return type, name and parameters sit on separate lines.**
+- ✅ [ANTS-4828] **find_definition returns zero for a C function whose return type, name and parameters sit on separate lines.**
   Found on the 1997 id Software playsim, where that style is the norm. The reply is ok:true with definitions_count:0 and no hint, so a zero is indistinguishable from a correct one; file_outline resolves the same files. Either allow newlines between the type, name and parameter list, or, where the matcher is not to be touched, add a hint when a workspace_search for the symbol hits a source file, as find_sources already does.
   Measured 2026-09-14 over the C sources in
   /mnt/Games/Scripts/Linux/DOOM_Ants: the dominant split shape puts the
@@ -56841,6 +56841,16 @@ two projects).
   DOOM_Ants; the only other DOOM hits were real SDL header prototypes
   (`extern DECLSPEC T *SDLCALL` over `SDL_CreateThread(...`), which are
   declarations. So the two-line half is safe to loosen.
+  Resolved (2026-09-14): the ANTS-4603 wrapped pair accepts an
+  unqualified column-0 name, covering type / `name(params)`. For type /
+  name / `( params )`, the scan loop holds the name as pending, confirms
+  it when the next line opens `(`, and joins lines to the one holding
+  `)`, so a prototype ending `);` reads as a declaration; the
+  def-recording block is shared as recordDef, and the batch path tracks
+  pending per needle. Test
+  McpSymbolQuery.Ants4828SplitCSignaturesResolve fails on the old source
+  and passes now; the batch parity fixture gains both shapes; full suite
+  green.
   **Layman:** A common older C style makes functions invisible to the "where is this defined?" verb.
   Kind: fix.
   Source: cc-feedback-2026-09-03 DOOM.
