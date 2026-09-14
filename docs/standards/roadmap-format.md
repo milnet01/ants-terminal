@@ -240,16 +240,21 @@ Optional pieces:
   to the bold headline if absent. Sits after the body prose,
   before `Kind:` / `Lanes:` / `Source:`. Case-insensitive label.
   **Stored without its closing full stop; the render writes one back**
-  (ANTS-4955). Every route that writes the store's `layman` column, an
-  import and `roadmap_log` alike, drops ONE trailing `.`; the render then
-  appends `.` unless the stored text ends in `!` or `?`. So
+  (ANTS-4955). Every route that takes the value from a caller or a
+  markdown file, an import and `roadmap_log` alike, drops ONE trailing
+  `.`; the render then appends `.` unless the stored text ends in `!` or
+  `?`. Rebuilding the store from its own export is not such a route: it
+  restores the column verbatim. So
   `Layman: Faster start.` and `Layman: Faster start` store the same value
   and render the same line, and re-importing a rendered file changes
   nothing. `roadmap_log` writing to a roadmap with no store emits that same
   rendered line. A file whose Layman lines lack the stop gains it at its
-  next render: a one-time diff. A value stored before this rule that still
-  ends in `.` is normalised once by dropping that stop; left alone it
-  renders `..`.
+  next render: a one-time diff. Values stored before this rule that still
+  end in `.` are normalised before the new render first publishes; left
+  alone they render `..`. Re-importing each project's published file with
+  `roadmap_migrate` does it and is safe to repeat, because the import drops
+  the stop. A pass dropping a `.` from every stored value is not, since a
+  stored `..` is legitimate, so it runs exactly once.
 - **`Evidence: <path1>, <path2>`** — optional file paths (screenshots,
   logs, repros) that evidence the item — e.g. a bug diagnosed from a
   screenshot. Comma-separated; a comma or newline *inside* a path is
@@ -1230,7 +1235,8 @@ than a text edit. **Step 4 is neither** — it rewrites a release-block
 `##` heading (§ 3.7), which is a *section title*, and editing the
 rendered heading by hand is discarded at the next render, silently. It
 has its own store operation, `roadmap_log op:"retitle_section"`
-(Ants ANTS-4070), which takes the section's slug and the new title and
+(Ants ANTS-4070; implemented but not yet reachable, per § 3.9 and
+ANTS-4081), which takes the section's slug and the new title and
 **recomputes the slug from it**: a slug is derived on import from the
 heading, never round-tripped, so keeping the old one would make the
 store disagree with what the next import derives. The envelope reports

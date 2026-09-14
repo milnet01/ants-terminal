@@ -59663,6 +59663,14 @@ than re-filed; everything else lands here.
   changes roadmap-format.md, so it takes rule 14's gate before anyone
   builds. Sync the global copy once, after this lands, in a ~/.claude
   session.
+  Progress (2026-09-14): rule 14 gate on roadmap-format.md, loops 1 and 2
+  fixed (7735c9fb, ce70dfb0), loop 3 running. Test drafted:
+  tests/features/roadmap_layman_stop (INV-1..6). Re-measured the live store,
+  read-only: 4967 items carry a layman, 2045 end in `.`, none in `..`, one in
+  `!` or `?`, across 18 projects (this one 650). Those 2045 get one stop
+  dropped in the one-time normalisation the standard now requires. It must
+  land together with the new render: the running binary renders them `..`
+  otherwise. Take a sqlite3 .backup first.
   **Layman:** Re-importing a roadmap quietly rewrites the wording of every item's plain-English summary.
   Kind: fix.
   Source: Pressless_Ants_MCP_Feedback.md 2026-09-08.
@@ -79229,6 +79237,55 @@ contributors don't duplicate research.
   Kind: doc-fix.
   Source: in-session-2026-09-14 (review-contract sweep, ANTS-4955 gate on roadmap-format.md).
   Lanes: docs, roadmap-store.
+
+- 📋 [ANTS-5158] **Triage clang-tidy warnings in src/remotecontrol.cpp, led by a bugprone-incorrect-roundings cast.**
+  Surfaced by the editor's clang-tidy pass on 2026-09-14 while working
+  on ANTS-4955; that work did not touch this file, so these predate it.
+  Unverified, and needs triage before any edit:
+  - bugprone-incorrect-roundings: a `(double + 0.5)` cast to int, near
+    the line-1793 area. The only one that can change a result.
+  - bugprone-branch-clone: a repeated branch body in a conditional chain,
+    near the line-2027 area.
+  - misc-use-internal-linkage: rcExtractBoldId, rcExtractCaretAnchor,
+    rcFenceExtents, rcFenceOpenerOf and rcScopeFencesToBullets. Check the
+    tests that call them before making them static.
+  - performance-unnecessary-copy-initialization (twice) and
+    performance-use-std-move (once).
+  **Layman:** An automatic code checker flagged a few spots in the remote-control code, one of which may round a number the wrong way.
+  Kind: audit-fix.
+  Source: in-session-2026-09-14 (IDE clang-tidy diagnostics).
+  Lanes: remote-control.
+
+- 📋 [ANTS-5159] **roadmap-format.md names two different bases for the archive directory, and the viewer and the migration follow different ones.**
+  § 3.9's convention puts archives at `<dir(ROADMAP.md)>/docs/roadmap/`,
+  while its rotate_minor bullet says `docs/roadmap/<M>.<N>.md` relative to
+  the project root. The code splits the same way: RoadmapDialog::archiveDirFor
+  builds the path from the roadmap file's directory, and the migration's
+  relativeSourcePath / isPlaceableSourcePath key on a root-relative
+  `docs/roadmap/`. They agree only when ROADMAP.md sits at the root, and
+  `.ants/project.json`'s `roadmap` key allows it not to. Decide one base (or
+  require the root placement), then correct the standard and whichever code
+  path disagrees. Gated standard: rule 14 applies to the doc change.
+  **Layman:** The roadmap rules disagree about where old-version archive files live when the roadmap file is not at the top of the project.
+  Kind: doc-fix.
+  Source: review-contract loop 3 on roadmap-format.md, 2026-09-14 (ANTS-4955 gate, filed at cap).
+  Lanes: roadmap-store, roadmap-dialog, docs.
+
+- 📋 [ANTS-5160] **roadmap-format.md § 3.10.3 step 2 says the counter carries ids because the file does not yet classify ants-v1, but its next paragraph says step 1 alone can make it classify.**
+  Step 2 of the GFM-to-emoji conversion assigns ids against
+  `.roadmap-counter` even on a project with a store row, "because the file
+  does not yet classify `ants-v1`". The paragraph after the steps says the
+  detector's best-effort parse can classify the file `ants-v1` after step 1
+  alone. On a store-row project the file may therefore already count as
+  store-migrated when step 2 runs, and § 3.11 lists reading or bumping the
+  counter there as an anti-pattern. Since loop 2 of the same gate the counter
+  row of § 3.5.1's table also floors to the store's id_high_water, which may
+  be the whole answer: state which carrier step 2 uses on a store-row project
+  and drop the false reason. Gated standard: rule 14 applies.
+  **Layman:** The steps for converting an old-style roadmap give a reason that the same section later says may not be true.
+  Kind: doc-fix.
+  Source: review-contract loop 3 on roadmap-format.md, 2026-09-14 (ANTS-4955 gate, filed at cap).
+  Lanes: roadmap-store, docs.
 
 ### 📝 Cold-eyes 2026-05-11 (ANTS-1234 spec)
 
