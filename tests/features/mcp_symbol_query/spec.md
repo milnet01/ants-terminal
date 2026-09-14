@@ -38,6 +38,13 @@ source tree spanning C++, Python, Lua, Shell):
     `co_await`/`co_yield`/`throw`/`else`) as the leading return-type token.
     `definitionsTotal` stays 1 and no emitted signature begins with
     `return `.
+8c. (ANTS-4924) An operator-led expression line is neither a definition
+    nor a declaration: a wrapped ternary arm (`: sym(1);`) and a stream
+    insertion (`out << sym(2);`, `<< sym(3);`) are not reported, because
+    every return-type token in the C++ def anchor must hold a word
+    character. The real definition and prototype are still found. The
+    data-member anchor applies the same rule, so `out << rootField;` is
+    not a declaration of `rootField`; a real member and a real local are.
 
 **Wiring contract** (source-grep over the four wiring files):
 

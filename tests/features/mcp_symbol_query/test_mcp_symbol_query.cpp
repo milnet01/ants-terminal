@@ -1252,3 +1252,73 @@ TEST(McpSymbolQuery, Ants4880WrappedLocalInitIsNotADefinition) {
                        QStringLiteral("declaration")))
         << "the local should still be reported, as a declaration";
 }
+
+// ---------------------------------------------------------------------------
+// ANTS-4924 — an operator-led expression line is not a declaration.
+//
+// find_definition {symbol:"resolveRootCanonical"} reported six rows reading
+// `: resolveRootCanonical(m_main, req);`, the second arm of a wrapped ternary,
+// and {symbol:"lineText"} reported `claudeRecentLines << lineText(i);`, all as
+// declarations. The C++ def anchor accepted `:` and `<<` as return-type
+// tokens, because both characters are in its token class.
+
+TEST(McpSymbolQuery, Ants4924OperatorLedLinesAreNotDeclarations) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString root = QFileInfo(tmp.path()).canonicalFilePath();
+
+    writeFile(root, QStringLiteral("src/home.h"),
+              QStringLiteral("QString rootOf(int id);\n"));
+    writeFile(root, QStringLiteral("src/home.cpp"),
+              QStringLiteral("QString rootOf(int id) {\n"
+                             "    return QString::number(id);\n"
+                             "}\n"));
+    writeFile(root, QStringLiteral("src/user.cpp"),
+              QStringLiteral("void use(bool f, QStringList &out) {\n"
+                             "    const QString r = f ? QString()\n"
+                             "                        : rootOf(1);\n"
+                             "    out << rootOf(2);\n"
+                             "    qDebug() << \"x\"\n"
+                             "             << rootOf(3);\n"
+                             "}\n"));
+
+    SymbolQuery::Options opts;
+    const auto d = SymbolQuery::findDefinition(
+        root, QStringLiteral("rootOf"), opts);
+
+    EXPECT_TRUE(hasDef(d, QStringLiteral("src/home.cpp"),
+                       QStringLiteral("definition")))
+        << "the real definition must still be found";
+    EXPECT_TRUE(hasDef(d, QStringLiteral("src/home.h"),
+                       QStringLiteral("declaration")))
+        << "the real prototype must still be found";
+    EXPECT_FALSE(hasDef(d, QStringLiteral("src/user.cpp"),
+                        QStringLiteral("declaration")))
+        << "a ternary arm or a stream insertion is a call site, not a "
+           "declaration — this is the reported defect";
+    EXPECT_FALSE(hasDef(d, QStringLiteral("src/user.cpp"),
+                        QStringLiteral("definition")));
+
+    // The data-member anchor has the same token group: a stream insertion of
+    // a bare name must not read as that name's declaration either.
+    writeFile(root, QStringLiteral("src/fields.h"),
+              QStringLiteral("struct Holder {\n"
+                             "    int rootField;\n"
+                             "};\n"));
+    writeFile(root, QStringLiteral("src/fields_user.cpp"),
+              QStringLiteral("void dump(QTextStream &out, const Holder &h) {\n"
+                             "    int rootField = h.rootField;\n"
+                             "    out << rootField;\n"
+                             "}\n"));
+    const auto f = SymbolQuery::findDefinition(
+        root, QStringLiteral("rootField"), opts);
+    EXPECT_TRUE(hasDef(f, QStringLiteral("src/fields.h"),
+                       QStringLiteral("declaration")))
+        << "the real member declaration must still be found";
+    int userRows = 0;
+    for (const auto &m : f.definitions)
+        if (m.file == QStringLiteral("src/fields_user.cpp")) ++userRows;
+    EXPECT_EQ(userRows, 1)
+        << "only the local `int rootField = ...;` declares the name in "
+           "fields_user.cpp; `out << rootField;` is a use";
+}

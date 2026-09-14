@@ -273,7 +273,12 @@ Anchors buildAnchors(Lang lang, const QString &s) {
             // The base class keeps `<>`, so every pre-ANTS-3746 line still
             // matches by the same path it did; the new group is only reached
             // by backtracking, when the greedy token stops at a comma.
-            add(QStringLiteral("^[ \\t]*(?:extern\\s*\"C(?:\\+\\+)?\"\\s+)?(?!(?:return|co_return|co_await|co_yield|throw|else)\\b)(?:[\\w:<>~]+(?:<[^();{]*>)?[\\s*&]+)+(?:[\\w:]+::)?") + s + QStringLiteral("\\s*\\("));
+            // ANTS-4924 — each token must hold a word character. `:` and `<<`
+            // are both in the token class, so a wrapped ternary arm
+            // (`: sym(a, b);`) and a stream insertion (`out << sym(i);`) read
+            // as return type + name and were reported as declarations. A
+            // return-type token names a type, so it always has a letter.
+            add(QStringLiteral("^[ \\t]*(?:extern\\s*\"C(?:\\+\\+)?\"\\s+)?(?!(?:return|co_return|co_await|co_yield|throw|else)\\b)(?:(?=[:<>~]*\\w)[\\w:<>~]+(?:<[^();{]*>)?[\\s*&]+)+(?:[\\w:]+::)?") + s + QStringLiteral("\\s*\\("));
             // Out-of-line constructor / destructor definitions carry no
             // return type (`Foo::Foo(` / `Foo::~Foo(`); match them
             // explicitly so a class query still resolves its ctor/dtor.
@@ -330,10 +335,12 @@ Anchors buildAnchors(Lang lang, const QString &s) {
             // carries, widened by the statement keywords that can precede a
             // bare name (`case Foo:` and `using Foo =` are not declarations
             // of Foo in the sense a reader means).
+            // ANTS-4924 — the same word-character rule as the return-type
+            // ladder, so `out << m_value;` is not a declaration of m_value.
             add(QStringLiteral(
                     "^[ \\t]*(?!(?:return|co_return|co_await|co_yield|throw|else|case|"
                     "default|using|typedef|friend|delete|goto|sizeof|new)\\b)"
-                    "(?:[\\w:<>~]+(?:<[^();{]*>)?[\\s*&]+)+(?:[\\w:]+::)?")
+                    "(?:(?=[:<>~]*\\w)[\\w:<>~]+(?:<[^();{]*>)?[\\s*&]+)+(?:[\\w:]+::)?")
                 + s
                 + QStringLiteral("\\s*(?:\\[[^\\]]*\\])?\\s*[;={]"));
                         // ANTS-4346 — a namespace. `find_definition` returned an empty
