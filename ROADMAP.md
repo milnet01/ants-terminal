@@ -8313,6 +8313,12 @@ extends an existing item, that item carries it instead.
   - One stylesheet colour is a literal, against dialogs.md D1.
   - Stale references: ANTS-1238's line citation, roadmapdialog.h's
     table-mode links and a card-markup comment.
+  Progress (2026-09-14): kKinds carries all 21 canonical kinds and the
+  card glyph lookup reads it; loadMarkdown reads the live roadmap up to
+  the 64 MiB assembled cap (tests/features/roadmap_dialog_kinds_cap).
+  Still open: a live file past 64 MiB is still cut without notice
+  (loadMarkdown is static and cannot reach m_sourceError); the
+  per-rebuild re-read with no BulletRecord cache; the lows.
   **Layman:** Roadmap-window fixes: a size limit that will soon cut off this project's roadmap, and slow redraws while typing.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lane roadmap-dialog).
