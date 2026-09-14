@@ -57227,8 +57227,14 @@ two projects).
   Kind: enhancement.
   Source: cc-feedback-2026-09-03 perch.
 
-- 📋 [ANTS-4856] **apply_edits can leave a file syntactically broken when part of a batch applies, and still reports ok:true.**
+- ✅ [ANTS-4856] **apply_edits can leave a file syntactically broken when part of a batch applies, and still reports ok:true.**
   Observed where edit 0 defined a local and edit 1 read it: edit 0 missed on a one-character mismatch and was skipped, edit 1 applied, and the file then referenced a name nothing defined. "Atomic per file" is atomicity of the WRITE, not of the batch, and a caller naturally reads it as the batch. Worst exactly where the batch form is most valuable, a large mechanical refactor whose edits are coupled by construction. Wants an opt-in all_or_nothing that resolves every edit first and commits nothing if any would be skipped; dry_run already does the resolve half. At minimum a top-level partial:true when applied and skipped are both non-zero, since ok:true reads as success.
+  Resolved (2026-09-14), minimum half: the envelope carries partial:true
+  when a batch applied and skipped at least one edit each, and
+  would_be_partial:true on a dry run. Test:
+  McpApplyEdits.Ants4856PartialBatchIsFlagged. The opt-in all_or_nothing
+  mode is split to its own item: it needs a refusal code
+  docs/standards/mcp-error-codes.md does not yet define.
   **Layman:** If one edit in a batch misses, the rest still apply and can leave the file in a state that is neither the old nor the new one.
   Kind: fix.
   Source: cc-feedback-2026-09-03 Rolodex.
@@ -57316,6 +57322,21 @@ two projects).
   Kind: fix.
   Source: in-session-2026-09-05, hit while resolving pin homes for ANTS-4757.
   Lanes: mcp, workspace.
+
+- 📋 [ANTS-5155] **apply_edits has no all_or_nothing mode, so a coupled batch cannot refuse as a whole when one edit would miss.**
+  ANTS-4856 shipped the minimum half: a batch that applied some edits and
+  skipped others now carries partial:true. The opt-in half is still open.
+  An all_or_nothing:true argument would resolve every edit first, which
+  dry_run already does, and write nothing if any edit would be skipped.
+
+  Decide first: the refusal's shape. An ok:false envelope needs a code that
+  docs/standards/mcp-error-codes.md does not define, and skipped[] with its
+  candidates must still reach the caller, since that is how they fix the
+  miss. The handler writes each file inside its edit loop today, so the
+  writes must move after the loop for this mode.
+  **Layman:** A batch of linked edits cannot be told to change nothing at all if any one of them would fail.
+  Kind: enhancement.
+  Source: split from ANTS-4856, 2026-09-14.
 
 ### Ants MCP feedback from CC sessions — 2026-09-04 triage
 

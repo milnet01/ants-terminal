@@ -78,6 +78,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **apply_edits flags a batch that applied some edits and skipped others with `partial:true` (`would_be_partial:true` on a dry run), instead of a bare ok:true.** (ANTS-4856)
+
 - **roadmap_log op:"set_body" accepts a replacement body up to 65536 characters, so long bodies can be written back whole; amend_body keeps its 4096-character fragment cap.** (ANTS-4841)
 
 - **co_change_family, docs_index, feedback_query and session_orient now declare the `compact` argument they already honoured, so a caller can pass compact:false to them.** (ANTS-4657)
