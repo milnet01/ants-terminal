@@ -16,7 +16,8 @@ variant)` so an unchanged run is drawn without re-shaping.
   writes the cached `baselineOff` (the ANTS-2100 correction,
   `fontAscent - line.ascent()`).
 - `clear()` — drops all entries (font/DPI/theme change).
-- `size()`, `capacity()`, `hits()`, `misses()` — observability.
+- `size()`, `capacity()`, `hits()`, `misses()`, `cachedTextUnits()` —
+  observability.
 
 Eviction is generational (two maps, hot + cold): a lookup checks hot then
 cold (promoting on a cold hit); when hot reaches capacity, cold is dropped
@@ -37,6 +38,18 @@ and hot becomes the new cold. Live entries are bounded to `2 x capacity`.
 - **INV-5** — `clear()` empties the cache (`size() == 0`) and the next
   lookup is a miss; the lifetime `hits()`/`misses()` counters are NOT reset
   by `clear()`.
+- **INV-6** (ANTS-5077) — a run longer than `kMaxCachedRunUnits` UTF-16 units
+  is shaped but not stored: `size()` does not grow, a repeat lookup is a miss
+  again, and the returned layout is valid with its text round-tripping until
+  the next `layoutFor` call.
+- **INV-7** (ANTS-5077) — retained text is bounded by a budget, not only by
+  the entry count: across many distinct runs each under the per-run cap,
+  `cachedTextUnits()` never exceeds `2 * kTextUnitBudget`, while `size()` stays
+  under `2 * capacity`. A space-free line is one whole-row run, so an entry cap
+  alone let a few tabs of long runs hold tens of MB after output stopped.
+
+The budget counts UTF-16 units (`QString::size()`), which is never less than
+the codepoint count, so it bounds at least as tightly as a codepoint budget.
 
 ## Tests
 

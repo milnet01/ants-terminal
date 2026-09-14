@@ -9,14 +9,21 @@
 void ShapedRunCache::clear() {
     m_hot.clear();
     m_cold.clear();
+    m_hotUnits = 0;
+    m_coldUnits = 0;
+    m_uncached.reset();
     // hits/misses are lifetime counters — left intact across a clear so a
     // font-change mid-session does not reset the observed hit rate.
 }
 
-void ShapedRunCache::rotateIfFull() {
-    if (m_hot.size() < m_capacity) return;
+void ShapedRunCache::rotateIfFull(std::size_t incomingUnits) {
+    if (m_hot.size() < m_capacity &&
+        m_hotUnits + incomingUnits <= static_cast<std::size_t>(kTextUnitBudget))
+        return;
     m_cold = std::move(m_hot);
+    m_coldUnits = m_hotUnits;
     m_hot.clear();
+    m_hotUnits = 0;
 }
 
 ShapedRunCache::Entry &ShapedRunCache::shapeInto(Map &map, const Key &key,
@@ -49,6 +56,18 @@ QTextLayout *ShapedRunCache::layoutFor(const QString &text, int variant,
                                        const QFont &font, int fontAscent,
                                        qreal &baselineOffOut) {
     const Key key{text, variant};
+    const auto units = static_cast<std::size_t>(text.size());
+
+    // ANTS-5077 — a run this long is shaped into the one-slot scratch layout
+    // and never stored, so it cannot hold its text in the cache.
+    if (text.size() > kMaxCachedRunUnits) {
+        ++m_misses;
+        Map scratch;
+        Entry &entry = shapeInto(scratch, key, font, fontAscent);
+        baselineOffOut = entry.baselineOff;
+        m_uncached = std::move(entry.layout);
+        return m_uncached.get();
+    }
 
     if (auto it = m_hot.find(key); it != m_hot.end()) {
         ++m_hits;
@@ -62,16 +81,19 @@ QTextLayout *ShapedRunCache::layoutFor(const QString &text, int variant,
         // rotation. Extract first, then rotate, then re-insert.
         Entry entry = std::move(it->second);
         m_cold.erase(it);
+        m_coldUnits -= units;
         baselineOffOut = entry.baselineOff;
         QTextLayout *layout = entry.layout.get();
-        rotateIfFull();
+        rotateIfFull(units);
         m_hot.emplace(key, std::move(entry));
+        m_hotUnits += units;
         return layout;
     }
 
     ++m_misses;
-    rotateIfFull();
+    rotateIfFull(units);
     Entry &entry = shapeInto(m_hot, key, font, fontAscent);
+    m_hotUnits += units;
     baselineOffOut = entry.baselineOff;
     return entry.layout.get();
 }

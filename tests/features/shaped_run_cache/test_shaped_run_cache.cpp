@@ -135,3 +135,40 @@ TEST(ShapedRunCache, Inv5ClearEmptiesButKeepsCounters) {
     EXPECT_EQ(cache.misses(), misses + 1);
     EXPECT_EQ(cache.size(), 1u);
 }
+
+// INV-6 (ANTS-5077) — a run over the per-run cap is shaped but not stored.
+TEST(ShapedRunCache, Inv6OverlongRunIsNotStored) {
+    ShapedRunCache cache;
+    const QFont font = monoFont();
+    qreal off = 0;
+    const QString longRun(ShapedRunCache::kMaxCachedRunUnits + 1, QLatin1Char('x'));
+
+    QTextLayout *first = cache.layoutFor(longRun, 0, font, kAscent, off);
+    ASSERT_NE(first, nullptr);
+    EXPECT_EQ(first->text(), longRun) << "INV-6: the uncached layout must round-trip";
+    EXPECT_EQ(cache.size(), 0u) << "INV-6: an overlong run was stored";
+
+    cache.layoutFor(longRun, 0, font, kAscent, off);
+    EXPECT_EQ(cache.hits(), 0u) << "INV-6: an overlong run was served from the cache";
+    EXPECT_EQ(cache.misses(), 2u);
+}
+
+// INV-7 (ANTS-5077) — retained text is bounded by the text budget, not only by
+// the entry count.
+TEST(ShapedRunCache, Inv7RetainedTextIsBounded) {
+    ShapedRunCache cache;  // default capacity, far above the runs inserted here
+    const QFont font = monoFont();
+    qreal off = 0;
+    const qsizetype runLen = ShapedRunCache::kMaxCachedRunUnits;
+    const int runs = static_cast<int>(3 * ShapedRunCache::kTextUnitBudget / runLen) + 1;
+    const std::size_t bound = 2 * static_cast<std::size_t>(ShapedRunCache::kTextUnitBudget);
+
+    for (int i = 0; i < runs; ++i) {
+        const QString text =
+            QString::number(i).leftJustified(runLen, QLatin1Char('y'));
+        ASSERT_NE(cache.layoutFor(text, 0, font, kAscent, off), nullptr);
+        ASSERT_LE(cache.cachedTextUnits(), bound)
+            << "INV-7: retained text exceeded twice the budget at run " << i;
+    }
+    EXPECT_LT(cache.size(), 2 * cache.capacity());
+}

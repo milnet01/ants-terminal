@@ -95,6 +95,13 @@ for security-relevant changes.
 
 ### Fixed
 
+- **Long unbroken lines no longer leave tens of megabytes cached per tab** (ANTS-5077)
+  The drawing cache kept a fixed number of text runs, however long each run
+  was. A line with no spaces is one run as wide as the row, so a few tabs of
+  such output could hold tens of megabytes after it stopped. The cache now has
+  a budget for the amount of text it keeps, and very long runs are drawn
+  without being cached.
+
 - **Closing a tab whose shell is stuck no longer risks freezing the whole window** (ANTS-5077)
   When a tab's background reader was still busy two seconds after the tab
   closed, it was forcibly killed, which can freeze the window if it held a

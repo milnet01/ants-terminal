@@ -7961,6 +7961,13 @@ extends an existing item, that item carries it instead.
   Test: parse_thread_detach_on_close INV-1..4, red first; full default
   suite green. Still open: clipboard image encode on the GUI thread, and
   ShapedRunCache's entry-only cap (next, test-first).
+  Progress (2026-09-14): shipped the ShapedRunCache medium. A run over
+  kMaxCachedRunUnits is shaped into a one-slot scratch layout and not
+  stored; the hot generation rotates before an insert would pass
+  kTextUnitBudget UTF-16 units, so retained text stays under twice the
+  budget. Test: shaped_run_cache INV-6 and INV-7, red first against a
+  stub; full default suite green. Last open part: clipboard image encode
+  on the GUI thread (next).
   **Layman:** Smaller fixes to drawing and typing in the terminal, including a screenshot-paste freeze.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lane terminal-widget-a).
