@@ -587,6 +587,16 @@ QJsonObject extract(const QString &absPath, const Options &opts) {
             }
         }
 
+        // ANTS-5103 — the first line is still always kept, so a call makes
+        // progress, but it is CLIPPED to the cap: kept whole, a single-line
+        // file of any size came back entire, against ANTS-2021 INV-9.
+        if (lines.isEmpty() && raw.size() > maxBytes) {
+            text = ReadRegion::clipToBytes(text, maxBytes);
+            raw = text.toUtf8();
+            ++linesClipped;
+            truncated = true;
+        }
+
         const int cost = lineCost(raw);
         // Incremental cap: keep ≥1 line, then stop before overflowing.
         if (!lines.isEmpty() && keptBytes + cost > maxBytes) {

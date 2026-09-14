@@ -2145,6 +2145,8 @@ if(ANTS_TESTS)
                 tests/features/read_region_md_section/test_read_region_md_section.cpp
                 # ANTS-2219 — read_regions batched multi-selector verb.
                 tests/features/read_regions/test_read_regions.cpp
+                # ANTS-5103 — read_region first-line clip, page progress, index cache commit.
+                tests/features/index_read_paging_guards/test_index_read_paging_guards.cpp
                 # ANTS-2228 — file_outline typedef-struct aggregate registration.
                 tests/features/file_outline_typedef_struct/test_file_outline_typedef_struct.cpp
                 # ANTS-3800 — the GLSL lane. Drives FileOutline::compute against

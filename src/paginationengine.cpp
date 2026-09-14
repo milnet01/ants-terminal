@@ -81,7 +81,10 @@ PageResult pageBullets(const QJsonArray &filtered,
         // Auto-pick: measure-then-cut against the soft cap. Reserve
         // envelope overhead so the wire response fits comfortably.
         const int budget = kSoftCapBytes - kEnvelopeOverheadBytes;
-        const int n = measureCutPoint(tail, budget);
+        // ANTS-5103 — at least one row. A first row larger than the budget
+        // cut the page to zero rows with next_offset == offset, so a client
+        // that follows next_offset looped forever.
+        const int n = qMin(qMax(measureCutPoint(tail, budget), 1), int(tail.size()));
         QJsonArray slice;
         for (int i = 0; i < n; ++i) slice.append(tail.at(i));
         r.slice = slice;
@@ -105,7 +108,8 @@ PageResult pageBullets(const QJsonArray &filtered,
         downshift(leanFull);
         const QJsonArray leanTail = tailFrom(leanFull);
         const int budget = kSoftCapBytes - kEnvelopeOverheadBytes;
-        const int n = measureCutPoint(leanTail, budget);
+        const int n = qMin(qMax(measureCutPoint(leanTail, budget), 1),
+                           int(leanTail.size()));   // ANTS-5103 — see above
         QJsonArray slice;
         for (int i = 0; i < n; ++i) slice.append(leanTail.at(i));
         r.slice = slice;

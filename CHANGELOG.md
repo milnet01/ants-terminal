@@ -70,6 +70,12 @@ for security-relevant changes.
 
 ### Fixed
 
+- **read_region clips an oversized first line to its byte limit instead of returning a huge single-line file whole** (ANTS-5103)
+
+- **An automatically sized results page always includes at least one row, so following next_offset can no longer loop forever** (ANTS-5103)
+
+- **codebase_index reports a failed cache write instead of ignoring it** (ANTS-5103)
+
 - **The AI client reports an error for a successful reply it cannot read, instead of an empty answer that looks like success** (ANTS-5105)
   A proxy login page or any other body that is neither a stream nor a chat
   completion used to show nothing in the AI chat and read as a clean

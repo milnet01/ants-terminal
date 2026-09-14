@@ -127,10 +127,12 @@ TEST(roadmap_query_pagination, EdgePathologicalBullet) {
     // One bullet with a payload larger than the cap.
     const auto arr = makeBullets(1, /*payloadBytes*/30000);
     const auto r = PaginationEngine::pageBullets(arr, 0, -1);
-    // Cut point is 0 — even one bullet doesn't fit.
-    EXPECT_EQ(r.slice.size(), 0);
-    EXPECT_TRUE(r.truncated);
-    EXPECT_EQ(r.nextOffset, 0);  // caller would need to skip past it manually
+    // ANTS-5103 — the page carries the oversized bullet rather than none.
+    // An empty page reported next_offset == offset, and a caller following
+    // next_offset asked for the same page forever.
+    EXPECT_EQ(r.slice.size(), 1);
+    EXPECT_FALSE(r.truncated);
+    EXPECT_EQ(r.nextOffset, -1);
 }
 
 // Empty input returns empty slice; no truncation.
