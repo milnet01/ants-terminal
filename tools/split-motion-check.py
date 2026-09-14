@@ -770,7 +770,10 @@ class Evaluator:
             if node[1] in self.active:
                 raise Unknown("`%s` refers to itself" % node[1])
             b = self.lookup(node[1])
-            self.used.update(range(b.first_line, b.last_line + 1))
+            # The line that reads the class text is not part of a window's
+            # call: editing it (a reader migration) changes no window.
+            if not self.reads_class(self.code[b.start:b.end]):
+                self.used.update(range(b.first_line, b.last_line + 1))
             self.active.add(node[1])
             try:
                 return self.value(Parser(self.code[b.start:b.end]).parse())
