@@ -21918,6 +21918,9 @@ gets one CHANGELOG section + one drift cycle + one push.
   the catalogue-identity invariant is withdrawn. The amendment changes
   direction for work still to come, so the spec is back to draft and runs
   review-contract again before ANTS-1044 is built.
+  Accepted again (2026-09-14): the split-first amendment ran review-contract
+  to its cap, every verified finding fixed, a calm cap. Next is ANTS-1044,
+  starting with a commit that lands its checks before any groundwork or cut.
   **Layman:** Three oversized source files account for most of the project's changes; split them up.
   Kind: implement.
 
