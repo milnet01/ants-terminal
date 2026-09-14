@@ -243,6 +243,15 @@ Optional pieces:
   headline still appears when the card is expanded. Falls back
   to the bold headline if absent. Sits after the body prose,
   before `Kind:` / `Lanes:` / `Source:`. Case-insensitive label.
+  **Stored without its closing full stop; the render writes one back**
+  (ANTS-4955) — the rule the `Source:` vocabulary below already follows
+  for its trailing period. Every route that writes the column, an import
+  and `roadmap_log` alike, drops ONE trailing `.`; the render appends
+  `.` unless the text already ends in `.`, `!` or `?`. So
+  `Layman: Faster start.` and `Layman: Faster start` store the same value
+  and render the same line, and re-importing a rendered file changes
+  nothing. A file whose Layman lines lack the stop gains it at its next
+  render: a one-time diff.
 - **`Evidence: <path1>, <path2>`** — optional file paths (screenshots,
   logs, repros) that evidence the item — e.g. a bug diagnosed from a
   screenshot. Comma-separated; a comma or newline *inside* a path is
