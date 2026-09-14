@@ -78,3 +78,12 @@ layout still scans one directory once. Ownership is still decided by the
 head sniff: a sibling whose roadmap does not own the prefix resolves
 nothing, and a prefix nobody owns stays `foreign_repo` with the
 unresolved-foreign note.
+
+## ANTS-4843 — a shipped id with no date is flagged
+
+A `mapped_id_status` entry whose status is ✅ and which carries no
+`shipped_date` gets `possibly_stale_binary:true` and
+`stale_check:"no_shipped_date"`, and `possibly_stale_binary_hint` says the
+comparison could not run for it. A dated entry is flagged only when its date
+is not older than the build, as before, and a non-✅ entry is never flagged.
+*Test:* `feedback_query_foreign_resolve.Ants4843FlagsAShippedIdWithNoDate`.

@@ -393,10 +393,24 @@ QJsonDocument RemoteControl::cmdFeedbackQuery(const QJsonObject &req) {
         // shipped.
         const QString buildDate = QString::fromLatin1(ANTS_BUILD_DATE);
         bool anyStale = false;
+        bool anyUndated = false;
         for (QJsonValueRef v : statusArr) {
             QJsonObject o = v.toObject();
             const QString shipped =
                 o.value(QStringLiteral("shipped_date")).toString();
+            // ANTS-4843 — a SHIPPED id with no parseable ship date is exactly
+            // the case the comparison cannot rule out, and skipping it left the
+            // flag silent where a session most needed it. Flag it, and name
+            // why, so it reads differently from a dated same-day ship.
+            if (shipped.isEmpty() && !buildDate.isEmpty()
+                && o.value(QStringLiteral("status")).toString() == kCheckQ) {
+                o[QStringLiteral("possibly_stale_binary")] = true;
+                o[QStringLiteral("stale_check")] = QStringLiteral("no_shipped_date");
+                anyStale = true;
+                anyUndated = true;
+                v = o;
+                continue;
+            }
             if (shipped.isEmpty() || buildDate.isEmpty()) continue;
             if (shipped >= buildDate) {   // ISO dates compare lexically
                 o[QStringLiteral("possibly_stale_binary")] = true;
@@ -415,7 +429,13 @@ QJsonDocument RemoteControl::cmdFeedbackQuery(const QJsonObject &req) {
                 "their fix. Verify against a relaunched build before "
                 "re-reporting any of them as still broken — a same-day ship "
                 "sets this flag, because shipped_date has no time component to "
-                "compare against the build time.").arg(buildDate);
+                "compare against the build time.").arg(buildDate)
+                + (anyUndated
+                       ? QStringLiteral(
+                             " An id marked stale_check:\"no_shipped_date\" is "
+                             "shipped but has no Resolved date, so the "
+                             "comparison could not run for it.")
+                       : QString());
         }
         if (anyForeign)
             out[QStringLiteral("mapped_id_status_note")] = QStringLiteral(

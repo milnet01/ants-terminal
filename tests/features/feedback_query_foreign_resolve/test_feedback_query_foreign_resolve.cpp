@@ -358,3 +358,42 @@ TEST(feedback_query_foreign_resolve, Ants4905UnownedPrefixStillForeign) {
     EXPECT_TRUE(env.contains("mapped_id_status_note"))
         << "an unresolved foreign id must still say so";
 }
+
+// ANTS-4843 — a shipped id with no Resolved date is flagged, with the reason.
+// The comparison skipped it, so the flag went quiet on exactly the id where a
+// stale binary could not be ruled out. A planned id still has no flag.
+TEST(feedback_query_foreign_resolve, Ants4843FlagsAShippedIdWithNoDate) {
+    QTemporaryDir root;
+    ASSERT_TRUE(root.isValid());
+    const QString sharedRoot = root.path();
+
+    ASSERT_TRUE(writeFile(sharedRoot + "/Consumer_Ants_MCP_Feedback.md",
+                          consumerFeedback()));
+    ASSERT_TRUE(writeFile(sharedRoot + "/Consumer/ROADMAP.md",
+        QString::fromUtf8("# Consumer ROADMAP\n\n"
+            "- \xF0\x9F\x93\x8B [CONS-0100] **A local planned item.**\n").toUtf8()));
+    ASSERT_TRUE(writeFile(sharedRoot + "/OwnerProj/ROADMAP.md",
+        QString::fromUtf8(
+            "# Owner ROADMAP\n\n"
+            "- \xE2\x9C\x85 [ANTS-3517] **Shipped with no recorded date.**\n"
+            "- \xF0\x9F\x93\x8B [ANTS-3599] **Still planned.**\n").toUtf8()));
+
+    RemoteControl rc(nullptr);
+    QJsonObject req;
+    req["path"]       = sharedRoot + "/Consumer_Ants_MCP_Feedback.md";
+    req["caller_cwd"] = sharedRoot + "/Consumer";
+    const QJsonObject env = rc.cmdFeedbackQuery(req).object();
+    ASSERT_TRUE(env.value("ok").toBool());
+
+    const auto got = statusMap(env);
+    ASSERT_FALSE(got.value("ANTS-3517").contains("shipped_date"))
+        << "setup: the shipped id must carry no date";
+    EXPECT_TRUE(got.value("ANTS-3517").value("possibly_stale_binary").toBool())
+        << "a shipped id with no date cannot be ruled out, so it is flagged";
+    EXPECT_EQ(got.value("ANTS-3517").value("stale_check").toString(),
+              QStringLiteral("no_shipped_date"));
+    EXPECT_FALSE(got.value("ANTS-3599").contains("possibly_stale_binary"))
+        << "a planned id has no ship date and cannot be stale";
+    EXPECT_TRUE(env.value("possibly_stale_binary_hint").toString()
+                    .contains(QStringLiteral("no_shipped_date")));
+}
