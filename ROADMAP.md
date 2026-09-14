@@ -18928,7 +18928,7 @@ indie-review finding.
   Kind: chore.
   Source: in-session-2026-09-04.
 
-- 📋 [ANTS-5138] **ants-terminal --remote prints "no response" when a reply takes longer than its per-read wait, though the server still answers.**
+- ✅ [ANTS-5138] **ants-terminal --remote prints "no response" when a reply takes longer than its per-read wait, though the server still answers.**
   RemoteControl::runClient loops on socket.waitForReadyRead with a short
   per-read wait and leaves the loop on the first timeout. Its overall
   deadline (ANTS-1671 M5) is checked only after bytes arrive. So when the
@@ -18940,6 +18940,18 @@ indie-review finding.
   dispatch worker, so queue time adds to the wait.
   Fix: wait for the first byte up to the overall deadline, and keep the
   per-read wait between later chunks so the slow-drip defence stands.
+  Resolved (2026-09-14): cause confirmed in RemoteControl::runClient
+  (src/remotecontrol_state.cpp): the loop was `while
+  (socket.waitForReadyRead(2000))`, so it left on the first 2 s wait
+  with nothing read, and the 10 s deadline was checked only after bytes
+  arrived. The first byte may now take the whole remaining deadline;
+  later chunks keep the 2 s wait, and bytes that start but miss the
+  deadline still end in the timed-out refusal. Residual: a server-side
+  budget above 10 s (workspace_search timeout_sec up to 30) still
+  outlasts the client deadline. Test
+  SharedSocketListener.Ants5138SlowFirstByteIsStillReceived (raw AF_UNIX
+  server answering after 2.5 s) fails on the old source and passes now;
+  full suite green.
   **Layman:** A script asking Ants to search can be told "no response" while Ants is still working on the answer.
   Kind: fix.
   Source: in-session-2026-09-13 (ANTS-2132 amendment research).

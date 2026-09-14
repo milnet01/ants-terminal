@@ -76,6 +76,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **`ants-terminal --remote` waits for a slow first byte of the reply, up to its overall deadline, instead of printing "no response" while the server is still answering.** (ANTS-5138)
+
 - **workspace_search resolves a `glob` or `exclude_glob` containing `/` against `lane` when one is set, instead of returning no matches.** (ANTS-5117)
 
 - **A refused MCP call narrowed with `fields` no longer lists every requested field as unmatched, so the refusal's own `code` is the only cause shown.** (ANTS-4979)
