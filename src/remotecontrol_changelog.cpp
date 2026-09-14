@@ -1343,6 +1343,15 @@ QJsonDocument RemoteControl::cmdChangelogLogAddBatch(const QJsonObject &req) {
     }
     const QJsonArray entries =
         req.value(QStringLiteral("entries")).toArray();
+    // ANTS-5098 — one call, one atomic commit, and every entry scanned; the
+    // array had no cap.
+    constexpr qsizetype kMaxBatchEntries = 200;
+    if (entries.size() > kMaxBatchEntries) {
+        return clErr(QStringLiteral("bad_args"),
+            QStringLiteral("changelog_log: op:\"add_batch\" takes at most %1 "
+                           "entries per call; got %2").arg(kMaxBatchEntries)
+                                                   .arg(entries.size()));
+    }
     // ANTS-2136 — dry_run preview, parity with the single op.
     const bool dryRun = req.value(QStringLiteral("dry_run")).toBool();
 

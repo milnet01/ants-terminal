@@ -70,6 +70,11 @@ for security-relevant changes.
 
 ### Fixed
 
+- **session_message returns at most 200 messages per inbox call and refuses a message_id that is not a positive whole number** (ANTS-5098)
+  A limit of 0 or less used to return the whole mailbox.
+
+- **changelog_log add_batch accepts at most 200 entries per call** (ANTS-5098)
+
 - **A roadmap flip_batch or annotate_batch where no item resolves in the roadmap database now reports failure under its own name instead of success** (ANTS-5095)
   The review-kind warning on append_batch also names the ids the batch
   assigned rather than the headlines.

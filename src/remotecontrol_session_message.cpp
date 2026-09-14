@@ -21,6 +21,7 @@
 #include "resolvedroot.h"
 #include "roadmapstore.h"
 
+#include <cmath>
 #include <QDateTime>
 #include <QDir>
 #include <QJsonArray>
@@ -166,7 +167,15 @@ QJsonDocument RemoteControl::cmdSessionMessage(const QJsonObject &req) {
             return refuse("bad_args",
                           QStringLiteral("session_message: op:\"ack\" needs a "
                                          "`message_id`"));
-        const qint64 id = qint64(req.value(QStringLiteral("message_id")).toDouble());
+        // ANTS-5098 — range-checked before the cast. A fractional, negative
+        // or out-of-range double cast to qint64 is undefined behaviour or
+        // names a different row.
+        const double rawId = req.value(QStringLiteral("message_id")).toDouble(-1);
+        if (!(rawId >= 1.0 && rawId <= 9007199254740992.0) || rawId != std::floor(rawId))
+            return refuse("bad_args",
+                          QStringLiteral("session_message: `message_id` must be a "
+                                         "positive integer"));
+        const qint64 id = qint64(rawId);
         bool already = false;
         QString code;
         if (!store.ackMessage(*self, id, now, &already, &code, &err))
@@ -183,9 +192,12 @@ QJsonDocument RemoteControl::cmdSessionMessage(const QJsonObject &req) {
     // op == "inbox"
     const bool includeAcked =
         req.value(QStringLiteral("include_acked")).toBool(false);
-    const int limit  = req.contains(QStringLiteral("limit"))
-                           ? req.value(QStringLiteral("limit")).toInt(20) : 20;
-    const int offset = req.value(QStringLiteral("offset")).toInt(0);
+    // ANTS-5098 — bounded: 0 or a negative limit reached the store as "no
+    // limit" and returned the whole mailbox.
+    const int limit  = qBound(1, req.contains(QStringLiteral("limit"))
+                                     ? req.value(QStringLiteral("limit")).toInt(20) : 20,
+                              200);
+    const int offset = qMax(0, req.value(QStringLiteral("offset")).toInt(0));
 
     QVector<RoadmapStore::Message> rows;
     int unacked = 0;

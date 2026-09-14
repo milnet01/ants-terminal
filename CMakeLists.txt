@@ -3568,6 +3568,8 @@ if(ANTS_TESTS)
                 # INV-1 and INV-2(b) are source scrapes over ANTS_SRC_DIR.
                 tests/features/roadmap_migrate_verb/test_roadmap_migrate_verb.cpp
                 tests/features/session_message/test_session_message.cpp
+                # ANTS-5098 — inbox page, message_id and add_batch bounds.
+                tests/features/content_verb_bounds/test_content_verb_bounds.cpp
                 # ANTS-4065 — the markdown→store import mapping. Behavioural
                 # across all three halves (parse, render, round trip) against a
                 # real store in a QTemporaryDir; the documents are inline
