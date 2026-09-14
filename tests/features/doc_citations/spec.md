@@ -100,6 +100,13 @@ The citation grammar itself is `tests/features/doc_citations_scan/`; the
   `next_offset`. *Test:* `DocCitations.Inv38OffsetPastTheEnd`.
 - **INV-42** — `count` and `counts` are whole-doc even when an emission cap binds.
   *Test:* `DocCitations.Inv42CountsAreWholeDoc`.
+- **INV-49** — a citation on a loop-log table row carries `loop_log_row:true`,
+  is counted in `counts.loop_log_row` (an overlay key), and is dropped by
+  `only:"stale"` whatever its status.
+  *Test:* `DocCitations.Ants4918LoopLogRowCitationIsNotStale`.
+- **INV-50** — a continuation after a `foreign_path` antecedent is itself
+  `foreign_path` and reads nothing.
+  *Test:* `DocCitations.Ants4918ForeignPathContinuationIsForeign`.
 
 ## Quotation pass (ANTS-4386)
 

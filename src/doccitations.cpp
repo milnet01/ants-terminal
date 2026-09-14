@@ -784,6 +784,9 @@ Target resolvePath(const QString &root, const QString &pathText, const Options &
 struct Antecedent {
     bool        valid     = false;
     bool        ambiguous = false;
+    // ANTS-4918 INV-50 — a foreign_path antecedent names another repository's
+    // file, so its continuation inherits the status instead of statting here.
+    bool        foreign   = false;
     QString     relPath;
     QStringList candidates;
     // ANTS-3801 — a citation failed to resolve since this antecedent was set,
@@ -1130,6 +1133,9 @@ QJsonObject check(const QString &rootCanonical, const QString &docAbsPath,
     // looked for and not found, and an ok citation with no anchor to judge it by.
     int anchorMissing = 0;
     int uncheckedOk   = 0;
+    // ANTS-4918 INV-49 — citations on a loop-log row, of any status. An overlay,
+    // not a status: each is also counted under its own status.
+    int loopLogRows   = 0;
 
     for (const Citation &tok : citations) {
         // A fence is a context break, not merely skipped text: a `:45` after a
@@ -1151,6 +1157,13 @@ QJsonObject check(const QString &rootCanonical, const QString &docAbsPath,
                 t.kind       = Target::Ambiguous;
                 t.candidates = ante.candidates;
                 inherited    = true;
+            } else if (ante.foreign) {
+                // ANTS-4918 INV-50 — statting another repository's path here
+                // would re-derive missing_file, the never-clearable finding
+                // ANTS-4085 removed. Inherit the status and read nothing.
+                t.kind    = Target::ForeignPath;
+                t.relPath = ante.relPath;
+                inherited = true;
             } else {
                 // Only the resolved PATH is inherited — the continuation runs the
                 // read step itself and takes its own status, so the two entries
@@ -1197,6 +1210,17 @@ QJsonObject check(const QString &rootCanonical, const QString &docAbsPath,
                       {QStringLiteral("start_line"), tok.startLine},
                       {QStringLiteral("end_line"), tok.endLine}};
         if (tok.approximate) e.insert(QStringLiteral("approximate"), true);
+        // ANTS-4918 INV-49 — a citation on a Cold-eyes loop-log row records what a
+        // review pass found, and a landed row is never edited, so it is reported
+        // and counted but cannot be fixed. Same row test as the quotation pass
+        // (ANTS-4637).
+        if (tok.docLine >= 1 && tok.docLine <= prefix.size()) {
+            const QString &srcLine = prefix.at(tok.docLine - 1);
+            if (dcIsTableRow(srcLine) && dcIsLoopLogRow(srcLine, dcTableCells(srcLine))) {
+                e.insert(QStringLiteral("loop_log_row"), true);
+                ++loopLogRows;
+            }
+        }
         if (tok.partial) e.insert(QStringLiteral("partial"), true);
         if (inherited) e.insert(QStringLiteral("inherited_path"), true);
 
@@ -1307,6 +1331,7 @@ QJsonObject check(const QString &rootCanonical, const QString &docAbsPath,
         if (t.kind != Target::Unresolved) {
             ante.valid     = true;
             ante.ambiguous = (t.kind == Target::Ambiguous);
+            ante.foreign   = (t.kind == Target::ForeignPath);
             ante.relPath   = t.relPath;
             ante.candidates = t.candidates;
             // ANTS-3801 — a fresh antecedent starts clean. Only a NON-inherited
@@ -1340,6 +1365,7 @@ QJsonObject check(const QString &rootCanonical, const QString &docAbsPath,
     counts.insert(QStringLiteral("anchor_missing"), anchorMissing);
     counts.insert(QStringLiteral("unchecked"), uncheckedOk);
     counts.insert(QStringLiteral("unparsed"), unparsedRows.size());
+    counts.insert(QStringLiteral("loop_log_row"), loopLogRows);   // ANTS-4918 INV-49
     // ANTS-4087 — name the non-status keys IN THE REPLY. The model above is
     // right and specified (ANTS-3636 § 4), but nothing in the response said
     // which keys are statuses, so `counts` read as one map that ought to sum to
@@ -1351,7 +1377,8 @@ QJsonObject check(const QString &rootCanonical, const QString &docAbsPath,
     // the means to assert the partition without reading the spec first.
     static const QStringList kOverlayKeys{QStringLiteral("anchor_missing"),
                                           QStringLiteral("unchecked"),
-                                          QStringLiteral("unparsed")};
+                                          QStringLiteral("unparsed"),
+                                          QStringLiteral("loop_log_row")};
 
     QJsonArray unparsedOut;
     for (int i = 0; i < unparsedRows.size() && i < opts.maxUnparsed; ++i) {
@@ -1720,12 +1747,15 @@ QJsonObject check(const QString &rootCanonical, const QString &docAbsPath,
         // stops being read. It is still emitted under `only:"all"`, and still
         // counted, because a caller may want to know a document cites
         // elsewhere.
+        // ANTS-4918 — nor is a citation on a loop-log row, whatever its status:
+        // the row is never edited, so the finding could never be cleared.
         const QString st = e.value(QStringLiteral("status")).toString();
         const bool stale =
-            (st != QLatin1String("ok")
-             && st != QLatin1String("foreign_path"))
-            || (e.contains(QStringLiteral("anchor_found"))
-                && !e.value(QStringLiteral("anchor_found")).toBool());
+            ((st != QLatin1String("ok")
+              && st != QLatin1String("foreign_path"))
+             || (e.contains(QStringLiteral("anchor_found"))
+                 && !e.value(QStringLiteral("anchor_found")).toBool()))
+            && !e.value(QStringLiteral("loop_log_row")).toBool();
         if (opts.only == Only::All || stale) filtered.append(e);
     }
 

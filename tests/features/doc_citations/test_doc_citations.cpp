@@ -1239,6 +1239,107 @@ TEST(DocCitations, Ants4085ForeignPathIsNotStale) {
                .value(QStringLiteral("foreign_path")).toInt(), 1);
 }
 
+// ANTS-4918 INV-49 — a citation on a Cold-eyes loop-log row records what a
+// review pass found, and a landed row is never edited (specs.md § 5.7). So its
+// citation is still reported, flagged and counted, but only:"stale" drops it:
+// otherwise a document whose cited file was later split carries a finding that
+// can never be cleared.
+//
+// Each wrong implementation fails a different row: `| 3 | pending |` is
+// rejected only by the date rule, `| 4-impl | 2026-07-26 |` only by the
+// whole-cell loop-number rule, and the anchor-missing `ok` citation only by
+// "whatever its status".
+TEST(DocCitations, Ants4918LoopLogRowCitationIsNotStale) {
+    Fixture fx;
+    fx.write(QStringLiteral("src/a.cpp"), "a\nb\nc\n");
+    const QString doc = fx.doc(
+        "| Loop | Date | Outcome |\n"
+        "|---|---|---|\n"
+        "| 2 | 2026-07-26 | `absentName` `src/a.cpp:1` and src/a.cpp:99 |\n"
+        "| 3 | pending | src/a.cpp:99 |\n"
+        "| 4-impl | 2026-07-26 | src/a.cpp:99 |\n"
+        "\n"
+        "prose src/a.cpp:99\n");
+
+    DocCitations::Options opts;
+    const QJsonObject r = DocCitations::check(fx.root, doc, opts);
+    ASSERT_EQ(cites(r).size(), 5) << render(r).toStdString();
+
+    EXPECT_EQ(status(r, 0), QStringLiteral("ok"));
+    for (int i = 1; i < 5; ++i)
+        EXPECT_EQ(status(r, i), QStringLiteral("out_of_range")) << "citation " << i;
+    EXPECT_FALSE(cite(r, 0).value(QStringLiteral("anchor_found")).toBool(true))
+        << "INV-49: the loop-log row's :1 citation is an anchored ok whose anchor is absent";
+
+    // The flag sits beside the real status, on the loop-log row only.
+    EXPECT_TRUE(cite(r, 0).value(QStringLiteral("loop_log_row")).toBool());
+    EXPECT_TRUE(cite(r, 1).value(QStringLiteral("loop_log_row")).toBool());
+    EXPECT_FALSE(cite(r, 2).contains(QStringLiteral("loop_log_row")))
+        << "INV-49: `| 3 | pending |` has no ISO date, so it is not a loop-log row";
+    EXPECT_FALSE(cite(r, 3).contains(QStringLiteral("loop_log_row")))
+        << "INV-49: `4-impl` is not a whole-cell loop number";
+    EXPECT_FALSE(cite(r, 4).contains(QStringLiteral("loop_log_row")))
+        << "INV-49: prose is not a table row";
+
+    const QJsonObject counts = r.value(QStringLiteral("counts")).toObject();
+    EXPECT_EQ(counts.value(QStringLiteral("out_of_range")).toInt(), 4);
+    EXPECT_EQ(counts.value(QStringLiteral("ok")).toInt(), 1);
+    EXPECT_EQ(counts.value(QStringLiteral("anchor_missing")).toInt(), 1);
+    EXPECT_EQ(counts.value(QStringLiteral("loop_log_row")).toInt(-1), 2)
+        << "INV-49: counted as an overlay, not a status";
+    EXPECT_TRUE(r.value(QStringLiteral("counts_overlay_keys")).toArray()
+                    .contains(QJsonValue(QStringLiteral("loop_log_row"))));
+
+    DocCitations::Options stale = opts;
+    stale.only = DocCitations::Only::Stale;
+    const QJsonObject sr = DocCitations::check(fx.root, doc, stale);
+    EXPECT_EQ(sr.value(QStringLiteral("returned")).toInt(), 3) << render(sr).toStdString();
+    for (const QJsonValue &v : sr.value(QStringLiteral("citations")).toArray())
+        EXPECT_FALSE(v.toObject().contains(QStringLiteral("loop_log_row")))
+            << "INV-49: only:\"stale\" drops a loop-log citation whatever its status";
+}
+
+// ANTS-4918 INV-50 — a continuation inherits its antecedent's path and reads
+// it itself, so after a `foreign_path` antecedent it used to stat another
+// repository's path here and report `missing_file` — the never-clearable
+// finding ANTS-4085 removed, one line later. It now inherits `foreign_path`.
+// The `ours.py` pair is the fixture only the antecedent's status separates:
+// an implementation marking every continuation of an absent path foreign fails.
+TEST(DocCitations, Ants4918ForeignPathContinuationIsForeign) {
+    Fixture fx;
+    DocCitations::Options opts;
+    opts.basenameIndex.insert(QStringLiteral("ours.py"),
+                              {QStringLiteral("src/pkg/ours.py")});
+    const QString doc = fx.doc(
+        "quoted `tests/api/test_fp09_fixes.py:362` then `:370`\n"
+        "ours `src/pkg/ours.py:1` then `:2`\n");
+
+    const QJsonObject r = DocCitations::check(fx.root, doc, opts);
+    ASSERT_EQ(cites(r).size(), 4) << render(r).toStdString();
+    EXPECT_EQ(status(r, 0), QStringLiteral("foreign_path"));
+    EXPECT_EQ(status(r, 1), QStringLiteral("foreign_path"))
+        << "INV-50: a continuation of a foreign path is foreign too";
+    EXPECT_TRUE(cite(r, 1).value(QStringLiteral("inherited_path")).toBool());
+    EXPECT_EQ(cite(r, 1).value(QStringLiteral("path")).toString(),
+              QStringLiteral("tests/api/test_fp09_fixes.py"));
+    EXPECT_FALSE(cite(r, 1).contains(QStringLiteral("file_lines")));
+    EXPECT_EQ(status(r, 2), QStringLiteral("missing_file"));
+    EXPECT_EQ(status(r, 3), QStringLiteral("missing_file"))
+        << "INV-50: a known basename's continuation stays a real miss";
+
+    const QJsonObject counts = r.value(QStringLiteral("counts")).toObject();
+    EXPECT_EQ(counts.value(QStringLiteral("foreign_path")).toInt(), 2);
+    EXPECT_EQ(counts.value(QStringLiteral("missing_file")).toInt(), 2);
+
+    DocCitations::Options stale = opts;
+    stale.only = DocCitations::Only::Stale;
+    const QJsonObject sr = DocCitations::check(fx.root, doc, stale);
+    EXPECT_EQ(sr.value(QStringLiteral("returned")).toInt(), 2) << render(sr).toStdString();
+    for (const QJsonValue &v : sr.value(QStringLiteral("citations")).toArray())
+        EXPECT_EQ(v.toObject().value(QStringLiteral("status")).toString(),
+                  QStringLiteral("missing_file"));
+}
+
 // ANTS-4664 — the quoted SPAN was detected per LINE while the matcher folded
 // newlines (ANTS-4386), so a hard-wrapped quotation was never handed to the
 // matcher at all: it entered NO bucket, and a document whose quotations all
