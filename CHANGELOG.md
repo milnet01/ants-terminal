@@ -76,6 +76,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **file_outline lists gtest `TEST`, `TEST_F` and `TEST_P` blocks as `Suite.Case`, and no longer reports locals declared inside a test body as functions.** (ANTS-5019)
+
 - **mutation_probe refuses a baseline that collected no tests (pytest exit 4 or 5) as `baseline_did_not_run`, naming the test command, instead of reporting the suite as red.** (ANTS-4852)
 
 - **file_outline lists out-of-line C++ constructors and destructors, so `read_region` can fetch them by name, including a bare `~ClassName`.** (ANTS-5021)

@@ -17403,7 +17403,7 @@ fixes don't address. Roadmapped here as their own design tasks.
   Kind: enhancement.
   Source: in-session-2026-09-10.
 
-- 📋 [ANTS-5019] **file_outline's C++ parser skips gtest TEST() blocks and reports local object declarations as functions.**
+- ✅ [ANTS-5019] **file_outline's C++ parser skips gtest TEST() blocks and reports local object declarations as functions.**
   Measured 2026-09-10. On
   tests/features/indie_review_dispatch/test_indie_review_dispatch.cpp,
   which holds an anonymous namespace and gtest TEST() blocks, the verb
@@ -17421,6 +17421,18 @@ fixes don't address. Roadmapped here as their own design tasks.
   src/remotecontrol_feedback.cpp came back with enclosing "sf", which is the
   local `QFile sf(sibRoadmap);`, so the containing function could not be read
   from the reply. Fixing the parser fixes both verbs.
+  Resolved (2026-09-14): reproduced on
+  tests/features/llm_client/test_llm_client.cpp (no TEST blocks
+  outlined; `server` six times and `chunk` outlined as func). One cause
+  for both halves: a `TEST(Suite, Case)` line has no return type, so no
+  function pattern matched it and its body never opened, leaving every
+  local inside at file scope. A column-0 rxCppGtest (TEST, TEST_F,
+  TEST_P, TYPED_TEST, TYPED_TEST_P) now outlines it as Suite.Case and
+  opens a body, whether the brace is on the same line or the next;
+  workspace_search enclosing_symbol and find_caller read the same
+  outline. Test
+  FileOutlineCppScanner.Ants5019GtestBlocksOutlinedAndTheirLocalsNot
+  fails on the old source and passes now; full suite green.
   **Layman:** The file-map tool can't see the tests in a test file, and mistakes some variables for functions.
   Kind: fix.
   Source: in-session-2026-09-10.
