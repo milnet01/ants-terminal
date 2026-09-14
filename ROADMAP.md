@@ -46667,6 +46667,11 @@ are closed inline in the feedback files rather than filed here.
   rewrites rows in the machine-global store, so it waits for the user.
   Decided (2026-09-14, user): run the one-time store normalisation after
   ANTS-4955 lands, with a sqlite3 .backup first.
+  Progress (2026-09-14): the Layman half is done. ANTS-4955 shipped
+  (d9a2a78f) and the one-time store normalisation dropped one trailing
+  full stop from 2048 stored Layman values (backup
+  roadmap.sqlite.pre-4955-20260914-094114.bak). Still open: the ~1036
+  stored bodies ending in a legacy trailer run from before ANTS-4506.
   **Layman:** The check that tells you whether the database is out of date reports problems on a database that is perfectly up to date.
   Kind: fix.
   Lanes: roadmap-store, mcp.
@@ -51044,7 +51049,7 @@ filed below.
   ANTS-4585 phase 2 is UNBLOCKED: nothing under /tmp is registered, so a
   repair pass no longer walks a dead copy. Its other stated preconditions
   still stand.
-  **Layman:** A throwaway test folder got recorded as a real project in the shared roadmap database, so machine-wide counts double-count one project
+  **Layman:** A throwaway test folder got recorded as a real project in the shared roadmap database, so machine-wide counts double-count one project.
   Kind: fix.
   Source: ANTS-4585 phase 2 measurement, 2026-08-20.
   Lanes: roadmap-store, roadmapmigrate.
