@@ -1056,6 +1056,20 @@ QString batchRoot(QTemporaryDir &tmp) {
     // batch has to reproduce the single path's stem hint too.
     writeFile(root, QStringLiteral("src/orphan_stem.cpp"), QStringLiteral(
         "// no symbol of that name anywhere\n"));
+    // ANTS-4828 — split C signatures, so the batch path resolves them too.
+    writeFile(root, QStringLiteral("src/split.c"), QStringLiteral(
+        "void*\n"
+        "getsfx\n"
+        "( char* name,\n"
+        "  int* len )\n"
+        "{\n"
+        "  return 0;\n"
+        "}\n"
+        "boolean\n"
+        "PTR_Aim (int x)\n"
+        "{\n"
+        "  return x;\n"
+        "}\n"));
     return root;
 }
 
@@ -1073,13 +1087,14 @@ TEST(SymbolQueryBatch, Ants3680MatchesPerSymbolCalls) {
         QStringLiteral("run"),         QStringLiteral("runAll"),
         QStringLiteral("deploy"),      QStringLiteral("orphan_stem"),
         QStringLiteral("nowhere"),     QStringLiteral("parseLine"),  // duplicate
+        QStringLiteral("getsfx"),      QStringLiteral("PTR_Aim"),    // ANTS-4828
         QStringLiteral("1bad")};                                     // invalid
 
     for (const int cap : {0, 1}) {   // 0 = default cap; 1 = per-needle cap bites
         SymbolQuery::Options o;
         o.maxResults = cap;
         const auto batch = SymbolQuery::findDefinitions(root, needles, o);
-        EXPECT_EQ(batch.size(), 12) << "duplicate needle answered twice";
+        EXPECT_EQ(batch.size(), 14) << "duplicate needle answered twice";
 
         for (const QString &n : needles) {
             const SymbolQuery::DefResult one = SymbolQuery::findDefinition(root, n, o);
@@ -1110,12 +1125,69 @@ TEST(SymbolQueryBatch, Ants3680MatchesPerSymbolCalls) {
     const auto batch = SymbolQuery::findDefinitions(root, needles, o);
     for (const char *n : {"parseLine", "parseLineExtra", "m_count",
                           "m_countTotal", "load", "loader", "run", "runAll",
-                          "deploy"})
+                          "deploy", "getsfx", "PTR_Aim"})
         EXPECT_FALSE(batch.value(QString::fromUtf8(n)).definitions.isEmpty())
             << "fixture needle resolved nowhere: " << qPrintable(n);
     EXPECT_FALSE(batch.value(QStringLiteral("1bad")).ok) << "invalid needle";
     EXPECT_EQ(batch.value(QStringLiteral("1bad")).code,
               QStringLiteral("bad_args"));
+}
+
+// ANTS-4828 — a C signature split across lines, the id Software style: the
+// return type on one line, the name alone on the next, the parameter list
+// after. Measured on a DOOM checkout, that three-line form far outnumbers the
+// two-line `type` / `name(` form, and find_definition returned zero for both.
+TEST(McpSymbolQuery, Ants4828SplitCSignaturesResolve) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString root = QFileInfo(tmp.path()).canonicalFilePath();
+
+    writeFile(root, QStringLiteral("src/wad.h"),
+              QStringLiteral("void*\n"
+                             "getsfx\n"
+                             "( char* name,\n"
+                             "  int* len );\n"));
+    writeFile(root, QStringLiteral("src/wad.c"),
+              QStringLiteral("void*\n"
+                             "getsfx\n"
+                             "( char* name,\n"
+                             "  int* len )\n"
+                             "{\n"
+                             "  return 0;\n"
+                             "}\n"
+                             "boolean\n"
+                             "PTR_Aim (int x)\n"
+                             "{\n"
+                             "  return x;\n"
+                             "}\n"
+                             // Not a signature: the name alone under a type
+                             // line, with no parameter list after it.
+                             "int\n"
+                             "getsfx\n"
+                             "\n"
+                             "int\n"
+                             "PTR_Aim\n"
+                             "= 3;\n"));
+
+    SymbolQuery::Options opts;
+    const auto g = SymbolQuery::findDefinition(
+        root, QStringLiteral("getsfx"), opts);
+    EXPECT_TRUE(hasDef(g, QStringLiteral("src/wad.c"),
+                       QStringLiteral("definition")))
+        << "three-line definition: type / name / ( params )";
+    EXPECT_TRUE(hasDef(g, QStringLiteral("src/wad.h"),
+                       QStringLiteral("declaration")))
+        << "three-line prototype ending in `);`";
+    EXPECT_EQ(g.definitionsTotal, 2)
+        << "the name alone with no parameter list after it is not a row";
+
+    const auto p = SymbolQuery::findDefinition(
+        root, QStringLiteral("PTR_Aim"), opts);
+    EXPECT_TRUE(hasDef(p, QStringLiteral("src/wad.c"),
+                       QStringLiteral("definition")))
+        << "two-line definition: type / name(params)";
+    EXPECT_EQ(p.definitionsTotal, 1)
+        << "a name followed by `= 3;` is not a signature";
 }
 
 // ANTS-4821 — a brace that INITIALISES a declarator is not a body, so the

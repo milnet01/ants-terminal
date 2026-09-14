@@ -45,6 +45,13 @@ source tree spanning C++, Python, Lua, Shell):
     character. The real definition and prototype are still found. The
     data-member anchor applies the same rule, so `out << rootField;` is
     not a declaration of `rootField`; a real member and a real local are.
+8d. (ANTS-4828) A C signature split across lines resolves: `type` /
+    `name(params)` (the ANTS-4603 wrapped pair, with the class qualifier
+    now optional) and `type` / `name` / `( params )`, where the name line
+    is followed by a line opening `(` and joined up to the line holding
+    `)`. The joined text decides the kind, so a prototype ending `);` is a
+    declaration. A name alone with no parameter list after it is not a
+    row. `findDefinitions` returns the same rows.
 
 **Wiring contract** (source-grep over the four wiring files):
 

@@ -216,6 +216,9 @@ struct Anchors {
     // Empty for every language but C++.
     QRegularExpression wrappedDef;
     QRegularExpression wrappedPrev;
+    // ANTS-4828 — the name ALONE at column 0, for a signature whose parameter
+    // list opens on the next line (`void*` / `getsfx` / `( char* name );`).
+    QRegularExpression wrappedName;
     bool hasWrapped = false;
     bool cppKind = false;
     const char *lang = "";
@@ -359,7 +362,14 @@ Anchors buildAnchors(Lang lang, const QString &s) {
             // definitions at column 0, 0 indented — so the strict anchor costs
             // nothing here and removes the whole indented-call population.
             a.wrappedDef = QRegularExpression(
-                QStringLiteral("^(?:[A-Za-z_]\\w*::)+") + s + QStringLiteral("\\s*\\("));
+                QStringLiteral("^(?:[A-Za-z_]\\w*::)*") + s + QStringLiteral("\\s*\\("));
+            // ANTS-4828 — the qualifier is optional: C puts an unqualified
+            // name at column 0 under its return type. Measured over this tree
+            // and a DOOM checkout, every such pair was a definition or a real
+            // prototype. The name-alone form is resolved by scanFile, which
+            // needs the NEXT line to see the parameter list open.
+            a.wrappedName = QRegularExpression(
+                QStringLiteral("^(?:[A-Za-z_]\\w*::)*") + s + QStringLiteral("\\s*$"));
             // And the line above must read as a return type: one token run of
             // type characters, ending in `>`, a word character, `*` or `&`.
             // The lookahead rejects a keyword, which is never a return type,
@@ -371,6 +381,7 @@ Anchors buildAnchors(Lang lang, const QString &s) {
                 "[A-Za-z_][\\w:<>,~ \\t*&]*[>\\w*&]$"));
             a.wrappedDef.optimize();
             a.wrappedPrev.optimize();
+            a.wrappedName.optimize();
             a.hasWrapped = true;
             a.call = QRegularExpression(QStringLiteral("\\b") + s + QStringLiteral("\\s*\\("));
             a.cppKind = true;
@@ -489,6 +500,33 @@ void needleSlots(const QHash<QStringView, int> &bySymbol, const QString &line,
     }
 }
 
+// Record one definition or declaration row. `trimmed` is the signature as
+// reported; its shape decides the C++ kind.
+void recordDef(ScanState &st, const Anchors &an, const QString &rel,
+               const QString &trimmed, int lineNo) {
+    ++st.defsTotal;
+    QString kind = QStringLiteral("definition");
+    if (an.cppKind) {
+        if (trimmed.startsWith(QLatin1String("namespace"))) {
+            // ANTS-4346 — neither a body nor a prototype.
+            kind = QStringLiteral("namespace");
+        } else if (looksLikeDeclaration(trimmed)) {
+            kind = QStringLiteral("declaration");
+        }
+    }
+    QVector<DefMatch> &bucket =
+        (kind == QStringLiteral("declaration")) ? st.defsDecl : st.defsDefn;
+    if (bucket.size() < st.defCap) {
+        DefMatch d;
+        d.file = rel;
+        d.line = lineNo;
+        d.signature = trimmed;
+        d.lang = QString::fromLatin1(an.lang);
+        d.kind = kind;
+        bucket.append(d);
+    }
+}
+
 // ANTS-3680 — one line against ONE symbol's anchors, split out of scanFile so
 // the batch walk can run the same matcher per needle a line carries. `line` is
 // the raw decoded line, `thisLine` its trimmed form (computed once per line,
@@ -496,7 +534,8 @@ void needleSlots(const QHash<QStringView, int> &bySymbol, const QString &line,
 // pair.
 void matchLine(ScanState &st, const Anchors &an, const QString &rel,
                const QString &line, const QString &thisLine,
-               const QString &prevLine, int lineNo) {
+               const QString &prevLine, int lineNo,
+               bool *splitName = nullptr) {
     bool isDef = false;
     for (const QRegularExpression &re : an.def) {
         if (re.match(line).hasMatch()) { isDef = true; break; }
@@ -517,33 +556,22 @@ void matchLine(ScanState &st, const Anchors &an, const QString &rel,
     }
 
     if (isDef && st.collectDefs) {
-        ++st.defsTotal;
         // A wrapped match reports BOTH lines, so the signature carries the
         // return type the query was really about. `line` still names where
         // the symbol is, which is what a reader jumps to.
-        const QString trimmed =
-            isWrapped ? prevLine + QLatin1Char(' ') + thisLine : thisLine;
-        QString kind = QStringLiteral("definition");
-        if (an.cppKind) {
-            if (trimmed.startsWith(QLatin1String("namespace"))) {
-                // ANTS-4346 — neither a body nor a prototype.
-                kind = QStringLiteral("namespace");
-            } else if (looksLikeDeclaration(trimmed)) {
-                kind = QStringLiteral("declaration");
-            }
-        }
-        QVector<DefMatch> &bucket =
-            (kind == QStringLiteral("declaration")) ? st.defsDecl : st.defsDefn;
-        if (bucket.size() < st.defCap) {
-            DefMatch d;
-            d.file = rel;
-            d.line = lineNo;
-            d.signature = trimmed;
-            d.lang = QString::fromLatin1(an.lang);
-            d.kind = kind;
-            bucket.append(d);
-        }
+        recordDef(st, an, rel,
+                  isWrapped ? prevLine + QLatin1Char(' ') + thisLine : thisLine,
+                  lineNo);
     }
+
+    // ANTS-4828 — the name alone under a return type may begin a signature
+    // whose parameter list opens on the next line. Only scanFile can see
+    // that line, so this reports the candidate and scanFile decides.
+    if (!isDef && splitName && an.hasWrapped && !prevLine.isEmpty()
+        && !prevLine.endsWith(QLatin1String("&&"))
+        && an.wrappedName.match(line).hasMatch()
+        && an.wrappedPrev.match(prevLine).hasMatch())
+        *splitName = true;
 
     // A definition line is never reported as a caller (INV-9).
     if (st.collectCalls && !isDef) {
@@ -572,6 +600,11 @@ void scanFile(ScanState &st, const QFileInfo &fi, Lang lang) {
     const QString rel = fi.absoluteFilePath().mid(st.rootPrefixLen);
     int lineNo = 0;
     QString prevLine;   // ANTS-4603 — previous line, trimmed; "" at file start
+    // ANTS-4828 — split signatures waiting for their parameter list. `slot`
+    // is the batch needle, or -1 on the single-symbol path.
+    struct Pending { int slot; int line; int span; QString sig; bool open; };
+    QList<Pending> pending;
+    constexpr int kMaxSplitLines = 16;
     while (!f.atEnd()) {
         QByteArray raw = f.readLine();
         ++lineNo;
@@ -589,10 +622,31 @@ void scanFile(ScanState &st, const QFileInfo &fi, Lang lang) {
             // would let a return type license a qualified call two lines
             // below, across text nothing looked at.
             prevLine.clear();
+            pending.clear();   // nothing may join across an unread line
             continue;                              // backtracking guard
         }
         const QString line = QString::fromUtf8(raw);
         const QString thisLine = line.trimmed();
+
+        // ANTS-4828 — resolve split signatures. The line after the name must
+        // open the parameter list with `(`; lines then join until one holds
+        // `)`, so the joined text ends as a prototype (`);`) or a definition.
+        // Anything else means the name was not a signature.
+        for (qsizetype k = 0; k < pending.size();) {
+            Pending &p = pending[k];
+            if ((!p.open && !thisLine.startsWith(QLatin1Char('(')))
+                || ++p.span > kMaxSplitLines) {
+                pending.removeAt(k);
+                continue;
+            }
+            p.open = true;
+            p.sig += QLatin1Char(' ') + thisLine;
+            if (!thisLine.contains(QLatin1Char(')'))) { ++k; continue; }
+            ScanState &target = p.slot < 0 ? st : (*st.batch)[p.slot];
+            if (target.collectDefs)
+                recordDef(target, target.anchors[langOrd], rel, p.sig, p.line);
+            pending.removeAt(k);
+        }
 
         // ANTS-3680 — every anchor that consumes the symbol (`def`,
         // `wrappedDef`, `call`) splices its escaped literal into the pattern
@@ -605,11 +659,20 @@ void scanFile(ScanState &st, const QFileInfo &fi, Lang lang) {
             needleSlots(*st.bySymbol, line, hits);
             for (const int idx : hits) {
                 ScanState &sl = (*st.batch)[idx];
+                bool split = false;
                 matchLine(sl, sl.anchors[langOrd], rel, line, thisLine,
-                          prevLine, lineNo);
+                          prevLine, lineNo, &split);
+                if (split)
+                    pending.append({idx, lineNo, 0,
+                                    prevLine + QLatin1Char(' ') + thisLine,
+                                    false});
             }
         } else if (st.symbol.isEmpty() || line.contains(st.symbol)) {
-            matchLine(st, an, rel, line, thisLine, prevLine, lineNo);
+            bool split = false;
+            matchLine(st, an, rel, line, thisLine, prevLine, lineNo, &split);
+            if (split)
+                pending.append({-1, lineNo, 0,
+                                prevLine + QLatin1Char(' ') + thisLine, false});
         }
 
         prevLine = thisLine;
