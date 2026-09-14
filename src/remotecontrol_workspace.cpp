@@ -2013,6 +2013,23 @@ QJsonDocument RemoteControl::cmdMutationProbe(const QJsonObject &req) {
         const auto bc = MutationProbe::parseCounts(base.output);
         const auto verdict =
             MutationProbe::judgeBaseline(base.timedOut, base.exitCode, bc);
+        // ANTS-4852 — the command measured nothing (pytest's usage-error and
+        // no-tests-collected exits), so the refusal names the call, not the
+        // suite.
+        if (verdict == MutationProbe::BaselineVerdict::DidNotRun) {
+            QJsonObject o2;
+            o2[QStringLiteral("ok")]    = false;
+            o2[QStringLiteral("code")]  = QStringLiteral("baseline_did_not_run");
+            o2[QStringLiteral("error")] = QStringLiteral(
+                "mutation_probe: the baseline command ran no tests: it exited %1 "
+                "with no pass/fail counts, which pytest uses for a usage error "
+                "(4) or when it collected nothing (5). Check the paths and the "
+                "filter in test_command; the suite itself was never measured.")
+                    .arg(base.exitCode);
+            o2[QStringLiteral("baseline_exit_code")] = base.exitCode;
+            o2[QStringLiteral("test_command")] = QJsonArray::fromStringList(argv);
+            return QJsonDocument(o2);
+        }
         if (verdict == MutationProbe::BaselineVerdict::NotGreen) {
             QJsonObject o2;
             o2[QStringLiteral("ok")]    = false;

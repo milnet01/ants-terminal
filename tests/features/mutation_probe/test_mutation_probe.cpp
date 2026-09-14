@@ -450,3 +450,29 @@ TEST(MutationProbe, Ants4996GreenCtestSummaryParses) {
     EXPECT_EQ(red.passed, 40);
     EXPECT_EQ(red.failed, 2);
 }
+
+// ANTS-4852 — a pytest run that collected nothing (exit 4 usage error, exit 5
+// no tests) with no counts is a call that never ran, not a red suite. It was
+// refused as baseline_not_green, which told the caller to fix a suite that
+// had not been measured.
+TEST(MutationProbe, Ants4852CollectionFailureIsDidNotRun) {
+    using V = MutationProbe::BaselineVerdict;
+    const auto judge = [](bool timedOut, int exit, int passed, int failed) {
+        MutationProbe::Counts c;
+        c.passed = passed;
+        c.failed = failed;
+        return MutationProbe::judgeBaseline(timedOut, exit, c);
+    };
+    EXPECT_EQ(judge(false, 4, -1, -1), V::DidNotRun) << "pytest usage error";
+    EXPECT_EQ(judge(false, 5, -1, -1), V::DidNotRun) << "pytest collected nothing";
+    EXPECT_EQ(judge(false, 4, 3, 1), V::NotGreen)
+        << "a runner that printed real counts is judged on them";
+    EXPECT_EQ(judge(false, 1, -1, -1), V::NotGreen)
+        << "an ordinary non-zero exit stays red (ANTS-4401)";
+    EXPECT_EQ(judge(true, 4, -1, -1), V::NotGreen)
+        << "a timeout is not a collection failure";
+
+    const std::string rc = ants_test::slurpRemoteControl();
+    EXPECT_NE(rc.find("baseline_did_not_run"), std::string::npos)
+        << "the verb must emit the new refusal";
+}

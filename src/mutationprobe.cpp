@@ -106,6 +106,14 @@ bool budgetExhausted(qint64 elapsedMs, qint64 slowestRunMs, int budgetSec) {
 }
 
 BaselineVerdict judgeBaseline(bool timedOut, int exitCode, const Counts &c) {
+    // ANTS-4852 — pytest exits 4 (usage error) or 5 (no tests collected) when
+    // it measured nothing: a mistyped path or filter. With no counts parsed
+    // that is a call that never ran a test, not a red suite, and "fix the
+    // suite first" pointed at the wrong thing. A runner that printed real
+    // counts is still judged on them.
+    if (!timedOut && (exitCode == 4 || exitCode == 5)
+        && c.passed < 0 && c.failed < 0)
+        return BaselineVerdict::DidNotRun;
     if (timedOut || exitCode != 0) return BaselineVerdict::NotGreen;
     if (c.passed < 0 || c.failed < 0) return BaselineVerdict::Unreadable;
     if (c.passed == 0 && c.failed == 0) return BaselineVerdict::Empty;

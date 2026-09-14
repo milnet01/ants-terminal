@@ -5290,7 +5290,8 @@ void ClaudeIntegration::onMcpConnection() {
                         "command_not_found | write_failed | not_run. restored_clean is "
                         "verified against the baseline bytes. "
                         "require_green_baseline:true refuses a red or unreadable "
-                        "baseline (baseline_unreadable); expect_occurrences refuses a "
+                        "baseline (baseline_unreadable) or one that collected nothing "
+                        "(baseline_did_not_run); expect_occurrences refuses a "
                         "mismatch (occurrence_mismatch); transport_budget_sec stops the "
                         "batch before the transport times out. test_command is an argv "
                         "array. caller_cwd required.");

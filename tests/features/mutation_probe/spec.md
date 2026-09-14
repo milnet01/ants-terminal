@@ -93,3 +93,12 @@ ctest prints `100% tests passed out of N` when nothing failed, without the
 `, M tests failed` clause. That shape parses as N passed and 0 failed, through
 the one matcher `TestResCache::parseCtestSummary`, as the failing shape still
 does. *Test:* `MutationProbe.Ants4996GreenCtestSummaryParses`.
+
+## ANTS-4852 — a baseline that collected nothing
+
+`judgeBaseline` returns `DidNotRun` for a run that did not time out, exited 4
+or 5 (pytest's usage-error and no-tests-collected codes) and parsed no counts.
+`require_green_baseline` then refuses `baseline_did_not_run`, naming the exit
+code and echoing `test_command`, instead of `baseline_not_green`. An exit of 4
+or 5 with parsed counts, any other non-zero exit, and a timeout keep their
+existing verdicts. *Test:* `MutationProbe.Ants4852CollectionFailureIsDidNotRun`.

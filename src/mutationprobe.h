@@ -98,6 +98,7 @@ enum class BaselineVerdict {
     NotGreen,    // timed out or exited non-zero
     Unreadable,  // exit 0, counts unparsable (-1)
     Empty,       // exit 0, parsed, nothing ran (0/0)
+    DidNotRun,   // ANTS-4852 — pytest exit 4/5 with no counts: nothing collected
 };
 BaselineVerdict judgeBaseline(bool timedOut, int exitCode, const Counts &c);
 
