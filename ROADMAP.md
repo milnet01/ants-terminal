@@ -3664,6 +3664,9 @@ in each named file carry the original indie-review citation.
   mainwindow.cpp 8384 lines, auditdialog.cpp 6636, claudeintegration.cpp
   17756. No spec exists yet; order once it passes review: ANTS-1049,
   ANTS-1044, ANTS-1043, ANTS-4919.
+  Spec (2026-09-14): governed by
+  docs/specs/ANTS-1677-large-file-decomposition.md (accepted). Third in
+  order; the line counts quoted above are stale.
 
 - 📋 [ANTS-1044] **`auditdialog.cpp` decomposition (5749 LoC).**
   `populateChecks`
@@ -3690,6 +3693,12 @@ in each named file carry the original indie-review citation.
   Decided (2026-09-14, user): the shared decomposition spec is written
   next, right after the ANTS-4507 store cleanup. auditdialog.cpp
   re-measured at 6636 lines. See ANTS-1043 for the order.
+  Spec (2026-09-14): governed by
+  docs/specs/ANTS-1677-large-file-decomposition.md (accepted). Second in
+  order; the first item that adds an auditdialog file, so it lands the
+  shared source-list machinery. The table file is
+  src/auditdialog_catalogue.cpp, replacing the auditcatalogue.cpp name
+  above, and the line counts quoted above are stale.
 
 - ✅ [ANTS-1045] **`XcbPositionTracker` rename + Wayland-non-KWin abort + temp- file leak fix.**
   Shipped 2026-04-30 (post-0.7.60). Class +
@@ -3772,6 +3781,10 @@ in each named file carry the original indie-review citation.
   Decided (2026-09-14, user): the shared decomposition spec is written
   next, right after the ANTS-4507 store cleanup; this item is the first
   split taken once it passes review. See ANTS-1043.
+  Spec (2026-09-14): governed by
+  docs/specs/ANTS-1677-large-file-decomposition.md (accepted). This item is
+  the first split: a groundwork commit adding INV-8's seam and the scrape
+  check, then one code-to-data commit inside src/auditdialog.cpp.
 
 The 2026-04-27 review followed the same methodology as the 0.7.12
 sweep — no roadmap-internal short-cuts, every finding cites
@@ -4203,6 +4216,10 @@ minor tag (next: pre-0.8.0).
   next, right after the ANTS-4507 store cleanup. claudeintegration.cpp
   re-measured at 17756 lines; this is the last of the four splits. See
   ANTS-1043.
+  Spec (2026-09-14): governed by
+  docs/specs/ANTS-1677-large-file-decomposition.md (accepted). Last in
+  order; tools/list keeps today's order, so its pieces are consecutive
+  runs of the existing descriptors.
   **Layman:** Split the biggest source file so parallel sessions can work on it without blocking each other.
   Kind: refactor.
   Source: adr-0005-gate-loop-3-2026-09-07.
@@ -21873,6 +21890,15 @@ gets one CHANGELOG section + one drift cycle + one push.
 
 - 📋 [ANTS-1677] **mainwindow.cpp + claudeintegration.cpp + auditdialog.cpp all >5000 LoC; the trio holds 60% of the codebase's churn.**
   Defer to 0.8.x. Cross-cutting.
+  Progress (2026-09-14): the shared decomposition spec is accepted at
+  docs/specs/ANTS-1677-large-file-decomposition.md and covers ANTS-1043,
+  ANTS-1044, ANTS-1049 and ANTS-4919. review-contract ran to its spec cap;
+  the final loop mostly repaired the previous loop's fixes, so the review
+  ends there and the spec routes to implementation, starting with ANTS-1049.
+  The user's rulings sit in the spec's decisions section: one shared
+  contract, split order ANTS-1049, ANTS-1044, ANTS-1043, ANTS-4919, and
+  tools/list keeps today's order. The defer-to-0.8.x line above is
+  overtaken by that ordering.
   **Layman:** Three oversized source files account for most of the project's changes; split them up.
   Kind: implement.
 
