@@ -14,6 +14,8 @@ for security-relevant changes.
 
 ### Changed
 
+- **Every MCP tool description now fits the 800-byte wire budget; the longer prose moved to each tool's `detail`, served by tool_info, and a test checks every registered tool.** (ANTS-5152)
+
 - **Switching back to a Claude tab resumes its task lists instead of re-reading the transcript** (ANTS-5050)
   The task and background-task trackers keep each recently read
   transcript's parse position, so a tab switch back, or a second pane on
@@ -69,6 +71,8 @@ for security-relevant changes.
   the small, readable half can now be acted on by itself.
 
 ### Fixed
+
+- **`tools/perf-report.sh -R <regex> --save-baseline` now keeps every other benchmark's saved numbers instead of replacing the whole baseline.** (ANTS-5137)
 
 - **The git diff reader ends a file's hunks at a merge-conflict section instead of assigning its lines to the file before it.** (ANTS-5111)
 

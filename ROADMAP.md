@@ -10059,6 +10059,17 @@ extends an existing item, that item carries it instead.
   one piece. bench_mcp_reply_tail's offload phase measures it.
   Fix direction: stream the hash and the spill write rather than copying
   the whole body.
+  Measured 2026-09-14, NOT built: the premise is wrong.
+  bench_mcp_reply_tail puts offload_body at 23 ms on a 4 MiB body and
+  the UTF-8 copy at under 1 ms. QCryptographicHash SHA-256 alone takes
+  21 ms on 4 MiB (Blake2b-256 about 4 ms, SHA-1 about 4 ms). So
+  streaming the copy saves nothing; the cost is the hash.
+  docs/specs/ANTS-2094.md section 2.2 and INV-3 pin the handle to
+  sha256(body), and its security note relies on that hash, so switching
+  algorithm is a spec amendment under rule 14. The offload already runs
+  on the dispatch worker (ANTS-5072), not the GUI thread.
+  Recommendation: close as not worth a spec change unless a caller shows
+  the delay.
   **Layman:** Saving a very large answer to a file on the side still reads the whole answer into memory more than it needs to.
   Kind: perf.
   Source: in-session-2026-09-13 split from ANTS-5072.
@@ -10080,7 +10091,7 @@ extends an existing item, that item carries it instead.
   Source: in-session-2026-09-13 split from ANTS-5104.
   Lanes: security.
 
-- 📋 [ANTS-5152] **About half of the MCP tool descriptions exceed the 800-byte wire budget, and the budget test measures only seven tools.**
+- ✅ [ANTS-5152] **About half of the MCP tool descriptions exceed the 800-byte wire budget, and the budget test measures only seven tools.**
   Found while checking ANTS-5091, which named two tools; the problem is
   much wider. A scan of src/claudeintegration.cpp using the same
   short-description walk as tests/features/mcp_tool_detail_field put 47 of
@@ -10095,6 +10106,13 @@ extends an existing item, that item carries it instead.
   Fix direction: move each over-budget description's provenance and
   per-op prose into its `detail` field, then widen INV-5 to every
   registered tool, measured after the runtime kind prefix and Etag tip.
+  Resolved (2026-09-14): each over-budget tool got an authored short
+  description, and its old description moved verbatim into `detail`
+  (prepended where a detail existed), so description + detail stays a
+  superset. The Etag tip pushed six more tools over on the wire, so the
+  split covers them too. New test mcp_tool_detail_field INV-9 checks
+  every registered tool, counting the pointer and the Etag tip; it fails
+  on the old source and passes now, with the full suite green.
   **Layman:** Many of Ants' tool descriptions are far longer than their limit, and every Claude session pays for that in tokens.
   Kind: perf.
   Source: in-session-2026-09-14 while checking ANTS-5091.
@@ -17449,6 +17467,15 @@ fixes don't address. Roadmapped here as their own design tasks.
   **Layman:** When many Claude helpers search one project at once, Ants' search tool turns most of them away.
   Kind: fix.
   Source: in-session-2026-09-11 (performance pass).
+  Lanes: mcp.
+
+- 📋 [ANTS-5153] **An offloaded reply's rows_preview heads all read {"v":{"headl…, so no head shows what its row is.**
+  Seen 2026-09-14 on roadmap_query status:planned kind:fix mode:headline_only, which spilled 77 rows. Every rows_preview entry's head was `{"v":{"headl…` at rows_preview_head_chars 12.
+  Cause, read in src/mcpspill.cpp offloadBody: elBytesByRow serialises each row as the object {"v": row} so its length can be summed. For a non-string row the head is then taken from those bytes, so every head starts with the wrapper. The narrowing ladder then shrinks it to the wrapper alone.
+  Fix direction: take the head from the row's own compact JSON (the wrapper minus its `{"v":` prefix and closing brace), and add a test whose rows are objects.
+  **Layman:** When a big answer is saved to a side file, its per-row preview shows the same meaningless prefix for every row instead of a hint of what each row holds.
+  Kind: fix.
+  Source: in-session-2026-09-14.
   Lanes: mcp.
 
 ### 🔬 Project Audit false-positive reduction (self-audit 2026-05-20)
@@ -73119,7 +73146,7 @@ a modern terminal" release.
   Kind: perf.
   Source: user-request-2026-09-12 (ANTS-5133 follow-up).
 
-- 📋 [ANTS-5137] **perf-report --save-baseline under -R overwrites the whole baseline with only the filtered metrics.**
+- ✅ [ANTS-5137] **perf-report --save-baseline under -R overwrites the whole baseline with only the filtered metrics.**
   tools/perf-report.sh skips any benchmark not matching -R before it
   runs, so VALUE[] holds only the filtered metrics. The save block then
   writes tests/perf/baseline.tsv from VALUE[] alone, replacing the file.
@@ -73129,6 +73156,11 @@ a modern terminal" release.
 
   Fix candidates: merge into the existing baseline when a filter is
   set, or refuse --save-baseline together with -R.
+  Resolved (2026-09-14): under -R the save block reads the existing
+  baseline first and keeps every row whose metric did not run. Checked
+  on a copy of tests/perf/baseline.tsv with -R vt_throughput: the fixed
+  script wrote all 33 rows (4 measured, 29 kept); the pre-fix script
+  left 4.
   **Layman:** Saving performance numbers for one benchmark silently throws away the saved numbers for all the others.
   Kind: fix.
   Source: in-session-2026-09-12 (ANTS-2000).
