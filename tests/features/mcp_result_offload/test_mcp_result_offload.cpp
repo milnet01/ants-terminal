@@ -1030,6 +1030,35 @@ TEST_F(McpResultOffload, Ants4474NarrowsHeadsBeforeDroppingThem) {
     EXPECT_LT(compact(o).toUtf8().size(), body.toUtf8().size());
 }
 
+// ANTS-5153 — a row that is an OBJECT gets its head from its own JSON. The
+// heads were sampled from the {"v":row} wrapper built for sizing, so every
+// one began `{"v":` and, once narrowed, named nothing.
+TEST_F(McpResultOffload, Ants5153ObjectRowHeadsSampleTheRow) {
+    QJsonArray arr;
+    for (int i = 0; i < 60; ++i) {
+        QJsonObject row;
+        row["id"] = QStringLiteral("r%1").arg(i, 2, 10, QLatin1Char('0'));
+        row["text"] = QString(300, QLatin1Char('x'));
+        arr.append(row);
+    }
+    QJsonObject b; b["bullets"] = arr;
+    const QString body = compact(b);
+    ASSERT_GT(body.toUtf8().size(), 16384);
+
+    const QJsonObject o = offloadEnv(QStringLiteral("read_region"), body);
+    ASSERT_TRUE(o.value("offloaded").toBool());
+    const QJsonArray shape = o.value("rows_preview").toArray();
+    ASSERT_EQ(shape.size(), 60)
+        << "setup: every row needs a head for this check";
+    for (int i = 0; i < shape.size(); ++i) {
+        const QString head = shape.at(i).toObject().value("head").toString();
+        const QString label =
+            QStringLiteral("r%1").arg(i, 2, 10, QLatin1Char('0'));
+        EXPECT_TRUE(head.startsWith(QStringLiteral("{\"id\":\"") + label))
+            << "row " << i << " head: \"" << head.toStdString() << "\"";
+    }
+}
+
 // INV-15 (ANTS-4692) — the body's own top-level members survive an offload.
 // The reported case: a roadmap_query with check_sync spilled, and
 // `file_in_sync` / `source` went with it — the two fields a session is told

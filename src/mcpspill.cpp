@@ -433,10 +433,15 @@ QString offloadBody(const QString &toolName, const QString &body) {
                             r[QStringLiteral("bytes")] =
                                 static_cast<int>(elBytes.size());
                             if (headChars > 0) {
+                                // ANTS-5153 — elBytes is the {"v":row} wrapper
+                                // built for sizing. A head sampled from it began
+                                // `{"v":` on every row and, narrowed, named
+                                // nothing, so sample the row's own JSON.
                                 QString firstChars =
                                     fullArr.at(i).isString()
                                         ? fullArr.at(i).toString()
-                                        : QString::fromUtf8(elBytes);
+                                        : QString::fromUtf8(elBytes.mid(
+                                              5, elBytes.size() - 6));
                                 if (firstChars.size() > headChars) {
                                     firstChars.truncate(headChars);
                                     firstChars += QChar(0x2026);
