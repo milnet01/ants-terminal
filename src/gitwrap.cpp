@@ -79,6 +79,15 @@ QVector<DiffFile> parseDiffHunks(const QByteArray &unifiedDiff,
             haveFile = true;
             continue;
         }
+        // ANTS-5111 — a merge-conflict combined diff (`diff --cc` /
+        // `diff --combined`) starts a new file too. Its `@@@` hunks are not
+        // two-way hunks this parser understands, so the section is skipped;
+        // before, its lines were attributed to the PREVIOUS file.
+        if (line.startsWith(QLatin1String("diff --cc "))
+            || line.startsWith(QLatin1String("diff --combined "))) {
+            flush();
+            continue;   // haveFile stays false until the next `diff --git`
+        }
         if (!haveFile) continue;
         // The `--- ` / `+++ ` path headers precede the first `@@`; once a hunk
         // has opened, a line starting `+++ ` / `--- ` is body content (an

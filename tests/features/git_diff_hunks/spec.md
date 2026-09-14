@@ -40,6 +40,10 @@ by this pure parser (reuse-over-rewrite).
 - **INV-7 (empty)** — empty / hunk-less input returns an empty vector, no
   crash.
 
+- **INV-8 (combined diff, ANTS-5111)** — a `diff --cc` or `diff --combined`
+  line ends the current file and its section is skipped, so its headers and
+  lines never attach to the previous file.
+
 ## MCP layer (not asserted here — behavioural, manual)
 
 `runDiffOp` (the remotecontrol TUs) maps the parsed structs to the

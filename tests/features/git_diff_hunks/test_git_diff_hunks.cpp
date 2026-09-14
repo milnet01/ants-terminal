@@ -154,3 +154,32 @@ TEST(GitDiffHunks, EmptyInput) {
     EXPECT_TRUE(GitWrap::parseDiffHunks(QByteArray(), false).isEmpty());
     EXPECT_TRUE(GitWrap::parseDiffHunks(QByteArray(), true).isEmpty());
 }
+
+// ANTS-5111 — a merge-conflict combined diff section after a normal file is a
+// file boundary: its lines are not added to the previous file's hunks.
+TEST(GitDiffHunks, CombinedDiffIsNotPartOfPreviousFile) {
+    const QByteArray diff =
+        "diff --git a/src/a.cpp b/src/a.cpp\n"
+        "--- a/src/a.cpp\n"
+        "+++ b/src/a.cpp\n"
+        "@@ -1 +1 @@\n"
+        "-old\n"
+        "+new\n"
+        "diff --cc src/conflict.cpp\n"
+        "index 111,222..333\n"
+        "--- a/src/conflict.cpp\n"
+        "+++ b/src/conflict.cpp\n"
+        "@@@ -1,1 -1,1 +1,5 @@@\n"
+        "++<<<<<<< HEAD\n"
+        " +ours\n"
+        "++=======\n"
+        "+ theirs\n"
+        "++>>>>>>> branch\n";
+    const QVector<DiffFile> r = GitWrap::parseDiffHunks(diff, true);
+    ASSERT_EQ(r.size(), 1) << "the combined section was reported as, or merged into, a file";
+    const DiffFile *a = fileFor(r, QStringLiteral("src/a.cpp"));
+    ASSERT_NE(a, nullptr) << "src/a.cpp lost its path to the combined section's headers";
+    ASSERT_EQ(a->hunks.size(), 1);
+    EXPECT_EQ(a->hunks.at(0).lines.size(), 2)
+        << "combined-diff lines were appended to the previous file's hunk";
+}
