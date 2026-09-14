@@ -20391,6 +20391,10 @@ that shipped 6+ months ago — pure self-reference).
   warning; turning it back on (with a separate header
   shared just between bundles) would make test compilation
   ~30 s faster on a clean build.
+  Evidence (2026-09-14, CI speed and memory review): test discovery is
+  still DISCOVERY_MODE PRE_TEST in CMakeLists.txt, so every ctest run
+  first starts each test binary to list its tests, which is slowest
+  under ASan.
   Kind: perf.
   Source: test-suite-audit-2026-05-15 (lane E).
 
@@ -39865,6 +39869,11 @@ in each bullet, not just the reporter's symptom.
 
   NOT to be bundled with a cache change: two levers moved together cannot be
   told apart in the next run's numbers.
+  Evidence (2026-09-14, CI speed and memory review): the CI configure log
+  still prints the compile job pool at the low value on the 4-vCPU
+  runner. The pool cap is computed from nproc and cannot be overridden
+  today; making it a cache variable would let CI set it. Measure peak
+  memory per compiler process in the ASan job before raising it there.
   **Layman:** The build machine has four processors but only uses two, because the limit was set for a different computer.
   Kind: investigate.
   Source: in-session-2026-08-25.
@@ -72395,6 +72404,157 @@ command ledger is the foundation several others read from.
   **Layman:** A shared notepad where you leave Claude standing instructions for this project.
   Kind: enhancement.
   Source: user-request-2026-09-14 (coder-helper research).
+
+## CI speed and memory (review 2026-09-14)
+
+User request 2026-09-14: performance improvements and memory optimisations for
+local CI and GitHub CI. Candidates come from a read-only review of the workflow
+files, tools/ci-parity.sh, the pre-push hook, GitHub run and job timings, build
+logs and ccache statistics; no build ran. Each claim below was checked against
+the files before filing. Re-measure with the command each item names before
+acting on it.
+
+- 📋 [ANTS-5186] **Install the mold linker on the build-test and build-asan CI jobs.**
+  Every CI job's configure log prints that mold was not found, so every
+  job links with GNU ld, and the test-bundle links are among the slowest
+  steps in the ASan build log. ANTS-2233 made mold the default locally
+  only. Keep qt62-baseline on GNU ld on purpose: CMakeLists.txt records a
+  link order that resolves under mold and fails on the Qt 6.2 floor's GNU
+  ld, so that job stays the guard, matching release.yml. Measure with
+  `gh run view <id> --log` before and after.
+  **Layman:** GitHub's builds would link faster by using the quicker linker the local build already uses.
+  Kind: perf.
+  Source: user-request-2026-09-14 (CI speed and memory review).
+
+- 📋 [ANTS-5187] **Run the Release test suite in parallel in GitHub CI, as the pre-push hook already does.**
+  ci.yml's Release job runs a plain `ctest --output-on-failure`, so
+  tests run serially, while the pre-push hook and the presets run them in
+  parallel (ANTS-2231). Use a -j matched to the runner and exclude perf
+  and e2e as the hook does. Watch for timing flakes on a loaded runner,
+  the ANTS-2130 class. Measure with the job's `Total Test time` line.
+  **Layman:** GitHub runs the tests one at a time; running several at once would finish sooner.
+  Kind: perf.
+  Source: user-request-2026-09-14 (CI speed and memory review).
+
+- 📋 [ANTS-5188] **Parallelise cppcheck in CI and cache its analysis between runs.**
+  ci.yml runs cppcheck with no -j and no --cppcheck-build-dir, and it is
+  informational only (--error-exitcode=0), so it re-analyses src/ and
+  tests/ on every push. Add -j (unusedFunction is already suppressed,
+  which parallel mode requires) and a --cppcheck-build-dir kept in
+  actions/cache; optionally give it its own job. tools/ci-parity.sh runs
+  the same gate by hand and must change in the same commit.
+  **Layman:** The code-checking step re-reads the whole project on one core every push; it could use several cores and skip unchanged files.
+  Kind: perf.
+  Source: user-request-2026-09-14 (CI speed and memory review).
+
+- 📋 [ANTS-5189] **The ASan CI compile cache still fills its cap and evicts entries.**
+  Follow-up to ANTS-4652. ci.yml sets CCACHE_MAXSIZE 2G on every job,
+  and a recent ASan run's ccache statistics step shows the cache at its
+  cap with cleanups, which ANTS-4652's own rule reads as a reason to
+  raise it again. Weigh a larger cap against GitHub's per-repository
+  cache limit, or shrink the ASan objects first (the lighter debug info
+  item in this section). Re-read `ccache -s` in the ASan job log.
+  **Layman:** The memory-checking build's cache is too small, so it keeps throwing away work it will need again.
+  Kind: perf.
+  Source: user-request-2026-09-14 (CI speed and memory review).
+
+- 📋 [ANTS-5190] **Find out why a warm CI build with a high ccache hit rate still spends minutes compiling.**
+  Release CI's ccache statistics show most compiles hitting the cache,
+  yet the build step stays long, and some compiler calls are uncacheable.
+  Each library builds its own copy of the precompiled Qt header; ccache
+  re-reading that header on every hit is a hypothesis, not verified. CI
+  does not set CCACHE_SLOPPINESS=pch_defines,time_macros. First run the
+  stats step as `ccache -sv` and one build with CCACHE_DEBUG=1, then act.
+  Related: ANTS-1559 (one shared precompiled header), ANTS-1383.
+  **Layman:** Even when almost everything is cached, the GitHub build is still slow, and nobody knows why yet.
+  Kind: investigate.
+  Source: user-request-2026-09-14 (CI speed and memory review).
+
+- 📋 [ANTS-5191] **The AppStream validation in CI fails a whole run on a transient network error.**
+  A recent run went red at "Validate AppStream metainfo" with
+  url-not-reachable for github.com links, and a run of the same commit
+  passed. appstreamcli validate runs without --no-net in ci.yml and in
+  tools/ci-parity.sh. Add --no-net to both; optionally keep a separate URL
+  check that may fail without reddening the run.
+  **Layman:** A brief GitHub website hiccup can turn the whole test run red and force a full re-run.
+  Kind: fix.
+  Source: user-request-2026-09-14 (CI speed and memory review).
+
+- 📋 [ANTS-5192] **Give the local Qt 6.2 guard container a persistent compile cache.**
+  tools/qt62-guard.sh compiles inside a container with no ccache, and its
+  build volume is discarded whenever ci.yml's package list changes or a
+  run is interrupted (ANTS-5124), so those runs compile from nothing.
+  Bind-mount a host cache directory on the storage drive under
+  /mnt/Games, not under the home directory, and set it as the compiler
+  launcher inside the container. Extends ANTS-4131, which cached the
+  image and the build volume but no compile cache.
+  **Layman:** The pre-push Qt 6.2 check sometimes rebuilds everything from nothing; a cache would make those runs quick.
+  Kind: perf.
+  Source: user-request-2026-09-14 (CI speed and memory review).
+
+- 📋 [ANTS-5193] **tools/ci-parity.sh keeps its own build trees beside build/ and build-asan/.**
+  build-ci-parity and build-ci-parity-asan duplicate the main trees on
+  disk and go stale between runs, so a --full run starts from an old tree.
+  They exist to protect a running binary, which the home-copy launch of
+  ANTS-2174 made unnecessary. Reuse build/ and build-asan/, keeping the CI
+  locale as a test-time setting. Measure with `du -sh build*`.
+  **Layman:** The full local CI check keeps duplicate copies of the build that waste disk space and go stale.
+  Kind: optimize.
+  Source: user-request-2026-09-14 (CI speed and memory review).
+
+- 💭 [ANTS-5194] **Run the sanitized suite one process per gtest suite instead of one per test.**
+  ANTS-5014 measured this as its option (b), and the user chose option
+  (a), so reopening it needs the user. The ASan job's test step is what
+  every CI run waits on, and most of each test's time there is process
+  start-up under the sanitizer. Trade-offs: a failure names a suite, each
+  process holds more memory, and leak reports cover a whole suite.
+  **Layman:** The memory-checking tests spend most of their time starting up; grouping them would cut that, but it reverses an earlier choice.
+  Kind: perf.
+  Source: user-request-2026-09-14 (CI speed and memory review).
+
+- 💭 [ANTS-5195] **Build the CI ASan tree with lighter debug info.**
+  Configure the CI ASan build with -g1 (or line tables only), which keeps
+  file and line in sanitizer stack traces while shrinking objects, links
+  and the compile cache. Unmeasured; compare object size, link time and
+  cache use before and after.
+  **Layman:** Smaller debugging data would make the memory-checking build faster to link and cache.
+  Kind: optimize.
+  Source: user-request-2026-09-14 (CI speed and memory review).
+
+- 💭 [ANTS-5196] **Build sanitizer objects at -O1 instead of -O0.**
+  The sanitizer build uses the Debug build type, so it compiles without
+  optimisation, while ASan's own guidance recommends -O1. Unmeasured, and
+  the gain shrinks if per-test start-up cost is removed first. Costs:
+  slightly longer compiles and less exact debugger stepping.
+  **Layman:** The memory-checking build runs unoptimised; light optimisation is the recommended way to run it faster.
+  Kind: perf.
+  Source: user-request-2026-09-14 (CI speed and memory review).
+
+- 💭 [ANTS-5197] **Size the pre-push sanitizer test leg by available memory instead of a fixed -j2.**
+  tools/hooks/pre-push runs the sanitized ctest at -j2 whatever the
+  machine has free. Derive -j from available memory with a floor of two.
+  This leg has a recorded history of out-of-memory kills while a browser
+  was open, which is why it stays considered.
+  **Layman:** The local memory-checking tests could run faster when the machine has spare memory.
+  Kind: perf.
+  Source: user-request-2026-09-14 (CI speed and memory review).
+
+- 💭 [ANTS-5198] **Cache apt packages in the qt62-baseline CI job.**
+  The qt62-baseline job's package install step is uncached, unlike the
+  other jobs. tools/qt62-guard.sh parses that job's apt-get block to build
+  its container, so the script must change in the same commit.
+  **Layman:** One GitHub job downloads its build tools fresh every time while the others reuse a cache.
+  Kind: perf.
+  Source: user-request-2026-09-14 (CI speed and memory review).
+
+- 💭 [ANTS-5199] **Reuse a compile cache for release builds.**
+  release.yml uses no ccache. Restoring an existing cache read-only needs
+  matching configure flags, and release adds its own install prefix. The
+  trade-off is supply chain: a cache written by ordinary runs would feed a
+  shipped binary, and a weekly release cadence gains little.
+  **Layman:** Release builds recompile everything; reusing a cache would be faster but has a safety cost.
+  Kind: perf.
+  Source: user-request-2026-09-14 (CI speed and memory review).
 
 ## 0.7.80–0.7.84 — post-0.7.79 user-feedback rolling sweep — shipped 2026-05-10 → 2026-05-11
 
