@@ -76853,7 +76853,7 @@ here.)
   Source: in-session-2026-09-09.
   Lanes: mcp, roadmap-store.
 
-- 📋 [ANTS-4987] **MarkdownScan::fenceCloses accepts a closing fence carrying an info string, which CommonMark forbids.**
+- ✅ [ANTS-4987] **MarkdownScan::fenceCloses accepts a closing fence carrying an info string, which CommonMark forbids.**
   CommonMark § 4.5: a CLOSING code fence may not carry an info string.
   `MarkdownScan::fenceCloses` implements only the character and run-length
   halves — it delegates to `fenceOpenerChar`, which by construction accepts an
@@ -76901,6 +76901,14 @@ here.)
   and a changelog_query case before deleting its local hasInfo; (5) add a
   testauditengine fixture that closes the Findings JSON block with an
   info-string fence.
+  Resolved (2026-09-14, e092e5e5): MarkdownScan::fenceCloses also requires
+  the text after the fence run to be empty once trimmed(), so a closer with
+  an info string no longer closes and a CRLF closer still does. fenceMask
+  now calls fenceCloses instead of carrying its own loose copy, and
+  ChangelogQuery dropped its local hasInfo for the shared predicate. Tests:
+  fence_closer_run_consumers INV-6 to INV-10 (red before, green after) and
+  changelog_query Ants4987InfoStringLineDoesNotCloseAFence. Suite 4784
+  passed.
   **Layman:** The shared rule for "where does this code block end" ends it one line too early when that line has a label on it.
   Kind: fix.
   Source: in-session-2026-09-09 (found while closing ANTS-4404).
