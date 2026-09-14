@@ -8186,6 +8186,12 @@ extends an existing item, that item carries it instead.
   - FalsePosLedger's static cache is commented single-threaded and is
     reached from several brief builders.
   - auditscope.cpp's pointer to AuditCache::runGit is stale.
+  Progress (2026-09-14): applyRepair reads and writes binary, so CRLF
+  plans apply (audit_low_confidence_autofix INV-7); export buttons and
+  writeGitleaksExcludeConfig use ensurePrivateDir
+  (tests/features/audit_cache_dir_private); auditscope.cpp pointer no
+  longer cites a line. The ledger finding names FalsePosLedger; the
+  static cache is in src/falseposledger.cpp loadEntries.
   **Layman:** Smaller audit-engine fixes: unbounded tool output, a change list that keeps growing, and slow saves on the main window.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lane audit-engine).
