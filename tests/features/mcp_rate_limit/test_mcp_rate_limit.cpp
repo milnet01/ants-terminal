@@ -9,9 +9,13 @@
 
 #include <gtest/gtest.h>
 
+#include <QDir>
+#include <QFile>
+#include <QFileInfo>
 #include <QJsonObject>
 #include <QString>
 #include <QStringLiteral>
+#include <QTemporaryDir>
 
 namespace {
 
@@ -485,4 +489,38 @@ TEST_F(RateLimitTestFixture, Inv18BriefAssemblyOverride) {
                                     /*nowMs=*/6000 + i), 0)
             << "INV-18: Cheap tier honours its own (overridden) cap=100";
     }
+}
+
+// ANTS-5090 INV-19 — the canonical bucket key is memoised per raw
+// caller_cwd for 30 s, so repeat calls skip the stat on the GUI thread.
+// Observed through a symlink retargeted between calls: inside the memo
+// window the call still counts toward the old target's bucket; past it
+// the key is resolved again.
+TEST_F(RateLimitTestFixture, Inv19CallerKeyMemoised) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString dirA = tmp.path() + QStringLiteral("/a");
+    const QString dirB = tmp.path() + QStringLiteral("/b");
+    ASSERT_TRUE(QDir().mkpath(dirA));
+    ASSERT_TRUE(QDir().mkpath(dirB));
+    const QString link = tmp.path() + QStringLiteral("/link");
+    ASSERT_TRUE(QFile::link(dirA, link));
+    const QString canonA = QFileInfo(dirA).canonicalFilePath();
+    const QString canonB = QFileInfo(dirB).canonicalFilePath();
+    const QString tool = QStringLiteral("roadmap_query");
+
+    ClaudeIntegration ci;
+    ASSERT_EQ(ci.rateLimitCheck(tool, link, /*nowMs=*/1000), 0);
+    EXPECT_EQ(ci.rateLimitBucketDepthForTest(tool, canonA), 1);
+
+    ASSERT_TRUE(QFile::remove(link));
+    ASSERT_TRUE(QFile::link(dirB, link));
+    ASSERT_EQ(ci.rateLimitCheck(tool, link, /*nowMs=*/2000), 0);
+    EXPECT_EQ(ci.rateLimitBucketDepthForTest(tool, canonA), 2)
+        << "INV-19: inside the memo window the key is not re-resolved";
+    EXPECT_EQ(ci.rateLimitBucketDepthForTest(tool, canonB), 0);
+
+    ASSERT_EQ(ci.rateLimitCheck(tool, link, /*nowMs=*/1000 + 30'000), 0);
+    EXPECT_EQ(ci.rateLimitBucketDepthForTest(tool, canonB), 1)
+        << "INV-19: past the memo window the key is resolved again";
 }

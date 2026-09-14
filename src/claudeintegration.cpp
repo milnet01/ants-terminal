@@ -2230,6 +2230,31 @@ void ClaudeIntegration::sendMcpResponse(const QPointer<QLocalSocket> &socket,
     socket->disconnectFromServer();
 }
 
+// ANTS-5089 — the JSON-RPC error for a complete request line the MCP socket
+// cannot dispatch: -32700 when it does not parse, -32600 when it parses but is
+// not an object. Written here, not through sendMcpResponse, which sends nothing
+// for a null id. Same terminator (ANTS-1769).
+static void writeMcpRequestError(QLocalSocket *socket,
+                                 const QJsonParseError &parseError) {
+    QJsonObject rpcError;
+    if (parseError.error != QJsonParseError::NoError) {
+        rpcError["code"]    = -32700;
+        rpcError["message"] = QStringLiteral("Parse error: %1")
+                                  .arg(parseError.errorString());
+    } else {
+        rpcError["code"]    = -32600;
+        rpcError["message"] =
+            QStringLiteral("Invalid Request: expected a JSON object");
+    }
+    QJsonObject envelope;
+    envelope["jsonrpc"] = "2.0";
+    envelope["id"]      = QJsonValue(QJsonValue::Null);
+    envelope["error"]   = rpcError;
+    socket->write(QJsonDocument(envelope).toJson(QJsonDocument::Compact) + '\n');
+    socket->flush();
+    socket->disconnectFromServer();
+}
+
 void ClaudeIntegration::onMcpConnection() {
     while (m_mcpServer->hasPendingConnections()) {
         QLocalSocket *socket = m_mcpServer->nextPendingConnection();
@@ -2278,8 +2303,19 @@ void ClaudeIntegration::onMcpConnection() {
             // path. Was 10 MiB.
             if (buf.size() > 256 * 1024) { socket->disconnectFromServer(); return; }
             socket->setProperty("_buf", buf);
-            QJsonDocument doc = QJsonDocument::fromJson(buf);
-            if (!doc.isObject()) return; // wait for more data
+            QJsonParseError parseError;
+            QJsonDocument doc = QJsonDocument::fromJson(buf, &parseError);
+            if (!doc.isObject()) {
+                // ANTS-5089 — a buffer that is exactly one line is a complete
+                // request: answer it rather than sit out the idle timer.
+                // Anything else may still be arriving, so wait for more.
+                if (!buf.endsWith('\n') || buf.indexOf('\n') != buf.size() - 1)
+                    return;
+                socket->setProperty("_handled", true);
+                idleTimer->stop();
+                writeMcpRequestError(socket, parseError);
+                return;
+            }
             socket->setProperty("_handled", true);
 
             // ANTS-2101 — a complete request is in hand: stop the 5 s
@@ -17325,7 +17361,22 @@ qint64 ClaudeIntegration::rateLimitCheck(
     // deliberately NOT unified with this helper — routing must REJECT a
     // non-existent path (no tab can match it) rather than lexically
     // coerce it, so it keeps the existence-only canonicalFilePath rule.
-    QString canon = canonicaliseCallerKey(callerCwd);
+    //
+    // ANTS-5090 — memoise the canonical key per raw caller_cwd for
+    // kCallerKeyMemoTtlMs, so a repeat call skips the stat on the GUI
+    // thread. A stalled mount still blocks the first call. Each raw value
+    // still maps to exactly one key, so the synonym collapse above holds.
+    QString canon;
+    const auto memo = m_callerKeyMemo.constFind(callerCwd);
+    if (memo != m_callerKeyMemo.cend() &&
+        nowMs - memo->stampMs < kCallerKeyMemoTtlMs) {
+        canon = memo->canon;
+    } else {
+        canon = canonicaliseCallerKey(callerCwd);
+        if (m_callerKeyMemo.size() >= kCallerKeyMemoCap)
+            m_callerKeyMemo.clear();
+        m_callerKeyMemo.insert(callerCwd, CallerKeyMemo{canon, nowMs});
+    }
     const QPair<QString, QString> key{toolName, canon};
     auto it = m_rateLimitBuckets.find(key);
 

@@ -2031,6 +2031,8 @@ if(ANTS_TESTS)
                 tests/features/shared_socket_listener/test_shared_socket_listener.cpp
                 # ANTS-5093 — a remote-control reply nobody reads does not pin the socket.
                 tests/features/rc_reply_drain_guard/test_rc_reply_drain_guard.cpp
+                # ANTS-5089 — the MCP socket answers an unparsable request.
+                tests/features/mcp_parse_error_reply/test_mcp_parse_error_reply.cpp
                 tests/features/allowlist_perms_postcommit/test_allowlist_perms_postcommit.cpp
                 tests/features/ssh_dash_host_rejected/test_ssh_dash.cpp
                 tests/features/ssh_extra_args_sanitize/test_ssh_extra_args.cpp

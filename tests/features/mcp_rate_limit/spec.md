@@ -54,3 +54,9 @@ is full. See `docs/specs/ANTS-1356.md` for the full design.
 - **INV-16 / monotonic clock declared.** Source-grep verifies a
   `static QElapsedTimer s_rateLimitClock` lives at TU scope in
   `claudeintegration.cpp` and is started in the constructor.
+- **INV-19 / bucket key memoised (ANTS-5090).** `rateLimitCheck`
+  resolves a raw `caller_cwd` to its canonical key at most once per
+  30 s: a call inside that window reuses the stored key, and a call at
+  or past it resolves again. Each raw value still maps to exactly one
+  canonical key, so INV-8's synonym collapse (ANTS-1771) holds. The
+  memo is keyed on the raw string, capped, and cleared when full.

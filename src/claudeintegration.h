@@ -810,6 +810,16 @@ private:
         QQueue<qint64> tsMs;  // monotonic ms, strictly ascending
     };
     QHash<QPair<QString, QString>, RateLimitBucket> m_rateLimitBuckets;
+    // ANTS-5090 — raw caller_cwd → canonical bucket key, so a repeat call
+    // skips canonicaliseCallerKey's stat on the GUI thread. Stamped with the
+    // rateLimitCheck clock; cleared when full.
+    struct CallerKeyMemo {
+        QString canon;
+        qint64  stampMs = 0;
+    };
+    QHash<QString, CallerKeyMemo> m_callerKeyMemo;
+    static constexpr int    kCallerKeyMemoCap   = 256;
+    static constexpr qint64 kCallerKeyMemoTtlMs = 30'000;
     static constexpr int kRateLimitMapCap       = 256;
     static constexpr int kRateLimitCheapCap         = 60;
     static constexpr int kRateLimitBriefAssemblyCap = 30;
