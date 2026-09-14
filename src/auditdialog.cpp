@@ -3551,12 +3551,21 @@ void AuditDialog::runAutoFix() {
 
     QHash<QString, QString> contents;   // absPath -> original file text
     QList<ants::autofix::Repair> repairs;
+    // ANTS-5083 — planRepair needs a real line; no repairable file is this big.
+    constexpr qint64 kMaxAutoFixFileBytes = 4 * 1024 * 1024;
     for (const CheckResult &r : std::as_const(m_completedResults)) {
         for (const Finding &f : r.findings) {
-            if (f.suppressed) continue;
+            // ANTS-5083 — ask now, not the flag cached when the run parsed the
+            // finding: a suppression added after the run must stop the repair.
+            if (isSuppressed(f)) continue;
+            if (f.line < 1) continue;  // planRepair rejects it; don't read the file
             const QString abs = resolveProjectPath(f.file);
             if (abs.isEmpty()) continue;
             if (!contents.contains(abs)) {
+                if (QFileInfo(abs).size() > kMaxAutoFixFileBytes) {
+                    contents.insert(abs, QString());
+                    continue;
+                }
                 QFile in(abs);
                 contents.insert(abs, in.open(QIODevice::ReadOnly)
                     ? QString::fromUtf8(in.readAll()) : QString());
@@ -4702,7 +4711,11 @@ void AuditDialog::handleCheckOutput(const QString &output) {
     // below leaves that value alone (ANTS-1343).
     consolidateMypyStubHints(r);
 
-    AuditEngine::capFindings(r, kMaxFindingsPerCheck);
+    // ANTS-5083 — a lane left uncapped on purpose (filter.maxLines = 0, the
+    // contract-doc drift lanes, ANTS-3600 INV-10) keeps every finding; the
+    // per-check cap would drop the alphabetically later docs again.
+    if (check.filter.maxLines > 0)
+        AuditEngine::capFindings(r, kMaxFindingsPerCheck);
     if (!r.findingCountAuthored)
         r.findingCount = r.findings.size() + r.omittedCount;
     m_completedResults.append(r);

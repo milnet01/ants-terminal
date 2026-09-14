@@ -70,6 +70,12 @@ for security-relevant changes.
 
 ### Fixed
 
+- **Audit auto-fix skips findings suppressed after the run, and the contract-drift lanes keep every finding** (ANTS-5083)
+  Auto-fix now checks suppressions when it runs, skips findings with no
+  line before reading any file, and does not read very large files. The
+  per-check findings cap no longer applies to lanes that are uncapped on
+  purpose.
+
 - **A suppression that could not be saved no longer hides the finding, and a new audit run re-reads source lines** (ANTS-5083)
   The audit dialog now checks the suppression file write before hiding
   the finding and says so when the save fails. Each run clears the cached
