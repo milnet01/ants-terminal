@@ -9029,6 +9029,13 @@ extends an existing item, that item carries it instead.
   - ANTS-1735 INV-2 and INV-3 still describe retired rules.
   - The chunk signal has no connection.
   - AI dialog strings are not wrapped in tr().
+  Progress (2026-09-14): LlmClient::onFinished fails a 2xx reply with no
+  SSE data line and no answer with an "unrecognised response" error,
+  noting a body cut at the size cap (llm_client
+  Ants5105UnrecognisedSuccessBodyFails). Still open: AiDialog's Send
+  staying disabled after a plaintext refusal, LlmClient's wall-clock
+  deadline, the uncapped drain on finish, the thinking-level chip, and
+  the lows.
   **Layman:** Smaller AI-client fixes: empty answers that look successful, a Send button that stays disabled, and requests that never time out.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lane model-switching).
