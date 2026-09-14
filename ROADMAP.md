@@ -44916,6 +44916,16 @@ are closed inline in the feedback files rather than filed here.
   Kind: fix.
   Source: cc-feedback-2026-08-18 (Fin Break).
   Lanes: mcp, roadmap-store.
+  Checked (2026-09-14), still live, not built. Store-backed writes now
+  render ROADMAP.md from the store, so the file is behind only when
+  something outside roadmap_log changed it. The locate step is
+  unchanged: cmdRoadmapLogFlip matches the locator against the FILE's
+  parsed bullets, and on zero matches refuses bullet_not_found with
+  nearest-neighbour suggestions from the file. An id present only in the
+  store still gets that refusal with no hint that the store holds it.
+  The fix spans every locating write handler (flip, flip_batch,
+  annotate, amend_body, set_body), which makes it design work rather
+  than a patch.
 
 - ✅ [ANTS-4486] **roadmap_migrate cannot re-parse its own renderer's wrapped headline, and defaults kind/source over correct stored values.**
   The round trip is lossy in the destructive direction, and the correlation is exact rather than
@@ -57129,8 +57139,19 @@ two projects).
   Kind: fix.
   Source: cc-feedback-2026-09-03 RetroDB/Slipcase.
 
-- 📋 [ANTS-4846] **indie_review_partition ignores all three of its documented partition sources and reports the path it did not use.**
+- ✅ [ANTS-4846] **indie_review_partition ignores all three of its documented partition sources and reports the path it did not use.**
   The reporting session tried docs/subsystems.md, then a `## Module map` heading in the shape the hint names, then a committed .indie-review/partition.json mirroring the envelope's own lane shape. partition_source stayed "computed" and map_lane_count stayed 0 through all four attempts. The envelope reports path:"docs/subsystems.md" while deriving nothing from it, so the field reads as "the map I used" when it means "where I looked", and oversized_lanes stays raised, so following the hint looks identical to never having tried. First make the failure legible with a map_rejected:[{path, reason}] array. Then publish the accepted grammar, and confirm whether the JSON override resolves at <root>/.indie-review/partition.json.
+  Resolved (2026-09-14), the legibility half.
+  IndieReviewEngine::partitionOverrideRejection returns why the override
+  was not used: not valid JSON, a top level that is not an object,
+  "version" not 1, or no lane with a name. indie_review_partition
+  reports it as map_rejected:[{path, reason}], and `path` names the
+  override only when it was used. The likely reporter case is a file
+  copied from the reply's own lane shape, which has no "version". The
+  accepted grammar is documented in docs/specs/ANTS-1112.md § 2.1 and
+  was not changed. Tests:
+  IndieReviewEngine.Ants4846OverrideRejectionIsNamed,
+  indie_review_partition_sparse_hint.Ants4846RejectedOverrideIsReported.
   **Layman:** The documented way to fix a badly-split code review does nothing, and nothing says so.
   Kind: fix.
   Source: cc-feedback-2026-09-03 Slipcase.

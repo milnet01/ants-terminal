@@ -78,6 +78,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **indie_review_partition says why it ignored a .indie-review/partition.json (map_rejected with a reason, such as a missing "version": 1) and no longer reports that file as the source it used.** (ANTS-4846)
+
 - **New tab shells no longer inherit a dead Claude Code session's identity variables, which switched transcript saving off in a claude started there; other CLAUDE_CODE_ settings still pass through.** (ANTS-4541)
 
 - **The per-tab thinking-level chip reads the last prompt a person typed instead of stopping at a tool reply, so it no longer shows Unknown on almost every live tab.** (ANTS-1892)
