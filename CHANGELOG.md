@@ -70,6 +70,11 @@ for security-relevant changes.
 
 ### Fixed
 
+- **Editing a roadmap item's plain-language summary, source or evidence through roadmap_log can no longer break a line in ROADMAP.md or split an evidence path** (ANTS-5094)
+  The single-field edit now cleans values the way adding an item does.
+
+- **roadmap_query's report mode refuses a since or until date it cannot read instead of quietly reporting a different period** (ANTS-5094)
+
 - **The Claude permissions window says when its settings file cannot be read, and the transcript window no longer shows an empty User line for each tool result** (ANTS-5092)
 
 - **The Background Tasks window reads each task's output from the exact path it checked, and reads a finished task's output only once** (ANTS-5092)

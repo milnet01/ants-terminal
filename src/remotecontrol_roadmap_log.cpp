@@ -3299,6 +3299,20 @@ QJsonDocument RemoteControl::cmdRoadmapLogAmendField(const QJsonObject &req) {
     QStringList evNotPath;                       // ANTS-4527
     if (isList) {
         QStringList items;
+        // ANTS-5094 — each evidence element gets append's sanitising
+        // (rlFillItemBody): control characters dropped, a newline or comma
+        // folded to a space, 500 characters. Stored raw, a newline published
+        // an extra line in ROADMAP.md and a comma split the element in two.
+        const auto addItem = [&](const QString &raw) {
+            QString t = raw;
+            if (field == QLatin1String("evidence")) {
+                t = rcSanitizeBulletField(t, 500);
+                t.replace(QChar('\n'), QChar(' '));
+                t.replace(QChar(','), QChar(' '));
+            }
+            t = t.trimmed();
+            if (!t.isEmpty()) items << t;
+        };
         const QJsonValue v = req.value(QStringLiteral("value"));
         if (v.isArray()) {
             for (const QJsonValue &e : v.toArray()) {
@@ -3306,13 +3320,12 @@ QJsonDocument RemoteControl::cmdRoadmapLogAmendField(const QJsonObject &req) {
                     return rlErr(QStringLiteral("bad_args"),
                         QStringLiteral("roadmap_log: `value` for %1 must be an "
                                        "array of strings").arg(field));
-                const QString t = e.toString().trimmed();
-                if (!t.isEmpty()) items << t;
+                addItem(e.toString());
             }
         } else {
             const QStringList parts = v.toString().split(QChar(','));
             for (const QString &t : parts)
-                if (!t.trimmed().isEmpty()) items << t.trimmed();
+                addItem(t);
         }
         QJsonArray arr;
         for (const QString &t : std::as_const(items)) arr.append(t);
@@ -3325,6 +3338,13 @@ QJsonDocument RemoteControl::cmdRoadmapLogAmendField(const QJsonObject &req) {
                 if (!rlEvidenceLooksLikePath(e)) evNotPath << e;
     } else {
         stored  = req.value(QStringLiteral("value")).toString().trimmed();
+        // ANTS-5094 — append's caps and control-character strip for the two
+        // prose columns (rlFillItemBody); kind stays verbatim for its enum
+        // check. A raw newline in layman published an extra ROADMAP.md line.
+        if (field == QLatin1String("layman"))
+            stored = rcSanitizeBulletField(stored, 1000);
+        else if (field == QLatin1String("source"))
+            stored = rcSanitizeBulletField(stored, 200);
         display = stored;
         // kind and source are TEXT NOT NULL with no default (ANTS-4576), so
         // "" is not an absent state for them — it is a constraint failure the

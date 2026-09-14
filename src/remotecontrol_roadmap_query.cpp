@@ -2654,12 +2654,20 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
         // wired into stamping alone leaves INV-1 and INV-8 flaking at every
         // period boundary.
         const QDate today = RoadmapClock::today();
-        const QDate since = QDate::fromString(
-            req.value(QStringLiteral("since")).toString(),
-            QStringLiteral("yyyy-MM-dd"));
-        const QDate until = QDate::fromString(
-            req.value(QStringLiteral("until")).toString(),
-            QStringLiteral("yyyy-MM-dd"));
+        const QString sinceRaw = req.value(QStringLiteral("since")).toString().trimmed();
+        const QString untilRaw = req.value(QStringLiteral("until")).toString().trimmed();
+        const QDate since = QDate::fromString(sinceRaw, QStringLiteral("yyyy-MM-dd"));
+        const QDate until = QDate::fromString(untilRaw, QStringLiteral("yyyy-MM-dd"));
+        // ANTS-5094 — refused as the list path refuses shipped_since: an
+        // unparseable since silently became the default periods and an
+        // unparseable until became tomorrow, so the window changed unasked.
+        if ((!sinceRaw.isEmpty() && !since.isValid())
+            || (!untilRaw.isEmpty() && !until.isValid())) {
+            out["ok"]    = false;
+            out["error"] = QStringLiteral("since / until take a YYYY-MM-DD date");
+            out["code"]  = QStringLiteral("bad_args");
+            return QJsonDocument(out);
+        }
         QString repErr;
         QJsonObject env = buildRoadmapReportEnvelope(
             *store, projectId, today, since, until, &repErr);

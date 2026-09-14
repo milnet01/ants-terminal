@@ -76,6 +76,12 @@ rather than reaching the caller as a raw SQLite constraint string.
 - **INV-8** — an id the store does not hold refuses `bullet_not_found`.
   *Test:* `Inv8UnknownIdRefused`.
 
+- **INV-9 (ANTS-5094)** — `layman` and `source` take append's control-character
+  strip and caps, and each `evidence` element folds a newline or comma to a
+  space, so a value cannot publish an extra ROADMAP.md line or split an
+  element. `roadmap_query` `mode:"report"` refuses an unparseable `since` or
+  `until` with `bad_args` rather than changing the window.
+
 ## Out of scope
 
 - **Rows already damaged by the one-way workaround.** A body that

@@ -606,3 +606,49 @@ TEST(RoadmapLogAmendField, Ants4750EmptyValueStillBadArgs) {
               QStringLiteral("bad_args"))
         << "an empty value is a NOT NULL violation, not an unknown enum value";
 }
+
+// ---------------------------------------------------------------- INV-9 -----
+
+// ANTS-5094 — amend_field sanitises like append: a newline in layman does not
+// publish an extra line, and a comma inside one evidence element does not split
+// it into two.
+TEST(RoadmapLogAmendField, Ants5094ValuesSanitisedLikeAppend) {
+    Fx fx; ASSERT_TRUE(fx.ok());
+    RemoteControl rc(nullptr);
+    QJsonObject resp = rc.cmdRoadmapLogAmendFieldForTest(
+        fieldReq(fx.root, QStringLiteral("DEMO-0003"), QStringLiteral("layman"),
+                 QStringLiteral("First half\nSecond half"))).object();
+    ASSERT_TRUE(resp.value(QStringLiteral("ok")).toBool())
+        << QJsonDocument(resp).toJson().toStdString();
+    auto item = itemOf(QStringLiteral("DEMO-0003"), fx.projectId);
+    ASSERT_TRUE(item.has_value());
+    EXPECT_FALSE(item->layman.contains(QChar('\n')))
+        << "a newline in layman reaches the column and the published file";
+    EXPECT_FALSE(has(readAll(roadmapPath(fx.root)).toStdString(), "\nSecond half"))
+        << "the render published the layman's second line on a line of its own";
+
+    resp = rc.cmdRoadmapLogAmendFieldForTest(
+        fieldReq(fx.root, QStringLiteral("DEMO-0003"), QStringLiteral("evidence"),
+                 QJsonArray{QStringLiteral("logs/a,b.log")})).object();
+    ASSERT_TRUE(resp.value(QStringLiteral("ok")).toBool())
+        << QJsonDocument(resp).toJson().toStdString();
+    item = itemOf(QStringLiteral("DEMO-0003"), fx.projectId);
+    ASSERT_TRUE(item.has_value());
+    ASSERT_EQ(item->evidence.size(), 1)
+        << "a comma inside one evidence element split it";
+}
+
+// ANTS-5094 — report mode refuses a malformed window instead of changing it.
+TEST(RoadmapLogAmendField, Ants5094ReportRefusesMalformedWindow) {
+    Fx fx; ASSERT_TRUE(fx.ok());
+    RemoteControl rc(nullptr);
+    QJsonObject req;
+    req[QStringLiteral("caller_cwd")] = fx.root;
+    req[QStringLiteral("mode")]       = QStringLiteral("report");
+    req[QStringLiteral("since")]      = QStringLiteral("2026-13-40");
+    const QJsonObject resp = rc.cmdRoadmapQueryForTest(req).object();
+    EXPECT_FALSE(resp.value(QStringLiteral("ok")).toBool())
+        << "a malformed since silently fell back to the default periods: "
+        << QJsonDocument(resp).toJson().toStdString();
+    EXPECT_EQ(resp.value(QStringLiteral("code")).toString(), QStringLiteral("bad_args"));
+}
