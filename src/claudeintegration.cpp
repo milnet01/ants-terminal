@@ -6064,7 +6064,11 @@ void ClaudeIntegration::onMcpConnection() {
                     "clue. If you hit that, split edits[] into smaller calls "
                     "rather than auditing your escaping — identical content "
                     "applies cleanly in halves. dry_run cannot diagnose it "
-                    "(the call never arrives).");
+                    "(the call never arrives). "
+                    "ANTS-4856: a batch that applied some edits and skipped "
+                    "others carries `partial:true` (`would_be_partial:true` "
+                    "on a dry run). Its files hold neither the old text nor "
+                    "the new, so read skipped[] before building on them.");
                 aeTool["selection_hint"] = QStringLiteral(
                     "Use for a multi-site sweep (same change across N files) "
                     "to collapse N native Edit calls into one atomic batch.");

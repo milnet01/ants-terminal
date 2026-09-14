@@ -38,3 +38,10 @@ edit whose file failed to commit is not listed. An optional per-edit
 matches differs, before the edit reaches the file. `expect_count` on a line
 range is refused `bad_args`. *Test:*
 `McpApplyEdits.Ants4838PerEditCountsAndExpectCount`.
+
+## ANTS-4856 — a partly applied batch says so
+
+When a batch applies at least one edit and skips at least one, the envelope
+carries `partial: true`; a dry run carries `would_be_partial: true` instead and
+no `partial`. A batch with no skipped edit, or with nothing applied, carries
+neither. *Test:* `McpApplyEdits.Ants4856PartialBatchIsFlagged`.

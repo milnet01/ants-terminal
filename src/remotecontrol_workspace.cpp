@@ -3010,6 +3010,13 @@ QJsonDocument RemoteControl::cmdApplyEdits(const QJsonObject &req) {
         editCounts.append(c);
     }
     env["edit_replacements"] = editCounts;
+    // ANTS-4856 — a batch that applied some edits and skipped others leaves its
+    // files holding neither the old text nor the new, and ok:true alone reads
+    // as success. Announced only when both counts are non-zero, in the tense
+    // ANTS-4834 gives a preview.
+    if (editsApplied > 0 && editsSkipped > 0)
+        env[dryRun ? QStringLiteral("would_be_partial")
+                   : QStringLiteral("partial")] = true;
     // ANTS-4723 — announced only when it actually fired, so an absent key
     // means "every edit matched verbatim" rather than "nobody looked".
     if (!wrappedIdx.isEmpty()) {

@@ -844,3 +844,56 @@ TEST(McpApplyEdits, Ants4838PerEditCountsAndExpectCount) {
     EXPECT_EQ(bad.value(QStringLiteral("code")).toString(),
               QStringLiteral("bad_args"));
 }
+
+// ANTS-4856 — a batch where one edit missed and another applied is flagged,
+// because its files are neither the old text nor the new and ok:true alone
+// reads as success. A preview says so in the future tense; a batch that
+// applied everything carries no flag.
+TEST(McpApplyEdits, Ants4856PartialBatchIsFlagged) {
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid());
+    const auto oldEdit = [](const char *o, const char *n) {
+        QJsonObject e;
+        e[QStringLiteral("path")] = QStringLiteral("doc.txt");
+        e[QStringLiteral("old")]  = QString::fromUtf8(o);
+        e[QStringLiteral("new")]  = QString::fromUtf8(n);
+        return e;
+    };
+    const auto run = [&](const QJsonArray &edits, bool dry) {
+        RemoteControl rc(nullptr);
+        QJsonObject req;
+        req[QStringLiteral("caller_cwd")] = dir.path();
+        req[QStringLiteral("edits")]      = edits;
+        if (dry) req[QStringLiteral("dry_run")] = true;
+        return rc.cmdApplyEdits(req).object();
+    };
+    QJsonArray mixed;
+    mixed.append(oldEdit("no such line", "x"));
+    mixed.append(oldEdit("beta", "BETA"));
+
+    {
+        ASSERT_FALSE(seedDoc(dir).isEmpty());
+        const QJsonObject r = run(mixed, false);
+        ASSERT_TRUE(r.value(QStringLiteral("ok")).toBool());
+        EXPECT_EQ(r.value(QStringLiteral("edits_applied")).toInt(), 1);
+        EXPECT_EQ(r.value(QStringLiteral("edits_skipped")).toInt(), 1);
+        EXPECT_TRUE(r.value(QStringLiteral("partial")).toBool())
+            << "a mixed batch must say it applied only part of itself";
+    }
+    {
+        ASSERT_FALSE(seedDoc(dir).isEmpty());
+        const QJsonObject r = run(mixed, true);
+        EXPECT_TRUE(r.value(QStringLiteral("would_be_partial")).toBool());
+        EXPECT_FALSE(r.contains(QStringLiteral("partial")))
+            << "a preview applied nothing, so it must not claim a partial write";
+    }
+    {
+        ASSERT_FALSE(seedDoc(dir).isEmpty());
+        QJsonArray whole;
+        whole.append(oldEdit("beta", "BETA"));
+        whole.append(oldEdit("gamma", "GAMMA"));
+        const QJsonObject r = run(whole, false);
+        EXPECT_EQ(r.value(QStringLiteral("edits_skipped")).toInt(), 0);
+        EXPECT_FALSE(r.contains(QStringLiteral("partial")));
+    }
+}
