@@ -9076,6 +9076,14 @@ extends an existing item, that item carries it instead.
   - id_format.pattern accepts catastrophic regexes from a cloned
     project.json.
   - Temp-file open failures are silent.
+  Progress (2026-09-14): saveSession and saveTabOrder name their temp
+  file with the process id, and the orphan sweep matches both the new
+  and the old names; saveTabOrder checks the whole write and flush
+  before renaming (tests/features/session_save_guards). Still open:
+  ProjectSettings::detect's ceiling counting only sources, synchronous
+  startup decoding, the GUI-thread umask window, the schema stamp by
+  older builds, the ANTS-1430 budget, the 5 s lock waits, catastrophic
+  id_format patterns, and silent temp-file open failures.
   **Layman:** Smaller settings and session fixes, including two Ants windows corrupting each other's saved tabs.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lane config-session-project).
