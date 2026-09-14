@@ -8456,6 +8456,11 @@ extends an existing item, that item carries it instead.
     tool execution errors as isError:true in the result. Ants refusals
     ({ok:false, code}) never set it. Setting it changes what every client
     sees for every verb's refusals.
+  Decided (2026-09-14, user): set isError:true on every refusal
+  ({ok:false, code}), per the MCP spec. Changes what every client sees,
+  so the contract change runs rule 14's gate before building. The
+  caller_cwd rate-check stat: memoise the canonical key briefly (no user
+  decision needed).
   **Layman:** Small fixes to how Ants routes Claude's tool calls: a cached refusal, clock handling and error flags.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lane claude-integration-b).
@@ -9012,6 +9017,10 @@ extends an existing item, that item carries it instead.
   rows_preview ladder is linear per rung. Every finding on this item is now
   built except one. STILL OPEN, NEEDS A DECISION: a single spill over
   kSpillMaxBytes (see the note above).
+  Decided (2026-09-14, user): a body over kSpillMaxBytes is not spilled.
+  The offload refuses with a hint to narrow the call, and no other spill
+  is evicted for it. ANTS-2094 INV-7 stays as written; any wording that
+  says an oversized body spills is corrected through rule 14's gate.
   **Layman:** Smaller fixes to how Ants packages big answers for Claude, including paging that can corrupt text.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lane mcp-infra).
@@ -10094,6 +10103,10 @@ extends an existing item, that item carries it instead.
   project content is the case to fail on.
   Fix direction: decide the policy once in src/secureio.h, then apply it
   per site; an audit rule can flag a new discarded call.
+  Decided (2026-09-14, user): split by risk. A file holding response or
+  project content (spills, caches) is not written when owner-only perms
+  cannot be set; every other site logs a warning. Policy lives once in
+  src/secureio.h, then applied per site.
   **Layman:** Ants tries to make its private files readable only by you, but in most places it never checks whether that worked.
   Kind: security.
   Source: in-session-2026-09-13 split from ANTS-5104.
@@ -17510,6 +17523,11 @@ fixes don't address. Roadmapped here as their own design tasks.
   the bucket per connection instead would let one caller multiply its
   budget, the hole ANTS-1771 closed for caller_cwd synonyms. Adding the
   sharing count to the refusal needs no contract change.
+  Decided (2026-09-14, user): move workspace_search to the 30-a-minute
+  BriefAssembly tier (the ANTS-1629/1643 precedent) through a
+  docs/specs/ANTS-1356.md amendment and rule 14's gate, and have the
+  rate_limited refusal say how many callers share the bucket. No
+  per-connection keying (ANTS-1771 hole).
   **Layman:** When many Claude helpers search one project at once, Ants' search tool turns most of them away.
   Kind: fix.
   Source: in-session-2026-09-11 (performance pass).
