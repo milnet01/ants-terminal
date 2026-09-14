@@ -123,6 +123,17 @@ fi
 
 # ── save ─────────────────────────────────────────────────────────────────────
 if [[ "$SAVE" == 1 ]]; then
+    # ANTS-5137 — under -R only the matching benchmarks ran, so VALUE[] holds
+    # only their metrics. Keep every other metric's saved row, or recording one
+    # benchmark would delete the rest of the baseline.
+    declare -A KEEP=()
+    if [[ -n "$FILTER" && -f "$BASELINE" ]]; then
+        while IFS= read -r line; do
+            [[ "$line" == \#* || -z "$line" ]] && continue
+            n="${line%%$'\t'*}"
+            [[ -n "${VALUE[$n]:-}" ]] || KEEP[$n]="$line"
+        done < "$BASELINE"
+    fi
     {
         # printf, not echo: echo does not interpret \t, and these header lines
         # are read back as tab-separated fields.
@@ -130,11 +141,15 @@ if [[ "$SAVE" == 1 ]]; then
         printf '# date\t%s\n'    "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
         printf '# machine\t%s\n' "$MACHINE"
         printf '# commit\t%s\n'  "$(git -C "$ROOT" rev-parse --short HEAD 2>/dev/null || echo unknown)"
-        for n in $(printf '%s\n' "${!VALUE[@]}" | sort); do
-            printf '%s\t%s\t%s\t%s\n' "$n" "${VALUE[$n]}" "${UNIT[$n]}" "${DIR[$n]}"
+        for n in $(printf '%s\n' "${!VALUE[@]}" "${!KEEP[@]}" | sort -u); do
+            if [[ -n "${VALUE[$n]:-}" ]]; then
+                printf '%s\t%s\t%s\t%s\n' "$n" "${VALUE[$n]}" "${UNIT[$n]}" "${DIR[$n]}"
+            else
+                printf '%s\n' "${KEEP[$n]}"
+            fi
         done
     } > "$BASELINE"
-    echo "perf-report: baseline written to $BASELINE ($metric_count metrics)"
+    echo "perf-report: baseline written to $BASELINE ($metric_count metrics, ${#KEEP[@]} kept from the previous baseline)"
 fi
 
 # ── load the baseline ────────────────────────────────────────────────────────
