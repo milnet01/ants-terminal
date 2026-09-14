@@ -8507,6 +8507,20 @@ extends an existing item, that item carries it instead.
     the original.
   - Documents out of date: status-bar.md's tokens-saved pill rule and
     ANTS-1458's single-instance claim.
+  Checked (2026-09-14): the split-pane tracker leak is already fixed.
+  MainWindow::releaseTerminalShell (ANTS-5079, a004db7e) calls
+  ClaudeStatusBarController::untrackBgShell, and closeFocusedPane and
+  performTabClose call releaseTerminalShell for every pane.
+  Progress (2026-09-14): tailFile opens the canonical path tailPathSafe
+  validated, finished task output is read once and not watched
+  (tests/features/claude_bg_tasks_dialog_reads); a corrupt allowlist
+  settings file is reported in the validation label, and a
+  tool-result-only user entry renders as [tool result]
+  (tests/features/claude_dialog_empty_states). Still open: the
+  fresh-Claude transcript fallback to the newest transcript on the
+  machine, the transcript render cap counting entries, the allowlist
+  lock wait, a Claude restart within one poll, the MCP nudge path, the
+  Projects dialog re-reads, and the stale documents.
   **Layman:** Smaller fixes to Ants' Claude status displays: leaking trackers, slow windows, and a tab showing another session.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lane claude-session-widgets).
