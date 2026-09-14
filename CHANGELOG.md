@@ -12,6 +12,10 @@ for security-relevant changes.
 
 ## [Unreleased]
 
+### Added
+
+- **apply_edits reports each edit's own replacement count in `edit_replacements`, and an optional per-edit `expect_count` skips an edit whose match count differs, before it touches the file.** (ANTS-4838)
+
 ### Changed
 
 - **Every MCP tool description now fits the 800-byte wire budget; the longer prose moved to each tool's `detail`, served by tool_info, and a test checks every registered tool.** (ANTS-5152)

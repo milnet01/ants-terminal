@@ -56939,8 +56939,18 @@ two projects).
   Kind: enhancement.
   Source: cc-feedback-2026-09-03 LottoTracker.
 
-- 📋 [ANTS-4838] **apply_edits reports replacements per FILE, so a replace_all that matched the wrong number is invisible.**
+- ✅ [ANTS-4838] **apply_edits reports replacements per FILE, so a replace_all that matched the wrong number is invisible.**
   replace_all is the one edit mode with no uniqueness guard, so the occurrence count IS the check that the pattern was scoped as intended; edits_skipped catches only the zero case and cannot catch an over-broad pattern that swallowed a sibling's sites. A per-edit `matched` in a results[] indexed like the input, in skipped[]'s existing shape, would be backwards-compatible. An optional expect_count refusing on a mismatch is the stronger form and gives replace_all the guard the unique-old form gets for free.
+  Resolved (2026-09-14): the per-edit count was already computed
+  (EditOutcome.replacements) and only summed per file. The envelope now
+  carries edit_replacements [{index, replacements}] in input order, in a
+  real run and a dry run; an edit whose file failed to commit is dropped
+  from it. An optional per-edit expect_count (non-negative integer,
+  `old` form only; refused bad_args with a line range) skips a
+  mismatched edit as count_mismatch with match_count and expect_count
+  before it reaches the file. Schema declares expect_count beside
+  replace_all. Test McpApplyEdits.Ants4838PerEditCountsAndExpectCount
+  fails on the old source and passes now; full suite green.
   **Layman:** When several find-and-replace edits go to one file you cannot tell how many times each one fired.
   Kind: fix.
   Source: cc-feedback-2026-09-03 OneUp.
