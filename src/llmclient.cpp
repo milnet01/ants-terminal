@@ -404,6 +404,16 @@ void LlmClient::onFinished() {
             }
         }
     }
+    // ANTS-5105 — a successful reply that is neither a stream nor a known
+    // JSON body carries no answer. Reported as ok with empty text, the chat
+    // showed nothing and a review lane read as clean.
+    if (!hadError && !m_sawSse && m_text.isEmpty()) {
+        hadError = true;
+        result.error = QStringLiteral(
+            "unrecognised response: neither an event stream nor a chat "
+            "completion body%1").arg(m_truncated ? QStringLiteral(" (cut at the size cap)")
+                                                : QString());
+    }
     if (hadError && m_text.isEmpty() && result.error.isEmpty())
         result.error = scrubErrorString(m_reply->errorString());
     else if (hadError && !m_text.isEmpty())

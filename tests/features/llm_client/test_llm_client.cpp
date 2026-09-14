@@ -769,3 +769,34 @@ TEST(LlmClient, ANTS5008_CapHitEndsRequestPromptly) {
         << "finished() arrived but the client left the connection open, so "
            "the download is still running (ANTS-5008)";
 }
+
+// ANTS-5105 — a 2xx reply that is neither SSE nor a known JSON shape fails
+// with an unrecognised-response error instead of reporting ok with no text.
+TEST(LlmClient, Ants5105UnrecognisedSuccessBodyFails) {
+    const QByteArray response =
+        "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\n"
+        "Connection: close\r\n\r\n<html>proxy login page</html>";
+    FakeHttpServer server(FakeHttpServer::Mode::Respond, response);
+    ASSERT_TRUE(server.isListening());
+
+    LlmClient client;
+    LlmResult captured;
+    int finishedCount = 0;
+    QObject::connect(&client, &LlmClient::finished, &client,
+                     [&](const LlmResult &r) { captured = r; ++finishedCount; });
+
+    LlmRequest req;
+    req.endpoint =
+        QString("http://127.0.0.1:%1/v1/chat/completions").arg(server.port());
+    req.model = QStringLiteral("test-model");
+    req.systemPrompt = QStringLiteral("sys");
+    req.userPrompt = QStringLiteral("user");
+    client.send(req);
+
+    ASSERT_TRUE(server.waitUntil([&]() { return finishedCount == 1; }))
+        << "client never reported finished()";
+    EXPECT_FALSE(captured.ok)
+        << "an unrecognised 200 body was reported as a successful empty answer";
+    EXPECT_TRUE(captured.error.contains(QStringLiteral("unrecognised response")))
+        << captured.error.toStdString();
+}

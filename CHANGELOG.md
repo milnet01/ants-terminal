@@ -70,6 +70,11 @@ for security-relevant changes.
 
 ### Fixed
 
+- **The AI client reports an error for a successful reply it cannot read, instead of an empty answer that looks like success** (ANTS-5105)
+  A proxy login page or any other body that is neither a stream nor a chat
+  completion used to show nothing in the AI chat and read as a clean
+  review lane.
+
 - **Build-error fix hints recognise GCC's curly quotes, so they work with this machine's compiler output** (ANTS-5102)
 
 - **verify_changes no longer loses ctest's failed-test list when one large chunk of output arrives at once** (ANTS-5102)

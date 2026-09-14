@@ -121,3 +121,10 @@ INV-20's server holds the connection open (`FakeHttpServer` mode
 `RespondKeepOpen`), so only the client can end the transfer. Its request
 sets `timeoutMs` well past the test's wait bound, so the transfer timeout
 cannot be what ends it.
+
+## ANTS-5105 — an unrecognised successful reply
+
+A 2xx reply with no SSE data line and no `choices[0].message.content` or
+`error` object finishes with `ok:false` and an "unrecognised response" error,
+noting when the body was cut at the size cap. *Test:*
+`Ants5105UnrecognisedSuccessBodyFails`.
