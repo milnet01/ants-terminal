@@ -93,6 +93,7 @@
       "sourcePaths": [
         "src/auditdialog.cpp",
         "src/auditdialog.h",
+        "src/auditdialog_internal.h",
         "src/gitblameparse.h"
       ]
     },

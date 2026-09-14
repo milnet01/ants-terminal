@@ -10,8 +10,8 @@
 #include <gtest/gtest.h>
 #include "../../_support/srcgrep.h"
 
-#ifndef SRC_AUDIT_CPP_PATH
-#  error "SRC_AUDIT_CPP_PATH compile definition required"
+#ifndef ANTS_AUDITDIALOG_SOURCES
+#  error "ANTS_AUDITDIALOG_SOURCES compile definition required"
 #endif
 
 
@@ -35,7 +35,7 @@ static std::string extractFnBody(const std::string &src, const char *qualName) {
 }
 
 TEST(AuditToolCrashDistinct, Main) {
-    const std::string cpp = ants_test::slurpFile(SRC_AUDIT_CPP_PATH);
+    const std::string cpp = ants_test::slurpAuditDialog();
     int failures = 0;
     auto fail = [&](const char *msg) {
         std::fprintf(stderr, "FAIL: %s\n", msg);

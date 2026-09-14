@@ -502,7 +502,7 @@ TEST(mcp_audit_run, Ants3367ResolveBuildDirReturnsName) {
 // {build, build-fast, …} list (the Rule-of-Three / ANTS-1707 miss class).
 TEST(mcp_audit_run, Ants3367AuditDialogUsesSharedProbe) {
     expect_reset();
-    const std::string cpp = ants_test::slurpFile(SRC_AUDITDIALOG_CPP_PATH);
+    const std::string cpp = ants_test::slurpAuditDialog();
     expect(contains(cpp, "AuditEngine::resolveBuildDir(m_projectPath)"),
            "ANTS-3367: AuditDialog resolves its build dir via the shared helper");
     expect(!contains(cpp, "\"build-asan\", \"build-workstation\""),
@@ -711,7 +711,7 @@ TEST(mcp_audit_run, Ants4094QtDetectionHandlesFlatLayout) {
 // the helper — flat-layout detection — is covered above by
 // Ants4094QtDetectionHandlesFlatLayout against the helper itself.
 TEST(mcp_audit_run, Ants4124DialogUsesTheSharedQtDetector) {
-    const std::string dlg = ants_test::slurpFile(SRC_AUDITDIALOG_CPP_PATH);
+    const std::string dlg = ants_test::slurpAuditDialog();
 
     EXPECT_NE(dlg.find("AuditEngine::projectUsesQt("), std::string::npos)
         << "the dialog must call the shared detector";

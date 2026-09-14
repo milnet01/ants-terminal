@@ -12,8 +12,8 @@
 #include <gtest/gtest.h>
 #include "../../_support/srcgrep.h"
 
-#ifndef SRC_AUDIT_CPP_PATH
-#  error "SRC_AUDIT_CPP_PATH compile definition required"
+#ifndef ANTS_AUDITDIALOG_SOURCES
+#  error "ANTS_AUDITDIALOG_SOURCES compile definition required"
 #endif
 #ifndef SRC_AUDIT_H_PATH
 #  error "SRC_AUDIT_H_PATH compile definition required"
@@ -84,7 +84,7 @@ TEST(AuditRegexDosWatchdog, Main) {
     // audit_run path needed it), so the allowlist INVs now resolve against
     // the engine body — which is exactly the point: the guard must live
     // wherever the loader does, and there is now only one loader.
-    const std::string dialogCpp = ants_test::slurpFile(SRC_AUDIT_CPP_PATH);
+    const std::string dialogCpp = ants_test::slurpAuditDialog();
 #ifdef SRC_AUDIT_ENGINE_CPP_PATH
     const std::string engineCpp = ants_test::slurpFile(SRC_AUDIT_ENGINE_CPP_PATH);
 #else

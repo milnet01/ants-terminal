@@ -12,8 +12,8 @@
 #include <gtest/gtest.h>
 #include "../../_support/srcgrep.h"
 
-#ifndef SRC_AUDIT_CPP_PATH
-#  error "SRC_AUDIT_CPP_PATH compile definition required"
+#ifndef ANTS_AUDITDIALOG_SOURCES
+#  error "ANTS_AUDITDIALOG_SOURCES compile definition required"
 #endif
 #ifndef SRC_AUDIT_H_PATH
 #  error "SRC_AUDIT_H_PATH compile definition required"
@@ -45,7 +45,7 @@ TEST(AuditPerToolTimeout, Main) {
     // ANTS-1119 v1: AuditCheck struct moved to auditengine.h. Search
     // both headers / both sources for the per-check `timeoutMs` field
     // and the populateChecks bumps.
-    const std::string dialogCpp = ants_test::slurpFile(SRC_AUDIT_CPP_PATH);
+    const std::string dialogCpp = ants_test::slurpAuditDialog();
     const std::string dialogHdr = ants_test::slurpFile(SRC_AUDIT_H_PATH);
 #ifdef SRC_AUDIT_ENGINE_CPP_PATH
     const std::string engineCpp = ants_test::slurpFile(SRC_AUDIT_ENGINE_CPP_PATH);

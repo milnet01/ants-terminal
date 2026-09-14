@@ -35,7 +35,7 @@ int countOccurrences(const std::string &hay, const char *needle) {
 // check. The cleartext predicate + message now live in llmclient.cpp (contract
 // covered by LlmClient.Ants2121_EndpointEgressError).
 TEST(AuditDialogRenderHardening, AiTriageRefusesCleartextKey) {
-    const std::string src = ants_test::slurpFile(SRC_AUDITDIALOG_PATH);
+    const std::string src = ants_test::slurpAuditDialog();
     ASSERT_FALSE(src.empty());
 
     EXPECT_TRUE(contains(src, "LlmClient::endpointEgressError("))
@@ -51,7 +51,7 @@ TEST(AuditDialogRenderHardening, AiTriageRefusesCleartextKey) {
 // former per-path inline cleartext check with this shared validator (which also
 // adds the SSRF / userinfo / scheme gates + the ManualRedirectPolicy below it).
 TEST(AuditDialogRenderHardening, BothAiTriagePathsGuardCleartext) {
-    const std::string src = ants_test::slurpFile(SRC_AUDITDIALOG_PATH);
+    const std::string src = ants_test::slurpAuditDialog();
     ASSERT_FALSE(src.empty());
 
     EXPECT_GE(countOccurrences(src, "LlmClient::endpointEgressError("), 2)
@@ -61,7 +61,7 @@ TEST(AuditDialogRenderHardening, BothAiTriagePathsGuardCleartext) {
 
 // INV-2 (ANTS-1830) — verdict-badge title is double-quoted, not single-quoted.
 TEST(AuditDialogRenderHardening, VerdictBadgeTitleIsDoubleQuoted) {
-    const std::string src = ants_test::slurpFile(SRC_AUDITDIALOG_PATH);
+    const std::string src = ants_test::slurpAuditDialog();
     ASSERT_FALSE(src.empty());
 
     // The pre-fix single-quoted form must be gone.

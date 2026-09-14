@@ -57,8 +57,8 @@
 #ifndef SRC_AUDITDIALOG_H_PATH
 #  error "SRC_AUDITDIALOG_H_PATH must be defined by the bundle's compile defs"
 #endif
-#ifndef SRC_AUDITDIALOG_CPP_PATH
-#  error "SRC_AUDITDIALOG_CPP_PATH must be defined by the bundle's compile defs"
+#ifndef ANTS_AUDITDIALOG_SOURCES
+#  error "ANTS_AUDITDIALOG_SOURCES must be defined by the bundle's compile defs"
 #endif
 #ifndef SRC_MAINWINDOW_CPP_PATH
 #  error "SRC_MAINWINDOW_CPP_PATH must be defined by the bundle's compile defs"
@@ -519,7 +519,7 @@ TEST(UiStatePersistence, Inv13_auditDialogCtorSignature) {
 
 TEST(UiStatePersistence, Inv14_auditDialogWiring) {
     expect_reset();
-    const std::string ad = readFile(SRC_AUDITDIALOG_CPP_PATH);
+    const std::string ad = ants_test::slurpAuditDialog();
     ASSERT_FALSE(ad.empty()) << "ANTS-1150-INV-14: read auditdialog.cpp";
 
     expect(contains(ad, "setAuditSeverityFilters("),

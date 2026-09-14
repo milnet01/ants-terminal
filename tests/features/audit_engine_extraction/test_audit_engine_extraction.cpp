@@ -50,7 +50,7 @@ TEST(AuditEngineExtraction, Main) {
     const std::string engineHdr = ants_test::slurpFile(SRC_AUDIT_ENGINE_H);
     const std::string engineSrc = ants_test::slurpFile(SRC_AUDIT_ENGINE_CPP);
     const std::string dialogHdr = ants_test::slurpFile(SRC_AUDIT_H);
-    const std::string dialogSrc = ants_test::slurpFile(SRC_AUDIT_CPP);
+    const std::string dialogSrc = ants_test::slurpAuditDialog();
 
     if (engineHdr.empty()) { fail("INV-1", "auditengine.h not readable"); FAIL(); return; }
     if (engineSrc.empty()) { fail("INV-2", "auditengine.cpp not readable"); FAIL(); return; }

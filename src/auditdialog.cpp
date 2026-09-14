@@ -1,4 +1,5 @@
 #include "auditdialog.h"
+#include "auditdialog_internal.h"
 #include "auditautofix.h"
 #include "auditcache.h"
 #include "auditfpledger.h"
@@ -51,13 +52,15 @@
 
 #include <algorithm>
 
+using namespace auditdialogdetail;
+
 // ---------------------------------------------------------------------------
 // Shared constants
 // ---------------------------------------------------------------------------
 //
 // Centralised so individual check commands don't re-list the same excludes.
 // Edit once, applies everywhere.
-namespace {
+namespace auditdialogdetail {
 
 // find(1) / grep(1) exclude expressions. ANTS-1709: the directory set
 // (VCS, vendored code, language caches, our own artifact dirs, the
@@ -121,7 +124,7 @@ const QSet<QString> kNonPosixFilesystems = {
     "9p",
 };
 
-} // namespace
+} // namespace auditdialogdetail
 
 // ---------------------------------------------------------------------------
 // Construction
@@ -433,13 +436,14 @@ void AuditDialog::populateChecks() {
         CheckType::Info, Severity::Info, {}, false, true, nullptr
     });
 
-    // Self-consistency: every addGrepCheck() id in src/auditdialog.cpp must
-    // have a fixture directory under tests/audit_fixtures/<id>/. Catches new
-    // rules merged without regression coverage — the exact gap that slipped
-    // through in 0.6.5 (todo_scan / format_string / hardcoded_ips / weak_crypto
-    // shipped for a cycle with no fixtures). No-op on projects that don't
-    // follow this convention: the grep yields no ids when src/auditdialog.cpp
-    // is absent or has no addGrepCheck calls.
+    // Self-consistency: every addGrepCheck() id in the AuditDialog sources —
+    // src/auditdialog.cpp and src/auditdialog_*.cpp — must have a fixture
+    // directory under tests/audit_fixtures/<id>/. Catches new rules merged
+    // without regression coverage — the exact gap that slipped through in
+    // 0.6.5 (todo_scan / format_string / hardcoded_ips / weak_crypto shipped
+    // for a cycle with no fixtures). No-op on projects without
+    // src/auditdialog.cpp. ANTS-1677: where that file exists and the grep
+    // yields no ids, the check reports it rather than passing in silence.
     //
     // Shape: enumerate `addGrepCheck("<id>", …)` lines, dedup by id (awk
     // '!seen[$1]++' keeps the first occurrence deterministically — some rules
@@ -450,20 +454,27 @@ void AuditDialog::populateChecks() {
     m_checks.append({
         "audit_fixture_coverage", "Audit Rule Fixture Coverage",
         "addGrepCheck() rules missing tests/audit_fixtures/<id>/", "General",
-        "f=src/auditdialog.cpp; [ -f \"$f\" ] || exit 0; "
-        "grep -nE 'addGrepCheck\\(\"[a-zA-Z_][a-zA-Z0-9_-]*\"' \"$f\" "
+        "[ -f src/auditdialog.cpp ] || exit 0; "
+        "found=$(grep -HnE 'addGrepCheck\\(\"[a-zA-Z_][a-zA-Z0-9_-]*\"' "
+        "    src/auditdialog.cpp src/auditdialog_*.cpp 2>/dev/null); "
+        "if [ -z \"$found\" ]; then "
+        "    echo 'src/auditdialog.cpp:1: no addGrepCheck() rule ids found in "
+        "src/auditdialog.cpp or src/auditdialog_*.cpp'; "
+        "    exit 0; "
+        "fi; "
+        "printf '%s\\n' \"$found\" "
         "| while IFS= read -r entry; do "
-        "    lineno=\"${entry%%:*}\"; "
+        "    file=\"${entry%%:*}\"; rest=\"${entry#*:}\"; lineno=\"${rest%%:*}\"; "
         "    id=$(printf '%s' \"$entry\" "
         "         | sed -n 's/.*addGrepCheck(\"\\([a-zA-Z_][a-zA-Z0-9_-]*\\)\".*/\\1/p'); "
         "    [ -z \"$id\" ] && continue; "
-        "    printf '%s\\t%s\\n' \"$id\" \"$lineno\"; "
+        "    printf '%s\\t%s\\t%s\\n' \"$id\" \"$file\" \"$lineno\"; "
         "  done "
         "| awk '!seen[$1]++' "
-        "| while IFS=$'\\t' read -r id lineno; do "
+        "| while IFS=$'\\t' read -r id file lineno; do "
         "    [ -d \"tests/audit_fixtures/$id\" ] && continue; "
         "    printf '%s:%s: rule \"%s\" has no fixture directory "
-        "(tests/audit_fixtures/%s/)\\n' \"$f\" \"$lineno\" \"$id\" \"$id\"; "
+        "(tests/audit_fixtures/%s/)\\n' \"$file\" \"$lineno\" \"$id\" \"$id\"; "
         "  done",
         CheckType::CodeSmell, Severity::Minor, {}, true, true, nullptr
     });
@@ -4845,7 +4856,9 @@ void AuditDialog::handleCheckOutput(const QString &output) {
 // Result rendering — sort by severity, summary banner, new-since-baseline tag
 // ---------------------------------------------------------------------------
 
-static QString severityLabel(Severity s) {
+namespace auditdialogdetail {
+
+QString severityLabel(Severity s) {
     switch (s) {
         case Severity::Blocker:  return "BLOCKER";
         case Severity::Critical: return "CRITICAL";
@@ -4867,7 +4880,7 @@ static QString severityColor(Severity s) {
     return "#888";
 }
 
-static QString typeLabel(CheckType t) {
+QString typeLabel(CheckType t) {
     switch (t) {
         case CheckType::Info:          return "info";
         case CheckType::CodeSmell:     return "smell";
@@ -4877,6 +4890,8 @@ static QString typeLabel(CheckType t) {
     }
     return "?";
 }
+
+} // namespace auditdialogdetail
 
 void AuditDialog::renderResults() {
     m_results->clear();

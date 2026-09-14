@@ -31,8 +31,8 @@
 
 #include <string>
 
-#ifndef SRC_AUDIT_CPP_PATH
-#  error "SRC_AUDIT_CPP_PATH compile definition required"
+#ifndef ANTS_AUDITDIALOG_SOURCES
+#  error "ANTS_AUDITDIALOG_SOURCES compile definition required"
 #endif
 
 namespace {
@@ -109,7 +109,7 @@ bool hasSyncScanThenRender(const std::string &region, std::string &between) {
 
 TEST(AuditDebtScanAsync, ScanAllOnlyCalledInsideWorker) {
     const std::string stripped =
-        ants_test::stripComments(ants_test::slurpFile(SRC_AUDIT_CPP_PATH));
+        ants_test::stripComments(ants_test::slurpAuditDialog());
     ASSERT_FALSE(stripped.empty());
 
     std::string detail;
@@ -130,7 +130,7 @@ TEST(AuditDebtScanAsync, ScanAllOnlyCalledInsideWorker) {
 
 TEST(AuditDebtScanAsync, NoProcessEventsInScanClickHandler) {
     const std::string stripped =
-        ants_test::stripComments(ants_test::slurpFile(SRC_AUDIT_CPP_PATH));
+        ants_test::stripComments(ants_test::slurpAuditDialog());
     ASSERT_FALSE(stripped.empty());
 
     const std::string body = ants_test::slurpFunctionBody(
@@ -147,7 +147,7 @@ TEST(AuditDebtScanAsync, NoProcessEventsInScanClickHandler) {
 
 TEST(AuditDebtScanAsync, NoSyncScanThenRenderInScanClickHandler) {
     const std::string stripped =
-        ants_test::stripComments(ants_test::slurpFile(SRC_AUDIT_CPP_PATH));
+        ants_test::stripComments(ants_test::slurpAuditDialog());
     ASSERT_FALSE(stripped.empty());
 
     const std::string body = ants_test::slurpFunctionBody(
@@ -168,7 +168,7 @@ TEST(AuditDebtScanAsync, NoSyncScanThenRenderInScanClickHandler) {
 
 TEST(AuditDebtScanAsync, NoSyncScanThenRenderInFixBranch) {
     const std::string stripped =
-        ants_test::stripComments(ants_test::slurpFile(SRC_AUDIT_CPP_PATH));
+        ants_test::stripComments(ants_test::slurpAuditDialog());
     ASSERT_FALSE(stripped.empty());
 
     const std::string body = ants_test::slurpFunctionBody(
@@ -196,7 +196,7 @@ TEST(AuditDebtScanAsync, NoSyncScanThenRenderInFixBranch) {
 
 TEST(AuditDebtScanAsync, NoSyncScanThenRenderInAllowBranch) {
     const std::string stripped =
-        ants_test::stripComments(ants_test::slurpFile(SRC_AUDIT_CPP_PATH));
+        ants_test::stripComments(ants_test::slurpAuditDialog());
     ASSERT_FALSE(stripped.empty());
 
     const std::string body = ants_test::slurpFunctionBody(
@@ -224,7 +224,7 @@ TEST(AuditDebtScanAsync, NoSyncScanThenRenderInAllowBranch) {
 
 TEST(AuditDebtScanAsync, AllowlistFilterStillApplied) {
     const std::string stripped =
-        ants_test::stripComments(ants_test::slurpFile(SRC_AUDIT_CPP_PATH));
+        ants_test::stripComments(ants_test::slurpAuditDialog());
     ASSERT_FALSE(stripped.empty());
 
     EXPECT_NE(stripped.find("allowlisted(debtToAuditFinding("), std::string::npos)

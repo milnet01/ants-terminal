@@ -40,8 +40,8 @@
 #ifndef SRC_AUDITFPLEDGER_CPP_PATH
 #error "SRC_AUDITFPLEDGER_CPP_PATH compile definition required"
 #endif
-#ifndef SRC_AUDITDIALOG_CPP_PATH
-#error "SRC_AUDITDIALOG_CPP_PATH compile definition required"
+#ifndef ANTS_AUDITDIALOG_SOURCES
+#error "ANTS_AUDITDIALOG_SOURCES compile definition required"
 #endif
 
 namespace {
@@ -132,7 +132,7 @@ TEST(LedgerWriteSafety, Inv4Inv5Wiring) {
     const std::string ar  = ants_test::slurpFile(SRC_AUDITRUNNER_CPP_PATH);
     const std::string af  = ants_test::slurpFile(SRC_AUDITAUTOFIX_CPP_PATH);
     const std::string fp  = ants_test::slurpFile(SRC_AUDITFPLEDGER_CPP_PATH);
-    const std::string ad  = ants_test::slurpFile(SRC_AUDITDIALOG_CPP_PATH);
+    const std::string ad  = ants_test::slurpAuditDialog();
 
     // INV-4 — ensurePrivateDir wired; the bare mkpath idiom gone at each site.
     // ANTS-2119 — both model ledgers now share JsonlFile::writeLinesAtomic, so

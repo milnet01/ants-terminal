@@ -34,6 +34,7 @@
 #include <unistd.h>
 
 #include <gtest/gtest.h>
+#include "../../_support/srcgrep.h"
 
 ANTS_TEST_SCOPE();
 
@@ -177,17 +178,13 @@ void runBehavioralChecks() {
 }
 
 void runSourceChecks() {
-    const QString path = QStringLiteral(SRC_AUDITDIALOG_PATH);
-    QFile f(path);
-    if (!f.open(QIODevice::ReadOnly | QIODevice::Text)) {
+    const QString src = QString::fromStdString(ants_test::slurpAuditDialog());
+    if (src.isEmpty()) {
         std::fprintf(stderr,
-                     "[FAIL] I5/source-open: cannot read %s\n",
-                     qUtf8Printable(path));
+                     "[FAIL] I5/source-open: cannot read the AuditDialog sources\n");
         expect(false, "setup-error", "");
         return;
     }
-    const QString src = QString::fromUtf8(f.readAll());
-    f.close();
 
     // Invariant 5a — helper is defined and used.
     //   Expected occurrences:
@@ -202,8 +199,8 @@ void runSourceChecks() {
     }
     expect(calls >= 6,
            "I5a/resolveProjectPath-used-at-all-sites",
-           QStringLiteral("expected ≥6 occurrences, found %1 in %2")
-               .arg(calls).arg(path));
+           QStringLiteral("expected ≥6 occurrences, found %1 in the AuditDialog sources")
+               .arg(calls));
 
     // Invariant 5b — the unsafe raw-concat pattern is gone.
     //   The literal `m_projectPath + "/" + f.file` was the pre-fix shape
@@ -214,8 +211,8 @@ void runSourceChecks() {
                QStringLiteral("m_projectPath + \"/\" + f.file")),
            "I5b/raw-concat-removed",
            QStringLiteral("`m_projectPath + \"/\" + f.file` must not "
-                          "appear in %1 — use resolveProjectPath() "
-                          "instead").arg(path));
+                          "appear in the AuditDialog sources — use "
+                          "resolveProjectPath() instead"));
 
     // Invariant 5c — the regex-captured-relPath concat is also gone.
     //   dropIfContextContains read the file via

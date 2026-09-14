@@ -1,11 +1,12 @@
 // The audit cache directory is created private — see spec.md.
-// ANTS-5085. Source-scrape of src/auditdialog.cpp and src/auditrunner.cpp.
+// ANTS-5085. Source-scrape of the AuditDialog sources and src/auditrunner.cpp.
 
 #include <QFile>
 #include <QFileInfo>
 #include <QString>
 
 #include <gtest/gtest.h>
+#include "../../_support/srcgrep.h"
 
 namespace {
 
@@ -20,7 +21,7 @@ QString source(const char *rel) {
 }  // namespace
 
 TEST(AuditCacheDirPrivate, ExportButtonsUseEnsurePrivateDir) {
-    const QString src = source("src/auditdialog.cpp");
+    const QString src = QString::fromStdString(ants_test::slurpAuditDialog());
     ASSERT_FALSE(src.isEmpty());
     EXPECT_FALSE(src.contains(QStringLiteral("mkpath(m_projectPath + \"/.audit_cache\")")))
         << "an export creates .audit_cache at umask permissions";

@@ -27,8 +27,8 @@
 #include <QTest>
 #include <QTextEdit>
 
-#ifndef SRC_AUDITDIALOG_CPP_PATH
-#error "SRC_AUDITDIALOG_CPP_PATH compile definition required"
+#ifndef ANTS_AUDITDIALOG_SOURCES
+#error "ANTS_AUDITDIALOG_SOURCES compile definition required"
 #endif
 
 namespace {
@@ -166,8 +166,8 @@ TEST(PlaintextPromptWarning, INV1_AiDialogWarnsOncePerEndpointStillSends) {
 // QMessageBox::question click (docs/specs/ANTS-5010-plaintext-prompt-warning.md
 // § 7's own "Partial" note for this invariant).
 TEST(PlaintextPromptWarning, INV2_AuditDialogCallSitesCallPredicate) {
-    const std::string src = ants_test::slurpFile(SRC_AUDITDIALOG_CPP_PATH);
-    ASSERT_FALSE(src.empty()) << "could not read " << SRC_AUDITDIALOG_CPP_PATH;
+    const std::string src = ants_test::slurpAuditDialog();
+    ASSERT_FALSE(src.empty()) << "could not read the AuditDialog sources";
 
     const std::string needle = "LlmClient::plaintextPromptWarning(";
 

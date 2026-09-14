@@ -17,8 +17,8 @@
 
 #include <string>
 
-#ifndef SRC_AUDITDIALOG_CPP_PATH
-#error "SRC_AUDITDIALOG_CPP_PATH compile definition required"
+#ifndef ANTS_AUDITDIALOG_SOURCES
+#error "ANTS_AUDITDIALOG_SOURCES compile definition required"
 #endif
 
 ANTS_TEST_SCOPE();
@@ -53,7 +53,7 @@ size_t countOccurrences(const std::string &hay, const std::string &needle) {
 
 TEST(AuditLearnedFpFiltering, Ants4444LedgerIsConsulted) {
     expect_reset();
-    const std::string cpp = ants_test::slurpFile(SRC_AUDITDIALOG_CPP_PATH);
+    const std::string cpp = ants_test::slurpAuditDialog();
     ASSERT_FALSE(cpp.empty()) << "auditdialog.cpp not readable";
 
     const std::string body = findingOverloadBody(cpp);
@@ -79,7 +79,7 @@ TEST(AuditLearnedFpFiltering, Ants4444LedgerIsConsulted) {
 
 TEST(AuditLearnedFpFiltering, Inv3FiltersTakeTheWholeFinding) {
     expect_reset();
-    const std::string cpp = ants_test::slurpFile(SRC_AUDITDIALOG_CPP_PATH);
+    const std::string cpp = ants_test::slurpAuditDialog();
     ASSERT_FALSE(cpp.empty()) << "auditdialog.cpp not readable";
 
     // INV-3 — no render/export filter may pass a bare key. That spelling is

@@ -227,7 +227,7 @@ RunResult runBashC(const std::string &command, const std::string &cwd,
 
 TEST(AuditCompilerWarningsCheck, ExplicitLongTimeout) {
     // INV-1
-    const std::string src = ants_test::slurpFile(SRC_AUDIT_CPP_PATH);
+    const std::string src = ants_test::slurpAuditDialog();
     ASSERT_FALSE(src.empty());
     const std::string stripped = ants_test::stripComments(src);
     const std::string block =
@@ -251,7 +251,7 @@ TEST(AuditCompilerWarningsCheck, ExplicitLongTimeout) {
 
 TEST(AuditCompilerWarningsCheck, TrapCleansUpScratchDirOnExit) {
     // INV-2
-    const std::string src = ants_test::slurpFile(SRC_AUDIT_CPP_PATH);
+    const std::string src = ants_test::slurpAuditDialog();
     ASSERT_FALSE(src.empty());
     const std::string stripped = ants_test::stripComments(src);
     const std::string block =
@@ -282,7 +282,7 @@ TEST(AuditCompilerWarningsCheck, TrapCleansUpScratchDirOnExit) {
 
 TEST(AuditCompilerWarningsCheck, NoMktempDForBuildDir) {
     // INV-3
-    const std::string src = ants_test::slurpFile(SRC_AUDIT_CPP_PATH);
+    const std::string src = ants_test::slurpAuditDialog();
     ASSERT_FALSE(src.empty());
     const std::string stripped = ants_test::stripComments(src);
     const std::string block =
@@ -302,7 +302,7 @@ TEST(AuditCompilerWarningsCheck, NoMktempDForBuildDir) {
 
 TEST(AuditCompilerWarningsCheck, NoCMakeListsGuardIsANoOp) {
     // INV-4 — behavioural, only if the command extracts cleanly.
-    const std::string src = ants_test::slurpFile(SRC_AUDIT_CPP_PATH);
+    const std::string src = ants_test::slurpAuditDialog();
     ASSERT_FALSE(src.empty());
     const std::string stripped = ants_test::stripComments(src);
     const std::string block =

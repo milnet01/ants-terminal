@@ -1,20 +1,15 @@
 // Audit suppressions take effect only when saved, and read fresh lines —
-// see spec.md. ANTS-5083. Source-scrape of src/auditdialog.cpp.
+// see spec.md. ANTS-5083. Source-scrape of the AuditDialog sources.
 
-#include <QFile>
-#include <QFileInfo>
 #include <QString>
 
 #include <gtest/gtest.h>
+#include "../../_support/srcgrep.h"
 
 namespace {
 
 QString auditSource() {
-    const QString path = QFileInfo(QString::fromUtf8(__FILE__)).absolutePath()
-        + QStringLiteral("/../../../src/auditdialog.cpp");
-    QFile f(path);
-    if (!f.open(QIODevice::ReadOnly | QIODevice::Text)) return QString();
-    return QString::fromUtf8(f.readAll());
+    return QString::fromStdString(ants_test::slurpAuditDialog());
 }
 
 QString functionBody(const QString &src, const QString &signature) {

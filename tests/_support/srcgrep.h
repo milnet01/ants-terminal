@@ -65,6 +65,32 @@ inline std::string slurpRemoteControl() {
 }
 #endif
 
+// ANTS-1677 — read every path in a `;`-separated source list, in order,
+// joined with '\n'. Unguarded: it takes the list as an argument, so it
+// compiles in every bundle. A path that cannot be opened contributes "", as
+// slurpFile does.
+inline std::string slurpSourceList(const char *list) {
+    const std::string paths = list;
+    std::string out;
+    std::size_t start = 0;
+    while (start <= paths.size()) {
+        const std::size_t sep = paths.find(';', start);
+        const std::size_t end = (sep == std::string::npos) ? paths.size() : sep;
+        if (!out.empty()) out += '\n';
+        out += slurpFile(paths.substr(start, end - start));
+        if (sep == std::string::npos) break;
+        start = sep + 1;
+    }
+    return out;
+}
+
+// ANTS-1677 — the AuditDialog class's text: every file of
+// ANTS_AUDITDIALOG_SOURCES, the list CMake builds from
+// ANTS_AUDITDIALOG_SOURCES_REL. Guarded for the reason slurpRemoteControl is.
+#if defined(ANTS_AUDITDIALOG_SOURCES)
+inline std::string slurpAuditDialog() { return slurpSourceList(ANTS_AUDITDIALOG_SOURCES); }
+#endif
+
 // Return the body of the function whose signature starts with the
 // `signatureAnchor` substring (e.g. "RemoteControl::cmdGetText"). The
 // scan finds the first '{' at or after the anchor, then walks forward

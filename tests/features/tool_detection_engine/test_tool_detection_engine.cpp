@@ -12,8 +12,8 @@
 
 #include <string>
 
-#ifndef SRC_AUDITDIALOG_PATH
-#error "SRC_AUDITDIALOG_PATH compile definition required"
+#ifndef ANTS_AUDITDIALOG_SOURCES
+#error "ANTS_AUDITDIALOG_SOURCES compile definition required"
 #endif
 
 namespace TDE = ToolDetectionEngine;
@@ -123,7 +123,7 @@ TEST(ToolDetectionEngine, RepeatProbesAreFree) {
 
 // TDE-8 — INV-8 source-grep: AuditDialog::toolExists delegates.
 TEST(ToolDetectionEngine, AuditDialogToolExistsDelegates) {
-    const std::string ad = ants_test::slurpFile(SRC_AUDITDIALOG_PATH);
+    const std::string ad = ants_test::slurpAuditDialog();
     ASSERT_FALSE(ad.empty());
     const auto pos = ad.find("bool AuditDialog::toolExists(");
     ASSERT_NE(pos, std::string::npos)

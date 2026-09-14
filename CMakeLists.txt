@@ -836,13 +836,26 @@ target_link_libraries(ants_audit_lib
     PRIVATE ants_warnings)
 set_target_properties(ants_audit_lib PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
+# ANTS-1677 — AuditDialog's source list. Entry 1 is src/auditdialog.cpp; the
+# pieces follow in ascending order of where their text began in it. Tests read
+# the class through ANTS_AUDITDIALOG_SOURCES, built from this list; shell and
+# Python readers read the src/auditdialog.cpp src/auditdialog_*.cpp glob.
+set(ANTS_AUDITDIALOG_SOURCES_REL
+    src/auditdialog.cpp
+)
+list(TRANSFORM ANTS_AUDITDIALOG_SOURCES_REL PREPEND "${CMAKE_SOURCE_DIR}/"
+     OUTPUT_VARIABLE _ants_auditdialog_abs)
+list(JOIN _ants_auditdialog_abs ";" _ants_auditdialog_joined)
+# Escaped for the reason given beside _ants_rc_joined.
+string(REPLACE ";" "\\;" _ants_auditdialog_joined "${_ants_auditdialog_joined}")
+
 # ANTS-1444: AuditDialog (QDialog) + its UI deps. References AuditEngine
 # (ants_audit_lib), DialogChrome (ants_chrome_lib), and ToggleSwitch
 # (ants_dialogs_lib). mainwindow.cpp (in ants_chrome_lib) constructs
 # AuditDialog, so consumers form a chrome↔dialog symbol cycle resolved
 # via --start-group at the final link.
 add_library(ants_audit_dialog_lib STATIC
-    src/auditdialog.cpp
+    ${ANTS_AUDITDIALOG_SOURCES_REL}
 )
 target_link_libraries(ants_audit_dialog_lib
     PUBLIC  ants_audit_lib ants_chrome_lib ants_dialogs_lib
@@ -1890,7 +1903,7 @@ if(ANTS_TESTS)
         COMMANDPALETTE_CPP_PATH="${CMAKE_SOURCE_DIR}/src/commandpalette.cpp"
         DIALOGFOCUS_H="${CMAKE_SOURCE_DIR}/src/dialogfocus.h"
         SRC_DIFFVIEWER_CPP_PATH="${CMAKE_SOURCE_DIR}/src/diffviewer.cpp"
-        SRC_AUDITDIALOG_CPP_PATH="${CMAKE_SOURCE_DIR}/src/auditdialog.cpp"
+        "ANTS_AUDITDIALOG_SOURCES=\"${_ants_auditdialog_joined}\""
         SRC_RELEASE_WORKFLOW_PATH="${CMAKE_SOURCE_DIR}/.github/workflows/release.yml"
         SRC_CMAKELISTS_PATH="${CMAKE_SOURCE_DIR}/CMakeLists.txt"
         SRC_DIR="${CMAKE_SOURCE_DIR}/src")
@@ -2713,7 +2726,7 @@ if(ANTS_TESTS)
         SRC_MAINWINDOW_CPP_PATH="${CMAKE_SOURCE_DIR}/src/mainwindow.cpp"
         MCP_ERROR_CODES_DOC_PATH="${CMAKE_SOURCE_DIR}/docs/standards/mcp-error-codes.md"
         FIXTURE_PROVENANCE_SARIF="${CMAKE_SOURCE_DIR}/tests/features/mcp_last_audit_summary/fixture_provenance.sarif"
-        SRC_AUDITDIALOG_CPP_PATH="${CMAKE_SOURCE_DIR}/src/auditdialog.cpp"
+        "ANTS_AUDITDIALOG_SOURCES=\"${_ants_auditdialog_joined}\""
         ANTS_CLAUDE_MD_PATH="${CMAKE_SOURCE_DIR}/CLAUDE.md"
         CMAKELISTS_PATH="${CMAKE_SOURCE_DIR}/CMakeLists.txt"
         SRC_CMAKELISTS_PATH="${CMAKE_SOURCE_DIR}/CMakeLists.txt")
@@ -2768,9 +2781,6 @@ if(ANTS_TESTS)
     set_property(SOURCE tests/features/lua_oom_event_dispatch/test_lua_oom_event_dispatch.cpp
         APPEND PROPERTY COMPILE_DEFINITIONS
         SRC_LUAENGINE_CPP_PATH="${CMAKE_SOURCE_DIR}/src/luaengine.cpp")
-    set_property(SOURCE tests/features/audit_learned_fp_filtering/test_audit_learned_fp_filtering.cpp
-        APPEND PROPERTY COMPILE_DEFINITIONS
-        SRC_AUDITDIALOG_CPP_PATH="${CMAKE_SOURCE_DIR}/src/auditdialog.cpp")
     set_property(SOURCE tests/features/review_corroboration_single_pass/test_review_corroboration_single_pass.cpp
         APPEND PROPERTY COMPILE_DEFINITIONS
         # ANTS-5125 INV-2 — the two dialog bodies whose corroboration call
@@ -2782,8 +2792,7 @@ if(ANTS_TESTS)
         SRC_AUDITENGINE_CPP_PATH="${CMAKE_SOURCE_DIR}/src/auditengine.cpp"
         # RcTuSplit INV-11 — a remotecontrol TU is never named outside the
         # ANTS_RC_SOURCES_REL block, so this scrapes the whole set instead.
-        "ANTS_RC_SOURCES=\"${_ants_rc_joined}\""
-        SRC_AUDITDIALOG_CPP_PATH="${CMAKE_SOURCE_DIR}/src/auditdialog.cpp")
+        "ANTS_RC_SOURCES=\"${_ants_rc_joined}\"")
     set_property(SOURCE tests/features/claude_git_context_hook/test_installer_grep.cpp
         APPEND PROPERTY COMPILE_DEFINITIONS
         SRC_SETTINGSDIALOG_H="${CMAKE_SOURCE_DIR}/src/settingsdialog.h"
@@ -3047,12 +3056,11 @@ if(ANTS_TESTS)
                 # fix and allow.
                 tests/features/audit_debt_scan_async/test_audit_debt_scan_async.cpp)
     target_compile_definitions(test_audit PRIVATE
-        SRC_AUDIT_CPP_PATH="${CMAKE_SOURCE_DIR}/src/auditdialog.cpp"
+        "ANTS_AUDITDIALOG_SOURCES=\"${_ants_auditdialog_joined}\""
         SRC_AUDIT_H_PATH="${CMAKE_SOURCE_DIR}/src/auditdialog.h"
         SRC_AUDIT_ENGINE_CPP_PATH="${CMAKE_SOURCE_DIR}/src/auditengine.cpp"
         SRC_AUDIT_ENGINE_H_PATH="${CMAKE_SOURCE_DIR}/src/auditengine.h"
         SRC_AUDIT_ENGINE_H="${CMAKE_SOURCE_DIR}/src/auditengine.h"
-        SRC_AUDITDIALOG_PATH="${CMAKE_SOURCE_DIR}/src/auditdialog.cpp"
         # ANTS-1372 source-grep tests: roadmap_fold_in needs visibility
         # into remotecontrol.cpp + roadmapfoldin.cpp for S1-S5.
         # ANTS-3833 — the RemoteControl implementation is eleven TUs. The two
@@ -3094,7 +3102,6 @@ if(ANTS_TESTS)
         SRC_REGEXHARDEN_CPP_PATH="${CMAKE_SOURCE_DIR}/src/regexharden.cpp")
     set_property(SOURCE tests/features/audit_engine_extraction/test_audit_engine_extraction.cpp
         APPEND PROPERTY COMPILE_DEFINITIONS
-        SRC_AUDIT_CPP="${CMAKE_SOURCE_DIR}/src/auditdialog.cpp"
         SRC_AUDIT_H="${CMAKE_SOURCE_DIR}/src/auditdialog.h"
         SRC_AUDIT_ENGINE_CPP="${CMAKE_SOURCE_DIR}/src/auditengine.cpp")
     set_property(SOURCE tests/features/roadmap_fold_in/test_roadmap_fold_in.cpp
@@ -3223,7 +3230,7 @@ if(ANTS_TESTS)
                 tests/features/review_changes_diff_cap/test_review_changes_diff_cap.cpp)
     target_compile_definitions(test_dialogs PRIVATE
         # ANTS-3346 — debt-sweep bulk-defer gate source-grep lock.
-        SRC_AUDITDIALOG_CPP_PATH="${CMAKE_SOURCE_DIR}/src/auditdialog.cpp"
+        "ANTS_AUDITDIALOG_SOURCES=\"${_ants_auditdialog_joined}\""
         SRC_SETTINGSDIALOG_CPP_PATH="${CMAKE_SOURCE_DIR}/src/settingsdialog.cpp"
         SRC_SETTINGSDIALOG_H_PATH="${CMAKE_SOURCE_DIR}/src/settingsdialog.h"
         SRC_CLAUDEALLOWLIST_CPP_PATH="${CMAKE_SOURCE_DIR}/src/claudeallowlist.cpp"
@@ -3658,7 +3665,7 @@ if(ANTS_TESTS)
         SRC_AUDITAUTOFIX_CPP_PATH="${CMAKE_SOURCE_DIR}/src/auditautofix.cpp"
         SRC_AUDITCACHE_CPP_PATH="${CMAKE_SOURCE_DIR}/src/auditcache.cpp"
         SRC_AUDITRUNNER_CPP_PATH="${CMAKE_SOURCE_DIR}/src/auditrunner.cpp"
-        SRC_AUDITDIALOG_CPP_PATH="${CMAKE_SOURCE_DIR}/src/auditdialog.cpp"
+        "ANTS_AUDITDIALOG_SOURCES=\"${_ants_auditdialog_joined}\""
         SRC_RC_HEADER="${CMAKE_SOURCE_DIR}/src/remotecontrol.h"
         # ANTS-3833 — the RemoteControl implementation is eleven TUs. The two
         # single-file path macros are retired: a scrape reading one TU sees a
@@ -3772,8 +3779,8 @@ if(ANTS_TESTS)
     set_property(SOURCE tests/features/rc_tu_split/test_rc_tu_split.cpp
         APPEND PROPERTY COMPILE_DEFINITIONS
         ANTS_RC_ROOT_DIR="${CMAKE_SOURCE_DIR}")
-    # ANTS-1677 — each class's ANTS_<STEM>_SOURCES joins this source in the
-    # groundwork commit of the first item that splits the class.
+    # ANTS-1677 — the tree split_sources scans. Each class's
+    # ANTS_<STEM>_SOURCES reaches it from test_core's target-wide definitions.
     set_property(SOURCE tests/features/split_sources/test_split_sources.cpp
         APPEND PROPERTY COMPILE_DEFINITIONS
         ANTS_SPLIT_SOURCES_ROOT_DIR="${CMAKE_SOURCE_DIR}")

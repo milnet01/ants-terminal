@@ -208,7 +208,7 @@ TEST(AuditBlameBulkAsync, LinePorcelainParserCoversAllRequestedLinesAcrossCommit
 
 TEST(AuditBlameBulkAsync, NoSynchronousWaitInTheBlamePath) {
     const std::string stripped =
-        ants_test::stripComments(ants_test::slurpFile(SRC_AUDIT_CPP_PATH));
+        ants_test::stripComments(ants_test::slurpAuditDialog());
     ASSERT_FALSE(stripped.empty());
 
     std::string detail;
@@ -246,7 +246,7 @@ TEST(AuditBlameBulkAsync, NoSynchronousWaitInTheBlamePath) {
 
 TEST(AuditBlameBulkAsync, ArgvUsesLinePorcelainFlag) {
     const std::string stripped =
-        ants_test::stripComments(ants_test::slurpFile(SRC_AUDIT_CPP_PATH));
+        ants_test::stripComments(ants_test::slurpAuditDialog());
     ASSERT_FALSE(stripped.empty());
 
     EXPECT_NE(stripped.find("--line-porcelain"), std::string::npos)
@@ -259,7 +259,7 @@ TEST(AuditBlameBulkAsync, ArgvUsesLinePorcelainFlag) {
 
 TEST(AuditBlameBulkAsync, ArgvBuildsMultipleRangesPerProcess) {
     const std::string stripped =
-        ants_test::stripComments(ants_test::slurpFile(SRC_AUDIT_CPP_PATH));
+        ants_test::stripComments(ants_test::slurpAuditDialog());
     ASSERT_FALSE(stripped.empty());
 
     const size_t pcPos = stripped.find("--line-porcelain");

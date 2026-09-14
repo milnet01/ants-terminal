@@ -18,8 +18,8 @@
 #ifndef ANTS_RC_SOURCES
 #error "ANTS_RC_SOURCES compile definition required"
 #endif
-#ifndef SRC_AUDITDIALOG_CPP_PATH
-#error "SRC_AUDITDIALOG_CPP_PATH compile definition required"
+#ifndef ANTS_AUDITDIALOG_SOURCES
+#error "ANTS_AUDITDIALOG_SOURCES compile definition required"
 #endif
 
 ANTS_TEST_SCOPE();
@@ -135,7 +135,7 @@ TEST(AuditProvenanceRedaction, Inv4ReadBackStrips) {
 // INV-5 — AI triage scrubs the prompt it POSTs.
 TEST(AuditProvenanceRedaction, Inv5AiTriageScrubsPrompt) {
     expect_reset();
-    const std::string cpp = ants_test::slurpFile(SRC_AUDITDIALOG_CPP_PATH);
+    const std::string cpp = ants_test::slurpAuditDialog();
     ASSERT_FALSE(cpp.empty()) << "INV-5: auditdialog.cpp not readable";
 
     expect(contains(cpp, "SecretRedact::scrub"),
@@ -152,7 +152,7 @@ TEST(AuditProvenanceRedaction, Inv5AiTriageScrubsPrompt) {
 TEST(AuditProvenanceRedaction, Inv6BatchTriageScrubsPrompt) {
     expect_reset();
     const std::string body = ants_test::slurpFunctionBody(
-        SRC_AUDITDIALOG_CPP_PATH, "void AuditDialog::requestAiTriageBatch(");
+        ants_test::slurpAuditDialog(), "void AuditDialog::requestAiTriageBatch(");
     ASSERT_FALSE(body.empty()) << "INV-6: requestAiTriageBatch not found";
 
     expect(contains(body, "SecretRedact::scrub(userMsg)"),

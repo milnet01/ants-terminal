@@ -558,7 +558,7 @@ TEST(Ants1576, WriterAuditDialogWired) {
     expect_reset();
     // INV-5 — auditdialog.cpp's exportSarif() also calls the helper
     // with m_projectPath.
-    const std::string ad = ants_test::slurpFile(SRC_AUDITDIALOG_CPP_PATH);
+    const std::string ad = ants_test::slurpAuditDialog();
     const auto fnPos = ad.find("AuditDialog::exportSarif()");
     expect(fnPos != std::string::npos, "INV-5",
            "exportSarif body not found");

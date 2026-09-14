@@ -15,8 +15,8 @@
 
 #include <string>
 
-#ifndef SRC_AUDIT_CPP_PATH
-#error "SRC_AUDIT_CPP_PATH compile definition required"
+#ifndef ANTS_AUDITDIALOG_SOURCES
+#error "ANTS_AUDITDIALOG_SOURCES compile definition required"
 #endif
 #ifndef SRC_FEATURECOVERAGE_CPP_PATH
 #error "SRC_FEATURECOVERAGE_CPP_PATH compile definition required"
@@ -82,7 +82,7 @@ TEST(AuditExclusionSet, CppcheckExprExpandsAtRuntime) {
 
 // INV-6 — auditdialog.cpp routes through the engine; no inline copies survive.
 TEST(AuditExclusionSet, DialogRoutesThroughEngine) {
-    const std::string src = ants_test::slurpFile(SRC_AUDIT_CPP_PATH);
+    const std::string src = ants_test::slurpAuditDialog();
     ASSERT_FALSE(src.empty()) << "could not read auditdialog.cpp";
     EXPECT_NE(src.find("AuditEngine::trivySkipDirsCsv()"), std::string::npos);
     EXPECT_NE(src.find("AuditEngine::cppcheckIgnoreShellExpr()"), std::string::npos);
@@ -105,7 +105,7 @@ TEST(AuditExclusionSet, FeatureCoverageDerivesFromEngine) {
 
 // INV-8 — openUrl rule recognises the fromLocalFile idiom.
 TEST(AuditExclusionSet, OpenUrlRuleModelsFromLocalFile) {
-    const std::string src = ants_test::slurpFile(SRC_AUDIT_CPP_PATH);
+    const std::string src = ants_test::slurpAuditDialog();
     ASSERT_FALSE(src.empty());
     const size_t rule = src.find("qt_openurl_unchecked");
     ASSERT_NE(rule, std::string::npos);
@@ -130,7 +130,7 @@ TEST(AuditExclusionSet, ApplyFilterDropsFromLocalFileLine) {
 // INV-10 — ANTS-1707 regression lock: header_guards probes #pragma once
 // whole-file BEFORE the head-limited #ifndef probe.
 TEST(AuditExclusionSet, HeaderGuardsMatchesPragmaOnceWholeFile) {
-    const std::string src = ants_test::slurpFile(SRC_AUDIT_CPP_PATH);
+    const std::string src = ants_test::slurpAuditDialog();
     ASSERT_FALSE(src.empty());
     const size_t rule = src.find("header_guards");
     ASSERT_NE(rule, std::string::npos);
@@ -147,7 +147,7 @@ TEST(AuditExclusionSet, HeaderGuardsMatchesPragmaOnceWholeFile) {
 
 // INV-11 — ANTS-1710: insecure_http rule models license/spec URLs as docs.
 TEST(AuditExclusionSet, InsecureHttpDropsLicenseUrls) {
-    const std::string src = ants_test::slurpFile(SRC_AUDIT_CPP_PATH);
+    const std::string src = ants_test::slurpAuditDialog();
     ASSERT_FALSE(src.empty());
     const size_t rule = src.find("insecure_http");
     ASSERT_NE(rule, std::string::npos);
@@ -173,7 +173,7 @@ TEST(AuditExclusionSet, ApplyFilterDropsLicenseUrlLine) {
 
 // INV-13 — ANTS-1710: secrets_scan models the env-read idiom as safe.
 TEST(AuditExclusionSet, SecretsScanDropsEnvReadIdiom) {
-    const std::string src = ants_test::slurpFile(SRC_AUDIT_CPP_PATH);
+    const std::string src = ants_test::slurpAuditDialog();
     ASSERT_FALSE(src.empty());
     const size_t rule = src.find("secrets_scan");
     ASSERT_NE(rule, std::string::npos);

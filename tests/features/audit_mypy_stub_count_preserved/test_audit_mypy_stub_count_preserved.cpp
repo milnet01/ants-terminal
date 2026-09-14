@@ -103,7 +103,7 @@ TEST(AuditMypyStubCountPreserved, Inv4MultiPackageCollapse) {
 
 // INV-5 — dispatcher source-grep: post-cap line gates on the flag.
 TEST(AuditMypyStubCountPreserved, Inv5DispatcherGate) {
-    const std::string src = ants_test::slurpFile(SRC_AUDIT_CPP_PATH);
+    const std::string src = ants_test::slurpAuditDialog();
     ASSERT_FALSE(src.empty()) << "auditdialog.cpp not readable";
     // The full sequence is the consolidate → capFindings → gated
     // overwrite. We search for the gating predicate by name to keep the

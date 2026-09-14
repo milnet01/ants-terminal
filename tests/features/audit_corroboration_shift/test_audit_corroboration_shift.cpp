@@ -12,8 +12,8 @@
 #include "auditengine.h"
 #include "../../_support/srcgrep.h"
 
-#ifndef SRC_AUDIT_CPP_PATH
-#  error "SRC_AUDIT_CPP_PATH compile definition required"
+#ifndef ANTS_AUDITDIALOG_SOURCES
+#  error "ANTS_AUDITDIALOG_SOURCES compile definition required"
 #endif
 
 namespace {
@@ -194,9 +194,9 @@ TEST(AuditCorroborationShift, Inv5DemotesAcrossDistinctCheckResults) {
 // ---------------------------------------------------------------------
 
 TEST(AuditCorroborationShift, Inv6aRenderResultsDoesNotCallTheShift) {
-    const std::string src = ants_test::slurpFile(SRC_AUDIT_CPP_PATH);
+    const std::string src = ants_test::slurpAuditDialog();
     ASSERT_FALSE(src.empty()) << "precondition: could not read "
-                                  "auditdialog.cpp at SRC_AUDIT_CPP_PATH";
+                                  "the AuditDialog sources";
     const std::string stripped = ants_test::stripComments(src);
 
     const std::string renderBody = ants_test::slurpFunctionBody(
@@ -219,9 +219,9 @@ TEST(AuditCorroborationShift, Inv6aRenderResultsDoesNotCallTheShift) {
 }
 
 TEST(AuditCorroborationShift, Inv6bRunCompletionShiftsBeforeFirstRender) {
-    const std::string src = ants_test::slurpFile(SRC_AUDIT_CPP_PATH);
+    const std::string src = ants_test::slurpAuditDialog();
     ASSERT_FALSE(src.empty()) << "precondition: could not read "
-                                  "auditdialog.cpp at SRC_AUDIT_CPP_PATH";
+                                  "the AuditDialog sources";
     const std::string stripped = ants_test::stripComments(src);
 
     // Asserts, within `body`, that applyCorroborationShiftAcross( is

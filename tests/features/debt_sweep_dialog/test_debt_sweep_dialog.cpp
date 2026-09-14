@@ -12,6 +12,7 @@
 #include "config.h"
 
 #include <gtest/gtest.h>
+#include "../../_support/srcgrep.h"
 
 #include <QDir>
 #include <QFile>
@@ -19,11 +20,9 @@
 #include <QString>
 #include <QTemporaryDir>
 
-#include <fstream>
-#include <sstream>
 
-#ifndef SRC_AUDITDIALOG_CPP_PATH
-#error "SRC_AUDITDIALOG_CPP_PATH compile definition required"
+#ifndef ANTS_AUDITDIALOG_SOURCES
+#error "ANTS_AUDITDIALOG_SOURCES compile definition required"
 #endif
 
 namespace {
@@ -149,10 +148,8 @@ TEST(DebtSweepDialog, INVD4_DebtAllowRoundTrip) {
 // LOGIC is covered behaviourally by DebtSweepEngine.TriageGate* in the
 // debt_sweep_engine suite).
 TEST(DebtSweepDialog, INVD5_BulkDeferGatedByTriageVerdict) {
-    std::ifstream in(SRC_AUDITDIALOG_CPP_PATH);
-    ASSERT_TRUE(in.good());
-    std::stringstream ss; ss << in.rdbuf();
-    const std::string src = ss.str();
+    const std::string src = ants_test::slurpAuditDialog();
+    ASSERT_FALSE(src.empty());
     const auto btn = src.find("Defer all to ROADMAP");
     ASSERT_NE(btn, std::string::npos);
     // The connect() lambda's evaluateTriageGate call lands within the button's

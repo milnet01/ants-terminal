@@ -13,9 +13,10 @@
 #include <QTemporaryDir>
 
 #include <gtest/gtest.h>
+#include "../../_support/srcgrep.h"
 
-#ifndef SRC_AUDIT_CPP_PATH
-#error "SRC_AUDIT_CPP_PATH compile definition required (INV-10 source-grep)"
+#ifndef ANTS_AUDITDIALOG_SOURCES
+#error "ANTS_AUDITDIALOG_SOURCES compile definition required (INV-10 source-grep)"
 #endif
 
 namespace {
@@ -36,12 +37,6 @@ int countMentions(const QString &out, const QString &needle) {
     for (const QString &l : lines)
         if (l.contains(needle)) ++n;
     return n;
-}
-
-QString readAll(const QString &path) {
-    QFile f(path);
-    if (!f.open(QIODevice::ReadOnly)) return {};
-    return QString::fromUtf8(f.readAll());
 }
 
 }  // namespace
@@ -238,7 +233,7 @@ TEST(ContractDocDrift, PathLineCitationsSkipped) {
 // Source-grep over auditdialog.cpp's populateChecks (the feature test cannot
 // exercise applyFilter, so this is a registration invariant).
 TEST(ContractDocDrift, RegistrationUncapped) {
-    const QString src = readAll(QStringLiteral(SRC_AUDIT_CPP_PATH));
+    const QString src = QString::fromStdString(ants_test::slurpAuditDialog());
     ASSERT_FALSE(src.isEmpty());
     // ANTS-3849 — BOTH lanes are registered and both must stay uncapped. The
     // needle is the quoted id, not the bare prefix: "contract_doc_drift" is a

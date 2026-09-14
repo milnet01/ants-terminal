@@ -412,8 +412,8 @@ TEST(LlmClient, Ants2121_EndpointEgressError) {
 // same egress policy. Source-grep guard against a regression that reintroduces
 // the partial scheme+cleartext-only check this path used to duplicate.
 TEST(LlmClient, Ants2121_AuditTriageRoutesThroughEgressValidator) {
-    const std::string src = ants_test::slurpFile(SRC_AUDITDIALOG_CPP_PATH);
-    ASSERT_FALSE(src.empty()) << "could not read " << SRC_AUDITDIALOG_CPP_PATH;
+    const std::string src = ants_test::slurpAuditDialog();
+    ASSERT_FALSE(src.empty()) << "could not read the AuditDialog sources";
     // Both triage POSTs (single + batch) call the shared validator.
     const std::string needle = "LlmClient::endpointEgressError";
     const size_t first = src.find(needle);

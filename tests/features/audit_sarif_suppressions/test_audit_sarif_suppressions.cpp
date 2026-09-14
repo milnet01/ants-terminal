@@ -11,8 +11,8 @@
 #include <gtest/gtest.h>
 #include "../../_support/srcgrep.h"
 
-#ifndef SRC_AUDIT_CPP_PATH
-#  error "SRC_AUDIT_CPP_PATH compile definition required"
+#ifndef ANTS_AUDITDIALOG_SOURCES
+#  error "ANTS_AUDITDIALOG_SOURCES compile definition required"
 #endif
 #ifndef SRC_AUDIT_H_PATH
 #  error "SRC_AUDIT_H_PATH compile definition required"
@@ -68,7 +68,7 @@ static std::string extractFnBody(const std::string &src, const char *qualName) {
 }
 
 TEST(AuditSarifSuppressions, Main) {
-    const std::string cpp = ants_test::slurpFile(SRC_AUDIT_CPP_PATH);
+    const std::string cpp = ants_test::slurpAuditDialog();
     const std::string hdr = ants_test::slurpFile(SRC_AUDIT_H_PATH);
     int failures = 0;
     auto fail = [&](const char *msg) {

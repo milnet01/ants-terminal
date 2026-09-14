@@ -54,7 +54,7 @@ bool signalsGroupBeforeKill(const std::string &stripped, size_t killPos) {
 }  // namespace
 
 TEST(AuditDialogGroupKillScrape, RunNextCheckStartsOwnGroupBeforeStart) {
-    const std::string src = ants_test::slurpFile(SRC_AUDIT_CPP_PATH);
+    const std::string src = ants_test::slurpAuditDialog();
     ASSERT_FALSE(src.empty());
 
     const std::string body =
@@ -82,7 +82,7 @@ TEST(AuditDialogGroupKillScrape, RunNextCheckStartsOwnGroupBeforeStart) {
 
 TEST(AuditDialogGroupKillScrape, EveryKillSiteSignalsTheGroupFirst) {
     const std::string stripped =
-        ants_test::stripComments(ants_test::slurpFile(SRC_AUDIT_CPP_PATH));
+        ants_test::stripComments(ants_test::slurpAuditDialog());
     ASSERT_FALSE(stripped.empty());
 
     const std::vector<size_t> kills =
