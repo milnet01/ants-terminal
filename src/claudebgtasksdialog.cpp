@@ -60,21 +60,26 @@ QString stripAnsi(const QString &input) {
 // by uid) and have its contents rendered into the dialog. lstat
 // avoids the symlink trap; the canonicalize step closes traversal
 // (`..`) gaps.
-bool tailPathSafe(const QString &path) {
-    if (path.isEmpty()) return false;
+//
+// ANTS-5092 — returns the canonical path it validated, and tailFile opens
+// THAT. Opening the original path let a symlink swapped in after the check
+// point the read somewhere else.
+QString tailPathSafe(const QString &path) {
+    if (path.isEmpty()) return {};
     const QString canonical = QFileInfo(path).canonicalFilePath();
-    if (canonical.isEmpty()) return false;
+    if (canonical.isEmpty()) return {};
     const QString base = QStringLiteral("/tmp/claude-%1/")
                              .arg(static_cast<uint>(::getuid()));
-    if (!canonical.startsWith(base)) return false;
+    if (!canonical.startsWith(base)) return {};
     struct stat st{};
-    if (::lstat(canonical.toLocal8Bit().constData(), &st) != 0) return false;
-    return S_ISREG(st.st_mode);
+    if (::lstat(canonical.toLocal8Bit().constData(), &st) != 0) return {};
+    return S_ISREG(st.st_mode) ? canonical : QString();
 }
 
 QString tailFile(const QString &path, qint64 maxBytes = 32 * 1024) {
-    if (!tailPathSafe(path)) return {};
-    QFile f(path);
+    const QString safe = tailPathSafe(path);
+    if (safe.isEmpty()) return {};
+    QFile f(safe);
     if (!f.open(QIODevice::ReadOnly)) return {};
     const qint64 size = f.size();
     qint64 start = 0;
@@ -180,7 +185,8 @@ void ClaudeBgTasksDialog::rewatch() {
     if (!m_tracker->transcriptPath().isEmpty())
         wanted << m_tracker->transcriptPath();
     for (const auto &t : m_tracker->tasks()) {
-        if (!t.outputPath.isEmpty() && QFileInfo::exists(t.outputPath))
+        // ANTS-5092 — a finished task's output no longer changes.
+        if (!t.finished && !t.outputPath.isEmpty() && QFileInfo::exists(t.outputPath))
             wanted << t.outputPath;
     }
     const QStringList have = m_watcher.files();
@@ -248,7 +254,17 @@ void ClaudeBgTasksDialog::rebuild() {
                         .arg(th.textSecondary.name(),
                              t.outputPath.toHtmlEscaped());
 
-            const QString output = tailFile(t.outputPath);
+            // ANTS-5092 — a finished task's output is read once and kept;
+            // every rebuild re-read and re-rendered it.
+            QString output;
+            const auto cached = m_finishedOutput.constFind(t.id);
+            if (t.finished && cached != m_finishedOutput.constEnd()) {
+                output = *cached;
+            } else {
+                output = tailFile(t.outputPath);
+                if (t.finished)
+                    m_finishedOutput.insert(t.id, output);
+            }
             if (output.isEmpty()) {
                 html += QStringLiteral("<span style='color: %1;'>(no output yet)</span>\n")
                             .arg(th.textSecondary.name());

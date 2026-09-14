@@ -2013,6 +2013,8 @@ if(ANTS_TESTS)
                 # ANTS-4457 — the subsystem map must not call a parked actuator live.
                 tests/features/parked_feature_doc_truth/test_parked_feature_doc_truth.cpp
                 tests/features/allowlist_add/test_allowlist_add.cpp
+                # ANTS-5092 — corrupt allowlist reported; tool-result user entries not blank.
+                tests/features/claude_dialog_empty_states/test_claude_dialog_empty_states.cpp
                 # ANTS-1993 — permission-prompt structural gate (anti-spoof).
                 tests/features/claude_permission_prompt_structure/test_claude_permission_prompt_structure.cpp
                 # ANTS-1996 — wrapMcpData neutralises XML comment markers.
@@ -2034,6 +2036,8 @@ if(ANTS_TESTS)
                 tests/features/ai_context_redaction/test_ai_context_redaction.cpp
                 tests/features/ssh_control_master/test_ssh_control_master.cpp
                 tests/features/claude_bg_tasks_button/test_claude_bg_tasks_button.cpp
+                # ANTS-5092 — validated output path opened; finished output read once.
+                tests/features/claude_bg_tasks_dialog_reads/test_claude_bg_tasks_dialog_reads.cpp
                 tests/features/claude_transcript_incremental_parse/test_claude_transcript_incremental_parse.cpp
                 # ANTS-1835/1840/1849 — prompt routing + model-chip focus.
                 tests/features/claude_statusbar_focus_routing/test_claude_statusbar_focus_routing.cpp

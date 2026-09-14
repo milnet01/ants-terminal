@@ -70,6 +70,10 @@ for security-relevant changes.
 
 ### Fixed
 
+- **The Claude permissions window says when its settings file cannot be read, and the transcript window no longer shows an empty User line for each tool result** (ANTS-5092)
+
+- **The Background Tasks window reads each task's output from the exact path it checked, and reads a finished task's output only once** (ANTS-5092)
+
 - **The roadmap window's kind filter covers every roadmap kind, and a roadmap file over 8 MiB is no longer cut off** (ANTS-5088)
   Perf, security, feature and six other kinds can now be filtered, and a
   kind filter no longer hides them. The live roadmap is read up to 64 MiB.

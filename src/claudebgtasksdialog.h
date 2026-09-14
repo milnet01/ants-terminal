@@ -1,5 +1,6 @@
 #pragma once
 
+#include <QHash>
 #include <QDialog>
 #include <QFileSystemWatcher>
 #include <QPointer>
@@ -46,4 +47,6 @@ private:
     QPointer<QTextEdit> m_viewer;
     QPointer<QLabel> m_liveStatus;
     std::shared_ptr<QString> m_lastHtml;
+    // ANTS-5092 — task id → output tail, filled once a task has finished.
+    QHash<QString, QString> m_finishedOutput;
 };

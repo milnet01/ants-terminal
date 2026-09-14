@@ -172,12 +172,13 @@ ClaudeAllowlistDialog::ClaudeAllowlistDialog(QWidget *parent) : QDialog(parent) 
 
 void ClaudeAllowlistDialog::setSettingsPath(const QString &path) {
     m_settingsPath = path;
-    loadSettings();
     // ANTS-1168: clear transient editing state so a stale unsaved
     // rule + validation hint from the previous open don't carry over
-    // to a fresh project's allowlist.
+    // to a fresh project's allowlist. Cleared BEFORE loading, so a load
+    // error reported below survives (ANTS-5092).
     if (m_ruleInput)        m_ruleInput->clear();
     if (m_validationLabel)  m_validationLabel->clear();
+    loadSettings();
 }
 
 void ClaudeAllowlistDialog::prefillRule(const QString &rule) {
@@ -231,8 +232,21 @@ void ClaudeAllowlistDialog::loadSettings() {
     QFile file(m_settingsPath);
     if (!file.open(QIODevice::ReadOnly)) return;
 
-    QJsonDocument doc = QJsonDocument::fromJson(file.readAll());
-    if (!doc.isObject()) return;
+    // ANTS-5092 — an unparseable file showed three empty lists and no
+    // reason. Say so; saveSettings() already refuses to overwrite it.
+    QJsonParseError parseError;
+    QJsonDocument doc = QJsonDocument::fromJson(file.readAll(), &parseError);
+    if (!doc.isObject()) {
+        if (m_validationLabel) {
+            showValidationHint(
+                tr("%1 could not be read (%2), so no rules are shown and saving is refused.")
+                    .arg(m_settingsPath,
+                         parseError.error == QJsonParseError::NoError
+                             ? tr("not a JSON object") : parseError.errorString()),
+                true);
+        }
+        return;
+    }
 
     QJsonObject perms = doc.object().value("permissions").toObject();
 

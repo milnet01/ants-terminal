@@ -135,8 +135,14 @@ QString ClaudeTranscriptDialog::formatEntry(const QJsonObject &entry) const {
         if (content.isEmpty())
             content = msg.value("content").toString();
 
-        html += QString("<p><b style='color:#89B4FA;'>User:</b> %1</p>")
-                .arg(content.toHtmlEscaped().replace("\n", "<br>"));
+        // ANTS-5092 — a user entry carrying only tool results rendered an
+        // empty "User:" line for every tool call. Show it as a tool result.
+        if (content.isEmpty() && !contentArr.isEmpty()) {
+            html += "<p style='margin-left:20px;color:#585B70;'>[tool result]</p>";
+        } else {
+            html += QString("<p><b style='color:#89B4FA;'>User:</b> %1</p>")
+                    .arg(content.toHtmlEscaped().replace("\n", "<br>"));
+        }
 
     } else if (type == "assistant") {
         QJsonObject msg = entry.value("message").toObject();
