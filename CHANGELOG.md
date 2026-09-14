@@ -18,6 +18,10 @@ for security-relevant changes.
 
 ### Changed
 
+- **MCP rate limiting remembers each caller folder's resolved path for 30 seconds, so repeat tool calls skip a filesystem lookup on the window's thread** (ANTS-5090)
+
+- **The etag option on MCP tools now states that a not-modified check needs the same arguments as the call that issued the etag** (ANTS-4859)
+
 - **On a store-backed project, a roadmap append that moves `.roadmap-counter` marks it `counter_mirrored: true`, since the store allocates the id and the file only mirrors it.** (ANTS-4969)
 
 - **Every MCP tool description now fits the 800-byte wire budget; the longer prose moved to each tool's `detail`, served by tool_info, and a test checks every registered tool.** (ANTS-5152)
@@ -77,6 +81,12 @@ for security-relevant changes.
   the small, readable half can now be acted on by itself.
 
 ### Fixed
+
+- **The MCP socket answers a malformed request line with a JSON-RPC parse error instead of closing silently after five seconds** (ANTS-5089)
+
+- **A remote-control client that stops reading a large reply is disconnected after 30 seconds instead of holding the socket open** (ANTS-5093)
+
+- **The Test Audit dialog drops a collected report when its chunk now covers different test files, so stale findings are not filed** (ANTS-5102)
 
 - **The status bar and tab dot follow a Claude session that was started before its first message, instead of showing it as idle for the whole session** (ANTS-5156)
   The per-tab tracker now keeps looking for the session's transcript

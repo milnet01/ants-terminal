@@ -8404,6 +8404,12 @@ extends an existing item, that item carries it instead.
   means scanning back past 4 MiB to the record's start, or classifying the
   record from a partial JSON prefix; both change what the tail parser
   promises.
+  Progress (2026-09-14, 66bee928): a malformed MCP request line now gets
+  JSON-RPC -32700 (-32600 for a non-object) with a null id instead of the
+  silent 5 s abort. A buffer that is not exactly one line still waits, so
+  unframed clients are unaffected. Test mcp_parse_error_reply. STILL OPEN:
+  the whole-buffer re-parse (needs framing to be required) and the status
+  freeze on a transcript record over 4 MiB.
   **Layman:** Smaller Claude-integration fixes: slow process scans, a slow transcript window and dropped long messages.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lane claude-integration-a).
@@ -8461,6 +8467,11 @@ extends an existing item, that item carries it instead.
   so the contract change runs rule 14's gate before building. The
   caller_cwd rate-check stat: memoise the canonical key briefly (no user
   decision needed).
+  Progress (2026-09-14, 66bee928): the rate check memoises the canonical
+  bucket key per raw caller_cwd for 30 s (capped at 256, cleared when full),
+  so repeat calls skip the stat; a stalled mount still blocks the first
+  call. Test mcp_rate_limit INV-19. STILL OPEN: isError on refusals, decided
+  (set it), waiting for rule 14's gate.
   **Layman:** Small fixes to how Ants routes Claude's tool calls: a cached refusal, clock handling and error flags.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lane claude-integration-b).
@@ -8583,6 +8594,12 @@ extends an existing item, that item carries it instead.
     hook servers share LocalSocketHub, and ANTS-5089 reports the same gap
     for the other two, so the cap belongs in the hub: an ANTS-5144 contract
     change.
+  Progress (2026-09-14, 0ea6828d): the reply write arms
+  RemoteControl::armReplyDrainGuard, which aborts a connection whose peer
+  makes no read progress for 30 s; each bytesWritten restarts the window.
+  Test rc_reply_drain_guard. STILL OPEN: a live-connection cap in
+  LocalSocketHub, which changes docs/specs/ANTS-5144-shared-socket-listener.md
+  and waits for rule 14's gate.
   **Layman:** Starting a second Ants can silently take over the first one's control socket.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lane mcp-transport).
@@ -8913,6 +8930,12 @@ extends an existing item, that item carries it instead.
   (tests/features/verify_and_audit_guards). Still open: the test-audit
   pre-pass read cap, the CMake scan's symlink loop, the fold-in counter
   lock wait, the store-backed fold-in write, and the lows.
+  Progress (2026-09-14, 25473e4c): TestAuditDialog records the files each
+  collected report was written against and, after every partition, drops a
+  report whose chunk id now covers other files; a same-tree token refresh
+  keeps them (INV-6). Test test_audit_dialog INV-12. STILL OPEN: the
+  test-audit pre-pass read cap, the CMake scan's symlink loop, the fold-in
+  counter lock wait, the store-backed fold-in write, and the lows.
   **Layman:** Smaller test-tool fixes, including stale reports folded into the roadmap and a verify step that loses its failure list.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lane test-audit-verify).
@@ -57311,7 +57334,7 @@ two projects).
   Kind: enhancement.
   Source: cc-feedback-2026-09-03 Rolodex/OneUp/finbreak.
 
-- 📋 [ANTS-4859] **feedback_query's etag varies with include_tracking, so a 304 probe reports an unchanged file as changed.**
+- ✅ [ANTS-4859] **feedback_query's etag varies with include_tracking, so a 304 probe reports an unchanged file as changed.**
   Measured with mtime identical either side, and confirmed by re-issuing with the same include_tracking, which did short-circuit. The schema anticipates this for `fields` only, stating the etag is computed on the unfiltered body so a narrowed call still short-circuits; include_tracking is not a narrowing argument and is not covered. Misleading in the alarming direction: the probe came straight after a transport timeout on a write, where the etag is the natural way to ask whether the write landed, and it answered that the file had changed. Key the etag on the file bytes plus the external state the envelope resolves, or echo an etag_inputs so a mismatch is self-diagnosing.
   NEEDS A DECISION, not built (2026-09-14). Mechanism, read in source:
   ClaudeIntegration::applyEtagPattern sets the etag to
@@ -57327,6 +57350,12 @@ two projects).
   arguments as etag_inputs so a mismatch explains itself; (c) re-key per
   verb. Recommendation: (a) now, since it only describes current
   behaviour; (b) or (c) only through the gate.
+  Resolved (2026-09-14, 79310f5b): option (a). The shared etag_match
+  property now states that the etag hashes the whole reply, so a 304 probe
+  needs the same arguments as the call that issued it; any argument that
+  changes the reply (a mode, a cap, an include_* flag) changes the etag, and
+  `fields` is the exception. Re-keying the etag (b/c) was not done: it
+  changes the ETag-304 contract in docs/standards/mcp-tools.md.
   **Layman:** The cheap "has this file changed?" check answers yes when nothing changed.
   Kind: fix.
   Source: cc-feedback-2026-09-03 Rolodex.
