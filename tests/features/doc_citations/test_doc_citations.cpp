@@ -1360,11 +1360,25 @@ TEST(DocCitations, Ants4923ContinuationScopedToParagraph) {
         "\n"
         "heading `src/a.cpp:1`\n"
         "## Heading\n"
-        "after a heading `:2`\n");
+        "after a heading `:2`\n"
+        "\n"
+        "spaces `src/a.cpp:1`\n"
+        "   \n"
+        "after a spaces-only line `:2`\n"
+        "\n"
+        "tag `src/a.cpp:1`\n"
+        "#tag\n"
+        "after a hashtag line `:2`\n");
 
     DocCitations::Options opts;
     const QJsonObject r = DocCitations::check(fx.root, doc, opts);
-    ASSERT_EQ(cites(r).size(), 6) << render(r).toStdString();
+    ASSERT_EQ(cites(r).size(), 10) << render(r).toStdString();
+
+    EXPECT_EQ(status(r, 7), QStringLiteral("unresolved"))
+        << "INV-51: a line of spaces is empty after trimming, so it resets";
+    EXPECT_EQ(status(r, 9), QStringLiteral("ok"))
+        << "INV-51: `#tag` is not an ATX heading, so it keeps the antecedent";
+    EXPECT_TRUE(cite(r, 9).value(QStringLiteral("inherited_path")).toBool());
 
     EXPECT_EQ(status(r, 1), QStringLiteral("ok"))
         << "INV-51: the next line of one paragraph keeps the antecedent";
