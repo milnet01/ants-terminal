@@ -2192,6 +2192,13 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
             : qBound(kRoadmapQueryBodyCap,
                      kRoadmapQueryBodyStoreCap / qMax(1, idsArg.size()),
                      kRoadmapQueryBodyStoreCap);
+    // ANTS-4981 — say when the cap applied is not the one asked for. The floor
+    // raised a small max_body_bytes to the list cap and the id-count ceiling
+    // lowered a large one, both without a word, so a caller keeping the reply
+    // inline got a larger one and could not tell why.
+    const bool bodyCapClamped =
+        req.value(QStringLiteral("max_body_bytes")).isDouble()
+        && req.value(QStringLiteral("max_body_bytes")).toInt() != idBodyCap;
 
     // ANTS-1436-INV-8 — optional `offset` + `limit` args. Forwarded
     // verbatim from the dispatch lambda (NOT type-gated there) so
@@ -4133,6 +4140,10 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
         out["count"]   = matches.size();
         out["id"]      = idArg;
         out["found"]   = !matches.isEmpty();
+        if (bodyCapClamped && !(hasIncludeBodyArg && !includeBody)) {
+            out["body_cap_clamped"]         = true;   // ANTS-4981
+            out["max_body_bytes_effective"] = idBodyCap;
+        }
         if (hasModeArg) out["mode"] = mode;
         if (hasIncludeBodyArg) out["include_body"] = includeBody;
         // ANTS-1646 — surface duplicate-id descriptors (cache is the
@@ -4276,6 +4287,10 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
             out["archived_sources"] = archivedSources;
         }
         out["found"]       = !matches.isEmpty();
+        if (bodyCapClamped && !(hasIncludeBodyArg && !includeBody)) {
+            out["body_cap_clamped"]         = true;   // ANTS-4981
+            out["max_body_bytes_effective"] = idBodyCap;
+        }
         // ANTS-4387 secondary (ANTS-4374's invariant again) — `found:true` on
         // a PARTIALLY resolved set reads as success, so a caller checking
         // `found` alone never learns two of its fifty did not resolve. Emitted

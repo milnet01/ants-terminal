@@ -675,3 +675,32 @@ TEST(roadmap_query_id_body_cap, Ants4904InertOnAShortBody) {
     EXPECT_FALSE(body.contains(QStringLiteral("[body elided")))
         << "nothing was elided, so nothing may claim to have been";
 }
+
+// ANTS-4981 — a max_body_bytes below the floor is raised, and the reply says
+// so. It was raised silently, so a caller keeping the reply small got a larger
+// one with nothing naming the override.
+TEST(roadmap_query_id_body_cap, Ants4981ClampIsAnnounced) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    ASSERT_TRUE(writeFile(rmPath(tmp.path()), roadmapWithLongBody()));
+
+    RemoteControl rc(nullptr);
+    QJsonObject req;
+    req[QStringLiteral("caller_cwd")]   = tmp.path();
+    req[QStringLiteral("id")]           = QStringLiteral("ANTS-7777");
+    req[QStringLiteral("include_body")] = true;
+
+    req[QStringLiteral("max_body_bytes")] = 1400;
+    const QJsonObject low = rc.cmdRoadmapQuery(req).object();
+    ASSERT_TRUE(low.value(QStringLiteral("ok")).toBool())
+        << low.value(QStringLiteral("error")).toString().toStdString();
+    EXPECT_TRUE(low.value(QStringLiteral("body_cap_clamped")).toBool())
+        << "a cap raised to the floor must be announced";
+    EXPECT_EQ(low.value(QStringLiteral("max_body_bytes_effective")).toInt(), 2000);
+
+    req[QStringLiteral("max_body_bytes")] = 6000;
+    const QJsonObject asked = rc.cmdRoadmapQuery(req).object();
+    ASSERT_TRUE(asked.value(QStringLiteral("ok")).toBool());
+    EXPECT_FALSE(asked.contains(QStringLiteral("body_cap_clamped")))
+        << "a cap applied as asked adds no key";
+}

@@ -105,3 +105,11 @@ exceeds 2000; INV-3 asserts a plain list fetch stays capped at 2000. The
 test FAILS against pre-fix code (cached body pre-truncated to 2000, so the
 raised cap is inert) and passes after. This is the end-to-end coverage
 ANTS-3402's source-scrape test missed.
+
+## ANTS-4981 — the applied cap is announced when it differs
+
+When `max_body_bytes` is given and the cap applied differs from it (raised to
+the 2000 floor, or lowered to the id-count ceiling), an id or ids fetch that
+returns bodies carries `body_cap_clamped:true` and `max_body_bytes_effective`.
+A cap applied as asked adds neither key. *Test:*
+`roadmap_query_id_body_cap.Ants4981ClampIsAnnounced`.
