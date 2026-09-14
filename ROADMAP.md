@@ -8147,6 +8147,11 @@ extends an existing item, that item carries it instead.
     uriBaseId.
   - A failed export open gives no message.
   - User-visible strings are not wrapped in tr().
+  Progress (2026-09-14): lows fixed — level-bounded detection walk, %%
+  banner, HTML payload escapes every <, (tool issue) label, export open
+  failures reported, path-separator suffix match
+  (tests/features/audit_dialog_lows, audit_dialog_v2 INV-11). Open: the
+  five mediums, filter debounce, SARIF URIs, tr().
   **Layman:** Smaller audit-window fixes: a filter that can hide everything, AI triage that floods the server, and export glitches.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lane audit-dialog-b).
