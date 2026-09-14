@@ -17426,7 +17426,7 @@ fixes don't address. Roadmapped here as their own design tasks.
   Source: in-session-2026-09-10.
   Lanes: mcp.
 
-- 📋 [ANTS-5021] **file_outline omits out-of-line C++ constructors and destructors, so read_region symbol= cannot reach them.**
+- ✅ [ANTS-5021] **file_outline omits out-of-line C++ constructors and destructors, so read_region symbol= cannot reach them.**
   Measured 2026-09-10 on src/llmclient.cpp. The file defines
   `LlmClient::LlmClient(QObject *parent) : QObject(parent) {}` and
   `LlmClient::~LlmClient() {`. file_outline with filter "LlmClient"
@@ -17436,6 +17436,16 @@ fixes don't address. Roadmapped here as their own design tasks.
   through the same outline. A destructor is where teardown bugs live, so
   it is a slice a session asks for by name. A fix outlines `X::X` and
   `X::~X` as symbols, and read_region accepts the bare `~X` form.
+  Resolved (2026-09-14): reproduced on src/llmclient.cpp (15 LlmClient
+  members outlined, not the constructor at line 34 or destructor at line
+  36). Cause: rxCppMember and rxCppFunc both require a return type,
+  which a constructor or destructor lacks. A new column-0 pattern,
+  rxCppCtorDtor, matches `Class::Class(` and `Class::~Class(` (the
+  method name must repeat the class name) and outlines it by its
+  qualified name; a call inside a body stays excluded. read_region
+  needed no change: its qualified-suffix fallback now resolves a bare
+  `~Class`. Test FileOutlineCppScanner.Ants5021OutOfLineCtorDtorOutlined
+  fails on the old source and passes now; full suite green.
   **Layman:** The file-map tool can't see a class's setup and teardown functions, so you can't ask for them by name.
   Kind: fix.
   Source: in-session-2026-09-10.

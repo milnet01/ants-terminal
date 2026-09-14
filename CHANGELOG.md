@@ -76,6 +76,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **file_outline lists out-of-line C++ constructors and destructors, so `read_region` can fetch them by name, including a bare `~ClassName`.** (ANTS-5021)
+
 - **mutation_probe, verify_changes and the test-results cache read ctest's all-passing summary ("100% tests passed out of N"), so a green run counts as green and `require_green_baseline` can pass.** (ANTS-4996)
 
 - **feedback_query flags a shipped id with no recorded ship date as `possibly_stale_binary`, marked `stale_check:"no_shipped_date"`, instead of leaving the check silent.** (ANTS-4843)
