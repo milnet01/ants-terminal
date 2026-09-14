@@ -57,7 +57,9 @@ short-circuits when state is unchanged.
   This is ANTS-4578's pattern applied to the VALUES of `fields` rather than to
   the argument.
   `fields=["nonexistent"]` returns `{}`. A mix of known + unknown returns
-  only the known keys.
+  only the known keys. Not on a refusal (ANTS-4979): an `ok:false` envelope
+  carries neither `fields_unmatched` nor `fields_available`, because no field
+  can match there and the refusal's `code` is the cause.
 - **INV-5 — non-string / empty field entries are ignored**, not faulted.
 - **INV-6 — non-object response bodies pass through unchanged** (the
   projection only applies to JSON-object envelopes).

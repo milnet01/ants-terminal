@@ -91,6 +91,30 @@ TEST(McpProjection, Inv4UnknownFieldEmptyNotError) {
     EXPECT_FALSE(exact.contains(QStringLiteral("fields_unmatched")));
 }
 
+// ANTS-4979 — a refusal names no unmatched fields. feedback_query against a
+// wrong path with a `fields` list returned code:"not_found" AND
+// fields_unmatched listing every name passed, which pointed at the field
+// names instead of at the missing file.
+TEST(McpProjection, Ants4979RefusalListsNoUnmatchedFields) {
+    const QString refusal = QStringLiteral(
+        "{\"ok\":false,\"code\":\"not_found\",\"error\":\"no such file\"}");
+    const QJsonObject o =
+        parse(mcp::projectFields(refusal, fields({"delta", "mapped_ids"})));
+    EXPECT_FALSE(o.contains(QStringLiteral("fields_unmatched")))
+        << "no field can match on a refusal, so naming them all is noise";
+    EXPECT_FALSE(o.contains(QStringLiteral("fields_available")));
+    EXPECT_FALSE(o.value(QStringLiteral("ok")).toBool());
+    EXPECT_EQ(o.value(QStringLiteral("code")).toString(),
+              QStringLiteral("not_found"))
+        << "the refusal floor still carries the real cause";
+
+    // A success with the same unknown names still reports them.
+    const QJsonObject ok =
+        parse(mcp::projectFields(kBody, fields({"delta"})));
+    EXPECT_EQ(ok.value(QStringLiteral("fields_unmatched")).toArray(),
+              (QJsonArray{QStringLiteral("delta")}));
+}
+
 // ANTS-4877 — a success narrowed to nothing still says it succeeded.
 TEST(McpProjection, AllUnmatchedSuccessKeepsOk) {
     // The defect: `{"fields_unmatched":["nope"]}` alone carries no `ok`, so a

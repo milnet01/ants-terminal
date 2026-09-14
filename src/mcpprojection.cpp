@@ -243,7 +243,13 @@ QString projectFields(const QString &responseText, const QJsonArray &fields) {
         const QString name = f.toString();
         if (!name.isEmpty() && !src.contains(name)) unmatched.append(name);
     }
-    if (!unmatched.isEmpty()) {
+    // ANTS-4979 — not on a refusal. An `ok:false` envelope carries only the
+    // refusal floor below, so every requested name is "unmatched" by
+    // construction, and listing them pointed at the fields instead of at the
+    // `code` that says what actually went wrong.
+    const bool refusal = src.contains(QStringLiteral("ok")) &&
+                         !src.value(QStringLiteral("ok")).toBool();
+    if (!unmatched.isEmpty() && !refusal) {
         out.insert(QStringLiteral("fields_unmatched"), unmatched);
         // ANTS-4930 — `fields_unmatched` alone collapses three different facts
         // into one array: a name this verb never carries, a name it carries
