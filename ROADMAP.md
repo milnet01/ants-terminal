@@ -58861,7 +58861,7 @@ plus two gaps hit while sweeping stale spec citations under ANTS-4757.
   Source: cross-session-message-2026-09-07 from claude-config (~/.claude), CFG-0321.
   Lanes: mcp, roadmap.
 
-- 📋 [ANTS-4923] **doc_citations attributes a bare `:NNNN` continuation to whichever path it last saw, so it reports a status against the wrong file.**
+- ✅ [ANTS-4923] **doc_citations attributes a bare `:NNNN` continuation to whichever path it last saw, so it reports a status against the wrong file.**
   Measured on docs/specs/ANTS-2160.md during the ANTS-4757 sweep. Two
   citations came back `out_of_range` against `src/docsindex.cpp`
   (666 lines) carrying `inherited_path:true` and raws `:9449` and
@@ -58905,6 +58905,23 @@ plus two gaps hit while sweeping stale spec citations under ANTS-4757.
   cross a paragraph; if that count is large, bring it back to the user.
   Built through a docs/specs/ANTS-3636.md § 2.4 amendment and rule 14's
   gate, using the prepared patch.
+  Progress (2026-09-14): corpus count over docs/**/*.md with a script
+  approximating the scan (not the engine): 656 continuations with an
+  antecedent, 213 of them crossing a blank line (67) or an ATX heading
+  (146), in 33 files. Three sampled were all misattributed
+  (docs/journal/2026-04-13-AUDIT-snapshot.md, docs/specs/ANTS-1873.md,
+  docs/specs/ANTS-1330.md). Decided (2026-09-14, user): scope to the
+  paragraph anyway, and gate the ANTS-3636 amendment with one reviewer
+  and one pass to save tokens. The prepared patch was never saved;
+  rebuilt from its description.
+  Resolved (2026-09-14): built to docs/specs/ANTS-3636.md INV-51. A line
+  empty after trimming, or an ATX heading line, between an antecedent
+  and a bare continuation resets the tracker beside the existing fence
+  and doc-examples reset, so the continuation is unresolved; lines of
+  one paragraph keep the antecedent. Test
+  DocCitations.Ants4923ContinuationScopedToParagraph, proven red first,
+  later widened with a spaces-only row and a #tag row from the one-lane
+  review. Full default suite green (4803).
   **Layman:** When a document writes a line number on its own, the citation checker guesses which file it belongs to — and when it guesses wrong it reports a problem about a file that was never mentioned.
   Kind: fix.
   Source: in-session-2026-09-07, hit while sweeping ANTS-4757.
@@ -72629,6 +72646,13 @@ acting on it.
   followed the auditdialog cut, so a cold compile cache is the likely
   cause (unverified; see ANTS-5190). A cold build plus an unparallelised
   cppcheck does not fit in the job limit.
+  Progress (2026-09-14, later): now every push. Runs 34850334204
+  (52a78612) and 34852607287 (9459d478) both cancelled the Release job
+  at its 25-minute limit during cppcheck, after build and tests had
+  passed; ASan and Qt 6.2 jobs green. Three consecutive pushes, so the
+  Release job no longer finishes green at all and a real failure in its
+  later steps (AppStream, desktop entry, man page, packaging drift,
+  completions) would go unseen.
   **Layman:** The code-checking step re-reads the whole project on one core every push; it could use several cores and skip unchanged files.
   Kind: perf.
   Source: user-request-2026-09-14 (CI speed and memory review).
