@@ -1697,6 +1697,8 @@ if(ANTS_TESTS)
                 tests/features/osc133_rerun_safety/test_osc133_rerun_safety.cpp
                 # ANTS-5031 — a refused session never costs the good file.
                 tests/features/session_restore_refusal/test_session_restore_refusal.cpp
+                # ANTS-5106 — per-process session temp files; checked tab-order write.
+                tests/features/session_save_guards/test_session_save_guards.cpp
                 # ANTS-5033 — desktop-notification quota shared by OSC 9/777.
                 tests/features/osc_notify_quota/test_osc_notify_quota.cpp)
     # scrollback_frozen_view test reads terminalwidget.cpp source via grep —

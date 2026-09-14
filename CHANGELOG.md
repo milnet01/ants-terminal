@@ -70,6 +70,12 @@ for security-relevant changes.
 
 ### Fixed
 
+- **Two open Ants windows no longer corrupt each other's saved tabs** (ANTS-5106)
+  Each process now writes its own temporary file before replacing a saved
+  session or the tab order.
+
+- **A failed tab-order save (for example on a full disk) keeps the previous tab order instead of replacing it with a cut-off file** (ANTS-5106)
+
 - **read_region clips an oversized first line to its byte limit instead of returning a huge single-line file whole** (ANTS-5103)
 
 - **An automatically sized results page always includes at least one row, so following next_offset can no longer loop forever** (ANTS-5103)

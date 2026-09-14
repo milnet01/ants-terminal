@@ -3,6 +3,7 @@
 #include "secureio.h"
 #include "terminalgrid.h"
 
+#include <QCoreApplication>
 #include <QCryptographicHash>
 #include <QDataStream>
 #include <QDateTime>
@@ -479,7 +480,10 @@ void SessionManager::saveSession(const QString &tabId, const TerminalGrid *grid,
     QByteArray data = serialize(grid, cwd, pinnedTitle);
     QString path = sessionPath(tabId);
     if (path.isEmpty()) return;
-    QString tmpPath = path + QStringLiteral(".tmp");
+    // ANTS-5106 — the temp name carries the pid. Two running copies shared
+    // <name>.tmp, so one's write could land in the file the other renamed
+    // into place, tearing a blob that then failed its hash on restore.
+    QString tmpPath = path + QStringLiteral(".%1.tmp").arg(QCoreApplication::applicationPid());
     mode_t oldMask = ::umask(0077);
     QFile file(tmpPath);
     if (file.open(QIODevice::WriteOnly)) {
@@ -573,18 +577,29 @@ QStringList SessionManager::savedSessions() {
 
 void SessionManager::saveTabOrder(const QStringList &tabIds, int activeIndex) {
     QString path = sessionDir() + "/tab_order.txt";
-    QString tmpPath = path + QStringLiteral(".tmp");
+    // ANTS-5106 — per-process temp name; see saveSession.
+    QString tmpPath = path + QStringLiteral(".%1.tmp").arg(QCoreApplication::applicationPid());
     mode_t oldMask = ::umask(0077);
     QFile file(tmpPath);
     if (file.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
         setOwnerOnlyPerms(file);
         // First line: active tab index
-        file.write(QStringLiteral("active:%1\n").arg(activeIndex).toUtf8());
+        QByteArray body = QStringLiteral("active:%1\n").arg(activeIndex).toUtf8();
         for (const QString &id : tabIds) {
-            file.write(id.toUtf8());
-            file.write("\n");
+            body += id.toUtf8();
+            body += '\n';
         }
-        file.flush();
+        // ANTS-5106 — a short write or failed flush (a full disk) used to be
+        // renamed over the good tab order anyway.
+        if (file.write(body) != body.size() || !file.flush()) {
+            qWarning("SessionManager::saveTabOrder: write to %s failed (%s) — "
+                     "prior tab_order.txt unchanged",
+                     qUtf8Printable(tmpPath), qUtf8Printable(file.errorString()));
+            file.close();
+            QFile::remove(tmpPath);
+            ::umask(oldMask);
+            return;
+        }
         // fsync after flush — flush is Qt-layer (kernel-layer not guaranteed).
         // tab_order.txt is what anchors session restore order: if this file
         // is missing or empty after a crash, saved session blobs orphan.
@@ -685,7 +700,8 @@ void SessionManager::cleanupOldSessions(int maxAgeDays) {
     // would also delete a foreign or in-flight temp another tool
     // dropped in the sessions dir.
     QFileInfoList tmps = dir.entryInfoList(
-        {"session_*.dat.tmp", "tab_order.txt.tmp"}, QDir::Files);
+        {"session_*.dat.tmp", "tab_order.txt.tmp",          // pre-ANTS-5106 names
+         "session_*.dat.*.tmp", "tab_order.txt.*.tmp"}, QDir::Files);
     QDateTime tmpCutoff = QDateTime::currentDateTime().addDays(-1);
     for (const QFileInfo &fi : tmps) {
         if (fi.lastModified() < tmpCutoff)
