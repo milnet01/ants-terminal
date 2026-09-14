@@ -8629,6 +8629,16 @@ extends an existing item, that item carries it instead.
     read and commit.
   - backfill swallows a store error and reports ids as undated.
   - publish reports an SQL error as an unregistered project.
+  Progress (2026-09-14): the store path of flip_batch and annotate_batch
+  refuses when no locator resolves in the store, with a code and its own
+  op name (roadmap_log_annotate_batch INV-9); append_batch's review-kind
+  advisory names the allocated ids from accepted[]
+  (roadmap_log_review_kind_advisory). Still open: backfill_dates holding
+  the worker past the bridge timeout, flip_batch's per-target re-walk
+  and locator cap, append_batch's markdown scrub warning, uncapped
+  bodies before the scrub, read-to-commit change checks, backfill
+  swallowing a store error, and publish reporting an SQL error as
+  unregistered.
   **Layman:** Smaller roadmap batch-tool fixes, including one that reports success when nothing changed.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lane mcp-roadmap-batch).
