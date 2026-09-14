@@ -45,7 +45,7 @@ TEST(AuditDialogRenderHardening, AiTriageRefusesCleartextKey) {
 
 // INV-3 (ANTS-2108, superseded by ANTS-2121) — BOTH raw-QNAM AI-triage paths
 // enforce the egress policy. The single-finding path (requestAiTriage) and the
-// batch path (requestAiTriageBatch) each use their own QNetworkAccessManager
+// batch path (requestAiTriageBatch) each post through a raw QNetworkAccessManager
 // rather than LlmClient::send, so the chokepoint guard in send() does not cover
 // them — each must run endpointEgressError independently. ANTS-2121 replaced the
 // former per-path inline cleartext check with this shared validator (which also

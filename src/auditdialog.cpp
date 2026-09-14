@@ -44,6 +44,7 @@
 #include <QNetworkAccessManager>
 #include <QNetworkRequest>
 #include <QNetworkReply>
+#include <QScopeGuard>
 #include <QRegularExpression>
 #include <QThread>
 #include "secretredact.h"   // ANTS-4448 — scrub the AI-triage prompt
@@ -309,14 +310,14 @@ void AuditDialog::detectProject() {
         for (int depth = 0; depth <= maxDepth && !level.isEmpty(); ++depth) {
             QStringList next;
             for (const QString &d : std::as_const(level)) {
-                const QDir dir(d);
-                if (!dir.entryList(patterns, QDir::Files).isEmpty()) return true;
+                const QDir levelDir(d);
+                if (!levelDir.entryList(patterns, QDir::Files).isEmpty()) return true;
                 if (depth == maxDepth) continue;
-                const QStringList subs = dir.entryList(
+                const QStringList subs = levelDir.entryList(
                     QDir::Dirs | QDir::NoDotAndDotDot | QDir::NoSymLinks);
                 for (const QString &sub : subs) {
                     if (++dirsSeen > kMaxDirs) return false;
-                    next << dir.filePath(sub);
+                    next << levelDir.filePath(sub);
                 }
             }
             level = next;
@@ -2632,6 +2633,12 @@ bool AuditDialog::visibleSinceBaseline(
     return false;   // file not in the changed set
 }
 
+bool AuditDialog::sinceBaselineVisible(const Finding &f) const {
+    if (!m_recentScopeError.isEmpty())
+        return !m_baselineFingerprints.contains(f.dedupKey);
+    return visibleSinceBaseline(f, m_recentLines, m_baselineFingerprints);
+}
+
 // ANTS-1257 v2 — currently-visible findings (same filter as the results
 // pane) that are actionable: aiVerdict == TRUE_POSITIVE OR confidence >= 70.
 QList<Finding> AuditDialog::actionableFindings() const {
@@ -2641,7 +2648,7 @@ QList<Finding> AuditDialog::actionableFindings() const {
         for (const Finding &f : r.findings) {
             if (isSuppressed(f)) continue;
             if (m_sinceBaseline) {
-                if (!visibleSinceBaseline(f, m_recentLines, m_baselineFingerprints))
+                if (!sinceBaselineVisible(f))
                     continue;
             } else if (m_showNewOnly && m_hasBaseline
                        && m_baselineFingerprints.contains(f.dedupKey)) {
@@ -4229,25 +4236,53 @@ QString AuditDialog::readProjectDoc(const QString &name) const {
 void AuditDialog::computeRecentChangeSets(bool includeLines) {
     m_recentFiles.clear();
     m_recentLines.clear();
+    m_recentScopeError.clear();
     if (!m_detectedTypes.contains("Git")) return;
 
-    QProcess git;
-    git.setWorkingDirectory(m_projectPath);
-    git.start("git", {"log", QString("-n%1").arg(m_recentCommits),
-                      "--name-only", "--format=", "--diff-filter=ACMR"});
-    if (git.waitForFinished(5000) && git.exitCode() == 0) {
-        const QStringList lines =
-            QString::fromUtf8(git.readAllStandardOutput())
-                .split('\n', Qt::SkipEmptyParts);
-        QSet<QString> seen;
-        for (const QString &raw : lines) {
-            const QString p = raw.trimmed();
-            if (p.isEmpty() || seen.contains(p)) continue;
-            seen.insert(p);
-            // Keep only files that still exist on disk.
-            if (QFile::exists(m_projectPath + "/" + p))
-                m_recentFiles << p;
+    // ANTS-5084 — a git run that failed or timed out left both sets empty,
+    // which the filters read as "nothing changed" and hid every filed
+    // finding. The reason is kept instead, and the filters stand down.
+    const auto runGit = [this](const QStringList &args, int timeoutMs,
+                               QByteArray *out) -> QString {
+        static constexpr qint64 kMaxGitOutputBytes = 64 * 1024 * 1024;
+        QProcess p;
+        p.setWorkingDirectory(m_projectPath);
+        p.start(QStringLiteral("git"), args);
+        if (!p.waitForFinished(timeoutMs)) {
+            if (p.error() == QProcess::FailedToStart)
+                return QStringLiteral("git could not start");
+            p.kill();
+            p.waitForFinished(1000);
+            return QStringLiteral("git %1 timed out").arg(args.first());
         }
+        if (p.exitStatus() != QProcess::NormalExit || p.exitCode() != 0)
+            return QStringLiteral("git %1 failed").arg(args.first());
+        *out = p.readAllStandardOutput();
+        if (out->size() > kMaxGitOutputBytes) {
+            out->clear();
+            return QStringLiteral("git %1 output too large").arg(args.first());
+        }
+        return QString();
+    };
+
+    QByteArray logOut;
+    m_recentScopeError = runGit({QStringLiteral("log"),
+                                 QString("-n%1").arg(m_recentCommits),
+                                 QStringLiteral("--name-only"),
+                                 QStringLiteral("--format="),
+                                 QStringLiteral("--diff-filter=ACMR")},
+                                5000, &logOut);
+    if (!m_recentScopeError.isEmpty()) return;
+    const QStringList lines =
+        QString::fromUtf8(logOut).split('\n', Qt::SkipEmptyParts);
+    QSet<QString> seen;
+    for (const QString &raw : lines) {
+        const QString p = raw.trimmed();
+        if (p.isEmpty() || seen.contains(p)) continue;
+        seen.insert(p);
+        // Keep only files that still exist on disk.
+        if (QFile::exists(m_projectPath + "/" + p))
+            m_recentFiles << p;
     }
     if (!includeLines) return;
 
@@ -4255,32 +4290,43 @@ void AuditDialog::computeRecentChangeSets(bool includeLines) {
     // the hunk headers (`@@ -old,count +new,count @@`) and record the
     // destination line range for each file. Uses HEAD~N..HEAD so new
     // commits + uncommitted working-tree changes both land in the map.
-    QProcess gitDiff;
-    gitDiff.setWorkingDirectory(m_projectPath);
-    gitDiff.start("git", {"diff", "--unified=0",
-                          QString("HEAD~%1").arg(m_recentCommits)});
-    if (gitDiff.waitForFinished(8000) && gitDiff.exitCode() == 0) {
-        const QStringList dlines =
-            QString::fromUtf8(gitDiff.readAllStandardOutput())
-                .split('\n', Qt::KeepEmptyParts);
-        static const QRegularExpression reFileHdr(R"(^\+\+\+ b/(.+)$)");
-        static const QRegularExpression reHunk(
-            R"(^@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@)");
-        QString curFile;
-        for (const QString &dl : dlines) {
-            auto mf = reFileHdr.match(dl);
-            if (mf.hasMatch()) { curFile = mf.captured(1); continue; }
-            auto mh = reHunk.match(dl);
-            if (mh.hasMatch() && !curFile.isEmpty()) {
-                const int start = mh.captured(1).toInt();
-                const int count = mh.captured(2).isEmpty()
-                                  ? 1 : mh.captured(2).toInt();
-                // count=0 means pure deletion — nothing to attribute
-                // to an added line; skip.
-                if (count <= 0) continue;
-                auto &set = m_recentLines[curFile];
-                for (int i = 0; i < count; ++i) set.insert(start + i);
-            }
+    // A repository without HEAD~N diffs against the empty tree instead,
+    // so every line counts as changed.
+    QString base = QString("HEAD~%1").arg(m_recentCommits);
+    QByteArray probe;
+    if (!runGit({QStringLiteral("rev-parse"), QStringLiteral("--verify"),
+                 QStringLiteral("--quiet"), base + QStringLiteral("^{commit}")},
+                2000, &probe).isEmpty()) {
+        QByteArray emptyTree;
+        m_recentScopeError = runGit({QStringLiteral("hash-object"), QStringLiteral("-t"),
+                                     QStringLiteral("tree"), QStringLiteral("/dev/null")},
+                                    2000, &emptyTree);
+        if (!m_recentScopeError.isEmpty()) return;
+        base = QString::fromLatin1(emptyTree).trimmed();
+    }
+    QByteArray diffOut;
+    m_recentScopeError = runGit({QStringLiteral("diff"), QStringLiteral("--unified=0"), base},
+                                8000, &diffOut);
+    if (!m_recentScopeError.isEmpty()) return;
+    const QStringList dlines =
+        QString::fromUtf8(diffOut).split('\n', Qt::KeepEmptyParts);
+    static const QRegularExpression reFileHdr(R"(^\+\+\+ b/(.+)$)");
+    static const QRegularExpression reHunk(
+        R"(^@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@)");
+    QString curFile;
+    for (const QString &dl : dlines) {
+        auto mf = reFileHdr.match(dl);
+        if (mf.hasMatch()) { curFile = mf.captured(1); continue; }
+        auto mh = reHunk.match(dl);
+        if (mh.hasMatch() && !curFile.isEmpty()) {
+            const int start = mh.captured(1).toInt();
+            const int count = mh.captured(2).isEmpty()
+                              ? 1 : mh.captured(2).toInt();
+            // count=0 means pure deletion — nothing to attribute
+            // to an added line; skip.
+            if (count <= 0) continue;
+            auto &set = m_recentLines[curFile];
+            for (int i = 0; i < count; ++i) set.insert(start + i);
         }
     }
 }
@@ -4303,8 +4349,12 @@ void AuditDialog::runAudit() {
     if (m_cancelBtn) m_cancelBtn->setVisible(true);
 
     // Compute the "recent files" list if the user opted into scoped audit.
-    if (m_recentOnly) computeRecentChangeSets(m_recentLinesOnly);
-    else { m_recentFiles.clear(); m_recentLines.clear(); }
+    // ANTS-5084 — the Since baseline pill reads the changed-line sets too;
+    // clearing them under it hid every filed finding and wrote that count
+    // to the trend file.
+    if (m_recentOnly || m_sinceBaseline)
+        computeRecentChangeSets(m_recentLinesOnly || m_sinceBaseline);
+    else { m_recentFiles.clear(); m_recentLines.clear(); m_recentScopeError.clear(); }
 
     m_totalSelected = 0;
     for (const auto &c : std::as_const(m_checks))
@@ -4687,7 +4737,7 @@ void AuditDialog::handleCheckOutput(const QString &output) {
         if (!applyPathRules(f)) continue;       // generated files + path rules
         if (allowlisted(f)) continue;           // project-local allowlist
         if (inlineSuppressed(f)) continue;      // inline // ants-audit: disable ...
-        if (m_recentOnly && !f.file.isEmpty()) {
+        if (m_recentOnly && m_recentScopeError.isEmpty() && !f.file.isEmpty()) {
             // Match by either exact path or project-relative path suffix.
             bool isRecent = recent.contains(f.file);
             QString matchedFile = f.file;
@@ -4892,7 +4942,7 @@ void AuditDialog::renderResults() {
         for (const Finding &f : r.findings) {
             if (isSuppressed(f)) continue;
             if (m_sinceBaseline) {
-                if (!visibleSinceBaseline(f, m_recentLines, m_baselineFingerprints))
+                if (!sinceBaselineVisible(f))
                     continue;
             } else if (m_showNewOnly && !findingIsNew(f)) {
                 continue;
@@ -5140,7 +5190,7 @@ void AuditDialog::renderResults() {
             const Finding &f = *pf;
             if (isSuppressed(f)) continue;
             if (m_sinceBaseline) {
-                if (!visibleSinceBaseline(f, m_recentLines, m_baselineFingerprints))
+                if (!sinceBaselineVisible(f))
                     continue;
             } else if (m_showNewOnly && !findingIsNew(f)) {
                 continue;
@@ -5295,7 +5345,11 @@ void AuditDialog::renderResults() {
     auto *sb = m_results->verticalScrollBar();
     if (sb) sb->setValue(0);
 
-    m_statusLabel->setFullText(QString("Audit complete — %1 findings across %2 checks%3")
+    m_statusLabel->setFullText(
+        (m_recentScopeError.isEmpty()
+             ? QString()
+             : QStringLiteral("Changed-lines filter off (%1). ").arg(m_recentScopeError))
+        + QString("Audit complete — %1 findings across %2 checks%3")
                            .arg(totalFindings).arg(sorted.size())
                            .arg(m_hasBaseline
                                 ? QString(" (%1 new since baseline)").arg(totalNew)
@@ -5321,6 +5375,25 @@ void AuditDialog::renderResults() {
 // Deliberately simple: one QNetworkAccessManager per call (cheap, short-
 // lived), no streaming, 30s timeout matching STANDARDS.md. Failures surface
 // in the status bar; Finding stays untouched so the user can retry.
+
+// ANTS-5084 — both triage requests are raw network calls that bypass
+// LlmClient, so they apply its reply cap here.
+static void capTriageReply(QNetworkReply *reply) {
+    QObject::connect(reply, &QNetworkReply::downloadProgress, reply,
+                     [reply](qint64 received, qint64) {
+        if (received > LlmClient::kMaxBytes) {
+            reply->setProperty("antsTooLarge", true);
+            reply->abort();
+        }
+    });
+}
+
+static QString triageErrorText(const QNetworkReply *reply) {
+    return reply->property("antsTooLarge").toBool()
+        ? QStringLiteral("reply larger than %1 MiB")
+              .arg(LlmClient::kMaxBytes / (1024 * 1024))
+        : reply->errorString();
+}
 
 void AuditDialog::requestAiTriage(const QString &dedupKey) {
     if (dedupKey.isEmpty()) return;
@@ -5429,8 +5502,10 @@ void AuditDialog::requestAiTriage(const QString &dedupKey) {
     req.setAttribute(QNetworkRequest::RedirectPolicyAttribute,
                      QNetworkRequest::ManualRedirectPolicy);
 
-    auto *mgr = new QNetworkAccessManager(this);
-    QNetworkReply *reply = mgr->post(req, QJsonDocument(body).toJson(QJsonDocument::Compact));
+    if (!m_triageNam) m_triageNam = new QNetworkAccessManager(this);
+    QNetworkReply *reply =
+        m_triageNam->post(req, QJsonDocument(body).toJson(QJsonDocument::Compact));
+    capTriageReply(reply);
     // ANTS-4448 — say when the prompt was scrubbed. A silent redaction
     // changes what the model was shown, so a verdict that looks wrong would
     // otherwise have no visible cause.
@@ -5449,12 +5524,11 @@ void AuditDialog::requestAiTriage(const QString &dedupKey) {
                    : QString())
             + "…");
 
-    connect(reply, &QNetworkReply::finished, this, [this, reply, mgr, dedupKey]() {
+    connect(reply, &QNetworkReply::finished, this, [this, reply, dedupKey]() {
         reply->deleteLater();
-        mgr->deleteLater();
         if (reply->error() != QNetworkReply::NoError) {
             if (m_statusLabel)
-                m_statusLabel->setFullText("AI triage failed: " + reply->errorString());
+                m_statusLabel->setFullText("AI triage failed: " + triageErrorText(reply));
             return;
         }
         const QByteArray data = reply->readAll();
@@ -5549,7 +5623,7 @@ QStringList AuditDialog::visibleUntriagedKeys() const {
         for (const Finding &f : r.findings) {
             if (isSuppressed(f)) continue;
             if (m_sinceBaseline) {
-                if (!visibleSinceBaseline(f, m_recentLines, m_baselineFingerprints))
+                if (!sinceBaselineVisible(f))
                     continue;
             } else if (m_showNewOnly && !findingIsNew(f)) {
                 continue;
@@ -5610,14 +5684,14 @@ void AuditDialog::onBatchTriageClicked() {
         QMessageBox::Yes | QMessageBox::No, QMessageBox::Yes);
     if (reply != QMessageBox::Yes) return;
 
-    // Slice into ≤20-key batches and fire each. Each batch is its own
+    // Slice into ≤20-key batches and queue them. Each batch is its own
     // network request with its own error lifecycle — one failing batch
-    // does not abort the others.
+    // does not abort the others. pumpTriageBatches() bounds how many are
+    // in flight (ANTS-5084).
     constexpr int kBatchCap = 20;
     int batches = 0;
     for (int i = 0; i < keys.size(); i += kBatchCap) {
-        const QStringList slice = keys.mid(i, kBatchCap);
-        requestAiTriageBatch(slice);
+        m_triageBatchQueue.append(keys.mid(i, kBatchCap));
         ++batches;
     }
     if (m_statusLabel)
@@ -5625,6 +5699,22 @@ void AuditDialog::onBatchTriageClicked() {
             "AI triage: dispatched %1 finding%2 in %3 batch%4…")
             .arg(keys.size()).arg(keys.size() == 1 ? "" : "s")
             .arg(batches).arg(batches == 1 ? "" : "es"));
+    pumpTriageBatches();
+}
+
+void AuditDialog::pumpTriageBatches() {
+    // ANTS-5084 — every batch used to go out at once, each on its own
+    // network manager, and each reply re-rendered the whole list.
+    constexpr int kMaxTriageInFlight = 2;
+    while (m_triageBatchesInFlight < kMaxTriageInFlight
+           && !m_triageBatchQueue.isEmpty()) {
+        requestAiTriageBatch(m_triageBatchQueue.takeFirst());  // counts itself when it sends
+    }
+    if (m_triageBatchesInFlight == 0 && m_triageRenderPending) {
+        m_triageRenderPending = false;
+        renderResults();
+        refreshBatchTriageButton();
+    }
 }
 
 void AuditDialog::requestAiTriageBatch(const QStringList &dedupKeys) {
@@ -5740,19 +5830,25 @@ void AuditDialog::requestAiTriageBatch(const QStringList &dedupKeys) {
     req.setAttribute(QNetworkRequest::RedirectPolicyAttribute,
                      QNetworkRequest::ManualRedirectPolicy);
 
-    auto *mgr = new QNetworkAccessManager(this);
-    QNetworkReply *reply = mgr->post(req,
+    if (!m_triageNam) m_triageNam = new QNetworkAccessManager(this);
+    QNetworkReply *reply = m_triageNam->post(req,
         QJsonDocument(body).toJson(QJsonDocument::Compact));
+    capTriageReply(reply);
+    ++m_triageBatchesInFlight;  // released by the finished handler's guard
 
     const int batchSize = batch.size();
     const int redacted = scrubbedUser.redactedCount;
     connect(reply, &QNetworkReply::finished, this,
-            [this, reply, mgr, batchSize, redacted]() {
+            [this, reply, batchSize, redacted]() {
         reply->deleteLater();
-        mgr->deleteLater();
+        // Free this slot and send the next queued batch on every exit path.
+        const auto next = qScopeGuard([this] {
+            --m_triageBatchesInFlight;
+            pumpTriageBatches();
+        });
         if (reply->error() != QNetworkReply::NoError) {
             if (m_statusLabel)
-                m_statusLabel->setFullText("AI batch triage failed: " + reply->errorString());
+                m_statusLabel->setFullText("AI batch triage failed: " + triageErrorText(reply));
             return;
         }
         const QByteArray data = reply->readAll();
@@ -5812,8 +5908,7 @@ void AuditDialog::requestAiTriageBatch(const QStringList &dedupKeys) {
             }
             ++applied;
         }
-        renderResults();
-        refreshBatchTriageButton();
+        m_triageRenderPending = true;  // rendered once when the queue drains
         if (m_statusLabel)
             m_statusLabel->setFullText(QString(
                 "AI batch triage: %1 of %2 verdict%3 applied%4")
@@ -6316,6 +6411,8 @@ QString AuditDialog::plainTextResults() const {
     if (m_recentOnly)
         header += QString("Scope: files touched in last %1 commits (%2 file(s))\n")
                     .arg(m_recentCommits).arg(m_recentFiles.size());
+    if (!m_recentScopeError.isEmpty())
+        header += "Scope: changed-lines filter off (" + m_recentScopeError + ")\n";
     header +=
         "Legend: `conf N` = 0-100 confidence score (higher = more tools\n"
         "        corroborate). `★` = flagged by ≥2 distinct tools on the\n"

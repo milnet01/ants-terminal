@@ -70,6 +70,15 @@ for security-relevant changes.
 
 ### Fixed
 
+- **Audit window: the Since baseline filter and changed-lines scope no longer hide every finding, and batch AI triage is throttled** (ANTS-5084)
+  A run with Since baseline on keeps the changed-line data that filter
+  needs. When git cannot say what changed (a short history, a timeout, a
+  failure), the status line says so and the changed-lines filter is
+  skipped instead of hiding everything; a repository with fewer commits
+  than the window counts every line as changed. Batch AI triage sends two
+  batches at a time through one shared network client, refreshes the list once at the
+  end, and stops reading a reply past 10 MiB.
+
 - **Audit window: project detection no longer walks build trees, and exports, labels and the changed-files filter are correct** (ANTS-5084)
   Opening the audit window lists only the top few folder levels when
   detecting Docker and Terraform files. The signal banner shows one percent

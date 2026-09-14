@@ -27,6 +27,7 @@ class Config;
 class ToggleSwitch;
 class QTabWidget;
 class LlmClient;
+class QNetworkAccessManager;
 
 class AuditDialog : public QDialog {
     Q_OBJECT
@@ -149,6 +150,9 @@ protected:
         const Finding &f,
         const QHash<QString, QSet<int>> &recentLines,
         const QSet<QString> &baselineFingerprints);
+    // ANTS-5084 — visibleSinceBaseline over this run's sets, keeping only its
+    //   baseline half while m_recentScopeError says the sets are unknown.
+    bool sinceBaselineVisible(const Finding &f) const;
 
     // ANTS-1259 — Debt Sweep tab orchestration (testable seams; the
     // QTextBrowser anchors + buttons are thin wrappers over these).
@@ -399,6 +403,10 @@ private:
     int  m_recentCommits = 10;
     QStringList m_recentFiles;                 // computed at runAudit() start
     QHash<QString, QSet<int>> m_recentLines;   // file → {modified line numbers}
+    // ANTS-5084 — why the sets above could not be computed (git failed, timed
+    // out, or wrote too much); empty when they are good. The recent filters
+    // stand down while it is set.
+    QString m_recentScopeError;
 
     // 0.7.55 (2026-04-27 indie-review) — guard against duplicate trend
     // snapshots. renderResults() runs on every UI filter click, but the
@@ -490,6 +498,13 @@ private:
     // the caller slices above that cap. Uses the same endpoint / model
     // / auth as the single-finding path.
     void requestAiTriageBatch(const QStringList &dedupKeys);
+    // ANTS-5084 — sends queued batches while fewer than a fixed number are
+    //   in flight, and re-renders once when the last reply lands.
+    void pumpTriageBatches();
+    QList<QStringList> m_triageBatchQueue;
+    int  m_triageBatchesInFlight = 0;
+    bool m_triageRenderPending = false;
+    QNetworkAccessManager *m_triageNam = nullptr;  // shared by both triage paths
 
     // Build the set of dedup keys currently visible under the filter bar
     // (matches text filter + active severities, not suppressed, not
