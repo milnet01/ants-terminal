@@ -47,7 +47,8 @@ Four consequences:
    | `auditdialog.cpp` | 4 | 33 | 99 | 3 | `tests/audit_self_test.sh` |
    | `claudeintegration.cpp` | 1 | 146 | 436 | 30 | `tools/check-readme-claims.sh` |
 
-   **Four readers that break silently rather than loudly:**
+   **Four readers look at one file of a class. Two break silently when the text
+   moves:**
    - `tests/audit_self_test.sh`'s fixture-coverage block extracts every
      `addGrepCheck("<id>"` from `src/auditdialog.cpp`. With no match its loop
      runs zero times and it reports nothing missing.
@@ -55,12 +56,14 @@ Four consequences:
      `AuditDialog::populateChecks()`, runs the same grep over
      `src/auditdialog.cpp`. Its comment says it is a no-op when the grep yields
      no ids.
+
+   **Two break loudly, for the wrong reason:**
    - `tools/check-readme-claims.sh` counts MCP tools with a `["name"] = "…";`
-     grep over `src/claudeintegration.cpp` alone. After a split it undercounts.
-   - `tests/features/mcp_tools_list_schema` counts `inputSchema` assignments
-     between the `"tools/list"` and `"tools/call"` markers. Once the descriptors
-     move out, both counts in that region fall to zero, and the comparison still
-     passes.
+     grep over `src/claudeintegration.cpp` alone, and exits 1 on any mismatch
+     with `README.md`. After a split it reports README drift that is not there.
+   - `tests/features/mcp_tools_list_schema` counts `tools.append(` and
+     `inputSchema` between the `"tools/list"` and `"tools/call"` markers, and
+     expects both counts above zero. After the descriptors move out, it fails.
 
 ## 2. Surface
 
@@ -93,20 +96,23 @@ only one kind for a given class, so each commit carries exactly one proof.
 `void appendToolSchemas<Part>(QJsonArray &tools)` declared in
 `src/claudeintegration_internal.h`. For `MainWindow`, each carved run of
 `registerToolProvider` calls becomes a private member
-`void MainWindow::registerMcpProviders<Part>()`. Private because the lambdas
-capture `this` and read private members. Locals that several pieces share are
-promoted before the cut (§ 2.4). Today `setupClaudeMcpProviders()` shares
-`mcpOn`, `kRcUnavailable` and `rcDelegate` across its registrations, and the
-`tools/list` branch shares `makeCallerCwdReadProp` and its siblings.
+`void MainWindow::registerMcpProviders<Part>()`, taking no parameters. Private
+because the lambdas capture `this` and read private members. Locals that several
+pieces share are handled before the cut as § 2.4 says. Today the registrations
+share `kRcUnavailable` and `rcDelegate`, and the `tools/list` branch shares
+`makeCallerCwdReadProp` and its siblings. `mcpOn` is read only above the first
+`registerToolProvider` call, so it stays in `setupClaudeMcpProviders()`.
 
 **Kind C, for ANTS-1049.** `AuditDialog::populateChecks()` becomes a table of
 check rows plus a loop that appends them. Rows carry the conditions the calls
 carry today — the `isQt` branch and the other `m_detectedTypes.contains(…)`
-tests. A check built with a callable, or with logic no row can express, stays as
-code after the loop, in its original relative position. The row type and file
-are `src/auditdialog_catalogue.cpp` with its declarations in
-`src/auditdialog_internal.h`. ANTS-1044's own body proposes
-`auditcatalogue.cpp`; § 2.3's naming rule replaces that name.
+tests. A check built with a callable (`inProcessRunner` today), or with logic no
+row can express, stays as code at its original position: the table is split
+into consecutive runs around it, so the build order does not change (INV-8).
+ANTS-1049 builds the table inside `src/auditdialog.cpp`, so it adds no file.
+ANTS-1044 later moves the table, by kind A, to `src/auditdialog_catalogue.cpp` —
+the name § 2.3's rule gives in place of the `auditcatalogue.cpp` ANTS-1044's
+body proposes.
 
 ### 2.3 Source lists and the text readers
 
@@ -159,8 +165,8 @@ inline std::string slurpClaudeIntegration() { return slurpSourceList(ANTS_CLAUDE
 #endif
 ```
 
-**The single-file path macros are deleted, class by class, when that class's
-first cut lands.** That turns every missed call site into a compile error, the
+**The single-file path macros are deleted, class by class, by the first commit
+that adds a file to that class.** That turns every missed call site into a compile error, the
 same trade ANTS-3833 § 2.4(b) made. Inventory, from
 `grep -oE 'SRC_[A-Z0-9_]+="\$\{CMAKE_SOURCE_DIR\}/src/<stem>\.cpp"' CMakeLists.txt | cut -d= -f1 | sort -u`:
 
@@ -177,15 +183,15 @@ covers `QStringLiteral(…)` used as a directory handle, `QFileInfo(…)`, and
 `#if defined(…)` guards, as ANTS-3833 § 2.4 did. The command in § 2.6 lists the
 use forms per class.
 
-**The four silent readers of § 1 are re-pointed in the same commit that moves
-their subject, and each gains an emptiness check.**
+**The four readers of § 1 are re-pointed in the same commit that moves their
+subject. The two silent ones also gain an emptiness check.**
 
-| Reader | Reads after the move | New loud failure |
+| Reader | Reads after the move | Failure when its subject is missing |
 |---|---|---|
-| `tests/audit_self_test.sh` fixture coverage | the ids from the whole `auditdialog` glob, in whatever row form ANTS-1049 ships | `FAIL` when the extracted id list is empty |
-| `audit_fixture_coverage` runtime check | the same set, from the same files | a finding when its grep yields no ids in a tree where `src/auditdialog.cpp` exists |
-| `tools/check-readme-claims.sh` MCP tool count | the `claudeintegration` glob | non-zero exit when the count is 0 |
-| `tests/features/mcp_tools_list_schema` | the carved `appendToolSchemas*` bodies, via `slurpClaudeIntegration()` | an assertion that the region holds at least one `["name"]` |
+| `tests/audit_self_test.sh` fixture coverage | the ids from the whole `auditdialog` glob, in whatever row form ANTS-1049 ships | new: `FAIL` when the extracted id list is empty |
+| `audit_fixture_coverage` runtime check | the same set, from the same files | new: a finding when its grep yields no ids in a tree where `src/auditdialog.cpp` exists |
+| `tools/check-readme-claims.sh` MCP tool count | the `claudeintegration` glob | existing: exit 1 on a count that differs from `README.md` |
+| `tests/features/mcp_tools_list_schema` | the carved `appendToolSchemas*` bodies, via `slurpClaudeIntegration()` | existing: its `appendCount > 0` and `schemaCount > 0` expectations |
 
 **The row form ANTS-1049 picks is its own**, provided INV-5 holds. The spec pins
 the id *set* both readers must return, not the text of a row.
@@ -202,10 +208,12 @@ restated here.
 
 Two additions:
 
-- **Kind B promotes locals, not only file-scope symbols.** A local lambda or
-  constant used by more than one carved piece becomes a `<stem>detail` function
-  or constant before the cut. A local that captures `this`, or is otherwise
-  bound to one call, becomes a parameter of the carved function instead.
+- **Kind B promotes locals, not only file-scope symbols.** A local constant, or
+  a lambda that does not capture `this`, used by more than one carved piece
+  becomes a `<stem>detail` constant or function before the cut. A local lambda
+  that captures `this` becomes a private member function with the same name and
+  call shape, so its call sites' text is unchanged — `MainWindow`'s
+  `rcDelegate` is the case today.
 - **The file-scope scan uses the shipped scanner.**
   `tools/rc-namespace-scan.py` takes any source path. Run on 2026-09-14 with
   `--ns anon`, it finds 2 anonymous namespaces in `claudeintegration.cpp`, 2 in
@@ -259,25 +267,30 @@ Each item lands as ordered commits, and every one builds and passes the suite:
 | # | Contents |
 |---|---|
 | 1 | **Groundwork, while the file is still one TU.** The class's `ANTS_<STEM>_SOURCES_REL` list, holding one entry; the macro definitions; the `srcgrep.h` wrapper; the re-route of non-text macro uses; the promotion of § 2.4; and, for the first item needing each, `tools/split-motion-check.py` (INV-7) and the capture harnesses of INV-6 and INV-8. |
-| 2 | **The cut.** One kind of move (§ 2.2). The list grows, the single-file macros are deleted, the text readers migrate, and the four silent readers are re-pointed. |
+| 2 | **The cuts.** One or more commits, each carrying one kind of move (§ 2.2) and compared with its parent by the invariants § 3 names for that kind. Across them the list grows, the single-file macros are deleted by the first commit adding a file, the text readers migrate, and each reader of § 1 is re-pointed in the commit that moves its subject. |
 | 3 | The standing tests of § 6 for that class, where commit 1 did not already add them. |
 
-**ANTS-1049 (kind C) comes first and has no cut of kind A or B.** Its commit 2
-converts `populateChecks()` and re-points the two audit readers. The generic
-machinery — `slurpSourceList`, `split_sources` and the motion check — lands
-with ANTS-1044, the first item that splits a file.
+**Items and classes.** ANTS-1049 and ANTS-1044 split `auditdialog`, ANTS-1043
+`mainwindow`, and ANTS-4919 `claudeintegration`. **ANTS-1049 is one kind C commit
+inside `src/auditdialog.cpp`**: it adds no file, deletes no macro and needs no
+source list. It re-points the two audit readers (INV-5) and carries INV-8's
+proof. The generic machinery — `slurpSourceList`, `split_sources` and the motion
+check — lands with ANTS-1044, the first item that adds a file.
 
 ## 3. Invariants
 
-Invariants about a class's split hold for that class from its item's commit 2
-onward, and not before.
+**When each invariant applies.** INV-9 holds for a class from the last cut
+commit of the last item that splits it. INV-2, INV-3 and INV-11 hold from the
+first commit that adds a file to the class. INV-6, INV-7, INV-8 and INV-10
+compare each cut commit of their kind with its parent. INV-1, INV-4, INV-5 and
+INV-12 hold at every commit.
 
 - **INV-1** — No public or protected declaration of `MainWindow`, `AuditDialog`
   or `ClaudeIntegration` changes. The only header edits allowed are added
   private member declarations for kind B pieces. *Breaks when:* a carved piece is
   exposed publicly, or a signature changes in passing, which recompiles and can
-  re-bind every consumer for no reason. *Test:* at each cut, review
-  `git diff <commit1>..<commit2> -- src/mainwindow.h src/auditdialog.h src/claudeintegration.h`;
+  re-bind every consumer for no reason. *Test:* for each item, review
+  `git diff <item-parent>..<item-last-commit> -- src/mainwindow.h src/auditdialog.h src/claudeintegration.h`;
   every added line must sit under `private:` and every removed line must be
   none.
 - **INV-2** — For each split class, `ANTS_<STEM>_SOURCES_REL` lists
@@ -289,25 +302,26 @@ onward, and not before.
   `tests/features/split_sources` compares the list parsed from `CMakeLists.txt`
   with a directory listing of `src/`, for each class whose list has more than
   one entry.
-- **INV-3** — After a class's cut, none of its single-file path macros (§ 2.3)
-  survives in `CMakeLists.txt` or under `tests/`, and no file under `tests/`
-  outside `tests/features/split_sources` names `src/<stem>.cpp` as a literal
-  path. *Breaks when:* a bundle keeps a deleted macro or a test opens the literal
-  path, so a scrape reads one piece and reads a moved function as deleted.
-  *Test:* for the class's macro alternation `$M`,
-  `grep -rlE "\b($M)\b|src/<stem>\.cpp" tests/ | grep -v '^tests/features/split_sources/' | wc -l`
+- **INV-3** — Once a class's first file is added, none of its single-file path
+  macros (§ 2.3) survives in `CMakeLists.txt` or in a `.cpp` file under
+  `tests/`, and no `.cpp` file under `tests/` names `src/<stem>.cpp` as a
+  literal path. Shell and Python readers using § 2.3's glob, and prose in
+  `spec.md` files, are outside it. *Breaks when:* a bundle keeps a deleted macro
+  or a test opens the literal path, so a scrape reads one piece and reads a
+  moved function as deleted. *Test:* for the class's macro alternation `$M`,
+  `grep -rlE --include='*.cpp' "\b($M)\b|src/<stem>\.cpp" tests/ | wc -l`
   prints `0`, and `grep -cE "\b($M)\b" CMakeLists.txt` prints `0`.
 - **INV-4** — `tools/check-readme-claims.sh` counts MCP tools over the whole
-  `claudeintegration` glob. It exits non-zero when that count is 0.
-  *Breaks when:* the count still reads `src/claudeintegration.cpp` alone, and
-  after the cut reports fewer tools than ship, or zero without failing. *Test:*
-  `bash tools/check-readme-claims.sh` exits 0 on the tree, and exits non-zero
-  when run against a scratch copy of the tree with every
-  `src/claudeintegration*.cpp` emptied.
+  `claudeintegration` glob. *Breaks when:* the count still reads
+  `src/claudeintegration.cpp` alone, so after a cut it reports README drift that
+  is not there and a correct push is refused. *Test:*
+  `bash tools/check-readme-claims.sh` exits 0 after each `claudeintegration` cut
+  commit.
 - **INV-5** — The rule-id set extracted by `tests/audit_self_test.sh`'s
   fixture-coverage block equals the id set extracted by the
-  `audit_fixture_coverage` runtime check. Both equal the ids of the grep checks
-  `AuditDialog::populateChecks()` actually builds, and the set is not empty.
+  `audit_fixture_coverage` runtime check. Both equal the union, over INV-8's detected-type
+  sets, of the ids of the grep checks `AuditDialog::populateChecks()` builds, and
+  that union is not empty.
   *Breaks when:* ANTS-1049 moves the ids into a row form one reader no longer
   matches — the reader then extracts nothing and passes. *Test:* a case in the
   audit bundle builds the catalogue through INV-8's seam and runs both
@@ -319,19 +333,22 @@ onward, and not before.
   `startMcpServer()` on a temporary socket. It sends `initialize` then
   `tools/list` with no `_meta.shape`, which returns the full shape (ANTS-1502
   makes the lite shape opt-in). It writes the response to
-  `$ANTS_TOOLS_LIST_DUMP` when that variable is set. Run at commit 1 and at
-  commit 2, the two dumps compare equal with `cmp`. Its standing assertion is
+  `$ANTS_TOOLS_LIST_DUMP` when that variable is set. Run before and after
+  each `claudeintegration` cut commit, the two dumps compare equal with `cmp`. Its standing assertion is
   that the response's tool-name set equals the `["name"] = "…"` set extracted
   from `slurpClaudeIntegration()`, and is not empty.
 - **INV-7** — A kind A or kind B cut is motion. Every line removed from
   `src/<stem>.cpp` appears byte-identical in exactly one piece of the same
   class's list. Lines keep their relative order within each piece. Every other
-  added line is one of: a piece's ordinal marker, an `#include`, a
-  `using namespace <stem>detail;`, a carved function's signature or closing
-  brace, or a call to a carved function. *Breaks when:* a statement is edited,
-  reordered or dropped during the cut. *Test:*
-  `tools/split-motion-check.py --pre <commit1> --post <commit2> --stem <stem>`
-  exits 0 on the item's two commits. Against a scratch commit 2 with one moved
+  added line is one of: a blank line; a piece's ordinal marker; an `#include`;
+  `namespace <stem>detail {` or its closing brace; a
+  `using namespace <stem>detail;`; a carved function's signature or closing
+  brace; or a call to a carved function. The ordinal marker is a piece's first
+  line, `// ANTS-1677 <stem> piece <k>/<N> — <concern in plain words>`, and like
+  ANTS-3833 § 2.4(c)'s marker it carries no snake_case identifier. *Breaks
+  when:* a statement is edited, reordered or dropped during the cut. *Test:*
+  `tools/split-motion-check.py --pre <parent> --post <cut> --stem <stem>` exits
+  0 for each kind A or kind B cut commit. Against a scratch cut with one moved
   line altered, it exits non-zero.
 - **INV-8** — ANTS-1049's code-to-data move leaves the ordered list of checks
   `AuditDialog::populateChecks()` builds unchanged. That covers every
@@ -339,24 +356,27 @@ onward, and not before.
   each detected-type set: none; each type literal `populateChecks()` tests
   through `m_detectedTypes.contains(…)`; and all of them together. *Breaks
   when:* a row loses its condition, changes its position, or copies a field
-  wrongly. *Test:* a seam added in commit 1 serialises the list, one JSON line
-  per check, for each type set. Serialised at commit 1 and at commit 2, the files
-  compare equal. Measured on one machine: `addToolCheck()` consults the tools
+  wrongly. *Test:* a seam added in ANTS-1049's groundwork commit serialises the list, one JSON line
+  per check, for each type set. Serialised before and after the kind C commit,
+  the files compare equal. Measured on one machine: `addToolCheck()` consults the tools
   installed there, so the environment must not change between the two runs.
 - **INV-9** — No file in a split class's source list exceeds 4,000 lines.
   *Breaks when:* code re-accretes into one file until the split is undone, the
   one regression that returns silently. *Test:* `tests/features/split_sources`
-  counts lines per listed file.
-- **INV-10** — A scrape whose region content a cut changes is re-pointed in that
-  cut's commit, and the changed set is empty at commit 2. A scrape's region is a
-  numeric `substr` window, or the span between two `find` anchors, over the
-  class's text. *Breaks when:* a region silently loses its subject.
-  `mcp_tools_list_schema`'s `"tools/list"`…`"tools/call"` span is the known case,
-  and a negative or count-based assertion stays green over the emptied region.
-  *Test:* `tools/split-motion-check.py --scrapes` derives every such region from
-  `tests/`. It evaluates each over the class text at commit 1 and at commit 2,
-  and lists those whose content differs; it prints no rows at commit 2. The
-  work-list is derived, never hard-coded, as ANTS-3833 INV-10 required.
+  counts lines per listed file, for
+  the classes named in its own capped-class list; the last cut commit of a
+  class's last item adds that class to the list.
+- **INV-10** — Every scrape whose region's content a cut changes is edited in
+  that same cut commit. A scrape's region is a numeric `substr` window, or the
+  span between two `find` anchors, over the class's text, located with the
+  scrape's code as it stands at the cut's parent. *Breaks when:* a region
+  silently loses its subject and a negative or count-based assertion stays green
+  over it. *Test:* `tools/split-motion-check.py --scrapes --pre <parent> --post
+  <cut> --stem <stem>` derives every such region from `tests/` at the parent,
+  evaluates each over the class text at the parent and at the cut, and lists
+  those whose content differs. It exits 0 when every listed scrape's file is
+  also changed by the cut commit, and non-zero otherwise. The work-list is
+  derived, never hard-coded, as ANTS-3833 INV-10 required.
 - **INV-11** — `src/<stem>_internal.h` is included only by files in that
   class's source list. *Breaks when:* another subsystem takes a dependency on a
   helper that was never API. *Test:* `tests/features/split_sources` scans `src/`
@@ -414,12 +434,13 @@ bundle's `SOURCES`, never `add_executable`. Build that bundle and check
 - `split_sources` — against a list missing one piece, against a stray
   `src/<stem>_x.cpp` outside the list, and against a 4,001-line file.
 - `mcp_tools_list_live` — against a scratch build with one descriptor's
-  description edited: the dump comparison differs. Against a build with one
-  `["name"]` removed from the text: the standing name-set assertion fails.
+  description edited: the dump comparison differs. Against a source list omitting one
+  `claudeintegration` piece: the standing name-set assertion fails.
 - The audit catalogue case — against a scratch `audit_self_test.sh` whose
   extraction pattern matches nothing: the empty-set assertion fails.
 - `split-motion-check.py` — against a commit pair with one moved line altered
-  (INV-7), and against a pair where a scrape region's content changed (INV-10).
+  (INV-7), and against a cut where a scrape region's content changed but the scrape's file
+  did not (INV-10).
 
 **INV-1, INV-3 and INV-4 are recorded commands** run at each cut. INV-12's
 surface is the link every build already performs.
@@ -439,3 +460,4 @@ surface is the link every build already performs.
 
 | Loop | Date | Lanes | Q1 | Q2 | Q3 | Q4 | Outcome |
 |---|---|---|---|---|---|---|---|
+| 1 | 2026-09-14 | 3, cold — genre pinned `spec` | 1 | 5 | 2 | 3 | 11 findings after merging the three lanes (seven raised by all three); 11 verified, 0 dismissed; all 11 fixed. Q2: one kind per cut commit could not meet the 4,000-line cap (several cut commits now allowed, and § 3 says when each invariant applies); ANTS-1049 added a second `auditdialog` file before the machinery (the table is now built inside `src/auditdialog.cpp`); callable checks moved after the loop contradicted INV-8's order; INV-3 could never print 0 over the glob readers and `spec.md` prose (now `.cpp` only); `rcDelegate` captures `this` under two rules (now a private member). Q1: two of the four "silent" readers fail loudly. Q3: INV-5's id set per detected-type set (now the union); INV-7's marker was undefined. Q4: INV-10's zero-row condition was unmeetable; INV-4's negative test passed before the fix existed; INV-6's fail-first case could not fail. Verification also corrected the claim that `mcpOn` is shared across registrations. Three open questions resolved clean. Loop 2 dispatched. |
