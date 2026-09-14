@@ -275,20 +275,22 @@ GateResult runOneGate(const QString &projectPath,
                      [&]() {
         QByteArray chunk = p.readAllStandardOutput();
         carry += QString::fromUtf8(chunk);
-        // Hard-cap an unterminated single line so an attacker can't
-        // make us buffer multi-MiB of garbage. Force-split.
-        if (carry.toUtf8().size() > kSingleLineCap) {
-            lines.append(carry);
-            ++totalLines;
-            if (lines.size() > maxLogLines) lines.removeFirst();
-            carry.clear();
-        }
         int idx;
         while ((idx = carry.indexOf(QChar('\n'))) >= 0) {
             lines.append(carry.left(idx));
             ++totalLines;
             if (lines.size() > maxLogLines) lines.removeFirst();
             carry.remove(0, idx + 1);
+        }
+        // Hard-cap an unterminated single line so an attacker can't
+        // make us buffer multi-MiB of garbage. Force-split. ANTS-5102 —
+        // checked AFTER the split: checked first, one large read carrying
+        // many complete lines (ctest's FAILED list) became a single line.
+        if (carry.toUtf8().size() > kSingleLineCap) {
+            lines.append(carry);
+            ++totalLines;
+            if (lines.size() > maxLogLines) lines.removeFirst();
+            carry.clear();
         }
     });
 

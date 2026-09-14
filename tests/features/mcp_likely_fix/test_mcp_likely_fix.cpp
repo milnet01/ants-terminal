@@ -310,3 +310,14 @@ TEST(McpLikelyFix, VerbWiring) {
 
     EXPECT_EQ(0, expect_finish());
 }
+
+// ANTS-5102 — GCC's UTF-8 quoting (U+2018/U+2019) is recognised too.
+TEST(McpLikelyFix, UndeclaredSymbolUtf8Quotes) {
+    using BuildFixHint::undeclaredSymbol;
+    EXPECT_EQ(undeclaredSymbol(QString::fromUtf8(
+                  "foo.cpp:3:5: error: \xE2\x80\x98Widget\xE2\x80\x99 was not declared in this scope")),
+              QStringLiteral("Widget"));
+    EXPECT_EQ(undeclaredSymbol(QString::fromUtf8(
+                  "foo.cpp:9:1: error: \xE2\x80\x98Gadget\xE2\x80\x99 has not been declared")),
+              QStringLiteral("Gadget"));
+}

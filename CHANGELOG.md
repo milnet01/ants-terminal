@@ -70,6 +70,10 @@ for security-relevant changes.
 
 ### Fixed
 
+- **Build-error fix hints recognise GCC's curly quotes, so they work with this machine's compiler output** (ANTS-5102)
+
+- **verify_changes no longer loses ctest's failed-test list when one large chunk of output arrives at once** (ANTS-5102)
+
 - **An Independent Review lane now stops at its time limit even when the AI endpoint keeps trickling data, and a reply over 10 MiB is cut off** (ANTS-5101)
 
 - **The debt sweep's automatic fix no longer corrupts bytes that are not valid UTF-8 elsewhere in the file** (ANTS-5101)

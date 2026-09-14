@@ -49,15 +49,17 @@ QString siblingHeader(const QString &sourcePath) {
 
 QString undeclaredSymbol(const QString &message) {
     // group(1) captures the identifier in each recognised diagnostic form.
+    // ANTS-5102 — GCC quotes with U+2018/U+2019 under a UTF-8 locale (this
+    // machine's), so each quote accepts those as well as ASCII '.
     static const std::array<QRegularExpression, 4> res = {
         QRegularExpression(QStringLiteral(
-            "'([A-Za-z_][A-Za-z0-9_]*)' has not been declared")),
+            "[\\x{2018}']([A-Za-z_][A-Za-z0-9_]*)[\\x{2019}'] has not been declared")),
         QRegularExpression(QStringLiteral(
-            "'([A-Za-z_][A-Za-z0-9_]*)' was not declared in this scope")),
+            "[\\x{2018}']([A-Za-z_][A-Za-z0-9_]*)[\\x{2019}'] was not declared in this scope")),
         QRegularExpression(QStringLiteral(
-            "unknown type name '([A-Za-z_][A-Za-z0-9_]*)'")),
+            "unknown type name [\\x{2018}']([A-Za-z_][A-Za-z0-9_]*)[\\x{2019}']")),
         QRegularExpression(QStringLiteral(
-            "use of undeclared identifier '([A-Za-z_][A-Za-z0-9_]*)'")),
+            "use of undeclared identifier [\\x{2018}']([A-Za-z_][A-Za-z0-9_]*)[\\x{2019}']")),
     };
     for (const QRegularExpression &re : res) {
         const QRegularExpressionMatch m = re.match(message);

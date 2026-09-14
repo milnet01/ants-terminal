@@ -2589,6 +2589,8 @@ if(ANTS_TESTS)
                 tests/features/mcp_recent_errors/test_mcp_recent_errors.cpp
                 # ANTS-3374 likely_fix add_include hint (BuildFixHint + wiring).
                 tests/features/mcp_likely_fix/test_mcp_likely_fix.cpp
+                # ANTS-5102 — verify log split order.
+                tests/features/verify_and_audit_guards/test_verify_and_audit_guards.cpp
                 # ANTS-1312 last_selection MCP wiring contract.
                 tests/features/mcp_last_selection/test_mcp_last_selection.cpp
                 # ANTS-1636 find_sources MCP + pure-function tests.
