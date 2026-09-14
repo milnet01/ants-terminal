@@ -8660,6 +8660,15 @@ extends an existing item, that item carries it instead.
     invariant_check.
   - Documents out of date: ANTS-1302 section 3.4's in-flight refusal
     can no longer fire, and ANTS-1248 section 5 still says 2 s.
+  Progress (2026-09-14): cmdMutationProbe writes the mutant and the
+  restore through QSaveFile; cmdBuildTargetFor runs
+  PathValidation::validatePath on cmake_path; cmdFileOutline refuses
+  more than kMaxOutlinePaths (100) paths
+  (tests/features/workspace_verb_guards). Still open: focused_test and
+  mutation_probe run past the 60 s transport limit; a sidecar baseline
+  for mutation_probe; cited_by's scope cap; co_change_family's rg flags;
+  spec_query gate_drift's deadline; the unreadable-spec count; the two
+  stale documents.
   **Layman:** Smaller fixes to Ants' workspace tools, including a test runner that can tie up every Claude session and a file write that isn't safe.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lane mcp-state-workspace).
