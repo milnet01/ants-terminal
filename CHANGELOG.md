@@ -95,6 +95,12 @@ for security-relevant changes.
 
 ### Fixed
 
+- **Closing a tab whose shell is stuck no longer risks freezing the whole window** (ANTS-5077)
+  When a tab's background reader was still busy two seconds after the tab
+  closed, it was forcibly killed, which can freeze the window if it held a
+  lock at that moment. It is now left to finish on its own and clean itself
+  up.
+
 - **A clickable link that wraps off the bottom row stays clickable on both lines** (ANTS-5076)
   A link printed near the end of the last row wraps and scrolls the screen.
   Its recorded start row did not move with the scroll, so the link was

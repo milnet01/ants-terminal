@@ -7954,6 +7954,13 @@ extends an existing item, that item carries it instead.
   QThread::terminate(), which can deadlock the GUI on a held lock. This
   changes the teardown path ANTS-1189 hardened, so it lands as its own
   change with a test.
+  Progress (2026-09-14): shipped the tab-close decision. ~TerminalWidget
+  detaches a parse thread still running after its 2 s wait (unparented,
+  deleteLater on finished, deleted at once if already finished) instead
+  of QThread::terminate(); pty_dtor_off_main_thread's spec points at it.
+  Test: parse_thread_detach_on_close INV-1..4, red first; full default
+  suite green. Still open: clipboard image encode on the GUI thread, and
+  ShapedRunCache's entry-only cap (next, test-first).
   **Layman:** Smaller fixes to drawing and typing in the terminal, including a screenshot-paste freeze.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lane terminal-widget-a).

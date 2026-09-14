@@ -492,13 +492,20 @@ TerminalWidget::~TerminalWidget() {
         m_parseThread->quit();
         if (!m_parseThread->wait(2000)) {
             // Worker exceeded the deadline — stuck in a PTY read, a long
-            // processAction, or a slow ~Pty child-reap ladder. Don't fall
-            // through silently: ~QThread aborts on a still-running thread,
-            // so force it down as a last resort after logging (dimension #10).
+            // processAction, or a slow ~Pty child-reap ladder. ANTS-5077 —
+            // detach it rather than terminate(): terminate() can kill it while
+            // it holds a lock, and the GUI then deadlocks on that lock.
+            // ~QThread aborts on a still-running thread, so unparent it from
+            // this widget and let it delete itself once its loop ends; a
+            // thread that finished just now is deleted at once. See
+            // tests/features/parse_thread_detach_on_close/spec.md.
             qWarning("TerminalWidget: VtStream worker did not stop within 2s; "
-                     "terminating to avoid a teardown crash");
-            m_parseThread->terminate();
-            m_parseThread->wait();
+                     "detaching it");
+            m_parseThread->setParent(nullptr);
+            connect(m_parseThread, &QThread::finished, m_parseThread,
+                    &QObject::deleteLater);
+            if (m_parseThread->isFinished()) m_parseThread->deleteLater();
+            m_parseThread = nullptr;
         }
     }
 

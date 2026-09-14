@@ -103,6 +103,14 @@ reaps it on app exit, which is the acceptable degradation path.
   thread; their interaction with main-thread Qt teardown is the
   exact race ANTS-1189 fixes.
 
+One narrow exception elsewhere, decided by the user for ANTS-5077:
+`TerminalWidget::~TerminalWidget` detaches a parse thread that is still
+running after its 2 s wait, instead of calling `QThread::terminate()`,
+which can deadlock the GUI. It fires only when this destructor's bounded
+ladder has already overrun, and a worker left running at app exit can
+still race teardown as described above. Contract:
+`tests/features/parse_thread_detach_on_close/spec.md`.
+
 ## Contract
 
 ### Invariant 1 — SIGHUP sent up front
