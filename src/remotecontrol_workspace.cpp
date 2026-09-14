@@ -512,6 +512,23 @@ QJsonDocument RemoteControl::cmdWorkspaceSearch(const QJsonObject &req) {
     const bool hiddenGlobSkipped =
         !include_hidden && rcGlobNamesHiddenPath(glob);
 
+    // ANTS-5117 — rg runs from the project root with the lane as its path
+    // argument, and a glob holding `/` anchors at rg's working directory. So
+    // under lane "tests/features", `{a,b}/*.cpp` and an exclude of `c/**`
+    // matched nothing and a zero read as "no such code". A slash-bearing glob
+    // is resolved against the lane instead, unless it already names the lane
+    // or floats (`**/`). A glob with no slash matches at any depth either way.
+    const QString laneRel = QDir(rootCanonical).relativeFilePath(laneAbs);
+    const auto laneGlob = [&laneRel](const QString &g) {
+        if (laneRel.isEmpty() || laneRel == QLatin1String(".")
+            || !g.contains(QLatin1Char('/'))
+            || g.startsWith(QLatin1String("**/"))
+            || g.startsWith(laneRel + QLatin1Char('/')))
+            return g;
+        return g.startsWith(QLatin1Char('/')) ? laneRel + g
+                                              : laneRel + QLatin1Char('/') + g;
+    };
+
     // ANTS-1248-INV-3: shell-less argv. Every flag is a separate
     // QString in the argv list; rcRunRg() above starts rg with the
     // two-argument start() overload and no shell.
@@ -530,11 +547,11 @@ QJsonDocument RemoteControl::cmdWorkspaceSearch(const QJsonObject &req) {
     if (matchWrapped) argv << QStringLiteral("--multiline");
     else if (!isRegex) argv << QStringLiteral("--fixed-strings");
     if (context > 0) argv << QStringLiteral("--context") << QString::number(context);
-    if (!glob.isEmpty()) argv << QStringLiteral("--glob") << glob;
+    if (!glob.isEmpty()) argv << QStringLiteral("--glob") << laneGlob(glob);
     // ANTS-3704 — rendered AFTER the positive glob: rg resolves competing globs
     // by last-one-wins, so an exclusion must follow the inclusion it narrows.
     for (const QString &ex : std::as_const(excludeGlobs))
-        argv << QStringLiteral("--glob") << (QLatin1Char('!') + ex);
+        argv << QStringLiteral("--glob") << (QLatin1Char('!') + laneGlob(ex));
     // ANTS-1452-INV-1: when respect_gitignore is false, disable both the
     // VCS-specific ignore source (.gitignore, .git/info/exclude) and the
     // umbrella ignore that covers .ignore + per-user global. Belt-and-

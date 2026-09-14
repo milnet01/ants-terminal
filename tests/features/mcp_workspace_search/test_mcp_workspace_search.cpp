@@ -5,6 +5,15 @@
 
 #include "../../_support/expect.h"
 #include "rgdiagnosis.h"
+#include "remotecontrol.h"
+
+#include <QByteArray>
+#include <QDir>
+#include <QFile>
+#include <QFileInfo>
+#include <QJsonDocument>
+#include <QJsonObject>
+#include <QTemporaryDir>
 
 #include <QString>
 #include <QStringList>
@@ -512,4 +521,58 @@ TEST(McpWorkspaceSearch, Ants4650NoCallSiteHardcodesTheOneCause) {
     EXPECT_EQ(rc.find("rg failed to start (is ripgrep installed?)"),
               std::string::npos)
         << "a call site still hardcodes the single-cause message";
+}
+
+// ANTS-5117 — a glob holding `/` under a lane matched nothing. rg runs from
+// the project root with the lane as its path argument, and such a glob
+// anchors at rg's working directory. Behavioural, through the real verb and
+// ripgrep, against a fixture tree.
+TEST(McpWorkspaceSearch, Ants5117SlashGlobResolvesUnderLane) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString root = QFileInfo(tmp.path()).canonicalFilePath();
+    for (const char *rel : {"tests/features/alpha/a.cpp",
+                            "tests/features/beta/b.cpp",
+                            "tests/features/gamma/c.cpp"}) {
+        const QString p = root + QLatin1Char('/') + QString::fromUtf8(rel);
+        QDir().mkpath(QFileInfo(p).path());
+        QFile f(p);
+        ASSERT_TRUE(f.open(QIODevice::WriteOnly));
+        f.write("needle_5117\n");
+    }
+
+    const auto count = [&root](const QJsonObject &extra) {
+        QJsonObject req = extra;
+        req[QStringLiteral("caller_cwd")] = root;
+        req[QStringLiteral("pattern")] = QStringLiteral("needle_5117");
+        req[QStringLiteral("count_only")] = true;
+        RemoteControl rc(nullptr);
+        const QJsonObject o = rc.cmdWorkspaceSearch(req).object();
+        EXPECT_TRUE(o.value(QStringLiteral("ok")).toBool())
+            << QJsonDocument(o).toJson().constData();
+        return o.value(QStringLiteral("count")).toInt(-1);
+    };
+    const QString lane = QStringLiteral("tests/features");
+
+    EXPECT_EQ(count({{QStringLiteral("lane"), lane},
+                     {QStringLiteral("glob"), QStringLiteral("{alpha,beta}/*.cpp")}}),
+              2)
+        << "a slash glob under a lane resolves against the lane - the reported defect";
+    EXPECT_EQ(count({{QStringLiteral("glob"),
+                      QStringLiteral("tests/features/{alpha,beta}/*.cpp")}}),
+              2)
+        << "the root-relative spelling with no lane is unchanged";
+    EXPECT_EQ(count({{QStringLiteral("lane"), lane},
+                     {QStringLiteral("glob"),
+                      QStringLiteral("tests/features/{alpha,beta}/*.cpp")}}),
+              2)
+        << "a glob that already names the lane is not prefixed twice";
+    EXPECT_EQ(count({{QStringLiteral("lane"), lane},
+                     {QStringLiteral("exclude_glob"), QStringLiteral("gamma/**")}}),
+              2)
+        << "a slash exclude_glob under a lane excludes what it names";
+    EXPECT_EQ(count({{QStringLiteral("lane"), lane},
+                     {QStringLiteral("glob"), QStringLiteral("*.cpp")}}),
+              3)
+        << "a glob with no slash still matches at any depth";
 }

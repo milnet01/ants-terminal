@@ -70,3 +70,13 @@ passed in, rather than classified there.
 - Output-shape JSON validation. The `{matches[], truncated,
   elapsed_ms}` envelope is enforced by the body's own structure;
   source-grep covers the field names.
+
+## ANTS-5117 — a slash glob under a lane
+
+With `lane` set, a `glob` or `exclude_glob` entry that contains `/` is
+resolved against the lane: `{alpha,beta}/*.cpp` under lane `tests/features`
+matches `tests/features/alpha/*.cpp` and `tests/features/beta/*.cpp`. An entry
+that already starts with the lane path, or starts with `**/`, is passed
+unchanged, as is any entry with no `/`. *Test:*
+`McpWorkspaceSearch.Ants5117SlashGlobResolvesUnderLane`, through the real verb
+and ripgrep on a fixture tree.
