@@ -72084,6 +72084,277 @@ merit whether or not the rest is built.
 
 ---
 
+## Coder-helper systems (research 2026-09-14)
+
+User request 2026-09-14: systems that help people coding in Ants and help Claude
+while coding, preferring ones that cost little or no tokens, with improved
+memory management. Candidates come from a web research pass over 2025-2026
+developer surveys, AI-coding pain-point write-ups and terminal feature work,
+checked against the live tool catalogue and this roadmap. Ranked by value to
+coders against token cost. Items 1-12 are planned; the rest are considered. The
+command ledger is the foundation several others read from.
+
+- 📋 [ANTS-5162] **Shrink shell-command output before it reaches Claude, keeping the full text behind a handle.**
+  Research rank 1 of 24. A Claude Code hook after each shell command
+  sends the output to Ants, which keeps the full text behind a
+  read_spill handle and returns only the exit code, the error blocks
+  recent_errors already recognises, and the last 20 lines. Tools that
+  filter output this way report large savings. The parts exist
+  (recent_errors, read_spill); the automatic step is new. Depends on a
+  Claude Code hook actually reaching Ants: check that path is live
+  first. Research links — https://boringbot.substack.com/p/how-to-save-millions-in-claude-tokens
+  https://www.firecrawl.dev/blog/claude-code-token-efficiency
+  **Layman:** Long build and test logs stop flooding Claude's memory; Claude sees the errors and the ending, and can fetch the rest when needed.
+  Kind: feature.
+  Source: user-request-2026-09-14 (coder-helper research).
+
+- 📋 [ANTS-5163] **Record every shell command's exit code, duration and output tail in a queryable command ledger.**
+  Research rank 2 of 24, and the foundation several items in this
+  section read from. Ants already parses OSC 133 prompt marks; write
+  each finished command (tab, cwd, exit code, duration, an output
+  fingerprint, the last 20 lines) to a local table with a row cap, and
+  add a command_history verb {failed_only, cwd, since, grep} returning
+  short rows. get_last_command keeps only the latest command. Would
+  absorb ANTS-3539 (auto-capture of the last build or test result).
+  State a memory and disk budget at design time.
+  Research links — https://github.com/atuinsh/atuin
+  **Layman:** Ants remembers every command run in each tab, whether it failed and how long it took, so you or Claude can ask what failed recently.
+  Kind: feature.
+  Source: user-request-2026-09-14 (coder-helper research).
+
+- 📋 [ANTS-5164] **Warn when Claude repeats the same tool call or the same failing command with unchanged output.**
+  Research rank 3 of 24. Ants serves every MCP call and, with the
+  command ledger, sees every shell command. Three identical calls, or
+  the same failing command with the same output fingerprint, raise a
+  status-bar warning and add one line to Claude's next reply. Related
+  to ANTS-2083 (auto-304 for repeat calls), which saves the bytes but
+  does not warn. Research links — https://getunblocked.com/blog/ai-agent-doom-loop/
+  **Layman:** Ants notices when Claude is going round in circles and says so, before more time and tokens are spent.
+  Kind: feature.
+  Source: user-request-2026-09-14 (coder-helper research).
+
+- 📋 [ANTS-5165] **Snapshot the working state before Claude Code compacts, and restore a short note afterwards.**
+  Research rank 4 of 24; memory management. A pre-compaction hook asks
+  Ants to save, with no model involved: workflow_state, the roadmap
+  item in progress, files changed per git, and the last failing
+  command from the command ledger. The post-compaction hook returns a
+  note of about 1 KB. Near ANTS-3563 (compaction advisor) and
+  ANTS-4746 (recover subagent returns); neither is a snapshot and
+  restore. Research links — https://github.com/anthropics/claude-code/issues/43733
+  **Layman:** When Claude's conversation is squeezed to make room, the important working details are saved and handed back instead of lost.
+  Kind: feature.
+  Source: user-request-2026-09-14 (coder-helper research).
+
+- 📋 [ANTS-5166] **Build a fact-only handoff note when a Claude session ends, and return it from session_orient.**
+  Research rank 5 of 24; memory management. At session end Ants
+  assembles the git diff summary, commands that failed, tests still
+  red, roadmap items touched and uncommitted files; session_orient
+  returns it as last_session. session_brief and session_orient
+  describe the repository, not the interrupted work. Replaces
+  hand-written session state notes.
+  Research links — https://docs.cline.bot/best-practices/memory-bank
+  **Layman:** A new Claude session starts knowing what the last one was in the middle of, without anyone writing notes by hand.
+  Kind: feature.
+  Source: user-request-2026-09-14 (coder-helper research).
+
+- 📋 [ANTS-5167] **Store corrections as trigger-and-rule lessons that load only when the current task matches.**
+  Research rank 6 of 24; memory management. A lesson verb stores
+  entries shaped as a trigger (a file pattern, tool name or error
+  fingerprint), a rule, and where it came from. task_priors and
+  invariant_check return only the lessons whose trigger matches the
+  files or task at hand. Auto-memory today loads its whole index at
+  start-up whether relevant or not.
+  Research links — https://dev.to/xinandeq/your-ai-agent-keeps-making-yesterdays-mistakes-52k4
+  **Layman:** Claude remembers past corrections at the moment they matter, instead of loading a long notes file every session.
+  Kind: feature.
+  Source: user-request-2026-09-14 (coder-helper research).
+
+- 📋 [ANTS-5168] **Remember which commit fixed a recurring error, and say so when that error appears again.**
+  Research rank 7 of 24; memory management. Normalise error text
+  (paths and numbers stripped) into a fingerprint. When a failing
+  command in the command ledger is followed by a green run, link the
+  fingerprint to the commit that fixed it; recent_errors then adds a
+  seen-before line naming that commit and file. Depends on the command
+  ledger item in this section.
+  **Layman:** When an error shows up that was fixed before, Ants points at the earlier fix instead of it being debugged from scratch.
+  Kind: feature.
+  Source: user-request-2026-09-14 (coder-helper research).
+
+- 📋 [ANTS-5169] **Terminal-reading MCP verbs hand scrollback and selections to Claude with no secret redaction.**
+  Research rank 8 of 24. Measured 2026-09-14: a search for redaction
+  across src/remotecontrol_terminal.cpp, remotecontrol_state.cpp,
+  remotecontrol.cpp and claudeintegration.cpp finds only
+  SecretRedact::stripUrlCredentials, on one repository URL in the
+  last_audit_summary envelope. get_scrollback, get_text,
+  last_selection and recent_errors pass terminal text through as is.
+  The AI request path already redacts (ANTS-4243, ANTS-5042), so the
+  scrubber exists to reuse. Also flash the status bar when Claude
+  reads a file matching `.env*`, `*.pem` or `id_*`.
+  Research links — https://www.knostic.ai/blog/claude-cursor-env-file-secret-leakage
+  **Layman:** Passwords or keys shown in the terminal can be copied into Claude's context; Ants should hide them first.
+  Kind: security.
+  Source: user-request-2026-09-14 (coder-helper research).
+
+- 📋 [ANTS-5170] **Group Review Changes by the Claude turn that made each edit, including files changed by shell commands.**
+  Research rank 9 of 24. Claude Code hooks reaching Ants carry each
+  Edit, Write and shell call; record them with the prompt turn that
+  caused them and add a group-by-turn view to Review Changes, which
+  groups by git state today.
+  Research links — https://addyosmani.com/blog/agentic-code-review/
+  **Layman:** You can see which of Claude's steps changed which files, which makes its work much easier to check.
+  Kind: feature.
+  Source: user-request-2026-09-14 (coder-helper research).
+
+- 📋 [ANTS-5171] **Snapshot the working tree at the start of each Claude turn so a turn can be undone, shell changes included.**
+  Research rank 10 of 24. At each prompt start Ants records
+  `git stash create` under a private ref (no commit, no branch);
+  Review Changes gains a restore-to-before-this-turn action. Claude
+  Code's own rewind does not undo rm, mv or cp run through the shell.
+  Needs a retention cap on the refs.
+  Research links — https://thepromptshelf.dev/blog/claude-code-checkpointing-rewind-guide-2026/
+  **Layman:** An undo button for one of Claude's steps, which also covers files it deleted or moved with shell commands.
+  Kind: feature.
+  Source: user-request-2026-09-14 (coder-helper research).
+
+- 📋 [ANTS-5172] **List each tab's background processes, listening ports and cc-job jobs, with a stop-tree action.**
+  Research rank 11 of 24. Ants knows each tab's process tree; a
+  processes verb lists live children with their listening ports (from
+  /proc) and age, plus cc-job jobs (the long-running job helper at
+  /mnt/Games/Scripts/Linux/cc-jobs, not in this repo) with status and
+  log tail. A stop-tree action sends SIGTERM, then SIGKILL.
+  Research links — https://dev.to/forgeflows/why-ai-agents-fail-at-long-running-process-management-gjo
+  **Layman:** See and stop leftover servers and background jobs Claude started, instead of hitting 'address already in use'.
+  Kind: feature.
+  Source: user-request-2026-09-14 (coder-helper research).
+
+- 📋 [ANTS-5173] **Measure what loads into every Claude session at start-up and flag stale or duplicated entries.**
+  Research rank 12 of 24; memory management. A dialog and a verb
+  measure the bytes loaded at session start (CLAUDE.md files,
+  MEMORY.md, the skill list, tool schemas) and flag entries that are
+  dated, superseded, duplicated or point at missing files. The linked
+  Claude Code docs describe a load limit on MEMORY.md.
+  Research links — https://code.claude.com/docs/en/memory
+  **Layman:** Shows how much of Claude's memory is used before any work starts, and which notes are out of date, so every session gets cheaper.
+  Kind: feature.
+  Source: user-request-2026-09-14 (coder-helper research).
+
+- 💭 [ANTS-5174] **Break the context gauge down by source and warn at a chosen fill level.**
+  Research rank 13 of 24; memory management. Extend the status-bar
+  context gauge with a click-through splitting usage into tool
+  results, file reads, instructions and conversation, read from the
+  transcript, plus a warning at a configurable percentage.
+  token_usage counts MCP calls only.
+  Research links — https://towardsdatascience.com/governed-context-managing-context-rot-in-claude-code/
+  **Layman:** See what is filling Claude's memory (file reads, tool results, instructions) and get a warning before it gets too full.
+  Kind: enhancement.
+  Source: user-request-2026-09-14 (coder-helper research).
+
+- 💭 [ANTS-5175] **Keep per-test pass and fail history per commit, and tag tests that flip on one commit as likely flaky.**
+  Research rank 14 of 24; memory management. test_results op=record
+  already stores runs; add per-test history per commit and a flaky
+  score. A test that both passed and failed on one commit is tagged
+  likely_flaky in its results.
+  Research links — https://bug0.com/blog/true-cost-of-flaky-tests-2026
+  **Layman:** Ants learns which tests fail at random, so nobody wastes time fixing code that is not broken.
+  Kind: feature.
+  Source: user-request-2026-09-14 (coder-helper research).
+
+- 💭 [ANTS-5176] **Add a ranked, size-capped mode to codebase_index weighted toward the files in the current diff.**
+  Research rank 15 of 24; memory management. codebase_index
+  mode:ranked budget_bytes:N ranks symbols over the call graph
+  find_caller already builds, weighted toward files in the working
+  diff, in the manner of Aider's repo map.
+  Research links — https://aider.chat/docs/repomap.html
+  **Layman:** Give Claude a short map of the most important code for the current change, within a fixed size.
+  Kind: enhancement.
+  Source: user-request-2026-09-14 (coder-helper research).
+
+- 💭 [ANTS-5177] **Full-text search over a project's past Claude Code transcripts.**
+  Research rank 16 of 24; memory management. A full-text index over
+  the project's transcripts and a transcript_search {q} verb returning
+  up to five snippets with session ids. The session browser browses
+  and resumes sessions but does not search them; ANTS-4746 covers
+  subagent returns only. The index needs a size cap.
+  Research links — https://mem0.ai/blog/how-memory-works-in-claude-code
+  **Layman:** Find what an earlier session said or decided, such as why an approach was dropped.
+  Kind: feature.
+  Source: user-request-2026-09-14 (coder-helper research).
+
+- 💭 [ANTS-5178] **Record small design decisions with the rejected alternative, surfaced for the files being touched.**
+  Research rank 17 of 24; memory management. A decision verb appends
+  one row (choice, alternative rejected, reason, files) to the store;
+  task_priors returns rows for the files at hand and Review Changes
+  shows them. Overlaps the lesson and per-turn timeline items in this
+  section; decide the three together.
+  Research links — https://dev.to/rakbro/ai-code-review-in-2026-the-hard-part-isnt-the-code-457c
+  **Layman:** Keeps a short note of why something was done a certain way, shown when someone works on that code again.
+  Kind: feature.
+  Source: user-request-2026-09-14 (coder-helper research).
+
+- 💭 [ANTS-5179] **Mark risky hunks in Review Changes: spec-guarded files, deleted tests, and code changed with no test change.**
+  Research rank 18 of 24. invariant_check already maps files to the
+  specs guarding them; connect it to Review Changes and add markers
+  for deleted tests, source changes with no test change, and large
+  deletions. Research links — https://survey.stackoverflow.co/2025/ai
+  **Layman:** Review Changes highlights the parts of Claude's work most worth a careful look.
+  Kind: enhancement.
+  Source: user-request-2026-09-14 (coder-helper research).
+
+- 💭 [ANTS-5180] **Send a command block to Claude as a short handle instead of pasted output.**
+  Research rank 19 of 24. Command blocks (ANTS-4146) exist; a Send to
+  Claude action inserts a handle such as @block:42, which a verb reads
+  back in summary or full form.
+  Research links — https://dev.to/shrsv/state-of-linux-terminal-emulators-in-2026-1gh5
+  **Layman:** Right-click a command's output and hand it to Claude by reference, so long output is not pasted into the chat.
+  Kind: enhancement.
+  Source: user-request-2026-09-14 (coder-helper research).
+
+- 💭 [ANTS-5181] **Notify when a background tab's Claude session is waiting for input, and show a waiting count in the title.**
+  Research rank 20 of 24. The per-tab state dot and the
+  command-complete notification (ANTS-1214) exist; add a rate-limited
+  desktop notification when a background tab turns awaiting-input or
+  finishes, and a waiting count in the window title.
+  Research links — https://code.claude.com/docs/en/agent-view
+  **Layman:** When several Claude sessions run at once, you are told which one needs you.
+  Kind: enhancement.
+  Source: user-request-2026-09-14 (coder-helper research).
+
+- 💭 [ANTS-5182] **Show Claude plan usage against the five-hour and weekly limits in the status bar.**
+  Research rank 21 of 24. Read the local Claude Code session logs, as
+  the ccusage tool does, and show the current window, weekly use and a
+  per-project estimate. token_usage counts MCP calls only.
+  Research links — https://fast.io/resources/claude-code-usage-guide/
+  **Layman:** See how close you are to your Claude plan's usage limits without leaving the terminal.
+  Kind: feature.
+  Source: user-request-2026-09-14 (coder-helper research).
+
+- 💭 [ANTS-5183] **Teach focused_test which tests an edit tends to break, for files with no coverage mapping.**
+  Research rank 22 of 24. focused_test covers mapped files; for
+  unmapped ones, learn edit-to-failing-test links from the command
+  ledger and the flaky-test history items in this section, which it
+  depends on.
+  Research links — https://qaskills.sh/blog/test-impact-analysis-ci-guide-2026
+  **Layman:** Run only the tests likely to be affected by a change, learned from past failures.
+  Kind: enhancement.
+  Source: user-request-2026-09-14 (coder-helper research).
+
+- 💭 [ANTS-5184] **Flag instruction-like text in terminal output returned to Claude as a possible prompt injection.**
+  Research rank 23 of 24. Add a warning field to terminal-reading
+  replies when the text carries phrases such as 'ignore previous
+  instructions'. A signal, not a block: expect false alarms.
+  Research links — https://www.cequence.ai/blog/ai/even-the-best-ai-agents-leak-secrets-prompt-injection-is-why/
+  **Layman:** Warn Claude when program output contains text that looks like it is trying to give Claude orders.
+  Kind: security.
+  Source: user-request-2026-09-14 (coder-helper research).
+
+- 💭 [ANTS-5185] **A per-project notes pane the user types into and Claude reads through session_memory.**
+  Research rank 24 of 24. session_memory and session_message exist;
+  only the pane is new.
+  Research links — https://cline.bot/blog/memory-bank-how-to-make-cline-an-ai-agent-that-never-forgets
+  **Layman:** A shared notepad where you leave Claude standing instructions for this project.
+  Kind: enhancement.
+  Source: user-request-2026-09-14 (coder-helper research).
+
 ## 0.7.80–0.7.84 — post-0.7.79 user-feedback rolling sweep — shipped 2026-05-10 → 2026-05-11
 
 **Theme:** rolling sweep of small high-signal user-experience fixes
