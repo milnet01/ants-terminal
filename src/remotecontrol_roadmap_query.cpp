@@ -3107,7 +3107,10 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
         // sections; the truly-opaque "no bullets + no headings" case
         // still refuses with the typed error. ANTS-1463 adds the
         // shared hint + expected_format envelope fields.
+        // ANTS-4861 — a store that answered with zero items is a complete
+        // answer, not a parse failure, so the fallback is for markdown only.
         if (m_roadmapCacheBullets.isEmpty() &&
+            m_roadmapCacheSource != QLatin1String("store") &&
             fi.size() > kRoadmapMinParseableSize) {
             // section_index mode populated m_roadmapIndex upstream
             // (line ~1410); reuse it for the fallback.
@@ -4050,7 +4053,12 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
     // ANTS-1463 — refusal envelope carries shared hint +
     // expected_format[] fields so callers can act on what the
     // parser was expecting without reading the source.
+    //
+    // ANTS-4861 — never on a store-served read. A migrated project whose store
+    // holds no items has no bullets because it has no items; the fallback sent
+    // the caller back to Read the markdown the store replaces.
     if (m_roadmapCacheBullets.isEmpty() &&
+        m_roadmapCacheSource != QLatin1String("store") &&
         fi.size() > kRoadmapMinParseableSize) {
         // Bullets-mode fallback (ANTS-1462): re-read the file for
         // a lazy buildIndex. This is the refusal path — cost of
@@ -4544,7 +4552,10 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
         for (const auto &v : std::as_const(m_roadmapCacheBullets)) {
             if (!shouldDropUnnumbered(v)) { fileHasIdBearingBullet = true; break; }
         }
+        // ANTS-4861 — not on a store-served read: every stored item carries an
+        // id, so an empty set there means no items, never an unparsed format.
         if (!fileHasIdBearingBullet &&
+            m_roadmapCacheSource != QLatin1String("store") &&
             !includeNarratorBullets && !includeSectionHeaders) {
             out["parseable_bullets"] = 0;
             out["warning"] = QStringLiteral(

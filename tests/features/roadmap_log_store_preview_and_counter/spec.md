@@ -69,3 +69,14 @@ kept in step for readers that predict the next id. The markdown path, where the
 counter is the allocation source, never carries the marker. *Tests:*
 `RoadmapLogStorePreviewAndCounter.Ants4969StoreCounterMoveIsMarkedMirrored`,
 `McpRoadmapLogAppendBatch.Ants4969MarkdownCounterIsNotMarkedMirrored`.
+
+## ANTS-4861 — an empty store is answered, not routed around
+
+A migrated project whose store holds no items answers `roadmap_query` from the
+store: `source` is `store` and the bullets arm reports `count` 0, in the bullets
+and the `section_index` arm. The header-inventory fallback, and its hint to Read
+the markdown, is for markdown-served reads only. So is the
+`parseable_bullets: 0` diagnostic and its "format not recognised" warning:
+every stored item carries an id, so an empty store read has nothing unparsed.
+*Test:*
+`RoadmapLogStorePreviewAndCounter.Ants4861EmptyStoreAnswersFromTheStore`.

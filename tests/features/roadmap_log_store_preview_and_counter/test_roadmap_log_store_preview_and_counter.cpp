@@ -323,3 +323,50 @@ TEST(RoadmapLogStorePreviewAndCounter, Ants4969StoreCounterMoveIsMarkedMirrored)
     EXPECT_TRUE(env[QStringLiteral("counter_mirrored")].toBool())
         << "a store-path counter move must be marked as a mirror";
 }
+
+// ANTS-4861 — a migrated project whose store holds no items answers from the
+// store with zero items. It used to fall into the header-inventory fallback,
+// which told the caller to Read the markdown the store replaces. The file is
+// padded past kRoadmapMinParseableSize so that fallback gate is reachable.
+TEST(RoadmapLogStorePreviewAndCounter, Ants4861EmptyStoreAnswersFromTheStore) {
+    QTemporaryDir xdg;
+    QTemporaryDir proj;
+    ASSERT_TRUE(xdg.isValid() && proj.isValid());
+    const QString root = proj.path();
+    QByteArray text = "<!-- ants-roadmap-format: 1 -->\n"
+                      "\n"
+                      "# Demo \xE2\x80\x94 Roadmap\n"
+                      "\n"
+                      "## Work\n"
+                      "\n";
+    for (int i = 0; i < 40; ++i)
+        text += "Prose naming no item, padding the file past the stub size.\n";
+    ASSERT_TRUE(writeFile(root + QStringLiteral("/ROADMAP.md"), text));
+    XdgRedirect redirect(xdg.path());
+    ASSERT_TRUE(migrateDefaultStore(root));
+
+    for (const bool sectionIndex : {false, true}) {
+        const char *arm = sectionIndex ? "section_index" : "bullets";
+        QJsonObject req;
+        req[QStringLiteral("caller_cwd")] = root;
+        if (sectionIndex)
+            req[QStringLiteral("mode")] = QStringLiteral("section_index");
+        RemoteControl rc(nullptr);
+        const QJsonObject o = rc.cmdRoadmapQuery(req).object();
+        const std::string dump = QJsonDocument(o).toJson().toStdString();
+        ASSERT_TRUE(o.value(QStringLiteral("ok")).toBool()) << arm << ": " << dump;
+        EXPECT_NE(o.value(QStringLiteral("mode")).toString(),
+                  QStringLiteral("header_inventory_fallback"))
+            << arm << " fell back to the file on a store-backed project: " << dump;
+        EXPECT_EQ(o.value(QStringLiteral("source")).toString(),
+                  QStringLiteral("store")) << arm << ": " << dump;
+        if (!sectionIndex) {
+            EXPECT_EQ(o.value(QStringLiteral("count")).toInt(-1), 0) << dump;
+            // Zero items is not a parse failure, so the prose-roadmap
+            // diagnostic must not claim the format went unrecognised.
+            EXPECT_FALSE(o.contains(QStringLiteral("parseable_bullets"))) << dump;
+            EXPECT_FALSE(o.value(QStringLiteral("warning")).toString().contains(
+                QStringLiteral("format not recognised"))) << dump;
+        }
+    }
+}
