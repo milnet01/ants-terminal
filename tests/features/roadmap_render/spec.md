@@ -44,3 +44,12 @@ binary that still links green.
 `Inv11SingleElementReader` is the one source-scrape case, and deliberately so —
 it asserts a *refit* rather than a behaviour, and the thing it must prove is
 that no second reader exists anywhere under `src/`.
+
+## ANTS-5016 — an unchanged file is not rewritten
+
+A render compares each owned file's rendered bytes with the file on disk. A file
+that already matches is not staged or committed, keeps its modification time,
+and is listed in `Outcome::filesUnchanged` instead of `filesWritten`; the two
+lists are disjoint and together name every owned file. A dry run makes the same
+comparison, read-only, so it still changes nothing (INV-14). *Test:*
+`RoadmapRender.Ants5016UnchangedFilesAreNotRewritten`.

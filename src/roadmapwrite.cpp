@@ -481,7 +481,10 @@ Result commitAndRender(RoadmapStore &store, qint64 projectId,
         const QSet<QString> rendered(dry->renderedIds.cbegin(), dry->renderedIds.cend());
         QStringList dropped;
         QSet<QString> seen;
-        for (const QString &path : std::as_const(dry->filesWritten)) {
+        // ANTS-5016 — an unchanged file is still a published file whose ids
+        // count, so the guard reads both halves and its coverage is unchanged.
+        const QStringList owned = dry->filesWritten + dry->filesUnchanged;
+        for (const QString &path : owned) {
             for (const QString &id : fileIds(path)) {
                 if (rendered.contains(id) || seen.contains(id))
                     continue;

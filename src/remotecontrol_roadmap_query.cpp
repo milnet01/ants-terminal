@@ -193,6 +193,12 @@ void rcdetail::rcRoadmapWriteFields(QJsonObject &out,
         out[QStringLiteral("files_written")] =
             QJsonArray::fromStringList(outcome.filesWritten);
     }
+    // ANTS-5016 — files the render left alone because their bytes already
+    // matched. A comparison result, not a write claim, so one name serves a
+    // real run and a dry run.
+    if (!outcome.filesUnchanged.isEmpty())
+        out[QStringLiteral("files_unchanged")] =
+            QJsonArray::fromStringList(outcome.filesUnchanged);
     out[QStringLiteral("items_rendered")] = outcome.itemsRendered;
 
     // ANTS-4462 / ANTS-4465 — what the publish overwrote that the store never

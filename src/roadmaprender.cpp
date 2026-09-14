@@ -7,6 +7,7 @@
 #include "roadmapstore.h"
 
 #include <QDir>
+#include <QFile>
 #include <QFileInfo>
 #include <QHash>
 #include <QJsonArray>
@@ -576,7 +577,21 @@ std::optional<Outcome> render(RoadmapStore &store, qint64 projectId,
     if (contentOut)
         *contentOut = contentOf;
 
-    out.filesWritten = fileOrder;
+    // ANTS-5016 — a file whose rendered bytes are already on disk is not
+    // rewritten. Every owned file used to be rewritten on every write, which
+    // bumped the archives' mtimes and named them in filesWritten, so a caller
+    // staging from that list staged no-ops. The comparison only reads, so a dry
+    // run still changes nothing (INV-14) and reports the split a real pass makes.
+    QStringList toWrite;
+    for (const QString &path : std::as_const(fileOrder)) {
+        QFile current(path);
+        if (current.open(QIODevice::ReadOnly)
+            && current.readAll() == contentOf.value(path).toUtf8())
+            out.filesUnchanged.append(path);
+        else
+            toWrite.append(path);
+    }
+    out.filesWritten = toWrite;
     if (opts.dryRun) {
         // INV-14 — nothing is opened, so nothing can change, not even an mtime.
         out.committed = true;
@@ -586,11 +601,11 @@ std::optional<Outcome> render(RoadmapStore &store, qint64 projectId,
     // § 2.7 / INV-6 — stage every file before committing any, so no failure in
     // rendering, gating or serialising can leave a half-updated project.
     std::vector<std::unique_ptr<QSaveFile>> staged;
-    staged.reserve(size_t(fileOrder.size()));
+    staged.reserve(size_t(toWrite.size()));
     // ANTS-4780 — shared by now: `out.filesWritten = fileOrder` above bumped
     // the refcount, so this loop would otherwise detach. The earlier loop over
     // the same list runs BEFORE that assignment and is genuinely unshared.
-    for (const QString &path : std::as_const(fileOrder)) {
+    for (const QString &path : std::as_const(toWrite)) {
         auto f = std::make_unique<QSaveFile>(path);
         if (!f->open(QIODevice::WriteOnly | QIODevice::Text)) {
             fail(error, QStringLiteral("could not open %1: %2").arg(path, f->errorString()));
@@ -608,15 +623,15 @@ std::optional<Outcome> render(RoadmapStore &store, qint64 projectId,
     // here can land some of them. § 2.7 reports it rather than hiding it — and
     // reporting needs a channel that survives, which nullopt is not.
     QStringList landed;
-    for (int i = 0; i < fileOrder.size(); ++i) {
+    for (int i = 0; i < toWrite.size(); ++i) {
         if (!staged[size_t(i)]->commit()) {
             fail(error, QStringLiteral("commit failed for %1 after %2 file(s) had landed")
-                            .arg(fileOrder.at(i)).arg(landed.size()));
+                            .arg(toWrite.at(i)).arg(landed.size()));
             out.filesWritten = landed;
             out.committed = false;
             return out;   // ENGAGED, so filesWritten survives
         }
-        landed.append(fileOrder.at(i));
+        landed.append(toWrite.at(i));
     }
 
     out.filesWritten = landed;

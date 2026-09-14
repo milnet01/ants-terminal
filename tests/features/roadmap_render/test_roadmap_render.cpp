@@ -804,3 +804,38 @@ TEST(RoadmapRender, Inv6AllOrNothing) {
     EXPECT_FALSE(QFileInfo::exists(f->liveAbs()))
         << "the live roadmap landed while a sibling failed — files written without staging";
 }
+
+// ANTS-5016 — a second render of an unchanged store rewrites nothing. Every
+// owned file was rewritten on every write, bumping its mtime and naming it in
+// filesWritten, so a caller staging from that list staged no-ops.
+TEST(RoadmapRender, Ants5016UnchangedFilesAreNotRewritten) {
+    auto f = makeFixture();
+    ASSERT_TRUE(f);
+    QString err;
+    const auto sec = f->store->addSection(f->projectId, QStringLiteral("s"), QStringLiteral("S"), 2, 1, std::nullopt, &err);
+    ASSERT_TRUE(sec);
+    ASSERT_TRUE(f->store->putItem(mkItem(f->projectId, QStringLiteral("I-1"), QStringLiteral("One."), *sec, 0), &err));
+
+    const auto first = RoadmapRender::render(*f->store, f->projectId, f->root(), liveOpts(*f), &err);
+    ASSERT_TRUE(first) << err.toStdString();
+    ASSERT_EQ(first->filesWritten.size(), 1) << "a new file is written";
+    EXPECT_TRUE(first->filesUnchanged.isEmpty());
+
+    // Backdate the file, so a rewrite would show in its modification time.
+    const QDateTime past = QDateTime::currentDateTime().addSecs(-3600);
+    {
+        QFile fh(f->liveAbs());
+        ASSERT_TRUE(fh.open(QIODevice::ReadWrite));
+        ASSERT_TRUE(fh.setFileTime(past, QFileDevice::FileModificationTime));
+    }
+    const QDateTime before = QFileInfo(f->liveAbs()).lastModified();
+
+    const auto second = RoadmapRender::render(*f->store, f->projectId, f->root(), liveOpts(*f), &err);
+    ASSERT_TRUE(second) << err.toStdString();
+    EXPECT_TRUE(second->committed);
+    EXPECT_TRUE(second->filesWritten.isEmpty())
+        << "a byte-identical file is not rewritten";
+    EXPECT_EQ(second->filesUnchanged.size(), 1);
+    EXPECT_EQ(QFileInfo(f->liveAbs()).lastModified(), before)
+        << "an unchanged file keeps its modification time";
+}

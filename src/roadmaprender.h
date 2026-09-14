@@ -64,6 +64,10 @@ struct Options {
 
 struct Outcome {
     QStringList filesWritten;   // what landed (or, under dryRun, what would have)
+    // ANTS-5016 — files whose rendered bytes were already on disk, so they were
+    // not rewritten (their mtime is untouched). Disjoint from filesWritten; the
+    // two together are every file the render owns.
+    QStringList filesUnchanged;
     // false together with a non-empty filesWritten is the partial-commit case
     // § 2.7 documents: QSaveFile::commit() is per file, so the commit phase is
     // the one window staging cannot close.

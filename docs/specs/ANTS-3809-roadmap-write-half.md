@@ -854,7 +854,7 @@ project, the corpus's largest roadmap:
 file, edits a `QStringList` and writes the whole file back through `QSaveFile` —
 the same bytes. What is new is the second store walk, and the two archive files
 the render rewrites whether or not they changed (`render()` stages every file it
-emits; it has no unchanged-skip). The archives are 12 KB, so the cost is
+emits; until ANTS-5016 it had no unchanged-skip). The archives are 12 KB, so the cost is
 mtime churn rather than I/O, and it is worth naming because a `git status` after
 an unrelated `flip` will show them.
 
