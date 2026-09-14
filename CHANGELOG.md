@@ -70,6 +70,12 @@ for security-relevant changes.
 
 ### Fixed
 
+- **doc_lint's table-of-contents fix recognises code blocks the same way the check that reports the gap does** (ANTS-5099)
+  It used its own simpler rule, which could insert a contents row in the
+  wrong place.
+
+- **docs_index reports a failed cache write instead of ignoring it** (ANTS-5099)
+
 - **indie_review_fold_in's narrative mode honours dry_run and no longer writes ROADMAP.md on a preview** (ANTS-5097)
 
 - **verify_changes no longer serves a cached pass when git status fails or times out** (ANTS-5097)

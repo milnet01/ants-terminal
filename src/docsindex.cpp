@@ -654,10 +654,13 @@ QJsonObject serve(const QString &rootCanonical, qint64 nowMs,
     if (needWrite) {
         QDir().mkpath(QFileInfo(cachePath).absolutePath());
         QSaveFile sf(cachePath);
-        if (sf.open(QIODevice::WriteOnly)) {
-            sf.write(QJsonDocument(toJson(idx)).toJson(QJsonDocument::Compact));
-            sf.commit();
-        }
+        // ANTS-5099 — a failed write or commit was ignored, so the next call
+        // saw no cache and rebuilt with nothing said about why.
+        const QByteArray body = QJsonDocument(toJson(idx)).toJson(QJsonDocument::Compact);
+        if (!sf.open(QIODevice::WriteOnly) || sf.write(body) != body.size()
+            || !sf.commit())
+            qWarning("docs_index: cache write to %s failed: %s",
+                     qUtf8Printable(cachePath), qUtf8Printable(sf.errorString()));
     }
 
     return query(idx, params, refreshed, cachePath, opts);

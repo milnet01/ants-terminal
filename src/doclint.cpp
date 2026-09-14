@@ -1,6 +1,7 @@
 // ANTS-3663 — doc_lint engine. See doclint.h for the design and the spec.
 
 #include "doclint.h"
+#include "markdownscan.h"
 
 #include <QDir>
 #include <QFile>
@@ -101,17 +102,11 @@ QString citationMessage(const QJsonObject &e, const QString &status) {
 // string when it is wrong; this rewrites a document the user has not opened, so
 // every uncertainty REFUSES. There is no branch here that guesses.
 
-// A `## heading` or a `[t](#s)` inside a code fence is neither.
-QVector<bool> fenceMap(const QStringList &lines) {
-    static const QRegularExpression fenceRe(QStringLiteral(R"(^\s{0,3}(?:```|~~~))"));
-    QVector<bool> in(lines.size(), false);
-    bool open = false;
-    for (int i = 0; i < lines.size(); ++i) {
-        if (fenceRe.match(lines.at(i)).hasMatch()) { in[i] = true; open = !open; continue; }
-        in[i] = open;
-    }
-    return in;
-}
+// A `## heading` or a `[t](#s)` inside a code fence is neither. ANTS-5099 —
+// the fence rule is MarkdownScan::fenceMask, the one DocIntegrity reports
+// through. A private copy closed a ``` block on ~~~ and missed a fence under a
+// list item, so the writer saw different headings from the check that asked
+// for the patch and could put a TOC row in the wrong place.
 
 struct Hd {
     QString text;
@@ -237,7 +232,7 @@ bool isMissingSectionGap(const QString &message, QString *heading) {
 // meets, which is exactly what INV-18 exists to catch.
 bool patchTocRegion(QStringList &lines, const QList<DocFinding::Finding> &gaps,
                     QString *reason) {
-    const QVector<bool> fence = fenceMap(lines);
+    const QVector<bool> fence = MarkdownScan::fenceMask(lines);
     const QVector<Hd>   heads = headingsOf(lines, fence);
     const TocRegion     toc   = detectTocRegion(lines, fence, heads);
     if (!toc.found) { *reason = QStringLiteral("no_template"); return false; }
