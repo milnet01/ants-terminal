@@ -6155,6 +6155,17 @@ void ClaudeIntegration::onMcpConnection() {
                         ip["old_string"] = osP; ip["new_string"] = nsP;
                         ip["old_text"] = otP; ip["new_text"] = ntP;
                         ip["replace_all"] = rP;
+                        {   // ANTS-4838 — the count guard replace_all lacks.
+                            QJsonObject ecP; ecP["type"] = "integer";
+                            ecP["minimum"] = 0;
+                            ecP["description"] = QStringLiteral(
+                                "Optional, `old` form only. How many times "
+                                "`old` must match; a different count skips "
+                                "the edit as count_mismatch with the real "
+                                "match_count, leaving the file untouched. "
+                                "Refused with a line range.");
+                            ip["expect_count"] = ecP;
+                        }
                         ip["start_line"] = slP; ip["end_line"] = elP;
                         ip["expect_first_line"] = efP;
                         ip["expect_last_line"]  = elnP;

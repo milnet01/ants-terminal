@@ -27,3 +27,14 @@ the `cmdApplyEdits` wrapper and are covered by the W1 source-scrape plus the
 pure-helper behaviour above (the helper does only the in-memory transform).
 
 Label: `features;fast`. Verify each fails against pre-implementation source.
+
+## ANTS-4838 — per-edit counts and `expect_count`
+
+`edit_replacements` lists each applied edit's own count as
+`{index, replacements}`, in input order, in a real run and a dry run alike; an
+edit whose file failed to commit is not listed. An optional per-edit
+`expect_count` (a non-negative integer, `old` form only) skips the edit as
+`count_mismatch`, with `match_count` and `expect_count`, when the number of
+matches differs, before the edit reaches the file. `expect_count` on a line
+range is refused `bad_args`. *Test:*
+`McpApplyEdits.Ants4838PerEditCountsAndExpectCount`.

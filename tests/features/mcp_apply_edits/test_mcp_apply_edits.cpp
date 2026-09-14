@@ -764,3 +764,83 @@ TEST(McpApplyEdits, Ants4936NoPathAnywhereStillRefuses) {
     EXPECT_FALSE(env.value("ok").toBool());
     EXPECT_EQ(env.value("code").toString(), QStringLiteral("bad_args"));
 }
+
+// ANTS-4838 — per-edit replacement counts, and an optional count guard.
+// replace_all is the one edit mode with no uniqueness guard, so how many
+// occurrences it hit IS the check that the pattern was scoped as intended.
+// The reply summed counts per file, so two edits to one file hid each count.
+TEST(McpApplyEdits, Ants4838PerEditCountsAndExpectCount) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString path = tmp.path() + QStringLiteral("/note.txt");
+    const auto writeText = [&](const QByteArray &body) {
+        QFile f(path);
+        ASSERT_TRUE(f.open(QIODevice::WriteOnly | QIODevice::Text));
+        f.write(body);
+    };
+    const auto fileText = [&] {
+        QFile f(path);
+        return f.open(QIODevice::ReadOnly | QIODevice::Text)
+                   ? QString::fromUtf8(f.readAll()) : QString();
+    };
+    const auto edit = [](const char *oldS, const char *newS) {
+        QJsonObject e;
+        e["path"] = QStringLiteral("note.txt");
+        e["old"] = QString::fromUtf8(oldS);
+        e["new"] = QString::fromUtf8(newS);
+        e["replace_all"] = true;
+        return e;
+    };
+    RemoteControl rc(nullptr);
+    QJsonObject req;
+    req["caller_cwd"] = tmp.path();
+
+    // Two edits to one file: the reply names each edit's own count.
+    writeText("a a a b b\n");
+    req["edits"] = QJsonArray{edit("a", "A"), edit("b", "B")};
+    const QJsonObject both = rc.cmdApplyEdits(req).object();
+    ASSERT_TRUE(both.value(QStringLiteral("ok")).toBool());
+    const QJsonArray counts =
+        both.value(QStringLiteral("edit_replacements")).toArray();
+    ASSERT_EQ(counts.size(), 2) << "one entry per applied edit";
+    EXPECT_EQ(counts.at(0).toObject().value("index").toInt(), 0);
+    EXPECT_EQ(counts.at(0).toObject().value("replacements").toInt(), 3);
+    EXPECT_EQ(counts.at(1).toObject().value("index").toInt(), 1);
+    EXPECT_EQ(counts.at(1).toObject().value("replacements").toInt(), 2);
+
+    // A count mismatch skips the edit and leaves the file untouched.
+    writeText("x x x\n");
+    QJsonObject guarded = edit("x", "Y");
+    guarded["expect_count"] = 2;
+    req["edits"] = QJsonArray{guarded};
+    const QJsonObject miss = rc.cmdApplyEdits(req).object();
+    ASSERT_TRUE(miss.value(QStringLiteral("ok")).toBool());
+    const QJsonArray skipped = miss.value(QStringLiteral("skipped")).toArray();
+    ASSERT_EQ(skipped.size(), 1) << "the mismatched edit must be skipped";
+    EXPECT_EQ(skipped.at(0).toObject().value("reason").toString(),
+              QStringLiteral("count_mismatch"));
+    EXPECT_EQ(skipped.at(0).toObject().value("match_count").toInt(), 3);
+    EXPECT_EQ(fileText(), QStringLiteral("x x x\n"));
+
+    // A matching count applies.
+    guarded["expect_count"] = 3;
+    req["edits"] = QJsonArray{guarded};
+    const QJsonObject hit = rc.cmdApplyEdits(req).object();
+    EXPECT_EQ(hit.value(QStringLiteral("edits_applied")).toInt(), 1);
+    EXPECT_EQ(fileText(), QStringLiteral("Y Y Y\n"));
+
+    // expect_count on a line range is refused, not ignored.
+    QJsonObject range;
+    range["path"] = QStringLiteral("note.txt");
+    range["start_line"] = 1;
+    range["end_line"] = 1;
+    range["expect_first_line"] = QStringLiteral("Y Y Y");
+    range["expect_last_line"] = QStringLiteral("Y Y Y");
+    range["new"] = QStringLiteral("Z");
+    range["expect_count"] = 1;
+    req["edits"] = QJsonArray{range};
+    const QJsonObject bad = rc.cmdApplyEdits(req).object();
+    EXPECT_FALSE(bad.value(QStringLiteral("ok")).toBool());
+    EXPECT_EQ(bad.value(QStringLiteral("code")).toString(),
+              QStringLiteral("bad_args"));
+}

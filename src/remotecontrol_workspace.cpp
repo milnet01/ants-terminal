@@ -2623,6 +2623,7 @@ QJsonDocument RemoteControl::cmdApplyEdits(const QJsonObject &req) {
         bool isRange = false;
         int startLine = 0, endLine = 0;
         QString expectFirst, expectLast;
+        int expectCount = -1;   // ANTS-4838 — -1 = no count guard
     };
     QVector<E> es;
     es.reserve(edits.size());
@@ -2691,6 +2692,19 @@ QJsonDocument RemoteControl::cmdApplyEdits(const QJsonObject &req) {
                 ? e.value(QStringLiteral("new_string")).toString()
                 : e.value(QStringLiteral("new_text")).toString();
         rec.replaceAll = e.value(QStringLiteral("replace_all")).toBool(false);
+        // ANTS-4838 — an optional occurrence count for an `old` edit. A line
+        // range replaces one span and has no count, so the pair is refused
+        // rather than silently ignored.
+        if (e.contains(QStringLiteral("expect_count"))) {
+            const QJsonValue ec = e.value(QStringLiteral("expect_count"));
+            const double d = ec.toDouble(-1);
+            if (hasRange || !ec.isDouble() || d < 0 || d != double(qint64(d))) {
+                return argErr(QStringLiteral(
+                    "apply_edits: edit %1 \"expect_count\" must be a "
+                    "non-negative integer on an `old` edit").arg(i));
+            }
+            rec.expectCount = int(d);
+        }
         if (hasOld) {
             if (oldStr.isEmpty())
                 return argErr(QStringLiteral("apply_edits: edit %1 needs a "
@@ -2735,6 +2749,7 @@ QJsonDocument RemoteControl::cmdApplyEdits(const QJsonObject &req) {
     // apply each file's edits in array order and write atomically.
     QJsonArray applied, skipped;
     int editsApplied = 0, editsSkipped = 0, filesWritten = 0;
+    QVector<int> perEdit(edits.size(), -1);   // ANTS-4838 — each edit's count
     QJsonArray wrappedIdx;   // ANTS-4723 — edit indices matched by the wrapped rule
     auto addSkip = [&](int index, const QString &path, const QString &reason) {
         QJsonObject s; s["index"] = index; s["path"] = path; s["reason"] = reason;
@@ -2859,10 +2874,23 @@ QJsonDocument RemoteControl::cmdApplyEdits(const QJsonObject &req) {
                 : ApplyEdits::applyToContent(
                       working, es[k].oldStr, es[k].newStr, es[k].replaceAll,
                       matchWrapped);
+            // ANTS-4838 — the count guard, checked before the edit reaches
+            // `working`, so a mismatch leaves the file as earlier edits left it.
+            if (oc.applied && es[k].expectCount >= 0
+                && oc.replacements != es[k].expectCount) {
+                QJsonObject s;
+                s["index"] = es[k].index; s["path"] = rawPath;
+                s["reason"] = QStringLiteral("count_mismatch");
+                s["match_count"] = oc.replacements;
+                s["expect_count"] = es[k].expectCount;
+                skipped.append(s); ++editsSkipped;
+                continue;
+            }
             if (oc.applied) {
                 working = oc.newContents;
                 fileReplacements += oc.replacements;
                 appliedIdx.push_back(k);
+                perEdit[es[k].index] = oc.replacements;
                 // ANTS-4723 — a wrapped hit re-flowed the span it matched, so
                 // it is never silent: the index is reported and the caller can
                 // check that edit specifically.
@@ -2914,8 +2942,10 @@ QJsonDocument RemoteControl::cmdApplyEdits(const QJsonObject &req) {
             ++filesWritten;
             editsApplied += appliedIdx.size();
         } else {
-            for (int k : appliedIdx)
+            for (int k : appliedIdx) {
                 addSkip(es[k].index, rawPath, QStringLiteral("commit_failed"));
+                perEdit[es[k].index] = -1;
+            }
         }
     }
 
@@ -2952,6 +2982,17 @@ QJsonDocument RemoteControl::cmdApplyEdits(const QJsonObject &req) {
         env["files_written"] = filesWritten;
         env["edits_applied"] = editsApplied;
     }
+    // ANTS-4838 — each applied edit's own count, in input order. `applied[]`
+    // sums them per file, so a replace_all that matched the wrong number was
+    // invisible whenever one file took two edits. A match count, not a write
+    // claim, so it carries the same name in a dry run.
+    QJsonArray editCounts;
+    for (int i = 0; i < perEdit.size(); ++i) {
+        if (perEdit.at(i) < 0) continue;
+        QJsonObject c; c["index"] = i; c["replacements"] = perEdit.at(i);
+        editCounts.append(c);
+    }
+    env["edit_replacements"] = editCounts;
     // ANTS-4723 — announced only when it actually fired, so an absent key
     // means "every edit matched verbatim" rather than "nobody looked".
     if (!wrappedIdx.isEmpty()) {
