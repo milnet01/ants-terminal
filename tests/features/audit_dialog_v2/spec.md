@@ -37,7 +37,9 @@ Testable seams on `AuditDialog` (protected; driven via a test subclass):
 - **INV-11** — `visibleSinceBaseline` keeps a finding iff its `(file,line)`
   is in `recentLines` AND its `dedupKey` is NOT in `baselineFingerprints`.
   Unfiled findings (no file/line) pass the recent test; a finding whose
-  file isn't in the changed set is dropped.
+  file isn't in the changed set is dropped. A path matches a changed path
+  when equal or when the longer one ends with `/` plus the shorter, so
+  `src/foo.cpp` does not match a changed `oo.cpp` (ANTS-5084).
 - **INV-13** — `appendAllowlistEntry(f, reason)` writes exactly one entry
   whose `(rule, path_glob, line_regex)` triple matches `f`; after reload
   `allowlisted(f)` is true and an unrelated finding stays false. The write

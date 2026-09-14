@@ -2913,6 +2913,8 @@ if(ANTS_TESTS)
                 tests/features/audit_sarif_suppressions/test_audit_sarif_suppressions.cpp
                 # ANTS-5083 — auto-fix uses current suppression state; uncapped lanes stay uncapped.
                 tests/features/audit_autofix_guards/test_audit_autofix_guards.cpp
+                # ANTS-5084 — detection walk, banner, HTML escape, warning label, export errors.
+                tests/features/audit_dialog_lows/test_audit_dialog_lows.cpp
                 # ANTS-5083 — suppressions count only once saved; runs read fresh lines.
                 tests/features/audit_suppression_save/test_audit_suppression_save.cpp
                 tests/features/audit_tool_crash_distinct/test_audit_tool_crash_distinct.cpp

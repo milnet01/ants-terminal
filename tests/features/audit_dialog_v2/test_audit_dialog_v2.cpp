@@ -101,6 +101,14 @@ TEST(AuditDialogV2, INV11_VisibleSinceBaseline) {
     EXPECT_TRUE(Dlg::visibleSinceBaseline(
         mkFinding("r", "proj/src/foo.cpp", 12, "m", "k5"),
         recentLines, baseline));
+
+    // ANTS-5084 — the suffix must start at a path separator: a changed
+    // "oo.cpp" is not "src/foo.cpp".
+    QHash<QString, QSet<int>> partial;
+    partial["oo.cpp"] = QSet<int>{12};
+    EXPECT_FALSE(Dlg::visibleSinceBaseline(
+        mkFinding("r", "src/foo.cpp", 12, "m", "k6"),
+        partial, baseline));
 }
 
 // INV-13 — appendAllowlistEntry writes a matching entry; reload makes

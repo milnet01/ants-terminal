@@ -300,17 +300,26 @@ void AuditDialog::detectProject() {
     // whether hadolint / checkov lanes should auto-enable. Kept cheap: a
     // shallow QDirIterator that stops at the first match per kind.
     auto hasAnyFile = [&](const QStringList &patterns, int maxDepth = 3) {
-        QDirIterator it(m_projectPath, patterns, QDir::Files,
-                        QDirIterator::Subdirectories);
-        int iter = 0;
-        while (it.hasNext() && iter < 500) {
-            it.next();
-            ++iter;
-            // Depth cap — count separators in the relative path.
-            const QString rel = m_projectPath.isEmpty()
-                ? it.filePath()
-                : QDir(m_projectPath).relativeFilePath(it.filePath());
-            if (rel.count('/') <= maxDepth) return true;
+        // ANTS-5084 — list only maxDepth directory levels. A recursive
+        // iterator walked every build and dependency tree before the depth
+        // cap applied to a match.
+        constexpr int kMaxDirs = 2000;
+        int dirsSeen = 0;
+        QStringList level{m_projectPath};
+        for (int depth = 0; depth <= maxDepth && !level.isEmpty(); ++depth) {
+            QStringList next;
+            for (const QString &d : std::as_const(level)) {
+                const QDir dir(d);
+                if (!dir.entryList(patterns, QDir::Files).isEmpty()) return true;
+                if (depth == maxDepth) continue;
+                const QStringList subs = dir.entryList(
+                    QDir::Dirs | QDir::NoDotAndDotDot | QDir::NoSymLinks);
+                for (const QString &sub : subs) {
+                    if (++dirsSeen > kMaxDirs) return false;
+                    next << dir.filePath(sub);
+                }
+            }
+            level = next;
         }
         return false;
     };
@@ -2592,6 +2601,18 @@ bool AuditDialog::appendAllowlistEntry(const Finding &f, const QString &reason) 
     return true;
 }
 
+// ANTS-5084 — one file named with different leading directories: equal, or
+// the longer path ends with "/" + the shorter. A bare suffix matched a
+// changed "foo.cpp" to "src/barfoo.cpp".
+static bool pathSuffixMatches(const QString &a, const QString &b) {
+    if (a.isEmpty() || b.isEmpty()) return false;
+    if (a.size() == b.size()) return a == b;
+    const QString &longer  = a.size() > b.size() ? a : b;
+    const QString &shorter = a.size() > b.size() ? b : a;
+    return longer.endsWith(shorter)
+        && longer.at(longer.size() - shorter.size() - 1) == QLatin1Char('/');
+}
+
 // ANTS-1257 v2 — INV-11 "Since baseline" predicate. Pure + static.
 bool AuditDialog::visibleSinceBaseline(
     const Finding &f,
@@ -2606,7 +2627,7 @@ bool AuditDialog::visibleSinceBaseline(
     const auto exact = recentLines.constFind(f.file);
     if (exact != recentLines.constEnd()) return exact->contains(f.line);
     for (auto it = recentLines.constBegin(); it != recentLines.constEnd(); ++it)
-        if (f.file.endsWith(it.key()) || it.key().endsWith(f.file))
+        if (pathSuffixMatches(f.file, it.key()))
             return it->contains(f.line);
     return false;   // file not in the changed set
 }
@@ -3934,15 +3955,17 @@ void AuditDialog::buildUI() {
         // commit gives the same write-rename-fsync atomicity as the
         // Config code path; setOwnerOnlyPerms locks 0600.
         QSaveFile sf(path);
-        if (sf.open(QIODevice::WriteOnly)) {
-            setOwnerOnlyPerms(sf);
-            sf.write(exportSarif().toUtf8());
-            if (sf.commit()) {
-                setOwnerOnlyPerms(path);  // re-chmod final inode
-                m_statusLabel->setFullText("SARIF saved: " + path);
-            } else {
-                m_statusLabel->setFullText("SARIF save failed: " + sf.errorString());
-            }
+        if (!sf.open(QIODevice::WriteOnly)) {  // ANTS-5084 — say so
+            m_statusLabel->setFullText("SARIF save failed: " + sf.errorString());
+            return;
+        }
+        setOwnerOnlyPerms(sf);
+        sf.write(exportSarif().toUtf8());
+        if (sf.commit()) {
+            setOwnerOnlyPerms(path);  // re-chmod final inode
+            m_statusLabel->setFullText("SARIF saved: " + path);
+        } else {
+            m_statusLabel->setFullText("SARIF save failed: " + sf.errorString());
         }
     });
     btnRow->addWidget(m_sarifBtn);
@@ -3962,15 +3985,17 @@ void AuditDialog::buildUI() {
         // same finding metadata, including any leaked-secret strings
         // surfaced by gitleaks rules).
         QSaveFile sf(path);
-        if (sf.open(QIODevice::WriteOnly)) {
-            setOwnerOnlyPerms(sf);
-            sf.write(exportHtml().toUtf8());
-            if (sf.commit()) {
-                setOwnerOnlyPerms(path);
-                m_statusLabel->setFullText("HTML report saved: " + path);
-            } else {
-                m_statusLabel->setFullText("HTML save failed: " + sf.errorString());
-            }
+        if (!sf.open(QIODevice::WriteOnly)) {  // ANTS-5084 — say so
+            m_statusLabel->setFullText("HTML save failed: " + sf.errorString());
+            return;
+        }
+        setOwnerOnlyPerms(sf);
+        sf.write(exportHtml().toUtf8());
+        if (sf.commit()) {
+            setOwnerOnlyPerms(path);
+            m_statusLabel->setFullText("HTML report saved: " + path);
+        } else {
+            m_statusLabel->setFullText("HTML save failed: " + sf.errorString());
         }
     });
     btnRow->addWidget(m_htmlBtn);
@@ -4668,7 +4693,7 @@ void AuditDialog::handleCheckOutput(const QString &output) {
             QString matchedFile = f.file;
             if (!isRecent) {
                 for (const QString &rf : std::as_const(m_recentFiles)) {
-                    if (f.file.endsWith(rf) || rf.endsWith(f.file)) {
+                    if (pathSuffixMatches(f.file, rf)) {
                         isRecent = true;
                         matchedFile = rf;
                         break;
@@ -4986,7 +5011,7 @@ void AuditDialog::renderResults() {
         }
         noiseFloorLine = QString(
             "<br><span style='font-size:10px;'>Signal: "
-            "<span style='color:%1; font-weight:bold;'>%2%% actionable</span> "
+            "<span style='color:%1; font-weight:bold;'>%2% actionable</span> "
             "(%3 / %4%5)%6</span>"
         ).arg(actionableColor,
               QString::number(actionablePct))
@@ -5074,7 +5099,7 @@ void AuditDialog::renderResults() {
               severityLabel(r.severity),
               typeLabel(r.type).toUpper(),
               r.checkName.toHtmlEscaped(),
-              r.warning ? " (timeout)" : "",
+              r.warning ? " (tool issue)" : "",  // timeout or failed start (ANTS-5084)
               r.category.toHtmlEscaped(),
               r.source,
               corroSuffix));
@@ -6041,9 +6066,10 @@ QString AuditDialog::exportHtml() const {
 
     QString payload = QString::fromUtf8(
         QJsonDocument(meta).toJson(QJsonDocument::Compact));
-    // Defuse any </script> lookalikes inside finding messages. JSON parsers
-    // treat "<\/" as equivalent to "</", so this is always safe.
-    payload.replace("</", "<\\/");
+    // Defuse </script> and <!-- lookalikes inside finding messages. '<' only
+    // occurs inside JSON strings, where \\u003c is the same character.
+    // ANTS-5084 — escaping only "</" left <!-- able to blank the page.
+    payload.replace(QLatin1String("<"), QLatin1String("\\u003c"));
 
     // clang-format off
     // Template is a raw string — escape the literal `)"` delimiter only.

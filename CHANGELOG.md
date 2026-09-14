@@ -70,6 +70,14 @@ for security-relevant changes.
 
 ### Fixed
 
+- **Audit window: project detection no longer walks build trees, and exports, labels and the changed-files filter are correct** (ANTS-5084)
+  Opening the audit window lists only the top few folder levels when
+  detecting Docker and Terraform files. The signal banner shows one percent
+  sign. A finding containing an HTML comment opener can no longer blank the
+  HTML report. A
+  tool that failed to start is labelled a tool issue, not a timeout. A
+  failed export says so. A changed oo.cpp no longer matches src/foo.cpp.
+
 - **Audit auto-fix skips findings suppressed after the run, and the contract-drift lanes keep every finding** (ANTS-5083)
   Auto-fix now checks suppressions when it runs, skips findings with no
   line before reading any file, and does not read very large files. The
