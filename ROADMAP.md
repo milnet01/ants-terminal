@@ -8732,6 +8732,14 @@ extends an existing item, that item carries it instead.
   - A refused marshal falls back to the process cwd, against ANTS-2132
     section 2.5.
   - message_id is cast from a double without a range check.
+  Progress (2026-09-14): session_message clamps the inbox limit to 1-200
+  and offset to 0 or more, and range-checks message_id before the cast;
+  changelog_log add_batch refuses more than 200 entries
+  (tests/features/content_verb_bounds). Still open: feedback_query's
+  quadratic trim, last_selection's cap, git_state ignoring GitWrap's
+  truncation flag, add_batch skipping ANTS-4563 routing, the
+  add_from_roadmap summary guard, the two docs walks, and the marshal
+  cwd fallback.
   **Layman:** Smaller fixes to Ants' content tools, including a slow trimming loop and outputs cut short without saying so.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lane mcp-content-verbs).
