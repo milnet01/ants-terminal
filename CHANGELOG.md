@@ -72,6 +72,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **An offloaded reply's per-row preview now samples each object row's own JSON, so every head shows what its row is instead of the same `{"v":` prefix.** (ANTS-5153)
+
 - **`tools/perf-report.sh -R <regex> --save-baseline` now keeps every other benchmark's saved numbers instead of replacing the whole baseline.** (ANTS-5137)
 
 - **The git diff reader ends a file's hunks at a merge-conflict section instead of assigning its lines to the file before it.** (ANTS-5111)

@@ -17469,10 +17469,15 @@ fixes don't address. Roadmapped here as their own design tasks.
   Source: in-session-2026-09-11 (performance pass).
   Lanes: mcp.
 
-- 📋 [ANTS-5153] **An offloaded reply's rows_preview heads all read {"v":{"headl…, so no head shows what its row is.**
+- ✅ [ANTS-5153] **An offloaded reply's rows_preview heads all read {"v":{"headl…, so no head shows what its row is.**
   Seen 2026-09-14 on roadmap_query status:planned kind:fix mode:headline_only, which spilled 77 rows. Every rows_preview entry's head was `{"v":{"headl…` at rows_preview_head_chars 12.
   Cause, read in src/mcpspill.cpp offloadBody: elBytesByRow serialises each row as the object {"v": row} so its length can be summed. For a non-string row the head is then taken from those bytes, so every head starts with the wrapper. The narrowing ladder then shrinks it to the wrapper alone.
   Fix direction: take the head from the row's own compact JSON (the wrapper minus its `{"v":` prefix and closing brace), and add a test whose rows are objects.
+  Resolved (2026-09-14): the head for a non-string row is taken from the
+  row's own compact JSON (the sizing wrapper minus `{"v":` and its
+  closing brace); `bytes` is unchanged. The defect dates to ANTS-4397.
+  Test McpResultOffload.Ants5153ObjectRowHeadsSampleTheRow (60 object
+  rows) fails on the old code and passes now; full suite green.
   **Layman:** When a big answer is saved to a side file, its per-row preview shows the same meaningless prefix for every row instead of a hint of what each row holds.
   Kind: fix.
   Source: in-session-2026-09-14.
