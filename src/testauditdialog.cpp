@@ -159,12 +159,34 @@ void TestAuditDialog::runEnginePartition(bool withPrePass) {
     m_chunks           = pr.chunks;
     m_dimensionsActive = pr.dimensionsActive;
     m_framework        = pr.framework;
+    dropReportsForChangedChunks();
     if (statusLabel())
         statusLabel()->setText(tr("Framework: %1 · %2 chunks · %3 dimensions")
                                    .arg(m_framework)
                                    .arg(m_chunks.size())
                                    .arg(m_dimensionsActive.size()));
     rebuildPanel();
+}
+
+void TestAuditDialog::dropReportsForChangedChunks() {
+    // ANTS-5102 — a token change alone cannot tell a same-tree cache expiry
+    // (INV-6: keep the reports) from a changed tree, where a positional chunk
+    // id now names other files and folding its report in would file findings
+    // about files the chunk no longer covers (ANTS-1722 § 4). Compare the
+    // files each report was written against with the chunk's files now.
+    QHash<QString, QStringList> current;
+    for (const TestAuditEngine::Chunk &c : m_chunks)
+        current.insert(c.id, c.paths);
+    for (auto it = m_collectedReports.begin(); it != m_collectedReports.end();) {
+        const auto now = current.constFind(it.key());
+        if (now == current.cend()
+            || *now != m_collectedChunkPaths.value(it.key())) {
+            m_collectedChunkPaths.remove(it.key());
+            it = m_collectedReports.erase(it);
+        } else {
+            ++it;
+        }
+    }
 }
 
 QList<ReviewLane> TestAuditDialog::derivePartition() {
@@ -312,8 +334,16 @@ LlmRequest TestAuditDialog::composeBrief(const ReviewLane &laneRef) {
 
 void TestAuditDialog::onAllReportsCollected(
     const QHash<QString, QString> &reportsById) {
-    for (auto it = reportsById.constBegin(); it != reportsById.constEnd(); ++it)
+    for (auto it = reportsById.constBegin(); it != reportsById.constEnd(); ++it) {
         m_collectedReports.insert(it.key(), it.value());
+        // ANTS-5102 — remember which files this report was written against.
+        for (const TestAuditEngine::Chunk &c : m_chunks) {
+            if (c.id == it.key()) {
+                m_collectedChunkPaths.insert(c.id, c.paths);
+                break;
+            }
+        }
+    }
 
     // Write each verbatim report under .audit_cache/test_audit_<token>/.
     const QString absDir = projectCwd() + QChar('/') + reportsRelDir();

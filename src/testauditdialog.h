@@ -83,6 +83,9 @@ private:
     // token; the dispatch path needs the cache, because the briefs that
     // follow read each chunk's pre-pass findings out of it.
     void    runEnginePartition(bool withPrePass = true);
+    // ANTS-5102 — drop each collected report whose chunk now covers other
+    // files. Called after every successful partition.
+    void    dropReportsForChangedChunks();
     void    rebuildPanel();
     void    renderResults();
     void    persistResumeState();
@@ -96,6 +99,9 @@ private:
     QString                          m_dimensionsCsv;   // "" = auto
     TestAuditEngine::SynthResult     m_lastSynth;
     QHash<QString, QString>          m_collectedReports;
+    // ANTS-5102 — the files each collected report was written against,
+    // keyed by chunk id.
+    QHash<QString, QStringList>      m_collectedChunkPaths;
     QString                          m_synthText;
 
     FoldInMode m_foldInMode = FoldInMode::PerFinding;

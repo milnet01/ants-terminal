@@ -46,6 +46,13 @@ smoke assertion.
   partial resume against phantom chunk ids. `persistResumeState()` likewise
   unions the prior collection only on a token match, so a second resume of
   an unchanged tree never re-audits the first batch.
+- **INV-12** (ANTS-5102) — a collected report survives a re-partition only
+  while its chunk still covers the same files. INV-6's same-tree refresh
+  keeps every report; when the tree changes, a report whose chunk id now
+  names a different file list is dropped, so `performFoldIn()` never files
+  findings about files the chunk no longer covers (ANTS-1722 § 4). A token
+  change alone cannot tell the two apart, which is why the rule compares the
+  chunk's files and not the token.
 
 Note: the spec names the cache-miss code `stale_token`; the engine
 actually returns `stale_partition` — the dialog (and this test) use the

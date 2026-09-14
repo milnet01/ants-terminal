@@ -224,6 +224,39 @@ TEST(TestAuditDialog, INV6_StaleTokenRepartitions) {
         << "collected reports must survive the re-partition";
 }
 
+// INV-12 (ANTS-5102) — a collected report survives a re-partition only while
+// its chunk still covers the same files. INV-6 keeps reports across a
+// same-tree token refresh; a changed tree must not carry a report for files
+// its chunk id no longer names, or the fold-in files stale findings.
+TEST(TestAuditDialog, INV12_ChangedTreeDropsStaleReports) {
+    QTemporaryDir tmp; ASSERT_TRUE(tmp.isValid());
+    QTemporaryDir mem; ASSERT_TRUE(mem.isValid());
+    buildSuite(tmp.path());
+
+    Dlg dlg(tmp.path(), nullptr, nullptr);
+    dlg.setSessionMemBaseDir(mem.path());
+    ASSERT_FALSE(dlg.chunks().isEmpty());
+    const QString firstChunk = dlg.chunks().first().id;
+    const QStringList before = dlg.chunks().first().paths;
+
+    QHash<QString, QString> reports;
+    reports.insert(firstChunk, QStringLiteral("## finding\n"));
+    dlg.onAllReportsCollected(reports);
+    ASSERT_FALSE(dlg.collectedReports().isEmpty());
+
+    // The tree changes under the same chunk id.
+    ASSERT_TRUE(writeFile(tmp.path() + "/tests/test_0.py",
+                          "def test_0():\n    assert True\n"));
+    dlg.setDimensionsCsv(QString());   // re-partitions
+    ASSERT_FALSE(dlg.chunks().isEmpty());
+    ASSERT_EQ(dlg.chunks().first().id, firstChunk);
+    ASSERT_NE(dlg.chunks().first().paths, before)
+        << "setup: the new file must land in the first chunk";
+
+    EXPECT_TRUE(dlg.collectedReports().isEmpty())
+        << "INV-12: a report for files its chunk no longer covers is dropped";
+}
+
 // INV-7 — resume reloads collected ids; only un-reviewed chunks remain.
 TEST(TestAuditDialog, INV7_ResumeDispatchesUnreviewedOnly) {
     QTemporaryDir tmp; ASSERT_TRUE(tmp.isValid());
