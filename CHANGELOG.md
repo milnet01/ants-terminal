@@ -76,6 +76,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **mutation_probe refuses a baseline that collected no tests (pytest exit 4 or 5) as `baseline_did_not_run`, naming the test command, instead of reporting the suite as red.** (ANTS-4852)
+
 - **file_outline lists out-of-line C++ constructors and destructors, so `read_region` can fetch them by name, including a bare `~ClassName`.** (ANTS-5021)
 
 - **mutation_probe, verify_changes and the test-results cache read ctest's all-passing summary ("100% tests passed out of N"), so a green run counts as green and `require_green_baseline` can pass.** (ANTS-4996)

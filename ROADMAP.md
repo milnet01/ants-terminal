@@ -57098,8 +57098,19 @@ two projects).
   Kind: enhancement.
   Source: cc-feedback-2026-09-03 finbreak.
 
-- 📋 [ANTS-4852] **mutation_probe reports a pytest collection failure as baseline_not_green, pointing at the project instead of the call.**
+- ✅ [ANTS-4852] **mutation_probe reports a pytest collection failure as baseline_not_green, pointing at the project instead of the call.**
   The test_command named a directory that does not exist. pytest exited 4, its usage-error code, having collected nothing; the refusal said to fix the suite first, and there was no failing test because there was no test. The reply's own fields already show it: exit 4 with passed and failed both -1 is ANTS-4401's unparsable-counts shape, not a red suite. pytest 4 and 5 mean the command never measured anything, which is a different refusal from a suite that ran and went red. A baseline_did_not_run code naming the exit code and pointing at the test_command's paths would aim at the call.
+  Resolved (2026-09-14): judgeBaseline returned NotGreen for any
+  non-zero exit before reading counts. A run that did not time out,
+  exited 4 or 5 (pytest's usage-error and no-tests-collected codes) and
+  parsed no counts is now DidNotRun, refused as baseline_did_not_run
+  with baseline_exit_code and the test_command echoed. Keyed narrowly on
+  purpose: a runner-agnostic "non-zero exit with no counts" rule would
+  break ANTS-4401's pinned verdict and mislabel a suite that crashed
+  before its summary. Exit 4 or 5 with parsed counts, other non-zero
+  exits and timeouts keep their verdicts. Test
+  MutationProbe.Ants4852CollectionFailureIsDidNotRun fails on the old
+  sources and passes now; full suite green.
   **Layman:** A mistyped test path is reported as "your tests are failing".
   Kind: fix.
   Source: cc-feedback-2026-09-03 finbreak.
