@@ -70,6 +70,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **Review Changes no longer lists a repository's whole history on every refresh when it has no remote, and a crashed git command no longer refreshes the window twice** (ANTS-5109)
+
 - **A line break in a changelog entry's summary, id or dated headline stays on that line and can no longer create a fake heading** (ANTS-5108)
 
 - **project_query no longer refuses every query for the rest of the session after 64 slow queries** (ANTS-5107)

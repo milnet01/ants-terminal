@@ -3181,6 +3181,8 @@ if(ANTS_TESTS)
                 # ANTS-1405 stable-ID regex widened to [PROJ-NNNN] shape.
                 tests/features/roadmap_query_external_project_ids/test_roadmap_query_external_project_ids.cpp
                 tests/features/diffviewer_extraction/test_diffviewer_extraction.cpp
+                # ANTS-5109 — bounded unpushed log; single finalize per probe.
+                tests/features/review_changes_probe_guards/test_review_changes_probe_guards.cpp
                 tests/features/remote_control_roadmap_query/test_remote_control_roadmap_query.cpp
                 # ANTS-2225 — section= surfaces nested #### Pass N.M bullets.
                 tests/features/roadmap_query_section_pass_heading/test_roadmap_query_section_pass_heading.cpp

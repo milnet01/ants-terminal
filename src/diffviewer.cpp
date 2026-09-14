@@ -793,8 +793,12 @@ QDialog *show(QWidget *parent,
                 if (pg) pg->deleteLater();
                 finalize();
             });
+        // ANTS-5109 — only a failed start finishes here: that is the one error
+        // after which finished() never fires. For a crash or a timeout Qt
+        // emits errorOccurred AND finished, so both handlers ran finalize().
         QObject::connect(p, &QProcess::errorOccurred, dialog,
-            [pg, finalize](QProcess::ProcessError) {
+            [pg, finalize](QProcess::ProcessError e) {
+                if (e != QProcess::FailedToStart) return;
                 if (pg) pg->deleteLater();
                 finalize();
             });
@@ -810,14 +814,15 @@ QDialog *show(QWidget *parent,
     // --branches --not --remotes log lists every commit reachable
     // from any local branch but NOT reachable from any remote-
     // tracking branch — i.e. unpushed work across every branch,
-    // not just HEAD's lineage. Both probes are O(refs) and finish
-    // in milliseconds even on large repos.
+    // not just HEAD's lineage. ANTS-5109 — with no remote-tracking refs
+    // at all, --not --remotes excludes nothing and the log is the whole
+    // history, re-read on every refresh; the count caps it.
     runAsync({"for-each-ref", "refs/heads",
               "--format=%(refname:short)\t%(upstream:short)\t"
               "%(upstream:track)\t%(subject)"},
              &ProbeState::branches, state.get());
     runAsync({"log", "--branches", "--not", "--remotes",
-              "--oneline", "--decorate"},
+              "--oneline", "--decorate", "--max-count=200"},
              &ProbeState::crossUnpushed, state.get());
     };  // close runProbes lambda
 
