@@ -2414,7 +2414,13 @@ void ClaudeIntegration::onMcpConnection() {
                         "— saves the full response body. Otherwise the "
                         "current response carries a fresh `etag` field "
                         "for the next call (ANTS-1499 \"304 Not "
-                        "Modified\" pattern).");
+                        "Modified\" pattern). ANTS-4859 — the etag "
+                        "hashes the whole reply, so send the same "
+                        "arguments as the call that issued it: any "
+                        "argument that changes the reply (a mode, a "
+                        "cap, an include_* flag) changes the etag. "
+                        "`fields` is the exception, applied after the "
+                        "etag.");
                     return p;
                 };
 
