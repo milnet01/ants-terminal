@@ -1,6 +1,6 @@
 # ANTS-5219 — Cap `get_scrollback`'s lines and say when its reply is cut
 
-**Status:** spec draft (2026-09-14).
+**Status:** accepted (2026-09-14), review-contract loop 1 (one lane, user preference), three findings fixed.
 **Kind:** review-fix.
 **Source:** ROADMAP.md ANTS-5219 (split from ANTS-5080; code-quality-review-2026-09-11 perf pass, lane mainwindow-b; user decision 2026-09-14).
 **Pairs with:** ANTS-1500 (`since_cursor` mode), ANTS-1348 (`get_text`'s byte cap).
@@ -38,8 +38,8 @@ struct ScrollbackRequest {
     int lines = 0;         // lines to read
     int linesCapped = 0;   // lines the caller asked for and exist but were cut
 };
-// Clamps a requested line count to [1, kGetTextMaxLines]. A value <= 0 uses
-// `fallback`. `available` is the lines the terminal holds.
+// Clamps a requested line count to [1, kGetTextMaxLines]. A value <= 0 returns
+// `fallback` unclamped. `available` is the lines the terminal holds.
 static ScrollbackRequest capScrollbackRequest(int requested, int available,
                                               int fallback);
 ```
@@ -50,8 +50,9 @@ static ScrollbackRequest capScrollbackRequest(int requested, int available,
 
 ### 2.3 Plain reply
 
-- `capScrollbackRequest(lines, available, 50)`, where `available` is the
-  terminal's scrollback size plus its screen rows.
+- `capScrollbackRequest(lines, available, 0)`, where `available` is the
+  terminal's scrollback size plus its screen rows. A requested count <= 0
+  therefore still reads no lines and returns an empty reply, as it does today.
 - The text from `recentOutput(request.lines)` goes through
   `RemoteControl::trimScrollbackForGetText(raw, kGetTextDefaultBytesCap)`.
 - When `request.linesCapped > 0`, the reply starts with the line
@@ -65,6 +66,10 @@ static ScrollbackRequest capScrollbackRequest(int requested, int available,
 
 - `content` goes through the same request cap and byte trim, with
   `added + screenRows` as the requested count.
+- `content` never starts with the cap line: its R would be a count the caller
+  never sent. The cap is reported only by `truncated` and `lines_dropped`.
+  `content` carries the byte trim's own marker when that trim fired, as
+  `get_text`'s `text` does.
 - New field `truncated`, always present. When it is true, `lines_dropped` and
   `bytes_dropped` are present too, as in `get_text`'s reply. `lines_dropped`
   counts lines cut by the line cap and by the byte trim together;
@@ -75,8 +80,8 @@ static ScrollbackRequest capScrollbackRequest(int requested, int available,
 
 ## 3. Invariants
 
-- **INV-1** — `capScrollbackRequest` clamps to `[1, kGetTextMaxLines]`, uses
-  the fallback for a value <= 0, and reports
+- **INV-1** — `capScrollbackRequest` clamps to `[1, kGetTextMaxLines]`, returns
+  the fallback unclamped for a value <= 0, and reports
   `max(0, min(requested, available) - lines)` as `linesCapped`. Broken by a
   clamp that lets a request through, or a count that reports a cut on a
   terminal holding fewer lines than the cap. *Test:*
@@ -93,8 +98,9 @@ static ScrollbackRequest capScrollbackRequest(int requested, int available,
   `tests/features/mcp_get_scrollback_cap`, source scrape: no
   `recentOutput(` result in the provider is returned without the trim.
 - **INV-4** — the `since_cursor` envelope always carries `truncated`, and
-  carries `lines_dropped` and `bytes_dropped` whenever it is true. Broken by
-  a field set only on one branch. *Test:*
+  carries `lines_dropped` and `bytes_dropped` whenever it is true; its
+  `content` never starts with the cap line. Broken by a field set only on one
+  branch, or by the cap marker prepended to `content`. *Test:*
   `tests/features/mcp_get_scrollback_cap`, source scrape of the envelope's
   field writes.
 - **INV-5** — `cmdGetText` reads its line cap from `kGetTextMaxLines`, with
@@ -115,7 +121,7 @@ The cap bounds the string the GUI thread builds per call.
   (the AI dialog's context, the status-bar model-switch scans, `cmdGetText`)
   must not change.
 - Replaying lines a cut `since_cursor` reply dropped — excluded. The caller
-  is told, and can raise `lines` or read the scrollback export.
+  is told, and can read the scrollback export.
 
 ## 6. Tests
 
@@ -136,3 +142,4 @@ suite after the change.
 
 | Loop | Date | Lanes | Q1 | Q2 | Q3 | Q4 | Outcome |
 |---|---|---|---|---|---|---|---|
+| 1 | 2026-09-14 | 1 (user preference: keep token use down; one reviewer, one pass) | 1 | 1 | 1 | 0 | Verified 3, fixed 3, dismissed 1. [Q2] lines <= 0 read 50 lines while the spec promised unchanged text; today it returns an empty reply, so get_scrollback passes a fallback of 0, unclamped. [Q3] section 2.4 left open whether since_cursor content carries the cap line; it does not, the cap is reported by truncated and lines_dropped. [Q1, from the lane's open question] section 5 told callers to raise lines, which the since_cursor path never reads; removed. Dismissed: where capScrollbackRequest is defined changes nothing built, and a link failure would surface at build. |
