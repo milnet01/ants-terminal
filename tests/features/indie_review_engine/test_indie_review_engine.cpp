@@ -447,3 +447,41 @@ TEST(IndieReviewEngine, AssembleThreatModelExtrasReadsExisting) {
     EXPECT_TRUE(out.contains("Test claude content here."));
     EXPECT_TRUE(out.contains("Test security content."));
 }
+
+// ANTS-4846 — an override the parser rejects is named with its reason, so the
+// fall-through to the module map is visible. Absent and usable files are not.
+TEST(IndieReviewEngine, Ants4846OverrideRejectionIsNamed) {
+    // One project per case. The engine reads through the shared file cache,
+    // so rewriting one path several times within a test can serve a stale
+    // body; a fresh directory is a fresh path.
+    const auto rejectionFor = [](const char *body) {
+        QTemporaryDir tmp;
+        if (!tmp.isValid()) return QStringLiteral("<no temp dir>");
+        seedProject(tmp, "# x\n", QStringList{"real.cpp"});
+        if (body)
+            writeFile(tmp.path(), QStringLiteral(".indie-review/partition.json"),
+                      QByteArray(body));
+        return IndieReviewEngine::partitionOverrideRejection(tmp.path());
+    };
+
+    EXPECT_TRUE(rejectionFor(nullptr).isEmpty())
+        << "no override file, so nothing was rejected";
+
+    const QString noVersion = rejectionFor(
+        "{\"lanes\":[{\"name\":\"a\",\"sourcePaths\":[\"src/real.cpp\"]}]}");
+    EXPECT_TRUE(noVersion.contains(QStringLiteral("version")))
+        << "a file without \"version\":1 must say so: " << noVersion.toStdString();
+
+    const QString badJson = rejectionFor("{not json");
+    EXPECT_TRUE(badJson.contains(QStringLiteral("JSON"))) << badJson.toStdString();
+
+    const QString noName = rejectionFor(
+        "{\"version\":1,\"lanes\":[{\"summary\":\"no name here\"}]}");
+    EXPECT_TRUE(noName.contains(QStringLiteral("name"))) << noName.toStdString();
+
+    const QString usable = rejectionFor(
+        "{\"version\":1,\"lanes\":[{\"name\":\"a\",\"summary\":\"s\","
+        "\"sourcePaths\":[\"src/real.cpp\"]}]}");
+    EXPECT_TRUE(usable.isEmpty())
+        << "a usable override is not rejected: " << usable.toStdString();
+}

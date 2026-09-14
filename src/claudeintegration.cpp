@@ -10313,7 +10313,10 @@ void ClaudeIntegration::onMcpConnection() {
                         "those files, and `file_count` counts only what a "
                         "lane covers. The fields are ABSENT when nothing is "
                         "uncovered, so their absence is a clean bill of "
-                        "health rather than a question nobody asked.");
+                        "health rather than a question nobody asked. "
+                        "ANTS-4846 — when .indie-review/partition.json exists "
+                        "but is rejected, `map_rejected:[{path, reason}]` says "
+                        "why, and `path` names the source the lanes came from.");
                     t["selection_hint"] = QStringLiteral(
                         "Use to split source files for multi-reviewer "
                         "indie-review dispatch. Pairs with "

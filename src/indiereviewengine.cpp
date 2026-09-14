@@ -97,13 +97,27 @@ QString readPartitionOverride(const QString &projectPath) {
                      + QStringLiteral("/.indie-review/partition.json"));
 }
 
+// ANTS-4846 — `why`, when given, names the reason the override yielded no
+// lanes. derivePartition falls through to the module map on an empty result,
+// and without a reason that fall-through was silent.
 QList<Lane> parsePartitionOverride(const QString &json,
-                                  const QString &projectPath) {
+                                  const QString &projectPath,
+                                  QString *why = nullptr) {
     QJsonParseError pe{};
     const auto doc = QJsonDocument::fromJson(json.toUtf8(), &pe);
-    if (pe.error != QJsonParseError::NoError || !doc.isObject()) return {};
+    if (pe.error != QJsonParseError::NoError) {
+        if (why) *why = QStringLiteral("not valid JSON: %1").arg(pe.errorString());
+        return {};
+    }
+    if (!doc.isObject()) {
+        if (why) *why = QStringLiteral("the top level is not a JSON object");
+        return {};
+    }
     const auto root = doc.object();
-    if (root.value(QStringLiteral("version")).toInt() != 1) return {};
+    if (root.value(QStringLiteral("version")).toInt() != 1) {
+        if (why) *why = QStringLiteral("\"version\" must be 1");
+        return {};
+    }
     const auto lanesArr = root.value(QStringLiteral("lanes")).toArray();
     QList<Lane> out;
     out.reserve(lanesArr.size());
@@ -127,6 +141,8 @@ QList<Lane> parsePartitionOverride(const QString &json,
         }
         out << l;
     }
+    if (out.isEmpty() && why)
+        *why = QStringLiteral("no lane has a non-empty \"name\"");
     return out;
 }
 
@@ -754,6 +770,14 @@ QList<Lane> derivePartition(const QString &projectPath) {
     if (out.isEmpty())
         return deriveFileListPartition(projectPath, sourcePath);
     return out;
+}
+
+QString partitionOverrideRejection(const QString &projectPath) {
+    const QString json = readPartitionOverride(projectPath);
+    if (json.isEmpty()) return {};   // no override, so nothing was rejected
+    QString why;
+    if (!parsePartitionOverride(json, projectPath, &why).isEmpty()) return {};
+    return why.isEmpty() ? QStringLiteral("it declares no lanes") : why;
 }
 
 namespace {

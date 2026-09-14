@@ -64,3 +64,21 @@ TEST(indie_review_partition_sparse_hint, GatedOnSparsePartition) {
            "INV-3: sparse_partition boolean flag emitted alongside the hint");
     EXPECT_EQ(0, expect_failures());
 }
+
+// ANTS-4846 — the partition reply names a rejected override instead of
+// reporting its path as the source it used.
+TEST(indie_review_partition_sparse_hint, Ants4846RejectedOverrideIsReported) {
+    expect_reset();
+    const std::string rc = ants_test::slurpRemoteControl();
+    const std::string body =
+        bodyOf(rc, "RemoteControl::cmdIndieReviewPartition");
+    expect(!body.empty(), "cmdIndieReviewPartition body present");
+    expect(body.find("IndieReviewEngine::partitionOverrideRejection(root)") !=
+               std::string::npos,
+           "ANTS-4846: the reply asks the engine whether the override was used");
+    expect(body.find("\"map_rejected\"") != std::string::npos,
+           "ANTS-4846: a rejected override is reported as map_rejected");
+    expect(body.find("overrideRejected.isEmpty() &&") != std::string::npos,
+           "ANTS-4846: `path` names the override only when it was used");
+    EXPECT_EQ(0, expect_failures());
+}

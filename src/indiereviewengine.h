@@ -200,6 +200,12 @@ struct BriefManifest {
 
 QList<Lane> derivePartition(const QString &projectPath);
 
+// ANTS-4846 — why .indie-review/partition.json was NOT used. Empty when the
+// file is absent or yields lanes; otherwise a one-line reason (invalid JSON,
+// not an object, "version" not 1, no named lane). derivePartition falls through
+// to the module map in those cases, and this is how a caller can see it did.
+QString partitionOverrideRejection(const QString &projectPath);
+
 // ANTS-3709 — computed fallback for a project whose layout is prose rather
 // than a `## Module map`. Walks the declared source_roots (.ants/project.json,
 // else src/, else the project root) and groups indexable files by containing

@@ -62,3 +62,14 @@ Locks the six pure helpers in src/indiereviewengine.{h,cpp}.
   which already merges lanes resolving to the *same* files). The
   `indie_review_partition` MCP envelope surfaces these as
   `suggested_merges:[{lanes:[a,b],rationale}]`.
+
+## ANTS-4846 — a rejected override says why
+
+`IndieReviewEngine::partitionOverrideRejection(projectPath)` returns an empty
+string when `.indie-review/partition.json` is absent or yields lanes, and
+otherwise a one-line reason: invalid JSON, a top level that is not an object,
+`"version"` not 1, or no lane with a non-empty `name`. `indie_review_partition`
+reports it as `map_rejected:[{path, reason}]`, and its `path` names the
+override only when the override was used. *Tests:*
+`IndieReviewEngine.Ants4846OverrideRejectionIsNamed`,
+`indie_review_partition_sparse_hint.Ants4846RejectedOverrideIsReported`.

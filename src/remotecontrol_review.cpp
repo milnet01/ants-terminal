@@ -133,7 +133,19 @@ QJsonDocument RemoteControl::cmdIndieReviewPartition(const QJsonObject &req) {
     }
     env["suggested_merges"] = merges;
     // Project-relative path to the partition source (override / module map).
-    if (QFileInfo(root + QStringLiteral("/.indie-review/partition.json")).exists()) {
+    // ANTS-4846 — `path` names the source the lanes came from. An override the
+    // parser rejected fell through to the module map while `path` still named
+    // it, so a caller who followed the hint could not tell it had been ignored.
+    const QString overrideRejected =
+        IndieReviewEngine::partitionOverrideRejection(root);
+    if (!overrideRejected.isEmpty()) {
+        QJsonObject rej;
+        rej["path"]   = QStringLiteral(".indie-review/partition.json");
+        rej["reason"] = overrideRejected;
+        env["map_rejected"] = QJsonArray{rej};
+    }
+    if (overrideRejected.isEmpty() &&
+        QFileInfo(root + QStringLiteral("/.indie-review/partition.json")).exists()) {
         env["path"] = QStringLiteral(".indie-review/partition.json");
     } else {
         // ANTS-1292: module map lives in docs/subsystems.md when present.
