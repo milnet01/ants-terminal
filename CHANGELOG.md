@@ -76,6 +76,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **feedback_query flags a shipped id with no recorded ship date as `possibly_stale_binary`, marked `stale_check:"no_shipped_date"`, instead of leaving the check silent.** (ANTS-4843)
+
 - **roadmap_query says when it applied a different body cap than the `max_body_bytes` asked for, with `body_cap_clamped` and the effective value, on an id or ids fetch.** (ANTS-4981)
 
 - **`ants-terminal --remote` waits for a slow first byte of the reply, up to its overall deadline, instead of printing "no response" while the server is still answering.** (ANTS-5138)

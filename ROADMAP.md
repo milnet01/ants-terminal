@@ -57000,8 +57000,18 @@ two projects).
   Kind: fix.
   Source: cc-feedback-2026-09-03 Pressless.
 
-- 📋 [ANTS-4843] **feedback_query cannot raise possibly_stale_binary for a shipped id carrying no shipped_date.**
+- ✅ [ANTS-4843] **feedback_query cannot raise possibly_stale_binary for a shipped id carrying no shipped_date.**
   The reporting session nearly filed a false defect against a shipped id that had no date, and was saved only because a sibling id's date was in the same reply. A missing shipped_date is exactly the case where the flag cannot fire, so treating it as "cannot rule out stale" closes the gap rather than widening the flag.
+  Resolved (2026-09-14): cause read in cmdFeedbackQuery: the ANTS-4741
+  loop did `if (shipped.isEmpty() || buildDate.isEmpty()) continue;`, so
+  a ✅ id with no shipped_date was skipped and could never be flagged. A
+  ✅ entry with no date now gets possibly_stale_binary:true and
+  stale_check:"no_shipped_date", and the hint adds a sentence naming it;
+  a dated entry is judged as before and a non-✅ entry is never flagged.
+  feedback_query's detail text gains the clause. Test
+  feedback_query_foreign_resolve.Ants4843FlagsAShippedIdWithNoDate fails
+  on the old source and passes now; the two ANTS-4741 tests stay green;
+  full suite green.
   **Layman:** The check that stops a session re-reporting an already-fixed bug goes quiet when the fix has no recorded date.
   Kind: fix.
   Source: cc-feedback-2026-09-03 Pressless.
