@@ -2356,6 +2356,18 @@ bool RemoteControl::start() {
     return true;
 }
 
+// ANTS-5093 — see the declaration.
+void RemoteControl::armReplyDrainGuard(QLocalSocket *socket, int idleMs) {
+    if (!socket || socket->state() == QLocalSocket::UnconnectedState) return;
+    auto *drain = new QTimer(socket);
+    drain->setSingleShot(true);
+    drain->setInterval(idleMs);
+    connect(drain, &QTimer::timeout, socket, [socket]() { socket->abort(); });
+    connect(socket, &QIODevice::bytesWritten, drain,
+            [drain](qint64) { drain->start(); });
+    drain->start();
+}
+
 void RemoteControl::onNewConnection() {
     while (m_server->hasPendingConnections()) {
         QLocalSocket *socket = m_server->nextPendingConnection();
@@ -2481,6 +2493,9 @@ void RemoteControl::onNewConnection() {
                 sock->write(doc.toJson(QJsonDocument::Compact) + '\n');
                 sock->flush();
                 sock->disconnectFromServer();
+                // ANTS-5093 — a peer that never reads the reply must not pin
+                // the socket and its write buffer.
+                RemoteControl::armReplyDrainGuard(sock.data(), kReplyDrainIdleMs);
             };
             if (err.error != QJsonParseError::NoError || !req.isObject()) {
                 QJsonObject e;

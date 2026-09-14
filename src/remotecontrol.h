@@ -1155,6 +1155,14 @@ public:
     // this header does not have (see m_roadmapStore's comment).
     void setRoadmapHistoryCapForTest(qint64 bytes);
 
+    // ANTS-5093 — once a reply is written, abort the connection if the peer
+    // stops draining it for `idleMs`. Every bytesWritten restarts the timer,
+    // so a slow reader that keeps reading is never cut; a peer that never
+    // reads no longer pins the socket and its write buffer. Public and static
+    // so tests/features/rc_reply_drain_guard can drive it on a bare socket.
+    static void armReplyDrainGuard(QLocalSocket *socket, int idleMs);
+    static constexpr int kReplyDrainIdleMs = 30'000;
+
 private slots:
     void onNewConnection();
 

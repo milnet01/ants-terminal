@@ -2029,6 +2029,8 @@ if(ANTS_TESTS)
     tests/features/mcp_async_dispatch/test_mcp_async_dispatch.cpp
                 # ANTS-5144 — one socket listener per path, shared by windows.
                 tests/features/shared_socket_listener/test_shared_socket_listener.cpp
+                # ANTS-5093 — a remote-control reply nobody reads does not pin the socket.
+                tests/features/rc_reply_drain_guard/test_rc_reply_drain_guard.cpp
                 tests/features/allowlist_perms_postcommit/test_allowlist_perms_postcommit.cpp
                 tests/features/ssh_dash_host_rejected/test_ssh_dash.cpp
                 tests/features/ssh_extra_args_sanitize/test_ssh_extra_args.cpp
