@@ -8775,6 +8775,14 @@ extends an existing item, that item carries it instead.
   - DocFinding's extra-key guard misses auto_fixable.
   - Parser returns lack [[nodiscard]].
   - ANTS-3660 section 4 leaves the shingle-key memory unquantified.
+  Progress (2026-09-14): patchTocRegion uses MarkdownScan::fenceMask and
+  doclint.cpp's private fenceMap is gone; docs_index checks the cache
+  write and QSaveFile::commit() and warns on failure
+  (tests/features/doc_engine_guards). Still open: docs_index counting
+  uncached files as added past its cap, doc_lint's per-scan deadline
+  restart, the unbounded line read, the size-then-read race,
+  DocFinding's auto_fixable key guard, [[nodiscard]] on parser returns,
+  and the ANTS-3660 shingle memory figure.
   **Layman:** Smaller doc-tool fixes, including one that can write a table of contents entry in the wrong place.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lane doc-engines).
