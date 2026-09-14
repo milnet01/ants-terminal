@@ -3237,6 +3237,7 @@ void AuditDialog::saveSuppression(const QString &dedupKey,
         }
     }
 
+    bool saved = false;
     if (needsConvert) {
         // Rewrite whole file: existing JSONL lines (if any) preserved +
         // legacy keys upgraded with a migration marker.
@@ -3269,26 +3270,38 @@ void AuditDialog::saveSuppression(const QString &dedupKey,
         QSaveFile sf(path);
         if (sf.open(QIODevice::WriteOnly)) {
             setOwnerOnlyPerms(sf);
-            sf.write(rebuilt.join('\n').toUtf8());
-            sf.write("\n");
-            sf.commit();
+            const QByteArray body = rebuilt.join('\n').toUtf8() + '\n';
+            saved = sf.write(body) == body.size() && sf.commit();
         }
     } else {
         // Simple append — stays non-atomic. Each append is one JSONL line;
         // a torn write at EOF is a single bad line, and loadSuppressions()
         // already skips non-parseable lines.
         if (f.open(QIODevice::WriteOnly | QIODevice::Append)) {
+            bool ok = true;
             if (f.size() == 0) {
                 setOwnerOnlyPerms(f);
-                f.write("# ants-audit suppressions (JSONL). Entries hide the matching "
-                        "finding by dedup key.\n");
+                const QByteArray header =
+                    "# ants-audit suppressions (JSONL). Entries hide the matching "
+                    "finding by dedup key.\n";
+                ok = f.write(header) == header.size();
             }
-            f.write(QJsonDocument(entry).toJson(QJsonDocument::Compact));
-            f.write("\n");
+            const QByteArray line =
+                QJsonDocument(entry).toJson(QJsonDocument::Compact) + '\n';
+            ok = ok && f.write(line) == line.size() && f.flush();
             f.close();
+            saved = ok;
         }
     }
 
+    // ANTS-5083 — a suppression that never reached the file must not hide the
+    // finding for the rest of the session as if it had been saved.
+    if (!saved) {
+        if (m_statusLabel)
+            m_statusLabel->setFullText(
+                QStringLiteral("Could not save the suppression to %1").arg(path));
+        return;
+    }
     m_suppressedKeys.insert(dedupKey);
     if (!reason.isEmpty())
         m_suppressionReasons.insert(dedupKey, reason);
@@ -4244,6 +4257,10 @@ void AuditDialog::runAudit() {
     m_progress->setVisible(true);
     m_statusLabel->setVisible(true);
     m_completedResults.clear();
+    // ANTS-5083 — inlineSuppressed() reads source lines through this cache
+    // during the run; left over from the last run, it missed an inline
+    // suppression added in between.
+    m_fileLineCache.clear();
     m_cancelled = false;
     m_snapshotPersisted = false;  // see m_snapshotPersisted in auditdialog.h
     // Cancel becomes the primary action while a run is in-flight; Run

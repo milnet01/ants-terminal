@@ -24,9 +24,9 @@ namespace themedstylesheet {
 // Covers QMainWindow / QMenu* / QStatusBar / QTabBar / dialog
 // chrome / QPushButton / QLineEdit / QCheckBox / QComboBox /
 // QSpinBox / QGroupBox / QListWidget / QHeaderView / QScrollBar /
-// QToolTip / QProgressBar. Includes the data-URI SVG tab-close
-// glyph (with %23-pre-encoded stroke colours — see
-// implementation comment).
+// QToolTip / QProgressBar. It deliberately has no QTabBar close-button
+// image rule (ANTS-5082: this comment used to describe a data-URI SVG
+// glyph that Qt6's QSS never rendered; see the implementation comment).
 QString buildAppStylesheet(const Theme &theme);
 
 // Per-widget templates — each takes only the data its QSS needs.

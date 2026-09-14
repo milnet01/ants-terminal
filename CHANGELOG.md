@@ -70,6 +70,13 @@ for security-relevant changes.
 
 ### Fixed
 
+- **A suppression that could not be saved no longer hides the finding, and a new audit run re-reads source lines** (ANTS-5083)
+  The audit dialog now checks the suppression file write before hiding
+  the finding and says so when the save fails. Each run clears the cached
+  source lines, so an edited file is shown as it is now.
+
+- **The themed stylesheet header comment now matches the rules it builds** (ANTS-5082)
+
 - **A mistyped colour in a custom theme now uses the default colour instead of turning black, and an oversized theme file is skipped** (ANTS-5082)
 
 - **The About dialog no longer describes a GPU renderer the terminal no longer has** (ANTS-5082)
