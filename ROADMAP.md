@@ -60092,7 +60092,7 @@ than re-filed; everything else lands here.
   Source: UT_MonsterHunt_Ants_MCP_Feedback.md 2026-09-08.
   Lanes: roadmap-store, mcp.
 
-- 📋 [ANTS-4971] **roadmap_query blames the ID filter for an empty result the `kind` filter caused, and calls a well-formed roadmap malformed.**
+- ✅ [ANTS-4971] **roadmap_query blames the ID filter for an empty result the `kind` filter caused, and calls a well-formed roadmap malformed.**
   When `kind` matches nothing, the reply carries a warning
   attributing the empty set to the DEFAULT ID filter and describing
   every bullet in the roadmap as an id-less rollup or narrator line.
@@ -60128,6 +60128,12 @@ than re-filed; everything else lands here.
   note argues for REFUSING an unrecognised value on the ground that
   a silently misexplained empty result reads as "nothing matches".
   This is the second half of a guard already half built.
+  Resolved (2026-09-14): when id-bearing bullets survive the ID prune
+  and a kind or source filter empties the set, both arms now warn that
+  the kind/source filter matched nothing and that the result is
+  complete. The ANTS-1538 ID-filter warning fires only when the ID prune
+  itself left nothing. Test:
+  roadmap_query_prose_no_id_warning.Ants4971KindFilterIsNamedNotTheIdFilter.
   **Layman:** Asking for a kind of item that does not exist gets the right answer wrapped in a false claim that the roadmap is broken.
   Kind: fix.
   Source: Games_Hub_Ants_MCP_Feedback.md 2026-09-08.

@@ -78,6 +78,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **roadmap_query names the kind or source filter when it empties a result, instead of blaming the ID filter and calling the roadmap malformed.** (ANTS-4971)
+
 - **Roadmap writes leave a roadmap file untouched when its content has not changed, and list it under `files_unchanged` rather than `files_written`.** (ANTS-5016)
 
 - **workspace_search no longer warns about short terms when the whole regex is one word-bounded group, such as `\b(TODO|FIXME|TBD|XXX)\b`.** (ANTS-5139)
