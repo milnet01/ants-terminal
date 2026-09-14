@@ -8225,6 +8225,15 @@ extends an existing item, that item carries it instead.
   - ANTS-3756 section 4's history formula counts characters; the code
     counts bytes (document wrong).
   - findRoadmaps, planFrom and load lack [[nodiscard]].
+  Progress (2026-09-14): createSchema's fast path refuses a newer
+  user_version without the write lock; open() pre-creates a missing
+  store file owner-only; findRoadmaps, planFrom and load are
+  [[nodiscard]]; ANTS-3765 section 4 now says the loader builds
+  byIdFold, ANTS-3756 section 4's formula casts to BLOB (tests:
+  roadmap_store_concurrency NewerStoreRefusedWithoutWaitingOnWriter,
+  OpenCreatesTheStoreFileFirst). Still open: remembering a failed open;
+  migration RSS measure; migration read byte ceiling; bulk busy deadline
+  on the single worker.
   **Layman:** Smaller roadmap-database fixes, including a slow refusal when an older Ants meets a newer database.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lane roadmap-store).
@@ -8262,6 +8271,18 @@ extends an existing item, that item carries it instead.
   - Documents out of date: INV-8's marker repair, roadmap-format
     section 3.5's fenced-key claim, roadmapsource.h's table and ANTS-3809
     section 2.1.
+  Progress (2026-09-14): RoadmapParse::foldId (ASCII-only, matches
+  SQLite lower()) replaces QString::toLower at the export, migration and
+  store id-fold sites (tests/features/roadmap_id_fold); resolveUnderRoot
+  checks containment on the nearest existing directory before mkpath,
+  skips mkpath on a dry run, and judges a symlinked leaf by its target
+  (roadmap_render Inv13RefusesBeforeCreatingAndFollowsLeafLinks);
+  fileIds counts pass-headings PASS- ids (roadmap_divergence_guard
+  INV-5). Still open: commitAndRender lock span; fold-in counter lock
+  sleeps; store-built pass-headings records; GUI fold-in allocateIds
+  floors only to corpusHighWater (flooring to the store needs a
+  sandboxed store lookup); composed-trailer predicate divergence; the
+  lows.
   **Layman:** Roadmap-engine fixes: writes that hold a lock too long, a safety check that never fires, and a restore that can mislink items.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lane roadmap-parse-render).
