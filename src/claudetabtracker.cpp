@@ -1,11 +1,7 @@
 #include "claudetabtracker.h"
 
-#include "configpaths.h"
-
 #include <QDateTime>
-#include <QDir>
 #include <QFile>
-#include <QFileInfo>
 
 ClaudeTabTracker::ClaudeTabTracker(QObject *parent) : QObject(parent) {
     // 2 s matches ClaudeIntegration's poll cadence. We could run faster for
@@ -183,63 +179,54 @@ void ClaudeTabTracker::detectClaudeChild(ShellEntry &entry) {
 
     if (entry.claudePid == 0) {
         entry.claudePid = found;
-        // Resolve THIS shell's transcript via project-cwd encoding —
-        // not the system-wide newest. Pre-0.7.48 used the latter,
-        // which broke fan-out for users running Claude in multiple
-        // tabs: every shell got assigned the same transcript path,
-        // and the inverse `m_pathToShell` map was last-write-wins,
-        // so only one tab's dot ever updated.
-        //
-        // Source the cwd from claude itself (`/proc/<claudePid>/cwd`)
-        // — that's the directory Claude Code encodes into its project
-        // dir on launch, and it's stable for the session. Fall back to
-        // the shell's cwd if claude's symlink isn't readable (rare;
-        // /proc/PID/cwd readable to same-uid by default), then to the
-        // unscoped global newest as a last resort so nothing breaks
-        // outright if /proc isn't mounted.
-        QString cwd = QFile::symLinkTarget(
-            QString("/proc/%1/cwd").arg(found));
-        if (cwd.isEmpty())
-            cwd = QFile::symLinkTarget(
-                QString("/proc/%1/cwd").arg(entry.shellPid));
-        QString tx;
-        if (!cwd.isEmpty()) {
-            // ANTS-1163: thread the per-tab claude PID's start time
-            // (process-anchored identity) and the current epoch
-            // (24h liveness floor) so we don't bind a tab to a
-            // stale transcript from a prior `claude` invocation.
-            const qint64 procStartMs =
-                ClaudeIntegration::processStartTimeMs(found);
-            const qint64 nowMs =
-                QDateTime::currentMSecsSinceEpoch();
-            tx = ClaudeIntegration::sessionPathForCwd(
-                cwd, procStartMs, nowMs);
-        }
-        if (tx.isEmpty()) {
-            // Unscoped fallback (matches pre-0.7.48 behaviour).
-            QDir claudeDir(ConfigPaths::claudeProjectsDir());
-            if (claudeDir.exists()) {
-                QFileInfo newest;
-                for (const QString &projDir : claudeDir.entryList(
-                        QDir::Dirs | QDir::NoDotAndDotDot)) {
-                    QDir proj(claudeDir.filePath(projDir));
-                    for (const QFileInfo &fi : proj.entryInfoList(
-                            {"*.jsonl"}, QDir::Files)) {
-                        if (!newest.exists() ||
-                            fi.lastModified() > newest.lastModified())
-                            newest = fi;
-                    }
-                }
-                if (newest.exists()) tx = newest.absoluteFilePath();
-            }
-        }
-        if (!tx.isEmpty()) {
-            entry.transcriptPath = tx;
-            m_watcher.addPath(entry.transcriptPath);
-            m_pathToShell.insert(entry.transcriptPath, entry.shellPid);
-        }
         entry.state.state = ClaudeState::Idle;
     }
+
+    // ANTS-5156 — resolve on first detection AND on every poll while no
+    // transcript is bound. Claude Code creates its .jsonl only when the
+    // first message is sent, so the lookup when the process first appears
+    // routinely finds nothing. The attempt used to be made once, inside the
+    // first-detection branch, and the tab then read Idle for the whole
+    // session. ANTS-4457 fixed the same one-shot in pollClaudeProcess.
+    if (!entry.transcriptPath.isEmpty()) return;
+
+    // Resolve THIS shell's transcript via project-cwd encoding —
+    // not the system-wide newest. Pre-0.7.48 used the latter,
+    // which broke fan-out for users running Claude in multiple
+    // tabs: every shell got assigned the same transcript path,
+    // and the inverse `m_pathToShell` map was last-write-wins,
+    // so only one tab's dot ever updated.
+    //
+    // Source the cwd from claude itself (`/proc/<claudePid>/cwd`)
+    // — that's the directory Claude Code encodes into its project
+    // dir on launch, and it's stable for the session. Fall back to
+    // the shell's cwd if claude's symlink isn't readable (rare;
+    // /proc/PID/cwd readable to same-uid by default). There is no
+    // unscoped fallback to the global newest transcript: it gave the
+    // tab another session's state, and a bound path ends the retry.
+    QString cwd = QFile::symLinkTarget(
+        QString("/proc/%1/cwd").arg(found));
+    if (cwd.isEmpty())
+        cwd = QFile::symLinkTarget(
+            QString("/proc/%1/cwd").arg(entry.shellPid));
+    if (cwd.isEmpty()) return;
+
+    // ANTS-1163: thread the per-tab claude PID's start time
+    // (process-anchored identity) and the current epoch
+    // (24h liveness floor) so we don't bind a tab to a
+    // stale transcript from a prior `claude` invocation.
+    const qint64 procStartMs = ClaudeIntegration::processStartTimeMs(found);
+    const qint64 nowMs = QDateTime::currentMSecsSinceEpoch();
+    const QString tx =
+        ClaudeIntegration::sessionPathForCwd(cwd, procStartMs, nowMs);
+    if (tx.isEmpty()) return;
+
+    entry.transcriptPath = tx;
+    m_watcher.addPath(entry.transcriptPath);
+    m_pathToShell.insert(entry.transcriptPath, entry.shellPid);
+    // Seed state from the tail now, or the tab reads Idle until the next
+    // write to the file.
+    reparseTranscript(entry.shellPid);
 }
 
 void ClaudeTabTracker::reparseTranscript(pid_t shellPid) {

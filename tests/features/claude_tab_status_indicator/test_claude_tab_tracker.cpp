@@ -39,14 +39,19 @@
 #include <gtest/gtest.h>
 #include "claudetabtracker.h"
 
+#include <QDateTime>
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
+#include <QProcess>
 #include <QScopeGuard>
 #include <QSignalSpy>
+#include <QStandardPaths>
 #include <QTemporaryDir>
+#include <QTest>
 
 #include <cstdio>
+#include <unistd.h>
 
 namespace {
 
@@ -532,6 +537,110 @@ int checkProjectCwdScopedTranscript() {
     return 0;
 }
 
+// INV-10 (ANTS-5156) — a transcript created AFTER Claude is detected still
+// binds. Claude Code creates its .jsonl only when the first message is sent,
+// so the lookup at detection time finds nothing. The tracker must retry on
+// each poll, and must not settle on another project's transcript meanwhile.
+// Spawns a real `claude`-named child (a symlink to sleep): the defect lives
+// in the detection path that forceRefreshForTest bypasses.
+int checkTranscriptBindsAfterClaudeStarts() {
+    const QString sleepBin = QStandardPaths::findExecutable(QStringLiteral("sleep"));
+    if (sleepBin.isEmpty()) {
+        std::fprintf(stderr, "[INV-10] no 'sleep' on PATH — skipping\n");
+        return 0;
+    }
+    QTemporaryDir tmp;
+    if (!tmp.isValid()) { std::fprintf(stderr, "[INV-10] tmpdir fail\n"); return 1; }
+
+    // ConfigPaths::claudeProjectsDir() reads $HOME — override it.
+    const QByteArray oldHome = qgetenv("HOME");
+    qputenv("HOME", tmp.path().toUtf8());
+    auto restore = qScopeGuard([&]() {
+        if (oldHome.isEmpty()) qunsetenv("HOME");
+        else                   qputenv("HOME", oldHome);
+    });
+
+    const QString projectsDir = tmp.path() + "/.claude/projects";
+    const QString cwd = tmp.path() + "/work/proj";
+    const QString otherCwd = tmp.path() + "/work/other";
+    QDir().mkpath(cwd);
+    QDir().mkpath(otherCwd);
+    QDir().mkpath(tmp.path() + "/bin");
+
+    // Another project's transcript: the newest on disk, and idle. The
+    // unscoped fallback bound a tab to exactly this and never let go.
+    const QString otherDir = projectsDir + "/" +
+        ClaudeIntegration::encodeProjectPath(QFileInfo(otherCwd).canonicalFilePath());
+    QDir().mkpath(otherDir);
+    write_file(otherDir + "/other.jsonl",
+        R"({"type":"assistant","message":{"stop_reason":"end_turn","content":[{"type":"text","text":"other"}]}}
+)");
+
+    const QString fakeClaude = tmp.path() + "/bin/claude";
+    if (!QFile::link(sleepBin, fakeClaude)) {
+        std::fprintf(stderr, "[INV-10] FAIL could not symlink %s -> %s\n",
+                     qUtf8Printable(fakeClaude), qUtf8Printable(sleepBin));
+        return 1;
+    }
+    QProcess proc;
+    proc.setProgram(fakeClaude);
+    proc.setArguments({QStringLiteral("30")});
+    proc.setWorkingDirectory(cwd);
+    proc.start();
+    if (!proc.waitForStarted(3000)) {
+        std::fprintf(stderr, "[INV-10] FAIL fake claude failed to start\n");
+        return 1;
+    }
+    auto stopProc = qScopeGuard([&]() {
+        proc.kill();
+        proc.waitForFinished(3000);
+    });
+    // Wait out the mid-execve window so the cmdline names claude.
+    const pid_t child = static_cast<pid_t>(proc.processId());
+    const bool execed = QTest::qWaitFor([&]() {
+        QFile f(QStringLiteral("/proc/%1/cmdline").arg(child));
+        return f.open(QIODevice::ReadOnly) && f.readAll().contains("claude");
+    }, 3000);
+    if (!execed) {
+        std::fprintf(stderr, "[INV-10] FAIL fake claude cmdline never named claude\n");
+        return 1;
+    }
+
+    ClaudeTabTracker tracker;
+    const pid_t shell = ::getpid();
+    tracker.trackShell(shell);
+    if (tracker.shellState(shell).state != ClaudeState::Idle) {
+        std::fprintf(stderr, "[INV-10] FAIL before any transcript: state=%d want Idle\n",
+                     int(tracker.shellState(shell).state));
+        return 1;
+    }
+
+    // The session's own transcript appears later, carrying a tool call.
+    const QString projDir = projectsDir + "/" +
+        ClaudeIntegration::encodeProjectPath(QFileInfo(cwd).canonicalFilePath());
+    QDir().mkpath(projDir);
+    const QByteArray ts =
+        QDateTime::currentDateTimeUtc().toString(Qt::ISODateWithMs).toUtf8();
+    write_file(projDir + "/session.jsonl",
+        "{\"type\":\"assistant\",\"timestamp\":\"" + ts + "\",\"message\":"
+        "{\"stop_reason\":\"tool_use\",\"content\":[{\"type\":\"tool_use\","
+        "\"name\":\"Bash\",\"input\":{}}]}}\n");
+
+    const bool bound = QTest::qWaitFor([&]() {
+        return tracker.shellState(shell).state == ClaudeState::ToolUse;
+    }, 8000);
+    if (!bound) {
+        std::fprintf(stderr, "[INV-10] FAIL a transcript created after detection "
+                             "never bound: state=%d want ToolUse\n",
+                     int(tracker.shellState(shell).state));
+        return 1;
+    }
+
+    std::printf("[%-32s] late transcript bound, foreign one ignored  PASS\n",
+                "INV-10-late-transcript-binds");
+    return 0;
+}
+
 } // namespace
 
 TEST(ClaudeTabStatusIndicator, Main) {
@@ -580,6 +689,7 @@ TEST(ClaudeTabStatusIndicator, Main) {
     failures += checkBashToolSurfacing();
     failures += checkProjectCwdScopedTranscript();
     failures += checkOrphanScanCadence();
+    failures += checkTranscriptBindsAfterClaudeStarts();
 
     if (failures) {
         std::fprintf(stderr, "\n%d check(s) failed\n", failures);

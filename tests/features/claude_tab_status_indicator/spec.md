@@ -169,6 +169,20 @@ tracker class) rather than pixel-level painting:
    function's `scanOrphans=false` behaviour is tested in
    `claude_transcript_robustness` INV-12.
 
+10. **INV-10 A transcript that appears after detection still binds**
+    *(ANTS-5156)*. Claude Code creates its `.jsonl` only when the first
+    message is sent, so the lookup when `detectClaudeChild` first sees
+    the process usually finds nothing. While a Claude child is tracked
+    and no transcript is bound, every poll MUST retry the scoped lookup,
+    and the tail MUST be parsed as soon as a path binds. There is no
+    unscoped fallback: binding the system-wide newest `.jsonl` gives the
+    tab another session's state, and a bound path stops the retry.
+    Tested by spawning a `claude`-named child with no transcript beside
+    an idle transcript from another project, then creating the child's
+    own transcript with a tool call: the state MUST reach `ToolUse`.
+    `ClaudeIntegration::pollClaudeProcess` carries the same rule
+    (`tests/features/transcript_resolution_retry`).
+
 ## Rationale
 
 The existing single-global `ClaudeIntegration` design assumes one

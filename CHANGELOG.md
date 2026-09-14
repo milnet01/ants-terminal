@@ -78,6 +78,11 @@ for security-relevant changes.
 
 ### Fixed
 
+- **The status bar and tab dot follow a Claude session that was started before its first message, instead of showing it as idle for the whole session** (ANTS-5156)
+  The per-tab tracker now keeps looking for the session's transcript
+  until Claude Code creates it, and no longer borrows another project's
+  transcript in the meantime.
+
 - **indie_review_partition says why it ignored a .indie-review/partition.json (map_rejected with a reason, such as a missing "version": 1) and no longer reports that file as the source it used.** (ANTS-4846)
 
 - **New tab shells no longer inherit a dead Claude Code session's identity variables, which switched transcript saving off in a claude started there; other CLAUDE_CODE_ settings still pass through.** (ANTS-4541)
