@@ -70,6 +70,12 @@ for security-relevant changes.
 
 ### Fixed
 
+- **indie_review_fold_in's narrative mode honours dry_run and no longer writes ROADMAP.md on a preview** (ANTS-5097)
+
+- **verify_changes no longer serves a cached pass when git status fails or times out** (ANTS-5097)
+  A failed status used to hash as a clean tree; that snapshot is now
+  marked uncacheable.
+
 - **session_message returns at most 200 messages per inbox call and refuses a message_id that is not a positive whole number** (ANTS-5098)
   A limit of 0 or less used to return the whole mailbox.
 

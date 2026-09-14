@@ -36,3 +36,10 @@ Pure source-grep — no engine link needed. Runs under `test_claude`
 which already exposes `ANTS_RC_SOURCES` and
 `SRC_CLAUDE_INTEGRATION_CPP_PATH`. Mirrors the
 `cold_eyes_fold_in_freeform` pattern (ANTS-1510).
+
+## ANTS-5097 — dry_run in narrative mode
+
+With `narrative_mode` and `dry_run` both set, `cmdIndieReviewFoldIn` builds
+and returns the block with `dry_run:true` and does not call
+`RoadmapFoldIn::insertBlock`, matching `cold_eyes_fold_in`. *Test:*
+`NarrativeBranchHonoursDryRun`.

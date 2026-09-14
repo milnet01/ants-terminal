@@ -143,3 +143,37 @@ TEST(IndieReviewFoldInNarrative, DescriptorSurfacesNarrativeProps) {
     EXPECT_TRUE(contains(block, "req.append(\"caller_cwd\")"))
         << "caller_cwd must remain required";
 }
+
+// ANTS-5097 — verify_changes: a failed git status leaves the snapshot invalid,
+// so it is never hashed as a clean tree and cached.
+TEST(IndieReviewFoldInNarrative, VerifySnapshotRejectsFailedStatus) {
+    const std::string rc = ants_test::slurpRemoteControl();
+    const auto fn = rc.find("VerifyGitSnapshot collectGitSnapshot(const QString &root) {");
+    ASSERT_NE(fn, std::string::npos);
+    const auto end = rc.find("\n}\n", fn);
+    const std::string body = rc.substr(fn, end - fn);
+    const auto guard = body.find("if (!statusOk) return s;");
+    const auto hash = body.find("s.statusSha");
+    ASSERT_NE(hash, std::string::npos);
+    ASSERT_NE(guard, std::string::npos)
+        << "a failed git status is hashed as a clean tree";
+    EXPECT_LT(guard, hash);
+}
+
+// ANTS-5097 — the narrative branch honours dry_run: no insertBlock call on a
+// preview, as cold_eyes_fold_in's narrative branch does.
+TEST(IndieReviewFoldInNarrative, NarrativeBranchHonoursDryRun) {
+    const std::string rc = ants_test::slurpRemoteControl();
+    ASSERT_FALSE(rc.empty());
+    const std::string body = foldInBody(rc);
+    ASSERT_FALSE(body.empty());
+    const auto narr = body.find("\"narrative_mode\"");
+    const auto insert = body.find("RoadmapFoldIn::insertBlock", narr);
+    ASSERT_NE(narr, std::string::npos);
+    ASSERT_NE(insert, std::string::npos);
+    const std::string branch = body.substr(narr, insert - narr + 64);
+    EXPECT_TRUE(contains(branch, "\"dry_run\""))
+        << "the narrative branch never reads dry_run";
+    EXPECT_TRUE(contains(branch, "if (!dryRun && !heading.isEmpty())"))
+        << "the narrative branch writes ROADMAP.md on a dry run";
+}

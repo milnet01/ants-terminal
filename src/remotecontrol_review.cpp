@@ -964,12 +964,17 @@ QJsonDocument RemoteControl::cmdIndieReviewFoldIn(const QJsonObject &req) {
             req.value(QStringLiteral("release_block_heading")).toString();
         if (heading.isEmpty()) heading =
             RoadmapFoldIn::findActiveReleaseHeading(root);
+        // ANTS-5097 — dry_run is honoured here too, as cold_eyes_fold_in's
+        // narrative branch and this verb's structured path already do; this
+        // branch wrote ROADMAP.md on a preview.
+        const bool dryRun = req.value(QStringLiteral("dry_run")).toBool();
         bool written = false;
-        if (!heading.isEmpty()) {
+        if (!dryRun && !heading.isEmpty()) {
             written = RoadmapFoldIn::insertBlock(root, heading, block);
         }
         QJsonObject env;
         env["ok"]            = true;
+        if (dryRun) env["dry_run"] = true;
         env["block"]         = block;
         env["allocated_ids"] = QJsonArray();
         env["written"]       = written;
@@ -1718,11 +1723,14 @@ namespace rcdetail {
 
 
 // Run `git -C <root> <argv...>` and return stdout on exit 0 or {} on
-// any failure. 2 s wall-clock cap; merged stderr discarded.
-QByteArray runGit(const QString &root, const QStringList &argv) {
+// any failure. 2 s wall-clock cap; merged stderr discarded. `*ok` says
+// whether git succeeded, which an empty output alone cannot (ANTS-5097).
+static QByteArray runGitChecked(const QString &root, const QStringList &argv,
+                                const QProcessEnvironment &env, bool *ok) {
+    if (ok) *ok = false;
     QProcess p;
     p.setProcessChannelMode(QProcess::SeparateChannels);
-    p.setProcessEnvironment(GitWrap::readOnlyEnvironment());   // ANTS-4999
+    p.setProcessEnvironment(env);   // ANTS-4999 — every caller passes GitWrap's read-only env
     QStringList full;
     full << QStringLiteral("-C") << root;
     full.append(argv);
@@ -1736,7 +1744,12 @@ QByteArray runGit(const QString &root, const QStringList &argv) {
     if (p.exitStatus() != QProcess::NormalExit || p.exitCode() != 0) {
         return {};
     }
+    if (ok) *ok = true;
     return p.readAllStandardOutput();
+}
+
+QByteArray runGit(const QString &root, const QStringList &argv) {
+    return runGitChecked(root, argv, GitWrap::readOnlyEnvironment(), nullptr);
 }
 
 VerifyGitSnapshot collectGitSnapshot(const QString &root) {
@@ -1747,9 +1760,14 @@ VerifyGitSnapshot collectGitSnapshot(const QString &root) {
     const QString head = QString::fromUtf8(headRaw).trimmed();
     if (head.size() < 7) return s;
 
-    const QByteArray statusRaw = runGit(root,
+    // ANTS-5097 — a status that failed or timed out returned empty output,
+    // which hashed as a clean tree, so a cached pass could be served for a
+    // tree nobody checked. The snapshot stays invalid (uncacheable) instead.
+    bool statusOk = false;
+    const QByteArray statusRaw = runGitChecked(root,
         {QStringLiteral("status"), QStringLiteral("--porcelain=v1"),
-         QStringLiteral("-z")});
+         QStringLiteral("-z")}, GitWrap::readOnlyEnvironment(), &statusOk);
+    if (!statusOk) return s;
     // Empty status output is valid (a clean tree). Detect "git failed"
     // separately via the rev-parse already succeeded — if status fails
     // here, the second QProcess returned empty even on success which is
