@@ -865,24 +865,16 @@ TEST(McpCompact, Ants2091DispatchAndSchemaWiring) {
     EXPECT_TRUE(s.contains("mcp::terseDefault()"))
         << "compaction must fall back to mcp::terseDefault() when compact "
            "is absent";
-    // 15 compact schema props — NOT one per in-scope projection tool, which
-    // is what this comment claimed until ANTS-4429 measured it.
-    // co_change_family, docs_index and session_orient declare `fields` and
-    // not `compact`, so the two sets have diverged and the literal is the
-    // only thing standing in for the difference.
-    //
-    // ANTS-4657 owns both halves of that: whether those three should declare
-    // it, and deriving this count from a shared list the way INV-10 does
-    // (ANTS-4624). Until then this literal is load-bearing — a NEW tool
-    // declaring `compact` must bump it, and one that does not must not.
+    // ANTS-4657 — one `compact` schema declaration per verb that honours the
+    // argument. The count is derived from kCompactArgTools, so a declaration
+    // outside that list fails here; Ants4657EveryCompactArgToolDeclaresIt
+    // below names any listed verb whose schema lacks one.
     int count = 0, idx = 0;
     const QByteArray needle = "makeCompactProp();";
     while ((idx = s.indexOf(needle, idx)) != -1) { ++count; idx += needle.size(); }
-    // ANTS-4858 bumped this from 14: doc_integrity now declares `compact`,
-    // which is precisely the "a NEW tool declaring it must bump it" case the
-    // paragraph above names. ANTS-4657 still owns replacing the literal.
-    EXPECT_EQ(count, 15) << "expected 15 makeCompactProp() call sites, got "
-                         << count;
+    EXPECT_EQ(count, static_cast<int>(std::size(kCompactArgTools)))
+        << "expected one makeCompactProp() call site per kCompactArgTools "
+           "entry, got " << count;
 }
 
 // ───────────────────────────────────────────────────────────────────
@@ -1416,4 +1408,24 @@ TEST(McpReadHints, Ants5072SkipDoesNotBurnTheLatch) {
 
     ASSERT_TRUE(o.contains("next_call_hint"))
         << "the skipped oversized reply consumed the tool's one nudge";
+}
+
+// ANTS-4657 — every verb that honours `compact` declares it in its schema.
+// The dispatcher compacts on the table, not the schema, so an undeclared verb
+// was compacted while a caller could not pass compact:false to tell an empty
+// field from an absent one. Each registration runs from its name to the
+// `tools.append(` that publishes it.
+TEST(McpCompact, Ants4657EveryCompactArgToolDeclaresIt) {
+    QFile f(QString::fromUtf8(SRC_CLAUDE_INTEGRATION_CPP_PATH));
+    ASSERT_TRUE(f.open(QIODevice::ReadOnly));
+    const QByteArray s = f.readAll();
+    for (const char *t : kCompactArgTools) {
+        const QByteArray name = QByteArray("[\"name\"] = \"") + t + "\";";
+        const int pos = s.indexOf(name);
+        ASSERT_GT(pos, 0) << t << " registration not found";
+        const int end = s.indexOf("tools.append(", pos);
+        ASSERT_GT(end, pos) << t << " registration has no tools.append";
+        EXPECT_TRUE(s.mid(pos, end - pos).contains("makeCompactProp();"))
+            << t << " honours `compact` but its schema does not declare it";
+    }
 }

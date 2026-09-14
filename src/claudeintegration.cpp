@@ -4400,6 +4400,7 @@ void ClaudeIntegration::onMcpConnection() {
                     props["caller_cwd"] = makeCallerCwdReadProp();
                     props["etag_match"] = makeEtagMatchProp();
                     props["fields"]     = makeFieldsProp();
+                    props["compact"]    = makeCompactProp();     // ANTS-4657
                     // No `encoding` prop: the columnar repack is for a
                     // top-level array of FLAT objects, and files[] carries a
                     // nested sites[] per row. ANTS-3368 § 2.4 does not
@@ -6420,6 +6421,7 @@ void ClaudeIntegration::onMcpConnection() {
                     props["etag_match"] = makeEtagMatchProp();   // ANTS-1499
                     props["fields"]     = makeFieldsProp();      // ANTS-1720
                     props["encoding"]   = makeEncodingProp();    // ANTS-2090
+                    props["compact"]    = makeCompactProp();     // ANTS-4657
                     schema["properties"] = props;
                     diTool["inputSchema"] = schema;
                 }
@@ -7662,6 +7664,7 @@ void ClaudeIntegration::onMcpConnection() {
                     // `delta_present:false` would be unreadable in the way
                     // ANTS-4673 documents.
                     props["fields"] = makeFieldsProp();          // ANTS-1720
+                    props["compact"] = makeCompactProp();        // ANTS-4657
                     schema["properties"] = props;
                     // ANTS-3376 — `path` is now optional (derived from
                     // caller_cwd when omitted); only caller_cwd is required.
@@ -8765,6 +8768,7 @@ void ClaudeIntegration::onMcpConnection() {
                     // recommended it, so the one signal a caller might have
                     // noticed disappears on the call that needed it.
                     props["fields"] = makeFieldsProp();
+                    props["compact"] = makeCompactProp();        // ANTS-4657
                     schema["properties"] = props;
                     QJsonArray req;
                     req.append(QStringLiteral("caller_cwd"));

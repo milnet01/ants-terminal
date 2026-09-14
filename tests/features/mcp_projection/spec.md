@@ -212,3 +212,12 @@ live-reloaded on external edit; no Settings toggle. Test invariants
 - **INV-L7 — wiring.** `config.cpp` exposes
   `claude.mcp_hint_latch` defaulting true; `mainwindow.cpp` publishes it via
   `mcp::setHintLatchEnabled(m_config.claudeMcpHintLatch())`.
+
+## ANTS-4657 — every verb that honours `compact` declares it
+
+Each verb in the compaction table declares a `compact` property in its input
+schema: co_change_family, docs_index, feedback_query and session_orient were
+compacted without declaring it. The schema-count check derives its expected
+count from the test's `kCompactArgTools` list rather than a literal. *Tests:*
+`McpCompact.Ants4657EveryCompactArgToolDeclaresIt`,
+`McpCompact.Ants2091DispatchAndSchemaWiring`.
