@@ -9196,6 +9196,15 @@ extends an existing item, that item carries it instead.
   - Dialog colour literals, a missing minimum size and an unparented
     QColorDialog go against dialogs.md.
   - ANTS-1145 INV-2a and the --remote help text are out of date.
+  Progress (2026-09-14): the Review Changes cross-branch unpushed log
+  passes --max-count=200, and a probe's errorOccurred handler finalizes
+  only on FailedToStart (tests/features/review_changes_probe_guards).
+  Still open: per-entry full-file line counts on every refresh, git
+  ls-files on every change burst, the hook forwarder's /tmp socket
+  ownership and TMPDIR mismatch, the stale git-context hook detection,
+  the installers reading before the lock, ants-helper list, branch names
+  in the hook prompt, dialog colours and sizes, and the two stale
+  documents.
   **Layman:** Smaller dialog fixes, including a Review Changes window that reads every changed file in full and a hook that trusts any socket.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lane app-entry-dialogs).
