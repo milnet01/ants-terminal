@@ -146,6 +146,20 @@ TEST(changelog_log_writer, Inv1KindToCategory) {
               QStringLiteral("Changed"));
 }
 
+// ANTS-5108 — a newline in the summary or id stays on the bullet line, so it
+// cannot start a heading of its own. The subsection headline goes through the
+// same fold (source check; its writer's result shape is covered elsewhere).
+TEST(changelog_log_writer, Ants5108NewlinesFoldIntoOneLine) {
+    EXPECT_EQ(ChangelogLog::formatBullet(QStringLiteral("Fixed it.\n### Fake heading"),
+                                         QString(), QStringLiteral("ANTS-9\n## [9.9.9]")),
+              QStringLiteral("- **Fixed it. ### Fake heading** (ANTS-9 ## [9.9.9])"));
+    const std::string src = ants_test::slurpFile(
+        (QFileInfo(QString::fromUtf8(__FILE__)).absolutePath()
+         + QStringLiteral("/../../../src/changeloglog.cpp")).toStdString());
+    EXPECT_NE(src.find(".arg(oneLine(date), category, oneLine(headline))"), std::string::npos)
+        << "the dated subsection heading does not fold its headline";
+}
+
 // INV-2 — bullet formatting.
 TEST(changelog_log_writer, Inv2FormatBullet) {
     EXPECT_EQ(ChangelogLog::formatBullet(QStringLiteral("Hi."),

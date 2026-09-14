@@ -70,6 +70,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **A line break in a changelog entry's summary, id or dated headline stays on that line and can no longer create a fake heading** (ANTS-5108)
+
 - **project_query no longer refuses every query for the rest of the session after 64 slow queries** (ANTS-5107)
   A query worker that was left running past its deadline and later
   finishes now frees its slot.

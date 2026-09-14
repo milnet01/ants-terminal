@@ -276,12 +276,24 @@ QString preRenderedSummaryReason(const QString &summary, const QString &id) {
     return QString();
 }
 
+// ANTS-5108 — a value that sits on ONE line of the output. A newline in it
+// escaped the bullet or heading, and a continuation starting `### ` or
+// `## [` became a heading of its own; renderFindingBlock folds titles the
+// same way.
+static QString oneLine(const QString &value) {
+    QString v = value;
+    v.replace(QStringLiteral("\r\n"), QStringLiteral(" "));
+    v.replace(QLatin1Char('\n'), QLatin1Char(' '));
+    v.replace(QLatin1Char('\r'), QLatin1Char(' '));
+    return v.trimmed();
+}
+
 QString formatBullet(const QString &summary, const QString &body,
                      const QString &id) {
-    QString head = summary.trimmed();
+    QString head = oneLine(summary);
     QString out = QStringLiteral("- **") + head + QStringLiteral("**");
     if (!id.isEmpty()) {
-        out += QStringLiteral(" (") + id.trimmed() + QStringLiteral(")");
+        out += QStringLiteral(" (") + oneLine(id) + QStringLiteral(")");
     }
     if (!body.trimmed().isEmpty()) {
         const QStringList lines = body.split(QLatin1Char('\n'));
@@ -725,7 +737,7 @@ SubsectionResult insertUnreleasedSubsection(const QString &markdown,
     // Build the dated subsection block.
     QStringList block;
     block.append(QStringLiteral("### %1 %2 — %3")
-                     .arg(date.trimmed(), category, headline.trimmed()));
+                     .arg(oneLine(date), category, oneLine(headline)));
     block.append(QString());                       // blank after the heading
     if (!body.trimmed().isEmpty()) {
         const QStringList bodyLines = body.split(QLatin1Char('\n'));
