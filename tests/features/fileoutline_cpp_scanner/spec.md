@@ -80,3 +80,12 @@ pass before and after (regression guard).
 Verified before the fix.
 
 Label: `features;fast`.
+
+## ANTS-5021 — out-of-line constructors and destructors
+
+A column-0 `Class::Class(` or `Class::~Class(`, optionally namespace-qualified,
+is outlined as a `func` named by its qualified name (`Foo::Foo`, `Foo::~Foo`),
+including when the initializer list or the `{` sits on a later line. A
+constructor-shaped call inside a function body is not outlined. read_region's
+qualified-suffix fallback then resolves a bare `~Foo`. *Test:*
+`FileOutlineCppScanner.Ants5021OutOfLineCtorDtorOutlined`.

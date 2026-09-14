@@ -92,6 +92,22 @@ constexpr int kHeaderDocMaxLines = 30;
 // scope `static const` initialises on first use and survives the
 // process.
 
+// ANTS-5021 — an out-of-line constructor or destructor carries no return
+// type, so rxCppMember (which requires one) and rxCppFunc both skipped it:
+// `Foo::Foo(QObject *parent) : QObject(parent) {}` and `Foo::~Foo() {` never
+// reached the outline, and read_region symbol= could not find them. The
+// method name must repeat the class name (the backreference), and the line
+// starts at column 0, so a call inside a body cannot match.
+const QRegularExpression &rxCppCtorDtor() {
+    static const QRegularExpression rx = []{
+        QRegularExpression r(QStringLiteral(
+            R"(^(?:[A-Za-z_]\w*::)*([A-Za-z_]\w*)::~?\1\s*\()"));
+        r.optimize();
+        return r;
+    }();
+    return rx;
+}
+
 const QRegularExpression &rxCppMember() {
     static const QRegularExpression rx = []{
         // ANTS-3433 — the return type is one-or-more `[\w:<>]+` tokens each
@@ -936,6 +952,12 @@ QJsonObject compute(const QString &absPath,
                     name = name.mid(1);
                 }
                 offer("func", name, line);
+                funcDefOpensBody = !endsWithSemicolon;
+            } else if (!inFuncBody && rxCppCtorDtor().match(codeLine).hasMatch()) {
+                // ANTS-5021 — `Class::Class(` / `Class::~Class(`, emitted by
+                // its qualified name so read_region resolves `~Class` too.
+                const int lparen = line.indexOf(QLatin1Char('('));
+                offer("func", line.left(lparen).trimmed(), line);
                 funcDefOpensBody = !endsWithSemicolon;
             } else if (!inFuncBody && (m = rxCppFunc().match(codeLine)).hasMatch()) {
                 offer("func", m.captured(2), line);

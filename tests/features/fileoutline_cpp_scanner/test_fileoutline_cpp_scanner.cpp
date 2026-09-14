@@ -473,3 +473,35 @@ TEST(FileOutlineCppScanner, Ants3738DefinitionHeaderWithTrailingComment) {
         << "ANTS-3738: the signature keeps the raw line, comment included — "
            "stripping is for MATCHING only, not for output";
 }
+
+// ANTS-5021 — out-of-line constructors and destructors have no return type,
+// so they never reached the outline and read_region symbol= could not find
+// them. A constructor-shaped call inside a body is still not a definition.
+TEST(FileOutlineCppScanner, Ants5021OutOfLineCtorDtorOutlined) {
+    QTemporaryDir dir;
+    const QString path = writeCpp(dir, QStringLiteral(
+        "LlmClient::LlmClient(QObject *parent) : QObject(parent) {}\n"
+        "\n"
+        "LlmClient::~LlmClient() {\n"
+        "    abort();\n"
+        "}\n"
+        "\n"
+        "ns::Widget::Widget(int a)\n"
+        "    : m_a(a)\n"
+        "{\n"
+        "}\n"
+        "\n"
+        "void LlmClient::abort() {\n"
+        "    LlmClient::LlmClient(nullptr);\n"
+        "}\n"));
+    const QStringList fns = funcNames(path);
+    EXPECT_TRUE(fns.contains(QStringLiteral("LlmClient::LlmClient")))
+        << "fns = [" << fns.join(", ").toStdString() << "]";
+    EXPECT_TRUE(fns.contains(QStringLiteral("LlmClient::~LlmClient")))
+        << "fns = [" << fns.join(", ").toStdString() << "]";
+    EXPECT_TRUE(fns.contains(QStringLiteral("ns::Widget::Widget")))
+        << "a constructor whose initializer list wraps is still outlined";
+    EXPECT_TRUE(fns.contains(QStringLiteral("LlmClient::abort")));
+    EXPECT_EQ(fns.count(QStringLiteral("LlmClient::LlmClient")), 1)
+        << "a call inside a body is not a second constructor";
+}
