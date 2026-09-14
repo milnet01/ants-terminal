@@ -8259,6 +8259,13 @@ extends an existing item, that item carries it instead.
   exec), first_trusted overwrite, the second copy of reports, the
   DialogShowTracer and ChromeGuard Q_OBJECT lows, and tr() in the About
   dialog.
+  Trust-prompt analysis (2026-09-14, not built), against docs/specs/ANTS-1337.md section 4.3 and the code in src/verifytrustmodal.cpp and src/verifytrust.cpp:
+  - Real gap: the prompt has no "Gates: N — name1, name2" line; it shows only commandPreview's first command.
+  - Real gap: "Trust this repo" has no "auto-re-prompt if the file changes" checkbox (default ON); showPrompt always passes untilShaChanges=true. QMessageBox::setCheckBox fits.
+  - The 0644 warning belongs to the trust store, not the prompt: section 6 wants a log warning when verify-trust.json is world-readable on read. src/verifytrust.cpp has no such check. The auto-chmod half already holds (saveToDisk narrows the tmp file before rename).
+  - Modality: not a breach as written. Section 4.3 says the modal blocks that one MCP request while other tabs keep running; exec() spins its own loop so shells keep running. Close this part unless the user reads it differently.
+  - first_trusted: saveToDisk writes now for every entry on every save, so the original trust date is lost; carry each entry's date from loadFromDisk.
+  Existing test to extend: tests/features/verify_trust_modal_gui_thread (a RecordingModalClient subclass overrides showPrompt).
   **Layman:** Smaller dialog fixes, including a review button that can undo its own error reporting and a trust file that can be lost.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lane dialog-chrome-theme).
@@ -10481,6 +10488,18 @@ extends an existing item, that item carries it instead.
   cmdGetText) must not change. Build note:
   tests/features/mcp_extra_tools scrapes a byte window around this
   provider, so new code here can push get_text out of it.
+  Parked (2026-09-14) before a context clear, nothing built. Spec
+  accepted (docs/specs/ANTS-5219-scrollback-line-cap.md, c62dd315).
+  Ready-to-apply work is in build/ants-5219-park/ (untracked):
+  ants-5219-drafts.txt (stub, real capScrollbackRequest, cmdGetText and
+  get_scrollback provider edits), mcp_get_scrollback_cap/ (test cpp +
+  spec.md), and uncommitted-edits.patch (the stub in
+  src/remotecontrol.h, the test_claude CMakeLists line after
+  mcp_audit_run_async, and a CHANGELOG entry). Next: move
+  mcp_get_scrollback_cap/ back to tests/features/, git apply the patch,
+  build test_claude, see INV-1..5 fail, then apply the real code from
+  the drafts. test_claude has both ANTS_MAINWINDOW_SOURCES and
+  ANTS_RC_SOURCES.
   **Layman:** Claude can ask a terminal for an unlimited amount of its history in one go, which freezes the window.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lane mainwindow-b), split from ANTS-5080.
