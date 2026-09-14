@@ -3758,6 +3758,14 @@ void ClaudeIntegration::onMcpConnection() {
                     QJsonObject t;
                     t["name"] = "roadmap_branch_drift";
                     t["description"] = QStringLiteral(
+                        "Compare ROADMAP shipped entries' cited commit SHAs against "
+                        "HEAD's history and list the ones HEAD cannot reach. Use after "
+                        "a rebase or multi-branch merge. Returns {ok, current_branch, "
+                        "current_commit, scanned_bullets, with_sha, drift_count, "
+                        "drift:[{bullet_id, cited_sha, reason, headline}], path}. "
+                        "against_refs:[\"branch\", ...] also reports SHAs missing from a "
+                        "named sibling ref under mis_branched[].");
+                    t["detail"] = QStringLiteral(
                         "Compare ROADMAP ✅ entries' cited commit SHAs "
                         "against HEAD's reachable history. Returns a "
                         "drift list when a claimed-shipped commit "
@@ -4007,6 +4015,13 @@ void ClaudeIntegration::onMcpConnection() {
                 QJsonObject tabListTool;
                 tabListTool["name"] = "tab_list";
                 tabListTool["description"] = QStringLiteral(
+                    "List all open terminal tabs in this Ants instance. Each tab: "
+                    "{index, title, cwd, shell_pid, claude_running, color}, plus, "
+                    "for a tracked Claude session, claude_state "
+                    "(not_running|idle|thinking|tool_use|compacting), "
+                    "awaiting_input, and plan_mode / auditing / tool when set. "
+                    "Envelope: {ok:true, tabs:[...]}.");
+                tabListTool["detail"] = QStringLiteral(
                     "List all open terminal tabs in this Ants instance. "
                     "Each tab: {index, title, cwd, shell_pid, "
                     "claude_running, color}. When a tab runs a tracked "
@@ -4180,6 +4195,15 @@ void ClaudeIntegration::onMcpConnection() {
                     QJsonObject t;
                     t["name"] = "find_sources";
                     t["description"] = QStringLiteral(
+                        "Map a free-text topic (\"audit cache invalidation\") to a ranked "
+                        "list of source files under src/ + tests/. Use when you do not "
+                        "know the symbol or filename; for an exact symbol use "
+                        "workspace_search or find_definition. Returns {ok, "
+                        "files:[{path, score, role, evidence}], files_count, "
+                        "unmatched_terms, files_scanned, truncated}; role is "
+                        "impl|header|test. Required: topic, caller_cwd. Optional "
+                        "max_results (default 20, cap 100).");
+                    t["detail"] = QStringLiteral(
                         "Map a free-text topic (\"audit cache "
                         "invalidation\", \"test audit fold-in\", "
                         "\"model auto switch actuator\") to a ranked "
@@ -4270,6 +4294,14 @@ void ClaudeIntegration::onMcpConnection() {
                     QJsonObject t;
                     t["name"] = "co_change_family";
                     t["description"] = QStringLiteral(
+                        "Given one exemplar settings field, list every edit site you "
+                        "must touch to mirror it, grouped by file, including derived "
+                        "names (setX, m_X, XChanged) a whole-word search misses. "
+                        "Returns {ok, stems, stem_words, min_run, files:[{path, "
+                        "sites:[...]}], files_count, sites_count, truncated}; `role` is "
+                        "lexical. Required: caller_cwd plus `stem` or `stems`. "
+                        "Refusals: bad_args, no_project, rg_failed.");
+                    t["detail"] = QStringLiteral(
                         "Given one exemplar settings field, list every edit "
                         "site you must touch to mirror it — grouped by file, "
                         "with the JSON string key and the derived names "
@@ -4285,8 +4317,8 @@ void ClaudeIntegration::onMcpConnection() {
                         "Required: `caller_cwd` plus `stem` or `stems`. "
                         "Refusals: bad_args, no_project, rg_failed. "
                         "Scans the whole repo (minus .gitignore), unlike "
-                        "find_sources.");
-                    t["detail"] = QStringLiteral(
+                        "find_sources."
+                        " "
                         "min_run is the shortest accepted word-run, resolved "
                         "per stem against that stem's own word count: it "
                         "defaults to min(2, words) and clamps to 1..words. "
@@ -4873,6 +4905,13 @@ void ClaudeIntegration::onMcpConnection() {
                 cbTool["name"] = "cited_by";
                 cbTool["description"] = QStringLiteral(
                     "Given the anchors a change touched (symbols, flags, config "
+                    "keys, paths), report which documents cite each, in one call. "
+                    "Returns {ok, cells:[{anchor, file, count, first_line}], "
+                    "cells_count, anchors_matched, anchors_unmatched, files_count, "
+                    "scope_resolved, truncated}. Anchors match literally. Refusals: "
+                    "bad_args, bad_path, rg_failed. caller_cwd Required.");
+                cbTool["detail"] = QStringLiteral(
+                    "Given the anchors a change touched (symbols, flags, config "
                     "keys, paths), report which documents cite which of them — one "
                     "call in place of one search per anchor. Returns {ok, "
                     "cells:[{anchor, file, count, first_line}], cells_count, "
@@ -4886,8 +4925,8 @@ void ClaudeIntegration::onMcpConnection() {
                     "`scope_resolved`. Refusals: bad_args (anchors absent, empty, "
                     "over 64, an empty-string anchor, or case \"smart\"), bad_path "
                     "(scope escapes the project root), rg_failed. caller_cwd "
-                    "Required. Full detail via tool_info {name:\"cited_by\"}.");
-                cbTool["detail"] = QStringLiteral(
+                    "Required. Full detail via tool_info {name:\"cited_by\"}."
+                    " "
                     "One rg run per anchor, in sorted anchor order, so every match "
                     "belongs to its anchor by construction and there is no "
                     "attribution step. A combined single pass was measured and "
@@ -5010,6 +5049,15 @@ void ClaudeIntegration::onMcpConnection() {
                 QJsonObject foTool;
                 foTool["name"] = "file_outline";
                 foTool["description"] = QStringLiteral(
+                    "Return a structured outline of a file (header comment + "
+                    "per-symbol {line, kind, name, signature}) instead of a full "
+                    "Read. Languages by extension: cpp/c/glsl, py, md, json, html "
+                    "and the brace family. paths:[...] outlines several files; "
+                    "branch on files_found / files_missing, not ok. sizes:true adds "
+                    "per-symbol bytes and lines; raw:true returns verbatim bytes. "
+                    "caller_cwd required, or \"~global\". Does NOT satisfy the native "
+                    "Edit tool's read-precondition.");
+                foTool["detail"] = QStringLiteral(
                     "Return a structured outline of a file — header "
                     "comment + per-symbol {line, kind, name, "
                     "signature}. Prefer this over a full Read when "
@@ -5236,6 +5284,17 @@ void ClaudeIntegration::onMcpConnection() {
                     QJsonObject mp;
                     mp["name"] = "mutation_probe";
                     mp["description"] = QStringLiteral(
+                        "Apply a textual mutation to a source file, run a test command, "
+                        "restore the file, and REFUSE a mutation that changed nothing. "
+                        "Outcomes: killed | survived | inert | timed_out | "
+                        "command_not_found | write_failed | not_run. restored_clean is "
+                        "verified against the baseline bytes. "
+                        "require_green_baseline:true refuses a red or unreadable "
+                        "baseline (baseline_unreadable); expect_occurrences refuses a "
+                        "mismatch (occurrence_mismatch); transport_budget_sec stops the "
+                        "batch before the transport times out. test_command is an argv "
+                        "array. caller_cwd required.");
+                    mp["detail"] = QStringLiteral(
                         "Apply a textual mutation to a source file, run a test "
                         "command, restore the file — and REFUSE a mutation that "
                         "did not change anything. The mutate-and-watch-it-go-red "
@@ -5470,6 +5529,13 @@ void ClaudeIntegration::onMcpConnection() {
                 QJsonObject rrTool;
                 rrTool["name"] = "read_region";
                 rrTool["description"] = QStringLiteral(
+                    "Return an exact slice of a project file instead of Read-ing "
+                    "it: a line range (start_line/end_line), a named symbol's body "
+                    "(symbol) or a markdown heading's body (section, by heading "
+                    "text or slug). Exactly one selector. Byte-capped by max_bytes. "
+                    "caller_cwd required, or \"~global\" for files under ~/.claude/. "
+                    "Does NOT satisfy the native Edit tool's read-precondition.");
+                rrTool["detail"] = QStringLiteral(
                     "Return an exact slice of a project file — a line range "
                     "(start_line/end_line, 1-based inclusive), a named "
                     "symbol's body (symbol), OR a markdown heading's body "
@@ -5645,6 +5711,16 @@ void ClaudeIntegration::onMcpConnection() {
                 QJsonObject rrsTool;
                 rrsTool["name"] = "read_regions";
                 rrsTool["description"] = QStringLiteral(
+                    "Batched read_region: fetch several file slices in one call. "
+                    "`items` is an array of {path, one selector (symbol | "
+                    "start_line[/end_line] | section), optional etag_match}; a "
+                    "top-level `path` is the default for items without one. Returns "
+                    "{ok, results:[...], count, truncated?}, one slice envelope per "
+                    "item; a bad item fails alone. Shared max_bytes budget; max 64 "
+                    "items (too_many_items). Aliases: requests / paths / regions. "
+                    "caller_cwd required, or \"~global\". Does NOT satisfy the native "
+                    "Edit tool's read-precondition.");
+                rrsTool["detail"] = QStringLiteral(
                     "Batched read_region: fetch several file slices in ONE "
                     "call instead of N. `items` is an array of {path, + "
                     "exactly one selector: symbol | start_line[/end_line] | "
@@ -5776,6 +5852,16 @@ void ClaudeIntegration::onMcpConnection() {
                 QJsonObject rsTool;
                 rsTool["name"] = "read_spill";
                 rsTool["description"] = QStringLiteral(
+                    "Re-read a result that was offloaded ({offloaded:true, handle, "
+                    "head, ...}) by its `handle`, the 64-hex sha256. Byte paging: "
+                    "offset + max_bytes (default 512 KiB, 4 MiB ceiling), advancing "
+                    "by the RETURNED offset+bytes; returns {content, offset, bytes, "
+                    "total_bytes, truncated}. Row paging over the envelope's array: "
+                    "row_offset + row_count; returns {mode:\"rows\", key, rows, "
+                    "row_offset, total_rows, population, truncated}. Refusals: "
+                    "bad_args, not_found (evicted: re-issue the call), too_large, "
+                    "not_array. caller_cwd optional.");
+                rsTool["detail"] = QStringLiteral(
                     "Re-read a large result that was offloaded (observation "
                     "masking) — when a read verb returned {offloaded:true, "
                     "handle, head, ...} instead of the full body, fetch the "
@@ -5886,6 +5972,17 @@ void ClaudeIntegration::onMcpConnection() {
                 QJsonObject aeTool;
                 aeTool["name"] = "apply_edits";
                 aeTool["description"] = QStringLiteral(
+                    "Apply a batch of {path, old, new} edits across project files "
+                    "in one call. Without replace_all, `old` must occur exactly "
+                    "once (else skipped: not_found or ambiguous, with candidates). "
+                    "An edit may instead name start_line/end_line plus "
+                    "expect_first_line/expect_last_line (range_mismatch, "
+                    "range_out_of_bounds). Atomic per file; edits to one file apply "
+                    "in order. Returns applied[] + skipped[] + counts. A path "
+                    "escaping the root fails the call (bad_path). A transport "
+                    "timeout means UNKNOWN: re-read before re-sending. Split large "
+                    "batches. caller_cwd required.");
+                aeTool["detail"] = QStringLiteral(
                     "Apply a batch of {path, old, new} edits across one or "
                     "more project files in ONE call — instead of a native "
                     "Edit round-trip per site. Each edit replaces `old` with "
@@ -6168,6 +6265,15 @@ void ClaudeIntegration::onMcpConnection() {
                 QJsonObject ciTool;
                 ciTool["name"] = "codebase_index";
                 ciTool["description"] = QStringLiteral(
+                    "Pre-computed project structural map, cached and lazily "
+                    "refreshed. No selector returns a summary; symbol=Foo::bar its "
+                    "definitions; lane=<name> a lane's files and symbols; "
+                    "file_path=<rel> one file's outline. At most one selector (else "
+                    "bad_args); a miss is ok:true, found:false. A summary with "
+                    "empty:true carries empty_reason: on project_not_registered or "
+                    "declared_roots_hold_no_source the index is inapplicable, not "
+                    "proof of no code. caller_cwd required.");
+                ciTool["detail"] = QStringLiteral(
                     "Pre-computed project structural map, cached + lazily "
                     "refreshed. No selector → a summary "
                     "(file_count / lanes / languages / roles); add "
@@ -6244,6 +6350,14 @@ void ClaudeIntegration::onMcpConnection() {
                 QJsonObject diTool;
                 diTool["name"] = "docs_index";
                 diTool["description"] = QStringLiteral(
+                    "Pre-computed project documentation map, cached and lazily "
+                    "refreshed, for any layout. No selector returns a summary; "
+                    "topic=<words> ranked docs; doc_path=<rel> one doc's headings "
+                    "and links; id=<stem> docs whose filename stem matches. At most "
+                    "one selector (else bad_args); a miss is ok:true, found:false. "
+                    "Indexes headings, titles and paths, not body prose. caller_cwd "
+                    "required.");
+                diTool["detail"] = QStringLiteral(
                     "Pre-computed project documentation map, cached + lazily "
                     "refreshed. Project-agnostic (any layout, not just Ants). "
                     "No selector → a summary (per-doc {path,id,title,status,"
@@ -6298,6 +6412,14 @@ void ClaudeIntegration::onMcpConnection() {
                 QJsonObject docInt;
                 docInt["name"] = "doc_integrity";
                 docInt["description"] = QStringLiteral(
+                    "Deterministic markdown integrity check. Kinds: dead_anchor, "
+                    "broken_link, toc_gap, heading_sequence, ungranted_tool (a "
+                    "skill calling an mcp__ants__ verb its allowed-tools never "
+                    "granted). Fence-aware. path=<file|dir> or paths=[...] scopes "
+                    "the run (default: the docs dir); kinds=[...] filters. "
+                    "Suppressed cases are counted, not reported. Refusal: bad_path. "
+                    "caller_cwd required, or \"~global\" with an explicit path.");
+                docInt["detail"] = QStringLiteral(
                     "Deterministic markdown doc-integrity check (no LLM). Reports "
                     "these kinds: dead_anchor (a [t](#slug) / [t](other.md#slug) "
                     "naming no real heading), broken_link (a [t](relpath) whose "
@@ -6426,6 +6548,15 @@ void ClaudeIntegration::onMcpConnection() {
                 QJsonObject docSym;
                 docSym["name"] = "doc_symbols";
                 docSym["description"] = QStringLiteral(
+                    "Resolve the identifiers a doc claims exist: inline code spans "
+                    "like `Foo::bar()` are looked up with find_definition's "
+                    "resolver and reported resolved | unresolved | not_checked. "
+                    "Fenced code, paths, keywords and MCP names are excluded. "
+                    "REPORT-ONLY. Unresolved findings carry `shape` (call | "
+                    "qualified | bare); read call-shaped ones first. not_checked "
+                    "means never looked up. only narrows symbols[]. Read-only. "
+                    "caller_cwd required.");
+                docSym["detail"] = QStringLiteral(
                     "Resolve the identifiers a doc claims exist. Harvests inline code spans "
                     "that look like `Foo::bar()` and looks each up with find_definition's "
                     "resolver, reporting resolved | unresolved | not_checked per occurrence. "
@@ -6505,6 +6636,15 @@ void ClaudeIntegration::onMcpConnection() {
                 QJsonObject specLint;
                 specLint["name"] = "spec_lint";
                 specLint["description"] = QStringLiteral(
+                    "Check specs for structural defects: invariant_no_test, "
+                    "invariant_id_gap, loop_row_no_outcome, test_coverage_gap, "
+                    "test_coverage_unverifiable, command_test_no_expectation and "
+                    "missing_section (only when a format standard carries a "
+                    "required-sections block). Read skipped[] and invariants_found: "
+                    "a skipped check or zero invariants is silence, not a clean "
+                    "result. counts cover the full scan; max_findings caps "
+                    "findings[]. Read-only. caller_cwd required.");
+                specLint["detail"] = QStringLiteral(
                     "Check specs for the structural defects /cold-eyes § 1e greps for by "
                     "hand: an INV-N with no test-surface clause (invariant_no_test), a gap "
                     "in the doc's own id sequence (invariant_id_gap \u2014 a CANDIDATE since ANTS-3684: a spec carrying a subset of a parent's invariants keeps the parent's ids, and renumbering would break the citation), a cold-eyes loop-log "
@@ -6640,6 +6780,16 @@ void ClaudeIntegration::onMcpConnection() {
                 QJsonObject specConf;
                 specConf["name"] = "spec_conformance";
                 specConf["description"] = QStringLiteral(
+                    "Run a spec's own regex pcre2 fences against the `| input | "
+                    "expected |` table beside them, instead of reading them. A row "
+                    "whose result differs is a FINDING, a fence with no table a "
+                    "CANDIDATE, a per-case timing an OBSERVATION. Executes patterns "
+                    "only, never code. Read executable_fences with "
+                    "skipped_fences[]: zero executable fences means the run checked "
+                    "nothing. Refusals: bad_args, bad_path, not_found; "
+                    "unsupported_engine per fence. Read-only. caller_cwd and `path` "
+                    "required.");
+                specConf["detail"] = QStringLiteral(
                     "Run a spec's own regex patterns against the `| input | expected |` "
                     "table beside them, instead of reading them. Three buckets: a row "
                     "whose actual result differs from `expected` is a FINDING; a "
@@ -6707,6 +6857,14 @@ void ClaudeIntegration::onMcpConnection() {
                 QJsonObject docDedup;
                 docDedup["name"] = "doc_dedup";
                 docDedup["description"] = QStringLiteral(
+                    "Find near-duplicate PASSAGES across a doc set (the same fact "
+                    "written twice): paragraphs are shingled into word 3-grams and "
+                    "pairs at or above min_similarity are reported as Jaccard. "
+                    "Returns pairs[] ({a,b,similarity}) and clusters[] (the "
+                    "readable view). Fence-aware. REPORT-ONLY and never "
+                    "auto-fixable; it finds shared words, not shared meaning. "
+                    "caller_cwd required.");
+                docDedup["detail"] = QStringLiteral(
                     "Find near-duplicate PASSAGES across a doc set — the same fact written "
                     "twice, which /cold-eyes Phase 4 names as the usual cause of a review "
                     "that will not converge. Segments each markdown file into paragraphs "
@@ -6777,6 +6935,16 @@ void ClaudeIntegration::onMcpConnection() {
                 QJsonObject docLint;
                 docLint["name"] = "doc_lint";
                 docLint["description"] = QStringLiteral(
+                    "Run every deterministic document check in one call "
+                    "(doc_integrity, doc_citations, doc_dedup, doc_symbols, "
+                    "spec_lint) and return one findings list in a total order. "
+                    "Narrow with checks[] (an unknown name refuses bad_args); "
+                    "max_findings pages after the sort while counts cover the whole "
+                    "run. REPORT-ONLY unless fix:true, which repairs toc_gap only; "
+                    "dry_run:true previews. Read checks_run[] with check_errors[] "
+                    "and skipped[]: an errored checker's counts are a floor. "
+                    "caller_cwd required.");
+                docLint["detail"] = QStringLiteral(
                     "Run EVERY deterministic document check in one call and return one "
                     "findings list: doc_integrity (dead anchors, broken links, TOC gaps, "
                     "heading order, ungranted skill tools), doc_citations (path:line "
@@ -6886,6 +7054,15 @@ void ClaudeIntegration::onMcpConnection() {
                 QJsonObject docCit;
                 docCit["name"] = "doc_citations";
                 docCit["description"] = QStringLiteral(
+                    "Resolve a doc's `path:line` citations and return the cited "
+                    "text. Each carries status ok | missing_file | foreign_path | "
+                    "out_of_range | read_error | ambiguous | unresolved; "
+                    "`path::symbol` also resolves. only=\"stale\" narrows to non-ok. "
+                    "counts mixes status and overlay buckets (see "
+                    "counts_overlay_keys). A zero with unrecognised_candidates is "
+                    "not a passed check. Read-only. caller_cwd required, or "
+                    "\"~global\".");
+                docCit["detail"] = QStringLiteral(
                     "ANTS-4565 — pass `caller_cwd: \"~global\"` (alias "
                     "\"~claude-config\") to check citations in a doc under "
                     "~/.claude/, the same sentinel doc_integrity, "
@@ -7081,6 +7258,17 @@ void ClaudeIntegration::onMcpConnection() {
                 QJsonObject psTool;
                 psTool["name"] = "project_settings";
                 psTool["description"] = QStringLiteral(
+                    "Read, detect or write the repo-committed "
+                    "<root>/.ants/project.json layout file. op:\"get\" reads "
+                    "{present, declared, undeclared[], unavailable[], "
+                    "declared_missing[]}. op:\"detect\" also proposes keys in "
+                    "`suggestion` (source_roots, test_roots, docs_dir, specs_dir, "
+                    "roadmap, changelog). op:\"init\" writes the detected keys. "
+                    "op:\"set\" creates or updates keys (null clears), including "
+                    "id_format {prefix?, pattern?}. Refusals: bad_args, bad_path, "
+                    "settings_exists, unrecognised_format, id_format_mismatch. "
+                    "caller_cwd required.");
+                psTool["detail"] = QStringLiteral(
                     "Detect a non-standard project layout and create/update the "
                     "repo-committed <root>/.ants/project.json (the ANTS-2160 "
                     "reader's source). ANTS-4903 — op:\"get\" is the READ: "
@@ -7244,6 +7432,16 @@ void ClaudeIntegration::onMcpConnection() {
                     QJsonObject pqTool;
                     pqTool["name"] = "project_query";
                     pqTool["description"] = QStringLiteral(
+                        "Run a small READ-ONLY Lua snippet over the project's files "
+                        "server-side and get back only its computed result, for "
+                        "aggregate questions (count TODOs, which files import X). API: "
+                        "project.list(subdir?), project.read(relpath), project.root(), "
+                        "plus string/table/math/utf8. The snippet must `return` its "
+                        "answer. Sandboxed to caller_cwd; memory, time and output "
+                        "capped. Returns {ok, result, elapsed_ms}. Refusals: "
+                        "query_error, query_timeout, query_oom, result_too_large, "
+                        "query_disabled. caller_cwd required.");
+                    pqTool["detail"] = QStringLiteral(
                         "Run a small READ-ONLY Lua snippet over the project's "
                         "files server-side and get back ONLY its computed "
                         "result — not the file text. The token-saver for "
@@ -7297,6 +7495,14 @@ void ClaudeIntegration::onMcpConnection() {
                     QJsonObject t;
                     t["name"] = "feedback_query";
                     t["description"] = QStringLiteral(
+                        "Read only the UN-TRIAGED tail of a *_Ants_MCP_Feedback.md "
+                        "file: on v2, findings with an unfilled **Proposed ID:**; on "
+                        "v1, blocks after the last maintainer table. Returns {ok, path, "
+                        "delta, delta_present, mapped_ids, mapped_id_status, "
+                        "format_version, suspected_untagged, truncated, etag, ...}. "
+                        "`path` is optional. include_tracking:true adds tracking rows. "
+                        "Refusals: bad_args, not_feedback_file, bad_path, not_found.");
+                    t["detail"] = QStringLiteral(
                         "Read only the UN-TRIAGED tail of a cross-session "
                         "*_Ants_MCP_Feedback.md file instead of Read-ing the "
                         "whole file. The un-triaged rule is VERSION-DEPENDENT "
@@ -7452,6 +7658,16 @@ void ClaudeIntegration::onMcpConnection() {
                     QJsonObject t;
                     t["name"] = "feedback_log";
                     t["description"] = QStringLiteral(
+                        "Write to a cross-session *_Ants_MCP_Feedback.md file, always "
+                        "at EOF. Contributor: op:\"append_finding\" (creates the file). "
+                        "Maintainer: op:\"assign_id\" (fill a finding's Proposed ID), "
+                        "op:\"compact_resolved\", op:\"migrate_v2\", op:\"set_title\", and "
+                        "the v1 ops append_tracking and compact_shipped. `path` is "
+                        "optional and derived from caller_cwd's leaf. Atomic write. "
+                        "Returns {ok, op, path, bytes_appended, date, created}. "
+                        "Refusals: bad_mode, bad_args, bad_status, not_feedback_file, "
+                        "bad_path, not_found, write_failed. caller_cwd required.");
+                    t["detail"] = QStringLiteral(
                         "Append to a cross-session "
                         "*_Ants_MCP_Feedback.md file — always at EOF, "
                         "never inserting above a maintainer block. "
@@ -7838,6 +8054,16 @@ void ClaudeIntegration::onMcpConnection() {
                     t["name"] = "audit_falsepos_log";
                     t["description"] = QStringLiteral(
                         "Append one confirmed false-positive record to "
+                        "<project>/.ants_review_falsepos.jsonl, the prose ledger the AI "
+                        "review skills read so a re-run does not re-litigate a "
+                        "dismissed finding. Atomic append; do not hand-write the file. "
+                        "It does NOT suppress audit_run findings: a static-analysis "
+                        "finding goes to audit_dismiss. Returns {ok, path, "
+                        "bytes_appended, created, timestamp, review_kind, consumed_by, "
+                        "hint}. Refusals: bad_args, no_project, write_failed. "
+                        "caller_cwd required.");
+                    t["detail"] = QStringLiteral(
+                        "Append one confirmed false-positive record to "
                         "<project>/.ants_review_falsepos.jsonl — the prose "
                         "ledger the /cold-eyes, /indie-review, /test-audit, "
                         "/debt-sweep (and /audit step-10.5) sweeps read so a re-run "
@@ -7936,6 +8162,16 @@ void ClaudeIntegration::onMcpConnection() {
                     QJsonObject t;
                     t["name"] = "audit_dismiss";
                     t["description"] = QStringLiteral(
+                        "Record one learned false-positive verdict in "
+                        "<project>/.audit_cache/learned-fp.jsonl, the fingerprint "
+                        "ledger audit_run and the Audit dialog both filter on, so the "
+                        "finding stays suppressed on later sweeps. Pass `rule` plus "
+                        "EITHER `fingerprint` OR `file`+`message`. Re-dismissing is a "
+                        "no-op. Returns {ok, path, fingerprint, computed, rule, "
+                        "timestamp}. Refusals: bad_args, no_project, write_failed. "
+                        "caller_cwd required. Not audit_falsepos_log, which writes the "
+                        "reviewers' prose ledger.");
+                    t["detail"] = QStringLiteral(
                         "Record one learned-false-positive verdict into "
                         "<project>/.audit_cache/learned-fp.jsonl — the "
                         "fingerprint-keyed ledger BOTH `audit_run` and the "
@@ -8009,6 +8245,13 @@ void ClaudeIntegration::onMcpConnection() {
                 QJsonObject gsTool;
                 gsTool["name"] = "git_state";
                 gsTool["description"] = QStringLiteral(
+                    "Query git repo state as structured JSON instead of Bash git "
+                    "status / log / diff. op: \"status\" (default; branch, "
+                    "ahead/behind, files[] including untracked), \"log\" (n, default "
+                    "10, cap 100; path; body) or \"diff\" (path; range, omitted for "
+                    "the working tree; hunks:true for per-file hunk headers, with "
+                    "include_lines, context and staged).");
+                gsTool["detail"] = QStringLiteral(
                     "Query git repo state (status / log / diff) as "
                     "structured JSON. Replaces multiple Bash "
                     "invocations of `git status` / `git log` / "
@@ -8191,6 +8434,14 @@ void ClaudeIntegration::onMcpConnection() {
                 QJsonObject lasTool;
                 lasTool["name"] = "last_audit_summary";
                 lasTool["description"] = QStringLiteral(
+                    "Read the latest audit report under {cwd}/.audit_cache and "
+                    "return counts (error/warning/note/suppressed) plus "
+                    "top_findings, instead of reading the HTML report. It reads "
+                    "existing files and never re-runs scanners; call audit_run for "
+                    "a fresh sweep. since_commit:<sha> reports fresh:false when the "
+                    "cache is at another commit or older than 5 min. Refusal: "
+                    "not_audited (no recognised report).");
+                lasTool["detail"] = QStringLiteral(
                     "Read the latest audit summary under "
                     "{cwd}/.audit_cache and return a compact envelope: "
                     "counts (error/warning/note/suppressed) plus "
@@ -8311,6 +8562,15 @@ void ClaudeIntegration::onMcpConnection() {
                     QJsonObject csTool;
                     csTool["name"] = "current_state";
                     csTool["description"] = QStringLiteral(
+                        "One-call session-start state: the active roadmap item, git "
+                        "branch state, open audit findings and spec existence. Returns "
+                        "{ok, active_bullet?, workflow_status_line?, git_branch_state, "
+                        "open_audit_findings_count, open_audit_findings_count_stale, "
+                        "spec_path?, etag}. A true open_audit_findings_count_stale "
+                        "means the cached audit predates HEAD. Upstream failures fall "
+                        "back to documented fields; ok stays true while the project "
+                        "root resolves.");
+                    csTool["detail"] = QStringLiteral(
                         "One-call session-start state. Returns "
                         "{ok, active_bullet?, workflow_status_line?, "
                         "git_branch_state, open_audit_findings_count, "
@@ -8405,6 +8665,15 @@ void ClaudeIntegration::onMcpConnection() {
                         "+ roadmap_query section_index in one call "
                         "(one ETag).");
                     t["description"] = QStringLiteral(
+                        "First call on a fresh session: one envelope under one ETag "
+                        "composing current_state, project_layout, active roadmap "
+                        "sections, active_bullets (top-20 headlines in file order, not "
+                        "priority), server_build (running version, SHA, build date) and "
+                        "a trimmed codebase_index summary. Top-level ok is true when "
+                        "the first three upstreams succeed; a failing key carries that "
+                        "upstream's refusal. A missing optional artifact is reported in "
+                        "notices[], not as a failure.");
+                    t["detail"] = QStringLiteral(
                         "Single-call session-orientation bundle: composes "
                         "current_state (project / git / audit state) + "
                         "project_layout (where docs / specs / roadmap "
@@ -8561,6 +8830,17 @@ void ClaudeIntegration::onMcpConnection() {
                     QJsonObject t;
                     t["name"] = "spec_query";
                     t["description"] = QStringLiteral(
+                        "Parse one spec file and return its metadata and invariant list "
+                        "instead of reading it. Returns {ok, id, title, status, kind, "
+                        "path, size_bytes, mtime_ms, invariants:[{id, body, "
+                        "test_surface?}], invariants_count, source}. Target via `id` "
+                        "(<PREFIX>-NNNN resolves docs/specs/<id>.md or <id>-*.md; "
+                        "phase_<NN>_<topic> resolves docs/phases/) or a "
+                        "project-relative `path`. No id or path lists the specs dir; "
+                        "mode:\"gate_drift\" reports gated specs edited since their last "
+                        "review loop. Refusals: bad_id, bad_path, not_found, "
+                        "no_project.");
+                    t["detail"] = QStringLiteral(
                         "Parse a single spec / design markdown file and "
                         "return its parsed metadata + invariant list. "
                         "Returns {ok, id, title, status, kind, path, "
@@ -8705,6 +8985,17 @@ void ClaudeIntegration::onMcpConnection() {
                     QJsonObject t;
                     t["name"] = "spec_log";
                     t["description"] = QStringLiteral(
+                        "Edit a spec's structured surface without hand-editing "
+                        "markdown. op:\"set_status\" rewrites **Status:**; "
+                        "op:\"append_loop\" appends a loop-log row in the section's "
+                        "existing shape (a table needs `cells`); op:\"append_inv\" "
+                        "appends an INV-N bullet, never renumbering. Target via `id` "
+                        "(docs/specs/<id>.md, or phase_<NN>_<topic>) or a "
+                        "project-relative `path`. dry_run:true previews. Refusals: "
+                        "bad_mode, bad_id, bad_path, bad_args, no_project, not_found, "
+                        "unrecognised_format, format_mismatch, write_failed. caller_cwd "
+                        "required.");
+                    t["detail"] = QStringLiteral(
                         "Edit a spec's structured surface without "
                         "hand-editing markdown. op:\"set_status\" rewrites "
                         "the whole **Status:** field, including any "
@@ -8876,6 +9167,16 @@ void ClaudeIntegration::onMcpConnection() {
                     QJsonObject t;
                     t["name"] = "invariant_check";
                     t["description"] = QStringLiteral(
+                        "Given project-relative file paths you are about to edit, list "
+                        "the docs/specs/*.md specs whose body mentions them, with "
+                        "invariant counts. Returns {ok, matched_specs:[{id, path, "
+                        "title, matched_terms[], invariants_count}], specs_scanned, "
+                        "matched_count, mode, invariants_included, fallback_match, "
+                        "roadmap_scanned}. mode defaults to \"summary\" (no invariant "
+                        "bodies); mode:\"full\" includes them. Matching is "
+                        "substring-only; a path matching nothing is retried by suffix "
+                        "(see matched_as). It never reads the ROADMAP.");
+                    t["detail"] = QStringLiteral(
                         "Given a list of project-relative file paths "
                         "(typically what you're about to edit), scan "
                         "`docs/specs/*.md` for specs that mention any "
@@ -9010,6 +9311,15 @@ void ClaudeIntegration::onMcpConnection() {
                     QJsonObject t;
                     t["name"] = "task_priors";
                     t["description"] = QStringLiteral(
+                        "Given a free-text task description, return the project context "
+                        "you would otherwise gather in several exploration round-trips: "
+                        "matching specs, roadmap cards, recent commits touching named "
+                        "paths, and ADRs. Returns {ok, terms[], ids[], paths[], "
+                        "specs[], specs_count, roadmap_cards[], cards_count, commits[], "
+                        "commits_count, adrs[], adrs_count}; each *_count is the "
+                        "pre-cap total. Refusals: bad_args (empty description or no "
+                        "searchable terms), no_project (caller_cwd unresolved).");
+                    t["detail"] = QStringLiteral(
                         "Given a free-text task description, return the "
                         "project context you'd otherwise gather in 6-8 "
                         "exploration round-trips: matching `docs/specs/*.md` "
@@ -9127,6 +9437,13 @@ void ClaudeIntegration::onMcpConnection() {
                     QJsonObject t;
                     t["name"] = "build_status";
                     t["description"] = QStringLiteral(
+                        "Record or read the most recent build's outcome. op=record "
+                        "takes {exit_code, output, started_at_ms?, finished_at_ms?}, "
+                        "parses compiler output into errors[] + warnings_count and "
+                        "writes <root>/.audit_cache/build.json. op=read (default) "
+                        "returns the cached envelope, with stale:true when a compile "
+                        "input is newer. Refusal: not_cached.");
+                    t["detail"] = QStringLiteral(
                         "Record or read the most recent build's outcome. "
                         "op=record takes {exit_code, output, started_at_ms?, "
                         "finished_at_ms?} and parses GCC/clang/cppcheck-2.x "
@@ -9209,6 +9526,14 @@ void ClaudeIntegration::onMcpConnection() {
                     QJsonObject t;
                     t["name"] = "test_results";
                     t["description"] = QStringLiteral(
+                        "Record or read the most recent ctest run's summary. op=record "
+                        "takes {exit_code, output, started_at_ms?, finished_at_ms?, "
+                        "duration_ms?}, parses ctest output into {passed, failed, "
+                        "skipped, total, failing_tests:[{name, excerpt}]} and writes "
+                        "<root>/.audit_cache/tests.json. op=read (default) returns it; "
+                        "detail=<name> returns one failing test's full block. Refusals: "
+                        "not_cached, detail_not_found.");
+                    t["detail"] = QStringLiteral(
                         "Record or read the most recent ctest run's "
                         "summary. op=record takes {exit_code, output, "
                         "started_at_ms?, finished_at_ms?, duration_ms?} "
@@ -9318,6 +9643,17 @@ void ClaudeIntegration::onMcpConnection() {
                     QJsonObject t;
                     t["name"] = "focused_test";
                     t["description"] = QStringLiteral(
+                        "Run only the tests that exercise the changed files: maps "
+                        "`changed_files` (or git status) to ctest -R patterns and runs "
+                        "them against the existing build. Returns the test_results "
+                        "envelope {ok, passed, failed, skipped, total, failing_tests[]} "
+                        "plus selection, ctest_filter and mapping fields. An unmapped "
+                        "file or empty selection falls back to the full suite "
+                        "(downgraded_to_full). Refusals: no_project, no_build_dir, "
+                        "focused_test_in_flight, bad_args, ctest_missing, ctest_failed, "
+                        "unrecognised_output. To check a test would CATCH a defect, use "
+                        "mutation_probe.");
+                    t["detail"] = QStringLiteral(
                         "Run only the tests that exercise the changed "
                         "files, instead of the whole suite. Resolves "
                         "`changed_files` (or auto-derives from git "
@@ -9414,6 +9750,15 @@ void ClaudeIntegration::onMcpConnection() {
                     QJsonObject t;
                     t["name"] = "build_target_for";
                     t["description"] = QStringLiteral(
+                        "Which build target owns a source file, read statically from "
+                        "CMakeLists.txt, with the `cmake --build --target` line and, "
+                        "for a gtest source, the `ctest -R` filter. Returns {ok, path, "
+                        "cmake_path, targets:[{name, kind, command, line, source_count, "
+                        "build_command}], targets_parsed, found, suites?, "
+                        "ctest_filter?, ctest_command?, hint?}. found:false is an "
+                        "answer: a header, or a new test source not yet in a bundle's "
+                        "SOURCES. Read-only. caller_cwd required.");
+                    t["detail"] = QStringLiteral(
                         "Which build target owns this source file, "
                         "read statically from CMakeLists.txt — plus the "
                         "`cmake --build --target` line and, for a gtest "
@@ -9503,6 +9848,15 @@ void ClaudeIntegration::onMcpConnection() {
                     QJsonObject t;
                     t["name"] = "find_definition";
                     t["description"] = QStringLiteral(
+                        "Find where a symbol is defined across the project, without a "
+                        "full LSP: a regex-anchored scan over C++/Python/Lua/Shell "
+                        "source. Use instead of grep + Read cycles for \"where is Foo "
+                        "defined?\". Returns {ok, symbol, lang, definitions:[{file, "
+                        "line, signature, lang, kind}], definitions_count, "
+                        "files_scanned, truncated, walk_capped}; `kind` is definition "
+                        "or declaration. Refusals: bad_args (symbol missing or not a "
+                        "valid identifier), no_project (caller_cwd unresolved).");
+                    t["detail"] = QStringLiteral(
                         "Find where a symbol is defined across the "
                         "project, without a full LSP. Regex-anchored "
                         "scan over C++/Python/Lua/Shell source. Returns "
@@ -9596,6 +9950,16 @@ void ClaudeIntegration::onMcpConnection() {
                     QJsonObject t;
                     t["name"] = "find_caller";
                     t["description"] = QStringLiteral(
+                        "Find what calls a symbol across the project, without a full "
+                        "LSP: a regex-anchored scan over C++/Python/Lua/Shell source. "
+                        "Returns {ok, symbol, lang, callers:[{file, line, context, "
+                        "lang}], callers_count, definition?, files_scanned, truncated, "
+                        "walk_capped}; the definition line is excluded from callers. "
+                        "files_only:true returns files:[{file, count, lines[]}] "
+                        "instead; `lane` scopes the scan to one subdirectory. Refusals: "
+                        "bad_args (symbol missing or not a valid identifier), "
+                        "no_project (caller_cwd unresolved).");
+                    t["detail"] = QStringLiteral(
                         "Find what calls a symbol across the project, "
                         "without a full LSP. Regex-anchored scan over "
                         "C++/Python/Lua/Shell source. Returns {ok, "
@@ -9844,6 +10208,16 @@ void ClaudeIntegration::onMcpConnection() {
                     QJsonObject t;
                     t["name"] = "indie_review_partition";
                     t["description"] = QStringLiteral(
+                        "Return the subsystem (lane) partition for indie-review, from "
+                        ".indie-review/partition.json when present, else "
+                        "docs/subsystems.md or CLAUDE.md's module map, with per-lane "
+                        "file lists. Each lane carries file_count and total_lines; "
+                        "too_coarse and oversized flag lanes over budget, and "
+                        "kind:\"tests\" labels test lanes. suggested_merges[] names "
+                        "near-duplicate lanes. Files in no lane are reported as "
+                        "unassigned_count / unassigned_reason; their absence means full "
+                        "coverage.");
+                    t["detail"] = QStringLiteral(
                         "Return the subsystem (lane) partition for "
                         "indie-review. Reads the module map from "
                         "`docs/subsystems.md` (or CLAUDE.md `## Module map "
@@ -9929,6 +10303,15 @@ void ClaudeIntegration::onMcpConnection() {
                     QJsonObject t;
                     t["name"] = "indie_review_brief";
                     t["description"] = QStringLiteral(
+                        "Return a brief manifest for one review lane: prompt template, "
+                        "source-path list and contract docs, without inlined source "
+                        "bodies. Returns {brief, source_paths[], contract_docs[], "
+                        "external_specs[], dimension_weighting{}}. Required: lane. "
+                        "Optional source_paths[]: when `lane` is not in the partition, "
+                        "the brief is built from these project-relative paths; rejected "
+                        "ones are listed in source_paths_rejected. Rate limit: "
+                        "BriefAssembly tier, 30 calls / 60 s per (tool, caller_cwd).");
+                    t["detail"] = QStringLiteral(
                         "Return a brief manifest for one lane: "
                         "prompt template + source-path list + "
                         "contract-doc list (ANTS-1281). Response "
@@ -10008,6 +10391,15 @@ void ClaudeIntegration::onMcpConnection() {
                     QJsonObject t;
                     t["name"] = "indie_review_corroborate";
                     t["description"] = QStringLiteral(
+                        "Cross-lane corroboration filter: returns findings cited by at "
+                        "least min_lanes (default 2) distinct lanes at the same "
+                        "file:line. Provide exactly one of `reports` (inline {lane: "
+                        "text}) or `reports_dir` (project-relative *.md directory; "
+                        "allow_outside_project for an absolute one). Pure regex, no "
+                        "LLM. Read citations_seen / citations_resolved and near_misses "
+                        "before concluding from a zero; unresolved_citations:true means "
+                        "nothing resolved. line_slop > 0 groups nearby citations.");
+                    t["detail"] = QStringLiteral(
                         "Cross-lane corroboration filter. Input: "
                         "EITHER `reports` (inline map of "
                         "{lane: report_text}, v1) OR `reports_dir` "
@@ -10280,6 +10672,16 @@ void ClaudeIntegration::onMcpConnection() {
                     QJsonObject t;
                     t["name"] = "indie_review_orchestrate";
                     t["description"] = QStringLiteral(
+                        "One call that returns the whole dispatch plan for an "
+                        "indie-review sweep, replacing indie_review_partition + N "
+                        "indie_review_brief calls. Returns {ok, lane_count, "
+                        "reports_dir, lanes:[{name, summary, source_paths, report_path, "
+                        "brief, contract_docs, byte_count}], suggested_merges, "
+                        "next_steps}. Dispatch one agent per lane, then collect with "
+                        "indie_review_corroborate + indie_review_fold_in. "
+                        "include_briefs:false returns a names-and-paths skeleton. "
+                        "caller_cwd Required.");
+                    t["detail"] = QStringLiteral(
                         "One call that returns the whole dispatch plan for "
                         "an /indie-review sweep — replaces "
                         "indie_review_partition + N indie_review_brief "
@@ -10744,6 +11146,17 @@ void ClaudeIntegration::onMcpConnection() {
                     QJsonObject t;
                     t["name"] = "audit_run";
                     t["description"] = QStringLiteral(
+                        "Run the project's external audit tools (cppcheck, clazy, ruff, "
+                        "bandit, semgrep, gitleaks, trivy, shellcheck, mypy) "
+                        "server-side and return a structured envelope + SARIF path. "
+                        "Args: tools (auto-detect when empty), scope (auto / files / "
+                        "since-tag:X / branch-diff / full), cap_per_tool_seconds "
+                        "(default 30, 5-300), top_findings_count. Read partial, "
+                        "incomplete_tools, paths_given_total and tools_with_no_files "
+                        "before trusting a zero. async:true returns a job for "
+                        "audit_poll; a long sync run can outlive the transport, then "
+                        "read last_audit_summary. caller_cwd Required.");
+                    t["detail"] = QStringLiteral(
                         "Run the project's external audit tools "
                         "(cppcheck/clazy/ruff/bandit/semgrep/gitleaks/"
                         "trivy/shellcheck/mypy) server-side and return "
@@ -11259,6 +11672,15 @@ void ClaudeIntegration::onMcpConnection() {
                     QJsonObject t;
                     t["name"] = "test_audit_synthesis_prompt";
                     t["description"] = QStringLiteral(
+                        "Phase 3 of the test_audit trio: read the per-chunk reports in "
+                        "<reports_dir>, fence each, and return a synthesis prompt. "
+                        "mode:\"summary\" (default: stats + pointers), mode:\"full\" "
+                        "(verbatim, paged by offset/limit) or mode:\"hybrid\" (summary + "
+                        "the top-N chunks verbatim). allow_outside_project:true accepts "
+                        "an absolute reports_dir. Refusals: bad_mode, "
+                        "reports_dir_outside_root, reports_dir_unreadable, "
+                        "reports_dir_empty.");
+                    t["detail"] = QStringLiteral(
                         "Phase 3 of the test_audit trio. Read per-"
                         "chunk reports from <reports_dir>, fence each "
                         "via <chunk_report file=\"…\"> tags (prompt-"
@@ -11343,6 +11765,14 @@ void ClaudeIntegration::onMcpConnection() {
                     QJsonObject t;
                     t["name"] = "test_audit_fold_in";
                     t["description"] = QStringLiteral(
+                        "Phase 4 of the test_audit trio: render actionable findings as "
+                        "ROADMAP bullets in one batched write, ids allocated from "
+                        ".roadmap-counter. Each actionable[] item has file, line, "
+                        "dimension, severity (CRITICAL/HIGH/MEDIUM/LOW/INFO), fix and a "
+                        "headline (summary or claim accepted). narrative_mode:true + "
+                        "narrative_md inserts prose instead, with no ids. Refusals: "
+                        "bad_actionable, narrative_md_required, id_counter_failed.");
+                    t["detail"] = QStringLiteral(
                         "Phase 4 of the test_audit trio. Render "
                         "actionable findings as ROADMAP bullets via "
                         "RoadmapFoldIn::allocateIds + insertBlock "
@@ -11656,6 +12086,13 @@ void ClaudeIntegration::onMcpConnection() {
                     QJsonObject t;
                     t["name"] = "cold_eyes_partition";
                     t["description"] = QStringLiteral(
+                        "Return the doc-lane partition for a cold-eyes review: walks "
+                        "docs/ + root contracts and groups them by topic (contracts / "
+                        "standards / decisions / plugins / per-spec). An override at "
+                        "<project>/.cold-eyes/partition.json replaces the default; a "
+                        "malformed one falls back and reports `override_warning`. "
+                        "Optional: scope (\"default\" / \"docs_only\" / \"contracts_only\").");
+                    t["detail"] = QStringLiteral(
                         "Return the doc-lane partition for /cold-eyes. "
                         "Walks docs/ + root contracts, groups by topic "
                         "cohesion (contracts / standards / decisions / "
@@ -11710,6 +12147,16 @@ void ClaudeIntegration::onMcpConnection() {
                     QJsonObject t;
                     t["name"] = "cold_eyes_brief";
                     t["description"] = QStringLiteral(
+                        "Return a brief manifest for one doc-review lane: brief text, "
+                        "doc_paths, cross_reference_docs, cited_code_paths, "
+                        "cited_code_regions, stale_citations, doc_integrity, input_hash "
+                        "and section_index. Doc bodies are not inlined. input_hash lets "
+                        "a caller skip a lane whose input is unchanged. Required: lane. "
+                        "Optional doc_paths[] builds the brief from those "
+                        "project-relative paths; optional prior_loop_fixes[] renders a "
+                        "previously-fixed block. Rate limit: BriefAssembly tier, 30 "
+                        "calls / 60 s per (tool, caller_cwd).");
+                    t["detail"] = QStringLiteral(
                         "Return a brief manifest for one lane: brief "
                         "text + doc_paths + cross_reference_docs + "
                         "cited_code_paths + stale_citations + "
@@ -11928,6 +12375,16 @@ void ClaudeIntegration::onMcpConnection() {
                     QJsonObject t;
                     t["name"] = "cold_eyes_fold_in";
                     t["description"] = QStringLiteral(
+                        "Render a `### 📝 Cold-eyes <YYYY-MM-DD>` ROADMAP block from "
+                        "corroborated findings. id_allocation:\"auto\" (default) "
+                        "allocates ids from .roadmap-counter; id_allocation:\"skip\" "
+                        "emits bullets without ids. The block is inserted into "
+                        "ROADMAP.md when a release-block heading is found or given "
+                        "(release_block_heading), else returned in `block`. "
+                        "narrative_mode:true + narrative_md inserts prose instead. "
+                        "Required: caller_cwd, and actionable[] or narrative_mode + "
+                        "narrative_md.");
+                    t["detail"] = QStringLiteral(
                         "Render an `### 📝 Cold-eyes <YYYY-MM-DD>` "
                         "ROADMAP block from a list of corroborated "
                         "findings. Default (`id_allocation:\"auto\"`) "
@@ -13488,6 +13945,18 @@ void ClaudeIntegration::onMcpConnection() {
                     QJsonObject t;
                     t["name"] = "roadmap_migrate";
                     t["description"] = QStringLiteral(
+                        "Load ONE project's markdown roadmap (ROADMAP.md + "
+                        "docs/roadmap/ archives) into the machine-global roadmap store, "
+                        "resolved from caller_cwd. dry_run:true plans, reports counts "
+                        "and rolls back (it still opens the store). It never writes "
+                        "ROADMAP.md. Read store_backed, updated_items[] and "
+                        "notes_summary before acting on counts. op:\"deregister\" removes "
+                        "a project (confirm:true while its root exists). Refusals: "
+                        "no_project, no_roadmap, case_ambiguous, not_utf8, "
+                        "format_mismatch, bad_args, slug_collision, store_failed, "
+                        "migrate_failed, confirm_required, transient_root. caller_cwd "
+                        "Required.");
+                    t["detail"] = QStringLiteral(
                         "ANTS-4617 — op:\"deregister\" is the INVERSE and the "
                         "catalogue had none: migrating a scratch copy to test "
                         "something destructive in isolation is the careful "
@@ -13762,6 +14231,16 @@ void ClaudeIntegration::onMcpConnection() {
                         "not by session. Ends in a receipt, not a roadmap "
                         "id.");
                     t["description"] = QStringLiteral(
+                        "Leave a message for whoever next picks up another project, and "
+                        "see when it has been read. Addressed to a project by "
+                        "export_slug, never to a session. op:\"send\" (needs `to` + "
+                        "`body`), op:\"inbox\" (default: your unacked mail, newest "
+                        "first), op:\"ack\" (needs `message_id`; idempotent). An entry "
+                        "with `acked_at` has been read. Refusals: no_project (run "
+                        "roadmap_migrate first), unknown_project, inbox_full, "
+                        "not_found. Distinct from the *_Ants_MCP_Feedback.md corpus, "
+                        "which files work.");
+                    t["detail"] = QStringLiteral(
                         "ANTS-4622 — leave a message for whoever picks up "
                         "another project next, and see when it has been read. "
                         "Addressed to a PROJECT by its export_slug, never to a "
@@ -14349,6 +14828,14 @@ void ClaudeIntegration::onMcpConnection() {
                     t["name"] = "changelog_query";
                     t["description"] = QStringLiteral(
                         "Read CHANGELOG.md as structured entries {version, date, "
+                        "unreleased, category, text, ids[], body?} instead of the whole "
+                        "file. Filters: version, category, query, id / ids[]. mode: "
+                        "entries (default) | version_index | headline_only. Opt-in: "
+                        "include_body, offset/limit (1..500). caller_cwd Required. "
+                        "Refusals: no_changelog, format_mismatch, bad_version, "
+                        "bad_category, bad_mode, bad_mode_combo, bad_case, bad_args.");
+                    t["detail"] = QStringLiteral(
+                        "Read CHANGELOG.md as structured entries {version, date, "
                         "unreleased, category, text, ids[], body?} instead of "
                         "full-reading the file — the symmetric read side of "
                         "changelog_log, mirroring roadmap_query. Filters: "
@@ -14591,6 +15078,13 @@ void ClaudeIntegration::onMcpConnection() {
                     QJsonObject t;
                     t["name"] = "project_layout";
                     t["description"] = QStringLiteral(
+                        "Per-project file-layout cache: where the roadmap, changelog, "
+                        "specs, standards, ADRs, AppStream metainfo and counter file "
+                        "live. Returns {roadmap, changelog, specs_dir, standards_dir, "
+                        "adr_dir, appstream_metainfo, counter_file, cached}. Cached for "
+                        "7 days and invalidated by an mtime change; force_rescan:true "
+                        "bypasses. caller_cwd required.");
+                    t["detail"] = QStringLiteral(
                         "Per-project file-layout cache. Returns "
                         "{roadmap:{path,format,bullet_count_estimate,"
                         "size_bytes,mtime_ms},changelog:{path,"

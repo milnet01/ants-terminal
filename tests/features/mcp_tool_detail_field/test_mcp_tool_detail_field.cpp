@@ -13,6 +13,7 @@
 #include <cstddef>
 #include <fstream>
 #include <string>
+#include <utility>
 #include <vector>
 
 ANTS_TEST_SCOPE();
@@ -126,6 +127,54 @@ std::vector<std::string> readAnchors(const std::string &tool) {
         const std::string tok = line.substr(a, b - a + 1);
         if (tok.empty() || tok[0] == '#') continue;
         out.push_back(tok);
+    }
+    return out;
+}
+
+// ANTS-5152 — every `<var>["name"] = "<tool>";` registration line, in
+// source order, with its offset: the same shape
+// tools/check-readme-claims.sh counts as a registered tool.
+std::vector<std::pair<std::string, std::size_t>> registrations(
+    const std::string &ci) {
+    std::vector<std::pair<std::string, std::size_t>> out;
+    const std::string key = "[\"name\"] = \"";
+    const auto isIdent = [](char c) {
+        return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
+               (c >= '0' && c <= '9') || c == '_';
+    };
+    for (std::size_t p = ci.find(key); p != std::string::npos;
+         p = ci.find(key, p + 1)) {
+        std::size_t i = ci.rfind('\n', p);
+        i = (i == std::string::npos) ? 0 : i + 1;
+        while (i < p && (ci[i] == ' ' || ci[i] == '\t')) ++i;
+        bool ok = i < p;
+        for (std::size_t j = i; ok && j < p; ++j) ok = isIdent(ci[j]);
+        const std::size_t ns = p + key.size();
+        const std::size_t ne = ci.find('"', ns);
+        if (!ok || ne == std::string::npos || ne == ns ||
+            ci.compare(ne, 2, "\";") != 0)
+            continue;
+        const std::string name = ci.substr(ns, ne - ns);
+        bool lower = true;
+        for (char c : name) lower = lower && ((c >= 'a' && c <= 'z') || c == '_');
+        if (lower) out.emplace_back(name, p);
+    }
+    return out;
+}
+
+// The names isEtagSupportedTool accepts: those descriptions carry the
+// runtime "Etag tip:" memo on the wire.
+std::vector<std::string> etagTools(const std::string &ci) {
+    std::vector<std::string> out;
+    const auto a = ci.find("bool ClaudeIntegration::isEtagSupportedTool(");
+    if (a == std::string::npos) return out;
+    const auto b = ci.find("\n}\n", a);
+    const std::string body = ci.substr(a, b - a);
+    const std::string lit = "QStringLiteral(\"";
+    for (auto p = body.find(lit); p != std::string::npos;
+         p = body.find(lit, p + 1)) {
+        const auto s = p + lit.size();
+        out.push_back(body.substr(s, body.find('"', s) - s));
     }
     return out;
 }
@@ -253,5 +302,48 @@ TEST(mcp_tool_detail_field, Inv7SnapshotBeforeStripBeforeSend) {
            "INV-7: m_lastToolsList snapshot must precede the detail strip");
     expect(strip < wantLite,
            "INV-7: detail strip must precede the lite/full wire send");
+    EXPECT_EQ(0, expect_failures());
+}
+
+// INV-9 (ANTS-5152) — the INV-5 budget holds for EVERY registered tool,
+// not only the seven above: prefix + short literal + the pointer when a
+// `detail` is authored + the Etag tip on etag-supported tools <= 800 B.
+TEST(mcp_tool_detail_field, Inv9EveryToolWireBudgetUnder800) {
+    expect_reset();
+    const std::string &ci = ciSource();
+    const auto regs = registrations(ci);
+    ASSERT_GT(regs.size(), kInScope.size())
+        << "INV-9 setup: tool registrations not found";
+    const auto etag = etagTools(ci);
+    ASSERT_FALSE(etag.empty()) << "INV-9 setup: isEtagSupportedTool not parsed";
+    const std::size_t kPrefixMax = 12;
+    for (std::size_t k = 0; k < regs.size(); ++k) {
+        const std::string &name = regs[k].first;
+        const std::size_t start = regs[k].second;
+        const std::size_t end =
+            k + 1 < regs.size() ? regs[k + 1].second : ci.size();
+        const std::string block = ci.substr(start, end - start);
+        const auto ds = block.find("[\"description\"]");
+        expect(ds != std::string::npos,
+               ("INV-9: " + name + " has a description in its block").c_str());
+        if (ds == std::string::npos) continue;
+        std::size_t shortB = shortDescBytes(ci, name);
+        // A plain `"..."` literal (no QStringLiteral) is measured as written.
+        const auto lit = block.find_first_not_of(
+            " =", ds + std::string("[\"description\"]").size());
+        if (lit != std::string::npos && block[lit] == '"')
+            shortB = block.find('"', lit + 1) - lit - 1;
+        expect(shortB > 0,
+               ("INV-9: " + name + " short description parsed").c_str());
+        std::size_t wire = kPrefixMax + shortB;
+        if (contains(block, "[\"detail\"] = QStringLiteral("))
+            wire += (" Full per-op detail via tool_info {name:\"" + name +
+                     "\"}.").size();
+        for (const auto &e : etag)
+            if (e == name) wire += etagTipBytes();
+        expect(wire <= 800,
+               ("INV-9: " + name + " reconstructed wire description <= 800 B" +
+                " (got " + std::to_string(wire) + ")").c_str());
+    }
     EXPECT_EQ(0, expect_failures());
 }

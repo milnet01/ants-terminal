@@ -44,6 +44,13 @@ behaviours are validated through the source constructs that produce them.
   sibling, and the pointer never leaks into the snapshot `tool_info`
   reads.
 
+- **INV-9** (ANTS-5152) — The INV-5 budget holds for EVERY registered
+  tool (each `<var>["name"] = "<tool>";` line), not only the seven above:
+  prefix + short literal + the pointer when the tool authors a `detail` +
+  the Etag-tip memo when `isEtagSupportedTool` names it, ≤ 800 B. This is
+  `docs/standards/mcp-tools.md` rule 11, which already applies to every
+  tool.
+
 INV-8 (no regression in the pre-existing source-scrape window tests) is
 covered by those tests staying green under `ctest`, not by an assertion
 here.
