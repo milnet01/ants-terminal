@@ -79206,6 +79206,21 @@ contributors don't duplicate research.
   Source: user-report-2026-09-14 (screenshot, status bar idle mid-turn).
   Lanes: claude, claudestatuswidgets.
 
+- 📋 [ANTS-5157] **roadmap-data-model.md § 8 still says roadmap-format.md files `Source:` as an optional trailer, though it has been required since v1.2.**
+  Found by the blast-radius sweep of the ANTS-4955 contract review. The
+  `Optional fields.` bullet in roadmap-data-model.md § 8 reads: its § 3.5
+  files `Layman:` and `Source:` as optional. roadmap-format.md made
+  `Source:` a required piece in v1.2 (2026-09-09, ANTS-4985), so the
+  sentence is stale for `Source:` and still true for `Layman:`. It also
+  says § 3.3 adopts the defaults for an absent `Source:`, which stays true
+  for migration. roadmap-data-model.md is a gated standard, so the
+  correction is a rule 14 question for that document rather than a repair
+  made in passing during another document's review.
+  **Layman:** One roadmap standard still describes a field as optional after the other standard made it required, so the two disagree.
+  Kind: doc-fix.
+  Source: in-session-2026-09-14 (review-contract sweep, ANTS-4955 gate on roadmap-format.md).
+  Lanes: docs, roadmap-store.
+
 ### 📝 Cold-eyes 2026-05-11 (ANTS-1234 spec)
 
 > Docs reviewed: 1 (`docs/specs/ANTS-1234.md`). Loops to clean: 7.

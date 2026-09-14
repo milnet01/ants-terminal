@@ -204,15 +204,11 @@ Required pieces:
   the field whose parser they were settled against (ANTS-4065 § 2.2).
 
 
-  Two guards limit what un-anchoring admits, and **their scopes
-  differ.** Both are stated here because both were settled by the same
-  spec, but only the first generalises — do not implement the second
-  for the other labels.
+  Two guards limit what un-anchoring admits. Both hold for all five keys.
 
   - **A label inside an inline code span declares nothing** (a bullet
-    *quoting* `Kind:` is writing about the format). **General** — it
-    holds for all five keys, and it holds however far ahead of the label
-    the span opened, across a line break included. The body is matched
+    *quoting* `Kind:` is writing about the format). It holds however far
+    ahead of the label the span opened, across a line break included. The body is matched
     through a length-preserving mask built from
     `MarkdownScan::codeSpans()`; captured values are sliced from the
     unmasked text, so a value that itself carries backticks is stored
@@ -244,14 +240,14 @@ Optional pieces:
   to the bold headline if absent. Sits after the body prose,
   before `Kind:` / `Lanes:` / `Source:`. Case-insensitive label.
   **Stored without its closing full stop; the render writes one back**
-  (ANTS-4955) — the rule the `Source:` vocabulary below already follows
-  for its trailing period. Every route that writes the column, an import
-  and `roadmap_log` alike, drops ONE trailing `.`; the render appends
-  `.` unless the text already ends in `.`, `!` or `?`. So
+  (ANTS-4955). Every route that writes the store's `layman` column, an
+  import and `roadmap_log` alike, drops ONE trailing `.`; the render then
+  appends `.` unless the stored text ends in `!` or `?`. So
   `Layman: Faster start.` and `Layman: Faster start` store the same value
   and render the same line, and re-importing a rendered file changes
-  nothing. A file whose Layman lines lack the stop gains it at its next
-  render: a one-time diff.
+  nothing. `roadmap_log` writing to a roadmap with no store emits that same
+  rendered line. A file whose Layman lines lack the stop gains it at its
+  next render: a one-time diff.
 - **`Evidence: <path1>, <path2>`** — optional file paths (screenshots,
   logs, repros) that evidence the item — e.g. a bug diagnosed from a
   screenshot. Comma-separated; a comma or newline *inside* a path is
