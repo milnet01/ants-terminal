@@ -60537,7 +60537,7 @@ than re-filed; everything else lands here.
   Source: in-session-2026-09-11.
   Lanes: mcp, workspace_search.
 
-- 📋 [ANTS-5119] **mutation_probe cannot read a green ctest run, so require_green_baseline refuses every ctest batch.**
+- ✅ [ANTS-5119] **mutation_probe cannot read a green ctest run, so require_green_baseline refuses every ctest batch.**
   Measured 2026-09-11. test_command ["ctest", "--test-dir", "build",
   "-R", "^MultiWindowSession\\."] with require_green_baseline:true
   refused baseline_unreadable: exit 0, counts -1/-1. The run was green.
@@ -60548,6 +60548,11 @@ than re-filed; everything else lands here.
   Fix: accept the zero-failure form, and add a fixture for it beside
   the form that carries a failure count. Workaround: run the gtest
   binary directly with --gtest_filter.
+  Resolved (2026-09-14) by ANTS-4996: parseCounts now reads ctest's
+  green summary through TestResCache::parseCtestSummary, so
+  require_green_baseline accepts a green ctest batch. Test
+  MutationProbe.Ants4996GreenCtestSummaryParses covers this symptom. No
+  separate changelog entry.
   **Layman:** The mutation checker can't tell that a passing test run passed, when the run comes from this project's test runner.
   Kind: fix.
   Source: in-session-2026-09-11.
@@ -69254,7 +69259,7 @@ partition (11 lanes) is documented in this fold-in for reuse.
 
   Tests: two behavioural legs in tests/features/roadmap_log_bundle_row/ (INV-14). Both verified RED against two mutations -- no gate at all, and a gate that fires EARLY before placement is resolved and returns a plausible ok:true envelope. The second is why the sorted-placement leg exists: without it the suite would pass against a preview that fakes its answer.
 
-- 📋 [ANTS-4996] **mutation_probe and verify_changes cannot read an all-green ctest summary.**
+- ✅ [ANTS-4996] **mutation_probe and verify_changes cannot read an all-green ctest summary.**
   ctest 4.4.3 prints `100% tests passed out of N` when nothing
   failed. The `, M tests failed` clause appears only when something
   fails. `parseCounts` in src/mutationprobe.cpp matches only
@@ -69266,6 +69271,16 @@ partition (11 lanes) is documented in this fold-in for reuse.
   unverified. Fix: one matcher accepting both summary shapes, used by
   both parsers, with a test feeding each shape. Hit while proving
   ANTS-3645 INV-4: the probe ran only with the gate off.
+  Resolved (2026-09-14): the defect had THREE copies, not two.
+  mutationprobe.cpp parseCounts, verifyengine.cpp parseCtest and
+  testrescache.cpp summaryRe (the test_results cache, named by neither
+  item) all required the ", N tests failed" clause that ctest omits on a
+  green run. One matcher, TestResCache::parseCtestSummary, now accepts
+  both shapes and all three call it. Tests
+  MutationProbe.Ants4996GreenCtestSummaryParses,
+  VerifyEngine.Ants4996GreenCtestSummaryWithoutFailedClause and
+  TestResCacheParse.Ants4996GreenSummaryCounts each fail on the old
+  sources and pass now; full suite green. Also closes ANTS-5119.
   **Layman:** The mutation checker refuses to start on any test run where everything passes, because it cannot read the passing summary line.
   Kind: fix.
   Source: in-session-2026-09-10.
