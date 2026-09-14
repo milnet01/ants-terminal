@@ -46626,6 +46626,25 @@ are closed inline in the feedback files rather than filed here.
   `layman`. So the loader-side fix this item asks for (strip the
   rendered trailers before diffing) has not landed, and the counter is
   still unusable as a staleness signal here.
+  Diagnosed (2026-09-14): on this project the count is no longer parse
+  noise; it measures LEGACY STORED VALUES that predate two parser rules.
+  Dry run: items_updated 1699. Read-only store scan:
+  - 1036 stored bodies still END in a trailer run (`Kind` 989, `Source`
+    627, `Layman` 415, `Lanes` 317), written before ANTS-4506's strip
+    (2026-08-19). The render sees the key declared in the body and does not
+    re-emit it, so the file shows the line once; today's parse strips that
+    run, so the planned body differs. All 195 body-only ids visible in the
+    capped updated_items list have this shape (0 unexplained).
+  - 649 stored layman values end in a full stop, which the parse drops
+    (the ANTS-4955 mechanism); all four layman-only ids in the sample are
+    among them.
+  Together about 1685 of 1699; the remainder is unverified. The values are
+  not lost: each stripped line's value already sits in its column.
+  Recommended fix, not built: a one-time normalisation of stored rows
+  (strip the trailing trailer run from body, align layman with the ANTS-4955
+  rule), after ANTS-4955 lands so Layman lines change style once, with a
+  sqlite3 .backup first. After that a re-migrate should report 0. It
+  rewrites rows in the machine-global store, so it waits for the user.
   **Layman:** The check that tells you whether the database is out of date reports problems on a database that is perfectly up to date.
   Kind: fix.
   Lanes: roadmap-store, mcp.
