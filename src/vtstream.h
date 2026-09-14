@@ -118,8 +118,13 @@ public slots:
     bool start(const QString &shell, const QString &workDir, int rows, int cols);
     // Write bytes to the PTY master. Thread-safe entry point for GUI:
     // invoke via Qt::QueuedConnection. Ordering preserved by Qt's per-
-    // receiver FIFO event queue.
+    // receiver FIFO event queue. While a paste is still being fed, the bytes
+    // wait behind it (ANTS-5075).
     void write(const QByteArray &data);
+    // ANTS-5075 — write a whole paste, of any size. Pty::write drops a write
+    // that would overflow its queue, so the paste is fed in slices as the
+    // queue drains. Invoke via Qt::QueuedConnection.
+    void writePaste(const QByteArray &data);
     // Resize the PTY winsize. Invoke via Qt::BlockingQueuedConnection
     // from GUI so the next paint reflects new geometry.
     void resize(int rows, int cols);
@@ -131,6 +136,8 @@ private slots:
     void onPtyData(const QByteArray &data);
     void onPtyFinished(int exitCode);
     void onFlushTimer();
+    // ANTS-5075 — hand Pty the next paste slices while its write queue is empty.
+    void feedPaste();
 
 private:
     void scheduleFlush();
@@ -147,6 +154,13 @@ private:
     bool m_flushScheduled = false;
     int m_inFlightBatches = 0;
     bool m_readPaused = false;               // true if we turned off QSocketNotifier
+
+    // ANTS-5075 — the part of a paste Pty has not been handed yet, and how far
+    // into m_pasteBacklog the feed has reached. Bytes written during a paste
+    // are appended here so they land after it.
+    QByteArray m_pasteBacklog;
+    qsizetype m_pasteOffset = 0;
+    static constexpr qsizetype kPasteSliceBytes = qsizetype(64) * 1024;
 
     // Back-pressure cap. Each batch is bounded by action+byte flush
     // thresholds, so in-flight bytes is ≤ kMaxInFlight × kFlushBytes

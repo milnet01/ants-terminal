@@ -3,6 +3,8 @@
 
 #include <QTimer>
 
+#include <algorithm>
+
 VtStream::VtStream(QObject *parent)
     : QObject(parent) {
     // One-time metatype registration for queued cross-thread signal args.
@@ -60,10 +62,15 @@ bool VtStream::start(const QString &shell, const QString &workDir, int rows, int
     // ANTS-2119 — surface PTY write-loss (queue/kernel-buffer overflow) so it is
     // not silent. Rare (only past the 4 MiB EAGAIN queue cap), hence a log
     // warning rather than a UI banner.
-    connect(m_pty, &Pty::writeLost, this, [](qint64 bytes) {
+    connect(m_pty, &Pty::writeLost, this, [this](qint64 bytes) {
         qWarning("VtStream: PTY dropped %lld byte(s) on write overflow",
                  static_cast<long long>(bytes));
+        // ANTS-5075 — the rest of a paste cannot arrive whole now; drop it
+        // rather than hold it.
+        m_pasteBacklog.clear();
+        m_pasteOffset = 0;
     });
+    connect(m_pty, &Pty::writeDrained, this, &VtStream::feedPaste);
 
     m_wallClock.start();
 
@@ -78,7 +85,31 @@ pid_t VtStream::childPid() const {
 }
 
 void VtStream::write(const QByteArray &data) {
-    if (m_pty) m_pty->write(data);
+    if (!m_pty) return;
+    if (m_pasteOffset < m_pasteBacklog.size()) {  // a paste is still being fed
+        m_pasteBacklog.append(data);
+        return;
+    }
+    m_pty->write(data);
+}
+
+void VtStream::writePaste(const QByteArray &data) {
+    if (!m_pty || data.isEmpty()) return;
+    m_pasteBacklog.append(data);
+    feedPaste();
+}
+
+void VtStream::feedPaste() {
+    while (m_pty && m_pasteOffset < m_pasteBacklog.size() && m_pty->writeQueueEmpty()) {
+        const qsizetype slice =
+            std::min(kPasteSliceBytes, m_pasteBacklog.size() - m_pasteOffset);
+        m_pty->write(m_pasteBacklog.mid(m_pasteOffset, slice));
+        m_pasteOffset += slice;
+    }
+    if (m_pasteOffset >= m_pasteBacklog.size()) {  // fed in full, or dropped
+        m_pasteBacklog.clear();
+        m_pasteOffset = 0;
+    }
 }
 
 void VtStream::resize(int rows, int cols) {

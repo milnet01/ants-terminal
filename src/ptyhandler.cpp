@@ -587,12 +587,14 @@ void Pty::onWriteReady() {
         // only keeps the spin alive.
         m_pendingWrite.clear();
     }
-    if (m_pendingWrite.isEmpty()) {
+    const bool drained = m_pendingWrite.isEmpty();
+    if (drained) {
         if (m_writeNotifier) m_writeNotifier->setEnabled(false);
     }
     // Emitted last, after every member is settled, so a slot that calls
     // back into this object cannot observe a half-updated queue.
     if (lost > 0) emit writeLost(lost);
+    else if (drained) emit writeDrained();  // ANTS-5075 — resumes a paste feed
 }
 
 void Pty::setReadEnabled(bool enabled) {

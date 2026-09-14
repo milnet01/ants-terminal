@@ -95,6 +95,12 @@ for security-relevant changes.
 
 ### Fixed
 
+- **A large paste now reaches the shell whole, closing marker included** (ANTS-5075)
+  A paste bigger than the terminal's write queue used to lose its tail, and
+  could lose the bracketed-paste end marker, leaving the shell stuck in paste
+  mode. The paste is now fed to the shell in slices as it reads, and keys
+  typed during a long paste arrive after it.
+
 - **The audit drift checks no longer freeze the window, and audit_run keeps them under its time limit** (ANTS-5067)
   The Audit dialog runs its spec, contract-doc and changelog drift checks on
   a background thread, so terminals keep updating and Cancel works while a

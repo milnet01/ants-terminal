@@ -3023,6 +3023,7 @@ QStringList TerminalWidget::pasteRiskReasons(const QByteArray &data) const {
 void TerminalWidget::performPaste(const QByteArray &data) {
     if (!hasPty() || data.isEmpty()) return;
 
+    QByteArray payload = data;
     if (m_grid->bracketedPaste()) {
         // Strip embedded bracket paste markers that could inject escape sequences
         // (CVE-2021-28848 class: \e[201~ ends paste; \e[200~ starts a nested paste)
@@ -3041,12 +3042,13 @@ void TerminalWidget::performPaste(const QByteArray &data) {
         sanitized.replace("\xC2\x9B" "201~", "");
         sanitized.replace("\x9B" "200~", "");      // raw single-byte C1
         sanitized.replace("\x9B" "201~", "");
-        ptyWrite(QByteArray("\x1B[200~"));
-        ptyWrite(sanitized);
-        ptyWrite(QByteArray("\x1B[201~"));
-    } else {
-        ptyWrite(data);
+        payload = QByteArray("\x1B[200~") + sanitized + QByteArray("\x1B[201~");
     }
+    // ANTS-5075 — one call hands the whole paste to the worker, which feeds the
+    // PTY in slices as its write queue drains, so no tail and no end marker is
+    // dropped.
+    QMetaObject::invokeMethod(m_vtStream, "writePaste", Qt::QueuedConnection,
+                              Q_ARG(QByteArray, payload));
 }
 
 QByteArray TerminalWidget::encodeKittyKey(QKeyEvent *event) const {

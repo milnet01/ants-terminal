@@ -43,6 +43,10 @@ public:
     static bool foregroundReturnedToShell(pid_t fg, pid_t shellPgid,
                                           pid_t &lastSeen);
 
+    // ANTS-5075 — true when no bytes wait in the EAGAIN queue. A paste is fed
+    // one slice at a time, each only once this is true (VtStream::feedPaste).
+    bool writeQueueEmpty() const { return m_pendingWrite.isEmpty(); }
+
 public slots:
     // `write` and `resize` are slots so they can be invoked cross-thread
     // via QMetaObject::invokeMethod with Qt::QueuedConnection (for writes)
@@ -58,6 +62,8 @@ signals:
     // (> MAX_PENDING_WRITE_BYTES). Callers can use this to implement back-pressure
     // or alert the user (ANTS-1349).
     void writeLost(qint64 byteCount);
+    // ANTS-5075 — the EAGAIN queue has just been written out in full.
+    void writeDrained();
 
 private slots:
     void onReadReady();

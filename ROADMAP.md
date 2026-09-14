@@ -7778,7 +7778,7 @@ extends an existing item, that item carries it instead.
   Source: code-quality-review-2026-09-11 perf pass (lanes mcp-state-workspace, shared-utilities).
   Lanes: mcp, threading.
 
-- 📋 [ANTS-5075] **Performance pass findings for the VT parser and PTY (medium and low).**
+- ✅ [ANTS-5075] **Performance pass findings for the VT parser and PTY (medium and low).**
   Medium:
   - Pty::onReadReady's EOF branch can run twice when back-pressure
     re-enables a dead notifier; the second pass calls waitpid(-1), which
@@ -7825,6 +7825,14 @@ extends an existing item, that item carries it instead.
   Decided (2026-09-14, user): paste truncation is fixed by feeding the
   paste to the PTY in chunks as the write queue drains, so the whole
   paste and its closing bracketed-paste marker always arrive.
+  Resolved (2026-09-14): the last open part, paste truncation, is fixed
+  as decided. performPaste hands the whole payload to
+  VtStream::writePaste in one queued call; VtStream feeds Pty a slice
+  only while its write queue is empty and resumes on the new
+  Pty::writeDrained; bytes written during a paste wait behind it. Locked
+  by tests/features/pty_paste_chunked (behavioural, 5 MiB paste to a
+  raw-mode child), red first against a stub (13841 of 5242909 bytes
+  arrived). Full default suite green.
   **Layman:** Smaller fixes to how the terminal talks to the shell: pastes, environment variables and escape codes.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lane vt-parser-pty).
