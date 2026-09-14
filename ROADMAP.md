@@ -60360,7 +60360,7 @@ than re-filed; everything else lands here.
   Source: Games_Ants_MCP_Feedback.md 2026-09-08.
   Lanes: mcp.
 
-- 📋 [ANTS-4981] **A max_body_bytes below the floor is silently raised, defeating the caller trying to keep the reply inline.**
+- ✅ [ANTS-4981] **A max_body_bytes below the floor is silently raised, defeating the caller trying to keep the reply inline.**
   On a multi-id ids[] fetch, max_body_bytes clamps to [2000, 16384].
   The UPPER clamp is announced — `bytes_cap_clamped` exists
   elsewhere in the MCP for exactly this — and the LOWER one is not.
@@ -60394,6 +60394,15 @@ than re-filed; everything else lands here.
   per-row byte counts, which is what is needed to decide what to
   fetch. Read that against ANTS-4954, where a read_region spill's
   preview was truncated mid-array and carried nothing usable.
+  Resolved (2026-09-14): cause read in cmdRoadmapQuery: a max_body_bytes
+  under kRoadmapQueryBodyCap was raised to it, and the ANTS-4630
+  id-count ceiling lowered a large one, both silently. When the
+  request's numeric max_body_bytes differs from the cap applied, an id
+  or ids fetch that returns bodies now carries body_cap_clamped:true and
+  max_body_bytes_effective; a cap applied as asked adds neither key. The
+  cap itself is unchanged. Test
+  roadmap_query_id_body_cap.Ants4981ClampIsAnnounced fails on the old
+  source and passes now; full suite green.
   **Layman:** Asking for smaller item bodies is ignored without saying so, and the reply spills to a file anyway.
   Kind: fix.
   Source: LottoTracker_Ants_MCP_Feedback.md 2026-09-08.

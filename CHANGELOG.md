@@ -76,6 +76,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **roadmap_query says when it applied a different body cap than the `max_body_bytes` asked for, with `body_cap_clamped` and the effective value, on an id or ids fetch.** (ANTS-4981)
+
 - **`ants-terminal --remote` waits for a slow first byte of the reply, up to its overall deadline, instead of printing "no response" while the server is still answering.** (ANTS-5138)
 
 - **workspace_search resolves a `glob` or `exclude_glob` containing `/` against `lane` when one is set, instead of returning no matches.** (ANTS-5117)
