@@ -107,6 +107,9 @@ The citation grammar itself is `tests/features/doc_citations_scan/`; the
 - **INV-50** — a continuation after a `foreign_path` antecedent is itself
   `foreign_path` and reads nothing.
   *Test:* `DocCitations.Ants4918ForeignPathContinuationIsForeign`.
+- **INV-51** — a continuation's antecedent is scoped to its paragraph: a blank
+  line or an ATX heading resets the tracker.
+  *Test:* `DocCitations.Ants4923ContinuationScopedToParagraph`.
 
 ## Quotation pass (ANTS-4386)
 

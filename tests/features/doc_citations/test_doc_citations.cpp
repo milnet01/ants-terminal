@@ -1340,6 +1340,45 @@ TEST(DocCitations, Ants4918ForeignPathContinuationIsForeign) {
                   QStringLiteral("missing_file"));
 }
 
+// ANTS-4923 INV-51 — a bare `:N` continuation inherits from the most recent
+// antecedent in its own PARAGRAPH. A blank line or an ATX heading resets the
+// tracker, as a fence already does: across one, the nearest earlier path was
+// measured to be the wrong file far more often than the right one, and a
+// visible `unresolved` beats a confident status about an unrelated file.
+// The same-paragraph case is the fixture that fails an implementation resetting
+// at every line.
+TEST(DocCitations, Ants4923ContinuationScopedToParagraph) {
+    Fixture fx;
+    fx.write(QStringLiteral("src/a.cpp"), "a\nb\nc\n");
+    const QString doc = fx.doc(
+        "same `src/a.cpp:1`\n"
+        "next line `:2`\n"
+        "\n"
+        "blank `src/a.cpp:1`\n"
+        "\n"
+        "after a blank line `:2`\n"
+        "\n"
+        "heading `src/a.cpp:1`\n"
+        "## Heading\n"
+        "after a heading `:2`\n");
+
+    DocCitations::Options opts;
+    const QJsonObject r = DocCitations::check(fx.root, doc, opts);
+    ASSERT_EQ(cites(r).size(), 6) << render(r).toStdString();
+
+    EXPECT_EQ(status(r, 1), QStringLiteral("ok"))
+        << "INV-51: the next line of one paragraph keeps the antecedent";
+    EXPECT_TRUE(cite(r, 1).value(QStringLiteral("inherited_path")).toBool());
+    EXPECT_EQ(cite(r, 1).value(QStringLiteral("path")).toString(), QStringLiteral("src/a.cpp"));
+
+    EXPECT_EQ(status(r, 3), QStringLiteral("unresolved"))
+        << "INV-51: a blank line resets the tracker";
+    EXPECT_FALSE(cite(r, 3).contains(QStringLiteral("inherited_path")));
+    EXPECT_EQ(status(r, 5), QStringLiteral("unresolved"))
+        << "INV-51: an ATX heading resets the tracker";
+    EXPECT_FALSE(cite(r, 5).contains(QStringLiteral("inherited_path")));
+}
+
 // ANTS-4664 — the quoted SPAN was detected per LINE while the matcher folded
 // newlines (ANTS-4386), so a hard-wrapped quotation was never handed to the
 // matcher at all: it entered NO bucket, and a document whose quotations all

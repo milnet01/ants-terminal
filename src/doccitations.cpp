@@ -1144,9 +1144,22 @@ QJsonObject check(const QString &rootCanonical, const QString &docAbsPath,
         // region is the same kind of break, so ANY masked line resets: without
         // it a continuation after the region inherits a real path across an
         // illustration and reports `ok` against a file the author never named.
-        for (; fenceCursor < tok.docLine && fenceCursor < fence.size(); ++fenceCursor)
-            if (fence.at(fenceCursor) || examples.value(fenceCursor))
+        // ANTS-4923 INV-51 — a paragraph break resets it too: a line empty after
+        // trimming, or an ATX heading line. Across one, the nearest earlier path
+        // was measured to be the wrong file far more often than the right one
+        // (213 of 656 continuations in docs/ crossed a break; every one sampled
+        // was misattributed), and a visible `unresolved` beats a confident
+        // status about a file the continuation never named.
+        static const QRegularExpression kAtxHeading(QStringLiteral("^#{1,6}(\\s|$)"));
+        for (; fenceCursor < tok.docLine && fenceCursor < fence.size(); ++fenceCursor) {
+            if (fence.at(fenceCursor) || examples.value(fenceCursor)) {
                 ante = Antecedent{};
+                continue;
+            }
+            const QString trimmed = prefix.at(fenceCursor).trimmed();
+            if (trimmed.isEmpty() || kAtxHeading.match(trimmed).hasMatch())
+                ante = Antecedent{};
+        }
 
         Target t;
         bool   inherited = false;
