@@ -3379,6 +3379,10 @@ if(ANTS_TESTS)
                 # a twelfth TU needs no edit here. Reads files at run time, so
                 # it needs Qt6::Core only.
                 tests/features/rc_tu_split/test_rc_tu_split.cpp
+                # ANTS-1677 INV-2/9/11 — a split class's source list, the
+                # src/<stem>_*.cpp glob and the build agree. Reads files at
+                # run time, so it needs Qt6::Core only.
+                tests/features/split_sources/test_split_sources.cpp
                 # ANTS-3841 — a test run must not reach the real repository.
                 tests/features/git_env_guard/test_git_env_guard.cpp
         tests/features/qt_version_guard/test_qt_version_guard.cpp
@@ -3768,6 +3772,11 @@ if(ANTS_TESTS)
     set_property(SOURCE tests/features/rc_tu_split/test_rc_tu_split.cpp
         APPEND PROPERTY COMPILE_DEFINITIONS
         ANTS_RC_ROOT_DIR="${CMAKE_SOURCE_DIR}")
+    # ANTS-1677 — each class's ANTS_<STEM>_SOURCES joins this source in the
+    # groundwork commit of the first item that splits the class.
+    set_property(SOURCE tests/features/split_sources/test_split_sources.cpp
+        APPEND PROPERTY COMPILE_DEFINITIONS
+        ANTS_SPLIT_SOURCES_ROOT_DIR="${CMAKE_SOURCE_DIR}")
     set_property(SOURCE tests/features/mcp_orientation_install/test_mcp_orientation_install.cpp
         APPEND PROPERTY COMPILE_DEFINITIONS
         # ANTS-3562 — mcporientation split-tree guard source-grep.
