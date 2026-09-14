@@ -3436,6 +3436,26 @@ QJsonObject wsErr(const char *code, const QString &message) {
 // user already being specific). Caps at 5 distinct terms.
 QStringList rcdetail::rcShortBareAltTerms(const QString &pattern) {
     if (!pattern.contains(QChar('|'))) return {};
+    // ANTS-5139 — a group bounded by \b on both sides anchors every
+    // alternative inside it, so `\b(TODO|FIXME|TBD|XXX)\b` needs no advice.
+    // The split below saw `TBD` as a bare piece and told the caller to
+    // rewrite a correct pattern. Only the whole-pattern form is recognised:
+    // the group opened right after the leading \b must close at the `)` just
+    // before the trailing \b, so `(tan)|\b(TBD)\b` is still judged per piece.
+    {
+        const QString t = pattern.trimmed();
+        if (t.startsWith(QLatin1String("\\b(")) && t.endsWith(QLatin1String(")\\b"))) {
+            int depth = 0;
+            qsizetype closeAt = -1;
+            for (qsizetype i = 2; i < t.size(); ++i) {
+                const QChar ch = t.at(i);
+                if (ch == QLatin1Char('\\')) { ++i; continue; }
+                if (ch == QLatin1Char('(')) ++depth;
+                else if (ch == QLatin1Char(')') && --depth == 0) { closeAt = i; break; }
+            }
+            if (closeAt == t.size() - 3) return {};
+        }
+    }
     static const QRegularExpression bareShort(
         QStringLiteral("^[A-Za-z]{1,3}$"));
     QStringList terms;

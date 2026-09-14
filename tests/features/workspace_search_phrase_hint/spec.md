@@ -17,3 +17,12 @@ reproduced across four CC sessions.
 
 The optional OR-fallback that ranks by significant-term overlap (a separate
 follow-up if the advisory hint proves insufficient).
+
+## ANTS-5139 — a word-bounded group is already anchored
+
+`rcShortBareAltTerms` returns no terms when the whole pattern is a single group
+bounded by `\b` on both sides, capturing or not, so `\b(TODO|FIXME|TBD|XXX)\b`
+draws no `regex_advisory`. The group must open right after the leading `\b` and
+close just before the trailing one; any other pattern is judged per alternative
+as before, so `tan|cosine` and `(tan)|\b(TBD)\b` still name `tan`. *Test:*
+`WorkspaceSearchPhraseHint.Ants5139BoundedGroupIsAnchored`.

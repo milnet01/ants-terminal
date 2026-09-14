@@ -8,6 +8,16 @@
 
 #include <string>
 
+#include <QString>
+#include <QStringList>
+
+// ANTS-5139 — declared here rather than by including remotecontrol_internal.h,
+// which only the remotecontrol sources may include (its INV-5). The definition
+// links from the core library; a changed signature fails at link time.
+namespace rcdetail {
+QStringList rcShortBareAltTerms(const QString &pattern);
+}
+
 namespace {
 bool has(const std::string &h, const char *n) {
     return h.find(n) != std::string::npos;
@@ -156,4 +166,21 @@ TEST(WorkspaceSearchPhraseHint, Ants4753HiddenGlobHint) {
     // A lane is descended even when hidden, so it must not trigger this.
     EXPECT_FALSE(has(src, "rcGlobNamesHiddenPath(laneRaw)"))
         << "a lane naming a hidden directory is searched anyway — no advisory";
+}
+
+// ANTS-5139 — `\b(TODO|FIXME|TBD|XXX)\b` drew a regex_advisory naming TBD as
+// a short bare term, though the boundaries around the group anchor every
+// alternative. A pattern that is not wrapped whole is still judged per piece.
+TEST(WorkspaceSearchPhraseHint, Ants5139BoundedGroupIsAnchored) {
+    using rcdetail::rcShortBareAltTerms;
+    EXPECT_TRUE(rcShortBareAltTerms(QStringLiteral("\\b(TODO|FIXME|TBD|XXX)\\b")).isEmpty())
+        << "the reported pattern: every alternative is anchored";
+    EXPECT_TRUE(rcShortBareAltTerms(QStringLiteral("\\b(?:tan|cos)\\b")).isEmpty())
+        << "a non-capturing bounded group is anchored too";
+    EXPECT_EQ(rcShortBareAltTerms(QStringLiteral("tan|cosine")),
+              QStringList{QStringLiteral("tan")})
+        << "an unanchored short term is still flagged";
+    EXPECT_EQ(rcShortBareAltTerms(QStringLiteral("(tan)|\\b(TBD)\\b")),
+              QStringList{QStringLiteral("tan")})
+        << "a group that does not span the whole pattern anchors nothing else";
 }
