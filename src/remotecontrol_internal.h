@@ -125,6 +125,7 @@ extern const int kRoadmapQueryBodyCacheCap;    // ANTS-4630 — cache keeps bodi
 extern const int kRoadmapQueryBodySingleIdCap; // ANTS-4630 — single-id emission ceiling
 extern const QRegularExpression kIdPrefixShape;
 extern const int kRcMaxNoteChars;
+extern const int kRcMaxSetBodyChars;           // ANTS-4841 — set_body's new_text
 extern const int kWorkspaceSearchHardKillMs;
 extern const int kWorkspaceSearchMinBudgetMs;
 extern const int kWorkspaceSearchMaxBudgetMs;

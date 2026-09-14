@@ -13447,7 +13447,7 @@ void ClaudeIntegration::onMcpConnection() {
                         "rather than mitigating it, and the echo stays.");
                     QJsonObject newTextProp;
                     newTextProp["type"]      = "string";
-                    newTextProp["maxLength"] = 4000;
+                    newTextProp["maxLength"] = 65536;   // ANTS-4841
                     newTextProp["description"] = QStringLiteral(
                         "op:\"amend_body\" (ANTS-3406) — replacement text for "
                         "the unique `old_text` match. Required (the key must "
@@ -13464,7 +13464,9 @@ void ClaudeIntegration::onMcpConnection() {
                         "the line canonically below the body, and the envelope "
                         "says `trailer_columns_kept`; `lanes` / `evidence` "
                         "empty to `[]`; `layman`, the only nullable one, "
-                        "clears.");
+                        "clears. ANTS-4841 — capped at 4096 characters for "
+                        "amend_body and amend_headline, which take a fragment, "
+                        "and 65536 for set_body, which takes a whole body.");
 
                     // ANTS-1690 — flip_batch locators array. Each item
                     // carries one locator (id|anchor|headline|line_range)

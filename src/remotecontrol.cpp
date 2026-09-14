@@ -1194,6 +1194,10 @@ QJsonArray rcComputeDuplicateIds(const QJsonArray &bullets) {
 // 4 KiB is far above any real annotation; bodies (op:append) keep their
 // own size handling and are not routed through this cap.
 constexpr int kRcMaxNoteChars = 4096;
+// ANTS-4841 — op:"set_body" takes a WHOLE body, not a fragment, so the note
+// cap refused the long bodies the op exists to rescue. Sized above every body
+// the store held when it was set; the scrub stays bounded at this length.
+constexpr int kRcMaxSetBodyChars = 65536;
 
 // ANTS-3640 — neutralise a code fence the prose opens and never closes.
 //

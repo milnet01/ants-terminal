@@ -95,3 +95,10 @@ rather than reaching the caller as a raw SQLite constraint string.
   the rendered output of every project carrying a body-declared trailer.
 - `headline` (`op:"amend_headline"`, ANTS-4668) and `status`
   (`op:"flip"`), which have their own ops.
+
+## ANTS-4841 — set_body is not held to the fragment cap
+
+op:"set_body" accepts a `new_text` up to 65536 characters, because it replaces
+a whole body. amend_body and amend_headline keep the 4096-character cap on
+their fragments. A set_body `new_text` past its own cap refuses `too_large`.
+*Test:* `RoadmapLogSetBody.Ants4841WholeBodyCapIsNotTheFragmentCap`.

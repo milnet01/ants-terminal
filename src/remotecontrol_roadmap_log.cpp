@@ -2525,11 +2525,14 @@ QJsonDocument RemoteControl::cmdRoadmapLogAmendBody(const QJsonObject &req,
     // ANTS-1995 — cap both operands. old_text is matched with a linear
     // QString::count (no regex → no ReDoS) but is capped for sanity;
     // new_text is routed through rcScrubLeakedToolXml's backtracking scrub.
+    // ANTS-4841 — set_body's new_text is a whole body and takes its own cap.
+    const int newTextCap = setBodyMode ? kRcMaxSetBodyChars : kRcMaxNoteChars;
     if (oldText.size() > kRcMaxNoteChars ||
-        newText.size() > kRcMaxNoteChars) {
+        newText.size() > newTextCap) {
         return rlErr(QStringLiteral("too_large"),
             QStringLiteral("roadmap_log: old_text / new_text exceeds %1-char "
-                           "cap").arg(kRcMaxNoteChars));
+                           "cap").arg(oldText.size() > kRcMaxNoteChars
+                                          ? kRcMaxNoteChars : newTextCap));
     }
     QStringList newTextScrubbedNames;
     rcScrubLeakedToolXml(newText, newTextScrubbedNames);

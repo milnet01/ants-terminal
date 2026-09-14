@@ -537,6 +537,56 @@ TEST(RoadmapLogSetBody, Ants4808DryRunWritesNothing) {
         << "and must not destroy what it previewed replacing";
 }
 
+// ANTS-4841 — set_body's new_text is a whole body, so it is not held to the
+// fragment cap amend_body keeps. A body past 4096 characters is written; one
+// past set_body's own cap still refuses; amend_body's cap is unchanged.
+TEST(RoadmapLogSetBody, Ants4841WholeBodyCapIsNotTheFragmentCap) {
+    Fx fx; ASSERT_TRUE(fx.ok());
+    RemoteControl rc(nullptr);
+
+    QString longBody = QStringLiteral("Layman: A long rewritten thing.\n");
+    while (longBody.size() < 6000)
+        longBody += QStringLiteral("A paragraph of rewritten prose that runs on.\n");
+    longBody += QStringLiteral("Long body ends here.");
+
+    QJsonObject req;
+    req[QStringLiteral("caller_cwd")] = fx.root;
+    req[QStringLiteral("id")]         = QStringLiteral("DEMO-0007");
+    req[QStringLiteral("new_text")]   = longBody;
+    const QJsonObject resp = rc.cmdRoadmapLogSetBodyForTest(req).object();
+    ASSERT_TRUE(resp.value(QStringLiteral("ok")).toBool())
+        << "a body past the fragment cap must be writable: "
+        << resp.value(QStringLiteral("error")).toString().toStdString();
+
+    QJsonObject q;
+    q[QStringLiteral("caller_cwd")]     = fx.root;
+    q[QStringLiteral("id")]             = QStringLiteral("DEMO-0007");
+    q[QStringLiteral("include_body")]   = true;
+    q[QStringLiteral("max_body_bytes")] = 20000;
+    const QString body = rc.cmdRoadmapQuery(q).object()
+                             .value(QStringLiteral("bullets")).toArray()
+                             .at(0).toObject()
+                             .value(QStringLiteral("body")).toString();
+    EXPECT_TRUE(body.contains(QStringLiteral("Long body ends here.")))
+        << "the whole body must land, not a truncated head";
+
+    QJsonObject over = req;
+    over[QStringLiteral("new_text")] = QString(65537, QChar('x'));
+    const QJsonObject overResp = rc.cmdRoadmapLogSetBodyForTest(over).object();
+    EXPECT_EQ(overResp.value(QStringLiteral("code")).toString(),
+              QStringLiteral("too_large"));
+
+    QJsonObject frag;
+    frag[QStringLiteral("caller_cwd")] = fx.root;
+    frag[QStringLiteral("id")]         = QStringLiteral("DEMO-0007");
+    frag[QStringLiteral("old_text")]   = QStringLiteral("Long body ends here.");
+    frag[QStringLiteral("new_text")]   = QString(4097, QChar('y'));
+    const QJsonObject fragResp = rc.cmdRoadmapLogAmendBodyForTest(frag).object();
+    EXPECT_EQ(fragResp.value(QStringLiteral("code")).toString(),
+              QStringLiteral("too_large"))
+        << "amend_body keeps the fragment cap";
+}
+
 // ---------------------------------------------------------------- INV-8 -----
 
 TEST(RoadmapLogAmendField, Inv8UnknownIdRefused) {
