@@ -155,11 +155,13 @@ bool damage(qint64 projectId, const QString &id, const QString &field,
     return true;
 }
 
-QJsonObject repair(RemoteControl &rc, const QString &root, bool dryRun) {
+QJsonObject repair(RemoteControl &rc, const QString &root, bool dryRun,
+                   bool stripRuns = false) {
     QJsonObject req;
     req[QStringLiteral("caller_cwd")] = root;
     req[QStringLiteral("op")]         = QStringLiteral("repair_trailers");
     if (dryRun) req[QStringLiteral("dry_run")] = true;
+    if (stripRuns) req[QStringLiteral("strip_runs")] = true;
     return rc.cmdRoadmapLogRepairTrailersForTest(req).object();
 }
 
@@ -177,7 +179,31 @@ QString columnOf(qint64 projectId, const QString &id, const QString &field) {
     if (field == QLatin1String("layman")) return it->layman;
     if (field == QLatin1String("lanes"))  return it->lanes.join(QLatin1Char('|'));
     if (field == QLatin1String("source")) return it->source;
+    if (field == QLatin1String("kind"))   return it->kind;
+    if (field == QLatin1String("body"))   return it->body;
     return QString();
+}
+
+// ANTS-4507 — the legacy state: a stored body that ENDS in a trailer run. The
+// migration strips a trailing run since ANTS-4506, so a fixture migrated today
+// never holds one; it is written back here, the way `damage()` injects a short
+// column. DEMO-0004's columns after migration are kind `fix`, source `seed` and
+// no layman, so the run below agrees with them once its layman is stored too.
+const char *kProse = "Just prose, and not a trailer key in sight.";
+
+bool injectTrailingRun(qint64 projectId, const QString &source) {
+    return damage(projectId, QStringLiteral("DEMO-0004"), QStringLiteral("layman"),
+                  QStringLiteral("A short summary"))
+        && damage(projectId, QStringLiteral("DEMO-0004"), QStringLiteral("body"),
+                  QString::fromUtf8(kProse)
+                      + QStringLiteral("\n**Layman:** A short summary.\nKind: fix.\nSource: ")
+                      + source + QStringLiteral("."));
+}
+
+bool idListed(const QJsonObject &resp, const char *key, const QString &id) {
+    for (const auto &v : resp.value(QLatin1String(key)).toArray())
+        if (v.toString() == id) return true;
+    return false;
 }
 
 }  // namespace
@@ -353,4 +379,117 @@ TEST(RoadmapRepairTrailers, Inv7SecondRunRepairsNothing) {
     ASSERT_TRUE(second.value(QStringLiteral("ok")).toBool());
     EXPECT_EQ(second.value(QStringLiteral("repaired")).toInt(), 0)
         << "the pass is not idempotent: " << QJsonDocument(second).toJson().toStdString();
+}
+
+// ---------------------------------------------------------- INV-9..12 -------
+
+TEST(RoadmapRepairTrailers, Inv9RedundantTrailingRunIsStripped) {
+    ants_test::XdgGuard guard;
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    qint64 projectId = 0;
+    const QString root = seedMigrated(guard, tmp, &projectId);
+    ASSERT_FALSE(root.isEmpty());
+    ASSERT_TRUE(injectTrailingRun(projectId, QStringLiteral("seed")));
+    ASSERT_NE(columnOf(projectId, QStringLiteral("DEMO-0004"), QStringLiteral("body")).toStdString(),
+              std::string(kProse)) << "the legacy run was not injected";
+
+    RemoteControl rc(nullptr);
+    const QJsonObject resp = repair(rc, root, false, /*stripRuns=*/true);
+    ASSERT_TRUE(resp.value(QStringLiteral("ok")).toBool())
+        << QJsonDocument(resp).toJson().toStdString();
+
+    EXPECT_EQ(columnOf(projectId, QStringLiteral("DEMO-0004"), QStringLiteral("body")).toStdString(),
+              std::string(kProse)) << "the redundant run was not stripped";
+    EXPECT_EQ(resp.value(QStringLiteral("runs_stripped")).toInt(), 1)
+        << QJsonDocument(resp).toJson().toStdString();
+    // The columns the run duplicated are untouched.
+    EXPECT_EQ(columnOf(projectId, QStringLiteral("DEMO-0004"), QStringLiteral("layman")).toStdString(),
+              std::string("A short summary"));
+    EXPECT_EQ(columnOf(projectId, QStringLiteral("DEMO-0004"), QStringLiteral("kind")).toStdString(),
+              std::string("fix"));
+    EXPECT_EQ(columnOf(projectId, QStringLiteral("DEMO-0004"), QStringLiteral("source")).toStdString(),
+              std::string("seed"));
+    // A run that sits mid-body is not a trailing run, and stays.
+    EXPECT_NE(columnOf(projectId, QStringLiteral("DEMO-0003"), QStringLiteral("body")).indexOf(
+                  QStringLiteral("Kind: fix.")), -1);
+}
+
+// The user's ruling (2026-09-14): where the run and the column disagree, the
+// file shows the RUN today, so stripping it would change what the item says.
+TEST(RoadmapRepairTrailers, Inv10ConflictingRunIsSkippedAndListed) {
+    ants_test::XdgGuard guard;
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    qint64 projectId = 0;
+    const QString root = seedMigrated(guard, tmp, &projectId);
+    ASSERT_FALSE(root.isEmpty());
+    ASSERT_TRUE(injectTrailingRun(projectId, QStringLiteral("an older source")));
+    const QString before =
+        columnOf(projectId, QStringLiteral("DEMO-0004"), QStringLiteral("body"));
+
+    RemoteControl rc(nullptr);
+    const QJsonObject resp = repair(rc, root, false, /*stripRuns=*/true);
+    ASSERT_TRUE(resp.value(QStringLiteral("ok")).toBool())
+        << QJsonDocument(resp).toJson().toStdString();
+
+    EXPECT_EQ(columnOf(projectId, QStringLiteral("DEMO-0004"), QStringLiteral("body")).toStdString(),
+              before.toStdString()) << "a conflicting run was stripped";
+    EXPECT_EQ(columnOf(projectId, QStringLiteral("DEMO-0004"), QStringLiteral("source")).toStdString(),
+              std::string("seed"));
+    EXPECT_EQ(resp.value(QStringLiteral("runs_stripped")).toInt(), 0);
+    EXPECT_EQ(resp.value(QStringLiteral("strip_skipped")).toInt(), 1)
+        << QJsonDocument(resp).toJson().toStdString();
+    EXPECT_TRUE(idListed(resp, "strip_skipped_ids", QStringLiteral("DEMO-0004")))
+        << QJsonDocument(resp).toJson().toStdString();
+}
+
+TEST(RoadmapRepairTrailers, Inv11WithoutStripRunsNoBodyIsWritten) {
+    ants_test::XdgGuard guard;
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    qint64 projectId = 0;
+    const QString root = seedMigrated(guard, tmp, &projectId);
+    ASSERT_FALSE(root.isEmpty());
+    ASSERT_TRUE(injectTrailingRun(projectId, QStringLiteral("seed")));
+    const QString before =
+        columnOf(projectId, QStringLiteral("DEMO-0004"), QStringLiteral("body"));
+
+    RemoteControl rc(nullptr);
+    const QJsonObject resp = repair(rc, root, false);
+    ASSERT_TRUE(resp.value(QStringLiteral("ok")).toBool());
+    EXPECT_EQ(columnOf(projectId, QStringLiteral("DEMO-0004"), QStringLiteral("body")).toStdString(),
+              before.toStdString());
+    EXPECT_FALSE(resp.contains(QStringLiteral("runs_stripped")))
+        << "the strip half reported on a run that did not ask for it";
+}
+
+TEST(RoadmapRepairTrailers, Inv12StripDryRunPredictsAndSecondRunStripsNothing) {
+    ants_test::XdgGuard guard;
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    qint64 projectId = 0;
+    const QString root = seedMigrated(guard, tmp, &projectId);
+    ASSERT_FALSE(root.isEmpty());
+    ASSERT_TRUE(injectTrailingRun(projectId, QStringLiteral("seed")));
+    const QString before =
+        columnOf(projectId, QStringLiteral("DEMO-0004"), QStringLiteral("body"));
+
+    RemoteControl rc(nullptr);
+    const QJsonObject dry = repair(rc, root, /*dryRun=*/true, /*stripRuns=*/true);
+    ASSERT_TRUE(dry.value(QStringLiteral("ok")).toBool());
+    EXPECT_EQ(columnOf(projectId, QStringLiteral("DEMO-0004"), QStringLiteral("body")).toStdString(),
+              before.toStdString()) << "dry_run wrote a body";
+
+    const QJsonObject wet = repair(rc, root, false, true);
+    ASSERT_TRUE(wet.value(QStringLiteral("ok")).toBool());
+    EXPECT_EQ(dry.value(QStringLiteral("runs_stripped")).toInt(),
+              wet.value(QStringLiteral("runs_stripped")).toInt())
+        << "the preview did not predict the run";
+    EXPECT_GT(wet.value(QStringLiteral("runs_stripped")).toInt(), 0);
+
+    const QJsonObject again = repair(rc, root, false, true);
+    ASSERT_TRUE(again.value(QStringLiteral("ok")).toBool());
+    EXPECT_EQ(again.value(QStringLiteral("runs_stripped")).toInt(), 0)
+        << "the strip is not idempotent";
 }

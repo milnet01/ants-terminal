@@ -326,6 +326,14 @@ QString rlWrapNote(const QString &note);
 // own text, and retry is the wrong response to both readings. Set only on that
 // refusal; left untouched otherwise, so an unset value still means store_failed.
 bool rlDeriveTrailerColumns(RoadmapStore &store, qint64 itemPk, const RoadmapStore::ItemWrite &before, const QString &newBody, const QSet<QString> &supplied, HistoryContext *hist, QString *error, QStringList *kept = nullptr, QString *code = nullptr);
+// ANTS-4507 — a body stored before ANTS-4506 still ENDS in the trailer run that
+// RoadmapParse::stripTrailingTrailerLines() removes. Returns the stripped body
+// when removing that run changes nothing the item says: for every key whose body
+// value the strip changes, the stripped body declares no value of its own and
+// the run's value equals the column in its stored form. Returns nullopt when
+// there is no trailing run, and when there is one that is not redundant — which
+// sets *conflict, because the render shows the run's value today.
+std::optional<QString> rlRedundantTrailerRunStripped(const RoadmapStore::ItemWrite &w, bool *conflict);
 QString rlAppendBodyNote(const QString &body, const QString &note);
 std::optional<qint64> rlStoreItemPk(RoadmapStore &store, qint64 projectId, const RoadmapParse::BulletRecord &rec, QString *code, QString *error);
 qint64 rlStoreIdHighWater(RoadmapStore &store, qint64 projectId, const QString &prefix);

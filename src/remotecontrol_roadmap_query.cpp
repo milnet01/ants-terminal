@@ -680,6 +680,46 @@ bool rcdetail::rlDeriveTrailerColumns(RoadmapStore &store, qint64 itemPk,
     return true;
 }
 
+std::optional<QString> rcdetail::rlRedundantTrailerRunStripped(
+        const RoadmapStore::ItemWrite &w, bool *conflict) {
+    if (conflict)
+        *conflict = false;
+    QString stripped = RoadmapParse::stripTrailingTrailerLines(w.body);
+    if (stripped == w.body)
+        return std::nullopt;
+
+    const RoadmapParse::TrailerValues oldTv = RoadmapParse::trailerValuesIn(w.body);
+    const RoadmapParse::TrailerValues newTv = RoadmapParse::trailerValuesIn(stripped);
+    for (const RlTrailerKey &k : kRlTrailerKeys) {
+        QString oldValue = rlBodyValueFor(oldTv, k);
+        const QString newValue = rlBodyValueFor(newTv, k);
+        if (oldValue == newValue)
+            continue;  // the run did not carry this key
+        // A value left in the stripped prose would take over from the run on the
+        // next re-parse, so the strip would change the key rather than drop a
+        // copy of the column.
+        bool same = newValue.isEmpty();
+        // The capture arrives raw; the column holds the canonical kind. Mapped
+        // exactly as rlDeriveTrailerColumns() maps it.
+        if (same && QLatin1String(k.field) == QLatin1String("kind")) {
+            const QString folded = oldValue.trimmed().toLower();
+            if (RoadmapParse::canonicalKinds().contains(folded))
+                oldValue = folded;
+            else if (const QString mapped = RoadmapParse::mappedKind(folded);
+                     !mapped.isEmpty())
+                oldValue = mapped;
+        }
+        const QString current =
+            k.colList ? rlJsonArrayText(w.*(k.colList)) : w.*(k.col);
+        if (!same || oldValue != current) {
+            if (conflict)
+                *conflict = true;
+            return std::nullopt;
+        }
+    }
+    return stripped;
+}
+
 void rcdetail::rlAttachHistoryNote(QJsonObject &env, const RoadmapStore &store,
                                    const HistoryContext &hist) {
     if (hist.skippedRows <= 0)

@@ -3658,6 +3658,12 @@ in each named file carry the original indie-review citation.
   test-bundle rewiring and the proof that no behaviour changed.
   Re-measured today: this file is past the 7000-line re-evaluate trigger
   its own body names.
+  Decided (2026-09-14, user): the shared decomposition spec is written
+  next, right after the ANTS-4507 store cleanup, ahead of the remaining
+  gated fix items (which run alongside). Re-measured today:
+  mainwindow.cpp 8384 lines, auditdialog.cpp 6636, claudeintegration.cpp
+  17756. No spec exists yet; order once it passes review: ANTS-1049,
+  ANTS-1044, ANTS-1043, ANTS-4919.
 
 - 📋 [ANTS-1044] **`auditdialog.cpp` decomposition (5749 LoC).**
   `populateChecks`
@@ -3681,6 +3687,9 @@ in each named file carry the original indie-review citation.
   decomposition spec covering ANTS-1043, ANTS-1044, ANTS-1049 and
   ANTS-4919. ANTS-1049 is effectively this item's first step, since
   populateChecks is the single largest block in the file.
+  Decided (2026-09-14, user): the shared decomposition spec is written
+  next, right after the ANTS-4507 store cleanup. auditdialog.cpp
+  re-measured at 6636 lines. See ANTS-1043 for the order.
 
 - ✅ [ANTS-1045] **`XcbPositionTracker` rename + Wayland-non-KWin abort + temp- file leak fix.**
   Shipped 2026-04-30 (post-0.7.60). Class +
@@ -3760,6 +3769,9 @@ in each named file carry the original indie-review citation.
   ANTS-4919, and is the natural first one to take -- it is
   self-contained, and it is the largest single block inside the file
   ANTS-1044 decomposes.
+  Decided (2026-09-14, user): the shared decomposition spec is written
+  next, right after the ANTS-4507 store cleanup; this item is the first
+  split taken once it passes review. See ANTS-1043.
 
 The 2026-04-27 review followed the same methodology as the 0.7.12
 sweep — no roadmap-internal short-cuts, every finding cites
@@ -4187,6 +4199,10 @@ minor tag (next: pre-0.8.0).
   Sequencing (2026-09-07, project lead): runs under the shared
   decomposition spec covering ANTS-1043, ANTS-1044, ANTS-1049 and
   ANTS-4919. Largest of the four by a wide margin.
+  Decided (2026-09-14, user): the shared decomposition spec is written
+  next, right after the ANTS-4507 store cleanup. claudeintegration.cpp
+  re-measured at 17756 lines; this is the last of the four splits. See
+  ANTS-1043.
   **Layman:** Split the biggest source file so parallel sessions can work on it without blocking each other.
   Kind: refactor.
   Source: adr-0005-gate-loop-3-2026-09-07.
@@ -46672,6 +46688,13 @@ are closed inline in the feedback files rather than filed here.
   full stop from 2048 stored Layman values (backup
   roadmap.sqlite.pre-4955-20260914-094114.bak). Still open: the ~1036
   stored bodies ending in a legacy trailer run from before ANTS-4506.
+  Decided (2026-09-14, user), trailer-run half: strip a legacy trailer
+  run from a stored body only where every key it declares already equals
+  its column, skip every item where they disagree and list those for
+  review item by item, and run it on every project in the store (one
+  .backup first). A repair_trailers dry run here recovered 0 characters,
+  so no column is cut short; a regex scan's "longer" matches were its
+  own artefact, so the strip must use the product parser, not a pattern.
   **Layman:** The check that tells you whether the database is out of date reports problems on a database that is perfectly up to date.
   Kind: fix.
   Lanes: roadmap-store, mcp.

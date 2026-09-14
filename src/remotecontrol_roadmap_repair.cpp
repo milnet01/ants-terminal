@@ -12,8 +12,13 @@
 // composes a trailer line for every column the prose does not declare
 // (ANTS-4599) — re-parsing that hands the column straight back and the repair
 // becomes a no-op that reports success.
+//
+// ANTS-4507 — `strip_runs` adds the other half of that legacy state: the
+// trailer run a body stored before ANTS-4506 still ENDS in, removed only where
+// it repeats its own columns.
 
 #include "remotecontrol.h"
+#include "remotecontrol_internal.h"
 
 #include "roadmapparse.h"
 #include "roadmapstore.h"
@@ -24,6 +29,8 @@
 #include <QString>
 #include <QStringList>
 #include <QVector>
+
+using namespace rcdetail;
 
 namespace {
 
@@ -79,6 +86,12 @@ struct RlRepairWrite {
     QString value;   // already in the column's stored form
 };
 
+// ANTS-4507 — one redundant trailing run removed from a body.
+struct RlBodyWrite {
+    qint64  pk = 0;
+    QString before, after;
+};
+
 } // namespace
 
 QJsonDocument RemoteControl::cmdRoadmapLogRepairTrailers(const QJsonObject &req) {
@@ -104,6 +117,7 @@ QJsonDocument RemoteControl::cmdRoadmapLogRepairTrailers(const QJsonObject &req)
     RoadmapStore &store    = *target->store;
     const qint64 projectId = target->projectId;
     const bool dryRun      = req.value(QStringLiteral("dry_run")).toBool();
+    const bool stripRuns   = req.value(QStringLiteral("strip_runs")).toBool();
 
     const auto rpErr = [](const QString &code, const QString &message) {
         QJsonObject env;
@@ -125,6 +139,9 @@ QJsonDocument RemoteControl::cmdRoadmapLogRepairTrailers(const QJsonObject &req)
     int laymanFixed = 0, sourceFixed = 0, lanesFixed = 0;
     qint64 charsRecovered = 0;
     QStringList skippedIds;
+    QVector<RlBodyWrite> bodyPlan;
+    int stripSkipped = 0;
+    QStringList stripSkippedIds;
 
     for (auto it = items->constBegin(); it != items->constEnd(); ++it) {
         const qint64 pk = it.key();
@@ -132,6 +149,7 @@ QJsonDocument RemoteControl::cmdRoadmapLogRepairTrailers(const QJsonObject &req)
         ++scanned;
         if (w.body.trimmed().isEmpty())
             continue;
+        const qsizetype planBefore = plan.size();
 
         const QString bullet = QStringLiteral("- ")
             + QString::fromUtf8(RoadmapParse::kEmojiPlanned)
@@ -176,9 +194,28 @@ QJsonDocument RemoteControl::cmdRoadmapLogRepairTrailers(const QJsonObject &req)
             ++skipped;
             skippedIds.append(w.id);
         }
+
+        // ANTS-4507 — the strip half. Where the run and a column disagree the
+        // render shows the RUN today, so stripping it would change what the item
+        // says: listed, never written (user ruling, 2026-09-14). An item whose
+        // columns this pass repairs or refuses is listed too, because the run is
+        // judged against the columns as stored and the repair changes them.
+        if (stripRuns) {
+            bool conflict = false;
+            const auto stripped = rlRedundantTrailerRunStripped(w, &conflict);
+            if (conflict
+                || (stripped && (skippedHere || plan.size() != planBefore))) {
+                ++stripSkipped;
+                stripSkippedIds.append(w.id);
+            } else if (stripped) {
+                bodyPlan.push_back({pk, w.body, *stripped});
+            }
+        }
     }
 
-    if (!dryRun && !plan.isEmpty()) {
+    HistoryContext hist;
+    hist.changedAt = rlHistoryStamp();
+    if (!dryRun && (!plan.isEmpty() || !bodyPlan.isEmpty())) {
         if (!store.begin(&err))
             return rpErr(QStringLiteral("store_failed"), err);
         for (const RlRepairWrite &wr : plan) {
@@ -194,6 +231,21 @@ QJsonDocument RemoteControl::cmdRoadmapLogRepairTrailers(const QJsonObject &req)
                 store.rollback(nullptr);
                 return rpErr(QStringLiteral("store_failed"), err);
             }
+        }
+        for (const RlBodyWrite &bw : bodyPlan) {
+            // Recorded in history as set_body records a replaced body, so the
+            // removed lines are recoverable. `asserted` for the reason above:
+            // what remains is the author's prose less a copy of its own columns.
+            if (!store.setItemField(bw.pk, QStringLiteral("body"), bw.after,
+                                    QStringLiteral("asserted"), &err)) {
+                store.rollback(nullptr);
+                return rpErr(QStringLiteral("store_failed"), err);
+            }
+            hist.record(bw.pk, QStringLiteral("body"), bw.before, bw.after);
+        }
+        if (!rlFlushHistory(store, hist, &err)) {
+            store.rollback(nullptr);
+            return rpErr(QStringLiteral("store_failed"), err);
         }
         if (!store.commit(&err)) {
             store.rollback(nullptr);
@@ -213,6 +265,21 @@ QJsonDocument RemoteControl::cmdRoadmapLogRepairTrailers(const QJsonObject &req)
     env[QStringLiteral("lanes_repaired")]   = lanesFixed;
     env[QStringLiteral("chars_recovered")]  = double(charsRecovered);
     env[QStringLiteral("skipped")]          = skipped;
+    if (stripRuns) {
+        env[QStringLiteral("runs_stripped")] = int(bodyPlan.size());
+        env[QStringLiteral("strip_skipped")] = stripSkipped;
+        // A far higher cap than skipped_ids': every id here is an item somebody
+        // is meant to read, so the list is the work queue rather than a sample.
+        constexpr int kStripSkipCap = 500;
+        QJsonArray stripIds;
+        for (int i = 0; i < stripSkippedIds.size() && i < kStripSkipCap; ++i)
+            stripIds.append(stripSkippedIds.at(i));
+        env[QStringLiteral("strip_skipped_ids")] = stripIds;
+        if (stripSkippedIds.size() > kStripSkipCap)
+            env[QStringLiteral("strip_skipped_truncated")] = true;
+        if (!dryRun)
+            rlAttachHistoryNote(env, store, hist);
+    }
     if (dryRun) env[QStringLiteral("dry_run")] = true;
     // The ids the guard refused, capped. The COUNT is the whole answer and is
     // never capped; the list is a sample to start from, and a truncated one that

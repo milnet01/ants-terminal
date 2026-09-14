@@ -14,6 +14,13 @@ for security-relevant changes.
 
 ### Added
 
+- **The roadmap repair step can now remove leftover detail lines at the end of an item's description** (ANTS-4507)
+  `roadmap_log op:"repair_trailers"` takes `strip_runs:true`. It removes
+  the Kind / Source / Layman / Lanes lines a description stored by an
+  older version still ends in, but only where they repeat values the
+  item already stores. Where they disagree, nothing is removed and the
+  item is listed for review. Each removal is kept in the item's history.
+
 - **apply_edits reports each edit's own replacement count in `edit_replacements`, and an optional per-edit `expect_count` skips an edit whose match count differs, before it touches the file.** (ANTS-4838)
 
 ### Changed

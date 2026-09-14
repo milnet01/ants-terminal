@@ -76,3 +76,38 @@ are invisible to this pass and are not counted as repaired.
 - **INV-7** — the pass is idempotent: a second run over a repaired
   store reports zero repairs.
 - **INV-8** — an item whose prose carries no trailer run is untouched.
+
+## Stripping redundant trailing runs — ANTS-4507
+
+**Status:** implemented (2026-09-14)
+
+Bodies stored before ANTS-4506 still END in a trailer run. The render
+does not re-emit a key the body declares, so the file shows the line
+once; a re-parse strips it, so `roadmap_migrate` plans a body update for
+every such item and its `items_updated` counter never reaches zero.
+
+**`strip_runs: true` removes that run, and only where it is redundant.**
+The run is what `RoadmapParse::stripTrailingTrailerLines()` removes;
+nothing else decides which lines go. It is removed only when, for every
+key whose body value the strip changes, the stripped body no longer
+declares the key and the run's value equals the column in its stored
+form (`kind` canonicalised as `rlDeriveTrailerColumns()` does). Any other
+item is SKIPPED and listed: there the file shows the run's value today,
+so stripping it would change what the item says (user ruling,
+2026-09-14). An item whose columns the same pass repairs or skips is not
+stripped.
+
+**The previous body is recorded in history**, as `set_body` records it.
+Without `strip_runs` the op writes no body and reports none of the
+fields below.
+
+- **INV-9** — a trailing run whose values equal the columns is removed
+  from the body, the columns are unchanged, and `runs_stripped` counts
+  it. A run that does not trail the body is not touched.
+- **INV-10** — a trailing run whose value differs from its column is
+  left in place, counted in `strip_skipped` and listed in
+  `strip_skipped_ids`.
+- **INV-11** — without `strip_runs`, no body is written and
+  `runs_stripped` is absent.
+- **INV-12** — with `dry_run`, no body is written and `runs_stripped`
+  equals the real run's; a second run strips nothing.

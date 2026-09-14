@@ -719,7 +719,15 @@ which heading you expect it under.
   guard only ever extends an already-asserted value, so it recovers an
   assertion rather than inventing one. Idempotent. It CANNOT repair an item
   whose prose no longer carries the run; that text is gone, and no pass
-  recovers it.
+  recovers it. **`strip_runs:true` (ANTS-4507)** removes the other legacy
+  shape: a body stored before ANTS-4506 that still ENDS in a trailer run,
+  which keeps `roadmap_migrate`'s `items_updated` from reaching zero. The run
+  is what `RoadmapParse::stripTrailingTrailerLines()` removes, and it goes
+  only where every value it carries equals its column and the prose left
+  behind declares none of those keys. Any other trailing run stays and is
+  listed in `strip_skipped_ids`, because the render shows the run's value
+  today; so does one on an item whose columns the same pass repairs. Each
+  removed run is a history row, as `set_body` writes one.
 - **`roadmap_log op:"backfill_dates"` (ANTS-4501)** — a ONE-OFF that walks
   the project's git history and fills the `created` / `shipped` columns for
   the rows predating forward stamping. Not a `roadmap_query` mode, and

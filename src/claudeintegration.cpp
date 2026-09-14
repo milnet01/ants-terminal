@@ -13365,7 +13365,17 @@ void ClaudeIntegration::onMcpConnection() {
                         "capped `skipped_ids[]`. Idempotent: a second run "
                         "repairs nothing. It CANNOT repair an item whose prose "
                         "no longer carries the run — that text is gone and no "
-                        "re-parse recovers it. Refusals: `project_not_registered` "
+                        "re-parse recovers it. ANTS-4507 — `strip_runs:true` also "
+                        "removes the trailer run a body stored before ANTS-4506 "
+                        "still ENDS in, and only where it is redundant: every "
+                        "value the run carries equals its column and the prose "
+                        "left behind declares none of those keys. Any other "
+                        "trailing run is left in place and listed, because the "
+                        "file shows the run's value today. Adds `runs_stripped`, "
+                        "`strip_skipped` and `strip_skipped_ids[]` (capped at "
+                        "500, `strip_skipped_truncated` past it); each removed "
+                        "run is recorded in history. "
+                        "Refusals: `project_not_registered` "
                         "(run roadmap_migrate first), `store_failed`.");
                     QJsonObject toStatusProp;
                     toStatusProp["type"] = "string";
@@ -13995,6 +14005,15 @@ void ClaudeIntegration::onMcpConnection() {
                     props["dry_run"]       = dryRunProp;      // ANTS-2077
                     props["return"]        = returnProp;      // ANTS-2080
                     props["pass"]          = passProp;        // ANTS-2126
+                    QJsonObject stripRunsProp;
+                    stripRunsProp["type"] = "boolean";
+                    stripRunsProp["description"] = QStringLiteral(
+                        "op:\"repair_trailers\" — also remove the legacy "
+                        "trailer run a stored body ENDS in, where every value "
+                        "it carries equals its column. A run that disagrees "
+                        "is listed in strip_skipped_ids and never removed. "
+                        "Default false.");
+                    props["strip_runs"]    = stripRunsProp;   // ANTS-4507
                     schema["properties"]   = props;
 
                     // ANTS-1428 — only caller_cwd is unconditionally
