@@ -2890,10 +2890,18 @@ QJsonDocument RemoteControl::cmdInvariantCheck(const QJsonObject &req) {
     // a complete answer to "is this under contract?". The harm case is a
     // NON-zero reply, so this rides on every one.
     result["roadmap_scanned"] = false;
+    // ANTS-4972 — the note also says matching is by PATH, on every reply. A
+    // non-zero result is where that hides a spec: one incidental path hit read
+    // as the answer while the governing spec cited the module only by symbol.
+    // path_match_only stays zero-only (ANTS-4742); this is not a second flag.
     result["scope_note"] = QStringLiteral(
         "scope: %1 + docs/phases only — the ROADMAP was NOT consulted, so work "
         "already planned there will not appear here. Use roadmap_query "
-        "(query=<keyword>) or task_priors for that.").arg(specsDir);
+        "(query=<keyword>) or task_priors for that. Specs are matched by PATH "
+        "only, so a spec that cites this module by SYMBOL (a class or function "
+        "name) does not appear even beside a match: search the module's stem "
+        "across %1 with workspace_search before treating these results as the "
+        "whole contract.").arg(specsDir);
 
     // Hints compose: a fallback hit in summary mode owes the caller both
     // messages, and neither may displace the other.

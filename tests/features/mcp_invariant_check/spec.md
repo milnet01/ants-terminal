@@ -50,3 +50,11 @@ defs already declared on `test_claude`.
   design; v1 is path-substring only).
 - Cross-spec dedup of invariants when two specs share an INV-N
   identifier — each spec's invariants are returned independently.
+
+## ANTS-4972 — the scope note says matching is by path
+
+Every reply's `scope_note` also states that specs are matched by path only, so
+a spec citing the module by symbol does not appear even beside a match, and
+names `workspace_search` as the fallback. `path_match_only` is unchanged: it
+still fires only on a zero (ANTS-4742). *Test:*
+`McpInvariantCheck.Ants4972ScopeNoteSaysPathOnlyOnAHit`.

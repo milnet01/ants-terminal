@@ -604,3 +604,25 @@ TEST(McpInvariantCheck, Ants4744PathsIsAnAliasForFiles) {
             << "the refusal must name the alias it now accepts";
     }
 }
+
+// ANTS-4972 — a reply that matched a spec still says matching is by path, so a
+// spec citing the module only by symbol is known to be out of reach. The note
+// rides on every reply; path_match_only keeps firing only on the zero.
+TEST(McpInvariantCheck, Ants4972ScopeNoteSaysPathOnlyOnAHit) {
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid());
+    seedSpec(dir.path(), QStringLiteral("PROJ-0030"),
+             QStringLiteral("services/vault_migration.py"));
+    const QJsonObject env = runCheck(
+        dir.path(), QStringLiteral("services/vault_migration.py"), QString());
+    ASSERT_GT(env.value("matched_count").toInt(), 0);
+    const QString note = env.value("scope_note").toString();
+    EXPECT_TRUE(note.contains(QStringLiteral("matched by PATH")))
+        << "a hit must still say what was matched against: " << note.toStdString();
+    EXPECT_TRUE(note.contains(QStringLiteral("SYMBOL")))
+        << "and name what that misses: " << note.toStdString();
+    EXPECT_TRUE(note.contains(QStringLiteral("workspace_search")))
+        << "and the fallback: " << note.toStdString();
+    EXPECT_FALSE(env.contains("path_match_only"))
+        << "ANTS-4742's flag stays zero-only";
+}
