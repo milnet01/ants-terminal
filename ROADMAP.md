@@ -60023,6 +60023,20 @@ than re-filed; everything else lands here.
   markdown-compatibility MIRROR, then `counter_advanced_*` is the
   wrong name for it — that reads as the allocation source. A
   distinct field, or a `mirrored:true` beside it, separates the two.
+  Decided from source (2026-09-14): it is a deliberate MIRROR, not dead
+  weight. src/remotecontrol_internal.h documents the store-path refresh
+  (ANTS-4141 part 2 / ANTS-4635): after a STORE allocation the "derived
+  .roadmap-counter cache" is refreshed, best effort and only when the
+  file already exists, because a script, hook, fresh clone or
+  un-migrated sibling reads it to predict the next id.
+  src/roadmapfoldin.h says allocation floors to the committed corpus
+  (ANTS-3450), which "lets .roadmap-counter be a pure, untracked local
+  cache". So the git noise comes from the reporting project tracking the
+  file, and the second branch of this item applies: `counter_advanced_*`
+  reads as the allocation source. Recommended fix: an additive marker
+  beside those fields on the store path (e.g. `counter_mirrored:true`)
+  rather than a rename, plus guidance that the file should not be
+  tracked.
   **Layman:** Filing a roadmap item changes a tracked file the database backend does not use, so every item shows up as an extra change in git.
   Kind: fix.
   Source: UT_MonsterHunt_Ants_MCP_Feedback.md 2026-09-08.
@@ -76888,7 +76902,7 @@ here.)
   Kind: enhancement.
   Source: in-session-2026-09-09.
 
-- 📋 [ANTS-5016] **roadmap_log rewrites unchanged archive files on every write, and lists them as written.**
+- ✅ [ANTS-5016] **roadmap_log rewrites unchanged archive files on every write, and lists them as written.**
   A flip of ANTS-5010 on 2026-09-10 moved the modification time of
   docs/roadmap/0.5.md and docs/roadmap/0.6.md to the moment of the write.
   git showed both byte-identical to their last commit. So the render writes
@@ -76896,6 +76910,19 @@ here.)
   `files_written` names them all. A touched mtime wakes anything keyed on
   it, and a caller staging from `files_written` stages no-ops. A fix
   compares before writing and reports written and unchanged files apart.
+  Resolved (2026-09-14): RoadmapRender::render set filesWritten to every
+  owned file and staged and committed each one with no comparison, so
+  unchanged archives got a new mtime and were listed as written (seen on
+  every write this session: git showed docs/roadmap/0.6.md and 0.5.md
+  unmodified). The render now compares each file's bytes first; a match
+  is neither staged nor committed and goes to Outcome::filesUnchanged,
+  surfaced as files_unchanged. The comparison only reads, so a dry run
+  still changes nothing (ANTS-3758 INV-14) and reports the same split.
+  The ANTS-4141 divergence guard iterates both lists, so its coverage is
+  unchanged. ANTS-3809 § 4's "no unchanged-skip" note corrected as a
+  record of what shipped. Test
+  RoadmapRender.Ants5016UnchangedFilesAreNotRewritten fails on the old
+  source and passes now; full suite green.
   **Layman:** Every roadmap update touches the old archive files even when nothing in them changed.
   Kind: fix.
   Source: in-session-2026-09-10.

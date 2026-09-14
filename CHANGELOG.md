@@ -76,6 +76,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **Roadmap writes leave a roadmap file untouched when its content has not changed, and list it under `files_unchanged` rather than `files_written`.** (ANTS-5016)
+
 - **workspace_search no longer warns about short terms when the whole regex is one word-bounded group, such as `\b(TODO|FIXME|TBD|XXX)\b`.** (ANTS-5139)
 
 - **file_outline lists gtest `TEST`, `TEST_F` and `TEST_P` blocks as `Suite.Case`, and no longer reports locals declared inside a test body as functions.** (ANTS-5019)
