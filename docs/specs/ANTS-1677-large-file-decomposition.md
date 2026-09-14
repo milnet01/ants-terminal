@@ -12,14 +12,14 @@ Claude sessions can work on neighbouring features without colliding.
 
 ## 1. Problem
 
-Three classes each live in one oversized translation unit (TU). Measured
-2026-09-14 with `wc -l src/mainwindow.cpp src/auditdialog.cpp src/claudeintegration.cpp`:
+Three classes each live in one oversized translation unit (TU). `wc -l` measures
+each file, and `file_outline sizes:true` measures its functions.
 
-| File | Lines | Largest function (`file_outline sizes:true`) |
-|---|---|---|
-| `src/claudeintegration.cpp` | 17,756 | `ClaudeIntegration::onMcpConnection()` — 14,275 |
-| `src/mainwindow.cpp` | 8,384 | `MainWindow::setupClaudeMcpProviders()` — 1,620; `MainWindow::MainWindow()` — 918 |
-| `src/auditdialog.cpp` | 6,636 | `AuditDialog::populateChecks()` — 1,524 |
+| File | Where the bulk sits |
+|---|---|
+| `src/claudeintegration.cpp` | `ClaudeIntegration::onMcpConnection()` |
+| `src/mainwindow.cpp` | `MainWindow::setupClaudeMcpProviders()` and the constructor |
+| `src/auditdialog.cpp` | `AuditDialog::populateChecks()` |
 
 Four consequences:
 
@@ -31,21 +31,18 @@ Four consequences:
    § 1 measured for `remotecontrol.cpp`.
 3. **The bulk sits inside a few giant functions, not across many members.**
    ANTS-3833 moved whole members between files. That alone cannot split
-   `onMcpConnection()`, whose `method == "tools/list"` branch builds all 95 tool
-   descriptors in sequence. This command gives the branch's length, 13,611 lines:
+   `onMcpConnection()`, whose `method == "tools/list"` branch builds every tool
+   descriptor in sequence. This command prints the branch's length:
    `awk '/method == "tools\/list"/{a=NR} /method == "tools\/call"/{print NR-a; exit}' src/claudeintegration.cpp`.
-   The same holds for the 93 `registerToolProvider(` calls inside
+   The same holds for the `registerToolProvider(` calls inside
    `setupClaudeMcpProviders()`. This command counts them:
    `awk 'NR>=s && NR<=e && /registerToolProvider\(/' src/mainwindow.cpp | wc -l`,
    with `s` and `e` set to that function's first and last lines.
-4. **Many things read these files as text, and several fail silently when the
-   text moves.** Measured with the command in § 2.6:
-
-   | File | Path macros | Test `.cpp` files reading it | Sites | Of those, files with a numeric `substr` window | Scripts reading it |
-   |---|---|---|---|---|---|
-   | `mainwindow.cpp` | 3 | 147 | 401 | 29 | none |
-   | `auditdialog.cpp` | 4 | 33 | 99 | 3 | `tests/audit_self_test.sh` |
-   | `claudeintegration.cpp` | 1 | 146 | 436 | 30 | `tools/check-readme-claims.sh` |
+4. **Many things read these files as text, and some fail silently when the
+   text moves.** The command in § 2.6 prints the per-file figures.
+   Two scripts also read a file: `tests/audit_self_test.sh` reads
+   `auditdialog.cpp`, and `tools/check-readme-claims.sh` reads
+   `claudeintegration.cpp`.
 
    **Four readers look at one file of a class. Two break silently when the text
    moves:**
@@ -222,9 +219,8 @@ Additions:
   call shape, so its call sites' text is unchanged — `MainWindow`'s
   `rcDelegate` is the case today.
 - **The file-scope scan uses the shipped scanner.**
-  `tools/rc-namespace-scan.py` takes any source path. Run on 2026-09-14 with
-  `--ns anon`, it finds 2 anonymous namespaces in `claudeintegration.cpp`, 2 in
-  `auditdialog.cpp` and 5 in `mainwindow.cpp`. Every seam of a kind A cut is
+  `tools/rc-namespace-scan.py` takes any source path, and
+  with `--ns anon` lists each file's anonymous namespaces. Every seam of a kind A cut is
   checked against it, `--seams` included, before code moves.
 
 ### 2.5 Where the seams go
@@ -239,7 +235,7 @@ must satisfy:
    visible in the code: a menu, a tool family's run of descriptors, a dialog
    section, an export format. Never cut through a function except by kind B.
 2. **Every file in a class's list stays at or under 4,000 lines**, including
-   `src/<stem>.cpp` itself (INV-9). The cap is set well under ANTS-3833's 6,000
+   `src/<stem>.cpp` itself (INV-9). The cap is set below ANTS-3833 INV-6's cap
    because the purpose here is parallel lanes rather than compile time alone. A
    piece that would pass it is split again, at the next concern boundary.
 3. **`tools/list` pieces are contiguous runs of today's descriptor order**, and
@@ -251,7 +247,7 @@ must satisfy:
 
 ### 2.6 Measuring the text readers
 
-Re-run at cut time; the § 1 figures are evidence, not constants.
+Re-run it at cut time; its output is evidence, not a constant.
 
 ```bash
 for f in mainwindow auditdialog claudeintegration; do
@@ -455,7 +451,7 @@ bundle's `SOURCES`, never `add_executable`. Build that bundle and check
 **Must fail first**, per project convention:
 
 - `split_sources` — against a list missing one piece, against a stray
-  `src/<stem>_x.cpp` outside the list, and against a 4,001-line file.
+  `src/<stem>_x.cpp` outside the list, and against a file one line over the cap.
 - `mcp_tools_list_live` — against a scratch build with one descriptor's
   description edited: the dump comparison differs. Against a scratch build whose
   `test_claude` definition of `ANTS_CLAUDEINTEGRATION_SOURCES` omits one piece,
@@ -475,7 +471,7 @@ surface is the link every build already performs.
 |---|---|
 | `.indie-review/partition.json` | each class's lane lists its new pieces; `tests/features/indie_review_partition_coverage` fails until it does |
 | `docs/subsystems.md` | the lane entries for the three classes gain their pieces |
-| `ROADMAP.md` | ANTS-1043 and ANTS-1044 quote stale line counts (6,162 and 5,749) and the file names `auditcatalogue.cpp` and `auditexport.cpp`; annotate them. ANTS-1677 says *defer to 0.8.x*, overtaken by the user's 2026-09-14 ruling; annotate it |
+| `ROADMAP.md` | ANTS-1043 and ANTS-1044 quote stale line counts and the file names `auditcatalogue.cpp` and `auditexport.cpp`; annotate them. ANTS-1677 says *defer to 0.8.x*, overtaken by the user's 2026-09-14 ruling; annotate it |
 | `CHANGELOG.md` | one `Changed` entry per item |
 | `tests/audit_self_test.sh`, `tools/check-readme-claims.sh` | code changes under § 2.3, listed here because both are read as documentation of what they check |
 | `README.md`, `PLUGINS.md`, `CLAUDE.md` | none — no user-visible change, no Lua surface change, and CLAUDE.md names none of the moved symbols |
