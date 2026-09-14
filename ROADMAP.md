@@ -9155,6 +9155,14 @@ extends an existing item, that item carries it instead.
     reaches it today.
   - The release op accepts a section holding only a heading or a
     comment as non-empty.
+  Progress (2026-09-14): ChangelogLog::formatBullet folds newlines in
+  the summary and id, and insertUnreleasedSubsection folds them in the
+  date and headline, through one oneLine() helper (changelog_log_writer
+  Ants5108NewlinesFoldIntoOneLine). Still open: retireTrackingHeadings
+  deleting a condensed file's only tracked-id record, the v1
+  tracking-table escaped pipe, the writer's indented heading match and
+  fences, ChangelogQuery's unlocked regex cache, and the release op
+  accepting a heading-only section.
   **Layman:** Smaller changelog and feedback-file fixes, including one that can delete a project's only record of which fixes shipped.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lane changelog-feedback).
