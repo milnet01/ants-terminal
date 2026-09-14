@@ -94,6 +94,10 @@
         "src/auditdialog.cpp",
         "src/auditdialog.h",
         "src/auditdialog_internal.h",
+        "src/auditdialog_catalogue.cpp",
+        "src/auditdialog_debtsweep.cpp",
+        "src/auditdialog_triage.cpp",
+        "src/auditdialog_export.cpp",
         "src/gitblameparse.h"
       ]
     },

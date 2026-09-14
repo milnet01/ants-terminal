@@ -8,8 +8,8 @@
 #      markers in bad.*.
 #   2. good.* produces 0 matches (false-positive canary).
 #
-# Keep the rule patterns in sync with addGrepCheck() calls in
-# src/auditdialog.cpp. When a pattern changes there, update this script.
+# Keep the rule patterns in sync with addGrepCheck() calls in the
+# AuditDialog sources, src/auditdialog.cpp and src/auditdialog_*.cpp. When a pattern changes there, update this script.
 # CTest runs us after every build so drift is caught immediately.
 #
 # Exits with the number of failed rules.
@@ -20,10 +20,12 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 FIXTURE_DIR="$SCRIPT_DIR/audit_fixtures"
 SRC_FILE="$SCRIPT_DIR/../src/auditdialog.cpp"
 
-# Every unique addGrepCheck("<id>" in the AuditDialog source, one per line.
+# Every unique addGrepCheck("<id>" in the AuditDialog sources —
+# src/auditdialog.cpp and src/auditdialog_*.cpp — one per line.
 # The fixture-coverage block at the end of this script walks this list.
 extract_rule_ids() {
-    grep -oE 'addGrepCheck\("[a-zA-Z_][a-zA-Z0-9_-]*"' "$SRC_FILE" \
+    grep -ohE 'addGrepCheck\("[a-zA-Z_][a-zA-Z0-9_-]*"' \
+            "$SRC_FILE" "$SCRIPT_DIR"/../src/auditdialog_*.cpp 2>/dev/null \
         | sed -E 's/.*"([a-zA-Z_][a-zA-Z0-9_-]*)"/\1/' \
         | sort -u
 }
@@ -87,7 +89,7 @@ run_rule() {
 }
 
 # ---------------------------------------------------------------------------
-# Rule patterns — MUST match addGrepCheck() invocations in auditdialog.cpp
+# Rule patterns — MUST match addGrepCheck() invocations in the AuditDialog sources
 # (strip the outer quotes present in the C++ source; grep -E gets the bare
 # regex on argv).
 # ---------------------------------------------------------------------------
@@ -160,7 +162,8 @@ check_suppress "code only"          'int foo() { return 42; }'                  
 echo
 
 # ---------------------------------------------------------------------------
-# Fixture-coverage cross-check. Every addGrepCheck() id in src/auditdialog.cpp
+# Fixture-coverage cross-check. Every addGrepCheck() id in the AuditDialog
+# sources (src/auditdialog.cpp and src/auditdialog_*.cpp)
 # must have both:
 #   1. a run_rule "<id>" line in this script  (regression test exists)
 #   2. a tests/audit_fixtures/<id>/ directory (fixture exists)
@@ -172,6 +175,12 @@ echo
 
 if [[ -f "$SRC_FILE" ]]; then
     mapfile -t rule_ids < <(extract_rule_ids)
+    # ANTS-1677 — an empty id list means this block read nothing.
+    if [[ ${#rule_ids[@]} -eq 0 ]]; then
+        echo "FAIL: fixture-coverage extracted no rule ids from src/auditdialog.cpp" \
+             "or src/auditdialog_*.cpp"
+        fail=$((fail + 1))
+    fi
     for id in "${rule_ids[@]}"; do
         missing=()
         [[ -d "$FIXTURE_DIR/$id" ]] || missing+=("fixture-dir")

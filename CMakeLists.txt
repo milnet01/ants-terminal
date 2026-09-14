@@ -842,6 +842,10 @@ set_target_properties(ants_audit_lib PROPERTIES POSITION_INDEPENDENT_CODE ON)
 # Python readers read the src/auditdialog.cpp src/auditdialog_*.cpp glob.
 set(ANTS_AUDITDIALOG_SOURCES_REL
     src/auditdialog.cpp
+    src/auditdialog_catalogue.cpp
+    src/auditdialog_debtsweep.cpp
+    src/auditdialog_triage.cpp
+    src/auditdialog_export.cpp
 )
 list(TRANSFORM ANTS_AUDITDIALOG_SOURCES_REL PREPEND "${CMAKE_SOURCE_DIR}/"
      OUTPUT_VARIABLE _ants_auditdialog_abs)

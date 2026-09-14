@@ -563,7 +563,9 @@ TEST(Ants1576, WriterAuditDialogWired) {
     expect(fnPos != std::string::npos, "INV-5",
            "exportSarif body not found");
     if (fnPos == std::string::npos) FAIL();
-    const std::string body = ad.substr(fnPos);
+    // ANTS-1677 — bounded to the function body: a tail to end-of-text reads
+    // whatever the class's later files hold.
+    const std::string body = ants_test::slurpFunctionBody(ad, "AuditDialog::exportSarif()");
     expect(body.find("buildVcsProvenanceBlock(m_projectPath)") !=
                std::string::npos,
            "INV-5",

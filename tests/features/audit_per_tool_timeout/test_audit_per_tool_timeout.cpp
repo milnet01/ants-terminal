@@ -122,21 +122,27 @@ TEST(AuditPerToolTimeout, Main) {
         "cppcheck", "semgrep", "osv_scanner", "trufflehog",
         "clang_tidy", "clazy",
     };
+    // ANTS-1677 — the overrides live in populateChecks(); bounding the scan to
+    // its body keeps a window from reading whatever file of the class follows.
+    const std::string checks =
+        ants_test::slurpFunctionBody(dialogCpp, "void AuditDialog::populateChecks(");
+    if (checks.empty())
+        fail("precondition: populateChecks body not located in the AuditDialog sources.");
     bool foundOverride = false;
     for (const char *tool : slowTools) {
         std::string needle = std::string("\"") + tool + "\"";
-        size_t pos = cpp.find(needle);
+        size_t pos = checks.find(needle);
         while (pos != std::string::npos) {
             size_t windowStart = pos > 200 ? pos - 200 : 0;
-            size_t windowEnd = std::min(pos + 200, cpp.size());
-            std::string window = cpp.substr(windowStart, windowEnd - windowStart);
+            size_t windowEnd = std::min(pos + 200, checks.size());
+            std::string window = checks.substr(windowStart, windowEnd - windowStart);
             std::regex assign(R"(timeoutMs\s*=\s*(\d+))");
             std::smatch m;
             if (std::regex_search(window, m, assign)) {
                 int v = std::atoi(m[1].str().c_str());
                 if (v > 30000) { foundOverride = true; break; }
             }
-            pos = cpp.find(needle, pos + 1);
+            pos = checks.find(needle, pos + 1);
         }
         if (foundOverride) break;
     }

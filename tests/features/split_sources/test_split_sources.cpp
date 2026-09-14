@@ -40,7 +40,7 @@ const QList<SplitClass> kClasses = {
 };
 
 // INV-9's classes. The last cut commit of a class's last item adds its stem.
-const QStringList kCappedClasses = {};
+const QStringList kCappedClasses = {QStringLiteral("auditdialog")};
 constexpr qsizetype kLineCap = 4000;
 
 // The ANTS_<STEM>_SOURCES definitions this bundle was compiled with, by stem.

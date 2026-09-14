@@ -54,6 +54,9 @@ Listed only where behavior isn't obvious from the name.
   `suppressions[]`), doesn't drop. Recognises foreign suppression markers
   (NOLINT, cppcheck-suppress, noqa, nosec, nosemgrep, #gitleaks:allow,
   eslint-disable-*, pylint: disable) + native `// ants-audit: disable[=rule]`.
+  Its implementation is `src/auditdialog.cpp` plus the `src/auditdialog_*.cpp`
+  pieces named in `ANTS_AUDITDIALOG_SOURCES_REL`, with shared helpers in
+  `src/auditdialog_internal.h` (ANTS-1044, ANTS-1677).
 - `auditengine` (Qt6::Core) — pure-function counterparts of the dialog
   pipeline; non-GUI consumers (CI, ants-helper, MCP) link this without
   Qt6::Widgets. ANTS-1119.
@@ -83,7 +86,7 @@ Listed only where behavior isn't obvious from the name.
   `contract_doc_drift` (ANTS-3600 — back-ticked literals in
   `docs/standards`/`docs/specs` that no longer appear in project sources),
   `changelog_test_coverage`. (`test_health` is shell-side in
-  `auditdialog.cpp`.)
+  `auditdialog_catalogue.cpp`.)
 - `markdownscan` (Qt6::Core, `ants_core_lib`) — shared CommonMark fence
   primitives (`fenceRe` / `fenceOpenerChar` / `fenceMask`), hoisted from the
   verbatim copies in `feedbackfile`/`speclog`. Consumed by `feedbackfile`,
