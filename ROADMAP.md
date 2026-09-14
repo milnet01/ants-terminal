@@ -8843,6 +8843,16 @@ extends an existing item, that item carries it instead.
   - Cold-eyes stale citations survive a re-partition.
   - ANTS-3601 section 2.7 says the big logs never reach check, but the
     contracts lane passes them; decide which side is wrong.
+  Progress (2026-09-14): IndieReviewDispatcher adds a wall-clock
+  deadline of perLaneTimeoutMs per reply and aborts a reply past
+  LlmClient::kMaxBytes, reported as too large
+  (tests/features/review_dispatch_bounds); applyMechanicalFix edits the
+  file's bytes line for line, so non-UTF-8 bytes survive
+  (debt_sweep_engine Ants5101FixKeepsNonUtf8Bytes). Still open: brief
+  composition on the GUI thread, the git timeout read as a clean
+  detector result, the stale-TODO blame cap, cold-eyes stale citations
+  across a re-partition, and the ANTS-3601 section 2.7 contracts-lane
+  question.
   **Layman:** Smaller AI-review fixes: a timeout that isn't really a limit, unbounded replies, and slow brief building.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lane review-engines).
