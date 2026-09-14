@@ -70,6 +70,10 @@ for security-relevant changes.
 
 ### Fixed
 
+- **The debug log now rotates when it passes its size limit during a session, instead of growing until Ants restarts** (ANTS-5110)
+
+- **read_log refuses a path that is not a regular file, so a named pipe can no longer freeze it** (ANTS-5110)
+
 - **Review Changes no longer lists a repository's whole history on every refresh when it has no remote, and a crashed git command no longer refreshes the window twice** (ANTS-5109)
 
 - **A line break in a changelog entry's summary, id or dated headline stays on that line and can no longer create a fake heading** (ANTS-5108)

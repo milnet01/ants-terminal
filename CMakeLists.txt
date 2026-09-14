@@ -2086,6 +2086,8 @@ if(ANTS_TESTS)
                 tests/features/mutation_probe/test_mutation_probe.cpp
                 # ANTS-1855 — read_log filter verb.
                 tests/features/mcp_read_log/test_mcp_read_log.cpp
+                # ANTS-5110 — debug log rotates while writing; read_log refuses non-regular files.
+                tests/features/diagnostics_guards/test_diagnostics_guards.cpp
                 # ANTS-2021 — read_region slice verb.
                 tests/features/mcp_read_region/test_mcp_read_region.cpp
                 # ANTS-2022 — apply_edits batch edit verb.

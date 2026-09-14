@@ -169,6 +169,13 @@ void DebugLog::write(Category c, const QString &message) {
     if (s_file.isOpen()) {
         s_file.write(line);
         s_file.flush();
+        // ANTS-5110 — the cap was checked only when the file opened, so a
+        // long session with a category on grew debug.log without limit.
+        // Reopening rotates the oversized file to debug.log.1.
+        if (s_file.size() > kMaxLogBytes) {
+            s_file.close();
+            openLogFileLocked();
+        }
     }
     if (s_alsoStderr) {
         fwrite(line.constData(), 1, line.size(), stderr);

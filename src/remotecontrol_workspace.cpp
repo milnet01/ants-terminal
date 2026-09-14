@@ -2279,6 +2279,15 @@ QJsonDocument RemoteControl::cmdReadLog(const QJsonObject &req) {
         }
         resolved = check.resolved;
     }
+    // ANTS-5110 — a FIFO or device path blocked the single MCP worker on
+    // open until a writer appeared.
+    if (QFileInfo::exists(resolved) && !QFileInfo(resolved).isFile()) {
+        QJsonObject o;
+        o["ok"]    = false;
+        o["error"] = QStringLiteral("read_log: \"%1\" is not a regular file").arg(rawPath);
+        o["code"]  = QStringLiteral("bad_path");
+        return QJsonDocument(o);
+    }
 
     ReadLog::Options opts;
     opts.include  = req.value(QStringLiteral("include")).toString();
