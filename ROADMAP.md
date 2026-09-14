@@ -8192,6 +8192,13 @@ extends an existing item, that item carries it instead.
   (tests/features/audit_cache_dir_private); auditscope.cpp pointer no
   longer cites a line. The ledger finding names FalsePosLedger; the
   static cache is in src/falseposledger.cpp loadEntries.
+  Progress (2026-09-14): computeDelta compares added against all prior
+  findings and merges untouched priors not already current
+  (audit_run_delta INV-3); RuleQualityTracker saves only when dirty and
+  not per suppression (audit_rule_quality SaveOnlyWhenChanged);
+  applyFilter skips context files over 4 MiB and falseposledger
+  loadEntries locks its static cache (tests/features/audit_engine_lows).
+  Still open: auditrunner reads tool output whole; the findings sidecar is written uncapped; the rule-quality file still reaches its record cap.
   **Layman:** Smaller audit-engine fixes: unbounded tool output, a change list that keeps growing, and slow saves on the main window.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lane audit-engine).
