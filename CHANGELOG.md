@@ -76,6 +76,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **workspace_search no longer warns about short terms when the whole regex is one word-bounded group, such as `\b(TODO|FIXME|TBD|XXX)\b`.** (ANTS-5139)
+
 - **file_outline lists gtest `TEST`, `TEST_F` and `TEST_P` blocks as `Suite.Case`, and no longer reports locals declared inside a test body as functions.** (ANTS-5019)
 
 - **mutation_probe refuses a baseline that collected no tests (pytest exit 4 or 5) as `baseline_did_not_run`, naming the test command, instead of reporting the suite as red.** (ANTS-4852)

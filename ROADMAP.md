@@ -17384,6 +17384,22 @@ fixes don't address. Roadmapped here as their own design tasks.
   Decide between suppressing citations inside a Cold-eyes loop log section
   and giving them a distinct kind a caller can filter. Do not simply raise
   the line tolerance — that would hide genuine drift in live prose.
+  NEEDS A DECISION, not built (2026-09-14). Confirmed:
+  docs/specs/ANTS-3663.md's only stale citation is doc line 1244,
+  `src/remotecontrol.cpp:12375` out_of_range (the file is 2641 lines
+  since ANTS-3833), and line 1244 is row 2 of its Cold-eyes loop-log
+  table. src/doccitations.cpp already has dcIsLoopLogRow (ANTS-4637),
+  but only the QUOTE path calls it; the citation path has no loop-log
+  handling. Why not built: docs/specs/ANTS-3636.md defines the filter
+  ("only:stale keeps every non-ok citation plus every ok one with
+  anchor_found:false"), so excluding loop-log rows changes a specified
+  contract and owes rule 14's gate. Recommendation: keep the entry, add
+  `loop_log_row:true` and a counted overlay key, and exclude it from
+  only:stale, the ANTS-4085 foreign_path precedent, through a spec
+  amendment. Separate drift found: ANTS-4085 already excluded
+  foreign_path from only:stale in code (doccitations.cpp stale
+  predicate) and that same ANTS-3636 sentence was never updated;
+  recording what shipped needs no gate.
   **Layman:** A documentation checker keeps flagging old review notes that we are not allowed to change, so the warning can never be cleared.
   Kind: fix.
   Source: in-session-2026-09-07 (found by the first corpus run of doc_lint).
@@ -18979,7 +18995,7 @@ indie-review finding.
   Source: in-session-2026-09-13 (ANTS-2132 amendment research).
   Lanes: remote-control, mcp.
 
-- 📋 [ANTS-5139] **workspace_search's short-term regex advisory fires on an alternation already anchored by word boundaries around its group.**
+- ✅ [ANTS-5139] **workspace_search's short-term regex advisory fires on an alternation already anchored by word boundaries around its group.**
   Seen 2026-09-13. The pattern `\b(TODO|FIXME|TBD|XXX)\b` returned
   regex_advisory saying the alternation "contains short bare term(s) [TBD]
   that match inside longer words" and suggesting `\bTBD\b`. The boundaries
@@ -18988,6 +19004,17 @@ indie-review finding.
   The ANTS-2181 check looks at each alternative in isolation. It should treat
   a term as anchored when the group it sits in is bounded by `\b` on both
   sides.
+  Resolved (2026-09-14): cause confirmed in
+  rcdetail::rcShortBareAltTerms: it splits the whole pattern on `|` and
+  strips only a leading `(` and trailing `)` per piece, so
+  `\b(TODO|FIXME|TBD|XXX)\b` yielded the bare piece `TBD`, exactly the
+  reported advisory. It now returns no terms when the whole pattern is
+  one group bounded by `\b` on both sides (capturing or not), checked by
+  a paren-balance scan; any other pattern is judged per piece as before,
+  so `tan|cosine` and `(tan)|\b(TBD)\b` still name `tan`. Test
+  WorkspaceSearchPhraseHint.Ants5139BoundedGroupIsAnchored calls the
+  helper directly (redeclared, since remotecontrol_internal.h is
+  RC-sources-only) and fails on the old source; full suite green.
   **Layman:** The search tool warns about a pattern mistake the user did not make.
   Kind: fix.
   Source: in-session-2026-09-13.
