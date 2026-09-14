@@ -136,3 +136,18 @@ The following tests FAILED:
     EXPECT_EQ(t2.failed, 3) << "failed=" << t2.failed;
     EXPECT_EQ(t2.total, 6) << "total=" << t2.total;
 }
+
+// ANTS-4996 — a green run's summary has no "tests failed" clause. A log whose
+// counts come only from the summary line must still read as 7 passed; the
+// summary pattern required the failed clause, so it read as nothing.
+TEST(TestResCacheParse, Ants4996GreenSummaryCounts) {
+    const QString log = QStringLiteral(R"(Test project /build
+
+100% tests passed out of 7
+
+Total Test time (real) =   1.20 sec
+)");
+    const TRC::ParsedTests t = TRC::parseCtestOutput(log);
+    EXPECT_EQ(t.passed, 7);
+    EXPECT_EQ(t.failed, 0);
+}

@@ -1,6 +1,7 @@
 // ANTS-4398 — mutation_probe engine. See mutationprobe.h.
 
 #include "mutationprobe.h"
+#include "testrescache.h"   // ANTS-4996 — the shared ctest summary matcher
 
 #include <QRegularExpression>
 
@@ -46,12 +47,12 @@ ApplyResult applyOne(const QString &content, const Mutation &m) {
 Counts parseCounts(const QString &output) {
     Counts c;
 
-    // ctest: "100% tests passed, 0 tests failed out of 42"
-    static const QRegularExpression ctestRe(
-        QStringLiteral(R"((\d+) tests failed out of (\d+))"));
-    if (const auto m = ctestRe.match(output); m.hasMatch()) {
-        c.failed = m.captured(1).toInt();
-        c.passed = m.captured(2).toInt() - c.failed;
+    // ctest: "97% tests passed, 2 tests failed out of 42", or on a green run
+    // "100% tests passed out of 42" (ANTS-4996 — the failed clause is absent).
+    if (int failed = 0, total = 0;
+        TestResCache::parseCtestSummary(output, &failed, &total)) {
+        c.failed = failed;
+        c.passed = total - failed;
         return c;
     }
 

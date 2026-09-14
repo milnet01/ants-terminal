@@ -32,3 +32,10 @@ parsing; this is that coverage.
   `tests/features/mcp_focused_test/`.
 - Statuses outside `Failed`/`Exception: <reason>`/`Timeout` (e.g.
   `Not Run`) — not exercised here.
+
+## ANTS-4996 — a green ctest summary parses
+
+ctest prints `100% tests passed out of N` when nothing failed, without the
+`, M tests failed` clause. That shape parses as N passed and 0 failed, through
+the one matcher `TestResCache::parseCtestSummary`, as the failing shape still
+does. *Test:* `TestResCacheParse.Ants4996GreenSummaryCounts`.

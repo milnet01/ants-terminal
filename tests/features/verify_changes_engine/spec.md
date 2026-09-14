@@ -74,3 +74,10 @@ Pairs with docs/specs/ANTS-1289.md.
   existing `ctest --preset=default` harness).
 - pytest / cargo / npm parsing (v1 leaves those at `format:"plain"`).
 - Concurrent-call safety: the engine is stateless; per-call only.
+
+## ANTS-4996 — a green ctest summary parses
+
+ctest prints `100% tests passed out of N` when nothing failed, without the
+`, M tests failed` clause. That shape parses as N passed and 0 failed, through
+the one matcher `TestResCache::parseCtestSummary`, as the failing shape still
+does. *Test:* `VerifyEngine.Ants4996GreenCtestSummaryWithoutFailedClause`.

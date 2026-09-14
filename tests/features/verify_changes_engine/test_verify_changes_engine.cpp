@@ -250,6 +250,27 @@ TEST(VerifyEngine, Inv5CtestParserPopulatesCounts) {
     EXPECT_TRUE(g->failingTests.isEmpty());
 }
 
+// ANTS-4996 — ctest's green summary has no "tests failed" clause, and the
+// parser required it, so a green run left the counts unset.
+TEST(VerifyEngine, Ants4996GreenCtestSummaryWithoutFailedClause) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    writeFile(tmp.path(), ".ants/verify.json", R"({
+        "tests": {"command": "printf 'Test #1: foo .... Passed 0.01 sec\nTest #2: bar .... Passed 0.02 sec\n\n100%% tests passed out of 2\nTotal Test time (real) = 0.03 sec\n'",
+                  "format": "ctest"}
+    })");
+
+    VerifyEngine::VerifyOptions opts;
+    opts.timeoutSec = 30;
+    const auto rep = VerifyEngine::runVerify(tmp.path(), opts);
+    auto *g = findGate(const_cast<VerifyEngine::VerifyReport &>(rep),
+                       VerifyEngine::GateName::Tests);
+    ASSERT_NE(g, nullptr);
+    EXPECT_TRUE(g->ran);
+    EXPECT_EQ(g->totalCount,  2);
+    EXPECT_EQ(g->passedCount, 2);
+}
+
 TEST(VerifyEngine, Inv5CtestParserExtractsFailingTests) {
     QTemporaryDir tmp;
     ASSERT_TRUE(tmp.isValid());

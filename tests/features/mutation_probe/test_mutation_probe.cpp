@@ -436,3 +436,17 @@ TEST(MutationProbe, Ants4736DeadlineIsWiredIntoTheMutationLoop) {
     const std::string ci = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
     EXPECT_NE(ci.find("transport_budget_sec"), std::string::npos);
 }
+
+// ANTS-4996 — ctest prints no "tests failed" clause when nothing failed, and
+// the parser required it, so a green run read as unknown and
+// require_green_baseline refused every green ctest batch (ANTS-5119).
+TEST(MutationProbe, Ants4996GreenCtestSummaryParses) {
+    const auto green = MutationProbe::parseCounts(
+        QStringLiteral("100% tests passed out of 7"));
+    EXPECT_EQ(green.passed, 7);
+    EXPECT_EQ(green.failed, 0);
+    const auto red = MutationProbe::parseCounts(
+        QStringLiteral("97% tests passed, 2 tests failed out of 42"));
+    EXPECT_EQ(red.passed, 40);
+    EXPECT_EQ(red.failed, 2);
+}

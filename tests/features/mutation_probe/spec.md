@@ -86,3 +86,10 @@ states. Reading found none of them.
 | Loop | Date | Lanes | Q1 | Q2 | Q3 | Q4 | Outcome |
 |------|------|-------|----|----|----|----|---------|
 | impl | 2026-08-14 | — | — | — | — | — | Written alongside the implementation; no reviewer dispatched. |
+
+## ANTS-4996 — a green ctest summary parses
+
+ctest prints `100% tests passed out of N` when nothing failed, without the
+`, M tests failed` clause. That shape parses as N passed and 0 failed, through
+the one matcher `TestResCache::parseCtestSummary`, as the failing shape still
+does. *Test:* `MutationProbe.Ants4996GreenCtestSummaryParses`.

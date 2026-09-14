@@ -1,6 +1,7 @@
 // VerifyEngine implementation — see verifyengine.h + docs/specs/ANTS-1289.md.
 
 #include "verifyengine.h"
+#include "testrescache.h"   // ANTS-4996 — the shared ctest summary matcher
 #include "verifytrust.h"
 #include "projectsettings.h"   // ANTS-3373 — isNoiseDir for orphan-lint pruning
 #include "processgroup.h"      // ANTS-5063 — stop a timed-out gate's whole tree
@@ -224,16 +225,13 @@ QString assembleLogTail(const QStringList &lines, int maxLines,
 
 // INV-5 — apply the ctest summary regex per-line.
 void parseCtest(const QStringList &lines, GateResult *r) {
-    static const QRegularExpression kSummary(
-        QStringLiteral(R"((\d+)% tests passed, (\d+) tests failed out of (\d+))"));
     static const QRegularExpression kFailLine(
         QStringLiteral(R"(^\s*\d+ - (\S+) )"));
     bool inFailBlock = false;
     for (const QString &line : lines) {
-        const auto sm = kSummary.match(line);
-        if (sm.hasMatch()) {
-            const int failed = sm.captured(2).toInt();
-            const int total  = sm.captured(3).toInt();
+        // ANTS-4996 — both summary shapes, including a green run's.
+        if (int failed = 0, total = 0;
+            TestResCache::parseCtestSummary(line, &failed, &total)) {
             r->totalCount  = total;
             r->passedCount = total - failed;
         }

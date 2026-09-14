@@ -49,6 +49,13 @@ QString cachePath(const QString &canonProject);
 // bad_args).
 ParsedTests parseCtestOutput(const QString &output);
 
+// ANTS-4996 — ctest's run summary, in either shape it prints:
+//   "93% tests passed, 3 tests failed out of 42"   (something failed)
+//   "100% tests passed out of 7"                    (nothing failed)
+// Returns false when `text` holds no summary line; otherwise sets `failed`
+// (0 on a green run) and `total`. The one matcher every ctest reader uses.
+bool parseCtestSummary(const QString &text, int *failed, int *total);
+
 // Write `<root>/.audit_cache/tests.json` atomically via QSaveFile,
 // 0600 perms. Sets recordedAtMs on the in-memory ParsedTests.
 // Returns false on mkdir / write failure.

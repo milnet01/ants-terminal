@@ -49,10 +49,13 @@ const QRegularExpression &perTestRe() {
     return re;
 }
 
+// ANTS-4996 — ctest prints the "N tests failed" clause only when something
+// failed: a green run reads "100% tests passed out of 7". The clause is
+// optional here, so capture 1 is empty (toInt() 0) on a green run.
 const QRegularExpression &summaryRe() {
     static const QRegularExpression re(
         QStringLiteral(
-            R"(^\d+% tests passed,\s+(\d+) tests failed out of\s+(\d+)\s*$)"),
+            R"(^\d+% tests passed(?:,\s+(\d+) tests failed)?\s+out of\s+(\d+)\s*$)"),
         QRegularExpression::MultilineOption);
     return re;
 }
@@ -100,6 +103,14 @@ QString cachePath(const QString &canonProject) {
     const QString dir = cacheDirLocal(canonProject);
     if (dir.isEmpty()) return {};
     return dir + QLatin1Char('/') + QLatin1String(kFileName);
+}
+
+bool parseCtestSummary(const QString &text, int *failed, int *total) {
+    const auto m = summaryRe().match(text);
+    if (!m.hasMatch()) return false;
+    if (failed) *failed = m.captured(1).toInt();   // absent on a green run
+    if (total)  *total  = m.captured(2).toInt();
+    return true;
 }
 
 ParsedTests parseCtestOutput(const QString &output) {
