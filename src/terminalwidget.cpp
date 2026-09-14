@@ -604,8 +604,16 @@ void TerminalWidget::setSessionLogging(bool enabled) {
         } else if (!setOwnerOnlyPerms(*m_logFile)) {
             // Defence in depth behind the 0700 directory above, so the log
             // stays private if that directory is later loosened by hand.
-            qWarning("Could not set owner-only permissions on %s",
-                     qPrintable(filename));
+            // ANTS-5151 — the log holds the terminal's byte stream: a log that
+            // cannot be made private is not kept, and the user is told.
+            qWarning("Could not set owner-only permissions on %s — session "
+                     "logging off", qPrintable(filename));
+            m_logFile->close();
+            QFile::remove(filename);
+            m_logFile.reset();
+            m_loggingEnabled = false;
+            emit captureFailed(tr("Session logging is off: could not make %1 private")
+                                   .arg(filename));
         }
     } else if (!enabled && m_logFile) {
         m_logFile->close();
@@ -5072,8 +5080,15 @@ void TerminalWidget::startRecording(const QString &path) {
     // ANTS-4456 — the cast carries the same byte stream as the session log.
     // Applied here rather than at the caller so any future caller inherits it.
     if (!setOwnerOnlyPerms(*m_recordFile)) {
-        qWarning("Could not set owner-only permissions on recording %s",
-                 qPrintable(path));
+        // ANTS-5151 — a recording that cannot be made private is not made,
+        // and the user is told.
+        qWarning("Could not set owner-only permissions on recording %s — not "
+                 "recording", qPrintable(path));
+        m_recordFile->close();
+        QFile::remove(path);
+        m_recordFile.reset();
+        emit captureFailed(tr("Not recording: could not make %1 private").arg(path));
+        return;
     }
 
     // Write asciicast v2 header

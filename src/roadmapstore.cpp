@@ -259,7 +259,8 @@ bool RoadmapStore::open(QString *error) {
     if (!QFileInfo::exists(m_path)) {
         QFile created(m_path);
         if (created.open(QIODevice::WriteOnly | QIODevice::NewOnly)) {
-            setOwnerOnlyPerms(created);
+            if (!setOwnerOnlyPerms(created))
+                warnNotOwnerOnly(m_path, "roadmap store");
             created.close();
         }
     }
@@ -281,9 +282,16 @@ bool RoadmapStore::open(QString *error) {
     // content, including visibility:internal items, so securing only the main
     // file would be theatre. The sidecars exist only while a connection is
     // open and a write has happened, so this runs after createSchema().
-    setOwnerOnlyPerms(m_path);
-    setOwnerOnlyPerms(m_path + QStringLiteral("-wal"));
-    setOwnerOnlyPerms(m_path + QStringLiteral("-shm"));
+    // ANTS-5151 — warn, never refuse (user decision): refusing to open would
+    // lock every project on the machine out of its roadmap. A sidecar that
+    // does not exist yet is not a failure.
+    if (!setOwnerOnlyPerms(m_path))
+        warnNotOwnerOnly(m_path, "roadmap store");
+    for (const QString &sidecar : {m_path + QStringLiteral("-wal"),
+                                   m_path + QStringLiteral("-shm")}) {
+        if (QFileInfo::exists(sidecar) && !setOwnerOnlyPerms(sidecar))
+            warnNotOwnerOnly(sidecar, "roadmap store");
+    }
     return true;
 }
 

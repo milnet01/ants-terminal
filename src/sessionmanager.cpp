@@ -487,7 +487,16 @@ void SessionManager::saveSession(const QString &tabId, const TerminalGrid *grid,
     mode_t oldMask = ::umask(0077);
     QFile file(tmpPath);
     if (file.open(QIODevice::WriteOnly)) {
-        setOwnerOnlyPerms(file);
+        // ANTS-5151 — scrollback: the temp blob is private or not written,
+        // and the previous blob stays in place.
+        if (!setOwnerOnlyPerms(file)) {
+            qWarning("SessionManager::saveSession: could not make %s owner-only "
+                     "— not saved, prior blob unchanged", qUtf8Printable(tmpPath));
+            file.close();
+            QFile::remove(tmpPath);
+            ::umask(oldMask);
+            return;
+        }
         if (file.write(data) == data.size()) {
             // fsync before rename — see Config::save for rationale.
             // Scrollback blobs are worth durability; losing a session
@@ -516,7 +525,10 @@ void SessionManager::saveSession(const QString &tabId, const TerminalGrid *grid,
                 // content (passwords mistyped at the prompt, ssh
                 // command history, paste buffers); re-chmod the
                 // final inode.
-                setOwnerOnlyPerms(path);
+                // ANTS-5151 — warn, never delete: the blob is already in
+                // place, and removing it would lose this tab's scrollback.
+                if (!setOwnerOnlyPerms(path))
+                    warnNotOwnerOnly(path, "session");
                 // ANTS-1141 — fsync parent dir for crash-safe
                 // rename durability (Postgres pattern). See
                 // Config::save for the full rationale.
@@ -582,7 +594,8 @@ void SessionManager::saveTabOrder(const QStringList &tabIds, int activeIndex) {
     mode_t oldMask = ::umask(0077);
     QFile file(tmpPath);
     if (file.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
-        setOwnerOnlyPerms(file);
+        if (!setOwnerOnlyPerms(file))
+            warnNotOwnerOnly(tmpPath, "session tab order");
         // First line: active tab index
         QByteArray body = QStringLiteral("active:%1\n").arg(activeIndex).toUtf8();
         for (const QString &id : tabIds) {
@@ -613,7 +626,8 @@ void SessionManager::saveTabOrder(const QStringList &tabIds, int activeIndex) {
         const int rc = std::rename(tmpPath.toLocal8Bit().constData(),
                                    path.toLocal8Bit().constData());
         if (rc == 0) {
-            setOwnerOnlyPerms(path);
+            if (!setOwnerOnlyPerms(path))
+                warnNotOwnerOnly(path, "session tab order");
             // ANTS-1141 — fsync parent dir; see Config::save.
             fsyncParentDir(path);
         } else {

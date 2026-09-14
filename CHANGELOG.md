@@ -737,6 +737,12 @@ for security-relevant changes.
 
 ### Security
 
+- **Files that hold your project's content or your terminal's output are no longer written when Ants cannot make them readable by you alone; settings and other small files log a warning instead** (ANTS-5151)
+  Covers audit exports and caches, saved reports, the debug log, and
+  session logging and recordings, which now say in the status bar why they
+  did not start. The roadmap database warns rather than refusing, so every
+  project keeps working.
+
 - **Resuming a Claude session quotes the session id in the command it types** (ANTS-5080)
 
 - **The command that asks Claude to review an audit quotes its prompt, so an unusual results path cannot run shell code** (ANTS-5079)

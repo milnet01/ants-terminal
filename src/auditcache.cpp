@@ -223,13 +223,20 @@ RecordedRun recordRun(const QString &canonProject,
             dir + QLatin1Char('/') + findingsBasename;
         QSaveFile sc(sidecarPath);
         if (sc.open(QIODevice::WriteOnly)) {
-            setOwnerOnlyPerms(sc);
             const QByteArray scBody =
                 QJsonDocument(sidecar).toJson(QJsonDocument::Compact);
-            if (sc.write(scBody) == scBody.size() && sc.commit()) {
-                setOwnerOnlyPerms(sidecarPath);
-                fsyncParentDir(sidecarPath);
-                lastRun[QStringLiteral("findings_file")] = findingsBasename;
+            // ANTS-5151 — the sidecar holds the full findings: private or not
+            // written. An uncommitted QSaveFile discards its temp file.
+            if (setOwnerOnlyPerms(sc) && sc.write(scBody) == scBody.size()
+                && sc.commit()) {
+                if (setOwnerOnlyPerms(sidecarPath)) {
+                    fsyncParentDir(sidecarPath);
+                    lastRun[QStringLiteral("findings_file")] = findingsBasename;
+                } else {
+                    QFile::remove(sidecarPath);
+                    qWarning() << "AuditCache: could not make findings sidecar "
+                                  "owner-only; removed" << sidecarPath;
+                }
             } else {
                 qWarning() << "AuditCache: failed to write findings sidecar"
                            << sidecarPath;
@@ -306,7 +313,8 @@ RecordedRun recordRun(const QString &canonProject,
         warnOrphanSarif();
         return out;
     }
-    setOwnerOnlyPerms(sf);
+    if (!setOwnerOnlyPerms(sf))
+        warnNotOwnerOnly(manifestPath, "audit cache manifest");
     const QByteArray body =
         QJsonDocument(newManifest).toJson(QJsonDocument::Indented);
     if (sf.write(body) != body.size()) {
@@ -320,7 +328,8 @@ RecordedRun recordRun(const QString &canonProject,
         warnOrphanSarif();
         return out;
     }
-    setOwnerOnlyPerms(manifestPath);
+    if (!setOwnerOnlyPerms(manifestPath))
+        warnNotOwnerOnly(manifestPath, "audit cache manifest");
     // ANTS-1761 — QSaveFile::commit() fsyncs the file + atomically
     // renames, but the directory entry for the rename isn't durable until
     // the parent dir is fsynced. Without this, power loss between the

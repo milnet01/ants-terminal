@@ -2033,6 +2033,8 @@ if(ANTS_TESTS)
                 tests/features/rc_reply_drain_guard/test_rc_reply_drain_guard.cpp
                 # ANTS-5089 — the MCP socket answers an unparsable request.
                 tests/features/mcp_parse_error_reply/test_mcp_parse_error_reply.cpp
+                # ANTS-5151 — every owner-only permission result is used.
+                tests/features/owner_only_result_used/test_owner_only_result_used.cpp
                 tests/features/allowlist_perms_postcommit/test_allowlist_perms_postcommit.cpp
                 tests/features/ssh_dash_host_rejected/test_ssh_dash.cpp
                 tests/features/ssh_extra_args_sanitize/test_ssh_extra_args.cpp

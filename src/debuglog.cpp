@@ -102,16 +102,22 @@ void DebugLog::openLogFileLocked() {
         fprintf(stderr, "DebugLog: could not open %s\n", qPrintable(path));
     }
     ::umask(prevMask);
+    // Owner-only. The log can contain PTY output (keystrokes),
+    // network responses (API bodies), and HMAC material from
+    // OSC 133 forgery detection. Apply both via the open fd
+    // and via path — the fd-level call covers the just-opened
+    // descriptor; the path-level call covers the on-disk inode
+    // in case append reused a pre-existing file that a prior
+    // (pre-fix) run left at the process umask.
+    // ANTS-5151 — a log that cannot be made private is not written. stderr
+    // is the only place to say so: this is the log.
+    if (s_file.isOpen()
+        && (!setOwnerOnlyPerms(s_file) || !setOwnerOnlyPerms(path))) {
+        fprintf(stderr, "DebugLog: could not make %s owner-only — debug "
+                        "logging is off\n", qPrintable(path));
+        s_file.close();
+    }
     if (s_file.isOpen()) {
-        // Owner-only. The log can contain PTY output (keystrokes),
-        // network responses (API bodies), and HMAC material from
-        // OSC 133 forgery detection. Apply both via the open fd
-        // and via path — the fd-level call covers the just-opened
-        // descriptor; the path-level call covers the on-disk inode
-        // in case append reused a pre-existing file that a prior
-        // (pre-fix) run left at the process umask.
-        setOwnerOnlyPerms(s_file);
-        setOwnerOnlyPerms(path);
         const QString header = QStringLiteral(
             "\n=== debug log opened at %1 (pid %2, categories=0x%3) ===\n")
             .arg(QDateTime::currentDateTime().toString(Qt::ISODateWithMs))

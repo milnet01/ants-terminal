@@ -1883,8 +1883,16 @@ void MainWindow::setupSettingsMenu() {
         m_config.setSessionLogging(checked);
         // Apply to all terminals
         QList<TerminalWidget *> terminals = liveTerminals();
-        for (auto *t : terminals) t->setSessionLogging(checked);
-        showStatusMessage(checked ? "Session logging enabled" : "Session logging disabled", 3000);
+        // ANTS-5151 — a terminal that refused (its log could not be made
+        // private) has already put its reason in the status bar; do not
+        // overwrite it with a success message.
+        bool refused = false;
+        for (auto *t : terminals) {
+            t->setSessionLogging(checked);
+            if (checked && !t->sessionLogging()) refused = true;
+        }
+        if (!refused)
+            showStatusMessage(checked ? "Session logging enabled" : "Session logging disabled", 3000);
     });
 
     QAction *autoCopyAction = settingsMenu->addAction("&Auto-copy on Select");
@@ -1951,6 +1959,14 @@ void MainWindow::setupSettingsMenu() {
             QString path = dir + "/recording_"
                 + QDateTime::currentDateTime().toString("yyyyMMdd_HHmmss") + ".cast";
             t->startRecording(path);
+            if (!t->isRecording()) {
+                // ANTS-5151 — refused: the recording file could not be made
+                // private, and the terminal has put the reason in the status
+                // bar. Un-check with signals blocked, as above.
+                const QSignalBlocker block(recordAction);
+                recordAction->setChecked(false);
+                return;
+            }
             showStatusMessage("Recording: " + path, 5000);
         } else {
             t->stopRecording();
@@ -2431,6 +2447,12 @@ void MainWindow::connectTerminal(TerminalWidget *terminal) {
         if (!isActiveWindow())
             showDesktopNotification(title, body);
     });
+
+    // ANTS-5151 — logging or recording refused for want of owner-only perms.
+    // Shown in the window, not as a desktop notification: the user is looking
+    // at it when they switch capture on.
+    connect(terminal, &TerminalWidget::captureFailed, this,
+            [this](const QString &message) { showStatusMessage(message, 8000); });
 
     // Apply highlight and trigger rules from config
     terminal->setHighlightRules(m_config.highlightRules());

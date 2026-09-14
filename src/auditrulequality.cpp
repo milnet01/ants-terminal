@@ -234,7 +234,14 @@ void RuleQualityTracker::save() const {
                  m_path.toUtf8().constData(), f.errorString().toUtf8().constData());
         return;
     }
-    setOwnerOnlyPerms(f);
+    // ANTS-5151 — suppression rows carry source lines, so the history is not
+    // saved unless it can be made private.
+    if (!setOwnerOnlyPerms(f)) {
+        qWarning("auditrulequality: could not make %s owner-only; not saved",
+                 m_path.toUtf8().constData());
+        f.cancelWriting();
+        return;
+    }
     f.write(QJsonDocument(root).toJson(QJsonDocument::Compact));
     // ANTS-1810 — check commit + fsync the dir: a full disk / perms failure
     // silently lost the entire 90-day quality history before this guard.

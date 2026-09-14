@@ -62,7 +62,11 @@ bool writeReport(const QString &path, const QString &body) {
         return false;
     }
     if (!f.commit()) return false;
-    setOwnerOnlyPerms(path);
+    // ANTS-5151 — model reports quote the project's source: private or gone.
+    if (!setOwnerOnlyPerms(path)) {
+        QFile::remove(path);
+        return false;
+    }
     return true;
 }
 

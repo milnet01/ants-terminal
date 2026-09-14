@@ -2592,11 +2592,13 @@ bool AuditDialog::appendAllowlistEntry(const Finding &f, const QString &reason) 
 
     QSaveFile sf(path);
     if (!sf.open(QIODevice::WriteOnly)) return false;
-    setOwnerOnlyPerms(sf);  // 0600 — matches every other state writer here (indie-review-2026-05-21)
+    if (!setOwnerOnlyPerms(sf))  // 0600 — matches every other state writer here (indie-review-2026-05-21)
+        warnNotOwnerOnly(path, "audit allowlist");
     const QByteArray body = QJsonDocument(rootObj).toJson(QJsonDocument::Indented);
     if (sf.write(body) != body.size()) return false;
     if (!sf.commit()) return false;
-    setOwnerOnlyPerms(path);
+    if (!setOwnerOnlyPerms(path))
+        warnNotOwnerOnly(path, "audit allowlist");
 
     loadAllowlist();   // refresh so the running session also hides it on re-render
     return true;
@@ -3297,7 +3299,8 @@ void AuditDialog::saveSuppression(const QString &dedupKey,
         // suppression list unparseable on next load.
         QSaveFile sf(path);
         if (sf.open(QIODevice::WriteOnly)) {
-            setOwnerOnlyPerms(sf);
+            if (!setOwnerOnlyPerms(sf))
+                warnNotOwnerOnly(path, "audit suppressions");
             const QByteArray body = rebuilt.join('\n').toUtf8() + '\n';
             saved = sf.write(body) == body.size() && sf.commit();
         }
@@ -3308,7 +3311,8 @@ void AuditDialog::saveSuppression(const QString &dedupKey,
         if (f.open(QIODevice::WriteOnly | QIODevice::Append)) {
             bool ok = true;
             if (f.size() == 0) {
-                setOwnerOnlyPerms(f);
+                if (!setOwnerOnlyPerms(f))
+                    warnNotOwnerOnly(f.fileName(), "audit suppressions");
                 const QByteArray header =
                     "# ants-audit suppressions (JSONL). Entries hide the matching "
                     "finding by dedup key.\n";
@@ -3513,7 +3517,8 @@ void AuditDialog::appendSnapshot(const TrendSnapshot &s) {
     // truncate the array and lose all prior runs.
     QSaveFile sf(trendPath());
     if (sf.open(QIODevice::WriteOnly)) {
-        setOwnerOnlyPerms(sf);
+        if (!setOwnerOnlyPerms(sf))
+            warnNotOwnerOnly(trendPath(), "audit trend history");
         sf.write(QJsonDocument(arr).toJson(QJsonDocument::Compact));
         sf.commit();
     }
@@ -3557,7 +3562,8 @@ void AuditDialog::saveBaseline() {
     // a torn write leaves the filter off-by-many until re-saved.
     QSaveFile f(baselinePath());
     if (f.open(QIODevice::WriteOnly)) {
-        setOwnerOnlyPerms(f);
+        if (!setOwnerOnlyPerms(f))
+            warnNotOwnerOnly(baselinePath(), "audit baseline");
         f.write(QJsonDocument(root).toJson(QJsonDocument::Compact));
         if (f.commit()) {
             loadBaseline();
@@ -3966,11 +3972,19 @@ void AuditDialog::buildUI() {
             m_statusLabel->setFullText("SARIF save failed: " + sf.errorString());
             return;
         }
-        setOwnerOnlyPerms(sf);
+        // ANTS-5151 — the report may carry leaked secrets: private or not saved.
+        if (!setOwnerOnlyPerms(sf)) {
+            m_statusLabel->setFullText("SARIF save failed: could not make the file private");
+            return;  // uncommitted: QSaveFile discards its temp file
+        }
         sf.write(exportSarif().toUtf8());
         if (sf.commit()) {
-            setOwnerOnlyPerms(path);  // re-chmod final inode
-            m_statusLabel->setFullText("SARIF saved: " + path);
+            if (setOwnerOnlyPerms(path)) {  // re-chmod final inode
+                m_statusLabel->setFullText("SARIF saved: " + path);
+            } else {
+                QFile::remove(path);
+                m_statusLabel->setFullText("SARIF save failed: could not make " + path + " private");
+            }
         } else {
             m_statusLabel->setFullText("SARIF save failed: " + sf.errorString());
         }
@@ -3996,11 +4010,19 @@ void AuditDialog::buildUI() {
             m_statusLabel->setFullText("HTML save failed: " + sf.errorString());
             return;
         }
-        setOwnerOnlyPerms(sf);
+        // ANTS-5151 — same finding metadata as the SARIF: private or not saved.
+        if (!setOwnerOnlyPerms(sf)) {
+            m_statusLabel->setFullText("HTML save failed: could not make the file private");
+            return;  // uncommitted: QSaveFile discards its temp file
+        }
         sf.write(exportHtml().toUtf8());
         if (sf.commit()) {
-            setOwnerOnlyPerms(path);
-            m_statusLabel->setFullText("HTML report saved: " + path);
+            if (setOwnerOnlyPerms(path)) {
+                m_statusLabel->setFullText("HTML report saved: " + path);
+            } else {
+                QFile::remove(path);
+                m_statusLabel->setFullText("HTML save failed: could not make " + path + " private");
+            }
         } else {
             m_statusLabel->setFullText("HTML save failed: " + sf.errorString());
         }
@@ -4026,7 +4048,12 @@ void AuditDialog::buildUI() {
             // handed to the external reviewer) and can contain file paths + code
             // context. Enforce owner-only perms explicitly rather than relying on
             // the platform's QTemporaryFile default.
-            setOwnerOnlyPerms(path);
+            if (!setOwnerOnlyPerms(path)) {
+                QFile::remove(path);
+                delete tmp;
+                m_statusLabel->setFullText("Review not started: could not make the report file private");
+                return;
+            }
             delete tmp;
             emit reviewRequested(path);
             close();

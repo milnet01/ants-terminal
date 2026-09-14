@@ -189,7 +189,8 @@ bool writeScriptFile(const QString &path, const QByteArray &body,
     // the hook runner invokes the script directly per the bash-prefix
     // schema; the file needs +x even though `bash <path>` would honour
     // mode-bit-stripped runs, future re-shapings may need it).
-    setOwnerOnlyPerms(path);
+    if (!setOwnerOnlyPerms(path))
+        warnNotOwnerOnly(path, "orientation hook script");
     QFile::setPermissions(path,
         QFile::ReadOwner | QFile::WriteOwner | QFile::ExeOwner);
     return true;
@@ -370,7 +371,8 @@ MergeOutcome mergeSettings(const QString &settingsPath,
         }
         return MergeOutcome::WriteFail;
     }
-    setOwnerOnlyPerms(settingsPath);
+    if (!setOwnerOnlyPerms(settingsPath))
+        warnNotOwnerOnly(settingsPath, "Claude Code settings");
 
     if (!fileExisted) return MergeOutcome::Created;
     if (add) return MergeOutcome::Added;

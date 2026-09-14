@@ -33,7 +33,11 @@ bool writeLinesAtomic(const QString &path, const QList<QByteArray> &lines) {
     }
     // Tighten perms on the temp file before the atomic rename so the final
     // file is never briefly group/world-readable (no create-then-chmod window).
-    setOwnerOnlyPerms(sf);
+    // ANTS-5151 — warns and writes: every caller today is a model-switch
+    // ledger (timestamps, tiers, flags). A caller whose lines carry project
+    // content needs the fail-closed half of secureio.h's policy instead.
+    if (!setOwnerOnlyPerms(sf))
+        warnNotOwnerOnly(path, "JSONL ledger");
     return sf.commit();
 }
 

@@ -324,6 +324,9 @@ signals:
     void commandFailed(int exitCode, const QString &output);
     void outputReceived();  // debounced notification of PTY output
     void desktopNotification(const QString &title, const QString &body);
+    // ANTS-5151 — session logging or a recording was refused because its file
+    // could not be made owner-only. `message` is ready to show the user.
+    void captureFailed(const QString &message);
     void progressChanged(int state, int percent);  // OSC 9;4: state = ProgressState enum, percent = 0-100
     // 0.6.9 — trigger system bundle:
     //   commandFinished: emitted on OSC 133 D (after exit code parsed).

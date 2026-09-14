@@ -118,7 +118,8 @@ bool appendEntry(const QString &projectPath, Entry e) {
     const bool fresh = !QFileInfo::exists(path) || QFileInfo(path).size() == 0;
     if (!f.open(QIODevice::WriteOnly | QIODevice::Append)) return false;
     if (fresh) {
-        setOwnerOnlyPerms(f);
+        if (!setOwnerOnlyPerms(f))
+            warnNotOwnerOnly(path, "audit false-positive ledger");
         f.write("# ants-audit learned false positives (JSONL, ANTS-1708). "
                 "Keyed by line-independent content fingerprint.\n");
     }

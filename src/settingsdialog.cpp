@@ -1611,14 +1611,16 @@ void SettingsDialog::installClaudeHooks() {
             QString("Could not write %1").arg(settingsPath));
         return;
     }
-    setOwnerOnlyPerms(settingsOut);  // 0600 on temp fd
+    if (!setOwnerOnlyPerms(settingsOut))  // 0600 on temp fd
+        warnNotOwnerOnly(settingsPath, "Claude Code settings");
     settingsOut.write(QJsonDocument(root).toJson(QJsonDocument::Indented));
     if (!settingsOut.commit()) {
         QMessageBox::warning(this, "Install hooks",
             QString("Commit failed for %1").arg(settingsPath));
         return;
     }
-    setOwnerOnlyPerms(settingsPath);  // belt-and-suspenders post-rename
+    if (!setOwnerOnlyPerms(settingsPath))  // belt-and-suspenders post-rename
+        warnNotOwnerOnly(settingsPath, "Claude Code settings");
 
     refreshClaudeHooksStatus();
     QMessageBox::information(this, "Install hooks",
@@ -1841,14 +1843,16 @@ void SettingsDialog::installClaudeGitContextHook() {
                 QString("Could not write %1").arg(settingsPath));
             return;
         }
-        setOwnerOnlyPerms(settingsOut);
+        if (!setOwnerOnlyPerms(settingsOut))
+            warnNotOwnerOnly(settingsPath, "Claude Code settings");
         settingsOut.write(QJsonDocument(root).toJson(QJsonDocument::Indented));
         if (!settingsOut.commit()) {
             QMessageBox::warning(this, "Install git-context hook",
                 QString("Commit failed for %1").arg(settingsPath));
             return;
         }
-        setOwnerOnlyPerms(settingsPath);
+        if (!setOwnerOnlyPerms(settingsPath))
+            warnNotOwnerOnly(settingsPath, "Claude Code settings");
     }
 
     refreshClaudeGitContextStatus();

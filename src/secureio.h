@@ -30,13 +30,30 @@
 // ^ this header is the helper: the raw 0600 bitmask is the definition, not
 //   a call site. The rule nudges all *other* call sites toward these helpers.
 
-inline bool setOwnerOnlyPerms(QFileDevice &f) {
+//
+// ANTS-5151 — [[nodiscard]]: a file meant to be private that stays readable
+// fails with no symptom, so every caller decides what a failure means. The
+// policy (user decision 2026-09-14, split by risk):
+//   - a file holding project content, terminal output, or a tool's or
+//     Claude's answers is NOT written, or is removed, when this fails;
+//   - every other file calls warnNotOwnerOnly() and carries on.
+// The roadmap store and an already-renamed session blob take the warn half
+// deliberately: failing there would lock every project out of its roadmap,
+// or lose a tab's scrollback.
+[[nodiscard]] inline bool setOwnerOnlyPerms(QFileDevice &f) {
     return f.setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner);
 }
 
-inline bool setOwnerOnlyPerms(const QString &path) {
+[[nodiscard]] inline bool setOwnerOnlyPerms(const QString &path) {
     return QFile::setPermissions(path,
         QFileDevice::ReadOwner | QFileDevice::WriteOwner);
+}
+
+// ANTS-5151 — the warn half of the policy above. `what` names the file's
+// purpose for the reader of the log ("config", "audit allowlist").
+inline void warnNotOwnerOnly(const QString &path, const char *what) {
+    qWarning("%s: could not make %s owner-only (0600); it may be readable "
+             "by other users", what, qUtf8Printable(path));
 }
 
 // ANTS-1141 — fsync the parent directory of a just-renamed file.

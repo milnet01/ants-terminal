@@ -174,7 +174,8 @@ void Config::save() {
     mode_t oldMask = ::umask(0077);
     QFile file(tmpPath);
     if (file.open(QIODevice::WriteOnly)) {
-        setOwnerOnlyPerms(file);
+        if (!setOwnerOnlyPerms(file))
+            warnNotOwnerOnly(tmpPath, "config");
         QByteArray json = QJsonDocument(m_data).toJson();
         if (file.write(json) == json.size()) {
             // 0.6.28 — fsync before rename. QFile::close flushes userspace
@@ -219,7 +220,8 @@ void Config::save() {
                 // 0600 set on the temp fd. config.json may hold
                 // ai_api_key — re-chmod the final inode after the
                 // atomic rename succeeds.
-                setOwnerOnlyPerms(path);
+                if (!setOwnerOnlyPerms(path))
+                    warnNotOwnerOnly(path, "config");
                 // ANTS-1141 — fsync the parent directory so the
                 // rename's directory-entry update is durable
                 // across power loss / kernel panic. Postgres /

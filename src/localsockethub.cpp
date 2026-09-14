@@ -65,7 +65,8 @@ QLocalServer *LocalSocketHub::acquire(const QString &path) {
         delete server;
         return nullptr;
     }
-    setOwnerOnlyPerms(path);
+    if (!setOwnerOnlyPerms(path))
+        warnNotOwnerOnly(path, "local socket");
 
     connect(server, &QLocalServer::newConnection, this,
             [this, path] { onNewConnection(path); });

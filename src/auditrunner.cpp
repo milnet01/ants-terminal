@@ -1260,12 +1260,17 @@ bool writeSarif(const QString &path,
 
     QSaveFile f(path);
     if (!f.open(QIODevice::WriteOnly | QIODevice::Text)) return false;
-    setOwnerOnlyPerms(f);
+    // ANTS-5151 — the SARIF holds the findings, secrets included: private or
+    // not written. An uncommitted QSaveFile discards its temp file.
+    if (!setOwnerOnlyPerms(f)) return false;
     const QByteArray bytes =
         QJsonDocument(doc).toJson(QJsonDocument::Indented);
     if (f.write(bytes) != bytes.size()) return false;
     if (!f.commit()) return false;
-    setOwnerOnlyPerms(path);
+    if (!setOwnerOnlyPerms(path)) {
+        QFile::remove(path);
+        return false;
+    }
     fsyncParentDir(path);  // ANTS-1810 — durable like the cache manifest
     return true;
 }
@@ -1274,7 +1279,8 @@ bool writeHtml(const QString &path,
                const QHash<QString, ToolResult> &byTool) {
     QSaveFile f(path);
     if (!f.open(QIODevice::WriteOnly | QIODevice::Text)) return false;
-    setOwnerOnlyPerms(f);
+    if (!setOwnerOnlyPerms(f))
+        warnNotOwnerOnly(path, "audit HTML summary");
     QTextStream s(&f);
     s << "<!DOCTYPE html><html><head><meta charset='utf-8'>"
          "<title>Audit report</title></head><body>"
@@ -1292,7 +1298,8 @@ bool writeHtml(const QString &path,
     s << "</table></body></html>";
     s.flush();
     if (!f.commit()) return false;
-    setOwnerOnlyPerms(path);
+    if (!setOwnerOnlyPerms(path))
+        warnNotOwnerOnly(path, "audit HTML summary");
     fsyncParentDir(path);  // ANTS-1810 — durable like the cache manifest
     return true;
 }

@@ -161,7 +161,13 @@ bool logRepair(const QString &cacheDir, const Repair &r) {
     const bool fresh = !QFileInfo::exists(path) || QFileInfo(path).size() == 0;
     if (!f.open(QIODevice::WriteOnly | QIODevice::Append)) return false;
     if (fresh) {
-        setOwnerOnlyPerms(f);
+        // ANTS-5151 — each entry carries the original and fixed source line,
+        // so a log that cannot be made private is not written.
+        if (!setOwnerOnlyPerms(f)) {
+            f.close();
+            QFile::remove(path);
+            return false;
+        }
         f.write("# ants-audit auto-fix log (JSONL, ANTS-1719). One entry "
                 "per applied behaviour-neutral repair; append-only.\n");
     }

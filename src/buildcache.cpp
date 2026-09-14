@@ -144,10 +144,15 @@ bool recordBuild(const QString &canonProject, ParsedBuild &build) {
 
     QSaveFile sf(cachePath(canonProject));
     if (!sf.open(QIODevice::WriteOnly)) return false;
-    setOwnerOnlyPerms(sf);
+    // ANTS-5151 — compiler output quotes the project's code: private or not
+    // written. An uncommitted QSaveFile discards its temp file.
+    if (!setOwnerOnlyPerms(sf)) return false;
     if (sf.write(body) != body.size()) return false;
     if (!sf.commit()) return false;
-    setOwnerOnlyPerms(cachePath(canonProject));
+    if (!setOwnerOnlyPerms(cachePath(canonProject))) {
+        QFile::remove(cachePath(canonProject));
+        return false;
+    }
     return true;
 }
 
