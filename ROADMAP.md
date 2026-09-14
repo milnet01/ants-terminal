@@ -72559,6 +72559,104 @@ acting on it.
   Kind: perf.
   Source: user-request-2026-09-14 (CI speed and memory review).
 
+## Memory and performance pass (2026-09-14)
+
+A memory-first pass with a performance pass alongside, over the terminal core,
+windows and dialogs, Claude and MCP, and the engines and stores. Nothing
+critical was found. Every item was checked against source before filing. Items
+that extend an earlier perf-pass bundle name it.
+
+- 📋 [ANTS-5200] **Cap the AI Assistant's chat history, which grows for the life of the app.**
+  MainWindow builds AiDialog once and keeps it. AiDialog::appendMessage appends each message to m_chatHistory. AiDialog::resetTransient leaves the history alone on purpose. Direction: drop the oldest messages past a limit, or free the dialog when the user clears it.
+  **Layman:** The AI Assistant window keeps every message in memory until you quit, with no limit.
+  Kind: perf.
+  Source: memory-perf-pass-2026-09-14.
+  Lanes: dialogs.
+
+- 📋 [ANTS-5201] **Stop the audit dialog keeping a full second copy of every finding.**
+  AuditDialog::renderResults clears and refills m_findingsByKey (a QHash of full Finding values) on every render. The same findings already sit in m_completedResults. Direction: store an index into m_completedResults instead of a copy.
+  **Layman:** The audit window stores each finding twice just so a click can find its details.
+  Kind: perf.
+  Source: memory-perf-pass-2026-09-14.
+  Lanes: audit.
+
+- 📋 [ANTS-5202] **Clear the audit dialog's expanded-rows set when a new run starts.**
+  m_expandedKeys only loses a key when the user collapses that row (AuditDialog::onResultAnchorClicked). The triage path adds keys to auto-expand a verdict. The re-run path clears m_completedResults but never m_expandedKeys. Direction: clear the set, or trim it to keys still present, when a run starts.
+  **Layman:** Rows you opened in an earlier audit run can open by themselves in the next one.
+  Kind: fix.
+  Source: memory-perf-pass-2026-09-14.
+  Lanes: audit.
+
+- 📋 [ANTS-5203] **Stop the background-tasks dialog holding each task's output several times over.**
+  Extends ANTS-5092. ClaudeBgTasksDialog::rebuild caches output in m_finishedOutput, which is never pruned for tasks the tracker no longer lists. The page HTML is also kept whole in m_lastHtml for a change check, beside the viewer's own document. Direction: prune the cache to live tasks, and compare a hash instead of keeping the HTML string.
+  **Layman:** The background-tasks window keeps extra copies of task output, and never forgets tasks that are gone.
+  Kind: perf.
+  Source: memory-perf-pass-2026-09-14.
+  Lanes: claude.
+
+- 📋 [ANTS-5204] **Stop allocating an empty hyperlink list for every scrollback line.**
+  Extends ANTS-4534. TerminalGrid pushes an entry into m_scrollbackHyperlinks (a deque of vectors) for every line pushed to scrollback, links or not. Direction: a sparse side table keyed by line, like the combining-character table.
+  **Layman:** Every line of history carries an empty link list, even though almost no lines have links.
+  Kind: perf.
+  Source: memory-perf-pass-2026-09-14.
+  Lanes: terminal-core.
+
+- 📋 [ANTS-5205] **Bound the MCP spill directory by size and sweep it while Ants runs.**
+  Extends ANTS-5104. mcp::spillSweep has one caller, in mainwindow.cpp at startup, and deletes by age only (kSweepMaxAgeSec). The directory is under GenericCacheLocation, which is ~/.cache on the system drive. A long session can fill it with no size cap. Direction: a size cap plus a periodic sweep. Also note readSpillRows holds the file bytes and the parsed document together; it is bounded by kStructuredParseMaxBytes, so low.
+  **Layman:** Large MCP results saved to disk are cleaned only at startup, by age, and the folder is on the system drive.
+  Kind: perf.
+  Source: memory-perf-pass-2026-09-14.
+  Lanes: mcp.
+
+- 💭 [ANTS-5206] **Give the process-lifetime static caches an eviction rule.**
+  Extends ANTS-5085. No eviction on: s_cache in src/falseposledger.cpp, cache in src/changelogquery.cpp, g in src/subsystemmap.cpp. Each grows by project root or pattern and is small per entry. Direction: a small LRU bound shared by all three.
+  **Layman:** A few small caches keep one entry per project forever.
+  Kind: perf.
+  Source: memory-perf-pass-2026-09-14.
+  Lanes: audit, mcp.
+
+- 💭 [ANTS-5207] **Check what the parseBullets per-thread memo keeps alive on worker threads.**
+  Extends ANTS-5087. parseBullets keeps static thread_local s_lastInput and s_lastResult (ANTS-2119). On the GUI thread this is the intended memo. On any pool thread that parses a large archive, the last input and result stay alive for the thread's life. Unverified: which threads call it. Direction: confirm the callers, then clear the memo off the GUI thread.
+  **Layman:** The roadmap parser remembers its last document on every thread that used it.
+  Kind: perf.
+  Source: memory-perf-pass-2026-09-14.
+  Lanes: roadmap.
+
+- 💭 [ANTS-5208] **Release RemoteControl's roadmap and changelog parse caches when idle.**
+  Extends ANTS-5094. m_roadmapCacheBullets and m_changelogCache are single-slot caches refreshed on the next query past the TTL. Nothing frees them in between. m_roadmapSectionCache already evicts. Direction: drop the slots on a timer after expiry.
+  **Layman:** The last roadmap and changelog read stay in memory after the cache has expired.
+  Kind: perf.
+  Source: memory-perf-pass-2026-09-14.
+  Lanes: mcp.
+
+- 💭 [ANTS-5209] **Remove the unused m_syncBuffer member from TerminalWidget.**
+  src/terminalwidget.h declares QByteArray m_syncBuffer, and nothing else in src/ names it.
+  **Layman:** A leftover buffer field in the terminal widget is never used.
+  Kind: chore.
+  Source: memory-perf-pass-2026-09-14.
+  Lanes: terminal-core.
+
+- 💭 [ANTS-5210] **Check whether each tab needs its own copy of the shell history list.**
+  TerminalWidget holds QStringList m_historyEntries per widget. Unverified: whether every tab loads the same file. Direction: if so, share one list across tabs.
+  **Layman:** Every tab may be loading its own copy of your command history.
+  Kind: investigate.
+  Source: memory-perf-pass-2026-09-14.
+  Lanes: terminal-core.
+
+- 💭 [ANTS-5211] **Check whether captureScreenSnapshot reallocates every row on each capture.**
+  Reported by the pass and not verified in source. No open item covers it; captureScreenSnapshot appears only in shipped race-fix items. Direction: read the function, and reuse row storage between captures if it does reallocate.
+  **Layman:** Taking a snapshot of the screen may rebuild every row from scratch each time.
+  Kind: investigate.
+  Source: memory-perf-pass-2026-09-14.
+  Lanes: terminal-core.
+
+- 📋 [ANTS-5212] **Finish the memory pass over the paths this pass did not reach.**
+  Not examined: the paint and timer paths of the tab bar, title bar and status bar; the roadmap dialog's internals; theme application in the dialog chrome; the app-entry dialogs; the Claude transcript, projects and task-list dialogs. The windows and dialogs lane stopped short when its search was rate-limited.
+  **Layman:** Some parts of the app were not checked in this pass and still need a look.
+  Kind: investigate.
+  Source: memory-perf-pass-2026-09-14.
+  Lanes: chrome, dialogs, claude.
+
 ## 0.7.80–0.7.84 — post-0.7.79 user-feedback rolling sweep — shipped 2026-05-10 → 2026-05-11
 
 **Theme:** rolling sweep of small high-signal user-experience fixes
