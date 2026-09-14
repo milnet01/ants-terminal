@@ -7467,6 +7467,10 @@ extends an existing item, that item carries it instead.
 
   Measure with tests/perf/bench_drift_lanes (ANTS-5133's harness runs it)
   rather than re-deriving the numbers.
+  Decided (2026-09-14, user): still move the in-process drift lanes off
+  the GUI thread and under audit_run's time cap, even at the measured
+  1.8 s freeze. The cancel path is part of the change and gets its own
+  test.
   **Layman:** Some audit checks read the whole project on the main window's thread, freezing every tab until they finish.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lanes spec-engines, audit-dialog-b).
@@ -7793,6 +7797,9 @@ extends an existing item, that item carries it instead.
   signal is a qWarning in VtStream. Options: back-pressure the paste
   (write it in chunks as the queue drains) or tell the user the paste was
   cut.
+  Decided (2026-09-14, user): paste truncation is fixed by feeding the
+  paste to the PTY in chunks as the write queue drains, so the whole
+  paste and its closing bracketed-paste marker always arrive.
   **Layman:** Smaller fixes to how the terminal talks to the shell: pastes, environment variables and escape codes.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lane vt-parser-pty).
@@ -7846,6 +7853,9 @@ extends an existing item, that item carries it instead.
   flushes per line and stops writing past a size cap) and the scroll-pause
   comment low (terminalgrid.h now says paused lines are still pushed, with
   only the post-clear doubling guard switched off) are fixed.
+  Decided (2026-09-14, user): the Kitty double count against the image
+  budget stays. terminalgrid.h records it as deliberate (reject early,
+  never late); that finding is closed with no code change.
   **Layman:** Smaller terminal-display fixes: clickable links that pile up, a slow image format and a word-wrapping bug.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lane terminal-grid).
@@ -7898,6 +7908,11 @@ extends an existing item, that item carries it instead.
   log records the text's length, and no key code for keys that produce
   text) and the highlight-cache low (no cache entry without rules).
   Tests: terminalwidget_hotpath_perf INV-7 to INV-10.
+  Decided (2026-09-14, user): on tab close, a parse thread still running
+  after the 2 s wait is detached and cleans itself up, instead of
+  QThread::terminate(), which can deadlock the GUI on a held lock. This
+  changes the teardown path ANTS-1189 hardened, so it lands as its own
+  change with a test.
   **Layman:** Smaller fixes to drawing and typing in the terminal, including a screenshot-paste freeze.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lane terminal-widget-a).
@@ -8039,6 +8054,12 @@ extends an existing item, that item carries it instead.
   cleared by assignment, because build_warning_repo_visibility_null_deref
   pins the first remove() inside ANTS-1554's pragma block. Test:
   status_process_start_failure.
+  Decided (2026-09-14, user), two findings. (1) get_scrollback gets a
+  line cap and an explicit truncation marker in its reply. That is a
+  contract change, so it runs through a spec amendment and rule 14's
+  gate. (2) The .git/HEAD read on a cache miss stays on the GUI thread:
+  it is a tiny file, cached per folder for 5 s, and only a hung mount
+  stalls it. That finding is closed with no code change.
   **Layman:** Smaller fixes to how the main window answers Claude and checks git, including a stuck Review Changes button.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lane mainwindow-b).
@@ -8145,6 +8166,9 @@ extends an existing item, that item carries it instead.
   Next, prepared: the themedstylesheet.h comment low, in the ANTS-5083
   batch.
   Progress (2026-09-14): themedstylesheet.h comment corrected.
+  Decided (2026-09-14, user): fix the code, not the budget. Each review
+  brief is composed when its job is pumped, so peak memory stays inside
+  the budget ANTS-1722 and ANTS-1258 state.
   **Layman:** Smaller dialog fixes, including a review button that can undo its own error reporting and a trust file that can be lost.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lane dialog-chrome-theme).
@@ -8345,6 +8369,9 @@ extends an existing item, that item carries it instead.
   floors only to corpusHighWater (flooring to the store needs a
   sandboxed store lookup); composed-trailer predicate divergence; the
   lows.
+  Decided (2026-09-14, user): the export importer reads every earlier
+  format version and upgrades the data as it reads it, so a schema bump
+  never makes an older export unreadable. Settled before the first bump.
   **Layman:** Roadmap-engine fixes: writes that hold a lock too long, a safety check that never fires, and a restore that can mislink items.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lane roadmap-parse-render).
@@ -8464,6 +8491,13 @@ extends an existing item, that item carries it instead.
   unframed clients are unaffected. Test mcp_parse_error_reply. STILL OPEN:
   the whole-buffer re-parse (needs framing to be required) and the status
   freeze on a transcript record over 4 MiB.
+  Decided (2026-09-14, user), two open findings. (1) MCP framing: one
+  request per line. A newline completes a request, which ends the
+  whole-buffer re-parse and gives every malformed request a JSON-RPC
+  error; tests that send an unterminated request are updated, and the
+  spec change runs rule 14's gate. (2) The status freeze on a transcript
+  record over 4 MiB: scan back past the window to the record's start,
+  capped at the 16 MiB record limit readJsonlRecord already uses.
   **Layman:** Smaller Claude-integration fixes: slow process scans, a slow transcript window and dropped long messages.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lane claude-integration-a).
@@ -8686,6 +8720,9 @@ extends an existing item, that item carries it instead.
   bodies past ANTS-1346's budget, the GFM anchor counter floor,
   counter_write_failed after commit with no rollback, silent rollback
   failure, the source filter cap, and the three renders per store write.
+  Decided (2026-09-14, user): fix the code, not the budget. The roadmap
+  section cache holds bullets without bodies, and a body is read when a
+  call asks for it, inside ANTS-1346 § 4's memory budget.
   **Layman:** Smaller roadmap-tool fixes: a memory budget blown by caching, and one edit command that can corrupt the roadmap file.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lane mcp-roadmap-query-log).
@@ -8763,6 +8800,11 @@ extends an existing item, that item carries it instead.
   for mutation_probe; cited_by's scope cap; co_change_family's rg flags;
   spec_query gate_drift's deadline; the unreadable-spec count; the two
   stale documents.
+  Decided (2026-09-14, user): focused_test and mutation_probe run as
+  background jobs that reply with a handle to poll, matching the
+  ANTS-5097 decision for verify_changes, so neither holds the single MCP
+  worker past the transport budget. The contract change runs through a
+  spec amendment and rule 14's gate.
   **Layman:** Smaller fixes to Ants' workspace tools, including a test runner that can tie up every Claude session and a file write that isn't safe.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lane mcp-state-workspace).
@@ -8798,6 +8840,10 @@ extends an existing item, that item carries it instead.
   roadmap_branch_drift reading a git log timeout as no history,
   against_refs' commit-set memory, the cold_eyes_cross_doc_diff comment,
   the existsInGit timeout, and the 1800 s verify_changes hold.
+  Decided (2026-09-14, user): verify_changes runs as a background job
+  that replies with a handle, the way audit_run does, so it never holds
+  the single MCP worker past the transport budget. The contract change
+  runs through a spec amendment and rule 14's gate.
   **Layman:** Smaller review-tool fixes, including a code check that can report a stale pass and a dry run that writes anyway.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lane mcp-review-verbs).
@@ -8901,6 +8947,10 @@ extends an existing item, that item carries it instead.
   caps, speclint's id-gap loop over the whole numeric span, the source
   blob cap, spec_conformance's whole-file read and malformed-row count,
   speclog's duplicate guard and fences, and the three stale documents.
+  Decided (2026-09-14, user): specparse's rule for where the Invariants
+  section ends, fences and bullet indentation included, is the
+  definition. speclint adopts it, so the lint checks exactly the
+  invariants the parser reads.
   **Layman:** Smaller spec-tool fixes, including a pattern check that passes when the pattern itself is broken.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lane spec-engines).
@@ -8937,6 +8987,9 @@ extends an existing item, that item carries it instead.
   detector result, the stale-TODO blame cap, cold-eyes stale citations
   across a re-partition, and the ANTS-3601 section 2.7 contracts-lane
   question.
+  Decided (2026-09-14, user): the code is wrong. The contracts lane
+  leaves the large logs out, as docs/specs/ANTS-3601.md § 2.7 says; the
+  spec stays as written.
   **Layman:** Smaller AI-review fixes: a timeout that isn't really a limit, unbounded replies, and slow brief building.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lane review-engines).
@@ -9299,6 +9352,10 @@ extends an existing item, that item carries it instead.
   the installers reading before the lock, ants-helper list, branch names
   in the hook prompt, dialog colours and sizes, and the two stale
   documents.
+  Decided (2026-09-14, user): the hook forwarder checks that the socket
+  at its fixed path is owned by the current user and refuses otherwise.
+  The path stays; moving it under XDG_RUNTIME_DIR would migrate hook
+  scripts already installed in ~/.claude.
   **Layman:** Smaller dialog fixes, including a Review Changes window that reads every changed file in full and a hook that trusts any socket.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lane app-entry-dialogs).
@@ -9949,6 +10006,12 @@ extends an existing item, that item carries it instead.
   to a worker: a blob that overshoots needs the grid again. Decide that
   case before building; it is concurrency on durability-critical code,
   which is spec territory.
+  Decided (2026-09-14, user): compress, hash and write a changed tab on
+  a worker thread. When the compressed blob overshoots its cap, the save
+  falls back to today's GUI-thread retry, which re-reads the live grid.
+  The forced save in closeEvent stays synchronous. The durability order
+  (ANTS-1141 fsync ordering, the rename) is unchanged, and a test locks
+  it.
   **Layman:** Saving a tab that has changed still happens on the main window's thread, so a very large scrollback can still pause the window.
   Kind: perf.
   Source: in-session-2026-09-12 (ANTS-5030 remainder).
@@ -10235,6 +10298,35 @@ extends an existing item, that item carries it instead.
   Kind: perf.
   Source: in-session-2026-09-14 while checking ANTS-5091.
   Lanes: mcp.
+
+- 📋 [ANTS-5215] **Text still renders dim here and there after ANTS-5135, sometimes partway along one line.**
+  Reported by the user on 2026-09-14 while running Claude Code in Ants,
+  after ANTS-5130 and ANTS-5135 shipped. Deferred by the user in favour of
+  the review fixes and Colony; investigate later.
+
+  Settled by a first locate pass (not yet a cause):
+  - ANTS-5135 cannot reach this case. It resets attributes only when the
+    foreground process group returns to the shell, and dim starting
+    partway along a line happens while a program is still running.
+  - TerminalGrid::handleSGR sets dim on SGR 2 and clears it on SGR 22 and
+    SGR 0, so attribute state handling reads correct.
+  - TerminalWidget::paintEvent applies dim per cell as fg.darker(150).
+
+  Open leads, none read yet:
+  - Claude Code dims some spans deliberately (ESC[2m ... ESC[22m); rule
+    out an intended span before treating a hit as a defect. Capture the
+    bytes of a line that shows it.
+  - paintEvent groups same-attribute cells into text runs for ligature
+    shaping. Check whether a run's colour is taken from its first cell,
+    so a dim and a plain cell could share one run.
+  - Cell write paths (wide, combining, overwrite) that may keep an old
+    cell's attrs when new text lands on it.
+  Ask the user for a screenshot and, if possible, the command or screen
+  it happened on.
+  **Layman:** Some text still turns grey when it should not, sometimes only part of a line.
+  Kind: investigate.
+  Source: user-report-2026-09-14.
+  Lanes: vt, terminalgrid, terminalwidget.
 
 ## Memory-efficiency sweep (user request 2026-08-19)
 
@@ -17518,6 +17610,11 @@ fixes don't address. Roadmapped here as their own design tasks.
   foreign_path from only:stale in code (doccitations.cpp stale
   predicate) and that same ANTS-3636 sentence was never updated;
   recording what shipped needs no gate.
+  Decided (2026-09-14, user): keep reporting a citation inside a
+  Cold-eyes loop-log row, marked loop_log_row:true with a counted
+  overlay key, and exclude it from only:stale, following the ANTS-4085
+  foreign_path precedent. Built through a docs/specs/ANTS-3636.md
+  amendment and rule 14's gate.
   **Layman:** A documentation checker keeps flagging old review notes that we are not allowed to change, so the warning can never be cleared.
   Kind: fix.
   Source: in-session-2026-09-07 (found by the first corpus run of doc_lint).
@@ -22499,7 +22596,7 @@ own design + test cycles.
 
 #### 🔒 Tier 1 — security & data-loss
 
-- 📋 [ANTS-1260] **Hook payload schema validation (claudeintegration).**
+- 💭 [ANTS-1260] **Hook payload schema validation (claudeintegration).**
   `src/claudeintegration.cpp:1018`. SO_PEERCRED proves same UID but
   NOT that the peer is THIS tab's Claude child. A same-UID browser
   plugin, language server, or other binary can forge a hook
@@ -22581,6 +22678,15 @@ own design + test cycles.
   driving the Claude status UX, and this session has no way to exercise that
   UX. A change here that silently drops legitimate hook events would look
   exactly like a working build.
+  Decided (2026-09-14, user): accepted risk, not built. The threat is
+  another process running as the same user forging hook payloads.
+  ADR-0004's trust model already trusts same-UID processes, and the hook
+  socket refuses other users. The two fixes that would stop it are a
+  secret token in the installed hook command, which migrates scripts
+  already in users' ~/.claude, and a parent-process walk, which is
+  unmeasured and races the helper's exit. Both cost more than the risk.
+  Moved to considered because the roadmap has no closed-not-fixed status
+  (ANTS-4977).
 
 - ✅ [ANTS-1273] **`/tmp/ants-terminal-<uid>.sock` fallback TOCTOU (remotecontrol).**
   `src/remotecontrol.cpp:82`. The XDG-runtime-dir
@@ -58748,6 +58854,12 @@ plus two gaps hit while sweeping stale spec citations under ANTS-4757.
   prepared patch (a paragraph-end check beside the fence and example
   reset in check(), plus a three-case test) is ready once the amendment
   passes.
+  Decided (2026-09-14, user): scope a bare :NNNN continuation to its
+  paragraph, so the antecedent resets at a blank line or an ATX heading
+  (the ANTS-4638 precedent). First count the corpus continuations that
+  cross a paragraph; if that count is large, bring it back to the user.
+  Built through a docs/specs/ANTS-3636.md § 2.4 amendment and rule 14's
+  gate, using the prepared patch.
   **Layman:** When a document writes a line number on its own, the citation checker guesses which file it belongs to — and when it guesses wrong it reports a problem about a file that was never mentioned.
   Kind: fix.
   Source: in-session-2026-09-07, hit while sweeping ANTS-4757.
@@ -72464,6 +72576,14 @@ acting on it.
   which parallel mode requires) and a --cppcheck-build-dir kept in
   actions/cache; optionally give it its own job. tools/ci-parity.sh runs
   the same gate by hand and must change in the same commit.
+  Progress (2026-09-14): this now costs a CI result, not just time. Run
+  34844552589 (commit fd3790ab): the Release job hit its 25-minute limit
+  during the cppcheck step and concluded cancelled. Build and tests had
+  already passed. The build step took 16m41s against 5m37s on the run
+  before (34840052353), where cppcheck took under 4 minutes. That build
+  followed the auditdialog cut, so a cold compile cache is the likely
+  cause (unverified; see ANTS-5190). A cold build plus an unparallelised
+  cppcheck does not fit in the job limit.
   **Layman:** The code-checking step re-reads the whole project on one core every push; it could use several cores and skip unchanged files.
   Kind: perf.
   Source: user-request-2026-09-14 (CI speed and memory review).
