@@ -89,3 +89,12 @@ including when the initializer list or the `{` sits on a later line. A
 constructor-shaped call inside a function body is not outlined. read_region's
 qualified-suffix fallback then resolves a bare `~Foo`. *Test:*
 `FileOutlineCppScanner.Ants5021OutOfLineCtorDtorOutlined`.
+
+## ANTS-5019 — gtest blocks and the locals inside them
+
+A column-0 `TEST`, `TEST_F`, `TEST_P`, `TYPED_TEST` or `TYPED_TEST_P` with two
+identifier arguments is outlined as a `func` named `Suite.Case`, and opens a
+body whether its `{` is on the same line or the next. A local declared inside
+that body (`FakeHttpServer server(...)`, `const QByteArray chunk(n, 'x')`) is
+not outlined. *Test:*
+`FileOutlineCppScanner.Ants5019GtestBlocksOutlinedAndTheirLocalsNot`.

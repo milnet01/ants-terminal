@@ -505,3 +505,40 @@ TEST(FileOutlineCppScanner, Ants5021OutOfLineCtorDtorOutlined) {
     EXPECT_EQ(fns.count(QStringLiteral("LlmClient::LlmClient")), 1)
         << "a call inside a body is not a second constructor";
 }
+
+// ANTS-5019 — gtest blocks are outlined as Suite.Case, and the locals inside
+// them are not. The block had no return type, so it was never outlined and
+// never opened a body, and its locals read as file-scope functions.
+TEST(FileOutlineCppScanner, Ants5019GtestBlocksOutlinedAndTheirLocalsNot) {
+    QTemporaryDir dir;
+    const QString path = writeCpp(dir, QStringLiteral(
+        "namespace {\n"
+        "int helper() { return 1; }\n"
+        "}  // namespace\n"
+        "\n"
+        "TEST(LlmClient, INV2_EndpointAllowlist) {\n"
+        "    FakeHttpServer server(FakeHttpServer::Mode::Hold);\n"
+        "    const QByteArray chunk(kChunkBytes, 'x');\n"
+        "    EXPECT_TRUE(server.isListening());\n"
+        "}\n"
+        "\n"
+        "TEST_F(Fixture, UsesFixture) {\n"
+        "    QFile f(path);\n"
+        "}\n"
+        "\n"
+        "TEST_P(Param, Each)\n"
+        "{\n"
+        "    int x(3);\n"
+        "}\n"));
+    const QStringList fns = funcNames(path);
+    const std::string all = fns.join(", ").toStdString();
+    EXPECT_TRUE(fns.contains(QStringLiteral("LlmClient.INV2_EndpointAllowlist"))) << all;
+    EXPECT_TRUE(fns.contains(QStringLiteral("Fixture.UsesFixture"))) << all;
+    EXPECT_TRUE(fns.contains(QStringLiteral("Param.Each")))
+        << "a TEST_P whose brace is on the next line; fns = " << all;
+    EXPECT_TRUE(fns.contains(QStringLiteral("helper"))) << all;
+    for (const char *local : {"server", "chunk", "f", "x"})
+        EXPECT_FALSE(fns.contains(QString::fromUtf8(local)))
+            << "a local inside a test body is not a function: " << local
+            << "; fns = " << all;
+}

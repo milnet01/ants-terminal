@@ -98,6 +98,21 @@ constexpr int kHeaderDocMaxLines = 30;
 // reached the outline, and read_region symbol= could not find them. The
 // method name must repeat the class name (the backreference), and the line
 // starts at column 0, so a call inside a body cannot match.
+// ANTS-5019 — a gtest test block: `TEST(Suite, Case) {` and its TEST_F /
+// TEST_P / TYPED_TEST siblings. It has no return type, so no function pattern
+// matched it: an outline of a test file could not say which tests it held,
+// and because the block never opened a body, every local declared inside it
+// (`FakeHttpServer server(...)`) was outlined as a function.
+const QRegularExpression &rxCppGtest() {
+    static const QRegularExpression rx = []{
+        QRegularExpression r(QStringLiteral(
+            R"(^(?:TEST|TEST_F|TEST_P|TYPED_TEST|TYPED_TEST_P)\s*\(\s*(\w+)\s*,\s*(\w+)\s*\))"));
+        r.optimize();
+        return r;
+    }();
+    return rx;
+}
+
 const QRegularExpression &rxCppCtorDtor() {
     static const QRegularExpression rx = []{
         QRegularExpression r(QStringLiteral(
@@ -953,6 +968,11 @@ QJsonObject compute(const QString &absPath,
                 }
                 offer("func", name, line);
                 funcDefOpensBody = !endsWithSemicolon;
+            } else if (!inFuncBody && (m = rxCppGtest().match(codeLine)).hasMatch()) {
+                // ANTS-5019 — named Suite.Case, as gtest itself names it, and
+                // marked as opening a body so the locals inside stay inside.
+                offer("func", m.captured(1) + QLatin1Char('.') + m.captured(2), line);
+                funcDefOpensBody = true;
             } else if (!inFuncBody && rxCppCtorDtor().match(codeLine).hasMatch()) {
                 // ANTS-5021 — `Class::Class(` / `Class::~Class(`, emitted by
                 // its qualified name so read_region resolves `~Class` too.
