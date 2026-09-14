@@ -79216,6 +79216,15 @@ contributors don't duplicate research.
   for migration. roadmap-data-model.md is a gated standard, so the
   correction is a rule 14 question for that document rather than a repair
   made in passing during another document's review.
+  Second passage, found by loop 2 of the same gate (2026-09-14): § 7.1's
+  allocation paragraph says that on a multi-prefix project the counter
+  "carries the first prefix and the rest fall through to the corpus floor
+  alone". roadmap-format.md § 3.10.4 says every prefix shares the counter
+  through max(shared counter, per-prefix corpus floor) + 1, and the code
+  agrees with roadmap-format.md: remotecontrol_roadmap_log.cpp's append
+  and the batch op's effCounter both take the shared counter whatever the
+  prefix. An allocator built from § 7.1 would drop the counter for a second
+  prefix. Correct both passages in one gated pass on roadmap-data-model.md.
   **Layman:** One roadmap standard still describes a field as optional after the other standard made it required, so the two disagree.
   Kind: doc-fix.
   Source: in-session-2026-09-14 (review-contract sweep, ANTS-4955 gate on roadmap-format.md).

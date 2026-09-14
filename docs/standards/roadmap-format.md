@@ -247,7 +247,9 @@ Optional pieces:
   and render the same line, and re-importing a rendered file changes
   nothing. `roadmap_log` writing to a roadmap with no store emits that same
   rendered line. A file whose Layman lines lack the stop gains it at its
-  next render: a one-time diff.
+  next render: a one-time diff. A value stored before this rule that still
+  ends in `.` is normalised once by dropping that stop; left alone it
+  renders `..`.
 - **`Evidence: <path1>, <path2>`** — optional file paths (screenshots,
   logs, repros) that evidence the item — e.g. a bug diagnosed from a
   screenshot. Comma-separated; a comma or newline *inside* a path is
@@ -347,7 +349,7 @@ other.
 |---|---|---|
 | **Store-migrated** — store row *and* `ants-v1` | the store's `id_high_water` row, per `(project, prefix)`, **floored to the committed corpus exactly as above** | neither read nor written; a stale file is simply left behind |
 | **Pass-headings** (§ 3.10.5), store row or not | derived from the heading, never allocated | neither read nor written |
-| **Everything else** — no store row, *or* a store row whose roadmap is not `ants-v1` | `.roadmap-counter`, exactly as above | read and written |
+| **Everything else** — no store row, *or* a store row whose roadmap is not `ants-v1` | `.roadmap-counter`, floored to the committed corpus exactly as above **and, where a store row exists, to that row's `id_high_water` for the prefix** (ANTS-4493) | read and written |
 
 On a store-migrated project an allocation is
 `max(idHighWater(project, prefix), corpusHighWater(root, prefix)) + 1`,
@@ -844,7 +846,7 @@ The convention:
   non-conforming entry with no message; `archiveNameRx()`
   (`src/roadmapmigrate.cpp`); `isPlaceableSourcePath`
   (`src/roadmapmigrateload.cpp`); and `rotate_minor`'s `kMinorRx`
-  (`src/remotecontrol_roadmap_log.cpp`). A `P01.md` written today
+  (`src/remotecontrol_roadmap_log_batch.cpp`). A `P01.md` written today
   is read by none of them, so the block would leave `ROADMAP.md`
   and reach no reader. ANTS-4073 owns widening them.
 
@@ -1091,7 +1093,7 @@ prefix shares the one un-prefixed integer. It does **not** follow that
 the counter is skipped. Allocation is `max(shared counter, per-prefix
 corpus floor) + 1` — the counter supplies the candidate and
 `corpusHighWater()` only floors it, the same `max()` shape § 3.5.1
-states for the store-migrated row (`remotecontrol_roadmap_log.cpp`,
+states for the store-migrated row (`remotecontrol_roadmap_log_batch.cpp`,
 `effCounter`). The consequence worth keeping is about the FLOOR, not
 the source: the shared counter tracks the dominant prefix's
 allocations, so a non-dominant prefix skips numbers and floors to
