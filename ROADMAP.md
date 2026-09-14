@@ -8082,6 +8082,7 @@ extends an existing item, that item carries it instead.
   Tests: user_theme_loading, about_text_current.
   Next, prepared: the themedstylesheet.h comment low, in the ANTS-5083
   batch.
+  Progress (2026-09-14): themedstylesheet.h comment corrected.
   **Layman:** Smaller dialog fixes, including a review button that can undo its own error reporting and a trust file that can be lost.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lane dialog-chrome-theme).
@@ -8108,6 +8109,9 @@ extends an existing item, that item carries it instead.
     on a hung mount.
   - saveSuppression ignores QSaveFile::commit() and takes no lock.
   - Semgrep registry packs run without --metrics=off (unverified).
+  Progress (2026-09-14): suppression save is checked before the finding
+  is hidden, and each run clears the line cache
+  (tests/features/audit_suppression_save).
   **Layman:** Smaller audit-window fixes: a slow opening, suppressions that don't take effect, and auto-fix touching files it shouldn't.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lane audit-dialog-a).
