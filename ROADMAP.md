@@ -8152,6 +8152,14 @@ extends an existing item, that item carries it instead.
   failures reported, path-separator suffix match
   (tests/features/audit_dialog_lows, audit_dialog_v2 INV-11). Open: the
   five mediums, filter debounce, SARIF URIs, tr().
+  Progress (2026-09-14): mediums fixed except the GUI-thread git runs —
+  Since baseline keeps the sets, m_recentScopeError + empty-tree diff
+  for short repos + 64 MiB git output limit, filters stand down on
+  error, batch triage queued two at a time on one shared manager with
+  one render, both triage replies capped at LlmClient::kMaxBytes
+  (tests/features/audit_scope_and_triage). Still open: git runs are
+  synchronous on the GUI thread; filter debounce; SARIF URI encoding and
+  uriBaseId; tr().
   **Layman:** Smaller audit-window fixes: a filter that can hide everything, AI triage that floods the server, and export glitches.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lane audit-dialog-b).
