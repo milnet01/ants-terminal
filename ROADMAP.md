@@ -3668,7 +3668,7 @@ in each named file carry the original indie-review citation.
   docs/specs/ANTS-1677-large-file-decomposition.md (accepted). Third in
   order; the line counts quoted above are stale.
 
-- 📋 [ANTS-1044] **`auditdialog.cpp` decomposition (5749 LoC).**
+- ✅ [ANTS-1044] **`auditdialog.cpp` decomposition (5749 LoC).**
   `populateChecks`
   data table → `auditcatalogue.cpp`; SARIF/HTML export →
   `auditexport.cpp`; embedded sh fragments (e.g. line 444-460,
@@ -3702,6 +3702,18 @@ in each named file carry the original indie-review citation.
   Order (2026-09-14, user ruling): this item is now first. It moves
   AuditDialog::populateChecks() unchanged, by member motion, into
   src/auditdialog_catalogue.cpp; the data table is ANTS-1049's, later.
+  Shipped (2026-09-14) under
+  docs/specs/ANTS-1677-large-file-decomposition.md, in three steps: the
+  checks (the INV-5 seam and audit readers case,
+  tools/split-motion-check.py, tests/features/split_sources), the
+  groundwork (the ANTS_AUDITDIALOG_SOURCES list, every reader migrated,
+  the single-file macros deleted, promotions into
+  src/auditdialog_internal.h) and the cut. src/auditdialog.cpp now holds
+  the dialog's core; src/auditdialog_catalogue.cpp, _debtsweep.cpp,
+  _triage.cpp and _export.cpp hold the moved code unchanged, and every
+  file is under the spec's cap. The data table stays with ANTS-1049, and
+  the sh-fragment extraction this body proposed was not part of this
+  item.
 
 - ✅ [ANTS-1045] **`XcbPositionTracker` rename + Wayland-non-KWin abort + temp- file leak fix.**
   Shipped 2026-04-30 (post-0.7.60). Class +
@@ -21921,6 +21933,12 @@ gets one CHANGELOG section + one drift cycle + one push.
   Accepted again (2026-09-14): the split-first amendment ran review-contract
   to its cap, every verified finding fixed, a calm cap. Next is ANTS-1044,
   starting with a commit that lands its checks before any groundwork or cut.
+  Progress (2026-09-14): ANTS-1044 shipped, the first item under the
+  spec. Its checks, groundwork and cut landed as ordered commits; the
+  shared machinery (slurpSourceList, split_sources,
+  tools/split-motion-check.py) is in place for ANTS-1043 and ANTS-4919.
+  The INV-6 capture harness waits for ANTS-4919 (user ruling). Next:
+  ANTS-1043, mainwindow.cpp.
   **Layman:** Three oversized source files account for most of the project's changes; split them up.
   Kind: implement.
 

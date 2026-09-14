@@ -25,6 +25,12 @@ for security-relevant changes.
 
 ### Changed
 
+- **The Project Audit dialog's code is split into five source files; the dialog behaves exactly as before.** (ANTS-1044)
+  src/auditdialog.cpp keeps the dialog's core, and the check catalogue,
+  Debt Sweep tab, AI triage and export each move to their own file. Tests
+  read the class through one source list, and new checks keep the files
+  in step with it.
+
 - **MCP rate limiting remembers each caller folder's resolved path for 30 seconds, so repeat tool calls skip a filesystem lookup on the window's thread** (ANTS-5090)
 
 - **The etag option on MCP tools now states that a not-modified check needs the same arguments as the call that issued the etag** (ANTS-4859)
