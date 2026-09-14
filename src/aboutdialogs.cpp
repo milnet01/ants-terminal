@@ -130,8 +130,8 @@ void showAboutAnts(QWidget *parent) {
         "<h3>Ants Terminal</h3>"
         "<p><b>Version:</b> %1<br/>"
         "<b>Qt runtime:</b> %2%3%4</p>"
-        "<p>A modern, themeable terminal emulator with GPU "
-        "rendering and Lua plugins. MIT-licensed.</p>"
+        "<p>A modern, themeable terminal emulator with Lua "
+        "plugins. MIT-licensed.</p>"
         "<p><a href=\"https://github.com/milnet01/ants-terminal\">"
         "https://github.com/milnet01/ants-terminal</a></p>")
         .arg(QString::fromLatin1(ANTS_VERSION), qtVer, luaLine, buildLine);

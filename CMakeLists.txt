@@ -1669,6 +1669,8 @@ if(ANTS_TESTS)
                 tests/features/wide_char_overwrite_mate/test_wide_char_overwrite.cpp
                 tests/features/osc8_apc_memory_caps/test_osc8_apc_memory_caps.cpp
                 tests/features/themedstylesheet_extraction/test_themedstylesheet_extraction.cpp
+                # ANTS-5082 — mistyped theme colours fall back; oversized theme files are skipped.
+                tests/features/user_theme_loading/test_user_theme_loading.cpp
                 tests/features/origin_mode_correctness/test_origin_mode.cpp
                 tests/features/osc_color_query/test_osc_color_query.cpp
                 # ANTS-4456 — OSC 0/2 title is bounded, both ways in.
@@ -1831,6 +1833,8 @@ if(ANTS_TESTS)
                 tests/features/tab_rename_pin/test_tab_rename_pin.cpp
                 tests/features/confirm_close_with_processes/test_confirm_close_with_processes.cpp
                 tests/features/help_about_menu/test_help_about_menu.cpp
+                # ANTS-5082 — the About text names no retired renderer.
+                tests/features/about_text_current/test_about_text_current.cpp
                 tests/features/portal_session_close/test_portal_session_close.cpp
                 tests/features/styled_font_kerning_off/test_styled_font_kerning_off.cpp
                 # ANTS-4456 — a new per-style family must invalidate shaped runs.

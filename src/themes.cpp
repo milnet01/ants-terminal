@@ -327,6 +327,15 @@ std::vector<Theme> Themes::loadUserThemes() {
         const QString filePath = themeDir.filePath(file);
         QFile f(filePath);
         if (!f.open(QIODevice::ReadOnly)) continue;
+        // ANTS-5082 — a theme is a few KB of JSON; refuse an oversized file
+        // rather than read it whole on the GUI thread.
+        constexpr qint64 kMaxUserThemeBytes = 1024 * 1024;
+        if (f.size() > kMaxUserThemeBytes) {
+            qWarning("Ants: user theme %s is larger than %lld bytes; skipped",
+                     qUtf8Printable(filePath),
+                     static_cast<long long>(kMaxUserThemeBytes));
+            continue;
+        }
         QJsonParseError err{};
         QJsonDocument doc = QJsonDocument::fromJson(f.readAll(), &err);
         if (!doc.isObject()) {
@@ -356,7 +365,12 @@ std::vector<Theme> Themes::loadUserThemes() {
         th.isUserTheme = true;
 
         auto parseColor = [](const QJsonValue &v, const QColor &fallback = QColor()) -> QColor {
-            if (v.isString()) return QColor(v.toString());
+            // ANTS-5082 — a mistyped colour string is an invalid QColor, which
+            // paints as black; use the fallback instead.
+            if (v.isString()) {
+                const QColor c(v.toString());
+                if (c.isValid()) return c;
+            }
             return fallback;
         };
 

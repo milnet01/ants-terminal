@@ -70,6 +70,10 @@ for security-relevant changes.
 
 ### Fixed
 
+- **A mistyped colour in a custom theme now uses the default colour instead of turning black, and an oversized theme file is skipped** (ANTS-5082)
+
+- **The About dialog no longer describes a GPU renderer the terminal no longer has** (ANTS-5082)
+
 - **Clicking Re-review while a review is still running no longer wipes that round's failures, so a failed lane can't be mistaken for a clean one** (ANTS-5082)
 
 - **A full disk can no longer replace the verify trust list with a cut-off file, and a damaged trust file is kept aside instead of being overwritten** (ANTS-5082)
