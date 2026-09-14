@@ -59,3 +59,13 @@ The counter's continued existence. ANTS-4632 proposes retiring
 `.roadmap-counter` once nothing outside this repo reads it; if that lands,
 INV-5 goes with it. Until then the two paths must agree, and this suite
 asserts that they do — the defect was the disagreement, not the mechanism.
+
+## ANTS-4969 — a store-path counter move is marked as a mirror
+
+When a store-backed append or append_batch moves `.roadmap-counter`, the
+envelope carries `counter_mirrored: true` beside `counter_advanced_to` and
+`counter_advanced_past`: the store allocated the id, and the file is a cache
+kept in step for readers that predict the next id. The markdown path, where the
+counter is the allocation source, never carries the marker. *Tests:*
+`RoadmapLogStorePreviewAndCounter.Ants4969StoreCounterMoveIsMarkedMirrored`,
+`McpRoadmapLogAppendBatch.Ants4969MarkdownCounterIsNotMarkedMirrored`.

@@ -829,3 +829,20 @@ TEST(McpRoadmapLogAppendBatch, Ants4383CounterFloorIsExplained) {
     ASSERT_TRUE(out2.value(QStringLiteral("ok")).toBool());
     EXPECT_FALSE(out2.contains(QStringLiteral("counter_floor_reason")));
 }
+
+// ANTS-4969 — on the MARKDOWN path the counter is the allocation source, so a
+// reconciling batch carries no mirror marker.
+TEST(McpRoadmapLogAppendBatch, Ants4969MarkdownCounterIsNotMarkedMirrored) {
+    QTemporaryDir dir;
+    setupProject(dir, /*counter=*/9000);   // BELOW the file max, so it reconciles
+    RemoteControl rc(nullptr);
+    QJsonArray bs;
+    bs.append(bullet("Markdown first."));
+    const QJsonObject out = rc.cmdRoadmapLogAppendBatchForTest(
+        baseReq(dir.path(), bs)).object();
+    ASSERT_TRUE(out["ok"].toBool()) << QJsonDocument(out).toJson().toStdString();
+    ASSERT_TRUE(out.contains("counter_advanced_to"))
+        << "setup: the counter must have moved";
+    EXPECT_FALSE(out.contains("counter_mirrored"))
+        << "on the markdown path the counter is the source, not a mirror";
+}

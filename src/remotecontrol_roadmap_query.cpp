@@ -317,6 +317,12 @@ void rcdetail::rcRoadmapReconcileCounterCache(QJsonObject &env,
     if (cw.write(cv) == cv.size() && cw.commit()) {
         env[QStringLiteral("counter_advanced_to")]   = allocated;  // ANTS-2179
         env[QStringLiteral("counter_advanced_past")] = cached;     // ANTS-4493
+        // ANTS-4969 — on the store path the STORE allocated the id and this
+        // file is a cache kept in step for readers that predict the next id.
+        // The two fields above read as the allocation source; this says the
+        // file only mirrors it. The markdown path, where the counter IS the
+        // source, never reaches this helper and never carries the marker.
+        env[QStringLiteral("counter_mirrored")]      = true;
     }
 }
 

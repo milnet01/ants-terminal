@@ -301,3 +301,25 @@ TEST(RoadmapLogStorePreviewAndCounter, BatchReconcilesTheCounterCache) {
            "difference without a follow-up call";
     EXPECT_EQ(env[QStringLiteral("counter_advanced_past")].toInteger(), 7);
 }
+
+// ANTS-4969 — on the store path the counter file is a mirror of the store's
+// allocation, and the envelope says so. `counter_advanced_*` alone read as the
+// allocation source, which on this backend it is not.
+TEST(RoadmapLogStorePreviewAndCounter, Ants4969StoreCounterMoveIsMarkedMirrored) {
+    Fixture fx;
+    ASSERT_TRUE(fx.setUp(7));
+    XdgRedirect redirect(fx.xdg.path());
+    ASSERT_TRUE(migrateDefaultStore(fx.root));
+
+    RemoteControl rc(nullptr);
+    const QJsonObject env = rc.cmdRoadmapLogAppendBatchForTest(
+        batchReq(fx.root, {QStringLiteral("Mirrored first."),
+                           QStringLiteral("Mirrored second.")})).object();
+    ASSERT_TRUE(env[QStringLiteral("ok")].toBool())
+        << QJsonDocument(env).toJson().toStdString();
+    assertStoreBranch(env, "append_batch");
+    ASSERT_TRUE(env.contains(QStringLiteral("counter_advanced_to")))
+        << "setup: the cache must have moved for the marker to apply";
+    EXPECT_TRUE(env[QStringLiteral("counter_mirrored")].toBool())
+        << "a store-path counter move must be marked as a mirror";
+}
