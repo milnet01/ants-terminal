@@ -8885,6 +8885,21 @@ extends an existing item, that item carries it instead.
   - The fold-in heading is dated in UTC, not local time.
   - focused_test validates ctest -R patterns as PCRE, not CMake regex.
   - Parser returns lack [[nodiscard]].
+  NEEDS A DECISION, not built (2026-09-14): clearing collected reports
+  when the partition token changes contradicts
+  tests/features/test_audit_dialog INV-6, which requires collected
+  reports to survive a stale-token re-partition. The finding cites
+  ANTS-1722 section 4 against folding stale reports under fresh ids. A
+  token change covers both a same-tree token expiry (INV-6 keeps the
+  reports) and a changed tree (the finding drops them), so the fix needs
+  a rule that tells the two apart, such as comparing chunk ids, before
+  it can land.
+  Progress (2026-09-14): BuildFixHint::undeclaredSymbol accepts
+  U+2018/U+2019 quotes (mcp_likely_fix UndeclaredSymbolUtf8Quotes);
+  runOneGate splits complete lines before the single-line cap
+  (tests/features/verify_and_audit_guards). Still open: the test-audit
+  pre-pass read cap, the CMake scan's symlink loop, the fold-in counter
+  lock wait, the store-backed fold-in write, and the lows.
   **Layman:** Smaller test-tool fixes, including stale reports folded into the roadmap and a verify step that loses its failure list.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lane test-audit-verify).
