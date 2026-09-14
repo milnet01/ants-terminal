@@ -40,6 +40,10 @@ public:
                 QWidget *parent,
                 Config *config);
 
+    // ANTS-1677 INV-5 — the check catalogue, for the case comparing the
+    // audit_fixture_coverage command's rule ids with audit_self_test.sh's.
+    QList<AuditCheck> checksForTest() const;
+
 signals:
     // Emitted when user clicks "Review with Claude" — carries path to temp results file
     void reviewRequested(const QString &resultsFile);

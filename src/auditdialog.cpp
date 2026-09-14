@@ -227,6 +227,10 @@ AuditDialog::AuditDialog(const QString &projectPath,
     buildUI();
 }
 
+QList<AuditCheck> AuditDialog::checksForTest() const {
+    return m_checks;
+}
+
 // Returns false when the project lives on a filesystem that doesn't enforce
 // POSIX permission bits (FAT/NTFS/FUSE/SMB/9p). On those mounts the kernel
 // typically maps every file to u=rwx,g=rwx,o=rwx, so permission-based

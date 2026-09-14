@@ -18,6 +18,23 @@ set -u
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 FIXTURE_DIR="$SCRIPT_DIR/audit_fixtures"
+SRC_FILE="$SCRIPT_DIR/../src/auditdialog.cpp"
+
+# Every unique addGrepCheck("<id>" in the AuditDialog source, one per line.
+# The fixture-coverage block at the end of this script walks this list.
+extract_rule_ids() {
+    grep -oE 'addGrepCheck\("[a-zA-Z_][a-zA-Z0-9_-]*"' "$SRC_FILE" \
+        | sed -E 's/.*"([a-zA-Z_][a-zA-Z0-9_-]*)"/\1/' \
+        | sort -u
+}
+
+# ANTS-1677 INV-5 — print the ids the fixture-coverage block extracts, and
+# exit. tests/features/audit_fixture_readers compares them with the ids the
+# product's audit_fixture_coverage check extracts.
+if [[ "${1:-}" == "--list-rule-ids" ]]; then
+    [[ -f "$SRC_FILE" ]] && extract_rule_ids
+    exit 0
+fi
 
 pass=0
 fail=0
@@ -153,14 +170,8 @@ echo
 # in CI. Belt-and-suspenders — new rules can't ship without test coverage.
 # ---------------------------------------------------------------------------
 
-SRC_FILE="$SCRIPT_DIR/../src/auditdialog.cpp"
 if [[ -f "$SRC_FILE" ]]; then
-    # Extract unique rule ids from every addGrepCheck("id", ...) call.
-    mapfile -t rule_ids < <(
-        grep -oE 'addGrepCheck\("[a-zA-Z_][a-zA-Z0-9_-]*"' "$SRC_FILE" \
-            | sed -E 's/.*"([a-zA-Z_][a-zA-Z0-9_-]*)"/\1/' \
-            | sort -u
-    )
+    mapfile -t rule_ids < <(extract_rule_ids)
     for id in "${rule_ids[@]}"; do
         missing=()
         [[ -d "$FIXTURE_DIR/$id" ]] || missing+=("fixture-dir")
