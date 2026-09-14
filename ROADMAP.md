@@ -8928,6 +8928,16 @@ extends an existing item, that item carries it instead.
   - apply_edits counts overlapping matches but replaces non-overlapping
     ones.
   - find_sources follows symlinked files, unlike the walk it mirrors.
+  Progress (2026-09-14): ReadRegion::extract clips a first line over
+  maxBytes and marks truncated; PaginationEngine::pageBullets' auto path
+  returns at least one row, so next_offset always advances
+  (roadmap_query_pagination EdgePathologicalBullet now expects the
+  oversized row on the page); codebase_index checks the cache write and
+  commit (tests/features/index_read_paging_guards). Still open: the
+  codebase index past maxIndexFiles counting uncached files as added,
+  find_sources' file-count cap, per-line read buffers, WrapMatch's
+  nested quantifiers, apply_edits' overlapping count, and find_sources
+  following symlinked files.
   **Layman:** Smaller code-search fixes, including a cache that rewrites itself on every call on big projects.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lane code-index-search).
