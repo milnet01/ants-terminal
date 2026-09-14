@@ -1744,6 +1744,18 @@ QJsonDocument RemoteControl::cmdFileOutline(const QJsonObject &req) {
     const QJsonValue pathsVal = req.value(QStringLiteral("paths"));
     if (pathsVal.isArray()) {
         const QJsonArray  paths      = pathsVal.toArray();
+        // ANTS-5096 — each entry reads and outlines a whole file on the one
+        // MCP worker; the array had no count cap.
+        constexpr qsizetype kMaxOutlinePaths = 100;
+        if (paths.size() > kMaxOutlinePaths) {
+            QJsonObject o;
+            o[QStringLiteral("ok")]    = false;
+            o[QStringLiteral("code")]  = QStringLiteral("bad_args");
+            o[QStringLiteral("error")] = QStringLiteral(
+                "file_outline: `paths` holds %1 entries; the limit is %2 per call")
+                    .arg(paths.size()).arg(kMaxOutlinePaths);
+            return QJsonDocument(o);
+        }
         const QJsonObject priorEtags =
             req.value(QStringLiteral("etags")).toObject();
         QJsonArray files;
@@ -1950,12 +1962,15 @@ QJsonDocument RemoteControl::cmdMutationProbe(const QJsonObject &req) {
     // The restore, used on every exit path. Writing the ORIGINAL BYTES (not a
     // re-encode of the decoded string) is what makes `restored_clean` a real
     // guarantee rather than a hope.
+    //
+    // ANTS-5096 — both writes go through QSaveFile. A truncating QFile write
+    // that failed part-way (a full disk, a crash) left the source file cut
+    // short, with the only copy of the original in this process's memory.
     auto restore = [&]() -> bool {
-        QFile w(check.resolved);
-        if (!w.open(QIODevice::WriteOnly | QIODevice::Truncate)) return false;
-        const bool wrote = (w.write(baselineBytes) == baselineBytes.size());
-        w.close();
-        if (!wrote) return false;
+        QSaveFile w(check.resolved);
+        if (!w.open(QIODevice::WriteOnly)) return false;
+        if (w.write(baselineBytes) != baselineBytes.size() || !w.commit())
+            return false;
         QFile v(check.resolved);
         if (!v.open(QIODevice::ReadOnly)) return false;
         const bool same = (v.readAll() == baselineBytes);
@@ -2141,16 +2156,15 @@ QJsonDocument RemoteControl::cmdMutationProbe(const QJsonObject &req) {
             }
         }
 
-        QFile w(check.resolved);
-        if (!w.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
+        QSaveFile w(check.resolved);   // ANTS-5096 — see restore()
+        if (!w.open(QIODevice::WriteOnly)) {
             r[QStringLiteral("applied")] = false;
             r[QStringLiteral("outcome")] = QStringLiteral("write_failed");
             results.append(r);
             continue;
         }
         const QByteArray patched = ap.patched.toUtf8();
-        const bool wrote = (w.write(patched) == patched.size());
-        w.close();
+        const bool wrote = (w.write(patched) == patched.size()) && w.commit();
         if (!wrote) {
             if (!restore()) restoredClean = false;
             r[QStringLiteral("applied")] = false;
@@ -3740,7 +3754,14 @@ QJsonDocument RemoteControl::cmdBuildTargetFor(const QJsonObject &req) {
 
     const QString cmakeRel = req.value(QStringLiteral("cmake_path")).toString(
         QStringLiteral("CMakeLists.txt"));
-    QFile cf(root.filePath(cmakeRel));
+    // ANTS-5096 — `path` went through validatePath and `cmake_path` did not,
+    // so `../../elsewhere/CMakeLists.txt` read a file outside the project.
+    const auto cmakeCheck = PathValidation::validatePath(
+        cmakeRel, rootCanonical, QStringLiteral("build_target_for"),
+        QStringLiteral("cmake_path"));
+    if (cmakeCheck.bad) return QJsonDocument(cmakeCheck.err);
+    QFile cf(cmakeCheck.resolved.isEmpty() ? root.filePath(cmakeRel)
+                                           : cmakeCheck.resolved);
     if (!cf.open(QIODevice::ReadOnly | QIODevice::Text)) {
         QJsonObject o;
         o[QStringLiteral("ok")]    = false;

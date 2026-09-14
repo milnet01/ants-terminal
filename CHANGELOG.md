@@ -70,6 +70,10 @@ for security-relevant changes.
 
 ### Fixed
 
+- **mutation_probe writes the mutated file and the restored original atomically, so a full disk or crash cannot leave a source file cut short** (ANTS-5096)
+
+- **build_target_for validates its cmake_path argument, and file_outline accepts at most 100 paths per call** (ANTS-5096)
+
 - **Editing a roadmap item's plain-language summary, source or evidence through roadmap_log can no longer break a line in ROADMAP.md or split an evidence path** (ANTS-5094)
   The single-field edit now cleans values the way adding an item does.
 

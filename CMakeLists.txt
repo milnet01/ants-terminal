@@ -2110,6 +2110,8 @@ if(ANTS_TESTS)
                 tests/features/spec_lint/test_spec_lint.cpp
                 tests/features/spec_lint_verb/test_spec_lint_verb.cpp
                 tests/features/build_target_for/test_build_target_for.cpp
+                # ANTS-5096 — atomic mutation writes, cmake_path validated, outline paths capped.
+                tests/features/workspace_verb_guards/test_workspace_verb_guards.cpp
                 # ANTS-3660 — doc_dedup engine (segmentation, threshold,
                 # exclusions, clustering) and its verb layer (report-only
                 # contract + refusal minimums).
