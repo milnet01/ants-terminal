@@ -8809,6 +8809,14 @@ extends an existing item, that item carries it instead.
     fences; appendLoop's section scan ignores fences.
   - Documents out of date: ANTS-3600 section 5's latency premise,
     featurecoverage.h's skip list and speclog.h's append_loop claim.
+  Progress (2026-09-14): SpecConformance::run refuses a fence whose
+  pattern fails QRegularExpression::isValid with code bad_pattern and
+  the compile error, running none of its rows (spec_conformance
+  Ants5100InvalidPatternIsRefused). Still open: specparse and speclint
+  disagreeing on the Invariants section's end, plan_template's size and
+  caps, speclint's id-gap loop over the whole numeric span, the source
+  blob cap, spec_conformance's whole-file read and malformed-row count,
+  speclog's duplicate guard and fences, and the three stale documents.
   **Layman:** Smaller spec-tool fixes, including a pattern check that passes when the pattern itself is broken.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lane spec-engines).
