@@ -8112,6 +8112,9 @@ extends an existing item, that item carries it instead.
   Progress (2026-09-14): suppression save is checked before the finding
   is hidden, and each run clears the line cache
   (tests/features/audit_suppression_save).
+  Progress (2026-09-14): auto-fix asks isSuppressed at run time, skips
+  line-less findings before reading, caps file size; capFindings skipped
+  for maxLines = 0 lanes (tests/features/audit_autofix_guards).
   **Layman:** Smaller audit-window fixes: a slow opening, suppressions that don't take effect, and auto-fix touching files it shouldn't.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lane audit-dialog-a).
