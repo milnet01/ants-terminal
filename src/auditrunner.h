@@ -13,12 +13,15 @@
 // is no `m_auditPool` thread pool: that was an unbuilt v2 design, and
 // ANTS-3612 replaced it with an engine-side aggregate concurrency cap
 // (kMaxConcurrentRuns in the .cpp) that refuses with `server_busy`.
+// ANTS-5067 — the in-process drift lanes run on a detached worker under what
+// is left of the aggregate cap (internal::runInProcessLanes).
 //
 // See docs/specs/ANTS-1351.md.
 
 #pragma once
 
 #include <QHash>
+#include <QList>
 #include <QJsonArray>
 #include <QJsonObject>
 #include <QPair>
@@ -26,6 +29,8 @@
 #include <QString>
 #include <QStringList>
 #include <QVector>
+
+#include <functional>
 
 namespace AuditRunner {
 
@@ -230,6 +235,29 @@ qint64 measureEnvelopeBytes(const QJsonArray &samples,
 // is non-empty. Pure over the byTool map so the feature test can assert
 // the derivation without spawning a real tool.
 QStringList incompleteToolNames(const QHash<QString, ToolResult> &byTool);
+
+// ANTS-5067 — one in-process audit lane (a GUI-free FeatureCoverage runner),
+// and what running it under a deadline produced.
+// docs/specs/ANTS-5067-drift-lanes-off-thread.md § 2.3.
+struct InProcessLane {
+    QString id;
+    std::function<QString(const QString & /*projectRoot*/)> fn;
+};
+
+struct InProcessLaneOutcome {
+    QString id;
+    QString status;        // "ok" or "timed_out"
+    QString output;        // empty when "timed_out"
+    qint64  elapsedMs = 0;
+};
+
+// Runs `lanes` in order on one worker thread and returns one outcome per
+// lane, in input order, no later than `budgetMs` after the call. A lane
+// unfinished at the deadline, and every lane after it, is "timed_out"; the
+// worker is abandoned and starts no further lane.
+QList<InProcessLaneOutcome> runInProcessLanes(const QList<InProcessLane> &lanes,
+                                              const QString &projectRoot,
+                                              qint64 budgetMs);
 
 // ANTS-3585 — per-tool incompleteness detail: one {tool, status, elapsed_ms,
 // truncated} object for every tool whose status is not "ok", sorted by tool

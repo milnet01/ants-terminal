@@ -153,8 +153,8 @@ QList<InProcessLaneOutcome> runInProcessLanes(const QList<InProcessLane> &lanes,
 
 ## 4. RAM / build cost
 
-No new build target: the test joins the `test_claude` bundle beside the
-other `audit_run` tests. No new Qt component: `QThread::create` is QtCore.
+No new build target: the test joins the `test_audit` bundle, which links
+`ants_audit_lib` and already carries `audit_run` tests. No new Qt component: `QThread::create` is QtCore.
 
 An abandoned lane holds its source blob and index until it finishes. A
 Run started right after a cancel can therefore hold a second copy for up

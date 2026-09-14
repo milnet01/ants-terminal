@@ -7400,7 +7400,7 @@ extends an existing item, that item carries it instead.
   Source: code-quality-review-2026-09-11 perf pass (lane code-index-search).
   Lanes: mcp, search.
 
-- 📋 [ANTS-5067] **The audit dialog runs its in-process drift lanes on the GUI thread, reading the whole project three times.**
+- ✅ [ANTS-5067] **The audit dialog runs its in-process drift lanes on the GUI thread, reading the whole project three times.**
   AuditDialog runs each in-process lane runner synchronously from a
   zero-delay timer on the GUI thread. Three of the four lanes build a
   whole-tree source blob, and the two contract-doc lanes build
@@ -7489,6 +7489,13 @@ extends an existing item, that item carries it instead.
   lane, one pass, converged with no findings). Decision in its section
   2.1: abandon, not stop. Next: build test-first under
   tests/features/audit_inprocess_lanes_async.
+  Resolved (2026-09-14): built per
+  docs/specs/ANTS-5067-drift-lanes-off-thread.md. The dialog runs each
+  in-process runner on a QThread::create worker with a run generation;
+  audit_run runs the lanes through internal::runInProcessLanes under
+  what is left of the aggregate cap, which now counts them. Locked by
+  tests/features/audit_inprocess_lanes_async (INV-1..8), red first;
+  INV-7 red under the cap-formula mutation. Full default suite green.
   **Layman:** Some audit checks read the whole project on the main window's thread, freezing every tab until they finish.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lanes spec-engines, audit-dialog-b).
@@ -10356,6 +10363,17 @@ extends an existing item, that item carries it instead.
   Kind: investigate.
   Source: user-report-2026-09-14.
   Lanes: vt, terminalgrid, terminalwidget.
+
+- 📋 [ANTS-5217] **GCC warns of a potential null dereference in AuditDialog::startQueuedBlame.**
+  Seen 2026-09-14 in `cmake --build build --target test_audit
+  ants-terminal`, after an ANTS-5067 edit recompiled src/auditdialog.cpp.
+  The warning is -Wnull-dereference in qhash.h, inlined from
+  AuditDialog::startQueuedBlame. Same class as ANTS-5114 and ANTS-4544.
+  Unverified whether a real null path exists or GCC's inlining is wrong.
+  **Layman:** The build prints a warning that one audit function might read a missing value.
+  Kind: fix.
+  Source: in-session-2026-09-14.
+  Lanes: audit.
 
 ## Memory-efficiency sweep (user request 2026-08-19)
 
@@ -72685,6 +72703,12 @@ acting on it.
   tests/features/ci_asan_budget INV-7 to INV-10, proven red first.
   Covers ANTS-5187's parallel Release ctest as well; the first CI run
   after the push is the measurement to re-check the budgets against.
+  Verified on GitHub (2026-09-14): run 34869419476 for 077665ba
+  concluded success. The Release job completed (16:34:15 to 16:48:55):
+  Build 16:34:56 to 16:46:50, Run tests 16:46:55 to 16:48:46, both
+  inside their 25m and 8m guards, and Save ccache ran. The new cppcheck
+  (informational) job ran and succeeded (16:34:15 to 16:36:39). ASan and
+  Qt 6.2 floor jobs also succeeded.
   **Layman:** The code-checking step re-reads the whole project on one core every push; it could use several cores and skip unchanged files.
   Kind: perf.
   Source: user-request-2026-09-14 (CI speed and memory review).

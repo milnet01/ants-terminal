@@ -75,9 +75,12 @@
 #include <QTimer>
 
 #include <algorithm>      // ANTS-3706 std::sort over the detail keys
+#include <chrono>
+#include <condition_variable>
 #include <cstring>
 #include <memory>
 #include <mutex>
+#include <thread>
 
 namespace AuditRunner {
 
@@ -1617,6 +1620,53 @@ QStringList incompleteToolNames(const QHash<QString, ToolResult> &byTool) {
     return names;
 }
 
+QList<InProcessLaneOutcome> runInProcessLanes(const QList<InProcessLane> &lanes,
+                                              const QString &projectRoot,
+                                              qint64 budgetMs) {
+    // Every lane starts timed out; a lane that finishes in time takes its slot.
+    QList<InProcessLaneOutcome> out;
+    out.reserve(lanes.size());
+    for (const InProcessLane &lane : lanes)
+        out.append({lane.id, QStringLiteral("timed_out"), QString(),
+                    std::max<qint64>(budgetMs, 0)});
+    if (lanes.isEmpty() || budgetMs <= 0) return out;
+
+    // ANTS-5067 — shared with the worker, which outlives this call when it is
+    // abandoned, so the worker owns everything it touches.
+    struct Shared {
+        std::mutex mutex;
+        std::condition_variable cv;
+        QList<InProcessLaneOutcome> done;  // finished lanes, in input order
+        bool finished  = false;
+        bool abandoned = false;
+    };
+    const auto shared = std::make_shared<Shared>();
+    std::thread([shared, lanes, projectRoot]() {
+        for (const InProcessLane &lane : lanes) {
+            {
+                const std::lock_guard<std::mutex> lock(shared->mutex);
+                if (shared->abandoned) break;  // checked between lanes, never inside one
+            }
+            QElapsedTimer timer;
+            timer.start();
+            QString output = lane.fn(projectRoot);
+            const std::lock_guard<std::mutex> lock(shared->mutex);
+            shared->done.append({lane.id, QStringLiteral("ok"), std::move(output),
+                                 timer.elapsed()});
+        }
+        const std::lock_guard<std::mutex> lock(shared->mutex);
+        shared->finished = true;
+        shared->cv.notify_all();
+    }).detach();
+
+    std::unique_lock<std::mutex> lock(shared->mutex);
+    shared->cv.wait_for(lock, std::chrono::milliseconds(budgetMs),
+                        [&shared] { return shared->finished; });
+    shared->abandoned = !shared->finished;
+    for (qsizetype i = 0; i < shared->done.size(); ++i) out[i] = shared->done.at(i);
+    return out;
+}
+
 // ANTS-3585 — {tool, status, elapsed_ms, truncated} per non-ok tool, sorted by
 // tool name (reuses incompleteToolNames for the sorted key set).
 QJsonArray incompleteToolsDetail(const QHash<QString, ToolResult> &byTool) {
@@ -1792,6 +1842,26 @@ ParsedCounts parseWithSuppression(const QString &tool, const QString &raw,
 }
 
 }  // namespace internal
+
+namespace {
+
+// ANTS-3605 — the in-process audit lanes (spec↔code / contract-doc /
+// changelog↔test drift). GUI-free FeatureCoverage free functions, not QProcess
+// tools. Each emits `file:line: message`, which finish()'s parseToolOutput
+// line-fallback parses like any plain-text tool.
+QList<internal::InProcessLane> inProcessLanes() {
+    return {
+        {QStringLiteral("spec_code_drift"), &FeatureCoverage::runSpecDriftCheck},
+        {QStringLiteral("contract_doc_drift_standards"),
+         &FeatureCoverage::runContractDocDriftStandardsCheck},
+        {QStringLiteral("contract_doc_drift_specs"),
+         &FeatureCoverage::runContractDocDriftSpecsCheck},
+        {QStringLiteral("changelog_test_coverage"),
+         &FeatureCoverage::runChangelogCoverageCheck},
+    };
+}
+
+}  // namespace
 
 RunResult runAudit(const RunRequest &req) {
     RunResult r;
@@ -2240,9 +2310,18 @@ RunResult runAudit(const RunRequest &req) {
             : QString();
 
     // ── INV-1 / aggregate cap.
+    // ANTS-3605 — the in-process lanes run ONLY on a default auto-detect sweep
+    // (empty req.tools) at full scope: an explicit tools=[…] request scopes to
+    // those tools, and a narrowed file-diff scope skips whole-project checks.
+    // This mirrors AuditDialog::populateChecks. ANTS-5067 — they are counted
+    // in the cap like tools, so a sweep with no external tool gives them a
+    // budget.
+    const QList<internal::InProcessLane> inProcess =
+        (req.tools.isEmpty() && !scopeNarrowed) ? inProcessLanes()
+                                               : QList<internal::InProcessLane>{};
     const int perToolMs = req.capPerToolSeconds * 1000;
     const int aggCapMs  = std::min(
-        static_cast<int>(toolAbsPath.size() * perToolMs * 3 / 2),
+        static_cast<int>((toolAbsPath.size() + inProcess.size()) * perToolMs * 3 / 2),
         kAggregateCapMs);
 
     // ── Spawn QProcesses on a local event loop (§ 2.5).
@@ -2402,6 +2481,8 @@ RunResult runAudit(const RunRequest &req) {
         }
         loop.quit();
     });
+    QElapsedTimer aggElapsed;  // ANTS-5067 — the in-process lanes get what is left
+    aggElapsed.start();
     aggTimer.start(aggCapMs);
 
     if (pending > 0) loop.exec();
@@ -2420,38 +2501,19 @@ RunResult runAudit(const RunRequest &req) {
         }
     }
 
-    // ── ANTS-3605 — in-process audit lanes (spec↔code / contract-doc /
-    // changelog↔test drift). These are GUI-free FeatureCoverage free functions,
-    // not QProcess tools, so they run outside the multiplexer above — after the
-    // external tools have finished, before the tally so their counts fold into
-    // the totals. Each emits `file:line: message`, which finish()'s
-    // parseToolOutput line-fallback parses like any plain-text tool (the lane
-    // ids are not JSON tools, so INV-17's JSON-only path is not taken).
-    //
-    // They run ONLY on a default auto-detect sweep (empty req.tools) at full
-    // scope: an explicit tools=[…] request scopes to those tools, and a
-    // narrowed file-diff scope skips whole-project checks (scopeNarrowed).
-    // This mirrors AuditDialog::populateChecks, which registers all three
-    // autoSelect. finish() runs post-loop, so its `--pending` / `loop.quit()`
-    // are harmless no-ops (the loop has already exited).
-    if (req.tools.isEmpty() && !scopeNarrowed) {
-        struct InProcessLane {
-            const char *id;
-            QString (*fn)(const QString &);
-        };
-        static const InProcessLane kInProcessLanes[] = {
-            { "spec_code_drift",         &FeatureCoverage::runSpecDriftCheck },
-            { "contract_doc_drift_standards", &FeatureCoverage::runContractDocDriftStandardsCheck },
-            { "contract_doc_drift_specs",     &FeatureCoverage::runContractDocDriftSpecsCheck },
-            { "changelog_test_coverage", &FeatureCoverage::runChangelogCoverageCheck },
-        };
-        for (const auto &lane : kInProcessLanes) {
-            QElapsedTimer laneTimer;
-            laneTimer.start();
-            const QString out = lane.fn(canonProject);
-            finish(QString::fromLatin1(lane.id), QStringLiteral("ok"),
-                   out, laneTimer.elapsed());
-        }
+    // ── ANTS-3605 — the in-process lanes (inProcessLanes), outside the
+    // multiplexer above: after the external tools, before the tally so their
+    // counts fold into the totals. The lane ids are not JSON tools, so INV-17's
+    // JSON-only path is not taken. ANTS-5067 — they run on a worker under what
+    // is left of the aggregate cap; a lane still running at the deadline is
+    // recorded timed_out and abandoned. finish() runs post-loop, so its
+    // `--pending` / `loop.quit()` are harmless no-ops.
+    if (!inProcess.isEmpty()) {
+        const QList<internal::InProcessLaneOutcome> outcomes =
+            internal::runInProcessLanes(inProcess, canonProject,
+                                        aggCapMs - aggElapsed.elapsed());
+        for (const internal::InProcessLaneOutcome &o : outcomes)
+            finish(o.id, o.status, o.output, o.elapsedMs);
     }
 
     // ── Tally totals.

@@ -579,11 +579,14 @@ private:
     // Visible only while an audit is in-progress; clicking it aborts the
     // remaining checks and renders partial results.
     QPushButton *m_cancelBtn = nullptr;
-    // Set true while `cancelAudit()` is unwinding. Queued lambdas
-    // (QTimer::singleShot for in-process runners) and already-sent
+    // Set true while `cancelAudit()` is unwinding. Already-sent
     // QProcess::finished signals check this before appending more
     // CheckResults — prevents post-cancel race noise.
     bool m_cancelled = false;
+    // ANTS-5067 — bumped by runAudit() and cancelAudit(). An in-process
+    // runner's worker delivers its result only while this still equals the
+    // value it captured, so a late result never lands in a later run.
+    quint64 m_runGeneration = 0;
     QPushButton *m_baselineBtn = nullptr;
     QPushButton *m_newOnlyBtn = nullptr;
     QProgressBar *m_progress = nullptr;

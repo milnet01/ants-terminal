@@ -2974,6 +2974,8 @@ if(ANTS_TESTS)
                 tests/features/contract_doc_drift/test_contract_doc_drift.cpp
                 tests/features/roadmap_fold_in/test_roadmap_fold_in.cpp
                 tests/features/audit_corroboration_shift/test_audit_corroboration_shift.cpp
+                # ANTS-5067 — in-process drift lanes off the calling thread, under a deadline.
+                tests/features/audit_inprocess_lanes_async/test_audit_inprocess_lanes_async.cpp
                 # ANTS-3506 — audit_drop_alias returns HOME to test_audit. Its
                 # runtime target, commentSuppresses, was extracted from the GUI
                 # AuditDialog TU to the AuditEngine namespace in ants_audit_lib,
@@ -3132,6 +3134,10 @@ if(ANTS_TESTS)
         APPEND PROPERTY COMPILE_DEFINITIONS
         # ANTS-1709 — centralised exclusion-set drift guard (INV-7).
         SRC_FEATURECOVERAGE_CPP_PATH="${CMAKE_SOURCE_DIR}/src/featurecoverage.cpp")
+    set_property(SOURCE tests/features/audit_inprocess_lanes_async/test_audit_inprocess_lanes_async.cpp
+        APPEND PROPERTY COMPILE_DEFINITIONS
+        # ANTS-5067 INV-8 — runAudit's lane block is read as source.
+        SRC_AUDITRUNNER_CPP_PATH="${CMAKE_SOURCE_DIR}/src/auditrunner.cpp")
     set_property(SOURCE tests/features/roadmap_index_engine/test_roadmap_index_engine.cpp
         APPEND PROPERTY COMPILE_DEFINITIONS
         # ANTS-1844 — sliceSection perf-shape lock (roadmap_index_engine ENG-7).

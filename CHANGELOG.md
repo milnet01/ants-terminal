@@ -95,6 +95,13 @@ for security-relevant changes.
 
 ### Fixed
 
+- **The audit drift checks no longer freeze the window, and audit_run keeps them under its time limit** (ANTS-5067)
+  The Audit dialog runs its spec, contract-doc and changelog drift checks on
+  a background thread, so terminals keep updating and Cancel works while a
+  check runs. A result that arrives after Cancel or a new Run is discarded.
+  audit_run now counts these checks in its aggregate time cap; one still
+  running at the deadline is reported timed_out and marks the run partial.
+
 - **CI's Release job finishes again, and fails red instead of silently cancelling when it runs long.** (ANTS-5188)
   cppcheck now runs in its own CI job, multi-threaded with a cache of its
   analysis. The Release job's build and test steps each have a time guard,

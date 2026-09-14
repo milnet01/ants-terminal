@@ -51,6 +51,7 @@
 #include "secretredact.h"   // ANTS-4448 — scrub the AI-triage prompt
 
 #include <algorithm>
+#include <memory>
 
 using namespace auditdialogdetail;
 
@@ -2513,6 +2514,7 @@ void AuditDialog::runAudit() {
     // suppression added in between.
     m_fileLineCache.clear();
     m_cancelled = false;
+    ++m_runGeneration;  // ANTS-5067 — a lane result from an earlier run is dropped
     m_snapshotPersisted = false;  // see m_snapshotPersisted in auditdialog.h
     // Cancel becomes the primary action while a run is in-flight; Run
     // button stays visible but disabled so the button-row geometry
@@ -2563,6 +2565,7 @@ void AuditDialog::cancelAudit() {
     // click and the check finishing) is harmless.
     if (m_cancelled) return;
     m_cancelled = true;
+    ++m_runGeneration;  // ANTS-5067 — a lane still running delivers nothing
 
     // Watchdog timer and QProcess both have to be quieted BEFORE we
     // render, otherwise their queued signals would re-enter the pipeline.
@@ -2694,29 +2697,25 @@ void AuditDialog::runNextCheck() {
     // handleCheckOutput() post-processing the QProcess path uses, so
     // suppressions / path rules / dedup behave identically.
     //
-    // Deferred via QTimer::singleShot(0, …) so the status-label update
-    // paints before the (potentially slow) runner blocks, matching the
-    // UX of the async QProcess path.
+    // ANTS-5067 — the runner reads the whole project, so it runs on a worker
+    // thread and the GUI keeps painting and draining terminals. A result from
+    // an earlier run (cancelled, or superseded by a new Run) is dropped by
+    // generation. The worker deletes itself; if the dialog closes first, the
+    // `this` context drops the delivery. Pattern: requestDebtScan.
     if (check.inProcessRunner) {
         const QString projectPath = m_projectPath;
         const auto runner = check.inProcessRunner;
-        QTimer::singleShot(0, this, [this, projectPath, runner]() {
-            // Cancellation may have arrived between scheduling and
-            // firing; skip the runner entirely in that case so we
-            // don't spend the CPU cycles or append a post-cancel
-            // CheckResult. (The `this, …` capture means the Qt-
-            // supplied context guard prevents dangling-pointer
-            // deref if the dialog itself was closed.)
-            if (m_cancelled) return;
-            const QString output = runner(projectPath);
-            // ANTS-1136 audit-fold-in: cppcheck flagged the
-            // second m_cancelled check as identicalConditionAfter-
-            // EarlyExit (always false here — there's no path
-            // between the two reads that could mutate
-            // m_cancelled, since the runner is synchronous and
-            // member access doesn't fire signals). Removed.
-            handleCheckOutput(output);
+        const quint64 generation = m_runGeneration;
+        auto output = std::make_shared<QString>();
+        QThread *worker = QThread::create([runner, projectPath, output]() {
+            *output = runner(projectPath);
         });
+        connect(worker, &QThread::finished, worker, &QObject::deleteLater);
+        connect(worker, &QThread::finished, this, [this, generation, output]() {
+            if (generation != m_runGeneration) return;
+            handleCheckOutput(*output);
+        }, Qt::QueuedConnection);
+        worker->start();
         return;
     }
 
