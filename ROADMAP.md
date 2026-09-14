@@ -59564,7 +59564,7 @@ than re-filed; everything else lands here.
   Source: UT_Ants_Ants_MCP_Feedback.md 2026-09-08.
   Lanes: mcp.
 
-- 📋 [ANTS-4955] **A re-migrate strips the trailing full stop from every Layman line, because the parse drops it and the render never restores it.**
+- ✅ [ANTS-4955] **A re-migrate strips the trailing full stop from every Layman line, because the parse drops it and the render never restores it.**
   REPORTED with a byte-diff and CONFIRMED IN THE TREE, so this is a
   mechanism rather than an observation. `parseTrailers()` in
   src/roadmapparse.cpp ends the Layman extraction "trim, drop ONE
@@ -59678,6 +59678,13 @@ than re-filed; everything else lands here.
   amend_field, rlFillItemBody (store append) and formatRoadmapBullet
   (markdown append). Test roadmap_layman_stop INV-1..7 was red before the
   fix; green run in progress.
+  Resolved (2026-09-14, d9a2a78f): Layman summaries are stored without
+  their closing full stop on every caller or markdown route (import,
+  append, append_batch, amend_field) and rendered with one unless they end
+  in ! or ?; the markdown append writes the same line. Gated first
+  (roadmap-format.md loops 8-10). Test roadmap_layman_stop INV-1..7 red
+  then green; full suite 4791 green. The one-time normalisation of the
+  2045 stored values still ending in a stop runs next, before relaunch.
   **Layman:** Re-importing a roadmap quietly rewrites the wording of every item's plain-English summary.
   Kind: fix.
   Source: Pressless_Ants_MCP_Feedback.md 2026-09-08.
