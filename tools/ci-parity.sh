@@ -149,7 +149,8 @@ if [[ "$repeat" -gt 0 ]]; then
 fi
 
 release_ctest() {
-    LC_ALL="$locale" ctest --test-dir "$build_dir" --output-on-failure "${ctest_args[@]}"
+    # ANTS-5188 — mirrors build-test's ctest flags: -j2 with a per-test cap.
+    LC_ALL="$locale" ctest --test-dir "$build_dir" -j2 --timeout 300 --output-on-failure "${ctest_args[@]}"
 }
 echo "ci-parity: LC_ALL=$locale ctest ${ctest_args[*]:-} (in $build_dir)"
 gate "build-test: ctest (LC_ALL=$locale)" release_ctest
@@ -186,8 +187,13 @@ if [[ "$do_lints" == 1 ]]; then
     # Scope + syntaxError suppression mirror ci.yml's step (ANTS-4788);
     # useStlAlgorithm mirrors it too (ANTS-4782 — advisory style class,
     # suppressed rather than swept; the reason lives in ci.yml's comment).
+    # ANTS-5188 — CI runs this in its own `cppcheck` job, multi-threaded with
+    # an analysis cache; mirrored here with a cache beside the parity tree.
+    cppcheck_cache="${build_dir}-cppcheck"
+    mkdir -p "$cppcheck_cache"
     maybe_gate cppcheck "cppcheck (informational)" \
-        cppcheck --enable=all --std=c++20 --library=qt \
+        cppcheck --enable=all -j 4 --cppcheck-build-dir="$cppcheck_cache" \
+                 --std=c++20 --library=qt \
                  --suppress=missingIncludeSystem \
                  --suppress=unusedFunction \
                  --suppress=unknownMacro \

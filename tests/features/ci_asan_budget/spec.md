@@ -81,6 +81,25 @@ does. With leaks off in all three, four leaking tests went unseen for weeks.
 Measured 2026-09-11: the whole sanitized suite passed with leaks on. The
 `--version`/`--help` smoke steps keep `detect_leaks=0` and are out of scope.
 
+**INV-7 to INV-10 — the Release job, `build-test` (ANTS-5188).** Measured
+2026-09-14 from runs 34850334204 and 34852607287: `build-test` was cancelled at
+its 25-minute cap during cppcheck on three consecutive pushes, after its build
+and tests had passed, and `Post Restore ccache (release)` read `skipped` — the
+same spiral as `build-asan`. Build took 17m12s and 17m54s, against 5m37s on the
+last completing run (34840052353); tests 3m42s; cppcheck 3m17s.
+
+**INV-7 — `build-test`'s Build and `ctest` are wrapped in `timeout`.**
+
+**INV-8 — `build-test`'s ccache is saved by an `actions/cache/save` step guarded
+`if: always()`.**
+
+**INV-9 — `build-test`'s step budgets sum below its job cap.**
+
+**INV-10 — cppcheck runs in its own `cppcheck` job, not in `build-test`.** That
+job runs it multi-threaded (`-j`) with a `--cppcheck-build-dir` saved by
+`actions/cache/save`, wrapped in `timeout`, and its step budgets sum below its
+cap.
+
 ## What this check does NOT cover, stated so it is not mistaken for coverage
 
 - **It does not verify the budgets are big enough.** INV-4 checks ordering,
@@ -92,11 +111,11 @@ Measured 2026-09-11: the whole sanitized suite passed with leaks on. The
   preset's caution, not derived here. The measured 1.31x says the suite has
   contention `-j` alone will not remove; finding it is separate work, and
   guessing a bigger `-j` is not a substitute for measuring one.
-- **It does not parse YAML.** It slices the `build-asan` job by its heading
-  and scrapes that slice. A restructuring that renames the job defeats it —
-  which surfaces as this test failing, not as a silent pass.
-- **It asserts nothing about `build-test` or `qt62-baseline`.** Both complete
-  inside their caps today; neither is in scope.
+- **It does not parse YAML.** It slices each job by its heading and scrapes
+  that slice. A restructuring that renames a job defeats it — which surfaces
+  as this test failing, not as a silent pass.
+- **It asserts nothing about `qt62-baseline`.** It completes inside its cap
+  today and is not in scope.
 
 ## Build
 

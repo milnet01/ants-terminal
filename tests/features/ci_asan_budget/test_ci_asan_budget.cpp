@@ -49,6 +49,35 @@ std::string stepBlockContaining(const std::string &job,
                                                       : end - begin);
 }
 
+// ANTS-5188 — a top-level job's text, from its heading to the next top-level
+// job heading or the end of the file. Same slicing stance as asanJob().
+std::string jobBlock(const std::string &wf, const std::string &id) {
+    const std::size_t begin = wf.find("\n  " + id + ":");
+    if (begin == std::string::npos) return {};
+    const std::regex nextJob(R"(\n  [a-z0-9-]+:\n)");
+    std::smatch m;
+    const std::string rest = wf.substr(begin + 1);
+    if (std::regex_search(rest, m, nextJob))
+        return wf.substr(begin, static_cast<std::size_t>(m.position(0)) + 1);
+    return wf.substr(begin);
+}
+
+// The sum of every `timeout <N>m` step guard in a job, and its job cap.
+int stepBudgetMinutes(const std::string &job) {
+    int total = 0;
+    const std::regex step(R"(timeout\s+([0-9]+)m\b)");
+    for (auto it = std::sregex_iterator(job.begin(), job.end(), step);
+         it != std::sregex_iterator(); ++it)
+        total += std::stoi((*it)[1].str());
+    return total;
+}
+int jobCapMinutes(const std::string &job) {
+    std::smatch cap;
+    if (!std::regex_search(job, cap, std::regex(R"(timeout-minutes:\s*([0-9]+))")))
+        return 0;
+    return std::stoi(cap[1].str());
+}
+
 // The one line carrying `ctest`, so a flag assertion cannot be satisfied by
 // an unrelated line elsewhere in the job.
 std::string ctestLine(const std::string &job) {
@@ -198,4 +227,67 @@ TEST(CiAsanBudget, Inv4StepBudgetsSumBelowTheJobCap) {
         << "m job cap, so the job-level timeout fires FIRST and the run "
            "concludes `cancelled` again. Raise timeout-minutes above the sum, "
            "or lower a step guard — the guards must be what fires.";
+}
+
+// ANTS-5188 INV-7 — the Release job (build-test) fell into the same spiral
+// build-asan did: cancelled at its cap during cppcheck on every push, so its
+// ccache post-step was skipped and every build started colder (5m37s -> ~17m).
+// Its build and ctest go red on an overrun instead.
+TEST(CiAsanBudget, Inv7ReleaseJobOverrunFailsRatherThanCancels) {
+    const std::string job = jobBlock(ants_test::slurpFile(SRC_CI_WORKFLOW_PATH), "build-test");
+    ASSERT_FALSE(job.empty()) << "no build-test job in ci.yml";
+    for (const char *cmd : {"cmake --build build", "ctest "}) {
+        const std::size_t at = job.find(cmd);
+        ASSERT_NE(at, std::string::npos) << "build-test no longer runs: " << cmd;
+        const std::size_t bol = job.rfind('\n', at);
+        EXPECT_TRUE(has(job.substr(bol + 1, at - bol - 1), "timeout "))
+            << "build-test's `" << cmd << "` is not wrapped in `timeout`; an overrun "
+               "is cancelled by timeout-minutes and does not read as red (ANTS-5188).";
+    }
+}
+
+// ANTS-5188 INV-8 — the Release ccache is saved even when the job does not
+// complete, so a timeout cannot freeze the cache.
+TEST(CiAsanBudget, Inv8ReleaseCcacheIsSavedEvenWhenTheJobDoesNotComplete) {
+    const std::string job = jobBlock(ants_test::slurpFile(SRC_CI_WORKFLOW_PATH), "build-test");
+    ASSERT_FALSE(job.empty());
+    const std::string block = stepBlockContaining(job, "actions/cache/save@");
+    ASSERT_FALSE(block.empty())
+        << "build-test saves its ccache only through actions/cache's implicit "
+           "post-step, which is SKIPPED when the job is cancelled (ANTS-5188).";
+    EXPECT_TRUE(has(block, "if: always()")) << block;
+}
+
+// ANTS-5188 INV-9 — the Release job's step budgets sum below its cap.
+TEST(CiAsanBudget, Inv9ReleaseStepBudgetsSumBelowTheJobCap) {
+    const std::string job = jobBlock(ants_test::slurpFile(SRC_CI_WORKFLOW_PATH), "build-test");
+    ASSERT_FALSE(job.empty());
+    const int cap = jobCapMinutes(job), budget = stepBudgetMinutes(job);
+    ASSERT_GT(cap, 0) << "build-test declares no timeout-minutes";
+    ASSERT_GT(budget, 0) << "build-test has no `timeout <N>m` step guards (see INV-7)";
+    EXPECT_LT(budget, cap) << "build-test step guards total " << budget
+                           << "m against a " << cap << "m cap";
+}
+
+// ANTS-5188 INV-10 — cppcheck runs in its own job, off the Release job's
+// critical path: multi-threaded, with an analysis cache, guarded, under its cap.
+TEST(CiAsanBudget, Inv10CppcheckRunsInItsOwnGuardedJob) {
+    const std::string wf = ants_test::slurpFile(SRC_CI_WORKFLOW_PATH);
+    EXPECT_FALSE(has(jobBlock(wf, "build-test"), "cppcheck --enable"))
+        << "cppcheck still runs inside build-test, where its minutes decide "
+           "whether the Release job is cancelled (ANTS-5188).";
+
+    const std::string job = jobBlock(wf, "cppcheck");
+    ASSERT_FALSE(job.empty()) << "no `cppcheck` job in ci.yml";
+    const std::size_t at = job.find("cppcheck --enable");
+    ASSERT_NE(at, std::string::npos) << "the cppcheck job does not run cppcheck";
+    const std::size_t bol = job.rfind('\n', at);
+    EXPECT_TRUE(has(job.substr(bol + 1, at - bol - 1), "timeout "))
+        << "the cppcheck invocation is not wrapped in `timeout`";
+    EXPECT_TRUE(has(job, "-j ")) << "cppcheck is not multi-threaded";
+    EXPECT_TRUE(has(job, "--cppcheck-build-dir")) << "cppcheck keeps no analysis cache";
+    EXPECT_TRUE(has(job, "actions/cache/save@")) << "the cppcheck cache is never saved";
+    const int cap = jobCapMinutes(job), budget = stepBudgetMinutes(job);
+    ASSERT_GT(cap, 0) << "the cppcheck job declares no timeout-minutes";
+    EXPECT_LT(budget, cap);
 }
