@@ -78,6 +78,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **The per-tab thinking-level chip reads the last prompt a person typed instead of stopping at a tool reply, so it no longer shows Unknown on almost every live tab.** (ANTS-1892)
+
 - **invariant_check's scope note now says on every reply that specs are matched by path, so a spec citing the module only by symbol is known to be missing even when another spec matched.** (ANTS-4972)
 
 - **apply_edits flags a batch that applied some edits and skipped others with `partial:true` (`would_be_partial:true` on a dry run), instead of a bare ok:true.** (ANTS-4856)
