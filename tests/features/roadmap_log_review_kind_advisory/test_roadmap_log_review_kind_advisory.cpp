@@ -110,6 +110,9 @@ TEST(RoadmapLogReviewKindAdvisory, Inv2AndInv6WiredIntoBothWritePaths) {
         << "ANTS-4989 INV-2: op:append must call the advisory";
     // No variable name in the needle: ANTS-5114 renamed the list this
     // assigns, and the wiring, not the local's name, is the contract.
+    EXPECT_EQ(rc.find("b.value(QStringLiteral(\"id_hint\")).toString()"), std::string::npos)
+        << "ANTS-5095: the batch advisory reads a numeric id_hint as a string "
+           "and names headlines instead of the allocated ids";
     EXPECT_NE(rc.find("first[QStringLiteral(\"bullets\")] = "),
               std::string::npos)
         << "ANTS-4989 INV-6: op:append_batch must roll the advisory up over "

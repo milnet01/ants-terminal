@@ -466,3 +466,40 @@ TEST(roadmap_log_annotate_batch, Inv1StorePathBatchLeavesStatusAlone) {
     EXPECT_FALSE(contains(md, "\xE2\x9C\x85 [ANTS-00"))
         << "annotate_batch must not flip anything on the store path either";
 }
+
+// ── INV-9 (ANTS-5095) — an all-failed store batch refuses under its own op ──
+
+TEST(roadmap_log_annotate_batch, Inv9StorePathAllFailedRefuses) {
+    ants_test::XdgGuard guard;
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString root = seedProject(guard, tmp);
+    ASSERT_FALSE(root.isEmpty());
+    ASSERT_TRUE(migrate(root));
+    // A bullet the FILE holds and the store does not: the file walk resolves
+    // it, so the call reaches the store path, where the lookup fails. An id in
+    // neither is refused by the markdown walk first and never tests this.
+    {
+        QByteArray md = readFile(roadmapPath(root));
+        md += "- \xF0\x9F\x93\x8B [ANTS-0999] **Hand-added, never imported.**\n"
+              "  Kind: chore.\n"
+              "  Layman: One plain sentence.\n"
+              "  Source: seed.\n";
+        ASSERT_TRUE(writeFile(roadmapPath(root), md));
+    }
+
+    RemoteControl rc(nullptr);
+    QJsonArray locs;
+    locs.append(loc(QStringLiteral("ANTS-0999"), QStringLiteral("Note one.")));
+    const QJsonObject resp = rc.cmdRoadmapLogFlipBatchForTest(
+        batchReq(root, QStringLiteral("annotate_batch"), locs)).object();
+
+    EXPECT_FALSE(resp.value(QStringLiteral("ok")).toBool())
+        << "every locator failed and the store path still reported success: "
+        << QJsonDocument(resp).toJson().toStdString();
+    EXPECT_EQ(resp.value(QStringLiteral("op")).toString(),
+              QStringLiteral("annotate_batch"))
+        << "the store path labels every batch flip_batch";
+    EXPECT_EQ(resp.value(QStringLiteral("skipped_count")).toInt(), 1);
+    EXPECT_FALSE(resp.value(QStringLiteral("code")).toString().isEmpty());
+}

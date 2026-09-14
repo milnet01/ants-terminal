@@ -100,3 +100,11 @@ the verb layer.
 `post_bullets` is emitted on the store path as it always was on the
 markdown path. It was silently missing on migrated projects — the same
 divergence class as INV-7, found while fixing it.
+
+### INV-9 — the store path refuses an all-failed batch (ANTS-5095)
+
+When no locator resolves in the store, `annotate_batch` and `flip_batch`
+return `ok:false` with a `code` and name their own `op`, as the markdown path
+has since ANTS-4109. *Test:* `Inv9StorePathAllFailedRefuses` migrates the
+fixture, adds a bullet to ROADMAP.md by hand, and annotates it: the file walk
+resolves it and the store lookup does not.

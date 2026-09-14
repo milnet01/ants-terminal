@@ -599,9 +599,30 @@ QJsonDocument RemoteControl::cmdRoadmapLogFlipBatch(const QJsonObject &req) {
             // Every locator was skipped at the store. Same no-write envelope the
             // markdown path returns when phase 1 resolved nothing — no render
             // ran, so no files_written / items_rendered.
+            //
+            // ANTS-5094/5095 — and the same REFUSAL: this returned ok:true and
+            // op "flip_batch" for every op, the false success ANTS-4109 removed
+            // from the markdown path.
             QJsonObject out;
-            out["ok"]            = true;
-            out["op"]            = QStringLiteral("flip_batch");
+            out["ok"]            = false;
+            {
+                QString code = skipped.isEmpty()
+                    ? QStringLiteral("bullet_not_found")
+                    : skipped.first().toObject().value(QStringLiteral("code")).toString();
+                for (const QJsonValue &v : std::as_const(skipped)) {
+                    if (v.toObject().value(QStringLiteral("code")).toString() != code) {
+                        code = QStringLiteral("bullet_not_found");
+                        break;
+                    }
+                }
+                out["code"]  = code;
+                out["error"] = QStringLiteral("roadmap_log op:\"%1\": all "
+                    "%2 locator(s) failed to resolve in the store — nothing was %3")
+                        .arg(opName).arg(skipped.size())
+                        .arg(annotateMode ? QStringLiteral("annotated")
+                                          : QStringLiteral("flipped"));
+            }
+            out["op"]            = opName;
             out["format"]        = QStringLiteral("ants-v1");
             out["file"]          = QStringLiteral("ROADMAP.md");
             out["flipped"]       = QJsonArray();
@@ -2868,16 +2889,18 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppendBatch(const QJsonObject &req) {
     {
         QJsonArray advisoryIds;
         QJsonObject first;
-        for (const QJsonValue &bv : req.value(QStringLiteral("bullets")).toArray()) {
-            const QJsonObject b = bv.toObject();
+        // ANTS-5095 — named by the ids the batch ALLOCATED. It read id_hint
+        // with toString(), which is empty for the number a caller sends, so
+        // the warning listed headlines instead of ids.
+        for (const Accepted &a : accepted) {
             const QJsonObject rk = rlReviewKindAdvisory(
-                b.value(QStringLiteral("kind")).toString(),
-                b.value(QStringLiteral("source")).toString());
+                a.bulletReq.value(QStringLiteral("kind")).toString(),
+                a.bulletReq.value(QStringLiteral("source")).toString());
             if (rk.isEmpty()) continue;
             if (first.isEmpty()) first = rk;
-            const QString id = b.value(QStringLiteral("id_hint")).toString();
-            advisoryIds.append(id.isEmpty() ? b.value(QStringLiteral("headline")).toString()
-                                            : id);
+            advisoryIds.append(a.idStr.isEmpty()
+                ? a.bulletReq.value(QStringLiteral("headline")).toString()
+                : a.idStr);
         }
         if (!first.isEmpty()) {
             first[QStringLiteral("bullets")] = advisoryIds;
