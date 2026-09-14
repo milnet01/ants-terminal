@@ -8594,6 +8594,14 @@ extends an existing item, that item carries it instead.
   - A failed rollback is silent.
   - The source filter array has no element cap.
   - Every store write runs three full renders (see ANTS-4681).
+  Progress (2026-09-14): amend_field applies rcSanitizeBulletField to
+  layman (1000) and source (200) and folds a newline or comma in each
+  evidence element to a space, as rlFillItemBody does; report mode
+  refuses an unparseable since or until with bad_args
+  (roadmap_log_amend_field INV-9). Still open: the section cache holding
+  bodies past ANTS-1346's budget, the GFM anchor counter floor,
+  counter_write_failed after commit with no rollback, silent rollback
+  failure, the source filter cap, and the three renders per store write.
   **Layman:** Smaller roadmap-tool fixes: a memory budget blown by caching, and one edit command that can corrupt the roadmap file.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lane mcp-roadmap-query-log).
