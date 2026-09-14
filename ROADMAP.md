@@ -8073,6 +8073,15 @@ extends an existing item, that item carries it instead.
   - first_trusted overwrite, the second copy of reports, the
     DialogShowTracer and ChromeGuard Q_OBJECT lows, the themedstylesheet.h
     comment, and tr().
+  Progress (2026-09-14): shipped three lows.
+  - Mistyped theme colour: parseColor falls back when the string is not a
+    valid colour.
+  - Theme file size: Themes::loadUserThemes skips a file over its size cap.
+  - About text: no longer claims GPU rendering (GlRenderer was retired in
+    0.7.44).
+  Tests: user_theme_loading, about_text_current.
+  Next, prepared: the themedstylesheet.h comment low, in the ANTS-5083
+  batch.
   **Layman:** Smaller dialog fixes, including a review button that can undo its own error reporting and a trust file that can be lost.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lane dialog-chrome-theme).
