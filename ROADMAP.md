@@ -3347,7 +3347,7 @@ flagged by ≥2 independent reviewers regardless of which lane:
   integration, AI/dialogs, RoadmapDialog.
   Kind: review-fix.
   Source: indie-review-2026-04-27.
-  Lanes: Claude.
+  Lanes: Claude integration, AI/dialogs, RoadmapDialog.
 
 - ✅ [ANTS-1013] **2 s status-timer redundant work.**
   0.7.49 bg-tasks fix forces
@@ -3362,7 +3362,7 @@ flagged by ≥2 independent reviewers regardless of which lane:
   integration, MainWindow.
   Kind: review-fix.
   Source: indie-review-2026-04-27.
-  Lanes: Claude.
+  Lanes: Claude integration, MainWindow.
 
 - ✅ [ANTS-1014] **No clipboard-write redaction helper.**
   Shipped
@@ -4368,10 +4368,9 @@ minor tag (next: pre-0.8.0).
   exact file is local to the user's environment; Ants source
   has no related change). The trace tooling stays in place for
   future incidents.
-  Lanes: MainWindow plus whichever dialog-spawn site was
-  identified.
   Kind: fix.
   Source: regression.
+  Lanes: MainWindow plus whichever dialog-spawn site was identified.
 
 - ✅ [ANTS-1858] **Per-tab Claude dot stays grey (idle) during an AskUserQuestion prompt instead of orange (awaiting-input).**
   **Layman:** When Claude asks you a multiple-choice question, the little dot on the tab should glow orange to say it's waiting on you — but it stays grey like it's idle.
@@ -5147,9 +5146,9 @@ minor tag (next: pre-0.8.0).
   existing `/debt-sweep` skill's triage table). Kind: implement.
   Source: user-2026-04-30. Lanes: MainWindow, new
   `WorkflowDialog`, AuditDialog, Config, build/CMake.
-  Layman: Build the multi-step project workflow into the terminal itself, which is the big token saver.
+  **Layman:** Build the multi-step project workflow into the terminal itself, which is the big token saver.
   Kind: implement.
-  Lanes: MainWindow, new.
+  Lanes: MainWindow, new `WorkflowDialog`, AuditDialog, Config, build/CMake.
 
 - 📋 [ANTS-1887] **First-run wizard: detect a fresh install and offer to install Claude Code hooks + MCP integration.**
   **Layman:** On the very first launch (or first launch after a fresh user account), Ants Terminal should notice it has never been set up and ask the user whether to wire up the bits that make the Ants × Claude Code experience work: the hook scripts under `~/.claude/hooks/`, the MCP server registration in `~/.claude.json` (or whichever Claude Code config the runtime version uses), the `.claude/settings.json` template, etc. A single "Set up Claude Code integration" dialog with a checkbox per feature beats today's "read the README and copy these files by hand" path.</layman> <parameter name="body">First-run detection should probably key on `~/.config/ants-terminal/config.json` absence (or an explicit `first_run_completed` flag inside it). The wizard then offers (defaults all ON, each individually opt-out): (1) install/refresh the hook pack into `~/.claude/hooks/` (matches `tests/hook_pack/`); (2) register the Ants MCP server in `~/.claude.json` so the `mcp__ants__*` tools light up in fresh Claude Code…
@@ -14454,8 +14453,8 @@ fixes don't address. Roadmapped here as their own design tasks.
   follow-up; this split is the structural prerequisite.
   **Layman:** Right now the audit library bundles the GUI dialog with the engine — anything that links the engine drags the GUI in too. Split them.
   Kind: refactor.
-  Lanes: ants_audit_lib, CMakeLists.txt.
   Source: deferred from ANTS-1351 § 9 Q5 (cold-eyes loop 3 2026-05-17).
+  Lanes: ants_audit_lib, CMakeLists.txt.
 
 - 📋 [ANTS-1705] **Narrow `ants_core_lib`'s `Qt6::Widgets` link to realize the ANTS-1444 split benefit.**
   `ants_core_lib` links
@@ -14861,7 +14860,7 @@ fixes don't address. Roadmapped here as their own design tasks.
   **Layman:** We caught it in the act. The proof: the request reached Ants with its settings completely empty, even though the rest of the request was fine — so the data was lost before it ever got to Ants (a Claude-side hiccup with big requests), not an Ants bug. Ants is right to reject an empty request, and retrying works. Marked done on the Ants side.
   Kind: investigate.
   Source: in-session-2026-05-25.
-  Lanes: claudeintegration (MCP dispatch), docs/standards/mcp-error-codes.
+  Lanes: claudeintegration (MCP dispatch), docs/standards/mcp-error-codes.md.
 
 - ✅ [ANTS-1854] **Claude debug-lane floods the log with no-op 2-second poll traces — gate poll logging on state change.**
   Found while reviewing the DebugLog::Claude log for ANTS-1853 (2026-05-25). The lane writes a `bgtasks/refresh` + a `tasks/refresh` line on EVERY 2-second poll, including when nothing changed (prev-changed=no, identical totals/mtime). Result: 25,303 of ~25,267 lines (5.7 MB across 3 sessions) were no-op polls; the 6 meaningful `mcp dispatch` lines were needles in a haystack — the spam directly impeded the log review. Proposal: suppress consecutive identical no-op poll lines (log only on a state transition: total/unfinished/running/mtime change, or HIDE↔SHOW flip), or move the per-tick trace behind a finer opt-in sub-flag while keeping change events in the main Claude lane. Keeps the lane useful for diagnosing the tasks-chip + MCP paths without the flood. Lanes: claudeintegration, claudetabtracker.
@@ -46715,6 +46714,18 @@ are closed inline in the feedback files rather than filed here.
   other 136 are source, layman and lanes field conflicts, a separate class.
   Still open here: review the 13 skipped runs, the before/after pair in
   updated_items, and ANTS-4480 suggestion 3.
+  Progress (2026-09-14, later): the 13 skipped runs reviewed with the
+  user. 8 had a lanes column cut short at migration (ANTS-1012, 1013,
+  1054, 1108, 1136, 1143, 1444, 1853). Each column now holds the full
+  list, set with amend_field, or with amend_body on the declaration line
+  where the body shadows the column; strip_runs then removed all 8 runs.
+  4 are left as they are by user ruling (ANTS-1157, 3759, 4344, CFG-0108):
+  their prose names trailer keys mid-line, so removing the run would let
+  a re-parse read those mentions as values. ANTS-1157's lanes column is
+  still cut short for the same reason. mame-curator-1073 (source spelling)
+  was not touched: a migrate dry run on MAME_Curator shows 8 items whose
+  body differs between file and store, so a render from this session
+  could discard hand edits there. Left to that project's own session.
   **Layman:** The check that tells you whether the database is out of date reports problems on a database that is perfectly up to date.
   Kind: fix.
   Lanes: roadmap-store, mcp.
@@ -70051,8 +70062,8 @@ partition (11 lanes) is documented in this fold-in for reuse.
   (overlaps the hardcoded `setPermissions_pair_no_helper`
   Qt rule).
   Kind: fix. Source: indie-review-2026-05-01 (L4).
-  Lanes: auditdialog, auditengine, audit_rules.json, CLAUDE.md.
   Source: indie-review-2026-05-01 (L4).
+  Lanes: auditdialog, auditengine, audit_rules.json, CLAUDE.md.
 
 - ✅ [ANTS-1137] **MainWindow chrome perf hotspots.**
   Shipped
@@ -70215,8 +70226,8 @@ partition (11 lanes) is documented in this fold-in for reuse.
   `QTimer` watchdog to force `lua_sethook` fire at coarse
   wall-time intervals.
   Kind: doc-fix. Source: indie-review-2026-05-01 (L8).
-  Lanes: PLUGINS.md, luaengine.
   Source: indie-review-2026-05-01 (L8).
+  Lanes: PLUGINS.md, luaengine.
 
 - ✅ [ANTS-1144] **Other dialogs: AI partial-stream insert, transcript large-doc render, BgTasks ANSI-strip**
   Shipped
