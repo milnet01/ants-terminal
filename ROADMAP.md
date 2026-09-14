@@ -8122,6 +8122,23 @@ extends an existing item, that item carries it instead.
   gate. (2) The .git/HEAD read on a cache miss stays on the GUI thread:
   it is a tiny file, cached per folder for 5 s, and only a hung mount
   stalls it. That finding is closed with no code change.
+  Progress (2026-09-14): the ANTS-2132 section 5 low is already fixed in
+  the text, no edit. Section 5 now names only indie_review_dispatch and
+  get_git_status as still blocking the GUI, and both registrations in
+  MainWindow::setupClaudeMcpProviders carry comments saying they stay
+  (ANTS-3515 and ANTS-4686, both open). The verbs it records as moved
+  off-thread (test_audit_*, project_query, caller_cwd_info) match
+  shipped ANTS-4682. Next: the async audit_run worker deleting itself
+  instead of relying on a ClaudeIntegration slot. The get_scrollback cap
+  is decided but no spec owns get_scrollback, so its amendment needs a
+  home first.
+  Progress (2026-09-14): shipped the async audit worker low. The async
+  audit_run worker's QThread::finished now connects to its own
+  deleteLater, and the completion slot (context ClaudeIntegration) no
+  longer touches the worker. Test: mcp_audit_run_async INV-10, red
+  first; full default suite green. The get_scrollback cap is split out
+  as ANTS-5219, with its own spec. That leaves nothing open on this item
+  except ANTS-5219's work.
   **Layman:** Smaller fixes to how the main window answers Claude and checks git, including a stuck Review Changes button.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lane mainwindow-b).
@@ -10424,6 +10441,39 @@ extends an existing item, that item carries it instead.
   Kind: fix.
   Source: in-session-2026-09-14.
   Lanes: terminalgrid.
+
+- 📋 [ANTS-5219] **get_scrollback has no line cap and its plain reply cannot say it was cut short.**
+  Split out of ANTS-5080 so it can carry its own spec.
+  Decided (2026-09-14, user, recorded on ANTS-5080): get_scrollback gets a
+  line cap and an explicit truncation marker in its reply. That changes the
+  contract, so it goes through a spec and CLAUDE.md rule 14's gate.
+  Facts (MainWindow::setupClaudeMcpProviders, the get_scrollback provider):
+  - Without since_cursor it returns t->recentOutput(lines) as raw text.
+    `lines` comes from args.value("lines").toInt(50) and nothing caps it.
+    Raw text has no field to mark truncation.
+  - With since_cursor it returns a JSON envelope whose content is
+    recentOutput(added + screenRows), where added can reach the scrollback
+    ring's capacity. It already carries cursor, cursor_stale and
+    stale_reason, but no truncation field.
+  - No spec in docs/specs owns get_scrollback; its behavioural note is one
+    line in docs/standards/mcp-behavioural-notes.md.
+  In-repo precedent (2026-09-14): RemoteControl::cmdGetText, the
+  get_text verb, already solves this shape. It caps `lines` at 10000
+  (std::min(requested, 10000)), caps bytes at
+  RemoteControl::kGetTextDefaultBytesCap through
+  RemoteControl::trimScrollbackForGetText, and its JSON reply carries
+  truncated, bytes_dropped and lines_dropped. The since_cursor envelope
+  can take the same fields. The open design choice is the legacy
+  raw-text reply, which has no field. The cap belongs in the
+  get_scrollback provider, not in TerminalWidget::recentOutput, whose
+  other callers (AI dialog context, the status-bar model-switch scans,
+  cmdGetText) must not change. Build note:
+  tests/features/mcp_extra_tools scrapes a byte window around this
+  provider, so new code here can push get_text out of it.
+  **Layman:** Claude can ask a terminal for an unlimited amount of its history in one go, which freezes the window.
+  Kind: review-fix.
+  Source: code-quality-review-2026-09-11 perf pass (lane mainwindow-b), split from ANTS-5080.
+  Lanes: mainwindow, mcp.
 
 ## Memory-efficiency sweep (user request 2026-08-19)
 

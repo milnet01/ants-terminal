@@ -259,3 +259,27 @@ TEST(McpAuditRunAsync, Inv9NoNewConfigKey) {
     const std::string ci = ciSrc();
     EXPECT_FALSE(has(ci, "claude.audit_async"));
 }
+
+// ---- INV-10 (ANTS-5080) — the async worker frees itself ------------------
+//
+// The worker used to be deleted only inside the completion slot whose context
+// is ClaudeIntegration. Destroying that object mid-sweep severed the
+// connection, so the thread was never freed. Scoped from the async branch's
+// guard dismissal to its start(), because the synchronous branch creates a
+// worker of its own.
+TEST(McpAuditRunAsync, Inv10WorkerFreesItself) {
+    const std::string mw = mainwindowSrc();
+    const std::size_t dismiss = mw.find("inFlightGuard.dismiss();");
+    ASSERT_NE(dismiss, std::string::npos) << "setup: the async branch was not found";
+    const std::size_t create = mw.find("QThread::create(", dismiss);
+    ASSERT_NE(create, std::string::npos) << "setup: the async worker was not found";
+    const std::size_t start = mw.find("worker->start();", create);
+    ASSERT_NE(start, std::string::npos) << "setup: the async worker's start() was not found";
+    const std::string wiring = mw.substr(create, start - create);
+
+    EXPECT_TRUE(hasWs(wiring,
+        "connect(worker, &QThread::finished, worker, &QObject::deleteLater)"))
+        << "INV-10: the async worker must delete itself when it finishes";
+    EXPECT_FALSE(has(wiring, "worker->deleteLater()"))
+        << "INV-10: the ClaudeIntegration completion slot must not free the worker";
+}

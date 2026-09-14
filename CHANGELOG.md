@@ -95,6 +95,12 @@ for security-relevant changes.
 
 ### Fixed
 
+- **A background audit started by Claude no longer leaves its thread behind** (ANTS-5080)
+  An audit Claude starts in the background is run on its own thread. That
+  thread was cleaned up only through the object that tracks such audits, so
+  if that object went away mid-audit the thread was never freed. The thread
+  now cleans itself up when the audit finishes.
+
 - **Pasting a large screenshot no longer freezes the window while it saves** (ANTS-5077)
   Pasting an image saved it as a PNG on the window's own thread, so a large
   screenshot froze every tab until the file was written. The image is now

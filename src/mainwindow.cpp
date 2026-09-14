@@ -4843,12 +4843,19 @@ void MainWindow::setupClaudeMcpProviders() {
                 auto result =
                     std::make_shared<AuditRunner::RunResult>();
                 // Worker created on the main/dispatch thread → its thread
-                // affinity is the main thread, so deleteLater() in the
-                // completion slot is same-thread-safe. `req` copied by value
+                // affinity is the main thread, so its own deleteLater() runs
+                // there. `req` copied by value
                 // (the handler's stack frame unwinds before the sweep ends).
                 QThread *worker = QThread::create(
                     [req, result]() { *result = AuditRunner::runAudit(req); });
                 ClaudeIntegration *ci = m_claudeIntegration;
+                // ANTS-5080 — the worker frees itself. The completion below
+                // has ci as its context and is severed if ci is destroyed
+                // mid-sweep, so freeing the worker there could leave it never
+                // freed. The completion no longer touches the worker, so the
+                // two queued events may run in either order.
+                QObject::connect(worker, &QThread::finished, worker,
+                                 &QObject::deleteLater);
                 // Queued completion on the main thread. Context object = ci
                 // so the connection auto-severs if ci is destroyed at
                 // teardown (the QPointer-equivalent shutdown guard, §2.4):
@@ -4857,7 +4864,7 @@ void MainWindow::setupClaudeMcpProviders() {
                 // RunResult; the registry flip + slot release happen here on
                 // the main thread.
                 QObject::connect(worker, &QThread::finished, ci,
-                    [ci, worker, result, jobId, canon]() {
+                    [ci, result, jobId, canon]() {
                         ClaudeIntegration::AuditJob term;
                         const AuditRunner::RunResult &r = *result;
                         if (!r.ok) {
@@ -4885,7 +4892,6 @@ void MainWindow::setupClaudeMcpProviders() {
                         ci->auditJobComplete(jobId, term);
                         ci->verbInFlightRelease(
                             QStringLiteral("audit_run"), canon);
-                        worker->deleteLater();
                     }, Qt::QueuedConnection);
                 worker->start();
                 QJsonObject env;

@@ -18,6 +18,7 @@ methods are pure QHash/QMutex — no event loop needed).
 | 5 | `Inv5QueuedCompletionAndGuardDismiss` | the completion uses `Qt::QueuedConnection`; the async branch calls `inFlightGuard.dismiss()`; the registry is mutated under `m_auditJobsMutex`. |
 | 8 | `Inv8RefusalWiring` | `audit_poll` registered `Required` in `callerCwdContractFor`; `bad_args` on missing `job_id`; `too_many_jobs` literal on the async saturation path. |
 | 9 | `Inv9NoNewConfigKey` | neither path reads a new `claude.*` config key. |
+| 10 | `Inv10WorkerFreesItself` | (ANTS-5080) the async branch connects the worker's `QThread::finished` to its own `QObject::deleteLater`, and the completion slot whose context is `ClaudeIntegration` does not touch `worker`. Before this the worker was freed only inside that slot, so a `ClaudeIntegration` destroyed mid-sweep severed the connection and the thread was never freed. |
 
 The full async→poll→done cycle against a real sweep is CI-gated (skipped
 when the toolchain is absent) and is not part of this unconditional
