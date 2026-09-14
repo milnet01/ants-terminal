@@ -122,6 +122,28 @@ TEST(ChangelogQueryParse, Ants4404GenuineFenceStillHidesItsContents) {
         << "ANTS-4404: a real fence must still close.";
 }
 
+// ANTS-4987 — a closing fence carries no info string, so a ```json line inside
+// an open block is sample text. The parser kept this rule locally until
+// MarkdownScan::fenceCloses implemented it; this pins it across the switch.
+TEST(ChangelogQueryParse, Ants4987InfoStringLineDoesNotCloseAFence) {
+    const QString md = QString::fromUtf8(
+        "# Changelog\n\n"
+        "## [Unreleased]\n\n"
+        "### Added\n\n"
+        "- **Has a code block.** (ANTS-4011)\n"
+        "  ```\n"
+        "  ```json\n"
+        "  - **Not an entry, it is sample text.** (ANTS-9998)\n"
+        "  ```\n\n"
+        "- **After the block.** (ANTS-4012)\n");
+    const ParseResult r = ChangelogQuery::parse(md, kPrefix);
+    EXPECT_EQ(findEntry(r, "Not an entry"), nullptr)
+        << "ANTS-4987: a ```json line closed the block, so its sample text "
+        << "was parsed as an entry.";
+    EXPECT_NE(findEntry(r, "After the block"), nullptr)
+        << "ANTS-4987: the bare closer must still end the block.";
+}
+
 // INV-2 — headings, categories, bullets, dates parsed; version_index rollup.
 TEST(ChangelogQueryParse, BasicStructureAndCounts) {
     // fromUtf8 so the em-dash bytes decode to U+2014 (a QStringLiteral

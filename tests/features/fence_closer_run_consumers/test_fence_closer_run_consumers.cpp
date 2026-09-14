@@ -165,3 +165,139 @@ TEST(FenceCloserRunConsumers, Inv5FeedbackBoundarySkipsALongerFence) {
            "INV-5: the delta starts at the first heading outside the block");
     EXPECT_EQ(0, expect_finish());
 }
+
+namespace {
+
+// ANTS-4987 — a document whose only `## Heading` follows an info-string line
+// inside an open three-backtick block. That line used to close the block, so
+// the heading after it was read as real and the bare closer below it opened a
+// fresh block that ran to the end of the file.
+QString docWithInfoStringInsideFence(const QString &heading) {
+    return QStringLiteral(
+        "# Real Title\n"
+        "Prose.\n"
+        "\n"
+        "```\n"          // opener: run of 3, no info string
+        "```json\n"      // sample text — NOT a closer, it carries an info string
+        "%1\n"           // sample text — NOT a heading
+        "```\n"          // the real closer
+        "\n"
+        "Trailing prose.\n").arg(heading);
+}
+
+}  // namespace
+
+// INV-6 — a closer carries no info string; whitespace after the run, a CRLF's
+// \r included, still closes.
+TEST(FenceCloserRunConsumers, Inv6CloserCarriesNoInfoString) {
+    expect_reset();
+    using MarkdownScan::fenceCloses;
+    expect(!fenceCloses(QStringLiteral("```json"), kTick, 3),
+           "INV-6: a run followed by an info string does not close");
+    expect(!fenceCloses(QStringLiteral("~~~ text"), QLatin1Char('~'), 3),
+           "INV-6: the rule holds for a tilde fence too");
+    expect(fenceCloses(QStringLiteral("```   "), kTick, 3),
+           "INV-6: trailing spaces still close");
+    expect(fenceCloses(QStringLiteral("```\r"), kTick, 3),
+           "INV-6: a CRLF closer still closes");
+    EXPECT_EQ(0, expect_finish());
+}
+
+// INV-7 — fenceMask shares the rule, so the two families cannot disagree
+// about the same file.
+TEST(FenceCloserRunConsumers, Inv7MaskKeepsTheBlockOpenAcrossAnInfoString) {
+    expect_reset();
+    const QStringList lines =
+        docWithInfoStringInsideFence(QStringLiteral("## Phantom"))
+            .split(QLatin1Char('\n'));
+    const QVector<bool> mask = MarkdownScan::fenceMask(lines);
+    const int phantom  = lines.indexOf(QStringLiteral("## Phantom"));
+    const int trailing = lines.indexOf(QStringLiteral("Trailing prose."));
+    expect(phantom > 0 && mask.value(phantom),
+           "INV-7: the heading after an info-string line stays inside the block");
+    expect(trailing > 0 && !mask.value(trailing),
+           "INV-7: the real closer still ends the block");
+    EXPECT_EQ(0, expect_finish());
+}
+
+// INV-8 — fileoutline.cpp, the INV-3 surface.
+TEST(FenceCloserRunConsumers, Inv8OutlineSkipsAHeadingAfterAnInfoStringLine) {
+    expect_reset();
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid());
+    const QString path = QDir(dir.path()).filePath(QStringLiteral("d.md"));
+    QFile f(path);
+    ASSERT_TRUE(f.open(QIODevice::WriteOnly));
+    f.write(docWithInfoStringInsideFence(QStringLiteral("## Not A Real Heading"))
+                .toUtf8());
+    f.close();
+
+    const QJsonObject out = FileOutline::compute(
+        path, FileOutline::Mode::Md, /*includeDocComment=*/false,
+        /*maxSymbols=*/50);
+    bool sawPhantom = false, sawReal = false;
+    for (const auto v : out.value(QStringLiteral("symbols")).toArray()) {
+        const QString n = v.toObject().value(QStringLiteral("name")).toString();
+        if (n.contains(QStringLiteral("Not A Real Heading"))) sawPhantom = true;
+        if (n.contains(QStringLiteral("Real Title")))         sawReal = true;
+    }
+    expect(sawReal, "INV-8 precondition: the outline found the real heading");
+    expect(!sawPhantom,
+           "INV-8: a heading after an info-string line inside a fence is not "
+           "outlined");
+    EXPECT_EQ(0, expect_finish());
+}
+
+// INV-9 — speclog.cpp, the INV-4 surface. Found versus created, for the reason
+// INV-4 records.
+TEST(FenceCloserRunConsumers, Inv9SpecLogSkipsASectionAfterAnInfoStringLine) {
+    expect_reset();
+    const QString heading = QStringLiteral("## Cold-eyes loop log");
+    const SpecLog::EditResult r =
+        SpecLog::appendLoop(docWithInfoStringInsideFence(heading),
+                            QStringLiteral("loop 1"), QStringLiteral("body"));
+    expect(r.ok, "INV-9 precondition: the append succeeded", r.error);
+    if (r.ok) {
+        expect(r.content.count(heading) == 2,
+               "INV-9: the quoted heading was not treated as a real section, "
+               "so a real one was created alongside it");
+        const QStringList out = r.content.split(QLatin1Char('\n'));
+        const int info = out.indexOf(QStringLiteral("```json"));
+        expect(info >= 0 && out.value(info + 1) == heading,
+               "INV-9: the sample heading is still inside the block");
+    }
+    EXPECT_EQ(0, expect_finish());
+}
+
+// INV-10 — feedbackfile.cpp, the INV-5 surface. The maintainer heading before
+// the block is load-bearing for the reason INV-5 records.
+TEST(FenceCloserRunConsumers, Inv10FeedbackBoundarySkipsAnInfoStringLine) {
+    expect_reset();
+    const QString doc = QString::fromUtf8(
+        "# Real Title\n"                                            // 1
+        "\n"                                                        // 2
+        "## \xF0\x9F\x93\x8B Ants Terminal roadmap tracking (2026-01-01)\n"  // 3
+        "Maintainer body.\n"                                        // 4
+        "\n"                                                        // 5
+        "```\n"                                                     // 6  opener
+        "```json\n"                                                 // 7  sample
+        "## Phantom Boundary\n"                                     // 8  sample
+        "```\n"                                                     // 9  real closer
+        "\n"                                                        // 10
+        "## Real Contributor Heading\n"                             // 11
+        "Contributor body.\n");                                     // 12
+    const int phantomLine = 8, realLine = 11;
+
+    const QStringList src = doc.split(QLatin1Char('\n'));
+    expect(src.value(phantomLine - 1) == QStringLiteral("## Phantom Boundary")
+               && src.value(realLine - 1)
+                      == QStringLiteral("## Real Contributor Heading"),
+           "INV-10 precondition: the two headings sit on the named lines");
+
+    const FeedbackFile::ParseResult r = FeedbackFile::parse(doc);
+    expect(r.deltaStartLine != phantomLine,
+           "INV-10: the delta does not start at a heading inside a code sample");
+    expect(r.deltaStartLine == realLine,
+           "INV-10: the delta starts at the first heading outside the block");
+    EXPECT_EQ(0, expect_finish());
+}

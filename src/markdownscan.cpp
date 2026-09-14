@@ -71,7 +71,11 @@ bool fenceCloses(const QString &line, QChar openChar, int openRun,
     if (openChar.isNull()) return false;
     int run = 0;
     const QChar c = fenceOpenerChar(line, maxIndent, &run);
-    return !c.isNull() && c == openChar && run >= openRun;
+    if (c.isNull() || c != openChar || run < openRun) return false;
+    // ANTS-4987 — CommonMark § 4.5: a closing fence carries no info string.
+    // trimmed() rather than spaces and tabs only, so a CRLF closer's trailing
+    // \r still closes.
+    return line.mid(leadingSpaces(line) + run).trimmed().isEmpty();
 }
 
 QVector<bool> fenceMask(const QStringList &lines) {
@@ -99,9 +103,9 @@ QVector<bool> fenceMask(const QStringList &lines, int *unterminatedOpenerLine) {
             // The container stack is frozen: a bullet inside a code sample
             // is sample text, not a list.
             mask[i] = true;
-            int run = 0;
-            const QChar c = fenceOpenerChar(line, openAllowance, &run);
-            if (!c.isNull() && c == openFence && run >= openRun) {
+            // ANTS-4987 — the shared closer rule, so this mask and the
+            // hand-rolled fence loops cannot disagree about the same file.
+            if (fenceCloses(line, openFence, openRun, openAllowance)) {
                 openFence = QChar();
                 openLine  = -1;
                 openRun   = 0;

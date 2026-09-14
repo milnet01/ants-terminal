@@ -32,16 +32,13 @@ namespace {
 // was latent, not active. Adopted anyway — the same class has now cost two
 // real bugs (ANTS-4403, ANTS-4450), and the shared rule cannot drift.
 //
-// `hasInfo` stays LOCAL, deliberately. CommonMark § 4.5 also says a CLOSING
-// fence carries no info string, and MarkdownScan::fenceCloses does not
-// implement that rule — see ANTS-4987. Calling it here would close a block
-// on a ```` ```json ```` line, which is looser than what this parser does
-// today, so adopting it would be a regression rather than a fix.
+// ANTS-4987 — a closer is judged by MarkdownScan::fenceCloses, which now also
+// refuses a closing fence that carries an info string. This parser kept that
+// rule locally until the shared predicate implemented it.
 struct FenceInfo {
     bool  isFence = false;
     QChar ch;
     int   len = 0;
-    bool  hasInfo = false;
 };
 
 FenceInfo fenceInfoOf(const QString &line) {
@@ -52,14 +49,6 @@ FenceInfo fenceInfoOf(const QString &line) {
     fi.isFence = true;
     fi.ch = c;
     fi.len = run;
-
-    // The info string is whatever follows the fence run. Re-derive the run's
-    // end from the same space-only indent rule MarkdownScan applied, so the
-    // two cannot disagree about where the info string starts.
-    int i = 0;
-    while (i < line.size() && line[i] == QLatin1Char(' ')) ++i;
-    i += run;
-    fi.hasInfo = !line.mid(i).trimmed().isEmpty();
     return fi;
 }
 
@@ -215,7 +204,7 @@ ParseResult parse(const QString &markdown, const QString &idPrefix) {
                 inFence = true;
                 fenceChar = fi.ch;
                 fenceLen = fi.len;
-            } else if (fi.ch == fenceChar && fi.len >= fenceLen && !fi.hasInfo) {
+            } else if (MarkdownScan::fenceCloses(line, fenceChar, fenceLen)) {
                 inFence = false;
             }
             if (building) curBody.append(deindent(line));

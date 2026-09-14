@@ -82,6 +82,11 @@ for security-relevant changes.
 
 ### Fixed
 
+- **A line such as ```json inside an open code block no longer ends the block, so the headings and text after it stay treated as code by the outline, spec log, feedback and changelog tools** (ANTS-4987)
+  Matches the CommonMark rule that a closing fence carries nothing after
+  its backticks. Files with Windows line endings still close their blocks,
+  and the code-block mask now shares the same rule as the other readers.
+
 - **The MCP socket answers a malformed request line with a JSON-RPC parse error instead of closing silently after five seconds** (ANTS-5089)
 
 - **A remote-control client that stops reading a large reply is disconnected after 30 seconds instead of holding the socket open** (ANTS-5093)

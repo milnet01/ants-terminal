@@ -65,6 +65,10 @@ QChar fenceOpenerChar(const QString &line, int maxIndent = 3,
 //
 // Returns false for a null `openChar`, so a caller may ask without first
 // checking whether it is inside a fence.
+//
+// ANTS-4987 — the rest of § 4.5: a closer carries no info string, so the text
+// after the run must be empty once trimmed() (a CRLF's \r counts as space).
+// fenceMask asks this too, so the mask and the hand-rolled loops agree.
 bool fenceCloses(const QString &line, QChar openChar, int openRun,
                  int maxIndent = 3);
 
