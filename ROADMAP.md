@@ -7471,6 +7471,19 @@ extends an existing item, that item carries it instead.
   the GUI thread and under audit_run's time cap, even at the measured
   1.8 s freeze. The cancel path is part of the change and gets its own
   test.
+  Decided (2026-09-14, user, later): write a short spec first, then gate
+  it with ONE reviewer and one pass, then build test-first.
+  spec-format.md § 1 fires on three triggers: three subsystems
+  (auditdialog, auditengine's audit_run runner, featurecoverage),
+  concurrency with partial failure, and a real design choice (on cancel
+  or timeout, STOP the check through a cancel flag passed into
+  FeatureCoverage, or ABANDON it to finish in the background and discard
+  the result). Facts found: the dialog runs inProcessRunner
+  synchronously on the GUI thread behind QTimer::singleShot(0) with an
+  m_cancelled flag checked between checks; audit_run already runs on a
+  QThread worker (MainWindow::setupClaudeMcpProviders) but runs the four
+  lanes after its aggregate timer stops, with no cap and no cancel;
+  featurecoverage.cpp holds no shared mutable state.
   **Layman:** Some audit checks read the whole project on the main window's thread, freezing every tab until they finish.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lanes spec-engines, audit-dialog-b).
