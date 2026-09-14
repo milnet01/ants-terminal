@@ -95,6 +95,12 @@ for security-relevant changes.
 
 ### Fixed
 
+- **CI's Release job finishes again, and fails red instead of silently cancelling when it runs long.** (ANTS-5188)
+  cppcheck now runs in its own CI job, multi-threaded with a cache of its
+  analysis. The Release job's build and test steps each have a time guard,
+  its compile cache is saved even when a run stops early, and its tests run
+  two at a time.
+
 - **doc_citations no longer checks a bare line number against a file named in an earlier paragraph.** (ANTS-4923)
   A line reference like `:120` on its own now borrows a file only from a
   citation in the same paragraph. After a blank line or a heading it is

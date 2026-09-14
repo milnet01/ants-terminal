@@ -72621,17 +72621,21 @@ acting on it.
   Kind: perf.
   Source: user-request-2026-09-14 (CI speed and memory review).
 
-- 📋 [ANTS-5187] **Run the Release test suite in parallel in GitHub CI, as the pre-push hook already does.**
+- ✅ [ANTS-5187] **Run the Release test suite in parallel in GitHub CI, as the pre-push hook already does.**
   ci.yml's Release job runs a plain `ctest --output-on-failure`, so
   tests run serially, while the pre-push hook and the presets run them in
   parallel (ANTS-2231). Use a -j matched to the runner and exclude perf
   and e2e as the hook does. Watch for timing flakes on a loaded runner,
   the ANTS-2130 class. Measure with the job's `Total Test time` line.
+  Resolved (2026-09-14) inside ANTS-5188 (c8ff23c3): build-test's ctest
+  now runs `timeout 8m ctest -j2 --output-on-failure --timeout 300`, -j2
+  matching build-asan and the pre-push hook, and tools/ci-parity.sh
+  mirrors it. Locked by tests/features/ci_asan_budget INV-7 and INV-9.
   **Layman:** GitHub runs the tests one at a time; running several at once would finish sooner.
   Kind: perf.
   Source: user-request-2026-09-14 (CI speed and memory review).
 
-- 📋 [ANTS-5188] **Parallelise cppcheck in CI and cache its analysis between runs.**
+- ✅ [ANTS-5188] **Parallelise cppcheck in CI and cache its analysis between runs.**
   ci.yml runs cppcheck with no -j and no --cppcheck-build-dir, and it is
   informational only (--error-exitcode=0), so it re-analyses src/ and
   tests/ on every push. Add -j (unusedFunction is already suppressed,
@@ -72653,6 +72657,16 @@ acting on it.
   Release job no longer finishes green at all and a real failure in its
   later steps (AppStream, desktop entry, man page, packaging drift,
   completions) would go unseen.
+  Resolved (2026-09-14): cppcheck moved to its own `cppcheck` job (-j 4,
+  --cppcheck-build-dir in actions/cache, guarded by timeout 15m under a
+  20-minute cap). The Release job got the ANTS-4533 remedy too, because
+  the cancels had frozen its ccache (Post Restore ccache read skipped;
+  Build 5m37s -> 17m54s): split cache restore/save with the save `if:
+  always()`, Build under timeout 25m, ctest under timeout 8m at -j2 with
+  --timeout 300, job cap 40. tools/ci-parity.sh mirrors both. Locked by
+  tests/features/ci_asan_budget INV-7 to INV-10, proven red first.
+  Covers ANTS-5187's parallel Release ctest as well; the first CI run
+  after the push is the measurement to re-check the budgets against.
   **Layman:** The code-checking step re-reads the whole project on one core every push; it could use several cores and skip unchanged files.
   Kind: perf.
   Source: user-request-2026-09-14 (CI speed and memory review).
