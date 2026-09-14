@@ -38806,7 +38806,7 @@ against current source before filing.
   Kind: perf.
   Source: in-session-2026-08-18 (found closing ANTS-4426 site 2).
 
-- 📋 [ANTS-4432] **`roadmap_log`'s body-shadow gate fires on a trailer key buried mid-line inside a code span, refusing bodies that only mention a C++ namespace.**
+- ✅ [ANTS-4432] **`roadmap_log`'s body-shadow gate fires on a trailer key buried mid-line inside a code span, refusing bodies that only mention a C++ namespace.**
   Filing ANTS-4431 refused with `body_shadowed`, claiming the body
   shadowed the `source` column. The body contained no trailer line. What
   it contained was a namespace-qualified C++ name whose namespace ends in
@@ -38838,6 +38838,14 @@ against current source before filing.
   **Layman:** Writing a roadmap note that mentions certain code names gets rejected as if the note were trying to overwrite a field, when it plainly is not.
   Kind: fix.
   Source: in-session-2026-08-18 (hit filing ANTS-4431).
+  Closed (2026-09-14) as done by ANTS-4608, which added a
+  no-second-colon lookahead to every trailer pattern, so a C++ scope
+  operator no longer reads as a key. Verified live: a dry-run op:append
+  whose body named the read seam's namespace-qualified functions, once
+  in backticks mid-line and once bare, passed the gate with no
+  body_shadowed refusal. The line-start anchor this item proposed is not
+  wanted: ANTS-2058 un-anchored the patterns because inline trailers are
+  real.
 
 - 📋 [ANTS-4433] **cmdRoadmapQuery's two heading-index lazy fills read ROADMAP.md with a raw QFile, outside the read seam.**
   Two sites in `cmdRoadmapQuery` build the heading index from a raw
@@ -41824,7 +41832,7 @@ finbreak re-verified it.
   one-flag-two-meanings shape.
   Resolved (2026-08-28): closed to ANTS-4636, which made the store-side witness max(idHighWater, maxAllocatedId) rather than the allocator counter alone. That covers both readings this item could not choose between — the 0 of the original report and the off-by-one of the LottoTracker re-measurement are the same defect, since both are the counter lagging what the store holds. Verified on LottoTracker itself, the re-measurement's own project: roadmap_query answers source:store with no file_ahead_of_store.
 
-- 📋 [ANTS-4411] **render_gate_unmet names the id being appended, so its remedy is unfollowable.**
+- ✅ [ANTS-4411] **render_gate_unmet names the id being appended, so its remedy is unfollowable.**
   Measured on the AI_Prompts cutover (2026-08-15). A `roadmap_log
   op:append` with no `layman` refused:
 
@@ -41851,6 +41859,12 @@ finbreak re-verified it.
   **Layman:** When a new roadmap entry is missing its plain-English line, the error tells you to go fix an entry number that does not exist yet.
   Kind: fix.
   Source: in-session-2026-08-15 AI_Prompts cutover.
+  Closed (2026-09-14) as done by ANTS-4593, which splits the preview's
+  own candidate ids out of `gate_failures` into `request_gate_failures`.
+  Verified live: a dry-run op:append with no layman refused
+  render_gate_unmet with gate_failures empty, the candidate id in
+  request_gate_failures, and an error naming the missing layman line and
+  saying the id is rolled back and not to look for it.
 
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-08-17 triage
 
@@ -46539,6 +46553,14 @@ are closed inline in the feedback files rather than filed here.
 
   Source: LocalWebServerManager / AI_Prompts / Snatch feedback files,
   2026-08-20.
+  Measured (2026-09-14), still live and larger: a roadmap_migrate dry
+  run on this project, whose ROADMAP.md is only ever written by
+  roadmap_log renders, planned items_updated 1700 against
+  items_unchanged 1089, with 143 field_conflict and 383 field_defaulted
+  notes. Nearly every updated_items row names `body` alone; a few name
+  `layman`. So the loader-side fix this item asks for (strip the
+  rendered trailers before diffing) has not landed, and the counter is
+  still unusable as a staleness signal here.
   **Layman:** The check that tells you whether the database is out of date reports problems on a database that is perfectly up to date.
   Kind: fix.
   Lanes: roadmap-store, mcp.
@@ -48003,7 +48025,7 @@ filed below.
   Source: finbreak_Ants_MCP_Feedback.md 2026-08-20; Snatch_Ants_MCP_Feedback.md 2026-08-20.
   Lanes: remotecontrol, roadmapwrite.
 
-- 📋 [ANTS-4552] **discarded_edit_lines counts reformatted lines rather than removals, so the only pre-write signal reads as data loss.**
+- ✅ [ANTS-4552] **discarded_edit_lines counts reformatted lines rather than removals, so the only pre-write signal reads as data loss.**
   On finbreak: a dry_run reported would_discard_external_edits:true with
   would_discard_edit_lines:93 on a tree where git status was clean and
   every prior write had gone through roadmap_log. A plain annotate dry_run
@@ -48040,6 +48062,14 @@ filed below.
   Related but distinct from ANTS-4438 (the first store-backed write
   re-wraps the file); that is about the churn, this is about the number
   that describes it.
+  Closed (2026-09-14): both fix halves are in rcRoadmapWriteFields. Half
+  1: ANTS-4615's breakdown sits beside the total, so a caller reads
+  would_discard_text_lines (text that does not survive) apart from
+  would_discard_restyled_lines, and, since ANTS-4695,
+  would_discard_repunctuated_lines. Half 2: a dry run echoes the lost
+  text itself as would_discard_text, capped, with
+  would_discard_text_truncated. The total still counts every differing
+  line, by ANTS-4462's design.
   **Layman:** The warning before a roadmap write says it will discard 93 lines when it actually removes one — so people stop writing at all.
   Kind: fix.
   Source: finbreak_Ants_MCP_Feedback.md 2026-08-20; LottoTracker_Ants_MCP_Feedback.md 2026-08-20.
@@ -76381,7 +76411,7 @@ here.)
   Source: in-session-2026-08-25 (measured while closing ANTS-4429).
   Lanes: mcp, roadmap-store.
 
-- 📋 [ANTS-4657] **Three field-projectable verbs declare `fields` but not `compact`, and the count guard for it is a hardcoded literal.**
+- ✅ [ANTS-4657] **Three field-projectable verbs declare `fields` but not `compact`, and the count guard for it is a hardcoded literal.**
   co_change_family, docs_index and session_orient are all on
   mcp::isFieldProjectionTool and all declare a `fields` schema property. None
   declares `compact`. So the dispatcher DOES compact their responses -- it gates
@@ -76404,6 +76434,13 @@ here.)
 
   Deliberately not folded into ANTS-4429: that item is about roadmap_migrate's
   envelope, and this is a guard defect three other verbs sit behind.
+  Resolved (2026-09-14): four verbs in the dispatch projection table
+  lacked a `compact` schema property, not three; feedback_query was the
+  fourth. All four now declare it. The schema-count check expects
+  std::size(kCompactArgTools) instead of a literal, and
+  McpCompact.Ants4657EveryCompactArgToolDeclaresIt checks each listed
+  verb's registration, from its name to its tools.append, for the
+  declaration. Both tests red against HEAD.
   **Layman:** Three tools quietly refuse an argument the others accept, and the test meant to catch that counts by hand.
   Kind: fix.
   Source: in-session-2026-08-25 (found by the suite while closing ANTS-4429).

@@ -78,6 +78,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **co_change_family, docs_index, feedback_query and session_orient now declare the `compact` argument they already honoured, so a caller can pass compact:false to them.** (ANTS-4657)
+
 - **roadmap_query's tool detail now says when `parseable_bullets` and its warning appear, and that a store-served read never carries them, so their absence can be read correctly on either backend.** (ANTS-4964)
 
 - **roadmap_query answers a migrated project whose store holds no items from the store, with zero items, instead of falling back to the file and telling the caller to Read it.** (ANTS-4861)
