@@ -95,6 +95,11 @@ for security-relevant changes.
 
 ### Fixed
 
+- **Pasting a large screenshot no longer freezes the window while it saves** (ANTS-5077)
+  Pasting an image saved it as a PNG on the window's own thread, so a large
+  screenshot froze every tab until the file was written. The image is now
+  saved in the background, and its path is pasted once the file exists.
+
 - **Long unbroken lines no longer leave tens of megabytes cached per tab** (ANTS-5077)
   The drawing cache kept a fixed number of text runs, however long each run
   was. A line with no spaces is one run as wide as the row, so a few tabs of

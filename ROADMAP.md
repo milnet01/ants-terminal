@@ -7902,7 +7902,7 @@ extends an existing item, that item carries it instead.
   Source: code-quality-review-2026-09-11 perf pass (lane terminal-grid).
   Lanes: terminalgrid.
 
-- 📋 [ANTS-5077] **Performance pass findings for the terminal renderer and key handling (medium and low).**
+- ✅ [ANTS-5077] **Performance pass findings for the terminal renderer and key handling (medium and low).**
   Medium:
   - Pasting a clipboard image reads and PNG-encodes it inside
     keyPressEvent on the GUI thread with no size cap; encode on a
@@ -7968,6 +7968,13 @@ extends an existing item, that item carries it instead.
   budget. Test: shaped_run_cache INV-6 and INV-7, red first against a
   stub; full default suite green. Last open part: clipboard image encode
   on the GUI thread (next).
+  Resolved (2026-09-14): the last open medium is fixed. A pasted
+  screenshot is saved on a QThread::create worker, which narrows it to
+  owner-only and removes it on failure; the widget pastes the quoted
+  path and emits imagePasted only when the worker reports success. Test:
+  image_paste_uri_list INV-7, amended and red first against the
+  synchronous save; full default suite green. Every medium and low on
+  this item is now shipped or closed by a decision.
   **Layman:** Smaller fixes to drawing and typing in the terminal, including a screenshot-paste freeze.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lane terminal-widget-a).

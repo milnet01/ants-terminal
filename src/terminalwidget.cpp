@@ -50,6 +50,7 @@
 #include <QThread>
 
 #include <algorithm>
+#include <memory>
 #include <utility>   // std::as_const — see updateSuggestion()
 
 namespace {
@@ -2006,19 +2007,28 @@ void TerminalWidget::keyPressEvent(QKeyEvent *event) {
                 const QString filename = dir + "/paste_"
                     + QDateTime::currentDateTime().toString("yyyyMMdd_HHmmss_zzz")
                     + "_" + uid + ".png";
-                if (img.save(filename)) {
-                    // ANTS-5077 — owner-only like the session log, quoted like
-                    // the uri-list path (a configured directory may hold a
-                    // space or `$(`), and announced only once the file
-                    // exists. A file whose permissions cannot be narrowed is
-                    // removed rather than left readable.
-                    if (setOwnerOnlyPerms(filename)) {
-                        pasteToTerminal(shellQuote(filename).toUtf8());
-                        emit imagePasted(img);
-                    } else {
-                        QFile::remove(filename);
-                    }
-                }
+                // ANTS-5077 — encoding a screenshot to PNG can take long
+                // enough to freeze the window, so the save runs on a worker.
+                // The file is made owner-only like the session log and removed
+                // if that fails; the path is pasted quoted like the uri-list
+                // path (a configured directory may hold a space or `$(`), and
+                // announced only once the file exists. `this` as the delivery
+                // context drops it if the tab closes first.
+                auto saved = std::make_shared<bool>(false);
+                QThread *worker = QThread::create([img, filename, saved]() {
+                    if (!img.save(filename)) return;
+                    if (setOwnerOnlyPerms(filename)) *saved = true;
+                    else QFile::remove(filename);
+                });
+                connect(worker, &QThread::finished, worker, &QObject::deleteLater);
+                connect(worker, &QThread::finished, this,
+                        [this, img, filename, saved]() {
+                            if (*saved) {
+                                pasteToTerminal(shellQuote(filename).toUtf8());
+                                emit imagePasted(img);
+                            }
+                        }, Qt::QueuedConnection);
+                worker->start();
                 return;
             }
         }

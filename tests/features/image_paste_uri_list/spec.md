@@ -71,11 +71,13 @@ the `hasImage()` branch and **before** the plain-text fallback.
   invariant holds the documented contract, not an observed failure, and the
   cost is one branch.
   *Test:* `NullMimeDataGuardedBeforeAnyDereference`.
-- **INV-7** (ANTS-5077) — in the raster (`hasImage()`) branch, the block
-  run after `img.save(filename)` succeeds narrows the saved file to
-  owner-only with `setOwnerOnlyPerms(filename)`, pastes
-  `shellQuote(filename)`, and emits `imagePasted`. `imagePasted` is emitted
-  nowhere else in `terminalwidget.cpp`, so a failed save announces nothing.
+- **INV-7** (ANTS-5077) — in the raster (`hasImage()`) branch, a
+  `QThread::create` worker runs `img.save(filename)` and narrows the saved
+  file to owner-only with `setOwnerOnlyPerms(filename)`, so the PNG encode
+  never runs on the GUI thread. The delivery back on the widget pastes
+  `shellQuote(filename)` and emits `imagePasted` only after checking the
+  worker's result. `imagePasted` is emitted nowhere else in
+  `terminalwidget.cpp`, so a failed save announces nothing.
   *Test:* `RasterPasteIsPrivateQuotedAndAnnouncedOnSave`.
 
 ## Scope
