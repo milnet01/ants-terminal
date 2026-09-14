@@ -34,6 +34,7 @@ has never seen it.
 | `DryRunRefusesToo` | INV-2 | `dry_run:true` reports the same refusal. A preview that previewed a publish the real call would refuse would be lying about the one thing it is for. |
 | `ConvergedStoreStillPublishes` | INV-3 | With no hand edit the same `flip` succeeds and rewrites the file. The guard must not fire on the path every write takes; a guard that refuses everything is indistinguishable from a broken write path. |
 | `MentionInBodyIsNotOwnership` | INV-4 | An **id-less** bullet whose prose cross-references an id the render does not emit is not read as owning it. The guard reads each bullet's leading `[<PREFIX>-NNNN]` slot (`BulletRecord::idToken`), not `BulletRecord::id`, which takes the first bracketed id token anywhere in the body. The mentioned id must be one the render does **not** emit or the case cannot discriminate — measured 2026-08-14, a first draft mentioning a live id passed under both readings. |
+| `PassHeadingIdsAreOwned` | INV-5 (ANTS-5087) | A pass-headings block has no leading id slot, so `idToken` stays empty; the guard counts such a record's synthesised `PASS-` id instead, so a hand-added pass block is refused rather than deleted by the next publish. |
 
 ## Must-fail-first — run, not asserted
 

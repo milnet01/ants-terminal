@@ -21,6 +21,7 @@
 #include <QRegularExpression>
 #include <QString>
 #include <QTemporaryDir>
+#include <QUuid>
 
 namespace {
 
@@ -509,6 +510,55 @@ TEST(RoadmapRender, Inv13PathContainment) {
         RoadmapRender::Options o;   // empty liveRoadmapPath
         const auto out = RoadmapRender::render(*f->store, f->projectId, f->root(), o, &err);
         EXPECT_FALSE(out) << "an empty live path is a refusal, not a default";
+    }
+}
+
+// INV-13, ANTS-5087 — an escaping path is refused before any directory is
+// made, and a symlinked leaf is judged by its target.
+TEST(RoadmapRender, Inv13RefusesBeforeCreatingAndFollowsLeafLinks) {
+    QString err;
+    {
+        auto f = makeFixture();
+        ASSERT_TRUE(f);
+        const QString name = QStringLiteral("ants5087-") + QUuid::createUuid().toString(QUuid::Id128);
+        RoadmapRender::Options o;
+        o.liveRoadmapPath = QStringLiteral("../") + name + QStringLiteral("/ROADMAP.md");
+        const auto out = RoadmapRender::render(*f->store, f->projectId, f->root(), o, &err);
+        EXPECT_FALSE(out) << "an escaping live path must be refused";
+        const QString outside = QDir(f->root() + QStringLiteral("/..")).filePath(name);
+        EXPECT_FALSE(QFileInfo::exists(outside))
+            << "the refused path's directory was created outside the root first";
+        QDir().rmdir(outside);
+    }
+    {
+        auto f = makeFixture();
+        ASSERT_TRUE(f);
+        QTemporaryDir elsewhere;
+        ASSERT_TRUE(elsewhere.isValid());
+        const QString target = elsewhere.filePath(QStringLiteral("victim.md"));
+        {
+            QFile v(target);
+            ASSERT_TRUE(v.open(QIODevice::WriteOnly));
+            v.write("untouched\n");
+        }
+        ASSERT_TRUE(QFile::link(target, f->root() + QStringLiteral("/linked.md")));
+        RoadmapRender::Options o;
+        o.liveRoadmapPath = QStringLiteral("linked.md");
+        const auto out = RoadmapRender::render(*f->store, f->projectId, f->root(), o, &err);
+        EXPECT_FALSE(out) << "a leaf symlinked outside the root must be refused";
+        EXPECT_EQ(readAll(target), QStringLiteral("untouched\n"))
+            << "the render wrote through the symlink to a file outside the root";
+    }
+    {
+        auto f = makeFixture();
+        ASSERT_TRUE(f);
+        RoadmapRender::Options o;
+        o.liveRoadmapPath = QStringLiteral("newdir/sub/ROADMAP.md");
+        o.dryRun = true;
+        const auto out = RoadmapRender::render(*f->store, f->projectId, f->root(), o, &err);
+        ASSERT_TRUE(out) << err.toStdString();
+        EXPECT_FALSE(QFileInfo::exists(f->root() + QStringLiteral("/newdir")))
+            << "a dry run created the render path's directories";
     }
 }
 

@@ -46,9 +46,16 @@ QStringList fileIds(const QString &path) {
     // ten call sites to carry something that cannot change the answer.
     const auto bullets = RoadmapParse::parseBullets(QString::fromUtf8(f.readAll()));
     out.reserve(bullets.size());
-    for (const RoadmapParse::BulletRecord &b : bullets)
+    for (const RoadmapParse::BulletRecord &b : bullets) {
         if (!b.idToken.isEmpty())
             out.append(b.idToken);
+        // ANTS-5087 — a pass heading has no leading id slot, so idToken is
+        // never set and a hand-added pass block was invisible to the guard.
+        // Its id is the one synthesised from the designator, which is also
+        // the id the store holds for it.
+        else if (b.format == QLatin1String("pass-headings"))
+            out.append(b.id);
+    }
     return out;
 }
 

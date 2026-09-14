@@ -14,6 +14,7 @@
 #include "remotecontrol.h"
 #include "roadmapmigrate.h"
 #include "roadmapmigrateload.h"
+#include "roadmapparse.h"
 #include "roadmapstore.h"
 
 #include <gtest/gtest.h>
@@ -306,4 +307,34 @@ TEST(RoadmapDivergenceGuard, MentionInBodyIsNotOwnership) {
         << resp.value(QStringLiteral("error")).toString().toStdString();
     EXPECT_EQ(statusOf(QStringLiteral("DEMO-0007"), projectId),
               QStringLiteral("shipped"));
+}
+
+// ---------------------------------------------------------------- INV-5 -----
+
+// ANTS-5087 — a pass-headings file has no leading id slot, so its blocks were
+// invisible to the guard and a hand-added pass block was deleted by the next
+// publish. The premise is asserted behaviourally; the guard's use of the
+// synthesised id is a source check, because fileIds() is file-local.
+TEST(RoadmapDivergenceGuard, PassHeadingIdsAreOwned) {
+    const auto bullets = RoadmapParse::parseBullets(QStringLiteral(
+        "# Demo\n\n#### Pass 4.1 A hand-added pass\n\n- **Status**: todo\n\n"
+        "#### Pass 4.2 Another pass\n\n- **Status**: done\n"));
+    ASSERT_EQ(bullets.size(), 2);
+    for (const auto &b : bullets) {
+        EXPECT_EQ(b.format, QStringLiteral("pass-headings"));
+        EXPECT_TRUE(b.idToken.isEmpty()) << "premise: a pass heading has no id slot";
+        EXPECT_TRUE(b.id.startsWith(QStringLiteral("PASS-"))) << b.id.toStdString();
+    }
+
+    QFile src(QFileInfo(QString::fromUtf8(__FILE__)).absolutePath()
+              + QStringLiteral("/../../../src/roadmapwrite.cpp"));
+    ASSERT_TRUE(src.open(QIODevice::ReadOnly | QIODevice::Text));
+    const QString text = QString::fromUtf8(src.readAll());
+    const int fn = text.indexOf(QStringLiteral("QStringList fileIds(const QString &path)"));
+    ASSERT_GE(fn, 0);
+    const int end = text.indexOf(QStringLiteral("\n}\n"), fn);
+    const QString body = text.mid(fn, end - fn);
+    EXPECT_TRUE(body.contains(QStringLiteral("b.format == QLatin1String(\"pass-headings\")")))
+        << "fileIds reads only idToken, which pass-headings parsing never sets";
+    EXPECT_TRUE(body.contains(QStringLiteral("out.append(b.id)")));
 }

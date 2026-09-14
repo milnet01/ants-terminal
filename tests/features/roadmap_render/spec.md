@@ -28,6 +28,7 @@ itself.
 | `Inv11SingleElementReader` | 11 | `roadmapexport.cpp` keeps its own `FROM element` / `FROM project` SQL |
 | `Inv12RequiredPiecesPresent` | 12 | `Kind:` is skipped for items whose kind equals § 3.5.3's default |
 | `Inv13PathContainment` | 13 | either path is joined to the root without canonicalising, or the check covers `source_path` alone |
+| `Inv13RefusesBeforeCreatingAndFollowsLeafLinks` | 13 (ANTS-5087) | an escaping path's directories are created before containment is checked, a dry run creates directories, or a leaf symlinked outside the root is written through |
 | `Inv14DryRunWritesNothing` | 14 | dry-run is implemented as write-then-delete |
 | `Ants3820DroppedItemHasNoMarkdownForm` | — (ANTS-3820) | `dropped` is given a status glyph, so `bulletText()` emits a parseable bullet for it — and `bulletsFromStore()`'s `appendRecord()`, which uses the parse FAILURE as its exclusion, starts admitting dropped items. Producer-side only: the render's own exclusion is `Inv4Membership`'s, and is not re-asserted here |
 | `Ants3818NoUnsortedSectionConsumer` | — (ANTS-3818) | a new consumer calls the unsorted `listSections()` where document order matters. A source scrape, because no behaviour of the render can observe which enumerator a *different* file chose. Exempts `roadmapstore.cpp` (the enumerator's home) and `remotecontrol_roadmap_log.cpp` (three callers verified order-independent) |

@@ -70,6 +70,22 @@ for security-relevant changes.
 
 ### Fixed
 
+- **Publishing the roadmap refuses a path that leaves the project before creating any folder, and never writes through a symlink that points outside it** (ANTS-5087)
+  A dry run no longer creates folders either.
+
+- **On a pass-headings roadmap, a hand-added pass block is protected from being deleted by the next roadmap write** (ANTS-5087)
+  The write now refuses and names the block, as it already did for
+  ordinary bullets the database has never imported.
+
+- **Roadmap migration and export rebuild match item ids with non-ASCII letters the same way the roadmap database does** (ANTS-5087)
+  The database folds only A-Z when comparing ids, while the migration and
+  the rebuild also lowercased letters such as Ä, so those ids could link to
+  the wrong item or none.
+
+- **An older Ants build meeting a roadmap database from a newer build now refuses at once instead of waiting for the write lock** (ANTS-5086)
+  The new roadmap database file is also created owner-only before any
+  roadmap data is written into it.
+
 - **Since-last-run audits no longer re-count header findings as new or grow the recorded finding list every run** (ANTS-5085)
   A finding a tool reports in an unchanged file that the previous run
   also had is carried forward once, not added again.

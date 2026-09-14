@@ -303,29 +303,66 @@ std::optional<QString> tableText(const QString &payload, QString *error) {
 // roadmap is the one path every project uses, and exempting it would hollow the
 // invariant out. Canonicalises BOTH sides — canonicalising only one computes a
 // path out of the project (the ANTS-3782 § 2.4 lesson, on the write side).
-bool resolveUnderRoot(const QString &root, const QString &rel, QString *abs, QString *error) {
+bool resolveUnderRoot(const QString &root, const QString &rel, bool create,
+                      QString *abs, QString *error) {
     if (rel.isEmpty())
         return fail(error, QStringLiteral("empty render path is a refusal, not a default"));
 
     const QString canonRoot = QFileInfo(root).canonicalFilePath();
     if (canonRoot.isEmpty())
         return fail(error, QStringLiteral("project root does not exist: %1").arg(root));
+    const auto underRoot = [&canonRoot](const QString &p) {
+        return p == canonRoot || p.startsWith(canonRoot + QLatin1Char('/'));
+    };
+    const auto escapes = [&]() {
+        return fail(error, QStringLiteral("render path escapes the project root: %1").arg(rel));
+    };
 
-    const QString joined = QFileInfo(rel).isAbsolute() ? rel : QDir(canonRoot).filePath(rel);
-    // The target need not exist yet, so canonicalise its PARENT and re-append
-    // the file name; canonicalFilePath() on a missing file returns empty.
+    const QString joined = QDir::cleanPath(
+        QFileInfo(rel).isAbsolute() ? rel : QDir(canonRoot).filePath(rel));
     const QFileInfo fi(joined);
+
+    // ANTS-5087 — containment is decided from the nearest directory that
+    // exists, BEFORE any is created. mkpath ran first, so an escaping path
+    // created its directories outside the root before being refused, and a
+    // dry run created them too.
+    QString probe = fi.absolutePath();
+    while (!QFileInfo::exists(probe)) {
+        const QString up = QFileInfo(probe).absolutePath();
+        if (up == probe)
+            break;
+        probe = up;
+    }
+    const QString canonProbe = QFileInfo(probe).canonicalFilePath();
+    if (canonProbe.isEmpty() || !underRoot(canonProbe))
+        return escapes();
+
     QDir parent = fi.dir();
-    if (!parent.exists() && !parent.mkpath(QStringLiteral(".")))
-        return fail(error, QStringLiteral("could not create directory: %1").arg(parent.path()));
+    if (!parent.exists()) {
+        if (!create) {
+            // Nothing below the probe exists, so nothing there is a symlink.
+            *abs = QDir::cleanPath(canonProbe + QLatin1Char('/')
+                                   + QDir(probe).relativeFilePath(fi.absoluteFilePath()));
+            return true;
+        }
+        if (!parent.mkpath(QStringLiteral(".")))
+            return fail(error, QStringLiteral("could not create directory: %1").arg(parent.path()));
+    }
 
     const QString canonParent = QFileInfo(parent.path()).canonicalFilePath();
     if (canonParent.isEmpty())
         return fail(error, QStringLiteral("could not resolve directory: %1").arg(parent.path()));
 
     const QString resolved = QDir(canonParent).filePath(fi.fileName());
-    if (resolved != canonRoot && !resolved.startsWith(canonRoot + QLatin1Char('/')))
-        return fail(error, QStringLiteral("render path escapes the project root: %1").arg(rel));
+    if (!underRoot(resolved))
+        return escapes();
+    // ANTS-5087 — QSaveFile writes through a symlink to its target, so an
+    // existing leaf is judged by where it points.
+    if (QFileInfo(resolved).isSymLink()) {
+        const QString target = QFileInfo(resolved).canonicalFilePath();
+        if (target.isEmpty() || !underRoot(target))
+            return escapes();
+    }
     if (QFileInfo::exists(resolved) && !QFileInfo(resolved).isFile())
         return fail(error, QStringLiteral("render target is not a regular file: %1").arg(resolved));
 
@@ -420,7 +457,7 @@ std::optional<Outcome> render(RoadmapStore &store, qint64 projectId,
     QHash<QString, QVector<RoadmapStore::SectionRow>> byFile;
     for (const RoadmapStore::SectionRow &s : ordered) {
         QString abs;
-        if (!resolveUnderRoot(projectRoot, s.sourcePath.value_or(opts.liveRoadmapPath), &abs, error))
+        if (!resolveUnderRoot(projectRoot, s.sourcePath.value_or(opts.liveRoadmapPath), !opts.dryRun, &abs, error))
             return std::nullopt;
         if (!byFile.contains(abs))
             fileOrder.append(abs);
@@ -428,7 +465,7 @@ std::optional<Outcome> render(RoadmapStore &store, qint64 projectId,
     }
 
     QString liveAbs;
-    if (!resolveUnderRoot(projectRoot, opts.liveRoadmapPath, &liveAbs, error))
+    if (!resolveUnderRoot(projectRoot, opts.liveRoadmapPath, !opts.dryRun, &liveAbs, error))
         return std::nullopt;
 
     // § 2.8 + § 2.2 — assemble each file. Exactly one blank line between
