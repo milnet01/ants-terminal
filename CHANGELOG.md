@@ -70,6 +70,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **The git diff reader ends a file's hunks at a merge-conflict section instead of assigning its lines to the file before it.** (ANTS-5111)
+
 - **The debug log now rotates when it passes its size limit during a session, instead of growing until Ants restarts** (ANTS-5110)
 
 - **read_log refuses a path that is not a regular file, so a named pipe can no longer freeze it** (ANTS-5110)

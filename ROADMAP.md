@@ -9246,7 +9246,7 @@ extends an existing item, that item carries it instead.
   Source: code-quality-review-2026-09-11 perf pass (lane diagnostics-logging).
   Lanes: diagnostics.
 
-- 📋 [ANTS-5111] **Performance pass findings for GitWrap, the tree watcher and path validation (medium and low).**
+- ✅ [ANTS-5111] **Performance pass findings for GitWrap, the tree watcher and path validation (medium and low).**
   Filed separately: ANTS-5060, 5074; the shutdown marshal hang is on
   ANTS-5024.
   Medium:
@@ -9271,6 +9271,11 @@ extends an existing item, that item carries it instead.
   - Diff headers assume default prefixes and unquoted names.
   - ClipboardGuard's truncation can split a surrogate pair.
   - mcp-caches.md has no row for the SubsystemMap cache.
+  Resolved (2026-09-14): parseDiffHunks treats a `diff --cc` or `diff
+  --combined` header as a file boundary, so a combined section is no
+  longer read as hunks of the previous file. Test
+  GitDiffHunks.CombinedDiffIsNotPartOfPreviousFile fails on the old
+  parser and passes now; spec INV-8.
   **Layman:** Smaller shared-helper fixes: git output held in full, a folder watcher that misses changes, and a merge-conflict diff misread.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lane shared-utilities).
@@ -17432,6 +17437,15 @@ fixes don't address. Roadmapped here as their own design tasks.
   Fix: key the bucket on the connection or session as well as the
   cwd, or raise the cap for read-only verbs; and have the refusal say
   how many callers share the bucket.
+  NEEDS A DECISION, not built (2026-09-14): workspace_search sits in the
+  Expensive tier (10 calls a minute per tool and canonical caller_cwd)
+  in rateLimitClassFor, and docs/specs/ANTS-1356.md's tier table names
+  it there, so moving it is a contract change that runs rule 14's gate.
+  The precedent is ANTS-1629/1643, which moved the fan-out brief verbs
+  to the BriefAssembly tier (30 a minute) for the same reason. Keying
+  the bucket per connection instead would let one caller multiply its
+  budget, the hole ANTS-1771 closed for caller_cwd synonyms. Adding the
+  sharing count to the refusal needs no contract change.
   **Layman:** When many Claude helpers search one project at once, Ants' search tool turns most of them away.
   Kind: fix.
   Source: in-session-2026-09-11 (performance pass).
