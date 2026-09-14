@@ -79091,6 +79091,30 @@ contributors don't duplicate research.
   Source: in-session-2026-09-10.
   Lanes: mainwindow, settingsdialog.
 
+- ✅ [ANTS-5156] **A tab whose Claude starts before its transcript exists shows "Claude: idle" for the whole session.**
+  ClaudeTabTracker::detectClaudeChild resolves the transcript once, inside
+  the `entry.claudePid == 0` branch, and sets the state to Idle. Claude Code
+  creates its .jsonl only when the first message is sent (measured: process
+  07:32:26, file 07:33:41), so the scoped lookup returns empty, the unscoped
+  fallback binds the system-wide newest transcript or nothing, and the
+  branch never runs again. tab_list reported claude_state idle for this tab
+  mid tool call. Same defect ANTS-4457 fixed in
+  ClaudeIntegration::pollClaudeProcess; since ANTS-1873 the status bar reads
+  the tracker, which kept the one-shot. Fix: retry while no transcript is
+  bound, drop the unscoped fallback (ANTS-1168 dropped it in the singleton),
+  and parse the tail as soon as a path binds.
+  Resolved (2026-09-14, 5fae79f2): detectClaudeChild retries the scoped
+  lookup on every poll while no transcript is bound, the unscoped fallback
+  is removed, and the tail is parsed as soon as a path binds. Test:
+  claude_tab_status_indicator INV-10 (real claude-named child, a foreign
+  idle transcript, the session's transcript created after detection); red
+  before with state stuck at Idle, green after. Suite 4768 passed. Live
+  after the next relaunch.
+  **Layman:** The status bar can say Claude is idle for an entire session while it is busy, because Ants gave up looking for the session's log file too early.
+  Kind: fix.
+  Source: user-report-2026-09-14 (screenshot, status bar idle mid-turn).
+  Lanes: claude, claudestatuswidgets.
+
 ### 📝 Cold-eyes 2026-05-11 (ANTS-1234 spec)
 
 > Docs reviewed: 1 (`docs/specs/ANTS-1234.md`). Loops to clean: 7.
