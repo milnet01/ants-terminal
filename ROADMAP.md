@@ -3699,6 +3699,9 @@ in each named file carry the original indie-review citation.
   shared source-list machinery. The table file is
   src/auditdialog_catalogue.cpp, replacing the auditcatalogue.cpp name
   above, and the line counts quoted above are stale.
+  Order (2026-09-14, user ruling): this item is now first. It moves
+  AuditDialog::populateChecks() unchanged, by member motion, into
+  src/auditdialog_catalogue.cpp; the data table is ANTS-1049's, later.
 
 - ✅ [ANTS-1045] **`XcbPositionTracker` rename + Wayland-non-KWin abort + temp- file leak fix.**
   Shipped 2026-04-30 (post-0.7.60). Class +
@@ -3785,6 +3788,13 @@ in each named file carry the original indie-review citation.
   docs/specs/ANTS-1677-large-file-decomposition.md (accepted). This item is
   the first split: a groundwork commit adding INV-8's seam and the scrape
   check, then one code-to-data commit inside src/auditdialog.cpp.
+  Deferred (2026-09-14, user ruling: split first, table later): the data
+  table leaves the shared decomposition spec and waits for a spec of its
+  own, after the file splits. Implementation found that
+  AuditDialog::populateChecks() builds many checks by hand, gates them on
+  installed tools, a config file and the filesystem type, and assembles
+  some commands at runtime, so the spec's row design could not carry it.
+  ANTS-1044 now moves populateChecks() unchanged instead.
 
 The 2026-04-27 review followed the same methodology as the 0.7.12
 sweep — no roadmap-internal short-cuts, every finding cites
@@ -21899,6 +21909,11 @@ gets one CHANGELOG section + one drift cycle + one push.
   contract, split order ANTS-1049, ANTS-1044, ANTS-1043, ANTS-4919, and
   tools/list keeps today's order. The defer-to-0.8.x line above is
   overtaken by that ordering.
+  Amended (2026-09-14, user ruling: split first, table later): ANTS-1049
+  leaves the spec, the order becomes ANTS-1044, ANTS-1043, ANTS-4919, and
+  the catalogue-identity invariant is withdrawn. The amendment changes
+  direction for work still to come, so the spec is back to draft and runs
+  review-contract again before ANTS-1044 is built.
   **Layman:** Three oversized source files account for most of the project's changes; split them up.
   Kind: implement.
 

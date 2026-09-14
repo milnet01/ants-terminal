@@ -1,9 +1,9 @@
 # ANTS-1677 — Split `mainwindow.cpp`, `auditdialog.cpp` and `claudeintegration.cpp` under one decomposition contract
 
-**Status:** accepted (2026-09-14).
+**Status:** spec draft (2026-09-14).
 **Kind:** refactor.
 **Source:** ROADMAP.md ANTS-1677 (indie-review-2026-04-27 trio note; shared-contract ruling by the user 2026-09-07; written next per the user 2026-09-14).
-**Covers:** ANTS-1043, ANTS-1044, ANTS-1049, ANTS-4919.
+**Covers:** ANTS-1043, ANTS-1044, ANTS-4919.
 **Pairs with:** ANTS-3833 (`remotecontrol.cpp` split, shipped — the precedent whose linkage rules this spec reuses).
 
 No user-visible change. The three largest source files become several smaller
@@ -70,23 +70,22 @@ Four consequences:
 |---|---|
 | One shared contract for ANTS-1043, 1044, 1049 and 4919, not four specs | user, 2026-09-07 |
 | The splits run before Colony, as Colony enablers | user, 2026-09-06 and 2026-09-07 |
-| Order of the work: ANTS-1049, ANTS-1044, ANTS-1043, ANTS-4919 | user, 2026-09-14 |
+| Order of the work: ANTS-1044, ANTS-1043, ANTS-4919 | user, 2026-09-14 |
+| ANTS-1049's data table leaves this contract for its own later spec; the files are split first | user, 2026-09-14, after implementation found `AuditDialog::populateChecks()` gates checks on installed tools, a config file and the filesystem, and assembles some commands at runtime |
 | `tools/list` keeps today's order; regrouping by family is a later, separate change | user, 2026-09-14 |
 | The umbrella is filed under ANTS-1677 with `**Covers:**` | author — `docs/standards/specs.md` § 2 permits the umbrella form in this project, and ANTS-1677 is the item naming all three files |
-| Audit checks stay C++ data, not `audit_rules.json` rows | CLAUDE.md § Key design decisions (non-obvious): "Hardcoded checks stay in C++; `audit_rules.json` only appends/overrides" |
 | Piece naming `src/<stem>_<part>.cpp`, where `<stem>` is `mainwindow`, `auditdialog` or `claudeintegration` | author — § 2.3 says why |
 | A 4,000-line cap per file in a class's source list | author — § 2.5 |
 
-### 2.2 Three kinds of move
+### 2.2 Two kinds of move
 
-Every change this spec authorises is one of three kinds. A commit may contain
+Every change this spec authorises is one of two kinds. A commit may contain
 only one kind for a given class, so each commit carries exactly one proof.
 
 | Kind | What moves | Proof that nothing changed |
 |---|---|---|
 | **A — member motion** | whole member function bodies, or a namespace-scope definition, cut as contiguous slices from `src/<stem>.cpp` into a piece file | INV-7 (motion identity) and INV-10 |
 | **B — function carving** | a run of consecutive statements inside one function becomes the body of a new function; the original body calls the new functions in the original order | INV-7 (motion identity) and INV-10 |
-| **C — code to data** | a sequence of registration calls becomes rows of a table plus loops over it | INV-8 (catalogue identity) and INV-10 |
 
 **Every cut of `claudeintegration`, of any kind, also carries INV-6.**
 
@@ -102,16 +101,10 @@ share `kRcUnavailable` and `rcDelegate`, and the `tools/list` branch shares
 `makeCallerCwdReadProp` and its siblings. `mcpOn` is read only above the first
 `registerToolProvider` call, so it stays in `setupClaudeMcpProviders()`.
 
-**Kind C, for ANTS-1049.** `AuditDialog::populateChecks()` becomes a table of
-check rows plus loops that append them. The table is defined at namespace
-scope, and each row carries its condition as data — the detected types it needs
-and the ones it excludes — never as an expression over a local such as `isQt`. A check built with a callable (`inProcessRunner` today), or with logic no
-row can express, stays as code at its original position: the table is split
-into consecutive runs around it, so the build order does not change (INV-8).
-ANTS-1049 builds the table inside `src/auditdialog.cpp`, so it adds no file.
-ANTS-1044 later moves the table, by kind A, to `src/auditdialog_catalogue.cpp` —
-the name § 2.3's rule gives in place of the `auditcatalogue.cpp` ANTS-1044's
-body proposes.
+**No code-to-data move is authorised here.** ANTS-1049's table waits for its own
+spec (§ 2.1). ANTS-1044 moves `AuditDialog::populateChecks()` unchanged, by
+kind A, into `src/auditdialog_catalogue.cpp` — the name § 2.3's rule gives in
+place of the `auditcatalogue.cpp` ANTS-1044's body proposes.
 
 ### 2.3 Source lists and the text readers
 
@@ -188,13 +181,13 @@ subject. The two silent ones also gain an emptiness check.**
 
 | Reader | Reads after the move | Failure when its subject is missing |
 |---|---|---|
-| `tests/audit_self_test.sh` fixture coverage | the ids from the whole `auditdialog` glob, in whatever row form ANTS-1049 ships | new: `FAIL` when the extracted id list is empty |
+| `tests/audit_self_test.sh` fixture coverage | the ids from the whole `auditdialog` glob | new: `FAIL` when the extracted id list is empty |
 | `audit_fixture_coverage` runtime check | the same set, from the same files | new: a finding when its grep yields no ids in a tree where `src/auditdialog.cpp` exists |
 | `tools/check-readme-claims.sh` MCP tool count | the `claudeintegration` glob | existing: exit 1 on a count that differs from `README.md` |
 | `tests/features/mcp_tools_list_schema` | the carved `appendToolSchemas*` bodies, via `slurpClaudeIntegration()` | existing: its `appendCount > 0` and `schemaCount > 0` expectations |
 
-**The row form ANTS-1049 picks is its own**, provided INV-5 holds. The spec pins
-the id *set* both readers must return, not the text of a row.
+**INV-5 pins the id set both readers return**, whichever file of the class
+holds the calls.
 
 ### 2.4 Linkage
 
@@ -269,24 +262,21 @@ Each item lands as ordered commits, and every one builds and passes the suite:
 
 | # | Contents |
 |---|---|
-| 1 | **Groundwork, while the file is still one TU.** The class's `ANTS_<STEM>_SOURCES_REL` list, holding one entry; the macro definitions; the `srcgrep.h` wrapper; every text reader migrated to `slurp<Stem>()` and the single-file macros deleted; the re-route of non-text macro uses; the promotion of § 2.4; the seams INV-1 allows; and, for the first item needing each, `tools/split-motion-check.py` (INV-7 and INV-10) and the capture harnesses of INV-6 and INV-8. |
+| 1 | **Groundwork, while the file is still one TU.** The class's `ANTS_<STEM>_SOURCES_REL` list, holding one entry; the macro definitions; the `srcgrep.h` wrapper; every text reader migrated to `slurp<Stem>()` and the single-file macros deleted; the re-route of non-text macro uses; the promotion of § 2.4; the seams INV-1 allows; and, for the first item needing each, `tools/split-motion-check.py` (INV-7 and INV-10) and the capture harness of INV-6. |
 | 2 | **The cuts.** One or more commits, each carrying one kind of move and compared with its parent by the invariants § 2.2 names for that kind. The list grows, and each reader of § 1 is re-pointed in the commit that moves its subject. A cut needing a symbol the groundwork did not promote is preceded by its own promotion commit. |
 | 3 | The standing tests of § 6 for that class, where commit 1 did not already add them. |
 
-**Items and classes.** ANTS-1049 and ANTS-1044 split `auditdialog`, ANTS-1043
-`mainwindow`, and ANTS-4919 `claudeintegration`. **ANTS-1049 adds no file.** Its
-groundwork commit adds INV-8's seam and `tools/split-motion-check.py --scrapes`.
-Its one kind C commit converts `populateChecks()` inside `src/auditdialog.cpp`,
-re-points the two audit readers (INV-5), and carries INV-8 and INV-10. It deletes
-no macro and needs no source list. `slurpSourceList`, `split_sources` and the
-motion check's INV-7 mode land with ANTS-1044, the first item that adds a file.
+**Items and classes.** ANTS-1044 splits `auditdialog`, ANTS-1043 `mainwindow`,
+and ANTS-4919 `claudeintegration`, in that order. `slurpSourceList`,
+`split_sources` and `tools/split-motion-check.py` land with ANTS-1044, the first
+item.
 
 ## 3. Invariants
 
 **When each invariant applies.** INV-9 holds for a class from the last cut
 commit of the last item that splits it. INV-3 holds from the groundwork commit of
 the first item that adds a file to the class; INV-2 and INV-11 from the first
-commit that adds a file. INV-6, INV-7, INV-8 and INV-10 compare each cut commit
+commit that adds a file. INV-6, INV-7 and INV-10 compare each cut commit
 with its parent, for the kinds § 2.2 assigns them. INV-1, INV-4, INV-5 and
 INV-12 hold at every commit.
 
@@ -294,8 +284,8 @@ INV-12 hold at every commit.
   or `ClaudeIntegration` changes. The only header edits allowed are added
   private member declarations — for kind B pieces and for § 2.4's promotions of
   `this`-capturing lambdas — plus one public
-  `QList<AuditCheck> AuditDialog::checksForTest(const QStringList &detectedTypes)`,
-  INV-8's seam, named with the project's `ForTest` suffix. *Breaks when:* a carved piece is
+  `QList<AuditCheck> AuditDialog::checksForTest() const`, INV-5's seam, named
+  with the project's `ForTest` suffix. *Breaks when:* a carved piece is
   exposed publicly, or a signature changes in passing, which recompiles and can
   re-bind every consumer for no reason. *Test:* for each item, review
   `git diff <item-parent>..<item-last-commit> -- src/mainwindow.h src/auditdialog.h src/claudeintegration.h`;
@@ -332,15 +322,14 @@ INV-12 hold at every commit.
   commit.
 - **INV-5** — The rule-id set extracted by `tests/audit_self_test.sh`'s
   fixture-coverage block equals the id set extracted by the
-  `audit_fixture_coverage` runtime check. Both are non-empty, and both are
-  contained in the union, over INV-8's detected-type sets, of the ids
-  `AuditDialog::populateChecks()` builds.
-  *Breaks when:* ANTS-1049 moves the ids into a row form one reader no longer
-  matches — the reader then extracts nothing and passes. *Test:* a case in the
-  audit bundle builds the catalogue through INV-8's seam for each type set, and
-  runs both extraction commands over a copy of the tree with no
-  `tests/audit_fixtures/`, so the runtime check reports every id. It asserts
-  the two extracted sets are equal, non-empty and contained in that union.
+  `audit_fixture_coverage` runtime check. Both are non-empty.
+  *Breaks when:* ANTS-1044 moves the calls into a file one reader does not
+  read — the reader then extracts nothing and passes. *Test:* a case in the
+  audit bundle takes `audit_fixture_coverage`'s command from
+  `AuditDialog::checksForTest()`, then runs it and `tests/audit_self_test.sh`'s
+  extraction over a copy of the tree with no `tests/audit_fixtures/`, so the
+  runtime check reports every id. It asserts the two extracted sets are equal
+  and non-empty.
 - **INV-6** — The live `tools/list` response is unchanged by a `claudeintegration`
   cut, byte for byte. *Breaks when:* a carved piece is called out of order, or a
   descriptor is edited, dropped or duplicated while moving. *Test:*
@@ -366,18 +355,8 @@ INV-12 hold at every commit.
   `tools/split-motion-check.py --pre <parent> --post <cut> --stem <stem>` exits
   0 for each kind A or kind B cut commit. Against a scratch cut with one moved
   line altered, it exits non-zero.
-- **INV-8** — ANTS-1049's code-to-data move leaves the ordered list of checks
-  `AuditDialog::populateChecks()` builds unchanged. That covers every
-  `AuditCheck` field, with a callable compared as present or absent, except the
-  command of `audit_fixture_coverage`, which § 2.3 re-points in the same commit. It holds for
-  each detected-type set: none; each type literal `populateChecks()` tests
-  through `m_detectedTypes.contains(…)`; and all of them together. *Breaks
-  when:* a row loses its condition, changes its position, or copies a field
-  wrongly. *Test:* `AuditDialog::checksForTest()`, added in ANTS-1049's groundwork commit,
-  serialises the list, one JSON line
-  per check, for each type set. Serialised before and after the kind C commit,
-  the files compare equal. Measured on one machine: `addToolCheck()` consults the tools
-  installed there, so the environment must not change between the two runs.
+- **INV-8** — *withdrawn — 2026-09-14: ANTS-1049's code-to-data move left this
+  contract (§ 2.1), so no item makes the catalogue-identity comparison.*
 - **INV-9** — No file in a split class's source list exceeds 4,000 lines.
   *Breaks when:* code re-accretes into one file until the split is undone, the
   one regression that returns silently. *Test:* `tests/features/split_sources`
@@ -424,16 +403,19 @@ figures in its commit message. Precompiled headers apply unchanged:
 
 - **Regrouping `tools/list` by family** — deferred by the user 2026-09-14;
   not yet queued.
+- **ANTS-1049's data table** — deferred by the user 2026-09-14 to its own
+  spec, after the splits; tracked by ANTS-1049.
 - **Splitting any header** — permanent exclusion. The headers are the classes'
   APIs; INV-1 pins them.
 - **Any change to behaviour, response envelopes, refusal codes, menus or the
-  audit catalogue's contents** — permanent exclusion. INV-6, INV-7 and INV-8
+  audit catalogue's contents** — permanent exclusion. INV-6 and INV-7
   hold that line.
 - **Moving `remotecontrol`'s `ANTS_RC_SOURCES` machinery onto
   `slurpSourceList`** — deferred; not yet queued. It works, and re-plumbing it
   inside these items adds blast radius for no gain here.
 - **Turning the audit catalogue into data a user can edit** — permanent
-  exclusion for these items, per the CLAUDE.md design decision in § 2.1.
+  exclusion for these items, per CLAUDE.md § Key design decisions (non-obvious):
+  hardcoded checks stay in C++.
 
 ## 6. Tests
 
@@ -441,7 +423,7 @@ figures in its commit message. Precompiled headers apply unchanged:
 |---|---|---|---|
 | `tests/features/split_sources` | `test_core` — reads files only, like ANTS-3833's `rc_tu_split` | INV-2, INV-9, INV-11 | standing |
 | `tests/features/mcp_tools_list_live` | `test_claude` — needs `ClaudeIntegration` | INV-6 | standing, plus migration-time dump |
-| the audit catalogue case | the bundle `build_target_for` names for the existing audit feature tests | INV-5, INV-8 | standing (INV-5), migration-time (INV-8) |
+| the audit readers case | the bundle `build_target_for` names for the existing audit feature tests | INV-5 | standing |
 | `tools/split-motion-check.py` | none — a script, shipped the way ANTS-3833 shipped `tools/rc-namespace-scan.py` | INV-7, INV-10 | migration-time |
 
 Label `features;fast` for the two new feature directories. Each case added to a
@@ -456,7 +438,7 @@ bundle's `SOURCES`, never `add_executable`. Build that bundle and check
   description edited: the dump comparison differs. Against a scratch build whose
   `test_claude` definition of `ANTS_CLAUDEINTEGRATION_SOURCES` omits one piece,
   with the library's list unchanged: the standing name-set assertion fails.
-- The audit catalogue case — against a scratch `audit_self_test.sh` whose
+- The audit readers case — against a scratch `audit_self_test.sh` whose
   extraction pattern matches nothing: the empty-set assertion fails.
 - `split-motion-check.py` — against a commit pair with one moved line altered
   (INV-7), and against a cut where a scrape region's content changed but its `find` or
