@@ -1,6 +1,6 @@
 # ANTS-1677 — Split `mainwindow.cpp`, `auditdialog.cpp` and `claudeintegration.cpp` under one decomposition contract
 
-**Status:** spec draft (2026-09-14).
+**Status:** accepted (2026-09-14).
 **Kind:** refactor.
 **Source:** ROADMAP.md ANTS-1677 (indie-review-2026-04-27 trio note; shared-contract ruling by the user 2026-09-07; written next per the user 2026-09-14).
 **Covers:** ANTS-1043, ANTS-1044, ANTS-4919.
@@ -115,8 +115,8 @@ and adds a second route to it, for readers that cannot see a CMake definition.
 **Per class, in `CMakeLists.txt`:**
 
 ```cmake
-# ANTS-1677 — slice order. Entry 1 is src/<stem>.cpp; the pieces follow in the
-# order their text was cut from it.
+# ANTS-1677 — entry 1 is src/<stem>.cpp; the pieces follow in ascending order of
+# where their text began in it.
 set(ANTS_MAINWINDOW_SOURCES_REL        src/mainwindow.cpp        …)
 set(ANTS_AUDITDIALOG_SOURCES_REL       src/auditdialog.cpp       …)
 set(ANTS_CLAUDEINTEGRATION_SOURCES_REL src/claudeintegration.cpp …)
@@ -127,8 +127,10 @@ set(ANTS_CLAUDEINTEGRATION_SOURCES_REL src/claudeintegration.cpp …)
   `auditdialog`, `ants_claude_lib` for `claudeintegration`
   (`build_target_for` on each file, 2026-09-14).
 - Every test bundle that reads the class's text gets
-  `ANTS_<STEM>_SOURCES="<abs1>;<abs2>;…"` — same separator, order and
-  guarantees as ANTS-3833's `ANTS_RC_SOURCES` table.
+  `ANTS_<STEM>_SOURCES="<abs1>;<abs2>;…"` — the same `;` separator,
+  escaped the same way, as ANTS-3833's `ANTS_RC_SOURCES`. Unlike that list, the
+  concatenation does not keep every line's pre-split position, because text after
+  a cut stays in entry 1.
 
 **For shell and Python readers, the glob.** A script cannot read a compile
 definition, so it reads `src/<stem>.cpp src/<stem>_*.cpp`. INV-2 makes that glob
@@ -267,9 +269,10 @@ Each item lands as ordered commits, and every one builds and passes the suite:
 
 | # | Contents |
 |---|---|
-| 1 | **Groundwork, while the file is still one TU.** The class's `ANTS_<STEM>_SOURCES_REL` list, holding one entry; the macro definitions; the `srcgrep.h` wrapper; every text reader migrated to `slurp<Stem>()` and the single-file macros deleted; the re-route of non-text macro uses; the promotion of § 2.4; the seams INV-1 allows; and, for the first item needing each, `tools/split-motion-check.py` (INV-7 and INV-10) and the capture harness of INV-6. |
-| 2 | **The cuts.** One or more commits, each carrying one kind of move and compared with its parent by the invariants § 2.2 names for that kind. The list grows, and each reader of § 1 is re-pointed in the commit that moves its subject, apart from the exception § 2.3 names. A cut needing a symbol the groundwork did not promote is preceded by its own promotion commit. |
-| 3 | The standing tests of § 6 for that class, where commit 1 did not already add them. |
+| 1 | **Checks first, while the file is still one TU.** For the first item needing each: `tools/split-motion-check.py` (INV-7 and INV-10), the INV-6 capture harness, `tests/features/split_sources`, the audit readers case with `tests/audit_self_test.sh --list-rule-ids`, and the seams INV-1 allows. Nothing else changes, so every later commit is measured against a parent that already has its checks. |
+| 2 | **Groundwork.** The class's `ANTS_<STEM>_SOURCES_REL` list, holding one entry; the macro definitions; the `srcgrep.h` wrapper; every text reader migrated to `slurp<Stem>()` and the single-file macros deleted; the re-route of non-text macro uses; and the promotion of § 2.4. |
+| 3 | **The cuts.** One or more commits, each carrying one kind of move and compared with its parent by the invariants § 2.2 names for that kind. The list grows, and each reader of § 1 is re-pointed in the commit that moves its subject, apart from the exception § 2.3 names. A cut needing a symbol the groundwork did not promote is preceded by its own promotion commit. |
+| 4 | Any standing test of § 6 for that class that row 1 did not add. |
 
 **Items and classes.** ANTS-1044 splits `auditdialog`, ANTS-1043 `mainwindow`,
 and ANTS-4919 `claudeintegration`, in that order. `slurpSourceList`,
@@ -282,8 +285,9 @@ item.
 commit of the last item that splits it. INV-3 holds from the groundwork commit of
 the first item that adds a file to the class; INV-2 and INV-11 from the first
 commit that adds a file. INV-6, INV-7 and INV-10 compare each cut commit
-with its parent, for the kinds § 2.2 assigns them; INV-10 also compares each
-commit that promotes a symbol (§ 2.4) with its parent. INV-1, INV-4, INV-5 and
+with its parent, for the kinds § 2.2 assigns them; INV-6 (for
+`claudeintegration`) and INV-10 also compare each commit that promotes a symbol
+(§ 2.4) with its parent. INV-1, INV-4, INV-5 and
 INV-12 hold at every commit.
 
 - **INV-1** — No public or protected declaration of `MainWindow`, `AuditDialog`
@@ -305,7 +309,9 @@ INV-12 hold at every commit.
   (scripts read something the build does not). *Test:*
   `tests/features/split_sources` compares the list parsed from `CMakeLists.txt`
   with a directory listing of `src/`, for each class whose list has more than
-  one entry.
+  one entry. It also splits each compiled `ANTS_<STEM>_SOURCES` on `;` and
+  asserts the entries equal the parsed list, which catches a separator left
+  unescaped — `CMakeLists.txt` records that failure beside `ANTS_RC_SOURCES`.
 - **INV-3** — From the point § 3's opening names, none of the class's
   single-file path macros (§ 2.3) survives in `CMakeLists.txt` or in a `.cpp`
   file under `tests/`, and no `.cpp` file under `tests/` reads the class's text
@@ -333,8 +339,8 @@ INV-12 hold at every commit.
   read — the reader then extracts nothing and passes. *Test:* a case in the
   audit bundle takes `audit_fixture_coverage`'s command from
   `AuditDialog::checksForTest()`, then runs it and
-  `tests/audit_self_test.sh --list-rule-ids` — a mode ANTS-1044's groundwork
-  commit adds, printing the extracted ids one per line and exiting — over a copy of the tree with no `tests/audit_fixtures/`, so the
+  `tests/audit_self_test.sh --list-rule-ids` — a mode ANTS-1044's first commit
+  adds, printing the extracted ids one per line and exiting — over a copy of the tree with no `tests/audit_fixtures/`, so the
   runtime check reports every id. It asserts the two extracted sets are equal
   and non-empty.
 - **INV-6** — The live `tools/list` response is unchanged by a `claudeintegration`
@@ -345,21 +351,27 @@ INV-12 hold at every commit.
   `tools/list` with no `_meta.shape`, which returns the full shape (ANTS-1502
   makes the lite shape opt-in). It writes the response to
   `$ANTS_TOOLS_LIST_DUMP` when that variable is set. Run before and after
-  each `claudeintegration` cut commit, the two dumps compare equal with `cmp`. Its standing assertion is
+  each `claudeintegration` cut or promotion commit, the two dumps compare equal
+  with `cmp`. Its standing assertion is
   that the response's tool-name set equals the set of names on the lines of
   `slurpClaudeIntegration()` that match `tools/check-readme-claims.sh`'s MCP-tool
   pattern — a line inside an `#ifdef ANTS_LUA_PLUGINS` block counting only when
   the test build defines `ANTS_LUA_PLUGINS` — and is not empty.
 - **INV-7** — A kind A or kind B cut is motion. Every line removed from
-  a file of the class's list appears byte-identical in exactly one other file of
-  that list. Lines keep their relative order within each piece. Every other
+  a file of the class's list appears byte-identical exactly once elsewhere in that
+  list — in another file, or, for a kind B carve kept in the same file, in that
+  file's new function. Lines keep their relative order within each piece. Every other
   added line is one of: a blank line; a piece's ordinal marker; an `#include`;
   a preprocessor conditional line (`#if…`, `#else`, `#endif`) repeating one that
   enclosed the moved text; `namespace <stem>detail {` or its closing brace; a
   `using namespace <stem>detail;`; a carved function's signature or closing
   brace; or a call to a carved function. The ordinal marker is a piece's first
   line, `// ANTS-1677 <stem> piece <k>/<N> — <concern in plain words>`, and like
-  ANTS-3833 § 2.4(c)'s marker it carries no snake_case identifier. *Breaks
+  ANTS-3833 § 2.4(c)'s marker it carries no snake_case identifier.
+  Entry 1, `src/<stem>.cpp`, carries none. `<k>` is the piece's position in the
+  list and `<N>` the list's length after the commit that writes the marker, so a
+  cut that adds a piece rewrites every marker, and INV-7 accepts a marker line
+  replaced by its renumbered form. *Breaks
   when:* a statement is edited, reordered or dropped during the cut. *Test:*
   `tools/split-motion-check.py --pre <parent> --post <cut> --stem <stem>` exits
   0 for each kind A or kind B cut commit. Against a scratch cut with one moved
@@ -373,10 +385,13 @@ INV-12 hold at every commit.
   the classes named in its own capped-class list; the last cut commit of a
   class's last item adds that class to the list.
 - **INV-10** — Every scrape whose region's content a cut, or a promotion commit (§ 2.4),
-  changes has its window-cutting call edited in that same commit. A scrape's region is any window a test cuts from the
-  class's text — a fixed or computed offset window, or the span between two
-  anchors, through `std::string` (`find`, `substr`) or `QString` (`indexOf`,
-  `mid`, `left`) — located with the scrape's code as it stands at the parent. *Breaks when:* a region
+  changes has its window-cutting call edited in that same commit. A scrape's region is a window a test cuts from the
+  class's text through `std::string` (`find`, `substr`) or `QString` (`indexOf`,
+  `mid`, `left`): an anchor plus a literal length, or the span between two
+  anchors, located with the scrape's code as it stands at the parent. A
+  window-cutting call in a class-reading test whose offsets the tool cannot
+  evaluate is listed as unevaluated, and the commit's message names each one as
+  checked by hand. *Breaks when:* a region
   silently loses its subject and a negative or count-based assertion stays green
   over it. *Test:* `tools/split-motion-check.py --scrapes --pre <parent> --post
   <cut> --stem <stem>` derives every such region from `tests/` at the parent,
@@ -437,7 +452,7 @@ figures in its commit message. Precompiled headers apply unchanged:
 |---|---|---|---|
 | `tests/features/split_sources` | `test_core` — reads files only, like ANTS-3833's `rc_tu_split` | INV-2, INV-9, INV-11 | standing |
 | `tests/features/mcp_tools_list_live` | `test_claude` — needs `ClaudeIntegration` | INV-6 | standing, plus migration-time dump |
-| the audit readers case | the bundle `build_target_for` names for the existing audit feature tests | INV-5 | standing |
+| the audit readers case | `test_dialogs` — it constructs an `AuditDialog`, which the engine-only `test_audit` cannot link | INV-5 | standing |
 | `tools/split-motion-check.py` | none — a script, shipped the way ANTS-3833 shipped `tools/rc-namespace-scan.py` | INV-7, INV-10 | migration-time |
 
 Label `features;fast` for the two new feature directories. Each case added to a
@@ -450,8 +465,8 @@ bundle's `SOURCES`, never `add_executable`. Build that bundle and check
   `src/<stem>_x.cpp` outside the list, and against a file one line over the cap.
 - `mcp_tools_list_live` — against a scratch build with one descriptor's
   description edited: the dump comparison differs. Against a scratch build whose
-  `test_claude` definition of `ANTS_CLAUDEINTEGRATION_SOURCES` omits one piece,
-  with the library's list unchanged: the standing name-set assertion fails.
+  `test_claude` definition of `ANTS_CLAUDEINTEGRATION_SOURCES` omits one piece
+  holding tool descriptors, with the library's list unchanged: the standing name-set assertion fails.
 - The audit readers case — against a scratch `audit_self_test.sh` whose
   extraction pattern matches nothing: the empty-set assertion fails.
 - `split-motion-check.py` — against a commit pair with one moved line altered
@@ -479,3 +494,4 @@ surface is the link every build already performs.
 | 1 | 2026-09-14 | 3, cold — genre pinned `spec` | 1 | 5 | 2 | 3 | 11 findings after merging the three lanes (seven raised by all three); 11 verified, 0 dismissed; all 11 fixed. Q2: one kind per cut commit could not meet the 4,000-line cap (several cut commits now allowed, and § 3 says when each invariant applies); ANTS-1049 added a second `auditdialog` file before the machinery (the table is now built inside `src/auditdialog.cpp`); callable checks moved after the loop contradicted INV-8's order; INV-3 could never print 0 over the glob readers and `spec.md` prose (now `.cpp` only); `rcDelegate` captures `this` under two rules (now a private member). Q1: two of the four "silent" readers fail loudly. Q3: INV-5's id set per detected-type set (now the union); INV-7's marker was undefined. Q4: INV-10's zero-row condition was unmeetable; INV-4's negative test passed before the fix existed; INV-6's fail-first case could not fail. Verification also corrected the claim that `mcpOn` is shared across registrations. Three open questions resolved clean. Loop 2 dispatched. |
 | 2 | 2026-09-14 | 3, cold — genre pinned `spec` | 0 | 5 | 3 | 4 | 12 findings after merging the three lanes; 12 verified, 0 dismissed; all 12 fixed. Q2: ANTS-1049's commit shape (a groundwork commit now carries INV-8's seam and the scrape check); § 2.2 and § 3 disagreed on which proofs each kind carries; INV-1 left no home for `rcDelegate`'s promotion or INV-8's seam; INV-8's byte identity against the re-pointed `audit_fixture_coverage` command; the promotion set could not be derived from a one-entry list (now from the seam plan). Q3: ANTS-1044 could not move a function-local table (rows now at namespace scope, conditions as data); INV-3 flagged path mentions that read nothing; INV-6's text-side name set caught non-tool `name` properties. Q4: INV-10 passed vacuously on the cut that migrates every reader (readers now migrate in groundwork, and the scrape call itself must change); INV-3's command re-derived an empty macro list; INV-6's must-fail case could not link; INV-5's runtime check prints only missing ids. Open questions resolved clean: no build-varying value in `tools/list`; `mainwindow.h` already includes `claudeintegration.h`; nested type gates are covered by INV-8's sets. **Capped at loop 2 (spec cap).** 8 of the 12 landed on text loop 1 wrote: a violent cap, so this document's review ends here and it routes to implementation. All 23 verified findings across the run fall inside the gated change, the whole file being new. Status set to accepted. |
 | 3 | 2026-09-14 | 3, cold — genre pinned `spec`; first loop of the review of the split-first amendment | 2 | 2 | 2 | 4 | 10 findings after merging the three lanes; 10 verified, 0 dismissed; all 10 fixed. Q1: the macro inventory missed `MAINWINDOW_CPP` (no `SRC_` prefix); an anonymous-only namespace scan reads every seam as safe after promotion. Q2: re-pointing `audit_fixture_coverage` in the cut contradicted INV-7 (now re-pointed in groundwork, the one authorised catalogue edit); kind A and INV-7 named only `src/<stem>.cpp`. Q3: no entry point for the self-test's id extraction (now `--list-rule-ids`); INV-7 allowed no repeated preprocessor conditional. Q4: INV-6's name set ignored the `ANTS_LUA_PLUGINS` gate; INV-10 missed `QString` and computed windows and the promotion commit; INV-12 cannot catch a constant's linkage. Open questions resolved clean: the descriptor run reads no local of `onMcpConnection()` in code; INV-4 holds at every commit. Loop 2 dispatched. |
+| 4 | 2026-09-14 | 3, cold — genre pinned `spec`; second and final loop of the amendment review | 1 | 2 | 2 | 4 | 9 findings after merging the three lanes; 9 verified, 0 dismissed; all 9 fixed. Q1: the audit readers case was sent to `test_audit`, which cannot link `AuditDialog` (now `test_dialogs`). Q2: INV-7 rejected a kind B carve kept in its own file; INV-6 skipped the promotion commits that rewrite descriptor lambdas. Q3: the ordinal marker's `<N>` was undefined; the list order read two ways and wrongly claimed ANTS-3833's guarantee. Q4: standing tests could land after the cuts they guard (checks now land first); nothing checked a compiled source list against the parsed one; a script cannot evaluate arbitrary computed windows (named forms, the rest listed); INV-6's must-fail case could pass. Open questions resolved clean: `serverInfo["name"]` does not match the tool pattern; INV-4 holds at every commit. **Capped at the spec cap.** 3 of the 9 landed on text this run's first loop wrote: a calm cap, so the spec ships to implementation. 3 of this run's 19 verified findings fall inside the amendment commit itself. Status set to accepted. |
