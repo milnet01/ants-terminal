@@ -15,7 +15,8 @@ SARIF merge. Full design: `docs/specs/ANTS-1870.md`.
   equal `fp`, so it classifies as carried-forward, not added+removed.
 - **INV-3** — `computeDelta` partitions added / removed / carried_forward /
   merged correctly, including the degenerate inputs (empty current, empty
-  prior, both empty).
+  prior, both empty). A current finding in an untouched file that the prior
+  run also had is neither added nor merged twice (ANTS-5085).
 - **INV-4** — The findings sidecar round-trips through `recordRun` +
   `loadFindingsSidecar`; the basename iso is hyphen-form while the body
   `iso_timestamp` carries colons; a `version:2` sidecar loads empty.

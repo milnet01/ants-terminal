@@ -131,6 +131,9 @@ private:
     QString m_path;
     QVector<FireRecord> m_fires;
     QVector<SuppressRecord> m_suppressions;
+    // ANTS-5085 — records added since the last save; save() skips a clean
+    // tracker, so closing the dialog does not rewrite an unchanged file.
+    mutable bool m_dirty = false;
 
     // Bounded retention. We keep at most this many records per category
     // — older ones are pruned on save. 90-day equivalent at typical run

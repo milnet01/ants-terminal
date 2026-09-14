@@ -9,6 +9,8 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QJsonValue>
+#include <QMutex>
+#include <QMutexLocker>
 #include <QSet>
 #include <QStringList>
 #include <QtGlobal>
@@ -155,7 +157,8 @@ QList<LedgerEntry> loadEntries(const QString &projectPath) {
     // ANTS-1672 — cache by (path, mtime_s) so N brief-assembly calls
     // per MCP dispatch (indie-review calls this 3× per session) share
     // one parse result instead of re-reading the file each time.
-    // Single-threaded dispatcher — no mutex needed.
+    // ANTS-5085 — locked: the MCP worker (ANTS-2132) and the review dialogs
+    // on the GUI thread both reach this cache.
     // ANTS-2014 — key on (mtime_s, mtime_ns, size). A second-granularity
     // mtime missed a same-second append (the dominant write pattern for an
     // append-only ledger), serving a stale parse. Nanosecond mtime + file
@@ -167,6 +170,8 @@ QList<LedgerEntry> loadEntries(const QString &projectPath) {
         QList<LedgerEntry> entries;
     };
     static QHash<QString, CacheEntry> s_cache;
+    static QMutex s_cacheMutex;
+    QMutexLocker cacheLock(&s_cacheMutex);
     struct stat st {};
     const bool statOk = (::stat(path.toUtf8().constData(), &st) == 0);
     const qint64 mtime_s  = statOk ? static_cast<qint64>(st.st_mtime) : 0;

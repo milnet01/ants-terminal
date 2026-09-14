@@ -31,6 +31,8 @@ exposes:
    objects.
 
 4. **Retention** — records older than 90 days are pruned on `save()`.
+5. **Save only on change** — `recordSuppression` does not write the file;
+   `save()` writes only when records were added since the last save (ANTS-5085).
    Beyond `MAX_RECORDS = 50000` per category, the oldest entries are
    tail-clamped (FIFO).
 

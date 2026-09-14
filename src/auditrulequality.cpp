@@ -26,6 +26,7 @@ void RuleQualityTracker::recordFire(const QString &ruleId, const QString &lineTe
     r.lineText = lineText;
     r.timestamp = QDateTime::currentDateTime();
     m_fires.append(r);
+    m_dirty = true;
 }
 
 void RuleQualityTracker::recordSuppression(const QString &ruleId,
@@ -40,7 +41,9 @@ void RuleQualityTracker::recordSuppression(const QString &ruleId,
     r.reason = reason;
     r.timestamp = QDateTime::currentDateTime();
     m_suppressions.append(r);
-    save();  // Suppressions are user-initiated and rare; persist immediately.
+    // ANTS-5085 — saved at run end and on close with the fires. Saving here
+    // rewrote and fsynced the whole history on the GUI thread per click.
+    m_dirty = true;
 }
 
 QVector<RuleQualityTracker::RuleStats> RuleQualityTracker::report() const {
@@ -180,7 +183,7 @@ QString RuleQualityTracker::suggestTightening(const QString &ruleId,
 }
 
 void RuleQualityTracker::save() const {
-    if (m_projectPath.isEmpty()) return;
+    if (m_projectPath.isEmpty() || !m_dirty) return;
 
     // Re-run prune logic on a const copy so save() can be const.
     QVector<FireRecord> firesOut = m_fires;
@@ -241,6 +244,7 @@ void RuleQualityTracker::save() const {
         return;
     }
     fsyncParentDir(m_path);
+    m_dirty = false;
 }
 
 void RuleQualityTracker::reload() {

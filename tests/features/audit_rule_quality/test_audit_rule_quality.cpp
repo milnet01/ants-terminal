@@ -154,6 +154,25 @@ void testPersistenceRoundTrip() {
     CHECK_EQ(rows[0].fpRate30d, 50, "round-trip: 1/2 = 50% FP rate");
 }
 
+// --- Test 6 — ANTS-5085: save only what changed, not per suppression. --
+void testSaveOnlyWhenChanged() {
+    QTemporaryDir tmp;
+    const QString path = tmp.path() + "/audit_rule_quality.json";
+    {
+        RuleQualityTracker t(tmp.path());
+        t.recordSuppression("rule_a", "ka", "src/foo.cpp:1: line a1", "noise");
+        CHECK(!QFile::exists(path),
+              "a suppression alone must not rewrite the history file");
+    }
+    CHECK(QFile::exists(path), "destroying a changed tracker must save it");
+    {
+        RuleQualityTracker t(tmp.path());
+        QFile::remove(path);
+    }
+    CHECK(!QFile::exists(path),
+          "a tracker with no new records must not rewrite the file");
+}
+
 #define RQ_TEST(NAME) \
     TEST(AuditRuleQuality, NAME) { \
         int before = failures; \
@@ -166,5 +185,6 @@ RQ_TEST(SuggestTighteningFindsCommonShape)
 RQ_TEST(SuggestTighteningEmptyForFewSamples)
 RQ_TEST(SuggestTighteningRejectsPureIdentifier)
 RQ_TEST(PersistenceRoundTrip)
+RQ_TEST(SaveOnlyWhenChanged)
 
 }  // namespace

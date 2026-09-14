@@ -477,7 +477,10 @@ FilterResult applyFilter(const QString &raw,
                 if (!fileLines) {
                     QStringList &slot = fileCache[relPath];
                     const QString abs = resolveProjectPathLocal(relPath, projectPath);
-                    if (!abs.isEmpty()) {
+                    // ANTS-5085 — the same cap lineIsCode uses; a context
+                    // window needs a source file, not a generated blob.
+                    constexpr qint64 kMaxContextFileBytes = 4 * 1024 * 1024;
+                    if (!abs.isEmpty() && QFileInfo(abs).size() <= kMaxContextFileBytes) {
                         QFile src(abs);
                         if (src.open(QIODevice::ReadOnly | QIODevice::Text)) {
                             slot = QString::fromUtf8(src.readAll())

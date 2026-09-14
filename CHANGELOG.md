@@ -70,6 +70,16 @@ for security-relevant changes.
 
 ### Fixed
 
+- **Since-last-run audits no longer re-count header findings as new or grow the recorded finding list every run** (ANTS-5085)
+  A finding a tool reports in an unchanged file that the previous run
+  also had is carried forward once, not added again.
+
+- **Suppressing an audit finding no longer rewrites the whole rule-quality history file** (ANTS-5085)
+  The history is saved at the end of a run and when the audit window
+  closes, and only when something was recorded.
+
+- **Audit context filters skip very large referenced files, and the review false-positive ledger cache is thread-safe** (ANTS-5085)
+
 - **Audit auto-fix repairs files with Windows line endings, and the audit cache folder is always created private** (ANTS-5085)
   Auto-fix used to treat every planned repair in a CRLF file as out of
   date; it now applies them and keeps each line's ending. The SARIF and

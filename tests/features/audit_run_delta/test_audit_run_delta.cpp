@@ -121,6 +121,17 @@ TEST(AuditRunDelta, Inv3Partition) {
     EXPECT_EQ(e3.removedCount, 0);
     EXPECT_EQ(e3.carriedForwardCount, 0);
     EXPECT_EQ(e3.merged.size(), 0);
+
+    // ANTS-5085 — a tool scanning changed a.cpp reports a finding in its
+    // untouched header b.h that the prior run also had: not added, not
+    // merged twice, carried forward once.
+    const QString H = QStringLiteral("b.h");
+    const QJsonObject hdr = mk(H, 7, QStringLiteral("cppcheck"), QStringLiteral("header"));
+    const auto h = AuditDelta::computeDelta(QJsonArray{hdr}, QJsonArray{hdr}, {A});
+    EXPECT_EQ(h.addedCount, 0);
+    EXPECT_EQ(h.removedCount, 0);
+    EXPECT_EQ(h.carriedForwardCount, 1);
+    EXPECT_EQ(h.merged.size(), 1);
 }
 
 // ── INV-4 — sidecar round-trip ────────────────────────────────────────

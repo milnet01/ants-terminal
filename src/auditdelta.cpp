@@ -43,26 +43,32 @@ DeltaResult computeDelta(const QJsonArray &current,
     }
 
     const QSet<QString> currentFps        = fpSet(current);
-    const QSet<QString> priorChangedFps   = fpSet(priorOnChanged);
+    const QSet<QString> priorFps          = fpSet(prior);
 
-    // 2. added = current ∖ priorOnChanged.
+    // 2. added = current ∖ prior. ANTS-5085 — a tool scanning a changed file
+    //    also reports findings in files it includes, which sit in
+    //    priorOnUntouched; comparing against priorOnChanged alone counted
+    //    those as added on every run.
     for (const QJsonValue &v : current)
-        if (!priorChangedFps.contains(fpOf(v))) d.added.append(v);
+        if (!priorFps.contains(fpOf(v))) d.added.append(v);
 
     // 3. removed = priorOnChanged ∖ current.
     for (const QJsonValue &v : std::as_const(priorOnChanged))
         if (!currentFps.contains(fpOf(v))) d.removed.append(v);
 
-    // 4. carriedForward = (current ∩ priorOnChanged) ∪ priorOnUntouched.
+    // 4. carriedForward = (current ∩ prior) ∪ (priorOnUntouched ∖ current).
     for (const QJsonValue &v : current)
-        if (priorChangedFps.contains(fpOf(v))) d.carriedForward.append(v);
+        if (priorFps.contains(fpOf(v))) d.carriedForward.append(v);
     for (const QJsonValue &v : priorOnUntouched)
-        d.carriedForward.append(v);
+        if (!currentFps.contains(fpOf(v))) d.carriedForward.append(v);
 
-    // 5. merged = current ∪ priorOnUntouched — the whole-tree set the
-    //    carry-forward SARIF + recorded sidecar both persist.
+    // 5. merged = current ∪ (priorOnUntouched ∖ current) — the whole-tree set
+    //    the carry-forward SARIF + recorded sidecar both persist. ANTS-5085 —
+    //    without the difference, a finding reported again in an untouched
+    //    file was appended once more on every run.
     for (const QJsonValue &v : current)         d.merged.append(v);
-    for (const QJsonValue &v : priorOnUntouched) d.merged.append(v);
+    for (const QJsonValue &v : priorOnUntouched)
+        if (!currentFps.contains(fpOf(v))) d.merged.append(v);
 
     d.addedCount          = d.added.size();
     d.removedCount        = d.removed.size();
