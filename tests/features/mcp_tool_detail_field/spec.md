@@ -54,3 +54,10 @@ behaviours are validated through the source constructs that produce them.
 INV-8 (no regression in the pre-existing source-scrape window tests) is
 covered by those tests staying green under `ctest`, not by an assertion
 here.
+
+## ANTS-4964 — roadmap_query documents where `parseable_bullets` appears
+
+roadmap_query's `detail` states that `parseable_bullets: 0` and its `warning`
+appear only when the file holds no id-bearing bullet, and that a store-served
+read never carries them. *Test:*
+`mcp_tool_detail_field.Ants4964ParseableBulletsScopeDocumented`.

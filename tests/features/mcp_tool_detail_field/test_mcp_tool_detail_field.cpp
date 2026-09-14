@@ -347,3 +347,15 @@ TEST(mcp_tool_detail_field, Inv9EveryToolWireBudgetUnder800) {
     }
     EXPECT_EQ(0, expect_failures());
 }
+
+// ANTS-4964 — roadmap_query's detail says when `parseable_bullets` and its
+// warning appear, and that a store-served read never carries them. A caller
+// reading their absence as "parsed" needs to know the store path is included.
+TEST(mcp_tool_detail_field, Ants4964ParseableBulletsScopeDocumented) {
+    const std::string block = descDetailBlock(ciSource(), "roadmap_query");
+    ASSERT_FALSE(block.empty()) << "roadmap_query description/detail not found";
+    EXPECT_TRUE(contains(block, "parseable_bullets: 0"))
+        << "detail does not name the parseable_bullets diagnostic";
+    EXPECT_TRUE(contains(block, "store-served read"))
+        << "detail does not say whether a store-served read carries it";
+}
