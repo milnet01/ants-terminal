@@ -9233,6 +9233,14 @@ extends an existing item, that item carries it instead.
   - read_log opens a FIFO and blocks the worker, and has no wall-clock
     budget.
   - Tool detection caches not-found until restart.
+  Progress (2026-09-14): DebugLog::write reopens, and so rotates, the
+  log once the open file passes kMaxLogBytes; cmdReadLog refuses an
+  existing path that is not a regular file
+  (tests/features/diagnostics_guards). Still open: read_log's oversized
+  first line, the build-log note regex and the 51st-error notes,
+  JSON-escape line cost, the unlocked active mask, DebugLog's umask
+  change, ANTS_LOG_ALWAYS with no category, two instances' rotation,
+  read_log's wall-clock budget, and tool detection caching not-found.
   **Layman:** Smaller diagnostics fixes, including a debug log that can grow until the disk fills.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lane diagnostics-logging).
