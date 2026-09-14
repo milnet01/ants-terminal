@@ -18,6 +18,8 @@ for security-relevant changes.
 
 ### Changed
 
+- **On a store-backed project, a roadmap append that moves `.roadmap-counter` marks it `counter_mirrored: true`, since the store allocates the id and the file only mirrors it.** (ANTS-4969)
+
 - **Every MCP tool description now fits the 800-byte wire budget; the longer prose moved to each tool's `detail`, served by tool_info, and a test checks every registered tool.** (ANTS-5152)
 
 - **Switching back to a Claude tab resumes its task lists instead of re-reading the transcript** (ANTS-5050)

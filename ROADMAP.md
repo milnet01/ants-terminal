@@ -60003,7 +60003,7 @@ than re-filed; everything else lands here.
   Source: UT_MonsterHunt_Ants_MCP_Feedback.md 2026-09-08.
   Lanes: roadmap-store, mcp.
 
-- 📋 [ANTS-4969] **op:"append" rewrites the tracked .roadmap-counter on a store-backed project, where nothing reads it.**
+- ✅ [ANTS-4969] **op:"append" rewrites the tracked .roadmap-counter on a store-backed project, where nothing reads it.**
   roadmap_query answers source:"store" on that project. An
   op:"append" in the same session rewrote the repo-tracked
   .roadmap-counter (48 -> 49) and reported counter_advanced_past:48
@@ -60037,6 +60037,19 @@ than re-filed; everything else lands here.
   beside those fields on the store path (e.g. `counter_mirrored:true`)
   rather than a rename, plus guidance that the file should not be
   tracked.
+  Resolved (2026-09-14) on the item's mirror branch, as decided from
+  source: rcRoadmapReconcileCounterCache, called only by the store-path
+  op:append and op:append_batch, now adds counter_mirrored:true beside
+  counter_advanced_to / counter_advanced_past when it moves the cache.
+  The markdown path, where the counter is the allocation source, never
+  calls it and never carries the marker. The counter refresh itself is
+  unchanged. Tests
+  RoadmapLogStorePreviewAndCounter.Ants4969StoreCounterMoveIsMarkedMirrored
+  (fails on the old source) and
+  McpRoadmapLogAppendBatch.Ants4969MarkdownCounterIsNotMarkedMirrored
+  pass; full suite green. The git-noise half stays with the reporting
+  project: .roadmap-counter is meant to be untracked (roadmapfoldin.h,
+  ANTS-3450).
   **Layman:** Filing a roadmap item changes a tracked file the database backend does not use, so every item shows up as an extra change in git.
   Kind: fix.
   Source: UT_MonsterHunt_Ants_MCP_Feedback.md 2026-09-08.
@@ -77788,7 +77801,7 @@ contributors don't duplicate research.
   Lanes: auditdialog, indiereviewengine, findsources.
   Source: in-session-2026-08-12.
 
-- 📋 [ANTS-4121] **roadmap_log's bad_section refusal names no candidates, so a duplicate heading costs three calls to resolve.**
+- ✅ [ANTS-4121] **roadmap_log's bad_section refusal names no candidates, so a duplicate heading costs three calls to resolve.**
   Hit twice this session. ROADMAP.md has four `### 🎨 Features`
   headings; three carry a suffix, so exactly one slugs to `features`
   and the numbered guess `features-2` is wrong. The refusal is bare:
@@ -77816,6 +77829,13 @@ contributors don't duplicate research.
   Kind: fix.
   Lanes: remotecontrol, roadmapparse.
   Source: in-session-2026-08-12.
+  Resolved (2026-09-14) by ANTS-4556 and ANTS-4591, both shipped: fix
+  (a) is live. A dry_run roadmap_log append naming this item's own bad
+  slug `features-2` refused `section_not_found` with candidates[] (ten
+  slugs, `features` among them) and sections_total 243. Fix (b), a
+  slugs-only section list, was not built: mode:"sections" is only an
+  alias of section_index (ANTS-4380). It is filed separately as
+  ANTS-5154. No separate changelog entry.
 
 - 📋 [ANTS-4122] **workspace_search's 5 s default budget hard-kills a whole-repo regex on this project, and the hint fires only after the cost.**
   A 2-alternation regex over the whole repo
@@ -77848,6 +77868,15 @@ contributors don't duplicate research.
   context:2, whole repo, default budget. elapsed_ms 5013 and
   truncated:true, on the session's first search. A narrower lane or
   glob answered in tens of milliseconds for the rest of the session.
+
+- 📋 [ANTS-5154] **roadmap_query has no slugs-only section list, so finding a section slug on a large roadmap costs a spill.**
+  Split from ANTS-4121, whose other half (candidates on an unknown slug) shipped under ANTS-4556.
+  roadmap_query mode:"section_index" (alias mode:"sections", ANTS-4380) returns a row per section with count fields. On this roadmap, 243 sections by roadmap_log's sections_total, that reply is large enough to offload to a spill handle, so it is not a cheap way to look up one slug.
+  Fix direction: a projection that returns only the slug and title per section, small enough to stay inline.
+  **Layman:** Looking up the name of a roadmap section means downloading a big list when a short one would do.
+  Kind: enhancement.
+  Source: in-session-2026-09-14, split from ANTS-4121.
+  Lanes: mcp, roadmap.
 
 ### 🔒 Security
 
