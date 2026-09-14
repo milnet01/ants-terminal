@@ -806,9 +806,13 @@ sentence protects, which is a worse outcome than an oversized export.
 So the cap is **250 MiB of `history` across the whole store**, measured as
 
 ```sql
-SELECT SUM(length(field) + length(coalesce(old_value,''))
-                         + length(coalesce(new_value,''))) FROM history;
+SELECT SUM(length(CAST(field AS BLOB))
+         + length(CAST(coalesce(old_value,'') AS BLOB))
+         + length(CAST(coalesce(new_value,'') AS BLOB))) FROM history;
 ```
+
+The casts make it UTF-8 bytes; `length()` on text counts characters
+(`RoadmapStore::historyBytes`, ANTS-4503).
 
 **The measure is pinned because the obvious one is a build-flag dependency.**
 Per-table byte size in SQLite comes from `dbstat`, which needs

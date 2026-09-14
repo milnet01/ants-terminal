@@ -45,6 +45,7 @@ public:
     // which makes ANTS-3781 INV-8 hold by construction and not by discipline.
     static constexpr int kSchemaVersion = 3;
 
+
     // INV-16 — the write deadline, in ms, matching ConfigWriteLock's rather
     // than introducing a second timeout constant. One number covers both the
     // connection pragma and enableWal()'s own retry.

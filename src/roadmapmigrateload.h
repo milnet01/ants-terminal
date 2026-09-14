@@ -111,7 +111,7 @@ struct Options {
 // One plan, one project, one transaction (§ 2.5). `store` must be open on an
 // Access::Bulk connection (§ 2.2); a load on an Interactive one is REFUSED
 // rather than run slowly (INV-12).
-Outcome load(RoadmapStore &store, const RoadmapMigrate::MigrationPlan &plan,
-             const Options &opts);
+[[nodiscard]] Outcome load(RoadmapStore &store, const RoadmapMigrate::MigrationPlan &plan,
+                           const Options &opts);
 
 }  // namespace RoadmapMigrateLoad

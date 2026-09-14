@@ -47,6 +47,12 @@ only**. The contract under test is fail-and-report, not the constant; the
 constant is the first leg's job, and honouring it here would cost the suite
 five seconds to re-assert something already asserted.
 
+**Newer store refused without the lock (ANTS-5086).** `open()` on a store
+whose `user_version` is above `kSchemaVersion` fails with the "newer than
+this build" error while another connection holds the write lock, well inside
+the busy deadline. `open()` also creates a missing store file before SQLite
+opens it, so its permissions are set before the schema is written.
+
 ## Must fail first
 
 Each mutation applied to `src/roadmapstore.cpp`, built, run, reverted:

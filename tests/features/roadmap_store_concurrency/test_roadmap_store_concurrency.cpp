@@ -13,6 +13,8 @@
 
 #include <QDir>
 #include <QElapsedTimer>
+#include <QFile>
+#include <QFileInfo>
 #include <QSqlError>
 #include <QSqlQuery>
 #include <QStringList>
@@ -246,6 +248,58 @@ TEST(RoadmapStoreConcurrency, OpenDoesNotContendWithAnActiveWriter) {
 
     QSqlQuery r(holder.db());
     ASSERT_TRUE(r.exec(QStringLiteral("ROLLBACK")));
+}
+
+// ANTS-5086 — a store from a newer build is refused without waiting on an
+// active writer. Only the equal-version case skipped the write lock.
+TEST(RoadmapStoreConcurrency, NewerStoreRefusedWithoutWaitingOnWriter) {
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid()) << dir.errorString().toStdString();
+    const QString path = dir.path() + QStringLiteral("/roadmap.sqlite");
+    QString err;
+
+    RoadmapStore holder(path);
+    ASSERT_TRUE(holder.open(&err)) << err.toStdString();
+    {
+        QSqlQuery v(holder.db());
+        ASSERT_TRUE(v.exec(QStringLiteral("PRAGMA user_version = %1")
+                               .arg(RoadmapStore::kSchemaVersion + 1)));
+        QSqlQuery b(holder.db());
+        ASSERT_TRUE(b.exec(QStringLiteral("BEGIN IMMEDIATE")))
+            << b.lastError().text().toStdString();
+        QSqlQuery w(holder.db());
+        ASSERT_TRUE(w.exec(QStringLiteral("PRAGMA user_version = %1")
+                               .arg(RoadmapStore::kSchemaVersion + 1)));
+    }
+
+    QElapsedTimer clock;
+    clock.start();
+    RoadmapStore older(path);
+    err.clear();
+    EXPECT_FALSE(older.open(&err)) << "a newer store must be refused";
+    EXPECT_TRUE(err.contains(QStringLiteral("newer"))) << err.toStdString();
+    EXPECT_LT(clock.elapsed(), 1000)
+        << "the refusal waited for the write lock instead of reading user_version";
+
+    QSqlQuery r(holder.db());
+    ASSERT_TRUE(r.exec(QStringLiteral("ROLLBACK")));
+}
+
+// ANTS-5086 — open() creates a missing store file before SQLite opens it.
+TEST(RoadmapStoreConcurrency, OpenCreatesTheStoreFileFirst) {
+    QFile src(QFileInfo(QString::fromUtf8(__FILE__)).absolutePath()
+              + QStringLiteral("/../../../src/roadmapstore.cpp"));
+    ASSERT_TRUE(src.open(QIODevice::ReadOnly | QIODevice::Text));
+    const QString text = QString::fromUtf8(src.readAll());
+    const int fn = text.indexOf(QStringLiteral("bool RoadmapStore::open("));
+    ASSERT_GE(fn, 0);
+    const int end = text.indexOf(QStringLiteral("\n}\n"), fn);
+    const QString body = text.mid(fn, end - fn);
+    const int create = body.indexOf(QStringLiteral("QIODevice::NewOnly"));
+    const int sqlOpen = body.indexOf(QStringLiteral("m_db.open()"));
+    ASSERT_GE(sqlOpen, 0);
+    ASSERT_GE(create, 0) << "the store file is left for SQLite to create at umask permissions";
+    EXPECT_LT(create, sqlOpen);
 }
 
 // INV-16 leg 2 — a write that cannot take the lock within the deadline FAILS

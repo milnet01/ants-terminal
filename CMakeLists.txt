@@ -3496,6 +3496,8 @@ if(ANTS_TESTS)
                 # INV-15 forks two openers; the fork lives INSIDE the bundle,
                 # so no separate target is needed for process isolation.
                 tests/features/roadmap_store_concurrency/test_roadmap_store_concurrency.cpp
+                # ANTS-5087 — one id fold, matching SQLite lower().
+                tests/features/roadmap_id_fold/test_roadmap_id_fold.cpp
                 # ANTS-3781 — the schema-upgrade ladder. Behavioural against a
                 # real store, plus three source scrapes (INV-3(b), INV-5, INV-6)
                 # over ANTS_SRC_DIR: each asserts a property of the SOURCE that

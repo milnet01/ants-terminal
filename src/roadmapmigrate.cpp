@@ -1043,7 +1043,7 @@ MigrationPlan planFrom(const Discovery &discovery, const QString &projectName,
     QHash<QString, QVector<int>> byFold;
     for (int k = 0; k < plan.items.size(); ++k)
         if (!plan.items.at(k).id.isEmpty())
-            byFold[plan.items.at(k).id.toLower()].append(k);
+            byFold[RoadmapParse::foldId(plan.items.at(k).id)].append(k);
     QVector<int> collided;
     for (auto it = byFold.constBegin(); it != byFold.constEnd(); ++it)
         if (it.value().size() > 1) collided += it.value();

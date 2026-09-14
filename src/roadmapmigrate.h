@@ -220,7 +220,7 @@ struct MigrationPlan {
 // holds a handful of files. Naming the entry matters only where the call
 // SUCCEEDS and one was dropped — and that case, `archive_unrecognised`, does
 // name it, in a note riding on the Discovery that exists.
-std::optional<Discovery> findRoadmaps(const QString &projectRoot, QString *error);
+[[nodiscard]] std::optional<Discovery> findRoadmaps(const QString &projectRoot, QString *error);
 
 // The PURE half: no filesystem, no clock, no id counter (ANTS-3757 INV-9).
 // `projectName` and `exportSlug` are supplied by the caller, not derived —
@@ -241,9 +241,9 @@ std::optional<Discovery> findRoadmaps(const QString &projectRoot, QString *error
 // Its impure caller (roadmapmigrateverb.cpp) loads it with
 // ProjectSettings::idFormatFor(). Undeclared is the default and is the
 // zero-change path.
-MigrationPlan planFrom(const Discovery &discovery, const QString &projectName,
-                       const QString &exportSlug,
-                       const RoadmapParse::IdFormat &fmt = {});
+[[nodiscard]] MigrationPlan planFrom(const Discovery &discovery, const QString &projectName,
+                                     const QString &exportSlug,
+                                     const RoadmapParse::IdFormat &fmt = {});
 
 // ANTS-4065 § 2.5 — resolve every `Source:` / `Evidence:` value that names a
 // file, against `projectRoot`. A path that does not resolve is NOT a refusal:

@@ -207,6 +207,17 @@ bool idWasInferred(const BulletRecord &rec);
 // survive it.
 QString idTokenPattern();
 
+// ANTS-5087 — the fold the roadmap store's id_fold column holds: SQLite's
+// lower(), which changes only ASCII A-Z. QString::toLower() also folds
+// non-ASCII letters, so a key built with it misses the row the column holds.
+inline QString foldId(const QString &id) {
+    QString out = id;
+    for (QChar &c : out)
+        if (c.unicode() >= u'A' && c.unicode() <= u'Z')
+            c = QChar(c.unicode() + (u'a' - u'A'));
+    return out;
+}
+
 // Classify a roadmap document: "ants-v1" | "github-task-list" |
 // "pass-headings". Answers "ants-v1" for input it does not recognise,
 // INCLUDING an empty file — so a returned format is no evidence that anything

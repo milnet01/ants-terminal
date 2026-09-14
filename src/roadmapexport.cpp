@@ -1,5 +1,6 @@
 // ANTS-3761 — the roadmap export. Spec §§ 2.3–2.6.
 #include "roadmapexport.h"
+#include "roadmapparse.h"
 
 #include "configbackup.h"   // ConfigWriteLock (§ 2.6 — reused, not re-invented)
 #include "jsoncanonical.h"
@@ -934,7 +935,7 @@ bool RoadmapExport::rebuildProject(RoadmapStore &store, QIODevice *in, QString *
             }
             if (!q.exec())
                 return abort(q.lastError().text());
-            itemPkOf.insert(o.value(QStringLiteral("id")).toString().toLower(),
+            itemPkOf.insert(RoadmapParse::foldId(o.value(QStringLiteral("id")).toString()),
                             q.lastInsertId().toLongLong());
         } else if (t == QLatin1String("element")) {
             const QString kind = o.value(QStringLiteral("kind")).toString();

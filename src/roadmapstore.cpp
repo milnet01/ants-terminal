@@ -1,11 +1,13 @@
 // ANTS-3756 — roadmap store implementation.
 // Spec: docs/specs/ANTS-3756-roadmap-store-schema.md
 #include "roadmapstore.h"
+#include "roadmapparse.h"
 #include "jsoncanonical.h"
 #include "secureio.h"
 
 #include <QDir>
 #include <QElapsedTimer>
+#include <QFile>
 #include <QFileInfo>
 #include <QJsonArray>
 #include <QJsonDocument>
@@ -251,6 +253,17 @@ bool RoadmapStore::open(QString *error) {
         return false;
     }
 
+    // ANTS-5086 — a new store file is created owner-only before SQLite writes
+    // the schema into it; the chmod after createSchema() left it at umask
+    // permissions for the whole creation transaction.
+    if (!QFileInfo::exists(m_path)) {
+        QFile created(m_path);
+        if (created.open(QIODevice::WriteOnly | QIODevice::NewOnly)) {
+            setOwnerOnlyPerms(created);
+            created.close();
+        }
+    }
+
     m_db = QSqlDatabase::addDatabase(QStringLiteral("QSQLITE"), m_connName);
     m_db.setDatabaseName(m_path);
     if (!m_db.open()) {
@@ -400,11 +413,23 @@ bool RoadmapStore::createSchema(QString *error) {
     // This is an optimisation, not the discriminator: the authoritative read
     // is still the one inside BEGIN IMMEDIATE below, so two processes racing
     // to create a store are decided there exactly as before.
+    //
+    // ANTS-5086 — a NEWER store is refused here too. Only the equal case
+    // returned early, so an older build met by a newer store queued for the
+    // write lock before reaching the same refusal below.
     {
         QSqlQuery q(m_db);
-        if (q.exec(QStringLiteral("PRAGMA user_version")) && q.next() &&
-            q.value(0).toInt() == kSchemaVersion)
-            return true;
+        if (q.exec(QStringLiteral("PRAGMA user_version")) && q.next()) {
+            const int seen = q.value(0).toInt();
+            if (seen == kSchemaVersion)
+                return true;
+            if (seen > kSchemaVersion) {
+                if (error)
+                    *error = QStringLiteral("store schema %1 is newer than this build's %2")
+                                 .arg(seen).arg(kSchemaVersion);
+                return false;
+            }
+        }
     }
 
     // Creation is itself a race: two processes finding no store both run the
@@ -1030,7 +1055,7 @@ bool RoadmapStore::relateCrossProject(const QString &type, qint64 srcPk,
     q.addBindValue(type);
     q.addBindValue(srcPk);
     q.addBindValue(dstProject);
-    q.addBindValue(dstIdFold.toLower());
+    q.addBindValue(RoadmapParse::foldId(dstIdFold));
     if (!q.exec()) {
         if (error)
             *error = lastErr(q);

@@ -1,6 +1,7 @@
 // ANTS-3765 — the roadmap migration load half.
 // Spec: docs/specs/ANTS-3765-roadmap-migration-load.md
 #include "roadmapmigrateload.h"
+#include "roadmapparse.h"
 
 #include <QDir>
 #include <QFileInfo>
@@ -388,7 +389,7 @@ bool Loader::matchItems() {
         const PlannedItem &it = plan.items.at(i);
         if (it.id.isEmpty())
             continue;
-        const QString fold = it.id.toLower();
+        const QString fold = RoadmapParse::foldId(it.id);
         // value() with a sentinel rather than constFind(): dereferencing the
         // iterator trips -Wnull-dereference here, and an index is all this
         // needs.
@@ -453,7 +454,7 @@ bool Loader::matchItems() {
         // Never headline, never position: both change while an item stays
         // itself, and matching on either would delete and re-create it,
         // destroying its history rows.
-        const qint64 pk = byIdFold.value(it.id.toLower(), 0);
+        const qint64 pk = byIdFold.value(RoadmapParse::foldId(it.id), 0);
         if (pk && !consumed.contains(pk)) {
             matchPk[i] = pk;
             consumed.insert(pk);
