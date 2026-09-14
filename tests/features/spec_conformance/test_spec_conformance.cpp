@@ -397,3 +397,20 @@ TEST(spec_conformance, Ants4370ForeignFencesAreReportedNotSilent) {
     EXPECT_EQ(env2.value("executable_fences").toInt(), 1);
     EXPECT_FALSE(env2.contains(QStringLiteral("hint")));
 }
+
+// ANTS-5100 — a pattern that does not compile is refused, not run: it matches
+// nothing, so every `no match` row would otherwise pass.
+TEST(spec_conformance, Ants5100InvalidPatternIsRefused) {
+    QTemporaryDir d;
+    ASSERT_TRUE(d.isValid());
+    const QString p = writeSpec(d, "bad.md",
+        fence("regex pcre2", "(unclosed") +
+        "| input | expected |\n|---|---|\n| `anything` | no match |\n");
+    const QJsonObject env = SpecConformance::run(p);
+    ASSERT_TRUE(env.value("ok").toBool());
+    EXPECT_EQ(env.value("cases_run").toInt(), 0)
+        << "a pattern that failed to compile was run against its rows";
+    ASSERT_EQ(arr(env, "refusals").size(), 1);
+    EXPECT_EQ(at(env, "refusals", 0).value("code").toString().toStdString(), "bad_pattern");
+    EXPECT_TRUE(arr(env, "findings").isEmpty());
+}

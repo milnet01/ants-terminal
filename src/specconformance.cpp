@@ -231,6 +231,18 @@ QJsonObject run(const QString &absPath, const Options &opt) {
         }
 
         const QRegularExpression rx(pattern);
+        // ANTS-5100 — a pattern that does not compile matches nothing, so
+        // every `no match` row passed against INV-3. Refused per fence, with
+        // the compile error, rather than run.
+        if (!rx.isValid()) {
+            QJsonObject r;
+            r[QStringLiteral("line")]    = fenceLine;
+            r[QStringLiteral("code")]    = QStringLiteral("bad_pattern");
+            r[QStringLiteral("error")]   = rx.errorString();
+            r[QStringLiteral("pattern")] = pattern;
+            addRow(refusals, r);
+            continue;
+        }
         int row = hdr + 1;
         if (row < lines.size() && isSeparatorRow(lines.at(row))) ++row;
 

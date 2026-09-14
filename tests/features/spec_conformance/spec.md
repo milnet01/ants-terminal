@@ -56,3 +56,9 @@ behavioural assertion fails on its assertion, not on a link error — the
 stub exists precisely so the red run proves the fixtures exercise something.
 
 Label: `features;fast`.
+
+## ANTS-5100 — a pattern that does not compile
+
+A fence whose pattern `QRegularExpression` cannot compile is refused with
+code `bad_pattern`, the compile error and the pattern, and none of its rows
+run. *Test:* `Ants5100InvalidPatternIsRefused`.

@@ -70,6 +70,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **spec_conformance refuses a pattern that does not compile instead of passing every no-match row against it** (ANTS-5100)
+
 - **doc_lint's table-of-contents fix recognises code blocks the same way the check that reports the gap does** (ANTS-5099)
   It used its own simpler rule, which could insert a contents row in the
   wrong place.
