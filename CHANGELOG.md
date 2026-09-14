@@ -70,6 +70,10 @@ for security-relevant changes.
 
 ### Fixed
 
+- **The roadmap window's kind filter covers every roadmap kind, and a roadmap file over 8 MiB is no longer cut off** (ANTS-5088)
+  Perf, security, feature and six other kinds can now be filtered, and a
+  kind filter no longer hides them. The live roadmap is read up to 64 MiB.
+
 - **Publishing the roadmap refuses a path that leaves the project before creating any folder, and never writes through a symlink that points outside it** (ANTS-5087)
   A dry run no longer creates folders either.
 

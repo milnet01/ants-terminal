@@ -147,6 +147,18 @@ constexpr KindEntry kKinds[] = {
     {"release",    "roadmap-filter-kind-release",    "🚢 release"},
     {"research",   "roadmap-filter-kind-research",   "🔬 research"},
     {"ux",         "roadmap-filter-kind-ux",         "🎨 ux"},
+    // ANTS-5088 — the rest of roadmap-format.md § 3.5.3's enum
+    // (RoadmapParse::canonicalKinds()); with twelve, these kinds could not be
+    // filtered and any kind filter hid them.
+    {"perf",          "roadmap-filter-kind-perf",          "⚡ perf"},
+    {"optimize",      "roadmap-filter-kind-optimize",      "🚀 optimize"},
+    {"security",      "roadmap-filter-kind-security",      "🔒 security"},
+    {"feature",       "roadmap-filter-kind-feature",       "🧩 feature"},
+    {"enhancement",   "roadmap-filter-kind-enhancement",   "🌱 enhancement"},
+    {"investigate",   "roadmap-filter-kind-investigate",   "🕵 investigate"},
+    {"accessibility", "roadmap-filter-kind-accessibility", "♿ accessibility"},
+    {"package",       "roadmap-filter-kind-package",       "📦 package"},
+    {"marketing",     "roadmap-filter-kind-marketing",     "📣 marketing"},
 };
 
 // ANTS-1238 — per-density-tier CSS px values + vertical-padding
@@ -1066,19 +1078,12 @@ QString RoadmapDialog::renderCardsHtml(const QString &markdownText,
     // Kind emoji map — mirrors the kKinds table in the file-scope
     // anonymous namespace, but indexed by Kind value for O(1) lookup
     // during card emission.
+    // ANTS-5088 — read from kKinds rather than a second list, which had
+    // already diverged from the enum.
     auto kindGlyph = [](const QString &k) -> QString {
-        if (k == QStringLiteral("implement")) return QStringLiteral("✨");
-        if (k == QStringLiteral("fix")) return QStringLiteral("🐛");
-        if (k == QStringLiteral("audit-fix")) return QStringLiteral("🔍");
-        if (k == QStringLiteral("review-fix")) return QStringLiteral("🔁");
-        if (k == QStringLiteral("doc")) return QStringLiteral("📚");
-        if (k == QStringLiteral("doc-fix")) return QStringLiteral("📝");
-        if (k == QStringLiteral("refactor")) return QStringLiteral("🏗");
-        if (k == QStringLiteral("test")) return QStringLiteral("🧪");
-        if (k == QStringLiteral("chore")) return QStringLiteral("🧹");
-        if (k == QStringLiteral("release")) return QStringLiteral("🚢");
-        if (k == QStringLiteral("research")) return QStringLiteral("🔬");
-        if (k == QStringLiteral("ux")) return QStringLiteral("🎨");
+        for (const KindEntry &e : kKinds)
+            if (k == QLatin1String(e.value))
+                return QString::fromUtf8(e.labelTxt).section(QLatin1Char(' '), 0, 0);
         return QString();
     };
 
@@ -3311,10 +3316,13 @@ QString RoadmapDialog::loadMarkdown(const QString &roadmapPath,
     // loader stops adding archives and emits a truncation sentinel.
     constexpr qint64 kAssembledCap = 64 * 1024 * 1024;
 
+    // ANTS-5088 — the live roadmap takes the assembled cap, not the per-file
+    // one: a live ROADMAP.md past 8 MiB lost every later section silently,
+    // and this project's own file is several MiB and growing.
     QString markdown;
     QFile f(roadmapPath);
     if (f.open(QIODevice::ReadOnly | QIODevice::Text)) {
-        markdown = QString::fromUtf8(f.read(kPerFileCap));
+        markdown = QString::fromUtf8(f.read(kAssembledCap));
     }
     if (!includeArchive) return markdown;
 
