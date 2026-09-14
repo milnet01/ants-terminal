@@ -40,8 +40,10 @@ int runMain() {
             return expect_finish();
         }
         f.write("#!/bin/sh\n"
-                "printf 'S=%s T=%s P=%s\\n' \"$ANTS_PTYENV_SENTINEL\" "
-                "\"$TERM\" \"$TERM_PROGRAM\"\n"
+                "printf 'S=%s T=%s P=%s C=%s K=%s U=%s\\n' "
+                "\"$ANTS_PTYENV_SENTINEL\" \"$TERM\" \"$TERM_PROGRAM\" "
+                "\"$CLAUDECODE\" \"$CLAUDE_CODE_CHILD_SESSION\" "
+                "\"$CLAUDE_CODE_ANTS_TEST_KEEP\"\n"
                 "exit 0\n");
     }
     ::chmod(script.toLocal8Bit().constData(), 0755);
@@ -51,6 +53,16 @@ int runMain() {
     for (int i = 0; i < kPadEntries; ++i)
         qputenv(QByteArray("ANTS_PTYENV_PAD_") + QByteArray::number(i), "x");
     qputenv("ANTS_PTYENV_SENTINEL", "reached");
+    // ANTS-4541 — a dead session's identity, plus one CLAUDE_CODE_ setting
+    // that is not identity. This suite may itself run inside a Claude session,
+    // so the prior values are restored below rather than unset.
+    const bool hadClaudeCode = qEnvironmentVariableIsSet("CLAUDECODE");
+    const QByteArray priorClaudeCode = qgetenv("CLAUDECODE");
+    const bool hadChild = qEnvironmentVariableIsSet("CLAUDE_CODE_CHILD_SESSION");
+    const QByteArray priorChild = qgetenv("CLAUDE_CODE_CHILD_SESSION");
+    qputenv("CLAUDECODE", "1");
+    qputenv("CLAUDE_CODE_CHILD_SESSION", "1");
+    qputenv("CLAUDE_CODE_ANTS_TEST_KEEP", "kept");
 
     QByteArray output;
     bool finished = false;
@@ -66,6 +78,11 @@ int runMain() {
         for (int i = 0; i < kPadEntries; ++i)
             qunsetenv(QByteArray("ANTS_PTYENV_PAD_") + QByteArray::number(i));
         qunsetenv("ANTS_PTYENV_SENTINEL");
+        qunsetenv("CLAUDE_CODE_ANTS_TEST_KEEP");
+        if (hadClaudeCode) qputenv("CLAUDECODE", priorClaudeCode);
+        else               qunsetenv("CLAUDECODE");
+        if (hadChild) qputenv("CLAUDE_CODE_CHILD_SESSION", priorChild);
+        else          qunsetenv("CLAUDE_CODE_CHILD_SESSION");
 
         if (!started) {
             expect(false, "ANTS-5075-setup", "Pty::start(print_env.sh) failed");
@@ -86,6 +103,9 @@ int runMain() {
            "ANTS-5075-INV-2",
            "the TERM / TERM_PROGRAM overrides were not applied; child printed: " +
                out);
+    expect(output.contains("C= K= U=kept"), "ANTS-4541-INV-3",
+           "the child must not inherit a Claude session's identity, and must "
+           "still receive other CLAUDE_CODE_ settings; child printed: " + out);
     return expect_finish();
 }
 

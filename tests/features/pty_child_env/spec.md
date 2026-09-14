@@ -30,3 +30,15 @@ real child shows what its environment held.
 
 - **ANTS-5075:** the child environment was cut off past a fixed entry count,
   dropping the variables added last. Locked by this spec.
+
+## ANTS-4541 — a dead Claude session's identity does not reach the shell
+
+**INV-3 — the session-identity keys are scrubbed; other settings are not.**
+`CLAUDECODE`, `CLAUDE_CODE_CHILD_SESSION`, `CLAUDE_CODE_SESSION_ID`,
+`CLAUDE_PID`, `CLAUDE_CODE_MESSAGING_SOCKET`, `CLAUDE_CODE_EXECPATH` and
+`AI_AGENT` never reach the child, even when the terminal itself carries them. A
+`CLAUDE_CODE_` variable outside that set still does. INV-1 is about entries
+lost to a size limit; these are removed on purpose.
+
+The test sets two identity keys and a made-up `CLAUDE_CODE_` setting, and
+expects the child to print the first two empty and the third intact.

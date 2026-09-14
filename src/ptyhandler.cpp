@@ -210,6 +210,21 @@ bool Pty::start(const QString &shell, const QString &workDir, int rows, int cols
             startsWith("COLORFGBG=")) {
             continue;
         }
+        // ANTS-4541 — a Claude Code session's identity, inherited when the
+        // terminal was launched from inside one. The session it names is gone,
+        // and a claude started in the tab reads CLAUDE_CODE_CHILD_SESSION as a
+        // live parent and turns transcript saving off. Only the identity keys:
+        // configuration such as CLAUDE_CODE_USE_BEDROCK arrives the same way and
+        // must still reach the shell. A claude started in the tab sets its own.
+        if (startsWith("CLAUDECODE=") ||
+            startsWith("CLAUDE_CODE_CHILD_SESSION=") ||
+            startsWith("CLAUDE_CODE_SESSION_ID=") ||
+            startsWith("CLAUDE_PID=") ||
+            startsWith("CLAUDE_CODE_MESSAGING_SOCKET=") ||
+            startsWith("CLAUDE_CODE_EXECPATH=") ||
+            startsWith("AI_AGENT=")) {
+            continue;
+        }
         childEnvp.push_back(entry);
     }
     // Append our 5 overrides (5 string literals + 1 snprintf'd
