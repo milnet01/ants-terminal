@@ -78,6 +78,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **roadmap_query's tool detail now says when `parseable_bullets` and its warning appear, and that a store-served read never carries them, so their absence can be read correctly on either backend.** (ANTS-4964)
+
 - **roadmap_query answers a migrated project whose store holds no items from the store, with zero items, instead of falling back to the file and telling the caller to Read it.** (ANTS-4861)
 
 - **roadmap_query names the kind or source filter when it empties a result, instead of blaming the ID filter and calling the roadmap malformed.** (ANTS-4971)

@@ -59811,7 +59811,7 @@ than re-filed; everything else lands here.
   Source: demoreel_Ants_MCP_Feedback.md 2026-09-08.
   Lanes: mcp.
 
-- 📋 [ANTS-4964] **roadmap_query emits neither `warning` nor `parseable_bullets` on the store path, and adopt-project prescribes both as its parse-failure check.**
+- ✅ [ANTS-4964] **roadmap_query emits neither `warning` nor `parseable_bullets` on the store path, and adopt-project prescribes both as its parse-failure check.**
   The adopt-project skill prescribes this call verbatim —
   roadmap_query with fields including `warning` and
   `parseable_bullets` — and says those two are what distinguish a
@@ -59838,6 +59838,15 @@ than re-filed; everything else lands here.
   repo, so if the answer is markdown-only then half the fix is a
   change there and this item owns the description only. Decide which
   way before touching either.
+  Resolved (2026-09-14) on the description side. `parseable_bullets: 0`
+  and its warning fire only when the file holds no id-bearing bullet, on
+  either backend, so their absence already meant the roadmap parsed. A
+  store read cannot hit that failure: every stored item has an id, and
+  migratedProject refuses a roadmap it cannot recognise. Emitting the
+  fields on the store path would have reported a check that cannot run
+  there. roadmap_query's detail now says so. The adopt-project skill's
+  check stays correct unchanged. Test:
+  mcp_tool_detail_field.Ants4964ParseableBulletsScopeDocumented.
   **Layman:** The check that is supposed to tell a broken roadmap from an empty one asks for two fields the tool does not send.
   Kind: fix.
   Source: demoreel_Ants_MCP_Feedback.md 2026-09-08.
@@ -76889,6 +76898,13 @@ here.)
   `PLUGINS.md` findings in that sweep were REAL and were fixed: a dead anchor
   that dropped an underscore from its target slug, and the final section
   missing from the table of contents.
+  Measured (2026-09-14), not built: the semver-triple exemption would be
+  wrong. Outside CHANGELOG and the roadmap files, headings opening with
+  a three-part number sit mostly in specs and standards, where they are
+  subsection numbers (`### 2.1.1`) that the check should keep testing.
+  Only PLUGINS.md carries version headings. The remaining directions (an
+  enclosing History ancestor, or a declared exemption) need a decision;
+  with one affected file, leaving it is also a fair answer.
   **Layman:** A document checker asks us to renumber a list of past releases, which would make the history wrong.
   Kind: fix.
   Source: in-session-2026-09-09 (found in the 0.7.109 release doc sweep).
