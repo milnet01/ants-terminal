@@ -56823,6 +56823,24 @@ two projects).
 
 - 📋 [ANTS-4828] **find_definition returns zero for a C function whose return type, name and parameters sit on separate lines.**
   Found on the 1997 id Software playsim, where that style is the norm. The reply is ok:true with definitions_count:0 and no hint, so a zero is indistinguishable from a correct one; file_outline resolves the same files. Either allow newlines between the type, name and parameter list, or, where the matcher is not to be touched, add a hint when a workspace_search for the symbol hits a source file, as find_sources already does.
+  Measured 2026-09-14 over the C sources in
+  /mnt/Games/Scripts/Linux/DOOM_Ants: the dominant split shape puts the
+  parameter list on a THIRD line (type, then the name alone, then a line
+  starting with `(`), far ahead of the two-line type / `name(` shape.
+  Single-line definitions still outnumber both. The ANTS-4603 wrapped
+  pair cannot reach either: wrappedDef requires a `Class::` qualifier,
+  and scanFile keeps only the previous line, while the three-line shape
+  needs the NEXT line. Fix direction: loosen wrappedDef to allow an
+  unqualified column-0 name for the two-line shape, and give the scan
+  loop a one-line lookahead (or a pending match resolved on the next
+  line) for the three-line shape; the batch walk (ANTS-3680) shares
+  matchLine, so both paths need it.
+  False-positive check (2026-09-14): letting wrappedDef accept an
+  unqualified column-0 `name(` under a line wrappedPrev accepts matched
+  only definition-shaped pairs in this repo's src/ and tests/, and in
+  DOOM_Ants; the only other DOOM hits were real SDL header prototypes
+  (`extern DECLSPEC T *SDLCALL` over `SDL_CreateThread(...`), which are
+  declarations. So the two-line half is safe to loosen.
   **Layman:** A common older C style makes functions invisible to the "where is this defined?" verb.
   Kind: fix.
   Source: cc-feedback-2026-09-03 DOOM.
@@ -58269,7 +58287,7 @@ plus two gaps hit while sweeping stale spec citations under ANTS-4757.
   Source: in-session-2026-09-07, hit while sweeping ANTS-4757.
   Lanes: mcp, docs.
 
-- 📋 [ANTS-4924] **find_definition reports a ternary continuation line as a declaration.**
+- ✅ [ANTS-4924] **find_definition reports a ternary continuation line as a declaration.**
   `find_definition {symbol:"resolveRootCanonical"}` returned fifteen
   rows. Two are the real definitions in
   `src/remotecontrol_feedback.cpp`, and several are genuine
@@ -58300,6 +58318,14 @@ plus two gaps hit while sweeping stale spec citations under ANTS-4757.
   attached. So the defect is not ternary-specific: a statement that
   mentions the symbol and ends in `;` classifies as a declaration.
   A fix keyed on the ternary shape alone would leave this one.
+  Resolved (2026-09-14): both shapes reproduced on the live verb (six `:
+  resolveRootCanonical(m_main, req);` rows, two `<< lineText(...)`
+  rows). Cause: `:` and `<<` are in the C++ def anchor's return-type
+  token class. Each token must now hold a word character, in the
+  return-type ladder and in the data-member anchor, which shared the
+  same group. Test
+  McpSymbolQuery.Ants4924OperatorLedLinesAreNotDeclarations fails on the
+  old source and passes now; full suite green.
   **Layman:** The "where is this defined?" tool sometimes lists an ordinary line of code that merely calls a function as if it were the place the function is declared.
   Kind: fix.
   Source: in-session-2026-09-07, hit while resolving owning TUs for ANTS-4757.

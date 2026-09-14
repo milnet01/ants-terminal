@@ -72,6 +72,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **find_definition no longer lists a wrapped ternary arm (`: sym(a);`) or a stream insertion (`out << sym(i);`) as a declaration of the symbol.** (ANTS-4924)
+
 - **An offloaded reply's per-row preview now samples each object row's own JSON, so every head shows what its row is instead of the same `{"v":` prefix.** (ANTS-5153)
 
 - **`tools/perf-report.sh -R <regex> --save-baseline` now keeps every other benchmark's saved numbers instead of replacing the whole baseline.** (ANTS-5137)
