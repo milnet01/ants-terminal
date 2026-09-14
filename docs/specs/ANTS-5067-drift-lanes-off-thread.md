@@ -1,6 +1,6 @@
 # ANTS-5067 — Run the in-process drift lanes off the calling thread, under a deadline
 
-**Status:** spec draft (2026-09-14).
+**Status:** accepted (2026-09-14), review-contract loop 1 converged (one lane, user decision).
 **Kind:** review-fix.
 **Source:** ROADMAP.md ANTS-5067 (code-quality-review-2026-09-11 perf pass, lanes spec-engines and audit-dialog-b; user decisions 2026-09-14).
 **Composes with:** ANTS-1351 (`audit_run` threading model and aggregate cap).
@@ -194,3 +194,4 @@ and that mutation run is its red proof.
 
 | Loop | Date | Lanes | Q1 | Q2 | Q3 | Q4 | Outcome |
 |---|---|---|---|---|---|---|---|
+| 1 | 2026-09-14 | 1 (user decision: one reviewer, one pass) | 0 | 0 | 0 | 0 | Converged: verified 0, fixed 0, dismissed 0. Two open questions resolved clean, none a finding: the INV-7 fresh-process precondition is already stated in its clause; an abandoned lane reaches only static const data (featurecoverage.cpp, AuditEngine::excludedDirNames, markdownscan.cpp). Mechanical pre-pass: spec_lint and check-doc-facts clean apart from the forward-referenced test directory. |

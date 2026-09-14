@@ -7484,6 +7484,11 @@ extends an existing item, that item carries it instead.
   QThread worker (MainWindow::setupClaudeMcpProviders) but runs the four
   lanes after its aggregate timer stops, with no cap and no cancel;
   featurecoverage.cpp holds no shared mutable state.
+  Progress (2026-09-14): spec
+  docs/specs/ANTS-5067-drift-lanes-off-thread.md written and gated (one
+  lane, one pass, converged with no findings). Decision in its section
+  2.1: abandon, not stop. Next: build test-first under
+  tests/features/audit_inprocess_lanes_async.
   **Layman:** Some audit checks read the whole project on the main window's thread, freezing every tab until they finish.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lanes spec-engines, audit-dialog-b).
