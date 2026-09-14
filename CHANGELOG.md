@@ -70,6 +70,10 @@ for security-relevant changes.
 
 ### Fixed
 
+- **An Independent Review lane now stops at its time limit even when the AI endpoint keeps trickling data, and a reply over 10 MiB is cut off** (ANTS-5101)
+
+- **The debt sweep's automatic fix no longer corrupts bytes that are not valid UTF-8 elsewhere in the file** (ANTS-5101)
+
 - **spec_conformance refuses a pattern that does not compile instead of passing every no-match row against it** (ANTS-5100)
 
 - **doc_lint's table-of-contents fix recognises code blocks the same way the check that reports the gap does** (ANTS-5099)

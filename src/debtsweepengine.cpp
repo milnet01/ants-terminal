@@ -1440,6 +1440,11 @@ ApplyVerdict applyMechanicalFix(
     const QByteArray raw = in.readAll();
     in.close();
     const QString body = QString::fromUtf8(raw);
+    // ANTS-5101 — the edit is applied to the file's BYTES, line for line.
+    // Joining the decoded text and re-encoding it rewrote every non-UTF-8
+    // byte in the file as U+FFFD. Splitting both on '\n' keeps the two lists
+    // aligned: no UTF-8 decode error consumes or produces a newline.
+    QList<QByteArray> rawLines = raw.split('\n');
     const QFile::Permissions origPerms = QFileInfo(abs).permissions();
 
     QStringList kept = body.split('\n');
@@ -1463,6 +1468,7 @@ ApplyVerdict applyMechanicalFix(
             QStringLiteral(R"(Q_UNUSED\(\s*[A-Za-z_][A-Za-z0-9_]*\s*\)|\(void\)\s*[A-Za-z_][A-Za-z0-9_]*\s*;)"));
         if (!kMarkerRe.match(target).hasMatch()) { staleVerdict(); return v; }
         kept.removeAt(idx);
+        rawLines.removeAt(idx);
     } else if (finding.detectorId == QStringLiteral("duplicate_include")) {
         static const QRegularExpression kIncludeRe(
             QStringLiteral(R"(^\s*#\s*include\s+(["<][^">]*[">]))"));
@@ -1478,6 +1484,7 @@ ApplyVerdict applyMechanicalFix(
         }
         if (!earlierDup) { staleVerdict(); return v; }
         kept.removeAt(idx);
+        rawLines.removeAt(idx);
     } else {  // obsolete_qstring_idiom
         QString rewritten = target;
         bool any = false;
@@ -1489,9 +1496,10 @@ ApplyVerdict applyMechanicalFix(
         }
         if (!any) { staleVerdict(); return v; }
         kept[idx] = rewritten;
+        rawLines[idx] = rewritten.toUtf8();
     }
 
-    const QByteArray newBody = kept.join(QChar('\n')).toUtf8();
+    const QByteArray newBody = rawLines.join('\n');
 
     // ANTS-2227 — dry_run: the patch passed every guard and a patched
     // body was computed; report it would apply but skip the write. Shares

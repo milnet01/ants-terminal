@@ -959,3 +959,28 @@ TEST(DebtSweepEngine, Ants3743AgreeingPinsAreNotFlagged) {
     EXPECT_TRUE(DebtSweepEngine::detectDepPinMismatch(
                     dir, DebtSweepEngine::ScanOptions{}).isEmpty());
 }
+
+// ANTS-5101 — the mechanical fix edits bytes: a line that is not valid UTF-8
+// elsewhere in the file survives unchanged instead of becoming U+FFFD.
+TEST(DebtSweepEngine, Ants5101FixKeepsNonUtf8Bytes) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QByteArray before("#include <a.h>\n#include <a.h>\nconst char *s = \"\xE9t\xE9\";\n");
+    writeFile(tmp.path(), "src/latin.cpp", before);
+
+    DebtSweepEngine::Finding f;
+    f.category    = "code_drift";
+    f.detectorId  = "duplicate_include";
+    f.file        = "src/latin.cpp";
+    f.line        = 2;
+    f.autoFixable = true;
+
+    const auto v = DebtSweepEngine::applyMechanicalFix(tmp.path(), f);
+    ASSERT_TRUE(v.applied) << v.errorCode.toStdString() << " " << v.errorMessage.toStdString();
+
+    QFile post(tmp.path() + "/src/latin.cpp");
+    ASSERT_TRUE(post.open(QIODevice::ReadOnly));
+    EXPECT_EQ(post.readAll(),
+              QByteArray("#include <a.h>\nconst char *s = \"\xE9t\xE9\";\n"))
+        << "the fix re-encoded a non-UTF-8 byte";
+}

@@ -2491,6 +2491,8 @@ if(ANTS_TESTS)
                 tests/features/mcp_rate_limit/test_mcp_rate_limit.cpp
                 # ANTS-1352 indie_review_dispatch orchestrator.
                 tests/features/indie_review_dispatch/test_indie_review_dispatch.cpp
+                # ANTS-5101 — review lane deadline and reply cap.
+                tests/features/review_dispatch_bounds/test_review_dispatch_bounds.cpp
                 # ANTS-1727 review-dialog foundation (Q_OBJECT-bearing —
                 # hosted here for the full lib set; see test_core note).
                 tests/features/llm_client/test_llm_client.cpp

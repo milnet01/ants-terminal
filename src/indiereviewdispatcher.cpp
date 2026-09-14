@@ -34,6 +34,7 @@
 #include <QNetworkRequest>
 #include <QQueue>
 #include <QSaveFile>
+#include <QTimer>
 #include <QUrl>
 
 #include <atomic>
@@ -300,6 +301,21 @@ DispatchResult dispatchLanes(const DispatchRequest &req) {
         t.start();
         replyTimer[reply] = t;
         g_inFlightCount.fetch_add(1, std::memory_order_relaxed);
+        // ANTS-5101 — setTransferTimeout is an INACTIVITY timeout, so an
+        // endpoint trickling bytes kept a lane open indefinitely; this is the
+        // wall-clock deadline. The body is capped as LlmClient caps it.
+        if (req.perLaneTimeoutMs > 0) {
+            QTimer::singleShot(req.perLaneTimeoutMs, reply, [reply]() {
+                if (reply->isRunning()) reply->abort();
+            });
+        }
+        QObject::connect(reply, &QNetworkReply::downloadProgress, reply,
+                         [reply](qint64 received, qint64) {
+            if (received > LlmClient::kMaxBytes) {
+                reply->setProperty("antsTooLarge", true);
+                reply->abort();
+            }
+        });
     };
 
     int active = 0;
@@ -326,8 +342,12 @@ DispatchResult dispatchLanes(const DispatchRequest &req) {
         QByteArray body = reply->readAll();
         reply->deleteLater();
 
-        if (err == QNetworkReply::OperationCanceledError) {
-            // setTransferTimeout fires this.
+        if (reply->property("antsTooLarge").toBool()) {
+            lr.status = QStringLiteral("network_error");
+            lr.error  = QStringLiteral("reply larger than %1 MiB")
+                            .arg(LlmClient::kMaxBytes / (1024 * 1024));
+        } else if (err == QNetworkReply::OperationCanceledError) {
+            // setTransferTimeout or the ANTS-5101 deadline fires this.
             lr.status = QStringLiteral("timeout");
             lr.error  = QStringLiteral("transfer timeout after %1 ms")
                             .arg(req.perLaneTimeoutMs);
