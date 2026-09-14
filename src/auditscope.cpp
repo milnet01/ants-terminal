@@ -15,7 +15,7 @@ namespace {
 constexpr int kGitTimeoutMs = 1'500;  // matches AuditCache::runGit
 
 // Run git, return trimmed stdout ({} on non-zero exit / timeout). Mirrors
-// the AuditCache::runGit pattern (auditcache.cpp:39); duplicated rather than
+// the AuditCache::runGit pattern in auditcache.cpp; duplicated rather than
 // coupling auditscope to auditcache internals. ANTS-5043 — `ok`, when given,
 // tells a failure apart from an empty but successful output.
 QString runGit(const QString &root, const QStringList &args,

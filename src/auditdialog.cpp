@@ -3950,7 +3950,7 @@ void AuditDialog::buildUI() {
     m_sarifBtn->setToolTip("Save findings as SARIF v2.1.0 JSON for CI / IDE viewers");
     connect(m_sarifBtn, &QPushButton::clicked, this, [this]() {
         if (m_completedResults.isEmpty()) return;
-        QDir().mkpath(m_projectPath + "/.audit_cache");
+        ensurePrivateDir(m_projectPath + "/.audit_cache");  // ANTS-5085 — 0700 from the start
         const QString path = m_projectPath + "/.audit_cache/audit-"
                            + QDateTime::currentDateTime().toString("yyyyMMdd-HHmmss")
                            + ".sarif";
@@ -3983,7 +3983,7 @@ void AuditDialog::buildUI() {
     m_htmlBtn->setToolTip("Save a single-file HTML report (browser-viewable, no external assets)");
     connect(m_htmlBtn, &QPushButton::clicked, this, [this]() {
         if (m_completedResults.isEmpty()) return;
-        QDir().mkpath(m_projectPath + "/.audit_cache");
+        ensurePrivateDir(m_projectPath + "/.audit_cache");  // ANTS-5085 — 0700 from the start
         const QString path = m_projectPath + "/.audit_cache/audit-"
                            + QDateTime::currentDateTime().toString("yyyyMMdd-HHmmss")
                            + ".html";

@@ -620,7 +620,7 @@ QString writeGitleaksExcludeConfig(const QString &canonProject) {
         "  '''(^|/)\\.audit_cache/''',\n"
         "]\n";
     const QString dir = canonProject + QLatin1String("/.audit_cache");
-    if (!QDir().mkpath(dir)) return {};
+    if (!ensurePrivateDir(dir)) return {};  // ANTS-5085 — 0700, no umask window
     // Lives under the allowlisted .audit_cache/ dir, so it never scans itself.
     QSaveFile f(dir + QLatin1String("/.gitleaks-audit-run.toml"));
     if (!f.open(QIODevice::WriteOnly | QIODevice::Truncate)) return {};

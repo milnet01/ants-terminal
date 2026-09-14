@@ -70,6 +70,12 @@ for security-relevant changes.
 
 ### Fixed
 
+- **Audit auto-fix repairs files with Windows line endings, and the audit cache folder is always created private** (ANTS-5085)
+  Auto-fix used to treat every planned repair in a CRLF file as out of
+  date; it now applies them and keeps each line's ending. The SARIF and
+  HTML exports and the gitleaks config writer create the .audit_cache
+  folder owner-only from the start.
+
 - **Audit window: the Since baseline filter and changed-lines scope no longer hide every finding, and batch AI triage is throttled** (ANTS-5084)
   A run with Since baseline on keeps the changed-line data that filter
   needs. When git cannot say what changed (a short history, a timeout, a

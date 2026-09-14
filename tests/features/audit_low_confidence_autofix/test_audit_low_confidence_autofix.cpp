@@ -196,3 +196,18 @@ TEST(AuditAutofix, Inv5VersionLE) {
     EXPECT_FALSE(ants::autofix::versionLE("garbage", "0.7.92"));
     EXPECT_FALSE(ants::autofix::versionLE("0.7", "0.7.92"));
 }
+
+// INV-7 (ANTS-5085) — a CRLF file is repaired and keeps its line endings.
+TEST(AuditAutofix, Inv7CrlfFileRepairedKeepsEndings) {
+    QTemporaryDir dir;
+    const QString body =
+        "void f(int a) {\r\n    Q_UNUSED(a);\r\n    return;\r\n}\r\n";
+    const QString p = writeTmp(dir, "x.cpp", body);
+    const Finding f = mk("clazy", "unused parameter: dead Q_UNUSED", 2);
+    const auto r = ants::autofix::planRepair(f, p, readFile(p), kVer);
+    ASSERT_TRUE(r.has_value());
+    EXPECT_TRUE(ants::autofix::applyRepair(*r))
+        << "the plan made from the file's bytes was refused as stale";
+    EXPECT_EQ(readFile(p),
+              QStringLiteral("void f(int a) {\r\n    return;\r\n}\r\n"));
+}

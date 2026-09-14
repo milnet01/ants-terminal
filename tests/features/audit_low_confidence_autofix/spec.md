@@ -64,3 +64,6 @@ contract. These findings are surfaced for manual review only.
   never treated as removable).
 - **INV-6 — applyRepair preserves the file's trailing-newline state** and
   only the targeted line changes.
+- **INV-7 — a CRLF file is repaired and keeps its line endings.** A plan made
+  from the file's bytes applies, and every other line keeps its `\r\n`
+  (ANTS-5085).

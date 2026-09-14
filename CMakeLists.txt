@@ -2917,6 +2917,8 @@ if(ANTS_TESTS)
                 tests/features/audit_dialog_lows/test_audit_dialog_lows.cpp
                 # ANTS-5084 — changed-lines scope failures and bounded batch triage.
                 tests/features/audit_scope_and_triage/test_audit_scope_and_triage.cpp
+                # ANTS-5085 — .audit_cache is created 0700 by every writer.
+                tests/features/audit_cache_dir_private/test_audit_cache_dir_private.cpp
                 # ANTS-5083 — suppressions count only once saved; runs read fresh lines.
                 tests/features/audit_suppression_save/test_audit_suppression_save.cpp
                 tests/features/audit_tool_crash_distinct/test_audit_tool_crash_distinct.cpp

@@ -102,8 +102,10 @@ std::optional<Repair> planRepair(const Finding &f,
 bool applyRepair(const Repair &r) {
     if (r.file.isEmpty() || r.line < 1) return false;
 
+    // ANTS-5085 — binary, as runAutoFix read the file planRepair saw. Text
+    // mode dropped each \r, so every plan for a CRLF file looked stale.
     QFile in(r.file);
-    if (!in.open(QIODevice::ReadOnly | QIODevice::Text)) return false;
+    if (!in.open(QIODevice::ReadOnly)) return false;
     const QString contents = QString::fromUtf8(in.readAll());
     in.close();
 
@@ -134,7 +136,7 @@ bool applyRepair(const Repair &r) {
     if (trailingNewline) out.append('\n');
 
     QSaveFile sf(r.file);
-    if (!sf.open(QIODevice::WriteOnly | QIODevice::Text)) return false;
+    if (!sf.open(QIODevice::WriteOnly)) return false;
     // Refuse a short write rather than commit a truncated source file
     // (disk-full corruption guard). indie-review-2026-05-21.
     const QByteArray outBytes = out.toUtf8();
