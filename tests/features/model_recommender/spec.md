@@ -68,3 +68,10 @@ to the user's configured floor.
 - **INV-9** `score()` is a stateless free function — no per-call
   mutable state; calling it twice with the same path and unchanged
   file returns the same result.
+
+## ANTS-1892 — the thinking level reads past tool replies
+
+`thinkingLevelFromLatestUserTurn` skips a user-role line that carries no
+`text` block, such as a `tool_result` envelope, and reads the most recent line
+a person typed. A transcript with no such line still returns `Unknown`.
+*Test:* `ModelRecommenderThinkingLevel.Ants1892ToolResultLinesAreSkipped`.

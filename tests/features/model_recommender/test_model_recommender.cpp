@@ -436,6 +436,46 @@ TEST(ModelRecommenderThinkingLevel, LatestUserTurnWins) {
               ModelRecommender::ThinkingLevel::Standard);
 }
 
+// ANTS-1892 — tool replies are user-role lines with only a tool_result block.
+// They sit after the human prompt in every live session, so the level comes
+// from the prompt behind them; a tail of tool replies alone is still Unknown.
+TEST(ModelRecommenderThinkingLevel, Ants1892ToolResultLinesAreSkipped) {
+    const auto appendToolResult = [](QTemporaryFile &f) {
+        QJsonObject block;
+        block["type"]        = "tool_result";
+        block["tool_use_id"] = "toolu_1";
+        block["content"]     = "ok";
+        QJsonArray content;
+        content.append(block);
+        QJsonObject msg;
+        msg["content"] = content;
+        QJsonObject turn;
+        turn["type"]    = "user";
+        turn["message"] = msg;
+        QTextStream out(&f);
+        out << QJsonDocument(turn).toJson(QJsonDocument::Compact) << "\n";
+        out.flush();
+    };
+    {
+        QTemporaryFile f; ASSERT_TRUE(f.open());
+        appendUserTurn(f, QStringLiteral("ultrathink the migration plan"));
+        appendToolResult(f);
+        appendToolResult(f);
+        f.close();
+        EXPECT_EQ(ModelRecommender::thinkingLevelFromLatestUserTurn(f.fileName()),
+                  ModelRecommender::ThinkingLevel::Ultrathink)
+            << "tool replies after the prompt must not hide it";
+    }
+    {
+        QTemporaryFile f; ASSERT_TRUE(f.open());
+        appendToolResult(f);
+        f.close();
+        EXPECT_EQ(ModelRecommender::thinkingLevelFromLatestUserTurn(f.fileName()),
+                  ModelRecommender::ThinkingLevel::Unknown)
+            << "with no typed prompt at all there is nothing to read";
+    }
+}
+
 // ----- ANTS-1890 — hasCommitIntent + weightForTurnIndex pure helpers -----
 
 // INV-1 — exact verbs return true (caller pre-lowercases).

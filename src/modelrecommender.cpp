@@ -469,6 +469,10 @@ ThinkingLevel thinkingLevelFromLatestUserTurn(const QString &transcriptPath)
             // Some session writers emit a bare-string content; tolerate both.
             parts.append(content.toString());
         }
+        // ANTS-1892 — Claude Code writes every tool reply as a user-role line
+        // holding only a tool_result block. Stopping there answered Unknown for
+        // nearly every live tab, so keep walking to a line a person typed.
+        if (parts.isEmpty()) continue;
         userText = parts.join(QLatin1Char(' ')).toLower();
         break;
     }
