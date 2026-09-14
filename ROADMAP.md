@@ -10115,7 +10115,7 @@ extends an existing item, that item carries it instead.
   Source: in-session-2026-09-13 split from ANTS-5072.
   Lanes: mcp.
 
-- 📋 [ANTS-5151] **Most setOwnerOnlyPerms calls discard its result, so a file meant to be owner-only can stay readable with no signal.**
+- ✅ [ANTS-5151] **Most setOwnerOnlyPerms calls discard its result, so a file meant to be owner-only can stay readable with no signal.**
   Split out of ANTS-5104, whose finding named the MCP spill and
   settings writers. A search for calls made as a bare statement finds the
   same pattern across config, session, audit, cache, roadmap store, debug
@@ -10130,6 +10130,26 @@ extends an existing item, that item carries it instead.
   project content (spills, caches) is not written when owner-only perms
   cannot be set; every other site logs a warning. Policy lives once in
   src/secureio.h, then applied per site.
+  Decided (2026-09-14, user), after a 61-site survey: the roadmap store
+  (RoadmapStore::open) warns and keeps working, since refusing would lock
+  every project out; the session log, the recording and the debug log stop
+  writing and tell the user (the debug log through stderr); a tab's session
+  blob already renamed into place is kept with a warning, while the temp
+  file before the rename fails closed. Defaults applied without asking:
+  audit exports, caches and saved reports fail closed; settings, config,
+  the audit allowlist and the audit HTML summary warn. Implementation:
+  [[nodiscard]] on both setOwnerOnlyPerms overloads plus a warnNotOwnerOnly
+  helper in src/secureio.h, so a discarded result becomes a compiler
+  warning.
+  Resolved (2026-09-14, 40fc13e4): both setOwnerOnlyPerms overloads are
+  [[nodiscard]], src/secureio.h states the split-by-risk policy and adds
+  warnNotOwnerOnly, and all 47 discarding call sites take one half per the
+  decisions above. Session logging and recordings now tell the user through
+  TerminalWidget::captureFailed, shown in the status bar, and the menu
+  handlers no longer report success when capture did not start. The roadmap
+  store no longer treats a missing WAL sidecar as a failure. Guard test
+  owner_only_result_used (47 bare calls on the parent commit, 0 now). Build
+  reported zero unused-result warnings; suite 4778 passed.
   **Layman:** Ants tries to make its private files readable only by you, but in most places it never checks whether that worked.
   Kind: security.
   Source: in-session-2026-09-13 split from ANTS-5104.
@@ -46645,6 +46665,8 @@ are closed inline in the feedback files rather than filed here.
   rule), after ANTS-4955 lands so Layman lines change style once, with a
   sqlite3 .backup first. After that a re-migrate should report 0. It
   rewrites rows in the machine-global store, so it waits for the user.
+  Decided (2026-09-14, user): run the one-time store normalisation after
+  ANTS-4955 lands, with a sqlite3 .backup first.
   **Layman:** The check that tells you whether the database is out of date reports problems on a database that is perfectly up to date.
   Kind: fix.
   Lanes: roadmap-store, mcp.
@@ -76866,6 +76888,19 @@ here.)
   behaviour — a caller that pairs a fence by character alone and would now
   run to EOF. `fence_closer_run_consumers` is the suite to extend, since it
   already owns the closer contract.
+  Surveyed (2026-09-14): none of the 13 fenceCloses callers depends on the
+  loose rule. Corpus re-measured: 1 loose-only closer in 1058 markdown
+  files (docs/plans/ANTS-1160.md:1133), a bounded shift, not a run to EOF.
+  Build notes: (1) MarkdownScan::fenceMask carries its own loose closer
+  check and must change in the same step, or the two families disagree on
+  one file; (2) match changelogquery.cpp's fenceInfoOf rule, which uses
+  trimmed(), so a CRLF closer still closes; (3) on a malformed doc the
+  write paths can run to EOF: speclog findSectionHeading and sectionEnd,
+  feedbackfile scanBoundaries and enumerateFindingBlocks pass 1; (4) add
+  an info-string-closer case per consumer to fence_closer_run_consumers,
+  and a changelog_query case before deleting its local hasInfo; (5) add a
+  testauditengine fixture that closes the Findings JSON block with an
+  info-string fence.
   **Layman:** The shared rule for "where does this code block end" ends it one line too early when that line has a label on it.
   Kind: fix.
   Source: in-session-2026-09-09 (found while closing ANTS-4404).
