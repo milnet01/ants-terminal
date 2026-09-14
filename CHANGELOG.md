@@ -78,6 +78,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **invariant_check's scope note now says on every reply that specs are matched by path, so a spec citing the module only by symbol is known to be missing even when another spec matched.** (ANTS-4972)
+
 - **apply_edits flags a batch that applied some edits and skipped others with `partial:true` (`would_be_partial:true` on a dry run), instead of a bare ok:true.** (ANTS-4856)
 
 - **roadmap_log op:"set_body" accepts a replacement body up to 65536 characters, so long bodies can be written back whole; amend_body keeps its 4096-character fragment cap.** (ANTS-4841)

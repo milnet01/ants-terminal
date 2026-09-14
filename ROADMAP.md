@@ -36410,7 +36410,7 @@ against current source before filing.
   no recorded provenance (36 such lines before, 399 after), materialising a default
   as though it were data.
 
-- 📋 [ANTS-3854] **roadmap_log op:create_section silently reparents a target section's subsections.**
+- ✅ [ANTS-3854] **roadmap_log op:create_section silently reparents a target section's subsections.**
   Hit 2026-08-06. `op:create_section` with `after_section: <slug>` and
   `level: 2` inserts the new `##` heading at the end of the target's OWN
   prose — before the target's `###` child headings, not after them. Every
@@ -36440,6 +36440,12 @@ against current source before filing.
   **Layman:** Adding a new roadmap heading after a section that has sub-headings quietly steals all of them.
   Kind: fix.
   Source: in-session-2026-08-06.
+  Closed (2026-09-14) as done by ANTS-4848, which fixed both write paths
+  through one shared rule, RemoteControl::createSectionSkipCount: a new
+  heading steps past the trailing run of deeper headings, so the
+  target's subsections keep their parent. This is this item's remedy
+  (2), insert after the subtree. Covered by the createSectionSkipCount
+  cases in tests/features/mcp_roadmap_log_create_section.
 
 - ✅ [ANTS-3855] **Nothing in production can run the migration — RoadmapMigrateLoad::load() has zero non-test callers.**
   Measured 2026-08-06, not inferred. In `src/`, `RoadmapMigrate` and
@@ -60228,7 +60234,7 @@ than re-filed; everything else lands here.
   Source: Games_Hub_Ants_MCP_Feedback.md 2026-09-08.
   Lanes: mcp, roadmap-store.
 
-- 📋 [ANTS-4972] **invariant_check names a spec that merely mentions the path, hiding the spec that governs the file by symbol.**
+- ✅ [ANTS-4972] **invariant_check names a spec that merely mentions the path, hiding the spec that governs the file by symbol.**
   Every tier matches the PATH, so a spec that governs a file through
   its SYMBOLS is invisible to this verb. The schema already handles
   the dangerous zero — path_match_only:true fires on an empty result
@@ -60260,6 +60266,13 @@ than re-filed; everything else lands here.
   separate array, reported-and-never-merged the way
   basename_matches already is, so a weaker match cannot hide among
   path hits.
+  Resolved (2026-09-14), cheapest remedy. The scope_note every reply
+  already carries (ANTS-4645) now says specs are matched by PATH only,
+  so a spec citing the module by symbol does not appear even beside a
+  match, and names workspace_search as the fallback. path_match_only was
+  not widened: ANTS-4742's test pins it to the zero case. The
+  stem-as-symbol scan in a separate array was not built. Test:
+  McpInvariantCheck.Ants4972ScopeNoteSaysPathOnlyOnAHit.
   **Layman:** The check that finds which design document governs a file can confidently name the wrong one.
   Kind: fix.
   Source: Games_Hub_Ants_MCP_Feedback.md 2026-09-08.
