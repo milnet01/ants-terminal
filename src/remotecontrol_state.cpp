@@ -127,7 +127,28 @@ int RemoteControl::runClient(const QString &command,
     const qint64 deadline =
         QDateTime::currentMSecsSinceEpoch() + kOverallTimeoutMs;
     QByteArray resp;
-    while (socket.waitForReadyRead(2000)) {
+    // ANTS-5138 — the FIRST byte may take up to the whole deadline. A verb
+    // that works before it answers (a search, a git fork, a call queued behind
+    // the dispatch worker) outran the 2 s wait, and the loop exited with
+    // nothing read, printing "no response" while the server was still
+    // answering. Once bytes flow the 2 s wait between chunks stands, so the
+    // slow-drip bound above is unchanged.
+    for (;;) {
+        const qint64 remaining = deadline - QDateTime::currentMSecsSinceEpoch();
+        if (remaining <= 0) {
+            if (!resp.isEmpty()) {
+                fprintf(stderr,
+                        "ants-terminal --remote: response timed out after %lld ms; "
+                        "aborting (suspect slow-drip peer)\n",
+                        static_cast<long long>(kOverallTimeoutMs));
+                return 1;
+            }
+            break;
+        }
+        const int waitMs = resp.isEmpty()
+            ? static_cast<int>(remaining)
+            : static_cast<int>(qMin<qint64>(2000, remaining));
+        if (!socket.waitForReadyRead(waitMs)) break;
         resp += socket.readAll();
         if (resp.contains('\n')) break;
         if (resp.size() > kMaxResponseBytes) {

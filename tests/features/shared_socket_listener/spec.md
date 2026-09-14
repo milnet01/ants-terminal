@@ -28,3 +28,11 @@ connect over those sockets. INV-7 is a source scrape.
 - `Inv7AcceptChecksStayInTheHandlers` — `SO_PEERCRED` and the 5 s idle timer
   precede `readyRead` in each handler; the `attach` calls serve through those
   handlers; the hub pulls a connection only to close it.
+
+## ANTS-5138 — the client waits for a slow first byte
+
+`RemoteControl::runClient` waits for the first byte of a reply for up to its
+overall read deadline, then keeps the 2 s wait between later chunks. A server
+that answers 2.5 s after the request is read, and the client exits 0. Bytes
+that start but do not finish by the deadline still end in the timed-out
+refusal. *Test:* `SharedSocketListener.Ants5138SlowFirstByteIsStillReceived`.

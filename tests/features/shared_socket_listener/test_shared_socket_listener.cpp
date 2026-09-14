@@ -21,7 +21,9 @@
 #include <cstring>
 #include <functional>
 #include <memory>
+#include <chrono>
 #include <string>
+#include <thread>
 #include <vector>
 
 #include <sys/socket.h>
@@ -417,4 +419,47 @@ TEST(SharedSocketListener, Inv7AcceptChecksStayInTheHandlers) {
                   .find("nextPendingConnection("),
               std::string::npos)
         << "the hub's one nextPendingConnection is not in closeUnowned";
+}
+
+// ANTS-5138 — a reply whose first byte arrives after the client's 2 s
+// per-read wait is still received. runClient left its read loop on the
+// first wait that returned nothing, printed "no response" and exited 1,
+// though the server answered. A raw AF_UNIX listener stands in for a slow
+// verb, so no event loop is needed on the server thread.
+TEST(SharedSocketListener, Ants5138SlowFirstByteIsStillReceived) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QByteArray path =
+        (tmp.path() + QStringLiteral("/slow.sock")).toUtf8();
+    const int lfd = ::socket(AF_UNIX, SOCK_STREAM, 0);
+    ASSERT_GE(lfd, 0);
+    sockaddr_un addr{};
+    addr.sun_family = AF_UNIX;
+    ASSERT_LT(static_cast<size_t>(path.size()), sizeof(addr.sun_path));
+    std::memcpy(addr.sun_path, path.constData(),
+                static_cast<size_t>(path.size()));
+    ASSERT_EQ(::bind(lfd, reinterpret_cast<sockaddr *>(&addr), sizeof(addr)), 0);
+    ASSERT_EQ(::listen(lfd, 1), 0);
+
+    std::thread server([lfd] {
+        const int cfd = ::accept(lfd, nullptr, nullptr);
+        if (cfd < 0) return;
+        char buf[512];
+        for (;;) {
+            const ssize_t n = ::read(cfd, buf, sizeof(buf));
+            if (n <= 0 || std::memchr(buf, '\n', static_cast<size_t>(n))) break;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(2500));
+        static const char reply[] = "{\"ok\":true}\n";
+        (void)!::write(cfd, reply, sizeof(reply) - 1);
+        ::close(cfd);
+    });
+
+    const int rc = RemoteControl::runClient(
+        QStringLiteral("ls"), QJsonObject{}, QString::fromUtf8(path));
+    server.join();
+    ::close(lfd);
+    EXPECT_EQ(rc, 0)
+        << "a reply whose first byte took 2.5 s must be read, not reported "
+           "as \"no response\"";
 }
