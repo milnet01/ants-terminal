@@ -7,12 +7,9 @@
 
 #include <gtest/gtest.h>
 
-#ifndef SRC_MAINWINDOW_CPP_PATH
-#define SRC_MAINWINDOW_CPP_PATH ""
-#endif
 
 TEST(AboutTextCurrent, NoGpuRenderingClaim) {
-    const QDir src = QFileInfo(QStringLiteral(SRC_MAINWINDOW_CPP_PATH)).dir();
+    const QDir src = QDir(QStringLiteral(SRC_DIR));
     QFile f(src.filePath(QStringLiteral("aboutdialogs.cpp")));
     ASSERT_TRUE(f.open(QIODevice::ReadOnly | QIODevice::Text));
     const QString code = QString::fromUtf8(f.readAll());

@@ -27,7 +27,7 @@ void fail(const char *label, const char *why) {
 
 TEST(UpdateAvailableMenubar, Main) {
     const std::string header = ants_test::slurpFile(MAINWINDOW_H);
-    const std::string source = ants_test::slurpFile(MAINWINDOW_CPP);
+    const std::string source = ants_test::slurpMainWindow();
     if (header.empty()) fail("setup", "mainwindow.h not readable");
     if (source.empty()) fail("setup", "mainwindow.cpp not readable");
 

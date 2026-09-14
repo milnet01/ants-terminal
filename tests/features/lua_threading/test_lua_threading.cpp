@@ -35,6 +35,7 @@
 #include <QUuid>
 
 #include <gtest/gtest.h>
+#include "../../_support/srcgrep.h"
 
 ANTS_TEST_SCOPE();
 
@@ -124,7 +125,7 @@ void runSourceChecks() {
     const QString lc  = readSource(SRC_LUAENGINE_PATH,   "src-open/luaengine.cpp");
     const QString pmh = readSource(SRC_PLUGINMANAGER_H_PATH, "src-open/pluginmanager.h");
     const QString pmc = readSource(SRC_PLUGINMANAGER_CPP_PATH, "src-open/pluginmanager.cpp");
-    const QString mw  = readSource(SRC_MAINWINDOW_PATH,  "src-open/mainwindow.cpp");
+    const QString mw  = QString::fromStdString(ants_test::slurpMainWindow());
 
     // S1 — worker affinity.
     expect(pmc.contains(QStringLiteral("moveToThread(")),

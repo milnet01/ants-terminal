@@ -222,8 +222,8 @@ int runPersistenceRoundTrip() {
 // reading mainwindow.cpp source — the same approach as help_about_menu.
 int runPickerMenuSourceContract() {
     int failures = 0;
-    const std::string src = ants_test::slurpFile(SRC_MAINWINDOW_CPP_PATH);
-    CHECK(!src.empty(), "mainwindow.cpp readable via SRC_MAINWINDOW_CPP_PATH");
+    const std::string src = ants_test::slurpMainWindow();
+    CHECK(!src.empty(), "the MainWindow sources are readable");
     const std::string body =
         ants_test::slurpFunctionBody(src, "MainWindow::showTabColorMenu");
     CHECK(!body.empty(), "showTabColorMenu body located");

@@ -9,8 +9,8 @@
 #ifndef SRC_CLAUDESTATUSWIDGETS_CPP_PATH
 #error "SRC_CLAUDESTATUSWIDGETS_CPP_PATH compile definition required"
 #endif
-#ifndef SRC_MAINWINDOW_CPP_PATH
-#error "SRC_MAINWINDOW_CPP_PATH compile definition required"
+#ifndef ANTS_MAINWINDOW_SOURCES
+#error "ANTS_MAINWINDOW_SOURCES compile definition required"
 #endif
 
 namespace {
@@ -76,7 +76,7 @@ TEST(ModelAutoSwitchActuator, Inv14ChipSuppressedWhenEnabled) {
 
 // INV-14 (c) — the 2 s status timer drives the actuator.
 TEST(ModelAutoSwitchActuator, Inv14WiredOnStatusTimer) {
-    const std::string src = ants_test::slurpFile(SRC_MAINWINDOW_CPP_PATH);
+    const std::string src = ants_test::slurpMainWindow();
     // Look for the connect line tying m_statusTimer to
     // refreshAutoModelSwitch — same shape MainWindow uses for the
     // other status-timer slots.

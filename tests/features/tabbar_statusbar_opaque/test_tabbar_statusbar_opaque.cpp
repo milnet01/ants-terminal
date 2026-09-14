@@ -8,8 +8,8 @@
 #include <gtest/gtest.h>
 #include "../../_support/srcgrep.h"
 
-#ifndef SRC_MAINWINDOW_PATH
-#error "SRC_MAINWINDOW_PATH compile definition required"
+#ifndef ANTS_MAINWINDOW_SOURCES
+#error "ANTS_MAINWINDOW_SOURCES compile definition required"
 #endif
 
 #ifndef SRC_COLOREDTABBAR_CPP_PATH
@@ -26,7 +26,7 @@
 
 
 TEST(TabbarStatusbarOpaque, Main) {
-    const std::string mw   = ants_test::slurpFile(SRC_MAINWINDOW_PATH);
+    const std::string mw   = ants_test::slurpMainWindow();
     const std::string ctbC = ants_test::slurpFile(SRC_COLOREDTABBAR_CPP_PATH);
     const std::string ctbH = ants_test::slurpFile(SRC_COLOREDTABBAR_H_PATH);
     const std::string osb  = ants_test::slurpFile(SRC_OPAQUESTATUSBAR_PATH);

@@ -10,7 +10,7 @@
 // INV-1 — the opacity action applies the level to every live terminal.
 TEST(ViewOpacityLive, Inv1ActionUpdatesLiveTerminals) {
     const std::string src =
-        ants_test::stripComments(ants_test::slurpFile(SRC_MAINWINDOW_PATH));
+        ants_test::stripComments(ants_test::slurpMainWindow());
     const std::string body =
         ants_test::slurpFunctionBody(src, "void MainWindow::setupViewMenu(");
     ASSERT_FALSE(body.empty()) << "setupViewMenu not found";

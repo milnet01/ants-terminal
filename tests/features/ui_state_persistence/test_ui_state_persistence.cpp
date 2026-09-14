@@ -60,8 +60,8 @@
 #ifndef ANTS_AUDITDIALOG_SOURCES
 #  error "ANTS_AUDITDIALOG_SOURCES must be defined by the bundle's compile defs"
 #endif
-#ifndef SRC_MAINWINDOW_CPP_PATH
-#  error "SRC_MAINWINDOW_CPP_PATH must be defined by the bundle's compile defs"
+#ifndef ANTS_MAINWINDOW_SOURCES
+#  error "ANTS_MAINWINDOW_SOURCES must be defined by the bundle's compile defs"
 #endif
 
 ANTS_TEST_SCOPE();
@@ -535,7 +535,7 @@ TEST(UiStatePersistence, Inv14_auditDialogWiring) {
 
 TEST(UiStatePersistence, Inv15_mainWindowAuditDialogCallSite) {
     expect_reset();
-    const std::string mw = readFile(SRC_MAINWINDOW_CPP_PATH);
+    const std::string mw = ants_test::slurpMainWindow();
     ASSERT_FALSE(mw.empty()) << "ANTS-1150-INV-15: read mainwindow.cpp";
 
     // Multi-line aware: find first `new AuditDialog(` and look up to

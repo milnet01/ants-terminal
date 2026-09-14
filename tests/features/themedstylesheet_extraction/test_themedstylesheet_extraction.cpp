@@ -18,8 +18,8 @@
 #include "themedstylesheet.h"
 #include "themes.h"
 
-#ifndef SRC_MAINWINDOW_CPP_PATH
-#error "SRC_MAINWINDOW_CPP_PATH compile definition required"
+#ifndef ANTS_MAINWINDOW_SOURCES
+#error "ANTS_MAINWINDOW_SOURCES compile definition required"
 #endif
 #ifndef SRC_MAINWINDOW_H_PATH
 #error "SRC_MAINWINDOW_H_PATH compile definition required"
@@ -56,7 +56,7 @@ std::size_t lineCount(const std::string &text) {
 
 TEST(ThemedstylesheetExtraction, Main) {
 
-    const std::string mw     = ants_test::slurpFile(SRC_MAINWINDOW_CPP_PATH);
+    const std::string mw     = ants_test::slurpMainWindow();
     const std::string mwH    = ants_test::slurpFile(SRC_MAINWINDOW_H_PATH);
     const std::string tssCpp = ants_test::slurpFile(SRC_THEMEDSTYLESHEET_CPP_PATH);
     const std::string tssH   = ants_test::slurpFile(SRC_THEMEDSTYLESHEET_H_PATH);

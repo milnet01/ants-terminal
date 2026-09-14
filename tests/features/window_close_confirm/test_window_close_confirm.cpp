@@ -15,8 +15,8 @@
 #ifndef SRC_MAINWINDOW_H_PATH
 #  error "SRC_MAINWINDOW_H_PATH must be defined by the bundle's compile defs"
 #endif
-#ifndef SRC_MAINWINDOW_CPP_PATH
-#  error "SRC_MAINWINDOW_CPP_PATH must be defined by the bundle's compile defs"
+#ifndef ANTS_MAINWINDOW_SOURCES
+#  error "ANTS_MAINWINDOW_SOURCES must be defined by the bundle's compile defs"
 #endif
 
 ANTS_TEST_SCOPE();
@@ -29,8 +29,8 @@ bool contains(const std::string &hay, const std::string &needle) {
 
 TEST(WindowCloseConfirm, Inv1_closeEventChecksAndIgnoresBeforeSaveAndDeferral) {
     expect_reset();
-    const std::string cp = ants_test::slurpFile(SRC_MAINWINDOW_CPP_PATH);
-    ASSERT_FALSE(cp.empty()) << "ANTS-5120-INV-1: read mainwindow.cpp (" << SRC_MAINWINDOW_CPP_PATH << ")";
+    const std::string cp = ants_test::slurpMainWindow();
+    ASSERT_FALSE(cp.empty()) << "ANTS-5120-INV-1: read mainwindow.cpp (" << "the MainWindow sources" << ")";
     // Comment-stripped so a documentation comment describing the fix can't
     // satisfy this the wrong way. Anchored at `void MainWindow::` because
     // slurpFunctionBody takes the FIRST match, and a bare
@@ -81,7 +81,7 @@ TEST(WindowCloseConfirm, Inv1_closeEventChecksAndIgnoresBeforeSaveAndDeferral) {
 
 TEST(WindowCloseConfirm, Inv2_closeEventChecksEveryLiveTerminal) {
     expect_reset();
-    const std::string cp = ants_test::slurpFile(SRC_MAINWINDOW_CPP_PATH);
+    const std::string cp = ants_test::slurpMainWindow();
     ASSERT_FALSE(cp.empty()) << "ANTS-5120-INV-2: read mainwindow.cpp";
     const std::string stripped = ants_test::stripComments(cp);
 
@@ -97,7 +97,7 @@ TEST(WindowCloseConfirm, Inv2_closeEventChecksEveryLiveTerminal) {
 
 TEST(WindowCloseConfirm, Inv3_windowDialogIsNonModal) {
     expect_reset();
-    const std::string cp = ants_test::slurpFile(SRC_MAINWINDOW_CPP_PATH);
+    const std::string cp = ants_test::slurpMainWindow();
     ASSERT_FALSE(cp.empty()) << "ANTS-5120-INV-3: read mainwindow.cpp";
     const std::string stripped = ants_test::stripComments(cp);
 
@@ -122,7 +122,7 @@ TEST(WindowCloseConfirm, Inv3_windowDialogIsNonModal) {
 
 TEST(WindowCloseConfirm, Inv4_proceedPathClosesWindowAndSetsFlagCloseEventReads) {
     expect_reset();
-    const std::string cp = ants_test::slurpFile(SRC_MAINWINDOW_CPP_PATH);
+    const std::string cp = ants_test::slurpMainWindow();
     ASSERT_FALSE(cp.empty()) << "ANTS-5120-INV-4: read mainwindow.cpp";
     const std::string stripped = ants_test::stripComments(cp);
 
@@ -193,7 +193,7 @@ TEST(WindowCloseConfirm, Inv4_proceedPathClosesWindowAndSetsFlagCloseEventReads)
 
 TEST(WindowCloseConfirm, Inv5_dontAskAgainWritesSameConfigSettingAsTabClose) {
     expect_reset();
-    const std::string cp = ants_test::slurpFile(SRC_MAINWINDOW_CPP_PATH);
+    const std::string cp = ants_test::slurpMainWindow();
     ASSERT_FALSE(cp.empty()) << "ANTS-5120-INV-5: read mainwindow.cpp";
     const std::string stripped = ants_test::stripComments(cp);
 

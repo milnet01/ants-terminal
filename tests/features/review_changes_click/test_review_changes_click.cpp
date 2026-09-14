@@ -207,8 +207,7 @@ TEST(ReviewChangesClick, ShowDiffViewerCallsRaiseAndActivate) {
     // src/diffviewer.cpp's `diffviewer::show(QWidget *, const
     // QString &, const QString &)` after the carve-out. ANTS-1217
     // Phase 3 renamed the compile define to SRC_DIFFVIEWER_CPP_PATH
-    // so the test_chrome bundle can give SRC_MAINWINDOW_PATH its
-    // natural value.
+    // so each source file keeps its own define.
     const QString path = QStringLiteral(SRC_DIFFVIEWER_CPP_PATH);
     QFile f(path);
     if (!f.open(QIODevice::ReadOnly | QIODevice::Text)) {

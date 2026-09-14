@@ -36,8 +36,8 @@
 #ifndef ANTS_RC_SOURCES
 #error "ANTS_RC_SOURCES compile definition required"
 #endif
-#ifndef SRC_MAINWINDOW_CPP
-#error "SRC_MAINWINDOW_CPP compile definition required"
+#ifndef ANTS_MAINWINDOW_SOURCES
+#error "ANTS_MAINWINDOW_SOURCES compile definition required"
 #endif
 
 ANTS_TEST_SCOPE();
@@ -134,7 +134,7 @@ void testFilter() {
 
 void testSourceInvariants() {
     const std::string rc = ants_test::slurpRemoteControl();
-    const std::string mw = ants_test::slurpFile(SRC_MAINWINDOW_CPP);
+    const std::string mw = ants_test::slurpMainWindow();
 
     // INV-A: cmdSendText consults the raw-bypass flag.
     expect(rc.find("req.value(\"raw\")") != std::string::npos,

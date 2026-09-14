@@ -868,7 +868,7 @@ TEST(changelog_log_writer, Ants3723BytesWrittenIsDeltaNotWholeFile) {
 TEST(changelog_log_writer, Inv8ContractAndDescriptor) {
     expect_reset();
     const std::string ci = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
-    const std::string mw = ants_test::slurpFile(SRC_MAINWINDOW_CPP_PATH);
+    const std::string mw = ants_test::slurpMainWindow();
     expect(contains(ci,
         "if (toolName == QStringLiteral(\"changelog_log\"))      return C::Required;"),
         "INV-8: changelog_log classified Required in callerCwdContractFor");

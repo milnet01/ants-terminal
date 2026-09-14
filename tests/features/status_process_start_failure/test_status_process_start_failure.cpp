@@ -7,10 +7,8 @@
 #include <QString>
 
 #include <gtest/gtest.h>
+#include "../../_support/srcgrep.h"
 
-#ifndef SRC_MAINWINDOW_CPP_PATH
-#define SRC_MAINWINDOW_CPP_PATH ""
-#endif
 
 namespace {
 
@@ -20,10 +18,10 @@ QString readText(const QString &path) {
     return QString::fromUtf8(f.readAll());
 }
 
-QString mainwindowSource() { return readText(QStringLiteral(SRC_MAINWINDOW_CPP_PATH)); }
+QString mainwindowSource() { return QString::fromStdString(ants_test::slurpMainWindow()); }
 
 QString trackerSource() {
-    const QDir src = QFileInfo(QStringLiteral(SRC_MAINWINDOW_CPP_PATH)).dir();
+    const QDir src = QDir(QStringLiteral(SRC_DIR));
     return readText(src.filePath(QStringLiteral("kwinpositiontracker.cpp")));
 }
 

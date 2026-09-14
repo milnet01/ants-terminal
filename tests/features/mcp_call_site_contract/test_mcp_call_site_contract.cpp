@@ -65,7 +65,7 @@ TEST(mcp_call_site_contract, Inv1HeaderSignature) {
 // INV-2 — every call site passes a contract.
 TEST(mcp_call_site_contract, Inv2EveryCallSitePassesContract) {
     expect_reset();
-    const std::string mw = ants_test::slurpFile(SRC_MAINWINDOW_CPP_PATH);
+    const std::string mw = ants_test::slurpMainWindow();
     const auto regs = registrations(mw);
     expect(!regs.empty(),
            "INV-2: registrations regex returned 0 hits — "

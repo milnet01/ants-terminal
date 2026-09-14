@@ -12,8 +12,8 @@
 
 #include <string>
 
-#ifndef SRC_MAINWINDOW_CPP_PATH
-#error "SRC_MAINWINDOW_CPP_PATH compile definition required"
+#ifndef ANTS_MAINWINDOW_SOURCES
+#error "ANTS_MAINWINDOW_SOURCES compile definition required"
 #endif
 
 namespace {
@@ -24,19 +24,13 @@ namespace {
 // INV-1 / INV-2 — the DeferredDelete flush precedes the app-wide restyle
 // inside MainWindow::applyTheme, and both anchors are present.
 TEST(theme_change_deferred_delete_flush, FlushPrecedesAppWideSetStyleSheet) {
-    const std::string src = ants_test::slurpFile(SRC_MAINWINDOW_CPP_PATH);
+    const std::string src = ants_test::slurpMainWindow();
     ASSERT_FALSE(src.empty()) << "could not read mainwindow.cpp";
 
-    const auto fnStart = src.find("MainWindow::applyTheme");
-    ASSERT_NE(fnStart, std::string::npos)
-        << "MainWindow::applyTheme not found";
-
-    // Bound the search to the applyTheme body: from its start to the next
-    // top-level `MainWindow::` member definition.
-    const auto fnEnd = src.find("\nMainWindow::", fnStart + 1);
-    const std::string body = src.substr(
-        fnStart,
-        fnEnd == std::string::npos ? std::string::npos : fnEnd - fnStart);
+    // ANTS-1677 — bound the search to the applyTheme definition's body.
+    const std::string body =
+        ants_test::slurpFunctionBody(src, "void MainWindow::applyTheme(");
+    ASSERT_FALSE(body.empty()) << "MainWindow::applyTheme body not found";
 
     const auto flushPos = body.find(
         "sendPostedEvents(nullptr, QEvent::DeferredDelete)");

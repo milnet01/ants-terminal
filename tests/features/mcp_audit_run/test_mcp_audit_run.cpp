@@ -90,7 +90,7 @@ TEST(mcp_audit_run, Inv9InFlightGateInline) {
            "INV-9: tryAcquire helper declared");
     expect(contains(h, "verbInFlightRelease"),
            "INV-9: release helper declared");
-    const std::string mw = ants_test::slurpFile(SRC_MAINWINDOW_CPP_PATH);
+    const std::string mw = ants_test::slurpMainWindow();
     expect(contains(mw, "verbInFlightTryAcquire("),
            "INV-9: gate acquired in audit_run dispatch");
     expect(contains(mw, "verbInFlightRelease("),
@@ -422,7 +422,7 @@ TEST(mcp_audit_run, Ants2185FlagSafeScopedPathTransform) {
 // Dispatch — provider lambda registered in mainwindow.
 TEST(mcp_audit_run, DispatchProviderRegistered) {
     expect_reset();
-    const std::string mw = ants_test::slurpFile(SRC_MAINWINDOW_CPP_PATH);
+    const std::string mw = ants_test::slurpMainWindow();
     expect(contains(mw, "registerToolProvider(\"audit_run\""),
            "dispatch: audit_run provider registered");
     expect(contains(mw, "AuditRunner::runAudit(req)"),

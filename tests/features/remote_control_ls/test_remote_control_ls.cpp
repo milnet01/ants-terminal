@@ -14,8 +14,8 @@
 #ifndef ANTS_RC_SOURCES
 #error "ANTS_RC_SOURCES compile definition required"
 #endif
-#ifndef SRC_MAINWINDOW_CPP
-#error "SRC_MAINWINDOW_CPP compile definition required"
+#ifndef ANTS_MAINWINDOW_SOURCES
+#error "ANTS_MAINWINDOW_SOURCES compile definition required"
 #endif
 #ifndef SRC_MAINWINDOW_H
 #error "SRC_MAINWINDOW_H compile definition required"
@@ -31,7 +31,7 @@
 static int runMain() {
     const std::string h   = ants_test::slurpFile(SRC_RC_HEADER);
     const std::string rc  = ants_test::slurpRemoteControl();
-    const std::string mwc = ants_test::slurpFile(SRC_MAINWINDOW_CPP);
+    const std::string mwc = ants_test::slurpMainWindow();
     const std::string mwh = ants_test::slurpFile(SRC_MAINWINDOW_H);
     const std::string mc  = ants_test::slurpFile(SRC_MAIN_CPP);
     const std::string cm  = ants_test::slurpFile(SRC_CMAKELISTS);

@@ -18,8 +18,8 @@
 #ifndef SRC_TERMINALWIDGET_PATH
 #  error "SRC_TERMINALWIDGET_PATH compile definition required"
 #endif
-#ifndef SRC_MAINWINDOW_PATH
-#  error "SRC_MAINWINDOW_PATH compile definition required"
+#ifndef ANTS_MAINWINDOW_SOURCES
+#  error "ANTS_MAINWINDOW_SOURCES compile definition required"
 #endif
 
 namespace {
@@ -70,7 +70,7 @@ bool guardsPrivateDir(const std::string &body) {
 
 int runMain() {
     const std::string tw = ants_test::slurpFile(SRC_TERMINALWIDGET_PATH);
-    const std::string mw = ants_test::slurpFile(SRC_MAINWINDOW_PATH);
+    const std::string mw = ants_test::slurpMainWindow();
 
     int failures = 0;
     auto fail = [&](const char *msg) {

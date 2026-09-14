@@ -48,7 +48,7 @@ TEST(ConfirmCloseWithProcesses, Main) {
     expect_reset();
     const QString configH = readFileOrFail(SRC_CONFIG_H_PATH);
     const QString configCpp = readFileOrFail(SRC_CONFIG_CPP_PATH);
-    const QString mwCpp = readFileOrFail(SRC_MAINWINDOW_PATH);
+    const QString mwCpp = QString::fromStdString(ants_test::slurpMainWindow());
     const QString sdH = readFileOrFail(SRC_SETTINGSDIALOG_H_PATH);
     const QString sdCpp = readFileOrFail(SRC_SETTINGSDIALOG_CPP_PATH);
 

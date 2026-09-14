@@ -72,7 +72,7 @@ TEST(GitOptionalLocks, Inv2GitWrapRunHandsItToGit) {
 
 // INV-3 — the runners that do not go through GitWrap::run use the helper.
 TEST(GitOptionalLocks, Inv3EveryOtherReadOnlyRunnerUsesIt) {
-    const std::string mw = ants_test::slurpFile(SRC_MAINWINDOW_CPP_PATH);
+    const std::string mw = ants_test::slurpMainWindow();
     ASSERT_FALSE(mw.empty());
 
     const std::string probe =

@@ -39,8 +39,8 @@
 #ifndef SRC_BGDIALOG_H_PATH
 #error "SRC_BGDIALOG_H_PATH compile definition required"
 #endif
-#ifndef SRC_MAINWINDOW_CPP_PATH
-#error "SRC_MAINWINDOW_CPP_PATH compile definition required"
+#ifndef ANTS_MAINWINDOW_SOURCES
+#error "ANTS_MAINWINDOW_SOURCES compile definition required"
 #endif
 #ifndef SRC_CMAKELISTS_PATH
 #error "SRC_CMAKELISTS_PATH compile definition required"
@@ -78,7 +78,7 @@ TEST(ClaudeBgTasksButton, Main) {
     const std::string bgh   = ants_test::slurpFile(SRC_BGTASKS_H_PATH);
     const std::string dlgcpp = ants_test::slurpFile(SRC_BGDIALOG_CPP_PATH);
     const std::string dlgh   = ants_test::slurpFile(SRC_BGDIALOG_H_PATH);
-    const std::string mw     = ants_test::slurpFile(SRC_MAINWINDOW_CPP_PATH);
+    const std::string mw     = ants_test::slurpMainWindow();
     const std::string cml    = ants_test::slurpFile(SRC_CMAKELISTS_PATH);
     const std::string cicpp  = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
     const std::string cih    = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_H_PATH);

@@ -50,6 +50,7 @@
 
 #include <cstdio>
 #include <gtest/gtest.h>
+#include "../../_support/srcgrep.h"
 
 ANTS_TEST_SCOPE();
 
@@ -76,7 +77,7 @@ TEST(HelpAboutMenu, Main) {    auto loadFile = [](const QString &path) -> QStrin
     // setupHelpMenu. Dialog-construction invariants (I3, I4, I6, I7)
     // moved to src/aboutdialogs.cpp post-ANTS-1181 — both files are
     // checked, and the dialog-body grep is scoped to aboutdialogs.cpp.
-    const QString src = loadFile(QStringLiteral(SRC_MAINWINDOW_PATH));
+    const QString src = QString::fromStdString(ants_test::slurpMainWindow());
     if (src.isEmpty()) FAIL();
 
     const QString aboutSrc = loadFile(QStringLiteral(SRC_ABOUTDIALOGS_PATH));

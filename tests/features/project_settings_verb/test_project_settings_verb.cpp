@@ -522,7 +522,7 @@ TEST(ProjectSettingsVerb, Inv20DetectEchoesDeclaration) {
 TEST(ProjectSettingsVerb, VerbAndRegistrationWiring) {
     const std::string rc = ants_test::slurpRemoteControl();
     const std::string ci = ants_test::slurpFile(srcPath("src/claudeintegration.cpp"));
-    const std::string mw = ants_test::slurpFile(srcPath("src/mainwindow.cpp"));
+    const std::string mw = ants_test::slurpMainWindow();
 
     // INV-13 — Required contract registered in callerCwdContractFor(), and
     // registered as a tool provider; the write target is .ants/project.json.

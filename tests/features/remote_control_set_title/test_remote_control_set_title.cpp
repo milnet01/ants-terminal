@@ -13,15 +13,15 @@
 #ifndef SRC_MAINWINDOW_H
 #error "SRC_MAINWINDOW_H compile definition required"
 #endif
-#ifndef SRC_MAINWINDOW_CPP
-#error "SRC_MAINWINDOW_CPP compile definition required"
+#ifndef ANTS_MAINWINDOW_SOURCES
+#error "ANTS_MAINWINDOW_SOURCES compile definition required"
 #endif
 
 
 static int runMain() {
     const std::string rc  = ants_test::slurpRemoteControl();
     const std::string mwh = ants_test::slurpFile(SRC_MAINWINDOW_H);
-    const std::string mwc = ants_test::slurpFile(SRC_MAINWINDOW_CPP);
+    const std::string mwc = ants_test::slurpMainWindow();
 
     int failures = 0;
     auto fail = [&](const char *msg) {

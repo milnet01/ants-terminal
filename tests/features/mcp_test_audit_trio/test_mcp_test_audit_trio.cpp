@@ -170,7 +170,7 @@ TEST(mcp_test_audit_trio, Inv9ChunkSizeClamp) {
 // INV-10 — pagination fields in envelope.
 TEST(mcp_test_audit_trio, Inv10PaginationFields) {
     expect_reset();
-    const std::string mw = ants_test::slurpFile(SRC_MAINWINDOW_CPP_PATH);
+    const std::string mw = ants_test::slurpMainWindow();
     expect(contains(mw, "env[\"offset\"]    = r.offset"),
            "INV-10: offset echoed in envelope");
     expect(contains(mw, "env[\"truncated\"] = r.truncated"),
@@ -269,7 +269,7 @@ TEST(mcp_test_audit_trio, Ants1461DimensionHintsClarified) {
 // Schema/dispatch — all four verbs registered.
 TEST(mcp_test_audit_trio, AllFourVerbsRegistered) {
     expect_reset();
-    const std::string mw = ants_test::slurpFile(SRC_MAINWINDOW_CPP_PATH);
+    const std::string mw = ants_test::slurpMainWindow();
     expect(contains(mw, "registerToolProvider(\"test_audit_partition\""),
            "dispatch: test_audit_partition registered");
     expect(contains(mw, "registerToolProvider(\"test_audit_brief\""),
@@ -310,7 +310,7 @@ TEST(mcp_test_audit_trio, Ants1635NarrativeModeSchemaAndHandler) {
            "ANTS-1635: schema declares narrative_md prop");
 
     // The handler in mainwindow.cpp forwards both args.
-    const std::string mw = ants_test::slurpFile(SRC_MAINWINDOW_CPP_PATH);
+    const std::string mw = ants_test::slurpMainWindow();
     const auto hpos = mw.find("registerToolProvider(\"test_audit_fold_in\"");
     ASSERT_NE(hpos, std::string::npos);
     // Scan to the closing of the registration call (next `});`).

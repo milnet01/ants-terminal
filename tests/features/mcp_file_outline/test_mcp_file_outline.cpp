@@ -35,8 +35,8 @@
 #ifndef ANTS_RC_SOURCES
 #error "ANTS_RC_SOURCES compile definition required"
 #endif
-#ifndef SRC_MAINWINDOW_CPP_PATH
-#error "SRC_MAINWINDOW_CPP_PATH compile definition required"
+#ifndef ANTS_MAINWINDOW_SOURCES
+#error "ANTS_MAINWINDOW_SOURCES compile definition required"
 #endif
 #ifndef ANTS_SOURCE_DIR
 #error "ANTS_SOURCE_DIR compile definition required"
@@ -62,7 +62,7 @@ TEST(McpFileOutline, WiringContract) {
     const std::string ciHdr = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_H_PATH);
     const std::string rcHdr = ants_test::slurpFile(SRC_RC_HEADER);
     const std::string rcCpp = ants_test::slurpRemoteControl();
-    const std::string mwCpp = ants_test::slurpFile(SRC_MAINWINDOW_CPP_PATH);
+    const std::string mwCpp = ants_test::slurpMainWindow();
 
     const std::string foCppPath =
         std::string(ANTS_SOURCE_DIR) + "/src/fileoutline.cpp";

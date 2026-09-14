@@ -10,8 +10,8 @@
 #ifndef SRC_CLAUDE_INTEGRATION_CPP_PATH
 #error "SRC_CLAUDE_INTEGRATION_CPP_PATH compile definition required"
 #endif
-#ifndef SRC_MAINWINDOW_CPP_PATH
-#error "SRC_MAINWINDOW_CPP_PATH compile definition required"
+#ifndef ANTS_MAINWINDOW_SOURCES
+#error "ANTS_MAINWINDOW_SOURCES compile definition required"
 #endif
 #ifndef SRC_REMOTECONTROL_H_PATH
 #error "SRC_REMOTECONTROL_H_PATH compile definition required"
@@ -46,7 +46,7 @@ TEST(McpPlanTemplateTool, ToolNameInToolsList) {
 
 // REG-2
 TEST(McpPlanTemplateTool, ProviderRegisteredInMainWindow) {
-    const std::string mw = ants_test::slurpFile(SRC_MAINWINDOW_CPP_PATH);
+    const std::string mw = ants_test::slurpMainWindow();
     ASSERT_FALSE(mw.empty());
     EXPECT_NE(mw.find("registerToolProvider(\"plan_template\""),
               std::string::npos)

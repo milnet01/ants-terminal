@@ -1,21 +1,17 @@
 // Main-window commands and exports fail safely — see spec.md. ANTS-5079.
-// Source-scrape of src/mainwindow.cpp.
+// Source-scrape of the MainWindow sources.
 
 #include <QFile>
 #include <QString>
 
 #include <gtest/gtest.h>
+#include "../../_support/srcgrep.h"
 
-#ifndef SRC_MAINWINDOW_CPP_PATH
-#define SRC_MAINWINDOW_CPP_PATH ""
-#endif
 
 namespace {
 
 QString source() {
-    QFile f(QStringLiteral(SRC_MAINWINDOW_CPP_PATH));
-    if (!f.open(QIODevice::ReadOnly | QIODevice::Text)) return QString();
-    return QString::fromUtf8(f.readAll());
+    return QString::fromStdString(ants_test::slurpMainWindow());
 }
 
 // The text from `anchor` to `span` characters after it.

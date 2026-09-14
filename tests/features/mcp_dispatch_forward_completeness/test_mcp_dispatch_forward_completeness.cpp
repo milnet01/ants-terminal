@@ -231,7 +231,7 @@ bool isAllowListed(const std::string & /*tool*/,
 // all gaps reported in a single run so a fix lands in one pass.
 TEST(McpDispatchForwardCompleteness, EveryPropReadInLambda) {
     const std::string ci  = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
-    const std::string mw  = ants_test::slurpFile(SRC_MAINWINDOW_CPP_PATH);
+    const std::string mw  = ants_test::slurpMainWindow();
     ASSERT_FALSE(ci.empty()) << "could not read claudeintegration.cpp";
     ASSERT_FALSE(mw.empty()) << "could not read mainwindow.cpp";
 

@@ -12,8 +12,8 @@
 #include <gtest/gtest.h>
 #include "../../_support/srcgrep.h"
 
-#ifndef SRC_MAINWINDOW_CPP_PATH
-#  error "SRC_MAINWINDOW_CPP_PATH compile definition required"
+#ifndef ANTS_MAINWINDOW_SOURCES
+#  error "ANTS_MAINWINDOW_SOURCES compile definition required"
 #endif
 
 ANTS_TEST_SCOPE();
@@ -68,7 +68,7 @@ TEST(ReviewButtonUntracked, Main) {
 
     // I5 — call site uses the helper and dropped the carve-out.
     {
-        const std::string src = ants_test::slurpFile(SRC_MAINWINDOW_CPP_PATH);
+        const std::string src = ants_test::slurpMainWindow();
         expect(contains(src, "parseReviewPorcelain"),
                "I5/callsite-uses-helper");
         expect(!contains(src, "ln.startsWith(\"?? \")"),

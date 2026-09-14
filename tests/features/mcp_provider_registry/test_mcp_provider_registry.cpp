@@ -19,8 +19,8 @@
 #ifndef SRC_CLAUDE_INTEGRATION_H_PATH
 #error "SRC_CLAUDE_INTEGRATION_H_PATH compile definition required"
 #endif
-#ifndef SRC_MAINWINDOW_CPP_PATH
-#error "SRC_MAINWINDOW_CPP_PATH compile definition required"
+#ifndef ANTS_MAINWINDOW_SOURCES
+#error "ANTS_MAINWINDOW_SOURCES compile definition required"
 #endif
 
 ANTS_TEST_SCOPE();
@@ -135,7 +135,7 @@ TEST(McpProviderRegistry, Inv7AtLeastTwelveRegisterCalls) {
     // on future docstring mentions of the function name. ANTS-1253
     // landed with 12 calls; subsequent tools (ANTS-1254 +) add new
     // calls, so the floor is "at least 12".
-    const std::string mw = ants_test::slurpFile(SRC_MAINWINDOW_CPP_PATH);
+    const std::string mw = ants_test::slurpMainWindow();
     std::regex callRe(R"(->registerToolProvider\(\")");
     const size_t n = countMatches(mw, callRe);
     expect(n >= 12, "INV-7",
@@ -152,7 +152,7 @@ TEST(McpProviderRegistry, Inv8SchemaMatchesRegistry) {
     // must have a matching registerToolProvider("<name>", …) call
     // in mainwindow.cpp.
     const std::string ci = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
-    const std::string mw = ants_test::slurpFile(SRC_MAINWINDOW_CPP_PATH);
+    const std::string mw = ants_test::slurpMainWindow();
     // Custom raw-string delimiter ("rx") because the regex literal
     // itself contains `)"` which would close the default `R"(…)"` form.
     std::regex schemaRe(R"rx(\["name"\]\s*=\s*"([a-z_]+)")rx");
@@ -184,7 +184,7 @@ TEST(McpProviderRegistry, Inv9GetTextIsDoubleGate) {
     // lambda body in mainwindow.cpp gates BOTH tab and lines on
     // isDouble() so tab=0 and lines=0 are valid values distinct from
     // omission.
-    const std::string mw = ants_test::slurpFile(SRC_MAINWINDOW_CPP_PATH);
+    const std::string mw = ants_test::slurpMainWindow();
     const size_t pos = mw.find("registerToolProvider(\"get_text\"");
     expect(pos != std::string::npos, "INV-9a",
            "mainwindow.cpp missing registerToolProvider(\"get_text\", …)");

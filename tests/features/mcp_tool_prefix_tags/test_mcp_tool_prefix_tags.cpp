@@ -206,7 +206,7 @@ TEST(mcp_tool_prefix_tags, Inv3EveryRegisteredToolHasBucket) {
     const std::string ci =
         ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
     const std::string mw =
-        ants_test::slurpFile(SRC_MAINWINDOW_PATH);
+        ants_test::slurpMainWindow();
     const std::string body = extractKindForNameBody(ci);
     expect(!body.empty(),
            "INV-3 setup: kindForName lambda located");

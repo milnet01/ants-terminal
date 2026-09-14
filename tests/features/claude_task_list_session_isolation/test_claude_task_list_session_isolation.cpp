@@ -43,7 +43,7 @@ const std::string &widgetsSource() {
 }
 const std::string &mainwindowSource() {
     static const std::string s =
-        ants_test::slurpFile(SRC_MAINWINDOW_CPP_PATH);
+        ants_test::slurpMainWindow();
     return s;
 }
 

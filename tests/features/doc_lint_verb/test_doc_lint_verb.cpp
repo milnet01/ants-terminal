@@ -21,7 +21,7 @@
 #include <gtest/gtest.h>
 #include "../../_support/srcgrep.h"  // ANTS-3833 — slurpRemoteControl
 
-#if !defined(SRC_MAINWINDOW_CPP_PATH) || !defined(ANTS_RC_SOURCES) || \
+#if !defined(ANTS_MAINWINDOW_SOURCES) || !defined(ANTS_RC_SOURCES) || \
     !defined(SRC_CLAUDE_INTEGRATION_CPP_PATH)
 #error "doc_lint_verb test needs the test_claude source-path compile defs"
 #endif
@@ -119,7 +119,7 @@ TEST(DocLintVerb, Inv2CheckFilterAndUnknownName) {
 // Required tool, in the arms ANTS-3601 INV-10 and INV-15 establish.
 TEST(DocLintVerb, Inv8VerbContractMinimums) {
     // (1) caller_cwd Required — at the call site AND in the static table.
-    const QString mw = slurp(SRC_MAINWINDOW_CPP_PATH);
+    const QString mw = QString::fromStdString(ants_test::slurpMainWindow());
     ASSERT_FALSE(mw.isEmpty());
     ASSERT_GE(mw.indexOf(QStringLiteral("registerToolProvider(\"doc_lint\"")), 0);
     EXPECT_TRUE(QString::fromStdString(ants_test::regionBetween(

@@ -13,8 +13,8 @@
 #include <gtest/gtest.h>
 #include "../../_support/srcgrep.h"
 
-#ifndef SRC_MAINWINDOW_PATH
-#error "SRC_MAINWINDOW_PATH compile definition required"
+#ifndef ANTS_MAINWINDOW_SOURCES
+#error "ANTS_MAINWINDOW_SOURCES compile definition required"
 #endif
 
 
@@ -39,7 +39,7 @@ static std::string extractBlockAfter(const std::string &src, const std::string &
 }
 
 TEST(FocusRedirectMenuGuard, Main) {
-    const std::string mw = ants_test::slurpFile(SRC_MAINWINDOW_PATH);
+    const std::string mw = ants_test::slurpMainWindow();
     int failures = 0;
     auto fail = [&](const char *msg) {
         std::fprintf(stderr, "FAIL: %s\n", msg);

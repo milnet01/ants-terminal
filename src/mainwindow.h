@@ -542,6 +542,13 @@ private:
     // providers + startHookServer). Split from setupClaudeIntegration
     // because it's not status-bar chrome.
     void setupClaudeMcpProviders();
+    // ANTS-1677 — the handler for an MCP tool that forwards its arguments to
+    // one RemoteControl cmd*() verb. Formerly a local lambda in
+    // setupClaudeMcpProviders(); a member so the carved registration
+    // functions share it. `class QJsonDocument` names Qt's type in place,
+    // because this header includes no QJsonDocument declaration.
+    ClaudeIntegration::RcHandler rcDelegate(
+        class QJsonDocument (RemoteControl::*fn)(const QJsonObject &));
     void showDiffViewer();
     // Re-check git diff state and enable/disable the Review Changes
     // button accordingly. Async (QProcess) so it never blocks the UI

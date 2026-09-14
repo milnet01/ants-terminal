@@ -40,8 +40,8 @@
 #ifndef ANTS_RC_SOURCES
 #error "ANTS_RC_SOURCES compile definition required"
 #endif
-#ifndef SRC_MAINWINDOW_CPP_PATH
-#error "SRC_MAINWINDOW_CPP_PATH compile definition required"
+#ifndef ANTS_MAINWINDOW_SOURCES
+#error "ANTS_MAINWINDOW_SOURCES compile definition required"
 #endif
 #ifndef SRC_CLAUDE_INTEGRATION_CPP_PATH
 #error "SRC_CLAUDE_INTEGRATION_CPP_PATH compile definition required"
@@ -362,7 +362,7 @@ TEST(CoChangeFamily, SeamTuHasNoChromeSymbols) {
 
 // INV-11 — registration, contract table and schema opt-ins.
 TEST(CoChangeFamily, RegistrationAndSchema) {
-    const std::string mw = ants_test::slurpFile(SRC_MAINWINDOW_CPP_PATH);
+    const std::string mw = ants_test::slurpMainWindow();
     ASSERT_FALSE(mw.empty());
     EXPECT_TRUE(has(mw, "registerToolProvider(\"co_change_family\""));
 

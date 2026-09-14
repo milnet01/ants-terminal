@@ -139,7 +139,7 @@ TEST(McpDryRunParity, EngineAndLambdaGatesWired) {
     EXPECT_TRUE(has(te, "req.dryRun"))
         << "test_audit foldIn must branch on req.dryRun";
 
-    const std::string mw = ants_test::slurpFile(SRC_MAINWINDOW_CPP_PATH);
+    const std::string mw = ants_test::slurpMainWindow();
     ASSERT_FALSE(mw.empty());
     // The provider lambda reads dry_run into req and echoes it on success.
     EXPECT_TRUE(has(mw, "req.dryRun        = args.value(QStringLiteral(\"dry_run\")).toBool();"))

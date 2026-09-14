@@ -7,14 +7,11 @@
 
 #include <gtest/gtest.h>
 
-#ifndef SRC_MAINWINDOW_CPP_PATH
-#define SRC_MAINWINDOW_CPP_PATH ""
-#endif
 
 namespace {
 
 QString sibling(const char *name) {
-    const QDir src = QFileInfo(QStringLiteral(SRC_MAINWINDOW_CPP_PATH)).dir();
+    const QDir src = QDir(QStringLiteral(SRC_DIR));
     QFile f(src.filePath(QString::fromLatin1(name)));
     if (!f.open(QIODevice::ReadOnly | QIODevice::Text)) return QString();
     return QString::fromUtf8(f.readAll());

@@ -18,8 +18,8 @@
 #ifndef SRC_CLAUDESTATUSWIDGETS_CPP_PATH
 #error "SRC_CLAUDESTATUSWIDGETS_CPP_PATH required"
 #endif
-#ifndef SRC_MAINWINDOW_CPP_PATH
-#error "SRC_MAINWINDOW_CPP_PATH required"
+#ifndef ANTS_MAINWINDOW_SOURCES
+#error "ANTS_MAINWINDOW_SOURCES required"
 #endif
 #ifndef ANTS_RC_SOURCES
 #error "ANTS_RC_SOURCES required"
@@ -63,7 +63,7 @@ TEST(TokensSavedChip, SignalsAndSingleEmitHook) {
 TEST(TokensSavedChip, UnifiedResetPathAndFoldWiring) {
     const std::string h   = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_H_PATH);
     const std::string cpp = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
-    const std::string mw  = ants_test::slurpFile(SRC_MAINWINDOW_CPP_PATH);
+    const std::string mw  = ants_test::slurpMainWindow();
 
     // Exactly one m_tokenUsage.reset() in production code — inside
     // endTokenSession() — so every reset is fold-preceded (INV-2).
@@ -143,21 +143,21 @@ TEST(TokensSavedChip, VerbFieldsInResponseNotSchema) {
 
 // TSC-6 (INV-4 / § 2.4) — month bucket key format.
 TEST(TokensSavedChip, MonthKeyFormat) {
-    const std::string mw = ants_test::slurpFile(SRC_MAINWINDOW_CPP_PATH);
+    const std::string mw = ants_test::slurpMainWindow();
     EXPECT_TRUE(has(mw, ".toString(\"yyyy-MM\")"))
         << "the fold must derive the bucket key via toString(\"yyyy-MM\")";
 }
 
 // TSC-7 (INV-12) — the fold never touches failed-byte waste.
 TEST(TokensSavedChip, FoldExcludesFailedBytes) {
-    const std::string mw = ants_test::slurpFile(SRC_MAINWINDOW_CPP_PATH);
+    const std::string mw = ants_test::slurpMainWindow();
     EXPECT_FALSE(has(mw, "totalFailedBytes"))
         << "gross-saved only: the fold must not reference totalFailedBytes";
 }
 
 // TSC-8 (INV-1) — the summary combines stored + live session.
 TEST(TokensSavedChip, SummaryAddsSessionToStored) {
-    const std::string mw = ants_test::slurpFile(SRC_MAINWINDOW_CPP_PATH);
+    const std::string mw = ants_test::slurpMainWindow();
     EXPECT_TRUE(has(mw, "claudeTokensSavedLifetime"))
         << "summary must read the stored lifetime";
     EXPECT_TRUE(has(mw, "tokenUsageReport(false).totalSaved"))

@@ -166,7 +166,7 @@ TEST(AuditRunIncompleteDetail, Inv8ParseFailureDetailsShape) {
 // INV-9 (ANTS-3706) — both providers emit the detail sibling, and
 // parse_failures[] keeps its bare-path shape (no consumer break).
 TEST(AuditRunIncompleteDetail, Inv9BothProvidersEmitDetail) {
-    const std::string mw = ants_test::slurpFile(SRC_MAINWINDOW_CPP_PATH);
+    const std::string mw = ants_test::slurpMainWindow();
     const std::string ci = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
     EXPECT_TRUE(contains(mw, "parse_failures_detail"))
         << "INV-9: sync provider emits parse_failures_detail";
@@ -203,7 +203,7 @@ TEST(AuditRunIncompleteDetail, Inv5RaisedCeilings) {
 
 // INV-6 — both envelope surfaces serialise the new fields.
 TEST(AuditRunIncompleteDetail, Inv6EnvelopeSurfaces) {
-    const std::string mw = ants_test::slurpFile(SRC_MAINWINDOW_CPP_PATH);
+    const std::string mw = ants_test::slurpMainWindow();
     EXPECT_TRUE(contains(mw, "incomplete_tools_detail"))
         << "INV-6: sync provider emits incomplete_tools_detail";
     EXPECT_TRUE(contains(mw, "parse_failures"))

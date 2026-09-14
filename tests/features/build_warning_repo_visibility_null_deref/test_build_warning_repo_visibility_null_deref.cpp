@@ -17,8 +17,8 @@ namespace {
 }  // namespace
 
 TEST(BuildWarningRepoVisibilityNullDeref, PragmaGuardPresent) {
-    const std::string src = ants_test::slurpFile(SRC_MAINWINDOW_CPP);
-    ASSERT_FALSE(src.empty()) << "could not read " << SRC_MAINWINDOW_CPP;
+    const std::string src = ants_test::slurpMainWindow();
+    ASSERT_FALSE(src.empty()) << "could not read " << "the MainWindow sources";
 
     // INV-1 — the .remove(repoRoot) call must still be present.
     const std::string kRemove =

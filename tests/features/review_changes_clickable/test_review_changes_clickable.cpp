@@ -59,7 +59,7 @@ QString extractFunctionBody(const QString &src, const QString &signature) {
 // setEnabled + show (tri-state), NOT hide. The forbidden shape is the
 // 0.6.29-era "hide on clean" which we've retired.
 TEST(ReviewChangesClickable, RefreshShowsDisabledOnClean) {
-    const QString src = readSource(QStringLiteral(SRC_MAINWINDOW_PATH));
+    const QString src = QString::fromStdString(ants_test::slurpMainWindow());
     if (src.isEmpty()) return;
 
     const QString body = extractFunctionBody(
@@ -122,7 +122,7 @@ TEST(ReviewChangesClickable, HoverStylesheetEnabledGated) {
 // spelling. Reject a bare `git diff --quiet HEAD` — that was the
 // 0.6.29-era probe which missed unpushed commits.
 TEST(ReviewChangesClickable, ProbeCoversAheadOfUpstream) {
-    const QString src = readSource(QStringLiteral(SRC_MAINWINDOW_PATH));
+    const QString src = QString::fromStdString(ants_test::slurpMainWindow());
     if (src.isEmpty()) return;
 
     const QString body = extractFunctionBody(

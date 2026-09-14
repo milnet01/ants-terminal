@@ -447,7 +447,7 @@ TEST(ChangelogQueryHandler, Ants5147IdLookupIgnoresPagination) {
 // ---- Wiring source-scrape (INV-1 / INV-6 / INV-9) ----
 
 TEST(ChangelogQueryWiring, RegisteredAndAllowlisted) {
-    const std::string mw = ants_test::slurpFile(SRC_MAINWINDOW_CPP_PATH);
+    const std::string mw = ants_test::slurpMainWindow();
     ASSERT_FALSE(mw.empty());
     const std::string mwsq = ants_test::squashWhitespace(mw);
     // Registered verbatim-forward under CallerCwdContract::Required.

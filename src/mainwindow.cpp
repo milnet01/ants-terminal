@@ -1,4 +1,5 @@
 #include "mainwindow.h"
+#include "mainwindow_internal.h"
 
 #include "tokenusageengine.h"  // ANTS-3572 — foldMonthlyBucket / sumYear
 #include "guithread.h"       // ANTS-4682 — ants::onGuiThread in inline verbs
@@ -58,7 +59,9 @@
 #include "dialogshowtracer.h"
 #include "diffviewer.h"           // ANTS-1145 carve-out
 
-namespace {
+using namespace mainwindowdetail;
+
+namespace mainwindowdetail {
 // Forward declaration — definition lives next to setupQuakeMode() (its
 // only other caller) so the conversion table is one scroll away from
 // the portal binding.
@@ -67,7 +70,7 @@ QString qtKeySequenceToPortalTrigger(const QString &qtHotkey);
 // Defined below, after the Qt includes — sweeps stale
 // `/tmp/kwin_*_ants_*.js` orphans on startup.
 void sweepKwinScriptOrphansOnce();
-}
+}  // namespace mainwindowdetail
 
 #ifdef ANTS_LUA_PLUGINS
 #include "pluginmanager.h"
@@ -155,7 +158,7 @@ void sweepKwinScriptOrphansOnce();
 #include <LayerShellQt/Window>
 #endif
 
-namespace {
+namespace mainwindowdetail {
 // Sweep stale `/tmp/kwin_{pos,move,center}_ants_*.js` files. These are
 // written by kwinpositiontracker and the mainwindow move/center helpers
 // as `QTemporaryFile(autoRemove=false)` + chained-dbus removal on
@@ -253,7 +256,12 @@ QString sourceToString(ants::ResolvedRoot::Source s) {
     return QStringLiteral("Unresolvable");  // -Wreturn-type
 }
 
-}  // namespace
+// ANTS-1357: the literal lives at ClaudeIntegration::kMcpRcUnavailable
+// — shared so the idempotent-read cache can reject the same bytes
+// at insert time (INV-5(b)). Re-aliased here for local readability.
+const char *const kRcUnavailable = ClaudeIntegration::kMcpRcUnavailable;
+
+}  // namespace mainwindowdetail
 
 MainWindow::MainWindow(bool quakeMode, bool e2eMode, QWidget *parent)
     : QMainWindow(parent) {
@@ -1202,34 +1210,6 @@ MainWindow::~MainWindow() {
 // menu-bar wiring can be located + read + edited independently of its
 // neighbours. setupMenus() is the orchestrator; the helpers contain the
 // per-menu body verbatim (no behaviour change).
-
-namespace {
-// ANTS-1982 — keep a menu open after toggling a NON-exclusive checkable item, so the
-// user can flip several independent checkboxes (Session Logging, Visual
-// Bell, Background Blur…) in one visit instead of the menu dismissing on
-// the first click. Exclusive/radio group members (Themes, Opacity,
-// Scrollback) keep Qt's default "pick one and close" — the
-// actionGroup()->isExclusive() guard distinguishes a checkbox from a
-// radio. No Q_OBJECT needed: only the virtual eventFilter() is used.
-class StayOpenOnToggleFilter : public QObject {
-public:
-    using QObject::QObject;
-protected:
-    bool eventFilter(QObject *obj, QEvent *ev) override {
-        if (ev->type() == QEvent::MouseButtonRelease) {
-            if (auto *menu = qobject_cast<QMenu *>(obj)) {
-                QAction *a = menu->activeAction();
-                if (a && a->isEnabled() && a->isCheckable()
-                    && !(a->actionGroup() && a->actionGroup()->isExclusive())) {
-                    a->trigger();   // toggle checked state + fire triggered()
-                    return true;    // swallow the release so the menu stays open
-                }
-            }
-        }
-        return QObject::eventFilter(obj, ev);
-    }
-};
-}  // namespace
 
 void MainWindow::setupMenus() {
     setupFileMenu();
@@ -2865,12 +2845,6 @@ void MainWindow::cleanupEmptySplitters(QWidget *tabRoot) {
     }
 }
 
-// ANTS-1911 — forward declaration for the file-static helper defined
-// just below focusedTerminal(). Needed because the body of
-// focusedTerminal() now calls activeTerminalInTab() (was added in the
-// ANTS-1911 fix) but the static lives later in the translation unit.
-static TerminalWidget *activeTerminalInTab(QWidget *root);
-
 TerminalWidget *MainWindow::focusedTerminal() const {
     // ANTS-1911 — scope focus tracking to the CURRENTLY-SELECTED tab's
     // subtree. Pre-1911 the function walked QApplication::focusWidget()
@@ -2921,7 +2895,7 @@ TerminalWidget *MainWindow::focusedTerminal() const {
 // "active" terminal — the descendant that currently holds focus if any, else
 // the first one in the subtree. findChild() alone returns an arbitrary first
 // child, which gives the wrong pane in split layouts.
-static TerminalWidget *activeTerminalInTab(QWidget *root) {
+TerminalWidget *mainwindowdetail::activeTerminalInTab(QWidget *root) {
     if (!root) return nullptr;
     if (auto *t = qobject_cast<TerminalWidget *>(root)) return t;
     // Prefer a descendant that currently has focus
@@ -4320,6 +4294,28 @@ static bool resolveInflightCallerCwd(const QString &callerCwd,
 // environment lookups MCP needs from MainWindow's tab/terminal
 // state, then starts the hook server. Split out from
 // setupClaudeIntegration because it isn't status-bar chrome.
+// ANTS-1782 — RC-delegate factory. Most MCP tools are byte-identical shims
+// that differ only in which RemoteControl cmd* verb they forward `args` to.
+// This builds the handler so the null-guard + serialise body lives in exactly
+// one place rather than being copy-pasted per tool. Non-shim tools
+// (terminal-state reads, in-flight gates, selective arg-forwarding, non-RC
+// delegates, the no-arg tab_list and multi-arg token_usage) keep their inline
+// lambdas — the factory only fits the `cmd(args).toJson()` shape.
+// ANTS-2132 — returns the MARKED handler type, so registration can tell a
+// forward-to-cmd*() body from a hand-written inline lambda and decide which
+// thread may run it.
+// ANTS-1677 — a private member rather than a local lambda, so the registration
+// functions carved out of setupClaudeMcpProviders() share it. No call site's
+// text changes.
+ClaudeIntegration::RcHandler MainWindow::rcDelegate(
+        QJsonDocument (RemoteControl::*fn)(const QJsonObject &)) {
+    return ClaudeIntegration::RcHandler{[this, fn](const QJsonObject &args) -> QString {
+        if (!m_remoteControl) return QString::fromUtf8(kRcUnavailable);
+        return QString::fromUtf8(
+            (m_remoteControl->*fn)(args).toJson(QJsonDocument::Compact));
+    }};
+}
+
 void MainWindow::setupClaudeMcpProviders() {
     // ANTS-2085 — publish the terse-by-default preference to the MCP
     // dispatcher before any provider can serve. Default true (token-saving
@@ -4428,34 +4424,6 @@ void MainWindow::setupClaudeMcpProviders() {
     // Indie-review-2026-05-14 lane-5 HI-3: every other envelope in the
     // codebase carries a `code` field so callers can dispatch on it
     // programmatically. This was the one outlier.
-    // ANTS-1357: the literal lives at ClaudeIntegration::kMcpRcUnavailable
-    // — shared so the idempotent-read cache can reject the same bytes
-    // at insert time (INV-5(b)). Re-aliased here for local readability.
-    static constexpr const char *kRcUnavailable =
-        ClaudeIntegration::kMcpRcUnavailable;
-
-    // ANTS-1782 — RC-delegate factory. Most MCP tools below are
-    // byte-identical shims that differ only in which RemoteControl
-    // cmd* verb they forward `args` to. This builds the handler so the
-    // null-guard + serialise body lives in exactly one place rather
-    // than being copy-pasted per tool. Non-shim tools (terminal-state
-    // reads, in-flight gates, selective arg-forwarding, non-RC
-    // delegates, the no-arg tab_list and multi-arg token_usage) keep
-    // their inline lambdas — the factory only fits the
-    // `cmd(args).toJson()` shape.
-    // ANTS-2132 — returns the MARKED handler type, so registration can tell a
-    // forward-to-cmd*() body from a hand-written inline lambda and decide
-    // which thread may run it. No call site's text changes.
-    auto rcDelegate =
-        [this](QJsonDocument (RemoteControl::*fn)(const QJsonObject &))
-            -> ClaudeIntegration::RcHandler {
-        return ClaudeIntegration::RcHandler{[this, fn](const QJsonObject &args) -> QString {
-            if (!m_remoteControl) return QString::fromUtf8(kRcUnavailable);
-            return QString::fromUtf8(
-                (m_remoteControl->*fn)(args).toJson(QJsonDocument::Compact));
-        }};
-    };
-
     // ANTS-1301 — recent_errors. Scans the focused terminal's recent
     // scrollback for structured errors (compiler/lint/lua/test/python).
     // TabSpecific like get_text/get_scrollback; delegates to
@@ -6649,7 +6617,7 @@ void MainWindow::updateTabTitles() {
 
 // --- Quake mode ---
 
-namespace {
+namespace mainwindowdetail {
 // Translate Qt's QKeySequence string form ("Ctrl+Shift+F12", "F12",
 // "Ctrl+Alt+`") to the freedesktop shortcut syntax accepted by the
 // GlobalShortcuts portal ("CTRL+SHIFT+F12", "F12", "CTRL+ALT+grave").
@@ -6689,7 +6657,7 @@ QString qtKeySequenceToPortalTrigger(const QString &qtHotkey) {
     }
     return out.join(QLatin1Char('+'));
 }
-}  // anonymous
+}  // namespace mainwindowdetail
 
 void MainWindow::wireQuakeHotkey() {
     // Two-path activation: an in-app QShortcut that fires when Ants

@@ -32,8 +32,8 @@
 #ifndef SRC_REMOTECONTROL_H_PATH
 #error "SRC_REMOTECONTROL_H_PATH compile definition required"
 #endif
-#ifndef SRC_MAINWINDOW_CPP_PATH
-#error "SRC_MAINWINDOW_CPP_PATH compile definition required"
+#ifndef ANTS_MAINWINDOW_SOURCES
+#error "ANTS_MAINWINDOW_SOURCES compile definition required"
 #endif
 #ifndef MCP_ERROR_CODES_DOC_PATH
 #error "MCP_ERROR_CODES_DOC_PATH compile definition required"
@@ -522,7 +522,7 @@ TEST(mcp_roadmap_branch_drift, Inv14bLegacyBulletParsesWithoutId) {
 // ============================================================
 TEST(mcp_roadmap_branch_drift, DispatchWiringRegistered) {
     expect_reset();
-    const std::string mw = ants_test::slurpFile(SRC_MAINWINDOW_CPP_PATH);
+    const std::string mw = ants_test::slurpMainWindow();
     expect(contains(mw,
         "registerToolProvider(\"roadmap_branch_drift\""),
         "dispatch: mainwindow.cpp must registerToolProvider for "

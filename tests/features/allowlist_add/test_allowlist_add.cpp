@@ -10,8 +10,8 @@
 //           tests/features/review_changes_click.
 //
 // Links against src/claudeallowlist.cpp for the rule-logic tests. The
-// §D/§E assertions grep src/mainwindow.cpp directly (SRC_MAINWINDOW_PATH
-// baked in by CMake) — no MainWindow instantiation required.
+// §D/§E assertions grep the MainWindow sources directly — no MainWindow
+// instantiation required.
 //
 // Runs under QT_QPA_PLATFORM=offscreen; QApplication::activeWindow is
 // reliable under offscreen (tracks the most-recently-activated
@@ -287,17 +287,9 @@ QString extractFunctionBody(const QString &src, const QString &signature) {
         src.toStdString(), signature.toStdString()));
 }
 
-// Read src/mainwindow.cpp. Path baked in by CMake as SRC_MAINWINDOW_PATH.
+// Read the MainWindow sources.
 QString readMainWindowSrc() {
-    const QString path = QStringLiteral(SRC_MAINWINDOW_PATH);
-    QFile f(path);
-    if (!f.open(QIODevice::ReadOnly | QIODevice::Text)) {
-        std::fprintf(stderr,
-                     "FAIL: cannot open %s — test harness wiring broken\n",
-                     qUtf8Printable(path));
-        return QString();
-    }
-    return QString::fromUtf8(f.readAll());
+    return QString::fromStdString(ants_test::slurpMainWindow());
 }
 
 // Read src/claudestatuswidgets.cpp (post-ANTS-1146 home of the

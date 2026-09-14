@@ -6,8 +6,8 @@
 
 #include <string>
 
-#ifndef SRC_MAINWINDOW_CPP_PATH
-#error "SRC_MAINWINDOW_CPP_PATH compile definition required"
+#ifndef ANTS_MAINWINDOW_SOURCES
+#error "ANTS_MAINWINDOW_SOURCES compile definition required"
 #endif
 #ifndef SRC_CLAUDE_INTEGRATION_CPP_PATH
 #error "SRC_CLAUDE_INTEGRATION_CPP_PATH compile definition required"
@@ -20,7 +20,7 @@ namespace {
 
 // REG-1 — verb registered in mainwindow.cpp.
 TEST(CallerCwdInfoVerb, RegisteredAsMcpTool) {
-    const std::string mw = ants_test::slurpFile(SRC_MAINWINDOW_CPP_PATH);
+    const std::string mw = ants_test::slurpMainWindow();
     ASSERT_FALSE(mw.empty());
     EXPECT_NE(mw.find("registerToolProvider(\"caller_cwd_info\""),
               std::string::npos)
@@ -31,7 +31,7 @@ TEST(CallerCwdInfoVerb, RegisteredAsMcpTool) {
 // REG-2 — handler delegates to resolveCallerCwdRoot and emits
 // the four envelope fields.
 TEST(CallerCwdInfoVerb, HandlerDelegatesToHelper) {
-    const std::string mw = ants_test::slurpFile(SRC_MAINWINDOW_CPP_PATH);
+    const std::string mw = ants_test::slurpMainWindow();
     ASSERT_FALSE(mw.empty());
     const auto pos = mw.find("registerToolProvider(\"caller_cwd_info\"");
     ASSERT_NE(pos, std::string::npos);
@@ -115,12 +115,15 @@ TEST(CallerCwdInfoVerb, ClassifiedAsOptional) {
 
 // REG-5 — sourceToString enumerates all four Source values.
 TEST(CallerCwdInfoVerb, SourceToStringCoversAllValues) {
-    const std::string mw = ants_test::slurpFile(SRC_MAINWINDOW_CPP_PATH);
+    const std::string mw = ants_test::slurpMainWindow();
     ASSERT_FALSE(mw.empty());
-    const auto pos = mw.find("sourceToString(ants::ResolvedRoot::Source");
-    ASSERT_NE(pos, std::string::npos)
+    // ANTS-1677 — bounded to the definition's body, not a byte count. The
+    // anchor carries the opening brace so it names the definition, never a
+    // declaration.
+    const std::string region = ants_test::slurpFunctionBody(
+        mw, "QString sourceToString(ants::ResolvedRoot::Source s) {");
+    ASSERT_FALSE(region.empty())
         << "ANTS-1400 REG-5: sourceToString helper missing";
-    const std::string region = mw.substr(pos, 800);
     for (const auto *val : {
             "S::ExplicitMatch",
             "S::EmptyFallback",

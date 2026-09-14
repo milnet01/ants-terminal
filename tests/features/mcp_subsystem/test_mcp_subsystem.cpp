@@ -42,8 +42,8 @@
 #ifndef ANTS_RC_SOURCES
 #error "ANTS_RC_SOURCES compile definition required"
 #endif
-#ifndef SRC_MAINWINDOW_CPP_PATH
-#error "SRC_MAINWINDOW_CPP_PATH compile definition required"
+#ifndef ANTS_MAINWINDOW_SOURCES
+#error "ANTS_MAINWINDOW_SOURCES compile definition required"
 #endif
 #ifndef SRC_SUBSYSTEMMAP_CPP_PATH
 #error "SRC_SUBSYSTEMMAP_CPP_PATH compile definition required"
@@ -78,7 +78,7 @@ TEST(McpSubsystem, WiringContract) {
     const std::string ciHdr  = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_H_PATH);
     const std::string rcHdr  = ants_test::slurpFile(SRC_RC_HEADER);
     const std::string rcCpp  = ants_test::slurpRemoteControl();
-    const std::string mwCpp  = ants_test::slurpFile(SRC_MAINWINDOW_CPP_PATH);
+    const std::string mwCpp  = ants_test::slurpMainWindow();
     const std::string smCpp  = ants_test::slurpFile(SRC_SUBSYSTEMMAP_CPP_PATH);
     const std::string smHdr  = ants_test::slurpFile(SRC_SUBSYSTEMMAP_H_PATH);
     const std::string cmake  = ants_test::slurpFile(CMAKELISTS_PATH);

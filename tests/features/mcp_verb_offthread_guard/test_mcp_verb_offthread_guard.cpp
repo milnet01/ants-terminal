@@ -16,8 +16,8 @@
 #include <vector>
 #include <gtest/gtest.h>
 
-#ifndef SRC_MAINWINDOW_CPP_PATH
-#  error "SRC_MAINWINDOW_CPP_PATH compile definition required"
+#ifndef ANTS_MAINWINDOW_SOURCES
+#  error "ANTS_MAINWINDOW_SOURCES compile definition required"
 #endif
 #ifndef SRC_CLAUDE_INTEGRATION_CPP_PATH
 #  error "SRC_CLAUDE_INTEGRATION_CPP_PATH compile definition required"
@@ -120,7 +120,7 @@ std::string baseName(const std::string &path) {
 TEST(McpVerbOffthreadGuard, Main) {
     expect_reset();
 
-    const std::string mw = ants_test::slurpFile(SRC_MAINWINDOW_CPP_PATH);
+    const std::string mw = ants_test::slurpMainWindow();
     const std::string ci =
         ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
     expect(!mw.empty(), "load/mainwindow.cpp");
@@ -138,12 +138,12 @@ TEST(McpVerbOffthreadGuard, Main) {
     const std::string transform = bodyAfter(ci, transformMarker);
     const std::string teardown =
         bodyAfter(ci, "void ClaudeIntegration::shutdownDispatchWorker() {");
-    // The factory is a lambda nested inside setupClaudeMcpProviders(), so its
-    // body ends at the lambda's own "    };" — not at a column-0 brace.
+    // ANTS-1677 — the factory is the private member MainWindow::rcDelegate(),
+    // so its body ends at the column-0 brace closing that definition.
     const std::string factory = [&mw]() -> std::string {
-        const size_t at = mw.find("    auto rcDelegate =");
+        const size_t at = mw.find("ClaudeIntegration::RcHandler MainWindow::rcDelegate(");
         if (at == std::string::npos) return {};
-        const size_t end = mw.find("\n    };\n", at);
+        const size_t end = mw.find("\n}\n", at);
         return mw.substr(at, end == std::string::npos ? std::string::npos
                                                       : end - at);
     }();

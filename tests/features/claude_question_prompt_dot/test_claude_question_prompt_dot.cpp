@@ -65,7 +65,7 @@ TEST(ClaudeQuestionPromptDot, ScannerDetectsSelectionFooter) {
 
 // INV-4 — mainwindow handler lights dot + label, creates NO button.
 TEST(ClaudeQuestionPromptDot, MainwindowWiringNoButton) {
-    const std::string mw = ants_test::slurpFile(ANTS_SOURCE_DIR "/src/mainwindow.cpp");
+    const std::string mw = ants_test::slurpMainWindow();
 
     const std::string detected = between(mw,
         "&TerminalWidget::claudeQuestionDetected",
@@ -94,7 +94,7 @@ TEST(ClaudeQuestionPromptDot, MainwindowWiringNoButton) {
 // INV-6 — reliable hook-driven clear belt (toolFinished + sessionStopped),
 // mirroring the permission path, since the footer debounce can't complete.
 TEST(ClaudeQuestionPromptDot, HookClearBeltWired) {
-    const std::string mw = ants_test::slurpFile(ANTS_SOURCE_DIR "/src/mainwindow.cpp");
+    const std::string mw = ants_test::slurpMainWindow();
     const std::string belt = between(mw,
         "&TerminalWidget::claudeQuestionCleared",
         "void MainWindow::newTab()");

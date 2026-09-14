@@ -101,7 +101,7 @@ TEST(ClaudePromptLifecycle, PromptAnchorWiring) {
         << "INV-5: rebuild must re-enter showPermissionPrompt for the focused pid";
 
     // INV-5 — the tab-switch refresh actually invokes the rebuild.
-    const std::string mw = ants_test::slurpFile(ANTS_SOURCE_DIR "/src/mainwindow.cpp");
+    const std::string mw = ants_test::slurpMainWindow();
     ASSERT_FALSE(mw.empty());
     const std::string refresh = between(
         mw, "void MainWindow::refreshStatusBarForActiveTab",
@@ -146,7 +146,7 @@ TEST(ClaudePromptLifecycle, BackgroundAnchorSurvivesSwitch) {
         << "INV-6: focused / scroll-scan / resolved anchors must still delete";
 
     // Wired into the tab-switch teardown, fed the tab being switched TO.
-    const std::string mw = ants_test::slurpFile(ANTS_SOURCE_DIR "/src/mainwindow.cpp");
+    const std::string mw = ants_test::slurpMainWindow();
     ASSERT_FALSE(mw.empty());
     const std::string refresh = between(
         mw, "void MainWindow::refreshStatusBarForActiveTab",

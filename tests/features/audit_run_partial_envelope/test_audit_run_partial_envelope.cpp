@@ -66,7 +66,7 @@ TEST(AuditRunPartialEnvelope, Inv2PartialDerivation) {
 // INV-3 — the audit_run provider serialises the partial surface, and the
 // descriptor advertises it.
 TEST(AuditRunPartialEnvelope, Inv3EnvelopeSerialisesPartial) {
-    const std::string mw = ants_test::slurpFile(SRC_MAINWINDOW_CPP_PATH);
+    const std::string mw = ants_test::slurpMainWindow();
     EXPECT_TRUE(contains(mw, "env[\"partial\"]"))
         << "INV-3: provider writes the partial flag";
     EXPECT_TRUE(contains(mw, "incomplete_tools"))
@@ -102,7 +102,7 @@ TEST(AuditRunPartialEnvelope, Inv4SarifWrittenBeforeReturn) {
 // It matters because a zero-finding audit is the most consequential result
 // this verb returns: it is what lets a phase close.
 TEST(AuditRunPartialEnvelope, Ants4371CoverageEvidenceIsSerialised) {
-    const std::string mw = ants_test::slurpFile(SRC_MAINWINDOW_CPP_PATH);
+    const std::string mw = ants_test::slurpMainWindow();
     EXPECT_TRUE(contains(mw, "paths_given"))
         << "per-tool: how many explicit paths the tool was handed";
     EXPECT_TRUE(contains(mw, "scanned_whole_project"))

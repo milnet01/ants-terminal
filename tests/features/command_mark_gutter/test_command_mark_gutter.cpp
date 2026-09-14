@@ -19,8 +19,8 @@
 #ifndef SRC_TERMINALWIDGET_IMPL_PATH
 #error "SRC_TERMINALWIDGET_IMPL_PATH compile definition required"
 #endif
-#ifndef SRC_MAINWINDOW_PATH
-#error "SRC_MAINWINDOW_PATH compile definition required"
+#ifndef ANTS_MAINWINDOW_SOURCES
+#error "ANTS_MAINWINDOW_SOURCES compile definition required"
 #endif
 #ifndef SRC_SETTINGSDIALOG_HEADER_PATH
 #error "SRC_SETTINGSDIALOG_HEADER_PATH compile definition required"
@@ -48,7 +48,7 @@ TEST(CommandMarkGutter, Main) {
     const std::string cfgImp = ants_test::slurpFile(SRC_CONFIG_IMPL_PATH);
     const std::string twHdr  = ants_test::slurpFile(SRC_TERMINALWIDGET_HEADER_PATH);
     const std::string twImp  = ants_test::slurpFile(SRC_TERMINALWIDGET_IMPL_PATH);
-    const std::string mw     = ants_test::slurpFile(SRC_MAINWINDOW_PATH);
+    const std::string mw     = ants_test::slurpMainWindow();
     const std::string sdHdr  = ants_test::slurpFile(SRC_SETTINGSDIALOG_HEADER_PATH);
     const std::string sdImp  = ants_test::slurpFile(SRC_SETTINGSDIALOG_IMPL_PATH);
     const std::string cmake  = ants_test::slurpFile(SRC_CMAKELISTS_PATH);

@@ -10,8 +10,8 @@
 #ifndef SRC_CLAUDESTATUSWIDGETS_CPP_PATH
 #error "SRC_CLAUDESTATUSWIDGETS_CPP_PATH compile definition required"
 #endif
-#ifndef SRC_MAINWINDOW_CPP_PATH
-#error "SRC_MAINWINDOW_CPP_PATH compile definition required"
+#ifndef ANTS_MAINWINDOW_SOURCES
+#error "ANTS_MAINWINDOW_SOURCES compile definition required"
 #endif
 
 namespace {
@@ -81,7 +81,7 @@ TEST(ModelAutoSwitchOutcomeFillin, WriteOnlyWhenChanged) {
 // MainWindow wires the fill-in onto the 2 s status timer next to
 // refreshAutoModelSwitch (same connect block).
 TEST(ModelAutoSwitchOutcomeFillin, WiredOnStatusTimer) {
-    const std::string src = ants_test::slurpFile(SRC_MAINWINDOW_CPP_PATH);
+    const std::string src = ants_test::slurpMainWindow();
     const auto wirePos = src.find("fillPendingLedgerOutcomes");
     ASSERT_NE(wirePos, std::string::npos)
         << "fillPendingLedgerOutcomes must be referenced in MainWindow";

@@ -18,6 +18,7 @@
 //   INV-14      qputenv("ANTS_MCP_SOCKET", ...) after startMcpServer (grep)
 
 #include <gtest/gtest.h>
+#include "../../_support/srcgrep.h"
 
 #include <QByteArray>
 #include <QDir>
@@ -521,15 +522,11 @@ QString slurp(const char *path) {
 }
 }  // namespace
 
-// Project source paths are baked in via CMake -D defines. test_core
-// uses `SRC_MAINWINDOW_CPP` (no `_PATH` suffix) per the existing
-// convention; provide a fallback so the file compiles outside the
-// bundle for development convenience.
+// Project source paths are baked in via CMake -D defines; provide a
+// fallback so the file compiles outside the bundle for development
+// convenience.
 #ifndef SRC_CLAUDE_INTEGRATION_CPP_PATH
 #  define SRC_CLAUDE_INTEGRATION_CPP_PATH "src/claudeintegration.cpp"
-#endif
-#ifndef SRC_MAINWINDOW_CPP
-#  define SRC_MAINWINDOW_CPP "src/mainwindow.cpp"
 #endif
 #ifndef SRC_MCPORIENTATION_CPP
 #  define SRC_MCPORIENTATION_CPP "src/mcporientation.cpp"
@@ -635,7 +632,7 @@ TEST(McpOrientation_Inv6, SelectionHintCoverage) {
 }
 
 TEST(McpOrientation_Inv14, MainWindowExportsSocket) {
-    const QString src = slurp(SRC_MAINWINDOW_CPP);
+    const QString src = QString::fromStdString(ants_test::slurpMainWindow());
     ASSERT_FALSE(src.isEmpty());
 
     // Find startMcpServer call site.

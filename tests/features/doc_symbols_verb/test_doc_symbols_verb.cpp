@@ -14,7 +14,7 @@
 #include <gtest/gtest.h>
 #include "../../_support/srcgrep.h"  // ANTS-3833 — slurpRemoteControl
 
-#if !defined(SRC_MAINWINDOW_CPP_PATH) || !defined(ANTS_RC_SOURCES) || \
+#if !defined(ANTS_MAINWINDOW_SOURCES) || !defined(ANTS_RC_SOURCES) || \
     !defined(SRC_CLAUDE_INTEGRATION_CPP_PATH) || !defined(SRC_DOCSYMBOLS_CPP_PATH)
 #error "doc_symbols_verb test needs the test_claude source-path compile defs"
 #endif
@@ -63,7 +63,7 @@ TEST(DocSymbolsVerb, Inv4NoSeverityVocabulary) {
 TEST(DocSymbolsVerb, Inv6RefusalMinimums) {
     // (1) caller_cwd Required — declared at the call site AND in the static
     // table registerToolProvider asserts against.
-    const QString mw = slurp(SRC_MAINWINDOW_CPP_PATH);
+    const QString mw = QString::fromStdString(ants_test::slurpMainWindow());
     ASSERT_FALSE(mw.isEmpty());
     const int reg = mw.indexOf(QStringLiteral("registerToolProvider(\"doc_symbols\""));
     ASSERT_GE(reg, 0);
@@ -146,7 +146,7 @@ TEST(DocSymbolsVerb, ResolutionReachesTheWireAsThreeStates) {
 // allocation: a byte offset alone would be satisfied by the old site, since
 // setupClaudeMcpProviders' DEFINITION sits later in the file than its CALL.
 TEST(DocSymbolsVerb, Inv8VocabularyProviderInstalledAfterRemoteControlExists) {
-    const QString mw = slurp(SRC_MAINWINDOW_CPP_PATH);
+    const QString mw = QString::fromStdString(ants_test::slurpMainWindow());
     ASSERT_FALSE(mw.isEmpty());
 
     const int install = mw.indexOf(QStringLiteral("setMcpVerbVocabularyProvider("));

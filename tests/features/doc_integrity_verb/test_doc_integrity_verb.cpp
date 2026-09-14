@@ -19,7 +19,7 @@
 #include <gtest/gtest.h>
 #include "../../_support/srcgrep.h"  // ANTS-3833 — slurpRemoteControl
 
-#if !defined(ANTS_SOURCE_DIR) || !defined(SRC_MAINWINDOW_CPP_PATH) || \
+#if !defined(ANTS_SOURCE_DIR) || !defined(ANTS_MAINWINDOW_SOURCES) || \
     !defined(ANTS_RC_SOURCES) || !defined(SRC_CLAUDE_INTEGRATION_CPP_PATH)
 #error "doc_integrity_verb test needs the test_claude source-path compile defs"
 #endif
@@ -136,7 +136,7 @@ TEST(DocIntegrityVerb, KindsFilterNarrowsCounts) {
 // INV-10 — verb contract wiring: caller_cwd Required, path validation →
 // bad_path, ETag-304. Source-scrape the registration sites.
 TEST(DocIntegrityVerb, WiringRegistered) {
-    const QString mw = slurp(SRC_MAINWINDOW_CPP_PATH);
+    const QString mw = QString::fromStdString(ants_test::slurpMainWindow());
     ASSERT_FALSE(mw.isEmpty());
     // Registered with the Required caller_cwd contract.
     const int reg = mw.indexOf("registerToolProvider(\"doc_integrity\"");

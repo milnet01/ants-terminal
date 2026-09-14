@@ -16,8 +16,8 @@
 #error "SRC_CLAUDE_INTEGRATION_CPP_PATH compile definition required"
 #endif
 
-#ifndef SRC_MAINWINDOW_CPP_PATH
-#error "SRC_MAINWINDOW_CPP_PATH compile definition required"
+#ifndef ANTS_MAINWINDOW_SOURCES
+#error "ANTS_MAINWINDOW_SOURCES compile definition required"
 #endif
 
 ANTS_TEST_SCOPE();
@@ -166,7 +166,7 @@ TEST(McpToolsListSchema, AllRegisteredToolsHaveInputSchema) {
 // verbs via MainWindow::terminalForCaller().
 TEST(McpToolsListSchema, RegistryLambdasForwardCallerCwd) {
     expect_reset();
-    const std::string mw = ants_test::slurpFile(SRC_MAINWINDOW_CPP_PATH);
+    const std::string mw = ants_test::slurpMainWindow();
 
     // ANTS-1393 / ANTS-3422 — roadmap_query forwards caller_cwd to
     // cmdRoadmapQuery. The provider was migrated to a verbatim rcDelegate

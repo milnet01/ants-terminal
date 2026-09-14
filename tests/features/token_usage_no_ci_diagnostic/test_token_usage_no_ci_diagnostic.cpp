@@ -128,7 +128,7 @@ TEST(token_usage_no_ci_diagnostic, Inv4SuccessPathClean) {
 // lambdaThisPtr forwarding (the diagnostic envelope is gone).
 TEST(token_usage_no_ci_diagnostic, Inv5LambdaPassesCiDirectly) {
     expect_reset();
-    const std::string mw = ants_test::slurpFile(SRC_MAINWINDOW_CPP_PATH);
+    const std::string mw = ants_test::slurpMainWindow();
     const auto pos = mw.find(
         "registerToolProvider(\"token_usage\"");
     ASSERT_NE(pos, std::string::npos)

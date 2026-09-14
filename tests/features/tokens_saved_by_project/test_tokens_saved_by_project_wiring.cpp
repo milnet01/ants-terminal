@@ -18,8 +18,8 @@
 #ifndef SRC_CLAUDESTATUSWIDGETS_CPP_PATH
 #error "SRC_CLAUDESTATUSWIDGETS_CPP_PATH required"
 #endif
-#ifndef SRC_MAINWINDOW_CPP_PATH
-#error "SRC_MAINWINDOW_CPP_PATH required"
+#ifndef ANTS_MAINWINDOW_SOURCES
+#error "ANTS_MAINWINDOW_SOURCES required"
 #endif
 
 ANTS_TEST_SCOPE();
@@ -105,7 +105,7 @@ TEST(TokensSavedByProjectWiring, Inv2To11Widget) {
 // single save; the tab-switch refresh calls the pill's named method.
 TEST(TokensSavedByProjectWiring, Inv4And6And7MainWindow) {
     expect_reset();
-    const std::string cpp = ants_test::slurpFile(SRC_MAINWINDOW_CPP_PATH);
+    const std::string cpp = ants_test::slurpMainWindow();
     // Anchor on the DEFINITION signature: `&MainWindow::foldTokenSavingsIntoConfig`
     // appears earlier (the tokenSessionEnding connect), and slurpFunctionBody
     // takes the first match.

@@ -19,8 +19,8 @@
 #ifndef ANTS_RC_SOURCES
 #error "ANTS_RC_SOURCES compile definition required"
 #endif
-#ifndef SRC_MAINWINDOW_CPP_PATH
-#error "SRC_MAINWINDOW_CPP_PATH compile definition required"
+#ifndef ANTS_MAINWINDOW_SOURCES
+#error "ANTS_MAINWINDOW_SOURCES compile definition required"
 #endif
 #ifndef SRC_BUILDCACHE_H_PATH
 #error "SRC_BUILDCACHE_H_PATH compile definition required"
@@ -54,7 +54,7 @@ TEST(McpBuildStatus, WiringContract) {
     const std::string rcHdr = ants_test::slurpFile(SRC_RC_HEADER);
     const std::string rcCpp = ants_test::slurpRemoteControl();
     const std::string ciCpp = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
-    const std::string mwCpp = ants_test::slurpFile(SRC_MAINWINDOW_CPP_PATH);
+    const std::string mwCpp = ants_test::slurpMainWindow();
 
     // INV-1 — BuildCache namespace API.
     expect(contains(bcHdr, "QString cachePath("),

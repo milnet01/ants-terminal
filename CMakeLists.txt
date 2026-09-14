@@ -740,8 +740,21 @@ target_link_libraries(ants_vt_lib
     PRIVATE ants_warnings)
 set_target_properties(ants_vt_lib PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
-add_library(ants_chrome_lib STATIC
+# ANTS-1677 — MainWindow's source list. Entry 1 is src/mainwindow.cpp; the
+# pieces follow in ascending order of where their text began in it. Tests read
+# the class through ANTS_MAINWINDOW_SOURCES, built from this list; shell and
+# Python readers read the src/mainwindow.cpp src/mainwindow_*.cpp glob.
+set(ANTS_MAINWINDOW_SOURCES_REL
     src/mainwindow.cpp
+)
+list(TRANSFORM ANTS_MAINWINDOW_SOURCES_REL PREPEND "${CMAKE_SOURCE_DIR}/"
+     OUTPUT_VARIABLE _ants_mainwindow_abs)
+list(JOIN _ants_mainwindow_abs ";" _ants_mainwindow_joined)
+# Escaped for the reason given beside _ants_rc_joined.
+string(REPLACE ";" "\\;" _ants_mainwindow_joined "${_ants_mainwindow_joined}")
+
+add_library(ants_chrome_lib STATIC
+    ${ANTS_MAINWINDOW_SOURCES_REL}
     src/titlebar.cpp
     src/dialogchrome.cpp
     src/coloredtabbar.cpp
@@ -1726,7 +1739,7 @@ if(ANTS_TESTS)
         SRC_TERMINALGRID_PATH="${CMAKE_SOURCE_DIR}/src/terminalgrid.cpp"
         SRC_TERMINALGRID_CPP_PATH="${CMAKE_SOURCE_DIR}/src/terminalgrid.cpp"
         SRC_VTPARSER_PATH="${CMAKE_SOURCE_DIR}/src/vtparser.cpp"
-        SRC_MAINWINDOW_CPP_PATH="${CMAKE_SOURCE_DIR}/src/mainwindow.cpp"
+        "ANTS_MAINWINDOW_SOURCES=\"${_ants_mainwindow_joined}\""
         SRC_MAINWINDOW_H_PATH="${CMAKE_SOURCE_DIR}/src/mainwindow.h"
         SRC_THEMEDSTYLESHEET_CPP_PATH="${CMAKE_SOURCE_DIR}/src/themedstylesheet.cpp")
 
@@ -1886,13 +1899,10 @@ if(ANTS_TESTS)
     target_link_libraries(test_chrome PRIVATE Qt6::Test)
     target_compile_definitions(test_chrome PRIVATE
         SRC_MAIN_PATH="${CMAKE_SOURCE_DIR}/src/main.cpp"
-        SRC_MAINWINDOW_PATH="${CMAKE_SOURCE_DIR}/src/mainwindow.cpp"
+        "ANTS_MAINWINDOW_SOURCES=\"${_ants_mainwindow_joined}\""
         # ANTS-4273 INV-5 — the doc claimed ants.notify() was a no-op.
         PLUGINS_MD_PATH="${CMAKE_SOURCE_DIR}/PLUGINS.md"
-        SRC_MAINWINDOW_CPP="${CMAKE_SOURCE_DIR}/src/mainwindow.cpp"
-        SRC_MAINWINDOW_CPP_PATH="${CMAKE_SOURCE_DIR}/src/mainwindow.cpp"
         SRC_MAINWINDOW_H_PATH="${CMAKE_SOURCE_DIR}/src/mainwindow.h"
-        MAINWINDOW_CPP="${CMAKE_SOURCE_DIR}/src/mainwindow.cpp"
         MAINWINDOW_H="${CMAKE_SOURCE_DIR}/src/mainwindow.h"
         SRC_TERMINALWIDGET_PATH="${CMAKE_SOURCE_DIR}/src/terminalwidget.cpp"
         SRC_TERMINALWIDGET_CPP_PATH="${CMAKE_SOURCE_DIR}/src/terminalwidget.cpp"
@@ -2667,10 +2677,8 @@ if(ANTS_TESTS)
         # that runs the suite, not the workflow alone.
         SRC_CI_WORKFLOW_PATH="${CMAKE_SOURCE_DIR}/.github/workflows/ci.yml"
         ANTS_SOURCE_DIR="${CMAKE_SOURCE_DIR}"
-        SRC_MAINWINDOW_PATH="${CMAKE_SOURCE_DIR}/src/mainwindow.cpp"
-        SRC_MAINWINDOW_CPP_PATH="${CMAKE_SOURCE_DIR}/src/mainwindow.cpp"
+        "ANTS_MAINWINDOW_SOURCES=\"${_ants_mainwindow_joined}\""
         SRC_MAINWINDOW_H_PATH="${CMAKE_SOURCE_DIR}/src/mainwindow.h"
-        MAINWINDOW_CPP="${CMAKE_SOURCE_DIR}/src/mainwindow.cpp"
         SRC_CLAUDESTATUSWIDGETS_CPP_PATH="${CMAKE_SOURCE_DIR}/src/claudestatuswidgets.cpp"
         SRC_CLAUDESTATUSWIDGETS_H_PATH="${CMAKE_SOURCE_DIR}/src/claudestatuswidgets.h"
         SRC_CLAUDE_INTEGRATION_CPP_PATH="${CMAKE_SOURCE_DIR}/src/claudeintegration.cpp"
@@ -2727,7 +2735,6 @@ if(ANTS_TESTS)
         SRC_LLMDISPATCHER_H_PATH="${CMAKE_SOURCE_DIR}/src/llmdispatcher.h"
         SRC_LLMDISPATCHER_CPP_PATH="${CMAKE_SOURCE_DIR}/src/llmdispatcher.cpp"
         SRC_COLDEYESENGINE_CPP_PATH="${CMAKE_SOURCE_DIR}/src/coldeyesengine.cpp"
-        SRC_MAINWINDOW_CPP_PATH="${CMAKE_SOURCE_DIR}/src/mainwindow.cpp"
         MCP_ERROR_CODES_DOC_PATH="${CMAKE_SOURCE_DIR}/docs/standards/mcp-error-codes.md"
         FIXTURE_PROVENANCE_SARIF="${CMAKE_SOURCE_DIR}/tests/features/mcp_last_audit_summary/fixture_provenance.sarif"
         "ANTS_AUDITDIALOG_SOURCES=\"${_ants_auditdialog_joined}\""
@@ -2867,7 +2874,6 @@ if(ANTS_TESTS)
     set_property(SOURCE tests/features/git_optional_locks/test_git_optional_locks.cpp
         APPEND PROPERTY COMPILE_DEFINITIONS
         # ANTS-4999 — every read-only git runner uses readOnlyEnvironment().
-        SRC_MAINWINDOW_CPP_PATH="${CMAKE_SOURCE_DIR}/src/mainwindow.cpp"
         SRC_AUDITSCOPE_CPP_PATH="${CMAKE_SOURCE_DIR}/src/auditscope.cpp"
         SRC_SETTINGSDIALOG_CPP_PATH="${CMAKE_SOURCE_DIR}/src/settingsdialog.cpp"
         # Quoted as ONE argument: the value contains ";" separators.
@@ -3238,8 +3244,7 @@ if(ANTS_TESTS)
         SRC_SETTINGSDIALOG_CPP_PATH="${CMAKE_SOURCE_DIR}/src/settingsdialog.cpp"
         SRC_SETTINGSDIALOG_H_PATH="${CMAKE_SOURCE_DIR}/src/settingsdialog.h"
         SRC_CLAUDEALLOWLIST_CPP_PATH="${CMAKE_SOURCE_DIR}/src/claudeallowlist.cpp"
-        SRC_MAINWINDOW_PATH="${CMAKE_SOURCE_DIR}/src/mainwindow.cpp"
-        SRC_MAINWINDOW_CPP_PATH="${CMAKE_SOURCE_DIR}/src/mainwindow.cpp"
+        "ANTS_MAINWINDOW_SOURCES=\"${_ants_mainwindow_joined}\""
         SRC_DIFFVIEWER_CPP_PATH="${CMAKE_SOURCE_DIR}/src/diffviewer.cpp"
         ROADMAPDIALOG_H="${CMAKE_SOURCE_DIR}/src/roadmapdialog.h"
         ROADMAPDIALOG_CPP="${CMAKE_SOURCE_DIR}/src/roadmapdialog.cpp"
@@ -3248,7 +3253,6 @@ if(ANTS_TESTS)
         SRC_CLAUDE_INTEGRATION_CPP_PATH="${CMAKE_SOURCE_DIR}/src/claudeintegration.cpp"
         SRC_DIR="${CMAKE_SOURCE_DIR}/src"
         MAINWINDOW_H="${CMAKE_SOURCE_DIR}/src/mainwindow.h"
-        MAINWINDOW_CPP="${CMAKE_SOURCE_DIR}/src/mainwindow.cpp"
         SRC_RC_HEADER="${CMAKE_SOURCE_DIR}/src/remotecontrol.h"
         # ANTS-3833 — the RemoteControl implementation is eleven TUs. The two
         # single-file path macros are retired: a scrape reading one TU sees a
@@ -3320,7 +3324,7 @@ if(ANTS_TESTS)
             SRC_LUAENGINE_PATH="${CMAKE_SOURCE_DIR}/src/luaengine.cpp"
             SRC_LUAENGINE_H_PATH="${CMAKE_SOURCE_DIR}/src/luaengine.h"
             SRC_PLUGINMANAGER_CPP_PATH="${CMAKE_SOURCE_DIR}/src/pluginmanager.cpp"
-            SRC_MAINWINDOW_PATH="${CMAKE_SOURCE_DIR}/src/mainwindow.cpp")
+            "ANTS_MAINWINDOW_SOURCES=\"${_ants_mainwindow_joined}\"")
 
     # ANTS-4797 — a per-TEST path define belongs on its own source, not on
     # the bundle. Every define in the block above lands on EVERY TU's command
@@ -3475,7 +3479,7 @@ if(ANTS_TESTS)
                 tests/features/ledger_write_safety/test_ledger_write_safety.cpp
                 # ANTS-1735 — model_switch_stats verb: behavioural aggregation +
                 # source-grep wiring contract (uses SRC_RC_HEADER / ANTS_RC_SOURCES /
-                # SRC_MAINWINDOW_CPP / SRC_CLAUDE_INTEGRATION_CPP_PATH defs below).
+                # ANTS_MAINWINDOW_SOURCES / SRC_CLAUDE_INTEGRATION_CPP_PATH defs below).
                 tests/features/mcp_model_switch_stats/test_mcp_model_switch_stats.cpp
                 # ANTS-1891 — trust-signal v2: inconclusive bucket, regret-folds-
                 # under-route, weighted clean-end, headline floor, quiet-window
@@ -3681,7 +3685,7 @@ if(ANTS_TESTS)
         "ANTS_RC_SOURCES=\"${_ants_rc_joined}\""
         ANTS_RC_SRC_DIR="${CMAKE_SOURCE_DIR}/src"
         SRC_MAINWINDOW_H="${CMAKE_SOURCE_DIR}/src/mainwindow.h"
-        SRC_MAINWINDOW_CPP="${CMAKE_SOURCE_DIR}/src/mainwindow.cpp"
+        "ANTS_MAINWINDOW_SOURCES=\"${_ants_mainwindow_joined}\""
         # ANTS-3358 — ChromeGuard -Wnull-dereference pragma-guard source-grep.
         SRC_DIALOGCHROME_CPP="${CMAKE_SOURCE_DIR}/src/dialogchrome.cpp"
         # ANTS-3505 — diffviewer positionBackToTop -Wnull-dereference source-grep.

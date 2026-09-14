@@ -10,8 +10,8 @@
 #include "../../_support/srcgrep.h"
 #include <string>
 
-#ifndef SRC_MAINWINDOW_CPP_PATH
-#  error "SRC_MAINWINDOW_CPP_PATH compile definition required"
+#ifndef ANTS_MAINWINDOW_SOURCES
+#  error "ANTS_MAINWINDOW_SOURCES compile definition required"
 #endif
 
 namespace {
@@ -19,7 +19,7 @@ namespace {
 // Slice of mainwindow.cpp covering the body of MainWindow::applyTheme,
 // from its definition to the next top-level MainWindow:: method.
 std::string applyThemeBody() {
-    const std::string src = ants_test::slurpFile(SRC_MAINWINDOW_CPP_PATH);
+    const std::string src = ants_test::slurpMainWindow();
     const auto defPos = src.find("void MainWindow::applyTheme(");
     EXPECT_NE(defPos, std::string::npos);
     const auto nextDef = src.find("\nvoid MainWindow::", defPos + 20);
@@ -31,7 +31,7 @@ std::string applyThemeBody() {
 // Slice of mainwindow.cpp covering MainWindow::setupViewMenu — where the
 // View→Themes QAction handlers are wired.
 std::string setupViewMenuBody() {
-    const std::string src = ants_test::slurpFile(SRC_MAINWINDOW_CPP_PATH);
+    const std::string src = ants_test::slurpMainWindow();
     const auto defPos = src.find("void MainWindow::setupViewMenu(");
     EXPECT_NE(defPos, std::string::npos);
     const auto nextDef = src.find("\nvoid MainWindow::", defPos + 20);

@@ -11,8 +11,8 @@
 
 #include <gtest/gtest.h>
 
-#ifndef SRC_MAINWINDOW_CPP
-#error "SRC_MAINWINDOW_CPP compile definition required"
+#ifndef ANTS_MAINWINDOW_SOURCES
+#error "ANTS_MAINWINDOW_SOURCES compile definition required"
 #endif
 
 ANTS_TEST_SCOPE();
@@ -20,7 +20,7 @@ ANTS_TEST_SCOPE();
 namespace {
 
 void testWiring() {
-    const std::string mwc = ants_test::slurpFile(SRC_MAINWINDOW_CPP);
+    const std::string mwc = ants_test::slurpMainWindow();
     const std::string body =
         ants_test::slurpFunctionBody(mwc, "MainWindow::restoreSessions");
     expect(!body.empty(),

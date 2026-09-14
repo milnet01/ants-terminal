@@ -14,8 +14,8 @@
 #include <gtest/gtest.h>
 #include "../../_support/srcgrep.h"
 
-#ifndef SRC_MAINWINDOW_CPP_PATH
-#  error "SRC_MAINWINDOW_CPP_PATH compile definition required"
+#ifndef ANTS_MAINWINDOW_SOURCES
+#  error "ANTS_MAINWINDOW_SOURCES compile definition required"
 #endif
 #ifndef SRC_MAINWINDOW_H_PATH
 #  error "SRC_MAINWINDOW_H_PATH compile definition required"
@@ -32,7 +32,7 @@ namespace {
 
 TEST(QPointerDestroyedSafe, Main) {
     expect_reset();
-    const std::string cpp = ants_test::slurpFile(SRC_MAINWINDOW_CPP_PATH);
+    const std::string cpp = ants_test::slurpMainWindow();
     const std::string hdr = ants_test::slurpFile(SRC_MAINWINDOW_H_PATH);
 
     // C-1 / I-5 — regression lock. No `&QObject::destroyed,` block

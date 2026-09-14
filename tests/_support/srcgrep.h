@@ -91,6 +91,13 @@ inline std::string slurpSourceList(const char *list) {
 inline std::string slurpAuditDialog() { return slurpSourceList(ANTS_AUDITDIALOG_SOURCES); }
 #endif
 
+// ANTS-1677 — the MainWindow class's text: every file of
+// ANTS_MAINWINDOW_SOURCES, the list CMake builds from
+// ANTS_MAINWINDOW_SOURCES_REL. Guarded for the reason slurpRemoteControl is.
+#if defined(ANTS_MAINWINDOW_SOURCES)
+inline std::string slurpMainWindow() { return slurpSourceList(ANTS_MAINWINDOW_SOURCES); }
+#endif
+
 // Return the body of the function whose signature starts with the
 // `signatureAnchor` substring (e.g. "RemoteControl::cmdGetText"). The
 // scan finds the first '{' at or after the anchor, then walks forward

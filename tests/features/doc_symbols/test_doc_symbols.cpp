@@ -20,8 +20,9 @@
 #include <algorithm>
 
 #include <gtest/gtest.h>
+#include "../../_support/srcgrep.h"
 
-#if !defined(ANTS_SOURCE_DIR) || !defined(SRC_MAINWINDOW_CPP_PATH)
+#if !defined(ANTS_SOURCE_DIR) || !defined(ANTS_MAINWINDOW_SOURCES)
 #error "doc_symbols test needs the test_claude source-path compile defs"
 #endif
 
@@ -59,9 +60,8 @@ bool seedTree(const QString &root) {
 // as a verb defect; the live verb reads the real registry.
 QSet<QString> registeredVerbNamesFromSource() {
     QSet<QString> out;
-    QFile f(QString::fromUtf8(SRC_MAINWINDOW_CPP_PATH));
-    if (!f.open(QIODevice::ReadOnly)) return out;
-    const QString src = QString::fromUtf8(f.readAll());
+    const QString src = QString::fromStdString(ants_test::slurpMainWindow());
+    if (src.isEmpty()) return out;
     static const QRegularExpression re(QStringLiteral("registerToolProvider\\(\"([a-z0-9_]+)\""));
     auto it = re.globalMatch(src);
     while (it.hasNext()) out.insert(it.next().captured(1));

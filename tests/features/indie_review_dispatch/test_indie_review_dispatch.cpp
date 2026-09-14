@@ -26,7 +26,6 @@
 namespace {
 
 const char *kEnginePath  = SRC_INDIE_REVIEW_DISPATCHER_CPP_PATH;
-const char *kMainPath    = SRC_MAINWINDOW_CPP_PATH;
 const char *kCiPath      = SRC_CLAUDE_INTEGRATION_CPP_PATH;
 const char *kEngineHdr   = SRC_INDIE_REVIEW_DISPATCHER_H_PATH;
 const char *kIreHdr      = SRC_INDIE_REVIEW_ENGINE_H_PATH;
@@ -184,7 +183,7 @@ TEST(IndieReviewDispatch, G3_TierExpensive) {
 
 // G-4 — provider registered.
 TEST(IndieReviewDispatch, G4_ProviderRegistered) {
-    const std::string mw = ants_test::slurpFile(kMainPath);
+    const std::string mw = ants_test::slurpMainWindow();
     ASSERT_FALSE(mw.empty());
     EXPECT_NE(mw.find("registerToolProvider(\"indie_review_dispatch\""),
               std::string::npos);
@@ -192,7 +191,7 @@ TEST(IndieReviewDispatch, G4_ProviderRegistered) {
 
 // G-5 — in-flight gate.
 TEST(IndieReviewDispatch, G5_InFlightGate) {
-    const std::string mw = ants_test::slurpFile(kMainPath);
+    const std::string mw = ants_test::slurpMainWindow();
     ASSERT_FALSE(mw.empty());
     EXPECT_NE(mw.find(
         "verbInFlightTryAcquire(\n"
@@ -438,7 +437,7 @@ TEST(IndieReviewDispatch, G19_WorkerNeverMarshalsToGuiThread) {
     }
 
     const std::string provider = ants_test::regionBetween(
-        ants_test::stripComments(ants_test::slurpFile(kMainPath)),
+        ants_test::stripComments(ants_test::slurpMainWindow()),
         "registerToolProvider(\"indie_review_dispatch\"",
         "registerToolProvider(");
     ASSERT_FALSE(provider.empty());

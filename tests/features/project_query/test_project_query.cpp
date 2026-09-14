@@ -45,7 +45,7 @@ std::string srcPath(const char *rel) {
 // Wiring (always compiled — pure source-scrape, no Lua dependency).
 // ===================================================================
 TEST(ProjectQuery, RegistrationWiring) {
-    const std::string mw = ants_test::slurpFile(srcPath("src/mainwindow.cpp"));
+    const std::string mw = ants_test::slurpMainWindow();
     const std::string ci = ants_test::slurpFile(srcPath("src/claudeintegration.cpp"));
     const std::string mp = ants_test::slurpFile(srcPath("src/mcpprojection.cpp"));
     const std::string cf = ants_test::slurpFile(srcPath("src/config.cpp"));

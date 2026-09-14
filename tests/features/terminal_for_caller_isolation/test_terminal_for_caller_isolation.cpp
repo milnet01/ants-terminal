@@ -15,8 +15,8 @@
 
 #include <string>
 
-#ifndef SRC_MAINWINDOW_CPP_PATH
-#error "SRC_MAINWINDOW_CPP_PATH compile definition required"
+#ifndef ANTS_MAINWINDOW_SOURCES
+#error "ANTS_MAINWINDOW_SOURCES compile definition required"
 #endif
 #ifndef ANTS_RC_SOURCES
 #error "ANTS_RC_SOURCES compile definition required"
@@ -34,7 +34,7 @@ const std::string &rcSource() {
 }
 const std::string &mwSource() {
     static const std::string s =
-        ants_test::slurpFile(SRC_MAINWINDOW_CPP_PATH);
+        ants_test::slurpMainWindow();
     return s;
 }
 

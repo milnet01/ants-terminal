@@ -49,7 +49,7 @@ TEST(ModelStateChip, ControllerDeclaresWidgetAndRefresh) {
 // The 2 s status timer must call the chip's refresh; otherwise the chip
 // only updates on tab-switch.
 TEST(ModelStateChip, StatusTimerConnectsToRefresh) {
-    const std::string mw = ants_test::slurpFile(SRC_MAINWINDOW_CPP);
+    const std::string mw = ants_test::slurpMainWindow();
     EXPECT_TRUE(has(mw, "refreshModelStateChip"))
         << "mainwindow.cpp must reference refreshModelStateChip (ANTS-1888)";
     EXPECT_TRUE(has(mw, "ANTS-1888"))

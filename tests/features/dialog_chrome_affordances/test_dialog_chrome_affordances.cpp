@@ -141,7 +141,7 @@ TEST(DialogChromeAffordances, INV7_ReleasingLastConfigLeavesD3Inert) {
 // a MainWindow cannot be built headless in this bundle.
 TEST(DialogChromeAffordances, INV8_MainWindowDtorReleasesConfig) {
     const std::string body = ants_test::squashWhitespace(
-        ants_test::slurpFunctionBody(SRC_MAINWINDOW_CPP_PATH,
+        ants_test::slurpFunctionBody(ants_test::slurpMainWindow(),
                                      "MainWindow::~MainWindow()"));
     ASSERT_FALSE(body.empty()) << "~MainWindow not found";
     EXPECT_NE(body.find("DialogChrome::releaseConfig(&m_config);"),

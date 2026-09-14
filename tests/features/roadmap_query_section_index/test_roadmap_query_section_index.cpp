@@ -453,7 +453,7 @@ TEST(roadmap_query_section_index, Inv13PerSectionLegacyFlag) {
 // would remove the rcDelegate registration and fail here.
 TEST(roadmap_query_section_index, DispatchForwardsModeArg) {
     expect_reset();
-    const std::string cpp = ants_test::slurpFile(SRC_MAINWINDOW_CPP_PATH);
+    const std::string cpp = ants_test::slurpMainWindow();
     expect(contains(cpp, "rcDelegate(&RemoteControl::cmdRoadmapQuery)"),
            "dispatch: roadmap_query registered via the verbatim rcDelegate "
            "forward, so mode + include_section_headers reach the handler");
@@ -468,7 +468,7 @@ TEST(roadmap_query_section_index, DispatchForwardsModeArg) {
 // arrives by construction — assert the verbatim forward is in place.
 TEST(roadmap_query_section_index, DispatchForwardsIncludeBody) {
     expect_reset();
-    const std::string cpp = ants_test::slurpFile(SRC_MAINWINDOW_CPP_PATH);
+    const std::string cpp = ants_test::slurpMainWindow();
     expect(contains(cpp, "rcDelegate(&RemoteControl::cmdRoadmapQuery)"),
            "dispatch: roadmap_query registered via the verbatim rcDelegate "
            "forward, so include_body reaches the handler");

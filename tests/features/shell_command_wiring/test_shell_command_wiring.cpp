@@ -26,6 +26,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <gtest/gtest.h>
+#include "../../_support/srcgrep.h"
 
 ANTS_TEST_SCOPE();
 
@@ -102,7 +103,7 @@ void checkI2() {
 }
 
 void checkI3() {
-    const QString src = slurp(QStringLiteral(SRC_MAINWINDOW_CPP_PATH));
+    const QString src = QString::fromStdString(ants_test::slurpMainWindow());
     const QString code = stripLineComments(src);
 
     // Count occurrences of `startShell(` that include `shellCommand()` on

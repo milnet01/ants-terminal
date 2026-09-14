@@ -203,7 +203,7 @@ TEST(mcp_roadmap_status_filter, Inv9McpDispatchExtractsStatus) {
     // hand-maintained per-arg forward lambda to a verbatim rcDelegate
     // forward that passes the whole args object to cmdRoadmapQuery, so
     // `status` (INV-9) reaches the handler by construction.
-    const std::string mw = ants_test::slurpFile(SRC_MAINWINDOW_CPP_PATH);
+    const std::string mw = ants_test::slurpMainWindow();
     expect(contains(mw, "registerToolProvider(\"roadmap_query\""),
            "ANTS-1253: roadmap_query registered via registerToolProvider");
     expect(contains(mw, "rcDelegate(&RemoteControl::cmdRoadmapQuery)"),
@@ -243,7 +243,7 @@ TEST(mcp_roadmap_status_filter, Inv11ErrorMessageHygiene) {
 
 TEST(mcp_roadmap_status_filter, ProviderLambdaWidened) {
     expect_reset();
-    const std::string mw = ants_test::slurpFile(SRC_MAINWINDOW_CPP_PATH);
+    const std::string mw = ants_test::slurpMainWindow();
     // ANTS-3422 — the roadmap_query provider forwards args VERBATIM via
     // rcDelegate(&RemoteControl::cmdRoadmapQuery), so `status` threads
     // through to cmdRoadmapQuery without a per-arg forward line.

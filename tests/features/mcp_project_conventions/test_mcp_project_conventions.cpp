@@ -42,8 +42,8 @@
 #ifndef ANTS_RC_SOURCES
 #error "ANTS_RC_SOURCES compile definition required"
 #endif
-#ifndef SRC_MAINWINDOW_CPP_PATH
-#error "SRC_MAINWINDOW_CPP_PATH compile definition required"
+#ifndef ANTS_MAINWINDOW_SOURCES
+#error "ANTS_MAINWINDOW_SOURCES compile definition required"
 #endif
 #ifndef ANTS_SOURCE_DIR
 #error "ANTS_SOURCE_DIR compile definition required"
@@ -103,7 +103,7 @@ TEST(McpProjectConventions, WiringAndDriftGuard) {
     const std::string rcHdr = ants_test::slurpFile(SRC_RC_HEADER);
     const std::string rcCpp = ants_test::slurpRemoteControl();
     const std::string ciCpp = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
-    const std::string mwCpp = ants_test::slurpFile(SRC_MAINWINDOW_CPP_PATH);
+    const std::string mwCpp = ants_test::slurpMainWindow();
 
     const std::string body =
         fnBody(rcCpp, "QJsonDocument RemoteControl::cmdProjectConventions(");
@@ -267,11 +267,8 @@ TEST(McpProjectConventions, Ants4460KeepsConventionsThisProjectDoesDocument) {
     // repository is the project the table was curated from.
     QJsonObject req;
     req[QStringLiteral("task_type")]  = QStringLiteral("feature");
-    // Derived from a definition this file already requires, rather than a new
-    // one: <root>/src/mainwindow.cpp up two levels is the repository root.
-    const QString repoRoot =
-        QFileInfo(QStringLiteral(SRC_MAINWINDOW_CPP_PATH)).dir().absolutePath()
-        + QStringLiteral("/..");
+    // The repository root, from the bundle's ANTS_SOURCE_DIR definition.
+    const QString repoRoot = QStringLiteral(ANTS_SOURCE_DIR);
     req[QStringLiteral("caller_cwd")] =
         QFileInfo(repoRoot).canonicalFilePath();
 

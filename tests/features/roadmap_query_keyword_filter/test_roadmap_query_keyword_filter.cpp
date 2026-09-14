@@ -165,7 +165,7 @@ TEST(RoadmapQueryKeywordFilter, Inv6SchemaDeclaresQuery) {
 // future) arrives by construction. Guards against a regression back to a
 // selective forward that could re-drop an arg.
 TEST(RoadmapQueryKeywordFilter, Inv7DispatchForwardsQuery) {
-    const QString mw = readSource(SRC_MAINWINDOW_CPP);
+    const QString mw = QString::fromStdString(ants_test::slurpMainWindow());
     ASSERT_FALSE(mw.isEmpty());
     EXPECT_TRUE(mw.contains(
         QStringLiteral("rcDelegate(&RemoteControl::cmdRoadmapQuery)")))

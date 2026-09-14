@@ -18,7 +18,7 @@
 #include <gtest/gtest.h>
 #include "../../_support/srcgrep.h"
 
-#if !defined(SRC_MAINWINDOW_CPP_PATH) || !defined(ANTS_RC_SOURCES) || \
+#if !defined(ANTS_MAINWINDOW_SOURCES) || !defined(ANTS_RC_SOURCES) || \
     !defined(SRC_CLAUDE_INTEGRATION_CPP_PATH)
 #error "spec_conformance_verb test needs the test_claude source-path compile defs"
 #endif
@@ -133,7 +133,7 @@ TEST(spec_conformance_verb, PathIsRewrittenProjectRelative) {
 // bucket so the verb is not tagged `[other]` in tools/list.
 TEST(spec_conformance_verb, VerbContractMinimums) {
     const std::string mw =
-        ants_test::stripComments(ants_test::slurpFile(SRC_MAINWINDOW_CPP_PATH));
+        ants_test::stripComments(ants_test::slurpMainWindow());
     ASSERT_FALSE(mw.empty());
     const std::size_t reg = mw.find("registerToolProvider(\"spec_conformance\"");
     ASSERT_NE(reg, std::string::npos) << "verb is not registered";

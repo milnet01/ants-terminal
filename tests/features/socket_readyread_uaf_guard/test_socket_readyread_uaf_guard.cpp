@@ -27,8 +27,8 @@
 #ifndef ANTS_RC_SOURCES
 #  error "ANTS_RC_SOURCES compile definition required"
 #endif
-#ifndef SRC_MAINWINDOW_CPP_PATH
-#  error "SRC_MAINWINDOW_CPP_PATH compile definition required"
+#ifndef ANTS_MAINWINDOW_SOURCES
+#  error "ANTS_MAINWINDOW_SOURCES compile definition required"
 #endif
 
 ANTS_TEST_SCOPE();
@@ -56,7 +56,7 @@ TEST(SocketReadyreadUafGuard, Main) {
     const std::string remote =
         ants_test::slurpRemoteControl();
     const std::string mainwin =
-        ants_test::slurpFile(SRC_MAINWINDOW_CPP_PATH);
+        ants_test::slurpMainWindow();
 
     expect(!claude.empty(), "load/claudeintegration.cpp");
     expect(!remote.empty(), "load/remotecontrol.cpp");

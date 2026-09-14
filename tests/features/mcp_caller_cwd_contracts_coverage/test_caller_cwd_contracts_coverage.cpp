@@ -54,7 +54,7 @@ std::set<std::string> classifiedToolNames(const std::string &ci) {
 TEST(mcp_caller_cwd_contracts_coverage,
      Inv1EveryRegisteredToolClassified) {
     expect_reset();
-    const std::string mw = ants_test::slurpFile(SRC_MAINWINDOW_CPP_PATH);
+    const std::string mw = ants_test::slurpMainWindow();
     const std::string ci = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
 
     const auto registered = registeredToolNames(mw);

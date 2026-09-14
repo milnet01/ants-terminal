@@ -21,6 +21,7 @@
 
 #include <cstdio>
 #include <gtest/gtest.h>
+#include "../../_support/srcgrep.h"
 
 ANTS_TEST_SCOPE();
 
@@ -132,7 +133,7 @@ void checkI3() {
 
 // Production-binding invariants — grep mainwindow.cpp.
 void checkI4I5() {
-    const QString src = slurp(QStringLiteral(SRC_MAINWINDOW_CPP_PATH));
+    const QString src = QString::fromStdString(ants_test::slurpMainWindow());
 
     // I4: saveSession call in the save loop passes a pin lookup. Anchored
     // on the construct rather than the full argument list — ANTS-5030

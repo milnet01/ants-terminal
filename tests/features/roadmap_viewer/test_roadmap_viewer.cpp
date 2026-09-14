@@ -66,7 +66,7 @@ static int runMain() {
     const std::string header = ants_test::slurpFile(ROADMAPDIALOG_H);
     const std::string source = ants_test::slurpFile(ROADMAPDIALOG_CPP);
     const std::string mwHeader = ants_test::slurpFile(MAINWINDOW_H);
-    const std::string mwSource = ants_test::slurpFile(MAINWINDOW_CPP);
+    const std::string mwSource = ants_test::slurpMainWindow();
 
     if (header.empty()) fail("INV-1", "roadmapdialog.h not readable");
     if (source.empty()) fail("INV-1", "roadmapdialog.cpp not readable");

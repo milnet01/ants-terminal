@@ -8,6 +8,7 @@
 #include "mcpprojection.h"
 
 #include <gtest/gtest.h>
+#include "../../_support/srcgrep.h"
 
 #include <iterator>  // std::size — INV-10 derives its count
 
@@ -638,9 +639,8 @@ TEST(McpHintLatchWiring, Ants3550ConfigAndAppPublish) {
     const QByteArray c = cfg.readAll();
     EXPECT_TRUE(c.contains("value(\"claude.mcp_hint_latch\").toBool(true)"))
         << "config getter must expose claude.mcp_hint_latch defaulting true";
-    QFile mw(QString::fromUtf8(SRC_MAINWINDOW_CPP));
-    ASSERT_TRUE(mw.open(QIODevice::ReadOnly));
-    const QByteArray m = mw.readAll();
+    const QByteArray m = QByteArray::fromStdString(ants_test::slurpMainWindow());
+    ASSERT_FALSE(m.isEmpty());
     EXPECT_TRUE(m.contains("mcp::setHintLatchEnabled("))
         << "mainwindow must publish the latch flag";
     EXPECT_TRUE(m.contains("claudeMcpHintLatch()"))
@@ -922,9 +922,8 @@ TEST(McpTerseDefault, Ants3532DefaultOnAndOrderedBeforeOffload) {
 
     // (2) startup wires the config value into mcp::setTerseDefault so the
     // dispatch-read process-global reflects it.
-    QFile mw(QString::fromUtf8(SRC_MAINWINDOW_CPP));
-    ASSERT_TRUE(mw.open(QIODevice::ReadOnly));
-    const QByteArray mwSrc = mw.readAll();
+    const QByteArray mwSrc = QByteArray::fromStdString(ants_test::slurpMainWindow());
+    ASSERT_FALSE(mwSrc.isEmpty());
     EXPECT_TRUE(mwSrc.contains(
         "setTerseDefault(m_config.claudeMcpTerseResponses())"))
         << "startup must publish the terse-default config into the "

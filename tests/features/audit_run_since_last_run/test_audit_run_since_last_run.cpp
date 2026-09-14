@@ -284,7 +284,7 @@ TEST(AuditScopeSinceLastRun, Inv2And5RunAuditWiring) {
 // ── INV-8 — envelope surfaces the scope fields (source-scrape) ────────
 
 TEST(AuditScopeSinceLastRun, Inv8EnvelopeFields) {
-    const std::string src = ants_test::slurpFile(SRC_MAINWINDOW_CPP_PATH);
+    const std::string src = ants_test::slurpMainWindow();
     ASSERT_FALSE(src.empty());
     for (const char *key : {"scope_resolved", "changed_files_count",
                             "scope_anchor_commit", "scope_demoted",

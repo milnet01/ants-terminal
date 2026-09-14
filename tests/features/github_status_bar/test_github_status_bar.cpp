@@ -28,8 +28,8 @@
 
 #include "../../_support/srcgrep.h"
 
-#ifndef SRC_MAINWINDOW_CPP_PATH
-#error "SRC_MAINWINDOW_CPP_PATH compile definition required"
+#ifndef ANTS_MAINWINDOW_SOURCES
+#error "ANTS_MAINWINDOW_SOURCES compile definition required"
 #endif
 #ifndef SRC_MAINWINDOW_H_PATH
 #error "SRC_MAINWINDOW_H_PATH compile definition required"
@@ -60,7 +60,7 @@ std::string functionBody(const std::string &src, const std::string &sig) {
 }  // namespace
 
 TEST(GithubStatusBar, Main) {    const std::string h = ants_test::slurpFile(SRC_MAINWINDOW_H_PATH);
-    const std::string s = ants_test::slurpFile(SRC_MAINWINDOW_CPP_PATH);
+    const std::string s = ants_test::slurpMainWindow();
     const std::string yml = ants_test::slurpFile(SRC_RELEASE_WORKFLOW_PATH);
 
     // INV-1: visibility pill is a QLabel member; update notifier is

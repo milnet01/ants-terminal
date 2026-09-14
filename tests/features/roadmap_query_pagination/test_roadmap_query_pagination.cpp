@@ -202,7 +202,7 @@ TEST(roadmap_query_pagination, Inv11HelperCallSiteCount) {
 // still owns the bad_args check on non-numeric input.
 TEST(roadmap_query_pagination, DispatchForwardsVerbatim) {
     expect_reset();
-    const std::string mw = ants_test::slurpFile(SRC_MAINWINDOW_CPP_PATH);
+    const std::string mw = ants_test::slurpMainWindow();
     expect(contains(mw, "rcDelegate(&RemoteControl::cmdRoadmapQuery)"),
            "dispatch: roadmap_query registered via the verbatim rcDelegate "
            "forward, so offset/limit reach the handler un-gated");

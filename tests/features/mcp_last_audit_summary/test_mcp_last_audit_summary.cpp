@@ -35,8 +35,8 @@
 #ifndef SRC_CLAUDE_INTEGRATION_CPP_PATH
 #error "SRC_CLAUDE_INTEGRATION_CPP_PATH compile definition required"
 #endif
-#ifndef SRC_MAINWINDOW_CPP_PATH
-#error "SRC_MAINWINDOW_CPP_PATH compile definition required"
+#ifndef ANTS_MAINWINDOW_SOURCES
+#error "ANTS_MAINWINDOW_SOURCES compile definition required"
 #endif
 #ifndef FIXTURE_MIN_SARIF
 #error "FIXTURE_MIN_SARIF compile definition required"
@@ -458,7 +458,7 @@ TEST(McpLastAuditSummary, Ants1459FindRoadmapUnderWidens) {
 // button surfaces on the same projects the MCP can query.
 TEST(McpLastAuditSummary, Ants1459StatusBarRoadmapButtonWidened) {
     expect_reset();
-    const std::string mw = ants_test::slurpFile(SRC_MAINWINDOW_CPP_PATH);
+    const std::string mw = ants_test::slurpMainWindow();
     expect(mw.find("docs/private/ROADMAP.md") != std::string::npos,
            "RQ-4",
            "refreshRoadmapButton must probe docs/private/ROADMAP.md");
@@ -809,7 +809,7 @@ TEST(McpLastAuditSummary, Inv5And6WiringRegistered) {
     // last_audit_summary IS registered through the same pipeline as
     // every other tool. INV-6 (lex-max discovery) is exercised by
     // the dir scan with QDir::Name | QDir::Reversed.
-    const std::string mw = ants_test::slurpFile(SRC_MAINWINDOW_CPP_PATH);
+    const std::string mw = ants_test::slurpMainWindow();
     expect(mw.find("registerToolProvider(\"last_audit_summary\"") !=
                std::string::npos,
            "INV-5",

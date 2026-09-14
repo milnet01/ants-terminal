@@ -6,14 +6,12 @@
 // manager. Same pattern as shell_command_wiring and image_paste_uri_list
 // INV-5.
 #include <gtest/gtest.h>
+#include "../../_support/srcgrep.h"
 
 #include <QFile>
 #include <QString>
 #include <QTextStream>
 
-#ifndef SRC_MAINWINDOW_CPP_PATH
-#define SRC_MAINWINDOW_CPP_PATH ""
-#endif
 #ifndef PLUGINS_MD_PATH
 #define PLUGINS_MD_PATH ""
 #endif
@@ -41,7 +39,7 @@ QString slurp(const char *path)
 // INV-1 — the consumer that was missing. Without it the entire chain is inert.
 TEST(PluginNotifyWiring, MainWindowConsumesPluginShowNotification)
 {
-    const QString src = slurp(SRC_MAINWINDOW_CPP_PATH);
+    const QString src = QString::fromStdString(ants_test::slurpMainWindow());
     if (src.isEmpty()) return;
 
     EXPECT_TRUE(src.contains(QStringLiteral("PluginManager::showNotification")))
@@ -53,7 +51,7 @@ TEST(PluginNotifyWiring, MainWindowConsumesPluginShowNotification)
 // INV-2 — the documented status-bar fallback, used only when delivery failed.
 TEST(PluginNotifyWiring, PluginPathFallsBackToTheStatusBar)
 {
-    const QString src = slurp(SRC_MAINWINDOW_CPP_PATH);
+    const QString src = QString::fromStdString(ants_test::slurpMainWindow());
     if (src.isEmpty()) return;
 
     const int connectPos =
@@ -76,7 +74,7 @@ TEST(PluginNotifyWiring, PluginPathFallsBackToTheStatusBar)
 // INV-3 — one implementation. A second copy is what this pins against.
 TEST(PluginNotifyWiring, OneDesktopNotificationImplementation)
 {
-    const QString src = slurp(SRC_MAINWINDOW_CPP_PATH);
+    const QString src = QString::fromStdString(ants_test::slurpMainWindow());
     if (src.isEmpty()) return;
 
     EXPECT_TRUE(src.contains(QStringLiteral("bool MainWindow::showDesktopNotification")))
@@ -93,7 +91,7 @@ TEST(PluginNotifyWiring, OneDesktopNotificationImplementation)
 // focused, which PLUGINS.md does not say and a plugin author would not expect.
 TEST(PluginNotifyWiring, FocusGateStaysOutsideTheSharedHelper)
 {
-    const QString src = slurp(SRC_MAINWINDOW_CPP_PATH);
+    const QString src = QString::fromStdString(ants_test::slurpMainWindow());
     if (src.isEmpty()) return;
 
     const int helperPos =

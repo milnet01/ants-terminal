@@ -274,7 +274,7 @@ void testInv1c_storeIfChangedSemantics() {
 }
 
 void testInv2_onConfigFileChanged_skipsNoOpApplyTheme() {
-    const std::string source = readFile(SRC_MAINWINDOW_CPP);
+    const std::string source = ants_test::slurpMainWindow();
     expect(!source.empty(), "INV-2: src/mainwindow.cpp readable");
 
     const std::string body = extractBody(
@@ -305,7 +305,7 @@ void testInv3_reentrancyGuard() {
     expect(contains(header, "bool m_inConfigReload"),
            "INV-3: m_inConfigReload member declared in mainwindow.h");
 
-    const std::string source = readFile(SRC_MAINWINDOW_CPP);
+    const std::string source = ants_test::slurpMainWindow();
     const std::string body = extractBody(
         source, "void MainWindow::onConfigFileChanged(");
     expect(!body.empty(), "INV-3: onConfigFileChanged body found");
@@ -323,7 +323,7 @@ void testInv3_reentrancyGuard() {
 }
 
 void testInv4_failedBlockSignalsRemoved() {
-    const std::string source = readFile(SRC_MAINWINDOW_CPP);
+    const std::string source = ants_test::slurpMainWindow();
     const std::string body = extractBody(
         source, "void MainWindow::onConfigFileChanged(");
     expect(!body.empty(), "INV-4: onConfigFileChanged body found");

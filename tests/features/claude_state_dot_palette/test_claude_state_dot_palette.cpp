@@ -84,7 +84,7 @@ TEST(ClaudeStateDotPalette, Main) {
 
     const std::string header = ants_test::slurpFile(COLOREDTABBAR_H);
     const std::string source = ants_test::slurpFile(COLOREDTABBAR_CPP);
-    const std::string mwSource = ants_test::slurpFile(MAINWINDOW_CPP);
+    const std::string mwSource = ants_test::slurpMainWindow();
     const std::string trackerHeader = ants_test::slurpFile(CLAUDETABTRACKER_H);
     // ANTS-1146 — applyClaudeStatusLabel + the tab-indicator provider
     // lambda both moved to claudestatuswidgets.cpp. INV-6/INV-8

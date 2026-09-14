@@ -15,8 +15,8 @@
 #ifndef SRC_REMOTECONTROL_H_PATH
 #error "SRC_REMOTECONTROL_H_PATH compile definition required"
 #endif
-#ifndef SRC_MAINWINDOW_CPP_PATH
-#error "SRC_MAINWINDOW_CPP_PATH compile definition required"
+#ifndef ANTS_MAINWINDOW_SOURCES
+#error "ANTS_MAINWINDOW_SOURCES compile definition required"
 #endif
 
 namespace {
@@ -179,7 +179,7 @@ TEST(McpColdEyes, CacheMembersDeclaredInHeader) {
 
 // REG-7
 TEST(McpColdEyes, ProviderLambdasForwardArgs) {
-    const std::string mw = ants_test::slurpFile(SRC_MAINWINDOW_CPP_PATH);
+    const std::string mw = ants_test::slurpMainWindow();
     ASSERT_FALSE(mw.empty());
     // ANTS-1782 — these are pure RC-delegate shims registered via the
     // rcDelegate(&RemoteControl::cmd*) factory, which forwards `args`

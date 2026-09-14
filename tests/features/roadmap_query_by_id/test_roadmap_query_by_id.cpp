@@ -18,8 +18,8 @@
 #ifndef SRC_CLAUDE_INTEGRATION_CPP_PATH
 #error "SRC_CLAUDE_INTEGRATION_CPP_PATH compile definition required"
 #endif
-#ifndef SRC_MAINWINDOW_CPP_PATH
-#error "SRC_MAINWINDOW_CPP_PATH compile definition required"
+#ifndef ANTS_MAINWINDOW_SOURCES
+#error "ANTS_MAINWINDOW_SOURCES compile definition required"
 #endif
 
 ANTS_TEST_SCOPE();
@@ -137,7 +137,7 @@ TEST(roadmap_query_by_id, Inv7SchemaAdvertisesId) {
 // construction (it takes the list path on an empty/absent id).
 TEST(roadmap_query_by_id, Inv8DispatchForwardsId) {
     expect_reset();
-    const std::string cpp = ants_test::slurpFile(SRC_MAINWINDOW_CPP_PATH);
+    const std::string cpp = ants_test::slurpMainWindow();
     expect(contains(cpp, "rcDelegate(&RemoteControl::cmdRoadmapQuery)"),
            "INV-8: roadmap_query registered via the verbatim rcDelegate "
            "forward, so id reaches the handler (not silently dropped)");

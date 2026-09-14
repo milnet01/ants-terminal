@@ -92,7 +92,7 @@ TEST(AuditRunCache, AuditRunnerRoutesThroughAuditCache) {
 }
 
 TEST(AuditRunCache, MainWindowEnvelopeSurfacesCachePathAndPriorRun) {
-    const std::string mw = ants_test::slurpFile(SRC_MAINWINDOW_CPP_PATH);
+    const std::string mw = ants_test::slurpMainWindow();
     ASSERT_FALSE(mw.empty());
 
     // Locate the audit_run provider lambda.

@@ -268,7 +268,7 @@ TEST(AuditRunDelta, Inv678RunAuditWiring) {
 // ── INV-10 — envelope mutual exclusion (source-scrape) ────────────────
 
 TEST(AuditRunDelta, Inv10EnvelopeFields) {
-    const std::string src = ants_test::slurpFile(SRC_MAINWINDOW_CPP_PATH);
+    const std::string src = ants_test::slurpMainWindow();
     ASSERT_FALSE(src.empty());
     for (const char *key : {"delta", "delta_unavailable_reason",
                             "findings_truncated"})

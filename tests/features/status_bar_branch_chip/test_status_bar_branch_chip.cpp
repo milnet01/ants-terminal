@@ -54,7 +54,7 @@ TEST(StatusBarBranchChip, Main) {
         fail("INV-6", "MAIN should not be primary (case-sensitive)");
 
     // INV-7: mainwindow.cpp consults the helper.
-    const std::string source = ants_test::slurpFile(MAINWINDOW_CPP);
+    const std::string source = ants_test::slurpMainWindow();
     if (source.empty()) fail("setup", "mainwindow.cpp not readable");
     if (!contains(source, "branchchip::isPrimaryBranch"))
         fail("INV-7",

@@ -16,8 +16,8 @@
 #ifndef SRC_MAINWINDOW_H_PATH
 #  error "SRC_MAINWINDOW_H_PATH must be defined by the bundle's compile defs"
 #endif
-#ifndef SRC_MAINWINDOW_CPP_PATH
-#  error "SRC_MAINWINDOW_CPP_PATH must be defined by the bundle's compile defs"
+#ifndef ANTS_MAINWINDOW_SOURCES
+#  error "ANTS_MAINWINDOW_SOURCES must be defined by the bundle's compile defs"
 #endif
 
 ANTS_TEST_SCOPE();
@@ -30,8 +30,8 @@ bool contains(const std::string &hay, const std::string &needle) {
 
 TEST(MultiWindowSession, Inv1_restoreSessionsHasOnceGuardBeforeLoad) {
     expect_reset();
-    const std::string cp = ants_test::slurpFile(SRC_MAINWINDOW_CPP_PATH);
-    ASSERT_FALSE(cp.empty()) << "ANTS-5032-INV-1: read mainwindow.cpp (" << SRC_MAINWINDOW_CPP_PATH << ")";
+    const std::string cp = ants_test::slurpMainWindow();
+    ASSERT_FALSE(cp.empty()) << "ANTS-5032-INV-1: read mainwindow.cpp (" << "the MainWindow sources" << ")";
     // Comment-stripped so a documentation comment mentioning "static bool"
     // or "loadTabOrder" can't satisfy this the wrong way. Every anchor in
     // this file starts at `void MainWindow::` because slurpFunctionBody
@@ -77,7 +77,7 @@ TEST(MultiWindowSession, Inv1_restoreSessionsHasOnceGuardBeforeLoad) {
 
 TEST(MultiWindowSession, Inv2_exactlyOneSaveTabOrderCallSite) {
     expect_reset();
-    const std::string cp = ants_test::slurpFile(SRC_MAINWINDOW_CPP_PATH);
+    const std::string cp = ants_test::slurpMainWindow();
     ASSERT_FALSE(cp.empty()) << "ANTS-5032-INV-2: read mainwindow.cpp";
     const std::string stripped = ants_test::stripComments(cp);
 
@@ -94,7 +94,7 @@ TEST(MultiWindowSession, Inv2_exactlyOneSaveTabOrderCallSite) {
 
 TEST(MultiWindowSession, Inv3_saveTabOrderCallSiteInsideSaveProcessTabOrder) {
     expect_reset();
-    const std::string cp = ants_test::slurpFile(SRC_MAINWINDOW_CPP_PATH);
+    const std::string cp = ants_test::slurpMainWindow();
     ASSERT_FALSE(cp.empty()) << "ANTS-5032-INV-3: read mainwindow.cpp";
     const std::string stripped = ants_test::stripComments(cp);
 
@@ -109,7 +109,7 @@ TEST(MultiWindowSession, Inv3_saveTabOrderCallSiteInsideSaveProcessTabOrder) {
 
 TEST(MultiWindowSession, Inv4_saveProcessTabOrderWalksTopLevelWidgets) {
     expect_reset();
-    const std::string cp = ants_test::slurpFile(SRC_MAINWINDOW_CPP_PATH);
+    const std::string cp = ants_test::slurpMainWindow();
     ASSERT_FALSE(cp.empty()) << "ANTS-5032-INV-4: read mainwindow.cpp";
     const std::string stripped = ants_test::stripComments(cp);
 
@@ -124,7 +124,7 @@ TEST(MultiWindowSession, Inv4_saveProcessTabOrderWalksTopLevelWidgets) {
 
 TEST(MultiWindowSession, Inv5_saveProcessTabOrderCastsToMainWindowAndSkipsThis) {
     expect_reset();
-    const std::string cp = ants_test::slurpFile(SRC_MAINWINDOW_CPP_PATH);
+    const std::string cp = ants_test::slurpMainWindow();
     ASSERT_FALSE(cp.empty()) << "ANTS-5032-INV-5: read mainwindow.cpp";
     const std::string stripped = ants_test::stripComments(cp);
 
@@ -156,7 +156,7 @@ TEST(MultiWindowSession, Inv5_saveProcessTabOrderCastsToMainWindowAndSkipsThis) 
 
 TEST(MultiWindowSession, Inv6_saveAllSessionsCallsSaveProcessTabOrder) {
     expect_reset();
-    const std::string cp = ants_test::slurpFile(SRC_MAINWINDOW_CPP_PATH);
+    const std::string cp = ants_test::slurpMainWindow();
     ASSERT_FALSE(cp.empty()) << "ANTS-5032-INV-6: read mainwindow.cpp";
     const std::string stripped = ants_test::stripComments(cp);
 
@@ -170,7 +170,7 @@ TEST(MultiWindowSession, Inv6_saveAllSessionsCallsSaveProcessTabOrder) {
 
 TEST(MultiWindowSession, Inv7_saveTabOrderOnlyCallsSaveProcessTabOrder) {
     expect_reset();
-    const std::string cp = ants_test::slurpFile(SRC_MAINWINDOW_CPP_PATH);
+    const std::string cp = ants_test::slurpMainWindow();
     ASSERT_FALSE(cp.empty()) << "ANTS-5032-INV-7: read mainwindow.cpp";
     const std::string stripped = ants_test::stripComments(cp);
 
@@ -184,7 +184,7 @@ TEST(MultiWindowSession, Inv7_saveTabOrderOnlyCallsSaveProcessTabOrder) {
 
 TEST(MultiWindowSession, Inv8_saveProcessTabOrderAppendsOtherWindowsTabs) {
     expect_reset();
-    const std::string cp = ants_test::slurpFile(SRC_MAINWINDOW_CPP_PATH);
+    const std::string cp = ants_test::slurpMainWindow();
     ASSERT_FALSE(cp.empty()) << "ANTS-5032-INV-8: read mainwindow.cpp";
     const std::string stripped = ants_test::stripComments(cp);
 
@@ -215,7 +215,7 @@ TEST(MultiWindowSession, Inv8_saveProcessTabOrderAppendsOtherWindowsTabs) {
 
 TEST(MultiWindowSession, Inv9_saveProcessTabOrderIgnoresVisibility) {
     expect_reset();
-    const std::string cp = ants_test::slurpFile(SRC_MAINWINDOW_CPP_PATH);
+    const std::string cp = ants_test::slurpMainWindow();
     ASSERT_FALSE(cp.empty()) << "ANTS-5032-INV-9: read mainwindow.cpp";
     const std::string stripped = ants_test::stripComments(cp);
 
@@ -230,7 +230,7 @@ TEST(MultiWindowSession, Inv9_saveProcessTabOrderIgnoresVisibility) {
 
 TEST(MultiWindowSession, Ants5118Inv1_closeEventEndsTabsWhileAnotherWindowStaysOpen) {
     expect_reset();
-    const std::string cp = ants_test::slurpFile(SRC_MAINWINDOW_CPP_PATH);
+    const std::string cp = ants_test::slurpMainWindow();
     ASSERT_FALSE(cp.empty()) << "ANTS-5118-INV-1: read mainwindow.cpp";
     const std::string stripped = ants_test::stripComments(cp);
 
@@ -261,7 +261,7 @@ TEST(MultiWindowSession, Ants5118Inv1_closeEventEndsTabsWhileAnotherWindowStaysO
 
 TEST(MultiWindowSession, Ants5118Inv2_anotherWindowStaysOpenCountsOnlyVisibleWindows) {
     expect_reset();
-    const std::string cp = ants_test::slurpFile(SRC_MAINWINDOW_CPP_PATH);
+    const std::string cp = ants_test::slurpMainWindow();
     ASSERT_FALSE(cp.empty()) << "ANTS-5118-INV-2: read mainwindow.cpp";
     const std::string stripped = ants_test::stripComments(cp);
 

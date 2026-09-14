@@ -12,8 +12,8 @@
 #include <gtest/gtest.h>
 #include "../../_support/srcgrep.h"
 
-#ifndef SRC_MAINWINDOW_CPP
-#error "SRC_MAINWINDOW_CPP compile definition required"
+#ifndef ANTS_MAINWINDOW_SOURCES
+#error "ANTS_MAINWINDOW_SOURCES compile definition required"
 #endif
 
 
@@ -52,7 +52,7 @@ static std::string extractBracedBody(const std::string &src, size_t openBracePos
 }
 
 TEST(TabRenamePin, Main) {
-    const std::string mw = ants_test::slurpFile(SRC_MAINWINDOW_CPP);
+    const std::string mw = ants_test::slurpMainWindow();
 
     int failures = 0;
     auto fail = [&](const char *msg) {
@@ -175,8 +175,8 @@ TEST(TabRenamePin, Main) {
     if (uttPos == std::string::npos) {
         fail("INV-3b: MainWindow::updateTabTitles definition missing");
     } else {
-        // 2000 bytes covers the whole function body today.
-        std::string body = mw.substr(uttPos, 2000);
+        // ANTS-1677 — bounded to the function body, not a byte count.
+        std::string body = ants_test::slurpFunctionBody(mw, "void MainWindow::updateTabTitles");
         if (body.find("m_tabTitlePins.contains") == std::string::npos) {
             fail("INV-3c: updateTabTitles must skip pinned tabs via "
                  "m_tabTitlePins.contains(...) — without it the 2 s refresh "

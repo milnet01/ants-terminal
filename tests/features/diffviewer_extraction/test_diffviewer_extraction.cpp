@@ -19,8 +19,8 @@
 
 #include <gtest/gtest.h>
 #include "../../_support/srcgrep.h"
-#ifndef SRC_MAINWINDOW_CPP_PATH
-#error "SRC_MAINWINDOW_CPP_PATH compile definition required"
+#ifndef ANTS_MAINWINDOW_SOURCES
+#error "ANTS_MAINWINDOW_SOURCES compile definition required"
 #endif
 #ifndef SRC_DIFFVIEWER_H_PATH
 #error "SRC_DIFFVIEWER_H_PATH compile definition required"
@@ -76,7 +76,7 @@ int meaningfulLoC(const std::string &body) {
 }  // namespace
 
 static int runMain() {
-    const std::string mw = ants_test::slurpFile(SRC_MAINWINDOW_CPP_PATH);
+    const std::string mw = ants_test::slurpMainWindow();
     if (mw.empty()) fail("setup", "mainwindow.cpp not readable");
 
     const std::string dvHeader = ants_test::slurpFile(SRC_DIFFVIEWER_H_PATH);

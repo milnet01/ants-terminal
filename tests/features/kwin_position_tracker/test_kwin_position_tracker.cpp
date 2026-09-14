@@ -80,13 +80,12 @@ TEST(KwinPositionTracker, Main) {
     const std::string headerPath = KWINPOS_H;
     const std::string sourcePath = KWINPOS_CPP;
     const std::string mainwinH   = MAINWINDOW_H;
-    const std::string mainwinCpp = MAINWINDOW_CPP;
     const std::string cmakeLists = CMAKELISTS_TXT;
 
     const std::string header = ants_test::slurpFile(headerPath.c_str());
     const std::string source = ants_test::slurpFile(sourcePath.c_str());
     const std::string mwH    = ants_test::slurpFile(mainwinH.c_str());
-    const std::string mwCpp  = ants_test::slurpFile(mainwinCpp.c_str());
+    const std::string mwCpp  = ants_test::slurpMainWindow();
     const std::string cmake  = ants_test::slurpFile(cmakeLists.c_str());
     if (header.empty() || source.empty() || mwH.empty() ||
         mwCpp.empty() || cmake.empty())

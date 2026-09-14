@@ -160,7 +160,7 @@ TEST(DocCitationsVerb, Inv21ClampAndCoerce) {
 // § 2.1 declines on contract grounds.
 TEST(DocCitationsVerb, Inv19RegisteredAtSevenSites) {
     expect_reset();
-    const QString mw = slurp(SRC_MAINWINDOW_CPP_PATH);
+    const QString mw = QString::fromStdString(ants_test::slurpMainWindow());
     const QString ci = slurp(SRC_CLAUDE_INTEGRATION_CPP_PATH);
     const QString rc = QString::fromStdString(ants_test::slurpRemoteControl());
     ASSERT_FALSE(mw.isEmpty());
@@ -333,7 +333,7 @@ TEST(DocCitationsVerb, Ants4728DuplicateBasenameIsLeftAmbiguous) {
 TEST(DocCitationsVerb, Inv48CallerCwdRequired) {
     expect_reset();
     const QString ci = slurp(SRC_CLAUDE_INTEGRATION_CPP_PATH);
-    const QString mw = slurp(SRC_MAINWINDOW_CPP_PATH);
+    const QString mw = QString::fromStdString(ants_test::slurpMainWindow());
     ASSERT_FALSE(ci.isEmpty());
     ASSERT_FALSE(mw.isEmpty());
 

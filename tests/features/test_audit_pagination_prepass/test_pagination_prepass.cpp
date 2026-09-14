@@ -89,7 +89,7 @@ TEST(TestAuditPaginationPrePass, Inv1Page2BriefKeepsPrePass) {
 // (page 2+) result, so ANTS-2070's token-saving holds. Source guard: the
 // inline assignment must be gated on !r.prePassCached.
 TEST(TestAuditPaginationPrePass, Inv2EnvelopeOmitsCachedMap) {
-    const std::string mw = ants_test::slurpFile(SRC_MAINWINDOW_CPP_PATH);
+    const std::string mw = ants_test::slurpMainWindow();
     EXPECT_TRUE(contains(mw,
         "if (!prePassOmittedBySize && !r.prePassCached)"))
         << "INV-2: envelope must omit the inline pre_pass map when "

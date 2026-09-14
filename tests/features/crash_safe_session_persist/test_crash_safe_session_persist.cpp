@@ -14,8 +14,8 @@
 #ifndef SRC_MAINWINDOW_H_PATH
 #  error "SRC_MAINWINDOW_H_PATH must be defined by the bundle's compile defs"
 #endif
-#ifndef SRC_MAINWINDOW_CPP_PATH
-#  error "SRC_MAINWINDOW_CPP_PATH must be defined by the bundle's compile defs"
+#ifndef ANTS_MAINWINDOW_SOURCES
+#  error "ANTS_MAINWINDOW_SOURCES must be defined by the bundle's compile defs"
 #endif
 
 ANTS_TEST_SCOPE();
@@ -47,9 +47,9 @@ std::string extractBody(const std::string &source, const std::string &sig) {
 TEST(CrashSafeSessionPersist, Inv1_timerMemberDeclaredAndInitialised) {
     expect_reset();
     const std::string h  = readFile(SRC_MAINWINDOW_H_PATH);
-    const std::string cp = readFile(SRC_MAINWINDOW_CPP_PATH);
+    const std::string cp = ants_test::slurpMainWindow();
     ASSERT_FALSE(h.empty())  << "ANTS-1159-INV-1: read mainwindow.h ("  << SRC_MAINWINDOW_H_PATH  << ")";
-    ASSERT_FALSE(cp.empty()) << "ANTS-1159-INV-1: read mainwindow.cpp (" << SRC_MAINWINDOW_CPP_PATH << ")";
+    ASSERT_FALSE(cp.empty()) << "ANTS-1159-INV-1: read mainwindow.cpp (" << "the MainWindow sources" << ")";
 
     expect(contains(h, "m_sessionSaveTimer"),
            "ANTS-1159-INV-1: m_sessionSaveTimer declared in mainwindow.h");
@@ -66,8 +66,8 @@ TEST(CrashSafeSessionPersist, Inv1_timerMemberDeclaredAndInitialised) {
 
 TEST(CrashSafeSessionPersist, Inv2_timerConnectedToSaveAllSessions) {
     expect_reset();
-    const std::string cp = readFile(SRC_MAINWINDOW_CPP_PATH);
-    ASSERT_FALSE(cp.empty()) << "ANTS-1159-INV-2: read mainwindow.cpp (" << SRC_MAINWINDOW_CPP_PATH << ")";
+    const std::string cp = ants_test::slurpMainWindow();
+    ASSERT_FALSE(cp.empty()) << "ANTS-1159-INV-2: read mainwindow.cpp (" << "the MainWindow sources" << ")";
 
     // connect(m_sessionSaveTimer, &QTimer::timeout, this, &MainWindow::saveAllSessions)
     // — accept either lambda or pmf form. Look for "m_sessionSaveTimer" near
@@ -97,7 +97,7 @@ TEST(CrashSafeSessionPersist, Inv2_timerConnectedToSaveAllSessions) {
 TEST(CrashSafeSessionPersist, Inv3_saveTabOrderOnlyDeclaredAndDefined) {
     expect_reset();
     const std::string h  = readFile(SRC_MAINWINDOW_H_PATH);
-    const std::string cp = readFile(SRC_MAINWINDOW_CPP_PATH);
+    const std::string cp = ants_test::slurpMainWindow();
     ASSERT_FALSE(h.empty())  << "ANTS-1159-INV-3: read mainwindow.h";
     ASSERT_FALSE(cp.empty()) << "ANTS-1159-INV-3: read mainwindow.cpp";
 
@@ -111,7 +111,7 @@ TEST(CrashSafeSessionPersist, Inv3_saveTabOrderOnlyDeclaredAndDefined) {
 
 TEST(CrashSafeSessionPersist, Inv4_calledFromNewTab) {
     expect_reset();
-    const std::string cp = readFile(SRC_MAINWINDOW_CPP_PATH);
+    const std::string cp = ants_test::slurpMainWindow();
     ASSERT_FALSE(cp.empty()) << "ANTS-1159-INV-4: read mainwindow.cpp";
 
     const std::string body = extractBody(cp, "void MainWindow::newTab()");
@@ -123,7 +123,7 @@ TEST(CrashSafeSessionPersist, Inv4_calledFromNewTab) {
 
 TEST(CrashSafeSessionPersist, Inv5_calledFromPerformTabClose) {
     expect_reset();
-    const std::string cp = readFile(SRC_MAINWINDOW_CPP_PATH);
+    const std::string cp = ants_test::slurpMainWindow();
     ASSERT_FALSE(cp.empty()) << "ANTS-1159-INV-5: read mainwindow.cpp";
 
     const std::string body = extractBody(cp, "void MainWindow::performTabClose");
@@ -135,7 +135,7 @@ TEST(CrashSafeSessionPersist, Inv5_calledFromPerformTabClose) {
 
 TEST(CrashSafeSessionPersist, Inv6_connectedToTabMoved) {
     expect_reset();
-    const std::string cp = readFile(SRC_MAINWINDOW_CPP_PATH);
+    const std::string cp = ants_test::slurpMainWindow();
     ASSERT_FALSE(cp.empty()) << "ANTS-1159-INV-6: read mainwindow.cpp";
 
     // Look for a connect() mentioning tabMoved AND saveTabOrderOnly within
@@ -161,7 +161,7 @@ TEST(CrashSafeSessionPersist, Inv6_connectedToTabMoved) {
 
 TEST(CrashSafeSessionPersist, Inv7_closeEventStopsTimer) {
     expect_reset();
-    const std::string cp = readFile(SRC_MAINWINDOW_CPP_PATH);
+    const std::string cp = ants_test::slurpMainWindow();
     ASSERT_FALSE(cp.empty()) << "ANTS-1159-INV-7: read mainwindow.cpp";
 
     const std::string body = extractBody(cp, "void MainWindow::closeEvent");
@@ -185,7 +185,7 @@ TEST(CrashSafeSessionPersist, Inv7_closeEventStopsTimer) {
 
 TEST(CrashSafeSessionPersist, Inv8_closeEventStillSaves) {
     expect_reset();
-    const std::string cp = readFile(SRC_MAINWINDOW_CPP_PATH);
+    const std::string cp = ants_test::slurpMainWindow();
     ASSERT_FALSE(cp.empty()) << "ANTS-1159-INV-8: read mainwindow.cpp";
 
     const std::string body = extractBody(cp, "void MainWindow::closeEvent");
@@ -196,7 +196,7 @@ TEST(CrashSafeSessionPersist, Inv8_closeEventStillSaves) {
 
 TEST(CrashSafeSessionPersist, Inv9_saveTabOrderOnlyShortCircuitGuards) {
     expect_reset();
-    const std::string cp = readFile(SRC_MAINWINDOW_CPP_PATH);
+    const std::string cp = ants_test::slurpMainWindow();
     ASSERT_FALSE(cp.empty()) << "ANTS-1159-INV-9: read mainwindow.cpp";
 
     const std::string body = extractBody(cp, "void MainWindow::saveTabOrderOnly");

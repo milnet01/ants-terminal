@@ -19,7 +19,7 @@
 #include <gtest/gtest.h>
 #include "../../_support/srcgrep.h"  // ANTS-3833 — slurpRemoteControl
 
-#if !defined(SRC_MAINWINDOW_CPP_PATH) || !defined(ANTS_RC_SOURCES) || \
+#if !defined(ANTS_MAINWINDOW_SOURCES) || !defined(ANTS_RC_SOURCES) || \
     !defined(SRC_CLAUDE_INTEGRATION_CPP_PATH) || !defined(SRC_DOCDEDUP_CPP_PATH)
 #error "doc_dedup_verb test needs the test_claude source-path compile defs"
 #endif
@@ -82,7 +82,7 @@ TEST(DocDedupVerb, Inv5ReportOnly) {
 TEST(DocDedupVerb, Inv8RefusalMinimums) {
     // (1) caller_cwd Required — declared at the call site AND in the static
     // table registerToolProvider asserts against.
-    const QString mw = slurp(SRC_MAINWINDOW_CPP_PATH);
+    const QString mw = QString::fromStdString(ants_test::slurpMainWindow());
     ASSERT_FALSE(mw.isEmpty());
     const int reg = mw.indexOf(QStringLiteral("registerToolProvider(\"doc_dedup\""));
     ASSERT_GE(reg, 0);

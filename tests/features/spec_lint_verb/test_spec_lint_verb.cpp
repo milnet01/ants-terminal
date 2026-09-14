@@ -22,7 +22,7 @@
 #include <gtest/gtest.h>
 #include "../../_support/srcgrep.h"
 
-#if !defined(SRC_MAINWINDOW_CPP_PATH) || !defined(ANTS_RC_SOURCES) || \
+#if !defined(ANTS_MAINWINDOW_SOURCES) || !defined(ANTS_RC_SOURCES) || \
     !defined(SRC_CLAUDE_INTEGRATION_CPP_PATH) || !defined(SRC_SPECLINT_CPP_PATH)
 #error "spec_lint_verb test needs the test_claude source-path compile defs"
 #endif
@@ -107,7 +107,7 @@ TEST(SpecLintVerb, Inv4CommandClauseIsACandidate) {
 TEST(SpecLintVerb, Inv7RefusalMinimums) {
     // (1) caller_cwd Required — at the call site AND in the static table
     // registerToolProvider asserts against.
-    const QString mw = slurp(SRC_MAINWINDOW_CPP_PATH);
+    const QString mw = QString::fromStdString(ants_test::slurpMainWindow());
     ASSERT_FALSE(mw.isEmpty());
     const int reg = mw.indexOf(QStringLiteral("registerToolProvider(\"spec_lint\""));
     ASSERT_GE(reg, 0);

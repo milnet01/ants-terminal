@@ -17,8 +17,8 @@
 
 #include <string>
 
-#ifndef SRC_MAINWINDOW_CPP
-#error "SRC_MAINWINDOW_CPP compile definition required"
+#ifndef ANTS_MAINWINDOW_SOURCES
+#error "ANTS_MAINWINDOW_SOURCES compile definition required"
 #endif
 #ifndef SRC_CLAUDESTATUSWIDGETS_CPP_PATH
 #error "SRC_CLAUDESTATUSWIDGETS_CPP_PATH compile definition required"
@@ -84,7 +84,7 @@ TEST(McpMasterToggle, INV1_ConfigRoundTrip) {
 
 // INV-2 — startup gate: one bind + one export, both behind the gate.
 TEST(McpMasterToggle, INV2_StartupGate) {
-    const std::string mw = slurp(SRC_MAINWINDOW_CPP);
+    const std::string mw = ants_test::slurpMainWindow();
     EXPECT_EQ(countOccurrences(mw, "startMcpServer("), 1u);
     EXPECT_EQ(countOccurrences(mw, "qputenv(\"ANTS_MCP_SOCKET\""), 1u);
     const auto gate = mw.find("m_config.claudeMcpEnabled()");
@@ -96,7 +96,7 @@ TEST(McpMasterToggle, INV2_StartupGate) {
 
 // INV-3 — orientation install gated on the master; master-off uninstalls.
 TEST(McpMasterToggle, INV3_OrientationGatedOnMaster) {
-    const std::string mw = slurp(SRC_MAINWINDOW_CPP);
+    const std::string mw = ants_test::slurpMainWindow();
     EXPECT_TRUE(has(mw, "mcpOn && m_config.claudeMcpOrientationEnabled()"))
         << "orientation install must require the master gate too";
     EXPECT_TRUE(has(mw, "ants::mcp_orientation::uninstall()"));
@@ -171,7 +171,7 @@ TEST(McpMasterToggle, INV6_SettingsMasterCheckbox) {
 
 // INV-7 — settingsChanged propagates the value at runtime.
 TEST(McpMasterToggle, INV7_RuntimePropagation) {
-    const std::string mw = slurp(SRC_MAINWINDOW_CPP);
+    const std::string mw = ants_test::slurpMainWindow();
     EXPECT_TRUE(has(mw,
         "m_claudeIntegration->setMcpEnabled(m_config.claudeMcpEnabled())"));
 }

@@ -177,7 +177,7 @@ TEST(mcp_roadmap_log_verb, Inv6ErrorEarlyReturn) {
 // INV-7 — verb registered via registerToolProvider.
 TEST(mcp_roadmap_log_verb, Inv7RegisteredInMainwindow) {
     expect_reset();
-    const std::string mw = ants_test::slurpFile(SRC_MAINWINDOW_CPP_PATH);
+    const std::string mw = ants_test::slurpMainWindow();
     expect(contains(mw, "registerToolProvider(\"roadmap_log\""),
            "INV-7: roadmap_log not registered as MCP tool in "
            "mainwindow.cpp");

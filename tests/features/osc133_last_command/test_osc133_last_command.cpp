@@ -14,8 +14,8 @@
 #ifndef SRC_TERMINALWIDGET_IMPL_PATH
 #error "SRC_TERMINALWIDGET_IMPL_PATH compile definition required"
 #endif
-#ifndef SRC_MAINWINDOW_PATH
-#error "SRC_MAINWINDOW_PATH compile definition required"
+#ifndef ANTS_MAINWINDOW_SOURCES
+#error "ANTS_MAINWINDOW_SOURCES compile definition required"
 #endif
 #ifndef SRC_CMAKELISTS_PATH
 #error "SRC_CMAKELISTS_PATH compile definition required"
@@ -25,7 +25,7 @@
 TEST(Osc133LastCommand, Main) {
     const std::string hdr   = ants_test::slurpFile(SRC_TERMINALWIDGET_HEADER_PATH);
     const std::string impl  = ants_test::slurpFile(SRC_TERMINALWIDGET_IMPL_PATH);
-    const std::string mw    = ants_test::slurpFile(SRC_MAINWINDOW_PATH);
+    const std::string mw    = ants_test::slurpMainWindow();
     const std::string cmake = ants_test::slurpFile(SRC_CMAKELISTS_PATH);
     int failures = 0;
 

@@ -109,7 +109,7 @@ TEST(ClipboardRedaction, Main) {
 
     // INV-7: no raw clipboard writes survive in mainwindow.cpp.
     {
-        const std::string src = ants_test::slurpFile(MAINWINDOW_CPP);
+        const std::string src = ants_test::slurpMainWindow();
         if (src.empty()) fail("INV-7", "mainwindow.cpp not readable");
         if (contains(src, "QApplication::clipboard()->setText("))
             fail("INV-7",
@@ -119,7 +119,7 @@ TEST(ClipboardRedaction, Main) {
     // INV-8: source classification at the two untrusted sites.
     {
         const std::string tw = ants_test::slurpFile(TERMINALWIDGET_CPP);
-        const std::string mw = ants_test::slurpFile(MAINWINDOW_CPP);
+        const std::string mw = ants_test::slurpMainWindow();
         if (!contains(tw, "Source::UntrustedPty"))
             fail("INV-8",
                 "OSC 52 callback in terminalwidget.cpp does not classify as UntrustedPty");

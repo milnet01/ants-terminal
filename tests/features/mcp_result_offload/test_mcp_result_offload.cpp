@@ -389,7 +389,7 @@ TEST_F(McpResultOffload, Inv9OffloadPrecedesRecordDispatch) {
 // INV-10 — read_spill is wired like a read verb but with an Optional (not
 // Required) caller_cwd contract, and the handler validates the handle regex.
 TEST_F(McpResultOffload, Inv10ReadSpillWiring) {
-    const QString mw = readSource(SRC_MAINWINDOW_CPP);
+    const QString mw = QString::fromStdString(ants_test::slurpMainWindow());
     ASSERT_FALSE(mw.isEmpty());
     const int reg = mw.indexOf(QStringLiteral("registerToolProvider(\"read_spill\""));
     ASSERT_GT(reg, 0);

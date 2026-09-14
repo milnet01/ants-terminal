@@ -63,7 +63,7 @@ QEvent *makeEvent(QEvent::Type t) {
 }  // namespace
 
 TEST(DialogPseudoModal, Main) {    const std::string focusHdr = ants_test::slurpFile(DIALOGFOCUS_H);
-    const std::string source = ants_test::slurpFile(MAINWINDOW_CPP);
+    const std::string source = ants_test::slurpMainWindow();
     if (focusHdr.empty() || source.empty())
         fail("INV-1", "source files not readable");
 

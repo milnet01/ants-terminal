@@ -22,8 +22,8 @@
 #ifndef SRC_MAINWINDOW_H
 #error "SRC_MAINWINDOW_H compile definition required"
 #endif
-#ifndef SRC_MAINWINDOW_CPP
-#error "SRC_MAINWINDOW_CPP compile definition required"
+#ifndef ANTS_MAINWINDOW_SOURCES
+#error "ANTS_MAINWINDOW_SOURCES compile definition required"
 #endif
 
 namespace {
@@ -44,7 +44,7 @@ static int runMain() {
     const std::string rcHdr = ants_test::slurpFile(SRC_RC_HEADER);
     const std::string rcSrc = ants_test::slurpRemoteControl();
     const std::string mwHdr = ants_test::slurpFile(SRC_MAINWINDOW_H);
-    const std::string mwSrc = ants_test::slurpFile(SRC_MAINWINDOW_CPP);
+    const std::string mwSrc = ants_test::slurpMainWindow();
 
     if (rcHdr.empty()) fail("INV-2", "remotecontrol.h not readable");
     if (rcSrc.empty()) fail("INV-2", "remotecontrol.cpp not readable");

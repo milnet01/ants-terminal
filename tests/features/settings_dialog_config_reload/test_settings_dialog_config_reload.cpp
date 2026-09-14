@@ -22,6 +22,7 @@
 
 
 #include <gtest/gtest.h>
+#include "../../_support/srcgrep.h"
 ANTS_TEST_SCOPE();
 
 namespace {
@@ -46,23 +47,17 @@ static int runMain() {
     expect_reset();
     // QCoreApplication is owned by bundle_main (ANTS-1217); this helper
     // takes no argc/argv since it doesn't need to forward to Qt.
-    const QString path = QStringLiteral(SRC_MAINWINDOW_PATH);
-    QFile f(path);
-    if (!f.open(QIODevice::ReadOnly | QIODevice::Text)) {
-        std::fprintf(stderr,
-                     "[FAIL] source-open: cannot read %s\n",
-                     qUtf8Printable(path));
+    const QString src = QString::fromStdString(ants_test::slurpMainWindow());
+    if (src.isEmpty()) {
+        std::fprintf(stderr, "[FAIL] source-open: cannot read the MainWindow sources\n");
         return 1;
     }
-    const QString src = QString::fromUtf8(f.readAll());
-    f.close();
 
     const QString onCfgBody = extractFunctionBody(src,
         QStringLiteral("void MainWindow::onConfigFileChanged"));
     expect(!onCfgBody.isEmpty(),
            "precondition/onConfigFileChanged-located",
-           QStringLiteral("could not locate onConfigFileChanged in %1")
-               .arg(path));
+           QStringLiteral("could not locate onConfigFileChanged in the MainWindow sources"));
 
     // Invariant 1 — cache is nulled.
     expect(onCfgBody.contains(

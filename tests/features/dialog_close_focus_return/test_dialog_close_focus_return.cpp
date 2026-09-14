@@ -36,7 +36,7 @@ void fail(const char *label, const char *why) {
 
 }  // namespace
 
-TEST(DialogCloseFocusReturn, Main) {    const std::string source = ants_test::slurpFile(MAINWINDOW_CPP);
+TEST(DialogCloseFocusReturn, Main) {    const std::string source = ants_test::slurpMainWindow();
     const std::string focusHdr = ants_test::slurpFile(DIALOGFOCUS_H);
     if (source.empty()) fail("INV-1", "mainwindow.cpp not readable");
     if (focusHdr.empty()) fail("INV-2", "dialogfocus.h not readable");
