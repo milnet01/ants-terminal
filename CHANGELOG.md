@@ -72,6 +72,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **A refused MCP call narrowed with `fields` no longer lists every requested field as unmatched, so the refusal's own `code` is the only cause shown.** (ANTS-4979)
+
 - **find_definition finds C functions whose return type, name and parameter list sit on separate lines, the style common in older C code such as DOOM.** (ANTS-4828)
 
 - **find_definition no longer lists a wrapped ternary arm (`: sym(a);`) or a stream insertion (`out << sym(i);`) as a declaration of the symbol.** (ANTS-4924)

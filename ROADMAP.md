@@ -60245,7 +60245,7 @@ than re-filed; everything else lands here.
   Source: DOOM_Ants_MCP_Feedback.md 2026-09-08.
   Lanes: mcp.
 
-- 📋 [ANTS-4979] **A refusal envelope echoes fields_unmatched naming every requested field, pointing at the wrong cause.**
+- ✅ [ANTS-4979] **A refusal envelope echoes fields_unmatched naming every requested field, pointing at the wrong cause.**
   feedback_query against a wrong path with a `fields` list returns
   ok:false, code:"not_found", AND fields_unmatched listing every
   name passed. The field names were fine; the file was absent.
@@ -60264,6 +60264,13 @@ than re-filed; everything else lands here.
   fields_available beside it, so this is likely shared machinery and
   the same reply shape on any verb that refuses with a fields list
   present. Fix it once at that layer.
+  Resolved (2026-09-14): fixed once in the shared layer,
+  mcp::projectFields, which every verb's `fields` passes through. On an
+  envelope carrying ok:false it now omits fields_unmatched and
+  fields_available; the refusal floor (ok, code, error, retry_after_ms)
+  is unchanged, and a success still reports unmatched names. Test
+  McpProjection.Ants4979RefusalListsNoUnmatchedFields fails on the old
+  code and passes now; spec INV-4 gains the rule; full suite green.
   **Layman:** When a file is missing, the reply also complains that every field you asked for is unrecognised.
   Kind: fix.
   Source: DOOM_Ants_MCP_Feedback.md 2026-09-08.
