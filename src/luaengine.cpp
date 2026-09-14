@@ -1088,7 +1088,7 @@ int LuaEngine::lua_project_read(lua_State *L) {
     // Settle the outcome in a scope and raise only after its C++ objects are
     // gone; raising with `chk` alive leaked it on every refused read.
     enum class Refusal : unsigned char {
-        None, Escapes, Missing, Unopenable, TooLarge, NoMemory
+        None, Escapes, Missing, NotRegular, Unopenable, TooLarge, NoMemory
     };
     Refusal refusal = Refusal::None;
     qint64 fileBytes = 0;
@@ -1105,6 +1105,11 @@ int LuaEngine::lua_project_read(lua_State *L) {
             // ANTS-5070 — a file larger than the query's Lua memory left is
             // refused before any of it is read: reading it whole would be an
             // allocation the Lua cap never sees.
+            // ANTS-5107 — only a regular file. Opening a FIFO blocks until a
+            // writer appears, which pinned the query worker indefinitely.
+            if (!QFileInfo(chk.resolved).isFile()) {
+                refusal = Refusal::NotRegular;
+            } else {
             fileBytes = QFileInfo(chk.resolved).size();
             roomBytes = engine->m_luaMemUsage < MAX_LUA_MEMORY
                 ? static_cast<qint64>(MAX_LUA_MEMORY - engine->m_luaMemUsage) : 0;
@@ -1119,6 +1124,7 @@ int LuaEngine::lua_project_read(lua_State *L) {
                                         static_cast<size_t>(data.size())))
                     refusal = Refusal::NoMemory;
             }
+            }
         }
     }
     switch (refusal) {
@@ -1126,6 +1132,8 @@ int LuaEngine::lua_project_read(lua_State *L) {
         return luaL_error(L, "project.read: \"%s\" escapes project root", rel);
     case Refusal::Missing:
         return luaL_error(L, "project.read: no such file: %s", rel);
+    case Refusal::NotRegular:
+        return luaL_error(L, "project.read: %s is not a regular file", rel);
     case Refusal::Unopenable:
         return luaL_error(L, "project.read: cannot open %s", rel);
     case Refusal::TooLarge:
@@ -1315,6 +1323,17 @@ LuaEngine::QueryResult LuaEngine::runQuery(const QString &code, const QString &r
 
 LuaEngine::QueryResult LuaEngine::runQueryThreaded(const QString &code, const QString &root,
                                                    qint64 timeoutMs, int resultCapBytes) {
+    // ANTS-5107 — a detached worker that has since finished is no longer
+    // wedged. Never removed, finished workers filled the cap and every later
+    // query was refused for the life of the process.
+    for (auto it = g_queryZombies.begin(); it != g_queryZombies.end();) {
+        if ((*it)->isFinished()) {
+            delete *it;
+            it = g_queryZombies.erase(it);
+        } else {
+            ++it;
+        }
+    }
     // ANTS-2194 — back-pressure: if too many prior workers are already wedged,
     // refuse rather than spawn yet another doomed (unreapable) thread. Bounds the
     // leak under a pathological wedge-loop. Only ever read/written on the single

@@ -15,6 +15,8 @@
 #ifdef ANTS_LUA_PLUGINS
 #include "luaengine.h"
 
+#include <sys/stat.h>
+
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
@@ -489,3 +491,37 @@ TEST(ProjectQuery, VerbEnvelopeAndGate) {
 }
 
 #endif  // ANTS_LUA_PLUGINS
+
+// ANTS-5107 — project.read refuses a FIFO instead of blocking on it. Run
+// threaded with a short deadline so a regression reports a timeout rather than
+// hanging the test.
+TEST(ProjectQuery, Ants5107ReadRefusesFifo) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString root = QFileInfo(tmp.path()).canonicalFilePath();
+    const QString fifo = root + QStringLiteral("/pipe");
+    ASSERT_EQ(::mkfifo(fifo.toLocal8Bit().constData(), 0600), 0);
+    const auto r = LuaEngine::runQueryThreaded(
+        QStringLiteral("return project.read('pipe')"), root, 1000, 65536);
+    EXPECT_FALSE(r.ok);
+    EXPECT_NE(r.code, QStringLiteral("query_timeout"))
+        << "project.read blocked on a FIFO until the query deadline";
+    EXPECT_TRUE(r.error.contains(QStringLiteral("not a regular file")))
+        << r.error.toStdString();
+}
+
+// ANTS-5107 — finished detached workers are reaped before the zombie cap is
+// checked. Source check: the list is file-local and a finished zombie cannot be
+// produced deterministically.
+TEST(ProjectQuery, Ants5107FinishedZombiesAreReaped) {
+    const std::string src = ants_test::slurpFile(
+        (QFileInfo(QString::fromUtf8(__FILE__)).absolutePath()
+         + QStringLiteral("/../../../src/luaengine.cpp")).toStdString());
+    const auto fn = src.find("LuaEngine::runQueryThreaded(");
+    ASSERT_NE(fn, std::string::npos);
+    const auto reap = src.find("->isFinished()", fn);
+    const auto cap = src.find("g_queryZombies.size() >= kMaxQueryZombies", fn);
+    ASSERT_NE(cap, std::string::npos);
+    ASSERT_NE(reap, std::string::npos) << "finished workers are never removed";
+    EXPECT_LT(reap, cap);
+}

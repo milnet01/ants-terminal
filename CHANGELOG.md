@@ -70,6 +70,12 @@ for security-relevant changes.
 
 ### Fixed
 
+- **project_query no longer refuses every query for the rest of the session after 64 slow queries** (ANTS-5107)
+  A query worker that was left running past its deadline and later
+  finishes now frees its slot.
+
+- **project.read refuses anything that is not a regular file, so a named pipe can no longer hang a query** (ANTS-5107)
+
 - **Two open Ants windows no longer corrupt each other's saved tabs** (ANTS-5106)
   Each process now writes its own temporary file before replacing a saved
   session or the tab order.
