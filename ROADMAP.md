@@ -8705,6 +8705,15 @@ extends an existing item, that item carries it instead.
     exists.
   - verify_changes can hold the single worker for up to 1800 s; decide
     whether that is acceptable.
+  Progress (2026-09-14): cmdIndieReviewFoldIn's narrative branch reads
+  dry_run and skips insertBlock on a preview; collectGitSnapshot leaves
+  the snapshot invalid, so uncacheable, when git status fails
+  (runGitChecked reports success; runGit still passes
+  GitWrap::readOnlyEnvironment, GitOptionalLocks INV-3)
+  (tests/features/indie_review_fold_in_narrative). Still open:
+  roadmap_branch_drift reading a git log timeout as no history,
+  against_refs' commit-set memory, the cold_eyes_cross_doc_diff comment,
+  the existsInGit timeout, and the 1800 s verify_changes hold.
   **Layman:** Smaller review-tool fixes, including a code check that can report a stale pass and a dry run that writes anyway.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lane mcp-review-verbs).
