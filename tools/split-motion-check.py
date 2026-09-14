@@ -435,7 +435,7 @@ TOKEN = re.compile(r"""
   | (?P<chr>'(?P<chrbody>(?:[^'\\\n]|\\.)+)')
   | (?P<num>\d+[uUlLzZ]*)
   | (?P<id>[A-Za-z_]\w*(?:\s*::\s*[A-Za-z_]\w*)*)
-  | (?P<op>->|::|[().,+\-<>*?:\[\]&!=/%{}|^~;])
+  | (?P<op>->|::|==|!=|<=|>=|[().,+\-<>*?:\[\]&!=/%{}|^~;])
 """, re.X | re.S)
 
 ESCAPES = {"n": "\n", "t": "\t", "r": "\r", "0": "\0", "\\": "\\", '"': '"', "'": "'",
@@ -522,9 +522,27 @@ class Parser:
         self.i += 1
 
     def parse(self):
-        node = self.additive()
+        node = self.ternary()
         if self.i != len(self.toks):
             raise Unknown("unsupported expression `%s`" % self.text.strip())
+        return node
+
+    def ternary(self):
+        cond = self.comparison()
+        if self.peek("?"):
+            self.i += 1
+            yes = self.ternary()
+            self.take(":")
+            no = self.ternary()
+            return ("?:", cond, yes, no)
+        return cond
+
+    def comparison(self):
+        node = self.additive()
+        for op in ("==", "!=", "<=", ">=", "<", ">"):
+            if self.peek(op):
+                self.i += 1
+                return ("cmp", op, node, self.additive())
         return node
 
     def additive(self):
@@ -541,7 +559,7 @@ class Parser:
             self.i += 1
             return out
         while True:
-            out.append(self.additive())
+            out.append(self.ternary())
             if self.peek(","):
                 self.i += 1
                 continue
@@ -582,7 +600,7 @@ class Parser:
             return ("bytes", unescape(m.group("chrbody")))
         if kind == "op" and m.group(0) == "(":
             self.i += 1
-            node = self.additive()
+            node = self.ternary()
             self.take(")")
             return node
         if kind == "op" and m.group(0) == "-":
@@ -604,7 +622,7 @@ class Parser:
                         if depth == 0:
                             break
                 self.take("(")
-                inner = self.additive()
+                inner = self.ternary()
                 self.take(")")
                 return inner
             for opener, closer in (("(", ")"), ("{", "}")):
@@ -767,6 +785,23 @@ class Evaluator:
             if kind == "+" and isinstance(a, bytes) and isinstance(b, bytes):
                 return a + b
             raise Unknown("unsupported arithmetic")
+        if kind == "cmp":
+            op, a, b = node[1], self.value(node[2]), self.value(node[3])
+            if a is NPOS or b is NPOS:
+                # npos only compares by equality: std::string reports a miss as
+                # npos and QString as -1, so an ordering here would guess.
+                if op in ("==", "!="):
+                    return (a is b) if op == "==" else (a is not b)
+                raise Unknown("an ordering comparison against a missing anchor")
+            if isinstance(a, int) and isinstance(b, int):
+                return {"==": a == b, "!=": a != b, "<=": a <= b, ">=": a >= b,
+                        "<": a < b, ">": a > b}[op]
+            raise Unknown("unsupported comparison")
+        if kind == "?:":
+            cond = self.value(node[1])
+            if not isinstance(cond, bool):
+                raise Unknown("a condition that is not a comparison")
+            return self.value(node[2] if cond else node[3])
         if kind == "call":
             return self.call(node[1], node[2], node[3])
         if kind == "method":
