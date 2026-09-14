@@ -95,6 +95,13 @@ for security-relevant changes.
 
 ### Fixed
 
+- **doc_citations no longer reports citations inside a review loop-log row as stale.** (ANTS-4918)
+  A citation on a Cold-eyes loop-log table row is still listed, marked
+  loop_log_row:true and counted, but only:"stale" leaves it out, since a
+  landed loop-log row is never edited. A line reference that follows a
+  quoted path from another project is now foreign_path too, instead of a
+  missing_file warning that could never be cleared.
+
 - **Re-importing a roadmap no longer rewrites the wording of each item's plain-English summary** (ANTS-4955)
   Summaries are now stored without their closing full stop and written
   back with one, whichever route saved them. Each roadmap file gains

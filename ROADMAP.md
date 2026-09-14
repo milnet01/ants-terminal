@@ -10323,6 +10323,17 @@ extends an existing item, that item carries it instead.
     cell's attrs when new text lands on it.
   Ask the user for a screenshot and, if possible, the command or screen
   it happened on.
+  Evidence (2026-09-14, user screenshot, not yet investigated): Ants
+  0.7.109 running Claude Code in the UT Ants tab. In Claude Code's
+  prompt box, a three-line message renders its first two lines at normal
+  brightness and its last line, the one holding the cursor, visibly
+  dimmer. Other grey lines in the same frame ("Ran 3 shell commands",
+  "Crunched for 8m 16s") are Claude Code's intended secondary styling
+  and are not evidence. The screenshot is downscaled, so it cannot prove
+  brightness on its own; fit pixels against candidate colours before
+  concluding anything. Lead worth checking first: whether Claude Code
+  draws the cursor line of its input with dim or a grey colour on
+  purpose.
   **Layman:** Some text still turns grey when it should not, sometimes only part of a line.
   Kind: investigate.
   Source: user-report-2026-09-14.
@@ -17580,7 +17591,7 @@ fixes don't address. Roadmapped here as their own design tasks.
   Kind: investigate.
   Source: in-session-2026-09-07, ANTS-3663 corpus calibration.
 
-- 📋 [ANTS-4918] **doc_citations reports stale line citations inside cold-eyes loop-log rows, which specs.md § 5.7 forbids fixing.**
+- ✅ [ANTS-4918] **doc_citations reports stale line citations inside cold-eyes loop-log rows, which specs.md § 5.7 forbids fixing.**
   A loop-log row records what a review pass found, citing file:line as it
   stood then. specs.md § 5.7 makes a landed row immutable, and its own
   coverage table notes nothing checks that rule. So when the cited file is
@@ -17615,6 +17626,23 @@ fixes don't address. Roadmapped here as their own design tasks.
   overlay key, and exclude it from only:stale, following the ANTS-4085
   foreign_path precedent. Built through a docs/specs/ANTS-3636.md
   amendment and rule 14's gate.
+  Progress (2026-09-14): spec amendment committed (52a78612): ANTS-3636
+  INV-49, plus the unspecced ANTS-4085 foreign_path status and ANTS-4087
+  counts_overlay_keys recorded. review-contract loop 1 ran three lanes.
+  Decided (2026-09-14, user): skip loop 2 to save tokens, so the build
+  is the second check; and a continuation (`:N`) after a foreign_path
+  antecedent inherits foreign_path, like an ambiguous antecedent,
+  instead of re-deriving missing_file into the stale list. That second
+  rule is built with this item (INV-50).
+  Resolved (2026-09-14): built to docs/specs/ANTS-3636.md INV-49 and
+  INV-50. A citation on a loop-log table row carries loop_log_row:true,
+  is counted in counts.loop_log_row (named in counts_overlay_keys), and
+  is dropped by only:"stale" whatever its status; a continuation after a
+  foreign_path antecedent inherits foreign_path. Tests
+  DocCitations.Ants4918LoopLogRowCitationIsNotStale and
+  DocCitations.Ants4918ForeignPathContinuationIsForeign, proven red
+  first. Full default suite green. The quotation mode's missing spec is
+  filed as ANTS-5216.
   **Layman:** A documentation checker keeps flagging old review notes that we are not allowed to change, so the warning can never be cleared.
   Kind: fix.
   Source: in-session-2026-09-07 (found by the first corpus run of doc_lint).
@@ -17740,6 +17768,23 @@ fixes don't address. Roadmapped here as their own design tasks.
   Kind: fix.
   Source: in-session-2026-09-14.
   Lanes: mcp.
+
+- 📋 [ANTS-5216] **doc_citations' quotation mode (ANTS-4386) and its suffix rung (ANTS-4381) have no spec, so ANTS-3636 undercounts the request surface.**
+  Found by a cold review lane on 2026-09-14. docs/specs/ANTS-3636.md § 2.1
+  says its request block is "the whole request surface" and INV-22 names
+  nine declared properties, but the shipped descriptor also declares
+  `quotes` and `quote_min_chars`, and RemoteControl clamps
+  `quote_min_chars` to a range § 2.7's Options block does not list.
+  § 2.1 itself calls a bound absent from that block a specification
+  defect. No spec names ANTS-4386 (quotation mode), ANTS-4637 (its
+  loop-log skip) or ANTS-4640 (table-row attribution).
+  Record the quotation mode where it belongs: an amendment to ANTS-3636,
+  or its own spec cross-referenced from § 2.1. The suffix rung itself is
+  recorded in ANTS-3636 § 2.4 by the ANTS-4918 amendment.
+  **Layman:** The design document for the citation checker leaves out a feature that already ships, so anyone reading it gets an incomplete picture.
+  Kind: doc-fix.
+  Source: review-contract-2026-09-14 ANTS-3636 loop 1.
+  Lanes: mcp, docs.
 
 ### 🔬 Project Audit false-positive reduction (self-audit 2026-05-20)
 
