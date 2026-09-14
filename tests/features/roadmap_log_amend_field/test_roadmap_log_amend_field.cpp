@@ -203,7 +203,8 @@ TEST(RoadmapLogAmendField, Inv1SetsColumnAndRenders) {
 
     const auto item = itemOf(QStringLiteral("DEMO-0003"), fx.projectId);
     ASSERT_TRUE(item.has_value());
-    EXPECT_EQ(item->layman, QStringLiteral("A corrected sentence for the card face."));
+    // ANTS-4955 — the column holds the value without its closing stop.
+    EXPECT_EQ(item->layman, QStringLiteral("A corrected sentence for the card face"));
     EXPECT_TRUE(has(readAll(roadmapPath(fx.root)).toStdString(),
                     "A corrected sentence for the card face."))
         << "and the render published it";

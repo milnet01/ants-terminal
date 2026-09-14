@@ -169,6 +169,14 @@ struct Outcome {
 // pick one of those two mechanisms; it cannot rely on this function to stop it.
 QString bulletText(const RoadmapStore::ItemWrite &it);
 
+// ANTS-4955 — roadmap-format.md § 3.5: a Layman value is STORED without its
+// closing full stop and RENDERED with one. laymanForStore() drops one trailing
+// '.' from text a caller supplied; laymanRendered() appends '.' to a stored
+// value unless it ends in '!' or '?'. Not withStop(), which also exempts '.':
+// a stored "Wait.." would then render "Wait.." and re-import as "Wait.".
+QString laymanForStore(const QString &value);
+QString laymanRendered(const QString &stored);
+
 // roadmap-format.md § 3.3's four status emojis, by lifecycle word. `dropped`
 // deliberately has no glyph (§ 3.11 makes a fifth an anti-pattern) and returns
 // an empty string. Exported for the same reason bulletText() is: ANTS-3793

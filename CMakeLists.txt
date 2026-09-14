@@ -2454,6 +2454,8 @@ if(ANTS_TESTS)
                 tests/features/roadmap_log_flip_id_suggestions/test_roadmap_log_flip_id_suggestions.cpp
                 # ANTS-3382 roadmap_log evidence:[paths] append + roadmap_query echo.
                 tests/features/roadmap_log_evidence/test_roadmap_log_evidence.cpp
+                # ANTS-4955 Layman stored without its closing stop, rendered with one.
+                tests/features/roadmap_layman_stop/test_roadmap_layman_stop.cpp
                 # ANTS-3417 roadmap_log writers emit no trailing whitespace.
                 tests/features/roadmap_log_trailing_whitespace/test_roadmap_log_trailing_whitespace.cpp
                 # ANTS-3640 roadmap_log escapes an unclosed code fence in body

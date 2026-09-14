@@ -82,6 +82,12 @@ for security-relevant changes.
 
 ### Fixed
 
+- **Re-importing a roadmap no longer rewrites the wording of each item's plain-English summary** (ANTS-4955)
+  Summaries are now stored without their closing full stop and written
+  back with one, whichever route saved them. Each roadmap file gains
+  the stop on summaries that lacked it at its next render: a one-time
+  diff.
+
 - **A line such as ```json inside an open code block no longer ends the block, so the headings and text after it stay treated as code by the outline, spec log, feedback and changelog tools** (ANTS-4987)
   Matches the CommonMark rule that a closing fence carries nothing after
   its backticks. Files with Windows line endings still close their blocks,

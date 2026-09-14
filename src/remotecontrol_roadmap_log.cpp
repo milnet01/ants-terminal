@@ -3345,7 +3345,7 @@ QJsonDocument RemoteControl::cmdRoadmapLogAmendField(const QJsonObject &req) {
         // prose columns (rlFillItemBody); kind stays verbatim for its enum
         // check. A raw newline in layman published an extra ROADMAP.md line.
         if (field == QLatin1String("layman"))
-            stored = rcSanitizeBulletField(stored, 1000);
+            stored = RoadmapRender::laymanForStore(rcSanitizeBulletField(stored, 1000));
         else if (field == QLatin1String("source"))
             stored = rcSanitizeBulletField(stored, 200);
         display = stored;

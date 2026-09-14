@@ -1659,14 +1659,14 @@ TEST(RoadmapWriteHalf, Ants4695CountsRepunctuationApartFromRestyling) {
     QByteArray hand = readAll(roadmap);
     ASSERT_FALSE(hand.isEmpty());
 
-    const QByteArray rendered = "**Layman:** A new thing";
-    ASSERT_TRUE(hand.contains(rendered))
+    // ANTS-4955 — the render writes the stop back, so the published line ends
+    // in one although the column does not.
+    const QByteArray rendered = "**Layman:** A new thing.";
+    ASSERT_TRUE(hand.contains(rendered + "\n"))
         << "precondition: the render's Layman line was not found";
-    ASSERT_FALSE(hand.contains(rendered + "."))
-        << "precondition: the store holds no period, so the render emits none";
 
-    // Now the author's own file, which still ends the sentence properly.
-    hand.replace(rendered + "\n", rendered + ".\n");
+    // Now the author's own file, which ends the sentence differently.
+    hand.replace(rendered + "\n", "**Layman:** A new thing!\n");
     ASSERT_TRUE(writeFile(roadmap, hand));
 
     const QJsonObject env = rc.cmdRoadmapLogAppendForTest(

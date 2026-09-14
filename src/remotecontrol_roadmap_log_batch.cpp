@@ -1033,8 +1033,10 @@ QString RemoteControl::formatRoadmapBullet(
     const QString layman =
         bulletReq.value(QStringLiteral("layman")).toString();
     if (!layman.isEmpty()) {
+        // ANTS-4955 — the same line the store's render would publish.
         bullet += QStringLiteral("  **Layman:** ") +
-                  rcSanitizeBulletField(layman, 1000) +
+                  RoadmapRender::laymanRendered(RoadmapRender::laymanForStore(
+                      rcSanitizeBulletField(layman, 1000))) +
                   QChar('\n');
     }
     bullet += QStringLiteral("  Kind: ") + kind + QStringLiteral(".\n");

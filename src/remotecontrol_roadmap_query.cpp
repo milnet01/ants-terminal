@@ -1182,6 +1182,9 @@ bool rcdetail::rlFillItemBody(const QJsonObject &bulletReq,
                              ? v
                              : rcSanitizeBulletField(
                                    v, field == QLatin1String("source") ? 200 : 1000);
+            // ANTS-4955 — the column holds a Layman value without its stop.
+            if (field == QLatin1String("layman"))
+                scalar = RoadmapRender::laymanForStore(scalar);
         }
 
         const bool given = k.list ? !list.isEmpty() : !scalar.isEmpty();

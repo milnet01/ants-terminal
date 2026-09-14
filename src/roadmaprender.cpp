@@ -96,6 +96,16 @@ QString passBlockText(const RoadmapStore::ItemWrite &it) {
         PassHeadingWrite::passStatusKeyword(it.status), it.body);
 }
 
+QString laymanForStore(const QString &value) {
+    return value.endsWith(QLatin1Char('.')) ? value.chopped(1) : value;
+}
+
+QString laymanRendered(const QString &stored) {
+    if (stored.endsWith(QLatin1Char('!')) || stored.endsWith(QLatin1Char('?')))
+        return stored;
+    return stored + QLatin1Char('.');
+}
+
 // One bullet in full § 3.5 form.
 //
 // ANTS-3808 § 2.3, amended by ANTS-4505 — each trailer key is emitted from its
@@ -146,7 +156,7 @@ QString bulletText(const RoadmapStore::ItemWrite &it) {
     if (!it.body.isEmpty())
         appendIndented(&lines, it.body);
     if (!it.layman.isEmpty() && !shadows(tv.layman))
-        appendIndented(&lines, QStringLiteral("**Layman:** ") + it.layman);
+        appendIndented(&lines, QStringLiteral("**Layman:** ") + laymanRendered(it.layman));
     // Required piece (INV-12) — emitted whenever the body does not already
     // declare this key at a line start.
     //

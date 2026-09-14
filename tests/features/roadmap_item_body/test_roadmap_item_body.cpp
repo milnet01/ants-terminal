@@ -659,15 +659,15 @@ TEST(RoadmapItemBody, Inv6RoundTripAddsNothing) {
     // render's own output, so the strip moves exactly the lines § 2.4 puts
     // back and the bullet round-trips BYTE for byte.
     //
-    // The `**Layman:**` line carries NO trailing period, which is the render's
-    // own spelling: `rec.layman` is period-stripped by ANTS-1154 INV-4, so a
-    // Layman line written with one cannot round-trip byte-identically and a
-    // fixture in author style would red against a correct implementation.
+    // The `**Layman:**` line ends in a full stop, which is the render's own
+    // spelling since ANTS-4955: the column stores the value without it and the
+    // render writes it back, so only a line WITH the stop round-trips
+    // byte-identically.
     {
         const QString bullet = QStringLiteral(
             "- 📋 [DEMO-0011] **Trailers last.**\n"
             "  Residual prose line.\n"
-            "  **Layman:** It stays put\n"
+            "  **Layman:** It stays put.\n"
             "  Kind: implement.\n"
             "  Source: in-session-one.\n"
             "  Lanes: chrome, tests.\n"
@@ -718,7 +718,7 @@ TEST(RoadmapItemBody, Inv6RoundTripAddsNothing) {
     {
         const QString bullet = QStringLiteral(
             "- 📋 [DEMO-0013] **All trailer lines.**\n"
-            "  **Layman:** Nothing but metadata\n"
+            "  **Layman:** Nothing but metadata.\n"
             "  Kind: implement.");
         const QString doc = docWith(bullet);
         const auto before = planOne(doc);

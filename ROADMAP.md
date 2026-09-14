@@ -59671,6 +59671,13 @@ than re-filed; everything else lands here.
   dropped in the one-time normalisation the standard now requires. It must
   land together with the new render: the running binary renders them `..`
   otherwise. Take a sqlite3 .backup first.
+  Progress (2026-09-14): rule 14 gate done at its cap (loops 8-10 in
+  docs/reviews/roadmap-format-review-log.md; 7735c9fb, ce70dfb0, 8a6b3416).
+  Tail filed as ANTS-5159 and ANTS-5160. Code built, uncommitted:
+  RoadmapRender::laymanForStore / laymanRendered, used by bulletText,
+  amend_field, rlFillItemBody (store append) and formatRoadmapBullet
+  (markdown append). Test roadmap_layman_stop INV-1..7 was red before the
+  fix; green run in progress.
   **Layman:** Re-importing a roadmap quietly rewrites the wording of every item's plain-English summary.
   Kind: fix.
   Source: Pressless_Ants_MCP_Feedback.md 2026-09-08.
