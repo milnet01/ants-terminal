@@ -57313,7 +57313,7 @@ two projects).
   Source: UT_Ants_MCP_Feedback.md 2026-09-04.
   Lanes: mcp.
 
-- 📋 [ANTS-4861] **roadmap_query answers from the FILE on a store-backed project whose store holds no items, and tells the caller to Read the markdown.**
+- ✅ [ANTS-4861] **roadmap_query answers from the FILE on a store-backed project whose store holds no items, and tells the caller to Read the markdown.**
   Reported after a successful roadmap_migrate (store_backed true, project_id
   assigned) against a ROADMAP.md that parses but carries no bullets.
   roadmap_query returned mode header_inventory_fallback with a path into
@@ -57331,6 +57331,12 @@ two projects).
 
   Related to the sibling item in this section: both are the same fallback
   arm not knowing it is on a store-backed project.
+  Resolved (2026-09-14): the header-inventory fallback, in the bullets
+  and the section_index arm, and the parseable_bullets: 0 prose-roadmap
+  diagnostic now skip a store-served read. An empty store answers with
+  source store and count 0. Test:
+  RoadmapLogStorePreviewAndCounter.Ants4861EmptyStoreAnswersFromTheStore,
+  red without either gate.
   **Layman:** On a freshly set-up project the roadmap tool falls back to reading the file it was supposed to replace, which looks like the setup failed.
   Kind: fix.
   Source: UT_Ants_MCP_Feedback.md 2026-09-04.
@@ -76455,6 +76461,14 @@ here.)
   (ANTS-4426 replaced the regex with a character check for speed; semantics
   unchanged, 0 verdicts moved over 234,692 lines). It is a smaller and
   clearer place to make the change than the regex was.
+  Progress (2026-09-14): NEEDS A DECISION, not built. The
+  marker-position test the body proposes would miss real declarations in
+  CHANGELOG.md, which maxDeclaredId also scans: a changelog bullet reads
+  `- **summary** (ANTS-NNNN)`, with the id at the END of the line, not
+  after the marker. A floor that stops counting those can hand out an id
+  that already shipped. A safer narrowing needs a per-file rule (roadmap
+  files: id after the marker; CHANGELOG: any top-level bullet), which
+  changes the one shared rule ANTS-4631 exists to keep.
   **Layman:** The check that spots a roadmap file running ahead of the database can still be fooled by an example id written as an indented sub-point inside an entry.
   Kind: fix.
   Source: in-session-2026-08-28, closing ANTS-4406/4410/4430.

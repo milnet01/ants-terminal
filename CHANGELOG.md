@@ -78,6 +78,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **roadmap_query answers a migrated project whose store holds no items from the store, with zero items, instead of falling back to the file and telling the caller to Read it.** (ANTS-4861)
+
 - **roadmap_query names the kind or source filter when it empties a result, instead of blaming the ID filter and calling the roadmap malformed.** (ANTS-4971)
 
 - **Roadmap writes leave a roadmap file untouched when its content has not changed, and list it under `files_unchanged` rather than `files_written`.** (ANTS-5016)
