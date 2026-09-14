@@ -3905,7 +3905,19 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
                 "space/comma-separated ids, use ids:[...] or query one id "
                 "at a time.")
                     .arg(queryArg, QString::number(postIdPruneCountSec));
-        } else if (preIdPruneCountSec > 0 && filtered.isEmpty() &&
+        } else if (postIdPruneCountSec > 0 && filtered.isEmpty() &&
+            (!kindArg.isEmpty() || !sourceArgs.isEmpty())) {
+            // ANTS-4971 — the ID filter kept id-bearing bullets and the kind or
+            // source filter emptied the set. The ANTS-1538 text below blamed
+            // the ID filter and called a well-formed roadmap malformed, on a
+            // result that was correct.
+            out["warning"] = QStringLiteral(
+                "no id-bearing bullet in this section matched the kind/source "
+                "filter (%1 id-bearing bullet(s) considered). The result is "
+                "complete: no item here carries that value.")
+                    .arg(postIdPruneCountSec);
+        } else if (preIdPruneCountSec > 0 && postIdPruneCountSec == 0 &&
+            filtered.isEmpty() &&
             !includeNarratorBullets && !includeSectionHeaders) {
             out["warning"] = QStringLiteral(
                 "default ID-filter dropped all %1 bullet(s) in this "
@@ -4553,7 +4565,17 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
                 "searched). If you passed multiple space/comma-separated "
                 "ids, use ids:[...] or query one id at a time.")
                     .arg(queryArg, QString::number(postIdPruneCountFull));
+        } else if (postIdPruneCountFull > 0 &&
+                   (!kindArg.isEmpty() || !sourceArgs.isEmpty())) {
+            // ANTS-4971 — as in the section arm: the kind or source filter,
+            // not the ID filter, emptied a set of id-bearing bullets.
+            out["warning"] = QStringLiteral(
+                "no id-bearing bullet matched the kind/source filter (%1 "
+                "id-bearing bullet(s) considered). The result is complete: no "
+                "item carries that value.")
+                    .arg(postIdPruneCountFull);
         } else if (preIdPruneCountFull > 0 &&
+                   postIdPruneCountFull == 0 &&
                    !includeNarratorBullets && !includeSectionHeaders) {
             // ANTS-1538 — the default ID-filter genuinely dropped every
             // actionable bullet (no query narrowed it, or the file has no

@@ -63,3 +63,12 @@ Source-scrape against the remotecontrol TUs for the anchor strings and
 key code patterns. A runtime test would require a RemoteControl +
 Roadmap fixture (out of scope here, matching the sibling
 `roadmap_query_narrator_filter` / `mcp_roadmap_status_filter` tests).
+
+## ANTS-4971 — name the filter that emptied the set
+
+When the ID filter keeps id-bearing bullets and a `kind` or `source` filter
+then empties the result, the reply's `warning` names the kind/source filter and
+the number of id-bearing bullets considered, in the full-file and the section
+arm. The ANTS-1538 "default ID-filter dropped" warning fires only when the ID
+prune itself left nothing. *Test:*
+`roadmap_query_prose_no_id_warning.Ants4971KindFilterIsNamedNotTheIdFilter`.

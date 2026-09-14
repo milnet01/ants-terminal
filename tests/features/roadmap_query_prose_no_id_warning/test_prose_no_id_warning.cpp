@@ -10,6 +10,14 @@
 
 #include <string>
 
+#include "remotecontrol.h"
+
+#include <QFile>
+#include <QJsonDocument>
+#include <QJsonObject>
+#include <QString>
+#include <QTemporaryDir>
+
 ANTS_TEST_SCOPE();
 
 namespace {
@@ -75,4 +83,43 @@ TEST(roadmap_query_prose_no_id_warning, Inv3GatedOnFileScanNotPostStatusCount) {
            "INV-3: parseable_bullets branch precedes the preIdPruneCountFull "
            "branch");
     EXPECT_EQ(0, expect_failures());
+}
+
+// ANTS-4971 — a kind filter that empties a set of id-bearing bullets is named
+// as the cause. The ID-filter warning, which called a well-formed roadmap
+// malformed, no longer fires. Live, through the real verb, in both the
+// full-file and the section arm.
+TEST(roadmap_query_prose_no_id_warning, Ants4971KindFilterIsNamedNotTheIdFilter) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    {
+        QFile f(tmp.path() + QStringLiteral("/ROADMAP.md"));
+        ASSERT_TRUE(f.open(QIODevice::WriteOnly));
+        f.write("# Roadmap\n\n## Work\n\n"
+                "- \xF0\x9F\x93\x8B [ANTS-7001] **First fix.**\n"
+                "  Kind: fix.\n"
+                "  Source: test.\n"
+                "- \xF0\x9F\x93\x8B [ANTS-7002] **Second fix.**\n"
+                "  Kind: fix.\n"
+                "  Source: test.\n");
+    }
+    for (const bool withSection : {false, true}) {
+        QJsonObject req;
+        req[QStringLiteral("caller_cwd")] = tmp.path();
+        req[QStringLiteral("status")]     = QStringLiteral("planned");
+        req[QStringLiteral("kind")]       = QStringLiteral("release");
+        if (withSection) req[QStringLiteral("section")] = QStringLiteral("work");
+        RemoteControl rc(nullptr);
+        const QJsonObject o = rc.cmdRoadmapQuery(req).object();
+        const char *arm = withSection ? "section" : "full-file";
+        ASSERT_TRUE(o.value(QStringLiteral("ok")).toBool())
+            << arm << ": " << QJsonDocument(o).toJson().constData();
+        EXPECT_EQ(o.value(QStringLiteral("count")).toInt(), 0) << arm;
+        const QString w = o.value(QStringLiteral("warning")).toString();
+        EXPECT_FALSE(w.contains(QStringLiteral("default ID-filter dropped")))
+            << arm << " arm blamed the ID filter: " << w.toStdString();
+        EXPECT_TRUE(w.contains(QStringLiteral("kind/source filter")))
+            << arm << " arm did not name the filter that emptied the set: "
+            << w.toStdString();
+    }
 }
