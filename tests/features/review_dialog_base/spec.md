@@ -54,6 +54,13 @@ subclasses fill four hooks and use the base services.
   `setLanes` change nothing: no job is queued, the round's failures are not
   cleared, and the lanes are not replaced. Once the round finishes, both
   work again.
+- **INV-25** (ANTS-5082) — a lane's brief is composed when its job starts,
+  not when the round is queued. With five lanes and two jobs at a time,
+  `composeBrief` has run twice when the round starts, three times after the
+  first job finishes, and five times once every job has finished. So no more
+  briefs are held than jobs in flight, which is the 2 x 200 KiB budget
+  ANTS-1722 and ANTS-1258 state. `setJobRunner` swaps only the job runner;
+  the composing step stays in place.
 
 ## Test notes
 

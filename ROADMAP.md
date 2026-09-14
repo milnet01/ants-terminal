@@ -8248,6 +8248,17 @@ extends an existing item, that item carries it instead.
   Decided (2026-09-14, user): fix the code, not the budget. Each review
   brief is composed when its job is pumped, so peak memory stays inside
   the budget ANTS-1722 and ANTS-1258 state.
+  Progress (2026-09-14): shipped the brief-composition memory medium, as
+  decided. The dispatcher now receives lane ids, and a runner installed
+  once in ReviewDialogBase's constructor composes each lane's brief when
+  its job starts, then hands it to m_runner; setJobRunner swaps m_runner
+  only. LlmDispatcher is unchanged. Test: review_dialog_base INV-25
+  (five lanes at two jobs a time compose 2, then 3, then 5 briefs), red
+  first; full default suite green. Still open: the trust prompt medium
+  (ANTS-1337 checkbox, gates line, 0644 warning, application-modal
+  exec), first_trusted overwrite, the second copy of reports, the
+  DialogShowTracer and ChromeGuard Q_OBJECT lows, and tr() in the About
+  dialog.
   **Layman:** Smaller dialog fixes, including a review button that can undo its own error reporting and a trust file that can be lost.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lane dialog-chrome-theme).

@@ -45,10 +45,11 @@ public:
     using ReviewDialogBase::statusLabel;
 
     int allCollectedCalls = 0;
+    int composeCalls = 0;   // INV-25
 
 protected:
     QList<ReviewLane> derivePartition() override { return {}; }
-    LlmRequest composeBrief(const ReviewLane &) override { return {}; }
+    LlmRequest composeBrief(const ReviewLane &) override { ++composeCalls; return {}; }
     void onAllReportsCollected(const QHash<QString, QString> &) override {
         ++allCollectedCalls;
     }
@@ -477,4 +478,45 @@ TEST(ReviewDialogBase, INV24_MidRoundRedispatchAndSetLanesIgnored) {
         pending.erase(pending.begin());
         done(ok);
     }
+}
+
+// INV-25 (ANTS-5082) — a lane's brief is composed when its job starts, not when
+// the round is queued, so no more briefs are held than jobs run at once. A
+// dialog with no config runs two jobs at a time.
+TEST(ReviewDialogBase, INV25_BriefComposedWhenJobStarts) {
+    TestReviewDialog dlg(QString(), nullptr, nullptr);
+    std::vector<std::function<void(const LlmResult &)>> pending;
+    dlg.setJobRunner([&](const LlmJob &, std::function<void(const LlmResult &)> done) {
+        pending.push_back(std::move(done));
+    });
+    QList<ReviewLane> lanes;
+    QStringList ids;
+    for (int i = 0; i < 5; ++i) {
+        const QString id = QString::number(i);
+        lanes << ReviewLane{ id, id, QString() };
+        ids << id;
+    }
+    dlg.setLanes(lanes);
+    dlg.redispatch(ids);
+    EXPECT_EQ(dlg.composeCalls, 2)
+        << "INV-25: every brief was composed when the round was queued";
+
+    LlmResult ok;
+    ok.ok = true;
+    ok.text = QStringLiteral("r");
+    ASSERT_FALSE(pending.empty()) << "setup: no job started";
+    {
+        auto done = std::move(pending.front());
+        pending.erase(pending.begin());
+        done(ok);
+    }
+    EXPECT_EQ(dlg.composeCalls, 3)
+        << "INV-25: finishing a job did not compose the next lane's brief";
+
+    while (!pending.empty()) {
+        auto done = std::move(pending.front());
+        pending.erase(pending.begin());
+        done(ok);
+    }
+    EXPECT_EQ(dlg.composeCalls, 5) << "INV-25: some lane was never composed";
 }

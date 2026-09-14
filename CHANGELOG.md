@@ -95,6 +95,12 @@ for security-relevant changes.
 
 ### Fixed
 
+- **The review dialogs no longer build every lane's brief at once** (ANTS-5082)
+  Starting a review built the full brief for every lane up front and held
+  them all in memory while only a couple ran at a time. Each brief is now
+  built when its lane actually starts, which keeps memory inside the review
+  budget.
+
 - **A background audit started by Claude no longer leaves its thread behind** (ANTS-5080)
   An audit Claude starts in the background is run on its own thread. That
   thread was cleaned up only through the object that tracks such audits, so

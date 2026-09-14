@@ -100,7 +100,22 @@ ReviewDialogBase::ReviewDialogBase(QString projectCwd, QWidget *parent,
                 });
         client->send(job.request);
     };
-    m_dispatcher->setRunner(m_runner);
+    // ANTS-5082 — the dispatcher is handed lane ids; each lane's brief is
+    // composed here, when its job starts, so no more briefs are held than jobs
+    // in flight (the 2 x 200 KiB budget of ANTS-1722 and ANTS-1258). m_lanes
+    // cannot change mid-round (setLanes returns while m_roundInFlight).
+    // setJobRunner swaps m_runner only, so this step stays in place.
+    m_dispatcher->setRunner([this](const LlmJob &job,
+                                   std::function<void(const LlmResult &)> done) {
+        LlmJob composed = job;
+        for (const ReviewLane &lane : std::as_const(m_lanes)) {
+            if (lane.id == job.id) {
+                composed.request = composeBrief(lane);
+                break;
+            }
+        }
+        m_runner(composed, std::move(done));
+    });
 
     updateDispatchEnabled();
 }
@@ -139,7 +154,6 @@ bool ReviewDialogBase::endpointDispatchable(const QString &endpoint) {
 
 void ReviewDialogBase::setJobRunner(LlmDispatcher::JobRunner runner) {
     m_runner = std::move(runner);
-    if (m_dispatcher) m_dispatcher->setRunner(m_runner);
 }
 
 void ReviewDialogBase::updateDispatchEnabled() {
@@ -251,7 +265,7 @@ void ReviewDialogBase::startDispatch() {
     QList<LlmJob> jobs;
     jobs.reserve(m_lanes.size());
     for (const ReviewLane &lane : m_lanes)
-        jobs << LlmJob{ lane.id, composeBrief(lane) };
+        jobs << LlmJob{ lane.id, LlmRequest{} };   // composed when the job starts
     beginRound();
     m_dispatcher->enqueue(jobs);
 }
@@ -266,7 +280,7 @@ void ReviewDialogBase::redispatch(const QStringList &laneIds) {
     QList<LlmJob> jobs;
     for (const ReviewLane &lane : m_lanes) {
         if (laneIds.contains(lane.id))
-            jobs << LlmJob{ lane.id, composeBrief(lane) };
+            jobs << LlmJob{ lane.id, LlmRequest{} };   // composed when the job starts
     }
     if (jobs.isEmpty()) return;
     beginRound();
