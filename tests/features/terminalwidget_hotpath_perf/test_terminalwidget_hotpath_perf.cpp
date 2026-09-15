@@ -229,3 +229,16 @@ TEST(TerminalWidgetHotPathPerf, Inv14RichCopyMergesRunsAndCaps) {
     EXPECT_FALSE(body.contains(QStringLiteral(".arg(style, ch.toHtmlEscaped())")))
         << "the per-character span is still there";
 }
+
+// INV-15 (ANTS-5078) — a trigger rule on a completed line marks the span caches
+// for the next paint instead of invalidating them in the middle of a batch.
+TEST(TerminalWidgetHotPathPerf, Inv15LineTriggerDefersCacheInvalidation) {
+    const QString body = functionBody(
+        tw(), QStringLiteral("void TerminalWidget::onGridLineCompleted("));
+    ASSERT_FALSE(body.isEmpty()) << "onGridLineCompleted not found";
+    EXPECT_FALSE(body.contains(QStringLiteral("invalidateSpanCaches(")))
+        << "a line trigger clears the dirty flags mid-batch, so rows written "
+           "later in the batch keep stale URL and highlight spans";
+    EXPECT_TRUE(body.contains(QStringLiteral("m_spanCacheDirty = true")))
+        << "a line trigger does not mark the span caches for the next paint";
+}

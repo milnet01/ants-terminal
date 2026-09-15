@@ -8046,6 +8046,15 @@ extends an existing item, that item carries it instead.
   4836/4836.
   Still open: exports on the GUI thread (medium), invalidateSpanCaches
   mid-batch, autocomplete matching the prompt.
+  Progress (2026-09-15): shipped the invalidateSpanCaches mid-batch low.
+  onGridLineCompleted runs from the grid's line-completion callback inside
+  a VT batch; it now sets m_spanCacheDirty instead of invalidating, so
+  the next paint drops cached spans for every row the batch touched
+  (applyRowAttrs and addRowHyperlink mark their rows dirty). Test:
+  terminalwidget_hotpath_perf INV-15, red first; full default suite
+  4837/4837.
+  Still open: exports on the GUI thread (medium), autocomplete matching
+  the prompt.
   **Layman:** Smaller fixes to copying, exporting and searching in the terminal, which can freeze on very long histories.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lane terminal-widget-b).

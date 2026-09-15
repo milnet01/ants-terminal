@@ -95,6 +95,12 @@ for security-relevant changes.
 
 ### Fixed
 
+- **Links and highlights stay correct on busy output when trigger rules are set** (ANTS-5078)
+  With a trigger rule that colours or links matching text, a burst of
+  output could leave clickable links and highlight colours on the wrong
+  place on lines printed later in the same burst. Those lines are now
+  rechecked when the screen is next drawn.
+
 - **Exporting from the terminal's right-click menu tells you when it fails** (ANTS-5078)
   Export Scrollback as Text or HTML and Share Block could leave a
   half-written file on a full disk and say nothing. They now write to a

@@ -77,6 +77,13 @@ the invariants are source-scrape assertions against
   one span per run of same-style cells (`flushRun()`) and copies plain text
   only when the selection's bounds exceed `kRichCopyCellCap` cells.
 
+- **INV-15 / line triggers defer cache invalidation** (ANTS-5078).
+  `onGridLineCompleted` runs from the grid's line-completion callback, inside
+  a VT batch. It sets `m_spanCacheDirty` rather than calling
+  `invalidateSpanCaches`, which would clear every row's dirty flag and
+  `m_spanCacheDirty` mid-batch and leave rows written later in that batch
+  with stale URL and highlight spans.
+
 ## Test scope
 
 Source-scrape against `src/terminalwidget.cpp` via `SRC_TERMINALWIDGET_PATH`.

@@ -6001,9 +6001,13 @@ void TerminalWidget::onGridLineCompleted(int screenRow) {
             }
         }
     }
-    // Span caches keyed by global line need to be invalidated so the next
-    // paint picks up the new attrs / hyperlink.
-    invalidateSpanCaches();
+    // ANTS-5078 — mark the span caches for the next paint rather than
+    // invalidating them here. This runs inside a VT batch (the grid's
+    // line-completion callback), and invalidating now cleared every row's
+    // dirty flag, so rows written later in the batch kept stale URL and
+    // highlight spans. applyRowAttrs and addRowHyperlink mark their rows
+    // dirty, so the next paint still drops those rows' cached spans.
+    m_spanCacheDirty = true;
     update();
 }
 
