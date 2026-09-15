@@ -10605,6 +10605,59 @@ extends an existing item, that item carries it instead.
   Source: code-quality-review-2026-09-11 perf pass (lane mainwindow-b), split from ANTS-5080.
   Lanes: mainwindow, mcp.
 
+- 📋 [ANTS-5223] **Broadcast input reaches every tab while labelled All Panes, survives a restart, and shows no lasting sign that it is on.**
+  Reported 2026-09-15: answers typed into a Claude question dialog in one
+  tab appeared as a queued prompt in another tab's Claude session, and a
+  later message with a pasted image did the same. Cause: config.json held
+  "broadcast_mode": true.
+
+  Three separate problems made it invisible and far-reaching:
+  - Scope: MainWindow::connectTerminal's broadcast callback loops over
+    liveTerminals(), which is m_allTerminals, every terminal in every tab.
+    The menu item reads "Broadcast Input to All Panes".
+  - Persistence: the toggle writes broadcast_mode to config, and the
+    MainWindow constructor restores it, so it silently survives a relaunch.
+  - Visibility: m_broadcastMode drives only the menu tick, a 3-second
+    status message and the callback. No status-bar badge, tab marking or
+    border shows it is active.
+
+  The shortcut is Ctrl+Shift+I, easy to hit by accident. With 21 tabs, 19
+  plain shells ran each broadcast line as a command; the two sampled show
+  only "command not found".
+
+  Fix direction (a user decision): a persistent visible indicator while
+  on; do not persist it across restarts, or ask on launch; and either
+  scope it to the current tab's panes, matching the label, or rename the
+  action to say every tab.
+  **Layman:** A setting that copies your typing into every tab can be left on without any visible warning, so words meant for one Claude session reach all of them.
+  Kind: fix.
+  Source: user-report-2026-09-15 (answers typed in one Claude tab reached every tab).
+
+- 📋 [ANTS-5224] **Broadcast forwards key bytes encoded for the source terminal, so other terminals receive Kitty escape codes they never enabled.**
+  TerminalWidget::keyPressEvent encodes a key with encodeKittyKey when the
+  SOURCE grid has kittyKeyFlags() > 0, which Claude Code's TUI enables,
+  then calls sendKeyData, which hands the same bytes to the broadcast
+  callback. MainWindow::connectTerminal writes them unchanged to every
+  other terminal with sendToPty, whatever that terminal's own keyboard
+  mode is.
+
+  Observed 2026-09-15 in plain bash tabs: shifted letters arrived as
+  fragments such as `5;2u` and `9;2u`, and each line ran as a command
+  ("2uistake,: command not found", "^M: command not found"). The same
+  holds for any source-mode-dependent encoding: application cursor keys
+  and bracketed paste.
+
+  Fix: broadcast the key event, not the encoded bytes, and let each target
+  encode it for its own modes. At minimum, refuse to forward bytes encoded
+  under a mode the target has not enabled.
+
+  Contract gap: tests/features/terminalwidget_input_contracts/spec.md INV-2
+  requires sendKeyData to broadcast, but nothing states what encoding the
+  other terminals receive.
+  **Layman:** When typing is copied to other tabs, capital letters and Enter arrive as garbled codes, so a shell runs nonsense commands.
+  Kind: fix.
+  Source: user-report-2026-09-15 (answers typed in one Claude tab reached every tab).
+
 ## Memory-efficiency sweep (user request 2026-08-19)
 
 The speed sweeps above ask how fast Ants is. This one asks how much it costs to
