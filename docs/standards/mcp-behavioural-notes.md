@@ -269,6 +269,12 @@ server-controllable beyond this per-tool hint.
   runs in WAL with a live Ants holding a connection.
 
 - **`get_scrollback`** — since-cursor incremental mode (ANTS-1500).
+  Returns at most `RemoteControl::kGetTextMaxLines` lines, the same cap as
+  `get_text`, byte-trimmed to `kGetTextDefaultBytesCap` (ANTS-5219). A plain
+  reply cut by the line cap starts with `<capped at L of R requested lines>`.
+  The `since_cursor` envelope never carries that line; it reports a cut with
+  `truncated`, plus `lines_dropped` and `bytes_dropped` when true. A cut
+  reply's lines are not replayed by the next call.
 - **`co_change_family`** (ANTS-3368) — every edit site of ONE settings
   field, grouped by file. Matches on the longest run of the stem's words
   **contiguous in both** the stem and the candidate, not on the name — so

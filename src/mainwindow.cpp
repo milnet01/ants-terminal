@@ -4462,6 +4462,9 @@ void MainWindow::setupClaudeMcpProviders() {
                 args.value("caller_cwd").toString();
             auto *t = terminalForCaller(callerCwd);
             if (!t) return {};
+            // ANTS-5219 — at most RemoteControl::kGetTextMaxLines lines,
+            // trimmed to get_text's byte cap. docs/specs/ANTS-5219-scrollback-line-cap.md.
+            const int available = t->grid()->scrollbackSize() + t->grid()->rows();
             // ANTS-1500 — since_cursor incremental-fetch mode. Cursor
             // encodes the grid's monotonic scrollbackPushed counter at
             // the time of issue. On a follow-up call the server
@@ -4472,7 +4475,13 @@ void MainWindow::setupClaudeMcpProviders() {
             const QString sinceStr =
                 args.value(QStringLiteral("since_cursor")).toString();
             if (sinceStr.isEmpty()) {
-                return t->recentOutput(lines);
+                const auto req = RemoteControl::capScrollbackRequest(lines, available, 0);
+                const auto trim = RemoteControl::trimScrollbackForGetText(
+                    t->recentOutput(req.lines), RemoteControl::kGetTextDefaultBytesCap);
+                if (req.linesCapped > 0)
+                    return QStringLiteral("<capped at %1 of %2 requested lines>\n")
+                               .arg(req.lines).arg(lines) + trim.text;
+                return trim.text;
             }
             const uint64_t currentPushed =
                 t->grid()->scrollbackPushed();
@@ -4482,14 +4491,30 @@ void MainWindow::setupClaudeMcpProviders() {
             env[QStringLiteral("ok")]     = true;
             env[QStringLiteral("cursor")] =
                 QString::number(currentPushed);
+            // The since_cursor reply reports a cut through truncated /
+            // lines_dropped / bytes_dropped, never with the cap line: its
+            // requested count is one the caller never sent.
+            auto setContent = [&](int requestedLines) {
+                const auto req =
+                    RemoteControl::capScrollbackRequest(requestedLines, available, 0);
+                const auto trim = RemoteControl::trimScrollbackForGetText(
+                    t->recentOutput(req.lines), RemoteControl::kGetTextDefaultBytesCap);
+                env[QStringLiteral("content")] = trim.text;
+                const bool truncated = req.linesCapped > 0 || trim.truncated;
+                env[QStringLiteral("truncated")] = truncated;
+                if (truncated) {
+                    env[QStringLiteral("lines_dropped")] =
+                        static_cast<qint64>(req.linesCapped) + trim.linesDropped;
+                    env[QStringLiteral("bytes_dropped")] = trim.bytesDropped;
+                }
+            };
             bool parsedOk = false;
             const uint64_t since =
                 sinceStr.toULongLong(&parsedOk);
             auto emitFullWindow = [&](const QString &reason) {
                 env[QStringLiteral("cursor_stale")] = true;
                 env[QStringLiteral("stale_reason")] = reason;
-                env[QStringLiteral("content")] =
-                    t->recentOutput(lines);
+                setContent(lines);
                 return QString::fromUtf8(QJsonDocument(env)
                     .toJson(QJsonDocument::Compact));
             };
@@ -4514,8 +4539,7 @@ void MainWindow::setupClaudeMcpProviders() {
             const int deltaPlusScreen =
                 static_cast<int>(added) + screenRows;
             env[QStringLiteral("cursor_stale")] = false;
-            env[QStringLiteral("content")] =
-                t->recentOutput(deltaPlusScreen);
+            setContent(deltaPlusScreen);
             return QString::fromUtf8(QJsonDocument(env)
                 .toJson(QJsonDocument::Compact));
         });

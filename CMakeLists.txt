@@ -2559,6 +2559,8 @@ if(ANTS_TESTS)
                 tests/features/audit_run_incomplete_detail/test_audit_run_incomplete_detail.cpp
                 # ANTS-3396 opt-in async audit_run + audit_poll job registry.
                 tests/features/mcp_audit_run_async/test_mcp_audit_run_async.cpp
+                # ANTS-5219 — get_scrollback line cap and truncation marker.
+                tests/features/mcp_get_scrollback_cap/test_mcp_get_scrollback_cap.cpp
                 # ANTS-3418 audit_run drops mypy from the auto-detect default.
                 tests/features/audit_run_default_tools/test_audit_run_default_tools.cpp
                 # ANTS-1561 parseBullets multi-line bold headline span.

@@ -1,6 +1,6 @@
 # ANTS-5219 — Cap `get_scrollback`'s lines and say when its reply is cut
 
-**Status:** accepted (2026-09-14), review-contract loop 1 (one lane, user preference), three findings fixed.
+**Status:** implemented (2026-09-15). Accepted 2026-09-14 after review-contract loop 1 (one lane, user preference), three findings fixed.
 **Kind:** review-fix.
 **Source:** ROADMAP.md ANTS-5219 (split from ANTS-5080; code-quality-review-2026-09-11 perf pass, lane mainwindow-b; user decision 2026-09-14).
 **Pairs with:** ANTS-1500 (`since_cursor` mode), ANTS-1348 (`get_text`'s byte cap).

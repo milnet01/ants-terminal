@@ -198,6 +198,30 @@ public:
     static constexpr int kGetTextDefaultBytesCap  = 1 * 1024 * 1024;   // 1 MiB
     static constexpr int kGetTextMaxBytesCeiling  = 16 * 1024 * 1024;  // 16 MiB
 
+    // ANTS-5219 — the most trailing lines get_text and get_scrollback return.
+    static constexpr int kGetTextMaxLines = 10000;
+
+    // ANTS-5219 — a line request after the cap.
+    struct ScrollbackRequest {
+        int lines = 0;         // lines to read
+        int linesCapped = 0;   // lines the caller asked for and exist but were cut
+    };
+    // Clamps `requested` to [1, kGetTextMaxLines]; a value <= 0 returns
+    // `fallback` unclamped. `available` is the lines the terminal holds.
+    // Defined inline for the same reason as trimScrollbackForGetText.
+    static inline ScrollbackRequest capScrollbackRequest(int requested,
+                                                         int available,
+                                                         int fallback) {
+        ScrollbackRequest r;
+        if (requested <= 0) {
+            r.lines = fallback;
+            return r;
+        }
+        r.lines = std::min(requested, kGetTextMaxLines);
+        r.linesCapped = std::max(0, std::min(requested, available) - r.lines);
+        return r;
+    }
+
     // Result of `trimScrollbackForGetText`. `text` is the (possibly
     // truncation-prefixed) string to put in the response; the other
     // fields surface as response-envelope flags.

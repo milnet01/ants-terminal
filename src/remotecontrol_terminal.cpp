@@ -163,7 +163,7 @@ QJsonDocument RemoteControl::cmdGetText(const QJsonObject &req) {
     const QJsonValue linesVal = req.value("lines");
     if (linesVal.isDouble()) {
         const int requested = linesVal.toInt();
-        if (requested > 0) lines = std::min(requested, 10000);
+        if (requested > 0) lines = std::min(requested, kGetTextMaxLines);
     }
 
     // ANTS-1348 — server-side byte cap. Default 1 MiB matches the MCP

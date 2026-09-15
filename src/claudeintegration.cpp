@@ -2625,6 +2625,9 @@ void ClaudeIntegration::onMcpConnection() {
                 scrollbackTool["name"] = "get_scrollback";
                 scrollbackTool["description"] = QStringLiteral(
                     "Get the last N lines of terminal scrollback. "
+                    "At most 10000 lines, byte-trimmed like get_text; "
+                    "a reply cut by the line cap starts with "
+                    "`<capped at L of R requested lines>` (ANTS-5219). "
                     "Pass `caller_cwd` (your $PWD) to anchor to your "
                     "tab; without it the result comes from whichever "
                     "tab Ants happens to have focused (ANTS-1392). "

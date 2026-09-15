@@ -10460,7 +10460,7 @@ extends an existing item, that item carries it instead.
   Source: in-session-2026-09-14.
   Lanes: terminalgrid.
 
-- 📋 [ANTS-5219] **get_scrollback has no line cap and its plain reply cannot say it was cut short.**
+- ✅ [ANTS-5219] **get_scrollback has no line cap and its plain reply cannot say it was cut short.**
   Split out of ANTS-5080 so it can carry its own spec.
   Decided (2026-09-14, user, recorded on ANTS-5080): get_scrollback gets a
   line cap and an explicit truncation marker in its reply. That changes the
@@ -10500,6 +10500,15 @@ extends an existing item, that item carries it instead.
   build test_claude, see INV-1..5 fail, then apply the real code from
   the drafts. test_claude has both ANTS_MAINWINDOW_SOURCES and
   ANTS_RC_SOURCES.
+  Resolved (2026-09-15): built as specified in
+  docs/specs/ANTS-5219-scrollback-line-cap.md. kGetTextMaxLines and
+  capScrollbackRequest in RemoteControl; cmdGetText reads the shared cap;
+  both get_scrollback replies pass through trimScrollbackForGetText; the
+  plain reply carries the cap line, the since_cursor envelope carries
+  truncated, lines_dropped and bytes_dropped. Test:
+  tests/features/mcp_get_scrollback_cap (test_claude) INV-1..5, red first
+  (0 to 5 tests, all failing); McpExtraTools.Main still green; full
+  default suite green.
   **Layman:** Claude can ask a terminal for an unlimited amount of its history in one go, which freezes the window.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lane mainwindow-b), split from ANTS-5080.
@@ -61380,6 +61389,20 @@ than re-filed; everything else lands here.
   Kind: fix.
   Source: in-session-2026-09-11.
   Lanes: mcp, mutation_probe.
+
+- 📋 [ANTS-5220] **find_definition lists same-named local variables as declarations of a member function.**
+  Seen 2026-09-15 on ANTS-5219: find_definition {symbol:"scrollbackSize",
+  lang:"cpp"} returned the one real definition (src/terminalgrid.h,
+  TerminalGrid::scrollbackSize) plus 19 rows of kind "declaration", each a
+  local `int scrollbackSize = m_grid->scrollbackSize();` in
+  src/terminalwidget.cpp. Those are variables that share the name, not
+  declarations of the function. For "where is Foo defined?" they are noise
+  that buries the answer. Possible shapes: a distinct kind for a local
+  variable, or rank function and member definitions ahead of them.
+  **Layman:** Asking where a function lives also lists every ordinary variable that happens to share its name.
+  Kind: enhancement.
+  Source: in-session-2026-09-15.
+  Lanes: mcp.
 
 ### Ants MCP without a terminal relaunch (user request 2026-09-07)
 

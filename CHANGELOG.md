@@ -95,6 +95,12 @@ for security-relevant changes.
 
 ### Fixed
 
+- **Claude can no longer freeze the window by asking for a terminal's whole history** (ANTS-5219)
+  Claude's scrollback tool took any line count and read all of it on the
+  window's thread. It now returns at most 10,000 lines, trims to the same
+  size limit as reading a tab's text, and marks a reply that was cut so
+  Claude knows it did not get everything.
+
 - **The review dialogs no longer build every lane's brief at once** (ANTS-5082)
   Starting a review built the full brief for every lane up front and held
   them all in memory while only a couple ran at a time. Each brief is now
