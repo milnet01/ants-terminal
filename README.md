@@ -12,6 +12,7 @@
   <a href="#what-is-this">What is this?</a> &bull;
   <a href="#why-use-it-with-claude-code">Why use it with Claude Code</a> &bull;
   <a href="#install">Install</a> &bull;
+  <a href="#getting-started">Getting started</a> &bull;
   <a href="#settings">Settings</a> &bull;
   <a href="#for-developers">For developers</a>
 </p>
@@ -40,8 +41,8 @@ smoother.
 
 It's built from scratch, and the only thing it needs to run is Qt6 (a
 graphics toolkit most Linux desktops already have), so it's quick and light.
-Everything it does for Claude happens **on your own machine** — nothing is
-sent anywhere.
+Its tools for Claude run **on your own machine** — they send nothing
+anywhere.
 
 ## Why use it with Claude Code
 
@@ -57,8 +58,10 @@ tokens spent. Three things make that happen:
 - **A built-in toolkit Claude can use.** 95 ready-made tools that answer
   Claude's common questions directly — often saving thousands of tokens per
   question (more below).
-- **Gentle nudges.** An optional set of "hooks" quietly steers Claude toward
-  the cheap built-in tools instead of the expensive long-hand commands.
+- **A cheat-sheet for Claude.** When a Claude session starts in an Ants tab,
+  Ants hands Claude a short note pointing it at those tools, so it uses them
+  instead of the expensive long-hand commands. (You can turn this off in
+  Settings.)
 - **A live view of what Claude is doing.** The bar along the bottom shows
   Claude's status (thinking, editing, searching…) at a glance, and you can
   browse and resume past Claude sessions without leaving the terminal.
@@ -78,37 +81,32 @@ Each tool replaces a slow, token-hungry command with one quick answer:
 | reading a whole spec to learn the rules | just that spec's checklist |
 
 You don't have to memorise any of this — Claude picks the right tool on its
-own once Ants Terminal is connected. A small counter in the bottom bar keeps
+own once Ants Terminal is connected (see [Getting started](#getting-started)).
+A small counter in the bottom bar keeps
 a running total of what the tools have saved you this session.
 
 ### Living alongside Claude
 
 - **See its status** — the bottom bar shows what Claude is up to right now,
   plus how full its memory ("context") is getting.
+- **See which model it's using** — a small badge shows the model (Haiku,
+  Sonnet or Opus) and how hard it's set to think, for the tab you're
+  looking at.
 - **Browse & resume sessions** (Ctrl+Shift+J) — every Claude project and
   session, with a one-click resume, continue, or fork.
-- **Edit permissions visually** (Ctrl+Shift+L) — manage what Claude is
-  allowed to do without hand-editing a settings file.
+- **Choose what Claude may run without asking** (Ctrl+Shift+L) — edit the
+  project's allowlist in a window instead of a settings file.
 - **See what changed before you keep it** — a **Review Changes** button in
-  the bottom bar opens a file-by-file view of every edit Claude made, so you
-  can read it over first.
+  the bottom bar shows what's changed in the project's files, in one
+  coloured view.
 - **Paste a screenshot** (Ctrl+Shift+V) — it's saved automatically and the
   file path is dropped into the prompt, so you can paste-and-send an image
   to Claude in one move.
-- **Let Ants pick the Claude model for you** (opt-in) — Ants quietly swaps
-  Claude between a fast/cheap model for easy work and a big/slow one for
-  hard work. It only ever switches between turns and before you start
-  typing, so it never interrupts. Off by default; flip it on in
-  Settings → General when you're ready.
-- **A small badge in the status bar shows the current Claude model + thinking
-  level** — so even when Ants is picking the model for you, you can see at a
-  glance whether the focused tab is talking to Haiku/Sonnet/Opus and whether
-  it's set to "standard", "think", "think hard", or "ultrathink". Each tab
-  shows its own value.
 
 > Power users: the tools are [Model Context Protocol](https://modelcontextprotocol.io)
-> tools in the `mcp__ants__*` namespace, and the hook pack installs with
-> `tools/install-hooks.sh`. Details in [CLAUDE.md](CLAUDE.md).
+> tools in the `mcp__ants__*` namespace. An optional extra set of Claude Code
+> hooks installs with `tools/install-hooks.sh` — it needs `jq`, and only acts
+> in folders that contain a `.ants-project` file. Details in [CLAUDE.md](CLAUDE.md).
 
 ## It's also a great terminal
 
@@ -119,16 +117,17 @@ Even with Claude out of the picture, it's a fast, capable terminal:
 - **Programming-font ligatures** — pairs like `!=` and `=>` drawn as one
   neat symbol — plus italics, fancy underlines, and emoji.
 - **Inline images** — show pictures and charts right in the terminal.
-- **Find things fast** — search your history (Ctrl+Shift+F), a command
+- **Find things fast** — search everything on screen and in scrollback
+  (Ctrl+Shift+F), a command
   palette to run any action (Ctrl+Shift+P), and a "hint mode" that lets you
   open any link or file path on screen with a keypress (Ctrl+Shift+G).
 - **Click links and file paths** to open them.
 - **Handy editors** — a pop-out box for writing long multi-line commands,
   and a saved-snippets library for ones you reuse.
-- **Remembers your session** — your history can be brought back next time
-  you open it.
+- **Remembers your session** — your tabs and what was in them come back
+  next time you open it.
 - **Looks the way you like** — 11 built-in colour themes, adjustable
-  see-through background, and automatic dark/light switching.
+  see-through background, and optional automatic dark/light switching.
 - **Plugins** — extend it with small Lua scripts ([PLUGINS.md](PLUGINS.md)).
 - **Built-in code checker** — Tools → Project Audit runs popular code-quality
   tools and shows the results in one place.
@@ -215,6 +214,28 @@ Use **Ninja** (as above), not plain `make` — it keeps the build from using
 too much memory. To install system-wide: `sudo cmake --install build`.
 More build options are in [CONTRIBUTING.md](CONTRIBUTING.md).
 
+## Getting started
+
+1. **Open Ants Terminal.** It works like any terminal straight away.
+2. **Connect Claude Code to it — once per computer.** For now this needs a
+   copy of the source code (see [Build it yourself](#build-it-yourself)):
+   the small connector script is not yet included in the packages or the
+   AppImage. From the source folder, run:
+
+   ```bash
+   claude mcp add ants -- "$PWD/tools/mcp-bridge.py"
+   ```
+
+   It needs Python 3, which most Linux systems already have.
+3. **Start Claude Code in an Ants tab** by typing `claude`. At the top of
+   the session you should see a note that starts "Ants MCP is connected."
+4. **Watch the savings.** Once Claude has used a few of the tools, a
+   "↓ … saved" counter appears in the bottom bar. Hover over it for month,
+   year and all-time totals.
+
+If the tools don't show up, check that **Settings → General → Enable Ants
+MCP integration** is ticked, then close and reopen Ants.
+
 ## Settings
 
 Open **Settings** from the menu, or edit `~/.config/ants-terminal/config.json`
@@ -231,7 +252,15 @@ directly (it's saved so only you can read it). Common things to change:
 ## Privacy & security
 
 - Your settings file and any saved keys are readable only by you.
-- It makes **no network connections** unless you set up the optional AI chat.
+- The built-in tools for Claude work entirely on your computer.
+- **When it opens, Ants asks GitHub whether a newer version exists** (you
+  can also check any time from Help → Check for Updates). If GitHub's `gh`
+  command-line tool is installed and your project lives on GitHub, Ants also
+  asks GitHub whether that project is public or private, to show it in the
+  bottom bar.
+- Nothing else goes online unless you set it up or ask for it: the optional
+  AI features once you connect an AI service, SSH connections you open,
+  updates you click, and links you follow.
 - The private channel Claude Code talks to can only be reached by your own
   user account.
 - Plugins run in a locked-down sandbox and can't freeze the terminal.
