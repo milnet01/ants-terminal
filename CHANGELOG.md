@@ -12,6 +12,7 @@ for security-relevant changes.
 
 ## [Unreleased]
 
+## [0.7.110] — unreleased (Patron RC preview)
 ### Added
 
 - **A performance report for contributors: tools/perf-report.sh runs every benchmark and compares each number against a saved baseline, flagging what got slower** (ANTS-5133)
