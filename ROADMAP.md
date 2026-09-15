@@ -71833,6 +71833,26 @@ Project's own grep-rule corpus + fixture coverage: **55 pass,
   Source: user-request-2026-09-05.
   Lanes: mcp, roadmap-store, claudeintegration.
 
+- 📋 [ANTS-5221] **A packaged or AppImage install cannot connect Claude Code to the built-in tools, because nothing ships the MCP bridge.**
+  Claude Code reaches the Ants MCP server only through tools/mcp-bridge.py,
+  registered with `claude mcp add ants -- <path>/tools/mcp-bridge.py`.
+  Nothing registers it automatically: src/ never mentions `claude mcp add`,
+  mcpServers or ~/.claude.json. Nothing installs the script either:
+  CMakeLists.txt has no install rule naming mcp-bridge, and the RPM spec,
+  PKGBUILD and AppImage recipe do not ship it. The only written copy of the
+  command is the script's own header comment, with a path that exists on
+  the maintainer's machine alone.
+
+  So the headline Claude feature works only from a source checkout.
+
+  Fix: install the bridge (e.g. /usr/libexec/ants-terminal/mcp-bridge.py,
+  and inside the AppImage), then either register it from the app (a Settings
+  button that runs `claude mcp add`) or document the one command with the
+  installed path. python3 becomes a runtime dependency of the packages.
+  **Layman:** People who install Ants from a package or the AppImage have no way to hook Claude Code up to its money-saving tools.
+  Kind: fix.
+  Source: in-session-2026-09-15 (README getting-started check).
+
 ### Colony — multi-session orchestration (user-request 2026-09-06)
 
 Run several Claude Code sessions on one project at once: an orchestrator deals
