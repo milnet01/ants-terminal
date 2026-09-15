@@ -1725,6 +1725,8 @@ if(ANTS_TESTS)
                 # ANTS-5029 — prompt regions follow scrollback eviction;
                 # an unsigned re-run confirms (source-scrape).
                 tests/features/osc133_rerun_safety/test_osc133_rerun_safety.cpp
+                # ANTS-5078 — the terminal's exports report failure (source-scrape).
+                tests/features/terminalwidget_export_safety/test_terminalwidget_export_safety.cpp
                 # ANTS-5031 — a refused session never costs the good file.
                 tests/features/session_restore_refusal/test_session_restore_refusal.cpp
                 # ANTS-5106 — per-process session temp files; checked tab-order write.

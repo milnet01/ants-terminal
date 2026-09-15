@@ -43,7 +43,7 @@
 #include <QDateTime>
 #include <QFileInfo>
 #include <QFileDialog>
-#include <QTextStream>
+#include <QSaveFile>
 #include <QJsonObject>
 #include <QSplitter>
 #include <QPlainTextEdit>
@@ -5662,7 +5662,9 @@ void TerminalWidget::contextMenuEvent(QContextMenuEvent *event) {
             if (path.isEmpty()) return;
             // Look the block up after the dialog, whose event loop can shift it.
             const int idx = m_grid->promptRegionIndexById(blockId);
-            if (idx >= 0) exportBlockAsCast(idx, path);
+            // ANTS-5078 — a block that is gone, or a write that fails, is reported.
+            if (idx < 0 || !exportBlockAsCast(idx, path))
+                emit captureFailed(tr("Share Block to %1 failed").arg(path));
         });
     }
 
@@ -5671,25 +5673,26 @@ void TerminalWidget::contextMenuEvent(QContextMenuEvent *event) {
     QAction *exportText = menu.addAction("Export Scrollback as Text...");
     connect(exportText, &QAction::triggered, this, [this]() {
         QString path = QFileDialog::getSaveFileName(this, "Export Scrollback", QString(), "Text Files (*.txt)");
-        if (!path.isEmpty()) {
-            QFile file(path);
-            if (file.open(QIODevice::WriteOnly | QIODevice::Text)) {
-                QTextStream stream(&file);
-                stream << exportAsText();
-            }
-        }
+        if (path.isEmpty()) return;
+        // ANTS-5078 — QSaveFile: a failed open, write or commit leaves the old
+        // file alone and is reported instead of passing silently.
+        QSaveFile file(path);
+        const QByteArray bytes = exportAsText().toUtf8();
+        if (!file.open(QIODevice::WriteOnly | QIODevice::Text)
+            || file.write(bytes) != bytes.size() || !file.commit())
+            emit captureFailed(tr("Export to %1 failed").arg(path));
     });
 
     QAction *exportHtml = menu.addAction("Export Scrollback as HTML...");
     connect(exportHtml, &QAction::triggered, this, [this]() {
         QString path = QFileDialog::getSaveFileName(this, "Export Scrollback", QString(), "HTML Files (*.html)");
-        if (!path.isEmpty()) {
-            QFile file(path);
-            if (file.open(QIODevice::WriteOnly | QIODevice::Text)) {
-                QTextStream stream(&file);
-                stream << exportAsHtml();
-            }
-        }
+        if (path.isEmpty()) return;
+        // ANTS-5078 — as the text export above.
+        QSaveFile file(path);
+        const QByteArray bytes = exportAsHtml().toUtf8();
+        if (!file.open(QIODevice::WriteOnly | QIODevice::Text)
+            || file.write(bytes) != bytes.size() || !file.commit())
+            emit captureFailed(tr("Export to %1 failed").arg(path));
     });
 
     menu.exec(event->globalPos());
@@ -6412,9 +6415,15 @@ bool TerminalWidget::exportBlockAsCast(int index, const QString &path) const {
     if (index < 0 || index >= static_cast<int>(regions.size())) return false;
     const PromptRegion &pr = regions[index];
 
-    QFile file(path);
-    if (!file.open(QIODevice::WriteOnly | QIODevice::Truncate | QIODevice::Text))
+    // ANTS-5078 — QSaveFile: the target is replaced only when every write and
+    // the commit succeed, so a failure leaves no truncated file.
+    QSaveFile file(path);
+    if (!file.open(QIODevice::WriteOnly | QIODevice::Text))
         return false;
+    bool ok = true;
+    const auto put = [&file, &ok](const QByteArray &b) {
+        ok = ok && file.write(b) == b.size();
+    };
 
     // Asciicast v2: one header object + one JSON array per output event.
     // Spec: https://docs.asciinema.org/manual/asciicast/v2/
@@ -6431,8 +6440,8 @@ bool TerminalWidget::exportBlockAsCast(int index, const QString &path) const {
     QString header = QString(
         R"({"version": 2, "width": %1, "height": %2, "timestamp": %3, "env": {"TERM": "xterm-256color"}})"
     ).arg(m_grid->cols()).arg(m_grid->rows()).arg(timestamp);
-    file.write(header.toUtf8());
-    file.write("\n");
+    put(header.toUtf8());
+    put("\n");
 
     auto escapeJson = [](const QString &s) {
         QString out;
@@ -6461,8 +6470,8 @@ bool TerminalWidget::exportBlockAsCast(int index, const QString &path) const {
     // t=0: command echo (with trailing \r\n so the shell prompt look is realistic)
     if (!cmd.isEmpty()) {
         QString evt = QString(R"([0.0, "o", "%1\r\n"])").arg(escapeJson(cmd));
-        file.write(evt.toUtf8());
-        file.write("\n");
+        put(evt.toUtf8());
+        put("\n");
     }
 
     // t=duration: output dump
@@ -6472,10 +6481,9 @@ bool TerminalWidget::exportBlockAsCast(int index, const QString &path) const {
     if (!output.isEmpty()) {
         QString evt = QString(R"([%1, "o", "%2"])")
             .arg(durSec, 0, 'f', 3).arg(escapeJson(output));
-        file.write(evt.toUtf8());
-        file.write("\n");
+        put(evt.toUtf8());
+        put("\n");
     }
 
-    file.close();
-    return true;
+    return ok && file.commit();
 }

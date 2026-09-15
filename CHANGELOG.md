@@ -95,6 +95,12 @@ for security-relevant changes.
 
 ### Fixed
 
+- **Exporting from the terminal's right-click menu tells you when it fails** (ANTS-5078)
+  Export Scrollback as Text or HTML and Share Block could leave a
+  half-written file on a full disk and say nothing. They now write to a
+  temporary file that replaces the old one only when everything was
+  written, and show a message in the status bar when an export fails.
+
 - **Right-click command actions always act on the command you clicked** (ANTS-5078)
   With shell integration, right-clicking a command offers Copy, Re-run,
   Fold and Share. If new output arrived while that menu or the Share

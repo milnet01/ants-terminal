@@ -8036,6 +8036,16 @@ extends an existing item, that item carries it instead.
   MainWindow's export.
   Not started: exports on the GUI thread (medium), invalidateSpanCaches
   mid-batch, autocomplete matching the prompt.
+  Progress (2026-09-15): shipped the exports QSaveFile low. The context
+  menu's text and HTML exports write through QSaveFile, check the write
+  and commit(), and emit captureFailed on failure; exportBlockAsCast
+  writes through QSaveFile and returns false unless every write and
+  commit() succeed, and Share Block reports that. captureFailed's comment
+  now covers any file the user asked for. Test:
+  terminalwidget_export_safety INV-1..4, red first; full default suite
+  4836/4836.
+  Still open: exports on the GUI thread (medium), invalidateSpanCaches
+  mid-batch, autocomplete matching the prompt.
   **Layman:** Smaller fixes to copying, exporting and searching in the terminal, which can freeze on very long histories.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lane terminal-widget-b).
