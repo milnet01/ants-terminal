@@ -39,6 +39,10 @@ QString defaultTrustFilePath() {
     return cfgRoot + QStringLiteral("/verify-trust.json");
 }
 
+QString nowIso() {
+    return QDateTime::currentDateTimeUtc().toString(Qt::ISODate);
+}
+
 }  // namespace
 
 FilePersistedTrustClient::FilePersistedTrustClient()
@@ -114,7 +118,9 @@ Decision FilePersistedTrustClient::prompt(const QString &projectPath,
 bool FilePersistedTrustClient::addTrustedSha(const QString &shaHex,
                                               const QString &note) {
     if (shaHex.isEmpty()) return false;
-    m_trustedShas.insert(shaHex, note);
+    ShaEntry &e = m_trustedShas[shaHex];
+    e.note = note;
+    if (e.firstTrusted.isEmpty()) e.firstTrusted = nowIso();
     return saveToDisk();
 }
 
@@ -125,10 +131,10 @@ bool FilePersistedTrustClient::addTrustedRepo(
     if (canonicalProjectPath.isEmpty() || currentShaHex.isEmpty()) {
         return false;
     }
-    RepoEntry e;
+    RepoEntry &e = m_trustedRepos[canonicalProjectPath];
     e.shaHex = currentShaHex;
     e.untilShaChanges = untilShaChanges;
-    m_trustedRepos.insert(canonicalProjectPath, e);
+    if (e.firstTrusted.isEmpty()) e.firstTrusted = nowIso();
     return saveToDisk();
 }
 
@@ -142,6 +148,17 @@ bool FilePersistedTrustClient::loadFromDisk() {
         // Absent or unreadable — start with an empty trust set.
         // Next addTrusted* call will create the file.
         return true;
+    }
+    // ANTS-5082 — ANTS-1337 § 6: a trust file other users can read or
+    // write is still honoured, but said so; saveToDisk narrows it to 0600.
+    const QFileDevice::Permissions others =
+        QFileDevice::ReadGroup | QFileDevice::WriteGroup
+        | QFileDevice::ReadOther | QFileDevice::WriteOther;
+    if (f.permissions() & others) {
+        std::fprintf(stderr,
+            "verifytrust: %s can be read or written by other users — "
+            "honouring it; the next save narrows it to 0600\n",
+            qUtf8Printable(m_path));
     }
     const QByteArray bytes = f.readAll();
     f.close();
@@ -194,8 +211,10 @@ bool FilePersistedTrustClient::loadFromDisk() {
                                 .toObject();
     for (auto it = shas.constBegin(); it != shas.constEnd(); ++it) {
         const QJsonObject meta = it.value().toObject();
-        m_trustedShas.insert(it.key(),
-            meta.value(QStringLiteral("note")).toString());
+        ShaEntry e;
+        e.note = meta.value(QStringLiteral("note")).toString();
+        e.firstTrusted = meta.value(QStringLiteral("first_trusted")).toString();
+        m_trustedShas.insert(it.key(), e);
     }
     const QJsonObject repos = root.value(QStringLiteral("trusted_repos"))
                                  .toObject();
@@ -205,6 +224,7 @@ bool FilePersistedTrustClient::loadFromDisk() {
         e.shaHex = meta.value(QStringLiteral("sha")).toString();
         e.untilShaChanges =
             meta.value(QStringLiteral("until_sha_changes")).toBool(true);
+        e.firstTrusted = meta.value(QStringLiteral("first_trusted")).toString();
         m_trustedRepos.insert(it.key(), e);
     }
     return true;
@@ -231,14 +251,14 @@ bool FilePersistedTrustClient::saveToDisk() const {
     root[QStringLiteral("version")] = kSchemaVersion;
 
     QJsonObject shas;
-    const QString now =
-        QDateTime::currentDateTimeUtc().toString(Qt::ISODate);
     for (auto it = m_trustedShas.constBegin();
          it != m_trustedShas.constEnd(); ++it) {
         QJsonObject meta;
-        meta[QStringLiteral("first_trusted")] = now;
-        if (!it.value().isEmpty()) {
-            meta[QStringLiteral("note")] = it.value();
+        if (!it->firstTrusted.isEmpty()) {
+            meta[QStringLiteral("first_trusted")] = it->firstTrusted;
+        }
+        if (!it->note.isEmpty()) {
+            meta[QStringLiteral("note")] = it->note;
         }
         shas[it.key()] = meta;
     }
@@ -248,7 +268,9 @@ bool FilePersistedTrustClient::saveToDisk() const {
     for (auto it = m_trustedRepos.constBegin();
          it != m_trustedRepos.constEnd(); ++it) {
         QJsonObject meta;
-        meta[QStringLiteral("first_trusted")] = now;
+        if (!it->firstTrusted.isEmpty()) {
+            meta[QStringLiteral("first_trusted")] = it->firstTrusted;
+        }
         meta[QStringLiteral("sha")] = it->shaHex;
         meta[QStringLiteral("until_sha_changes")] = it->untilShaChanges;
         repos[it.key()] = meta;

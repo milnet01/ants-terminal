@@ -8072,7 +8072,7 @@ extends an existing item, that item carries it instead.
   Source: code-quality-review-2026-09-11 perf pass (lane mainwindow-a).
   Lanes: mainwindow.
 
-- 📋 [ANTS-5080] **Performance pass findings for the main window's MCP providers and status probes (medium and low).**
+- ✅ [ANTS-5080] **Performance pass findings for the main window's MCP providers and status probes (medium and low).**
   The get_git_status bound and its false clean status are on ANTS-4686.
   Medium:
   - get_scrollback has no line cap and runs on the GUI thread; its
@@ -8139,6 +8139,9 @@ extends an existing item, that item carries it instead.
   first; full default suite green. The get_scrollback cap is split out
   as ANTS-5219, with its own spec. That leaves nothing open on this item
   except ANTS-5219's work.
+  Resolved (2026-09-15): the last open part, the get_scrollback cap, shipped
+  as ANTS-5219 (08f9808b, full default suite 4830/4830). Every finding on
+  this item is now shipped or closed by decision.
   **Layman:** Smaller fixes to how the main window answers Claude and checks git, including a stuck Review Changes button.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lane mainwindow-b).
@@ -8266,6 +8269,34 @@ extends an existing item, that item carries it instead.
   - Modality: not a breach as written. Section 4.3 says the modal blocks that one MCP request while other tabs keep running; exec() spins its own loop so shells keep running. Close this part unless the user reads it differently.
   - first_trusted: saveToDisk writes now for every entry on every save, so the original trust date is lost; carry each entry's date from loadFromDisk.
   Existing test to extend: tests/features/verify_trust_modal_gui_thread (a RecordingModalClient subclass overrides showPrompt).
+  Decided (2026-09-15, user):
+  - Modality: not a breach. Close; exec() keeps shells and other tabs
+    running, which is what ANTS-1337 section 4.3 asks.
+  - DialogShowTracer and ChromeGuard Q_OBJECT lows: close, no change.
+    Neither uses signals, slots or qobject_cast (no qobject_cast,
+    findChild or staticMetaObject use found); ChromeGuard's comment says
+    no Q_OBJECT is needed on purpose.
+  - tr() in the About dialog: close for now. Ants ships no translations
+    (no QTranslator or qt_add_translations), so tr() changes nothing a
+    user sees; a translation pass would cover every screen.
+  - Second copy of reports: leave open for later.
+  Building now: the trust prompt's gates line and re-prompt checkbox, the
+  world-readable trust file warning on read, and first_trusted kept
+  across saves.
+  The About dialog tr() low folds into ANTS-1080 (i18n scaffolding),
+  which the user asked for again on 2026-09-15.
+  Progress (2026-09-15): shipped the trust prompt medium's two real gaps
+  and the first_trusted low, plus ANTS-1337 section 6's warning.
+  - showPrompt shows "Gates: N — names" (gateNames, shared with
+    commandPreview) and a re-prompt checkbox, checked by default, whose
+    state "Trust this repo" passes as untilShaChanges.
+  - ShaEntry and RepoEntry carry firstTrusted: stamped when added, read
+    on load, kept on re-trust and on every save.
+  - loadFromDisk warns on stderr when group or others can read or write
+    the trust file, and still honours it.
+  Tests: verify_trust_gate TF-7, TF-8, MD-1, MD-2, red first (six checks);
+  full default suite green. Still open: the review view's second copy of
+  each report.
   **Layman:** Smaller dialog fixes, including a review button that can undo its own error reporting and a trust file that can be lost.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lane dialog-chrome-theme).
@@ -78388,6 +78419,12 @@ here.)
   Source: planned.
   User-requested again 2026-06-12 ("support for multiple languages") — confirms appetite for UI localisation. Scope stands: wrap UI strings in tr(), wire lupdate/lrelease, ship .qm under assets/i18n/, seed ES/FR/DE. (RTL text is the separate [[ANTS-1081]].)
   Status correction (2026-06-17): the "zero tr() usage" line is stale — src/ already has ~222 tr() call-sites (partial groundwork). What is genuinely absent is the RUNTIME machinery: no QTranslator / installTranslator wiring, no lupdate/lrelease step, and no shipped .qm files (assets/i18n/ does not exist), so the app still only renders English. Remaining scope: complete tr() coverage, wire QTranslator + a language setting, add lupdate/lrelease to the build, ship .qm for the ES/FR/DE seed. User re-confirmed appetite 2026-06-17 ("make Ants Terminal usable to as wide a base as possible").
+  User-requested again (2026-09-15): "I want the terminal to be
+  multilingual." Scope unchanged. Checked the same day: the runtime
+  machinery is still absent (no QTranslator, installTranslator or
+  qt_add_translations anywhere in the tree). ANTS-5082's About dialog
+  tr() low was closed in favour of this item, since a translation pass
+  covers every screen.
 
 - 💭 [ANTS-1081] **Right-to-left text support.**
   Bidirectional text in the grid.

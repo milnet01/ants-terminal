@@ -144,12 +144,20 @@ private:
     // downgrade-clobber the newer file.
     bool m_futureSchema = false;
 
-    // Trusted SHA → metadata (first-trusted ISO8601 + optional note).
-    QHash<QString, QString> m_trustedShas;
-    // Trusted canonical repo path → (SHA pin, untilShaChanges flag).
+    // Trusted SHA → optional note + the date it was first trusted.
+    // ANTS-5082 — firstTrusted is stamped when the entry is added and kept
+    // across saves; empty only for a loaded entry whose file had none.
+    struct ShaEntry {
+        QString note;
+        QString firstTrusted;  // ISO 8601
+    };
+    QHash<QString, ShaEntry> m_trustedShas;
+    // Trusted canonical repo path → (SHA pin, untilShaChanges flag,
+    // first-trusted date, as for ShaEntry).
     struct RepoEntry {
         QString shaHex;
         bool    untilShaChanges = true;
+        QString firstTrusted;  // ISO 8601
     };
     QHash<QString, RepoEntry> m_trustedRepos;
 

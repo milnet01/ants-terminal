@@ -19,12 +19,15 @@
 #include <QFile>
 #include <QFileInfo>
 #include <QJsonDocument>
+#include <QJsonObject>
 #include <QJsonParseError>
 #include <QString>
 #include <QTemporaryDir>
 
 #include <sys/stat.h>
+#include <unistd.h>
 
+#include <cstdio>
 #include <string>
 
 #include <gtest/gtest.h>
@@ -335,6 +338,122 @@ void testTrustFile() {
                "TF-4 future-schema file left byte-identical "
                "(no downgrade-clobber)");
     }
+
+    // TF-7 (ANTS-5082) — first_trusted is the date an entry was first
+    // trusted: a later save keeps it, and only a new entry gets a new date.
+    {
+        QTemporaryDir tmp; ASSERT_TRUE(tmp.isValid());
+        const QString path =
+            tmp.path() + QStringLiteral("/verify-trust.json");
+        const QString oldSha(64, QLatin1Char('a'));
+        const QByteArray seeded =
+            QByteArray("{\n  \"version\": 1,\n  \"trusted_shas\": {\"")
+            + oldSha.toLatin1()
+            + "\": {\"first_trusted\": \"2020-01-02T03:04:05Z\"}},\n"
+              "  \"trusted_repos\": {\"/old/repo\": {\"first_trusted\": "
+              "\"2021-01-02T03:04:05Z\", \"sha\": \""
+            + oldSha.toLatin1() + "\", \"until_sha_changes\": true}}\n}\n";
+        {
+            QFile f(path);
+            ASSERT_TRUE(f.open(QIODevice::WriteOnly | QIODevice::Truncate));
+            ASSERT_GT(f.write(seeded), 0);
+        }
+
+        VerifyTrust::FilePersistedTrustClient client(path);
+        const QString newSha(64, QLatin1Char('c'));
+        ASSERT_TRUE(client.addTrustedSha(newSha));
+        ASSERT_TRUE(client.addTrustedSha(oldSha, QStringLiteral("again")));
+
+        QFile f(path);
+        ASSERT_TRUE(f.open(QIODevice::ReadOnly));
+        const QJsonObject root = QJsonDocument::fromJson(f.readAll()).object();
+        const QJsonObject shas =
+            root.value(QStringLiteral("trusted_shas")).toObject();
+        const QString firstTrusted = QStringLiteral("first_trusted");
+        expect(shas.value(oldSha).toObject().value(firstTrusted).toString()
+                   == QStringLiteral("2020-01-02T03:04:05Z"),
+               "TF-7 an existing SHA keeps its first_trusted date");
+        expect(root.value(QStringLiteral("trusted_repos")).toObject()
+                       .value(QStringLiteral("/old/repo")).toObject()
+                       .value(firstTrusted).toString()
+                   == QStringLiteral("2021-01-02T03:04:05Z"),
+               "TF-7 an existing repo keeps its first_trusted date");
+        expect(!shas.value(newSha).toObject().value(firstTrusted)
+                    .toString().isEmpty(),
+               "TF-7 a new SHA gets a first_trusted date");
+    }
+
+    // TF-8 (ANTS-5082) — ANTS-1337 § 6: a trust file other users can read
+    // is warned about on load, and its entries are still honoured.
+    {
+        QTemporaryDir tmp; ASSERT_TRUE(tmp.isValid());
+        const QString path =
+            tmp.path() + QStringLiteral("/verify-trust.json");
+        const QByteArray cfgBytes = "{\"build\":{\"command\":\"echo tf8\"}}";
+        const QString shaHex = QString::fromLatin1(
+            QCryptographicHash::hash(cfgBytes,
+                                     QCryptographicHash::Sha256).toHex());
+        {
+            QFile f(path);
+            ASSERT_TRUE(f.open(QIODevice::WriteOnly | QIODevice::Truncate));
+            ASSERT_GT(f.write(QByteArray("{\"version\":1,\"trusted_shas\":{\"")
+                              + shaHex.toLatin1() + "\":{}}}"), 0);
+        }
+        ASSERT_EQ(0, ::chmod(path.toLocal8Bit().constData(), 0644));
+
+        QFile cap(tmp.path() + QStringLiteral("/stderr.txt"));
+        ASSERT_TRUE(cap.open(QIODevice::WriteOnly));
+        std::fflush(stderr);
+        const int savedErr = ::dup(2);
+        ASSERT_GE(savedErr, 0);
+        // No ASSERT until stderr is restored.
+        ::dup2(cap.handle(), 2);
+        bool trusted = false;
+        {
+            VerifyTrust::FilePersistedTrustClient client(path);
+            trusted = client.outcomeForConfig(QStringLiteral("/tf8/proj"),
+                                              cfgBytes).outcome
+                      == VerifyTrust::Outcome::Trusted;
+        }
+        std::fflush(stderr);
+        ::dup2(savedErr, 2);
+        ::close(savedErr);
+        cap.close();
+
+        QFile logged(cap.fileName());
+        ASSERT_TRUE(logged.open(QIODevice::ReadOnly));
+        const QByteArray text = logged.readAll();
+        expect(text.contains(path.toLocal8Bit()) && text.contains("other users"),
+               "TF-8 a trust file other users can read is warned about");
+        expect(trusted, "TF-8 a trust file other users can read is still honoured");
+    }
+}
+
+// ---- MD-* trust prompt (ANTS-1337 § 4.3) ---------------------------
+// Source scrapes: the prompt is a modal QMessageBox, which a unit test
+// cannot drive.
+
+void testModalPrompt() {
+    const QString srcPath =
+        QFileInfo(QString::fromUtf8(__FILE__)).absolutePath()
+        + QStringLiteral("/../../../src/verifytrustmodal.cpp");
+    QFile sf(srcPath);
+    ASSERT_TRUE(sf.open(QIODevice::ReadOnly | QIODevice::Text))
+        << "cannot read " << srcPath.toStdString();
+    const QString code = QString::fromUtf8(sf.readAll());
+    const int s = code.indexOf(QStringLiteral("Decision ModalClient::showPrompt("));
+    ASSERT_GE(s, 0);
+    const QString body = code.mid(s);
+
+    // MD-1 — the prompt names the gates the config would run.
+    expect(body.contains(QStringLiteral("<b>Gates:</b>")),
+           "MD-1 the trust prompt shows a Gates line");
+    // MD-2 — "Trust this repo" carries a re-prompt checkbox, on by default.
+    expect(body.contains(QStringLiteral("setCheckBox("))
+               && body.contains(QStringLiteral("setChecked(true)")),
+           "MD-2 the trust prompt has a re-prompt checkbox, on by default");
+    expect(body.contains(QStringLiteral("reprompt->isChecked()")),
+           "MD-2 Trust this repo passes the checkbox's state");
 }
 
 // ---- MCP envelope wiring (Phase 2) --------------------------------
@@ -372,6 +491,7 @@ int runMain() {
     expect_reset();
     testEngine();
     testTrustFile();
+    testModalPrompt();
     testMcpWiring();
     return expect_finish();
 }

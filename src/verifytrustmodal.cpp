@@ -5,6 +5,7 @@
 
 #include "guithread.h"
 
+#include <QCheckBox>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QJsonParseError>
@@ -27,6 +28,20 @@ QString shortSha(const QString &fullHex) {
     return fullHex.left(12) + QStringLiteral("…") + fullHex.right(4);
 }
 
+// The gates VerifyEngine::parseVerifyJson runs, in its order: each key whose
+// object carries a non-empty command.
+QStringList gateNames(const QJsonObject &root) {
+    QStringList names;
+    for (const QString &gate : {QStringLiteral("build"),
+                                QStringLiteral("tests"),
+                                QStringLiteral("lint")}) {
+        if (!root.value(gate).toObject()
+                 .value(QStringLiteral("command")).toString().isEmpty())
+            names << gate;
+    }
+    return names;
+}
+
 QString commandPreview(const QByteArray &configBytes) {
     // ANTS-1763 — parse with QJsonDocument rather than a naive quote
     // scan. The previous backslash-aware scan misread a value ending in
@@ -43,15 +58,10 @@ QString commandPreview(const QByteArray &configBytes) {
         return QStringLiteral("(preview unavailable — malformed JSON)");
     }
     const QJsonObject root = doc.object();
-    QString preview;
-    for (const QString &gate : {QStringLiteral("build"),
-                                QStringLiteral("tests"),
-                                QStringLiteral("lint")}) {
-        const QString cmd = root.value(gate).toObject()
-                                .value(QStringLiteral("command")).toString();
-        if (!cmd.isEmpty()) { preview = cmd; break; }
-    }
-    if (preview.isEmpty()) return QStringLiteral("(no command field found)");
+    const QStringList gates = gateNames(root);
+    if (gates.isEmpty()) return QStringLiteral("(no command field found)");
+    QString preview = root.value(gates.first()).toObject()
+                          .value(QStringLiteral("command")).toString();
     if (preview.size() > kCommandPreviewChars) {
         preview = preview.left(kCommandPreviewChars)
                   + QStringLiteral("…");
@@ -89,6 +99,13 @@ Decision ModalClient::showPrompt(const QString &projectPath,
 
     const QString shortHex = shortSha(shaHex);
     const QString preview  = commandPreview(configBytes);
+    // ANTS-1337 § 4.3 — "Gates: N — name1, name2".
+    const QStringList gates =
+        gateNames(QJsonDocument::fromJson(configBytes).object());
+    const QString gatesLine = gates.isEmpty()
+        ? QStringLiteral("0")
+        : QStringLiteral("%1 — %2").arg(gates.size())
+              .arg(gates.join(QStringLiteral(", ")));
 
     box.setText(QObject::tr(
         "A Claude Code session in <code>%1</code> wants to run "
@@ -100,9 +117,11 @@ Decision ModalClient::showPrompt(const QString &projectPath,
     box.setInformativeText(QObject::tr(
         "<b>Repo:</b> <code>%1</code><br>"
         "<b>SHA-256:</b> <code>%2</code><br>"
-        "<b>First command preview:</b><pre>%3</pre>"
+        "<b>Gates:</b> %3<br>"
+        "<b>First command preview:</b><pre>%4</pre>"
     ).arg(projectPath.toHtmlEscaped(),
           shortHex,
+          gatesLine,
           preview.toHtmlEscaped()));
 
     // ANTS-1808 — label this accurately: %2 is the entire .ants/verify.json
@@ -124,6 +143,12 @@ Decision ModalClient::showPrompt(const QString &projectPath,
                                      QMessageBox::RejectRole);
     box.addButton(QObject::tr("Cancel"), QMessageBox::RejectRole);
     box.setDefaultButton(bDeny);
+    // ANTS-1337 § 4.3 — the sub-option of "Trust this repo", default ON: a
+    // changed verify.json asks again. The box owns the checkbox.
+    auto *reprompt = new QCheckBox(QObject::tr(
+        "Trust this repo: auto-re-prompt if the file changes"));
+    reprompt->setChecked(true);
+    box.setCheckBox(reprompt);
 
     box.exec();
     auto *clicked = box.clickedButton();
@@ -141,8 +166,7 @@ Decision ModalClient::showPrompt(const QString &projectPath,
         return {Outcome::Trusted, shaHex};
     }
     if (clicked == bTrustRepo) {
-        if (!addTrustedRepo(projectPath, shaHex,
-                            /*untilShaChanges*/ true)) {
+        if (!addTrustedRepo(projectPath, shaHex, reprompt->isChecked())) {
             return {Outcome::Headless, shaHex};
         }
         return {Outcome::Trusted, shaHex};

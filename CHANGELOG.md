@@ -95,6 +95,14 @@ for security-relevant changes.
 
 ### Fixed
 
+- **The verify-config trust prompt lists every gate and can remember a repo for good** (ANTS-5082)
+  When Claude asks to run a repo's own verify commands, the prompt now
+  lists how many gates would run and their names, and "Trust this repo"
+  has a checkbox (on by default) to ask again if the file changes. The
+  trust file keeps the date each entry was first trusted instead of
+  resetting it on every save, and Ants warns when that file can be read
+  by other users.
+
 - **Claude can no longer freeze the window by asking for a terminal's whole history** (ANTS-5219)
   Claude's scrollback tool took any line count and read all of it on the
   window's thread. It now returns at most 10,000 lines, trims to the same

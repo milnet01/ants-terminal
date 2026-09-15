@@ -46,5 +46,24 @@ callers (nullptr client) see no behavior change. Phase 2 wires
   load (trust falls closed) and `saveToDisk` no-ops so the older
   client cannot downgrade-clobber the newer file. A missing `version`
   defaults to the current schema (back-compat with hand-edits).
+- **TF-7** (ANTS-5082) `first_trusted` is the date an entry was first
+  trusted. A save keeps the date each loaded SHA and repo entry carries,
+  re-trusting an existing SHA keeps it too, and only a new entry gets a
+  new date.
+- **TF-8** (ANTS-5082, ANTS-1337 § 6) A trust file that group or other
+  users can read or write is honoured on load, and `loadFromDisk` writes a
+  warning naming the file to stderr. The next save narrows it to 0600
+  (TF-1).
 
 Phase 2 will add MD-* (modal) and MC-* (MCP envelope) tests.
+
+## Invariants pinned for the trust prompt (ANTS-5082)
+
+Source scrapes of `ModalClient::showPrompt`: the prompt is a modal
+`QMessageBox`, which a unit test cannot drive.
+
+- **MD-1** The prompt shows a `Gates:` line naming the gates the config
+  would run (ANTS-1337 § 4.3).
+- **MD-2** The prompt carries an "auto-re-prompt if the file changes"
+  checkbox, checked by default, and "Trust this repo" passes its state to
+  `addTrustedRepo` as `untilShaChanges`.
