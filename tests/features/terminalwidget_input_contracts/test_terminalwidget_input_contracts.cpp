@@ -63,7 +63,7 @@ TEST(TerminalwidgetInputContracts, SendKeyDataClearsWritesAndBroadcasts) {
     ASSERT_FALSE(body.isEmpty()) << "sendKeyData not found";
     EXPECT_TRUE(body.contains(QStringLiteral("clearSelection()")));
     EXPECT_TRUE(body.contains(QStringLiteral("ptyWrite(data)")));
-    EXPECT_TRUE(body.contains(QStringLiteral("m_broadcastCallback(this, data)")));
+    EXPECT_TRUE(body.contains(QStringLiteral("m_broadcastCallback(this, event)")));
 }
 
 // INV-3

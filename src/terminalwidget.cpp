@@ -645,14 +645,16 @@ void TerminalWidget::ptyWrite(const QByteArray &data) {
                               Q_ARG(QByteArray, data));
 }
 
-void TerminalWidget::sendKeyData(const QByteArray &data) {
+void TerminalWidget::sendKeyData(const QByteArray &data, const QKeyEvent *event) {
     // ANTS-5077 — every key that reaches the shell ends the same way: a stale
-    // selection is cleared and broadcast mode copies the bytes to the other
+    // selection is cleared and broadcast mode copies the key to the other
     // panes. Ctrl+arrows, Ctrl+letters and autocomplete used to skip both,
-    // so broadcast sent Ctrl+C to one pane only.
+    // so broadcast sent Ctrl+C to one pane only. ANTS-5224 — the event goes
+    // to the broadcast, not `data`: `data` is encoded for this terminal's
+    // modes, and a plain shell given Kitty codes runs them as commands.
     if (m_hasSelection) clearSelection();
     ptyWrite(data);
-    if (m_broadcastCallback) m_broadcastCallback(this, data);
+    if (m_broadcastCallback) m_broadcastCallback(this, event);
 }
 
 bool TerminalWidget::startShell(const QString &workDir, const QString &shell) {
@@ -1921,8 +1923,6 @@ void TerminalWidget::keyPressEvent(QKeyEvent *event) {
     m_cursorBlinkOn = true;
     m_cursorTimer.start();
 
-    QByteArray data;
-
     // Ctrl+Shift+V -- paste
     if (key == Qt::Key_V && (mods & Qt::ControlModifier) && (mods & Qt::ShiftModifier)) {
         const QClipboard *clipboard = QApplication::clipboard();
@@ -2154,78 +2154,14 @@ void TerminalWidget::keyPressEvent(QKeyEvent *event) {
         return;
     }
 
-    // Shift+Enter — unconditional literal-newline escape, handled BEFORE
-    // the Kitty keyboard protocol encoder. The contract is: Shift+Enter
-    // always produces an in-buffer newline, never a submit, and never
-    // anything else — regardless of what escape sequence the TUI running
-    // inside the PTY might otherwise map CSI 13;2u to.
-    //
-    // Regression origin: some TUIs (e.g. Claude Code v2.1+ when the
-    // clipboard carries an image) map Kitty-encoded Shift+Enter *and*
-    // the readline-quoted-insert byte `\x16` to "paste clipboard"
-    // rather than "insert newline". The 0.6.23 fix (send `\x16\n`) held
-    // up in bash but broke again in Claude Code because Claude's Ink-
-    // based TUI treats `\x16` itself as paste. Fixing that at the TUI
-    // layer isn't reachable from here.
-    //
-    // Defence: when the app has bracketed-paste mode on (DECSET 2004),
-    // wrap the literal LF in bracketed-paste markers — this is the
-    // universally-honored "here is pasted text, treat it as content"
-    // signal. Ink / Claude Code reads that as a literal newline;
-    // readline (with enable-bracketed-paste, the default in bash 4.4+)
-    // also inserts the LF literally without submitting.
-    //
-    // When bracketed-paste is off (pure raw shell, legacy apps),
-    // fall back to `\x16\n` — still the best bash/readline escape
-    // hatch outside bracketed-paste mode.
-    if ((key == Qt::Key_Return || key == Qt::Key_Enter) && (mods & Qt::ShiftModifier)
-        && !(mods & Qt::ControlModifier)) {
-        QByteArray seq;
-        if (m_grid && m_grid->bracketedPaste()) {
-            // 13 bytes: ESC [ 2 0 0 ~ \n ESC [ 2 0 1 ~ — use QByteArrayLiteral
-            // so the size is derived from the string literal. A hand-coded
-            // length here (the 0.6.26 bug) truncated to 8 bytes, dropping
-            // the [201~ end-paste marker and leaving an orphan ESC that
-            // wedged the shell in bracketed-paste mode and ate the next
-            // keystroke — manifesting as "tab freezes after Shift+Enter".
-            seq = QByteArrayLiteral("\x1B[200~\n\x1B[201~");
-        } else {
-            seq = QByteArrayLiteral("\x16\n");
-        }
-        sendKeyData(seq);
-        return;
-    }
-
-    // Kitty keyboard protocol — must be checked BEFORE legacy Ctrl+key handlers
-    // so that Ctrl+A-Z, Ctrl+arrows etc. are properly encoded.
-    if (m_grid->kittyKeyFlags() > 0) {
-        QByteArray kittyData = encodeKittyKey(event);
-        if (!kittyData.isEmpty()) {
-            sendKeyData(kittyData);
+    // Shift+Enter, the Kitty keyboard protocol and the Ctrl combinations
+    // encode ahead of autocomplete and the legacy keys (encodeEarlyKey).
+    {
+        const QByteArray early = encodeEarlyKey(event);
+        if (!early.isEmpty()) {
+            sendKeyData(early, event);
             return;
         }
-        // Fall through to legacy encoding for keys not handled by Kitty
-    }
-
-    // Ctrl+arrow keys — word movement (xterm modifier encoding: CSI 1;5 X)
-    if ((mods & Qt::ControlModifier) && !(mods & Qt::ShiftModifier)) {
-        if (key == Qt::Key_Left)  { sendKeyData("\x1B[1;5D"); return; }
-        if (key == Qt::Key_Right) { sendKeyData("\x1B[1;5C"); return; }
-        if (key == Qt::Key_Up)    { sendKeyData("\x1B[1;5A"); return; }
-        if (key == Qt::Key_Down)  { sendKeyData("\x1B[1;5B"); return; }
-    }
-
-    // Ctrl+key combinations
-    if (mods & Qt::ControlModifier && !(mods & Qt::ShiftModifier)) {
-        if (key >= Qt::Key_A && key <= Qt::Key_Z) {
-            char ch = static_cast<char>(key - Qt::Key_A + 1);
-            data.append(ch);
-            sendKeyData(data);
-            return;
-        }
-        if (key == Qt::Key_BracketLeft) { data = "\x1B"; sendKeyData(data); return; }
-        if (key == Qt::Key_Backslash)   { data = "\x1C"; sendKeyData(data); return; }
-        if (key == Qt::Key_BracketRight){ data = "\x1D"; sendKeyData(data); return; }
     }
 
     // Accept autocomplete suggestion with Right arrow (only when suggestion is showing)
@@ -2236,7 +2172,7 @@ void TerminalWidget::keyPressEvent(QKeyEvent *event) {
         int cursorCol = m_grid->cursorCol();
         const Cell &nextCell = cellAtGlobal(cursorLine, cursorCol);
         if (nextCell.codepoint == ' ' || nextCell.codepoint == 0) {
-            sendKeyData(m_currentSuggestion.toUtf8());
+            sendKeyData(m_currentSuggestion.toUtf8(), event);
             m_currentSuggestion.clear();
             update();
             return;
@@ -2250,103 +2186,27 @@ void TerminalWidget::keyPressEvent(QKeyEvent *event) {
         m_currentSuggestion.clear();
     }
 
-    // Special keys (legacy encoding)
-    switch (key) {
-    case Qt::Key_Return:
-    case Qt::Key_Enter:
-        data = "\r";
-        break;
-    case Qt::Key_Backspace:
-        data = "\x7F";
-        break;
-    case Qt::Key_Tab:
-        data = "\t";
-        break;
-    case Qt::Key_Backtab:
-        data = "\x1B[Z";
-        break;
-    case Qt::Key_Escape:
-        data = "\x1B";
-        break;
-    case Qt::Key_Up:
-        data = m_grid->applicationCursorKeys() ? "\x1BOA" : "\x1B[A";
-        break;
-    case Qt::Key_Down:
-        data = m_grid->applicationCursorKeys() ? "\x1BOB" : "\x1B[B";
-        break;
-    case Qt::Key_Right:
-        data = m_grid->applicationCursorKeys() ? "\x1BOC" : "\x1B[C";
-        break;
-    case Qt::Key_Left:
-        data = m_grid->applicationCursorKeys() ? "\x1BOD" : "\x1B[D";
-        break;
-    case Qt::Key_Home:
-        if (mods & Qt::ShiftModifier) {
+    // Shift+Home/End/PageUp/PageDown scroll the view; they never reach the shell.
+    if ((mods & Qt::ShiftModifier)
+        && (key == Qt::Key_Home || key == Qt::Key_End
+            || key == Qt::Key_PageUp || key == Qt::Key_PageDown)) {
+        if (key == Qt::Key_Home)
             m_scrollOffset = m_grid->scrollbackSize();
-            updateScrollBar();
-            update();
-            return;
-        }
-        data = m_grid->applicationCursorKeys() ? "\x1BOH" : "\x1B[H";
-        break;
-    case Qt::Key_End:
-        if (mods & Qt::ShiftModifier) {
+        else if (key == Qt::Key_End)
             m_scrollOffset = 0;
-            updateScrollBar();
-            update();
-            return;
-        }
-        data = m_grid->applicationCursorKeys() ? "\x1BOF" : "\x1B[F";
-        break;
-    case Qt::Key_Insert:
-        data = "\x1B[2~";
-        break;
-    case Qt::Key_Delete:
-        data = "\x1B[3~";
-        break;
-    case Qt::Key_PageUp:
-        if (mods & Qt::ShiftModifier) {
+        else if (key == Qt::Key_PageUp)
             m_scrollOffset = std::min(m_scrollOffset + m_grid->rows(),
-                                       m_grid->scrollbackSize());
-            updateScrollBar();
-            update();
-            return;
-        }
-        data = "\x1B[5~";
-        break;
-    case Qt::Key_PageDown:
-        if (mods & Qt::ShiftModifier) {
+                                      m_grid->scrollbackSize());
+        else
             m_scrollOffset = std::max(m_scrollOffset - m_grid->rows(), 0);
-            updateScrollBar();
-            update();
-            return;
-        }
-        data = "\x1B[6~";
-        break;
-    case Qt::Key_F1:  data = "\x1BOP"; break;
-    case Qt::Key_F2:  data = "\x1BOQ"; break;
-    case Qt::Key_F3:  data = "\x1BOR"; break;
-    case Qt::Key_F4:  data = "\x1BOS"; break;
-    case Qt::Key_F5:  data = "\x1B[15~"; break;
-    case Qt::Key_F6:  data = "\x1B[17~"; break;
-    case Qt::Key_F7:  data = "\x1B[18~"; break;
-    case Qt::Key_F8:  data = "\x1B[19~"; break;
-    case Qt::Key_F9:  data = "\x1B[20~"; break;
-    case Qt::Key_F10: data = "\x1B[21~"; break;
-    case Qt::Key_F11: data = "\x1B[23~"; break;
-    case Qt::Key_F12: data = "\x1B[24~"; break;
-    default:
-        {
-            QString text = event->text();
-            if (!text.isEmpty()) {
-                data = text.toUtf8();
-            }
-        }
-        break;
+        updateScrollBar();
+        update();
+        return;
     }
 
+    const QByteArray data = encodeLegacyKey(event);
     if (!data.isEmpty() && hasPty()) {
-        sendKeyData(data);
+        sendKeyData(data, event);
     }
 }
 
@@ -3068,7 +2928,118 @@ void TerminalWidget::performPaste(const QByteArray &data) {
                               Q_ARG(QByteArray, payload));
 }
 
-QByteArray TerminalWidget::encodeKittyKey(QKeyEvent *event) const {
+// ANTS-5224 — encodeKey and its halves sit below keyPressEvent so the file
+// keeps the Ctrl+Shift+Enter scratchpad handler ahead of the Shift+Enter
+// sequence (tests/features/shift_enter_bracketed_paste reads that order).
+QByteArray TerminalWidget::encodeKey(const QKeyEvent *event) const {
+    const QByteArray early = encodeEarlyKey(event);
+    return early.isEmpty() ? encodeLegacyKey(event) : early;
+}
+
+QByteArray TerminalWidget::encodeEarlyKey(const QKeyEvent *event) const {
+    const int key = event->key();
+    const Qt::KeyboardModifiers mods = event->modifiers();
+
+    // Shift+Enter — unconditional literal-newline escape, handled BEFORE
+    // the Kitty keyboard protocol encoder. The contract is: Shift+Enter
+    // always produces an in-buffer newline, never a submit, and never
+    // anything else — regardless of what escape sequence the TUI running
+    // inside the PTY might otherwise map CSI 13;2u to.
+    //
+    // Regression origin: some TUIs (e.g. Claude Code v2.1+ when the
+    // clipboard carries an image) map Kitty-encoded Shift+Enter *and*
+    // the readline-quoted-insert byte `\x16` to "paste clipboard"
+    // rather than "insert newline". The 0.6.23 fix (send `\x16\n`) held
+    // up in bash but broke again in Claude Code because Claude's Ink-
+    // based TUI treats `\x16` itself as paste. Fixing that at the TUI
+    // layer isn't reachable from here.
+    //
+    // Defence: when the app has bracketed-paste mode on (DECSET 2004),
+    // wrap the literal LF in bracketed-paste markers — this is the
+    // universally-honored "here is pasted text, treat it as content"
+    // signal. Ink / Claude Code reads that as a literal newline;
+    // readline (with enable-bracketed-paste, the default in bash 4.4+)
+    // also inserts the LF literally without submitting.
+    //
+    // When bracketed-paste is off (pure raw shell, legacy apps),
+    // fall back to `\x16\n` — still the best bash/readline escape
+    // hatch outside bracketed-paste mode.
+    if ((key == Qt::Key_Return || key == Qt::Key_Enter) && (mods & Qt::ShiftModifier)
+        && !(mods & Qt::ControlModifier)) {
+        if (m_grid && m_grid->bracketedPaste()) {
+            // 13 bytes: ESC [ 2 0 0 ~ \n ESC [ 2 0 1 ~ — use QByteArrayLiteral
+            // so the size is derived from the string literal. A hand-coded
+            // length here (the 0.6.26 bug) truncated to 8 bytes, dropping
+            // the [201~ end-paste marker and leaving an orphan ESC that
+            // wedged the shell in bracketed-paste mode and ate the next
+            // keystroke — manifesting as "tab freezes after Shift+Enter".
+            return QByteArrayLiteral("\x1B[200~\n\x1B[201~");
+        }
+        return QByteArrayLiteral("\x16\n");
+    }
+
+    // Kitty keyboard protocol — must be checked BEFORE legacy Ctrl+key handlers
+    // so that Ctrl+A-Z, Ctrl+arrows etc. are properly encoded.
+    if (m_grid->kittyKeyFlags() > 0) {
+        QByteArray kittyData = encodeKittyKey(event);
+        if (!kittyData.isEmpty()) return kittyData;
+        // Fall through to legacy encoding for keys not handled by Kitty
+    }
+
+    if ((mods & Qt::ControlModifier) && !(mods & Qt::ShiftModifier)) {
+        // Ctrl+arrow keys — word movement (xterm modifier encoding: CSI 1;5 X)
+        if (key == Qt::Key_Left)  return QByteArrayLiteral("\x1B[1;5D");
+        if (key == Qt::Key_Right) return QByteArrayLiteral("\x1B[1;5C");
+        if (key == Qt::Key_Up)    return QByteArrayLiteral("\x1B[1;5A");
+        if (key == Qt::Key_Down)  return QByteArrayLiteral("\x1B[1;5B");
+        // Ctrl+key combinations
+        if (key >= Qt::Key_A && key <= Qt::Key_Z)
+            return QByteArray(1, static_cast<char>(key - Qt::Key_A + 1));
+        if (key == Qt::Key_BracketLeft)  return QByteArrayLiteral("\x1B");
+        if (key == Qt::Key_Backslash)    return QByteArrayLiteral("\x1C");
+        if (key == Qt::Key_BracketRight) return QByteArrayLiteral("\x1D");
+    }
+    return {};
+}
+
+QByteArray TerminalWidget::encodeLegacyKey(const QKeyEvent *event) const {
+    // Special keys (legacy encoding). Shift+Home/End/PageUp/PageDown scroll
+    // the view in keyPressEvent and never get here from the source pane.
+    const bool appCursor = m_grid->applicationCursorKeys();
+    switch (event->key()) {
+    case Qt::Key_Return:
+    case Qt::Key_Enter:     return QByteArrayLiteral("\r");
+    case Qt::Key_Backspace: return QByteArrayLiteral("\x7F");
+    case Qt::Key_Tab:       return QByteArrayLiteral("\t");
+    case Qt::Key_Backtab:   return QByteArrayLiteral("\x1B[Z");
+    case Qt::Key_Escape:    return QByteArrayLiteral("\x1B");
+    case Qt::Key_Up:    return appCursor ? QByteArrayLiteral("\x1BOA") : QByteArrayLiteral("\x1B[A");
+    case Qt::Key_Down:  return appCursor ? QByteArrayLiteral("\x1BOB") : QByteArrayLiteral("\x1B[B");
+    case Qt::Key_Right: return appCursor ? QByteArrayLiteral("\x1BOC") : QByteArrayLiteral("\x1B[C");
+    case Qt::Key_Left:  return appCursor ? QByteArrayLiteral("\x1BOD") : QByteArrayLiteral("\x1B[D");
+    case Qt::Key_Home:  return appCursor ? QByteArrayLiteral("\x1BOH") : QByteArrayLiteral("\x1B[H");
+    case Qt::Key_End:   return appCursor ? QByteArrayLiteral("\x1BOF") : QByteArrayLiteral("\x1B[F");
+    case Qt::Key_Insert:   return QByteArrayLiteral("\x1B[2~");
+    case Qt::Key_Delete:   return QByteArrayLiteral("\x1B[3~");
+    case Qt::Key_PageUp:   return QByteArrayLiteral("\x1B[5~");
+    case Qt::Key_PageDown: return QByteArrayLiteral("\x1B[6~");
+    case Qt::Key_F1:  return QByteArrayLiteral("\x1BOP");
+    case Qt::Key_F2:  return QByteArrayLiteral("\x1BOQ");
+    case Qt::Key_F3:  return QByteArrayLiteral("\x1BOR");
+    case Qt::Key_F4:  return QByteArrayLiteral("\x1BOS");
+    case Qt::Key_F5:  return QByteArrayLiteral("\x1B[15~");
+    case Qt::Key_F6:  return QByteArrayLiteral("\x1B[17~");
+    case Qt::Key_F7:  return QByteArrayLiteral("\x1B[18~");
+    case Qt::Key_F8:  return QByteArrayLiteral("\x1B[19~");
+    case Qt::Key_F9:  return QByteArrayLiteral("\x1B[20~");
+    case Qt::Key_F10: return QByteArrayLiteral("\x1B[21~");
+    case Qt::Key_F11: return QByteArrayLiteral("\x1B[23~");
+    case Qt::Key_F12: return QByteArrayLiteral("\x1B[24~");
+    default:          return event->text().toUtf8();
+    }
+}
+
+QByteArray TerminalWidget::encodeKittyKey(const QKeyEvent *event) const {
     int flags = m_grid->kittyKeyFlags();
     if (flags == 0) return {};  // Legacy mode — caller handles
 

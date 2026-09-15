@@ -1263,16 +1263,6 @@ void Config::setShowCommandMarks(bool enabled) {
     save();
 }
 
-// Broadcast mode
-bool Config::broadcastMode() const {
-    return m_data.value("broadcast_mode").toBool(false);
-}
-
-void Config::setBroadcastMode(bool enabled) {
-    if (!storeIfChanged("broadcast_mode", enabled)) return;
-    save();
-}
-
 // Font family
 QString Config::fontFamily() const {
     return m_data.value("font_family").toString("");

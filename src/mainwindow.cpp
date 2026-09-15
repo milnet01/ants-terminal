@@ -742,6 +742,19 @@ MainWindow::MainWindow(bool quakeMode, bool e2eMode, QWidget *parent)
     m_repoVisibilityLabel->hide();
     statusBar()->addWidget(m_repoVisibilityLabel);
 
+    // ANTS-5223 — red chip while broadcast input is on, so a mode that copies
+    // typing into other panes is never invisible. refreshBroadcastChip()
+    // styles and shows it.
+    m_broadcastChip = new QLabel(tr("Broadcast"), this);
+    m_broadcastChip->setObjectName(QStringLiteral("broadcastChip"));
+    m_broadcastChip->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Preferred);
+    m_broadcastChip->setAccessibleName(tr("Broadcast input is on"));
+    m_broadcastChip->setToolTip(
+        tr("Typing is copied to every pane in this tab. "
+           "Turn it off under Settings → Broadcast Input."));
+    m_broadcastChip->hide();
+    statusBar()->addWidget(m_broadcastChip);
+
     // 0.6.26 — the "chip" styling on the branch label (rounded bg + border)
     // blends into the status bar background on low-contrast themes (Gruvbox
     // especially). A hard QFrame::VLine between the branch label and the
@@ -1066,9 +1079,6 @@ MainWindow::MainWindow(bool quakeMode, bool e2eMode, QWidget *parent)
             });
         }
     });
-
-    // Broadcast mode from config
-    m_broadcastMode = m_config.broadcastMode();
 
     // Quake mode (from config or constructor flag)
     if (quakeMode || m_config.quakeMode()) {
@@ -2018,16 +2028,17 @@ void MainWindow::setupSettingsMenu() {
 
     settingsMenu->addSeparator();
 
-    // Broadcast input toggle
-    m_broadcastAction = settingsMenu->addAction("&Broadcast Input to All Panes");
+    // Broadcast input toggle. ANTS-5223 — reaches the panes of the tab being
+    // typed in, starts off on every launch (the choice is never saved), and
+    // shows a status-bar chip while on.
+    m_broadcastAction = settingsMenu->addAction("&Broadcast Input to Panes in This Tab");
     m_broadcastAction->setCheckable(true);
-    m_broadcastAction->setChecked(m_config.broadcastMode());
     m_broadcastAction->setShortcut(QKeySequence(m_config.keybinding("broadcast_input", "Ctrl+Shift+I")));
     connect(m_broadcastAction, &QAction::toggled, this, [this](bool checked) {
         m_broadcastMode = checked;
-        m_config.setBroadcastMode(checked);
-        showStatusMessage(checked ? "Broadcast mode ON — input sent to all panes"
-                                         : "Broadcast mode OFF", 3000);
+        refreshBroadcastChip();
+        showStatusMessage(checked ? "Broadcast ON — typing goes to every pane in this tab"
+                                  : "Broadcast OFF", 3000);
     });
 
     settingsMenu->addSeparator();
@@ -2082,11 +2093,6 @@ void MainWindow::setupSettingsMenu() {
                 }
 
                 // Opacity is now applied via per-pixel alpha in applyTheme() above
-
-                // Update broadcast
-                m_broadcastMode = m_config.broadcastMode();
-                if (m_broadcastAction)
-                    m_broadcastAction->setChecked(m_broadcastMode);
 
                 // Update quake mode. Wire the hotkey too — pre-ANTS-1738
                 // this site called only setupQuakeMode(), so enabling Quake
@@ -2329,12 +2335,19 @@ void MainWindow::connectTerminal(TerminalWidget *terminal) {
         }
     });
 
-    // Broadcast callback
-    terminal->setBroadcastCallback([this](TerminalWidget *source, const QByteArray &data) {
+    // Broadcast callback. ANTS-5223 — only the other panes of the tab being
+    // typed in; every tab once received it, so answers typed into one Claude
+    // session reached all of them. ANTS-5224 — each pane encodes the key for
+    // its own modes rather than receiving the source's bytes.
+    terminal->setBroadcastCallback([this](TerminalWidget *source, const QKeyEvent *event) {
         if (!m_broadcastMode) return;
-        QList<TerminalWidget *> all = liveTerminals();
-        for (auto *t : all) {
-            if (t != source) t->sendToPty(data);
+        QWidget *page = tabPageOf(m_tabWidget, source);
+        if (!page) return;
+        const QList<TerminalWidget *> panes = page->findChildren<TerminalWidget *>();
+        for (TerminalWidget *t : panes) {
+            if (t == source) continue;
+            const QByteArray bytes = t->encodeKey(event);
+            if (!bytes.isEmpty()) t->sendToPty(bytes);
         }
     });
 
@@ -2895,6 +2908,16 @@ TerminalWidget *MainWindow::focusedTerminal() const {
 // "active" terminal — the descendant that currently holds focus if any, else
 // the first one in the subtree. findChild() alone returns an arbitrary first
 // child, which gives the wrong pane in split layouts.
+// ANTS-5223 — the page of `tabs` holding `w`: `w` itself or the ancestor the
+// tab widget lists. Null when `w` is in no tab.
+QWidget *mainwindowdetail::tabPageOf(const QTabWidget *tabs, QWidget *w) {
+    if (!tabs) return nullptr;
+    for (; w; w = w->parentWidget()) {
+        if (tabs->indexOf(w) >= 0) return w;
+    }
+    return nullptr;
+}
+
 TerminalWidget *mainwindowdetail::activeTerminalInTab(QWidget *root) {
     if (!root) return nullptr;
     if (auto *t = qobject_cast<TerminalWidget *>(root)) return t;
@@ -3397,6 +3420,14 @@ const QString &MainWindow::roadmapPathForRemote() const {
     return m_roadmapPath;
 }
 
+void MainWindow::refreshBroadcastChip() {
+    if (!m_broadcastChip) return;
+    const Theme &th = Themes::byName(m_currentTheme);
+    m_broadcastChip->setStyleSheet(
+        themedstylesheet::buildChipStylesheet(th, th.ansi[1], /*leftMarginPx=*/4));
+    m_broadcastChip->setVisible(m_broadcastMode);
+}
+
 void MainWindow::applyTheme(const QString &name) {
     // ANTS-1138 — early-return when the requested theme matches
     // the current one. Pre-fix code always rewrote the entire
@@ -3589,6 +3620,7 @@ void MainWindow::applyTheme(const QString &name) {
     if (m_statusProcess)
         m_statusProcess->setStyleSheet(
             themedstylesheet::buildStatusProcessStylesheet(theme));
+    refreshBroadcastChip();
 
     // Restyle Claude integration widgets
     if (m_claudeStatusBarController)
@@ -7979,11 +8011,6 @@ void MainWindow::onConfigFileChanged(const QString &path) {
         QString family = m_config.fontFamily();
         if (!family.isEmpty()) t->setFontFamily(family);
     }
-
-    // Update broadcast
-    m_broadcastMode = m_config.broadcastMode();
-    if (m_broadcastAction)
-        m_broadcastAction->setChecked(m_broadcastMode);
 
     // Per-tab Claude glyph toggle lives in the paint-provider closure —
     // repaint so the toggle change takes effect on the next frame.

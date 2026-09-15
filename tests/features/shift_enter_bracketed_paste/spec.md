@@ -3,9 +3,10 @@
 ## Contract
 
 When the user presses **Shift+Enter** (without Ctrl) inside a terminal
-tab, `TerminalWidget::keyPressEvent` constructs a byte sequence and
-writes it to the PTY (and, if set, to the broadcast callback). That
-sequence must satisfy *all* of the following invariants:
+tab, `TerminalWidget::encodeEarlyKey` constructs a byte sequence and
+`keyPressEvent` writes it to the PTY. A broadcast target builds its own
+sequence from the key event with `encodeKey` (ANTS-5224), so the invariants
+below hold per terminal. The sequence must satisfy *all* of them:
 
 1. **Bracketed-paste path (DECSET 2004 active).**
    When `m_grid->bracketedPaste()` returns `true`, the emitted bytes
@@ -26,8 +27,8 @@ sequence must satisfy *all* of the following invariants:
 
 3. **Ctrl+Shift+Enter is NOT intercepted here.**
    The Shift+Enter handler MUST gate on `!(mods & ControlModifier)`.
-   Ctrl+Shift+Enter is reserved for the scratchpad dialog (handler
-   earlier in `keyPressEvent`, see `terminalwidget.cpp` ~line 1345).
+   Ctrl+Shift+Enter is reserved for the scratchpad dialog (its handler
+   runs in `keyPressEvent` before `encodeEarlyKey` is called).
    If Shift+Enter ran unconditionally on `ShiftModifier`, it would
    shadow the scratchpad keybinding.
 
@@ -78,8 +79,7 @@ away from literal" bugs, not just this instance.
   sequence. This test locks what we emit, not downstream semantics.
 - The surrounding Kitty keyboard protocol encoder. That has its own
   coverage.
-- Ctrl+Enter (no Shift) behaviour — a different branch of
-  `keyPressEvent` handles that.
+- Ctrl+Enter (no Shift) behaviour — `encodeLegacyKey` handles that.
 
 ## Regression history
 
@@ -104,7 +104,7 @@ would require subclassing. Instead, the test:
    contract.
 2. Performs a source-level inspection of
    `src/terminalwidget.cpp` to confirm:
-   - The Shift+Enter handler (lines ~1433-1450) uses
+   - The Shift+Enter handler in `encodeEarlyKey` uses
      `QByteArrayLiteral("\x1B[200~\n\x1B[201~")` — i.e. the size is
      derived from the literal, not hand-coded.
    - The Shift+Enter handler gates on `!(mods & Qt::ControlModifier)`

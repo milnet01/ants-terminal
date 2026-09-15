@@ -407,10 +407,6 @@ public:
     bool showCommandMarks() const;
     void setShowCommandMarks(bool enabled);
 
-    // Broadcast mode
-    bool broadcastMode() const;
-    void setBroadcastMode(bool enabled);
-
     // Font family
     QString fontFamily() const;
     void setFontFamily(const QString &family);

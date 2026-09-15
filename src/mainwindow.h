@@ -322,9 +322,12 @@ private:
     // Settings dialog
     SettingsDialog *m_settingsDialog = nullptr;
 
-    // Broadcast mode
+    // Broadcast mode. ANTS-5223 — starts off on every launch; never saved.
     bool m_broadcastMode = false;
     QAction *m_broadcastAction = nullptr;
+    // Status-bar chip shown while broadcast is on; styled from the theme.
+    QLabel *m_broadcastChip = nullptr;
+    void refreshBroadcastChip();
 
     // Status bar widgets. Layout principle (from user feedback 2026-04-18):
     // only the transient notification slot (m_statusMessage) is elastic and

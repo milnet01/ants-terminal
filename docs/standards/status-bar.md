@@ -60,6 +60,11 @@ Not every State widget reads `shellCwd()`. Some report a fact about the
   hides otherwise. It also styles from the active theme in the slot AND in
   `applyTheme()` so a live theme switch repaints it.
 
+- **Broadcast chip** (`m_broadcastChip`, ANTS-5223) — driven by the Broadcast
+  Input toggle rather than a signal; `refreshBroadcastChip()` shows it while
+  broadcast is on and runs from the toggle AND from `applyTheme()`.
+  `tests/features/broadcast_input/` locks the wiring.
+
 These wire to the signal in `ClaudeStatusBarController::attach()`, NOT to the
 `shellCwd()` trio — the "cold launch hides the widget" failure mode does not
 apply (there is no PID-timing race; the signal simply hasn't fired yet). A

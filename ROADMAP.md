@@ -10605,7 +10605,7 @@ extends an existing item, that item carries it instead.
   Source: code-quality-review-2026-09-11 perf pass (lane mainwindow-b), split from ANTS-5080.
   Lanes: mainwindow, mcp.
 
-- 📋 [ANTS-5223] **Broadcast input reaches every tab while labelled All Panes, survives a restart, and shows no lasting sign that it is on.**
+- ✅ [ANTS-5223] **Broadcast input reaches every tab while labelled All Panes, survives a restart, and shows no lasting sign that it is on.**
   Reported 2026-09-15: answers typed into a Claude question dialog in one
   tab appeared as a queued prompt in another tab's Claude session, and a
   later message with a pasted image did the same. Cause: config.json held
@@ -10629,11 +10629,17 @@ extends an existing item, that item carries it instead.
   on; do not persist it across restarts, or ask on launch; and either
   scope it to the current tab's panes, matching the label, or rename the
   action to say every tab.
+  Resolved (2026-09-15): user chose current-tab scope and always-off.
+  The broadcast callback writes only to the source tab's panes
+  (tabPageOf), the broadcast_mode config key and its accessors are gone,
+  and a red Broadcast chip shows while on (refreshBroadcastChip,
+  restyled in applyTheme). Locked by tests/features/broadcast_input
+  INV-1 to INV-3.
   **Layman:** A setting that copies your typing into every tab can be left on without any visible warning, so words meant for one Claude session reach all of them.
   Kind: fix.
   Source: user-report-2026-09-15 (answers typed in one Claude tab reached every tab).
 
-- 📋 [ANTS-5224] **Broadcast forwards key bytes encoded for the source terminal, so other terminals receive Kitty escape codes they never enabled.**
+- ✅ [ANTS-5224] **Broadcast forwards key bytes encoded for the source terminal, so other terminals receive Kitty escape codes they never enabled.**
   TerminalWidget::keyPressEvent encodes a key with encodeKittyKey when the
   SOURCE grid has kittyKeyFlags() > 0, which Claude Code's TUI enables,
   then calls sendKeyData, which hands the same bytes to the broadcast
@@ -10654,6 +10660,11 @@ extends an existing item, that item carries it instead.
   Contract gap: tests/features/terminalwidget_input_contracts/spec.md INV-2
   requires sendKeyData to broadcast, but nothing states what encoding the
   other terminals receive.
+  Resolved (2026-09-15): sendKeyData hands the key event to the
+  broadcast, and each target writes encodeKey(event) for its own Kitty,
+  bracketed-paste and cursor-key modes. keyPressEvent's encoding moved
+  into encodeEarlyKey and encodeLegacyKey. Locked by
+  tests/features/broadcast_input INV-4.
   **Layman:** When typing is copied to other tabs, capital letters and Enter arrive as garbled codes, so a shell runs nonsense commands.
   Kind: fix.
   Source: user-report-2026-09-15 (answers typed in one Claude tab reached every tab).

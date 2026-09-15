@@ -12,6 +12,18 @@ for security-relevant changes.
 
 ## [Unreleased]
 
+### Fixed
+
+- **Broadcast Input sends each pane the key encoded for that pane's own keyboard modes** (ANTS-5224)
+  A key typed in a Claude Code tab was forwarded in Claude's keyboard
+  encoding, so plain shells received codes such as 5;2u and ran each line
+  as a garbled command.
+
+- **Broadcast Input reaches only the panes of the tab you are typing in, starts off on every launch, and shows a red Broadcast chip on the status bar while it is on** (ANTS-5223)
+  It used to copy typing into every tab, stay on after a restart, and give
+  no lasting sign, so answers meant for one Claude session reached all of
+  them. The menu item is now Broadcast Input to Panes in This Tab.
+
 ## [0.7.110] — unreleased (Patron RC preview)
 ### Added
 

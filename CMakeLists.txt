@@ -1860,6 +1860,9 @@ if(ANTS_TESTS)
                 # ANTS-5077 — keys reach the shell through sendKeyData only; a failed
                 # shell start leaves no stream behind (source-scrape).
                 tests/features/terminalwidget_input_contracts/test_terminalwidget_input_contracts.cpp
+                # ANTS-5223 / ANTS-5224 — broadcast stays in one tab, starts off,
+                # shows a chip, and each pane encodes the key (source-scrape).
+                tests/features/broadcast_input/test_broadcast_input.cpp
                 # ANTS-5079 — split panes are tracked and released like tabs (source-scrape).
                 tests/features/split_pane_shell_tracking/test_split_pane_shell_tracking.cpp
                 # ANTS-5079 — review command quoting, export failure, KWin cleanup, SSH timer guard.

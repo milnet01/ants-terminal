@@ -18,6 +18,7 @@
 
 #include <sys/types.h>
 
+class QTabWidget;
 class QWidget;
 class TerminalWidget;
 
@@ -30,6 +31,7 @@ extern const char *const kRcUnavailable;
 QString firstNonShellDescendant(pid_t shellPid);
 QString sourceToString(ants::ResolvedRoot::Source s);
 TerminalWidget *activeTerminalInTab(QWidget *root);
+QWidget *tabPageOf(const QTabWidget *tabs, QWidget *w);
 
 // ANTS-1982 — keep a menu open after toggling a NON-exclusive checkable item, so the
 // user can flip several independent checkboxes (Session Logging, Visual

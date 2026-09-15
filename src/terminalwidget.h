@@ -241,9 +241,14 @@ public:
     // Rich clipboard — copy with text/html preserving terminal colors
     void copySelectionRich();
 
-    // Broadcast callback: called when key data should be sent to other terminals too
-    using BroadcastCallback = std::function<void(TerminalWidget *source, const QByteArray &data)>;
+    // Broadcast callback: called with each key sent to the shell. ANTS-5224 —
+    // it carries the key event, not the bytes, so a target encodes the key
+    // for its own keyboard modes with encodeKey().
+    using BroadcastCallback = std::function<void(TerminalWidget *source, const QKeyEvent *event)>;
     void setBroadcastCallback(BroadcastCallback cb) { m_broadcastCallback = std::move(cb); }
+    // The bytes this terminal's own modes (Kitty keyboard flags, bracketed
+    // paste, application cursor keys) produce for a key.
+    QByteArray encodeKey(const QKeyEvent *event) const;
 
     // Last command exit code (via OSC 133 D marker)
     int lastExitCode() const;
@@ -492,7 +497,11 @@ public:
 private:
 
     // Kitty keyboard protocol encoding
-    QByteArray encodeKittyKey(QKeyEvent *event) const;
+    QByteArray encodeKittyKey(const QKeyEvent *event) const;
+    // encodeKey's two halves, split because keyPressEvent runs its local
+    // actions (autocomplete, Shift-scrolling) between them.
+    QByteArray encodeEarlyKey(const QKeyEvent *event) const;
+    QByteArray encodeLegacyKey(const QKeyEvent *event) const;
 
     // Click-to-move cursor in shell prompt
     void clickToMoveCursor(int col, int row);
@@ -517,7 +526,7 @@ private:
     // ANTS-5077 — the one ending for a key sent to the shell: clears a stale
     // selection, writes, and copies the bytes to the other panes in
     // broadcast mode. keyPressEvent sends keys through here only.
-    void sendKeyData(const QByteArray &data);
+    void sendKeyData(const QByteArray &data, const QKeyEvent *event);
 
     // "Is a PTY available to write to?" — true once startShell() has
     // succeeded. Call sites must guard on this rather than m_vtStream

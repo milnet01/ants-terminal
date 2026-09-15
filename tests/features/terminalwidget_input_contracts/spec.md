@@ -8,7 +8,9 @@ least one `sendKeyData(` call.
 
 **INV-2 — `sendKeyData` clears the selection, writes and broadcasts.** Its
 body calls `clearSelection()`, `ptyWrite(data)` and
-`m_broadcastCallback(this, data)`.
+`m_broadcastCallback(this, event)`. The broadcast carries the key event, not
+the bytes, so each pane encodes it for its own modes
+(`tests/features/broadcast_input`, ANTS-5224).
 
 **INV-3 — a failed shell start leaves no stream behind.** In
 `TerminalWidget::startShell`, the `if (!ok)` block sets `m_vtStream` to
