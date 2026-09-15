@@ -95,6 +95,13 @@ for security-relevant changes.
 
 ### Fixed
 
+- **Right-click command actions always act on the command you clicked** (ANTS-5078)
+  With shell integration, right-clicking a command offers Copy, Re-run,
+  Fold and Share. If new output arrived while that menu or the Share
+  dialog was open, the action could land on the neighbouring command, so
+  Re-run could type a different one. Each action now remembers which
+  command you clicked, and does nothing if that command is gone.
+
 - **The verify-config trust prompt lists every gate and can remember a repo for good** (ANTS-5082)
   When Claude asks to run a repo's own verify commands, the prompt now
   lists how many gates would run and their names, and "Trust this repo"

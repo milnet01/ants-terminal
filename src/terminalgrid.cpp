@@ -302,6 +302,14 @@ void TerminalGrid::applyPromptRegionShift() const {
     shift(m_altPromptRegions);
 }
 
+int TerminalGrid::promptRegionIndexById(quint64 id) const {
+    if (id == 0) return -1;
+    const auto &regions = promptRegions();  // settles any pending shift
+    for (size_t i = 0; i < regions.size(); ++i)
+        if (regions[i].id == id) return static_cast<int>(i);
+    return -1;
+}
+
 void TerminalGrid::setDefaultFg(const QColor &c) {
     QColor oldFg = m_defaultFg;
     m_defaultFg = c;
@@ -1454,7 +1462,8 @@ void TerminalGrid::handleOsc(const std::string &payload, bool truncated) {
         switch (marker) {
         case 'A': // Prompt start
             m_shellIntegState = 'A';
-            m_promptRegions.push_back({globalLine, globalLine, false, 0, 0, false, 0, 0, -1});
+            m_promptRegions.push_back({globalLine, globalLine, false, 0, 0, false, 0, 0, -1,
+                                       m_nextPromptRegionId++});
             break;
         case 'B': // Command start (end of prompt)
             m_shellIntegState = 'B';

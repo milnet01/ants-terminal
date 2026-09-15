@@ -24,9 +24,19 @@ command, only when the markers are unsigned.
   writes the command straight to the PTY only when
   `osc133HmacEnforced()` is true. Otherwise it shows the command in a
   confirmation dialog and writes it only when the user accepts.
+- **INV-4 — a region keeps its id (ANTS-5078).** Every region gets a unique
+  non-zero `id`. `TerminalGrid::promptRegionIndexById` finds a region by that
+  id after the cap or eviction drops regions in front of it, and returns -1
+  once the region itself is dropped.
+- **INV-5 — the context menu names a block by id (ANTS-5078).**
+  `menu.exec()` and the Share dialog run an event loop, and output arriving
+  there can shift or drop regions. So the block actions in
+  `TerminalWidget::contextMenuEvent` capture the region's `id` and look it up
+  when they run, never an index taken before the menu opened.
 
 ## Test scope
 
-INV-1 and INV-2 drive `TerminalGrid` through `VtParser`, headless. INV-3 is a
-source scrape of `rerunCommandAt`, because it needs a live `TerminalWidget`
-and a modal dialog.
+INV-1, INV-2 and INV-4 drive `TerminalGrid` through `VtParser`, headless.
+INV-3 is a source scrape of `rerunCommandAt`, and INV-5 of
+`contextMenuEvent`, because both need a live `TerminalWidget` and a modal
+dialog.

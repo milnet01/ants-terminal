@@ -8021,6 +8021,21 @@ extends an existing item, that item carries it instead.
   Progress (2026-09-14): shipped the rich-copy medium. copySelectionRich
   merges same-style cells into one span and copies plain text only above
   kRichCopyCellCap cells. Test: terminalwidget_hotpath_perf INV-14.
+  Decided (2026-09-15, user): the tr() low folds into ANTS-1080 (i18n
+  scaffolding), as the About dialog's did on ANTS-5082. Closed here with
+  no change.
+  Progress (2026-09-15): shipped the prompt-block index low. PromptRegion
+  carries an id from a per-grid counter, TerminalGrid::promptRegionIndexById
+  finds it (or -1 once dropped), and the context menu's block actions
+  capture the id and look it up when they run; Share Block looks it up
+  after its file dialog. Tests: osc133_rerun_safety INV-4 (behavioural) and
+  INV-5 (scrape), red first; full default suite 4832/4832.
+  Next, prepared: the exports QSaveFile low. The context menu's text and
+  HTML exports and exportBlockAsCast write through QSaveFile, check
+  commit(), and report failure through captureFailed, as ANTS-5079 did for
+  MainWindow's export.
+  Not started: exports on the GUI thread (medium), invalidateSpanCaches
+  mid-batch, autocomplete matching the prompt.
   **Layman:** Smaller fixes to copying, exporting and searching in the terminal, which can freeze on very long histories.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lane terminal-widget-b).
@@ -78425,6 +78440,8 @@ here.)
   qt_add_translations anywhere in the tree). ANTS-5082's About dialog
   tr() low was closed in favour of this item, since a translation pass
   covers every screen.
+  ANTS-5078's tr() low (terminal widget context-menu and export strings)
+  also folds into this item (user, 2026-09-15).
 
 - 💭 [ANTS-1081] **Right-to-left text support.**
   Bidirectional text in the grid.

@@ -5605,6 +5605,10 @@ void TerminalWidget::contextMenuEvent(QContextMenuEvent *event) {
     if (blockIdx >= 0) {
         menu.addSeparator();
         const auto &pr = m_grid->promptRegions()[blockIdx];
+        // ANTS-5078 — menu.exec() below, and Share's file dialog, run an event
+        // loop, and output arriving there can shift or drop regions. So each
+        // action names its block by id and looks it up when it runs.
+        const quint64 blockId = pr.id;
         QAction *header = menu.addAction(
             pr.commandEndMs > 0
                 ? QString("Command Block (exit %1)").arg(pr.exitCode)
@@ -5612,8 +5616,10 @@ void TerminalWidget::contextMenuEvent(QContextMenuEvent *event) {
         header->setEnabled(false);
 
         QAction *copyCmd = menu.addAction("Copy Command");
-        connect(copyCmd, &QAction::triggered, this, [this, blockIdx]() {
-            QString cmd = commandTextAt(blockIdx);
+        connect(copyCmd, &QAction::triggered, this, [this, blockId]() {
+            const int idx = m_grid->promptRegionIndexById(blockId);
+            if (idx < 0) return;
+            QString cmd = commandTextAt(idx);
             if (!cmd.isEmpty())
                 clipboardguard::writeText(cmd,
                     clipboardguard::Source::Trusted);
@@ -5621,8 +5627,10 @@ void TerminalWidget::contextMenuEvent(QContextMenuEvent *event) {
 
         QAction *copyOut = menu.addAction("Copy Output");
         copyOut->setEnabled(pr.hasOutput);
-        connect(copyOut, &QAction::triggered, this, [this, blockIdx]() {
-            QString out = outputTextAt(blockIdx);
+        connect(copyOut, &QAction::triggered, this, [this, blockId]() {
+            const int idx = m_grid->promptRegionIndexById(blockId);
+            if (idx < 0) return;
+            QString out = outputTextAt(idx);
             if (!out.isEmpty())
                 clipboardguard::writeText(out,
                     clipboardguard::Source::Trusted);
@@ -5630,26 +5638,31 @@ void TerminalWidget::contextMenuEvent(QContextMenuEvent *event) {
 
         QAction *rerun = menu.addAction("Re-run Command");
         rerun->setEnabled(pr.commandEndMs > 0);  // don't re-run mid-execution
-        connect(rerun, &QAction::triggered, this, [this, blockIdx]() {
-            rerunCommandAt(blockIdx);
+        connect(rerun, &QAction::triggered, this, [this, blockId]() {
+            const int idx = m_grid->promptRegionIndexById(blockId);
+            if (idx >= 0) rerunCommandAt(idx);
         });
 
         if (pr.hasOutput && pr.commandEndMs > 0) {
             QAction *fold = menu.addAction(pr.folded ? "Unfold Output" : "Fold Output");
-            connect(fold, &QAction::triggered, this, [this, blockIdx]() {
-                toggleFoldAt(blockIdx);
+            connect(fold, &QAction::triggered, this, [this, blockId]() {
+                const int idx = m_grid->promptRegionIndexById(blockId);
+                if (idx >= 0) toggleFoldAt(idx);
             });
         }
 
         QAction *share = menu.addAction("Share Block as .cast...");
         share->setEnabled(pr.hasOutput && pr.commandEndMs > 0);
-        connect(share, &QAction::triggered, this, [this, blockIdx]() {
+        connect(share, &QAction::triggered, this, [this, blockId]() {
             QString defaultName = QString("block_%1.cast")
                 .arg(QDateTime::currentDateTime().toString("yyyyMMdd_HHmmss"));
             QString path = QFileDialog::getSaveFileName(
                 this, "Share Block as Asciicast", defaultName,
                 "Asciicast (*.cast)");
-            if (!path.isEmpty()) exportBlockAsCast(blockIdx, path);
+            if (path.isEmpty()) return;
+            // Look the block up after the dialog, whose event loop can shift it.
+            const int idx = m_grid->promptRegionIndexById(blockId);
+            if (idx >= 0) exportBlockAsCast(idx, path);
         });
     }
 

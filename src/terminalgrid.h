@@ -114,6 +114,7 @@ struct PromptRegion {
     int exitCode = 0;           // parsed from OSC 133 D (0.7.0). Only meaningful when commandEndMs > 0.
     int commandStartCol = 0;    // cursor column at OSC 133 B fire — lets UI extract command text from the prompt line (0.7.0).
     int outputStartLine = -1;   // global line at OSC 133 C — where command output begins, -1 if unset (0.7.0).
+    quint64 id = 0;             // ANTS-5078 — unique per grid, from 1; stable while the region lives.
 };
 
 // Represents the terminal screen buffer and handles all actions from the parser.
@@ -393,6 +394,11 @@ public:
         applyPromptRegionShift();
         return m_promptRegions;
     }
+    // ANTS-5078 — index of the region with `id` in promptRegions(), or -1
+    // once it has been dropped (the cap, eviction, or the other screen's
+    // list). A stored index can name a different region after regions
+    // shift; an id cannot.
+    int promptRegionIndexById(quint64 id) const;
 
     // Session restore: direct access for SessionManager (respects max scrollback)
     void pushScrollbackLine(TermLine &&line) {
@@ -777,6 +783,7 @@ private:
     mutable qint64 m_promptRegionShift = 0;
     void applyPromptRegionShift() const;
     int m_shellIntegState = 0; // 0=none, 'A'=prompt start, 'B'=command start, 'C'=output start
+    quint64 m_nextPromptRegionId = 1;  // ANTS-5078 — next PromptRegion::id; never reused
 
     // OSC 133 HMAC verifier state (0.7.0 shell-integration HMAC item).
     // m_osc133Key is read once from $ANTS_OSC133_KEY at construction. When
