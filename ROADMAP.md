@@ -7064,6 +7064,8 @@ extends an existing item, that item carries it instead.
   RemoteControl's roadmap store and caches are reached from one thread.
   Shipped with ANTS-5073 under the ANTS-2132 amendment (spec section
   2.7).
+  Release note (2026-09-15): no CHANGELOG entry, deliberately — shipped
+  with ANTS-5073 under the ANTS-2132 amendment, whose entries cover it.
   **Layman:** Two parts of Ants can use the roadmap database at the same moment, which can crash it or corrupt what it returns.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lanes roadmap-store, mcp-transport, mcp-roadmap-query-log, mcp-roadmap-batch).
@@ -9677,6 +9679,8 @@ extends an existing item, that item carries it instead.
   refuses a file larger than the query's memory left before reading it.
   Reproduced by project_query INV-11 and INV-12, which leaked under
   LeakSanitizer before the fix and pass after.
+  Release note (2026-09-15): no CHANGELOG entry, deliberately —
+  delivered by ANTS-5070, whose entry covers it.
   **Layman:** A project query that runs out of memory while reading a file can leave a little memory unfreed.
   Kind: fix.
   Source: in-session-2026-09-11 (found fixing ANTS-3847).
@@ -19793,6 +19797,8 @@ indie-review finding.
   jobs even on main, and that the abnormal case is a cancelled run whose
   jobs started. YAML parse, actionlint and CiWorkflowDeps green. Commit
   dd8baf40.
+  Release note (2026-09-15): no CHANGELOG entry, deliberately — a
+  comment correction in ci.yml, no product change.
   **Layman:** The build checker's notes say a cancelled check on the main branch means trouble, but a check can be cancelled harmlessly when a newer change replaces it before it starts.
   Kind: doc-fix.
   Source: in-session-2026-09-13.
@@ -36987,6 +36993,8 @@ against current source before filing.
   target's subsections keep their parent. This is this item's remedy
   (2), insert after the subtree. Covered by the createSectionSkipCount
   cases in tests/features/mcp_roadmap_log_create_section.
+  Release note (2026-09-15): no CHANGELOG entry, deliberately —
+  delivered by ANTS-4848, whose entry covers it.
 
 - ✅ [ANTS-3855] **Nothing in production can run the migration — RoadmapMigrateLoad::load() has zero non-test callers.**
   Measured 2026-08-06, not inferred. In `src/`, `RoadmapMigrate` and
@@ -39393,6 +39401,8 @@ against current source before filing.
   body_shadowed refusal. The line-start anchor this item proposed is not
   wanted: ANTS-2058 un-anchored the patterns because inline trailers are
   real.
+  Release note (2026-09-15): no CHANGELOG entry, deliberately —
+  delivered by ANTS-4608, whose entry covers it.
 
 - 📋 [ANTS-4433] **cmdRoadmapQuery's two heading-index lazy fills read ROADMAP.md with a raw QFile, outside the read seam.**
   Two sites in `cmdRoadmapQuery` build the heading index from a raw
@@ -40552,6 +40562,8 @@ in each bullet, not just the reporter's symptom.
   remaining half is filed as ANTS-4998. ANTS-4457, 4460 and 4947 stay
   open, each noted as a partial delivery the 0.7.109 CHANGELOG cites.
   No CHANGELOG entry, deliberately: release records only.
+  Release note (2026-09-15): no CHANGELOG entry, deliberately — release
+  bookkeeping for 0.7.109, no product change.
   **Layman:** The release notes credit four pieces of work the roadmap still lists as unfinished; each needs a yes-or-no before the next release.
   Kind: chore.
   Source: in-session-2026-09-09.
@@ -42417,6 +42429,8 @@ finbreak re-verified it.
   render_gate_unmet with gate_failures empty, the candidate id in
   request_gate_failures, and an error naming the missing layman line and
   saying the id is rolled back and not to look for it.
+  Release note (2026-09-15): no CHANGELOG entry, deliberately —
+  delivered by ANTS-4593, whose entry covers it.
 
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-08-17 triage
 
@@ -43917,6 +43931,9 @@ whole files.
   per-line buffer copy is ANTS-5005, the cap not aborting is ANTS-5008,
   and the empty enqueue is ANTS-5006. A test written for ANTS-5005 found
   one more, ANTS-5015.
+  Release note (2026-09-15): no CHANGELOG entry, deliberately — a triage
+  pass; the fixes it produced (e.g. ANTS-5007, 5008) carry their own
+  entries.
 
 - 📋 [ANTS-4459] **Triage: audit-subsystem findings from the cold sweep.**
   Reviewer claims carried forward as-is. NOT re-verified — check each against
@@ -48697,6 +48714,8 @@ filed below.
   text itself as would_discard_text, capped, with
   would_discard_text_truncated. The total still counts every differing
   line, by ANTS-4462's design.
+  Release note (2026-09-15): no CHANGELOG entry, deliberately —
+  delivered by ANTS-4615, whose entry covers it.
   **Layman:** The warning before a roadmap write says it will discard 93 lines when it actually removes one — so people stop writing at all.
   Kind: fix.
   Source: finbreak_Ants_MCP_Feedback.md 2026-08-20; LottoTracker_Ants_MCP_Feedback.md 2026-08-20.
@@ -60739,6 +60758,8 @@ than re-filed; everything else lands here.
   in transit, which is a worse failure than a refusal.
   Closed (2026-09-14) as a duplicate of ANTS-4841, which shipped the
   same fix: set_body's new_text cap rose to 65536 characters.
+  Release note (2026-09-15): no CHANGELOG entry, deliberately —
+  duplicate of ANTS-4841, whose entry covers it.
   **Layman:** The command for replacing a mangled roadmap entry refuses the long entries it exists to rescue.
   Kind: fix.
   Source: Contact_List_Ants_MCP_Feedback.md 2026-09-08.
@@ -61009,6 +61030,8 @@ than re-filed; everything else lands here.
   pins all three absences with a real-write control. Read in current
   source and test. The 2026-09-08 measurement must have run an instance
   built before that fix. No code change and no separate changelog entry.
+  Release note (2026-09-15): no CHANGELOG entry, deliberately — closed
+  as ANTS-4834, whose entry covers it.
   **Layman:** The preview mode of the file-editing tool reports that it wrote the file, when it did not.
   Kind: fix.
   Source: LocalWebServerManager_Ants_MCP_Feedback.md 2026-09-08.
@@ -61450,6 +61473,8 @@ than re-filed; everything else lands here.
   require_green_baseline accepts a green ctest batch. Test
   MutationProbe.Ants4996GreenCtestSummaryParses covers this symptom. No
   separate changelog entry.
+  Release note (2026-09-15): no CHANGELOG entry, deliberately —
+  delivered by ANTS-4996, whose entry covers it.
   **Layman:** The mutation checker can't tell that a passing test run passed, when the run comes from this project's test runner.
   Kind: fix.
   Source: in-session-2026-09-11.
@@ -62193,6 +62218,9 @@ volume classes, and the tooling/documentation gaps the run exposed.
   style rules, and installing one changes the machine. Reopen if a
   CMake defect ships that a linter would have caught. No CHANGELOG
   entry, deliberately: contributor tooling.
+  Release note (2026-09-15): no CHANGELOG entry, deliberately — closed
+  by user decision with its CMake half declined; nothing user-visible
+  shipped.
   **Layman:** Two kinds of file in the project have no automated checking at all.
   Kind: chore.
   Source: check-code-sweep-2026-09-01.
@@ -72885,6 +72913,8 @@ acting on it.
   now runs `timeout 8m ctest -j2 --output-on-failure --timeout 300`, -j2
   matching build-asan and the pre-push hook, and tools/ci-parity.sh
   mirrors it. Locked by tests/features/ci_asan_budget INV-7 and INV-9.
+  Release note (2026-09-15): no CHANGELOG entry, deliberately —
+  CI-runner configuration only, no product change.
   **Layman:** GitHub runs the tests one at a time; running several at once would finish sooner.
   Kind: perf.
   Source: user-request-2026-09-14 (CI speed and memory review).
@@ -79271,6 +79301,8 @@ contributors don't duplicate research.
   slugs-only section list, was not built: mode:"sections" is only an
   alias of section_index (ANTS-4380). It is filed separately as
   ANTS-5154. No separate changelog entry.
+  Release note (2026-09-15): no CHANGELOG entry, deliberately —
+  delivered by ANTS-4556, whose entry covers it.
 
 - 📋 [ANTS-4122] **workspace_search's 5 s default budget hard-kills a whole-repo regex on this project, and the hint fires only after the cost.**
   A 2-alternation regex over the whole repo

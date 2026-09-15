@@ -14,6 +14,10 @@ for security-relevant changes.
 
 ### Added
 
+- **A performance report for contributors: tools/perf-report.sh runs every benchmark and compares each number against a saved baseline, flagging what got slower** (ANTS-5133)
+  Development tooling only; nothing ships in the user binary. How-to:
+  docs/qa/perf-harness.md.
+
 - **The roadmap repair step can now remove leftover detail lines at the end of an item's description** (ANTS-4507)
   `roadmap_log op:"repair_trailers"` takes `strip_runs:true`. It removes
   the Kind / Source / Layman / Lanes lines a description stored by an
@@ -94,6 +98,8 @@ for security-relevant changes.
   the small, readable half can now be acted on by itself.
 
 ### Fixed
+
+- **The remote-control grab-image command saves a relative path inside the test artifact folder, and its reply names where the file really is** (ANTS-5132)
 
 - **Links and highlights stay correct on busy output when trigger rules are set** (ANTS-5078)
   With a trigger rule that colours or links matching text, a burst of
