@@ -103,7 +103,7 @@
   </screenshots>
 
   <releases>
-    <release version="0.7.109" date="2026-09-09">
+    <release version="0.7.109" date="2026-09-15">
       <description>
         <p>Roadmap provenance you can search, a single deterministic document check, and a broad sweep of terminal, MCP and release-gate fixes.</p>
         <ul>

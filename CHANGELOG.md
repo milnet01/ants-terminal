@@ -910,7 +910,7 @@ for security-relevant changes.
   link-local IP addresses, and credentials embedded in the URL, and it no
   longer follows redirects.
 
-## [0.7.109] — unreleased (Patron RC preview)
+## [0.7.109] — 2026-09-15
 ### Added
 
 - **Roadmap items can now be searched by where they came from** (ANTS-4985)
