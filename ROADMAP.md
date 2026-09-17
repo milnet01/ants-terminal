@@ -8087,6 +8087,13 @@ extends an existing item, that item carries it instead.
   Test: terminalwidget_hotpath_perf INV-16, red first; full default suite
   4843/4843.
   Still open: exports on the GUI thread (medium).
+  Spec (2026-09-17): the exports-on-the-GUI-thread medium has a spec,
+  docs/specs/ANTS-5078-export-streaming.md, accepted after one review
+  pass (one lane, user decision; five findings verified and fixed). A
+  worker was rejected because the grid is written on the GUI thread and
+  a snapshot costs more than the text. A ScrollbackExporter writes in
+  slices on the GUI thread into a QSaveFile and fails when an unwritten
+  line leaves scrollback or the width changes. Next: build it, red first.
   **Layman:** Smaller fixes to copying, exporting and searching in the terminal, which can freeze on very long histories.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lane terminal-widget-b).
