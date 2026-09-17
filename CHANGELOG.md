@@ -14,6 +14,11 @@ for security-relevant changes.
 
 ### Fixed
 
+- **The global hotkey reports a desktop portal that never answers, instead of waiting forever** (ANTS-5081)
+  A shortcut request that gets no reply now fails after a timeout and
+  shows the "Global hotkey unavailable" message, and overlapping hotkey
+  registrations no longer lose one another's replies.
+
 - **Terminal output can no longer flood trigger actions or plugin events** (ANTS-5079)
   A program printing command-finished markers or trigger-matching lines
   in a tight loop now starts at most a burst of shells, notifications or

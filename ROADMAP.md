@@ -8257,7 +8257,7 @@ extends an existing item, that item carries it instead.
   Source: code-quality-review-2026-09-11 perf pass (lane mainwindow-b).
   Lanes: mainwindow, mcp.
 
-- 📋 [ANTS-5081] **Performance pass findings for the title bar, tab bar, palette and desktop integration (medium and low).**
+- ✅ [ANTS-5081] **Performance pass findings for the title bar, tab bar, palette and desktop integration (medium and low).**
   Medium:
   - GlobalShortcutsPortal discards the BindShortcuts reply, so an error
     reply never fires sessionFailed and the Global hotkey unavailable
@@ -8301,6 +8301,20 @@ extends an existing item, that item carries it instead.
     glyphName helper was removed.
   - sessionReady: now emitted after flushPending sends the binds.
   Tests: portal_failure_paths, tab_tooltip_single_writer.
+  Resolved (2026-09-17, 7df023eb): the remaining lows.
+  - CreateSession timeout: a single-shot timer fails the session
+    permanently when no Response arrives.
+  - Request path: onBindShortcutsResponse detaches message.path(); the
+    single request-path member is gone.
+  - tr(): the title-bar accessible names and descriptions and the
+    command-palette placeholder, names and descriptions.
+  Tests: portal_failure_paths INV-4, INV-5, proven red; full default
+  suite green.
+  Not changed, by decision: Q_OBJECT on ElidedLabel, OpaqueMenuBar and
+  OpaqueStatusBar. None declares signals, slots, properties or tr(), and
+  no code casts to or selects them by class name, so the macro changes
+  no behaviour and would only add their headers to a target for
+  AUTOMOC. Reopen if one gains a meta-object feature.
   **Layman:** Smaller window-chrome fixes, including a global hotkey that can silently fail to register.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lane chrome-widgets).
