@@ -79,7 +79,8 @@ TEST(AuditIncrementalOutputDrain, Main) {
     }
     // Verify a defensible value (>= 4 MiB; pragmatic upper bound: < 1 GiB).
     std::regex capDecl(
-        R"(MAX_TOOL_OUTPUT_BYTES\s*=\s*(\d+)\s*\*\s*(\d+)\s*\*\s*(\d+))");
+        // An integer suffix (64LL) is allowed; it widens the product, not the value.
+        R"(MAX_TOOL_OUTPUT_BYTES\s*=\s*(\d+)[uUlL]*\s*\*\s*(\d+)[uUlL]*\s*\*\s*(\d+)[uUlL]*)");
     std::smatch capMatch;
     bool capOk = false;
     if (std::regex_search(hdr, capMatch, capDecl) ||

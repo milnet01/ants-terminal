@@ -7,8 +7,9 @@ computes the changed-line sets when `m_sinceBaseline` is on, not only when
 the recent-files scope is.
 
 **INV-2 — a failed git run is reported, not read as no changes.**
-`computeRecentChangeSets` stores the reason in `m_recentScopeError` when a
-git run fails, times out or writes too much. A repository without `HEAD~N`
+`readRecentChangeSets` returns the reason in `error`, which
+`requestRecentChangeSets` stores in `m_recentScopeError`, when a git run
+fails, times out or writes too much. A repository without `HEAD~N`
 diffs against the empty tree (`git hash-object -t tree /dev/null`).
 
 **INV-3 — the recent filters stand down on that error.** `handleCheckOutput`

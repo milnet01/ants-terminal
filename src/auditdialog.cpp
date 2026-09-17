@@ -1308,8 +1308,17 @@ void AuditDialog::onSinceBaselineToggled(bool on) {
     // Recompute the changed-line sets so the pill works even when the run
     // wasn't recent-scoped. Off → leave them (the predicate is gated on
     // m_sinceBaseline, so stale data is inert).
-    if (on) computeRecentChangeSets(/*includeLines=*/true);
-    if (!m_completedResults.isEmpty()) renderResults();
+    const auto render = [this]() {
+        if (!m_completedResults.isEmpty()) renderResults();
+    };
+    if (!on) {
+        render();
+        return;
+    }
+    // ANTS-5084 — git runs on a worker; render now (the filter stands down
+    // while it reads) and again when the sets arrive.
+    requestRecentChangeSets(/*includeLines=*/true, render);
+    render();
 }
 
 // ---------------------------------------------------------------------------
@@ -2441,21 +2450,19 @@ QString AuditDialog::readProjectDoc(const QString &name) const {
 // Audit execution
 // ---------------------------------------------------------------------------
 
-void AuditDialog::computeRecentChangeSets(bool includeLines) {
-    m_recentFiles.clear();
-    m_recentLines.clear();
-    m_recentScopeError.clear();
-    if (!m_detectedTypes.contains("Git")) return;
+AuditDialog::RecentChangeSets AuditDialog::readRecentChangeSets(
+    const QString &projectPath, int commits, bool includeLines) {
+    RecentChangeSets out;
 
     // ANTS-5084 — a git run that failed or timed out left both sets empty,
     // which the filters read as "nothing changed" and hid every filed
     // finding. The reason is kept instead, and the filters stand down.
-    const auto runGit = [this](const QStringList &args, int timeoutMs,
-                               QByteArray *out) -> QString {
-        static constexpr qint64 kMaxGitOutputBytes = 64 * 1024 * 1024;
+    const auto runGit = [&projectPath](const QStringList &args, int timeoutMs,
+                                       QByteArray *output) -> QString {
+        static constexpr qint64 kMaxGitOutputBytes = 64LL * 1024 * 1024;
         const std::unique_ptr<QProcess, void (*)(QProcess *)> p(
             new QProcess, auditdialogdetail::releaseProcess);   // ANTS-5083
-        p->setWorkingDirectory(m_projectPath);
+        p->setWorkingDirectory(projectPath);
         p->start(QStringLiteral("git"), args);
         if (!p->waitForFinished(timeoutMs)) {
             if (p->error() == QProcess::FailedToStart)
@@ -2466,22 +2473,22 @@ void AuditDialog::computeRecentChangeSets(bool includeLines) {
         }
         if (p->exitStatus() != QProcess::NormalExit || p->exitCode() != 0)
             return QStringLiteral("git %1 failed").arg(args.first());
-        *out = p->readAllStandardOutput();
-        if (out->size() > kMaxGitOutputBytes) {
-            out->clear();
+        *output = p->readAllStandardOutput();
+        if (output->size() > kMaxGitOutputBytes) {
+            output->clear();
             return QStringLiteral("git %1 output too large").arg(args.first());
         }
         return QString();
     };
 
     QByteArray logOut;
-    m_recentScopeError = runGit({QStringLiteral("log"),
-                                 QString("-n%1").arg(m_recentCommits),
-                                 QStringLiteral("--name-only"),
-                                 QStringLiteral("--format="),
-                                 QStringLiteral("--diff-filter=ACMR")},
-                                5000, &logOut);
-    if (!m_recentScopeError.isEmpty()) return;
+    out.error = runGit({QStringLiteral("log"),
+                        QString("-n%1").arg(commits),
+                        QStringLiteral("--name-only"),
+                        QStringLiteral("--format="),
+                        QStringLiteral("--diff-filter=ACMR")},
+                       5000, &logOut);
+    if (!out.error.isEmpty()) return out;
     const QStringList lines =
         QString::fromUtf8(logOut).split('\n', Qt::SkipEmptyParts);
     QSet<QString> seen;
@@ -2490,10 +2497,10 @@ void AuditDialog::computeRecentChangeSets(bool includeLines) {
         if (p.isEmpty() || seen.contains(p)) continue;
         seen.insert(p);
         // Keep only files that still exist on disk.
-        if (QFile::exists(m_projectPath + "/" + p))
-            m_recentFiles << p;
+        if (QFile::exists(projectPath + "/" + p))
+            out.files << p;
     }
-    if (!includeLines) return;
+    if (!includeLines) return out;
 
     // Line-level scoping: ask git for the diff with zero context, parse
     // the hunk headers (`@@ -old,count +new,count @@`) and record the
@@ -2501,27 +2508,27 @@ void AuditDialog::computeRecentChangeSets(bool includeLines) {
     // commits + uncommitted working-tree changes both land in the map.
     // A repository without HEAD~N diffs against the empty tree instead,
     // so every line counts as changed.
-    QString base = QString("HEAD~%1").arg(m_recentCommits);
+    QString base = QString("HEAD~%1").arg(commits);
     QByteArray probe;
     if (!runGit({QStringLiteral("rev-parse"), QStringLiteral("--verify"),
                  QStringLiteral("--quiet"), base + QStringLiteral("^{commit}")},
                 2000, &probe).isEmpty()) {
         QByteArray emptyTree;
-        m_recentScopeError = runGit({QStringLiteral("hash-object"), QStringLiteral("-t"),
-                                     QStringLiteral("tree"), QStringLiteral("/dev/null")},
-                                    2000, &emptyTree);
-        if (!m_recentScopeError.isEmpty()) return;
+        out.error = runGit({QStringLiteral("hash-object"), QStringLiteral("-t"),
+                            QStringLiteral("tree"), QStringLiteral("/dev/null")},
+                           2000, &emptyTree);
+        if (!out.error.isEmpty()) return out;
         base = QString::fromLatin1(emptyTree).trimmed();
     }
     QByteArray diffOut;
-    m_recentScopeError = runGit({QStringLiteral("diff"), QStringLiteral("--unified=0"), base},
-                                8000, &diffOut);
-    if (!m_recentScopeError.isEmpty()) return;
+    out.error = runGit({QStringLiteral("diff"), QStringLiteral("--unified=0"), base},
+                       8000, &diffOut);
+    if (!out.error.isEmpty()) return out;
     const QStringList dlines =
         QString::fromUtf8(diffOut).split('\n', Qt::KeepEmptyParts);
-    static const QRegularExpression reFileHdr(R"(^\+\+\+ b/(.+)$)");
-    static const QRegularExpression reHunk(
-        R"(^@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@)");
+    // Local, not static: two overlapping requests can run this concurrently.
+    const QRegularExpression reFileHdr(R"(^\+\+\+ b/(.+)$)");
+    const QRegularExpression reHunk(R"(^@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@)");
     QString curFile;
     for (const QString &dl : dlines) {
         auto mf = reFileHdr.match(dl);
@@ -2534,10 +2541,52 @@ void AuditDialog::computeRecentChangeSets(bool includeLines) {
             // count=0 means pure deletion — nothing to attribute
             // to an added line; skip.
             if (count <= 0) continue;
-            auto &set = m_recentLines[curFile];
+            auto &set = out.lines[curFile];
             for (int i = 0; i < count; ++i) set.insert(start + i);
         }
     }
+    return out;
+}
+
+void AuditDialog::requestRecentChangeSets(bool includeLines,
+                                          std::function<void()> then) {
+    m_recentScopeWaiters.append(std::move(then));
+    if (!m_detectedTypes.contains("Git")) {
+        m_recentFiles.clear();
+        m_recentLines.clear();
+        m_recentScopeError.clear();
+        for (const auto &waiter : std::exchange(m_recentScopeWaiters, {})) waiter();
+        return;
+    }
+    // A request already reading what this one needs serves it too.
+    if (m_recentScopeInFlight && (m_recentScopeInFlightLines || !includeLines)) return;
+
+    // While git runs, the recent filters stand down, as they do when it fails.
+    m_recentFiles.clear();
+    m_recentLines.clear();
+    m_recentScopeError = QStringLiteral("reading git history");
+    m_recentScopeInFlight = true;
+    m_recentScopeInFlightLines = includeLines;
+    const quint64 request = ++m_recentScopeRequest;
+
+    auto result = std::make_shared<RecentChangeSets>();
+    const QString projectPath = m_projectPath;
+    const int commits = m_recentCommits;
+    QThread *worker = QThread::create([result, projectPath, commits, includeLines]() {
+        *result = readRecentChangeSets(projectPath, commits, includeLines);
+    });
+    // Same shape as requestDebtScan: the worker deletes itself, and if the
+    // dialog closes first the `this` context drops the delivery.
+    connect(worker, &QThread::finished, worker, &QObject::deleteLater);
+    connect(worker, &QThread::finished, this, [this, request, result]() {
+        if (request != m_recentScopeRequest) return;   // a later request supersedes
+        m_recentScopeInFlight = false;
+        m_recentFiles = std::move(result->files);
+        m_recentLines = std::move(result->lines);
+        m_recentScopeError = std::move(result->error);
+        for (const auto &waiter : std::exchange(m_recentScopeWaiters, {})) waiter();
+    }, Qt::QueuedConnection);
+    worker->start();
 }
 
 void AuditDialog::runAudit() {
@@ -2552,6 +2601,11 @@ void AuditDialog::runAudit() {
     m_fileLineCache.clear();
     m_cancelled = false;
     ++m_runGeneration;  // ANTS-5067 — a lane result from an earlier run is dropped
+    // ANTS-5084 — reset before the git wait too: a Cancel during it must not
+    // report the previous run's check or counts.
+    m_currentCheck = -1;
+    m_checksRun = 0;
+    m_totalSelected = 0;
     m_snapshotPersisted = false;  // see m_snapshotPersisted in auditdialog.h
     // Cancel becomes the primary action while a run is in-flight; Run
     // button stays visible but disabled so the button-row geometry
@@ -2562,10 +2616,24 @@ void AuditDialog::runAudit() {
     // ANTS-5084 — the Since baseline pill reads the changed-line sets too;
     // clearing them under it hid every filed finding and wrote that count
     // to the trend file.
-    if (m_recentOnly || m_sinceBaseline)
-        computeRecentChangeSets(m_recentLinesOnly || m_sinceBaseline);
-    else { m_recentFiles.clear(); m_recentLines.clear(); m_recentScopeError.clear(); }
+    // ANTS-5084 — git runs on a worker thread; the checks start once the sets
+    // arrive, unless this run was cancelled or replaced meanwhile.
+    if (m_recentOnly || m_sinceBaseline) {
+        const quint64 generation = m_runGeneration;
+        m_statusLabel->setFullText(QStringLiteral("Reading recent changes from git…"));
+        requestRecentChangeSets(m_recentLinesOnly || m_sinceBaseline,
+                                [this, generation]() {
+            if (generation == m_runGeneration) startSelectedChecks();
+        });
+        return;
+    }
+    m_recentFiles.clear();
+    m_recentLines.clear();
+    m_recentScopeError.clear();
+    startSelectedChecks();
+}
 
+void AuditDialog::startSelectedChecks() {
     m_totalSelected = 0;
     for (const auto &c : std::as_const(m_checks))
         if (c.toggle && c.toggle->isChecked()) ++m_totalSelected;

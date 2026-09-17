@@ -36,9 +36,9 @@ TEST(AuditScopeAndTriage, RunKeepsSetsForSinceBaseline) {
 // INV-2
 TEST(AuditScopeAndTriage, GitFailureIsReported) {
     const QString body = functionBody(auditSource(),
-        QStringLiteral("void AuditDialog::computeRecentChangeSets("));
-    ASSERT_FALSE(body.isEmpty()) << "computeRecentChangeSets not found";
-    EXPECT_TRUE(body.contains(QStringLiteral("m_recentScopeError = runGit(")));
+        QStringLiteral("AuditDialog::RecentChangeSets AuditDialog::readRecentChangeSets("));
+    ASSERT_FALSE(body.isEmpty()) << "readRecentChangeSets not found";
+    EXPECT_TRUE(body.contains(QStringLiteral("out.error = runGit(")));
     EXPECT_TRUE(body.contains(QStringLiteral("QStringLiteral(\"hash-object\")")))
         << "a repository without HEAD~N gets no diff at all";
     EXPECT_TRUE(body.contains(QStringLiteral("p->kill()")))

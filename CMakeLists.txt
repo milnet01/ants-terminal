@@ -3200,6 +3200,8 @@ if(ANTS_TESTS)
                 tests/features/audit_fixture_readers/test_audit_fixture_readers.cpp
                 # ANTS-5083 — oversized audit project files are skipped.
                 tests/features/audit_state_file_caps/test_audit_state_file_caps.cpp
+                # ANTS-5084 — git history is read off the GUI thread.
+                tests/features/audit_recent_scope_async/test_audit_recent_scope_async.cpp
                 # ANTS-1259 — AuditDialog Debt Sweep tab (fix / defer / allow).
                 tests/features/debt_sweep_dialog/test_debt_sweep_dialog.cpp
                 tests/features/settings_profile_cancel_rollback/test_settings_profile_cancel_rollback.cpp

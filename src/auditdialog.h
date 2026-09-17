@@ -9,6 +9,7 @@
 #include "debtsweepengine.h"
 #include "gitblameparse.h"
 
+#include <functional>
 #include <memory>
 
 #include <QDialog>
@@ -43,6 +44,19 @@ public:
     // ANTS-1677 INV-5 — the check catalogue, for the case comparing the
     // audit_fixture_coverage command's rule ids with audit_self_test.sh's.
     QList<AuditCheck> checksForTest() const;
+
+    // ANTS-5084 — the changed files, and with includeLines the changed lines,
+    // of the last `commits` commits, read from git. Touches no dialog state,
+    // so it runs on a worker thread. `error` says why the sets could not be
+    // read (git failed, timed out or wrote too much) and is empty when they
+    // are good. Public so a test can drive it against a scratch repository.
+    struct RecentChangeSets {
+        QStringList files;
+        QHash<QString, QSet<int>> lines;
+        QString error;
+    };
+    static RecentChangeSets readRecentChangeSets(const QString &projectPath,
+                                                 int commits, bool includeLines);
 
 signals:
     // Emitted when user clicks "Review with Claude" — carries path to temp results file
@@ -559,10 +573,18 @@ private:
     bool         m_debtScanned = false;
     bool         m_debtScanRunning = false;   // ANTS-5057
     bool         m_debtScanAgain = false;     // ANTS-5057
-    // Populate m_recentFiles (+ m_recentLines when includeLines) from the
-    // last m_recentCommits commits. No-op outside a git repo. Shared by
-    // runAudit's scope mode and the "Since baseline" pill.
-    void computeRecentChangeSets(bool includeLines);
+    // ANTS-5084 — populate m_recentFiles (+ m_recentLines when includeLines)
+    // from the last m_recentCommits commits on a worker thread, then run
+    // `then` and every other waiting continuation on the GUI thread. Clears
+    // the sets and runs them at once outside a git repo. Shared by runAudit's
+    // scope mode and the "Since baseline" pill.
+    void requestRecentChangeSets(bool includeLines, std::function<void()> then);
+    bool m_recentScopeInFlight = false;
+    bool m_recentScopeInFlightLines = false;
+    quint64 m_recentScopeRequest = 0;
+    QList<std::function<void()>> m_recentScopeWaiters;
+    // runAudit's work after the recent sets arrive.
+    void startSelectedChecks();
 
     // SARIF v2.1.0 export — OASIS-standard JSON format consumed by GitHub
     // code-scanning, VSCode SARIF Viewer, SonarQube, etc.
@@ -606,7 +628,7 @@ private:
     QByteArray m_currentOutput;
     QByteArray m_currentError;
     bool m_outputOverflowed = false;
-    static constexpr qsizetype MAX_TOOL_OUTPUT_BYTES = 64 * 1024 * 1024;
+    static constexpr qsizetype MAX_TOOL_OUTPUT_BYTES = 64LL * 1024 * 1024;
 
     QPushButton *m_reviewBtn = nullptr;
     QPushButton *m_autofixBtn = nullptr;
