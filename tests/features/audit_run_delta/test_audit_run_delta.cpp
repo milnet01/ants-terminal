@@ -88,6 +88,37 @@ TEST(AuditRunDelta, Inv2FingerprintLineInsensitive) {
     EXPECT_EQ(d.carriedForwardCount, 1);
 }
 
+// ── INV-11 (ANTS-5085) — the recorded set is bounded, head kept ────────
+
+TEST(AuditRunDelta, Inv11RecordedFindingsCapped) {
+    QJsonArray merged;
+    for (int i = 0; i < 5; ++i)
+        merged.append(mk(QStringLiteral("a.cpp"), i + 1, QStringLiteral("cppcheck"),
+                         QStringLiteral("m%1").arg(i)));
+    const QJsonValue first = merged.at(0);
+    const QJsonValue third = merged.at(2);
+
+    EXPECT_TRUE(AuditDelta::capRecordedFindings(merged, 3));
+    ASSERT_EQ(merged.size(), 3);
+    EXPECT_EQ(merged.at(0), first);   // current-first head survives
+    EXPECT_EQ(merged.at(2), third);
+
+    QJsonArray small{mk(QStringLiteral("a.cpp"), 1, QStringLiteral("cppcheck"),
+                        QStringLiteral("only"))};
+    EXPECT_FALSE(AuditDelta::capRecordedFindings(small, 3));
+    EXPECT_EQ(small.size(), 1);
+}
+
+TEST(AuditRunDelta, Inv11RunnerCapsBeforeRecording) {
+    const QString src = QString::fromStdString(
+        ants_test::slurpFile(SRC_AUDITRUNNER_CPP_PATH));
+    const int cap = src.indexOf(QStringLiteral("capRecordedFindings(mergedForRecord"));
+    const int record = src.indexOf(QStringLiteral("AuditCache::recordRun(canonProject"));
+    ASSERT_GE(record, 0) << "recordRun call not found";
+    ASSERT_GE(cap, 0) << "the recorded sidecar is written uncapped";
+    EXPECT_LT(cap, record);
+}
+
 // ── INV-3 — partition + degenerate inputs ─────────────────────────────
 
 TEST(AuditRunDelta, Inv3Partition) {

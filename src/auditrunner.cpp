@@ -2671,6 +2671,10 @@ RunResult runAudit(const RunRequest &req) {
             }
         }
     }
+    // ANTS-5085 — ANTS-1870 § 2.5 bounds the set the sidecar records,
+    // current findings first; it was written whole. A cut marks it truncated.
+    if (AuditDelta::capRecordedFindings(mergedForRecord, kSarifFindingsMax))
+        mergedTruncated = true;
     r.findingsTruncated = mergedTruncated;
 
     // ── INV-12 / SARIF + optional HTML.

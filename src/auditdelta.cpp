@@ -76,4 +76,10 @@ DeltaResult computeDelta(const QJsonArray &current,
     return d;
 }
 
+bool capRecordedFindings(QJsonArray &merged, int maxEntries) {
+    if (maxEntries < 0 || merged.size() <= maxEntries) return false;
+    while (merged.size() > maxEntries) merged.removeLast();
+    return true;
+}
+
 }  // namespace AuditDelta

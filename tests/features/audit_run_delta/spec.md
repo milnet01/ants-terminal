@@ -28,6 +28,11 @@ SARIF merge. Full design: `docs/specs/ANTS-1870.md`.
   pattern.
 - **INV-9** — `computeDelta` + the delta module are pure (no `QProcess`,
   no filesystem) — source-scrape of `auditdelta.cpp`.
+- **INV-11** (ANTS-5085) — `capRecordedFindings(merged, max)` keeps the
+  first `max` entries (current findings lead `merged`) and returns true when
+  it dropped any; `runAudit` calls it on `mergedForRecord` with
+  `kSarifFindingsMax` before `AuditCache::recordRun`, marking the sidecar
+  `truncated` on a cut (docs/specs/ANTS-1870.md § 2.5).
 
 ## Out of scope
 

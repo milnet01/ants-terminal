@@ -36,4 +36,11 @@ DeltaResult computeDelta(const QJsonArray &current,
                          const QJsonArray &prior,
                          const QSet<QString> &changedFiles);
 
+// ANTS-5085 — bound the set the recorded sidecar persists to `maxEntries`,
+// keeping the head. `merged` lists current findings before carried-forward
+// ones, so the overflow shed is carried-forward first (ANTS-1870 § 2.5).
+// Returns true when entries were dropped; the sidecar then records
+// truncated:true.
+bool capRecordedFindings(QJsonArray &merged, int maxEntries);
+
 }  // namespace AuditDelta
