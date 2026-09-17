@@ -18224,7 +18224,7 @@ fixes don't address. Roadmapped here as their own design tasks.
   Source: review-contract-2026-09-14 ANTS-3636 loop 1.
   Lanes: mcp, docs.
 
-- 📋 [ANTS-5226] **workspace_search in literal mode returns no matches, with ok:true, for a pattern ending in an open parenthesis.**
+- 📋 [ANTS-5226] **workspace_search once returned no matches with ok:true for text that exists, apparently under load.**
   Observed 2026-09-17: workspace_search with pattern
   `m_lineCompletionCallback(`, regex false, lane src, returned an empty
   matches list and ok:true. `rg -nF 'm_lineCompletionCallback(' src`
@@ -18236,6 +18236,15 @@ fixes don't address. Roadmapped here as their own design tasks.
   Fix: pass literal patterns as fixed strings, and surface a non-zero rg
   exit other than no-match as a refusal. Test with a pattern containing
   an unbalanced `(`, `[` and `\`.
+  Re-test (2026-09-17, later): not reproducible. The identical call
+  (pattern, lane src, context 10, enclosing_symbol true) now returns the
+  TerminalGrid::newLine match in 29 ms, and count_only finds it too. The
+  failing call took 1187 ms and ran while a -j 2 ASan build was
+  compiling. So the unbalanced-parenthesis cause above is probably
+  wrong. What stays open: a search can return ok:true with an empty
+  match list and no truncated or timeout signal, apparently under load.
+  Next: reproduce under a loaded host (a build running) and check what
+  rcRunRg returns when rg is slow or killed.
   **Layman:** Searching the code for text containing a bracket can wrongly report that nothing was found.
   Kind: fix.
   Source: in-session-2026-09-17.
