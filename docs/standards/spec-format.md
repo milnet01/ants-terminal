@@ -48,15 +48,15 @@ by the `spec_query` MCP verb (§7).
 **There is one copy of THIS file.** It lives at
 `~/.claude/standards/spec-format.md` and every project on this machine reads it
 in place. **A project may still own a spec standard of its own** —
-`standards/README.md` § The three cases calls that correct, and § 3 says such a
-project is checked against its own. What is forbidden is a second copy of this
+`standards/README.md` § The three cases calls that correct. What is forbidden is a second copy of this
 document — **with one sanctioned exception**: a public repository that cannot
 cite a path inside a private home directory may carry a verbatim MIRROR,
 marked as one, on `standards/README.md` § The public-repo mirror's four
 conditions. Ants Terminal carries exactly that, and its own hook refuses a
 commit whose mirror has drifted. Nothing scaffolds a copy into
-a project; a project that needs to differ writes deltas only, at
-`docs/standards/spec-format-overrides.md`. `write-spec` reads it and applies
+a project; a project that differs in part writes its deltas at
+`docs/standards/spec-format-overrides.md`, and one whose deltas outgrow that
+is `standards/README.md` case 3. `write-spec` reads the overrides file and applies
 its deltas when drafting; `spec_lint` does not, and §3 names the eight paths it
 searches instead — four filenames, project-local then under `~/.claude/`. So
 an override to §3's required-section list changes what gets drafted and not
@@ -64,11 +64,13 @@ what gets checked.
 
 Until 2026-08-08 each project carried a full copy that took precedence, with
 this file as fallback. The copies were meant to stay verbatim, nothing checked
-that they did, and they forked. A project still carrying a full
-`docs/standards/spec-format.md` predates the change: extract its genuine deltas
-into an overrides file rather than obeying the fork. **Check for the mirror
-markers first** — a file carrying them is the sanctioned mirror above, not a
-fork, and dismantling it is the error this paragraph would otherwise cause.
+that they did, and they forked. A full
+`docs/standards/spec-format.md` in a project is a pre-change fork, the
+sanctioned mirror above, or a spec standard the project owns. **Check before
+touching it**: the mirror markers mark the mirror, and `standards/README.md`
+case 3's test marks an owned standard. Only a fork has its genuine deltas
+extracted into an overrides file; dismantling either of the others is the
+error this paragraph would otherwise cause.
 `~/.claude/docs/decisions/ADR-0001-documentation-families.md` carries the
 reasoning.
 
@@ -201,8 +203,7 @@ docs/plans/<ID>-<topic>.md    the build steps
   a `phase_<NN>_<topic>` id, or a numeric-led one — while its TITLE regex
   takes the letter-led shape alone. So `CL-9` and `PASS-3-1` route and parse;
   a caller-pinned `Ts20-SP6` refuses `bad_id`; and a `phase_22_threading` or
-  `17-emission-model` id routes but yields an empty title, which
-  `check-doc-facts` `structure` reports as a parse finding. On a stable-prefix
+  `17-emission-model` id routes but yields an empty title. On a stable-prefix
   project the spec is still authored with
   the roadmap's id; what it loses is verb routing, and that is the tool's gap
   rather than the author's breach — a filename that reshapes the id no
@@ -285,8 +286,8 @@ re-verified 2026-09-06 after the reorder by linting a fixture:
 `sections_source: "standards/spec-format.md"`. It ships no
 `standards/specs.md`, so the new first candidate misses and the outcome is
 unchanged. **The global tier is skipped outright where the project root IS
-the global root**, which is this repository's case. A project that ships its
-own spec standard is checked against *that*, not this — which is correct.
+the global root**, which is this repository's case. **A project-local file is
+used only if it carries a block**; one without falls through to this file's.
 
 **What it does NOT mean is that this block is enforced on everyone else.**
 `check-doc-facts`' `sections` entry tells a caller that a `~global/`
@@ -294,8 +295,8 @@ own spec standard is checked against *that*, not this — which is correct.
 findings are dropped — and a project conforming to this file's own one-copy
 rule resolves there by construction. The prefix cannot tell *adopted the
 global standard* from *never adopted one*. So the block governs what
-`write-spec` drafts, and is mechanically checked only for a project carrying
-its own standard. Filed as CFG-0322.
+`write-spec` drafts, and is mechanically checked only where a project-local
+file carries a block — the project's own standard, or the public-repo mirror. Filed as CFG-0322.
 
 ### 3.1 Title
 
@@ -706,8 +707,9 @@ intact; verified 2026-08-17 by running `spec_query` against one.
 form alike; §3.7 owns why the bullet form is nonetheless the default.
 
 Where `spec_query` is available (it is an Ants MCP verb, so not every
-project has it), `check-doc-facts`'s `structure` check runs it against the draft and confirms the
-title, status, kind and every invariant come back. Without the MCP this
+project has it), `check-doc-facts`'s `structure` check runs it against the draft and reports a spec
+whose invariants fail to parse. Nothing checks the title, Status or Kind on
+its own. Without the MCP this
 rule has no mechanical catcher — the format still applies, but nothing
 enforces it.
 
@@ -778,10 +780,10 @@ Unnumbered because this is a standard — see `documentation.md` §2.9.
 
 | Rule | What catches a breach |
 |------|----------------------|
-| §3.1–3.2 title / Status / Kind shape, where the Ants MCP is present | **`Partial:`** `check-doc-facts` `structure`, a header-field parse check (via `spec_query`), which asks only that the fields come back non-empty. **Nothing** checks §3.2's Status VOCABULARY or its current-state-only rule — the parser returns whatever string follows the label, so `**Status:** in review since loop 2` passes |
+| §3.1–3.2 title / Status / Kind shape, where the Ants MCP is present | **`Partial:`** `check-doc-facts` `structure`, an invariant-parse check (via `spec_query`), which reads Status and Kind only when the invariants fail to parse. **Nothing** checks an empty title, Status or Kind on a spec whose invariants parse, nor §3.2's Status VOCABULARY or its current-state-only rule — the parser returns whatever string follows the label, so `**Status:** in review since loop 2` passes |
 | §3.1–3.2 the same, where it is not | **nothing** — the format still applies, but no verb enforces it |
 | §3.7 `INV-N` ids contiguous, no gaps | `check-doc-facts` `structure`, an id-sequence check, **as a candidate** — it cannot tell a withdrawn id from a lost one. In a spec conforming to §3.7 every candidate is a real defect, because §3.7 withdraws an invariant *in place* and so leaves no legitimate gap |
-| §3.7 no `INV-N` id reused | **nothing mechanical** — `check-doc-facts` `structure` checks for *gaps*, which a duplicate does not create; a cold reader or `spec_query`'s returned invariant list read by eye |
+| §3.7 no `INV-N` id reused | **`Partial:`** `spec_log op:append_inv` refuses an id already present as a bullet. **Nothing** catches a duplicate written by hand — `check-doc-facts` `structure` checks for *gaps*, which a duplicate does not create; a cold reader or `spec_query`'s returned invariant list read by eye |
 | §3.7 every INV names a test surface | `check-doc-facts` `contract`, an invariant test-clause check |
 | §3.7 a command `*Test:*` states its expected output | **`Partial:`** `check-doc-facts` `contract`, an invariant test-clause check, which produces a short list as a *candidate* — "is this clause a command?" is a heuristic. **A lane makes the call**, so the check narrows and decides nothing |
 | §3.7 every INV names its breaking input — the clause is present | `check-doc-facts` `contract`, the same invariant test-clause check |
@@ -793,7 +795,7 @@ Unnumbered because this is a standard — see `documentation.md` §2.9.
 | §6 every loop-log row has an outcome, and the tally balances | **`Partial:`** `check-doc-facts` `loop-log`, a loop-log integrity check. For a spec it reads the record under `docs/reviews/`, not the spec, whose §12 carries no table. **Pass that record explicitly** — the check defaults to `docs/`, but the same procedure says to exclude review run-state directories, and `docs/reviews/` holds both the records and a run's `RESUME.md`, so a runner obeying both skips it. **Nothing** compares a row written into the spec's own §12 against the record, which `documentation.md` § What checks this names as its uncovered half. **It does not check presence** — that is `spec_lint` `missing_section`, via §3's block |
 | §6 the record carries the `## Cold-eyes loop log` heading and the eight-column header | **`Partial:`** `spec_log op:append_loop`, a row-shape check. It refuses `column_mismatch` when the number of `cells` differs from the header's column count — a count, not a match, so eight differently-named columns pass — `format_mismatch` when a table log is given no `cells`, and `unrecognised_format` when the heading is missing and the file holds a table. So a hand-made record in the shape §6 prescribes cannot silently accrue rows. **Nothing** catches the header's column NAMES, which the count check does not read |
 | §3.12 every spec carries a What-checks-this table | **`Partial:`** `spec_lint` `missing_section`, the row below's check, catches a missing §10 heading — §3's block lists it, **and the row below says those findings are dropped for a project reading this standard in place, so for most projects this catcher does not fire at all**. **Nothing** checks that the section carries a table rather than prose |
-| §3 all twelve required sections present, correctly numbered | **`Partial:`** `spec_lint` `missing_section`, a required-section presence check reading §3's `<!-- required-sections -->` block verbatim. `check-doc-facts` catalogues it as `sections`; they are one check, not two. **Its findings are DROPPED for a project that reads this standard in place** — that catalogue tells a caller a `~global/` `sections_source` means the project adopted no format standard, and a conforming project resolves there by construction, since this file allows no local copy but the sanctioned public-repo mirror. So the check covers a project carrying its own standard and no other. Filed as CFG-0322 |
+| §3 all twelve required sections present, correctly numbered | **`Partial:`** `spec_lint` `missing_section`, a required-section presence check reading §3's `<!-- required-sections -->` block verbatim. `check-doc-facts` catalogues it as `sections`; they are one check, not two. **Its findings are DROPPED for a project that reads this standard in place** — that catalogue tells a caller a `~global/` `sections_source` means the project adopted no format standard, and a conforming project resolves there by construction, since this file allows no local copy but the sanctioned public-repo mirror. So the check covers only a project whose own standard or mirror carries a block. Filed as CFG-0322 |
 | §3 that block still matching §3's own headings | **`Partial:`** `check-doc-facts` `enumeration-parity`, a two-list parity check added 2026-08-10, takes the in-document pair and returns a **candidate** — deciding two lists are the same set is judgement, which is its own stated bucket. The block against `skeletons/spec-skeleton.md` is `check-doc-facts` `sections`, whose second half diffs the block against §3's own headings and makes a skeleton-versus-standard disagreement its own finding, reported against the pair. This row said the check was not built, until 2026-08-17, and then handed that pair to `review-contract-set`, which does not own it |
 | §3.9 a test claims no more than it exercises | **nothing mechanical** — a cold reader, and §0's checklist item 3 |
 | §3.5 the preference calls are recorded, with who made them | **nothing** — an unrecorded call reads exactly like a call nobody had to make |
