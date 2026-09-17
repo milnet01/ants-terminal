@@ -14,6 +14,14 @@ for security-relevant changes.
 
 ### Fixed
 
+- **The audit window skips an oversized rule pack, suppression list, baseline or trend file** (ANTS-5083)
+  A project file too large to be real is treated as missing, so a
+  cloned repository cannot stall the audit window with one.
+
+- **The audit window no longer freezes a second time when a helper process hangs** (ANTS-5083)
+  A filesystem check or git call that times out on an unresponsive
+  disk is left to finish on its own instead of being waited for again.
+
 - **The global hotkey reports a desktop portal that never answers, instead of waiting forever** (ANTS-5081)
   A shortcut request that gets no reply now fails after a timeout and
   shows the "Global hotkey unavailable" message, and overlapping hotkey

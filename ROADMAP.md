@@ -8453,6 +8453,20 @@ extends an existing item, that item carries it instead.
   Progress (2026-09-14): auto-fix asks isSuppressed at run time, skips
   line-less findings before reading, caps file size; capFindings skipped
   for maxLines = 0 lanes (tests/features/audit_autofix_guards).
+  Progress (2026-09-17):
+  - The constructor tree-walk medium was already fixed by ANTS-5084
+    (34bc9d33): detection lists a bounded number of levels, and
+    projectUsesQt stops after a capped number of headers
+    (audit_dialog_lows INV-1).
+  - Size cap shipped (3fe15b04): audit_rules.json, .audit_suppress,
+    baseline.json and trend.json go through readAuditStateFile, which
+    treats a file over 16 MiB as absent; saveSuppression included.
+    Test: audit_state_file_caps.
+  - Stack QProcess low shipped (a4ffca23): the stat probe and the git
+    runner release their process instead of destroying it while it may
+    still run. Test: audit_dialog_lows INV-7.
+  Still open: saveSuppression takes no lock, and Semgrep registry packs
+  running without --metrics=off (unverified).
   **Layman:** Smaller audit-window fixes: a slow opening, suppressions that don't take effect, and auto-fix touching files it shouldn't.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lane audit-dialog-a).
@@ -10593,12 +10607,17 @@ extends an existing item, that item carries it instead.
   Source: user-report-2026-09-14.
   Lanes: vt, terminalgrid, terminalwidget.
 
-- 📋 [ANTS-5217] **GCC warns of a potential null dereference in AuditDialog::startQueuedBlame.**
+- ✅ [ANTS-5217] **GCC warns of a potential null dereference in AuditDialog::startQueuedBlame.**
   Seen 2026-09-14 in `cmake --build build --target test_audit
   ants-terminal`, after an ANTS-5067 edit recompiled src/auditdialog.cpp.
   The warning is -Wnull-dereference in qhash.h, inlined from
   AuditDialog::startQueuedBlame. Same class as ANTS-5114 and ANTS-4544.
   Unverified whether a real null path exists or GCC's inlining is wrong.
+  Resolved (2026-09-17, a4ffca23): GCC's -Wnull-dereference, inlined
+  from QHash iterator key() in startQueuedBlame, was a false positive.
+  The loop already checked isEmpty(). A const iterator checked against
+  constEnd() silences it; a recompile of auditdialog.cpp shows no
+  warnings. A non-const iterator with an end() check still warned.
   **Layman:** The build prints a warning that one audit function might read a missing value.
   Kind: fix.
   Source: in-session-2026-09-14.
@@ -78695,6 +78714,11 @@ here.)
   covers every screen.
   ANTS-5078's tr() low (terminal widget context-menu and export strings)
   also folds into this item (user, 2026-09-15).
+  Progress (2026-09-17): ANTS-5081 (7df023eb) wrapped the title-bar
+  accessible names and descriptions and the command-palette placeholder,
+  names and descriptions in tr(). That ran ahead of the 2026-09-15
+  decision to leave tr() wraps to this item; the strings need no further
+  wrapping here.
 
 - 💭 [ANTS-1081] **Right-to-left text support.**
   Bidirectional text in the grid.
@@ -80676,6 +80700,37 @@ contributors don't duplicate research.
   Kind: doc-fix.
   Source: review-contract loop 3 on roadmap-format.md, 2026-09-14 (ANTS-4955 gate, filed at cap).
   Lanes: roadmap-store, docs.
+
+- 📋 [ANTS-5227] **Triage clang-tidy warnings in auditdialog.cpp, terminalwidget.h/.cpp and globalshortcutsportal.cpp.**
+  clangd's clang-tidy, under the checks .clang-tidy enables, reported
+  these while ANTS-5079, 5081 and 5083 were edited on 2026-09-17. The
+  editor shows only a window of them, so run clang-tidy over each file
+  (see .clang-tidy for the PCH trap) to get the full list first.
+  Fixed already in auditdialog.cpp: the lineIsCode size product widened, a
+  const that blocked a move, a missed std::move.
+  Seen and not yet decided:
+  - auditdialog.cpp: bugprone-throwing-static-initialization on the
+    auditdialogdetail QString and QSet constants;
+    misc-no-recursion on runNextCheck; another int size product;
+    performance-implicit-conversion-in-loop over QJsonArray.
+    performance-unnecessary-copy-initialization on `file` in
+    startQueuedBlame is a false positive: the key is copied because
+    erase(next) follows.
+  - terminalwidget.cpp: by-value QKeySequence and VtBatchPtr parameters,
+    use-std-move candidates, an unmodified QByteArray copy, a
+    bugprone-branch-clone switch, an int size product, QJsonArray loop
+    conversions.
+  - terminalwidget.h: eventFilter and inputMethodQuery visibility
+    changes, HyperlinkWarning enum base size.
+  - globalshortcutsportal.cpp: internal linkage for PortalShortcut and
+    its D-Bus operators; return-const-ref-from-parameter on operator>>;
+    by-value onActivatedSignal parameters, which the file's own comment
+    says the old-style SLOT signature match requires.
+  Decide each: fix, or suppress inline with the reason.
+  **Layman:** Clear the remaining code-checker warnings in the audit window, the terminal widget and the global hotkey code.
+  Kind: chore.
+  Source: in-session-2026-09-17.
+  Lanes: audit, terminalwidget, chrome.
 
 ### 📝 Cold-eyes 2026-05-11 (ANTS-1234 spec)
 
