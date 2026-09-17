@@ -58,6 +58,12 @@ for security-relevant changes.
   no lasting sign, so answers meant for one Claude session reached all of
   them. The menu item is now Broadcast Input to Panes in This Tab.
 
+### Security
+
+- **The audit window's Semgrep check no longer sends usage metrics to Semgrep** (ANTS-5083)
+  It runs community rule packs with metrics switched off, as the
+  command-line audit already did.
+
 ## [0.7.110] — unreleased (Patron RC preview)
 ### Added
 

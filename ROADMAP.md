@@ -8426,7 +8426,7 @@ extends an existing item, that item carries it instead.
   Source: code-quality-review-2026-09-11 perf pass (lane dialog-chrome-theme).
   Lanes: dialogs, review.
 
-- 📋 [ANTS-5083] **Performance pass findings for the audit dialog's catalogue and run pipeline (medium and low).**
+- ✅ [ANTS-5083] **Performance pass findings for the audit dialog's catalogue and run pipeline (medium and low).**
   The Debt scan freeze is filed as ANTS-5057.
   Medium:
   - The constructor walks the whole non-hidden tree twice on the GUI
@@ -8467,6 +8467,14 @@ extends an existing item, that item carries it instead.
     still run. Test: audit_dialog_lows INV-7.
   Still open: saveSuppression takes no lock, and Semgrep registry packs
   running without --metrics=off (unverified).
+  Resolved (2026-09-17): the last two lows.
+  - Semgrep metrics, verified: semgrep's help says the default sends
+    metrics when --config pulls from the registry, and the dialog's
+    command used registry packs without --metrics=off. It now passes the
+    flag, as the headless runner already did.
+  - saveSuppression takes a ConfigWriteLock before reading.
+  Tests: audit_dialog_lows INV-8, INV-9, red first; full default suite
+  green. Every finding is now shipped or fixed by ANTS-5084.
   **Layman:** Smaller audit-window fixes: a slow opening, suppressions that don't take effect, and auto-fix touching files it shouldn't.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lane audit-dialog-a).
