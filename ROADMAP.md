@@ -8635,6 +8635,22 @@ extends an existing item, that item carries it instead.
   OpenCreatesTheStoreFileFirst). Still open: remembering a failed open;
   migration RSS measure; migration read byte ceiling; bulk busy deadline
   on the single worker.
+  Progress (2026-09-17): measured and decided.
+  - Remembering a failed open: closed, no change. A refused open of a
+    newer store now costs 0.31 ms against 0.28 ms for a normal open
+    (500-open probe linked against build/*.a), so a memo saves nothing
+    and could serve a stale refusal.
+  - Migration RSS: measured 13-15x source bytes (Ants_Terminal 6.16 MB
+    source, 78 MB peak; DOOM_Ants, finbreak, Vestige alike). Massif: a
+    quarter of the heap peak is parseBullets re-splitting the text
+    walkSource already split. User decision: remove that copy and
+    restate ANTS-3757 section 4's budget as measured.
+  - Byte ceiling: user decision 32 MiB total source bytes, refused
+    too_large before reading.
+  - Bulk busy deadline on the single worker: confirmed; roadmap_migrate,
+    roadmap_query and roadmap_log share ants-mcp-dispatch, and a dry run
+    of this project held it ~4.5 s. User decision: run roadmap_migrate
+    on its own lane, keeping the 30 s deadline.
   **Layman:** Smaller roadmap-database fixes, including a slow refusal when an older Ants meets a newer database.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lane roadmap-store).
