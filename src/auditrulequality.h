@@ -36,6 +36,7 @@
 
 #include <QString>
 #include <QStringList>
+#include <QDate>
 #include <QDateTime>
 #include <QHash>
 #include <QVector>
@@ -45,11 +46,9 @@ public:
     explicit RuleQualityTracker(const QString &projectPath);
 
     // Record a single finding firing for `ruleId`. Called once per
-    // finding from the audit-dialog post-processing path. `lineText` is
-    // the matched line (file:line:col: msg shape, or the raw output line
-    // for tools that don't carry a file location). Empty `lineText` is
-    // tolerated — the fire is still counted, but the LCS suggester can't
-    // use it.
+    // finding from the audit-dialog post-processing path. The fire is
+    // counted into today's entry for the rule; `lineText` is not stored
+    // (ANTS-5085) — the LCS suggester reads suppression lines only.
     void recordFire(const QString &ruleId, const QString &lineText);
 
     // Record a user suppression of a single finding. Called from
@@ -114,10 +113,13 @@ public:
     ~RuleQualityTracker() { save(); }
 
 private:
-    struct FireRecord {
+    // ANTS-5085 — fires are counted per rule per calendar day. One record per
+    // finding per run reached MAX_RECORDS within a few runs, and the stored
+    // line text of a fire was never read.
+    struct FireDay {
         QString ruleId;
-        QString lineText;
-        QDateTime timestamp;
+        QDate day;
+        int count = 0;
     };
     struct SuppressRecord {
         QString ruleId;
@@ -129,15 +131,15 @@ private:
 
     QString m_projectPath;
     QString m_path;
-    QVector<FireRecord> m_fires;
+    QVector<FireDay> m_fireDays;   // sorted by day, oldest first
     QVector<SuppressRecord> m_suppressions;
     // ANTS-5085 — records added since the last save; save() skips a clean
     // tracker, so closing the dialog does not rewrite an unchanged file.
     mutable bool m_dirty = false;
 
-    // Bounded retention. We keep at most this many records per category
-    // — older ones are pruned on save. 90-day equivalent at typical run
-    // frequency, with headroom for pathological days.
+    // Bounded retention. We keep at most this many suppression records —
+    // older ones are pruned on save. Fire days need no clamp: one per rule
+    // per day inside RETENTION_DAYS.
     static constexpr int MAX_RECORDS = 50000;
     static constexpr int RETENTION_DAYS = 90;
 

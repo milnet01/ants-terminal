@@ -26,15 +26,20 @@ exposes:
    - the LCS otherwise
 
 3. **Persistence round-trip** — `save()` then `reload()` must reproduce
-   the same `report()` output. Schema is `audit_rule_quality.json` v1
-   with `fires` and `suppressions` arrays of `{rule, line, ts, …}`
-   objects.
+   the same `report()` output. Schema is `audit_rule_quality.json` v2:
+   `fire_days`, an array of `{rule, day, count}` (fires counted per rule per
+   calendar day), and `suppressions`, an array of `{rule, key, line, reason,
+   ts}`. A v1 file's `fires` array of `{rule, line, ts}` still loads, each
+   record counted into its day (ANTS-5085). `lastFire` has day precision.
 
-4. **Retention** — records older than 90 days are pruned on `save()`.
+4. **Retention** — fire days and suppressions older than 90 days are pruned
+   on `save()`.
 5. **Save only on change** — `recordSuppression` does not write the file;
    `save()` writes only when records were added since the last save (ANTS-5085).
-   Beyond `MAX_RECORDS = 50000` per category, the oldest entries are
-   tail-clamped (FIFO).
+   Beyond `MAX_RECORDS = 50000` suppressions, the oldest are tail-clamped
+   (FIFO). Fires need no clamp: one entry per rule per day.
+6. **Fires stay counted and small** (ANTS-5085) — 60,000 fires for one rule
+   survive save and reload with `firesAllTime` 60,000, in a file under 64 KiB.
 
 ## Rationale
 

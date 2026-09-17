@@ -6,8 +6,10 @@
 
 #include "auditrulequality.h"
 
+#include <QDateTime>
 #include <QDir>
 #include <QFile>
+#include <QFileInfo>
 #include <QString>
 #include <QTemporaryDir>
 
@@ -173,6 +175,43 @@ void testSaveOnlyWhenChanged() {
           "a tracker with no new records must not rewrite the file");
 }
 
+// --- Test 7 — ANTS-5085: fires are counted per rule per day, so repeated
+// runs neither saturate the record cap nor grow the file per finding. ----
+void testManyFiresStayCountedAndSmall() {
+    QTemporaryDir tmp;
+    const QString path = tmp.path() + "/audit_rule_quality.json";
+    {
+        RuleQualityTracker t(tmp.path());
+        for (int i = 0; i < 60000; ++i)
+            t.recordFire("noisy_rule", QString("src/foo.cpp:%1: some finding text").arg(i));
+    }
+    RuleQualityTracker reloaded(tmp.path());
+    const auto rows = reloaded.report();
+    CHECK(rows.size() == 1, "one rule expected after reload");
+    if (rows.size() == 1)
+        CHECK_EQ(rows[0].firesAllTime, 60000, "every fire counted across save/reload");
+    CHECK(QFileInfo(path).size() < 64LL * 1024,
+          "the history file grows per finding instead of per rule-day");
+}
+
+// --- Test 8 — ANTS-5085: a v1 file's per-fire records still load. --------
+void testLoadsV1FireRecords() {
+    QTemporaryDir tmp;
+    const QString ts = QDateTime::currentDateTime().toString(Qt::ISODate);
+    QFile f(tmp.path() + "/audit_rule_quality.json");
+    CHECK(f.open(QIODevice::WriteOnly), "could not write the v1 fixture");
+    f.write(QString(R"({"schema_version":1,"fires":[)"
+                    R"({"rule":"old_rule","line":"a","ts":"%1"},)"
+                    R"({"rule":"old_rule","line":"b","ts":"%1"}],)"
+                    R"("suppressions":[]})").arg(ts).toUtf8());
+    f.close();
+
+    RuleQualityTracker t(tmp.path());
+    const auto rows = t.report();
+    CHECK(rows.size() == 1, "the v1 rule is missing after load");
+    if (rows.size() == 1) CHECK_EQ(rows[0].fires30d, 2, "v1 fires counted");
+}
+
 #define RQ_TEST(NAME) \
     TEST(AuditRuleQuality, NAME) { \
         int before = failures; \
@@ -186,5 +225,7 @@ RQ_TEST(SuggestTighteningEmptyForFewSamples)
 RQ_TEST(SuggestTighteningRejectsPureIdentifier)
 RQ_TEST(PersistenceRoundTrip)
 RQ_TEST(SaveOnlyWhenChanged)
+RQ_TEST(ManyFiresStayCountedAndSmall)
+RQ_TEST(LoadsV1FireRecords)
 
 }  // namespace

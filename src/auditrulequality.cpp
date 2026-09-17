@@ -20,13 +20,18 @@ RuleQualityTracker::RuleQualityTracker(const QString &projectPath)
 }
 
 void RuleQualityTracker::recordFire(const QString &ruleId, const QString &lineText) {
+    Q_UNUSED(lineText);   // ANTS-5085 — a fire is counted, not stored
     if (ruleId.isEmpty()) return;
-    FireRecord r;
-    r.ruleId = ruleId;
-    r.lineText = lineText;
-    r.timestamp = QDateTime::currentDateTime();
-    m_fires.append(r);
+    const QDate today = QDate::currentDate();
     m_dirty = true;
+    // Today's entries are at the tail: m_fireDays is kept in day order.
+    for (int i = m_fireDays.size() - 1; i >= 0 && m_fireDays[i].day == today; --i) {
+        if (m_fireDays[i].ruleId == ruleId) {
+            ++m_fireDays[i].count;
+            return;
+        }
+    }
+    m_fireDays.append({ruleId, today, 1});
 }
 
 void RuleQualityTracker::recordSuppression(const QString &ruleId,
@@ -51,13 +56,14 @@ QVector<RuleQualityTracker::RuleStats> RuleQualityTracker::report() const {
 
     QHash<QString, RuleStats> rows;
 
-    for (const FireRecord &fr : m_fires) {
-        RuleStats &s = rows[fr.ruleId];
-        s.ruleId = fr.ruleId;
-        ++s.firesAllTime;
-        if (fr.timestamp >= cutoff30d) ++s.fires30d;
-        if (!s.lastFire.isValid() || fr.timestamp > s.lastFire)
-            s.lastFire = fr.timestamp;
+    for (const FireDay &fd : m_fireDays) {
+        RuleStats &s = rows[fd.ruleId];
+        s.ruleId = fd.ruleId;
+        s.firesAllTime += fd.count;
+        if (fd.day >= cutoff30d.date()) s.fires30d += fd.count;
+        const QDateTime dayStart(fd.day, QTime(0, 0));   // day precision
+        if (!s.lastFire.isValid() || dayStart > s.lastFire)
+            s.lastFire = dayStart;
     }
 
     for (const SuppressRecord &sr : m_suppressions) {
@@ -186,29 +192,26 @@ void RuleQualityTracker::save() const {
     if (m_projectPath.isEmpty() || !m_dirty) return;
 
     // Re-run prune logic on a const copy so save() can be const.
-    QVector<FireRecord> firesOut = m_fires;
     QVector<SuppressRecord> suppOut = m_suppressions;
 
     const QDateTime cutoff = QDateTime::currentDateTime().addDays(-RETENTION_DAYS);
-    firesOut.erase(std::remove_if(firesOut.begin(), firesOut.end(),
-        [cutoff](const FireRecord &r) { return r.timestamp < cutoff; }), firesOut.end());
     suppOut.erase(std::remove_if(suppOut.begin(), suppOut.end(),
         [cutoff](const SuppressRecord &r) { return r.timestamp < cutoff; }), suppOut.end());
 
     // Tail-clamp at MAX_RECORDS — keeps the file bounded on pathological
     // days even within the 90-day window.
-    if (firesOut.size() > MAX_RECORDS)
-        firesOut.remove(0, firesOut.size() - MAX_RECORDS);
     if (suppOut.size() > MAX_RECORDS)
         suppOut.remove(0, suppOut.size() - MAX_RECORDS);
 
-    QJsonArray firesJson;
-    for (const FireRecord &r : firesOut) {
+    // ANTS-5085 — one entry per rule per day; days past retention are dropped.
+    QJsonArray fireDaysJson;
+    for (const FireDay &fd : m_fireDays) {
+        if (fd.day < cutoff.date()) continue;
         QJsonObject o;
-        o["rule"] = r.ruleId;
-        o["line"] = r.lineText;
-        o["ts"]   = r.timestamp.toString(Qt::ISODate);
-        firesJson.append(o);
+        o["rule"]  = fd.ruleId;
+        o["day"]   = fd.day.toString(Qt::ISODate);
+        o["count"] = fd.count;
+        fireDaysJson.append(o);
     }
     QJsonArray suppJson;
     for (const SuppressRecord &r : suppOut) {
@@ -221,8 +224,8 @@ void RuleQualityTracker::save() const {
         suppJson.append(o);
     }
     QJsonObject root;
-    root["schema_version"] = 1;
-    root["fires"]          = firesJson;
+    root["schema_version"] = 2;   // ANTS-5085 — fire_days replaced v1's fires
+    root["fire_days"]      = fireDaysJson;
     root["suppressions"]   = suppJson;
 
     // QSaveFile: write to a sibling temp file, rename atomically on commit().
@@ -255,7 +258,7 @@ void RuleQualityTracker::save() const {
 }
 
 void RuleQualityTracker::reload() {
-    m_fires.clear();
+    m_fireDays.clear();
     m_suppressions.clear();
     load();
 }
@@ -267,16 +270,29 @@ void RuleQualityTracker::load() {
     if (!doc.isObject()) return;
     const QJsonObject root = doc.object();
 
-    for (const QJsonValue &v : root.value("fires").toArray()) {
+    // ANTS-5085 — count fires into (rule, day) buckets: v2 fire_days as
+    // stored, and a v1 file's per-fire records one each.
+    QHash<QPair<QString, QDate>, int> counts;
+    for (const auto &v : root.value("fire_days").toArray()) {
         const QJsonObject o = v.toObject();
-        FireRecord r;
-        r.ruleId = o.value("rule").toString();
-        r.lineText = o.value("line").toString();
-        r.timestamp = QDateTime::fromString(o.value("ts").toString(), Qt::ISODate);
-        if (!r.ruleId.isEmpty() && r.timestamp.isValid())
-            m_fires.append(r);
+        const QString rule = o.value("rule").toString();
+        const QDate day = QDate::fromString(o.value("day").toString(), Qt::ISODate);
+        const int count = o.value("count").toInt();
+        if (!rule.isEmpty() && day.isValid() && count > 0)
+            counts[{rule, day}] += count;
     }
-    for (const QJsonValue &v : root.value("suppressions").toArray()) {
+    for (const auto &v : root.value("fires").toArray()) {
+        const QJsonObject o = v.toObject();
+        const QString rule = o.value("rule").toString();
+        const QDateTime ts = QDateTime::fromString(o.value("ts").toString(), Qt::ISODate);
+        if (!rule.isEmpty() && ts.isValid())
+            ++counts[{rule, ts.date()}];
+    }
+    for (auto it = counts.constBegin(); it != counts.constEnd(); ++it)
+        m_fireDays.append({it.key().first, it.key().second, it.value()});
+    std::sort(m_fireDays.begin(), m_fireDays.end(),
+              [](const FireDay &a, const FireDay &b) { return a.day < b.day; });
+    for (const auto &v : root.value("suppressions").toArray()) {
         const QJsonObject o = v.toObject();
         SuppressRecord r;
         r.ruleId = o.value("rule").toString();
