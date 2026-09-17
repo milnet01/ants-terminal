@@ -1959,6 +1959,17 @@ parseBullets(const QString &markdownText, const IdFormat &fmt) {
         && fmt.prefix == s_lastPrefix && fmt.pattern == s_lastPattern)
         return s_lastResult;
 
+    QVector<BulletRecord> out = parseBulletLines(markdownText.split('\n'), fmt);
+    // ANTS-2119 (roadmapdialog M-1) — populate the memo for the next render.
+    s_lastInput   = markdownText;
+    s_lastPrefix  = fmt.prefix;
+    s_lastPattern = fmt.pattern;
+    s_lastResult  = out;
+    return out;
+}
+
+QVector<BulletRecord>
+parseBulletLines(const QStringList &lines, const IdFormat &fmt) {
     const CompiledIdFormat decl(fmt);   // ANTS-3771 § 2.5 — once per call
     QVector<BulletRecord> out;
     // ANTS-3808 — the five trailer matchers moved out to file scope so
@@ -1969,7 +1980,6 @@ parseBullets(const QString &markdownText, const IdFormat &fmt) {
     // What is left in this loop is what only a DOCUMENT can decide — which
     // format it is in, which section a bullet sits under, and which lines it
     // spans.
-    const QStringList lines = markdownText.split('\n');
     // ANTS-1428 — format detection runs once per parse. On
     // detection of github-task-list, the bullet-line matcher
     // accepts `- [ ]` / `- [x]` shapes and synthesises IDs via
@@ -2095,11 +2105,6 @@ parseBullets(const QString &markdownText, const IdFormat &fmt) {
 
         out.append(rec);
     }
-    // ANTS-2119 (roadmapdialog M-1) — populate the memo for the next render.
-    s_lastInput   = markdownText;
-    s_lastPrefix  = fmt.prefix;
-    s_lastPattern = fmt.pattern;
-    s_lastResult  = out;
     return out;
 }
 

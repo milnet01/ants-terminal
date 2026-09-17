@@ -14056,7 +14056,7 @@ void ClaudeIntegration::onMcpConnection() {
                         "ROADMAP.md. Read store_backed, updated_items[] and "
                         "notes_summary before acting on counts. op:\"deregister\" removes "
                         "a project (confirm:true while its root exists). Refusals: "
-                        "no_project, no_roadmap, case_ambiguous, not_utf8, "
+                        "no_project, no_roadmap, case_ambiguous, not_utf8, too_large, "
                         "format_mismatch, bad_args, slug_collision, store_failed, "
                         "migrate_failed, confirm_required, transient_root. caller_cwd "
                         "Required.");
@@ -14150,8 +14150,8 @@ void ClaudeIntegration::onMcpConnection() {
                         "(~/.local/share/ants-terminal/roadmap.sqlite), not "
                         "per-project. Refusals: "
                         "no_project, no_roadmap, case_ambiguous, not_utf8, "
-                        "format_mismatch, bad_args, slug_collision, store_failed, "
-                        "migrate_failed. caller_cwd Required.");
+                        "too_large (sources over 32 MiB), format_mismatch, bad_args, "
+                        "slug_collision, store_failed, migrate_failed. caller_cwd Required.");
                     // ANTS-1453 — selection_hint: one sentence on WHEN to
                     // reach for this verb rather than what it does.
                     // ANTS-4480 (reported by AI Prompts and Fin Break, the same

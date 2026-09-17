@@ -212,7 +212,7 @@ struct MigrationPlan {
 // than it saves in churn, and coding.md § 2 prefers the single surface.
 //
 // `*error` receives the REFUSAL CODE alone — `not_found` | `case_ambiguous` |
-// `not_utf8` | `archive_format_mismatch` — and no prose. ANTS-3757 INV-1
+// `not_utf8` | `archive_format_mismatch` | `too_large` — and no prose. ANTS-3757 INV-1
 // asserts which refusal happened and free text is not assertable; a caller
 // wanting a sentence composes it from the code and the root it passed, both of
 // which it already holds. A refusal NAMES NO FILE, deliberately: it aborts the
@@ -220,7 +220,14 @@ struct MigrationPlan {
 // holds a handful of files. Naming the entry matters only where the call
 // SUCCEEDS and one was dropped — and that case, `archive_unrecognised`, does
 // name it, in a note riding on the Discovery that exists.
-[[nodiscard]] std::optional<Discovery> findRoadmaps(const QString &projectRoot, QString *error);
+//
+// ANTS-5086 — `too_large` when the live roadmap and its archives together
+// exceed `maxSourceBytes`, decided from their sizes before any is read. The
+// default is 32 MiB, five times the largest roadmap measured on this machine
+// (6.2 MiB); a migration's peak RSS runs at up to ~15x its source bytes.
+inline constexpr qint64 kMaxSourceBytes = 32LL * 1024 * 1024;
+[[nodiscard]] std::optional<Discovery> findRoadmaps(const QString &projectRoot, QString *error,
+                                                    qint64 maxSourceBytes = kMaxSourceBytes);
 
 // The PURE half: no filesystem, no clock, no id counter (ANTS-3757 INV-9).
 // `projectName` and `exportSlug` are supplied by the caller, not derived —

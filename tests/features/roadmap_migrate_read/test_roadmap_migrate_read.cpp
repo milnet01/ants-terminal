@@ -1326,3 +1326,79 @@ TEST(roadmap_migrate_read, Ants3766Inv11DeclaredFormatIsEvidenceNotInheritance) 
            "class § 2.1.1 exists to close, reintroduced by the exemption meant "
            "to prevent it";
 }
+
+// ANTS-5086 — parseBulletLines() over a pre-split text returns what
+// parseBullets() returns over the text, on every dialect the fixtures carry.
+TEST(roadmap_migrate_read, Ants5086LineParseMatchesTextParse) {
+    for (const char *name : {"antsv1", "gfm", "passes", "identity", "malformed"}) {
+        const QString text = fixtureText(name);
+        ASSERT_FALSE(text.isEmpty()) << name;
+        const auto fromText  = RoadmapParse::parseBullets(text);
+        const auto fromLines = RoadmapParse::parseBulletLines(text.split(QLatin1Char('\n')));
+        ASSERT_FALSE(fromText.isEmpty()) << name << ": the fixture proves nothing";
+        ASSERT_EQ(fromLines.size(), fromText.size()) << name;
+        for (int i = 0; i < fromText.size(); ++i) {
+            const auto &a = fromText.at(i);
+            const auto &b = fromLines.at(i);
+            EXPECT_EQ(b.id, a.id) << name << " #" << i;
+            EXPECT_EQ(b.status, a.status) << name << " #" << i;
+            EXPECT_EQ(b.headlineFull, a.headlineFull) << name << " #" << i;
+            EXPECT_EQ(b.body, a.body) << name << " #" << i;
+            EXPECT_EQ(b.bodyProse, a.bodyProse) << name << " #" << i;
+            EXPECT_EQ(b.sectionSlug, a.sectionSlug) << name << " #" << i;
+            EXPECT_EQ(b.firstLine, a.firstLine) << name << " #" << i;
+            EXPECT_EQ(b.lastLine, a.lastLine) << name << " #" << i;
+        }
+    }
+}
+
+// ANTS-5086 — the migration walk hands the parser the lines it already split.
+// Parsing src.markdown again made a second full copy of every line, measured
+// with massif as a quarter of the migration's peak heap.
+TEST(roadmap_migrate_read, Ants5086WalkSourceSplitsTheTextOnce) {
+    QFile src(fixtureDir() + QStringLiteral("/../../../../src/roadmapmigrate.cpp"));
+    ASSERT_TRUE(src.open(QIODevice::ReadOnly | QIODevice::Text)) << src.fileName().toStdString();
+    const QString text = QString::fromUtf8(src.readAll());
+    const qsizetype fn = text.indexOf(QStringLiteral("void walkSource("));
+    ASSERT_GE(fn, 0);
+    const qsizetype end = text.indexOf(QStringLiteral("\n}\n"), fn);
+    ASSERT_GT(end, fn);
+    const QString body = text.mid(fn, end - fn);
+    EXPECT_EQ(body.count(QStringLiteral(".split(")), 1)
+        << "walkSource splits the source text more than once";
+    EXPECT_FALSE(body.contains(QStringLiteral("parseBullets(src.markdown")))
+        << "the parser re-splits the text walkSource already split";
+    EXPECT_TRUE(body.contains(QStringLiteral("parseBulletLines(lines")));
+}
+
+// ANTS-5086 — the live roadmap and its archives are refused together when
+// their sizes exceed the byte ceiling, and the refusal is decided from the
+// sizes: an archive that is not valid UTF-8 would otherwise answer not_utf8,
+// which it can only do after being read.
+TEST(roadmap_migrate_read, Ants5086SourceByteCeiling) {
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid());
+    const auto write = [&dir](const QString &rel, const QByteArray &bytes) {
+        QDir(dir.path()).mkpath(QFileInfo(rel).path());
+        QFile f(dir.filePath(rel));
+        ASSERT_TRUE(f.open(QIODevice::WriteOnly));
+        ASSERT_EQ(f.write(bytes), bytes.size());
+    };
+    const QByteArray live("# Roadmap\n\n## Now\n\n- 📋 [X-0001] **An item.**\n");
+    write(QStringLiteral("ROADMAP.md"), live);
+
+    QString err;
+    EXPECT_TRUE(RoadmapMigrate::findRoadmaps(dir.path(), &err, live.size()).has_value())
+        << "a source exactly at the ceiling is accepted: " << err.toStdString();
+
+    err.clear();
+    EXPECT_FALSE(RoadmapMigrate::findRoadmaps(dir.path(), &err, live.size() - 1).has_value());
+    EXPECT_EQ(err, QStringLiteral("too_large")) << "the live file alone over the ceiling";
+
+    // An archive whose bytes are not UTF-8: read, it refuses not_utf8.
+    write(QStringLiteral("docs/roadmap/0.1.md"), QByteArray("\xff\xfe bad", 6));
+    err.clear();
+    EXPECT_FALSE(RoadmapMigrate::findRoadmaps(dir.path(), &err, live.size() + 5).has_value());
+    EXPECT_EQ(err, QStringLiteral("too_large"))
+        << "the archives count toward the ceiling, before any is read";
+}

@@ -803,7 +803,9 @@ and the load never opens the source file.
 Discovery's failures are **not** in this set. `findRoadmap()` returns an error
 before any plan exists (§ 2.2), so a missing, case-ambiguous or undecodable
 roadmap has no `MigrationPlan` to be reported on. They are still a closed set:
-`findRoadmap()` reports **`not_found` | `case_ambiguous` | `not_utf8`** — and
+`findRoadmap()` reports **`not_found` | `case_ambiguous` | `not_utf8`** — plus
+`too_large` since ANTS-5086, raised from file sizes before any source is read
+when the live roadmap and its archives together exceed 32 MiB — and
 the code is the whole payload of its `error` out-parameter, with no prose
 beside it (2026-07-31, implementation). § 2.1 declares one out-parameter;
 INV-1 asserts *which* refusal happened and free text is not assertable, so a
@@ -923,8 +925,17 @@ line count from the ANTS-3753 survey and a much smaller file. The working set
 starts at roughly **twice** that before any plan exists, because `QString` is
 UTF-16 and the corpus is almost entirely ASCII. On top of that a plan carries
 the item bodies and the element payloads, each a second copy of a slice of the
-source. Budget **under 4× the source file's byte size** — under 12 MB for the
-worst project — and never the whole corpus at once, since ANTS-3765 loads one
+source. **Measured 2026-09-17 (ANTS-5086), the 4× budget this section set does
+not hold, and the budget is restated to what was measured.** A probe linking
+`findRoadmaps()` + `planFrom()` against the release libraries reports peak RSS
+at **12.5–14.7× the source bytes** across four projects (Ants_Terminal, 6.2 MB
+of source, peaks at 75 MB). Massif puts the heap peak for a 1.2 MB source at
+5.8 MB, about 5×; the rest of the RSS gap is not attributed. That is after
+ANTS-5086 stopped the reader re-splitting the lines the walk had already split,
+which took the heap peak from 10.4 MB. Budget **under 16× the source bytes in
+peak RSS**. The source itself is capped at 32 MiB (§ 2.10's `too_large`), so
+the worst admitted project stays near half a gigabyte. Never the whole corpus
+at once, since ANTS-3765 loads one
 project per transaction and discards each plan after it commits. That
 per-project bound is the eviction policy; there is no cache and nothing
 accumulates across projects.

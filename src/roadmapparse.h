@@ -330,6 +330,13 @@ QString stripTrailingTrailerLines(const QString &body);
 QVector<BulletRecord> parseBullets(const QString &markdownText,
                                    const IdFormat &fmt = {});
 
+// ANTS-5086 — parseBullets() over lines the caller has already split on '\n'.
+// The migration walk holds that split for its own pass, and handing it the
+// text instead made a second full copy of every line: a quarter of the
+// migration's peak heap. Not memoised; parseBullets() is this plus the memo.
+QVector<BulletRecord> parseBulletLines(const QStringList &lines,
+                                       const IdFormat &fmt = {});
+
 // ANTS-3793 § 2.1.1 — the record parseBullets() would build for ONE ants-v1
 // bullet, given exactly that bullet's text. The read seam's normative rule is
 // "fill each record with what parseBullets() would assign if it parsed

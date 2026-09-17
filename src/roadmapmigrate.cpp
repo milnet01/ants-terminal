@@ -465,8 +465,9 @@ void walkSource(const Source &src, const SourceCtx &ctx, MigrationPlan &plan,
     // migration would classify against ids the reader resolved WITHOUT the
     // project's own rule, which is the inert-declaration outcome § 2.4 exists
     // to prevent.
-    const QVector<BulletRecord> records =
-        RoadmapParse::parseBullets(src.markdown, fmt);
+    // ANTS-5086 — the lines already split above, not src.markdown: parsing the
+    // text re-split it into a second full copy of every line.
+    const QVector<BulletRecord> records = RoadmapParse::parseBulletLines(lines, fmt);
     QHash<int, const BulletRecord *> recordAt;
     for (const BulletRecord &rec : records)
         if (rec.firstLine >= 1) recordAt.insert(rec.firstLine, &rec);
@@ -822,7 +823,8 @@ void walkSource(const Source &src, const SourceCtx &ctx, MigrationPlan &plan,
 
 }  // namespace
 
-std::optional<Discovery> findRoadmaps(const QString &projectRoot, QString *error) {
+std::optional<Discovery> findRoadmaps(const QString &projectRoot, QString *error,
+                                      qint64 maxSourceBytes) {
     const auto fail = [error](const char *code) -> std::optional<Discovery> {
         if (error) *error = QString::fromLatin1(code);
         return std::nullopt;
@@ -877,14 +879,11 @@ std::optional<Discovery> findRoadmaps(const QString &projectRoot, QString *error
     if (hits.size() > 1) return fail("case_ambiguous");
 
     Discovery disc;
-    {
-        QFile f(hits.constFirst());
-        if (!f.open(QIODevice::ReadOnly)) return fail("not_found");
-        Source live;
-        if (!decodeUtf8(f.readAll(), &live.markdown)) return fail("not_utf8");
-        live.path = hits.constFirst();
-        disc.sources.append(live);
-    }
+    // ANTS-5086 — every source's size is summed before any source is read, so
+    // an oversized project costs stat calls rather than its bytes.
+    qint64 sourceBytes = QFileInfo(hits.constFirst()).size();
+    if (sourceBytes > maxSourceBytes) return fail("too_large");
+    QVector<QPair<QPair<int, int>, QString>> found;
 
     // 2. Archives under <root>/docs/roadmap/ — ANTS-3766 § 2.2. The directory,
     // the descending sort AND the name regex are roadmap-format.md § 3.9's,
@@ -908,7 +907,6 @@ std::optional<Discovery> findRoadmaps(const QString &projectRoot, QString *error
             addNote(disc.notes, "archive_unrecognised",
                     QStringLiteral("docs/roadmap"), 0, -1);
         } else {
-            QVector<QPair<QPair<int, int>, QString>> found;
             const QFileInfoList archiveEntries =
                 QDir(archiveDir.absoluteFilePath())
                     // QDir::System is load-bearing and was found missing by
@@ -948,26 +946,40 @@ std::optional<Discovery> findRoadmaps(const QString &projectRoot, QString *error
             // project will reach minor 10.
             std::sort(found.begin(), found.end(),
                       [](const auto &a, const auto &b) { return b.first < a.first; });
-
-            for (const auto &entry : std::as_const(found)) {
-                QFile f(entry.second);
-                if (!f.open(QIODevice::ReadOnly)) {
-                    // An archive is skippable where the live file is not, so a
-                    // permissions failure takes the note rather than the
-                    // refusal findRoadmap() gives the live file.
-                    addNote(disc.notes, "archive_unrecognised",
-                            QFileInfo(entry.second).fileName(), 0, -1);
-                    continue;
-                }
-                Source arc;
-                // Partial migration of a project is worse than none: the load
-                // half is one transaction, and a plan silently missing one
-                // archive would commit as though complete.
-                if (!decodeUtf8(f.readAll(), &arc.markdown)) return fail("not_utf8");
-                arc.path = entry.second;
-                disc.sources.append(arc);
-            }
         }
+    }
+
+    for (const auto &entry : std::as_const(found)) {
+        sourceBytes += QFileInfo(entry.second).size();
+        if (sourceBytes > maxSourceBytes) return fail("too_large");
+    }
+
+    {
+        QFile f(hits.constFirst());
+        if (!f.open(QIODevice::ReadOnly)) return fail("not_found");
+        Source live;
+        if (!decodeUtf8(f.readAll(), &live.markdown)) return fail("not_utf8");
+        live.path = hits.constFirst();
+        disc.sources.append(live);
+    }
+
+    for (const auto &entry : std::as_const(found)) {
+        QFile f(entry.second);
+        if (!f.open(QIODevice::ReadOnly)) {
+            // An archive is skippable where the live file is not, so a
+            // permissions failure takes the note rather than the
+            // refusal findRoadmap() gives the live file.
+            addNote(disc.notes, "archive_unrecognised",
+                    QFileInfo(entry.second).fileName(), 0, -1);
+            continue;
+        }
+        Source arc;
+        // Partial migration of a project is worse than none: the load
+        // half is one transaction, and a plan silently missing one
+        // archive would commit as though complete.
+        if (!decodeUtf8(f.readAll(), &arc.markdown)) return fail("not_utf8");
+        arc.path = entry.second;
+        disc.sources.append(arc);
     }
 
     // 3. Format, per source, then § 2.1.1's reference-format comparison.
