@@ -8580,6 +8580,14 @@ extends an existing item, that item carries it instead.
   applyFilter skips context files over 4 MiB and falseposledger
   loadEntries locks its static cache (tests/features/audit_engine_lows).
   Still open: auditrunner reads tool output whole; the findings sidecar is written uncapped; the rule-quality file still reaches its record cap.
+  Progress (2026-09-17): the tool-output medium shipped. runAudit
+  drains each tool's output as it arrives; past 64 MiB it stops the
+  tool's process group and reports output_too_large (a new status,
+  decided by the user), which incompleteToolsDetail marks truncated. The
+  SARIF notification excerpt is capped at 64 KiB. Tests:
+  audit_run_output_cap, audit_run_incomplete_detail INV-11, red first.
+  Still open: the findings sidecar is written uncapped, and the
+  rule-quality file still reaches its record cap.
   **Layman:** Smaller audit-engine fixes: unbounded tool output, a change list that keeps growing, and slow saves on the main window.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lane audit-engine).

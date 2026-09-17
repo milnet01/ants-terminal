@@ -14,6 +14,11 @@ for security-relevant changes.
 
 ### Fixed
 
+- **The command-line audit stops a tool that prints runaway output instead of holding all of it in memory** (ANTS-5085)
+  A tool printing more than 64 MiB is stopped and reported as
+  output_too_large, and the audit report embeds a short excerpt of each
+  tool's output rather than megabytes of it.
+
 - **Audit SARIF exports name files with valid links, so file names with spaces or # open correctly in SARIF viewers** (ANTS-5084)
 
 - **Typing in the audit results filter no longer redraws the whole list on every key press** (ANTS-5084)
