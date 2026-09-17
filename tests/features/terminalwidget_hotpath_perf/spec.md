@@ -84,6 +84,13 @@ the invariants are source-scrape assertions against
   `m_spanCacheDirty` mid-batch and leave rows written later in that batch
   with stale URL and highlight spans.
 
+- **INV-16 / autocomplete skips the prompt** (ANTS-5078). `updateSuggestion`
+  matches history against the text after the prompt only. It takes that text
+  from the last entry of `promptRegions()`, from `commandStartCol` onward.
+  It suggests only while OSC 133 B has fired, no output has started, and the
+  cursor is on that region's command line. Without shell integration it
+  suggests nothing, because nothing marks where the prompt ends.
+
 ## Test scope
 
 Source-scrape against `src/terminalwidget.cpp` via `SRC_TERMINALWIDGET_PATH`.

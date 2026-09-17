@@ -6048,10 +6048,20 @@ void TerminalWidget::updateSuggestion() {
         return;
     }
 
-    // Get current input line (text after last prompt)
-    int scrollbackSize = m_grid->scrollbackSize();
-    int cursorLine = scrollbackSize + m_grid->cursorRow();
-    QString currentLine = lineText(cursorLine).trimmed();
+    // Get the command being typed: the text after the prompt. ANTS-5078 —
+    // only OSC 133 B marks where the prompt ends, so without shell
+    // integration there is no suggestion. Matching the whole line compared
+    // the prompt with history, and only ever hit a line with no prompt, such
+    // as a program's own input. Only the command line itself is read, before
+    // any output, so the cost per VT batch stays one line.
+    QString currentLine;
+    const auto &regions = m_grid->promptRegions();
+    const int cursorLine = m_grid->scrollbackSize() + m_grid->cursorRow();
+    if (!regions.empty()) {
+        const PromptRegion &pr = regions.back();
+        if (pr.commandStartMs > 0 && !pr.hasOutput && cursorLine == pr.endLine)
+            currentLine = lineText(cursorLine).mid(pr.commandStartCol).trimmed();
+    }
 
     // ANTS-3455 — the suggestion is a pure function of the trimmed input
     // line, so when the line is unchanged since the last computation the

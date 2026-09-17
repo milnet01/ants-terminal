@@ -8079,6 +8079,14 @@ extends an existing item, that item carries it instead.
   4837/4837.
   Still open: exports on the GUI thread (medium), autocomplete matching
   the prompt.
+  Progress (2026-09-17): shipped the autocomplete low. updateSuggestion
+  matches history against the text after the prompt, read from the last
+  prompt region from commandStartCol onward. It suggests only while OSC
+  133 B has fired, no output has started, and the cursor is on that
+  region's command line. Without shell integration it suggests nothing.
+  Test: terminalwidget_hotpath_perf INV-16, red first; full default suite
+  4843/4843.
+  Still open: exports on the GUI thread (medium).
   **Layman:** Smaller fixes to copying, exporting and searching in the terminal, which can freeze on very long histories.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lane terminal-widget-b).

@@ -242,3 +242,16 @@ TEST(TerminalWidgetHotPathPerf, Inv15LineTriggerDefersCacheInvalidation) {
     EXPECT_TRUE(body.contains(QStringLiteral("m_spanCacheDirty = true")))
         << "a line trigger does not mark the span caches for the next paint";
 }
+
+// INV-16 (ANTS-5078) — autocomplete matches the typed command, not the prompt.
+TEST(TerminalWidgetHotPathPerf, Inv16SuggestionSkipsThePrompt) {
+    const QString body = functionBody(
+        tw(), QStringLiteral("void TerminalWidget::updateSuggestion()"));
+    ASSERT_FALSE(body.isEmpty()) << "updateSuggestion not found";
+    EXPECT_TRUE(body.contains(QStringLiteral("promptRegions()")))
+        << "updateSuggestion does not find the open prompt region";
+    EXPECT_TRUE(body.contains(QStringLiteral(".mid(pr.commandStartCol)")))
+        << "updateSuggestion does not cut the prompt off the line";
+    EXPECT_FALSE(body.contains(QStringLiteral("lineText(cursorLine).trimmed()")))
+        << "updateSuggestion still matches the whole line, prompt included";
+}

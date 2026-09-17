@@ -14,6 +14,11 @@ for security-relevant changes.
 
 ### Fixed
 
+- **Autocomplete matches the command you are typing, not the prompt in front of it.** (ANTS-5078)
+  History suggestions now read the text after the prompt, so they can
+  match at all. They need shell integration (OSC 133) to know where the
+  prompt ends; without it no suggestion appears.
+
 - **Broadcast Input sends each pane the key encoded for that pane's own keyboard modes** (ANTS-5224)
   A key typed in a Claude Code tab was forwarded in Claude's keyboard
   encoding, so plain shells received codes such as 5;2u and ran each line
