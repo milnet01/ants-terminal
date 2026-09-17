@@ -422,7 +422,8 @@ Five rules, each of which exists because its absence shipped a defect:
 The GFM table form (`| INV-1 | claim | test surface |`) also parses, **but it
 has no column for *Breaks when:*, so an invariant written in it does not
 satisfy the third rule above.** The bullet form is the default — it is what
-`spec_log op:append_inv` writes,
+`spec_log op:append_inv` writes, less the *Breaks when:* clause, which is added
+by hand,
 so a table guarantees mixed formatting the first time anything appends
 programmatically.
 
@@ -782,7 +783,7 @@ Unnumbered because this is a standard — see `documentation.md` §2.9.
 |------|----------------------|
 | §3.1–3.2 title / Status / Kind shape, where the Ants MCP is present | **`Partial:`** `check-doc-facts` `structure`, an invariant-parse check (via `spec_query`), which reads Status and Kind only when the invariants fail to parse. **Nothing** checks an empty title, Status or Kind on a spec whose invariants parse, nor §3.2's Status VOCABULARY or its current-state-only rule — the parser returns whatever string follows the label, so `**Status:** in review since loop 2` passes |
 | §3.1–3.2 the same, where it is not | **nothing** — the format still applies, but no verb enforces it |
-| §3.7 `INV-N` ids contiguous, no gaps | `check-doc-facts` `structure`, an id-sequence check, **as a candidate** — it cannot tell a withdrawn id from a lost one. In a spec conforming to §3.7 every candidate is a real defect, because §3.7 withdraws an invariant *in place* and so leaves no legitimate gap |
+| §3.7 `INV-N` ids contiguous, no gaps | `spec_lint` `invariant_id_gap`, an id-sequence check that also runs on a spec carrying a tombstone, **as a candidate** — it cannot tell a withdrawn id from a lost one. In a spec conforming to §3.7 every candidate is a real defect, because §3.7 withdraws an invariant *in place* and so leaves no legitimate gap |
 | §3.7 no `INV-N` id reused | **`Partial:`** `spec_log op:append_inv` refuses an id already present as a bullet. **Nothing** catches a duplicate written by hand — `check-doc-facts` `structure` checks for *gaps*, which a duplicate does not create; a cold reader or `spec_query`'s returned invariant list read by eye |
 | §3.7 every INV names a test surface | `check-doc-facts` `contract`, an invariant test-clause check |
 | §3.7 a command `*Test:*` states its expected output | **`Partial:`** `check-doc-facts` `contract`, an invariant test-clause check, which produces a short list as a *candidate* — "is this clause a command?" is a heuristic. **A lane makes the call**, so the check narrows and decides nothing |
