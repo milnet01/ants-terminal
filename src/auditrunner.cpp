@@ -151,6 +151,11 @@ constexpr int kSamplesPerToolDefault     = 10;
 // SARIF v2.1.0 reserves nothing useful below 10K findings; cap per
 // ANTS-1351 v4 § 6 SARIF cap.
 constexpr int kSarifFindingsMax          = 10'000;
+// ANTS-5085 — one tool's combined stdout + stderr past this is stopped and
+// reported output_too_large; the audit dialog's MAX_TOOL_OUTPUT_BYTES.
+constexpr qint64 kMaxToolOutputBytes     = 64LL * 1024 * 1024;
+// ANTS-5085 — the raw-output excerpt a SARIF notification carries, per tool.
+constexpr int kSarifNotificationMaxChars = 64 * 1024;
 
 // ───────────────────────────── ANTS-1351-INV-6 (kExclusions) ──
 // Hardcoded — see § 8 decision "Exclusion list hardcoded in engine".
@@ -672,7 +677,7 @@ std::mutex g_sarifSeqMutex;
 // excluded (never follow a squatted link out of the directory), and in
 // /tmp another user's same-named file simply fails to unlink under the
 // sticky bit.
-constexpr qint64 kFallbackReapAgeSecs = 7 * 24 * 60 * 60;  // one week
+constexpr qint64 kFallbackReapAgeSecs = 7LL * 24 * 60 * 60;  // one week
 
 void reapStaleFallbackArtifacts(const QString &dirPath) {
     QDir dir(dirPath);
@@ -1203,7 +1208,7 @@ bool writeSarif(const QString &path,
                 ? QStringLiteral("note")
                 : QStringLiteral("error");
             QJsonObject msg;
-            msg["text"] = raw.left(kSarifFindingsMax * 256);
+            msg["text"] = raw.left(kSarifNotificationMaxChars);   // ANTS-5085
             notif["message"] = msg;
             QJsonArray notifs;
             notifs.append(notif);
@@ -1484,7 +1489,7 @@ bool isIncludePathAllowedImpl(const QString &includePath,
 // Validate every include-style path across every entry. Returns true
 // on success; on failure, `*offending` carries the first escape (form:
 // "{file: …, include: …, reason: …}") and the function short-circuits.
-constexpr qint64 kCompileCommandsMaxBytes = 32 * 1024 * 1024;  // 32 MiB
+constexpr qint64 kCompileCommandsMaxBytes = 32LL * 1024 * 1024;  // 32 MiB
 constexpr int    kCompileCommandsMaxEntries = 50000;
 
 bool validateCompileCommandsImpl(const QString &canonProject,
@@ -1678,7 +1683,8 @@ QJsonArray incompleteToolsDetail(const QHash<QString, ToolResult> &byTool) {
         o[QStringLiteral("status")]     = tr.status;
         o[QStringLiteral("elapsed_ms")] = tr.elapsedMs;
         o[QStringLiteral("truncated")]  =
-            (tr.status == QLatin1String("timed_out"));
+            (tr.status == QLatin1String("timed_out")
+             || tr.status == QLatin1String("output_too_large"));   // ANTS-5085
         out.append(o);
     }
     return out;
@@ -2332,6 +2338,10 @@ RunResult runAudit(const RunRequest &req) {
     // ANTS-5044 — tools the per-tool cap signalled. Their SIGTERM surfaces as
     // CrashExit, so the handlers consult this before calling it a crash.
     QSet<QString>                      timedOut;
+    // ANTS-5085 — per-tool output drained so far, and tools stopped at the cap.
+    QHash<QString, QByteArray>         outBuf;
+    QHash<QString, QByteArray>         errBuf;
+    QSet<QString>                      outputCapped;
     // ANTS-1870 — the FULL per-tool finding set (uncapped, with fp), kept
     // out of ToolResult so the envelope stays lean. Feeds the carry-forward
     // SARIF, the delta, and the recorded sidecar.
@@ -2401,16 +2411,43 @@ RunResult runAudit(const RunRequest &req) {
         proc->setProcessEnvironment(childEnv);
         proc->setWorkingDirectory(canonProject);  // INV-2
         proc->closeWriteChannel();
+        // ANTS-5085 — drain output as it arrives instead of letting QProcess
+        // buffer it unbounded until exit. Past kMaxToolOutputBytes the tool's
+        // process group is stopped and the tool reported output_too_large.
+        const auto drain = [tool, proc, &outBuf, &errBuf, &outputCapped]() {
+            if (outputCapped.contains(tool)) {
+                proc->readAllStandardOutput();   // discard
+                proc->readAllStandardError();
+                return;
+            }
+            QByteArray &out = outBuf[tool];
+            QByteArray &err = errBuf[tool];
+            out += proc->readAllStandardOutput();
+            err += proc->readAllStandardError();
+            if (out.size() + err.size() <= kMaxToolOutputBytes) return;
+            outputCapped.insert(tool);
+            outBuf.remove(tool);
+            errBuf.remove(tool);
+            ProcessGroup::signalGroup(proc->processId(), SIGKILL);
+            proc->kill();
+        };
+        QProcess::connect(proc, &QProcess::readyReadStandardOutput, drain);
+        QProcess::connect(proc, &QProcess::readyReadStandardError, drain);
         QProcess::connect(proc,
             qOverload<int, QProcess::ExitStatus>(&QProcess::finished),
-            [tool, proc, &finish, &perToolTimer, &timedOut](
-                int code, QProcess::ExitStatus es) {
+            [tool, drain, &finish, &perToolTimer, &timedOut, &outBuf, &errBuf,
+             &outputCapped](int code, QProcess::ExitStatus es) {
                 const qint64 ms = perToolTimer.value(tool).elapsed();
+                drain();   // whatever arrived after the last readyRead
+                if (outputCapped.contains(tool)) {
+                    finish(tool, QStringLiteral("output_too_large"), QString(), ms);
+                    return;
+                }
                 const QString status = AuditRunner::internal::toolExitStatus(
                     timedOut.contains(tool), es == QProcess::CrashExit);
                 Q_UNUSED(code);
-                const QByteArray out = proc->readAllStandardOutput();
-                const QByteArray err = proc->readAllStandardError();
+                const QByteArray out = outBuf.take(tool);
+                const QByteArray err = errBuf.take(tool);
                 // ANTS-2105 — cppcheck/clazy/clang-tidy write their findings to
                 // STDERR (only the JSON tools — ruff/bandit/semgrep/trivy/mypy/
                 // shellcheck — put results on STDOUT). ANTS-2118 — fold both
@@ -2425,12 +2462,18 @@ RunResult runAudit(const RunRequest &req) {
                        status == QLatin1String("timed_out") ? QString() : raw, ms);
             });
         QProcess::connect(proc, &QProcess::errorOccurred,
-            [tool, proc, &finish, &perToolTimer, &timedOut](QProcess::ProcessError) {
+            [tool, drain, &finish, &perToolTimer, &timedOut, &errBuf,
+             &outputCapped](QProcess::ProcessError) {
                 const qint64 ms = perToolTimer.value(tool).elapsed();
+                drain();
+                // ANTS-5085 — the cap's kill surfaces here as Crashed first.
+                if (outputCapped.contains(tool)) {
+                    finish(tool, QStringLiteral("output_too_large"), QString(), ms);
+                    return;
+                }
                 const bool cut = timedOut.contains(tool);
                 finish(tool, AuditRunner::internal::toolExitStatus(cut, true),
-                       cut ? QString()
-                           : QString::fromUtf8(proc->readAllStandardError()),
+                       cut ? QString() : QString::fromUtf8(errBuf.value(tool)),
                        ms);
             });
 

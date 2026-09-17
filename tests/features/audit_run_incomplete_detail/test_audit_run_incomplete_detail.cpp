@@ -58,6 +58,17 @@ TEST(AuditRunIncompleteDetail, Inv1DetailShapeAndTruncatedFlag) {
     EXPECT_TRUE(b.value("truncated").toBool());   // timed_out ⇒ truncated
 }
 
+// INV-11 (ANTS-5085) — a tool stopped at the output cap is truncated too.
+TEST(AuditRunIncompleteDetail, Inv11OutputTooLargeIsTruncated) {
+    QHash<QString, AuditRunner::ToolResult> byTool;
+    byTool["semgrep"] = tr("semgrep", "output_too_large", 900);
+    const QJsonArray d = AuditRunner::internal::incompleteToolsDetail(byTool);
+    ASSERT_EQ(d.size(), 1);
+    EXPECT_EQ(d.at(0).toObject().value("status").toString(),
+              QStringLiteral("output_too_large"));
+    EXPECT_TRUE(d.at(0).toObject().value("truncated").toBool());
+}
+
 // INV-1b — an all-ok map yields an empty detail array.
 TEST(AuditRunIncompleteDetail, Inv1AllOkEmpty) {
     QHash<QString, AuditRunner::ToolResult> byTool;

@@ -35,7 +35,8 @@ and the two envelope surfaces (mirrors the `audit_run_partial_envelope` /
 
 - **INV-1** — `incompleteToolsDetail(byTool)` returns, for each tool whose
   `status != "ok"` sorted by name, an object `{tool, status, elapsed_ms,
-  truncated}` with `truncated == (status == "timed_out")`. `ok` tools are
+  truncated}` with `truncated` true for `timed_out` and `output_too_large`
+  (INV-11). `ok` tools are
   excluded; an all-ok map yields an empty array.
 - **INV-2** — cppcheck parse-failure extraction: for `tool == "cppcheck"`,
   `parseWithSuppression(...).parseFailureFiles` collects the file of any finding
@@ -77,6 +78,10 @@ and the two envelope surfaces (mirrors the `audit_run_partial_envelope` /
   `proc->terminate()`, and both the `finished` and `errorOccurred` handlers
   call `toolExitStatus` (source-anchored). A timed-out tool's partial output
   is not parsed.
+- **INV-11** (ANTS-5085) — a tool stopped for printing more than
+  `kMaxToolOutputBytes` has status `output_too_large`, and
+  `incompleteToolsDetail` lists it with `truncated: true`. Behaviour of the
+  cap itself: `tests/features/audit_run_output_cap`.
 
 ## Pre-fix check
 

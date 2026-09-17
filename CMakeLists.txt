@@ -2985,6 +2985,8 @@ if(ANTS_TESTS)
                 tests/features/audit_dialog_lows/test_audit_dialog_lows.cpp
                 # ANTS-5084 — SARIF export writes valid artifact URIs.
                 tests/features/audit_sarif_uris/test_audit_sarif_uris.cpp
+                # ANTS-5085 — the headless runner bounds tool output.
+                tests/features/audit_run_output_cap/test_audit_run_output_cap.cpp
                 # ANTS-5084 — changed-lines scope failures and bounded batch triage.
                 tests/features/audit_scope_and_triage/test_audit_scope_and_triage.cpp
                 # ANTS-5085 — .audit_cache is created 0700 by every writer.

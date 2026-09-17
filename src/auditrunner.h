@@ -96,9 +96,11 @@ struct RunRequest {
 
 struct ToolResult {
     QString    tool;
-    // "ok" | "timed_out" | "crashed" — the only three states the runner
-    // ever sets. A tool that could not be resolved on PATH never gets a
-    // ToolResult at all; it lands in RunResult::toolsSkipped instead.
+    // "ok" | "timed_out" | "crashed" | "output_too_large" — the only four
+    // states the runner ever sets. output_too_large (ANTS-5085): the tool
+    // printed more than kMaxToolOutputBytes and was stopped. A tool that
+    // could not be resolved on PATH never gets a ToolResult at all; it lands
+    // in RunResult::toolsSkipped instead.
     QString    status;
     qint64     elapsedMs = 0;
     int        rawCount = 0;
@@ -187,7 +189,7 @@ struct RunResult {
     QStringList                incompleteTools;
     // ANTS-3585 — richer partiality surface. `incompleteToolsDetail` is one
     // {tool, status, elapsed_ms, truncated} object per non-ok tool (truncated
-    // == status=="timed_out"), so a caller can tell a cut-off from a crash
+    // for timed_out and output_too_large), so a caller can tell a cut-off from a crash
     // without scanning by_tool[] (which the async-poll envelope doesn't carry).
     // `parseFailures` is the deduped union of every tool's parseFailureFiles —
     // source files that got ZERO coverage because the tool couldn't parse them.
@@ -231,7 +233,7 @@ qint64 measureEnvelopeBytes(const QJsonArray &samples,
                             const QHash<QString, ToolResult> &byTool);
 
 // ANTS-2032 — names of spawned tools whose status is not "ok"
-// (timed_out / crashed), sorted ascending. The run is "partial" iff this
+// (timed_out / crashed / output_too_large), sorted ascending. The run is "partial" iff this
 // is non-empty. Pure over the byTool map so the feature test can assert
 // the derivation without spawning a real tool.
 QStringList incompleteToolNames(const QHash<QString, ToolResult> &byTool);
