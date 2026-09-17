@@ -8,8 +8,11 @@ rest is implemented
 (`ClaudeIntegration::postToolDispatch`, `tests/features/mcp_async_dispatch/`).
 **Amendment (2026-09-13, ANTS-5072):** § 1.3 and § 2.9 run an off-thread verb's
 reply transforms on the worker; § 2.2, INV-7 and INV-9 change with them, and
-INV-18 is added. Gated by review-contract at its cap (loops 5 and 6). Not yet
-built.
+INV-18 is added. Gated by review-contract at its cap (loops 5 and 6). Built
+2026-09-13.
+**Amendment (2026-09-17, ANTS-5086):** § 2.10 runs `roadmap_migrate` on a
+second worker; § 2.6, INV-2, § 4, § 5, § 6 and § 7 change with it, and INV-19
+and INV-20 are added. Not yet built.
 **Kind:** perf.
 **Source:** ROADMAP.md ANTS-2132 (user report of intermittent whole-window
 freeze; diagnosed in-session 2026-08-25). Amended for ANTS-5051, ANTS-5073,
@@ -521,13 +524,61 @@ one set lookup and insert (`claimHint`).
 `static void resetReplyTransformThreadForTest()`, over a
 `std::atomic<QThread *>` that `transformReply` sets on entry.
 
+### 2.10 The bulk lane
+
+*Amendment, 2026-09-17 — ANTS-5086.*
+
+**Why.** `roadmap_migrate` holds the dispatch worker for a whole migration. A
+dry run of this project's roadmap held it about 4.5 s (2026-09-17). When
+another connection holds the store's write lock, the migration also waits up
+to `RoadmapStore::kBulkBusyTimeoutMs` (30 s) before it starts. Every other
+off-thread verb from every session queues behind it, `roadmap_query` and
+`roadmap_log` included.
+
+**The lane.** `ClaudeIntegration` owns a second worker, `ants-mcp-bulk`, built
+like § 2.3's: one `QThread`, started lazily, running a plain event loop.
+
+```cpp
+// claudeintegration.h
+enum class DispatchLane { Shared, Bulk };
+struct RcHandler {
+    ToolHandler fn;
+    bool offThreadEligible = true;
+    DispatchLane lane = DispatchLane::Shared;
+};
+bool postWorkerJob(std::function<void()> job,
+                   DispatchLane lane = DispatchLane::Shared);
+```
+
+`RegisteredTool` stores the lane beside `offThread`. The lane applies only
+where `offThread` is true, so a `TabSpecific` verb stays on the GUI thread
+whichever lane it names. `postToolDispatch` posts to the entry's lane. Socket
+worker routes (§ 2.7) stay on the shared lane.
+
+**Which verbs.** `roadmap_migrate` only. Its handler opens its own
+`Access::Bulk` store connection (ANTS-3855 § 2.2) and reads no `RemoteControl`
+cache, so it shares no in-process state with the shared worker. Its one
+`MainWindow` read, `ants::resolveCallerCwdRoot`, marshals through `onGuiThread`
+as it does on the shared lane (§ 2.5).
+
+**What now overlaps.** A `roadmap_log` write sent during a migration no longer
+waits in the queue. It waits at SQLite for the write lock, under the
+interactive 5 s deadline (ANTS-3756 INV-16), and fails and reports if the
+migration holds the lock longer. Reads do not wait, because the store runs in
+WAL. Two migrations still run one at a time, in arrival order.
+
+**Cap and shutdown.** Jobs on both lanes count against the one 64-job cap
+(§ 2.6). Shutdown handles each lane's worker in § 2.6's order: refuse its
+marshals, quit it, join it.
+
 ## 3. Invariants
 
 - **INV-1** — For a verb registered off-thread, the GUI thread processes at
   least one event between the request arriving and the reply being written.
   *Test:* `tests/features/mcp_async_dispatch/` — register a test verb that
   sleeps, assert a GUI-thread timer fires during it.
-- **INV-2** — Off-thread verbs execute one at a time, in arrival order.
+- **INV-2** — Off-thread verbs on the same lane (§ 2.10) execute one at a
+  time, in arrival order.
   *Test:* `tests/features/mcp_async_dispatch/` — dispatch three verbs that
   record entry and exit timestamps; assert no two intervals overlap and the
   order matches arrival.
@@ -647,6 +698,20 @@ one set lookup and insert (`claimHint`).
   back before `transformReply` runs (the first assertion reads the GUI thread),
   or if the worker job transforms the reply without calling `transformReply`
   (the seam stays `nullptr`).
+- **INV-19** *(amendment, 2026-09-17 — ANTS-5086)* — A verb on the shared
+  lane replies while a verb on the bulk lane is still running. *Test:*
+  `tests/features/mcp_async_dispatch/` — register an `RcHandler` on
+  `DispatchLane::Bulk` that blocks until the test releases it, call it, then
+  call an `RcHandler` on the shared lane and assert its reply arrives while the
+  bulk verb has not returned; release it and assert both replies were written.
+  Breaks if `postToolDispatch` ignores the entry's lane: the shared call queues
+  behind the blocked one and gets no reply.
+- **INV-20** *(amendment, 2026-09-17 — ANTS-5086)* — `roadmap_migrate` is
+  registered on `DispatchLane::Bulk`, and no other verb is. *Test:*
+  `tests/features/mcp_verb_offthread_guard/` — scrape `src/mainwindow.cpp` for
+  `DispatchLane::Bulk` and assert exactly one occurrence, inside the
+  `roadmap_migrate` registration. Breaks if the registration keeps plain
+  `rcDelegate(`: the scrape finds none.
 
 ## 4. RAM / build cost
 
@@ -671,6 +736,10 @@ is carried, so at most two reply-sized strings cross the queue, as
 The amendment adds no thread and no queue. A queued socket job holds one parsed
 request, already bounded by the socket's receive cap. A synchronous `audit_run`
 holds its `RunResult` until the reply, as the `async:true` branch does.
+
+*Amendment (ANTS-5086):* one more `QThread`, the bulk lane's, started lazily
+on the first `roadmap_migrate` call. The queue cap is unchanged, because both
+lanes share it.
 
 ## 5. Out of scope
 
@@ -707,7 +776,12 @@ holds its `RunResult` until the reply, as the `async:true` branch does.
 - **A thread per verb** — rejected. It would let verbs that cannot currently
   overlap run concurrently against the roadmap store, the caches and the
   project tree, which is a much larger change than the freeze warrants. The
-  serialised worker delivers the whole of the reported symptom.
+  serialised worker delivers the whole of the reported symptom. The bulk lane
+  (§ 2.10) is not a thread per verb: it serialises its own verbs and carries
+  one verb that shares no in-process state with the shared worker.
+- **Other long verbs on the bulk lane.** § 2.10 moves `roadmap_migrate` only.
+  A slow `roadmap_log` render still queues on the shared lane; its cost is
+  ANTS-4681.
 - **Moving the MCP server itself onto a worker thread** — rejected. It would
   require marshalling every `ClaudeIntegration` state read, where this design
   marshals only the reach-back sites § 2.5 enumerates.
@@ -777,6 +851,10 @@ which must pass unmodified: `mcp_projection`, `mcp_etag_refusal`,
 `mcp_etag_tip_memo`, `mcp_idempotent_read_cache`, `mcp_ignored_args`,
 `mcp_offload_keeps_advisory` and `mcp_result_offload`.
 
+**Amendment (2026-09-17, ANTS-5086).** `tests/features/mcp_async_dispatch/`
+gains INV-19; `tests/features/mcp_verb_offthread_guard/` gains INV-20. INV-2's
+existing test runs on the shared lane and is unchanged.
+
 Per the project test convention, add each source to the owning bundle's
 `SOURCES` (ask `build_target_for`, do not guess), verify the ctest count moved
 with `ctest -N -R`, and verify each test fails against pre-change source before
@@ -826,6 +904,15 @@ the change is restored.
     more: the envelope is still serialised on the GUI thread (§ 2.9), and
     synchronous, cached and deferred verbs still prepare theirs there (§ 5).
   - ROADMAP.md — ANTS-5072 closes with the build.
+- **Amendment (2026-09-17, ANTS-5086):**
+  - `docs/standards/mcp-tools.md` — a verb runs on the shared lane unless its
+    registration names `DispatchLane::Bulk` (§ 2.10).
+  - `docs/specs/ANTS-3855-roadmap-migrate-verb.md` § 2.5 — a concurrent
+    `roadmap_log` write can now meet a migration's lock (§ 2.10).
+  - `CHANGELOG.md` — a roadmap migration no longer holds up other sessions'
+    MCP calls. It must not claim more: a `roadmap_log` write during a migration
+    can still wait at the store and time out (§ 2.10).
+  - ROADMAP.md — ANTS-5086's busy-deadline finding closes with the build.
 
 ## Cold-eyes loop log
 
