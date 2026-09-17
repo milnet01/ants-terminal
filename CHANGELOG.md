@@ -14,6 +14,10 @@ for security-relevant changes.
 
 ### Fixed
 
+- **Audit SARIF exports name files with valid links, so file names with spaces or # open correctly in SARIF viewers** (ANTS-5084)
+
+- **Typing in the audit results filter no longer redraws the whole list on every key press** (ANTS-5084)
+
 - **The audit window no longer freezes while it reads recent changes from git** (ANTS-5084)
   Scoping an audit to recent changes, or switching on "Since baseline",
   reads git history in the background, so the window and its terminals

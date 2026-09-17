@@ -8480,7 +8480,7 @@ extends an existing item, that item carries it instead.
   Source: code-quality-review-2026-09-11 perf pass (lane audit-dialog-a).
   Lanes: audit.
 
-- 📋 [ANTS-5084] **Performance pass findings for the audit dialog's results, triage and export (medium and low).**
+- ✅ [ANTS-5084] **Performance pass findings for the audit dialog's results, triage and export (medium and low).**
   Filed separately: ANTS-5040, 5041, 5042, 5067.
   Medium:
   - Re-running with the Since baseline pill on clears the changed-line
@@ -8531,6 +8531,16 @@ extends an existing item, that item carries it instead.
   Still open: filter debounce, SARIF URI encoding and uriBaseId. The
   tr() low folds into ANTS-1080, per the 2026-09-15 decision on
   ANTS-5082.
+  Resolved (2026-09-17, b3ea311d): the last lows.
+  - SARIF URIs: AuditEngine::sarifArtifactLocation percent-encodes each
+    path, relative ones with uriBaseId %SRCROOT%, absolute ones as
+    file:// URIs; run.originalUriBaseIds declares the root. Decided by
+    the user: last_audit_summary decodes an encoded location back to a
+    plain path (sarifLocationPath), and returns an unmarked uri as-is.
+  - Filter debounce: a 200 ms single-shot timer; render on its timeout.
+  - tr(): folds into ANTS-1080, per the 2026-09-15 decision.
+  Tests: audit_sarif_uris INV-1..7, audit_dialog_lows INV-10, red
+  first; full default suite green.
   **Layman:** Smaller audit-window fixes: a filter that can hide everything, AI triage that floods the server, and export glitches.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lane audit-dialog-b).
@@ -80761,6 +80771,18 @@ contributors don't duplicate research.
     by-value onActivatedSignal parameters, which the file's own comment
     says the old-style SLOT signature match requires.
   Decide each: fix, or suppress inline with the reason.
+  Also seen (2026-09-17, ANTS-5084 edits):
+  - auditengine.h: performance-enum-size on CheckType and Severity. Not
+    quick: every result and serialisation path carries those enums.
+  - auditengine.cpp: QJsonArray loop conversions, buildDirCandidates
+    static-to-anonymous-namespace, an unmodified QString copy and a
+    branch-clone in the SARIF level mapping. Fixed already: one 64-bit
+    size product and two moves.
+  - auditdialog.cpp: pathSuffixMatches, makeToolHealthWarning and
+    severityColor static-to-anonymous-namespace, more QJsonArray loop
+    conversions, two more int size products.
+  - auditdialog.cpp / auditdialog_catalogue.cpp / auditdialog_export.cpp:
+    clangd unused-includes, which is ANTS-4778's class (PCH policy).
   **Layman:** Clear the remaining code-checker warnings in the audit window, the terminal widget and the global hotkey code.
   Kind: chore.
   Source: in-session-2026-09-17.
