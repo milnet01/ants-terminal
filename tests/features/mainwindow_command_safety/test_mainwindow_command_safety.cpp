@@ -77,3 +77,16 @@ TEST(MainwindowCommandSafety, SshTimerIsGuarded) {
     EXPECT_FALSE(body.contains(QStringLiteral("[t, sshCommand]")))
         << "the SSH timer still captures a raw terminal pointer";
 }
+
+// INV-5
+TEST(MainwindowCommandSafety, ProgressIconRebuiltOnlyOnStateChange) {
+    const QString w = window(source(),
+        QStringLiteral("&TerminalWidget::progressChanged"), 1600);
+    ASSERT_FALSE(w.isEmpty()) << "progressChanged handler not found";
+    const int record = w.indexOf(QStringLiteral("page->property(\"antsProgressIconState\")"));
+    const int paint = w.indexOf(QStringLiteral("QPixmap pm("));
+    ASSERT_GE(record, 0) << "the handler does not record the drawn state on the tab page";
+    ASSERT_GE(paint, 0) << "the handler no longer paints the icon";
+    EXPECT_LT(record, paint) << "the state check comes after the icon is painted";
+    EXPECT_TRUE(w.contains(QStringLiteral("drawn.toInt() == state) return;")));
+}

@@ -832,6 +832,19 @@ private:
     // attr / hyperlink mutations directly to the grid row.
     void onGridLineCompleted(int screenRow);
 
+    // ANTS-5079 — program output drives commandFinished and every trigger
+    // dispatch, and MainWindow turns each into a shell, a notification or a
+    // plugin event. Each budget allows a burst per one-second window; the
+    // rest are dropped. Separate budgets, so one flood cannot silence the other.
+    struct EventBudget {
+        QElapsedTimer window;
+        int count = 0;
+    };
+    static constexpr int kEventsPerSecond = 30;
+    static bool takeEventBudget(EventBudget &budget);
+    EventBudget m_commandFinishedBudget;
+    EventBudget m_triggerDispatchBudget;
+
     // ANTS-1078 — coalesced screen-reader change notification. Connected
     // to the (throttled) outputReceived signal; emits one caret event
     // per call, and only when an assistive technology is active.

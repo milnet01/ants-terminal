@@ -19,6 +19,12 @@ the temp script on `FailedToStart`.
 **INV-4 — the SSH connect timer is guarded.** `onSshConnect` captures the
 terminal as a `QPointer` and checks it before writing.
 
+**INV-5 — the progress tab icon is rebuilt only when its state changes.** The
+`TerminalWidget::progressChanged` handler records the last drawn state on the
+tab's page widget and returns before painting when the new state matches it.
+The record is per tab, not per pane, so a pane in a split tab still redraws
+the icon after another pane cleared it.
+
 ## Rationale
 
 The review command dropped the results path inside double quotes, so a `"` or
@@ -26,7 +32,9 @@ The review command dropped the results path inside double quotes, so a `"` or
 would not open and announced success after a short write. `runKWinScript`
 connected only `finished`, which a process that fails to start never emits,
 leaking the process and the temp script. The SSH timer captured a raw pointer
-to a tab that can close inside the delay.
+to a tab that can close inside the delay. The progress handler painted a new
+pixmap and reset the tab icon on every OSC 9;4 sequence, although the icon
+depends only on the state and a program may send one sequence per percent.
 
 ## Test surface
 
@@ -36,4 +44,4 @@ constructed.
 
 ## Regression history
 
-- **ANTS-5079:** the four defects above. Locked by this spec.
+- **ANTS-5079:** the defects above. Locked by this spec.

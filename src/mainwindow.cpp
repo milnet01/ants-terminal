@@ -2403,6 +2403,15 @@ void MainWindow::connectTerminal(TerminalWidget *terminal) {
             if (w == terminal || w->isAncestorOf(terminal)) { tabIdx = i; break; }
         }
         if (tabIdx < 0) return;
+        if (state < 0 || state > 4) return;
+
+        // ANTS-5079 — the icon depends only on the state, so skip repainting
+        // it on every percent. Recorded on the tab page, not the pane, so a
+        // pane in a split tab still redraws it after another pane cleared it.
+        QWidget *page = m_tabWidget->widget(tabIdx);
+        const QVariant drawn = page->property("antsProgressIconState");
+        if (drawn.isValid() && drawn.toInt() == state) return;
+        page->setProperty("antsProgressIconState", state);
 
         if (state == 0) {
             m_tabWidget->setTabIcon(tabIdx, QIcon());
@@ -2413,8 +2422,7 @@ void MainWindow::connectTerminal(TerminalWidget *terminal) {
             case 1: dot = QColor(0x89, 0xB4, 0xFA); break; // Normal — blue
             case 2: dot = QColor(0xF3, 0x8B, 0xA8); break; // Error — red
             case 3: dot = QColor(0xB4, 0xBE, 0xFE); break; // Indeterminate — lavender
-            case 4: dot = QColor(0xF9, 0xE2, 0xAF); break; // Warning — yellow
-            default: return;
+            default: dot = QColor(0xF9, 0xE2, 0xAF); break; // Warning — yellow
         }
         QPixmap pm(12, 12);
         pm.fill(Qt::transparent);

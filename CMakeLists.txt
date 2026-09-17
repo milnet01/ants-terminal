@@ -1859,6 +1859,8 @@ if(ANTS_TESTS)
                 tests/features/osc8_homograph_guard/test_osc8_homograph_guard.cpp
                 # ANTS-2119 M1 — non-instant dispatch triggers fire per completed line.
                 tests/features/trigger_line_dispatch/test_trigger_line_dispatch.cpp
+                # ANTS-5079 — terminal output cannot flood trigger actions or command_finished.
+                tests/features/trigger_event_rate_limit/test_trigger_event_rate_limit.cpp
                 tests/features/command_palette_ghost_completion/test_command_palette_ghost_completion.cpp
                 tests/features/no_anim_style/test_no_anim_style.cpp
                 tests/features/paste_dialog_custom/test_paste_dialog_custom.cpp

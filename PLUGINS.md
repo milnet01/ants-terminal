@@ -385,6 +385,13 @@ end
 for these events will never fire in the current build. They are listed
 here as the intended API surface for a future wiring commit.
 
+**Rate limits:** terminal output drives `"command_finished"` and the
+`run_script` form of `"palette_action"`, so each terminal caps them. Past
+the cap within one second, further events are dropped, not queued.
+`command_finished` has its own budget; `run_script` shares one with every
+other trigger action. Do not rely on seeing every marker from a program
+that floods them.
+
 **Return-value contract:** only `"keypress"` acts on the return value.
 Returning `false` suppresses default handling; any other value (including
 `nil`, `true`, or omitting the return) lets the event propagate. All

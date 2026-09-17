@@ -250,7 +250,8 @@ TerminalWidget::TerminalWidget(QWidget *parent) : QWidget(parent) {
     // 0.6.9 — trigger system bundle: forward shell-integration + iTerm2 hooks
     // out as Qt signals so MainWindow can dispatch them as plugin events.
     m_grid->setCommandFinishedCallback([this](int exitCode, qint64 durationMs) {
-        emit commandFinished(exitCode, durationMs);
+        if (takeEventBudget(m_commandFinishedBudget))   // ANTS-5079
+            emit commandFinished(exitCode, durationMs);
     });
     m_grid->setUserVarCallback([this](const QString &name, const QString &value) {
         emit userVarChanged(name, value);
@@ -5793,6 +5794,16 @@ void TerminalWidget::setTriggerRules(const QJsonArray &rules) {
     }
 }
 
+bool TerminalWidget::takeEventBudget(EventBudget &budget) {
+    if (!budget.window.isValid() || budget.window.elapsed() >= 1000) {
+        budget.window.start();
+        budget.count = 0;
+    }
+    if (budget.count >= kEventsPerSecond) return false;
+    ++budget.count;
+    return true;
+}
+
 void TerminalWidget::checkTriggers(const QByteArray &data) {
     if (m_triggerRules.empty()) return;
     QString text = QString::fromUtf8(data);
@@ -5812,6 +5823,7 @@ void TerminalWidget::checkTriggers(const QByteArray &data) {
         if (!rule.instant) continue;   // non-instant dispatch → onGridLineCompleted
         QRegularExpressionMatch m = rule.pattern.match(text);
         if (!m.hasMatch()) continue;
+        if (!takeEventBudget(m_triggerDispatchBudget)) continue;   // ANTS-5079
         // run_script gets a separate signal carrying the matched substring so
         // the plugin handler receives the actual hit, not just the rule id.
         if (rule.actionType == QLatin1String("run_script")) {
@@ -5898,7 +5910,7 @@ void TerminalWidget::onGridLineCompleted(int screenRow) {
             // must fire mid-line, before a line completes).
             if (!rule.instant) {
                 const QRegularExpressionMatch m = rule.pattern.match(text);
-                if (m.hasMatch()) {
+                if (m.hasMatch() && takeEventBudget(m_triggerDispatchBudget)) {   // ANTS-5079
                     if (kind == QLatin1String("run_script"))
                         emit triggerRunScript(rule.actionValue, m.captured(0));
                     else
