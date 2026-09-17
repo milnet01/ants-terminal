@@ -8605,7 +8605,7 @@ extends an existing item, that item carries it instead.
   Source: code-quality-review-2026-09-11 perf pass (lane audit-engine).
   Lanes: audit.
 
-- 📋 [ANTS-5086] **Performance pass findings for the roadmap store and migration (medium and low).**
+- ✅ [ANTS-5086] **Performance pass findings for the roadmap store and migration (medium and low).**
   Filed separately: ANTS-5046, 5051.
   Medium:
   - RoadmapStore::open's fast path returns early only when the schema
@@ -8651,6 +8651,23 @@ extends an existing item, that item carries it instead.
     roadmap_query and roadmap_log share ants-mcp-dispatch, and a dry run
     of this project held it ~4.5 s. User decision: run roadmap_migrate
     on its own lane, keeping the 30 s deadline.
+  Progress (2026-09-17): shipped 2a29c809 - the migration walk
+  hands the parser its split lines (heap peak 10.4 MB to 5.8 MB for a
+  1.2 MB roadmap; RSS 12.5-14.7x, ANTS-3757 section 4 restated) and
+  findRoadmaps refuses too_large past 32 MiB. ANTS-2132 amended for a
+  bulk dispatch lane plus a roadmap_busy guard (user decision), gated
+  by review-contract loops 7-8, cap reached, 10 verified / 10 fixed.
+  Still open: build the bulk lane and the guard.
+  Resolved (2026-09-17): roadmap_migrate runs on a second dispatch
+  worker (DispatchLane::Bulk, ants-mcp-bulk), so the 30 s bulk busy
+  deadline and the migration itself no longer stall the shared worker.
+  Per user decision a busy guard closes the overlap that opened:
+  writers (roadmap_log, the four fold-in verbs) take a shared hold for
+  the whole call, a real migration an exclusive one (5 s wait), refusal
+  roadmap_busy. Teardown refuses both lanes before joining either.
+  Tests (red first): McpAsyncDispatch Ants5086Inv19, Inv8b, Inv21 x2;
+  McpVerbOffthreadGuard INV-7 bulk join, INV-20, INV-21, INV-6 lane
+  regex. Default suite 4894/4894. Spec ANTS-2132 section 2.10.
   **Layman:** Smaller roadmap-database fixes, including a slow refusal when an older Ants meets a newer database.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lane roadmap-store).

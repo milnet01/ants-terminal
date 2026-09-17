@@ -12,6 +12,20 @@ for security-relevant changes.
 
 ## [Unreleased]
 
+### Changed
+
+- **Importing a roadmap into the roadmap store no longer holds up other sessions' MCP calls** (ANTS-5086)
+  roadmap_migrate runs on its own worker thread, so other sessions'
+  calls no longer queue behind a whole migration. While a project is
+  being migrated, roadmap writes to that project are refused with
+  roadmap_busy until it ends, and a write to any project can still wait
+  up to 5 s for the store while the migration's load runs.
+
+- **Importing a roadmap uses less memory and refuses roadmaps over 32 MiB** (ANTS-5086)
+  The import no longer keeps a second copy of every roadmap line while
+  parsing, and a project whose roadmap and archives together exceed
+  32 MiB is refused with too_large before any file is read.
+
 ### Fixed
 
 - **The audit's saved findings list stays within its size limit** (ANTS-5085)
