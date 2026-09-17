@@ -88,3 +88,23 @@ TEST(AuditDialogLows, NoStackProcessOutlivesItsTimeout) {
     EXPECT_GE(src.count(QStringLiteral("releaseProcess")), 3)
         << "the stat probe and the git runner no longer release their process";
 }
+
+// INV-8
+TEST(AuditDialogLows, SemgrepSendsNoMetrics) {
+    const QString region = between(auditSource(),
+        QStringLiteral("\"semgrep\", \"Semgrep (structural patterns)\""),
+        QStringLiteral("CheckType::Vulnerability"));
+    ASSERT_FALSE(region.isEmpty()) << "semgrep catalogue entry not found";
+    EXPECT_TRUE(region.contains(QStringLiteral("--metrics=off")))
+        << "registry rule packs send usage metrics under semgrep's default";
+}
+
+// INV-9
+TEST(AuditDialogLows, SuppressionSaveIsLocked) {
+    const QString region = between(auditSource(),
+        QStringLiteral("void AuditDialog::saveSuppression("),
+        QStringLiteral("QByteArray existingBytes;"));
+    ASSERT_FALSE(region.isEmpty()) << "saveSuppression not found";
+    EXPECT_TRUE(region.contains(QStringLiteral("ConfigWriteLock lock(path);")))
+        << "two instances saving suppressions can interleave the read and the rewrite";
+}

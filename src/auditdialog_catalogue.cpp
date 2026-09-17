@@ -1211,7 +1211,8 @@ void AuditDialog::populateChecks() {
             "semgrep", "Semgrep (structural patterns)",
             "AST-aware pattern matching (" + packs.join(", ") + ")",
             "Security",
-            "semgrep --timeout 30 --quiet --error --disable-version-check"
+            // ANTS-5083 — --metrics=off: registry packs send metrics by default.
+            "semgrep --timeout 30 --quiet --error --disable-version-check --metrics=off"
             + cfg + excludeFlags +
             " --exclude build --exclude 'build-*' --exclude node_modules"
             " --exclude .audit_cache --exclude vendor"

@@ -30,6 +30,15 @@ probe and the git runner hand their process to `releaseProcess`, which
 deletes a finished process and leaves a running one to delete itself on
 `finished`.
 
+**INV-8 — Semgrep sends no usage metrics (ANTS-5083).** The dialog's
+`semgrep` catalogue command passes `--metrics=off`, as the headless runner
+does. Under Semgrep's default, a `--config` that pulls from the registry sends
+metrics.
+
+**INV-9 — a suppression save is locked (ANTS-5083).** `saveSuppression` takes
+a `ConfigWriteLock` on the suppression file before it reads it, as
+`appendSnapshot` does for the trend file.
+
 ## Rationale
 
 The ANTS-5084 performance pass found each of these. The detection walk

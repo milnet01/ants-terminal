@@ -595,7 +595,7 @@ QStringList readFileLines(const QString &absPath, QHash<QString, QStringList> &c
         return {};
     }
     // Cap at 4 MB to bound worst-case memory on enormous generated files.
-    const QByteArray all = f.size() < 4 * 1024 * 1024 ? f.readAll() : QByteArray();
+    const QByteArray all = f.size() < 4LL * 1024 * 1024 ? f.readAll() : QByteArray();
     f.close();
     const QStringList lines = QString::fromUtf8(all).split('\n', Qt::KeepEmptyParts);
     cache.insert(absPath, lines);
@@ -1428,6 +1428,9 @@ void AuditDialog::saveSuppression(const QString &dedupKey,
     entry["timestamp"] = QDateTime::currentDateTime().toString(Qt::ISODate);
 
     const QString path = suppressionPath();
+    // ANTS-5083 — lock the read and the rewrite against another instance
+    // saving a suppression, as appendSnapshot does for trend.json.
+    ConfigWriteLock lock(path);
     QFile f(path);
 
     // If the existing file is in v1 (plain-text keys) format, convert it to
