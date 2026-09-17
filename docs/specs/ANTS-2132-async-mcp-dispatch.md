@@ -587,24 +587,34 @@ between the migration reading `ROADMAP.md` and committing its plan, and a
 re-run migration would then revert it silently. So a write to a project whose
 migration is running is refused.
 
-- **The registry is process-wide**: a mutex-guarded set of project roots in
-  `RemoteControl`, as `static` members, because File → New Window builds a
-  second `RemoteControl` beside a second `ClaudeIntegration`. Keyed on
-  `rcProjectRootFor()` of the canonical `caller_cwd`, on both sides.
-- **`cmdRoadmapMigrate` holds the root** for the whole call, released on every
-  return path. `op:"deregister"`, `op:"init"` and the plain migrate hold it; a
-  `dry_run` does not, since it writes nothing. A second migration of a held root
-  is refused the same way.
-- **Refused while held**: `cmdRoadmapLog` (every op), and the four fold-in
-  writers — `cmdColdEyesFoldIn`, `cmdIndieReviewFoldIn`, `cmdDebtSweepDefer` and
-  the `test_audit_fold_in` registration — each before it resolves any write
-  target.
-- **The refusal** is `code: "migration_in_progress"` with `retry_after_ms`,
-  and writes nothing.
+- **The registry is process-wide**: a mutex-guarded map from project root to
+  its holds, in `RemoteControl` as `static` members, because File → New Window
+  builds a second `RemoteControl` beside a second `ClaudeIntegration`. A root
+  carries either one exclusive hold or any number of shared holds, never both.
+- **A writer takes a shared hold for its whole call**, as the first thing its
+  handler does, before any other refusal, and releases it on every return path.
+  The writers are `cmdRoadmapLog` (every op) and the four fold-in writers:
+  `cmdColdEyesFoldIn`, `cmdIndieReviewFoldIn`, `cmdDebtSweepDefer` and the
+  `test_audit_fold_in` registration. A writer keys on `rcProjectRootFor()` of
+  the canonical `caller_cwd`. It is refused while the root is held exclusively.
+- **`cmdRoadmapMigrate` takes the exclusive hold** for the whole call. Its key
+  is the root it registers or deletes: `rr.cwd` for the plain migrate and
+  `op:"init"`, and for `op:"deregister"` the root of the row it deletes, which
+  keying on `export_slug` can make a different project. A `dry_run` takes no
+  hold, since it writes nothing. The migration waits up to 5 s for live shared
+  holds to be released, then is refused.
+- **The refusal**, on either side, is `code: "roadmap_busy"` with
+  `retry_after_ms`, and writes nothing.
+- **Writes to other projects still meet the migration.** The store is one
+  machine-global SQLite file, and a migration holds its write lock for a whole
+  project's load. A write to any other project then waits for that lock on the
+  shared lane, under the 5 s interactive deadline, and fails and reports if the
+  load outlasts it. What the lane removes is the queueing behind the whole
+  migration, its reading and planning included.
 
 The guard covers this process. A second Ants process sharing the
 machine-global store is not covered, as it was not before this amendment.
-Reads are not refused: the store runs in WAL. Two migrations on the bulk lane
+Reads take no hold and do not wait: the store runs in WAL. Two migrations on the bulk lane
 still run one at a time, in arrival order.
 
 **Cap and shutdown.** Jobs on both lanes count against the one 64-job cap.
@@ -659,7 +669,8 @@ still run one at a time, in arrival order.
   begun. *Test:* `tests/features/mcp_async_dispatch/`, two clauses — (a)
   disconnect mid-verb, assert no write and no crash under the `debug` (ASan)
   preset; (b) destroy `ClaudeIntegration` with a job in flight on each lane,
-  the bulk-lane job parked in `onGuiThread`, assert the destructor returns
+  both parked in `onGuiThread`, so either join order that refuses one lane late
+  is caught, assert the destructor returns
   within a bounded time, wrote no reply, and ran neither marshal's callable. Clause (b) is
   the only thing that can catch § 2.6's refuse-then-join ordering: INV-7's
   scrape sees where `wait()` sits, never whether it deadlocks.
@@ -753,17 +764,19 @@ still run one at a time, in arrival order.
   `DispatchLane::Bulk` and assert exactly one occurrence, inside the
   `roadmap_migrate` registration. Breaks if the registration keeps plain
   `rcDelegate(`: the scrape finds none.
-- **INV-21** *(amendment, 2026-09-17 — ANTS-5086)* — While a migration holds a
-  project root, `roadmap_log` and the four fold-in writers refuse
-  `migration_in_progress` for that root and write nothing; once it is released
-  the same call succeeds. *Test:* `tests/features/mcp_async_dispatch/` — hold
-  a temporary project's root through the registry, call
-  `RemoteControl::cmdRoadmapLog` `op:"append"` on it and assert the code and an
-  unchanged `ROADMAP.md`; release, repeat, assert `ok:true`. A source scrape
-  asserts each fold-in writer checks the registry before its first write.
-  Breaks if the key differs between the two sides, for instance the raw
-  `caller_cwd` against `rcProjectRootFor()`: a call from a subdirectory is not
-  refused.
+- **INV-21** *(amendment, 2026-09-17 — ANTS-5086)* — A root held exclusively
+  refuses every writer `roadmap_busy` and writes nothing; a root with a live
+  shared hold refuses a migration `roadmap_busy` once the wait expires. *Test:*
+  `tests/features/mcp_async_dispatch/`, on a bare `RemoteControl` over a
+  temporary project with one seeded bullet. (a) Take the exclusive hold, call
+  `cmdRoadmapLog` `op:"flip"` from the project's subdirectory, assert
+  `roadmap_busy` and an unchanged `ROADMAP.md`; release, repeat, assert
+  `ok:true`. `op:"flip"` because `op:"append"` refuses `no_main` without a
+  `MainWindow`. (b) Take a shared hold, try the exclusive hold with the wait
+  shortened, assert it is refused. A source scrape asserts each fold-in writer
+  takes its shared hold before its first write. Breaks if the writer checks
+  instead of holding, which (b) sees, or if the two sides key differently,
+  which (a)'s subdirectory call sees.
 
 ## 4. RAM / build cost
 
@@ -967,12 +980,12 @@ the change is restored.
     registration names `DispatchLane::Bulk` (§ 2.10), and step 2a's "so no two
     of them overlap" is scoped to verbs on the same lane.
   - `docs/specs/ANTS-3855-roadmap-migrate-verb.md` § 2.5 — the verb refuses
-    `migration_in_progress` for a root another migration holds (§ 2.10).
-  - `docs/standards/mcp-error-codes.md` — `migration_in_progress` joins the
-    taxonomy.
-  - `CHANGELOG.md` — a roadmap migration no longer holds up other sessions'
-    MCP calls. It must not claim more: a write to the project being migrated
-    is refused until the migration ends (§ 2.10).
+    `roadmap_busy` while a write to the same root is in flight (§ 2.10).
+  - `docs/standards/mcp-error-codes.md` — `roadmap_busy` joins the taxonomy.
+  - `CHANGELOG.md` — other sessions' MCP calls no longer queue behind a whole
+    roadmap migration. It must not claim more: a write to the project being
+    migrated is refused until it ends, and a write to any project can still
+    wait up to 5 s for the store while the migration's load runs (§ 2.10).
   - ROADMAP.md — ANTS-5086's busy-deadline finding closes with the build.
 
 ## Cold-eyes loop log
@@ -986,3 +999,4 @@ the change is restored.
 | 5 | 2026-09-13 | 3, cold — genre pinned `spec`; first loop of the gate on the ANTS-5072 amendment (§ 1.3, § 2.9, INV-7, INV-9, INV-18) | **Q1 1 · Q2 3 · Q3 0 · Q4 0** (4 verified / 4 fixed / 0 dismissed) | **Four verified, four fixed; loop 2 of this run dispatched.** All three lanes found § 2.2's struct had lost `toolHandled`, which § 2.8 and § 2.9 rely on, so `finishToolDispatch` would have read an empty control-plane body as an unknown tool; the field is back and `finishToolDispatch` branches on it. All three lanes found § 4's peak-memory sentence false: `ReplyTransform` carried the pre-ETag body on every call, beside the transformed body and the wrapped text. The transformed body is no longer carried, and `cacheBody` is filled only for a handled, cacheable, uncached call. Two lanes found INV-18 claimed worker transforms for every off-thread verb, while a cache hit or a queue-full refusal finishes on the GUI thread; it is now scoped to a call whose handler ran on the worker. One lane found the spill directory's no-lock reason contradicted the hint latch's `QMutex`; the reason is now the length of the wait. **Open questions resolved clean:** the scrape tests § 6 requires to pass unmodified (`mcp_projection`, `mcp_rate_limit`, `mcp_ignored_args`) key on spellings a split can keep; whether `read_region` is cacheable stops mattering once `cacheBody` is conditional. |
 | 6 | 2026-09-13 | 3, cold — identical brief; scrubbed copy, packet and source facts rebuilt from disk | **Q1 0 · Q2 1 · Q3 0 · Q4 2** (3 verified / 3 fixed / 1 dismissed) | **Three verified, three fixed. Cap reached (2 for a spec); shipped to implementation.** Two lanes found § 7's CHANGELOG line promised a large off-thread reply no longer stalls the window, while § 2.9 still serialises the JSON-RPC envelope on the GUI thread, which § 1.3 measures at 12.3 ms for a reply sent whole. § 2.9 and § 5 now say the envelope stays there, and the CHANGELOG line names only the steps that move. One lane found INV-18's test would pass with its seam never set, since `nullptr` is not the GUI thread; the seam is now atomic and reset before each call, and the test asserts it equals the thread the verb recorded. The same lane found INV-9's scrape never looked at `postToolDispatch`, where the off-thread transforms now run, so a second pipeline there would pass; the scrape now covers it. **Dismissed:** § 2.1's "client-visible latency is unchanged" no longer holds for a queued off-thread verb, which now waits behind the previous job's transforms; nothing built differs. **Checked by the orchestrator:** every function-local static in `claudeintegration.cpp`, `mcpprojection.cpp` and `mcpspill.cpp` is `const` or `constexpr`, so § 2.9's list of what the transforms read off the GUI thread holds. **Calm cap:** 0 of this loop's 3 verified findings landed on text loop 5 wrote. **Gate against audit:** 6 of this run's 7 verified findings anchor in the amendment commit `f60c24e0`; the missing `toolHandled` predates it. Tail filed: none. |
 | 7 | 2026-09-17 | 3, cold — genre pinned `spec`; first loop of the gate on the ANTS-5086 amendment (§ 2.10, INV-2, INV-19, INV-20) | **Q1 1 · Q2 1 · Q3 2 · Q4 1** (5 verified / 5 fixed / 0 dismissed) | **Five verified, five fixed; loop 2 of this run dispatched.** All three lanes found § 2.10's shutdown sentence read two ways, and the per-lane reading runs a bulk-lane `onGuiThread` marshal while the shared worker is joined, because `joinRefusingMarshals` serves other threads' marshals; § 2.6 now refuses both lanes before either join. All three found the registration's lane spelling unpinned while INV-20 and INV-6's `rcDelegate\(&RemoteControl::(\w+)\)` scrape bind to it; `rcDelegate` gains a defaulted lane parameter and § 6 widens that regex. All three found § 2.1 and `mcp-tools.md` step 2a still promising no two off-thread verbs overlap; both now say per lane. One lane found INV-7 and INV-8(b) could not fail on the bulk worker's join; both now cover each lane. One lane found § 2.10's "only overlap is a lock wait" false: a roadmap write for the project being migrated could land between its read and its commit, and a re-run would revert it silently. **Surfaced to the user, who chose a busy guard**: a process-wide registry refuses `migration_in_progress`, added as INV-21. **Open questions resolved clean:** `deregister` opens `Access::Bulk`; `rcdetail::findRoadmapUnder` and `ants::resolveCallerCwdRoot` hold no shared static state; a first store open racing creation is INV-15's existing case. |
+| 8 | 2026-09-17 | 3, cold — identical brief; scrubbed copy, packet and source facts rebuilt from disk, windows added for the busy guard's writers and `rcProjectRootFor` | **Q1 1 · Q2 0 · Q3 2 · Q4 2** (5 verified / 5 fixed / 0 dismissed) | **Five verified, five fixed. Cap reached (2 for a spec); shipped to implementation.** All three lanes found the busy guard was check-then-act: a writer that passed its check before the migration took the root could still be writing when the migration read `ROADMAP.md`. Writers now take a shared hold for the whole call, the migration an exclusive one that waits 5 s for writers, and the code is `roadmap_busy`. All three found INV-21's release leg unreachable: `op:"append"` refuses `no_main` on the bare `RemoteControl` the harness builds; it uses `op:"flip"`, called from a subdirectory so a key mismatch shows. One lane found INV-8(b) parked only the bulk-lane marshal, so one wrong join order passed; both lanes' jobs are now parked. One lane found the CHANGELOG line and "reads are not refused" hid that a write to any other project still waits up to 5 s for the machine-global store's lock during the load; § 2.10 and § 7 now say so. Resolving an open question found `op:"deregister"` can key on `export_slug` and delete another project's rows while holding the caller's root; it now holds the deleted row's root. **Open questions resolved clean:** a first store open racing creation is INV-15's case; `op:"init"` keys on `rr.cwd`, the root it registers, so a parent project's roadmap does not move the key. **Violent cap:** 5 of this loop's 5 verified findings landed on text loop 7 wrote, so the review of this amendment ends here and it routes to implementation. **Gate against audit:** 3 of this run's 10 verified findings anchor in the gated span `2ca70c5c`; 5 landed on the run's own fixes and 2 on pre-existing text (§ 2.1, INV-7/INV-8). Out of scope, not filed: the GUI-thread fold-in dialogs can overlap a migration, as they could overlap the shared worker before this amendment (§ 5). |
