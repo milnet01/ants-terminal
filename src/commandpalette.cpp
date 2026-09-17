@@ -41,12 +41,12 @@ CommandPalette::CommandPalette(QWidget *parent) : QWidget(parent) {
 
     m_input = new GhostLineEdit(this);
     m_input->setObjectName("commandPaletteInput");
-    m_input->setPlaceholderText("Type a command...");
+    m_input->setPlaceholderText(tr("Type a command..."));
     // Screen-reader label. Placeholder text is documentation, not the
     // accessible name — Orca speaks accessibleName first. 0.7.41.
-    m_input->setAccessibleName("Command palette search");
+    m_input->setAccessibleName(tr("Command palette search"));
     m_input->setAccessibleDescription(
-        "Type to filter actions; Tab to commit; Esc to dismiss");
+        tr("Type to filter actions; Tab to commit; Esc to dismiss"));
     m_input->installEventFilter(this);
     m_layout->addWidget(m_input);
 
@@ -78,9 +78,9 @@ void CommandPalette::ensureListReady() {
     if (m_list) return;
     m_list = new QListWidget(this);
     m_list->setObjectName("commandPaletteList");
-    m_list->setAccessibleName("Command palette results");
+    m_list->setAccessibleName(tr("Command palette results"));
     m_list->setAccessibleDescription(
-        "Available actions matching the current filter");
+        tr("Available actions matching the current filter"));
     m_list->setFocusPolicy(Qt::NoFocus);
     m_list->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
     m_layout->addWidget(m_list);

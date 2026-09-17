@@ -30,9 +30,11 @@
 
 #include <QObject>
 #include <QDBusConnection>
+#include <QDBusMessage>
 #include <QDBusObjectPath>
 #include <QList>
 #include <QString>
+#include <QTimer>
 #include <QVariantMap>
 
 class GlobalShortcutsPortal : public QObject {
@@ -83,7 +85,10 @@ private slots:
     // D-Bus signal handlers. Must be slots (not lambdas) because
     // QDBusConnection::connect() takes a SLOT()-string target.
     void onCreateSessionResponse(uint response, const QVariantMap &results);
-    void onBindShortcutsResponse(uint response, const QVariantMap &results);
+    // ANTS-5081 — takes the message so each Response detaches its own
+    // request path; binds can overlap.
+    void onBindShortcutsResponse(uint response, const QVariantMap &results,
+                                 const QDBusMessage &message);
     void onActivatedSignal(QDBusObjectPath sessionHandle,
                            QString shortcutId,
                            qulonglong timestamp,
@@ -104,8 +109,11 @@ private:
     QDBusConnection m_bus;
     QString m_sessionHandle;                // empty until the handshake completes
     QString m_createSessionReqPath;          // per-request, reset on completion
-    QString m_bindShortcutsReqPath;
     bool m_sessionPending = false;           // CreateSession in flight
+    // ANTS-5081 — a portal that never sends the CreateSession Response
+    // would otherwise leave the session pending and queue every bind.
+    static constexpr int kCreateSessionTimeoutMs = 30000;
+    QTimer m_createSessionTimer;
     // ANTS-1152 — terminal-failure latch. Set by
     // onCreateSessionResponse and onBindShortcutsResponse on
     // response != 0 (or DBus reply error). Once latched, every

@@ -72,6 +72,21 @@ GlobalShortcutsPortal::GlobalShortcutsPortal(QObject *parent)
     // re-registration by other code in the same process.
     qDBusRegisterMetaType<PortalShortcut>();
     qDBusRegisterMetaType<QList<PortalShortcut>>();
+
+    // ANTS-5081 — fail a CreateSession whose Response never arrives, the same
+    // way a rejected one fails (ANTS-1152: permanent for the process).
+    m_createSessionTimer.setSingleShot(true);
+    m_createSessionTimer.setInterval(kCreateSessionTimeoutMs);
+    connect(&m_createSessionTimer, &QTimer::timeout, this, [this] {
+        if (!m_sessionPending) return;
+        m_sessionPending = false;
+        detachResponseSlots(m_createSessionReqPath);
+        m_createSessionReqPath.clear();
+        m_permanentlyFailed = true;  // ANTS-1152
+        emit sessionFailed(QStringLiteral(
+            "CreateSession got no response within %1 s")
+            .arg(kCreateSessionTimeoutMs / 1000));
+    });
 }
 
 GlobalShortcutsPortal::~GlobalShortcutsPortal() {
@@ -193,12 +208,15 @@ void GlobalShortcutsPortal::createSession() {
     msg << opts;
 
     QDBusPendingReply<QDBusObjectPath> reply = m_bus.asyncCall(msg);
+    m_createSessionTimer.start();
     auto *watcher = new QDBusPendingCallWatcher(reply, this);
     connect(watcher, &QDBusPendingCallWatcher::finished, this,
         [this](QDBusPendingCallWatcher *w) {
             QDBusPendingReply<QDBusObjectPath> r = *w;
             w->deleteLater();
-            if (r.isError()) {
+            // After a timeout the session already failed; don't fail it twice.
+            if (r.isError() && m_sessionPending) {
+                m_createSessionTimer.stop();
                 m_sessionPending = false;
                 detachResponseSlots(m_createSessionReqPath);
                 m_createSessionReqPath.clear();
@@ -211,6 +229,7 @@ void GlobalShortcutsPortal::createSession() {
 
 void GlobalShortcutsPortal::onCreateSessionResponse(uint response,
                                                     const QVariantMap &results) {
+    m_createSessionTimer.stop();
     detachResponseSlots(m_createSessionReqPath);
     m_createSessionReqPath.clear();
     m_sessionPending = false;
@@ -253,14 +272,16 @@ void GlobalShortcutsPortal::flushPending() {
 
     const QString handleToken = QStringLiteral("ants_bind_%1")
         .arg(QUuid::createUuid().toString(QUuid::WithoutBraces).remove('-'));
-    m_bindShortcutsReqPath = predictRequestPath(handleToken);
+    // ANTS-5081 — a local, not a member: binds can overlap, and each
+    // Response detaches its own path from the message.
+    const QString reqPath = predictRequestPath(handleToken);
 
     m_bus.connect(QString::fromLatin1(kService),
-                  m_bindShortcutsReqPath,
+                  reqPath,
                   QString::fromLatin1(kReqIface),
                   QStringLiteral("Response"),
                   this,
-                  SLOT(onBindShortcutsResponse(uint, QVariantMap)));
+                  SLOT(onBindShortcutsResponse(uint, QVariantMap, QDBusMessage)));
 
     QList<PortalShortcut> shortcuts;
     shortcuts.reserve(m_pending.size());
@@ -294,12 +315,11 @@ void GlobalShortcutsPortal::flushPending() {
     QDBusPendingReply<QDBusObjectPath> reply = m_bus.asyncCall(msg);
     auto *watcher = new QDBusPendingCallWatcher(reply, this);
     connect(watcher, &QDBusPendingCallWatcher::finished, this,
-        [this](QDBusPendingCallWatcher *w) {
+        [this, reqPath](QDBusPendingCallWatcher *w) {
             QDBusPendingReply<QDBusObjectPath> r = *w;
             w->deleteLater();
             if (!r.isError()) return;  // success: wait for onBindShortcutsResponse
-            detachResponseSlots(m_bindShortcutsReqPath);
-            m_bindShortcutsReqPath.clear();
+            detachResponseSlots(reqPath);
             m_pending.clear();
             m_sessionHandle.clear();
             m_permanentlyFailed = true;  // ANTS-1152
@@ -308,10 +328,10 @@ void GlobalShortcutsPortal::flushPending() {
 }
 
 void GlobalShortcutsPortal::onBindShortcutsResponse(uint response,
-                                                    const QVariantMap &results) {
+                                                    const QVariantMap &results,
+                                                    const QDBusMessage &message) {
     Q_UNUSED(results);
-    detachResponseSlots(m_bindShortcutsReqPath);
-    m_bindShortcutsReqPath.clear();
+    detachResponseSlots(message.path());
     if (response != 0) {
         // ANTS-1142 — drain m_pending and clear m_sessionHandle
         // on BindShortcuts failure. Pre-fix code left both
@@ -369,5 +389,5 @@ void GlobalShortcutsPortal::detachResponseSlots(const QString &requestPath) {
                      QString::fromLatin1(kReqIface),
                      QStringLiteral("Response"),
                      this,
-                     SLOT(onBindShortcutsResponse(uint, QVariantMap)));
+                     SLOT(onBindShortcutsResponse(uint, QVariantMap, QDBusMessage)));
 }

@@ -11,11 +11,15 @@
 
 namespace {
 
-QString portalSource() {
+QString readSrc(const QString &name) {
     const QDir src = QDir(QStringLiteral(SRC_DIR));
-    QFile f(src.filePath(QStringLiteral("globalshortcutsportal.cpp")));
+    QFile f(src.filePath(name));
     if (!f.open(QIODevice::ReadOnly | QIODevice::Text)) return QString();
     return QString::fromUtf8(f.readAll());
+}
+
+QString portalSource() {
+    return readSrc(QStringLiteral("globalshortcutsportal.cpp"));
 }
 
 QString functionBody(const QString &src, const QString &signature) {
@@ -73,4 +77,40 @@ TEST(PortalFailurePaths, BindsAreSentBeforeSessionReady) {
     ASSERT_GE(flush, 0);
     ASSERT_GE(ready, 0);
     EXPECT_LT(flush, ready) << "sessionReady fires before BindShortcuts is sent";
+}
+
+// INV-4
+TEST(PortalFailurePaths, CreateSessionTimesOut) {
+    const QString src = portalSource();
+    const QString create = functionBody(src,
+        QStringLiteral("void GlobalShortcutsPortal::createSession()"));
+    ASSERT_FALSE(create.isEmpty()) << "createSession not found";
+    EXPECT_TRUE(create.contains(QStringLiteral("m_createSessionTimer.start()")))
+        << "CreateSession has no timeout, so a missing Response queues every bind";
+
+    const QString ctor = functionBody(src,
+        QStringLiteral("GlobalShortcutsPortal::GlobalShortcutsPortal(QObject *parent)"));
+    ASSERT_FALSE(ctor.isEmpty()) << "constructor not found";
+    const int timeout = ctor.indexOf(QStringLiteral("&QTimer::timeout"));
+    ASSERT_GE(timeout, 0) << "nothing handles the CreateSession timeout";
+    const QString handler = ctor.mid(timeout);
+    EXPECT_TRUE(handler.contains(QStringLiteral("m_permanentlyFailed = true;")));
+    EXPECT_TRUE(handler.contains(QStringLiteral("emit sessionFailed(")));
+
+    const QString response = functionBody(src,
+        QStringLiteral("void GlobalShortcutsPortal::onCreateSessionResponse("));
+    EXPECT_TRUE(response.contains(QStringLiteral("m_createSessionTimer.stop();")))
+        << "a Response that arrives does not cancel the timeout";
+}
+
+// INV-5
+TEST(PortalFailurePaths, EachBindResponseDetachesItsOwnPath) {
+    const QString response = functionBody(portalSource(),
+        QStringLiteral("void GlobalShortcutsPortal::onBindShortcutsResponse("));
+    ASSERT_FALSE(response.isEmpty()) << "onBindShortcutsResponse not found";
+    EXPECT_TRUE(response.contains(QStringLiteral("detachResponseSlots(message.path());")))
+        << "the Response detaches a remembered path, not its own";
+    EXPECT_FALSE(readSrc(QStringLiteral("globalshortcutsportal.h"))
+                     .contains(QStringLiteral("m_bindShortcutsReqPath")))
+        << "one member still holds the BindShortcuts request path, so a second flush overwrites it";
 }

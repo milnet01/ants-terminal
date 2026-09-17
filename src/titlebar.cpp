@@ -57,8 +57,8 @@ TitleBar::TitleBar(QWidget *parent) : QWidget(parent) {
     m_centerBtn = new QToolButton(this);
     m_centerBtn->setText("\u2725");  // ✥ crosshair
     m_centerBtn->setObjectName("centerBtn");
-    m_centerBtn->setAccessibleName("Center window");
-    m_centerBtn->setAccessibleDescription("Center this window on the active screen");
+    m_centerBtn->setAccessibleName(tr("Center window"));
+    m_centerBtn->setAccessibleDescription(tr("Center this window on the active screen"));
     m_centerBtn->setAutoRaise(true);
     m_centerBtn->setFixedSize(32, 28);
     layout->addWidget(m_centerBtn);
@@ -67,8 +67,8 @@ TitleBar::TitleBar(QWidget *parent) : QWidget(parent) {
     m_minimizeBtn = new QToolButton(this);
     m_minimizeBtn->setText("\u2013");  // – en dash
     m_minimizeBtn->setObjectName("minimizeBtn");
-    m_minimizeBtn->setAccessibleName("Minimize window");
-    m_minimizeBtn->setAccessibleDescription("Minimize this window");
+    m_minimizeBtn->setAccessibleName(tr("Minimize window"));
+    m_minimizeBtn->setAccessibleDescription(tr("Minimize this window"));
     m_minimizeBtn->setAutoRaise(true);
     m_minimizeBtn->setFixedSize(32, 28);
     connect(m_minimizeBtn, &QToolButton::clicked, this, &TitleBar::minimizeRequested);
@@ -78,8 +78,8 @@ TitleBar::TitleBar(QWidget *parent) : QWidget(parent) {
     m_maximizeBtn = new QToolButton(this);
     m_maximizeBtn->setText("\u25A1");  // □ white square
     m_maximizeBtn->setObjectName("maximizeBtn");
-    m_maximizeBtn->setAccessibleName("Maximize window");
-    m_maximizeBtn->setAccessibleDescription("Maximize or restore this window");
+    m_maximizeBtn->setAccessibleName(tr("Maximize window"));
+    m_maximizeBtn->setAccessibleDescription(tr("Maximize or restore this window"));
     m_maximizeBtn->setAutoRaise(true);
     m_maximizeBtn->setFixedSize(32, 28);
     connect(m_maximizeBtn, &QToolButton::clicked, this, &TitleBar::maximizeRequested);
@@ -89,8 +89,8 @@ TitleBar::TitleBar(QWidget *parent) : QWidget(parent) {
     m_closeBtn = new QToolButton(this);
     m_closeBtn->setText("\u2715");  // ✕
     m_closeBtn->setObjectName("closeBtn");
-    m_closeBtn->setAccessibleName("Close window");
-    m_closeBtn->setAccessibleDescription("Close this window");
+    m_closeBtn->setAccessibleName(tr("Close window"));
+    m_closeBtn->setAccessibleDescription(tr("Close this window"));
     m_closeBtn->setAutoRaise(true);
     m_closeBtn->setFixedSize(32, 28);
     connect(m_closeBtn, &QToolButton::clicked, this, &TitleBar::closeRequested);

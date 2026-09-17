@@ -14,6 +14,17 @@ registered or listed in `activatableServiceNames()`.
 **INV-3 — BindShortcuts is sent before sessionReady.** In
 `onCreateSessionResponse`, `flushPending()` runs before `emit sessionReady()`.
 
+**INV-4 — CreateSession times out.** `createSession` starts
+`m_createSessionTimer`. When it fires with the session still pending, the
+portal detaches the Response slot, marks itself permanently failed and emits
+`sessionFailed`. `onCreateSessionResponse` and the error-reply path stop the
+timer.
+
+**INV-5 — each BindShortcuts Response detaches its own request path.**
+`onBindShortcutsResponse` takes the `QDBusMessage` and detaches
+`message.path()`. No member holds a single BindShortcuts request path, so a
+second flush cannot overwrite the first request's path.
+
 ## Rationale
 
 `CreateSession`'s reply was watched, but `BindShortcuts` was sent with a bare
@@ -24,6 +35,13 @@ for a D-Bus activatable portal not yet started, so the portal was never built
 and nothing retried while quake mode stayed on. `sessionReady` fired before
 the pending binds were sent.
 
+`CreateSession` had no timeout, so a portal that never sent its Response left
+the session pending forever and queued every later bind silently.
+`BindShortcuts` kept its request path in one member. A second flush while the
+first was in flight overwrote it, so the first Response detached the second
+request's slot, the second Response was lost, and the first slot stayed
+connected.
+
 ## Test surface
 
 `test_portal_failure_paths.cpp` reads `src/globalshortcutsportal.cpp`, found
@@ -31,4 +49,4 @@ beside `SRC_MAINWINDOW_CPP_PATH`, and checks the text.
 
 ## Regression history
 
-- **ANTS-5081:** the two defects above. Locked by this spec.
+- **ANTS-5081:** the defects above. Locked by this spec.
