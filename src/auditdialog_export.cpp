@@ -75,9 +75,9 @@ QString AuditDialog::exportSarif() const {
             res["message"]  = msg;
 
             if (!f.file.isEmpty()) {
-                QJsonObject loc, physLoc, artLoc, region;
-                artLoc["uri"] = f.file;
-                physLoc["artifactLocation"] = artLoc;
+                QJsonObject loc, physLoc, region;
+                // ANTS-5084 — an encoded URI, anchored to %SRCROOT% when relative.
+                physLoc["artifactLocation"] = AuditEngine::sarifArtifactLocation(f.file);
                 if (f.line > 0) {
                     region["startLine"] = f.line;
                     physLoc["region"]   = region;
@@ -174,8 +174,12 @@ QString AuditDialog::exportSarif() const {
     QJsonObject run;
     run["tool"] = tool;
     run["results"] = results;
+    // ANTS-5084 — the base a relative artifactLocation resolves against.
+    const QString srcRootUri = AuditEngine::sarifSrcRootUri(m_projectPath);
+    run["originalUriBaseIds"] = QJsonObject{
+        {"%SRCROOT%", QJsonObject{{"uri", srcRootUri}}}};
     QJsonObject invocation;
-    invocation["workingDirectory"] = QJsonObject{{"uri", m_projectPath}};
+    invocation["workingDirectory"] = QJsonObject{{"uri", srcRootUri}};
     invocation["startTimeUtc"]     = QDateTime::currentDateTimeUtc().toString(Qt::ISODate);
     QJsonArray invocations; invocations.append(invocation);
     run["invocations"] = invocations;

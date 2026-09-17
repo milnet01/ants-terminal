@@ -647,6 +647,7 @@ private:
     // the bar isn't pushed off the top by subsequent addWidget calls.
     QWidget            *m_contentArea = nullptr;
     QString             m_textFilter;                          // lowercased
+    QTimer             *m_filterDebounce = nullptr;            // ANTS-5084
     QSet<int>           m_activeSeverities = {0, 1, 2, 3, 4};  // all on by default
     bool                m_sortByConfidence = false;
     // Per-finding expand state for the collapsible snippet/blame/triage

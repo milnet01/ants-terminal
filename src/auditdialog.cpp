@@ -2290,9 +2290,17 @@ void AuditDialog::buildUI() {
     m_filterInput = new QLineEdit(m_filterBar);
     m_filterInput->setPlaceholderText("Filter by file, message, rule, author…");
     m_filterInput->setClearButtonEnabled(true);
+    // ANTS-5084 — render once typing pauses, not on every keystroke: a render
+    // rebuilds the whole result list.
+    m_filterDebounce = new QTimer(this);
+    m_filterDebounce->setSingleShot(true);
+    m_filterDebounce->setInterval(200);
+    connect(m_filterDebounce, &QTimer::timeout, this, [this]() {
+        if (!m_completedResults.isEmpty()) renderResults();
+    });
     connect(m_filterInput, &QLineEdit::textChanged, this, [this](const QString &s) {
         m_textFilter = s.trimmed().toLower();
-        if (!m_completedResults.isEmpty()) renderResults();
+        m_filterDebounce->start();
     });
     filterRow->addWidget(m_filterInput, 1);
 

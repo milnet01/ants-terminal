@@ -8,6 +8,7 @@
 #include <QDateTime>
 #include <QDebug>
 #include <QDir>
+#include <QUrl>
 #include <QDirIterator>
 #include <QFile>
 #include <QFileInfo>
@@ -479,7 +480,7 @@ FilterResult applyFilter(const QString &raw,
                     const QString abs = resolveProjectPathLocal(relPath, projectPath);
                     // ANTS-5085 — the same cap lineIsCode uses; a context
                     // window needs a source file, not a generated blob.
-                    constexpr qint64 kMaxContextFileBytes = 4 * 1024 * 1024;
+                    constexpr qint64 kMaxContextFileBytes = 4LL * 1024 * 1024;
                     if (!abs.isEmpty() && QFileInfo(abs).size() <= kMaxContextFileBytes) {
                         QFile src(abs);
                         if (src.open(QIODevice::ReadOnly | QIODevice::Text)) {
@@ -725,7 +726,7 @@ void consolidateMypyStubHints(CheckResult &r) {
     // findingCountAuthored so the v1 `findings.size() + omittedCount`
     // overwrite no longer clobbers this value.
     const int preCollapse = r.findings.size();
-    r.findings = kept;
+    r.findings = std::move(kept);
     r.findingCount         = preCollapse + r.omittedCount;
     r.findingCountAuthored = true;
 }
@@ -901,8 +902,9 @@ std::optional<AuditSummary> summariseSarif(
             if (!locs.isEmpty()) {
                 const QJsonObject phys = locs.first().toObject()
                     .value(QStringLiteral("physicalLocation")).toObject();
-                asf.file = phys.value(QStringLiteral("artifactLocation")).toObject()
-                               .value(QStringLiteral("uri")).toString();
+                // ANTS-5084 — the path, decoded when the export encoded it.
+                asf.file = sarifLocationPath(
+                    phys.value(QStringLiteral("artifactLocation")).toObject());
                 asf.line = phys.value(QStringLiteral("region")).toObject()
                                .value(QStringLiteral("startLine")).toInt(0);
             }
@@ -951,7 +953,7 @@ std::optional<AuditSummary> summariseSarif(
     htmlCandidate.chop(6);  // strip ".sarif"
     htmlCandidate.append(QStringLiteral(".html"));
     if (QFile::exists(htmlCandidate)) {
-        s.htmlPath = htmlCandidate;
+        s.htmlPath = std::move(htmlCandidate);
     } else {
         // Fallback (a) failed; lex-max audit-*.html within ±60 s.
         // Filename pattern: audit-YYYYMMDD-HHmmss.{sarif,html}.
@@ -1468,6 +1470,33 @@ QString templateRoadmapFoldInBlock(const QList<Finding> &actionable,
 // empty array when rev-parse fails — callers omit the SARIF
 // run.versionControlProvenance block in that case rather than
 // emit a half-populated record.
+QJsonObject sarifArtifactLocation(const QString &file) {
+    // Percent-encode everything but unreserved characters and '/', so a
+    // space, '#' or '%' in a path cannot change which file the URI names.
+    const QString encoded = QString::fromLatin1(QUrl::toPercentEncoding(file, "/"));
+    if (QDir::isAbsolutePath(file))
+        return QJsonObject{{QStringLiteral("uri"), QStringLiteral("file://") + encoded}};
+    return QJsonObject{{QStringLiteral("uri"), encoded},
+                       {QStringLiteral("uriBaseId"), QStringLiteral("%SRCROOT%")}};
+}
+
+QString sarifSrcRootUri(const QString &projectPath) {
+    QString uri = QStringLiteral("file://")
+        + QString::fromLatin1(QUrl::toPercentEncoding(projectPath, "/"));
+    if (!uri.endsWith(QLatin1Char('/'))) uri += QLatin1Char('/');
+    return uri;
+}
+
+QString sarifLocationPath(const QJsonObject &artifactLocation) {
+    QString uri = artifactLocation.value(QStringLiteral("uri")).toString();
+    if (uri.startsWith(QLatin1String("file://")))
+        return QUrl::fromPercentEncoding(uri.mid(7).toUtf8());
+    if (artifactLocation.value(QStringLiteral("uriBaseId")).toString()
+            == QLatin1String("%SRCROOT%"))
+        return QUrl::fromPercentEncoding(uri.toUtf8());
+    return uri;   // unmarked: a raw path, as the headless runner writes
+}
+
 QJsonArray buildVcsProvenanceBlock(const QString &rootCanonical) {
     if (rootCanonical.isEmpty()) return {};
 

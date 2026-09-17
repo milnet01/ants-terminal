@@ -2983,6 +2983,8 @@ if(ANTS_TESTS)
                 tests/features/audit_autofix_guards/test_audit_autofix_guards.cpp
                 # ANTS-5084 — detection walk, banner, HTML escape, warning label, export errors.
                 tests/features/audit_dialog_lows/test_audit_dialog_lows.cpp
+                # ANTS-5084 — SARIF export writes valid artifact URIs.
+                tests/features/audit_sarif_uris/test_audit_sarif_uris.cpp
                 # ANTS-5084 — changed-lines scope failures and bounded batch triage.
                 tests/features/audit_scope_and_triage/test_audit_scope_and_triage.cpp
                 # ANTS-5085 — .audit_cache is created 0700 by every writer.

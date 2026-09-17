@@ -99,6 +99,17 @@ TEST(AuditDialogLows, SemgrepSendsNoMetrics) {
         << "registry rule packs send usage metrics under semgrep's default";
 }
 
+// INV-10
+TEST(AuditDialogLows, FilterTypingIsDebounced) {
+    const QString region = between(auditSource(),
+        QStringLiteral("connect(m_filterInput, &QLineEdit::textChanged"),
+        QStringLiteral("filterRow->addWidget(m_filterInput"));
+    ASSERT_FALSE(region.isEmpty()) << "filter input handler not found";
+    EXPECT_FALSE(region.contains(QStringLiteral("renderResults()")))
+        << "every keystroke re-renders the whole result list";
+    EXPECT_TRUE(region.contains(QStringLiteral("m_filterDebounce->start()")));
+}
+
 // INV-9
 TEST(AuditDialogLows, SuppressionSaveIsLocked) {
     const QString region = between(auditSource(),

@@ -460,6 +460,20 @@ std::optional<AuditSummary> summariseSemgrepJson(
 // remote.origin.url), each with a 2 s wall-clock cap.
 QJsonArray buildVcsProvenanceBlock(const QString &rootCanonical);
 
+// ANTS-5084 — the SARIF artifactLocation (§ 3.4) for a finding's file. A
+// relative path is percent-encoded and carries uriBaseId "%SRCROOT%"; an
+// absolute path becomes a percent-encoded file:// URI with no base.
+QJsonObject sarifArtifactLocation(const QString &file);
+
+// ANTS-5084 — the file:// URI, ending in '/', that "%SRCROOT%" names in
+// run["originalUriBaseIds"] for a project root.
+QString sarifSrcRootUri(const QString &projectPath);
+
+// ANTS-5084 — the file path an artifactLocation names. A location this
+// codebase encoded (a file:// uri, or uriBaseId "%SRCROOT%") is decoded; any
+// other uri is returned as-is, since the headless runner writes raw paths.
+QString sarifLocationPath(const QJsonObject &artifactLocation);
+
 // ANTS-1111 — severity-tier shift on cross-tool corroboration. In-place
 // mutation of `findings[].severity`:
 //   coverageCount(f) = number of distinct CheckIds whose findings cite

@@ -39,6 +39,10 @@ metrics.
 a `ConfigWriteLock` on the suppression file before it reads it, as
 `appendSnapshot` does for the trend file.
 
+**INV-10 — filter typing is debounced (ANTS-5084).** The filter input's
+`textChanged` handler stores the text and restarts `m_filterDebounce`, a
+single-shot timer; the render runs on its timeout, not on every keystroke.
+
 ## Rationale
 
 The ANTS-5084 performance pass found each of these. The detection walk

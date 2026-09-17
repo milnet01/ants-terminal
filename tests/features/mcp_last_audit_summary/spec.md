@@ -15,7 +15,7 @@ SARIF fixtures + source-grep checks for the wiring INVs (5, 7).
 | INV-4 | spec § 4 | `counts` reflects the full set, not the filtered `top_findings[]`. Verified by parsing with `severity_floor: error` and asserting `counts.warning > 0`. |
 | INV-5 | spec § 4 | (Wiring contract — not falsifiable without a live socket; covered by sibling `mcp_provider_registry` Inv8SchemaMatchesRegistry test.) |
 | INV-6 | spec § 4 | Latest-SARIF discovery: caller picks lex-max filename, not mtime. Tested via `cmdLastAuditSummary` integration in a sibling spec; here we lock the parser-side behavior on a deterministic single-file fixture. |
-| INV-7 | spec § 4 | `top_findings[].file` is whatever SARIF carries (no rewriting). Verified by fixture comparison. |
+| INV-7 | spec § 4 | `top_findings[].file` is the file path SARIF carries (no rewriting). An artifactLocation the audit dialog encoded — a `file://` uri, or `uriBaseId` `%SRCROOT%` — is decoded back to that path by `AuditEngine::sarifLocationPath` (ANTS-5084, user decision 2026-09-17); any other uri is returned as-is. Verified by fixture comparison and `tests/features/audit_sarif_uris` INV-5, INV-6. |
 | INV-8 | spec § 4 | `severity_floor` validation rejects bad input. Verified by source-grep + a parser test that bad floor doesn't reach summariseSarif. |
 | INV-9 | spec § 4 | `counts` is fixed-shape — always 4 keys present, even when zero. Verified by parsing an empty-results fixture. |
 | INV-10 | spec § 4 | Empty `runs[]` → `nullopt` (caller maps to `not_audited`). Verified by parsing an empty-runs fixture. |
