@@ -14,6 +14,15 @@ for security-relevant changes.
 
 ### Fixed
 
+- **Terminal output can no longer flood trigger actions or plugin events** (ANTS-5079)
+  A program printing command-finished markers or trigger-matching lines
+  in a tight loop now starts at most a burst of shells, notifications or
+  plugin calls per second per tab, instead of one per line.
+
+- **Progress reports repaint the tab icon only when the progress state changes** (ANTS-5079)
+  A program reporting progress on every percent no longer redraws the
+  tab icon each time.
+
 - **Exporting a long scrollback or sharing a command block no longer freezes the window** (ANTS-5078)
   The text, HTML and .cast exports now write to the file a slice at a
   time between other work, instead of building the whole export in

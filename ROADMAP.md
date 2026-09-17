@@ -8109,7 +8109,7 @@ extends an existing item, that item carries it instead.
   Source: code-quality-review-2026-09-11 perf pass (lane terminal-widget-b).
   Lanes: terminalwidget.
 
-- 📋 [ANTS-5079] **Performance pass findings for the main window's tab, pane and export code (medium and low).**
+- ✅ [ANTS-5079] **Performance pass findings for the main window's tab, pane and export code (medium and low).**
   Medium:
   - The 2 s status timer drives refreshTasksButton, which re-parses up
     to a 16 MiB transcript tail whenever it changed, and it changes
@@ -8168,6 +8168,15 @@ extends an existing item, that item carries it instead.
   In progress: the plugin event rate limit, widened by the user to every
   trigger action (tests/features/trigger_event_rate_limit), and the
   per-sequence progress tab icon.
+  Resolved (2026-09-17, 985ad5c4): the last two findings shipped.
+  TerminalWidget keeps two one-second budgets per terminal, one for
+  commandFinished and one shared by every trigger dispatch, widened by
+  the user from plugin events to every trigger action. The OSC 9;4
+  handler repaints the tab icon only when the state changes, recorded
+  per tab page. Tests: trigger_event_rate_limit and
+  mainwindow_command_safety INV-5, each proven red. Full default suite
+  green. Every finding is now shipped, fixed by ANTS-5050, or moved to
+  ANTS-5225.
   **Layman:** Smaller main-window fixes: split panes that are never tidied up, slow exports and plugin event floods.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lane mainwindow-a).
@@ -18173,6 +18182,23 @@ fixes don't address. Roadmapped here as their own design tasks.
   Kind: doc-fix.
   Source: review-contract-2026-09-14 ANTS-3636 loop 1.
   Lanes: mcp, docs.
+
+- 📋 [ANTS-5226] **workspace_search in literal mode returns no matches, with ok:true, for a pattern ending in an open parenthesis.**
+  Observed 2026-09-17: workspace_search with pattern
+  `m_lineCompletionCallback(`, regex false, lane src, returned an empty
+  matches list and ok:true. `rg -nF 'm_lineCompletionCallback(' src`
+  finds it in src/terminalgrid.cpp (TerminalGrid::newLine). The same
+  search without the parenthesis found it.
+  Suspected cause, unverified: the literal pattern reaches rg without
+  -F, rg refuses the unbalanced group, and the verb reports the failure
+  as zero matches. A search that failed must refuse, never answer empty.
+  Fix: pass literal patterns as fixed strings, and surface a non-zero rg
+  exit other than no-match as a refusal. Test with a pattern containing
+  an unbalanced `(`, `[` and `\`.
+  **Layman:** Searching the code for text containing a bracket can wrongly report that nothing was found.
+  Kind: fix.
+  Source: in-session-2026-09-17.
+  Lanes: mcp.
 
 ### 🔬 Project Audit false-positive reduction (self-audit 2026-05-20)
 
