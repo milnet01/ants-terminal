@@ -11,8 +11,8 @@ reply transforms on the worker; § 2.2, INV-7 and INV-9 change with them, and
 INV-18 is added. Gated by review-contract at its cap (loops 5 and 6). Built
 2026-09-13.
 **Amendment (2026-09-17, ANTS-5086):** § 2.10 runs `roadmap_migrate` on a
-second worker; § 2.6, INV-2, § 4, § 5, § 6 and § 7 change with it, and INV-19
-and INV-20 are added. Not yet built.
+second worker; § 2.1, § 2.6, INV-2, INV-7, INV-8, § 4, § 5, § 6 and § 7
+change with it, and INV-19 to INV-21 are added. Not yet built.
 **Kind:** perf.
 **Source:** ROADMAP.md ANTS-2132 (user report of intermittent whole-window
 freeze; diagnosed in-session 2026-08-25). Amended for ANTS-5051, ANTS-5073,
@@ -148,7 +148,7 @@ resumes the existing response pipeline unchanged.
 
 **One worker, not one per call.** Off-thread verbs then execute one at a time
 in arrival order — exactly today's serialisation — so **no pair of off-thread
-verbs begins to overlap**. Client-visible latency is unchanged; only the
+verbs on the same lane begins to overlap** (§ 2.10 adds a second lane). Client-visible latency is unchanged; only the
 window's responsiveness changes. A thread per call would additionally alter
 concurrency for every verb at once and is rejected in § 5.
 
@@ -344,8 +344,12 @@ than hard-coding a list**, or it rots the first time a verb moves.
   INV-10's fixture cannot say what it expects.
 - **Shutdown — the one place the GUI thread does wait on the worker.**
   `ClaudeIntegration`'s destructor stops accepting jobs, refuses in-flight
-  `onGuiThread` marshals from its own worker rather than serving them, then
-  quits the worker's event loop and joins it. **Only its own worker's:** File →
+  `onGuiThread` marshals from its own workers rather than serving them, then
+  quits each worker's event loop and joins it. **Both lanes' marshals are
+  refused before either worker is joined** (§ 2.10): `joinRefusingMarshals`
+  serves a marshal from any thread not refused, so a bulk-lane marshal
+  delivered while the shared worker is joined would otherwise run its callable
+  during teardown. Both joins sit in `shutdownDispatchWorker`. **Only its own worker's:** File →
   New Window builds a second `MainWindow`, which deletes itself on close along
   with its own `ClaudeIntegration`, and the first window's marshals must still
   be served afterwards (INV-17). Refusing the marshal first is what keeps the join from
@@ -550,6 +554,22 @@ bool postWorkerJob(std::function<void()> job,
                    DispatchLane lane = DispatchLane::Shared);
 ```
 
+The registration names the lane through `rcDelegate`'s one definition, which
+gains a defaulted parameter:
+
+```cpp
+// mainwindow.cpp
+ClaudeIntegration::RcHandler MainWindow::rcDelegate(
+        QJsonDocument (RemoteControl::*fn)(const QJsonObject &),
+        ClaudeIntegration::DispatchLane lane = ClaudeIntegration::DispatchLane::Shared);
+// the roadmap_migrate registration
+rcDelegate(&RemoteControl::cmdRoadmapMigrate, ClaudeIntegration::DispatchLane::Bulk)
+```
+
+Every other registration keeps `rcDelegate(&RemoteControl::…)` unchanged. One
+definition, not an overload, so INV-3's factory scrape still reads the only
+factory body.
+
 `RegisteredTool` stores the lane beside `offThread`. The lane applies only
 where `offThread` is true, so a `TabSpecific` verb stays on the GUI thread
 whichever lane it names. `postToolDispatch` posts to the entry's lane. Socket
@@ -561,15 +581,34 @@ cache, so it shares no in-process state with the shared worker. Its one
 `MainWindow` read, `ants::resolveCallerCwdRoot`, marshals through `onGuiThread`
 as it does on the shared lane (§ 2.5).
 
-**What now overlaps.** A `roadmap_log` write sent during a migration no longer
-waits in the queue. It waits at SQLite for the write lock, under the
-interactive 5 s deadline (ANTS-3756 INV-16), and fails and reports if the
-migration holds the lock longer. Reads do not wait, because the store runs in
-WAL. Two migrations still run one at a time, in arrival order.
+**What now overlaps, and the busy guard.** A roadmap write sent during a
+migration no longer waits in the queue behind it. Unguarded, it could land
+between the migration reading `ROADMAP.md` and committing its plan, and a
+re-run migration would then revert it silently. So a write to a project whose
+migration is running is refused.
 
-**Cap and shutdown.** Jobs on both lanes count against the one 64-job cap
-(§ 2.6). Shutdown handles each lane's worker in § 2.6's order: refuse its
-marshals, quit it, join it.
+- **The registry is process-wide**: a mutex-guarded set of project roots in
+  `RemoteControl`, as `static` members, because File → New Window builds a
+  second `RemoteControl` beside a second `ClaudeIntegration`. Keyed on
+  `rcProjectRootFor()` of the canonical `caller_cwd`, on both sides.
+- **`cmdRoadmapMigrate` holds the root** for the whole call, released on every
+  return path. `op:"deregister"`, `op:"init"` and the plain migrate hold it; a
+  `dry_run` does not, since it writes nothing. A second migration of a held root
+  is refused the same way.
+- **Refused while held**: `cmdRoadmapLog` (every op), and the four fold-in
+  writers — `cmdColdEyesFoldIn`, `cmdIndieReviewFoldIn`, `cmdDebtSweepDefer` and
+  the `test_audit_fold_in` registration — each before it resolves any write
+  target.
+- **The refusal** is `code: "migration_in_progress"` with `retry_after_ms`,
+  and writes nothing.
+
+The guard covers this process. A second Ants process sharing the
+machine-global store is not covered, as it was not before this amendment.
+Reads are not refused: the store runs in WAL. Two migrations on the bulk lane
+still run one at a time, in arrival order.
+
+**Cap and shutdown.** Jobs on both lanes count against the one 64-job cap.
+§ 2.6 owns the shutdown order across both workers.
 
 ## 3. Invariants
 
@@ -609,8 +648,9 @@ marshals, quit it, join it.
 - **INV-7** — The GUI thread never blocks on the worker **while serving a
   request**. The destructor's shutdown join (§ 2.6) is the sole exception and
   runs only after job acceptance has stopped. *Test:*
-  `tests/features/mcp_verb_offthread_guard/` — source scrape asserting that the
-  only join of the worker in `claudeintegration.cpp` is in
+  `tests/features/mcp_verb_offthread_guard/` — source scrape asserting that
+  every join of a dispatch worker (§ 2.10: both lanes) in
+  `claudeintegration.cpp` is in
   `shutdownDispatchWorker`, reached only from `~ClaudeIntegration`, and that
   `finishToolDispatch`, `transformReply` (§ 2.9) and the dispatch path contain
   none.
@@ -618,8 +658,9 @@ marshals, quit it, join it.
   `id`, and none is written after the socket is gone or after shutdown has
   begun. *Test:* `tests/features/mcp_async_dispatch/`, two clauses — (a)
   disconnect mid-verb, assert no write and no crash under the `debug` (ASan)
-  preset; (b) destroy `ClaudeIntegration` with a job in flight, assert the
-  destructor returns within a bounded time and wrote no reply. Clause (b) is
+  preset; (b) destroy `ClaudeIntegration` with a job in flight on each lane,
+  the bulk-lane job parked in `onGuiThread`, assert the destructor returns
+  within a bounded time, wrote no reply, and ran neither marshal's callable. Clause (b) is
   the only thing that can catch § 2.6's refuse-then-join ordering: INV-7's
   scrape sees where `wait()` sits, never whether it deadlocks.
 - **INV-9** — The response pipeline of § 2.2 exists in exactly one place and
@@ -712,6 +753,17 @@ marshals, quit it, join it.
   `DispatchLane::Bulk` and assert exactly one occurrence, inside the
   `roadmap_migrate` registration. Breaks if the registration keeps plain
   `rcDelegate(`: the scrape finds none.
+- **INV-21** *(amendment, 2026-09-17 — ANTS-5086)* — While a migration holds a
+  project root, `roadmap_log` and the four fold-in writers refuse
+  `migration_in_progress` for that root and write nothing; once it is released
+  the same call succeeds. *Test:* `tests/features/mcp_async_dispatch/` — hold
+  a temporary project's root through the registry, call
+  `RemoteControl::cmdRoadmapLog` `op:"append"` on it and assert the code and an
+  unchanged `ROADMAP.md`; release, repeat, assert `ok:true`. A source scrape
+  asserts each fold-in writer checks the registry before its first write.
+  Breaks if the key differs between the two sides, for instance the raw
+  `caller_cwd` against `rcProjectRootFor()`: a call from a subdirectory is not
+  refused.
 
 ## 4. RAM / build cost
 
@@ -852,8 +904,14 @@ which must pass unmodified: `mcp_projection`, `mcp_etag_refusal`,
 `mcp_offload_keeps_advisory` and `mcp_result_offload`.
 
 **Amendment (2026-09-17, ANTS-5086).** `tests/features/mcp_async_dispatch/`
-gains INV-19; `tests/features/mcp_verb_offthread_guard/` gains INV-20. INV-2's
-existing test runs on the shared lane and is unchanged.
+gains INV-19, and INV-8(b)'s clause gains the bulk-lane job;
+`tests/features/mcp_verb_offthread_guard/` gains INV-20, and INV-7's scrape
+covers both joins. INV-2's existing test runs on the shared lane and is
+unchanged. That guard's INV-6 registration regex,
+`rcDelegate\(&RemoteControl::(\w+)\)`, must also accept the optional lane
+argument, or `cmdRoadmapMigrate` silently leaves INV-6's off-thread set.
+`mcp_call_site_contract` and `mcp_dispatch_forward_completeness` match on
+`rcDelegate(` and need no change. INV-21 joins `mcp_async_dispatch`.
 
 Per the project test convention, add each source to the owning bundle's
 `SOURCES` (ask `build_target_for`, do not guess), verify the ctest count moved
@@ -906,12 +964,15 @@ the change is restored.
   - ROADMAP.md — ANTS-5072 closes with the build.
 - **Amendment (2026-09-17, ANTS-5086):**
   - `docs/standards/mcp-tools.md` — a verb runs on the shared lane unless its
-    registration names `DispatchLane::Bulk` (§ 2.10).
-  - `docs/specs/ANTS-3855-roadmap-migrate-verb.md` § 2.5 — a concurrent
-    `roadmap_log` write can now meet a migration's lock (§ 2.10).
+    registration names `DispatchLane::Bulk` (§ 2.10), and step 2a's "so no two
+    of them overlap" is scoped to verbs on the same lane.
+  - `docs/specs/ANTS-3855-roadmap-migrate-verb.md` § 2.5 — the verb refuses
+    `migration_in_progress` for a root another migration holds (§ 2.10).
+  - `docs/standards/mcp-error-codes.md` — `migration_in_progress` joins the
+    taxonomy.
   - `CHANGELOG.md` — a roadmap migration no longer holds up other sessions'
-    MCP calls. It must not claim more: a `roadmap_log` write during a migration
-    can still wait at the store and time out (§ 2.10).
+    MCP calls. It must not claim more: a write to the project being migrated
+    is refused until the migration ends (§ 2.10).
   - ROADMAP.md — ANTS-5086's busy-deadline finding closes with the build.
 
 ## Cold-eyes loop log
@@ -924,3 +985,4 @@ the change is restored.
 | 4 | 2026-09-13 | 3, cold — identical brief; scrubbed copy, packet and source facts rebuilt from disk | **Q1 1 · Q2 0 · Q3 1 · Q4 0** (2 verified / 2 fixed / 1 dismissed) | **Two verified, two fixed. Cap reached (2 for a spec); shipped to implementation.** § 2.7 blamed library layering for the static route list; `RemoteControl` files already include `claudeintegration.h`, so the true reason is that `RemoteControl` is built and tested without a `ClaudeIntegration`. § 2.6's shutdown refusal was unscoped, and the shipped flag is process-wide: closing a second window refuses every later marshal in the first (filed ANTS-5142). The refusal is now scoped to the instance's own worker, INV-17 tests it, and § 7 names the two test contracts bound to the global flag. **Dismissed:** INV-7's test clause named a `wait()` in the destructor where the built join is in `shutdownDispatchWorker`. Two lanes raised it; nothing built changes, so it was corrected as a record of the code. **Calm cap:** 0 of this loop's 2 verified findings landed on text a loop-1 fix wrote. **Gate against audit:** 7 of this run's 8 verified findings anchor in the amendment draft (`b198f557..f8ece108`); the § 2.6 refusal scope predates it. Out of scope, filed: ANTS-5141, the store destroyed on the GUI thread. |
 | 5 | 2026-09-13 | 3, cold — genre pinned `spec`; first loop of the gate on the ANTS-5072 amendment (§ 1.3, § 2.9, INV-7, INV-9, INV-18) | **Q1 1 · Q2 3 · Q3 0 · Q4 0** (4 verified / 4 fixed / 0 dismissed) | **Four verified, four fixed; loop 2 of this run dispatched.** All three lanes found § 2.2's struct had lost `toolHandled`, which § 2.8 and § 2.9 rely on, so `finishToolDispatch` would have read an empty control-plane body as an unknown tool; the field is back and `finishToolDispatch` branches on it. All three lanes found § 4's peak-memory sentence false: `ReplyTransform` carried the pre-ETag body on every call, beside the transformed body and the wrapped text. The transformed body is no longer carried, and `cacheBody` is filled only for a handled, cacheable, uncached call. Two lanes found INV-18 claimed worker transforms for every off-thread verb, while a cache hit or a queue-full refusal finishes on the GUI thread; it is now scoped to a call whose handler ran on the worker. One lane found the spill directory's no-lock reason contradicted the hint latch's `QMutex`; the reason is now the length of the wait. **Open questions resolved clean:** the scrape tests § 6 requires to pass unmodified (`mcp_projection`, `mcp_rate_limit`, `mcp_ignored_args`) key on spellings a split can keep; whether `read_region` is cacheable stops mattering once `cacheBody` is conditional. |
 | 6 | 2026-09-13 | 3, cold — identical brief; scrubbed copy, packet and source facts rebuilt from disk | **Q1 0 · Q2 1 · Q3 0 · Q4 2** (3 verified / 3 fixed / 1 dismissed) | **Three verified, three fixed. Cap reached (2 for a spec); shipped to implementation.** Two lanes found § 7's CHANGELOG line promised a large off-thread reply no longer stalls the window, while § 2.9 still serialises the JSON-RPC envelope on the GUI thread, which § 1.3 measures at 12.3 ms for a reply sent whole. § 2.9 and § 5 now say the envelope stays there, and the CHANGELOG line names only the steps that move. One lane found INV-18's test would pass with its seam never set, since `nullptr` is not the GUI thread; the seam is now atomic and reset before each call, and the test asserts it equals the thread the verb recorded. The same lane found INV-9's scrape never looked at `postToolDispatch`, where the off-thread transforms now run, so a second pipeline there would pass; the scrape now covers it. **Dismissed:** § 2.1's "client-visible latency is unchanged" no longer holds for a queued off-thread verb, which now waits behind the previous job's transforms; nothing built differs. **Checked by the orchestrator:** every function-local static in `claudeintegration.cpp`, `mcpprojection.cpp` and `mcpspill.cpp` is `const` or `constexpr`, so § 2.9's list of what the transforms read off the GUI thread holds. **Calm cap:** 0 of this loop's 3 verified findings landed on text loop 5 wrote. **Gate against audit:** 6 of this run's 7 verified findings anchor in the amendment commit `f60c24e0`; the missing `toolHandled` predates it. Tail filed: none. |
+| 7 | 2026-09-17 | 3, cold — genre pinned `spec`; first loop of the gate on the ANTS-5086 amendment (§ 2.10, INV-2, INV-19, INV-20) | **Q1 1 · Q2 1 · Q3 2 · Q4 1** (5 verified / 5 fixed / 0 dismissed) | **Five verified, five fixed; loop 2 of this run dispatched.** All three lanes found § 2.10's shutdown sentence read two ways, and the per-lane reading runs a bulk-lane `onGuiThread` marshal while the shared worker is joined, because `joinRefusingMarshals` serves other threads' marshals; § 2.6 now refuses both lanes before either join. All three found the registration's lane spelling unpinned while INV-20 and INV-6's `rcDelegate\(&RemoteControl::(\w+)\)` scrape bind to it; `rcDelegate` gains a defaulted lane parameter and § 6 widens that regex. All three found § 2.1 and `mcp-tools.md` step 2a still promising no two off-thread verbs overlap; both now say per lane. One lane found INV-7 and INV-8(b) could not fail on the bulk worker's join; both now cover each lane. One lane found § 2.10's "only overlap is a lock wait" false: a roadmap write for the project being migrated could land between its read and its commit, and a re-run would revert it silently. **Surfaced to the user, who chose a busy guard**: a process-wide registry refuses `migration_in_progress`, added as INV-21. **Open questions resolved clean:** `deregister` opens `Access::Bulk`; `rcdetail::findRoadmapUnder` and `ants::resolveCallerCwdRoot` hold no shared static state; a first store open racing creation is INV-15's existing case. |
