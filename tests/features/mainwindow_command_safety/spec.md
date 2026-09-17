@@ -8,8 +8,9 @@
 results path.
 
 **INV-2 — scrollback export reports failure.** The Export Scrollback handler
-writes through `QSaveFile`, checks `commit()`, and shows a failure message when
-the file cannot be opened or the write fails.
+calls `TerminalWidget::startExport`, which reports a failure through
+`captureFailed` (ANTS-5078). It shows its success message only on
+`exportFinished` with `ok` true.
 
 **INV-3 — a KWin script that cannot start is cleaned up.** `runKWinScript`
 connects `QProcess::errorOccurred` for both `dbus-send` processes and removes

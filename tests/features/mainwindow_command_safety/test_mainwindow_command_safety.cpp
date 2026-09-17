@@ -52,9 +52,10 @@ TEST(MainwindowCommandSafety, ScrollbackExportReportsFailure) {
     const QString w = window(source(),
         QStringLiteral("\"Export Scro&llback...\""), 1600);
     ASSERT_FALSE(w.isEmpty()) << "Export Scrollback handler not found";
-    EXPECT_TRUE(w.contains(QStringLiteral("QSaveFile file(path)")));
-    EXPECT_TRUE(w.contains(QStringLiteral("file.commit()")));
-    EXPECT_TRUE(w.contains(QStringLiteral("failed")));
+    EXPECT_TRUE(w.contains(QStringLiteral("startExport(")));
+    EXPECT_TRUE(w.contains(QStringLiteral("&TerminalWidget::exportFinished")));
+    EXPECT_TRUE(w.contains(QStringLiteral("if (ok) showStatusMessage(\"Scrollback exported to")))
+        << "success is announced before the export has been written";
 }
 
 // INV-3

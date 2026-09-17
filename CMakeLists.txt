@@ -730,6 +730,7 @@ set_target_properties(ants_roadmapstore_lib PROPERTIES POSITION_INDEPENDENT_CODE
 add_library(ants_vt_lib STATIC
     src/vtparser.cpp
     src/terminalgrid.cpp
+    src/scrollbackexporter.cpp
     src/terminalwidget.cpp
     src/terminalaccessible.cpp
     src/themes.cpp
@@ -1727,6 +1728,8 @@ if(ANTS_TESTS)
                 tests/features/osc133_rerun_safety/test_osc133_rerun_safety.cpp
                 # ANTS-5078 — the terminal's exports report failure (source-scrape).
                 tests/features/terminalwidget_export_safety/test_terminalwidget_export_safety.cpp
+                # ANTS-5078 — exports stream to the file in slices.
+                tests/features/scrollback_export_streaming/test_scrollback_export_streaming.cpp
                 # ANTS-5031 — a refused session never costs the good file.
                 tests/features/session_restore_refusal/test_session_restore_refusal.cpp
                 # ANTS-5106 — per-process session temp files; checked tab-order write.
@@ -1760,6 +1763,13 @@ if(ANTS_TESTS)
     set_property(SOURCE tests/features/themedstylesheet_extraction/test_themedstylesheet_extraction.cpp
         APPEND PROPERTY COMPILE_DEFINITIONS
         SRC_THEMEDSTYLESHEET_H_PATH="${CMAKE_SOURCE_DIR}/src/themedstylesheet.h")
+    set_property(SOURCE tests/features/terminalwidget_export_safety/test_terminalwidget_export_safety.cpp
+        APPEND PROPERTY COMPILE_DEFINITIONS
+        SRC_SCROLLBACKEXPORTER_H_PATH="${CMAKE_SOURCE_DIR}/src/scrollbackexporter.h"
+        SRC_SCROLLBACKEXPORTER_CPP_PATH="${CMAKE_SOURCE_DIR}/src/scrollbackexporter.cpp")
+    set_property(SOURCE tests/features/scrollback_export_streaming/test_scrollback_export_streaming.cpp
+        APPEND PROPERTY COMPILE_DEFINITIONS
+        SRC_TERMINALWIDGET_H_PATH="${CMAKE_SOURCE_DIR}/src/terminalwidget.h")
 
     # ----------------------------------------------------------------------
     # ANTS-1217 Phase 3 — test_chrome bundle.

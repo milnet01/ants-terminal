@@ -1,6 +1,7 @@
 #pragma once
 
 #include "terminalgrid.h"
+#include "scrollbackexporter.h"
 #include "vtstream.h"
 #include "shapedruncache.h"
 
@@ -151,9 +152,12 @@ public:
     // Get the foreground process name (what's running in the shell)
     QString foregroundProcess() const;
 
-    // Scrollback export
-    QString exportAsText() const;
-    QString exportAsHtml() const;
+    // ANTS-5078 — starts a scrollback or block export that writes to its file
+    // in slices between events. False, with captureFailed emitted, when one is
+    // already running or the file cannot be opened. Html takes this terminal's
+    // colours and font size, so a caller sets the format, path and, for Cast,
+    // the block. The end is reported through exportFinished.
+    bool startExport(ScrollbackExporter::Request request);
 
     // Highlight rules (regex patterns with colors)
     struct HighlightRule {
@@ -269,14 +273,11 @@ public:
     //   outputTextAt: extracts output lines between C and next A (or D).
     //   rerunCommandAt: writes the command text + '\r' to the PTY.
     //   toggleFoldAt: flips region.folded and triggers a repaint.
-    //   exportBlockAsCast: writes a standalone asciicast v2 file with this
-    //     block's output as a single event chunk.
     int promptRegionIndexAtLine(int globalLine) const;
     QString commandTextAt(int index) const;
     QString outputTextAt(int index) const;
     void rerunCommandAt(int index);
     void toggleFoldAt(int index);
-    bool exportBlockAsCast(int index, const QString &path) const;
 
     // "Last completed command" top-level actions (0.6.40). These walk
     // promptRegions() backwards for the most recent region with
@@ -334,6 +335,8 @@ signals:
     // owner-only; ANTS-5078, an export that failed. `message` is ready to
     // show the user.
     void captureFailed(const QString &message);
+    // ANTS-5078 — an export started by startExport has ended, written or not.
+    void exportFinished(const QString &path, bool ok);
     void progressChanged(int state, int percent);  // OSC 9;4: state = ProgressState enum, percent = 0-100
     // 0.6.9 — trigger system bundle:
     //   commandFinished: emitted on OSC 133 D (after exit code parsed).
@@ -381,6 +384,15 @@ private:
     qint64 m_lastUserKeystrokeMs = -1;
 
     void recalcGridSize();
+
+    // ANTS-5078 — the running export, one per widget. Each slice writes up to
+    // kExportLinesPerStep lines per step until kExportSliceMs has passed.
+    static constexpr int kExportLinesPerStep = 256;
+    static constexpr int kExportSliceMs = 8;
+    std::unique_ptr<ScrollbackExporter> m_exporter;
+    QString m_exportPath;
+    void runExportSlice();
+    void finishExport(bool ok, const QString &error);
     void updateFontMetrics();
     QPoint pixelToCell(const QPoint &pos) const;
 

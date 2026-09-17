@@ -113,6 +113,10 @@ signals:
 ```
 
 - One export at a time per widget, held in a `std::unique_ptr` member.
+- `startExport` sets the Html colours and font size from the widget. A
+  caller sets the format, the path and, for Cast, the block.
+- `runExportSlice` is the slice. `finishExport` releases the exporter and
+  emits the signals.
 - A slice calls `step(kExportLinesPerStep)` until it returns other than
   `More` or `kExportSliceMs` has passed on a `QElapsedTimer`. With `More`
   it schedules the next slice with `QTimer::singleShot(0, this, …)`.
@@ -151,7 +155,8 @@ fixture sets both to fixed values through `promptRegions()`.
   rule. *Test:* `tests/features/scrollback_export_streaming`.
 - **INV-3** — Cast output is byte-identical to `exportBlockAsCast`, for a
   block whose output starts in scrollback and ends on the screen, with a
-  quote and a tab in it. Broken by escaping that differs across a slice
+  quote and a backslash in it. A tab from the parser moves the cursor and
+  never reaches a cell, so it cannot be a fixture. Broken by escaping that differs across a slice
   boundary. *Test:* `tests/features/scrollback_export_streaming`.
 - **INV-4** — The exporter writes as it goes. `bytesWritten()` rises across
   at least two `step(1)` calls that return `More`. Broken by building the
@@ -194,8 +199,9 @@ fixture sets both to fixed values through `promptRegions()`.
 The exporter holds the screen rows' copy, one line's formatted text and
 `QSaveFile`'s write buffer. The change adds two source files to
 `ants_vt_lib`. The test joins the `test_vt` bundle, which already has
-`SRC_TERMINALWIDGET_PATH`; it adds path defines for `src/terminalwidget.h`
-and `src/mainwindow.cpp`.
+`SRC_TERMINALWIDGET_PATH` and `ANTS_MAINWINDOW_SOURCES`; it adds a path
+define for `src/terminalwidget.h`. `terminalwidget_export_safety` adds path
+defines for the exporter's two files.
 
 ## 5. Out of scope
 
@@ -218,6 +224,9 @@ fail on assertions.
 - `tests/features/terminalwidget_export_safety` — INV-1 to INV-4 scrape
   the removed functions and the menu handlers. Move their write checks
   onto `ScrollbackExporter`.
+- `tests/features/mainwindow_command_safety` INV-2 scrapes the
+  `QSaveFile` write in `MainWindow`'s export action. It now checks the
+  `startExport` call and the success message on `exportFinished`.
 - `tests/features/session_capture_perms/spec.md` names `exportBlockAsCast`.
 - Comments naming the removed functions: in `src/terminalwidget.h` above
   the `exportBlockAsCast` declaration, and in `src/terminalwidget.cpp`

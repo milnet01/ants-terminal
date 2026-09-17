@@ -15,8 +15,10 @@
     },
     {
       "name": "terminal-grid",
-      "summary": "Cell grid, scrollback, cursor, modes, OSC handlers, soft-wrap reflow.",
+      "summary": "Cell grid, scrollback, cursor, modes, OSC handlers, soft-wrap reflow, streamed scrollback export.",
       "sourcePaths": [
+        "src/scrollbackexporter.cpp",
+        "src/scrollbackexporter.h",
         "src/terminalgrid.cpp",
         "src/terminalgrid.h"
       ]

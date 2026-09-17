@@ -14,6 +14,13 @@ for security-relevant changes.
 
 ### Fixed
 
+- **Exporting a long scrollback or sharing a command block no longer freezes the window** (ANTS-5078)
+  The text, HTML and .cast exports now write to the file a slice at a
+  time between other work, instead of building the whole export in
+  memory first. The file matches what the old export wrote. An export
+  that output or a resize would make wrong fails, reports why, and
+  leaves no file behind.
+
 - **Autocomplete matches the command you are typing, not the prompt in front of it.** (ANTS-5078)
   History suggestions now read the text after the prompt, so they can
   match at all. They need shell integration (OSC 133) to know where the

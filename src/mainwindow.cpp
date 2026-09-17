@@ -52,7 +52,6 @@
 #include "testauditdialog.h"  // ANTS-1722 — native test-suite review dialog.
 #include "indiereviewdialog.h"  // ANTS-1258 — native independent code review.
 #include "shellutils.h"
-#include <QSaveFile>
 #include "elidedlabel.h"
 #include "globalshortcutsportal.h"
 #include "debuglog.h"
@@ -2053,21 +2052,16 @@ void MainWindow::setupSettingsMenu() {
         QString path = QFileDialog::getSaveFileName(this, "Export Scrollback", QString(),
                                                      "Text Files (*.txt);;HTML Files (*.html)");
         if (path.isEmpty()) return;
-        // ANTS-5079 — QSaveFile, so a failed or short write leaves no partial
-        // file behind and is reported instead of announced as a success.
-        QSaveFile file(path);
-        if (!file.open(QIODevice::WriteOnly | QIODevice::Text)) {
-            showStatusMessage("Could not open " + path + " for export", 5000);
-            return;
-        }
-        const QByteArray bytes = (path.endsWith(".html", Qt::CaseInsensitive)
-                                      ? t->exportAsHtml()
-                                      : t->exportAsText()).toUtf8();
-        if (file.write(bytes) != bytes.size() || !file.commit()) {
-            showStatusMessage("Export to " + path + " failed", 5000);
-            return;
-        }
-        showStatusMessage("Scrollback exported to " + path, 5000);
+        // ANTS-5078 — the export writes in slices and fails through
+        // captureFailed; success is announced once it has been written.
+        const auto format = path.endsWith(".html", Qt::CaseInsensitive)
+                                ? ScrollbackExporter::Format::Html
+                                : ScrollbackExporter::Format::Text;
+        if (!t->startExport({.format = format, .path = path})) return;
+        connect(t, &TerminalWidget::exportFinished, this,
+                [this](const QString &written, bool ok) {
+                    if (ok) showStatusMessage("Scrollback exported to " + written, 5000);
+                }, Qt::SingleShotConnection);
     });
 
     settingsMenu->addSeparator();

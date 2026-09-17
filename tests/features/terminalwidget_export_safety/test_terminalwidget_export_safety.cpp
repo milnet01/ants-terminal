@@ -1,6 +1,6 @@
-// ANTS-5078 — feature-conformance test; see spec.md. Source scrapes: the
-// exports run from a context menu and a file dialog on a live TerminalWidget,
-// which the unit harness cannot drive.
+// ANTS-5078 — feature-conformance test; see spec.md. Source scrapes: a write
+// failure needs a full disk, and Share Block runs from a context menu on a
+// live TerminalWidget.
 
 #include "../../_support/srcgrep.h"
 
@@ -12,68 +12,50 @@ namespace {
 
 const std::size_t npos = std::string::npos;
 
-std::string between(const std::string &s, const std::string &from,
-                    const std::string &to) {
-    const std::size_t a = s.find(from);
-    if (a == npos) return {};
-    const std::size_t b = s.find(to, a + from.size());
-    if (b == npos) return {};
-    return s.substr(a, b - a);
-}
-
-std::string contextMenu() {
-    return ants_test::stripComments(ants_test::slurpFunctionBody(
-        SRC_TERMINALWIDGET_PATH, "void TerminalWidget::contextMenuEvent("));
+std::string exporterSource() {
+    return ants_test::stripComments(ants_test::slurpFile(SRC_SCROLLBACKEXPORTER_CPP_PATH));
 }
 
 }  // namespace
 
 // INV-1
-TEST(TerminalWidgetExportSafety, Inv1TextExportReportsFailure) {
-    const std::string h = between(contextMenu(),
-                                  "\"Export Scrollback as Text...\"", "QAction *");
-    ASSERT_FALSE(h.empty()) << "setup: the text export handler was not found";
-    EXPECT_NE(h.find("QSaveFile file(path)"), npos)
-        << "INV-1: text export does not write through QSaveFile";
-    EXPECT_NE(h.find("file.commit()"), npos)
-        << "INV-1: text export does not check commit()";
-    EXPECT_NE(h.find("emit captureFailed("), npos)
-        << "INV-1: a failed text export is not reported";
+TEST(TerminalWidgetExportSafety, Inv1ExporterReplacesTheFileOnlyOnSuccess) {
+    const std::string header = ants_test::slurpFile(SRC_SCROLLBACKEXPORTER_H_PATH);
+    ASSERT_FALSE(header.empty()) << "setup: scrollbackexporter.h was not found";
+    EXPECT_NE(header.find("QSaveFile m_file"), npos)
+        << "INV-1: the exporter does not write through QSaveFile";
+    EXPECT_EQ(header.find("QFile m_file"), npos)
+        << "INV-1: the exporter truncates the target with QFile";
+
+    const std::string step = ants_test::slurpFunctionBody(
+        exporterSource(), "ScrollbackExporter::Step ScrollbackExporter::step(");
+    ASSERT_FALSE(step.empty()) << "setup: ScrollbackExporter::step was not found";
+    const std::size_t commit = step.find("m_file.commit()");
+    ASSERT_NE(commit, npos) << "INV-1: the export is never committed";
+    EXPECT_EQ(step.find("m_file.commit()", commit + 1), npos)
+        << "INV-1: the export commits in more than one place";
+    EXPECT_NE(step.find("if (!ok || !m_file.commit())"), npos)
+        << "INV-1: commit() is not gated on the last write";
 }
 
 // INV-2
-TEST(TerminalWidgetExportSafety, Inv2HtmlExportReportsFailure) {
-    const std::string h = between(contextMenu(),
-                                  "\"Export Scrollback as HTML...\"", "menu.exec(");
-    ASSERT_FALSE(h.empty()) << "setup: the HTML export handler was not found";
-    EXPECT_NE(h.find("QSaveFile file(path)"), npos)
-        << "INV-2: HTML export does not write through QSaveFile";
-    EXPECT_NE(h.find("file.commit()"), npos)
-        << "INV-2: HTML export does not check commit()";
-    EXPECT_NE(h.find("emit captureFailed("), npos)
-        << "INV-2: a failed HTML export is not reported";
+TEST(TerminalWidgetExportSafety, Inv2ShortWriteFailsTheExport) {
+    const std::string write = ants_test::slurpFunctionBody(
+        exporterSource(), "bool ScrollbackExporter::write(");
+    ASSERT_FALSE(write.empty()) << "setup: ScrollbackExporter::write was not found";
+    EXPECT_NE(write.find("m_file.write(bytes) != bytes.size()"), npos)
+        << "INV-2: a short write is not detected";
 }
 
 // INV-3
-TEST(TerminalWidgetExportSafety, Inv3BlockCastChecksItsWrites) {
-    const std::string body = ants_test::stripComments(ants_test::slurpFunctionBody(
-        SRC_TERMINALWIDGET_PATH, "bool TerminalWidget::exportBlockAsCast("));
-    ASSERT_FALSE(body.empty()) << "setup: exportBlockAsCast was not found";
-    EXPECT_NE(body.find("QSaveFile file(path)"), npos)
-        << "INV-3: exportBlockAsCast does not write through QSaveFile";
-    EXPECT_EQ(body.find("QFile file(path)"), npos)
-        << "INV-3: exportBlockAsCast still truncates the target with QFile";
-    EXPECT_NE(body.find("file.commit()"), npos)
-        << "INV-3: exportBlockAsCast does not check commit()";
-}
-
-// INV-4
-TEST(TerminalWidgetExportSafety, Inv4ShareBlockReportsFailure) {
-    const std::string h = between(contextMenu(),
-                                  "\"Share Block as .cast...\"", "menu.addSeparator()");
-    ASSERT_FALSE(h.empty()) << "setup: the Share Block handler was not found";
-    EXPECT_NE(h.find("exportBlockAsCast(idx, path)"), npos)
-        << "setup: Share Block no longer calls exportBlockAsCast";
+TEST(TerminalWidgetExportSafety, Inv3ShareBlockReportsAMissingBlock) {
+    const std::string menu = ants_test::stripComments(ants_test::slurpFunctionBody(
+        SRC_TERMINALWIDGET_PATH, "void TerminalWidget::contextMenuEvent("));
+    const std::size_t at = menu.find("\"Share Block as .cast...\"");
+    ASSERT_NE(at, npos) << "setup: the Share Block handler was not found";
+    const std::string h = menu.substr(at, menu.find("menu.addSeparator()", at) - at);
+    EXPECT_NE(h.find("if (idx < 0) {"), npos)
+        << "INV-3: Share Block does not check the block still exists";
     EXPECT_NE(h.find("emit captureFailed("), npos)
-        << "INV-4: a failed Share Block export is not reported";
+        << "INV-3: a missing block is not reported";
 }

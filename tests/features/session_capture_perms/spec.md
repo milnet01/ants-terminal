@@ -89,7 +89,7 @@ the result tested.
   `scratchpad_submit_ordering` grep this file.
 - The three export actions that write through
   `QFileDialog::getSaveFileName` — export scrollback as text, as HTML,
-  and `exportBlockAsCast`. The user picks those paths deliberately and
+  and Share Block as `.cast`. The user picks those paths deliberately and
   may well intend to share the file. Forcing 0600 on a path the user
   chose is a different decision from securing one they never saw, and
   is not made here.

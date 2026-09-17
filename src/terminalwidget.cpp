@@ -43,7 +43,6 @@
 #include <QDateTime>
 #include <QFileInfo>
 #include <QFileDialog>
-#include <QSaveFile>
 #include <QJsonObject>
 #include <QSplitter>
 #include <QPlainTextEdit>
@@ -3184,8 +3183,8 @@ void TerminalWidget::copySelectionRich() {
             int colStart = (line == startLine) ? startCol : 0;
             int colEnd = (line == endLine) ? endCol : m_grid->cols() - 1;
 
-            // ANTS-5078 — one span per run of same-style cells, as
-            // exportAsHtml does, instead of one span per character.
+            // ANTS-5078 — one span per run of same-style cells, as the
+            // HTML export does, instead of one span per character.
             QString runStyle;
             QString runText;
             const auto flushRun = [&]() {
@@ -3350,6 +3349,10 @@ void TerminalWidget::recalcGridSize() {
     }
 
     if (cols != m_grid->cols() || rows != m_grid->rows()) {
+        // ANTS-5078 — a width change reflows scrollback. Two of them before the
+        // next slice can restore cols(), which the exporter's own check misses.
+        if (m_exporter && cols != m_grid->cols())
+            finishExport(false, tr("the terminal was resized"));
         m_grid->resize(rows, cols);
         if (m_vtStream) {
             // Blocking-queued so the PTY winsize is updated before the
@@ -5571,7 +5574,7 @@ void TerminalWidget::contextMenuEvent(QContextMenuEvent *event) {
     // Command-block actions (0.7.0) — when the right-click lands inside an
     // OSC 133 prompt region, the user gets block-scoped entries that work
     // without a selection. See commandTextAt / outputTextAt / rerunCommandAt
-    // / exportBlockAsCast in this file for the extraction semantics.
+    // in this file, and ScrollbackExporter, for the extraction semantics.
     int blockIdx = promptRegionIndexAtLine(cell.x());
     if (blockIdx >= 0) {
         menu.addSeparator();
@@ -5633,9 +5636,14 @@ void TerminalWidget::contextMenuEvent(QContextMenuEvent *event) {
             if (path.isEmpty()) return;
             // Look the block up after the dialog, whose event loop can shift it.
             const int idx = m_grid->promptRegionIndexById(blockId);
-            // ANTS-5078 — a block that is gone, or a write that fails, is reported.
-            if (idx < 0 || !exportBlockAsCast(idx, path))
+            // ANTS-5078 — a block that is gone is reported; startExport
+            // reports a write that fails.
+            if (idx < 0) {
                 emit captureFailed(tr("Share Block to %1 failed").arg(path));
+                return;
+            }
+            startExport({.format = ScrollbackExporter::Format::Cast, .path = path,
+                         .blockId = blockId, .command = commandTextAt(idx)});
         });
     }
 
@@ -5645,25 +5653,14 @@ void TerminalWidget::contextMenuEvent(QContextMenuEvent *event) {
     connect(exportText, &QAction::triggered, this, [this]() {
         QString path = QFileDialog::getSaveFileName(this, "Export Scrollback", QString(), "Text Files (*.txt)");
         if (path.isEmpty()) return;
-        // ANTS-5078 — QSaveFile: a failed open, write or commit leaves the old
-        // file alone and is reported instead of passing silently.
-        QSaveFile file(path);
-        const QByteArray bytes = exportAsText().toUtf8();
-        if (!file.open(QIODevice::WriteOnly | QIODevice::Text)
-            || file.write(bytes) != bytes.size() || !file.commit())
-            emit captureFailed(tr("Export to %1 failed").arg(path));
+        startExport({.format = ScrollbackExporter::Format::Text, .path = path});
     });
 
     QAction *exportHtml = menu.addAction("Export Scrollback as HTML...");
     connect(exportHtml, &QAction::triggered, this, [this]() {
         QString path = QFileDialog::getSaveFileName(this, "Export Scrollback", QString(), "HTML Files (*.html)");
         if (path.isEmpty()) return;
-        // ANTS-5078 — as the text export above.
-        QSaveFile file(path);
-        const QByteArray bytes = exportAsHtml().toUtf8();
-        if (!file.open(QIODevice::WriteOnly | QIODevice::Text)
-            || file.write(bytes) != bytes.size() || !file.commit())
-            emit captureFailed(tr("Export to %1 failed").arg(path));
+        startExport({.format = ScrollbackExporter::Format::Html, .path = path});
     });
 
     menu.exec(event->globalPos());
@@ -5671,86 +5668,50 @@ void TerminalWidget::contextMenuEvent(QContextMenuEvent *event) {
 
 // --- Scrollback export ---
 
-QString TerminalWidget::exportAsText() const {
-    QStringList lines;
-    int scrollbackSize = m_grid->scrollbackSize();
-    int totalLines = scrollbackSize + m_grid->rows();
-    for (int i = 0; i < totalLines; ++i) {
-        QString line = lineText(i);
-        while (line.endsWith(' ')) line.chop(1);
-        lines.append(line);
+bool TerminalWidget::startExport(ScrollbackExporter::Request request) {
+    if (m_exporter) {
+        emit captureFailed(tr("Export to %1 not started: another export is still running")
+                               .arg(request.path));
+        return false;
     }
-    // Trim trailing empty lines
-    while (!lines.isEmpty() && lines.last().isEmpty())
-        lines.removeLast();
-    return lines.join('\n');
+    request.defaultFg = m_grid->defaultFg();
+    request.defaultBg = m_grid->defaultBg();
+    request.fontPointSize = m_font.pointSize();
+    const QString path = request.path;
+    auto exporter = std::make_unique<ScrollbackExporter>(*m_grid, std::move(request));
+    if (!exporter->open()) {
+        emit captureFailed(tr("Export to %1 failed: %2").arg(path, exporter->error()));
+        return false;
+    }
+    m_exporter = std::move(exporter);
+    m_exportPath = path;
+    QTimer::singleShot(0, this, &TerminalWidget::runExportSlice);
+    return true;
 }
 
-QString TerminalWidget::exportAsHtml() const {
-    QString html;
-    html += "<!DOCTYPE html>\n<html><head><meta charset='utf-8'>\n";
-    html += "<title>Ants Terminal Export</title>\n";
-    html += "<style>\n";
-    html += "body { background: " + m_grid->defaultBg().name() + "; ";
-    html += "color: " + m_grid->defaultFg().name() + "; ";
-    html += "font-family: 'JetBrains Mono', 'Fira Code', monospace; ";
-    html += "font-size: " + QString::number(m_font.pointSize()) + "pt; ";
-    html += "white-space: pre; }\n";
-    html += "span.bold { font-weight: bold; }\n";
-    html += "span.italic { font-style: italic; }\n";
-    html += "span.underline { text-decoration: underline; }\n";
-    html += "span.strikethrough { text-decoration: line-through; }\n";
-    html += "</style>\n</head><body>\n";
-
-    int scrollbackSize = m_grid->scrollbackSize();
-    int totalLines = scrollbackSize + m_grid->rows();
-
-    for (int gl = 0; gl < totalLines; ++gl) {
-        int cols = m_grid->cols();
-        QColor lastFg, lastBg;
-        bool inSpan = false;
-
-        for (int c = 0; c < cols; ++c) {
-            const Cell &cell = cellAtGlobal(gl, c);
-            if (cell.isWideCont) continue;
-
-            QColor fg = cell.attrs.fg;
-            QColor bg = cell.attrs.bg;
-            if (cell.attrs.inverse) std::swap(fg, bg);
-
-            // Open new span if colors changed
-            if (fg != lastFg || bg != lastBg || c == 0) {
-                if (inSpan) html += "</span>";
-                QString style = "color:" + fg.name() + ";";
-                if (bg != m_grid->defaultBg())
-                    style += "background:" + bg.name() + ";";
-                QStringList classes;
-                if (cell.attrs.bold) classes << "bold";
-                if (cell.attrs.italic) classes << "italic";
-                if (cell.attrs.underline) classes << "underline";
-                if (cell.attrs.strikethrough) classes << "strikethrough";
-                html += "<span";
-                if (!classes.isEmpty())
-                    html += " class='" + classes.join(' ') + "'";
-                html += " style='" + style + "'>";
-                inSpan = true;
-                lastFg = fg;
-                lastBg = bg;
-            }
-
-            uint32_t cp = cell.codepoint;
-            if (cp == 0) cp = ' ';
-            if (cp == '<') html += "&lt;";
-            else if (cp == '>') html += "&gt;";
-            else if (cp == '&') html += "&amp;";
-            else html += QString::fromUcs4(reinterpret_cast<const char32_t *>(&cp), 1);
-        }
-        if (inSpan) html += "</span>";
-        html += "\n";
+void TerminalWidget::runExportSlice() {
+    if (!m_exporter) return;  // ended before this slice ran
+    QElapsedTimer timer;
+    timer.start();
+    ScrollbackExporter::Step step;
+    do {
+        step = m_exporter->step(kExportLinesPerStep);
+    } while (step == ScrollbackExporter::Step::More && timer.elapsed() < kExportSliceMs);
+    if (step == ScrollbackExporter::Step::More) {
+        QTimer::singleShot(0, this, &TerminalWidget::runExportSlice);
+        return;
     }
+    finishExport(step == ScrollbackExporter::Step::Done,
+                 step == ScrollbackExporter::Step::Failed ? m_exporter->error() : QString());
+}
 
-    html += "</body></html>\n";
-    return html;
+void TerminalWidget::finishExport(bool ok, const QString &error) {
+    const QString path = m_exportPath;
+    m_exporter.reset();  // an uncommitted export removes its temporary file
+    m_exportPath.clear();
+    if (!ok)
+        emit captureFailed(tr("Export to %1 failed: %2").arg(path, error));
+    emit exportFinished(path, ok);
 }
 
 // --- Foreground process detection ---
@@ -6395,80 +6356,3 @@ int TerminalWidget::rerunLastCommand() {
     return -1;
 }
 
-bool TerminalWidget::exportBlockAsCast(int index, const QString &path) const {
-    const auto &regions = m_grid->promptRegions();
-    if (index < 0 || index >= static_cast<int>(regions.size())) return false;
-    const PromptRegion &pr = regions[index];
-
-    // ANTS-5078 — QSaveFile: the target is replaced only when every write and
-    // the commit succeed, so a failure leaves no truncated file.
-    QSaveFile file(path);
-    if (!file.open(QIODevice::WriteOnly | QIODevice::Text))
-        return false;
-    bool ok = true;
-    const auto put = [&file, &ok](const QByteArray &b) {
-        ok = ok && file.write(b) == b.size();
-    };
-
-    // Asciicast v2: one header object + one JSON array per output event.
-    // Spec: https://docs.asciinema.org/manual/asciicast/v2/
-    //
-    // We don't have per-byte timing for a captured block (we only know
-    // commandStartMs / commandEndMs), so we synthesize two events: the
-    // command echo at t=0, and the entire output at
-    // t=(commandEndMs - commandStartMs)/1000. Players replay this as a
-    // near-instant prompt followed by the output dump — honest about what
-    // we recorded.
-    qint64 timestamp = pr.commandStartMs > 0
-                           ? pr.commandStartMs / 1000
-                           : QDateTime::currentSecsSinceEpoch();
-    QString header = QString(
-        R"({"version": 2, "width": %1, "height": %2, "timestamp": %3, "env": {"TERM": "xterm-256color"}})"
-    ).arg(m_grid->cols()).arg(m_grid->rows()).arg(timestamp);
-    put(header.toUtf8());
-    put("\n");
-
-    auto escapeJson = [](const QString &s) {
-        QString out;
-        out.reserve(s.size() + 8);
-        for (QChar c : s) {
-            ushort u = c.unicode();
-            switch (u) {
-            case '\\': out += "\\\\"; break;
-            case '"':  out += "\\\""; break;
-            case '\b': out += "\\b"; break;
-            case '\f': out += "\\f"; break;
-            case '\n': out += "\\n"; break;
-            case '\r': out += "\\r"; break;
-            case '\t': out += "\\t"; break;
-            default:
-                if (u < 0x20) out += QString("\\u%1").arg(u, 4, 16, QChar('0'));
-                else out += c;
-            }
-        }
-        return out;
-    };
-
-    QString cmd = commandTextAt(index);
-    QString output = outputTextAt(index);
-
-    // t=0: command echo (with trailing \r\n so the shell prompt look is realistic)
-    if (!cmd.isEmpty()) {
-        QString evt = QString(R"([0.0, "o", "%1\r\n"])").arg(escapeJson(cmd));
-        put(evt.toUtf8());
-        put("\n");
-    }
-
-    // t=duration: output dump
-    double durSec = 0.1;
-    if (pr.commandEndMs > pr.commandStartMs && pr.commandStartMs > 0)
-        durSec = (pr.commandEndMs - pr.commandStartMs) / 1000.0;
-    if (!output.isEmpty()) {
-        QString evt = QString(R"([%1, "o", "%2"])")
-            .arg(durSec, 0, 'f', 3).arg(escapeJson(output));
-        put(evt.toUtf8());
-        put("\n");
-    }
-
-    return ok && file.commit();
-}

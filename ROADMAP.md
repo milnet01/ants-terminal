@@ -8004,7 +8004,7 @@ extends an existing item, that item carries it instead.
   Source: code-quality-review-2026-09-11 perf pass (lane terminal-widget-a).
   Lanes: terminalwidget.
 
-- 📋 [ANTS-5078] **Performance pass findings for terminal input, selection, search and export (medium and low).**
+- ✅ [ANTS-5078] **Performance pass findings for terminal input, selection, search and export (medium and low).**
   Search at the 1M cap and the per-tab history load are on ANTS-2000.
   Medium:
   - Rich copy writes one styled span per non-blank cell with no size
@@ -8094,6 +8094,16 @@ extends an existing item, that item carries it instead.
   a snapshot costs more than the text. A ScrollbackExporter writes in
   slices on the GUI thread into a QSaveFile and fails when an unwritten
   line leaves scrollback or the width changes. Next: build it, red first.
+  Resolved (2026-09-17): shipped the exports-on-the-GUI-thread medium,
+  the last open finding. ScrollbackExporter (ants_vt_lib) writes text,
+  HTML and cast exports in slices into a QSaveFile; startExport runs 8 ms
+  slices and reports through captureFailed and exportFinished;
+  recalcGridSize fails a running export on a width change. exportAsText,
+  exportAsHtml and exportBlockAsCast are removed; bytes match them
+  exactly. Tests: scrollback_export_streaming INV-1..10, red first;
+  terminalwidget_export_safety and mainwindow_command_safety INV-2 moved
+  onto the exporter. Full default suite green apart from the partition
+  coverage test, fixed by adding the exporter to the terminal-grid lane.
   **Layman:** Smaller fixes to copying, exporting and searching in the terminal, which can freeze on very long histories.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lane terminal-widget-b).
