@@ -178,6 +178,27 @@ TEST(McpVerbOffthreadGuard, Main) {
             ++joins;
         expect(joins == 1, "INV-7/exactly-one-join-in-the-file");
     }
+    // ANTS-5086 — the bulk lane's worker is joined the same way, in the same
+    // teardown, and both lanes are refused before either is joined (§ 2.6).
+    {
+        const std::string bulkJoin = "joinRefusingMarshals(m_bulkWorker)";
+        expect(teardown.find(bulkJoin) != std::string::npos,
+               "INV-7/teardown-joins-the-bulk-worker");
+        size_t joins = 0;
+        for (size_t at = ci.find(bulkJoin); at != std::string::npos;
+             at = ci.find(bulkJoin, at + 1))
+            ++joins;
+        expect(joins == 1, "INV-7/exactly-one-bulk-join-in-the-file");
+        const size_t refuseShared = teardown.find("setGuiMarshalRefused(m_dispatchWorker, true)");
+        const size_t refuseBulk   = teardown.find("setGuiMarshalRefused(m_bulkWorker, true)");
+        const size_t firstJoin    = teardown.find("joinRefusingMarshals(");
+        expect(refuseShared != std::string::npos && refuseBulk != std::string::npos &&
+                   firstJoin != std::string::npos && refuseShared < firstJoin &&
+                   refuseBulk < firstJoin,
+               "INV-7/both-lanes-refused-before-either-join");
+        expect(ci.find("m_bulkWorker->wait(") == std::string::npos,
+               "INV-7/no-bare-bulk-join");
+    }
     expect(ci.find("m_dispatchWorker->wait(") == std::string::npos,
            "INV-7/no-bare-join-that-cannot-serve-marshals");
     expect(!post.empty() && post.find("->wait()") == std::string::npos &&
@@ -248,13 +269,61 @@ TEST(McpVerbOffthreadGuard, Main) {
     std::set<std::string> offThreadCmds;
     {
         static const std::regex rx(
-            R"RX(registerToolProvider\("[^"]+",\s*ClaudeIntegration::CallerCwdContract::(\w+),\s*rcDelegate\(&RemoteControl::(\w+)\))RX");
+            R"RX(registerToolProvider\("[^"]+",\s*ClaudeIntegration::CallerCwdContract::(\w+),\s*rcDelegate\(&RemoteControl::(\w+)(?:,\s*ClaudeIntegration::DispatchLane::\w+)?\))RX");
         for (auto it = std::sregex_iterator(mw.begin(), mw.end(), rx);
              it != std::sregex_iterator(); ++it) {
             if ((*it)[1].str() != "TabSpecific")
                 offThreadCmds.insert((*it)[2].str());
         }
         expect(!offThreadCmds.empty(), "INV-6/registration-table-parsed");
+        // ANTS-5086 — a lane argument must not drop a verb out of the set.
+        expect(offThreadCmds.count("cmdRoadmapMigrate") == 1,
+               "INV-6/lane-argument-still-parsed");
+    }
+
+    // INV-20 (ANTS-5086) — roadmap_migrate is the one verb on the bulk lane.
+    {
+        const std::string bulk = "DispatchLane::Bulk";
+        size_t count = 0;
+        size_t first = std::string::npos;
+        for (size_t at = mw.find(bulk); at != std::string::npos; at = mw.find(bulk, at + 1)) {
+            if (first == std::string::npos) first = at;
+            ++count;
+        }
+        expect(count == 1, "INV-20/exactly-one-bulk-registration");
+        const size_t reg = mw.find("registerToolProvider(\"roadmap_migrate\"");
+        expect(reg != std::string::npos && first != std::string::npos && first > reg &&
+                   first < callEnd(mw, mw.find('(', reg)),
+               "INV-20/bulk-lane-is-roadmap_migrate");
+    }
+
+    // INV-21 (ANTS-5086) — each writer takes its shared hold before its first
+    // return, so before any refusal and any write (§ 2.10).
+    {
+        const std::string rcAll = ants_test::slurpSourceList(ANTS_RC_SOURCES);
+        const auto holdsFirst = [&](const std::string &hay, const std::string &marker,
+                                    const std::string &firstWrite) {
+            const std::string body = bodyAfter(hay, marker);
+            const size_t hold = body.find("RoadmapWriteHold");
+            const size_t write = body.find(firstWrite);
+            return !body.empty() && hold != std::string::npos &&
+                   (write == std::string::npos || hold < write);
+        };
+        expect(holdsFirst(rcAll, "QJsonDocument RemoteControl::cmdRoadmapLog(const QJsonObject &req) {",
+                          "return "),
+               "INV-21/roadmap_log-holds");
+        expect(holdsFirst(rcAll, "QJsonDocument RemoteControl::cmdColdEyesFoldIn(", "return "),
+               "INV-21/cold_eyes_fold_in-holds");
+        expect(holdsFirst(rcAll, "QJsonDocument RemoteControl::cmdIndieReviewFoldIn(", "return "),
+               "INV-21/indie_review_fold_in-holds");
+        expect(holdsFirst(rcAll, "QJsonDocument RemoteControl::cmdDebtSweepDefer(", "return "),
+               "INV-21/debt_sweep_defer-holds");
+        const size_t reg = mw.find("registerToolProvider(\"test_audit_fold_in\"");
+        const std::string taf = reg == std::string::npos
+            ? std::string() : mw.substr(reg, callEnd(mw, mw.find('(', reg)) - reg);
+        expect(taf.find("RoadmapWriteHold") != std::string::npos &&
+                   taf.find("RoadmapWriteHold") < taf.find("return "),
+               "INV-21/test_audit_fold_in-holds");
     }
 
     // Matches the arrow, not a list of accessor names, so a NEW MainWindow

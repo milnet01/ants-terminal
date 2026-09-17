@@ -257,9 +257,14 @@ public:
     // Deliberately NOT implicitly constructible from a ToolHandler: that
     // would make every inline-lambda registration ambiguous between the two
     // overloads, and the whole point is that the two are distinguishable.
+    // ANTS-5086 — which worker an off-thread handler runs on (spec § 2.10).
+    // Bulk is a second worker for a verb that holds its thread for seconds, so
+    // the shared worker's other verbs do not queue behind it.
+    enum class DispatchLane { Shared, Bulk };
     struct RcHandler {
         ToolHandler fn;
         bool offThreadEligible = true;
+        DispatchLane lane = DispatchLane::Shared;
     };
     void registerToolProvider(const QString &name,
                               CallerCwdContract contract,
@@ -279,8 +284,10 @@ public:
     // ANTS-2132 § 2.7 — runs `job` on the dispatch worker, behind any queued
     // MCP job. Counts against the § 2.6 cap until `job` returns. Returns false,
     // and `job` never runs, when the queue is full or shutdown has begun. The
-    // remote-control socket's worker routes post here.
-    bool postWorkerJob(std::function<void()> job);
+    // remote-control socket's worker routes post here. ANTS-5086 — `lane`
+    // picks the worker; both lanes share the one cap (§ 2.10).
+    bool postWorkerJob(std::function<void()> job,
+                       DispatchLane lane = DispatchLane::Shared);
 
     // ANTS-2132 — everything the response pipeline needs after the tool
     // handler has produced its body. Captured by value so the reply can be
@@ -650,7 +657,8 @@ private slots:
     // false = the queue is full and the caller must refuse; the reply is NOT
     // coming. On true the worker runs `handler` and transformReply, then
     // queues finishToolDispatch back onto the GUI thread.
-    bool postToolDispatch(const McpCallContext &ctx, const ToolHandler &handler);
+    bool postToolDispatch(const McpCallContext &ctx, const ToolHandler &handler,
+                          DispatchLane lane);
     // ANTS-2132 — stop accepting work, refuse in-flight GUI marshals, join.
     void shutdownDispatchWorker();
     // ANTS-2132 — the JSON-RPC envelope write, shared by every method.
@@ -739,6 +747,8 @@ private:
         // Set at registration from the handler's provenance AND its contract;
         // a TabSpecific verb reads live terminal state and never qualifies.
         bool offThread = false;
+        // ANTS-5086 — the worker `offThread` runs on; meaningless otherwise.
+        DispatchLane lane = DispatchLane::Shared;
         // ANTS-2132 § 2.8 — set only by the DeferredToolHandler overload. When
         // set, the dispatcher calls it instead of `handler`, which is empty.
         DeferredToolHandler deferred;
@@ -752,6 +762,10 @@ private:
     // and is what queued invocations target.
     QThread *m_dispatchWorker = nullptr;
     QObject *m_dispatchSink   = nullptr;
+    // ANTS-5086 — the bulk lane's worker and sink (spec § 2.10), started
+    // lazily like the dispatch worker and joined in the same teardown.
+    QThread *m_bulkWorker = nullptr;
+    QObject *m_bulkSink   = nullptr;
     QAtomicInt m_dispatchInFlight{0};
     bool m_dispatchShuttingDown = false;
     // Counts the executing job too, so the 65th outstanding call is the first

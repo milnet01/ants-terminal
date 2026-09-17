@@ -1050,6 +1050,35 @@ public:
     // so a test can drive it against a QTemporaryDir instead of the user's
     // real store. See docs/specs/ANTS-3855-roadmap-migrate-verb.md § 2.1.1.
     QJsonDocument cmdRoadmapMigrate(const QJsonObject &req);
+
+    // ANTS-5086 — the roadmap busy guard (ANTS-2132 § 2.10). Process-wide,
+    // because each MainWindow owns its own RemoteControl. A root carries one
+    // exclusive hold (a migration) or any number of shared holds (writers),
+    // never both. tryHoldRoadmapExclusive waits up to `waitMs` for shared
+    // holds to be released. Every successful hold is released exactly once.
+    static constexpr int kRoadmapMigrationHoldWaitMs = 5000;
+    static bool tryHoldRoadmapShared(const QString &root);
+    static void releaseRoadmapShared(const QString &root);
+    static bool tryHoldRoadmapExclusive(const QString &root, int waitMs);
+    static void releaseRoadmapExclusive(const QString &root);
+    // The key a writer holds: rcProjectRootFor() of the canonical caller_cwd,
+    // or empty when caller_cwd does not resolve (the writer refuses on its own).
+    static QString roadmapWriterRoot(const QString &callerCwd);
+    // The refusal both sides return: code roadmap_busy, retry_after_ms.
+    static QJsonObject roadmapBusyRefusal(const QString &verb);
+    // Scoped shared hold for a writer. held() false means refuse.
+    class RoadmapWriteHold {
+    public:
+        explicit RoadmapWriteHold(const QString &callerCwd);
+        ~RoadmapWriteHold();
+        RoadmapWriteHold(const RoadmapWriteHold &) = delete;
+        RoadmapWriteHold &operator=(const RoadmapWriteHold &) = delete;
+        bool held() const { return m_held; }
+    private:
+        QString m_root;
+        bool m_held = false;
+    };
+
     // ANTS-4622 — the cross-session mailbox (ops send / inbox / ack).
     QJsonDocument cmdSessionMessage(const QJsonObject &req);
 

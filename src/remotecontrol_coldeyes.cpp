@@ -429,6 +429,10 @@ QJsonDocument RemoteControl::cmdColdEyesCrossDocDiff(const QJsonObject &req) {
 }
 
 QJsonDocument RemoteControl::cmdColdEyesFoldIn(const QJsonObject &req) {
+    // ANTS-5086 — busy guard shared hold (ANTS-2132 § 2.10).
+    const RoadmapWriteHold writeHold(req.value(QStringLiteral("caller_cwd")).toString());
+    if (!writeHold.held())
+        return QJsonDocument(roadmapBusyRefusal(QStringLiteral("cold_eyes_fold_in")));
     if (!m_main) return QJsonDocument(ceErr(
         QStringLiteral("no_window"),
         QStringLiteral("cold_eyes_fold_in: no MainWindow")));

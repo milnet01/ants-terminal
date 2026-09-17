@@ -930,6 +930,10 @@ QJsonDocument RemoteControl::cmdIndieReviewSynthesisPrompt(const QJsonObject &re
 }
 
 QJsonDocument RemoteControl::cmdIndieReviewFoldIn(const QJsonObject &req) {
+    // ANTS-5086 — busy guard shared hold (ANTS-2132 § 2.10).
+    const RoadmapWriteHold writeHold(req.value(QStringLiteral("caller_cwd")).toString());
+    if (!writeHold.held())
+        return QJsonDocument(roadmapBusyRefusal(QStringLiteral("indie_review_fold_in")));
     if (!m_main) return QJsonDocument(irErr(QStringLiteral("no_window"),
         QStringLiteral("indie_review_fold_in: no MainWindow")));
     // ANTS-1630: caller-cwd-anchored write — resolve the ROADMAP root from
@@ -1571,6 +1575,10 @@ QJsonDocument RemoteControl::cmdDebtSweepApplyFix(const QJsonObject &req) {
 }
 
 QJsonDocument RemoteControl::cmdDebtSweepDefer(const QJsonObject &req) {
+    // ANTS-5086 — busy guard shared hold (ANTS-2132 § 2.10).
+    const RoadmapWriteHold writeHold(req.value(QStringLiteral("caller_cwd")).toString());
+    if (!writeHold.held())
+        return QJsonDocument(roadmapBusyRefusal(QStringLiteral("debt_sweep_defer")));
     if (!m_main) return QJsonDocument(dsErr(QStringLiteral("no_window"),
         QStringLiteral("debt_sweep_defer: no MainWindow")));
     // ANTS-1372: gate on caller_cwd matching focused tab.

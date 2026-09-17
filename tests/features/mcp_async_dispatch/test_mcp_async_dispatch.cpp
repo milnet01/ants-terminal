@@ -10,7 +10,10 @@
 #include <gtest/gtest.h>
 
 #include <QCoreApplication>
+#include <QDir>
 #include <QElapsedTimer>
+#include <QFile>
+#include <QFileInfo>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QLocalSocket>
@@ -27,6 +30,8 @@
 #include "claudeintegration.h"
 #include "guithread.h"
 #include "remotecontrol.h"
+
+using Lane = ClaudeIntegration::DispatchLane;
 
 namespace {
 
@@ -664,4 +669,197 @@ TEST(McpAsyncDispatch, Ants5104UnknownToolNamesShareOneTrackerEntry) {
     ASSERT_EQ(snap.calls.size(), 1);
     EXPECT_EQ(snap.calls.first().failedCalls, 5)
         << "the unknown-tool calls were not all counted as failures";
+}
+
+namespace {
+
+// Write one tools/call on `s` without waiting for its reply.
+void sendCall(QLocalSocket &s, const QString &sockPath, const QString &verb,
+              const QString &callerCwd) {
+    s.connectToServer(sockPath);
+    ASSERT_TRUE(s.waitForConnected(2000));
+    s.write(toolsCall(verb, callerCwd));
+    s.flush();
+}
+
+bool pumpUntil(const std::function<bool()> &done, int timeoutMs) {
+    QElapsedTimer clock;
+    clock.start();
+    while (!done() && clock.elapsed() < timeoutMs)
+        QCoreApplication::processEvents(QEventLoop::AllEvents, 5);
+    return done();
+}
+
+}  // namespace
+
+// INV-19 (ANTS-5086) — a verb on the shared lane replies while a verb on the
+// bulk lane is still running. On one worker the shared call queues behind the
+// blocked bulk verb and gets no reply inside the window.
+TEST(McpAsyncDispatch, Ants5086Inv19SharedLaneRepliesWhileBulkLaneRuns) {
+    Harness h;
+    ASSERT_TRUE(h.dir.isValid());
+    ASSERT_TRUE(h.start());
+
+    std::atomic<bool> release{false}, bulkEntered{false}, bulkDone{false};
+    h.ci.registerToolProvider(
+        QStringLiteral("ants_bulk_probe"),
+        ClaudeIntegration::CallerCwdContract::Required,
+        ClaudeIntegration::RcHandler{[&](const QJsonObject &) -> QString {
+            bulkEntered = true;
+            QElapsedTimer t;
+            t.start();
+            while (!release && t.elapsed() < 5000) QThread::msleep(5);
+            bulkDone = true;
+            return QStringLiteral("{\"ok\":true}");
+        }, true, Lane::Bulk});
+    h.ci.registerToolProvider(
+        QStringLiteral("ants_async_probe"),
+        ClaudeIntegration::CallerCwdContract::Required,
+        ClaudeIntegration::RcHandler{[](const QJsonObject &) -> QString {
+            return QStringLiteral("{\"ok\":true}");
+        }});
+
+    QLocalSocket bulkClient;
+    sendCall(bulkClient, h.sockPath, QStringLiteral("ants_bulk_probe"), h.dir.path());
+    ASSERT_TRUE(pumpUntil([&] { return bulkEntered.load(); }, 3000))
+        << "the bulk verb never started";
+
+    const QByteArray fast = callVerb(h.sockPath, QStringLiteral("ants_async_probe"),
+                                     h.dir.path(), 2000);
+    EXPECT_TRUE(fast.contains("\"result\""))
+        << "the shared-lane verb got no reply while the bulk verb ran; "
+           "the two lanes share one worker";
+    EXPECT_FALSE(bulkDone.load()) << "setup: the bulk verb finished early";
+
+    release = true;
+    QByteArray bulkReply;
+    pumpUntil([&] { bulkReply += bulkClient.readAll(); return bulkReply.endsWith('\n'); },
+              3000);
+    EXPECT_TRUE(bulkReply.contains("\"result\"")) << bulkReply.constData();
+}
+
+// INV-8(b) (ANTS-5086) — destroying ClaudeIntegration with a job parked in
+// onGuiThread on EACH lane returns promptly and runs neither marshal's
+// callable. Both are parked so a teardown that refuses either lane late is
+// caught, whichever lane it joins first.
+TEST(McpAsyncDispatch, Ants5086Inv8bTeardownRefusesBothLanesMarshals) {
+    auto h = std::make_unique<Harness>();
+    ASSERT_TRUE(h->dir.isValid());
+    ASSERT_TRUE(h->start());
+
+    std::atomic<int> entered{0}, callablesRan{0}, returned{0};
+    std::atomic<bool> go{false};
+    const auto probe = [&](const QJsonObject &) -> QString {
+        ++entered;
+        QElapsedTimer t;
+        t.start();
+        while (!go && t.elapsed() < 5000) QThread::msleep(5);
+        (void)ants::onGuiThread([&]() { ++callablesRan; return 1; });
+        ++returned;
+        return QStringLiteral("{\"ok\":true}");
+    };
+    h->ci.registerToolProvider(QStringLiteral("ants_teardown_shared"),
+                               ClaudeIntegration::CallerCwdContract::Required,
+                               ClaudeIntegration::RcHandler{probe});
+    h->ci.registerToolProvider(QStringLiteral("ants_teardown_bulk"),
+                               ClaudeIntegration::CallerCwdContract::Required,
+                               ClaudeIntegration::RcHandler{probe, true, Lane::Bulk});
+
+    QLocalSocket a, b;
+    sendCall(a, h->sockPath, QStringLiteral("ants_teardown_shared"), h->dir.path());
+    sendCall(b, h->sockPath, QStringLiteral("ants_teardown_bulk"), h->dir.path());
+    const bool bothRunning = pumpUntil([&] { return entered.load() == 2; }, 3000);
+    go = true;   // released on both paths, so a red run does not stall teardown
+    ASSERT_TRUE(bothRunning)
+        << "both lanes' jobs must be running at once; entered=" << entered.load();
+    QThread::msleep(200);   // both park in onGuiThread; this thread does not pump
+
+    QElapsedTimer clock;
+    clock.start();
+    h.reset();
+    EXPECT_LT(clock.elapsed(), 5000) << "teardown did not return promptly";
+    EXPECT_EQ(callablesRan.load(), 0) << "a parked marshal's callable ran during teardown";
+    EXPECT_EQ(returned.load(), 2) << "a worker was not released";
+}
+
+namespace {
+
+// A temporary ants-v1 project with one bullet and a subdirectory. Returns the
+// canonical root, or empty when the fixture could not be written.
+QString seedBusyProject(const QString &root) {
+    QDir(root).mkpath(QStringLiteral("sub"));
+    QFile f(QDir(root).filePath(QStringLiteral("ROADMAP.md")));
+    if (!f.open(QIODevice::WriteOnly)) return {};
+    f.write("# Roadmap\n\n## Now\n\n"
+            "- \xF0\x9F\x93\x8B [BUSY-0001] **An item.**\n  Source: seed.\n");
+    f.close();
+    return QFileInfo(root).canonicalFilePath();
+}
+
+QByteArray slurp(const QString &path) {
+    QFile f(path);
+    return f.open(QIODevice::ReadOnly) ? f.readAll() : QByteArray();
+}
+
+}  // namespace
+
+// INV-21 (a) (ANTS-5086) — a root held exclusively refuses a writer
+// roadmap_busy and writes nothing; released, the same call succeeds. The
+// flip is called from the root, because roadmap_log reads the roadmap at
+// caller_cwd itself and refuses no_roadmap in a subdirectory.
+TEST(McpAsyncDispatch, Ants5086Inv21ExclusiveHoldRefusesWriters) {
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid());
+    const QString root = seedBusyProject(dir.path());
+    ASSERT_FALSE(root.isEmpty());
+    const QString file = QDir(root).filePath(QStringLiteral("ROADMAP.md"));
+
+    EXPECT_EQ(RemoteControl::roadmapWriterRoot(root), root)
+        << "the writer's key is not the root the migration holds";
+
+    RemoteControl rc(nullptr);
+    QJsonObject req;
+    req[QStringLiteral("caller_cwd")] = root;
+    req[QStringLiteral("op")]         = QStringLiteral("flip");
+    req[QStringLiteral("id")]         = QStringLiteral("BUSY-0001");
+    req[QStringLiteral("to_status")]  = QStringLiteral("in-progress");
+
+    ASSERT_TRUE(RemoteControl::tryHoldRoadmapExclusive(root, 0));
+    const QByteArray before = slurp(file);
+    const QJsonObject busy = rc.cmdRoadmapLog(req).object();
+    RemoteControl::releaseRoadmapExclusive(root);
+    EXPECT_EQ(busy.value(QStringLiteral("code")).toString(), QStringLiteral("roadmap_busy"))
+        << QJsonDocument(busy).toJson().constData();
+    EXPECT_GT(busy.value(QStringLiteral("retry_after_ms")).toInt(), 0);
+    EXPECT_EQ(slurp(file), before) << "a refused write changed the roadmap file";
+
+    const QJsonObject ok = rc.cmdRoadmapLog(req).object();
+    EXPECT_TRUE(ok.value(QStringLiteral("ok")).toBool())
+        << QJsonDocument(ok).toJson().constData();
+}
+
+// INV-21 (b) (ANTS-5086) — a live shared hold refuses the exclusive hold once
+// its wait expires, and an exclusive hold refuses a shared one. A writer that
+// only CHECKED the root would leave the exclusive hold free here.
+TEST(McpAsyncDispatch, Ants5086Inv21SharedAndExclusiveHoldsExclude) {
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid());
+    const QString root = QFileInfo(dir.path()).canonicalFilePath();
+
+    ASSERT_TRUE(RemoteControl::tryHoldRoadmapShared(root));
+    ASSERT_TRUE(RemoteControl::tryHoldRoadmapShared(root)) << "shared holds stack";
+    QElapsedTimer clock;
+    clock.start();
+    EXPECT_FALSE(RemoteControl::tryHoldRoadmapExclusive(root, 50));
+    EXPECT_GE(clock.elapsed(), 40) << "the exclusive hold did not wait";
+    RemoteControl::releaseRoadmapShared(root);
+    EXPECT_FALSE(RemoteControl::tryHoldRoadmapExclusive(root, 0)) << "one shared hold is live";
+    RemoteControl::releaseRoadmapShared(root);
+
+    ASSERT_TRUE(RemoteControl::tryHoldRoadmapExclusive(root, 0));
+    EXPECT_FALSE(RemoteControl::tryHoldRoadmapShared(root));
+    EXPECT_FALSE(RemoteControl::tryHoldRoadmapExclusive(root, 0));
+    RemoteControl::releaseRoadmapExclusive(root);
+    EXPECT_TRUE(RemoteControl::tryHoldRoadmapShared(root));
+    RemoteControl::releaseRoadmapShared(root);
 }

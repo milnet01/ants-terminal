@@ -4713,6 +4713,12 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
 // roadmaps. Default `op:"append"` preserves the ANTS-1424 path
 // byte-for-byte. See docs/specs/ANTS-1428.md § Tier 2.
 QJsonDocument RemoteControl::cmdRoadmapLog(const QJsonObject &req) {
+    // ANTS-5086 — the busy guard's shared hold, for the whole call and before
+    // any other refusal, so a migration cannot read this project's roadmap
+    // while the write is under way (ANTS-2132 § 2.10). Every op writes.
+    const RoadmapWriteHold writeHold(req.value(QStringLiteral("caller_cwd")).toString());
+    if (!writeHold.held())
+        return QJsonDocument(roadmapBusyRefusal(QStringLiteral("roadmap_log")));
     // ANTS-1566 — caller_cwd-related refusals carry an `example`
     // field so IPC-direct callers (the MCP dispatcher's Required
     // gate catches the empty case upstream for tools/call requests)

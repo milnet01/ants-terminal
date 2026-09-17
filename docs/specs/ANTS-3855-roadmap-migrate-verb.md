@@ -640,6 +640,7 @@ deliberately dropped, being the multi-megabyte input the caller already has.
 | 3 | `findRoadmaps()` → `not_utf8` | `not_utf8` |
 | 3 | `findRoadmaps()` → `archive_format_mismatch` | `format_mismatch` |
 | 3 | `findRoadmaps()` → `too_large` — the sources exceed 32 MiB (ANTS-5086) | `too_large` |
+| 4a | a real run (not `dry_run`) finds the root held by a writer past its 5 s wait, or by another migration (ANTS-5086; ANTS-2132 § 2.10) | `roadmap_busy` |
 | 5 | `store.open()` fails | `store_failed` |
 | 6 | either lookup fails with an SQL error (distinct from "no row") | `store_failed` |
 | 6 | the slug belongs to a different root, or a re-run changes this root's slug | `slug_collision` |

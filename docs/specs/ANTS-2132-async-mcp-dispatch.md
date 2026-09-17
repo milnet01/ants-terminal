@@ -12,7 +12,9 @@ INV-18 is added. Gated by review-contract at its cap (loops 5 and 6). Built
 2026-09-13.
 **Amendment (2026-09-17, ANTS-5086):** § 2.10 runs `roadmap_migrate` on a
 second worker; § 2.1, § 2.6, INV-2, INV-7, INV-8, § 4, § 5, § 6 and § 7
-change with it, and INV-19 to INV-21 are added. Not yet built.
+change with it, and INV-19 to INV-21 are added. Gated by review-contract at
+its cap (loops 7 and 8). Built 2026-09-17 (`DispatchLane`,
+`RemoteControl::RoadmapWriteHold`).
 **Kind:** perf.
 **Source:** ROADMAP.md ANTS-2132 (user report of intermittent whole-window
 freeze; diagnosed in-session 2026-08-25). Amended for ANTS-5051, ANTS-5073,
@@ -768,15 +770,17 @@ still run one at a time, in arrival order.
   refuses every writer `roadmap_busy` and writes nothing; a root with a live
   shared hold refuses a migration `roadmap_busy` once the wait expires. *Test:*
   `tests/features/mcp_async_dispatch/`, on a bare `RemoteControl` over a
-  temporary project with one seeded bullet. (a) Take the exclusive hold, call
-  `cmdRoadmapLog` `op:"flip"` from the project's subdirectory, assert
+  temporary project with one seeded bullet. (a) Assert
+  `roadmapWriterRoot()` of the root is the root. Take the
+  exclusive hold, call `cmdRoadmapLog` `op:"flip"` from the root, assert
   `roadmap_busy` and an unchanged `ROADMAP.md`; release, repeat, assert
   `ok:true`. `op:"flip"` because `op:"append"` refuses `no_main` without a
-  `MainWindow`. (b) Take a shared hold, try the exclusive hold with the wait
+  `MainWindow`, and from the root because `roadmap_log` reads the roadmap at
+  `caller_cwd` and refuses `no_roadmap` in a subdirectory. (b) Take a shared hold, try the exclusive hold with the wait
   shortened, assert it is refused. A source scrape asserts each fold-in writer
   takes its shared hold before its first write. Breaks if the writer checks
-  instead of holding, which (b) sees, or if the two sides key differently,
-  which (a)'s subdirectory call sees.
+  instead of holding, which (b) sees, or if the writer keys on something other
+  than the root the migration holds, which (a)'s key assertion sees.
 
 ## 4. RAM / build cost
 

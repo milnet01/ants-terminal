@@ -134,10 +134,15 @@ place when it saves a Claude session real tokens or round-trips
    anchor-failure code — never fall back to a default-constructed value, which
    answers with a silently wrong project instead of an error the caller sees.
 
-   Two consequences worth knowing. Off-thread verbs execute one at a time, in
-   arrival order, so no two of them overlap. A GUI-thread verb is not in that
-   set: it can run while an off-thread verb is running, so state both can
-   reach needs its own guard (ANTS-2132 § 2.1, § 5). And an over-cap call is
+   Two consequences worth knowing. Off-thread verbs on the same lane execute
+   one at a time, in arrival order, so no two of them overlap. A verb runs on
+   the shared lane unless its registration names
+   `ClaudeIntegration::DispatchLane::Bulk` — today only `roadmap_migrate`
+   does — and a verb on the other lane, or on the GUI thread, can run while
+   yours is running, so state both can reach needs its own guard (ANTS-2132
+   § 2.1, § 2.10, § 5). A verb that writes a project's roadmap takes
+   `RemoteControl::RoadmapWriteHold` as its first statement and refuses
+   `roadmap_busy` when it is not held. And an over-cap call is
    refused with `dispatch_queue_full` before the handler runs — nothing for
    the handler to do, but a caller may see it.
 

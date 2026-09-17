@@ -13,7 +13,8 @@
 // than moving one, and the slice order that file's scrape windows depend on is
 // unchanged wherever this TU sits in the list.
 //
-// remotecontrol_internal.h IS included, for `findRoadmapUnder` alone. ANTS-3833
+// remotecontrol_internal.h IS included, for `findRoadmapUnder` and, since
+// ANTS-5086, `rcProjectRootFor` (the busy guard's writer key). ANTS-3833
 // INV-5 is a subset check, so a TU needing one of the promoted rcdetail helpers
 // includes the header; this TU needed none until ANTS-4740 added op:"init",
 // which must know whether a roadmap already exists before it writes one.
@@ -26,9 +27,16 @@
 #include "roadmapstore.h"
 
 #include <QDateTime>
+#include <QDeadlineTimer>
 #include <QDir>
 #include <QFile>
+#include <QFileInfo>
+#include <QHash>
+#include <QMutex>
 #include <QSaveFile>
+#include <QWaitCondition>
+
+#include <algorithm>
 
 QJsonDocument RemoteControl::cmdRoadmapMigrate(const QJsonObject &req) {
     // caller_cwd absent or empty is NOT this verb's refusal to make:
@@ -90,15 +98,35 @@ QJsonDocument RemoteControl::cmdRoadmapMigrate(const QJsonObject &req) {
     // ANTS-4600 transient-root guard above, so a scratchpad under the temp dir
     // is refused by the same rule on both verbs rather than being registrable
     // one way and prunable the other.
+    // ANTS-5086 — the exclusive half of the busy guard (ANTS-2132 § 2.10). One
+    // hold per call, released on every return path by this scope's end. A dry
+    // run takes none: it writes nothing a concurrent writer could lose.
+    struct ExclusiveHold {
+        QString root;
+        bool    held = false;
+        bool take(const QString &r) {
+            root = r;
+            held = RemoteControl::tryHoldRoadmapExclusive(
+                r, RemoteControl::kRoadmapMigrationHoldWaitMs);
+            return held;
+        }
+        ~ExclusiveHold() { if (held) RemoteControl::releaseRoadmapExclusive(root); }
+    } hold;
+    const bool dryRun = req.value(QStringLiteral("dry_run")).toBool(false);
+
     if (req.value(QStringLiteral("op")).toString() == QLatin1String("deregister")) {
         RoadmapMigrateVerb::DeregisterRequest d;
         d.projectRoot = root;
         d.exportSlug  = req.value(QStringLiteral("export_slug")).toString();
         d.confirm     = req.value(QStringLiteral("confirm")).toBool(false);
-        d.dryRun      = req.value(QStringLiteral("dry_run")).toBool(false);
+        d.dryRun      = dryRun;
+        d.holdRoot    = [&hold](const QString &rowRoot) { return hold.take(rowRoot); };
         return QJsonDocument(
             RoadmapMigrateVerb::deregister(RoadmapStore::defaultPath(), d));
     }
+
+    if (!dryRun && !hold.take(root))
+        return QJsonDocument(roadmapBusyRefusal(QStringLiteral("roadmap_migrate")));
 
     // ANTS-4740 — op:"init", the bootstrap.
     //
@@ -203,4 +231,117 @@ QJsonDocument RemoteControl::cmdRoadmapMigrate(const QJsonObject &req) {
             "append to pin it, or it is derived from the directory name.");
     }
     return QJsonDocument(out);
+}
+
+// ANTS-5086 — the roadmap busy guard (ANTS-2132 § 2.10).
+//
+// Process-wide rather than per RemoteControl: File → New Window builds a second
+// RemoteControl whose MCP calls run on a second pair of workers, and a guard
+// each window kept for itself would let the two race. An empty root takes no
+// hold and is never refused; the writer that passed it refuses on its own.
+namespace {
+
+struct RoadmapHolds {
+    int  shared    = 0;
+    bool exclusive = false;
+};
+
+QMutex &roadmapHoldMutex() {
+    static QMutex m;
+    return m;
+}
+
+QWaitCondition &roadmapHoldReleased() {
+    static QWaitCondition c;
+    return c;
+}
+
+QHash<QString, RoadmapHolds> &roadmapHolds() {
+    static QHash<QString, RoadmapHolds> h;
+    return h;
+}
+
+// Called with the mutex held. Drops an entry nothing holds, so the map stays
+// the size of what is live.
+void dropIfFree(const QString &root) {
+    const auto it = roadmapHolds().constFind(root);
+    if (it != roadmapHolds().cend() && it->shared == 0 && !it->exclusive)
+        roadmapHolds().erase(it);
+}
+
+}  // namespace
+
+bool RemoteControl::tryHoldRoadmapShared(const QString &root) {
+    if (root.isEmpty()) return true;
+    const QMutexLocker lock(&roadmapHoldMutex());
+    RoadmapHolds &h = roadmapHolds()[root];
+    if (h.exclusive) return false;
+    ++h.shared;
+    return true;
+}
+
+void RemoteControl::releaseRoadmapShared(const QString &root) {
+    if (root.isEmpty()) return;
+    const QMutexLocker lock(&roadmapHoldMutex());
+    const auto it = roadmapHolds().find(root);
+    if (it == roadmapHolds().end() || it->shared == 0) return;
+    --it->shared;
+    dropIfFree(root);
+    roadmapHoldReleased().wakeAll();
+}
+
+bool RemoteControl::tryHoldRoadmapExclusive(const QString &root, int waitMs) {
+    if (root.isEmpty()) return true;
+    const QMutexLocker lock(&roadmapHoldMutex());
+    const QDeadlineTimer deadline(std::max(0, waitMs));
+    for (;;) {
+        // Looked up afresh after every wait: another root's insert can rehash.
+        RoadmapHolds &h = roadmapHolds()[root];
+        if (h.exclusive) {
+            // Another migration of this root; waiting on it would only queue a
+            // second whole-project load behind the first.
+            return false;
+        }
+        if (h.shared == 0) {
+            h.exclusive = true;
+            return true;
+        }
+        if (!roadmapHoldReleased().wait(&roadmapHoldMutex(), deadline)) {
+            dropIfFree(root);
+            return false;
+        }
+    }
+}
+
+void RemoteControl::releaseRoadmapExclusive(const QString &root) {
+    if (root.isEmpty()) return;
+    const QMutexLocker lock(&roadmapHoldMutex());
+    const auto it = roadmapHolds().find(root);
+    if (it == roadmapHolds().end() || !it->exclusive) return;
+    it->exclusive = false;
+    dropIfFree(root);
+}
+
+QString RemoteControl::roadmapWriterRoot(const QString &callerCwd) {
+    const QString canonical = QFileInfo(callerCwd).canonicalFilePath();
+    return canonical.isEmpty() ? QString() : rcdetail::rcProjectRootFor(canonical);
+}
+
+QJsonObject RemoteControl::roadmapBusyRefusal(const QString &verb) {
+    QJsonObject e;
+    e[QStringLiteral("ok")]    = false;
+    e[QStringLiteral("code")]  = QStringLiteral("roadmap_busy");
+    e[QStringLiteral("error")] =
+        QStringLiteral("%1: this project's roadmap is being migrated or written "
+                       "by another call; retry shortly").arg(verb);
+    e[QStringLiteral("retry_after_ms")] = 250;
+    return e;
+}
+
+RemoteControl::RoadmapWriteHold::RoadmapWriteHold(const QString &callerCwd)
+    : m_root(roadmapWriterRoot(callerCwd)),
+      m_held(tryHoldRoadmapShared(m_root)) {}
+
+RemoteControl::RoadmapWriteHold::~RoadmapWriteHold() {
+    if (m_held) releaseRoadmapShared(m_root);
 }

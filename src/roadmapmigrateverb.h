@@ -34,6 +34,8 @@
 #include <QJsonObject>
 #include <QString>
 
+#include <functional>
+
 namespace RoadmapMigrateVerb {
 
 struct Request {
@@ -77,6 +79,11 @@ struct DeregisterRequest {
     QString exportSlug;    // alternative key
     bool    confirm = false;
     bool    dryRun  = false;
+    // ANTS-5086 — called with the STORED root of the row about to be deleted,
+    // after it is found and before anything is deleted, on a real run only.
+    // Returning false refuses `roadmap_busy`. The row's root, not the caller's:
+    // keying on export_slug can name another project (ANTS-2132 § 2.10).
+    std::function<bool(const QString &rowRoot)> holdRoot;
 };
 QJsonObject deregister(const QString &storePath, const DeregisterRequest &req);
 

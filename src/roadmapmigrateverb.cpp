@@ -746,6 +746,16 @@ QJsonObject RoadmapMigrateVerb::deregister(const QString &storePath,
         return env;
     }
 
+    // ANTS-5086 — hold the root whose rows go, not the caller's (ANTS-2132
+    // § 2.10). The handler owns the hold and releases it after this returns.
+    if (req.holdRoot && !req.holdRoot(row->root)) {
+        QJsonObject e = rmErr(QStringLiteral("roadmap_busy"),
+            QStringLiteral("roadmap_migrate: \"%1\" is being written by another "
+                           "call; retry shortly").arg(row->root));
+        e[QStringLiteral("retry_after_ms")] = 250;
+        return e;
+    }
+
     RoadmapStore::DeregisterCounts counts;
     if (!store.deregisterProject(row->projectId, &counts, &err)) {
         return rmErr(QStringLiteral("store_failed"),

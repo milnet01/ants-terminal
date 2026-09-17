@@ -1449,7 +1449,8 @@ void ClaudeIntegration::registerToolProvider(
                      static_cast<long long>(args.size()));
             return inner(args);
         };
-    m_toolProviders[name] = RegisteredTool{std::move(wrapped), contract, false, {}};
+    m_toolProviders[name] = RegisteredTool{std::move(wrapped), contract, false,
+                                           DispatchLane::Shared, {}};
 }
 
 // ANTS-2132 — the rc-factory overload. Same registration, plus the one bit
@@ -1467,11 +1468,14 @@ void ClaudeIntegration::registerToolProvider(
     RcHandler handler) {
     const bool offThread = handler.offThreadEligible
                         && contract != CallerCwdContract::TabSpecific;
+    const DispatchLane lane = handler.lane;
     registerToolProvider(name, contract, std::move(handler.fn));
     // registerToolProvider returns early on a contract-drift refusal without
     // inserting, so only stamp the flag on an entry that actually landed.
-    if (auto it = m_toolProviders.find(name); it != m_toolProviders.end())
+    if (auto it = m_toolProviders.find(name); it != m_toolProviders.end()) {
         it->second.offThread = offThread;
+        it->second.lane      = lane;   // ANTS-5086 § 2.10
+    }
 }
 
 // ANTS-2132 § 2.8 — the reply-later overload. Same registration and the same
@@ -1769,7 +1773,8 @@ void ClaudeIntegration::resetReplyTransformThreadForTest() {
 // Returns false when the queue is full. The caller must then refuse, because
 // no reply is coming from this path.
 bool ClaudeIntegration::postToolDispatch(const McpCallContext &ctx,
-                                         const ToolHandler &handler) {
+                                         const ToolHandler &handler,
+                                         DispatchLane lane) {
     return postWorkerJob([this, ctx, handler]() {
         // On the worker. The handler forwards to a RemoteControl cmd*(); any
         // MainWindow read inside it goes through ants::onGuiThread.
@@ -1781,30 +1786,36 @@ bool ClaudeIntegration::postToolDispatch(const McpCallContext &ctx,
         QMetaObject::invokeMethod(this, [this, ctx, reply]() {
             finishToolDispatch(ctx, reply);
         }, Qt::QueuedConnection);
-    });
+    }, lane);
 }
 
 // ANTS-2132 § 2.7 — the one entry onto the dispatch worker, shared by MCP
 // verbs and the remote-control socket's worker routes, so both serialise on
 // one thread and count against one cap.
-bool ClaudeIntegration::postWorkerJob(std::function<void()> job) {
+bool ClaudeIntegration::postWorkerJob(std::function<void()> job,
+                                      DispatchLane lane) {
     if (m_dispatchShuttingDown) return false;
     // The cap counts the executing job as well as the queued ones, so the
-    // 65th outstanding call is the first refused (spec § 2.6, INV-10).
+    // 65th outstanding call is the first refused (spec § 2.6, INV-10). Both
+    // lanes count against it (§ 2.10).
     if (m_dispatchInFlight.loadAcquire() >= kMaxDispatchQueue) return false;
 
-    if (!m_dispatchWorker) {
-        m_dispatchWorker = new QThread(this);
-        m_dispatchWorker->setObjectName(QStringLiteral("ants-mcp-dispatch"));
+    const bool bulk = (lane == DispatchLane::Bulk);
+    QThread *&worker = bulk ? m_bulkWorker : m_dispatchWorker;
+    QObject *&sink   = bulk ? m_bulkSink : m_dispatchSink;
+    if (!worker) {
+        worker = new QThread(this);
+        worker->setObjectName(bulk ? QStringLiteral("ants-mcp-bulk")
+                                   : QStringLiteral("ants-mcp-dispatch"));
         // No parent: a QObject cannot be parented across threads. Deleted in
         // shutdownDispatchWorker() once the thread has been joined.
-        m_dispatchSink = new QObject();
-        m_dispatchSink->moveToThread(m_dispatchWorker);
-        m_dispatchWorker->start();
+        sink = new QObject();
+        sink->moveToThread(worker);
+        worker->start();
     }
 
     m_dispatchInFlight.fetchAndAddOrdered(1);
-    QMetaObject::invokeMethod(m_dispatchSink, [this, job = std::move(job)]() {
+    QMetaObject::invokeMethod(sink, [this, job = std::move(job)]() {
         job();
         m_dispatchInFlight.fetchAndSubOrdered(1);
     }, Qt::QueuedConnection);
@@ -1825,15 +1836,27 @@ bool ClaudeIntegration::postWorkerJob(std::function<void()> job) {
 // must still be served after the second closes (ANTS-5142, spec INV-17).
 void ClaudeIntegration::shutdownDispatchWorker() {
     m_dispatchShuttingDown = true;
-    if (!m_dispatchWorker) return;
-    ants::setGuiMarshalRefused(m_dispatchWorker, true);
-    m_dispatchWorker->quit();
-    ants::joinRefusingMarshals(m_dispatchWorker);
-    // Joined, so drop the entry: a later thread reusing the address must not
+    // ANTS-5086 — BOTH lanes are refused before EITHER is joined (spec § 2.6):
+    // joinRefusingMarshals serves a marshal from any thread not refused, so a
+    // bulk-lane marshal delivered during the shared join would otherwise run.
+    if (m_dispatchWorker) ants::setGuiMarshalRefused(m_dispatchWorker, true);
+    if (m_bulkWorker) ants::setGuiMarshalRefused(m_bulkWorker, true);
+    if (m_dispatchWorker) m_dispatchWorker->quit();
+    if (m_bulkWorker) m_bulkWorker->quit();
+    // Joined, so drop each entry: a later thread reusing the address must not
     // inherit the refusal.
-    ants::setGuiMarshalRefused(m_dispatchWorker, false);
+    if (m_dispatchWorker) {
+        ants::joinRefusingMarshals(m_dispatchWorker);
+        ants::setGuiMarshalRefused(m_dispatchWorker, false);
+    }
+    if (m_bulkWorker) {
+        ants::joinRefusingMarshals(m_bulkWorker);
+        ants::setGuiMarshalRefused(m_bulkWorker, false);
+    }
     delete m_dispatchSink;
     m_dispatchSink = nullptr;
+    delete m_bulkSink;
+    m_bulkSink = nullptr;
     // ~QObject removes events still posted to `this`, so a result that
     // finished after the join never reaches a half-destroyed object.
 }
@@ -16481,7 +16504,8 @@ void ClaudeIntegration::onMcpConnection() {
                             octx.dispatchResult = dispatchResult;
                             octx.traceTimer     = mcpTraceTimer;
                             octx.ignoredArgKeys = ignoredArgKeysFor(toolName, argsObj);
-                            if (postToolDispatch(octx, it->second.handler))
+                            if (postToolDispatch(octx, it->second.handler,
+                                                 it->second.lane))
                                 return;  // reply follows from the worker
                             // Queue full — refuse rather than drop it, so a
                             // caller sees a code instead of a dead socket.

@@ -4342,12 +4342,13 @@ static bool resolveInflightCallerCwd(const QString &callerCwd,
 // functions carved out of setupClaudeMcpProviders() share it. No call site's
 // text changes.
 ClaudeIntegration::RcHandler MainWindow::rcDelegate(
-        QJsonDocument (RemoteControl::*fn)(const QJsonObject &)) {
+        QJsonDocument (RemoteControl::*fn)(const QJsonObject &),
+        ClaudeIntegration::DispatchLane lane) {
     return ClaudeIntegration::RcHandler{[this, fn](const QJsonObject &args) -> QString {
         if (!m_remoteControl) return QString::fromUtf8(kRcUnavailable);
         return QString::fromUtf8(
             (m_remoteControl->*fn)(args).toJson(QJsonDocument::Compact));
-    }};
+    }, true, lane};
 }
 
 void MainWindow::setupClaudeMcpProviders() {
@@ -4748,7 +4749,7 @@ void MainWindow::setupClaudeMcpProviders() {
     // caller_cwd upstream, before the handler runs).
     m_claudeIntegration->registerToolProvider("roadmap_migrate",
         ClaudeIntegration::CallerCwdContract::Required,
-        rcDelegate(&RemoteControl::cmdRoadmapMigrate));
+        rcDelegate(&RemoteControl::cmdRoadmapMigrate, ClaudeIntegration::DispatchLane::Bulk));
     // ANTS-4622 — session_message: the cross-session mailbox. Required
     // contract on every op, read included: `inbox` and `ack` resolve the
     // CALLING project from caller_cwd, so an absent one has no mailbox to
@@ -5369,6 +5370,12 @@ void MainWindow::setupClaudeMcpProviders() {
     m_claudeIntegration->registerToolProvider("test_audit_fold_in",
         ClaudeIntegration::CallerCwdContract::Required,
         ClaudeIntegration::RcHandler{[](const QJsonObject &args) -> QString {
+            // ANTS-5086 — busy guard shared hold (ANTS-2132 § 2.10).
+            const RemoteControl::RoadmapWriteHold writeHold(
+                args.value(QStringLiteral("caller_cwd")).toString());
+            if (!writeHold.held())
+                return QString::fromUtf8(QJsonDocument(RemoteControl::roadmapBusyRefusal(
+                    QStringLiteral("test_audit_fold_in"))).toJson(QJsonDocument::Compact));
             TestAuditEngine::FoldInRequest req;
             req.callerCwd    = args.value(QStringLiteral("caller_cwd")).toString();
             req.actionable   = args.value(QStringLiteral("actionable")).toArray();

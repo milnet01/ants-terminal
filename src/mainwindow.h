@@ -550,8 +550,10 @@ private:
     // setupClaudeMcpProviders(); a member so the carved registration
     // functions share it. `class QJsonDocument` names Qt's type in place,
     // because this header includes no QJsonDocument declaration.
+    // ANTS-5086 — `lane` names the worker (ANTS-2132 § 2.10).
     ClaudeIntegration::RcHandler rcDelegate(
-        class QJsonDocument (RemoteControl::*fn)(const QJsonObject &));
+        class QJsonDocument (RemoteControl::*fn)(const QJsonObject &),
+        ClaudeIntegration::DispatchLane lane = ClaudeIntegration::DispatchLane::Shared);
     void showDiffViewer();
     // Re-check git diff state and enable/disable the Review Changes
     // button accordingly. Async (QProcess) so it never blocks the UI
