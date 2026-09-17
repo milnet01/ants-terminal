@@ -8150,6 +8150,16 @@ extends an existing item, that item carries it instead.
   commit checked, failure reported) and the review-command quoting,
   runKWinScript FailedToStart cleanup and SSH timer QPointer lows. Test:
   mainwindow_command_safety.
+  Progress (2026-09-17): the HTML export medium is shipped by ANTS-5078
+  (e32fb1ef). MainWindow's Export Scrollback calls
+  TerminalWidget::startExport, which streams text or HTML to the file in
+  slices on the GUI thread (a worker was rejected in
+  docs/specs/ANTS-5078-export-streaming.md). mainwindow_command_safety
+  INV-2 now checks the startExport call.
+  Still open: refreshTasksButton re-parsing on the status timer
+  (ANTS-5050 area), the plugin event rate limit, the per-sequence
+  progress tab icon, and restoreSessions decompressing every tab in the
+  constructor.
   **Layman:** Smaller main-window fixes: split panes that are never tidied up, slow exports and plugin event floods.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lane mainwindow-a).
