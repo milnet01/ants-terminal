@@ -8546,7 +8546,7 @@ extends an existing item, that item carries it instead.
   Source: code-quality-review-2026-09-11 perf pass (lane audit-dialog-b).
   Lanes: audit.
 
-- 📋 [ANTS-5085] **Performance pass findings for the audit engine and runner (medium and low).**
+- ✅ [ANTS-5085] **Performance pass findings for the audit engine and runner (medium and low).**
   Filed separately: ANTS-5038, 5043, 5044, 5045; the QProcess leak is
   on ANTS-3847.
   Medium:
@@ -8588,6 +8588,18 @@ extends an existing item, that item carries it instead.
   audit_run_output_cap, audit_run_incomplete_detail INV-11, red first.
   Still open: the findings sidecar is written uncapped, and the
   rule-quality file still reaches its record cap.
+  Resolved (2026-09-17): the last two parts.
+  - Sidecar (2bfa7593): AuditDelta::capRecordedFindings trims the
+    recorded set to kSarifFindingsMax, current findings first, as
+    ANTS-1870 section 2.5 specifies; a cut marks it truncated. Test:
+    audit_run_delta INV-11.
+  - Rule quality (1b656af6): fires are counted per rule per day
+    (schema v2 fire_days), so the history no longer reaches its record
+    cap; v1 files still load. Test: audit_rule_quality
+    ManyFiresStayCountedAndSmall, LoadsV1FireRecords.
+  Both red first; full default suite green. The since-last-run
+  truncated flag staying set on a project with more findings than the
+  cap is the spec's design, filed as ANTS-5228.
   **Layman:** Smaller audit-engine fixes: unbounded tool output, a change list that keeps growing, and slow saves on the main window.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lane audit-engine).
@@ -10805,6 +10817,24 @@ extends an existing item, that item carries it instead.
   Kind: perf.
   Source: code-quality-review-2026-09-11 perf pass (lane mainwindow-a), split from ANTS-5079.
   Lanes: mainwindow, sessions.
+
+- 💭 [ANTS-5228] **On a project with more findings than the audit cap, a chain of since-last-run audits never reports a delta.**
+  docs/specs/ANTS-1870.md section 2.5 bounds the recorded findings
+  sidecar at kSarifFindingsMax and marks a cut sidecar truncated;
+  section 2.7 then withholds the delta while the prior sidecar is
+  truncated. When a tree has more findings than the cap, every
+  since-last-run sidecar is cut, so the flag carries from run to run
+  and the delta never returns until an auto or full audit records an
+  uncut set (which it cannot, over the cap).
+  Since ANTS-5085 (2bfa7593) the code follows the spec here; the
+  behaviour is by design. Deciding whether to change it is a spec
+  change to ANTS-1870: for example, a separate sidecar cap above the
+  SARIF cap, or a delta that tolerates shed carried-forward findings on
+  files it did not re-scan.
+  **Layman:** For very large projects, the "what changed since the last audit" comparison stays switched off until a full audit runs.
+  Kind: investigate.
+  Source: code-quality-review-2026-09-11 perf pass (lane audit-engine), split from ANTS-5085.
+  Lanes: audit.
 
 ## Memory-efficiency sweep (user request 2026-08-19)
 

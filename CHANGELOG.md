@@ -14,6 +14,14 @@ for security-relevant changes.
 
 ### Fixed
 
+- **The audit's saved findings list stays within its size limit** (ANTS-5085)
+  The list kept for the next "since last run" audit keeps the newest
+  findings first and is trimmed to its limit, as designed.
+
+- **The audit's rule-quality history no longer fills up after a few runs** (ANTS-5085)
+  Findings are counted per rule per day instead of stored one by one,
+  so the history stays small and its counts stay complete.
+
 - **The command-line audit stops a tool that prints runaway output instead of holding all of it in memory** (ANTS-5085)
   A tool printing more than 64 MiB is stopped and reported as
   output_too_large, and the audit report embeds a short excerpt of each
