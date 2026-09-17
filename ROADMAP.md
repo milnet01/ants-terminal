@@ -8160,6 +8160,14 @@ extends an existing item, that item carries it instead.
   (ANTS-5050 area), the plugin event rate limit, the per-sequence
   progress tab icon, and restoreSessions decompressing every tab in the
   constructor.
+  Progress (2026-09-17): the refreshTasksButton medium is already fixed
+  by ANTS-5050. The status timer calls ClaudeTaskListTracker::poll, whose
+  rescan parses only bytes appended since its cursor
+  (tests/features/claude_transcript_incremental_parse). No code change.
+  The restoreSessions low moved to ANTS-5225, parked by the user.
+  In progress: the plugin event rate limit, widened by the user to every
+  trigger action (tests/features/trigger_event_rate_limit), and the
+  per-sequence progress tab icon.
   **Layman:** Smaller main-window fixes: split panes that are never tidied up, slow exports and plugin event floods.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lane mainwindow-a).
@@ -10703,6 +10711,21 @@ extends an existing item, that item carries it instead.
   **Layman:** When typing is copied to other tabs, capital letters and Enter arrive as garbled codes, so a shell runs nonsense commands.
   Kind: fix.
   Source: user-report-2026-09-15 (answers typed in one Claude tab reached every tab).
+
+- 💭 [ANTS-5225] **restoreSessions unpacks every saved tab's history at startup, not when the tab is first shown.**
+  MainWindow::restoreSessions calls SessionManager::loadSession for
+  every saved tab before the window shows.
+  Parked by the user (2026-09-17). Measured that day in
+  ~/.local/share/ants-terminal/sessions: every session file was a few
+  kilobytes, so the startup cost is negligible on this machine.
+  A lazy restore is not a local change. The tab title, pinned title and
+  working directory live inside the compressed session data, and the
+  shell needs the directory before it starts. It would need a spec.
+  Reopen if a slow start is reported with large scrollback histories.
+  **Layman:** Ants reads every saved tab's history when it starts, even tabs you never open.
+  Kind: perf.
+  Source: code-quality-review-2026-09-11 perf pass (lane mainwindow-a), split from ANTS-5079.
+  Lanes: mainwindow, sessions.
 
 ## Memory-efficiency sweep (user request 2026-08-19)
 
