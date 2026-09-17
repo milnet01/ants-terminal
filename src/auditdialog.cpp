@@ -857,6 +857,28 @@ QString AuditDialog::suppressionPath() const {
     return m_projectPath + "/.audit_suppress";
 }
 
+namespace {
+
+// ANTS-5083 — the project controls audit_rules.json, .audit_suppress and the
+// .audit_cache files, and each is read whole on the GUI thread. Refuse one
+// past this size and treat it as absent. Generous: a baseline holds one
+// fingerprint per finding.
+constexpr qint64 kMaxAuditStateFileBytes = 16LL * 1024 * 1024;
+
+bool readAuditStateFile(const QString &path, QByteArray *out) {
+    QFile f(path);
+    if (!f.open(QIODevice::ReadOnly)) return false;
+    if (f.size() > kMaxAuditStateFileBytes) {
+        qWarning("audit: skipping %s — larger than %lld bytes",
+                 qPrintable(path), static_cast<long long>(kMaxAuditStateFileBytes));
+        return false;
+    }
+    *out = f.readAll();
+    return true;
+}
+
+}  // namespace
+
 // ---------------------------------------------------------------------------
 // User-defined rule loader — <project>/audit_rules.json
 // ---------------------------------------------------------------------------
@@ -877,10 +899,8 @@ QString AuditDialog::userRulesPath() const {
 
 int AuditDialog::loadUserRules() {
     m_skippedUntrustedRules = 0;
-    QFile f(userRulesPath());
-    if (!f.open(QIODevice::ReadOnly)) return 0;
-    const QByteArray rulesBytes = f.readAll();
-    f.close();
+    QByteArray rulesBytes;
+    if (!readAuditStateFile(userRulesPath(), &rulesBytes)) return 0;
     QJsonParseError err;
     const QJsonDocument doc = QJsonDocument::fromJson(rulesBytes, &err);
     if (err.error != QJsonParseError::NoError || !doc.isObject()) {
@@ -1310,10 +1330,9 @@ void AuditDialog::loadSuppressions() {
     m_learnedFpFingerprints = ants::auditfp::fingerprintSet(
         ants::auditfp::loadEntries(m_projectPath));
 
-    QFile f(suppressionPath());
-    if (!f.open(QIODevice::ReadOnly)) return;
-    const QStringList lines = QString::fromUtf8(f.readAll()).split('\n', Qt::SkipEmptyParts);
-    f.close();
+    QByteArray suppressBytes;
+    if (!readAuditStateFile(suppressionPath(), &suppressBytes)) return;
+    const QStringList lines = QString::fromUtf8(suppressBytes).split('\n', Qt::SkipEmptyParts);
     for (const QString &raw : lines) {
         const QString line = raw.trimmed();
         if (line.isEmpty() || line.startsWith('#')) continue;
@@ -1397,9 +1416,9 @@ void AuditDialog::saveSuppression(const QString &dedupKey,
     // Detect by peeking at the first non-comment line.
     bool needsConvert = false;
     QStringList legacyKeys;
-    if (f.exists() && f.open(QIODevice::ReadOnly)) {
-        const QStringList lines = QString::fromUtf8(f.readAll()).split('\n', Qt::SkipEmptyParts);
-        f.close();
+    QByteArray existingBytes;
+    if (readAuditStateFile(path, &existingBytes)) {   // ANTS-5083
+        const QStringList lines = QString::fromUtf8(existingBytes).split('\n', Qt::SkipEmptyParts);
         for (const QString &raw : lines) {
             const QString line = raw.trimmed();
             if (line.isEmpty() || line.startsWith('#')) continue;
@@ -1417,10 +1436,9 @@ void AuditDialog::saveSuppression(const QString &dedupKey,
         // Rewrite whole file: existing JSONL lines (if any) preserved +
         // legacy keys upgraded with a migration marker.
         QStringList rebuilt;
-        QFile rf(path);
-        if (rf.open(QIODevice::ReadOnly)) {
-            const QStringList lines = QString::fromUtf8(rf.readAll()).split('\n', Qt::SkipEmptyParts);
-            rf.close();
+        QByteArray rebuildBytes;
+        if (readAuditStateFile(path, &rebuildBytes)) {   // ANTS-5083
+            const QStringList lines = QString::fromUtf8(rebuildBytes).split('\n', Qt::SkipEmptyParts);
             for (const QString &raw : lines) {
                 const QString line = raw.trimmed();
                 if (line.isEmpty()) continue;
@@ -1618,10 +1636,9 @@ QString AuditDialog::trendPath() const {
 
 AuditDialog::TrendSnapshot AuditDialog::loadLastSnapshot() const {
     TrendSnapshot s;
-    QFile f(trendPath());
-    if (!f.open(QIODevice::ReadOnly)) return s;
-    const QJsonDocument doc = QJsonDocument::fromJson(f.readAll());
-    f.close();
+    QByteArray trendBytes;
+    if (!readAuditStateFile(trendPath(), &trendBytes)) return s;
+    const QJsonDocument doc = QJsonDocument::fromJson(trendBytes);
     if (!doc.isArray()) return s;
     const QJsonArray arr = doc.array();
     if (arr.isEmpty()) return s;
@@ -1642,11 +1659,9 @@ void AuditDialog::appendSnapshot(const TrendSnapshot &s) {
     // Ants instance appending its own snapshot (last-writer-wins drops one run).
     ConfigWriteLock lock(trendPath());
     QJsonArray arr;
-    QFile f(trendPath());
-    if (f.open(QIODevice::ReadOnly)) {
-        arr = QJsonDocument::fromJson(f.readAll()).array();
-        f.close();
-    }
+    QByteArray trendBytes;
+    if (readAuditStateFile(trendPath(), &trendBytes))
+        arr = QJsonDocument::fromJson(trendBytes).array();
     QJsonObject entry;
     entry["timestamp"] = s.timestamp;
     entry["total"]     = s.total;
@@ -1680,10 +1695,9 @@ QString AuditDialog::baselinePath() const {
 void AuditDialog::loadBaseline() {
     m_baselineFingerprints.clear();
     m_hasBaseline = false;
-    QFile f(baselinePath());
-    if (!f.open(QIODevice::ReadOnly)) return;
-    const QJsonDocument doc = QJsonDocument::fromJson(f.readAll());
-    f.close();
+    QByteArray baselineBytes;
+    if (!readAuditStateFile(baselinePath(), &baselineBytes)) return;
+    const QJsonDocument doc = QJsonDocument::fromJson(baselineBytes);
     if (!doc.isObject()) return;
     const QJsonArray arr = doc.object().value("fingerprints").toArray();
     for (const QJsonValue &v : arr) m_baselineFingerprints.insert(v.toString());

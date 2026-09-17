@@ -3198,6 +3198,8 @@ if(ANTS_TESTS)
                 # ANTS-1677 INV-5 — audit_self_test.sh and the
                 # audit_fixture_coverage check extract one non-empty id set.
                 tests/features/audit_fixture_readers/test_audit_fixture_readers.cpp
+                # ANTS-5083 — oversized audit project files are skipped.
+                tests/features/audit_state_file_caps/test_audit_state_file_caps.cpp
                 # ANTS-1259 — AuditDialog Debt Sweep tab (fix / defer / allow).
                 tests/features/debt_sweep_dialog/test_debt_sweep_dialog.cpp
                 tests/features/settings_profile_cancel_rollback/test_settings_profile_cancel_rollback.cpp
