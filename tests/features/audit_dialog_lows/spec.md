@@ -24,6 +24,12 @@ the commit fails.
 `pathSuffixMatches`, the same predicate `visibleSinceBaseline` uses
 (`tests/features/audit_dialog_v2` INV-11 checks its behaviour).
 
+**INV-7 — no process outlives its timeout on the stack (ANTS-5083).** The
+AuditDialog sources declare no `QProcess` on the stack. The filesystem-type
+probe and the git runner hand their process to `releaseProcess`, which
+deletes a finished process and leaves a running one to delete itself on
+`finished`.
+
 ## Rationale
 
 The ANTS-5084 performance pass found each of these. The detection walk

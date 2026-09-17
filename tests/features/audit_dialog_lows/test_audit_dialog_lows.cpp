@@ -1,6 +1,7 @@
 // Audit dialog detection walk, labels and exports — see spec.md.
 // ANTS-5084. Source-scrape of the AuditDialog sources.
 
+#include <QRegularExpression>
 #include <QString>
 
 #include <gtest/gtest.h>
@@ -72,4 +73,18 @@ TEST(AuditDialogLows, RecentFilesMatchAtSeparator) {
     ASSERT_FALSE(region.isEmpty()) << "handleCheckOutput recent filter not found";
     EXPECT_TRUE(region.contains(QStringLiteral("pathSuffixMatches(f.file, rf)")));
     EXPECT_FALSE(region.contains(QStringLiteral("f.file.endsWith(rf)")));
+}
+
+// INV-7
+TEST(AuditDialogLows, NoStackProcessOutlivesItsTimeout) {
+    const QString src = auditSource();
+    ASSERT_FALSE(src.isEmpty());
+    static const QRegularExpression stackProcess(QStringLiteral(R"(\n\s+QProcess \w+;)"));
+    const QRegularExpressionMatch m = stackProcess.match(src);
+    EXPECT_FALSE(m.hasMatch())
+        << "a stack QProcess waits for its child again on destruction: "
+        << m.captured(0).trimmed().toStdString();
+    // The definition, the stat probe's call and the git runner's deleter.
+    EXPECT_GE(src.count(QStringLiteral("releaseProcess")), 3)
+        << "the stat probe and the git runner no longer release their process";
 }

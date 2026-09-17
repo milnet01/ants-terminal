@@ -41,7 +41,7 @@ TEST(AuditScopeAndTriage, GitFailureIsReported) {
     EXPECT_TRUE(body.contains(QStringLiteral("m_recentScopeError = runGit(")));
     EXPECT_TRUE(body.contains(QStringLiteral("QStringLiteral(\"hash-object\")")))
         << "a repository without HEAD~N gets no diff at all";
-    EXPECT_TRUE(body.contains(QStringLiteral("p.kill()")))
+    EXPECT_TRUE(body.contains(QStringLiteral("p->kill()")))
         << "a timed-out git is left running";
 }
 

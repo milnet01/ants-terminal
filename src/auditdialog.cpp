@@ -125,6 +125,20 @@ const QSet<QString> kNonPosixFilesystems = {
     "9p",
 };
 
+// ANTS-5083 — ~QProcess kills a running child and waits for it again, and a
+// child stuck on a hung mount survives the kill. So a process that may still
+// be running is handed to its own finished signal rather than destroyed.
+namespace {
+void releaseProcess(QProcess *p) {
+    if (p->state() == QProcess::NotRunning) {
+        delete p;
+        return;
+    }
+    QObject::connect(p, &QProcess::finished, p, &QObject::deleteLater);
+    p->kill();
+}
+}  // namespace
+
 } // namespace auditdialogdetail
 
 // ---------------------------------------------------------------------------
@@ -199,10 +213,11 @@ AuditDialog::AuditDialog(const QString &projectPath,
     // "ntfs", "vfat"). Used by populateChecks() to conditionally skip
     // POSIX-only checks on filesystems that don't enforce them.
     {
-        QProcess st;
-        st.start("stat", {"-f", "-c", "%T", m_projectPath});
-        if (st.waitForFinished(2000) && st.exitCode() == 0)
-            m_projectFsType = QString::fromUtf8(st.readAllStandardOutput()).trimmed();
+        auto *st = new QProcess;
+        st->start("stat", {"-f", "-c", "%T", m_projectPath});
+        if (st->waitForFinished(2000) && st->exitCode() == 0)
+            m_projectFsType = QString::fromUtf8(st->readAllStandardOutput()).trimmed();
+        auditdialogdetail::releaseProcess(st);
     }
 
     loadBaseline();
@@ -449,7 +464,7 @@ QString AuditDialog::resolveProjectPath(const QString &maybeRelative) const {
     const QString candidate = QFileInfo(maybeRelative).isAbsolute()
         ? maybeRelative
         : (m_projectPath + QStringLiteral("/") + maybeRelative);
-    const QString canonCandidate = QFileInfo(candidate).canonicalFilePath();
+    QString canonCandidate = QFileInfo(candidate).canonicalFilePath();   // non-const: returned by move
     if (canonCandidate.isEmpty()) return {};  // file doesn't exist
     const QString canonProject = QFileInfo(m_projectPath).canonicalFilePath();
     if (canonProject.isEmpty()) return {};
@@ -470,7 +485,7 @@ bool AuditDialog::lineIsCode(const QString &absPath, int line) {
     // Scanning arbitrary files on audit is I/O-heavy. Cap to 2 MB so a
     // runaway check doesn't stall the dialog; larger files fall through
     // as "code" (the safe default that preserves findings).
-    if (f.size() > 2 * 1024 * 1024) return true;
+    if (f.size() > 2LL * 1024 * 1024) return true;
     const QByteArray all = f.readAll();
     f.close();
     // ANTS-2210 — the per-language comment/string lexer (ANTS-1270 / ANTS-1759)
@@ -494,7 +509,7 @@ void AuditDialog::dropFindingsInCommentsOrStrings(CheckResult &r) const {
         if (abs.isEmpty()) continue;  // traversal or non-existent: drop
         if (lineIsCode(abs, f.line)) kept.append(f);
     }
-    r.findings = kept;
+    r.findings = std::move(kept);
 }
 
 // ---------------------------------------------------------------------------
@@ -794,8 +809,12 @@ bool AuditDialog::applyCachedBlame(Finding &f) const {
 void AuditDialog::startQueuedBlame() {
     constexpr int kMaxBlameJobs = 4;
     constexpr int kBlameTimeoutMs = 30000;
-    while (m_blameInFlight < kMaxBlameJobs && !m_blameQueue.isEmpty()) {
-        const auto next = m_blameQueue.begin();
+    while (m_blameInFlight < kMaxBlameJobs) {
+        // ANTS-5217 — a const iterator checked against constEnd(). begin()
+        // detaches, and GCC then warned -Wnull-dereference on key() because it
+        // could not tie the node to the isEmpty() check.
+        const auto next = m_blameQueue.constBegin();
+        if (next == m_blameQueue.constEnd()) break;
         const QString file = next.key();
         QList<int> lines = next.value().values();
         m_blameQueue.erase(next);
@@ -2431,19 +2450,20 @@ void AuditDialog::computeRecentChangeSets(bool includeLines) {
     const auto runGit = [this](const QStringList &args, int timeoutMs,
                                QByteArray *out) -> QString {
         static constexpr qint64 kMaxGitOutputBytes = 64 * 1024 * 1024;
-        QProcess p;
-        p.setWorkingDirectory(m_projectPath);
-        p.start(QStringLiteral("git"), args);
-        if (!p.waitForFinished(timeoutMs)) {
-            if (p.error() == QProcess::FailedToStart)
+        const std::unique_ptr<QProcess, void (*)(QProcess *)> p(
+            new QProcess, auditdialogdetail::releaseProcess);   // ANTS-5083
+        p->setWorkingDirectory(m_projectPath);
+        p->start(QStringLiteral("git"), args);
+        if (!p->waitForFinished(timeoutMs)) {
+            if (p->error() == QProcess::FailedToStart)
                 return QStringLiteral("git could not start");
-            p.kill();
-            p.waitForFinished(1000);
+            p->kill();
+            p->waitForFinished(1000);
             return QStringLiteral("git %1 timed out").arg(args.first());
         }
-        if (p.exitStatus() != QProcess::NormalExit || p.exitCode() != 0)
+        if (p->exitStatus() != QProcess::NormalExit || p->exitCode() != 0)
             return QStringLiteral("git %1 failed").arg(args.first());
-        *out = p.readAllStandardOutput();
+        *out = p->readAllStandardOutput();
         if (out->size() > kMaxGitOutputBytes) {
             out->clear();
             return QStringLiteral("git %1 output too large").arg(args.first());
