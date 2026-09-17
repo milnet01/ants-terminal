@@ -14,6 +14,11 @@ for security-relevant changes.
 
 ### Fixed
 
+- **The audit window no longer freezes while it reads recent changes from git** (ANTS-5084)
+  Scoping an audit to recent changes, or switching on "Since baseline",
+  reads git history in the background, so the window and its terminals
+  keep responding on a large repository.
+
 - **The audit window skips an oversized rule pack, suppression list, baseline or trend file** (ANTS-5083)
   A project file too large to be real is treated as missing, so a
   cloned repository cannot stall the audit window with one.

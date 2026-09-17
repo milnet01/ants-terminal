@@ -8520,6 +8520,17 @@ extends an existing item, that item carries it instead.
   (tests/features/audit_scope_and_triage). Still open: git runs are
   synchronous on the GUI thread; filter debounce; SARIF URI encoding and
   uriBaseId; tr().
+  Progress (2026-09-17, 716e03e6): the GUI-thread git medium shipped.
+  readRecentChangeSets reads the sets with no dialog state, and
+  requestRecentChangeSets runs it with QThread::create, applies the
+  result on the GUI thread and runs every waiting continuation. While
+  git reads, the recent filters stand down. runAudit starts its checks
+  from the continuation; the pill re-renders from it. Test:
+  audit_recent_scope_async INV-1..5, red against a stub; full default
+  suite green.
+  Still open: filter debounce, SARIF URI encoding and uriBaseId. The
+  tr() low folds into ANTS-1080, per the 2026-09-15 decision on
+  ANTS-5082.
   **Layman:** Smaller audit-window fixes: a filter that can hide everything, AI triage that floods the server, and export glitches.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lane audit-dialog-b).
@@ -18245,6 +18256,12 @@ fixes don't address. Roadmapped here as their own design tasks.
   match list and no truncated or timeout signal, apparently under load.
   Next: reproduce under a loaded host (a build running) and check what
   rcRunRg returns when rg is slow or killed.
+  Data point (2026-09-17): a project-wide headline_only search for
+  computeRecentChangeSets took 5018 ms against its 5 s timeout and
+  returned truncated:true with three of seven matches. The same search
+  with timeout_sec 30 took 3063 ms and returned all seven. That one WAS
+  flagged, so a slow scan on this host is common after builds; the open
+  question is only why the earlier call came back unflagged.
   **Layman:** Searching the code for text containing a bracket can wrongly report that nothing was found.
   Kind: fix.
   Source: in-session-2026-09-17.
