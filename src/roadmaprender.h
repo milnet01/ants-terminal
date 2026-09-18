@@ -220,6 +220,17 @@ QString emojiFor(const QString &status);
 // that did (📋 / 🚧 only) would have archived work nobody has committed to.
 bool isOpen(const QString &status);
 
+// ANTS-4803 — one item in the `pass-headings` dialect: a `#### Pass N.M` block
+// with a Status keyword and the body's prose, and NONE of the bullet form's
+// trailers, which that format has no slot for.
+//
+// ANTS-5087 exported it for the read seam. Building a record for a
+// pass-headings project out of bulletText() produced an ants-v1 bullet the
+// project's file does not contain and never will — with `Kind:` / `Source:` /
+// `**Layman:**` lines invented from columns the format cannot carry — so the
+// store's records disagreed with the rendered file they are defined against.
+QString passBlockText(const RoadmapStore::ItemWrite &it);
+
 // nullopt is reserved for failures BEFORE the commit phase — SQL errors, a
 // render error, a path refusal — where there is genuinely nothing to report.
 // A gate failure and a partial commit both return an ENGAGED Outcome, because

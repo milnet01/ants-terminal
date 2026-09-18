@@ -365,6 +365,12 @@ QVector<BulletRecord> parseBulletLines(const QStringList &lines,
 // declaration in hand and shown to produce the same records. It cannot change
 // them — this text is RoadmapRender::bulletText()'s output, which is ants-v1,
 // so `gfmHere` is false and the branch the declaration governs never runs.
+// ANTS-5087 — one `#### Pass` block's record, the pass-headings sibling of
+// parseAntsV1Bullet() below and for the same caller: the store-built read seam,
+// which renders one item and parses it back. Engaged only when the block yields
+// exactly one record. The .cpp says why parseBullets() cannot do this job.
+std::optional<BulletRecord> parsePassHeadingBlock(const QStringList &lines);
+
 std::optional<BulletRecord> parseAntsV1Bullet(const QString &bulletText,
                                               const IdFormat &fmt = {});
 

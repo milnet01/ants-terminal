@@ -98,14 +98,46 @@ QStringList detectionPrefixOf(const QString &markdown) {
 // store and an emoji on the record. Copying any of the three fails INV-2 on
 // bullets this corpus actually contains.
 //
-// Appends nothing for a `dropped` item, and that is the whole of § 2.1.2's
-// exclusion: emojiFor() returns an empty string for `dropped` by design, so
-// bulletText() emits a head line with no status marker and parseAntsV1Bullet()
-// declines it exactly as a document walk would skip it.
+// Appends nothing for a `dropped` item, and that is § 2.1.2's exclusion. On
+// ants-v1 it falls out of the emission: emojiFor() returns an empty string for
+// `dropped` by design, so bulletText() emits a head line with no status marker
+// and parseAntsV1Bullet() declines it exactly as a document walk would skip it.
+// The pass-headings branch has to state it, for the reason given there.
+//
+// ANTS-5087 — and the rendered text is the DIALECT's. ANTS-4803 made
+// pass-headings store-served, and this function went on rendering every item as
+// an ants-v1 bullet and parsing it as one. For such a project every record was
+// then built from text the project's file does not contain and never will,
+// carrying `Kind:` / `Source:` / `**Layman:**` lines invented from columns the
+// format has no slot for, and `format` reading "ants-v1" — the parser's default
+// — for a roadmap that is nothing of the kind. § 2.1.1 defines a record as what
+// parseBullets() would assign if it parsed this item's RENDERED bullet, and for
+// this dialect the rendered bullet is a `#### Pass` block.
 void appendRecord(QVector<BulletRecord> &out, const RoadmapStore::ItemWrite &it,
                   const QString &heading, int level, const QString &slug,
-                  const RoadmapParse::IdFormat &fmt) {
-    auto rec = RoadmapParse::parseAntsV1Bullet(RoadmapRender::bulletText(it), fmt);
+                  const RoadmapParse::IdFormat &fmt, const QString &dialect) {
+    std::optional<BulletRecord> rec;
+    if (dialect == QLatin1String("pass-headings")) {
+        // The dropped exclusion, stated outright because this emission has no
+        // side effect to lean on: a pass block carries its Status keyword
+        // whatever the status, so it parses back cleanly where the ants-v1 head
+        // line would have lost its marker and been declined.
+        //
+        // DROPPED only, never the rest of the render's membership. An
+        // `internal` item stays a record here on purpose — INV-2 decides that,
+        // and its reason holds for every dialect: BulletRecord has no
+        // visibility field, so filtering on one would give roadmap_query a
+        // concept it has never had. The FILE excludes it; a query does not.
+        if (it.status == QLatin1String("dropped"))
+            return;
+        // Disengaged means the block did not read back as it was written,
+        // which is the same silence the ants-v1 branch keeps when its parse
+        // declines.
+        rec = RoadmapParse::parsePassHeadingBlock(
+            RoadmapRender::passBlockText(it).split(QLatin1Char('\n')));
+    } else {
+        rec = RoadmapParse::parseAntsV1Bullet(RoadmapRender::bulletText(it), fmt);
+    }
     if (!rec)
         return;
     rec->sectionHeading = heading;
@@ -126,7 +158,12 @@ void appendRecord(QVector<BulletRecord> &out, const RoadmapStore::ItemWrite &it,
     // defaulted-provenance rider and `kind` the unrecognised-value one, so the
     // field named a `Source:` line the render withheld and missed a `Kind:`
     // line it wrote.
-    rec->composedTrailers = RoadmapRender::trailerLines(it).keys();
+    //
+    // Empty on pass-headings, and that emptiness is the true answer rather than
+    // a missing one: that emission writes no trailer line at all, so there is
+    // nothing for the render to have composed.
+    if (dialect != QLatin1String("pass-headings"))
+        rec->composedTrailers = RoadmapRender::trailerLines(it).keys();
     // firstLine / lastLine stay 0: a store has no lines to number, and no walk
     // can invent them. INV-2's one declared field difference.
     out.append(*rec);
@@ -433,6 +470,15 @@ bulletsFromStore(RoadmapStore &store, qint64 projectId, bool includeArchive,
         return std::optional<QVector<BulletRecord>>{};
     };
 
+    // ANTS-5087 — the dialect decides how each item is RENDERED, and a record
+    // is defined against the rendered text (§ 2.1.1). Read once here, from the
+    // same project column the render's own Options::dialect is filled from.
+    // An unreadable row is not a refusal: an empty dialect takes the ants-v1
+    // branch, which is what every project took before ANTS-4803.
+    QString dialect;
+    if (const auto project = store.readProject(projectId, nullptr))
+        dialect = project->sourceFormat;
+
     // Step 0 — the item keys, for the ceiling gate and for the unfiled tail.
     // ItemRef carries a headline and four scalars rather than a body, which is
     // what makes the pre-read count cheap.
@@ -524,7 +570,7 @@ bulletsFromStore(RoadmapStore &store, qint64 projectId, bool includeArchive,
             const auto it = itemOf->constFind(e.itemPk);
             if (it == itemOf->constEnd())
                 continue;
-            appendRecord(out, *it, heading, level, slug, fmt);
+            appendRecord(out, *it, heading, level, slug, fmt, dialect);
         }
     }
 
@@ -539,7 +585,8 @@ bulletsFromStore(RoadmapStore &store, qint64 projectId, bool includeArchive,
                   return a.idFold.compare(b.idFold) < 0;
               });
     for (const RoadmapStore::ItemRef &ref : unfiled)
-        appendRecord(out, itemOf->value(ref.itemPk), QString(), 0, QString(), fmt);
+        appendRecord(out, itemOf->value(ref.itemPk), QString(), 0, QString(), fmt,
+                     dialect);
 
     return out;
 }

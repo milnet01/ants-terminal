@@ -50,6 +50,12 @@ bool isOpen(const QString &status) {
 
 namespace {
 
+// roadmap-data-model.md § 7.5's membership, for the FILE. Deliberately not
+// exported: the store-built read seam excludes a dropped item and keeps an
+// `internal` one, because BulletRecord has no visibility field and filtering on
+// one would give roadmap_query a concept it has never had (roadmap_read_seam
+// INV-2). The two answers differ on purpose, so one shared predicate would be
+// wrong for one of them.
 bool isRenderable(const RoadmapStore::ItemWrite &it) {
     return it.visibility != QLatin1String("internal") && it.status != QLatin1String("dropped");
 }
@@ -620,6 +626,15 @@ std::optional<Outcome> render(RoadmapStore &store, qint64 projectId,
         // "" live, "<M>-<N>" for an archive — so an archive that has a preamble
         // stores it and replays it here; `walkSource()` drops the root only
         // when its source put nothing in it, and that file lands on this line.
+        //
+        // ANTS-5230 — the marker is stamped on a pass-headings file too, where
+        // it is false: it says `ants-roadmap-format: 1`, and
+        // detectRoadmapFormat() returns ants-v1 the moment it sees one. The
+        // one-line guard (`!passHeadings &&`) is NOT applied here on purpose.
+        // Removing the marker exposes ANTS-5231, under which this dialect's
+        // Status line gains a copy on every render; the marker currently masks
+        // that, and INV-1's byte-stability passes because of it. The two are
+        // fixed together or the suite goes red. Measured 2026-09-18.
         QString text = blocks.join(QStringLiteral("\n\n"));
         if (!sawRoot || !hasMarkerInHead(text))
             text = formatMarker() + QStringLiteral("\n\n") + text;

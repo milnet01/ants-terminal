@@ -17,6 +17,7 @@
 #include "../../_support/expect.h"
 
 #include "passheadingwrite.h"
+#include "roadmapparse.h"
 #include "roadmapmigrate.h"
 #include "roadmapmigrateload.h"
 #include "roadmaprender.h"
@@ -165,6 +166,11 @@ TEST(RoadmapRenderPassHeadings, Inv1MigrateThenRenderIsByteStable) {
     const QString second =
         migrateThenRender(tmp, QStringLiteral("b"), first.toUtf8());
     ASSERT_FALSE(second.isEmpty()) << "second render produced nothing";
+    // ANTS-5231 — this passes only because the ants-v1 format marker is stamped
+    // on the published file. Remove that marker (ANTS-5230) and the two renders
+    // differ: the `- **Status**:` line gains a copy on every cycle. Measured
+    // 2026-09-18, first render 2 copies, second 3. Byte-stability is real here
+    // but it is resting on the marker, not on the render being an inverse.
     EXPECT_EQ(first, second)
         << "migrate->render is not byte-stable; the render is not the "
            "migration's inverse for this dialect";
@@ -248,4 +254,99 @@ TEST(RoadmapRenderPassHeadings, Inv4AntsV1StillRendersAsBullets) {
         << rendered.toStdString();
     EXPECT_FALSE(rendered.contains(QStringLiteral("#### Pass ")))
         << "the pass-headings emission leaked into the bullet dialect";
+}
+
+// ------------------------------------------------------------- ANTS-5087 ----
+//
+// ANTS-3793 § 2.1.1 defines a store-built record as what parseBullets() would
+// assign if it parsed this item's RENDERED bullet. INV-2 above proved the seam
+// SERVES this dialect from the store; it did not check what the records say.
+// They were built by rendering every item as an ants-v1 bullet and parsing it
+// as one, whatever the dialect — so for a pass-headings project each record
+// came from text the file does not contain and never will: `format` reading
+// "ants-v1", and a body carrying Kind / Source / Layman lines invented from
+// columns this format has no slot for.
+//
+// The assertion is the definition, run both ways: parse the file the render
+// actually wrote, and compare it with what the store hands back.
+TEST(RoadmapRenderPassHeadings, Ants5087StoreRecordsMatchTheRenderedFile) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QDir dir(tmp.path());
+    const QString root = dir.filePath(QStringLiteral("p"));
+    ASSERT_TRUE(QDir().mkpath(root));
+    ASSERT_TRUE(writeFile(root + QStringLiteral("/ROADMAP.md"), QByteArray(kSeed)));
+
+    auto store = openStore(dir.filePath(QStringLiteral("p-store.sqlite")));
+    ASSERT_TRUE(store);
+    QString err;
+    const auto disc = RoadmapMigrate::findRoadmaps(root, &err);
+    ASSERT_TRUE(disc) << err.toStdString();
+    const auto plan = RoadmapMigrate::planFrom(
+        *disc, QStringLiteral("Demo"), QStringLiteral("demo"));
+    RoadmapMigrateLoad::Options lopts;
+    lopts.changedAt   = QStringLiteral("2026-09-18T10:00:00Z");
+    lopts.projectRoot = root;
+    const auto loaded = RoadmapMigrateLoad::load(*store, plan, lopts);
+    ASSERT_TRUE(loaded.ok) << loaded.error.toStdString();
+
+    // Publish, so the file below is the render's own text rather than the seed.
+    RoadmapRender::Options ropts;
+    ropts.liveRoadmapPath = QStringLiteral("ROADMAP.md");
+    ropts.dialect         = QStringLiteral("pass-headings");
+    const auto outcome =
+        RoadmapRender::render(*store, loaded.projectId, root, ropts, &err);
+    ASSERT_TRUE(outcome) << err.toStdString();
+
+    QString published = readAll(root + QStringLiteral("/ROADMAP.md"));
+    ASSERT_FALSE(published.isEmpty());
+
+    // ANTS-5230 — the render stamps `ants-roadmap-format: 1` on this file even
+    // though it is not in that dialect, and detectRoadmapFormat() returns
+    // ants-v1 the moment it sees one. Parsing the file as published therefore
+    // yields ZERO records, which would make this case fail for a reason that is
+    // not its own. The marker line is dropped here so the comparison below is
+    // about the records; the lie itself is ANTS-5230's to fix, and it cannot be
+    // fixed alone (see the note on INV-1 above).
+    {
+        QStringList ls = published.split(QLatin1Char('\n'));
+        while (!ls.isEmpty()
+               && (ls.first().contains(QLatin1String("ants-roadmap-format"))
+                   || ls.first().trimmed().isEmpty()))
+            ls.removeFirst();
+        published = ls.join(QLatin1Char('\n'));
+    }
+
+    const QVector<RoadmapParse::BulletRecord> fromFile =
+        RoadmapParse::parseBullets(published, {});
+    ASSERT_FALSE(fromFile.isEmpty()) << "the published file parsed to nothing:\n"
+                                     << published.left(600).toStdString();
+    ASSERT_EQ(fromFile.first().format, QStringLiteral("pass-headings"))
+        << "precondition: the file really is in this dialect";
+
+    RoadmapSource::ReadError why = RoadmapSource::ReadError::None;
+    const auto fromStore = RoadmapSource::bulletsFromStore(
+        *store, loaded.projectId, /*includeArchive=*/false, &why, &err);
+    ASSERT_TRUE(fromStore) << err.toStdString();
+
+    ASSERT_EQ(fromStore->size(), fromFile.size())
+        << "the store and the file disagree about how many bullets there are";
+
+    for (int i = 0; i < fromFile.size(); ++i) {
+        const RoadmapParse::BulletRecord &f = fromFile.at(i);
+        const RoadmapParse::BulletRecord &s = fromStore->at(i);
+        EXPECT_EQ(s.format, f.format)
+            << "record " << i << " reports the wrong dialect";
+        EXPECT_EQ(s.id, f.id)              << "record " << i;
+        EXPECT_EQ(s.status, f.status)      << "record " << i;
+        EXPECT_EQ(s.headline, f.headline)  << "record " << i;
+        // The body is where the invented trailers showed up.
+        EXPECT_EQ(s.body, f.body)
+            << "record " << i << " body differs from the published block:\n"
+            << "store: " << s.body.toStdString() << "\n"
+            << "file:  " << f.body.toStdString();
+        EXPECT_TRUE(s.composedTrailers.isEmpty())
+            << "record " << i << " claims a composed trailer line, but this "
+               "dialect writes none";
+    }
 }

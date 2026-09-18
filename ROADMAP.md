@@ -10913,6 +10913,77 @@ extends an existing item, that item carries it instead.
   Source: in-session-2026-09-18 (found while fixing ANTS-5087's allocator floor).
   Lanes: roadmap.
 
+- 📋 [ANTS-5230] **A rendered pass-headings roadmap is stamped with the ants-v1 format marker, so nothing can re-detect its dialect.**
+  The render prepends `ants-roadmap-format: 1` to any file whose head
+  lacks it, whatever the dialect. detectRoadmapFormat() returns ants-v1 the
+  moment it sees that marker, before examining a bullet, and the ants-v1
+  grammar finds nothing in `#### Pass` headings.
+
+  Measured 2026-09-18: a rendered pass-headings roadmap parsed back to ZERO
+  records. Nothing caught it because the dialect's own round trip never
+  re-detects — the migration is told the format and the render is handed
+  Options::dialect — so both skip the detector the marker lies to.
+
+  The fix is one guard in roadmaprender.cpp (`!passHeadings &&` on the
+  marker line), and it CANNOT ship alone: removing the marker exposes
+  ANTS-5231, and RoadmapRenderPassHeadings INV-1 goes red. Fix the pair.
+
+  The read-seam test added under ANTS-5087 works around this by dropping the
+  marker line before it parses, and says so.
+  **Layman:** A roadmap written in the pass-heading style gets a label saying it is the other style, so tools that check the label read the file as empty.
+  Kind: fix.
+  Source: in-session-2026-09-18 (measured while fixing ANTS-5087).
+  Lanes: roadmap.
+
+- 📋 [ANTS-5231] **Each render of a pass-headings roadmap adds another copy of every Status line, without bound.**
+  Measured 2026-09-18 on the roadmap_render_pass_headings seed. The seed
+  carries one `- **Status**: done` line per block. The first render emits
+  two. Migrating that output and rendering again emits three. It compounds
+  by one copy per cycle and has no fixed point.
+
+  The cause is that the migration stores the Status line as part of the
+  item's body while the render emits a Status line of its own from the
+  status column, so each trip adds the render's copy to a body that already
+  has the previous one.
+
+  INV-1 (migrate-then-render is byte-stable) does NOT catch it, and that is
+  the second half of the defect: the ants-v1 marker ANTS-5230 stamps on the
+  file suppresses the second migration's detection, and the case passes for
+  that reason rather than because the render is an inverse. Remove the
+  marker and INV-1 goes red immediately.
+
+  The fix is a decision: either the migration keeps the Status line out of
+  the stored body, or the render omits its own line when the body already
+  declares one. Whichever is chosen, INV-1 needs a case that would fail on a
+  compounding duplicate — byte-stability alone cannot see one that reaches a
+  fixed point.
+  **Layman:** Every time a pass-style roadmap is written out, each item's status line is duplicated again, so the file grows a little more each time.
+  Kind: fix.
+  Source: in-session-2026-09-18 (measured while fixing ANTS-5087).
+  Lanes: roadmap.
+
+- 📋 [ANTS-5232] **Accept the greyed-out suggested prompt with a key, the way Konsole accepts its inline suggestion.**
+  Konsole shows an inline suggestion as dimmed text at the cursor and accepts
+  it on a keypress. Claude Code frequently prints a suggested prompt in the
+  same dimmed style, and today it can only be retyped.
+
+  Wanted: the same accept gesture in Ants, for the suggestion Claude Code
+  renders, so the visible text becomes the input.
+
+  Open questions before implementing. Which key accepts, and how it avoids
+  colliding with Claude Code's own bindings and with a shell that has its own
+  suggestion (fish, zsh-autosuggestions). How Ants recognises the suggestion
+  in the first place: it arrives as styled terminal output, not as a control
+  message, so it is either detected from the rendered cells or asked for over
+  the Claude integration. Whether it must be off by default.
+
+  Filed 2026-09-18 on a user request, with a screenshot of the case; not yet
+  investigated.
+  **Layman:** When Claude Code shows a faded suggested message at the prompt, one key should accept it instead of retyping it.
+  Kind: feature.
+  Source: user-request-2026-09-18.
+  Lanes: chrome.
+
 ## Memory-efficiency sweep (user request 2026-08-19)
 
 The speed sweeps above ask how fast Ants is. This one asks how much it costs to

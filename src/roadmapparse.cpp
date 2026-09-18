@@ -1550,6 +1550,24 @@ void fillBulletRecord(BulletRecord &rec, const QString &head, const QString &bod
 }
 }  // namespace
 
+// ANTS-5087 — ONE `#### Pass` block, for the store-built read seam.
+//
+// It cannot go through parseBullets(): detectRoadmapFormat() calls a document
+// pass-headings only on two Pass headings AND two Status markers, the 2+2
+// threshold that keeps a fenced example from being read as the format. A single
+// block carries one of each, so parseBullets() would classify it ants-v1 and
+// return whatever the bullet grammar made of a heading.
+//
+// Exactly one record, or none. A block that yields zero — or more than one —
+// did not read back as it was written, which is the only answer a caller
+// rendering one item can use.
+std::optional<BulletRecord> parsePassHeadingBlock(const QStringList &lines) {
+    const QVector<BulletRecord> recs = parsePassHeadingBullets(lines);
+    if (recs.size() != 1)
+        return std::nullopt;
+    return recs.first();
+}
+
 ReviewKindMismatch reviewKindMismatch(const QString &kind,
                                       const QString &source) {
     ReviewKindMismatch out;
