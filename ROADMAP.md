@@ -8720,6 +8720,23 @@ extends an existing item, that item carries it instead.
   Decided (2026-09-14, user): the export importer reads every earlier
   format version and upgrades the data as it reads it, so a schema bump
   never makes an older export unreadable. Settled before the first bump.
+  Progress (2026-09-18): four more findings shipped. commitAndRender runs the
+  pre-image render BEFORE begin(), so the write transaction spans the validating
+  render only as ANTS-3809 section 4 says, and the render reads every item in one
+  readItems() query instead of N+1, moving the rows into itemOf so the peak that
+  section costs is unchanged (roadmap_write_half Ants5087 x2). A systemically
+  failing flock gets kSystemicAttempts and falls through to the rename lock
+  instead of spending the whole 5 s contention budget, twice per fold-in on the
+  GUI thread (Ants5087SourceGrep). RoadmapRender::trailerLines() is now the one
+  owner of the five trailer-emission decisions: the read seam asked the renderer
+  instead of keeping its own copy, which had drifted on kind and source, so
+  composed_trailers could name a `Source:` line the render withheld and miss a
+  `Kind:` line it wrote (new suite RoadmapComposedTrailers, four cases).
+  RoadmapFoldIn::allocateIds floors to the store as well as the corpus files,
+  which is ANTS-4493's defect one allocator further out; the rule moved onto
+  RoadmapStore::allocationFloor rather than being copied a third time
+  (roadmap_alloc_store_floor Ants5087 x2). Still open: store-built records for a
+  pass-headings project say ants-v1 and carry the wrong body; the lows.
   **Layman:** Roadmap-engine fixes: writes that hold a lock too long, a safety check that never fires, and a restore that can mislink items.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lane roadmap-parse-render).
@@ -10868,6 +10885,33 @@ extends an existing item, that item carries it instead.
   Kind: investigate.
   Source: code-quality-review-2026-09-11 perf pass (lane audit-engine), split from ANTS-5085.
   Lanes: audit.
+
+- 📋 [ANTS-5229] **A GUI fold-in on a migrated project writes bullets the store never imported, and the next roadmap write refuses.**
+  RoadmapFoldIn::insertBlock splices a fold-in subsection straight into the
+  roadmap file. On a MIGRATED project that file is a rendered output of the
+  store, so those bullets exist in the file and in no store row.
+
+  commitAndRender's step 4b then refuses. ANTS-4141's divergence guard reads the
+  ids of every file the render owns and returns WouldDrop for any id the store
+  has never imported, with "Nothing was written and the store is rolled back".
+  So one press of a fold-in button wedges every roadmap_log write on that project
+  until someone re-migrates.
+
+  Mechanism read in source 2026-09-18, not reproduced: insertBlock
+  (roadmapfoldin.cpp) writes markdown unconditionally, and the guard in
+  commitAndRender (roadmapwrite.cpp) refuses on fileIds() it cannot match. The
+  callers are AuditDialog, AuditDialog's debt sweep, ReviewDialogBase and the
+  review and test-audit fold-in verbs.
+
+  ANTS-5087 gave that allocator the store's id floor, which stops it REISSUING a
+  live id. This is the other half and is a design question rather than a floor:
+  on a migrated project the fold-in should write through the store (the same
+  write sequence roadmap_log uses) rather than editing a generated file. Needs a
+  decision before implementation.
+  **Layman:** Folding audit or review findings into the roadmap from a window can jam every later roadmap edit on a project whose roadmap lives in the database.
+  Kind: fix.
+  Source: in-session-2026-09-18 (found while fixing ANTS-5087's allocator floor).
+  Lanes: roadmap.
 
 ## Memory-efficiency sweep (user request 2026-08-19)
 
