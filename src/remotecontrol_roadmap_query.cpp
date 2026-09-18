@@ -869,15 +869,14 @@ std::optional<qint64> rcdetail::rlStoreItemPk(RoadmapStore &store, qint64 projec
 //
 // The un-migrated markdown path still floors to the corpus, and must: with no
 // project row there is no column to ask.
+//
+// ANTS-5087 — the two-column rule itself now lives on the store, because
+// RoadmapFoldIn::allocateIds needs the same floor and cannot see this file.
+// This stays as the name its callers already use.
 qint64 rcdetail::rlStoreIdHighWater(RoadmapStore &store, qint64 projectId,
                                  const QString &prefix) {
-    qint64 floor = 0;
     QString ignored;
-    if (const auto hw = store.idHighWater(projectId, prefix, &ignored))
-        floor = std::max(floor, *hw);
-    if (const auto mx = store.maxAllocatedId(projectId, prefix, &ignored))
-        floor = std::max(floor, *mx);
-    return floor;
+    return store.allocationFloor(projectId, prefix, &ignored);
 }
 
 // § 2.3 — the prefix idHighWater() is keyed on. idPrefixFor() takes the place

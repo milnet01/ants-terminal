@@ -10,6 +10,7 @@
 #include "../../_support/xdg_guard.h"
 
 #include "remotecontrol.h"
+#include "roadmapfoldin.h"
 #include "roadmapmigrate.h"
 #include "roadmapmigrateload.h"
 #include "roadmapstore.h"
@@ -426,4 +427,52 @@ TEST(RoadmapAllocStoreFloor, Inv6AppendBatchFloorsToTheStoreFromASubdirectory) {
     EXPECT_EQ(ids.at(0).toString(), QStringLiteral("DEMO-0004"))
         << "the store floor was looked up by caller_cwd, matched no project "
            "row, and did not apply";
+}
+
+// ------------------------------------------------------------- ANTS-5087 ----
+//
+// The SAME class, one allocator further out. RoadmapFoldIn::allocateIds is the
+// fold-in allocator — AuditDialog, ReviewDialogBase, the review and test-audit
+// fold-ins all reach it — and it floored to corpusHighWater alone, which reads
+// files. Those files are a rendered OUTPUT of the store on a migrated project,
+// and the render is lossy in membership by design, so an id can be held in the
+// store and appear in no file this scan reads. ANTS-4493 gave roadmap_log's
+// markdown path the store floor; this allocator never got it.
+
+TEST(RoadmapAllocStoreFloor, Ants5087FoldInAllocatorFloorsToTheStore) {
+    ants_test::XdgGuard guard;
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString root = seedProject(guard, tmp);
+    ASSERT_FALSE(root.isEmpty());
+
+    qint64 allocated = 0;
+    ASSERT_TRUE(migrate(root, &allocated));
+    ASSERT_EQ(allocated, 2)
+        << "the fixture's two id-less bullets must be synthesised, or this case "
+           "has no stored id to collide with";
+
+    const QList<int> ids = RoadmapFoldIn::allocateIds(root, 1);
+    ASSERT_EQ(ids.size(), 1) << "allocation failed outright";
+    // Same arithmetic as INV-1: the file declares DEMO-0001 only, the migration
+    // gave DEMO-0002 and DEMO-0003 to the two id-less bullets, and those two
+    // live in the store and in no file.
+    EXPECT_EQ(ids.first(), 4)
+        << "the fold-in allocator reissued an id the store already holds";
+}
+
+// The floor is additive here too. A project with no store row must allocate
+// exactly as it did before, or every un-migrated project's numbering moves.
+TEST(RoadmapAllocStoreFloor, Ants5087FoldInUnmigratedAllocatesUnchanged) {
+    ants_test::XdgGuard guard;
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString root = seedProject(guard, tmp);
+    ASSERT_FALSE(root.isEmpty());
+
+    const QList<int> ids = RoadmapFoldIn::allocateIds(root, 2);
+    ASSERT_EQ(ids.size(), 2);
+    EXPECT_EQ(ids.first(), 2)
+        << "with no store row the file's high-water is the only floor";
+    EXPECT_EQ(ids.last(), 3);
 }

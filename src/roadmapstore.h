@@ -934,6 +934,21 @@ public:
     std::optional<qint64> maxAllocatedId(qint64 projectId, const QString &prefix,
                                          QString *error = nullptr) const;
 
+    // The floor an allocation must not issue at or below: BOTH columns above,
+    // because neither alone is complete. idHighWater() is the allocator's own
+    // counter and remembers an id whose item was later deleted, but migration
+    // never writes that row; maxAllocatedId() reads the ids straight off the
+    // items. nullopt from either is the ordinary state of a project that has
+    // not reached that half yet, so this returns 0 rather than refusing.
+    //
+    // ANTS-5087 — a member, and not a helper beside its first caller, because
+    // it has two: the roadmap_log allocator and RoadmapFoldIn::allocateIds,
+    // which reaches it from a library that cannot see RemoteControl's
+    // internals. Two copies of a two-column rule is how the composed-trailer
+    // predicates drifted.
+    qint64 allocationFloor(qint64 projectId, const QString &prefix,
+                           QString *error = nullptr) const;
+
     // § 2.9's seq continuation: appendHistory() takes `seq` from its caller, so
     // the caller needs the current maximum for this (item, stamp). Absent rows
     // ⇒ nullopt, not an error — and the first row of a stamp is seq 0.

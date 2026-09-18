@@ -1,6 +1,8 @@
 #include "roadmapfoldin.h"
 
 #include "markdownscan.h"
+#include "roadmapsource.h"   // ANTS-5087 — the migrated-project dispatch
+#include "roadmapstore.h"
 
 #include <QDir>
 #include <QFile>
@@ -303,7 +305,64 @@ qint64 maxDeclaredId(const QString &text, const QString &prefix) {
     return maxN;
 }
 
-qint64 corpusHighWater(const QString &projectPath, const QString &prefix) {
+namespace {
+
+// ANTS-5087 — the store's allocation floor for this project, or 0 when there
+// is nothing to ask. See the call site in allocateIds for why a file scan alone
+// is not enough on a migrated project.
+//
+// Read-only and short-lived: it opens the machine store, asks two columns and
+// closes. It takes no write transaction, so it cannot contend with the roadmap
+// busy guard ANTS-5086 added around migration. `storeFor` stats defaultPath
+// first, so on a machine with no store this costs one stat.
+//
+// The question is readProjectByRoot() — does the store hold a row for this
+// root — and NOT migratedProject(), which asks something else: whether this
+// project is SERVED from the store. A project migrated but served markdown
+// (any dialect but ants-v1) answers no to the second and still holds every id
+// its migration synthesised. That is the exact project ANTS-4493 was reported
+// against, so asking the serving question here would miss the reported case.
+//
+// `prefix` is the one the corpus scan already resolved, so the two floors are
+// keyed alike and the file is read once. Empty falls back to the store's own
+// id_prefix row — a fresh clone whose file shows no ids still must not reissue.
+//
+// Every failure is a 0 rather than a refusal, deliberately. This is a FLOOR: a
+// floor that cannot be read leaves the corpus scan's answer standing, which is
+// the pre-ANTS-5087 behaviour and never worse than it. Refusing here would
+// break allocation on a project that has never been migrated.
+qint64 storeAllocationFloor(const QString &projectPath, const QString &prefix) {
+    const QString canon = QFileInfo(projectPath).canonicalFilePath();
+    if (canon.isEmpty())
+        return 0;
+
+    RoadmapSource::ReadError why = RoadmapSource::ReadError::None;
+    QString err;
+    auto store = RoadmapSource::storeFor(RoadmapStore::defaultPath(), &why, &err);
+    if (!store)
+        return 0;   // no store on this machine — the files are the corpus
+
+    // readProjectByRoot takes an ALREADY-canonical path and matches nothing on
+    // an empty one, which is why the canonicalisation above is checked.
+    const auto row = store->readProjectByRoot(canon, &err);
+    if (!row)
+        return 0;   // never migrated
+
+    QString pfx = prefix;
+    if (pfx.isEmpty()) {
+        const auto stored = store->idPrefixFor(row->projectId, &err);
+        if (!stored || stored->isEmpty())
+            return 0;
+        pfx = *stored;
+    }
+    return store->allocationFloor(row->projectId, pfx, &err);
+}
+
+}  // namespace
+
+qint64 corpusHighWater(const QString &projectPath, const QString &prefix,
+                       QString *usedPrefix) {
+    if (usedPrefix) usedPrefix->clear();
     const QString root = QFileInfo(projectPath).canonicalFilePath();
     if (root.isEmpty()) return 0;
 
@@ -324,6 +383,9 @@ qint64 corpusHighWater(const QString &projectPath, const QString &prefix) {
         pfx = sniffPrefixFromText(roadmap, QString());
         if (pfx.isEmpty()) return 0;  // no counter-style ids anywhere
     }
+    // ANTS-5087 — report it, so a caller needing the SAME prefix for a second
+    // floor does not re-read and re-sniff this file.
+    if (usedPrefix) *usedPrefix = pfx;
 
     // Max numeric suffix of `pfx-NNNN` across the corpus, counting only the
     // lines that DECLARE an id (ANTS-4631 — see maxDeclaredId).
@@ -481,8 +543,24 @@ QList<int> allocateIds(const QString &projectPath, int n) {
     // scans ROADMAP + CHANGELOG + docs/roadmap/*.md, so it also respects ids
     // that have already migrated out of ROADMAP.md. Sniffs the project
     // prefix itself, so callers need not thread one through.
+    QString corpusPrefix;
     current = static_cast<int>(
-        qMax<qint64>(current, corpusHighWater(projectPath)));
+        qMax<qint64>(current, corpusHighWater(projectPath, QString(), &corpusPrefix)));
+
+    // ANTS-5087 — and on a MIGRATED project, to the store as well. Those files
+    // are a rendered OUTPUT of the store and the render is lossy in membership
+    // by design (roadmap-data-model.md § 7.5 excludes `internal` and `dropped`),
+    // so an id can be held in the store and appear in no file this scan reads.
+    // The allocator's own counter also remembers an id whose item was later
+    // deleted, which no file records at all. Either way the text scan reports a
+    // high-water below the store's and the next fold-in reissues a live id.
+    //
+    // 0 on every other path, and each of them is an ordinary state rather than
+    // a failure: no store on this machine, a project that was never migrated,
+    // or one with no id_prefix row yet. A project whose ids the store does not
+    // know is exactly the project whose files ARE the corpus.
+    current = static_cast<int>(
+        qMax<qint64>(current, storeAllocationFloor(projectPath, corpusPrefix)));
 
     QList<int> ids;
     ids.reserve(n);

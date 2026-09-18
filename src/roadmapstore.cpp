@@ -2018,6 +2018,16 @@ RoadmapStore::ItemWrite itemFromRow(const QSqlQuery &q) {
 }
 } // namespace
 
+qint64 RoadmapStore::allocationFloor(qint64 projectId, const QString &prefix,
+                                     QString *error) const {
+    qint64 floor = 0;
+    if (const auto hw = idHighWater(projectId, prefix, error))
+        floor = std::max(floor, *hw);
+    if (const auto mx = maxAllocatedId(projectId, prefix, error))
+        floor = std::max(floor, *mx);
+    return floor;
+}
+
 std::optional<RoadmapStore::ItemWrite> RoadmapStore::readItem(qint64 itemPk,
                                                               QString *error) const {
     QSqlQuery q(const_cast<QSqlDatabase &>(m_db));

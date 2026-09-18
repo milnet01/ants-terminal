@@ -89,8 +89,14 @@ qint64 maxDeclaredId(const QString &text, const QString &prefix);
 // counter-style prefix is sniffed from ROADMAP.md; returns 0 when nothing
 // matches (a truly greenfield roadmap). projectPath is canonicalised;
 // missing corpus files are skipped. Read-only.
+//
+// ANTS-5087 — `usedPrefix`, when given, receives the prefix this scan actually
+// keyed on, sniffed or passed. allocateIds needs the SAME prefix for its second
+// floor (the store's), and without this it would re-read and re-sniff a file
+// this call has already read.
 qint64 corpusHighWater(const QString &projectPath,
-                       const QString &prefix = {});
+                       const QString &prefix = {},
+                       QString *usedPrefix = nullptr);
 
 // ANTS-4387 — which of `wanted` appear in a ROTATED archive under
 // <projectPath>/docs/roadmap/, mapped id → the archive's project-relative
