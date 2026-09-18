@@ -213,8 +213,13 @@ Required pieces:
     `MarkdownScan::codeSpans()`; captured values are sliced from the
     unmasked text, so a value that itself carries backticks is stored
     verbatim (ANTS-4504, `src/roadmapparse.cpp`). A backtick run with no
-    equal-length partner is literal text and masks nothing. A key on a
-    *fenced* line is still read — that gap is known and unmeasured.
+    equal-length partner is literal text and masks nothing. **A key on a
+    *fenced* line declares nothing either** (ANTS-4526): a fenced block is a
+    quoted example, and its lines are blanked by the same mask, through
+    `MarkdownScan::fenceMask()`. Tilde fences count — they carry no backtick,
+    so the mask tests for both characters. The measurement that gated this was
+    taken across every body in the machine-global store: no bullet declared a
+    trailer key only on a fenced line, so no stored value changed.
   - **Where a bullet carries more than one match, the last wins** —
     that is the one the render authored, and taking the first would let
     stale prose overwrite the canonical value on every regeneration.

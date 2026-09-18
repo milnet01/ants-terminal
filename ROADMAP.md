@@ -8737,6 +8737,43 @@ extends an existing item, that item carries it instead.
   RoadmapStore::allocationFloor rather than being copied a third time
   (roadmap_alloc_store_floor Ants5087 x2). Still open: store-built records for a
   pass-headings project say ants-v1 and carry the wrong body; the lows.
+  Progress (2026-09-18, second batch): the last medium and four lows.
+
+  Store-built records are rendered in the project's own dialect. ANTS-4803 made
+  pass-headings store-served and the read seam went on rendering ants-v1 bullets
+  and parsing them back as such, so every record carried invented trailer lines
+  and a format reading ants-v1. appendRecord now renders the dialect's own text
+  and parses it with parsePassHeadingBlock, a new export (parseBullets cannot
+  route one block: the detector needs two Pass headings AND two Status markers).
+  Dropped is excluded outright on that branch; internal is NOT, which
+  roadmap_read_seam INV-2 decides and caught when I gated on the render's whole
+  membership rule (RoadmapRenderPassHeadings Ants5087).
+
+  Lows done: a dialect the store could not be READ for is refused instead of
+  published as ants-v1; the discarded-text directory is bounded at 200 backups,
+  oldest first; the parse memo is releasable and the dispatch worker drops it
+  between jobs; a corrupt legend is refused instead of silently dropped from the
+  published file; an abandoned rename lock is stolen after 120 s, renamed aside
+  rather than unlinked so two stealers cannot both win. Docs: roadmap-format
+  3.5's fenced-key claim said a key on a fenced line is still read, which
+  ANTS-4526 made false; ANTS-3809 2.1's Result enum and step table were missing
+  WouldDrop.
+
+  NOT done, deliberately. archivedIds' per-query re-read: it already reads each
+  archive once per CALL, so the only fix is a cross-call cache, and this
+  project's archives are about 12 KB on a path that runs only when a query names
+  ids the live roadmap lacks — the invalidation risk and retained text buy
+  nothing. Two of the four stale-document references could not be resolved:
+  roadmapsource.h carries no table, and "INV-8's marker repair" matches no text
+  under docs/ or src/. Reviewer's specifics needed, or drop them.
+
+  Filed while working: ANTS-5229 (a GUI fold-in on a migrated project writes
+  bullets the store never imported, and the next roadmap write refuses),
+  ANTS-5230 (a rendered pass-headings file is stamped with the ants-v1 format
+  marker, so it re-detects as ants-v1 and parses to zero records) and ANTS-5231
+  (each render of a pass-headings roadmap adds another copy of every Status
+  line, compounding). 5230 and 5231 must be fixed together: the marker masks the
+  duplication, and INV-1's byte-stability currently passes because of it.
   **Layman:** Roadmap-engine fixes: writes that hold a lock too long, a safety check that never fires, and a restore that can mislink items.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lane roadmap-parse-render).

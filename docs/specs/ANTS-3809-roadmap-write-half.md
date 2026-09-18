@@ -129,14 +129,18 @@ one.**
 // write it differently.
 namespace RoadmapWrite {
     // Every FAILING value below reaches an MCP envelope, so each names a `code`
-    // (§ 7 files them): render_gate_unmet, render_failed, store_failed, and
-    // the taxonomy's existing write_failed. A caller must be able to branch on
-    // `code` alone (`mcp-error-codes.md`), and all four failing
-    // values have genuinely different remedies — fill in the missing Layman lines, fix the
+    // (§ 7 files them): render_gate_unmet, render_would_drop, render_failed,
+    // store_failed, and the taxonomy's existing write_failed. A caller must be
+    // able to branch on `code` alone (`mcp-error-codes.md`), and all five failing
+    // values have genuinely different remedies — fill in the missing Layman lines,
+    // import what the store is missing, fix the
     // store's contents, fix the store file, re-run the render.
     enum class Result {
         Ok,
         GateUnmet,     // the render's INV-5 gate  → `render_gate_unmet`
+        // ANTS-4141's divergence guard, added after this section was first
+        // written and recorded here by ANTS-5087.
+        WouldDrop,     //                          → `render_would_drop`
         RenderFailed,  // the render could not express the mutated store
                        //                          → `render_failed`
         StoreFailed,   // begin/commit/rollback, or the mutation itself, failed
@@ -189,6 +193,7 @@ failures:
 | 2. `mutate(error)` fails | `rollback()`, `StoreFailed`. |
 | 3. `render(…, {liveRoadmapPath, dryRun = true})` → `nullopt` | `rollback()`, `RenderFailed`. |
 | 4. …engaged with a non-empty `gateFailures` | `rollback()`, `GateUnmet`. |
+| 4b. the render would drop a bullet the store never imported | `rollback()`, `WouldDrop` — ANTS-4141's divergence guard, recorded here by ANTS-5087. Before `dryRun` returns, so a preview reports the refusal a real call would hit. |
 | 5. caller asked for `dry_run` | `rollback()`, **`Ok`** — the op's whole preview, read off `*outcome`. |
 | 6. `store.commit()` fails | `rollback()`, `StoreFailed`. |
 | 7. `render(…, {liveRoadmapPath, dryRun = false})` fails | `PublishFailed` — **the store is already committed and stays so.** |
