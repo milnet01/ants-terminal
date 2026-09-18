@@ -77,23 +77,40 @@ bool roadmapStaysInProject(const QString &projectPath,
     return canon == canonProject + QStringLiteral("/ROADMAP.md");
 }
 
+// ANTS-5087 — how many times a SYSTEMICALLY failing flock is retried,
+// against the 100 a contention wait gets. See lockExclusive below for
+// why the two budgets differ.
+constexpr int kSystemicAttempts = 3;
+
 // Acquire ::flock(LOCK_EX|LOCK_NB) on `path`, polling 50 ms × 100
 // (5 s budget). Returns the open fd on success, -1 on timeout / open
 // failure. Caller MUST close + flock(LOCK_UN).
 //
 // On flock() systemic failure (errno ∈ {ENOLCK, EBADF, EINVAL,
 // ENOSYS}) — typically observed on networked filesystems or some FUSE
-// drivers — we sleep + retry like a contention wait, since the next
-// attempt may still succeed; only "filesystem cannot support flock at
-// all" should fall through to the rename-based fallback. We
-// distinguish that case via the static-out parameter `*flockBroken`,
-// set true when EVERY attempt failed with one of the systemic codes.
+// drivers — we sleep + retry, since the next attempt may still succeed;
+// only "filesystem cannot support flock at all" should fall through to
+// the rename-based fallback. We distinguish that case via the
+// static-out parameter `*flockBroken`, set true when EVERY attempt
+// failed with one of the systemic codes.
+//
+// ANTS-5087 — but a systemic failure gets kSystemicAttempts, not the
+// whole contention budget. errno there is describing the FILESYSTEM and
+// not a competitor, so polling it 100 times says nothing a few attempts
+// did not: ENOLCK (the kernel's lock table is full) is the one code that
+// can clear on its own, and the rest are properties of the mount. The
+// full 5 s was spent before the fallback could even be tried, twice per
+// fold-in — allocateIds and insertBlock each take this lock (ANTS-1742)
+// — and on the GUI thread, since AuditDialog and ReviewDialogBase call
+// allocateIds directly. A wait mixed with ANY contention errno keeps the
+// full budget: once a competitor is real, this is an ordinary lock wait.
 int lockExclusive(const QString &path, bool *flockBroken = nullptr) {
     const QByteArray utf8 = path.toUtf8();
     int fd = ::open(utf8.constData(), O_RDWR | O_CREAT, 0644);
     if (fd < 0) return -1;
     bool everSystemic = false;
     bool everContention = false;
+    int systemicAttempts = 0;
     for (int attempt = 0; attempt < 100; ++attempt) {
         if (::flock(fd, LOCK_EX | LOCK_NB) == 0) {
             if (flockBroken) *flockBroken = false;
@@ -102,11 +119,16 @@ int lockExclusive(const QString &path, bool *flockBroken = nullptr) {
         const int err = errno;
         if (err == EWOULDBLOCK || err == EAGAIN || err == EINTR) {
             everContention = true;
-        } else if (err == ENOLCK || err == EBADF || err == EINVAL
-                   || err == ENOSYS) {
-            everSystemic = true;
         } else {
+            // Every other errno is systemic — the named four
+            // (ENOLCK, EBADF, EINVAL, ENOSYS) and anything unforeseen,
+            // which was already treated the same way.
             everSystemic = true;
+            ++systemicAttempts;
+            // No sleep before giving up — the two the loop already took
+            // between these attempts are the retry; a third buys nothing.
+            if (!everContention && systemicAttempts >= kSystemicAttempts)
+                break;
         }
         QThread::msleep(50);
     }

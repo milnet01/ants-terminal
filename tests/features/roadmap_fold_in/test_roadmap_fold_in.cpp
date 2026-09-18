@@ -616,3 +616,43 @@ TEST(Ants1372SourceGrep, S5AuditLogLineWired) {
     EXPECT_TRUE(src.contains("qWarning"))
         << "expected qWarning() call in gate cpp";
 }
+
+// ===========================================================================
+// ANTS-5087 — a systemically failing flock does not spend the contention budget
+// ===========================================================================
+
+// Structural, because a systemic flock errno has no seam. Producing ENOLCK /
+// ENOSYS needs a filesystem whose mount cannot support flock; the code path
+// under test is reached only there, and nothing in a temp dir can stand in for
+// it. So this asserts the mechanism rather than its effect, and says so.
+//
+// What it protects: allocateIds and insertBlock each take this lock
+// (ANTS-1742), and AuditDialog / ReviewDialogBase call allocateIds on the GUI
+// thread. Spending 100 × 50 ms per acquisition before the rename fallback is
+// even tried froze the window twice per fold-in on such a filesystem.
+TEST(Ants5087SourceGrep, SystemicFlockBailsOutBeforeTheContentionBudget) {
+    const std::string body = ants_test::squashWhitespace(
+        ants_test::slurpFunctionBody(
+            ants_test::stripComments(
+                ants_test::slurpFile(std::string(SRC_ROADMAPFOLDIN_CPP_PATH))),
+            "int lockExclusive("));
+    ASSERT_FALSE(body.empty()) << "lockExclusive's body did not scrape";
+
+    // The guard, whole: a systemic count that has reached its cap AND no
+    // contention errno seen. Both halves matter — the second is what keeps a
+    // real lock wait on its full budget, so it is asserted as one needle
+    // rather than two.
+    EXPECT_NE(body.find("!everContention && systemicAttempts >= kSystemicAttempts"),
+              std::string::npos)
+        << "the early exit must be gated on the failures being systemic AND "
+           "no contention having been seen";
+    EXPECT_NE(body.find("break"), std::string::npos)
+        << "reaching the cap must leave the retry loop, not fall through it";
+
+    // The cap is a named constant, so the two budgets are legible side by side
+    // rather than being two bare literals in one loop.
+    const std::string src = ants_test::stripComments(
+        ants_test::slurpFile(std::string(SRC_ROADMAPFOLDIN_CPP_PATH)));
+    EXPECT_NE(src.find("constexpr int kSystemicAttempts"), std::string::npos)
+        << "kSystemicAttempts must be declared, not inlined as a literal";
+}
