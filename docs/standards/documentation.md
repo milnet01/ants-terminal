@@ -627,6 +627,10 @@ copy once a project owns it. **And a foundation document carrying no table recor
 unchecked rule in `foundation.md`'s instead** — that document states the
 arrangement and names which documents it covers.
 
+**`skill-method.md` carries no table and owes none.** It records an unchecked
+rule in place, beside the rule, in the words *nothing checks this* or
+*recorded rather than dropped*; that document states the convention.
+
 **In a standard or a reference the section is the last content one, with
 the loop log after it** — a loop log is a record rather than content. A
 reference is not gated (§9.1) and carries no loop log; the placement rule
