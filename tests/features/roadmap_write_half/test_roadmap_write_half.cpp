@@ -10,6 +10,7 @@
 // reach.
 
 #include "../../_support/expect.h"
+#include "../../_support/srcgrep.h"
 #include "../../_support/xdg_guard.h"
 
 #include "remotecontrol.h"
@@ -2116,4 +2117,58 @@ TEST(RoadmapWriteHalf, Ants4947RestyleOnlyDriftKeepsNoBackup) {
 
     EXPECT_FALSE(first.contains(QStringLiteral("discarded_backup_paths")))
         << "a restyle destroys no text, so there is nothing to keep";
+}
+
+// ---------------------------------------------------------------- ANTS-5087 --
+// ANTS-3809 § 4: "The write transaction is held across the *validating* render
+// only", and it warns that reading it as "both walks" would double the lock
+// window for nothing. The pre-image render ANTS-4462 / ANTS-4465 added later is
+// a THIRD walk, and it sat inside the transaction — so BEGIN IMMEDIATE spanned
+// two render walks plus the file reparse externalDrift() performs, against a
+// section that accounts for one.
+//
+// Structural, and deliberately so. The pre-image measures the store as it
+// stands before mutate() touches it; that is the same measurement on either
+// side of begin(), so moving it changes no output and no behavioural assertion
+// can see it. What it changes is how long the write lock is held. The drift
+// cases above are what prove the measurement itself is unchanged.
+TEST(RoadmapWriteHalf, Ants5087PreImageRendersBeforeBeginImmediate) {
+    const std::string body = ants_test::squashWhitespace(
+        ants_test::slurpFunctionBody(
+            ants_test::stripComments(
+                ants_test::slurpFile(ANTS_SOURCE_DIR "/src/roadmapwrite.cpp")),
+            "Result commitAndRender("));
+    ASSERT_FALSE(body.empty()) << "commitAndRender's body did not scrape";
+
+    const std::size_t preImage = body.find("externalDrift(preImage)");
+    const std::size_t begin    = body.find("store.begin(");
+    ASSERT_NE(preImage, std::string::npos)
+        << "the pre-image drift measurement moved or was renamed";
+    ASSERT_NE(begin, std::string::npos) << "store.begin() moved or was renamed";
+
+    EXPECT_LT(preImage, begin)
+        << "the pre-image render is diagnostic and must run BEFORE "
+           "BEGIN IMMEDIATE, so the write lock spans the validating render only";
+}
+
+// The same section costs a render as listSections + listItems + one readItem()
+// per item, and names ANTS-3816's batched reader as the remedy if it lands:
+// "both walks get it for free". It landed — RoadmapStore::readItems, whose
+// header records the measurement that earned it and says in terms that
+// "RoadmapRender::render() builds exactly this hash by hand today". The render
+// is the caller that never collected.
+TEST(RoadmapWriteHalf, Ants5087RenderReadsEveryItemInOneQuery) {
+    const std::string body = ants_test::squashWhitespace(
+        ants_test::slurpFunctionBody(
+            ants_test::stripComments(
+                ants_test::slurpFile(ANTS_SOURCE_DIR "/src/roadmaprender.cpp")),
+            "std::optional<Outcome> render("));
+    ASSERT_FALSE(body.empty()) << "render()'s body did not scrape";
+
+    EXPECT_NE(body.find("readItems("), std::string::npos)
+        << "the render reads every item of the project in one query";
+    // `readItems(` does not contain `readItem(`, so this needle cannot match
+    // the batched call above it.
+    EXPECT_EQ(body.find("readItem("), std::string::npos)
+        << "one readItem() per item is the N+1 ANTS-3816 was built to replace";
 }

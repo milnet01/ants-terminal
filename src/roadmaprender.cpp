@@ -407,8 +407,19 @@ std::optional<Outcome> render(RoadmapStore &store, qint64 projectId,
     if (!itemRefs)
         return std::nullopt;
 
-    // Read every item once. The gate, the membership filter and the bullets all
-    // need the full row, and listItems() carries only the matching key.
+    // Read every item once, in ONE query (ANTS-3816 / ANTS-5087). The gate, the
+    // membership filter and the bullets all need the full row, and listItems()
+    // carries only the matching key. This was a readItem() per item — the N+1
+    // roadmapstore.h measured as most of an equivalent whole-project read's
+    // work, and the N+1 ANTS-3809 § 4 named this reader as the remedy for.
+    auto allItems = store.readItems(projectId, error);
+    if (!allItems)
+        return std::nullopt;
+
+    // Rows are MOVED into itemOf below, not copied: § 4 costs itemOf at about
+    // one roadmap's text, and holding the query's copy alongside it would
+    // double that for the length of the walk. A moved-from entry stays in
+    // allItems as an empty shell, which nothing reads.
     QHash<qint64, RoadmapStore::ItemWrite> itemOf;
     Outcome out;
     for (const RoadmapStore::ItemRef &ref : *itemRefs) {
@@ -419,9 +430,16 @@ std::optional<Outcome> render(RoadmapStore &store, qint64 projectId,
             fail(error, QStringLiteral("item %1 is filed in no section").arg(ref.idFold));
             return std::nullopt;
         }
-        const auto it = store.readItem(ref.itemPk, error);
-        if (!it)
+        const auto row = allItems->find(ref.itemPk);
+        if (row == allItems->end()) {
+            // listItems() just named this item_pk, so no row for it is a store
+            // inconsistency and not a missing item. readItem() reported this as
+            // a bare nullopt with no message, which reached the caller as "the
+            // render did not run"; naming it costs nothing.
+            fail(error, QStringLiteral("item %1 has no row").arg(ref.idFold));
             return std::nullopt;
+        }
+        const RoadmapStore::ItemWrite *it = &*row;
         if (!isRenderable(*it)) {
             ++out.itemsExcluded;
             continue;
@@ -450,7 +468,8 @@ std::optional<Outcome> render(RoadmapStore &store, qint64 projectId,
         if (!passHeadings && isOpen(it->status) && it->layman.isEmpty()
             && (!opts.gateScope || opts.gateScope->contains(ref.itemPk)))
             out.gateFailures.append(it->id.isEmpty() ? ref.idFold : it->id);
-        itemOf.insert(ref.itemPk, *it);
+        // Last use of `it` — see the move note above.
+        itemOf.insert(ref.itemPk, std::move(*row));
     }
 
     if (!out.gateFailures.isEmpty()) {

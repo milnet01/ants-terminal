@@ -163,3 +163,36 @@ inventing an arithmetic relationship would be a third wrong number.
   and when the proposed row is the only offender the message says the refusal
   is about the arguments. A real write passes no candidate ids and is
   unchanged. *Test:* `Ants4593PreviewOwnIdIsNotAGateFailure`.
+
+### ANTS-5087 — § 4's two cost claims, locked
+
+Both cases are **structural** — a source scrape over one function body via
+`ants_test::slurpFunctionBody` — and that is the honest shape here, because
+neither change alters any output. A behavioural assertion that could see either
+one does not exist.
+
+- **`Ants5087PreImageRendersBeforeBeginImmediate`** — the pre-image render runs
+  before `store.begin()`. § 4 says the write transaction is held across the
+  validating render only, and warns that reading it as "both walks" doubles the
+  lock window for nothing. The pre-image ANTS-4462 / ANTS-4465 added later sat
+  inside the transaction, so the warning came true by a later edit. The
+  pre-image reads the store before `mutate()` touches it, so the measurement is
+  the same on either side of `begin()`; the drift cases above are what prove
+  that, and this case proves only where the lock opens.
+- **`Ants5087RenderReadsEveryItemInOneQuery`** — `RoadmapRender::render()` reads
+  items through `RoadmapStore::readItems()` and no longer calls `readItem()`.
+  § 4 named that reader as the remedy for the render's N+1 "if it lands"; it
+  landed, and `roadmapstore.h` says in terms that the render "builds exactly
+  this hash by hand today".
+
+**Run RED first, against pre-fix source (2026-09-18)** — not against a
+mutation. Both failed on their assertions, not on a compile: the pre-image call
+was found *after* `store.begin(`, and the render's body carried `readItem(`
+and no `readItems(`.
+
+**Would break this**
+
+- Putting any new diagnostic read inside the transaction → the first case. A
+  read that does not need the write lock does not take it.
+- Reverting the render to a `readItem()` per item → the second case, and § 4's
+  walk cost with it.

@@ -294,7 +294,7 @@ QString dialectOf(RoadmapStore &store, qint64 projectId) {
 }
 
 // ANTS-4462 — the read half. Deliberately the SAME pre-image render and the
-// SAME externalDrift() the write path runs at step 1b, so "is my file in sync?"
+// SAME externalDrift() the write path runs at step 0, so "is my file in sync?"
 // and "what would this write overwrite?" can never answer differently. A second
 // implementation would be a second answer.
 //
@@ -335,10 +335,6 @@ Result commitAndRender(RoadmapStore &store, qint64 projectId,
     if (error)
         error->clear();
 
-    // Step 1.
-    if (!store.begin(error))
-        return Result::StoreFailed;
-
     // A rollback that itself refuses is folded into the caller's failure rather
     // than reported. SQLite leaves the transaction open when a COMMIT fails, so
     // the rollback is the right call and normally succeeds; rollback() "refuses
@@ -351,7 +347,7 @@ Result commitAndRender(RoadmapStore &store, qint64 projectId,
         return r;
     };
 
-    // Step 1b — ANTS-4462 / ANTS-4465, the PRE-IMAGE. Render the store as it
+    // Step 0 — ANTS-4462 / ANTS-4465, the PRE-IMAGE. Render the store as it
     // stands, before the mutation touches it, and measure how far the file on
     // disk has drifted from it.
     //
@@ -395,6 +391,15 @@ Result commitAndRender(RoadmapStore &store, qint64 projectId,
             driftChecked = true;
         }
     }
+
+    // Step 1 — ANTS-5087. BEGIN IMMEDIATE opens HERE, after the pre-image, so
+    // the write transaction spans the validating render only, which is what
+    // ANTS-3809 § 4 says it spans. The pre-image reads the store as it stands
+    // and the mutation has not run, so the measurement is identical on either
+    // side of this line; all that changes is how long the lock is held. It was
+    // held across two render walks and externalDrift()'s file reparse.
+    if (!store.begin(error))
+        return Result::StoreFailed;
 
     // ANTS-4947 — filled only once the commit has succeeded and the publish is
     // about to run, so a dry run and every aborted write leave it empty. That is

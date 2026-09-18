@@ -838,15 +838,17 @@ is new to this part.
 ## 4. RAM, latency and build cost
 
 **The added cost of a write op is two full render walks, and the file write is
-not new.** `render()` is `listSections()` + `listItems()` + one `readItem()` per
-item + `listElements()` per section — the same N+1 walk ANTS-3793 § 2.1.3
-describes, and this spec runs it twice (validate, then publish). On this
-project, the corpus's largest roadmap:
+not new.** `render()` is `listSections()` + `listItems()` + `readItems()` +
+`listElements()` per section, and this spec runs it twice (validate, then
+publish). The item walk was a `readItem()` per item — ANTS-3793 § 2.1.3's N+1 —
+until ANTS-5087 gave it the batched reader the end of this section named as the
+remedy. `listElements()` per section is still per-section. On this project, the
+corpus's largest roadmap:
 
 | Term | Value (2026-08-04) |
 |---|---|
 | Items walked per render | 1,844 (`grep -cE '^- (📋\|🚧\|✅\|💭)' ROADMAP.md`) |
-| Render walks per op | 2 |
+| Render walks per op | 3 — the diagnostic pre-image (step 0), then validate and publish |
 | Roadmap files rewritten per op | 3 — the live file plus 2 archives (`ls docs/roadmap/*.md \| wc -l` → 2) |
 | Bytes rewritten per op | ~3.1 MB (`wc -c ROADMAP.md` → 3,110,905, plus 12 KB of archives) |
 
@@ -885,6 +887,14 @@ render at step 7 — so `BEGIN IMMEDIATE` spans steps 1–6 and the 3.1 MB file
 write happens outside it. An implementer who read this paragraph's earlier
 wording as "both walks" would have doubled the lock window for nothing.
 
+**ANTS-4462 / ANTS-4465's pre-image render is a third walk, and it sits at step
+0 — before `begin()` — for that same reason.** It measures the store as it
+stands, so it reads the same rows inside the transaction or outside it, and the
+transaction buys it nothing. It ran *inside* the lock from the day it was added
+until ANTS-5087 moved it, which held `BEGIN IMMEDIATE` across two render walks
+plus `externalDrift()`'s reparse of the file on disk — the doubled window this
+section warns against, arriving by a later edit rather than by a misreading.
+
 **Nothing can observe the intermediate state, and that is a consequence of
 ANTS-3793's design rather than of WAL.** That spec gives the process **one**
 long-lived `Access::Interactive` connection for `RoadmapStore::defaultPath()`,
@@ -903,9 +913,12 @@ beside `roadmaprender.cpp`. No new link edge: the callers are in
 **A latency budget is deliberately not asserted here.** ANTS-3793's INV-3 pins
 `p95 < 50 ms` for a *read*, which every consumer performs on every verb call;
 a write op is rare, already pays a 3.1 MB file write, and a number nothing
-measures is a comment (`spec-format.md` § 5.8). If **ANTS-3816** — a batched
-`RoadmapStore::readItems(projectId)` that would collapse the render's N+1 item
-lookups — lands, both walks get it for free.
+measures is a comment (`spec-format.md` § 5.8). **ANTS-3816** landed, and
+ANTS-5087 gave the render its `RoadmapStore::readItems(projectId)`: every walk
+now collapses the N+1 item lookups, as this paragraph said it would get for
+free. The rows are *moved* out of that query's hash into the render's `itemOf`,
+so the peak above is unchanged — holding both copies for the length of the walk
+would have doubled the row it is costed in.
 
 ## 5. Out of scope
 
