@@ -28,6 +28,15 @@ for security-relevant changes.
 
 ### Fixed
 
+- **Roadmap writes hold their lock for less time, publish in the right dialect, and stop growing a backup folder without limit** (ANTS-5087)
+  The roadmap's write lock is now held across one pass instead of two, and
+  each pass reads every item in a single query rather than one query per
+  item. A roadmap written in the pass-heading style is now read back in
+  that style instead of being mistaken for the ordinary one. A folder of
+  safety copies that grew for the life of the install is capped, a fold-in
+  on a networked drive no longer freezes the window for five seconds at a
+  time, and a lock left behind by a crash now clears itself.
+
 - **The audit's saved findings list stays within its size limit** (ANTS-5085)
   The list kept for the next "since last run" audit keeps the newest
   findings first and is trimmed to its limit, as designed.

@@ -8673,7 +8673,7 @@ extends an existing item, that item carries it instead.
   Source: code-quality-review-2026-09-11 perf pass (lane roadmap-store).
   Lanes: roadmap.
 
-- 📋 [ANTS-5087] **Performance pass findings for roadmap parsing, rendering, writing and export (medium and low).**
+- ✅ [ANTS-5087] **Performance pass findings for roadmap parsing, rendering, writing and export (medium and low).**
   Medium:
   - commitAndRender holds BEGIN IMMEDIATE across three render walks and
     a full reparse; ANTS-3809 section 4 says two. Run the pre-image
@@ -8774,6 +8774,20 @@ extends an existing item, that item carries it instead.
   (each render of a pass-headings roadmap adds another copy of every Status
   line, compounding). 5230 and 5231 must be fixed together: the marker masks the
   duplication, and INV-1's byte-stability currently passes because of it.
+  Resolved (2026-09-18): every finding is shipped or closed with a recorded
+  reason. Shipped across 8c3ea8fd, bea043a4, 9923fd8b, 0d354328, 0e9564c4,
+  63d04c19, 5080f63e and 5466e8f1.
+
+  Closed with no change, and the reasons are on the two annotations above:
+  archivedIds' per-query re-read (12 KB of archives on a rare path, and the only
+  fix is a cross-call cache whose invalidation risk buys nothing), and two
+  stale-document references that resolve to nothing in the tree —
+  roadmapsource.h carries no table, and "INV-8's marker repair" matches no text
+  under docs/ or src/. If the reviewer can name either, file it fresh rather
+  than reopening this.
+
+  Three defects found while working are separate items, not part of this one:
+  ANTS-5229, ANTS-5230 and ANTS-5231.
   **Layman:** Roadmap-engine fixes: writes that hold a lock too long, a safety check that never fires, and a restore that can mislink items.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lane roadmap-parse-render).
