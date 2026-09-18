@@ -10970,6 +10970,10 @@ extends an existing item, that item carries it instead.
   on a migrated project the fold-in should write through the store (the same
   write sequence roadmap_log uses) rather than editing a generated file. Needs a
   decision before implementation.
+  Decided (2026-09-18, user): on a migrated project the fold-in
+  writes through the store, the same write sequence roadmap_log uses,
+  and ROADMAP.md is re-rendered from it. Projects still served from
+  markdown keep the current insertBlock path unchanged.
   **Layman:** Folding audit or review findings into the roadmap from a window can jam every later roadmap edit on a project whose roadmap lives in the database.
   Kind: fix.
   Source: in-session-2026-09-18 (found while fixing ANTS-5087's allocator floor).
@@ -11052,6 +11056,9 @@ extends an existing item, that item carries it instead.
   renderCardsHtml never reads that field, and no render emits the
   ants://table/ link that toggles it. So the Config key, the handler branch
   and the field are dead. Decide: remove them, or restore table mode.
+  Decided (2026-09-18, user): remove it. Delete m_tableSections,
+  CardRenderOptions::tableSections, the Config key and the `table`
+  branch of handleAnchorClicked.
   **Layman:** The roadmap window still saves a "table view" setting that nothing uses any more.
   Kind: refactor.
   Source: in-session-2026-09-18 (ANTS-5088).
