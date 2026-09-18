@@ -555,9 +555,34 @@ std::optional<Outcome> render(RoadmapStore &store, qint64 projectId,
                 if (!s.intro.isEmpty())
                     blocks.append(s.intro);
                 if (!project->legendText.isEmpty() && path == liveAbs) {
-                    const QJsonObject entries =
-                        QJsonDocument::fromJson(project->legendText.toUtf8()).object();
-                    const QString legend = renderLegend(entries);
+                    // ANTS-5087 — a legend that does not parse used to yield an
+                    // empty object here, renderLegend() an empty string, and the
+                    // published file no legend at all: the block vanished with
+                    // nothing said. The next migration then reads a file with no
+                    // legend, and the loss becomes permanent.
+                    //
+                    // Refused rather than reported, because this function's own
+                    // contract is that the render is lossy in MEMBERSHIP only
+                    // and never in detail. It cannot fire on a healthy project:
+                    // setLegend() takes a QJsonObject, so nothing reachable
+                    // through the store can write a value that fails to parse.
+                    // One setLegend() call repairs it.
+                    QJsonParseError perr{};
+                    const QJsonDocument legendDoc =
+                        QJsonDocument::fromJson(project->legendText.toUtf8(), &perr);
+                    if (perr.error != QJsonParseError::NoError || !legendDoc.isObject()) {
+                        fail(error,
+                             QStringLiteral("project %1 holds a status legend this render "
+                                            "cannot read (%2); publishing would drop it "
+                                            "from the file and the next migration would "
+                                            "lose it for good")
+                                 .arg(projectId)
+                                 .arg(perr.error != QJsonParseError::NoError
+                                          ? perr.errorString()
+                                          : QStringLiteral("not a JSON object")));
+                        return std::nullopt;
+                    }
+                    const QString legend = renderLegend(legendDoc.object());
                     if (!legend.isEmpty())
                         blocks.append(legend);
                 }

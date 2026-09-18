@@ -2513,6 +2513,15 @@ void RemoteControl::onNewConnection() {
                     const bool posted = m_dispatchWorkerPoster(
                         [this, guard, reqObj, writeReply]() {
                             const QJsonDocument out = dispatch(reqObj);
+                            // ANTS-5087 — the worker's parse memo is dead the
+                            // moment this call returns, and it retains the last
+                            // document parsed here: text and records both. Held
+                            // ACROSS the dispatch, so a call that parses the
+                            // same roadmap twice still hits it, and dropped
+                            // between calls, which is the retention the finding
+                            // is about. The GUI thread never reaches this and
+                            // keeps its memo, which is what it is for.
+                            RoadmapParse::releaseParseMemo();
                             QMetaObject::invokeMethod(this,
                                 [guard, out, writeReply]() {
                                     writeReply(guard, out);

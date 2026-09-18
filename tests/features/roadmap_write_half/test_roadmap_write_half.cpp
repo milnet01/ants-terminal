@@ -16,6 +16,7 @@
 #include "remotecontrol.h"
 #include "roadmapmigrate.h"
 #include "roadmapmigrateload.h"
+#include "roadmapparse.h"
 #include "roadmapstore.h"
 
 #include <gtest/gtest.h>
@@ -2279,4 +2280,59 @@ TEST(RoadmapWriteHalf, Ants5087DiscardedBackupsAreBounded) {
         << " files after a write";
     EXPECT_TRUE(QFileInfo::exists(backups.at(0).toString()))
         << "the prune dropped the backup this very write reported";
+}
+
+// ANTS-5087 — the parse memo can be dropped, and the dispatch worker drops it.
+//
+// parseBullets memoises the last document parsed on each thread: the text and
+// the records, which on this project's own roadmap is over ten megabytes of
+// UTF-16. On the GUI thread that is the point. On a dispatch worker it is dead
+// the moment the call returns, and nothing dropped it, so each worker sat on a
+// copy of the last roadmap it touched for the life of the process.
+//
+// Two halves, because either alone is useless: the release must actually free
+// the memo, and something must call it.
+TEST(RoadmapWriteHalf, Ants5087ParseMemoIsReleasableAndReleased) {
+    const QString doc = QString::fromUtf8(
+        "<!-- ants-roadmap-format: 1 -->\n"
+        "\n"
+        "## Work\n"
+        "\n"
+        "- \xF0\x9F\x93\x8B [DEMO-0042] **A bullet to memoise.**\n"
+        "  Kind: chore.\n"
+        "  Source: seed.\n");
+
+    // A parse leaves something behind; the release says so, and a second
+    // release has nothing left to report.
+    RoadmapParse::releaseParseMemo();
+    const auto first = RoadmapParse::parseBullets(doc, {});
+    ASSERT_FALSE(first.isEmpty()) << "the fixture parsed to nothing";
+    EXPECT_TRUE(RoadmapParse::releaseParseMemo())
+        << "a parse left no memo to drop";
+    EXPECT_FALSE(RoadmapParse::releaseParseMemo())
+        << "the memo was not actually dropped";
+
+    // The memo is an optimisation, so dropping it changes no answer.
+    const auto again = RoadmapParse::parseBullets(doc, {});
+    ASSERT_EQ(again.size(), first.size());
+    EXPECT_EQ(again.first().id, first.first().id);
+
+    // The call site. A release nothing calls frees nothing, and the GUI
+    // thread's memo must NOT be dropped — so this asserts the worker's posted
+    // job, not some general teardown.
+    // ANTS-3833 — every RemoteControl TU, never one named file: a verb that
+    // moved to a sibling TU must not read as a verb that was deleted, and
+    // RcTuSplit INV-4 refuses a test that names one.
+    const std::string rc = ants_test::squashWhitespace(
+        ants_test::stripComments(ants_test::slurpRemoteControl()));
+    const std::size_t dispatched = rc.find("const QJsonDocument out = dispatch(reqObj);");
+    ASSERT_NE(dispatched, std::string::npos)
+        << "the worker's posted job moved or was renamed";
+    const std::size_t released = rc.find("RoadmapParse::releaseParseMemo()", dispatched);
+    ASSERT_NE(released, std::string::npos)
+        << "the dispatch worker never drops its parse memo";
+    // Immediately after the dispatch, before the reply is posted back: inside
+    // the same job, so a call that parses one roadmap twice still hits.
+    EXPECT_LT(released - dispatched, std::size_t(200))
+        << "the release is not in the worker job that just finished";
 }

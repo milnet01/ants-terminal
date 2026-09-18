@@ -365,6 +365,13 @@ QVector<BulletRecord> parseBulletLines(const QStringList &lines,
 // declaration in hand and shown to produce the same records. It cannot change
 // them — this text is RoadmapRender::bulletText()'s output, which is ants-v1,
 // so `gfmHere` is false and the branch the declaration governs never runs.
+// ANTS-5087 — drop this thread's parse memo, returning whether it held
+// anything. parseBullets memoises the last document parsed on each thread, text
+// and records both; on the GUI thread that is re-hit on every keystroke, and on
+// a dispatch worker it is dead weight the moment the call returns. Call it where
+// a thread's work ends, never between two parses that might repeat.
+bool releaseParseMemo();
+
 // ANTS-5087 — one `#### Pass` block's record, the pass-headings sibling of
 // parseAntsV1Bullet() below and for the same caller: the store-built read seam,
 // which renders one item and parses it back. Engaged only when the block yields

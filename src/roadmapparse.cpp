@@ -1954,6 +1954,41 @@ QString stripTrailingTrailerLines(const QString &body) {
     return lines.mid(0, end).join(QLatin1Char('\n'));
 }
 
+namespace {
+// ANTS-2119's memo, hoisted to file scope by ANTS-5087 so releaseParseMemo()
+// can drop it. Still thread_local, so the GUI thread and each dispatch worker
+// keep their own; hoisting changes where it can be reached from, not who has
+// one. See parseBullets below for what the key is and why.
+thread_local QString              s_lastInput;
+thread_local QString              s_lastPrefix;
+thread_local QString              s_lastPattern;
+thread_local QVector<BulletRecord> s_lastResult;
+}  // namespace
+
+// ANTS-5087 — drop this thread's memo, reporting whether it held anything.
+//
+// The memo retains the LAST document parsed on its thread: the text and the
+// records, which on this project's own roadmap is over ten megabytes of UTF-16.
+// On the GUI thread that is the point — it is re-hit on every keystroke. On a
+// dispatch worker it is dead weight the moment the call returns, and nothing
+// dropped it, so each worker sat on a copy of the last roadmap it touched for
+// the life of the process.
+//
+// squeeze(), not clear() alone: clear() keeps the capacity, which is the whole
+// of what is being held.
+bool releaseParseMemo() {
+    const bool held = !s_lastInput.isEmpty() || !s_lastResult.isEmpty();
+    s_lastInput.clear();
+    s_lastInput.squeeze();
+    s_lastPrefix.clear();
+    s_lastPrefix.squeeze();
+    s_lastPattern.clear();
+    s_lastPattern.squeeze();
+    s_lastResult.clear();
+    s_lastResult.squeeze();
+    return held;
+}
+
 QVector<BulletRecord>
 parseBullets(const QString &markdownText, const IdFormat &fmt) {
     // ANTS-2119 (roadmapdialog M-1) — function-local memo, mirroring
@@ -1969,10 +2004,8 @@ parseBullets(const QString &markdownText, const IdFormat &fmt) {
     // (INV-2/INV-3), so a text-only key would hand a fixture that parses both
     // ways the first answer twice, and the test asserting they differ would
     // pass or fail on call order.
-    static thread_local QString s_lastInput;
-    static thread_local QString s_lastPrefix;
-    static thread_local QString s_lastPattern;
-    static thread_local QVector<BulletRecord> s_lastResult;
+    // ANTS-5087 — the four are at file scope above, so releaseParseMemo() can
+    // reach them. Nothing else about the memo changed.
     if (markdownText.size() == s_lastInput.size() && markdownText == s_lastInput
         && fmt.prefix == s_lastPrefix && fmt.pattern == s_lastPattern)
         return s_lastResult;

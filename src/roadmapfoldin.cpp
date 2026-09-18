@@ -4,6 +4,7 @@
 #include "roadmapsource.h"   // ANTS-5087 — the migrated-project dispatch
 #include "roadmapstore.h"
 
+#include <QDateTime>
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
@@ -146,6 +147,45 @@ void unlockAndClose(int fd) {
     ::close(fd);
 }
 
+// ANTS-5087 — how old a rename lock must be before it is presumed abandoned.
+//
+// An AGE and not the owner's pid, although a pid is the more precise test. This
+// fallback exists for NFS and FUSE, where the holder may be on ANOTHER HOST: a
+// local kill(pid, 0) there asks about an unrelated process and answers
+// confidently wrong in both directions. An age is the only fact both hosts
+// agree on.
+//
+// Two orders of magnitude above any legitimate hold. The lock spans
+// corpusHighWater's scan of a project's roadmap, changelog and archives, or
+// insertBlock's read-modify-write — seconds at worst, on a slow mount.
+constexpr int kStaleLockSeconds = 120;
+
+// A lock whose owner is gone. Before this, a process killed between acquire and
+// release left `.roadmap-counter.lock` behind for good: every later fold-in on
+// that project spent the full EEXIST budget and then refused, with no route
+// back but deleting the file by hand. inspectCounter() reports the stale
+// sibling, so the state was diagnosable and still not self-healing.
+//
+// RENAMED aside rather than unlinked, and that is the whole of the concurrency
+// argument: rename is atomic, so of two processes that both judge this lock
+// stale exactly one succeeds, and the loser cannot remove a lock the winner has
+// meanwhile re-created. Unlinking directly has no such guarantee.
+bool stealStaleRenameLock(const QString &lockPath) {
+    const QFileInfo fi(lockPath);
+    if (!fi.exists())
+        return false;
+    const QDateTime mtime = fi.lastModified();
+    if (!mtime.isValid())
+        return false;
+    if (mtime.secsTo(QDateTime::currentDateTime()) < kStaleLockSeconds)
+        return false;
+    const QString aside = lockPath + QStringLiteral(".stale");
+    if (::rename(lockPath.toUtf8().constData(), aside.toUtf8().constData()) != 0)
+        return false;
+    ::unlink(aside.toUtf8().constData());
+    return true;
+}
+
 // ANTS-1490 — O_CREAT|O_EXCL rename-based locking fallback. Used when
 // flock() returns systemic errors on every retry (NFS, some FUSE
 // filesystems, etc.). Creates `.roadmap-counter.lock` exclusively; the
@@ -160,6 +200,11 @@ bool acquireRenameLock(const QString &counterPath_) {
                               O_WRONLY | O_CREAT | O_EXCL, 0644);
         if (fd >= 0) { ::close(fd); return true; }
         if (errno != EEXIST) return false;
+        // ANTS-5087 — retry at once when the lock turned out to be abandoned,
+        // rather than sleeping out a budget against a holder that no longer
+        // exists. A live lock is left alone and waited on as before.
+        if (stealStaleRenameLock(lockPath))
+            continue;
         QThread::msleep(50);
     }
     return false;
