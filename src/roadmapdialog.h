@@ -41,6 +41,7 @@
 
 #include "roadmapparse.h"   // ANTS-3764 — BulletRecord + the reader
 #include <QDialog>
+#include <QElapsedTimer>
 #include <QFileSystemWatcher>
 #include <QHash>
 #include <QPair>
@@ -141,7 +142,7 @@ public:
     // Cozy preserves the pre-1238 byte-equal output. Spec:
     // docs/specs/ANTS-1238.md § 2.f.
     enum class Density {
-        // Per-tier px live in kDensityTable (roadmapdialog.cpp:157);
+        // Per-tier px live in kDensityTable (roadmapdialog.cpp);
         // ANTS-2211 floored the Compact/Cozy meta+label rows at 11/12px
         // (was a 9px floor). Values below are body/h1 landmarks only.
         Compact,      // -2px tier; body 11 / h1 14; meta+label floor 11px
@@ -255,14 +256,15 @@ public:
 
     // ANTS-1154 — new card-style renderer. Walks `markdownText` and
     // emits an HTML document where each top-level status-emoji bullet
-    // becomes a `<div class="rm-card" id="rm-ANTS-NNNN">` block with
-    // state icon, type chip, layman/headline summary, and meta row
-    // (ID + shipped date for ✅ items). Section headings (`##`/`###`)
-    // emit collapsible headers with `<span class="rm-section-counts">`
-    // chips. Click-to-toggle anchors use the `ants://expand/` /
-    // `ants://collapse/` / `ants://expand-section/` /
-    // `ants://collapse-section/` / `ants://table/` URL schemes,
-    // handled by the dialog's anchorClicked slot.
+    // becomes a `<tr class="rm-card" id="rm-ANTS-NNNN">` row of a
+    // section's `table.rm-cards`, with state icon, kind chip,
+    // layman/headline summary, and meta cell (ID + shipped date for ✅
+    // items). Section headings (`##`/`###`) emit collapsible headers
+    // with `<span class="rm-section-counts">` chips. Click-to-toggle
+    // anchors use the `ants://expand/` / `ants://collapse/` /
+    // `ants://expand-section/` / `ants://collapse-section/` URL
+    // schemes, handled by the dialog's anchorClicked slot. That slot
+    // still accepts `ants://table/`, but no render emits it.
     //
     // Tab-relevance: on every preset except `Full`, prose narration
     // bullets (no status emoji) and section-intro paragraphs are
@@ -362,6 +364,15 @@ public:
         m_lastTouchRan = false;
     }
 
+    // ANTS-5088 test hooks. rebuild() runs per keystroke, so what it re-reads
+    // is the whole question, and a count is the only way to observe it.
+    int sourceReadsForTest() const noexcept { return m_sourceReads; }
+    int shippedDateParsesForTest() const noexcept { return m_shippedDateParses; }
+    bool recentCommitsInFlight() const noexcept { return !m_commitsProc.isNull(); }
+    const QStringList &recentCommitSubjects() const noexcept {
+        return m_recentCommits;
+    }
+
     // ANTS-1235 — return the screen-reader-readable label
     // ("shipped" / "in progress" / "planned" / "considered") for one
     // of the four status emoji constants. Returns an empty QString
@@ -421,7 +432,13 @@ public:
     // separator. Total assembled-buffer cap is 64 MiB; once exceeded
     // the loader emits a single truncation sentinel and stops.
     // Spec INVs 2, 3, 3b, 4, 4a, 5, 5a, 11.
-    static QString loadMarkdown(const QString &roadmapPath, bool includeArchive);
+    //
+    // ANTS-5088 — the live file shares the 64 MiB assembled cap. A live file
+    // that cannot be opened, or is larger than that cap, returns empty and
+    // sets `*liveError` to a sentence naming the path, so the caller can show
+    // why instead of rendering a blank or truncated roadmap.
+    static QString loadMarkdown(const QString &roadmapPath, bool includeArchive,
+                                QString *liveError = nullptr);
 
     // `shouldLoadHistory(activePreset, searchText)` returns true iff
     // the dialog should pull archives for the next render. Triggers:
@@ -504,7 +521,10 @@ private:
     // (so the next keystroke replaces it). Called from keyPressEvent
     // when `/` arrives without the search box already focused.
     void focusSearchBox();
-    QStringList collectCurrentBullets() const;
+    QStringList collectCurrentBullets();
+    // ANTS-5088 — starts `git log` for the recent-commit signal and returns.
+    // The subjects land in m_recentCommits and re-render through the debounce.
+    void refreshRecentCommitsIfStale();
     // ANTS-1154 — refresh m_shippedDates from m_changelogPath when its
     // mtime has changed since the last call. No-op if path empty.
     void refreshShippedDatesIfStale();
@@ -528,10 +548,30 @@ private:
     // the public-static helpers above so `rebuild()` can call them
     // without threading the state through manually.
     QString historyArchiveDir() const { return archiveDirFor(m_roadmapPath); }
-    QString loadRoadmapMarkdown(bool includeArchive) const {
-        return loadMarkdown(m_roadmapPath, includeArchive);
+    QString loadRoadmapMarkdown(bool includeArchive,
+                                QString *liveError = nullptr) const {
+        return loadMarkdown(m_roadmapPath, includeArchive, liveError);
     }
     bool wantsHistoryLoad() const;
+
+    // ANTS-5088 — the stamp every file the roadmap source is built from:
+    // the live file, the archives when included, the project's
+    // `.ants/project.json` and the store with its WAL. Stat calls only. Two
+    // equal stamps mean rebuild() may reuse m_source rather than re-read.
+    QString sourceStamp(bool includeArchive) const;
+
+    // ANTS-5088 — what rebuild() last read, kept while its stamp holds.
+    // Held for the dialog's life: the markdown (~2 bytes per character) plus
+    // its parsed records, so a few times the roadmap's size.
+    struct SourceCache {
+        QString stamp;                    // empty = nothing cached
+        QString markdown;
+        QVector<RoadmapParse::BulletRecord> bullets;
+        bool fromStore = false;
+        QHash<QString, QString> legend;
+    };
+    SourceCache m_source;
+    int m_sourceReads = 0;
 
     // ANTS-3793 § 2.1 — the dialog's owner wrapper. Returns this project's
     // records: from the store when it is migrated, from `markdown` when it is
@@ -661,12 +701,17 @@ private:
     bool m_lastTouchRan = false;
     // ANTS-5047 — the blame's output is being parsed on a worker.
     bool m_lastTouchParsing = false;
-    // ANTS-2012 — collectCurrentBullets() shells out to `git log` (blocking).
-    // rebuild() runs per search keystroke, so cache the external signals with
-    // a short TTL to kill the per-keystroke git jank (mutable: filled from a
-    // const getter).
-    mutable QStringList m_externalSignalsCache;
-    mutable qint64 m_externalSignalsCacheMs = 0;
+    // ANTS-2012 / ANTS-5088 — the two external signals collectCurrentBullets()
+    // feeds the current-work highlight. The CHANGELOG's [Unreleased] bullets
+    // are re-read only when its mtime or size moves. The commit subjects come
+    // from an asynchronous `git log`, re-run at most every
+    // kExternalSignalsTtlMs on a monotonic clock, one at a time.
+    QString m_unreleasedStamp;
+    QStringList m_unreleasedBullets;
+    QStringList m_recentCommits;
+    QPointer<class QProcess> m_commitsProc;
+    QElapsedTimer m_commitsAge;          // invalid until the first run starts
+    int m_shippedDateParses = 0;
     // ANTS-1238 — selected card-density tier. Default Cozy preserves
     // pre-1238 byte-equal rendering (INV-1). Loaded from
     // Config::roadmapDensity() in the ctor; written back on every

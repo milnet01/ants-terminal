@@ -265,8 +265,9 @@ static int runMain() {
         fail("INV-6", "Custom preset alone should NOT trigger");
 
     // INV-7: rebuild() consults wantsHistoryLoad() before loadMarkdown.
-    if (!contains(source, "loadMarkdown(m_roadmapPath, includeArchive)") &&
-        !contains(source, "loadRoadmapMarkdown(includeArchive)"))
+    // A prefix: ANTS-5088 added an error out-parameter after the flag.
+    if (!contains(source, "loadMarkdown(m_roadmapPath, includeArchive") &&
+        !contains(source, "loadRoadmapMarkdown(includeArchive"))
         fail("INV-7", "rebuild() does not gate loadMarkdown on wantsHistoryLoad");
     if (!contains(source, "wantsHistoryLoad()"))
         fail("INV-7", "wantsHistoryLoad() not invoked from rebuild()");

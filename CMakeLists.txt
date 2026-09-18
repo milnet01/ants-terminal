@@ -3221,6 +3221,7 @@ if(ANTS_TESTS)
                 tests/features/roadmap_kind_facets/test_roadmap_kind_facets.cpp
                 # ANTS-5088 — every kind filterable; live roadmap past 8 MiB read.
                 tests/features/roadmap_dialog_kinds_cap/test_roadmap_dialog_kinds_cap.cpp
+                tests/features/roadmap_dialog_rebuild_cost/test_roadmap_dialog_rebuild_cost.cpp
                 tests/features/roadmap_dialog_cards/test_roadmap_dialog_cards.cpp
                 tests/features/roadmap_filter_bar/test_roadmap_filter_bar.cpp
                 tests/features/roadmap_toc_toggle/test_roadmap_toc_toggle.cpp

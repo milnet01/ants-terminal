@@ -350,9 +350,11 @@ QStringList readUnreleasedBullets(const QString &changelogPath) {
     while (!f.atEnd()) {
         const QString line = QString::fromUtf8(f.readLine()).trimmed();
         if (line.startsWith(QStringLiteral("## "))) {
-            const bool isUnreleased = line.contains(
-                QStringLiteral("[Unreleased]"), Qt::CaseInsensitive);
-            inBlock = isUnreleased;
+            // ANTS-5088 — the heading that closes [Unreleased] ends the read;
+            // every released section below it is never needed.
+            if (inBlock) break;
+            inBlock = line.contains(QStringLiteral("[Unreleased]"),
+                                    Qt::CaseInsensitive);
             continue;
         }
         if (!inBlock) continue;
@@ -367,19 +369,12 @@ QStringList readUnreleasedBullets(const QString &changelogPath) {
     return out;
 }
 
-// `git log -n 5 --format=%s` from `repoRoot`. Best-effort — returns an
-// empty list on any failure (no git in PATH, not a repo, etc.).
-QStringList readRecentCommitSubjects(const QString &repoRoot) {
+// The subjects of `git log -n 5 --format=%s`, trimmed to their meaningful
+// slice. ANTS-5088 — a parse of output already in hand: the dialog runs the
+// process asynchronously (refreshRecentCommitsIfStale), not on the GUI thread.
+QStringList recentCommitSubjectsFrom(const QByteArray &gitLogOut) {
     QStringList out;
-    QProcess git;
-    git.setWorkingDirectory(repoRoot);
-    git.start(QStringLiteral("git"),
-              {QStringLiteral("log"), QStringLiteral("-n"), QStringLiteral("5"),
-               QStringLiteral("--format=%s")});
-    if (!git.waitForFinished(1500)) return out;
-    if (git.exitStatus() != QProcess::NormalExit || git.exitCode() != 0)
-        return out;
-    const QString stdoutStr = QString::fromUtf8(git.readAllStandardOutput());
+    const QString stdoutStr = QString::fromUtf8(gitLogOut);
     for (const QString &raw : stdoutStr.split('\n', Qt::SkipEmptyParts)) {
         const QString s = raw.trimmed();
         // Skip mechanical commits (release bumps, merges, reverts).
@@ -414,9 +409,19 @@ QStringList readRecentCommitSubjects(const QString &repoRoot) {
 // hit rate is essentially 100% across consecutive renders of the
 // same document; cache miss invalidates on any markdown content
 // change.
+//
+// ANTS-5088 — the memo is file-scope so the dialog's destructor can release
+// it. A function-local one outlived every dialog, holding the last History
+// render's input and output for the life of the process.
+thread_local QString s_lastInput;
+thread_local QString s_lastOutput;
+
+void releaseReverseMemo() {
+    s_lastInput = QString();
+    s_lastOutput = QString();
+}
+
 QString reverseTopLevelSections(const QString &markdownText) {
-    static thread_local QString s_lastInput;
-    static thread_local QString s_lastOutput;
     if (markdownText.size() == s_lastInput.size() &&
             markdownText == s_lastInput) {
         return s_lastOutput;
@@ -459,6 +464,16 @@ QString reverseTopLevelSections(const QString &markdownText) {
     s_lastInput = markdownText;
     s_lastOutput = result;
     return result;
+}
+
+// ANTS-5088 — the current-work row tint: the ToolUse colour at 8% alpha,
+// derived so it follows that colour rather than repeating it as a literal
+// (dialogs.md D1).
+QString currentWorkTint() {
+    const QColor c =
+        ClaudeTabIndicator::color(ClaudeTabIndicator::Glyph::ToolUse);
+    return QStringLiteral("rgba(%1,%2,%3,0.08)")
+        .arg(c.red()).arg(c.green()).arg(c.blue());
 }
 
 // Extract the four-digit numeric suffix of an `[ANTS-NNNN]` token from
@@ -513,27 +528,56 @@ RoadmapDialog::Preset RoadmapDialog::presetMatching(unsigned filter,
     return Preset::Custom;
 }
 
-QStringList RoadmapDialog::collectCurrentBullets() const {
-    // ANTS-2012 — readRecentCommitSubjects() shells out to a blocking `git
-    // log` (up to 1.5 s). rebuild() runs on every search keystroke, so an
-    // uncached call spawned git per keystroke — multi-second GUI jank while
-    // typing a filter. The external signals (CHANGELOG unreleased bullets +
-    // recent commit subjects) don't change during a typing burst, so cache
-    // them with a short TTL: a keystroke storm reuses one result, and newly
-    // landed commits still surface within a few seconds.
-    constexpr qint64 kExternalSignalsTtlMs = 5000;
-    const qint64 nowMs = QDateTime::currentMSecsSinceEpoch();
-    if (m_externalSignalsCacheMs != 0
-        && nowMs - m_externalSignalsCacheMs < kExternalSignalsTtlMs)
-        return m_externalSignalsCache;
+QStringList RoadmapDialog::collectCurrentBullets() {
+    // ANTS-2012 — rebuild() runs on every search keystroke, so neither signal
+    // may be recomputed per call. ANTS-5088 — the CHANGELOG half is keyed on
+    // the file's stamp, and the commit half never blocks: it returns what the
+    // last `git log` produced and starts the next one in the background.
+    if (!m_changelogPath.isEmpty()) {
+        const QFileInfo fi(m_changelogPath);
+        const QString stamp = QString::number(fi.lastModified().toMSecsSinceEpoch())
+                              + QLatin1Char(':') + QString::number(fi.size());
+        if (stamp != m_unreleasedStamp) {
+            m_unreleasedBullets = readUnreleasedBullets(m_changelogPath);
+            m_unreleasedStamp = stamp;
+        }
+    }
+    refreshRecentCommitsIfStale();
+    return m_unreleasedBullets + m_recentCommits;
+}
 
-    QStringList out;
-    if (!m_changelogPath.isEmpty()) out += readUnreleasedBullets(m_changelogPath);
-    const QFileInfo fi(m_roadmapPath);
-    out += readRecentCommitSubjects(fi.absolutePath());
-    m_externalSignalsCache = out;
-    m_externalSignalsCacheMs = nowMs;
-    return out;
+void RoadmapDialog::refreshRecentCommitsIfStale() {
+    // New commits surface within this long of landing. A monotonic clock, so a
+    // wall-clock step cannot hold a stale answer or force a re-run.
+    constexpr qint64 kExternalSignalsTtlMs = 5000;
+    if (m_commitsProc) return;                       // one at a time
+    if (m_commitsAge.isValid() && m_commitsAge.elapsed() < kExternalSignalsTtlMs)
+        return;
+    if (m_roadmapPath.isEmpty()) return;
+
+    auto *git = new QProcess(this);
+    m_commitsProc = git;
+    m_commitsAge.start();
+    git->setWorkingDirectory(QFileInfo(m_roadmapPath).absolutePath());
+    connect(git, &QProcess::finished, this,
+            [this, git](int code, QProcess::ExitStatus status) {
+        git->deleteLater();
+        // Best-effort, as before: no git, not a repo → no commit signal.
+        const QStringList subjects =
+            (status == QProcess::NormalExit && code == 0)
+                ? recentCommitSubjectsFrom(git->readAllStandardOutput())
+                : QStringList();
+        if (subjects == m_recentCommits) return;
+        m_recentCommits = subjects;
+        scheduleRebuild();
+    });
+    connect(git, &QProcess::errorOccurred, this, [git](QProcess::ProcessError e) {
+        // A process that never started emits no finished(); release it here.
+        if (e == QProcess::FailedToStart) git->deleteLater();
+    });
+    git->start(QStringLiteral("git"),
+               {QStringLiteral("log"), QStringLiteral("-n"), QStringLiteral("5"),
+                QStringLiteral("--format=%s")});
 }
 
 // ANTS-1154-INV-5: slugify a heading string for section-tracking.
@@ -733,7 +777,7 @@ QString RoadmapDialog::renderHtml(const QString &markdownText,
         "code{background:%3;padding:0 4px;border-radius:3px;}"
         "ul{margin-top:2px;margin-bottom:2px;}"
         "li{margin-bottom:4px;}"
-        ".cur{border-left:4px solid %4;padding-left:8px;background:rgba(229,194,74,0.08);}"
+        ".cur{border-left:4px solid %4;padding-left:8px;background:%6;}"
         "table{border-collapse:collapse;}"
         "td,th{border:1px solid %5;padding:2px 6px;}"
         "</style></head><body>")
@@ -741,7 +785,8 @@ QString RoadmapDialog::renderHtml(const QString &markdownText,
              th.textPrimary.name(),
              th.bgSecondary.name(),
              currentColor,
-             th.border.name());
+             th.border.name(),
+             currentWorkTint());
 
     enum class BulletKind { Other, Done, Planned, InProgress, Considered };
     auto classify = [](const QString &body) {
@@ -1265,7 +1310,7 @@ QString RoadmapDialog::renderCardsHtml(const QString &markdownText,
         // background by specificity) + swap the first cell's accent to the
         // current-work colour. rm-card-synthetic: dashed first-cell border
         // (ANTS-1428 INV-10 — GFM bullets with a content-hash ID).
-        ".rm-cur{background:rgba(229,194,74,0.08);}"
+        ".rm-cur{background:%23;}"
         ".rm-col-cur{border-left-color:%4;}"
         ".rm-col-syn{border-left-style:dashed;}"
         ".rm-state{font-size:%7px;padding-right:6px;}"
@@ -1319,7 +1364,8 @@ QString RoadmapDialog::renderCardsHtml(const QString &markdownText,
              QString::number(t.cardPaddingX),        // %19
              QString::number(t.labelPx),             // %20
              QString::number(t.bodyFirstPaddingTop), // %21
-             QString::number(t.bodyFirstMarginTop)); // %22
+             QString::number(t.bodyFirstMarginTop))  // %22
+        .arg(currentWorkTint());                     // %23
 
     const QStringList lines = sourceText.split('\n');
     QString currentSlug;
@@ -2619,15 +2665,17 @@ RoadmapDialog::RoadmapDialog(const QString &roadmapPath,
 // Tear it down here, where `this` is still whole: disconnect first so nothing
 // can call back, then kill.
 RoadmapDialog::~RoadmapDialog() {
-    if (m_lastTouchProc) {
-        QProcess *git = m_lastTouchProc;
-        m_lastTouchProc = nullptr;
+    for (QPointer<QProcess> *slot : {&m_lastTouchProc, &m_commitsProc}) {
+        if (!*slot) continue;
+        QProcess *git = *slot;
+        *slot = nullptr;
         git->disconnect(this);
         git->kill();
         // Reap it, so the child does not outlive us as a zombie. Short budget:
         // the process has already been signalled and this runs on close.
         git->waitForFinished(2000);
     }
+    releaseReverseMemo();   // ANTS-5088
 }
 
 void RoadmapDialog::closeEvent(QCloseEvent *event) {
@@ -2912,10 +2960,6 @@ void RoadmapDialog::showViewerContextMenu(const QPoint &pos) {
     menu->popup(m_viewer->viewport()->mapToGlobal(pos));
 }
 
-// card's ID in m_expandedItems; expand-section / collapse-section
-// toggle a section's slug in m_expandedSections; table toggles a
-// section's slug in m_tableSections. Each mutation triggers a
-// rebuild so the new state renders immediately.
 bool RoadmapDialog::isValidAnchorTarget(const QString &target) {
     // ANTS-1276 — accept only the shape the dialog's own hrefs emit: a
     // roadmap item ID (e.g. ANTS-1145, MAME_CURATOR-7) or a section
@@ -2934,6 +2978,11 @@ bool RoadmapDialog::isValidAnchorTarget(const QString &target) {
     return true;
 }
 
+// ANTS-1154 — expand / collapse toggle a card's ID in m_expandedItems;
+// expand-section / collapse-section toggle a section's slug in
+// m_expandedSections; table toggles a section's slug in m_tableSections,
+// though no render emits that link. Each mutation schedules a rebuild so
+// the new state renders.
 void RoadmapDialog::handleAnchorClicked(const QUrl &link) {
     if (link.scheme() != QLatin1String("ants")) {
         // Internal-anchor jumps (`#roadmap-toc-N`) come through here
@@ -2995,9 +3044,13 @@ void RoadmapDialog::refreshShippedDatesIfStale() {
     if (m_changelogPath.isEmpty()) return;
     const QFileInfo fi(m_changelogPath);
     const qint64 mtime = fi.lastModified().toMSecsSinceEpoch();
-    if (mtime == m_shippedDatesMtime && !m_shippedDates.isEmpty()) return;
+    // ANTS-5088 — the mtime alone decides. An empty result (a CHANGELOG with
+    // no dated release yet) is an answer too; keying on it re-parsed the whole
+    // file on every rebuild.
+    if (mtime == m_shippedDatesMtime) return;
     m_shippedDates = parseShippedDates(m_changelogPath);
     m_shippedDatesMtime = mtime;
+    ++m_shippedDateParses;
 }
 
 // ANTS-4414 — starts the blame and returns immediately.
@@ -3305,7 +3358,8 @@ bool parseArchiveFilename(const QString &name, int *majorOut, int *minorOut) {
 } // namespace
 
 QString RoadmapDialog::loadMarkdown(const QString &roadmapPath,
-                                    bool includeArchive) {
+                                    bool includeArchive,
+                                    QString *liveError) {
     // ANTS-1012 indie-review-2026-04-27 + ANTS-1125 INV-5: per-file
     // 8 MiB cap on every QFile::read() call inside this helper.
     // Defends against /dev/zero symlinks and accidental binary
@@ -3319,11 +3373,24 @@ QString RoadmapDialog::loadMarkdown(const QString &roadmapPath,
     // ANTS-5088 — the live roadmap takes the assembled cap, not the per-file
     // one: a live ROADMAP.md past 8 MiB lost every later section silently,
     // and this project's own file is several MiB and growing.
+    // A live file past that cap, or one that will not open, is reported
+    // rather than rendered cut short or blank.
     QString markdown;
     QFile f(roadmapPath);
-    if (f.open(QIODevice::ReadOnly | QIODevice::Text)) {
-        markdown = QString::fromUtf8(f.read(kAssembledCap));
+    if (!f.open(QIODevice::ReadOnly | QIODevice::Text)) {
+        if (liveError)
+            *liveError = QStringLiteral("%1: %2").arg(roadmapPath, f.errorString());
+        return markdown;
     }
+    if (f.size() > kAssembledCap) {
+        if (liveError)
+            *liveError = QStringLiteral("%1 is larger than the %2 MiB the "
+                                        "roadmap viewer reads.")
+                             .arg(roadmapPath)
+                             .arg(kAssembledCap / (qint64{1024} * 1024));
+        return markdown;
+    }
+    markdown = QString::fromUtf8(f.read(kAssembledCap));
     if (!includeArchive) return markdown;
 
     const QString dir = archiveDirFor(roadmapPath);
@@ -3390,6 +3457,40 @@ bool RoadmapDialog::wantsHistoryLoad() const {
     return shouldLoadHistory(
         m_activePreset,
         m_searchBox ? m_searchBox->text() : QString());
+}
+
+QString RoadmapDialog::sourceStamp(bool includeArchive) const {
+    // Path, mtime and size of each input; "-" for one that is absent, so a
+    // file appearing or vanishing moves the stamp too.
+    QString s = includeArchive ? QStringLiteral("archive\n")
+                               : QStringLiteral("live\n");
+    const auto add = [&s](const QFileInfo &fi) {
+        s += fi.filePath() + QLatin1Char(':');
+        s += fi.exists()
+                 ? QString::number(fi.lastModified().toMSecsSinceEpoch())
+                       + QLatin1Char(':') + QString::number(fi.size())
+                 : QStringLiteral("-");
+        s += QLatin1Char('\n');
+    };
+    add(QFileInfo(m_roadmapPath));
+    if (includeArchive) {
+        const QString dir = archiveDirFor(m_roadmapPath);
+        if (!dir.isEmpty()) {
+            const auto archives = QDir(dir).entryInfoList(
+                {QStringLiteral("*.md")}, QDir::Files, QDir::Name);
+            for (const QFileInfo &fi : archives) add(fi);
+        }
+    }
+    // The id format comes from here (ProjectSettings::idFormatFor).
+    const QString root = storeProjectRoot();
+    if (!root.isEmpty())
+        add(QFileInfo(root + QStringLiteral("/.ants/project.json")));
+    // A store write lands in the WAL first, and a checkpoint moves the
+    // database file itself; either one moves the stamp.
+    const QString store = RoadmapStore::defaultPath();
+    add(QFileInfo(store));
+    add(QFileInfo(store + QStringLiteral("-wal")));
+    return s;
 }
 
 // ANTS-3762 — pin the card table columns to one grid the whole view obeys.
@@ -3489,8 +3590,46 @@ void RoadmapDialog::applyCardColumnGrid(QTextDocument *doc, Density density) {
 void RoadmapDialog::rebuild() {
     if (!m_viewer) return;
 
+    // A refusal is shown, never served from whatever markdown is at hand
+    // (ANTS-3793 INV-1). The notice is the dialog's error-presentation path.
+    const auto showSourceNotice = [this](const QString &why) {
+        m_viewer->setHtml(QStringLiteral(
+            "<div style=\"padding:16px;font-family:sans-serif\">"
+            "<b>Could not read this roadmap.</b><br><br>%1</div>")
+                              .arg(htmlEscape(why)));
+        if (m_lastHtml) m_lastHtml->clear();   // the next good render repaints
+    };
+
+    // ANTS-5088 — rebuild() runs per debounced keystroke and per toggle, and
+    // re-reading the file, the archives and the store each time was most of
+    // its cost. The source is re-read only when a file it comes from moves.
+    // ANTS-3793 — the records resolve through the owner wrapper; § 2.3's
+    // legend follows the same backend. ANTS-3863 — fromMemory, NOT fromFile:
+    // renderCardsHtml() below needs this same text on every backend.
     const bool includeArchive = wantsHistoryLoad();
-    const QString markdown = loadRoadmapMarkdown(includeArchive);
+    const QString stamp = sourceStamp(includeArchive);
+    if (stamp != m_source.stamp) {
+        m_source = SourceCache{};
+        QString liveError;
+        QString text = loadRoadmapMarkdown(includeArchive, &liveError);
+        ++m_sourceReads;
+        if (!liveError.isEmpty()) {
+            showSourceNotice(liveError);
+            return;
+        }
+        auto provider = RoadmapSource::RoadmapText::fromMemory(text);
+        auto bullets = roadmapBullets(provider, includeArchive);
+        if (!m_sourceError.isEmpty()) {
+            showSourceNotice(m_sourceError);
+            return;
+        }
+        m_source.bullets = std::move(bullets);
+        m_source.fromStore = m_lastReadFromStore;
+        if (m_source.fromStore) m_source.legend = storeLegend();
+        m_source.markdown = std::move(text);
+        m_source.stamp = stamp;
+    }
+    const QString &markdown = m_source.markdown;
 
     unsigned filter = 0;
     if (m_filterDone && m_filterDone->isChecked()) filter |= ShowDone;
@@ -3513,25 +3652,9 @@ void RoadmapDialog::rebuild() {
     opts.shippedDates = m_shippedDates;
     opts.lastTouchDates = m_lastTouchDates;
     opts.density = m_density;  // ANTS-1238
-    // ANTS-3793 — resolve the records here, once per render, through the owner
-    // wrapper. § 2.3's legend follows the same backend.
-    // ANTS-3863 — fromMemory, NOT fromFile: renderCardsHtml() below needs this
-    // same text on every backend, so it is already in hand and a file-backed
-    // provider here would read the roadmap twice.
-    auto text = RoadmapSource::RoadmapText::fromMemory(markdown);
-    opts.bullets = roadmapBullets(text, includeArchive);
-    opts.legendFromStore = m_lastReadFromStore;
-    if (m_lastReadFromStore) opts.legend = storeLegend();
-    if (!m_sourceError.isEmpty()) {
-        // A refusal is shown, never served from the markdown sitting right
-        // here (INV-1). The notice is the dialog's error-presentation path.
-        m_viewer->setHtml(QStringLiteral(
-            "<div style=\"padding:16px;font-family:sans-serif\">"
-            "<b>Could not read this roadmap.</b><br><br>%1</div>")
-                              .arg(htmlEscape(m_sourceError)));
-        m_lastHtml.reset();
-        return;
-    }
+    opts.bullets = m_source.bullets;
+    opts.legendFromStore = m_source.fromStore;
+    opts.legend = m_source.legend;
     const QString html = renderCardsHtml(markdown, filter, signals_, m_themeName,
                                          m_sortOrder, predicate, m_kindFilter,
                                          opts);
