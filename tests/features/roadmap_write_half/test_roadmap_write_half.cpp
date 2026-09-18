@@ -21,9 +21,12 @@
 #include <gtest/gtest.h>
 
 #include <QByteArray>
+#include <QDateTime>
 #include <QDir>
 #include <QFile>
+#include <QFileDevice>
 #include <QFileInfo>
+#include <QStandardPaths>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -2171,4 +2174,109 @@ TEST(RoadmapWriteHalf, Ants5087RenderReadsEveryItemInOneQuery) {
     // the batched call above it.
     EXPECT_EQ(body.find("readItem("), std::string::npos)
         << "one readItem() per item is the N+1 ANTS-3816 was built to replace";
+}
+
+// The dialect decides how the whole file is REWRITTEN, and the lookup that
+// answers it discarded its error: a failed read returned an empty string, which
+// the render reads as ants-v1. A transient SQL error on that one row would have
+// republished a pass-headings roadmap as bullets, with ok:true.
+//
+// Structural, and for the usual reason: there is no seam that makes one
+// RoadmapStore query fail. An ABSENT project row is a different case and is
+// already refused downstream by the render ("no project with id N"), so it
+// cannot stand in for this one.
+TEST(RoadmapWriteHalf, Ants5087UnreadableDialectRefusesTheWrite) {
+    const std::string src = ants_test::stripComments(
+        ants_test::slurpFile(ANTS_SOURCE_DIR "/src/roadmapwrite.cpp"));
+
+    const std::string lookup =
+        ants_test::squashWhitespace(
+            ants_test::slurpFunctionBody(src, "std::optional<QString> dialectOf("));
+    ASSERT_FALSE(lookup.empty()) << "dialectOf's body did not scrape";
+    EXPECT_NE(lookup.find("return std::nullopt"), std::string::npos)
+        << "a failed lookup must be distinguishable from an absent row";
+
+    const std::string body =
+        ants_test::squashWhitespace(
+            ants_test::slurpFunctionBody(src, "Result commitAndRender("));
+    ASSERT_FALSE(body.empty()) << "commitAndRender's body did not scrape";
+    // The publish path takes the dialect through an engaged check and aborts
+    // when it is absent, rather than assigning it straight into Options.
+    EXPECT_EQ(body.find("opts.dialect = dialectOf("), std::string::npos)
+        << "the publish must not take the lookup's result unchecked";
+    EXPECT_NE(body.find("if (!dialect)"), std::string::npos)
+        << "the publish must refuse a dialect it could not read";
+}
+
+// ANTS-5087 — the directory those backups land in is bounded. Nothing removed
+// one before this, so it grew for the life of the install, on the home drive,
+// holding copies of files nobody asked to keep.
+//
+// The cap is asserted through a real discarding write rather than by calling
+// the pruner: what matters is that a write prunes, not that a pruner exists.
+// The filler files are stamped OLDER than the one this write makes, so the
+// backup it just took is the one that must survive — a prune that kept an
+// arbitrary 200 would pass a count check while dropping the only copy of the
+// text the caller was just told about.
+TEST(RoadmapWriteHalf, Ants5087DiscardedBackupsAreBounded) {
+    ants_test::XdgGuard guard;
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    qint64 projectId = 0;
+    const QString root = seedMigrated(guard, tmp, fixture(), &projectId);
+    ASSERT_FALSE(root.isEmpty());
+    const QString roadmap = root + QStringLiteral("/ROADMAP.md");
+
+    // The same location keepDiscarded() resolves, under the redirected XDG root.
+    const QString dir =
+        QStandardPaths::writableLocation(QStandardPaths::GenericDataLocation)
+        + QStringLiteral("/ants-terminal/discarded");
+    ASSERT_TRUE(QDir().mkpath(dir));
+    EXPECT_FALSE(dir.startsWith(QStringLiteral("/home/")) && !dir.contains(tmp.path()))
+        << "the sandbox is not redirected; this case would prune the real "
+           "directory: " << dir.toStdString();
+
+    // Comfortably past any cap, and back-dated so they sort as the oldest.
+    const QDateTime old = QDateTime::currentDateTimeUtc().addDays(-30);
+    for (int i = 0; i < 260; ++i) {
+        const QString p =
+            QStringLiteral("%1/filler-%2.bak").arg(dir).arg(i, 4, 10, QLatin1Char('0'));
+        ASSERT_TRUE(writeFile(p, QByteArray("older\n")));
+        QFile f(p);
+        ASSERT_TRUE(f.open(QIODevice::ReadWrite));
+        ASSERT_TRUE(f.setFileTime(old, QFileDevice::FileModificationTime));
+        f.close();
+    }
+    const auto count = [&] {
+        return QDir(dir).entryList({QStringLiteral("*.bak")}, QDir::Files).size();
+    };
+    ASSERT_EQ(count(), 260);
+
+    RemoteControl rc(nullptr);
+    ASSERT_TRUE(rc.cmdRoadmapLogAppendForTest(
+        appendReq(root, QStringLiteral("A canonicalising bullet."))).object()
+        .value(QStringLiteral("ok")).toBool());
+
+    const QByteArray marker =
+        "> A sentence that exists in no store column and in no other styling.\n";
+    QByteArray hand = readAll(roadmap);
+    ASSERT_FALSE(hand.isEmpty());
+    const int cut = hand.indexOf('\n');
+    ASSERT_GT(cut, 0);
+    hand.insert(cut + 1, marker);
+    ASSERT_TRUE(writeFile(roadmap, hand));
+
+    const QJsonObject dirty = rc.cmdRoadmapLogAppendForTest(
+        appendReq(root, QStringLiteral("A bullet after the hand-edit."))).object();
+    ASSERT_TRUE(dirty.value(QStringLiteral("ok")).toBool());
+    const QJsonArray backups =
+        dirty.value(QStringLiteral("discarded_backup_paths")).toArray();
+    ASSERT_EQ(backups.size(), 1)
+        << "precondition: this write must really have kept a backup";
+
+    EXPECT_LE(count(), 200)
+        << "the discarded-text directory is unbounded; it held " << count()
+        << " files after a write";
+    EXPECT_TRUE(QFileInfo::exists(backups.at(0).toString()))
+        << "the prune dropped the backup this very write reported";
 }

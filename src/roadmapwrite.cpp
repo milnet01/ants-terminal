@@ -247,6 +247,32 @@ DriftBreakdown externalDrift(const QHash<QString, QString> &preImage) {
 // otherwise correct. The envelope names what was kept, so an empty list says
 // nothing was — never that nothing was at stake, which the caller reads from
 // `discarded_text_lines` as before.
+// ANTS-5087 — how many discarded-text backups the directory keeps. Nothing
+// removed one before this, so it grew for the life of the install, on the home
+// drive, holding copies of files the user never asked to keep.
+//
+// A COUNT and not an age: it needs no clock, and it gives "how far back can I
+// recover?" an answer that does not depend on when you ask. The directory is
+// machine-global, like the store, so the cap is shared across projects.
+constexpr int kDiscardedFileCap = 200;
+
+// Oldest first, by modification time — QFile::copy stamps the copy with the
+// time it was made, so mtime IS when this backup was taken.
+//
+// Called AFTER the copies, never before: a write must not delete a backup to
+// make room for one that then fails to copy. Best-effort throughout, for the
+// same reason keepDiscarded is — a prune that cannot run must not fail a write
+// that is otherwise correct.
+void pruneDiscarded(const QString &dir) {
+    QDir d(dir);
+    // QDir::Time sorts NEWEST first, so everything at or past the cap is the
+    // tail to drop.
+    const QFileInfoList files =
+        d.entryInfoList({QStringLiteral("*.bak")}, QDir::Files, QDir::Time);
+    for (int i = kDiscardedFileCap; i < files.size(); ++i)
+        QFile::remove(files.at(i).absoluteFilePath());
+}
+
 QStringList keepDiscarded(const QStringList &paths) {
     QStringList kept;
     if (paths.isEmpty())
@@ -277,6 +303,7 @@ QStringList keepDiscarded(const QStringList &paths) {
         if (QFile::copy(path, out))
             kept.append(out);
     }
+    pruneDiscarded(dir);
     return kept;
 }
 
@@ -288,9 +315,23 @@ QStringList keepDiscarded(const QStringList &paths) {
 // project in bullet form would rewrite the whole file into a dialect its own
 // reader does not recognise. '' is a pre-bump row and means ants-v1, which is
 // what an empty dialect selects in the render.
-QString dialectOf(RoadmapStore &store, qint64 projectId) {
-    const auto row = store.readProject(projectId, nullptr);
-    return row ? row->sourceFormat : QString();
+// ANTS-5087 — nullopt means the LOOKUP FAILED, which is not the same as "no
+// dialect recorded" and must not be published as one. The error was discarded
+// here and a failure returned an empty string, which the render reads as
+// ants-v1: a transient SQL error while reading this one row would have
+// rewritten a pass-headings roadmap into bullet form, the exact loss the
+// comment above says the store-side lookup exists to prevent. An absent ROW
+// still means ants-v1, unchanged — that is the pre-bump case.
+std::optional<QString> dialectOf(RoadmapStore &store, qint64 projectId) {
+    QString err;
+    const auto row = store.readProject(projectId, &err);
+    if (row)
+        return row->sourceFormat;
+    // The readers here set `error` when the QUERY failed and leave it untouched
+    // when the query ran and matched nothing.
+    if (!err.isEmpty())
+        return std::nullopt;
+    return QString();
 }
 
 // ANTS-4462 — the read half. Deliberately the SAME pre-image render and the
@@ -303,9 +344,16 @@ QString dialectOf(RoadmapStore &store, qint64 projectId) {
 std::optional<Drift> measureDrift(RoadmapStore &store, qint64 projectId,
                                   const QString &projectRoot,
                                   const QString &liveRoadmapPath) {
+    // ANTS-5087 — a dialect the store could not be asked for is no answer, and
+    // this check would otherwise report drift computed against the wrong
+    // emission. Nothing to report is the honest result.
+    const auto dialect = dialectOf(store, projectId);
+    if (!dialect)
+        return std::nullopt;
+
     RoadmapRender::Options pre;
     pre.liveRoadmapPath = liveRoadmapPath;
-    pre.dialect = dialectOf(store, projectId);
+    pre.dialect = *dialect;
     pre.dryRun = true;
     // ANTS-4628 — an ENGAGED EMPTY scope, judging nothing. A staleness check
     // that failed the Layman gate would go dark on exactly the projects
@@ -372,10 +420,14 @@ Result commitAndRender(RoadmapStore &store, qint64 projectId,
     // the project, and these two items ask to be TOLD, not blocked.
     DriftBreakdown drift;
     bool driftChecked = false;
-    {
+    if (const auto preDialect = dialectOf(store, projectId)) {
+        // ANTS-5087 — and skipped outright when the dialect could not be read.
+        // `externalEditsChecked:false` already means "nobody looked", which is
+        // the truth here; measuring against the wrong emission would report
+        // every line of the file as drift.
         RoadmapRender::Options pre;
         pre.liveRoadmapPath = liveRoadmapPath;
-        pre.dialect = dialectOf(store, projectId);
+        pre.dialect = *preDialect;
         pre.dryRun = true;
         // ANTS-4628 — an ENGAGED EMPTY scope, so this diagnostic render judges
         // nothing. It has to: the pre-image exists only to measure drift, and
@@ -431,9 +483,25 @@ Result commitAndRender(RoadmapStore &store, qint64 projectId,
     // ordering INV-1 is about: render() commits its own files, so validating
     // with the real one would leave files staged behind a store that then
     // rolled back.
+    // ANTS-5087 — refuse rather than guess. This is the dialect the file is
+    // REWRITTEN in, so a lookup that failed used to fall back to ants-v1 and
+    // publish a pass-headings roadmap as bullets — the whole file, into a
+    // dialect its own reader does not recognise, with ok:true. The store is
+    // rolled back and nothing is written.
+    const auto dialect = dialectOf(store, projectId);
+    if (!dialect) {
+        if (error && error->isEmpty()) {
+            *error = QStringLiteral("the roadmap store could not be asked which "
+                                    "dialect project %1 was migrated from; "
+                                    "nothing was written")
+                         .arg(projectId);
+        }
+        return abort(Result::StoreFailed);
+    }
+
     RoadmapRender::Options opts;
     opts.liveRoadmapPath = liveRoadmapPath;
-    opts.dialect = dialectOf(store, projectId);
+    opts.dialect = *dialect;
     opts.dryRun = true;
     // ANTS-4628 / ANTS-3758 § 2.5 — the Layman gate judges what THIS write
     // touched, taken from the store rather than declared by the caller. Read
