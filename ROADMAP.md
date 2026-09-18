@@ -8793,7 +8793,7 @@ extends an existing item, that item carries it instead.
   Source: code-quality-review-2026-09-11 perf pass (lane roadmap-parse-render).
   Lanes: roadmap.
 
-- 📋 [ANTS-5088] **Performance pass findings for the roadmap dialog (medium and low).**
+- ✅ [ANTS-5088] **Performance pass findings for the roadmap dialog (medium and low).**
   Filed separately: ANTS-5047.
   Medium:
   - loadMarkdown's 8 MiB per-file cap silently truncates the live
@@ -8824,6 +8824,17 @@ extends an existing item, that item carries it instead.
   Still open: a live file past 64 MiB is still cut without notice
   (loadMarkdown is static and cannot reach m_sourceError); the
   per-rebuild re-read with no BulletRecord cache; the lows.
+  Resolved (2026-09-18, 994845bd): every remaining finding.
+  - rebuild() reuses the source while sourceStamp() holds (live file,
+    archives, .ants/project.json, store and WAL).
+  - A live file that will not open, or is past 64 MiB, shows the
+    "Could not read this roadmap." notice.
+  - git log runs asynchronously on a monotonic 5 s interval.
+  - The [Unreleased] scan stops at the next heading; an undated
+    CHANGELOG is parsed once; the history memo is released on close.
+  - The tint derives from the ToolUse colour; stale comments fixed.
+  Tests: tests/features/roadmap_dialog_rebuild_cost INV-1..6, each red
+  first. Dead table-mode state filed as ANTS-5233.
   **Layman:** Roadmap-window fixes: a size limit that will soon cut off this project's roadmap, and slow redraws while typing.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lane roadmap-dialog).
@@ -11034,6 +11045,17 @@ extends an existing item, that item carries it instead.
   Kind: feature.
   Source: user-request-2026-09-18.
   Lanes: chrome.
+
+- 📋 [ANTS-5233] **The roadmap dialog keeps a table-mode state that no render reads.**
+  Found while fixing ANTS-5088. RoadmapDialog still loads, saves and
+  toggles m_tableSections, and passes it as CardRenderOptions::tableSections.
+  renderCardsHtml never reads that field, and no render emits the
+  ants://table/ link that toggles it. So the Config key, the handler branch
+  and the field are dead. Decide: remove them, or restore table mode.
+  **Layman:** The roadmap window still saves a "table view" setting that nothing uses any more.
+  Kind: refactor.
+  Source: in-session-2026-09-18 (ANTS-5088).
+  Lanes: roadmap.
 
 ## Memory-efficiency sweep (user request 2026-08-19)
 

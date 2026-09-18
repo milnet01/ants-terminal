@@ -28,6 +28,13 @@ for security-relevant changes.
 
 ### Fixed
 
+- **The roadmap window stays responsive while you type, and says when it cannot read the roadmap** (ANTS-5088)
+  Each keystroke no longer re-reads the roadmap, its archives and the
+  store; they are read again only when one of them changes. The
+  recent-commit lookup runs in the background instead of pausing the
+  window. A roadmap that is missing, unreadable or larger than 64 MiB
+  now shows a notice instead of a blank or cut-short list.
+
 - **Roadmap writes hold their lock for less time, publish in the right dialect, and stop growing a backup folder without limit** (ANTS-5087)
   The roadmap's write lock is now held across one pass instead of two, and
   each pass reads every item in a single query rather than one query per
