@@ -14,6 +14,13 @@ for security-relevant changes.
 
 ### Changed
 
+- **The MCP socket reads one request per line** (ANTS-5089)
+  A request is complete when its line ends. The server no longer re-reads
+  everything received so far each time more arrives. The bundled bridge
+  already ends every request with a newline, so Claude Code sees no
+  change. A program talking to the socket directly must now end each
+  request with a newline.
+
 - **Importing a roadmap into the roadmap store no longer holds up other sessions' MCP calls** (ANTS-5086)
   roadmap_migrate runs on its own worker thread, so other sessions'
   calls no longer queue behind a whole migration. While a project is
@@ -27,6 +34,12 @@ for security-relevant changes.
   32 MiB is refused with too_large before any file is read.
 
 ### Fixed
+
+- **Claude's status keeps updating after a transcript message larger than 4 MiB** (ANTS-5089)
+  Ants reads the end of Claude Code's transcript to show what Claude is
+  doing. It looked back at most 4 MiB, so a larger final message, such as
+  a big file write, left nothing it could read and the status stopped
+  changing. It now looks back far enough for any message up to 16 MiB.
 
 - **The roadmap window stays responsive while you type, and says when it cannot read the roadmap** (ANTS-5088)
   Each keystroke no longer re-reads the roadmap, its archives and the
@@ -111,6 +124,11 @@ for security-relevant changes.
   them. The menu item is now Broadcast Input to Panes in This Tab.
 
 ### Security
+
+- **The Claude hook and MCP sockets accept at most 64 connections at once** (ANTS-5089)
+  Each open connection can hold up to 256 KiB for five seconds, and there
+  was no limit on how many were open. A connection past the limit is now
+  closed straight away.
 
 - **The audit window's Semgrep check no longer sends usage metrics to Semgrep** (ANTS-5083)
   It runs community rule packs with metrics switched off, as the

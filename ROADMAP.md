@@ -8840,7 +8840,7 @@ extends an existing item, that item carries it instead.
   Source: code-quality-review-2026-09-11 perf pass (lane roadmap-dialog).
   Lanes: roadmap.
 
-- 📋 [ANTS-5089] **Performance pass findings for Claude hook ingestion, transcripts and the MCP front end (medium and low).**
+- ✅ [ANTS-5089] **Performance pass findings for Claude hook ingestion, transcripts and the MCP front end (medium and low).**
   Filed separately: ANTS-5048, 5072; the shutdown hang is on ANTS-5024.
   Medium:
   - findClaudeChildPid falls back to a full /proc scan for every shell
@@ -8925,6 +8925,18 @@ extends an existing item, that item carries it instead.
   spec change runs rule 14's gate. (2) The status freeze on a transcript
   record over 4 MiB: scan back past the window to the record's start,
   capped at the 16 MiB record limit readJsonlRecord already uses.
+  Resolved (2026-09-18). a9ae1a1c (2026-09-14, not recorded here until
+  now): the transcript dialog parses only the last 2000 records it shows
+  (loadTranscriptTail, INV-13). 6e201753: the tail window grows to one
+  byte past the 16 MiB record cap, so a final record over 4 MiB no longer
+  freezes the status (INV-14). 659c6c1f: the hook and MCP sockets each
+  admit at most 64 live connections (user's choice;
+  tests/features/local_socket_connection_cap). 738f5ac1: the MCP socket
+  reads one request per line, which ends the whole-buffer re-parse; a
+  request with no newline is not dispatched
+  (tests/features/mcp_parse_error_reply INV-4, INV-5). No review gate: the
+  framing contract is a test contract (user confirmed 2026-09-18). The
+  /tmp socket move is split out as ANTS-5236.
   **Layman:** Smaller Claude-integration fixes: slow process scans, a slow transcript window and dropped long messages.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lane claude-integration-a).
@@ -11063,6 +11075,20 @@ extends an existing item, that item carries it instead.
   Kind: refactor.
   Source: in-session-2026-09-18 (ANTS-5088).
   Lanes: roadmap.
+
+- 📋 [ANTS-5236] **Move the Claude hook and MCP sockets from /tmp to XDG_RUNTIME_DIR.**
+  Split from ANTS-5089, where it was recorded as not a quick fix. The hook
+  socket uses a guessable /tmp name another user can squat. Since
+  ANTS-5144 a squatter can stop the socket binding but cannot intercept
+  it. The installed Claude hook script hardcodes
+  /tmp/ants-claude-hooks-$pid. The MCP path is bound by the
+  ANTS_MCP_SOCKET export, the stale-socket sweep and ANTS-1897 INV-14. So
+  the move needs a spec and a migration for hook scripts already
+  installed in users' ~/.claude.
+  **Layman:** Keep the Claude connection points in a private folder instead of the shared temporary folder.
+  Kind: security.
+  Source: code-quality-review-2026-09-11 perf pass (lane claude-integration-a), via ANTS-5089.
+  Lanes: claude, mcp.
 
 ## Memory-efficiency sweep (user request 2026-08-19)
 
@@ -18541,6 +18567,31 @@ fixes don't address. Roadmapped here as their own design tasks.
   **Layman:** Searching the code for text containing a bracket can wrongly report that nothing was found.
   Kind: fix.
   Source: in-session-2026-09-17.
+  Lanes: mcp.
+
+- 📋 [ANTS-5234] **find_definition include_body has no size bound, so one large symbol overflows the reply.**
+  Measured 2026-09-18: find_definition symbol:onMcpConnection include_body:true
+  returned the whole function body, over half a million characters. The
+  harness spilled it to a file and the call answered nothing inline.
+  read_region caps with max_bytes and marks truncated; find_definition
+  include_body has neither argument nor default cap. Add max_body_bytes
+  with a default, set body_truncated, and report the body's line span so
+  a caller can page it with read_region.
+  **Layman:** Asking where a very large function lives can return so much text that the answer is lost.
+  Kind: enhancement.
+  Source: in-session-2026-09-18 (ANTS-5089 work).
+  Lanes: mcp.
+
+- 📋 [ANTS-5235] **The git veto blocks a whole compound command and does not say its other steps did not run.**
+  Measured 2026-09-18: a Bash call ran a python file edit followed by a
+  `git diff --stat`. ants-bash-veto.sh blocked it with a reason naming
+  git_state op:diff only. Nothing in the reason said the edit also did
+  not run, and it was found missing only by a later status check. When
+  the matched git stage is one part of a compound command, the reason
+  should say the whole command was refused.
+  **Layman:** When the terminal refuses a command, it should say that none of the command ran.
+  Kind: enhancement.
+  Source: in-session-2026-09-18 (ANTS-5089 work).
   Lanes: mcp.
 
 ### 🔬 Project Audit false-positive reduction (self-audit 2026-05-20)
