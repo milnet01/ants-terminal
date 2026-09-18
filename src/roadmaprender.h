@@ -169,6 +169,33 @@ struct Outcome {
 // pick one of those two mechanisms; it cannot rely on this function to stop it.
 QString bulletText(const RoadmapStore::ItemWrite &it);
 
+// ANTS-5087 — which trailer lines bulletText() will write for this item, as
+// data. ONE owner for the five decisions, because there were two.
+//
+// `BulletRecord::composedTrailers` must name exactly the lines the render
+// wrote: `roadmap_log op:"amend_body"` cannot reach a composed line, so a
+// caller uses the field to tell a value the author typed from one the store
+// composed. The store-built record computed it from its own copy of these
+// predicates, and two had drifted — `source` lacked the defaulted-provenance
+// rider and `kind` lacked the unrecognised-value one — so the field could name
+// a `Source:` line the render withheld and miss a `Kind:` line it wrote. The
+// copy's own comment claimed it "cannot disagree with the renderer", which is
+// the claim that was false.
+//
+// Deriving the keys by DIFFING the rendered text against the body would be the
+// other single owner and is the wrong one: a value present in both is composed
+// in neither, and the diff cannot tell which line came from where.
+struct TrailerLines {
+    bool layman   = false;
+    bool kind     = false;
+    bool source   = false;
+    bool lanes    = false;
+    bool evidence = false;
+    // The composed keys in the order the render emits them.
+    QStringList keys() const;
+};
+TrailerLines trailerLines(const RoadmapStore::ItemWrite &it);
+
 // ANTS-4955 — roadmap-format.md § 3.5: a Layman value is STORED without its
 // closing full stop and RENDERED with one. laymanForStore() drops one trailing
 // '.' from text a caller supplied; laymanRendered() appends '.' to a stored

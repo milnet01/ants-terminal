@@ -146,6 +146,40 @@ QString bulletText(const RoadmapStore::ItemWrite &it) {
     head += QStringLiteral(" **") + it.headline.simplified() + QStringLiteral("**");
     lines.append(head);
 
+    // ANTS-5087 — the five decisions, made once, in the one place that owns
+    // them. The reasoning for each rider is in trailerLines() below.
+    const TrailerLines emitted = trailerLines(it);
+
+    if (!it.body.isEmpty())
+        appendIndented(&lines, it.body);
+    if (emitted.layman)
+        appendIndented(&lines, QStringLiteral("**Layman:** ") + laymanRendered(it.layman));
+    // Required piece (INV-12).
+    if (emitted.kind)
+        appendIndented(&lines, QStringLiteral("Kind: ") + withStop(it.kind));
+    if (emitted.source)
+        appendIndented(&lines, QStringLiteral("Source: ") + withStop(it.source));
+    if (emitted.lanes)
+        appendIndented(&lines, QStringLiteral("Lanes: ") + withStop(it.lanes.join(QStringLiteral(", "))));
+    // Rendered WITHOUT a trailing period: paths contain dots, so a sentence
+    // period would read as part of the last path (roadmap-format.md § 3.5).
+    if (emitted.evidence)
+        appendIndented(&lines, QStringLiteral("Evidence: ") + it.evidence.join(QStringLiteral(", ")));
+
+    return lines.join(QLatin1Char('\n'));
+}
+
+QStringList TrailerLines::keys() const {
+    QStringList out;
+    if (layman)   out << QStringLiteral("layman");
+    if (kind)     out << QStringLiteral("kind");
+    if (source)   out << QStringLiteral("source");
+    if (lanes)    out << QStringLiteral("lanes");
+    if (evidence) out << QStringLiteral("evidence");
+    return out;
+}
+
+TrailerLines trailerLines(const RoadmapStore::ItemWrite &it) {
     // One accessor call per bullet, reused across all five comparisons: calling
     // it per key would be five passes and up to thirty matches per bullet.
     const RoadmapParse::TrailerValues tv = RoadmapParse::trailerValuesIn(it.body);
@@ -153,13 +187,19 @@ QString bulletText(const RoadmapStore::ItemWrite &it) {
         return m.offset >= 0 && m.anchored;
     };
 
-    if (!it.body.isEmpty())
-        appendIndented(&lines, it.body);
-    if (!it.layman.isEmpty() && !shadows(tv.layman))
-        appendIndented(&lines, QStringLiteral("**Layman:** ") + laymanRendered(it.layman));
-    // Required piece (INV-12) — emitted whenever the body does not already
-    // declare this key at a line start.
-    //
+    TrailerLines out;
+    // The base rule for all five: the column has a value and the body does not
+    // already declare that key at a line start.
+    out.layman   = !it.layman.isEmpty()   && !shadows(tv.layman);
+    // ANTS-4505 — one rule for the two list-valued keys too, where they used to
+    // need their own. They compared ELEMENT BY ELEMENT because comparing a
+    // pre-split string against a joined column diverges on separator spacing
+    // alone — a hazard of comparing values at all. Presence compares none, so
+    // `tv.lanesList` / `tv.evidenceList` are no longer read here; they stay on
+    // the accessor for their other consumers.
+    out.lanes    = !it.lanes.isEmpty()    && !shadows(tv.lanes);
+    out.evidence = !it.evidence.isEmpty() && !shadows(tv.evidence);
+
     // The `kind` rider, and it is not symmetry-breaking for its own sake:
     // matchLastIn() takes `kind` only among candidates the vocabulary
     // recognises, but when NO capture is recognised it returns the last match
@@ -170,8 +210,8 @@ QString bulletText(const RoadmapStore::ItemWrite &it) {
     // would adopt it, degrading the column one migration at a time with nothing
     // reporting it. The other four keys have no closed value set, so there is no
     // "unrecognised" state for them to be in.
-    if (!(shadows(tv.kind) && RoadmapParse::isRecognisedKind(tv.kind.value)))
-        appendIndented(&lines, QStringLiteral("Kind: ") + withStop(it.kind));
+    out.kind = !(shadows(tv.kind) && RoadmapParse::isRecognisedKind(tv.kind.value));
+
     // ANTS-4065 § 2.4 — a `source` the IMPORT supplied is not written back into
     // the file. `roadmap-format.md` § 3.5.3 makes `planned` the default, so
     // rendering it turns "this bullet said nothing" into "this bullet says
@@ -191,22 +231,9 @@ QString bulletText(const RoadmapStore::ItemWrite &it) {
     const bool assertedSource =
         it.provenance.value(QStringLiteral("source")).toString()
             != QLatin1String("defaulted");
-    if (!it.source.isEmpty() && !shadows(tv.source) && assertedSource)
-        appendIndented(&lines, QStringLiteral("Source: ") + withStop(it.source));
-    // ANTS-4505 — one rule for all five, where the two list-valued keys used to
-    // need their own. They compared ELEMENT BY ELEMENT because comparing a
-    // pre-split string against a joined column diverges on separator spacing
-    // alone — a hazard of comparing values at all. Presence compares none, so
-    // `tv.lanesList` / `tv.evidenceList` are no longer read here; they stay on
-    // the accessor for their other consumers.
-    if (!it.lanes.isEmpty() && !shadows(tv.lanes))
-        appendIndented(&lines, QStringLiteral("Lanes: ") + withStop(it.lanes.join(QStringLiteral(", "))));
-    // Rendered WITHOUT a trailing period: paths contain dots, so a sentence
-    // period would read as part of the last path (roadmap-format.md § 3.5).
-    if (!it.evidence.isEmpty() && !shadows(tv.evidence))
-        appendIndented(&lines, QStringLiteral("Evidence: ") + it.evidence.join(QStringLiteral(", ")));
+    out.source = !it.source.isEmpty() && !shadows(tv.source) && assertedSource;
 
-    return lines.join(QLatin1Char('\n'));
+    return out;
 }
 
 namespace {
