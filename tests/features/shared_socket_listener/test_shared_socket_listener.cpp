@@ -78,7 +78,7 @@ QByteArray rpc(const QString &sockPath, const QJsonObject &req,
     QLocalSocket client;
     client.connectToServer(sockPath);
     if (!client.waitForConnected(2000)) return {};
-    client.write(QJsonDocument(req).toJson(QJsonDocument::Compact));
+    client.write(QJsonDocument(req).toJson(QJsonDocument::Compact) + '\n');
     client.flush();
     QByteArray reply;
     waitUntil([&] {
@@ -331,7 +331,7 @@ TEST(SharedSocketListener, Inv6DestroyingAnOwnerClosesItsConnections) {
     client.connectToServer(path);
     ASSERT_TRUE(client.waitForConnected(2000));
     client.write(QJsonDocument(toolsCall(QStringLiteral("ants_never_reply"), dir.path()))
-                     .toJson(QJsonDocument::Compact));
+                     .toJson(QJsonDocument::Compact) + '\n');
     client.flush();
     ASSERT_TRUE(waitUntil([&] { return static_cast<bool>(heldReply); }, 3000))
         << "the deferred verb never ran";

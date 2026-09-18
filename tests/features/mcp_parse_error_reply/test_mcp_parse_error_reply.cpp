@@ -81,15 +81,35 @@ TEST(McpParseErrorReply, Inv2NonObjectLineGetsInvalidRequest) {
     EXPECT_EQ(errorCode(reply), -32600) << reply.constData();
 }
 
-// INV-3 — a request in progress gets no reply.
-TEST(McpParseErrorReply, Inv3RequestInProgressKeepsWaiting) {
+// INV-3 — a request with no newline gets no reply.
+TEST(McpParseErrorReply, Inv3RequestWithNoNewlineKeepsWaiting) {
     Harness h;
     ASSERT_TRUE(h.start());
     EXPECT_TRUE(sendRaw(h.sockPath,
                         QByteArrayLiteral("{\"jsonrpc\":\"2.0\""), 600).isEmpty())
-        << "INV-3: an unframed partial request must not be answered";
-    EXPECT_TRUE(sendRaw(h.sockPath,
-                        QByteArrayLiteral("{\n  \"jsonrpc\": \"2.0\",\n"),
-                        600).isEmpty())
-        << "INV-3: a buffer with an embedded newline is still arriving";
+        << "INV-3: a partial request with no newline must not be answered";
+}
+
+// INV-4 — a complete object with no newline is not dispatched.
+TEST(McpParseErrorReply, Inv4UnframedObjectIsNotDispatched) {
+    Harness h;
+    ASSERT_TRUE(h.start());
+    const QByteArray init = QByteArrayLiteral(
+        "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\"}");
+    EXPECT_TRUE(sendRaw(h.sockPath, init, 600).isEmpty())
+        << "INV-4: a request with no newline was dispatched";
+    const QByteArray reply = sendRaw(h.sockPath, init + '\n', 3000);
+    EXPECT_TRUE(replyObject(reply).contains(QStringLiteral("result")))
+        << "INV-4: the framed request got no result: '" << reply.constData() << "'";
+}
+
+// INV-5 — a newline ends the request.
+TEST(McpParseErrorReply, Inv5NewlineEndsTheRequest) {
+    Harness h;
+    ASSERT_TRUE(h.start());
+    const QByteArray reply = sendRaw(
+        h.sockPath, QByteArrayLiteral("{\n  \"jsonrpc\": \"2.0\",\n"), 3000);
+    EXPECT_EQ(errorCode(reply), -32700)
+        << "INV-5: the first line was not taken as the request: '"
+        << reply.constData() << "'";
 }

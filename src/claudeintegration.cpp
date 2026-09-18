@@ -2333,27 +2333,29 @@ void ClaudeIntegration::onMcpConnection() {
         connect(idleTimer, &QTimer::timeout, socket,
                 [socket]() { socket->abort(); });
         idleTimer->start();
-        // Buffer incoming data — readyRead may fire with partial JSON.
-        // Try to parse on each readyRead; process once valid JSON is received.
+        // ANTS-5089 — one request per line: the request is the bytes before
+        // the first newline. Until one arrives, scan only the bytes that just
+        // came in and wait; nothing is parsed, so a slow sender no longer
+        // costs a re-parse of the whole buffer on every readyRead.
         socket->setProperty("_buf", QByteArray());
         socket->setProperty("_handled", false);
         connect(socket, &QLocalSocket::readyRead, this, [this, socket, idleTimer]() {
             if (socket->property("_handled").toBool()) return;
             QByteArray buf = socket->property("_buf").toByteArray();
+            const qsizetype scanFrom = buf.size();
             buf += socket->readAll();
             // ANTS-1659 — MCP requests are small (tool name + args); cap at
             // 256 KiB to close the same nested-JSON OOM vector as the hook
             // path. Was 10 MiB.
             if (buf.size() > 256 * 1024) { socket->disconnectFromServer(); return; }
-            socket->setProperty("_buf", buf);
+            const qsizetype newline = buf.indexOf('\n', scanFrom);
+            if (newline < 0) {
+                socket->setProperty("_buf", buf);
+                return;
+            }
             QJsonParseError parseError;
-            QJsonDocument doc = QJsonDocument::fromJson(buf, &parseError);
+            QJsonDocument doc = QJsonDocument::fromJson(buf.left(newline), &parseError);
             if (!doc.isObject()) {
-                // ANTS-5089 — a buffer that is exactly one line is a complete
-                // request: answer it rather than sit out the idle timer.
-                // Anything else may still be arriving, so wait for more.
-                if (!buf.endsWith('\n') || buf.indexOf('\n') != buf.size() - 1)
-                    return;
                 socket->setProperty("_handled", true);
                 idleTimer->stop();
                 writeMcpRequestError(socket, parseError);

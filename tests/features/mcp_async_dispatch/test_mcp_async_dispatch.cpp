@@ -49,7 +49,8 @@ QByteArray toolsCall(const QString &verb, const QString &callerCwd) {
     req["id"]      = 1;
     req["method"]  = "tools/call";
     req["params"]  = params;
-    return QJsonDocument(req).toJson(QJsonDocument::Compact);
+    // ANTS-5089 — the MCP socket frames one request per line.
+    return QJsonDocument(req).toJson(QJsonDocument::Compact) + '\n';
 }
 
 // Drive one tools/call over the MCP socket, pumping the GUI thread's event
@@ -274,7 +275,7 @@ TEST(McpAsyncDispatch, Inv2OffThreadVerbsDoNotOverlap) {
         req["id"]      = 1;
         req["method"]  = "tools/call";
         req["params"]  = params;
-        s->write(QJsonDocument(req).toJson(QJsonDocument::Compact));
+        s->write(QJsonDocument(req).toJson(QJsonDocument::Compact) + '\n');
         s->flush();
     }
 
