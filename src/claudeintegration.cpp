@@ -798,7 +798,12 @@ ClaudeTranscriptSnapshot ClaudeIntegration::parseTranscriptTail(
     // behind for the parser.
     const qint64 size = file.size();
     qint64 window = 32768;
-    constexpr qint64 kMaxWindow = 4 * 1024 * 1024; // 4 MiB safety cap
+    // ANTS-5089: the cap is one byte past the record cap readJsonlRecord
+    // uses, so the newline before a record of up to that size is inside the
+    // window. At the old 4 MiB cap a larger final record left no event in the
+    // window and the status froze. The window only grows this far while the
+    // last record is that large.
+    constexpr qint64 kMaxWindow = kMaxTranscriptRecordBytes + 1;
     QByteArray tail;
     while (true) {
         const qint64 start = std::max(qint64(0), size - window);
@@ -811,8 +816,8 @@ ClaudeTranscriptSnapshot ClaudeIntegration::parseTranscriptTail(
             break;
         }
         if (window >= kMaxWindow) {
-            // ANTS-1169: a single tool_result that exceeds the 4 MiB
-            // window (e.g. legitimate 5 MiB inline file body) used to
+            // ANTS-1169: a single tool_result that exceeds the
+            // window (a record over the ANTS-5089 record cap) used to
             // bail and return an empty snapshot — the status bar
             // appeared frozen because no event ever survived the
             // tail-trim. Instead, fall back to the LAST complete

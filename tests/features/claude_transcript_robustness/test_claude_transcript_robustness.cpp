@@ -550,6 +550,34 @@ int inv13TailLoaderReturnsLastEntriesAndTotal() {
     return (capped && uncapped) ? 0 : 1;
 }
 
+// ANTS-5089: a final record larger than the old 4 MiB tail window is still
+// found. The window grows back to the record's start, up to the 16 MiB
+// record cap, so the status does not freeze on a giant tool_use.
+int inv14TailFindsRecordLargerThanOldWindow() {
+    QTemporaryDir tmp;
+    if (!tmp.isValid()) return 1;
+    const QString path = tmp.path() + "/giant.jsonl";
+    {
+        QFile f(path);
+        if (!f.open(QIODevice::WriteOnly)) return 1;
+        f.write(R"({"type":"user","message":{"content":"go"}})" "\n");
+        f.write(R"({"type":"assistant","message":{"stop_reason":"tool_use",)"
+                R"("content":[{"type":"tool_use","name":"Write","input":{"c":")");
+        f.write(QByteArray(5 * 1024 * 1024, 'x'));
+        f.write(R"("}}]}})" "\n");
+    }
+    const ClaudeTranscriptSnapshot snap =
+        ClaudeIntegration::parseTranscriptTail(path, false);
+    const bool ok = snap.stateDetermined &&
+                    snap.state == ClaudeState::ToolUse &&
+                    snap.tool == QLatin1String("Write");
+    std::fprintf(stderr,
+                 "[inv14 tail-finds-5MiB-record] determined=%d state=%d tool=%s  %s\n",
+                 snap.stateDetermined ? 1 : 0, static_cast<int>(snap.state),
+                 qPrintable(snap.tool), ok ? "PASS" : "FAIL");
+    return ok ? 0 : 1;
+}
+
 }  // namespace
 
 TEST(ClaudeTranscriptRobustness, Main) {
@@ -566,6 +594,7 @@ TEST(ClaudeTranscriptRobustness, Main) {
     failures += inv10SidechainEndTurnDoesNotIdle();
     failures += inv11LongRecordsAreReadWhole();
     failures += inv13TailLoaderReturnsLastEntriesAndTotal();
+    failures += inv14TailFindsRecordLargerThanOldWindow();
     if (failures) FAIL();
 }
 

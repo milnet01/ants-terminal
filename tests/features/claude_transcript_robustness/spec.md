@@ -31,10 +31,10 @@ Given a transcript whose final event is a single-line, 40 KB user
 correct post-event state (the thinking/user event IS the state
 determinant in this case).
 
-**INV-2** — Tail-growth is bounded. Pathological transcripts (one
-event of >4 MiB with no newlines anywhere) must return without
-consuming unbounded memory. The 4 MiB cap matches the explicit
-`kMaxWindow` constant in `claudeintegration.cpp`.
+**INV-2** — Tail-growth is bounded. A pathological transcript (bytes
+with no newline anywhere) must return without consuming unbounded
+memory. The bound is the `kMaxWindow` constant in `parseTranscriptTail`,
+one byte past `kMaxTranscriptRecordBytes` (ANTS-5089).
 
 **INV-3** — Hyphens in leaf directory names survive decoding. Given a
 real directory at `<tmp>/my-project`, `decodeProjectPath` must resolve
@@ -110,6 +110,13 @@ last `maxEntries` records and counts every non-empty record in `total`
 records 7–10 with a total of 10; with a cap above the count it returns all
 ten. The transcript dialog uses it so it no longer JSON-parses a whole
 transcript it renders only the end of.
+
+**INV-14** — A final record larger than the old 4 MiB tail window still
+determines state (ANTS-5089). `parseTranscriptTail` on a transcript whose
+last record is a 5 MiB `assistant` `tool_use` of `Write` returns
+`stateDetermined`, `ToolUse` and tool `Write`. Before the fix the window
+stopped at 4 MiB, held only a fragment of that record, and returned no
+event, so the status froze.
 
 ## Out of scope
 
