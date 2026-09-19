@@ -10,8 +10,10 @@
 #pragma once
 
 #include <QString>
+#include <QStringList>
 
 class QIODevice;
+class QTextStream;
 class RoadmapStore;
 
 namespace RoadmapExport {
@@ -62,5 +64,23 @@ bool exportProject(RoadmapStore &store, const QString &exportSlug,
 // § 2.4 record order guarantees every reference is declared before it is used,
 // which is the reason `section` precedes `element` and `item` precedes both.
 bool rebuildProject(RoadmapStore &store, QIODevice *in, QString *error = nullptr);
+
+// ANTS-3794 § 2.2 — export every project in the store into `dir`, one
+// `<export_slug>.jsonl` each. One project's failure does not stop the others.
+// Orphan `*.jsonl` files are deleted only when nothing failed, and an empty
+// project list is a fault rather than "every file is an orphan".
+struct ExportAllResult {
+    QStringList written;   // export_slugs whose file was committed
+    QStringList failed;    // "slug: reason"
+    QStringList removed;   // file names deleted as orphans
+    QString     error;     // set when the run stopped before any export
+};
+ExportAllResult exportAllProjects(RoadmapStore &store, const QString &dir);
+
+// ANTS-3794 § 2.1 — the `--export-roadmaps <dir>` command, in the library so
+// the test bundles reach it without linking main.cpp. Returns the process exit
+// code: 2 when there is no store at `storePath` (never creating one) or it will
+// not open, 1 when any project failed, 0 otherwise.
+int runExportCommand(const QString &storePath, const QString &dir, QTextStream &out);
 
 }  // namespace RoadmapExport

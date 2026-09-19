@@ -705,6 +705,7 @@ add_library(ants_roadmapstore_lib STATIC
     src/roadmapstore.cpp
     src/jsoncanonical.cpp   # ANTS-3761 — RFC 8785; Qt6::Core only, no Sql
     src/roadmapexport.cpp   # ANTS-3761 — the export writer + its rebuild half
+    src/roadmapbackuphealth.cpp  # ANTS-3794 — is the store still backed up?
     src/roadmaprender.cpp   # ANTS-3758 — the render: store → ROADMAP.md
     # ANTS-3793 — the read seam. Here and not in ants_core_lib for the same
     # reason the render is: it reads the store, and its records are defined as
@@ -985,6 +986,9 @@ target_link_libraries(ants-terminal PRIVATE
     ants_audit_dialog_lib
     ants_dialogs_lib
     $<$<BOOL:${LUA_FOUND}>:ants_lua_lib>
+    # ANTS-3794 — main.cpp calls RoadmapExport::runExportCommand() for
+    # --export-roadmaps before QApplication exists.
+    ants_roadmapstore_lib
     -Wl,--end-group
     ants_warnings
 )
@@ -1320,6 +1324,17 @@ if(ANTS_TESTS)
         LABELS "features;fast"
         TIMEOUT 60
         ENVIRONMENT "PREPUSH_HOOK=${CMAKE_CURRENT_SOURCE_DIR}/tools/hooks/pre-push")
+
+    # ANTS-3794 — the weekly export's publish script and the backup records,
+    # over throwaway git repos with a stub binary; see
+    # tests/features/roadmap_export_publish/spec.md. Exits 77 when git, flock
+    # or sqlite3 is missing, which keeps them out of ci_workflow_deps.
+    add_test(NAME roadmap_export_publish
+             COMMAND bash "${CMAKE_CURRENT_SOURCE_DIR}/tests/features/roadmap_export_publish/test_roadmap_export_publish.sh")
+    set_tests_properties(roadmap_export_publish PROPERTIES
+        LABELS "features;fast"
+        TIMEOUT 60
+        SKIP_RETURN_CODE 77)
 
     add_test(NAME claude_git_context_script
              COMMAND bash "${CMAKE_CURRENT_SOURCE_DIR}/tests/features/claude_git_context_hook/test_script.sh")
@@ -3621,6 +3636,11 @@ if(ANTS_TESTS)
                 # INV-9 holds the write lock and observes the abort. Separate
                 # directory, same bundle — no new binary (README.md's rule).
                 tests/features/roadmap_export_concurrency/test_roadmap_export_concurrency.cpp
+                # ANTS-3794 — exporting every project, and --export-roadmaps.
+                # INV-1 is a source scrape of main.cpp over ANTS_SRC_DIR.
+                tests/features/roadmap_export_all/test_roadmap_export_all.cpp
+                # ANTS-3794 INV-11 — the backup health check.
+                tests/features/roadmap_backup_health/test_roadmap_backup_health.cpp
                 # ANTS-3764 step 2 — the BulletRecord widening ANTS-3757 needs.
                 # Core-only: the reader left ants_dialogs_lib in step 1, which
                 # is the whole point, so its test must not need Widgets either.

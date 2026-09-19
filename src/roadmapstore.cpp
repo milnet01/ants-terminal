@@ -939,7 +939,7 @@ bool RoadmapStore::setItemField(qint64 itemPk, const QString &field,
                     *error = QStringLiteral("%1 must be a JSON array of strings").arg(field);
                 return false;
             }
-            for (const QJsonValue &v : doc.array()) {
+            for (const auto &v : doc.array()) {
                 if (!v.isString()) {
                     if (error)
                         *error = QStringLiteral("%1 must be a JSON array of strings").arg(field);
@@ -1325,7 +1325,8 @@ bool RoadmapStore::updateSection(qint64 sectionId, const QString &title, int lev
 // bind. Non-table kinds are VERBATIM — § 2.3 calls canonicalising prose as JSON
 // undefined rather than merely wasteful, so a narration payload that happens to
 // look like JSON round-trips unchanged.
-static bool rsCanonicalisePayload(const QString &kind, const QString &payload,
+namespace {
+bool rsCanonicalisePayload(const QString &kind, const QString &payload,
                                   QString *stored, QString *error) {
     if (kind != QLatin1String("table")) {
         *stored = payload;
@@ -1347,6 +1348,7 @@ static bool rsCanonicalisePayload(const QString &kind, const QString &payload,
     }
     return true;
 }
+}  // namespace
 
 bool RoadmapStore::addElement(qint64 sectionId, int position, const QString &kind,
                               const QString &payload, QString *error) {
@@ -2016,7 +2018,7 @@ constexpr const char *kItemColumns =
 RoadmapStore::ItemWrite itemFromRow(const QSqlQuery &q) {
     const auto strList = [](const QString &json) {
         QStringList out;
-        for (const QJsonValue &v : QJsonDocument::fromJson(json.toUtf8()).array())
+        for (const auto &v : QJsonDocument::fromJson(json.toUtf8()).array())
             out << v.toString();
         return out;
     };
@@ -2416,7 +2418,8 @@ static const char kSectionColumns[] =
     "SELECT slug, title, level, intro, parent_id, source_path, position, section_id "
     "FROM section ";
 
-static RoadmapStore::SectionRow sectionFromRow(const QSqlQuery &q) {
+namespace {
+RoadmapStore::SectionRow sectionFromRow(const QSqlQuery &q) {
     RoadmapStore::SectionRow s;
     s.slug = q.value(0).toString();
     s.title = q.value(1).toString();
@@ -2434,6 +2437,7 @@ static RoadmapStore::SectionRow sectionFromRow(const QSqlQuery &q) {
     s.sectionId = q.value(7).toLongLong();
     return s;
 }
+}  // namespace
 
 std::optional<RoadmapStore::SectionRow> RoadmapStore::readSection(qint64 sectionId,
                                                                   QString *error) const {
@@ -2524,26 +2528,13 @@ RoadmapStore::listElements(qint64 sectionId, QString *error) const {
 }
 
 namespace {
-// The two readProject* overloads differ only in their WHERE clause, so the row
-// assembly lives once. A second copy would be the drift these readers exist to
-// remove, one level down.
-std::optional<RoadmapStore::ProjectRow> readProjectWhere(const QSqlDatabase &db,
-                                                         const QString &column,
-                                                         const QVariant &key,
-                                                         QString *error) {
-    QSqlQuery q(const_cast<QSqlDatabase &>(db));
-    q.prepare(QStringLiteral("SELECT project_id, name, export_slug, legend, root, "
-                             "source_format FROM project WHERE %1 = ?")
-                  .arg(column));
-    q.addBindValue(key);
-    if (!q.exec()) {
-        if (error)
-            *error = lastErr(q);
-        return std::nullopt;
-    }
-    if (!q.next())
-        return std::nullopt;   // absent row is not an error, per idPrefixFor()
+// The project readers differ only in their WHERE clause, so the row assembly
+// lives once. A second copy would be the drift these readers exist to remove,
+// one level down. Column order is kProjectColumns'.
+const QString kProjectColumns = QStringLiteral(
+    "project_id, name, export_slug, legend, root, source_format");
 
+RoadmapStore::ProjectRow projectRowFrom(const QSqlQuery &q) {
     RoadmapStore::ProjectRow p;
     p.projectId = q.value(0).toLongLong();
     p.name = q.value(1).toString();
@@ -2552,6 +2543,24 @@ std::optional<RoadmapStore::ProjectRow> readProjectWhere(const QSqlDatabase &db,
     p.root = q.value(4).toString();
     p.sourceFormat = q.value(5).toString();
     return p;
+}
+
+std::optional<RoadmapStore::ProjectRow> readProjectWhere(const QSqlDatabase &db,
+                                                         const QString &column,
+                                                         const QVariant &key,
+                                                         QString *error) {
+    QSqlQuery q(const_cast<QSqlDatabase &>(db));
+    q.prepare(QStringLiteral("SELECT %1 FROM project WHERE %2 = ?")
+                  .arg(kProjectColumns, column));
+    q.addBindValue(key);
+    if (!q.exec()) {
+        if (error)
+            *error = lastErr(q);
+        return std::nullopt;
+    }
+    if (!q.next())
+        return std::nullopt;   // absent row is not an error, per idPrefixFor()
+    return projectRowFrom(q);
 }
 } // namespace
 
@@ -2568,6 +2577,20 @@ RoadmapStore::readProjectBySlug(const QString &exportSlug, QString *error) const
 std::optional<RoadmapStore::ProjectRow>
 RoadmapStore::readProjectByRoot(const QString &canonicalRoot, QString *error) const {
     return readProjectWhere(m_db, QStringLiteral("root"), canonicalRoot, error);
+}
+
+QVector<RoadmapStore::ProjectRow> RoadmapStore::listProjects(QString *error) const {
+    QVector<ProjectRow> out;
+    QSqlQuery q(const_cast<QSqlDatabase &>(m_db));
+    if (!q.exec(QStringLiteral("SELECT %1 FROM project ORDER BY export_slug")
+                    .arg(kProjectColumns))) {
+        if (error)
+            *error = lastErr(q);
+        return out;
+    }
+    while (q.next())
+        out.push_back(projectRowFrom(q));
+    return out;
 }
 
 bool sectionOrderLess(const RoadmapStore::SectionRow &a,

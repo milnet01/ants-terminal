@@ -15,6 +15,7 @@
 #include <QSqlDatabase>
 #include <QString>
 #include <QStringList>
+#include <cstdint>
 #include <optional>
 
 class RoadmapStore {
@@ -61,7 +62,7 @@ public:
     static constexpr int kBulkBusyTimeoutMs = 30000;
 
     // Which deadline and cache profile a connection opens with.
-    enum class Access { Interactive, Bulk };
+    enum class Access : std::uint8_t { Interactive, Bulk };
 
     // Bounds the WAL sidecar, which otherwise keeps whatever high-water mark
     // one large transaction gave it. Connection-scoped despite reading like a
@@ -814,6 +815,12 @@ public:
     // the canonicalisation and refuses the empty result outright.
     std::optional<ProjectRow> readProjectByRoot(const QString &canonicalRoot,
                                                 QString *error = nullptr) const;
+
+    // ANTS-3794 § 2.2 — every project row, ordered by export_slug. The export
+    // of the whole store walks this; an empty result on a store that has
+    // projects is what a failed query must never look like, so a query error
+    // sets `error` rather than returning an empty list silently.
+    QVector<ProjectRow> listProjects(QString *error = nullptr) const;
 
     // ANTS-4617 — the inverse of registerProject(), and the store had none.
     // The store is MACHINE-GLOBAL, so testing anything destructive against a

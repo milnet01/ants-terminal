@@ -16,6 +16,7 @@
 #include "pathvalidation.h"
 #include "projectlayoutengine.h"   // ANTS-3353
 #include "projectsettings.h"    // ANTS-2160 — .ants/project.json overrides
+#include "roadmapbackuphealth.h" // ANTS-3794 — session_orient's roadmap_backup
 #include "roadmapstore.h"       // ANTS-4622 — session_orient's mail_pending
 #include "similarcode.h"
 #include "subsystemmap.h"
@@ -2060,6 +2061,16 @@ QJsonDocument RemoteControl::cmdSessionOrient(const QJsonObject &req)
     {
         const QJsonObject fp = buildFeedbackPendingBlock(rootCanonical);
         if (!fp.isEmpty()) result[QStringLiteral("feedback_pending")] = fp;
+    }
+
+    // --- roadmap_backup (ANTS-3794 § 2.5) ---
+    // The store is machine-global, so every project's orient carries this. It
+    // is absent while both backup jobs are healthy, like feedback_pending.
+    {
+        const QJsonObject rb = RoadmapBackupHealth::assess(
+            RoadmapBackupHealth::stateDir(), QDateTime::currentDateTimeUtc(),
+            QFileInfo::exists(RoadmapStore::defaultPath()));
+        if (!rb.isEmpty()) result[QStringLiteral("roadmap_backup")] = rb;
     }
 
     // --- mail_pending (ANTS-4622 § 2.4) ---

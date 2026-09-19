@@ -35178,7 +35178,7 @@ against current source before filing.
   holds one leftover fixture row (root `/tmp/test_core-ZnzBrv`, 0 sections,
   0 items), so every live read and write is still the markdown path.
 
-- 🚧 [ANTS-3794] **Roadmap publish + health checks — backup cadence, divergence detection and check scheduling.**
+- ✅ [ANTS-3794] **Roadmap publish + health checks — backup cadence, divergence detection and check scheduling.**
   Split out of ANTS-3758. Operationally independent of the render and the
   consumer cutover, so it can run in parallel with either.
 
@@ -35230,6 +35230,24 @@ against current source before filing.
   roadmap_backup block in session_orient. Next: build it. The
   claude-config .gitignore allowlist is CFG-0380, and a restore command
   is ANTS-5244.
+  Resolved (2026-09-19): built to the accepted spec.
+  - --export-roadmaps runs before QApplication; checked with no
+    DISPLAY or WAYLAND_DISPLAY (exit 0, 22 files).
+  - RoadmapStore::listProjects, RoadmapExport::exportAllProjects and
+    runExportCommand; RoadmapBackupHealth::assess feeds session_orient's
+    roadmap_backup block.
+  - tools/roadmap-export-publish.sh and the shared record helper
+    tools/roadmap-backup-lib.sh; the snapshot script writes its record.
+  - Tests: roadmap_export_all (6), roadmap_backup_health (7),
+    roadmap_export_publish (29 checks). Each was red against stubs or
+    broken by a targeted mutation, and the full default suite is green.
+  - First real run: claude-config commit ed04140, 22 files, pushed.
+    Weekly timer ants-roadmap-export.timer installed beside the snapshot
+    timer.
+  Still to see after an Ants relaunch: the weekly timer runs the home
+  copy, which gains --export-roadmaps only once relaunched, and the
+  roadmap_backup block appears only in the relaunched instance's
+  session_orient. Growth of the largest export is ANTS-5245.
   **Layman:** How the roadmap database gets backed up automatically, and how we notice when a backup silently stops working.
   Kind: implement.
   Source: ANTS-3758 split (2026-08-03, user), spec seam 3c of 5.
@@ -40470,6 +40488,21 @@ against current source before filing.
   **Layman:** A way to actually restore the roadmap from the weekly backup, not just take the backup.
   Kind: implement.
   Source: ANTS-3794 spec, out of scope (in-session-2026-09-19).
+  Lanes: roadmap.
+
+- 📋 [ANTS-5245] **A project's roadmap export grows with its history and will pass GitHub's file size limits.**
+  The first real ANTS-3794 export (claude-config commit ed04140,
+  2026-09-19) wrote roadmap-export/ants-terminal.jsonl at 19 MB
+  (ls -lS). The export carries every history row, so the file grows
+  with every edit. GitHub warns at 50 MB and refuses a file over
+  100 MB. A refused push fails loudly and session_orient reports it,
+  so nothing breaks silently, but the weekly backup would then stop
+  for that project. Options to weigh: splitting history into its own
+  file per project, or rotating old history out of the export.
+  Measure the growth rate over a few weekly runs first.
+  **Layman:** The biggest weekly backup file keeps growing and will one day be too big for GitHub; plan for that before it happens.
+  Kind: investigate.
+  Source: ANTS-3794 first real run (in-session-2026-09-19).
   Lanes: roadmap.
 
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-08-03 triage

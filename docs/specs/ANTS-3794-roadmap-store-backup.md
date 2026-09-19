@@ -407,8 +407,9 @@ before its fix, per the project convention.
   here.
 - CHANGELOG `### Added` for `--export-roadmaps` and the `roadmap_backup`
   block.
-- `docs/standards/mcp-behavioural-notes.md`: the `roadmap_backup` field
-  of `session_orient`.
+- No note on `session_orient`'s `roadmap_backup` field elsewhere. Its
+  optional blocks (`feedback_pending`, `mail_pending`) are documented only
+  by their specs and feature contracts, and this one follows them.
 
 ## Cold-eyes loop log
 
@@ -416,3 +417,4 @@ before its fix, per the project convention.
 |---|---|---|---|---|---|---|---|
 | 1 | 2026-09-19 | 3, cold, identical shared packet | 1 | 0 | 1 | 2 | Verified 4, fixed 4, dismissed 1. Q1 (found building the packet): the publish step staged all of roadmap-export/, which would commit the .lock files ConfigWriteLock leaves beside each export; it now stages *.jsonl only (checked in a throwaway repo). Q4, all three lanes: INV-3 and INV-4 tested exit codes from main(), which no test bundle links; the steps now live in RoadmapExport::runExportCommand(storePath, dir, out). Q3: the claude-config allowlist line would have exposed the lock files to any git add -A; replaced by three lines that track *.jsonl only (checked). Q4: the publish shell test needs git, flock and sqlite3; it now exits 77 under SKIP_RETURN_CODE, so it stays out of ci_workflow_deps' required set. Dismissed: git's glob crossing / (nothing writes subdirectories). Four open questions resolved clean: no schema upgrade beyond the running instance, exit 3 is not a failure, library placement is local, export_slug is NOT NULL. |
 | 2 | 2026-09-19 | 3, cold, identical shared packet | 1 | 1 | 2 | 0 | Verified 4, fixed 4, dismissed 2. Cap reached (2 for a spec): shipped. Q1 (found resolving two lanes' open question on hooks): the commit subject 'roadmap-export: ...' fails claude-config's commit-msg hook (exit 1), so every weekly run would fail; now 'chore: weekly roadmap export (<date>)' (exit 0). Q2: the lock-held exit 3 contradicted 'every failure records and notifies'; now stated as not a failure. Q3: all three record keys are always written, and an empty value reads as absent. Q3: the snapshot timer is named (ants-roadmap-backup.timer), and the hint names each job's timer. Dismissed: an ignored roadmap-export/ making 'nothing to commit' read as success (refuted: git add exits 128 'did not match any files'); the 4 MiB figure under Access::Bulk (true, builds nothing different). Resolved clean: the newer-schema refusal is in createSchema(); cross-project rows are ANTS-5244's. Calm cap: 1 of 4 final-loop findings anchored on text this run wrote (§2.3 step 5). Gated span 977b0b69 is the whole new spec, so all 8 verified findings fall inside it. |
+| 2-impl | 2026-09-19 | none (implementation fold-back; no reviewer dispatched) | n/a | n/a | n/a | n/a | Implementation found one cross-doc line wrong: mcp-behavioural-notes.md does not document session_orient's optional blocks, and neither does any other document for feedback_pending or mail_pending, so no note was added and § 7 now says so. Also met at build time, contract unchanged: the ants-terminal target now links ants_roadmapstore_lib directly, since main.cpp calls runExportCommand(). Records what was built, so CLAUDE.md rule 14 does not re-arm the gate. |

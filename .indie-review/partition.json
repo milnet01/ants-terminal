@@ -151,6 +151,8 @@
       "sourcePaths": [
         "src/passheadingwrite.cpp",
         "src/passheadingwrite.h",
+        "src/roadmapbackuphealth.cpp",
+        "src/roadmapbackuphealth.h",
         "src/roadmapclock.cpp",
         "src/roadmapclock.h",
         "src/roadmapexport.cpp",

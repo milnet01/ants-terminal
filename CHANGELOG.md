@@ -14,6 +14,15 @@ for security-relevant changes.
 
 ### Added
 
+- **The roadmap store is backed up weekly, locally and to the private claude-config repo, and session_orient reports a backup that stopped** (ANTS-3794)
+  `ants-terminal --export-roadmaps <dir>` writes one JSONL export per
+  project without a display. `tools/roadmap-export-publish.sh` commits
+  only those files and pushes, and refuses rather than merges when the
+  upstream has diverged. `tools/roadmap-store-backup.sh` keeps verified
+  local snapshots. Both write a backup record, and `session_orient`
+  carries a `roadmap_backup` block when a job has never run, is failing,
+  or is more than eight days stale.
+
 - **Roadmap items can be marked dropped, shown as 🚫 in ROADMAP.md.** (ANTS-4977)
   `roadmap_log` accepts `dropped` (or 🚫) on append, append_batch, flip
   and flip_batch. A dropped item is closed but never counted as shipped

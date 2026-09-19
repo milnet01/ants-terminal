@@ -1156,7 +1156,8 @@ implementation gate rather than in a standard:
 - Concurrency across projects sharing one store, and the auto-publish cadence to
   the backup repo — including that a push conflict means two stores diverged and
   must surface rather than auto-merge, and that a silent backup failure is worse
-  than no backup because it stops anyone checking.
+  than no backup because it stops anyone checking. Settled by
+  [ANTS-3794](../specs/ANTS-3794-roadmap-store-backup.md).
 - How the render **demonstrates** § 8's conformance rather than asserting it. The
   filename and the two-standard amendment question are closed by INV-2; what is
   open is the check that catches a render silently missing a required piece, and

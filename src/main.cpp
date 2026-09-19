@@ -2,8 +2,11 @@
 #include "remotecontrol.h"
 #include "terminalaccessible.h"  // ANTS-1078 — screen-reader factory
 #include "dialogshowtracer.h"
+#include "roadmapexport.h"
+#include "roadmapstore.h"
 
 #include <QApplication>
+#include <QCoreApplication>
 #include <QJsonObject>
 #include <QJsonDocument>
 #include "debuglog.h"
@@ -143,6 +146,23 @@ int main(int argc, char *argv[]) {
     // Ignore SIGPIPE — writing to a closed PTY delivers SIGPIPE which would
     // terminate the process.  Qt handles write errors via return codes.
     std::signal(SIGPIPE, SIG_IGN);
+
+    // ANTS-3794 § 2.1 — --export-roadmaps runs before QApplication exists, so
+    // a systemd user service with no display can run it. QApplication would
+    // connect to a window system; the export needs none.
+    for (int i = 1; i < argc; ++i) {
+        if (qstrcmp(argv[i], "--export-roadmaps") != 0)
+            continue;
+        QCoreApplication core(argc, argv);
+        if (i + 1 >= argc) {
+            std::fputs("usage: ants-terminal --export-roadmaps <dir>\n", stderr);
+            return 2;
+        }
+        QTextStream out(stdout);
+        return RoadmapExport::runExportCommand(RoadmapStore::defaultPath(),
+                                               QString::fromLocal8Bit(argv[i + 1]), out);
+    }
+
     // Set default surface format with alpha for per-pixel transparency.
     // Do NOT set Core Profile here — it breaks QPainter's GL paint engine
     // font scaling on displays where physical DPI differs from logical DPI.

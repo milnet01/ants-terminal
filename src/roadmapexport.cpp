@@ -6,6 +6,8 @@
 #include "jsoncanonical.h"
 #include "roadmapstore.h"
 
+#include <QDir>
+#include <QFile>
 #include <QFileInfo>
 #include <QHash>
 #include <QJsonArray>
@@ -13,8 +15,10 @@
 #include <QJsonObject>
 #include <QJsonValue>
 #include <QSaveFile>
+#include <QSet>
 #include <QSqlError>
 #include <QSqlQuery>
+#include <QTextStream>
 #include <QVariant>
 
 #include <algorithm>
@@ -1032,4 +1036,81 @@ bool RoadmapExport::rebuildProject(RoadmapStore &store, QIODevice *in, QString *
     if (!commit.exec(QStringLiteral("COMMIT")))
         return abort(commit.lastError().text());
     return true;
+}
+
+RoadmapExport::ExportAllResult RoadmapExport::exportAllProjects(RoadmapStore &store,
+                                                                const QString &dir) {
+    ExportAllResult r;
+    QString err;
+    const QVector<RoadmapStore::ProjectRow> projects = store.listProjects(&err);
+    if (!err.isEmpty()) {
+        r.error = QStringLiteral("could not list projects: %1").arg(err);
+        return r;
+    }
+    // INV-5 — an empty list is a fault. Read as "no projects", the orphan pass
+    // below would delete every export in the directory.
+    if (projects.isEmpty()) {
+        r.error = QStringLiteral("the store lists no projects; nothing exported or removed");
+        return r;
+    }
+    if (!QDir().mkpath(dir)) {
+        r.error = QStringLiteral("could not create %1").arg(dir);
+        return r;
+    }
+
+    QSet<QString> slugs;
+    for (const RoadmapStore::ProjectRow &p : projects) {
+        slugs.insert(p.exportSlug);
+        QString e;
+        if (exportProject(store, p.exportSlug,
+                          dir + QLatin1Char('/') + p.exportSlug + QStringLiteral(".jsonl"), &e))
+            r.written << p.exportSlug;
+        else
+            r.failed << QStringLiteral("%1: %2").arg(p.exportSlug, e);  // INV-3
+    }
+
+    // INV-6 — orphans only after a clean run, and only *.jsonl directly in dir.
+    // The lock files exportProject leaves beside each export never match.
+    if (!r.failed.isEmpty())
+        return r;
+    for (const QString &name :
+         QDir(dir).entryList({QStringLiteral("*.jsonl")}, QDir::Files | QDir::Hidden)) {
+        if (slugs.contains(name.chopped(6)))
+            continue;
+        if (QFile::remove(dir + QLatin1Char('/') + name))
+            r.removed << name;
+        else
+            r.failed << QStringLiteral("%1: could not remove orphan export").arg(name);
+    }
+    return r;
+}
+
+int RoadmapExport::runExportCommand(const QString &storePath, const QString &dir,
+                                    QTextStream &out) {
+    // INV-4 — RoadmapStore::open() creates a missing file, so check first.
+    if (!QFileInfo::exists(storePath)) {
+        out << "export-roadmaps: no roadmap store at " << storePath << '\n';
+        out.flush();
+        return 2;
+    }
+    RoadmapStore store(storePath, RoadmapStore::kDefaultHistoryCapBytes,
+                       RoadmapStore::Access::Bulk);
+    QString err;
+    if (!store.open(&err)) {
+        out << "export-roadmaps: cannot open " << storePath << ": " << err << '\n';
+        out.flush();
+        return 2;
+    }
+
+    const ExportAllResult r = exportAllProjects(store, dir);
+    for (const QString &slug : r.written)
+        out << "wrote " << dir << '/' << slug << ".jsonl\n";
+    for (const QString &f : r.failed)
+        out << "FAILED " << f << '\n';
+    for (const QString &name : r.removed)
+        out << "removed orphan " << dir << '/' << name << '\n';
+    if (!r.error.isEmpty())
+        out << "export-roadmaps: " << r.error << '\n';
+    out.flush();
+    return (r.error.isEmpty() && r.failed.isEmpty()) ? 0 : 1;
 }
