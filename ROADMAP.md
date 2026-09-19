@@ -61914,6 +61914,13 @@ than re-filed; everything else lands here.
   Decided (2026-09-19, user): the 'dropped' status the store already
   allows, shown as 🚫. Counted as closed: out of the active queue, never
   counted as shipped.
+  Decided again (2026-09-19, user), after being shown that the store
+  already has `dropped` and that roadmap-data-model.md § 7.3/§ 7.5
+  excludes it from the render BY POLICY (a publishing anti-pattern):
+  show dropped items in ROADMAP.md with 🚫. This reverses that policy
+  and roadmap-format.md § 3.11's fifth-emoji anti-pattern, so both
+  standards are amended through their own gates. Spec:
+  docs/specs/ANTS-4977-dropped-status.md.
   **Layman:** An item decided against has to be marked done, so the roadmap claims work that was never carried out.
   Kind: feature.
   Source: DOOM_Ants_MCP_Feedback.md 2026-09-08.
@@ -80135,10 +80142,40 @@ contributors don't duplicate research.
   while." Buttons: "Sponsor on GitHub", "Support on Patreon", "Not
   now", plus a "Don't show this again" checkbox. The dialog must follow
   docs/standards/dialogs.md (D1-D4).
+  Decided (2026-09-19, user): skip existing donors. The dialog gains an
+  "I already donate" button that hides the reminder for 150 days, after
+  which it may ask again. Patron preview (RC) builds never show it, since
+  only supporters receive them. Self-reported, offline, and covering both
+  GitHub Sponsors and Patreon. The verified check (sign in and ask the
+  sites) is ANTS-5240, filed as its own later item.
   **Layman:** Every so often, Ants Terminal politely mentions that you can support it, and it is easy to wave away or turn off.
   Kind: feature.
   Source: user-request-2026-09-19.
   Lanes: chrome, config.
+
+- 📋 [ANTS-5240] **Optional GitHub / Patreon sign-in so the donation reminder can check whether someone already sponsors.**
+  Follow-on to ANTS-5239, which ships a self-reported "I already donate"
+  button. This is the verified version: an opt-in account link, with the
+  app asking the site whether the user sponsors milnet01 and when they
+  last paid, and suppressing the reminder unless they have not donated in
+  150 days. Needs the maintainer to register an OAuth app with GitHub and
+  with Patreon (the user's step, not Claude's), a place to keep the token
+  private (mode 0600), and a privacy note, because the app goes online.
+  Never required, and never blocks the reminder's offline path.
+  User note (2026-09-19): MetaGamerScore.com upgrades an account once the
+  user pledges on Patreon, so the check is clearly automatic there.
+  Likely mechanism (unverified until built): "Log in with Patreon" (OAuth)
+  and the Patreon API's member record for the campaign, which is
+  understood to carry the patron status and last charge date and status.
+  That fits the "150 days since last donation" rule directly. Patreon
+  can also push pledge changes by webhook, but that needs a server; a
+  desktop app can simply ask on demand. Confirm the field names against
+  the Patreon v2 API docs, and the GitHub Sponsors GraphQL equivalent,
+  before speccing.
+  **Layman:** Supporters could link their account once, and the app would stop asking them for donations automatically.
+  Kind: feature.
+  Source: user-request-2026-09-19.
+  Lanes: chrome, network.
 
 ### 🔒 Security
 
