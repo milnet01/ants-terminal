@@ -848,9 +848,10 @@ qint64 buildOrderFixture(RoadmapStore &s, const QString &rootDir) {
     QString err;
     const auto alphaId = s.findSection(p, QStringLiteral("alpha"), &err);
     EXPECT_TRUE(alphaId.has_value()) << err.toStdString();
-    if (alphaId)
+    if (alphaId) {
         EXPECT_TRUE(s.setSectionSource(*alphaId, QStringLiteral("docs/roadmap/0.6.md"), &err))
             << err.toStdString();
+    }
     return p;
 }
 

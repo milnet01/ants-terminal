@@ -316,9 +316,10 @@ TEST(RoadmapDroppedStatus, Inv5EveryWriteOpAcceptsDropped) {
         Fx fx;
         ASSERT_TRUE(fx.setUp(antsFixture(), migrate));
         // A markdown-backed append allocates from the counter file.
-        if (!migrate)
+        if (!migrate) {
             ASSERT_TRUE(writeFile(QDir(fx.root).filePath(QStringLiteral(".roadmap-counter")),
                                   "100\n"));
+        }
         RemoteControl rc(nullptr);
 
         const QJsonObject a = rc.cmdRoadmapLogAppendForTest(
