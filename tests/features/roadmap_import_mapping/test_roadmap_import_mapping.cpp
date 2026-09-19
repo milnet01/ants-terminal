@@ -585,7 +585,8 @@ TEST(RoadmapImportMapping, StatusMappingIsTotalOverTheFourMarkers) {
     // The undocumented marker, and this is where the spec's INV-8 test clause
     // is wrong about the code. It says the malformed bullet "defaults to
     // `planned` with a note". Measured 2026-08-09: it becomes no item at all —
-    // RoadmapParse::stripInlineEmoji() recognises exactly the four markers, and
+    // RoadmapParse::stripInlineEmoji() recognises exactly the five markers
+    // (🚫 since ANTS-4977), and
     // a `- ` line carrying anything else is not a bullet, so it never reaches
     // makeItem(). Making it an item instead would mean every unmarked `- ` line
     // in an ants-v1 document became one, which is a change to ANTS-3757's
@@ -593,8 +594,8 @@ TEST(RoadmapImportMapping, StatusMappingIsTotalOverTheFourMarkers) {
     //
     // Nothing is dropped: § 2.11's partition carries the line as narration, so
     // the assertion below is the honest form of INV-8's second clause — the
-    // mapping is total over the four markers and the fifth status is
-    // unreachable, with no line lost on the way. Tracked as ANTS-4076.
+    // mapping is total over the five markers and an unknown one never
+    // becomes `dropped`, with no line lost on the way. Tracked as ANTS-4076.
     EXPECT_EQ(itemById(plan, "DEMO-0044"), nullptr)
         << "an undocumented marker was admitted as an item";
     bool carried = false;

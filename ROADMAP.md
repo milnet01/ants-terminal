@@ -35182,6 +35182,18 @@ against current source before filing.
   already fixes the export round-trip check; § 7.7 already fixes what
   provenance must record.
   - Concurrency across projects sharing one store.
+  User decision (2026-09-19): the roadmap store is backed up ONLY to a
+  private destination, preferably the claude-config repo
+  (milnet01/claude-config, PRIVATE), else /mnt/Games. Never a public
+  repo. Until this ships, nothing backs the store up: roadmap-export/
+  does not exist and no export has run. A manual sqlite .backup was
+  taken to /mnt/Games/Backups/ants-roadmap-store/ on 2026-09-19
+  (integrity ok).
+  User decision (2026-09-19): weekly cadence is enough for the store
+  backup, because each project's ROADMAP.md is already committed to
+  GitHub. Caveat to design around: the published file omits `internal`
+  items, and the store holds history and provenance the file does not,
+  so those live only in the store between weekly backups.
   **Layman:** How the roadmap database gets backed up automatically, and how we notice when a backup silently stops working.
   Kind: implement.
   Source: ANTS-3758 split (2026-08-03, user), spec seam 3c of 5.
@@ -61875,7 +61887,7 @@ than re-filed; everything else lands here.
   Source: LocalWebServerManager_Ants_MCP_Feedback.md 2026-09-08.
   Lanes: mcp.
 
-- 📋 [ANTS-4977] **There is no status for “closed, deliberately not fixed”, so such an item is flipped to shipped and the roadmap overstates.**
+- 🚧 [ANTS-4977] **There is no status for “closed, deliberately not fixed”, so such an item is flipped to shipped and the roadmap overstates.**
   The four statuses are planned / in-progress / shipped / considered.
   An item whose correct outcome is "recorded, will not be fixed" has
   no home, and flipping it to shipped is the only way out of the
@@ -61921,6 +61933,19 @@ than re-filed; everything else lands here.
   and roadmap-format.md § 3.11's fifth-emoji anti-pattern, so both
   standards are amended through their own gates. Spec:
   docs/specs/ANTS-4977-dropped-status.md.
+  Progress (2026-09-19): spec accepted; roadmap-format.md and
+  roadmap-data-model.md amended and converged through their gates.
+  Building per docs/specs/ANTS-4977-dropped-status.md § 2.
+  Progress (2026-09-19): source changes for spec § 2.1-2.7 written and
+  the app target builds (parse, render, read seam, migration, pass
+  keywords, GFM flip, roadmap_log and roadmap_query enums, feedback
+  closed set, dialog filter). Superseded asserts updated in
+  roadmap_render, roadmap_read_seam, roadmap_import_mapping and
+  roadmap_migrate_read. Remaining: the test_claude half of
+  tests/features/roadmap_dropped_status, CMake wiring, full suite,
+  sibling-spec annotations, mcp-behavioural-notes, CHANGELOG, and a
+  follow-up because compact_resolved's stub says "shipped" for a dropped
+  id.
   **Layman:** An item decided against has to be marked done, so the roadmap claims work that was never carried out.
   Kind: feature.
   Source: DOOM_Ants_MCP_Feedback.md 2026-09-08.
@@ -62247,6 +62272,16 @@ than re-filed; everything else lands here.
   Kind: doc-fix.
   Source: review-contract 2026-09-19 (roadmap-format gate loop 12, surfaced not fixed).
   Lanes: roadmap-store, docs.
+
+- 📋 [ANTS-5242] **feedback_log compact_resolved labels a dropped (🚫) finding's stub as shipped.**
+  ANTS-4977 made a 🚫 id count as closed, so compact_resolved collapses its
+  write-up. The stub it writes is `→ shipped ✅ (write-up compacted, ...)`,
+  because FeedbackFile::compactResolved only receives a closed-id set. It
+  should say the item was dropped. Needs the resolver to pass which ids are
+  🚫 rather than folding them into shippedIds.
+  **Layman:** A feedback note closed as "won't do" is summarised as if the work was done.
+  Kind: fix.
+  Source: in-session-2026-09-19 ANTS-4977 build.
 
 ### Ants MCP without a terminal relaunch (user request 2026-09-07)
 

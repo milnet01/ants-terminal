@@ -28,7 +28,7 @@
 
 namespace RoadmapParse {
 
-// The four status markers roadmap-format.md § 3.3 defines. They are the
+// The five status markers roadmap-format.md § 3.3 defines. They are the
 // FORMAT's vocabulary rather than the dialog's, so they live with the parser
 // and RoadmapDialog uses them from here — one definition, which is the same
 // argument ANTS-3764 makes for one reader. The dialog keeps kStatusLabels,
@@ -37,6 +37,8 @@ inline constexpr const char *kEmojiDone       = "✅";
 inline constexpr const char *kEmojiPlanned    = "📋";
 inline constexpr const char *kEmojiInProgress = "🚧";
 inline constexpr const char *kEmojiConsidered = "💭";
+// ANTS-4977 — closed, deliberately not done. U+1F6AB, F0 9F 9A AB.
+inline constexpr const char *kEmojiDropped    = "🚫";
 
 // ANTS-3771 — a project's DECLARED id format, as read from
 // .ants/project.json's `id_format` (docs/specs/ANTS-3771-id-format-declaration.md).
@@ -91,7 +93,7 @@ ReviewKindMismatch reviewKindMismatch(const QString &kind, const QString &source
 
 struct BulletRecord {
     QString id;          // <PREFIX>-NNNN; empty if no `[<PREFIX>-NNNN]` token (ANTS-1405)
-    QString status;      // "✅" | "🚧" | "📋" | "💭"
+    QString status;      // "✅" | "🚧" | "📋" | "💭" | "🚫"
     QString headline;    // first **bold** chunk after the emoji (≤ 120 chars)
     QString headlineFull; // ANTS-2075 — untruncated headline for locator use
     QString kind;        // value from `Kind:` line; "" if absent

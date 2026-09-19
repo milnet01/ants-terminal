@@ -577,7 +577,7 @@ project's vocabulary, and substituting a default would quietly undo that.
   rotated archive's sections are folded back into `ROADMAP.md` — the exact
   outcome that column's DDL comment names this spec for. *Test:*
   `Inv3ArchiveRouting`.
-- **INV-4** — **`internal` and `dropped` items never appear in any rendered
+- **INV-4** — *(`dropped` half superseded by ANTS-4977: a dropped item is published as 🚫.)* **`internal` and `dropped` items never appear in any rendered
   file**, and every other item does, `shipped` included — **except an unfiled
   one**, which has no element row (`ItemRef::sectionId == 0`) and so no place in
   any section. That is a store fault rather than a render decision, so the pass

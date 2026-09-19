@@ -652,7 +652,7 @@ TEST(roadmap_migrate_read, Inv5StatusPerSourceShape) {
     for (const char *name : kPartitionFixtures)
         for (const auto &it : planFixture(name).items)
             EXPECT_NE(it.status, QStringLiteral("dropped"))
-                << "INV-5: no markdown serialisation can express `dropped`";
+                << "INV-5: no fixture carries 🚫, so none may import as `dropped`";
 }
 
 // ---------------------------------------------------------------- INV-6 ----

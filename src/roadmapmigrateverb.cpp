@@ -289,7 +289,8 @@ QString RoadmapMigrateVerb::initSkeleton(const QString &projectName) {
              "> position is priority.\n"
              "\n"
              "**Legend** \u2014 \U0001F4CB planned \u00B7 \U0001F6A7 in progress "
-             "\u00B7 \u2705 shipped \u00B7 \U0001F4AD considered\n"
+             "\u00B7 \u2705 shipped \u00B7 \U0001F4AD considered "
+             "\u00B7 \U0001F6AB dropped\n"
              "\n"
              "## Backlog\n").arg(projectName);
 }

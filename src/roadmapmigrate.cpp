@@ -51,6 +51,8 @@ QString statusFromMarker(const QString &marker) {
         return QStringLiteral("in-progress");
     if (marker == QString::fromUtf8(RoadmapParse::kEmojiConsidered))
         return QStringLiteral("considered");
+    if (marker == QString::fromUtf8(RoadmapParse::kEmojiDropped))   // ANTS-4977
+        return QStringLiteral("dropped");
     return QStringLiteral("planned");
 }
 
@@ -77,6 +79,8 @@ QString passKeyword(const QString &sourceStatus) {
         return QStringLiteral("deferred");
     if (glyph == QString::fromUtf8(RoadmapParse::kEmojiPlanned))
         return QStringLiteral("todo");
+    if (glyph == QString::fromUtf8(RoadmapParse::kEmojiDropped))    // ANTS-4977
+        return QStringLiteral("dropped");
     return QString();
 }
 
@@ -97,6 +101,9 @@ bool keywordIsNamed(const QString &kw) {
         QStringLiteral("deferred"),    QStringLiteral("considered"),
         QStringLiteral("parked"),      QStringLiteral("todo"),
         QStringLiteral("planned"),
+        // ANTS-4977 — the reader maps these three to 🚫.
+        QStringLiteral("dropped"),     QStringLiteral("abandoned"),
+        QStringLiteral("wontfix"),
     };
     return named.contains(kw);
 }
@@ -321,7 +328,8 @@ PlannedItem makeItem(const BulletRecord &rec, const QString &sectionSlug,
     // § 3.5's own markers, so the author chose the status and it is `asserted`;
     // only a pass block can carry a word the reader does not name.
     it.status = statusFromMarker(rec.status);
-    it.closed = it.status == QLatin1String("shipped");
+    it.closed = it.status == QLatin1String("shipped")
+             || it.status == QLatin1String("dropped");   // ANTS-4977
     if (!isPass) {
         it.provenance.insert(QStringLiteral("status"), QStringLiteral("asserted"));
     } else if (rec.sourceStatus.isEmpty()) {

@@ -190,9 +190,11 @@ TEST(RoadmapRender, Inv4Membership) {
     EXPECT_TRUE(text.contains(QStringLiteral("D-1")));
     EXPECT_TRUE(text.contains(QStringLiteral("D-2"))) << "shipped items must still be listed";
     EXPECT_FALSE(text.contains(QStringLiteral("D-3"))) << "internal item published";
-    EXPECT_FALSE(text.contains(QStringLiteral("D-4"))) << "dropped item published";
-    EXPECT_EQ(out->itemsExcluded, 2);
-    EXPECT_EQ(out->itemsRendered, 2);
+    // ANTS-4977 — a dropped item is published, as 🚫.
+    EXPECT_TRUE(text.contains(QString::fromUtf8("- \xF0\x9F\x9A\xAB [D-4]")))
+        << "dropped item not published as 🚫";
+    EXPECT_EQ(out->itemsExcluded, 1);
+    EXPECT_EQ(out->itemsRendered, 3);
 }
 
 // INV-5, UNSET scope — the case that must stay whole-project. One offender
@@ -651,50 +653,23 @@ TEST(RoadmapRender, Inv11SingleElementReader) {
 // A NEW name appearing here is not automatically a defect — it is a consumer
 // that must be read, and either moved to listSectionsOrdered() or added here
 // with the reason it does not read order.
-// ANTS-3820 — a `dropped` item has no markdown form, and the pairing that keeps
-// the render from emitting one is now TESTED rather than merely true.
-//
-// The round trip is worse than a missing glyph. emojiFor("dropped") returns an
-// empty string by design (§ 3.11 makes a fifth emoji an anti-pattern), so
-// bulletText() emits a head line with NO status marker — and the native parse
-// then fails stripInlineEmoji() and skips the bullet entirely. A dropped item
-// rendered to markdown re-parses to NOTHING, so a round-trip oracle would see a
-// vanished item rather than a malformed one.
-//
-// SCOPE — this case asserts ONLY the producer-side property, deliberately.
-// The two callers exclude a dropped item by two different mechanisms:
-//   - render() never emits one. **Already covered by Inv4Membership above**
-//     ("internal and dropped never appear; shipped does"), so re-asserting it
-//     here would duplicate a shipped case and pay a second full render for it.
-//   - bulletsFromStore()'s appendRecord() (roadmapsource.cpp) relies on the
-//     produced text FAILING to parse, and skips the nullopt. Nothing tested
-//     that, and it is the half ANTS-3820 actually asks for — "state the
-//     precondition on bulletText() and assert it".
-//
-// bulletText() deliberately does not refuse — see its header. Making it refuse
-// would break appendRecord(), which wants exactly this output.
-TEST(RoadmapRender, Ants3820DroppedItemHasNoMarkdownForm) {
+// ANTS-3820, reversed by ANTS-4977 — a `dropped` item now HAS a markdown form,
+// 🚫, and its bulletText() re-parses to a 🚫 record. bulletsFromStore() no
+// longer relies on the parse failing to exclude it.
+TEST(RoadmapRender, Ants4977DroppedItemRoundTripsAsDropped) {
     auto f = makeFixture();
     ASSERT_TRUE(f);
-    QString err;
 
     auto gone = mkItem(f->projectId, QStringLiteral("ANTS-2"),
                        QStringLiteral("A dropped item."), f->rootSection, 2);
     gone.status = QStringLiteral("dropped");
 
-    EXPECT_TRUE(RoadmapRender::emojiFor(QStringLiteral("dropped")).isEmpty())
-        << "a fifth status emoji would silently give dropped a markdown form, "
-           "and § 3.11 makes that an anti-pattern";
-
-    // The property appendRecord() uses AS its exclusion signal. If a future
-    // change gave dropped a glyph, this text would parse, the reader would
-    // admit a dropped item, and ANTS-3793's INV-2 membership rule would break
-    // somewhere far from the edit that caused it.
+    EXPECT_EQ(RoadmapRender::emojiFor(QStringLiteral("dropped")),
+              QString::fromUtf8(RoadmapParse::kEmojiDropped));
     const QString text = RoadmapRender::bulletText(gone);
-    EXPECT_FALSE(RoadmapParse::parseAntsV1Bullet(text).has_value())
-        << "a dropped item's bulletText() must NOT re-parse — bulletsFromStore() "
-           "uses that failure as its exclusion. It produced: "
-        << text.toStdString();
+    const auto rec = RoadmapParse::parseAntsV1Bullet(text);
+    ASSERT_TRUE(rec.has_value()) << text.toStdString();
+    EXPECT_EQ(rec->status, QString::fromUtf8(RoadmapParse::kEmojiDropped));
 }
 
 TEST(RoadmapRender, Ants3818NoUnsortedSectionConsumer) {

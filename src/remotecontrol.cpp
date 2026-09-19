@@ -329,7 +329,7 @@ const QString &kUnrecognisedFormatHint() {
         "Roadmap content didn't match GFM-task-list "
         "(`- [ ]` / `- [x]`) or Ants-v1 emoji-status "
         "(`- \xF0\x9F\x93\x8B/\xF0\x9F\x9A\xA7/"
-        "\xE2\x9C\x85/\xF0\x9F\x92\xAD [PROJ-NNNN]`) bullet "
+        "\xE2\x9C\x85/\xF0\x9F\x92\xAD/\xF0\x9F\x9A\xAB [PROJ-NNNN]`) bullet "
         "formats. See docs/standards/roadmap-format.md for the "
         "Ants-v1 spec; reformat the roadmap, write a converter, "
         "or edit the markdown directly.");
@@ -957,6 +957,7 @@ QString rcStatusWord(const QString &emoji) {
     if (emoji == QString::fromUtf8("\xF0\x9F\x9A\xA7")) return QStringLiteral("in-progress"); // 🚧
     if (emoji == QString::fromUtf8("\xF0\x9F\x92\xAD")) return QStringLiteral("considered");  // 💭
     if (emoji == QString::fromUtf8("\xF0\x9F\x93\x8B")) return QStringLiteral("planned");      // 📋
+    if (emoji == QString::fromUtf8("\xF0\x9F\x9A\xAB")) return QStringLiteral("dropped");      // 🚫 ANTS-4977
     return emoji;
 }
 
@@ -976,6 +977,7 @@ QString rcStatusEmoji(const QString &word) {
     if (word == QStringLiteral("in-progress")) return QString::fromUtf8("\xF0\x9F\x9A\xA7"); // 🚧
     if (word == QStringLiteral("considered"))  return QString::fromUtf8("\xF0\x9F\x92\xAD"); // 💭
     if (word == QStringLiteral("planned"))     return QString::fromUtf8("\xF0\x9F\x93\x8B"); // 📋
+    if (word == QStringLiteral("dropped"))     return QString::fromUtf8("\xF0\x9F\x9A\xAB"); // 🚫 ANTS-4977
     return word;
 }
 
@@ -1908,6 +1910,7 @@ constexpr const char *kAdapterEmojiDone       = "\xE2\x9C\x85";        // ✅
 constexpr const char *kAdapterEmojiPlanned    = "\xF0\x9F\x93\x8B";    // 📋
 constexpr const char *kAdapterEmojiInProgress = "\xF0\x9F\x9A\xA7";    // 🚧
 constexpr const char *kAdapterEmojiConsidered = "\xF0\x9F\x92\xAD";    // 💭
+constexpr const char *kAdapterEmojiDropped    = "\xF0\x9F\x9A\xAB";    // 🚫 ANTS-4977
 
 // ANTS-4404 — fence extents are MarkdownScan's (ANTS-3603), never a local
 // `trimmed().startsWith("```")` toggle. The hand-rolled test both walkers
@@ -2037,7 +2040,8 @@ QVector<GfmBullet> walkGfmBullets(const QStringList &lines,
         if      (tryStrip(kAdapterEmojiDone,       QStringLiteral("✅"))) {}
         else if (tryStrip(kAdapterEmojiPlanned,    QStringLiteral("📋"))) {}
         else if (tryStrip(kAdapterEmojiInProgress, QStringLiteral("🚧"))) {}
-        else    {  tryStrip(kAdapterEmojiConsidered, QStringLiteral("💭")); }
+        else if (tryStrip(kAdapterEmojiConsidered, QStringLiteral("💭"))) {}
+        else    {  tryStrip(kAdapterEmojiDropped, QString::fromUtf8(kAdapterEmojiDropped)); }
 
         QString boldId;
         if (rcExtractBoldId(head, &boldId)) {
@@ -2091,9 +2095,9 @@ QVector<GfmBullet> walkGfmBullets(const QStringList &lines,
 // place. Returns the byte count written so callers can surface
 // bytes_written. The bullet must be located in `lines` already.
 //
-// statusEmoji is the target Ants emoji ("✅"/"📋"/"🚧"/"💭"); the
-// adapter encodes ✅ as `[x]`, the other three as `[ ]` + (for
-// 🚧/💭) an inline emoji prefix. Existing inline emoji prefixes are
+// statusEmoji is the target Ants emoji ("✅"/"📋"/"🚧"/"💭"/"🚫"); the
+// adapter encodes ✅ as `[x]`, 🚫 as `[x] 🚫` (ANTS-4977), and the other
+// three as `[ ]` + (for 🚧/💭) an inline emoji prefix. Existing inline emoji prefixes are
 // stripped before re-emission so the line carries exactly the
 // requested status state.
 //
@@ -2119,6 +2123,7 @@ void applyGfmFlip(QStringList &lines,
         QString::fromUtf8(kAdapterEmojiPlanned),
         QString::fromUtf8(kAdapterEmojiInProgress),
         QString::fromUtf8(kAdapterEmojiConsidered),
+        QString::fromUtf8(kAdapterEmojiDropped),
     };
     for (const QString &e : kEmojiPrefixes) {
         if (head.startsWith(e)) {
@@ -2134,6 +2139,9 @@ void applyGfmFlip(QStringList &lines,
         rewritten = QStringLiteral("- [x] ") + head;
     } else if (statusEmoji == QStringLiteral("📋")) {
         rewritten = QStringLiteral("- [ ] ") + head;
+    } else if (statusEmoji == QString::fromUtf8(kAdapterEmojiDropped)) {
+        // ANTS-4977 — closed, so the box is checked; the marker says how.
+        rewritten = QStringLiteral("- [x] ") + statusEmoji + QLatin1Char(' ') + head;
     } else {
         // 🚧 / 💭 ride as inline-emoji prefix on an unchecked box.
         rewritten = QStringLiteral("- [ ] ") + statusEmoji +
@@ -2180,6 +2188,8 @@ QVector<AntsV1Bullet> walkAntsV1Bullets(const QStringList &lines) {
         const QString plan = QString::fromUtf8(kAdapterEmojiPlanned);
         const QString prog = QString::fromUtf8(kAdapterEmojiInProgress);
         const QString cons = QString::fromUtf8(kAdapterEmojiConsidered);
+        const QString drop = QString::fromUtf8(kAdapterEmojiDropped);
+        if (line.mid(pos, drop.size()) == drop) return drop;
         if (line.mid(pos, done.size()) == done) return done;
         if (line.mid(pos, plan.size()) == plan) return plan;
         if (line.mid(pos, prog.size()) == prog) return prog;
@@ -2227,6 +2237,8 @@ QVector<AntsV1Bullet> walkAntsV1Bullets(const QStringList &lines) {
             b.status = QStringLiteral("📋");
         else if (emoji == QString::fromUtf8(kAdapterEmojiInProgress))
             b.status = QStringLiteral("🚧");
+        else if (emoji == QString::fromUtf8(kAdapterEmojiDropped))
+            b.status = QString::fromUtf8(kAdapterEmojiDropped);
         else
             b.status = QStringLiteral("💭");
         // Headline: post-id text (or post-emoji when id-less), strip

@@ -2453,6 +2453,8 @@ if(ANTS_TESTS)
                 tests/features/roadmap_log_amend_field/test_roadmap_log_amend_field.cpp
                 # ANTS-4949 / ANTS-4968 — set_intro and set_preamble.
                 tests/features/roadmap_log_set_intro/test_roadmap_log_set_intro.cpp
+                # ANTS-4977 — dropped items published as 🚫.
+                tests/features/roadmap_dropped_status/test_roadmap_dropped_status.cpp
                 # ANTS-4958 — delete_section and move_section.
                 tests/features/roadmap_log_section_ops/test_roadmap_log_section_ops.cpp
                 # ANTS-4580 — {{id:N}} tokens in append_batch.
@@ -3251,6 +3253,8 @@ if(ANTS_TESTS)
                 # compiles into test_core, which does not link ants_dialogs_lib
                 # and so cannot reach renderCardsHtml at all.
                 tests/features/roadmap_dialog_legend/test_roadmap_dialog_legend.cpp
+                # ANTS-4977 INV-9 — the dialog filters 🚫.
+                tests/features/roadmap_dropped_status/test_roadmap_dropped_status_dialog.cpp
                 # ANTS-1264 — scroll-position persistence resolver + wiring.
                 tests/features/roadmap_scroll_persistence/test_roadmap_scroll_persistence.cpp
                 tests/features/roadmap_shortcuts_cheatsheet/test_roadmap_shortcuts_cheatsheet.cpp

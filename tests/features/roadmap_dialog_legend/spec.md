@@ -35,7 +35,7 @@ side effect of a read-path change.
   implemented by replacing the table rather than by branching on which backend
   answered.
 - **INV-4** — `RoadmapSource::legendByEmoji()` skips a lifecycle word with no
-  glyph (`dropped`) instead of inserting an empty key. *Breaks when:* the
+  glyph (an unknown word; `dropped` has 🚫 since ANTS-4977) instead of inserting an empty key. *Breaks when:* the
   word→emoji map is re-implemented in the dialog instead of reusing
   `RoadmapRender::emojiFor()`, or the empty return is not checked.
 

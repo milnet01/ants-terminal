@@ -110,6 +110,7 @@ QString passStatusKeyword(const QString &roadmapStatus) {
     if (roadmapStatus == QStringLiteral("in-progress")) return QStringLiteral("in-progress");
     if (roadmapStatus == QStringLiteral("shipped"))     return QStringLiteral("done");
     if (roadmapStatus == QStringLiteral("considered"))  return QStringLiteral("deferred");
+    if (roadmapStatus == QStringLiteral("dropped"))     return QStringLiteral("dropped");  // ANTS-4977
     return QString();
 }
 
@@ -123,6 +124,8 @@ QString passStatusEmoji(const QString &keyword) {
         return QString::fromUtf8(RoadmapParse::kEmojiDone);
     if (keyword == QStringLiteral("deferred"))
         return QString::fromUtf8(RoadmapParse::kEmojiConsidered);
+    if (keyword == QStringLiteral("dropped"))                               // ANTS-4977
+        return QString::fromUtf8(RoadmapParse::kEmojiDropped);
     return QString();
 }
 

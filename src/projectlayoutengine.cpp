@@ -46,11 +46,12 @@ QString detectFormat(const QByteArray &slice,
     // ants-v1 emoji status prefixes (UTF-8). Mirror countBullets'
     // kPrefixes set so detection and count agree on what counts
     // as an ants-v1 bullet.
-    static const QByteArray kAntsPrefixes[4] = {
+    static const QByteArray kAntsPrefixes[5] = {
         QByteArrayLiteral("- \xE2\x9C\x85"),         // ✅
         QByteArrayLiteral("- \xF0\x9F\x93\x8B"),     // 📋
         QByteArrayLiteral("- \xF0\x9F\x9A\xA7"),     // 🚧
         QByteArrayLiteral("- \xF0\x9F\x92\xAD"),     // 💭
+        QByteArrayLiteral("- \xF0\x9F\x9A\xAB"),     // 🚫 ANTS-4977
     };
     const auto lines = slice.split('\n');
     for (const auto &ln : lines) {
@@ -85,13 +86,14 @@ int countBullets(const QByteArray &body, const QString &format) {
     const auto lines = body.split('\n');
     int n = 0;
     // Native ants-v1 shape: `- <status-emoji>` at line start. The
-    // four status emoji glyphs in UTF-8. Used by the ants-v1,
+    // five status emoji glyphs in UTF-8. Used by the ants-v1,
     // mixed, unknown, and empty-format paths.
-    static const QByteArray kAntsPrefixes[4] = {
+    static const QByteArray kAntsPrefixes[5] = {
         QByteArrayLiteral("- \xE2\x9C\x85"),         // ✅
         QByteArrayLiteral("- \xF0\x9F\x93\x8B"),     // 📋
         QByteArrayLiteral("- \xF0\x9F\x9A\xA7"),     // 🚧
         QByteArrayLiteral("- \xF0\x9F\x92\xAD"),     // 💭
+        QByteArrayLiteral("- \xF0\x9F\x9A\xAB"),     // 🚫 ANTS-4977
     };
     auto matchesAnts = [&](const QByteArray &ln) {
         for (const auto &p : kAntsPrefixes) {

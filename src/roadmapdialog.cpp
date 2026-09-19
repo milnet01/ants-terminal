@@ -68,6 +68,7 @@ using RoadmapParse::kEmojiDone;
 using RoadmapParse::kEmojiPlanned;
 using RoadmapParse::kEmojiInProgress;
 using RoadmapParse::kEmojiConsidered;
+using RoadmapParse::kEmojiDropped;
 
 // ANTS-1235 — screen-reader-readable label for each status emoji.
 // QT_TR_NOOP marks the label strings for lupdate extraction; the
@@ -79,8 +80,9 @@ constexpr StatusLabel kStatusLabels[] = {
     {kEmojiInProgress, QT_TR_NOOP("in progress")},
     {kEmojiPlanned,    QT_TR_NOOP("planned")},
     {kEmojiConsidered, QT_TR_NOOP("considered")},
+    {kEmojiDropped,    QT_TR_NOOP("dropped")},     // ANTS-4977
 };
-static_assert(std::size(kStatusLabels) == 4,
+static_assert(std::size(kStatusLabels) == 5,
               "Add a label here when introducing a new status emoji.");
 
 // ANTS-1236 — file-scope cheatsheet data table. Single source of truth
@@ -332,6 +334,7 @@ QString bulletPayload(QString body) {
     stripPrefix(kEmojiPlanned);
     stripPrefix(kEmojiInProgress);
     stripPrefix(kEmojiConsidered);
+    stripPrefix(kEmojiDropped);
     if (body.startsWith(QStringLiteral("**"))) body.remove(0, 2);
     int closeBold = body.indexOf(QStringLiteral("**"));
     if (closeBold > 0 && closeBold < 80) body.truncate(closeBold);
@@ -496,9 +499,9 @@ unsigned RoadmapDialog::filterFor(Preset p) {
     switch (p) {
         case Preset::Full:
             return ShowDone | ShowPlanned | ShowInProgress |
-                   ShowConsidered | ShowCurrent;
+                   ShowConsidered | ShowDropped | ShowCurrent;
         case Preset::History:
-            return ShowDone;
+            return ShowDone | ShowDropped;   // ANTS-4977 — both closed
         case Preset::Current:
             return ShowInProgress | ShowCurrent;
         case Preset::Next:
@@ -746,6 +749,7 @@ QString RoadmapDialog::renderHtml(const QString &markdownText,
     const bool wantPlanned = (filter & ShowPlanned) != 0;
     const bool wantInProgress = (filter & ShowInProgress) != 0;
     const bool wantConsidered = (filter & ShowConsidered) != 0;
+    const bool wantDropped = (filter & ShowDropped) != 0;   // ANTS-4977
     const bool wantCurrent = (filter & ShowCurrent) != 0;
 
     // Pre-fuzzied signal phrases for substring matching.
@@ -788,12 +792,13 @@ QString RoadmapDialog::renderHtml(const QString &markdownText,
              th.border.name(),
              currentWorkTint());
 
-    enum class BulletKind { Other, Done, Planned, InProgress, Considered };
+    enum class BulletKind { Other, Done, Planned, InProgress, Considered, Dropped };
     auto classify = [](const QString &body) {
         if (body.startsWith(QString::fromUtf8(kEmojiDone))) return BulletKind::Done;
         if (body.startsWith(QString::fromUtf8(kEmojiPlanned))) return BulletKind::Planned;
         if (body.startsWith(QString::fromUtf8(kEmojiInProgress))) return BulletKind::InProgress;
         if (body.startsWith(QString::fromUtf8(kEmojiConsidered))) return BulletKind::Considered;
+        if (body.startsWith(QString::fromUtf8(kEmojiDropped))) return BulletKind::Dropped;
         return BulletKind::Other;
     };
 
@@ -973,13 +978,15 @@ QString RoadmapDialog::renderHtml(const QString &markdownText,
             // the Current preset even though that preset explicitly
             // excludes ShowDone.
             const bool currentRescue = current && wantCurrent &&
-                (wantDone || kind != BulletKind::Done);
+                (wantDone || kind != BulletKind::Done) &&
+                (wantDropped || kind != BulletKind::Dropped);   // ANTS-4977
             const bool keepStatus =
                 (kind == BulletKind::Other) ||
                 (kind == BulletKind::Done && wantDone) ||
                 (kind == BulletKind::Planned && wantPlanned) ||
                 (kind == BulletKind::InProgress && wantInProgress) ||
                 (kind == BulletKind::Considered && wantConsidered) ||
+                (kind == BulletKind::Dropped && wantDropped) ||
                 currentRescue;
             // Search predicate: case-insensitive substring against the
             // bullet body, OR the `id:NNNN` shorthand against an
@@ -1102,6 +1109,7 @@ QString RoadmapDialog::renderCardsHtml(const QString &markdownText,
     const bool wantPlanned = (filter & ShowPlanned) != 0;
     const bool wantInProgress = (filter & ShowInProgress) != 0;
     const bool wantConsidered = (filter & ShowConsidered) != 0;
+    const bool wantDropped = (filter & ShowDropped) != 0;   // ANTS-4977
     const bool wantCurrent = (filter & ShowCurrent) != 0;
 
     QStringList signalsFuzzy;
@@ -1148,6 +1156,7 @@ QString RoadmapDialog::renderCardsHtml(const QString &markdownText,
         else if (rec.status == QStringLiteral("📋") && wantPlanned) statusOk = true;
         else if (rec.status == QStringLiteral("🚧") && wantInProgress) statusOk = true;
         else if (rec.status == QStringLiteral("💭") && wantConsidered) statusOk = true;
+        else if (rec.status == QString::fromUtf8(kEmojiDropped) && wantDropped) statusOk = true;
         // Current signal: rec is "current" if its body matches a
         // CHANGELOG/[Unreleased] or recent-commit fuzzy hit.
         // ANTS-1423 — gated on (wantDone || status != "✅"). The
@@ -1155,7 +1164,8 @@ QString RoadmapDialog::renderCardsHtml(const QString &markdownText,
         // [Unreleased]; without the gate, ✅ bullets slip through
         // the Current preset which explicitly excludes ShowDone.
         const bool isCur = wantCurrent && isCurrent(rec.body) &&
-            (wantDone || rec.status != QStringLiteral("✅"));
+            (wantDone || rec.status != QStringLiteral("✅")) &&
+            (wantDropped || rec.status != QString::fromUtf8(kEmojiDropped));   // ANTS-4977
         if (!statusOk && !isCur) return false;
 
         // Kind filter
@@ -1180,7 +1190,7 @@ QString RoadmapDialog::renderCardsHtml(const QString &markdownText,
     // Group bullets by sectionSlug + count per status.
     QHash<QString, QVector<const BulletRecord *>> bySection;
     struct SectionCounts {
-        int done = 0, planned = 0, inProgress = 0, considered = 0;
+        int done = 0, planned = 0, inProgress = 0, considered = 0, dropped = 0;
         int visible = 0;
         // ANTS-1693 — lets RoadmapIndex::rollupCounts bubble a child
         // section's tally into its ancestors (same tree-walk the MCP
@@ -1190,6 +1200,7 @@ QString RoadmapDialog::renderCardsHtml(const QString &markdownText,
             planned += o.planned;
             inProgress += o.inProgress;
             considered += o.considered;
+            dropped += o.dropped;
             visible += o.visible;
             return *this;
         }
@@ -1205,6 +1216,7 @@ QString RoadmapDialog::renderCardsHtml(const QString &markdownText,
         else if (rec.status == QStringLiteral("📋")) c.planned++;
         else if (rec.status == QStringLiteral("🚧")) c.inProgress++;
         else if (rec.status == QStringLiteral("💭")) c.considered++;
+        else if (rec.status == QString::fromUtf8(kEmojiDropped)) c.dropped++;
     }
 
     // ANTS-1693 — parent (level-2) chips previously showed only their
@@ -1408,6 +1420,7 @@ QString RoadmapDialog::renderCardsHtml(const QString &markdownText,
         if (c.inProgress > 0) chips += QStringLiteral("🚧 %1 in progress · ").arg(c.inProgress);
         if (c.planned > 0)    chips += QStringLiteral("📋 %1 planned · ").arg(c.planned);
         if (c.considered > 0) chips += QStringLiteral("💭 %1 considered · ").arg(c.considered);
+        if (c.dropped > 0)    chips += QStringLiteral("🚫 %1 dropped · ").arg(c.dropped);
         if (chips.endsWith(QStringLiteral(" · "))) chips.chop(3);
         if (!chips.isEmpty()) {
             html += QStringLiteral(
@@ -2085,12 +2098,16 @@ RoadmapDialog::RoadmapDialog(const QString &roadmapPath,
     m_filterConsidered->setObjectName(QStringLiteral("roadmap-filter-considered"));
     m_filterConsidered->setAccessibleName(tr("Show considered items"));
     m_filterConsidered->setChecked(true);
+    m_filterDropped = new QCheckBox(tr("🚫 Dropped"), this);   // ANTS-4977
+    m_filterDropped->setObjectName(QStringLiteral("roadmap-filter-dropped"));
+    m_filterDropped->setAccessibleName(tr("Show dropped items"));
+    m_filterDropped->setChecked(true);
     m_filterCurrent = new QCheckBox(tr("Currently being tackled"), this);
     m_filterCurrent->setObjectName(QStringLiteral("roadmap-filter-current"));
     m_filterCurrent->setAccessibleName(
         tr("Show only items currently being worked on"));
     m_filterCurrent->setChecked(true);
-    // ANTS-4412 — the five status boxes go into a popup instead of edge to
+    // ANTS-4412 — the status boxes go into a popup instead of edge to
     // edge. They are the SAME widgets, re-parented: every connect() above and
     // below, every objectName, every accessibleName and the whole persistence
     // path are untouched, and `findChild<QCheckBox*>("roadmap-filter-done")`
@@ -2108,6 +2125,7 @@ RoadmapDialog::RoadmapDialog(const QString &roadmapPath,
     addToMenu(statusMenu, m_filterPlanned);
     addToMenu(statusMenu, m_filterInProgress);
     addToMenu(statusMenu, m_filterConsidered);
+    addToMenu(statusMenu, m_filterDropped);
     addToMenu(statusMenu, m_filterCurrent);
 
     m_statusFilterBtn = new QToolButton(this);
@@ -2229,6 +2247,7 @@ RoadmapDialog::RoadmapDialog(const QString &roadmapPath,
         for (QCheckBox *cb : {m_filterDone.data(), m_filterPlanned.data(),
                               m_filterInProgress.data(),
                               m_filterConsidered.data(),
+                              m_filterDropped.data(),
                               m_filterCurrent.data()})
             if (cb) cb->setChecked(true);
         for (QCheckBox *cb : std::as_const(m_kindCheckboxes))
@@ -2243,7 +2262,7 @@ RoadmapDialog::RoadmapDialog(const QString &roadmapPath,
     // Keep the summaries honest on every toggle, whichever control moved.
     for (QCheckBox *cb : {m_filterDone.data(), m_filterPlanned.data(),
                           m_filterInProgress.data(), m_filterConsidered.data(),
-                          m_filterCurrent.data()})
+                          m_filterDropped.data(), m_filterCurrent.data()})
         if (cb) connect(cb, &QCheckBox::toggled, this,
                         [this] { updateFilterSummaries(); });
     for (QCheckBox *cb : std::as_const(m_kindCheckboxes))
@@ -2488,6 +2507,7 @@ RoadmapDialog::RoadmapDialog(const QString &roadmapPath,
         if (m_filterPlanned)    tabChain << m_filterPlanned.data();
         if (m_filterInProgress) tabChain << m_filterInProgress.data();
         if (m_filterConsidered) tabChain << m_filterConsidered.data();
+        if (m_filterDropped)    tabChain << m_filterDropped.data();
         if (m_filterCurrent)    tabChain << m_filterCurrent.data();
         if (m_densityCombo)     tabChain << m_densityCombo.data();
         for (const KindEntry &k : kKinds) {
@@ -2546,6 +2566,8 @@ RoadmapDialog::RoadmapDialog(const QString &roadmapPath,
     connect(m_filterInProgress, &QCheckBox::toggled,
             this, &RoadmapDialog::onCheckboxToggled);
     connect(m_filterConsidered, &QCheckBox::toggled,
+            this, &RoadmapDialog::onCheckboxToggled);
+    connect(m_filterDropped, &QCheckBox::toggled,
             this, &RoadmapDialog::onCheckboxToggled);
     connect(m_filterCurrent, &QCheckBox::toggled,
             this, &RoadmapDialog::onCheckboxToggled);
@@ -2643,6 +2665,10 @@ RoadmapDialog::RoadmapDialog(const QString &roadmapPath,
             m_filterInProgress->setChecked(sf.value(QLatin1String("in_progress")).toBool(true));
         if (m_filterConsidered)
             m_filterConsidered->setChecked(sf.value(QLatin1String("considered")).toBool(true));
+        // ANTS-4977 — absent reads as shown, so a filter saved before 🚫
+        // existed does not hide items it never knew about.
+        if (m_filterDropped)
+            m_filterDropped->setChecked(sf.value(QLatin1String("dropped")).toBool(true));
         if (m_filterCurrent)
             m_filterCurrent->setChecked(sf.value(QLatin1String("current")).toBool(true));
         m_suppressCheckboxSignal = false;
@@ -3149,7 +3175,7 @@ void RoadmapDialog::updateFilterSummaries() {
     int statusOn = 0, statusTotal = 0;
     for (QCheckBox *cb : {m_filterDone.data(), m_filterPlanned.data(),
                           m_filterInProgress.data(), m_filterConsidered.data(),
-                          m_filterCurrent.data()}) {
+                          m_filterDropped.data(), m_filterCurrent.data()}) {
         if (!cb) continue;
         ++statusTotal;
         if (cb->isChecked()) ++statusOn;
@@ -3228,6 +3254,8 @@ void RoadmapDialog::applyPreset(Preset p) {
             m_filterInProgress->setChecked((mask & ShowInProgress) != 0);
         if (m_filterConsidered)
             m_filterConsidered->setChecked((mask & ShowConsidered) != 0);
+        if (m_filterDropped)
+            m_filterDropped->setChecked((mask & ShowDropped) != 0);
         if (m_filterCurrent)
             m_filterCurrent->setChecked((mask & ShowCurrent) != 0);
         m_suppressCheckboxSignal = false;
@@ -3264,6 +3292,7 @@ void RoadmapDialog::onCheckboxToggled() {
         if (m_filterPlanned && m_filterPlanned->isChecked()) mask |= ShowPlanned;
         if (m_filterInProgress && m_filterInProgress->isChecked()) mask |= ShowInProgress;
         if (m_filterConsidered && m_filterConsidered->isChecked()) mask |= ShowConsidered;
+        if (m_filterDropped && m_filterDropped->isChecked()) mask |= ShowDropped;
         if (m_filterCurrent && m_filterCurrent->isChecked()) mask |= ShowCurrent;
         const Preset p = presetMatching(mask, m_sortOrder);
         m_activePreset = p;
@@ -3280,6 +3309,7 @@ void RoadmapDialog::onCheckboxToggled() {
             sf[QLatin1String("planned")]     = m_filterPlanned     && m_filterPlanned->isChecked();
             sf[QLatin1String("in_progress")] = m_filterInProgress  && m_filterInProgress->isChecked();
             sf[QLatin1String("considered")]  = m_filterConsidered  && m_filterConsidered->isChecked();
+            sf[QLatin1String("dropped")]     = m_filterDropped     && m_filterDropped->isChecked();
             sf[QLatin1String("current")]     = m_filterCurrent     && m_filterCurrent->isChecked();
             m_config->setRoadmapStatusFilters(sf);
         }
@@ -3636,6 +3666,7 @@ void RoadmapDialog::rebuild() {
     if (m_filterPlanned && m_filterPlanned->isChecked()) filter |= ShowPlanned;
     if (m_filterInProgress && m_filterInProgress->isChecked()) filter |= ShowInProgress;
     if (m_filterConsidered && m_filterConsidered->isChecked()) filter |= ShowConsidered;
+    if (m_filterDropped && m_filterDropped->isChecked()) filter |= ShowDropped;
     if (m_filterCurrent && m_filterCurrent->isChecked()) filter |= ShowCurrent;
 
     const QStringList signals_ = collectCurrentBullets();

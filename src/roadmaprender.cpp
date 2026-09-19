@@ -31,14 +31,14 @@ bool fail(QString *error, const QString &msg) {
 
 }  // namespace  (ANTS-3793 — emojiFor is exported; see roadmaprender.h)
 
-// roadmap-format.md § 3.3's four status emojis. `dropped` deliberately has no
-// glyph: § 3.11 makes a fifth an anti-pattern, and INV-4 excludes those items
-// from every rendered file, so a dropped item never reaches this function.
+// roadmap-format.md § 3.3's five status emojis. ANTS-4977 gave `dropped` its
+// 🚫, so a closed-not-done item is published rather than hidden.
 QString emojiFor(const QString &status) {
     if (status == QLatin1String("shipped"))     return QString::fromUtf8(RoadmapParse::kEmojiDone);
     if (status == QLatin1String("in-progress")) return QString::fromUtf8(RoadmapParse::kEmojiInProgress);
     if (status == QLatin1String("considered"))  return QString::fromUtf8(RoadmapParse::kEmojiConsidered);
     if (status == QLatin1String("planned"))     return QString::fromUtf8(RoadmapParse::kEmojiPlanned);
+    if (status == QLatin1String("dropped"))     return QString::fromUtf8(RoadmapParse::kEmojiDropped);
     return QString();
 }
 
@@ -50,14 +50,13 @@ bool isOpen(const QString &status) {
 
 namespace {
 
-// roadmap-data-model.md § 7.5's membership, for the FILE. Deliberately not
-// exported: the store-built read seam excludes a dropped item and keeps an
-// `internal` one, because BulletRecord has no visibility field and filtering on
-// one would give roadmap_query a concept it has never had (roadmap_read_seam
-// INV-2). The two answers differ on purpose, so one shared predicate would be
-// wrong for one of them.
+// roadmap-data-model.md § 7.5's membership, for the FILE: every item except an
+// `internal` one (ANTS-4977 published `dropped`). Deliberately not exported:
+// the store-built read seam keeps an `internal` item, because BulletRecord has
+// no visibility field and filtering on one would give roadmap_query a concept
+// it has never had (roadmap_read_seam INV-2).
 bool isRenderable(const RoadmapStore::ItemWrite &it) {
-    return it.visibility != QLatin1String("internal") && it.status != QLatin1String("dropped");
+    return it.visibility != QLatin1String("internal");
 }
 
 // Continuation lines carry two spaces, per roadmap-format.md § 3.5's example.
@@ -251,16 +250,23 @@ namespace {
 // kStatusOrder, so two renders of one store agree (INV-7) and a re-load
 // reproduces the same object (INV-1).
 //
-// `dropped` is skipped: roadmap-format.md § 3.11 makes a fifth status emoji an
-// anti-pattern, so it has no markdown form to emit a legend line in.
+// ANTS-4977 — no legend migrated before 🚫 existed holds `dropped`, so a
+// stored legend that lacks it gets a default row. A project with no stored
+// legend still renders none.
 QString renderLegend(const QJsonObject &legend) {
     static const char *const kStatusOrder[] = {"planned", "in-progress", "shipped",
-                                               "considered"};
+                                               "considered", "dropped"};
     QStringList lines;
+    if (legend.isEmpty())
+        return QString();
     for (const char *status : kStatusOrder) {
         const QString key = QLatin1String(status);
-        if (!legend.contains(key))
+        if (!legend.contains(key)) {
+            if (key == QLatin1String("dropped"))
+                lines.append(QStringLiteral("- ") + emojiFor(key)
+                             + QStringLiteral(" Dropped (closed, not done)"));
             continue;
+        }
         lines.append(QStringLiteral("- ") + emojiFor(key) + QLatin1Char(' ')
                      + legend.value(key).toString());
     }

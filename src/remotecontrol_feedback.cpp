@@ -949,6 +949,9 @@ QJsonDocument RemoteControl::cmdFeedbackLog(const QJsonObject &req) {
             ? QString() : findRoadmapUnder(callerCanonical);
         FeedbackFile::ResolveOptions ropts;
         static const QString kCheck = QString::fromUtf8("\xE2\x9C\x85");  // ✅
+        // ANTS-4977 — 🚫 is closed too: its write-up collapses like a ✅'s.
+        // `shippedIds` is the resolver's CLOSED set; only ✅ carries a date.
+        static const QString kDropped = QString::fromUtf8("\xF0\x9F\x9A\xAB");  // 🚫
         QSet<QString> callerPrefixes;
         const auto idPrefixOfC = [](const QString &id) {
             const int dash = id.lastIndexOf(QLatin1Char('-'));
@@ -979,6 +982,7 @@ QJsonDocument RemoteControl::cmdFeedbackLog(const QJsonObject &req) {
                     if (b.id.isEmpty() || !RoadmapIndex::isCanonicalId(b.id)) continue;
                     ropts.roadmapIds.insert(b.id);
                     callerPrefixes.insert(idPrefixOfC(b.id));
+                    if (b.status == kDropped) ropts.shippedIds.insert(b.id);
                     if (b.status == kCheck) {
                         ropts.shippedIds.insert(b.id);
                         // ANTS-3504 — capture the ship-date from the same pass so
@@ -1002,6 +1006,8 @@ QJsonDocument RemoteControl::cmdFeedbackLog(const QJsonObject &req) {
                                         prC.mappedIds, ropts.roadmapIds);
         for (auto it = foreignC.constBegin(); it != foreignC.constEnd(); ++it) {
             ropts.roadmapIds.insert(it.key());
+            if (it.value().value(QStringLiteral("status")).toString() == kDropped)
+                ropts.shippedIds.insert(it.key());
             if (it.value().value(QStringLiteral("status")).toString() == kCheck) {
                 ropts.shippedIds.insert(it.key());
                 const QString d =

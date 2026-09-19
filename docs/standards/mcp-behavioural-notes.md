@@ -312,7 +312,9 @@ server-controllable beyond this per-tool hint.
   `roadmap_log op:"backfill_dates"` is what fills the rest. `open` is an
   ENUMERATION — planned + in-progress + considered — never
   `status != 'shipped'`: the schema admits a fifth value `dropped`, so the
-  two disagree on any project that has one. Every median carries the
+  two disagree on any project that has one. A `dropped` item is published
+  as 🚫 and is never open (ANTS-4977); `status:"dropped"` selects it on the
+  list path. Every median carries the
   `sample` it was computed from, which is smaller than the population it
   looks like. `scope:"all"` sums every registered project — the one view no
   single ROADMAP.md can give.

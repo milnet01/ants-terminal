@@ -177,11 +177,12 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppend(const QJsonObject &req) {
     else if (status == QLatin1String("in-progress")) statusEmoji = QString::fromUtf8("\xF0\x9F\x9A\xA7"); // 🚧
     else if (status == QLatin1String("shipped"))     statusEmoji = QString::fromUtf8("\xE2\x9C\x85");     // ✅
     else if (status == QLatin1String("considered"))  statusEmoji = QString::fromUtf8("\xF0\x9F\x92\xAD"); // 💭
+    else if (status == QLatin1String("dropped"))     statusEmoji = QString::fromUtf8("\xF0\x9F\x9A\xAB"); // 🚫 ANTS-4977
     else {
         return rlErr(QStringLiteral("bad_status"),
             QStringLiteral("roadmap_log: unknown status \"%1\" — "
                            "expected planned / in-progress / "
-                           "shipped / considered").arg(status));
+                           "shipped / considered / dropped").arg(status));
     }
 
     // ANTS-1424 — kind enum check. Mirrors the schema's enum list.
@@ -1321,11 +1322,13 @@ QJsonDocument RemoteControl::cmdRoadmapLogFlip(const QJsonObject &req) {
                  toStatusResolved == QStringLiteral("✅")) { targetEmoji = QStringLiteral("✅"); targetStatusWord = QStringLiteral("shipped"); }
         else if (toStatusResolved == QStringLiteral("considered")  ||
                  toStatusResolved == QStringLiteral("💭")) { targetEmoji = QStringLiteral("💭"); targetStatusWord = QStringLiteral("considered"); }
+        else if (toStatusResolved == QStringLiteral("dropped")     ||   // ANTS-4977
+                 toStatusResolved == QStringLiteral("🚫")) { targetEmoji = QStringLiteral("🚫"); targetStatusWord = QStringLiteral("dropped"); }
         else {
             return rlErr(QStringLiteral("bad_status"),
                 QStringLiteral("roadmap_log: unknown to_status \"%1\" — "
                                "expected planned / in-progress / shipped "
-                               "/ considered (or one of 📋/🚧/✅/💭); "
+                               "/ considered / dropped (or one of 📋/🚧/✅/💭/🚫); "
                                "synonyms also accepted: done/complete/completed "
                                "→ shipped, wip/in_progress → in-progress, "
                                "todo/open → planned, maybe/idea → considered")

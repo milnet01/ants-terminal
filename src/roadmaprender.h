@@ -148,29 +148,8 @@ struct Outcome {
 // file-local function; the alternative is a second renderer that has to be kept
 // in step by hand.
 //
-// PRECONDITION (ANTS-3820): `it.status` is a RENDERABLE status. A `dropped` item
-// has no markdown form at all, and the round trip is worse than a missing glyph:
-// emojiFor("dropped") returns an empty string by design (§ 3.11 makes a fifth
-// emoji an anti-pattern), so the head line emitted here carries NO status
-// marker — and parseBullets()' native path then fails stripInlineEmoji() and
-// SKIPS THE BULLET ENTIRELY. A dropped item rendered to markdown re-parses to
-// nothing.
-//
-// This function does NOT enforce the precondition, and that is deliberate rather
-// than an omission — both callers already exclude a dropped item, by two
-// different mechanisms, and neither wants a refusal here:
-//   - render()'s loop drops it at isRenderable() before reaching renderBullet(),
-//     so the pairing holds by CALL ORDER.
-//   - bulletsFromStore()'s appendRecord() (roadmapsource.cpp) relies on the
-//     marker-less text failing parseAntsV1Bullet(), and skips the nullopt — it
-//     wants exactly the text this produces, and its own comment says so.
-// Making this refuse would break the second, which uses the unparseable output
-// AS its exclusion signal.
-//
-// So the precondition is stated rather than asserted, and it is TESTED instead:
-// see tests/features/roadmap_render's Ants3820 case, which pins both the
-// unparseable-text property and both callers' exclusion. A third caller must
-// pick one of those two mechanisms; it cannot rely on this function to stop it.
+// ANTS-4977 superseded ANTS-3820's precondition: every status has a marker
+// now, `dropped` included (🚫), so the head line always re-parses.
 QString bulletText(const RoadmapStore::ItemWrite &it);
 
 // ANTS-5087 — which trailer lines bulletText() will write for this item, as
@@ -208,9 +187,8 @@ TrailerLines trailerLines(const RoadmapStore::ItemWrite &it);
 QString laymanForStore(const QString &value);
 QString laymanRendered(const QString &stored);
 
-// roadmap-format.md § 3.3's four status emojis, by lifecycle word. `dropped`
-// deliberately has no glyph (§ 3.11 makes a fifth an anti-pattern) and returns
-// an empty string. Exported for the same reason bulletText() is: ANTS-3793
+// roadmap-format.md § 3.3's five status emojis, by lifecycle word (🚫 for
+// `dropped`, ANTS-4977). An unknown word returns an empty string. Exported for the same reason bulletText() is: ANTS-3793
 // § 2.3 has RoadmapDialog render a migrated project's STORED legend, whose JSON
 // is keyed by those words while the dialog is keyed by emoji, and a second
 // word→emoji table in the dialog is a correspondence someone has to keep true

@@ -245,6 +245,9 @@ bool stripInlineEmoji(QString &head, QString &status) {
     } else if (head.startsWith(QString::fromUtf8(kEmojiConsidered))) {
         status = QStringLiteral("💭");
         head.remove(0, QString::fromUtf8(kEmojiConsidered).size());
+    } else if (head.startsWith(QString::fromUtf8(kEmojiDropped))) {   // ANTS-4977
+        status = QString::fromUtf8(kEmojiDropped);
+        head.remove(0, QString::fromUtf8(kEmojiDropped).size());
     } else {
         return false;
     }
@@ -863,6 +866,7 @@ parsePassHeadingBullets(const QStringList &lines) {
                     else if (emoji == QString::fromUtf8("\xF0\x9F\x9A\xA7")) statusWord = QStringLiteral("in-progress"); // 🚧
                     else if (emoji == QString::fromUtf8("\xF0\x9F\x92\xAD")) statusWord = QStringLiteral("deferred");    // 💭
                     else if (emoji == QString::fromUtf8("\xF0\x9F\x93\x8B")) statusWord = QStringLiteral("todo");        // 📋
+                    else if (emoji == QString::fromUtf8("\xF0\x9F\x9A\xAB")) statusWord = QStringLiteral("dropped");     // 🚫 ANTS-4977
                 }
                 // A content-free `- **Status**:` line (both groups
                 // empty) is not a classification — keep scanning for a
@@ -945,6 +949,10 @@ parsePassHeadingBullets(const QStringList &lines) {
                    statusWord == QStringLiteral("considered") ||
                    statusWord == QStringLiteral("parked")) {
             rec.status = QStringLiteral("💭");
+        } else if (statusWord == QStringLiteral("dropped") ||      // ANTS-4977
+                   statusWord == QStringLiteral("abandoned") ||
+                   statusWord == QStringLiteral("wontfix")) {
+            rec.status = QString::fromUtf8(kEmojiDropped);
         } else {
             // todo / planned / unknown / absent
             rec.status = QStringLiteral("📋");
@@ -1656,7 +1664,7 @@ QString detectRoadmapFormat(const QStringList &lines, bool *sawSignal) {
     int  passHeadings     = 0;
     int  statusMarkers    = 0;
     static const QRegularExpression rxAntsV1Bullet(
-        QStringLiteral("^- (✅|📋|🚧|💭)"));
+        QStringLiteral("^- (✅|📋|🚧|💭|🚫)"));
     static const QRegularExpression rxPassHeading(
         QStringLiteral("^####\\s+Pass\\s+\\d"));
     static const QRegularExpression rxStatusMarker(

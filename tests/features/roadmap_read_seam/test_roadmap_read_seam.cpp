@@ -738,8 +738,9 @@ TEST(RoadmapReadSeam, Inv2Membership) {
     for (const BulletRecord &r : *records)
         ids.append(r.id);
 
-    EXPECT_FALSE(ids.contains(QStringLiteral("DEMO-0003")))
-        << "a dropped item renders with no status marker, so it is no record";
+    // ANTS-4977 — a dropped item is a 🚫 record, superseding § 2.1.2.
+    EXPECT_TRUE(ids.contains(QStringLiteral("DEMO-0003")))
+        << "a dropped item renders as 🚫, so it is a record";
     EXPECT_TRUE(ids.contains(QStringLiteral("DEMO-0002")))
         << "BulletRecord has no visibility field; filtering here would give "
            "roadmap_query a concept it has never had";
@@ -747,7 +748,8 @@ TEST(RoadmapReadSeam, Inv2Membership) {
         << "hiding an unfiled item hides the fault from the only read likely "
            "to surface it";
     EXPECT_EQ(ids, QStringList({QStringLiteral("DEMO-0001"), QStringLiteral("DEMO-0002"),
-                                QStringLiteral("DEMO-0004"), QStringLiteral("DEMO-0005")}))
+                                QStringLiteral("DEMO-0003"), QStringLiteral("DEMO-0004"),
+                                QStringLiteral("DEMO-0005")}))
         << "unfiled items come last, after every filed one";
 
     const BulletRecord &unfiled = records->back();

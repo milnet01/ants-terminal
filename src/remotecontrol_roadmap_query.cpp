@@ -1932,7 +1932,8 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
     static const QStringList kAcceptedStatusFilters = {
         QStringLiteral("all"),         QStringLiteral("active"),
         QStringLiteral("shipped"),     QStringLiteral("planned"),
-        QStringLiteral("in-progress"), QStringLiteral("considered") };
+        QStringLiteral("in-progress"), QStringLiteral("considered"),
+        QStringLiteral("dropped") };   // ANTS-4977
     if (!kAcceptedStatusFilters.contains(filter)) {
         QString verbatim = statusArg;   // ANTS-3698 — status or its alias
         if (verbatim.size() > 64) verbatim.truncate(64);
@@ -1957,7 +1958,8 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
     if (sectionFilter == QLatin1String("planned") ||
         sectionFilter == QLatin1String("in-progress"))
         sectionFilter = QStringLiteral("active");
-    else if (sectionFilter == QLatin1String("considered"))
+    else if (sectionFilter == QLatin1String("considered") ||
+             sectionFilter == QLatin1String("dropped"))   // ANTS-4977
         sectionFilter = QStringLiteral("all");
 
     // ANTS-1287-INV-1: optional `section` slug. Empty/missing → full-file
@@ -3848,7 +3850,8 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
                     (filter == QLatin1String("shipped")     && (s == doneEmoji)) ||
                     (filter == QLatin1String("planned")     && (s == plannedEmoji)) ||
                     (filter == QLatin1String("in-progress") && (s == progressEmoji)) ||
-                    (filter == QLatin1String("considered")  && (s == consideredEmoji));
+                    (filter == QLatin1String("considered")  && (s == consideredEmoji)) ||
+                    (filter == QLatin1String("dropped")     && (s == QString::fromUtf8("\xF0\x9F\x9A\xAB"))); // 🚫 ANTS-4977
                 if (keep) filtered.append(v);
             }
         }
@@ -4456,7 +4459,8 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
                 (filter == QLatin1String("shipped")     && (s == doneEmoji)) ||
                 (filter == QLatin1String("planned")     && (s == plannedEmoji)) ||
                 (filter == QLatin1String("in-progress") && (s == progressEmoji)) ||
-                (filter == QLatin1String("considered")  && (s == consideredEmoji));
+                (filter == QLatin1String("considered")  && (s == consideredEmoji)) ||
+                (filter == QLatin1String("dropped")     && (s == QString::fromUtf8("\xF0\x9F\x9A\xAB"))); // 🚫 ANTS-4977
             if (keep) filtered.append(v);
         }
     }

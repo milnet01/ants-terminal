@@ -117,8 +117,8 @@ TEST(RoadmapFilterBar, SummariesTrackTheCheckboxes) {
         << "at rest every kind shows: " << kind->text().toStdString();
 
     box(dlg, "roadmap-filter-done")->setChecked(false);
-    EXPECT_TRUE(status->text().contains(QStringLiteral("4 of 5")))
-        << "one status off must read 4 of 5, not 'all': "
+    EXPECT_TRUE(status->text().contains(QStringLiteral("5 of 6")))
+        << "one status off must read 5 of 6, not 'all': "
         << status->text().toStdString();
 
     box(dlg, "roadmap-filter-kind-fix")->setChecked(true);
@@ -127,7 +127,7 @@ TEST(RoadmapFilterBar, SummariesTrackTheCheckboxes) {
         << "two kinds on must read 2 of N: " << kind->text().toStdString();
     // …and the two summaries do not derive from one another's shape: status
     // counts what is SHOWN, kind counts what is SELECTED.
-    EXPECT_TRUE(status->text().contains(QStringLiteral("4 of 5")));
+    EXPECT_TRUE(status->text().contains(QStringLiteral("5 of 6")));
 }
 
 TEST(RoadmapFilterBar, ResetIsEnabledExactlyWhenNarrowed) {

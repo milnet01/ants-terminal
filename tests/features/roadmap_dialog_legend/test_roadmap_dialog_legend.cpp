@@ -119,10 +119,10 @@ TEST(RoadmapDialogLegend, Inv2Legend) {
     ASSERT_TRUE(noRow.has_value()) << err.toStdString();
     EXPECT_TRUE(RoadmapSource::legendByEmoji(noRow->legendText).isEmpty());
 
-    // INV-4 — a lifecycle word with no glyph is skipped, never inserted under
-    // an empty key. roadmap-format.md § 3.11 gives `dropped` no emoji.
+    // INV-4 — a word with no glyph is skipped, never inserted under an empty
+    // key. `dropped` has 🚫 since ANTS-4977, so an unknown word stands in.
     const QHash<QString, QString> dropped = RoadmapSource::legendByEmoji(
-        QStringLiteral("{\"dropped\":\"gone\",\"shipped\":\"out\"}"));
+        QStringLiteral("{\"retired\":\"gone\",\"shipped\":\"out\"}"));
     EXPECT_EQ(dropped.size(), 1);
     EXPECT_FALSE(dropped.contains(QString()));
 

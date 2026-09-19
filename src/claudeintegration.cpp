@@ -3113,6 +3113,7 @@ void ClaudeIntegration::onMcpConnection() {
                     statusEnum.append("planned");
                     statusEnum.append("in-progress");
                     statusEnum.append("considered");
+                    statusEnum.append("dropped");   // ANTS-4977
                     statusProp["enum"] = statusEnum;
                     statusProp["description"] = QStringLiteral(
                         "Filter by lifecycle. Aggregates: \"active\" = "
@@ -3120,7 +3121,8 @@ void ClaudeIntegration::onMcpConnection() {
                         "\"shipped\" = ✅, \"all\". ANTS-3400 — the granular "
                         "roadmap_log lifecycle names are also accepted and "
                         "map to a single emoji: \"planned\"=📋, "
-                        "\"in-progress\"=🚧, \"considered\"=💭 (bullets / "
+                        "\"in-progress\"=🚧, \"considered\"=💭, "
+                        "\"dropped\"=🚫 (bullets / "
                         "section= path; section_index collapses granular "
                         "names to their aggregate). An unknown value refuses "
                         "with bad_status + an `accepted` list. ANTS-3698 — "
@@ -13088,10 +13090,12 @@ void ClaudeIntegration::onMcpConnection() {
                     statusEnum.append("in-progress");
                     statusEnum.append("shipped");
                     statusEnum.append("considered");
+                    statusEnum.append("dropped");   // ANTS-4977
                     statusProp["enum"] = statusEnum;
                     statusProp["description"] = QStringLiteral(
-                        "Lifecycle status. Mapped to 📋/🚧/✅/💭 "
-                        "emoji by the verb.");
+                        "Lifecycle status. Mapped to 📋/🚧/✅/💭/🚫 "
+                        "emoji by the verb. `dropped` (🚫) is closed, "
+                        "deliberately not done.");
 
                     QJsonObject headlineProp;
                     headlineProp["type"]      = "string";
@@ -13463,10 +13467,11 @@ void ClaudeIntegration::onMcpConnection() {
                     toStatusEnum.append("in-progress");
                     toStatusEnum.append("shipped");
                     toStatusEnum.append("considered");
+                    toStatusEnum.append("dropped");   // ANTS-4977
                     toStatusProp["enum"] = toStatusEnum;
                     toStatusProp["description"] = QStringLiteral(
                         "Target lifecycle status for op:\"flip\". "
-                        "Mapped to 📋/🚧/✅/💭 emoji by the verb.");
+                        "Mapped to 📋/🚧/✅/💭/🚫 emoji by the verb.");
                     QJsonObject idProp;
                     idProp["type"] = "string";
                     idProp["description"] = QStringLiteral(

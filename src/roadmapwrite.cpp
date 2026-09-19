@@ -76,6 +76,7 @@ QString contentKey(QStringView line) {
         QStringLiteral("wip"),     QStringLiteral("done"),
         QStringLiteral("doing"),   QStringLiteral("deferred"),
         QStringLiteral("planned"), QStringLiteral("considered"),
+        QStringLiteral("dropped"),   // ANTS-4977
     };
     QString out, tok;
     const auto flush = [&] {

@@ -25,7 +25,7 @@ chrome change rather than a rewrite, and the first row below is what proves it.
 | Row | Claim |
 |---|---|
 | `CheckboxesSurviveTheReparent` | All five status boxes and all twelve kind boxes are still reachable by their documented objectNames, still carry their accessibleNames, and still hold their pre-existing default states (status all on, kind all off). |
-| `SummariesTrackTheCheckboxes` | The buttons say `Status: all` / `Kind: all` at rest; unchecking a status yields `Status: 4 of 5`; checking two kinds yields `Kind: 2 of 12`. The status set counts DOWN from all-on and the kind set counts UP from empty, so a summary derived from the other's shape would be wrong. |
+| `SummariesTrackTheCheckboxes` | The buttons say `Status: all` / `Kind: all` at rest; unchecking a status yields `Status: 5 of 6`; checking two kinds yields `Kind: 2 of 12`. The status set counts DOWN from all-on and the kind set counts UP from empty, so a summary derived from the other's shape would be wrong. |
 | `ResetIsEnabledExactlyWhenNarrowed` | The reset button is disabled at rest and enabled by a status uncheck, by a kind check, and — separately — by search text alone. Search counts because it narrows as hard as any checkbox and reset clears it. |
 | `ResetRestoresEveryControl` | Clicking reset re-checks every status, unchecks every kind, clears the search box, and leaves the button disabled again. |
 | `ControlsAreKeyboardReachable` | The three buttons take strong focus and the two filter buttons carry a menu, so the collapse costs no keyboard access. |

@@ -683,7 +683,7 @@ static int runMain(int argc, char **argv) {
         if (!contains(src, "constexpr StatusLabel kStatusLabels[]"))
             fail("StateLabel",
                 "kStatusLabels file-scope table missing");
-        if (!contains(src, "static_assert(std::size(kStatusLabels) == 4"))
+        if (!contains(src, "static_assert(std::size(kStatusLabels) == 5"))
             fail("StateLabel",
                 "static_assert on kStatusLabels count missing — "
                 "a fifth status emoji could land without a label");

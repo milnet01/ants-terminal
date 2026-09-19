@@ -53,7 +53,7 @@ constexpr int kProbeSetVersion  = 7;
 // file genuinely doesn't carry any of the recognised shapes.
 struct RoadmapSnifferTrace {
     bool   markerHit         = false;  // <!-- ants-roadmap-format: 1 -->
-    bool   antsV1EmojiHit    = false;  // - ✅/📋/🚧/💭
+    bool   antsV1EmojiHit    = false;  // - ✅/📋/🚧/💭/🚫
     bool   gfmTaskListHit    = false;  // - [ ]/[x]/[X]
     bool   fullScan          = false;  // true iff sniffer fell back to body
     qint64 headBytesScanned  = 0;

@@ -306,6 +306,8 @@ the class that cost the umbrella two review loops. It is total over
 
 #### 2.1.2 What the store path returns
 
+*(`dropped` half superseded by ANTS-4977: a dropped item is published as 🚫.)* 
+
 **Every item filed in an in-scope section, PLUS every unfiled item, except
 those whose `status` is `dropped`** — where a *section's* scope is set by the
 caller's `includeArchive` flag, exactly as it is on the markdown path today.

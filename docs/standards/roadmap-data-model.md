@@ -489,7 +489,7 @@ such a block (§ 5.2's table row counts the lines), and they are the document's
 They are therefore their own per-project structure: status value → that
 project's wording, which is what would let one renderer serve every project.
 `RoadmapDialog` does that only for a project it read from the store:
-`src/roadmapdialog.cpp` still holds the four status emojis and their labels as
+`src/roadmapdialog.cpp` still holds the five status emojis and their labels as
 compile-time constants, guarded by a `static_assert` on the count, and those are
 the words a project parsed from markdown is rendered in whatever its own legend
 says. ANTS-3793 built the other path — `RoadmapDialog::storeLegend()` reads the

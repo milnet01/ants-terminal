@@ -47,19 +47,21 @@ static int runMain() {
     using Preset = RoadmapDialog::Preset;
     using SortOrder = RoadmapDialog::SortOrder;
 
-    // INV-1: Full preset = all five bits.
+    // INV-1: Full preset = every Show* bit (ANTS-4977 added ShowDropped).
     {
         const unsigned want =
             RoadmapDialog::ShowDone | RoadmapDialog::ShowPlanned |
             RoadmapDialog::ShowInProgress | RoadmapDialog::ShowConsidered |
-            RoadmapDialog::ShowCurrent;
+            RoadmapDialog::ShowDropped | RoadmapDialog::ShowCurrent;
         if (RoadmapDialog::filterFor(Preset::Full) != want)
-            fail("INV-1", "Full preset should OR all five Show* bits");
+            fail("INV-1", "Full preset should OR every Show* bit");
     }
 
-    // INV-2: History preset = ShowDone only.
-    if (RoadmapDialog::filterFor(Preset::History) != RoadmapDialog::ShowDone)
-        fail("INV-2", "History preset should be ShowDone alone");
+    // INV-2: History preset = the closed statuses, ShowDone | ShowDropped
+    // (ANTS-4977).
+    if (RoadmapDialog::filterFor(Preset::History) !=
+        (RoadmapDialog::ShowDone | RoadmapDialog::ShowDropped))
+        fail("INV-2", "History preset should be ShowDone | ShowDropped");
 
     // INV-3: Current preset = ShowInProgress | ShowCurrent.
     {

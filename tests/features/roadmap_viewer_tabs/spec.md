@@ -10,8 +10,8 @@ existing parser / renderer (no parser change — pure presentation layer):
 
    | Tab          | Filter mask                                                        | Sort                          |
    |--------------|--------------------------------------------------------------------|-------------------------------|
-   | Full         | All bits set (Done + Planned + InProgress + Considered + Current)  | Document                      |
-   | History      | ShowDone only                                                       | DescendingChronological       |
+   | Full         | All bits set (Done + Planned + InProgress + Considered + Dropped + Current) | Document                      |
+   | History      | ShowDone + ShowDropped (ANTS-4977)                                  | DescendingChronological       |
    | Current      | ShowInProgress \| ShowCurrent                                       | Document                      |
    | Next         | ShowPlanned only                                                    | Document                      |
    | Far Future   | ShowConsidered only                                                 | Document                      |
@@ -36,8 +36,8 @@ existing parser / renderer (no parser change — pure presentation layer):
 
 ## Invariants
 
-- **INV-1** `filterFor(Preset::Full)` returns all five `Show*` bits OR'd.
-- **INV-2** `filterFor(Preset::History)` returns `ShowDone` only.
+- **INV-1** `filterFor(Preset::Full)` returns every `Show*` bit OR'd.
+- **INV-2** `filterFor(Preset::History)` returns `ShowDone | ShowDropped` (ANTS-4977).
 - **INV-3** `filterFor(Preset::Current)` returns `ShowInProgress | ShowCurrent`.
 - **INV-4** `filterFor(Preset::Next)` returns `ShowPlanned` only.
 - **INV-5** `filterFor(Preset::FarFuture)` returns `ShowConsidered` only.

@@ -135,6 +135,8 @@ QJsonDocument RemoteControl::cmdRoadmapLogFlipBatch(const QJsonObject &req) {
              toStatus == QStringLiteral("✅")) { targetEmoji = QStringLiteral("✅"); targetStatusWord = QStringLiteral("shipped"); }
     else if (toStatus == QStringLiteral("considered")  ||
              toStatus == QStringLiteral("💭")) { targetEmoji = QStringLiteral("💭"); targetStatusWord = QStringLiteral("considered"); }
+    else if (toStatus == QStringLiteral("dropped")     ||   // ANTS-4977
+             toStatus == QStringLiteral("🚫")) { targetEmoji = QStringLiteral("🚫"); targetStatusWord = QStringLiteral("dropped"); }
     else if (toStatus.isEmpty())
         return rlErr(QStringLiteral("missing_field"),
             QStringLiteral("roadmap_log: to_status is required under "
@@ -142,7 +144,7 @@ QJsonDocument RemoteControl::cmdRoadmapLogFlipBatch(const QJsonObject &req) {
     else
         return rlErr(QStringLiteral("bad_status"),
             QStringLiteral("roadmap_log: unknown to_status \"%1\" — expected "
-                           "planned / in-progress / shipped / considered")
+                           "planned / in-progress / shipped / considered / dropped")
                 .arg(toStatus));
 
     // 2. locators array (required, non-empty).
@@ -2311,6 +2313,7 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppendBatch(const QJsonObject &req) {
         if (s == QLatin1String("in-progress")) return QString::fromUtf8("\xF0\x9F\x9A\xA7"); // 🚧
         if (s == QLatin1String("shipped"))     return QString::fromUtf8("\xE2\x9C\x85");     // ✅
         if (s == QLatin1String("considered"))  return QString::fromUtf8("\xF0\x9F\x92\xAD"); // 💭
+        if (s == QLatin1String("dropped"))     return QString::fromUtf8("\xF0\x9F\x9A\xAB"); // 🚫 ANTS-4977
         return QString();
     };
 
@@ -2417,7 +2420,7 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppendBatch(const QJsonObject &req) {
         if (emoji.isEmpty()) {
             skip(QStringLiteral("bad_status"),
                  QStringLiteral("unknown status \"%1\" — expected "
-                                "planned/in-progress/shipped/considered")
+                                "planned/in-progress/shipped/considered/dropped")
                      .arg(status));
             continue;
         }

@@ -14,19 +14,21 @@
 namespace PassHeadingWrite {
 
 // The canonical write keyword for a roadmap_log status value. Total over
-// the four-value enum (planned / in-progress / shipped / considered);
+// the five-value enum (planned / in-progress / shipped / considered /
+// dropped);
 // the single keyword it emits re-parses through the reader
 // (RoadmapParse::parsePassHeadingBullets) to the intended emoji:
 //   planned     → "todo"        (reader else-branch → 📋)
 //   in-progress → "in-progress" (reader → 🚧)
 //   shipped     → "done"        (reader → ✅)
 //   considered  → "deferred"    (reader → 💭)
+//   dropped     → "dropped"     (reader → 🚫, ANTS-4977)
 // Returns an empty string for any other input (unknown status).
 QString passStatusKeyword(const QString &roadmapStatus);
 
 // The canonical emoji glyph for a write keyword (the inverse direction,
 // for emoji-only / emoji+keyword Status lines): todo→📋, in-progress→🚧,
-// done→✅, deferred→💭. Empty for an unknown keyword.
+// done→✅, deferred→💭, dropped→🚫. Empty for an unknown keyword.
 QString passStatusEmoji(const QString &keyword);
 
 // True iff `pass` matches the designator shape

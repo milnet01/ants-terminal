@@ -12,7 +12,7 @@
 // Next / Far Future / Custom — each a (filter, sort) preset), a
 // debounced search box (substring + `id:NNNN` shorthand), then the
 // peer category checkboxes (✅ Done / 📋 Planned / 🚧 In progress /
-// 💭 Considered / Currently being tackled). The body splits a TOC
+// 💭 Considered / 🚫 Dropped / Currently being tackled). The body splits a TOC
 // sidebar from the rendered viewer. Current-work bullets get a
 // border-left highlight derived from the local CHANGELOG.md
 // [Unreleased] block + recent git commit subjects.
@@ -117,6 +117,7 @@ public:
         ShowInProgress  = 1u << 2,  // 🚧
         ShowConsidered  = 1u << 3,  // 💭
         ShowCurrent     = 1u << 4,  // CHANGELOG/commits-derived
+        ShowDropped     = 1u << 5,  // 🚫 ANTS-4977
     };
 
     // ANTS-1100: Faceted preset tabs above the existing checkbox row.
@@ -125,7 +126,7 @@ public:
     // named preset via the checkbox row.
     enum class Preset {
         Full,        // every Show* bit; document order
-        History,     // ShowDone only; descending chronological
+        History,     // ShowDone | ShowDropped; descending chronological
         Current,     // ShowInProgress | ShowCurrent; document order
         Next,        // ShowPlanned only; document order
         FarFuture,   // ShowConsidered only; document order
@@ -630,6 +631,7 @@ private:
     QPointer<QCheckBox> m_filterPlanned;
     QPointer<QCheckBox> m_filterInProgress;
     QPointer<QCheckBox> m_filterConsidered;
+    QPointer<QCheckBox> m_filterDropped;     // ANTS-4977
     QPointer<QCheckBox> m_filterCurrent;
     // ANTS-1106 — Kind-faceted secondary filter. Empty set = no
     // narrowing (current behaviour). Populated from the Kind row's

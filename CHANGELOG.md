@@ -14,6 +14,14 @@ for security-relevant changes.
 
 ### Added
 
+- **Roadmap items can be marked dropped, shown as 🚫 in ROADMAP.md.** (ANTS-4977)
+  `roadmap_log` accepts `dropped` (or 🚫) on append, append_batch, flip
+  and flip_batch. A dropped item is closed but never counted as shipped
+  or given a ship date. `roadmap_query status:"dropped"` lists them, and
+  the Roadmap dialog gains a 🚫 Dropped filter; History shows Done and
+  Dropped. A feedback finding whose id is dropped now collapses under
+  `compact_resolved`.
+
 - **Generated roadmap files now say so at the top** (ANTS-4555)
   A hidden line under the format marker says the file is generated from
   the roadmap store and that hand edits are discarded, so nobody edits it

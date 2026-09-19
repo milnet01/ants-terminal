@@ -264,7 +264,8 @@ struct FindingBlock {
 QVector<FindingBlock> enumerateFindingBlocks(const QStringList &lines);
 
 struct ResolveOptions {
-    QSet<QString> shippedIds;   // canonical ids whose live roadmap status is ✅
+    QSet<QString> shippedIds;   // canonical ids whose live roadmap status is
+                                // closed: ✅, or 🚫 (ANTS-4977)
     QSet<QString> roadmapIds;   // every canonical id present in the roadmap
                                 // (any status) — an id absent from this set is
                                 // "unresolved" (archive-rotated / unknown)

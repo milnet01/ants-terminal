@@ -71,9 +71,10 @@ public:
 
     // RoadmapDialog 5 status-emoji checkboxes — applies only when
     // roadmap_active_preset == "custom". JSON shape:
-    //   { "done", "planned", "in_progress", "considered", "current" }
+    //   { "done", "planned", "in_progress", "considered", "dropped", "current" }
     // each value bool. Empty/missing object → caller falls back
-    // to Preset::Full defaults.
+    // to Preset::Full defaults. ANTS-4977 — an absent "dropped" key
+    // reads as shown.
     QJsonObject roadmapStatusFilters() const;
     void setRoadmapStatusFilters(const QJsonObject &filters);
 

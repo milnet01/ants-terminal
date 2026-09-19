@@ -98,11 +98,8 @@ QStringList detectionPrefixOf(const QString &markdown) {
 // store and an emoji on the record. Copying any of the three fails INV-2 on
 // bullets this corpus actually contains.
 //
-// Appends nothing for a `dropped` item, and that is § 2.1.2's exclusion. On
-// ants-v1 it falls out of the emission: emojiFor() returns an empty string for
-// `dropped` by design, so bulletText() emits a head line with no status marker
-// and parseAntsV1Bullet() declines it exactly as a document walk would skip it.
-// The pass-headings branch has to state it, for the reason given there.
+// ANTS-4977 — a `dropped` item is a record like any other: § 2.1.2's
+// exclusion is superseded, because the file now publishes it as 🚫.
 //
 // ANTS-5087 — and the rendered text is the DIALECT's. ANTS-4803 made
 // pass-headings store-served, and this function went on rendering every item as
@@ -118,18 +115,11 @@ void appendRecord(QVector<BulletRecord> &out, const RoadmapStore::ItemWrite &it,
                   const RoadmapParse::IdFormat &fmt, const QString &dialect) {
     std::optional<BulletRecord> rec;
     if (dialect == QLatin1String("pass-headings")) {
-        // The dropped exclusion, stated outright because this emission has no
-        // side effect to lean on: a pass block carries its Status keyword
-        // whatever the status, so it parses back cleanly where the ants-v1 head
-        // line would have lost its marker and been declined.
+        // An `internal` item stays a record here on purpose — INV-2 decides
+        // that: BulletRecord has no visibility field, so filtering on one
+        // would give roadmap_query a concept it has never had. The FILE
+        // excludes it; a query does not.
         //
-        // DROPPED only, never the rest of the render's membership. An
-        // `internal` item stays a record here on purpose — INV-2 decides that,
-        // and its reason holds for every dialect: BulletRecord has no
-        // visibility field, so filtering on one would give roadmap_query a
-        // concept it has never had. The FILE excludes it; a query does not.
-        if (it.status == QLatin1String("dropped"))
-            return;
         // Disengaged means the block did not read back as it was written,
         // which is the same silence the ants-v1 branch keeps when its parse
         // declines.
@@ -623,8 +613,7 @@ QHash<QString, QString> legendByEmoji(const QString &legendText) {
     for (auto it = legend.constBegin(); it != legend.constEnd(); ++it) {
         // roadmaprender.cpp's own word→emoji map, exported rather than
         // duplicated: a second table here is a correspondence someone has to
-        // keep true by hand. `dropped` returns empty and is skipped, which is
-        // right — § 3.11 gives it no glyph and no rendered bullet carries it.
+        // keep true by hand. An unknown key returns empty and is skipped.
         const QString emoji = RoadmapRender::emojiFor(it.key());
         if (emoji.isEmpty())
             continue;
