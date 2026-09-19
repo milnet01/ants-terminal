@@ -9222,6 +9222,17 @@ extends an existing item, that item carries it instead.
   Decided (2026-09-14, user): fix the code, not the budget. The roadmap
   section cache holds bullets without bodies, and a body is read when a
   call asks for it, inside ANTS-1346 § 4's memory budget.
+  Progress (2026-09-19): both medium findings closed. The section cache
+  stores bullets without bodies; a call with include_body or query builds
+  the section afresh (tests/features/roadmap_section_cache_bodies,
+  0937407e). The GFM flip and flip_batch floor the anchor counter to the
+  highest ^prefix-NNNN anchor in the file (rlMaxGfmAnchorForPrefix;
+  mcp_adapter_github_tasklist INV-14/15, 74d61cf7). STILL OPEN:
+  counter_write_failed after commit (plan: write the counter BEFORE the
+  roadmap commit at all ten sites; every path now floors from the file,
+  so the counter is a cache and a gap is harmless), silent rollback
+  failure, the source filter's element cap. The three renders per store
+  write are ANTS-4681's.
   **Layman:** Smaller roadmap-tool fixes: a memory budget blown by caching, and one edit command that can corrupt the roadmap file.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lane mcp-roadmap-query-log).
