@@ -89,8 +89,9 @@ TEST(RoadmapSectionCacheLru, HitPathBumpsToMru) {
 TEST(RoadmapSectionCacheLru, InsertPathEvictsTail) {
     const std::string cpp = ants_test::slurpRemoteControl();
     ASSERT_FALSE(cpp.empty());
-    const auto insPos = cpp.find(
-        "m_roadmapSectionCache.insert(sec->slug, sectionBullets)");
+    // ANTS-5094 — the inserted array is a body-stripped copy, so the anchor
+    // names the call, not its argument.
+    const auto insPos = cpp.find("m_roadmapSectionCache.insert(sec->slug, ");
     ASSERT_NE(insPos, std::string::npos);
     const std::string region = cpp.substr(insPos, 600);
     EXPECT_TRUE(contains(region,

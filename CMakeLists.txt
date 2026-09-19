@@ -2633,6 +2633,8 @@ if(ANTS_TESTS)
                 # what the reader does, so a hand-built IdFormat would prove the
                 # parser and not the item.
                 tests/features/roadmap_id_format_declared/test_roadmap_id_format_declared.cpp
+                # ANTS-5094 — the roadmap section cache holds no bodies.
+                tests/features/roadmap_section_cache_bodies/test_roadmap_section_cache_bodies.cpp
                 # ANTS-1567 MCP tool prefix-tag bucket coverage.
                 tests/features/mcp_tool_prefix_tags/test_mcp_tool_prefix_tags.cpp
                 # ANTS-1568 etag-tip memo appended to etag-supporting tools.

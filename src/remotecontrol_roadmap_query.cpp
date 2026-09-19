@@ -3624,7 +3624,11 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
 
         QJsonArray sectionBullets;
         QString sectionEtag;   // ANTS-1907 — emitted on the response.
-        if (m_roadmapSectionCache.contains(sec->slug)) {
+        // ANTS-5094 — the cache holds no bodies (ANTS-1346 § 4's budget), so a
+        // call that needs them, to emit or to match `query` against, reads the
+        // section afresh.
+        const bool needBodies = includeBody || !queryArg.isEmpty();
+        if (!needBodies && m_roadmapSectionCache.contains(sec->slug)) {
             sectionBullets = m_roadmapSectionCache.value(sec->slug);
             // ANTS-1907 — cache hit path: etag was computed on insert.
             sectionEtag = m_roadmapSectionEtags.value(sec->slug);
@@ -3798,7 +3802,11 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
                 if (RoadmapParse::idWasInferred(b)) o["id_inferred"] = true;
                 sectionBullets.append(o);
             }
-            m_roadmapSectionCache.insert(sec->slug, sectionBullets);
+            {
+                QJsonArray cached = sectionBullets;   // ANTS-5094 — no bodies
+                rcStripBodyFields(cached);
+                m_roadmapSectionCache.insert(sec->slug, cached);
+            }
             // ANTS-1346 — push slug to MRU front and evict tail if
             // the cap is exceeded. removeOne is a no-op on first
             // insert; harmless on duplicate-key re-insert path.
@@ -3902,7 +3910,8 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
         if (mode == QLatin1String("headline_only"))
             rcProjectHeadlineOnly(filtered);
         // ANTS-4630 — cap bodies BEFORE pagination. The cache used to guarantee
-        // this ceiling on the way in; now that it keeps bodies whole, the
+        // this ceiling on the way in; now that bodies are read whole (ANTS-5094:
+        // the cache holds none, so a body-wanting call builds afresh), the
         // soft-cap measure would weigh a body far larger than anything this path
         // emits, and drop rows it used to fit — a single oversized bullet came
         // back as count:0 / total:1. Same principle as the ANTS-3577 projection

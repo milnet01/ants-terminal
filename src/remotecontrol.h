@@ -1110,6 +1110,10 @@ public:
         return QStringList(m_roadmapSectionLru.cbegin(),
                            m_roadmapSectionLru.cend());
     }
+    // ANTS-5094 — one cached section's bullets, as stored.
+    QJsonArray sectionCacheEntryForTest(const QString &slug) const {
+        return m_roadmapSectionCache.value(slug);
+    }
 
     // ANTS-1359 — test-only entry point + cache inspectors. Bypasses
     // the MainWindow / RcGate path so tests can drive cmdVerifyChanges
