@@ -60743,7 +60743,7 @@ than re-filed; everything else lands here.
   Source: UT_Ants_Ants_MCP_Feedback.md 2026-09-08.
   Lanes: mcp.
 
-- 📋 [ANTS-4953] **The worktree write guard refuses by naming path containment, so a session does not learn the worktree is the reason.**
+- ✅ [ANTS-4953] **The worktree write guard refuses by naming path containment, so a session does not learn the worktree is the reason.**
   ANTS-4887 is confirmed shipped from the reporting project: a read
   from a worktree now returns source:"store" and the correct live
   status, and op:"annotate" dry_run from that worktree REFUSES
@@ -60762,6 +60762,17 @@ than re-filed; everything else lands here.
   is keyed to the main checkout at <path>. Check the
   inside-the-root worktree case while there — if the guard is purely
   containment, that one is unguarded.
+  Resolved (2026-09-19). The reporter's suspicion held: the guard was
+  purely containment, and a worktree INSIDE the project root (Claude
+  Code's own .claude/worktrees/<name> layout) was not stopped at all;
+  the render would have published the main roadmap into the worktree's
+  file. RemoteControl::roadmapWriteTarget now refuses a store-backed
+  write from any worktree with code worktree_write, naming the main
+  checkout to pass as caller_cwd. Markdown-backed projects are untouched,
+  since a worktree's ROADMAP.md is a real branch file there. Reads still
+  resolve to the store (ANTS-4887). Locked by
+  RoadmapSubdirDispatch.Ants4953WorktreeWriteIsRefusedByName (both
+  layouts, red on both before the fix).
   **Layman:** The tool now correctly refuses to write from a temporary checkout, but its message points at the wrong thing to fix.
   Kind: enhancement.
   Source: UT_Ants_Ants_MCP_Feedback.md 2026-09-08 (ANTS-4887 confirmation caveat).

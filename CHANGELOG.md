@@ -77,6 +77,12 @@ for security-relevant changes.
 
 ### Fixed
 
+- **Roadmap writes from a git worktree are refused with a message that says so** (ANTS-4953)
+  A worktree inside the project folder, where Claude Code puts its own,
+  was not stopped at all, so a write could overwrite that worktree's
+  roadmap file. Every worktree now gets a `worktree_write` refusal naming
+  the main folder to use instead.
+
 - **A roadmap write's preview now says when it would flatten a hand-indented list or aligned table** (ANTS-4965)
   A line whose only change is its spacing is reported as
   `discarded_structure_lines`, not mixed in with harmless restyling, so a

@@ -262,6 +262,64 @@ TEST(RoadmapSubdirDispatch, Inv4WorktreeResolvesToTheRegisteredMainCheckout) {
            "the verb parsed a file the store renders";
 }
 
+// ANTS-4953 — a WRITE from a worktree is refused by name, wherever the worktree
+// sits. Outside the project it was stopped only by the render's containment
+// check, whose message pointed at a path. Inside it (Claude Code's own
+// isolation layout, <root>/.claude/worktrees/<name>) nothing stopped it, and the
+// render would publish the main roadmap into the worktree's file.
+TEST(RoadmapSubdirDispatch, Ants4953WorktreeWriteIsRefusedByName) {
+    for (const bool inside : {false, true}) {
+        ants_test::XdgGuard guard;
+        QTemporaryDir tmp;
+        ASSERT_TRUE(tmp.isValid());
+        const QString root = seedProject(guard, tmp);
+        ASSERT_FALSE(root.isEmpty());
+        ASSERT_TRUE(migrate(root));
+
+        const QString wtRaw = inside
+            ? root + QStringLiteral("/.claude/worktrees/wt")
+            : QDir(tmp.path()).filePath(QStringLiteral("proj-wt"));
+        ASSERT_TRUE(writeFile(wtRaw + QStringLiteral("/ROADMAP.md"),
+                              QByteArray(kRoadmap)));
+        ASSERT_TRUE(QDir().mkpath(root + QStringLiteral("/.git/worktrees/wt")));
+        ASSERT_TRUE(writeFile(
+            wtRaw + QStringLiteral("/.git"),
+            (QStringLiteral("gitdir: ") + root
+             + QStringLiteral("/.git/worktrees/wt\n")).toUtf8()));
+        const QString wt = QFileInfo(wtRaw).canonicalFilePath();
+        ASSERT_FALSE(wt.isEmpty());
+
+        QFile mainFile(root + QStringLiteral("/ROADMAP.md"));
+        ASSERT_TRUE(mainFile.open(QIODevice::ReadOnly));
+        const QByteArray mainBefore = mainFile.readAll();
+        mainFile.close();
+
+        QJsonObject req;
+        req[QStringLiteral("caller_cwd")] = wt;
+        req[QStringLiteral("section")]    = QStringLiteral("to-do");
+        req[QStringLiteral("status")]     = QStringLiteral("planned");
+        req[QStringLiteral("headline")]   = QStringLiteral("An append from a worktree.");
+        req[QStringLiteral("layman")]     = QStringLiteral("A plain-language line.");
+        req[QStringLiteral("kind")]       = QStringLiteral("chore");
+        req[QStringLiteral("source")]     = QStringLiteral("ants-4953-test");
+        RemoteControl rc(nullptr);
+        const QJsonObject resp = rc.cmdRoadmapLogAppendForTest(req).object();
+
+        EXPECT_EQ(resp.value(QStringLiteral("code")).toString(),
+                  QStringLiteral("worktree_write"))
+            << (inside ? "inside" : "outside") << ": "
+            << QJsonDocument(resp).toJson().toStdString();
+        EXPECT_TRUE(resp.value(QStringLiteral("error")).toString().contains(root))
+            << "the refusal must name the main checkout to write from";
+        QFile wtFile(wt + QStringLiteral("/ROADMAP.md"));
+        ASSERT_TRUE(wtFile.open(QIODevice::ReadOnly));
+        EXPECT_EQ(wtFile.readAll(), QByteArray(kRoadmap))
+            << "the worktree's file was written";
+        ASSERT_TRUE(mainFile.open(QIODevice::ReadOnly));
+        EXPECT_EQ(mainFile.readAll(), mainBefore) << "the main file was written";
+    }
+}
+
 TEST(RoadmapSubdirDispatch, Inv4WorktreeOfAProjectWithNoRoadmapIsUnchanged) {
     // The redirect must hold only where the main checkout really is the
     // project. Point the back-reference at a directory that holds no roadmap

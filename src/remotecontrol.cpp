@@ -238,6 +238,16 @@ static QString rcMainCheckoutOf(const QString &dir) {
     return findRoadmapUnder(canonical).isEmpty() ? dir : canonical;
 }
 
+QString rcWorktreeMainCheckout(const QString &path) {
+    if (path.isEmpty())
+        return {};
+    QString owner;
+    findRoadmapUnder(path, &owner);
+    const QString root = owner.isEmpty() ? path : owner;
+    const QString main = rcMainCheckoutOf(root);
+    return main == root ? QString() : main;
+}
+
 QString rcProjectRootFor(const QString &path) {
     if (path.isEmpty())
         return path;

@@ -455,6 +455,9 @@ QString findRoadmapUnder(const QString &canonicalRoot, QString *ownerDir = nullp
 // ANTS-4884 — resolves a path to the project root the store keys on, so a
 // caller in a subdirectory is not read as an unmigrated project of its own.
 QString rcProjectRootFor(const QString &path);
+// ANTS-4953 — the main checkout when `path` sits in a git worktree of a
+// project with a roadmap; empty otherwise.
+QString rcWorktreeMainCheckout(const QString &path);
 QString findChangelogUnder(const QString &canonicalRoot);
 QString findYamlChangelogUnder(const QString &canonicalRoot);
 const QString &kUnrecognisedFormatHint();

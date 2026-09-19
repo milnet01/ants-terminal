@@ -125,6 +125,21 @@ RemoteControl::roadmapWriteTarget(const QString &projectRoot,
         *why = localWhy;
     if (!projectId)
         return std::nullopt;
+    // ANTS-4953 — refused by NAME. Before this a worktree outside the project
+    // was stopped only by the render's containment check, whose message sent
+    // the caller to fix a path, and a worktree INSIDE the project (Claude
+    // Code's own isolation puts them there) was not stopped at all.
+    if (const QString main = rcWorktreeMainCheckout(projectRoot); !main.isEmpty()) {
+        if (why)
+            *why = RoadmapSource::ReadError::WorktreeWrite;
+        if (error)
+            *error = QStringLiteral(
+                "roadmap_log: caller_cwd is a git worktree. This project's roadmap "
+                "lives in the roadmap store, keyed to the main checkout at %1, and "
+                "writing here would render it into the worktree's own ROADMAP.md. "
+                "Pass caller_cwd as %1 instead; nothing was written.").arg(main);
+        return std::nullopt;
+    }
     return RoadmapWriteTarget{store, *projectId};
 }
 
@@ -166,6 +181,14 @@ bool rcdetail::rcRoadmapSourceRefused(QJsonObject &out,
         // ANTS-1463 — every unrecognised_format envelope carries both.
         out["expected_format"] = kUnrecognisedFormatExpected();
         out["hint"] = kUnrecognisedFormatHint();
+        return true;
+    case RoadmapSource::ReadError::WorktreeWrite:   // ANTS-4953
+        out["ok"] = false;
+        out["error"] = err.isEmpty()
+            ? QStringLiteral("roadmap writes are refused from a git worktree; "
+                             "write from the main checkout")
+            : err;
+        out["code"] = QStringLiteral("worktree_write");
         return true;
     }
     return false;

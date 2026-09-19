@@ -46,6 +46,11 @@ enum class ReadError {
                         // reporting this as StoreFailed would send the
                         // user to fix the wrong file (§ 2.2's table)
     TooLarge,
+    // ANTS-4953 — a WRITE from a git worktree of a store-backed project. The
+    // store is keyed on the main checkout, and rendering into the worktree's
+    // own ROADMAP.md would publish the main project's roadmap there. Only the
+    // write gate (RemoteControl::roadmapWriteTarget) sets it; reads are fine.
+    WorktreeWrite,
 };
 
 // INV-3 — the whole-project read ceiling, in items. Derived in § 4: ~4.5 KiB
