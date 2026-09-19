@@ -93,7 +93,7 @@ included item it is written in full `roadmap-format.md` § 3.5 bullet form — �
 enumerates the required pieces and states the obligation — so the generated file
 is the file that exists today, written by the store instead of by hand (user
 decision, 2026-08-03). What it
-drops is *which* items appear: § 7.5 excludes `internal` and `dropped` ones,
+drops is *which* items appear: § 7.5 excludes `internal` ones,
 which is why the full-detail backup stays in a private repo and why INV-1
 targets the export instead. The render is **not** a source of record (INV-3),
 but neither is it write-only — carrying ids is what would let ANTS-3765
@@ -790,16 +790,10 @@ alone, and the rest is absorbed as section intro or `narration`.
 
 `planned` · `in-progress` · `shipped` · `considered` · `dropped`
 
-`dropped` is new — abandoning an item currently means deleting its line, erasing
-the decision with it. It has **no markdown serialisation**: `roadmap-format.md`
-§ 3.11 makes a fifth status emoji an anti-pattern.
-
-Dropped items are excluded from the published render as **policy**, not as a
-consequence of that gap. A reader of the roadmap wants to know what is being
-worked on, and abandoned work is noise to them; the decision is preserved in the
-store and the export, which is where it has value. So adding a fifth emoji to
-`roadmap-format.md` would not by itself put dropped items on the render — that
-would be a separate decision, and § 7.5 states the exclusion unconditionally.
+`dropped` is closed and never shipped: the item was deliberately not done. Its
+markdown form is 🚫 (`roadmap-format.md` § 3.3), and dropped items are published
+on the render like any other public item, so a reader of the file sees the
+decision (user decision, 2026-09-19, ANTS-4977).
 
 #### 7.3.1 Normalising a pass-headings status
 
@@ -816,6 +810,7 @@ unmappable.
 | `in-progress` · `in_progress` · `inprogress` · `doing` · `wip` · `partial` | `in-progress` | `asserted` |
 | `deferred` · `considered` · `parked` | `considered` | `asserted` |
 | `todo` · `planned` | `planned` | `asserted` |
+| `dropped` · `abandoned` · `wontfix` | `dropped` | `asserted` |
 | anything else | `planned` | `defaulted` |
 
 **The mapping is total, and the fallback is a default rather than a rejection.**
@@ -965,7 +960,7 @@ uppercase words would leave almost every declared priority empty. Reading a
    `priority` empty and the raw string in `extras`. Nothing is guessed.
 
 `visibility` is `public` or `internal`. The published render includes only
-`public` items, and excludes `dropped` items regardless. Today everything is
+`public` items. Today everything is
 published because the file *is* the record — including security findings that
 are still open.
 
@@ -1074,7 +1069,7 @@ overridden:
   generated. **For published items that input does not narrow**: § 7.5 keeps
   closed items on the render, and the bullet below has the archives re-rendered
   from the store rather than frozen, so both sets of IDs stay in the committed
-  corpus. **For `internal` and `dropped` items it narrows to nothing**, and that
+  corpus. **For `internal` items it narrows to nothing**, and that
   is the reason the corpus floor cannot stand alone after cutover: § 7.5 excludes
   them from the render by policy, so their IDs appear in no committed file, and a
   fresh clone — where the store is machine-local and may not exist — would
@@ -1088,9 +1083,8 @@ overridden:
   store's `id_high_water` row as a cut-over project's carrier and keeps the
   committed-corpus floor under it. What is still owed is the end state above —
   the export as the floor — which waits on the publish cadence (ANTS-3794).
-- **Status vocabulary.** Its § 3.11 makes a fifth status emoji an anti-pattern,
-  so `dropped` has no markdown form and is excluded from the render. Adding one
-  is that standard's decision, not this one's.
+- **Status vocabulary.** Its § 3.3 gives `dropped` the 🚫 marker (ANTS-4977),
+  so all five statuses have a markdown form.
 - **Pass headings.** Its § 3.10.5 documents `#### Pass N.M` as a supported read
   *and* write format, and one surveyed project tracks **154 items** in it —
   counted as `#### Pass N.M` headings; its `- **Status**:` lines are counted
@@ -1211,7 +1205,7 @@ than a question.
   append-only; rewriting one breaks every citation of it.
 - ❌ **Promoting a value to `provenance: asserted` because it was touched**
   (§ 7.7). Only an author's write asserts.
-- ❌ **Publishing a `dropped` or `internal` item** (§ 7.5). The visibility flag
+- ❌ **Publishing an `internal` item** (§ 7.5). The visibility flag
   exists to hold open security findings.
 - ❌ **Hand-editing the render or the export on a store-migrated project**
   (INV-3) — the export always, the render wherever it owns the file (§ 3.2; on

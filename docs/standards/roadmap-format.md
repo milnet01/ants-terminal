@@ -46,8 +46,8 @@ ships.** Closed items stay in `ROADMAP.md` — carrying the
 commit subjects against, and the IDs § 4.2's CHANGELOG citations
 resolve — until § 3.9 rotates a *closed minor* out into an archive. Rotation is the size-management mechanism, not the
 CHANGELOG. On a store-backed project `roadmap-data-model.md` § 7.5
-makes this binding on the render: its only membership exclusions are
-`internal` and `dropped` items, so a generated `ROADMAP.md` that
+makes this binding on the render: its only membership exclusion is
+`internal` items, so a generated `ROADMAP.md` that
 omitted shipped work would not conform.
 
 ### 3.1 File header
@@ -110,7 +110,7 @@ the positional ones, so don't rely on them for cross-references.
 
 ### 3.3 Status emojis
 
-Every actionable bullet starts with one of four status emojis:
+Every actionable bullet starts with one of five status emojis:
 
 | Emoji | Meaning |
 |-------|---------|
@@ -118,6 +118,7 @@ Every actionable bullet starts with one of four status emojis:
 | 🚧 | In progress (being tackled now) |
 | 📋 | Planned (next up) |
 | 💭 | Considered (research phase; scope or feasibility uncertain) |
+| 🚫 | Dropped (closed, deliberately not done; never counted as shipped) |
 
 Plain narration bullets without a status emoji are allowed but
 won't match any status filter — they render as context-only.
@@ -126,6 +127,8 @@ won't match any status filter — they render as context-only.
 skip 🚧 if the work is small enough to ship in one commit, but
 the expectation is "💭 means we don't know yet, 📋 means it's
 queued, 🚧 means I'm doing it right now, ✅ means it's shipped."
+Any status may move to 🚫 when the work is deliberately not done, and back
+if it is revived. 🚫 is closed, never shipped (ANTS-4977).
 
 ### 3.4 Theme emojis
 
@@ -396,13 +399,13 @@ store-migrated project. Until then the committed corpus above is that floor
 for every project, store-migrated or not.
 
 **And on a store-migrated project that floor has a hole, which is why the
-interim is an interim.** `roadmap-data-model.md` § 7.5 keeps `internal` and
-`dropped` items off the render by policy, so their ids appear in **no**
+interim is an interim.** `roadmap-data-model.md` § 7.5 keeps `internal`
+items off the render by policy, so their ids appear in **no**
 committed file — not `ROADMAP.md`, not an archive, not the CHANGELOG. A corpus
 scan cannot see them, so on such a project the corpus is not a sufficient floor
 on its own and an absent `id_high_water` row must **not** be treated as a safe
-0. Only the store row covers those ids today; the export (ANTS-3794) is subject
-to neither exclusion, which is the whole reason it supersedes both.
+0. Only the store row covers those ids today; the export (ANTS-3794) is not
+subject to that exclusion, which is the whole reason it supersedes both.
 
 **Illustrative only — this is NOT the allocation path.** It shows the
 counter's shape, not how an id is issued: real allocation goes through
@@ -684,8 +687,8 @@ the filter dialog one-line context per release.
 
 Released versions move from `(target: YYYY-MM)` to
 `shipped (YYYY-MM-DD)`. The viewer treats released blocks as
-read-only: items under them are expected to be ✅ and don't
-appear in the 📋/🚧/💭 filters.
+read-only: items under them are expected to be ✅ or 🚫 and
+don't appear in the 📋/🚧/💭 filters.
 
 ### 3.8 Findings fold-in subsections
 
@@ -826,7 +829,7 @@ The convention:
   project on phase blocks may never bump a version at all, so
   keying rotation to `cut-release` as the next bullet does would mean it
   never fires. A phase is closed when every actionable bullet under
-  it is ✅ — no 📋, no 🚧 and **no 💭**, that last being live
+  it is ✅ or 🚫 — no 📋, no 🚧 and **no 💭**, that last being live
   research-phase work (§ 3.3) which archiving would hide from
   `roadmap-query` and so from every agent working the file. **Every
   closed phase rotates except the highest-numbered one in the file,
@@ -962,7 +965,7 @@ to-do tracking in markdown. **This spec's emoji-bullet format
 extends GFM task lists, it does not replace them.** The
 extensions are the parts that GFM doesn't model:
 
-- A four-state taxonomy (✅ 🚧 📋 💭) instead of the GFM
+- A five-state taxonomy (✅ 🚧 📋 💭 🚫) instead of the GFM
   two-state checkbox (`[x]` / `[ ]`).
 - Stable IDs (`[PROJ-NNNN]`) for cross-doc reference.
 - Required `Kind:` and `Source:` metadata lines per bullet (§ 3.5);
@@ -976,8 +979,9 @@ extensions are the parts that GFM doesn't model:
 | `[x]`    | ✅            | Done / shipped.        |
 | *(none)* | 🚧            | In progress.           |
 | *(none)* | 💭            | Idea / not yet planned.|
+| `[x] 🚫` | 🚫            | Dropped, not done.     |
 
-The two GFM states map cleanly to two of this spec's four.
+The two GFM states map cleanly to two of this spec's five.
 GFM has no native syntax for "in progress" or "speculative" —
 projects that need them on a GFM-task-list roadmap either
 adopt the full emoji set or annotate with a prose prefix
@@ -1133,11 +1137,12 @@ these as `pass-headings` and synthesises a `PASS-<major>-<minor>
 `headline`), and `op:"annotate"`. Pass ids are derived from the
 heading, never from `.roadmap-counter` (the counter is left
 untouched). `op:"create_section"` is not yet supported and still
-refuses `format_mismatch`.
+refuses `format_mismatch`. A `- **Status**:` of `dropped`, `abandoned`,
+`wontfix` or a bare 🚫 reads as dropped; `roadmap_log` writes `dropped`.
 
 ### 3.11 ROADMAP anti-patterns
 
-- ❌ Status emoji other than ✅ 🚧 📋 💭. Tools won't recognise
+- ❌ Status emoji other than ✅ 🚧 📋 💭 🚫. Tools won't recognise
   them.
 - ❌ Renumbering items when inserting. The whole point of stable
   IDs is to defeat this temptation.
@@ -1147,7 +1152,9 @@ refuses `format_mismatch`.
 - ❌ More than ~3 🚧 bullets simultaneously.
 - ❌ Mixing `[ ]` / `[x]` task-list syntax with the emoji
   status system on the same bullet (the formats coexist at
-  file scope per § 3.10, but not at bullet scope).
+  file scope per § 3.10, but not at bullet scope). The one exception
+  is the task-list adapter's own `- [ ] <emoji>` and `- [x] 🚫`
+  forms, which `roadmap_log` writes to carry a status a checkbox cannot.
 - ❌ Reading or bumping `.roadmap-counter` on a store-migrated
   project (§ 3.5.1). Its carrier is the store's `id_high_water`
   row; the file is stale there by construction.
