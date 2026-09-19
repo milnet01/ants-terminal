@@ -618,8 +618,9 @@ roadmap"*, it MUST:
    are § 3.8 fold-ins hoisted to `##`, so treat each as an extra
    theme section of the active phase, worked in step 3 after that
    phase's own themes.
-3. Within the active release, find the first non-✅ bullet under
-   each `###` theme section, prioritising 🚧 over 📋.
+3. Within the active release, find the first bullet that is neither
+   ✅ nor 🚫 under each `###` theme section, prioritising 🚧 over 📋.
+   Both are closed and are never worked.
 4. Tackle bullets in document order — *not* in ID order.
 5. When inserting new bullets (e.g. from an audit), follow
    §3.5.2.
@@ -977,16 +978,14 @@ extensions are the parts that GFM doesn't model:
 |----------|---------------|------------------------|
 | `[ ]`    | 📋            | Planned, not started.  |
 | `[x]`    | ✅            | Done / shipped.        |
-| *(none)* | 🚧            | In progress.           |
-| *(none)* | 💭            | Idea / not yet planned.|
+| `[ ] 🚧` | 🚧            | In progress.           |
+| `[ ] 💭` | 💭            | Idea / not yet planned.|
 | `[x] 🚫` | 🚫            | Dropped, not done.     |
 
 The two GFM states map cleanly to two of this spec's five.
-GFM has no native syntax for "in progress" or "speculative" —
-projects that need them on a GFM-task-list roadmap either
-adopt the full emoji set or annotate with a prose prefix
-(`- [ ] (WIP) Build login screen`). The emoji set is
-strictly more expressive.
+GFM has no native syntax for the other three, so a task-list
+roadmap carries them as an emoji after the checkbox, which is the
+form `roadmap_log` writes and the tools read back.
 
 #### 3.10.2 Reader-side adapter mode
 
@@ -1026,7 +1025,9 @@ GFM-task-list starting point converts in five passes:
 0. Add the § 3.1 format marker `<!-- ants-roadmap-format: 1 -->`, so
    the result classifies `ants-v1` deterministically rather than by
    best-effort parse — which is what selects the id carrier (§ 3.5.1).
-1. Replace `- [x]` with `- ✅`, `- [ ]` with `- 📋`.
+1. Replace a checkbox followed by a status emoji with that emoji
+   alone (`- [x] 🚫` → `- 🚫`, `- [ ] 🚧` → `- 🚧`), then
+   `- [x]` with `- ✅` and `- [ ]` with `- 📋`.
 2. Assign stable IDs (`[PROJ-NNNN]`) bottom-up against a fresh
    `.roadmap-counter` (§ 3.5.1). **The counter is the carrier for
    this step even on a project that already has a store row**, because
@@ -1063,8 +1064,9 @@ a half-converted tree. Do not commit, and do not invoke a store write
 or any `roadmap_log` op, between step 1 and step 0. A project with no
 store row has no such window and may keep step 0 first.
 
-The migration is reversible — write `[x]` / `[ ]` back, drop
-the metadata, and the file is GFM again.
+The migration is reversible — write `[x]` / `[ ]` back (and
+`[x] 🚫`, `[ ] 🚧`, `[ ] 💭` for the other three), drop the metadata,
+and the file is GFM again.
 
 #### 3.10.4 Prefix conventions
 

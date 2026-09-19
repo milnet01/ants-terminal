@@ -696,7 +696,7 @@ only one of them has bullets:
 | Shape | Where the ID is | Recognition rule |
 |---|---|---|
 | Emoji bullet (`roadmap-format.md` § 3.5) | `- ✅ [ANTS-1234] **…**` | Immediately after the status emoji. |
-| GFM task list (`roadmap-format.md` § 3.10.1) | `- [x] [3D_E-0007] **…**` | Immediately after the checkbox. |
+| GFM task list (`roadmap-format.md` § 3.10.1) | `- [x] [3D_E-0007] **…**` | Immediately after the checkbox, or after the inline status emoji that follows it (`- [x] 🚫`, `- [ ] 🚧`, `- [ ] 💭`). |
 | Pass heading (`roadmap-format.md` § 3.10.5) | nowhere in the text | **Synthesised** from the heading as `PASS-<major>-<minor>[-<sub>]`. |
 
 A synthesised `PASS-N-M` **is** an ID for every purpose in this document: it
@@ -753,7 +753,7 @@ bullet differs in each and a single rule would be wrong for two of them.
 | Source shape | A line is an item when | Headline comes from |
 |---|---|---|
 | Emoji bullet (`roadmap-format.md` § 3.5) | it carries **both** a status emoji and the bold headline § 3.5 requires | the bold span |
-| GFM task list (§ 3.10.1) | it carries a checkbox — **a bold headline is not required** | the bullet's own first line |
+| GFM task list (§ 3.10.1) | it carries a checkbox — **a bold headline is not required** | the bullet's own first line, after any inline status emoji |
 | Pass heading (§ 3.10.5) | it is a `#### Pass N.M` heading — **never an ordinary bullet** | the heading |
 
 **On the emoji shape both halves are needed.** § 3.3 allows plain narration
@@ -828,8 +828,8 @@ is what makes the guesses countable rather than invisible. A block carrying **no
 **`deferred` → `considered` is not an invention.** `considered` is the status for
 work that is recorded and not committed to, which is what a deferral is; the
 "not now" that distinguishes it from `planned` is a **priority**, and § 7.5 owns
-that. Nothing here needs a sixth status, so `roadmap-format.md` § 3.11's
-four-emoji anti-pattern stands unamended.
+that. Nothing here needs a sixth status beyond `roadmap-format.md` § 3.11's
+five markers.
 
 Measured against the surveyed pass-headings project (2026-08-09): its 164 status
 values reduce to eight leading tokens with no remainder — `done` 128, `planned`
@@ -964,8 +964,8 @@ uppercase words would leave almost every declared priority empty. Reading a
 published because the file *is* the record — including security findings that
 are still open.
 
-**Those two exclusions are the whole of the render's membership rule: a closed
-item is published.** Size is managed by rotating closed minors into
+**That exclusion is the whole of the render's membership rule: a closed item,
+shipped or dropped, is published.** Size is managed by rotating closed minors into
 `docs/roadmap/*.md` (§ 8), never by hiding them, so "open work only" is not a
 curation this model offers. Omitting them would break two things at once —
 `roadmap-format.md` §§ 3.6.2–3.6.3 match CHANGELOG entries and commit subjects
@@ -1076,7 +1076,7 @@ overridden:
   reissue a live ID from a corpus scan that cannot see them. The store's
   `id_high_water` row covers them today (ANTS-3809), which is why § 3.5.1 keeps
   the corpus as a floor *under* that row rather than as a substitute for it. The
-  export supersedes both as the authoritative floor, being subject to neither
+  export supersedes both as the authoritative floor, being subject to no
   exclusion — which is what
   § 3.5.1's definition needs amending to say for cut-over projects. **The
   interim half of that amendment has landed** (ANTS-3809): § 3.5.1 now names the
