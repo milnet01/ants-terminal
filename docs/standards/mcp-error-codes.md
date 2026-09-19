@@ -26,6 +26,29 @@ This standard is enforced by convention. Future ANTS-NNNN could
 add a feature-conformance test that grep-scrapes new `code` values
 against the table below.
 
+## How a refusal reaches the client (ANTS-5090)
+
+- Every refusal's `tools/call` result carries `isError: true`. The MCP
+  specification (2025-06-18, server/tools, Error Handling) reports tool
+  execution errors this way.
+- A refusal is a reply body that parses as a JSON object with
+  `ok: false`. `ClaudeIntegration::handlerRefusalCode` decides this in
+  `ClaudeIntegration::transformReply`, and
+  `ClaudeIntegration::finishToolDispatch` sets the flag.
+- The same test covers a handler's refusal and the dispatcher's own
+  (`mcp_disabled`, `caller_cwd_required`, `rate_limited`,
+  `dispatch_queue_full`). A refusal site needs no code of its own to get
+  the flag.
+- A body over the parser's 8 KiB bound is not parsed, so it is treated
+  as a success and carries no flag. Keep a refusal envelope under that
+  bound.
+- The body is unchanged. `content` still carries the `{ok, code, error}`
+  envelope, so a caller that reads `code` sees what it saw before.
+- A reply that is not a refusal never carries `isError`. That includes
+  an ETag `unchanged` reply.
+- A `tools/call` naming no registered tool is not a refusal. It stays
+  the JSON-RPC `-32602` error (§ 5).
+
 ## Categories
 
 ### 1 — Input validation (caller's argv is malformed)
