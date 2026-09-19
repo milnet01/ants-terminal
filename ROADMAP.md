@@ -10787,6 +10787,13 @@ extends an existing item, that item carries it instead.
   that text flips between dim and normal anywhere in the view. Fix: only
   a marker-free `m` is SGR. Four tests in SgrAttributeReset; three were
   red before the fix, suite 4922/4922 after.
+  Follow-up (2026-09-19): dim text still appeared after the fix. A session
+  log of Claude Code 2.1.278 shows it draws a message sent mid-turn in
+  grey (38;2;153;153;153) and redraws it white about a second later.
+  Replaying the log through TerminalGrid gave the same cells as pyte.
+  The user reproduced the same dimming in Konsole, so the remaining dim
+  text is Claude Code's own rendering, not Ants. The XTMODKEYS fix
+  stands. Found while checking: ANTS-5237 (shared session-log file).
   **Layman:** Some text still turns grey when it should not, sometimes only part of a line.
   Kind: investigate.
   Source: user-report-2026-09-14.
@@ -11101,6 +11108,21 @@ extends an existing item, that item carries it instead.
   Kind: security.
   Source: code-quality-review-2026-09-11 perf pass (lane claude-integration-a), via ANTS-5089.
   Lanes: claude, mcp.
+
+- 📋 [ANTS-5237] **Turning on Session Logging sends every open tab into one shared log file.**
+  TerminalWidget::setSessionLogging names the file
+  session_<yyyyMMdd_HHmmss>.log. The Settings -> Session Logging toggle in
+  MainWindow::setupSettingsMenu calls it for every live terminal in one
+  loop, so every tab gets the same name within the same second. Each opens
+  it with QIODevice::Append, so the bytes of all tabs interleave in one
+  file. Seen 2026-09-19: about 20 tabs open, one new log file.
+  Fix: make the name unique per tab (tab or widget id, or a collision
+  suffix), and open the file so a second opener cannot join an existing
+  file (QIODevice::NewOnly).
+  **Layman:** With several tabs open, switching on session logging mixes all their output into a single file instead of one file per tab.
+  Kind: fix.
+  Source: in-session-2026-09-19 (ANTS-5215 follow-up).
+  Lanes: terminal.
 
 ## Memory-efficiency sweep (user request 2026-08-19)
 
