@@ -69,6 +69,13 @@ for security-relevant changes.
 
 ### Changed
 
+- **Ants MCP refusals now carry isError:true, as the MCP spec asks** (ANTS-5090)
+  Every tool reply with ok:false is now marked as an error, so an MCP
+  client can tell a refusal from a success without reading the body. The
+  reply body is unchanged. A refusal of any size is caught. A large reply
+  is read a second time only if its text contains ok:false. Rule:
+  docs/standards/mcp-error-codes.md.
+
 - **A roadmap write says why it would overwrite the file** (ANTS-4957)
   A new `discard_reason` says whether text would be lost or the file is
   just an older render that is safe to replace, so fixing a stale file no

@@ -9,6 +9,8 @@
 
 #include "claudeintegration.h"
 
+#include <QJsonArray>
+#include <QJsonObject>
 #include <QString>
 
 #include <gtest/gtest.h>
@@ -71,14 +73,50 @@ TEST(DispatchResultAccounting, Inv8NonJsonYieldsNoRefusal) {
     EXPECT_TRUE(ClaudeIntegration::handlerRefusalCode(QString()).isEmpty());
 }
 
-TEST(DispatchResultAccounting, Inv9OversizedBodyYieldsNoRefusal) {
-    // The bound is what keeps a second full JSON parse off the dispatch
-    // path for large successful payloads. Build a body that WOULD parse
-    // as a refusal but is too big to be one.
-    QString big = QStringLiteral(R"({"ok":false,"code":"bad_args","pad":")");
-    big += QString(64 * 1024, QLatin1Char('x'));
-    big += QStringLiteral(R"("})");
-    EXPECT_TRUE(ClaudeIntegration::handlerRefusalCode(big).isEmpty())
-        << "the size bound is gone, so every large successful payload now "
-           "pays a second JSON parse on the dispatch path";
+namespace {
+QString padded(const QString &head) {
+    return head + QString(qsizetype{64} * 1024, QLatin1Char('x')) +
+           QStringLiteral(R"("})");
+}
+}  // namespace
+
+TEST(DispatchResultAccounting, Inv9OversizedRefusalYieldsItsCode) {
+    // ANTS-5090 — a refusal is a refusal whatever its size, or a large one
+    // reaches the client without isError.
+    EXPECT_EQ(ClaudeIntegration::handlerRefusalCode(padded(QStringLiteral(
+                  R"({"ok":false,"code":"bad_args","pad":")"))),
+              QStringLiteral("bad_args"));
+    // Indented JSON spells the marker with a space.
+    EXPECT_EQ(ClaudeIntegration::handlerRefusalCode(padded(QStringLiteral(
+                  "{\n    \"code\": \"bad_args\",\n    \"ok\": false,\n"
+                  "    \"pad\": \""))),
+              QStringLiteral("bad_args"));
+}
+
+TEST(DispatchResultAccounting, Inv9OversizedSuccessYieldsNoRefusal) {
+    EXPECT_TRUE(ClaudeIntegration::handlerRefusalCode(padded(QStringLiteral(
+        R"({"ok":true,"pad":")"))).isEmpty());
+    // A nested ok:false is an item's field, not the envelope's.
+    EXPECT_TRUE(ClaudeIntegration::handlerRefusalCode(padded(QStringLiteral(
+        R"({"ok":true,"items":[{"ok":false}],"pad":")"))).isEmpty());
+}
+
+TEST(DispatchResultAccounting, Inv10RefusalResultCarriesIsError) {
+    const QString wrapped = QStringLiteral(R"({"ok":false,"code":"bad_args"})");
+    const QJsonObject r =
+        ClaudeIntegration::toolCallResult(wrapped, QStringLiteral("bad_args"));
+    EXPECT_TRUE(r.value(QStringLiteral("isError")).toBool(false))
+        << "MCP reports a tool execution error as isError:true "
+           "(docs/standards/mcp-error-codes.md)";
+    const QJsonArray content = r.value(QStringLiteral("content")).toArray();
+    ASSERT_EQ(content.size(), 1);
+    EXPECT_EQ(content.at(0).toObject().value(QStringLiteral("text")).toString(),
+              wrapped) << "the body must travel unchanged";
+}
+
+TEST(DispatchResultAccounting, Inv11SuccessResultCarriesNoIsError) {
+    const QJsonObject r = ClaudeIntegration::toolCallResult(
+        QStringLiteral(R"({"ok":true})"), QString());
+    EXPECT_FALSE(r.contains(QStringLiteral("isError")));
+    EXPECT_EQ(r.value(QStringLiteral("content")).toArray().size(), 1);
 }

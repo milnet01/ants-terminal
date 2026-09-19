@@ -508,9 +508,14 @@ public:
     // defaults to failure rather than silently counting as success.
     static bool dispatchResultIsSuccess(const QString &result);
     // Returns the refusal code a handler's own envelope carries, or an
-    // empty string when the body is not a refusal. Bounded by size; see
+    // empty string when the body is not a refusal, whatever its size; see
     // tests/features/dispatch_result_accounting/spec.md.
     static QString handlerRefusalCode(const QString &responseText);
+    // ANTS-5090 — the tools/call `result` object: the wrapped body as one
+    // text block, plus isError:true when refusalCode is non-empty
+    // (docs/standards/mcp-error-codes.md § How a refusal reaches the client).
+    static QJsonObject toolCallResult(const QString &wrapped,
+                                      const QString &refusalCode);
 
     static QString wrapMcpData(const QString &toolName,
                                const QString &payload);

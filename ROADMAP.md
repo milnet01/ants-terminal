@@ -8944,7 +8944,7 @@ extends an existing item, that item carries it instead.
   Source: code-quality-review-2026-09-11 perf pass (lane claude-integration-a).
   Lanes: claude, mcp.
 
-- 📋 [ANTS-5090] **Performance pass findings for MCP tool-call dispatch (low).**
+- ✅ [ANTS-5090] **Performance pass findings for MCP tool-call dispatch (low).**
   The reply pipeline on the GUI thread is filed as ANTS-5072.
   Low:
   - A dispatch_queue_full refusal is stored in the idempotent-read
@@ -9001,6 +9001,14 @@ extends an existing item, that item carries it instead.
   so repeat calls skip the stat; a stalled mount still blocks the first
   call. Test mcp_rate_limit INV-19. STILL OPEN: isError on refusals, decided
   (set it), waiting for rule 14's gate.
+  Resolved (2026-09-19): every refusal ({ok:false}) now carries
+  isError:true, set in ClaudeIntegration::toolCallResult from
+  finishToolDispatch. handlerRefusalCode answers at any size: a body over
+  8 KiB is parsed only when its text carries "ok" set to false. The rule
+  is docs/standards/mcp-error-codes.md § How a refusal reaches the client,
+  gated by review-contract (3 loops, calm cap, no tail; log rows 4-6).
+  Tests: dispatch_result_accounting INV-9 rewritten, INV-10/11 added,
+  proved red first. Full suite 4986/4986.
   **Layman:** Small fixes to how Ants routes Claude's tool calls: a cached refusal, clock handling and error flags.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lane claude-integration-b).
@@ -42765,6 +42773,17 @@ collision are different strengths of evidence.
   Kind: fix.
   Source: cc-feedback-2026-08-14 (claude_config).
   Lanes: speclint, mcp.
+
+- 📋 [ANTS-5246] **`changelog_log` cannot amend an entry it just wrote.**
+  Correcting one phrase in a fresh [Unreleased] bullet needs a native
+  Read of CHANGELOG.md plus Edit, because the verb only adds. Hit
+  2026-09-19 on ANTS-5090's entry, whose first draft overclaimed. Wanted:
+  an op like roadmap_log's amend_body, locating a bullet by id and
+  replacing an exact unique phrase, with dry_run.
+  **Layman:** Let the changelog tool fix a word in an entry it just wrote, instead of editing the whole file by hand.
+  Kind: enhancement.
+  Source: in-session-2026-09-19.
+  Lanes: mcp.
 
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-08-14 second triage
 

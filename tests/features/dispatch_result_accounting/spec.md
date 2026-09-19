@@ -39,13 +39,13 @@ recorded, carrying the envelope's own `code` where it has one so
 override a dispatcher-level result, which already describes the call
 more specifically.
 
-The refusal probe is bounded by response size. A refusal envelope
-carries a code, an error string and at most a short candidates or
-example block, so it is small; a successful payload can be megabytes,
-and parsing every one to ask a question whose answer is always "no"
-would put a second full JSON parse on the dispatch path. Above the
-bound the call is assumed successful — which is today's behaviour, so
-the bound can only under-report, never mis-report.
+The refusal probe answers for a body of any size (ANTS-5090): the
+result also sets MCP's `isError`, so a missed refusal reaches the client
+as a success. A successful payload can be megabytes, and a second full
+JSON parse of every one would sit on the dispatch path. So a body over
+8 KiB is parsed only when its text carries an `"ok"` key set to
+`false`, in compact or indented spelling. A large success without that
+text is never parsed.
 
 Both rules are exposed as statics so they can be tested without driving
 a dispatch.
@@ -76,8 +76,16 @@ and an envelope with no `ok` field at all.
 **INV-8 — a non-JSON or non-object body yields no refusal.** A handler
 that returns a bare string must not be booked as a failure.
 
-**INV-9 — an oversized body yields no refusal.** The size bound holds,
-so the hot path pays nothing on a large successful payload.
+**INV-9 — size does not decide a refusal.** A refusal over 8 KiB yields
+its code, in compact or indented JSON. A success over 8 KiB yields none,
+including one whose items carry their own `ok: false`.
+
+**INV-10 — a refusal's result carries `isError: true`.**
+`ClaudeIntegration::toolCallResult` builds the `tools/call` result: one
+text block holding the wrapped body unchanged, plus `isError: true` when
+the refusal code is non-empty.
+
+**INV-11 — a success's result carries no `isError`.**
 
 ## Scope
 

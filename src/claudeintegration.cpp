@@ -1617,16 +1617,16 @@ bool ClaudeIntegration::dispatchResultIsSuccess(const QString &result) {
 // refusal-envelope helper, so the dispatch site is the only place this
 // can be observed.
 QString ClaudeIntegration::handlerRefusalCode(const QString &responseText) {
-    // Bounded deliberately. A refusal envelope carries a code, an error
-    // string and at most a short candidates/example block, so it is
-    // small; a successful payload can be megabytes, and parsing every
-    // one of those to ask a question whose answer is always "no" would
-    // put a second full JSON parse on the dispatch path. Above the
-    // bound the call is assumed successful — which is exactly the
-    // pre-fix behaviour, so the bound can only under-report, never
-    // mis-report.
-    constexpr int kMaxRefusalChars = 8 * 1024;
-    if (responseText.size() > kMaxRefusalChars) return {};
+    // ANTS-5090 — this answer also sets MCP's isError, so it must hold at
+    // any size. A successful payload can be megabytes, and a second full
+    // JSON parse of every one would sit on the dispatch path, so a large
+    // body is parsed only when its text could be a refusal. A match that
+    // is an item's field, not the envelope's, is settled by the parse.
+    constexpr int kParseWithoutScanChars = 8 * 1024;
+    static const QRegularExpression kOkFalse(QStringLiteral(R"("ok"\s*:\s*false)"));
+    if (responseText.size() > kParseWithoutScanChars &&
+        !kOkFalse.match(responseText).hasMatch())
+        return {};
     QJsonParseError perr{};
     const QJsonDocument doc =
         QJsonDocument::fromJson(responseText.toUtf8(), &perr);
@@ -2149,6 +2149,17 @@ ClaudeIntegration::ReplyTransform ClaudeIntegration::transformReply(
     return reply;
 }
 
+QJsonObject ClaudeIntegration::toolCallResult(const QString &wrapped,
+                                              const QString &refusalCode) {
+    QJsonObject block;
+    block["type"] = "text";
+    block["text"] = wrapped;
+    QJsonObject result;
+    result["content"] = QJsonArray{block};
+    if (!refusalCode.isEmpty()) result["isError"] = true;
+    return result;
+}
+
 // ANTS-2132 / ANTS-5072 — the GUI-thread half of the reply: the cache insert,
 // recordDispatch and the socket write. The transforms already ran in
 // transformReply, wherever the handler ran.
@@ -2164,14 +2175,6 @@ void ClaudeIntegration::finishToolDispatch(McpCallContext ctx,
     // the mutation never needs to escape this function.
     QString dispatchResult = ctx.dispatchResult;
 
-    auto makeTextContent = [](const QString &text) {
-        QJsonObject block;
-        block["type"] = "text";
-        block["text"] = text;
-        QJsonArray arr;
-        arr.append(block);
-        return arr;
-    };
     QJsonObject result;
     QJsonObject error;
     bool haveResult = false;
@@ -2182,7 +2185,7 @@ void ClaudeIntegration::finishToolDispatch(McpCallContext ctx,
             toolName, argsObj, reply.cacheBody);
     }
     if (toolHandled) {
-        result["content"] = makeTextContent(reply.wrapped);
+        result = toolCallResult(reply.wrapped, reply.refusalCode);
         if (reply.etagUnchanged) {
             dispatchResult = QStringLiteral("etag_unchanged");
         }
