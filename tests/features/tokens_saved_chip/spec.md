@@ -28,3 +28,8 @@ cross-file wiring that a pure test can't reach.
 - **TSC-7 (INV-12)** — the fold never references `totalFailedBytes`.
 - **TSC-8 (INV-1)** — the summary combines a stored getter with the live
   session total.
+- **TSC-9 (ANTS-5092)** — the `tokensSavedUpdated` connection in
+  `claudestatuswidgets.cpp` starts `m_tokensSavedRefresh`, a single-shot
+  timer, instead of calling `refreshTokensSavedChip()` itself. A burst of
+  MCP calls then costs one refresh, not one config stat, one path
+  canonicalisation and one report build per call.

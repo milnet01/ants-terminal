@@ -163,3 +163,18 @@ TEST(TokensSavedChip, SummaryAddsSessionToStored) {
     EXPECT_TRUE(has(mw, "tokenUsageReport(false).totalSaved"))
         << "summary must add the live session total (INV-1 +session term)";
 }
+
+// TSC-9 (ANTS-5092) — the per-dispatch nudge is coalesced onto a timer.
+TEST(TokensSavedChip, DispatchNudgeIsCoalesced) {
+    const std::string cpp =
+        ants_test::slurpFile(SRC_CLAUDESTATUSWIDGETS_CPP_PATH);
+    const auto at = cpp.find("&ClaudeIntegration::tokensSavedUpdated,");
+    ASSERT_NE(at, std::string::npos);
+    const auto end = cpp.find(");", cpp.find('}', at));
+    ASSERT_NE(end, std::string::npos);
+    const std::string conn = cpp.substr(at, end - at);
+    EXPECT_FALSE(has(conn, "refreshTokensSavedChip()"))
+        << "TSC-9: the nudge must not refresh the chip per MCP call";
+    EXPECT_TRUE(has(conn, "m_tokensSavedRefresh->start()"))
+        << "TSC-9: the nudge starts the coalescing timer";
+}

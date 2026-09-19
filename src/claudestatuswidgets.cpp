@@ -489,8 +489,18 @@ void ClaudeStatusBarController::attach(ClaudeIntegration *integration,
     // project (§ 2.2), not the signal arg. refreshTokensSavedChip() is the named
     // method MainWindow::refreshStatusBarForActiveTab() also calls on a tab
     // switch (INV-7), so the pill re-scopes to whichever project's tab is active.
+    // ANTS-5092 — every MCP call nudges, and a refresh stats config.json,
+    // canonicalises the cwd and builds the usage report. A burst of calls
+    // coalesces into one refresh; 250 ms is the author's choice, not measured.
+    m_tokensSavedRefresh = new QTimer(this);
+    m_tokensSavedRefresh->setSingleShot(true);
+    m_tokensSavedRefresh->setInterval(250);
+    connect(m_tokensSavedRefresh, &QTimer::timeout,
+            this, [this] { refreshTokensSavedChip(); });
     connect(m_integration, &ClaudeIntegration::tokensSavedUpdated,
-            this, [this](qint64) { refreshTokensSavedChip(); });
+            this, [this](qint64) {
+        if (!m_tokensSavedRefresh->isActive()) m_tokensSavedRefresh->start();
+    });
 
     connect(m_integration, &ClaudeIntegration::fileChanged,
             this, [this](const QString &path) {
