@@ -9094,6 +9094,15 @@ extends an existing item, that item carries it instead.
   machine, the transcript render cap counting entries, the allowlist
   lock wait, a Claude restart within one poll, the MCP nudge path, the
   Projects dialog re-reads, and the stale documents.
+  Progress (2026-09-19): the medium transcript-fallback finding is
+  closed. ClaudeTabTracker::detectClaudeChild and pollClaudeProcess were
+  already scoped. The last unscoped path was
+  ClaudeIntegration::activeSessionPath with an empty cwd, which the
+  status-bar chips hit with no focused tab; it now returns empty
+  (tests/features/claude_session_freshness INV-23). STILL OPEN: the
+  transcript render cap counting entries, the allowlist lock wait, a
+  Claude restart within one poll, the MCP nudge path, the Projects
+  dialog re-reads, and the stale documents.
   **Layman:** Smaller fixes to Ants' Claude status displays: leaking trackers, slow windows, and a tab showing another session.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lane claude-session-widgets).
