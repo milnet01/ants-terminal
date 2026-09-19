@@ -1,6 +1,6 @@
 # ANTS-4977 — publish `dropped` roadmap items with a 🚫 marker
 
-**Status:** spec draft (2026-09-19).
+**Status:** accepted (2026-09-19), review-contract loops 1 + 2 folded (cap reached).
 **Kind:** feature.
 **Source:** ROADMAP.md ANTS-4977 (DOOM_Ants_MCP_Feedback.md 2026-09-08; user decisions 2026-09-19).
 **Supersedes:** the `dropped` half of ANTS-3758 INV-4, ANTS-3757 INV-5, and ANTS-3793 § 2.1.2's `dropped` exclusion (§ 2.9 below).
@@ -61,9 +61,11 @@ status table that lists the four markers lists five. That covers
   its section, in position order, like any other item.
 - `renderLegend`'s `kStatusOrder` gains `dropped` after `considered`.
   `renderLegend` emits only the keys a project's stored legend holds, and no
-  stored legend holds `dropped`. So where a project has a stored legend without
-  that key, the row reads the default `🚫 Dropped (closed, not done)`. The
-  default is rendered, never written to `project.legend`.
+  stored legend holds `dropped`. So every project with a stored legend lacking
+  that key renders the default row `🚫 Dropped (closed, not done)`, whether or
+  not it holds a dropped item. A project with no stored legend renders none.
+  A re-migration of the rendered file stores that row in `project.legend`,
+  as it stores every legend row, and the next render prints the same line.
 - `roadmapsource.cpp::appendRecord` no longer skips a dropped item, on either
   dialect. `legendByEmoji` no longer skips its (now non-empty) marker.
 - `isOpen` keeps listing planned, in-progress and considered, so a dropped
@@ -113,6 +115,8 @@ Every `bad_status` message that lists the four statuses lists five.
   there, as `considered` does.
 - `mode:"report"` is unchanged. `kOpenStatusIn` and `buildRoadmapReportEnvelope`
   already exclude `dropped` from `open`, and `by_status` already carries it.
+  A period's `closed` figure counts `shipped` dates, so a drop is never in it:
+  "closed" in § 1 means out of the queue, not counted there.
 - `mode:"bundles"`, `current_state` and `session_brief` read 📋 and 🚧 only,
   so a dropped item never appears in them. No change.
 
@@ -133,6 +137,9 @@ payoff: a closure the tooling can read without parsing prose.
 - `renderHtml`'s `BulletKind` gains `Dropped`, so a 🚫 bullet obeys the filter
   instead of falling to `Other`, which always renders.
 - `renderCardsHtml` gains a `dropped` chip count and a `passesFilter` arm.
+- The "currently being tackled" match holds back a 🚫 bullet unless Dropped
+  is ticked, as it already holds back ✅ unless Done is, so `Current` stays
+  free of dropped items.
 - Presets: `Full` includes Dropped. `History` is Done + Dropped, because both
   are closed (author's call). `Current`, `Next` and `FarFuture` exclude it.
 - `Config::roadmapStatusFilters` gains the key `dropped`. **An absent key
@@ -190,9 +197,12 @@ ships.
   a 🚫 bullet, assert the stored status, render, and compare the line.
 - **INV-3** — Pass-headings: a `dropped` item writes `- **Status**: dropped`,
   and `dropped`, `abandoned`, `wontfix` and a bare `🚫` read back as 🚫, not
-  📋, with `asserted` provenance. Breaks when the reader's fallback is reached. *Test:*
+  📋, with `asserted` provenance. Breaks when the reader's fallback is reached,
+  or when `keywordIsNamed` or `passKeyword` lacks the word. *Test:*
   `tests/features/roadmap_dropped_status` — each keyword through
-  `parsePassHeadingBullets`, and one write through `passStatusKeyword`.
+  `parsePassHeadingBullets`; each keyword and a bare 🚫 through migration's
+  `planFrom()`, asserting status `dropped` with `asserted` provenance; and one
+  write through `passStatusKeyword`.
 - **INV-4** — GFM: a flip to `dropped` writes `- [x] 🚫 <text>`, and the walker
   reads it back as 🚫. Breaks when `applyGfmFlip` writes an unchecked box.
   *Test:* `tests/features/roadmap_dropped_status` — a GFM fixture flipped
@@ -261,3 +271,4 @@ descriptions in `claudeintegration.cpp`, and CHANGELOG.
 | Loop | Date | Lanes | Q1 | Q2 | Q3 | Q4 | Outcome |
 |---|---|---|---|---|---|---|---|
 | 1 | 2026-09-19 | 3, cold, identical shared packet | 3 | 2 | 1 | 0 | Verified 6, fixed 6, dismissed 0. All three lanes independently found that `won't fix` can never match the pass-headings keyword capture (it stops at the apostrophe): dropped. Also fixed: `renderLegend` skips a key the stored legend lacks, so a default `🚫 Dropped (closed, not done)` row is now specified; the GFM reader's `tryStrip` chain and `applyGfmFlip`'s prefix list were wrongly called already-capable; § 7.3.1's and ANTS-3757 § 2.7's word tables and § 3.11's mixing anti-pattern were missing from § 2.9; the reader's bare-glyph map (found resolving a lane's open question). Four other open questions resolved clean (`closed` is migration-only; `isOpen` callers; task-list parse goes through `stripInlineEmoji`). |
+| 2 | 2026-09-19 | 3, cold, identical brief; packet gained windows on the rotate_minor isOpen call and current_state | 0 | 3 | 0 | 1 | Verified 4, fixed 4, dismissed 0. CAP REACHED (2, spec): ships to implementation. Fixed: the legend default was said to be "never written to project.legend", but migration's legend parse stores it on the next re-migration (now stated, with when the row appears); the report's period `closed` counts ship dates only, beside § 1's "counted as closed"; INV-3 could not observe provenance (all three lanes), so a `planFrom()` leg was added; the dialog's current-match lets a 🚫 bullet into the Current preset (found resolving a lane's open question). Calm cap: 2 of 4 final-loop findings landed on text this run wrote (the loop-1 legend and INV-3 fixes), refinements not reversals. Gated span is the whole new document, so all 10 of the run's findings fall inside it. Cap sweep over every touched subject: 0 further. |
