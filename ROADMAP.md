@@ -40451,6 +40451,19 @@ against current source before filing.
   Kind: investigate.
   Source: global-findings-2026-08-12 item 1 (CFG-0064), maintainer-verified 2026-08-18.
 
+- 📋 [ANTS-5244] **A headless restore command that rebuilds a project's roadmap from its claude-config export.**
+  ANTS-3794 ships the weekly export to claude-config but no way to use
+  it. RoadmapExport::rebuildProject already reads an export into a
+  store; nothing reaches it outside the tests. Needs an entry point
+  beside ANTS-3794's --export-roadmaps, a rule for a project that
+  already exists in the target store, and a documented recovery
+  procedure. ANTS-3860 (an export written before a schema bump cannot
+  be imported) bounds how far back a restore can reach.
+  **Layman:** A way to actually restore the roadmap from the weekly backup, not just take the backup.
+  Kind: implement.
+  Source: ANTS-3794 spec, out of scope (in-session-2026-09-19).
+  Lanes: roadmap.
+
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-08-03 triage
 
 Seven findings from three sessions: finbreak (1), DOOM Ants (3), Vestige (3).
