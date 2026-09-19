@@ -671,3 +671,30 @@ TEST(ClaudeSessionFreshness, Wiring) {
     if (expect_failures() > before) FAIL();
 }
 
+// ANTS-5092 INV-23 — an empty cwd must not fall back to the newest
+// transcript on the machine.
+TEST(ClaudeSessionFreshness, EmptyCwdIsNotUnscoped) {
+    QTemporaryDir home;
+    ASSERT_TRUE(home.isValid());
+    const bool hadHome = qEnvironmentVariableIsSet("HOME");
+    const QByteArray priorHome = hadHome ? qgetenv("HOME") : QByteArray();
+    auto restoreHome = qScopeGuard([&] {
+        if (hadHome) qputenv("HOME", priorHome);
+        else qunsetenv("HOME");
+    });
+    ::setenv("HOME", home.path().toLocal8Bit().constData(), 1);
+
+    // A fresh transcript belonging to some other project.
+    const QString projects = home.path() + "/.claude/projects";
+    const QString other = encodedDir(projects, home.path() + "/other");
+    ASSERT_TRUE(QDir().mkpath(other));
+    const qint64 nowSec = QDateTime::currentSecsSinceEpoch();
+    const QString iso = QDateTime::fromSecsSinceEpoch(nowSec, QTimeZone::UTC)
+                            .toString(Qt::ISODate);
+    ASSERT_TRUE(writeWithMtime(other + "/s.jsonl",
+                               timestampedAssistantEvent(iso) + "\n", nowSec));
+
+    ClaudeIntegration ci;
+    EXPECT_EQ(ci.activeSessionPath(QString()), QString())
+        << "INV-23: an empty cwd returned another project's transcript";
+}

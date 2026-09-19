@@ -111,10 +111,9 @@ public:
     // Claude project directory matching the caller's working tree —
     // walks up `projectCwd` and checks each ancestor's encoded form
     // against `~/.claude/projects/<encoded>/`, returning the newest
-    // `*.jsonl` from the deepest match. Empty `projectCwd` falls
-    // back to the global newest, matching the pre-0.7.44 behavior
-    // (kept for callers that genuinely want the system-wide newest).
-    QString activeSessionPath(const QString &projectCwd = QString()) const;
+    // `*.jsonl` from the deepest match. Empty `projectCwd` returns
+    // empty (ANTS-5092): there is no unscoped fallback.
+    QString activeSessionPath(const QString &projectCwd) const;
     // Project-scoped form of the lookup, exposed as a free static so
     // ClaudeTabTracker (and any future caller without a ClaudeIntegration
     // handle) can resolve a per-shell transcript without drilling into

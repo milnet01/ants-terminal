@@ -635,30 +635,18 @@ QString ClaudeIntegration::sessionPathForCwd(const QString &projectCwd,
 }
 
 QString ClaudeIntegration::activeSessionPath(const QString &projectCwd) const {
-    if (!projectCwd.isEmpty()) {
-        // ANTS-1163: thread the process-start anchor (a) and the 24 h
-        // liveness floor (b). When m_claudePid is 0 (claude not yet
-        // detected, or not running), the process anchor degrades to
-        // 0 — disabled — and only the liveness floor applies. That
-        // still rejects week-old transcripts, which is the failure
-        // mode the user reported on cold start.
-        const qint64 procStartMs = processStartTimeMs(m_claudePid);
-        const qint64 nowMs = QDateTime::currentMSecsSinceEpoch();
-        return sessionPathForCwd(projectCwd, procStartMs, nowMs);
-    }
-
-    // Unscoped fallback — system-wide newest .jsonl. Legacy callers.
-    QDir claudeDir(ConfigPaths::claudeProjectsDir());
-    if (!claudeDir.exists()) return {};
-    QFileInfo newest;
-    for (const QString &projDir : claudeDir.entryList(QDir::Dirs | QDir::NoDotAndDotDot)) {
-        QDir proj(claudeDir.filePath(projDir));
-        for (const QFileInfo &fi : proj.entryInfoList({"*.jsonl"}, QDir::Files, QDir::Time)) {
-            if (!newest.exists() || fi.lastModified() > newest.lastModified())
-                newest = fi;
-        }
-    }
-    return newest.absoluteFilePath();
+    // ANTS-5092 — no cwd, no transcript. The unscoped newest `.jsonl` on the
+    // machine is usually another tab's live session.
+    if (projectCwd.isEmpty()) return {};
+    // ANTS-1163: thread the process-start anchor (a) and the 24 h
+    // liveness floor (b). When m_claudePid is 0 (claude not yet
+    // detected, or not running), the process anchor degrades to
+    // 0 — disabled — and only the liveness floor applies. That
+    // still rejects week-old transcripts, which is the failure
+    // mode the user reported on cold start.
+    const qint64 procStartMs = processStartTimeMs(m_claudePid);
+    const qint64 nowMs = QDateTime::currentMSecsSinceEpoch();
+    return sessionPathForCwd(projectCwd, procStartMs, nowMs);
 }
 
 QJsonArray ClaudeIntegration::loadTranscript(const QString &path) const {

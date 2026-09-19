@@ -210,3 +210,15 @@ implementation — the loop opens every candidate regardless of mtime
 order, so the forged content timestamp wins. INV-20 through INV-22
 are guards: they carry no forged fixture and must pass both before
 and after a fix.
+
+## 8. ANTS-5092 — an empty cwd reads another project's session
+
+`activeSessionPath("")` returned the newest transcript on the machine.
+Every caller passes the focused tab's `shellCwd()`, which is empty when
+no tab is focused or its cwd cannot be read. The status bar's task,
+background-task and model chips then showed another tab's live session.
+No caller wants the machine-wide newest.
+
+- **INV-23** — `activeSessionPath("")` returns empty, even when a fresh
+  transcript exists under `~/.claude/projects/`. *Test:*
+  `ClaudeSessionFreshness.EmptyCwdIsNotUnscoped`.
