@@ -61887,7 +61887,7 @@ than re-filed; everything else lands here.
   Source: LocalWebServerManager_Ants_MCP_Feedback.md 2026-09-08.
   Lanes: mcp.
 
-- 🚧 [ANTS-4977] **There is no status for “closed, deliberately not fixed”, so such an item is flipped to shipped and the roadmap overstates.**
+- ✅ [ANTS-4977] **There is no status for “closed, deliberately not fixed”, so such an item is flipped to shipped and the roadmap overstates.**
   The four statuses are planned / in-progress / shipped / considered.
   An item whose correct outcome is "recorded, will not be fixed" has
   no home, and flipping it to shipped is the only way out of the
@@ -61946,6 +61946,10 @@ than re-filed; everything else lands here.
   sibling-spec annotations, mcp-behavioural-notes, CHANGELOG, and a
   follow-up because compact_resolved's stub says "shipped" for a dropped
   id.
+  Resolved (2026-09-19): shipped in aaece1d7. Tests in
+  tests/features/roadmap_dropped_status, proved red against pre-fix
+  source; full suite 4969/4969. Needs an Ants relaunch to reach other
+  sessions. Follow-ups: ANTS-5242, CFG-0379.
   **Layman:** An item decided against has to be marked done, so the roadmap claims work that was never carried out.
   Kind: feature.
   Source: DOOM_Ants_MCP_Feedback.md 2026-09-08.
