@@ -27,6 +27,11 @@ still opens on the format marker and carries one `# ` line.
 
 Both ops are store-only.
 
+**INV-8 (ANTS-4555) — every rendered file says it is generated.** The line
+under the format marker is a comment naming the roadmap store and
+`roadmap_log`. It appears once, including when a stored preamble already
+carries it.
+
 ## Rationale
 
 ANTS-4949, ANTS-4968, ANTS-4539, ANTS-4766 and ANTS-4832 report one gap. An

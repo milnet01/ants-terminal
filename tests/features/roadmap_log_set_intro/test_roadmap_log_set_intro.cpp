@@ -264,3 +264,33 @@ TEST(RoadmapLogSetPreamble, SecondTitleOrSubheadingRefused) {
                   QStringLiteral("bad_intro")) << t;
     }
 }
+
+// ANTS-4555 — every rendered file says it is generated, once, under the
+// format marker, and a preamble that already carries the notice is not given
+// a second copy.
+TEST(RoadmapLogSetPreamble, Ants4555GeneratedNoticeAppearsOnce) {
+    Fx fx; ASSERT_TRUE(fx.ok());
+    RemoteControl rc(nullptr);
+    const QString notice = QStringLiteral(
+        "<!-- Generated from the Ants Terminal roadmap store. Edit it with "
+        "roadmap_log; hand edits are discarded by the next write. -->");
+    for (const QString &text : {QStringLiteral("# Demo — Roadmap"),
+                                notice + QStringLiteral("\n\n# Demo — Roadmap")}) {
+        const QJsonObject resp = rc.cmdRoadmapLogSetIntroForTest(
+            introReq(fx.root, QString(), text), true).object();
+        ASSERT_TRUE(resp.value(QStringLiteral("ok")).toBool())
+            << QJsonDocument(resp).toJson().toStdString();
+        const QString md = QString::fromUtf8(readAll(roadmapPath(fx.root)));
+        const QStringList lines = md.split(QLatin1Char('\n'));
+        ASSERT_GE(lines.size(), 2);
+        EXPECT_TRUE(lines.at(0).contains(QStringLiteral("ants-roadmap-format")));
+        // Line 1 when the render adds it; line 2 when a stored preamble
+        // already carried it after a blank line.
+        const int at = lines.indexOf(notice);
+        EXPECT_TRUE(at == 1 || at == 2)
+            << "the notice must sit just under the marker:\n"
+            << lines.mid(0, 5).join(QLatin1Char('\n')).toStdString();
+        EXPECT_EQ(md.count(QStringLiteral("Generated from the Ants Terminal roadmap store")), 1)
+            << md.toStdString();
+    }
+}

@@ -49407,7 +49407,7 @@ filed below.
   Source: LottoTracker_Ants_MCP_Feedback.md 2026-08-20.
   Lanes: roadmaprender.
 
-- 📋 [ANTS-4555] **A store-backed ROADMAP.md carries no generated-file banner, so it invites a hand edit the next write discards.**
+- ✅ [ANTS-4555] **A store-backed ROADMAP.md carries no generated-file banner, so it invites a hand edit the next write discards.**
   roadmap_log's description says a migrated project re-renders the whole
   file and reports discarded_external_edits. That is the right design,
   but the fact only reaches a session that reads the tool description
@@ -49431,6 +49431,21 @@ filed below.
   a section intro). A banner emitted by the renderer sidesteps that,
   because it is not stored prose.
   Progress (2026-08-26): scoped, NOT started, because the scoping falsified the item's "cheap" premise. Recording the measurement so the next session does not re-derive it. The item proposes the renderer emit a banner "under the existing format marker". But on a project WITH a root section -- this one -- that marker is not emitted by the renderer at all: roadmaprender.cpp's formatMarker() comment says the live file REPLAYS it out of the synthetic root's intro, and the constant is used only for a file that has no root section of its own. So a renderer-emitted banner is duplicated on one project shape and absent on the other, and the sidestep the item counts on -- "not stored prose, so ANTS-4539 does not bite" -- is exactly what does not hold where the marker is stored prose. Two further costs the item does not price, both from the store being MACHINE-GLOBAL. Every registered project's rendered file gains a line, so the first write after the change rewrites all of them. And until each is re-rendered the banner is present in the render and absent in the file, which is what ANTS-4462's divergence guard compares -- so the change makes every un-re-rendered project report drift it does not have. WHAT IS STILL RIGHT: the underlying complaint. ROADMAP.md is a normal tracked file whose name invites editing, and a hand edit is silently discarded. WHAT TO DECIDE FIRST, before any code: where the banner comes from for BOTH project shapes, and whether the rollout is a one-off re-render of every registered project or a guard relaxation while files catch up. Neither is a renderer one-liner.
+  Decided (2026-09-19, user): add the notice. A hidden comment line under
+  the format marker, in every rendered file. Rollout is lazy: a file gains
+  it on its project's next write, and check_sync reports the one line
+  until then.
+  Resolved (2026-09-19): RoadmapRender adds one comment line under the
+  format marker of every rendered file ("Generated from the Ants
+  Terminal roadmap store. Edit it with roadmap_log; hand edits are
+  discarded by the next write."). Placed after the marker whichever way
+  the marker arrived (stored root intro or the render's constant), which
+  answers the 2026-08-26 scoping concern. Not added twice when a stored
+  preamble already carries it. No write reports false drift: the one
+  render-only line counts toward the total, never the file-line
+  classes. Live after the next relaunch; each project gains the line on
+  its next roadmap write. Locked by
+  RoadmapLogSetPreamble.Ants4555GeneratedNoticeAppearsOnce.
   **Layman:** The roadmap file looks hand-editable but is regenerated, and edits vanish with no warning.
   Kind: enhancement.
   Source: Snatch_Ants_MCP_Feedback.md 2026-08-20.
@@ -61896,6 +61911,9 @@ than re-filed; everything else lands here.
 
   The reporter names the payoff exactly: it gives compact_resolved
   and review-ledger something reliable to key on instead of prose.
+  Decided (2026-09-19, user): the 'dropped' status the store already
+  allows, shown as 🚫. Counted as closed: out of the active queue, never
+  counted as shipped.
   **Layman:** An item decided against has to be marked done, so the roadmap claims work that was never carried out.
   Kind: feature.
   Source: DOOM_Ants_MCP_Feedback.md 2026-09-08.

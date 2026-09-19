@@ -274,6 +274,34 @@ QString formatMarker() {
     return QStringLiteral("<!-- ants-roadmap-format: 1 -->");
 }
 
+// ANTS-4555 — a store-backed roadmap file is generated, but nothing in it
+// said so, and it is a normal tracked file whose name invites editing; a hand
+// edit is discarded by the next write. One comment line under the format
+// marker says so in the file itself, where a person or a session reads it. It
+// renders as nothing, and a re-import that carries it into the root intro is
+// not given a second copy.
+QString generatedNotice() {
+    return QStringLiteral(
+        "<!-- Generated from the Ants Terminal roadmap store. Edit it with "
+        "roadmap_log; hand edits are discarded by the next write. -->");
+}
+
+QString withGeneratedNotice(const QString &text) {
+    QStringList lines = text.split(QLatin1Char('\n'));
+    const int n = std::min(6, int(lines.size()));
+    int markerAt = -1;
+    for (int i = 0; i < n; ++i) {
+        if (lines.at(i).contains(QLatin1String("Generated from the Ants Terminal roadmap store")))
+            return text;
+        if (markerAt < 0 && lines.at(i).contains(QLatin1String("ants-roadmap-format")))
+            markerAt = i;
+    }
+    if (markerAt < 0)
+        return text;
+    lines.insert(markerAt + 1, generatedNotice());
+    return lines.join(QLatin1Char('\n'));
+}
+
 bool hasMarkerInHead(const QString &text) {
     const QStringList lines = text.split(QLatin1Char('\n'));
     const int n = std::min(5, int(lines.size()));
@@ -663,6 +691,7 @@ std::optional<Outcome> render(RoadmapStore &store, qint64 projectId,
         QString text = blocks.join(QStringLiteral("\n\n"));
         if (!sawRoot || !hasMarkerInHead(text))
             text = formatMarker() + QStringLiteral("\n\n") + text;
+        text = withGeneratedNotice(text);   // ANTS-4555
         if (!text.endsWith(QLatin1Char('\n')))
             text += QLatin1Char('\n');
         contentOf.insert(path, text);

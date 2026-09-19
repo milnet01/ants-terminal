@@ -14,6 +14,11 @@ for security-relevant changes.
 
 ### Added
 
+- **Generated roadmap files now say so at the top** (ANTS-4555)
+  A hidden line under the format marker says the file is generated from
+  the roadmap store and that hand edits are discarded, so nobody edits it
+  by hand expecting the change to last.
+
 - **Roadmap items filed together can refer to each other by number** (ANTS-4580)
   In roadmap_log op:"append_batch", writing `{{id:1}}` in an item's text
   is replaced by the number the second item in the same call receives.
