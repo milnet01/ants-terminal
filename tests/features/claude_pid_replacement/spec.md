@@ -15,7 +15,7 @@ INV labels qualified `ANTS-1225-INV-N`. Citations are against current `src/`.
 | # | Lane | Statement |
 |---|------|-----------|
 | 1 | claudeintegration | `pollClaudeProcess` enters the rebind branch when `m_claudePid != foundPid && foundPid > 0`. The pre-existing `m_claudePid == 0` gate is generalized — initial-detection is the `m_claudePid == 0 && foundPid > 0` sub-case of the new gate. |
-| 2 | claudeintegration | When the rebind branch fires, in this order: `m_claudePid = foundPid` → `sessionPathForCwd(projectCwd, processStartTimeMs(m_claudePid), nowMs)` resolves a path. **If non-empty:** `m_transcriptWatcher.removePaths(oldFiles)` + `m_transcriptWatcher.addPath(m_transcriptPath)` + `parseTranscriptForState(m_transcriptPath)` execute in this order. **If empty:** the watcher is NOT swapped, `m_transcriptPath` retains its prior value, `parseTranscriptForState` is NOT called for the rebind path (the 10-tick backstop continues to handle the prior path). Either way, `m_state` is set to `ClaudeState::Idle` and `emit stateChanged(m_state, "idle")` fires, gated by `if (m_state != ClaudeState::Idle)` (mandatory — removing the guard breaks the "no flap on steady-state Idle" property). |
+| 2 | claudeintegration | When the rebind branch fires, in this order: `m_claudePid = foundPid` → `sessionPathForCwd(projectCwd, processStartTimeMs(m_claudePid), nowMs)` resolves a path. **If non-empty:** `m_transcriptWatcher.removePaths(oldFiles)` + `m_transcriptWatcher.addPath(m_transcriptPath)` + `parseTranscriptForState(m_transcriptPath)` execute in this order. **If empty:** `m_transcriptPath` stays empty (INV-5 cleared it) and `parseTranscriptForState` is NOT called; the ANTS-4457 retry resolves it on a later poll. Either way, `m_state` is set to `ClaudeState::Idle` and `emit stateChanged(m_state, "idle")` fires, gated by `if (m_state != ClaudeState::Idle)` (mandatory — removing the guard breaks the "no flap on steady-state Idle" property). |
 | 3 | claudeintegration | When `findClaudeChildPid` returns `0` (no Claude under the focused tab's shell), the existing `!found` branch still clears `m_claudePid`, `m_transcriptPath`, and emits `stateChanged(NotRunning)`. INV-1 does not subsume this — both branches coexist on the two sides of `if (!found)`. |
 | 4 | claudeintegration | The rebind branch is reachable only when `m_shellPid > 0` — the early-return at `claudeintegration.cpp:214` (`if (m_shellPid <= 0) return;`) gates the whole function, including INV-1's path. |
 
@@ -50,6 +50,18 @@ Every invariant here survives, and N3 is the one worth stating.
 - **INV-1's acceptance grep changed.** Naming the comparison
   (`pidChanged`) rather than inlining it in the `if` is the same
   property in a different spelling; §5 below accepts both.
+
+## 3b. Amendment — ANTS-5092 (2026-09-19)
+
+INV-2 used to keep the prior `m_transcriptPath` when the new Claude's
+transcript did not resolve yet. That path belongs to the Claude that
+exited. The ANTS-4457 retry runs only while the path is empty, so a
+kept path was never replaced, and the tab showed the dead session.
+
+**INV-5** — when the PID changes, `pollClaudeProcess` clears
+`m_transcriptPath` and the transcript watcher before it resolves the
+new transcript. Anchor: `// ANTS-5092-INV-5`. *Test:*
+`claude_pid_replacement.Inv5PidChangeDropsOldTranscript`.
 
 ## 4. Out of scope
 

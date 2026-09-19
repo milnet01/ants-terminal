@@ -170,6 +170,26 @@ void testInv4ShellPidEarlyReturn(const std::string &claudeintegration) {
            "ANTS-1225-INV-4: m_shellPid <= 0 early-return gates the function");
 }
 
+void testInv5PidChangeDropsOldTranscript(const std::string &claudeintegration) {
+    // INV-5 (ANTS-5092): the PID-change branch clears the old transcript
+    // before the new one is resolved, so an unresolved new transcript
+    // leaves the path empty and the retry keeps trying.
+    const std::string body = functionBody(
+        claudeintegration, "void ClaudeIntegration::pollClaudeProcess(");
+    const auto gate = body.find("if (pidChanged) {");
+    const auto resolve = body.find("sessionPathForCwd(");
+    expect(gate != std::string::npos && resolve != std::string::npos,
+           "ANTS-5092-INV-5 setup: pidChanged gate and resolver call found");
+    if (gate == std::string::npos || resolve == std::string::npos) return;
+    const std::string span = body.substr(gate, resolve - gate);
+    expect(span.find("// ANTS-5092-INV-5") != std::string::npos,
+           "ANTS-5092-INV-5: anchor comment in the pidChanged branch");
+    expect(span.find("m_transcriptPath.clear()") != std::string::npos,
+           "ANTS-5092-INV-5: m_transcriptPath cleared before resolving");
+    expect(span.find("m_transcriptWatcher.removePaths(") != std::string::npos,
+           "ANTS-5092-INV-5: old transcript unwatched before resolving");
+}
+
 }  // namespace
 
 TEST(claude_pid_replacement, Inv1ReplacementGate) {
@@ -197,5 +217,12 @@ TEST(claude_pid_replacement, Inv4ShellPidEarlyReturn) {
     const std::string &ci = ciSource();
     const int before = expect_failures();
     testInv4ShellPidEarlyReturn(ci);
+    if (expect_failures() > before) FAIL();
+}
+
+TEST(claude_pid_replacement, Inv5PidChangeDropsOldTranscript) {
+    const std::string &ci = ciSource();
+    const int before = expect_failures();
+    testInv5PidChangeDropsOldTranscript(ci);
     if (expect_failures() > before) FAIL();
 }

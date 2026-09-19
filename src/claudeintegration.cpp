@@ -342,6 +342,12 @@ void ClaudeIntegration::pollClaudeProcess() {
     if (pidChanged) {
         // Newly detected Claude process (or replacement of a dead one).
         m_claudePid = foundPid;
+        // ANTS-5092-INV-5 — the old transcript belongs to the Claude that
+        // exited. Drop it, so an unresolved new one leaves the path empty and
+        // the retry below keeps trying instead of reading a dead session.
+        m_transcriptPath.clear();
+        const QStringList watched = m_transcriptWatcher.files();
+        if (!watched.isEmpty()) m_transcriptWatcher.removePaths(watched);
     }
 
     // ANTS-4457 — resolve on a PID change AND whenever we still hold no
