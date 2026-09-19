@@ -35,6 +35,12 @@ for security-relevant changes.
 
 ### Fixed
 
+- **Saving a changed tab's session no longer compresses and writes it on the window's thread** (ANTS-5131)
+  The autosave now compresses, hashes and writes a changed tab on a
+  background thread. The window still reads the tab's contents itself,
+  so a large scrollback pauses it for about half as long as before.
+  Closing the window still saves synchronously.
+
 - **Text from Claude Code no longer turns dim and underlined at random** (ANTS-5215)
   A keyboard-mode code Claude Code sends (`CSI > 4 ; 2 m`) was read as
   a style change, switching on underline and dim for every character

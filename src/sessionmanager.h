@@ -42,6 +42,19 @@ public:
     static void saveSession(const QString &tabId, const TerminalGrid *grid,
                             const QString &cwd = {},
                             const QString &pinnedTitle = {});
+    // ANTS-5131 — saveSession with the compress, hash and write on a worker
+    // thread; only the grid walk stays on the caller's thread. One save runs
+    // at a time, in call order. A blob that compresses past `maxFileBytes`
+    // is not written; takeOvershoot() then reports the tab so the caller can
+    // redo it with saveSession, which re-reads the grid.
+    static void saveSessionAsync(const QString &tabId, const TerminalGrid *grid,
+                                 const QString &cwd = {},
+                                 const QString &pinnedTitle = {},
+                                 qint64 maxFileBytes = MAX_RESTORE_FILE_BYTES);
+    // True once for a tab whose async save overshot its cap.
+    static bool takeOvershoot(const QString &tabId);
+    // Blocks until the async save in flight, if any, has finished.
+    static void waitForPendingSaves();
     static bool loadSession(const QString &tabId, TerminalGrid *grid,
                             QString *cwd = nullptr,
                             QString *pinnedTitle = nullptr);
@@ -62,6 +75,17 @@ private:
                                       const QString &cwd,
                                       const QString &pinnedTitle,
                                       int firstLine);
+    // ANTS-5131 — the first scrollback line kept so the stream fits
+    // `maxRawBytes`.
+    static int firstLineWithin(const TerminalGrid *grid, const QString &cwd,
+                               const QString &pinnedTitle, qint64 maxRawBytes);
+    // ANTS-5131 — wraps a compressed payload in the V4 envelope.
+    static QByteArray seal(const QByteArray &compressed);
+    // ANTS-5131 — writes `data` to `tmpPath`, fsyncs, renames it over
+    // `path` and fsyncs the directory. Safe off the GUI thread: it creates
+    // the temp file 0600 itself instead of changing the process umask.
+    static bool writeBlob(const QString &path, const QString &tmpPath,
+                          const QByteArray &data);
 
     static constexpr uint32_t MAGIC = 0x414E5453; // "ANTS"
     // V2 added `cwd` after the window title.

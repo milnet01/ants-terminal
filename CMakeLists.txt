@@ -1509,7 +1509,7 @@ if(ANTS_TESTS)
 
     # bench_session_save — wall time of SessionManager::saveSession on a full
     # scrollback, split into serialize() and the write + fsync + rename
-    # (ANTS-5131 asks for this before moving any of it off the GUI thread).
+    # and the GUI-thread cost of the worker-thread save (ANTS-5131).
     # Links the real SessionManager and TerminalGrid. Writes only inside a temp
     # XDG_DATA_HOME. ANTS_PERF_SCROLLBACK / ANTS_PERF_COLS size the grid.
     add_executable(bench_session_save
@@ -1734,6 +1734,8 @@ if(ANTS_TESTS)
                 tests/features/session_restore_refusal/test_session_restore_refusal.cpp
                 # ANTS-5106 — per-process session temp files; checked tab-order write.
                 tests/features/session_save_guards/test_session_save_guards.cpp
+                # ANTS-5131 — a changed tab's save compresses and writes on a worker.
+                tests/features/session_save_worker/test_session_save_worker.cpp
                 # ANTS-5033 — desktop-notification quota shared by OSC 9/777.
                 tests/features/osc_notify_quota/test_osc_notify_quota.cpp)
     # scrollback_frozen_view test reads terminalwidget.cpp source via grep —

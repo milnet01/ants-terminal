@@ -3915,11 +3915,19 @@ void MainWindow::saveAllSessions(bool force) {
         key.cwd = t->shellCwd();
         key.pinnedTitle = pinnedTitle;
 
+        // ANTS-5131 — a tab whose last async save compressed past its cap
+        // wrote nothing; redo it here, where the grid can be re-read.
+        const bool overshot = SessionManager::takeOvershoot(tabId);
         const auto seen = m_sessionSaveKeys.constFind(tabId);
-        if (!force && seen != m_sessionSaveKeys.cend() && *seen == key)
+        if (!force && !overshot && seen != m_sessionSaveKeys.cend() && *seen == key)
             continue;
 
-        SessionManager::saveSession(tabId, g, key.cwd, pinnedTitle);
+        // ANTS-5131 — the compress, hash and write go to a worker; the
+        // forced save at close stays synchronous.
+        if (force || overshot)
+            SessionManager::saveSession(tabId, g, key.cwd, pinnedTitle);
+        else
+            SessionManager::saveSessionAsync(tabId, g, key.cwd, pinnedTitle);
         m_sessionSaveKeys.insert(tabId, key);
     }
     // Drop keys for tabs this window no longer holds, so the cache cannot

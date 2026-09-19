@@ -79,23 +79,29 @@ static int runMain() {
         ++failures;
     };
 
-    // INV-1 — serialize writes the envelope.
+    // INV-1 — serialize writes the envelope. ANTS-5131 moved the envelope
+    // into SessionManager::seal so the worker-thread save can share it.
     const std::string serBody = extractFnBody(cpp, "SessionManager::serialize");
-    if (serBody.empty()) {
-        fail("precondition: SessionManager::serialize body not located.");
+    const std::string sealBody = extractFnBody(cpp, "SessionManager::seal");
+    if (serBody.empty() || sealBody.empty()) {
+        fail("precondition: SessionManager::serialize or ::seal body not located.");
     } else {
-        if (serBody.find("ENVELOPE_MAGIC") == std::string::npos)
-            fail("INV-1: serialize body does not reference ENVELOPE_MAGIC. "
+        if (serBody.find("return seal(") == std::string::npos)
+            fail("INV-1: serialize does not return seal(...). "
                  "The qCompress output must be wrapped in the V4 envelope, "
                  "not returned raw.");
-        if (serBody.find("ENVELOPE_VERSION") == std::string::npos)
-            fail("INV-1: serialize body does not reference ENVELOPE_VERSION. "
+        if (sealBody.find("ENVELOPE_MAGIC") == std::string::npos)
+            fail("INV-1: seal body does not reference ENVELOPE_MAGIC. "
+                 "The qCompress output must be wrapped in the V4 envelope, "
+                 "not returned raw.");
+        if (sealBody.find("ENVELOPE_VERSION") == std::string::npos)
+            fail("INV-1: seal body does not reference ENVELOPE_VERSION. "
                  "The envelope header must include the version field so "
                  "future format bumps can be detected.");
         std::regex shaCall(
             R"(QCryptographicHash::hash\s*\([^)]*QCryptographicHash::Sha256)");
-        if (!std::regex_search(serBody, shaCall))
-            fail("INV-1: serialize body lacks a "
+        if (!std::regex_search(sealBody, shaCall))
+            fail("INV-1: seal body lacks a "
                  "QCryptographicHash::hash(..., QCryptographicHash::Sha256) "
                  "call. The envelope must include a SHA-256 over the "
                  "compressed payload.");

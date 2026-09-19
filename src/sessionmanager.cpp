@@ -10,6 +10,10 @@
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
+#include <QMutex>
+#include <QMutexLocker>
+#include <QSet>
+#include <QThreadPool>
 #include <QRegularExpression>
 #include <QStandardPaths>
 
@@ -17,6 +21,7 @@
 #include <cerrno>
 #include <cstdio>      // std::rename — atomic POSIX-compliant overwrite
 #include <cstring>     // std::strerror
+#include <fcntl.h>     // open — the temp blob is created 0600
 #include <sys/stat.h>
 #include <unistd.h>    // fsync — durability guarantee before atomic rename
 
@@ -138,11 +143,10 @@ QByteArray SessionManager::serializeStream(const TerminalGrid *grid,
     return raw;
 }
 
-QByteArray SessionManager::serialize(const TerminalGrid *grid,
-                                     const QString &cwd,
-                                     const QString &pinnedTitle,
-                                     qint64 maxRawBytes,
-                                     qint64 maxFileBytes) {
+int SessionManager::firstLineWithin(const TerminalGrid *grid,
+                                    const QString &cwd,
+                                    const QString &pinnedTitle,
+                                    qint64 maxRawBytes) {
     // ANTS-5031 — never write what restore() refuses. A line's stream size
     // is exact (int32 cell count, bool wrapped, 13 bytes per cell, int32
     // combining count, 8 + 4n per combining entry), so the newest scrollback
@@ -170,6 +174,16 @@ QByteArray SessionManager::serialize(const TerminalGrid *grid,
         if (used + b > maxRawBytes) break;
         used += b;
     }
+    return first;
+}
+
+QByteArray SessionManager::serialize(const TerminalGrid *grid,
+                                     const QString &cwd,
+                                     const QString &pinnedTitle,
+                                     qint64 maxRawBytes,
+                                     qint64 maxFileBytes) {
+    const int sbSize = grid->scrollbackSize();
+    int first = firstLineWithin(grid, cwd, pinnedTitle, maxRawBytes);
 
     // Compress
     QByteArray compressed = qCompress(serializeStream(grid, cwd, pinnedTitle, first), 6);
@@ -187,7 +201,10 @@ QByteArray SessionManager::serialize(const TerminalGrid *grid,
         first = sbSize - static_cast<int>(std::min(keep, kept - 1));
         compressed = qCompress(serializeStream(grid, cwd, pinnedTitle, first), 6);
     }
+    return seal(compressed);
+}
 
+QByteArray SessionManager::seal(const QByteArray &compressed) {
     // V4 envelope: SHEC magic + envelope version + SHA-256(compressed)
     // + payload length + compressed payload. ANTS-1778 — this is an
     // UNKEYED hash, so it provides CORRUPTION DETECTION ONLY (bit-rot,
@@ -296,7 +313,7 @@ bool SessionManager::restore(TerminalGrid *grid, const QByteArray &input,
     // Guard against decompression bombs (zlib can expand ~1000:1).
     // The pre-flight above bounds `claimedUncompressed`, but a payload
     // can still under-claim and over-deliver; keep this defensive cap.
-    if (raw.size() > 500 * 1024 * 1024) return false;
+    if (raw.size() > qsizetype(MAX_UNCOMPRESSED)) return false;
 
     QDataStream in(&raw, QIODevice::ReadOnly);
     in.setVersion(QDataStream::Qt_6_0);
@@ -468,15 +485,37 @@ bool SessionManager::restore(TerminalGrid *grid, const QByteArray &input,
     if (!title.isEmpty())
         grid->setTitle(title);
     if (cwd && !savedCwd.isEmpty())
-        *cwd = savedCwd;
+        *cwd = std::move(savedCwd);
     if (pinnedTitle)
-        *pinnedTitle = savedPinned;
+        *pinnedTitle = std::move(savedPinned);
     return true;
 }
+
+namespace {
+
+// ANTS-5131 — one worker, so saves run one at a time and in call order: two
+// saves of one tab never share a temp file or land out of order.
+QThreadPool &savePool() {
+    static QThreadPool pool;
+    static const bool configured = [] {
+        pool.setMaxThreadCount(1);
+        pool.setExpiryTimeout(-1);
+        return true;
+    }();
+    (void)configured;
+    return pool;
+}
+
+QMutex s_overshootMutex;
+QSet<QString> s_overshot;
+
+}  // namespace
 
 void SessionManager::saveSession(const QString &tabId, const TerminalGrid *grid,
                                  const QString &cwd,
                                  const QString &pinnedTitle) {
+    // ANTS-5131 — an async save of this tab may still be writing.
+    waitForPendingSaves();
     QByteArray data = serialize(grid, cwd, pinnedTitle);
     QString path = sessionPath(tabId);
     if (path.isEmpty()) return;
@@ -484,69 +523,122 @@ void SessionManager::saveSession(const QString &tabId, const TerminalGrid *grid,
     // <name>.tmp, so one's write could land in the file the other renamed
     // into place, tearing a blob that then failed its hash on restore.
     QString tmpPath = path + QStringLiteral(".%1.tmp").arg(QCoreApplication::applicationPid());
-    mode_t oldMask = ::umask(0077);
-    QFile file(tmpPath);
-    if (file.open(QIODevice::WriteOnly)) {
-        // ANTS-5151 — scrollback: the temp blob is private or not written,
-        // and the previous blob stays in place.
-        if (!setOwnerOnlyPerms(file)) {
-            qWarning("SessionManager::saveSession: could not make %s owner-only "
-                     "— not saved, prior blob unchanged", qUtf8Printable(tmpPath));
-            file.close();
-            QFile::remove(tmpPath);
-            ::umask(oldMask);
+    writeBlob(path, tmpPath, data);
+}
+
+void SessionManager::saveSessionAsync(const QString &tabId, const TerminalGrid *grid,
+                                      const QString &cwd,
+                                      const QString &pinnedTitle,
+                                      qint64 maxFileBytes) {
+    const QString path = sessionPath(tabId);
+    if (path.isEmpty()) return;
+    const QString tmpPath =
+        path + QStringLiteral(".%1.tmp").arg(QCoreApplication::applicationPid());
+    // The grid walk reads the live grid, so it stays on this thread.
+    const int first = firstLineWithin(grid, cwd, pinnedTitle, MAX_RESTORE_RAW_BYTES);
+    const bool keptScrollback = first < grid->scrollbackSize();
+    QByteArray raw = serializeStream(grid, cwd, pinnedTitle, first);
+    // At most one stream waits for the worker, so memory stays at two
+    // streams however many tabs changed.
+    waitForPendingSaves();
+    savePool().start([tabId, path, tmpPath, maxFileBytes, keptScrollback,
+                      raw = std::move(raw)]() mutable {
+        QByteArray compressed = qCompress(raw, 6);
+        raw = QByteArray();  // release the stream before hashing and writing
+        if (keptScrollback
+            && qint64(ENVELOPE_HEADER_SIZE) + compressed.size() > maxFileBytes) {
+            // serialize() trims by re-reading the grid, which this thread
+            // cannot touch. Leave the prior blob and let the caller redo it.
+            QMutexLocker lock(&s_overshootMutex);
+            s_overshot.insert(tabId);
             return;
         }
-        if (file.write(data) == data.size()) {
-            // fsync before rename — see Config::save for rationale.
-            // Scrollback blobs are worth durability; losing a session
-            // from the last 200 ms of the previous run to a kernel
-            // crash is a worse outcome than the one-syscall cost.
-            ::fsync(file.handle());
-            file.close();
-            // 0.7.52 (2026-04-27 indie-review CRITICAL — silent data
-            // loss). Was QFile::rename, which on every POSIX target
-            // refuses to overwrite an existing destination — every
-            // session save AFTER the first silently failed (the .dat
-            // file held the original snapshot, .dat.tmp accumulated
-            // each new write). User scrollback never updated past the
-            // first save. std::rename mirrors POSIX rename(2) which
-            // atomically replaces the destination, matching Config's
-            // 0.7.12 fix. Log the errno on failure (ENOSPC, EACCES,
-            // EXDEV) and remove the orphaned .tmp so the disk doesn't
-            // accumulate corpses across session lifetimes.
-            const int rc = std::rename(tmpPath.toLocal8Bit().constData(),
-                                       path.toLocal8Bit().constData());
-            if (rc == 0) {
-                // Post-rename chmod: rename(2) preserves perms on
-                // most local FS, but FAT/exFAT/SMB/NFS edge cases or
-                // Qt's copy+unlink fallback can drop the 0600 set on
-                // the temp fd. Session blobs may hold scrollback
-                // content (passwords mistyped at the prompt, ssh
-                // command history, paste buffers); re-chmod the
-                // final inode.
-                // ANTS-5151 — warn, never delete: the blob is already in
-                // place, and removing it would lose this tab's scrollback.
-                if (!setOwnerOnlyPerms(path))
-                    warnNotOwnerOnly(path, "session");
-                // ANTS-1141 — fsync parent dir for crash-safe
-                // rename durability (Postgres pattern). See
-                // Config::save for the full rationale.
-                fsyncParentDir(path);
-            } else {
-                qWarning("SessionManager::saveSession rename(%s -> %s) "
-                         "failed: errno=%d (%s) — prior session blob "
-                         "unchanged, tmp removed",
-                         qUtf8Printable(tmpPath), qUtf8Printable(path),
-                         errno, std::strerror(errno));
-                QFile::remove(tmpPath);
-            }
-        } else {
-            file.close();
-            QFile::remove(tmpPath);
-        }
+        writeBlob(path, tmpPath, seal(compressed));
+    });
+}
+
+bool SessionManager::takeOvershoot(const QString &tabId) {
+    QMutexLocker lock(&s_overshootMutex);
+    return s_overshot.remove(tabId);
+}
+
+void SessionManager::waitForPendingSaves() {
+    savePool().waitForDone();
+}
+
+bool SessionManager::writeBlob(const QString &path, const QString &tmpPath,
+                               const QByteArray &data) {
+    // ANTS-5131 — created 0600 by open(2) rather than under umask(0077):
+    // the umask is process-wide, and this may run off the GUI thread while
+    // saveTabOrder or Config::save sets and restores it.
+    const int fd = ::open(tmpPath.toLocal8Bit().constData(),
+                          O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0600);
+    if (fd < 0) return false;
+    QFile file;
+    if (!file.open(fd, QIODevice::WriteOnly, QFileDevice::AutoCloseHandle)) {
+        ::close(fd);
+        QFile::remove(tmpPath);
+        return false;
     }
-    ::umask(oldMask);
+    // ANTS-5151 — scrollback: the temp blob is private or not written,
+    // and the previous blob stays in place. O_TRUNC keeps the mode of a
+    // temp file a killed save left behind, so this still matters.
+    if (!setOwnerOnlyPerms(file)) {
+        qWarning("SessionManager::saveSession: could not make %s owner-only "
+                 "— not saved, prior blob unchanged", qUtf8Printable(tmpPath));
+        file.close();
+        QFile::remove(tmpPath);
+        return false;
+    }
+    if (file.write(data) != data.size()) {
+        file.close();
+        QFile::remove(tmpPath);
+        return false;
+    }
+    // fsync before rename — see Config::save for rationale.
+    // Scrollback blobs are worth durability; losing a session
+    // from the last 200 ms of the previous run to a kernel
+    // crash is a worse outcome than the one-syscall cost.
+    ::fsync(file.handle());
+    file.close();
+    // 0.7.52 (2026-04-27 indie-review CRITICAL — silent data
+    // loss). Was QFile::rename, which on every POSIX target
+    // refuses to overwrite an existing destination — every
+    // session save AFTER the first silently failed (the .dat
+    // file held the original snapshot, .dat.tmp accumulated
+    // each new write). User scrollback never updated past the
+    // first save. std::rename mirrors POSIX rename(2) which
+    // atomically replaces the destination, matching Config's
+    // 0.7.12 fix. Log the errno on failure (ENOSPC, EACCES,
+    // EXDEV) and remove the orphaned .tmp so the disk doesn't
+    // accumulate corpses across session lifetimes.
+    const int rc = std::rename(tmpPath.toLocal8Bit().constData(),
+                               path.toLocal8Bit().constData());
+    if (rc == 0) {
+        // Post-rename chmod: rename(2) preserves perms on
+        // most local FS, but FAT/exFAT/SMB/NFS edge cases or
+        // Qt's copy+unlink fallback can drop the 0600 set on
+        // the temp fd. Session blobs may hold scrollback
+        // content (passwords mistyped at the prompt, ssh
+        // command history, paste buffers); re-chmod the
+        // final inode.
+        // ANTS-5151 — warn, never delete: the blob is already in
+        // place, and removing it would lose this tab's scrollback.
+        if (!setOwnerOnlyPerms(path))
+            warnNotOwnerOnly(path, "session");
+        // ANTS-1141 — fsync parent dir for crash-safe
+        // rename durability (Postgres pattern). See
+        // Config::save for the full rationale.
+        fsyncParentDir(path);
+        return true;
+    }
+    qWarning("SessionManager::saveSession rename(%s -> %s) "
+             "failed: errno=%d (%s) — prior session blob "
+             "unchanged, tmp removed",
+             qUtf8Printable(tmpPath), qUtf8Printable(path),
+             errno, std::strerror(errno));
+    QFile::remove(tmpPath);
+    return false;
 }
 
 bool SessionManager::loadSession(const QString &tabId, TerminalGrid *grid,
@@ -572,6 +664,8 @@ bool SessionManager::loadSession(const QString &tabId, TerminalGrid *grid,
 }
 
 void SessionManager::removeSession(const QString &tabId) {
+    // ANTS-5131 — a save still in flight would put the file back.
+    waitForPendingSaves();
     QFile::remove(sessionPath(tabId));
 }
 

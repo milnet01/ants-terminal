@@ -10416,7 +10416,7 @@ extends an existing item, that item carries it instead.
   Source: user-report-2026-09-12.
   Lanes: vt, terminalgrid.
 
-- 📋 [ANTS-5131] **The session save still compresses, hashes and writes a changed tab on the GUI thread.**
+- ✅ [ANTS-5131] **The session save still compresses, hashes and writes a changed tab on the GUI thread.**
   ANTS-5030 removed the save entirely for tabs whose blob would be
   unchanged, which is the common case. A tab that DID change still runs
   the whole of SessionManager::saveSession on the GUI thread: qCompress
@@ -10453,8 +10453,17 @@ extends an existing item, that item carries it instead.
   The forced save in closeEvent stays synchronous. The durability order
   (ANTS-1141 fsync ordering, the rename) is unchanged, and a test locks
   it.
+  Resolved (2026-09-19): compress, SHA-256 and write run on a single
+  worker thread (SessionManager::saveSessionAsync), one save at a time
+  and in call order. The forced save in closeEvent, and a tab whose
+  async blob overshot its cap (SessionManager::takeOvershoot), use the
+  synchronous saveSession. saveSession and removeSession wait for the
+  worker first. The temp file is created 0600 by open(2), not under the
+  process-wide umask. tests/perf/bench_session_save at 50000 lines:
+  GUI-thread cost 255 ms, down from 497 ms; the rest is the grid walk.
+  Locked by tests/features/session_save_worker.
   **Layman:** Saving a tab that has changed still happens on the main window's thread, so a very large scrollback can still pause the window.
-  Kind: perf.
+  Kind: review-fix.
   Source: in-session-2026-09-12 (ANTS-5030 remainder).
 
 - ✅ [ANTS-5132] **grab-image validates its path against the artifact dir and then writes it relative to the process CWD.**

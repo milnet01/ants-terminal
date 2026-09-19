@@ -1,10 +1,10 @@
 // ANTS-5131 — wall time of a session save, split into serialize and write.
 //
-// SessionManager::saveSession runs on the GUI thread for every tab whose blob
-// changed (ANTS-5030 already skips unchanged ones). ANTS-5131 asks for the cost
-// to be measured before anything moves off that thread: serialize() reads the
-// live grid and has to stay, while everything after it is a pure function of
-// the produced bytes. This separates the two.
+// A changed tab's save used to run whole on the GUI thread (ANTS-5030 already
+// skips unchanged ones). serialize() reads the live grid and has to stay there,
+// while everything after it is a pure function of the produced bytes. This
+// separates the two, and times what saveSessionAsync still costs its caller
+// now that the rest runs on a worker (ANTS-5131).
 //
 // Links the real SessionManager and TerminalGrid, so the numbers are the save
 // the app runs. The grid is filled through VtParser with full-width lines of
@@ -184,6 +184,18 @@ int main(int argc, char **argv) {
     }
     const double writeMs = saveMs - serializeMs;
 
+    // ANTS-5131 — what the GUI thread pays for the async save: the grid walk
+    // and the hand-off. The wait for the previous save is outside the timer.
+    double asyncCallerMs = 0;
+    for (int i = 0; i < iterations; ++i) {
+        SessionManager::waitForPendingSaves();
+        t.start();
+        SessionManager::saveSessionAsync(tabId, &grid, cwd, {});
+        asyncCallerMs += double(t.nsecsElapsed()) / 1e6;
+    }
+    SessionManager::waitForPendingSaves();
+    asyncCallerMs /= iterations;
+
     std::printf("phase,ms,bytes\n");
     std::printf("serialize,%.4f,%lld\n", serializeMs, (long long)blobBytes);
     std::printf("  grid_walk_stream,%.4f,%lld\n", streamMs, (long long)raw.size());
@@ -191,9 +203,11 @@ int main(int argc, char **argv) {
     std::printf("  sha256,%.4f,%lld\n", hashMs, (long long)payload.size());
     std::printf("save_total,%.4f,%lld\n", saveMs, (long long)fileBytes);
     std::printf("write_fsync_rename,%.4f,%lld\n", writeMs, (long long)fileBytes);
+    std::printf("save_async_caller,%.4f,0\n", asyncCallerMs);
     std::printf("scrollback_lines,%d,0\n", filled);
 
     AntsPerf::reportLowerBetter("session.serialize_ms", serializeMs, "ms");
+    AntsPerf::reportLowerBetter("session.async_caller_ms", asyncCallerMs, "ms");
     // The part of serialize() that must stay on the GUI thread, and the two
     // parts that could leave it.
     AntsPerf::reportLowerBetter("session.stream_ms", streamMs, "ms");

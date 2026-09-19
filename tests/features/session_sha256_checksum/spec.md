@@ -41,11 +41,12 @@ wrapper.
 ## Invariants
 
 **INV-1 — `serialize` writes the envelope.** Source-grep against
-`src/sessionmanager.cpp`: the body of `SessionManager::serialize` MUST
-contain `ENVELOPE_MAGIC`, `ENVELOPE_VERSION`, and a
+`src/sessionmanager.cpp`: `SessionManager::serialize` MUST return
+`seal(...)`, and the body of `SessionManager::seal` MUST contain
+`ENVELOPE_MAGIC`, `ENVELOPE_VERSION`, and a
 `QCryptographicHash::hash(...QCryptographicHash::Sha256)` call. The
-final return MUST be the envelope-wrapped buffer — not raw `qCompress`
-output.
+envelope moved into `seal` for ANTS-5131, which shares it with the
+worker-thread save.
 
 **INV-2 — `restore` peeks the envelope magic and verifies the hash.**
 Source-grep: the body of `SessionManager::restore` MUST reference
