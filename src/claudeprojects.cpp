@@ -232,17 +232,19 @@ void ClaudeProjectsDialog::populateSessions(int projectIndex) {
     m_sessionTree->clear();
     if (projectIndex < 0 || projectIndex >= m_projects.size()) return;
 
-    const auto &proj = m_projects[projectIndex];
+    auto &proj = m_projects[projectIndex];
     for (int i = 0; i < proj.sessions.size(); ++i) {
-        const auto &session = proj.sessions[i];
+        auto &session = proj.sessions[i];
         auto *item = new QTreeWidgetItem(m_sessionTree);
 
-        // Summary (first user message)
-        QString summary = session.firstMessage;
-        if (summary.isEmpty()) {
-            // Lazy-load if not yet fetched
-            summary = m_integration->sessionSummary(session.transcriptPath);
+        // Summary (first user message). ANTS-5092 — a lazily loaded one is
+        // kept, so selecting the project again reads no transcript.
+        if (session.firstMessage.isEmpty() && !session.summaryLoaded) {
+            session.firstMessage =
+                m_integration->sessionSummary(session.transcriptPath);
+            session.summaryLoaded = true;
         }
+        QString summary = session.firstMessage;
         if (summary.isEmpty()) summary = "(empty session)";
         if (summary.length() > 80)
             summary = summary.left(80) + "...";

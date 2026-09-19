@@ -2100,6 +2100,8 @@ if(ANTS_TESTS)
                 tests/features/mcp_parse_error_reply/test_mcp_parse_error_reply.cpp
                 # ANTS-5089 — the Claude hook and MCP sockets cap live connections.
                 tests/features/local_socket_connection_cap/test_local_socket_connection_cap.cpp
+                # ANTS-5092 — the Projects dialog keeps a lazily loaded summary.
+                tests/features/claude_projects_summary_cache/test_claude_projects_summary_cache.cpp
                 # ANTS-5151 — every owner-only permission result is used.
                 tests/features/owner_only_result_used/test_owner_only_result_used.cpp
                 tests/features/allowlist_perms_postcommit/test_allowlist_perms_postcommit.cpp

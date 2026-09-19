@@ -41,6 +41,9 @@ struct ClaudeSession {
     QDateTime lastModified;
     qint64 sizeBytes = 0;
     bool isActive = false;   // currently running
+    // ANTS-5092 — the Projects dialog looked the summary up already, so an
+    // empty firstMessage is the answer, not a reason to read again.
+    bool summaryLoaded = false;
 };
 
 // A project with its sessions
