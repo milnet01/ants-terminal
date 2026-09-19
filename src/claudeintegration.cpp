@@ -690,6 +690,7 @@ QJsonArray ClaudeIntegration::loadTranscript(const QString &path) const {
 
 QJsonArray ClaudeIntegration::loadTranscriptTail(const QString &path,
                                                  int maxEntries,
+                                                 qint64 maxBytes,
                                                  int *totalRecords) const {
     QJsonArray entries;
     int total = 0;
@@ -712,6 +713,11 @@ QJsonArray ClaudeIntegration::loadTranscriptTail(const QString &path,
         starts.append(pos);
         if (starts.size() > maxEntries) starts.removeFirst();
     }
+    // ANTS-5092 — drop the oldest kept records until the rest fit in
+    // maxBytes; the newest record stays whatever its size.
+    const qint64 end = file.pos();
+    while (starts.size() > 1 && end - starts.first() > maxBytes)
+        starts.removeFirst();
     // Pass 2: parse from the oldest kept record to the end.
     if (starts.isEmpty() || !file.seek(starts.first())) return finish();
     while (!file.atEnd()) {

@@ -180,9 +180,11 @@ public:
     // dialog, which renders no more than that. Earlier records are counted by
     // walking record boundaries, not JSON-parsed, so a large transcript is not
     // parsed whole on the GUI thread. `*totalRecords` counts every non-empty
-    // record, a malformed one included.
+    // record, a malformed one included. ANTS-5092 — the kept records also
+    // fit in `maxBytes` of transcript, oldest dropped first; the newest
+    // record is always kept.
     QJsonArray loadTranscriptTail(const QString &path, int maxEntries,
-                                  int *totalRecords) const;
+                                  qint64 maxBytes, int *totalRecords) const;
     QStringList recentSessions() const;
     // ANTS-1168: project-scoped variant. When projectCwd is non-empty,
     // restrict the result to the encoded project directory matching

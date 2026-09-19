@@ -93,18 +93,25 @@ void ClaudeTranscriptDialog::loadTranscript(const QString &path) {
     // Claude Code sessions stay well under that.
     // ANTS-5089 — only those N are JSON-parsed; the rest are counted.
     constexpr int kRenderCap = 2000;
+    // ANTS-5092 — and at most this much transcript, so a few huge records
+    // cannot make the parse and the HTML unbounded. The author's choice,
+    // not measured.
+    constexpr qint64 kRenderByteCap = 8LL * 1024 * 1024;
     int total = 0;
     const QJsonArray entries =
-        m_integration->loadTranscriptTail(path, kRenderCap, &total);
+        m_integration->loadTranscriptTail(path, kRenderCap, kRenderByteCap, &total);
     m_transcriptView->clear();
 
     QString html;
-    if (total > kRenderCap) {
+    // ANTS-5092 — the byte cap can keep fewer than kRenderCap, so the
+    // header counts what came back.
+    const int shown = static_cast<int>(entries.size());
+    if (total > shown) {
         html += QStringLiteral(
             "<p style='color:#888;font-style:italic;'>"
             "… showing last %1 of %2 entries (older entries trimmed "
             "for render performance)</p>")
-            .arg(kRenderCap).arg(total);
+            .arg(shown).arg(total);
     }
     for (const auto &entry : entries) {
         html += formatEntry(entry.toObject());

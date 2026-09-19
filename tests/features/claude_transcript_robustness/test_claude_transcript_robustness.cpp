@@ -17,6 +17,8 @@
 #include <QSignalSpy>
 #include <QStandardPaths>
 #include <QTemporaryDir>
+
+#include <limits>
 #include <QThread>
 
 #include <atomic>
@@ -520,6 +522,8 @@ int inv11LongRecordsAreReadWhole() {
     return ok ? 0 : 1;
 }
 
+constexpr qint64 kNoByteCap = std::numeric_limits<qint64>::max();
+
 // ANTS-5089: the transcript dialog's tail loader parses only the last
 // maxEntries records and still reports how many there are in total.
 int inv13TailLoaderReturnsLastEntriesAndTotal() {
@@ -534,12 +538,12 @@ int inv13TailLoaderReturnsLastEntriesAndTotal() {
     }
     ClaudeIntegration ci;
     int total = -1;
-    const QJsonArray tail = ci.loadTranscriptTail(path, 4, &total);
+    const QJsonArray tail = ci.loadTranscriptTail(path, 4, kNoByteCap, &total);
     const bool capped = tail.size() == 4 && total == 10 &&
         tail.first().toObject().value("n").toInt() == 7 &&
         tail.last().toObject().value("n").toInt() == 10;
     int totalAll = -1;
-    const QJsonArray all = ci.loadTranscriptTail(path, 50, &totalAll);
+    const QJsonArray all = ci.loadTranscriptTail(path, 50, kNoByteCap, &totalAll);
     const bool uncapped = all.size() == 10 && totalAll == 10;
     std::fprintf(stderr,
                  "[inv13 transcript-tail-loader] capped size=%d total=%d, "
@@ -548,6 +552,43 @@ int inv13TailLoaderReturnsLastEntriesAndTotal() {
                  static_cast<int>(all.size()), totalAll,
                  (capped && uncapped) ? "PASS" : "FAIL");
     return (capped && uncapped) ? 0 : 1;
+}
+
+// ANTS-5092: the tail loader also keeps no more than maxBytes of records,
+// dropping the oldest, and always keeps the newest record.
+int inv15TailLoaderHonoursByteCap() {
+    QTemporaryDir tmp;
+    if (!tmp.isValid()) return 1;
+    const QString path = tmp.path() + "/ten.jsonl";
+    QByteArray rec;
+    {
+        QFile f(path);
+        if (!f.open(QIODevice::WriteOnly)) return 1;
+        for (int i = 1; i <= 9; ++i) {
+            // Same width for every record: n is a single digit.
+            rec = QByteArray(R"({"type":"user","n":)") + QByteArray::number(i) + "}\n";
+            f.write(rec);
+        }
+    }
+    ClaudeIntegration ci;
+    int total = -1;
+    // Room for three records and a half: the three newest fit.
+    const qint64 budget = rec.size() * 3 + rec.size() / 2;
+    const QJsonArray tail = ci.loadTranscriptTail(path, 50, budget, &total);
+    const bool capped = tail.size() == 3 && total == 9 &&
+        tail.first().toObject().value("n").toInt() == 7 &&
+        tail.last().toObject().value("n").toInt() == 9;
+    int totalTiny = -1;
+    const QJsonArray tiny = ci.loadTranscriptTail(path, 50, 1, &totalTiny);
+    const bool newestKept = tiny.size() == 1 && totalTiny == 9 &&
+        tiny.first().toObject().value("n").toInt() == 9;
+    std::fprintf(stderr,
+                 "[inv15 transcript-tail-byte-cap] capped size=%d total=%d, "
+                 "tiny size=%d  %s\n",
+                 static_cast<int>(tail.size()), total,
+                 static_cast<int>(tiny.size()),
+                 (capped && newestKept) ? "PASS" : "FAIL");
+    return (capped && newestKept) ? 0 : 1;
 }
 
 // ANTS-5089: a final record larger than the old 4 MiB tail window is still
@@ -595,6 +636,7 @@ TEST(ClaudeTranscriptRobustness, Main) {
     failures += inv11LongRecordsAreReadWhole();
     failures += inv13TailLoaderReturnsLastEntriesAndTotal();
     failures += inv14TailFindsRecordLargerThanOldWindow();
+    failures += inv15TailLoaderHonoursByteCap();
     if (failures) FAIL();
 }
 

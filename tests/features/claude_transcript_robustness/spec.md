@@ -104,7 +104,7 @@ with the periodic callers, `pollClaudeProcess` and
 `ClaudeTabTracker::detectClaudeChild`, asking for the scan while a Claude
 child is tracked or once every `kOrphanScanEveryPolls` polls.
 
-**INV-13** — `loadTranscriptTail(path, maxEntries, &total)` returns only the
+**INV-13** — `loadTranscriptTail(path, maxEntries, maxBytes, &total)` returns only the
 last `maxEntries` records and counts every non-empty record in `total`
 (ANTS-5089). For a ten-record transcript and a cap of four it returns
 records 7–10 with a total of 10; with a cap above the count it returns all
@@ -117,6 +117,13 @@ last record is a 5 MiB `assistant` `tool_use` of `Write` returns
 `stateDetermined`, `ToolUse` and tool `Write`. Before the fix the window
 stopped at 4 MiB, held only a fragment of that record, and returned no
 event, so the status froze.
+
+**INV-15** — `loadTranscriptTail` also keeps no more than `maxBytes` of
+records, dropping the oldest first, and always keeps the newest record
+(ANTS-5092). For nine equal-width records and a budget of three and a half
+records it returns records 7–9 with a total of 9; with a budget of one
+byte it returns record 9 alone. The transcript dialog passes a byte cap so
+a few huge records cannot make its parse and HTML unbounded.
 
 ## Out of scope
 
