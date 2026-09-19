@@ -4805,6 +4805,9 @@ QJsonDocument RemoteControl::cmdRoadmapLog(const QJsonObject &req) {
     if (op == QStringLiteral("amend_field")) {
         return cmdRoadmapLogAmendField(req);
     }
+    // ANTS-4949 / ANTS-4968 — a section's intro, and the roadmap's preamble.
+    if (op == QStringLiteral("set_intro") || op == QStringLiteral("set_preamble"))
+        return cmdRoadmapLogSetIntro(req, op == QStringLiteral("set_preamble"));
     // ANTS-1690 — batch flip: N bullets, one read + one commit.
     // ANTS-4470 — op:"annotate_batch" shares the handler, mirroring exactly how
     // op:"annotate" shares cmdRoadmapLogFlip above: it is this path with the

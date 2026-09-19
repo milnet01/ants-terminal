@@ -13218,9 +13218,17 @@ void ClaudeIntegration::onMcpConnection() {
                     opEnum.append("backfill_dates");  // ANTS-4501
                     opEnum.append("repair_trailers");  // ANTS-4585
                     opEnum.append("render");  // ANTS-4614
+                    opEnum.append("set_intro");     // ANTS-4949
+                    opEnum.append("set_preamble");  // ANTS-4968
                     opProp["enum"] = opEnum;
                     opProp["description"] = QStringLiteral(
                         "Verb mode. Default \"append\" (ANTS-1424). "
+                        "\"set_intro\" (ANTS-4949) replaces a section's intro "
+                        "prose: `section` + `new_text`, stored verbatim, no "
+                        "heading lines. \"set_preamble\" (ANTS-4968) replaces "
+                        "the roadmap's title and preamble: `new_text` only, "
+                        "one `# ` title line allowed. Both store-only, "
+                        "dry_run previewable, and echo replaced_intro_chars. "
                         "\"amend_field\" (ANTS-4667) writes ONE TRAILER "
                         "COLUMN after creation — `id` + `field` "
                         "(layman|kind|source|lanes|evidence) + `value`, "

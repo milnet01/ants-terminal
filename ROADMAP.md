@@ -57902,7 +57902,7 @@ rather than an id, and three are filed below. Three of the four positives re-ran
 their repro against the running build rather than trusting the maintainer's
 shipped note, which is the staleness discipline ANTS-4741 exists to prompt.
 
-- 📋 [ANTS-4766] **roadmap_log can create a section but has no op to correct its intro, so a wrong one is permanent.**
+- ✅ [ANTS-4766] **roadmap_log can create a section but has no op to correct its intro, so a wrong one is permanent.**
   CORRECTION FIRST, because this section's own intro is the worked example.
   It says "Seven findings ... three are filed below". Both numbers are wrong:
   there are EIGHT findings in the four pending tails, four of them positive
@@ -57928,6 +57928,7 @@ shipped note, which is the staleness discipline ANTS-4741 exists to prompt.
   is also write-once and is what the slug derives from. A rename would move
   the slug, so that half needs more thought than the intro half and should not
   be bundled with it without deciding what happens to inbound references.
+  Resolved (2026-09-19) by op:"set_intro"; see ANTS-4949.
   **Layman:** A heading's introduction can be written once but never corrected through the tool.
   Kind: enhancement.
   Source: in-session-2026-08-31, hit while filing this very section.
@@ -58236,8 +58237,9 @@ two projects).
   Kind: fix.
   Source: cc-feedback-2026-09-03 Games_Hub.
 
-- 📋 [ANTS-4832] **No roadmap_log op reaches a store-backed ROADMAP.md's preamble, so a stale fact there cannot be fixed.**
+- ✅ [ANTS-4832] **No roadmap_log op reaches a store-backed ROADMAP.md's preamble, so a stale fact there cannot be fixed.**
   Reported by a project whose preamble names a version three releases old. Every op addresses a bullet or a section. A hand edit is correctly discarded by op:"render" (ANTS-4462), which is what makes the text unreachable rather than merely awkward, and a session that edits it without rendering loses the change at the next unrelated write. Wants an op:"amend_preamble" in amend_body's shape, or a render message naming the op that would own it.
+  Resolved (2026-09-19) by op:"set_preamble"; see ANTS-4949.
   **Layman:** The paragraph at the top of the roadmap cannot be corrected by any tool.
   Kind: enhancement.
   Source: cc-feedback-2026-09-03 Games_Hub.
@@ -59722,6 +59724,10 @@ plus two gaps hit while sweeping stale spec citations under ANTS-4757.
   upgrade locks every older build out of every project in the store.
   So prefer an op that moves a row between existing sections over one
   that needs a new column.
+  Progress (2026-09-19): the move half shipped as ANTS-4948
+  (op:"amend_field" field:"section", plus locators[] of {id}). It uses
+  the existing unfileItem/fileItem, and needed no schema change. The
+  delete half is still open and is the same request as ANTS-4958.
   **Layman:** There is no way to move a roadmap entry from one section to another, so a project that wants to reorganise its roadmap has to do it by hand — and hand edits are thrown away.
   Kind: implement.
   Source: cross-session-message-2026-09-07 from claude-config (~/.claude), CFG-0321.
@@ -60529,6 +60535,12 @@ than re-filed; everything else lands here.
   Release record (2026-09-10): the 0.7.109 CHANGELOG cites this item
   for the backup half only (discarded_backup_paths). The cause is
   still unfound, so the item stays in progress (ANTS-4995).
+  Progress (2026-09-19): a fourth lead is ELIMINATED, by reading
+  RoadmapWrite::commitAndRender. Could the file have been published
+  while the store transaction was rolled back? No: store.commit() is
+  step 6, a failed commit returns before any file is written, and the
+  publishing render (steps 7-8) reads the committed store. So the file
+  cannot carry text a failed write's store lost. Still no live lead.
   **Layman:** A note written into the roadmap was silently thrown away by the next note, and the tool blamed a hand edit that never happened.
   Kind: fix.
   Source: UT_Ants_Ants_MCP_Feedback.md 2026-09-08.
@@ -60578,7 +60590,7 @@ than re-filed; everything else lands here.
   Source: UT_Ants_Ants_MCP_Feedback.md 2026-09-08.
   Lanes: roadmap-store, mcp.
 
-- 📋 [ANTS-4949] **roadmap_log has no op to amend an existing section's intro prose, and a hand edit there is discarded.**
+- ✅ [ANTS-4949] **roadmap_log has no op to amend an existing section's intro prose, and a hand edit there is discarded.**
   The intro prose under a `##` heading is held in the store and
   re-emitted on every render, and no op writes it. create_section's
   `intro_body` is the near miss: the field exists and the renderer
@@ -60615,6 +60627,12 @@ than re-filed; everything else lands here.
   name the root section, or the preamble gets its own op:"set_preamble" /
   op:"set_title" and this one stays `##`-and-below. Decide it before
   building either.
+  Resolved (2026-09-19): op:"set_intro" takes `section` + `new_text`
+  and replaces the intro verbatim; heading lines refuse bad_intro.
+  op:"set_preamble" takes `new_text` only and writes the live root
+  intro (empty slug), allowing one `# ` title line. A missing
+  `section` on set_intro refuses rather than reaching the preamble.
+  Locked by tests/features/roadmap_log_set_intro.
   **Layman:** The paragraph under a roadmap heading can be written when the heading is created and never changed after.
   Kind: feature.
   Source: UT_Ants_Ants_MCP_Feedback.md 2026-09-08.
@@ -61380,7 +61398,7 @@ than re-filed; everything else lands here.
   Source: Contact_List_Ants_MCP_Feedback.md 2026-09-08.
   Lanes: roadmap-store, mcp.
 
-- 📋 [ANTS-4968] **No verb writes a store-backed roadmap's title or preamble, and they are the root section's intro, which has no slug to address it by.**
+- ✅ [ANTS-4968] **No verb writes a store-backed roadmap's title or preamble, and they are the root section's intro, which has no slug to address it by.**
   REPORTED as two findings — the preamble being unwritable, and the
   render "resolving this project to the drive root" so the H1 names
   the wrong project. THE SECOND MECHANISM IS NOT WHAT HAPPENED, and
@@ -61431,6 +61449,9 @@ than re-filed; everything else lands here.
   section.intro, guarded on the old text, after a .backup of the store.
   check_sync then reported file_in_sync. Same gap as ANTS-4539,
   ANTS-4766, ANTS-4832 and ANTS-4949.
+  Resolved (2026-09-19) by op:"set_preamble" (see ANTS-4949): a
+  separate op rather than a magic slug for the root. The discarded
+  hand-edit half is covered by ANTS-4947's discarded_backup_paths.
   **Layman:** A roadmap whose title names the wrong project cannot be corrected by any command, and fixing it by hand is undone silently.
   Kind: fix.
   Source: UT_MonsterHunt_Ants_MCP_Feedback.md 2026-09-08.
@@ -67779,7 +67800,7 @@ assistant suggestions, accepted by the user for filing.
   Source: in-session-2026-08-19, hit during the 0.7.105 -> 0.7.106 cycle.
   Lanes: docs.
 
-- 📋 [ANTS-4539] **No MCP op can set a section's intro, so every roadmap preamble edit is discarded.**
+- ✅ [ANTS-4539] **No MCP op can set a section's intro, so every roadmap preamble edit is discarded.**
   ROADMAP.md's preamble -- the banner, the format note, the legend
   intro -- lives in the store as the root section's `intro`, replayed
   verbatim by `RoadmapRender::render()`. `roadmap_log` has no op that
@@ -67894,6 +67915,8 @@ assistant suggestions, accepted by the user for filing.
   next read. The reporter notes dry_run IS supported here and would have
   caught it, and argues the gap is the missing recovery rather than the
   newline rule -- a preview only helps the caller who thinks to preview.
+  Resolved (2026-09-19) by op:"set_intro" and op:"set_preamble";
+  see ANTS-4949.
   **Layman:** There is no supported way to fix a typo in the text at the top of the roadmap — every attempt is silently undone.
   Kind: implement.
   Lanes: roadmap-store, mcp.

@@ -14,6 +14,14 @@ for security-relevant changes.
 
 ### Added
 
+- **roadmap_log can rewrite a section's intro and the roadmap's title and preamble** (ANTS-4949)
+  op:"set_intro" replaces one section's intro text; op:"set_preamble"
+  replaces the title and preamble at the top of the file. Both keep the
+  text exactly as written. Before this, a wrong intro or title on a
+  store-backed roadmap could not be fixed, because a hand edit was
+  undone by the next write. Also closes ANTS-4539, ANTS-4766, ANTS-4832
+  and ANTS-4968, which reported the same gap.
+
 - **roadmap_log can move an existing item to another section** (ANTS-4948)
   op:"amend_field" takes field:"section" with the destination slug as
   `value`. `locators[]` of {id} moves several items in one write. The

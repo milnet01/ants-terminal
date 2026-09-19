@@ -9,6 +9,7 @@
 #include "remotecontrol.h"
 #include "remotecontrol_internal.h"
 #include "roadmapfoldin.h"
+#include "readregion.h"   // ANTS-4949 — the shared section-slug ranker
 #include <QFile>
 #include <QFileInfo>
 #include <QSaveFile>
@@ -3364,6 +3365,131 @@ QJsonDocument RemoteControl::cmdRoadmapLogRetitleSection(const QJsonObject &req)
     env[QStringLiteral("title")]         = title;
     rcRoadmapWriteFields(env, outcome, dryRun);   // ANTS-4463
     return QJsonDocument(env);
+}
+
+// ANTS-4949 / ANTS-4968 — set_intro and set_preamble.
+//
+// A section's intro is written once, by the migration or by create_section,
+// and on a store-backed project a hand edit to it is discarded by the next
+// render. The roadmap's title and preamble are the LIVE file's root intro
+// (level 0, empty slug), which no slug-keyed op can address — so it gets its
+// own op rather than a magic slug, and a caller who forgets `section` on
+// set_intro is refused instead of overwriting the preamble.
+//
+// Stored verbatim: indentation and blank lines are the author's (ANTS-4965's
+// complaint is a render that re-flows them). A heading line would become a
+// section on the next import, so set_intro refuses every one and set_preamble
+// allows the single `# ` title line only. The format marker needs no care:
+// the render prepends it whenever the root intro does not open with one.
+QJsonDocument RemoteControl::cmdRoadmapLogSetIntro(const QJsonObject &req,
+                                                   bool preamble) {
+    const QString opName = preamble ? QStringLiteral("set_preamble")
+                                    : QStringLiteral("set_intro");
+    // The live root's slug is the EMPTY string, and a null QString binds as
+    // SQL NULL, which matches nothing — hence QStringLiteral("").
+    const QString slug =
+        preamble ? QStringLiteral("") : req.value(QStringLiteral("section")).toString().trimmed();
+    if (!preamble && slug.isEmpty())
+        return rcSectionOpErr(QStringLiteral("missing_field"),
+            QStringLiteral("roadmap_log: set_intro requires `section`. The "
+                           "roadmap's title and preamble are op:\"set_preamble\"."));
+    if (!req.contains(QStringLiteral("new_text")))
+        return rcSectionOpErr(QStringLiteral("missing_field"),
+            QStringLiteral("roadmap_log: %1 requires `new_text` (an empty string "
+                           "removes the intro)").arg(opName));
+
+    QString text = req.value(QStringLiteral("new_text")).toString();
+    text.remove(QChar('\r'));
+    QStringList lines = text.split(QChar('\n'));
+    for (QString &ln : lines) {
+        while (!ln.isEmpty() && ln.back().isSpace())
+            ln.chop(1);
+    }
+    while (!lines.isEmpty() && lines.first().isEmpty()) lines.removeFirst();
+    while (!lines.isEmpty() && lines.last().isEmpty()) lines.removeLast();
+
+    static const QRegularExpression kHeading(QStringLiteral("^#{1,6}\\s"));
+    static const QRegularExpression kTitle(QStringLiteral("^#\\s"));
+    int titles = 0;
+    for (const QString &ln : std::as_const(lines)) {
+        if (!kHeading.match(ln).hasMatch())
+            continue;
+        if (preamble && kTitle.match(ln).hasMatch() && ++titles == 1)
+            continue;
+        return rcSectionOpErr(QStringLiteral("bad_intro"),
+            QStringLiteral("roadmap_log: line \"%1\" is a Markdown heading, which "
+                           "the next import reads as a new section. %2")
+                .arg(ln, preamble
+                             ? QStringLiteral("The preamble may hold one `# ` title "
+                                              "line and no other heading.")
+                             : QStringLiteral("An intro holds no heading; reword the "
+                                              "line.")));
+    }
+    const QString intro = lines.join(QChar('\n'));
+
+    QString root, roadmapPath;
+    QJsonDocument refusal;
+    const auto target = roadmapSectionOpTarget(req, &root, &roadmapPath, &refusal);
+    if (!target) return refusal;
+    RoadmapStore &store    = *target->store;
+    const qint64 projectId = target->projectId;
+    const bool dryRun = req.value(QStringLiteral("dry_run")).toBool();
+
+    QString err;
+    const auto sectionId = store.findSection(projectId, slug, &err);
+    if (!sectionId && !err.isEmpty())
+        return rcSectionOpErr(QStringLiteral("store_failed"), err);
+    // Every registered project has a live root row (checked 2026-09-19): the
+    // render always writes the format marker into it, so a re-import finds it.
+    if (!sectionId && preamble)
+        return rcSectionOpErr(QStringLiteral("section_not_found"),
+            QStringLiteral("roadmap_log: this project's store holds no root "
+                           "section, so it has no preamble to replace"));
+    if (!sectionId) {
+        QJsonObject env = rcSectionOpErr(QStringLiteral("section_not_found"),
+            QStringLiteral("roadmap_log: section \"%1\" is not in the store")
+                .arg(slug)).object();
+        if (const auto sections = store.listSectionsOrdered(projectId)) {
+            QStringList slugs;
+            for (const RoadmapStore::SectionRow &sr : *sections)
+                if (!sr.slug.isEmpty()) slugs << sr.slug;
+            env[QStringLiteral("candidates")] = QJsonArray::fromStringList(
+                ReadRegion::rankSectionCandidates(slug, slugs));
+            env[QStringLiteral("sections_total")] = int(slugs.size());
+        }
+        return QJsonDocument(env);
+    }
+    const auto row = store.readSection(*sectionId, &err);
+    if (!row)
+        return rcSectionOpErr(QStringLiteral("store_failed"), err);
+    const QString previous = row->intro;
+
+    const auto mutate = [&](QString *mErr) -> bool {
+        return store.setSectionIntro(*sectionId, intro, mErr);
+    };
+
+    RoadmapRender::Outcome outcome;
+    QString writeErr;
+    const auto r = RoadmapWrite::commitAndRender(
+        store, projectId, root, roadmapPath, dryRun, mutate, &outcome, &writeErr);
+    QJsonObject env;
+    if (rcRoadmapWriteRefused(env, r, writeErr, outcome))
+        return QJsonDocument(env);
+
+    env[QStringLiteral("ok")] = true;
+    env[QStringLiteral("op")] = opName;
+    if (!preamble)
+        env[QStringLiteral("section")] = slug;
+    // What was destroyed, as set_body's replaced_body_chars says it.
+    env[QStringLiteral("replaced_intro_chars")] = int(previous.size());
+    env[QStringLiteral("intro_chars")]          = int(intro.size());
+    rcRoadmapWriteFields(env, outcome, dryRun);   // ANTS-4463
+    return QJsonDocument(env);
+}
+
+QJsonDocument RemoteControl::cmdRoadmapLogSetIntroForTest(const QJsonObject &req,
+                                                          bool preamble) {
+    return cmdRoadmapLogSetIntro(req, preamble);
 }
 
 // ANTS-1248: workspace_search — structured ripgrep wrapper for MCP +

@@ -1187,6 +1187,8 @@ public:
     // See tests/features/roadmap_rotate_minor/spec.md.
     QJsonDocument cmdRoadmapLogRotateMinorForTest(const QJsonObject &req);
     QJsonDocument cmdRoadmapLogRetitleSectionForTest(const QJsonObject &req);
+    // ANTS-4949 — drive set_intro / set_preamble without a MainWindow.
+    QJsonDocument cmdRoadmapLogSetIntroForTest(const QJsonObject &req, bool preamble);
     // ANTS-4501 § 2.3 — drive the git backfill against a synthetic caller_cwd
     // without a MainWindow. See tests/features/roadmap_backfill_dates/spec.md.
     QJsonDocument cmdRoadmapLogBackfillDatesForTest(const QJsonObject &req);
@@ -1280,6 +1282,10 @@ private:
     // docs/specs/ANTS-4070-rotation-and-section-title.md.
     QJsonDocument cmdRoadmapLogRotateMinor(const QJsonObject &req);
     QJsonDocument cmdRoadmapLogRetitleSection(const QJsonObject &req);
+    // ANTS-4949 / ANTS-4968 — set_intro replaces a section's intro prose;
+    // set_preamble replaces the live file's root intro, which holds the
+    // roadmap's title. One handler, store-only.
+    QJsonDocument cmdRoadmapLogSetIntro(const QJsonObject &req, bool preamble);
     // ANTS-4501 § 2.3 — backfill_dates: walk this project's git history over
     // its roadmap files and fill `created` / `shipped` for the rows that
     // predate § 2.2's forward stamping. One-off and opt-in; never a side
