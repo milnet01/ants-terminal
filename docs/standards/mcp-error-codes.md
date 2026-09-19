@@ -32,7 +32,8 @@ against the table below.
   specification (2025-06-18, server/tools, Error Handling) reports tool
   execution errors this way.
 - A refusal is a reply body that parses as a JSON object with
-  `ok: false`. `ClaudeIntegration::handlerRefusalCode` decides this in
+  `ok: false`, whatever its size. `ClaudeIntegration::handlerRefusalCode`
+  decides this in
   `ClaudeIntegration::transformReply`, and
   `ClaudeIntegration::finishToolDispatch` sets the flag.
 - The same test covers a handler's refusal and the dispatcher's own. A
