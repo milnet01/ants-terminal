@@ -14,6 +14,11 @@ for security-relevant changes.
 
 ### Added
 
+- **Roadmap items filed together can refer to each other by number** (ANTS-4580)
+  In roadmap_log op:"append_batch", writing `{{id:1}}` in an item's text
+  is replaced by the number the second item in the same call receives.
+  Callers no longer have to guess numbers that do not exist yet.
+
 - **View → Give Each Tab a Different Colour** (ANTS-5238)
   Colours every open tab in one click, so tabs side by side are always
   in different colour families (red, green, blue, yellow, purple, grey

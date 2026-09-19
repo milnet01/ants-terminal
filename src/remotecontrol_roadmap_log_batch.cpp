@@ -2528,6 +2528,64 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppendBatch(const QJsonObject &req) {
         ++nextId;
     }
 
+    // ANTS-4580 — `{{id:N}}` in a bullet's headline, body or layman is the id
+    // bullet N of this call was given (N counts the `bullets` array from 0).
+    // Bullets filed together often cite each other, and their ids do not exist
+    // until now, so callers predicted them and got them wrong. Resolved before
+    // anything is written; a token naming a bullet that was skipped or does not
+    // exist refuses the whole call, because the file would otherwise publish
+    // the literal token.
+    {
+        static const QRegularExpression kIdToken(QStringLiteral("\\{\\{id:(\\d+)\\}\\}"));
+        QHash<int, QString> idOfBullet;
+        for (const Accepted &a : std::as_const(accepted))
+            idOfBullet.insert(a.bulletIndex, a.idStr);
+        QString unresolved;
+        const auto resolve = [&](QString text, int citing) {
+            if (!text.contains(QStringLiteral("{{id:")))
+                return text;
+            QString out;
+            qsizetype from = 0;
+            for (auto it = kIdToken.globalMatch(text); it.hasNext();) {
+                const auto m = it.next();
+                out += text.mid(from, m.capturedStart() - from);
+                const int n = m.captured(1).toInt();
+                if (idOfBullet.contains(n)) {
+                    out += idOfBullet.value(n);
+                } else {
+                    out += m.captured(0);
+                    if (unresolved.isEmpty())
+                        unresolved = QStringLiteral(
+                            "bullet %1 cites {{id:%2}}, and bullet %2 %3")
+                            .arg(citing).arg(n)
+                            .arg(n < bullets.size()
+                                     ? QStringLiteral("was skipped (see skipped[])")
+                                     : QStringLiteral("does not exist"));
+                }
+                from = m.capturedEnd();
+            }
+            return out + text.mid(from);
+        };
+        for (Accepted &a : accepted) {
+            for (const char *key : {"headline", "body", "layman"}) {
+                const QString k = QString::fromLatin1(key);
+                if (a.bulletReq.contains(k))
+                    a.bulletReq[k] = resolve(a.bulletReq.value(k).toString(), a.bulletIndex);
+            }
+            a.w.body   = resolve(a.w.body, a.bulletIndex);
+            a.w.layman = resolve(a.w.layman, a.bulletIndex);
+        }
+        if (!unresolved.isEmpty()) {
+            QJsonObject out;
+            out["ok"]      = false;
+            out["code"]    = QStringLiteral("bad_args");
+            out["error"]   = QStringLiteral("roadmap_log: %1. Nothing was written.")
+                                 .arg(unresolved);
+            out["skipped"] = skipped;
+            return QJsonDocument(out);
+        }
+    }
+
     // INV-4 — all-skipped → ok:true, files untouched.
     if (accepted.isEmpty()) {
         QJsonObject out;

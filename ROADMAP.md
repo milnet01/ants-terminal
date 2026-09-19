@@ -50993,7 +50993,7 @@ filed below.
   Source: Snatch_Ants_MCP_Feedback.md 2026-08-20.
   Lanes: remotecontrol, roadmapwrite.
 
-- 📋 [ANTS-4580] **append_batch has no way for a bullet to cite its own batch siblings, so callers predict ids and get them wrong.**
+- ✅ [ANTS-4580] **append_batch has no way for a bullet to cite its own batch siblings, so callers predict ids and get them wrong.**
   Bullets written in one append_batch frequently need to reference each
   other -- "pairs with X", "supersedes Y", "X is the systemic half of
   this". The ids do not exist until the write returns, so the body text
@@ -51023,6 +51023,13 @@ filed below.
   pattern in the append_batch description as the supported approach, so a
   session reaches for it instead of predicting. Nothing currently warns
   that the ids are unpredictable.
+  Resolved (2026-09-19): the reporter's placeholder shape. `{{id:N}}`
+  in a bullet's headline, body or layman is replaced, after
+  allocation and before either write path runs, by the id bullet N of
+  the call receives (N indexes `bullets`, 0-based). A token naming a
+  skipped or out-of-range bullet refuses the whole call with bad_args,
+  so the literal token can never publish. Locked by
+  tests/features/roadmap_append_batch_id_tokens.
   **Layman:** Items filed together often need to point at each other, but their numbers don't exist until after they're written.
   Kind: enhancement.
   Source: Snatch_Ants_MCP_Feedback.md 2026-08-20.
@@ -57998,7 +58005,7 @@ shipped note, which is the staleness discipline ANTS-4741 exists to prompt.
   Source: Charls_Site_Ants_MCP_Feedback.md 2026-08-31.
   Lanes: mcp.
 
-- 📋 [ANTS-4769] **roadmap_query include_body is all-or-nothing, so an item used as a running log costs its whole history to read.**
+- ✅ [ANTS-4769] **roadmap_query include_body is all-or-nothing, so an item used as a running log costs its whole history to read.**
   CORROBORATED IN THIS SESSION, which is why it is not filed as merely
   plausible. Reading four items to triage them here returned every accumulated
   Progress and Resolved note on each, when what was wanted was the last one --
@@ -58023,6 +58030,13 @@ shipped note, which is the staleness discipline ANTS-4741 exists to prompt.
   NOTE THE CONVENTION IS NOT ENFORCED anywhere, so a tail keyed on it must
   degrade to a byte cap rather than returning nothing on an item whose notes
   do not match.
+  Resolved (2026-09-19) by ANTS-4904, shipped 2026-09-06: an id fetch
+  with body_from_end:true keeps the END of the body, max_body_bytes
+  sizes that tail, and the headline stays in its own field. Checked
+  today on ANTS-4904 itself: 2741-byte body, the tail came back, and
+  body_bytes gave the full size. NOT built: a count-of-notes form
+  ("last N Progress/Resolved notes"). The byte tail covers the reported
+  need; file it separately if a caller shows it falls short.
   **Layman:** Reading where a long-running task got to returns its entire history rather than the latest note.
   Kind: enhancement.
   Source: OneUp_Ants_MCP_Feedback.md 2026-08-31.
@@ -80056,6 +80070,26 @@ contributors don't duplicate research.
   Kind: feature.
   Source: user-request-2026-09-19.
   Lanes: chrome, tabs.
+
+- 📋 [ANTS-5239] **A gentle donation reminder about once every 150 launches.**
+  Count launches in config; on every 150th, show a short, dismissible
+  note pointing at the existing Donate menu targets (GitHub Sponsors,
+  Patreon). Must never block startup, and must offer "don't show again".
+  Wording and presentation go to the user for approval before building
+  (user request).
+  Decided (2026-09-19, user): a small pop-up dialog after the app
+  opens, not an in-window bar. Approved wording, verbatim:
+  Title "Enjoying Ants Terminal?". Body: "Ants Terminal is free, and
+  it's made by one person in their spare time. If it has become part of
+  your day, a small donation helps keep it going and pays for what
+  comes next." / "No pressure. This note only appears once in a long
+  while." Buttons: "Sponsor on GitHub", "Support on Patreon", "Not
+  now", plus a "Don't show this again" checkbox. The dialog must follow
+  docs/standards/dialogs.md (D1-D4).
+  **Layman:** Every so often, Ants Terminal politely mentions that you can support it, and it is easy to wave away or turn off.
+  Kind: feature.
+  Source: user-request-2026-09-19.
+  Lanes: chrome, config.
 
 ### 🔒 Security
 

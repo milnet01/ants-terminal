@@ -13766,7 +13766,11 @@ void ClaudeIntegration::onMcpConnection() {
                         "atomic commit across all of them. Per-bullet "
                         "validation failures land in `skipped[]` while "
                         "accepted bullets still apply (semantic parity "
-                        "with flip_batch).");
+                        "with flip_batch). ANTS-4580 — `{{id:N}}` in a "
+                        "headline, body or layman becomes the id bullet N "
+                        "(0-based) receives, so siblings can cite each "
+                        "other; one naming a skipped or missing bullet "
+                        "refuses the whole call.");
 
                     // ANTS-1878 — create_section params.
                     QJsonObject afterSectionProp;
