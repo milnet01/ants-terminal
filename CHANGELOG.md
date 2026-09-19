@@ -77,6 +77,10 @@ for security-relevant changes.
 
 ### Fixed
 
+- **Correcting words across a line break in a roadmap note keeps the paragraph neatly wrapped** (ANTS-4970)
+  The corrected line is re-wrapped to the width of the lines around it,
+  instead of being left as one line several times wider.
+
 - **Roadmap writes from a git worktree are refused with a message that says so** (ANTS-4953)
   A worktree inside the project folder, where Claude Code puts its own,
   was not stopped at all, so a write could overwrite that worktree's

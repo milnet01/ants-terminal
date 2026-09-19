@@ -61570,7 +61570,7 @@ than re-filed; everything else lands here.
   Source: UT_MonsterHunt_Ants_MCP_Feedback.md 2026-09-08.
   Lanes: roadmap-store, mcp.
 
-- 📋 [ANTS-4970] **A wrapped amend_body match re-flows the lines it spanned into one long line, and nothing re-wraps them.**
+- ✅ [ANTS-4970] **A wrapped amend_body match re-flows the lines it spanned into one long line, and nothing re-wraps them.**
   Filed as an improvement request rather than a defect, and
   correctly: ANTS-4550 documents this in as many words — "a wrapped
   match re-flows the lines it spanned into one".
@@ -61602,6 +61602,14 @@ than re-filed; everything else lands here.
   RELATED: ANTS-4965 is the render destroying structure this way
   without being asked. Same underlying question — how much of a
   body's whitespace is content.
+  Resolved (2026-09-19): the reporter's primary fix. After a wrapped
+  match on a store-backed project, the joined line is re-wrapped at word
+  boundaries to the body's longest other line (only when that width is
+  40-120 and at least two other lines exist), keeping its indent. The
+  reply adds rewrapped:true. NOT covered: the markdown-backed path,
+  where the bullet's own line widths are not isolated; nearly every
+  project is store-backed. Locked by
+  tests/features/roadmap_amend_body_rewrap.
   **Layman:** Correcting two words in a roadmap note can leave one line stretched to twice the width of every line around it.
   Kind: enhancement.
   Source: UT_MonsterHunt_Ants_MCP_Feedback.md 2026-09-08.

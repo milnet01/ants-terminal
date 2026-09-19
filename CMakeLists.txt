@@ -2457,6 +2457,8 @@ if(ANTS_TESTS)
                 tests/features/roadmap_log_section_ops/test_roadmap_log_section_ops.cpp
                 # ANTS-4580 — {{id:N}} tokens in append_batch.
                 tests/features/roadmap_append_batch_id_tokens/test_roadmap_append_batch_id_tokens.cpp
+                # ANTS-4970 — a wrapped amend_body match re-wraps.
+                tests/features/roadmap_amend_body_rewrap/test_roadmap_amend_body_rewrap.cpp
                 # ANTS-5087 — composed_trailers names exactly the trailer lines
                 # the render wrote, asserted against the published file.
                 tests/features/roadmap_composed_trailers/test_roadmap_composed_trailers.cpp

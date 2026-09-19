@@ -2323,6 +2323,45 @@ QJsonDocument RemoteControl::cmdRoadmapLogFlip(const QJsonObject &req) {
 // has no view of it and there is no prompt to re-read precisely BECAUSE the
 // calls succeeded. Returning the paragraph is the smallest thing that makes
 // the joint result visible without re-reading the file.
+// ANTS-4970 — a wrapped match (ANTS-4550) joins every line it spanned into
+// line `at`, and the render does not re-wrap, so one line ended up several
+// times the width of its neighbours. Re-wrap that line to the width the rest
+// of the body already uses: its longest other line. A body with fewer than two
+// other lines, or one already wider than any sane wrap, has no width to infer
+// and is left alone. The line's own indentation starts every piece.
+static QString rlRewrapLine(const QString &body, int at) {
+    QStringList lines = body.split(QChar('\n'));
+    if (at < 0 || at >= lines.size())
+        return body;
+    int width = 0, others = 0;
+    for (int i = 0; i < lines.size(); ++i) {
+        if (i == at || lines.at(i).trimmed().isEmpty())
+            continue;
+        width = std::max(width, int(lines.at(i).size()));
+        ++others;
+    }
+    const QString line = lines.at(at);
+    if (others < 2 || width < 40 || width > 120 || line.size() <= width)
+        return body;
+    int indentLen = 0;
+    while (indentLen < line.size() && line.at(indentLen).isSpace()) ++indentLen;
+    const QString indent = line.left(indentLen);
+    QStringList wrapped;
+    QString cur;
+    for (const QString &w : line.mid(indentLen).split(QChar(' '), Qt::SkipEmptyParts)) {
+        if (!cur.isEmpty() && indent.size() + cur.size() + 1 + w.size() > width) {
+            wrapped << indent + cur;
+            cur.clear();
+        }
+        cur = cur.isEmpty() ? w : cur + QChar(' ') + w;
+    }
+    if (!cur.isEmpty()) wrapped << indent + cur;
+    lines.removeAt(at);
+    for (int k = 0; k < wrapped.size(); ++k)
+        lines.insert(at + k, wrapped.at(k));
+    return lines.join(QChar('\n'));
+}
+
 // `editedIdx` is 0-based into `lines`; a bullet marker or a blank bounds the
 // paragraph, so the run never spills into a neighbouring bullet.
 static QString rcAmendedParagraph(const QStringList &lines, int editedIdx) {
@@ -3009,7 +3048,8 @@ QJsonDocument RemoteControl::cmdRoadmapLogAmendBody(const QJsonObject &req,
                                    "body — narrow it to a unique substring")
                         .arg(hits));
             }
-            const QString newBody = patch.text;
+            const QString newBody =
+                patch.wrapped ? rlRewrapLine(patch.text, patch.line) : patch.text;
             // ANTS-4097 — echo the paragraph the edit landed in.
             const QString amendedPara =
                 rcAmendedParagraph(newBody.split(QChar('\n')), patch.line);
@@ -3063,6 +3103,9 @@ QJsonDocument RemoteControl::cmdRoadmapLogAmendBody(const QJsonObject &req,
             // the paragraph re-flowed; say so rather than let the next diff.
             if (patch.wrapped)
                 env[QStringLiteral("wrapped_match")] = true;
+            // ANTS-4970 — and the joined line was re-wrapped to the body's width.
+            if (patch.wrapped && newBody != patch.text)
+                env[QStringLiteral("rewrapped")] = true;
             // ANTS-4576 — the edit deleted a declaration of a NOT NULL column,
             // whose value therefore SURVIVES and is re-emitted canonically by
             // the render. Reported because it is the one outcome the caller
