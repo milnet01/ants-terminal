@@ -1,4 +1,5 @@
 <!-- ants-roadmap-format: 1 -->
+<!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -21,6 +22,7 @@ they move based on contributor bandwidth and real-world usage feedback.
 - 🚧 In progress (active commit work — usually direct-to-main on this project; rarely a branch / PR)
 - ✅ Done (shipped)
 - 💭 Considered (research phase; may change scope or slip)
+- 🚫 Dropped (closed, not done)
 
 **Themes**
 - 🎨 **Features** — user-visible capabilities
@@ -9004,7 +9006,7 @@ extends an existing item, that item carries it instead.
   Source: code-quality-review-2026-09-11 perf pass (lane claude-integration-b).
   Lanes: mcp.
 
-- 📋 [ANTS-5091] **Performance pass findings for the MCP tools/list schema block (medium and low).**
+- ✅ [ANTS-5091] **Performance pass findings for the MCP tools/list schema block (medium and low).**
   Medium:
   - cold_eyes_brief's description is several times the 800-byte
     budget in mcp-tools.md, and last_audit_summary's is well over it
@@ -9026,6 +9028,18 @@ extends an existing item, that item carries it instead.
   half of the registered tools exceed 800 B, and ANTS-2079 INV-5 measures
   only seven. That item carries the medium finding; the low findings stay
   here.
+  Resolved (2026-09-19): all three lows. The medium is ANTS-5152.
+  - tools/list measured once against the live instance through
+    tools/mcp-bridge.py: 95 tools, a reply of about 386 KiB, 9 to 14 ms
+    per round trip including the bridge. tools/list runs at handshake
+    and per deferred-schema load only, so no change is needed.
+  - Snapshot budget: the stale 5 KiB figure is removed from
+    claudeintegration.h, ANTS-1399's problem statement and RAM budget,
+    and tool_info's description and selection_hint.
+  - ANTS-2079's cost section no longer claims the snapshot shares the
+    detail literals copy-on-write. QJsonObject copies each string, so
+    the snapshot holds its own copy. The detach comment in the
+    tools/list handler was already correct.
   **Layman:** Two of Ants' tool descriptions break their size limit, which costs every Claude session tokens.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lane claude-integration-schema).
@@ -81419,6 +81433,25 @@ contributors don't duplicate research.
   Kind: chore.
   Source: in-session-2026-09-17.
   Lanes: audit, terminalwidget, chrome.
+
+- 📋 [ANTS-5243] **Triage clang-tidy warnings in claudeintegration.h and claudeintegration.cpp, led by two implicit-widening multiplications.**
+  clangd's clang-tidy reported these while ANTS-5091's doc fix was
+  being made. None were introduced by that edit.
+  - bugprone-implicit-widening-of-multiplication-result: two sites in
+    claudeintegration.cpp, an int product widened to qint64 and to
+    qsizetype. Check each for overflow first.
+  - performance-implicit-conversion-in-loop: two range-for loops over a
+    QJsonArray bind const QJsonValue& to a QJsonValueRef.
+  - performance-enum-size on ClaudeState, DispatchLane,
+    CallerCwdContract and RateLimitClass. Check for serialisation and
+    signal use before narrowing any of them.
+  - misc-use-anonymous-namespace on file-static helpers, and cert-dcl16-c
+    on a lowercase ll suffix.
+  Waits until the performance-pass review findings are done.
+  **Layman:** Tidy up warnings a code checker raises in the Claude integration code; two may hide number overflows.
+  Kind: audit-fix.
+  Source: in-session-2026-09-19.
+  Lanes: mcp.
 
 ### 📝 Cold-eyes 2026-05-11 (ANTS-1234 spec)
 

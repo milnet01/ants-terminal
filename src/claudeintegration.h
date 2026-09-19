@@ -796,7 +796,7 @@ private:
     // ANTS-1399 — snapshot of the last `tools/list` array build,
     // populated at the end of the `tools/list` handler. `tool_info`
     // reads from this snapshot to return a single descriptor slice
-    // without rebuilding the ~5 KiB array. Lifetime: process; the
+    // without rebuilding the array. Lifetime: process; the
     // descriptors are built from compile-time literals so the
     // snapshot never goes stale in practice.
     mutable QJsonArray m_lastToolsList;

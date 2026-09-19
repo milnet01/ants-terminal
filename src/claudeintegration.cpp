@@ -15213,7 +15213,7 @@ void ClaudeIntegration::onMcpConnection() {
                     t["description"] = QStringLiteral(
                         "Fetch a single MCP tool's descriptor — name, "
                         "description, inputSchema. Cheaper than a full "
-                        "tools/list refresh (~50–200 B vs ~5 KiB). "
+                        "tools/list refresh. "
                         "Unknown name returns code=unknown_tool plus "
                         "an `available` list of registered tool names. "
                         "Empty/missing name returns code=missing_name. "
@@ -15227,7 +15227,7 @@ void ClaudeIntegration::onMcpConnection() {
                     t["selection_hint"] = QStringLiteral(
                         "Use to fetch one tool's descriptor without "
                         "re-paying for the full tools/list snapshot "
-                        "(~80 B vs ~5 KiB), or catalog:true for the "
+                        "snapshot, or catalog:true for the "
                         "whole toolkit grouped by category (ANTS-1985). "
                         "Surfaces selection_hint field (ANTS-1453).");
                     QJsonObject schema;

@@ -90,6 +90,10 @@ for security-relevant changes.
 
 ### Fixed
 
+- **tool_info's description no longer quotes a stale 5 KiB size for the full tools/list reply** (ANTS-5091)
+  The two specs that stated the snapshot's size and its copy-on-write
+  sharing are corrected too.
+
 - **Correcting words across a line break in a roadmap note keeps the paragraph neatly wrapped** (ANTS-4970)
   The corrected line is re-wrapped to the width of the lines around it,
   instead of being left as one line several times wider.
