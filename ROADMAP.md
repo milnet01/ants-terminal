@@ -9053,7 +9053,7 @@ extends an existing item, that item carries it instead.
   Source: code-quality-review-2026-09-11 perf pass (lane claude-integration-schema).
   Lanes: mcp.
 
-- 📋 [ANTS-5092] **Performance pass findings for Claude session widgets, trackers and dialogs (medium and low).**
+- ✅ [ANTS-5092] **Performance pass findings for Claude session widgets, trackers and dialogs (medium and low).**
   Filed separately: ANTS-5048, 5049, 5050.
   Medium:
   - Background-task trackers leak for split panes: closing a pane never
@@ -9125,6 +9125,9 @@ extends an existing item, that item carries it instead.
   SettingsDialog::installClaudeHooks), and flock releases on process death,
   so the wait is milliseconds unless another Ants hangs mid-write.
   Recommendation: close with no change.
+  Resolved (2026-09-19): the allowlist save's 5 s wait on settings.json.lock
+  is closed with no change (user decision). Only Ants takes that lock,
+  and flock releases it when the holder dies.
   **Layman:** Smaller fixes to Ants' Claude status displays: leaking trackers, slow windows, and a tab showing another session.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lane claude-session-widgets).
@@ -9233,6 +9236,13 @@ extends an existing item, that item carries it instead.
   so the counter is a cache and a gap is harmless), silent rollback
   failure, the source filter's element cap. The three renders per store
   write are ANTS-4681's.
+  Progress (2026-09-19): counter_write_failed after commit closed
+  (59970f50). append, append_batch, flip and flip_batch write the
+  counter BEFORE the roadmap file, via rlWriteCounter; both rollbacks
+  are gone, so their silent failure is gone with them
+  (mcp_adapter_github_tasklist INV-16). STILL OPEN: any other silent
+  rollback outside these four paths (check first), and the source
+  filter's element cap.
   **Layman:** Smaller roadmap-tool fixes: a memory budget blown by caching, and one edit command that can corrupt the roadmap file.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lane mcp-roadmap-query-log).
