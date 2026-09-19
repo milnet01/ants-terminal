@@ -127,6 +127,10 @@ struct Outcome {
     // untouched", which is the claim a caller checks before letting a render
     // overwrite their file.
     int         externalRepunctuatedLines = 0;
+    // ANTS-4965 — a file line differing from the render ONLY in whitespace:
+    // indentation or column alignment. Words survive, structure does not,
+    // and a benign restyle never lands here, so it is counted apart.
+    int         externalRestructuredLines = 0;
     int         externalTextLines     = 0;
     QStringList externalLostText;              // capped; see kLostTextCap
     bool        externalLostTextTruncated = false;

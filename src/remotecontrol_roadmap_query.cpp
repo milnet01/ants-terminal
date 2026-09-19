@@ -230,6 +230,7 @@ void rcdetail::rcRoadmapWriteFields(QJsonObject &out,
         // line in both directions; only the claim made ABOUT it is narrowed.
         const bool any = (outcome.externalRestyledLines
                           + outcome.externalRepunctuatedLines
+                          + outcome.externalRestructuredLines
                           + outcome.externalTextLines) > 0;
         out[dryRun ? QStringLiteral("would_discard_external_edits")
                    : QStringLiteral("discarded_external_edits")] = any;
@@ -258,6 +259,14 @@ void rcdetail::rcRoadmapWriteFields(QJsonObject &out,
                 out[dryRun ? QStringLiteral("would_discard_repunctuated_lines")
                            : QStringLiteral("discarded_repunctuated_lines")] =
                     outcome.externalRepunctuatedLines;
+            }
+            // ANTS-4965 — whitespace-only changes: a nested list or an aligned
+            // table flattened. It used to score as restyling, beside benign
+            // dialect rewrites, so the preview read as safe.
+            if (outcome.externalRestructuredLines > 0) {
+                out[dryRun ? QStringLiteral("would_discard_structure_lines")
+                           : QStringLiteral("discarded_structure_lines")] =
+                    outcome.externalRestructuredLines;
             }
             out[dryRun ? QStringLiteral("would_discard_text_lines")
                        : QStringLiteral("discarded_text_lines")] =
@@ -1842,6 +1851,8 @@ bool rcStampDriftFields(QJsonObject &out, RoadmapStore &store, qint64 pid,
         out[QStringLiteral("drift_restyled")] = d->restyled;
         if (d->repunctuated > 0)
             out[QStringLiteral("drift_repunctuated")] = d->repunctuated;
+        if (d->restructured > 0)                           // ANTS-4965
+            out[QStringLiteral("drift_restructured")] = d->restructured;
         out[QStringLiteral("drift_lost")]     = d->lost;
         if (!d->lostText.isEmpty())
             out[QStringLiteral("drift_lost_text")] =

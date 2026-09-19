@@ -57,6 +57,10 @@ struct Drift {
     // Kept apart from `restyled` so `lost == 0` keeps meaning "your text is
     // untouched" rather than "your text is untouched apart from its endings".
     int         repunctuated = 0;
+    // ANTS-4965 — file lines differing from the render ONLY in whitespace:
+    // indentation or column alignment. The words survive and the structure
+    // they carried (a nested list, an aligned table) does not.
+    int         restructured = 0;
     int         lost     = 0;   // file lines whose TEXT the render would drop
     QStringList lostText;       // a capped sample of those lines
 };

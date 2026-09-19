@@ -1693,6 +1693,44 @@ TEST(RoadmapWriteHalf, Ants4695CountsRepunctuationApartFromRestyling) {
            "that count the caller is where they started";
 }
 
+// ANTS-4965 — a whitespace-only change is structure: an indent or an aligned
+// column the render flattens. It used to count as restyling, the same number a
+// benign dialect rewrite produces, so a preview that was about to destroy a
+// nested list read as safe.
+TEST(RoadmapWriteHalf, Ants4965CountsWhitespaceChangesAsStructure) {
+    ants_test::XdgGuard guard;
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    qint64 projectId = 0;
+    const QString root = seedMigrated(guard, tmp, fixture(), &projectId);
+    ASSERT_FALSE(root.isEmpty());
+    const QString roadmap = root + QStringLiteral("/ROADMAP.md");
+
+    RemoteControl rc(nullptr);
+    QJsonObject req = appendReq(root, QStringLiteral("A settling bullet."));
+    req[QStringLiteral("layman")] = QStringLiteral("A new thing");
+    ASSERT_TRUE(rc.cmdRoadmapLogAppendForTest(req).object()
+        .value(QStringLiteral("ok")).toBool());
+
+    QByteArray hand = readAll(roadmap);
+    const QByteArray rendered = "  **Layman:** A new thing.\n";
+    ASSERT_TRUE(hand.contains(rendered)) << "precondition: the Layman line was not found";
+    // The same characters, nested one level deeper, as a hand-indented list is.
+    hand.replace(rendered, "      **Layman:**   A new thing.\n");
+    ASSERT_TRUE(writeFile(roadmap, hand));
+
+    QJsonObject dry = appendReq(root, QStringLiteral("A bullet after the hand-edit."));
+    dry[QStringLiteral("dry_run")] = true;
+    const QJsonObject env = rc.cmdRoadmapLogAppendForTest(dry).object();
+    ASSERT_TRUE(env.value(QStringLiteral("ok")).toBool());
+    ASSERT_TRUE(env.value(QStringLiteral("would_discard_external_edits")).toBool());
+    EXPECT_EQ(env.value(QStringLiteral("would_discard_structure_lines")).toInt(), 1)
+        << "ANTS-4965: a whitespace-only change must be counted as structure";
+    EXPECT_EQ(env.value(QStringLiteral("would_discard_restyled_lines")).toInt(), 0)
+        << "ANTS-4965: and not as a restyle, where it looked benign";
+    EXPECT_EQ(env.value(QStringLiteral("would_discard_text_lines")).toInt(), 0);
+}
+
 // ANTS-4615 — the quiet case. A healthy write must not start emitting the new
 // fields: a breakdown present on every write is a breakdown nobody reads, which
 // is the failure mode the item is about in the first place.

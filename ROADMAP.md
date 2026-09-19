@@ -61298,7 +61298,7 @@ than re-filed; everything else lands here.
   Source: demoreel_Ants_MCP_Feedback.md 2026-09-08.
   Lanes: mcp, roadmap-store.
 
-- 📋 [ANTS-4965] **A render flattens indentation and column alignment inside a stored body, and the preview reports zero lines lost.**
+- ✅ [ANTS-4965] **A render flattens indentation and column alignment inside a stored body, and the preview reports zero lines lost.**
   Re-rendering the store over a drifted file re-flowed two bullet
   bodies and destroyed their structure. A nested sub-list lost its
   indent, so its continuation lines now sit flush with the bullet
@@ -61332,6 +61332,16 @@ than re-filed; everything else lands here.
   structure this render destroys without asking, which is worth
   reading as the two halves disagreeing about how much whitespace
   matters.
+  Resolved (2026-09-19). Measured first: migrate-then-render of a
+  body holding a nested list, a pipe table and hand-aligned columns
+  reproduced every line byte for byte. So the render does not flatten
+  a stored body. The reported loss was structure that lived only in
+  the FILE, over a store holding it flatter. The publish replaced it,
+  correctly, and the preview could not say so. That half is fixed: a
+  file line differing from its render twin ONLY in whitespace now
+  counts as discarded_structure_lines (would_ on a dry run,
+  drift_restructured under check_sync), apart from restyling. Locked by
+  RoadmapWriteHalf.Ants4965CountsWhitespaceChangesAsStructure.
   **Layman:** Re-rendering the roadmap can destroy the layout of a nested list or a lined-up table, and the safety preview says nothing was lost.
   Kind: fix.
   Source: Contact_List_Ants_MCP_Feedback.md 2026-09-08.

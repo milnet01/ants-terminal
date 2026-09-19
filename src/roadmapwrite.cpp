@@ -103,6 +103,8 @@ struct DriftBreakdown {
     int         restyled = 0;
     // ANTS-4695 — differs from its render twin only in terminal punctuation.
     int         repunctuated = 0;
+    // ANTS-4965 — differs from its render twin only in whitespace.
+    int         restructured = 0;
     int         lost     = 0;
     QStringList lostText;
     // ANTS-4947 — the files that lost TEXT, so the publish can keep a copy of
@@ -130,6 +132,15 @@ QString terminalPunctStripped(QStringView line) {
             break;
     }
     return t;
+}
+
+// ANTS-4965 — the line with every whitespace character removed.
+QString withoutWhitespace(QStringView line) {
+    QString out;
+    out.reserve(line.size());
+    for (const QChar c : line)
+        if (!c.isSpace()) out.append(c);
+    return out;
 }
 
 // ANTS-4462 / ANTS-4465 — how far `have` (the file on disk) has drifted from
@@ -187,7 +198,12 @@ DriftBreakdown driftLines(const QString &have, const QString &want) {
         const auto k = renderKeys.find(contentKey(l));
         if (k != renderKeys.end() && !k.value().isEmpty()) {
             const QStringView twin = k.value().takeLast();
-            if (terminalPunctStripped(l) == terminalPunctStripped(twin)
+            // ANTS-4965 — same characters, different spacing: an indent or an
+            // aligned column the render is about to flatten. A benign dialect
+            // restyle changes characters, so it never lands here.
+            if (l != twin && withoutWhitespace(l) == withoutWhitespace(twin))
+                ++d.restructured;
+            else if (terminalPunctStripped(l) == terminalPunctStripped(twin)
                 && l.trimmed() != twin.trimmed())
                 ++d.repunctuated;
             else
@@ -219,6 +235,7 @@ DriftBreakdown externalDrift(const QHash<QString, QString> &preImage) {
         all.total        += d.total;
         all.restyled     += d.restyled;
         all.repunctuated += d.repunctuated;
+        all.restructured += d.restructured;
         all.lost         += d.lost;
         if (d.lost > 0)
             all.lostFiles.append(it.key());
@@ -369,6 +386,7 @@ std::optional<Drift> measureDrift(RoadmapStore &store, qint64 projectId,
     out.total        = d.total;
     out.restyled     = d.restyled;
     out.repunctuated = d.repunctuated;
+    out.restructured = d.restructured;
     out.lost         = d.lost;
     out.lostText = d.lostText;
     return out;
@@ -469,6 +487,7 @@ Result commitAndRender(RoadmapStore &store, qint64 projectId,
         outcome->externalEditLines        = drift.total;
         outcome->externalRestyledLines    = drift.restyled;
         outcome->externalRepunctuatedLines = drift.repunctuated;
+        outcome->externalRestructuredLines = drift.restructured;
         outcome->externalTextLines        = drift.lost;
         outcome->externalLostText         = drift.lostText;
         outcome->externalLostTextTruncated = drift.lost > drift.lostText.size();

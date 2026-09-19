@@ -57,6 +57,11 @@ for security-relevant changes.
 
 ### Fixed
 
+- **A roadmap write's preview now says when it would flatten a hand-indented list or aligned table** (ANTS-4965)
+  A line whose only change is its spacing is reported as
+  `discarded_structure_lines`, not mixed in with harmless restyling, so a
+  preview about to lose a nested list no longer reads as safe.
+
 - **Saving a changed tab's session no longer compresses and writes it on the window's thread** (ANTS-5131)
   The autosave now compresses, hashes and writes a changed tab on a
   background thread. The window still reads the tab's contents itself,

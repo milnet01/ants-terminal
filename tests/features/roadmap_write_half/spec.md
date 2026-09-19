@@ -138,6 +138,12 @@ carries `drift_repunctuated`. Both ride the true arm only, like their
 siblings. `discarded_text_lines: 0` goes back to meaning *your text is
 untouched*.
 
+ANTS-4965 — a file line that differs from its render twin only in whitespace
+(indentation or column alignment) is counted as `discarded_structure_lines`
+(`would_discard_structure_lines` on a dry run, `drift_restructured` under
+`check_sync`), and not as restyling. Each field is emitted only when non-zero.
+*Test:* `Ants4965CountsWhitespaceChangesAsStructure`.
+
 **The punctuation behaviour itself is unchanged, deliberately.** INV-4
 prescribes the chop; the defect was reporting it as something it is not. The
 reporter offered either fix and named this one as the one that matters.
