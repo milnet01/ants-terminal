@@ -59,8 +59,11 @@ status table that lists the four markers lists five. That covers
 - `emojiFor("dropped")` returns 🚫.
 - `isRenderable` excludes `internal` items only. A dropped item renders in
   its section, in position order, like any other item.
-- `renderLegend`'s `kStatusOrder` gains `dropped` after `considered`, so a
-  legend row reads `🚫 Dropped`.
+- `renderLegend`'s `kStatusOrder` gains `dropped` after `considered`.
+  `renderLegend` emits only the keys a project's stored legend holds, and no
+  stored legend holds `dropped`. So where a project has a stored legend without
+  that key, the row reads the default `🚫 Dropped (closed, not done)`. The
+  default is rendered, never written to `project.legend`.
 - `roadmapsource.cpp::appendRecord` no longer skips a dropped item, on either
   dialect. `legendByEmoji` no longer skips its (now non-empty) marker.
 - `isOpen` keeps listing planned, in-progress and considered, so a dropped
@@ -74,12 +77,15 @@ status table that lists the four markers lists five. That covers
   marker stays `planned`.
 - **pass-headings:** `passStatusKeyword("dropped")` returns `dropped`, and
   `passStatusEmoji("dropped")` returns 🚫. The reader,
-  `parsePassHeadingBullets`, maps `dropped`, `abandoned`, `wontfix` and
-  `won't fix` to 🚫. Its fallback for an unknown keyword stays 📋.
+  `parsePassHeadingBullets`, maps the keywords `dropped`, `abandoned` and
+  `wontfix` to 🚫, and its bare-glyph map (a Status line holding only an
+  emoji) maps 🚫 to `dropped`. Its fallback for an unknown keyword stays 📋.
+  `keywordIsNamed` gains the same three words, so they migrate `asserted`.
 - **GFM:** `applyGfmFlip` writes a dropped item as `- [x] 🚫 <text>`. The box
-  is checked because the item is closed. `walkGfmBullets` already lets an
-  inline marker override the checkbox, so it reads back as dropped.
-  `gfmStatusFromCheckbox` is unchanged.
+  is checked because the item is closed. Its `kEmojiPrefixes` strip list gains
+  🚫, so a flip out of `dropped` removes the marker. `walkGfmBullets`' inline
+  override chain (`tryStrip`) gains a 🚫 arm, so the line reads back as
+  dropped. `gfmStatusFromCheckbox` is unchanged.
 - `roadmapmigrate.cpp::makeItem` sets `closed` for `shipped` and `dropped`.
 
 ### 2.4 Write verbs
@@ -147,14 +153,18 @@ The store schema is untouched. **No `kSchemaVersion` bump.**
 - **`docs/standards/roadmap-format.md`** (this project is upstream of the
   global copy): § 3.3 gains the 🚫 row and a sentence that any status may
   move to 🚫 and back. § 3.10.1's GFM table gains `[x] 🚫`. § 3.11's
-  anti-pattern names five markers, not four. § 3.7's released-block sentence
+  anti-pattern names five markers, not four, and its "Mixing `[ ]` / `[x]`
+  task-list syntax with the emoji status system" bullet carves out the GFM
+  adapter's own forms, `- [ ] <emoji>` and `- [x] 🚫`. § 3.7's released-block sentence
   allows 🚫 beside ✅. § 3.10.5 names the `dropped` pass keyword.
 - **`docs/standards/roadmap-data-model.md`**: § 7.3 drops "no markdown
   serialisation" and the exclusion-as-policy paragraph. § 7.5 excludes
   `internal` only. The anti-pattern becomes "Publishing an `internal` item".
   The id-floor paragraph stops listing `dropped` among the ids no committed
-  file carries.
-- **ANTS-3758 INV-4**, **ANTS-3757 INV-5** and **ANTS-3793 § 2.1.2** are
+  file carries. § 7.3.1's word table gains the row `dropped` · `abandoned` ·
+  `wontfix` → `dropped`, `asserted`.
+- **ANTS-3758 INV-4**, **ANTS-3757 INV-5**, **ANTS-3757 § 2.7**'s word table
+  and "never produced" sentence, and **ANTS-3793 § 2.1.2** are
   annotated in place, "`dropped` half superseded by ANTS-4977", and never
   renumbered.
 
@@ -165,20 +175,22 @@ ships.
 ## 3. Invariants
 
 - **INV-1** — A `dropped` item renders in `ROADMAP.md` as `- 🚫 [ID] **headline**`
-  in its own section, and the legend carries a `🚫 Dropped` row. An `internal`
+  in its own section. A project whose stored legend lacks `dropped` renders
+  the default `🚫 Dropped (closed, not done)` row. An `internal`
   item still does not render. Breaks when `emojiFor` returns an empty string
   or `isRenderable` still excludes `dropped`. *Test:*
   `tests/features/roadmap_dropped_status` — a fixture store with one dropped
-  and one internal item: the rendered text contains the dropped id and not
-  the internal one.
+  and one internal item, and a stored legend without a `dropped` key: the
+  rendered text contains the dropped id, not the internal one, and the default
+  legend row.
 - **INV-2** — A migrated 🚫 bullet round-trips. Migration stores `dropped`,
   and re-rendering reproduces the bullet line byte for byte. Breaks when
   `statusFromMarker` falls through to `planned`. *Test:*
   `tests/features/roadmap_dropped_status` — migrate an ants-v1 fixture holding
   a 🚫 bullet, assert the stored status, render, and compare the line.
 - **INV-3** — Pass-headings: a `dropped` item writes `- **Status**: dropped`,
-  and `dropped`, `abandoned`, `wontfix` and `won't fix` read back as 🚫, not
-  📋. Breaks when the reader's fallback is reached. *Test:*
+  and `dropped`, `abandoned`, `wontfix` and a bare `🚫` read back as 🚫, not
+  📋, with `asserted` provenance. Breaks when the reader's fallback is reached. *Test:*
   `tests/features/roadmap_dropped_status` — each keyword through
   `parsePassHeadingBullets`, and one write through `passStatusKeyword`.
 - **INV-4** — GFM: a flip to `dropped` writes `- [x] 🚫 <text>`, and the walker
@@ -248,3 +260,4 @@ descriptions in `claudeintegration.cpp`, and CHANGELOG.
 
 | Loop | Date | Lanes | Q1 | Q2 | Q3 | Q4 | Outcome |
 |---|---|---|---|---|---|---|---|
+| 1 | 2026-09-19 | 3, cold, identical shared packet | 3 | 2 | 1 | 0 | Verified 6, fixed 6, dismissed 0. All three lanes independently found that `won't fix` can never match the pass-headings keyword capture (it stops at the apostrophe): dropped. Also fixed: `renderLegend` skips a key the stored legend lacks, so a default `🚫 Dropped (closed, not done)` row is now specified; the GFM reader's `tryStrip` chain and `applyGfmFlip`'s prefix list were wrongly called already-capable; § 7.3.1's and ANTS-3757 § 2.7's word tables and § 3.11's mixing anti-pattern were missing from § 2.9; the reader's bare-glyph map (found resolving a lane's open question). Four other open questions resolved clean (`closed` is migration-only; `isOpen` callers; task-list parse goes through `stripInlineEmoji`). |

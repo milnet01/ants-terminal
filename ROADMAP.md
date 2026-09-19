@@ -80172,6 +80172,19 @@ contributors don't duplicate research.
   desktop app can simply ask on demand. Confirm the field names against
   the Patreon v2 API docs, and the GitHub Sponsors GraphQL equivalent,
   before speccing.
+  Decided (2026-09-19, user): build the automatic check this way
+  (account sign-in, then ask Patreon and GitHub Sponsors directly), so
+  an existing donor is not asked unless their last payment is over 150
+  days old. The self-reported button in ANTS-5239 stays as the offline
+  fallback.
+  Third platform (user, 2026-09-19): PayBru, the tip jar in
+  .github/FUNDING.yml (paybru.co.za/tip/ants-projects-hub). Whether it
+  has an API is UNVERIFIED. A web search found no PayBru developer docs,
+  only the unrelated PayU, and paybru.co.za answered an automated fetch
+  with HTTP 403. Next step is the user's: look in the PayBru dashboard
+  for API, webhook, integration or supporter-export options. With no
+  API, PayBru donors are covered only by the self-reported button
+  (ANTS-5239).
   **Layman:** Supporters could link their account once, and the app would stop asking them for donations automatically.
   Kind: feature.
   Source: user-request-2026-09-19.
