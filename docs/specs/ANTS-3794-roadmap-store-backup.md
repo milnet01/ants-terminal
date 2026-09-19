@@ -43,21 +43,33 @@ ants-terminal --export-roadmaps <dir>
 ```
 
 `main()` scans `argv` for `--export-roadmaps` **before** it constructs
-`QApplication`. When present it constructs `QCoreApplication` instead,
-runs the export, and returns its exit code. No window-system connection
-is made, so a systemd user service can run it with no display.
+`QApplication`. When present it constructs `QCoreApplication` instead
+and returns
+`RoadmapExport::runExportCommand(RoadmapStore::defaultPath(), dir, out)`,
+with `out` a `QTextStream` on stdout. No window-system connection is
+made, so a systemd user service can run it with no display.
 
-The steps, in order:
+New in `src/roadmapexport.{h,cpp}`, so the test bundles can call it
+without linking `main.cpp`:
 
-1. If `RoadmapStore::defaultPath()` does not exist, print an error and
-   exit **2**. Never create a store here.
-2. Open `RoadmapStore(defaultPath(), kDefaultHistoryCapBytes,
-   Access::Bulk)`. A failed `open()` exits **2** — this includes a store
-   whose schema is newer than the binary.
+```cpp
+namespace RoadmapExport {
+int runExportCommand(const QString &storePath, const QString &dir,
+                     QTextStream &out);
+}
+```
+
+Its steps, in order:
+
+1. If `storePath` does not exist, print an error and return **2**. Never
+   create a store here.
+2. Open `RoadmapStore(storePath, kDefaultHistoryCapBytes,
+   Access::Bulk)`. A failed `open()` returns **2** — this includes a
+   store whose schema is newer than the binary.
 3. Call `RoadmapExport::exportAllProjects()` (§ 2.2). Print one line per
    written, failed and removed file.
-4. Exit **0** when nothing failed. Exit **1** when any project failed or
-   the result carries an `error`.
+4. Return **0** when nothing failed. Return **1** when any project failed
+   or the result carries an `error`.
 
 ### 2.2 Exporting every project
 
@@ -116,9 +128,11 @@ Steps, stopping at the first failure:
    `${XDG_DATA_HOME:-$HOME/.local/share}/ants-terminal/bin/ants-terminal`)
    with `--export-roadmaps <repo>/roadmap-export`. A non-zero exit is a
    failure.
-5. `git add -A -- roadmap-export/`, then
-   `git commit -m "roadmap-export: weekly backup (<date>)" -- roadmap-export/`.
-   The pathspec limits the commit to that directory. Other staged or
+5. `git add -A -- 'roadmap-export/*.jsonl'`, then
+   `git commit -m "roadmap-export: weekly backup (<date>)" -- 'roadmap-export/*.jsonl'`.
+   The pathspec limits the commit to the export files. `ConfigWriteLock`
+   leaves a `<file>.lock` beside each export, and those persist between
+   runs (`src/configbackup.h`), so they are never staged. Other staged or
    unstaged changes in `<repo>` stay exactly as they were. Hooks run; a
    hook failure is a backup failure. When there is nothing to commit,
    skip to step 7.
@@ -260,12 +274,13 @@ timer that is disabled or lost.
   Breaks if a project is skipped or written by another path. *Test:*
   `tests/features/roadmap_export_all`, two-project fixture store.
 - **INV-3** — one project's failure does not stop the others; it appears
-  in `failed` and the entry point exits 1. Breaks if the loop returns on
+  in `failed` and `runExportCommand()` returns 1. Breaks if the loop returns on
   the first failure. *Test:* `tests/features/roadmap_export_all`, the
   first slug's destination pre-created as a directory.
-- **INV-4** — with no store file, the entry point exits 2 and creates no
-  store file. Breaks if `RoadmapStore::open()` is reached. *Test:*
-  `tests/features/roadmap_export_all`, empty XDG data dir.
+- **INV-4** — with no file at `storePath`, `runExportCommand()` returns 2
+  and creates no store file. Breaks if `RoadmapStore::open()` is reached.
+  *Test:* `tests/features/roadmap_export_all`, a `storePath` in an empty
+  temporary directory.
 - **INV-5** — when `listProjects()` returns no rows, `error` is set and no
   file in `dir` is written or deleted. Breaks if an empty list is treated
   as "every file is an orphan". *Test:* `tests/features/roadmap_export_all`,
@@ -275,11 +290,12 @@ timer that is disabled or lost.
   deletion runs after a failure or matches other names. *Test:*
   `tests/features/roadmap_export_all`, with `orphan.jsonl`, `notes.txt`
   and `sub/x.jsonl` present, run once clean and once with one failure.
-- **INV-7** — the publish commit contains only `roadmap-export/` paths,
-  and every other staged or unstaged change in the repository is
-  unchanged. Breaks if the script commits without a pathspec. *Test:*
-  `tests/features/roadmap_export_publish`, a clone with a staged and an
-  unstaged unrelated edit.
+- **INV-7** — the publish commit contains only `roadmap-export/*.jsonl`
+  paths, and every other staged or unstaged change in the repository is
+  unchanged. Breaks if the script commits without a pathspec or stages
+  the whole directory. *Test:* `tests/features/roadmap_export_publish`, a
+  clone with a staged and an unstaged unrelated edit, and a stub binary
+  that also leaves a `.jsonl.lock` file.
 - **INV-8** — when the upstream has a commit `HEAD` lacks, the script
   exits non-zero, runs no export, and creates no commit and no push.
   Breaks if it pulls, merges or rebases. *Test:*
@@ -344,7 +360,11 @@ timer that is disabled or lost.
   A shell test over throwaway git repositories (a bare remote and two
   clones) and a stub binary set through `ANTS_ROADMAP_EXPORT_BIN`, so it
   needs no network and no real store. Registered with
-  `add_test(... COMMAND bash ...)` like `prepush_asan_gate`.
+  `add_test(... COMMAND bash ...)` like `prepush_asan_gate`, with
+  `SKIP_RETURN_CODE 77`. It exits 77, naming the tool, when `git`,
+  `flock` or `sqlite3` is absent, so CI and the package builds skip it
+  loudly rather than fail. That skip path keeps these tools out of
+  `tests/features/ci_workflow_deps`' required set.
 
 Label `features;fast`. Each test is shown to fail against the source
 before its fix, per the project convention.
@@ -363,9 +383,17 @@ before its fix, per the project convention.
 
 ## 7. Cross-doc impact
 
-- `claude-config`'s `.gitignore` is an allowlist. It needs
-  `!/roadmap-export/`, or step 5's `git add` stages nothing. That edit is
-  made from a `~/.claude` session, in that repository.
+- `claude-config`'s `.gitignore` is an allowlist. It gains these three
+  lines, which track the `*.jsonl` exports and keep the `.lock` files and
+  any subdirectory ignored:
+
+  ```
+  !/roadmap-export/
+  /roadmap-export/*
+  !/roadmap-export/*.jsonl
+  ```
+
+  That edit is made from a `~/.claude` session, in that repository.
 - [`roadmap-data-model.md`](../standards/roadmap-data-model.md) § 9:
   mark the cadence, divergence, detection and concurrency items as owned
   here.
@@ -378,3 +406,4 @@ before its fix, per the project convention.
 
 | Loop | Date | Lanes | Q1 | Q2 | Q3 | Q4 | Outcome |
 |---|---|---|---|---|---|---|---|
+| 1 | 2026-09-19 | 3, cold, identical shared packet | 1 | 0 | 1 | 2 | Verified 4, fixed 4, dismissed 1. Q1 (found building the packet): the publish step staged all of roadmap-export/, which would commit the .lock files ConfigWriteLock leaves beside each export; it now stages *.jsonl only (checked in a throwaway repo). Q4, all three lanes: INV-3 and INV-4 tested exit codes from main(), which no test bundle links; the steps now live in RoadmapExport::runExportCommand(storePath, dir, out). Q3: the claude-config allowlist line would have exposed the lock files to any git add -A; replaced by three lines that track *.jsonl only (checked). Q4: the publish shell test needs git, flock and sqlite3; it now exits 77 under SKIP_RETURN_CODE, so it stays out of ci_workflow_deps' required set. Dismissed: git's glob crossing / (nothing writes subdirectories). Four open questions resolved clean: no schema upgrade beyond the running instance, exit 3 is not a failure, library placement is local, export_slug is NOT NULL. |
