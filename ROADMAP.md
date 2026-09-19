@@ -9103,6 +9103,16 @@ extends an existing item, that item carries it instead.
   transcript render cap counting entries, the allowlist lock wait, a
   Claude restart within one poll, the MCP nudge path, the Projects
   dialog re-reads, and the stale documents.
+  Progress (2026-09-19): two more low findings closed. A Claude
+  restart within one poll no longer keeps the exited Claude's
+  transcript: the PID-change branch clears the path and its watch
+  before resolving (tests/features/claude_pid_replacement INV-5, which
+  reverses INV-2's retain-prior-path clause). The per-MCP-call nudge
+  no longer refreshes the tokens-saved chip on every call; a 250 ms
+  single-shot timer coalesces a burst into one refresh
+  (tests/features/tokens_saved_chip TSC-9). STILL OPEN: the transcript
+  render cap counting entries, the allowlist lock wait, the Projects
+  dialog re-reads, and the stale documents.
   **Layman:** Smaller fixes to Ants' Claude status displays: leaking trackers, slow windows, and a tab showing another session.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lane claude-session-widgets).
