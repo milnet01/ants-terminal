@@ -35178,7 +35178,7 @@ against current source before filing.
   holds one leftover fixture row (root `/tmp/test_core-ZnzBrv`, 0 sections,
   0 items), so every live read and write is still the markdown path.
 
-- 📋 [ANTS-3794] **Roadmap publish + health checks — backup cadence, divergence detection and check scheduling.**
+- 🚧 [ANTS-3794] **Roadmap publish + health checks — backup cadence, divergence detection and check scheduling.**
   Split out of ANTS-3758. Operationally independent of the render and the
   consumer cutover, so it can run in parallel with either.
 
@@ -35208,6 +35208,20 @@ against current source before filing.
   GitHub. Caveat to design around: the published file omits `internal`
   items, and the store holds history and provenance the file does not,
   so those live only in the store between weekly backups.
+  User decision (2026-09-19): both routes, local first. A local weekly
+  snapshot ships now; the per-project JSONL export to claude-config
+  follows through a spec and its gate. A whole-store snapshot cannot
+  go to GitHub: the store is a single file near 60 MB, and GitHub
+  refuses files over 100 MB.
+  Progress (2026-09-19): tools/roadmap-store-backup.sh takes a
+  sqlite3 .backup, keeps it only if PRAGMA integrity_check is ok,
+  keeps the newest 8, and on any failure exits non-zero and raises a
+  desktop notification. A weekly user timer runs it
+  (~/.config/systemd/user/ants-roadmap-backup.timer, Persistent=true)
+  into /mnt/Games/Backups/ants-roadmap-store. Verified: rotation,
+  missing store, unreadable store, damaged index, bad KEEP, and one run
+  through systemd (Result=success). Still open: the claude-config
+  export, its push-conflict handling, and staleness detection.
   **Layman:** How the roadmap database gets backed up automatically, and how we notice when a backup silently stops working.
   Kind: implement.
   Source: ANTS-3758 split (2026-08-03, user), spec seam 3c of 5.
