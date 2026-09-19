@@ -35,19 +35,16 @@ against the table below.
   `ok: false`. `ClaudeIntegration::handlerRefusalCode` decides this in
   `ClaudeIntegration::transformReply`, and
   `ClaudeIntegration::finishToolDispatch` sets the flag.
-- The same test covers a handler's refusal and the dispatcher's own
-  (`mcp_disabled`, `caller_cwd_required`, `rate_limited`,
-  `dispatch_queue_full`). A refusal site needs no code of its own to get
-  the flag.
-- A body over the parser's 8 KiB bound is not parsed, so it is treated
-  as a success and carries no flag. Keep a refusal envelope under that
-  bound.
+- The same test covers a handler's refusal and the dispatcher's own. A
+  refusal site does nothing extra to get the flag.
 - The body is unchanged. `content` still carries the `{ok, code, error}`
   envelope, so a caller that reads `code` sees what it saw before.
 - A reply that is not a refusal never carries `isError`. That includes
   an ETag `unchanged` reply.
 - A `tools/call` naming no registered tool is not a refusal. It stays
-  the JSON-RPC `-32602` error (§ 5).
+  the JSON-RPC `-32602` error (§ 5). The exception is `mcp_disabled`:
+  that gate runs before the tool lookup, so while it is in force every
+  call gets its refusal, registered tool or not.
 
 ## Categories
 
