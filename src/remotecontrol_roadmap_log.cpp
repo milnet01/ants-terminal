@@ -2191,6 +2191,9 @@ QJsonDocument RemoteControl::cmdRoadmapLogFlip(const QJsonObject &req) {
                 }
             }
         }
+        // ANTS-5094 — floor to the anchors already in the file, so a fresh
+        // clone (no counter file) or a stale counter never re-issues one.
+        counter = std::max(counter, rlMaxGfmAnchorForPrefix(bullets, prefix));
         // Open Q 3 resolution: create on first use. counter == 0
         // → newCounter == 1.
         newCounter = counter + 1;

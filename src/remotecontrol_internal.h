@@ -494,6 +494,10 @@ bool rlRoadmapHasAnyBulletId(const QString &markdown, const RoadmapParse::IdForm
 QString rlDetectCounterPrefix(const QString &markdown, const RoadmapParse::IdFormat &fmt = {});
 QString rlResolveCounterPrefix(const QString &idPrefixArg, const QString &markdown, const QString &callerCanonical);
 qint64 rlMaxExistingIdForPrefix(const QVector<RoadmapDialog::BulletRecord> &bullets, const QString &pfx);
+// ANTS-5094 — the highest `^<prefix>-NNNN` caret anchor among `bullets`
+// (prefix compared case-insensitively), 0 when none; floors the GFM flip's
+// anchor counter so a missing or stale .roadmap-counter never re-issues one.
+qint64 rlMaxGfmAnchorForPrefix(const QVector<GfmBullet> &bullets, const QString &prefix);
 QStringList rcSectionChildSlugs(const QVector<RoadmapIndex::Section> &index, const RoadmapIndex::Section &sec);
 
 QJsonDocument rcSectionHasSubsectionsRefusal(const QString &slug, const QStringList &children);

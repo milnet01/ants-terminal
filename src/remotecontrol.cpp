@@ -782,6 +782,19 @@ qint64 rlMaxExistingIdForPrefix(
     return maxN;
 }
 
+qint64 rlMaxGfmAnchorForPrefix(const QVector<GfmBullet> &bullets,
+                               const QString &prefix) {
+    const QString want = prefix.toLower() + QLatin1Char('-');
+    qint64 maxN = 0;
+    for (const auto &b : bullets) {
+        if (!b.anchor.startsWith(want, Qt::CaseInsensitive)) continue;
+        bool ok = false;
+        const qint64 n = b.anchor.mid(want.size()).toLongLong(&ok);
+        if (ok && n > maxN) maxN = n;
+    }
+    return maxN;
+}
+
 // ANTS-2055 — collect the child-subsection slugs of `sec`: any indexed
 // heading deeper than `sec` whose heading line falls inside sec's span.
 // op:append / op:append_batch splice at sec.lineEnd; for a `##`

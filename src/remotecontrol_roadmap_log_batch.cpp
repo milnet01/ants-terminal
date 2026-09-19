@@ -818,6 +818,8 @@ QJsonDocument RemoteControl::cmdRoadmapLogFlipBatch(const QJsonObject &req) {
                                            "not a number"));
                 }
             }
+            // ANTS-5094 — floor to the anchors already in the file.
+            counter = std::max(counter, rlMaxGfmAnchorForPrefix(gbs, prefix));
             counterStart = counter;
             for (Target *t : injectTargets) {
                 ++counter;

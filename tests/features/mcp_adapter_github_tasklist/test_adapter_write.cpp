@@ -66,6 +66,60 @@ QJsonObject flip(RemoteControl &rc, const QJsonObject &req) {
 
 }  // namespace
 
+// INV-14 (ANTS-5094) — with no counter file (a fresh clone), the injected
+// anchor is floored past the anchors already in the file.
+TEST(AdapterWriteFlip, Inv14AnchorFlooredToFile) {
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid());
+    const QString md = QStringLiteral(
+        "# Vestige\n\n"
+        "## Phase 11A\n"
+        "- [x] Shipped earlier ^vest-0005\n"
+        "- [ ] Needs an anchor\n");
+    const QString root = buildProject(dir, md, 0);
+    ASSERT_FALSE(root.isEmpty());
+
+    RemoteControl rc(nullptr);
+    QJsonObject req;
+    req["caller_cwd"]  = root;
+    req["headline"]    = QStringLiteral("Needs an anchor");
+    req["to_status"]   = QStringLiteral("in-progress");
+    req["prefix_hint"] = QStringLiteral("VEST");
+    const QJsonObject env = flip(rc, req);
+    ASSERT_TRUE(env.value("ok").toBool()) << QJsonDocument(env).toJson().constData();
+    EXPECT_EQ(env.value("anchor").toString(), QStringLiteral("vest-0006"))
+        << "INV-14: the anchor re-used a number the file already holds";
+}
+
+// INV-15 (ANTS-5094) — the same floor on op:"flip_batch".
+TEST(AdapterWriteFlip, Inv15BatchAnchorFlooredToFile) {
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid());
+    const QString md = QStringLiteral(
+        "# Vestige\n\n"
+        "## Phase 11A\n"
+        "- [x] Shipped earlier ^vest-0005\n"
+        "- [ ] Needs an anchor\n");
+    const QString root = buildProject(dir, md, 0);
+    ASSERT_FALSE(root.isEmpty());
+
+    RemoteControl rc(nullptr);
+    QJsonObject loc;
+    loc["headline"] = QStringLiteral("Needs an anchor");
+    QJsonObject req;
+    req["op"]          = QStringLiteral("flip_batch");
+    req["caller_cwd"]  = root;
+    req["to_status"]   = QStringLiteral("in-progress");
+    req["prefix_hint"] = QStringLiteral("VEST");
+    req["locators"]    = QJsonArray{loc};
+    const QJsonObject env = rc.cmdRoadmapLog(req).object();
+    ASSERT_TRUE(env.value("ok").toBool()) << QJsonDocument(env).toJson().constData();
+    const QString after = readFile(root + QStringLiteral("/ROADMAP.md"));
+    EXPECT_TRUE(after.contains(QStringLiteral("Needs an anchor ^vest-0006")))
+        << "INV-15: the batch anchor re-used a number the file holds\n"
+        << after.toUtf8().constData();
+}
+
 // INV-6 — anchor injection on first flip + counter advance.
 TEST(AdapterWriteFlip, Inv6AnchorInjectionOnFirstFlip) {
     QTemporaryDir dir;

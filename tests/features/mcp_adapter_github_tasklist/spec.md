@@ -56,6 +56,11 @@ for ANTS-1428. See `docs/specs/ANTS-1428.md` for the full design
 - **INV-12 / `id_hint` under op:"flip" is bad_op_combo.**
 - **INV-13 / Headline + (id|anchor) is bad_op_combo.** Headline
   locator is not permitted alongside a canonical-handle locator.
+- **INV-14 / The injected anchor is floored to the file (ANTS-5094).**
+  The anchor number is one past the larger of `.roadmap-counter` and
+  the highest caret anchor with the same prefix already in the file, so
+  a fresh clone with no counter file does not re-issue an anchor.
+- **INV-15 / `op:"flip_batch"` applies the same floor (ANTS-5094).**
 
 ## Bundle
 
