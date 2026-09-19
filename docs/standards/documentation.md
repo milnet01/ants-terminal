@@ -284,7 +284,7 @@ mistake is a document being written as the wrong kind.
 | **Ledger** — roadmap, changelog | to record what is planned and what shipped | be true about the code, and stay true |
 | **Instructions** — README, INSTALL, CONTRIBUTING, runbook | so a reader can *do* the thing | work when followed literally, on a clean machine |
 | **Reference** — API docs, tables, glossaries | to be looked up, not read | resolve — every name in it must exist |
-| **Agent rules** — `CLAUDE.md`, skills | to instruct an agent | be followable, and not contradict each other |
+| **Agent rules** — `CLAUDE.md`, skills, `skills/_shared/` files, `agents/` prompts | to instruct an agent | be followable, and not contradict each other |
 
 **The kinds have genuinely different obligations, and borrowing one
 kind's expectations for another is expensive.** A standard has no
@@ -351,8 +351,9 @@ replaced by a pointer: deleting it disables the trigger. That is the first
 exception to both rules above, and it is narrow — a cell a run *executes*,
 not a cell that merely restates a rule.
 
-**The second is stated by §9.0: a cell restating the enumeration a hook
-owns.** That is a restatement, so the narrow test above does not reach it, and
+**The second is stated by §9.0: a cell of §9.0's class table restating the
+enumeration `.githooks/pre-commit` owns.** A What-checks-this cell cites that
+enumeration rather than copying it (§2.9). That is a restatement, so the narrow test above does not reach it, and
 §9.0 requires it kept rather than pointed at — updated in the same change that
 edits the hook. Without this the two sections prescribe opposite edits on one
 discovery.
@@ -618,8 +619,8 @@ section**: one table, each rule against what catches a breach.
 
 **A *reference* is §1's kind — looked up rather than read through: API
 docs, tables, glossaries.** §3 gives it no folder because it lives beside
-whatever it serves. **A skill's files are §1's Agent rules whatever their
-directory is called, so a `references/` file under `skills/` is owed no
+whatever it serves. **A skill's files, a `skills/_shared/` file and an `agents/` prompt are
+§1's Agent rules whatever their directory is called, so none is owed a
 table.** **A skeleton or template is owed none either, wherever it sits** —
 `standards/skeletons/` included, whose path is the only thing about it that
 reads as a standard. It is copied elsewhere, and the table belongs to the
@@ -1061,8 +1062,8 @@ hook, not as a scaffolded project's. It shares the deleted-side pattern
 exclusion, the move-to-a-record exclusion, and the record-genre search skips,
 so `ROADMAP.md` and `CHANGELOG.md` are searched there. The
 `link` class fires on a markdown link target that does not resolve. **It is
-not the `path` class above**, and the paragraph three above says how the two
-differ.
+not the `path` class above**, and the paragraph beginning *The path class is
+narrower* says how the two differ.
 
 **`allowed-tools` settles something about this section itself: a check may
 cover part of a class, and is worth shipping when it does.** Only two shapes
@@ -1127,8 +1128,9 @@ project where to put its own file — out of scope), and **dated historical**
 ("opened 2026-08-08 as `X`; moved since"), which was true when written and is
 not a claim about now. The hook blocked on one of those on 2026-08-10 and the
 scope rule was widened rather than the commit bypassed — its own message
-demands that order, because one `--no-verify` is how a gate dies. A line
-carrying a `YYYY-MM-DD` date is now out of scope for the path check. **That is
+demands that order, because one `--no-verify` is how a gate dies. A path
+named on any dated line of the file is now out of scope for the path check,
+everywhere in that file. **That is
 not `counts`' exemption** — §2.3 exempts a number only where it reads as past
 tense *and* carries its date, so a present-tense count with a date beside it is
 still a census. **This hook has no count check of
@@ -1264,7 +1266,7 @@ defect is repaired by hand, outside every gate — §2.8's length rule and
 
 - ❌ A fact stated in more than one document — except the two cells §2.1
   keeps in both places on purpose: a machinery cell a run executes, and a
-  cell restating an enumeration a hook owns.
+  cell of §9.0's class table restating the hook's enumeration.
 - ❌ A `path:line` citation.
 - ❌ A claim written from memory of how the code works.
 - ❌ Relative dates in a committed document.
@@ -1273,7 +1275,7 @@ defect is repaired by hand, outside every gate — §2.8's length rule and
   (§2.7).
 - ❌ A screenshot of an interface that no longer exists.
 - ❌ A stray `TODO` or an unfilled placeholder in a shipped document. A
-  template's own placeholders are its content (§4).
+  template's own placeholders are its content.
 - ❌ A rule with nothing checking it and no row admitting so.
 - ❌ A plan that argues for its approach.
 - ❌ Repeating a global rule in a project document.
@@ -1294,7 +1296,7 @@ defect is repaired by hand, outside every gate — §2.8's length rule and
 | §9.0 checks run before done | **`Partial:`** the `pre-commit` hook, a staged-commit blocking check, blocks this repository's classes at commit time — after *done*, not before it, which is what the rule asks. **Nothing** catches a document called done without `check-doc-facts` having run |
 | `roadmap-format.md` / `changelog-format.md` parse | see each of those documents' own § What checks this. §4 routes to them and states no parsing rule of its own, so it states no *coverage* of its own either (§2.1). |
 | §2.6 absolute dates | **nothing** — both forms are greppable, so this is a check worth adding |
-| §3.1 / §3.3 filename form | **nothing** — the ID prefix and the `SHOUTING.md` / `lowercase-kebab.md` split are both greppable, so this is a check worth adding |
+| §3.1 / §3.3 filename form | **nothing** — the `SHOUTING.md` / `lowercase-kebab.md` split and the presence of an ID are greppable, so this is a check worth adding. It must accept any ID spelling (§3.3) |
 | §2.1 one fact one home | **`Partial:`** the `pre-commit` hook's survivor class (§9.0), a deleted-text-survival check. **The hook owns its exclusions and §9.0's `Skips` cell restates them; this row repeats neither.** It catches the copy you *edited past*, and only at the moment you edit it. `check-doc-facts` `enumeration-parity`, an enumeration-parity check, covers a second slice — two lists of the same set inside ONE document — as CANDIDATES rather than findings. Nothing finds a rule sitting in two documents that nobody is touching: a cold read sees "these two passages disagree" within one document only, and **a rule copied into a second document is invisible to a single-document review** unless that document is in the review's packet. `review-contract-set` reaches that half only once the two copies **disagree** — its Q1 asks whether two documents contradict each other, so a faithful copy is caught by **nothing**, which is what § 9.4 states. And it is a review, not a check, so this row stays `Partial:` |
 | §2.2 a pointer says what you attribute to it | **`Partial:`** the `pre-commit` hook's section class (§9.0), a section-resolution check over a prose `§` pointer, **and only the backticked document-qualified form** — a bare `§ N.N`, which is how §2.2 illustrates the rule, resolves against nothing. **Nothing** tests whether the named section carries the rule attributed to it either, which §2.2 says outright is the half that matters. A scaffolded project has neither: its skeleton omits the class |
 | §2.2 the claim is *true* | **nothing** — resolution proves a symbol exists, not that the description of it is right |
