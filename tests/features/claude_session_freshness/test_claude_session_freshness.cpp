@@ -689,10 +689,9 @@ TEST(ClaudeSessionFreshness, EmptyCwdIsNotUnscoped) {
     const QString other = encodedDir(projects, home.path() + "/other");
     ASSERT_TRUE(QDir().mkpath(other));
     const qint64 nowSec = QDateTime::currentSecsSinceEpoch();
-    const QString iso = QDateTime::fromSecsSinceEpoch(nowSec, QTimeZone::UTC)
-                            .toString(Qt::ISODate);
-    ASSERT_TRUE(writeWithMtime(other + "/s.jsonl",
-                               timestampedAssistantEvent(iso) + "\n", nowSec));
+    ASSERT_TRUE(writeWithMtime(
+        other + "/s.jsonl",
+        timestampedAssistantEvent(isoUtc(nowSec * 1000)) + "\n", nowSec));
 
     ClaudeIntegration ci;
     EXPECT_EQ(ci.activeSessionPath(QString()), QString())
