@@ -2446,6 +2446,8 @@ void RemoteControl::onNewConnection() {
             socket->deleteLater();
             continue;
         }
+        // ANTS-5093 — bound how many connections this window holds open.
+        if (!ants::admitLiveConnection(this, socket, m_liveConnections)) continue;
         // ANTS-1132 — slow-loris defence. Cap idle time per
         // connection at 5 seconds. Each message is one-shot; if
         // a peer hasn't sent a complete request within the

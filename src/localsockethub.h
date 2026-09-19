@@ -16,8 +16,17 @@
 
 class QJsonObject;
 class QLocalServer;
+class QLocalSocket;
 
 namespace ants {
+
+// ANTS-5089 / ANTS-5093 — live connections each server owner admits. Each
+// may buffer a request until its idle timer, so this bounds that memory.
+inline constexpr int kMaxLiveConnections = 64;
+
+// Count `socket` against `live` until it is destroyed, or disconnect and drop
+// it when `live` is already at kMaxLiveConnections. `context` owns `live`.
+bool admitLiveConnection(QObject *context, QLocalSocket *socket, int &live);
 
 class LocalSocketHub : public QObject {
 public:

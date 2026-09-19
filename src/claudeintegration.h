@@ -201,9 +201,6 @@ public:
 
     // MCP server for terminal capabilities
     bool startMcpServer(const QString &socketPath);
-    // ANTS-5089 — live connections each server admits per instance. Each may
-    // buffer 256 KiB until the 5 s idle timer, so this bounds that memory.
-    static constexpr int kMaxLiveConnections = 64;
     void stopMcpServer();
 
     // ANTS-5144 — whether this integration's window is on screen. The shared
@@ -657,9 +654,6 @@ private slots:
     void pollClaudeProcess();
     void onHookConnection();
     void onMcpConnection();
-    // ANTS-5089 — counts `socket` against `live` until it is destroyed, or
-    // drops it when `live` is already at kMaxLiveConnections.
-    bool admitConnection(QLocalSocket *socket, int &live);
     // ANTS-2132 / ANTS-5072 — the GUI-thread half of the reply: the
     // idempotent-read cache insert, recordDispatch and the socket write.
     // Every path reaches it with a transformReply result.

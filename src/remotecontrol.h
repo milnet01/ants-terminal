@@ -1555,6 +1555,7 @@ private:
     // windows may be serving it.
     QLocalServer *m_server = nullptr;
     QString m_socketPath;
+    int m_liveConnections = 0;  // ANTS-5093 — see ants::admitLiveConnection
     std::function<bool()> m_windowVisibleProbe;
     MainWindow *m_main;  // non-owning; MainWindow owns us via QObject parent
     bool m_e2eMode = false;  // ANTS-2049 — inject-verb gate (see setE2eMode)

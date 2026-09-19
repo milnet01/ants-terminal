@@ -1,4 +1,5 @@
-// ANTS-5089 — the Claude hook and MCP sockets cap concurrent connections.
+// ANTS-5089 / ANTS-5093 — the Claude hook, MCP and remote-control sockets
+// cap concurrent connections.
 //
 // Behavioural: live servers in a throwaway directory, driven by real
 // clients. See tests/features/local_socket_connection_cap/spec.md.
@@ -14,6 +15,8 @@
 #include <vector>
 
 #include "claudeintegration.h"
+#include "localsockethub.h"
+#include "remotecontrol.h"
 
 namespace {
 
@@ -35,7 +38,7 @@ std::unique_ptr<QLocalSocket> connectIdle(const QString &path) {
 // clients; the last is the one past the cap.
 std::vector<std::unique_ptr<QLocalSocket>> fillPastCap(const QString &path) {
     std::vector<std::unique_ptr<QLocalSocket>> clients;
-    for (int i = 0; i < ClaudeIntegration::kMaxLiveConnections; ++i) {
+    for (int i = 0; i < ants::kMaxLiveConnections; ++i) {
         clients.push_back(connectIdle(path));
         pump(2);
     }
@@ -86,4 +89,20 @@ TEST(LocalSocketConnectionCap, Inv3SlotFreesWhenAConnectionCloses) {
     auto late = connectIdle(path);
     pump(1000);
     EXPECT_TRUE(connected(*late)) << "INV-3: a freed slot was not reused";
+}
+
+// INV-4
+TEST(LocalSocketConnectionCap, Inv4RemoteControlRefusesPastCap) {
+    QTemporaryDir dir;
+    const QString path = dir.path() + QStringLiteral("/rc.sock");
+    const QByteArray saved = qgetenv("ANTS_REMOTE_SOCKET");
+    qputenv("ANTS_REMOTE_SOCKET", path.toLocal8Bit());
+    RemoteControl rc(nullptr);
+    const bool started = rc.start();
+    if (saved.isEmpty()) qunsetenv("ANTS_REMOTE_SOCKET");
+    else qputenv("ANTS_REMOTE_SOCKET", saved);
+    ASSERT_TRUE(started);
+    auto clients = fillPastCap(path);
+    EXPECT_TRUE(connected(*clients.front())) << "INV-4: an admitted client was dropped";
+    EXPECT_FALSE(connected(*clients.back())) << "INV-4: the client past the cap was admitted";
 }

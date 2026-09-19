@@ -1145,19 +1145,6 @@ void ClaudeIntegration::stopHookServer() {
 }
 
 
-bool ClaudeIntegration::admitConnection(QLocalSocket *socket, int &live) {
-    if (live >= kMaxLiveConnections) {
-        socket->disconnectFromServer();
-        socket->deleteLater();
-        return false;
-    }
-    ++live;
-    // Context `this`: ~QObject disconnects before deleting the sockets it
-    // owns, so this never runs against a destroyed counter.
-    connect(socket, &QObject::destroyed, this, [&live]() { --live; });
-    return true;
-}
-
 void ClaudeIntegration::onHookConnection() {
     while (m_hookServer->hasPendingConnections()) {
         QLocalSocket *socket = m_hookServer->nextPendingConnection();
@@ -1193,7 +1180,7 @@ void ClaudeIntegration::onHookConnection() {
             socket->deleteLater();
             continue;
         }
-        if (!admitConnection(socket, m_liveHookConnections)) continue;
+        if (!ants::admitLiveConnection(this, socket, m_liveHookConnections)) continue;
         // ANTS-1151 — slow-loris defence. A peer that connects
         // and never sends bytes (or never closes) used to hold a
         // QLocalSocket forever. 5 s idle timeout matches
@@ -2329,7 +2316,7 @@ void ClaudeIntegration::onMcpConnection() {
             socket->deleteLater();
             continue;
         }
-        if (!admitConnection(socket, m_liveMcpConnections)) continue;
+        if (!ants::admitLiveConnection(this, socket, m_liveMcpConnections)) continue;
         QTimer *idleTimer = new QTimer(socket);
         idleTimer->setSingleShot(true);
         idleTimer->setInterval(5000);

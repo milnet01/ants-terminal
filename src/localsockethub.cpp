@@ -21,6 +21,19 @@ QPointer<LocalSocketHub> &hubSlot() {
 
 }  // namespace
 
+bool admitLiveConnection(QObject *context, QLocalSocket *socket, int &live) {
+    if (live >= kMaxLiveConnections) {
+        socket->disconnectFromServer();
+        socket->deleteLater();
+        return false;
+    }
+    ++live;
+    // Context `context`: ~QObject disconnects before deleting the sockets it
+    // owns, so this never runs against a destroyed counter.
+    QObject::connect(socket, &QObject::destroyed, context, [&live]() { --live; });
+    return true;
+}
+
 LocalSocketHub::LocalSocketHub(QObject *parent) : QObject(parent) {}
 
 LocalSocketHub &LocalSocketHub::instance() {
