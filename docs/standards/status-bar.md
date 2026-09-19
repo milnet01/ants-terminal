@@ -54,11 +54,15 @@ Not every State widget reads `shellCwd()`. Some report a fact about the
 
 - **Context-% bar** — driven by `ClaudeIntegration::contextUpdated(int)`;
   hides on `<= 0`.
-- **Tokens-saved pill** (`m_tokensSavedChip`, ANTS-3572) — driven by
-  `ClaudeIntegration::tokensSavedUpdated(qint64)`; the update slot gates
-  `show()` on `Config::claudeTokensSavedChipEnabled()` AND a `> 0` session,
-  hides otherwise. It also styles from the active theme in the slot AND in
-  `applyTheme()` so a live theme switch repaints it.
+- **Tokens-saved pill** (`m_tokensSavedChip`, ANTS-3572 / ANTS-3579) —
+  rendered by `refreshTokensSavedChip()` for the focused tab's project.
+  `ClaudeIntegration::tokensSavedUpdated(qint64)` starts the
+  `m_tokensSavedRefresh` single-shot timer, which runs it (ANTS-5092); a
+  tab switch calls it directly. It gates `show()` on
+  `Config::claudeTokensSavedChipEnabled()` AND the project's stored
+  lifetime plus live session being `> 0`, and hides otherwise. It also
+  styles from the active theme in the slot AND in `applyTheme()` so a live
+  theme switch repaints it.
 
 - **Broadcast chip** (`m_broadcastChip`, ANTS-5223) — driven by the Broadcast
   Input toggle rather than a signal; `refreshBroadcastChip()` shows it while
