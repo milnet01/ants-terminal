@@ -12,6 +12,13 @@ for security-relevant changes.
 
 ## [Unreleased]
 
+### Added
+
+- **roadmap_log can move an existing item to another section** (ANTS-4948)
+  op:"amend_field" takes field:"section" with the destination slug as
+  `value`. `locators[]` of {id} moves several items in one write. The
+  items keep their ids, bodies and history.
+
 ### Changed
 
 - **The MCP socket reads one request per line** (ANTS-5089)

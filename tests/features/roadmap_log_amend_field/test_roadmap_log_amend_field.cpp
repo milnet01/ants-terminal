@@ -115,6 +115,11 @@ QByteArray fixture() {
         "  Kind: fix.\n"
         "  Source: seed.\n"
         "  Lanes: vt, core.\n"
+        "\n"
+        // ANTS-4948 — a destination for the section-move cases.
+        "## Later\n"
+        "\n"
+        "Nothing is filed here yet.\n"
         "\n";
     return b;
 }
@@ -702,4 +707,120 @@ TEST(RoadmapLogAmendField, Ants5094ReportRefusesMalformedWindow) {
         << "a malformed since silently fell back to the default periods: "
         << QJsonDocument(resp).toJson().toStdString();
     EXPECT_EQ(resp.value(QStringLiteral("code")).toString(), QStringLiteral("bad_args"));
+}
+
+// ---------------------------------------------------------- ANTS-4948 -----
+
+namespace {
+
+qint64 sectionIdOf(const QString &slug, qint64 projectId) {
+    auto store = openStore(RoadmapStore::Access::Interactive);
+    if (!store) return -1;
+    QString err;
+    const auto id = store->findSection(projectId, slug, &err);
+    return id ? *id : -1;
+}
+
+QJsonObject moveReq(const QString &root, const QStringList &ids, const QString &slug) {
+    QJsonObject req;
+    req[QStringLiteral("caller_cwd")] = root;
+    req[QStringLiteral("op")]         = QStringLiteral("amend_field");
+    req[QStringLiteral("field")]      = QStringLiteral("section");
+    req[QStringLiteral("value")]      = slug;
+    QJsonArray locs;
+    for (const QString &id : ids) {
+        QJsonObject l;
+        l[QStringLiteral("id")] = id;
+        locs.append(l);
+    }
+    req[QStringLiteral("locators")] = locs;
+    return req;
+}
+
+}  // namespace
+
+TEST(RoadmapLogAmendField, Ants4948MovesOneItemAndRenders) {
+    Fx fx; ASSERT_TRUE(fx.ok());
+    const qint64 later = sectionIdOf(QStringLiteral("later"), fx.projectId);
+    ASSERT_GT(later, 0) << "the fixture's second section was not migrated";
+    RemoteControl rc(nullptr);
+    const QJsonObject resp = rc.cmdRoadmapLogAmendFieldForTest(
+        fieldReq(fx.root, QStringLiteral("DEMO-0007"), QStringLiteral("section"),
+                 QStringLiteral("later"))).object();
+    ASSERT_TRUE(resp.value(QStringLiteral("ok")).toBool())
+        << QJsonDocument(resp).toJson().toStdString();
+    EXPECT_EQ(resp.value(QStringLiteral("previous")).toString(), QStringLiteral("work"));
+
+    const auto item = itemOf(QStringLiteral("DEMO-0007"), fx.projectId);
+    ASSERT_TRUE(item.has_value());
+    EXPECT_EQ(item->sectionId, later);
+    const std::string md = readAll(roadmapPath(fx.root)).toStdString();
+    const auto heading = md.find("## Later");
+    const auto bullet = md.find("[DEMO-0007]");
+    ASSERT_NE(heading, std::string::npos);
+    ASSERT_NE(bullet, std::string::npos);
+    EXPECT_LT(heading, bullet) << "the render did not publish the move";
+}
+
+TEST(RoadmapLogAmendField, Ants4948MovesSeveralInOneCall) {
+    Fx fx; ASSERT_TRUE(fx.ok());
+    const qint64 later = sectionIdOf(QStringLiteral("later"), fx.projectId);
+    RemoteControl rc(nullptr);
+    const QJsonObject resp = rc.cmdRoadmapLogAmendFieldForTest(
+        moveReq(fx.root, {QStringLiteral("DEMO-0007"), QStringLiteral("DEMO-0003")},
+                QStringLiteral("later"))).object();
+    ASSERT_TRUE(resp.value(QStringLiteral("ok")).toBool())
+        << QJsonDocument(resp).toJson().toStdString();
+    EXPECT_EQ(resp.value(QStringLiteral("moved_count")).toInt(), 2);
+    for (const char *id : {"DEMO-0007", "DEMO-0003"}) {
+        const auto item = itemOf(QString::fromLatin1(id), fx.projectId);
+        ASSERT_TRUE(item.has_value());
+        EXPECT_EQ(item->sectionId, later) << id;
+    }
+    // Order within the destination follows the locators.
+    const std::string md = readAll(roadmapPath(fx.root)).toStdString();
+    EXPECT_LT(md.find("[DEMO-0007]"), md.find("[DEMO-0003]"));
+}
+
+TEST(RoadmapLogAmendField, Ants4948OneUnknownIdMovesNothing) {
+    Fx fx; ASSERT_TRUE(fx.ok());
+    const qint64 work = sectionIdOf(QStringLiteral("work"), fx.projectId);
+    RemoteControl rc(nullptr);
+    const QJsonObject resp = rc.cmdRoadmapLogAmendFieldForTest(
+        moveReq(fx.root, {QStringLiteral("DEMO-0007"), QStringLiteral("DEMO-9999")},
+                QStringLiteral("later"))).object();
+    EXPECT_FALSE(resp.value(QStringLiteral("ok")).toBool());
+    EXPECT_EQ(resp.value(QStringLiteral("code")).toString(),
+              QStringLiteral("bullet_not_found"));
+    const auto item = itemOf(QStringLiteral("DEMO-0007"), fx.projectId);
+    ASSERT_TRUE(item.has_value());
+    EXPECT_EQ(item->sectionId, work) << "a batch with a bad id moved part of itself";
+}
+
+TEST(RoadmapLogAmendField, Ants4948UnknownSectionOffersCandidates) {
+    Fx fx; ASSERT_TRUE(fx.ok());
+    RemoteControl rc(nullptr);
+    const QJsonObject resp = rc.cmdRoadmapLogAmendFieldForTest(
+        fieldReq(fx.root, QStringLiteral("DEMO-0007"), QStringLiteral("section"),
+                 QStringLiteral("latr"))).object();
+    EXPECT_FALSE(resp.value(QStringLiteral("ok")).toBool());
+    EXPECT_EQ(resp.value(QStringLiteral("code")).toString(),
+              QStringLiteral("section_not_found"));
+    EXPECT_TRUE(resp.value(QStringLiteral("candidates")).toArray()
+                    .contains(QJsonValue(QStringLiteral("later"))))
+        << QJsonDocument(resp).toJson().toStdString();
+}
+
+TEST(RoadmapLogAmendField, Ants4948AlreadyThereWritesNothing) {
+    Fx fx; ASSERT_TRUE(fx.ok());
+    const QByteArray before = readAll(roadmapPath(fx.root));
+    RemoteControl rc(nullptr);
+    const QJsonObject resp = rc.cmdRoadmapLogAmendFieldForTest(
+        fieldReq(fx.root, QStringLiteral("DEMO-0003"), QStringLiteral("section"),
+                 QStringLiteral("work"))).object();
+    ASSERT_TRUE(resp.value(QStringLiteral("ok")).toBool())
+        << QJsonDocument(resp).toJson().toStdString();
+    EXPECT_FALSE(resp.value(QStringLiteral("amended")).toBool());
+    EXPECT_EQ(resp.value(QStringLiteral("moved_count")).toInt(), 0);
+    EXPECT_EQ(readAll(roadmapPath(fx.root)), before);
 }

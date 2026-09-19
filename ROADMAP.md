@@ -60534,7 +60534,7 @@ than re-filed; everything else lands here.
   Source: UT_Ants_Ants_MCP_Feedback.md 2026-09-08.
   Lanes: roadmap-store, mcp.
 
-- 📋 [ANTS-4948] **roadmap_log has no op that moves an existing item to another section.**
+- ✅ [ANTS-4948] **roadmap_log has no op that moves an existing item to another section.**
   Every op either creates an item in a section or edits one in
   place; none changes the section column. create_section can make
   the destination and nothing can put an item in it. On a
@@ -60565,6 +60565,14 @@ than re-filed; everything else lands here.
   demoreel proposes the cheapest shape and it is worth preferring: add `section` to op:"amend_field"'s enum, refusing an unknown slug the way the append path does. Same locate-then-write path the other field writes take, and no new op. Pressless's measured case — 112 items across 8 destinations — is why a batch form is still wanted beside it, since N single moves cost N renders.
 
   demoreel also names the workaround the other two did not: hand-edit the file into the wanted grouping and re-run roadmap_migrate, which DOES move items correctly. It is not a route to recommend — it reports items_updated on the layman column for every item it touches (ANTS-4507's re-parse artefact), so a caller cannot tell a real change from noise while doing it, and ANTS-4955 means it rewrites every Layman line as it goes.
+  Resolved (2026-09-19): demoreel's shape. op:"amend_field" accepts
+  field:"section"; `value` is the destination slug. The item is
+  unfiled and re-filed after the destination's last element, one
+  history row per move. `locators[]` of {id} is the batch form, one
+  render for all of them. Every id resolves first, so one unknown id
+  moves nothing. An unknown slug refuses section_not_found with
+  candidates. Store-only, like the rest of amend_field. Locked by
+  tests/features/roadmap_log_amend_field (the Ants4948 cases).
   **Layman:** There is no way to move a roadmap item into a different section, so re-scoping a release cannot be recorded.
   Kind: feature.
   Source: UT_Ants_Ants_MCP_Feedback.md 2026-09-08.

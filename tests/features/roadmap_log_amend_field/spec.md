@@ -82,6 +82,15 @@ rather than reaching the caller as a raw SQLite constraint string.
   element. `roadmap_query` `mode:"report"` refuses an unparseable `since` or
   `until` with `bad_args` rather than changing the window.
 
+- **INV-10 (ANTS-4948)** — `field:"section"` moves an item to the section
+  whose slug is `value`, filed after that section's last element, and the
+  render publishes it. `locators[]` of `{id}` moves several in one call, in
+  locator order. Every id resolves before anything is written, so one
+  unknown id refuses `bullet_not_found` and moves nothing. An unknown slug
+  refuses `section_not_found` with `candidates`. An item already in the
+  destination is reported in `already_there` and nothing is written.
+  *Tests:* the `Ants4948*` cases.
+
 ## Out of scope
 
 - **Rows already damaged by the one-way workaround.** A body that

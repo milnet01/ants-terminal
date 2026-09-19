@@ -13240,7 +13240,10 @@ void ClaudeIntegration::onMcpConnection() {
                         "because the declaration wins at render AND is "
                         "re-parsed into the column by the next body "
                         "write, so the column write would be invisible now "
-                        "and reverted later. "
+                        "and reverted later. ANTS-4948 — `field:\"section\"` "
+                        "MOVES the item: `value` is the destination slug, "
+                        "and `locators[]` of {id} moves several in one "
+                        "render. "
                         "\"render\" (ANTS-4614) PUBLISHES the store to "
                         "ROADMAP.md with NO semantic change — no locator, no "
                         "arguments, nothing written to the store. It exists "
@@ -14029,10 +14032,11 @@ void ClaudeIntegration::onMcpConnection() {
                     fieldProp["enum"] = QJsonArray{
                         QStringLiteral("layman"), QStringLiteral("kind"),
                         QStringLiteral("source"), QStringLiteral("lanes"),
-                        QStringLiteral("evidence")};
+                        QStringLiteral("evidence"), QStringLiteral("section")};
                     fieldProp["description"] = QStringLiteral(
                         "op:\"amend_field\" — which trailer COLUMN to "
-                        "write. `headline` is op:\"amend_headline\" and "
+                        "write, or `section` to move the item to the section "
+                        "`value` names (ANTS-4948). `headline` is op:\"amend_headline\" and "
                         "`status` is op:\"flip\"; body prose is "
                         "op:\"amend_body\". Only `layman` is nullable: "
                         "kind and source are NOT NULL with no default, so "

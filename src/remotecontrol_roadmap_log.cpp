@@ -3269,6 +3269,9 @@ QJsonDocument RemoteControl::cmdRoadmapLogAmendField(const QJsonObject &req) {
 
     const QString id    = req.value(QStringLiteral("id")).toString().trimmed();
     const QString field = req.value(QStringLiteral("field")).toString().trimmed();
+    // ANTS-4948 — a section is filing, not a trailer column; its own path.
+    if (field == QLatin1String("section"))
+        return cmdRoadmapLogAmendSection(req);
     if (id.isEmpty())
         return rlErr(QStringLiteral("missing_field"),
             QStringLiteral("roadmap_log: op:\"amend_field\" needs `id` — the "
@@ -3279,8 +3282,8 @@ QJsonDocument RemoteControl::cmdRoadmapLogAmendField(const QJsonObject &req) {
         QStringLiteral("evidence")};
     if (!kEditable.contains(field)) {
         return rlErr(QStringLiteral("bad_args"),
-            QStringLiteral("roadmap_log: `field` must be one of %1 — the five "
-                           "trailer columns. `headline` is op:\"amend_headline\" "
+            QStringLiteral("roadmap_log: `field` must be one of %1, or "
+                           "`section` to move the item. `headline` is op:\"amend_headline\" "
                            "and `status` is op:\"flip\"; body prose is "
                            "op:\"amend_body\".").arg(kEditable.join(QStringLiteral(", "))));
     }
@@ -3484,6 +3487,195 @@ QJsonDocument RemoteControl::cmdRoadmapLogAmendField(const QJsonObject &req) {
     if (const QJsonObject ev = rlEvidenceAdvisory(evNotPath); !ev.isEmpty())
         rlAddWarning(env, ev);                   // ANTS-4527
     rcRoadmapWriteFields(env, outcome, dryRun);  // ANTS-4463
+    if (dryRun)
+        env[QStringLiteral("dry_run")] = true;
+    return QJsonDocument(env);
+}
+
+// ANTS-4948 — op:"amend_field" field:"section": move items to another section.
+//
+// No other op changes an item's section: every op creates an item in one or
+// edits it in place. On a store-backed project the file is a render, so moving
+// a bullet by hand is reverted by the next write. Re-filing as new items
+// allocates new ids and breaks every cross-reference to the old ones.
+//
+// An item is filed by its element row (INV-20), so a move is unfileItem() then
+// fileItem() at the end of the destination. `value` is the destination slug.
+// `id` moves one item; `locators[]` of {id} moves several in one render. Every
+// id resolves before anything is written, so one bad id moves nothing.
+QJsonDocument RemoteControl::cmdRoadmapLogAmendSection(const QJsonObject &req) {
+    auto rlErr = [](const QString &code, const QString &message) {
+        QJsonObject env;
+        env[QStringLiteral("ok")]    = false;
+        env[QStringLiteral("code")]  = code;
+        env[QStringLiteral("error")] = message;
+        return QJsonDocument(env);
+    };
+
+    QStringList ids;
+    const QString oneId = req.value(QStringLiteral("id")).toString().trimmed();
+    if (req.contains(QStringLiteral("locators"))) {
+        if (!oneId.isEmpty())
+            return rlErr(QStringLiteral("bad_op_combo"),
+                QStringLiteral("roadmap_log: pass `id` for one move or "
+                               "`locators` for several, not both"));
+        for (const QJsonValue &v : req.value(QStringLiteral("locators")).toArray()) {
+            const QJsonObject loc = v.toObject();
+            const QString lid = loc.value(QStringLiteral("id")).toString().trimmed();
+            if (lid.isEmpty() || loc.contains(QStringLiteral("anchor"))
+                || loc.contains(QStringLiteral("headline"))
+                || loc.contains(QStringLiteral("line_range")))
+                return rlErr(QStringLiteral("bad_args"),
+                    QStringLiteral("roadmap_log: a section move takes locators "
+                                   "of {id} only — the id is the store's key"));
+            if (!ids.contains(lid)) ids << lid;
+        }
+    } else if (!oneId.isEmpty()) {
+        ids << oneId;
+    }
+    if (ids.isEmpty())
+        return rlErr(QStringLiteral("missing_field"),
+            QStringLiteral("roadmap_log: field:\"section\" needs `id`, or "
+                           "`locators` of {id} to move several items"));
+    const QString slug = req.value(QStringLiteral("value")).toString().trimmed();
+    if (slug.isEmpty())
+        return rlErr(QStringLiteral("missing_field"),
+            QStringLiteral("roadmap_log: field:\"section\" needs `value`, the "
+                           "destination section's slug"));
+
+    QString root, roadmapPath;
+    QJsonDocument refusal;
+    const auto target = roadmapSectionOpTarget(req, &root, &roadmapPath, &refusal);
+    if (!target) {
+        QJsonObject env = refusal.object();
+        if (env.value(QStringLiteral("code")).toString()
+                == QLatin1String("op_unsupported")) {
+            env[QStringLiteral("code")]  = QStringLiteral("unsupported_format");
+            env[QStringLiteral("error")] = QStringLiteral(
+                "roadmap_log: moving an item to another section needs a "
+                "store-migrated project. On a markdown-backed project, move the "
+                "bullet in ROADMAP.md itself.");
+        }
+        return QJsonDocument(env);
+    }
+    RoadmapStore &store = *target->store;
+    QString err;
+
+    const auto destId = store.findSection(target->projectId, slug, &err);
+    if (!destId) {
+        if (!err.isEmpty())
+            return rlErr(QStringLiteral("store_failed"), err);
+        // ANTS-4591 — the same near-miss ranking append's refusal carries.
+        QJsonObject env;
+        env[QStringLiteral("ok")]    = false;
+        env[QStringLiteral("code")]  = QStringLiteral("section_not_found");
+        env[QStringLiteral("error")] = QStringLiteral(
+            "roadmap_log: section \"%1\" is not in the roadmap store").arg(slug);
+        if (const auto sections = store.listSectionsOrdered(target->projectId)) {
+            QStringList slugs;
+            slugs.reserve(sections->size());
+            for (const RoadmapStore::SectionRow &sr : *sections)
+                slugs << sr.slug;
+            env[QStringLiteral("candidates")] = QJsonArray::fromStringList(
+                ReadRegion::rankSectionCandidates(slug, slugs));
+            env[QStringLiteral("sections_total")] = int(slugs.size());
+        }
+        return QJsonDocument(env);
+    }
+
+    struct Move { QString id; qint64 pk = 0; qint64 fromSection = 0; QString fromSlug; };
+    QVector<Move> moves;
+    QStringList unchanged;
+    for (const QString &mid : std::as_const(ids)) {
+        const auto pk = store.findItem(target->projectId, mid, &err);
+        if (!pk)
+            return rlErr(err.isEmpty() ? QStringLiteral("bullet_not_found")
+                                       : QStringLiteral("store_failed"),
+                err.isEmpty() ? QStringLiteral("roadmap_log: no bullet with id "
+                                               "\"%1\" in this project's store — "
+                                               "nothing was moved").arg(mid)
+                              : err);
+        const auto item = store.readItem(*pk, &err);
+        if (!item)
+            return rlErr(QStringLiteral("store_failed"), err);
+        if (item->sectionId == *destId) {
+            unchanged << mid;
+            continue;
+        }
+        Move m{mid, *pk, item->sectionId, QString()};
+        if (item->sectionId != 0) {
+            const auto from = store.readSection(item->sectionId, &err);
+            if (!from)
+                return rlErr(QStringLiteral("store_failed"), err);
+            m.fromSlug = from->slug;
+        }
+        moves << m;
+    }
+
+    // Filed after the destination's last element: (section_id, position) is
+    // UNIQUE, and item rows hold positions too — append's reason.
+    const auto elements = store.listElements(*destId, &err);
+    if (!elements)
+        return rlErr(QStringLiteral("store_failed"), err);
+    int maxPos = -1;
+    for (const RoadmapStore::ElementRow &e : *elements)
+        maxPos = std::max(maxPos, e.position);
+
+    const bool dryRun = req.value(QStringLiteral("dry_run")).toBool();
+    HistoryContext hist;               // ANTS-3822 § 2.5 — one op, one stamp
+    hist.changedAt = rlHistoryStamp();
+    const auto mutate = [&](QString *e) -> bool {
+        int pos = maxPos;
+        for (const Move &m : std::as_const(moves)) {
+            if (m.fromSection != 0 && !store.unfileItem(m.pk, e))
+                return false;
+            if (!store.fileItem(m.pk, *destId, ++pos, e))
+                return false;
+            hist.record(m.pk, QStringLiteral("section"), m.fromSlug, slug);
+            // ANTS-4501 § 2.2 — a move is a modification; status is untouched.
+            if (!rlStampModified(store, m.pk, e))
+                return false;
+        }
+        return rlFlushHistory(store, hist, e);
+    };
+
+    QJsonObject env;
+    if (!moves.isEmpty()) {
+        RoadmapRender::Outcome outcome;
+        QString writeErr;
+        const auto r = RoadmapWrite::commitAndRender(
+            store, target->projectId, root, roadmapPath, dryRun, mutate,
+            &outcome, &writeErr);
+        if (rcRoadmapWriteRefused(env, r, writeErr, outcome))
+            return QJsonDocument(env);
+        rlAttachHistoryNote(env, store, hist);      // ANTS-3822 § 2.3.1
+        rcRoadmapWriteFields(env, outcome, dryRun);  // ANTS-4463
+    }
+
+    env[QStringLiteral("ok")]      = true;
+    env[QStringLiteral("op")]      = QStringLiteral("amend_field");
+    env[QStringLiteral("field")]   = QStringLiteral("section");
+    env[QStringLiteral("value")]   = slug;
+    env[QStringLiteral("amended")] = !moves.isEmpty();
+    QJsonArray moved;
+    for (const Move &m : std::as_const(moves)) {
+        QJsonObject o;
+        o[QStringLiteral("id")]       = m.id;
+        o[QStringLiteral("previous")] = m.fromSlug;
+        moved.append(o);
+    }
+    env[QStringLiteral("moved")] = moved;
+    env[QStringLiteral("moved_count")] = int(moves.size());
+    // Already in the destination: nothing to write, and said so rather than
+    // counted as a move.
+    if (!unchanged.isEmpty())
+        env[QStringLiteral("already_there")] = QJsonArray::fromStringList(unchanged);
+    // The single-id form keeps amend_field's own echo.
+    if (!req.contains(QStringLiteral("locators"))) {
+        env[QStringLiteral("id")] = ids.first();
+        env[QStringLiteral("previous")] =
+            moves.isEmpty() ? slug : moves.first().fromSlug;
+    }
     if (dryRun)
         env[QStringLiteral("dry_run")] = true;
     return QJsonDocument(env);
