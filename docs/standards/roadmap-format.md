@@ -618,9 +618,9 @@ roadmap"*, it MUST:
    are § 3.8 fold-ins hoisted to `##`, so treat each as an extra
    theme section of the active phase, worked in step 3 after that
    phase's own themes.
-3. Within the active release, find the first bullet that is neither
-   ✅ nor 🚫 under each `###` theme section, prioritising 🚧 over 📋.
-   Both are closed and are never worked.
+3. Within the active release, find the first 🚧 bullet under each
+   `###` theme section, else the first 📋. ✅ and 🚫 are closed and are
+   never worked, and 💭 is not queued.
 4. Tackle bullets in document order — *not* in ID order.
 5. When inserting new bullets (e.g. from an audit), follow
    §3.5.2.
@@ -1155,7 +1155,7 @@ refuses `format_mismatch`. A `- **Status**:` of `dropped`, `abandoned`,
 - ❌ Mixing `[ ]` / `[x]` task-list syntax with the emoji
   status system on the same bullet (the formats coexist at
   file scope per § 3.10, but not at bullet scope). The one exception
-  is the task-list adapter's own `- [ ] <emoji>` and `- [x] 🚫`
+  is the task-list adapter's own `- [ ] 🚧`, `- [ ] 💭` and `- [x] 🚫`
   forms, which `roadmap_log` writes to carry a status a checkbox cannot.
 - ❌ Reading or bumping `.roadmap-counter` on a store-migrated
   project (§ 3.5.1). Its carrier is the store's `id_high_water`

@@ -62228,6 +62228,26 @@ than re-filed; everything else lands here.
   Source: in-session-2026-09-15.
   Lanes: mcp.
 
+- 📋 [ANTS-5241] **roadmap-format.md § 3.5.1 and roadmap-data-model.md § 8 still describe a corpus floor under the store's id high-water, which ANTS-4631 removed.**
+  Found by a cold lane while gating ANTS-4977's edit to roadmap-format.md.
+  Code: RoadmapStore::allocationFloor is max(id_high_water row, the store's
+  own highest item id for the prefix), with no corpus term. The ANTS-4631
+  comment in cmdRoadmapLogAppend records why the corpus floor went. The
+  standards still say otherwise: roadmap-format.md § 3.5.1's store-migrated
+  carrier row, its max(idHighWater, corpusHighWater) formula, the ANTS-3450
+  paragraph ("the max() above keeps the floor"), "the committed corpus above
+  is that floor for every project, store-migrated or not", and the
+  Illustrative note. roadmap-data-model.md § 7.1 (allocation floor as the
+  max() of the store and the corpus), § 7.2, § 7.5 (the id-floor note) and
+  § 8's id-floor bullet ("keeps the corpus as a floor under that row"). The
+  fix rewrites both consistently and runs both documents' review gates.
+  Not fixed inside the ANTS-4977 gates because it is a separate, pre-existing
+  design drift, and fixing one document alone would make them contradict.
+  **Layman:** Two roadmap rulebooks describe how new item numbers are chosen in a way the code stopped using, so someone building to them would build the old way.
+  Kind: doc-fix.
+  Source: review-contract 2026-09-19 (roadmap-format gate loop 12, surfaced not fixed).
+  Lanes: roadmap-store, docs.
+
 ### Ants MCP without a terminal relaunch (user request 2026-09-07)
 
 Today every MCP verb is a C++ method compiled into the GUI binary and served

@@ -813,6 +813,10 @@ unmappable.
 | `dropped` · `abandoned` · `wontfix` | `dropped` | `asserted` |
 | anything else | `planned` | `defaulted` |
 
+A status glyph leading the value is skipped when a word follows it (`✅ Done`
+classifies on `Done`), and a bare glyph maps to its status (a bare `🚫` is
+`dropped`), recorded `asserted`.
+
 **The mapping is total, and the fallback is a default rather than a rejection.**
 Refusing an unrecognised word would halt a whole project on its author's private
 vocabulary, which is the § 10 anti-pattern that rejects a migrated item for a
@@ -1230,7 +1234,7 @@ than a question.
 | INV-4 cross-project relationships | the `relationship` table carries them; that they are *used* is not checkable |
 | INV-5 no relationship inferred from prose | **nothing** — a prohibition on authors and on migration, enforced by § 6 giving migration only two structured fields to read |
 | § 7.7 provenance never silently promoted | **nothing yet.** ANTS-3809 landed the write path that stamps it, but no test asserts a value is never promoted; the check is still § 9's |
-| §§ 3.1–3.2 obligations, §§ 7.3–7.5 enums | **partly.** § 3.2's gate is enforced on every store write; `Inv1RenderFailureRollsBack` checks that a refused write rolls back, and since 2026-08-24 it does so against the write's OWN offender rather than an unrelated one. The SCOPE rule is checked by `Ants4628UntouchedDebtDoesNotBlockAWrite`, `Ants4628WriteIsStillRefusedByItsOwnOffender` and `Ants4628RenderPublishesPastLegacyDebt` (same bundle), and at the render library by `Inv5GateScopeLimitsOffenders`. § 3.1's write-time obligations and the §§ 7.3–7.5 enums are validated nowhere, and remain § 9's |
+| §§ 3.1–3.2 obligations, §§ 7.3–7.5 enums | **partly.** § 3.2's gate is enforced on every store write; `Inv1RenderFailureRollsBack` checks that a refused write rolls back, and since 2026-08-24 it does so against the write's OWN offender rather than an unrelated one. The SCOPE rule is checked by `Ants4628UntouchedDebtDoesNotBlockAWrite`, `Ants4628WriteIsStillRefusedByItsOwnOffender` and `Ants4628RenderPublishesPastLegacyDebt` (same bundle), and at the render library by `Inv5GateScopeLimitsOffenders`. The §§ 7.3–7.5 enums (status, kind, priority, visibility) are enforced by the store schema's `CHECK` constraints; § 3.1's write-time obligations are validated nowhere, and remain § 9's |
 | § 7.1 identity grammar | `roadmap-format.md` § 3.5.1's regex, already in `RoadmapIndex::isCanonicalId` |
 | § 8 reconciliation | **nothing** — prose agreement between two standards; § 8's ID-allocation bullet records how far the amendment it owes has got. |
 
