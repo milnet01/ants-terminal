@@ -1189,6 +1189,8 @@ public:
     QJsonDocument cmdRoadmapLogRetitleSectionForTest(const QJsonObject &req);
     // ANTS-4949 — drive set_intro / set_preamble without a MainWindow.
     QJsonDocument cmdRoadmapLogSetIntroForTest(const QJsonObject &req, bool preamble);
+    QJsonDocument cmdRoadmapLogDeleteSectionForTest(const QJsonObject &req);
+    QJsonDocument cmdRoadmapLogMoveSectionForTest(const QJsonObject &req);
     // ANTS-4501 § 2.3 — drive the git backfill against a synthetic caller_cwd
     // without a MainWindow. See tests/features/roadmap_backfill_dates/spec.md.
     QJsonDocument cmdRoadmapLogBackfillDatesForTest(const QJsonObject &req);
@@ -1286,6 +1288,11 @@ private:
     // set_preamble replaces the live file's root intro, which holds the
     // roadmap's title. One handler, store-only.
     QJsonDocument cmdRoadmapLogSetIntro(const QJsonObject &req, bool preamble);
+    // ANTS-4958 — delete_section removes an emptied section; move_section
+    // moves a section and its subsections. Store-only; the store owns the
+    // roadmap's structure (user decision 2026-09-19).
+    QJsonDocument cmdRoadmapLogDeleteSection(const QJsonObject &req);
+    QJsonDocument cmdRoadmapLogMoveSection(const QJsonObject &req);
     // ANTS-4501 § 2.3 — backfill_dates: walk this project's git history over
     // its roadmap files and fill `created` / `shipped` for the rows that
     // predate § 2.2's forward stamping. One-off and opt-in; never a side

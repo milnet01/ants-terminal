@@ -1836,6 +1836,37 @@ bool RoadmapStore::clearSectionElements(qint64 sectionId, QString *error) {
     return true;
 }
 
+bool RoadmapStore::deleteSection(qint64 sectionId, QString *error) {
+    QSqlQuery q(m_db);
+    q.prepare(QStringLiteral(
+        "SELECT (SELECT count(*) FROM element WHERE section_id = ? AND kind = 'item'),"
+        "       (SELECT count(*) FROM section WHERE parent_id = ?)"));
+    q.addBindValue(sectionId);
+    q.addBindValue(sectionId);
+    if (!q.exec() || !q.next()) {
+        if (error)
+            *error = lastErr(q);
+        return false;
+    }
+    if (q.value(0).toLongLong() > 0 || q.value(1).toLongLong() > 0) {
+        if (error)
+            *error = QStringLiteral("section %1 still files an item or parents a "
+                                    "section").arg(sectionId);
+        return false;
+    }
+    if (!clearSectionElements(sectionId, error))
+        return false;
+    QSqlQuery d(m_db);
+    d.prepare(QStringLiteral("DELETE FROM section WHERE section_id = ?"));
+    d.addBindValue(sectionId);
+    if (!d.exec()) {
+        if (error)
+            *error = lastErr(d);
+        return false;
+    }
+    return true;
+}
+
 bool RoadmapStore::setLegend(qint64 projectId, const QJsonObject &legend,
                              QString *error) {
     const QString stored = canonicalJson(legend);

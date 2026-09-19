@@ -14,6 +14,13 @@ for security-relevant changes.
 
 ### Added
 
+- **roadmap_log can delete an emptied section and move a section** (ANTS-4958)
+  op:"delete_section" removes a section once nothing is filed in it,
+  and returns its intro text. op:"move_section" moves a section, with its
+  subsections and items, before or after another one. Together with
+  moving items (ANTS-4948), a roadmap can now be reorganised without
+  hand edits. Also closes ANTS-4922.
+
 - **roadmap_log can rewrite a section's intro and the roadmap's title and preamble** (ANTS-4949)
   op:"set_intro" replaces one section's intro text; op:"set_preamble"
   replaces the title and preamble at the top of the file. Both keep the

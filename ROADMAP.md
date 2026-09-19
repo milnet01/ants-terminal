@@ -59689,7 +59689,7 @@ rather than refiled.
 Filed from a cross-session message from the claude-config (~/.claude) session,
 plus two gaps hit while sweeping stale spec citations under ANTS-4757.
 
-- 📋 [ANTS-4922] **No roadmap_log op moves an item between sections, and none deletes an empty one.**
+- ✅ [ANTS-4922] **No roadmap_log op moves an item between sections, and none deletes an empty one.**
   Requested by the claude-config session as the hard blocker on its
   CFG-0321. That project's roadmap is a single phase block with theme
   groups under it (Gate debt, Skills to write, Retirements). Those say
@@ -59728,6 +59728,8 @@ plus two gaps hit while sweeping stale spec citations under ANTS-4757.
   (op:"amend_field" field:"section", plus locators[] of {id}). It uses
   the existing unfileItem/fileItem, and needed no schema change. The
   delete half is still open and is the same request as ANTS-4958.
+  Resolved (2026-09-19): the move half is ANTS-4948, the delete half
+  is op:"delete_section" (ANTS-4958).
   **Layman:** There is no way to move a roadmap entry from one section to another, so a project that wants to reorganise its roadmap has to do it by hand — and hand edits are thrown away.
   Kind: implement.
   Source: cross-session-message-2026-09-07 from claude-config (~/.claude), CFG-0321.
@@ -61011,7 +61013,7 @@ than re-filed; everything else lands here.
   Source: Pressless_Ants_MCP_Feedback.md 2026-09-08.
   Lanes: roadmap-store, mcp.
 
-- 📋 [ANTS-4958] **Re-sectioning needs delete_section and a section order too, and section_index hands back neither ids nor positions.**
+- ✅ [ANTS-4958] **Re-sectioning needs delete_section and a section order too, and section_index hands back neither ids nor positions.**
   ANTS-4948 asks for op:"move". EXECUTING a re-section showed a move
   op alone would not finish the job, so this is the rest of it,
   measured rather than predicted — 112 items across 8 destinations
@@ -61064,6 +61066,18 @@ than re-filed; everything else lands here.
   AND IT PROPOSES AN ALTERNATIVE TO delete_section worth deciding between rather than assuming: have roadmap_migrate PRUNE a section the incoming markdown no longer contains and that holds no items. That keeps the FILE authoritative for structure, which is what a caller restructuring the file expects — measured there, removing the heading and re-migrating reported sections_unchanged and the next render put the heading back. A rename would cover the adjacent case.
 
   The two proposals differ in who owns structure: an explicit op keeps the store authoritative, a migrate prune hands structure back to the file. Pick one deliberately.
+  Decided (2026-09-19, user): explicit ops, so the store stays
+  authoritative for structure. roadmap_migrate does NOT prune sections.
+  Build op:"delete_section" (refuses while the section holds items) and
+  an op to reorder a section.
+  Resolved (2026-09-19): op:"delete_section" (refuses
+  section_not_empty while an item is filed, and section_has_subsections;
+  returns removed_intro and removed_elements) and op:"move_section"
+  (`section` plus after_section or before_section, subtree moves with
+  it, create_section's ANTS-4848 placement rule). NOT built: section ids
+  and positions in section_index. That was asked for the SQL fallback,
+  which these slug-keyed ops replace. Locked by
+  tests/features/roadmap_log_section_ops.
   **Layman:** Even with a way to move items, an emptied section cannot be removed and sections cannot be put in order.
   Kind: feature.
   Source: Pressless_Ants_MCP_Feedback.md 2026-09-08.

@@ -2453,6 +2453,8 @@ if(ANTS_TESTS)
                 tests/features/roadmap_log_amend_field/test_roadmap_log_amend_field.cpp
                 # ANTS-4949 / ANTS-4968 — set_intro and set_preamble.
                 tests/features/roadmap_log_set_intro/test_roadmap_log_set_intro.cpp
+                # ANTS-4958 — delete_section and move_section.
+                tests/features/roadmap_log_section_ops/test_roadmap_log_section_ops.cpp
                 # ANTS-5087 — composed_trailers names exactly the trailer lines
                 # the render wrote, asserted against the published file.
                 tests/features/roadmap_composed_trailers/test_roadmap_composed_trailers.cpp

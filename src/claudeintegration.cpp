@@ -13220,6 +13220,8 @@ void ClaudeIntegration::onMcpConnection() {
                     opEnum.append("render");  // ANTS-4614
                     opEnum.append("set_intro");     // ANTS-4949
                     opEnum.append("set_preamble");  // ANTS-4968
+                    opEnum.append("delete_section");  // ANTS-4958
+                    opEnum.append("move_section");    // ANTS-4958
                     opProp["enum"] = opEnum;
                     opProp["description"] = QStringLiteral(
                         "Verb mode. Default \"append\" (ANTS-1424). "
@@ -13229,6 +13231,12 @@ void ClaudeIntegration::onMcpConnection() {
                         "the roadmap's title and preamble: `new_text` only, "
                         "one `# ` title line allowed. Both store-only, "
                         "dry_run previewable, and echo replaced_intro_chars. "
+                        "\"delete_section\" (ANTS-4958) removes a section by "
+                        "`section`, refusing section_not_empty while it files "
+                        "an item; its intro and narration come back in the "
+                        "reply. \"move_section\" moves `section` and its "
+                        "subsections after `after_section` or before "
+                        "`before_section`. "
                         "\"amend_field\" (ANTS-4667) writes ONE TRAILER "
                         "COLUMN after creation — `id` + `field` "
                         "(layman|kind|source|lanes|evidence) + `value`, "
@@ -13763,7 +13771,13 @@ void ClaudeIntegration::onMcpConnection() {
                     afterSectionProp["description"] = QStringLiteral(
                         "Required under op:\"create_section\": slug of "
                         "an existing ## / ### heading. The new heading "
-                        "is inserted at this section's end.");
+                        "is inserted at this section's end. Also "
+                        "op:\"move_section\"'s destination (ANTS-4958).");
+                    QJsonObject beforeSectionProp;
+                    beforeSectionProp["type"] = "string";
+                    beforeSectionProp["description"] = QStringLiteral(
+                        "op:\"move_section\" — put the section before this "
+                        "slug instead of after `after_section` (ANTS-4958).");
                     QJsonObject levelProp;
                     levelProp["type"] = "integer";
                     QJsonArray levelEnum;
@@ -14017,6 +14031,7 @@ void ClaudeIntegration::onMcpConnection() {
                     props["bullets"]       = bulletsProp;
                     props["section"]       = sectionProp;
                     props["after_section"] = afterSectionProp;
+                    props["before_section"] = beforeSectionProp;  // ANTS-4958
                     props["level"]         = levelProp;
                     props["title"]         = titleProp;
                     props["intro_body"]    = introBodyProp;

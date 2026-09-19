@@ -465,6 +465,11 @@ public:
     // narration and table rows nothing re-inserts.
     bool clearSectionElements(qint64 sectionId, QString *error = nullptr);
 
+    // ANTS-4958 — deletes one section row and its elements. Refuses a section
+    // that still files an item or is another section's parent: the caller
+    // decides what is safe to lose, and neither of those is.
+    bool deleteSection(qint64 sectionId, QString *error = nullptr);
+
     // project.legend — one JSON object per project (roadmap-data-model.md
     // § 5.1). CANONICALISED.
     bool setLegend(qint64 projectId, const QJsonObject &legend, QString *error = nullptr);

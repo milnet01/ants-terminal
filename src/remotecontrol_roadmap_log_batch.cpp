@@ -3492,6 +3492,235 @@ QJsonDocument RemoteControl::cmdRoadmapLogSetIntroForTest(const QJsonObject &req
     return cmdRoadmapLogSetIntro(req, preamble);
 }
 
+namespace {
+
+// ANTS-4958 — a section's subtree in document order: the section itself and
+// every following section of the same file deeper than it. Nesting is
+// inferred from (level, position), so that is exactly what the render would
+// nest under it.
+int rcSubtreeEnd(const QVector<RoadmapStore::SectionRow> &ordered, int at) {
+    int end = at + 1;
+    while (end < ordered.size()
+           && ordered.at(end).sourcePath == ordered.at(at).sourcePath
+           && ordered.at(end).level > ordered.at(at).level)
+        ++end;
+    return end;
+}
+
+int rcIndexOfSlug(const QVector<RoadmapStore::SectionRow> &ordered, const QString &slug) {
+    for (int i = 0; i < ordered.size(); ++i)
+        if (ordered.at(i).slug == slug) return i;
+    return -1;
+}
+
+QJsonDocument rcSectionNotFound(RoadmapStore &store, qint64 projectId,
+                                const QString &slug) {
+    QJsonObject env = rcSectionOpErr(QStringLiteral("section_not_found"),
+        QStringLiteral("roadmap_log: section \"%1\" is not in the store")
+            .arg(slug)).object();
+    if (const auto sections = store.listSectionsOrdered(projectId)) {
+        QStringList slugs;
+        for (const RoadmapStore::SectionRow &sr : *sections)
+            if (!sr.slug.isEmpty()) slugs << sr.slug;
+        env[QStringLiteral("candidates")] = QJsonArray::fromStringList(
+            ReadRegion::rankSectionCandidates(slug, slugs));
+        env[QStringLiteral("sections_total")] = int(slugs.size());
+    }
+    return QJsonDocument(env);
+}
+
+}  // namespace
+
+// ANTS-4958 — delete_section. Re-sectioning with a move op left the emptied
+// source section behind, and nothing could remove it. Refuses while the
+// section files an item or has subsections, so it cannot be the destructive
+// half of a half-finished move. Its intro and any narration or table go with
+// it, and the envelope hands them back.
+QJsonDocument RemoteControl::cmdRoadmapLogDeleteSection(const QJsonObject &req) {
+    const QString slug = req.value(QStringLiteral("section")).toString().trimmed();
+    if (slug.isEmpty())
+        return rcSectionOpErr(QStringLiteral("missing_field"),
+            QStringLiteral("roadmap_log: delete_section requires `section`"));
+
+    QString root, roadmapPath;
+    QJsonDocument refusal;
+    const auto target = roadmapSectionOpTarget(req, &root, &roadmapPath, &refusal);
+    if (!target) return refusal;
+    RoadmapStore &store    = *target->store;
+    const qint64 projectId = target->projectId;
+
+    QString err;
+    const auto ordered = store.listSectionsOrdered(projectId, &err);
+    if (!ordered)
+        return rcSectionOpErr(QStringLiteral("store_failed"), err);
+    const int at = rcIndexOfSlug(*ordered, slug);
+    if (at < 0)
+        return rcSectionNotFound(store, projectId, slug);
+    const RoadmapStore::SectionRow row = ordered->at(at);
+    if (rcSubtreeEnd(*ordered, at) > at + 1)
+        return rcSectionOpErr(QStringLiteral("section_has_subsections"),
+            QStringLiteral("roadmap_log: section \"%1\" has subsections; delete or "
+                           "move them first").arg(slug));
+
+    const auto elements = store.listElements(row.sectionId, &err);
+    if (!elements)
+        return rcSectionOpErr(QStringLiteral("store_failed"), err);
+    QStringList items;
+    QJsonArray removed;
+    for (const RoadmapStore::ElementRow &e : *elements) {
+        if (e.kind == QLatin1String("item")) {
+            items << e.itemIdFold;
+            continue;
+        }
+        QJsonObject o;
+        o[QStringLiteral("kind")]    = e.kind;
+        o[QStringLiteral("payload")] = e.payload.value_or(QString());
+        removed.append(o);
+    }
+    if (!items.isEmpty()) {
+        QJsonObject env = rcSectionOpErr(QStringLiteral("section_not_empty"),
+            QStringLiteral("roadmap_log: section \"%1\" still files %2 item(s); move "
+                           "them with op:\"amend_field\" field:\"section\" first")
+                .arg(slug).arg(items.size())).object();
+        env[QStringLiteral("item_ids")] = QJsonArray::fromStringList(items.mid(0, 20));
+        return QJsonDocument(env);
+    }
+
+    const bool dryRun = req.value(QStringLiteral("dry_run")).toBool();
+    const auto mutate = [&](QString *mErr) -> bool {
+        return store.deleteSection(row.sectionId, mErr);
+    };
+    RoadmapRender::Outcome outcome;
+    QString writeErr;
+    const auto r = RoadmapWrite::commitAndRender(
+        store, projectId, root, roadmapPath, dryRun, mutate, &outcome, &writeErr);
+    QJsonObject env;
+    if (rcRoadmapWriteRefused(env, r, writeErr, outcome))
+        return QJsonDocument(env);
+    env[QStringLiteral("ok")]      = true;
+    env[QStringLiteral("op")]      = QStringLiteral("delete_section");
+    env[QStringLiteral("section")] = slug;
+    env[QStringLiteral("removed_intro")]    = row.intro;
+    env[QStringLiteral("removed_elements")] = removed;
+    rcRoadmapWriteFields(env, outcome, dryRun);   // ANTS-4463
+    return QJsonDocument(env);
+}
+
+// ANTS-4958 — move_section. Puts a section, with its subsections, after
+// `after_section`'s subtree or before `before_section`. The placement rule is
+// create_section's (ANTS-4848): after an anchor, sections deeper than the
+// moved one are stepped past, so the move never adopts another section's
+// children. Positions are re-dealt from the values already in use, so every
+// section keeps its relative order apart from the block that moved.
+QJsonDocument RemoteControl::cmdRoadmapLogMoveSection(const QJsonObject &req) {
+    const QString slug   = req.value(QStringLiteral("section")).toString().trimmed();
+    const QString after  = req.value(QStringLiteral("after_section")).toString().trimmed();
+    const QString before = req.value(QStringLiteral("before_section")).toString().trimmed();
+    if (slug.isEmpty())
+        return rcSectionOpErr(QStringLiteral("missing_field"),
+            QStringLiteral("roadmap_log: move_section requires `section`"));
+    if (after.isEmpty() == before.isEmpty())
+        return rcSectionOpErr(QStringLiteral("bad_args"),
+            QStringLiteral("roadmap_log: move_section takes exactly one of "
+                           "`after_section` or `before_section`"));
+    const QString anchor = after.isEmpty() ? before : after;
+
+    QString root, roadmapPath;
+    QJsonDocument refusal;
+    const auto target = roadmapSectionOpTarget(req, &root, &roadmapPath, &refusal);
+    if (!target) return refusal;
+    RoadmapStore &store    = *target->store;
+    const qint64 projectId = target->projectId;
+
+    QString err;
+    const auto orderedOpt = store.listSectionsOrdered(projectId, &err);
+    if (!orderedOpt)
+        return rcSectionOpErr(QStringLiteral("store_failed"), err);
+    const QVector<RoadmapStore::SectionRow> ordered = *orderedOpt;
+    const int at = rcIndexOfSlug(ordered, slug);
+    if (at < 0)
+        return rcSectionNotFound(store, projectId, slug);
+    const int anchorAt = rcIndexOfSlug(ordered, anchor);
+    if (anchorAt < 0)
+        return rcSectionNotFound(store, projectId, anchor);
+    const int blockEnd = rcSubtreeEnd(ordered, at);
+    if (anchorAt >= at && anchorAt < blockEnd)
+        return rcSectionOpErr(QStringLiteral("bad_args"),
+            QStringLiteral("roadmap_log: \"%1\" is inside the section being moved")
+                .arg(anchor));
+    const RoadmapStore::SectionRow moved = ordered.at(at);
+    if (ordered.at(anchorAt).sourcePath != moved.sourcePath)
+        return rcSectionOpErr(QStringLiteral("bad_args"),
+            QStringLiteral("roadmap_log: \"%1\" is in another roadmap file; "
+                           "move_section keeps a section in its own file").arg(anchor));
+    if (!before.isEmpty() && ordered.at(anchorAt).level > moved.level)
+        return rcSectionOpErr(QStringLiteral("bad_args"),
+            QStringLiteral("roadmap_log: \"%1\" is deeper than \"%2\", so putting "
+                           "\"%2\" before it would make it and its later siblings "
+                           "subsections of \"%2\"").arg(before, slug));
+
+    // The order with the block taken out, then put back in its new place.
+    QVector<RoadmapStore::SectionRow> rest;
+    for (int i = 0; i < ordered.size(); ++i)
+        if (i < at || i >= blockEnd) rest.append(ordered.at(i));
+    int insertAt = rcIndexOfSlug(rest, anchor);
+    if (!after.isEmpty()) {
+        ++insertAt;
+        while (insertAt < rest.size()
+               && rest.at(insertAt).sourcePath == moved.sourcePath
+               && rest.at(insertAt).level > moved.level)
+            ++insertAt;
+    }
+    QVector<RoadmapStore::SectionRow> next = rest.mid(0, insertAt);
+    for (int i = at; i < blockEnd; ++i) next.append(ordered.at(i));
+    next += rest.mid(insertAt);
+
+    QVector<int> values;
+    for (const auto &s : ordered) values.append(s.position);
+    std::sort(values.begin(), values.end());
+    const bool distinct = std::adjacent_find(values.begin(), values.end()) == values.end();
+
+    const bool dryRun = req.value(QStringLiteral("dry_run")).toBool();
+    const auto mutate = [&](QString *mErr) -> bool {
+        for (int i = 0; i < next.size(); ++i) {
+            const auto &s = next.at(i);
+            const int pos = distinct ? values.at(i) : values.first() + i;
+            // The moved head's parent is re-derived from the new order at
+            // render; create_section files a new section the same way.
+            const bool head = s.sectionId == moved.sectionId;
+            if (pos == s.position && !head)
+                continue;
+            if (!store.updateSection(s.sectionId, s.title, s.level, pos,
+                                     head ? std::nullopt : s.parentId, mErr))
+                return false;
+        }
+        return true;
+    };
+    RoadmapRender::Outcome outcome;
+    QString writeErr;
+    const auto r = RoadmapWrite::commitAndRender(
+        store, projectId, root, roadmapPath, dryRun, mutate, &outcome, &writeErr);
+    QJsonObject env;
+    if (rcRoadmapWriteRefused(env, r, writeErr, outcome))
+        return QJsonDocument(env);
+    env[QStringLiteral("ok")]      = true;
+    env[QStringLiteral("op")]      = QStringLiteral("move_section");
+    env[QStringLiteral("section")] = slug;
+    env[after.isEmpty() ? QStringLiteral("before_section")
+                        : QStringLiteral("after_section")] = anchor;
+    env[QStringLiteral("sections_moved")] = blockEnd - at;
+    rcRoadmapWriteFields(env, outcome, dryRun);   // ANTS-4463
+    return QJsonDocument(env);
+}
+
+QJsonDocument RemoteControl::cmdRoadmapLogDeleteSectionForTest(const QJsonObject &req) {
+    return cmdRoadmapLogDeleteSection(req);
+}
+
+QJsonDocument RemoteControl::cmdRoadmapLogMoveSectionForTest(const QJsonObject &req) {
+    return cmdRoadmapLogMoveSection(req);
+}
+
 // ANTS-1248: workspace_search — structured ripgrep wrapper for MCP +
 // IPC. Replaces `Bash grep -rn 'pattern' src/` with a server-clamped
 // {matches[], truncated, elapsed_ms} envelope. ~6-15 K tokens saved
