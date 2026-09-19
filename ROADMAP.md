@@ -35222,6 +35222,14 @@ against current source before filing.
   missing store, unreadable store, damaged index, bad KEEP, and one run
   through systemd (Result=success). Still open: the claude-config
   export, its push-conflict handling, and staleness detection.
+  Progress (2026-09-19): spec accepted,
+  docs/specs/ANTS-3794-roadmap-store-backup.md, after review-contract
+  loops 1 and 2 (cap reached, calm). It covers the headless
+  --export-roadmaps entry point, tools/roadmap-export-publish.sh (stop
+  on divergence, never merge), the per-job backup records, and a
+  roadmap_backup block in session_orient. Next: build it. The
+  claude-config .gitignore allowlist is CFG-0380, and a restore command
+  is ANTS-5244.
   **Layman:** How the roadmap database gets backed up automatically, and how we notice when a backup silently stops working.
   Kind: implement.
   Source: ANTS-3758 split (2026-08-03, user), spec seam 3c of 5.

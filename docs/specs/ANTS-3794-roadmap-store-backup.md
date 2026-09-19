@@ -1,6 +1,6 @@
 # ANTS-3794 — publish the roadmap export weekly and report a backup that stops
 
-**Status:** spec draft (2026-09-19).
+**Status:** accepted (2026-09-19), review-contract loops 1 + 2 folded (cap reached).
 **Kind:** implement.
 **Source:** ROADMAP.md ANTS-3794 (ANTS-3758 split, seam 3c; user decisions 2026-09-19).
 **Pairs with:** [ANTS-3761](ANTS-3761-roadmap-export-format.md) — the export's bytes; this spec runs and publishes it.
@@ -129,8 +129,10 @@ Steps, stopping at the first failure:
    with `--export-roadmaps <repo>/roadmap-export`. A non-zero exit is a
    failure.
 5. `git add -A -- 'roadmap-export/*.jsonl'`, then
-   `git commit -m "roadmap-export: weekly backup (<date>)" -- 'roadmap-export/*.jsonl'`.
-   The pathspec limits the commit to the export files. `ConfigWriteLock`
+   `git commit -m "chore: weekly roadmap export (<date>)" -- 'roadmap-export/*.jsonl'`.
+   `claude-config`'s `commit-msg` hook requires an id or a
+   `chore:`/`docs:`/`fix:` prefix there, and rejects a bare component
+   prefix. The pathspec limits the commit to the export files. `ConfigWriteLock`
    leaves a `<file>.lock` beside each export, and those persist between
    runs (`src/configbackup.h`), so they are never staged. Other staged or
    unstaged changes in `<repo>` stay exactly as they were. Hooks run; a
@@ -142,7 +144,8 @@ Steps, stopping at the first failure:
 7. Record success (§ 2.4).
 
 Every failure records the error (§ 2.4), raises `notify-send -u critical`
-when it is installed, and exits non-zero.
+when it is installed, and exits non-zero. Step 1's lock-held exit 3 is
+not a failure: it neither records nor notifies.
 
 ### 2.4 The backup record
 
@@ -166,6 +169,8 @@ error=
 - `attempt` is set on every run that got past the lock.
 - `success` changes only on success. `error` is emptied on success and
   set, flattened to one line, on failure.
+- All three keys are always written. A value not yet set is empty, and
+  `assess()` reads an empty value as absent.
 - Written temp-then-`mv`, so a reader never sees half a file.
 
 Plain `key=value` rather than JSON, so the shell writer needs no JSON
@@ -201,7 +206,9 @@ it reads both records and classifies each job:
 The first matching row wins. When both jobs are healthy it returns an
 empty object. Otherwise it returns
 `{jobs: {<job>: {state, success, error}}, hint}`, listing only the
-unhealthy jobs. `hint` names the record path and the timer to check.
+unhealthy jobs. `hint` names the record path and that job's timer:
+`ants-roadmap-backup.timer` for `snapshot`, `ants-roadmap-export.timer`
+for `export`.
 
 `RemoteControl::cmdSessionOrient()` sets `result["roadmap_backup"]` from
 `assess(<state dir>, now, QFileInfo::exists(RoadmapStore::defaultPath()))`
@@ -216,6 +223,7 @@ the block. That is deliberate: whoever is working should see it.
 ### 2.6 Scheduling
 
 A weekly user timer runs the publish script, beside the snapshot timer
+(`ants-roadmap-backup.timer`)
 already installed. Unit files are local machine configuration and are not
 shipped; this is their text:
 
@@ -407,3 +415,4 @@ before its fix, per the project convention.
 | Loop | Date | Lanes | Q1 | Q2 | Q3 | Q4 | Outcome |
 |---|---|---|---|---|---|---|---|
 | 1 | 2026-09-19 | 3, cold, identical shared packet | 1 | 0 | 1 | 2 | Verified 4, fixed 4, dismissed 1. Q1 (found building the packet): the publish step staged all of roadmap-export/, which would commit the .lock files ConfigWriteLock leaves beside each export; it now stages *.jsonl only (checked in a throwaway repo). Q4, all three lanes: INV-3 and INV-4 tested exit codes from main(), which no test bundle links; the steps now live in RoadmapExport::runExportCommand(storePath, dir, out). Q3: the claude-config allowlist line would have exposed the lock files to any git add -A; replaced by three lines that track *.jsonl only (checked). Q4: the publish shell test needs git, flock and sqlite3; it now exits 77 under SKIP_RETURN_CODE, so it stays out of ci_workflow_deps' required set. Dismissed: git's glob crossing / (nothing writes subdirectories). Four open questions resolved clean: no schema upgrade beyond the running instance, exit 3 is not a failure, library placement is local, export_slug is NOT NULL. |
+| 2 | 2026-09-19 | 3, cold, identical shared packet | 1 | 1 | 2 | 0 | Verified 4, fixed 4, dismissed 2. Cap reached (2 for a spec): shipped. Q1 (found resolving two lanes' open question on hooks): the commit subject 'roadmap-export: ...' fails claude-config's commit-msg hook (exit 1), so every weekly run would fail; now 'chore: weekly roadmap export (<date>)' (exit 0). Q2: the lock-held exit 3 contradicted 'every failure records and notifies'; now stated as not a failure. Q3: all three record keys are always written, and an empty value reads as absent. Q3: the snapshot timer is named (ants-roadmap-backup.timer), and the hint names each job's timer. Dismissed: an ignored roadmap-export/ making 'nothing to commit' read as success (refuted: git add exits 128 'did not match any files'); the 4 MiB figure under Access::Bulk (true, builds nothing different). Resolved clean: the newer-schema refusal is in createSchema(); cross-project rows are ANTS-5244's. Calm cap: 1 of 4 final-loop findings anchored on text this run wrote (§2.3 step 5). Gated span 977b0b69 is the whole new spec, so all 8 verified findings fall inside it. |
