@@ -104,6 +104,20 @@ public:
     // if none is set or `index` is out of range.
     QColor tabColor(int index) const;
 
+    // ANTS-5238 — the tab-tag palette, in the order the tab's right-click
+    // menu lists it (warm to cool, neutrals last; "None" is the menu's own).
+    // `family` groups the hues: 0 red/pink, 1 purple, 2 blue,
+    // 3 yellow/orange, 4 green, 5 grey.
+    struct PaletteEntry { QString name; QColor color; int family; };
+    static const QList<PaletteEntry> &palette();
+
+    // ANTS-5238 — `count` colours for tabs laid side by side. Families are
+    // visited in turn (red, green, blue, yellow, purple, grey), each giving
+    // its next unused colour, so neighbouring tabs are always in different
+    // families and no colour repeats until the palette is used up. Past that
+    // the sequence starts again.
+    static QList<QColor> distinctColors(int count);
+
     // Supply a provider callback invoked during paintEvent for every
     // tab. Returning a Glyph other than `None` renders a small dot at
     // the tab's leading edge. The bar stores no state — invalidate via

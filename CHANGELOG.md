@@ -14,6 +14,12 @@ for security-relevant changes.
 
 ### Added
 
+- **View → Give Each Tab a Different Colour** (ANTS-5238)
+  Colours every open tab in one click, so tabs side by side are always
+  in different colour families (red, green, blue, yellow, purple, grey
+  in turn) and no colour repeats until all 25 are used. The colours are
+  saved like a colour picked from the tab's own menu.
+
 - **roadmap_log can delete an emptied section and move a section** (ANTS-4958)
   op:"delete_section" removes a section once nothing is filed in it,
   and returns its intro text. op:"move_section" moves a section, with its

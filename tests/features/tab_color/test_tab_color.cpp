@@ -21,6 +21,7 @@
 #include <QColor>
 #include <QFile>
 #include <QJsonObject>
+#include <QSet>
 #include <QStandardPaths>
 #include <QUuid>
 #include <QWidget>
@@ -229,16 +230,16 @@ int runPickerMenuSourceContract() {
     CHECK(!body.empty(), "showTabColorMenu body located");
 
     // Part 1 — palette expanded from 7 to the full Catppuccin accent row.
-    // Each valid swatch is a QColor(0x..) constructor; the "None"/clear
-    // entry uses a default QColor(). Count only within the function body so
-    // unrelated QColor(0x..) uses elsewhere in mainwindow.cpp don't inflate.
-    const std::size_t swatches = ants_test::countOccurrences(body, "QColor(0x");
-    // ANTS-4689 raised this from 14. A floor only locks what it names, so it
-    // moves with the palette — at 14 it would have gone on passing after a
-    // regression that dropped every colour added since.
-    CHECK(swatches >= 25,
+    // ANTS-5238 moved the list into ColoredTabBar::palette(), shared with
+    // View > Give Each Tab a Different Colour, so the size is read at run
+    // time and the menu is held to building from that list.
+    // ANTS-4689 raised the floor from 14. A floor only locks what it names, so
+    // it moves with the palette.
+    CHECK(ColoredTabBar::palette().size() >= 25,
           "picker palette has >= 25 named colour swatches "
           "(ANTS-1374 part 1; neutrals added by ANTS-4689)");
+    CHECK(body.find("ColoredTabBar::palette()") != std::string::npos,
+          "the picker builds its swatches from ColoredTabBar::palette()");
 
     // Part 2 — a "Custom" entry opens QColorDialog for an arbitrary per-tab
     // colour, persisted through the SAME persistTabColor path as the presets
@@ -249,6 +250,46 @@ int runPickerMenuSourceContract() {
           "custom entry opens QColorDialog");
     CHECK(body.find("persistTabColor") != std::string::npos,
           "picker persists choices via persistTabColor");
+    return failures;
+}
+
+// ANTS-5238 — View > Give Each Tab a Different Colour.
+int runDistinctColours() {
+    int failures = 0;
+    const auto &pal = ColoredTabBar::palette();
+    auto familyOf = [&pal](const QColor &c) {
+        for (const auto &e : pal)
+            if (e.color.rgb() == c.rgb()) return e.family;
+        return -1;
+    };
+
+    // Every palette colour once before any repeats.
+    const QList<QColor> first = ColoredTabBar::distinctColors(pal.size());
+    QSet<QRgb> seen;
+    for (const QColor &c : first) seen.insert(c.rgb());
+    CHECK(first.size() == pal.size() && seen.size() == pal.size(),
+          "the first palette-size tabs each get a different colour");
+
+    // Neighbours never share a family, including across the wrap.
+    const QList<QColor> many = ColoredTabBar::distinctColors(3 * pal.size() + 1);
+    int clashes = 0;
+    for (int i = 1; i < many.size(); ++i) {
+        const int a = familyOf(many.at(i - 1)), b = familyOf(many.at(i));
+        CHECK(a >= 0 && b >= 0, "every colour handed out is a palette colour");
+        if (a == b) ++clashes;
+    }
+    CHECK(clashes == 0, "neighbouring tabs are in different colour families");
+    CHECK(ColoredTabBar::distinctColors(0).isEmpty(), "no tabs, no colours");
+
+    // The menu action is wired to the method that applies it.
+    const std::string src = ants_test::slurpMainWindow();
+    CHECK(src.find("Give Each Tab a &Different Colour") != std::string::npos,
+          "View menu offers the action");
+    const std::string body =
+        ants_test::slurpFunctionBody(src, "void MainWindow::colorTabsDistinctly(");
+    CHECK(body.find("ColoredTabBar::distinctColors") != std::string::npos
+              && body.find("persistTabColor") != std::string::npos,
+          "the action colours every tab and persists it like a manual pick");
     return failures;
 }
 
@@ -270,6 +311,7 @@ TEST(TabColor, Main) {
     failures += runRemoveCleansUp();
     failures += runPersistenceRoundTrip();
     failures += runPickerMenuSourceContract();
+    failures += runDistinctColours();
 
     if (failures == 0) {
         std::printf("tab_color: round-trip + reorder + remove + persist + "

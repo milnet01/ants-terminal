@@ -1432,6 +1432,13 @@ void MainWindow::setupViewMenu() {
         });
     }
 
+    // ANTS-5238 — colour every open tab at once, neighbours in different
+    // colour families. Persisted exactly like a pick from the tab's menu.
+    QAction *distinctColours =
+        viewMenu->addAction("Give Each Tab a &Different Colour");
+    connect(distinctColours, &QAction::triggered, this,
+            &MainWindow::colorTabsDistinctly);
+
     viewMenu->addSeparator();
 
     QAction *centerAction = viewMenu->addAction("&Center Window");
@@ -7054,35 +7061,12 @@ void MainWindow::showTabColorMenu(int tabIndex) {
     // colour below clears that. Raising the floor for all of them is a
     // separate change (it would alter every existing tab's appearance) and
     // is ANTS-4690.
+    // ANTS-5238 — the list itself lives in ColoredTabBar::palette(), shared
+    // with View > Give Each Tab a Different Colour.
     struct ColorEntry { QString name; QColor color; };
-    QList<ColorEntry> colors = {
-        {"None", QColor()},
-        {"Rosewater", QColor(0xF5, 0xE0, 0xDC)},
-        {"Flamingo", QColor(0xF2, 0xCD, 0xCD)},
-        {"Pink", QColor(0xF5, 0xC2, 0xE7)},
-        {"Orchid", QColor(0xE8, 0xA9, 0xE0)},
-        {"Purple", QColor(0xCB, 0xA6, 0xF7)},
-        {"Indigo", QColor(0xA8, 0xA4, 0xF7)},
-        {"Lavender", QColor(0xB4, 0xBE, 0xFE)},
-        {"Red", QColor(0xF3, 0x8B, 0xA8)},
-        {"Maroon", QColor(0xEB, 0xA0, 0xAC)},
-        {"Orange", QColor(0xFA, 0xB3, 0x87)},
-        {"Sand", QColor(0xD9, 0xC2, 0xA4)},
-        {"Yellow", QColor(0xF9, 0xE2, 0xAF)},
-        {"Olive", QColor(0xD5, 0xD0, 0x8A)},
-        {"Lime", QColor(0xC6, 0xE8, 0x8C)},
-        {"Green", QColor(0xA6, 0xE3, 0xA1)},
-        {"Mint", QColor(0xA9, 0xE8, 0xC8)},
-        {"Teal", QColor(0x94, 0xE2, 0xD5)},
-        {"Sky", QColor(0x89, 0xDC, 0xEB)},
-        {"Sapphire", QColor(0x74, 0xC7, 0xEC)},
-        {"Blue", QColor(0x89, 0xB4, 0xFA)},
-        {"Silver", QColor(0xA6, 0xAD, 0xC8)},
-        {"Gray", QColor(0x6C, 0x70, 0x86)},
-        {"Slate", QColor(0x58, 0x5B, 0x70)},
-        {"Charcoal", QColor(0x45, 0x47, 0x5A)},
-        {"Black", QColor(0x11, 0x11, 0x1B)},
-    };
+    QList<ColorEntry> colors = {{"None", QColor()}};
+    for (const ColoredTabBar::PaletteEntry &e : ColoredTabBar::palette())
+        colors.append({e.name, e.color});
     // Show which colour the tab is on now. Without this the menu gives no
     // way to read the current state — the swatch is on the tab, but the tab
     // is behind the menu, and "None" is indistinguishable from any colour.
@@ -7237,6 +7221,16 @@ void MainWindow::persistTabColor(QWidget *tabRoot, const QColor &color) {
     // drag-reorder within a session); the ordered list is only
     // consulted as a fallback at startup.
     saveTabColorSequence();
+}
+
+void MainWindow::colorTabsDistinctly() {
+    if (!m_coloredTabBar) return;
+    const QList<QColor> colours =
+        ColoredTabBar::distinctColors(m_tabWidget->count());
+    for (int i = 0; i < colours.size(); ++i) {
+        m_coloredTabBar->setTabColor(i, colours.at(i));
+        persistTabColor(m_tabWidget->widget(i), colours.at(i));
+    }
 }
 
 void MainWindow::saveTabColorSequence() {

@@ -53,6 +53,13 @@ produce a visible, persistent colour tag on the tab that:
    presets stay within the same pastel-lightness band as the original 7,
    so tab-label contrast is unchanged.
 
+7. **Colours every tab apart in one action (ANTS-5238).**
+   View > Give Each Tab a Different Colour gives the open tabs
+   `ColoredTabBar::distinctColors(count)`, persisted through
+   `MainWindow::persistTabColor` like a manual pick. The first
+   palette-size tabs each get a different colour, and neighbouring tabs are
+   never in the same colour family, across the wrap too.
+
 ## Rationale
 
 The context-menu feature was implemented in 0.6.x but silently broken
@@ -76,9 +83,10 @@ a strip on top of the base-class paint) out of the stylesheet's reach.
   against `QStandardPaths::setTestModeEnabled(true)` so the real user
   config is never written.
 
-- **Picker menu surface (ANTS-1374, §6):** a source-grep contract over
-  `MainWindow::showTabColorMenu` in `mainwindow.cpp` — asserts ≥25 named
-  swatches, a "Custom" entry opening `QColorDialog`, and reuse of
+- **Picker menu surface (ANTS-1374, §6):** `ColoredTabBar::palette()`
+  holds ≥25 named swatches (checked at run time), and a source-grep contract
+  over `MainWindow::showTabColorMenu` in `mainwindow.cpp` asserts it builds
+  from that list, offers a "Custom" entry opening `QColorDialog`, and reuses
   `persistTabColor`. Source-grep (not runtime) because driving the live
   menu needs a full MainWindow harness; the same approach as
   `help_about_menu`.

@@ -16982,6 +16982,10 @@ fixes don't address. Roadmapped here as their own design tasks.
   Needs its own spec via `/write-spec` before drafting: a manual is a
   multi-file design with a structure worth reviewing before the prose is
   written, and rewriting a finished manual's structure is expensive.
+  Decided (2026-09-19, user): the manual must be accessible from within
+  the app. That settles the "in-app help" part of the open scope question
+  above; the spec still decides the file layout and whether plugins are
+  covered. Re-requested the same day, so it is not filed again.
   **Layman:** A proper handbook for people using Ants Terminal — what everything does and how to use it, written in plain language rather than developer shorthand.
   Kind: doc.
   Source: user-request-2026-07-28.
@@ -80031,6 +80035,27 @@ contributors don't duplicate research.
   Kind: enhancement.
   Source: in-session-2026-09-14, split from ANTS-4121.
   Lanes: mcp, roadmap.
+
+- ✅ [ANTS-5238] **View menu action that gives every open tab a different colour, with neighbouring tabs in different colour families.**
+  The user colours each tab by hand to tell projects apart, walking the
+  palette first, last, second, second-last and so on. That walk does not
+  keep neighbours apart once the two ends meet. Asked for: neighbours
+  in different colour families, for contrast.
+  Design: the 25-colour tab palette is grouped into six families
+  (red/pink, purple, blue, yellow/orange, green, grey). Tabs take the
+  next unused colour from each family in turn: red, green, blue, yellow,
+  purple, grey. Neighbours always differ in family, and no colour repeats
+  until all 25 are used. One action colours every open tab and persists
+  it like a manual pick.
+  Resolved (2026-09-19): ColoredTabBar::palette() is now the one list,
+  shared by the tab's right-click menu and the new action.
+  ColoredTabBar::distinctColors(count) builds the order. Locked by
+  tests/features/tab_color § 7 (all 25 distinct first; no neighbouring
+  pair in one family over three cycles plus the wrap).
+  **Layman:** One click colours all your tabs differently, so tabs side by side never look alike.
+  Kind: feature.
+  Source: user-request-2026-09-19.
+  Lanes: chrome, tabs.
 
 ### 🔒 Security
 

@@ -405,6 +405,8 @@ private:
     // Persistence is unconditional (not gated on session_persistence) —
     // user requested colours survive even with session restore disabled.
     void persistTabColor(QWidget *tabRoot, const QColor &color);
+    // ANTS-5238 — View > Give Each Tab a Different Colour.
+    void colorTabsDistinctly();
     void applyPersistedTabColor(QWidget *tabRoot);
     // Persist the full current tab color list (by index) to
     // config.tab_color_sequence. Called after any tab-color mutation

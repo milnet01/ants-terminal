@@ -161,6 +161,59 @@ void ColoredTabBar::setTabColor(int index, const QColor &color) {
     update();
 }
 
+const QList<ColoredTabBar::PaletteEntry> &ColoredTabBar::palette() {
+    // ANTS-1374 / ANTS-4689 — see MainWindow::showTabColorMenu for the
+    // palette's history and its contrast measurement.
+    static const QList<PaletteEntry> entries = {
+        {QStringLiteral("Rosewater"), QColor(0xF5, 0xE0, 0xDC), 0},
+        {QStringLiteral("Flamingo"),  QColor(0xF2, 0xCD, 0xCD), 0},
+        {QStringLiteral("Pink"),      QColor(0xF5, 0xC2, 0xE7), 0},
+        {QStringLiteral("Orchid"),    QColor(0xE8, 0xA9, 0xE0), 1},
+        {QStringLiteral("Purple"),    QColor(0xCB, 0xA6, 0xF7), 1},
+        {QStringLiteral("Indigo"),    QColor(0xA8, 0xA4, 0xF7), 1},
+        {QStringLiteral("Lavender"),  QColor(0xB4, 0xBE, 0xFE), 2},
+        {QStringLiteral("Red"),       QColor(0xF3, 0x8B, 0xA8), 0},
+        {QStringLiteral("Maroon"),    QColor(0xEB, 0xA0, 0xAC), 0},
+        {QStringLiteral("Orange"),    QColor(0xFA, 0xB3, 0x87), 3},
+        {QStringLiteral("Sand"),      QColor(0xD9, 0xC2, 0xA4), 3},
+        {QStringLiteral("Yellow"),    QColor(0xF9, 0xE2, 0xAF), 3},
+        {QStringLiteral("Olive"),     QColor(0xD5, 0xD0, 0x8A), 3},
+        {QStringLiteral("Lime"),      QColor(0xC6, 0xE8, 0x8C), 4},
+        {QStringLiteral("Green"),     QColor(0xA6, 0xE3, 0xA1), 4},
+        {QStringLiteral("Mint"),      QColor(0xA9, 0xE8, 0xC8), 4},
+        {QStringLiteral("Teal"),      QColor(0x94, 0xE2, 0xD5), 4},
+        {QStringLiteral("Sky"),       QColor(0x89, 0xDC, 0xEB), 2},
+        {QStringLiteral("Sapphire"),  QColor(0x74, 0xC7, 0xEC), 2},
+        {QStringLiteral("Blue"),      QColor(0x89, 0xB4, 0xFA), 2},
+        {QStringLiteral("Silver"),    QColor(0xA6, 0xAD, 0xC8), 5},
+        {QStringLiteral("Gray"),      QColor(0x6C, 0x70, 0x86), 5},
+        {QStringLiteral("Slate"),     QColor(0x58, 0x5B, 0x70), 5},
+        {QStringLiteral("Charcoal"),  QColor(0x45, 0x47, 0x5A), 5},
+        {QStringLiteral("Black"),     QColor(0x11, 0x11, 0x1B), 5},
+    };
+    return entries;
+}
+
+QList<QColor> ColoredTabBar::distinctColors(int count) {
+    // Far-apart hues follow each other: red, green, blue, yellow, purple,
+    // then grey before red comes round again.
+    static const int kFamilyOrder[] = {0, 4, 2, 3, 1, 5};
+    QList<QList<QColor>> byFamily(6);
+    for (const PaletteEntry &e : palette())
+        byFamily[e.family].append(e.color);
+
+    QList<QColor> cycle;
+    for (int round = 0; cycle.size() < palette().size(); ++round)
+        for (const int f : kFamilyOrder)
+            if (round < byFamily.at(f).size())
+                cycle.append(byFamily.at(f).at(round));
+
+    QList<QColor> out;
+    for (int i = 0; i < count; ++i)
+        out.append(cycle.at(i % cycle.size()));
+    return out;
+}
+
 QColor ColoredTabBar::tabColor(int index) const {
     if (index < 0 || index >= count()) return QColor();
     const QVariant v = tabData(index);
