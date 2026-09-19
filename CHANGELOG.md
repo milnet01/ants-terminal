@@ -35,6 +35,12 @@ for security-relevant changes.
 
 ### Fixed
 
+- **Text from Claude Code no longer turns dim and underlined at random** (ANTS-5215)
+  A keyboard-mode code Claude Code sends (`CSI > 4 ; 2 m`) was read as
+  a style change, switching on underline and dim for every character
+  written afterwards without its own styling. Codes ending in `m` that
+  carry a `>`, `?`, `<` or `=` marker no longer change text style.
+
 - **Claude's status keeps updating after a transcript message larger than 4 MiB** (ANTS-5089)
   Ants reads the end of Claude Code's transcript to show what Claude is
   doing. It looked back at most 4 MiB, so a larger final message, such as

@@ -707,7 +707,13 @@ void TerminalGrid::handleCsi(const VtAction &a) {
         m_cursorRow = row;
         break;
     }
-    case 'm': handleSGR(p, a.colonSep); break;
+    case 'm':
+        // ANTS-5215 — only a marker-free `m` is SGR. `CSI > 4;2 m` is
+        // XTMODKEYS (Claude Code sends it at startup) and `CSI ? 4 m` its
+        // query; read as SGR they applied underline and dim to every later
+        // cell the program wrote without its own SGR.
+        if (a.intermediate.empty()) handleSGR(p, a.colonSep);
+        break;
     case 'p':
         if (a.intermediate == "!") {
             // ANTS-1196 — DECSTR (Soft Terminal Reset) per xterm

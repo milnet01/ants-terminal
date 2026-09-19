@@ -63,6 +63,17 @@ attribute code:
 - A selector that is neither `2` nor `5`: `38;1` sets no bold, `48;3` no
   italic, and `58;7` no inverse (ANTS-5136).
 
+## Sequences that end in `m` but are not SGR
+
+A CSI ending in `m` that carries a private marker (`>`, `?`, `<`, `=`) is
+not SGR and changes no attribute (ANTS-5215):
+
+- `CSI > 4 ; 2 m` (XTMODKEYS, set modifyOtherKeys) sets no underline and
+  no dim.
+- `CSI > 4 m` (XTMODKEYS reset) sets no underline.
+- `CSI ? 4 m` (XTQMODKEYS query) sets no underline.
+- A plain SGR after one of these still applies.
+
 ## Scope
 
 ### In scope

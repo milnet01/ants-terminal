@@ -158,3 +158,43 @@ TEST(SgrAttributeReset, UnknownUnderlineColourSelectorIsNotAnAttribute) {
     EXPECT_FALSE(probe.cellAt(0, 0).inverse)
         << "58 with selector 7 ran the selector as SGR 7 (inverse)";
 }
+
+// ANTS-5215 — a CSI ending in `m` with a private marker is not SGR.
+// `CSI > 4 ; 2 m` is XTMODKEYS (set modifyOtherKeys to level 2), which
+// Claude Code sends at startup; read as SGR it applied underline (4) and
+// dim (2). Claude Code then writes typed characters with no SGR of their
+// own, so they took the leaked dim until a full-line redraw.
+TEST(SgrAttributeReset, ModifyOtherKeysSetIsNotSgr) {
+    Probe probe;
+    probe.reset();
+    probe.feed("\x1b[>4;2mX");
+    EXPECT_FALSE(probe.cellAt(0, 0).dim)
+        << "CSI > 4;2 m (XTMODKEYS) ran its 2 as SGR 2 (dim)";
+    EXPECT_FALSE(probe.cellAt(0, 0).underline)
+        << "CSI > 4;2 m (XTMODKEYS) ran its 4 as SGR 4 (underline)";
+}
+
+TEST(SgrAttributeReset, ModifyOtherKeysResetIsNotSgr) {
+    Probe probe;
+    probe.reset();
+    probe.feed("\x1b[>4mX");
+    EXPECT_FALSE(probe.cellAt(0, 0).underline)
+        << "CSI > 4 m (XTMODKEYS reset) ran its 4 as SGR 4 (underline)";
+}
+
+TEST(SgrAttributeReset, ModifyKeysQueryIsNotSgr) {
+    Probe probe;
+    probe.reset();
+    probe.feed("\x1b[?4mX");
+    EXPECT_FALSE(probe.cellAt(0, 0).underline)
+        << "CSI ? 4 m (XTQMODKEYS) ran its 4 as SGR 4 (underline)";
+}
+
+// The guard must not reach real SGR: a marker-free sequence still applies.
+TEST(SgrAttributeReset, PlainSgrStillAppliesAfterMarkedSequence) {
+    Probe probe;
+    probe.reset();
+    probe.feed("\x1b[>4;2m\x1b[2mX");
+    EXPECT_TRUE(probe.cellAt(0, 0).dim)
+        << "a plain SGR 2 after an XTMODKEYS sequence no longer set dim";
+}

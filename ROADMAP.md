@@ -10740,7 +10740,7 @@ extends an existing item, that item carries it instead.
   Source: in-session-2026-09-14 while checking ANTS-5091.
   Lanes: mcp.
 
-- 📋 [ANTS-5215] **Text still renders dim here and there after ANTS-5135, sometimes partway along one line.**
+- ✅ [ANTS-5215] **Text still renders dim here and there after ANTS-5135, sometimes partway along one line.**
   Reported by the user on 2026-09-14 while running Claude Code in Ants,
   after ANTS-5130 and ANTS-5135 shipped. Deferred by the user in favour of
   the review fixes and Colony; investigate later.
@@ -10775,6 +10775,18 @@ extends an existing item, that item carries it instead.
   concluding anything. Lead worth checking first: whether Claude Code
   draws the cursor line of its input with dim or a grey colour on
   purpose.
+  Resolved (2026-09-19): cause found and fixed. TerminalGrid::handleCsi
+  sent every CSI ending in `m` to handleSGR, ignoring a private marker.
+  Claude Code sends `CSI > 4 ; 2 m` (XTMODKEYS, modifyOtherKeys level 2;
+  the string is in its 2.1.278 binary beside `>4m`), which ran as SGR 4
+  and SGR 2: underline and dim. A raw pty capture of Claude Code while
+  typing a three-line prompt shows why it looked partial: typed
+  characters are written with no SGR of their own, so they took the
+  leaked dim, while a full-line redraw carries explicit SGR and came out
+  normal. That is the cursor-line-only screenshot and the user's report
+  that text flips between dim and normal anywhere in the view. Fix: only
+  a marker-free `m` is SGR. Four tests in SgrAttributeReset; three were
+  red before the fix, suite 4922/4922 after.
   **Layman:** Some text still turns grey when it should not, sometimes only part of a line.
   Kind: investigate.
   Source: user-report-2026-09-14.
