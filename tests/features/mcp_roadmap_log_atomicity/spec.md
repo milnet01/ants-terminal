@@ -49,6 +49,12 @@ debt-sweep, settings, config, claudeallowlist) — out of scope here.
    and `m_main` guard and delegates the append body to the new
    `cmdRoadmapLogAppend`.
 
+**Superseded in part by ANTS-5094.** The counter is now written FIRST,
+at every roadmap_log site. A counter failure refuses before the roadmap
+file is touched, so no rollback exists. A roadmap failure after the
+counter leaves a harmless gap: every allocation floors from the file
+(ANTS-2179, ANTS-5094). The invariants below still hold.
+
 ## Invariants
 
 - **INV-1** (control) The test seam drives the append path end-to-end
@@ -63,8 +69,8 @@ debt-sweep, settings, config, claudeallowlist) — out of scope here.
   left byte-unchanged at its pre-call value (100) — no desync, so the
   next allocation cannot reuse the id.
 
-- **INV-3** (ROADMAP rollback) With the flag on, `ROADMAP.md` is
-  restored to its exact pre-call bytes: it contains neither the new
+- **INV-3** (ROADMAP untouched) With the flag on, `ROADMAP.md` keeps
+  its exact pre-call bytes: it contains neither the new
   id (`ANTS-0101`) nor the new headline, and is byte-identical to the
   snapshot taken before the call.
 
@@ -81,8 +87,8 @@ entry point).
 ## Out of scope
 
 - Failure-injection for the other 9 `QSaveFile` sites (v2 sweep).
-- Forcing the *ROADMAP.md* commit (step 1) to fail — that path
-  already returns `roadmap_write_failed` before the counter is
-  touched, so there is nothing to roll back.
+- Forcing the *ROADMAP.md* commit to fail — it returns
+  `roadmap_write_failed` with the counter already advanced, a gap
+  the file floor absorbs (ANTS-5094).
 - Concurrency between two `roadmap_log` callers — the `.roadmap-counter`
   predictable-path hardening is tracked separately under ANTS-1380.

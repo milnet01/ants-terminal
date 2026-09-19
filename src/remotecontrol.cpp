@@ -795,6 +795,20 @@ qint64 rlMaxGfmAnchorForPrefix(const QVector<GfmBullet> &bullets,
     return maxN;
 }
 
+bool rlWriteCounter(const QString &counterPath, qint64 value) {
+    QSaveFile cw(counterPath);
+    if (!cw.open(QIODevice::WriteOnly | QIODevice::Text)) return false;
+    const QByteArray cv = QByteArray::number(value) + '\n';
+    if (cw.write(cv) != cv.size()) return false;
+    if (g_forceCounterCommitFail) {
+        // ANTS-1433 test seam: drop the staged temp file, leaving the
+        // original .roadmap-counter untouched as a real commit failure would.
+        cw.cancelWriting();
+        return false;
+    }
+    return cw.commit();
+}
+
 // ANTS-2055 — collect the child-subsection slugs of `sec`: any indexed
 // heading deeper than `sec` whose heading line falls inside sec's span.
 // op:append / op:append_batch splice at sec.lineEnd; for a `##`

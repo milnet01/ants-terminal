@@ -1071,6 +1071,17 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppend(const QJsonObject &req) {
         return QJsonDocument(out);
     }
 
+    // Counter first (ANTS-5094). A failure here refuses with ROADMAP.md
+    // untouched; a ROADMAP.md failure after it leaves the counter one ahead,
+    // a harmless gap. ANTS-1433's rollback is gone with the reordering.
+    // ANTS-1905 — stable_prefix strategy skips the counter rewrite
+    // entirely (no counter file involved in the allocation).
+    if (!useStablePrefix && !rlWriteCounter(counterPath, newId)) {
+        return rlErr(QStringLiteral("counter_write_failed"),
+            QStringLiteral("roadmap_log: atomic write of "
+                           ".roadmap-counter failed"));
+    }
+
     // Write ROADMAP.md atomically via QSaveFile.
     QSaveFile rw(roadmapPath);
     if (!rw.open(QIODevice::WriteOnly | QIODevice::Text)) {
@@ -1083,51 +1094,6 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppend(const QJsonObject &req) {
         return rlErr(QStringLiteral("roadmap_write_failed"),
             QStringLiteral("roadmap_log: atomic write of \"%1\" "
                            "failed").arg(roadmapPath));
-    }
-
-    // Counter rewrite. ANTS-1433: this is the second half of a
-    // two-stage commit — ROADMAP.md is already on disk above. If the
-    // counter commit fails here the state desyncs (the appended bullet
-    // carries newId but the counter still points one behind, so the
-    // next roadmap_log reuses newId → duplicate IDs). Roll ROADMAP.md
-    // back to its pre-splice content (`markdown`, captured before the
-    // splice) so the operation is all-or-nothing.
-    // ANTS-1905 — stable_prefix strategy skips the counter rewrite
-    // entirely (no counter file involved in the allocation).
-    if (!useStablePrefix) {
-        auto rollbackRoadmap = [&]() {
-            QSaveFile restore(roadmapPath);
-            if (!restore.open(QIODevice::WriteOnly | QIODevice::Text)) return;
-            const QByteArray orig = markdown.toUtf8();
-            if (restore.write(orig) == orig.size()) restore.commit();
-        };
-        QSaveFile cw(counterPath);
-        if (!cw.open(QIODevice::WriteOnly | QIODevice::Text)) {
-            rollbackRoadmap();
-            return rlErr(QStringLiteral("counter_write_failed"),
-                QStringLiteral("roadmap_log: could not open "
-                               ".roadmap-counter for writing"));
-        }
-        const QByteArray cv =
-            (QString::number(newId) + QChar('\n')).toUtf8();
-        bool counterCommitted = (cw.write(cv) == cv.size());
-        if (counterCommitted) {
-            if (g_forceCounterCommitFail) {
-                // ANTS-1433 test seam: drop the staged temp file so the
-                // original .roadmap-counter is left untouched, exactly as a
-                // real QSaveFile::commit() failure would.
-                cw.cancelWriting();
-                counterCommitted = false;
-            } else {
-                counterCommitted = cw.commit();
-            }
-        }
-        if (!counterCommitted) {
-            rollbackRoadmap();
-            return rlErr(QStringLiteral("counter_write_failed"),
-                QStringLiteral("roadmap_log: atomic write of "
-                               ".roadmap-counter failed"));
-        }
     }
 
     // ANTS-1424-INV-8 — success envelope: id (full ANTS-NNNN
@@ -2253,7 +2219,16 @@ QJsonDocument RemoteControl::cmdRoadmapLogFlip(const QJsonObject &req) {
         return QJsonDocument(out);
     }
 
-    // 12. Write ROADMAP.md atomically.
+    // 12. Counter first — only when an anchor was injected (INV-8).
+    // ANTS-5094: a failure refuses with ROADMAP.md untouched.
+    if (needInjection && newCounter >= 0 &&
+        !rlWriteCounter(counterPath, newCounter)) {
+        return rlErr(QStringLiteral("counter_write_failed"),
+            QStringLiteral("roadmap_log: atomic write of "
+                           ".roadmap-counter failed"));
+    }
+
+    // 13. Write ROADMAP.md atomically.
     const qint64 sizeBefore = QFileInfo(roadmapPath).size();   // ANTS-3702
     QSaveFile rw(roadmapPath);
     if (!rw.open(QIODevice::WriteOnly | QIODevice::Text)) {
@@ -2266,23 +2241,6 @@ QJsonDocument RemoteControl::cmdRoadmapLogFlip(const QJsonObject &req) {
         return rlErr(QStringLiteral("roadmap_write_failed"),
             QStringLiteral("roadmap_log: atomic write of \"%1\" "
                            "failed").arg(roadmapPath));
-    }
-
-    // 13. Counter rewrite — only when an anchor was injected (INV-8).
-    if (needInjection && newCounter >= 0) {
-        QSaveFile cw(counterPath);
-        if (!cw.open(QIODevice::WriteOnly | QIODevice::Text)) {
-            return rlErr(QStringLiteral("counter_write_failed"),
-                QStringLiteral("roadmap_log: could not open "
-                               ".roadmap-counter for writing"));
-        }
-        const QByteArray cv =
-            (QString::number(newCounter) + QChar('\n')).toUtf8();
-        if (cw.write(cv) != cv.size() || !cw.commit()) {
-            return rlErr(QStringLiteral("counter_write_failed"),
-                QStringLiteral("roadmap_log: atomic write of "
-                               ".roadmap-counter failed"));
-        }
     }
 
     // 14. Success envelope.

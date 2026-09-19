@@ -498,6 +498,11 @@ qint64 rlMaxExistingIdForPrefix(const QVector<RoadmapDialog::BulletRecord> &bull
 // (prefix compared case-insensitively), 0 when none; floors the GFM flip's
 // anchor counter so a missing or stale .roadmap-counter never re-issues one.
 qint64 rlMaxGfmAnchorForPrefix(const QVector<GfmBullet> &bullets, const QString &prefix);
+// ANTS-5094 — atomically write `value` to .roadmap-counter; false on failure.
+// Honours g_forceCounterCommitFail (ANTS-1433). Callers write the counter
+// BEFORE ROADMAP.md: every allocation floors from the file, so the counter is
+// a cache, and a counter ahead of the file leaves only a harmless gap.
+bool rlWriteCounter(const QString &counterPath, qint64 value);
 QStringList rcSectionChildSlugs(const QVector<RoadmapIndex::Section> &index, const RoadmapIndex::Section &sec);
 
 QJsonDocument rcSectionHasSubsectionsRefusal(const QString &slug, const QStringList &children);

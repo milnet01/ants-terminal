@@ -120,6 +120,48 @@ TEST(AdapterWriteFlip, Inv15BatchAnchorFlooredToFile) {
         << after.toUtf8().constData();
 }
 
+// INV-16 (ANTS-5094) — a failed counter write refuses BEFORE ROADMAP.md is
+// written, so a counter_write_failed never describes a flip that landed.
+TEST(AdapterWriteFlip, Inv16CounterFailureLeavesRoadmapUntouched) {
+    const QString md = QStringLiteral(
+        "# Vestige\n\n"
+        "## Phase 11A\n"
+        "- [ ] Needs an anchor\n");
+    for (const bool batch : {false, true}) {
+        QTemporaryDir dir;
+        ASSERT_TRUE(dir.isValid());
+        const QString root = buildProject(dir, md, 5);
+        ASSERT_FALSE(root.isEmpty());
+
+        RemoteControl rc(nullptr);
+        QJsonObject req;
+        req["caller_cwd"]  = root;
+        req["to_status"]   = QStringLiteral("in-progress");
+        req["prefix_hint"] = QStringLiteral("VEST");
+        if (batch) {
+            QJsonObject loc;
+            loc["headline"] = QStringLiteral("Needs an anchor");
+            req["op"]       = QStringLiteral("flip_batch");
+            req["locators"] = QJsonArray{loc};
+        } else {
+            req["op"]       = QStringLiteral("flip");
+            req["headline"] = QStringLiteral("Needs an anchor");
+        }
+        RemoteControl::setForceCounterCommitFailForTest(true);
+        const QJsonObject env = rc.cmdRoadmapLog(req).object();
+        RemoteControl::setForceCounterCommitFailForTest(false);
+
+        EXPECT_EQ(env.value("code").toString(),
+                  QStringLiteral("counter_write_failed"))
+            << (batch ? "flip_batch: " : "flip: ")
+            << QJsonDocument(env).toJson().constData();
+        EXPECT_EQ(readFile(root + QStringLiteral("/ROADMAP.md")).toStdString(), md.toStdString())
+            << (batch ? "flip_batch" : "flip")
+            << ": INV-16 ROADMAP.md changed although the call refused";
+        EXPECT_EQ(readCounter(root), 5);
+    }
+}
+
 // INV-6 — anchor injection on first flip + counter advance.
 TEST(AdapterWriteFlip, Inv6AnchorInjectionOnFirstFlip) {
     QTemporaryDir dir;

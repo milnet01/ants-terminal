@@ -61,6 +61,9 @@ for ANTS-1428. See `docs/specs/ANTS-1428.md` for the full design
   the highest caret anchor with the same prefix already in the file, so
   a fresh clone with no counter file does not re-issue an anchor.
 - **INV-15 / `op:"flip_batch"` applies the same floor (ANTS-5094).**
+- **INV-16 / The counter is written before the file (ANTS-5094).**
+  On `op:"flip"` and `op:"flip_batch"`, a failed counter write refuses
+  `counter_write_failed` with the roadmap file and the counter unchanged.
 
 ## Bundle
 
