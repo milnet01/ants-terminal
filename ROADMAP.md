@@ -9113,6 +9113,18 @@ extends an existing item, that item carries it instead.
   (tests/features/tokens_saved_chip TSC-9). STILL OPEN: the transcript
   render cap counting entries, the allowlist lock wait, the Projects
   dialog re-reads, and the stale documents.
+  Progress (2026-09-19): three more closed. The transcript dialog's
+  tail loader also takes a byte cap (8 MiB, oldest records dropped, newest
+  always kept; claude_transcript_robustness INV-15). The Projects dialog
+  stores a lazily loaded session summary instead of re-reading it on every
+  click (claude_projects_summary_cache INV-1). The stale documents are
+  corrected: status-bar.md's tokens-saved pill rule and ANTS-1458.md's
+  single-instance claim. NEEDS A DECISION, not built: the allowlist save's
+  5 s lock wait. Every holder of settings.json.lock is Ants itself doing a
+  short read-modify-write (ClaudeAllowlistDialog::saveSettings,
+  SettingsDialog::installClaudeHooks), and flock releases on process death,
+  so the wait is milliseconds unless another Ants hangs mid-write.
+  Recommendation: close with no change.
   **Layman:** Smaller fixes to Ants' Claude status displays: leaking trackers, slow windows, and a tab showing another session.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lane claude-session-widgets).
