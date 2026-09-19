@@ -106,6 +106,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **The remote-control socket now limits how many connections it keeps open, like the Claude hook and MCP sockets.** (ANTS-5093)
+
 - **tool_info's description no longer quotes a stale 5 KiB size for the full tools/list reply** (ANTS-5091)
   The two specs that stated the snapshot's size and its copy-on-write
   sharing are corrected too.

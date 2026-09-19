@@ -9099,7 +9099,7 @@ extends an existing item, that item carries it instead.
   Source: code-quality-review-2026-09-11 perf pass (lane claude-session-widgets).
   Lanes: claude, status-bar.
 
-- 📋 [ANTS-5093] **Performance pass findings for the remote-control socket transport (medium and low).**
+- ✅ [ANTS-5093] **Performance pass findings for the remote-control socket transport (medium and low).**
   Filed separately: ANTS-5051, 5073.
   Medium:
   - A second instance takes over a live instance's socket:
@@ -9149,6 +9149,13 @@ extends an existing item, that item carries it instead.
   Test rc_reply_drain_guard. STILL OPEN: a live-connection cap in
   LocalSocketHub, which changes docs/specs/ANTS-5144-shared-socket-listener.md
   and waits for rule 14's gate.
+  Resolved (2026-09-19, 2a1ca9d8): RemoteControl::onNewConnection
+  admits at most ants::kMaxLiveConnections (64, the cap the user chose
+  for ANTS-5089) after the peer check. The helper moved from
+  ClaudeIntegration to localsockethub as ants::admitLiveConnection, so
+  the hook, MCP and remote-control sockets share one limit. It is a free
+  function, so the ANTS-5144 contract is unchanged and no gate was owed.
+  Test: tests/features/local_socket_connection_cap INV-4.
   **Layman:** Starting a second Ants can silently take over the first one's control socket.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lane mcp-transport).
