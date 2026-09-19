@@ -144,6 +144,12 @@ ANTS-4965 — a file line that differs from its render twin only in whitespace
 `check_sync`), and not as restyling. Each field is emitted only when non-zero.
 *Test:* `Ants4965CountsWhitespaceChangesAsStructure`.
 
+ANTS-4957 — the true arm also carries `discard_reason` (`would_discard_reason`
+on a dry run): the worst thing at stake, one of `text_lost`, `structure`,
+`punctuation` or `restyle_only`. `restyle_only` is a stale render nobody
+edited, safe to overwrite. *Tests:* `Ants4957RestyleOnlyDriftSaysSo`, plus
+reason assertions in the ANTS-4615, ANTS-4695 and ANTS-4965 cases.
+
 **The punctuation behaviour itself is unchanged, deliberately.** INV-4
 prescribes the chop; the defect was reporting it as something it is not. The
 reporter offered either fix and named this one as the one that matters.

@@ -60991,7 +60991,7 @@ than re-filed; everything else lands here.
   Source: Pressless_Ants_MCP_Feedback.md 2026-09-08.
   Lanes: mcp, roadmap-store.
 
-- 📋 [ANTS-4957] **would_discard_external_edits fires on a stale render nobody edited, so the flag warns hardest on the recovery path.**
+- ✅ [ANTS-4957] **would_discard_external_edits fires on a stale render nobody edited, so the flag warns hardest on the recovery path.**
   The field is named for hand edits and reads as one. Measured, it
   is also true on a file this verb itself produced and nobody
   touched — an earlier render of the same store, restored from git.
@@ -61026,6 +61026,14 @@ than re-filed; everything else lands here.
   rather than emitting zeros, so a caller reading
   would_discard_text_lines gets undefined there. Zeros would make
   all three arms readable from one set of keys.
+  Resolved (2026-09-19): the true arm now carries discard_reason
+  (would_discard_reason on a dry run), the worst at stake: text_lost |
+  structure | punctuation | restyle_only. restyle_only is the stale
+  render this item reports, safe to overwrite. NOT done: emitting zeros
+  on the in-sync arm. ANTS-4615 deliberately keeps the breakdown off
+  healthy writes, and a test locks that. Locked by
+  RoadmapWriteHalf.Ants4957RestyleOnlyDriftSaysSo plus reason asserts
+  in three sibling cases.
   **Layman:** The warning that says “this will throw away your hand edits” also fires when there are none, including while you are fixing the file.
   Kind: enhancement.
   Source: Pressless_Ants_MCP_Feedback.md 2026-09-08.
@@ -61798,7 +61806,7 @@ than re-filed; everything else lands here.
   Source: LocalWebServerManager_Ants_MCP_Feedback.md 2026-09-08.
   Lanes: mcp.
 
-- 📋 [ANTS-4976] **roadmap_query's bad_mode refusal explains the id lookup and never names `query`, the argument that answers the question being asked.**
+- ✅ [ANTS-4976] **roadmap_query's bad_mode refusal explains the id lookup and never names `query`, the argument that answers the question being asked.**
   A session tried mode:"search" to find a bullet by subject. The
   refusal is helpful about IDS — "item lookup is an argument, not a
   mode" — and never mentions `query`, so the reporter concluded no
@@ -61824,6 +61832,10 @@ than re-filed; everything else lands here.
   Worth checking the selection_hint and the mode enum's own
   description for the same silence while there — the reporter read
   both before reaching for an invented mode.
+  Resolved (2026-09-19): the bad_mode hint now names `query` (alias `q`,
+  with whole_word / regex) as the way to find items by subject, beside
+  the id / ids[] route. Locked by
+  roadmap_query_mode_hint.Ants4511BadModeNamesTheIdRoute.
   **Layman:** Someone looking for a roadmap item by what it is about was told the feature does not exist, when it does.
   Kind: enhancement.
   Source: LocalWebServerManager_Ants_MCP_Feedback.md 2026-09-08.

@@ -52,3 +52,11 @@ rather than a broken harness.
 - Dropping `accepted` once `hint` exists. They answer different
   questions — what a mode IS, and what to use when you wanted something
   that is not one.
+
+## ANTS-4976 — the hint names `query`
+
+The `bad_mode` hint also names `query` (and its alias `q`, `whole_word`
+and `regex`) as the way to find items by subject. A hint naming only the
+id route read as the whole list of lookups, so a caller searching by
+subject fell back to grepping the rendered file. *Test:*
+`Ants4511BadModeNamesTheIdRoute`.

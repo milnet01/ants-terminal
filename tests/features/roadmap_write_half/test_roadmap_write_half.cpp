@@ -1624,6 +1624,9 @@ TEST(RoadmapWriteHalf, Ants4615SplitsRestyledFromLostText) {
     EXPECT_EQ(env.value(QStringLiteral("discarded_text_lines")).toInt(), 1)
         << "ANTS-4615: exactly one line's text does not survive — if restyling "
            "leaks into this count the field is as unusable as the single total";
+    EXPECT_EQ(env.value(QStringLiteral("discard_reason")).toString(),
+              QStringLiteral("text_lost"))
+        << "ANTS-4957: lost text outranks the restyle beside it";
 
     // And the lost text is NAMED. A count alone still leaves the caller
     // grepping for a sentence they have to remember writing, which is how
@@ -1691,6 +1694,38 @@ TEST(RoadmapWriteHalf, Ants4695CountsRepunctuationApartFromRestyling) {
     EXPECT_EQ(env.value(QStringLiteral("discarded_restyled_lines")).toInt(), 0)
         << "ANTS-4695: nor is it a dialect restyle — if it leaks back into "
            "that count the caller is where they started";
+    EXPECT_EQ(env.value(QStringLiteral("discard_reason")).toString(),
+              QStringLiteral("punctuation")) << "ANTS-4957";
+}
+
+// ANTS-4957 — a file the render only restyles (an older render, or one
+// restored from git) loses nothing. The flag still fires, and the reason says
+// it is safe, so a caller previewing a recovery is not told it discards edits.
+TEST(RoadmapWriteHalf, Ants4957RestyleOnlyDriftSaysSo) {
+    ants_test::XdgGuard guard;
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    qint64 projectId = 0;
+    const QString root = seedMigrated(guard, tmp, fixture(), &projectId);
+    ASSERT_FALSE(root.isEmpty());
+    const QString roadmap = root + QStringLiteral("/ROADMAP.md");
+
+    RemoteControl rc(nullptr);
+    ASSERT_TRUE(rc.cmdRoadmapLogAppendForTest(
+        appendReq(root, QStringLiteral("A settling bullet."))).object()
+        .value(QStringLiteral("ok")).toBool());
+    QByteArray hand = readAll(roadmap);
+    const QByteArray canonical = "- \xF0\x9F\x93\x8B [DEMO-0008] **A settling bullet.**";
+    ASSERT_TRUE(hand.contains(canonical));
+    hand.replace(canonical, "- TODO **DEMO-0008** A settling bullet.");
+    ASSERT_TRUE(writeFile(roadmap, hand));
+
+    QJsonObject dry = appendReq(root, QStringLiteral("A bullet after the restyle."));
+    dry[QStringLiteral("dry_run")] = true;
+    const QJsonObject env = rc.cmdRoadmapLogAppendForTest(dry).object();
+    ASSERT_TRUE(env.value(QStringLiteral("would_discard_external_edits")).toBool());
+    EXPECT_EQ(env.value(QStringLiteral("would_discard_reason")).toString(),
+              QStringLiteral("restyle_only"));
 }
 
 // ANTS-4965 — a whitespace-only change is structure: an indent or an aligned
@@ -1729,6 +1764,9 @@ TEST(RoadmapWriteHalf, Ants4965CountsWhitespaceChangesAsStructure) {
     EXPECT_EQ(env.value(QStringLiteral("would_discard_restyled_lines")).toInt(), 0)
         << "ANTS-4965: and not as a restyle, where it looked benign";
     EXPECT_EQ(env.value(QStringLiteral("would_discard_text_lines")).toInt(), 0);
+    // ANTS-4957 — one key names the worst thing at stake.
+    EXPECT_EQ(env.value(QStringLiteral("would_discard_reason")).toString(),
+              QStringLiteral("structure"));
 }
 
 // ANTS-4615 — the quiet case. A healthy write must not start emitting the new

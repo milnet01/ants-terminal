@@ -83,6 +83,10 @@ TEST(roadmap_query_mode_hint, Ants4511BadModeNamesTheIdRoute) {
         << "hint must name the id/ids route, got: " << hint.toStdString();
     EXPECT_TRUE(hint.contains(QStringLiteral("ids")))
         << "hint must name the plural selector too, got: " << hint.toStdString();
+    // ANTS-4976 — and the subject search, or a caller looking for an item by
+    // what it is about reads the hint as "no argument answers that".
+    EXPECT_TRUE(hint.contains(QStringLiteral("`query`")))
+        << "hint must name the query argument, got: " << hint.toStdString();
 }
 
 // G2 — the hint is a property of bad_mode, not of the string "by_id".

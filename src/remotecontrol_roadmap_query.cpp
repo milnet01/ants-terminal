@@ -238,6 +238,17 @@ void rcdetail::rcRoadmapWriteFields(QJsonObject &out,
             out[dryRun ? QStringLiteral("would_discard_edit_lines")
                        : QStringLiteral("discarded_edit_lines")] =
                 outcome.externalEditLines;
+            // ANTS-4957 — the flag above is also true on a stale render nobody
+            // edited (a `git checkout` of ROADMAP.md, say), where the publish
+            // loses nothing and IS the recovery. One key names the worst thing
+            // at stake, so a caller branches once instead of reading a zero
+            // and the absence of another key.
+            out[dryRun ? QStringLiteral("would_discard_reason")
+                       : QStringLiteral("discard_reason")] =
+                outcome.externalTextLines > 0         ? QStringLiteral("text_lost")
+              : outcome.externalRestructuredLines > 0 ? QStringLiteral("structure")
+              : outcome.externalRepunctuatedLines > 0 ? QStringLiteral("punctuation")
+                                                      : QStringLiteral("restyle_only");
             // ANTS-4615 — the breakdown. One number could not be acted on: 84
             // drifted lines were 24 bullets restyled into the canonical id form
             // and ONE sentence that no longer existed anywhere. Rides on the
@@ -2369,9 +2380,14 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
         // "by-id", "single" and "item" leave a caller in exactly the same
         // position, and a hint that fires only on one spelling helps only the
         // caller who already guessed closest.
+        // ANTS-4976 — and name `query` too. A hint explaining one argument
+        // reads as the whole list, so a caller searching by subject concluded
+        // nothing answered it and fell back to grepping the rendered file.
         out["hint"] = QStringLiteral(
             "to fetch specific items pass id / ids[] with mode bullets or "
-            "headline_only — item lookup is an argument, not a mode");
+            "headline_only — item lookup is an argument, not a mode. To find "
+            "items by subject, pass `query` (alias `q`; add whole_word or "
+            "regex to narrow it) with mode bullets or headline_only");
         return QJsonDocument(out);
     }
     // ANTS-1437-INV-3: section_index + section is conceptually

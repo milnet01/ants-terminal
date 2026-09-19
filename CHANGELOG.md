@@ -47,6 +47,15 @@ for security-relevant changes.
 
 ### Changed
 
+- **A roadmap write says why it would overwrite the file** (ANTS-4957)
+  A new `discard_reason` says whether text would be lost or the file is
+  just an older render that is safe to replace, so fixing a stale file no
+  longer reads as throwing away edits.
+
+- **roadmap_query's unknown-mode message points at searching by subject** (ANTS-4976)
+  It now names `query` beside the id lookup, so a caller looking for an
+  item by what it is about finds the search that already exists.
+
 - **The MCP socket reads one request per line** (ANTS-5089)
   A request is complete when its line ends. The server no longer re-reads
   everything received so far each time more arrives. The bundled bridge
