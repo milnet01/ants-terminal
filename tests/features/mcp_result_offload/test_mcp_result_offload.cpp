@@ -1261,3 +1261,66 @@ TEST_F(McpResultOffload, Ants4705RowCountRidesEveryArm) {
               o.value("rows_preview").toArray().size()
                   < o.value("row_count").toInt());
 }
+
+// ANTS-4850 — the spill hint named read_spill and nothing else, so a caller
+// whose survey spilled paged the handle: one oversized reply, then N reads of
+// it. Re-asking the verb for less costs one ordinary envelope and no handle at
+// all, and the call that spills is most often a session-start survey deciding
+// what to work on.
+//
+// The argument NAMES are offered as alternatives rather than asserted, because
+// this layer serves every verb and they disagree -- `limit` here,
+// `max_results` there, `max_symbols` elsewhere. A wrong argument name is worse
+// than none, so the test pins the ADVICE and the tool name, not one spelling.
+TEST_F(McpResultOffload, Ants4850HintOffersTheCheaperRouteOnBothArms) {
+    // (a) No dominant array: the plain arm.
+    {
+        const QString body = QStringLiteral("{\"blob\":\"") +
+            QString(20000, QLatin1Char('x')) + QStringLiteral("\"}");
+        const QJsonObject o = QJsonDocument::fromJson(
+            mcp::offloadBody(QStringLiteral("get_scrollback"), body).toUtf8())
+                .object();
+        const QString hint = o.value("hint").toString();
+        // The existing route out is not replaced, only joined.
+        EXPECT_TRUE(hint.contains(QStringLiteral("read_spill")))
+            << hint.toStdString();
+        // The cheaper one is named, and named as the cheaper one.
+        EXPECT_TRUE(hint.contains(QStringLiteral("cheaper")))
+            << hint.toStdString();
+        // And it says WHICH verb to re-ask, since the hint is read far from
+        // the call that produced it.
+        EXPECT_TRUE(hint.contains(QStringLiteral("get_scrollback")))
+            << hint.toStdString();
+    }
+
+    // (b) A dominant array of objects: the row-paging arm.
+    {
+        QString rows;
+        for (int i = 0; i < 400; ++i) {
+            if (i) rows += QLatin1Char(',');
+            rows += QStringLiteral("{\"id\":\"ANTS-%1\",\"status\":\"planned\"}")
+                        .arg(9000 + i);
+        }
+        const QString body =
+            QStringLiteral("{\"ok\":true,\"bullets\":[") + rows +
+            QStringLiteral("]}");
+        const QJsonObject o = QJsonDocument::fromJson(
+            mcp::offloadBody(QStringLiteral("roadmap_query"), body).toUtf8())
+                .object();
+        const QString hint = o.value("hint").toString();
+
+        // ANTS-3545's row paging still named -- this item adds, it does not
+        // replace.
+        EXPECT_TRUE(hint.contains(QStringLiteral("row_offset")))
+            << hint.toStdString();
+        EXPECT_TRUE(hint.contains(QStringLiteral("bullets")))
+            << hint.toStdString();
+        // ANTS-4850's addition.
+        EXPECT_TRUE(hint.contains(QStringLiteral("offset")))
+            << hint.toStdString();
+        EXPECT_TRUE(hint.contains(QStringLiteral("cheaper")))
+            << hint.toStdString();
+        EXPECT_TRUE(hint.contains(QStringLiteral("roadmap_query")))
+            << hint.toStdString();
+    }
+}

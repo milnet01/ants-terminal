@@ -270,8 +270,13 @@ QString offloadBody(const QString &toolName, const QString &body) {
     o[QStringLiteral("head")]          = QString::fromUtf8(utf8.left(static_cast<int>(hlen)));
     o[QStringLiteral("head_truncated")] = true;
     o[QStringLiteral("hint")] = QStringLiteral(
+        // ANTS-4850 — see the array arm below for why the paging arguments are
+        // offered as alternatives rather than named outright.
         "Large result spilled. Re-read the full body via read_spill "
-        "{handle:\"%1\"} (optional offset/max_bytes to page).").arg(handle);
+        "{handle:\"%1\"} (optional offset/max_bytes to page). Often cheaper: "
+        "re-ask %2 for LESS instead — most verbs take a size cap (`limit`, "
+        "`max_results` or `max_bytes`), and a narrower request comes back as "
+        "an ordinary envelope with no handle to page.").arg(handle, toolName);
 
     // ANTS-3538 — additive structured preview for array-shaped bodies
     // (§ 2.3.1 / INV-13). Purely additive: the pre-3538 fields above are
@@ -303,11 +308,27 @@ QString offloadBody(const QString &toolName, const QString &body) {
                 // is still row-pageable, and is exactly where byte paging lands
                 // mid-row. A > 1 MiB body never reaches here (row mode refuses
                 // too_large) and a non-array body has domCount == 0.
+                // ANTS-4850 — name the CHEAPER route first. The hint named
+                // read_spill and nothing else, so a caller whose survey
+                // spilled paged the handle: one oversized reply, then N reads
+                // of it. Re-asking the verb narrower costs one ordinary
+                // envelope and no handle at all, and the call that spills is
+                // most often a session-start survey deciding what to work on.
+                //
+                // The argument NAMES are given as alternatives rather than
+                // asserted, because this layer serves every verb and they do
+                // not agree: `limit` here, `max_results` there,
+                // `max_symbols` elsewhere. A single literal would be wrong for
+                // most callers, and a wrong argument name is worse than none.
                 o[QStringLiteral("hint")] = QStringLiteral(
                     "Large result spilled. Re-read the full body via read_spill "
                     "{handle:\"%1\"}: byte-paged (offset/max_bytes), or "
-                    "row-paged (row_offset/row_count) over the \"%2\" array.")
-                    .arg(handle, domKey);
+                    "row-paged (row_offset/row_count) over the \"%2\" array. "
+                    "Often cheaper: re-ask %3 for LESS instead — most list "
+                    "verbs take a page size (`limit`, or `max_results`) plus "
+                    "`offset`, and a narrower page comes back as an ordinary "
+                    "envelope with no handle to page at all.")
+                    .arg(handle, domKey, toolName);
                 // ANTS-4705 — once, here, because a dominant array EXISTS is
                 // exactly when the count is knowable. It used to be set on two
                 // of the three arms below: the head_rows arm and ANTS-4519's
