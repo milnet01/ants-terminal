@@ -14,6 +14,11 @@ for security-relevant changes.
 
 ### Added
 
+- **roadmap_migrate reports which items the roadmap render's Layman gate will refuse** (ANTS-4483)
+  The check runs inside the migration transaction, so a dry run answers
+  about the roadmap it is previewing rather than the one it would replace.
+  Nothing is blocked by a reported item; the hint says so.
+
 - **The roadmap store is backed up weekly, locally and to the private claude-config repo, and session_orient reports a backup that stopped** (ANTS-3794)
   `ants-terminal --export-roadmaps <dir>` writes one JSONL export per
   project without a display. `tools/roadmap-export-publish.sh` commits

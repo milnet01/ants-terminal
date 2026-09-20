@@ -46148,7 +46148,7 @@ are closed inline in the feedback files rather than filed here.
   Source: cc-feedback-2026-08-18 (Claude Code config, OneUp, Vestige — three files, same finding).
   Lanes: mcp, roadmap-store.
 
-- 📋 [ANTS-4483] **The render gate is knowable at migrate time but first fires at the next write, on whoever did not run the migration.**
+- ✅ [ANTS-4483] **The render gate is knowable at migrate time but first fires at the next write, on whoever did not run the migration.**
   A migrated project is subject to a render gate a hand-edited one is not: roadmap_log refuses
   `{code: render_gate_unmet, error: "the roadmap render refuses this project: 1 open item(s)
   carry no Layman: line"}`. That condition is a property of the roadmap as a whole, fully
@@ -46164,6 +46164,28 @@ are closed inline in the feedback files rather than filed here.
   error taxonomy names a remedy that cannot work). This item is the third leg — the gate is
   evaluated at the wrong moment. Fixing 4434 makes this a warning rather than a trap; it is still
   worth reporting at migrate time.
+  Shipped 2026-09-20 in 1fb5d54f. roadmap_migrate now reports
+  render_gate_checked, render_gate_failures, render_gate_failures_total
+  and render_gate_hint.
+
+  Measured inside the migration transaction by a scopeless dry render.
+  That placement is the design decision: load() rolls back before
+  returning, so a check after it would read the pre-migration store and
+  report the state the migration replaces. The dry-run test fails
+  against the simpler placement, so the choice is pinned rather than
+  commented.
+
+  The render's own gate is reached, not re-implemented, so the report
+  cannot drift from the rule it reports on. Run only for a store_backed
+  roadmap, tested the same way so the envelope and the check cannot
+  disagree.
+
+  One premise of this item was already stale when it was picked up.
+  ANTS-4628 scoped the gate to the items a write TOUCHES, so the
+  project-wide wall described above ("no write is possible") is now a
+  per-item trap: nothing is blocked, and a later write is refused only
+  when it edits a named item. The shipped hint says so, because a
+  warning that overstates the damage gets waved through.
   **Layman:** A project can migrate successfully into a state where nobody can add a roadmap item — and the person who hits the wall is not the one who built it.
   Kind: enhancement.
   Source: cc-feedback-2026-08-18 (Claude Code config).
