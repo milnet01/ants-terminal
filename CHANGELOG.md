@@ -14,6 +14,12 @@ for security-relevant changes.
 
 ### Added
 
+- **Previewing a roadmap status change now shows the bullet it will produce** (ANTS-4844)
+  Adding an item already previewed its text; changing one showed nothing, even
+  though changing edits something that is already correct. The preview shows
+  the item as it will read afterwards, and matches what the real write
+  produces. Adding a note previews the same way.
+
 - **A roadmap write now says whose text it discarded when the file was behind** (ANTS-4839)
   On a branch whose roadmap is out of date, a one-item write reports a large
   number of discarded lines. It now says those lines are an older version of

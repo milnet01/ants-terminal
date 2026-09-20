@@ -58760,8 +58760,30 @@ two projects).
   Kind: fix.
   Source: cc-feedback-2026-09-03 Pressless.
 
-- 📋 [ANTS-4844] **roadmap_log op:"flip" dry_run returns no rendered bullet, where op:"append" does.**
+- ✅ [ANTS-4844] **roadmap_log op:"flip" dry_run returns no rendered bullet, where op:"append" does.**
   flip edits an existing bullet rather than appending a new one, so a bad render damages content that is already correct: the higher-stakes of the two ops, with the weaker preview. The only way to see what flip produces is to run it for real and read the file back, which is what dry_run exists to avoid. `bytes` also differs in kind between the ops (append reports the would-be bullet size, flip what looks like whole-file size), so it cannot be read as a change magnitude either. Echo the post-write rendering on flip, and ideally on annotate and amend_*.
+  Shipped 2026-09-20 in 594dde43. flip and annotate now echo the
+  bullet the render will emit: would_be_bullet on a preview, bullet on
+  a write.
+
+  Rendered INSIDE the write sequence, in the same window the Layman
+  gate's scope is read. A preview rendering it after commitAndRender()
+  returned would show the PRE-flip state, because a dry run has rolled
+  back by then -- this item's own complaint reproduced rather than
+  fixed. The test asserts the previewed status is the post-flip one and
+  fails against a simulated pre-state render.
+
+  bytes is NOT restored, and this body's observation about it stands:
+  the store path emits none at all, and on the markdown path it measured
+  something different from append's, so it could not be read as a change
+  magnitude either way. The rendered bullet answers the question bytes
+  was being asked to answer.
+
+  annotate came with it, sharing the same envelope block: a note lands
+  in the body and the body is part of the rendered bullet. amend_* is
+  NOT covered -- it has its own envelope block, and this body listed it
+  as "ideally". The capture now serves it whenever someone wires it up,
+  so what remains there is a few lines rather than a design.
   **Layman:** The preview for changing an existing item shows nothing about what it will look like.
   Kind: enhancement.
   Source: cc-feedback-2026-09-03 RetroDB.
