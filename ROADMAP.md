@@ -46286,6 +46286,16 @@ are closed inline in the feedback files rather than filed here.
   The fix spans every locating write handler (flip, flip_batch,
   annotate, amend_body, set_body), which makes it design work rather
   than a patch.
+  Specced 2026-09-20 as docs/specs/ANTS-4485-store-backed-locate.md, one of
+  four sharing a review gate.
+
+  The precedent the spec builds on, found while drafting: op:"amend_field"
+  is ALREADY store-backed. cmdRoadmapLogAmendField walks no markdown — it
+  resolves through roadmapSectionOpTarget and then RoadmapStore::findItem.
+  So the shape is shipped and in use; what it lacks is the non-id locators
+  and a message that names the divergence. Eight op names are served by four
+  handlers, and there is no shared locator resolver today — each open-codes
+  its own walk, which is why the spec adds one.
 
 - ✅ [ANTS-4486] **roadmap_migrate cannot re-parse its own renderer's wrapped headline, and defaults kind/source over correct stored values.**
   The round trip is lossy in the destructive direction, and the correlation is exact rather than
@@ -46387,6 +46397,32 @@ are closed inline in the feedback files rather than filed here.
 
   Needs a spec before implementation: this is a new destructive verb surface on a shared,
   machine-global store with no undo, and (3) changes what an existing word means.
+  Specced 2026-09-20 as docs/specs/ANTS-4487-item-removal.md, one of
+  four sharing a review gate.
+
+  ONE PREMISE IN THE BODY ABOVE HAS EXPIRED. It says to_status cannot reach
+  the dropped status the item table's CHECK already allows. ANTS-4977 added
+  it: the MCP enum and the validation in cmdRoadmapLogFlip,
+  cmdRoadmapLogFlipBatch and rcdetail::cmdRoadmapLogPassFlip all accept
+  dropped, so the enum now matches the CHECK exactly. Remedy 2 is therefore
+  half shipped, and what is missing is only the render and query exclusions.
+
+  A SECOND FINDING, measured, that changes remedy 1. The proposed guard —
+  refuse if the item has relationships or history — does not discriminate.
+  History rows are written by EDITS, not by creation, so a legitimate item
+  nobody has edited carries none. Against the live store 3699 of 7234 items
+  have a history row, and feedback_ref, relationship and citation are EMPTY
+  across every project. So that guard would permit removing about half the
+  corpus while reading as strict. The spec keeps it as a second gate and
+  makes the primary guard whether the id is present in the published
+  ROADMAP.md, which is the cheap discriminating signal and is exactly true
+  of the reported case.
+
+  The spec's primary answer is the status route rather than a delete: a
+  dropped item stops rendering and stops appearing in a default query, which
+  is reversible and loses nothing. The guarded hard delete is specified but
+  gated on the user confirming it, because it is destructive on a
+  machine-global store.
   **Layman:** A roadmap item added by mistake cannot be undone — deleting it from the file does not remove it, and the next save writes it straight back.
   Kind: feature.
   Source: cc-feedback-2026-08-18 (Fin Break).
@@ -46824,6 +46860,24 @@ are closed inline in the feedback files rather than filed here.
   ants-v1 already so the convert must be idempotent per bullet, and the
   store is a stale mirror so it is not a safe id source without
   reconciliation.
+  Specced 2026-09-20 as docs/specs/ANTS-4491-dialect-convert.md, one of four
+  sharing a review gate.
+
+  The figures in the body above were re-measured and are stale. Vestige's
+  file now holds 994 GFM bullets and 106 ants-v1 ones, not 989 and 45 — the
+  part-converted fraction has more than doubled since filing, which
+  strengthens the idempotence-per-bullet requirement rather than weakening
+  it. The stale-mirror gap has widened too: the store still stops at
+  3D_E-0612 while the file now reaches 0682, where the recorded figure was
+  0624.
+
+  The design derived from source: the emitter already exists in
+  RoadmapRender::render(), neither single-step ordering is safe because
+  migratedProject() dispatches on the FILE's detected format and refuses a
+  disagreement with the stored one, so the convert rides
+  RoadmapWrite::commitAndRender() with the source_format flip inside
+  mutate() — opts.dialect is read from the store after mutate() runs, so the
+  dry render and the publish both emit the new dialect in one sequence.
 
 - ✅ [ANTS-4492] **roadmap_migrate classifies a mixed-format roadmap by majority with no note naming the second format.**
   Vestige's ROADMAP.md is genuinely two formats in one file: 989 GFM task-list bullets (`- [x]` /
@@ -47468,6 +47522,44 @@ are closed inline in the feedback files rather than filed here.
   Still to check before the spec: whether idHighWater() filters by
   origin in the store layer, any consumer sorting ids numerically, and
   the corpus for existing -S-shaped ids that would collide.
+  Three prerequisites CHECKED 2026-09-20, with two results the body did
+  not anticipate. Option 2 survives; its cost is larger and sits
+  elsewhere.
+
+  Corpus sweep: clean. Zero ids of shape <prefix>-S<digits> across all 22
+  projects registered in the machine-global store. Nothing collides.
+
+  Origin filtering: neither store accessor filters by origin, and one of
+  them cannot. idHighWater() reads the id_prefix.high_water counter column
+  and never looks at items. maxAllocatedId() filters by id SHAPE, via
+  `id GLOB '<prefix>-[0-9]*'`, so an S-form id drops out of it with no new
+  code. But raiseIdHighWater() still advances the counter, so option 2
+  ALONE does not stop synthesis spending the live space — which is this
+  item's whole complaint. The S namespace needs its own counter. It can:
+  id_prefix is keyed (project_id, prefix), so `<prefix>-S` is a second row
+  and no kSchemaVersion bump is involved.
+
+  Numeric-suffix consumers: the sort is benign, the VALIDATORS are not.
+  rcdetail::rcRoadmapIdLess parses the text after the final hyphen and
+  falls back to a lexicographic compare when it does not parse, so an
+  S-id degrades gracefully. The biting case is that every id validator
+  requires a numeric suffix. rcIsNonconformingIdToken matches neither of
+  its regexes against an S-id, so a lookup falls through to a bare
+  bullet_not_found — and that function's own comment says that reads as
+  "the item vanished". findsources' looksLikeRoadmapId does not recognise
+  one either.
+
+  Decided by the user 2026-09-20. Option 2 applies to NEW synthesis only;
+  rows already carrying a synthesised id keep it. Three projects are
+  entirely synthesised — UT_Ants 198 of 198, Pressless 129 of 129,
+  demoreel 47 of 47 — and a retroactive rename would brand every id in
+  them as non-citable when the render has in practice settled them. The
+  id validators are WIDENED to accept the S form, so flip, annotate and
+  fetch keep working on a synthesised item; it stays visibly non-quotable
+  to a reader without becoming unreachable by tooling.
+  Specced 2026-09-20 as docs/specs/ANTS-4500-synthesised-id-namespace.md,
+  one of four sharing a review gate. The three prerequisites and the two
+  user decisions are recorded in the annotation above.
   **Layman:** When the migration invents a number for an item that has none, it takes it from the same pool real items use — so the number can move later, and nothing that quoted it still points at the right item.
   Kind: fix.
   Source: cc-feedback-2026-08-18 (Vestige), split from ANTS-4493 on 2026-08-19.
@@ -49088,6 +49180,50 @@ are closed inline in the feedback files rather than filed here.
   **Layman:** A fix marked done three days ago never actually worked, because the test checked a list instead of calling the tool.
   Kind: fix.
   Source: in-session-2026-08-22 (maintainer, measured).
+
+- 📋 [ANTS-5247] **The pre-migration snapshot writes beside the store, on the system drive.**
+  ANTS-4499 shipped the pre-migration snapshot with a default path of
+  pre-migrate.sqlite beside the store, chosen for portability. The store
+  lives under the home directory, so the snapshot lands on the system
+  drive — against the standing rule that logs, backups and caches belong
+  on /mnt/Games. The weekly timer already writes to
+  /mnt/Games/Backups/ants-roadmap-store.
+
+  Decided by the user 2026-09-20: add a config key for the snapshot
+  directory, defaulting to the weekly timer's path. Fall back to beside
+  the store when that path is not writable, so a migration never fails
+  for want of a snapshot, and say in the response which path was used.
+  Hardcoding the games-drive path was declined: it is specific to this
+  machine and would break anyone else running Ants.
+
+  The key belongs in the catalogue at docs/standards/mcp-config-keys.md
+  with the other MCP keys.
+  **Layman:** Let the safety copy taken before a migration live on the games drive with the other backups, instead of in your home folder.
+  Kind: enhancement.
+  Source: in-session-2026-09-20, user decision.
+  Lanes: mcp, roadmap-store.
+
+- 📋 [ANTS-5248] **The flip and annotate bullet echo re-emits the whole body, which is the response's entire cost on a long item.**
+  Observed while annotating ANTS-4500. ANTS-4844 makes flip and annotate
+  echo the bullet the render will emit, which is the right answer for
+  confirming a write without a follow-up read. On an item whose body is
+  an append-only progress log the echo is the whole response, and the
+  caller has just supplied the only part that changed.
+
+  It is already suppressible — `fields` trims it, and the envelope's own
+  leaner_call_hint says so — so this is about the DEFAULT, not a missing
+  escape. Two candidate shapes, neither specified yet: echo only the
+  appended note plus the head line, or keep the full echo behind an
+  opt-in and make the lean shape the default.
+
+  Weigh it against why ANTS-4844 exists: the echo answers "what will the
+  file actually say", and a head-line-only echo cannot. Measuring a
+  typical annotate response against the same call with fields set is the
+  evidence this needs before a shape is chosen.
+  **Layman:** After updating a roadmap item, the reply repeats the item's full text back — on a long item that is most of what the reply costs.
+  Kind: perf.
+  Source: in-session-2026-09-20, measured.
+  Lanes: mcp, roadmap-store.
 
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-08-20 triage
 
