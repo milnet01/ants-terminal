@@ -48531,7 +48531,7 @@ are closed inline in the feedback files rather than filed here.
   Kind: enhancement.
   Source: cc-feedback-2026-08-19 (LocalWebServerManager).
 
-- 📋 [ANTS-4522] **roadmap_migrate's updated_items[].fields is not the union of the columns the write touches.**
+- ✅ [ANTS-4522] **roadmap_migrate's updated_items[].fields is not the union of the columns the write touches.**
   Games_Hub saw notes[] carry a field_conflict on `headline` while
   updated_items[].fields for the same id listed only `body` -- so the
   reviewable plan ANTS-4479 added disagreed with the notes array, and the
@@ -48555,6 +48555,30 @@ are closed inline in the feedback files rather than filed here.
   Guard when testing: a fixture whose parse is clean produces no
   disagreement, so a test built only on healthy input passes without
   exercising the union at all.
+  Shipped 2026-09-20 in 2dcb0d78. updated_items[] entries now carry
+  fields_suppressed, filled from the same branches of the same loop that
+  raise the field_conflict note, so the plan and the notes cannot
+  disagree again.
+
+  Two halves, and the second was invisible rather than incomplete: an
+  item whose differences were ALL suppressed qualified for updated_items
+  nowhere and appeared only as a note. It is now reported with an empty
+  fields and a non-empty fields_suppressed.
+
+  Deliberately NOT the union this body asks for. fields means the
+  columns the write MOVES; a union would have the preview claim a
+  headline change that is not going to happen, which is a different
+  wrong answer and a worse one for a reviewer deciding whether to
+  commit. A test asserts the stored headline survives.
+
+  Consequence worth knowing: updated_items_truncated is no longer
+  derived from itemsUpdated > updatedItems.size(). That inequality
+  stopped holding once an entry could exist without being an update, so
+  the load counts the entries the cap drops instead.
+
+  The guard this body asks for is honoured: the suppression-only test
+  was proved to bite by mutating the qualifying condition back, and a
+  fixture with a clean parse would not have exercised either half.
   **Layman:** The migration preview lists fewer changes than it will make, which is worse than no preview because it reads as complete.
   Kind: fix.
   Source: cc-feedback-2026-08-19 (Games_Hub).

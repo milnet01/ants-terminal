@@ -117,6 +117,12 @@ for security-relevant changes.
 
 ### Fixed
 
+- **The migration preview now lists the columns it will decline to write** (ANTS-4522)
+  A dry run's plan used to omit columns the run had already flagged as
+  conflicting, and an item whose changes were all declined appeared in the
+  plan not at all. Both now show, with the declined columns kept separate
+  from the ones that actually move.
+
 - **The remote-control socket now limits how many connections it keeps open, like the Claude hook and MCP sockets.** (ANTS-5093)
 
 - **tool_info's description no longer quotes a stale 5 KiB size for the full tools/list reply** (ANTS-5091)
