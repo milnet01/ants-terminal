@@ -130,12 +130,15 @@ it. Run roadmap_migrate to import it, then retry.
 The reported case — present in the store, absent from the file — needs no
 message at all. It simply resolves and writes, which is the fix.
 
-### 4.5 Suggestions are unchanged
+### 4.5 Suggestions take their candidates from the store
 
-`rcRankIdsBySharedPrefix()` and the headline token-Jaccard ranker keep
-producing the candidate lists, taking their candidates from the store's item
-list rather than from the file's bullets on a store-backed project. A
-suggestion drawn from the file would name bullets the write cannot reach.
+`rcRankIdsBySharedPrefix()` and the headline token-Jaccard ranker keep their
+ranking unchanged, but on a store-backed project they take their candidates
+from the store's item list rather than from the file's bullets. A suggestion
+drawn from the file would name bullets the write cannot reach.
+
+The resolver returns the refusal; the caller builds the suggestion list, as it
+does today. `LocateOutcome` carries no suggestion channel.
 
 ### 4.6 A markdown project is untouched
 
@@ -148,9 +151,13 @@ their source of truth.
 - **INV-1** — On a store-backed project, an id `roadmap_query` returns is
   writable by every locating op.
   *Test:* `tests/features/roadmap_store_locate/test_store_locate.cpp`, case
-  `queryableIsWritable` — insert an item into the store without rendering,
-  assert `op:"annotate"` succeeds.
-  *Breaks when:* a handler resolves its locator against the file.
+  `queryableIsWritable` — insert an item **and its `element` row** into the
+  store without rendering, then exercise one op per handler in § 4.2's
+  table — `flip`, `flip_batch`, `amend_body`, `amend_field` — and assert each
+  succeeds. The `element` row is required: the render hard-refuses an item
+  with `sectionId == 0`, so an unfiled item fails for a reason unrelated to
+  locating.
+  *Breaks when:* any one handler resolves its locator against the file.
 
 - **INV-2** — A locator present in the file and absent from the store refuses
   with a message naming the divergence, and writes nothing.
@@ -193,17 +200,22 @@ with the error clear) from a query failure. A failure is `store_failed` and
 does not fall back to the file — falling back would write against an index the
 caller has not been told was used.
 
-**The file cannot be parsed.** The anchor locator alone needs the file. Where
-it cannot be read, the anchor locator refuses and the id and headline locators
-still work, because neither consults it.
+**The file cannot be parsed.** Neither the id nor the headline locator
+consults the file to *resolve*; both consult it on a miss, to decide
+`inFileOnly` (§ 4.4). So where the file cannot be read, those two still
+resolve, and a miss degrades to a bare `bullet_not_found` with no divergence
+message. The anchor locator needs the file to resolve at all and refuses.
 
 **Both store and file hold the locator, disagreeing on which item.** The store
 wins, because it is the source of truth for the render. The file's copy is
 stale output by definition.
 
-**An item with an empty `id` column.** `rlStoreItemPk()` step 2 already covers
-this — the id is taken from an id-shaped headline token — and the new resolver
-reuses it rather than reimplementing the fallback.
+**An item with an empty `id` column.** `findItem()` keys on the `id` column,
+so it misses one. `rlStoreItemPk()` step 2 is a headline-equality scan, not an
+id extraction, so such an item is reachable only by its exact stored headline
+and never by the id locator. The new resolver reuses step 2 rather than
+reimplementing it, and § 4.3's id branch falls through to the headline
+comparison on a miss rather than refusing.
 
 ## 7. Tests
 
@@ -263,6 +275,7 @@ write depend on the render gate passing.
 | INV-5 | `test_store_locate.cpp::ambiguousHeadlineRefuses` |
 | INV-6 | `test_store_locate.cpp::lineRangeStillRefused` |
 | The anchor locator keeps file semantics | **nothing** — no test asserts an anchor's file dependence; it is stated in § 4.3 and unchanged by this work |
+| § 4.5's suggestions come from the store, not the file | **nothing** — a suggestion list is advisory and no invariant binds it; a wrong source names unreachable bullets without failing a write |
 
 ## 11. Cross-doc impact
 

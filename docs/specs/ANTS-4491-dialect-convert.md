@@ -99,8 +99,21 @@ reader.
 ### 4.3 Ride `commitAndRender()`
 
 `RoadmapWrite::commitAndRender()` already solves that shape: pre-image, begin,
-`mutate()`, dry render, divergence guard, commit, publish. The convert is a
-`mutate()` that sets `source_format` to `ants-v1`.
+`mutate()`, dry render, divergence guard, commit, publish.
+
+**What the convert's `mutate()` does, in order** — stated because a `mutate()`
+that only writes the column is a different operation from one that reconciles
+ids, and § 4.6 depends on the second:
+
+1. Parse the live file and build the plan, as a migration does.
+2. Re-match each parsed bullet to its stored item, including § 4.5's id-less
+   key fallback for an id the store has not seen.
+3. Allocate an id for each bullet still without one, against § 4.6's floor.
+4. Set the project's `source_format` to `ants-v1`.
+
+Step 4 alone would leave the store holding whatever an earlier migration left
+and the render publishing that, which is not a conversion of the file in front
+of it.
 
 This works because `opts.dialect` is read from the store *after* `mutate()`
 has run, so the validating dry render and the publish both emit ants-v1 within
@@ -112,13 +125,23 @@ here it leaves the pair disagreeing, so reads refuse. The remedy already
 exists and the refusal already names it: re-running the migration records the
 file's format and clears the disagreement. § 5 pins that as an invariant.
 
-### 4.4 Idempotence per bullet
+### 4.4 The accepted set, and idempotence per bullet
 
-The converter emits every item from the store, so a second run over a
-now-ants-v1 file is an ordinary render and changes nothing. The per-bullet
-question arises on the *first* run, over a mixed source: a bullet already
-carrying a bracket id is already converted and keeps its id rather than being
-allocated a second one.
+**The convert accepts a source that reads as `github-task-list` or as
+`ants-v1`, and refuses anything else.** Accepting `ants-v1` is not an
+oversight: after a successful run the file *is* ants-v1, so refusing that
+dialect would make the operation refuse its own output and INV-3
+unsatisfiable. On an already-`ants-v1` source the convert is a plain render
+and changes nothing.
+
+Any other dialect refuses `dialect_out_of_scope`. `migratedProject()`'s
+existing refusal does **not** cover this: it fires on a source
+`detectRoadmapFormat()` does not recognise at all, and a recognised third
+dialect would pass it.
+
+The per-bullet question arises on the *first* run, over a mixed source: a
+bullet already carrying a bracket id is already converted and keeps its id
+rather than being allocated a second one.
 
 ### 4.5 What the render stamps into the file
 
@@ -130,18 +153,33 @@ That is the correct outcome rather than a hazard. An invented id is unstable
 only because allocation is positional across re-migrations; once rendered into
 the file it parses as `parsed` on the next migration and ANTS-3765 § 2.6.1's
 key holds the item. **The render is what settles them.** The ordering
-requirement that follows is § 5's INV-4: no re-migration may intervene between
-the allocation and the publish, which riding `commitAndRender()` already
-guarantees, both happening inside its one sequence.
+requirement that follows is § 5's INV-4: **no re-migration may intervene
+between the allocation and the commit**, which riding `commitAndRender()`
+guarantees, both happening inside its one transaction.
+
+The commit-to-publish window of § 4.3 is *outside* that guarantee and nothing
+narrows it. What it costs is bounded: the ids are committed, so a re-migration
+there re-matches them rather than re-allocating, and the remedy for the
+unpublished file is the same re-run the refusal already names.
 
 ### 4.6 Id reconciliation
 
-Allocation floors to `RoadmapStore::allocationFloor()`, which takes the higher
-of the stored counter and the maximum id the items actually hold. The stale
-mirror of § 2 is therefore not a hazard for *allocation*. It remains one for
-*matching*: an id live in the file but absent from the store must match its
-item rather than produce a fresh insert. That is ANTS-4500 § 4.5's re-match
-fallback, and this spec depends on it.
+**`RoadmapStore::allocationFloor()` alone is not a safe floor here, and this is
+the trap.** Both its terms are store-side — `idHighWater()` reads the
+`id_prefix` counter, `maxAllocatedId()` reads ids off `item` rows. Neither can
+see an id that is live in the file and absent from the store, which is exactly
+the staleness § 2 measures: the floor would be 612 while `3D_E-0613` through
+`3D_E-0682` are already in the source.
+
+So the floor is the higher of `allocationFloor()` **and the maximum numeric
+suffix among the ids parsed from the file being converted**, per ANTS-3765
+§ 2.8 step 2, whose 2026-08-13 amendment exists for this case and says it
+outright: "Neither term dominates the other, so neither can be the one that
+wins."
+
+Matching is the second half. An id live in the file but absent from the store
+must match its item rather than produce a fresh insert. That is ANTS-4500
+§ 4.5's re-match fallback, and this spec depends on it.
 
 ## 5. Invariants
 
@@ -168,11 +206,11 @@ fallback, and this spec depends on it.
   id.
 
 - **INV-4** — No id changes between the allocation that assigns it and the
-  publish that writes it.
+  commit that persists it.
   *Test:* `tests/features/roadmap_convert/test_convert.cpp`, case
-  `idsStableAcrossPublish` — convert a fixture holding id-less bullets, assert
+  `idsStableAcrossCommit` — convert a fixture holding id-less bullets, assert
   every id in the published file is present in the store with the same value.
-  *Breaks when:* the convert allocates in one transaction and publishes in
+  *Breaks when:* the convert allocates in one transaction and commits in
   another.
 
 - **INV-5** — A bullet that already carries a bracket id keeps that id.
@@ -187,6 +225,14 @@ fallback, and this spec depends on it.
   `staleMirrorDoesNotDuplicate` — seed a store behind its file, convert,
   assert the item count equals the file's bullet count.
   *Breaks when:* ANTS-4500 § 4.5's re-match fallback is absent.
+
+- **INV-7** — A source that is neither `github-task-list` nor `ants-v1`
+  refuses `dialect_out_of_scope` and writes nothing.
+  *Test:* `tests/features/roadmap_convert/test_convert.cpp`, case
+  `thirdDialectRefused` — point the convert at a pass-headings fixture, assert
+  the refusal code and that the file is unchanged.
+  *Breaks when:* the convert relies on `migratedProject()`, which recognises
+  that dialect and does not refuse it.
 
 ## 6. Failure modes
 
@@ -220,9 +266,10 @@ restored.
 | INV-1 | `formatsAgree` |
 | INV-2 | `failedConvertIsInert` |
 | INV-3 | `convertIsIdempotent` |
-| INV-4 | `idsStableAcrossPublish` |
+| INV-4 | `idsStableAcrossCommit` |
 | INV-5 | `existingIdsPreserved` |
 | INV-6 | `staleMirrorDoesNotDuplicate` |
+| INV-7 | `thirdDialectRefused` |
 
 Fixtures are throwaway stores under the test's own temp root, never the
 machine-global store. `RoadmapStore`'s default path is the real store, so each
@@ -251,7 +298,9 @@ decision 1, and unnecessary — § 4.5 explains why rendering settles them.
   constraint on Vestige specifically.
 - Writing allocated ids back into a source file that is not being converted —
   tracked by ANTS-3758.
-- Converting any dialect other than `github-task-list`.
+- Converting a dialect that is neither `github-task-list` nor `ants-v1`.
+  Those refuse `dialect_out_of_scope`; see § 4.4 for why `ants-v1` is
+  accepted rather than refused.
 
 ## 10. What checks this
 
@@ -260,15 +309,17 @@ decision 1, and unnecessary — § 4.5 explains why rendering settles them.
 | INV-1 | `test_convert.cpp::formatsAgree` |
 | INV-2 | `test_convert.cpp::failedConvertIsInert` |
 | INV-3 | `test_convert.cpp::convertIsIdempotent` |
-| INV-4 | `test_convert.cpp::idsStableAcrossPublish` |
+| INV-4 | `test_convert.cpp::idsStableAcrossCommit` |
 | INV-5 | `test_convert.cpp::existingIdsPreserved` |
 | INV-6 | `test_convert.cpp::staleMirrorDoesNotDuplicate` |
-| The convert is offered only for `github-task-list` | **nothing** — no test asserts the absence of other dialects; the refusal path is `migratedProject()`'s existing one |
+| A third dialect refuses `dialect_out_of_scope` | `test_convert.cpp::thirdDialectRefused` |
 
 ## 11. Cross-doc impact
 
 - `docs/standards/roadmap-format.md` — § 3.10.2 gains the convert as the
   supported route out of a mixed file.
+- `docs/standards/mcp-error-codes.md` — `dialect_out_of_scope` is a new
+  refusal code.
 - `CHANGELOG.md` — a bullet stating what shipped.
 - `ROADMAP.md` — ANTS-4491 flips when this ships; ANTS-4434 remains open and
   is what gates Vestige's own conversion.

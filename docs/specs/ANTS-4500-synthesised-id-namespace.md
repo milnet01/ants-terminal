@@ -89,43 +89,87 @@ The synthesis counter is an `id_prefix` row whose `prefix` column holds
 `<prefix>-S`. The table is keyed `(project_id, prefix)`, so this is a second
 row rather than a new column, and no `kSchemaVersion` bump is involved.
 
-Allocation reads and advances that row through the existing
-`RoadmapStore::idHighWater()` and `raiseIdHighWater()`, passing `<prefix>-S`
-where it passes `<prefix>` today. The real prefix's counter is not read and
-not advanced.
+**The floor for a synthesis allocation is two terms, not one.** ANTS-3765
+§ 2.8 step 2's 2026-08-13 amendment exists because a single term was measured
+wrong on this project — the file routinely runs ahead of the store — and the
+synthesis namespace is not exempt from that. So the floor is the higher of:
 
-`RoadmapStore::maxAllocatedId()` needs no change. It selects on
-`id GLOB '<prefix>-[0-9]*'`, and `ANTS-S0001` does not match that pattern, so
-a synthesised id already drops out of the floor computed for the real prefix.
+1. the stored `<prefix>-S` row, via `RoadmapStore::idHighWater()`; and
+2. the maximum `S`-suffix among the project's stored `<prefix>-S<digits>` ids.
+
+**Term 2 needs a new accessor.** `RoadmapStore::maxAllocatedId()` cannot
+express it: it globs `<prefix>-[0-9]*`, so asked for prefix `<prefix>-S` it
+globs `<prefix>-S-[0-9]*` and matches nothing. It gains a sibling that globs
+`<prefix>-S[0-9]*` and casts the suffix past `<prefix>-S`. Without it the
+namespace has one witness where the real prefix has two, and a store restored
+behind its file re-issues an id the file already holds —
+`UNIQUE (project_id, id_fold)` fires and ANTS-3765 § 2.5 rolls back the whole
+project.
+
+**The `-S` row must be invisible to `RoadmapStore::idPrefixFor()`.** That
+lookup takes no prefix argument and picks one row per project with
+`ORDER BY high_water DESC, prefix ASC LIMIT 1` — the busiest counter. It is
+`Loader::allocateId()`'s rank-2 prefix source. On a project whose items are
+mostly synthesised the `-S` row would be the busiest, so `idPrefixFor()` would
+return `<prefix>-S` as *the project's* prefix and real allocated ids would
+render `<prefix>-S-0001`, inside the namespace this spec exists to keep
+separate. Three projects in the corpus are synthesised in full, so this is the
+expected case there rather than a corner. `idPrefixFor()` therefore excludes
+any prefix ending `-S`.
+
+`RoadmapStore::maxAllocatedId()` needs no change for the *real* prefix: it
+globs `<prefix>-[0-9]*`, and `ANTS-S0001` does not match, so a synthesised id
+already drops out of the real prefix's floor.
 
 ### 4.3 The high-water terms ANTS-3765 § 2.8 step 2 defines
 
-Step 2 already excludes synthesised ids from both terms by origin. That
-exclusion stands and is what keeps a synthesised id out of the real prefix's
-high-water. The plan-side term additionally ignores any id whose suffix does
+Step 2 excludes synthesised ids from its **plan-side** term by origin. The
+store-side term is not an origin filter at all — `idHighWater()` reads a
+counter column and cannot see `id_origin` — and what keeps a synthesised id
+out of the real prefix's store-side floor is its *shape*, per § 4.2. The plan-side term additionally ignores any id whose suffix does
 not parse as an integer, which covers a re-migration meeting an `-S` id that
 was rendered into the file by an earlier run.
 
-### 4.4 Widening the id validators
+### 4.4 Widening the id grammar
 
-Three surfaces reject an id whose suffix is not digits. Each gains the
-optional `S`.
+**The surface that decides addressability is the parser's id grammar, not the
+refusal helpers.** `RoadmapParse::idTokenPattern()` returns
+`(?=[A-Za-z0-9_-]*[A-Za-z])[A-Za-z0-9][A-Za-z0-9_-]*-\d+`, and
+`RoadmapIndex::isCanonicalId()` anchors the same shape. A token failing it is
+not parsed as a project id at all — the bullet is assigned a synthetic
+content-hash id, and the authored token is unaddressable on both the read
+(`id`/`ids`) and write (`flip`/`annotate`) locator paths. That is what INV-4
+is about, and widening it is what makes INV-4 pass.
 
-| Symbol | File | Present shape |
+| Symbol | File | Role |
 |---|---|---|
-| `rcIsNonconformingIdToken` | `src/remotecontrol.cpp` | `kIdIsh` and `kCanonical` both end `-\d+$` |
-| `looksLikeRoadmapId` | `src/findsources.cpp` | `^[A-Z]{2,8}-\d+$` |
-| `rcdetail::rcRoadmapIdLess` | `src/remotecontrol_terminal.cpp` | parses the text after the final `-` |
+| `RoadmapParse::idTokenPattern` | `src/roadmapparse.cpp` | **the addressability gate** — widen |
+| `RoadmapIndex::isCanonicalId` | `src/roadmapindex.cpp` | the canonical-id predicate — widen |
+| `rcIsNonconformingIdToken` | `src/remotecontrol.cpp` | diagnostic only — see below |
+| `looksLikeRoadmapId` | `src/findsources.cpp` | recognises a roadmap id in prose — widen |
+| `rcdetail::rcRoadmapIdLess` | `src/remotecontrol_terminal.cpp` | ordering — widen |
 
-`rcIsNonconformingIdToken` is the one that bites. Its own comment says a token
-failing both regexes yields a bare `found:false` that "reads as 'the item
-vanished'" — so without this widening a lookup on a synthesised id gets the
-refusal the function exists to prevent.
+Each admits the `-S` infix.
+
+**`rcIsNonconformingIdToken` is a diagnostic and resolves nothing.** It
+returns true only for a token that is id-*ish* but non-canonical, so callers
+can emit a targeted `bad_id_format` naming the real cause. Its own comment
+warns against widening `kIdIsh`, because making both regexes admit the same
+shape collapses the guard to `X && !X`. So its row here is about which error
+text a caller emits, never about whether a synthesised id can be reached — an
+earlier draft of this spec had that backwards, and widening it alone would
+have left INV-4 failing.
 
 `rcRoadmapIdLess` degrades rather than fails: an unparseable suffix falls back
 to a lexicographic compare on the full id. It is widened so synthesised ids
-sort by their own number rather than as text, which keeps `ANTS-S9` before
-`ANTS-S10`.
+order by their own number once the counter passes four digits, where a text
+compare would put `<prefix>-S10000` before `<prefix>-S9999`.
+
+**`RoadmapIndex::isCanonicalId` has callers that are not locators** — the
+roadmap dialog's duplicate-id banner, the feedback verbs' id filter, and the
+MCP duplicate detector. Widening it admits synthesised ids to all of them,
+which is correct: they are ids, and a duplicate among them is still a
+duplicate.
 
 ### 4.5 The § 2.6 re-match companion
 
@@ -137,6 +181,15 @@ path is used.
 So § 2.6 is amended: an id-bearing item that finds no id match falls back to
 § 2.6.1's id-less key before being treated as new. This spec carries the
 amendment; ANTS-3765 § 2.6 is edited in the same change.
+
+**The source's id wins.** On a match through that fallback the stored row
+takes the id the source file carries, replacing the synthesised one. The
+alternative — keeping the stored `<prefix>-S<NNNN>` — makes the next render
+overwrite the author's hand-written id in `ROADMAP.md`, which is the file
+losing an authored edit. Nothing cites a synthesised id by contract, because
+§ 4.1's whole purpose is to mark it as not a citation target, so replacing it
+costs nothing that the stored id was carrying. `element` and `history` rows
+key on `item_pk`, not on the id string, so they follow the row.
 
 ## 5. Invariants
 
@@ -156,10 +209,12 @@ amendment; ANTS-3765 § 2.6 is edited in the same change.
 
 - **INV-3** — Two synthesised ids in one project never collide.
   *Test:* `tests/features/roadmap_synth_id/test_synth_id.cpp`, case
-  `synthIdsUnique` — migrate a plan of several id-less bullets, assert the
-  stored ids are distinct.
-  *Breaks when:* the synthesis counter is read but not advanced between
-  allocations.
+  `synthIdsUnique` — migrate a plan of several id-less bullets, then **clear
+  the `<prefix>-S` counter row and re-migrate**, and assert every stored id is
+  still distinct. Clearing the row is what exposes a one-term floor: with the
+  counter gone, a second migration restarts at 1 unless term 2 of § 4.2 is
+  present.
+  *Breaks when:* the synthesis floor reads the counter row alone.
 
 - **INV-4** — A synthesised id is reachable by every locating read and write.
   *Test:* `tests/features/roadmap_synth_id/test_synth_id.cpp`, case
@@ -179,8 +234,27 @@ amendment; ANTS-3765 § 2.6 is edited in the same change.
   *Test:* `tests/features/roadmap_synth_id/test_synth_id.cpp`, case
   `reMatchFallsBackToKey` — migrate an id-less bullet, rewrite the source
   bullet with a hand-written id and the same headline, re-migrate, assert the
-  item count is unchanged and no orphan is reported.
-  *Breaks when:* § 2.6 treats an id miss as a new item.
+  item count is unchanged, no orphan is reported, **and the row now carries
+  the source's id rather than the synthesised one**.
+  *Breaks when:* § 2.6 treats an id miss as a new item, or the fallback keeps
+  the stored id and the next render overwrites the author's.
+
+- **INV-7** — A synthesised id never becomes the project's allocation prefix.
+  *Test:* `tests/features/roadmap_synth_id/test_synth_id.cpp`, case
+  `synthPrefixNotProjectPrefix` — build a project whose `<prefix>-S` counter
+  exceeds its real one, then allocate through `roadmap_log op:"append"` and
+  assert the new id is `<prefix>-<NNNN>`, not `<prefix>-S-<NNNN>`.
+  *Breaks when:* `idPrefixFor()` does not exclude a prefix ending `-S`; its
+  `ORDER BY high_water DESC` then returns the synthesis row.
+
+- **INV-8** — A synthesised id is addressable by the parser, not merely by a
+  better error message.
+  *Test:* `tests/features/roadmap_synth_id/test_synth_id.cpp`, case
+  `synthIdParsesAsId` — assert `RoadmapIndex::isCanonicalId("ANTS-S0001")` is
+  true and that parsing a bullet carrying that id yields it rather than a
+  synthetic content-hash id.
+  *Breaks when:* only the refusal helpers are widened and the parser's id
+  grammar is left narrow.
 
 ## 6. Failure modes
 
@@ -195,10 +269,14 @@ as `parsed`, and § 2.8 step 2's plan-side term ignores it because its suffix
 is not an integer. It therefore raises neither counter. It is matched by id
 like any other parsed id.
 
-**The synthesis counter row is missing.** `idHighWater()` returns `nullopt`
-for a project that has never synthesised, which is the ordinary first-run
-state. Allocation starts at 1, exactly as ANTS-3765 § 2.8 step 4 requires for
-the real prefix.
+**The synthesis counter row is missing.** `idHighWater()` returns `nullopt`,
+and a missing row does *not* mean the project has never synthesised — a store
+restored from a backup, or one behind its file, reports the same thing while
+`-S` ids are live in the source. So allocation does not start at 1 on that
+evidence alone: § 4.2's term 2 reads the ids the items actually hold, and only
+when both terms are empty does the first allocation take `S0001`. ANTS-3765
+§ 2.8 step 4's start-at-zero condition is about the *plan* carrying no parsed
+integer-suffix id, not about a stored row being absent.
 
 **A rolled-back load.** Allocation stays inside the write transaction, so a
 failed run advances neither counter. This is ANTS-3765 § 2.8's existing rule
@@ -218,6 +296,8 @@ than added as a standalone executable. `build_target_for` names the bundle.
 | INV-4 | `synthIdAddressable` |
 | INV-5 | `existingIdsUnchanged` |
 | INV-6 | `reMatchFallsBackToKey` |
+| INV-7 | `synthPrefixNotProjectPrefix` |
+| INV-8 | `synthIdParsesAsId` |
 
 Each case must be seen to fail against pre-change code before the change is
 restored. INV-5's case is the exception in kind: it passes before the change
@@ -270,6 +350,8 @@ synthesised item cannot be flipped or annotated at all.
 | INV-4 | `test_synth_id.cpp::synthIdAddressable` |
 | INV-5 | `test_synth_id.cpp::existingIdsUnchanged` |
 | INV-6 | `test_synth_id.cpp::reMatchFallsBackToKey` |
+| INV-7 | `test_synth_id.cpp::synthPrefixNotProjectPrefix` |
+| INV-8 | `test_synth_id.cpp::synthIdParsesAsId` |
 | § 4.1's rendered form is stable once shipped | **nothing** — no check can see a future change of mind; ANTS-3765 § 2.8 step 3 states the permanence |
 
 ## 11. Cross-doc impact
@@ -277,7 +359,8 @@ synthesised item cannot be flipped or annotated at all.
 - `docs/specs/ANTS-3765-roadmap-migration-load.md` — § 2.8 gains the synthesis
   namespace and its counter; § 2.6 gains the id-less-key fallback of § 4.5.
 - `docs/standards/roadmap-format.md` — § 3.5.1's id grammar admits the `-S`
-  infix. This project is upstream of the global copy, so the global copy is
+  infix, and § 3.10.4's prefix conventions gain the `-S` exclusion of § 4.2.
+  This project is upstream of the global copy, so the global copy is
   corrected to match.
 - `CHANGELOG.md` — a bullet stating what shipped, authored rather than copied
   from this item's headline, which states a problem.
