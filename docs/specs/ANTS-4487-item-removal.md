@@ -1,10 +1,11 @@
 # ANTS-4487 — Make a roadmap item removable, and make orphaning mean something
 
-**Status:** spec draft (2026-09-20).
+**Status:** accepted, cold-eyes loops 1 + 2 folded (2026-09-20).
 **Kind:** implement.
 **Source:** ROADMAP ANTS-4487 (cc-feedback-2026-08-18, Fin Break).
 
-**Pairs with:** ANTS-4485, ANTS-4491, ANTS-4500.
+**Blocked by:** ANTS-4485.
+**Pairs with:** ANTS-4491, ANTS-4500.
 
 **Layman:** A roadmap item added by mistake can now be taken off the roadmap,
 and — when it really was a mistake — removed from the database entirely.
@@ -72,6 +73,14 @@ exclusions are missing.
    answers the reported harm — the item stops being rendered and stops
    appearing. A destructive op on a machine-global store with no undo is
    reserved for the case where the row itself should not exist.
+
+   **Reversibility depends on ANTS-4485 shipping first, and that is why this
+   spec is blocked by it.** `roadmap_log`'s locating writes walk the parsed
+   `ROADMAP.md`, so once § 4.1 removes a dropped item from the file,
+   `op:"flip"` has nothing to locate and the flip back refuses
+   `bullet_not_found`. ANTS-4485 moves that locate to the store, which is what
+   makes the drop reversible. Without it the "reversible" claim above is
+   false and the primary route is a one-way door.
 2. **The hard delete is specified here but must not be implemented until the
    user confirms it.** § 4.4 is complete so the review can judge it; § 9
    records the gate. This is stated rather than assumed because the store is
@@ -102,6 +111,12 @@ stay filed. It does.
 `roadmap_query`'s default `status` is `all`, which is why a dropped item is
 returned today. The default becomes "every status except `dropped`". Asking
 for `dropped` explicitly, or for `all`, still returns it.
+
+**This works because the query does not read the rendered file.** On a
+store-backed project it serves from `roadmapBullets()`, which takes the
+project's whole record list and applies no renderability filter — so § 4.1
+removing the item from `ROADMAP.md` does not remove it from the query. Only
+the status filter hides it, and only by default.
 
 `all` continues to mean all. Redefining it would make the dropped items
 unreachable by any argument, which is the opposite of reversible.
@@ -171,6 +186,10 @@ is cascaded.** The guards are about bindings *outside* the item:
 - **`dry_run` evaluates every guard and reports it** as *would refuse*,
   alongside the counts, rather than returning a refusal envelope. A preview
   that stopped at the first guard could never show the blast radius.
+- **The `dry_run` payload is per-table counts, not a row list** — a
+  `{element, history, feedback_ref, relationship, citation, item}` map of how
+  many rows each would lose. Callers and tests bind to this shape, so it is
+  pinned here rather than left to the implementer.
 
 **`dry_run` opens the write.** It runs `BEGIN IMMEDIATE`, performs the
 cascade, counts what it removed, and rolls back — it does not count with
@@ -198,12 +217,26 @@ relaxed, the cascade must already be correct.
 `PRAGMA foreign_keys` is on per connection via `RoadmapStore::applyPragmas()`,
 so a wrong order fails loudly rather than orphaning rows.
 
+**Removal does not defer FK enforcement, and only `deregisterProject()`'s
+ordering is the shape to follow — not its pragma.** That function runs under
+`PRAGMA defer_foreign_keys = ON`, which moves enforcement to COMMIT because
+it tears down self-referencing rows (`section.parent_id`) project-wide. A
+single item has no self-FK, so removal needs no deferral — and must not take
+it: `dry_run` rolls back and never commits, so under deferral the one path an
+implementer exercises first would have no enforcement at all.
+
 ### 4.5 Refusing a duplicate append
 
 `op:"append"` already computes `possible_duplicates` — after writing. It
 scored the reporter's second bad item at 100. The check moves before the
 insert: a score of 100 refuses with `duplicate_item`, naming the id it
 matched, unless `force: true` is passed.
+
+**`op:"append_batch"` shares the guard**, per entry, with a refused entry
+landing in its existing `skipped[]` rather than failing the batch. It
+computes the same advisory today, so leaving it out would leave the exact
+duplicate append this section exists to stop reachable through the batch
+form.
 
 Below 100 the score stays advisory and is reported as it is today. A
 threshold lower than exact-match would refuse legitimate sibling items, which
@@ -243,10 +276,14 @@ is a worse failure than the one being fixed.
 - **INV-5** — `op:"remove"` refuses an item an *external* table references,
   naming the table, and does not refuse on `history` alone.
   *Test:* `tests/features/roadmap_item_removal/test_item_removal.cpp`, case
-  `removeRefusesReferenced` — insert a `citation` row, attempt removal, assert
-  the refusal is `item_referenced` and names `citation`; then remove it, flip
-  the item to `dropped` and back so it carries `history` rows, and assert
-  removal now succeeds.
+  `removeRefusesReferenced` — with the item already `dropped` and absent from
+  a fixture `ROADMAP.md` that exists, insert a `citation` row, attempt
+  removal, and assert the refusal is `item_referenced` and names `citation`.
+  Then delete the citation row and assert removal succeeds although the item
+  carries `history` rows from the drop. **The item stays `dropped`
+  throughout:** flipping it back would re-render it into the file and
+  § 4.4's `id_in_published_roadmap` guard would refuse for an unrelated
+  reason.
   *Breaks when:* an external table is left out of the check, or `history` is
   treated as one — which would make § 3's recommended route disqualify the
   item permanently.
@@ -254,18 +291,21 @@ is a worse failure than the one being fixed.
 - **INV-6** — A successful `op:"remove"` leaves no row in any table that
   referenced the item.
   *Test:* `tests/features/roadmap_item_removal/test_item_removal.cpp`, case
-  `removeLeavesNoOrphans` — give the item `element` and `history` rows, remove
-  it, and assert no row for it survives in any of the six FK columns. The
-  `history` rows are what make this falsifiable: a cascade that deletes only
-  `element` and `item` leaves them behind and the case goes red.
-  *Breaks when:* the hand cascade omits a table.
+  `removeLeavesNoOrphans` — call the cascade **helper directly**, below the
+  guards, with all six FK columns populated, and assert no row survives in
+  any of them. Going through `op:"remove"` cannot test this: the guards refuse
+  whenever `feedback_ref`, `relationship` or `citation` hold a row, so three
+  of the six legs are unreachable from the verb and a cascade of
+  `element → history → item` alone would pass.
+  *Breaks when:* the hand cascade omits a table — which matters precisely
+  when a guard is later relaxed.
 
 - **INV-7** — `dry_run` on `op:"remove"` changes nothing.
   *Test:* `tests/features/roadmap_item_removal/test_item_removal.cpp`, case
   `removeDryRunIsInert` — dry-run a removal, then assert through queries on
   the same connection that every table's rows for that item are unchanged by
-  count and by column value, and that the report names the same rows a real
-  run deletes. **Not a byte comparison of the store file:** it runs in WAL, so
+  count and by column value, and that the report's per-table counts equal what
+  a real run deletes. **Not a byte comparison of the store file:** it runs in WAL, so
   connection setup and checkpointing move bytes with no mutation and a byte
   assertion would be flaky against correct code.
   *Breaks when:* the blast radius is measured after the transaction rolls

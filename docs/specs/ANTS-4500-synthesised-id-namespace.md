@@ -1,6 +1,6 @@
 # ANTS-4500 — Give a synthesised id its own namespace and its own counter
 
-**Status:** spec draft (2026-09-20).
+**Status:** accepted, cold-eyes loops 1 + 2 folded (2026-09-20).
 **Kind:** implement.
 **Source:** ROADMAP ANTS-4500 (cc-feedback-2026-08-18, Vestige; split from ANTS-4493).
 
@@ -85,37 +85,53 @@ An allocated id is unchanged: `<prefix>-<NNNN>`.
 
 ### 4.2 The synthesis counter
 
-The synthesis counter is an `id_prefix` row whose `prefix` column holds
-`<prefix>-S`. The table is keyed `(project_id, prefix)`, so this is a second
-row rather than a new column, and no `kSchemaVersion` bump is involved.
+**The counter lives in `id_prefix` under a key no declared prefix can
+collide with: `<prefix>#S`.** A declared prefix is
+`[A-Za-z][A-Za-z0-9_-]{0,63}` (`src/main.cpp`'s own message states the
+charset), so `#` cannot appear in one. An earlier draft keyed the row on
+`<prefix>-S` and excluded it by suffix test; that broke a project whose
+declared prefix legitimately ends `-S`, hiding its *real* counter. The key is
+an internal detail and does not appear in any rendered id.
 
-**The floor for a synthesis allocation is two terms, not one.** ANTS-3765
-§ 2.8 step 2's 2026-08-13 amendment exists because a single term was measured
-wrong on this project — the file routinely runs ahead of the store — and the
-synthesis namespace is not exempt from that. So the floor is the higher of:
+The table is keyed `(project_id, prefix)`, so this is a second row rather than
+a new column, and no `kSchemaVersion` bump is involved.
 
-1. the stored `<prefix>-S` row, via `RoadmapStore::idHighWater()`; and
-2. the maximum `S`-suffix among the project's stored `<prefix>-S<digits>` ids.
+**The floor for a synthesis allocation is three terms.** ANTS-3765 § 2.8
+step 2's 2026-08-13 amendment exists because a single term was measured wrong
+on this project, and it is explicit that neither of its terms dominates. The
+synthesis namespace has the same exposure plus one more, because its ids can
+reach the file and come back:
+
+1. the stored `<prefix>#S` counter row, via `RoadmapStore::idHighWater()`;
+2. the maximum `S`-suffix among the project's **stored** `<prefix>-S<digits>`
+   ids; and
+3. the maximum `S`-suffix among the **plan's parsed** `<prefix>-S<digits>`
+   ids — the file-side term.
+
+**Term 3 is the one that covers a store restored behind its file.** Terms 1
+and 2 both read the store, so a restore that lost the `item` rows loses both;
+only the plan sees what the file already holds. An earlier draft justified a
+two-term floor with exactly that case and did not cover it.
 
 **Term 2 needs a new accessor.** `RoadmapStore::maxAllocatedId()` cannot
-express it: it globs `<prefix>-[0-9]*`, so asked for prefix `<prefix>-S` it
-globs `<prefix>-S-[0-9]*` and matches nothing. It gains a sibling that globs
-`<prefix>-S[0-9]*` and casts the suffix past `<prefix>-S`. Without it the
-namespace has one witness where the real prefix has two, and a store restored
-behind its file re-issues an id the file already holds —
-`UNIQUE (project_id, id_fold)` fires and ANTS-3765 § 2.5 rolls back the whole
-project.
+express it: it globs `<prefix>-[0-9]*`, so it matches no `-S` id at all. It
+gains a sibling — `maxSynthesisedId(projectId, prefix)` — globbing
+`<prefix>-S[0-9]*` and casting the suffix past `<prefix>-S`. A member rather
+than a migration-local helper, for the reason `allocationFloor()` is one: term
+3's caller is the loader and term 2's is anything that needs the floor.
 
-**The `-S` row must be invisible to `RoadmapStore::idPrefixFor()`.** That
-lookup takes no prefix argument and picks one row per project with
-`ORDER BY high_water DESC, prefix ASC LIMIT 1` — the busiest counter. It is
-`Loader::allocateId()`'s rank-2 prefix source. On a project whose items are
-mostly synthesised the `-S` row would be the busiest, so `idPrefixFor()` would
-return `<prefix>-S` as *the project's* prefix and real allocated ids would
-render `<prefix>-S-0001`, inside the namespace this spec exists to keep
-separate. Three projects in the corpus are synthesised in full, so this is the
-expected case there rather than a corner. `idPrefixFor()` therefore excludes
-any prefix ending `-S`.
+**Migration also ensures the real prefix's `id_prefix` row exists.** Without
+it a wholly-synthesised project would carry only a `#S` row, and
+`RoadmapStore::idPrefixFor()` — which picks one row per project and is reached
+by `Loader::allocateId()`, `roadmap_log`'s append allocator and
+`RoadmapFoldIn` — would return the synthesis key or nothing. Fold-in gives up
+on an empty result and the append allocator falls through to a directory-leaf
+guess, which is two id families in one store. Three corpus projects are
+synthesised in full, so this is the expected case there.
+
+**`idPrefixFor()` ignores any row whose prefix contains `#`.** A structural
+test, not a suffix one: it cannot mistake a legal declared prefix for a
+counter key.
 
 `RoadmapStore::maxAllocatedId()` needs no change for the *real* prefix: it
 globs `<prefix>-[0-9]*`, and `ANTS-S0001` does not match, so a synthesised id
@@ -149,7 +165,7 @@ is about, and widening it is what makes INV-4 pass.
 | `looksLikeRoadmapId` | `src/findsources.cpp` | recognises a roadmap id in prose — widen |
 | `rcdetail::rcRoadmapIdLess` | `src/remotecontrol_terminal.cpp` | ordering — widen |
 
-Each admits the `-S` infix.
+The four rows marked *widen* admit the `-S` infix. `rcIsNonconformingIdToken` is left unchanged — neither of its regexes is touched, for the reason below.
 
 **`rcIsNonconformingIdToken` is a diagnostic and resolves nothing.** It
 returns true only for a token that is id-*ish* but non-canonical, so callers
@@ -209,12 +225,15 @@ key on `item_pk`, not on the id string, so they follow the row.
 
 - **INV-3** — Two synthesised ids in one project never collide.
   *Test:* `tests/features/roadmap_synth_id/test_synth_id.cpp`, case
-  `synthIdsUnique` — migrate a plan of several id-less bullets, then **clear
-  the `<prefix>-S` counter row and re-migrate**, and assert every stored id is
-  still distinct. Clearing the row is what exposes a one-term floor: with the
-  counter gone, a second migration restarts at 1 unless term 2 of § 4.2 is
-  present.
-  *Breaks when:* the synthesis floor reads the counter row alone.
+  `synthIdsUnique` — migrate a plan of several id-less bullets, clear the
+  `<prefix>#S` counter row, then re-migrate a source carrying **additional
+  id-less bullets with new headlines**, and assert every stored id is
+  distinct. The new headlines are what make this falsifiable: re-migrating an
+  unchanged source re-matches every bullet by ANTS-3765 § 2.6.1's key and
+  allocates nothing, so the floor is never consulted and a one-term floor
+  passes. A third leg clears the `item` rows too and leaves an `-S` id in the
+  source, which only term 3 can see.
+  *Breaks when:* the synthesis floor omits term 2 or term 3 of § 4.2.
 
 - **INV-4** — A synthesised id is reachable by every locating read and write.
   *Test:* `tests/features/roadmap_synth_id/test_synth_id.cpp`, case
@@ -223,7 +242,8 @@ key on `item_pk`, not on the id string, so they follow the row.
   *Breaks when:* a validator in § 4.4 is left requiring a digit suffix.
 
 - **INV-5** — An item already holding a synthesised id keeps that id across a
-  re-migration.
+  re-migration **of an unchanged, still-id-less source bullet**. § 4.5's
+  re-match fallback is the one case that replaces it, and INV-6 tests that.
   *Test:* `tests/features/roadmap_synth_id/test_synth_id.cpp`, case
   `existingIdsUnchanged` — migrate, record the ids, re-migrate the same source,
   assert every id is unchanged.
@@ -241,10 +261,10 @@ key on `item_pk`, not on the id string, so they follow the row.
 
 - **INV-7** — A synthesised id never becomes the project's allocation prefix.
   *Test:* `tests/features/roadmap_synth_id/test_synth_id.cpp`, case
-  `synthPrefixNotProjectPrefix` — build a project whose `<prefix>-S` counter
+  `synthPrefixNotProjectPrefix` — build a project whose synthesis counter
   exceeds its real one, then allocate through `roadmap_log op:"append"` and
   assert the new id is `<prefix>-<NNNN>`, not `<prefix>-S-<NNNN>`.
-  *Breaks when:* `idPrefixFor()` does not exclude a prefix ending `-S`; its
+  *Breaks when:* `idPrefixFor()` does not ignore a prefix containing `#`; its
   `ORDER BY high_water DESC` then returns the synthesis row.
 
 - **INV-8** — A synthesised id is addressable by the parser, not merely by a
@@ -256,12 +276,21 @@ key on `item_pk`, not on the id string, so they follow the row.
   *Breaks when:* only the refusal helpers are widened and the parser's id
   grammar is left narrow.
 
+- **INV-9** — A wholly-synthesised project still resolves its real prefix.
+  *Test:* `tests/features/roadmap_synth_id/test_synth_id.cpp`, case
+  `realPrefixRowEnsured` — migrate a project whose every bullet is id-less,
+  then assert `idPrefixFor()` returns the real prefix and not the counter key,
+  and that `roadmap_log op:"append"` allocates `<prefix>-<NNNN>`.
+  *Breaks when:* migration writes only the `#S` row, so `idPrefixFor()` finds
+  nothing and the allocator falls through to a directory-leaf guess.
+
 ## 6. Failure modes
 
 **The prefix itself ends in `-S`.** A project whose declared prefix is `FOO-S`
-would produce a synthesis counter at `FOO-S-S`. That is well-formed and
-distinct, so allocation stays correct; the rendered id is merely ugly. No
-guard is added, because a guard would have to reject a legal declared prefix.
+gets a counter row at `FOO-S#S` and renders `FOO-S-S0001`. Ugly, and correct:
+the `#` key means the project's real `FOO-S` row is still what
+`idPrefixFor()` returns. This is why § 4.2 keys on `#` rather than testing for
+a trailing `-S`, which would have hidden that project's real counter.
 
 **A source file already contains an `-S`-shaped id.** The corpus sweep found
 none, so this is a future state rather than a present one. Such an id parses
@@ -271,10 +300,10 @@ like any other parsed id.
 
 **The synthesis counter row is missing.** `idHighWater()` returns `nullopt`,
 and a missing row does *not* mean the project has never synthesised — a store
-restored from a backup, or one behind its file, reports the same thing while
-`-S` ids are live in the source. So allocation does not start at 1 on that
-evidence alone: § 4.2's term 2 reads the ids the items actually hold, and only
-when both terms are empty does the first allocation take `S0001`. ANTS-3765
+restored from a backup reports the same thing while `-S` ids are live in the
+source. So allocation does not start at 1 on that evidence alone: term 2 reads
+the ids the items hold and term 3 reads the ids the file holds, and only when
+all three are empty does the first allocation take `S0001`. ANTS-3765
 § 2.8 step 4's start-at-zero condition is about the *plan* carrying no parsed
 integer-suffix id, not about a stored row being absent.
 
@@ -297,6 +326,7 @@ than added as a standalone executable. `build_target_for` names the bundle.
 | INV-5 | `existingIdsUnchanged` |
 | INV-6 | `reMatchFallsBackToKey` |
 | INV-7 | `synthPrefixNotProjectPrefix` |
+| INV-9 | `realPrefixRowEnsured` |
 | INV-8 | `synthIdParsesAsId` |
 
 Each case must be seen to fail against pre-change code before the change is
@@ -351,6 +381,7 @@ synthesised item cannot be flipped or annotated at all.
 | INV-5 | `test_synth_id.cpp::existingIdsUnchanged` |
 | INV-6 | `test_synth_id.cpp::reMatchFallsBackToKey` |
 | INV-7 | `test_synth_id.cpp::synthPrefixNotProjectPrefix` |
+| INV-9 | `test_synth_id.cpp::realPrefixRowEnsured` |
 | INV-8 | `test_synth_id.cpp::synthIdParsesAsId` |
 | § 4.1's rendered form is stable once shipped | **nothing** — no check can see a future change of mind; ANTS-3765 § 2.8 step 3 states the permanence |
 

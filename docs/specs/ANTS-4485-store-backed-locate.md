@@ -1,6 +1,6 @@
 # ANTS-4485 — Locate a write target in the store on a store-backed project
 
-**Status:** spec draft (2026-09-20).
+**Status:** accepted, cold-eyes loops 1 + 2 folded (2026-09-20).
 **Kind:** implement.
 **Source:** ROADMAP ANTS-4485 (cc-feedback-2026-08-18, Fin Break).
 
@@ -102,15 +102,21 @@ selects.
 
 - **id** — `RoadmapStore::findItem(projectId, id)`, whose query is
   `SELECT item_pk FROM item WHERE project_id = ? AND id_fold = lower(?)`.
-- **headline** — `RoadmapStore::listItems(projectId)`, comparing the stored
-  `headline` as `rlStoreItemPk()` step 2 already does. More than one match is
-  `bullet_ambiguous`; none is `bullet_not_found`.
+- **headline** — `RoadmapStore::listItems(projectId)`, comparing the
+  **request's** `headline` against each row's stored `headline`. This reuses
+  step 2's comparison *rule*, not its signature: `rlStoreItemPk()` takes a
+  parsed file bullet, and taking one here would reintroduce the file
+  dependency this spec removes. More than one match is `bullet_ambiguous`;
+  none is `bullet_not_found`.
 - **anchor** — resolved through the file, then mapped to a row by id. An
   anchor is a file artefact and the store holds no anchor column, so this
   locator keeps its present behaviour.
-- **`line_range`** — already refused on a store-backed project, because the
-  store path zeroes `firstLine` and a range starting at line 1 would match
-  every bullet. Unchanged.
+- **`line_range`** — refused on a store-backed project, because the store
+  path zeroes `firstLine` and a range starting at line 1 would match every
+  bullet. **Today that refusal exists only in `cmdRoadmapLogFlipBatch`**;
+  verified 2026-09-20, `cmdRoadmapLogFlip` and `cmdRoadmapLogAmendBody` carry
+  no equivalent. So this is new work in two of the four handlers rather than
+  preserved behaviour, and INV-6 is a changed-behaviour case there.
 
 ### 4.4 The divergence message
 
@@ -177,8 +183,12 @@ their source of truth.
 - **INV-4** — A markdown project's locate behaviour is byte-identical to
   before this change.
   *Test:* `tests/features/roadmap_store_locate/test_store_locate.cpp`, case
-  `markdownUnchanged` — run each op against an unmigrated fixture, assert the
-  envelopes match the recorded pre-change ones.
+  `markdownUnchanged` — run each op against an unmigrated fixture and assert
+  the envelopes match golden files at
+  `tests/features/roadmap_store_locate/golden/markdown-<op>.json`, **captured
+  from the pre-change binary and committed in the same commit as the change**.
+  Generating them from the post-change build makes the case pass
+  unconditionally.
   *Breaks when:* the store path is entered for a project with no store row.
 
 - **INV-5** — A headline matching more than one stored item refuses
@@ -188,10 +198,14 @@ their source of truth.
   refusal and that neither changed.
   *Breaks when:* the store resolver takes the first row.
 
-- **INV-6** — `line_range` stays refused on a store-backed project.
+- **INV-6** — `line_range` is refused on a store-backed project by **every**
+  locating handler, not only `flip_batch`.
   *Test:* `tests/features/roadmap_store_locate/test_store_locate.cpp`, case
-  `lineRangeStillRefused` — assert the refusal.
-  *Breaks when:* the new resolver accepts the locator the store cannot serve.
+  `lineRangeRefusedEverywhere` — pass a `line_range` to each handler in
+  § 4.2's table and assert each refuses. Red before the change for `flip` and
+  `amend_body`, green for `flip_batch`, which already refuses.
+  *Breaks when:* the refusal is added to the shared resolver but a handler
+  resolves its locator before calling it.
 
 ## 6. Failure modes
 
@@ -211,18 +225,28 @@ wins, because it is the source of truth for the render. The file's copy is
 stale output by definition.
 
 **An item with an empty `id` column.** `findItem()` keys on the `id` column,
-so it misses one. `rlStoreItemPk()` step 2 is a headline-equality scan, not an
-id extraction, so such an item is reachable only by its exact stored headline
-and never by the id locator. The new resolver reuses step 2 rather than
-reimplementing it, and § 4.3's id branch falls through to the headline
-comparison on a miss rather than refusing.
+so it misses one, and `rlStoreItemPk()` step 2 is a headline-equality scan
+rather than an id extraction. Such an item is reachable only by its exact
+stored headline, never by the id locator.
+
+**An explicit id locator does not fall through.** A miss goes to § 4.4's
+`inFileOnly` check and then refuses. Falling through to a headline scan would
+resolve a *different* stored item that happens to share the file bullet's
+headline — writing to an item the caller never named — and it would contradict
+both § 4.3's precedence and INV-2.
 
 ## 7. Tests
 
 All cases live in `tests/features/roadmap_store_locate/`, paired with
 `spec.md`, compiled into an existing bundle's `SOURCES` list.
-`build_target_for` names the bundle. Each is seen to fail against pre-change
-code before the change is restored.
+`build_target_for` names the bundle.
+
+**Not every case can be red before the change, and § 4.3 says why.** INV-1,
+INV-2, INV-5 and INV-6 cover changed behaviour and are seen to fail against
+pre-change code. INV-3 and INV-4 assert behaviour this change
+*preserves*, so they pass on both sides by construction. They are regression
+guards, verified instead by asserting they go red against a deliberately
+broken resolver.
 
 | Invariant | Case |
 |---|---|
@@ -231,7 +255,7 @@ code before the change is restored.
 | INV-3 | `locatorPrecedenceHolds` |
 | INV-4 | `markdownUnchanged` |
 | INV-5 | `ambiguousHeadlineRefuses` |
-| INV-6 | `lineRangeStillRefused` |
+| INV-6 | `lineRangeRefusedEverywhere` |
 
 Fixtures use a throwaway store under the test's own temp root. `RoadmapStore`'s
 default path is the real machine-global store, so every case passes an
@@ -273,7 +297,7 @@ write depend on the render gate passing.
 | INV-3 | `test_store_locate.cpp::locatorPrecedenceHolds` |
 | INV-4 | `test_store_locate.cpp::markdownUnchanged` |
 | INV-5 | `test_store_locate.cpp::ambiguousHeadlineRefuses` |
-| INV-6 | `test_store_locate.cpp::lineRangeStillRefused` |
+| INV-6 | `test_store_locate.cpp::lineRangeRefusedEverywhere` |
 | The anchor locator keeps file semantics | **nothing** — no test asserts an anchor's file dependence; it is stated in § 4.3 and unchanged by this work |
 | § 4.5's suggestions come from the store, not the file | **nothing** — a suggestion list is advisory and no invariant binds it; a wrong source names unreachable bullets without failing a write |
 
