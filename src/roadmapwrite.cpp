@@ -478,6 +478,10 @@ Result commitAndRender(RoadmapStore &store, qint64 projectId,
     // nothing was kept.
     QStringList keptBackups;
 
+    // ANTS-4844 — filled in the one window where the mutated rows exist; see
+    // RoadmapRender::Outcome::touchedBullets.
+    QMap<QString, QString> touchedBullets;
+
     // Every Outcome that leaves this function carries the measurement, so the
     // envelope sees it whichever render produced the rest of the fields.
     const auto publish = [&](const RoadmapRender::Outcome &o) {
@@ -493,6 +497,7 @@ Result commitAndRender(RoadmapStore &store, qint64 projectId,
         outcome->externalLostText         = drift.lostText;
         outcome->externalLostTextTruncated = drift.lost > drift.lostText.size();
         outcome->externalLostBackups      = keptBackups;
+        outcome->touchedBullets           = touchedBullets;   // ANTS-4844
     };
 
     // Step 2.
@@ -535,6 +540,44 @@ Result commitAndRender(RoadmapStore &store, qint64 projectId,
     // empty and it publishes, which is how a project that has never been
     // rendered gets its ids into the file at all (ANTS-4628).
     opts.gateScope = store.itemsWrittenSinceBegin();
+
+    // ANTS-4844 — the rendered bullet for each item this write touched, taken
+    // in the SAME window and for the same reason the scope above is: after
+    // mutate() and before the commit is the only point at which the mutated row
+    // exists. A dry run rolls back before this function returns, so an envelope
+    // builder rendering the bullet afterwards would render the PRE-write state
+    // — a preview that is confidently wrong, which is the defect this fixes
+    // rather than reproduces.
+    //
+    // op:"flip" EDITS an existing bullet where op:"append" adds a new one, so it
+    // is the higher-stakes of the two and had the weaker preview: the only way
+    // to see what it produced was to run it for real and read the file back,
+    // which is what dry_run exists to avoid.
+    //
+    // Per DIALECT, because the two emit different blocks and rendering an
+    // ants-v1 bullet for a pass-headings project would preview text that file
+    // will never contain (ANTS-4803).
+    //
+    // Capped: a flip_batch can touch many items, and an unbounded echo would
+    // put the whole project in an envelope. The cap is silent because the
+    // per-item bullets are an aid, not an accounting array — `flipped[]`
+    // already names every item the batch touched.
+    {
+        constexpr int kMaxTouchedBullets = 25;
+        const bool passHeadings =
+            (*dialect == QLatin1String("pass-headings"));
+        for (qint64 pk : *opts.gateScope) {
+            if (touchedBullets.size() >= kMaxTouchedBullets)
+                break;
+            const auto row = store.readItem(pk, nullptr);
+            if (!row || row->id.isEmpty())
+                continue;
+            touchedBullets.insert(row->id,
+                                  passHeadings ? RoadmapRender::passBlockText(*row)
+                                               : RoadmapRender::bulletText(*row));
+        }
+    }
+
     const auto dry = RoadmapRender::render(store, projectId, projectRoot, opts, error);
     if (!dry)
         return abort(Result::RenderFailed);

@@ -1602,6 +1602,31 @@ QJsonDocument RemoteControl::cmdRoadmapLogFlip(const QJsonObject &req) {
                 // decides placement. anchor_injected stays, and stays false —
                 // ants-v1 never injects one.
                 env[QStringLiteral("anchor_injected")] = false;
+                // ANTS-4844 — what the bullet will LOOK like. op:"append"'s
+                // dry run has echoed its would-be bullet since ANTS-2077;
+                // op:"flip" EDITS an existing bullet, which makes it the
+                // higher-stakes of the two, and it echoed nothing — so the only
+                // way to see what a flip produced was to run it for real and
+                // read the file back, which is what dry_run exists to avoid.
+                //
+                // `bytes` was no substitute and is not one here: this path
+                // emits none at all (a store has no lines), and on the markdown
+                // path it measures something different from append's, so it
+                // cannot be read as a change magnitude either.
+                //
+                // `would_be_bullet` on a preview, never `bullet`: ANTS-4508's
+                // rule, whose cost is already measured — a previewed value
+                // reported under the key a real write uses reads as a
+                // commitment, and two commits had to be amended over it.
+                //
+                // Covers op:"annotate" too, which shares this block: a note
+                // lands in the body and the body is part of the rendered
+                // bullet, so the echo answers "where did my note go?" as well.
+                if (const auto bullet = outcome.touchedBullets.constFind(v1target.id);
+                    bullet != outcome.touchedBullets.constEnd()) {
+                    env[dryRun ? QStringLiteral("would_be_bullet")
+                               : QStringLiteral("bullet")] = bullet.value();
+                }
                 rcRoadmapWriteFields(env, outcome, dryRun);   // ANTS-4463
                 if (!note.isEmpty()) {
                     // ANTS-4463 — same rule as the file list: on a dry run the

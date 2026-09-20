@@ -150,6 +150,24 @@ on a dry run): the worst thing at stake, one of `text_lost`, `structure`,
 edited, safe to overwrite. *Tests:* `Ants4957RestyleOnlyDriftSaysSo`, plus
 reason assertions in the ANTS-4615, ANTS-4695 and ANTS-4965 cases.
 
+ANTS-4844 — `op:"flip"` and `op:"annotate"` echo the bullet the render will
+emit: `would_be_bullet` on a preview, `bullet` on a write. Flip EDITS an
+existing bullet where append adds a new one, so it is the higher-stakes of
+the two and had the weaker preview — append has echoed its would-be bullet
+since ANTS-2077. `bytes` is no substitute: this path emits none, and on the
+markdown path it measures something different from append's.
+
+The bullet is rendered INSIDE the write sequence, in the window where the
+mutated row exists. A preview rendering it after `commitAndRender()` returned
+would show the PRE-flip state, because a dry run has rolled back by then — a
+preview confidently showing the wrong thing, which is this item's complaint
+reproduced rather than fixed. Per dialect, since a pass-headings project must
+not be shown an ants-v1 bullet its file will never contain (ANTS-4803). The
+preview and the write must agree. *Tests:*
+`Ants4844FlipDryRunEchoesThePostFlipBullet`, which asserts the previewed
+status is the post-flip one and fails against a pre-state render, and
+`Ants4844AnnotateEchoesTheBulletCarryingTheNote`.
+
 ANTS-4839 — a lost-text arm also carries `discard_hint`
 (`would_discard_hint`): the discarded lines belong to bullets the store
 holds, so they are an older publication of this same store. The claim is

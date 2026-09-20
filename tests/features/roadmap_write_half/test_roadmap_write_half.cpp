@@ -2472,3 +2472,119 @@ TEST(RoadmapWriteHalf, Ants5087ParseMemoIsReleasableAndReleased) {
     EXPECT_LT(released - dispatched, std::size_t(200))
         << "the release is not in the worker job that just finished";
 }
+
+// ANTS-4844 — op:"flip" EDITS an existing bullet where op:"append" adds a new
+// one, which makes it the higher-stakes of the two, and it had the weaker
+// preview: append has echoed its would-be bullet since ANTS-2077 and flip
+// echoed nothing, so the only way to see what a flip produced was to run it
+// for real and read the file back — which is what dry_run exists to avoid.
+//
+// The load-bearing assertion is that the DRY RUN shows the POST-flip status.
+// The bullet is rendered inside the write sequence, in the one window where
+// the mutated row exists; a preview that rendered it after commitAndRender()
+// returned would show the PRE-flip status, because a dry run has rolled back
+// by then. That would be a preview confidently showing the wrong thing, which
+// is this item's own complaint reproduced rather than fixed.
+TEST(RoadmapWriteHalf, Ants4844FlipDryRunEchoesThePostFlipBullet) {
+    ants_test::XdgGuard guard;
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    qint64 projectId = 0;
+    const QString root = seedMigrated(guard, tmp, fixture(), &projectId);
+    ASSERT_FALSE(root.isEmpty());
+
+    RemoteControl rc(nullptr);
+    const QJsonObject made = rc.cmdRoadmapLogAppendForTest(
+        appendReq(root, QStringLiteral("A bullet to flip."))).object();
+    ASSERT_TRUE(made.value(QStringLiteral("ok")).toBool());
+    const QString id = made.value(QStringLiteral("id")).toString();
+    ASSERT_FALSE(id.isEmpty());
+
+    const QString planned = QString::fromUtf8("\xF0\x9F\x93\x8B");
+    const QString shipped = QString::fromUtf8("\xE2\x9C\x85");
+
+    QJsonObject flip;
+    flip[QStringLiteral("caller_cwd")] = root;
+    flip[QStringLiteral("op")]         = QStringLiteral("flip");
+    flip[QStringLiteral("id")]         = id;
+    flip[QStringLiteral("to_status")]  = QStringLiteral("shipped");
+
+    // --- the preview ---
+    QJsonObject dry = flip;
+    dry[QStringLiteral("dry_run")] = true;
+    const QJsonObject preview = rc.cmdRoadmapLogFlipForTest(dry).object();
+    ASSERT_TRUE(preview.value(QStringLiteral("ok")).toBool())
+        << preview.value(QStringLiteral("error")).toString().toStdString();
+
+    const QString wouldBe =
+        preview.value(QStringLiteral("would_be_bullet")).toString();
+    ASSERT_FALSE(wouldBe.isEmpty())
+        << "ANTS-4844: a flip preview must echo the bullet it would produce";
+
+    // THE assertion. Rendered inside the transaction, so it is the flipped
+    // state; rendered after it, this would still read as planned.
+    EXPECT_TRUE(wouldBe.contains(shipped))
+        << "the preview must show the POST-flip status; got: "
+        << wouldBe.toStdString();
+    EXPECT_FALSE(wouldBe.contains(planned))
+        << "the preview still shows the pre-flip status, so it was rendered "
+           "outside the write sequence; got: " << wouldBe.toStdString();
+    EXPECT_TRUE(wouldBe.contains(id)) << wouldBe.toStdString();
+
+    // ANTS-4508's rule: a preview never reports under the key a real write
+    // uses, or a caller reading one field takes it for a write that happened.
+    EXPECT_FALSE(preview.contains(QStringLiteral("bullet")))
+        << "a preview must not use the past-tense key";
+
+    // --- and the real write ---
+    const QJsonObject real = rc.cmdRoadmapLogFlipForTest(flip).object();
+    ASSERT_TRUE(real.value(QStringLiteral("ok")).toBool())
+        << real.value(QStringLiteral("error")).toString().toStdString();
+    const QString wrote = real.value(QStringLiteral("bullet")).toString();
+    EXPECT_FALSE(wrote.isEmpty())
+        << "the real write echoes the bullet under the past-tense key";
+    EXPECT_TRUE(wrote.contains(shipped)) << wrote.toStdString();
+    EXPECT_FALSE(real.contains(QStringLiteral("would_be_bullet")))
+        << "a completed write must not use the future-tense key";
+
+    // The preview predicted the write. If these ever diverge the echo is
+    // decoration rather than a preview.
+    EXPECT_EQ(wouldBe.toStdString(), wrote.toStdString());
+}
+
+// ANTS-4844 — op:"annotate" shares the flip envelope, and its note lands in
+// the body, which is part of the rendered bullet. So the same echo answers
+// "where did my note go?" without a read-back.
+TEST(RoadmapWriteHalf, Ants4844AnnotateEchoesTheBulletCarryingTheNote) {
+    ants_test::XdgGuard guard;
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    qint64 projectId = 0;
+    const QString root = seedMigrated(guard, tmp, fixture(), &projectId);
+    ASSERT_FALSE(root.isEmpty());
+
+    RemoteControl rc(nullptr);
+    const QJsonObject made = rc.cmdRoadmapLogAppendForTest(
+        appendReq(root, QStringLiteral("A bullet to annotate."))).object();
+    ASSERT_TRUE(made.value(QStringLiteral("ok")).toBool());
+    const QString id = made.value(QStringLiteral("id")).toString();
+    ASSERT_FALSE(id.isEmpty());
+
+    QJsonObject req;
+    req[QStringLiteral("caller_cwd")] = root;
+    req[QStringLiteral("op")]         = QStringLiteral("annotate");
+    req[QStringLiteral("id")]         = id;
+    req[QStringLiteral("note")]       = QStringLiteral("A distinctive closure line.");
+    req[QStringLiteral("dry_run")]    = true;
+
+    const QJsonObject preview = rc.cmdRoadmapLogFlipForTest(req).object();
+    ASSERT_TRUE(preview.value(QStringLiteral("ok")).toBool())
+        << preview.value(QStringLiteral("error")).toString().toStdString();
+
+    const QString wouldBe =
+        preview.value(QStringLiteral("would_be_bullet")).toString();
+    ASSERT_FALSE(wouldBe.isEmpty());
+    EXPECT_TRUE(wouldBe.contains(QStringLiteral("A distinctive closure line.")))
+        << "the echoed bullet must carry the note the annotate would append; "
+           "got: " << wouldBe.toStdString();
+}

@@ -822,6 +822,20 @@ which heading you expect it under.
     INV-2 declares `firstLine` / `lastLine` to be 0 on the store path — so
     every bullet would report line 1, which is why the field is dropped
     instead of sent meaningless.
+    **ANTS-4844 adds `bullet` (`would_be_bullet` on a preview)** to
+    `op:"flip"` and `op:"annotate"`: the bullet the render will emit for the
+    item. `op:"append"` has echoed its would-be bullet since ANTS-2077, and
+    flip EDITS an existing bullet rather than adding one — the higher-stakes
+    of the two, with the weaker preview. It is not a substitute for the
+    dropped `bytes`, and does not restore it: `bytes` measured different
+    things on the two paths, so it could not be read as a change magnitude
+    either way.
+    The bullet is rendered INSIDE the write sequence, where the mutated row
+    exists. Rendering it after `commitAndRender()` returns would show the
+    PRE-write state, since a dry run has rolled back by then. Per dialect, so
+    a pass-headings project is not shown an ants-v1 bullet its file will
+    never contain. Capped for a batch, and a gate-refused dry run still
+    returns none — it never reaches the echo.
   - **`dry_run` commits nothing on either path, but the store path can
     refuse instead of previewing.** The preview is produced by the same
     validating render, and the gate is checked *before* the dry-run return,

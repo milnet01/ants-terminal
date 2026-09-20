@@ -20,6 +20,7 @@
 #include "roadmapstore.h"
 
 #include <QHash>
+#include <QMap>          // ANTS-4844 — Outcome::touchedBullets
 #include <QSet>          // ANTS-4628 — Options::gateScope
 #include <QString>
 #include <QStringList>
@@ -84,6 +85,22 @@ struct Outcome {
     // was written. Populated on every engaged return, so a caller staring at a
     // gate failure can still see how many items would have rendered.
     QStringList gateFailures;
+
+    // ANTS-4844 — id → the bullet the render WILL emit for it, for each item
+    // this write touched. SET BY RoadmapWrite::commitAndRender(), like the
+    // drift fields below and for the same kind of reason: only the write
+    // sequence holds the one window in which the mutated row exists.
+    //
+    // That window is narrow and is why this cannot be computed by the caller.
+    // A dry run rolls its transaction back before commitAndRender() returns, so
+    // an envelope builder rendering the bullet afterwards would render the
+    // PRE-write state — a preview that is confidently wrong, which is the
+    // defect this exists to fix rather than reproduce.
+    //
+    // A QMap, so a multi-item write reports in a stable order and a test can
+    // assert on it. Bounded where it is filled; `op:"flip"` touches one item
+    // and a batch touches many.
+    QMap<QString, QString> touchedBullets;
 
     // ANTS-4462 / ANTS-4465 — the external-edit report. SET BY
     // RoadmapWrite::commitAndRender(), never by render() itself, and the
