@@ -47324,7 +47324,7 @@ are closed inline in the feedback files rather than filed here.
   one, so a mis-parsed value can never be corrected). ANTS-3808 carries
   both.
 
-- 📋 [ANTS-4499] **roadmap_migrate overwrites rows in a machine-global store with no snapshot and no undo.**
+- ✅ [ANTS-4499] **roadmap_migrate overwrites rows in a machine-global store with no snapshot and no undo.**
   ANTS-4486's fourth ask, filed separately because it is a capability rather
   than a fix and is independent of the parse bug that prompted it.
 
@@ -47354,6 +47354,30 @@ are closed inline in the feedback files rather than filed here.
   session that most needs the backup is the one that did not know to ask.
   The weekly whole-store snapshot shipped by ANTS-3794 covers longer
   history, so this only has to protect the migration run itself.
+  Shipped 2026-09-20 in 77b902e2. RoadmapStore::snapshotTo() plus
+  backup / backup_to on roadmap_migrate, reported as backup_taken and
+  backup_path.
+
+  Mechanism is SQLite's VACUUM INTO, NOT the C backup API this body
+  prescribes. Qt wraps that API nowhere, so the C route would have added
+  a build dependency on sqlite3.h, which the QSQLITE driver owns today.
+  Both give the same consistency under WAL and VACUUM INTO runs through
+  QSqlQuery. The WAL trap this body documents is held by a test that
+  fails against a QFile::copy implementation, verified by mutating the
+  implementation to exactly that.
+
+  Taken before the transaction opens: VACUUM INTO cannot run inside one,
+  and a backup taken after the rows moved protects nothing. No snapshot
+  on a dry run. A failed snapshot refuses backup_failed and migrates
+  nothing, with backup:false as the deliberate escape, itself tested so
+  the refusal is not a wall with no door.
+
+  Default destination is pre-migrate.sqlite beside the store,
+  deliberately outside the roadmap-*.sqlite glob that
+  tools/roadmap-store-backup.sh prunes, so it cannot cost the weekly
+  rotation a kept snapshot. Open question left for the user: whether the
+  default should instead point at the off-system-drive backup directory
+  the weekly timer uses.
   **Layman:** The migration can rewrite hundreds of database rows and there is no way back — and copying the database file by hand does not capture the most recent writes.
   Kind: feature.
   Source: cc-feedback-2026-08-18 (Local Web Server Manager), split from ANTS-4486 on 2026-08-19.
@@ -47394,6 +47418,56 @@ are closed inline in the feedback files rather than filed here.
   Needs a spec: it changes what an id MEANS, ANTS-3765 § 2.8 owns the
   allocation rules, and option 3 touches the schema. Related: ANTS-4343 (a
   row keeps id_origin='synthesised' after the file starts declaring it).
+  Design analysis (2026-09-20), from a peer Claude session, read-only.
+  Recorded here so the spec does not start from nothing. Not yet
+  implemented and not yet independently verified in full.
+
+  Recommendation: option 2, rendering a synthesised id as
+  <prefix>-S<NNNN>. It is the only one of the four that answers the
+  stated harm. Options 1 and 4 leave a synthesised id numerically
+  indistinguishable from a real one, so a reader still cannot tell which
+  ids are quotable; they stop collisions, which the high-water floor
+  already did. Option 2 removes the expectation instead of meeting it.
+
+  It also fits ANTS-3765 section 2.8 as written. Step 1 takes the prefix
+  as the text before the final hyphen, so 3D_E-S0001 still has prefix
+  3D_E. Step 2 already ignores an id whose suffix does not parse as an
+  integer, so S0001 drops out of the plan-side high-water term with no
+  new exclusion logic, and step 2 already excludes synthesised ids by
+  name for the pass-headings case.
+
+  Cost, and why not option 3: option 3 is the separate synthetic_id
+  column, and it is the one that touches the schema. A kSchemaVersion
+  bump is a one-way door here, because the store is machine-global and
+  open() refuses outright when the store's user_version exceeds the
+  build's, so the first binary to upgrade locks every older build out of
+  every project. Not worth it for a problem the id string can solve.
+  Option 4 touches no schema at all: .roadmap-counter is a file.
+
+  Option 2's real costs: section 2.8 step 3 pins the rendered form and
+  says the choice is baked into every stored id thereafter, so this is a
+  spec amendment plus a decision on already-synthesised rows (migrate
+  them, rather than keep two dialects); the stored high-water must stop
+  rising for synthesised allocations; and anything sorting ids by
+  numeric suffix needs checking.
+
+  A companion change is NOT optional. Under option 2 the stored row
+  holds ANTS-S0001 while a human who files the id by hand writes
+  ANTS-4141, so the section 2.6 id match fails and produces a fresh
+  insert plus an orphan. ANTS-4343 is evidence that path is used. So
+  section 2.6 needs an id-bearing item that finds no id match to fall
+  back to section 2.6.1's id-less key before being treated as new.
+
+  Idempotence: no option on the list delivers it. The item is already
+  stable across re-migrations via 2.6.1's key; the ID is not, because
+  allocation is positional. Option 2 makes that instability visible and
+  harmless rather than fixing it. The durable fix is writing allocated
+  ids back into the roadmap file, which 2.6.1 names and assigns to
+  ANTS-3758.
+
+  Still to check before the spec: whether idHighWater() filters by
+  origin in the store layer, any consumer sorting ids numerically, and
+  the corpus for existing -S-shaped ids that would collide.
   **Layman:** When the migration invents a number for an item that has none, it takes it from the same pool real items use — so the number can move later, and nothing that quoted it still points at the right item.
   Kind: fix.
   Source: cc-feedback-2026-08-18 (Vestige), split from ANTS-4493 on 2026-08-19.

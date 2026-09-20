@@ -14,6 +14,12 @@ for security-relevant changes.
 
 ### Added
 
+- **roadmap_migrate takes a consistent snapshot of the store before it migrates** (ANTS-4499)
+  One rolling snapshot, or your own path via `backup_to`. It uses SQLite's
+  VACUUM INTO, so it is safe while Ants is running -- copying the database
+  file by hand is not, because the store runs in WAL. A snapshot that fails
+  refuses the migration rather than proceeding unprotected.
+
 - **roadmap_migrate reports which items the roadmap render's Layman gate will refuse** (ANTS-4483)
   The check runs inside the migration transaction, so a dry run answers
   about the roadmap it is previewing rather than the one it would replace.
