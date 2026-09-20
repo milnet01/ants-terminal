@@ -87,8 +87,37 @@ public:
     // with a space in it that no other writer in this project uses.
     static QString defaultPath();
 
+    // ANTS-4499 — where the rolling pre-migration snapshot goes when a caller
+    // names no path. Beside the store, because that directory is the one
+    // location guaranteed to exist and be writable wherever this binary runs;
+    // a caller wanting it elsewhere (another drive, say) passes its own path.
+    //
+    // Deliberately NOT named `roadmap-*.sqlite`. That glob is what
+    // tools/roadmap-store-backup.sh prunes to its KEEP limit, so a matching
+    // name would sit in the weekly rotation and quietly cost it one snapshot.
+    static QString defaultSnapshotPath();
+
     bool open(QString *error = nullptr);
     bool isOpen() const { return m_db.isOpen(); }
+
+    // ANTS-4499 — a consistent snapshot of the store, safe to take while a live
+    // Ants holds a connection.
+    //
+    // The store runs in WAL, so a plain file copy is NOT a backup: it misses
+    // everything still in the `-wal` and the result looks right, which is the
+    // trap the reporting session documented. `VACUUM INTO` is SQLite's own
+    // answer and runs through QSqlQuery, so this costs no build dependency on
+    // sqlite3.h — the QSQLITE driver owns that, and Qt wraps the C backup API
+    // nowhere.
+    //
+    // Writes to a temp path and renames, so a caller never observes a partial
+    // snapshot at destPath. No separate integrity_check, unlike
+    // tools/roadmap-store-backup.sh: that script uses `.backup`, which copies
+    // pages verbatim and can therefore carry corruption across intact, where
+    // VACUUM INTO rebuilds the database through the SQL layer and fails loudly
+    // instead. CANNOT run inside a transaction — SQLite refuses — so a caller
+    // takes the snapshot before it calls begin().
+    bool snapshotTo(const QString &destPath, QString *error = nullptr);
 
     // ANTS-3765 § 2.3 — explicit transaction control, so a caller can make one
     // project one transaction. putItem()'s self-committing shape made that

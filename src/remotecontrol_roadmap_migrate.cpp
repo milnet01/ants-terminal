@@ -216,6 +216,13 @@ QJsonDocument RemoteControl::cmdRoadmapMigrate(const QJsonObject &req) {
     // would be a second answer. An absent or non-numeric value leaves the
     // Request default, which is where the 200 lives.
     r.maxNotes    = req.value(QStringLiteral("max_notes")).toInt(r.maxNotes);
+    // ANTS-4499 — the pre-migration snapshot, ON unless the caller says
+    // otherwise, so a session that never thought to ask still gets one. Not
+    // validated against the project root, deliberately: the store is
+    // machine-global and its backup belongs beside it or on another drive, so a
+    // root-relative check would refuse every correct destination.
+    r.backup      = req.value(QStringLiteral("backup")).toBool(true);
+    r.backupTo    = req.value(QStringLiteral("backup_to")).toString();
 
     QJsonObject out = RoadmapMigrateVerb::run(RoadmapStore::defaultPath(), r);
     // ANTS-4740 — say the file was created. Without it an init reply is

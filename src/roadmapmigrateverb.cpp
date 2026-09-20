@@ -471,6 +471,35 @@ QJsonObject RoadmapMigrateVerb::run(const QString &storePath, const Request &req
                          .arg(req.projectRoot, owner->name, name)));
     }
 
+    // ANTS-4499 / INV-6 — the snapshot goes BEFORE the transaction opens. Two
+    // reasons, and either alone would be enough: VACUUM INTO cannot run inside
+    // a transaction, and a backup taken after the rows moved protects nothing.
+    //
+    // INV-7 — never on a dry run. It commits nothing, so there is nothing to
+    // protect, and spending the rolling snapshot on a preview would destroy the
+    // one taken before the last real migration.
+    QString backupPath;
+    if (!req.dryRun && req.backup) {
+        backupPath = req.backupTo.isEmpty() ? RoadmapStore::defaultSnapshotPath()
+                                            : req.backupTo;
+        QString backupErr;
+        if (!store.snapshotTo(backupPath, &backupErr)) {
+            // INV-8 — refuse, rather than migrate unprotected and mention it.
+            // This verb can update hundreds of rows in a store every project on
+            // the machine shares, and there is no undo; proceeding past a
+            // failed backup is the one outcome nobody would choose knowingly.
+            // `backup:false` is how a caller chooses it knowingly.
+            QJsonObject env;
+            env[QStringLiteral("ok")]    = false;
+            env[QStringLiteral("code")]  = QStringLiteral("backup_failed");
+            env[QStringLiteral("error")] = QStringLiteral(
+                "pre-migration snapshot to %1 failed: %2. Nothing was migrated. "
+                "Pass a writable `backup_to`, or `backup:false` to migrate "
+                "without one.").arg(backupPath, backupErr);
+            return env;
+        }
+    }
+
     // 7-8 — one plan, one project, one transaction. `changedAt` is the caller's
     // single stamp, forwarded rather than re-derived (§ 2.3.2).
     RoadmapMigrateLoad::Options opts;
@@ -598,6 +627,14 @@ QJsonObject RoadmapMigrateVerb::run(const QString &storePath, const Request &req
     // migration that had not run. The first re-render is the next roadmap_log
     // write.
     env[QStringLiteral("markdown_rewritten")] = false;
+
+    // ANTS-4499 — where the pre-migration snapshot went, so a caller that has
+    // to roll back knows the path without reconstructing the default. False on
+    // a dry run and on an explicit `backup:false`; a failed snapshot never
+    // reaches here, having refused above.
+    env[QStringLiteral("backup_taken")] = !backupPath.isEmpty();
+    if (!backupPath.isEmpty())
+        env[QStringLiteral("backup_path")] = backupPath;
 
     env[QStringLiteral("items_inserted")]   = out.itemsInserted;
     env[QStringLiteral("items_updated")]    = out.itemsUpdated;

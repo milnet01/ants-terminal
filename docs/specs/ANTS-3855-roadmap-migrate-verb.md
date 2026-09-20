@@ -374,6 +374,7 @@ downstream re-derives it.
   "elements_written": 0, "history_rows": 0,
   "render_gate_checked": true, "render_gate_failures": [],
   "render_gate_failures_total": 0,
+  "backup_taken": true, "backup_path": "/home/…/pre-migrate.sqlite",
   "updated_items": [], "updated_items_truncated": false,
   "defaulted_fields": {},
   "notes": [], "notes_count": 0, "notes_truncated": false,
@@ -472,6 +473,35 @@ slot, so the render reports none.
 
 **Added 2026-09-20 (ANTS-4483).** Filed by a Claude Code config session that met
 the refusal on a project someone else had migrated.
+
+`backup_taken` and `backup_path` report the **pre-migration snapshot**. This
+verb can rewrite rows in a store every project on the machine shares, and there
+is no undo. `tools/roadmap-store-backup.sh` covers the weekly cadence and cannot
+protect a migration that runs between two of its snapshots.
+
+The snapshot is taken **before the transaction opens**, and two independent
+reasons put it there: `VACUUM INTO` cannot run inside a transaction, and a
+backup taken after the rows moved protects nothing. A `dry_run` takes none — it
+commits nothing, and the snapshot is rolling, so spending it on a preview would
+destroy the one taken before the last real migration.
+
+**A failed snapshot refuses the call** with `backup_failed`, and migrates
+nothing. Proceeding unprotected is the one outcome nobody would choose
+knowingly; `backup:false` is how a caller chooses it in so many words.
+
+`VACUUM INTO`, not sqlite3's C backup API. Qt wraps that API nowhere, so the C
+route would add a build dependency on `sqlite3.h` — the QSQLITE driver owns
+sqlite today. Both give the same consistency under WAL, which a plain file copy
+does **not**: it misses whatever is still in the `-wal` and yields a file that
+looks right. `RoadmapMigrateBackup.Inv1SnapshotCarriesWalResidentRows` fails
+against a `QFile::copy` implementation, which is how that claim is held.
+
+The default destination is `pre-migrate.sqlite` beside the store, and is
+deliberately **not** named `roadmap-*.sqlite`: that glob is what
+`tools/roadmap-store-backup.sh` prunes to its KEEP limit, so a matching name
+would sit in the weekly rotation and quietly cost it one kept snapshot.
+
+**Added 2026-09-20 (ANTS-4499).**
 
 `updated_items[]` names the items `items_updated` counted, each with the fields
 that changed:

@@ -245,6 +245,69 @@ bool RoadmapStore::enableWal(QString *error) {
     return false;
 }
 
+// ANTS-4499 — see the header for the name, which must stay outside the weekly
+// prune glob.
+QString RoadmapStore::defaultSnapshotPath() {
+    return QFileInfo(defaultPath()).absolutePath()
+           + QStringLiteral("/pre-migrate.sqlite");
+}
+
+// ANTS-4499 — see the header for why VACUUM INTO and not a file copy.
+bool RoadmapStore::snapshotTo(const QString &destPath, QString *error) {
+    const auto fail = [&](const QString &message) {
+        if (error)
+            *error = message;
+        return false;
+    };
+    if (!m_db.isOpen())
+        return fail(QStringLiteral("store is not open"));
+    if (destPath.isEmpty())
+        return fail(QStringLiteral("snapshot destination is empty"));
+
+    const QString destDir = QFileInfo(destPath).absolutePath();
+    if (!QDir().mkpath(destDir))
+        return fail(QStringLiteral("cannot create snapshot directory %1").arg(destDir));
+
+    // VACUUM INTO refuses a target that already exists, so the temp name has to
+    // be free before it runs — including after an earlier run died between the
+    // vacuum and the rename below.
+    const QString tmp = destPath + QStringLiteral(".partial");
+    if (QFile::exists(tmp) && !QFile::remove(tmp))
+        return fail(QStringLiteral("cannot clear stale %1").arg(tmp));
+
+    QSqlQuery q(m_db);
+    // Bound rather than interpolated: the destination is caller data, and a
+    // quote in it would otherwise end the SQL string.
+    q.prepare(QStringLiteral("VACUUM INTO ?"));
+    q.addBindValue(tmp);
+    if (!q.exec()) {
+        const QString why = q.lastError().text();
+        QFile::remove(tmp);
+        return fail(QStringLiteral("VACUUM INTO %1 failed: %2").arg(tmp, why));
+    }
+
+    // Mode 0600, like the store itself and like the weekly snapshot: one file
+    // here holds every project's roadmap on this machine.
+    if (!QFile::setPermissions(tmp, QFileDevice::ReadOwner | QFileDevice::WriteOwner)) {
+        QFile::remove(tmp);
+        return fail(QStringLiteral("cannot set 0600 on %1").arg(tmp));
+    }
+
+    // QFile::rename() will not replace an existing target, so the previous
+    // snapshot goes first. The window in which neither file sits at destPath
+    // spans two syscalls, and the new snapshot exists at `tmp` throughout it,
+    // so nothing is unrecoverable inside it.
+    if (QFile::exists(destPath) && !QFile::remove(destPath)) {
+        QFile::remove(tmp);
+        return fail(QStringLiteral("cannot replace %1").arg(destPath));
+    }
+    if (!QFile::rename(tmp, destPath)) {
+        QFile::remove(tmp);
+        return fail(QStringLiteral("cannot rename %1 to %2").arg(tmp, destPath));
+    }
+    return true;
+}
+
 bool RoadmapStore::open(QString *error) {
     const QFileInfo fi(m_path);
     if (!QDir().mkpath(fi.absolutePath())) {

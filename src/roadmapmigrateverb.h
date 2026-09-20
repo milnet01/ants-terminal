@@ -50,6 +50,21 @@ struct Request {
     // verb's `max_notes` argument. run() applies the [1, 2000] clamp, so a
     // test driving this seam directly is bounded identically to a live call.
     int     maxNotes = 200;
+    // ANTS-4499 — the pre-migration snapshot of the machine-global store.
+    //
+    // On by default, because the session that most needs a backup is the one
+    // that did not know to ask for it. `backup:false` is the caller saying
+    // otherwise in so many words: a FAILED snapshot refuses the migration
+    // (INV-8), since rewriting hundreds of rows in a shared store with no way
+    // back is the thing this exists to prevent, and a warning nobody reads is
+    // not protection.
+    //
+    // Empty `backupTo` means RoadmapStore::defaultSnapshotPath(). A dry run
+    // takes none at all (INV-7): it commits nothing, so there is nothing to
+    // protect and a rolling snapshot spent on a preview would overwrite the one
+    // taken before the last real run.
+    bool    backup = true;
+    QString backupTo;
 };
 
 // Returns the success envelope, or a refusal carrying `code`. Opens its OWN

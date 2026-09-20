@@ -3692,6 +3692,7 @@ if(ANTS_TESTS)
                 # store in a QTemporaryDir, never RoadmapStore::defaultPath();
                 # INV-1 and INV-2(b) are source scrapes over ANTS_SRC_DIR.
                 tests/features/roadmap_migrate_verb/test_roadmap_migrate_verb.cpp
+                tests/features/roadmap_migrate_backup/test_roadmap_migrate_backup.cpp
                 tests/features/session_message/test_session_message.cpp
                 # ANTS-5098 — inbox page, message_id and add_batch bounds.
                 tests/features/content_verb_bounds/test_content_verb_bounds.cpp

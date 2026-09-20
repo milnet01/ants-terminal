@@ -14376,6 +14376,46 @@ void ClaudeIntegration::onMcpConnection() {
                             "rather than a failure.");
                         props["max_notes"] = p;
                     }
+                    // ANTS-4499 — the pre-migration snapshot. Declared for the
+                    // reason the ANTS-4429 note below gives: this schema sets
+                    // additionalProperties:false, so an undeclared argument
+                    // never reaches the handler at all.
+                    {
+                        QJsonObject p;
+                        p["type"] = QStringLiteral("boolean");
+                        p["description"] = QStringLiteral(
+                            "Snapshot the machine-global store before "
+                            "migrating (default true). A FAILED snapshot "
+                            "refuses the call `backup_failed` and migrates "
+                            "nothing: this verb rewrites rows in a store every "
+                            "project on the machine shares, with no undo. Pass "
+                            "false to migrate without one. A dry run never "
+                            "snapshots -- it commits nothing to protect. The "
+                            "copy uses SQLite's own VACUUM INTO, so it is safe "
+                            "while a live Ants holds a connection; a plain "
+                            "`cp` of the .sqlite is NOT, because the store "
+                            "runs in WAL and the copy silently loses the most "
+                            "recent writes.");
+                        props["backup"] = p;
+                    }
+                    {
+                        QJsonObject p;
+                        p["type"] = QStringLiteral("string");
+                        p["description"] = QStringLiteral(
+                            "Where that snapshot goes. Defaults to "
+                            "`pre-migrate.sqlite` beside the store. It is "
+                            "ROLLING -- each run overwrites it -- so name your "
+                            "own path to keep a particular one. NOT validated "
+                            "against the project root, because the store is "
+                            "machine-global and its backup belongs beside it "
+                            "or on another drive. Deliberately not named "
+                            "`roadmap-*.sqlite`: that glob is what "
+                            "tools/roadmap-store-backup.sh prunes to its KEEP "
+                            "limit, so a matching name would quietly cost the "
+                            "weekly rotation one snapshot. The envelope echoes "
+                            "the resolved path as `backup_path`.");
+                        props["backup_to"] = p;
+                    }
                     props["dry_run"] = makeDryRunProp();
                     // ANTS-4429 — declared for the same reason ANTS-4621
                     // declared `op` and `confirm`: this schema sets
