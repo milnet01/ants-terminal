@@ -58676,7 +58676,7 @@ two projects).
   Kind: fix.
   Source: cc-feedback-2026-09-03 OneUp.
 
-- 📋 [ANTS-4839] **A roadmap_log write publishes the whole store render onto whichever branch is checked out.**
+- ✅ [ANTS-4839] **A roadmap_log write publishes the whole store render onto whichever branch is checked out.**
   Reported by a project keeping a frozen main and an active branch, where main's rendered file is legitimately far behind the store. The drift fields (ANTS-4462) named it honestly and discarded_text_lines:0 proved nothing authored was lost, but a caller who does not read them commits a large unrelated diff into whatever change they were making. Wants either a render:false opt-out on the write half, since op:"render" (ANTS-4614) already owns publishing separately, or a hint saying the discarded content was an older render of the same store rather than external text.
   User decision (2026-09-20): ship the drift hint, not the render:false
   opt-out. When the discarded content is an older render of the same
@@ -58684,6 +58684,27 @@ two projects).
   deliberately creates store and file divergence that every later read
   then has to explain; op:render already owns publishing separately for
   a caller that wants it.
+  Shipped 2026-09-20 in 5de6ed1c, as the hint route only per the user
+  decision recorded above.
+
+  Found while building it: ANTS-4957 had already shipped discard_reason,
+  which covers a stale render nobody edited. It does NOT cover the case
+  reported here. On a frozen branch the file is an older render whose
+  bullets have since moved on, so those lines score as text_lost rather
+  than restyle_only, and the reporter's own case fell outside the
+  existing field.
+
+  The new discard_hint claim is exact rather than a heuristic, and free.
+  ANTS-4141's guard refuses the write outright when the file holds a
+  bullet the store never imported, and runs before the dry-run return,
+  so reaching the hint proves every id in the file is one the store
+  holds.
+
+  It deliberately does not say nothing was lost: a hand-edited body
+  belongs to a known bullet and lands in the same count. Saying safe
+  there would be ANTS-4522's failure in a new place, and the test
+  asserts the absence of a safety claim so a later edit cannot quietly
+  add one.
   **Layman:** Filing one roadmap item can rewrite the entire roadmap file with content from another branch.
   Kind: enhancement.
   Source: cc-feedback-2026-09-03 OneUp.
@@ -58810,8 +58831,21 @@ two projects).
   Kind: fix.
   Source: cc-feedback-2026-09-03 Vestige.
 
-- 📋 [ANTS-4850] **roadmap_query mode:"headline_only" spills on a large active set, and the spill hint names read_spill but not limit/offset.**
+- ✅ [ANTS-4850] **roadmap_query mode:"headline_only" spills on a large active set, and the spill hint names read_spill but not limit/offset.**
   Reported on the call that project's own CLAUDE.md prescribes for session start. Graceful rather than a correctness bug, but a survey that offloads is where the caller most wants every id, since it is deciding what to work on. Either a leaner row shape for the mode (id and status only, in the spirit of section_index's slugs_only, ANTS-4467), or have the spill hint name limit/offset alongside read_spill. The second is cheap and may be the whole fix.
+  Shipped 2026-09-20 in 17a52c63. Both halves of this report now have
+  an answer: the hint half here, and the leaner row shape as ANTS-4837's
+  bullet_fields, shipped separately the same day.
+
+  This body guessed the hint was "cheap and may be the whole fix", and
+  it was, with one correction. The argument names could NOT be asserted:
+  the spill layer serves every verb and they disagree (limit,
+  max_results, max_symbols, max_bytes), so naming limit/offset outright
+  would have been wrong for most callers. The hint offers them as
+  alternatives and names the TOOL, which offloadBody already receives.
+
+  Both arms carry it, the plain one and the dominant-array one, and
+  neither replaces ANTS-3545's row paging.
   **Layman:** The cheap session-start survey is too big to return on a large roadmap.
   Kind: enhancement.
   Source: cc-feedback-2026-09-03 finbreak.

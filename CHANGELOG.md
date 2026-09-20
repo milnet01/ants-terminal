@@ -14,6 +14,12 @@ for security-relevant changes.
 
 ### Added
 
+- **A roadmap write now says whose text it discarded when the file was behind** (ANTS-4839)
+  On a branch whose roadmap is out of date, a one-item write reports a large
+  number of discarded lines. It now says those lines are an older version of
+  the same roadmap rather than work you wrote -- while being explicit that a
+  hand-edited item body would look the same, and pointing at the backup.
+
 - **roadmap_query can return just the fields you ask for on each item** (ANTS-4837)
   `bullet_fields:["id","status","kind"]` gives a lean triage list. The cheap
   listing mode could not carry an item's kind at all, and the fuller one sent
@@ -84,6 +90,12 @@ for security-relevant changes.
   items keep their ids, bodies and history.
 
 ### Changed
+
+- **An oversized result now suggests asking for less, not just re-reading it** (ANTS-4850)
+  When a reply is too big it is stored and handed back as a handle. The
+  message explaining how to read it now also points out the usually cheaper
+  move -- ask the same tool for a smaller page -- and names which tool to
+  re-ask.
 
 - **Ants MCP refusals now carry isError:true, as the MCP spec asks** (ANTS-5090)
   Every tool reply with ok:false is now marked as an error, so an MCP
