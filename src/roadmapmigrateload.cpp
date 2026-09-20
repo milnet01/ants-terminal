@@ -1,6 +1,10 @@
 // ANTS-3765 — the roadmap migration load half.
 // Spec: docs/specs/ANTS-3765-roadmap-migration-load.md
 #include "roadmapmigrateload.h"
+
+// ANTS-4483 — the migrate-time gate report reuses the render's own gate. Same
+// library (ants_roadmapstore_lib), so this costs no new link edge.
+#include "roadmaprender.h"
 #include "roadmapparse.h"
 
 #include <QDir>
@@ -1026,6 +1030,40 @@ Outcome load(RoadmapStore &store, const MigrationPlan &plan, const Options &opts
         QString rollbackErr;
         store.rollback(&rollbackErr);
         return refuse("project_refused", loader.err);
+    }
+
+    // ANTS-4483 — report the render's INV-5 Layman gate while the transaction
+    // still holds the migrated state. Placed HERE, and not after this function
+    // returns, because a dry run rolls back below: a check outside would read
+    // the pre-migration store and answer confidently about the state the
+    // migration REPLACES. See Outcome::gateFailures.
+    //
+    // The gate is reached by a scopeless dry render rather than re-implemented.
+    // gateScope is deliberately left UNSET, which is the whole-project rule:
+    // ANTS-4628 scoped the gate to the items a WRITE touches, and this is a
+    // report about the project rather than a write being judged.
+    //
+    // Only for a roadmap the store will actually serve. The verb calls that
+    // `store_backed` and tests the same way, so the envelope and this check
+    // cannot disagree; for any other dialect nothing renders from the store, so
+    // a gate failure would name a refusal that can never happen. A
+    // pass-headings roadmap needs no exception — ANTS-4803 waives the gate for
+    // a dialect with no Layman slot, so the render reports none of its own.
+    if (!plan.sources.isEmpty()
+        && plan.sources.first().format == QLatin1String("ants-v1")) {
+        RoadmapRender::Options gopts;
+        gopts.dryRun          = true;
+        gopts.liveRoadmapPath = plan.sources.first().path;
+        gopts.dialect         = plan.sources.first().format;
+        // A render failure leaves gateChecked false, which says nobody looked.
+        // It is never converted into a project refusal: this is a report, and a
+        // migration that is otherwise sound must not be lost to it.
+        if (const auto rendered = RoadmapRender::render(store, out.projectId,
+                                                        opts.projectRoot, gopts,
+                                                        nullptr)) {
+            out.gateFailures = rendered->gateFailures;
+            out.gateChecked  = true;
+        }
     }
 
     // A dry run takes the identical path and rolls back at the end, so it

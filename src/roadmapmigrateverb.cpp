@@ -645,6 +645,44 @@ QJsonObject RoadmapMigrateVerb::run(const QString &storePath, const Request &req
                     .arg(itemRows).arg(out.elementsWritten);
         }
     }
+    // ANTS-4483 — which items the render's INV-5 Layman gate will refuse once
+    // this migration has landed. The condition is a property of the roadmap as
+    // a whole and is fully knowable now; without this it first fires at the
+    // next write, landing on whoever files the next item, who did not run the
+    // migration and has no reason to connect the two.
+    //
+    // ANTS-4628 narrowed the blast radius by scoping the gate to the items a
+    // write touches, so this is a per-item trap rather than a project-wide
+    // wall. The hint says so, because a warning that overstates what is broken
+    // gets waved through like any other.
+    //
+    // `render_gate_checked` false means the check DID NOT RUN — a dialect the
+    // store does not serve, or a render that could not complete — and is not
+    // the same answer as an empty failure list.
+    env[QStringLiteral("render_gate_checked")] = out.gateChecked;
+    if (!out.gateFailures.isEmpty()) {
+        QJsonArray gate;
+        for (const QString &id : out.gateFailures) {
+            if (gate.size() >= maxNotes)
+                break;
+            gate.append(id);
+        }
+        env[QStringLiteral("render_gate_failures")] = gate;
+        // The true total beside a capped list, so a capped one can never read
+        // as the complete one — the rule `items_updated` already follows.
+        env[QStringLiteral("render_gate_failures_total")] = out.gateFailures.size();
+        env[QStringLiteral("render_gate_hint")] = QStringLiteral(
+            "%1 open item(s) carry no `Layman:` line. Nothing is blocked right "
+            "now and the roadmap still renders: the gate is scoped to the items "
+            "a write TOUCHES, so a later roadmap_log write is refused "
+            "render_gate_unmet only when it edits one of these. Cure one with "
+            "roadmap_log op:\"amend_field\" field:\"layman\", which writes the "
+            "column directly; a `Layman:` line declared first on its own line "
+            "in an op:\"annotate\" or op:\"flip\" note sets it in a call that "
+            "was happening anyway.")
+                .arg(out.gateFailures.size());
+    }
+
     env[QStringLiteral("history_rows")]     = out.historyRows;
     setNotes(env, out.notes, maxNotes);
     setUpdatedItems(env, out);

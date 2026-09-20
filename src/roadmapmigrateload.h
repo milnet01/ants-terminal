@@ -73,6 +73,24 @@ struct Outcome {
     // other, so the two sum to the plan's section count on every run.
     int     sectionsUnchanged = 0;
 
+    // ANTS-4483 — the ids the render's INV-5 Layman gate would refuse once this
+    // migration has landed. Measured INSIDE the transaction, which is the whole
+    // point: after load() returns, a dry run has already rolled back, so a
+    // check there would answer about the state the migration REPLACES rather
+    // than the one it is previewing — the one question this exists to answer.
+    //
+    // The gate is the render's own, reached by a scopeless dry render, and not
+    // a second copy of the predicate. A duplicate would be free to drift from
+    // the rule it reports on, and reporting the wrong rule confidently is worse
+    // than not reporting.
+    //
+    // `gateChecked` false means NOBODY LOOKED — the render could not run — and
+    // is not the same answer as an empty `gateFailures`, which means the
+    // project renders. Same distinction `externalEditsChecked` draws in
+    // RoadmapRender::Outcome, for the same reason.
+    QStringList gateFailures;
+    bool        gateChecked = false;
+
     // Every note the plan carried, plus the ones only the load can raise
     // (§ 2.11's codes). Never a SUBSET of the plan's notes — a plan note is
     // never dropped — so one report covers the whole migration of one project.

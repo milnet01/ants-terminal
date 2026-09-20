@@ -372,6 +372,8 @@ downstream re-derives it.
   "items_unchanged": 0, "items_orphaned": 0, "ids_allocated": 0,
   "sections_written": 0, "sections_unchanged": 0,
   "elements_written": 0, "history_rows": 0,
+  "render_gate_checked": true, "render_gate_failures": [],
+  "render_gate_failures_total": 0,
   "updated_items": [], "updated_items_truncated": false,
   "defaulted_fields": {},
   "notes": [], "notes_count": 0, "notes_truncated": false,
@@ -432,6 +434,44 @@ checksums and read it as a migration that had not run; on a project whose
 clean success. A constant is the right shape here: INV-11 is what makes the
 value true, so a caller reading the field never has to know which release
 changed it.
+
+`render_gate_checked`, `render_gate_failures` and `render_gate_failures_total`
+answer what the counts cannot: **which items will the render's INV-5 Layman gate
+refuse once this migration has landed?** That condition is a property of the
+roadmap as a whole and is knowable at migrate time. Without these fields it
+first fires at the next `roadmap_log` write, landing on whoever files the next
+item — who did not run the migration and has no reason to connect the two.
+
+**A non-empty list blocks nothing**, and `render_gate_hint` says so outright.
+ANTS-4628 scoped the gate to the items a write *touches*, so a later write is
+refused `render_gate_unmet` only when it edits one of the named items. Every
+other write proceeds and the roadmap still renders. The hint states this because
+a warning that overstated the damage would be waved through like any other.
+
+`render_gate_checked: false` means the check **did not run** — a dialect the
+store does not serve, or a render that could not complete. It is not the same
+answer as an empty `render_gate_failures`, which means the project renders. Same
+distinction `externalEditsChecked` draws in `RoadmapRender::Outcome`.
+
+**The gate is measured inside the migration transaction**, by a scopeless dry
+render. That placement is what makes `dry_run` answer about the state it is
+previewing. `RoadmapMigrateLoad::load()` rolls back before returning, so a check
+placed after it would read the pre-migration store and report the state the
+migration *replaces* — a clean bill of health for a run that lands ungated
+items. `RoadmapMigrateLoad.Ants4483DryRunGateSeesTheStateItPreviews` pins it.
+The render's own gate is reached rather than re-implemented, so the report
+cannot drift from the rule it reports on. `gateScope` is left unset, which is
+the whole-project rule: ANTS-4628's scoping exists for a write being judged, and
+this is a report about the project.
+
+Run only for a `store_backed` roadmap, tested the same way so the two cannot
+disagree. For any other dialect nothing renders from the store, so a gate
+failure would name a refusal that can never happen. A `pass-headings` roadmap
+needs no exception — ANTS-4803 waives the gate where the dialect has no Layman
+slot, so the render reports none.
+
+**Added 2026-09-20 (ANTS-4483).** Filed by a Claude Code config session that met
+the refusal on a project someone else had migrated.
 
 `updated_items[]` names the items `items_updated` counted, each with the fields
 that changed:

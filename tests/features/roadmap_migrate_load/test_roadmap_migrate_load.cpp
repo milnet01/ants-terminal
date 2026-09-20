@@ -1533,3 +1533,63 @@ TEST(roadmap_migrate_load, Ants4501Inv4ReMigrationKeepsStampedDates) {
         << "a re-migration cleared a stamped date, so every report figure it "
            "feeds is silently re-derived from an emptier corpus on each run";
 }
+
+// ANTS-4483 — the render's INV-5 Layman gate is a property of the roadmap as a
+// whole and is fully knowable at migrate time, but it first fires at the next
+// write. ANTS-4628 narrowed that to the items a write touches, which makes it a
+// per-item trap rather than a project-wide one; it did not remove it. The
+// session that hits the refusal is still not the session that ran the
+// migration, and has no reason to connect the two.
+//
+// So the load reports the ids up front. The gate is the render's own, reached
+// by a scopeless dry render, not a second copy of the predicate.
+TEST(RoadmapMigrateLoad, Ants4483GateFailuresAreReportedAtMigrateTime) {
+    Fixture f;
+    ASSERT_TRUE(f.store.open());
+
+    // `item()` builds `planned`, which isOpen() accepts, at a default
+    // visibility, which isRenderable() accepts. So an item it builds trips the
+    // gate exactly when it carries no layman.
+    QVector<PlannedItem> items{
+        item(QStringLiteral("P-1"), QStringLiteral("no layman"), QStringLiteral("s"), 0),
+        item(QStringLiteral("P-2"), QStringLiteral("has layman"), QStringLiteral("s"), 1),
+        item(QStringLiteral("P-3"), QStringLiteral("also none"), QStringLiteral("s"), 2),
+    };
+    items[1].layman = QStringLiteral("A sentence a non-programmer can read.");
+
+    const auto out = RoadmapMigrateLoad::load(f.store, planOf(items), f.opts());
+    ASSERT_TRUE(out.ok) << out.error.toStdString();
+
+    // Checked-and-empty and nobody-looked are different answers, so the flag is
+    // asserted rather than inferred from the list being non-empty.
+    EXPECT_TRUE(out.gateChecked);
+    EXPECT_EQ(out.gateFailures.join(QStringLiteral(",")).toStdString(),
+              std::string("P-1,P-3"));
+}
+
+// ANTS-4483 — and the dry run answers about the state it is PREVIEWING.
+//
+// This is the test that decides where the check lives. load() rolls its
+// transaction back before returning, so a check placed after it would read an
+// empty store here and report no failures at all — a confident clean bill of
+// health for a migration that lands two ungated items. Only a check inside the
+// transaction can see them.
+TEST(RoadmapMigrateLoad, Ants4483DryRunGateSeesTheStateItPreviews) {
+    Fixture f;
+    ASSERT_TRUE(f.store.open());
+
+    QVector<PlannedItem> items{
+        item(QStringLiteral("P-1"), QStringLiteral("no layman"), QStringLiteral("s"), 0),
+        item(QStringLiteral("P-2"), QStringLiteral("also none"), QStringLiteral("s"), 1),
+    };
+
+    const auto dry = RoadmapMigrateLoad::load(f.store, planOf(items), f.opts(true));
+    ASSERT_TRUE(dry.ok) << dry.error.toStdString();
+
+    EXPECT_TRUE(dry.gateChecked);
+    EXPECT_EQ(dry.gateFailures.join(QStringLiteral(",")).toStdString(),
+              std::string("P-1,P-2"));
+
+    // The preview really did roll back: the rows it judged are not there now.
+    EXPECT_EQ(f.count(QStringLiteral("item")), 0);
+}

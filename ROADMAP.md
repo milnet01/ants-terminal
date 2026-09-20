@@ -47324,6 +47324,14 @@ are closed inline in the feedback files rather than filed here.
   Decide alongside it whether the backup is per-call (cheap on a 12.8 MB
   file, but N copies) or one rolling snapshot, and where it lives — the
   store is machine-global, so a per-project path is the wrong home.
+  User decision (2026-09-20): one rolling pre-migration snapshot at a
+  fixed machine-global path, overwritten each run, plus an optional
+  backup_to argument overriding it per call. Per-call timestamped copies
+  were declined (unbounded growth on a shared store, with no pruning
+  unless that is built too); backup_to alone was declined because the
+  session that most needs the backup is the one that did not know to ask.
+  The weekly whole-store snapshot shipped by ANTS-3794 covers longer
+  history, so this only has to protect the migration run itself.
   **Layman:** The migration can rewrite hundreds of database rows and there is no way back — and copying the database file by hand does not capture the most recent writes.
   Kind: feature.
   Source: cc-feedback-2026-08-18 (Local Web Server Manager), split from ANTS-4486 on 2026-08-19.
@@ -58527,6 +58535,12 @@ two projects).
 
 - 📋 [ANTS-4839] **A roadmap_log write publishes the whole store render onto whichever branch is checked out.**
   Reported by a project keeping a frozen main and an active branch, where main's rendered file is legitimately far behind the store. The drift fields (ANTS-4462) named it honestly and discarded_text_lines:0 proved nothing authored was lost, but a caller who does not read them commits a large unrelated diff into whatever change they were making. Wants either a render:false opt-out on the write half, since op:"render" (ANTS-4614) already owns publishing separately, or a hint saying the discarded content was an older render of the same store rather than external text.
+  User decision (2026-09-20): ship the drift hint, not the render:false
+  opt-out. When the discarded content is an older render of the same
+  store, the envelope says so. The opt-out was declined because it
+  deliberately creates store and file divergence that every later read
+  then has to explain; op:render already owns publishing separately for
+  a caller that wants it.
   **Layman:** Filing one roadmap item can rewrite the entire roadmap file with content from another branch.
   Kind: enhancement.
   Source: cc-feedback-2026-09-03 OneUp.
