@@ -503,6 +503,38 @@ would sit in the weekly rotation and quietly cost it one kept snapshot.
 
 **Added 2026-09-20 (ANTS-4499).**
 
+`updated_items[].fields_suppressed` names the columns the plan **differed on
+and the write declines** — "defaulted does not overwrite" and "empty does not
+overwrite", § 2.6's two rules. Each also raises a `field_conflict` note, and
+both are filled from the same branches of the same loop, so the plan and
+`notes[]` cannot disagree.
+
+They disagreed before: Games_Hub read a `field_conflict` on `headline` beside
+an `updated_items` entry whose `fields` held only `body`. A session doing the
+recommended thing — preview with `dry_run`, read `updated_items` as the plan —
+was told less than the run already knew, and told it about the wrong column.
+That is worse than no plan, because it reads as coverage.
+
+**Kept separate from `fields` rather than merged into it.** The report asked
+for a union; `fields` means *the columns this write moves*, and a union would
+have the preview claim a headline change that is not going to happen — a
+different wrong answer, and a worse one for a reviewer deciding whether to
+commit. A test asserts the stored headline survives, so the separation is held
+rather than merely intended.
+
+**An entry may now carry an empty `fields`.** An item whose differences are all
+suppressed changes nothing, so it is not an update and `items_updated` does not
+count it — but it belongs in the plan, and it used to appear nowhere at all.
+Empty `fields` with a non-empty `fields_suppressed` is an item the migration
+leaves entirely alone.
+
+Because of that, `updated_items_truncated` is no longer derived from
+`items_updated > updated_items.size()`. That inequality stopped holding the
+moment an entry could exist without being an update; the load counts the
+entries the cap drops instead.
+
+**Added 2026-09-20 (ANTS-4522).**
+
 `updated_items[]` names the items `items_updated` counted, each with the fields
 that changed:
 

@@ -54,8 +54,23 @@ struct Outcome {
     struct UpdatedItem {
         QString     id;
         QStringList fields;      // store column names, in write order
+        // ANTS-4522 — columns the plan differed on where the write was
+        // DECLINED ("defaulted does not overwrite", "empty does not
+        // overwrite"). Each also raises a `field_conflict` note, and both are
+        // filled from the same branches of the same loop, so the plan and the
+        // notes cannot disagree — the defect this closes was a notes[] entry
+        // naming a column `fields` omitted.
+        //
+        // Separate from `fields` on purpose: `fields` means "columns this
+        // write moves". Folding the two together, as the report suggested,
+        // would have the preview claim a change that is not going to happen.
+        QStringList fieldsSuppressed;
     };
     QVector<UpdatedItem> updatedItems;
+    // ANTS-4522 — entries the cap dropped. Replaces deriving truncation from
+    // `itemsUpdated > updatedItems.size()`, which stopped holding the moment a
+    // suppression-only item could enter the array without being an update.
+    int     updatedItemsDropped = 0;
     int     itemsOrphaned = 0;   // in the store, absent from source (§ 2.7)
     int     idsAllocated = 0;    // § 2.8
     // INSERTED-or-UPDATED rows, not attempted ones: `sectionsWritten` counts a

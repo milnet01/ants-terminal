@@ -1593,3 +1593,75 @@ TEST(RoadmapMigrateLoad, Ants4483DryRunGateSeesTheStateItPreviews) {
     // The preview really did roll back: the rows it judged are not there now.
     EXPECT_EQ(f.count(QStringLiteral("item")), 0);
 }
+
+// ANTS-4522 — the reviewable plan must not say less than notes[] already
+// knows. Games_Hub saw a `field_conflict` note on `headline` while
+// updated_items[].fields for the same id listed only `body`, so a session
+// doing the recommended thing — preview with dry_run, read updated_items as
+// the plan — was told less than the run knew, and told it about the wrong
+// column. Worse than no plan, because it reads as coverage.
+//
+// Both arrays are now filled from the same branches of the same loop, so they
+// cannot disagree again.
+TEST(RoadmapMigrateLoad, Ants4522SuppressedColumnsAppearInThePlan) {
+    Fixture f;
+    ASSERT_TRUE(f.store.open());
+
+    PlannedItem first = item(QStringLiteral("P-1"), QStringLiteral("a headline"),
+                             QStringLiteral("s"), 0);
+    first.body = QStringLiteral("first body");
+    ASSERT_TRUE(RoadmapMigrateLoad::load(f.store, planOf({first}), f.opts()).ok);
+
+    // Second run: the headline comes back EMPTY while the stored one is not,
+    // which is the "empty does not overwrite" branch — the write is declined
+    // and a field_conflict is raised. The body genuinely moves.
+    PlannedItem second = item(QStringLiteral("P-1"), QString(),
+                              QStringLiteral("s"), 0);
+    second.body = QStringLiteral("second body");
+    const auto out = RoadmapMigrateLoad::load(f.store, planOf({second}), f.opts());
+    ASSERT_TRUE(out.ok) << out.error.toStdString();
+
+    ASSERT_EQ(out.updatedItems.size(), 1);
+    const auto &u = out.updatedItems.first();
+    EXPECT_EQ(u.id.toStdString(), std::string("P-1"));
+    EXPECT_EQ(u.fields.join(QStringLiteral(",")).toStdString(), std::string("body"));
+    EXPECT_EQ(u.fieldsSuppressed.join(QStringLiteral(",")).toStdString(),
+              std::string("headline"));
+
+    // The note and the plan name the same column. That agreement is the point.
+    EXPECT_TRUE(hasNote(out, "field_conflict"));
+    // And the stored headline really did survive, so `fields` was right to
+    // leave it out — a union would have claimed a change that did not happen.
+    EXPECT_EQ(f.scalar(QStringLiteral("SELECT headline FROM item")).toStdString(),
+              std::string("a headline"));
+}
+
+// ANTS-4522, the half that was invisible rather than merely incomplete: an item
+// whose differences are ALL suppressed changes nothing, so it used to qualify
+// for updated_items nowhere and appeared only as a note. Its entry now carries
+// an empty `fields` — the honest shape, since nothing moves.
+TEST(RoadmapMigrateLoad, Ants4522SuppressionOnlyItemStillAppears) {
+    Fixture f;
+    ASSERT_TRUE(f.store.open());
+
+    PlannedItem first = item(QStringLiteral("P-1"), QStringLiteral("a headline"),
+                             QStringLiteral("s"), 0);
+    first.body = QStringLiteral("same body");
+    ASSERT_TRUE(RoadmapMigrateLoad::load(f.store, planOf({first}), f.opts()).ok);
+
+    PlannedItem second = item(QStringLiteral("P-1"), QString(),
+                              QStringLiteral("s"), 0);
+    second.body = QStringLiteral("same body");
+    const auto out = RoadmapMigrateLoad::load(f.store, planOf({second}), f.opts());
+    ASSERT_TRUE(out.ok) << out.error.toStdString();
+
+    // Nothing moved, so this is not an update...
+    EXPECT_EQ(out.itemsUpdated, 0);
+    EXPECT_EQ(out.itemsUnchanged, 1);
+    // ...and it is still reported, which is what the preview was missing.
+    ASSERT_EQ(out.updatedItems.size(), 1);
+    EXPECT_TRUE(out.updatedItems.first().fields.isEmpty());
+    EXPECT_EQ(out.updatedItems.first().fieldsSuppressed.join(QStringLiteral(","))
+                  .toStdString(),
+              std::string("headline"));
+}

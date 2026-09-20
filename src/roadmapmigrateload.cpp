@@ -188,6 +188,18 @@ struct Loader {
         bool        changedGoverned = false;
         QString     id;          // the STORED id: the plan's, else the row's
         QStringList fields;      // columns written, in write order
+        // ANTS-4522 — columns where the plan DIFFERED and the write was
+        // declined: "defaulted does not overwrite" and "empty does not
+        // overwrite". Each already raises a `field_conflict` note, and the two
+        // are filled in the same loop from the same branches, so the plan and
+        // the notes cannot disagree again — which is the defect this closes.
+        //
+        // Kept apart from `fields` rather than merged into it. The reporter
+        // asked for a union, but `fields` means "columns this write moves", and
+        // a union would have the preview claim a headline change that is not
+        // going to happen — a different wrong answer, and a worse one for a
+        // reviewer deciding whether to commit.
+        QStringList fieldsSuppressed;
     };
     bool applyPlanFields(const PlannedItem &it, qint64 itemPk, FieldChanges *chg);
     bool recordHistory(qint64 itemPk, const QString &field, const QString &oldValue,
@@ -547,6 +559,7 @@ bool Loader::applyPlanFields(const PlannedItem &it, qint64 itemPk, FieldChanges 
         // suppression that had already happened.
         if (prov == QLatin1String("defaulted") && !f.storedEmpty) {
             note("field_conflict", QStringLiteral("%1: %2").arg(chg->id, f.column));
+            chg->fieldsSuppressed.append(f.column);   // ANTS-4522
             continue;
         }
 
@@ -560,6 +573,7 @@ bool Loader::applyPlanFields(const PlannedItem &it, qint64 itemPk, FieldChanges 
                                                                        ? cur->id
                                                                        : it.id,
                                                                    f.column));
+                chg->fieldsSuppressed.append(f.column);   // ANTS-4522
                 continue;
             }
             if (!store.clearItemField(itemPk, f.column, prov, &err))
@@ -772,10 +786,20 @@ bool Loader::updateMatched() {
         if (chg.changedGoverned) ++out.itemsUpdatedGoverned;
         // ANTS-4479 — capped HERE, where the entries are collected, so a
         // project with thousands of updates accumulates nothing unbounded in
-        // the Outcome. `itemsUpdated` above is the true total either way, so a
-        // capped list can never be read as the complete one.
-        if (chg.changed && out.updatedItems.size() < kMaxUpdatedItems)
-            out.updatedItems.append({chg.id, chg.fields});
+        // the Outcome.
+        //
+        // ANTS-4522 — an item whose differences were ALL suppressed belongs in
+        // the plan too. It used to qualify on `chg.changed` alone, so such an
+        // item appeared nowhere in `updated_items` while `notes[]` carried a
+        // field_conflict for it: a preview that reads as coverage and is not.
+        // Its entry carries an empty `fields`, which is the honest shape —
+        // nothing moves — and a non-empty `fieldsSuppressed`.
+        if (!chg.changed && chg.fieldsSuppressed.isEmpty())
+            continue;
+        if (out.updatedItems.size() < kMaxUpdatedItems)
+            out.updatedItems.append({chg.id, chg.fields, chg.fieldsSuppressed});
+        else
+            ++out.updatedItemsDropped;
     }
     return true;
 }

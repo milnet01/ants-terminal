@@ -174,11 +174,19 @@ void setUpdatedItems(QJsonObject &env, const RoadmapMigrateLoad::Outcome &out) {
         QJsonObject o;
         o[QStringLiteral("id")]     = u.id;
         o[QStringLiteral("fields")] = QJsonArray::fromStringList(u.fields);
+        // ANTS-4522 — the columns this write will NOT move although the plan
+        // differed on them, each of which also has a `field_conflict` note. An
+        // entry whose `fields` is empty and whose `fields_suppressed` is not is
+        // an item the migration leaves entirely alone.
+        o[QStringLiteral("fields_suppressed")] =
+            QJsonArray::fromStringList(u.fieldsSuppressed);
         arr.append(o);
     }
     env[QStringLiteral("updated_items")] = arr;
-    env[QStringLiteral("updated_items_truncated")] =
-        out.itemsUpdated > out.updatedItems.size();
+    // ANTS-4522 — counted where the cap bites rather than inferred from
+    // `itemsUpdated`, which no longer bounds this array: a suppression-only
+    // item is reported here and is not an update.
+    env[QStringLiteral("updated_items_truncated")] = out.updatedItemsDropped > 0;
 }
 
 // ANTS-4065 § 2.3 — the run-level tally, beside `notes_count`. A per-FIELD
