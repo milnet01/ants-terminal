@@ -49225,6 +49225,33 @@ are closed inline in the feedback files rather than filed here.
   Source: in-session-2026-09-20, measured.
   Lanes: mcp, roadmap-store.
 
+- 📋 [ANTS-5249] **A comment in roadmapstore.h states that migration never writes an id_prefix row, and migration does write one when it allocates.**
+  ANTS-4631's comment above `maxAllocatedId()` in `src/roadmapstore.h` reads
+  "migration does not write an id_prefix row, only an id-allocating append
+  does, so a migrated-but-never-appended project reports nullopt there while
+  holding thousands of ids."
+
+  `Loader::allocateId()` calls `store.raiseIdHighWater()` before commit, so a
+  migration that allocates any id DOES write the row.
+
+  The comment is true of the case it was written for — a migration whose
+  bullets all carry parsed ids allocates nothing and writes no row — and
+  over-broad as stated. Two review lanes independently flagged the
+  contradiction between it and ANTS-3765 § 2.8 step 3 while reasoning about
+  the synthesis counter, and each had to leave it as an open question because
+  the comment and the code disagree.
+
+  Narrow the comment to the no-allocation case. `maxAllocatedId()`'s reason
+  for existing is unchanged either way: the column cannot be wrong, because an
+  id is there because an item holds it.
+
+  Found while gating ANTS-4500, whose § 4.2 now depends on knowing which is
+  true — it requires migration to ensure the real prefix's row exists.
+  **Layman:** A note in the code says migration never records a project's id counter. It does record it whenever it invents an id, so the note misleads anyone reasoning from it.
+  Kind: doc-fix.
+  Source: in-session-2026-09-20, found while gating ANTS-4500.
+  Lanes: mcp, roadmap-store.
+
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-08-20 triage
 
 Thirty pending findings across ten feedback files, triaged 2026-08-20. Six
