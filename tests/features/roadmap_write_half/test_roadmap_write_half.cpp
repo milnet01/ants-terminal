@@ -1638,6 +1638,66 @@ TEST(RoadmapWriteHalf, Ants4615SplitsRestyledFromLostText) {
         << "got: " << text.at(0).toString().toStdString();
 }
 
+// ANTS-4839 — whose text is it? A project keeping a frozen branch sees a large
+// `text_lost` figure on an ordinary one-item write, because the file there is
+// an older publication of this same store. The fields were honest and
+// unreadable, so a caller who does not know that commits a large unrelated
+// diff into whatever change they were making.
+//
+// The hint narrows the population without claiming safety. That second half is
+// the point: a hand-edited BODY belongs to a known bullet and lands in the same
+// count, so a reassurance here would be ANTS-4522's failure in a new place.
+TEST(RoadmapWriteHalf, Ants4839LostTextHintNamesTheStoreWithoutClaimingSafety) {
+    ants_test::XdgGuard guard;
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    qint64 projectId = 0;
+    const QString root = seedMigrated(guard, tmp, fixture(), &projectId);
+    ASSERT_FALSE(root.isEmpty());
+    const QString roadmap = root + QStringLiteral("/ROADMAP.md");
+
+    RemoteControl rc(nullptr);
+    // A clean write drifts nothing, so it must carry no hint at all: a hint on
+    // every write is a hint nobody reads.
+    const QJsonObject clean = rc.cmdRoadmapLogAppendForTest(
+        appendReq(root, QStringLiteral("A settling bullet."))).object();
+    ASSERT_TRUE(clean.value(QStringLiteral("ok")).toBool());
+    EXPECT_FALSE(clean.contains(QStringLiteral("discard_hint")))
+        << "the hint must ride the lost-text arm only";
+
+    // Plant a line that exists only in the file, which is what scores as lost.
+    QByteArray hand = readAll(roadmap);
+    ASSERT_FALSE(hand.isEmpty());
+    const QByteArray lost =
+        "> A hand-written sentence that exists nowhere in the store.\n";
+    const int cut = hand.indexOf('\n');
+    ASSERT_GT(cut, 0);
+    hand.insert(cut + 1, lost);
+    ASSERT_TRUE(writeFile(roadmap, hand));
+
+    const QJsonObject env = rc.cmdRoadmapLogAppendForTest(
+        appendReq(root, QStringLiteral("A bullet after the hand-edit."))).object();
+    ASSERT_TRUE(env.value(QStringLiteral("ok")).toBool());
+    ASSERT_GT(env.value(QStringLiteral("discarded_text_lines")).toInt(), 0)
+        << "precondition: the planted line should score as lost text";
+
+    const QString hint = env.value(QStringLiteral("discard_hint")).toString();
+    ASSERT_FALSE(hint.isEmpty()) << "ANTS-4839: lost text must carry the hint";
+
+    // It names WHY the claim is exact rather than a guess: the guard that would
+    // have refused the write is what proves every id is known.
+    EXPECT_TRUE(hint.contains(QStringLiteral("render_would_drop")))
+        << "got: " << hint.toStdString();
+
+    // And it refuses to say the write was safe. If this assertion is ever
+    // relaxed the hint becomes the thing it was written to prevent.
+    EXPECT_TRUE(hint.contains(QStringLiteral("does NOT follow")))
+        << "the hint must not claim nothing was lost; got: "
+        << hint.toStdString();
+    EXPECT_TRUE(hint.contains(QStringLiteral("discarded_backup_paths")))
+        << "the hint must point at where the overwritten file was kept";
+}
+
 // ANTS-4695 — a punctuation-only change to the author's own prose is neither
 // a dialect restyle nor lost text, and lumping it into `restyled` is what let
 // a render report `discarded_text_lines: 0` while every Layman line in the

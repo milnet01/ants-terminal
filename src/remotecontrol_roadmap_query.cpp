@@ -305,6 +305,38 @@ void rcdetail::rcRoadmapWriteFields(QJsonObject &out,
             out[dryRun ? QStringLiteral("would_discard_text_lines")
                        : QStringLiteral("discarded_text_lines")] =
                 outcome.externalTextLines;
+            // ANTS-4839 — whose text is it? A project keeping a frozen branch
+            // sees a large `text_lost` figure on an ordinary one-item write,
+            // because the file there is an older publication of this same
+            // store and every bullet has moved on since. The fields were
+            // honest and unreadable: a caller who does not know that commits a
+            // large unrelated diff into whatever change they were making.
+            //
+            // The claim is FREE and exact, not a heuristic. ANTS-4141's guard
+            // refuses the write outright when the file holds a bullet the
+            // store has never imported, and it runs before the dry-run return
+            // as well — so reaching this line at all proves every id in the
+            // file is one the store holds.
+            //
+            // What it deliberately does NOT claim is that nothing was lost. A
+            // hand-edited BODY belongs to a known bullet, so it lands here too,
+            // and saying "safe" would be the ANTS-4522 failure in a new place:
+            // a reassurance that reads as coverage. It narrows the population
+            // and points at the two fields that answer the rest.
+            if (outcome.externalTextLines > 0) {
+                out[dryRun ? QStringLiteral("would_discard_hint")
+                           : QStringLiteral("discard_hint")] = QStringLiteral(
+                    "Every bullet in the file is one the store holds — a bullet "
+                    "it had never imported would have refused this write "
+                    "outright (render_would_drop). So these lines are an OLDER "
+                    "PUBLICATION of this same store, which is the ordinary "
+                    "case on a branch whose roadmap is behind. It does NOT "
+                    "follow that nothing was lost: a hand-edited body belongs "
+                    "to a known bullet and lands here too. Read "
+                    "`discarded_text` for the lines themselves, and "
+                    "`discarded_backup_paths` for where the overwritten file "
+                    "was kept.");
+            }
             if (!outcome.externalLostText.isEmpty()) {
                 // The text itself, not just its size. A count alone still
                 // leaves the caller grepping for a sentence they have to

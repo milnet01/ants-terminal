@@ -150,6 +150,18 @@ on a dry run): the worst thing at stake, one of `text_lost`, `structure`,
 edited, safe to overwrite. *Tests:* `Ants4957RestyleOnlyDriftSaysSo`, plus
 reason assertions in the ANTS-4615, ANTS-4695 and ANTS-4965 cases.
 
+ANTS-4839 — a lost-text arm also carries `discard_hint`
+(`would_discard_hint`): the discarded lines belong to bullets the store
+holds, so they are an older publication of this same store. The claim is
+exact rather than a heuristic — ANTS-4141's guard refuses the write outright
+when the file holds a bullet the store never imported, and runs before the
+dry-run return, so reaching the hint proves every id is known. It must NOT
+claim nothing was lost: a hand-edited body belongs to a known bullet and
+lands in the same count. Absent when no text was lost, so a hint on every
+write is not one nobody reads. *Test:*
+`Ants4839LostTextHintNamesTheStoreWithoutClaimingSafety`, which asserts both
+the presence of the narrowing claim and the absence of a safety claim.
+
 **The punctuation behaviour itself is unchanged, deliberately.** INV-4
 prescribes the chop; the defect was reporting it as something it is not. The
 reporter offered either fix and named this one as the one that matters.
