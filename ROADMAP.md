@@ -58631,8 +58631,31 @@ two projects).
   Kind: enhancement.
   Source: cc-feedback-2026-09-03 LottoTracker.
 
-- 📋 [ANTS-4837] **roadmap_query has no per-row projection, so the lean mode cannot carry kind and the wide mode duplicates the headline.**
+- ✅ [ANTS-4837] **roadmap_query has no per-row projection, so the lean mode cannot carry kind and the wide mode duplicates the headline.**
   Two reported findings with one fix. headline_only's four keys are fixed by contract (ANTS-4699) and kind is unobtainable there; the bullets mode a caller falls back to emits headline and headline_oneline as byte-identical strings on a single-line headline, and `fields` reaches top-level keys only. A bullet_fields argument makes the lean shape caller-chosen and closes both. ANTS-4712's input_index exemption is the precedent for a fifth key.
+  Shipped 2026-09-20 in 5334b852. bullet_fields is the per-row
+  counterpart of fields, and closes both reported findings with one
+  mechanism, as this body predicted.
+
+  Two things found while building it that the body does not cover.
+
+  The ids path is a SEPARATE emission surface from the id path, and a
+  whitespace-deduped search hides that. All four surfaces now route
+  through one lambda rather than four call sites that can drift.
+
+  input_index deliberately survives a projection that does not name it.
+  The body cites ANTS-4712 as precedent for a fifth key; the stronger
+  reason is that results come back in document order, so a caller
+  zipping them against its own array mis-pairs without it, and a lean
+  shape is exactly where that bites.
+
+  Also suppresses the ANTS-3543 automatic downshift, which would
+  otherwise replace a caller-chosen shape with the fixed four-key one --
+  the same class of defect this item reports.
+
+  Refused rather than ignored on the modes that own their row shape. An
+  ignored projection returns full rows, which is the one result a caller
+  cannot tell from an answer.
   **Layman:** The cheap way to list roadmap items drops the one field a triage question needs, and the expensive way sends the same text twice.
   Kind: enhancement.
   Source: cc-feedback-2026-09-03 LottoTracker.

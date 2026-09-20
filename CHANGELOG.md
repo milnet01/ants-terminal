@@ -14,6 +14,11 @@ for security-relevant changes.
 
 ### Added
 
+- **roadmap_query can return just the fields you ask for on each item** (ANTS-4837)
+  `bullet_fields:["id","status","kind"]` gives a lean triage list. The cheap
+  listing mode could not carry an item's kind at all, and the fuller one sent
+  the headline twice.
+
 - **roadmap_migrate takes a consistent snapshot of the store before it migrates** (ANTS-4499)
   One rolling snapshot, or your own path via `backup_to`. It uses SQLite's
   VACUUM INTO, so it is safe while Ants is running -- copying the database
