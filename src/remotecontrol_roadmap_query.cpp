@@ -2424,6 +2424,79 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
         out["code"] = QStringLiteral("bad_mode_combo");
         return QJsonDocument(out);
     }
+    // ANTS-4837 — `bullet_fields`, the caller-chosen ROW shape. `fields`
+    // reaches top-level envelope keys only, so it cannot say "id, status and
+    // kind per bullet"; mode:"headline_only" has a fixed four-key contract
+    // (ANTS-4699) that cannot carry `kind`; and the wide shape a caller falls
+    // back to emits `headline` and `headline_oneline` as byte-identical
+    // strings on a single-line headline. One argument closes all three.
+    QStringList bulletFields;
+    {
+        const QJsonValue bf = req.value(QStringLiteral("bullet_fields"));
+        if (bf.isArray()) {
+            const QJsonArray a = bf.toArray();
+            for (const QJsonValue &v : a) {
+                const QString k = v.toString();
+                if (v.isString() && !k.isEmpty() && !bulletFields.contains(k))
+                    bulletFields.append(k);
+            }
+        } else if (bf.isString() && !bf.toString().isEmpty()) {
+            bulletFields.append(bf.toString());
+        }
+        // Present but yielding nothing usable is refused, never ignored: an
+        // ignored projection returns FULL rows, which is the one shape a caller
+        // cannot tell from an answer.
+        if (!bf.isUndefined() && !bf.isNull() && bulletFields.isEmpty()) {
+            out["ok"] = false;
+            out["error"] = QStringLiteral(
+                "bullet_fields must be a non-empty array of key names, or one "
+                "key name as a string");
+            out["code"] = QStringLiteral("bad_args");
+            return QJsonDocument(out);
+        }
+    }
+    // Refused rather than ignored, for the same reason. Each of these modes
+    // OWNS its row shape: headline_only's four keys are a tested contract,
+    // and section_index / bundles / report emit no bullets[] to project.
+    if (!bulletFields.isEmpty()
+        && (mode == QLatin1String("headline_only")
+            || mode == QLatin1String("section_index")
+            || mode == QLatin1String("bundles")
+            || mode == QLatin1String("report"))) {
+        out["ok"] = false;
+        out["error"] = QStringLiteral(
+            "bullet_fields does not combine with mode:\"%1\" — that mode owns "
+            "its row shape. Use mode:\"bullets\" (the default) with "
+            "bullet_fields to choose the keys yourself.").arg(mode);
+        out["code"] = QStringLiteral("bad_mode_combo");
+        return QJsonDocument(out);
+    }
+    // One lambda for all three emission surfaces — the list path, the section
+    // path and the id/ids path — because a projection applied differently on
+    // one of them is exactly the kind of per-surface divergence ANTS-1881 INV-5
+    // exists to catch.
+    QStringList bulletFieldsAvailable;
+    const auto applyBulletFields = [&](QJsonArray &arr) {
+        if (bulletFields.isEmpty())
+            return;
+        rcProjectBulletFields(arr, bulletFields, &bulletFieldsAvailable);
+        out[QStringLiteral("bullet_fields")] =
+            QJsonArray::fromStringList(bulletFields);
+        QJsonArray unmatched;
+        for (const QString &k : bulletFields) {
+            if (!bulletFieldsAvailable.contains(k))
+                unmatched.append(k);
+        }
+        // Reported together, per ANTS-4930: `unmatched` alone cannot separate a
+        // key this verb never emits from one that is merely gated off on these
+        // rows, so the keys actually present ride alongside it.
+        if (!unmatched.isEmpty()) {
+            out[QStringLiteral("bullet_fields_unmatched")] = unmatched;
+            out[QStringLiteral("bullet_fields_available")] =
+                QJsonArray::fromStringList(bulletFieldsAvailable);
+        }
+    };
+
     // ANTS-1729 — section_index now ACCEPTS offset/limit (the future
     // spec the ANTS-1436-INV-6 refusal left room for). On a many-section
     // roadmap the active-filtered index can still run to tens of
@@ -3898,8 +3971,12 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
         // already asked for lean rows (headline_only) or explicitly wants
         // bodies (include_body); the section_index sections[] branch is
         // excluded (section descriptors have no lean form — § 5).
+        // ANTS-4837 — and never under a caller-chosen row shape. The downshift
+        // replaces rows with the fixed four-key shape, which would silently
+        // discard the projection the caller asked for.
         const bool wantDownshift =
-            (mode != QLatin1String("headline_only")) && !includeBody;
+            (mode != QLatin1String("headline_only")) && !includeBody
+            && bulletFields.isEmpty();
         // ANTS-3577 — restore ANTS-1881 INV-6: in already-lean
         // (headline_only) mode project the FULL filtered set to its 4-key
         // shape BEFORE pagination, so the soft-cap measure counts lean bytes
@@ -3919,6 +3996,12 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
         // exactly what the cache enforced, so paging is unchanged.
         if (includeBody)
             rcCapBodyFields(filtered, kRoadmapQueryBodyStoreCap);
+        // ANTS-4837 — project BEFORE pagination, on ANTS-3577's reasoning: the
+        // soft-cap measure then weighs the rows that will actually be emitted,
+        // so a narrow projection fits more rows per page instead of paying for
+        // bytes it is about to drop. After the body cap, so a kept `body` is
+        // still capped rather than emitted whole.
+        applyBulletFields(filtered);
         auto page = PaginationEngine::pageBullets(
             filtered, offsetArg, limitArg,
             wantDownshift ? PaginationEngine::RowProjector(&rcProjectHeadlineOnly)
@@ -4270,6 +4353,10 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
         if (mode == QLatin1String("headline_only")) {
             rcProjectHeadlineOnly(matches);
         }
+        // ANTS-4837 — the id/ids surface. Applied after the body strip and cap
+        // for the same reason the projection above is: the emitted key set must
+        // not depend on include_body.
+        applyBulletFields(matches);
         out["ok"]      = true;
         out["bullets"] = matches;
         out["path"]    = path;
@@ -4344,6 +4431,14 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
         if (mode == QLatin1String("headline_only")) {
             rcProjectHeadlineOnly(matches);
         }
+        // ANTS-4837 — the plural ids[] surface. Deliberately ABOVE the
+        // `input_index` block below, so that key survives a projection that
+        // does not name it: ANTS-4712 makes it this path's documented
+        // exemption precisely because results come back in DOCUMENT order and a
+        // caller zipping them against its own array mis-pairs without it. A
+        // lean shape is where that bug is most likely, so this is the last
+        // place to drop it.
+        applyBulletFields(matches);
         // INV-3 — accounting arrays. Preserve INPUT order so a caller
         // diffing against the request gets a positional read.
         // ANTS-4400 — `input_index` on each bullet, so a caller can restore
@@ -4564,8 +4659,11 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
     // branch above). Stateless; auto-truncate fires when caller
     // omitted limit AND filtered exceeds the soft cap.
     // ANTS-3543 — same auto-downshift gate as the section branch.
+    // ANTS-4837 — and never under a caller-chosen row shape; see the section
+    // branch's copy of this gate.
     const bool wantDownshift =
-        (mode != QLatin1String("headline_only")) && !includeBody;
+        (mode != QLatin1String("headline_only")) && !includeBody
+        && bulletFields.isEmpty();
     // ANTS-3577 — restore ANTS-1881 INV-6: project the FULL filtered set to
     // its lean 4-key shape BEFORE pagination in headline_only mode, so the
     // soft-cap measure counts lean bytes (more rows per page). The prior code
@@ -4583,6 +4681,8 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
     // exactly what the cache enforced, so paging is unchanged.
     if (includeBody)
         rcCapBodyFields(filtered, kRoadmapQueryBodyStoreCap);
+    // ANTS-4837 — before pagination; see the section branch for why.
+    applyBulletFields(filtered);
     auto page = PaginationEngine::pageBullets(
         filtered, offsetArg, limitArg,
         wantDownshift ? PaginationEngine::RowProjector(&rcProjectHeadlineOnly)

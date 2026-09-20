@@ -855,6 +855,42 @@ QJsonDocument rcSectionHasSubsectionsRefusal(const QString &slug,
 // mode:"headline_only". Mutates in place. Rollup / narrator bullets
 // keep their natural emptiness (id:"" for both; headline_oneline:""
 // only for rollups whose source `headline` is empty) — INV-2.
+// ANTS-4837 — the caller-chosen row shape, and the per-row equivalent of
+// `fields`. Two reported gaps, one mechanism: rcProjectHeadlineOnly's four keys
+// are the MODE's contract (ANTS-4699) and `kind` is unobtainable there, while
+// the wide shape a caller falls back to emits `headline` and `headline_oneline`
+// as byte-identical strings on a single-line headline. `fields` reaches
+// top-level envelope keys only, so neither was addressable.
+//
+// A key absent from a row is simply not emitted, never emitted null. These row
+// shapes are already gated — `evidence`, `anchor`, `bold_id`, `format` and
+// `headline_full` each appear only when they apply — so absence is the normal
+// case, and a null would invent a value the roadmap has not got.
+//
+// `available` collects the union of keys actually seen, which is what makes a
+// misspelling legible: a name in the request and not in the union is reported
+// rather than silently dropping every row to {}.
+void rcProjectBulletFields(QJsonArray &arr, const QStringList &keep,
+                           QStringList *available) {
+    QSet<QString> seen;
+    for (int i = 0; i < arr.size(); ++i) {
+        const QJsonObject src = arr.at(i).toObject();
+        for (auto it = src.constBegin(); it != src.constEnd(); ++it)
+            seen.insert(it.key());
+        QJsonObject p;
+        for (const QString &k : keep) {
+            const auto v = src.constFind(k);
+            if (v != src.constEnd())
+                p.insert(k, v.value());
+        }
+        arr.replace(i, p);
+    }
+    if (available) {
+        *available = QStringList(seen.constBegin(), seen.constEnd());
+        available->sort();
+    }
+}
+
 void rcProjectHeadlineOnly(QJsonArray &arr) {
     for (int i = 0; i < arr.size(); ++i) {
         const QJsonObject src = arr.at(i).toObject();

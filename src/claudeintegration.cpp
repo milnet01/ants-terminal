@@ -3727,6 +3727,42 @@ void ClaudeIntegration::onMcpConnection() {
                     // ANTS-1391 — caller_cwd anchor.
                     props["caller_cwd"] = makeCallerCwdReadProp();
                     props["etag_match"] = makeEtagMatchProp();   // ANTS-1499
+                    // ANTS-4837 — the PER-ROW counterpart of `fields`, which
+                    // reaches top-level envelope keys only.
+                    {
+                        QJsonObject p;
+                        p["type"] = QStringLiteral("array");
+                        QJsonObject items;
+                        items["type"] = QStringLiteral("string");
+                        p["items"] = items;
+                        p["description"] = QStringLiteral(
+                            "Keep only these keys on each bullet -- the "
+                            "per-row counterpart of `fields`, which reaches "
+                            "top-level envelope keys only. Closes the two "
+                            "shapes neither argument could express: "
+                            "mode:\"headline_only\" has a fixed four-key "
+                            "contract that cannot carry `kind`, and the wide "
+                            "shape emits `headline` and `headline_oneline` as "
+                            "byte-identical strings on a single-line headline. "
+                            "`bullet_fields:[\"id\",\"status\",\"kind\"]` is "
+                            "the triage shape. A key absent from a row is not "
+                            "emitted rather than emitted null, since these "
+                            "rows are already gated (`evidence`, `anchor`, "
+                            "`bold_id`, `headline_full`). A name no row "
+                            "carries is reported in `bullet_fields_unmatched` "
+                            "beside `bullet_fields_available`, so a "
+                            "misspelling is visible rather than an empty row. "
+                            "REFUSED with bad_mode_combo on headline_only / "
+                            "section_index / bundles / report, each of which "
+                            "owns its row shape. On the ids path "
+                            "`input_index` survives a projection that does not "
+                            "name it (ANTS-4712), because results come back in "
+                            "DOCUMENT order and zipping without it mis-pairs. "
+                            "It also suppresses the automatic downshift to the "
+                            "lean shape, which would otherwise discard the "
+                            "projection you asked for.");
+                        props["bullet_fields"] = p;
+                    }
                     props["fields"] = makeFieldsProp();          // ANTS-1720
                     props["compact"] = makeCompactProp();        // ANTS-2091
                     // ANTS-1907 — per-section ETag short-circuit (section=

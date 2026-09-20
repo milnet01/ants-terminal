@@ -507,6 +507,10 @@ QStringList rcSectionChildSlugs(const QVector<RoadmapIndex::Section> &index, con
 
 QJsonDocument rcSectionHasSubsectionsRefusal(const QString &slug, const QStringList &children);
 void rcProjectHeadlineOnly(QJsonArray &arr);
+// ANTS-4837 — caller-chosen per-row projection; `available` reports the union
+// of keys seen, so an unmatched name is distinguishable from an empty result.
+void rcProjectBulletFields(QJsonArray &arr, const QStringList &keep,
+                           QStringList *available = nullptr);
 void rcProjectChangelogHeadlineOnly(QJsonArray &arr);
 QString rcHeadlineOneline(const QString &headline);
 void rcMaybeEmitHeadlineFull(QJsonObject &o, const RoadmapDialog::BulletRecord &b);

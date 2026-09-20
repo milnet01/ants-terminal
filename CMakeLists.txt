@@ -2249,6 +2249,7 @@ if(ANTS_TESTS)
                 # ANTS-4836 roadmap_query filters by kind, and refuses an
                 # unrecognised one rather than returning the full set.
                 tests/features/roadmap_query_kind_filter/test_roadmap_query_kind_filter.cpp
+                tests/features/roadmap_query_bullet_fields/test_roadmap_query_bullet_fields.cpp
                 # ANTS-4985 — the provenance axis `kind` cannot carry.
                 tests/features/roadmap_query_source_filter/test_roadmap_query_source_filter.cpp
                 # ANTS-4989 — the observable for 3.5.3's review-fix rule.

@@ -369,6 +369,33 @@ server-controllable beyond this per-tool hint.
   `workspace_search` only under `headline_only:true` — it has no `limit`,
   `include_body` or `mode` argument at all, so its lean-row flag is the
   whole opt-out. Spec `docs/specs/ANTS-3543.md`.
+  **ANTS-4837 adds a third `roadmap_query` opt-out: `bullet_fields`.** A
+  caller-chosen row shape is one the downshift must not replace, since
+  swapping it for the fixed four-key shape would silently discard the
+  projection that was asked for.
+- **`roadmap_query` `bullet_fields`** (ANTS-4837) — the PER-ROW counterpart
+  of `fields`, which reaches top-level envelope keys only. It closes two
+  shapes neither argument could express: `mode:"headline_only"` has a
+  four-key contract (ANTS-4699) that cannot carry `kind`, and the wide shape
+  a caller falls back to emits `headline` and `headline_oneline` as
+  byte-identical strings on a single-line headline.
+  A key no row carries is omitted rather than emitted null — these rows are
+  already gated (`evidence`, `anchor`, `bold_id`, `headline_full`), so
+  absence is the normal case. An unmatched name is reported in
+  `bullet_fields_unmatched` beside `bullet_fields_available`, per ANTS-4930:
+  one without the other cannot separate a misspelling from a key that is
+  merely gated off on those rows.
+  **Refused, never ignored**, on `headline_only` / `section_index` /
+  `bundles` / `report`, each of which owns its row shape. An ignored
+  projection returns full rows, which is the one result a caller cannot tell
+  from an answer — the same reasoning behind the `filter` and `q` aliases.
+  On the `ids` path `input_index` survives a projection that does not name
+  it: results come back in DOCUMENT order, so zipping without it mis-pairs
+  (ANTS-4712), and a lean shape is where that bug is most likely.
+  Applied before pagination on the list paths, on ANTS-3577's reasoning —
+  the soft-cap measure then weighs the rows actually emitted, so a narrow
+  projection fits more rows per page.
+  Contract: `tests/features/roadmap_query_bullet_fields/spec.md`.
 - **`read_log`** — filters a log file (the Ants debug log or a
   `caller_cwd` path) to matching lines via the pure `ReadLog::filter`
   helper; streaming drop-oldest byte cap + `since_cursor` incremental
