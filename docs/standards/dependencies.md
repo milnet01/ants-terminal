@@ -1,3 +1,5 @@
+<!-- OWNED-HERE dependencies.md — this is the project-side companion to the global dependency standard, not a copy of it: the global file carries policy and no version numbers, this one carries the concrete floors (Qt 6.2, Lua 5.4, C++20) and the Downgrade Ledger that enforces them. Measured heading overlap with the global file is 0%. Decided 2026-09-21 (ANTS-3427) -->
+
 # Dependency Version Standard (ANTS-3427)
 
 > **Status:** Adopted 2026-07-03. Applies to every dependency the project
