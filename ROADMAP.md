@@ -49344,6 +49344,47 @@ are closed inline in the feedback files rather than filed here.
   Source: in-session-2026-09-21 (Ants MCP improvement noted while implementing ANTS-4500).
   Lanes: mcp, build.
 
+- 📋 [ANTS-5252] **op:"convert" reports id counts in aggregate, not the source of each id it assigns.**
+  Asked for by Vestige on 2026-09-21 and deliberately NOT built into
+  ANTS-4491; recorded so the request does not die in a session message.
+
+  What shipped is the aggregate: `ids.allocated`, `ids.parsed`,
+  `ids.bullets_total`, and `ids.allocated_ids` (the allocated ids
+  themselves, capped at 200). ANTS-4491 § 4.7 carries the reasoning.
+
+  What they asked for and did not get: **the proposed id per bullet, with
+  each id's SOURCE** — parsed from the file, inferred from a bold prose
+  lead-in, or freshly allocated. Their argument is that the op is a
+  one-way bulk rewrite of a version-controlled file that moves a counter
+  other documents cite, so the assignment should be reviewable per bullet
+  before it lands, not only in total.
+
+  Judged sufficient at the time because the aggregate plus the full
+  allocated-id list answers "how many were guessed, and which numbers am
+  I about to burn". That judgement is mine and not theirs, and the
+  distinction they want is real: `id_inferred` (ANTS-4575) already marks
+  a bullet whose id the reader ADOPTED from prose rather than read from a
+  bracket, and that is exactly the population a reviewer would want to
+  check before converting.
+
+  Cheap: the three categories are already distinguishable at the point
+  the report is built. `PlannedItem::idOrigin` separates parsed from
+  quarantined, ANTS-4575's flag separates inferred, and the load's
+  `id_allocated` notes name the fresh ones. The work is threading a
+  per-bullet row out of `RoadmapMigrateVerb::loadInOpenTransaction()`
+  rather than deriving anything new.
+
+  Cap it like the id list is capped — a convert over a large roadmap
+  produces one row per bullet, and Vestige's file is ~1,100.
+
+  Gated on Vestige confirming they still want it: they were offered it on
+  2026-09-21 and had not replied when this was filed. Do not build it
+  speculatively.
+  **Layman:** The convert command tells you how many numbers it handed out, but not where each one came from — so you cannot see, bullet by bullet, which were read from the file and which it invented.
+  Kind: enhancement.
+  Source: cc-feedback-2026-09-21 (Vestige), deferred from ANTS-4491.
+  Lanes: mcp, roadmap-store.
+
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-08-20 triage
 
 Thirty pending findings across ten feedback files, triaged 2026-08-20. Six
