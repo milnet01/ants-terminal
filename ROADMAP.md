@@ -65230,6 +65230,116 @@ finish it and to make it the default rather than the alternative.
   Source: user-request-2026-09-04.
   Lanes: mainwindow.
 
+## Ants MCP — lean-workflow verbs (claude-config session request 2026-09-21)
+
+The ~/.claude session is building a replacement global workflow whose third tier
+— things that never enter a session's context — was designed as per-repo
+scripts. The user's instruction is to move anything that can be an Ants MCP verb
+into one, even where Ants has to build it. Its `draft/v2/tools/` scripts are the
+reference implementation and the specification, not the deliverable.
+
+The reuse answer came first: `doc_lint` already composes the five deterministic
+document checkers in one walk, so the checker needs no new verb — three
+arguments and two new check kinds cover it. Two genuinely new verbs remain, and
+one script stays a script.
+
+The blocking constraint, and it decides the sequencing: a git hook cannot call a
+verb, because `--remote-json` needs a running GUI instance and these gates must
+work headless (ANTS-4734). ANTS-4932 is what unblocks the hook callers.
+
+- 📋 [ANTS-5293] **doc_lint selects its checks by the document's DECLARED genre, not by the specs directory.**
+  The lean workflow declares `Genre: spec|plan|adr|standard|prose|record` in
+  the file and says genre is never inferred from the path. doc_lint today
+  applies spec_lint only to documents under the project's specs dir, which is
+  the path inference that design rules out.
+
+  Add `genre:"auto"` — read the declared line, select the check set from it,
+  and report the genre each document was judged as. A document with no
+  declaration keeps today's behaviour.
+  **Layman:** Let the document checker read what kind of document it is from the document itself.
+  Kind: feature.
+  Source: claude-config-session-2026-09-21.
+
+- 📋 [ANTS-5294] **doc_lint gains staged:true so a commit hook checks the staged blob, not the worktree.**
+  The reference script's `--staged` mode reads `git show :<path>` for every
+  staged .md. Without it a commit-time run judges the worktree, which is a
+  different document whenever the author has unstaged edits.
+
+  Note the caller: a git hook cannot reach a verb without a running GUI
+  instance, so this argument is only useful to a hook once ANTS-4932 lands.
+  It is useful to a skill immediately.
+  **Layman:** Check what is actually being committed, not what happens to be on disk.
+  Kind: feature.
+  Source: claude-config-session-2026-09-21.
+
+- 📋 [ANTS-5295] **doc_integrity gains a list_count kind — a cardinal in a lead-in line against the list beneath it.**
+  Fires only where the next non-blank line starts a list; a number in running
+  prose claims nothing a script can count. Word and digit forms both, bounded
+  to a small range, siblings matched by indent.
+
+  This is the check that enforces the lean workflow's no-stale-counts rule, and
+  nothing in the server does it today. doc_integrity is the right home: it is
+  already the fence-aware markdown-structure checker.
+  **Layman:** Catch "four of these:" followed by five bullets.
+  Kind: feature.
+  Source: claude-config-session-2026-09-21.
+
+- 📋 [ANTS-5296] **doc_citations gains paths:true — bare path tokens in prose, with the containment qualifier.**
+  Today the verb resolves `path:line` and `path::symbol` citations. A bare
+  `tools/check-doc.py` written in prose is checked by nothing.
+
+  The governing rule is the containment qualifier: judge a token only where the
+  tree can first be proven the right place to look for it — the leading segment
+  names a real directory here. That is the same idea as the existing
+  `foreign_path` status, which is why this belongs on this verb rather than a
+  new one. A flag, a URL, a home path and a bare extension are not paths.
+  **Layman:** Check that paths a document names actually exist, without guessing about paths that were never ours.
+  Kind: feature.
+  Source: claude-config-session-2026-09-21.
+
+- 📋 [ANTS-5297] **A required-sections check per declared genre, behind doc_lint.**
+  spec_lint covers the spec genre only and selects by directory. The lean
+  workflow states required sections per genre in the project's own declaration
+  file.
+
+  Where the declaration names no sections for a genre, the check does not run
+  and says so — a check that could not run is not a defect, and the reply must
+  distinguish the two.
+  **Layman:** Tell an author which section their document is missing.
+  Kind: feature.
+  Source: claude-config-session-2026-09-21.
+
+- 📋 [ANTS-5298] **A run_cost verb that refuses a cost figure with no coverage figure beside it.**
+  `op:"append"` and `op:"report"`. The governing rule becomes a refusal code,
+  `coverage_required`: cost alone cannot be recorded, because cost falling while
+  coverage falls is a cut and not a saving.
+
+  Two decisions taken with open eyes. The rows do NOT go in roadmap.sqlite — a
+  schema bump there is a one-way door across every project on this machine, and
+  these are append-only rows nobody queries relationally. And the ratio verdict
+  IS arithmetic, so it belongs in the verb; what stays out is the promotion
+  decision.
+
+  One limit must survive into the description or the number will be misread: a
+  lane's own tokens are not in the parent transcript, so the figure is the
+  parent's usage including the reports it was handed.
+  **Layman:** Record what a review cost and what it caught, together, so cheaper is never mistaken for better.
+  Kind: feature.
+  Source: claude-config-session-2026-09-21.
+
+- 📋 [ANTS-5299] **A gate_log verb: a review run records its trace, and what was gated becomes queryable.**
+  A gate whose only evidence is the session's own claim did not happen. The
+  run appends a row citing an id; a query answers what was gated, when, and
+  with what verdict. Structured beats the grep over a markdown file that does
+  this today.
+
+  The enforcement half is a commit hook, which cannot call a verb (ANTS-4734,
+  and ANTS-4932 is the unblock). So the row format must stay greppable enough
+  that a script can do the hook's job while a query does it better.
+  **Layman:** Keep a checkable record of which documents were reviewed and when.
+  Kind: feature.
+  Source: claude-config-session-2026-09-21.
+
 ## check-code whole-tree sweep fold-in (2026-09-01)
 
 Whole-tree static-analysis sweep: 13 tools ran, 5 were correctly skipped (no
