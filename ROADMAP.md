@@ -49885,6 +49885,47 @@ are closed inline in the feedback files rather than filed here.
   cannot own the expiry of facts other people wrote about you.
 
   Shape two is arguably ~/.claude's to own rather than this project's.
+  A THIRD DIRECTION (2026-09-21, OneUp), and it cost a wrongly-filed item
+  here before anyone noticed.
+
+  The two already on this item are about a fact that WAS true and stopped
+  being so: a project avoiding a fixed verb, and a project blocked waiting
+  for a shipped one. OneUp's is worse, because there is no moment of
+  expiry to detect: A PROJECT ACTED ON A RECORDED FACT THAT WAS NEVER
+  ACCURATE, AND PASSED IT ON AS EVIDENCE.
+
+  They reported `roadmap_log` refusing a git-worktree caller_cwd with
+  "render path escapes the project root". I filed it as ANTS-5269, a
+  probable false refusal. They then reproduced it rather than quoting
+  their note, and the real refusal is `worktree_write` with a message that
+  names the cause, names the correct caller_cwd and says nothing was
+  written — a deliberate, correct guard. Both the code and the message in
+  their note were wrong. ANTS-5269 is dropped.
+
+  WHY IT PROPAGATED. Their note carried a date and a "checked 2026-09-19"
+  stamp. A DURABLE NOTE AND A FRESH MEASUREMENT ARE INDISTINGUISHABLE ONCE
+  WRITTEN DOWN — a prose summary of an envelope looks exactly like the
+  envelope, and the stamp made it look measured. I then filed a defect
+  against working behaviour on that basis, and only caught it because they
+  went back and re-ran it.
+
+  THE CHEAP REMEDY IS THEIRS AND IT IS BETTER THAN EITHER SHAPE ABOVE:
+  STORE THE REFUSAL ENVELOPE VERBATIM, WITH ITS CODE, NOT A PROSE SUMMARY
+  OF IT. A quoted `{"code":..., "error":...}` cannot drift into a
+  plausible paraphrase, cannot lose its code, and is checkable against the
+  live verb in one call. It also composes with ai-prompts' shape two — a
+  claim about an external system shipping the command that reproduces it —
+  because an envelope IS the reproduction.
+
+  That is a convention for projects rather than a feature here, so it
+  belongs with shape two wherever that lands. Worth stating in the same
+  place: a recorded refusal is quoted, never summarised.
+
+  METHOD NOTE FOR THIS PROJECT, learned the same way: verify a RETRACTION
+  before acting on it too. I re-read the source before dropping ANTS-5269
+  rather than taking the correction on trust, and it held — but the
+  failure mode that produced the item in the first place applies equally
+  to the message that withdraws it.
   **Layman:** Projects write down what they measured about these tools and then act on it for months. When a tool is fixed, nothing tells them, so they keep avoiding a problem that no longer exists.
   Kind: enhancement.
   Source: cc-feedback-2026-09-21 (ai-prompts), shapes proposed by them.
@@ -50270,7 +50311,7 @@ are closed inline in the feedback files rather than filed here.
   Source: cc-feedback-2026-09-21 (ut-monsterhunt).
   Lanes: mcp, docs.
 
-- 📋 [ANTS-5269] **roadmap_log refuses a git-worktree caller_cwd as a render path escaping the project root.**
+- 🚫 [ANTS-5269] **roadmap_log refuses a git-worktree caller_cwd as a render path escaping the project root.**
   Reported by the OneUp session: a `caller_cwd` inside a git worktree is
   refused with "render path escapes the project root". They carry a local
   workaround (write from the project folder) and are not blocked.
@@ -50295,6 +50336,40 @@ are closed inline in the feedback files rather than filed here.
   RELEVANT TO THE FLEET: rule 17 in the global CLAUDE.md recommends
   worktrees for risky or parallel work, so this refusal fires on exactly
   the workflow the machine's own rules encourage.
+  DROPPED (2026-09-21) — not a defect. The guard is deliberate and correct,
+  and this item was filed on a misquoted refusal.
+
+  VERIFIED HERE before closing, because a retraction is a claim like any
+  other: `worktree_write` exists at remotecontrol_roadmap_query.cpp:191
+  with the message at :137. The real envelope, which OneUp captured under
+  dry_run:
+
+    code: "worktree_write"
+    error: "roadmap_log: caller_cwd is a git worktree. This project's
+     roadmap lives in the roadmap store, keyed to the main checkout at
+     <root>, and writing here would render it into the worktree's own
+     ROADMAP.md. Pass caller_cwd as <root> instead; nothing was written."
+
+  NOT "render path escapes the project root", and not `render_failed`.
+  Both the code and the message in this item's original body were wrong.
+
+  WHY THE GUARD IS RIGHT: rendering into a worktree's own ROADMAP.md
+  produces a second, divergent roadmap in a tree the store is not keyed
+  to. On a project whose ROADMAP.md is generated output that is a real
+  hazard, and the refusal names the cause, names the correct caller_cwd,
+  says nothing was written, and fires under dry_run so it can be captured
+  without touching anything.
+
+  The concern this item raised — that global rule 17 recommends worktrees,
+  so the refusal fires on an encouraged workflow — survives as a
+  DOCUMENTATION point at most, and a weak one: the refusal tells you the
+  one-line remedy. Nothing to build.
+
+  WHAT IS WORTH KEEPING IS THE SHAPE OF THE ERROR, and it is recorded on
+  ANTS-5261 rather than here: a project acted on a RECORDED fact about
+  this tool that was never accurate, and passed it on as evidence. Their
+  note carried a date and a "checked" stamp, which made a summary
+  indistinguishable from a measurement.
   **Layman:** Working in a second checkout of the same project makes roadmap commands refuse, saying the file is outside the project — when it is the same project.
   Kind: fix.
   Source: cc-feedback-2026-09-21 (OneUp).
