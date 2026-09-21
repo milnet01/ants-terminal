@@ -40,8 +40,11 @@ context. So a C++ project *chooses*, records the choice, and holds it.
 
 - Using a framework with its own convention → follow the framework's.
   A Qt project follows `qt.md`, not this section.
-- No framework → PascalCase types, camelCase functions and variables,
-  SCREAMING_SNAKE for macros only. Macros are the one case where the
+- No framework **and no recorded choice** → PascalCase types, camelCase
+  functions and variables, SCREAMING_SNAKE for macros only. This is the
+  default a project falls to, not a rule against the choice above: a
+  frameworkless project that picks `snake_case`, records it and holds it
+  conforms. Macros are the one case where the
   loud casing earns its keep, because a macro ignores scope.
 - Whatever is chosen, `coding.md` §4's rule still binds: a file that has
   used one convention for 400 lines keeps it.
@@ -74,12 +77,14 @@ one rule**, which is the drift this file warns about elsewhere.
 
 **A bounds comparison made on the parser's return value, against the
 destination type's limits, is never sufficient on its own.** It can be
-correct on the machine it was written on and inert on another. Two
-sub-cases, and **their remedies are not interchangeable — nor is either
-remedy a licence to delete the comparison.** *(A comparison made BEFORE
-the conversion, as the second sub-case prescribes, is a different thing
-and is sufficient — the trap is testing a value the destination type has
-not yet narrowed.)*
+correct on the machine it was written on and inert on another. The
+sub-cases below, and **their remedies are not interchangeable — nor is either
+remedy a licence to delete the comparison.** *(What separates them is
+whether the PARSER can saturate, not when the comparison runs. `strtol`
+clamps inside the call, so its return may already be a lie and no
+comparison on it is sufficient alone. `strtod` does not clamp at
+`float`'s range — it returns the true `double` — so a comparison on that
+value IS sufficient, which is why the second sub-case prescribes one.)*
 
 - **A width-dependent type — keep the comparison AND add `errno`.**
   `long` is 64-bit on Linux (LP64) and 32-bit on Windows (LLP64), so a
@@ -122,8 +127,11 @@ looking. Spelled `INT_MIN` neither half is reachable on LLP64, since
 `LONG_MIN == INT_MIN` there, and probing either proves nothing. Both
 spellings need `errno`; only one of them also turns away a legal value.
 
-**A conforming suite does not catch any of this, which is why the rule is
-here rather than in a test.** The narrowing form below shipped in a real
+**No suite run on a single target catches this, which is why the rule is
+here rather than only in a test.** § What checks this names the ones that
+do bite — a suite run on the OTHER target, and a case asserting
+`"1e-999"` is accepted — and none of them is reached by adding more
+inputs on the machine you are on. The narrowing form below shipped in a real
 project and passed every test in its suite on every target it was run
 on; under `-O2 -ffast-math` the guard had compiled to `movl $1, %eax;
 ret` — unconditionally "finite" — and no input could make it fail.
@@ -290,7 +298,7 @@ and have not been run against a case.
 | Idioms — RAII, `std::optional` over sentinels, `std::span` over pointer + length, concepts over SFINAE | **nothing.** No installed check decides any of them — each is a design choice a conforming program makes either way, and `cppcheck` reaches only the leak a missing RAII wrapper eventually causes, never the idiom |
 | No `using namespace std;` in a header | `clang-tidy`'s `google-build-using-namespace`. **It does not draw this rule's header-versus-`.cpp` line**, which is the whole distinction — in a `.cpp` the rule calls it a judgement call and the check does not |
 | Catch what you can name — by `const&`, by specific type | **`Partial:`** `misc-throw-by-value-catch-by-reference` for the reference half, `bugprone-empty-catch` for a swallowed one. **Nothing** catches `catch (...)` away from a thread or `main` boundary: the construct is legal and the boundary is not something a check can see |
-| Do not pessimise — `std::move`, `reserve()`, pass by `const&` | **`Partial:`** `-Wpessimizing-move`, in `-Wall`, decides the `std::move`-around-a-return half outright — verified 2026-09-21. **Nothing** decides the rest: `performance-*` flags some unnecessary copies, but whether a known final size was reserved is not something a check can call a breach |
+| Do not pessimise — `std::move`, `reserve()`, pass by `const&` | **`Partial:`** `-Wpessimizing-move`, in `-Wall`, decides the whole `std::move`-around-a-call half outright — verified 2026-09-21 in both return and argument position, on two GCC versions. **Nothing** decides the rest: `performance-*` flags some unnecessary copies, but whether a known final size was reserved is not something a check can call a breach |
 | Range guards — the narrowing sub-case (`strtod` into a `float`) | `clang-tidy`'s `bugprone-narrowing-conversions` (`cppcoreguidelines-narrowing-conversions` is its alias and is reported alongside it). Verified 2026-09-21: it fires on an implicit `double`→`float` assignment and is **silent on the conforming form** — magnitude tested against `FLT_MAX`, then a cast — so it distinguishes breach from conformance rather than flagging both. **Stronger than it looks: silent on a C-style `(float)` cast as well as `static_cast`, and it works in C mode too**, so conforming C is not flagged forever for lacking `static_cast` |
 | Range guards — the width-dependent sub-case (`strtol` into an `int`) | **nothing.** Verified 2026-09-21: `gcc -Wall -Wextra -Wtype-limits` warns on neither the native build nor the `x86_64-w64-mingw32-gcc` cross-build, where the comparison is provably unreachable; `cppcheck --enable=all` reports nothing. The guard is well-formed code that happens to decide nothing, and **the test suite catches it only if the suite runs on the other target** |
 | Range guards — reaching for `errno` on the narrowing case | **nothing.** Rejecting a valid underflowing input is indistinguishable from correct rejection without a test that asserts `"1e-999"` is accepted |

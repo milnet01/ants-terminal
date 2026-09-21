@@ -375,6 +375,13 @@ languages/cpp.md      languages/python.md      languages/qt.md
 Read `coding.md` always; read a language file only when the project uses
 that language. A Python project has no reason to load C++ rules.
 
+**A C project reads `languages/cpp.md`.** There is no `c.md`, and that is
+deliberate rather than a gap: the rules the two share — the range-guard
+class in particular — would become two copies that drift, which § 2.1
+forbids. That file gives the C spelling wherever it differs. **Named here
+because a C project looking for its own file finds none and would
+otherwise read nothing.**
+
 A language file carries the version floor, the casing convention, the
 current idioms, the spellings of this file's, `testing.md`'s and
 `security.md`'s general rules — §7 owns where a security one goes — and
