@@ -64920,6 +64920,55 @@ it look feasible, and the one that bounds what is achievable, are on the item.
   THE CHEAPER PARTIAL, recorded so the spec has to argue against it rather than miss it: Ants ships a Lua sandbox with hot-reload. A verb whose BEHAVIOUR changes without a schema change could be genuinely live, no rebuild and no reconnect. It does not help the existing C++ verbs and it is a second authoring model, which is why it is not the recommendation — but it is the only route that reaches zero restarts.
 
   FIRST STEP is a measurement, not an edit: which verbs actually reach one of the eleven GUI methods, and which of those could take their answer from a project root instead. `roadmapPathForRemote` is the one to look at first — it is a project-scoped question routed through MainWindow, so it may not belong in the GUI half at all.
+  Progress (2026-09-21): promoted to the user's PRIORITY 1, and the
+  approach is settled — MEASURE FIRST, THEN SPEC. Recorded here because
+  the decision was reached in conversation and would otherwise die with
+  that session.
+
+  WHY MEASURE BEFORE SPECCING, rather than either alone. This item's own
+  body already says the first step is a measurement, not an edit. And
+  spec-format.md § 1's "expensive to undo" test is met on three counts, so
+  a spec is genuinely required. The two are not alternatives: the
+  measurement is what makes the spec decidable, because the central design
+  question — how much stays behind in the GUI process — cannot be answered
+  from the eleven-method list alone.
+
+  THE MEASUREMENT TO RUN, in this order:
+    1. For each of the eleven MainWindow methods, which verbs actually
+       reach it. The seam is claimed to be eleven methods; what matters
+       for a split is how many VERBS sit behind them.
+    2. Of those verbs, which could take their answer from a project root
+       instead of from the window. The body already nominates
+       `roadmapPathForRemote` as the first to look at, being a
+       project-scoped question routed through MainWindow.
+    3. What `ants_core_lib` would have to shed. It links Qt6::Gui,
+       Widgets, Network, DBus and util PUBLICLY and every
+       `remotecontrol_*.cpp` is in it, so the library extraction is the
+       real work and the standalone binary on top is small.
+
+  WHAT THE MEASUREMENT MUST NOT ASSUME. The "headless" notes in
+  CMakeLists are ANTS-3794's store publish path, NOT RemoteControl — the
+  body warns about this and it is the obvious way to over-report how
+  GUI-free the layer already is.
+
+  TWO FACTS CORRECTED TODAY, both of which this item's body states in
+  their stale form:
+    - the body says "91 test files already construct
+      `RemoteControl(nullptr)`". Re-measured 2026-09-21: **111** files
+      under `tests/`, of which four are `spec.md` rather than C++. Use the
+      construction-form pattern, not the bare literal, which matches only
+      four files.
+    - the ELEVEN methods are not the same set as
+      `CallerCwdContract::TabSpecific`, which has SEVEN members and is a
+      routing/refusal contract rather than a GUI register. CLAUDE.md's
+      hot-reload section stated that wrongly twice before its gate
+      (ANTS-5274) settled it. Verbs outside the seven do call MainWindow.
+
+  BOUND TO STATE IN THE SPEC, from the body and worth not rediscovering:
+  an MCP client caches `tools/list` at connect, so ADDING a verb or
+  changing its arguments needs a reconnect whatever is built. This removes
+  the TERMINAL relaunch, not every restart. Say so, or the result gets
+  measured against a target it cannot reach.
   **Layman:** Right now every change to an Ants MCP tool means rebuilding the terminal and restarting it by hand. This would move most of those tools into a small separate program that Claude Code starts itself, so a rebuild is picked up without touching the terminal.
   Kind: refactor.
   Source: user-request-2026-09-07.
