@@ -61,14 +61,78 @@ context. So a C++ project *chooses*, records the choice, and holds it.
 - Concepts and `requires` over SFINAE.
 - `std::format` (or `std::print` in C++23) over stringstreams.
 
+## Range guards on parsed numbers
+
+**A bounds comparison made on the parser's return value, against the
+destination type's limits, is never sufficient on its own.** It can be
+correct on the machine it was written on and inert on another. Two
+sub-cases, and **their remedies are not interchangeable — nor is either
+remedy a licence to delete the comparison.** *(A comparison made BEFORE
+the conversion, as the second sub-case prescribes, is a different thing
+and is sufficient — the trap is testing a value the destination type has
+not yet narrowed.)*
+
+- **A width-dependent type — keep the comparison AND add `errno`.**
+  `long` is 64-bit on Linux (LP64) and 32-bit on Windows (LLP64), so a
+  `strtol` guard written as `if (v < INT_MIN || v > INT_MAX) reject;`
+  passes its own comparison on Windows, where `strtol` saturates to
+  `LONG_MAX` and `LONG_MAX` *is* `INT_MAX`. Set `errno = 0` before the
+  call and also reject on `errno == ERANGE`. **Both, because each is
+  blind where the other sees**: on LP64 `strtol("3000000000")` is in
+  range for `long` and sets no `errno`, so only the comparison catches
+  it; on LLP64 the comparison is unreachable and only `errno` does.
+- **A narrowing conversion — no `errno` at all, and live everywhere.**
+  `strtod` returns `double` where the caller wants `float`. `"1e300"` is
+  a finite `double` and passes every check written against it. **Test the
+  magnitude BEFORE converting** — `if (!(std::fabs(d) <= FLT_MAX))
+  reject;` — never after. Converting an out-of-range `double` to `float`
+  is undefined in C++; `inf` is an IEEE-754 result rather than a language
+  guarantee, and under `-ffast-math` a following `std::isfinite` folds
+  away entirely, leaving a guard that decides nothing.
+
+**Do not reach for `errno` on the narrowing case.** glibc's `strtod` sets
+`ERANGE` on *underflow* too (the C standard leaves that
+implementation-defined), and `"1e-999"` is a valid input whose `float`
+value — `0.0` — is the correct answer. Rejecting it drops the caller to
+its default: the same silent-wrong-value failure, pointed the other way.
+
+**Write the bound as `INT_MIN`, and do not "fix" it to `-2147483647`.**
+`errno` is what catches the LLP64 saturation, which is why the bullet
+above makes it mandatory. The strict bound buys REVIEWABILITY, not
+coverage — and it costs a valid input: `-2147483648` is a legal `int` on
+both targets, and a guard spelled `-2147483647` rejects it and drops the
+caller to its default, which is the silent-wrong-value failure the
+paragraph above condemns in the other direction.
+
+**What the strict bound explains is why such a guard survives review.**
+Spelled `-2147483647` the negative half really does catch a saturated
+input, so a reviewer who probes the negative case sees it work and stops
+looking. Spelled `INT_MIN` neither half is reachable on LLP64, since
+`LONG_MIN == INT_MIN` there, and probing either proves nothing. Both
+spellings need `errno`; only one of them also turns away a legal value.
+
+Reported from DOOM_Ants 2026-09-21, where the class had bitten twice —
+the first time hanging a share of Windows launches on a black screen.
+Its first fix was a comment in one file, which did not reach the second
+site. Verified here the same day: under `x86_64-w64-mingw32-gcc`
+`sizeof(long) == 4`, `LONG_MAX == 2147483647` and `LONG_MIN == INT_MIN`,
+so both halves of such a guard are provably unreachable; and natively,
+`strtol("3000000000")` sets no `errno` and reaches an `int` as
+`-1294967296`, which is why neither check may replace the other.
+(CFG-0436)
+
 ## Spellings of the general rules
 
 `coding.md` states these as concepts; here is how they are written in
 C++.
 
-- **Do not pessimise** (§6) — `std::move` on the return of an
-  rvalue-returning helper; `reserve()` on a growable container whose
-  final size is known; pass by `const&` where a copy is not needed.
+- **Do not pessimise** (§6) — `std::move` on a *named local* being handed
+  to a sink parameter or member; `reserve()` on a growable container
+  whose final size is known; pass by `const&` where a copy is not needed.
+  **Never `std::move` around a call's return value**: a by-value helper
+  already yields a prvalue, so the move defeats guaranteed copy elision.
+  GCC's `-Wpessimizing-move` says so, and it is in `-Wall` — verified
+  2026-09-21, where `-Wextra` alone is silent.
 - **Wildcard inclusion** (§8) — never `using namespace std;` in a
   header. It leaks into every translation unit that includes it, and
   the name collision surfaces far from the cause. In a `.cpp` it is a
@@ -141,9 +205,12 @@ C++.
 
 - **Labels** (`testing.md` §5) — **the vocabulary is a choice each project
   makes, records and holds**, exactly as § Casing is for naming. What this
-  standard fixes is that `ctest -L fast` must stay runnable constantly and
-  that the slow and interactive sets must be excludable; *which words* name
-  them is local. `fast`, `features`, `integration`, `perf`, `network` is one
+  standard fixes is that the quick set must be runnable by **one label**,
+  whatever it is named, and that the slow and interactive sets must be
+  excludable; *which words* name them is local, and the project records
+  its choice. So `ctest -L fast` is one project's spelling of that rule
+  rather than the rule — a project whose quick set is `quick` conforms,
+  and must say so where a CI command or a pre-push hook can bind to it. `fast`, `features`, `integration`, `perf`, `network` is one
   project's set — another live one uses `features`, `fast`, `perf`, `e2e`,
   `audit` and has no `integration` or `network` at all.
 
@@ -155,10 +222,19 @@ C++.
 - **A failing test explains itself** (`testing.md` §6) — **every
   assertion prints the expected and the received value**, whatever
   framework is in use. Catch2's `REQUIRE(a == b)` and GoogleTest's
-  `EXPECT_EQ` do this unaided; an assertion that prints only a line
-  number needs a message added by hand. **In Qt**, that means `QVERIFY2`
-  with a formatted message, never bare `QVERIFY`, which prints only a
-  line number:
+  `EXPECT_EQ` do this unaided; an assertion that prints neither value
+  needs a message added by hand. **In Qt the equivalent is `QCOMPARE`,
+  which prints both values unaided** — reach for it on any equality
+  assertion, and do not hand-format what it already does. `QVERIFY2` is
+  for an assertion that is NOT a comparison: bare `QVERIFY` prints the
+  condition and its location but neither value, so a message is added by
+  hand.
+
+  ```cpp
+  QCOMPARE(cell.fg, expected);            // prints both values itself
+  ```
+
+  Where the assertion is not a comparison:
 
   ```cpp
   QVERIFY2(cell.fg == expected,
@@ -169,21 +245,28 @@ C++.
 ## What checks this
 
 **A language standard is where the catcher is most often a real tool, and
-that makes the empty cells worth stating.** Tool names below were verified
-against the binaries installed on this machine.
+that makes the empty cells worth stating.** Every tool named below exists
+in the build installed on this machine. **Existence is not behaviour**, so
+a row claiming a check *decides* a rule says when that was measured; the
+rows that do not say so are claims about the check's documented purpose
+and have not been run against a case.
 
 | Rule | What catches a breach |
 |------|----------------------|
 | Version floor — C++20 minimum | **`Partial:`** the compiler. A C++20 construct fails to build under a lower `CMAKE_CXX_STANDARD`, so the floor holds wherever the code actually uses C++20. **Nothing** catches a pin below it carrying no reason: the pin compiles, and the reason is prose |
 | Casing — the project's chosen convention | **`Partial:`** `clang-tidy`'s `readability-identifier-naming`, **and only where the project configures it** — the check ships no default convention, so an unconfigured run enforces nothing and reports clean. **Nothing** catches the half that matters, that the choice is recorded and held; a file switching convention mid-way compiles |
-| Idioms — `make_unique` / `make_shared`, `auto`, `[[nodiscard]]`, `noexcept` on moves, `std::format` / `std::print` | `clang-tidy`, by name: `modernize-make-unique`, `modernize-make-shared`, `modernize-use-auto`, `modernize-use-nodiscard`, `performance-noexcept-move-constructor`, `modernize-use-std-print` |
+| Idioms — `make_unique` / `make_shared`, `noexcept` on moves and swap | `clang-tidy`, by name: `modernize-make-unique`, `modernize-make-shared`, `performance-noexcept-move-constructor`, `performance-noexcept-swap` — all present in the installed build |
+| Idioms — `[[nodiscard]]`, `auto`, `std::format` over stringstreams | **`Partial:` and thinner than it looks.** Measured 2026-09-21: `modernize-use-nodiscard` fired on a const member function and **not** on a free factory — which is the half the idiom names, so factory and parser returns are uncaught. `modernize-use-std-print` rewrites `printf`-family calls and returned **nothing** on an `ostringstream` formatting site, so the stringstream half has no catcher at all. `modernize-use-auto` cannot decide "obvious type". **Unqualified, this row previously read as though the tool run settled all three** |
 | Idioms — RAII, `std::optional` over sentinels, `std::span` over pointer + length, concepts over SFINAE | **nothing.** No installed check decides any of them — each is a design choice a conforming program makes either way, and `cppcheck` reaches only the leak a missing RAII wrapper eventually causes, never the idiom |
 | No `using namespace std;` in a header | `clang-tidy`'s `google-build-using-namespace`. **It does not draw this rule's header-versus-`.cpp` line**, which is the whole distinction — in a `.cpp` the rule calls it a judgement call and the check does not |
 | Catch what you can name — by `const&`, by specific type | **`Partial:`** `misc-throw-by-value-catch-by-reference` for the reference half, `bugprone-empty-catch` for a swallowed one. **Nothing** catches `catch (...)` away from a thread or `main` boundary: the construct is legal and the boundary is not something a check can see |
-| Do not pessimise — `std::move`, `reserve()`, pass by `const&` | **nothing that decides it.** `performance-*` flags some unnecessary copies; whether a known final size was reserved, or a helper's rvalue return moved, is not something a check can call a breach |
+| Do not pessimise — `std::move`, `reserve()`, pass by `const&` | **`Partial:`** `-Wpessimizing-move`, in `-Wall`, decides the `std::move`-around-a-return half outright — verified 2026-09-21. **Nothing** decides the rest: `performance-*` flags some unnecessary copies, but whether a known final size was reserved is not something a check can call a breach |
+| Range guards — the narrowing sub-case (`strtod` into a `float`) | `clang-tidy`'s `bugprone-narrowing-conversions` (`cppcoreguidelines-narrowing-conversions` is its alias and is reported alongside it). Verified 2026-09-21: it fires on an implicit `double`→`float` assignment and is **silent on the conforming form** — magnitude tested against `FLT_MAX`, then an explicit `static_cast<float>` — so it distinguishes breach from conformance rather than flagging both |
+| Range guards — the width-dependent sub-case (`strtol` into an `int`) | **nothing.** Verified 2026-09-21: `gcc -Wall -Wextra -Wtype-limits` warns on neither the native build nor the `x86_64-w64-mingw32-gcc` cross-build, where the comparison is provably unreachable; `cppcheck --enable=all` reports nothing. The guard is well-formed code that happens to decide nothing, and **the test suite catches it only if the suite runs on the other target** |
+| Range guards — reaching for `errno` on the narrowing case | **nothing.** Rejecting a valid underflowing input is indistinguishable from correct rejection without a test that asserts `"1e-999"` is accepted |
 | Tests — the prove-it-can-fail recipe | **nothing.** The recipe is a procedure a person runs, and both runs pass on a correct test and on a test that never exercised the fix. The recipe's own warnings are the only guard |
 | Tests — feature wiring, and labels | **nothing.** `ctest` runs whatever is registered; a guessed label is valid and simply matches no filter, which the section says outright is silent |
-| A failing test explains itself | **nothing.** A bare `QVERIFY` compiles and passes; only a reader looking at a failure notices it printed a line number and nothing else |
+| A failing test explains itself | **nothing.** A bare `QVERIFY` compiles and passes; only a reader looking at a failure notices it printed the condition and location but neither value — and nothing at all flags an equality assertion written as `QVERIFY` where `QCOMPARE` would have printed both |
 
 ## Cold-eyes loop log
 
