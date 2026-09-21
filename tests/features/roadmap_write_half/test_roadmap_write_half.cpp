@@ -2588,3 +2588,77 @@ TEST(RoadmapWriteHalf, Ants4844AnnotateEchoesTheBulletCarryingTheNote) {
         << "the echoed bullet must carry the note the annotate would append; "
            "got: " << wouldBe.toStdString();
 }
+
+// ANTS-5263 — `return:"headline_only"` SUPPRESSES the full bullet echo rather
+// than adding `post_bullets` beside it.
+//
+// The flag has always added the compact {id, status, headline} shape. It also
+// left the whole rendered bullet in place, so a caller asking for the compact
+// form got both — which is incoherent, and is not what anyone passing it
+// expects. FinBreak measured the cost: their project's rules mandate a dry_run
+// before every write, so a status change on an item with accumulated notes
+// echoed its ENTIRE body TWICE — once as `would_be_bullet`, once as `bullet` —
+// for a call appending lines they had just composed. Five scalars were used.
+//
+// The default path is untouched, and the case below asserts that too: the echo
+// exists so a caller can see the JOINT result of several edits to one body
+// (ANTS-4097), which is real coverage and is not being removed. This obeys a
+// flag the caller had to opt into.
+TEST(RoadmapWriteHalf, Ants5263HeadlineOnlySuppressesTheBulletEcho) {
+    ants_test::XdgGuard guard;
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    qint64 projectId = 0;
+    const QString root = seedMigrated(guard, tmp, fixture(), &projectId);
+    ASSERT_FALSE(root.isEmpty());
+
+    RemoteControl rc(nullptr);
+    const QJsonObject made = rc.cmdRoadmapLogAppendForTest(
+        appendReq(root, QStringLiteral("A bullet to flip leanly."))).object();
+    ASSERT_TRUE(made.value(QStringLiteral("ok")).toBool());
+    const QString id = made.value(QStringLiteral("id")).toString();
+    ASSERT_FALSE(id.isEmpty());
+
+    const auto flipReq = [&](bool headlineOnly, bool dryRun) {
+        QJsonObject r;
+        r[QStringLiteral("caller_cwd")] = root;
+        r[QStringLiteral("op")]         = QStringLiteral("flip");
+        r[QStringLiteral("id")]         = id;
+        r[QStringLiteral("to_status")]  = QStringLiteral("in-progress");
+        if (dryRun)       r[QStringLiteral("dry_run")] = true;
+        if (headlineOnly) r[QStringLiteral("return")]  = QStringLiteral("headline_only");
+        return r;
+    };
+
+    // The DEFAULT still echoes. Asserted first and in the same case, so a
+    // change that suppressed the echo unconditionally cannot pass by deleting
+    // the coverage ANTS-4097 added.
+    const QJsonObject loud = rc.cmdRoadmapLogFlipForTest(flipReq(false, true)).object();
+    ASSERT_TRUE(loud.value(QStringLiteral("ok")).toBool())
+        << loud.value(QStringLiteral("error")).toString().toStdString();
+    EXPECT_FALSE(loud.value(QStringLiteral("would_be_bullet")).toString().isEmpty())
+        << "the default preview must still echo the bullet — ANTS-4097's "
+           "coverage is not being removed";
+
+    // Opted in: the compact shape INSTEAD OF the bullet, not beside it.
+    const QJsonObject lean = rc.cmdRoadmapLogFlipForTest(flipReq(true, true)).object();
+    ASSERT_TRUE(lean.value(QStringLiteral("ok")).toBool())
+        << lean.value(QStringLiteral("error")).toString().toStdString();
+    EXPECT_FALSE(lean.contains(QStringLiteral("would_be_bullet")))
+        << "return:\"headline_only\" still echoed the whole bullet — the "
+           "caller asked for the compact form and got both: "
+        << QJsonDocument(lean).toJson().toStdString();
+    // The compact shape must actually arrive, or this is a deletion rather
+    // than a substitution.
+    EXPECT_FALSE(lean.value(QStringLiteral("post_bullets")).toArray().isEmpty())
+        << "post_bullets missing — headline_only must still answer, leanly: "
+        << QJsonDocument(lean).toJson().toStdString();
+
+    // And on a REAL write, under the past-tense key.
+    const QJsonObject real = rc.cmdRoadmapLogFlipForTest(flipReq(true, false)).object();
+    ASSERT_TRUE(real.value(QStringLiteral("ok")).toBool())
+        << real.value(QStringLiteral("error")).toString().toStdString();
+    EXPECT_FALSE(real.contains(QStringLiteral("bullet")))
+        << "a real write under headline_only still echoed the bullet: "
+        << QJsonDocument(real).toJson().toStdString();
+}

@@ -320,14 +320,37 @@ QString offloadBody(const QString &toolName, const QString &body) {
                 // not agree: `limit` here, `max_results` there,
                 // `max_symbols` elsewhere. A single literal would be wrong for
                 // most callers, and a wrong argument name is worse than none.
+                // ANTS-5272 — `fields` is named FIRST among the narrowings.
+                // It was absent entirely, and it is the one that most often
+                // turns a refusal into an answer, because it cuts a dimension
+                // the paging arguments cannot reach: `limit` narrows ROWS and
+                // `offset` moves the window, and neither touches how WIDE a
+                // row is or how many arrays the envelope carries.
+                //
+                // Measured by two projects on the same day. UT_Ants:
+                // doc_symbols over 85 documents returned 66,605 characters and
+                // was REFUSED over the ceiling, while the same call with
+                // `fields:["counts"]` returned 130 characters — the whole
+                // answer, 512x smaller. UT_MonsterHunt hit the identical shape
+                // at 106,500 characters on a different tree. Both wanted one
+                // already-computed object; the hint offered them grep, a spill
+                // file and a subagent, and not the one-word argument.
+                //
+                // `fields` is documented per verb as "return only these
+                // top-level response fields", which reads as a convenience. On
+                // a verb whose default reply can exceed the ceiling it is
+                // load-bearing, and nothing said so from where a caller reads.
                 o[QStringLiteral("hint")] = QStringLiteral(
-                    "Large result spilled. Re-read the full body via read_spill "
+                    "Large result spilled. The cheaper fix, first: re-ask %3 with "
+                    "`fields:[...]` naming only the top-level fields you need — "
+                    "that drops whole arrays from the envelope, which paging "
+                    "cannot do, and a summary object (counts, totals) usually "
+                    "comes back small enough to need no handle at all. Then, if "
+                    "you do need the rows, narrow them: most list verbs take a "
+                    "page size (`limit`, or `max_results`) plus `offset`. "
+                    "Failing both, read the full body via read_spill "
                     "{handle:\"%1\"}: byte-paged (offset/max_bytes), or "
-                    "row-paged (row_offset/row_count) over the \"%2\" array. "
-                    "Often cheaper: re-ask %3 for LESS instead — most list "
-                    "verbs take a page size (`limit`, or `max_results`) plus "
-                    "`offset`, and a narrower page comes back as an ordinary "
-                    "envelope with no handle to page at all.")
+                    "row-paged (row_offset/row_count) over the \"%2\" array.")
                     .arg(handle, domKey, toolName);
                 // ANTS-4705 — once, here, because a dominant array EXISTS is
                 // exactly when the count is knowable. It used to be set on two

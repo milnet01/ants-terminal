@@ -50375,6 +50375,92 @@ are closed inline in the feedback files rather than filed here.
   Source: cc-feedback-2026-09-21 (ai-prompts), measured here.
   Lanes: mcp.
 
+- 🚧 [ANTS-5272] **The over-ceiling hint offers paging and a spill file, and never names the one argument that most often turns a refusal into an answer.**
+  MEASURED ON TWO INDEPENDENT TREES the same day, which is what makes it
+  general rather than one project's shape:
+
+      UT_Ants        doc_symbols over 85 docs   66,605 chars -> REFUSED
+                     same call + fields:["counts"]   130 chars -> the answer
+      UT_MonsterHunt same shape                 106,500 chars -> REFUSED
+
+  512x on the first, and the 130 characters were the complete answer:
+  total, resolved, unresolved, not_checked and the by-shape split.
+
+  WHY PAGING CANNOT SUBSTITUTE. `limit` narrows ROWS and `offset` moves
+  the window; neither touches how WIDE a row is or how many arrays the
+  envelope carries. `fields` cuts a dimension the paging arguments cannot
+  reach — it drops whole arrays, which is why a summary object comes back
+  small enough to need no handle at all.
+
+  THE DEEPER POINT, and it is ut-ants': `fields` is documented per verb as
+  "return only these top-level response fields", which READS AS A
+  CONVENIENCE. On a verb whose default reply can exceed the ceiling it is
+  load-bearing — the difference between an answer and a refusal — and
+  nothing said so from where a caller reads. A caller cannot tell the
+  verbs where `fields` is cosmetic from the ones where it is essential.
+
+  SHIPPED: the spill hint in mcpspill.cpp now names `fields` FIRST, with
+  paging second and read_spill last. One change, every verb, no behaviour
+  altered. The hint previously offered grep, character-slicing the spill
+  file, and a subagent — three expensive routes — and not the one-word
+  argument.
+
+  STILL OPEN: ANTS-5265's `count_only` on doc_symbols. Cheaper now that
+  the hint points at `fields`, but a rows-eliminated mode is still the
+  right shape, and `workspace_search` already has the precedent.
+  **Layman:** When a reply is too big to send, the advice suggests several expensive ways to fetch it in pieces, and never mentions the single word that would have made it small enough in the first place.
+  Kind: fix.
+  Source: cc-feedback-2026-09-21 (ut-ants, ut-monsterhunt).
+  Lanes: mcp.
+
+- 📋 [ANTS-5273] **spec_lint reports ok with no findings on a spec whose test clauses it resolved none of, and the contradicting field is one a caller has no reason to read.**
+  MEASURED, Pressless, docs/specs/PRESS-0015-undo.md:
+
+      ok: true,  findings: [],  findings_total: 0,
+      invariants_found: 12,
+      surfaces_checked: true,
+      surfaces_resolved: 0,
+      test_coverage_checked: true
+
+  The spec carries twelve `*Test:*` clauses — `grep -c` confirms 12,
+  matching `invariants_found`. ZERO were resolved. The envelope is clean.
+
+  CAUSE: surfaces resolve only in a `tests/features/<name>/` shape. That
+  project is flat (`tests/test_undo.py`). It also HAS one
+  `tests/features/packaging/`, so the shape is not absent — just not the
+  one its specs use, which may be why nothing ever flagged it.
+
+  WHY THIS IS THE BAD SHAPE, and it is Pressless' framing: a verb that
+  cannot check something should not return three fields saying it checked.
+  `surfaces_checked: true` is defensible as "the check ran"; sitting beside
+  `ok: true` and an empty `findings` it reads as "the check passed". The
+  whole distinction lives in `surfaces_resolved: 0` and nothing tells a
+  caller that number is load-bearing.
+
+  Games_Hub reported the same shape independently and adds the ordering
+  point: `findings_total: 0` and `invariants_found: 7` sit at the TOP of
+  the reply saying "clean, and I saw your invariants"; the correction is
+  three fields further down. They read it correctly only because they had
+  just written the invariants themselves.
+
+  THE COST IS ALREADY BEING PAID IN PROSE. Pressless carries a standing
+  CLAUDE.md paragraph warning every session that a green spec_lint says
+  nothing about test surfaces, plus a by-hand resolve of every clause
+  before an item ships. That paragraph exists because the envelope cannot
+  be read correctly — a workaround for a reporting defect.
+
+  FIX, needing no resolver work: when `invariants_found > 0` and
+  `surfaces_resolved == 0`, say so — `surfaces_unresolved: 12` plus a
+  one-line reason naming the shape it looked for. Games_Hub's variant:
+  do not emit a bare `findings_total: 0`, or add
+  `findings_total_scope: "invariants only"` beside it. Dropping
+  `surfaces_checked` to false would be the honest value and probably
+  breaks callers; decide that separately.
+  **Layman:** A spec checker says everything is fine when it has in fact checked none of the spec's twelve test promises — the only clue is a number buried lower down that nobody is told matters.
+  Kind: fix.
+  Source: cc-feedback-2026-09-21 (Pressless, Games_Hub, independently).
+  Lanes: mcp.
+
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-08-20 triage
 
 Thirty pending findings across ten feedback files, triaged 2026-08-20. Six

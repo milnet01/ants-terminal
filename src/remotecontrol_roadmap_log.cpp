@@ -1622,10 +1622,30 @@ QJsonDocument RemoteControl::cmdRoadmapLogFlip(const QJsonObject &req) {
                 // Covers op:"annotate" too, which shares this block: a note
                 // lands in the body and the body is part of the rendered
                 // bullet, so the echo answers "where did my note go?" as well.
-                if (const auto bullet = outcome.touchedBullets.constFind(v1target.id);
-                    bullet != outcome.touchedBullets.constEnd()) {
-                    env[dryRun ? QStringLiteral("would_be_bullet")
-                               : QStringLiteral("bullet")] = bullet.value();
+                // ANTS-5263 — SUPPRESSED under return:"headline_only". That
+                // flag adds `post_bullets`, the compact {id, status,
+                // headline} shape, and until now it ADDED it beside the full
+                // bullet rather than instead of it — so a caller asking for
+                // the compact form got both, which is incoherent and is not
+                // what anyone passing it expects.
+                //
+                // Measured by FinBreak: their project's rules mandate a
+                // dry_run before every write, so an item with accumulated
+                // notes echoed its ENTIRE rendered bullet twice per status
+                // change — once as `would_be_bullet`, once as `bullet` — for
+                // a call appending eight lines they had just composed. Five
+                // scalars were used from the two replies.
+                //
+                // The echo's own coverage (ANTS-4097: see the JOINT result of
+                // several edits to one body) is untouched on the default path,
+                // which is what every existing caller is on. This only obeys a
+                // flag the caller had to opt into.
+                if (!rcReturnHeadlineOnly(req)) {
+                    if (const auto bullet = outcome.touchedBullets.constFind(v1target.id);
+                        bullet != outcome.touchedBullets.constEnd()) {
+                        env[dryRun ? QStringLiteral("would_be_bullet")
+                                   : QStringLiteral("bullet")] = bullet.value();
+                    }
                 }
                 rcRoadmapWriteFields(env, outcome, dryRun);   // ANTS-4463
                 if (!note.isEmpty()) {

@@ -611,8 +611,21 @@ Result commitAndRender(RoadmapStore &store, qint64 projectId,
             // repair was refused by the offenders that remained and rolled
             // back. The batch escape that message prescribed is no longer
             // needed, and the message no longer prescribes it.
+            // ANTS-5267 — CAPPED. This joined every id into the prose with no
+            // limit, which was right while the gate judged only the items a
+            // write TOUCHED: the caller is editing them and naming them all is
+            // the remedy. A whole-project write broke that assumption —
+            // measured on Vestige, 460 ids, ~4 KB of prose then TRUNCATED
+            // MID-LIST by the transport with 1,947 characters cut. The caller
+            // got neither the full list nor a usable summary, and no marker
+            // saying which.
+            //
+            // The structured `gate_failures` array carries every id regardless,
+            // so the prose never needed to. Same treatment as ANTS-5256's
+            // `layman_missing`: cap, state the true total, announce the cut.
+            const QStringList namedGate = dry->gateFailures.mid(0, kNameCap);
             *error = QStringLiteral("the roadmap render refuses this write: %1 open "
-                                    "item(s) it touches carry no Layman: line (%2). Give "
+                                    "item(s) it touches carry no Layman: line (%2%3). Give "
                                     "each one a one-sentence summary — a note sets the column "
                                     "when `Layman:` is first on its own line, whichever line of "
                                     "the note that is, so it can ride along in this same call. "
@@ -620,7 +633,12 @@ Result commitAndRender(RoadmapStore &store, qint64 projectId,
                                     "write touches are judged; the project's other items "
                                     "are not, and cannot block it.")
                          .arg(dry->gateFailures.size())
-                         .arg(dry->gateFailures.join(QStringLiteral(", ")));
+                         .arg(namedGate.join(QStringLiteral(", ")),
+                              dry->gateFailures.size() > namedGate.size()
+                                  ? QStringLiteral(", +%1 more — the full list is "
+                                                   "in `gate_failures`")
+                                        .arg(dry->gateFailures.size() - namedGate.size())
+                                  : QString());
         }
         return abort(Result::GateUnmet);
     }
