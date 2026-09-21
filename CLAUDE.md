@@ -260,8 +260,9 @@ relaunch.** Prefer a design whose behaviour can be re-read, re-registered
 or re-spawned at runtime over one that can only be rebuilt in.
 
 **Why this outranks the usual convenience argument.** This terminal hosts
-the user's Claude Code sessions in its tabs, and `PtyHandler`'s teardown
-kills every child (`SIGHUP` → `SIGTERM` → `SIGKILL`). `SessionManager`
+the user's Claude Code sessions in its tabs, and `~Pty`'s teardown
+(`src/ptyhandler.cpp`) kills every child (`SIGHUP` → `SIGTERM` →
+`SIGKILL`). `SessionManager`
 persists the scrollback and cwd, not the processes. So a relaunch does
 not cost a few seconds — it destroys every in-flight session across every
 project, and the user must stop all of them first. That is the real price
@@ -282,12 +283,18 @@ unavoidable the item says so and says why.
   (`claudeintegration.cpp`, the handler's local `QJsonArray tools`), so
   schema and description text moved to data would go live on a client
   reconnect with no rebuild at all.
-- **Keep the GUI-dependent surface small and named.** ~13 MCP verbs need
-  tab or terminal state; ~80 are file and sqlite work that already run
-  off the GUI thread and are exercised with `RemoteControl(nullptr)` in
-  111 test files (measured 2026-09-21). A new verb that does not need the window must not
-  acquire a dependency on it — that is what keeps ANTS-4932's
-  out-of-process split reachable.
+- **Keep the GUI-dependent surface small and named, and two registers
+  name it.** A verb that reads live tab state is classified
+  `CallerCwdContract::TabSpecific` in `src/claudeintegration.cpp`, which
+  is a refusal gate as well as a label — adding one means adding it to
+  that table. That set is narrower than GUI coupling: ANTS-4932 measures
+  the whole seam as eleven `MainWindow` methods, and verbs outside
+  `TabSpecific` do call them. So check both — the table for tab state,
+  those eleven for any window dependency at all. Everything else is file
+  and sqlite work that already runs off the GUI thread and is exercised
+  against a null-`MainWindow` `RemoteControl` across the feature tests.
+  A new verb that does not need the window must not acquire a dependency
+  on it — that is what keeps ANTS-4932's out-of-process split reachable.
 - **A new module earns its reload story before it earns its code.** If
   the honest answer is "only a relaunch", say so in the design and let
   the user weigh it, rather than discovering it after the fact.

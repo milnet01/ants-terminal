@@ -29,3 +29,45 @@ in one always-loaded file. Every loop found pre-existing contradictions
 between passages 40–70 lines apart in the same section — the shape a document
 gets when it is too large for one cold read to hold. Worth considering a
 split; not acted on here.
+
+---
+
+## Second run — 2026-09-21 (ANTS-5274)
+
+Genre: **standard** (pinned). Subject unchanged. Cap 3.
+
+Trigger: global `CLAUDE.md` rule 14 — commit `7902f8f5` added
+§ "Hot reload is the design default (user standing rule, 2026-09-21)",
+a new standing rule stating what every new feature must say about
+reaching a running terminal. That changes what a conformer writes, so
+the test comes out **yes**. Row numbers continue this document's
+history; the first run closed at row 3.
+
+Phases 1a–1c were run by the authoring session and recorded in
+ANTS-5274; 1d onward were run fresh, deliberately, because that session
+held exactly what the cold brief withholds.
+
+| Loop | Date | Lanes | Q1 | Q2 | Q3 | Q4 | Outcome |
+|------|------|-------|----|----|----|----|---------|
+| 4 | 2026-09-21 | 3, cold — genre pinned `standard`; packet ~14 KB carrying windows on `Pty::~Pty`, `sessionmanager.cpp`, the `tools/list` branch and the `TabSpecific` dispatch table, the drive-level `/mnt/Games/CLAUDE.md` § Writing and Editing Documents verbatim, and ANTS-4932's body | 2 | 1 | 1 | n/a | **Four verified, four fixed; one dismissed — and the dismissal is the most useful thing in the loop.** 1d used the project's own `doc_lint` (`doc_integrity`, `doc_citations`, `doc_dedup`, `doc_symbols`) rather than `check-doc-facts`: 0 findings, 18 unresolved symbols all external. **Classes it does not cover, so still open: verbatim quotations of other documents, version-string drift, and census counts.** The last of those is where three of the four findings landed. **All three lanes independently found the same Q1**, the strongest signal available: § Hot reload attributed the teardown to `` `PtyHandler` ``, which is the FILE STEM, not a symbol — `find_definition` over 1159 files returns zero and hints at `src/ptyhandler.cpp`, whose class is `Pty`. The rule's entire cost justification rests on that sentence, so a conformer checking it searches for a class that does not exist. Caught at Phase 1d by `doc_symbols` and deliberately NOT dismissed as external noise, which is what the other 17 were. **All three lanes also found the count bullet**: *"~13 MCP verbs need tab or terminal state; ~80 are file and sqlite work"* is grounded in nothing — the tree ships **95** verbs (`tools/check-readme-claims.sh`), the only formal classification is `CallerCwdContract::TabSpecific` with **seven** members, and ANTS-4932 measures the seam as **eleven `MainWindow` methods**, a different unit. 13 + 80 = 93. **Two lanes found the Q3 beside it**: the bullet orders a conformer to keep the surface *named* and names nothing — no register, no list, no file — so the breach is invisible to the conformer themselves, which is this genre's Q3 test exactly. **One lane found the Q2**: the census breaches the drive-level `/mnt/Games/CLAUDE.md` rule *"No counts, line numbers, or sizes … Name the thing instead"*, which binds here — precedence ruled the same day as CFG-0435 (deeper file wins on conflict, outer binds otherwise) after this run put the question to the session that owns that file. **4a step 3 earned its keep and changed the fix.** The obvious repair — "a verb needing tab state is classified `TabSpecific`" — was drafted, then the refuting case was run rather than the confirming one: all six non-`TabSpecific` `MainWindow` methods (`tabListForRemote`, `tabsAsJson`, `newTabForRemote`, `selectTabForRemote`, `setTabTitleForRemote`, `tokenSavingsSummary`) have callers in the remotecontrol layer, so verbs outside the seven DO couple to the window and the drafted sentence would have shipped false. Fixed as **two registers with distinct meanings** — the table for tab state, the eleven methods for any window dependency — which is what the evidence supports. **THE DISMISSAL: the packet was wrong and two lanes caught it.** Packet fact 9 reported no re-read path for `config.json` or `audit_rules.json`, from a single negative search, and flagged itself as the weakest fact there. Lane 2 spent its one permitted lookup disputing it and found `QFileSystemWatcher *m_configWatcher` at `src/mainwindow.h:658`; lane 3 independently found `audit_rules.json` loaded per run at `src/auditdialog.cpp:916`. Verified after: the watcher is constructed at `src/mainwindow.cpp:1089`, watches the config location and is connected to `MainWindow::onConfigFileChanged`. So the document's *"the cases that already work this way"* is **true**, lane 1's finding against it is dismissed as unverified, and the defect was the orchestrator's packet — which is the brief's *"a lane finding that contradicts the packet is evidence against the PACKET first"* working as designed. **Three open questions resolved clean and are not in the tally**: the `workstation` preset's `-j2` and `-j3` are two correctly-stated different quantities (build `jobs: 3`, test `execution.jobs: 2` in `CMakePresets.json`), and the 680-vs-681 line-count split between lanes is a trailing-newline artefact that moved no citation. **Filed rather than fixed**: ANTS-5276, the same wrong `PtyHandler` symbol in `docs/specs/ANTS-1897.md` (three occurrences, one a grep recipe that matches nothing as written) and `docs/specs/ANTS-1113.md` — neighbouring gated documents, so not repaired in passing. |
+
+### Disclosure — this loop did not get a cold read, and says so
+
+**All three lanes arrived holding the unscrubbed subject.** The document
+is a project `CLAUDE.md`, so the harness injects its full text into every
+subagent as project instructions before dispatch. Phase 2's scrubbed copy
+and the lane-side `exclude_glob` defend the *path* to the bytes; the
+harness delivers the bytes directly. Lane 2 passed the exclusion
+correctly, said so, and it bought nothing.
+
+All three also arrived holding the git snapshot naming both arming
+commits — including `7902f8f5 CLAUDE.md: hot reload is the design
+default` — and an auto-memory index naming the standing rule itself.
+
+**What did hold: nothing in any lane's context named a previous review of
+this document or its findings.** 3 of 3. The withholding of review
+history worked; the withholding of the subject is inert for this genre.
+
+Reported to the session owning `~/.claude`, pooled with six lanes from a
+second project — 9 of 9 across two projects — and folded into the shared
+cold-reader-contamination reference as CFG-0444.
