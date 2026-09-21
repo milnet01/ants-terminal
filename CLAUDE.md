@@ -253,6 +253,59 @@ invariants: `tests/features/prepush_asan_gate/spec.md`.
   [`docs/qa/e2e/cases.md`](docs/qa/e2e/cases.md); how-to + case format:
   [`docs/qa/e2e/README.md`](docs/qa/e2e/README.md).
 
+## Hot reload is the design default (user standing rule, 2026-09-21)
+
+**Every new feature states how it reaches a running terminal without a
+relaunch.** Prefer a design whose behaviour can be re-read, re-registered
+or re-spawned at runtime over one that can only be rebuilt in.
+
+**Why this outranks the usual convenience argument.** This terminal hosts
+the user's Claude Code sessions in its tabs, and `PtyHandler`'s teardown
+kills every child (`SIGHUP` → `SIGTERM` → `SIGKILL`). `SessionManager`
+persists the scrollback and cwd, not the processes. So a relaunch does
+not cost a few seconds — it destroys every in-flight session across every
+project, and the user must stop all of them first. That is the real price
+of every compiled-in change.
+
+**The test, applied at design time and stated in the spec or the roadmap
+item:** *what would a user have to restart to get this change?* Three
+acceptable answers — nothing; a re-read of a file; a reconnect by the
+client. "The terminal" is the answer to avoid, and where it is
+unavoidable the item says so and says why.
+
+**What this means concretely, cheapest first.**
+
+- **Behaviour that is DATA reloads; behaviour that is CODE does not.** A
+  rule pack, a schema, a description, a theme, a keymap, a template
+  belongs in a file the process re-reads, not in a string literal. The
+  MCP tool list is already rebuilt per `tools/list` request
+  (`claudeintegration.cpp`, the handler's local `QJsonArray tools`), so
+  schema and description text moved to data would go live on a client
+  reconnect with no rebuild at all.
+- **Keep the GUI-dependent surface small and named.** ~13 MCP verbs need
+  tab or terminal state; ~80 are file and sqlite work that already run
+  off the GUI thread and are exercised with `RemoteControl(nullptr)` in
+  111 test files (measured 2026-09-21). A new verb that does not need the window must not
+  acquire a dependency on it — that is what keeps ANTS-4932's
+  out-of-process split reachable.
+- **A new module earns its reload story before it earns its code.** If
+  the honest answer is "only a relaunch", say so in the design and let
+  the user weigh it, rather than discovering it after the fact.
+
+**What this rule does NOT require, so it does not fire on everything.**
+It does not demand a plugin system, does not forbid compiled code, and
+does not apply to a bug fix in existing behaviour, a test, a document or
+a version bump. It governs NEW features and NEW modules at design time.
+Retrofitting an existing subsystem is a roadmap item to be weighed, never
+an obligation this rule imposes.
+
+**The standing exception, stated honestly.** Compiled C++ cannot hot
+reload in-process, and this project is compiled C++. So the rule is about
+where BEHAVIOUR lives and how the process is DIVIDED, not about pretending
+the language is something else. ANTS-4932 is the structural instance;
+`config.json`, `audit_rules.json` and the Lua sandbox are the cases that
+already work this way and are the models to copy.
+
 ## Conventions
 
 - Signals/slots for cross-component comms.
