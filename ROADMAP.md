@@ -49709,6 +49709,61 @@ are closed inline in the feedback files rather than filed here.
   Source: cc-feedback-2026-09-21 (claude-config), from three cold-reader gate loops on the derived standard.
   Lanes: docs, colony.
 
+- 📋 [ANTS-5260] **op:"convert"'s pre-flight reports the id axis and says nothing about whether prose survives.**
+  ANTS-5252 and ANTS-5258 give the convert a reviewable ID axis: per bullet,
+  what the file holds, what the load did with it, and whether a pairing
+  rested on order. Vestige's point is that a one-way rewrite has a SECOND
+  axis and the report is silent on it — did the prose survive?
+
+  MEASURED by them on project 13, roadmap_query mode:"report"
+  check_sync:true —
+
+      file_in_sync        false
+      drift_lines         6415
+      drift_lost          2840
+      drift_restyled       370
+      drift_restructured    82
+
+  `drift_lost_text` opens with their entire "How this file is organised"
+  preamble — the narration explaining the release-heading grouping and the
+  filing instructions naming every targetable slug. That is precisely the
+  text a future session reads to learn how to file into that roadmap.
+
+  NOT A CLAIMED DEFECT, and their caution is right. check_sync renders the
+  store AS IT STANDS against the current file, and those rows were loaded
+  before that preamble was written, so of course the render lacks it. A
+  CONVERT re-migrates first, and migrate's `coverage_hint` says every
+  non-blank line is carried as a `narration` or `table` element under its
+  section — so a convert may well preserve all of it. Unverified either
+  way; that verification is the first half of this item.
+
+  THE GAP REGARDLESS. Nothing in the id report would have told them about
+  those 2,840 lines. For a one-way rewrite of a version-controlled file a
+  caller wants both axes, and today the second one is only reachable by
+  running a separate verb and knowing to.
+
+  SHAPE, cheapest first: have the convert's envelope carry the same drift
+  triple computed against the POST-convert render, which is the number that
+  actually answers the question — the pre-convert figure measures the stale
+  store and is the one that misleads. Failing that, a narration-preserved
+  count. Failing both, document that the pre-flight is three steps (id
+  report, drift check, diff) rather than two, because right now a caller
+  reasonably reads the id report as the whole review.
+
+  FREE EVIDENCE COMING: Vestige will run check_sync immediately before and
+  after their first convert dry run and send both. Project 13 is the
+  largest and messiest input this op will ever meet — 1,026 items, 989 GFM
+  bullets, 107 non-GFM, mixed dialect — and no fixture here approaches it.
+
+  Related, from the same session: their standing memory since August said
+  "drop-and-reimport beats reconciling the drift". 2,840 lost lines and 82
+  restructured sections is what that guess was worth. A naive reimport is
+  not free.
+  **Layman:** Before a bulk conversion you can now check that no entry's number changes, but nothing tells you whether the explanatory text around them survives the rewrite.
+  Kind: enhancement.
+  Source: cc-feedback-2026-09-21 (Vestige), measured on project 13.
+  Lanes: mcp, roadmap-store.
+
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-08-20 triage
 
 Thirty pending findings across ten feedback files, triaged 2026-08-20. Six
