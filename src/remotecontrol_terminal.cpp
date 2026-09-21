@@ -1452,7 +1452,13 @@ bool rcdetail::rcRoadmapIdLess(const QString &a, const QString &b) {
     auto suffix = [](const QString &id, bool *ok) -> qlonglong {
         const int dash = id.lastIndexOf(QLatin1Char('-'));
         if (dash < 0 || dash + 1 >= id.size()) { *ok = false; return 0; }
-        return id.mid(dash + 1).toLongLong(ok);
+        // ANTS-4500 § 4.4 — step past the synthesis namespace's `S` so a
+        // synthesised id orders by its own number. Without this it falls to the
+        // lexicographic branch below, which puts `-S10000` before `-S9999`.
+        int start = dash + 1;
+        if (id.at(start) == QLatin1Char('S') && start + 1 < id.size())
+            ++start;
+        return id.mid(start).toLongLong(ok);
     };
     bool okA = false, okB = false;
     const qlonglong na = suffix(a, &okA);

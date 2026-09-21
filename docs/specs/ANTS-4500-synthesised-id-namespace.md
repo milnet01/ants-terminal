@@ -164,8 +164,19 @@ is about, and widening it is what makes INV-4 pass.
 | `rcIsNonconformingIdToken` | `src/remotecontrol.cpp` | diagnostic only — see below |
 | `looksLikeRoadmapId` | `src/findsources.cpp` | recognises a roadmap id in prose — widen |
 | `rcdetail::rcRoadmapIdLess` | `src/remotecontrol_terminal.cpp` | ordering — widen |
+| `rxAntsV1IdBracket` | `src/remotecontrol.cpp` | **the WRITE path's id bracket** — widen |
 
-The four rows marked *widen* admit the `-S` infix. `rcIsNonconformingIdToken` is left unchanged — neither of its regexes is touched, for the reason below.
+The five rows marked *widen* admit the `-S` infix. `rcIsNonconformingIdToken` is left unchanged — neither of its regexes is touched, for the reason below.
+
+**`rxAntsV1IdBracket` was added 2026-09-21, by implementation.** The table
+above called `idTokenPattern()` *the* addressability gate, and it gates only the
+READ half. `roadmap_log`'s write locators parse the file with
+`walkAntsV1Bullets()`, which carries its own bracket regex, so INV-4 failed with
+the read resolving `DEMO-S0001` and `op:"annotate"` refusing `bullet_not_found`
+against the same id. That symbol's own history is this divergence recurring:
+ANTS-2051 taught it lowercase prefixes and ANTS-4109 the bold-ID form, both
+reported as "roadmap_query resolves it and roadmap_log matches zero bullets".
+Widen the write path whenever the read path widens.
 
 **`rcIsNonconformingIdToken` is a diagnostic and resolves nothing.** It
 returns true only for a token that is id-*ish* but non-canonical, so callers

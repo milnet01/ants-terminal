@@ -2515,6 +2515,11 @@ if(ANTS_TESTS)
                 # migration left behind.
                 tests/features/roadmap_repair_trailers/test_roadmap_repair_trailers.cpp
                 tests/features/roadmap_alloc_store_floor/test_roadmap_alloc_store_floor.cpp
+                # ANTS-4500 — a synthesised id gets its own namespace and its
+                # own counter. Here rather than in test_core: the cases drive
+                # roadmap_log through RemoteControl, whose externals the core
+                # bundle's subset link does not carry.
+                tests/features/roadmap_synth_id/test_synth_id.cpp
                 tests/features/roadmap_subdir_dispatch/test_roadmap_subdir_dispatch.cpp
                 # ANTS-4070 — rotate a closed minor into its archive, and
                 # retitle a section. Same shape as roadmap_write_half: through

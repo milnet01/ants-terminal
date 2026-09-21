@@ -93,6 +93,15 @@ struct Field {
     bool    planEmpty = false, storedEmpty = false;
 };
 
+// ANTS-4500 § 4.2 — the id_prefix key the synthesis counter lives under.
+// `#` and not a `-S` SUFFIX: a declared prefix is [A-Za-z][A-Za-z0-9_-]{0,63}
+// (src/main.cpp), so `#` cannot occur in one and the exclusion is structural. A
+// suffix test would hide the real counter of a project whose declared prefix
+// legitimately ends `-S`. The key is internal and reaches no rendered id.
+QString synthCounterKey(const QString &prefix) {
+    return prefix + QStringLiteral("#S");
+}
+
 QVector<Field> fieldsOf(const PlannedItem &it, const RoadmapStore::ItemWrite &cur) {
     const auto plain = [](const QString &column, const QString &p, const QString &s) {
         return Field{column, p, s, p.isEmpty(), s.isEmpty()};
@@ -522,6 +531,58 @@ bool Loader::matchItems() {
             consumed.insert(candidates.first());
         }
     }
+
+    // ANTS-4500 § 4.5 — an id-BEARING item that matched no stored id falls back
+    // to § 2.6.1's key before being treated as new. Not optional: a stored row
+    // holds `DEMO-S0001` while the person filing that item by hand writes a
+    // conventional id, so § 2.6's match fails and the migration produces a
+    // fresh insert PLUS an orphan. ANTS-4343 is evidence that path is used.
+    //
+    // THIRD, after the id-less pass and not interleaved with it, on that pass's
+    // own argument: this claim is exactly as weak as § 2.6.1's and must not
+    // consume a row the sanctioned weak claim needs.
+    for (qsizetype i = 0; i < plan.items.size(); ++i) {
+        const PlannedItem &it = plan.items.at(i);
+        if (it.id.isEmpty() || matchPk.at(i))
+            continue;
+        const qint64 sectionId = sectionIds.value(it.sectionSlug, 0);
+        QVector<qint64> candidates;
+        for (const RoadmapStore::ItemRef &r : existing) {
+            if (r.sectionId == sectionId && r.idFromMigration &&
+                r.headline == it.headline && !consumed.contains(r.itemPk))
+                candidates.push_back(r.itemPk);
+        }
+        if (candidates.isEmpty())
+            continue;
+        if (candidates.size() > 1)
+            note("ambiguous_rematch", it.headline);
+        const qint64 pk = candidates.first();
+        matchPk[i] = pk;
+        consumed.insert(pk);
+
+        // THE SOURCE'S ID WINS. Keeping the stored `-S` id would make the next
+        // render overwrite the author's own hand-written id in ROADMAP.md,
+        // which is the file losing an authored edit. Nothing cites a
+        // synthesised id by contract — § 4.1's whole purpose is to mark it as
+        // not a citation target — so replacing it costs nothing the stored id
+        // was carrying. `element` and `history` key on item_pk, not on the id
+        // string, so they follow the row.
+        const auto cur = store.readItem(pk, &err);
+        if (!cur)
+            return fail(err.isEmpty() ? QStringLiteral("no such item %1").arg(pk) : err);
+        if (cur->id == it.id)
+            continue;
+        if (!store.reassignItemId(pk, it.id, &err))
+            return fail(err);
+        err.clear();
+        const auto storedSeq = store.maxHistorySeq(pk, opts.changedAt, &err);
+        if (!err.isEmpty())
+            return fail(err);
+        int seq = storedSeq.value_or(-1) + 1;
+        if (!recordHistory(pk, QStringLiteral("id"), cur->id, it.id, &seq))
+            return false;
+        note("id_reassigned", QStringLiteral("%1 -> %2").arg(cur->id, it.id));
+    }
     return true;
 }
 
@@ -701,37 +762,46 @@ bool Loader::allocateId(QString *allocated) {
             }
         }
 
-        // § 2.8 step 2, and step 4 when neither term yields anything. The
-        // maximum numeric suffix among the plan's parsed ids carrying this
-        // prefix, and the stored high-water, and the HIGHER of the two.
-        // Quarantined and synthesised ids are excluded from both: a PASS-43-5
-        // comes from a heading, not from the counter, and would otherwise set
-        // the high-water to 5.
+        // ANTS-4500 § 4.2 — the floor for a SYNTHESIS allocation, which is a
+        // different question from § 2.8 step 2's. That step floors the REAL
+        // prefix and is untouched here: an invented id no longer draws from it,
+        // so nothing in this function reads it any more.
         //
-        // The spec reads "`idHighWater()` when the row exists, OTHERWISE the
-        // plan's maximum" and taking it literally is a defect (2026-08-13).
-        // The two terms record different things: the stored row is what THIS
-        // STORE has allocated, the plan's maximum is what the SOURCE FILE
-        // already contains — and a project files ids into ROADMAP.md between
-        // migrations, through `roadmap_log`'s markdown path or by hand, without
-        // the store hearing about it. So the file routinely runs ahead, and
-        // preferring the stored row alone re-issues an id the source is already
-        // using. The next id-less bullet is then inserted under a live id:
-        // UNIQUE (project_id, id_fold), which rolls back the entire project.
-        // Neither term dominates, so neither can be the one that wins.
+        // Three terms, and none dominates. Step 2's own 2026-08-13 amendment
+        // exists because a single term was measured wrong on this project; the
+        // synthesis namespace has that same exposure plus one more, because its
+        // ids can reach the file and come back.
+        //
+        //   1. the stored `<prefix>#S` counter row;
+        //   2. the maximum S-suffix among the project's STORED ids; and
+        //   3. the maximum S-suffix among the PLAN's parsed ids.
+        //
+        // Term 3 is the one that covers a store restored behind its file. Terms
+        // 1 and 2 both read the store, so a restore that lost the `item` rows
+        // loses both; only the plan sees what the file already holds.
         err.clear();
-        const auto storedHigh = store.idHighWater(projectId, prefix, &err);
+        const auto storedHigh = store.idHighWater(projectId, synthCounterKey(prefix), &err);
         if (!err.isEmpty())
             return fail(err);
         highWater = storedHigh ? *storedHigh : 0;
+
+        err.clear();
+        const auto storedMax = store.maxSynthesisedId(projectId, prefix, &err);
+        if (!err.isEmpty())
+            return fail(err);
+        if (storedMax && *storedMax > highWater)
+            highWater = *storedMax;
+
+        // Matched on the whole `<prefix>-S` lead rather than on the final '-':
+        // the suffix of a synthesised id is not an integer, so step 2's parse
+        // rejects it — which is exactly what keeps it out of the REAL prefix's
+        // floor, and equally what leaves it invisible here without this loop.
+        const QString synthLead = prefix + QStringLiteral("-S");
         for (const PlannedItem &p : plan.items) {
-            if (p.idOrigin != QLatin1String("parsed"))
-                continue;
-            const int cut = p.id.lastIndexOf(QLatin1Char('-'));
-            if (cut <= 0 || p.id.left(cut) != prefix)
+            if (p.idOrigin != QLatin1String("parsed") || !p.id.startsWith(synthLead))
                 continue;
             bool isInt = false;
-            const qint64 n = p.id.mid(cut + 1).toLongLong(&isInt);
+            const qint64 n = p.id.mid(synthLead.size()).toLongLong(&isInt);
             if (isInt && n > highWater)
                 highWater = n;
         }
@@ -739,11 +809,12 @@ bool Loader::allocateId(QString *allocated) {
     }
 
     ++highWater;
-    // Zero-padded to four digits, and wider once the counter passes them —
-    // roadmap-format.md § 3.5.1's own form. Left unstated an implementer
-    // invents a width, and the choice is permanent: it is baked into every
-    // stored id and every citation of it thereafter.
-    *allocated = QStringLiteral("%1-%2").arg(
+    // ANTS-4500 § 4.1 — the `-S` infix marks the id as INVENTED, so a reader
+    // can tell at sight which ids are quotable. Zero-padded to four digits and
+    // wider once the counter passes them, mirroring the allocated form
+    // roadmap-format.md § 3.5.1 pins. The choice is permanent: it is baked into
+    // every stored id and every citation of it thereafter.
+    *allocated = QStringLiteral("%1-S%2").arg(
         prefix, QString::number(highWater).rightJustified(4, QLatin1Char('0')));
     ++out.idsAllocated;
     note("id_allocated", *allocated);
@@ -955,9 +1026,28 @@ bool Loader::writeTail() {
     // id_prefix untouched, which is what makes INV-6's first-run leg — no row
     // at all after a failed load — an assertion about the rollback rather than
     // about this branch.
-    if (out.idsAllocated > 0 &&
-        !store.raiseIdHighWater(projectId, prefix, highWater, &err))
-        return fail(err);
+    if (out.idsAllocated > 0) {
+        // ANTS-4500 § 4.2 — the SYNTHESIS counter, under a key no declared
+        // prefix can collide with. This is what stops invented ids spending the
+        // space real items allocate from.
+        if (!store.raiseIdHighWater(projectId, synthCounterKey(prefix), highWater, &err))
+            return fail(err);
+        // And the real prefix's row, ENSURED rather than advanced. Without it a
+        // wholly-synthesised project carries only a `#S` row, so idPrefixFor()
+        // finds nothing: fold-in gives up on an empty result and the append
+        // allocator falls through to a directory-leaf guess, which is two id
+        // families in one store. Three corpus projects are synthesised in full,
+        // so this is the expected case there, not an edge.
+        //
+        // The value stays 0 deliberately. What this project has actually
+        // allocated is maxAllocatedId()'s to report — it reads the ids off the
+        // items and cannot be wrong — and allocationFloor() takes both. Writing
+        // a computed number here would be a second, weaker producer of the same
+        // fact. raiseIdHighWater() is upward-only, so this never lowers an
+        // existing row.
+        if (!store.raiseIdHighWater(projectId, prefix, 0, &err))
+            return fail(err);
+    }
     return true;
 }
 

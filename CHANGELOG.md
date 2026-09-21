@@ -97,6 +97,15 @@ for security-relevant changes.
 
 ### Changed
 
+- **An id invented by migration now reads `ANTS-S0001` and draws from its own counter** (ANTS-4500)
+  Migrating a roadmap invents an id for any bullet that carries none. Those
+  ids now carry an `-S` infix, so you can tell an invented id from one you
+  chose at a glance, and they no longer spend the numbers real items are
+  waiting for. Invented ids stay fully usable — you can fetch, flip and
+  annotate them exactly as before. Ids already invented keep their existing
+  names. Where you later write a real id onto such a bullet by hand, the next
+  migration adopts yours instead of overwriting it.
+
 - **An oversized result now suggests asking for less, not just re-reading it** (ANTS-4850)
   When a reply is too big it is stored and handed back as a handle. The
   message explaining how to read it now also points out the usually cheaper

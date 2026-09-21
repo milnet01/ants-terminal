@@ -1640,7 +1640,15 @@ QString idTokenPattern() {
     // (3D_E-0042). Bare, unanchored fragment shared by parseBullets
     // (bracket-anchored) and parseShippedDates (\b-anchored); the leading
     // lookahead splices safely into both.
-    return QStringLiteral("(?=[A-Za-z0-9_-]*[A-Za-z])[A-Za-z0-9][A-Za-z0-9_-]*-\\d+");
+    //
+    // ANTS-4500 § 4.4 — the optional `S` admits the SYNTHESIS namespace
+    // (`DEMO-S0001`). This pattern is the addressability gate, not a
+    // diagnostic: a token failing it is not parsed as a project id at all, the
+    // bullet takes a content-hash id instead, and the authored token is
+    // unreachable by every id locator. `S?` and not `[A-Za-z]?` — one reserved
+    // letter, so a typo'd suffix still refuses rather than silently becoming a
+    // namespace of its own.
+    return QStringLiteral("(?=[A-Za-z0-9_-]*[A-Za-z])[A-Za-z0-9][A-Za-z0-9_-]*-S?\\d+");
 }
 
 // Detect format by scanning the head of the document for one of

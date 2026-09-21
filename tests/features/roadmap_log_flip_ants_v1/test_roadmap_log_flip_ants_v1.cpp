@@ -33,7 +33,9 @@ TEST(roadmap_log_flip_ants_v1, Inv1WalkerAnchors) {
     // ANTS-3492 — the lead is now alphanumeric: a digit-led prefix that
     // contains a letter (`[3D_E-0042]`) is recognised, gated by a
     // contains-a-letter lookahead so `[2026-07]` is still not an id.
-    expect(contains(cpp, "[A-Za-z0-9][A-Za-z0-9_-]*-\\\\d{1,8}"),
+    // ANTS-4500 — `S?` admits the synthesis namespace (`[DEMO-S0001]`), so the
+    // write path resolves a synthesised id the read path already parsed.
+    expect(contains(cpp, "[A-Za-z0-9][A-Za-z0-9_-]*-S?\\\\d{1,8}"),
            "INV-1: regex matches PREFIX-NNNN id shape, alphanumeric lead "
            "(ANTS-2051 lowercase; ANTS-3492 digit-led-if-letter-containing)");
     expect(!contains(cpp, "[A-Z][A-Z0-9_-]*-\\\\d{1,8}"),

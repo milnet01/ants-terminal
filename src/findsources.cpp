@@ -35,7 +35,10 @@ bool looksLikeRoadmapId(const QString &t) {
     // INV-1 — drop bare ANTS-NNNN tokens. Including them in the regex
     // matches roadmap-id text that almost never lives in source code,
     // wasting the per-file scan budget on a guaranteed miss.
-    static const QRegularExpression rx(QStringLiteral("^[A-Z]{2,8}-\\d+$"));
+    //
+    // ANTS-4500 § 4.4 — `S?` so a synthesised id is recognised as a roadmap id
+    // here too, and dropped for the same reason a declared one is.
+    static const QRegularExpression rx(QStringLiteral("^[A-Z]{2,8}-S?\\d+$"));
     return rx.match(t).hasMatch();
 }
 

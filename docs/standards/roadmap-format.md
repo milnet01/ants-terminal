@@ -302,6 +302,18 @@ The ID is a project-prefixed monotonic integer:
   survives rewording, moving, status flips, and even being
   deleted (a deleted ID is *retired*; the next new bullet uses
   the next free number, not the deleted one).
+- **Synthesised IDs carry an `-S` infix** — `ANTS-S0001` (ANTS-4500,
+  `docs/specs/ANTS-4500-synthesised-id-namespace.md`). Migration INVENTS an id
+  for a bullet that carries none, and the infix is what lets a reader tell an
+  invented id from an allocated one at sight. **An invented id is not a
+  citation target**: do not quote one in a commit message, a spec or another
+  item. It is addressable — fetch, flip and annotate all resolve it — so the
+  grammar above reads `-S?\d+` on both the read and the write side. The number
+  is padded by the same rule, and the two namespaces have separate counters, so
+  `ANTS-S0001` and `ANTS-0001` are different items and never collide.
+  **Append-only applies to an invented id too, with one exception**: where a
+  later source file declares a real id for that same bullet, migration adopts
+  the author's id and records the change in history (ANTS-3765 § 2.6.1).
 
 **A project may DECLARE its own id grammar** in `.ants/project.json`
 (ANTS-3771, `docs/specs/ANTS-3771-id-format-declaration.md`):
@@ -1099,6 +1111,12 @@ the tooling is a narrow `op:flip` anchor helper, not id handling:
   in `remotecontrol_roadmap_log.cpp`), but it is used *only* when injecting a
   caret anchor onto a GFM bullet that has no id — it never
   constrains id allocation.
+
+**A prefix may not contain `#`.** The character is reserved: a store-migrated
+project keeps its synthesis counter (§ 3.5.1) in a second `id_prefix` row keyed
+`<prefix>#S`, and the readers that pick a project's allocation prefix ignore any
+row containing one. The exclusion is structural rather than a suffix test, so a
+project whose declared prefix legitimately ends `-S` keeps its own counter.
 
 The single-prefix rule is convention because it keeps
 `.roadmap-counter` unambiguous: the file holds a single integer and

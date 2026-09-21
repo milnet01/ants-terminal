@@ -47437,7 +47437,7 @@ are closed inline in the feedback files rather than filed here.
   Source: cc-feedback-2026-08-18 (Local Web Server Manager), split from ANTS-4486 on 2026-08-19.
   Lanes: mcp, roadmap-store.
 
-- 📋 [ANTS-4500] **Id synthesis draws from the project's live id space, so a synthesised id cannot be cited.**
+- ✅ [ANTS-4500] **Id synthesis draws from the project's live id space, so a synthesised id cannot be cited.**
   ANTS-4493's first defect, filed separately because its second shipped
   2026-08-19 and this one is a design change rather than a missing floor.
 
@@ -47560,6 +47560,21 @@ are closed inline in the feedback files rather than filed here.
   Specced 2026-09-20 as docs/specs/ANTS-4500-synthesised-id-namespace.md,
   one of four sharing a review gate. The three prerequisites and the two
   user decisions are recorded in the annotation above.
+  Resolved (2026-09-21): synthesis renders `<prefix>-S<NNNN>` from a
+  counter kept at `<prefix>#S`, which no declared prefix can collide with
+  because `#` is outside the prefix charset. The floor is three terms —
+  the counter row, `RoadmapStore::maxSynthesisedId()`, and the plan's own
+  parsed `-S` ids — the third covering a store restored behind its file.
+  Migration also ensures the real prefix's `id_prefix` row exists, at
+  zero, so `idPrefixFor()` still resolves on a wholly-synthesised
+  project; that reader now ignores any prefix containing `#`.
+  The id grammar widened in five places, not the four the spec listed:
+  implementation found `rxAntsV1IdBracket`, the WRITE path's own bracket
+  regex, which left a synthesised id readable but unwritable. The spec's
+  § 4.4 table is amended to carry it.
+  Covered by tests/features/roadmap_synth_id/ (INV-1 to INV-9); eight of
+  the nine were seen red first, and INV-7 was proved by reverting the
+  `#` exclusion alone. Full suite green.
   **Layman:** When the migration invents a number for an item that has none, it takes it from the same pool real items use — so the number can move later, and nothing that quoted it still points at the right item.
   Kind: fix.
   Source: cc-feedback-2026-08-18 (Vestige), split from ANTS-4493 on 2026-08-19.
@@ -49251,6 +49266,54 @@ are closed inline in the feedback files rather than filed here.
   Kind: doc-fix.
   Source: in-session-2026-09-20, found while gating ANTS-4500.
   Lanes: mcp, roadmap-store.
+
+- 📋 [ANTS-5250] **The roadmap dialog's own id regexes do not admit the `-S` infix, so a synthesised item is invisible to its id-keyed views.**
+  ANTS-4500 widened the id grammar on every surface that decides
+  ADDRESSABILITY — the parser, the canonical-id predicate, the write
+  path's bracket, the ordering helper and findsources. `roadmapdialog.cpp`
+  carries two more id regexes of its own, both still `-\\d+`:
+  `renderCardsHtml`'s headline-trailer strip and `rxInProgress`'s
+  `[ID]` extraction.
+
+  Not widened with the rest, deliberately: no ANTS-4500 invariant needs
+  them, and `coding.md` § 1.7 says a changed line traces to the reason you
+  are in the file. They are display-only, so the failure is cosmetic
+  rather than a lost write.
+
+  Check what each actually does to a `PROJ-S0001` card before changing
+  either — the dialog reads the rendered file, and the two regexes serve
+  different jobs.
+
+  Evidence: src/roadmapdialog.cpp, the two `[A-Za-z0-9_-]*-\\d+` literals.
+  **Layman:** In the roadmap window, items whose number was invented by the migration may not show up in the places that look items up by number.
+  Kind: fix.
+  Source: in-session-2026-09-21 (found implementing ANTS-4500).
+  Lanes: roadmap-dialog.
+
+- 📋 [ANTS-5251] **build_target_for answers `found:false` for a new test source but cannot suggest which bundle should own it.**
+  `found:false` on a not-yet-wired source is the documented, correct
+  answer, and the schema says so. What it leaves the caller to do is guess
+  the bundle from a sibling test — and siblings disagree. Measured this
+  session: `tests/features/roadmap_migrate_load/` builds into `test_core`
+  while `tests/features/roadmap_alloc_store_floor/` builds into
+  `test_claude`. Picking the first sibling put a new roadmap-store test in
+  `test_core`, where the subset link could not resolve `RemoteControl`'s
+  externals, and the answer arrived as ~30 lines of mold `undefined
+  symbol` — one full build cycle to learn something a read of the file's
+  includes would have settled.
+
+  Proposal: on `found:false`, return `candidate_targets[]` ranked by which
+  bundles already compile sources including the same project headers. The
+  input is the new file's `#include` list and the bundles' existing
+  SOURCES, both of which this verb already parses or can read.
+
+  CLAUDE.md already warns that bundles are not guessable from the path and
+  tells you to ask this verb. It answers the question for a wired file and
+  not for a new one, which is exactly when it is asked.
+  **Layman:** When you add a new test file, the tool that says which build target owns it correctly reports that nothing does yet — but it can't tell you where to put it, which is the thing you actually needed.
+  Kind: enhancement.
+  Source: in-session-2026-09-21 (Ants MCP improvement noted while implementing ANTS-4500).
+  Lanes: mcp, build.
 
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-08-20 triage
 

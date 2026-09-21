@@ -249,8 +249,13 @@ TEST(RoadmapMigrateLoad, IdBearingItemClaimsItsRowBeforeAnIdlessRematch) {
         f.opts());
     ASSERT_TRUE(first.ok) << first.error.toStdString();
     ASSERT_EQ(first.idsAllocated, 1);
+    // ANTS-4500 — synthesis draws from its own namespace, so the invented id is
+    // PROJ-S0001 and not PROJ-0001. That is what removes this collision's
+    // PRECONDITION: the author's hand-filed PROJ-0001 can no longer name a row
+    // an invented id already took. The two-pass ordering below is still what
+    // this case guards, and is still asserted.
     ASSERT_EQ(f.scalar(QStringLiteral("SELECT id FROM item")),
-              QStringLiteral("PROJ-0001"));
+              QStringLiteral("PROJ-S0001"));
 
     // The id-less bullet is still id-less in source and still comes FIRST in
     // document order; the author's own PROJ-0001 arrives after it.
@@ -263,18 +268,21 @@ TEST(RoadmapMigrateLoad, IdBearingItemClaimsItsRowBeforeAnIdlessRematch) {
     ASSERT_TRUE(again.ok)
         << "a duplicate id must not abort the project: " << again.error.toStdString();
 
-    // The id owns the row it names, so PROJ-0001 is now the author's bullet...
+    // The id owns the row it names, so PROJ-0001 is the author's bullet...
     EXPECT_EQ(f.scalar(QStringLiteral(
                   "SELECT headline FROM item WHERE id = 'PROJ-0001'")),
               QStringLiteral("filed by hand"));
-    // ...and the displaced id-less bullet is re-inserted above the high-water
-    // rather than lost — the degradation § 2.6.1 already accepts.
+    // ...and the id-less bullet is no longer DISPLACED at all. Before ANTS-4500
+    // it had taken PROJ-0001, lost the row to the author's bullet, and been
+    // re-inserted above the high-water as PROJ-0002 — the degradation § 2.6.1
+    // accepts. Now it holds PROJ-S0001, which nothing else can claim, so it
+    // keeps its row and its id and this run allocates nothing.
     EXPECT_EQ(f.count(QStringLiteral("item")), 2);
     EXPECT_EQ(again.itemsInserted, 1);
-    EXPECT_EQ(again.idsAllocated, 1);
+    EXPECT_EQ(again.idsAllocated, 0);
     EXPECT_EQ(f.scalar(QStringLiteral(
                   "SELECT id FROM item WHERE headline = 'one'")),
-              QStringLiteral("PROJ-0002"));
+              QStringLiteral("PROJ-S0001"));
 }
 
 // The same collision from the other side, and the root cause of it. § 2.8 step
@@ -296,11 +304,22 @@ TEST(RoadmapMigrateLoad, AllocationClearsTheSourceFilesOwnIdsNotJustTheStores) {
                 item(QString(), QStringLiteral("one"), QStringLiteral("s"), 1)}),
         f.opts());
     ASSERT_TRUE(first.ok) << first.error.toStdString();
+    // ANTS-4500 — the invented id comes from the SYNTHESIS namespace, so the
+    // file's own PROJ-0005 no longer bounds it: the two live in different
+    // spaces and cannot collide. The file-side term that still matters is the
+    // synthesis floor's third, over the plan's own `-S` ids, and
+    // tests/features/roadmap_synth_id/ INV-3 owns it.
     ASSERT_EQ(f.scalar(QStringLiteral(
                   "SELECT id FROM item WHERE headline = 'one'")),
-              QStringLiteral("PROJ-0006"));
-    ASSERT_EQ(f.scalar(QStringLiteral("SELECT high_water FROM id_prefix")),
-              QStringLiteral("6"));
+              QStringLiteral("PROJ-S0001"));
+    ASSERT_EQ(f.scalar(QStringLiteral(
+                  "SELECT high_water FROM id_prefix WHERE prefix = 'PROJ#S'")),
+              QStringLiteral("1"));
+    // The real counter is ENSURED so idPrefixFor() can resolve the project's
+    // prefix, and left at zero: synthesis does not spend the real space.
+    ASSERT_EQ(f.scalar(QStringLiteral(
+                  "SELECT high_water FROM id_prefix WHERE prefix = 'PROJ'")),
+              QStringLiteral("0"));
 
     // Between runs a human files PROJ-0007 straight into the source file, and
     // adds one more bullet with no id. The store's high-water still says 6.
@@ -319,8 +338,8 @@ TEST(RoadmapMigrateLoad, AllocationClearsTheSourceFilesOwnIdsNotJustTheStores) {
 
     EXPECT_EQ(f.scalar(QStringLiteral(
                   "SELECT id FROM item WHERE headline = 'two'")),
-              QStringLiteral("PROJ-0008"))
-        << "PROJ-0007 is live in the source, so the next free id is 0008";
+              QStringLiteral("PROJ-S0002"))
+        << "the second invented id continues the synthesis counter";
     EXPECT_EQ(f.scalar(QStringLiteral(
                   "SELECT headline FROM item WHERE id = 'PROJ-0007'")),
               QStringLiteral("seven"));
@@ -543,7 +562,11 @@ TEST(RoadmapMigrateLoad, Inv6RolledBackLoadAllocatesNoId) {
     items[1].status = QStringLiteral("planned");
     const auto ok = RoadmapMigrateLoad::load(f.store, planOf(items), f.opts());
     ASSERT_TRUE(ok.ok) << ok.error.toStdString();
-    const QString prefix = f.scalar(QStringLiteral("SELECT prefix FROM id_prefix"));
+    // ANTS-4500 — named explicitly, because a synthesising run now writes TWO
+    // id_prefix rows: the `#S` counter it advances and the real prefix it
+    // ensures. An unqualified SELECT returns whichever the index yields first,
+    // so it would raise one row and assert the other.
+    const QString prefix = QStringLiteral("PROJ#S");
     ASSERT_TRUE(f.store.raiseIdHighWater(ok.projectId, prefix, 41, &err))
         << err.toStdString();
 
@@ -553,7 +576,9 @@ TEST(RoadmapMigrateLoad, Inv6RolledBackLoadAllocatesNoId) {
     more[2].status = QStringLiteral("bogus");
     const auto failedAgain = RoadmapMigrateLoad::load(f.store, planOf(more), f.opts());
     ASSERT_FALSE(failedAgain.ok);
-    EXPECT_EQ(f.scalar(QStringLiteral("SELECT high_water FROM id_prefix")).toStdString(),
+    EXPECT_EQ(f.scalar(QStringLiteral(
+                            "SELECT high_water FROM id_prefix WHERE prefix = 'PROJ#S'"))
+                  .toStdString(),
               std::string("41"));
 }
 

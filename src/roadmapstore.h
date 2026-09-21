@@ -975,6 +975,20 @@ public:
     std::optional<qint64> maxAllocatedId(qint64 projectId, const QString &prefix,
                                          QString *error = nullptr) const;
 
+    // ANTS-4500 § 4.2 — maxAllocatedId()'s sibling for the SYNTHESIS namespace:
+    // the highest suffix among this project's stored `<prefix>-S<digits>` ids.
+    //
+    // maxAllocatedId() cannot express it and must not: it globs
+    // `<prefix>-[0-9]*`, so no `-S` id matches it at all. That exclusion is
+    // what keeps a synthesised id out of the REAL prefix's floor, and it is
+    // the same fact that leaves the synthesis namespace with no reader.
+    //
+    // A member rather than a migration-local helper, for the reason
+    // allocationFloor() is one: the loader is not the only thing that will need
+    // the floor.
+    std::optional<qint64> maxSynthesisedId(qint64 projectId, const QString &prefix,
+                                           QString *error = nullptr) const;
+
     // The floor an allocation must not issue at or below: BOTH columns above,
     // because neither alone is complete. idHighWater() is the allocator's own
     // counter and remembers an id whose item was later deleted, but migration
@@ -989,6 +1003,20 @@ public:
     // predicates drifted.
     qint64 allocationFloor(qint64 projectId, const QString &prefix,
                            QString *error = nullptr) const;
+
+    // ANTS-4500 § 4.5 — replace one item's `id`. NOT a setItemField() column,
+    // deliberately: `id` is the row's identity, every other write path keys on
+    // it, and putting it in the writable set would let any caller rewrite one.
+    //
+    // The one caller is migration's re-match fallback, where a bullet that was
+    // synthesised an id now carries a hand-written one in the source. The
+    // source's id wins — keeping the stored `-S` id would make the next render
+    // overwrite the author's own edit in ROADMAP.md.
+    //
+    // `id_fold` is GENERATED ALWAYS AS (lower(id)), so it follows this write
+    // and is not set here. A new id already held by a sibling row trips
+    // UNIQUE (project_id, id_fold) and is returned as an error, not swallowed.
+    bool reassignItemId(qint64 itemPk, const QString &newId, QString *error = nullptr);
 
     // § 2.9's seq continuation: appendHistory() takes `seq` from its caller, so
     // the caller needs the current maximum for this (item, stamp). Absent rows

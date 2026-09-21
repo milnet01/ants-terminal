@@ -58,8 +58,14 @@ bool isCanonicalId(const QString &id) {
     static const QRegularExpression rxCanonicalId = [] {
         // ANTS-3492 — prefix may be digit-led if it contains ≥1 letter
         // (3D_E-0042); a letter-free token (2026-07) is still rejected.
+        //
+        // ANTS-4500 § 4.4 — `S?` admits a synthesised id. The digits stay
+        // mandatory, so `DEMO-S` is still not an id. Callers here are not all
+        // locators (the duplicate-id banner, the feedback id filter), and
+        // admitting synthesised ids to those is correct: they are ids, and a
+        // duplicate among them is still a duplicate.
         QRegularExpression re(QStringLiteral(
-            "^(?=[A-Za-z0-9_-]*[A-Za-z])[A-Za-z0-9][A-Za-z0-9_-]*-[0-9]+$"));
+            "^(?=[A-Za-z0-9_-]*[A-Za-z])[A-Za-z0-9][A-Za-z0-9_-]*-S?[0-9]+$"));
         re.optimize();
         return re;
     }();

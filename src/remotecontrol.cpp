@@ -2240,7 +2240,14 @@ void applyGfmFlip(QStringList &lines,
 // Keep the {1,8} digit bound as a sanity ceiling.
 static const QRegularExpression rxAntsV1IdBracket(
     // ANTS-3492 — digit-led-but-letter-containing prefix (3D_E-0042).
-    QStringLiteral("\\[((?=[A-Za-z0-9_-]*[A-Za-z])[A-Za-z0-9][A-Za-z0-9_-]*-\\d{1,8})\\]"));
+// ANTS-4500 § 4.4 — `S?` for the synthesis namespace (`[DEMO-S0001]`). The
+// THIRD time this write-path bracket has had to be taught a shape the read
+// path already accepted: ANTS-2051 was the lowercase prefix, ANTS-4109 the
+// bold-ID form, and both presented identically — roadmap_query resolves the id
+// and roadmap_log's `id` locator matches zero bullets. The spec's own § 4.4
+// table missed this symbol for the same reason, naming idTokenPattern() as
+// "the addressability gate" when it gates only the READ half.
+    QStringLiteral("\\[((?=[A-Za-z0-9_-]*[A-Za-z])[A-Za-z0-9][A-Za-z0-9_-]*-S?\\d{1,8})\\]"));
 
 QVector<AntsV1Bullet> walkAntsV1Bullets(const QStringList &lines) {
     QVector<AntsV1Bullet> out;

@@ -1978,6 +1978,25 @@ bool RoadmapStore::setProjectSourceFormat(qint64 projectId, const QString &forma
     return true;
 }
 
+bool RoadmapStore::reassignItemId(qint64 itemPk, const QString &newId, QString *error) {
+    if (newId.isEmpty()) {
+        if (error)
+            *error = QStringLiteral("reassignItemId: empty id");
+        return false;
+    }
+    QSqlQuery q(m_db);
+    q.prepare(QStringLiteral("UPDATE item SET id = ? WHERE item_pk = ?"));
+    q.addBindValue(newId);
+    q.addBindValue(itemPk);
+    if (!q.exec()) {
+        if (error)
+            *error = lastErr(q);
+        return false;
+    }
+    m_writtenItems.insert(itemPk);   // ANTS-4628
+    return true;
+}
+
 bool RoadmapStore::raiseIdHighWater(qint64 projectId, const QString &prefix,
                                     qint64 highWater, QString *error) {
     // Upward only, expressed in the UPSERT rather than in a read-then-write:
@@ -2669,9 +2688,17 @@ std::optional<QString> RoadmapStore::idPrefixFor(qint64 projectId,
     // wins, ties by prefix. A project has one prefix in practice, and an
     // arbitrary pick here would make the id a re-run allocates depend on row
     // order.
+    // ANTS-4500 § 4.2 — a counter key is not a prefix. The synthesis namespace
+    // keeps its counter at `<prefix>#S`, and `ORDER BY high_water DESC` would
+    // return it outright on any project that has synthesised more ids than it
+    // has allocated — three corpus projects are synthesised in full. The test
+    // is STRUCTURAL: `#` cannot appear in a declared prefix
+    // ([A-Za-z][A-Za-z0-9_-]{0,63}, src/main.cpp), so this cannot mistake a
+    // legal prefix for a counter key the way a trailing `-S` test would.
     QSqlQuery q(const_cast<QSqlDatabase &>(m_db));
     q.prepare(QStringLiteral(
         "SELECT prefix FROM id_prefix WHERE project_id = ? "
+        "AND instr(prefix, '#') = 0 "
         "ORDER BY high_water DESC, prefix ASC LIMIT 1"));
     q.addBindValue(projectId);
     if (!q.exec()) {
@@ -2716,6 +2743,32 @@ std::optional<qint64> RoadmapStore::maxAllocatedId(qint64 projectId,
     q.addBindValue(prefix.size() + 2);          // 1-based, past "PFX-"
     q.addBindValue(projectId);
     q.addBindValue(prefix + QStringLiteral("-[0-9]*"));
+    if (!q.exec()) {
+        if (error)
+            *error = lastErr(q);
+        return std::nullopt;
+    }
+    if (!q.next() || q.value(0).isNull())
+        return std::nullopt;
+    return q.value(0).toLongLong();
+}
+
+std::optional<qint64> RoadmapStore::maxSynthesisedId(qint64 projectId,
+                                                     const QString &prefix,
+                                                     QString *error) const {
+    if (prefix.isEmpty())
+        return std::nullopt;
+    QSqlQuery q(const_cast<QSqlDatabase &>(m_db));
+    // The sibling above with `-S` spliced in. The cast starts past "PFX-S",
+    // one further than maxAllocatedId's "PFX-", and the trailing `[0-9]*`
+    // does the same job here: a project whose prefix is `ANTS` must not
+    // collect `ANTSX-S0001`.
+    q.prepare(QStringLiteral(
+        "SELECT MAX(CAST(substr(id, ?) AS INTEGER)) FROM item "
+        "WHERE project_id = ? AND id GLOB ?"));
+    q.addBindValue(prefix.size() + 3);          // 1-based, past "PFX-S"
+    q.addBindValue(projectId);
+    q.addBindValue(prefix + QStringLiteral("-S[0-9]*"));
     if (!q.exec()) {
         if (error)
             *error = lastErr(q);

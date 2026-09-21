@@ -84,8 +84,18 @@ QString seedProject(ants_test::XdgGuard &guard, const QTemporaryDir &tmp) {
     return QFileInfo(raw).canonicalFilePath();
 }
 
-// Runs the migration, which synthesises an id for each of the two id-less
-// bullets and raises the store's high-water past the file's only declared id.
+// Runs the migration, then puts the store's REAL counter ahead of the file.
+//
+// ANTS-4500 changed what the first half does. Synthesis now issues `DEMO-S0001`
+// from its own counter, so migrating no longer advances the real prefix at all
+// — and a synthesised id can no longer collide with an allocated one, which is
+// this fixture's whole subject. Left there, every case below would assert
+// `DEMO-0002` and pass with the store floor deleted.
+//
+// So the store-ahead-of-file state is now made the way a store-path append
+// makes it: by advancing the real counter. That is the state ANTS-4493 is
+// about — "the store holds ids for this root that the file cannot see" — and it
+// keeps every expected value below unchanged, and every assertion load-bearing.
 bool migrate(const QString &root, qint64 *allocated) {
     auto store = openStore(RoadmapStore::Access::Bulk);
     if (!store)
@@ -107,6 +117,25 @@ bool migrate(const QString &root, qint64 *allocated) {
         return false;
     }
     *allocated = out.idsAllocated;
+    // Only where this run actually synthesised. The seed STANDS IN for what
+    // synthesis used to do to the real counter, so it belongs exactly where
+    // synthesis happened — INV-3's fixture carries no id-less bullet, allocates
+    // nothing, and is about the counter cache rather than the floor.
+    if (out.idsAllocated == 0)
+        return true;
+    // DEMO-0002 and DEMO-0003 are the store's, allocated through a store-path
+    // append the file never recorded. The file's own maximum is DEMO-0001, so
+    // an allocator that reads only the file reissues DEMO-0002.
+    QString hwErr;
+    const auto proj = store->readProjectByRoot(root, &hwErr);
+    if (!proj) {
+        ADD_FAILURE() << "readProjectByRoot: " << hwErr.toStdString();
+        return false;
+    }
+    if (!store->raiseIdHighWater(proj->projectId, QStringLiteral("DEMO"), 3, &hwErr)) {
+        ADD_FAILURE() << "raiseIdHighWater: " << hwErr.toStdString();
+        return false;
+    }
     return true;
 }
 
