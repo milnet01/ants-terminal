@@ -49798,6 +49798,68 @@ are closed inline in the feedback files rather than filed here.
   Source: cc-feedback-2026-09-21 (Vestige), measured on project 13.
   Lanes: mcp, roadmap-store.
 
+- 📋 [ANTS-5261] **A measured claim about an Ants verb, written into a project's standing instructions, has no expiry and no route to correction.**
+  AI Prompts measured roadmap_migrate dry_run reporting 17 phantom updates
+  on a clean tree (2026-09-03), wrote the figure into its CLAUDE.md, and
+  built a standing rule on it: never run the real verb. The defect was real
+  and is fixed — ANTS-4955 (Layman stored without its closing stop,
+  rendered with one) accounts for the ten `layman` rows by construction,
+  ANTS-4823 and ANTS-4526 for the seven on `body`. Their figure has been
+  stale since 2026-09-14 and nobody told them. They found out because I
+  asked them to re-run it.
+
+  THEIR SENTENCE IS THE ITEM: "a fixed tool that every project still routes
+  around is not much better than a broken one."
+
+  WHY THE OBVIOUS FIX DOES NOT WORK. A note on the verb's description
+  reaches a session that CALLS the verb. It does not reach a CLAUDE.md
+  saying never to call it — which is exactly the population holding the
+  stale fact.
+
+  SHAPE ONE, theirs, and it solves the distribution half. Put the notice on
+  a verb that population DOES call. Every store-backed project calls
+  roadmap_query constantly, often at orientation because its own CLAUDE.md
+  says to; a project that has sworn off roadmap_migrate has not sworn off
+  reading its roadmap. So: a `notices` row in the store, surfaced once per
+  project on the next roadmap_query, carrying "a measured claim about this
+  tool dated before <date> may be stale; see ANTS-NNNN".
+
+  Two constraints they put on it, both from being on the receiving end.
+  Once-per-project and dismissible, or sessions learn to skip it and it
+  fails the same way the description fix does. And it must NAME AN ID
+  rather than assert a correction — the receiving session has to verify
+  before editing its own instructions, and they would not have rewritten
+  theirs on an unsourced banner.
+
+  NOT A BLOCKER AND NOT AN ALL-CLEAR. Some of that population is right to
+  have sworn off the verb for reasons unrelated to the bug fixed. Theirs
+  is: a re-migration once accreted a `Kind:` line into 458 stored bodies,
+  and that leg stands. "This figure may be stale, here is the id" is right;
+  "this is fixed, resume" would be wrong for them.
+
+  SHAPE TWO, theirs, and they argue it matters more — it stops the class
+  rather than distributing one correction. The root problem is not
+  distribution: it is that a project wrote a measured fact about an
+  EXTERNAL system into prose, and prose has no expiry. A project's own
+  measurements go stale when the project changes, which the project
+  notices; a measurement of someone else's tool cannot be moved by any
+  commit in that repo.
+
+  So: a measured claim about a system outside the repository states the
+  command that reproduces it, and the project's deterministic doc checker
+  re-runs those and reports drift. Converts a broadcast problem into each
+  project's own checkable state, and degrades gracefully — a project with
+  no checker still has the command written down for the next human who
+  doubts the number. Costs this project nothing: it is a convention for
+  projects, not a feature here. Their argument for preferring it: you
+  cannot own the expiry of facts other people wrote about you.
+
+  Shape two is arguably ~/.claude's to own rather than this project's.
+  **Layman:** Projects write down what they measured about these tools and then act on it for months. When a tool is fixed, nothing tells them, so they keep avoiding a problem that no longer exists.
+  Kind: enhancement.
+  Source: cc-feedback-2026-09-21 (ai-prompts), shapes proposed by them.
+  Lanes: mcp, docs.
+
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-08-20 triage
 
 Thirty pending findings across ten feedback files, triaged 2026-08-20. Six
