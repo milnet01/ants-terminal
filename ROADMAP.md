@@ -50536,7 +50536,7 @@ are closed inline in the feedback files rather than filed here.
   Source: cc-feedback-2026-09-21 (Pressless, Games_Hub, independently).
   Lanes: mcp.
 
-- 🚧 [ANTS-5274] **CLAUDE.md's new hot-reload rule owes its review-contract gate, started and not finished.**
+- ✅ [ANTS-5274] **CLAUDE.md's new hot-reload rule owes its review-contract gate, started and not finished.**
   Shipped in 7902f8f5: CLAUDE.md § "Hot reload is the design default".
   It is a NEW rule that changes what a conformer writes, so global
   CLAUDE.md rule 14 requires review-contract before anyone builds under
@@ -50578,6 +50578,54 @@ are closed inline in the feedback files rather than filed here.
   copied it, SessionManager::serializeStream(grid,
   cwd, pinnedTitle, first) (sessionmanager.cpp:189), the tools/list
   handler's local QJsonArray (claudeintegration.cpp:2409), 111 test files.
+  Resolved 2026-09-21: the gate ran to its cap and converged CALM.
+
+  Three loops (document rows 4-6), 11 verified findings, 11 fixed, 1
+  dismissed. No finding left unfixed, so no deferred tail. Log:
+  docs/reviews/CLAUDE-md-review-contract-2026-08-31.md.
+
+  WHAT THE GATE CAUGHT in the new rule: the teardown was attributed to
+  `PtyHandler`, which is a file stem and not a symbol; the GUI surface
+  was described by counts (~13 verbs, ~80) grounded in nothing, against
+  seven `TabSpecific` members in code and eleven `MainWindow` methods in
+  ANTS-4932; and the bullet ordered the surface kept "named" while
+  naming no register.
+
+  THE RESULT WORTH CARRYING FORWARD, because it is about the method
+  rather than this document. In BOTH loops 2 and 3, all three lanes
+  independently found that the PREVIOUS loop's fix was wrong. Loop 1
+  replaced a false count with a false rule (`TabSpecific` is a routing
+  contract, not a GUI register). Loop 2 replaced that with an
+  unqualified one (an absolute no-new-`MainWindow`-call check, in a
+  bullet that elsewhere contemplates tab verbs which cannot obey it).
+  Neither error was visible to its author; each was obvious to three
+  cold readers. A fix to a rule is itself a rule, written under exactly
+  the conditions that produced the defect being fixed.
+
+  ONE DISMISSAL, and it was the orchestrator's error not the document's:
+  a packet fact claimed `config.json` and `audit_rules.json` had no
+  runtime re-read path, from a single negative search. Two lanes
+  disputed it and were right (`m_configWatcher`, `mainwindow.cpp:1089`,
+  connected to `onConfigFileChanged`; `audit_rules.json` loaded per run
+  at `auditdialog.cpp:916`). The document's claim was true throughout.
+
+  DISCLOSURE, and it is the finding with the widest reach: this gate did
+  not get a cold read and the log says so. All nine lanes across three
+  loops arrived holding the unscrubbed subject, because the harness
+  injects a project CLAUDE.md into every subagent as project
+  instructions. From loop 2 the injected copy was STALE, so lanes could
+  diff it against the reviewed copy and recover exactly what the previous
+  loop changed — three of them did, and said so. The scrubbed copy and
+  the `exclude_glob` defend the path to the bytes; the harness delivers
+  the bytes. What DID hold, 9 of 9: nothing named a previous review's
+  findings. Pooled with six lanes from a second project and folded into
+  the shared cold-reader-contamination reference as CFG-0435/CFG-0444.
+
+  FILED, NOT FIXED: ANTS-5276, the same wrong `PtyHandler` symbol in two
+  specs, which are gated documents and not repaired in passing. The
+  drive-level no-counts rule binds this repo (ruled today); the
+  remaining counts elsewhere in CLAUDE.md are a separate sweep, kept out
+  of this run because the subject does not widen mid-gate.
   **Layman:** A new project rule was written down; the independent review that is supposed to check a new rule before anyone follows it has only partly run.
   Kind: doc.
   Source: in-session-2026-09-21, user standing rule.
