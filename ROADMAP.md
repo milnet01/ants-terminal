@@ -51322,6 +51322,67 @@ are closed inline in the feedback files rather than filed here.
   Source: peer-session-finbreak-65, in-session-2026-09-21.
   Lanes: mcp.
 
+- 📋 [ANTS-5292] **Give the surface one answer for a reply whose oversized field is the one the caller wants.**
+  THE GENERALISATION, filed because two instances are and it is not.
+  ANTS-5275 (roadmap_query's documented startup survey spills) and
+  ANTS-5277 (convert's dry-run table is unreadable at real scale) are
+  the SAME defect at two verbs, and each is being solved locally.
+
+  THE SHAPE. The standard remedy for an oversized envelope is the
+  `fields:[...]` projection. It works by dropping whole top-level
+  arrays — so it works exactly when the big field is NOT the answer.
+  When the big field IS the answer, the lever does not merely fail:
+  ANTS-5277 measured a `fields` request that INCLUDED `ids`
+  re-inflating the envelope to 121,945 characters and spilling again.
+  A remedy that can make the problem worse should not be the surface's
+  only documented one.
+
+  WHY THE SPILL HANDLE IS NOT THE ANSWER EITHER. It is correct safety
+  behaviour and it is the wrong shape for both reporters. ANTS-5275's
+  caller wanted a COUNT; paging rows to arrive at one is absurd.
+  ANTS-5277's caller wanted to REVIEW a one-way rewrite, and got
+  `planned_shown:200` against `bullets_total:1096` — 18% of the file,
+  on the preview whose whole argument (ANTS-5252) is that a per-bullet
+  table can be checked where an aggregate cannot.
+
+  THE CANDIDATE RULE, taken from ANTS-5277's own reporter and worth
+  testing as a surface-wide convention rather than a verb fix: EMIT
+  ONLY THE ROWS THAT NEED A DECISION, and announce the effective cap.
+  On convert that is `origin:"absent"`, `id_inferred`,
+  `ambiguous_rematch` — an unchanged row carries none of the risk the
+  table exists to catch, so it does not need to be in the table.
+  The generalisation to test: every verb whose big field is a review
+  surface has a decision predicate, and emitting the complement is
+  what makes the reply unreadable.
+
+  WHAT THIS ITEM MUST NOT BECOME. Not a bigger cap — ANTS-5275 says
+  it outright, "a survey that returns everything is not a survey".
+  Not a third projection argument either; the surface already has
+  `fields`, `compact` and per-verb lean modes, and a fourth knob that
+  callers must know about does not help a caller who did not know
+  about the first three.
+
+  EVIDENCE THIS IS WORTH GENERALISING, from peer session claude-40
+  (2026-09-21), measured over eighteen review-lane dispatches: the
+  material a lane READS is a minority of its spend — about a quarter
+  on a large subject, an eighth on a small one. So payload compression
+  cannot reach the dominant cost, and the value here is NOT bytes
+  saved. It is the round trip and the wrong turn removed: a caller who
+  receives 18% of a review table and cannot tell which 82% is missing
+  either re-asks or proceeds uninformed. That is the cost to argue
+  from.
+
+  FIRST STEP is to decide whether this is one convention or three verb
+  fixes. Read ANTS-5275, ANTS-5277 and ANTS-5285 together first —
+  5285 records the neighbouring gap where a caller wanted one
+  section's active ids and neither survey shape fits, which suggests
+  the missing shape is narrower than either existing one rather than
+  a cap problem at all.
+  **Layman:** When a tool's answer is too big it hands back a file reference instead. That works when the bulky part is not what you asked for — but when it IS what you asked for, the usual remedy makes things worse, and each tool currently solves that alone.
+  Kind: enhancement.
+  Source: peer-session-claude-40, in-session-2026-09-21.
+  Lanes: mcp.
+
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-08-20 triage
 
 Thirty pending findings across ten feedback files, triaged 2026-08-20. Six
@@ -64969,6 +65030,120 @@ it look feasible, and the one that bounds what is achievable, are on the item.
   changing its arguments needs a reconnect whatever is built. This removes
   the TERMINAL relaunch, not every restart. Say so, or the result gets
   measured against a target it cannot reach.
+  Progress (2026-09-21): MEASUREMENT 1 IS DONE, and four design
+  forks were settled by the user. Both recorded here because they
+  were reached in conversation.
+
+  MEASUREMENT 1 RESULT — which verbs reach the eleven MainWindow
+  methods. The seam is CLEANER than this body implies.
+    - DIRECTLY: ~14 verbs. Eleven are genuinely tab/terminal verbs
+      and can never leave the GUI process: ls, send_text,
+      select_window, get_text, recent_errors, last_selection,
+      set_title, launch, new_tab, tab_list, token_usage
+      (src/remotecontrol_terminal.cpp, plus cmdTokenUsage in
+      _review.cpp). Three more touch it only as a project-guess
+      fallback: workspace_search, cited_by, roadmap_query.
+    - INDIRECTLY, and this is the large group: ~51 verbs across
+      remotecontrol_{state,docs,review,coldeyes,workspace}.cpp reach
+      MainWindow through exactly ONE helper, `resolveRootCanonical`
+      (63 call sites), and only to answer "which project?" when the
+      caller did not say.
+    - THE KEY FINDING: both resolvers are ALREADY null-MainWindow
+      tolerant, since ANTS-3725. `resolveRootCanonical(nullptr)`
+      falls through to QDir::currentPath(); `resolveCallerCwdRoot`
+      guards `main` at the two places that need it and an explicit
+      caller_cwd resolves identically with no window. So for every
+      verb called WITH caller_cwd, the window contributes only a tab
+      index that nothing outside the tab verbs reads. The handler
+      layer is largely already split; the library extraction is the
+      work, exactly as this body says.
+    Definitions: src/remotecontrol_feedback.cpp `resolveRootCanonical`
+    and `ants::resolveCallerCwdRoot`.
+
+  FOUR DECISIONS (user, 2026-09-21) — the spec states these rather
+  than re-opening them:
+    1. STORE WRITES: the standalone server writes roadmap.sqlite
+       DIRECTLY, not read-only and not proxying writes. Rejected
+       alternatives were read-only-plus-proxy and read-only. The spec
+       owns the busy-timeout and the concurrency argument, which this
+       body already flags as a new hazard.
+    2. NO caller_cwd: fall back to the server's OWN process cwd, NOT
+       to a refusal and NOT to asking the terminal. The client starts
+       the server from inside the project it is working on, so the
+       process cwd IS the answer. This is strictly better than
+       today's focused-tab guess, which can silently answer with
+       another project.
+    3. TOPOLOGY: ONE door. The client connects only to the standalone
+       server, which FORWARDS the ~11 tab verbs to the terminal and
+       relays the reply. Rejected: two sockets, and dropping tab verbs
+       headless. This is what answers this body's DRIFT RISK warning —
+       one tool list, so a verb cannot be present in one binary and
+       absent from the other.
+    4. SCOPE: proceed, accepting the stated bound (a NEW verb or an
+       argument change still needs a client reconnect). The Lua route
+       is NOT also specced.
+
+  NEXT: measurement 2 (which of the three fallback verbs can take a
+  project root instead — roadmapPathForRemote first, as this body
+  nominates), then measurement 3 (what ants_core_lib must shed), then
+  the spec.
+  Progress (2026-09-21): MEASUREMENTS 2 AND 3 DONE. All three the
+  approach annotation asked for are now in hand, and the spec is the
+  next step.
+
+  MEASUREMENT 2 — can the fallback verbs take a project root instead?
+  YES, uniformly, and the code is already shaped for it. All three
+  verbs that touch MainWindow as a project guess have the SAME
+  structure: sentinel root, else caller_cwd, else the MainWindow
+  branch, else `QDir::currentPath()`. The process-cwd behaviour
+  decision 2 prescribes is ALREADY THE LINE BELOW the branch to be
+  removed, so this is a deletion rather than a rewrite.
+    - cmdWorkspaceSearch, src/remotecontrol_workspace.cpp: an
+      `else if` on `m_main ? m_main->currentTerminal() : nullptr`,
+      with `if (rootCwd.isEmpty()) rootCwd = QDir::currentPath();`
+      immediately after.
+    - cmdCitedBy, same file: identical shape, already `else if
+      (m_main)` guarded.
+    - cmdRoadmapQuery, src/remotecontrol_roadmap_query.cpp: the
+      `roadmapPathForRemote()` call is reached ONLY when
+      `callerRaw.isEmpty()`. With caller_cwd it uses
+      `findRoadmapUnder(callerCanonical)`, a pure function of the
+      root. So this body's nomination of `roadmapPathForRemote` as
+      "may not belong in the GUI half at all" is CONFIRMED: under
+      decision 2 it becomes findRoadmapUnder(processCwd) and the
+      MainWindow accessor has no remaining caller.
+
+  MEASUREMENT 3 — what ants_core_lib must shed. Confirmed at
+  CMakeLists.txt `target_link_libraries(ants_core_lib ...)`:
+  `PUBLIC Qt6::Core Qt6::Gui Qt6::Widgets Qt6::Network Qt6::DBus util
+  ants_roadmapparse_lib`, `PRIVATE ants_roadmapstore_lib`. Gui,
+  Widgets and DBus are what has to go; Network stays (it is the
+  socket). The project ALREADY KNOWS: the comment above
+  ants_audit_lib reads "NB: ants_core_lib still links Qt6::Widgets
+  PUBLIC, so the transitive Widgets surface persists until that is
+  narrowed separately — this split is the structural prerequisite."
+    THE PATTERN TO COPY ALREADY EXISTS IN THIS FILE. Two leaf
+    libraries are deliberately GUI-free: ants_roadmapparse_lib
+    (Qt6::Core only) and ants_roadmapstore_lib (`Qt6::Core Qt6::Sql`
+    and nothing else BY DESIGN, per src/roadmaprender.h, kept that
+    way so ANTS-3794's publish path stays headless). The new library
+    is a third instance of an established pattern, not a novel one.
+    CAUTION this body already states and the measurement confirms:
+    those headless notes are ANTS-3794's STORE PUBLISH path, not
+    RemoteControl. They are precedent for the SHAPE, and say nothing
+    about how GUI-free RemoteControl is.
+    SCALE: 105 references to MainWindow / TerminalWidget / QWidget /
+    QApplication across 11 remotecontrol*.cpp files — but 37 are in
+    remotecontrol_terminal.cpp, which is the tab-verb file and STAYS
+    in the GUI half by decision 3. Most of the rest are a
+    `MainWindow *` type mention, satisfiable by a forward
+    declaration; the link edge comes from DEREFERENCING it. With the
+    resolvers behind a root-provider seam, the GUI coupling in the
+    project-scoped half collapses to approximately one TU.
+
+  NEXT: write the spec (write-spec), stating the four decisions, the
+  reconnect bound, and the store-concurrency argument decision 1
+  leaves it to own.
   **Layman:** Right now every change to an Ants MCP tool means rebuilding the terminal and restarting it by hand. This would move most of those tools into a small separate program that Claude Code starts itself, so a rebuild is picked up without touching the terminal.
   Kind: refactor.
   Source: user-request-2026-09-07.
