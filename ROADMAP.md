@@ -49860,6 +49860,279 @@ are closed inline in the feedback files rather than filed here.
   Source: cc-feedback-2026-09-21 (ai-prompts), shapes proposed by them.
   Lanes: mcp, docs.
 
+- 📋 [ANTS-5262] **token_usage does not report a session's own verb usage, so no session can measure where its tokens went.**
+  Two sessions hit this on the same day while trying to answer a direct
+  request for measured numbers.
+
+  Vestige: `token_usage` returned `calls: []`, `total_saved: 0`,
+  `tools_called: 1` for a session that had made dozens of Ants calls.
+
+  ai-prompts: it reported 4 tools / 8 calls, having been reset at 08:46,
+  with no rows at all for file_outline, spec_lint, read_region or
+  workspace_search — all of which they had called. They declined to quote
+  its per-tool figures on the grounds that they would be wrong.
+
+  `mcp_trace` does not cover the gap: its ring is SERVER-WIDE, not
+  session-scoped, so Vestige pulled 60 records and could not separate
+  theirs from four other sessions'.
+
+  WHY THIS IS THE FIRST ITEM RATHER THAN ONE OF NINE. Every other
+  token-waste finding today was measured by hand off payloads. The verb
+  whose job is to answer this question could not, and two sessions worked
+  around it independently without either realising the other had.
+
+  DECIDE FIRST whether `tools_called: 1` against dozens of calls is a
+  broken counter or a counter measuring something other than its name —
+  and whether the reset is intentional. Both readings are open.
+
+  Second, smaller: `lifetime_saved` and `month_saved` DO return large
+  figures, so the verb is not wholly dead. A verb that answers the
+  lifetime question and not the session question, under one name, is how
+  both sessions came to trust it before checking.
+  **Layman:** The tool that is supposed to show how many tokens each command used returns an empty list, so nobody can find the expensive ones.
+  Kind: fix.
+  Source: cc-feedback-2026-09-21 (Vestige and ai-prompts, independently).
+  Lanes: mcp.
+
+- 📋 [ANTS-5263] **A roadmap_log write echoes the whole rendered bullet, so the cost compounds on exactly the items being worked hardest.**
+  Measured by four sessions. The echo is the RENDERED BULLET, so its size
+  tracks the bullet, not the op:
+
+      dry_run annotate, small item       280 B -> 43 B with fields   (6.5x)
+      dry_run annotate, large item    ~11,000 B -> 43 B with fields  (~250x)
+      annotate on AIPR-0049            5,263 B echoed, zero used
+      flip carrying a note            17,640 B for a 1,790 B argument
+
+  THE COMPOUNDING IS THE POINT and no single session spotted it alone.
+  Each annotate lengthens the body the NEXT annotate echoes back. An item
+  under active work is precisely the one where the echo is dearest, and it
+  gets worse every time it is touched. AIPR-0049 is at 5 KB because it has
+  been annotated across sessions; every future note on it pays that.
+
+  NOT A DELETION — this is a trade and the coverage is real. ANTS-4097
+  added the echo so a caller could see the JOINT result of several edits to
+  one body, after a sequence of single-line amends each looked right alone
+  and together produced nonsense.
+
+  TWO NARROWINGS, and they compose. Echo on the ops that BUILD a body
+  (amend_body, set_body) and not on those that APPEND one line to it
+  (annotate, flip-with-note) — the append ops are the ones that compound,
+  and their caller already holds the line they sent. And ai-prompts'
+  `return:"tail"`: the last N lines plus ok and discarded_external_edits,
+  which is the confirmation they actually wanted, at a fraction of the
+  bytes, with the full echo still available.
+
+  WORKS TODAY WITH NO CODE CHANGE: `fields:["ok","id"]`. Neither op's
+  description mentions the echo or points at `fields`, so a caller cannot
+  anticipate the cost — ut-monsterhunt paid it six times before finding
+  out. That documentation line is the cheapest half of this item.
+  **Layman:** Every time you add a line to a roadmap entry, the tool sends the whole entry back — so the more you work on something, the more each small edit costs.
+  Kind: enhancement.
+  Source: cc-feedback-2026-09-21 (ai-prompts, ut-monsterhunt, claude-config, Vestige).
+  Lanes: mcp.
+
+- 📋 [ANTS-5264] **spec_lint re-sends two static hints on every call, and they fire forever on a project whose layout does not match the verb's expectation.**
+  Measured: `surfaces_skipped_hint` 680 B and `sections_source_hint` 272 B,
+  byte-identical on every call. Four calls during one gate = 3,808 B, of
+  which 952 were informative once and 2,856 bought nothing.
+
+  THE SHAPE THAT MAKES IT PERMANENT, and it is the small-project blindness
+  worth recording generally: BOTH hints fire because of what the project
+  IS NOT. One fires because their tests are flat at the root rather than
+  under `tests/features/<name>/`; the other because they keep no local
+  spec-format standard. Neither will ever stop being true, so both will
+  re-print on every spec_lint call that project ever makes. On a project
+  laid out the way the verb expects, neither fires at all — which is
+  exactly why this was invisible from here.
+
+  A TRADE, NOT A SAVING, and the reporter was explicit. The
+  `surfaces_skipped_hint` TEXT is load-bearing: it is what stopped them
+  reading `findings:[]` as a pass, and they recorded that in their gate
+  report and loop log. Deleting it removes real coverage.
+
+  The waste is the REPETITION, not the content. Emit the full text once
+  per session and an id thereafter, or accept a `hints_seen` echo from the
+  caller. Keeps the protection, drops the repeat.
+
+  GENERALISE BEFORE FIXING: any verb emitting a static hint keyed on a
+  project property that cannot change has this shape. spec_lint is the one
+  that was measured, probably not the only one.
+  **Layman:** A checking tool repeats the same two paragraphs of advice on every single run, and on some projects those paragraphs can never stop appearing.
+  Kind: enhancement.
+  Source: cc-feedback-2026-09-21 (ai-prompts).
+  Lanes: mcp.
+
+- 📋 [ANTS-5265] **doc_symbols has no count_only, so reading its five summary numbers costs a response that does not fit.**
+  Measured on UT_MonsterHunt, 21 documents under `docs/`:
+
+      doc_symbols(path:"docs", only:"unresolved")
+        -> 106,500 characters, EXCEEDED the tool-result ceiling
+        -> spilled to a file, then 3 further calls to slice and count it
+
+  The five numbers wanted were in `counts` — total 946, resolved 468,
+  unresolved 424, not_checked 54, plus the by-shape split. Under 200
+  characters, and ALREADY COMPUTED: the envelope carries `counts`
+  whole-document regardless of the row filter. Four calls and a spill file
+  to read a field the verb had already built.
+
+  `only:"unresolved"` did not help and the reporter says why: it is a ROW
+  filter, and the rows were the problem.
+
+  THE PRECEDENT IS IN THE SAME TOOLSET. `workspace_search` has
+  `count_only` and `files_only` for exactly this — rows-eliminated modes
+  for existence and frequency questions. `doc_symbols` has no equivalent.
+
+  Ask: `count_only` returning `counts` + `findings_count`, omitting
+  `symbols[]` and `findings[]`. Additive; nothing is lost.
+  **Layman:** Asking a document checker for its totals returns every single finding instead, which is too big to send — so you pay four calls to read five numbers it had already worked out.
+  Kind: enhancement.
+  Source: cc-feedback-2026-09-21 (ut-monsterhunt).
+  Lanes: mcp.
+
+- 📋 [ANTS-5266] **A roadmap_query field projection can still spill, so the mechanism for asking for less is defeated by the thing it exists to prevent.**
+  Measured:
+
+      roadmap_query bullet_fields:["id","status","kind","source",
+                                   "section_slug"]
+                    limit:500  encoding:"tabular"
+        -> 34,697 bytes, OFFLOADED to a handle, 5 rows of 633 returned
+        -> plus a hint advising the caller to ask for less
+
+  The caller had already asked for less, three ways at once: a five-key
+  projection, an explicit limit, and the columnar encoding. All three
+  token-saving mechanisms engaged, and it spilled anyway and returned a
+  hint telling them to do what they had done.
+
+  They abandoned it and re-asked with a `source` filter, which returned 17
+  rows and answered the question — so the answer was small and the route
+  to it was not.
+
+  WHAT TO DECIDE FIRST. 633 rows of five short keys should not be 34,697
+  bytes; ~55 bytes a row for five fields suggests the projection is not
+  reducing what is serialised, or `limit:500` is applied after the
+  envelope is built. Measure before designing: this may be a projection
+  that does not project rather than a cap that is too low.
+
+  And the hint should not advise a narrowing the caller already applied —
+  at minimum it should say WHICH lever has room left.
+  **Layman:** You can ask the roadmap for just five details per entry to keep the answer small — and the answer is still too big to send, which is the exact problem that option was added to solve.
+  Kind: fix.
+  Source: cc-feedback-2026-09-21 (Vestige), measured on project 13.
+  Lanes: mcp.
+
+- 📋 [ANTS-5267] **render_gate_unmet lists every offending id inline and truncates mid-list, so the refusal is neither complete nor summarised.**
+  Measured on the op:"convert" refusal before ANTS-5256 exempted it: 460
+  ids inline, ~4 KB visible, then TRUNCATED MID-LIST with 1,947 characters
+  cut. The reporter wanted the count and a sample and got the worst of
+  both — an incomplete list with no marker saying how much was missing.
+
+  The message is built by joining `gateFailures` with ", " and no cap
+  (roadmapwrite.cpp, the GateUnmet branch). It was written when the gate
+  judged only the items a write TOUCHED, where naming them all is right
+  because the caller is editing them. ANTS-4628's own comment says so. A
+  convert touches everything, which is the case that broke the assumption.
+
+  FIX SHAPE, and it is the pattern this project already uses elsewhere:
+  cap the named ids, state the true total, and flag the truncation — the
+  same `*_truncated` plus `*_shown` treatment ANTS-5256 gave
+  `layman_missing` and `allocated_ids`. The envelope already carries
+  `gate_failures` as a structured array, so the PROSE does not need to
+  carry all 460 at all.
+
+  Still live for any other whole-project write, so the exemption did not
+  fix this — it moved one caller off the path.
+  **Layman:** When the roadmap refuses a write it names every entry at fault, runs out of room, and stops mid-sentence — giving you neither the full list nor a usable summary.
+  Kind: fix.
+  Source: cc-feedback-2026-09-21 (Vestige), measured on project 13.
+  Lanes: mcp, roadmap-store.
+
+- 📋 [ANTS-5268] **A verb description does not say whether it is the cheap reverse of a relation or the expensive forward one, so callers pick by experience.**
+  The observation, and the reporter rates it above their two concrete asks:
+  the verb set already contains BOTH directions of the same relation, and
+  the price difference is enormous.
+
+      reverse   cited_by     (anchors -> documents)     ~400 chars, 1 call
+      forward   doc_symbols  (documents -> symbols)   106,500 chars, would
+                                                       not fit
+
+  Same shape for `find_caller` (reverse, cheap) against an unscoped
+  `workspace_search` (forward, expensive).
+
+  WHY: the reverse verbs start from a handful of names the caller already
+  holds; the forward ones start from a corpus and return everything. That
+  is a property of the QUESTION, not of the implementation, so it will not
+  be fixed by tuning.
+
+  A caller cannot tell a verb's direction from its name, and no
+  description states it. Ask: name the direction in each description, and
+  say "prefer the reverse form where you already hold the names".
+  Documentation only; nothing behavioural.
+
+  THE REPORTER'S OWN CAVEAT, kept because it is the honest one:
+  `doc_symbols` and `cited_by` answer ADJACENT questions rather than the
+  identical one, so that pair is two directions of one relation and not a
+  controlled benchmark.
+
+  Worth doing alongside ANTS-5263's documentation half — both are "the
+  description does not warn about a cost the caller will pay".
+  **Layman:** Some search commands start from a name you already have and are cheap; others start from the whole project and are expensive. Nothing says which is which, so people find out by paying.
+  Kind: doc.
+  Source: cc-feedback-2026-09-21 (ut-monsterhunt).
+  Lanes: mcp, docs.
+
+- 📋 [ANTS-5269] **roadmap_log refuses a git-worktree caller_cwd as a render path escaping the project root.**
+  Reported by the OneUp session: a `caller_cwd` inside a git worktree is
+  refused with "render path escapes the project root". They carry a local
+  workaround (write from the project folder) and are not blocked.
+
+  LIKELY A FALSE REFUSAL rather than a guard doing its job. The render
+  resolves paths against the project root the STORE holds, and a worktree
+  is a different path for the same repository — so the check compares a
+  worktree path against a main-checkout root and correctly finds it
+  outside, while the two are the same project.
+
+  NOT YET VERIFIED HERE and the reporter's cause is their inference, not a
+  finding — a reported cause is a claim. Asked them for the exact
+  `caller_cwd` and the full refusal envelope rather than reconstructing it.
+
+  WEIGH BEFORE FIXING: the guard exists to stop a write rendering outside
+  its project, which is a real hazard. The fix is to teach it that a
+  worktree of a registered repo IS that project, not to relax the
+  comparison. `git rev-parse --git-common-dir` distinguishes a worktree
+  from an unrelated tree; whether the store should key on that is the
+  design question.
+
+  RELEVANT TO THE FLEET: rule 17 in the global CLAUDE.md recommends
+  worktrees for risky or parallel work, so this refusal fires on exactly
+  the workflow the machine's own rules encourage.
+  **Layman:** Working in a second checkout of the same project makes roadmap commands refuse, saying the file is outside the project — when it is the same project.
+  Kind: fix.
+  Source: cc-feedback-2026-09-21 (OneUp).
+  Lanes: mcp, roadmap-store.
+
+- 📋 [ANTS-5270] **invariant_check reports basename matches as evidence when it scanned no specs at all.**
+  Measured: `invariant_check` on three files returned 16
+  `basename_matches` rows, 2 `matched_specs`, a `scope_note`, a
+  `basename_matches_hint` and a `leaner_call_hint`. The reporter used ONE
+  field — `specs_scanned: 0` — which is the whole answer: that project
+  keeps no `docs/specs/`.
+
+  Every row was a phase design document matching on the string
+  `renderer.h`, which is incidental.
+
+  The suggestion is theirs and it is sound: when `specs_scanned` is 0,
+  that IS the answer. Basename matches cannot be evidence about specs that
+  were never scanned, so emitting them invites a reader to treat
+  coincidence as a finding — the same shape as a capped list that does not
+  announce its cap, which is ANTS-5257's defect in a third place.
+
+  Cheap: branch on `specs_scanned == 0` and return that plus the scope
+  note, omitting the row arrays.
+  **Layman:** A checking tool listed sixteen loosely-matching files as findings on a project that has no specification documents for it to check against.
+  Kind: enhancement.
+  Source: cc-feedback-2026-09-21 (Vestige).
+  Lanes: mcp.
+
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-08-20 triage
 
 Thirty pending findings across ten feedback files, triaged 2026-08-20. Six
