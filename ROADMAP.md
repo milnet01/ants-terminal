@@ -50570,14 +50570,393 @@ are closed inline in the feedback files rather than filed here.
       elsewhere.
 
   CLAIMS ALREADY VERIFIED IN SOURCE, so a lane re-finding them is a
-  dismissal rather than a finding: PtyHandler's SIGHUP -> SIGTERM(+SIGCONT)
-  -> SIGKILL (ptyhandler.cpp:29-63), SessionManager::serializeStream(grid,
+  dismissal rather than a finding: the SIGHUP -> SIGTERM(+SIGCONT) ->
+  SIGKILL teardown in ptyhandler.cpp. CORRECTED 2026-09-21: this said
+  "PtyHandler's", and there is no such symbol -- the class is `Pty` and
+  `PtyHandler` is the file stem. The sequence was verified; the owner was
+  not. All three loop-1 lanes found the same error in CLAUDE.md, which had
+  copied it, SessionManager::serializeStream(grid,
   cwd, pinnedTitle, first) (sessionmanager.cpp:189), the tools/list
   handler's local QJsonArray (claudeintegration.cpp:2409), 111 test files.
   **Layman:** A new project rule was written down; the independent review that is supposed to check a new rule before anyone follows it has only partly run.
   Kind: doc.
   Source: in-session-2026-09-21, user standing rule.
   Lanes: docs.
+
+- 📋 [ANTS-5275] **The documented cheap startup survey is the roadmap_query call that spills.**
+  Reported by peer session finbreak-65 (2026-09-21), measured on its own
+  project, not on Ants.
+
+  THE CALL: `roadmap_query status:"active" mode:"headline_only"`. It
+  spilled to a handle rather than returning rows. finbreak has many
+  active items, which is the presumed cause.
+
+  WHY IT MATTERS MORE THAN AN ORDINARY SPILL: that project's CLAUDE.md
+  instructs every session to make exactly this call in its resumption
+  flow, and describes it as the cheap survey. So the documented startup
+  call is the one that does not fit, and it fails on precisely the
+  projects big enough to need a survey. A spill is a correct safety
+  behaviour; the defect is that the shape we tell people to use for
+  cheapness is the shape that reaches the cap.
+
+  NOT A REGRESSION AND NOT A REFUSAL. The envelope's own hint was good
+  and suggested `fields:[...]` first, so the caller was not stranded.
+  finbreak explicitly filed it as a data point rather than a defect
+  report.
+
+  WHAT TO MEASURE BEFORE CHOOSING A FIX. `headline_only` is already the
+  lean mode, so if it still spills the per-row cost is the thing to
+  look at, not the mode. Open questions worth settling in that order:
+  what a `headline_only` row actually carries today; whether the spill
+  threshold is being reached by row COUNT or by row WIDTH; and whether
+  `status:"active"` on a large project is simply the wrong default for
+  a survey, in which case the answer is a documentation change to the
+  resumption flow rather than a verb change.
+
+  DO NOT assume the fix is a bigger cap. A survey that returns
+  everything is not a survey.
+  Measured figures from finbreak-65 (2026-09-21), replacing the
+  qualitative report above: the call returned 19,581 bytes, 114 rows,
+  `offloaded:true`, with no per-row preview. The reporter needed only a
+  COUNT, so the `read_spill` handle route was the wrong shape for them
+  entirely — they wanted `fields:[...]`, which is what the envelope's hint
+  suggested first.
+
+  Two things that follow. The spill threshold is being reached at 114 rows
+  in `headline_only`, which is already the lean mode — so the per-row cost
+  is what to examine, not the mode. And the wanted answer was an
+  aggregate, which no mode currently returns; ANTS-5285 records the
+  neighbouring gap on the same verb, where the caller wanted the active
+  ids of one section and neither survey shape fits. Weigh the two
+  together: `roadmap_query` has no shape that is narrow, and none that is
+  purely aggregate.
+  **Layman:** A shortcut meant to give a quick overview at session start returns too much on big projects, so it hands back a file reference instead of the list — exactly where the quick overview was the point.
+  Kind: fix.
+  Source: peer-session-finbreak-65, in-session-2026-09-21.
+  Lanes: mcp.
+
+- 📋 [ANTS-5276] **Two specs name a PtyHandler class the tree does not define.**
+  Found by the review-contract gate on CLAUDE.md (ANTS-5274), loop 1, as
+  out-of-scope collateral. All three cold lanes independently found the
+  same error in CLAUDE.md itself; it is fixed there. These are the other
+  copies, left alone deliberately because a spec is a gated document and
+  a passing edit is not a review.
+
+  THE FACT: there is no `PtyHandler` symbol. `find_definition` over 1159
+  files returns zero definitions and hints at the FILE `src/ptyhandler.cpp`.
+  The class defined there is `Pty` — `Pty::Pty`, `Pty::~Pty`, `Pty::start`,
+  `Pty::write`, `Pty::onWriteReady`, `Pty::setReadEnabled`, `Pty::resize`,
+  `Pty::foregroundReturnedToShell`, `Pty::onReadReady`, and nothing else.
+  `PtyHandler` is the file stem being read as a class name.
+
+  WHERE, as of 2026-09-21:
+    docs/specs/ANTS-1897.md  — three occurrences, including
+                               "`PtyHandler`'s API" and a grep recipe
+                               naming `PtyHandler::start*`. The recipe is
+                               the one that actually costs something: run
+                               as written it matches nothing and reads as
+                               "no call sites".
+    docs/specs/ANTS-1113.md  — "likely via the existing PtyHandler shim".
+
+  NOT IN SCOPE and deliberately untouched: CHANGELOG.md, which records
+  what shipped and is not corrected retroactively; and ROADMAP.md's own
+  ANTS-5274 body, corrected separately as part of closing that item.
+
+  Each spec is a gated document. Fix them on their own next edit, or as
+  one doc-fix pass, rather than by hand here.
+  **Layman:** Some design documents refer to a part of the code by a name it does not have, so anyone searching for it finds nothing.
+  Kind: doc-fix.
+  Source: review-contract CLAUDE.md loop 1, in-session-2026-09-21.
+  Lanes: docs, vt.
+
+- 📋 [ANTS-5277] **The convert dry run's own deliverable is unreadable at real scale.**
+  Measured by peer session vestige-5f on the FIRST real-scale run of
+  ANTS-4491, against a 1,026-item github-task-list roadmap.
+
+  THE DEFECT: `roadmap_log op:"convert" dry_run:true` returned an envelope
+  of 121,826 characters on a SINGLE LINE. That exceeds the tool-result
+  ceiling, so the caller could not read it at all. Vestige had to spill it
+  to a file and parse it out of band.
+
+  WHY `fields:[...]` DOES NOT SAVE IT: `planned[]` is itself the oversized
+  field, and ANTS-5252 deliberately makes that table the deliverable of the
+  dry run. So the projection lever that rescues every other oversized
+  envelope cannot apply here without discarding the thing the call is for.
+
+  WHY IT MATTERS MORE THAN AN ORDINARY SPILL: convert is a ONE-WAY bulk
+  rewrite of a version-controlled file that moves a counter other documents
+  cite by id. ANTS-5252's whole argument is that an aggregate count cannot
+  be checked against anything and a per-bullet table can. At the scale
+  where that argument bites hardest, the table cannot be read. The
+  reviewable preview is unavailable exactly where review matters most.
+
+  TWO SHAPES VESTIGE PROPOSED, both worth weighing:
+    - `max_planned` with a `planned_truncated` marker, matching the
+      announce-every-cap convention the rest of the surface already uses.
+    - `planned_only_changed` — emit rows only for bullets whose id is
+      ALLOCATED or CHANGED, since `in_file` unchanged rows are the bulk and
+      are the ones a reviewer does not need to scan.
+
+  The second is the better default if the numbers bear it out: ANTS-5252's
+  stated reason for the table is catching a CHANGED id, which is invisible
+  and permanent, and an unchanged row carries none of that risk.
+
+  Also worth fixing regardless: the envelope is one line. Even under a cap,
+  a single-line 100k envelope is hostile to every caller.
+  **Layman:** A preview meant to be checked before a one-way change returns so much text in one go that it cannot be displayed at all on a large project.
+  Kind: fix.
+  Source: peer-session-vestige-5f, in-session-2026-09-21.
+  Lanes: mcp, roadmap.
+
+- 📋 [ANTS-5278] **workspace_search is reached for where find_caller answers in a fraction.**
+  Measured by peer session doom-ants-3b.
+
+  THE MEASUREMENT: `workspace_search pattern:"RB_SetMode" context:4
+  max_results:15` returned `offloaded:true`, `bytes:17703`, `row_count:15` —
+  a spilled envelope plus a row-shape preview, and no usable rows. The same
+  question asked as `find_caller` returned two callers plus the definition
+  and signature in a couple of hundred bytes.
+
+  THE CAUSE IS NOT THE VERB. It degraded sensibly and its `hint` named
+  `fields=` first, which was the right suggestion. The cost was in the verb
+  CHOICE: a "who calls X" question asked with the text-search verb pays for
+  context lines around every MENTION of the name, and in a mature repo most
+  mentions are roadmap prose and old review bodies.
+
+  WHY A CATALOG LINE DOES NOT FIX IT, in the reporter's own words: they
+  knew both verbs existed and had the tip in their session bootstrap, and
+  still reached for the search, because "find every place RB_SetMode
+  appears" is how the question forms in the head. The catalog did not catch
+  it because the catalog is read at session start, not at the moment of
+  use.
+
+  PROPOSED, and it is cheap: one line in `workspace_search`'s OWN
+  description — for "who calls X" prefer `find_caller` / `find_sources`;
+  reach for the text search when you want MENTIONS rather than CALLS. The
+  distinction is not inferable from the names.
+
+  Constraint: the wire description has an 800-byte budget enforced by a
+  test. If it will not fit, the op schema description is the fallback, but
+  the point-of-use nudge is the whole value — in `detail` it is no nearer
+  the decision than the catalog already was.
+  **Layman:** People use the text-search tool to ask who calls a function, which is far more expensive than the tool built for that question.
+  Kind: enhancement.
+  Source: peer-session-doom-ants-3b, in-session-2026-09-21.
+  Lanes: mcp.
+
+- 📋 [ANTS-5279] **workspace_search context is symmetric, and a signature match only wants the tail.**
+  Reported by peer session games-hub-78. Figures are the reporter's
+  ESTIMATE from the visible payload, not a measured byte count, and they
+  said so.
+
+  THE CASE: `workspace_search context:10 max_results:6` to find four C++
+  function bodies. The match line was a function SIGNATURE, so the wanted
+  window was about 8 lines AFTER and 0 before. 10 came back on both sides
+  and roughly 12 of about 60 context lines were read. Reply on the order of
+  3.5 KB; asymmetric windows would have cut it near half with no loss.
+
+  WHY THIS IS NOT "ask for less": the reporter needed the trailing lines
+  and could not have lowered `context` without losing them. The waste is
+  structural in the parameter's shape, not in the caller's judgement.
+
+  PRECEDENT IN THE SURFACE: `read_region` already distinguishes head from
+  tail, so head/tail asymmetry is an established idea here rather than a
+  new concept to introduce.
+
+  SHAPE: `context_before` / `context_after`, with `context` kept as the
+  symmetric shorthand that sets both. Backwards compatible, and the
+  envelope already carries `context_before` / `context_after` ARRAYS, so
+  the output shape needs no change at all — only the inputs.
+  **Layman:** When searching code you can ask for surrounding lines, but only the same number on both sides, so half of what comes back is usually wasted.
+  Kind: enhancement.
+  Source: peer-session-games-hub-78, in-session-2026-09-21.
+  Lanes: mcp.
+
+- 📋 [ANTS-5280] **read_regions has no catalog line, so the one-call-for-N-slices route is invisible.**
+  Reported by peer session games-hub-78, as the cause behind four
+  unnecessary `Bash awk` calls.
+
+  WHAT HAPPENED: they ran `awk '/^void ChessView::mousePressEvent/,/^}/'`
+  and three near-identical commands to pull one function body each from
+  four files. `read_region` with `symbol:` does exactly this, and
+  `read_regions` does all four in ONE call.
+
+  WHY THEY DID NOT REACH FOR IT: `read_region` takes one path and one
+  symbol per call, and the multi-slice form is advertised only INSIDE
+  `file_outline`'s description ("read_regions = N slices, 1 call").
+  `read_regions` has no catalog line of its own in the session-start list,
+  so from a cold session the one-call route is invisible unless you happen
+  to read `file_outline`'s prose.
+
+  TWO FIXES, not mutually exclusive:
+    - give `read_regions` its own line in the session-start catalog, which
+      is where the reporter would have seen it;
+    - or accept a `symbols[]` array on `read_region`, so the natural verb
+      for "give me this function body" scales to N without the caller
+      needing to know a second verb name exists.
+
+  The second is the stronger fix: it removes the need for discovery rather
+  than improving it. Pairs with ANTS-5278's point that a nudge at the point
+  of use beats a catalog read at session start.
+  **Layman:** A tool that reads several pieces of files at once is not listed where people look for tools, so they run several separate commands instead.
+  Kind: doc.
+  Source: peer-session-games-hub-78, in-session-2026-09-21.
+  Lanes: mcp, docs.
+
+- 📋 [ANTS-5281] **read_region section mode hands back line numbers on exactly the sections it exists to save you from.**
+  Measured by peer session finbreak-65.
+
+  THE MEASUREMENT: `read_region path:docs/specs/FIBR-0050.md
+  section:"Cold-eyes loop log"` returned `offloaded:true`, 19,249 bytes,
+  215 rows — WITH `max_line_bytes:400` already set, which clipped 5 lines
+  and still did not bring it under. The caller fell back to a
+  `start_line`/`end_line` read.
+
+  THE BEHAVIOUR IS CORRECT: `max_line_bytes` is charged before the byte
+  cap, exactly as documented. This is not a bug report.
+
+  THE GAP: section mode is precisely the verb you reach for to AVOID
+  knowing line numbers, and on a long append-only log it hands line numbers
+  back as the only route. The shape that is missing is "just the rows" —
+  there is no way to ask for the structure of a 215-row section without its
+  body.
+
+  WORTH NOTING the population: an append-only loop log is the canonical
+  case, and this project's own review skills mandate exactly that document
+  shape. So the projects most likely to hit it are the ones following our
+  own standards.
+
+  RELATED, not duplicate: `file_outline` has `max_heading_level` for the
+  same class of problem on a whole file — a long append-only log whose
+  entries swamp the headings. Section mode has no equivalent. Consider
+  whether the answer is a row cap with a marker, a heading-level filter
+  within a section, or a `structure_only` shape.
+  **Layman:** A tool that fetches a document section by name so you need not know line numbers returns too much on long sections, forcing you back to line numbers.
+  Kind: enhancement.
+  Source: peer-session-finbreak-65, in-session-2026-09-21.
+  Lanes: mcp.
+
+- 📋 [ANTS-5282] **Three verbs name the same quantity three ways, and the dry-run echo fields are unnamed.**
+  Two peer sessions hit the same class independently. Neither cost more
+  than one round trip, and BOTH reporters went out of their way to say the
+  self-correction worked — `fields_available` (ANTS-4930) told them the
+  answer immediately with no doc lookup. Filing the naming, not the
+  behaviour.
+
+  THE INCONSISTENCY (finbreak-65): `file_outline fields:["line_count"]`
+  came back in `fields_unmatched`; the real field is `total_lines`. And
+  `read_region` echoes `returned` / `row_count` for the same notion. So
+  there is no one name a caller can carry between the two verbs.
+
+  THE UNNAMED ECHOES (doom-ants-3b): `fields_unmatched` for `bullet` and
+  `category` on a `changelog_log` dry run, and `first_id` on a
+  `roadmap_log op:"append_batch"`. The reporter's point is that these were
+  REASONABLE guesses from reading the schema prose — the prose describes a
+  dry run as returning the rendered bullet and the resolved category
+  without naming the keys that carry them.
+
+  WHAT TO DO, in the reporter's own framing: name the dry-run echo fields
+  in the op description rather than changing any behaviour. A caller who
+  can read the key names off the prose never guesses.
+
+  DO NOT rename a live field to fix the first half. `total_lines` and
+  `row_count` are load-bearing in existing callers; the cheap correct move
+  is to document the mapping, or accept the sibling name as an alias, not
+  to break an envelope.
+  **Layman:** Different tools use different words for the same thing, so a name learned from one tool is wrong in the next.
+  Kind: doc.
+  Source: peer-sessions finbreak-65 and doom-ants-3b, in-session-2026-09-21.
+  Lanes: mcp, docs.
+
+- 📋 [ANTS-5283] **A render dry run cannot answer whether the render would change anything.**
+  Reported by peer session localwebservermanager-28, and this one cost a
+  WRONG BELIEF rather than only tokens — which is why it leads the batch.
+
+  WHAT HAPPENED: they ran `roadmap_log op:"render" dry_run:true`, read
+  `would_discard_external_edits:false` as "this render would not change the
+  file", and were ABOUT TO REPORT the roadmap already in sync. The real
+  render then wrote, and the file showed as modified.
+
+  THE FIELD DOES NOT MEAN THAT. It says no HAND edit would be lost. It says
+  nothing about whether the bytes differ. The two readings are easy to
+  conflate because both sound like "nothing would change".
+
+  WHAT THE PREVIEW CARRIES: `would_write:[path]` and `items_rendered`.
+  Neither answers "would this change anything", so the only way to learn
+  the answer is to PERFORM the write — which is what a preview exists to
+  avoid.
+
+  PROPOSED: `would_change_bytes:true|false`, or the byte delta. ANTS-4614
+  already describes op:render as idempotent and safe to re-run, so a caller
+  asking "is a render owed?" is the expected use, and today it has no
+  answer.
+
+  SECOND-ORDER, worth a thought while in here: if a no-op render is cheap
+  to detect, the verb could report it rather than rewriting identical bytes
+  and touching the mtime.
+  **Layman:** A preview of a file rewrite does not say whether the file would actually change, which is the one thing a preview is for.
+  Kind: enhancement.
+  Source: peer-session-localwebservermanager-28, in-session-2026-09-21.
+  Lanes: mcp, roadmap.
+
+- 💭 [ANTS-5284] **roadmap_query rejects by_id, which is the natural guess when you hold an id.**
+  Reported by peer session localwebservermanager-28. Filed as CONSIDERED
+  rather than planned, because the reporter's own verdict is that the
+  existing hint already does the job and this is low priority.
+
+  WHAT HAPPENED: `roadmap_query mode:"by_id"` refused with `bad_mode`. Two
+  calls wasted. `by_id` is the natural guess when you hold an id, and the
+  accepted mode list (`bullets`, `section_index`, `headline_only`,
+  `bundles`, `report`) does not suggest where item lookup lives.
+
+  WORTH RECORDING FOR ITS OWN SAKE — the reporter called the hint one of
+  the best they had seen from any tool: "item lookup is an argument, not a
+  mode", plus the exact argument name. It self-corrected them in one read
+  with no doc lookup. That is the refusal-envelope design working as
+  intended and is evidence FOR the current approach.
+
+  THE ONLY CHANGE WORTH WEIGHING: accept `by_id` as an alias resolving to
+  `bullets`, which removes the round trip entirely. Against it: an alias
+  for every natural guess is unbounded, and a refusal that teaches is
+  better than a silent acceptance that hides the real shape.
+
+  Decide deliberately. Do not ship the alias just because it is easy.
+  **Layman:** Looking up one item by its number is done with a different argument than people expect, so the first attempt fails.
+  Kind: enhancement.
+  Source: peer-session-localwebservermanager-28, in-session-2026-09-21.
+  Lanes: mcp.
+
+- 📋 [ANTS-5285] **Orienting in one section needs two calls because neither survey shape fits.**
+  Measured by peer session localwebservermanager-28.
+
+  THE MEASUREMENT: `roadmap_query mode:"headline_only" status:"planned"`
+  returned 77 bullets, around 9 KB, of which the useful part was under
+  1 KB. They wanted "active items in section X" and got there by filtering
+  client-side.
+
+  THE GAP BETWEEN THE TWO SURVEY SHAPES:
+    - `section_index` gives per-section counts with NO ids.
+    - `headline_only` gives every id in the project.
+  Neither answers "the active ids in this section", so the caller runs both
+  or filters by hand.
+
+  PROPOSED by the reporter: a flag on `section_index` to include the active
+  ids for the sections it matches, so one call replaces the pair.
+
+  CHECK BEFORE BUILDING: `roadmap_query` already has a section filter, so
+  the combination `section:<slug>` + `status` + `mode:"headline_only"` may
+  already answer this. If it does, this is a DOCUMENTATION item and the fix
+  is an example in the op description, not a new flag. Establish which
+  before writing code — the reporter did not try that combination and said
+  so.
+
+  RELATED: ANTS-5275 records the converse problem on the same verb, where
+  the prescribed cheap survey spills on a large project. Both are about
+  `roadmap_query` having no shape that is both narrow and id-bearing.
+  **Layman:** To see the open work in one area you must either get counts with no items or every item in the project, so people filter it themselves afterwards.
+  Kind: enhancement.
+  Source: peer-session-localwebservermanager-28, in-session-2026-09-21.
+  Lanes: mcp, roadmap.
 
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-08-20 triage
 
