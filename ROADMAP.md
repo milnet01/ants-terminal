@@ -49564,6 +49564,53 @@ are closed inline in the feedback files rather than filed here.
   Source: cc-feedback-2026-09-21 (Vestige).
   Lanes: mcp, roadmap-store.
 
+- 📋 [ANTS-5258] **op:"convert"'s id report cannot say whether an id-less bullet was matched to an existing item or issued a fresh id.**
+  ANTS-5252 ships `ids.planned[]` with `origin:"absent"` for a bullet the
+  file gives no id. INV-10 is deliberate: the row is built before the load
+  runs, so it cannot claim an allocation happened. What it also cannot say
+  is the thing Vestige actually needs — whether that bullet will be MATCHED
+  to an existing store item instead.
+
+  WHY A MATCH IS THE DANGEROUS ARM, not the safe one (Vestige's argument,
+  and it inverts the obvious reading). A fresh id collides with nothing. A
+  WRONG match writes an EXISTING id into a public file, attaching a bullet
+  to history that belongs to something else — and every prior citation of
+  that id, in CHANGELOG entries, specs and commit messages going back
+  months, now resolves to the wrong work. It is not reviewable after the
+  fact because the output is well-formed.
+
+  CORRECTION TO THE REPORTER'S RISK MODEL, and it narrows this
+  considerably. The match key is NOT bare headline. § 2.6.1, at
+  roadmapmigrateload.cpp matchItems(), requires ALL of: same section,
+  `idFromMigration` true on the stored row, byte-identical headline, and
+  the row not already consumed. So it can never claim a row whose id the
+  AUTHOR wrote, and near-identical headlines do not match — only
+  byte-identical ones in the same section.
+
+  WHAT REMAINS REAL. Where several stored rows satisfy that key, the code
+  pairs them BY ORDER and fires an `ambiguous_rematch` note, whose own
+  comment says the pairing "rests on order alone". That note already
+  exists, is already correct, and is NOT surfaced in the convert envelope.
+  Vestige's roadmap has repeated phase scaffolding and slice bullets, which
+  is exactly the shape that produces those groups.
+
+  SHAPE, and the reporter scoped it themselves — not a full correlation:
+  on the `absent` arm, one flag for matched-versus-fresh, and on the
+  matched arm the id it matched to and the headline it matched on. Plus
+  surface `ambiguous_rematch`, which is the cheap half and arguably the
+  more important one.
+
+  `Loader::matchPk` is already parallel to `plan.items`, so the data
+  exists; the work is exposing a per-plan-item resolution from
+  RoadmapMigrateLoad::Outcome and joining it onto the PlannedId rows.
+
+  Do this BEFORE any large project converts. Vestige is not in a hurry and
+  has asked for it to be done properly rather than quickly.
+  **Layman:** Before a bulk conversion you can see which bullets have no number yet, but not whether each will get a brand-new number or be joined to an existing entry — and being joined to the wrong one is the damaging outcome.
+  Kind: enhancement.
+  Source: cc-feedback-2026-09-21 (Vestige), follow-up to ANTS-5252.
+  Lanes: mcp, roadmap-store.
+
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-08-20 triage
 
 Thirty pending findings across ten feedback files, triaged 2026-08-20. Six
