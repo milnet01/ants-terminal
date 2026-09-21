@@ -50703,6 +50703,30 @@ are closed inline in the feedback files rather than filed here.
 
   Also worth fixing regardless: the envelope is one line. Even under a cap,
   a single-line 100k envelope is hostile to every caller.
+  Sharpened 2026-09-21 by vestige-5f's full run, and this item is now a
+  dependency of ANTS-5286 rather than a standalone cost complaint.
+
+  Two measurements the first report did not have. `fields:[...]` does not
+  reliably shrink it — a request that INCLUDED `ids` re-inflated the
+  envelope to 121,945 characters and spilled again, so the projection
+  lever can make it worse. And `planned[]` is capped at
+  `planned_shown:200` against `bullets_total:1096` with
+  `planned_truncated:true`, so the per-bullet review ANTS-5252 calls the
+  deliverable covers 18% of the file.
+
+  WHY THIS IS NOW BLOCKING RATHER THAN EXPENSIVE: ANTS-5286 proposes
+  refusing a convert that would lose text, and the argument for refusing
+  rests on this item — the caller cannot inspect the loss because the
+  envelope carrying the evidence cannot be read. Fixing the readability
+  is what makes an informed override meaningful. Until then the only safe
+  answer is refusal.
+
+  The reporter's suggested shape is stronger than the one filed above:
+  emit only rows needing a DECISION (`origin:"absent"`, `id_inferred`,
+  `ambiguous_rematch`), and echo the effective cap the way
+  `roadmap_migrate`'s `max_notes` already does. An unchanged row carries
+  none of the risk ANTS-5252 names, so it does not need to be in the
+  table at all.
   **Layman:** A preview meant to be checked before a one-way change returns so much text in one go that it cannot be displayed at all on a large project.
   Kind: fix.
   Source: peer-session-vestige-5f, in-session-2026-09-21.
@@ -50957,6 +50981,234 @@ are closed inline in the feedback files rather than filed here.
   Kind: enhancement.
   Source: peer-session-localwebservermanager-28, in-session-2026-09-21.
   Lanes: mcp, roadmap.
+
+- 📋 [ANTS-5286] **convert proceeds on text_lost while its own preview is too large to read.**
+  BLOCKER. Found by vestige-5f on the first real-scale ANTS-4491 run, on
+  a 1,026-bullet mixed-dialect roadmap at a clean tree. They stopped and
+  asked rather than proceeding, which is what saved the text.
+
+  THE MEASUREMENT: `roadmap_log op:"convert" dry_run:true` reported
+  `would_discard_external_edits:true`, `would_discard_reason:"text_lost"`,
+  `would_discard_text_lines:890`, `would_discard_edit_lines:7380`,
+  `would_discard_structure_lines:24`, `would_discard_restyled_lines:108`.
+
+  WHY THE EXISTING GUARD DOES NOT CATCH IT. ANTS-4141 refuses the write
+  only when the file holds a bullet the store has NEVER IMPORTED
+  (`render_would_drop`). Vestige had migrated from that exact commit
+  minutes before, so every bullet is known, the guard passes, and the
+  write proceeds. The guard checks IDENTITY; the loss is in CONTENT.
+
+  WHY THE HINT DOES NOT COVER IT EITHER. `discard_hint` explains the
+  lines as "an OLDER PUBLICATION of this same store ... the ordinary case
+  on a branch whose roadmap is behind", then concedes "It does NOT follow
+  that nothing was lost: a hand-edited body belongs to a known bullet and
+  lands here too." On a file migrated moments earlier the first branch is
+  EXCLUDED by construction, so only the concession applies. The hint is
+  honest and still leaves the caller to adjudicate.
+
+  THE ARGUMENT FOR REFUSING, which is the reporter's and is decisive: the
+  caller CANNOT perform the inspection the current design assumes. The
+  dry-run envelope is 121,826 characters on one line, over the
+  tool-result ceiling (ANTS-5277), and `planned[]` is capped at 200 of
+  1,096 rows. So consent rests on evidence nobody can read.
+
+  PROPOSED: `op:"convert"` refuses on `text_lost` by default, with the
+  refusal naming the count and pointing at the backup path. An explicit
+  opt-in argument may override it, because a caller who HAS inspected the
+  loss out of band is entitled to proceed.
+
+  DO NOT weaken this to a louder warning. A warning is what shipped, and
+  the only reason 890 lines survive is that one session declined to
+  follow it.
+  **Layman:** A one-way conversion warns that it would delete text, then goes ahead anyway — and the warning that lists what would be lost is too big to display.
+  Kind: fix.
+  Source: peer-session-vestige-5f, in-session-2026-09-21.
+  Lanes: mcp, roadmap.
+
+- 📋 [ANTS-5287] **A publish resurrects items deleted from the roadmap file.**
+  Found while adjudicating the convert blocker. The reporter's own
+  figures showed it and neither of us named it at first.
+
+  THE ARITHMETIC: their dry run reported `items_rendered:1661` against
+  `ids.bullets_total:1096`. The difference is 565, which is EXACTLY the
+  `items_orphaned:565` their `roadmap_migrate` reported on the same
+  commit.
+
+  WHAT ORPHANED MEANS: `src/roadmapmigrateload.h` documents
+  `itemsOrphaned` as "in the store, absent from source". These are items
+  the store holds that the current file does not — in the ordinary case,
+  bullets somebody deleted.
+
+  VERIFIED, not inferred: there is NO orphan column and NO orphan filter
+  anywhere in `roadmapstore.cpp` or the render path. Orphaned is a
+  migration-time OBSERVATION, computed and reported, never persisted. So
+  the renderer emits every item the project holds, orphans included.
+
+  THE CONSEQUENCE: a publish is unfaithful in both directions at once. It
+  drops body text the file has (ANTS-5286) and re-emits items the file
+  deliberately does not. A user who deletes a bullet and later triggers a
+  render gets it back, silently.
+
+  THIS IS INDEPENDENT OF DIALECT. The reporter hypothesised mixed-dialect
+  rendering as the single root cause of their 890 lost lines; that is a
+  real contributor, but the orphan channel is orthogonal and would fire
+  on a single-dialect file too. Do not record one cause.
+
+  WHAT TO DECIDE, and it is a design question rather than a bug with an
+  obvious patch: does an orphan mean "deleted, drop it", "archived, keep
+  it out of the render", or "the file is behind, restore it"? All three
+  are defensible and the store cannot currently tell them apart, because
+  it does not record that the item was ever absent. That is the missing
+  state, and it needs settling before any code moves.
+  **Layman:** Items removed from the roadmap are kept in the database, and rewriting the file puts every one of them back.
+  Kind: fix.
+  Source: peer-session-vestige-5f, in-session-2026-09-21.
+  Lanes: mcp, roadmap.
+
+- 📋 [ANTS-5288] **Promoting a bold caption splits it mid-sentence and leaves a stray marker.**
+  Reported by vestige-5f, and it CORRECTS an acceptance test this project
+  handed them, which makes it worth more than the test it invalidates.
+
+  THE BRIEF SAID: "8 bold pseudo-headings surviving IN PLACE" was the
+  acceptance test for a real-scale convert.
+
+  WHAT ACTUALLY HAPPENS: they survive, but NOT as headings. Each is
+  promoted to an ITEM whose id is the caption text — ids like
+  "Terrain System", "FW W5 (cont.)" — with `origin:"quarantined"`,
+  `id_inferred:true`, `in_file:true`.
+
+  THE DEFECT: the id/headline split runs through the MIDDLE of the bold
+  caption, so the headline begins mid-sentence and retains a stray `**`.
+  Their measured example: id `FW W9 - cross-formula fit target` with the
+  headline beginning `cross-formula fit target.** The reference harness
+  fits...`.
+
+  So the acceptance test was written against an outcome that does not
+  occur, and would have passed a session that checked only "are the eight
+  still there". They are still there and they are malformed.
+
+  ALSO IN SCOPE, same reporter: `in_file` is a BOOLEAN in this envelope,
+  while the name reads like it carries the file's id string. Worth a line
+  in the op description; a caller reading it as a string gets a truthy
+  value and no error.
+
+  FIX THE ACCEPTANCE TEST TOO, not just the code. "Surviving in place" is
+  not checkable; "promoted to an item whose id is the full caption and
+  whose headline carries no residual marker" is.
+  **Layman:** Section-like headings in bold get turned into items, but the split lands in the middle of the sentence and leaves formatting characters behind.
+  Kind: fix.
+  Source: peer-session-vestige-5f, in-session-2026-09-21.
+  Lanes: mcp, roadmap.
+
+- 📋 [ANTS-5289] **The ambiguous-rematch report says it could not disambiguate, never what it will do.**
+  Reported by vestige-5f as their highest-risk finding. Investigated, and
+  the RISK IS NOT REAL — the reporting gap is.
+
+  WHAT THEY SAW: `ids.ambiguous_rematch:11`, of which seven share the
+  identical headline "Phase 9E-2:", all `origin:"absent"`. The docs say
+  such a bullet will "either issue one OR match an existing store item by
+  headline". Their concern: seven bullets matching on one headline is
+  exactly where a wrong binding lands silently and permanently.
+
+  WHAT THE CODE ACTUALLY DOES (`src/roadmapmigrateload.cpp`): an
+  ambiguous group is paired BY ORDER, deliberately. `existing` is ordered
+  by `item_pk`, the plan is in document order, the k-th plan item claims
+  the k-th stored item, and an unchanged re-run reproduces the same
+  pairing. Leftovers degrade as the rest of the section does — a surplus
+  stored item becomes an orphan, a surplus plan item a new insert.
+
+  WHY IT IS NOT A WRONG BINDING: the comment makes the argument and it is
+  a good one. Two stored items in one section with byte-identical
+  headlines, both migration-allocated, are indistinguishable by every
+  field the plan carries, so "the wrong one" is not a state anything can
+  observe. The earlier design refused to match and was changed on
+  measured evidence — on 3D_Engine it inserted 15 and orphaned 15 on
+  every re-run, for ever, against a source nobody had edited.
+
+  THE ACTUAL DEFECT: none of that reaches the caller. The envelope
+  reports that something WAS ambiguous and is silent on the resolution,
+  so a careful reader correctly escalates. Vestige did, and it cost them
+  a round trip and me an investigation.
+
+  FIX: state the rule in the note and the op description — paired by
+  document order against item_pk order, deterministic, reproducible on an
+  unchanged re-run. The code comment already says it well; the caller
+  simply never sees it.
+  **Layman:** When several entries look identical the tool says it is unsure, but not how it will actually decide — which sounds riskier than it is.
+  Kind: doc.
+  Source: peer-session-vestige-5f, in-session-2026-09-21.
+  Lanes: mcp, roadmap.
+
+- 📋 [ANTS-5290] **One convert envelope reports zero missing Layman lines and 164 of them.**
+  Reported by vestige-5f from a single call, so the two numbers cannot be
+  explained by drift between calls.
+
+  THE CONTRADICTION: top-level `layman_missing` is `{"count":0,"ids":[]}`
+  while 164 of that same call's 200 `planned[]` rows carry
+  `layman_missing:true`.
+
+  One of the two is wrong and it matters which, because the gated Layman
+  check is what stops an item shipping without a plain-language line. If
+  the top-level aggregate is the broken one, a caller trusting the summary
+  ships 164 items past a gate that believed it had nothing to report.
+
+  WORTH CHECKING IN THE SAME PASS whether the aggregate is computed over
+  the CAPPED rows or the full population — `planned_shown` was 200 of
+  1,096. An aggregate computed over a truncated list is a second way to
+  get a false zero, and it would not show up on a small fixture, which is
+  the scale everything here has been proven at so far.
+
+  The reporter measured this on the same envelope as ANTS-5286 and
+  ANTS-5287; all three came out of one dry run on a real project.
+  **Layman:** The same reply says nothing is missing in its summary and lists many missing entries in its detail.
+  Kind: fix.
+  Source: peer-session-vestige-5f, in-session-2026-09-21.
+  Lanes: mcp, roadmap.
+
+- 📋 [ANTS-5291] **read_regions spills where the same ranges read singly do not.**
+  Measured by peer session finbreak-65, who ranked it above the three
+  other items they sent. Agreed: this one defeats the verb's entire
+  purpose.
+
+  THE CALL: `read_regions` on one spec with five regions (466-500,
+  580-610, 640-680, 92-96, 370-396). Returned 20,520 bytes,
+  `offloaded:true`, a handle, and `rows_preview` giving one shape row per
+  region (`{index, bytes, head}`) with NO bodies. Unusable; they fell
+  back to `Bash sed -n` for the same five slices in one shell call.
+
+  THE DIAGNOSTIC THAT MATTERS: individual `read_region` calls over those
+  same ranges returned bodies fine, on a payload smaller than several
+  single-region reads they made in the same session without incident. So
+  BATCHING is what tipped it, not the size of any one window.
+
+  WHY IT IS WORSE THAN AN ORDINARY SPILL: the verb exists to save round
+  trips. Here it cost one, plus a fallback, plus the caller reaching for
+  raw Bash — the exact thing the indexed verbs exist to displace.
+  `fields:[...]` cannot help because the wanted field IS `results[].lines`.
+  `read_spill` with `row_offset`/`row_count` would work and costs the
+  round trips the verb was supposed to remove, at which point separate
+  `read_region` calls are cheaper and simpler.
+
+  TWO SHAPES THE REPORTER OFFERED, explicitly as a caller's view rather
+  than a design:
+    - a per-region line cap applied BEFORE the byte budget, the way
+      `max_line_bytes` already composes in `read_region`;
+    - spill only the regions that do not fit and return the rest inline,
+      since a partial answer is useful and a handle with no bodies is not.
+
+  The second generalises: a batch verb that spills ALL-OR-NOTHING throws
+  away the work it already did.
+
+  THE PATTERN ACROSS THIS REPORTER'S ITEMS, in their words: the
+  section-mode spill (ANTS-5281) and this one are the same shape from a
+  caller's seat — they asked for structure and got a handle, and both
+  times the working fallback was line numbers, which this project's own
+  writing rules tell them not to put in prose. The cost is that, rather
+  than the tokens.
+  **Layman:** The tool for fetching several pieces of a file at once returns nothing usable, while fetching the same pieces one at a time works.
+  Kind: fix.
+  Source: peer-session-finbreak-65, in-session-2026-09-21.
+  Lanes: mcp.
 
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-08-20 triage
 
