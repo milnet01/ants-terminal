@@ -83,6 +83,35 @@ the commit to be one transaction.
   field a reviewer is trusting most.
   *Breaks when:* the value is renamed to something that asserts an allocation.
 
+- **INV-11** — a bullet the load MATCHES to an existing store row reports
+  `matched: true` and names `matched_id` and `matched_headline`. A summary
+  `ids.matched` counts them over every row, not only the capped echo.
+  *Test:* `reportNamesMatchedRows`.
+  *Why:* this is the arm worth previewing, and the reason inverts the obvious
+  reading. A freshly allocated id collides with nothing; a match writes an
+  EXISTING id into the file, and if it is the wrong row every prior citation of
+  that id resolves to the wrong work. The output is well-formed either way, so
+  it cannot be reviewed afterwards.
+  *Breaks when:* the load's per-item outcome stops reaching the report, or
+  `matched:true` is emitted without naming the id.
+
+- **INV-12** — where several stored rows satisfy the match key, § 2.6.1 pairs
+  them BY ORDER and the report carries `ambiguous_rematch` on each affected
+  ROW, plus a count.
+  *Test:* `ambiguousRematchIsReportedPerBullet`.
+  *Why:* the pairing is reproducible but rests on order alone, which the code
+  says of itself. An `ambiguous_rematch` NOTE has always fired; a load note
+  carries no line and cannot be correlated back to a bullet, so a caller could
+  learn that something was paired by order and never which. That is the one arm
+  a human should check and it was the least reachable.
+  *Breaks when:* the flag is emitted only as a note, or only in the summary.
+
+Note on a field that is deliberately absent: the report does NOT carry the
+matched row's id origin. Both match passes require `idFromMigration` on the
+candidate, so every matched row is migration-allocated by construction — a
+field for it could hold only one value, and a constant dressed as data invites
+a reader to believe it was checked.
+
 ## Notes
 
 The forced failure INV-2 and INV-4 use is `RoadmapWrite::setForcePostMutateFail

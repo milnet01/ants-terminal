@@ -406,8 +406,33 @@ QJsonDocument RemoteControl::cmdRoadmapLogConvert(const QJsonObject &req) {
             o[QStringLiteral("id_inferred")] = true;
         if (!row.hasLayman)
             o[QStringLiteral("layman_missing")] = true;
+        // ANTS-5258 — what the load DID with it. `origin` says what the file
+        // holds; this says what became of it, and the matched arm is the one
+        // to review: a fresh id collides with nothing, a wrong match writes an
+        // EXISTING id into the file and every prior citation of that id then
+        // resolves to the wrong work. Gated to the true arm like the flags
+        // above — `matched` absent means a fresh id.
+        if (row.matched) {
+            o[QStringLiteral("matched")]          = true;
+            o[QStringLiteral("matched_id")]       = row.matchedId;
+            o[QStringLiteral("matched_headline")] = row.matchedHeadline;
+        }
+        // The pairing rested on ORDER alone — several stored rows satisfied
+        // the key. Reproducible, and still the one arm a human should check.
+        if (row.ambiguous)
+            o[QStringLiteral("ambiguous_rematch")] = true;
         planned.append(o);
     }
+    // ANTS-5258 — the two counts a reviewer triages on, computed over EVERY
+    // row rather than the capped echo, so a truncated list still reports the
+    // true size of each arm. `ambiguous` is the one that should be zero.
+    int matchedCount = 0, ambiguousCount = 0;
+    for (const auto &row : plannedIds) {
+        if (row.matched)   ++matchedCount;
+        if (row.ambiguous) ++ambiguousCount;
+    }
+    ids[QStringLiteral("matched")]           = matchedCount;
+    ids[QStringLiteral("ambiguous_rematch")] = ambiguousCount;
     ids[QStringLiteral("planned")] = planned;
     if (bulletsTotal > planned.size()) {
         ids[QStringLiteral("planned_truncated")] = true;

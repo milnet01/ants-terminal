@@ -132,6 +132,21 @@ struct PlannedId {
     // the reviewer should see it here rather than discover it later.
     bool    hasLayman = false;
     int     firstLine = 0;   // 1-based, in the source roadmap
+
+    // ANTS-5258 — what the LOAD did with this bullet, filled after the load
+    // runs. `origin` above says what the FILE holds; these say what became of
+    // it, which is the half INV-10 deliberately refused to guess at.
+    //
+    // The matched arm is the one to review. A freshly allocated id collides
+    // with nothing; a wrong match writes an EXISTING id into the file and
+    // every prior citation of that id resolves to the wrong work — and the
+    // output is well-formed either way, so it is not reviewable afterwards.
+    bool    matched = false;
+    QString matchedId;        // empty unless matched
+    QString matchedHeadline;  // the headline the match was made ON
+    // Several stored rows satisfied the key and were paired BY ORDER.
+    // Reproducible, but resting on order alone — check these by hand.
+    bool    ambiguous = false;
 };
 
 struct InTransactionLoad {

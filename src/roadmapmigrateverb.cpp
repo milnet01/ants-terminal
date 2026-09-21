@@ -798,6 +798,19 @@ RoadmapMigrateVerb::loadInOpenTransaction(RoadmapStore &store,
         out.error = loaded.error;
         return out;
     }
+    // ANTS-5258 — join the load's per-item outcome onto the rows built from
+    // the plan above. Both are indexed by PLAN POSITION, which is what makes
+    // the join sound; guarded on size so a future change to either side fails
+    // to report rather than reporting the wrong bullet's match.
+    if (loaded.itemMatches.size() == plan.items.size()) {
+        for (qsizetype i = 0; i < out.plannedIds.size(); ++i) {
+            const auto &m = loaded.itemMatches.at(i);
+            out.plannedIds[i].matched         = m.matched;
+            out.plannedIds[i].matchedId       = m.matchedId;
+            out.plannedIds[i].matchedHeadline = m.matchedHeadline;
+            out.plannedIds[i].ambiguous       = m.ambiguous;
+        }
+    }
     out.idsAllocated = loaded.idsAllocated;
     for (const auto &n : loaded.notes) {
         if (n.code == QLatin1String("id_allocated")

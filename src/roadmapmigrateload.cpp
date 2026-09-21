@@ -456,6 +456,10 @@ bool Loader::matchItems() {
         byIdFold.insert(r.idFold, r.itemPk);
 
     matchPk = QVector<qint64>(plan.items.size(), 0);
+    // ANTS-5258 — sized with matchPk and for the same reason: both are indexed
+    // by plan position, so they must be allocated before any pass writes one.
+    out.itemMatches =
+        QVector<RoadmapMigrateLoad::Outcome::ItemMatch>(plan.items.size());
 
     // The id pass runs to completion BEFORE the id-less one, and
     // the two-pass shape is the whole fix. § 2.6 calls `(project_id, id_fold)`
@@ -525,8 +529,14 @@ bool Loader::matchItems() {
             //
             // The note still fires, because the source really is ambiguous
             // and the human should know the pairing rests on order alone.
-            if (candidates.size() > 1)
+            // ANTS-5258 — recorded PER ITEM as well as as a note. The note
+            // has always fired here, and a note carries no line and cannot be
+            // correlated back to the bullet it belongs to, so a caller could
+            // see that SOMETHING was paired by order and never which.
+            if (candidates.size() > 1) {
                 note("ambiguous_rematch", it.headline);
+                out.itemMatches[i].ambiguous = true;
+            }
             matchPk[i] = candidates.first();
             consumed.insert(candidates.first());
         }
@@ -554,8 +564,10 @@ bool Loader::matchItems() {
         }
         if (candidates.isEmpty())
             continue;
-        if (candidates.size() > 1)
+        if (candidates.size() > 1) {
             note("ambiguous_rematch", it.headline);
+            out.itemMatches[i].ambiguous = true;   // ANTS-5258
+        }
         const qint64 pk = candidates.first();
         matchPk[i] = pk;
         consumed.insert(pk);
@@ -582,6 +594,38 @@ bool Loader::matchItems() {
         if (!recordHistory(pk, QStringLiteral("id"), cur->id, it.id, &seq))
             return false;
         note("id_reassigned", QStringLiteral("%1 -> %2").arg(cur->id, it.id));
+    }
+
+    // ANTS-5258 — resolve the per-item match records, AFTER every pass has
+    // run. Not inside the passes: the third pass REASSIGNS a matched row's id
+    // to the source's (the "source's id wins" rule just above), so an id read
+    // mid-pass would be the one about to be overwritten rather than the one
+    // the reviewer will see.
+    //
+    // The headline is taken from the STORED row, not the plan's. They are
+    // byte-identical by the match key's own definition, so either would do
+    // today — the stored one is chosen because it is what the match was made
+    // against, and a future weakening of the key would make the plan's a
+    // quiet lie rather than an obvious one.
+    if (!out.itemMatches.isEmpty()) {
+        QHash<qint64, const RoadmapStore::ItemRef *> byPk;
+        byPk.reserve(existing.size());
+        for (const RoadmapStore::ItemRef &r : existing)
+            byPk.insert(r.itemPk, &r);
+        for (qsizetype i = 0; i < plan.items.size(); ++i) {
+            const qint64 pk = matchPk.at(i);
+            if (!pk)
+                continue;
+            RoadmapMigrateLoad::Outcome::ItemMatch &m = out.itemMatches[i];
+            m.matched = true;
+            if (const auto *r = byPk.value(pk, nullptr)) {
+                // idFold, because ItemRef carries no raw id. Matching is
+                // case-folded within a project (INV-3), so this IS the
+                // identity the match used.
+                m.matchedId       = r->idFold;
+                m.matchedHeadline = r->headline;
+            }
+        }
     }
     return true;
 }

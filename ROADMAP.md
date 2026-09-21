@@ -49564,7 +49564,7 @@ are closed inline in the feedback files rather than filed here.
   Source: cc-feedback-2026-09-21 (Vestige).
   Lanes: mcp, roadmap-store.
 
-- 📋 [ANTS-5258] **op:"convert"'s id report cannot say whether an id-less bullet was matched to an existing item or issued a fresh id.**
+- ✅ [ANTS-5258] **op:"convert"'s id report cannot say whether an id-less bullet was matched to an existing item or issued a fresh id.**
   ANTS-5252 ships `ids.planned[]` with `origin:"absent"` for a bullet the
   file gives no id. INV-10 is deliberate: the row is built before the load
   runs, so it cannot claim an allocation happened. What it also cannot say
@@ -49646,10 +49646,68 @@ are closed inline in the feedback files rather than filed here.
   ORIGIN of the matched row, not just its id — otherwise it hands over an
   id the reviewer has no way to classify, which is the whole job the flag
   exists to do.
+  Resolved (2026-09-21): both halves built.
+
+  `ids.planned[]` rows now carry `matched`, `matched_id`, `matched_headline` and `ambiguous_rematch`, all gated to the true arm; `ids.matched` and `ids.ambiguous_rematch` count over EVERY row rather than the capped echo, so a truncated list still reports the true size of each arm. Threaded as RoadmapMigrateLoad::Outcome::ItemMatch, resolved after every match pass has run — not inside them, because the third pass REASSIGNS a matched row's id and an id read mid-pass would be the one about to be overwritten.
+
+  The `ambiguous_rematch` half was the cheap one and the more valuable: the note had always fired, but a load note carries no line and cannot be correlated back to a bullet, so a caller could see that SOMETHING was paired by order and never which.
+
+  CORRECTION TO THIS ITEM'S OWN EARLIER NOTE. It said the matched-arm flag "must carry the ORIGIN of the matched row, not just its id". That was wrong and I had not checked it when I wrote it. Both match passes in matchItems() require `idFromMigration` on the candidate, so every matched row is migration-allocated BY CONSTRUCTION — the field could hold only one value. A constant dressed as data invites a reader to believe it was checked, so it is deliberately absent and the spec says so.
+
+  That error is itself the pattern this session kept hitting: a design constraint asserted inside a fix note, carrying the authority of the fix, and unverified.
+
+  Covered by roadmap_convert INV-11 and INV-12, both seen RED first by disabling the join. Full suite 5039/5039.
   **Layman:** Before a bulk conversion you can see which bullets have no number yet, but not whether each will get a brand-new number or be joined to an existing entry — and being joined to the wrong one is the damaging outcome.
   Kind: enhancement.
   Source: cc-feedback-2026-09-21 (Vestige), follow-up to ANTS-5252.
   Lanes: mcp, roadmap-store.
+
+- 📋 [ANTS-5259] **ADR-0005 D10 lets `language` narrow a source rename's sweep, which skips the stale references the sweep exists to catch.**
+  docs/decisions/0005-colony-multi-session-orchestration.md states:
+  "`language` narrows the sweep for a SOURCE-language rename only — never
+  for the always-declare list above."
+
+  The carve-out is right and insufficient. It exempts the cross-boundary
+  entries (a Lua binding, an MCP verb name, a config key) because their
+  stale references live outside their own language. But an ORDINARY source
+  rename has the same problem: a renamed Python symbol is cited in
+  documents and test fixtures as readily as in a `.py` file, and narrowing
+  to `.py` skips them. The distinction D10 draws is not the axis.
+
+  Found by the ~/.claude session while deriving a machine-wide standard
+  from D10 (`standards/unchecked-changes.md`); three gate loops, three cold
+  readers each, 13 findings. Verified here against the ADR text rather than
+  taken on trust — the clause reads as they quote it.
+
+  THE CORRECTION they adopted, and it is the right one: `language` may
+  ORDER the search and never narrows it below the whole-tree definition.
+
+  TWO MORE PINS worth carrying back, because a declaring side and a merging
+  side that disagree produce records that do not interoperate — three of
+  their lanes found this independently:
+
+    - `kind` is CLOSED at two values.
+    - `{kind:"name", old, new, language}` is swept for `old`.
+    - `{kind:"behaviour", sites, reader, language}` carries NO `old` and no
+      `new`, and blocks on the named `reader` rather than on any search.
+
+  D10 names `behaviour` but leaves the value set open and never names the
+  field carrying the reader.
+
+  ALSO: the derived standard is named `unchecked-changes.md`, not
+  `renames.md`, because D10's own list ends with a changed default behind
+  an unchanged signature — which renames nothing. Once ANTS-4915 points at
+  that standard, this ADR should stop carrying the rules and keep the
+  decision, which is the ADR's own stated argument.
+
+  OPEN, not resolved, and they want a view: whether a source symbol named
+  in PROSE in a document is a seventh always-declare entry the list is
+  missing. Relevant here — Colony renames C++ symbols that this project's
+  docs name by hand.
+  **Layman:** The plan for renaming things says you only need to search files of the same programming language. But a renamed function is also named in documents and test data, so that search would miss them.
+  Kind: doc-fix.
+  Source: cc-feedback-2026-09-21 (claude-config), from three cold-reader gate loops on the derived standard.
+  Lanes: docs, colony.
 
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-08-20 triage
 

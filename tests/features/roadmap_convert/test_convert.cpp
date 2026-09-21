@@ -633,3 +633,121 @@ TEST(RoadmapConvert, reportDistinguishesExistingIdsFromAllocated) {
                                "from the file: "
                             << QJsonDocument(resp).toJson().toStdString();
 }
+
+// ---------------------------------------------------------------- INV-11 ----
+
+// ANTS-5258 — an id-less bullet the load MATCHES to an existing store row
+// reports that match, and names the id it claimed.
+//
+// This is the arm that needed previewing, and the reason inverts the obvious
+// reading: a freshly allocated id collides with nothing, while a match writes
+// an EXISTING id into the file. If it is the wrong row, every prior citation of
+// that id now resolves to the wrong work — and the output is well-formed either
+// way, so it cannot be reviewed after the fact.
+//
+// The fixture is the stale-mirror shape: migrate first, which allocates a
+// migration-provenance id to each id-less bullet, then convert. The convert
+// re-reads the FILE, which still carries no ids, so every plan row is `absent`
+// — and the load then matches each to the row the migration made.
+TEST(RoadmapConvert, reportNamesMatchedRows) {
+    ants_test::XdgGuard guard;
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString root = seed(guard, tmp, gfmRoadmap());
+    ASSERT_FALSE(root.isEmpty());
+    ASSERT_TRUE(migrate(root));
+
+    const QJsonObject resp = convert(root, /*dryRun=*/true);
+    ASSERT_TRUE(resp.value(QStringLiteral("ok")).toBool())
+        << QJsonDocument(resp).toJson().toStdString();
+    const QJsonObject ids = resp.value(QStringLiteral("ids")).toObject();
+
+    // The triage counter, computed over every row rather than the capped echo.
+    EXPECT_GT(ids.value(QStringLiteral("matched")).toInt(), 0)
+        << "no row reported as matched, yet every bullet was migrated first — "
+           "the load's outcome is not reaching the report: "
+        << QJsonDocument(resp).toJson().toStdString();
+    // Nothing here has a duplicate headline, so order-pairing must not fire.
+    EXPECT_EQ(ids.value(QStringLiteral("ambiguous_rematch")).toInt(), 0)
+        << QJsonDocument(resp).toJson().toStdString();
+
+    const QJsonArray planned = ids.value(QStringLiteral("planned")).toArray();
+    ASSERT_FALSE(planned.isEmpty());
+    int matchedRows = 0;
+    for (const auto v : planned) {
+        const QJsonObject row = v.toObject();
+        if (!row.value(QStringLiteral("matched")).toBool())
+            continue;
+        ++matchedRows;
+        // Naming the id is the whole point — a bare `matched:true` tells a
+        // reviewer an existing id was claimed and not WHICH, which is the one
+        // thing they need in order to check it.
+        EXPECT_FALSE(row.value(QStringLiteral("matched_id")).toString().isEmpty())
+            << "matched with no id named: "
+            << QJsonDocument(row).toJson().toStdString();
+        EXPECT_FALSE(
+            row.value(QStringLiteral("matched_headline")).toString().isEmpty())
+            << "matched with no headline named — the reviewer cannot see what "
+               "it matched ON: "
+            << QJsonDocument(row).toJson().toStdString();
+    }
+    EXPECT_EQ(matchedRows, ids.value(QStringLiteral("matched")).toInt())
+        << "the summary count and the rows disagree";
+}
+
+// ---------------------------------------------------------------- INV-12 ----
+
+// ANTS-5258 — where several stored rows satisfy the match key, § 2.6.1 pairs
+// them BY ORDER, and the report says so per bullet.
+//
+// The pairing is reproducible and the code is candid that it "rests on order
+// alone". It has always fired an `ambiguous_rematch` NOTE, but a load note
+// carries no line and cannot be correlated back to a bullet — so a caller could
+// learn that something was paired by order and never which. That is the one arm
+// a human should actually check, and it was the least reachable.
+TEST(RoadmapConvert, ambiguousRematchIsReportedPerBullet) {
+    ants_test::XdgGuard guard;
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    // Two byte-identical headlines in ONE section: the key is same-section +
+    // migration-allocated + byte-identical headline, so this is the minimum
+    // that makes a group of two.
+    const QByteArray twins =
+        QByteArray("# Demo Roadmap\n"
+                   "\n"
+                   "## To Do\n"
+                   "\n"
+                   "- [ ] A duplicated headline.\n"
+                   "  Layman: A plain-language line.\n"
+                   "  Kind: chore.\n"
+                   "  Source: ants-5258-test.\n"
+                   "- [ ] A duplicated headline.\n"
+                   "  Layman: A plain-language line.\n"
+                   "  Kind: chore.\n"
+                   "  Source: ants-5258-test.\n");
+    const QString root = seed(guard, tmp, twins);
+    ASSERT_FALSE(root.isEmpty());
+    ASSERT_TRUE(migrate(root));
+
+    const QJsonObject resp = convert(root, /*dryRun=*/true);
+    ASSERT_TRUE(resp.value(QStringLiteral("ok")).toBool())
+        << QJsonDocument(resp).toJson().toStdString();
+    const QJsonObject ids = resp.value(QStringLiteral("ids")).toObject();
+
+    EXPECT_GT(ids.value(QStringLiteral("ambiguous_rematch")).toInt(), 0)
+        << "two identical headlines in one section were paired by order and "
+           "the report did not say so: "
+        << QJsonDocument(resp).toJson().toStdString();
+
+    const QJsonArray planned = ids.value(QStringLiteral("planned")).toArray();
+    int flagged = 0;
+    for (const auto v : planned)
+        if (v.toObject().value(QStringLiteral("ambiguous_rematch")).toBool())
+            ++flagged;
+    EXPECT_GT(flagged, 0)
+        << "the summary counted an ambiguous pairing but no ROW carries the "
+           "flag — a caller cannot tell which bullet to check: "
+        << QJsonDocument(resp).toJson().toStdString();
+    EXPECT_EQ(flagged, ids.value(QStringLiteral("ambiguous_rematch")).toInt())
+        << "the summary count and the flagged rows disagree";
+}

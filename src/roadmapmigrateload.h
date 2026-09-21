@@ -41,6 +41,34 @@ struct Outcome {
     // make the acceptance test fail for reasons unrelated to the contract.
     int     itemsUpdatedGoverned = 0;
     int     itemsUnchanged = 0;  // matched, nothing to write (§ 2.6)
+
+    // ANTS-5258 — per plan item, WHICH stored row (if any) it claimed, so a
+    // caller can preview a bulk id assignment instead of discovering it after
+    // the rewrite. Parallel to the plan's items, one entry each, uncapped:
+    // it is one small record per bullet and the convert's envelope does its
+    // own capping.
+    //
+    // Why the MATCHED arm is the one worth previewing, which inverts the
+    // obvious reading: a freshly allocated id collides with nothing, while a
+    // wrong match writes an EXISTING id into the file and every prior citation
+    // of that id then resolves to the wrong work. It is not reviewable
+    // afterwards, because the output is well-formed either way.
+    //
+    // `matchedOrigin` is deliberately ABSENT. Both match passes in
+    // matchItems() require `idFromMigration` on the candidate, so every
+    // matched row is migration-allocated BY CONSTRUCTION — a field for it
+    // could only ever hold one value, and a constant dressed as data invites a
+    // reader to believe it was checked.
+    struct ItemMatch {
+        bool    matched = false;
+        QString matchedId;         // the stored id claimed; empty when !matched
+        QString matchedHeadline;   // the headline the match was made ON
+        // Several stored rows satisfied the key and § 2.6.1 paired them BY
+        // ORDER. The pairing is reproducible but rests on order alone, so this
+        // is the one arm a human should actually check.
+        bool    ambiguous = false;
+    };
+    QVector<ItemMatch> itemMatches;
     // ANTS-4479 (ANTS-3855 § 2.4) — WHICH items `itemsUpdated` counted, and
     // which columns moved. A dry run reporting `items_updated: 3` named no ids
     // and no fields, so a caller could not tell a reconciliation of real drift
