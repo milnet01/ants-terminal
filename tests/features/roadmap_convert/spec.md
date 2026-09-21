@@ -106,6 +106,21 @@ the commit to be one transaction.
   a human should check and it was the least reachable.
   *Breaks when:* the flag is emitted only as a note, or only in the summary.
 
+- **INV-13** — a convert preserves PROSE, not only bullets: narration above
+  the first heading, a section intro between a heading and its first bullet,
+  and a tail note after the last bullet all survive the rewrite.
+  *Test:* `convertPreservesNarration`.
+  *Why:* the preamble is where a roadmap explains how to file into it. A
+  convert that keeps bullets and drops narration produces a well-formed file
+  that has lost its own instructions, and nothing in the id report would say
+  so. Three placements rather than one because different machinery carries
+  each — keeping one and dropping another would pass a laxer test.
+  *Breaks when:* an element kind stops being carried, or the synthetic
+  empty-slug section that holds the preamble is dropped.
+  *Limit, stated:* the fixture is one bullet and three paragraphs. It proves
+  the mechanism carries narration in each placement; it does not prove a large
+  real roadmap survives intact, and no fixture here can.
+
 Note on a field that is deliberately absent: the report does NOT carry the
 matched row's id origin. Both match passes require `idFromMigration` on the
 candidate, so every matched row is migration-allocated by construction — a

@@ -49759,6 +49759,40 @@ are closed inline in the feedback files rather than filed here.
   "drop-and-reimport beats reconciling the drift". 2,840 lost lines and 82
   restructured sections is what that guess was worth. A naive reimport is
   not free.
+  MEASURED (2026-09-21) — a convert DOES preserve prose. The first half of
+  this item is answered and the answer is the good one.
+
+  `roadmap_convert` INV-13 `convertPreservesNarration` converts a fixture
+  carrying prose in three placements and asserts each survives in the
+  rewritten file:
+
+    - ABOVE the first heading (the preamble — the synthetic empty-slug
+      section, and the placement Vestige's drift_lost_text opened with)
+    - BETWEEN a heading and its first bullet (a section intro)
+    - AFTER the last bullet (a tail note)
+
+  All three survive. Three placements rather than one because different
+  machinery carries each, and a convert keeping one while dropping another
+  would pass a laxer test and still lose the file's filing instructions.
+  Seen RED first by pointing the preamble assertion at a sentinel the file
+  never contains.
+
+  WHAT THIS DOES NOT PROVE, stated so nobody over-reads it. The fixture is
+  one bullet and three paragraphs. It establishes that the mechanism
+  carries narration in each placement; it does NOT establish that 2,840
+  lines across 1,026 items survive, and it cannot — no fixture here
+  approaches project 13's shape (mixed dialect, 989 GFM bullets, 107
+  non-GFM). Vestige's before/after run against a throwaway copy remains the
+  real measurement.
+
+  SO THE REMAINING HALF IS REPORTING, not preservation. The prose is
+  carried; nothing in the envelope SAYS it was carried, and a caller
+  reasonably reads the id report as the whole review. The proposal stands:
+  carry the drift triple computed against the POST-convert render, which is
+  the number that answers the question. The pre-convert figure measures the
+  stale store and is the one that misleads — Vestige's own 2,840 is exactly
+  that figure, and on this evidence it overstates the risk rather than
+  understating it.
   **Layman:** Before a bulk conversion you can now check that no entry's number changes, but nothing tells you whether the explanatory text around them survives the rewrite.
   Kind: enhancement.
   Source: cc-feedback-2026-09-21 (Vestige), measured on project 13.

@@ -751,3 +751,65 @@ TEST(RoadmapConvert, ambiguousRematchIsReportedPerBullet) {
     EXPECT_EQ(flagged, ids.value(QStringLiteral("ambiguous_rematch")).toInt())
         << "the summary count and the flagged rows disagree";
 }
+
+// ---------------------------------------------------------------- INV-13 ----
+
+// ANTS-5260 — a convert preserves the PROSE, not only the bullets.
+//
+// Vestige measured drift_lost 2840 on their project and the lost text opened
+// with their entire "How this file is organised" preamble — the narration a
+// future session reads to learn how to file into that roadmap at all. That
+// figure is check_sync against the STALE store and does not predict what a
+// convert does, which is why this asks the question directly instead.
+//
+// Three placements, because they are carried by different machinery: prose
+// ABOVE the first heading (the preamble, which belongs to a synthetic section
+// with an empty slug), prose BETWEEN a heading and its first bullet (a section
+// intro), and prose AFTER the last bullet. A convert that keeps one and drops
+// another would pass a laxer test and still lose the file's instructions.
+TEST(RoadmapConvert, convertPreservesNarration) {
+    ants_test::XdgGuard guard;
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+
+    const QByteArray withProse =
+        QByteArray("# Demo Roadmap\n"
+                   "\n"
+                   "PREAMBLE-SENTINEL: how this file is organised, and how to\n"
+                   "file into it.\n"
+                   "\n"
+                   "## To Do\n"
+                   "\n"
+                   "INTRO-SENTINEL: what this section is for.\n"
+                   "\n"
+                   "- [ ] The first checklist bullet.\n"
+                   "  Layman: A plain-language line.\n"
+                   "  Kind: chore.\n"
+                   "  Source: ants-5260-test.\n"
+                   "\n"
+                   "TAIL-SENTINEL: a closing note after the last bullet.\n");
+
+    const QString root = seed(guard, tmp, withProse);
+    ASSERT_FALSE(root.isEmpty());
+    const QString roadmap = root + QStringLiteral("/ROADMAP.md");
+    ASSERT_TRUE(migrate(root));
+
+    const QJsonObject resp = convert(root);
+    ASSERT_TRUE(resp.value(QStringLiteral("ok")).toBool())
+        << QJsonDocument(resp).toJson().toStdString();
+
+    const QByteArray after = readFile(roadmap);
+    ASSERT_FALSE(after.isEmpty());
+    // Each named separately: "some prose survived" is the assertion that would
+    // pass while the file's filing instructions were dropped.
+    EXPECT_TRUE(after.contains("PREAMBLE-SENTINEL"))
+        << "the preamble above the first heading did not survive the convert — "
+           "this is the text a future session reads to learn how to file:\n"
+        << after.toStdString();
+    EXPECT_TRUE(after.contains("INTRO-SENTINEL"))
+        << "the section intro did not survive the convert:\n"
+        << after.toStdString();
+    EXPECT_TRUE(after.contains("TAIL-SENTINEL"))
+        << "prose after the last bullet did not survive the convert:\n"
+        << after.toStdString();
+}
