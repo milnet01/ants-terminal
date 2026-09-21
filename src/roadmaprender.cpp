@@ -532,13 +532,22 @@ std::optional<Outcome> render(RoadmapStore &store, qint64 projectId,
         // Scoped to the emission format rather than waived per item, because
         // the reason is the FORMAT's, not any item's: no author of a
         // pass-headings roadmap has failed to do something they could have done.
+        // ANTS-5256 — under laymanGateAdvisory the SAME offenders are
+        // collected, into laymanMissing, and the render proceeds. The test is
+        // unchanged: an advisory gate must report exactly what a blocking one
+        // would have refused, or the report is not about this gate.
         if (!passHeadings && isOpen(it->status) && it->layman.isEmpty()
-            && (!opts.gateScope || opts.gateScope->contains(ref.itemPk)))
-            out.gateFailures.append(it->id.isEmpty() ? ref.idFold : it->id);
+            && (!opts.gateScope || opts.gateScope->contains(ref.itemPk))) {
+            (opts.laymanGateAdvisory ? out.laymanMissing : out.gateFailures)
+                .append(it->id.isEmpty() ? ref.idFold : it->id);
+        }
         // Last use of `it` — see the move note above.
         itemOf.insert(ref.itemPk, std::move(*row));
     }
 
+    // ANTS-5256 — sorted whether or not the gate blocks, so the advisory
+    // report has the same stable order the refusal has always had.
+    std::sort(out.laymanMissing.begin(), out.laymanMissing.end());
     if (!out.gateFailures.isEmpty()) {
         std::sort(out.gateFailures.begin(), out.gateFailures.end());
         out.itemsRendered = int(itemOf.size());

@@ -45,12 +45,34 @@ the commit to be one transaction.
 - **INV-7** — a source recognised as a third dialect refuses
   `dialect_out_of_scope` and writes nothing. *Test:* `thirdDialectRefused`.
 
+- **INV-8** — the render's Layman gate is ADVISORY for `op:"convert"`: an open
+  item with no `Layman:` line does not refuse the conversion, and the envelope
+  reports what it let through in `layman_missing`. The exemption ends with the
+  convert — an ordinary write touching the same item is still refused.
+  *Test:* `laymanGateIsAdvisoryForConvert`.
+  *Why:* a convert is a migration, not authoring. No new claim enters the
+  project; the same bullets change representation. It also cannot satisfy the
+  gate in principle — `Layman:` is an ants-v1 rule, and the source dialect is
+  one where roadmap-format.md makes it optional, so enforcing it demands the
+  DESTINATION dialect's rule of items that exist only in the source dialect, as
+  a precondition of the call that would make that rule apply. Measured on
+  Vestige 2026-09-21: 460 open items, so the op refused outright on the one
+  project it was built for.
+  *Breaks when:* `commitAndRender` is called without `LaymanGate::Exempt`, or
+  the exemption leaks past the convert to ordinary writes.
+
 ## Notes
 
-The forced failure INV-2 and INV-4 use is the render's Layman gate: an open item
-with no `Layman:` line refuses the whole write after `mutate()` has run and
-before the commit, which is exactly the window those two are about. So every
-other fixture gives each open bullet a `Layman:` line.
+The forced failure INV-2 and INV-4 use is `RoadmapWrite::setForcePostMutateFail
+ForTest()`, a seam that aborts in the window after `mutate()` has run and before
+the store commits — which is the property both invariants are about.
+
+It was the render's Layman gate until ANTS-5256, which exempted this op from
+that gate. Both cases would then have gone green by LOSING their trigger rather
+than by holding, leaving the two invariants that guard the irreversible half of
+this op unguarded by a passing suite. A test that forces its failure through
+whichever business rule is handy is coupled to a rule that was never its
+subject; a seam named for the window cannot be invalidated by a rule change.
 
 INV-7's fixture carries two `Pass` headings and two `Status` markers and no
 emoji bullets. With fewer, `detectRoadmapFormat()` classifies it `ants-v1` and

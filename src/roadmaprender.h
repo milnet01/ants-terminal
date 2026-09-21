@@ -61,6 +61,33 @@ struct Options {
     // The caller passes the project's STORED source_format, so a project
     // cannot be published in a dialect it was not migrated from.
     QString dialect;
+    // ANTS-5256 — make the INV-5 Layman gate ADVISORY for this render: the
+    // offenders are still collected, into Outcome::laymanMissing instead of
+    // Outcome::gateFailures, and the render proceeds and publishes.
+    //
+    // For op:"convert" and nothing else. The gate is a rule about AUTHORING —
+    // do not land new work without a plain-English line — and a convert
+    // authors nothing: the same bullets change representation. Worse, it
+    // cannot satisfy the gate even in principle. Layman is an ants-v1 rule,
+    // and a github-task-list source is a dialect where roadmap-format.md makes
+    // it optional, so the gate applies the DESTINATION dialect's rule to items
+    // that exist only in the source dialect, as a precondition of the one call
+    // that would make that rule apply to them.
+    //
+    // Measured (Vestige, 2026-09-21): 460 open items with no Layman line, so
+    // the op refused outright. ANTS-4628 scoped the gate to the items a write
+    // TOUCHES specifically to unblock conversion; a convert touches every item
+    // by construction — and ANTS-4500 gives every id-less bullet a synthesised
+    // id, making it an INSERT the store has never seen — so touched-items
+    // scoping degenerates to whole-project scoping on exactly the op it was
+    // narrowed for. gateScope cannot express this; the scope is right and it
+    // is the RULE that does not apply.
+    //
+    // Deliberately not reusable as "skip the gate": an advisory gate still
+    // reports, and the exemption ends with the convert. Every ordinary write
+    // afterwards judges these items normally, so the first edit to one still
+    // owes its summary.
+    bool laymanGateAdvisory = false;
 };
 
 struct Outcome {
@@ -85,6 +112,19 @@ struct Outcome {
     // was written. Populated on every engaged return, so a caller staring at a
     // gate failure can still see how many items would have rendered.
     QStringList gateFailures;
+    // ANTS-5256 — the same offenders, under Options::laymanGateAdvisory: items
+    // that FAILED the gate on a render that published anyway. Disjoint from
+    // gateFailures by construction — one render fills one of the two — so the
+    // "non-empty ⇒ nothing was written" rule above still reads true.
+    //
+    // A separate field rather than a flag beside gateFailures, because the two
+    // mean opposite things to a caller: gateFailures is "your write was
+    // refused", this is "your write landed and here is what it owes". A caller
+    // branching on emptiness alone must not be able to confuse them.
+    //
+    // Sorted like gateFailures. The convert's envelope reports it as
+    // `layman_missing`.
+    QStringList laymanMissing;
 
     // ANTS-4844 — id → the bullet the render WILL emit for it, for each item
     // this write touched. SET BY RoadmapWrite::commitAndRender(), like the

@@ -19,6 +19,7 @@
 
 #include <QString>
 #include <QStringList>
+#include <cstdint>      // ANTS-5256 — LaymanGate's explicit base type
 #include <functional>
 #include <optional>
 
@@ -149,11 +150,39 @@ enum class Result {
 // health check is for and what re-running the render fixes, whereas rolling the
 // store back to match a file that may itself be half-written (ANTS-3758 § 2.7's
 // partial commit) would discard the user's edit to match an artefact.
+// ANTS-5256 — whether the render's INV-5 Layman gate REFUSES this write or
+// merely reports on it. Named rather than a trailing bool, because the call
+// site is where the exemption has to be legible: `LaymanGate::Exempt` at the
+// one caller that passes it says what is happening, where `true` would not.
+//
+// Exempt is op:"convert"'s and nothing else's; RoadmapRender::Options
+// ::laymanGateAdvisory carries the full reasoning. The offenders still come
+// back, in Outcome::laymanMissing.
+// ANTS-5256 — TEST ONLY. Forces commitAndRender() to abort in the window after
+// mutate() has run and before the store commits, so a case can assert that a
+// completed mutation is rolled back and leaves store and file inert.
+//
+// Declared here rather than left to a business rule because that is what broke:
+// roadmap_convert's INV-2 and INV-4 forced their failure with the render's
+// Layman gate, and exempting convert from that gate would have turned both
+// green by removing their trigger. A seam named for the WINDOW survives a rule
+// change; one borrowed from a rule does not.
+//
+// Idempotent, process-wide, and never set in production. Clear it in the same
+// case that sets it — a leaked `true` refuses every subsequent write.
+void setForcePostMutateFailForTest(bool on);
+
+enum class LaymanGate : std::uint8_t {
+    Enforce,   // the default — the write authors or edits, so INV-5 applies
+    Exempt,    // a migration, which authors nothing and cannot satisfy INV-5
+};
+
 Result commitAndRender(RoadmapStore &store, qint64 projectId,
                        const QString &projectRoot,
                        const QString &liveRoadmapPath, bool dryRun,
                        const std::function<bool(QString *)> &mutate,
                        RoadmapRender::Outcome *outcome,
-                       QString *error = nullptr);
+                       QString *error = nullptr,
+                       LaymanGate gate = LaymanGate::Enforce);
 
 } // namespace RoadmapWrite

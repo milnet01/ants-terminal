@@ -13,6 +13,7 @@
 #include "roadmapmigrateload.h"
 #include "roadmapparse.h"
 #include "roadmapstore.h"
+#include "roadmapwrite.h"
 
 #include <gtest/gtest.h>
 
@@ -195,6 +196,24 @@ int itemCountOf(const QString &root) {
     return items ? int(items->size()) : -1;
 }
 
+// ANTS-5256 — forces commitAndRender() to abort in the window AFTER mutate()
+// has run and BEFORE the store commits. RAII so an assertion failure mid-case
+// cannot leak a `true` into every later case in this binary.
+//
+// INV-2 and INV-4 used to force that abort with the render's Layman gate. This
+// item EXEMPTS op:"convert" from that gate, so both cases would have gone green
+// by losing their trigger rather than by holding — a silent pass on the two
+// invariants guarding the irreversible half of the op. The seam is named for
+// the window instead of borrowed from a business rule, so the next rule change
+// cannot repeat it.
+class ForcePostMutateFail {
+public:
+    ForcePostMutateFail()  { RoadmapWrite::setForcePostMutateFailForTest(true); }
+    ~ForcePostMutateFail() { RoadmapWrite::setForcePostMutateFailForTest(false); }
+    ForcePostMutateFail(const ForcePostMutateFail &)            = delete;
+    ForcePostMutateFail &operator=(const ForcePostMutateFail &) = delete;
+};
+
 }  // namespace
 
 // ----------------------------------------------------------------- INV-1 ----
@@ -237,16 +256,23 @@ TEST(RoadmapConvert, failedConvertIsInert) {
     const QString    formatBefore = storedFormatOf(root);
     ASSERT_FALSE(before.isEmpty());
 
-    const QJsonObject resp = convert(root);
+    QJsonObject resp;
+    {
+        // ANTS-5256 — the forced abort fires AFTER mutate() and BEFORE the
+        // commit, which is the window this invariant is about. Scoped so the
+        // flag is cleared before the assertions below read the store back.
+        const ForcePostMutateFail forceFail;
+        resp = convert(root);
+    }
     ASSERT_FALSE(resp.value(QStringLiteral("ok")).toBool())
-        << "the render's Layman gate must refuse this fixture: "
+        << "the forced post-mutate failure must refuse: "
         << QJsonDocument(resp).toJson().toStdString();
-    // Named, not merely "a refusal". The gate fires AFTER mutate() and BEFORE
-    // the commit, which is the window this invariant is about — and any earlier
-    // refusal (a store that would not open, a project not registered) would
-    // satisfy a bare ASSERT_FALSE while testing nothing.
+    // Named, not merely "a refusal". Any EARLIER refusal (a store that would
+    // not open, a project not registered) would satisfy a bare ASSERT_FALSE
+    // while testing nothing — the mutation has to have happened for its
+    // rollback to be worth asserting.
     ASSERT_EQ(resp.value(QStringLiteral("code")).toString().toStdString(),
-              std::string("render_gate_unmet"))
+              std::string("store_failed"))
         << QJsonDocument(resp).toJson().toStdString();
 
     EXPECT_EQ(readFile(roadmap), before) << "a refused convert rewrote the file";
@@ -305,15 +331,19 @@ TEST(RoadmapConvert, idsStableAcrossCommit) {
         store->idHighWater(row->projectId, QStringLiteral("PROJ#S"), &err);
     store.reset();
 
-    // Fails at the render gate, which runs AFTER mutate() has allocated and
-    // BEFORE the commit — exactly the window this invariant is about. Asserted
-    // by CODE, so an earlier refusal cannot stand in for it and leave this case
-    // green having exercised no allocation at all.
-    const QJsonObject aborted = convert(root);
+    // ANTS-5256 — the forced abort runs AFTER mutate() has allocated and BEFORE
+    // the commit, which is exactly the window this invariant is about.
+    // Asserted by CODE, so an earlier refusal cannot stand in for it and leave
+    // this case green having exercised no allocation at all.
+    QJsonObject aborted;
+    {
+        const ForcePostMutateFail forceFail;
+        aborted = convert(root);
+    }
     ASSERT_FALSE(aborted.value(QStringLiteral("ok")).toBool())
         << QJsonDocument(aborted).toJson().toStdString();
     ASSERT_EQ(aborted.value(QStringLiteral("code")).toString().toStdString(),
-              std::string("render_gate_unmet"))
+              std::string("store_failed"))
         << QJsonDocument(aborted).toJson().toStdString();
 
     EXPECT_EQ(itemCountOf(root), countBefore)
@@ -414,4 +444,77 @@ TEST(RoadmapConvert, thirdDialectRefused) {
               std::string("dialect_out_of_scope"))
         << QJsonDocument(resp).toJson().toStdString();
     EXPECT_EQ(readFile(roadmap), before) << "a refused convert rewrote the file";
+}
+
+// ----------------------------------------------------------------- INV-8 ----
+
+// ANTS-5256 — a convert is a MIGRATION, not authoring, so the render's INV-5
+// Layman gate reports on it instead of refusing it.
+//
+// Measured on Vestige 2026-09-21: 460 open items with no Layman line, so the op
+// refused outright on the one project it was built for. ANTS-4628 narrowed that
+// gate to the items a write TOUCHES precisely to unblock conversion — but a
+// convert touches every item by construction, and ANTS-4500 gives every id-less
+// bullet a synthesised id, making it an INSERT the store has never seen. So the
+// narrowing cannot reach this and the gate that was relaxed to permit the
+// conversion was the thing refusing it.
+//
+// The fixture mirrors failedConvertIsInert's deliberately: migrate the fully
+// laymanned roadmap, THEN add an unlaymanned bullet, so the convert has to
+// INSERT it. A bullet the store already holds re-matches, is not written, and
+// never enters the gate's scope — so seeding it from the start would exercise
+// nothing.
+TEST(RoadmapConvert, laymanGateIsAdvisoryForConvert) {
+    ants_test::XdgGuard guard;
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString root = seed(guard, tmp, gfmRoadmap());
+    ASSERT_FALSE(root.isEmpty());
+    const QString roadmap = root + QStringLiteral("/ROADMAP.md");
+    ASSERT_TRUE(migrate(root));
+    ASSERT_TRUE(writeFile(roadmap, gfmRoadmapPlusUnlaymanned()));
+
+    const QJsonObject resp = convert(root);
+    // The whole point: this exact fixture is the one failedConvertIsInert used
+    // to force render_gate_unmet with. It must now SUCCEED.
+    ASSERT_TRUE(resp.value(QStringLiteral("ok")).toBool())
+        << "the Layman gate still refuses a convert: "
+        << QJsonDocument(resp).toJson().toStdString();
+    EXPECT_EQ(detectedFormatOf(roadmap), QStringLiteral("ants-v1"))
+        << "the convert reported success without republishing the file";
+
+    // Reported, not waved through. The exemption relaxes a rule, so the
+    // envelope has to say what it let past — otherwise a caller cannot tell an
+    // exemption that found nothing from one that found 460.
+    const QJsonObject missing =
+        resp.value(QStringLiteral("layman_missing")).toObject();
+    ASSERT_FALSE(missing.isEmpty())
+        << "layman_missing absent — a silent exemption: "
+        << QJsonDocument(resp).toJson().toStdString();
+    EXPECT_EQ(missing.value(QStringLiteral("count")).toInt(), 1)
+        << "expected exactly the one unlaymanned bullet: "
+        << QJsonDocument(resp).toJson().toStdString();
+    // Named, not just counted. A count alone cannot be checked against the file.
+    const QJsonArray ids = missing.value(QStringLiteral("ids")).toArray();
+    ASSERT_EQ(ids.size(), 1) << QJsonDocument(resp).toJson().toStdString();
+    EXPECT_FALSE(ids.at(0).toString().isEmpty())
+        << "an offender was counted but not named";
+
+    // The exemption ends with the convert. An ORDINARY write touching that same
+    // item must still be refused, or this has quietly disabled INV-5 for the
+    // project rather than for the migration.
+    const QString offender = ids.at(0).toString();
+    QJsonObject flip;
+    flip[QStringLiteral("caller_cwd")] = root;
+    flip[QStringLiteral("op")]         = QStringLiteral("flip");
+    flip[QStringLiteral("id")]         = offender;
+    flip[QStringLiteral("to_status")]  = QStringLiteral("in-progress");
+    RemoteControl rc(nullptr);
+    const QJsonObject after = rc.cmdRoadmapLogFlipForTest(flip).object();
+    EXPECT_FALSE(after.value(QStringLiteral("ok")).toBool())
+        << "the Layman gate stayed disabled after the convert: "
+        << QJsonDocument(after).toJson().toStdString();
+    EXPECT_EQ(after.value(QStringLiteral("code")).toString().toStdString(),
+              std::string("render_gate_unmet"))
+        << QJsonDocument(after).toJson().toStdString();
 }

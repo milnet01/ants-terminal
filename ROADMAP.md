@@ -49385,7 +49385,7 @@ are closed inline in the feedback files rather than filed here.
   Source: cc-feedback-2026-09-21 (Vestige), deferred from ANTS-4491.
   Lanes: mcp, roadmap-store.
 
-- 🚧 [ANTS-5253] **op:"convert" shipped absent from roadmap_log's op enum, so no schema-validating client could call it.**
+- ✅ [ANTS-5253] **op:"convert" shipped absent from roadmap_log's op enum, so no schema-validating client could call it.**
   ANTS-4491 landed the handler, the dispatch and the unknown-op refusal
   text, and never added opEnum.append("convert") in claudeintegration.cpp
   or a word of it to the `op` description. The tool schema sets
@@ -49396,6 +49396,11 @@ are closed inline in the feedback files rather than filed here.
   tests/features/mcp_roadmap_log_verb names the ops it knew about, so it
   cannot fire for an op added after it. Fixed here by enum + description
   + one more named guard line; the general repair is ANTS-5254.
+  Resolved (2026-09-21): shipped in b34b28bd. opEnum.append("convert")
+  plus convert's paragraph in the `op` description, and one more named
+  line in the mcp_roadmap_log_verb guard. Confirmed reachable from a
+  schema-validating client by Vestige, who got past validation into the
+  write sequence on the next call.
   **Layman:** A new roadmap command was built and switched on, but never added to the published list of commands — so tools could not see it.
   Kind: fix.
   Source: in-session-2026-09-21, found verifying ANTS-4491 after relaunch.
@@ -49445,6 +49450,108 @@ are closed inline in the feedback files rather than filed here.
   Kind: enhancement.
   Source: in-session-2026-09-21, hit re-sending to Vestige at the user's request.
   Lanes: mcp.
+
+- ✅ [ANTS-5256] **The render's Layman gate makes op:"convert" unusable on exactly the legacy projects it was built for.**
+  Vestige ran op:"convert" dry_run against their real project and got
+  render_gate_unmet on 460 open items carrying no Layman: line. Nothing
+  was written. The verb is callable (ANTS-5253) and reaches the write
+  sequence; it simply cannot complete.
+
+  MECHANISM, and it follows from the design rather than from a bug.
+  ANTS-4628 scoped the gate to the items a write TOUCHES. A convert
+  rewrites the whole file, and ANTS-4500 allocates a synthesised id to
+  every id-less bullet — so those bullets are INSERTS the store has not
+  seen, every one of them lands in scope, and touched-items scoping
+  degenerates to whole-project scoping. The narrowing ANTS-4491's body
+  cites as clearing its third blocker is the thing that now refuses it.
+
+  THE CIRCULARITY, in Vestige's words and I agree with them: Layman is an
+  ants-v1 rule. Their file is github-task-list, where roadmap-format.md
+  makes Layman optional. The gate applies the DESTINATION dialect's rule
+  to items that exist only in the source dialect, as a precondition of
+  the one call that would make that rule apply to them.
+
+  No author is present to write 460 truthful summaries; most are bullets
+  nobody wrote a layman line for because the dialect never asked.
+  Applying a forward-looking quality rule retroactively to a format
+  migration is what produces an unconvertible project.
+
+  THREE ROUTES, Vestige's, cheapest first. (1) Exempt items the convert
+  CREATES in the store from the source file, gating anything a LATER
+  write touches as normal. (2) An explicit allow_missing_layman:true that
+  converts and reports the count let through — same end state, but the
+  caller asks for it, which suits a one-way rewrite of a tracked file.
+  (3) Decide the summaries are genuinely owed and say so in ANTS-4491's
+  body. (3) is a legitimate answer; what is not legitimate is the current
+  state, where the item reads as ready for its named consumer.
+
+  Decide the route before coding. The gate exists for a reason and
+  loosening it is not obviously right.
+  Resolved (2026-09-21): the render's Layman gate is now ADVISORY for op:"convert" and blocking everywhere else.
+
+  RoadmapRender::Options::laymanGateAdvisory collects the same offenders into Outcome::laymanMissing instead of Outcome::gateFailures and lets the render proceed; RoadmapWrite::LaymanGate::Exempt threads it through commitAndRender, from exactly one call site. The envelope reports layman_missing {count, ids[], truncated, shown} on both arms, so an exemption that found nothing is distinguishable from one that found 460.
+
+  Covered by roadmap_convert INV-8, seen RED first by restoring LaymanGate::Enforce at the call site. Full suite 5035/5035.
+
+  The exemption ends with the convert: INV-8 also asserts that an ordinary flip touching the same item is still refused render_gate_unmet.
+
+  Caught while building: INV-2 and INV-4 forced their failure through this very gate, so the exemption would have turned both GREEN by removing their trigger rather than by holding — a silent pass on the two invariants guarding this op's irreversible half. Replaced with RoadmapWrite::setForcePostMutateFailForTest(), a seam named for the WINDOW (after mutate, before commit) rather than borrowed from a business rule.
+  **Layman:** The command that upgrades an old-style roadmap refuses to run until every old bullet has a plain-English summary — but writing those summaries is only possible after the upgrade.
+  Kind: fix.
+  Source: cc-feedback-2026-09-21 (Vestige), verified against ANTS-4491 as shipped.
+  Lanes: mcp, roadmap-store.
+
+- 📋 [ANTS-5257] **On a github-task-list roadmap, roadmap_query enumerates bullets incompletely and returns headline text in the id field.**
+  Reported against Vestige's file. A regex query matched AX1-AX6 and AX9
+  and missed AX8, AX11, AX12, AX13. For the bullets it did return, `id`
+  carried the headline text ("AX1. Geometric / ray-traced audio
+  occlusion") rather than an id.
+
+  Diagnosis offered by the reporter and not yet verified here: the bold-ID
+  parse firing on a github-task-list bullet whose bold run is a TITLE, not
+  an id. Verify before fixing — a reported cause is a claim.
+
+  Two defects, and the second is the worse one. A wrong `id` is visible.
+  An incomplete match set is NOT distinguishable from a complete one in
+  the envelope, which makes a regex or keyword query an unreliable
+  enumerator on this dialect — and enumeration is what a caller uses it
+  for before a bulk operation.
+
+  Whatever the fix, the envelope should be able to say it was partial.
+
+  Reporter rates this low priority; they are not blocked.
+  CAUSE FOUND (2026-09-21, Vestige) — and it is not the bold-ID parse we both
+  guessed. `query` matches the BODY only. A bullet cannot be found by its own
+  title.
+
+  The discriminating pair, same bullet, both mode:"headline_only":
+  query:"ALC_SOFT_output_mode" (a token in AX8's BODY) returns AX8.
+  query:"Surround output" (a token in AX8's HEADLINE only) does not — it
+  returns a different bullet whose body happens to mention the phrase.
+
+  The parse is fine. On github-task-list the bold run becomes `id` and the text
+  after it becomes headline_oneline; nothing is lost. The defect is that `query`
+  searches neither `id` nor the bold run.
+
+  Reporter withdrew their own control: query:"AX1" is ALSO body-only and misses
+  AX1. The "AX1-AX6, AX9 work" pattern came from the REGEX path, which behaves
+  differently and is NOT explained — regex returned AX1-AX7, AX9, AX10, AX14 but
+  not AX8, AX11, AX12, AX13. Treat body-only as established for the LITERAL path
+  and unverified for regex. Do not fix one and assume the other.
+
+  Severity is higher than a miss count suggests: body-only matching is worst at
+  finding bullets with the SHORTEST bodies — a one-line item with a good title
+  and little prose is the most invisible, and those skew planned rather than
+  shipped. The most natural query anyone writes returns a confident empty result.
+
+  Two mitigations the reporter suggests if the fix is expensive, and both are
+  worth having anyway: have the envelope name which FIELDS were searched, and
+  have a zero-hit literal query say so. Today the echoed `"query"` reads as
+  confirmation the search ran as asked.
+  **Layman:** Searching an old-style roadmap silently returns only some of the matching entries, and labels them with their title where the identifier should be — so you cannot tell a partial answer from a complete one.
+  Kind: fix.
+  Source: cc-feedback-2026-09-21 (Vestige).
+  Lanes: mcp, roadmap-store.
 
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-08-20 triage
 

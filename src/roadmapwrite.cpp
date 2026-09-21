@@ -18,7 +18,15 @@
 #include <utility>
 
 namespace RoadmapWrite {
+
 namespace {
+
+// ANTS-5256 — see the abort site just before store.commit(). Internal linkage:
+// the only writer is setForcePostMutateFailForTest() below, which the header
+// declares. Mirrors rcdetail::g_forceCounterCommitFail, the seam this project
+// already uses for the same job. Never set outside a test.
+bool g_forcePostMutateFail = false;
+
 
 // ANTS-4141 — the ids one file carries, from each bullet's own leading
 // `[<PREFIX>-NNNN]` slot.
@@ -327,6 +335,9 @@ QStringList keepDiscarded(const QStringList &paths) {
 
 }  // namespace
 
+void setForcePostMutateFailForTest(bool on) { g_forcePostMutateFail = on; }
+
+
 // ANTS-4803 — publish in the dialect the project was MIGRATED FROM, read from
 // the store rather than declared by the caller. A caller that chose would be a
 // second place for the answer to be wrong, and publishing a pass-headings
@@ -398,7 +409,7 @@ Result commitAndRender(RoadmapStore &store, qint64 projectId,
                        const QString &liveRoadmapPath, bool dryRun,
                        const std::function<bool(QString *)> &mutate,
                        RoadmapRender::Outcome *outcome,
-                       QString *error) {
+                       QString *error, LaymanGate gate) {
     if (error)
         error->clear();
 
@@ -540,6 +551,11 @@ Result commitAndRender(RoadmapStore &store, qint64 projectId,
     // empty and it publishes, which is how a project that has never been
     // rendered gets its ids into the file at all (ANTS-4628).
     opts.gateScope = store.itemsWrittenSinceBegin();
+    // ANTS-5256 — op:"convert" only. The scope above is correct and stays
+    // correct; what the exemption says is that the RULE does not apply to a
+    // migration. Offenders come back in Outcome::laymanMissing and the render
+    // publishes. See RoadmapRender::Options::laymanGateAdvisory.
+    opts.laymanGateAdvisory = (gate == LaymanGate::Exempt);
 
     // ANTS-4844 — the rendered bullet for each item this write touched, taken
     // in the SAME window and for the same reason the scope above is: after
@@ -654,6 +670,23 @@ Result commitAndRender(RoadmapStore &store, qint64 projectId,
     // store or the file (INV-7).
     if (dryRun)
         return abort(Result::Ok);
+
+    // ANTS-5256 — test-only, and the last statement before the point of no
+    // return, which is the whole point: everything above it really ran, so an
+    // abort here exercises the rollback of a COMPLETED mutation.
+    //
+    // It exists because the two invariants that need this window (convert's
+    // INV-2 inert-on-failure and INV-4 ids-stable-across-commit) used to force
+    // their failure with the render's Layman gate, and this item exempted
+    // convert from that gate — so both cases would have gone green by losing
+    // their trigger rather than by holding. Borrowing whichever business rule
+    // happens to refuse today is what made them fragile; a seam named for the
+    // window cannot be invalidated by a rule change.
+    if (g_forcePostMutateFail) {
+        if (error && error->isEmpty())
+            *error = QStringLiteral("forced post-mutate failure (test seam)");
+        return abort(Result::StoreFailed);
+    }
 
     // Step 6.
     if (!store.commit(error))

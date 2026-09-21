@@ -315,8 +315,25 @@ QJsonDocument RemoteControl::cmdRoadmapLogConvert(const QJsonObject &req) {
 
     QString err;
     RoadmapRender::Outcome outcome;
+    // ANTS-5256 — LaymanGate::Exempt, and this is the only call site in the
+    // tree that passes it. A convert is a MIGRATION: the same bullets change
+    // representation and no new claim enters the project, so INV-5's rule about
+    // authoring does not apply to it. It also cannot be satisfied — Layman is
+    // an ants-v1 rule, and the source dialect is one where roadmap-format.md
+    // makes it optional, so enforcing it here demands the destination
+    // dialect's rule of items that exist only in the source dialect, as a
+    // precondition of the call that would make that rule apply.
+    //
+    // Measured (Vestige, 2026-09-21): 460 open items, so the op refused
+    // outright on the one project it was built for. ANTS-4628 narrowed the gate
+    // to touched items specifically to unblock conversion, and a convert
+    // touches everything by construction, so that narrowing cannot reach this.
+    //
+    // The exemption ends here. Every ordinary write afterwards judges these
+    // items normally, so the first edit to one still owes its summary.
     const auto rc = RoadmapWrite::commitAndRender(
-        *store, projectId, root, roadmapPath, dryRun, mutate, &outcome, &err);
+        *store, projectId, root, roadmapPath, dryRun, mutate, &outcome, &err,
+        RoadmapWrite::LaymanGate::Exempt);
 
     QJsonObject env;
     if (rcRoadmapWriteRefused(env, rc, err, outcome)) {
@@ -345,9 +362,42 @@ QJsonDocument RemoteControl::cmdRoadmapLogConvert(const QJsonObject &req) {
     for (const QString &id : allocatedIds)
         echoed.append(id);
     ids[QStringLiteral("allocated_ids")] = echoed;
-    if (idsAllocated > allocatedIds.size())
+    if (idsAllocated > allocatedIds.size()) {
         ids[QStringLiteral("allocated_ids_truncated")] = true;
+        // ANTS-5256 — say how many were withheld, not merely that some were.
+        // Vestige: "a capped list that does not announce its cap is the
+        // 'partial result indistinguishable from a complete one' problem"
+        // (ANTS-5257) in a second place. `allocated` above is the true total,
+        // so the arithmetic is available — but a reader should not have to do
+        // it to learn the list is short.
+        ids[QStringLiteral("allocated_ids_shown")] = allocatedIds.size();
+    }
     env[QStringLiteral("ids")] = ids;
+
+    // ANTS-5256 — what the exempted gate let through. The exemption is a
+    // relaxation of a rule, so it reports rather than passing silently: these
+    // items landed with `layman` NULL and the next write touching any of them
+    // will be refused until it carries one.
+    //
+    // Emitted on BOTH arms, empty count included. A caller cannot tell an
+    // exemption that found nothing from one that did not run if the key is
+    // simply absent, and on a dry run this is part of the review material.
+    {
+        QJsonObject missing;
+        missing[QStringLiteral("count")] = outcome.laymanMissing.size();
+        QJsonArray shown;
+        for (const QString &id : outcome.laymanMissing) {
+            if (shown.size() >= kMaxEchoedIds)
+                break;
+            shown.append(id);
+        }
+        missing[QStringLiteral("ids")] = shown;
+        if (outcome.laymanMissing.size() > shown.size()) {
+            missing[QStringLiteral("truncated")] = true;
+            missing[QStringLiteral("shown")]     = shown.size();
+        }
+        env[QStringLiteral("layman_missing")] = missing;
+    }
     return QJsonDocument(env);
 }
 
