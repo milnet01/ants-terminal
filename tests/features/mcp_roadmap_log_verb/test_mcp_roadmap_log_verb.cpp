@@ -83,6 +83,13 @@ TEST(mcp_roadmap_log_verb, Inv1SchemaDeclared) {
            "INV-1: op enum lists amend_field");
     expect(contains(region, "opEnum.append(\"set_body\")"),
            "INV-1: op enum lists set_body (ANTS-4842)");
+    // ANTS-5253 — convert repeated the defect one op later, and this guard
+    // could not fire: it names the ops that existed when ANTS-4842 wrote it, so
+    // it is blind to every op added after. Adding a name here fixes THIS op and
+    // leaves the next one just as exposed — the mechanical enum-versus-
+    // dispatcher comparison is ANTS-5254, and this line is the stopgap.
+    expect(contains(region, "opEnum.append(\"convert\")"),
+           "INV-1: op enum lists convert (ANTS-5253)");
     EXPECT_EQ(0, expect_failures());
 }
 

@@ -49385,6 +49385,67 @@ are closed inline in the feedback files rather than filed here.
   Source: cc-feedback-2026-09-21 (Vestige), deferred from ANTS-4491.
   Lanes: mcp, roadmap-store.
 
+- 🚧 [ANTS-5253] **op:"convert" shipped absent from roadmap_log's op enum, so no schema-validating client could call it.**
+  ANTS-4491 landed the handler, the dispatch and the unknown-op refusal
+  text, and never added opEnum.append("convert") in claudeintegration.cpp
+  or a word of it to the `op` description. The tool schema sets
+  additionalProperties:false and publishes an `op` enum, so a validating
+  client refuses the call before it reaches the binary.
+
+  This is ANTS-4842 repeated one op later. That item's guard in
+  tests/features/mcp_roadmap_log_verb names the ops it knew about, so it
+  cannot fire for an op added after it. Fixed here by enum + description
+  + one more named guard line; the general repair is ANTS-5254.
+  **Layman:** A new roadmap command was built and switched on, but never added to the published list of commands — so tools could not see it.
+  Kind: fix.
+  Source: in-session-2026-09-21, found verifying ANTS-4491 after relaunch.
+  Lanes: mcp, roadmap-store.
+
+- 📋 [ANTS-5254] **Nothing mechanically checks that every dispatched roadmap_log op appears in the published op enum.**
+  The existing guard is an allowlist of op NAMES, so it is blind to every
+  op added after it was written. Twice now that blindness shipped an op
+  no client could call (set_body, then convert).
+
+  The mechanical form: scrape `op == QStringLiteral("X")` from the
+  dispatcher in remotecontrol_roadmap_query.cpp::cmdRoadmapLog and assert
+  each X appears as opEnum.append("X") in claudeintegration.cpp. Both are
+  source scrapes, which this suite already does.
+
+  ANTS-4842 rejected exactly this, on the grounds that the dispatching TU
+  has no SRC_*_PATH define in the bundle and adding one recompiles the
+  whole bundle (ANTS-4797). Weigh that again: it is a ONE-OFF compile
+  cost against a defect class that has now shipped twice.
+
+  Watch the byte-window trap — scope the scrape to cmdRoadmapLog's body,
+  not a fixed offset.
+  **Layman:** Add a check that compares the list of commands the code accepts against the list it advertises, so a missing one fails the build rather than shipping.
+  Kind: test.
+  Source: in-session-2026-09-21, generalising ANTS-5253.
+  Lanes: mcp, testing.
+
+- 📋 [ANTS-5255] **session_message has no sent-mail view, so a sender cannot tell whether their message was delivered or read.**
+  op:"inbox" returns mail addressed TO the caller. There is no op that
+  lists mail the caller SENT, so `acked_at` — the one field that records
+  whether a message was read — is visible only to the recipient, who is
+  the party that does not need it.
+
+  Hit today: the user asked me to confirm Vestige had received an earlier
+  message. I could not, and the only available action was to re-send and
+  label it a re-send.
+
+  Shape: an op:"outbox" mirroring inbox — rows this project sent, newest
+  first, each carrying `to`, `created_at` and `acked_at`. The column
+  already exists and is already written; nothing new is recorded. A read
+  that is purely a second projection of rows the store holds.
+
+  Keep it a separate op rather than a flag on inbox: the two answer
+  different questions and a caller paging one should not silently get the
+  other.
+  **Layman:** You can send a note to another project but never see whether it arrived or was read — so the only way to follow up is to send the same note again.
+  Kind: enhancement.
+  Source: in-session-2026-09-21, hit re-sending to Vestige at the user's request.
+  Lanes: mcp.
+
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-08-20 triage
 
 Thirty pending findings across ten feedback files, triaged 2026-08-20. Six

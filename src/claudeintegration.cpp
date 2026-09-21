@@ -13258,6 +13258,13 @@ void ClaudeIntegration::onMcpConnection() {
                     opEnum.append("set_preamble");  // ANTS-4968
                     opEnum.append("delete_section");  // ANTS-4958
                     opEnum.append("move_section");    // ANTS-4958
+                    // ANTS-5253 — convert shipped dispatched, described in the
+                    // unknown-op refusal, and ABSENT here, which is ANTS-4842's
+                    // defect repeated one op later. The guard that item left
+                    // behind names the ops it knew about, so it cannot fail for
+                    // the NEXT one; a mechanical enum-versus-dispatcher check is
+                    // ANTS-5254.
+                    opEnum.append("convert");  // ANTS-4491
                     opProp["enum"] = opEnum;
                     opProp["description"] = QStringLiteral(
                         "Verb mode. Default \"append\" (ANTS-1424). "
@@ -13485,7 +13492,35 @@ void ClaudeIntegration::onMcpConnection() {
                         "500, `strip_skipped_truncated` past it); each removed "
                         "run is recorded in history. "
                         "Refusals: `project_not_registered` "
-                        "(run roadmap_migrate first), `store_failed`.");
+                        "(run roadmap_migrate first), `store_failed`. "
+                        "\"convert\" (ANTS-4491) re-imports a "
+                        "`github-task-list` roadmap and republishes it as "
+                        "canonical ants-v1, in ONE atomic commit+render — the "
+                        "two halves cannot be written separately, because "
+                        "every read dispatches on the live file's detected "
+                        "dialect and refuses a disagreement with the stored "
+                        "`source_format`, so a half-written convert leaves the "
+                        "project unreadable. Takes `caller_cwd` alone (plus "
+                        "`dry_run`); it is NOT section-scoped and takes no "
+                        "locator. Bullets already carrying an id keep it, and "
+                        "an id-less one is ALLOCATED a synthesised "
+                        "`<prefix>-S<NNNN>` from its own counter (ANTS-4500), "
+                        "so a convert never renumbers what the file already "
+                        "declares. The envelope carries `source_dialect`, "
+                        "`target_dialect` and an `ids` block — `allocated`, "
+                        "`parsed`, `bullets_total` and a capped "
+                        "`allocated_ids[]` — which on a dry run IS the "
+                        "deliverable, since the op is a one-way bulk rewrite "
+                        "of a version-controlled file. An ALREADY-ants-v1 "
+                        "source is accepted, not refused — the op is "
+                        "idempotent per bullet, which is what makes it safe to "
+                        "re-run over a part-converted file. Refuses "
+                        "`project_not_registered` on an unmigrated project (it "
+                        "will not migrate implicitly — run roadmap_migrate "
+                        "first), `unrecognised_format` on a file carrying no "
+                        "dialect signal at all, and `dialect_out_of_scope` on "
+                        "a recognised THIRD dialect such as pass-headings. "
+                        "Nothing is written on any of them.");
                     QJsonObject toStatusProp;
                     toStatusProp["type"] = "string";
                     QJsonArray toStatusEnum;
