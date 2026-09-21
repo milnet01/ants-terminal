@@ -111,6 +111,12 @@ looking. Spelled `INT_MIN` neither half is reachable on LLP64, since
 `LONG_MIN == INT_MIN` there, and probing either proves nothing. Both
 spellings need `errno`; only one of them also turns away a legal value.
 
+**A conforming suite does not catch any of this, which is why the rule is
+here rather than in a test.** The narrowing form below shipped in a real
+project and passed every test in its suite on every target it was run
+on; under `-O2 -ffast-math` the guard had compiled to `movl $1, %eax;
+ret` — unconditionally "finite" — and no input could make it fail.
+
 Reported from DOOM_Ants 2026-09-21, where the class had bitten twice —
 the first time hanging a share of Windows launches on a black screen.
 Its first fix was a comment in one file, which did not reach the second
@@ -119,7 +125,9 @@ site. Verified here the same day: under `x86_64-w64-mingw32-gcc`
 so both halves of such a guard are provably unreachable; and natively,
 `strtol("3000000000")` sets no `errno` and reaches an `int` as
 `-1294967296`, which is why neither check may replace the other.
-(CFG-0436)
+**Confirmed on three toolchains** — native LP64, mingw under emulation,
+and a physical Windows box running the real CRT, which agreed with the
+emulated run exactly. (CFG-0436)
 
 ## Spellings of the general rules
 
