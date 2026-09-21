@@ -26,7 +26,7 @@ Reverse (DA/CPR/DSR): `TerminalGrid → ResponseCallback → PTY`
 ## Build & test
 
 ```bash
-cmake -G Ninja -B build && cmake --build build && ctest --test-dir build --output-on-failure
+cmake -G Ninja -B build && cmake --build build && ctest --test-dir build --output-on-failure -LE 'perf|e2e'
 ```
 
 Tests build by default (`ANTS_TESTS=ON`); pass `-DANTS_TESTS=OFF` for a
@@ -138,9 +138,10 @@ elsewhere that flag breaks the parse and the TU loses all coverage
 ### Local CI: `tools/ci-parity.sh` + the pre-push hook (ANTS-2134 / 3410 / 3580)
 
 **`tools/ci-parity.sh --full` IS this project's local CI check** — it covers
-all three jobs of `.github/workflows/ci.yml` (`build-test` incl. the
-packaging/lint gates, `build-asan`, and `qt62-baseline` in a podman
-ubuntu:22.04 container). There is no second script; anything calling itself
+all four jobs of `.github/workflows/ci.yml` (`build-test` incl. the
+packaging/lint gates, `build-asan`, `qt62-baseline` in a podman
+ubuntu:22.04 container, and the informational `cppcheck` job, whose local
+leg runs under `--lints`). There is no second script; anything calling itself
 `local-CI.sh` would be a duplicate of this one. A gate whose tool is absent
 SKIPs loudly and is listed as incomplete parity — never silently green.
 
@@ -286,9 +287,14 @@ unavoidable the item says so and says why.
 - **Keep the GUI-dependent surface small, and the check is a grep.** The
   seam is the set of `MainWindow` methods the remote-control layer
   calls; ANTS-4932 enumerates it and is the place to look before adding
-  to it. The check a new verb must pass: it introduces no new call into
-  `MainWindow` from `src/remotecontrol*.cpp` or
-  `src/claudeintegration.cpp`. Everything else is file and sqlite work
+  to it. The check, and the qualifier is the whole of it: a verb that
+  does **not** need tab or terminal state must introduce no new call
+  into `MainWindow` from `src/remotecontrol*.cpp` or
+  `src/claudeintegration.cpp`. One that genuinely does need it names the
+  method in its design, reuses one ANTS-4932 already enumerates where it
+  can, and adds to that enumeration where it cannot — growing the seam
+  deliberately and visibly rather than by accident. Everything else is
+  file and sqlite work
   that is already `MainWindow`-independent and is exercised against a
   null-`MainWindow` `RemoteControl` across the test suite. A verb that
   does not need the window must not acquire a dependency on it — that is
