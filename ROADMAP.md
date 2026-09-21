@@ -50811,6 +50811,41 @@ are closed inline in the feedback files rather than filed here.
   test. If it will not fit, the op schema description is the fallback, but
   the point-of-use nudge is the whole value — in `detail` it is no nearer
   the decision than the catalog already was.
+  UNBLOCKED 2026-09-21 by doom-ants-3b, and the item's framing above is
+  superseded: this is a RESPONSE-side change, so the 800-byte wire budget
+  never applied.
+
+  THE REFRAMING, in the reporter's terms. A description is read when the
+  tool is CHOSEN, and the failure happens earlier than that — when the
+  question is WORDED. By the time you are reading `workspace_search`'s
+  description you have already decided to search. So neither the wire text
+  nor `detail` is near the decision, and the body above was arguing about
+  which of two wrong places to use.
+
+  THE THIRD PLACE IS THE RESULT, and it is the one that demonstrably works
+  on a live caller: the reporter took the spill `hint`'s first suggestion
+  without hesitating, because it arrived while they were holding a bad
+  outcome and looking for what to do instead. A hint only materialises
+  when its condition fires, so a call that went well pays nothing.
+
+  GATING CONDITIONS, cheapest first, all computable from what the scan has
+  already produced:
+    - the matched files are overwhelmingly non-source (markdown, roadmap,
+      changelog) — the reporter's actual case;
+    - the pattern is a BARE IDENTIFIER, matching
+      `^[A-Za-z_][A-Za-z0-9_]*$` with no regex metacharacters;
+    - the response spilled or truncated AND the pattern is a bare
+      identifier.
+
+  Ship the second. It fires BEFORE the expensive scan matters rather than
+  after, and a bare identifier is a strong signal on its own.
+
+  THE CAVEAT IS LOAD-BEARING: a HINT, never a refusal. "Where is this
+  symbol MENTIONED" is a real question — the same reporter asked it
+  legitimately later the same session, checking which documents cited a
+  header they were moving, where `find_caller` would have been useless.
+  The two questions genuinely share a spelling, which is the whole problem
+  and the reason the verb must not guess.
   **Layman:** People use the text-search tool to ask who calls a function, which is far more expensive than the tool built for that question.
   Kind: enhancement.
   Source: peer-session-doom-ants-3b, in-session-2026-09-21.
@@ -51025,8 +51060,37 @@ are closed inline in the feedback files rather than filed here.
   RELATED: ANTS-5275 records the converse problem on the same verb, where
   the prescribed cheap survey spills on a large project. Both are about
   `roadmap_query` having no shape that is both narrow and id-bearing.
+  RESOLVED 2026-09-21 as DOCUMENTATION-ONLY. The check this body asked
+  for was run by the reporter and the combination already works — build
+  nothing.
+
+  MEASURED by localwebservermanager-28 on the same project and session:
+  `roadmap_query mode:"headline_only" section:"<slug>" status:"planned"
+  limit:50` returns 15 bullets carrying id, headline_oneline, status and
+  section_slug. Against their original project-wide orienting call, that
+  is 15 rows instead of 77, roughly 2.9 KB instead of about 9 KB. It also
+  returns `section_etag` alongside `etag`, making a per-section 304
+  possible on the follow-up.
+
+  So the premise of the item — that neither survey shape is both narrow
+  and id-bearing — was wrong, reasoned from the two modes the reporter had
+  used rather than from running the instrument. They said so themselves
+  and asked for the downgrade.
+
+  THE DOCUMENTATION FIX IS NOT "this combination exists", which is the
+  obvious and useless version. It is that **`section` is the argument that
+  turns an orienting call from project-wide into section-scoped** — and
+  that is the call a session makes at SESSION START, before it knows the
+  verb well enough to go looking. Name it in the wire text beside
+  `status`. A note in the op schema would not have reached this reporter,
+  because they never opened the op schema for a mode they believed they
+  already understood.
+
+  Keep ANTS-5275 open regardless: the converse problem on the same verb —
+  the prescribed cheap survey spilling on a large project — is unaffected
+  by this and is a real defect.
   **Layman:** To see the open work in one area you must either get counts with no items or every item in the project, so people filter it themselves afterwards.
-  Kind: enhancement.
+  Kind: doc.
   Source: peer-session-localwebservermanager-28, in-session-2026-09-21.
   Lanes: mcp, roadmap.
 
