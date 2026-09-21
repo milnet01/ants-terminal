@@ -49606,6 +49606,46 @@ are closed inline in the feedback files rather than filed here.
 
   Do this BEFORE any large project converts. Vestige is not in a hurry and
   has asked for it to be done properly rather than quickly.
+  MEASURED (2026-09-21), read-only against the live store, project 13
+  (Vestige). Reported by them, re-run here rather than taken on trust.
+
+  id_origin distribution and the provenance that gates matching:
+
+      parsed        32   provenance.id = asserted     NOT match-eligible
+      quarantined  427   provenance.id = asserted     NOT match-eligible
+      synthesised  567   provenance.id = migrated     MATCH-ELIGIBLE
+
+  `idFromMigration` is provenance.id == "migrated", so the candidate pool
+  is exactly the 567 synthesised rows. The partition is clean — no row
+  straddles it.
+
+  CONSEQUENCE, and it settles the reporter's original fear. The ids their
+  CHANGELOG and specs cite are `parsed` (3D_E-0006 .. 3D_E-0045). Those are
+  `asserted` and therefore unreachable by the match path. The 427
+  quarantined are equally safe. So a convert cannot attach a bullet to the
+  history of an author-written id.
+
+  WHAT IS NOT A HAZARD, checked because the reporter raised it. The 567
+  synthesised ids sit in the PLAIN 3D_E-NNNN namespace (0046 .. 0612),
+  contiguous with the author block below them — they predate ANTS-4500's
+  `-S` namespace, and project 13 holds zero `-S` ids. But the allocator is
+  not confused by that: id_prefix.high_water for 3D_E is 612, equal to the
+  maximum id in the namespace, so the next allocation is 0613 and collides
+  with nothing. A human hand-picking 0613 races the allocator, which is the
+  ordinary hand-allocation hazard and not specific to this.
+
+  WHAT IS REAL, and it is a REPORT-DESIGN constraint rather than a defect.
+  Those 567 are indistinguishable from author-written ids BY INSPECTION OF
+  THE FILE — only id_origin separates them, and it lives in the store. Two
+  have already surfaced in ROADMAP.md as ordinary bracketed ids (3D_E-0046,
+  3D_E-0047), cited nowhere outside it, so blast radius today is zero.
+
+  So when this item's matched-arm flag names the id a bullet matched to,
+  the human reading it cannot tell from the file whether that id was
+  machine-allocated or author-written. The flag must therefore carry the
+  ORIGIN of the matched row, not just its id — otherwise it hands over an
+  id the reviewer has no way to classify, which is the whole job the flag
+  exists to do.
   **Layman:** Before a bulk conversion you can see which bullets have no number yet, but not whether each will get a brand-new number or be joined to an existing entry — and being joined to the wrong one is the damaging outcome.
   Kind: enhancement.
   Source: cc-feedback-2026-09-21 (Vestige), follow-up to ANTS-5252.
