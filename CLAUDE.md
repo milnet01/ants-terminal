@@ -76,8 +76,8 @@ ctest --test-dir build --output-on-failure 2>&1 | tail -20
 ~3× RAM; `perf` stays serial: benchmarks must not contend):
 
 ```bash
-ctest --preset=default          # ~19 s — parallel, perf excluded
-ctest --test-dir build -j4      # same, without the preset wrapper
+ctest --preset=default             # ~19 s — parallel, perf + e2e excluded
+ctest --test-dir build -j4 -LE 'perf|e2e'   # the same set, no preset wrapper
 ```
 
 `-j4` is the cap tuned for this 32 GiB / earlyoom host — the test
@@ -283,18 +283,22 @@ unavoidable the item says so and says why.
   (`claudeintegration.cpp`, the handler's local `QJsonArray tools`), so
   schema and description text moved to data would go live on a client
   reconnect with no rebuild at all.
-- **Keep the GUI-dependent surface small and named, and two registers
-  name it.** A verb that reads live tab state is classified
-  `CallerCwdContract::TabSpecific` in `src/claudeintegration.cpp`, which
-  is a refusal gate as well as a label — adding one means adding it to
-  that table. That set is narrower than GUI coupling: ANTS-4932 measures
-  the whole seam as eleven `MainWindow` methods, and verbs outside
-  `TabSpecific` do call them. So check both — the table for tab state,
-  those eleven for any window dependency at all. Everything else is file
-  and sqlite work that already runs off the GUI thread and is exercised
-  against a null-`MainWindow` `RemoteControl` across the feature tests.
-  A new verb that does not need the window must not acquire a dependency
-  on it — that is what keeps ANTS-4932's out-of-process split reachable.
+- **Keep the GUI-dependent surface small, and the check is a grep.** The
+  seam is the set of `MainWindow` methods the remote-control layer
+  calls; ANTS-4932 enumerates it and is the place to look before adding
+  to it. The check a new verb must pass: it introduces no new call into
+  `MainWindow` from `src/remotecontrol*.cpp` or
+  `src/claudeintegration.cpp`. Everything else is file and sqlite work
+  that is already `MainWindow`-independent and is exercised against a
+  null-`MainWindow` `RemoteControl` across the test suite. A verb that
+  does not need the window must not acquire a dependency on it — that is
+  what keeps ANTS-4932's out-of-process split reachable.
+  **`CallerCwdContract::TabSpecific` is NOT that register**, and reading
+  it as one is the trap: it covers per-tab reads that route on a `tab`
+  index or `caller_cwd`, enforced as a refusal gate since ANTS-1415
+  Phase 3b. A verb that lists, creates, selects or retitles tabs touches
+  tab state and is deliberately absent from that table — adding one to
+  it switches on a refusal its siblings do not carry.
 - **A new module earns its reload story before it earns its code.** If
   the honest answer is "only a relaunch", say so in the design and let
   the user weigh it, rather than discovering it after the fact.
@@ -562,7 +566,8 @@ versions in `.cpp` / `.h`. Every bump touches `CMakeLists.txt` and
 `README.md` (its `Version <strong>X.Y.Z</strong>` banner) — the
 `CHANGELOG.md` **version heading** is rolled by `new-rc` and dated by
 `promote`, never by the bump; bullets in the
-still-open `[Unreleased]` **are** authored at bump time (see below); use
+still-open `[Unreleased]` are authored **as work lands**, plus whatever
+the bump-time coverage run adds (see below); use
 `cut-release --bump-only` (its `.claude/bump.json` covers the packaging
 files). **That skill replaced both
 `/bump` and `/release`, which were deleted 2026-08-13** — the old names are
