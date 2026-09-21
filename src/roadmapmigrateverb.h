@@ -33,6 +33,7 @@
 
 #include <QJsonObject>
 #include <QString>
+#include <QVector>
 
 #include <functional>
 
@@ -92,6 +93,47 @@ QJsonObject run(const QString &storePath, const Request &req);
 // The store must be Access::Bulk and already in a transaction; the load refuses
 // otherwise. On failure NOTHING is rolled back here: the caller owns the
 // transaction and may have written before calling.
+// ANTS-5252 — one row per bullet the convert will write, so a bulk id
+// assignment can be REVIEWED before it lands rather than counted after.
+//
+// Asked for by Vestige, who put the case better than the aggregate does: a
+// convert is a one-way bulk rewrite of a version-controlled PUBLIC file, and it
+// moves a counter that other documents — CHANGELOG entries, specs, commit
+// bodies — cite by id. An aggregate count cannot be checked against anything.
+// A per-bullet list can be read against the file.
+//
+// The asymmetry that makes `inFile` the field to scan: a NEWLY ASSIGNED id is
+// visible and fixable, a CHANGED one is invisible and permanent. Both Vestige
+// and the ~/.claude session reached that independently.
+//
+// Nothing here is derived — every field is already decided at the point the
+// plan is built.
+struct PlannedId {
+    QString id;
+    // "parsed" | "synthesised" | "quarantined" | "absent".
+    //
+    // What the FILE says, which is what this report can defend. "absent" is
+    // this struct's own and means the bullet carries no id in the file: the
+    // convert will either issue a fresh one OR match an existing store item by
+    // headline (INV-6), and which of the two happens is decided by the load,
+    // after this row is built. It is deliberately NOT called "allocated" —
+    // that would assert an allocation this row cannot know happened, on the
+    // one field a reviewer is trusting. `ids.allocated_ids[]` names the ids
+    // actually issued.
+    QString origin;
+    // Adopted from a bold prose lead-in rather than read from a bracket.
+    bool    inferred = false;
+    // Does this id appear in the roadmap TODAY? True for anything the reader
+    // took from the file, false for one this convert invents. Vestige's
+    // "did anything change identity" question.
+    bool    inFile   = false;
+    // Whether the item carries a Layman line. The convert no longer refuses
+    // over this (ANTS-5256) but the first ordinary edit to the item will, so
+    // the reviewer should see it here rather than discover it later.
+    bool    hasLayman = false;
+    int     firstLine = 0;   // 1-based, in the source roadmap
+};
+
 struct InTransactionLoad {
     bool        ok = false;
     QString     error;
@@ -99,6 +141,10 @@ struct InTransactionLoad {
     QStringList allocatedIds;    // capped by the caller's own budget
     int         bulletsTotal = 0;
     int         idsParsed    = 0;
+    // ANTS-5252 — capped by the caller's budget like allocatedIds. `bulletsTotal`
+    // carries the true count either way, so a truncated list is always
+    // detectable rather than merely suspected.
+    QVector<PlannedId> plannedIds;
 };
 InTransactionLoad loadInOpenTransaction(RoadmapStore &store,
                                         const QString &projectRoot,

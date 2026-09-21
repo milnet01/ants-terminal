@@ -49344,7 +49344,7 @@ are closed inline in the feedback files rather than filed here.
   Source: in-session-2026-09-21 (Ants MCP improvement noted while implementing ANTS-4500).
   Lanes: mcp, build.
 
-- 📋 [ANTS-5252] **op:"convert" reports id counts in aggregate, not the source of each id it assigns.**
+- ✅ [ANTS-5252] **op:"convert" reports id counts in aggregate, not the source of each id it assigns.**
   Asked for by Vestige on 2026-09-21 and deliberately NOT built into
   ANTS-4491; recorded so the request does not die in a session message.
 
@@ -49380,6 +49380,17 @@ are closed inline in the feedback files rather than filed here.
   Gated on Vestige confirming they still want it: they were offered it on
   2026-09-21 and had not replied when this was filed. Do not build it
   speculatively.
+  Resolved (2026-09-21): built, after Vestige confirmed they want it. They were asked and said yes — the gate this item carried is discharged, not bypassed.
+
+  `ids.planned[]` — one row per bullet, each {id, origin, in_file, line} plus gated `id_inferred` and `layman_missing`. Threaded as RoadmapMigrateVerb::PlannedId out of loadInOpenTransaction, built from the PLAN, where every field is already decided. PlannedItem gained `idInferred`, recorded in planFrom at the last point the BulletRecord is in hand.
+
+  ONE ROW, not two lists: Vestige's objection to a separate layman list was that a caller reading one and not the other will misread one of them. `layman_missing` rides the same table.
+
+  WHAT IT DELIBERATELY DOES NOT CLAIM (INV-10). `origin:"absent"` says the FILE carries no id for that bullet. It does NOT say an allocation happened — the load may instead match the bullet to an existing store item by headline (INV-6), and the row is built before the load resolves that. Naming it "allocated" would have asserted something the row cannot know, on the field a reviewer trusts most. `ids.allocated_ids[]` names the ids actually issued. A first draft did call it "allocated" and was wrong.
+
+  Caps are loud everywhere now: `planned_truncated` + `planned_shown`, and `allocated_ids_shown` beside the existing truncation flag. Vestige's point that a capped list which does not announce its cap is ANTS-5257's defect in a second place.
+
+  Covered by roadmap_convert INV-9 and INV-10, both seen RED first by removing the `planned` key. Full suite 5037/5037.
   **Layman:** The convert command tells you how many numbers it handed out, but not where each one came from — so you cannot see, bullet by bullet, which were read from the file and which it invented.
   Kind: enhancement.
   Source: cc-feedback-2026-09-21 (Vestige), deferred from ANTS-4491.

@@ -518,3 +518,118 @@ TEST(RoadmapConvert, laymanGateIsAdvisoryForConvert) {
               std::string("render_gate_unmet"))
         << QJsonDocument(after).toJson().toStdString();
 }
+
+// ----------------------------------------------------------------- INV-9 ----
+
+// ANTS-5252 — the convert reports its id assignment PER BULLET, not only in
+// aggregate, and a dry run is where that report has to be right.
+//
+// Vestige's case, which is better than the aggregate's: the op is a one-way
+// bulk rewrite of a version-controlled PUBLIC file, and it moves a counter that
+// CHANGELOG entries, specs and commit bodies cite by id. An aggregate count
+// cannot be checked against anything; a per-bullet list can be read against the
+// file. The asymmetry is what makes `in_file` the column to scan — a newly
+// assigned id is visible and fixable, a CHANGED one is invisible and permanent.
+//
+// The fixture's bullets carry no bracket ids, so every row must be an owed
+// ALLOCATION: origin "allocated", in_file false. That is exactly the population
+// a reviewer is being asked to approve.
+TEST(RoadmapConvert, dryRunReportsIdOriginPerBullet) {
+    ants_test::XdgGuard guard;
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString root = seed(guard, tmp, gfmRoadmap());
+    ASSERT_FALSE(root.isEmpty());
+    const QString roadmap = root + QStringLiteral("/ROADMAP.md");
+    ASSERT_TRUE(migrate(root));
+    const QByteArray before = readFile(roadmap);
+
+    const QJsonObject resp = convert(root, /*dryRun=*/true);
+    ASSERT_TRUE(resp.value(QStringLiteral("ok")).toBool())
+        << QJsonDocument(resp).toJson().toStdString();
+    // A preview writes nothing — the whole value of the report is that it is
+    // readable BEFORE the rewrite.
+    EXPECT_EQ(readFile(roadmap), before) << "a dry run rewrote the file";
+
+    const QJsonObject ids = resp.value(QStringLiteral("ids")).toObject();
+    const QJsonArray planned = ids.value(QStringLiteral("planned")).toArray();
+    ASSERT_FALSE(planned.isEmpty())
+        << "ids.planned absent — the aggregate is all a reviewer gets: "
+        << QJsonDocument(resp).toJson().toStdString();
+    // One row per bullet, not a sample. The fixture has three.
+    EXPECT_EQ(planned.size(), ids.value(QStringLiteral("bullets_total")).toInt())
+        << "the report does not cover every bullet: "
+        << QJsonDocument(resp).toJson().toStdString();
+
+    for (const auto v : planned) {
+        const QJsonObject row = v.toObject();
+        EXPECT_TRUE(row.contains(QStringLiteral("origin")))
+            << "a row with no origin cannot be reviewed";
+        EXPECT_EQ(row.value(QStringLiteral("origin")).toString().toStdString(),
+                  std::string("absent"))
+            << "an id-less bullet must report its id as absent from the file: "
+            << QJsonDocument(row).toJson().toStdString();
+        // The identity question. None of these ids is in the file yet.
+        EXPECT_FALSE(row.value(QStringLiteral("in_file")).toBool())
+            << "an id the convert is about to invent reported as already in "
+               "the file — the one thing a reviewer is scanning for: "
+            << QJsonDocument(row).toJson().toStdString();
+        EXPECT_GT(row.value(QStringLiteral("line")).toInt(), 0)
+            << "a row with no source line cannot be read against the file";
+    }
+}
+
+// ANTS-5252 — a bullet that already carries a bracket id reports as `parsed`
+// and in_file, so the two populations are distinguishable in the report. This
+// is the half that makes the report worth reading: a reviewer is checking that
+// the ids they already have did NOT change.
+TEST(RoadmapConvert, reportDistinguishesExistingIdsFromAllocated) {
+    ants_test::XdgGuard guard;
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    // One bullet with an explicit bracket id, one without.
+    const QByteArray mixed =
+        QByteArray("# Demo Roadmap\n"
+                   "\n"
+                   "## To Do\n"
+                   "\n"
+                   "- [ ] [PROJ-0042] An already-identified bullet.\n"
+                   "  Layman: A plain-language line.\n"
+                   "  Kind: chore.\n"
+                   "  Source: ants-5252-test.\n"
+                   "- [ ] A bullet with no id at all.\n"
+                   "  Layman: A plain-language line.\n"
+                   "  Kind: chore.\n"
+                   "  Source: ants-5252-test.\n");
+    const QString root = seed(guard, tmp, mixed);
+    ASSERT_FALSE(root.isEmpty());
+    ASSERT_TRUE(migrate(root));
+
+    const QJsonObject resp = convert(root, /*dryRun=*/true);
+    ASSERT_TRUE(resp.value(QStringLiteral("ok")).toBool())
+        << QJsonDocument(resp).toJson().toStdString();
+    const QJsonArray planned = resp.value(QStringLiteral("ids")).toObject()
+                                   .value(QStringLiteral("planned")).toArray();
+    ASSERT_EQ(planned.size(), 2) << QJsonDocument(resp).toJson().toStdString();
+
+    int inFile = 0, allocated = 0;
+    for (const auto v : planned) {
+        const QJsonObject row = v.toObject();
+        if (row.value(QStringLiteral("in_file")).toBool()) {
+            ++inFile;
+            EXPECT_EQ(row.value(QStringLiteral("id")).toString().toStdString(),
+                      std::string("PROJ-0042"))
+                << "the existing id was not reported back verbatim — which is "
+                   "the change-of-identity case: "
+                << QJsonDocument(row).toJson().toStdString();
+        }
+        if (row.value(QStringLiteral("origin")).toString()
+            == QLatin1String("absent"))
+            ++allocated;
+    }
+    EXPECT_EQ(inFile, 1) << "the existing id was not reported as already in the file: "
+                         << QJsonDocument(resp).toJson().toStdString();
+    EXPECT_EQ(allocated, 1) << "the id-less bullet was not reported as absent "
+                               "from the file: "
+                            << QJsonDocument(resp).toJson().toStdString();
+}

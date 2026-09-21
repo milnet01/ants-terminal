@@ -61,6 +61,28 @@ the commit to be one transaction.
   *Breaks when:* `commitAndRender` is called without `LaymanGate::Exempt`, or
   the exemption leaks past the convert to ordinary writes.
 
+- **INV-9** — the envelope reports the id assignment PER BULLET, one row per
+  bullet, each carrying `origin`, `in_file` and the source `line`.
+  *Test:* `dryRunReportsIdOriginPerBullet`, `reportDistinguishesExistingIdsFromAllocated`.
+  *Why:* the op is a one-way bulk rewrite of a version-controlled public file
+  that moves a counter other documents cite by id. An aggregate count cannot be
+  checked against anything; a per-bullet list can be read against the file. The
+  asymmetry is what makes `in_file` the column to scan — a newly assigned id is
+  visible and fixable, a CHANGED one is invisible and permanent.
+  *Breaks when:* the report samples rather than covers, or `in_file` is
+  computed from the store instead of from what the file holds.
+
+- **INV-10** — `origin: "absent"` claims only that the FILE carries no id for
+  that bullet. It does not claim an allocation happened: the load may instead
+  match the bullet to an existing store item by headline (INV-6).
+  `ids.allocated_ids[]` names the ids actually issued.
+  *Test:* covered by `reportDistinguishesExistingIdsFromAllocated`, which
+  asserts the parsed and absent populations are distinguishable.
+  *Why:* the row is built from the plan, BEFORE the load resolves it, so a
+  label of "allocated" would assert something the row cannot know — on the one
+  field a reviewer is trusting most.
+  *Breaks when:* the value is renamed to something that asserts an allocation.
+
 ## Notes
 
 The forced failure INV-2 and INV-4 use is `RoadmapWrite::setForcePostMutateFail

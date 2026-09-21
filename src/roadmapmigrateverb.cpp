@@ -764,6 +764,27 @@ RoadmapMigrateVerb::loadInOpenTransaction(RoadmapStore &store,
         ++out.bulletsTotal;
         if (it.idOrigin == QLatin1String("parsed"))
             ++out.idsParsed;
+        // ANTS-5252 — built from the PLAN, before the load runs, because this
+        // is where every field is already decided and where an id the convert
+        // is ABOUT to invent is still distinguishable from one it read.
+        if (out.plannedIds.size() < maxEchoedIds) {
+            PlannedId row;
+            // An owed allocation has no id yet: the plan leaves `id` empty
+            // and records the obligation. "absent", not "allocated" — the load
+            // may still MATCH this bullet to an existing store item by
+            // headline (INV-6), and claiming an allocation that did not happen
+            // would be wrong on the field a reviewer trusts most.
+            row.origin    = it.idAllocationOwed ? QStringLiteral("absent")
+                                                : it.idOrigin;
+            row.id        = it.id;
+            row.inferred  = it.idInferred;
+            // In the file today ⇔ the reader took the id FROM the file. An
+            // owed allocation is by definition not there yet.
+            row.inFile    = !it.idAllocationOwed && !it.id.isEmpty();
+            row.hasLayman = !it.layman.isEmpty();
+            row.firstLine = it.firstLine;
+            out.plannedIds.append(row);
+        }
     }
 
     RoadmapMigrateLoad::Options opts;

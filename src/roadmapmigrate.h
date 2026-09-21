@@ -57,6 +57,17 @@ struct PlannedItem {
     // ANTS-3765 allocates, and a note keyed on a line number cannot be
     // correlated back to the item it belongs to.
     bool        idAllocationOwed = false;
+    // ANTS-5252 — was this id ADOPTED from a bold prose lead-in rather than
+    // read from a bracket the author wrote? RoadmapParse::idWasInferred()'s
+    // question, carried onto the item because the BulletRecord it tests does
+    // not survive planFrom() and the convert's per-bullet id report needs it.
+    //
+    // A sub-case of `idOrigin == "parsed"`, never a fourth origin: the id IS
+    // in the file either way, which is what idOrigin answers. What this adds
+    // is how firmly — and on a github-task-list roadmap that is the difference
+    // that matters, because there the bold run is the bullet's TITLE, so an
+    // adopted id is a title being read as an identity.
+    bool        idInferred = false;
     bool        closed = false;         // roadmap-data-model.md § 3.4's sense
     int         firstLine = 0, lastLine = 0;   // 1-based, inclusive
     // ANTS-4481 — the 1-based line each path-bearing trailer sits on, so an

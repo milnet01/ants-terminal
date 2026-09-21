@@ -37,6 +37,7 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QString>
+#include <QVector>
 #include <optional>
 
 using namespace rcdetail;
@@ -279,6 +280,8 @@ QJsonDocument RemoteControl::cmdRoadmapLogConvert(const QJsonObject &req) {
     int         bulletsTotal = 0;
     int         idsParsed    = 0;
     QString     loadError;
+    // ANTS-5252 — the per-bullet id report Vestige asked for.
+    QVector<RoadmapMigrateVerb::PlannedId> plannedIds;
 
     // § 4.3 — what mutate() does, in order. A mutate that only wrote the column
     // would be a different operation: it would leave the store holding whatever
@@ -307,6 +310,7 @@ QJsonDocument RemoteControl::cmdRoadmapLogConvert(const QJsonObject &req) {
         allocatedIds = loaded.allocatedIds;
         bulletsTotal = loaded.bulletsTotal;
         idsParsed    = loaded.idsParsed;
+        plannedIds   = loaded.plannedIds;
 
         // Step 4. Last, so a load failure above leaves the column alone — though
         // the rollback would undo it anyway; the ordering is for the reader.
@@ -371,6 +375,43 @@ QJsonDocument RemoteControl::cmdRoadmapLogConvert(const QJsonObject &req) {
         // so the arithmetic is available — but a reader should not have to do
         // it to learn the list is short.
         ids[QStringLiteral("allocated_ids_shown")] = allocatedIds.size();
+    }
+
+    // ANTS-5252 — the per-bullet report, beside the aggregate rather than
+    // instead of it. One table keyed by id, so a reviewer reads ONE thing:
+    // Vestige's objection to two capped lists was that a caller reading one
+    // and not the other will misread one of them.
+    //
+    // On a dry run this IS the deliverable. The op is a one-way bulk rewrite
+    // of a version-controlled public file that moves a counter other documents
+    // cite, and the dry run is the only moment the assignment can be checked
+    // before it becomes permanent. `origin` and `in_file` are the two columns
+    // to scan: a newly assigned id is visible and fixable, a CHANGED one is
+    // invisible and permanent.
+    //
+    // `origin` reports what the FILE says. "absent" means the bullet carries
+    // no id there — the load will either issue one or match an existing store
+    // item by headline, and `ids.allocated_ids[]` names the ids actually
+    // issued. The row does not claim an allocation it cannot know happened.
+    QJsonArray planned;
+    for (const auto &row : plannedIds) {
+        QJsonObject o;
+        o[QStringLiteral("id")]      = row.id;
+        o[QStringLiteral("origin")]  = row.origin;
+        o[QStringLiteral("in_file")] = row.inFile;
+        o[QStringLiteral("line")]    = row.firstLine;
+        // Gated to the true arm, like id_inferred is everywhere else: a key
+        // present on every row saying `false` is a key nobody reads.
+        if (row.inferred)
+            o[QStringLiteral("id_inferred")] = true;
+        if (!row.hasLayman)
+            o[QStringLiteral("layman_missing")] = true;
+        planned.append(o);
+    }
+    ids[QStringLiteral("planned")] = planned;
+    if (bulletsTotal > planned.size()) {
+        ids[QStringLiteral("planned_truncated")] = true;
+        ids[QStringLiteral("planned_shown")]     = planned.size();
     }
     env[QStringLiteral("ids")] = ids;
 

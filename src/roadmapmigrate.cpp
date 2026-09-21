@@ -369,6 +369,10 @@ PlannedItem makeItem(const BulletRecord &rec, const QString &sectionSlug,
         it.id       = rec.idToken;
         it.idOrigin = isGrammaticalId(rec.idToken, fmt) ? QStringLiteral("parsed")
                                                         : QStringLiteral("quarantined");
+        // ANTS-5252 — recorded HERE, the last point the BulletRecord is in
+        // hand. Independent of the parsed/quarantined split above: an adopted
+        // id can be either.
+        it.idInferred = RoadmapParse::idWasInferred(rec);
         it.provenance.insert(QStringLiteral("id"), QStringLiteral("asserted"));
         if (it.idOrigin == QLatin1String("quarantined"))
             addNote(notes, "quarantined_id", rec.idToken, rec.firstLine, sourceIndex);
