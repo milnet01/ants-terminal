@@ -46613,7 +46613,7 @@ are closed inline in the feedback files rather than filed here.
   Source: cc-feedback-2026-08-18 (Vestige).
   Lanes: mcp, roadmap-store.
 
-- 📋 [ANTS-4491] **A one-time convert path: migrate a github-task-list roadmap and render it back out as canonical ants-v1.**
+- ✅ [ANTS-4491] **A one-time convert path: migrate a github-task-list roadmap and render it back out as canonical ants-v1.**
   The capability half of the github-task-list finding. Since the goal is one standard across all
   projects and 14 of 15 are already ants-v1, the useful operation is: migrate a github-task-list
   project, then RENDER it back out as canonical ants-v1 and set source_format accordingly. That
@@ -46878,6 +46878,35 @@ are closed inline in the feedback files rather than filed here.
   RoadmapWrite::commitAndRender() with the source_format flip inside
   mutate() — opts.dialect is read from the store after mutate() runs, so the
   dry render and the publish both emit the new dialect in one sequence.
+  Resolved (2026-09-21): shipped as `roadmap_log op:"convert"`, riding
+  `RoadmapWrite::commitAndRender()` so the `source_format` flip and the
+  file rewrite are one transaction.
+
+  Three things the spec assumed that the code did not allow, all found by
+  implementation and all recorded in § 4.3:
+  - The load could not open its own transaction inside `mutate()` —
+    `begin()` refuses to nest, and INV-4 rules out committing the load
+    separately. Added `RoadmapMigrateLoad::Options::borrowTransaction`.
+  - `RoadmapMigrateLoad` refuses anything but `Access::Bulk`, and
+    RemoteControl's store is Interactive; the op opens its own Bulk
+    connection and uses that one for both halves.
+  - It may not call findRoadmaps/planFrom/load directly — those have one
+    production call site by contract (roadmap_migrate_verb INV-1), so the
+    work went into `RoadmapMigrateVerb::loadInOpenTransaction()`.
+
+  Added beyond the spec, at the blocked consumer's request: the envelope
+  carries an `ids` report (allocated count, parsed count, bullet total,
+  the allocated ids). On `dry_run` that is the deliverable — the op is a
+  one-way bulk rewrite of a version-controlled file that moves a counter
+  other documents cite, so the assignment is reviewable before it lands.
+  Recorded as § 4.7.
+
+  Covered by tests/features/roadmap_convert/ (INV-1 to INV-7), in
+  test_claude. Full suite green, 5034/5034.
+
+  Vestige remains gated on ANTS-4434 (no route to the `layman` column but
+  a hand edit plus re-import), which is § 9's named out-of-scope item and
+  what blocks their own conversion rather than this verb.
 
 - ✅ [ANTS-4492] **roadmap_migrate classifies a mixed-format roadmap by majority with no note naming the second format.**
   Vestige's ROADMAP.md is genuinely two formats in one file: 989 GFM task-list bullets (`- [x]` /

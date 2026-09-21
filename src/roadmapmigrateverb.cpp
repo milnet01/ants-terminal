@@ -735,6 +735,58 @@ QJsonObject RoadmapMigrateVerb::run(const QString &storePath, const Request &req
     return env;
 }
 
+// ANTS-4491 § 4.3 — see the header for why this lives beside run() rather than
+// in the convert's own TU. The three entry points INV-1 pins stay in this file.
+RoadmapMigrateVerb::InTransactionLoad
+RoadmapMigrateVerb::loadInOpenTransaction(RoadmapStore &store,
+                                          const QString &projectRoot,
+                                          const QString &name,
+                                          const QString &exportSlug,
+                                          const QString &changedAt,
+                                          int maxEchoedIds) {
+    InTransactionLoad out;
+
+    QString discErr;
+    const auto disc = RoadmapMigrate::findRoadmaps(projectRoot, &discErr);
+    if (!disc) {
+        out.error = discErr;
+        return out;
+    }
+
+    // The project's DECLARED id format, as run() step 3a loads it and for the
+    // same reason: the read half classifies parsed-vs-quarantined against it,
+    // and the load half allocates under its prefix.
+    const RoadmapParse::IdFormat idFormat = ProjectSettings::idFormatFor(projectRoot);
+    auto plan = RoadmapMigrate::planFrom(*disc, name, exportSlug, idFormat);
+    RoadmapMigrate::validatePaths(plan, projectRoot);
+
+    for (const auto &it : plan.items) {
+        ++out.bulletsTotal;
+        if (it.idOrigin == QLatin1String("parsed"))
+            ++out.idsParsed;
+    }
+
+    RoadmapMigrateLoad::Options opts;
+    opts.changedAt         = changedAt;
+    opts.projectRoot       = projectRoot;
+    opts.idFormat          = idFormat;
+    opts.borrowTransaction = true;
+
+    const auto loaded = RoadmapMigrateLoad::load(store, plan, opts);
+    if (!loaded.ok) {
+        out.error = loaded.error;
+        return out;
+    }
+    out.idsAllocated = loaded.idsAllocated;
+    for (const auto &n : loaded.notes) {
+        if (n.code == QLatin1String("id_allocated")
+            && out.allocatedIds.size() < maxEchoedIds)
+            out.allocatedIds.append(n.detail);
+    }
+    out.ok = true;
+    return out;
+}
+
 QJsonObject RoadmapMigrateVerb::deregister(const QString &storePath,
                                            const DeregisterRequest &req) {
     if (req.projectRoot.isEmpty() && req.exportSlug.isEmpty()) {

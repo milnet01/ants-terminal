@@ -36,6 +36,9 @@
 
 #include <functional>
 
+class RoadmapStore;   // ANTS-4491 — loadInOpenTransaction() takes the caller's
+                      // OPEN store by reference; the definition is not needed here.
+
 namespace RoadmapMigrateVerb {
 
 struct Request {
@@ -71,6 +74,38 @@ struct Request {
 // Access::Bulk store at `storePath` for the duration of the call and releases
 // it before returning (§ 2.2).
 QJsonObject run(const QString &storePath, const Request &req);
+
+// ANTS-4491 § 4.3 — the migration half of a dialect convert, run inside a
+// transaction the CALLER has already opened.
+//
+// It lives here, and not in the convert's own TU, because INV-1 is a real
+// contract: `findRoadmaps`, `planFrom` and `load` have exactly one production
+// call site under src/, and this file is it. A second caller open-coding the
+// three would be a second migration implementation, which is the drift that
+// invariant exists to prevent — so the convert asks the seam instead.
+//
+// It takes the caller's OPEN store rather than a path, which is the whole
+// point: `RoadmapStore::begin()` refuses to nest, and ANTS-4491 INV-4 requires
+// the id allocation and the commit to be one transaction. `run()` above cannot
+// serve that — it opens its own connection and owns its own transaction.
+//
+// The store must be Access::Bulk and already in a transaction; the load refuses
+// otherwise. On failure NOTHING is rolled back here: the caller owns the
+// transaction and may have written before calling.
+struct InTransactionLoad {
+    bool        ok = false;
+    QString     error;
+    qint64      idsAllocated  = 0;
+    QStringList allocatedIds;    // capped by the caller's own budget
+    int         bulletsTotal = 0;
+    int         idsParsed    = 0;
+};
+InTransactionLoad loadInOpenTransaction(RoadmapStore &store,
+                                        const QString &projectRoot,
+                                        const QString &name,
+                                        const QString &exportSlug,
+                                        const QString &changedAt,
+                                        int maxEchoedIds);
 
 // ANTS-4617 — the inverse, and the catalogue had none. Migrating a scratch copy
 // to test a destructive render in isolation is the careful instinct, and it left

@@ -1207,6 +1207,10 @@ public:
     // of waiting for the next unrelated write. Store-only, m_main-independent.
     // See tests/features/roadmap_write_half/spec.md.
     QJsonDocument cmdRoadmapLogRenderForTest(const QJsonObject &req);
+
+    // ANTS-4491 — store-only and m_main-independent, so the seam is the
+    // section ops' shape. See tests/features/roadmap_convert/spec.md.
+    QJsonDocument cmdRoadmapLogConvertForTest(const QJsonObject &req);
     // ANTS-3822 § 2.3.2 — lower the history cap this instance opens its store
     // with, so a test can reach the cap without 250 MiB of real history. Must be
     // called BEFORE the first verb, since the store is opened lazily and cached.
@@ -1315,6 +1319,15 @@ private:
     // nothing, so the canonical file can be published without inventing a
     // semantic write to trigger it. Body in remotecontrol_roadmap_publish.cpp.
     QJsonDocument cmdRoadmapLogRender(const QJsonObject &req);
+
+    // ANTS-4491 § 4.3 — op:"convert": re-import a github-task-list roadmap and
+    // republish it as canonical ants-v1, with the source_format flip and the
+    // file rewrite inside one commitAndRender() sequence. It resolves its
+    // project by ROOT rather than through roadmapSectionOpTarget(), because
+    // that resolver serves only ants-v1 and would refuse the one input this op
+    // takes. See docs/specs/ANTS-4491-dialect-convert.md and
+    // tests/features/roadmap_convert/spec.md.
+    QJsonDocument cmdRoadmapLogConvert(const QJsonObject &req);
     // ANTS-1879 INV-10 — shared bullet-formatting helper extracted from
     // cmdRoadmapLogAppend's :3293-3344 block so cmdRoadmapLogAppendBatch
     // can format each bullet through the same code path. scrubbedNames

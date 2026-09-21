@@ -125,6 +125,37 @@ This works because `opts.dialect` is read from the store *after* `mutate()`
 has run, so the validating dry render and the publish both emit ants-v1 within
 the one sequence. No bespoke ordering is written.
 
+**Amended 2026-09-21, by implementation — three things this section assumed
+and the code does not allow.**
+
+1. **The load cannot open its own transaction, and could not run here as
+   written.** `commitAndRender()` opens the transaction at its step 1 and then
+   calls `mutate()`; `RoadmapMigrateLoad::load()` opened its own, and
+   `RoadmapStore::begin()` refuses to nest. Running the load first, in its own
+   transaction, is not the way out: INV-4 requires the allocation and the
+   commit to be one transaction. `Options::borrowTransaction` is the fix — the
+   load performs no begin, no commit and no rollback, and a failure leaves the
+   transaction open for `commitAndRender()`'s own `abort()`. It is refused
+   together with `dryRun`, because a dry run IS the rollback and a borrower
+   must not roll back a transaction it did not open.
+2. **The op needs its own `Access::Bulk` connection.** `RoadmapMigrateLoad`
+   refuses anything but Bulk (ANTS-3765 INV-12) and `RemoteControl`'s
+   process-owned store is Interactive. The convert therefore opens its own for
+   the duration of one call — `RoadmapMigrateVerb::run()`'s own pattern — and
+   uses that ONE connection for both the load and `commitAndRender()`, or they
+   do not share the transaction.
+3. **It cannot call `findRoadmaps` / `planFrom` / `load` directly.** Those have
+   exactly one production call site under `src/` by contract
+   (`tests/features/roadmap_migrate_verb`, INV-1), and open-coding them here
+   would be a second migration implementation. The convert calls
+   `RoadmapMigrateVerb::loadInOpenTransaction()` instead, which lives in that
+   one file.
+
+It also cannot use `roadmapSectionOpTarget()`, the resolver every other
+section-scale op uses: that goes through `migratedProject()`, which serves only
+`ants-v1` — so the shared prologue refuses exactly the input this op takes. The
+project is resolved by root instead.
+
 Its one declared window — store committed, file not yet published — is worse
 here than on an ordinary write. There it leaves a stale but readable file;
 here it leaves the pair disagreeing, so reads refuse. The remedy already
@@ -316,6 +347,25 @@ state of § 4.2 on the way.
 
 **Renaming synthesised ids during the convert.** Rejected by ANTS-4500 § 3
 decision 1, and unnecessary — § 4.5 explains why rendering settles them.
+
+### 4.7 The id report
+
+Added 2026-09-21 at the request of the blocked consumer, and kept because the
+argument holds generally: this is a one-way bulk rewrite of a version-controlled
+file that moves a counter other documents cite, so without a report the first
+observable state is the rewritten roadmap.
+
+The envelope carries an `ids` object — how many ids were allocated, how many
+bullets were already `parsed`, the bullet total, and the allocated ids
+themselves (capped, with `allocated_ids_truncated` when the cap bit). On a
+`dry_run` this is the deliverable: `commitAndRender()` already rolls a preview
+back, so the run reports the assignment it would have made without making it.
+
+The consumer also reported (2026-09-21) that for their project the declared
+`id_format` route § 2 describes has no correct value — their bold lead-ins are
+subsystem names, not ids in any grammar — so the convert meets the full
+population as fresh allocations. That is the path § 4.3 step 3 already takes;
+no redesign follows, and the report above is what makes it reviewable.
 
 ## 9. Out of scope
 

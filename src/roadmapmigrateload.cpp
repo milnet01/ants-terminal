@@ -1132,8 +1132,22 @@ Outcome load(RoadmapStore &store, const MigrationPlan &plan, const Options &opts
     if (!store.isOpen())
         return refuse("project_refused", QStringLiteral("store is not open"));
 
+    // ANTS-4491 § 4.3 — a borrowed transaction is the caller's to open, commit
+    // and roll back. Refused together with dryRun because a dry run IS the
+    // rollback, and a borrower must not roll back a transaction it did not
+    // open: the owner may have written before calling.
+    if (opts.borrowTransaction && opts.dryRun)
+        return refuse("bad_options",
+                      QStringLiteral("borrowTransaction and dryRun are exclusive: "
+                                     "a dry run rolls back, which a borrowed "
+                                     "transaction's owner must do"));
+    if (opts.borrowTransaction && !store.inTransaction())
+        return refuse("bad_options",
+                      QStringLiteral("borrowTransaction was set and no transaction "
+                                     "is open"));
+
     QString err;
-    if (!store.begin(&err))
+    if (!opts.borrowTransaction && !store.begin(&err))
         return refuse("project_refused", err);
 
     Loader loader{store, plan, opts, out, sourcePaths};
@@ -1141,8 +1155,14 @@ Outcome load(RoadmapStore &store, const MigrationPlan &plan, const Options &opts
         // Every failure but § 2.5's one stated exception aborts the project.
         // The rollback's own error cannot displace the first one: the first is
         // what went wrong, and the rollback is only how it was undone.
-        QString rollbackErr;
-        store.rollback(&rollbackErr);
+        //
+        // A BORROWED transaction is not rolled back here — the owner does it,
+        // and tearing it down would discard writes the owner made before this
+        // call. The refusal is what tells it to.
+        if (!opts.borrowTransaction) {
+            QString rollbackErr;
+            store.rollback(&rollbackErr);
+        }
         return refuse("project_refused", loader.err);
     }
 
@@ -1183,7 +1203,10 @@ Outcome load(RoadmapStore &store, const MigrationPlan &plan, const Options &opts
     // A dry run takes the identical path and rolls back at the end, so it
     // exercises every constraint the real one does rather than a cheaper
     // approximation of them (INV-13).
-    if (opts.dryRun) {
+    if (opts.borrowTransaction) {
+        // Neither ends the transaction: the owner commits, and on its own
+        // failure rolls back this load's writes with its own.
+    } else if (opts.dryRun) {
         if (!store.rollback(&err))
             return refuse("project_refused", err);
     } else if (!store.commit(&err)) {

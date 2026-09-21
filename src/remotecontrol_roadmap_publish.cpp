@@ -26,10 +26,14 @@
 #include "remotecontrol.h"
 #include "remotecontrol_internal.h"
 
+#include "roadmapmigrateverb.h"
+#include "roadmapparse.h"
 #include "roadmapstore.h"
 #include "roadmapwrite.h"
 
+#include <QFile>
 #include <QFileInfo>
+#include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QString>
@@ -136,4 +140,218 @@ QJsonDocument RemoteControl::cmdRoadmapLogRender(const QJsonObject &req) {
 // Store-only and m_main-independent, so the seam is the section ops' shape.
 QJsonDocument RemoteControl::cmdRoadmapLogRenderForTest(const QJsonObject &req) {
     return cmdRoadmapLogRender(req);
+}
+
+// ---------------------------------------------------------------------------
+// ANTS-4491 — op:"convert": re-import a github-task-list roadmap and republish
+// it as canonical ants-v1. Contract: docs/specs/ANTS-4491-dialect-convert.md,
+// tests/features/roadmap_convert/spec.md.
+//
+// HERE rather than in a TU of its own, and the reason is not thematic tidiness
+// alone: rc_tu_split INV-3 pins a `TU N/M` head marker on every remotecontrol
+// TU, so a new one renumbers all of them. It also belongs here — convert IS a
+// publish, in a dialect the store did not previously record.
+// ---------------------------------------------------------------------------
+
+namespace {
+
+// The cap on the echoed id list. A convert over a large roadmap allocates
+// hundreds; `ids_allocated` carries the true total either way, so the list is an
+// aid for review rather than an accounting array. Same reasoning as
+// commitAndRender's touchedBullets cap.
+constexpr int kMaxEchoedIds = 200;
+
+// The section ops' refusal envelope. A local copy rather than an export of
+// remotecontrol_roadmap_log_batch.cpp's `rcSectionOpErr`: it is file-local
+// there, and widening a TU's internal linkage to share five lines would couple
+// two TUs that are otherwise independent.
+QJsonDocument refuseWith(const QString &code, const QString &message) {
+    QJsonObject env;
+    env[QStringLiteral("ok")]    = false;
+    env[QStringLiteral("code")]  = code;
+    env[QStringLiteral("error")] = message;
+    return QJsonDocument(env);
+}
+
+}  // namespace
+
+QJsonDocument RemoteControl::cmdRoadmapLogConvert(const QJsonObject &req) {
+    const QString callerRaw = req.value(QStringLiteral("caller_cwd")).toString();
+    if (callerRaw.isEmpty())
+        return refuseWith(QStringLiteral("missing_field"),
+            QStringLiteral("roadmap_log: caller_cwd is required"));
+    const QString callerCanonical = QFileInfo(callerRaw).canonicalFilePath();
+    if (callerCanonical.isEmpty())
+        return refuseWith(QStringLiteral("no_roadmap"),
+            QStringLiteral("roadmap_log: caller_cwd \"%1\" does not canonicalise "
+                           "to an existing directory").arg(callerRaw));
+
+    const QString roadmapPath = findRoadmapUnder(callerCanonical);
+    if (roadmapPath.isEmpty())
+        return refuseWith(QStringLiteral("no_roadmap"),
+            QStringLiteral("roadmap_log: no ROADMAP.md under \"%1\"")
+                .arg(callerCanonical));
+    const QString root = rcProjectRootFor(callerCanonical);
+
+    QFile rf(roadmapPath);
+    if (!rf.open(QIODevice::ReadOnly | QIODevice::Text))
+        return refuseWith(QStringLiteral("roadmap_read_failed"),
+            QStringLiteral("roadmap_log: could not read \"%1\"").arg(roadmapPath));
+    const QString markdown = QString::fromUtf8(rf.readAll());
+    rf.close();
+
+    // § 4.4 — the accepted set, split by what detectRoadmapFormat() returns. It
+    // answers exactly one of three, and its no-signal default is ants-v1.
+    //
+    // `ants-v1` is ACCEPTED rather than refused, and that is not an oversight:
+    // after a successful run the file IS ants-v1, so refusing that dialect would
+    // make the op refuse its own output and INV-3 — converting twice produces
+    // the same file — would be unsatisfiable. On an already-ants-v1 source the
+    // convert is a plain render plus a re-import.
+    bool sawSignal = false;
+    const QString detected =
+        RoadmapParse::detectRoadmapFormat(markdown.split(QLatin1Char('\n')), &sawSignal);
+    if (!sawSignal) {
+        // No format signal at all. detectRoadmapFormat()'s no-signal DEFAULT is
+        // `ants-v1`, so branching on the returned name alone would read an
+        // empty or mangled file as the accepted dialect and convert it. This is
+        // the branch § 4.4 assigns to migratedProject()'s
+        // ReadError::SourceUnrecognised; the code is that refusal's, so a
+        // caller sees one answer for one condition however it arrived.
+        return refuseWith(QStringLiteral("unrecognised_format"),
+            QStringLiteral("roadmap_log: \"%1\" carries no roadmap dialect signal "
+                           "— no task-list bullets, no status emoji and no Pass "
+                           "headings. There is nothing to convert and nothing "
+                           "was written.").arg(roadmapPath));
+    }
+    if (detected != QLatin1String("ants-v1")
+        && detected != QLatin1String("github-task-list")) {
+        // A RECOGNISED third dialect. migratedProject() does not refuse this,
+        // which is why the op needs a code of its own; a source with no format
+        // signal at all is a different branch and never reaches here, because
+        // detectRoadmapFormat() answers ants-v1 for it.
+        return refuseWith(QStringLiteral("dialect_out_of_scope"),
+            QStringLiteral("roadmap_log: convert takes a github-task-list or "
+                           "ants-v1 roadmap; \"%1\" reads as %2. Converting that "
+                           "dialect is out of scope and nothing was written.")
+                .arg(roadmapPath, detected));
+    }
+
+    // This op's OWN connection, on Access::Bulk, for the duration of one call —
+    // NOT RemoteControl's process-owned Interactive one. `RoadmapMigrateLoad`
+    // refuses anything but Bulk (ANTS-3765 INV-12), and the load and
+    // commitAndRender must share ONE connection or they do not share the
+    // transaction. The same pattern, for the same reason, as
+    // RoadmapMigrateVerb::run() step 5; two live connections in one process are
+    // safe by construction, since RoadmapStore names each from an atomic
+    // counter and the store runs in WAL.
+    QString storeErr;
+    RoadmapStore bulk(RoadmapStore::defaultPath(),
+                      m_roadmapHistoryCap < 0 ? RoadmapStore::kDefaultHistoryCapBytes
+                                              : m_roadmapHistoryCap,
+                      RoadmapStore::Access::Bulk);
+    if (!bulk.open(&storeErr))
+        return refuseWith(QStringLiteral("store_failed"),
+            storeErr.isEmpty() ? QStringLiteral("the roadmap store is unavailable")
+                               : storeErr);
+    RoadmapStore *store = &bulk;
+
+    const auto row = store->readProjectByRoot(root, &storeErr);
+    if (!row) {
+        // § 6 — the convert refuses rather than migrating implicitly. Migration
+        // is a separate operation with its own guards, and running one as a side
+        // effect of a format change would register a project nobody asked to
+        // register.
+        return refuseWith(QStringLiteral("project_not_registered"),
+            QStringLiteral("roadmap_log: convert rewrites a project the store "
+                           "already holds — the store has no row for \"%1\". Run "
+                           "roadmap_migrate first; nothing was written.")
+                .arg(root));
+    }
+    const qint64 projectId = row->projectId;
+    const bool dryRun = req.value(QStringLiteral("dry_run")).toBool();
+
+    // Filled inside mutate(), read after. The load's Outcome does not survive
+    // the lambda, and the envelope needs what it allocated — which is the one
+    // thing a reviewer of a one-way bulk rewrite has to see BEFORE it lands.
+    qint64      idsAllocated = 0;
+    QStringList allocatedIds;
+    int         bulletsTotal = 0;
+    int         idsParsed    = 0;
+    QString     loadError;
+
+    // § 4.3 — what mutate() does, in order. A mutate that only wrote the column
+    // would be a different operation: it would leave the store holding whatever
+    // an earlier migration left and publish THAT, which is not a conversion of
+    // the file in front of it.
+    const auto mutate = [&](QString *err) -> bool {
+        // Through the migrate SEAM, not by open-coding findRoadmaps/planFrom/
+        // load here. Those three have exactly one production call site under
+        // src/ by contract (roadmap_migrate_verb INV-1), and a second
+        // open-coded copy is the migration-logic drift that invariant exists to
+        // prevent — the same class as the ci-parity parallel implementation.
+        //
+        // The project's OWN name and slug, not fresh ones: registerProject() is
+        // get-or-create and keys on root, but export_slug is UNIQUE across the
+        // whole store, so inventing one would collide with this project's own
+        // row.
+        const auto loaded = RoadmapMigrateVerb::loadInOpenTransaction(
+            *store, root, row->name, row->exportSlug, rlHistoryStamp(),
+            kMaxEchoedIds);
+        if (!loaded.ok) {
+            loadError = loaded.error;
+            if (err) *err = loaded.error;
+            return false;
+        }
+        idsAllocated = loaded.idsAllocated;
+        allocatedIds = loaded.allocatedIds;
+        bulletsTotal = loaded.bulletsTotal;
+        idsParsed    = loaded.idsParsed;
+
+        // Step 4. Last, so a load failure above leaves the column alone — though
+        // the rollback would undo it anyway; the ordering is for the reader.
+        return store->setProjectSourceFormat(projectId, QStringLiteral("ants-v1"), err);
+    };
+
+    QString err;
+    RoadmapRender::Outcome outcome;
+    const auto rc = RoadmapWrite::commitAndRender(
+        *store, projectId, root, roadmapPath, dryRun, mutate, &outcome, &err);
+
+    QJsonObject env;
+    if (rcRoadmapWriteRefused(env, rc, err, outcome)) {
+        if (!loadError.isEmpty())
+            env[QStringLiteral("load_error")] = loadError;
+        return QJsonDocument(env);
+    }
+
+    env[QStringLiteral("ok")] = true;
+    env[QStringLiteral("op")] = QStringLiteral("convert");
+    env[QStringLiteral("project_root")]    = root;
+    env[QStringLiteral("source_dialect")]  = detected;
+    env[QStringLiteral("target_dialect")]  = QStringLiteral("ants-v1");
+    rcRoadmapWriteFields(env, outcome, dryRun);
+
+    // The id report. Asked for by the blocked consumer (Vestige, 2026-09-21)
+    // and kept because the op is a one-way bulk rewrite of a version-controlled
+    // file that moves a counter other documents cite: without it the first
+    // observable state is the rewritten roadmap. On a dry run this IS the
+    // deliverable — the whole point is to see the assignment before it lands.
+    QJsonObject ids;
+    ids[QStringLiteral("allocated")]     = double(idsAllocated);
+    ids[QStringLiteral("parsed")]        = idsParsed;
+    ids[QStringLiteral("bullets_total")] = bulletsTotal;
+    QJsonArray echoed;
+    for (const QString &id : allocatedIds)
+        echoed.append(id);
+    ids[QStringLiteral("allocated_ids")] = echoed;
+    if (idsAllocated > allocatedIds.size())
+        ids[QStringLiteral("allocated_ids_truncated")] = true;
+    env[QStringLiteral("ids")] = ids;
+    return QJsonDocument(env);
+}
+
+// Store-only and m_main-independent, so the seam is the section ops' shape.
+QJsonDocument RemoteControl::cmdRoadmapLogConvertForTest(const QJsonObject &req) {
+    return cmdRoadmapLogConvert(req);
 }

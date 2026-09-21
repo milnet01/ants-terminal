@@ -139,6 +139,20 @@ struct Options {
     // ants_core_lib and this library deliberately does not link it.
     RoadmapParse::IdFormat idFormat;
     bool    dryRun = false;      // plan the writes, roll back instead of commit
+    // ANTS-4491 § 4.3 — run inside a transaction the CALLER already opened,
+    // rather than opening one here. `RoadmapStore::begin()` refuses to nest, so
+    // without this a load cannot run inside `RoadmapWrite::commitAndRender()`'s
+    // `mutate()` step — which is exactly what the dialect convert must do,
+    // because INV-4 requires its id allocation and its commit to be one
+    // transaction.
+    //
+    // When true this load performs NO begin, NO commit and NO rollback: a
+    // failure returns the refusal and leaves the transaction open for the owner
+    // to roll back. Rolling back here would tear down writes the owner made
+    // before calling, and commit is the owner's to decide because it owns the
+    // steps that follow. `dryRun` is therefore refused alongside it — a dry run
+    // IS the rollback, which a borrower cannot perform.
+    bool    borrowTransaction = false;
 };
 
 // One plan, one project, one transaction (§ 2.5). `store` must be open on an

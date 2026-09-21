@@ -1029,6 +1029,25 @@ converted already.
 So a project that prefers GFM stays on GFM only while nothing appends
 to it; projects that adopt the full Ants format get the extra surface.
 
+**The supported route out of a mixed file is `roadmap_log op:"convert"`**
+(**ANTS-4491**). It re-imports the project and republishes its
+`ROADMAP.md` as canonical ants-v1, setting the stored `source_format` in
+the same transaction as the file rewrite — neither write is safe alone,
+because the reader dispatches on the FILE's detected dialect and refuses
+a disagreement with the stored one, so either half on its own leaves
+every read refusing.
+
+It is idempotent per bullet: a bullet already carrying a bracket id keeps
+it, which is what makes it safe against the part-converted file it will
+actually meet. It accepts a source that reads as `github-task-list` or as
+`ants-v1` — the latter because after a successful run the file IS
+ants-v1, so refusing that dialect would make the op refuse its own
+output. A recognised third dialect refuses `dialect_out_of_scope`.
+
+`dry_run: true` previews the whole thing, including the id assignment it
+would make. Prefer it: the op is a one-way bulk rewrite of a
+version-controlled file that moves a counter other documents cite.
+
 #### 3.10.3 Migration
 
 A project that wants the full emoji-bullet format from a

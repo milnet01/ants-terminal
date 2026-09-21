@@ -321,7 +321,25 @@ TEST(RoadmapMigrateVerb, Inv2bOwnBulkConnectionBySignature) {
         QRegularExpression(QStringLiteral(
             R"(QJsonObject\s+run\s*\(\s*const\s+QString\s*&\s*storePath\s*,)"))))
         << "run() must declare a `const QString &storePath` first parameter";
-    EXPECT_FALSE(headerText.contains(QStringLiteral("RoadmapStore &")))
+    // Scoped to run()'s OWN parameter list, not to the whole header.
+    //
+    // ANTS-4491 added `loadInOpenTransaction(RoadmapStore &, ...)` to this
+    // header — deliberately, because a dialect convert must run its load inside
+    // a transaction commitAndRender() already opened, and RoadmapStore::begin()
+    // refuses to nest. A header-wide ban flagged that as a breach of a rule it
+    // does not breach: run() still takes `const QString &storePath` and still
+    // cannot be handed the process-owned connection, which is what INV-2(b)
+    // says in its own failure message.
+    //
+    // The narrower guard is not weaker for the rule it states. The
+    // process-owned connection is Interactive, and the borrowing entry point
+    // refuses anything but Access::Bulk (ANTS-3765 INV-12) — so the front door
+    // this rule guards stays shut by the same check, not by the type's absence.
+    const QRegularExpression runDecl(
+        QStringLiteral(R"(QJsonObject\s+run\s*\(([^)]*)\))"));
+    const auto runMatch = runDecl.match(headerText);
+    ASSERT_TRUE(runMatch.hasMatch()) << "run() must be declared in the header";
+    EXPECT_FALSE(runMatch.captured(1).contains(QStringLiteral("RoadmapStore")))
         << "run() must not take an open store";
 }
 

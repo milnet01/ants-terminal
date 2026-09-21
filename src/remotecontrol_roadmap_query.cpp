@@ -5050,6 +5050,13 @@ QJsonDocument RemoteControl::cmdRoadmapLog(const QJsonObject &req) {
     if (op == QStringLiteral("render")) {
         return cmdRoadmapLogRender(req);
     }
+    // ANTS-4491 — convert. A WRITE and store-only, beside the three above for
+    // the same reason. Unlike every other op here it does NOT go through
+    // roadmapSectionOpTarget(): that resolver serves only ants-v1, and a
+    // github-task-list roadmap is the one input this op takes.
+    if (op == QStringLiteral("convert")) {
+        return cmdRoadmapLogConvert(req);
+    }
     if (op != QStringLiteral("append")) {
         return rlErr(QStringLiteral("bad_op_combo"),
             QStringLiteral("roadmap_log: unknown op \"%1\" — expected "
@@ -5059,7 +5066,7 @@ QJsonDocument RemoteControl::cmdRoadmapLog(const QJsonObject &req) {
                            "\"amend_body\", \"amend_headline\", "
                            "\"amend_field\", "
                            "\"bundle_row\", \"backfill_dates\", "
-                           "\"render\", "
+                           "\"render\", \"convert\", "
                            "\"repair_trailers\", or "
                            "\"create_section\"").arg(op));
     }

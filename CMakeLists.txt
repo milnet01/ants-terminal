@@ -2515,6 +2515,10 @@ if(ANTS_TESTS)
                 # migration left behind.
                 tests/features/roadmap_repair_trailers/test_roadmap_repair_trailers.cpp
                 tests/features/roadmap_alloc_store_floor/test_roadmap_alloc_store_floor.cpp
+                # ANTS-4491 — roadmap_log op:"convert". Behavioural against a
+                # real store in a QTemporaryDir; INV-2 and INV-4 use the
+                # render's Layman gate as their forced pre-commit failure.
+                tests/features/roadmap_convert/test_convert.cpp
                 # ANTS-4500 — a synthesised id gets its own namespace and its
                 # own counter. Here rather than in test_core: the cases drive
                 # roadmap_log through RemoteControl, whose externals the core

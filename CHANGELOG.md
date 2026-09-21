@@ -14,6 +14,17 @@ for security-relevant changes.
 
 ### Added
 
+- **`roadmap_log op:"convert"` moves a checklist-style roadmap to the standard format** (ANTS-4491)
+  A project still using the older `- [ ]` checklist roadmap can now adopt the
+  standard format in one command, instead of rewriting every line by hand.
+  The file and the store change together, so the project is never left in a
+  state where the two disagree and reads stop working.
+
+  Safe to run on a roadmap that is already part-converted: a bullet that
+  already has an id keeps it, and running it twice changes nothing the first
+  run did not. Pass `dry_run: true` first — it reports exactly which ids it
+  would hand out before anything is written.
+
 - **Previewing a roadmap status change now shows the bullet it will produce** (ANTS-4844)
   Adding an item already previewed its text; changing one showed nothing, even
   though changing edits something that is already correct. The preview shows
