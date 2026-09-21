@@ -50015,6 +50015,37 @@ are closed inline in the feedback files rather than filed here.
 
   And the hint should not advise a narrowing the caller already applied —
   at minimum it should say WHICH lever has room left.
+  RE-DIAGNOSED (2026-09-21, ut-monsterhunt's framing on Vestige's
+  measurement). This is NOT the direction problem of ANTS-5268 and filing
+  it there would blunt both.
+
+  THE CAUSE IS REACH. The caller was already on the cheap side of every
+  lever they had — five keys, an explicit limit, columnar encoding — and it
+  still spilled. Nothing about direction explains that.
+
+  A PROJECTION NARROWS KEYS. A LIMIT NARROWS ROWS. NEITHER TOUCHES THE
+  SIZE OF AN INDIVIDUAL ROW. If one row is enormous, all three levers can
+  be fully applied and the response still will not fit. That is a
+  dimension the caller has no lever for at all.
+
+  THE HINT IS A SECOND, SEPARATE DEFECT and arguably the worse one. It
+  advised asking for less, which the arguments show had already been done
+  three ways. A remedy hint naming a lever the caller has already pulled
+  is WORSE than no hint: it asserts the fix is in their hands when it is
+  not, so they retry the same three things — which is what was reported.
+
+  So the fix here is nothing to do with descriptions. The cap's hint
+  should name the DIMENSION that actually governs, and should not repeat
+  advice the arguments already show was taken.
+
+  STILL UNMEASURED, and it is what turns this from a hypothesis into a
+  filed defect: WHICH dimension drove those 34,697 bytes. 633 rows of five
+  short keys is ~55 bytes a row, which is too much for five short values —
+  so either the projection is not reducing what gets serialised, or
+  `limit:500` is applied after the envelope is built, or one row is
+  enormous. Those are three different bugs. Asked Vestige to pin it.
+
+  Measure before designing.
   **Layman:** You can ask the roadmap for just five details per entry to keep the answer small — and the answer is still too big to send, which is the exact problem that option was added to solve.
   Kind: fix.
   Source: cc-feedback-2026-09-21 (Vestige), measured on project 13.
@@ -50075,6 +50106,39 @@ are closed inline in the feedback files rather than filed here.
 
   Worth doing alongside ANTS-5263's documentation half — both are "the
   description does not warn about a cost the caller will pay".
+  THE INVARIANT UNDER THIS ITEM, and it is worth more than the item's
+  original framing: A CALLER CANNOT PREDICT THE COST OF A CALL FROM THE
+  CALL. ut-monsterhunt's carve (2026-09-21), and they separate three
+  causes that were being collapsed into one:
+
+    DIRECTION  cost set by the QUESTION's shape. Fix: state it in the
+               description. This item.
+    DEFAULT    cost set by a flag's default value. Fix: name the cheap
+               form where the expensive one is documented, or invert the
+               default where precedent allows.
+    REACH      cost set by a dimension no lever touches, with a hint that
+               misdirects. Fix: the hint names the governing dimension.
+               That is ANTS-5266 and belongs there, not here.
+
+  A SECOND INSTANCE FOR THIS ITEM, measured here. `roadmap_query
+  mode:"section_index"` returned 19,874 bytes and SPILLED when one section
+  slug was wanted; the slug was then read off a single-id query.
+
+  It matters because it shows the problem is NOT confined to verbs that are
+  inherently forward. "The whole section index" is a corpus answer; "the
+  slug for this one section" is a per-name answer. One verb name covers
+  both and the default is the corpus one — so a caller reaching for the
+  natural name gets the forward answer to a reverse question. A verb can
+  hold both directions and still hand you the expensive one.
+
+  CAUTION ON THE DEFAULT ROW, theirs, and it stops this item becoming a
+  licence. Inverting a default is not free and is not always a saving.
+  ANTS-5263's echo is the case in point: ANTS-4097 added it for real
+  coverage, and the right cut there distinguishes where that coverage is
+  load-bearing (ops that BUILD a body) from where it is not (ops that
+  APPEND a line). "Make the expensive thing opt-in" would have destroyed
+  it. So the default row's fix is USUALLY documentation and only sometimes
+  inversion, and telling which needs the same judgement.
   **Layman:** Some search commands start from a name you already have and are cheap; others start from the whole project and are expensive. Nothing says which is which, so people find out by paying.
   Kind: doc.
   Source: cc-feedback-2026-09-21 (ut-monsterhunt).
