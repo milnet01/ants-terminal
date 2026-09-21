@@ -49559,6 +49559,36 @@ are closed inline in the feedback files rather than filed here.
   worth having anyway: have the envelope name which FIELDS were searched, and
   have a zero-hit literal query say so. Today the echoed `"query"` reads as
   confirmation the search ran as asked.
+  SEVERITY UP, AND THE SCOPE IS WIDER THAN FILED (2026-09-21, Vestige).
+  Sequence this BEFORE ANTS-5266, which it subsumes.
+
+  This was filed as a SEARCH defect: `query` matches bodies only, so a
+  bullet cannot be found by its own title. The same root cause is also a
+  SIZE defect, and that half was invisible from the search side.
+
+  Measured: `roadmap_query bullet_fields:["id"] limit:500` on project 13
+  returned an `id` column holding "AX7. Ambisonics (B-format) source
+  playback + render" and similar — 30-60 character titles where an id is
+  ~10. On github-task-list the parser adopts the bold run as the id, and
+  on that file the bold run is the bullet's HEADING.
+
+  SO ONE DEFECT PRODUCES THREE SYMPTOMS:
+
+    1. `query` searches neither `id` nor the bold run, so a bullet cannot
+       be found by its own title (as filed).
+    2. The `id` column returns prose, so a caller cannot use it as an
+       identifier at all.
+    3. It is the widest column in any projection, which is what made a
+       five-key projection with a limit AND columnar encoding still spill
+       at 34,697 bytes (ANTS-5266).
+
+  Fixing the parse collapses all three. Fixing ANTS-5266's levers fixes
+  none of them, because the levers are not broken.
+
+  STILL UNEXPLAINED and still not to be assumed: the REGEX path behaves
+  differently from the literal path and nobody has accounted for it.
+  Body-only is established for LITERAL matching and unverified for regex.
+  Do not fix one and assume the other.
   **Layman:** Searching an old-style roadmap silently returns only some of the matching entries, and labels them with their title where the identifier should be — so you cannot tell a partial answer from a complete one.
   Kind: fix.
   Source: cc-feedback-2026-09-21 (Vestige).
@@ -49926,6 +49956,30 @@ are closed inline in the feedback files rather than filed here.
   description mentions the echo or points at `fields`, so a caller cannot
   anticipate the cost — ut-monsterhunt paid it six times before finding
   out. That documentation line is the cheapest half of this item.
+  RE-RANKED TO THE TOP OF THE TOKEN ITEMS (2026-09-21, ut-monsterhunt).
+
+  CONTEXT COST IS SIZE × DURABILITY, AND ONLY SIZE GETS MEASURED. An
+  inline result is permanent weight in the caller's window for the rest of
+  the session; a spilled one is transient — the payload goes to disk and
+  only the answer persists. A token cost is paid once; a context cost is
+  paid once and then carried, so it is charged again on every subsequent
+  turn of reasoning.
+
+  That inverts the ranking these items were filed in:
+
+    ANTS-5265  106,500 chars — but it SPILLED. The reporter's window
+               carried ~2 KB: three small calls and five numbers.
+               Big number, small durable cost.
+    THIS ITEM  kilobytes per call, INLINE, six times. Every byte
+               permanent, for text the caller composed moments earlier.
+               Small-looking number, maximum durable cost.
+
+  So this is the worst shape in the set: not "needed once and now carried"
+  but NEVER NEEDED AND STILL CARRIED. Do this one first.
+
+  The reporter's own caveat, kept: one session, no compaction, so they
+  measured the accumulation and not the point where it bites. Reasoning
+  from one clean case, not a measured law.
   **Layman:** Every time you add a line to a roadmap entry, the tool sends the whole entry back — so the more you work on something, the more each small edit costs.
   Kind: enhancement.
   Source: cc-feedback-2026-09-21 (ai-prompts, ut-monsterhunt, claude-config, Vestige).
@@ -49984,6 +50038,36 @@ are closed inline in the feedback files rather than filed here.
 
   Ask: `count_only` returning `counts` + `findings_count`, omitting
   `symbols[]` and `findings[]`. Additive; nothing is lost.
+  RE-RANKED DOWN (2026-09-21) — and the reason is worth more than the
+  re-ranking. See ANTS-5263 for the principle: context cost is size ×
+  DURABILITY, and this item's 106,500 characters SPILLED, so the reporter
+  carried ~2 KB of it. Still worth fixing; no longer the urgent one.
+
+  A REFINEMENT MEASURED HERE, because the principle as stated does not
+  survive one of this session's own cases. "A spill is transient" holds
+  only when what the spill LEAVES BEHIND is small.
+
+  `roadmap_query mode:"section_index"` spilled and left 79 rows of
+  `{index, bytes, head}` preview inline — permanent weight AND no answer.
+  ut-monsterhunt's doc_symbols spill left a path, a slicing recipe and a
+  subagent option, which is why theirs behaved well.
+
+  SO THE SPILL IS NOT THE VARIABLE; THE RESIDUE IS. Three outcomes, not
+  two:
+
+    inline, large          permanent weight, answer present
+    spill, small residue   transient, answer reachable   — the good case
+    spill, large residue   permanent weight AND no answer — worst of both
+
+  The third is what a preview of row LENGTHS produces: on a spill nobody
+  wants to know how long each row was, they want to know how to ask
+  again. Their own rule covers it from the other side — a spill is good
+  when its hint names the QUERY, otherwise it is a failure wearing a
+  mechanism's clothes.
+
+  ACTIONABLE HERE: when a reply spills, the residue should be the recipe,
+  not a sample. Cheaper than the preview it replaces, and it is the only
+  thing a caller can act on.
   **Layman:** Asking a document checker for its totals returns every single finding instead, which is too big to send — so you pay four calls to read five numbers it had already worked out.
   Kind: enhancement.
   Source: cc-feedback-2026-09-21 (ut-monsterhunt).
@@ -50046,6 +50130,48 @@ are closed inline in the feedback files rather than filed here.
   enormous. Those are three different bugs. Asked Vestige to pin it.
 
   Measure before designing.
+  RESOLVED AS A DUPLICATE CAUSE (2026-09-21). Vestige ran the two probes
+  and the levers are fine — this is ANTS-5257 billed by the byte.
+
+    PROBE (a)  same call, limit:5  -> small envelope, 5 rows, no spill.
+               The limit DOES reach the sizing. Bug 2 ruled out.
+    PROBE (b)  bullet_fields:["id"], limit:500 -> inline, all 500 rows,
+               ~9.5 KB, ~19 bytes a row. The projection DOES project.
+               Bug 1 ruled out.
+
+  So it is bug 3, fat rows — and the reason nobody predicted. Probe (b)'s
+  `id` column came back holding:
+
+      "AX7. Ambisonics (B-format) source playback + render"
+      "Local \"pre-push CI\" script — run what CI runs, before pushing"
+      "Runtime first-person ↔ third-person toggle"
+
+  Those are not ids. They are the bullets' TITLES. On github-task-list the
+  parser takes the bold run as the id, and on that file the bold run is a
+  heading — so the `id` column carries 30-60 character prose where it
+  should carry ~10. It is the widest column in the projection and it is
+  wide because it is holding prose.
+
+  THE ARITHMETIC RESOLVES WITHOUT A PATHOLOGICAL ROW. ~55 bytes across
+  five keys is every row carrying a title-as-id, plus a `source` like
+  "in-session-2026-06-29 (Vestige audio quick-wins bundle; user request)"
+  (66 chars) and a `section_slug` of 27. Five honest-looking keys, three
+  of them long on this dialect.
+
+  SO: NOT FIXABLE BY A BETTER LEVER, because nothing is wrong with the
+  levers. Fix ANTS-5257 and the widest column collapses, `query` starts
+  searching the right field, and the spill goes away as a side effect.
+  TWO ITEMS, ONE FIX — SEQUENCE 5257 FIRST.
+
+  ut-monsterhunt's REACH framing still holds as a general shape: a
+  projection narrows keys, a limit narrows rows, neither touches row SIZE,
+  and that dimension has no lever. What this measurement adds is that HERE
+  the row size is not a property of the data — it is a parse defect.
+
+  THE HINT HALF SURVIVES INDEPENDENTLY and still needs no measurement. It
+  advised narrowing to a caller who had applied bullet_fields, limit and
+  tabular encoding simultaneously. Worse than unhelpful: it pointed at the
+  one class of fix that could not have worked.
   **Layman:** You can ask the roadmap for just five details per entry to keep the answer small — and the answer is still too big to send, which is the exact problem that option was added to solve.
   Kind: fix.
   Source: cc-feedback-2026-09-21 (Vestige), measured on project 13.
@@ -50195,6 +50321,58 @@ are closed inline in the feedback files rather than filed here.
   **Layman:** A checking tool listed sixteen loosely-matching files as findings on a project that has no specification documents for it to check against.
   Kind: enhancement.
   Source: cc-feedback-2026-09-21 (Vestige).
+  Lanes: mcp.
+
+- 📋 [ANTS-5271] **A verb's schema is permanent context, so a caller using one op carries every other op's rationale for the whole session.**
+  THE AXIS, and ai-prompts argues it is a bigger lever than every payload
+  trim filed today combined. A result payload is TRANSIENT: read it, use
+  it, it ages out. A tool SCHEMA is PERMANENT — it sits in the window from
+  fetch until clear, and it is paid in full by a caller that uses one
+  argument. Every subagent that loads the verb pays it again.
+
+  THEIR CASE: four `roadmap_log` calls, three arguments used (`op`, `id`,
+  `note`), and the schema carries ~20 ops each with its own history,
+  refusal codes and design rationale. Larger than the 5,263-byte echo they
+  flagged earlier, and unlike the echo it does not age out.
+
+  MEASURED HERE, because they declined to measure it — a `tool_info` call
+  would have cost more than the finding was worth, which is itself the
+  point. Counting string-literal bytes in `claudeintegration.cpp` between
+  `"roadmap_log"` and its `tools.append(t);`, the same region anchor
+  `tests/features/mcp_roadmap_log_verb` already uses:
+
+      roadmap_log schema literal text   ~42,140 bytes
+      ops in the enum                    20
+
+  HONESTY ABOUT WHAT I COULD NOT MEASURE. I tried twice to isolate the
+  `op` description's share and got 397.5% and 8.1% — both obviously wrong,
+  because the description is assembled across several statements and my
+  end anchors caught the wrong ones. I am not publishing either. The
+  42,140 figure uses a verified anchor and stands; the per-op split does
+  not exist yet and should be measured properly before anyone sizes a fix
+  from it.
+
+  A TRADE, NOT A SAVING, and the reporter was explicit. The per-op prose
+  is where the refusal codes and design reasoning live, and they relied on
+  exactly that today: `roadmap_log`'s dry_run semantics, and
+  `feedback_log`'s `path` derivation rule, which is what stopped them
+  creating a stranded file. Deleting it costs real coverage.
+
+  THE ASYMMETRY IS BETWEEN TWO CALLERS. One is CHOOSING among ops and
+  needs the material. One already knows its op and carries nineteen
+  others' rationale for nothing.
+
+  TWO DIRECTIONS, neither a proposal — the reporter declined to call
+  either one and so do I. A schema narrowed to a named op at ToolSearch
+  time; or the deep per-op history behind `tool_info` with one line per op
+  in the schema. Both serve both callers. Both need the per-op measurement
+  above before anyone commits.
+
+  SAME SHAPE ELSEWHERE: `feedback_log` (ten ops) and `roadmap_migrate`.
+  Measure those before assuming roadmap_log is the outlier.
+  **Layman:** Loading one roadmap command also loads the full manual for the nineteen others, and that stays in memory for the rest of the session even though it is never read.
+  Kind: enhancement.
+  Source: cc-feedback-2026-09-21 (ai-prompts), measured here.
   Lanes: mcp.
 
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-08-20 triage
