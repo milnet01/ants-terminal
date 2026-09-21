@@ -121,6 +121,26 @@ the commit to be one transaction.
   the mechanism carries narration in each placement; it does not prove a large
   real roadmap survives intact, and no fixture here can.
 
+- **INV-14** — prose BETWEEN bullets keeps its POSITION: a bold pseudo-heading
+  written between two bullet groups comes back between them, not merely
+  present somewhere in the file.
+  *Test:* `midSectionProseKeepsItsPosition`.
+  *Why:* INV-13 asserts presence, which is not enough for the shape a real
+  roadmap is full of. Vestige measured 41 runs of mid-section prose on their
+  file, 8 of them bold pseudo-headings — bold lines that FUNCTION as headings
+  because the markdown has no heading level left (their innermost are already
+  h6). Each labels the bullets below it and its meaning is entirely
+  positional. A convert that preserves every such line and re-files it
+  anywhere but immediately above its own bullets passes INV-13 and silently
+  regroups the roadmap; "long-deferred" versus "needs sign-off" is the
+  difference between an item being parked and being scheduled. A clean diff
+  hiding a semantic loss.
+  *Breaks when:* narration is re-ordered relative to the bullets it sits
+  among, or hoisted to a section intro.
+  *Not asserted:* the horizontal rule. It is structure with no content, so
+  dropping it loses no meaning — the case logs a note rather than failing, so
+  a reviewer seeing it in a before/after diff knows it is not a defect.
+
 Note on a field that is deliberately absent: the report does NOT carry the
 matched row's id origin. Both match passes require `idFromMigration` on the
 candidate, so every matched row is migration-allocated by construction — a

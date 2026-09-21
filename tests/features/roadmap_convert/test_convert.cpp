@@ -813,3 +813,98 @@ TEST(RoadmapConvert, convertPreservesNarration) {
         << "prose after the last bullet did not survive the convert:\n"
         << after.toStdString();
 }
+
+// ---------------------------------------------------------------- INV-14 ----
+
+// ANTS-5260 — prose BETWEEN bullets keeps its POSITION, not merely its bytes.
+//
+// INV-13 asserts presence and says so honestly. This is the assertion it does
+// not make, and Vestige measured that it is the shape their file is full of:
+// 41 distinct runs of mid-section prose, of which 8 are BOLD PSEUDO-HEADINGS —
+// bold lines that function as headings and are not headings, because the
+// markdown has no heading level left (their innermost are already h6).
+//
+//     **Long-deferred (acknowledged-but-not-this-cycle):**
+//     **Cross-doc / cross-phase decisions that need an owner sign-off:**
+//
+// Each labels the bullets BELOW it and its meaning is ENTIRELY positional. A
+// convert that preserves every such line and re-files it anywhere but
+// immediately above its own bullets passes INV-13 and silently regroups the
+// roadmap — and "long-deferred" versus "needs sign-off" is the difference
+// between an item being parked and being scheduled. That is a semantic loss
+// wearing a clean diff.
+//
+// The horizontal rule is here for a different reason: it is structure with NO
+// content. If narration is captured as text-bearing lines only, a `---` is
+// dropped with nothing semantically lost and a visible diff produced — which
+// would then read as a defect in someone's before/after review when it is not.
+TEST(RoadmapConvert, midSectionProseKeepsItsPosition) {
+    ants_test::XdgGuard guard;
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+
+    const QByteArray interleaved =
+        QByteArray("# Demo Roadmap\n"
+                   "\n"
+                   "## To Do\n"
+                   "\n"
+                   "- [ ] The bullet ABOVE the pseudo-heading.\n"
+                   "  Layman: A plain-language line.\n"
+                   "  Kind: chore.\n"
+                   "  Source: ants-5260-test.\n"
+                   "\n"
+                   "---\n"
+                   "\n"
+                   "**PSEUDOHEADING-SENTINEL:**\n"
+                   "\n"
+                   "- [ ] The bullet BELOW the pseudo-heading.\n"
+                   "  Layman: A plain-language line.\n"
+                   "  Kind: chore.\n"
+                   "  Source: ants-5260-test.\n");
+
+    const QString root = seed(guard, tmp, interleaved);
+    ASSERT_FALSE(root.isEmpty());
+    const QString roadmap = root + QStringLiteral("/ROADMAP.md");
+    ASSERT_TRUE(migrate(root));
+
+    const QJsonObject resp = convert(root);
+    ASSERT_TRUE(resp.value(QStringLiteral("ok")).toBool())
+        << QJsonDocument(resp).toJson().toStdString();
+
+    const QString after = QString::fromUtf8(readFile(roadmap));
+    ASSERT_FALSE(after.isEmpty());
+
+    const int above  = after.indexOf(QStringLiteral("ABOVE the pseudo-heading"));
+    const int label  = after.indexOf(QStringLiteral("PSEUDOHEADING-SENTINEL"));
+    const int below  = after.indexOf(QStringLiteral("BELOW the pseudo-heading"));
+
+    // Presence first, so a failure says WHICH thing went missing rather than
+    // failing an ordering comparison against -1.
+    ASSERT_GE(above, 0) << "the first bullet did not survive:\n" << after.toStdString();
+    ASSERT_GE(label, 0)
+        << "the bold pseudo-heading did not survive — 8 of these carry the "
+           "grouping semantics of a real roadmap:\n"
+        << after.toStdString();
+    ASSERT_GE(below, 0) << "the second bullet did not survive:\n" << after.toStdString();
+
+    // The assertion INV-13 does not make. Carried is not the same as carried
+    // in place, and only position preserves what a pseudo-heading MEANS.
+    EXPECT_LT(above, label)
+        << "the pseudo-heading moved ABOVE the bullet it followed — it now "
+           "labels the wrong group:\n"
+        << after.toStdString();
+    EXPECT_LT(label, below)
+        << "the pseudo-heading no longer sits immediately above the bullets it "
+           "labels — every line survived and the grouping is silently wrong, "
+           "which is a clean diff hiding a semantic loss:\n"
+        << after.toStdString();
+
+    // Structure with no content. Reported rather than asserted either way:
+    // dropping it loses no meaning, but it shows up in a before/after diff and
+    // a reviewer needs to know whether that is expected.
+    if (!after.contains(QStringLiteral("\n---\n"))) {
+        GTEST_LOG_(INFO) << "note: the horizontal rule was not reproduced — "
+                            "no semantic loss, but it will appear in a "
+                            "before/after diff and is not a defect";
+    }
+}
