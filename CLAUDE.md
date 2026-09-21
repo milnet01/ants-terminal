@@ -38,12 +38,10 @@ main-exe-only iteration.
 execs that copy, so the running process shares no inode with any build
 output: **you may rebuild `build/` freely during a live session**,
 provided the running instance was launched by an ANTS-2174-or-later
-`launch.sh`. Where that is in doubt, `pgrep -af ants-terminal` settles it:
-the path must be the home copy
-(`…/.local/share/ants-terminal/bin/ants-terminal`), NOT
-`…/build/ants-terminal`. A legacy instance launched before that change
-still runs from `build/`'s inode and remains vulnerable until relaunched —
-keep building to `build-fast/` while such a process is live. Launching never writes into
+`launch.sh`. **Do not pre-check `pgrep` before a build** — the user launches
+only from the Plasma icon, so the live process is always the home copy
+(user ruling, 2026-07-02). A legacy instance launched before ANTS-2174
+would still run from `build/`'s inode; that case no longer arises here. Launching never writes into
 the project tree, so `git status` stays clean.
 
 **Token-frugal invocations** (pipe to `tail` so a 10k-line log stays out

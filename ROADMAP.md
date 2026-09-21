@@ -65340,6 +65340,74 @@ work headless (ANTS-4734). ANTS-4932 is what unblocks the hook callers.
   Kind: feature.
   Source: claude-config-session-2026-09-21.
 
+## Ants MCP feedback from CC sessions — 2026-09-21 triage
+
+Reported via the `~/.claude` session during the lean-workflow effort. The
+milestone item is a verb-surface gap the user's SemVer-milestone decision
+exposed; the three parse defects were found by the Vestige session in its own
+rendered roadmap and are this project's, not theirs — they are the store's
+parse, not that file.
+
+- 📋 [ANTS-5300] **Reach item.milestone from the verb surface — the column ships, nothing can set or filter it.**
+  The user has ruled that every project's roadmap groups open items under
+  SemVer milestone headings. `item.milestone TEXT` already exists in the
+  DDL at user_version 1, is bound on insert, is read back into
+  `ItemWrite::milestone`, round-trips through roadmap_export (a golden
+  fixture carries "milestone":"0.8.0"), and is settable by name through
+  `setItemField`.
+
+  What is missing is the verb surface. `roadmap_log op:"amend_field"`
+  accepts layman|kind|source|lanes|evidence|section and not milestone;
+  `roadmap_query` has no milestone filter and no milestone in its bullet
+  fields; the render emits no trailer for it; and the migration does not
+  populate it, so every migrated item is NULL.
+
+  **This is verb work, not a migration** — no `kSchemaVersion` bump, so it
+  does not touch the one-way door. That is what makes the change safe for
+  every project in the machine-global store.
+  **Layman:** Let a session put an item under a version heading and ask what is in that version.
+  Kind: feature.
+  Source: claude-config-session-2026-09-21.
+
+- 📋 [ANTS-5301] **Sub-bullet lead-ins inside a bullet list are parsed as items.**
+  Reported by the Vestige session against its own rendered roadmap.
+  Fragments like `Topology`, `Transport` and `Scene operations:` — lead-ins
+  nested inside a bullet — are read as actionable items.
+
+  They then hold an id, count toward every total, and would be carried into
+  a milestone regrouping as if they were work. Reproduce against Vestige's
+  roadmap before changing the parse; the fixture belongs here, not there.
+  **Layman:** A heading word inside a list gets counted as a piece of work.
+  Kind: fix.
+  Source: vestige-via-claude-config-2026-09-21.
+
+- 📋 [ANTS-5302] **A bold lead-in is taken as the id and the headline field gets the body prose.**
+  Reported by the Vestige session: around thirty rows in one section have
+  the bold lead-in parsed as the id, so the id reads `Tile / chunked level
+  streaming` while the headline field holds the prose that followed it.
+
+  An id of that shape cannot be cited by a commit, a spec or another item,
+  and it is what `id_origin` should have caught. Check whether these land
+  as `parsed` rather than `quarantined` — if so the origin classifier is
+  the defect and the transposition is its symptom.
+  **Layman:** Some items have their name and their reference number swapped.
+  Kind: fix.
+  Source: vestige-via-claude-config-2026-09-21.
+
+- 📋 [ANTS-5303] **Most rows in a migrated roadmap carry anchor slugs rather than citable ids.**
+  Third of the three shapes the Vestige session reported. An anchor slug
+  is not an id: nothing can cite it, so every downstream surface that joins
+  on an id — a commit trailer, a spec's `Spec:` field, a relationship row,
+  the changelog coverage gate — silently has no match.
+
+  Take the three together before fixing any one: they are probably one
+  parse walking a list it should not, and fixing them separately risks
+  three partial repairs. Measure first, on a copy of the live store, never
+  in place.
+  **Layman:** Items end up with a link fragment where their reference number should be.
+  Kind: fix.
+  Source: vestige-via-claude-config-2026-09-21.
+
 ## check-code whole-tree sweep fold-in (2026-09-01)
 
 Whole-tree static-analysis sweep: 13 tools ran, 5 were correctly skipped (no
