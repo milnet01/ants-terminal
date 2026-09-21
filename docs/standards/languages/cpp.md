@@ -29,7 +29,8 @@ This file covers only what is specific to C++.
 ## Version floor
 
 C++20 minimum unless the project pins higher. A pin below that needs a
-one-line reason in `CMakeLists.txt` or the project's own standard.
+one-line reason where the project sets the standard — `CMakeLists.txt`
+where that is what builds it — or in the project's own standard.
 
 ## Casing
 
@@ -63,6 +64,14 @@ context. So a C++ project *chooses*, records the choice, and holds it.
 
 ## Range guards on parsed numbers
 
+**This class is shared with C, and this is where it lives.** It was
+reported from a header compiled by both toolchains, and every part of it
+holds in C: the widths, the saturation, the undefined narrowing. Where
+the spelling differs both are given — `fabs` / `std::fabs`, and
+`<limits.h>` and `<float.h>` where C++ takes `<climits>` and `<cfloat>`.
+**A `languages/c.md` that only pointed here would be a second copy of
+one rule**, which is the drift this file warns about elsewhere.
+
 **A bounds comparison made on the parser's return value, against the
 destination type's limits, is never sufficient on its own.** It can be
 correct on the machine it was written on and inert on another. Two
@@ -84,11 +93,13 @@ not yet narrowed.)*
 - **A narrowing conversion — no `errno` at all, and live everywhere.**
   `strtod` returns `double` where the caller wants `float`. `"1e300"` is
   a finite `double` and passes every check written against it. **Test the
-  magnitude BEFORE converting** — `if (!(std::fabs(d) <= FLT_MAX))
-  reject;` — never after. Converting an out-of-range `double` to `float`
-  is undefined in C++; `inf` is an IEEE-754 result rather than a language
-  guarantee, and under `-ffast-math` a following `std::isfinite` folds
-  away entirely, leaving a guard that decides nothing.
+  magnitude BEFORE converting** — `if (!(fabs(d) <= FLT_MAX)) reject;`,
+  spelled `std::fabs` in C++ and `fabs` from `<math.h>` in C — never
+  after. Converting an out-of-range `double` to `float` is **undefined in
+  both languages** (C++ [conv.double], C11 6.3.1.5); `inf` is an
+  IEEE-754 result rather than a language guarantee, and under
+  `-ffast-math` a following `isfinite` folds away entirely, leaving a
+  guard that decides nothing.
 
 **Do not reach for `errno` on the narrowing case.** glibc's `strtod` sets
 `ERANGE` on *underflow* too (the C standard leaves that
@@ -117,17 +128,14 @@ project and passed every test in its suite on every target it was run
 on; under `-O2 -ffast-math` the guard had compiled to `movl $1, %eax;
 ret` — unconditionally "finite" — and no input could make it fail.
 
-Reported from DOOM_Ants 2026-09-21, where the class had bitten twice —
-the first time hanging a share of Windows launches on a black screen.
-Its first fix was a comment in one file, which did not reach the second
-site. Verified here the same day: under `x86_64-w64-mingw32-gcc`
-`sizeof(long) == 4`, `LONG_MAX == 2147483647` and `LONG_MIN == INT_MIN`,
-so both halves of such a guard are provably unreachable; and natively,
-`strtol("3000000000")` sets no `errno` and reaches an `int` as
-`-1294967296`, which is why neither check may replace the other.
-**Confirmed on three toolchains** — native LP64, mingw under emulation,
-and a physical Windows box running the real CRT, which agreed with the
-emulated run exactly. (CFG-0436)
+**Measured 2026-09-21 on three toolchains** — native LP64, mingw under
+emulation, and a physical Windows box running the real CRT, the last two
+agreeing exactly. Under `x86_64-w64-mingw32-gcc`, `sizeof(long) == 4`,
+`LONG_MAX == 2147483647` and `LONG_MIN == INT_MIN`, so both halves of
+such a guard are provably unreachable; natively, `strtol("3000000000")`
+sets no `errno` and reaches an `int` as `-1294967296`. That pair is why
+neither check may replace the other. Provenance:
+`docs/history/cpp.md`. (CFG-0436)
 
 ## Spellings of the general rules
 
@@ -140,7 +148,8 @@ C++.
   **Never `std::move` around a call's return value**: a by-value helper
   already yields a prvalue, so the move defeats guaranteed copy elision.
   GCC's `-Wpessimizing-move` says so, and it is in `-Wall` — verified
-  2026-09-21, where `-Wextra` alone is silent.
+  2026-09-21 on two GCC versions, where `-Wextra` alone is silent on
+  both.
 - **Wildcard inclusion** (§8) — never `using namespace std;` in a
   header. It leaks into every translation unit that includes it, and
   the name collision surfaces far from the cause. In a `.cpp` it is a
@@ -159,6 +168,19 @@ C++.
   lives.** The recipe below got both wrong until 2026-08-12, and each error
   turned the step into a false pass — which is worse than skipping it, because
   the reader concludes the test is sound.
+
+  **The SHAPE is the rule; the build commands are the project's own
+  spelling, exactly as the labels and wiring bullets below say of theirs.**
+  Remove the fix → **rebuild** → must FAIL → restore → **rebuild** → must
+  PASS. The `cmake`/`ctest` lines are one spelling of that, not the rule,
+  and a project records its own where a reader will find it. **The rebuild
+  is the part that does not translate by itself**: a project whose plain
+  build target does not build its tests will run the PREVIOUS binary and
+  see a pass — the exact false green this step exists to prevent, reached
+  by following it faithfully. Added 2026-09-21 after a C project with a
+  Makefile and no `CMakeLists.txt` reported that the natural translation
+  of these lines does precisely that. **The `git stash` versus
+  `git revert` split below is tool-independent and keeps its force.**
 
   Fix already **committed** — the usual case here, since this step exists for a
   test written after its fix, inherited with a codebase, or added in review:
@@ -269,7 +291,7 @@ and have not been run against a case.
 | No `using namespace std;` in a header | `clang-tidy`'s `google-build-using-namespace`. **It does not draw this rule's header-versus-`.cpp` line**, which is the whole distinction — in a `.cpp` the rule calls it a judgement call and the check does not |
 | Catch what you can name — by `const&`, by specific type | **`Partial:`** `misc-throw-by-value-catch-by-reference` for the reference half, `bugprone-empty-catch` for a swallowed one. **Nothing** catches `catch (...)` away from a thread or `main` boundary: the construct is legal and the boundary is not something a check can see |
 | Do not pessimise — `std::move`, `reserve()`, pass by `const&` | **`Partial:`** `-Wpessimizing-move`, in `-Wall`, decides the `std::move`-around-a-return half outright — verified 2026-09-21. **Nothing** decides the rest: `performance-*` flags some unnecessary copies, but whether a known final size was reserved is not something a check can call a breach |
-| Range guards — the narrowing sub-case (`strtod` into a `float`) | `clang-tidy`'s `bugprone-narrowing-conversions` (`cppcoreguidelines-narrowing-conversions` is its alias and is reported alongside it). Verified 2026-09-21: it fires on an implicit `double`→`float` assignment and is **silent on the conforming form** — magnitude tested against `FLT_MAX`, then an explicit `static_cast<float>` — so it distinguishes breach from conformance rather than flagging both |
+| Range guards — the narrowing sub-case (`strtod` into a `float`) | `clang-tidy`'s `bugprone-narrowing-conversions` (`cppcoreguidelines-narrowing-conversions` is its alias and is reported alongside it). Verified 2026-09-21: it fires on an implicit `double`→`float` assignment and is **silent on the conforming form** — magnitude tested against `FLT_MAX`, then a cast — so it distinguishes breach from conformance rather than flagging both. **Stronger than it looks: silent on a C-style `(float)` cast as well as `static_cast`, and it works in C mode too**, so conforming C is not flagged forever for lacking `static_cast` |
 | Range guards — the width-dependent sub-case (`strtol` into an `int`) | **nothing.** Verified 2026-09-21: `gcc -Wall -Wextra -Wtype-limits` warns on neither the native build nor the `x86_64-w64-mingw32-gcc` cross-build, where the comparison is provably unreachable; `cppcheck --enable=all` reports nothing. The guard is well-formed code that happens to decide nothing, and **the test suite catches it only if the suite runs on the other target** |
 | Range guards — reaching for `errno` on the narrowing case | **nothing.** Rejecting a valid underflowing input is indistinguishable from correct rejection without a test that asserts `"1e-999"` is accepted |
 | Tests — the prove-it-can-fail recipe | **nothing.** The recipe is a procedure a person runs, and both runs pass on a correct test and on a test that never exercised the fix. The recipe's own warnings are the only guard |
