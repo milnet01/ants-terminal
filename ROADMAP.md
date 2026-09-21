@@ -50536,6 +50536,49 @@ are closed inline in the feedback files rather than filed here.
   Source: cc-feedback-2026-09-21 (Pressless, Games_Hub, independently).
   Lanes: mcp.
 
+- 🚧 [ANTS-5274] **CLAUDE.md's new hot-reload rule owes its review-contract gate, started and not finished.**
+  Shipped in 7902f8f5: CLAUDE.md § "Hot reload is the design default".
+  It is a NEW rule that changes what a conformer writes, so global
+  CLAUDE.md rule 14 requires review-contract before anyone builds under
+  it.
+
+  STATE: started, not complete. Genre pinned `standard`, cap 3.
+
+    Phase 1a  done  — genre pinned; subject is CLAUDE.md alone.
+    Phase 1b  done  — yielded ONE real finding, fixed before commit: the
+                      section claimed ~105 test files construct
+                      RemoteControl(nullptr); measured 111.
+    Phase 1c  n/a   — tree was clean; span is 7902f8f5.
+    Phase 1d  OWED  — check-doc-facts over CLAUDE.md.
+    Phase 2+  OWED  — cold lanes, verify, fix, loop.
+
+  RUN IT FROM A FRESH SESSION, deliberately. Phase 2 has every lane read
+  the document with no author intent and no session history, and the
+  session that wrote the rule holds exactly the context the scrubbed copy
+  and the cold brief exist to withhold. A gate run from the authoring
+  session is the weakest version of it.
+
+  TWO MECHANICS THAT BITE ON THIS SUBJECT, both from the skill's own
+  scope rules, so a fresh run does not have to derive them:
+
+    - A project CLAUDE.md is ALWAYS-LOADED, so Phase 4d keeps the loop log
+      OUTSIDE the document — a dated record under docs/reviews/ with at
+      most a one-line pointer. Do not append a loop-log table to
+      CLAUDE.md.
+    - Consequently Phase 2 appends NO placeholder loop-log section to the
+      scrubbed copy, and the brief says the review history is kept
+      elsewhere.
+
+  CLAIMS ALREADY VERIFIED IN SOURCE, so a lane re-finding them is a
+  dismissal rather than a finding: PtyHandler's SIGHUP -> SIGTERM(+SIGCONT)
+  -> SIGKILL (ptyhandler.cpp:29-63), SessionManager::serializeStream(grid,
+  cwd, pinnedTitle, first) (sessionmanager.cpp:189), the tools/list
+  handler's local QJsonArray (claudeintegration.cpp:2409), 111 test files.
+  **Layman:** A new project rule was written down; the independent review that is supposed to check a new rule before anyone follows it has only partly run.
+  Kind: doc.
+  Source: in-session-2026-09-21, user standing rule.
+  Lanes: docs.
+
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-08-20 triage
 
 Thirty pending findings across ten feedback files, triaged 2026-08-20. Six
