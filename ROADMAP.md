@@ -642,6 +642,22 @@ SSH key registered there.
   Progress (2026-08-02): first concrete instance, and it is currently live on OBS. Fedora_44 and Mageia_10 both show "failed: 1" against `luaengine.cpp:5: fatal error: lua5.4/lua.hpp: No such file or directory` — the ANTS-3727 defect, already fixed on main by 94122ab2 (2026-07-30). OBS is building it anyway because `packaging/obs/_service` pins `<revision>v0.7.101</revision>` (tagged 2026-07-22, eight days before the fix), while `obs-submit.sh` copies the SPEC from current HEAD. That split is the mechanism this item names: spec-level portability fixes go live immediately, source-level ones wait for the next tag. It also explains why the board looks contradictory — Leap 16.0 and Tumbleweed are green because their fix was spec-level AND openSUSE's header layout matches the old hardcoded include, so the two distros that still fail are exactly the two whose fix was source-level. No code change is needed; the red clears when the pin moves to a tag containing 94122ab2. Note that v0.7.102-rc1 (2026-07-29) does NOT contain it either, so the next cut is the first tag that will.
   Progress (2026-08-02, cont.): the validation build justified itself on its first run. Pointing OBS at main turned Leap 16.0 and Tumbleweed RED — not a regression from the test, but main telling the truth for the first time: ANTS-3756 made Qt6::Sql a REQUIRED find_package component and no packaging carrier was told, so every openSUSE target died at configure with 'Failed to find required Qt component "Sql"'. Fixed in 1882d3dc; it would otherwise have shipped in Wednesday's release and broken every openSUSE and Fedora package on the day. That is this item's thesis demonstrated rather than argued. Mechanism notes from the OBS user guide, for whoever implements this properly: `osc branch` creates an isolated project for test builds WITHOUT touching the published package — that is the right tool, and editing the live package's _service (what was done here) is not; `osc build` runs a real chroot build locally per target, so a pre-tag rehearsal need not involve the server at all. Both are heavier than the bug class actually needs on every commit, so the cheap deterministic first rung is filed separately as ANTS-3791 (assert CMake's Qt6 COMPONENTS against the spec's BuildRequires — would have caught both this and the 2026-07-29 Qt6Test break at ctest time).
   Outcome (2026-08-02): four validation builds, ALL FOUR TARGETS GREEN on the last one — Tumbleweed, Leap 16.0, Mageia_10 and Fedora_44 each producing a complete RPM set (main + debuginfo + debugsource). Five distinct pre-existing defects were found, each hidden behind the one before it, and every one of them would have shipped in Wednesday's release: (1) luaengine's hardcoded <lua5.4/lua.hpp> — already fixed on main by 94122ab2, and this run is the first PROOF it works, since no tag containing it had ever been built; (2) missing BuildRequires cmake(Qt6Sql) after ANTS-3756 made it a required component — every openSUSE target failed configure (1882d3dc); (3) the SQLite DRIVER absent from the build chroot, since a Requires is not installed there and the roadmap-store tests open a real database during %check — 217 'Driver not loaded' failures (2fb77526); (4) Mageia declaring the debuginfo subpackage twice, latent since that target was added and only reachable once a build survived 900s to RPM assembly (2fb77526); (5) no UTF-8 locale in %check, so glibc's wcwidth() returned -1 (unprintable, not narrow) for CJK and combining marks, failing 3 tests (f9d4d8da). The OBS _service pin was reverted to v0.7.101 afterwards so the project stops publishing an unreleased 0.7.102 that would collide with the real one; the five spec fixes remain committed and reach published packages when the pin moves at the next release. Fedora/Mageia are expected to show red again until then — that is the v0.7.101 source, not a regression. Cheap deterministic follow-up: ANTS-3791. Deeper app-level locale defect surfaced by (5): ANTS-3792.
+  Progress (2026-09-22): THIRD instance, and the user has now directed the
+  mechanism. ANTS-5304 -- the Mageia_10 build of v0.7.110 failed on a test
+  added eight days earlier, while both openSUSE targets and the local suite
+  passed. Cost an out-of-cadence hotfix to restore the Mageia package.
+
+  The user's argument is the one this item states as latency and never
+  prices: fixing a break in the next release "will keep pushing the build
+  out by a week every week", so a distro is red for a full week EVERY time,
+  permanently, not once.
+
+  ANTS-5305 now carries the mechanism and is the item to build; this one
+  stays the problem statement. Do not file a third. One correction to the
+  options above: (a), a Fedora container job, would NOT have caught
+  ANTS-5304 -- Fedora and openSUSE both ship a default SQLite and only
+  Mageia enables ICU, so a container lane must reproduce the DISTRO, not
+  just an older Qt.
 
 - ✅ [ANTS-3734] **Flatpak manifest pins Lua 5.4.7; upstream is on 5.4.8.**
   packaging/flatpak/za.co.antsprojectshub.AntsTerminal.yml pins
@@ -919,6 +935,69 @@ SSH key registered there.
   **Layman:** On most Linux distributions the database lowercases only English letters, but Mageia's build also lowercases accented ones. Our code assumes the first, so on Mageia the two disagree and a package build fails.
   Kind: fix.
   Source: obs-build-failure-2026-09-22.
+
+- 📋 [ANTS-5305] **Validate every distro build BEFORE the release tag, on a weekly schedule, so a break is fixed in the same week it is made.**
+  USER REQUEST (2026-09-22): "come up with a way to troubleshoot the OBS
+  builds every week to resolve any issues found, if possible before we
+  build even if we create a test branch to test builds with first."
+
+  THE ARGUMENT THAT MAKES THIS URGENT, in the user's words: fixing a
+  break in the NEXT release "will keep pushing the build out by a week
+  every week". That is the part ANTS-3733 states as a latency problem and
+  does not price. Restated as a rule: while the only distro signal comes
+  from the published tag, the fix for any break it finds is always one
+  release late, so a distro is red for the whole week EVERY time a break
+  lands. It is not a one-week delay, it is a permanent lag.
+
+  TODAY'S INSTANCE, which is the third (ANTS-3733 records the first two).
+  The Mageia_10 build of v0.7.110 failed on ANTS-5304 while
+  openSUSE_Tumbleweed, openSUSE_Leap_16.0 and the local suite passed. The
+  break was a test added 2026-09-14, eight days before, and NOTHING
+  between the commit and the published tag could see it. Cost: an
+  out-of-cadence hotfix release to get the package back.
+
+  THIS ITEM IS THE MECHANISM; ANTS-3733 IS THE PROBLEM STATEMENT. Do not
+  file a third. ANTS-3733 surveys three options and its (c) is close to
+  what the user asks for -- "An OBS branch project pinned to main rather
+  than a tag" -- but it was never chosen and never built, and it records
+  a reason it is awkward: _service's @PARENT_TAG@ versionformat wants a
+  tag, not a branch.
+
+  WHAT THE DESIGN MUST DECIDE, rather than assume:
+    1. WHERE it runs. A second OBS project (home:milnet:ants-terminal-staging)
+       pinned at a staging tag is the shape that needs no _service change:
+       a tag can be cut weekly and thrown away, where a branch fights
+       @PARENT_TAG@. Weigh against ANTS-3733's (a), a container CI job,
+       which is faster to run but does NOT reproduce a distro's own SQLite,
+       Qt or RPM macros -- and today's defect was exactly a distro SQLite
+       difference, so (a) would have missed it. Say so when choosing.
+    2. WHEN it runs. The point is BEFORE the tag. The natural hook is the
+       RC: an RC is already cut weekly and is already not a public
+       release, so a staging project pinned to the RC tag gives a full
+       week of distro signal before promote. That may need no new tag at
+       all.
+    3. WHAT IT GATES. Reporting is not enough -- ANTS-3733 has been open
+       since 2026-07-30 with the signal available and nobody reading it.
+       Decide whether a red staging build BLOCKS promote (cut-rc.sh
+       already refuses a stale or empty RC, so the refusal shape exists)
+       or only warns.
+    4. HOW the result is read without a human polling. obs-status.sh
+       exists but ANTS-5222 records it hanging and misreporting a running
+       build as a failure; fix or replace it as part of this.
+
+  THE CHEAP HALF, worth doing even if the rest is deferred: the four
+  targets do not fail alike. Today three passed and one failed, and the
+  one that failed differs from the others in a knowable way (ICU-enabled
+  SQLite). A short doc naming each target's material differences --
+  SQLite build, Qt version, locale, RPM macros -- turns "why only
+  Mageia?" from an investigation into a lookup. ANTS-3792 already records
+  the locale instance of the same class.
+
+  Blocked-by nothing. Pairs with ANTS-3733 (problem), ANTS-5304 (today's
+  instance), ANTS-5222 (the status poller), ANTS-3792 (locale).
+  **Layman:** Right now a packaging break is only discovered after we publish, so the fix waits for the next week's release and the problem is live the whole time. This would test the builds before we publish.
+  Kind: test.
+  Source: user-request-2026-09-22.
 
 ### P4 — Fedora COPR
 
