@@ -311,6 +311,21 @@ for security-relevant changes.
   It runs community rule packs with metrics switched off, as the
   command-line audit already did.
 
+## [0.7.111] — 2026-09-22
+
+Hotfix. Restores the Mageia package, which 0.7.110 could not build.
+
+### Fixed
+
+- **The Mageia package builds again** (ANTS-5304)
+  A self-check compared the way Ants lowercases a roadmap id against the way
+  its database does it, using accented letters as the example. Most Linux
+  distributions lowercase only English letters there; Mageia's build also
+  lowercases accented ones, so the two disagreed and the package build
+  stopped before it finished. The check now uses only the characters a
+  roadmap id can actually contain, so it gives the same answer everywhere.
+  No change to the program itself — this is a packaging fix.
+
 ## [0.7.110] — 2026-09-22
 ### Added
 
