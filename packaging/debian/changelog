@@ -1,3 +1,14 @@
+ants-terminal (0.7.111-1) unstable; urgency=medium
+
+  * Hotfix: the Mageia package builds again. A self-check compared how Ants
+    lowercases a roadmap id against how its database does it, using accented
+    letters; Mageia's database lowercases those and most others do not, so
+    the check disagreed with itself and stopped the build before it
+    finished. It now uses only the characters a roadmap id can contain. No
+    change to the program itself. (ANTS-5304)
+
+ -- Anthony Schemel <aant.schemel@gmail.com>  Tue, 22 Sep 2026 14:40:00 +0200
+
 ants-terminal (0.7.110-1) unstable; urgency=medium
 
   * Performance-report harness for contributors, roadmap repair can remove

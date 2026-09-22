@@ -103,6 +103,14 @@
   </screenshots>
 
   <releases>
+    <release version="0.7.111" date="2026-09-22">
+      <description>
+        <p>Hotfix: restores the Mageia package, which 0.7.110 could not build.</p>
+        <ul>
+          <li><em>Fixed:</em> The Mageia package builds again. A self-check compared how Ants lowercases a roadmap id against how its database does it, using accented letters; Mageia's database lowercases those and most others do not, so the check disagreed with itself and stopped the build. It now uses only the characters a roadmap id can contain. No change to the program itself. (ANTS-5304)</li>
+        </ul>
+      </description>
+    </release>
     <release version="0.7.110" date="2026-09-15">
       <description>
         <p>Smoother paste and output handling in the terminal, Claude tab status that keeps up, a broad sweep of MCP tool fixes, and a performance report for contributors.</p>
