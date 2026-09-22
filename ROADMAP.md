@@ -73263,6 +73263,100 @@ starts 2026-05-27.
   Kind: fix.
   Source: user-report-2026-07-02 (recurring empty-RC frustration).
 
+- 📋 [ANTS-5306] **Ship a hotfix without shifting the version numbers after it.**
+  USER REQUEST (2026-09-22): "being able to apply a hotfix without
+  shifting version numbers", and on the form: "If we have to add a 4th
+  value to the version for hotfixes, then so be it, so, it would be
+  v0.7.110.1 or v0.7.110-1 (the dash then signalling it is a hotfix)."
+
+  TODAY'S EVIDENCE, which is what the request came out of. The ANTS-5304
+  hotfix consumed 0.7.111: `cut-rc.sh hotfix` computes H as patch+1 of the
+  latest public tag, so a one-cherry-pick packaging fix took the number the
+  week's 48 items were already cut as, forced the in-flight RC to roll to
+  0.7.112, and required a hand repair of three carriers (ANTS-5307). Next
+  Wednesday now ships 0.7.112. None of that work is caused by the fix; it is
+  all caused by the numbering.
+
+  ONE FORM IS RULED OUT BY AN EXISTING CONTRACT, and the request offered
+  both. `v0.7.110-1` cannot be used: versioning.md § 5 makes any tag whose
+  triple carries a `-` suffix a PRE-RELEASE -- that is how `-rc1` works and
+  how `cut-release --pre` decides to pass `--prerelease` -- so a hotfix
+  tagged that way publishes as a prerelease and never becomes `latest`. It
+  also collides with the Debian revision, where `0.7.110-1` already means
+  the first Debian packaging of 0.7.110. `v0.7.110.1` has neither problem
+  and is the form to design against.
+
+  THE CHEAPER ROUTE TO TEST FIRST, because it needs no upstream version at
+  all. ANTS-5304 changed nothing a user runs -- the shipped binary is
+  identical and only %check differed -- so it did not need an upstream
+  release, it needed a rebuilt PACKAGE. The spec already carries a
+  downstream patch (`>>> carrying patch ANTS-4870-qt-version-guard.patch`
+  in obs-submit.sh's output), so the mechanism exists: add a patch file and
+  bump the RPM `Release:` field, leaving `Version:` alone. Decide whether a
+  build-only break should take that route BEFORE deciding the 4-part
+  scheme, because it may make the scheme unnecessary for the commonest case.
+
+  WHAT THE 4-PART SCHEME WOULD HAVE TO CHANGE, measured 2026-09-22 -- none
+  of it supports four components today:
+    - `.claude/bump.json` `version_pattern`, which is
+      `([0-9]+\.[0-9]+\.[0-9]+)`.
+    - `packaging/cut-rc.sh`: `base_version`, `patch_plus_one`,
+      `patch_minus_one`, and the `rc_base_mismatch` arithmetic that assumes
+      the RC is the next patch after public.
+    - `packaging/check-version-drift.sh`.
+    - NOT the OBS service: `versionrewrite-pattern` is `v(.*)`, which
+      already passes a 4-part version through.
+
+  WHAT IT MUST NOT BECOME: a scheme where the ordinary weekly release also
+  gains a fourth component. The fourth value exists to say "this is a patch
+  of that release", and a release that is not one should keep three.
+  **Layman:** A small emergency fix currently uses up the next version number, so everything after it slides along by one. It should be possible to patch a release without disturbing what comes next.
+  Kind: enhancement.
+  Source: user-request-2026-09-22.
+
+- 📋 [ANTS-5307] **cut-rc.sh hotfix leaves main with two sections claiming the same version.**
+  FOUND while completing the ANTS-5304 hotfix on 2026-09-22.
+
+  THE DEFECT. `cmd_hotfix_continue` calls `record_hotfix_on_main`, which
+  inserts the `[H]` block immediately above the `## [N]` heading and does
+  nothing else. Its own comment one line above says the opposite is
+  required: "record [H] on main below the rolled section so main reads
+  [H+1] > [H] > [N]". Nothing rolls the in-flight section, and the usage
+  header's claim that hotfix "roll[s] the in-flight RC up one number" is
+  not implemented anywhere -- `roll_unreleased` exists but only `new-rc`
+  calls it.
+
+  OBSERVED STATE after v0.7.111 published: main carried TWO
+  `## [0.7.111]` headings -- the in-flight section holding this cycle's 48
+  ids, and the hotfix section holding one. That is precisely the state
+  `changelog_log op:"release"` refuses (`version_exists`), on the stated
+  ground that two such blocks leave a notes-extraction grep unable to
+  choose.
+
+  THE HALF THAT IS WORSE, because nothing makes it visible. The metainfo
+  and debian carriers have no duplicate to notice: each held ONE 0.7.111
+  block, describing the 48 items, while the release actually published as
+  v0.7.111 was the one-cherry-pick hotfix. So AppStream and Debian
+  consumers would receive a feature list for a release containing a single
+  test fix, and the hotfix's own notes were absent from both. The CHANGELOG
+  duplicate is detectable by eye; this is not.
+
+  WHAT A FIX MUST COVER. Rolling the CHANGELOG alone is not enough -- the
+  repair done by hand today had to touch all three carriers plus the recipe
+  files, because the version is recorded in each. Check also whether the
+  rolled section should keep its `{TODAY}` metainfo date or be re-stamped
+  at promote.
+
+  VERIFY IT IS BROKEN BEFORE FIXING IT: run `cut-rc.sh hotfix <sha>` then
+  `--continue` against a scratch clone and read main's CHANGELOG, metainfo
+  and debian. A test belongs with this; `tests/features/cut_rc_behaviour`
+  already exists and is the natural home.
+
+  Related: ANTS-5306 (the numbering that makes the roll necessary at all).
+  **Layman:** After an emergency fix, the project's release notes listed the same version twice, and the packaging files described the wrong contents for it.
+  Kind: fix.
+  Source: in-session-2026-09-22.
+
 ### 🔌 MCP — general Claude Code workflows (2026-05-13)
 
 The MCP work shipped so far targets three power-user workflows
