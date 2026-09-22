@@ -869,6 +869,57 @@ SSH key registered there.
   Kind: fix.
   Source: in-session-2026-09-15 (0.7.109 OBS publish).
 
+- 📋 [ANTS-5304] **The id fold assumes SQLite's lower() is ASCII-only, which is false on a distro that builds SQLite with ICU.**
+  FOUND BY the Mageia_10 OBS build of v0.7.110 on 2026-09-22.
+  `RoadmapIdFold.FoldMatchesSqliteLower` failed there and passed on
+  openSUSE_Tumbleweed, openSUSE_Leap_16.0 and locally (5042/5042).
+
+  THE MECHANISM, measured from the build log. For the id `Ä-1`,
+  `RoadmapParse::foldId` returned U+00C4 (Ä, unchanged) and SQLite's
+  `lower()` returned U+00E4 (ä). Same for `ÉTÉ-7` → `été`. So Mageia's
+  SQLite folds non-ASCII and the default builds do not; Mageia ships
+  SQLite with ICU.
+
+  WHY THE TEST IS NOT THE WHOLE STORY, and this is the part worth
+  keeping. `src/roadmapparse.h::foldId()` is ASCII-only BY DESIGN and its
+  comment states the premise outright: "the fold the roadmap store's
+  id_fold column holds: SQLite's lower(), which changes only ASCII A-Z".
+  That premise is a property of the SQLite BUILD, not of SQLite.
+
+  The schema relies on it twice:
+    - `item.id_fold TEXT GENERATED ALWAYS AS (lower(id)) VIRTUAL`, with
+      `UNIQUE (project_id, id_fold)` over it. Computed BY SQLite.
+    - `relationship.dst_id_fold`, bound from C++ `foldId()`
+      (src/roadmapstore.cpp, the cross-project relationship insert).
+
+  On an ICU-enabled SQLite those two disagree for a non-ASCII id, so a
+  cross-project relationship can store a key that never matches the row it
+  names. The UNIQUE constraint also changes meaning: `Ä-1` and `ä-1`
+  collide there and do not collide elsewhere.
+
+  REACHABLE ONLY WITH A NON-ASCII ID, which is why nothing has broken in
+  practice -- every live project uses ASCII ids (ANTS-NNNN, Sh4). Impact is
+  low; the divergence is real.
+
+  WHAT THIS ITEM MUST DECIDE, rather than assume:
+    1. Whether the test should detect an ICU-enabled SQLite and assert the
+       matching behaviour, instead of asserting one build's.
+    2. Whether the schema should stop deriving id_fold with SQLite's
+       `lower()` at all and store the C++ fold, making the fold one
+       implementation rather than two that agree by coincidence. NOTE this
+       is a schema change and `kSchemaVersion` is a one-way door across
+       every project on the machine -- weigh it against deriving the value.
+    3. Whether ids should be constrained to ASCII at the writer, which
+       would make the question moot and is the cheapest answer if no
+       project wants non-ASCII ids.
+
+  INSTANCE OF ANTS-3733 ("source-level portability breaks are only caught
+  AFTER the release tag") -- the tag was already published when this
+  surfaced.
+  **Layman:** On most Linux distributions the database lowercases only English letters, but Mageia's build also lowercases accented ones. Our code assumes the first, so on Mageia the two disagree and a package build fails.
+  Kind: fix.
+  Source: obs-build-failure-2026-09-22.
+
 ### P4 — Fedora COPR
 
 **Prerequisites:** H5 ✅ — and the spec is now Fedora-compatible in fact,
