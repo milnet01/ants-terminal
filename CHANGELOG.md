@@ -310,7 +310,7 @@ for security-relevant changes.
   It runs community rule packs with metrics switched off, as the
   command-line audit already did.
 
-## [0.7.110] — unreleased (Patron RC preview)
+## [0.7.110] — 2026-09-22
 ### Added
 
 - **A performance report for contributors: tools/perf-report.sh runs every benchmark and compares each number against a saved baseline, flagging what got slower** (ANTS-5133)

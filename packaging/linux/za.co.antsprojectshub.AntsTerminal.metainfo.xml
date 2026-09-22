@@ -103,7 +103,7 @@
   </screenshots>
 
   <releases>
-    <release version="0.7.110" date="2026-09-15">
+    <release version="0.7.110" date="2026-09-22">
       <description>
         <p>Smoother paste and output handling in the terminal, Claude tab status that keeps up, a broad sweep of MCP tool fixes, and a performance report for contributors.</p>
         <ul>
