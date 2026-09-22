@@ -18,7 +18,7 @@
 </p>
 
 <p align="center">
-  Version <strong>0.7.110</strong> ·
+  Version <strong>0.7.111</strong> ·
   <a href="CHANGELOG.md">What's new</a> ·
   <a href="ROADMAP.md">What's planned</a>
 </p>

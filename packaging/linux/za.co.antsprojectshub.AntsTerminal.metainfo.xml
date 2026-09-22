@@ -103,6 +103,29 @@
   </screenshots>
 
   <releases>
+    <release version="0.7.111" date="2026-09-22">
+      <description>
+        <p>Roadmap management gets smarter — migration, backup, new query modes, and dropped items — plus broad improvements to MCP tool reliability and status tracking.</p>
+        <ul>
+          <li><em>Added:</em> Roadmap queries return latest entries of long items, convert checklist formats to standard, preview status changes, report discarded text, return only requested fields, snapshot the store safely, report which items fail Layman gate, and back up weekly to local and remote storage. (ANTS-4769, ANTS-4491, ANTS-4844, ANTS-4839, ANTS-4837, ANTS-4499, ANTS-4483, ANTS-3794)</li>
+          <li><em>Added:</em> Roadmap items can be marked dropped, files generate a notice saying they are generated, and items in one batch can refer to each other by number. (ANTS-4977, ANTS-4555, ANTS-4580)</li>
+          <li><em>Added:</em> View menu gains "Give Each Tab a Different Colour" to cycle through 25 colour families. <code>roadmap_log</code> can delete empty sections, move sections and items to reorganise without hand edits, rewrite section intros and the roadmap title and preamble. (ANTS-5238, ANTS-4958, ANTS-4922, ANTS-4948, ANTS-4949, ANTS-4539, ANTS-4766, ANTS-4832, ANTS-4968)</li>
+          <li><em>Changed:</em> Roadmap conversion preview now lists each bullet it will touch. Invented IDs during migration carry an <code>-S</code> infix so they do not spend real ID numbers. Oversized replies suggest asking for less data. (ANTS-5252, ANTS-4500, ANTS-4850)</li>
+          <li><em>Changed:</em> MCP refusals now carry <code>isError:true</code> as the spec requires. Roadmap writes explain why they would overwrite the file. <code>roadmap_query</code>'s unknown-mode message points at searching by subject. MCP socket reads one request per line. (ANTS-5090, ANTS-4957, ANTS-4976, ANTS-5089)</li>
+          <li><em>Changed:</em> Importing a roadmap no longer blocks other sessions' MCP calls and uses less memory; imports over 32 MiB are refused. (ANTS-5086)</li>
+          <li><em>Fixed:</em> Roadmap conversion works with clients that validate tool options and on legacy projects with no plain-English summaries. Migration preview lists columns it will decline to write. (ANTS-5253, ANTS-5256, ANTS-4522)</li>
+          <li><em>Fixed:</em> Remote-control socket limits open connections. <code>tool_info</code> no longer quotes a stale size. Roadmap writes from git worktrees are refused with a message. Previews show when they would flatten hand-indented lists or tables. (ANTS-5093, ANTS-5091, ANTS-4953, ANTS-4965)</li>
+          <li><em>Fixed:</em> Correcting words across line breaks in roadmap notes keeps paragraphs neatly wrapped. (ANTS-4970)</li>
+          <li><em>Fixed:</em> Tab session autosave now compresses and writes on a background thread, cutting pause time in half. Claude Code text no longer turns dim and underlined at random. Claude's status keeps updating after messages larger than 4 MiB. (ANTS-5131, ANTS-5215, ANTS-5089)</li>
+          <li><em>Fixed:</em> Roadmap window stays responsive while typing and shows notices for missing, unreadable or oversized roadmaps. Roadmap writes hold their lock for less time, publish in the right dialect, and cap backup folders. (ANTS-5088, ANTS-5087)</li>
+          <li><em>Fixed:</em> Audit's saved findings list stays within size limit, rule-quality history no longer fills up, and command-line audit stops tools printing over 64 MiB. SARIF exports name files with valid links, and audit results filter no longer redraws on every keystroke. (ANTS-5085, ANTS-5084)</li>
+          <li><em>Fixed:</em> Audit window stays responsive during git history reads and skips oversized rule packs or suppression lists. Audit no longer freezes when a helper process hangs. Global hotkey reports unavailable portals instead of waiting forever. (ANTS-5084, ANTS-5083, ANTS-5081)</li>
+          <li><em>Fixed:</em> Terminal output can no longer flood trigger actions or plugin events, and progress reports only repaint the tab icon when state changes. Scrollback exports and command-block shares no longer freeze the window. Autocomplete matches the command you type, not the prompt. (ANTS-5079, ANTS-5078)</li>
+          <li><em>Fixed:</em> Broadcast Input sends each pane its own keyboard encoding, reaches only panes in the current tab, starts off on launch, and shows a red Broadcast chip on the status bar. (ANTS-5224, ANTS-5223)</li>
+          <li><em>Security:</em> Claude hook and MCP sockets accept at most 64 connections at once, each holding up to 256 KiB for five seconds. Audit window's Semgrep check no longer sends usage metrics to Semgrep. (ANTS-5089, ANTS-5083)</li>
+        </ul>
+      </description>
+    </release>
     <release version="0.7.110" date="2026-09-22">
       <description>
         <p>Smoother paste and output handling in the terminal, Claude tab status that keeps up, a broad sweep of MCP tool fixes, and a performance report for contributors.</p>

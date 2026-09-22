@@ -1,3 +1,58 @@
+ants-terminal (0.7.111-1) unstable; urgency=medium
+
+  * Roadmap queries return latest entries of long items, convert checklist
+    formats, preview status changes, report discarded text, return only
+    requested fields, snapshot safely, report Layman gate refusals, and back
+    up weekly locally and remotely.
+    (ANTS-4769, 4491, 4844, 4839, 4837, 4499, 4483, 3794)
+  * Roadmap items marked dropped (shown as [dropped] in ROADMAP.md). Files
+    generate notices they are generated. Items in one batch refer to each
+    other by number. (ANTS-4977, 4555, 4580)
+  * View menu: "Give Each Tab a Different Colour" cycles 25 colour families.
+    roadmap_log can delete empty sections, move sections and items,
+    rewrite section intros and titles.
+    (ANTS-5238, 4958, 4922, 4948, 4949, 4539, 4766, 4832, 4968)
+  * Roadmap conversion preview lists each bullet it touches. Invented IDs
+    carry -S infix. Oversized replies suggest asking for less data.
+    (ANTS-5252, 4500, 4850)
+  * MCP refusals carry isError:true. Roadmap writes explain overwrite
+    reasons. roadmap_query points at subject search. MCP socket reads one
+    request per line. (ANTS-5090, 4957, 4976, 5089)
+  * Roadmap imports no longer block other sessions' MCP calls and use less
+    memory. Imports over 32 MiB refused. (ANTS-5086)
+  * Roadmap conversion works with clients validating tool options and on
+    legacy projects. Migration preview lists declined columns.
+    (ANTS-5253, 5256, 4522)
+  * Remote-control socket limits open connections. tool_info no longer
+    quotes stale size. Roadmap writes from git worktrees refused with
+    message. Previews show when flattening hand-indented structures.
+    (ANTS-5093, 5091, 4953, 4965)
+  * Correcting words across line breaks in roadmap notes keeps paragraphs
+    neatly wrapped. (ANTS-4970)
+  * Tab session autosave runs on background thread, halving pause time.
+    Claude Code text no longer turns dim and underlined. Status keeps
+    updating after 4+ MiB messages. (ANTS-5131, 5215, 5089)
+  * Roadmap window stays responsive while typing and shows notices for
+    missing or oversized files. Writes hold lock less, publish right dialect,
+    cap backup folders. (ANTS-5088, 5087)
+  * Audit findings list stays within limit. Rule-quality history stays
+    small. Command-line audit stops tools printing over 64 MiB. SARIF
+    exports use valid file links. Filter no longer redraws per keystroke.
+    (ANTS-5085, 5084)
+  * Audit window responds during git reads and skips oversized rule packs.
+    No freeze when helper process hangs. Global hotkey reports unavailable
+    portals. (ANTS-5084, 5083, 5081)
+  * Terminal output cannot flood trigger actions or plugin events. Progress
+    only repaints tab icon on state change. Exports and command blocks don't
+    freeze. Autocomplete matches your command, not the prompt.
+    (ANTS-5079, 5078)
+  * Broadcast Input sends each pane its own keyboard encoding, reaches only
+    current tab, starts off, shows red status chip. (ANTS-5224, 5223)
+  * Security: Claude hook and MCP sockets accept at most 64 connections each.
+    Audit Semgrep check no longer sends usage metrics. (ANTS-5089, 5083)
+
+ -- Anthony Schemel <aant.schemel@gmail.com>  Tue, 22 Sep 2026 12:00:00 +0200
+
 ants-terminal (0.7.110-1) unstable; urgency=medium
 
   * Performance-report harness for contributors, roadmap repair can remove
