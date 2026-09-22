@@ -10900,6 +10900,8 @@ extends an existing item, that item carries it instead.
   The loop already checked isEmpty(). A const iterator checked against
   constEnd() silences it; a recompile of auditdialog.cpp shows no
   warnings. A non-const iterator with an end() check still warned.
+  Release note (2026-09-22): no CHANGELOG entry, deliberately — a
+  compiler-warning fix with no user-visible behaviour change.
   **Layman:** The build prints a warning that one audit function might read a missing value.
   Kind: fix.
   Source: in-session-2026-09-14.
@@ -49687,6 +49689,9 @@ are closed inline in the feedback files rather than filed here.
   That error is itself the pattern this session kept hitting: a design constraint asserted inside a fix note, carrying the authority of the fix, and unverified.
 
   Covered by roadmap_convert INV-11 and INV-12, both seen RED first by disabling the join. Full suite 5039/5039.
+  Release note (2026-09-22): no CHANGELOG entry, deliberately — the
+  shipped per-bullet convert preview is described in the [Unreleased]
+  bullet filed under ANTS-5252.
   **Layman:** Before a bulk conversion you can see which bullets have no number yet, but not whether each will get a brand-new number or be joined to an existing entry — and being joined to the wrong one is the damaging outcome.
   Kind: enhancement.
   Source: cc-feedback-2026-09-21 (Vestige), follow-up to ANTS-5252.
@@ -50626,6 +50631,8 @@ are closed inline in the feedback files rather than filed here.
   drive-level no-counts rule binds this repo (ruled today); the
   remaining counts elsewhere in CLAUDE.md are a separate sweep, kept out
   of this run because the subject does not widen mid-gate.
+  Release note (2026-09-22): no CHANGELOG entry, deliberately — a
+  process gate on this project's own CLAUDE.md, not product behaviour.
   **Layman:** A new project rule was written down; the independent review that is supposed to check a new rule before anyone follows it has only partly run.
   Kind: doc.
   Source: in-session-2026-09-21, user standing rule.
@@ -60549,6 +60556,9 @@ shipped note, which is the staleness discipline ANTS-4741 exists to prompt.
   the slug, so that half needs more thought than the intro half and should not
   be bundled with it without deciding what happens to inbound references.
   Resolved (2026-09-19) by op:"set_intro"; see ANTS-4949.
+  Release note (2026-09-22): no CHANGELOG entry, deliberately — the
+  shipped capability (op:"set_intro") is described in the [Unreleased]
+  bullet filed under ANTS-4949.
   **Layman:** A heading's introduction can be written once but never corrected through the tool.
   Kind: enhancement.
   Source: in-session-2026-08-31, hit while filing this very section.
@@ -60867,6 +60877,9 @@ two projects).
 - ✅ [ANTS-4832] **No roadmap_log op reaches a store-backed ROADMAP.md's preamble, so a stale fact there cannot be fixed.**
   Reported by a project whose preamble names a version three releases old. Every op addresses a bullet or a section. A hand edit is correctly discarded by op:"render" (ANTS-4462), which is what makes the text unreachable rather than merely awkward, and a session that edits it without rendering loses the change at the next unrelated write. Wants an op:"amend_preamble" in amend_body's shape, or a render message naming the op that would own it.
   Resolved (2026-09-19) by op:"set_preamble"; see ANTS-4949.
+  Release note (2026-09-22): no CHANGELOG entry, deliberately — the
+  shipped capability (op:"set_preamble") is described in the
+  [Unreleased] bullet filed under ANTS-4949.
   **Layman:** The paragraph at the top of the roadmap cannot be corrected by any tool.
   Kind: enhancement.
   Source: cc-feedback-2026-09-03 Games_Hub.
@@ -62442,6 +62455,10 @@ plus two gaps hit while sweeping stale spec citations under ANTS-4757.
   delete half is still open and is the same request as ANTS-4958.
   Resolved (2026-09-19): the move half is ANTS-4948, the delete half
   is op:"delete_section" (ANTS-4958).
+  Release note (2026-09-22): no CHANGELOG entry, deliberately — the
+  shipped capability is described in the [Unreleased] bullets filed
+  under ANTS-4958 (delete_section, move_section) and ANTS-4948
+  (amend_field field:"section").
   **Layman:** There is no way to move a roadmap entry from one section to another, so a project that wants to reorganise its roadmap has to do it by hand — and hand edits are thrown away.
   Kind: implement.
   Source: cross-session-message-2026-09-07 from claude-config (~/.claude), CFG-0321.
@@ -64207,6 +64224,9 @@ than re-filed; everything else lands here.
   Resolved (2026-09-19) by op:"set_preamble" (see ANTS-4949): a
   separate op rather than a magic slug for the root. The discarded
   hand-edit half is covered by ANTS-4947's discarded_backup_paths.
+  Release note (2026-09-22): no CHANGELOG entry, deliberately — the
+  shipped capability (op:"set_preamble") is described in the
+  [Unreleased] bullet filed under ANTS-4949.
   **Layman:** A roadmap whose title names the wrong project cannot be corrected by any command, and fixing it by hand is undone silently.
   Kind: fix.
   Source: UT_MonsterHunt_Ants_MCP_Feedback.md 2026-09-08.
@@ -71082,6 +71102,9 @@ assistant suggestions, accepted by the user for filing.
   newline rule -- a preview only helps the caller who thinks to preview.
   Resolved (2026-09-19) by op:"set_intro" and op:"set_preamble";
   see ANTS-4949.
+  Release note (2026-09-22): no CHANGELOG entry, deliberately — the
+  shipped capability (op:"set_intro") is described in the [Unreleased]
+  bullet filed under ANTS-4949.
   **Layman:** There is no supported way to fix a typo in the text at the top of the roadmap — every attempt is silently undone.
   Kind: implement.
   Lanes: roadmap-store, mcp.

@@ -14,6 +14,9 @@ for security-relevant changes.
 
 ### Added
 
+- **Reading a long roadmap item can now return just its latest entries** (ANTS-4769)
+  An item used as a running progress log is mostly history, and asking for its text returned the oldest part first — so the paragraph saying where the work stands was the one you could not see. `roadmap_query` can now return the end of an item's text instead of the beginning.
+
 - **`roadmap_log op:"convert"` moves a checklist-style roadmap to the standard format** (ANTS-4491)
   A project still using the older `- [ ]` checklist roadmap can now adopt the
   standard format in one command, instead of rewriting every line by hand.
@@ -108,6 +111,9 @@ for security-relevant changes.
 
 ### Changed
 
+- **The roadmap-conversion preview now lists each bullet it will touch, not just totals** (ANTS-5252)
+  Converting a roadmap is a one-way rewrite, so the preview is the only chance to check it. It reported how many ids it would hand out; it now names them bullet by bullet, with where each id came from, so the preview can be read against the file.
+
 - **An id invented by migration now reads `ANTS-S0001` and draws from its own counter** (ANTS-4500)
   Migrating a roadmap invents an id for any bullet that carries none. Those
   ids now carry an `-S` infix, so you can tell an invented id from one you
@@ -159,6 +165,12 @@ for security-relevant changes.
   32 MiB is refused with too_large before any file is read.
 
 ### Fixed
+
+- **Roadmap conversion can now be called by clients that check the tool's options** (ANTS-5253)
+  The convert operation shipped without being listed among the operations the tool advertises, so any client that validates a request against that list refused to send it.
+
+- **Roadmap conversion now works on the older projects it was written for** (ANTS-5256)
+  A check requiring every item to carry a plain-English summary ran during conversion, and legacy roadmaps by definition have none — so the command refused on exactly the files it existed to convert.
 
 - **The migration preview now lists the columns it will decline to write** (ANTS-4522)
   A dry run's plan used to omit columns the run had already flagged as
