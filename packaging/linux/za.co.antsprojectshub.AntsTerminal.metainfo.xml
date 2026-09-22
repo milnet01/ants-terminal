@@ -103,7 +103,7 @@
   </screenshots>
 
   <releases>
-    <release version="0.7.111" date="2026-09-22">
+    <release version="0.7.112" date="2026-09-22">
       <description>
         <p>Roadmap management gets smarter — migration, backup, new query modes, and dropped items — plus broad improvements to MCP tool reliability and status tracking.</p>
         <ul>
@@ -123,6 +123,14 @@
           <li><em>Fixed:</em> Terminal output can no longer flood trigger actions or plugin events, and progress reports only repaint the tab icon when state changes. Scrollback exports and command-block shares no longer freeze the window. Autocomplete matches the command you type, not the prompt. (ANTS-5079, ANTS-5078)</li>
           <li><em>Fixed:</em> Broadcast Input sends each pane its own keyboard encoding, reaches only panes in the current tab, starts off on launch, and shows a red Broadcast chip on the status bar. (ANTS-5224, ANTS-5223)</li>
           <li><em>Security:</em> Claude hook and MCP sockets accept at most 64 connections at once, each holding up to 256 KiB for five seconds. Audit window's Semgrep check no longer sends usage metrics to Semgrep. (ANTS-5089, ANTS-5083)</li>
+        </ul>
+      </description>
+    </release>
+    <release version="0.7.111" date="2026-09-22">
+      <description>
+        <p>Hotfix: restores the Mageia package, which 0.7.110 could not build.</p>
+        <ul>
+          <li><em>Fixed:</em> The Mageia package builds again. A self-check compared how Ants lowercases a roadmap id against how its database does it, using accented letters; Mageia's database lowercases those and most others do not, so the check disagreed with itself and stopped the build. It now uses only the characters a roadmap id can contain. No change to the program itself. (ANTS-5304)</li>
         </ul>
       </description>
     </release>

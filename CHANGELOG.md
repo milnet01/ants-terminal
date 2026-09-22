@@ -12,7 +12,7 @@ for security-relevant changes.
 
 ## [Unreleased]
 
-## [0.7.111] — unreleased (Patron RC preview)
+## [0.7.112] — unreleased (Patron RC preview)
 ### Added
 
 - **Reading a long roadmap item can now return just its latest entries** (ANTS-4769)
