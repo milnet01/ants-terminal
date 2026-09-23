@@ -77102,12 +77102,16 @@ acting on it.
   Kind: investigate.
   Source: user-request-2026-09-14 (CI speed and memory review).
 
-- 📋 [ANTS-5191] **The AppStream validation in CI fails a whole run on a transient network error.**
+- ✅ [ANTS-5191] **The AppStream validation in CI fails a whole run on a transient network error.**
   A recent run went red at "Validate AppStream metainfo" with
   url-not-reachable for github.com links, and a run of the same commit
   passed. appstreamcli validate runs without --no-net in ci.yml and in
   tools/ci-parity.sh. Add --no-net to both; optionally keep a separate URL
   check that may fail without reddening the run.
+  Resolved (2026-09-23): ci.yml and tools/ci-parity.sh both run
+  appstreamcli validate with --no-net. Verified locally: the metainfo
+  validates with --no-net. The optional separate URL check was not
+  added.
   **Layman:** A brief GitHub website hiccup can turn the whole test run red and force a full re-run.
   Kind: fix.
   Source: user-request-2026-09-14 (CI speed and memory review).

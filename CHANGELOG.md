@@ -18,6 +18,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **The AppStream metadata check in CI and in the local gate no longer fails on a network blip.** (ANTS-5191)
+
 - **A new audit run no longer inherits the previous run's expanded rows.** (ANTS-5202)
 
 - **Turning on Session Logging gives each open tab its own log file.** (ANTS-5237)

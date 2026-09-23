@@ -203,7 +203,7 @@ if [[ "$do_lints" == 1 ]]; then
                  --error-exitcode=0 \
                  -I src src/ tests/
     maybe_gate appstreamcli "appstream metainfo" \
-        appstreamcli validate --explain packaging/linux/za.co.antsprojectshub.AntsTerminal.metainfo.xml
+        appstreamcli validate --no-net --explain packaging/linux/za.co.antsprojectshub.AntsTerminal.metainfo.xml
     maybe_gate desktop-file-validate "desktop entry" \
         desktop-file-validate packaging/linux/za.co.antsprojectshub.AntsTerminal.desktop
     maybe_gate groff "man page (groff -wall)" man_lint

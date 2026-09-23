@@ -163,7 +163,7 @@ jobs:
       # fails CI instead of landing in a release tarball.
       - name: Validate AppStream metainfo
         run: |
-          appstreamcli validate --explain \
+          appstreamcli validate --no-net --explain \
             packaging/linux/za.co.antsprojectshub.AntsTerminal.metainfo.xml
 
       - name: Validate desktop entry
