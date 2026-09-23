@@ -212,7 +212,6 @@ public:
         Preset activePreset;
         QSet<QString> expandedItems;
         QSet<QString> expandedSections;
-        QSet<QString> tableSections;
         // ANTS-NNNN → shipped date (parsed from CHANGELOG ## [X.Y.Z] —
         // YYYY-MM-DD blocks). Populated by the dialog before render;
         // renderCardsHtml just looks up.
@@ -264,8 +263,7 @@ public:
     // with `<span class="rm-section-counts">` chips. Click-to-toggle
     // anchors use the `ants://expand/` / `ants://collapse/` /
     // `ants://expand-section/` / `ants://collapse-section/` URL
-    // schemes, handled by the dialog's anchorClicked slot. That slot
-    // still accepts `ants://table/`, but no render emits it.
+    // schemes, handled by the dialog's anchorClicked slot.
     //
     // Tab-relevance: on every preset except `Full`, prose narration
     // bullets (no status emoji) and section-intro paragraphs are
@@ -681,7 +679,6 @@ private:
     // Config in closeEvent.
     QSet<QString> m_expandedItems;
     QSet<QString> m_expandedSections;
-    QSet<QString> m_tableSections;
     QHash<QString, QString> m_shippedDates;
     qint64 m_shippedDatesMtime = -1;
     // ANTS-1237 — last-touch (git author-time) per ANTS-NNNN.

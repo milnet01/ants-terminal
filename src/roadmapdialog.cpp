@@ -2472,7 +2472,6 @@ RoadmapDialog::RoadmapDialog(const QString &roadmapPath,
         resetBtn->setText(tr("Reset View"));
         m_expandedItems.clear();
         m_expandedSections.clear();
-        m_tableSections.clear();
         if (m_searchBox) m_searchBox->clear();
         m_kindFilter.clear();
         for (auto it = m_kindCheckboxes.constBegin();
@@ -2628,8 +2627,6 @@ RoadmapDialog::RoadmapDialog(const QString &roadmapPath,
         m_expandedItems = QSet<QString>(exItems.begin(), exItems.end());
         const QStringList exSecs = m_config->roadmapExpandedSections();
         m_expandedSections = QSet<QString>(exSecs.begin(), exSecs.end());
-        const QStringList tabSecs = m_config->roadmapTableSections();
-        m_tableSections = QSet<QString>(tabSecs.begin(), tabSecs.end());
     }
     refreshShippedDatesIfStale();
     refreshLastTouchDatesIfStale();  // ANTS-1237
@@ -2714,8 +2711,6 @@ void RoadmapDialog::closeEvent(QCloseEvent *event) {
             QStringList(m_expandedItems.begin(), m_expandedItems.end()));
         m_config->setRoadmapExpandedSections(
             QStringList(m_expandedSections.begin(), m_expandedSections.end()));
-        m_config->setRoadmapTableSections(
-            QStringList(m_tableSections.begin(), m_tableSections.end()));
         // ANTS-1154 §4.5 / INV-13 — remember where the user scrolled to.
         captureScrollAnchor();
     }
@@ -3006,9 +3001,8 @@ bool RoadmapDialog::isValidAnchorTarget(const QString &target) {
 
 // ANTS-1154 — expand / collapse toggle a card's ID in m_expandedItems;
 // expand-section / collapse-section toggle a section's slug in
-// m_expandedSections; table toggles a section's slug in m_tableSections,
-// though no render emits that link. Each mutation schedules a rebuild so
-// the new state renders.
+// m_expandedSections. Each mutation schedules a rebuild so the new state
+// renders.
 void RoadmapDialog::handleAnchorClicked(const QUrl &link) {
     if (link.scheme() != QLatin1String("ants")) {
         // Internal-anchor jumps (`#roadmap-toc-N`) come through here
@@ -3057,9 +3051,6 @@ void RoadmapDialog::handleAnchorClicked(const QUrl &link) {
         m_expandedSections.insert(target);
     } else if (verb == QLatin1String("collapse-section")) {
         m_expandedSections.remove(target);
-    } else if (verb == QLatin1String("table")) {
-        if (m_tableSections.contains(target)) m_tableSections.remove(target);
-        else m_tableSections.insert(target);
     } else {
         return;  // unknown verb
     }
@@ -3679,7 +3670,6 @@ void RoadmapDialog::rebuild() {
     opts.activePreset = m_activePreset;
     opts.expandedItems = m_expandedItems;
     opts.expandedSections = m_expandedSections;
-    opts.tableSections = m_tableSections;
     opts.shippedDates = m_shippedDates;
     opts.lastTouchDates = m_lastTouchDates;
     opts.density = m_density;  // ANTS-1238

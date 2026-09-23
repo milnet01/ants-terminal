@@ -218,16 +218,12 @@ public:
     // - roadmap_expanded_sections: slugified ## / ### heading
     //   text (lowercase, non-alnum → `-`). Missing → all sections
     //   start collapsed.
-    // - roadmap_table_sections: section slugs toggled to compact
-    //   table view. Missing → card-stack view (default).
     QStringList roadmapExpandedItems() const;
     void setRoadmapExpandedItems(const QStringList &ids);
 
     QStringList roadmapExpandedSections() const;
     void setRoadmapExpandedSections(const QStringList &slugs);
 
-    QStringList roadmapTableSections() const;
-    void setRoadmapTableSections(const QStringList &slugs);
 
     // RoadmapDialog per-tab scroll anchor. JSON shape:
     //   {

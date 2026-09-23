@@ -770,20 +770,6 @@ void Config::setRoadmapExpandedSections(const QStringList &slugs) {
     save();
 }
 
-QStringList Config::roadmapTableSections() const {
-    return readStringList(m_data, "roadmap_table_sections");
-}
-
-void Config::setRoadmapTableSections(const QStringList &slugs) {
-    QStringList sorted = slugs;
-    sorted.removeDuplicates();
-    sorted.sort();
-    QJsonArray arr;
-    for (const QString &s : sorted) arr.append(s);
-    if (!storeIfChanged("roadmap_table_sections", arr)) return;
-    save();
-}
-
 QJsonObject Config::roadmapScrollAnchors() const {
     return m_data.value("roadmap_scroll_anchors").toObject();
 }

@@ -18,6 +18,8 @@ for security-relevant changes.
 
 ### Removed
 
+- **The roadmap window no longer saves or restores the unused table-view setting.** (ANTS-5233)
+
 - **The openSUSE package spec no longer carries the 0.7.107 Qt version-guard backport.** (ANTS-4874)
 
 ### Fixed

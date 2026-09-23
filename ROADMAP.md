@@ -11307,7 +11307,7 @@ extends an existing item, that item carries it instead.
   Source: user-request-2026-09-18.
   Lanes: chrome.
 
-- 📋 [ANTS-5233] **The roadmap dialog keeps a table-mode state that no render reads.**
+- ✅ [ANTS-5233] **The roadmap dialog keeps a table-mode state that no render reads.**
   Found while fixing ANTS-5088. RoadmapDialog still loads, saves and
   toggles m_tableSections, and passes it as CardRenderOptions::tableSections.
   renderCardsHtml never reads that field, and no render emits the
@@ -11316,6 +11316,12 @@ extends an existing item, that item carries it instead.
   Decided (2026-09-18, user): remove it. Delete m_tableSections,
   CardRenderOptions::tableSections, the Config key and the `table`
   branch of handleAnchorClicked.
+  Resolved (2026-09-23): removed m_tableSections,
+  CardRenderOptions::tableSections, the table branch of
+  handleAnchorClicked and Config's roadmapTableSections accessors. The
+  ANTS-1238 INV-5 and roadmap_dialog_cards row-25 texts no longer name
+  the field. An existing roadmap_table_sections key in a user's
+  config.json is left in place and is now ignored.
   **Layman:** The roadmap window still saves a "table view" setting that nothing uses any more.
   Kind: refactor.
   Source: in-session-2026-09-18 (ANTS-5088).
