@@ -88,7 +88,7 @@ jobs:
         uses: awalsh128/cache-apt-pkgs-action@681749ae568c81c2037cb9185e38b709b261bd2f  # v1.6.1
         with:
           packages: >-
-            build-essential cmake ninja-build pkg-config ccache
+            build-essential cmake ninja-build pkg-config ccache mold
             qt6-base-dev qt6-base-dev-tools
             libqt6opengl6-dev libqt6openglwidgets6
             liblua5.4-dev cppcheck ripgrep shellcheck
@@ -238,7 +238,7 @@ jobs:
         uses: awalsh128/cache-apt-pkgs-action@681749ae568c81c2037cb9185e38b709b261bd2f  # v1.6.1
         with:
           packages: >-
-            build-essential cmake ninja-build pkg-config ccache
+            build-essential cmake ninja-build pkg-config ccache mold
             qt6-base-dev qt6-base-dev-tools
             libqt6opengl6-dev libqt6openglwidgets6
             liblua5.4-dev ripgrep

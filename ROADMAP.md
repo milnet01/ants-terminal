@@ -77009,7 +77009,7 @@ logs and ccache statistics; no build ran. Each claim below was checked against
 the files before filing. Re-measure with the command each item names before
 acting on it.
 
-- 📋 [ANTS-5186] **Install the mold linker on the build-test and build-asan CI jobs.**
+- ✅ [ANTS-5186] **Install the mold linker on the build-test and build-asan CI jobs.**
   Every CI job's configure log prints that mold was not found, so every
   job links with GNU ld, and the test-bundle links are among the slowest
   steps in the ASan build log. ANTS-2233 made mold the default locally
@@ -77017,6 +77017,10 @@ acting on it.
   link order that resolves under mold and fails on the Qt 6.2 floor's GNU
   ld, so that job stays the guard, matching release.yml. Measure with
   `gh run view <id> --log` before and after.
+  Resolved (2026-09-23): mold is in the apt package lists of the
+  build-test and build-asan jobs, so ANTS_USE_MOLD finds it there.
+  qt62-baseline is unchanged, as the item asks. The CI timing comparison
+  is still to be read off the next run.
   **Layman:** GitHub's builds would link faster by using the quicker linker the local build already uses.
   Kind: perf.
   Source: user-request-2026-09-14 (CI speed and memory review).

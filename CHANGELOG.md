@@ -12,6 +12,10 @@ for security-relevant changes.
 
 ## [Unreleased]
 
+### Changed
+
+- **CI's main build and sanitizer jobs link with mold.** (ANTS-5186)
+
 ### Removed
 
 - **The openSUSE package spec no longer carries the 0.7.107 Qt version-guard backport.** (ANTS-4874)
