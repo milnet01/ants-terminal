@@ -74342,12 +74342,15 @@ partition (11 lanes) is documented in this fold-in for reuse.
   Source: in-session-2026-09-10.
   Lanes: mcp.
 
-- 📋 [ANTS-4997] **mutation_probe's baseline_unreadable refusal returns none of the output it could not read.**
+- ✅ [ANTS-4997] **mutation_probe's baseline_unreadable refusal returns none of the output it could not read.**
   The refusal names the class of cause but carries no excerpt of
   the baseline's output. So a caller cannot tell a filter that
   matched no tests from a summary the parser does not recognise
   without re-running the command by hand. Echo a bounded tail of the
   baseline output in the refusal envelope.
+  Resolved (2026-09-23): the baseline_unreadable refusal carries
+  baseline_output_tail, the last 2048 characters of the baseline run's
+  output.
   **Layman:** When the mutation checker cannot read a test run, it does not show the run's output, so you have to re-run it by hand to see why.
   Kind: enhancement.
   Source: in-session-2026-09-10.

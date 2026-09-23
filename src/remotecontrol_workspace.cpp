@@ -2091,6 +2091,9 @@ QJsonDocument RemoteControl::cmdMutationProbe(const QJsonObject &req) {
             o2[QStringLiteral("baseline_timed_out")] = base.timedOut;
             o2[QStringLiteral("baseline_passed")]    = bc.passed;
             o2[QStringLiteral("baseline_failed")]    = bc.failed;
+            // ANTS-4997 — the output the parser could not read, bounded, so
+            // the caller can see what the runner actually printed.
+            o2[QStringLiteral("baseline_output_tail")] = base.output.right(2048);
             return QJsonDocument(o2);
         }
         out[QStringLiteral("baseline_passed")] = bc.passed;

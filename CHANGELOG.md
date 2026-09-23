@@ -28,6 +28,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **mutation_probe's unreadable-baseline refusal includes the tail of the baseline's output.** (ANTS-4997)
+
 - **changelog_log's reply names the section the entry landed in.** (ANTS-4847)
 
 - **The roadmap window recognises synthesised ids such as PROJ-S0001 in card summaries and in-progress items.** (ANTS-5250)
