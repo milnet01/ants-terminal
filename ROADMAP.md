@@ -11335,7 +11335,7 @@ extends an existing item, that item carries it instead.
   Source: code-quality-review-2026-09-11 perf pass (lane claude-integration-a), via ANTS-5089.
   Lanes: claude, mcp.
 
-- 📋 [ANTS-5237] **Turning on Session Logging sends every open tab into one shared log file.**
+- ✅ [ANTS-5237] **Turning on Session Logging sends every open tab into one shared log file.**
   TerminalWidget::setSessionLogging names the file
   session_<yyyyMMdd_HHmmss>.log. The Settings -> Session Logging toggle in
   MainWindow::setupSettingsMenu calls it for every live terminal in one
@@ -11345,6 +11345,9 @@ extends an existing item, that item carries it instead.
   Fix: make the name unique per tab (tab or widget id, or a collision
   suffix), and open the file so a second opener cannot join an existing
   file (QIODevice::NewOnly).
+  Resolved (2026-09-23): setSessionLogging opens the log with
+  QIODevice::NewOnly and, on a name collision, retries with a _2, _3
+  suffix, so each tab gets its own file.
   **Layman:** With several tabs open, switching on session logging mixes all their output into a single file instead of one file per tab.
   Kind: fix.
   Source: in-session-2026-09-19 (ANTS-5215 follow-up).

@@ -602,11 +602,21 @@ void TerminalWidget::setSessionLogging(bool enabled) {
             m_loggingEnabled = false;
             return;
         }
-        QString filename = dir + "/session_"
-                           + QDateTime::currentDateTime().toString("yyyyMMdd_HHmmss")
-                           + ".log";
+        // ANTS-5237 — the Settings toggle enables every tab in one loop, so
+        // every tab gets the same second-resolution stem. NewOnly makes a
+        // second opener fail rather than join the file, and the suffix
+        // loop gives each tab its own log.
+        const QString stem = dir + "/session_"
+                             + QDateTime::currentDateTime().toString("yyyyMMdd_HHmmss");
+        QString filename = stem + ".log";
         m_logFile = std::make_unique<QFile>(filename);
-        if (!m_logFile->open(QIODevice::WriteOnly | QIODevice::Append)) {
+        bool opened = m_logFile->open(QIODevice::WriteOnly | QIODevice::NewOnly);
+        for (int n = 2; !opened && n < 1000 && QFile::exists(filename); ++n) {
+            filename = stem + QStringLiteral("_%1.log").arg(n);
+            m_logFile->setFileName(filename);
+            opened = m_logFile->open(QIODevice::WriteOnly | QIODevice::NewOnly);
+        }
+        if (!opened) {
             qWarning("Failed to open log file: %s", qPrintable(filename));
             m_logFile.reset();
         } else if (!setOwnerOnlyPerms(*m_logFile)) {
