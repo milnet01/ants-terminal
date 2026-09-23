@@ -65294,6 +65294,14 @@ it look feasible, and the one that bounds what is achievable, are on the item.
   NEXT: write the spec (write-spec), stating the four decisions, the
   reconnect bound, and the store-concurrency argument decision 1
   leaves it to own.
+  Progress (2026-09-23): spec drafted and committed at
+  docs/specs/ANTS-4932-standalone-mcp-server.md. Facts checked
+  (check-doc-facts clean; TabSpecific corrected to seven verbs).
+  Deferrals filed as ANTS-5308 and ANTS-5309. The review-contract gate
+  was STARTED and stopped at the user's instruction ("skip any reviews
+  for today"): NO GATE has run. The packet is at
+  /tmp/review-contract-4932/ and will not survive a reboot. Next: run
+  the gate (genre spec, cap 2), then implement.
   **Layman:** Right now every change to an Ants MCP tool means rebuilding the terminal and restarting it by hand. This would move most of those tools into a small separate program that Claude Code starts itself, so a rebuild is picked up without touching the terminal.
   Kind: refactor.
   Source: user-request-2026-09-07.
