@@ -2603,6 +2603,9 @@ void AuditDialog::runAudit() {
     m_progress->setVisible(true);
     m_statusLabel->setVisible(true);
     m_completedResults.clear();
+    // ANTS-5202 — expanded rows are keyed per finding; a new run's findings
+    // must not inherit the last run's expansion.
+    m_expandedKeys.clear();
     // ANTS-5083 — inlineSuppressed() reads source lines through this cache
     // during the run; left over from the last run, it missed an inline
     // suppression added in between.

@@ -18,6 +18,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **A new audit run no longer inherits the previous run's expanded rows.** (ANTS-5202)
+
 - **Turning on Session Logging gives each open tab its own log file.** (ANTS-5237)
 
 - **The OBS build watcher reports a build still running at its time limit instead of hanging on its log and calling it a failure.** (ANTS-5222)

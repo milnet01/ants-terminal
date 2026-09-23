@@ -77209,8 +77209,11 @@ that extend an earlier perf-pass bundle name it.
   Source: memory-perf-pass-2026-09-14.
   Lanes: audit.
 
-- 📋 [ANTS-5202] **Clear the audit dialog's expanded-rows set when a new run starts.**
+- ✅ [ANTS-5202] **Clear the audit dialog's expanded-rows set when a new run starts.**
   m_expandedKeys only loses a key when the user collapses that row (AuditDialog::onResultAnchorClicked). The triage path adds keys to auto-expand a verdict. The re-run path clears m_completedResults but never m_expandedKeys. Direction: clear the set, or trim it to keys still present, when a run starts.
+  Resolved (2026-09-23): AuditDialog::runAudit clears m_expandedKeys
+  beside m_completedResults, so a new run starts with every row
+  collapsed.
   **Layman:** Rows you opened in an earlier audit run can open by themselves in the next one.
   Kind: fix.
   Source: memory-perf-pass-2026-09-14.
