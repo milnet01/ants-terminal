@@ -12,6 +12,10 @@ for security-relevant changes.
 
 ## [Unreleased]
 
+### Removed
+
+- **The openSUSE package spec no longer carries the 0.7.107 Qt version-guard backport.** (ANTS-4874)
+
 ## [0.7.112] — unreleased (Patron RC preview)
 ### Added
 

@@ -20288,13 +20288,17 @@ indie-review finding.
   Kind: doc.
   Source: in-session-2026-09-04.
 
-- 📋 [ANTS-4874] **Remove the ANTS-4870 backport from the RPM spec once the OBS pin moves past 0.7.107.**
+- ✅ [ANTS-4874] **Remove the ANTS-4870 backport from the RPM spec once the OBS pin moves past 0.7.107.**
   0.7.107 shipped without the Qt version-guard fix and could not build on Fedora 44, so packaging/opensuse/ants-terminal.spec carries a backport of the upstream commit as Patch0. The fix is in the tree from 0.7.108, so the patch has no job once the pin moves.\n\nFour things go together, all marked TEMPORARY in place: the Patch0 line, the version-gated block in %prep, the BuildRequires on patch, and packaging/opensuse/ANTS-4870-qt-version-guard.patch itself. obs-submit.sh clears *.patch from the OBS checkout before copying, so deleting the file from the repo also removes it from the package.\n\nNot urgent and not a landmine: %prep applies the patch only where the version is 0.7.107 or older, verified in both directions, so leaving it in place makes 0.7.108 skip it rather than fail to apply. What it costs unremoved is a dead patch shipped in every src.rpm and a spec that describes work already done upstream.\n\nEvidence the backport is the upstream change and not a re-derivation: applied to the v0.7.107 tree, the resulting Qt version-guard block is byte-identical to v0.7.108-rc2's, and that tree built green on all four distros in a scratch OBS branch on 2026-09-04.
   Context for whoever removes this (2026-09-04). The backport is live and working: Fedora_44 publishes 0.7.107 and the Release audit passes.
 
   Removal is not urgent and cannot break a build if forgotten — %prep applies the patch only at 0.7.107 and older, verified in both directions, so 0.7.108 skips it. What it costs unremoved is a dead patch in every src.rpm.
 
   Also still to clean up: the throwaway OBS branch home:milnet:branches:home:milnet:ants-terminal, created to prove the fix on real Fedora before backporting. osc rdelete removes it. It is evidence rather than infrastructure, so deleting it costs nothing but the record.
+  Resolved (2026-09-23): the OBS pin is past 0.7.107, so the spec's
+  Patch0, its version-gated %prep block, the patch BuildRequires and the
+  patch file are gone. The OBS branch deletion (osc rdelete) is outside
+  the repo and not done here.
   **Layman:** A temporary packaging fix was added so the current release builds on Fedora; delete it after the next release ships.
   Kind: chore.
   Source: in-session-2026-09-04.
