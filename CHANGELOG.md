@@ -28,6 +28,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **find_caller explains a zero-caller result for a type and points to workspace_search.** (ANTS-5001)
+
 - **mutation_probe's unreadable-baseline refusal includes the tail of the baseline's output.** (ANTS-4997)
 
 - **changelog_log's reply names the section the entry landed in.** (ANTS-4847)

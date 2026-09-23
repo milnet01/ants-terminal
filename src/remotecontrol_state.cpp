@@ -3805,6 +3805,20 @@ SymbolQuery::Options sqOptions(const QJsonObject &req) {
     return opts;
 }
 
+// ANTS-5001 — a type is used, not called: its uses are declarations and
+// constructions, which a call-site scan does not count. So zero callers of a
+// struct / class / enum is expected, and the reply says where to look instead.
+void addTypeNoCallersHint(QJsonObject &out, const QString &symbol,
+                          const SymbolQuery::DefMatch &d, int callersTotal) {
+    static const QRegularExpression rxType(
+        QStringLiteral("^(?:template\\s*<[^>]*>\\s*)?(?:struct|class|enum)\\b"));
+    if (callersTotal == 0 && rxType.match(d.signature).hasMatch())
+        out["hint"] = QStringLiteral(
+            "'%1' is a type: its uses are declarations and constructions, not "
+            "calls, so find_caller finds none. Use workspace_search for its "
+            "uses.").arg(symbol);
+}
+
 QJsonObject defMatchToJson(const SymbolQuery::DefMatch &d) {
     QJsonObject o;
     o["file"]      = d.file;
@@ -3966,6 +3980,8 @@ QJsonDocument RemoteControl::cmdFindCaller(const QJsonObject &req) {
             if (req.value(QStringLiteral("include_body")).toBool())
                 sqAttachBody(dj, root, symbol);
             out["definition"] = dj;
+            addTypeNoCallersHint(out, symbol, res.definition.value(),
+                                 res.callersTotal);
         }
         out["files_scanned"] = res.filesScanned;
         out["truncated"]     = res.truncated;
@@ -3997,6 +4013,8 @@ QJsonDocument RemoteControl::cmdFindCaller(const QJsonObject &req) {
         if (req.value(QStringLiteral("include_body")).toBool())
             sqAttachBody(dj, root, symbol);
         out["definition"] = dj;
+        addTypeNoCallersHint(out, symbol, res.definition.value(),
+                                 res.callersTotal);
     }
     out["files_scanned"] = res.filesScanned;
     out["truncated"]     = res.truncated;

@@ -74427,7 +74427,7 @@ partition (11 lanes) is documented in this fold-in for reuse.
   Source: in-session-2026-09-10.
   Lanes: llmdispatcher.
 
-- 📋 [ANTS-5001] **find_caller on a type returns zero callers with no hint that a type's uses are not calls.**
+- ✅ [ANTS-5001] **find_caller on a type returns zero callers with no hint that a type's uses are not calls.**
   Measured 2026-09-10: find_caller symbol:PriorLoopFix returned
   callers_count 0 beside a struct definition in src/coldeyesengine.h.
   workspace_search finds the type in use in src/coldeyesengine.cpp and
@@ -74436,6 +74436,12 @@ partition (11 lanes) is documented in this fold-in for reuse.
   misled. When the resolved definition is a struct, class or enum, add a
   hint that its uses are declarations rather than calls, and name
   workspace_search.
+  Resolved (2026-09-23): find_caller adds a hint when a symbol has zero
+  callers and its definition's signature starts with struct, class or
+  enum (optionally after a template header). The hint says a type's uses
+  are declarations, not calls, and points at workspace_search. Set on
+  both the files_only and full replies. Built and suite-green; not yet
+  exercised over MCP, which needs a relaunch.
   **Layman:** The who-uses-this tool says nobody uses a data type that is in fact used.
   Kind: enhancement.
   Source: in-session-2026-09-10.
