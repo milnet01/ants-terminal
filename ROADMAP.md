@@ -863,7 +863,7 @@ SSH key registered there.
   Kind: fix.
   Source: in-session-2026-09-04 (OBS build sweep after the v0.7.107 promote).
 
-- 📋 [ANTS-5222] **obs-status.sh hangs silently when a build outlasts its polling window, and reports a still-running build as a failure.**
+- ✅ [ANTS-5222] **obs-status.sh hangs silently when a build outlasts its polling window, and reports a still-running build as a failure.**
   Hit 2026-09-15 on the 0.7.109 publish. Fedora 44 waited in the OBS
   queue until 11:37 and takes about 43 minutes, so it was still building
   when packaging/obs/obs-status.sh reached MAX_POLLS (60 polls of 60 s).
@@ -881,6 +881,10 @@ SSH key registered there.
   print "still building after N minutes", skip the log fetch, and exit
   with a distinct code. Only fetch logs for a terminal non-success status
   (failed, unresolvable, broken).
+  Resolved (2026-09-23): after the poll limit, a repo still running is
+  reported as "still building after N minutes" with no log fetch, and
+  the script exits 2 when nothing failed but something is still running.
+  Logs are fetched only for failed, unresolvable and broken.
   **Layman:** The script that watches the openSUSE package builds freezes if one build is slow, instead of just saying it is still going.
   Kind: fix.
   Source: in-session-2026-09-15 (0.7.109 OBS publish).

@@ -16,6 +16,10 @@ for security-relevant changes.
 
 - **The openSUSE package spec no longer carries the 0.7.107 Qt version-guard backport.** (ANTS-4874)
 
+### Fixed
+
+- **The OBS build watcher reports a build still running at its time limit instead of hanging on its log and calling it a failure.** (ANTS-5222)
+
 ## [0.7.112] — unreleased (Patron RC preview)
 ### Added
 

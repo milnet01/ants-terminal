@@ -48,13 +48,22 @@ echo
 echo "=== final ==="
 osc -A "$API" results "$PROJ" "$PKG" || true
 
-# Print the tail of every non-succeeded repo's log, so a failure is diagnosable
-# without a second command.
+# Print the tail of every failed repo's log, so a failure is diagnosable
+# without a second command. A repo still running when the polls ran out is
+# reported, not fetched: `osc buildlog` follows a live log until the build ends,
+# and `tail` would print nothing until then (ANTS-5222). Exit 1 = a build
+# failed; exit 2 = none failed but one is still running.
 rc=0
 while read -r repo arch _p status _rest; do
     [ -n "${status:-}" ] || continue
     case "$status" in
         succeeded|excluded|disabled) continue ;;
+        failed|unresolvable|broken) ;;
+        *)
+            echo
+            echo "=== $repo/$arch: $status — still building after $((MAX_POLLS * POLL_SECS / 60)) minutes ==="
+            [ "$rc" -eq 0 ] && rc=2
+            continue ;;
     esac
     rc=1
     echo
