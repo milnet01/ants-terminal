@@ -1123,7 +1123,7 @@ overridden:
   cut-over project (ANTS-3809).
 
   **What is genuinely lost is the rotation *trigger*.** The renderer never moves
-  an item from the live file to an archive; § 3.9 puts that step in `/bump` as a
+  an item from the live file to an archive; § 3.9 puts that step in `cut-release` as a
   snip-and-create on the markdown, and that hand edit is what the next render
   discards. **Rotation therefore becomes a store operation** — reassign the
   closed minor's sections to the archive path and re-render, which lands both

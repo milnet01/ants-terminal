@@ -82384,7 +82384,7 @@ here.)
   Source: in-session-2026-09-09 (found by the ANTS-4985 rule 14 gate).
   Lanes: mcp, roadmap-store.
 
-- 📋 [ANTS-4990] **The doc tree still tells a reader to invoke `/bump` and `/release`, deleted 2026-08-13.**
+- ✅ [ANTS-4990] **The doc tree still tells a reader to invoke `/bump` and `/release`, deleted 2026-08-13.**
   Both skills were deleted 2026-08-13 and replaced by `cut-release`
   (`--bump-only` for the bump). The project CLAUDE.md and
   `docs/standards/commits.md` both record the deletion and say the old names
@@ -82414,6 +82414,10 @@ here.)
   and the ADR as records. Confirm the archives are generated before touching
   them — the note at the head of each says `/bump` rotated it, which is a true
   statement about the past.
+  Resolved (2026-09-23): roadmap-data-model.md § 8 names cut-release
+  where it named /bump. Following this item's own advice, older specs,
+  the ADR and generated archives keep the old names as historical
+  records.
   **Layman:** Several documents name two tools that no longer exist, so following them does nothing.
   Kind: doc-fix.
   Source: in-session-2026-09-09 (found by the ANTS-4985 rule 14 gate).
