@@ -1539,7 +1539,7 @@ QString RoadmapDialog::renderCardsHtml(const QString &markdownText,
             static const QRegularExpression rxLeadId(
                 // ANTS-3492 — digit-led-but-letter-containing prefix.
                 QStringLiteral("^(?=[A-Za-z0-9_-]*[A-Za-z])[A-Za-z0-9]"
-                               "[A-Za-z0-9_-]*-\\d+\\s*[—-]\\s*"));
+                               "[A-Za-z0-9_-]*-S?\\d+\\s*[—-]\\s*"));
             summary.remove(rxLeadId);
         }
         html += QStringLiteral("<td class=\"rm-col-summary%1\">"
@@ -1921,7 +1921,7 @@ RoadmapDialog::lastTouchFromBlame(const QByteArray &blameOut) {
     static const QRegularExpression rxInProgress(
         // ANTS-3492 — digit-led-but-letter-containing prefix.
         QStringLiteral("^- 🚧 \\[((?=[A-Za-z0-9_-]*[A-Za-z])[A-Za-z0-9]"
-                       "[A-Za-z0-9_-]*-\\d+)\\]"));
+                       "[A-Za-z0-9_-]*-S?\\d+)\\]"));
     for (int i = 0; i < mdLines.size(); ++i) {
         const QString line = QString::fromUtf8(mdLines.at(i));
         const auto m = rxInProgress.match(line);

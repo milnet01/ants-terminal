@@ -49449,7 +49449,7 @@ are closed inline in the feedback files rather than filed here.
   Source: in-session-2026-09-20, found while gating ANTS-4500.
   Lanes: mcp, roadmap-store.
 
-- 📋 [ANTS-5250] **The roadmap dialog's own id regexes do not admit the `-S` infix, so a synthesised item is invisible to its id-keyed views.**
+- ✅ [ANTS-5250] **The roadmap dialog's own id regexes do not admit the `-S` infix, so a synthesised item is invisible to its id-keyed views.**
   ANTS-4500 widened the id grammar on every surface that decides
   ADDRESSABILITY — the parser, the canonical-id predicate, the write
   path's bracket, the ordering helper and findsources. `roadmapdialog.cpp`
@@ -49467,6 +49467,9 @@ are closed inline in the feedback files rather than filed here.
   different jobs.
 
   Evidence: src/roadmapdialog.cpp, the two `[A-Za-z0-9_-]*-\\d+` literals.
+  Resolved (2026-09-23): the roadmap dialog's lead-id strip and
+  in-progress capture regexes take -S?\d+, the id grammar ANTS-4500 uses
+  in findsources, roadmapindex and roadmapparse.
   **Layman:** In the roadmap window, items whose number was invented by the migration may not show up in the places that look items up by number.
   Kind: fix.
   Source: in-session-2026-09-21 (found implementing ANTS-4500).

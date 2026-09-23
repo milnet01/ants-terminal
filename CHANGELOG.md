@@ -24,6 +24,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **The roadmap window recognises synthesised ids such as PROJ-S0001 in card summaries and in-progress items.** (ANTS-5250)
+
 - **The AppStream metadata check in CI and in the local gate no longer fails on a network blip.** (ANTS-5191)
 
 - **A new audit run no longer inherits the previous run's expanded rows.** (ANTS-5202)
