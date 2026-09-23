@@ -93,7 +93,7 @@ ReviewDialogBase::ReviewDialogBase(QString projectCwd, QWidget *parent,
         auto *client = new LlmClient(this);
         m_activeClients.append(client);   // ANTS-2111 — track for dtor abort
         connect(client, &LlmClient::finished, this,
-                [this, client, done](const LlmResult &r) {
+                [this, client, done = std::move(done)](const LlmResult &r) {
                     m_activeClients.removeAll(client);
                     done(r);
                     client->deleteLater();
@@ -368,7 +368,7 @@ QString ReviewDialogBase::activeReleaseHeading() {
 
 QList<int> ReviewDialogBase::allocateFoldInIds(int n) {
     m_lastFoldInError.clear();
-    const QList<int> ids = RoadmapFoldIn::allocateIds(m_projectCwd, n);
+    QList<int> ids = RoadmapFoldIn::allocateIds(m_projectCwd, n);
     if (!ids.isEmpty()) return ids;
 
     // Surface a state-specific reason; write nothing.

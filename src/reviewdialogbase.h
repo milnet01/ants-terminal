@@ -51,7 +51,7 @@ public:
     // ANTS-2205 — sum-gate cap over the whole composed user prompt, promoted
     // here from the three concrete dialogs (was triplicated). Accessible as
     // <Dialog>::kPromptCapBytes via inheritance.
-    static constexpr qint64 kPromptCapBytes = 200 * 1024;
+    static constexpr qint64 kPromptCapBytes = qint64{200} * 1024;
 
 protected:
     // ---- engine-specific hooks ----

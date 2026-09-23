@@ -184,7 +184,7 @@ TEST(ColdEyesDialog, INV4_PromptCappedDropsCrossRefFirst) {
               "# Testing standard\n\n" + big + "\n");
     writeFile(tmp.path() + "/docs/standards/documentation.md",
               "# Documentation standard\n\n" + big + "\n");
-    const QString xrefFill = QString(64 * 1024, QChar('b'));
+    const QString xrefFill = QString(qsizetype{64} * 1024, QChar('b'));
     writeFile(tmp.path() + "/ROADMAP.md",
               "# Roadmap\n\n## 0.7.90 — current (target: 2026-05)\n\n"
               "### Standards detail XREFUNIQUE\n" + xrefFill + "\n");
@@ -332,7 +332,7 @@ TEST(ColdEyesDialog, INV9_LoopLogTracksDispatchedRoundsNotMergedReports) {
     // the log simply re-reporting stale numbers.
     int round = 1;
     dlg.setJobRunner([&round](const LlmJob &job,
-                              std::function<void(const LlmResult &)> done) {
+                              const std::function<void(const LlmResult &)> &done) {
         LlmResult r; r.ok = true;
         if (job.id == QStringLiteral("standards") && round == 1)
             r.text = QStringLiteral("- [LOW] src/bar.cpp:7 — only here\n");

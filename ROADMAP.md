@@ -45401,7 +45401,7 @@ whole files.
   Source: in-session-2026-09-10.
   Lanes: audit-dialog.
 
-- 📋 [ANTS-5022] **clangd's clang-tidy reports three minor warnings in reviewdialogbase.**
+- ✅ [ANTS-5022] **clangd's clang-tidy reports three minor warnings in reviewdialogbase.**
   Seen 2026-09-10 while editing for ANTS-5009; none is on a line that
   change touched. bugprone-implicit-widening-of-multiplication-result on
   `kPromptCapBytes = 200 * 1024` in src/reviewdialogbase.h (the value
@@ -45416,6 +45416,12 @@ whole files.
   in int before widening to qsizetype
   (bugprone-implicit-widening-of-multiplication-result). Neither came
   from ANTS-5000.
+  Resolved (2026-09-23): kPromptCapBytes widens before multiplying; the
+  default runner moves done into its inner capture; allocateFoldInIds
+  returns a non-const local. The two test nits in
+  test_cold_eyes_dialog.cpp are fixed too: the INV-9 runner takes done
+  by const reference, and the xref fill size widens before multiplying.
+  ColdEyesDialog tests pass.
   **Layman:** The code checker flagged three small tidy-ups in the review-window code; none is a bug.
   Kind: chore.
   Source: in-session-2026-09-10.
