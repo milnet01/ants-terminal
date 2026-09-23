@@ -433,6 +433,13 @@ QJsonDocument RemoteControl::cmdRoadmapLogConvert(const QJsonObject &req) {
     }
     ids[QStringLiteral("matched")]           = matchedCount;
     ids[QStringLiteral("ambiguous_rematch")] = ambiguousCount;
+    // ANTS-5289 — say how the tie was broken, so a count is not read as an
+    // unresolved conflict. The rule is Loader's (roadmapmigrateload.cpp).
+    if (ambiguousCount > 0)
+        ids[QStringLiteral("ambiguous_rematch_rule")] = QStringLiteral(
+            "paired by order: the k-th bullet in document order takes the "
+            "k-th stored item in item_pk order; an unchanged re-run "
+            "reproduces the same pairing");
     ids[QStringLiteral("planned")] = planned;
     if (bulletsTotal > planned.size()) {
         ids[QStringLiteral("planned_truncated")] = true;

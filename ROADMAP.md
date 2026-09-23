@@ -51383,7 +51383,7 @@ are closed inline in the feedback files rather than filed here.
   Source: peer-session-vestige-5f, in-session-2026-09-21.
   Lanes: mcp, roadmap.
 
-- 📋 [ANTS-5289] **The ambiguous-rematch report says it could not disambiguate, never what it will do.**
+- ✅ [ANTS-5289] **The ambiguous-rematch report says it could not disambiguate, never what it will do.**
   Reported by vestige-5f as their highest-risk finding. Investigated, and
   the RISK IS NOT REAL — the reporting gap is.
 
@@ -51417,6 +51417,10 @@ are closed inline in the feedback files rather than filed here.
   document order against item_pk order, deterministic, reproducible on an
   unchanged re-run. The code comment already says it well; the caller
   simply never sees it.
+  Resolved (2026-09-23): when ambiguous_rematch is non-zero, the ids
+  block carries ambiguous_rematch_rule, stating the pairing: the k-th
+  bullet in document order takes the k-th stored item in item_pk order,
+  reproduced on an unchanged re-run.
   **Layman:** When several entries look identical the tool says it is unsure, but not how it will actually decide — which sounds riskier than it is.
   Kind: doc.
   Source: peer-session-vestige-5f, in-session-2026-09-21.
