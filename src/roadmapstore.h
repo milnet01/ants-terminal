@@ -963,8 +963,9 @@ public:
     // not an error.
     //
     // idHighWater() above is the allocator's counter and is the better answer
-    // where it exists — but migration does not write an id_prefix row, only an
-    // id-allocating append does, so a migrated-but-never-appended project
+    // where it exists — but a migration whose bullets all carry parsed ids
+    // allocates nothing and so writes no id_prefix row (one that allocates
+    // does, via Loader::allocateId()'s raiseIdHighWater()). Such a project
     // reports nullopt there while holding thousands of ids. This column is the
     // one place that cannot be wrong: an id is here because an item has it.
     //

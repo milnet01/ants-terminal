@@ -49401,7 +49401,7 @@ are closed inline in the feedback files rather than filed here.
   Source: in-session-2026-09-20, measured.
   Lanes: mcp, roadmap-store.
 
-- 📋 [ANTS-5249] **A comment in roadmapstore.h states that migration never writes an id_prefix row, and migration does write one when it allocates.**
+- ✅ [ANTS-5249] **A comment in roadmapstore.h states that migration never writes an id_prefix row, and migration does write one when it allocates.**
   ANTS-4631's comment above `maxAllocatedId()` in `src/roadmapstore.h` reads
   "migration does not write an id_prefix row, only an id-allocating append
   does, so a migrated-but-never-appended project reports nullopt there while
@@ -49423,6 +49423,10 @@ are closed inline in the feedback files rather than filed here.
 
   Found while gating ANTS-4500, whose § 4.2 now depends on knowing which is
   true — it requires migration to ensure the real prefix's row exists.
+  Resolved (2026-09-23): the comment above maxAllocatedId() now says
+  only a migration that allocates nothing writes no id_prefix row, and
+  names Loader::allocateId()'s raiseIdHighWater() as the path that does
+  write one.
   **Layman:** A note in the code says migration never records a project's id counter. It does record it whenever it invents an id, so the note misleads anyone reasoning from it.
   Kind: doc-fix.
   Source: in-session-2026-09-20, found while gating ANTS-4500.
@@ -50820,7 +50824,7 @@ are closed inline in the feedback files rather than filed here.
   Source: peer-session-finbreak-65, in-session-2026-09-21.
   Lanes: mcp.
 
-- 📋 [ANTS-5276] **Two specs name a PtyHandler class the tree does not define.**
+- ✅ [ANTS-5276] **Two specs name a PtyHandler class the tree does not define.**
   Found by the review-contract gate on CLAUDE.md (ANTS-5274), loop 1, as
   out-of-scope collateral. All three cold lanes independently found the
   same error in CLAUDE.md itself; it is fixed there. These are the other
@@ -50849,6 +50853,10 @@ are closed inline in the feedback files rather than filed here.
 
   Each spec is a gated document. Fix them on their own next edit, or as
   one doc-fix pass, rather than by hand here.
+  Resolved (2026-09-23): the body passages of ANTS-1897 (§ 2.1) and
+  ANTS-1113 (§ 8) now name the `Pty` class in src/ptyhandler.cpp. The
+  two ANTS-1897 occurrences inside its cold-eyes loop log stay as
+  written, because landed loop-log rows are never edited.
   **Layman:** Some design documents refer to a part of the code by a name it does not have, so anyone searching for it finds nothing.
   Kind: doc-fix.
   Source: review-contract CLAUDE.md loop 1, in-session-2026-09-21.
