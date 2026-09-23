@@ -1133,6 +1133,7 @@ QJsonDocument RemoteControl::cmdChangelogLog(const QJsonObject &req) {
         out["line"]             = res.line;
         out["bytes"]            = static_cast<qint64>(res.markdown.toUtf8().size());
         out["created_category"] = res.created_category;
+        out["section"] = QStringLiteral("Unreleased");   // ANTS-4847
         out["bullet"]           = echoLine;
         // ANTS-4563 — a routed write changed SHAPE, so it says so. Silence here
         // would leave a caller unable to tell it from a flat insert, and
@@ -1173,6 +1174,7 @@ QJsonDocument RemoteControl::cmdChangelogLog(const QJsonObject &req) {
     out["line"]             = res.line;
     rcSetWriteBytes(out, clBefore, static_cast<qint64>(utf8.size()));
     out["created_category"] = res.created_category;
+    out["section"] = QStringLiteral("Unreleased");   // ANTS-4847
     // ANTS-4629 — echo what was actually written. This was emitted on the
     // dry-run path only, so a caller who did not already suspect a problem had
     // no way to see a malformed bullet: the write reported ok:true with a
@@ -1581,6 +1583,7 @@ QJsonDocument RemoteControl::cmdChangelogLogAddBatch(const QJsonObject &req) {
             ? static_cast<qint64>(0)
             : static_cast<qint64>(markdown.toUtf8().size());
         out["created_category"] = anyCreatedCategory;   // ANTS-3804
+        out["section"] = QStringLiteral("Unreleased");   // ANTS-4847
         if (malformedSection) {
             out["advisory"] = changelogMalformedAdvisory(
                 malformedLine, /*plural=*/true, /*applied=*/false);
@@ -1619,6 +1622,7 @@ QJsonDocument RemoteControl::cmdChangelogLogAddBatch(const QJsonObject &req) {
     out["bytes_written"] = bytesWritten;
     out["file_bytes"]    = fileBytes;                   // ANTS-3723
     out["created_category"] = anyCreatedCategory;       // ANTS-3804
+    out["section"] = QStringLiteral("Unreleased");       // ANTS-4847
     if (malformedSection) {
         out["advisory"] = changelogMalformedAdvisory(
             malformedLine, /*plural=*/true, /*applied=*/true);

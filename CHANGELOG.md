@@ -14,6 +14,10 @@ for security-relevant changes.
 
 ### Changed
 
+- **The review dialogs' code is clear of three clang-tidy warnings.** (ANTS-5022)
+
+- **roadmap-data-model.md names cut-release where it named the deleted /bump skill.** (ANTS-4990)
+
 - **CI's main build and sanitizer jobs link with mold.** (ANTS-5186)
 
 ### Removed
@@ -23,6 +27,8 @@ for security-relevant changes.
 - **The openSUSE package spec no longer carries the 0.7.107 Qt version-guard backport.** (ANTS-4874)
 
 ### Fixed
+
+- **changelog_log's reply names the section the entry landed in.** (ANTS-4847)
 
 - **The roadmap window recognises synthesised ids such as PROJ-S0001 in card summaries and in-progress items.** (ANTS-5250)
 

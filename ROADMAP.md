@@ -61282,8 +61282,12 @@ two projects).
   Kind: fix.
   Source: cc-feedback-2026-09-03 Slipcase.
 
-- 📋 [ANTS-4847] **changelog_log's success envelope names no enclosing section, so a caller cannot observe the invariant the verb enforces.**
+- ✅ [ANTS-4847] **changelog_log's success envelope names no enclosing section, so a caller cannot observe the invariant the verb enforces.**
   The verb is safe here: it refuses not_unreleased, so a wrong-section write cannot happen. But `line` alone cannot distinguish [Unreleased] from an older released section, and two entries added minutes apart returned lines far enough apart to look wrong, costing a pass over the file to confirm. The enclosing heading is already known where the verb decides whether to refuse, so echoing it costs nothing and turns an enforced invariant into an observable one.
+  Resolved (2026-09-23): changelog_log's add and add_batch replies, dry
+  run and write alike, carry section:"Unreleased". It is a constant
+  because insertUnreleasedEntry only writes there and refuses
+  not_unreleased otherwise. The verb description is unchanged.
   **Layman:** After adding a changelog entry you cannot tell from the reply which release section it landed in.
   Kind: enhancement.
   Source: cc-feedback-2026-09-03 Snatch.
