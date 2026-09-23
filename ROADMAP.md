@@ -65299,6 +65299,27 @@ it look feasible, and the one that bounds what is achievable, are on the item.
   Source: user-request-2026-09-07.
   Lanes: mcp, build.
 
+- 📋 [ANTS-5308] **Retire tools/mcp-bridge.py once ants-mcpd has shipped for one release.**
+  ANTS-4932 keeps the Python bridge for one release as a fallback, so a
+  half-migrated machine degrades to today's behaviour. This item removes
+  it after that release: delete the script, its README setup line, and
+  any packaging carrier that installs it. Blocked by ANTS-4932.
+  **Layman:** After the new standalone MCP program has been out for a release, remove the old Python bridge it replaced.
+  Kind: chore.
+  Source: ANTS-4932 spec § 5 deferral (2026-09-23).
+  Lanes: mcp, packaging.
+
+- 📋 [ANTS-5309] **Narrow ants_core_lib's PUBLIC Qt6::Widgets link now that the MCP verbs live in a GUI-free library.**
+  The comment above ants_audit_lib names the split into GUI-free
+  libraries as the structural prerequisite for narrowing
+  ants_core_lib's PUBLIC Widgets surface. ANTS-4932 creates
+  ants_mcpcore_lib and so provides it; the narrowing itself is this
+  item. Blocked by ANTS-4932.
+  **Layman:** Tidy the build so code that has no windows stops pulling in the whole window toolkit.
+  Kind: refactor.
+  Source: ANTS-4932 spec § 5 deferral (2026-09-23).
+  Lanes: build.
+
 ### Cold-eyes logs move to review history (user request 2026-09-07)
 
 A gated document should carry its rules, not its review history: the log moves
