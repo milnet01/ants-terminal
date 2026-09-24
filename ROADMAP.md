@@ -18920,6 +18920,17 @@ fixes don't address. Roadmapped here as their own design tasks.
   Source: claude-ab-request-2026-09-24.
   Lanes: tools, docs.
 
+- 🚧 [ANTS-5315] **A roadmap organised by SemVer release, rendered by the store, with unplaced items a normal state.**
+  Handoff record, with every decision so far and the next step:
+  docs/reviews/ANTS-5315-roadmap-versions-handoff-2026-09-24.md.
+  Urgent: Games_Hub's checker refuses every roadmap commit ("no version
+  headings, 193 unplaced"). Nothing built yet; no other project's roadmap
+  written.
+  **Layman:** Lets a roadmap read top to bottom as a release plan — 0.1.0, 0.2.0, 1.0.0 — with work not yet given a release kept in its own honest group.
+  Kind: feature.
+  Source: claude-ab-request-2026-09-24.
+  Lanes: roadmap.
+
 ### 🔬 Project Audit false-positive reduction (self-audit 2026-05-20)
 
 Ran the project's own `ants-audit` CLI against this repo (~300 findings,
