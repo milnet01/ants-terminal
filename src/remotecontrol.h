@@ -1242,10 +1242,12 @@ public:
     static void armReplyDrainGuard(QLocalSocket *socket, int idleMs);
     static constexpr int kReplyDrainIdleMs = 30'000;
 
-private slots:
+private:
+    // Not a slot: LocalSocketHub calls it through a lambda. As a slot, the
+    // moc in ants_mcpcore_lib would name it, and it is defined GUI-side with
+    // the rest of the --remote socket (ANTS-4932 § 2.2).
     void onNewConnection();
 
-private:
     // ANTS-3661 — see setMcpVerbVocabularyProvider.
     std::function<QStringList()> m_mcpVerbVocabularyProvider;
     // ANTS-2132 § 2.7 — see setDispatchWorkerPoster.

@@ -162,15 +162,15 @@ TEST(mcp_build_identity, Inv6ToolInfoCatalogStampsServerBuild) {
 }
 
 // INV-7 (ANTS-2073 + ANTS-3582) — build_info_values.cpp (the extern
-// definitions) compiles into ants_core_lib, where remotecontrol.cpp lives, so
-// the symbols resolve for every consumer that links core. SKIP_PRECOMPILE_HEADERS
+// definitions) compiles into ants_mcpcore_lib, where remotecontrol.cpp lives
+// (ANTS-4932), so the symbols resolve for every consumer that links it, and
+// ants_core_lib links it PUBLIC. SKIP_PRECOMPILE_HEADERS
 // keeps a per-build value change from dragging core's PCH.
 TEST(mcp_build_identity, Inv7CMakeCompilesValuesIntoCoreLib) {
     expect_reset();
     const std::string cml = ants_test::slurpFile(SRC_CMAKELISTS_PATH);
-    expect(contains(cml, "target_sources(ants_core_lib") &&
-               contains(cml, "ANTS_BUILD_INFO_VALUES_CPP"),
-           "INV-7: build_info_values.cpp compiles into ants_core_lib");
+    expect(contains(cml, "target_sources(ants_mcpcore_lib PRIVATE \"${ANTS_BUILD_INFO_VALUES_CPP}\")"),
+           "INV-7: build_info_values.cpp compiles into ants_mcpcore_lib");
     expect(contains(cml, "SKIP_PRECOMPILE_HEADERS"),
            "INV-7: the generated values TU is PCH-decoupled so a value change "
            "doesn't rebuild the core PCH");

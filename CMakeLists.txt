@@ -491,6 +491,14 @@ set(ANTS_RC_SOURCES_REL
     # ANTS-5299 — run_trace's handler. Appended last, for the reason above.
     src/remotecontrol_run_trace.cpp
 )
+# ANTS-4932 § 2.2 — the list splits in two here, derived rather than restated
+# (INV-11): the terminal TU, which holds dispatch(), the --remote socket and
+# the tab verbs, stays GUI-side in ants_core_lib; every other TU is window-free
+# and compiles into ants_mcpcore_lib.
+set(ANTS_RC_GUI_SOURCES_REL ${ANTS_RC_SOURCES_REL})
+list(FILTER ANTS_RC_GUI_SOURCES_REL INCLUDE REGEX "_terminal\\.cpp$")
+set(ANTS_RC_MCP_SOURCES_REL ${ANTS_RC_SOURCES_REL})
+list(FILTER ANTS_RC_MCP_SOURCES_REL EXCLUDE REGEX "_terminal\\.cpp$")
 list(TRANSFORM ANTS_RC_SOURCES_REL PREPEND "${CMAKE_SOURCE_DIR}/"
      OUTPUT_VARIABLE _ants_rc_abs)
 list(JOIN _ants_rc_abs ";" _ants_rc_joined)
@@ -503,10 +511,12 @@ list(JOIN _ants_rc_abs ";" _ants_rc_joined)
 # the one TU this whole item exists to stop the tests reading alone.
 string(REPLACE ";" "\\;" _ants_rc_joined "${_ants_rc_joined}")
 
-add_library(ants_core_lib STATIC
+# ANTS-4932 § 2.2 — the project-scoped MCP verbs and every engine they call,
+# with no GUI library: ants-mcpd links this, and INV-1 checks its closure.
+# ants_core_lib links it PUBLIC, so every existing consumer keeps it.
+add_library(ants_mcpcore_lib STATIC
     src/config.cpp
     src/debuglog.cpp
-    src/clipboardguard.cpp
     src/pathvalidation.cpp
     # ANTS-3833 INV-11 — the library CONSUMES the list above rather than
     # restating it. Naming a TU separately here would let a twelfth source
@@ -514,7 +524,7 @@ add_library(ants_core_lib STATIC
     # other invariant passes, and the test tree silently reads 11/12 of the
     # class. That is the exact failure INV-4 abolishes, arriving by a route
     # INV-4 cannot see.
-    ${ANTS_RC_SOURCES_REL}
+    ${ANTS_RC_MCP_SOURCES_REL}
     src/remotecontrolgate.cpp
     src/localsockethub.cpp       # ANTS-5144
     src/fileoutline.cpp
@@ -664,6 +674,38 @@ add_library(ants_core_lib STATIC
     # the Review Changes dialog's live refresh; catches child content edits
     # that QFileSystemWatcher drops.
     src/treewatcher.cpp
+    # ANTS-4932 § 2.2 — the MCP request pipeline and the shared registration
+    # list, both window-free; ants-mcpd hosts them whole.
+    src/claudeintegration.cpp
+    src/mcptoolregistry.cpp
+    # ANTS-4932 § 2.5 — ants-mcpd's socket picker, peer checks and forwarder.
+    # Here rather than in the executable so a test can call the uid checks.
+    src/mcpdsocket.cpp
+    src/mcpdforwarder.cpp
+)
+target_link_libraries(ants_mcpcore_lib
+    PUBLIC  Qt6::Core Qt6::Network
+            ants_roadmapparse_lib   # ANTS-3808 § 4 — the reader, as a leaf
+    # ANTS-3793 § 4 — the read seam, PRIVATE: remotecontrol.cpp's roadmap
+    # consumers read the store, and this library exposes no RoadmapStore in
+    # its own headers, so Qt6::Sql stops here instead of reaching every
+    # consumer.
+    PRIVATE ants_roadmapstore_lib
+            ants_warnings)
+target_include_directories(ants_mcpcore_lib PUBLIC src)
+set_target_properties(ants_mcpcore_lib PROPERTIES POSITION_INDEPENDENT_CODE ON)
+# ClaudeIntegration's tools/list and the registry carry the Lua-only
+# project_query verb; its engine is ants_lua_lib, linked below where Lua exists.
+if(LUA_FOUND)
+    target_compile_definitions(ants_mcpcore_lib PRIVATE ANTS_LUA_PLUGINS=1)
+    target_include_directories(ants_mcpcore_lib PRIVATE ${LUA_INCLUDE_DIRS})
+endif()
+
+# The GUI-side foundations: the tab-verb TU (with dispatch() and the --remote
+# socket), the PTY, session persistence and the desktop integrations.
+add_library(ants_core_lib STATIC
+    src/clipboardguard.cpp
+    ${ANTS_RC_GUI_SOURCES_REL}
     src/themedstylesheet.cpp
     src/globalshortcutsportal.cpp
     src/dialogshowtracer.cpp
@@ -673,27 +715,26 @@ add_library(ants_core_lib STATIC
     src/vtstream.cpp
 )
 target_link_libraries(ants_core_lib
-    PUBLIC  Qt6::Core Qt6::Gui Qt6::Widgets Qt6::Network Qt6::DBus util
+    PUBLIC  ants_mcpcore_lib
+            Qt6::Core Qt6::Gui Qt6::Widgets Qt6::Network Qt6::DBus util
             ants_roadmapparse_lib   # ANTS-3808 § 4 — the reader, as a leaf
-    # ANTS-3793 § 4 — the read seam, PRIVATE: remotecontrol.cpp's roadmap
-    # consumers read the store, and core exposes no RoadmapStore in its own
-    # headers, so Qt6::Sql stops here instead of reaching every consumer of core.
     PRIVATE ants_roadmapstore_lib
             ants_warnings)
 target_include_directories(ants_core_lib PUBLIC src)
 set_target_properties(ants_core_lib PROPERTIES POSITION_INDEPENDENT_CODE ON)
 # ANTS-3582: build_info_values.cpp holds the extern definitions for
-# src/build_info.h (build date / minute / SHA / type). It compiles into core
-# so the symbols resolve for every consumer that links core: remotecontrol.cpp
-# here (session_orient / server_build stamp), and claudeintegration.cpp /
-# mainwindow.cpp / aboutdialogs.cpp transitively (chrome/claude/dialogs → core).
+# src/build_info.h (build date / minute / SHA / type). It compiles into
+# ants_mcpcore_lib (ANTS-4932) so the symbols resolve for every consumer that
+# links it: remotecontrol.cpp and claudeintegration.cpp there (session_orient /
+# server_build stamp, serverInfo), and mainwindow.cpp / aboutdialogs.cpp
+# transitively (chrome/dialogs → core → mcpcore).
 # SKIP_PRECOMPILE_HEADERS + SKIP_UNITY_BUILD_INCLUSION keep it a standalone TU
 # so a per-build value change never drags core's PCH or a unity batch — which
 # would re-defeat the decouple. No target-level add_dependencies: the file-level
 # custom-command edge (top of file) provides ordering without forcing a rebuild.
 # src/build_info.h resolves via the PUBLIC `src` include dir above (and a
 # same-directory quote include from each consumer).
-target_sources(ants_core_lib PRIVATE "${ANTS_BUILD_INFO_VALUES_CPP}")
+target_sources(ants_mcpcore_lib PRIVATE "${ANTS_BUILD_INFO_VALUES_CPP}")
 set_source_files_properties("${ANTS_BUILD_INFO_VALUES_CPP}" PROPERTIES
     SKIP_PRECOMPILE_HEADERS ON
     SKIP_UNITY_BUILD_INCLUSION ON)
@@ -793,7 +834,6 @@ if(LUA_FOUND)
 endif()
 
 add_library(ants_claude_lib STATIC
-    src/claudeintegration.cpp
     src/claudeallowlist.cpp
     src/claudestatuswidgets.cpp
     src/modelrecommender.cpp
@@ -814,8 +854,6 @@ add_library(ants_claude_lib STATIC
     src/claudetasklistdialog.cpp
     # ANTS-1897 — MCP discoverability via SessionStart hook installer.
     src/mcporientation.cpp
-    # ANTS-4932 § 2.3 — the shared project-scoped verb registration list.
-    src/mcptoolregistry.cpp
 )
 target_link_libraries(ants_claude_lib
     PUBLIC  ants_chrome_lib
@@ -854,7 +892,8 @@ add_library(ants_audit_lib STATIC
     src/indiereviewdispatcher.cpp
 )
 target_link_libraries(ants_audit_lib
-    PUBLIC  ants_core_lib
+    # ANTS-4932 § 2.2 — the window-free core, so ants-mcpd can link this.
+    PUBLIC  ants_mcpcore_lib
     PRIVATE ants_warnings)
 set_target_properties(ants_audit_lib PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
@@ -925,7 +964,8 @@ if(LUA_FOUND)
         src/pluginmanager.cpp
     )
     target_link_libraries(ants_lua_lib
-        PUBLIC  ants_core_lib ${LUA_LIBRARIES}
+        # ANTS-4932 § 2.2 — the window-free core, so ants-mcpd can link this.
+        PUBLIC  ants_mcpcore_lib ${LUA_LIBRARIES}
         PRIVATE ants_warnings)
     target_include_directories(ants_lua_lib PUBLIC ${LUA_INCLUDE_DIRS})
     target_compile_definitions(ants_lua_lib PUBLIC ANTS_LUA_PLUGINS=1)
@@ -959,7 +999,7 @@ endif()
 # ANTS-3808 § 4 — ants_roadmapparse_lib is subset-linked by the same test
 # bundles core is, so unity must not coarsen it either.
 set(_ants_subset_linked_libs ants_core_lib ants_vt_lib ants_audit_lib
-                             ants_roadmapparse_lib)
+                             ants_roadmapparse_lib ants_mcpcore_lib)
 if(LUA_FOUND)
     list(APPEND _ants_subset_linked_libs ants_lua_lib)
 endif()
@@ -1056,6 +1096,8 @@ endfunction()
 
 ants_apply_qt_pch(ants-terminal)
 ants_apply_qt_pch(ants_core_lib)
+# ANTS-4932 — no QtGui / QtWidgets here: INV-1 keeps this library window-free.
+target_precompile_headers(ants_mcpcore_lib PRIVATE <QtCore/QtCore>)
 ants_apply_qt_pch(ants_vt_lib)
 ants_apply_qt_pch(ants_chrome_lib)
 ants_apply_qt_pch(ants_claude_lib)
@@ -1108,9 +1150,34 @@ target_link_options(ants-terminal PRIVATE
 )
 set_target_properties(ants-terminal PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
+# ANTS-4932 — ants-mcpd: the project-scoped MCP verbs over stdio. The MCP client
+# launches it, so a rebuild reaches a session on its next reconnect with no
+# terminal relaunch. No GUI library in its link closure (spec INV-1). The group
+# resolves the mcpcore <-> audit and mcpcore <-> lua references both ways.
+add_executable(ants-mcpd src/mcpdmain.cpp)
+target_link_libraries(ants-mcpd PRIVATE
+    -Wl,--start-group
+    ants_mcpcore_lib
+    ants_audit_lib
+    ants_roadmapstore_lib
+    $<$<BOOL:${LUA_FOUND}>:ants_lua_lib>
+    -Wl,--end-group
+    ants_warnings
+)
+target_precompile_headers(ants-mcpd PRIVATE <QtCore/QtCore>)
+target_link_options(ants-mcpd PRIVATE
+    -Wl,-z,relro
+    -Wl,-z,now
+    -Wl,-z,noexecstack
+)
+set_target_properties(ants-mcpd PROPERTIES POSITION_INDEPENDENT_CODE ON)
+if(LUA_FOUND)
+    target_compile_definitions(ants-mcpd PRIVATE ANTS_LUA_PLUGINS=1)
+endif()
+
 include(GNUInstallDirs)
 
-install(TARGETS ants-terminal RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+install(TARGETS ants-terminal ants-mcpd RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
 
 # ---------------------------------------------------------------------------
 # Desktop integration — freedesktop.org spec + AppStream metainfo

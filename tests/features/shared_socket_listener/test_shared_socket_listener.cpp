@@ -358,7 +358,9 @@ TEST(SharedSocketListener, Inv6DestroyingAnOwnerClosesItsConnections) {
 TEST(SharedSocketListener, Inv7AcceptChecksStayInTheHandlers) {
     const std::string srcDir = std::string(ANTS_SOURCE_DIR) + "/src/";
     const std::string ci = ants_test::slurpFile(srcDir + "claudeintegration.cpp");
-    const std::string rc = ants_test::slurpFile(srcDir + "remotecontrol.cpp");
+    // ANTS-4932 — the --remote socket moved out of TU 1 into the GUI-side
+    // TU; read the whole class, not one TU (rc_tu_split INV-4).
+    const std::string rc = ants_test::slurpRemoteControl();
     const std::string hub = ants_test::slurpFile(srcDir + "localsockethub.cpp");
     ASSERT_FALSE(ci.empty());
     ASSERT_FALSE(rc.empty());

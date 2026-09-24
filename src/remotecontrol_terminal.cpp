@@ -1,4 +1,5 @@
-// ANTS-3833 TU 2/18 — Terminal and window verbs.
+// ANTS-3833 TU 2/18 — The --remote socket, dispatch(), and the terminal and
+// window verbs.
 #include "remotecontrol.h"
 #include "remotecontrol_internal.h"
 #include "projectsettings.h"   // ANTS-3771 — the declared id format
@@ -6,13 +7,14 @@
 #include "mainwindow.h"
 #include "pathvalidation.h"
 #include "scrollbackerrors.h"
-#include "buildfixhint.h"
-#include "passheadingwrite.h"
 #include "terminalwidget.h"
 #include "claudeintegration.h"
 #include "tokenusageengine.h"
 #include "guithread.h"
 #include "debuglog.h"
+#include "localsockethub.h"   // ANTS-4932 — the --remote socket moved here
+#include "roadmapparse.h"
+#include "secureio.h"
 #include <QCoreApplication>
 #include <QDir>
 #include <QFileInfo>
@@ -21,8 +23,399 @@
 #include <QKeyEvent>
 #include <QMouseEvent>
 #include <QScreen>
+#include <QLocalServer>
+#include <QLocalSocket>
+#include <QPointer>
+#include <QSet>
+#include <QStandardPaths>
+#include <QTimer>
+
+#include <cerrno>
+#include <cstring>
+#include <sys/socket.h>
+#include <unistd.h>
 
 using namespace rcdetail;  // ANTS-3833
+
+// ANTS-4932 § 2.2 — the --remote socket and dispatch(), moved here from TU 1:
+// dispatch() routes to this TU's terminal verbs, so it cannot join the
+// window-free ants_mcpcore_lib that TU 1 now compiles into.
+
+QString RemoteControl::defaultSocketPath() {
+    // Override wins unconditionally — lets the user script
+    // multi-instance setups without touching the source.
+    const QByteArray override = qgetenv("ANTS_REMOTE_SOCKET");
+    if (!override.isEmpty()) return QString::fromLocal8Bit(override);
+
+    const QString xdg = QStandardPaths::writableLocation(
+        QStandardPaths::RuntimeLocation);
+    if (!xdg.isEmpty()) {
+        return xdg + "/ants-terminal.sock";
+    }
+    // ANTS-1365 — /tmp fallback wraps the socket in a per-user 0700
+    // subdir (`/tmp/ants-<uid>/`) so a same-UID rogue can't pre-create
+    // the socket path as a regular file or symlink. The subdir is
+    // brought up by `ensureSocketDir` in `start()` before listen().
+    return QStringLiteral("/tmp/ants-%1/ants-terminal.sock")
+        .arg(::getuid());
+}
+
+bool RemoteControl::start() {
+    if (m_server) return true;
+
+    const QString path = defaultSocketPath();
+    // ANTS-1365 — bring up the socket-containing directory at 0700,
+    // verified to be owned by us, before listen(). Replaces the
+    // previous `QDir::mkpath` (which always creates with 0755 on
+    // POSIX and offers no ownership/mode verification). On any
+    // failure — wrong owner, wrong mode, inherited symlink, mkdir
+    // failure — return false and disable rc/MCP for this process.
+    // The XDG primary path is already a systemd-managed 0700 dir,
+    // so this is a no-op there; the /tmp fallback is the real
+    // beneficiary.
+    const QString socketDir = QFileInfo(path).absolutePath();
+    if (!ensureSocketDir(socketDir)) {
+        ANTS_LOG(DebugLog::Network,
+            "remote-control: socket dir %s unavailable; "
+            "remote-control disabled for this process",
+            qUtf8Printable(socketDir));
+        return false;
+    }
+
+    // ANTS-5144 § 2.2 — every window shares one server per path. A stale
+    // socket file is replaced; a path a live server holds (another Ants
+    // process) is never taken over, and remote control stays off here. The
+    // hub keeps ANTS-1132's UserAccessOption and safe-unlink guards.
+    m_server = ants::LocalSocketHub::instance().acquire(path);
+    if (!m_server) {
+        ANTS_LOG(DebugLog::Network,
+            "remote-control: cannot listen on %s — another instance owns "
+            "it, or it is not a socket owned by this user; remote-control "
+            "disabled for this process", qUtf8Printable(path));
+        return false;
+    }
+    m_socketPath = path;
+    ants::LocalSocketHub::instance().attach(
+        path, this,
+        [this] { return !m_windowVisibleProbe || m_windowVisibleProbe(); },
+        [this] { onNewConnection(); });
+    ANTS_LOG(DebugLog::Network,
+        "remote-control: listening on %s", qUtf8Printable(path));
+    return true;
+}
+
+// ANTS-5093 — see the declaration.
+void RemoteControl::armReplyDrainGuard(QLocalSocket *socket, int idleMs) {
+    if (!socket || socket->state() == QLocalSocket::UnconnectedState) return;
+    auto *drain = new QTimer(socket);
+    drain->setSingleShot(true);
+    drain->setInterval(idleMs);
+    connect(drain, &QTimer::timeout, socket, [socket]() { socket->abort(); });
+    connect(socket, &QIODevice::bytesWritten, drain,
+            [drain](qint64) { drain->start(); });
+    drain->start();
+}
+
+void RemoteControl::onNewConnection() {
+    while (m_server->hasPendingConnections()) {
+        QLocalSocket *socket = m_server->nextPendingConnection();
+        // ANTS-5144 § 2.5 — take the socket from the shared server, so
+        // destroying this window's RemoteControl closes what it was serving.
+        socket->setParent(this);
+        // ANTS-1132 — SO_PEERCRED UID match. The trust-model comment
+        // at the top of this file claims "UID-scoped + 0700 perms +
+        // lstat-checked S_ISSOCK"; UserAccessOption + safeToUnlink
+        // already cover the file-side guarantees, but the peer side
+        // needs explicit getsockopt(SO_PEERCRED) to enforce that the
+        // connecting process is the same UID. Defense in depth — on
+        // Linux with 0700 socket perms, the kernel already gates
+        // connect(2) on the file ACL, but if the socket path is
+        // ever moved (ANTS_REMOTE_SOCKET env override, abstract
+        // socket migration), the file ACL stops applying and only
+        // the peer-cred check holds the line.
+        // ANTS-1797 — fail CLOSED: if the socket fd is unavailable we cannot
+        // verify the peer UID, so the connection must be refused rather than
+        // served unauthenticated. (A bare `if (fd >= 0)` guard would skip the
+        // whole check on fd<0 — exactly the moved-socket scenario the comment
+        // above names as the case where only peer-cred holds the line.)
+        const qintptr fd = socket->socketDescriptor();
+        bool peerVerified = false;
+        if (fd >= 0) {
+            struct ucred cred{};
+            socklen_t len = sizeof(cred);
+            const int gscRet = ::getsockopt(static_cast<int>(fd), SOL_SOCKET,
+                                            SO_PEERCRED, &cred, &len);
+            if (gscRet == 0 && len == sizeof(cred) && cred.uid == ::getuid()) {
+                peerVerified = true;
+            } else {
+                // getsockopt failed OR truncated struct OR UID mismatch.
+                // Log strerror on the syscall-failure path so a zero-init
+                // cred.uid isn't reported as a fake "root tried to connect".
+                if (gscRet != 0 || len != sizeof(cred))
+                    ANTS_LOG(DebugLog::Network,
+                        "remote-control: SO_PEERCRED failed (%s) — disconnecting",
+                        std::strerror(errno));
+                else
+                    ANTS_LOG(DebugLog::Network,
+                        "remote-control: peer UID mismatch "
+                        "(peer=%d self=%d) — disconnecting",
+                        static_cast<int>(cred.uid),
+                        static_cast<int>(::getuid()));
+            }
+        } else {
+            ANTS_LOG(DebugLog::Network,
+                "remote-control: no socket fd for peer-cred check — "
+                "disconnecting (fail-closed)");
+        }
+        if (!peerVerified) {
+            socket->disconnectFromServer();
+            socket->deleteLater();
+            continue;
+        }
+        // ANTS-5093 — bound how many connections this window holds open.
+        if (!ants::admitLiveConnection(this, socket, m_liveConnections)) continue;
+        // ANTS-1132 — slow-loris defence. Cap idle time per
+        // connection at 5 seconds. Each message is one-shot; if
+        // a peer hasn't sent a complete request within the
+        // window, abort.
+        QTimer *idleTimer = new QTimer(socket);
+        idleTimer->setSingleShot(true);
+        idleTimer->setInterval(5000);
+        connect(idleTimer, &QTimer::timeout, socket,
+                [socket]() { socket->abort(); });
+        idleTimer->start();
+        // Line-buffer incoming data. Each connection handles exactly
+        // one request/response round-trip today — simpler than a
+        // persistent-session protocol and good enough for the full
+        // Kitty command set (which is also one-shot).
+        socket->setProperty("_buf", QByteArray());
+        // ANTS-2202 — re-entrancy latch, mirroring the MCP twin
+        // (claudeintegration.cpp). Once a complete line is dispatched, _handled
+        // blocks a second readyRead (e.g. fired from inside a nested event loop)
+        // from re-dispatching buffered bytes.
+        socket->setProperty("_handled", false);
+        connect(socket, &QLocalSocket::readyRead, this,
+                [this, socket, idleTimer]() {
+            if (socket->property("_handled").toBool()) return;
+            QByteArray buf = socket->property("_buf").toByteArray();
+            buf += socket->readAll();
+            // Bound the in-memory buffer for defence-in-depth against
+            // a malicious client on the same machine. 1 MB is far
+            // more than any realistic Kitty rc_protocol envelope.
+            if (buf.size() > 1 * 1024 * 1024) {
+                socket->disconnectFromServer();
+                return;
+            }
+            socket->setProperty("_buf", buf);
+
+            int nlIdx = buf.indexOf('\n');
+            if (nlIdx < 0) return;  // partial line, wait for more
+
+            // ANTS-2202 — a complete line is in hand. Latch _handled and drop the
+            // consumed line from _buf so a re-entrant readyRead (should a future
+            // RC verb pump a nested event loop) can't re-dispatch it.
+            socket->setProperty("_handled", true);
+            socket->setProperty("_buf", buf.mid(nlIdx + 1));
+
+            // ANTS-2026 — stop the slow-loris idle timer BEFORE dispatching. No
+            // current RC verb runs a nested event loop, but if one is added a
+            // still-armed timer could fire timeout -> socket->abort() ->
+            // disconnected -> deleteLater(), and that deleteLater would be
+            // processed by the nested loop, freeing this socket before the write
+            // below. Defensive, and parity with the MCP path (ANTS-2101).
+            idleTimer->stop();
+
+            const QByteArray line = buf.left(nlIdx);
+            QJsonParseError err;
+            QJsonDocument req = QJsonDocument::fromJson(line, &err);
+            QJsonDocument resp;
+            // ANTS-2026 — defence in depth: the peer can still disconnect during
+            // a nested-loop dispatch, freeing the socket via the disconnected ->
+            // deleteLater chain. A QPointer lets the post-dispatch write bail
+            // instead of touching a dangling pointer.
+            QPointer<QLocalSocket> guard(socket);
+            // ANTS-2132 § 2.7 — the reply write, shared by the inline path and
+            // a worker route's deferred one. Both run it on the GUI thread.
+            const auto writeReply = [](const QPointer<QLocalSocket> &sock,
+                                       const QJsonDocument &doc) {
+                if (!sock || sock->state() != QLocalSocket::ConnectedState)
+                    return;
+                sock->write(doc.toJson(QJsonDocument::Compact) + '\n');
+                sock->flush();
+                sock->disconnectFromServer();
+                // ANTS-5093 — a peer that never reads the reply must not pin
+                // the socket and its write buffer.
+                RemoteControl::armReplyDrainGuard(sock.data(), kReplyDrainIdleMs);
+            };
+            if (err.error != QJsonParseError::NoError || !req.isObject()) {
+                QJsonObject e;
+                e["ok"] = false;
+                e["error"] = QStringLiteral("invalid JSON: %1")
+                    .arg(err.errorString());
+                resp = QJsonDocument(e);
+            } else {
+                const QJsonObject reqObj = req.object();
+                const QString cmd = reqObj.value(QStringLiteral("cmd")).toString();
+                if (m_dispatchWorkerPoster && routeRunsOnDispatchWorker(cmd)) {
+                    // dispatch() runs on the worker and the write is queued
+                    // back here. The job carries `guard` but never tests it: a
+                    // QPointer may only be dereferenced on the socket's thread.
+                    const bool posted = m_dispatchWorkerPoster(
+                        [this, guard, reqObj, writeReply]() {
+                            const QJsonDocument out = dispatch(reqObj);
+                            // ANTS-5087 — the worker's parse memo is dead the
+                            // moment this call returns, and it retains the last
+                            // document parsed here: text and records both. Held
+                            // ACROSS the dispatch, so a call that parses the
+                            // same roadmap twice still hits it, and dropped
+                            // between calls, which is the retention the finding
+                            // is about. The GUI thread never reaches this and
+                            // keeps its memo, which is what it is for.
+                            RoadmapParse::releaseParseMemo();
+                            QMetaObject::invokeMethod(this,
+                                [guard, out, writeReply]() {
+                                    writeReply(guard, out);
+                                }, Qt::QueuedConnection);
+                        });
+                    if (posted) return;  // the reply follows from the worker
+                    QJsonObject e;
+                    e["ok"]             = false;
+                    e["code"]           = QStringLiteral("dispatch_queue_full");
+                    e["error"]          = QStringLiteral(
+                        "%1: too many MCP calls are already in flight; retry "
+                        "shortly").arg(cmd);
+                    e["retry_after_ms"] = 250;
+                    resp = QJsonDocument(e);
+                } else {
+                    resp = dispatch(reqObj);
+                }
+            }
+            writeReply(guard, resp);
+        });
+        connect(socket, &QLocalSocket::disconnected,
+                socket, &QLocalSocket::deleteLater);
+    }
+}
+
+bool RemoteControl::routeRunsOnDispatchWorker(const QString &cmd) {
+    static const QSet<QString> kWorkerRoutes = {
+        QStringLiteral("roadmap-query"),
+        QStringLiteral("workspace-search"),
+        QStringLiteral("file-outline"),
+        QStringLiteral("find-definition"),
+        QStringLiteral("find-caller"),
+        QStringLiteral("similar-code"),
+        QStringLiteral("git-state"),
+        QStringLiteral("subsystem"),
+    };
+    return kWorkerRoutes.contains(cmd);
+}
+
+QJsonDocument RemoteControl::dispatch(const QJsonObject &req) {
+    const QString cmd = req.value("cmd").toString();
+    // ANTS-1176: per-verb structured log so a same-UID-attack
+    // post-mortem has a record. Deliberately does NOT include the
+    // payload itself (text/cwd/command bodies can carry secrets);
+    // size + tab + stripped-bytes count are the diagnostic axes.
+    const int tabId = req.value("tab").toInt(-1);
+    const int textBytes = req.value("text").toString().size();
+    // ANTS-2119 M2 — record whether the control-char filter bypass was
+    // requested (send-text / launch / new-tab honour raw:true). Without it a
+    // post-mortem of a same-UID attack can't distinguish a benign filtered send
+    // from a raw control-byte injection — the exact threat this log exists for.
+    const int rawBypass = req.value("raw").toBool(false) ? 1 : 0;
+    // ANTS-5093 — `cmd` is the peer's, so it is escaped: a newline in it
+    // would otherwise start a forged log line (CWE-117).
+    ANTS_LOG(DebugLog::Network,
+             "rc dispatch cmd=%s tab=%d text_bytes=%d raw=%d",
+             qUtf8Printable(DebugLog::escapeForLog(cmd)), tabId, textBytes,
+             rawBypass);
+    if (cmd == QLatin1String("ls")) {
+        return cmdLs();
+    }
+    if (cmd == QLatin1String("send-text")) {
+        return cmdSendText(req);
+    }
+    if (cmd == QLatin1String("new-tab")) {
+        return cmdNewTab(req);
+    }
+    if (cmd == QLatin1String("select-window")) {
+        return cmdSelectWindow(req);
+    }
+    if (cmd == QLatin1String("set-title")) {
+        return cmdSetTitle(req);
+    }
+    if (cmd == QLatin1String("get-text")) {
+        return cmdGetText(req);
+    }
+    if (cmd == QLatin1String("launch")) {
+        return cmdLaunch(req);
+    }
+    if (cmd == QLatin1String("tab-list")) {
+        return cmdTabList();
+    }
+    // ANTS-2049 — e2e inject verbs (socket-only). Gated behind m_e2eMode: on a
+    // normal binary (no --e2e) the gate is false and every inject verb refuses
+    // with code:"e2e_disabled" and posts no event / does no resize/grab
+    // (INV-1). The verbs carry new argument shapes reached via --remote-json.
+    if (cmd == QLatin1String("inject-key")
+            || cmd == QLatin1String("inject-click")
+            || cmd == QLatin1String("resize-window")
+            || cmd == QLatin1String("grab-image")) {
+        if (!m_e2eMode) {
+            QJsonObject o;
+            o["ok"]    = false;
+            o["code"]  = QStringLiteral("e2e_disabled");
+            o["error"] = cmd + QStringLiteral(
+                ": refused — instance not launched with --e2e");
+            return QJsonDocument(o);
+        }
+        if (cmd == QLatin1String("inject-key"))     return cmdInjectKey(req);
+        if (cmd == QLatin1String("inject-click"))   return cmdInjectClick(req);
+        if (cmd == QLatin1String("resize-window"))  return cmdResizeWindow(req);
+        return cmdGrabImage(req);
+    }
+    if (cmd == QLatin1String("roadmap-query")) {
+        // ANTS-1247: thread `req` through so `--remote roadmap-query
+        // status=active` (if a future --remote-status flag lands)
+        // reaches the filter.
+        return cmdRoadmapQuery(req);
+    }
+    if (cmd == QLatin1String("workspace-search")) {
+        // ANTS-1248-INV-4: IPC dispatch entry for the ripgrep wrapper.
+        return cmdWorkspaceSearch(req);
+    }
+    if (cmd == QLatin1String("file-outline")) {
+        // ANTS-1249: IPC dispatch entry for the file outline scanner.
+        return cmdFileOutline(req);
+    }
+    if (cmd == QLatin1String("find-definition")) {
+        // ANTS-1303: IPC dispatch entry for the symbol-definition scanner.
+        return cmdFindDefinition(req);
+    }
+    if (cmd == QLatin1String("find-caller")) {
+        // ANTS-1303: IPC dispatch entry for the symbol-caller scanner.
+        return cmdFindCaller(req);
+    }
+    if (cmd == QLatin1String("similar-code")) {
+        // ANTS-1305: IPC dispatch entry for the shape matcher.
+        return cmdSimilarCode(req);
+    }
+    if (cmd == QLatin1String("git-state")) {
+        // ANTS-1250: IPC dispatch entry for the consolidated git tool.
+        // Inner op-switch lives in cmdGitState.
+        return cmdGitState(req);
+    }
+    if (cmd == QLatin1String("subsystem")) {
+        // ANTS-1251: IPC dispatch entry for the consolidated subsystem
+        // tool. Inner op-switch lives in cmdSubsystem.
+        return cmdSubsystem(req);
+    }
+    QJsonObject e;
+    e["ok"] = false;
+    e["error"] = QStringLiteral("unknown command: %1").arg(cmd);
+    return QJsonDocument(e);
+}
 
 QJsonDocument RemoteControl::cmdLs() {
     QJsonObject out;
@@ -197,45 +590,6 @@ QJsonDocument RemoteControl::cmdGetText(const QJsonObject &req) {
     }
     if (trim.capClamped) out["bytes_cap_clamped"] = true;
     return QJsonDocument(out);
-}
-
-void RemoteControl::enrichLikelyFixes(QJsonArray &errors,
-                                      const QString &root) const {
-    // ANTS-3374 — stitch the diagnose→fix loop: on an undeclared-symbol
-    // diagnostic, resolve the declaring header and attach a `likely_fix`
-    // add_include hint. Dedups by symbol (cascades name the same symbol
-    // repeatedly) and caps distinct header lookups so a wall of errors
-    // can't fan out into an unbounded SymbolQuery tree-walk.
-    if (root.isEmpty() || errors.isEmpty()) return;
-    constexpr int kMaxLookups = 25;
-    // ANTS-5053 — gather the distinct symbols first (up to the cap), then
-    // resolve them in ONE tree walk: a walk per symbol cost seconds on the
-    // GUI thread right after a failed build.
-    QStringList wanted;
-    for (const QJsonValue &v : std::as_const(errors)) {
-        const QString sym = BuildFixHint::undeclaredSymbol(
-            v.toObject().value("message").toString());
-        if (!sym.isEmpty() && !wanted.contains(sym) && wanted.size() < kMaxLookups)
-            wanted << sym;
-    }
-    if (wanted.isEmpty()) return;
-    const QHash<QString, QString> headerBySym =
-        BuildFixHint::resolveHeaders(root, wanted);  // symbol → header ("" = miss)
-    for (int i = 0; i < errors.size(); ++i) {
-        QJsonObject e = errors.at(i).toObject();
-        const QString sym =
-            BuildFixHint::undeclaredSymbol(e.value("message").toString());
-        // Empty for a miss, and for a symbol past the lookup cap.
-        const QString header = headerBySym.value(sym);
-        if (header.isEmpty()) continue;
-        QJsonObject lf;
-        lf["add_include"] = header;
-        lf["defines"]     = sym;
-        const QString at = e.value("file").toString();
-        if (!at.isEmpty()) lf["at"] = at;
-        e["likely_fix"] = lf;
-        errors.replace(i, e);
-    }
 }
 
 QJsonDocument RemoteControl::cmdRecentErrors(const QJsonObject &req) {
@@ -774,716 +1128,6 @@ QJsonDocument RemoteControl::cmdGrabImage(const QJsonObject &req) {
     o["ok"]   = true;
     o["path"] = out;
     return QJsonDocument(o);
-}
-
-// ANTS-1932 — to_status synonym resolver. Maps the natural English words
-// a caller reaches for first (done/wip/todo/maybe …) onto the canonical
-// roadmap_log status. Extracted (ANTS-2126) so the GFM flip path and the
-// pass-headings flip path share one map instead of duplicating it.
-QString rcdetail::rlCanonicalToStatus(const QString &toStatus) {
-    const QString lo = toStatus.toLower();
-    if (lo == QLatin1String("done")     || lo == QLatin1String("complete") ||
-        lo == QLatin1String("completed"))
-        return QStringLiteral("shipped");
-    if (lo == QLatin1String("wip")      || lo == QLatin1String("in_progress"))
-        return QStringLiteral("in-progress");
-    if (lo == QLatin1String("todo")     || lo == QLatin1String("open"))
-        return QStringLiteral("planned");
-    if (lo == QLatin1String("maybe")    || lo == QLatin1String("idea"))
-        return QStringLiteral("considered");
-    return toStatus;
-}
-
-// ============================ ANTS-2126 ============================
-// Pass-headings (`#### Pass N.M`) write handlers. The GFM/ants-v1 write
-// paths route here (instead of returning the ANTS-2031 format_mismatch
-// refusal) when the target roadmap is pass-headings. File-static free
-// functions: each is pure given (req, roadmapPath, markdown) — invoked
-// from inside the member handlers at the format-detection gate, so they
-// need no test seam of their own (the existing *ForTest seams reach them
-// through the gate). The splice/flip primitives live in
-// passheadingwrite.{h,cpp}. See docs/specs/ANTS-2126.md.
-
-// Atomic ROADMAP.md write (QSaveFile). No counter side-effect (INV-10).
-static bool rcAtomicWriteRoadmap(const QString &path, const QString &content) {
-    QSaveFile rw(path);
-    if (!rw.open(QIODevice::WriteOnly | QIODevice::Text)) return false;
-    const QByteArray utf8 = content.toUtf8();
-    return rw.write(utf8) == utf8.size() && rw.commit();
-}
-
-// Validate + render one pass bullet (shared by single + batch append).
-struct PassAppendItem {
-    bool    ok = false;
-    QString code;     // refusal code iff !ok
-    QString error;    // message iff !ok
-    QString block;    // rendered `#### Pass …` block iff ok
-    QString synthId;  // reader-synthesised id iff ok
-};
-// ANTS-4354 — `fallbackPass` is the CALL-level `pass`, used when a bullet
-// carries none. On the single-append path the bullet object IS the request,
-// so nothing changed there. On `append_batch` the bullet is one `bullets[]`
-// item with no `pass` slot, and this function was handed it alone — so every
-// bullet refused bad_args "pass is required", and supplying the top-level
-// `pass` did not help because nothing read it. The refusal was byte-identical
-// either way, which is the shape that reads as "I passed it wrong" and
-// invites retries that cannot work. So append_batch could write NONE on a
-// pass-headings roadmap, not merely all-under-one-heading as the schema
-// suggested.
-//
-// Both halves of the reporter's first option ship: a per-bullet `pass`
-// (mirroring how `stable_id` is already per-bullet under
-// id_strategy:"stable_prefix"), AND the call-level one as the fallback, so a
-// batch of N passes can name N designators or share one.
-static PassAppendItem rcRenderPassBullet(const QJsonObject &b,
-                                         const QString &fallbackPass = {}) {
-    PassAppendItem it;
-    const QString status   = b.value(QStringLiteral("status")).toString();
-    const QString headline = b.value(QStringLiteral("headline")).toString();
-    const QString perBullet = b.value(QStringLiteral("pass")).toString();
-    const QString pass = perBullet.isEmpty() ? fallbackPass : perBullet;
-    QString body           = b.value(QStringLiteral("body")).toString();
-    // INV-3 — status / pass / headline are required; bad_args is the
-    // documented missing/ill-shaped-arg code (ANTS-2128 keeps the GFM
-    // append path's undocumented missing_field out of this new site).
-    if (status.isEmpty()) {
-        it.code = QStringLiteral("bad_args");
-        it.error = QStringLiteral("status is required"); return it;
-    }
-    const QString keyword = PassHeadingWrite::passStatusKeyword(status);
-    if (keyword.isEmpty()) {
-        it.code = QStringLiteral("bad_status");
-        it.error = QStringLiteral("unknown status \"%1\" — expected "
-            "planned / in-progress / shipped / considered / dropped").arg(status);
-        return it;
-    }
-    if (pass.isEmpty()) {
-        it.code = QStringLiteral("bad_args");
-        it.error = QStringLiteral("pass is required on a pass-headings "
-            "roadmap (e.g. \"43.5\" or \"43.5.B\") — set it per bullet, or "
-            "once at the call to share one designator across the batch");
-        return it;
-    }
-    if (!PassHeadingWrite::isValidPassDesignator(pass)) {
-        it.code = QStringLiteral("bad_args");
-        it.error = QStringLiteral("pass \"%1\" is malformed — expected "
-            "^\\d+\\.\\d+(?:\\.[A-Za-z][A-Za-z0-9]*)?$").arg(pass);
-        return it;
-    }
-    if (headline.trimmed().isEmpty()) {
-        it.code = QStringLiteral("bad_args");
-        it.error = QStringLiteral("headline is required"); return it;
-    }
-    QStringList scrubbed;
-    rcScrubLeakedToolXml(body, scrubbed);
-    it.block   = PassHeadingWrite::formatPassBlock(pass, headline, keyword, body);
-    it.synthId = PassHeadingWrite::passIdFromDesignator(pass);
-    it.ok = true;
-    return it;
-}
-
-// Locate `section` in a pass-headings roadmap; emit the GFM-parity
-// bad_case (case-sensitive slug) / bad_section refusal when absent.
-// Returns nullptr + fills *refusal on miss; the section pointer on hit.
-static const RoadmapIndex::Section *rcPassFindSection(
-        const QVector<RoadmapIndex::Section> &index,
-        const QString &section, QJsonDocument *refusal) {
-    const auto *sec = RoadmapIndex::findBySlug(index, section);
-    if (sec) return sec;
-    // Sanitise the echoed slug (≤ 64 B + control-char filter), same
-    // hygiene as the GFM cmdRoadmapLogAppend bad_section path — never
-    // reflect arbitrary caller bytes through the response.
-    QString verbatim = section;
-    if (verbatim.size() > 64) verbatim.truncate(64);
-    for (int i = 0; i < verbatim.size(); ++i) {
-        if (verbatim.at(i).unicode() < 0x20) verbatim[i] = QChar('?');
-    }
-    const QString sectionCi = section.toLower();
-    for (const auto &s : index) {
-        if (s.slug.toLower() == sectionCi && s.slug != section) {
-            QJsonObject e;
-            e["ok"]             = false;
-            e["code"]           = QStringLiteral("bad_case");
-            e["error"]          = QStringLiteral("roadmap_log: section "
-                "slug case mismatch: \"%1\" — did you mean \"%2\"?")
-                    .arg(verbatim, s.slug);
-            e["canonical_slug"] = s.slug;
-            e["format"]         = QStringLiteral("pass-headings");
-            *refusal = QJsonDocument(e);
-            return nullptr;
-        }
-    }
-    QJsonObject e;
-    e["ok"]     = false;
-    e["code"]   = QStringLiteral("bad_section");
-    e["error"]  = QStringLiteral("roadmap_log: unknown section slug "
-        "\"%1\"").arg(verbatim);
-    e["format"] = QStringLiteral("pass-headings");
-    *refusal = QJsonDocument(e);
-    return nullptr;
-}
-
-// ANTS-4117 — does this roadmap separate its pass blocks with a `---` rule?
-// RetroDB's ~200 passes each end in one, so a block appended without it does
-// not close and the next append reads as part of it; that session abandoned
-// the verb and hand-edited three passes. Detect rather than assume: a `---`
-// whose next non-blank line is a `#### Pass` heading is a block separator and
-// nothing else, so a file that does not use them (Ants' own fixtures, and the
-// shape ANTS-2126 § 2.2 renders) sees no change at all.
-static bool rcPassBlocksUseSeparator(const QString &markdown) {
-    const QStringList lines = markdown.split(QChar('\n'));
-    for (int i = 0; i < lines.size(); ++i) {
-        if (lines.at(i).trimmed() != QStringLiteral("---")) continue;
-        for (int j = i + 1; j < lines.size(); ++j) {
-            const QString t = lines.at(j).trimmed();
-            if (t.isEmpty()) continue;
-            if (t.startsWith(QStringLiteral("#### Pass "))) return true;
-            break;  // this `---` is some other rule — keep scanning
-        }
-    }
-    return false;
-}
-
-// Splice `block` (already rendered, no surrounding blanks) at the end of
-// the section body, managing one leading/trailing blank line for layout.
-// Returns the updated body; *headingIdx0 ← 0-based line of the first
-// rendered `####` heading.
-static QString rcSplicePassBlock(const QString &markdown,
-                                 const RoadmapIndex::Section &sec,
-                                 const QString &block, int *headingIdx0) {
-    QStringList lines = markdown.split(QChar('\n'));
-    const int insertAt = sec.lineEnd;  // 0-indexed, exclusive
-    QStringList toInsert;
-    bool leadingBlank = false;
-    if (insertAt > 0 && insertAt <= lines.size() &&
-        !lines.value(insertAt - 1).trimmed().isEmpty()) {
-        toInsert << QString();
-        leadingBlank = true;
-    }
-    toInsert += block.split(QChar('\n'));
-    if (insertAt < lines.size() &&
-        !lines.value(insertAt).trimmed().isEmpty()) {
-        toInsert << QString();
-    }
-    for (int k = toInsert.size() - 1; k >= 0; --k)
-        lines.insert(insertAt, toInsert.at(k));
-    if (headingIdx0) *headingIdx0 = insertAt + (leadingBlank ? 1 : 0);
-    return lines.join(QChar('\n'));
-}
-
-// ANTS-4357 — the pass-headings block has no slot for kind / source / lanes /
-// layman (ANTS-2126 § 2.2), so those fields are correctly DROPPED on this
-// dialect. What was wrong is that the drop was silent: four supplied fields
-// went nowhere with ok:true and nothing in the envelope, so a silent drop and
-// a faithful write were indistinguishable and the only way to learn was to
-// re-read the file. That matters because roadmap-format.md § 3.5 makes `Kind:`
-// and `Layman:` REQUIRED parts of a bullet — an author conforming to the
-// standard supplies them, the writer drops them, and both the author and every
-// later reader believe the roadmap conforms.
-//
-// Echo, do not refuse: dropping them IS correct here, and refusing would make
-// a batch across mixed projects unwritable.
-QJsonArray rcPassIgnoredFields(const QJsonObject &req) {
-    QJsonArray out;
-    for (const char *k : {"kind", "source", "lanes", "layman", "evidence"}) {
-        const QJsonValue v = req.value(QLatin1String(k));
-        const bool present = !v.isUndefined() && !v.isNull() &&
-                             !(v.isString() && v.toString().isEmpty()) &&
-                             !(v.isArray() && v.toArray().isEmpty());
-        if (present) out.append(QLatin1String(k));
-    }
-    return out;
-}
-
-QJsonDocument rcdetail::cmdRoadmapLogPassAppend(
-        const QJsonObject &req, const QString &roadmapPath,
-        const QString &markdown) {
-    auto err = [](const QString &code, const QString &message) {
-        QJsonObject e;
-        e["ok"]     = false;
-        e["code"]   = code;
-        e["error"]  = QStringLiteral("roadmap_log op:\"append\": %1").arg(message);
-        e["format"] = QStringLiteral("pass-headings");
-        return QJsonDocument(e);
-    };
-    const QString section = req.value(QStringLiteral("section")).toString();
-    const PassAppendItem it = rcRenderPassBullet(req);
-    if (!it.ok) return err(it.code, it.error);
-
-    const auto index = RoadmapIndex::buildIndex(markdown);
-    QJsonDocument refusal;
-    const auto *sec = rcPassFindSection(index, section, &refusal);
-    if (!sec) return refusal;
-
-    // ANTS-4117 — close the block the way this file closes its others.
-    QString block = it.block;
-    if (rcPassBlocksUseSeparator(markdown))
-        block += QStringLiteral("\n\n---");
-
-    int headingIdx0 = 0;
-    const QString updated =
-        rcSplicePassBlock(markdown, *sec, block, &headingIdx0);
-
-    if (req.value(QStringLiteral("dry_run")).toBool()) {
-        QJsonObject out;
-        out["ok"]      = true;
-        out["dry_run"] = true;
-        out["id"]      = it.synthId;
-        // ANTS-4116 — echo the roadmap file actually resolved, not a canonical
-        // display name. RetroDB's roadmap is lowercase `roadmap.md`, so
-        // echoing "ROADMAP.md" named a file that does not exist in that repo:
-        // on a case-sensitive filesystem that reads as "the verb is about to
-        // create a second, wrong roadmap", and it cost them the verb.
-        out["file"]    = QFileInfo(roadmapPath).fileName();
-        out["line"]    = headingIdx0 + 1;
-        out["bullet"]  = block;
-        out["bytes"]   = static_cast<qint64>(block.toUtf8().size());
-        out["format"]  = QStringLiteral("pass-headings");
-        const QJsonArray ignored = rcPassIgnoredFields(req);
-        if (!ignored.isEmpty()) out["ignored_fields"] = ignored;  // ANTS-4357
-        return QJsonDocument(out);
-    }
-    if (!rcAtomicWriteRoadmap(roadmapPath, updated))
-        return err(QStringLiteral("roadmap_write_failed"),
-            QStringLiteral("atomic write of \"%1\" failed").arg(roadmapPath));
-
-    QJsonObject out;
-    out["ok"]            = true;
-    out["id"]            = it.synthId;
-    out["file"]          = QFileInfo(roadmapPath).fileName();   // ANTS-4116
-    out["line"]          = headingIdx0 + 1;
-    out["format"]        = QStringLiteral("pass-headings");
-    // ANTS-4117 — echo what was actually rendered, not only its size. The
-    // pass-headings shape is fixed by ANTS-2126 § 2.2 (canonical Status
-    // keyword, body verbatim, no kind/source/lanes/layman slot) and differs
-    // from some projects' house style; a caller who did not dry_run first had
-    // no way to see that until they re-read the file.
-    out["bullet"]        = block;
-    out["bytes_written"] = static_cast<qint64>(block.toUtf8().size());
-    const QJsonArray ignored = rcPassIgnoredFields(req);
-    if (!ignored.isEmpty()) out["ignored_fields"] = ignored;  // ANTS-4357
-    return QJsonDocument(out);
-}
-
-QJsonDocument rcdetail::cmdRoadmapLogPassAppendBatch(
-        const QJsonObject &req, const QString &roadmapPath,
-        const QString &markdown) {
-    const QString section = req.value(QStringLiteral("section")).toString();
-    const QJsonArray bullets = req.value(QStringLiteral("bullets")).toArray();
-
-    const auto index = RoadmapIndex::buildIndex(markdown);
-    QJsonDocument refusal;
-    const auto *sec = rcPassFindSection(index, section, &refusal);
-    if (!sec) return refusal;
-
-    QJsonArray applied, skipped;
-    QStringList renderedBlocks;
-    const bool useSeparator = rcPassBlocksUseSeparator(markdown);  // ANTS-4117
-    for (int i = 0; i < bullets.size(); ++i) {
-        const PassAppendItem it = rcRenderPassBullet(
-            bullets.at(i).toObject(),
-            req.value(QStringLiteral("pass")).toString());   // ANTS-4354
-        if (!it.ok) {
-            QJsonObject s;
-            s["bullet_index"] = i;
-            s["code"]         = it.code;
-            s["error"]        = it.error;
-            skipped.append(s);
-            continue;
-        }
-        const QString block = useSeparator
-            ? it.block + QStringLiteral("\n\n---") : it.block;
-        renderedBlocks << block;
-        QJsonObject a;
-        a["bullet_index"] = i;
-        a["id"]           = it.synthId;
-        a["bullet"]       = block;   // ANTS-4117
-        applied.append(a);
-    }
-
-    auto envelope = [&](qint64 bytesWritten) {
-        QJsonObject out;
-        out["ok"]            = true;
-        out["op"]            = QStringLiteral("append_batch");
-        out["format"]        = QStringLiteral("pass-headings");
-        out["file"]          = QFileInfo(roadmapPath).fileName();   // ANTS-4116
-        out["applied"]       = applied;
-        out["applied_count"] = applied.size();
-        out["skipped"]       = skipped;
-        out["skipped_count"] = skipped.size();
-        if (bytesWritten >= 0) out["bytes_written"] = bytesWritten;
-        return QJsonDocument(out);
-    };
-
-    // INV-14 — an all-invalid batch leaves the file untouched.
-    if (renderedBlocks.isEmpty()) return envelope(-1);
-
-    const QString combined = renderedBlocks.join(QStringLiteral("\n\n"));
-    int headingIdx0 = 0;
-    const QString updated =
-        rcSplicePassBlock(markdown, *sec, combined, &headingIdx0);
-
-    if (req.value(QStringLiteral("dry_run")).toBool()) {
-        QJsonObject out = envelope(-1).object();
-        out["dry_run"] = true;
-        return QJsonDocument(out);
-    }
-    if (!rcAtomicWriteRoadmap(roadmapPath, updated)) {
-        QJsonObject e;
-        e["ok"]     = false;
-        e["code"]   = QStringLiteral("roadmap_write_failed");
-        e["error"]  = QStringLiteral("roadmap_log op:\"append_batch\": "
-            "atomic write of \"%1\" failed").arg(roadmapPath);
-        e["format"] = QStringLiteral("pass-headings");
-        return QJsonDocument(e);
-    }
-    return envelope(static_cast<qint64>(combined.toUtf8().size()));
-}
-
-// Serves op:"flip" AND op:"annotate" (the member gate routes both here,
-// reading op from req — mirrors cmdRoadmapLogFlip).
-QJsonDocument rcdetail::cmdRoadmapLogPassFlip(
-        const QJsonObject &req, const QString &roadmapPath,
-        const QString &markdown) {
-    const bool annotateMode =
-        req.value(QStringLiteral("op")).toString() ==
-            QStringLiteral("annotate");
-    auto err = [&](const QString &code, const QString &message) {
-        QJsonObject e;
-        e["ok"]     = false;
-        e["code"]   = code;
-        e["error"]  = QStringLiteral("roadmap_log op:\"%1\": %2")
-            .arg(annotateMode ? QStringLiteral("annotate")
-                              : QStringLiteral("flip"), message);
-        e["format"] = QStringLiteral("pass-headings");
-        return QJsonDocument(e);
-    };
-    const QString locId = req.value(QStringLiteral("id")).toString();
-    const QString locHeadline =
-        req.value(QStringLiteral("headline")).toString();
-    // INV-3 — a locator is required; a pass is addressed by its
-    // synthesised `PASS-N-M` id or its heading tail.
-    if (locId.isEmpty() && locHeadline.isEmpty())
-        return err(QStringLiteral("bad_args"),
-            QStringLiteral("needs a locator — `id` (PASS-N-M) or `headline`"));
-
-    PassHeadingWrite::WriteResult r;
-    QString toKeyword;
-    if (annotateMode) {
-        QString note = req.value(QStringLiteral("note")).toString();
-        QStringList scrubbed;
-        rcScrubLeakedToolXml(note, scrubbed);
-        // INV-8 — empty note → bad_args (deliberately the documented code,
-        // diverging from the GFM annotate guard's missing_field; ANTS-2128).
-        if (note.isEmpty())
-            return err(QStringLiteral("bad_args"),
-                QStringLiteral("a non-empty `note` is required"));
-        r = PassHeadingWrite::annotatePass(markdown, locId, locHeadline, note);
-    } else {
-        const QString toStatus =
-            req.value(QStringLiteral("to_status")).toString();
-        if (toStatus.isEmpty())
-            return err(QStringLiteral("bad_args"),
-                QStringLiteral("to_status is required"));
-        toKeyword = PassHeadingWrite::passStatusKeyword(
-            rlCanonicalToStatus(toStatus));
-        if (toKeyword.isEmpty())
-            return err(QStringLiteral("bad_status"),
-                QStringLiteral("unknown to_status \"%1\"").arg(toStatus));
-        r = PassHeadingWrite::flipPassStatus(markdown, locId, locHeadline,
-                                             toKeyword);
-    }
-    if (!r.ok)
-        return err(r.code, QStringLiteral("no pass matched the locator"));
-
-    // ANTS-2136 — dry_run preview: the locator resolved and the would-be
-    // markdown is computed; return the preview (located id, target line,
-    // would-be bytes) WITHOUT writing ROADMAP.md. A dry_run that returns
-    // ok:true proves the locator resolves on a pass-headings roadmap —
-    // the exact verification gap RetroDB flagged for flip/annotate.
-    if (req.value(QStringLiteral("dry_run")).toBool()) {
-        QJsonObject out;
-        out["ok"]      = true;
-        out["op"]      = annotateMode ? QStringLiteral("annotate")
-                                       : QStringLiteral("flip");
-        out["dry_run"] = true;
-        out["id"]      = r.matchedId;
-        out["file"]    = QFileInfo(roadmapPath).fileName();   // ANTS-4116
-        out["line"]    = r.headingLine + 1;
-        out["format"]  = QStringLiteral("pass-headings");
-        out["bytes"]   = static_cast<qint64>(r.markdown.toUtf8().size());
-        if (annotateMode) {
-            out["note_appended"] = true;
-            out["note_line"]     = r.changedLine + 1;
-        }
-        return QJsonDocument(out);
-    }
-
-    const qint64 sizeBefore = QFileInfo(roadmapPath).size();   // ANTS-3702
-    if (!rcAtomicWriteRoadmap(roadmapPath, r.markdown))
-        return err(QStringLiteral("roadmap_write_failed"),
-            QStringLiteral("atomic write of \"%1\" failed").arg(roadmapPath));
-
-    QJsonObject out;
-    out["ok"]            = true;
-    out["op"]            = annotateMode ? QStringLiteral("annotate")
-                                        : QStringLiteral("flip");
-    out["id"]            = r.matchedId;
-    out["file"]          = QFileInfo(roadmapPath).fileName();   // ANTS-4116
-    out["line"]          = r.headingLine + 1;
-    out["format"]        = QStringLiteral("pass-headings");
-    rcSetWriteBytes(out, sizeBefore,
-                    static_cast<qint64>(r.markdown.toUtf8().size()));
-    if (annotateMode) {
-        out["note_appended"] = true;
-        out["note_line"]     = r.changedLine + 1;
-    } else {
-        out["to_status"] = toKeyword;
-    }
-    return QJsonDocument(out);
-}
-
-QJsonDocument rcdetail::cmdRoadmapLogPassFlipBatch(
-        const QJsonObject &req, const QString &roadmapPath,
-        const QString &markdown, bool annotateMode) {
-    const QString canon =
-        rlCanonicalToStatus(req.value(QStringLiteral("to_status")).toString());
-    // ANTS-4470 — empty under annotate_batch, and unused there: the gate
-    // refuses a to_status on that op, so there is no status to resolve.
-    const QString keyword = PassHeadingWrite::passStatusKeyword(canon);
-    const QString opName = annotateMode ? QStringLiteral("annotate_batch")
-                                        : QStringLiteral("flip_batch");
-    // to_status is validated canonical at the gate, so keyword is non-empty.
-    const QJsonArray locators = req.value(QStringLiteral("locators")).toArray();
-
-    QString md = markdown;
-    QJsonArray flipped, skipped;
-    for (int i = 0; i < locators.size(); ++i) {
-        const QJsonObject loc = locators.at(i).toObject();
-        const QString locId = loc.value(QStringLiteral("id")).toString();
-        const QString locHeadline =
-            loc.value(QStringLiteral("headline")).toString();
-        if (locId.isEmpty() && locHeadline.isEmpty()) {
-            QJsonObject s;
-            s["locator_index"] = i;
-            s["code"]          = QStringLiteral("missing_field");
-            s["error"]         = QStringLiteral("locator needs one of "
-                "id / headline");
-            skipped.append(s);
-            continue;
-        }
-        QString note = loc.value(QStringLiteral("note")).toString();
-        // ANTS-4470 — an annotate with no note writes nothing; refused per
-        // locator, as on the GFM/ants-v1 batch path.
-        if (annotateMode && note.isEmpty()) {
-            QJsonObject s;
-            s["locator_index"] = i;
-            s["code"]          = QStringLiteral("missing_field");
-            s["error"]         = QStringLiteral("op:\"annotate_batch\" requires "
-                "a non-empty `note` on every locator");
-            skipped.append(s);
-            continue;
-        }
-        // ANTS-4470 — under annotate the status surgery is skipped entirely.
-        // The locator must still RESOLVE, so the note has somewhere to land and
-        // an unmatched locator is still reported; annotatePass is what resolves
-        // it in that case.
-        QString matchedId;
-        if (!annotateMode) {
-            PassHeadingWrite::WriteResult r =
-                PassHeadingWrite::flipPassStatus(md, locId, locHeadline, keyword);
-            if (!r.ok) {
-                QJsonObject s;
-                s["locator_index"] = i;
-                s["code"]          = r.code;
-                s["error"]         = QStringLiteral("locator matched no pass");
-                skipped.append(s);
-                continue;
-            }
-            md = r.markdown;
-            matchedId = r.matchedId;
-        }
-        if (!note.isEmpty()) {
-            QStringList sc;
-            rcScrubLeakedToolXml(note, sc);
-            PassHeadingWrite::WriteResult an =
-                PassHeadingWrite::annotatePass(md, locId, locHeadline, note);
-            if (annotateMode && !an.ok) {
-                QJsonObject s;
-                s["locator_index"] = i;
-                s["code"]          = an.code;
-                s["error"]         = QStringLiteral("locator matched no pass");
-                skipped.append(s);
-                continue;
-            }
-            if (an.ok) {
-                md = an.markdown;
-                if (matchedId.isEmpty()) matchedId = an.matchedId;
-            }
-        }
-        QJsonObject f;
-        f["locator_index"] = i;
-        f["id"]            = matchedId;
-        flipped.append(f);
-    }
-
-    // ANTS-3702 — `before` < 0 means nothing was written (INV-14).
-    auto envelope = [&](qint64 before, qint64 after) {
-        QJsonObject out;
-        out["ok"]            = true;
-        out["op"]            = opName;                       // ANTS-4470
-        out["format"]        = QStringLiteral("pass-headings");
-        out["file"]          = QFileInfo(roadmapPath).fileName();   // ANTS-4116
-        out["flipped"]       = flipped;
-        out["flipped_count"] = flipped.size();
-        out["skipped"]       = skipped;
-        out["skipped_count"] = skipped.size();
-        if (before >= 0) rcSetWriteBytes(out, before, after);
-        return QJsonDocument(out);
-    };
-
-    // INV-14 — nothing applied → file untouched.
-    if (flipped.isEmpty()) return envelope(-1, 0);
-    const qint64 sizeBefore = QFileInfo(roadmapPath).size();   // ANTS-3702
-    if (!rcAtomicWriteRoadmap(roadmapPath, md)) {
-        QJsonObject e;
-        e["ok"]     = false;
-        e["code"]   = QStringLiteral("roadmap_write_failed");
-        e["error"]  = QStringLiteral("roadmap_log op:\"%1\": "
-            "atomic write of \"%2\" failed").arg(opName).arg(roadmapPath);
-        e["format"] = QStringLiteral("pass-headings");
-        return QJsonDocument(e);
-    }
-    return envelope(sizeBefore, static_cast<qint64>(md.toUtf8().size()));
-}
-// ========================== end ANTS-2126 ==========================
-
-// ANTS-1922 — id-ordering for bundles mode. Compares the integer
-// suffix of an ANTS-NNNN id ascending (so ANTS-999 precedes ANTS-1000,
-// which a plain string sort inverts); falls back to a lexicographic
-// compare on the full id for any non-conforming id or an equal suffix.
-// One rule, three call-sites (items[] sort, bundle size-tie-break,
-// bundle_label lowest-id fallback) so the envelope is byte-stable.
-bool rcdetail::rcRoadmapIdLess(const QString &a, const QString &b) {
-    auto suffix = [](const QString &id, bool *ok) -> qlonglong {
-        const int dash = id.lastIndexOf(QLatin1Char('-'));
-        if (dash < 0 || dash + 1 >= id.size()) { *ok = false; return 0; }
-        // ANTS-4500 § 4.4 — step past the synthesis namespace's `S` so a
-        // synthesised id orders by its own number. Without this it falls to the
-        // lexicographic branch below, which puts `-S10000` before `-S9999`.
-        int start = dash + 1;
-        if (id.at(start) == QLatin1Char('S') && start + 1 < id.size())
-            ++start;
-        return id.mid(start).toLongLong(ok);
-    };
-    bool okA = false, okB = false;
-    const qlonglong na = suffix(a, &okA);
-    const qlonglong nb = suffix(b, &okB);
-    if (okA && okB) {
-        if (na != nb) return na < nb;
-        return a < b;   // equal numeric suffix → lexicographic tie-break
-    }
-    return a < b;       // non-conforming id → lexicographic
-}
-
-// ANTS-1922 — scan a (≤2000-char cached) bullet body for the FIRST
-// line carrying a directional gate/blocker marker; return it trimmed
-// then capped to ≤160 chars (empty = no marker). A "line" is the text
-// between `\n` separators. Match is a case-folded substring test per
-// line; the `until` rule additionally requires `lands` or `ships` on
-// the same line, in any order. `blocks ` is deliberately NOT a marker
-// (an item that blocks others is itself actionable, and the bare verb
-// false-fires on prose like "blocks the cursor"). Only `blocked by` and
-// the `until`+(`lands`|`ships`) rule are INV-locked (INV-5); the rest
-// are best-effort. The 2000-char cap is a hard character cut, so a
-// marker past it — or on the line straddling it — is missed (acceptable
-// for v1: gate notes sit near the bullet head by convention).
-QString rcdetail::rcExtractGateNote(const QString &body) {
-    static const QStringList markers = {
-        QStringLiteral("blocked by"), QStringLiteral("gated"),
-        QStringLiteral("depends on"), QStringLiteral("waiting on"),
-        QStringLiteral("parked"),     QStringLiteral("superseded"),
-        // ANTS-3389 — the imperative prose form ("Wait for P10 to close"),
-        // which no -ing/participle marker above catches.
-        QStringLiteral("wait for "),
-    };
-    const QStringList lines = body.split(QLatin1Char('\n'));
-    for (const QString &line : lines) {
-        const QString lower = line.toLower();
-        bool hit = false;
-        for (const QString &m : markers) {
-            if (lower.contains(m)) { hit = true; break; }
-        }
-        if (!hit && lower.contains(QStringLiteral("until ")) &&
-            (lower.contains(QStringLiteral("lands")) ||
-             lower.contains(QStringLiteral("ships")))) {
-            hit = true;
-        }
-        if (hit) {
-            QString note = line.trimmed();
-            if (note.size() > 160) note.truncate(160);
-            return note;
-        }
-    }
-    return QString();
-}
-
-// ANTS-3793 § 2.1 — the owner wrapper. See remotecontrol.h for the contract;
-// the two rules discharged here are § 2.2's first and second, in that order.
-QVector<RoadmapParse::BulletRecord>
-RemoteControl::roadmapBullets(const QString &projectRoot,
-                              RoadmapSource::RoadmapText &text,
-                              bool includeArchive,
-                              RoadmapSource::ReadError *why,
-                              QString *error) const {
-    if (why)
-        *why = RoadmapSource::ReadError::None;
-    if (error)
-        error->clear();
-
-    // A caller with no project root cannot ask the marker anything —
-    // migratedProject() refuses a root it cannot canonicalise, and passing ""
-    // would turn every focused-tab call into a refusal.
-    // ANTS-4884 — callers hand this their caller_cwd, which is at or below the
-    // root the store keys on. Resolve before asking, or a subdirectory caller
-    // reads as an unmigrated project of its own. idFormatFor() below reads
-    // .ants/project.json, which lives at the root, and missed the same way.
-    const QString root = rcProjectRootFor(projectRoot);
-    if (!root.isEmpty()) {
-        // The local rather than `why` directly: a caller that passed nullptr
-        // would otherwise turn rule 2's refusal into a fall-through to
-        // markdown — the silent fallback INV-1 forbids, arriving through an
-        // omitted out-param.
-        RoadmapSource::ReadError openWhy = RoadmapSource::ReadError::None;
-        RoadmapStore *store = roadmapStoreOrNull(&openWhy, error);
-        if (openWhy != RoadmapSource::ReadError::None) {
-            if (why)
-                *why = openWhy;
-            return {};
-        }
-        if (store) {
-            RoadmapSource::ReadError seamWhy = RoadmapSource::ReadError::None;
-            auto records = RoadmapSource::bulletsFor(
-                *store, root, text, includeArchive,
-                &seamWhy, error,
-                ProjectSettings::idFormatFor(root));   // ANTS-3771
-            if (why)
-                *why = seamWhy;
-            if (records)
-                return *records;
-            // nullopt with a reason is a refusal and never a fallback (INV-1);
-            // nullopt with None means "not migrated", which falls through.
-            if (seamWhy != RoadmapSource::ReadError::None)
-                return {};
-        }
-    }
-    // ANTS-3863 — the line that makes the laziness pay. It is reached only when
-    // the project is NOT migrated, which is the one case where the whole file
-    // was always going to be needed.
-    // ANTS-3771 — the same declaration the seam above was given, so the two
-    // outcomes of this function cannot resolve one bullet to two ids (INV-13).
-    return RoadmapParse::parseBullets(
-        text.full(), ProjectSettings::idFormatFor(projectRoot));
 }
 
 // ANTS-4932 § 2.3 — token_usage is terminal-scoped: it reads the terminal's

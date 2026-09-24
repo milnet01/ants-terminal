@@ -177,6 +177,7 @@ TEST(BuildTargetFor, LiveCmakeOwnsALibrarySource) {
     const auto ts = BuildTargets::parse(cm);
     // A library source, so the answer is not test-only. This is the lookup
     // that tells you which archive to link a throwaway probe against.
+    // ANTS-4932 § 2.2 — the window-free engines compile into ants_mcpcore_lib.
     EXPECT_EQ(ownerNames(ts, "src/buildtargets.cpp"),
-              QStringList{"ants_core_lib"});
+              QStringList{"ants_mcpcore_lib"});
 }

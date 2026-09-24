@@ -22,7 +22,7 @@ nothing about that.
 | `GeneratorExpressionWrappedPathsResolve` | `$<$<BOOL:${X}>:src/a.cpp>` yields `src/a.cpp`, because this project's own lists use that form. |
 | `GtestSuitesAreDeduplicatedInOrder` | `TEST`, `TEST_F` and `TEST_P` all count; a suite named twice appears once; first-seen order is preserved; a suite named mid-line or in prose does not count. |
 | `LiveCmakeMapsTheTwoNonObviousBundles` | Against the real `CMakeLists.txt`: `tests/features/cold_eyes_engine/` is owned by `test_audit` and `tests/features/spec_conformance/` by `test_claude` — the two examples ANTS-3745 cites as proof recall does not substitute. |
-| `LiveCmakeOwnsALibrarySource` | Against the real `CMakeLists.txt`: `src/buildtargets.cpp` is owned by `ants_core_lib`, so the verb answers for library sources and not only for tests. |
+| `LiveCmakeOwnsALibrarySource` | Against the real `CMakeLists.txt`: `src/buildtargets.cpp` is owned by `ants_mcpcore_lib`, so the verb answers for library sources and not only for tests. |
 
 ## What is NOT locked
 

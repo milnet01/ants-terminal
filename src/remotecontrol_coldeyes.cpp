@@ -1,6 +1,7 @@
 // ANTS-3833 TU 12/18 — Cold eyes and test verbs.
 #include "remotecontrol.h"
 #include "remotecontrol_internal.h"
+#include "buildfixhint.h"   // ANTS-3374 — enrichLikelyFixes
 #include "buildcache.h"
 #include "pathvalidation.h"
 #include "falseposledger.h"
@@ -1641,6 +1642,47 @@ QJsonObject btErr(const QString &code, const QString &message) {
 }
 
 }  // namespace rcdetail
+
+// ANTS-4932 § 2.2 — moved from TU 2, which went GUI-side: cmdBuildStatus
+// below and TU 2's cmdRecentErrors both call it, and it reads no window.
+void RemoteControl::enrichLikelyFixes(QJsonArray &errors,
+                                      const QString &root) const {
+    // ANTS-3374 — stitch the diagnose→fix loop: on an undeclared-symbol
+    // diagnostic, resolve the declaring header and attach a `likely_fix`
+    // add_include hint. Dedups by symbol (cascades name the same symbol
+    // repeatedly) and caps distinct header lookups so a wall of errors
+    // can't fan out into an unbounded SymbolQuery tree-walk.
+    if (root.isEmpty() || errors.isEmpty()) return;
+    constexpr int kMaxLookups = 25;
+    // ANTS-5053 — gather the distinct symbols first (up to the cap), then
+    // resolve them in ONE tree walk: a walk per symbol cost seconds on the
+    // GUI thread right after a failed build.
+    QStringList wanted;
+    for (const QJsonValue &v : std::as_const(errors)) {
+        const QString sym = BuildFixHint::undeclaredSymbol(
+            v.toObject().value("message").toString());
+        if (!sym.isEmpty() && !wanted.contains(sym) && wanted.size() < kMaxLookups)
+            wanted << sym;
+    }
+    if (wanted.isEmpty()) return;
+    const QHash<QString, QString> headerBySym =
+        BuildFixHint::resolveHeaders(root, wanted);  // symbol → header ("" = miss)
+    for (int i = 0; i < errors.size(); ++i) {
+        QJsonObject e = errors.at(i).toObject();
+        const QString sym =
+            BuildFixHint::undeclaredSymbol(e.value("message").toString());
+        // Empty for a miss, and for a symbol past the lookup cap.
+        const QString header = headerBySym.value(sym);
+        if (header.isEmpty()) continue;
+        QJsonObject lf;
+        lf["add_include"] = header;
+        lf["defines"]     = sym;
+        const QString at = e.value("file").toString();
+        if (!at.isEmpty()) lf["at"] = at;
+        e["likely_fix"] = lf;
+        errors.replace(i, e);
+    }
+}
 
 QJsonDocument RemoteControl::cmdBuildStatus(const QJsonObject &req) {
     const QString rootCanonical = resolveRootCanonical(m_roots, req);
