@@ -6,7 +6,6 @@
 #include "guithread.h"
 #include "projectsettings.h"   // ANTS-3771 — the declared id format
 #include "mcpspill.h"        // ANTS-2094 — read_spill
-#include "mainwindow.h"
 #include "mcpprojection.h"
 #include "paginationengine.h"
 #include "roadmapfoldin.h"
@@ -2926,12 +2925,10 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
         path = findRoadmapUnder(callerCanonical);
     }
     if (path.isEmpty() && callerRaw.isEmpty()) {
-    // ANTS-2132 — MainWindow read on the dispatch worker; marshalled.
-        // nullopt = shutting down: leave `path` empty so the existing
-        // no-roadmap refusal fires, rather than answering from a default.
-        if (const auto p = ants::onGuiThread(
-                [this]() { return m_main->roadmapPathForRemote(); }))
-            path = *p;
+        // ANTS-4932 — the host's fallback roadmap; the provider marshals its
+        // own reads. Empty (no provider, or shutting down) lets the existing
+        // no-roadmap refusal fire rather than answering from a default.
+        if (m_roots) path = m_roots->fallbackRoadmapPath();
     }
     if (path.isEmpty()) {
         // ANTS-4611 — the VERDICT here was always right; the wording
@@ -3781,7 +3778,7 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
             // would spend exactly what that invariant saves.
             RoadmapSource::ReadError srcWhy = RoadmapSource::ReadError::None;
             QString srcErr;
-            QVector<RoadmapDialog::BulletRecord> bullets;
+            QVector<RoadmapParse::BulletRecord> bullets;
             const bool fromStore =
                 roadmapStoreServes(callerCanonical, text, &srcWhy, &srcErr);
             if (srcWhy != RoadmapSource::ReadError::None)
@@ -3836,7 +3833,7 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
             if (!fromStore && bullets.empty()) {
                 const auto whole = RoadmapParse::parseBullets(   // ANTS-3771
                     text.full(), ProjectSettings::idFormatFor(callerCanonical));
-                QVector<RoadmapDialog::BulletRecord> filtered;
+                QVector<RoadmapParse::BulletRecord> filtered;
                 for (const auto &b : whole)
                     if (b.sectionSlug == sec->slug) filtered.append(b);
                 if (!filtered.empty()) bullets = std::move(filtered);
@@ -5071,7 +5068,7 @@ QJsonDocument RemoteControl::cmdRoadmapLog(const QJsonObject &req) {
                            "\"create_section\"").arg(op));
     }
 
-    if (!m_main) {
+    if (!m_roots) {
         return rlErr(QStringLiteral("no_main"),
                      QStringLiteral("roadmap_log: no main window"));
     }

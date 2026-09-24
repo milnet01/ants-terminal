@@ -16,7 +16,7 @@
 #include "mcpprojection.h"
 #include "projectsettings.h"    // ANTS-2160 — .ants/project.json overrides
 #include "resolvedroot.h"
-#include "roadmapdialog.h"
+#include "roadmapparse.h"
 #include "roadmapindex.h"
 #include "markdownscan.h"    // ANTS-4404 — fence extents, shared with the walk
 #include "wrapmatch.h"   // ANTS-4550 — the wrapped-match rule
@@ -77,11 +77,11 @@ namespace rcdetail {
 // next to the rest of the git_state helpers. Every rcdetail block in
 // this TU names the same namespace, so this forward decl resolves at
 // the same `resolveRootCanonical` symbol (ANTS-3833).
-QString resolveRootCanonical(MainWindow *main);
+QString resolveRootCanonical(const ants::RootProvider *roots);
 // ANTS-1391 — read-verb overload: prefer caller_cwd in the request
 // body over the focused-tab default. Definition next to the legacy
 // one below.
-QString resolveRootCanonical(MainWindow *main, const QJsonObject &req);
+QString resolveRootCanonical(const ants::RootProvider *roots, const QJsonObject &req);
 
 // ANTS-4447 — the directories a resolver may probe, nearest first, ending
 // at the closest ancestor holding a `.git`.
@@ -354,7 +354,7 @@ QJsonArray kUnrecognisedFormatExpected() {
 // parseBullets classifies the whole doc as one format, so a single
 // pass-headings record means the file is pass-headings.
 bool rcBulletsArePassHeadings(
-        const QVector<RoadmapDialog::BulletRecord> &parsed) {
+        const QVector<RoadmapParse::BulletRecord> &parsed) {
     for (const auto &rec : parsed) {
         if (rec.format == QStringLiteral("pass-headings")) return true;
     }
@@ -763,7 +763,7 @@ QString rlResolveCounterPrefix(const QString &idPrefixArg,
 // parsed at every call site (preflightBullets), so this is a free in-memory
 // scan. Returns 0 when no id matches `pfx`.
 qint64 rlMaxExistingIdForPrefix(
-        const QVector<RoadmapDialog::BulletRecord> &bullets,
+        const QVector<RoadmapParse::BulletRecord> &bullets,
         const QString &pfx) {
     static const QRegularExpression idRe(
         // ANTS-3492 — digit-led-but-letter-containing prefix (3D_E-0042).
@@ -959,7 +959,7 @@ QString rcHeadlineOneline(const QString &headline) {
 // Omitted when no truncation occurred, keeping the common-case payload
 // lean.
 void rcMaybeEmitHeadlineFull(QJsonObject &o,
-                             const RoadmapDialog::BulletRecord &b) {
+                             const RoadmapParse::BulletRecord &b) {
     if (!b.headlineFull.isEmpty() && b.headlineFull != b.headline) {
         o[QStringLiteral("headline_full")] = b.headlineFull;
     }
@@ -970,7 +970,7 @@ void rcMaybeEmitHeadlineFull(QJsonObject &o,
 // the common-case payload is unchanged. Called from every roadmap_query
 // bullet-fill site (the same posture as the inline `lanes` emit).
 void rcMaybeEmitEvidence(QJsonObject &o,
-                         const RoadmapDialog::BulletRecord &b) {
+                         const RoadmapParse::BulletRecord &b) {
     if (b.evidence.isEmpty()) return;
     QJsonArray ev;
     for (const QString &p : b.evidence) ev.append(p);
@@ -984,7 +984,7 @@ void rcMaybeEmitEvidence(QJsonObject &o,
 // refused on text it had just read. Absent when nothing was composed, so the
 // field's presence is the signal and its absence is not a missing answer.
 void rcMaybeEmitComposedTrailers(QJsonObject &o,
-                                 const RoadmapDialog::BulletRecord &b) {
+                                 const RoadmapParse::BulletRecord &b) {
     if (b.composedTrailers.isEmpty()) return;
     QJsonArray ct;
     for (const QString &k : b.composedTrailers) ct.append(k);
@@ -1836,7 +1836,7 @@ double rcHeadlineJaccard(const QSet<QString> &tokA,
 // don't false-fire. Non-blocking — the verb still appends; the result
 // is an advisory list returned in the success envelope. Top 5 by score.
 QJsonArray rcComputePossibleDuplicates(
-        const QVector<RoadmapDialog::BulletRecord> &existing,
+        const QVector<RoadmapParse::BulletRecord> &existing,
         const QString &newHeadline) {
     const QString normNew = rcNormaliseHeadline(newHeadline);
     if (normNew.isEmpty()) return {};
@@ -2368,8 +2368,9 @@ void applyAntsV1Flip(QStringList &lines, const AntsV1Bullet &b,
 
 }  // namespace rcdetail
 
-RemoteControl::RemoteControl(MainWindow *main, QObject *parent)
-    : QObject(parent), m_main(main) {}
+RemoteControl::RemoteControl(MainWindow *main, QObject *parent,
+                             ants::RootProvider *roots)
+    : QObject(parent), m_main(main), m_roots(roots) {}
 
 void RemoteControl::setVerifyTrustClient(
         std::unique_ptr<VerifyTrust::Client> c) {

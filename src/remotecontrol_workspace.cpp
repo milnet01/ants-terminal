@@ -1,6 +1,7 @@
 // ANTS-3833 TU 7/18 — Workspace and code index verbs.
 #include "remotecontrol.h"
 #include "mutationprobe.h"   // ANTS-4398
+#include "findsources.h"
 #include "remotecontrol_internal.h"
 #include "guithread.h"
 #include "rgdiagnosis.h"   // ANTS-4650 — why rg did not start
@@ -15,12 +16,10 @@
 #include "cochangefamily.h"   // ANTS-3368 — co_change_family pure seam
 #include "claudeintegration.h"
 #include "config.h"    // ANTS-4471 — claude.mcp_feedback_root
-#include "mainwindow.h"
 #include "pathvalidation.h"
 #include "projectsettings.h"   // ANTS-3716 — cited_by's default scope
 #include "falseposledger.h"
 #include "resolvedroot.h"
-#include "terminalwidget.h"
 #include "debuglog.h"
 #include "secureio.h"
 #include <QDir>
@@ -248,12 +247,9 @@ QJsonDocument RemoteControl::cmdWorkspaceSearch(const QJsonObject &req) {
         rootCwd = sentinelRoot;
     } else if (!callerRaw.isEmpty()) {
         rootCwd = callerRaw;
-    // ANTS-2132 — MainWindow read on the dispatch worker; marshalled.
-    } else if (const auto cwd = ants::onGuiThread([this]() -> QString {
-                   auto *t = m_main ? m_main->currentTerminal() : nullptr;
-                   return t ? t->shellCwd() : QString();
-               })) {
-        rootCwd = *cwd;
+    // ANTS-4932 — the host's fallback; the provider marshals its own reads.
+    } else if (m_roots) {
+        rootCwd = m_roots->fallbackRoot();
     }
     if (rootCwd.isEmpty()) rootCwd = QDir::currentPath();
     const QFileInfo rootInfo(rootCwd);
@@ -1273,14 +1269,9 @@ QJsonDocument RemoteControl::cmdCitedBy(const QJsonObject &req) {
         rootCwd = sentinelRoot;
     } else if (!callerRaw.isEmpty()) {
         rootCwd = callerRaw;
-    // ANTS-2132 — MainWindow read on the dispatch worker; marshalled.
-    } else if (m_main) {
-        if (const auto cwd = ants::onGuiThread([this]() -> QString {
-                auto *t = m_main->currentTerminal();
-                return t ? t->shellCwd() : QString();
-            })) {
-            rootCwd = *cwd;
-        }
+    // ANTS-4932 — the host's fallback; the provider marshals its own reads.
+    } else if (m_roots) {
+        rootCwd = m_roots->fallbackRoot();
     }
     if (rootCwd.isEmpty()) rootCwd = QDir::currentPath();
     const QString rootCanonical = QFileInfo(rootCwd).canonicalFilePath();
@@ -1721,7 +1712,7 @@ QJsonDocument RemoteControl::cmdFileOutline(const QJsonObject &req) {
         ants::expandGlobalConfigSentinel(callerRaw);
     const QString rootCanonical =
         !sentinelRoot.isEmpty() ? sentinelRoot
-                                : resolveRootCanonical(m_main, req);
+                                : resolveRootCanonical(m_roots, req);
     if (rootCanonical.isEmpty()) {
         QJsonObject o;
         o["ok"]    = false;
@@ -1868,7 +1859,7 @@ QJsonDocument RemoteControl::cmdMutationProbe(const QJsonObject &req) {
         return QJsonDocument(o);
     };
 
-    const QString rootCanonical = resolveRootCanonical(m_main, req);
+    const QString rootCanonical = resolveRootCanonical(m_roots, req);
     if (rootCanonical.isEmpty())
         return mpErr(QStringLiteral("bad_path"),
                      QStringLiteral("mutation_probe: no focused project"));
@@ -2294,7 +2285,7 @@ QJsonDocument RemoteControl::cmdReadLog(const QJsonObject &req) {
             ants::expandGlobalConfigSentinel(callerRaw);
         const QString rootCanonical =
             !sentinelRoot.isEmpty() ? sentinelRoot
-                                    : resolveRootCanonical(m_main, req);
+                                    : resolveRootCanonical(m_roots, req);
         if (rootCanonical.isEmpty()) {
             QJsonObject o;
             o["ok"]    = false;
@@ -2365,7 +2356,7 @@ QJsonDocument RemoteControl::cmdReadRegion(const QJsonObject &req) {
     const QString sentinelRoot = ants::expandGlobalConfigSentinel(callerRaw);
     const QString rootCanonical =
         !sentinelRoot.isEmpty() ? sentinelRoot
-                                : resolveRootCanonical(m_main, req);
+                                : resolveRootCanonical(m_roots, req);
     if (rootCanonical.isEmpty()) {
         QJsonObject o;
         o["ok"]    = false;
@@ -2416,7 +2407,7 @@ QJsonDocument RemoteControl::cmdReadRegions(const QJsonObject &req) {
     const QString sentinelRoot = ants::expandGlobalConfigSentinel(callerRaw);
     const QString rootCanonical =
         !sentinelRoot.isEmpty() ? sentinelRoot
-                                : resolveRootCanonical(m_main, req);
+                                : resolveRootCanonical(m_roots, req);
     if (rootCanonical.isEmpty()) {
         QJsonObject o;
         o["ok"]    = false;
@@ -2625,7 +2616,7 @@ QJsonDocument RemoteControl::cmdApplyEdits(const QJsonObject &req) {
     const QString sentinelRoot = ants::expandGlobalConfigSentinel(callerRaw);
     const QString rootCanonical =
         !sentinelRoot.isEmpty() ? sentinelRoot
-                                : resolveRootCanonical(m_main, req);
+                                : resolveRootCanonical(m_roots, req);
     if (rootCanonical.isEmpty()) {
         QJsonObject o;
         o["ok"]    = false;
@@ -3541,7 +3532,7 @@ QJsonDocument RemoteControl::cmdCodebaseIndex(const QJsonObject &req) {
     const QString sentinelRoot = ants::expandGlobalConfigSentinel(callerRaw);
     const QString rootCanonical =
         !sentinelRoot.isEmpty() ? sentinelRoot
-                                : resolveRootCanonical(m_main, req);
+                                : resolveRootCanonical(m_roots, req);
     if (rootCanonical.isEmpty()) {
         QJsonObject o;
         o["ok"]    = false;
@@ -3811,7 +3802,7 @@ QJsonDocument RemoteControl::cmdCoChangeFamily(const QJsonObject &req) {
 // Read-only, opens two files at most (the CMake file, and the source when
 // suites are wanted). The parse lives in buildtargets.cpp.
 QJsonDocument RemoteControl::cmdBuildTargetFor(const QJsonObject &req) {
-    const QString rootCanonical = resolveRootCanonical(m_main, req);
+    const QString rootCanonical = resolveRootCanonical(m_roots, req);
     if (rootCanonical.isEmpty()) {
         QJsonObject o;
         o[QStringLiteral("ok")]    = false;
@@ -3926,6 +3917,95 @@ QJsonDocument RemoteControl::cmdBuildTargetFor(const QJsonObject &req) {
                         .arg(buildDir, suites.join(QLatin1Char('|')));
             }
         }
+    }
+    return QJsonDocument(out);
+}
+
+// ANTS-1636 — find_sources. Project-scoped topic-to-files discovery.
+QJsonDocument RemoteControl::cmdFindSources(const QJsonObject &req) {
+    QJsonObject out;
+    // ANTS-3415 — accept `symbol` as an alias for `topic` (fills in only
+    // when `topic` is absent), mirroring the file_outline path/file_path
+    // and workspace_search query/pattern idioms. `topic` stays canonical.
+    QString topic = req.value(QStringLiteral("topic")).toString().trimmed();
+    if (topic.isEmpty())
+        topic = req.value(QStringLiteral("symbol")).toString().trimmed();
+    if (topic.isEmpty()) {
+        out[QStringLiteral("ok")]    = false;
+        out[QStringLiteral("error")] = QStringLiteral(
+            "find_sources: missing or empty \"topic\" (alias: \"symbol\")");
+        out[QStringLiteral("code")]  = QStringLiteral("bad_args");
+        return QJsonDocument(out);
+    }
+
+    // Project root from caller_cwd (Required contract — dispatcher
+    // refuses the empty case upstream). We still resolve to a
+    // canonical path here so the underlying file walk can join paths
+    // safely.
+    const QString callerCwd =
+        req.value(QStringLiteral("caller_cwd")).toString();
+    const QString root = QFileInfo(callerCwd).canonicalFilePath();
+    if (root.isEmpty() || !QFileInfo(root).isDir()) {
+        out[QStringLiteral("ok")]    = false;
+        out[QStringLiteral("error")] = QStringLiteral(
+            "find_sources: caller_cwd does not canonicalise to a directory");
+        out[QStringLiteral("code")]  = QStringLiteral("bad_path");
+        return QJsonDocument(out);
+    }
+
+    FindSources::Options opts;
+    const QJsonValue maxVal = req.value(QStringLiteral("max_results"));
+    if (maxVal.isDouble()) {
+        const int requested = maxVal.toInt();
+        if (requested > 0) opts.maxResults = requested;
+    }
+    const FindSources::Result res =
+        FindSources::findSources(topic, root, opts);
+
+    QJsonArray files;
+    for (const FindSources::FileHit &h : res.files) {
+        QJsonObject f;
+        f[QStringLiteral("path")]  = h.path;
+        f[QStringLiteral("score")] = h.score;
+        f[QStringLiteral("role")]  = h.role;
+        QJsonArray ev;
+        for (const QString &e : h.evidence) ev.append(e);
+        f[QStringLiteral("evidence")] = ev;
+        files.append(f);
+    }
+    QJsonArray unmatched;
+    for (const QString &t : res.unmatchedTerms) unmatched.append(t);
+
+    out[QStringLiteral("ok")]              = true;
+    out[QStringLiteral("files")]           = files;
+    out[QStringLiteral("files_count")]     = static_cast<int>(res.files.size());
+    out[QStringLiteral("unmatched_terms")] = unmatched;
+    out[QStringLiteral("files_scanned")]   = res.filesScanned;
+    out[QStringLiteral("truncated")]       = res.truncated;
+    // ANTS-3435 — an empty result must not read as a genuine "no such code".
+    // find_sources ranks by FILENAME + keyword frequency, so a topic that
+    // leads with a bare symbol name (e.g. "FooBar does X and Y") often
+    // matches nothing here even though the symbol exists. Redirect the caller
+    // to the exact-match verbs rather than letting them conclude absence.
+    // ANTS-3489 — distinguish an EMPTY CANDIDATE SET (files_scanned:0 — no
+    // C/C++ source under the resolved roots) from "scanned but nothing
+    // scored". The former means find_sources is the wrong tool for this
+    // project (a non-C/C++ layout, or code under an undeclared root), not
+    // that the code is absent — so the hint names that cause explicitly.
+    if (files.isEmpty() && res.filesScanned == 0) {
+        out[QStringLiteral("hint")] = QStringLiteral(
+            "scanned 0 files: no C/C++ source found under the project's "
+            "source roots. find_sources ranks C/C++ only — for a Python or "
+            "other-language project use codebase_index / workspace_search. "
+            "If this IS a C/C++ project laid out beyond src/ + tests/, "
+            "declare its source_roots in .ants/project.json "
+            "(project_settings op:init) so the walk can reach it.");
+    } else if (files.isEmpty()) {
+        out[QStringLiteral("hint")] = QStringLiteral(
+            "no files matched by filename/keyword ranking — for a specific "
+            "symbol, try workspace_search (exact string/regex), "
+            "find_definition (where it's defined), or find_caller (call "
+            "sites); find_sources is best for a topical/prose description");
     }
     return QJsonDocument(out);
 }

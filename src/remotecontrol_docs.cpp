@@ -30,7 +30,7 @@ QJsonDocument RemoteControl::cmdDocsIndex(const QJsonObject &req) {
     const QString sentinelRoot = ants::expandGlobalConfigSentinel(callerRaw);
     const QString rootCanonical =
         !sentinelRoot.isEmpty() ? sentinelRoot
-                                : resolveRootCanonical(m_main, req);
+                                : resolveRootCanonical(m_roots, req);
     if (rootCanonical.isEmpty()) {
         QJsonObject o;
         o["ok"]    = false;
@@ -114,7 +114,7 @@ QJsonDocument RemoteControl::cmdDocIntegrity(const QJsonObject &req) {
     const QString sentinelRoot = ants::expandGlobalConfigSentinel(
         req.value(QStringLiteral("caller_cwd")).toString());
     const QString rootCanonical =
-        sentinelRoot.isEmpty() ? resolveRootCanonical(m_main, req) : sentinelRoot;
+        sentinelRoot.isEmpty() ? resolveRootCanonical(m_roots, req) : sentinelRoot;
     if (rootCanonical.isEmpty()) {
         QJsonObject o;
         o[QStringLiteral("ok")]    = false;
@@ -323,7 +323,7 @@ static QSet<QString> docSymbolsRefusalCodes(const QString &rootCanonical) {
 // applied centrally (isEtagSupportedTool). Engine: DocSymbols::scan. See
 // docs/specs/ANTS-3661.md.
 QJsonDocument RemoteControl::cmdDocSymbols(const QJsonObject &req) {
-    const QString rootCanonical = resolveRootCanonical(m_main, req);
+    const QString rootCanonical = resolveRootCanonical(m_roots, req);
     if (rootCanonical.isEmpty()) {
         QJsonObject o;
         o[QStringLiteral("ok")]    = false;
@@ -743,7 +743,7 @@ static QSet<QString> specLintWiredTestDirs(const QString &rootCanonical,
 // `docs_dir`. ETag-304 is applied centrally (isEtagSupportedTool). Engine:
 // SpecLint::check. See docs/specs/ANTS-3662.md.
 QJsonDocument RemoteControl::cmdSpecLint(const QJsonObject &req) {
-    const QString rootCanonical = resolveRootCanonical(m_main, req);
+    const QString rootCanonical = resolveRootCanonical(m_roots, req);
     if (rootCanonical.isEmpty()) {
         QJsonObject o;
         o[QStringLiteral("ok")]    = false;
@@ -1128,7 +1128,7 @@ QJsonObject RemoteControl::specLintBuildResponse(
 // document, so unlike its spec_lint sibling there is no tree walk to default to.
 // Engine: SpecConformance::run. See docs/specs/ANTS-4108-spec-conformance-verb.md.
 QJsonDocument RemoteControl::cmdSpecConformance(const QJsonObject &req) {
-    const QString rootCanonical = resolveRootCanonical(m_main, req);
+    const QString rootCanonical = resolveRootCanonical(m_roots, req);
     if (rootCanonical.isEmpty()) {
         QJsonObject o;
         o[QStringLiteral("ok")]    = false;
@@ -1212,7 +1212,7 @@ QJsonObject RemoteControl::specConformanceBuildResponse(
 // accumulates every document and scores once at the end rather than building a
 // per-document result. See docdedup.h.
 QJsonDocument RemoteControl::cmdDocDedup(const QJsonObject &req) {
-    const QString rootCanonical = resolveRootCanonical(m_main, req);
+    const QString rootCanonical = resolveRootCanonical(m_roots, req);
     if (rootCanonical.isEmpty()) {
         QJsonObject o;
         o[QStringLiteral("ok")]    = false;
@@ -1348,7 +1348,7 @@ QJsonDocument RemoteControl::cmdDocCitations(const QJsonObject &req) {
     const QString sentinelRoot = ants::expandGlobalConfigSentinel(
         req.value(QStringLiteral("caller_cwd")).toString());
     const QString rootCanonical =
-        sentinelRoot.isEmpty() ? resolveRootCanonical(m_main, req) : sentinelRoot;
+        sentinelRoot.isEmpty() ? resolveRootCanonical(m_roots, req) : sentinelRoot;
     const QJsonObject refusal = docCitationsValidate(rootCanonical, req);
     if (!refusal.isEmpty()) return QJsonDocument(refusal);
 
@@ -1534,7 +1534,7 @@ DocCitations::Options RemoteControl::docCitationsClampOptions(const QJsonObject 
 // only non-secret path declarations (contrast the 0600 global config). See
 // docs/specs/ANTS-2161.md.
 QJsonDocument RemoteControl::cmdProjectSettings(const QJsonObject &req) {
-    const QString rootCanonical = resolveRootCanonical(m_main, req);
+    const QString rootCanonical = resolveRootCanonical(m_roots, req);
     const auto err = [](const QString &code, const QString &msg) {
         QJsonObject o;
         o[QStringLiteral("ok")]    = false;
@@ -1861,7 +1861,7 @@ QJsonDocument RemoteControl::cmdProjectSettings(const QJsonObject &req) {
 // one registration entry, so the exclusion cannot be phased in later; it ships
 // unconditional from the first version. No `etag_match` property either.
 QJsonDocument RemoteControl::cmdDocLint(const QJsonObject &req) {
-    const QString rootCanonical = resolveRootCanonical(m_main, req);
+    const QString rootCanonical = resolveRootCanonical(m_roots, req);
     if (rootCanonical.isEmpty()) {
         QJsonObject o;
         o[QStringLiteral("ok")]    = false;

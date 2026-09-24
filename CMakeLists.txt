@@ -754,8 +754,14 @@ set_target_properties(ants_vt_lib PROPERTIES POSITION_INDEPENDENT_CODE ON)
 set(ANTS_MAINWINDOW_SOURCES_REL
     src/mainwindow.cpp
 )
+# ANTS-4932 § 2.3 — the tests' reading set also holds src/mcptoolregistry.cpp:
+# MainWindow::setupClaudeMcpProviders() registers the project-scoped verbs by
+# calling that list, so a wiring test that asks "is verb X registered for the
+# terminal?" must read it. It is NOT a chrome_lib source (claude_lib compiles
+# it); this variable only feeds ANTS_MAINWINDOW_SOURCES.
 list(TRANSFORM ANTS_MAINWINDOW_SOURCES_REL PREPEND "${CMAKE_SOURCE_DIR}/"
      OUTPUT_VARIABLE _ants_mainwindow_abs)
+list(APPEND _ants_mainwindow_abs "${CMAKE_SOURCE_DIR}/src/mcptoolregistry.cpp")
 list(JOIN _ants_mainwindow_abs ";" _ants_mainwindow_joined)
 # Escaped for the reason given beside _ants_rc_joined.
 string(REPLACE ";" "\\;" _ants_mainwindow_joined "${_ants_mainwindow_joined}")
@@ -814,6 +820,8 @@ add_library(ants_claude_lib STATIC
     src/claudetasklistdialog.cpp
     # ANTS-1897 — MCP discoverability via SessionStart hook installer.
     src/mcporientation.cpp
+    # ANTS-4932 § 2.3 — the shared project-scoped verb registration list.
+    src/mcptoolregistry.cpp
 )
 target_link_libraries(ants_claude_lib
     PUBLIC  ants_chrome_lib

@@ -50,7 +50,7 @@ QStringList projectsDirs() {
 QJsonDocument RemoteControl::cmdRunTrace(const QJsonObject &req) {
     // caller_cwd absent is the dispatcher's refusal (CallerCwdContract::Required).
     const QString callerRaw = req.value(QStringLiteral("caller_cwd")).toString();
-    const ants::ResolvedRoot rr = ants::resolveCallerCwdRoot(m_main, callerRaw);
+    const ants::ResolvedRoot rr = ants::resolveCallerCwdRoot(m_roots, callerRaw);
     if (rr.source == ants::ResolvedRoot::Source::Unresolvable || rr.cwd.isEmpty())
         return refuse("no_project",
                       QStringLiteral("run_trace: caller_cwd \"%1\" does not resolve to a "

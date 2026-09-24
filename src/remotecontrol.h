@@ -29,6 +29,7 @@ class QLocalServer;
 class QLocalSocket;
 class QWidget;                 // ANTS-2049 — e2eResolveTarget return type
 class MainWindow;
+namespace ants { class RootProvider; }
 class ClaudeIntegration;
 namespace VerifyTrust { class Client; }
 // ANTS-3793 § 4 — the read seam reaches this header by forward declaration and
@@ -74,7 +75,12 @@ class RemoteControl : public QObject {
     Q_OBJECT
 
 public:
-    explicit RemoteControl(MainWindow *main, QObject *parent = nullptr);
+    // ANTS-4932 § 2.4 — `roots` answers every host read a project-scoped
+    // verb makes (rootprovider.h). The terminal passes its focused-tab
+    // provider; ants-mcpd passes one built on its process cwd and a null
+    // `main`. Null `roots` = no host: the verbs that need one refuse.
+    explicit RemoteControl(MainWindow *main, QObject *parent = nullptr,
+                           ants::RootProvider *roots = nullptr);
     ~RemoteControl() override;
 
     // Start listening. Returns true on success; false if another
@@ -1583,6 +1589,7 @@ private:
     int m_liveConnections = 0;  // ANTS-5093 — see ants::admitLiveConnection
     std::function<bool()> m_windowVisibleProbe;
     MainWindow *m_main;  // non-owning; MainWindow owns us via QObject parent
+    ants::RootProvider *m_roots = nullptr;  // non-owning; ANTS-4932 § 2.4
     bool m_e2eMode = false;  // ANTS-2049 — inject-verb gate (see setE2eMode)
 
     // ANTS-1337 — verify_changes content-trust gate. nullptr by

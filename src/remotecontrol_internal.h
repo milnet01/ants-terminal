@@ -44,7 +44,8 @@
 
 #include "coldeyesengine.h"
 #include "indiereviewengine.h"
-#include "roadmapdialog.h"
+#include "roadmapparse.h"
+#include "rootprovider.h"
 #include "roadmapindex.h"
 // ANTS-3833 commit 1b — the promoted roadmap helpers below take nested types
 // (RoadmapWrite::Result, RoadmapRender::Outcome, RoadmapStore::ItemWrite,
@@ -443,12 +444,12 @@ bool rcLooksLikeRegexButLiteral(const QString &pattern);
 bool rcContainsHtmlEntity(const QString &pattern);
 
 // ---- functions (definitions stay in the .cpp) ----
-QString resolveRootCanonical(MainWindow *main);
+QString resolveRootCanonical(const ants::RootProvider *roots);
 // The two-arg overload. Declared separately and deliberately: the first
 // promotion pass derived this header by SYMBOL NAME, so an overload set with
 // one member already declared read as complete. 45 of the 85 residual errors
 // from the first cut attempt were this one function.
-QString resolveRootCanonical(MainWindow *main, const QJsonObject &req);
+QString resolveRootCanonical(const ants::RootProvider *roots, const QJsonObject &req);
 // `ownerDir` (ANTS-4882, optional) receives the directory the roadmap was found
 // under — the project root the store is keyed on. Cleared when nothing is found.
 QString findRoadmapUnder(const QString &canonicalRoot, QString *ownerDir = nullptr);
@@ -462,7 +463,7 @@ QString findChangelogUnder(const QString &canonicalRoot);
 QString findYamlChangelogUnder(const QString &canonicalRoot);
 const QString &kUnrecognisedFormatHint();
 QJsonArray kUnrecognisedFormatExpected();
-bool rcBulletsArePassHeadings(const QVector<RoadmapDialog::BulletRecord> &parsed);
+bool rcBulletsArePassHeadings(const QVector<RoadmapParse::BulletRecord> &parsed);
 QJsonDocument rcPassHeadingsWriteRefusal(const QString &path, const QString &op);
 void rcSetBodyFields(QJsonObject &o, const QString &body, int cap = kRoadmapQueryBodyCap);
 // ANTS-4904 — `fromEnd` keeps the END of an over-cap body (marker at the
@@ -493,7 +494,7 @@ QString rlDetectStablePrefixId(const QString &markdown, const RoadmapParse::IdFo
 bool rlRoadmapHasAnyBulletId(const QString &markdown, const RoadmapParse::IdFormat &fmt = {});
 QString rlDetectCounterPrefix(const QString &markdown, const RoadmapParse::IdFormat &fmt = {});
 QString rlResolveCounterPrefix(const QString &idPrefixArg, const QString &markdown, const QString &callerCanonical);
-qint64 rlMaxExistingIdForPrefix(const QVector<RoadmapDialog::BulletRecord> &bullets, const QString &pfx);
+qint64 rlMaxExistingIdForPrefix(const QVector<RoadmapParse::BulletRecord> &bullets, const QString &pfx);
 // ANTS-5094 — the highest `^<prefix>-NNNN` caret anchor among `bullets`
 // (prefix compared case-insensitively), 0 when none; floors the GFM flip's
 // anchor counter so a missing or stale .roadmap-counter never re-issues one.
@@ -513,12 +514,12 @@ void rcProjectBulletFields(QJsonArray &arr, const QStringList &keep,
                            QStringList *available = nullptr);
 void rcProjectChangelogHeadlineOnly(QJsonArray &arr);
 QString rcHeadlineOneline(const QString &headline);
-void rcMaybeEmitHeadlineFull(QJsonObject &o, const RoadmapDialog::BulletRecord &b);
-void rcMaybeEmitEvidence(QJsonObject &o, const RoadmapDialog::BulletRecord &b);
+void rcMaybeEmitHeadlineFull(QJsonObject &o, const RoadmapParse::BulletRecord &b);
+void rcMaybeEmitEvidence(QJsonObject &o, const RoadmapParse::BulletRecord &b);
 // ANTS-4813 — names the `body` trailer lines the render composed, so a caller
 // can tell what amend_body can reach. Emitted only when non-empty.
 void rcMaybeEmitComposedTrailers(QJsonObject &o,
-                                 const RoadmapDialog::BulletRecord &b);
+                                 const RoadmapParse::BulletRecord &b);
 bool rcReturnHeadlineOnly(const QJsonObject &req);
 QJsonObject rcCompactBullet(const QString &id, const QString &statusWord, const QString &headline);
 QString rcStatusWord(const QString &emoji);
@@ -560,7 +561,7 @@ QString rcNormaliseHeadline(const QString &raw);
 QString rcStructuralStem(const QString &headline);
 bool rcIsNonconformingIdToken(const QString &tok);
 double rcHeadlineJaccard(const QSet<QString> &tokA, const QSet<QString> &tokB, int minShared = 2);
-QJsonArray rcComputePossibleDuplicates(const QVector<RoadmapDialog::BulletRecord> &existing, const QString &newHeadline);
+QJsonArray rcComputePossibleDuplicates(const QVector<RoadmapParse::BulletRecord> &existing, const QString &newHeadline);
 QString rcGfmCanonicalHeadline(const QString &rawHead);
 QSet<quint64> rcGfmHeadlineMatchHashes(const QString &rawHead, const QString &boldId);
 // ANTS-3771 — `fmt` is the project's DECLARED id format. The WRITE path has
@@ -586,9 +587,9 @@ bool resolveFeedbackPath(const QJsonObject &req, const QString &toolName, QStrin
 QJsonObject gitErr(const char *code, const QString &message, const QByteArray &stderrTail = {});
 bool isValidRange(const QString &range);
 void parseStatusHeader(const QString &headerLine, QJsonObject &out);
-QJsonObject runStatusOp(MainWindow *main, const QJsonObject &req);
-QJsonObject runLogOp(MainWindow *main, const QJsonObject &req);
-QJsonObject runDiffOp(MainWindow *main, const QJsonObject &req);
+QJsonObject runStatusOp(const ants::RootProvider *roots, const QJsonObject &req);
+QJsonObject runLogOp(const ants::RootProvider *roots, const QJsonObject &req);
+QJsonObject runDiffOp(const ants::RootProvider *roots, const QJsonObject &req);
 QByteArray runGit(const QString &root, const QStringList &argv);
 QJsonObject csErr(const QString &code, const QString &message);
 QJsonObject irErr(const QString &code, const QString &message);

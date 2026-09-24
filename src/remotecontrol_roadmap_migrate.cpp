@@ -46,7 +46,7 @@ QJsonDocument RemoteControl::cmdRoadmapMigrate(const QJsonObject &req) {
     // NoMatch (it resolves, but no open tab sits there) is not a refusal:
     // migrating a project you have no terminal open in is legitimate.
     const QString callerRaw = req.value(QStringLiteral("caller_cwd")).toString();
-    const ants::ResolvedRoot rr = ants::resolveCallerCwdRoot(m_main, callerRaw);
+    const ants::ResolvedRoot rr = ants::resolveCallerCwdRoot(m_roots, callerRaw);
     if (rr.source == ants::ResolvedRoot::Source::Unresolvable) {
         QJsonObject e;
         e[QStringLiteral("ok")]    = false;

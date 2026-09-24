@@ -43,13 +43,13 @@ QJsonDocument RemoteControl::cmdGitState(const QJsonObject &req) {
     if (op.isEmpty()) op = QStringLiteral("status");
     if (op == QLatin1String("status")) {
         // ANTS-1391: thread req through so caller_cwd anchors the root.
-        return QJsonDocument(runStatusOp(m_main, req));
+        return QJsonDocument(runStatusOp(m_roots, req));
     }
     if (op == QLatin1String("log")) {
-        return QJsonDocument(runLogOp(m_main, req));
+        return QJsonDocument(runLogOp(m_roots, req));
     }
     if (op == QLatin1String("diff")) {
-        return QJsonDocument(runDiffOp(m_main, req));
+        return QJsonDocument(runDiffOp(m_roots, req));
     }
     return QJsonDocument(gitErr("bad_op",
         QStringLiteral("git_state: \"op\" must be one of "
@@ -287,7 +287,7 @@ QJsonDocument RemoteControl::cmdSubsystem(const QJsonObject &req) {
     }
 
     // ANTS-1391: caller_cwd anchors the root when present.
-    const QString rootCanonical = resolveRootCanonical(m_main, req);
+    const QString rootCanonical = resolveRootCanonical(m_roots, req);
     const QString claudeMdPath  = findClaudeMdForRoot(rootCanonical);
     // ANTS-1292: the module map lives in docs/subsystems.md when present,
     // else falls back to CLAUDE.md (un-migrated projects).
@@ -713,7 +713,7 @@ QJsonDocument RemoteControl::cmdLastAuditSummary(const QJsonObject &req) {
 
     // Discover latest SARIF in {projectRoot}/.audit_cache.
     // ANTS-1391: caller_cwd anchors the root when present.
-    const QString rootCanonical = resolveRootCanonical(m_main, req);
+    const QString rootCanonical = resolveRootCanonical(m_roots, req);
     if (rootCanonical.isEmpty()) {
         return QJsonDocument(lasErr(QStringLiteral("not_audited"),
             QStringLiteral("last_audit_summary: project root unresolved")));
@@ -1107,14 +1107,14 @@ QString readWorkflowStatusLine(const QString &rootCanonical,
 }  // namespace rcdetail
 
 QJsonDocument RemoteControl::cmdCurrentState(const QJsonObject &req) {
-    if (!m_main) {
+    if (!m_roots) {
         return QJsonDocument(csErr(QStringLiteral("no_window"),
             QStringLiteral("current_state: no MainWindow")));
     }
 
     // ANTS-1569 INV-13: anchor on caller_cwd via the same chokepoint
     // every Required tool uses. Empty result → `no_project` refusal.
-    const QString rootCanonical = resolveRootCanonical(m_main, req);
+    const QString rootCanonical = resolveRootCanonical(m_roots, req);
     if (rootCanonical.isEmpty()) {
         return QJsonDocument(csErr(QStringLiteral("no_project"),
             QStringLiteral("current_state: project root unresolved")));
@@ -1292,11 +1292,11 @@ QJsonDocument RemoteControl::cmdCurrentState(const QJsonObject &req) {
 // response body, so the dispatch-layer ETag flips automatically on Settings
 // toggle changes.
 QJsonDocument RemoteControl::cmdModelSwitchStats(const QJsonObject &req) {
-    if (!m_main) {
+    if (!m_roots) {
         return QJsonDocument(csErr(QStringLiteral("no_window"),
             QStringLiteral("model_switch_stats: no MainWindow")));
     }
-    const QString rootCanonical = resolveRootCanonical(m_main, req);
+    const QString rootCanonical = resolveRootCanonical(m_roots, req);
     if (rootCanonical.isEmpty()) {
         return QJsonDocument(csErr(QStringLiteral("no_project"),
             QStringLiteral("model_switch_stats: project root unresolved")));
@@ -1413,11 +1413,11 @@ QJsonDocument RemoteControl::cmdModelSwitchStats(const QJsonObject &req) {
 // build/test caches) into one ≤ 512-byte envelope. ETag-eligible.
 QJsonDocument RemoteControl::cmdSessionBrief(const QJsonObject &req)
 {
-    if (!m_main) {
+    if (!m_roots) {
         return QJsonDocument(csErr(QStringLiteral("no_window"),
             QStringLiteral("session_brief: no MainWindow")));
     }
-    const QString rootCanonical = resolveRootCanonical(m_main, req);
+    const QString rootCanonical = resolveRootCanonical(m_roots, req);
     if (rootCanonical.isEmpty()) {
         return QJsonDocument(csErr(QStringLiteral("no_project"),
             QStringLiteral("session_brief: project root unresolved")));
@@ -1719,11 +1719,11 @@ QJsonObject RemoteControl::buildFeedbackPendingBlock(const QString &rootCanonica
 
 QJsonDocument RemoteControl::cmdSessionOrient(const QJsonObject &req)
 {
-    if (!m_main) {
+    if (!m_roots) {
         return QJsonDocument(csErr(QStringLiteral("no_window"),
             QStringLiteral("session_orient: no MainWindow")));
     }
-    const QString rootCanonical = resolveRootCanonical(m_main, req);
+    const QString rootCanonical = resolveRootCanonical(m_roots, req);
     if (rootCanonical.isEmpty()) {
         return QJsonDocument(csErr(QStringLiteral("no_project"),
             QStringLiteral("session_orient: project root unresolved")));
@@ -2439,7 +2439,7 @@ QJsonDocument RemoteControl::cmdSpecQuery(const QJsonObject &req) {
     if (id.isEmpty() && pathArg.isEmpty()) {
         // ANTS-3360 — no id/path → list mode (spec discovery), the
         // spec-side analogue of roadmap_query mode:section_index.
-        const QString rootCanonical = resolveRootCanonical(m_main, req);
+        const QString rootCanonical = resolveRootCanonical(m_roots, req);
         if (rootCanonical.isEmpty()) {
             return QJsonDocument(sqErr(
                 QStringLiteral("no_project"),
@@ -2480,7 +2480,7 @@ QJsonDocument RemoteControl::cmdSpecQuery(const QJsonObject &req) {
                            "(e.g. 17-emission-model), or pass an explicit "
                            "`path` (ANTS-1906/4810)")));
     }
-    const QString rootCanonical = resolveRootCanonical(m_main, req);
+    const QString rootCanonical = resolveRootCanonical(m_roots, req);
     if (rootCanonical.isEmpty()) {
         return QJsonDocument(sqErr(
             QStringLiteral("no_project"),
@@ -2598,7 +2598,7 @@ QJsonDocument RemoteControl::cmdInvariantCheck(const QJsonObject &req) {
                            "\"paths\") must be a non-empty array of "
                            "project-relative paths")));
     }
-    const QString rootCanonical = resolveRootCanonical(m_main, req);
+    const QString rootCanonical = resolveRootCanonical(m_roots, req);
     if (rootCanonical.isEmpty()) {
         return QJsonDocument(sqErr(
             QStringLiteral("no_project"),
@@ -3108,7 +3108,7 @@ QJsonDocument RemoteControl::cmdTaskPriors(const QJsonObject &req) {
         return QJsonDocument(tpErr(QStringLiteral("bad_args"),
             QStringLiteral("task_priors: missing or empty \"description\"")));
     }
-    const QString rootCanonical = resolveRootCanonical(m_main, req);
+    const QString rootCanonical = resolveRootCanonical(m_roots, req);
     if (rootCanonical.isEmpty()) {
         return QJsonDocument(tpErr(QStringLiteral("no_project"),
             QStringLiteral("task_priors: project root unresolved")));
@@ -3376,7 +3376,7 @@ QJsonDocument RemoteControl::cmdProjectConventions(const QJsonObject &req) {
             QStringLiteral("project_conventions: \"task_type\" must be one "
                            "of feature, bugfix, refactor, docs, test")));
     }
-    const QString rootCanonical = resolveRootCanonical(m_main, req);
+    const QString rootCanonical = resolveRootCanonical(m_roots, req);
     if (rootCanonical.isEmpty()) {
         return QJsonDocument(tpErr(QStringLiteral("no_project"),
             QStringLiteral("project_conventions: project root unresolved")));
@@ -3554,7 +3554,7 @@ QJsonDocument RemoteControl::cmdProjectConventions(const QJsonObject &req) {
 // and parses with TestResCache. See docs/specs/ANTS-1302.md.
 
 QJsonDocument RemoteControl::cmdFocusedTest(const QJsonObject &req) {
-    const QString root = resolveRootCanonical(m_main, req);
+    const QString root = resolveRootCanonical(m_roots, req);
     if (root.isEmpty()) {
         return QJsonDocument(tpErr(QStringLiteral("no_project"),
             QStringLiteral("focused_test: project root unresolved")));
@@ -3866,7 +3866,7 @@ QJsonDocument RemoteControl::cmdFindDefinition(const QJsonObject &req) {
     if (!SymbolQuery::isValidSymbol(symbol)) {
         return QJsonDocument(sqArgErr(QStringLiteral("find_definition")));
     }
-    const QString root = resolveRootCanonical(m_main, req);
+    const QString root = resolveRootCanonical(m_roots, req);
     if (root.isEmpty()) {
         return QJsonDocument(sqNoProject(QStringLiteral("find_definition")));
     }
@@ -3909,7 +3909,7 @@ QJsonDocument RemoteControl::cmdFindCaller(const QJsonObject &req) {
     if (!SymbolQuery::isValidSymbol(symbol)) {
         return QJsonDocument(sqArgErr(QStringLiteral("find_caller")));
     }
-    const QString root = resolveRootCanonical(m_main, req);
+    const QString root = resolveRootCanonical(m_roots, req);
     if (root.isEmpty()) {
         return QJsonDocument(sqNoProject(QStringLiteral("find_caller")));
     }
@@ -4102,7 +4102,7 @@ QJsonDocument RemoteControl::cmdSimilarCode(const QJsonObject &req) {
         SimilarCode::tokenize(shape).isEmpty()) {
         return QJsonDocument(scArgErr());
     }
-    const QString root = resolveRootCanonical(m_main, req);
+    const QString root = resolveRootCanonical(m_roots, req);
     if (root.isEmpty()) {
         return QJsonDocument(scNoProject());
     }

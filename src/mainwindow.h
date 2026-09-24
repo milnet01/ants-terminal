@@ -1,5 +1,6 @@
 #pragma once
 
+#include <memory>
 #include "config.h"
 #include "claudeintegration.h"  // for ClaudeState (member-typed in ANTS-1146 controller; comments below also reference it)
 #include "elidedlabel.h"        // ElidedLabel — status-bar text slots
@@ -32,6 +33,7 @@ class ClaudeAllowlistDialog;
 class ClaudeProjectsDialog;
 class ClaudeTranscriptDialog;
 class ClaudeIntegration;
+#include "rootprovider.h"   // ANTS-4932 — complete type for m_rootProvider
 class ClaudeTabTracker;
 class ClaudeBgTaskTracker;
 class ClaudeStatusBarController;
@@ -547,15 +549,6 @@ private:
     // providers + startHookServer). Split from setupClaudeIntegration
     // because it's not status-bar chrome.
     void setupClaudeMcpProviders();
-    // ANTS-1677 — the handler for an MCP tool that forwards its arguments to
-    // one RemoteControl cmd*() verb. Formerly a local lambda in
-    // setupClaudeMcpProviders(); a member so the carved registration
-    // functions share it. `class QJsonDocument` names Qt's type in place,
-    // because this header includes no QJsonDocument declaration.
-    // ANTS-5086 — `lane` names the worker (ANTS-2132 § 2.10).
-    ClaudeIntegration::RcHandler rcDelegate(
-        class QJsonDocument (RemoteControl::*fn)(const QJsonObject &),
-        ClaudeIntegration::DispatchLane lane = ClaudeIntegration::DispatchLane::Shared);
     void showDiffViewer();
     // Re-check git diff state and enable/disable the Review Changes
     // button accordingly. Async (QProcess) so it never blocks the UI
@@ -701,4 +694,9 @@ private:
     // Remote-control JSON-over-Unix-socket server. Non-owning
     // pointer — MainWindow owns it via QObject parent/child tree.
     RemoteControl *m_remoteControl = nullptr;
+    // ANTS-4932 § 2.4 — answers the project-scoped verbs' host reads
+    // (focused-tab fallback, tab match). Built before m_remoteControl,
+    // which holds it non-owning.
+    static std::unique_ptr<ants::RootProvider> makeRootProvider(const MainWindow *w);
+    std::unique_ptr<ants::RootProvider> m_rootProvider = makeRootProvider(this);
 };

@@ -3761,9 +3761,9 @@ namespace rcdetail {
 // Forward decl — definition in the second anonymous namespace below
 // (it lives next to the rest of the git_state helpers). Both
 // unnamed-namespace blocks in this TU share linkage.
-QString resolveRootCanonical(MainWindow *main);
+QString resolveRootCanonical(const ants::RootProvider *roots);
 // ANTS-1391 — read-verb overload (see top-of-file forward decl).
-QString resolveRootCanonical(MainWindow *main, const QJsonObject &req);
+QString resolveRootCanonical(const ants::RootProvider *roots, const QJsonObject &req);
 // ANTS-1565: default budget raised from 2 s (ANTS-1248) to 5 s — the
 // pre-rg setup (gitignore parse, glob expansion, ANTS-1501 dedup
 // grouping) is a fixed-cost floor that left the original 2 s ceiling

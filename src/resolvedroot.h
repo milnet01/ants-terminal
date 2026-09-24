@@ -19,9 +19,9 @@
 
 #include <QString>
 
-class MainWindow;
-
 namespace ants {
+
+class RootProvider;
 
 struct ResolvedRoot {
     enum class Source {
@@ -35,6 +35,9 @@ struct ResolvedRoot {
         // caller_cwd present but QFileInfo::canonicalFilePath()
         // returned empty (path doesn't exist).
         Unresolvable,
+        // ANTS-4932 § 2.4 — caller_cwd absent, answered by a host with no
+        // tabs (ants-mcpd) from its own process cwd.
+        ServerCwd,
     };
 
     // Canonical FS path. Empty on Source::Unresolvable; empty on
@@ -55,12 +58,12 @@ struct ResolvedRoot {
     std::optional<int> tabIndex;
 };
 
-// Single source of truth. Defined in remotecontrol.cpp next to the
-// existing `resolveRootCanonical` overloads. Pass `callerCwd` as the
-// raw arg (empty string for the absent case); the helper handles
-// canonicalisation and tab matching internally. const-correct
-// because the helper only queries MainWindow.
-ResolvedRoot resolveCallerCwdRoot(const MainWindow *main,
+// Single source of truth. Defined in remotecontrol_feedback.cpp next to
+// the `resolveRootCanonical` overloads. Pass `callerCwd` as the raw arg
+// (empty string for the absent case); the helper handles
+// canonicalisation, and asks `roots` (rootprovider.h, ANTS-4932) for the
+// fallback and the tab match. A null `roots` has no fallback and no tabs.
+ResolvedRoot resolveCallerCwdRoot(const RootProvider *roots,
                                   const QString &callerCwd);
 
 // ANTS-1390 — global Claude config sentinel. Returns canonical

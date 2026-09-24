@@ -57,7 +57,7 @@ QJsonDocument RemoteControl::cmdSessionMessage(const QJsonObject &req) {
     // Required, ANTS-1404), so the only case here is a path that does not
     // resolve to a directory.
     const QString callerRaw = req.value(QStringLiteral("caller_cwd")).toString();
-    const ants::ResolvedRoot rr = ants::resolveCallerCwdRoot(m_main, callerRaw);
+    const ants::ResolvedRoot rr = ants::resolveCallerCwdRoot(m_roots, callerRaw);
     if (rr.source == ants::ResolvedRoot::Source::Unresolvable)
         return refuse("no_project",
                       QStringLiteral("session_message: caller_cwd \"%1\" does "

@@ -18,11 +18,11 @@
 using namespace rcdetail;  // ANTS-3833
 
 QJsonDocument RemoteControl::cmdColdEyesPartition(const QJsonObject &req) {
-    if (!m_main) return QJsonDocument(ceErr(
+    if (!m_roots) return QJsonDocument(ceErr(
         QStringLiteral("no_window"),
         QStringLiteral("cold_eyes_partition: no MainWindow")));
     // ANTS-1391: caller_cwd anchors the root when present.
-    const QString root = resolveRootCanonical(m_main, req);
+    const QString root = resolveRootCanonical(m_roots, req);
     if (root.isEmpty()) return QJsonDocument(ceErr(
         QStringLiteral("no_project"),
         QStringLiteral("cold_eyes_partition: no focused project")));
@@ -121,11 +121,11 @@ QJsonDocument RemoteControl::cmdColdEyesPartition(const QJsonObject &req) {
 }
 
 QJsonDocument RemoteControl::cmdColdEyesBrief(const QJsonObject &req) {
-    if (!m_main) return QJsonDocument(ceErr(
+    if (!m_roots) return QJsonDocument(ceErr(
         QStringLiteral("no_window"),
         QStringLiteral("cold_eyes_brief: no MainWindow")));
     // ANTS-1391: caller_cwd anchors the root when present.
-    const QString root = resolveRootCanonical(m_main, req);
+    const QString root = resolveRootCanonical(m_roots, req);
     if (root.isEmpty()) return QJsonDocument(ceErr(
         QStringLiteral("no_project"),
         QStringLiteral("cold_eyes_brief: no focused project")));
@@ -345,11 +345,11 @@ QJsonDocument RemoteControl::cmdColdEyesBrief(const QJsonObject &req) {
 }
 
 QJsonDocument RemoteControl::cmdColdEyesCrossDocDiff(const QJsonObject &req) {
-    if (!m_main) return QJsonDocument(ceErr(
+    if (!m_roots) return QJsonDocument(ceErr(
         QStringLiteral("no_window"),
         QStringLiteral("cold_eyes_cross_doc_diff: no MainWindow")));
     // ANTS-1391: caller_cwd anchors the root when present.
-    const QString root = resolveRootCanonical(m_main, req);
+    const QString root = resolveRootCanonical(m_roots, req);
     if (root.isEmpty()) return QJsonDocument(ceErr(
         QStringLiteral("no_project"),
         QStringLiteral("cold_eyes_cross_doc_diff: no focused project")));
@@ -433,7 +433,7 @@ QJsonDocument RemoteControl::cmdColdEyesFoldIn(const QJsonObject &req) {
     const RoadmapWriteHold writeHold(req.value(QStringLiteral("caller_cwd")).toString());
     if (!writeHold.held())
         return QJsonDocument(roadmapBusyRefusal(QStringLiteral("cold_eyes_fold_in")));
-    if (!m_main) return QJsonDocument(ceErr(
+    if (!m_roots) return QJsonDocument(ceErr(
         QStringLiteral("no_window"),
         QStringLiteral("cold_eyes_fold_in: no MainWindow")));
     // ANTS-1630: caller-cwd-anchored write. Resolve the ROADMAP root from
@@ -448,7 +448,7 @@ QJsonDocument RemoteControl::cmdColdEyesFoldIn(const QJsonObject &req) {
     const QString callerCwd =
         req.value(QStringLiteral("caller_cwd")).toString();
     const ants::ResolvedRoot rr =
-        ants::resolveCallerCwdRoot(m_main, callerCwd);
+        ants::resolveCallerCwdRoot(m_roots, callerCwd);
     if (rr.cwd.isEmpty() || !QFileInfo(rr.cwd).isDir())
         return QJsonDocument(ceErr(
             QStringLiteral("cwd_bad"),
@@ -639,10 +639,10 @@ QJsonDocument RemoteControl::cmdColdEyesFoldIn(const QJsonObject &req) {
 // Returns the doc's neighbourhood (same-dir siblings, project
 // standards, root contracts) plus a default reviewer-role list.
 QJsonDocument RemoteControl::cmdColdEyesSingleDoc(const QJsonObject &req) {
-    if (!m_main) return QJsonDocument(ceErr(
+    if (!m_roots) return QJsonDocument(ceErr(
         QStringLiteral("no_window"),
         QStringLiteral("cold_eyes_single_doc: no MainWindow")));
-    const QString root = resolveRootCanonical(m_main, req);
+    const QString root = resolveRootCanonical(m_roots, req);
     if (root.isEmpty()) return QJsonDocument(ceErr(
         QStringLiteral("no_project"),
         QStringLiteral("cold_eyes_single_doc: no focused project")));
@@ -712,10 +712,10 @@ QJsonDocument RemoteControl::cmdColdEyesSingleDoc(const QJsonObject &req) {
 // without committing to the cold-eyes vs indie-review framing. Same
 // args, same envelope shape — delegates to the same engine helper.
 QJsonDocument RemoteControl::cmdCrossDocDiff(const QJsonObject &req) {
-    if (!m_main) return QJsonDocument(ceErr(
+    if (!m_roots) return QJsonDocument(ceErr(
         QStringLiteral("no_window"),
         QStringLiteral("cross_doc_diff: no MainWindow")));
-    const QString root = resolveRootCanonical(m_main, req);
+    const QString root = resolveRootCanonical(m_roots, req);
     if (root.isEmpty()) return QJsonDocument(ceErr(
         QStringLiteral("no_project"),
         QStringLiteral("cross_doc_diff: no focused project")));
@@ -848,7 +848,7 @@ QJsonObject smErr(const QString &code, const QString &msg,
 }  // namespace rcdetail
 
 QJsonDocument RemoteControl::cmdSessionMemory(const QJsonObject &req) {
-    if (!m_main) return QJsonDocument(smErr(
+    if (!m_roots) return QJsonDocument(smErr(
         QStringLiteral("no_window"),
         QStringLiteral("session_memory: no MainWindow"),
         QString(), QString()));
@@ -938,7 +938,7 @@ QJsonDocument RemoteControl::cmdSessionMemory(const QJsonObject &req) {
         cwd = canon;
     } else {
         const auto gate = RcGate::checkCallerCwd(
-            resolveRootCanonical(m_main), req,
+            resolveRootCanonical(m_roots), req,
             QStringLiteral("session_memory"));
         if (!gate.ok) {
             QJsonObject env = smErr(gate.errorCode, gate.error,
@@ -1008,7 +1008,7 @@ QJsonDocument RemoteControl::cmdSessionMemory(const QJsonObject &req) {
 // caller_cwd directly. 72 h lazy-TTL purge on every set. 4 KiB cap.
 QJsonDocument RemoteControl::cmdWorkflowState(const QJsonObject &req)
 {
-    if (!m_main) {
+    if (!m_roots) {
         return QJsonDocument(csErr(QStringLiteral("no_window"),
             QStringLiteral("workflow_state: no MainWindow")));
     }
@@ -1105,7 +1105,7 @@ QJsonDocument RemoteControl::cmdWorkflowState(const QJsonObject &req)
     // CLEAR / SET — write ops: enforce RcGate (ANTS-1435).
     // ----------------------------------------------------------------
     const auto gate = RcGate::checkCallerCwd(
-        resolveRootCanonical(m_main), req,
+        resolveRootCanonical(m_roots), req,
         QStringLiteral("workflow_state"));
     if (!gate.ok) return QJsonDocument(RcGate::gateErrorEnvelope(gate));
     const QString cwd = gate.focused;
@@ -1194,7 +1194,7 @@ QJsonDocument RemoteControl::cmdWorkflowState(const QJsonObject &req)
 // → cache write (best-effort). See docs/specs/ANTS-1430.md.
 
 QJsonDocument RemoteControl::cmdProjectLayout(const QJsonObject &req) {
-    if (!m_main) {
+    if (!m_roots) {
         QJsonObject env;
         env["ok"]    = false;
         env["code"]  = QStringLiteral("no_window");
@@ -1643,7 +1643,7 @@ QJsonObject btErr(const QString &code, const QString &message) {
 }  // namespace rcdetail
 
 QJsonDocument RemoteControl::cmdBuildStatus(const QJsonObject &req) {
-    const QString rootCanonical = resolveRootCanonical(m_main, req);
+    const QString rootCanonical = resolveRootCanonical(m_roots, req);
     if (rootCanonical.isEmpty()) {
         return QJsonDocument(btErr(
             QStringLiteral("no_project"),
@@ -1727,7 +1727,7 @@ QJsonDocument RemoteControl::cmdBuildStatus(const QJsonObject &req) {
 }
 
 QJsonDocument RemoteControl::cmdTestResults(const QJsonObject &req) {
-    const QString rootCanonical = resolveRootCanonical(m_main, req);
+    const QString rootCanonical = resolveRootCanonical(m_roots, req);
     if (rootCanonical.isEmpty()) {
         return QJsonDocument(btErr(
             QStringLiteral("no_project"),

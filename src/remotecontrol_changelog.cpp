@@ -987,7 +987,7 @@ QJsonDocument RemoteControl::cmdChangelogLog(const QJsonObject &req) {
             rcRoadmapSourceRefused(srcOut, srcWhy, srcErr);
             return QJsonDocument(srcOut);
         }
-        const RoadmapDialog::BulletRecord *match = nullptr;
+        const RoadmapParse::BulletRecord *match = nullptr;
         for (const auto &cand : bullets) {
             if (cand.id == id) { match = &cand; break; }
         }
@@ -1220,7 +1220,7 @@ struct ClBatchEntryResult {
 
 ClBatchEntryResult resolveClBatchEntry(
         const QJsonObject &e,
-        const QVector<RoadmapDialog::BulletRecord> &roadmapBullets,
+        const QVector<RoadmapParse::BulletRecord> &roadmapBullets,
         bool roadmapPresent) {
     ClBatchEntryResult r;
     const QString summary0 = e.value(QStringLiteral("summary")).toString();
@@ -1261,7 +1261,7 @@ ClBatchEntryResult resolveClBatchEntry(
                 "is present").arg(id0);
             return r;
         }
-        const RoadmapDialog::BulletRecord *match = nullptr;
+        const RoadmapParse::BulletRecord *match = nullptr;
         for (const auto &cand : roadmapBullets) {
             if (cand.id == id0) { match = &cand; break; }
         }
@@ -1398,7 +1398,7 @@ QJsonDocument RemoteControl::cmdChangelogLogAddBatch(const QJsonObject &req) {
     }
 
     // Parse ROADMAP once, only if any entry is id-only (add_from_roadmap).
-    QVector<RoadmapDialog::BulletRecord> roadmapBullets;
+    QVector<RoadmapParse::BulletRecord> roadmapBullets;
     bool roadmapPresent = false;
     bool roadmapNeeded = false;
     for (const QJsonValue &v : entries) {

@@ -19,7 +19,9 @@
 #include <QThread>
 #include <QElapsedTimer>
 #include <QJsonValue>
+#include <QJsonDocument>
 
+#include "mcptoolsink.h"   // ANTS-4932 § 2.3
 #include "tokenusageengine.h"
 // ANTS-3611 — for AuditRunner::kAggregateCapMs. Header-only constant; no
 // link dependency on ants_audit_lib is implied.
@@ -81,8 +83,30 @@ struct ClaudeTranscriptSnapshot {
     QJsonObject toolUseBlock;      // raw tool_use block for updateChangedFiles; empty if N/A
 };
 
+// ANTS-4932 — where MCP replies go. The terminal makes one per connected
+// socket (one request, one reply, then the connection closes); ants-mcpd makes
+// one for stdout that lives the whole session. The pipeline holds it through a
+// QPointer, so a peer that has gone takes its channel with it.
+class McpReplyChannel : public QObject {
+public:
+    using Writer = std::function<void(const QByteArray &line)>;
+    McpReplyChannel(Writer write, std::function<void()> finish,
+                    std::function<bool()> open, QObject *parent = nullptr)
+        : QObject(parent), m_write(std::move(write)),
+          m_finish(std::move(finish)), m_open(std::move(open)) {}
+    bool isOpen() const { return m_open(); }
+    // Writes one reply line, terminator included, and ends the request.
+    void reply(const QByteArray &line) { m_write(line); }
+    // Ends the request with no reply (a JSON-RPC notification).
+    void finish() { m_finish(); }
+private:
+    Writer m_write;
+    std::function<void()> m_finish;
+    std::function<bool()> m_open;
+};
+
 // Comprehensive Claude Code integration for Ants Terminal
-class ClaudeIntegration : public QObject {
+class ClaudeIntegration : public QObject, public mcp::ToolSink {
     Q_OBJECT
 
 public:
@@ -244,46 +268,26 @@ public:
     // for tools dispatched inline (get_session_info, tool_info).
     // registerToolProvider asserts the passed contract matches the
     // static table so drift between call-site and table is loud.
-    using ToolHandler = std::function<QString(const QJsonObject &args)>;
-    enum class CallerCwdContract;
+    // ANTS-4932 § 2.3 — the handler and contract types live in
+    // mcptoolsink.h so the registration list can run against any sink.
+    using ToolHandler = mcp::ToolHandler;
+    using CallerCwdContract = mcp::CallerCwdContract;
+    using DispatchLane = mcp::DispatchLane;
+    using RcHandler = mcp::RcHandler;
+    using DeferredToolHandler = mcp::DeferredToolHandler;
     void registerToolProvider(const QString &name,
                               CallerCwdContract contract,
-                              ToolHandler handler);
-
-    // ANTS-2132 — a handler whose body is known to touch no widget, so the
-    // dispatcher may run it off the GUI thread. Produced by mainwindow.cpp's
-    // rc-delegate factories, whose bodies are nothing but a forward to a
-    // RemoteControl cmd*(); a hand-written inline lambda captures MainWindow
-    // and registers through the ToolHandler overload above, which never
-    // marks one. Directly constructible on purpose, so a test can register an
-    // off-thread verb without an rc factory (spec § 2.4).
-    //
-    // Deliberately NOT implicitly constructible from a ToolHandler: that
-    // would make every inline-lambda registration ambiguous between the two
-    // overloads, and the whole point is that the two are distinguishable.
-    // ANTS-5086 — which worker an off-thread handler runs on (spec § 2.10).
-    // Bulk is a second worker for a verb that holds its thread for seconds, so
-    // the shared worker's other verbs do not queue behind it.
-    enum class DispatchLane { Shared, Bulk };
-    struct RcHandler {
-        ToolHandler fn;
-        bool offThreadEligible = true;
-        DispatchLane lane = DispatchLane::Shared;
-    };
+                              ToolHandler handler) override;
+    // ANTS-2132 — the rc-factory overload: the handler may run off the GUI
+    // thread (see RcHandler in mcptoolsink.h).
     void registerToolProvider(const QString &name,
                               CallerCwdContract contract,
-                              RcHandler handler);
-
-    // ANTS-2132 § 2.8 — a verb that replies later. The handler runs on the GUI
-    // thread, like a bare ToolHandler, and must return promptly. `reply` must
-    // be called exactly once, on the GUI thread, on every path; a second call
-    // writes nothing. Not counted against the dispatch queue cap.
-    using DeferredToolHandler =
-        std::function<void(const QJsonObject &args,
-                           std::function<void(QString)> reply)>;
+                              RcHandler handler) override;
+    // ANTS-2132 § 2.8 — a verb that replies later. Not counted against the
+    // dispatch queue cap.
     void registerToolProvider(const QString &name,
                               CallerCwdContract contract,
-                              DeferredToolHandler handler);
+                              DeferredToolHandler handler) override;
 
     // ANTS-2132 § 2.7 — runs `job` on the dispatch worker, behind any queued
     // MCP job. Counts against the § 2.6 cap until `job` returns. Returns false,
@@ -298,7 +302,7 @@ public:
     // finished later, on the GUI thread, once the handler has run off it.
     // See docs/specs/ANTS-2132-async-mcp-dispatch.md § 2.2.
     struct McpCallContext {
-        QPointer<QLocalSocket> socket;
+        QPointer<McpReplyChannel> socket;   // ANTS-4932 — the reply channel
         QJsonValue    requestId;
         QString       toolName;
         QJsonObject   args;
@@ -332,28 +336,6 @@ public:
     QStringList ignoredArgKeysFor(const QString &toolName,
                                   const QJsonObject &argsObj) const;
 
-    // ANTS-1404 — per-tool caller_cwd contract. Recorded once per
-    // tool at registration time and consulted by the dispatcher
-    // before the provider lambda runs. See docs/specs/ANTS-1404.md.
-    enum class CallerCwdContract {
-        // Anchorable + leaks if absent — refuse with
-        // {ok:false, code:"caller_cwd_required"} when caller_cwd is
-        // empty. Group (Phase 3a): get_git_status, last_audit_summary,
-        // git_state, verify_changes.
-        Required,
-        // Anchor when caller_cwd present, focused-tab fallback when
-        // absent. Survey-from-outside legitimate. Default for
-        // unclassified tools.
-        Optional,
-        // Per-tab reads that route on `tab` index *or* caller_cwd.
-        // Phase 3a classifies but does NOT enforce — the routing-
-        // vs-anchoring overlap with ANTS-1392 needs its own spec
-        // pass.
-        TabSpecific,
-        // No per-tab / per-project state; caller_cwd accepted-and-
-        // ignored. Phase 3a does not enforce.
-        ProcessGlobal,
-    };
 
     // ANTS-3661 — every MCP verb name this build answers to: the registry's
     // keys plus the two dispatched inline (`get_session_info`, `tool_info`),
@@ -362,6 +344,26 @@ public:
     // one resolves nowhere and would be reported forever. Live rather than a
     // static list, so a new verb never becomes a new false candidate.
     QStringList registeredToolNames() const;
+
+    // ANTS-4932 — one complete request line in, its reply written to `out`
+    // (now or later). The socket path and ants-mcpd's stdin both enter here.
+    void handleMcpLine(const QByteArray &line, McpReplyChannel *out);
+
+    // ANTS-4932 § 2.3 / § 2.5 — ants-mcpd only. A verb named in `names` runs
+    // the master, caller_cwd and TabSpecific gates, then goes to `forwarder`
+    // whole; its reply line is emitted unchanged, since the terminal's own
+    // pipeline already rate-limited, cached and wrapped it. A failure comes
+    // back as an envelope and is wrapped like any other refusal.
+    using ForwardReplyFn = std::function<void(const QByteArray &replyLine)>;
+    using ForwardFailFn  = std::function<void(const QString &envelopeJson)>;
+    using Forwarder = std::function<void(const QByteArray &requestLine,
+                                         ForwardReplyFn, ForwardFailFn)>;
+    void setForwarder(const QSet<QString> &names, Forwarder forwarder) {
+        m_forwardedTools = names;
+        m_forwarder = std::move(forwarder);
+    }
+    // ANTS-4932 — serverInfo.name in the initialize reply.
+    void setServerName(const QString &name) { m_serverName = name; }
 
     // ANTS-1404 — return the classification for `toolName`. Static
     // table inside claudeintegration.cpp. ANTS-1520 flipped the
@@ -662,6 +664,10 @@ private slots:
     // idempotent-read cache insert, recordDispatch and the socket write.
     // Every path reaches it with a transformReply result.
     void finishToolDispatch(McpCallContext ctx, ReplyTransform reply);
+    // ANTS-4932 — a parsed request, dispatched by method. Body moved verbatim
+    // out of onMcpConnection's readyRead lambda.
+    void handleMcpRequest(const QJsonDocument &doc, const QByteArray &buf,
+                          const QPointer<McpReplyChannel> &guard);
     // ANTS-2132 — hand a verb to the dispatch worker and return immediately.
     // false = the queue is full and the caller must refuse; the reply is NOT
     // coming. On true the worker runs `handler` and transformReply, then
@@ -671,7 +677,7 @@ private slots:
     // ANTS-2132 — stop accepting work, refuse in-flight GUI marshals, join.
     void shutdownDispatchWorker();
     // ANTS-2132 — the JSON-RPC envelope write, shared by every method.
-    static void sendMcpResponse(const QPointer<QLocalSocket> &socket,
+    static void sendMcpResponse(const QPointer<McpReplyChannel> &socket,
                                 const QJsonValue &requestId,
                                 const QJsonObject *result,
                                 const QJsonObject *error);
@@ -746,6 +752,10 @@ private:
     std::function<bool(const QString &)> m_sessionOwnerProbe;
     // ANTS-1901 — master MCP gate mirror (default true). See setMcpEnabled().
     bool m_mcpEnabled = true;
+    // ANTS-4932 — see setForwarder() / setServerName().
+    QSet<QString> m_forwardedTools;
+    Forwarder m_forwarder;
+    QString m_serverName = QStringLiteral("ants-terminal");
     // ANTS-1253: per-tool providers consolidated into a single
     // name-keyed registry. See registerToolProvider() above.
     // ANTS-1419: value type carries the per-tool CallerCwdContract

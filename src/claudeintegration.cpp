@@ -1409,6 +1409,9 @@ QStringList ClaudeIntegration::registeredToolNames() const {
     out.reserve(static_cast<int>(m_toolProviders.size()) + 2);
     for (const auto &entry : m_toolProviders) out << entry.first;
     out << QStringLiteral("get_session_info") << QStringLiteral("tool_info");
+    // ANTS-4932 — ants-mcpd answers its forwarded verbs too.
+    for (const QString &name : m_forwardedTools)
+        if (!out.contains(name)) out << name;
     return out;
 }
 
@@ -2234,7 +2237,7 @@ void ClaudeIntegration::finishToolDispatch(McpCallContext ctx,
 
 // ANTS-2132 — the JSON-RPC envelope write, shared by every method so the
 // deferred path cannot drift from the synchronous one.
-void ClaudeIntegration::sendMcpResponse(const QPointer<QLocalSocket> &socket,
+void ClaudeIntegration::sendMcpResponse(const QPointer<McpReplyChannel> &socket,
                                         const QJsonValue &requestId,
                                         const QJsonObject *result,
                                         const QJsonObject *error) {
@@ -2242,10 +2245,10 @@ void ClaudeIntegration::sendMcpResponse(const QPointer<QLocalSocket> &socket,
     // via disconnected -> deleteLater. Bail before touching a dangling
     // pointer. ANTS-2132 widens that window: the reply may now be written a
     // whole verb-duration after the request arrived.
-    if (!socket || socket->state() != QLocalSocket::ConnectedState) return;
+    if (!socket || !socket->isOpen()) return;
     // Notifications (no id) must NOT receive a response per JSON-RPC 2.0.
     if (requestId.isUndefined() || requestId.isNull()) {
-        socket->disconnectFromServer();
+        socket->finish();
         return;
     }
     QJsonObject envelope;
@@ -2257,16 +2260,14 @@ void ClaudeIntegration::sendMcpResponse(const QPointer<QLocalSocket> &socket,
     // ANTS-1769 — '\n' end-of-reply terminator; compact JSON carries no raw
     // newline, so it is an unambiguous "reply complete" marker.
     resp.append('\n');
-    socket->write(resp);
-    socket->flush();
-    socket->disconnectFromServer();
+    socket->reply(resp);
 }
 
 // ANTS-5089 — the JSON-RPC error for a complete request line the MCP socket
 // cannot dispatch: -32700 when it does not parse, -32600 when it parses but is
 // not an object. Written here, not through sendMcpResponse, which sends nothing
 // for a null id. Same terminator (ANTS-1769).
-static void writeMcpRequestError(QLocalSocket *socket,
+static void writeMcpRequestError(McpReplyChannel *socket,
                                  const QJsonParseError &parseError) {
     QJsonObject rpcError;
     if (parseError.error != QJsonParseError::NoError) {
@@ -2282,9 +2283,8 @@ static void writeMcpRequestError(QLocalSocket *socket,
     envelope["jsonrpc"] = "2.0";
     envelope["id"]      = QJsonValue(QJsonValue::Null);
     envelope["error"]   = rpcError;
-    socket->write(QJsonDocument(envelope).toJson(QJsonDocument::Compact) + '\n');
-    socket->flush();
-    socket->disconnectFromServer();
+    if (!socket || !socket->isOpen()) return;
+    socket->reply(QJsonDocument(envelope).toJson(QJsonDocument::Compact) + '\n');
 }
 
 void ClaudeIntegration::onMcpConnection() {
@@ -2329,7 +2329,18 @@ void ClaudeIntegration::onMcpConnection() {
         // costs a re-parse of the whole buffer on every readyRead.
         socket->setProperty("_buf", QByteArray());
         socket->setProperty("_handled", false);
-        connect(socket, &QLocalSocket::readyRead, this, [this, socket, idleTimer]() {
+        // ANTS-4932 — the reply channel for this connection: one reply, then
+        // close. A child of the socket, so it dies with it.
+        auto *channel = new McpReplyChannel(
+            [socket](const QByteArray &line) {
+                socket->write(line);
+                socket->flush();
+                socket->disconnectFromServer();
+            },
+            [socket] { socket->disconnectFromServer(); },
+            [socket] { return socket->state() == QLocalSocket::ConnectedState; },
+            socket);
+        connect(socket, &QLocalSocket::readyRead, this, [this, socket, idleTimer, channel]() {
             if (socket->property("_handled").toBool()) return;
             QByteArray buf = socket->property("_buf").toByteArray();
             const qsizetype scanFrom = buf.size();
@@ -2343,31 +2354,39 @@ void ClaudeIntegration::onMcpConnection() {
                 socket->setProperty("_buf", buf);
                 return;
             }
-            QJsonParseError parseError;
-            QJsonDocument doc = QJsonDocument::fromJson(buf.left(newline), &parseError);
-            if (!doc.isObject()) {
-                socket->setProperty("_handled", true);
-                idleTimer->stop();
-                writeMcpRequestError(socket, parseError);
-                return;
-            }
+            // ANTS-4932 — a complete request is in hand. Mark it handled and
+            // stop the 5 s slow-loris idle timer BEFORE dispatching (ANTS-2101:
+            // a dispatch can run a nested event loop, and a still-armed timer
+            // would abort -> deleteLater this socket under it), then hand the
+            // line to the shared entry point.
             socket->setProperty("_handled", true);
-
-            // ANTS-2101 — a complete request is in hand: stop the 5 s
-            // slow-loris idle timer BEFORE dispatching. A tool dispatch
-            // (audit_run et al.) can run a nested event loop that pumps
-            // QProcesses; a still-armed timer would fire timeout ->
-            // socket->abort() -> disconnected -> deleteLater(), and that
-            // deleteLater is processed BY the nested loop — freeing this
-            // socket before the write at the tail. Mirrors the
-            // remotecontrol.cpp ANTS-2026 fix for the identical pattern.
             idleTimer->stop();
-            // Defence in depth: the peer can still disconnect mid-dispatch,
-            // freeing the socket via the same disconnected -> deleteLater
-            // chain. A QPointer lets the post-dispatch write bail instead of
-            // touching a dangling pointer.
-            QPointer<QLocalSocket> guard(socket);
+            handleMcpLine(buf.left(newline), channel);
+        });
+        connect(socket, &QLocalSocket::disconnected, socket, &QObject::deleteLater);
+    }
+}
 
+// ANTS-4932 — the one entry point for a complete request line. The socket
+// path above and ants-mcpd's stdin reader both call it.
+void ClaudeIntegration::handleMcpLine(const QByteArray &line, McpReplyChannel *out) {
+    QJsonParseError parseError;
+    const QJsonDocument doc = QJsonDocument::fromJson(line, &parseError);
+    if (!doc.isObject()) {
+        writeMcpRequestError(out, parseError);
+        return;
+    }
+    handleMcpRequest(doc, line, QPointer<McpReplyChannel>(out));
+}
+
+// ANTS-4932 — the request body below keeps the indentation it had inside
+// onMcpConnection's readyRead lambda, so the move changed no line of it.
+// `buf` is the request line; `guard` is its reply channel.
+void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
+                                         const QByteArray &buf,
+                                         const QPointer<McpReplyChannel> &guard) {
+    {
+        {
             QJsonObject request = doc.object();
             QString method = request.value("method").toString();
             QJsonValue reqId = request.value("id");
@@ -2387,7 +2406,7 @@ void ClaudeIntegration::onMcpConnection() {
                 QJsonObject caps;
                 caps["tools"] = QJsonObject();
                 QJsonObject serverInfo;
-                serverInfo["name"] = "ants-terminal";
+                serverInfo["name"] = m_serverName;  // ANTS-4932 — "ants-mcpd" there
                 serverInfo["version"] = QStringLiteral(ANTS_VERSION);
                 // ANTS-1952 — build identity so a caller can detect a
                 // ship-vs-live binary gap (same SemVer, rebuilt with a fix).
@@ -16492,7 +16511,8 @@ void ClaudeIntegration::onMcpConnection() {
                 const bool toolKnown =
                     toolName == QStringLiteral("get_session_info") ||
                     toolName == QStringLiteral("tool_info") ||
-                    m_toolProviders.find(toolName) != m_toolProviders.end();
+                    m_toolProviders.find(toolName) != m_toolProviders.end() ||
+                    m_forwardedTools.contains(toolName);  // ANTS-4932 § 2.5
                 if (!toolHandled && toolKnown &&
                     contract == CallerCwdContract::Required &&
                     callerCwd.isEmpty()) {
@@ -16632,6 +16652,36 @@ void ClaudeIntegration::onMcpConnection() {
                         toolHandled    = true;
                         dispatchResult = QStringLiteral("tab_or_cwd_required");
                     }
+                }
+                // ANTS-4932 § 2.3 — ants-mcpd forwards a terminal-scoped verb
+                // whole once the gates above have passed it, and emits the
+                // terminal's reply unchanged: rate limit, cache, ETag, fields=
+                // and the wrap all ran in the terminal. A forwarder failure is
+                // a no_terminal envelope, finished like any other refusal.
+                // Never adds a caller_cwd: the request goes as it came (INV-8).
+                if (!toolHandled && m_forwarder &&
+                    m_forwardedTools.contains(toolName)) {
+                    McpCallContext fctx;
+                    fctx.socket         = guard;
+                    fctx.requestId      = reqId;
+                    fctx.toolName       = toolName;
+                    fctx.args           = argsObj;
+                    fctx.requestBytes   = buf.size();
+                    fctx.toolHandled    = true;
+                    fctx.dispatchResult = dispatchResult;
+                    fctx.traceTimer     = mcpTraceTimer;
+                    const QPointer<ClaudeIntegration> self(this);
+                    m_forwarder(buf,
+                        [fctx](const QByteArray &replyLine) {
+                            if (fctx.socket && fctx.socket->isOpen())
+                                fctx.socket->reply(replyLine);
+                        },
+                        [self, fctx](const QString &envelope) {
+                            if (!self) return;
+                            self->finishToolDispatch(
+                                fctx, transformReply(fctx, envelope));
+                        });
+                    return;
                 }
                 // ANTS-1356 — per-tool sliding-window rate-limit.
                 // Runs AFTER caller_cwd_required (a misconfigured
@@ -16951,8 +17001,7 @@ void ClaudeIntegration::onMcpConnection() {
             sendMcpResponse(guard, reqId,
                             haveResult ? &result : nullptr,
                             haveResult ? nullptr : &error);
-        });
-        connect(socket, &QLocalSocket::disconnected, socket, &QObject::deleteLater);
+        }
     }
 }
 

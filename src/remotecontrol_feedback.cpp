@@ -8,12 +8,11 @@
 #include "speclog.h"             // ANTS-1963
 #include "gitwrap.h"
 #include "claudeintegration.h"
-#include "mainwindow.h"
+#include "rootprovider.h"
 #include "pathvalidation.h"
 #include "projectsettings.h"    // ANTS-2160 — .ants/project.json overrides
 #include "falseposledger.h"
 #include "resolvedroot.h"
-#include "terminalwidget.h"
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
@@ -2183,21 +2182,13 @@ bool isValidRange(const QString &range) {
 // focused tab's shellCwd, fall back to QDir::current. Empty string
 // returned when canonicalisation fails (caller maps to bad_path or
 // not_git_repo depending on context).
-QString resolveRootCanonical(MainWindow *main) {
+QString resolveRootCanonical(const ants::RootProvider *roots) {
     QString rootCwd;
-    // ANTS-3725 — `ants::resolveCallerCwdRoot` guards a null MainWindow and
-    // answers EmptyFallback, which routes straight back here and dereferenced
-    // it anyway: the guard defended nothing. Production never passes null, but
-    // it made every verb on this overload untestable at the handler layer
-    // (segfault, not a refusal), which is why several of their tests scrape
-    // source instead of driving the handler. Fall through to the process cwd.
-    // ANTS-2132 — MainWindow read, marshalled: this runs on the dispatch
-    // worker for every off-thread verb that reaches it.
-    const auto focused = ants::onGuiThread([main]() -> QString {
-        auto *t = main ? main->currentTerminal() : nullptr;
-        return t ? t->shellCwd() : QString();
-    });
-    if (focused) rootCwd = *focused;
+    // ANTS-3725 — a null provider falls through to the process cwd rather
+    // than refusing, so every verb on this overload stays testable at the
+    // handler layer. ANTS-4932 — the provider marshals its own reads, so this
+    // is safe on the dispatch worker.
+    if (roots) rootCwd = roots->fallbackRoot();
     if (rootCwd.isEmpty()) rootCwd = QDir::currentPath();
     return QFileInfo(rootCwd).canonicalFilePath();
 }
@@ -2222,14 +2213,16 @@ QString resolveRootCanonical(MainWindow *main) {
 //                                claim; tab-finding is the other
 //                                wrapper's job)
 //   Unresolvable               → empty string
-QString resolveRootCanonical(MainWindow *main, const QJsonObject &req) {
+QString resolveRootCanonical(const ants::RootProvider *roots,
+                             const QJsonObject &req) {
     const QString rawCaller =
         req.value(QStringLiteral("caller_cwd")).toString();
     const ants::ResolvedRoot rr =
-        ants::resolveCallerCwdRoot(main, rawCaller);
+        ants::resolveCallerCwdRoot(roots, rawCaller);
     switch (rr.source) {
         case ants::ResolvedRoot::Source::EmptyFallback:
-            return resolveRootCanonical(main);
+        case ants::ResolvedRoot::Source::ServerCwd:
+            return resolveRootCanonical(roots);
         case ants::ResolvedRoot::Source::ExplicitMatch:
         case ants::ResolvedRoot::Source::NoMatch:
             return rr.cwd;
@@ -2246,37 +2239,25 @@ QString resolveRootCanonical(MainWindow *main, const QJsonObject &req) {
 // ANTS-1401 — Central `caller_cwd` resolution helper. Single source of
 // truth for the four-case decision tree introduced in ANTS-1396 and now
 // shared with `MainWindow::terminalForCaller`,
-// `resolveRootCanonical(main, req)`, the `caller_cwd_info` MCP verb
+// `resolveRootCanonical(roots, req)`, the `caller_cwd_info` MCP verb
 // (ANTS-1400), and the per-tool contract dispatcher (ANTS-1404).
 namespace ants {
 
-ResolvedRoot resolveCallerCwdRoot(const MainWindow *main,
+ResolvedRoot resolveCallerCwdRoot(const RootProvider *roots,
                                   const QString &callerCwd) {
     ResolvedRoot rr;
-    // ANTS-3725 — a null MainWindow (defensive; MCP dispatch always has one)
-    // used to short-circuit here, which threw away an EXPLICIT caller_cwd and
-    // answered EmptyFallback. That is the one case the caller told us the
-    // answer to. What a null window actually costs is the tab walk — nothing
-    // else — so the guard now sits at the two places that need `main`, and an
-    // explicit caller_cwd resolves the same way it always did (Case 3, the
-    // no-open-tab-matches branch). Behaviour with a live MainWindow is
-    // unchanged in all four cases.
+    // ANTS-3725 — a null provider still resolves an EXPLICIT caller_cwd; what
+    // it costs is the fallback and the tab walk, nothing else.
     if (callerCwd.isEmpty()) {
-        // Case 1 — empty caller_cwd → focused fallback.
-        rr.source = ResolvedRoot::Source::EmptyFallback;
-        if (!main) return rr;
-        // ANTS-2132 — both MainWindow reads in ONE marshal, so an off-thread
-        // verb pays a single round-trip rather than one per accessor.
-        const auto focus = ants::onGuiThread([main]() {
-            auto *t = main->focusedTerminal();
-            return QPair<QString, int>(t ? t->shellCwd() : QString(),
-                                       main->currentTabIndexForRemote());
-        });
-        if (focus) {
-            if (!focus->first.isEmpty())
-                rr.cwd = QFileInfo(focus->first).canonicalFilePath();
-            if (focus->second >= 0) rr.tabIndex = focus->second;
-        }
+        // Case 1 — empty caller_cwd → the host's fallback (ANTS-4932 § 2.4:
+        // the focused tab in the terminal, the process cwd in ants-mcpd).
+        rr.source = roots ? roots->fallbackSource()
+                          : ResolvedRoot::Source::EmptyFallback;
+        if (!roots) return rr;
+        const QString fallback = roots->fallbackRoot();
+        if (!fallback.isEmpty())
+            rr.cwd = QFileInfo(fallback).canonicalFilePath();
+        rr.tabIndex = roots->fallbackTab();
         return rr;
     }
     const QString wantCanonical =
@@ -2286,37 +2267,13 @@ ResolvedRoot resolveCallerCwdRoot(const MainWindow *main,
         rr.source = ResolvedRoot::Source::Unresolvable;
         return rr;
     }
-    // INV-5 — deterministic lowest-index tie-break. for-loop walks
-    // indices ascending; first match wins.
-    // ANTS-2132 — snapshot every tab's cwd in ONE marshal, then canonicalise
-    // off-thread. Marshalling per iteration would be a blocking round-trip per
-    // tab; QFileInfo is thread-safe, so only the widget reads need the GUI
-    // thread. Index order is preserved, so INV-5's lowest-index tie-break is
-    // unchanged.
-    QList<QPair<int, QString>> tabs;
-    if (main) {
-        const auto snap = ants::onGuiThread([main]() {
-            QList<QPair<int, QString>> v;
-            for (int i = 0; i < main->tabCount(); ++i) {
-                if (auto *t = main->terminalAtTab(i))
-                    v.append(QPair<int, QString>(i, t->shellCwd()));
-            }
-            return v;
-        });
-        if (snap) tabs = *snap;
-    }
-    for (const auto &entry : tabs) {
-        const int i = entry.first;
-        const QString tabCwd = entry.second;
-        if (tabCwd.isEmpty()) continue;
-        const QString tabCanonical =
-            QFileInfo(tabCwd).canonicalFilePath();
-        if (!tabCanonical.isEmpty() &&
-            tabCanonical == wantCanonical) {
+    // INV-5 — deterministic lowest-index tie-break, owned by the provider.
+    if (roots) {
+        if (const auto tab = roots->tabForCwd(wantCanonical)) {
             // Case 2 — explicit caller_cwd hits an open tab.
             rr.source   = ResolvedRoot::Source::ExplicitMatch;
             rr.cwd      = wantCanonical;
-            rr.tabIndex = i;
+            rr.tabIndex = *tab;
             return rr;
         }
     }
@@ -2400,8 +2357,8 @@ void parseStatusHeader(const QString &headerLine, QJsonObject &out) {
 
 // ANTS-1391: req carries optional caller_cwd; pass-through to the
 // read-verb resolveRootCanonical overload.
-QJsonObject runStatusOp(MainWindow *main, const QJsonObject &req) {
-    const QString rootCanonical = resolveRootCanonical(main, req);
+QJsonObject runStatusOp(const ants::RootProvider *roots, const QJsonObject &req) {
+    const QString rootCanonical = resolveRootCanonical(roots, req);
     if (rootCanonical.isEmpty()) {
         return gitErr("bad_path",
             QStringLiteral("git_state: project root does not exist"));
@@ -2487,9 +2444,9 @@ QJsonObject runStatusOp(MainWindow *main, const QJsonObject &req) {
     return out;
 }
 
-QJsonObject runLogOp(MainWindow *main, const QJsonObject &req) {
+QJsonObject runLogOp(const ants::RootProvider *roots, const QJsonObject &req) {
     // ANTS-1391: prefer caller_cwd when present.
-    const QString rootCanonical = resolveRootCanonical(main, req);
+    const QString rootCanonical = resolveRootCanonical(roots, req);
     if (rootCanonical.isEmpty()) {
         return gitErr("bad_path",
             QStringLiteral("git_state: project root does not exist"));
@@ -2622,9 +2579,9 @@ QJsonObject runLogOp(MainWindow *main, const QJsonObject &req) {
     return out;
 }
 
-QJsonObject runDiffOp(MainWindow *main, const QJsonObject &req) {
+QJsonObject runDiffOp(const ants::RootProvider *roots, const QJsonObject &req) {
     // ANTS-1391: prefer caller_cwd when present.
-    const QString rootCanonical = resolveRootCanonical(main, req);
+    const QString rootCanonical = resolveRootCanonical(roots, req);
     if (rootCanonical.isEmpty()) {
         return gitErr("bad_path",
             QStringLiteral("git_state: project root does not exist"));

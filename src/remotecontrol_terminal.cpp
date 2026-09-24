@@ -9,6 +9,10 @@
 #include "buildfixhint.h"
 #include "passheadingwrite.h"
 #include "terminalwidget.h"
+#include "claudeintegration.h"
+#include "tokenusageengine.h"
+#include "guithread.h"
+#include "debuglog.h"
 #include <QCoreApplication>
 #include <QDir>
 #include <QFileInfo>
@@ -282,7 +286,7 @@ QJsonDocument RemoteControl::cmdRecentErrors(const QJsonObject &req) {
     }
 
     // ANTS-3374 — best-effort add_include hint on undeclared-symbol errors.
-    enrichLikelyFixes(errors, resolveRootCanonical(m_main, req));
+    enrichLikelyFixes(errors, resolveRootCanonical(m_roots, req));
 
     out["ok"]            = true;
     out["errors"]        = errors;
@@ -327,94 +331,6 @@ QJsonDocument RemoteControl::cmdLastSelection(const QJsonObject &req) {
     return QJsonDocument(out);
 }
 
-// ANTS-1636 — find_sources. Project-scoped topic-to-files discovery.
-QJsonDocument RemoteControl::cmdFindSources(const QJsonObject &req) {
-    QJsonObject out;
-    // ANTS-3415 — accept `symbol` as an alias for `topic` (fills in only
-    // when `topic` is absent), mirroring the file_outline path/file_path
-    // and workspace_search query/pattern idioms. `topic` stays canonical.
-    QString topic = req.value(QStringLiteral("topic")).toString().trimmed();
-    if (topic.isEmpty())
-        topic = req.value(QStringLiteral("symbol")).toString().trimmed();
-    if (topic.isEmpty()) {
-        out[QStringLiteral("ok")]    = false;
-        out[QStringLiteral("error")] = QStringLiteral(
-            "find_sources: missing or empty \"topic\" (alias: \"symbol\")");
-        out[QStringLiteral("code")]  = QStringLiteral("bad_args");
-        return QJsonDocument(out);
-    }
-
-    // Project root from caller_cwd (Required contract — dispatcher
-    // refuses the empty case upstream). We still resolve to a
-    // canonical path here so the underlying file walk can join paths
-    // safely.
-    const QString callerCwd =
-        req.value(QStringLiteral("caller_cwd")).toString();
-    const QString root = QFileInfo(callerCwd).canonicalFilePath();
-    if (root.isEmpty() || !QFileInfo(root).isDir()) {
-        out[QStringLiteral("ok")]    = false;
-        out[QStringLiteral("error")] = QStringLiteral(
-            "find_sources: caller_cwd does not canonicalise to a directory");
-        out[QStringLiteral("code")]  = QStringLiteral("bad_path");
-        return QJsonDocument(out);
-    }
-
-    FindSources::Options opts;
-    const QJsonValue maxVal = req.value(QStringLiteral("max_results"));
-    if (maxVal.isDouble()) {
-        const int requested = maxVal.toInt();
-        if (requested > 0) opts.maxResults = requested;
-    }
-    const FindSources::Result res =
-        FindSources::findSources(topic, root, opts);
-
-    QJsonArray files;
-    for (const FindSources::FileHit &h : res.files) {
-        QJsonObject f;
-        f[QStringLiteral("path")]  = h.path;
-        f[QStringLiteral("score")] = h.score;
-        f[QStringLiteral("role")]  = h.role;
-        QJsonArray ev;
-        for (const QString &e : h.evidence) ev.append(e);
-        f[QStringLiteral("evidence")] = ev;
-        files.append(f);
-    }
-    QJsonArray unmatched;
-    for (const QString &t : res.unmatchedTerms) unmatched.append(t);
-
-    out[QStringLiteral("ok")]              = true;
-    out[QStringLiteral("files")]           = files;
-    out[QStringLiteral("files_count")]     = static_cast<int>(res.files.size());
-    out[QStringLiteral("unmatched_terms")] = unmatched;
-    out[QStringLiteral("files_scanned")]   = res.filesScanned;
-    out[QStringLiteral("truncated")]       = res.truncated;
-    // ANTS-3435 — an empty result must not read as a genuine "no such code".
-    // find_sources ranks by FILENAME + keyword frequency, so a topic that
-    // leads with a bare symbol name (e.g. "FooBar does X and Y") often
-    // matches nothing here even though the symbol exists. Redirect the caller
-    // to the exact-match verbs rather than letting them conclude absence.
-    // ANTS-3489 — distinguish an EMPTY CANDIDATE SET (files_scanned:0 — no
-    // C/C++ source under the resolved roots) from "scanned but nothing
-    // scored". The former means find_sources is the wrong tool for this
-    // project (a non-C/C++ layout, or code under an undeclared root), not
-    // that the code is absent — so the hint names that cause explicitly.
-    if (files.isEmpty() && res.filesScanned == 0) {
-        out[QStringLiteral("hint")] = QStringLiteral(
-            "scanned 0 files: no C/C++ source found under the project's "
-            "source roots. find_sources ranks C/C++ only — for a Python or "
-            "other-language project use codebase_index / workspace_search. "
-            "If this IS a C/C++ project laid out beyond src/ + tests/, "
-            "declare its source_roots in .ants/project.json "
-            "(project_settings op:init) so the walk can reach it.");
-    } else if (files.isEmpty()) {
-        out[QStringLiteral("hint")] = QStringLiteral(
-            "no files matched by filename/keyword ranking — for a specific "
-            "symbol, try workspace_search (exact string/regex), "
-            "find_definition (where it's defined), or find_caller (call "
-            "sites); find_sources is best for a topical/prose description");
-    }
-    return QJsonDocument(out);
-}
 
 QJsonDocument RemoteControl::cmdSetTitle(const QJsonObject &req) {
     // Request shape: {"cmd":"set-title","tab":<int optional>,"title":"<string>"}
@@ -528,7 +444,7 @@ QJsonDocument RemoteControl::cmdLaunch(const QJsonObject &req) {
         const bool allowOutside =
             req.value("allow_outside_root").toBool(false);
         if (!allowOutside) {
-            const QString root = resolveRootCanonical(m_main);
+            const QString root = resolveRootCanonical(m_roots);
             if (root.isEmpty()) {
                 QJsonObject errOut;
                 errOut["ok"] = false;
@@ -594,7 +510,7 @@ QJsonDocument RemoteControl::cmdNewTab(const QJsonObject &req) {
         const bool allowOutside =
             req.value("allow_outside_root").toBool(false);
         if (!allowOutside) {
-            const QString root = resolveRootCanonical(m_main);
+            const QString root = resolveRootCanonical(m_roots);
             if (root.isEmpty()) {
                 QJsonObject errOut;
                 errOut["ok"] = false;
@@ -1570,3 +1486,97 @@ RemoteControl::roadmapBullets(const QString &projectRoot,
         text.full(), ProjectSettings::idFormatFor(projectRoot));
 }
 
+// ANTS-4932 § 2.3 — token_usage is terminal-scoped: it reads the terminal's
+// own counters, so its body lives on the GUI side.
+QJsonDocument RemoteControl::cmdTokenUsage(const QJsonObject &req,
+                                           ClaudeIntegration *ci) {
+    // ANTS-1427 — middle checkpoint in the multi-stage MCP audit
+    // trail. Pairs with the lambda-entry log (registerToolProvider
+    // wrapper) and the dispatch-end log (recordDispatch). The
+    // pointer value lets future debug sessions confirm the ci
+    // captured at lambda-registration time is still the same here.
+    ANTS_LOG(DebugLog::Claude,
+             "mcp cmd-enter cmdTokenUsage ci=%p",
+             static_cast<const void *>(ci));
+
+    const bool wantsReset  = req.value(QStringLiteral("reset")).toBool(false);
+    const bool includeZero = req.value(QStringLiteral("include_zero")).toBool(false);
+
+    // Snapshot first; reset (if requested) only AFTER the snapshot
+    // exists in the response — INV-9 (read-and-clear atomicity).
+    const TokenUsageEngine::Snapshot snap = ci->tokenUsageReport(includeZero);
+    // ANTS-3572 — read the persisted aggregate (stored + live session) BEFORE
+    // any reset folds the session into storage, so the fields already include
+    // the session about to be folded (a follow-up call then returns the same
+    // lifetime). m_main is non-owning/non-null by contract; guard defensively.
+    // ANTS-4684 — a REFUSED marshal is not a zero summary. § 2.5 forbids
+    // answering from a default here: the caller would read "no savings" where
+    // the truth is "nobody looked", and this verb exists to report a number.
+    // A null m_main is a DIFFERENT case and still defaults — there is no
+    // window to ask, which is not a refusal.
+    TokenSavingsSummary savings;
+    if (m_main) {
+        const auto got = ants::onGuiThread(
+            [this]() { return m_main->tokenSavingsSummary(); });
+        if (!got) {
+            QJsonObject env;
+            env[QStringLiteral("ok")]    = false;
+            env[QStringLiteral("code")]  = QStringLiteral("gui_read_refused");
+            env[QStringLiteral("error")] = QStringLiteral(
+                "token_usage: the savings read was refused because the "
+                "dispatcher is shutting down — reporting zero would "
+                "understate the total rather than say it is unavailable");
+            return QJsonDocument(env);
+        }
+        savings = *got;
+    }
+    if (wantsReset) {
+        ci->resetTokenUsage();
+    }
+
+    QJsonObject env;
+    env["ok"] = true;
+    env["since"] = QDateTime::fromMSecsSinceEpoch(snap.sinceUnixMs, QTimeZone::utc())
+                       .toString(Qt::ISODate);
+    env["since_unix_ms"] = static_cast<qint64>(snap.sinceUnixMs);
+    env["tools_called"]  = snap.toolsCalled;
+    env["total_saved"]   = static_cast<qint64>(snap.totalSaved);
+    // ANTS-1355 — envelope sum across ALL tools (includes those
+    // filtered out of `calls[]` by include_zero:false).
+    env["total_wrap_bytes"] = static_cast<qint64>(snap.totalWrapBytes);
+    // ANTS-1432 — Σ(failed_bytes_in + failed_bytes_out) across ALL
+    // tools. Net-token-impact for the session is
+    //     total_saved - total_failed_bytes / 4.
+    env["total_failed_bytes"] = static_cast<qint64>(snap.totalFailedBytes);
+    env["reset_performed"] = wantsReset;
+
+    QJsonArray calls;
+    for (const auto &r : snap.calls) {
+        QJsonObject c;
+        c["tool"]              = r.tool;
+        c["n_calls"]           = r.nCalls;
+        c["bytes_in"]          = static_cast<qint64>(r.bytesIn);
+        c["bytes_out"]         = static_cast<qint64>(r.bytesOut);
+        // ANTS-1355 — wrap-overhead + latency breakdown.
+        c["wrap_bytes"]        = static_cast<qint64>(r.wrapBytes);
+        c["duration_us_min"]   = static_cast<qint64>(r.durationUsMin);
+        c["duration_us_max"]   = static_cast<qint64>(r.durationUsMax);
+        c["duration_us_mean"]  = static_cast<qint64>(r.durationUsMean);
+        c["est_tokens_saved"]  = static_cast<qint64>(r.estTokensSaved);
+        // ANTS-1432 — per-tool failure cost. Zero for tools that
+        // have only ever succeeded.
+        c["failed_calls"]      = static_cast<qint64>(r.failedCalls);
+        c["failed_bytes_in"]   = static_cast<qint64>(r.failedBytesIn);
+        c["failed_bytes_out"]  = static_cast<qint64>(r.failedBytesOut);
+        calls.append(c);
+    }
+    env["calls"] = calls;
+    // ANTS-3572 — persisted month / YTD / all-time saved (each = stored + this
+    // session). monthly[] is the folded buckets only, recent-first. Placed
+    // after calls[] (JSON order is immaterial; summary totals follow the detail).
+    env["month_saved"]    = savings.month;
+    env["ytd_saved"]      = savings.ytd;
+    env["lifetime_saved"] = savings.lifetime;
+    env["monthly"]        = savings.monthly;
+    return QJsonDocument(env);
+}

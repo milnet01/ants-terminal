@@ -21,6 +21,8 @@
 #include "remotecontrol.h"
 #include "localsockethub.h"
 #include "resolvedroot.h"      // ANTS-1401 — terminalForCaller helper
+#include "rootprovider.h"      // ANTS-4932 § 2.4
+#include "mcptoolregistry.h"   // ANTS-4932 § 2.3
 #include "secureio.h"          // ANTS-4456 — ensurePrivateDir (0700)
 #include "reviewbuttonstate.h" // ANTS-1874 — Review-button porcelain predicate
 #include "gitwrap.h"           // ANTS-4999 — readOnlyEnvironment for git probes
@@ -239,21 +241,6 @@ void sweepKwinScriptOrphansOnce() {
     }
 }
 
-// ANTS-1400 — stringify `ants::ResolvedRoot::Source` for the
-// `caller_cwd_info` MCP verb envelope. PascalCase mirrors the
-// enum identifiers so the JSON literal and the C++ symbol stay
-// in lock-step. New enum values added in the future require a
-// matching case here; -Wswitch catches the gap at compile time.
-QString sourceToString(ants::ResolvedRoot::Source s) {
-    using S = ants::ResolvedRoot::Source;
-    switch (s) {
-        case S::ExplicitMatch: return QStringLiteral("ExplicitMatch");
-        case S::EmptyFallback: return QStringLiteral("EmptyFallback");
-        case S::NoMatch:       return QStringLiteral("NoMatch");
-        case S::Unresolvable:  return QStringLiteral("Unresolvable");
-    }
-    return QStringLiteral("Unresolvable");  // -Wreturn-type
-}
 
 // ANTS-1357: the literal lives at ClaudeIntegration::kMcpRcUnavailable
 // — shared so the idempotent-read cache can reject the same bytes
@@ -1131,7 +1118,7 @@ MainWindow::MainWindow(bool quakeMode, bool e2eMode, QWidget *parent)
     // ~ClaudeIntegration joins the dispatch worker before RemoteControl is
     // destroyed; an off-thread verb running a cmd*() at teardown still finds
     // it alive. Locked by mcp_verb_offthread_guard INV-7.
-    m_remoteControl = new RemoteControl(this, this);
+    m_remoteControl = new RemoteControl(this, this, m_rootProvider.get());
     // ANTS-5144 — the listener is shared by every window and prefers a
     // visible one when it picks who serves a request.
     m_remoteControl->setWindowVisibleProbe([this] { return isVisible(); });
@@ -3202,6 +3189,68 @@ TerminalWidget *MainWindow::terminalAtTab(int index) const {
 // Callers already null-check the return (verified at the four
 // terminalForCaller call sites in this file:
 // `if (auto *t = terminalForCaller(...))` or `if (!t) return {};`).
+// ANTS-4932 § 2.4 — the terminal's root provider. Every read is of tab
+// state, so each one marshals to the GUI thread: the verbs that call it run
+// on the dispatch worker. A refused marshal (shutdown) answers "nothing".
+namespace {
+class MainWindowRootProvider final : public ants::RootProvider {
+public:
+    explicit MainWindowRootProvider(const MainWindow *w) : m_w(w) {}
+    QString fallbackRoot() const override {
+        const MainWindow *w = m_w;
+        const auto cwd = ants::onGuiThread([w]() -> QString {
+            auto *t = w->focusedTerminal();
+            return t ? t->shellCwd() : QString();
+        });
+        return cwd ? *cwd : QString();
+    }
+    QString fallbackRoadmapPath() const override {
+        const MainWindow *w = m_w;
+        const auto p = ants::onGuiThread(
+            [w]() { return w->roadmapPathForRemote(); });
+        return p ? *p : QString();
+    }
+    std::optional<int> fallbackTab() const override {
+        const MainWindow *w = m_w;
+        const auto i = ants::onGuiThread(
+            [w]() { return w->currentTabIndexForRemote(); });
+        if (i && *i >= 0) return *i;
+        return std::nullopt;
+    }
+    ants::ResolvedRoot::Source fallbackSource() const override {
+        return ants::ResolvedRoot::Source::EmptyFallback;
+    }
+    std::optional<int> tabForCwd(const QString &canonical) const override {
+        // ANTS-2132 — snapshot every tab's cwd in ONE marshal, then
+        // canonicalise here: QFileInfo is thread-safe, the widget reads are
+        // not. Index order is kept, so INV-5's lowest-index tie-break holds.
+        const MainWindow *w = m_w;
+        const auto snap = ants::onGuiThread([w]() {
+            QList<QPair<int, QString>> v;
+            for (int i = 0; i < w->tabCount(); ++i) {
+                if (auto *t = w->terminalAtTab(i))
+                    v.append(QPair<int, QString>(i, t->shellCwd()));
+            }
+            return v;
+        });
+        if (!snap) return std::nullopt;
+        for (const auto &entry : *snap) {
+            if (entry.second.isEmpty()) continue;
+            const QString c = QFileInfo(entry.second).canonicalFilePath();
+            if (!c.isEmpty() && c == canonical) return entry.first;
+        }
+        return std::nullopt;
+    }
+private:
+    const MainWindow *m_w;
+};
+}  // namespace
+
+std::unique_ptr<ants::RootProvider> MainWindow::makeRootProvider(
+        const MainWindow *w) {
+    return std::make_unique<MainWindowRootProvider>(w);
+}
+
 TerminalWidget *MainWindow::terminalForCaller(const QString &callerCwd) const {
     // ANTS-1401 — single source of truth. The four-case decision tree
     // ANTS-1396 introduced now lives in `ants::resolveCallerCwdRoot`
@@ -3209,9 +3258,10 @@ TerminalWidget *MainWindow::terminalForCaller(const QString &callerCwd) const {
     // `resolveRootCanonical` overloads in remotecontrol.cpp). This
     // function maps the tagged variant back to a TerminalWidget *.
     const ants::ResolvedRoot rr =
-        ants::resolveCallerCwdRoot(this, callerCwd);
+        ants::resolveCallerCwdRoot(m_rootProvider.get(), callerCwd);
     switch (rr.source) {
         case ants::ResolvedRoot::Source::EmptyFallback:
+        case ants::ResolvedRoot::Source::ServerCwd:
             // Case 1 — legacy back-compat. Accessor may return nullptr
             // if no tab is focused; preserve that shape unchanged.
             return focusedTerminal();
@@ -4310,63 +4360,15 @@ void MainWindow::setupStatusBarChrome() {
         [this]() { checkForUpdates(/*userInitiated=*/false); });
 }
 
-// ANTS-1833 — resolve+validate the caller_cwd that the inline audit_run /
-// indie_review_dispatch handlers use as their in-flight-gate key. A
-// non-existent root canonicalises to "" and would collapse every such
-// call onto one shared key (one bogus caller blocks real sweeps); the
-// dispatcher only enforces non-empty, not is-a-directory. On reject the
-// `errOut` is a ready-to-return bad_cwd envelope. Returns true (and
-// fills canonOut) only for an existing directory.
-static bool resolveInflightCallerCwd(const QString &callerCwd,
-                                     const char *tool,
-                                     QString *canonOut, QString *errOut) {
-    const QString canon = QFileInfo(callerCwd).canonicalFilePath();
-    if (canon.isEmpty() || !QFileInfo(canon).isDir()) {
-        QJsonObject env;
-        env[QStringLiteral("ok")]    = false;
-        // `bad_cwd` per docs/standards/mcp-error-codes.md — the precise
-        // code for "caller_cwd does not exist or isn't a directory".
-        env[QStringLiteral("code")]  = QStringLiteral("bad_cwd");
-        env[QStringLiteral("error")] =
-            QStringLiteral("%1: \"caller_cwd\" is not an existing directory")
-                .arg(QLatin1String(tool));
-        *errOut = QString::fromUtf8(
-            QJsonDocument(env).toJson(QJsonDocument::Compact));
-        return false;
-    }
-    *canonOut = canon;
-    return true;
-}
 
 // ANTS-1146 — MCP-provider plumbing for ClaudeIntegration.
 // Provides the scrollback / cwd / lastCommand / git-status /
 // environment lookups MCP needs from MainWindow's tab/terminal
 // state, then starts the hook server. Split out from
 // setupClaudeIntegration because it isn't status-bar chrome.
-// ANTS-1782 — RC-delegate factory. Most MCP tools are byte-identical shims
-// that differ only in which RemoteControl cmd* verb they forward `args` to.
-// This builds the handler so the null-guard + serialise body lives in exactly
-// one place rather than being copy-pasted per tool. Non-shim tools
-// (terminal-state reads, in-flight gates, selective arg-forwarding, non-RC
-// delegates, the no-arg tab_list and multi-arg token_usage) keep their inline
-// lambdas — the factory only fits the `cmd(args).toJson()` shape.
-// ANTS-2132 — returns the MARKED handler type, so registration can tell a
-// forward-to-cmd*() body from a hand-written inline lambda and decide which
-// thread may run it.
-// ANTS-1677 — a private member rather than a local lambda, so the registration
-// functions carved out of setupClaudeMcpProviders() share it. No call site's
-// text changes.
-ClaudeIntegration::RcHandler MainWindow::rcDelegate(
-        QJsonDocument (RemoteControl::*fn)(const QJsonObject &),
-        ClaudeIntegration::DispatchLane lane) {
-    return ClaudeIntegration::RcHandler{[this, fn](const QJsonObject &args) -> QString {
-        if (!m_remoteControl) return QString::fromUtf8(kRcUnavailable);
-        return QString::fromUtf8(
-            (m_remoteControl->*fn)(args).toJson(QJsonDocument::Compact));
-    }, true, lane};
-}
-
 void MainWindow::setupClaudeMcpProviders() {
+    // Read at call time: m_remoteControl is built later in the constructor.
+    const mcp::RemoteControlGetter rcGetter = [this] { return m_remoteControl; };
     // ANTS-2085 — publish the terse-by-default preference to the MCP
     // dispatcher before any provider can serve. Default true (token-saving
     // on out of the box); the Settings Apply path and onConfigFileChanged
@@ -4480,7 +4482,7 @@ void MainWindow::setupClaudeMcpProviders() {
     // RemoteControl::cmdRecentErrors. See docs/specs/ANTS-1301.md.
     m_claudeIntegration->registerToolProvider("recent_errors",
         ClaudeIntegration::CallerCwdContract::TabSpecific,
-        rcDelegate(&RemoteControl::cmdRecentErrors));
+        mcp::rcDelegate(rcGetter, &RemoteControl::cmdRecentErrors));
 
     // ANTS-1312 — last_selection. Returns the focused (or routed) tab's
     // current selection text so Claude can pull the highlighted error /
@@ -4488,19 +4490,7 @@ void MainWindow::setupClaudeMcpProviders() {
     // TabSpecific; delegates to RemoteControl::cmdLastSelection.
     m_claudeIntegration->registerToolProvider("last_selection",
         ClaudeIntegration::CallerCwdContract::TabSpecific,
-        rcDelegate(&RemoteControl::cmdLastSelection));
-
-    // ANTS-1636 — find_sources. Project-scoped topic-to-files
-    // discovery; reads under <caller_cwd>/src + <caller_cwd>/tests.
-    // Required contract — refuses without caller_cwd at the dispatcher.
-    m_claudeIntegration->registerToolProvider("find_sources",
-        ClaudeIntegration::CallerCwdContract::Required,
-        rcDelegate(&RemoteControl::cmdFindSources));
-
-    // ANTS-3368 — co_change_family: every edit site of one settings field.
-    m_claudeIntegration->registerToolProvider("co_change_family",
-        ClaudeIntegration::CallerCwdContract::Required,
-        rcDelegate(&RemoteControl::cmdCoChangeFamily));
+        mcp::rcDelegate(rcGetter, &RemoteControl::cmdLastSelection));
 
     m_claudeIntegration->registerToolProvider("get_scrollback",
         ClaudeIntegration::CallerCwdContract::TabSpecific,
@@ -4724,26 +4714,6 @@ void MainWindow::setupClaudeMcpProviders() {
             }
             return filtered.join("\n");
         });
-
-    // ANTS-1244 surface — the next 7 tools delegate to RemoteControl
-    // cmd handlers so the IPC and MCP transports share verb logic.
-    // ANTS-3422 — roadmap_query forwards `args` VERBATIM via the
-    // shared rcDelegate factory (which passes the whole args object
-    // straight to the cmd handler). This retires the hand-maintained
-    // per-arg forward allowlist that silently dropped any new
-    // verb-specific arg at the MCP boundary — the exact bug that
-    // recurred five times (ANTS-1856 id / ANTS-1398
-    // include_section_headers / ANTS-1437 mode / ANTS-1586
-    // include_body / ANTS-3420 query + max_body_bytes /
-    // include_section_etags / section_etag_match). cmdRoadmapQuery
-    // already owns every arg's validation and reads each key
-    // defensively (empty status→"all", empty section→full-file path,
-    // empty/absent id/ids→list path, non-numeric offset/limit→bad_args),
-    // so a verbatim forward is behaviour-preserving and no future
-    // schema arg can be dropped here again.
-    m_claudeIntegration->registerToolProvider("roadmap_query",
-        ClaudeIntegration::CallerCwdContract::Required,
-        rcDelegate(&RemoteControl::cmdRoadmapQuery));
     // ANTS-4682 — STAYS. Reads live tab state, which is GUI-owned. Touches
     // no project file, so it is not part of the § 5 concurrency hazard.
     m_claudeIntegration->registerToolProvider("tab_list",
@@ -4753,757 +4723,6 @@ void MainWindow::setupClaudeMcpProviders() {
             return QString::fromUtf8(
                 m_remoteControl->cmdTabList().toJson(QJsonDocument::Compact));
         });
-    // ANTS-1424 — roadmap_log: append a new bullet to ROADMAP.md.
-    // Required-contract gated at the dispatcher (ANTS-1404), so
-    // absent caller_cwd refuses upstream before this lambda runs.
-    m_claudeIntegration->registerToolProvider("roadmap_log",
-        ClaudeIntegration::CallerCwdContract::Required,
-        rcDelegate(&RemoteControl::cmdRoadmapLog));
-    // ANTS-3855 — roadmap_migrate: the only production entry point into the
-    // migration engine. Write op → Required contract (refuses absent
-    // caller_cwd upstream, before the handler runs).
-    m_claudeIntegration->registerToolProvider("roadmap_migrate",
-        ClaudeIntegration::CallerCwdContract::Required,
-        rcDelegate(&RemoteControl::cmdRoadmapMigrate, ClaudeIntegration::DispatchLane::Bulk));
-    // ANTS-4622 — session_message: the cross-session mailbox. Required
-    // contract on every op, read included: `inbox` and `ack` resolve the
-    // CALLING project from caller_cwd, so an absent one has no mailbox to
-    // read rather than a default one.
-    m_claudeIntegration->registerToolProvider("session_message",
-        ClaudeIntegration::CallerCwdContract::Required,
-        rcDelegate(&RemoteControl::cmdSessionMessage));
-    // ANTS-5299 — run_trace: a review run records its trace-index row.
-    // Required on every op, get included: the index lives under the
-    // caller's project, and there is no default project to read.
-    m_claudeIntegration->registerToolProvider("run_trace",
-        ClaudeIntegration::CallerCwdContract::Required,
-        rcDelegate(&RemoteControl::cmdRunTrace));
-    // ANTS-1548 — changelog_log: token-frugal Keep-a-Changelog writer.
-    // Write op → Required contract (refuses absent caller_cwd upstream).
-    m_claudeIntegration->registerToolProvider("changelog_log",
-        ClaudeIntegration::CallerCwdContract::Required,
-        rcDelegate(&RemoteControl::cmdChangelogLog));
-    // ANTS-3533 — changelog_query: read-only structured CHANGELOG reader,
-    // the symmetric read side of changelog_log. Required contract (read
-    // verb, ANTS-1520). Opts into fields=/compact/etag/offload allowlists.
-    m_claudeIntegration->registerToolProvider("changelog_query",
-        ClaudeIntegration::CallerCwdContract::Required,
-        rcDelegate(&RemoteControl::cmdChangelogQuery));
-    // ANTS-1583 — roadmap_branch_drift: compare ROADMAP ✅ entries'
-    // cited commit SHAs against HEAD's reachable history. caller_cwd
-    // is Required (ANTS-1404 contract registered below).
-    m_claudeIntegration->registerToolProvider("roadmap_branch_drift",
-        ClaudeIntegration::CallerCwdContract::Required,
-        rcDelegate(&RemoteControl::cmdRoadmapBranchDrift));
-    // ANTS-1351 — audit_run server-side runner. Inline in-flight gate
-    // via ClaudeIntegration::verbInFlight* (§ 2.4 of v4 spec) — no
-    // class abstraction; two consumers (this verb + indie_review_dispatch,
-    // ANTS-1352) don't justify the helper class. ANTS-1397's
-    // test_audit_partition was a designed third consumer but was never
-    // wired — see that spec's INV-12 (corrected 2026-07-25).
-    // caller_cwd is Required (ANTS-1404 contract registered in
-    // callerCwdContractFor); dispatcher refuses upstream when absent.
-    // ANTS-4682 — STAYS inline, deliberately (ANTS-2132 § 5). Its job registry
-    // is GUI-thread state and it builds its own worker, and the sweep touches
-    // the tree: the § 5 hazard is NOT closed for this verb.
-    // ANTS-2132 § 2.8 — it registers as a DeferredToolHandler, so the
-    // synchronous branch replies from a completion slot instead of joining the
-    // sweep on the GUI thread (ANTS-5035).
-    m_claudeIntegration->registerToolProvider("audit_run",
-        ClaudeIntegration::CallerCwdContract::Required,
-        [this](const QJsonObject &args, std::function<void(QString)> reply) {
-            const QString callerCwd = args.value(
-                QStringLiteral("caller_cwd")).toString();
-            // ANTS-1833 — reject a non-existent root before it can
-            // collapse the in-flight key (canon would be empty).
-            QString canon, badEnv;
-            if (!resolveInflightCallerCwd(callerCwd, "audit_run",
-                                          &canon, &badEnv)) {
-                reply(badEnv);
-                return;
-            }
-            // In-flight gate (INV-11).
-            const qint64 existing =
-                m_claudeIntegration->verbInFlightTryAcquire(
-                    QStringLiteral("audit_run"), canon);
-            if (existing >= 0) {
-                QJsonObject env;
-                env["ok"]               = false;
-                env["code"]             = QStringLiteral("already_running");
-                env["error"]            = QStringLiteral(
-                    "audit_run: a sweep is already in flight for this "
-                    "project root; retry after it completes");
-                env["running_since_ms"] =
-                    QDateTime::currentMSecsSinceEpoch() - existing;
-                env["retry_after_ms"]   = 5000;  // INV-9 hint
-                reply(QString::fromUtf8(
-                    QJsonDocument(env).toJson(QJsonDocument::Compact)));
-                return;
-            }
-            // RAII: release the in-flight slot on EVERY exit path (including
-            // an exception or a future early return), honouring the header's
-            // documented guard contract. indie-review-2026-05-21.
-            // Non-const: the ANTS-3396 async branch calls dismiss() to hand
-            // the slot release to the completion slot.
-            auto inFlightGuard = qScopeGuard([this, &canon] {
-                m_claudeIntegration->verbInFlightRelease(
-                    QStringLiteral("audit_run"), canon);
-            });
-            // Build the engine request.
-            AuditRunner::RunRequest req;
-            req.projectRoot = callerCwd;
-            const QJsonArray toolsArr = args.value(
-                QStringLiteral("tools")).toArray();
-            for (const QJsonValue &v : toolsArr)
-                req.tools.append(v.toString());
-            req.scope = args.value(QStringLiteral("scope")).toString();
-            if (args.value(QStringLiteral("cap_per_tool_seconds"))
-                    .isDouble()) {
-                req.capPerToolSeconds = args.value(
-                    QStringLiteral("cap_per_tool_seconds")).toInt();
-            }
-            req.suppressionsMode =
-                args.value(QStringLiteral("suppressions")).toString();
-            const QJsonArray formatsArr = args.value(
-                QStringLiteral("formats")).toArray();
-            for (const QJsonValue &v : formatsArr)
-                req.formats.append(v.toString());
-            if (args.value(QStringLiteral("top_findings_count"))
-                    .isDouble()) {
-                req.topFindingsCount = args.value(
-                    QStringLiteral("top_findings_count")).toInt();
-            }
-            // ANTS-1512 — scoped-check mode: narrow the tool's scope
-            // to specific paths and/or a specific check set.
-            const QJsonArray pathsArr = args.value(
-                QStringLiteral("paths")).toArray();
-            for (const QJsonValue &v : pathsArr)
-                req.paths.append(v.toString());
-            const QJsonArray checksArr = args.value(
-                QStringLiteral("checks")).toArray();
-            for (const QJsonValue &v : checksArr)
-                req.checks.append(v.toString());
-            // ANTS-3710 — the negative counterpart to `paths`: drop code
-            // that is present but not ours (a vendored dependency tree)
-            // without also dropping the repo-global tools the way a
-            // narrowing `paths` does.
-            const QJsonArray exclArr = args.value(
-                QStringLiteral("exclude_paths")).toArray();
-            for (const QJsonValue &v : exclArr)
-                req.excludePaths.append(v.toString());
-            // ANTS-3396 — opt-in async mode: spawn the sweep detached,
-            // register a job, and return a handle immediately so the caller
-            // never blocks on the ~60 s MCP transport cap. Default false →
-            // the synchronous branch below, which replies with the full
-            // result once the sweep ends (ANTS-2132 § 2.8).
-            if (args.value(QStringLiteral("async")).toBool()) {
-                const qint64 startedMs =
-                    QDateTime::currentMSecsSinceEpoch();
-                const QString jobId =
-                    m_claudeIntegration->auditJobRegister(canon, startedMs);
-                if (jobId.isEmpty()) {
-                    // Registry saturated (all entries running, none
-                    // evictable). The in-flight guard releases the slot on
-                    // return; the sync path stays available (INV-8).
-                    QJsonObject env;
-                    env["ok"]             = false;
-                    env["code"]           = QStringLiteral("too_many_jobs");
-                    env["error"]          = QStringLiteral(
-                        "audit_run: too many audit jobs in flight; retry "
-                        "shortly or run synchronously (async:false)");
-                    env["retry_after_ms"] = 5000;
-                    reply(QString::fromUtf8(
-                        QJsonDocument(env).toJson(QJsonDocument::Compact)));
-                    return;
-                }
-                // The completion slot now owns the in-flight release
-                // (§2.4 / INV-5) — dismiss the sync scope-guard so the slot
-                // is NOT freed the moment this handler returns the handle.
-                inFlightGuard.dismiss();
-                auto result =
-                    std::make_shared<AuditRunner::RunResult>();
-                // Worker created on the main/dispatch thread → its thread
-                // affinity is the main thread, so its own deleteLater() runs
-                // there. `req` copied by value
-                // (the handler's stack frame unwinds before the sweep ends).
-                QThread *worker = QThread::create(
-                    [req, result]() { *result = AuditRunner::runAudit(req); });
-                ClaudeIntegration *ci = m_claudeIntegration;
-                // ANTS-5080 — the worker frees itself. The completion below
-                // has ci as its context and is severed if ci is destroyed
-                // mid-sweep, so freeing the worker there could leave it never
-                // freed. The completion no longer touches the worker, so the
-                // two queued events may run in either order.
-                QObject::connect(worker, &QThread::finished, worker,
-                                 &QObject::deleteLater);
-                // Queued completion on the main thread. Context object = ci
-                // so the connection auto-severs if ci is destroyed at
-                // teardown (the QPointer-equivalent shutdown guard, §2.4):
-                // a still-running worker then fires into nothing rather than
-                // touching a freed owner. The worker touches only its own
-                // RunResult; the registry flip + slot release happen here on
-                // the main thread.
-                QObject::connect(worker, &QThread::finished, ci,
-                    [ci, result, jobId, canon]() {
-                        ClaudeIntegration::AuditJob term;
-                        const AuditRunner::RunResult &r = *result;
-                        if (!r.ok) {
-                            term.status = QStringLiteral("error");
-                            term.code   = r.code;
-                            term.error  = r.error;
-                        } else {
-                            term.status = QStringLiteral("done");
-                            // cache-write failure → fall back to the /tmp
-                            // SARIF so the recovery path never breaks.
-                            term.cachePath = r.cachePath.isEmpty()
-                                ? r.sarifPath : r.cachePath;
-                            term.totalRaw        = r.totalRaw;
-                            term.totalActionable = r.totalActionable;
-                            term.partial         = r.partial;
-                            term.noChanges       = r.noChanges;
-                            term.incompleteTools = r.incompleteTools;
-                            // ANTS-3585 — carry the richer surfaces so the
-                            // async-poll done-branch emits them too.
-                            term.incompleteToolsDetail = r.incompleteToolsDetail;
-                            term.parseFailures         = r.parseFailures;
-                            // ANTS-3706 — and the parse-failure reasons.
-                            term.parseFailuresDetail   = r.parseFailuresDetail;
-                        }
-                        ci->auditJobComplete(jobId, term);
-                        ci->verbInFlightRelease(
-                            QStringLiteral("audit_run"), canon);
-                    }, Qt::QueuedConnection);
-                worker->start();
-                QJsonObject env;
-                env["ok"]            = true;
-                env["async"]         = true;
-                env["job_id"]        = jobId;
-                env["status"]        = QStringLiteral("running");
-                env["started_at_ms"] = startedMs;
-                env["poll_with"]     = QStringLiteral("audit_poll");
-                env["note"]          = QStringLiteral(
-                    "Sweep running server-side; poll audit_poll {job_id} or "
-                    "read last_audit_summary when done. Results are written "
-                    "to .audit_cache regardless of poll.");
-                reply(QString::fromUtf8(
-                    QJsonDocument(env).toJson(QJsonDocument::Compact)));
-                return;
-            }
-            // ANTS-2103 — run the audit on a worker thread so its internal
-            // QEventLoop (auditrunner.cpp), which multiplexes the per-tool
-            // QProcesses, lives OFF the main thread. Running it synchronously
-            // here spun that nested QEventLoop on the GUI/MCP thread, which
-            // reentrantly delivered QLocalSocket read-notifications and freed
-            // the live MCP socket mid-dispatch -> use-after-free SIGSEGV (the
-            // ANTS-2101 write-path guard was necessary but not sufficient; the
-            // deeper hazard is pumping the main event loop at all). This
-            // realises the INV-9 worker-thread isolation auditrunner.h already
-            // documents.
-            // ANTS-2132 § 2.8 — and the GUI thread does not join it. The
-            // completion slot builds the envelope and replies, so the window
-            // keeps painting and MCP traffic keeps flowing for the whole sweep.
-            // A second synchronous call for this root now arrives while the
-            // sweep runs and is refused already_running by the gate above.
-            inFlightGuard.dismiss();
-            auto result = std::make_shared<AuditRunner::RunResult>();
-            QThread *worker = QThread::create(
-                [req, result]() { *result = AuditRunner::runAudit(req); });
-            ClaudeIntegration *ci = m_claudeIntegration;
-            // Context object = ci, so a sweep still running at teardown
-            // replies into nothing, as the async branch's slot does.
-            QObject::connect(worker, &QThread::finished, ci,
-                [ci, worker, result, canon, reply]() {
-                    ci->verbInFlightRelease(QStringLiteral("audit_run"), canon);
-                    worker->deleteLater();
-                    const AuditRunner::RunResult &r = *result;
-                    // Serialise envelope.
-                    QJsonObject env;
-                    if (!r.ok) {
-                        env["ok"]    = false;
-                        env["code"]  = r.code;
-                        env["error"] = r.error;
-                        // ANTS-3612 — the aggregate concurrency cap is transient,
-                        // so give the caller the same backoff hint the other
-                        // busy-style refusals carry (already_running,
-                        // too_many_jobs). Every other engine refusal is a hard
-                        // input error and gets no retry hint.
-                        if (r.code == QLatin1String("server_busy"))
-                            env["retry_after_ms"] = 5000;
-                        reply(QString::fromUtf8(
-                            QJsonDocument(env).toJson(QJsonDocument::Compact)));
-                        return;
-                    }
-                    env["ok"] = true;
-                    QJsonObject byTool;
-                    for (auto it = r.byTool.constBegin();
-                         it != r.byTool.constEnd(); ++it) {
-                        QJsonObject t;
-                        t["status"]              = it->status;
-                        t["elapsed_ms"]          = it->elapsedMs;
-                        t["raw_count"]           = it->rawCount;
-                        t["after_filter_count"]  = it->afterFilterCount;
-                        t["samples"]             = it->samples;
-                        // ANTS-4371 — evidence the tool was handed work. A zero-finding
-                        // audit is the most consequential result this verb returns (it
-                        // is what lets a phase close), and "ran across the tree and
-                        // found nothing" was byte-identical to "ran against an empty
-                        // file list". `paths_given` is the explicit positional count;
-                        // `scanned_whole_project` says the tool was pointed at the root
-                        // instead, which under scope:"full" is the normal shape and
-                        // makes paths_given legitimately 0 — so the count alone would
-                        // read as "scanned nothing" for the very case this reassures
-                        // about. `no_files` is the one that matters: a NARROWED scope
-                        // that matched nothing, which scope:"files"/"since-last-run"
-                        // produce legitimately.
-                        t["paths_given"]           = it->pathsGiven;
-                        t["scanned_whole_project"] = it->wholeProject;
-                        const bool noFiles = !it->wholeProject && it->pathsGiven == 0;
-                        if (noFiles) t["no_files"] = true;
-                        byTool[it.key()]         = t;
-                    }
-                    env["by_tool"]          = byTool;
-                    // ANTS-4371 — the top-level roll-up, so a caller reading only the
-                    // summary can tell a real sweep from an empty one without walking
-                    // by_tool. Deliberately NOT folded into `partial` /
-                    // `incomplete_tools`: a narrowed scope matching no files is a
-                    // legitimate outcome, and marking it partial would make every
-                    // narrow scan report a failure it did not have.
-                    {
-                        QJsonArray noFilesTools;
-                        int pathsTotal = 0;
-                        bool anyWholeProject = false;
-                        for (auto it = r.byTool.constBegin();
-                             it != r.byTool.constEnd(); ++it) {
-                            pathsTotal += it->pathsGiven;
-                            if (it->wholeProject) anyWholeProject = true;
-                            else if (it->pathsGiven == 0) noFilesTools.append(it.key());
-                        }
-                        env["paths_given_total"]     = pathsTotal;
-                        env["scanned_whole_project"] = anyWholeProject;
-                        if (!noFilesTools.isEmpty())
-                            env["tools_with_no_files"] = noFilesTools;
-                    }
-                    env["total_raw"]        = r.totalRaw;
-                    env["total_actionable"] = r.totalActionable;
-                    env["noise_rate_pct"]   = r.noiseRatePct;
-                    // ANTS-2032 — explicit partiality signal: true when a tool
-                    // timed out / crashed but the rest of the run still produced
-                    // results (and the SARIF artifact below). `incomplete_tools`
-                    // lists the offenders so the caller need not scan by_tool[].
-                    env["partial"]          = r.partial;
-                    if (!r.incompleteTools.isEmpty()) {
-                        QJsonArray inc;
-                        for (const QString &t : r.incompleteTools) inc.append(t);
-                        env["incomplete_tools"] = inc;
-                    }
-                    // ANTS-3585 — richer partiality (why each tool is incomplete:
-                    // truncated vs crashed + elapsed_ms) and the zero-coverage list
-                    // (source files a tool could not parse). Both omitted when empty.
-                    if (!r.incompleteToolsDetail.isEmpty())
-                        env["incomplete_tools_detail"] = r.incompleteToolsDetail;
-                    if (!r.parseFailures.isEmpty()) {
-                        QJsonArray pf;
-                        for (const QString &f : r.parseFailures) pf.append(f);
-                        env["parse_failures"] = pf;
-                        // ANTS-3706 — why each file failed, so a missing include path
-                        // (fixable) is distinguishable from a frontend limitation
-                        // (route around) without re-running the tool by hand.
-                        if (!r.parseFailuresDetail.isEmpty())
-                            env["parse_failures_detail"] = r.parseFailuresDetail;
-                    }
-                    if (!r.sarifPath.isEmpty())
-                        env["sarif_path"] = r.sarifPath;
-                    if (!r.htmlPath.isEmpty())
-                        env["html_path"] = r.htmlPath;
-                    QJsonArray skipped;
-                    for (const auto &ts : r.toolsSkipped) {
-                        QJsonObject s;
-                        s["tool"]   = ts.tool;
-                        s["reason"] = ts.reason;
-                        skipped.append(s);
-                    }
-                    env["tools_skipped"]    = skipped;
-                    env["elapsed_total_ms"] = r.elapsedTotalMs;
-                    env["samples_truncated"]= r.samplesTruncated;
-                    if (!r.topFindings.isEmpty())
-                        env["top_findings"] = r.topFindings;
-                    // ANTS-1555 — per-project `.audit_cache/` surface.
-                    // `cache_path` is set only when the SARIF landed in
-                    // `<root>/.audit_cache/`; `prior_run` carries the
-                    // pre-existing manifest's last_run snapshot (empty
-                    // object on a project's first sweep). ANTS-1504 reads
-                    // `prior_run.commit` as the since-last-run diff anchor
-                    // (precise findings delta deferred — ANTS-1504 § 5).
-                    if (!r.cachePath.isEmpty())
-                        env["cache_path"] = r.cachePath;
-                    if (!r.priorRun.isEmpty())
-                        env["prior_run"] = r.priorRun;
-                    // ANTS-1504 — narrowing-scope surface.
-                    if (!r.scopeResolved.isEmpty())
-                        env["scope_resolved"] = r.scopeResolved;
-                    if (!r.scopeAnchorCommit.isEmpty())
-                        env["scope_anchor_commit"] = r.scopeAnchorCommit;
-                    if (!r.scopeResolved.isEmpty())
-                        env["changed_files_count"] = r.changedFilesCount;
-                    if (!r.scopeDemoted.isEmpty()) {
-                        env["scope_demoted"] = r.scopeDemoted;
-                        env["scope_demoted_reason"] = r.scopeDemotedReason;
-                    }
-                    if (r.noChanges)
-                        env["no_changes"] = true;
-                    // ANTS-3710 — echo the applied exclusions, and name the tools in
-                    // this run that could not honour them. A silent partial exclusion
-                    // would read as a complete one, which is worse than the noise.
-                    if (!r.excludePathsApplied.isEmpty()) {
-                        QJsonArray xp;
-                        for (const QString &p : r.excludePathsApplied) xp.append(p);
-                        env["exclude_paths_applied"] = xp;
-                        QJsonArray ig;
-                        for (const QString &t : r.excludePathsIgnoredBy) ig.append(t);
-                        if (!ig.isEmpty()) env["exclude_paths_ignored_by"] = ig;
-                    }
-                    // ANTS-1870 — since-last-run findings delta. `delta` and
-                    // `delta_unavailable_reason` are mutually exclusive; exactly one
-                    // appears under a narrowed since-last-run, neither otherwise.
-                    // `findings_truncated` flags a run that hit the per-tool finding
-                    // ceiling (the delta is then suppressed in favour of the reason).
-                    if (!r.delta.isEmpty())
-                        env["delta"] = r.delta;
-                    if (!r.deltaUnavailableReason.isEmpty())
-                        env["delta_unavailable_reason"] = r.deltaUnavailableReason;
-                    if (r.findingsTruncated)
-                        env["findings_truncated"] = true;
-                    reply(QString::fromUtf8(
-                        QJsonDocument(env).toJson(QJsonDocument::Compact)));
-                }, Qt::QueuedConnection);
-            worker->start();
-        });
-    // ANTS-3396 — audit_poll: read the in-memory async-audit job
-    // registry. Read-only, cheap, never blocks. Required caller_cwd for
-    // parity with audit_run (dispatcher refuses caller_cwd_required
-    // upstream); under the claude.mcp_enabled master gate.
-    // ANTS-4682 — STAYS. Same GUI-thread job registry as audit_run.
-    m_claudeIntegration->registerToolProvider("audit_poll",
-        ClaudeIntegration::CallerCwdContract::Required,
-        [this](const QJsonObject &args) -> QString {
-            const QString jobId =
-                args.value(QStringLiteral("job_id")).toString();
-            if (jobId.isEmpty()) {
-                QJsonObject env;
-                env["ok"]    = false;
-                env["code"]  = QStringLiteral("bad_args");
-                env["error"] = QStringLiteral(
-                    "audit_poll: job_id (non-empty string) is required");
-                return QString::fromUtf8(
-                    QJsonDocument(env).toJson(QJsonDocument::Compact));
-            }
-            // Resolve caller_cwd to the same canonical root the async
-            // registration keyed on, so a poll only sees its own project's
-            // jobs (bad_cwd on an unresolvable root).
-            const QString callerCwd = args.value(
-                QStringLiteral("caller_cwd")).toString();
-            QString canon, badEnv;
-            if (!resolveInflightCallerCwd(callerCwd, "audit_poll",
-                                          &canon, &badEnv))
-                return badEnv;
-            const QJsonObject env =
-                m_claudeIntegration->auditJobPollEnvelope(jobId, canon);
-            return QString::fromUtf8(
-                QJsonDocument(env).toJson(QJsonDocument::Compact));
-        });
-    // ANTS-1397 — test_audit verb family. All five register the
-    // Required caller_cwd contract (the spec's original "Optional"
-    // design never shipped; ANTS-1397.md INV-5 was corrected to match
-    // this code, 2026-07-25). fold_in delegates to RoadmapFoldIn::*
-    // engine entries directly (NOT MCP re-entry — INV-3).
-    m_claudeIntegration->registerToolProvider("test_audit_partition",
-        ClaudeIntegration::CallerCwdContract::Required,
-        ClaudeIntegration::RcHandler{[](const QJsonObject &args) -> QString {
-            TestAuditEngine::PartitionRequest req;
-            req.callerCwd   = args.value(QStringLiteral("caller_cwd")).toString();
-            req.scope       = args.value(QStringLiteral("scope")).toString();
-            req.dimensions  = args.value(QStringLiteral("dimensions")).toString();
-            if (args.value(QStringLiteral("chunk_size")).isDouble())
-                req.chunkSize = args.value(QStringLiteral("chunk_size")).toInt();
-            if (args.value(QStringLiteral("offset")).isDouble())
-                req.offset = args.value(QStringLiteral("offset")).toInt();
-            if (args.value(QStringLiteral("limit")).isDouble())
-                req.limit = args.value(QStringLiteral("limit")).toInt();
-            const auto r = TestAuditEngine::partition(req);
-            QJsonObject env;
-            if (!r.ok) { env["ok"]=false; env["code"]=r.code; env["error"]=r.error;
-                return QString::fromUtf8(QJsonDocument(env).toJson(QJsonDocument::Compact)); }
-            env["ok"] = true;
-            env["framework"]    = r.framework;
-            // ANTS-1623 — polyglot signal. Only emitted when non-empty
-            // so single-framework projects (the common case) carry
-            // zero overhead in the envelope.
-            if (!r.additionalFrameworks.isEmpty())
-                env["additional_frameworks"] = r.additionalFrameworks;
-            env["test_globs"]   = QJsonArray::fromStringList(r.testGlobs);
-            env["total_files"]  = r.totalFiles;
-            env["chunks_count"] = r.chunksCount;
-            QJsonArray chunks;
-            for (const auto &c : r.chunks) {
-                QJsonObject co;
-                co["id"]                  = c.id;
-                co["paths"]               = QJsonArray::fromStringList(c.paths);
-                // ANTS-1487: renamed from `dimension_hints` so callers can't
-                // mistake "dimensions the pre-pass grep hit" for "dimensions
-                // worth auditing". Full lane list is `dimensions_active` at
-                // envelope level.
-                co["pre_pass_dimensions"] = QJsonArray::fromStringList(c.prePassDimensions);
-                chunks.append(co);
-            }
-            env["chunks"] = chunks;
-            if (r.chunkByteBudget > 0)   // ANTS-4113
-                env["chunk_byte_budget"] = static_cast<double>(r.chunkByteBudget);
-            env["dimensions_active"] = QJsonArray::fromStringList(r.dimensionsActive);
-            // ANTS-4111 — a dimension left out of "auto" is reported, not
-            // silently absent: a caller seeding from dimensions_active[] can see
-            // that the taxonomy is wider than the default and why.
-            if (!r.dimensionsSkipped.isEmpty()) {
-                env["dimensions_skipped"] =
-                    QJsonArray::fromStringList(r.dimensionsSkipped);
-                QJsonObject why;
-                for (auto it = r.skipReasonPerDimension.constBegin();
-                     it != r.skipReasonPerDimension.constEnd(); ++it)
-                    why[it.key()] = it.value();
-                env["skip_reason_per_dimension"] = why;
-            }
-            QJsonObject prePass;
-            for (auto it = r.prePassFindingsByChunk.constBegin();
-                 it != r.prePassFindingsByChunk.constEnd(); ++it) {
-                prePass[it.key()] = it.value();
-            }
-            // ANTS-2070 — the inlined pre-pass map is the envelope's bulk
-            // (each chunk caps at 20 findings, but a 35-chunk suite still
-            // overflowed the MCP tool-result token cap with 547 findings).
-            // When the map would be large, omit it from the wire and flag
-            // pre_pass_cached so the caller fetches per-chunk via
-            // test_audit_brief — the full map stays in the partition cache
-            // for that lookup, and pre_pass_chunk_ids below still advertises
-            // which chunks carry findings.
-            const QByteArray prePassJson =
-                QJsonDocument(prePass).toJson(QJsonDocument::Compact);
-            constexpr int kPrePassInlineCapBytes = 24 * 1024;
-            const bool prePassOmittedBySize =
-                prePassJson.size() > kPrePassInlineCapBytes;
-            // ANTS-2096 — a paginated (page 2+) result keeps its pre-pass
-            // map in the partition cache for test_audit_brief, but must NOT
-            // inline it here: prePassCached signals "fetch per-chunk via
-            // brief", so omit the wire map when cached, not only on size.
-            if (!prePassOmittedBySize && !r.prePassCached)
-                env["pre_pass_findings_by_chunk"] = prePass;
-            // ANTS-1489 — echo the chunk-ID keyset at envelope level so
-            // callers can decide which per-chunk briefs are worth
-            // fetching without descending into the nested map.
-            QJsonArray prePassChunkIds;
-            for (auto it = r.prePassFindingsByChunk.constBegin();
-                 it != r.prePassFindingsByChunk.constEnd(); ++it) {
-                if (!it.value().isEmpty()) prePassChunkIds.append(it.key());
-            }
-            // Stable order — callers may iterate the array directly.
-            QStringList idsSorted;
-            for (const auto &v : prePassChunkIds) idsSorted.append(v.toString());
-            std::sort(idsSorted.begin(), idsSorted.end());
-            env["pre_pass_chunk_ids"] = QJsonArray::fromStringList(idsSorted);
-            env["pre_pass_cached"] = r.prePassCached || prePassOmittedBySize;
-            if (prePassOmittedBySize) {
-                // ANTS-2070 — tell the caller why the map is absent and how
-                // big it was, so it knows to fetch per-chunk via brief.
-                env["pre_pass_omitted"] = true;
-                env["pre_pass_omitted_bytes"] = prePassJson.size();
-            }
-            env["partition_token"] = r.partitionToken;
-            env["offset"]    = r.offset;
-            env["limit"]     = r.limit;
-            env["total"]     = r.total;
-            env["truncated"] = r.truncated;
-            if (r.nextOffset >= 0) env["next_offset"] = r.nextOffset;
-            env["byte_count"] = r.byteCount;
-            return QString::fromUtf8(QJsonDocument(env).toJson(QJsonDocument::Compact));
-        }});
-    m_claudeIntegration->registerToolProvider("test_audit_brief",
-        ClaudeIntegration::CallerCwdContract::Required,
-        ClaudeIntegration::RcHandler{[](const QJsonObject &args) -> QString {
-            TestAuditEngine::BriefRequest req;
-            req.callerCwd       = args.value(QStringLiteral("caller_cwd")).toString();
-            req.chunkId         = args.value(QStringLiteral("chunk_id")).toString();
-            req.partitionToken  = args.value(QStringLiteral("partition_token")).toString();
-            const auto r = TestAuditEngine::brief(req);
-            QJsonObject env;
-            if (!r.ok) { env["ok"]=false; env["code"]=r.code; env["error"]=r.error;
-                return QString::fromUtf8(QJsonDocument(env).toJson(QJsonDocument::Compact)); }
-            env["ok"]                = true;
-            env["chunk_id"]          = r.chunkId;
-            env["source_paths"]      = QJsonArray::fromStringList(r.sourcePaths);
-            env["dimensions"]        = QJsonArray::fromStringList(r.dimensions);
-            env["framework_context"] = r.frameworkContext;
-            env["pre_pass_findings"] = r.prePassFindings;
-            // ANTS-1457 — surface the prior false-positive ledger
-            // entries as a structured field for the reviewer LLM.
-            env["prior_false_positives"] = r.priorFalsePositives;
-            env["byte_count"]        = r.byteCount;
-            return QString::fromUtf8(QJsonDocument(env).toJson(QJsonDocument::Compact));
-        }});
-    m_claudeIntegration->registerToolProvider("test_audit_synthesis_prompt",
-        ClaudeIntegration::CallerCwdContract::Required,
-        ClaudeIntegration::RcHandler{[](const QJsonObject &args) -> QString {
-            TestAuditEngine::SynthRequest req;
-            req.callerCwd          = args.value(QStringLiteral("caller_cwd")).toString();
-            req.partitionToken     = args.value(QStringLiteral("partition_token")).toString();
-            req.reportsDir         = args.value(QStringLiteral("reports_dir")).toString();
-            req.calibrationAnchor  = args.value(QStringLiteral("calibration_anchor")).toObject();
-            // ANTS-1455 — opt-in escape hatch + mode + pagination.
-            req.allowOutsideProject = args.value(QStringLiteral("allow_outside_project")).toBool(false);
-            req.mode               = args.value(QStringLiteral("mode")).toString();
-            req.offset             = args.value(QStringLiteral("offset")).toInt(0);
-            // limit defaulting: if caller omitted, leave at -1 sentinel
-            // so engine picks mode-appropriate default (5 for "full",
-            // ignored for "summary"). 0 is a valid "use default" too.
-            if (args.contains(QStringLiteral("limit"))) {
-                req.limit = args.value(QStringLiteral("limit")).toInt(-1);
-            }
-            const auto r = TestAuditEngine::synthesize(req);
-            QJsonObject env;
-            if (!r.ok) { env["ok"]=false; env["code"]=r.code; env["error"]=r.error;
-                return QString::fromUtf8(QJsonDocument(env).toJson(QJsonDocument::Compact)); }
-            env["ok"]                  = true;
-            env["mode"]                = r.mode;
-            env["prompt"]              = r.prompt;
-            env["dimension_summaries"] = r.dimensionSummaries;
-            env["top_dimensions"]      = r.topDimensions;
-            env["file_index"]          = r.fileIndex;
-            // ANTS-1488 — per-dimension severity histograms so callers
-            // can decide whether to drop into mode:"full" or mode:"hybrid"
-            // based on whether any dimension surfaced a CRIT/HIGH.
-            env["severity_histograms"] = r.severityHistograms;
-            env["truncated"]           = r.truncated;
-            env["reports_read"]        = r.reportsRead;
-            env["chunks_total"]        = r.chunksTotal;
-            env["chunks_returned"]     = r.chunksReturned;
-            env["next_offset"]         = r.nextOffset;
-            env["truncated_by_limit"]  = r.truncatedByLimit;
-            env["byte_count"]          = r.byteCount;
-            return QString::fromUtf8(QJsonDocument(env).toJson(QJsonDocument::Compact));
-        }});
-    m_claudeIntegration->registerToolProvider("test_audit_fold_in",
-        ClaudeIntegration::CallerCwdContract::Required,
-        ClaudeIntegration::RcHandler{[](const QJsonObject &args) -> QString {
-            // ANTS-5086 — busy guard shared hold (ANTS-2132 § 2.10).
-            const RemoteControl::RoadmapWriteHold writeHold(
-                args.value(QStringLiteral("caller_cwd")).toString());
-            if (!writeHold.held())
-                return QString::fromUtf8(QJsonDocument(RemoteControl::roadmapBusyRefusal(
-                    QStringLiteral("test_audit_fold_in"))).toJson(QJsonDocument::Compact));
-            TestAuditEngine::FoldInRequest req;
-            req.callerCwd    = args.value(QStringLiteral("caller_cwd")).toString();
-            req.actionable   = args.value(QStringLiteral("actionable")).toArray();
-            req.framework    = args.value(QStringLiteral("framework")).toString();
-            req.filesScanned = args.value(QStringLiteral("files_scanned")).toInt();
-            const QJsonArray dimsArr = args.value(QStringLiteral("dimensions")).toArray();
-            for (const QJsonValue &v : dimsArr) req.dimensions.append(v.toString());
-            req.rawFindings  = args.value(QStringLiteral("raw_findings")).toInt();
-            // ANTS-1635 — narrative-mode opt-in. Forward both fields so
-            // the engine's short-circuit gate is reachable.
-            req.narrativeMode = args.value(QStringLiteral("narrative_mode")).toBool();
-            req.narrativeMd   = args.value(QStringLiteral("narrative_md")).toString();
-            // ANTS-2227 — dry_run preview (no counter bump, no ROADMAP write).
-            req.dryRun        = args.value(QStringLiteral("dry_run")).toBool();
-            // ANTS-3498 — optional id_prefix override (validated in the engine).
-            req.idPrefix      = args.value(QStringLiteral("id_prefix")).toString();
-            const auto r = TestAuditEngine::foldIn(req);
-            QJsonObject env;
-            if (!r.ok) { env["ok"]=false; env["code"]=r.code; env["error"]=r.error;
-                env["written_count"]=r.writtenCount; env["failed_count"]=r.failedCount;
-                env["partial"]=r.partial;
-                // ANTS-1527 — surface counter_path as a programmatic
-                // field on id_counter_failed so the caller can clear
-                // a stale `.lock` sibling without parsing the prose
-                // error. Only emitted when the engine populated it
-                // (id_counter_failed path); other failure modes leave
-                // it empty.
-                if (!r.counterPath.isEmpty()) env["counter_path"] = r.counterPath;
-                return QString::fromUtf8(QJsonDocument(env).toJson(QJsonDocument::Compact)); }
-            env["ok"]                    = true;
-            if (req.dryRun) env["dry_run"] = true;   // ANTS-2227
-            env["block"]                 = r.block;
-            env["allocated_ids"]         = QJsonArray::fromStringList(r.allocatedIds);
-            env["written"]               = r.written;
-            env["release_block_heading"] = r.releaseBlockHeading;
-            env["bytes_written"]         = r.bytesWritten;
-            env["written_count"]         = r.writtenCount;
-            env["failed_count"]          = r.failedCount;
-            env["partial"]               = r.partial;
-            return QString::fromUtf8(QJsonDocument(env).toJson(QJsonDocument::Compact));
-        }});
-    // ANTS-1513 — test_audit_recheck: verify a deferred finding's cite
-    // is still live before resuming the work. Read-only project query.
-    m_claudeIntegration->registerToolProvider("test_audit_recheck",
-        ClaudeIntegration::CallerCwdContract::Required,
-        ClaudeIntegration::RcHandler{[](const QJsonObject &args) -> QString {
-            TestAuditEngine::RecheckRequest req;
-            req.callerCwd  = args.value(QStringLiteral("caller_cwd")).toString();
-            req.findingId  = args.value(QStringLiteral("finding_id")).toString();
-            const auto r = TestAuditEngine::recheck(req);
-            QJsonObject env;
-            if (!r.ok) { env["ok"]=false; env["code"]=r.code; env["error"]=r.error;
-                return QString::fromUtf8(QJsonDocument(env).toJson(QJsonDocument::Compact)); }
-            env["ok"]    = true;
-            env["found"] = r.found;
-            if (r.found) {
-                env["cited_file"]  = r.citedFile;
-                env["cited_line"]  = r.citedLine;
-                env["file_exists"] = r.fileExists;
-                env["line_exists"] = r.lineExists;
-                if (r.lineExists) {
-                    env["current_line_text"]         = r.currentLineText;
-                    env["line_still_matches_pattern"] = r.lineStillMatchesPattern;
-                    if (r.lineStillMatchesPattern) {
-                        env["matched_pattern_id"] = r.matchedPatternId;
-                        env["matched_dimension"]  = r.matchedDimension;
-                    }
-                }
-                // ANTS-1513 — best-effort git rename hint for a gone file.
-                // Lives here (not the engine) so testauditengine.cpp stays
-                // QProcess-free (test_audit trio INV-1). Only for a
-                // relative cite under an existing project root.
-                if (!r.fileExists && !r.citedFile.isEmpty() &&
-                    !r.citedFile.startsWith(QLatin1Char('/'))) {
-                    const QString canon = QFileInfo(
-                        args.value(QStringLiteral("caller_cwd")).toString())
-                        .canonicalFilePath();
-                    if (!canon.isEmpty()) {
-                        QProcess git;
-                        git.setWorkingDirectory(canon);
-                        git.start(QStringLiteral("git"), {
-                            QStringLiteral("log"), QStringLiteral("--all"),
-                            QStringLiteral("--diff-filter=R"),
-                            QStringLiteral("--name-status"),
-                            QStringLiteral("--format="), QStringLiteral("--"),
-                            r.citedFile });
-                        if (git.waitForFinished(3000) &&
-                            git.exitStatus() == QProcess::NormalExit) {
-                            const QStringList outLines = QString::fromUtf8(
-                                git.readAllStandardOutput())
-                                .split(QChar('\n'), Qt::SkipEmptyParts);
-                            for (const QString &ol : outLines) {
-                                if (!ol.startsWith(QChar('R'))) continue;
-                                const QStringList parts = ol.split(QChar('\t'));
-                                if (parts.size() >= 3) {
-                                    env["drift_hint"] = QStringLiteral(
-                                        "file likely moved to %1")
-                                        .arg(parts.at(2));
-                                    break;
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-            return QString::fromUtf8(QJsonDocument(env).toJson(QJsonDocument::Compact));
-        }});
     m_claudeIntegration->registerToolProvider("get_text",
         ClaudeIntegration::CallerCwdContract::TabSpecific,
         [this](const QJsonObject &args) -> QString {
@@ -5523,370 +4742,6 @@ void MainWindow::setupClaudeMcpProviders() {
             return QString::fromUtf8(
                 m_remoteControl->cmdGetText(req).toJson(QJsonDocument::Compact));
         });
-    // ANTS-2144 — off the socket thread: cmdWorkspaceSearch blocks on
-    // rg.waitForFinished(), which starved the QLocalSocket notifier and
-    // tripped concurrent verbs into a -32000 transport timeout. caller_cwd
-    // is Required here, so the off-thread path never reaches the
-    // m_main->currentTerminal() fallback (main-thread-only state).
-    m_claudeIntegration->registerToolProvider("workspace_search",
-        ClaudeIntegration::CallerCwdContract::Required,
-        rcDelegate(&RemoteControl::cmdWorkspaceSearch));
-    // ANTS-3716 — cited_by. Off the socket thread for the same reason
-    // workspace_search is, and more so: it runs ONE rg per anchor, up to 64 of
-    // them, each blocking on waitForFinished(). caller_cwd is Required, so the
-    // off-thread path never reaches the m_main->currentTerminal() fallback.
-    m_claudeIntegration->registerToolProvider("cited_by",
-        ClaudeIntegration::CallerCwdContract::Required,
-        rcDelegate(&RemoteControl::cmdCitedBy));
-    m_claudeIntegration->registerToolProvider("file_outline",
-        ClaudeIntegration::CallerCwdContract::Required,
-        rcDelegate(&RemoteControl::cmdFileOutline));
-    // ANTS-4398 — mutation_probe. Each mutation runs a full test command, so
-    // a batch is seconds-to-minutes; ANTS-2132 dispatches it off the GUI
-    // thread, so the window keeps painting for the duration.
-    m_claudeIntegration->registerToolProvider("mutation_probe",
-        ClaudeIntegration::CallerCwdContract::Required,
-        rcDelegate(&RemoteControl::cmdMutationProbe));
-    // ANTS-1855 — read_log: filter a log file (debug log or caller_cwd path).
-    m_claudeIntegration->registerToolProvider("read_log",
-        ClaudeIntegration::CallerCwdContract::Required,
-        rcDelegate(&RemoteControl::cmdReadLog));
-    // ANTS-2021 — read_region: line-range / symbol-body slice of a project file.
-    m_claudeIntegration->registerToolProvider("read_region",
-        ClaudeIntegration::CallerCwdContract::Required,
-        rcDelegate(&RemoteControl::cmdReadRegion));
-    // ANTS-2219 — read_regions: batched multi-selector read (read-side mirror
-    // of apply_edits). Per-item etag → individual 304; shared max_bytes budget.
-    m_claudeIntegration->registerToolProvider("read_regions",
-        ClaudeIntegration::CallerCwdContract::Required,
-        rcDelegate(&RemoteControl::cmdReadRegions));
-    // ANTS-2094 — read_spill: re-read an offloaded result by its handle.
-    // caller_cwd Optional — the spill store is global/content-addressed,
-    // not project-scoped.
-    m_claudeIntegration->registerToolProvider("read_spill",
-        ClaudeIntegration::CallerCwdContract::Optional,
-        rcDelegate(&RemoteControl::cmdReadSpill));
-    // ANTS-2022 — apply_edits: atomic-per-file batch of {path, old, new} edits.
-    m_claudeIntegration->registerToolProvider("apply_edits",
-        ClaudeIntegration::CallerCwdContract::Required,
-        rcDelegate(&RemoteControl::cmdApplyEdits));
-    // ANTS-1637 — codebase_index: pre-computed project structural map.
-    m_claudeIntegration->registerToolProvider("codebase_index",
-        ClaudeIntegration::CallerCwdContract::Required,
-        rcDelegate(&RemoteControl::cmdCodebaseIndex));
-    // ANTS-2139 — docs_index: pre-computed project documentation map.
-    m_claudeIntegration->registerToolProvider("docs_index",
-        ClaudeIntegration::CallerCwdContract::Required,
-        rcDelegate(&RemoteControl::cmdDocsIndex));
-    // ANTS-3601 — doc_integrity: deterministic dead-anchor / broken-link / TOC checks.
-    m_claudeIntegration->registerToolProvider("doc_integrity",
-        ClaudeIntegration::CallerCwdContract::Required,
-        rcDelegate(&RemoteControl::cmdDocIntegrity));
-    // ANTS-3636 — doc_citations: resolve a doc's path:line citations, return the text.
-    m_claudeIntegration->registerToolProvider("doc_citations",
-        ClaudeIntegration::CallerCwdContract::Required,
-        rcDelegate(&RemoteControl::cmdDocCitations));
-    // ANTS-3661 — doc_symbols: resolve the identifiers a doc asserts exist.
-    m_claudeIntegration->registerToolProvider("doc_symbols",
-        ClaudeIntegration::CallerCwdContract::Required,
-        rcDelegate(&RemoteControl::cmdDocSymbols));
-    // ANTS-3662 — spec_lint: the greppable half of the spec-format contract.
-    m_claudeIntegration->registerToolProvider("spec_lint",
-        ClaudeIntegration::CallerCwdContract::Required,
-        rcDelegate(&RemoteControl::cmdSpecLint));
-    // ANTS-4108 — spec_conformance: run a spec's own patterns against the
-    // examples beside them (spec_lint's executable sibling).
-    m_claudeIntegration->registerToolProvider("spec_conformance",
-        ClaudeIntegration::CallerCwdContract::Required,
-        rcDelegate(&RemoteControl::cmdSpecConformance));
-    // ANTS-3660 — doc_dedup: the same passage written twice.
-    m_claudeIntegration->registerToolProvider("doc_dedup",
-        ClaudeIntegration::CallerCwdContract::Required,
-        rcDelegate(&RemoteControl::cmdDocDedup));
-    // ANTS-3663 — doc_lint: the five deterministic doc checkers in one call.
-    m_claudeIntegration->registerToolProvider("doc_lint",
-        ClaudeIntegration::CallerCwdContract::Required,
-        rcDelegate(&RemoteControl::cmdDocLint));
-    // ANTS-2161 — project_settings: detect layout + create/update .ants/project.json.
-    m_claudeIntegration->registerToolProvider("project_settings",
-        ClaudeIntegration::CallerCwdContract::Required,
-        rcDelegate(&RemoteControl::cmdProjectSettings));
-#ifdef ANTS_LUA_PLUGINS
-    // ANTS-2093 — project_query: run an agent-supplied read-only Lua snippet
-    // server-side and return only its result (the code-execution token-saver).
-    // Lives entirely in ants_lua_lib (LuaEngine::projectQueryVerb) because
-    // ants_core_lib's RemoteControl cannot see LuaEngine; the provider lambda
-    // (chrome_lib, which links lua_lib) reads the gate + tuning from Config and
-    // delegates. Registered only in ANTS_LUA_PLUGINS builds (verb absent
-    // otherwise — clean drop-out, no dead refusal path). See docs/specs/ANTS-2093.md.
-    m_claudeIntegration->registerToolProvider("project_query",
-        ClaudeIntegration::CallerCwdContract::Required,
-        ClaudeIntegration::RcHandler{[this](const QJsonObject &args) -> QString {
-            // ANTS-4682 — the three Config reads are GUI-thread-owned; the
-            // snippet run they parameterise is not, and it walks the project
-            // tree. Marshal the reads, run the verb on the worker: that is
-            // what re-serialises this verb against the off-thread ones, which
-            // is the hazard ANTS-2132 § 5 named and left open.
-            struct Cfg { bool enabled; int timeoutMs; int capBytes; };
-            const auto cfg = ants::onGuiThread([this]() -> Cfg {
-                return Cfg{m_config.claudeMcpProjectQueryEnabled(),
-                           m_config.claudeMcpProjectQueryTimeoutMs(),
-                           m_config.claudeMcpProjectQueryResultCapBytes()};
-            });
-            // § 2.5 — refuse, never default. A default-constructed Cfg reads
-            // the feature's own off switch as false, so the verb would report
-            // "project_query is disabled" to a caller who had enabled it.
-            if (!cfg) {
-                QJsonObject env;
-                env[QStringLiteral("ok")]    = false;
-                env[QStringLiteral("code")]  = QStringLiteral("gui_read_refused");
-                env[QStringLiteral("error")] = QStringLiteral(
-                    "project_query: the settings read was refused because the "
-                    "dispatcher is shutting down");
-                return QString::fromUtf8(
-                    QJsonDocument(env).toJson(QJsonDocument::Compact));
-            }
-            return QString::fromUtf8(QJsonDocument(LuaEngine::projectQueryVerb(
-                    args, cfg->enabled, cfg->timeoutMs, cfg->capBytes))
-                .toJson(QJsonDocument::Compact));
-        }});
-#endif
-    // ANTS-1961 / ANTS-1962 — cross-session feedback-file read + write.
-    m_claudeIntegration->registerToolProvider("feedback_query",
-        ClaudeIntegration::CallerCwdContract::Required,
-        rcDelegate(&RemoteControl::cmdFeedbackQuery));
-    m_claudeIntegration->registerToolProvider("feedback_log",
-        ClaudeIntegration::CallerCwdContract::Required,
-        rcDelegate(&RemoteControl::cmdFeedbackLog));
-    // ANTS-2129 — audit_falsepos_log: write side of the false-positive ledger.
-    m_claudeIntegration->registerToolProvider("audit_falsepos_log",
-        ClaudeIntegration::CallerCwdContract::Required,
-        rcDelegate(&RemoteControl::cmdAuditFalseposLog));
-    // ANTS-1713 — audit_dismiss: write side of the fingerprint-keyed
-    // learned-FP ledger (ANTS-1708 shipped the ledger + the GUI recording
-    // path; this lets a CC session record the verdict it just reasoned to).
-    m_claudeIntegration->registerToolProvider("audit_dismiss",
-        ClaudeIntegration::CallerCwdContract::Required,
-        rcDelegate(&RemoteControl::cmdAuditDismiss));
-    m_claudeIntegration->registerToolProvider("git_state",
-        ClaudeIntegration::CallerCwdContract::Required,
-        rcDelegate(&RemoteControl::cmdGitState));
-    m_claudeIntegration->registerToolProvider("subsystem",
-        ClaudeIntegration::CallerCwdContract::Required,
-        rcDelegate(&RemoteControl::cmdSubsystem));
-    m_claudeIntegration->registerToolProvider("last_audit_summary",
-        ClaudeIntegration::CallerCwdContract::Required,
-        rcDelegate(&RemoteControl::cmdLastAuditSummary));
-    // ANTS-1569 — current_state aggregator. MCP-only (mirrors
-    // last_audit_summary; no IPC dispatch branch). Pure composer over
-    // cmdRoadmapQuery + cmdGitState + cmdLastAuditSummary.
-    m_claudeIntegration->registerToolProvider("current_state",
-        ClaudeIntegration::CallerCwdContract::Required,
-        rcDelegate(&RemoteControl::cmdCurrentState));
-
-    // ANTS-1735 — model_switch_stats. Read-only aggregation of the model-switch
-    // effectiveness ledger, scoped to caller_cwd's project. MCP-only (mirrors
-    // current_state; no IPC dispatch branch). See docs/specs/ANTS-1735.md §2.5.
-    m_claudeIntegration->registerToolProvider("model_switch_stats",
-        ClaudeIntegration::CallerCwdContract::Required,
-        rcDelegate(&RemoteControl::cmdModelSwitchStats));
-
-    // ANTS-1309 + ANTS-1308 — spec-aware token-savers. spec_query
-    // returns one spec's parsed {title, status, kind, invariants[]};
-    // invariant_check scans docs/specs/*.md for specs that mention
-    // any path in `files[]` and returns their invariant lists.
-    // Both MCP-only.
-    m_claudeIntegration->registerToolProvider("spec_query",
-        ClaudeIntegration::CallerCwdContract::Required,
-        rcDelegate(&RemoteControl::cmdSpecQuery));
-    // ANTS-1963 — spec_log: write the three recurring spec mutations.
-    m_claudeIntegration->registerToolProvider("spec_log",
-        ClaudeIntegration::CallerCwdContract::Required,
-        rcDelegate(&RemoteControl::cmdSpecLog));
-    m_claudeIntegration->registerToolProvider("invariant_check",
-        ClaudeIntegration::CallerCwdContract::Required,
-        rcDelegate(&RemoteControl::cmdInvariantCheck));
-
-    // ANTS-1306 + ANTS-1307 — task-start context composers.
-    // task_priors bundles matching specs + ROADMAP cards + recent
-    // commits + ADRs for a free-text task description; project_conventions
-    // returns the task_type-scoped convention subset. Both MCP-only.
-    // See docs/specs/ANTS-1306.md and docs/specs/ANTS-1307.md.
-    m_claudeIntegration->registerToolProvider("task_priors",
-        ClaudeIntegration::CallerCwdContract::Required,
-        rcDelegate(&RemoteControl::cmdTaskPriors));
-    m_claudeIntegration->registerToolProvider("project_conventions",
-        ClaudeIntegration::CallerCwdContract::Required,
-        rcDelegate(&RemoteControl::cmdProjectConventions));
-
-    // ANTS-1299 + ANTS-1300 — build/test cache MCP tools. Both
-    // are op-dispatched (op=read | op=record) and write to
-    // <project>/.audit_cache/. MCP-only. See docs/specs/ANTS-1299.md
-    // and docs/specs/ANTS-1300.md.
-    m_claudeIntegration->registerToolProvider("build_status",
-        ClaudeIntegration::CallerCwdContract::Required,
-        rcDelegate(&RemoteControl::cmdBuildStatus));
-    m_claudeIntegration->registerToolProvider("test_results",
-        ClaudeIntegration::CallerCwdContract::Required,
-        rcDelegate(&RemoteControl::cmdTestResults));
-
-    // ANTS-1302 — focused_test. Runs only the ctest subset touching the
-    // changed files (via tests/coverage-map.json), returns the
-    // test_results envelope. Expensive (shells out to ctest), MCP-only.
-    // See docs/specs/ANTS-1302.md.
-    m_claudeIntegration->registerToolProvider("focused_test",
-        ClaudeIntegration::CallerCwdContract::Required,
-        rcDelegate(&RemoteControl::cmdFocusedTest));
-
-    // ANTS-3745 — build_target_for. Which target owns a source, read from
-    // CMakeLists.txt, plus the build and ctest lines that follow. Read-only
-    // and static — the opposite cost profile to focused_test above, which is
-    // why it is its own verb rather than an op on it.
-    m_claudeIntegration->registerToolProvider("build_target_for",
-        ClaudeIntegration::CallerCwdContract::Required,
-        rcDelegate(&RemoteControl::cmdBuildTargetFor));
-
-    // ANTS-1303 — find_definition + find_caller. Tree-wide regex symbol
-    // scanner (no LSP). Both take {symbol, caller_cwd, lang?,
-    // max_results?} and delegate to SymbolQuery via RemoteControl.
-    // MCP-only conceptually; also reachable via the IPC dispatch verbs
-    // find-definition / find-caller. See docs/specs/ANTS-1303.md.
-    m_claudeIntegration->registerToolProvider("find_definition",
-        ClaudeIntegration::CallerCwdContract::Required,
-        rcDelegate(&RemoteControl::cmdFindDefinition));
-    m_claudeIntegration->registerToolProvider("find_caller",
-        ClaudeIntegration::CallerCwdContract::Required,
-        rcDelegate(&RemoteControl::cmdFindCaller));
-
-    // ANTS-1305 — similar_code. Tree-wide shape matcher: reuses the
-    // FileOutline extractor + ranks signatures by token-set Jaccard
-    // similarity to a free-text {shape, caller_cwd, lang?, max_results?}
-    // query. Delegates to SimilarCode via RemoteControl. MCP-only
-    // conceptually; also reachable via the IPC dispatch verb
-    // similar-code. See docs/specs/ANTS-1305.md.
-    m_claudeIntegration->registerToolProvider("similar_code",
-        ClaudeIntegration::CallerCwdContract::Required,
-        rcDelegate(&RemoteControl::cmdSimilarCode));
-
-    // ANTS-1112 — five `indie_review_*` tools. Each handler resolves
-    // the active project via the focused TerminalWidget's shellCwd
-    // (matches the convention used by git_state / subsystem /
-    // last_audit_summary). All five delegate to RemoteControl's
-    // cmdIndieReview* methods, mirroring the ANTS-1253 registry shape.
-    m_claudeIntegration->registerToolProvider("indie_review_partition",
-        ClaudeIntegration::CallerCwdContract::Required,
-        rcDelegate(&RemoteControl::cmdIndieReviewPartition));
-    m_claudeIntegration->registerToolProvider("indie_review_brief",
-        ClaudeIntegration::CallerCwdContract::Required,
-        rcDelegate(&RemoteControl::cmdIndieReviewBrief));
-    m_claudeIntegration->registerToolProvider("indie_review_corroborate",
-        ClaudeIntegration::CallerCwdContract::Required,
-        rcDelegate(&RemoteControl::cmdIndieReviewCorroborate));
-    m_claudeIntegration->registerToolProvider("indie_review_synthesis_prompt",
-        ClaudeIntegration::CallerCwdContract::Required,
-        rcDelegate(&RemoteControl::cmdIndieReviewSynthesisPrompt));
-    m_claudeIntegration->registerToolProvider("indie_review_fold_in",
-        ClaudeIntegration::CallerCwdContract::Required,
-        rcDelegate(&RemoteControl::cmdIndieReviewFoldIn));
-    // ANTS-1279 — indie_review_orchestrate. Pure read (partition + brief
-    // manifests); no subprocess, so no in-flight gate. caller_cwd Required.
-    m_claudeIntegration->registerToolProvider("indie_review_orchestrate",
-        ClaudeIntegration::CallerCwdContract::Required,
-        rcDelegate(&RemoteControl::cmdIndieReviewOrchestrate));
-
-    // ANTS-1352 — indie_review_dispatch. Inline in-flight gate via
-    // verbInFlight* (same pattern as audit_run); caller_cwd Required
-    // per callerCwdContractFor; rate-limit tier Expensive.
-    // ANTS-4682 — STAYS, deliberately (ANTS-2132 § 5), same shape as
-    // audit_run: GUI-owned job registry, own worker, still freezes.
-    m_claudeIntegration->registerToolProvider("indie_review_dispatch",
-        ClaudeIntegration::CallerCwdContract::Required,
-        [this](const QJsonObject &args) -> QString {
-            if (!m_remoteControl) return QString::fromUtf8(kRcUnavailable);
-            const QString callerCwd = args.value(
-                QStringLiteral("caller_cwd")).toString();
-            // ANTS-1833 — reject a non-existent root before it can
-            // collapse the in-flight key (canon would be empty).
-            QString canon, badEnv;
-            if (!resolveInflightCallerCwd(callerCwd, "indie_review_dispatch",
-                                          &canon, &badEnv))
-                return badEnv;
-            const qint64 existing =
-                m_claudeIntegration->verbInFlightTryAcquire(
-                    QStringLiteral("indie_review_dispatch"), canon);
-            if (existing >= 0) {
-                QJsonObject env;
-                env["ok"]               = false;
-                env["code"]             = QStringLiteral("already_running");
-                env["error"]            = QStringLiteral(
-                    "indie_review_dispatch: a sweep is already in flight "
-                    "for this project root; retry after it completes");
-                env["running_since_ms"] =
-                    QDateTime::currentMSecsSinceEpoch() - existing;
-                env["retry_after_ms"]   = 30000;
-                return QString::fromUtf8(
-                    QJsonDocument(env).toJson(QJsonDocument::Compact));
-            }
-            // RAII: release on every exit path (incl. exception). indie-review-2026-05-21.
-            const auto inFlightGuard = qScopeGuard([this, &canon] {
-                m_claudeIntegration->verbInFlightRelease(
-                    QStringLiteral("indie_review_dispatch"), canon);
-            });
-            // ANTS-2104 — run the dispatch on a worker thread, exactly like
-            // audit_run (ANTS-2103). cmdIndieReviewDispatch -> dispatchLanes
-            // spins a local QNetworkAccessManager + QEventLoop (indiereview
-            // dispatcher.cpp:223-224); on the main thread that nested loop
-            // reentrantly delivers MCP QLocalSocket read-notifications during
-            // the multi-minute LLM sweep -> the same use-after-free SIGSEGV
-            // class as audit_run. The nam/loop are locals, so they construct
-            // on the worker; QThread::wait() is a join (no event pump), so no
-            // foreign socket notification fires during the dispatch.
-            // ANTS-5024 — the worker gets `canon`, resolved on this thread.
-            // wait() parks the GUI thread, so a GUI-thread marshal from the
-            // worker is never served and Ants hangs for good.
-            QJsonDocument doc;
-            {
-                QThread *worker = QThread::create(
-                    [this, &args, &canon, &doc]() {
-                        doc = m_remoteControl->cmdIndieReviewDispatch(args, canon);
-                    });
-                worker->start();
-                worker->wait();
-                delete worker;
-            }
-            QString out = QString::fromUtf8(
-                doc.toJson(QJsonDocument::Compact));
-            return out;
-        });
-
-    // ANTS-1113 — debt_sweep_* (4 tools). _scan shells out to git and
-    // _apply_fix to a packaging script (debtsweepengine.cpp
-    // waitForFinished); ANTS-2132 dispatches the whole rc-delegate family off
-    // the GUI thread, so neither blocks the window.
-    m_claudeIntegration->registerToolProvider("debt_sweep_scan",
-        ClaudeIntegration::CallerCwdContract::Required,
-        rcDelegate(&RemoteControl::cmdDebtSweepScan));
-    m_claudeIntegration->registerToolProvider("debt_sweep_apply_fix",
-        ClaudeIntegration::CallerCwdContract::Required,
-        rcDelegate(&RemoteControl::cmdDebtSweepApplyFix));
-    m_claudeIntegration->registerToolProvider("debt_sweep_defer",
-        ClaudeIntegration::CallerCwdContract::Required,
-        rcDelegate(&RemoteControl::cmdDebtSweepDefer));
-    m_claudeIntegration->registerToolProvider("debt_sweep_triage_prompt",
-        ClaudeIntegration::CallerCwdContract::Required,
-        rcDelegate(&RemoteControl::cmdDebtSweepTriagePrompt));
-
-    // ANTS-1289 — verify_changes. It shells out to per-gate build/test
-    // commands (verifyengine.cpp waitForFinished), which would freeze the GUI
-    // for the gate timeout; ANTS-2132 dispatches it off the GUI thread.
-    m_claudeIntegration->registerToolProvider("verify_changes",
-        ClaudeIntegration::CallerCwdContract::Required,
-        rcDelegate(&RemoteControl::cmdVerifyChanges));
-
-    // ANTS-1290 — plan_template.
-    m_claudeIntegration->registerToolProvider("plan_template",
-        ClaudeIntegration::CallerCwdContract::Required,
-        rcDelegate(&RemoteControl::cmdPlanTemplate));
 
     // ANTS-1284 — token_usage. ANTS-1422 pull 3: explicit
     // ClaudeIntegration* is now the canonical (only) path. The
@@ -5906,95 +4761,22 @@ void MainWindow::setupClaudeMcpProviders() {
                     .toJson(QJsonDocument::Compact));
         });
 
-    // ANTS-1360 — mcp_trace: read a slice of ClaudeIntegration's
-    // ring buffer of last tool/call dispatches. Does NOT delegate
-    // to RemoteControl — the ring lives inside ClaudeIntegration.
-    // ANTS-4682 — STAYS. Reads ClaudeIntegration's trace ring; no project
-    // file, so it is outside the § 5 hazard.
-    m_claudeIntegration->registerToolProvider("mcp_trace",
-        ClaudeIntegration::CallerCwdContract::ProcessGlobal,
-        [ci = m_claudeIntegration](const QJsonObject &args) -> QString {
-            const quint64 since = static_cast<quint64>(
-                args.value("since").toVariant().toLongLong());
-            const int limit = args.value("limit").toInt(50);
-            return QString::fromUtf8(
-                QJsonDocument(ci->queryMcpTrace(since, limit))
-                    .toJson(QJsonDocument::Compact));
+    // ANTS-4932 § 2.3 — every verb that reads no tab or terminal state is
+    // registered by the shared list, the one ants-mcpd also runs.
+    mcp::RegistryHost host;
+    host.ci    = m_claudeIntegration;
+    host.roots = m_rootProvider.get();
+    // ANTS-4682 — the three Config reads are GUI-thread-owned; project_query
+    // runs on the dispatch worker, so they are marshalled.
+    host.projectQueryConfig = [this]() -> std::optional<mcp::ProjectQueryConfig> {
+        return ants::onGuiThread([this]() {
+            return mcp::ProjectQueryConfig{
+                m_config.claudeMcpProjectQueryEnabled(),
+                m_config.claudeMcpProjectQueryTimeoutMs(),
+                m_config.claudeMcpProjectQueryResultCapBytes()};
         });
-
-    // ANTS-1319 — cold_eyes_* (4 tools). Mirror to indie_review fold-in
-    // pattern; each handler delegates to RemoteControl::cmdColdEyes*.
-    m_claudeIntegration->registerToolProvider("cold_eyes_partition",
-        ClaudeIntegration::CallerCwdContract::Required,
-        rcDelegate(&RemoteControl::cmdColdEyesPartition));
-    m_claudeIntegration->registerToolProvider("cold_eyes_brief",
-        ClaudeIntegration::CallerCwdContract::Required,
-        rcDelegate(&RemoteControl::cmdColdEyesBrief));
-    m_claudeIntegration->registerToolProvider("cold_eyes_cross_doc_diff",
-        ClaudeIntegration::CallerCwdContract::Required,
-        rcDelegate(&RemoteControl::cmdColdEyesCrossDocDiff));
-    m_claudeIntegration->registerToolProvider("cold_eyes_fold_in",
-        ClaudeIntegration::CallerCwdContract::Required,
-        rcDelegate(&RemoteControl::cmdColdEyesFoldIn));
-    // ANTS-1413 — cold_eyes_single_doc. Single-spec cross-consistency
-    // brief without the partition+brief multi-step.
-    m_claudeIntegration->registerToolProvider("cold_eyes_single_doc",
-        ClaudeIntegration::CallerCwdContract::Required,
-        rcDelegate(&RemoteControl::cmdColdEyesSingleDoc));
-    // ANTS-1414 — cross_doc_diff. Lane-source-agnostic alias for the
-    // regex hotspot primitive shared by cold-eyes + indie-review.
-    m_claudeIntegration->registerToolProvider("cross_doc_diff",
-        ClaudeIntegration::CallerCwdContract::Required,
-        rcDelegate(&RemoteControl::cmdCrossDocDiff));
-
-    // ANTS-1283 — session_memory KV.
-    m_claudeIntegration->registerToolProvider("session_memory",
-        ClaudeIntegration::CallerCwdContract::Required,
-        rcDelegate(&RemoteControl::cmdSessionMemory));
-
-    // ANTS-1723 — workflow_state: superpowers skill step/phase store.
-    m_claudeIntegration->registerToolProvider("workflow_state",
-        ClaudeIntegration::CallerCwdContract::Required,
-        rcDelegate(&RemoteControl::cmdWorkflowState));
-
-    // ANTS-1724 — session_brief: compact session-state envelope.
-    m_claudeIntegration->registerToolProvider("session_brief",
-        ClaudeIntegration::CallerCwdContract::Required,
-        rcDelegate(&RemoteControl::cmdSessionBrief));
-
-    // ANTS-1883 — session_orient: bundle of current_state +
-    // project_layout + roadmap_query (section_index, active).
-    m_claudeIntegration->registerToolProvider("session_orient",
-        ClaudeIntegration::CallerCwdContract::Required,
-        rcDelegate(&RemoteControl::cmdSessionOrient));
-
-    // ANTS-1430 — project_layout pre-cache.
-    m_claudeIntegration->registerToolProvider("project_layout",
-        ClaudeIntegration::CallerCwdContract::Required,
-        rcDelegate(&RemoteControl::cmdProjectLayout));
-
-    // ANTS-1400 — caller_cwd_info diagnostic verb. Pure delegation to
-    // ants::resolveCallerCwdRoot. No filesystem operations beyond the
-    // canonicalisations the helper performs; no shell, no process.
-    // The verb is intentionally classified Optional in
-    // ClaudeIntegration::callerCwdContractFor so empty caller_cwd is
-    // accepted (EmptyFallback is the legitimate "what would happen
-    // without it?" question). See docs/specs/ANTS-1400.md.
-    m_claudeIntegration->registerToolProvider("caller_cwd_info",
-        ClaudeIntegration::CallerCwdContract::Optional,
-        ClaudeIntegration::RcHandler{[this](const QJsonObject &args) -> QString {
-            const QString callerCwd =
-                args.value(QStringLiteral("caller_cwd")).toString();
-            const ants::ResolvedRoot rr =
-                ants::resolveCallerCwdRoot(this, callerCwd);
-            QJsonObject env;
-            env["ok"]           = true;
-            env["source"]       = sourceToString(rr.source);
-            env["resolved_cwd"] = rr.cwd;
-            if (rr.tabIndex) env["tab_index"] = *rr.tabIndex;
-            return QString::fromUtf8(
-                QJsonDocument(env).toJson(QJsonDocument::Compact));
-        }});
+    };
+    mcp::registerProjectScopedVerbs(*m_claudeIntegration, rcGetter, host);
 
     // Start hook server
     m_claudeIntegration->startHookServer();

@@ -29,7 +29,6 @@ extern const char *const kRcUnavailable;
 
 // Defined in mainwindow.cpp.
 QString firstNonShellDescendant(pid_t shellPid);
-QString sourceToString(ants::ResolvedRoot::Source s);
 TerminalWidget *activeTerminalInTab(QWidget *root);
 QWidget *tabPageOf(const QTabWidget *tabs, QWidget *w);
 
