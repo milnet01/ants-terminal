@@ -42,6 +42,10 @@ for security-relevant changes.
 
 ### Fixed
 
+- **The status bar shows the model for a Claude Code session in a folder whose path has a dot or a space, such as ~/.claude** (ANTS-5317)
+  Ants now names a session's log folder the way Claude Code does,
+  turning every character other than a letter or digit into a dash.
+
 - **CI's Release build links bench_partition_walk again, and the local gate can now reproduce CI's compiler and linker** (ANTS-5316)
   The benchmark linked one internal library that is not self-contained;
   it now links the full set. `tools/qt62-guard.sh --job build-test`

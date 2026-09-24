@@ -17958,9 +17958,14 @@ QString ClaudeIntegration::encodeProjectPath(const QString &path) {
     // producing `-mnt-Storage-Scripts-Linux-Ants_Terminal` (underscore
     // preserved) which never matched, so QDir::exists() failed and
     // sessionPathForCwd silently returned empty.
+    //
+    // ANTS-5317 — the rule is wider than `/` and `_`: EVERY character
+    // outside [A-Za-z0-9] folds, so `~/.claude` lives at
+    // `-home-ants--claude`. Keeping the `.` hid that session's transcript
+    // and its status-bar model chip.
     QString encoded = path;
-    encoded.replace('/', '-');
-    encoded.replace('_', '-');
+    for (QChar &c : encoded)
+        if (!(c.unicode() < 0x80 && c.isLetterOrNumber())) c = QLatin1Char('-');
     return encoded;
 }
 

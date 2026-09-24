@@ -142,7 +142,7 @@ tracker class) rather than pixel-level painting:
    shell's cwd, not the system-wide newest `*.jsonl`. The static
    helper `ClaudeIntegration::sessionPathForCwd(cwd)` is the source
    of truth for the resolution: walk up `cwd`, encode each ancestor
-   via `encodeProjectPath` (replace `/` with `-`), probe
+   via `encodeProjectPath` (every non-alphanumeric → `-`), probe
    `~/.claude/projects/<encoded>/`, return the newest `.jsonl` from
    the deepest match. With this rule, two shells in two distinct
    project trees end up with two distinct transcript paths, and the

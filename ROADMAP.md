@@ -41574,6 +41574,19 @@ in each bullet, not just the reporter's symptom.
   Source: user-request-2026-09-24.
   Lanes: build, ci.
 
+- 🚧 [ANTS-5317] **encodeProjectPath kept `.` and spaces, so a Claude session in ~/.claude showed no model in the status bar.**
+  Claude Code stores sessions under ~/.claude/projects/<encoded>/ with
+  every non-alphanumeric character folded to `-` (all 34 dirs here
+  match ^[A-Za-z0-9-]+$). encodeProjectPath folded only `/` and `_`,
+  so /home/ants/.claude encoded as -home-ants-.claude, never matched
+  -home-ants--claude, and the transcript (and model chip) was lost.
+  Fix: fold every non-ASCII-alphanumeric. Test: ClaudeSessionFreshness
+  INV-17, proven red first. Live after a relaunch.
+  **Layman:** The status bar could not find the session log for a Claude Code session running in a folder whose name has a dot, like ~/.claude, so it showed no model name.
+  Kind: fix.
+  Source: user-report-2026-09-24.
+  Lanes: claude.
+
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-08-14 triage
 
 Un-triaged findings drained from the shared `*_Ants_MCP_Feedback.md` corpus

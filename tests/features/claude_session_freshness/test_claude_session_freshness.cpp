@@ -602,6 +602,18 @@ void testEncodeProjectPath() {
            "ANTS-1192-INV-16: multiple underscores all collapse to dash",
            ClaudeIntegration::encodeProjectPath(
                "/home/user/my_proj_v2/sub-dir").toStdString());
+
+    // INV-17 (ANTS-5317): EVERY non-alphanumeric folds, not just `/` and
+    // `_`. A session in ~/.claude lives under `-home-ants--claude`; keeping
+    // the `.` lost its transcript and with it the status bar's model chip.
+    expect(ClaudeIntegration::encodeProjectPath("/home/ants/.claude")
+               == QStringLiteral("-home-ants--claude"),
+           "ANTS-5317-INV-17: dot in a path component folds to dash",
+           ClaudeIntegration::encodeProjectPath("/home/ants/.claude").toStdString());
+    expect(ClaudeIntegration::encodeProjectPath("/mnt/Games/PC Games/x.y")
+               == QStringLiteral("-mnt-Games-PC-Games-x-y"),
+           "ANTS-5317-INV-17: space and dot fold to dash",
+           ClaudeIntegration::encodeProjectPath("/mnt/Games/PC Games/x.y").toStdString());
 }
 
 void testWiring() {
