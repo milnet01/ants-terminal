@@ -74482,6 +74482,18 @@ partition (11 lanes) is documented in this fold-in for reuse.
   Source: review-contract-ANTS-4932-loop-2.
   Lanes: mcp.
 
+- 📋 [ANTS-5312] **Remove the counts left in the ANTS-4932 spec, per the no-counts writing rule.**
+  Offered to the user 2026-09-24, awaiting a yes. The review gate fixed only
+  the text its findings named. Remaining: § 1 point 2's `rcDelegate` and
+  `registerToolProvider` grep counts. Keep the 40 MiB RSS budget in § 4, which
+  is a limit and not a count. Rule source: /mnt/Games/CLAUDE.md "Writing and
+  Editing Documents". An edit that changes no instruction needs no new gate
+  (CLAUDE.md rule 14 No branch; record the one line).
+  **Layman:** The design document for the separate MCP helper still quotes some numbers that go stale; swap them for the names or searches they stand for.
+  Kind: doc-fix.
+  Source: in-session-2026-09-24.
+  Lanes: docs.
+
 ### 🔥 Cross-cutting themes (patterns caught by ≥2 reviewers)
 
 - 📋 [ANTS-4274] **Trust-model gaps in IPC sockets.**
