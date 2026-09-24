@@ -106,6 +106,67 @@ Python.
   id in the marker: `@pytest.mark.skip(reason="PROJ-1234: ...")`. A bare
   `skip` records nothing.
 
+## Traps
+
+What projects here learned the hard way. Each carries the breach it
+produces and a way to observe it.
+
+**A file that is both a program and a module guards its entry point.**
+Top-level code runs on import, so everything but definitions goes behind
+`if __name__ == "__main__":`. Breach: importing the file starts the
+program, or a gate cannot reuse a constant without copying it, and the
+copy drifts. Observe: `demoreel` is one executable file run through its
+shebang; loading it by path prints nothing and starts nothing, and
+`ci.sh` loads it with `importlib.machinery.SourceFileLoader` to reuse
+`BLANK_THRESHOLD` rather than restating it.
+
+**A subprocess inherits your stdout unless you say otherwise.**
+`subprocess.Popen` with no `stdout=` hands the child your stdout, so
+where your stdout is a contract the child's chatter lands in the
+caller's variable. Reintroducing it means dropping an argument, not
+adding one, so it does not look like a change. Breach: `out=$(tool ...)`
+returns something the tool never printed.
+
+**The process name is the interpreter, not the script.** A script run
+through its shebang is named for the interpreter, so `pgrep -x <tool>`
+matches nothing and reports success whatever is running. Breach: a leak
+check that is true by construction, reporting clean on a real leak.
+Observe: with a run live, `pgrep -x demoreel` returns nothing and
+`pgrep -f demoreel` finds it.
+
+**A guard that raises permits the call it exists to stop.** A tool-call
+hook exiting non-zero with anything but 2 is reported as a hook error,
+and the call proceeds — so an unhandled traceback blocks nothing. A
+guard that refuses must catch its own errors and refuse deliberately;
+one that only observes should return quietly. Refusing is exit 2, or
+exit 0 carrying `hookSpecificOutput.permissionDecision: "deny"`, which
+is the form `git-discard-guard` uses. Breach: a guard whose refusal path
+can raise.
+
+**`shlex.split` raises on unbalanced quotes.** Anything parsing a
+command line catches `ValueError`, because the commands are not its own.
+Breach: a lone quote takes down the guard that was protecting the tree.
+Observe: `python3 -c "import shlex; shlex.split('echo \"')"`.
+
+**Pin the linter's ruleset in the repository.** A default ruleset moves
+between releases, so the same commit lints clean on one machine and red
+on another, and neither result is wrong. Pin the ruleset in a config
+file; pin the linter version where the gate installs it. Breach: one
+commit, two different lint results.
+
+**Removing an environment variable is not neutral.** Copy the
+environment, delete a key, pass it to a child, and the library defaults
+for you. An absent name and a name that cannot resolve are different
+inputs, and the default is often the one you were avoiding. Breach:
+`env.pop("X")` and the child connects to something you did not mean,
+successfully, with every signal green.
+
+**No dependency manifest is a position, not an omission.** A project
+using only the standard library ships no requirements file. Record that
+in the project's own file, or a later session reads the absence as a gap
+and closes it. Breach: a manifest appears where there was none, with
+nothing saying the constraint was dropped.
+
 ## Tooling
 
 `ruff` for lint and format. Its config lives in `pyproject.toml`, so

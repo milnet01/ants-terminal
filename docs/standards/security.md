@@ -86,8 +86,10 @@ in.
 ## 2. Secrets
 
 - **Never in the repository.** Not in source, not in config, not in a
-  test fixture, not in a comment. `.env` is gitignored before the first
-  secret enters it, never after.
+  test fixture, not in a comment, and not in a commit message — a
+  message is as public as the tree and is not edited by removing the
+  file. `.env` is gitignored before the first secret enters it, never
+  after.
 - **A secret that reached git history is compromised**, and removing the
   file does not remove it. Rotate the credential; treat rewriting
   history as cleanup, not as remediation.
@@ -203,6 +205,12 @@ decision.
   expensive supply-chain decision is the one made in a hurry.
 - **Lockfiles are committed**, so a build is reproducible and a change
   in what executes is visible in a diff.
+- **A pipeline action or a container image is pinned to something
+  immutable** — a commit sha or a digest, never a tag, a branch or
+  `latest`. A mutable reference executes whatever it points at on the
+  day it runs, so the step is a different program each time and the diff
+  that changed it does not exist. CWE-829, untrusted functionality.
+  Breach: a pipeline step on a mutable reference.
 
 ## 9. When you find a hole
 

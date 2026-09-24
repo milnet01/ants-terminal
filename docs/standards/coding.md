@@ -163,6 +163,30 @@ or similar thing, in order of preference:
 whether to *extract* a helper, extract on the third call-site, not
 the first or second. Premature DRY costs more than duplication.
 
+**Exception — copies YOUR CHANGE touches that have diverged are
+reconciled now.** Rule of Three guards against inventing a shared thing
+before the pattern is visible. Copies that were once the same and are no
+longer do not raise that question: one is already wrong and nobody knows
+which. Reconciling them is how you find out; waiting for a third fixes
+the bug once and leaves it live in the other copy. **A diverged pair you
+merely found is §1.7's — surface it.**
+
+Breach: two implementations of one behaviour that disagree, both touched
+by your change, left separate on a count of call-sites.
+
+**A PRIVATE helper with one call site is duplication in the other
+direction.** It adds a layer to read through and a name promising
+generality nothing uses. Inline it. **Rule of Three decides whether to
+create an abstraction; this decides one that already exists**, so the two
+never rule on the same case and a helper that has reached two call sites
+is neither's business. **One you merely found is §1.7's — surface it.**
+
+Not reached from one place: an entry point a published interface, a
+framework, or the language requires. A single caller inside this
+repository does not make it private.
+
+Breach: a private helper your change touches, reached from one place.
+
 ### 1.4 Six-month test
 
 If someone opens this file six months from now, can they read the
@@ -260,6 +284,23 @@ where they do not. **A shared file is not forbidden and this is not a
 correctness rule.** What it buys is throughput: ordering two overlapping tasks
 costs one wait; running them concurrently costs a reconciliation, or that
 task's work twice where the rebase will not resolve mechanically.
+
+### 1.9 Generated output is not hand-edited
+
+Change a generated file by changing the generator's input. A hand edit
+survives until the next run and is then reverted, silently and by a
+tool nobody was watching. The edit is not rejected; it disappears.
+
+Where the edit is right, the generator is wrong. Fix it there, and the
+correction holds for every later run.
+
+A conformer can only obey this where the file says what it is. Generated
+output declares itself in its own opening lines, or the project lists it
+somewhere a reader will look. Output identified by neither is outside
+this rule, and the generator is where to fix that.
+
+Breach: a commit changing generated output without the input that
+produces it.
 
 ## 2. Error handling
 
@@ -377,8 +418,8 @@ that language. A Python project has no reason to load C++ rules.
 
 **A C project reads `languages/cpp.md`.** There is no `c.md`, and that is
 deliberate rather than a gap: the rules the two share — the range-guard
-class in particular — would become two copies that drift, which § 2.1
-forbids. That file gives the C spelling wherever it differs. **Named here
+class in particular — would become two copies that drift, which
+`documentation.md` § 2.1 forbids. That file gives the C spelling wherever it differs. **Named here
 because a C project looking for its own file finds none and would
 otherwise read nothing.**
 

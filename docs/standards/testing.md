@@ -227,6 +227,16 @@ satisfied. **A test never observed failing is not known to test
 anything** — which is why the order is the rule, not merely the presence
 of a test.
 
+**Red means failing on the assertion that locks the behaviour.** These
+are broken, not red: it does not compile; a fixture, asset or dependency
+is missing; it fails in setup, or on a different assertion; it errors,
+times out or crashes. Each of those proves the harness is wrong, not that
+the test binds the behaviour — and a step 2 satisfied by any of them
+would be satisfied by a test asserting nothing at all.
+
+**Breach:** a compile error, missing fixture or crash quoted as the red
+run.
+
 **Exceptions**, each stated in the commit body so a reader can tell a
 decision from an omission: a pure refactor with no behaviour change; a
 documentation-only change; generated code, where the consumer is what is
@@ -364,8 +374,11 @@ broken.
 no cleverness that costs legibility.
 
 The one place tests differ: **`coding.md` §1.3 does not apply inside a
-test body** — neither its reuse ladder nor the Rule of Three, so
-duplication between tests needs no commit-body justification. Extract
+test body — none of it, including anything added to it later.** So
+duplication between tests needs no commit-body justification, and a
+helper called from one test is not a breach there. The exclusion was
+written as a list of §1.3's parts, and §1.3 grew; two cold readers then
+read the list as exhaustive and one read the headline as governing. Extract
 only where the duplicated block is itself the thing under test, or where a
 change to it would have to be made identically in every copy to stay
 correct — never merely because it repeats. **A little duplication in a test is better
@@ -387,6 +400,36 @@ following a chain of abstractions to find out what it actually asserts.
 - ❌ Disabling a failing test with nothing tracking the cause.
 - ❌ Skipping the order because the change is small.
 - ❌ Chasing a coverage number.
+
+## 11. Parity tests name their reference
+
+A parity test binds two implementations — a CPU and a GPU path, two code
+paths that must agree, or a function copied between files and pinned by
+text comparison. It passes when both sides agree, **including when both
+are wrong in the same way**.
+
+So it is not a correctness test. Two sides sharing a formula, constant or
+derivation are wrong together, and a copy carries its source's defect.
+
+**Every parity test names, in its header, the reference test that pins
+the shared value.** That reference tests the value against something
+other than the other implementation: a published formula, cited; a
+hand-computed value with the working recorded; measured data or a fitted
+reference case; or a limit the formula must reach, such as zero at a
+threshold or continuity at a join.
+
+Where no reference exists, the value is a choice rather than a
+derivation. Record it as one at its site, and say in the parity header
+what the test does not prove.
+
+A parity failure says the two sides differ. It does not say which is
+wrong; the reference breaks the tie.
+
+**Breach:** a parity test with no named reference test.
+
+**Breach:** a parity test cited as evidence that a value is correct.
+
+**Breach:** a chosen constant presented at its site as derived.
 
 ## What checks this
 
