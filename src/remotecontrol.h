@@ -1082,6 +1082,10 @@ public:
     // ANTS-4622 — the cross-session mailbox (ops send / inbox / ack).
     QJsonDocument cmdSessionMessage(const QJsonObject &req);
 
+    // ANTS-5299 — run_trace: a review run records its trace-index row
+    // (ops start / finish / get). Seam: src/runtraceverb.h.
+    QJsonDocument cmdRunTrace(const QJsonObject &req);
+
     // ANTS-1548 — changelog_log: token-frugal Keep-a-Changelog writer.
     // op:"add" renders a bullet under a category in `## [Unreleased]`;
     // op:"add_from_roadmap" reuses a ROADMAP bullet's prose verbatim by

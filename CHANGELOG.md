@@ -12,6 +12,15 @@ for security-relevant changes.
 
 ## [Unreleased]
 
+### Added
+
+- **`run_trace` MCP verb: a review run records its own trace-index row, detail file and cost row** (ANTS-5299)
+  op:"start" mints the run id, op:"finish" writes the row, and op:"get"
+  reads a run back. Lanes are required, so 0 marks a self-read. A cost
+  row needs its coverage figure (`coverage_required`), and it reads a
+  transcript the caller names. Each message is counted once, where
+  summing the log's lines counted it two to four times.
+
 ### Changed
 
 - **The review dialogs' code is clear of three clang-tidy warnings.** (ANTS-5022)

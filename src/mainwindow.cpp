@@ -4772,6 +4772,12 @@ void MainWindow::setupClaudeMcpProviders() {
     m_claudeIntegration->registerToolProvider("session_message",
         ClaudeIntegration::CallerCwdContract::Required,
         rcDelegate(&RemoteControl::cmdSessionMessage));
+    // ANTS-5299 — run_trace: a review run records its trace-index row.
+    // Required on every op, get included: the index lives under the
+    // caller's project, and there is no default project to read.
+    m_claudeIntegration->registerToolProvider("run_trace",
+        ClaudeIntegration::CallerCwdContract::Required,
+        rcDelegate(&RemoteControl::cmdRunTrace));
     // ANTS-1548 — changelog_log: token-frugal Keep-a-Changelog writer.
     // Write op → Required contract (refuses absent caller_cwd upstream).
     m_claudeIntegration->registerToolProvider("changelog_log",

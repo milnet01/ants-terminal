@@ -488,6 +488,8 @@ set(ANTS_RC_SOURCES_REL
     # above: a member that never existed pre-split cannot violate any
     # pre-split relative order, and every existing TU keeps its ordinal.
     src/remotecontrol_session_message.cpp
+    # ANTS-5299 — run_trace's handler. Appended last, for the reason above.
+    src/remotecontrol_run_trace.cpp
 )
 list(TRANSFORM ANTS_RC_SOURCES_REL PREPEND "${CMAKE_SOURCE_DIR}/"
      OUTPUT_VARIABLE _ants_rc_abs)
@@ -536,6 +538,9 @@ add_library(ants_core_lib STATIC
     # sharing an object with RemoteControl::cmdRoadmapMigrate would drag
     # MainWindow into test_core, which links ants_core_lib alone.
     src/roadmapmigrateverb.cpp
+    # ANTS-5299 — the run_trace seam, its own TU for roadmapmigrateverb.cpp's
+    # reason above: the handler lives in ANTS_RC_SOURCES_REL.
+    src/runtraceverb.cpp
     # ANTS-3664 — one finding shape for the doc-lint verbs (Qt6::Core-only).
     # Blocker for ANTS-3660/3661/3662, composed by ANTS-3663.
     src/docfinding.cpp
@@ -3704,6 +3709,9 @@ if(ANTS_TESTS)
                 tests/features/roadmap_migrate_verb/test_roadmap_migrate_verb.cpp
                 tests/features/roadmap_migrate_backup/test_roadmap_migrate_backup.cpp
                 tests/features/session_message/test_session_message.cpp
+                # ANTS-5299 — run_trace: the trace-index writer. Behavioural
+                # against a QTemporaryDir; INV-13/14 scrape ANTS_SRC_DIR.
+                tests/features/run_trace/test_run_trace.cpp
                 # ANTS-5098 — inbox page, message_id and add_batch bounds.
                 tests/features/content_verb_bounds/test_content_verb_bounds.cpp
                 # ANTS-4065 — the markdown→store import mapping. Behavioural

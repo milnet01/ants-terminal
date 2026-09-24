@@ -14708,6 +14708,166 @@ void ClaudeIntegration::onMcpConnection() {
                     t["inputSchema"] = schema;
                     tools.append(t);
                 }
+                // ANTS-5299 — run_trace: a review run records its trace-index
+                // row. Every property below is read by cmdRunTrace (ANTS-4621).
+                {
+                    QJsonObject t;
+                    t["name"] = "run_trace";
+                    t["selection_hint"] = QStringLiteral(
+                        "Use to mint a review run's id and write its trace-index "
+                        "row, detail file and cost row instead of hand-editing "
+                        "gate-log.md. start before dispatching, finish after.");
+                    t["description"] = QStringLiteral(
+                        "Record a review run in the project's trace index "
+                        "(`gate_log`, default docs/reviews/gate-log.md) as "
+                        "`| Run | Date | Subject | Lanes | Outcome |`. op:\"start\" "
+                        "(needs `kind` G|C|V|E|F|R|A|L + `subject`) mints "
+                        "<K>-<YYYYMMDD>-<4 hex> and writes nothing tracked. "
+                        "op:\"finish\" (needs `id`, `lanes` — 0 is a value, never a "
+                        "default — and `outcome`) writes docs/reviews/<id>.md, the "
+                        "optional `cost` row, then the index row. op:\"get\" reads "
+                        "either state. Refusals: missing_field, bad_args, "
+                        "format_mismatch, already_recorded, coverage_required, "
+                        "not_found, bad_path. caller_cwd Required.");
+                    t["detail"] = QStringLiteral(
+                        "ANTS-5299 (with ANTS-5298's record half). Contract: "
+                        "tests/features/run_trace/spec.md. The row format is the "
+                        "v2 workflow's standards/documents.md § The header. "
+                        "start parks a pending record in the user cache "
+                        "(ants-terminal/run-trace/), outside the project, so a run "
+                        "in flight dirties nothing git sees; it survives a "
+                        "relaunch. It returns `env.CLAUDE_RUN_ID` for the caller to "
+                        "export, because a verb cannot set the caller's shell. "
+                        "finish writes the detail file, then the cost row, then "
+                        "the index row LAST, since the row is what the gate-record "
+                        "hook checks. A detail text with no Genre: line gets "
+                        "`Genre: record` prepended; with no `detail`, an existing "
+                        "<id>.md is accepted untouched and a missing one refuses "
+                        "missing_field. An index whose table header is not the "
+                        "fixed row refuses format_mismatch and is never rewritten. "
+                        "`cost` needs `verified` (else coverage_required), `kind`, "
+                        "`loop`, `executed`, `arm`, and `transcript` or "
+                        "`session_id` — the transcript is NAMED, never guessed, "
+                        "because two sessions in one project otherwise read each "
+                        "other's usage. Usage counts each message.id once: the "
+                        "harness writes one line per content block, each with the "
+                        "whole message's usage. A cost with lanes 0 refuses: a "
+                        "run that dispatched nobody records no cost. The root is "
+                        "the nearest ancestor holding .git, where gate-record "
+                        "looks. Every mutating op takes dry_run.");
+                    QJsonObject schema;
+                    schema["type"] = "object";
+                    QJsonObject props;
+                    {
+                        QJsonObject p;
+                        p["type"] = "string";
+                        p["description"] = QStringLiteral(
+                            "Your $PWD. REQUIRED — the project whose "
+                        "trace index this is, on every op.");
+                        props["caller_cwd"] = p;
+                    }
+                    {
+                        QJsonObject p;
+                        p["type"] = "string";
+                        QJsonArray e;
+                        e.append(QStringLiteral("start"));
+                        e.append(QStringLiteral("finish"));
+                        e.append(QStringLiteral("get"));
+                        p["enum"] = e;
+                        p["description"] = QStringLiteral(
+                            "start mints the id; finish writes the row; get reads "
+                            "a run. No default.");
+                        props["op"] = p;
+                    }
+                    {
+                        QJsonObject p;
+                        p["type"] = "string";
+                        QJsonArray e;
+                        for (const char *k : {"G", "C", "V", "E", "F", "R", "A", "L"})
+                            e.append(QLatin1String(k));
+                        p["enum"] = e;
+                        p["description"] = QStringLiteral(
+                            "op:\"start\" — the run kind: G gate, C code review, "
+                            "V verify, E edit, F close-findings, R review-rules, "
+                            "A adoption, L release.");
+                        props["kind"] = p;
+                    }
+                    {
+                        QJsonObject p;
+                        p["type"] = "string";
+                        p["description"] = QStringLiteral(
+                            "op:\"start\" — what the run was against: a "
+                        "path, a claim, a version. One line.");
+                        props["subject"] = p;
+                    }
+                    {
+                        QJsonObject p;
+                        p["type"] = "string";
+                        p["description"] = QStringLiteral(
+                            "op:\"finish\" / op:\"get\" — the id start returned.");
+                        props["id"] = p;
+                    }
+                    {
+                        QJsonObject p;
+                        p["type"] = "integer";
+                        p["minimum"] = 0;
+                        p["description"] = QStringLiteral(
+                            "op:\"finish\" — how many lanes read the subject. "
+                            "REQUIRED, never defaulted: 0 is what marks a self-read.");
+                        props["lanes"] = p;
+                    }
+                    {
+                        QJsonObject p;
+                        p["type"] = "string";
+                        p["description"] = QStringLiteral(
+                            "op:\"finish\" — one line: what the run concluded.");
+                        props["outcome"] = p;
+                    }
+                    {
+                        QJsonObject p;
+                        p["type"] = "string";
+                        p["description"] = QStringLiteral(
+                            "op:\"finish\" — markdown for <index dir>/<id>.md. "
+                        "Omit when you already wrote that file.");
+                        props["detail"] = p;
+                    }
+                    {
+                        QJsonObject p;
+                        p["type"] = "object";
+                        p["description"] = QStringLiteral(
+                            "op:\"finish\" — append a docs/reviews/run-costs.tsv row: "
+                            "{verified (REQUIRED), dismissed, loop, kind, executed "
+                            "yes|no|partial, outcome complete|stopped-early|open, "
+                            "arm live|draft}. agents = lanes. Needs transcript or "
+                            "session_id.");
+                        props["cost"] = p;
+                    }
+                    {
+                        QJsonObject p;
+                        p["type"] = "string";
+                        p["description"] = QStringLiteral(
+                            "op:\"finish\" with cost — absolute path of "
+                        "YOUR session's .jsonl under ~/.claude/projects.");
+                        props["transcript"] = p;
+                    }
+                    {
+                        QJsonObject p;
+                        p["type"] = "string";
+                        p["description"] = QStringLiteral(
+                            "op:\"finish\" with cost — your session id; "
+                        "resolves to ~/.claude/projects/<cwd slug>/<id>.jsonl.");
+                        props["session_id"] = p;
+                    }
+                    props["dry_run"] = makeDryRunProp();
+                    schema["properties"] = props;
+                    QJsonArray req;
+                    req.append(QStringLiteral("caller_cwd"));
+                    req.append(QStringLiteral("op"));
+                    schema["required"] = req;
+                    schema["additionalProperties"] = false;
+                    t["inputSchema"] = schema;
+                    tools.append(t);
+                }
                 // ANTS-1548 — changelog_log: token-frugal CHANGELOG writer.
                 {
                     QJsonObject t;
@@ -15832,7 +15992,10 @@ void ClaudeIntegration::onMcpConnection() {
                             // within one: what survives this session. Bucketed
                             // together so a catalogue reader finds both.
                             name == QLatin1String("session_message") ||
-                            name == QLatin1String("workflow_state"))
+                            name == QLatin1String("workflow_state") ||
+                            // ANTS-5299 — run_trace records what a review
+                            // run did, for the sessions after it.
+                            name == QLatin1String("run_trace"))
                         return QStringLiteral("mcp-state");
                     // ANTS-1735 — model_switch_stats: autonomous
                     // model-switcher effectiveness scorecard.
@@ -17177,6 +17340,9 @@ ClaudeIntegration::callerCwdContractFor(const QString &toolName) {
     // absent caller_cwd has no mailbox rather than a default one, so the
     // read ops are Required too.
     if (toolName == QStringLiteral("session_message"))    return C::Required;
+    // ANTS-5299 — run_trace writes and reads the caller's project trace
+    // index; no project, nothing to act on.
+    if (toolName == QStringLiteral("run_trace"))          return C::Required;
     // ANTS-1548 — changelog_log mutates CHANGELOG.md under the caller's
     // project root. Required for the same reason as roadmap_log.
     if (toolName == QStringLiteral("changelog_log"))      return C::Required;

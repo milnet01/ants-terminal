@@ -269,13 +269,16 @@
     },
     {
       "name": "mcp-content-verbs",
-      "summary": "Feedback, changelog, docs, terminal and cross-session message verbs.",
+      "summary": "Feedback, changelog, docs, terminal, cross-session message and run-trace verbs.",
       "sourcePaths": [
         "src/remotecontrol_changelog.cpp",
         "src/remotecontrol_docs.cpp",
         "src/remotecontrol_feedback.cpp",
+        "src/remotecontrol_run_trace.cpp",
         "src/remotecontrol_session_message.cpp",
-        "src/remotecontrol_terminal.cpp"
+        "src/remotecontrol_terminal.cpp",
+        "src/runtraceverb.cpp",
+        "src/runtraceverb.h"
       ]
     },
     {

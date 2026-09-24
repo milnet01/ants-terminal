@@ -55,7 +55,7 @@ Ants Terminal answers a lot of those questions **itself** and hands Claude a
 short, tidy summary instead of a wall of text. Less text read means fewer
 tokens spent. Three things make that happen:
 
-- **A built-in toolkit Claude can use.** 95 ready-made tools that answer
+- **A built-in toolkit Claude can use.** 96 ready-made tools that answer
   Claude's common questions directly — often saving thousands of tokens per
   question (more below).
 - **A cheat-sheet for Claude.** When a Claude session starts in an Ants tab,
