@@ -65270,7 +65270,7 @@ in-process, so changing one costs a rebuild AND a hand relaunch of the terminal.
 This section holds the work to remove the relaunch. The measurements that make
 it look feasible, and the one that bounds what is achievable, are on the item.
 
-- 📋 [ANTS-4932] **Serve the project-scoped MCP verbs from a standalone process, so changing one costs no terminal relaunch.**
+- 🚧 [ANTS-4932] **Serve the project-scoped MCP verbs from a standalone process, so changing one costs no terminal relaunch.**
   NEEDS A SPEC BEFORE ANY CODE. It is a one-way change touching a library boundary, the machine-global store's concurrency model, and where every verb lives. spec-format.md § 1's "expensive to undo" test is met on three counts, not one.
 
   THE PROBLEM. `ClaudeIntegration::startMcpServer` binds a QLocalServer inside the GUI process, and every verb is a `RemoteControl` method registered by `rcDelegate` from `MainWindow`. Nothing is loaded at runtime, so a verb change is a rebuild of `ants-terminal` plus a hand relaunch. Measured today: a shipped `spec_lint` change could not be exercised over MCP in the session that wrote it.
@@ -65465,6 +65465,13 @@ it look feasible, and the one that bounds what is achievable, are on the item.
   spec). 31 verified findings fixed, 2 dismissed. Spec Status is accepted
   and it is ready to implement. Six design choices taken at the gate are in
   spec § 9. Deferred: ANTS-5311 (token_usage misses calls ants-mcpd serves).
+  Progress (2026-09-24): built and on main (ebf3f976..3ef8184a).
+  ants_mcpcore_lib + ants-mcpd; readelf shows no Qt Gui/Widgets/DBus
+  (INV-1). Roadmap hold is a per-root flock (INV-13).
+  tests/features/standalone_mcp_server plus INV-4 and INV-7 cases: all
+  pass, four proven red by mutation. Suite 5077/5077. Spec folded back
+  to the build. Open: CI on the push, and INV-10's manual recipe (spec
+  6.2), which needs Claude Code re-registered to build/ants-mcpd.
   **Layman:** Right now every change to an Ants MCP tool means rebuilding the terminal and restarting it by hand. This would move most of those tools into a small separate program that Claude Code starts itself, so a rebuild is picked up without touching the terminal.
   Kind: refactor.
   Source: user-request-2026-09-07.
@@ -65490,6 +65497,33 @@ it look feasible, and the one that bounds what is achievable, are on the item.
   Kind: refactor.
   Source: ANTS-4932 spec § 5 deferral (2026-09-23).
   Lanes: build.
+
+- 📋 [ANTS-5319] **Split remotecontrol_roadmap_query.cpp before it reaches the 6,000-line TU cap.**
+  ANTS-4932 moved the roadmap_log helpers from TU 2 to the head of this
+  TU to keep the concatenated order, leaving it at 5,895 lines against
+  rc_tu_split INV-6's 6,000. Cut it at a member boundary as ANTS-4620 did,
+  inserting the new TU at its slice position.
+  **Layman:** One of the MCP code files is nearly at its size limit, so the next addition to it would fail a build check.
+  Kind: refactor.
+  Source: in-session-2026-09-24.
+
+- 📋 [ANTS-5320] **ants-mcpd drops replies still in flight when its stdin closes.**
+  src/mcpdmain.cpp quits the event loop on stdin EOF. Off-thread and
+  forwarded replies arrive later through the loop, so they are never
+  written. Claude Code keeps stdin open, so it is unaffected; a client that
+  pipes a batch and closes stdin gets only the synchronous replies. Fix:
+  on EOF, stop reading and quit once no request is outstanding.
+  **Layman:** If a program sends the MCP helper several requests and then closes the connection, the slower answers are lost.
+  Kind: fix.
+  Source: in-session-2026-09-24.
+
+- 📋 [ANTS-5321] **Make ants-mcpd reachable from the AppImage and the Flatpak.**
+  Both install ants-mcpd but launch only ants-terminal, so a client has no
+  path to register. Needed before ANTS-5308 retires the Python bridge. The
+  README states the gap.
+  **Layman:** People who use the single-file or Flatpak version cannot connect Claude Code the new way yet.
+  Kind: package.
+  Source: in-session-2026-09-24.
 
 ### Cold-eyes logs move to review history (user request 2026-09-07)
 

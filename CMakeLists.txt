@@ -896,6 +896,12 @@ target_link_libraries(ants_audit_lib
     PUBLIC  ants_mcpcore_lib
     PRIVATE ants_warnings)
 set_target_properties(ants_audit_lib PROPERTIES POSITION_INDEPENDENT_CODE ON)
+# ANTS-4932 — and the reverse edge: ClaudeIntegration and the registry call
+# AuditRunner, and remotecontrol_review.cpp calls IndieReviewDispatcher.
+# Declared so CMake repeats the two archives on every link line (a static-
+# library cycle); a single-pass linker (GNU ld on the Qt 6.2 floor) otherwise
+# reads audit before mcpcore and never returns to it.
+target_link_libraries(ants_mcpcore_lib PUBLIC ants_audit_lib)
 
 # ANTS-1677 — AuditDialog's source list. Entry 1 is src/auditdialog.cpp; the
 # pieces follow in ascending order of where their text began in it. Tests read
@@ -969,6 +975,10 @@ if(LUA_FOUND)
         PRIVATE ants_warnings)
     target_include_directories(ants_lua_lib PUBLIC ${LUA_INCLUDE_DIRS})
     target_compile_definitions(ants_lua_lib PUBLIC ANTS_LUA_PLUGINS=1)
+    # ANTS-4932 — the registry's project_query handler calls
+    # LuaEngine::projectQueryVerb; the reverse edge of the one above, for the
+    # reason given beside ants_audit_lib.
+    target_link_libraries(ants_mcpcore_lib PUBLIC ants_lua_lib)
     set_target_properties(ants_lua_lib PROPERTIES POSITION_INDEPENDENT_CODE ON)
     message(STATUS "Lua ${LUA_VERSION} found — plugin system enabled")
 else()
