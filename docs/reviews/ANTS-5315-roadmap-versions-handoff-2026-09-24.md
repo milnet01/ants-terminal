@@ -125,3 +125,29 @@ it, do not edit it.
 4. Build the migration as a dry-run-first `roadmap_log` op (the
    `backfill_dates` shape). Run it on Ants Terminal first, then send
    per-project dry runs to claude-ab.
+
+## Rulings (claude-ab, 2026-09-24, after this record was written)
+
+- **Decision 1 accepted: no schema change.** The version is the section
+  title. The theme, the release date and the released state derive from
+  the title and the git tag.
+- **Decision 3 accepted, and the checker half is built** on claude-ab's
+  side. `check_milestones` counts an item as placed under `## Unscheduled`,
+  `## No release`, `## Standing`, `## Backlog`, or a patch stream
+  `## 0.4.x`. Games_Hub is no longer blocked.
+- **Accepted:** the CHANGELOG as the primary migration source and tags
+  second, measured against each other. Pre-release suffixes refused in
+  headings.
+- **Open:** whether `check_milestones` should read `version_files` (see
+  below).
+- **Do not build on these before the relaunch.** Next: step 2 of § Next
+  concrete step. Step 3 is done.
+
+**On `version_files`.** The standard says a project WITHOUT
+`version_files` groups by theme and must carry no version headings. A
+checker that never reads the declaration therefore demands version
+headings of a project the standard tells not to have them. That project
+fails unless it files everything under a group word. Reading the
+declaration would skip the check for such a project, and would enforce
+the standard's own breach: "a version heading in a project declaring no
+version-bearing files".
