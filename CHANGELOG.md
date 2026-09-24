@@ -14,6 +14,11 @@ for security-relevant changes.
 
 ### Added
 
+- **`doc_symbols` gains `mode:"locator"`: one file:line per name a document mentions, with its measured error rate stated.** (ANTS-5313)
+  Where more than one place could be meant it gives a count, never a guess.
+  Measured over 292 documents: about one locator in eight points at the
+  wrong thing, so a caller should open the cited line before relying on it.
+
 - **`run_trace` MCP verb: a review run records its own trace-index row, detail file and cost row** (ANTS-5299)
   op:"start" mints the run id, op:"finish" writes the row, and op:"get"
   reads a run back. Lanes are required, so 0 marks a self-read. A cost
@@ -36,6 +41,11 @@ for security-relevant changes.
 - **The openSUSE package spec no longer carries the 0.7.107 Qt version-guard backport.** (ANTS-4874)
 
 ### Fixed
+
+- **`find_definition` no longer reports a local variable or a parameter as a symbol's definition.** (ANTS-5313)
+  Such a match is still reported, now as `local` and ranked after every
+  real definition, so a common word no longer resolves to whatever function
+  happened to declare one.
 
 - **The roadmap convert and publish reply says how items with duplicate headlines were paired.** (ANTS-5289)
 

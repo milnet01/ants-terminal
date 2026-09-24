@@ -18867,7 +18867,7 @@ fixes don't address. Roadmapped here as their own design tasks.
   Source: in-session-2026-09-18 (ANTS-5089 work).
   Lanes: mcp.
 
-- 🚧 [ANTS-5313] **`doc_symbols` gains `mode:"locator"` — one file:line per distinct symbol.**
+- ✅ [ANTS-5313] **`doc_symbols` gains `mode:"locator"` — one file:line per distinct symbol.**
   Proposal: ~/.claude/docs/reviews/v2-mechanical-checks-proposal-2026-09-24.md
   § The one thing worth building; approved by claude-ab (v2 orchestrator).
   Returns {locators:{sym:"file:line"}, ambiguous:{sym:n}, unresolved:[],
@@ -18890,6 +18890,11 @@ fixes don't address. Roadmapped here as their own design tasks.
   seed (5313, n=60): 8/60 wrong (13%), was 14/60; bare names 7/37 (19%), was
   30%. What remains is test-file helper functions sharing a common word, and
   one qualifier not honoured. Full suite 5065/5065 green.
+  Shipped (2026-09-24): merged to main on claude-ab's ruling — (b) kept,
+  (a) declined. Qualifier now honoured in locator mode: `A::b` locates only
+  a b inside A (its signature, or an enclosing class/struct/namespace); the
+  default mode keeps ANTS-3661 INV-2's leaf rule. The measured rate (1 in 8,
+  8/60) is stated in the verb's own schema. Needs an Ants relaunch.
   **Layman:** A compact answer to "where in the code is each name this document mentions?", so a reviewer never has to search for it.
   Kind: feature.
   Source: claude-ab-request-2026-09-24.

@@ -47,6 +47,15 @@ The reduction is `DocSymbols::locate()` (engine, pure); the JSON is
   ambiguous. A symbol with only such rows goes to `declared_only`: it is
   declared, so `unresolved` would be false, but there is no place to point.
 
+- **INV-9 a qualifier the document wrote is honoured** — `A::b` locates only
+  a candidate the source puts inside `A`: its own signature reads `A::b`, or a
+  class, struct or namespace named `A` encloses its line. With several
+  qualifiers the innermost (`B` in `A::B::c`) is the one checked. A symbol
+  whose qualifier matches no candidate is `unresolved` in this mode, although
+  the default mode reports it resolved: ANTS-3661 INV-2 resolves a `::` span
+  on its leaf, which is right for a list of candidates and wrong for a
+  single answer. An unqualified name is unaffected.
+
 ## Reload
 
 Compiled change: reaches a running terminal only after a relaunch.

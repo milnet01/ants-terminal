@@ -297,11 +297,104 @@ ScanResult scan(const QString &text, const QString &relPath, const Options &opts
     return res;
 }
 
+namespace {
+
+// ANTS-5313 INV-9 — the class, struct and namespace names enclosing `line`
+// (1-based) in a C-family file, outermost first. Strings and comments are
+// skipped so a brace inside one opens nothing; a brace whose head carries no
+// class-key or `namespace` opens an unnamed scope (a function body, an
+// initialiser), which still has to be popped.
+QStringList enclosingScopes(const QStringList &lines, int line) {
+    static const QRegularExpression named(QStringLiteral(
+        "\\b(?:class|struct|union|namespace)\\s+(?:[A-Z_][A-Z0-9_]*\\s+)?"
+        "([A-Za-z_]\\w*)[^;{()]*$"));
+    QStringList stack;
+    QString head;
+    bool inComment = false;
+    for (int li = 0; li < line - 1 && li < lines.size(); ++li) {
+        const QString &l = lines.at(li);
+        for (qsizetype i = 0; i < l.size(); ++i) {
+            const QChar c = l.at(i);
+            if (inComment) {
+                if (c == QLatin1Char('*') && i + 1 < l.size() && l.at(i + 1) == QLatin1Char('/')) {
+                    inComment = false;
+                    ++i;
+                }
+                continue;
+            }
+            if (c == QLatin1Char('/') && i + 1 < l.size()) {
+                if (l.at(i + 1) == QLatin1Char('/')) break;
+                if (l.at(i + 1) == QLatin1Char('*')) { inComment = true; ++i; continue; }
+            }
+            if (c == QLatin1Char('"')) {
+                qsizetype j = i + 1;
+                while (j < l.size() && l.at(j) != c) j += (l.at(j) == QLatin1Char('\\')) ? 2 : 1;
+                i = j;
+                continue;
+            }
+            if (c == QLatin1Char('{')) {
+                const auto m = named.match(head.trimmed());
+                stack << (m.hasMatch() ? m.captured(1) : QString());
+                head.clear();
+            } else if (c == QLatin1Char('}')) {
+                if (!stack.isEmpty()) stack.removeLast();
+                head.clear();
+            } else if (c == QLatin1Char(';')) {
+                head.clear();
+            } else {
+                head += c;
+            }
+        }
+        head += QLatin1Char(' ');
+    }
+    stack.removeAll(QString());
+    return stack;
+}
+
+// Python: the `class` lines above `line` that each indent less than the last.
+QStringList enclosingPyClasses(const QStringList &lines, int line) {
+    static const QRegularExpression cls(QStringLiteral("^(\\s*)class\\s+([A-Za-z_]\\w*)"));
+    if (line < 1 || line > lines.size()) return {};
+    const QString &at = lines.at(line - 1);
+    qsizetype indent = at.size() - at.trimmed().size();
+    QStringList out;
+    for (int li = line - 2; li >= 0 && indent > 0; --li) {
+        const auto m = cls.match(lines.at(li));
+        if (m.hasMatch() && m.captured(1).size() < indent) {
+            out.prepend(m.captured(2));
+            indent = m.captured(1).size();
+        }
+    }
+    return out;
+}
+
+// Does candidate `d` live inside `qual`? Its own signature decides when it
+// is written qualified (`void Alpha::fire(`); otherwise the scopes enclosing
+// its line do. No root means only the signature can confirm.
+bool inQualifier(const SymbolQuery::DefMatch &d, const QString &qual, const QString &leaf,
+                 const SourceLines &sourceLines, QHash<QString, QStringList> &fileCache) {
+    const QRegularExpression written(
+        QStringLiteral("([A-Za-z_]\\w*)\\s*(?:::|\\.)\\s*~?") + QRegularExpression::escape(leaf)
+        + QStringLiteral("\\b"));
+    const auto m = written.match(d.signature);
+    if (m.hasMatch()) return m.captured(1) == qual;
+    if (!sourceLines) return false;
+    auto it = fileCache.find(d.file);
+    if (it == fileCache.end()) it = fileCache.insert(d.file, sourceLines(d.file));
+    const QStringList chain = d.file.endsWith(QLatin1String(".py"))
+                                  ? enclosingPyClasses(*it, d.line)
+                                  : enclosingScopes(*it, d.line);
+    return chain.contains(qual);
+}
+
+}  // namespace
+
 // ANTS-5313 — see docsymbols.h. Occurrences of one span share a resolution
 // (scan() caches per needle), so the first occurrence decides — except that a
 // resolved occurrence outranks an unresolved or unchecked one, should a future
 // scan ever split them.
-Locators locate(const QVector<Symbol> &symbols) {
+Locators locate(const QVector<Symbol> &symbols, const SourceLines &sourceLines) {
+    QHash<QString, QStringList> fileCache;
     QHash<QString, const Symbol *> first;
     QStringList order;
     for (const Symbol &s : symbols) {
@@ -327,9 +420,25 @@ Locators locate(const QVector<Symbol> &symbols) {
         static const QRegularExpression forwardDecl(QStringLiteral(
             "^(?:template\\s*<[^>]*>\\s*)?(?:class|struct|union|enum(?:\\s+class|\\s+struct)?)"
             "\\s+(?:[A-Z_][A-Z0-9_]*\\s+)?[A-Za-z_]\\w*\\s*;"));
+        // INV-9 — `A::b` keeps only the candidates that live inside `A`;
+        // with several qualifiers the innermost is checked. The default mode
+        // resolves on the leaf (ANTS-3661 INV-2), which suits a candidate
+        // list; a single answer must not cross into another class.
+        QString bare = name;
+        if (bare.endsWith(QLatin1String("()"))) bare.chop(2);
+        const qsizetype sep = bare.lastIndexOf(QLatin1String("::"));
+        QString qual;
+        if (sep > 0) {
+            qual = bare.left(sep);
+            qual = qual.mid(qual.lastIndexOf(QLatin1String("::")) + 1).remove(QLatin1Char(':'));
+        }
+        const QString leaf = sep > 0 ? bare.mid(sep + 2) : bare;
+
         QStringList defs, decls;
         bool declaredElsewhere = false;
         for (const SymbolQuery::DefMatch &d : s.definitions) {
+            if (!qual.isEmpty() && !inQualifier(d, qual, leaf, sourceLines, fileCache))
+                continue;
             if (d.kind == QLatin1String("local")
                 || forwardDecl.match(d.signature).hasMatch()) {
                 declaredElsewhere = true;

@@ -41,7 +41,12 @@ int main(int argc, char **argv) {
         if (!f.open(QIODevice::ReadOnly)) continue;
         DocSymbols::Options o; o.rootCanonical = root; o.excludedNames = excl;
         const auto r = DocSymbols::scan(QString::fromUtf8(f.readAll()), rel, o);
-        const auto l = DocSymbols::locate(r.symbols);
+        const auto l = DocSymbols::locate(r.symbols, [&root](const QString &rel) {
+            QFile sf(QDir(root).filePath(rel));
+            return sf.open(QIODevice::ReadOnly)
+                       ? QString::fromUtf8(sf.readAll()).split(QLatin1Char('\n'))
+                       : QStringList();
+        });
         QJsonObject out; out["doc"] = rel; out["truncated"] = r.truncated;
         QJsonObject loc; for (auto it = l.located.cbegin(); it != l.located.cend(); ++it) loc[it.key()] = it.value();
         QJsonObject amb; for (auto it = l.ambiguous.cbegin(); it != l.ambiguous.cend(); ++it) amb[it.key()] = it.value();

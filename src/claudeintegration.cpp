@@ -6731,7 +6731,10 @@ void ClaudeIntegration::onMcpConnection() {
                     "past the response cap. "
                     "ANTS-5313: mode:\"locator\" answers WHERE rather than WHETHER — "
                     "one file:line per distinct symbol, ambiguous counts where more "
-                    "than one place matches, and no per-occurrence rows. Read-only. "
+                    "than one place matches, and no per-occurrence rows. Measured "
+                    "wrong about 1 time in 8 (docs/reviews/ANTS-5313-locator-"
+                    "precision-2026-09-24.md): verify a locator before acting on it. "
+                    "Read-only. "
                     "caller_cwd required.");
                 docSym["selection_hint"] = QStringLiteral(
                     "Use when reviewing a spec or design doc to get the short list of names "
@@ -6782,8 +6785,12 @@ void ClaudeIntegration::onMcpConnection() {
                             "declaration), ambiguous {symbol: n} where more than one "
                             "place matches (never a guess), unresolved[], "
                             "not_checked[], declared_only[] (declared only as a local or a "
-                            "forward declaration). No symbols[] or findings[]. "
-                            "Refuses with only. Default full.");
+                            "forward declaration). `A::b` locates only a b inside A. "
+                            "MEASURED: about 1 locator in 8 points at the wrong thing "
+                            "(8/60 over 292 docs, ANTS-5313), mostly bare common words "
+                            "hitting an unrelated helper; open the cited line before "
+                            "relying on it. No symbols[] or findings[]. Refuses with "
+                            "only. Default full.");
                     props["mode"] = dsMode;
                     schema["properties"] = props;
                     docSym["inputSchema"] = schema;

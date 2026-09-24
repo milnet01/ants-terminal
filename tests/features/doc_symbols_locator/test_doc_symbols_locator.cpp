@@ -8,7 +8,11 @@
 
 #include "../../_support/expect.h"
 
+#include <QDir>
+#include <QFile>
+#include <QFileInfo>
 #include <QJsonArray>
+#include <QTemporaryDir>
 #include <QJsonObject>
 #include <QString>
 #include <QStringList>
@@ -200,5 +204,66 @@ TEST(DocSymbolsLocator, Inv7RefusalsAndSchema) {
            "INV-7: the schema declares mode");
     expect(desc.find("QStringLiteral(\"locator\")") != std::string::npos,
            "INV-7: the mode enum lists locator");
+    EXPECT_EQ(0, expect_finish());
+}
+
+// INV-9 — a qualifier the document wrote is honoured. `A::b` locates only a
+// `b` the source puts inside `A`: its own signature says `A::b`, or a class,
+// struct or namespace named `A` encloses it. Measured: `QFileSystemWatcher::
+// fileChanged` located at `ClaudeIntegration::fileChanged` (ANTS-5313 record,
+// seed 5313 entry 40). End to end through scan(), so the signatures are the
+// resolver's own, not hand-written.
+TEST(DocSymbolsLocator, Inv9QualifierIsHonoured) {
+    expect_reset();
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString root = QFileInfo(tmp.path()).canonicalFilePath();
+    auto put = [&](const char *rel, const char *text) {
+        const QString p = root + QLatin1Char('/') + QString::fromUtf8(rel);
+        QDir().mkpath(QFileInfo(p).absolutePath());
+        QFile f(p);
+        ASSERT_TRUE(f.open(QIODevice::WriteOnly));
+        f.write(text);
+    };
+    put("src/shapes.h",
+        "class Alpha {\n"
+        "public:\n"
+        "    void fire(int n);\n"
+        "};\n"
+        "class Beta {\n"
+        "    void fire(int n);\n"
+        "};\n"
+        "namespace ns {\n"
+        "int helperFn(int n);\n"
+        "}\n");
+    put("src/shapes.cpp",
+        "#include \"shapes.h\"\n"
+        "void Alpha::fire(int n) {\n"
+        "    (void)n;\n"
+        "}\n");
+
+    DocSymbols::Options o;
+    o.rootCanonical = root;
+    const DocSymbols::ScanResult r = DocSymbols::scan(QStringLiteral(
+        "`Alpha::fire()` `Beta::fire` `Gamma::fire()` `ns::helperFn` `fire()`\n"),
+        QStringLiteral("docs/x.md"), o);
+    const DocSymbols::Locators l = DocSymbols::locate(r.symbols, [&root](const QString &rel) {
+        QFile f(root + QLatin1Char('/') + rel);
+        return f.open(QIODevice::ReadOnly)
+                   ? QString::fromUtf8(f.readAll()).split(QLatin1Char('\n'))
+                   : QStringList();
+    });
+
+    expect(l.located.value(QStringLiteral("Alpha::fire()")) == QLatin1String("src/shapes.cpp:2"),
+           "INV-9: Alpha's out-of-line definition", l.located.value(QStringLiteral("Alpha::fire()")));
+    expect(l.located.value(QStringLiteral("Beta::fire")) == QLatin1String("src/shapes.h:6"),
+           "INV-9: only the declaration inside class Beta",
+           l.located.value(QStringLiteral("Beta::fire")));
+    expect(l.unresolved.contains(QStringLiteral("Gamma::fire()")),
+           "INV-9: no `fire` lives in Gamma, so nothing is located");
+    expect(l.located.value(QStringLiteral("ns::helperFn")) == QLatin1String("src/shapes.h:9"),
+           "INV-9: a namespace qualifier", l.located.value(QStringLiteral("ns::helperFn")));
+    expect(l.located.value(QStringLiteral("fire()")) == QLatin1String("src/shapes.cpp:2"),
+           "INV-9: an unqualified name is unaffected (the one definition wins)");
     EXPECT_EQ(0, expect_finish());
 }

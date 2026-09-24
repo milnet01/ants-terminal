@@ -418,7 +418,14 @@ QJsonDocument RemoteControl::cmdDocSymbols(const QJsonObject &req) {
     // etag injected centrally (isEtagSupportedTool); docs_digest keeps it
     // content-sensitive (ANTS-3737 — same shape as doc_integrity).
     QJsonObject out = locator
-        ? docSymbolsBuildLocatorResponse(DocSymbols::locate(symbols), truncated, checked)
+        ? docSymbolsBuildLocatorResponse(
+              DocSymbols::locate(symbols, [&rootCanonical](const QString &rel) {
+                  QFile f(QDir(rootCanonical).filePath(rel));
+                  return f.open(QIODevice::ReadOnly)
+                             ? QString::fromUtf8(f.readAll()).split(QLatin1Char('\n'))
+                             : QStringList();
+              }),
+              truncated, checked)
         : docSymbolsBuildResponse(symbols, findings, truncated, checked, only);
     out[QStringLiteral("docs_digest")] = docSetDigest(rootCanonical, checked);
     return QJsonDocument(out);

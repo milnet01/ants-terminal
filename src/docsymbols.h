@@ -26,6 +26,8 @@
 #include <QString>
 #include <QVector>
 
+#include <functional>
+
 #include "docfinding.h"
 #include "symbolquery.h"
 
@@ -137,6 +139,12 @@ struct Locators {
     QStringList            declaredOnly;
 };
 
-Locators locate(const QVector<Symbol> &symbols);
+// `sourceLines` lets a qualified symbol (`A::b`) be checked against the scope
+// that encloses each candidate's line; without it only the candidate's own
+// signature can confirm the qualifier (spec INV-9). It is a function, not a
+// root, because a checker engine takes text and never opens a file itself
+// (ANTS-3664 INV-5): the caller reads a project-relative path's lines.
+using SourceLines = std::function<QStringList(const QString &relPath)>;
+Locators locate(const QVector<Symbol> &symbols, const SourceLines &sourceLines = {});
 
 }  // namespace DocSymbols
