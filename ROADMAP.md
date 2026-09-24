@@ -65347,6 +65347,10 @@ it look feasible, and the one that bounds what is achievable, are on the item.
   for today"): NO GATE has run. The packet is at
   /tmp/review-contract-4932/ and will not survive a reboot. Next: run
   the gate (genre spec, cap 2), then implement.
+  Progress (2026-09-24): spec review gate ran, two loops (the cap for a
+  spec). 31 verified findings fixed, 2 dismissed. Spec Status is accepted
+  and it is ready to implement. Six design choices taken at the gate are in
+  spec § 9. Deferred: ANTS-5311 (token_usage misses calls ants-mcpd serves).
   **Layman:** Right now every change to an Ants MCP tool means rebuilding the terminal and restarting it by hand. This would move most of those tools into a small separate program that Claude Code starts itself, so a rebuild is picked up without touching the terminal.
   Kind: refactor.
   Source: user-request-2026-09-07.
