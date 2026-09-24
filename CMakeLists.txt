@@ -2189,6 +2189,8 @@ if(ANTS_TESTS)
                 tests/features/doc_symbols_verb/test_doc_symbols_verb.cpp
                 # ANTS-3689 — doc_symbols only= row filter.
                 tests/features/doc_symbols_only_filter/test_doc_symbols_only_filter.cpp
+                # ANTS-5313 — doc_symbols mode:"locator".
+                tests/features/doc_symbols_locator/test_doc_symbols_locator.cpp
                 # ANTS-3662 — spec_lint engine (five checks, two of them gated)
                 # and its verb layer (candidate contract + refusal minimums).
                 tests/features/spec_lint/test_spec_lint.cpp

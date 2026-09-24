@@ -6728,7 +6728,10 @@ void ClaudeIntegration::onMcpConnection() {
                     "withheld. Reach for it on a single dense document — every "
                     "`resolved` row ships by default, which is the class nobody "
                     "reads and the reason an unfiltered single-doc run can spill "
-                    "past the response cap. Read-only. "
+                    "past the response cap. "
+                    "ANTS-5313: mode:\"locator\" answers WHERE rather than WHETHER — "
+                    "one file:line per distinct symbol, ambiguous counts where more "
+                    "than one place matches, and no per-occurrence rows. Read-only. "
                     "caller_cwd required.");
                 docSym["selection_hint"] = QStringLiteral(
                     "Use when reviewing a spec or design doc to get the short list of names "
@@ -6769,6 +6772,18 @@ void ClaudeIntegration::onMcpConnection() {
                     props["caller_cwd"] = dsCwd;
                     props["etag_match"] = dsEtag;
                     props["only"] = dsOnly;
+                    // ANTS-5313 — the compact form a reviewing lane wants.
+                    QJsonObject dsMode; dsMode["type"] = "string";
+                        dsMode["enum"] = QJsonArray{
+                            QStringLiteral("full"), QStringLiteral("locator")};
+                        dsMode["description"] = QStringLiteral(
+                            "\"locator\": one entry per DISTINCT symbol — "
+                            "locators {symbol: \"file:line\"} (a definition beats a "
+                            "declaration), ambiguous {symbol: n} where more than one "
+                            "place matches (never a guess), unresolved[], "
+                            "not_checked[]. No symbols[] or findings[]. Refuses with "
+                            "only. Default full.");
+                    props["mode"] = dsMode;
                     schema["properties"] = props;
                     docSym["inputSchema"] = schema;
                 }

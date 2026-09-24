@@ -18867,6 +18867,27 @@ fixes don't address. Roadmapped here as their own design tasks.
   Source: in-session-2026-09-18 (ANTS-5089 work).
   Lanes: mcp.
 
+- 🚧 [ANTS-5313] **`doc_symbols` gains `mode:"locator"` — one file:line per distinct symbol.**
+  Proposal: ~/.claude/docs/reviews/v2-mechanical-checks-proposal-2026-09-24.md
+  § The one thing worth building; approved by claude-ab (v2 orchestrator).
+  Returns {locators:{sym:"file:line"}, ambiguous:{sym:n}, unresolved:[],
+  not_checked:[], counts}. A definition beats a declaration; more than one
+  definition goes to `ambiguous`, never a guess. Ships only with a measured
+  wrong-resolution rate over the 292-document corpus (seeded sample).
+  Reload: compiled change, needs an Ants relaunch.
+  Progress (2026-09-24): built and tested (tests/features/doc_symbols_locator,
+  6 rows, red then green). Measured over the 292 docs, seed 20260924, n=60:
+  14/60 wrong (23%). Function-shaped/qualified names 0/14; bare names 14/46
+  (30%): the resolver takes any declaration, so common words hit unrelated
+  locals, parameters and Qt forward declarations. Record:
+  docs/reviews/ANTS-5313-locator-precision-2026-09-24.md. Held on branch
+  ants-5313-locator, not merged, pending a ruling on the fix and a re-measure
+  on a fresh seed.
+  **Layman:** A compact answer to "where in the code is each name this document mentions?", so a reviewer never has to search for it.
+  Kind: feature.
+  Source: claude-ab-request-2026-09-24.
+  Lanes: mcp, docs.
+
 ### 🔬 Project Audit false-positive reduction (self-audit 2026-05-20)
 
 Ran the project's own `ants-audit` CLI against this repo (~300 findings,

@@ -21,6 +21,7 @@
 #pragma once
 
 #include <QList>
+#include <QMap>
 #include <QSet>
 #include <QString>
 #include <QVector>
@@ -119,5 +120,20 @@ struct ScanResult {
 // `text` is the document's content; `relPath` is only carried onto findings.
 ScanResult scan(const QString &text, const QString &relPath,
                 const Options &opts = {});
+
+// ANTS-5313 — the locator reduction: one answer per DISTINCT symbol, for a
+// reader who wants to open the code rather than audit the document. Every
+// symbol lands in exactly one bucket. Where more than one place could be
+// meant, the answer is a count in `ambiguous` — never a pick, because a
+// confident wrong line costs a reader more than an honest "two candidates".
+// See tests/features/doc_symbols_locator/spec.md.
+struct Locators {
+    QMap<QString, QString> located;    // symbol → "file:line"
+    QMap<QString, int>     ambiguous;  // symbol → candidate count (≥ 2)
+    QStringList            unresolved;
+    QStringList            notChecked; // never looked up — not "absent"
+};
+
+Locators locate(const QVector<Symbol> &symbols);
 
 }  // namespace DocSymbols

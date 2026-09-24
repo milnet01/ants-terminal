@@ -297,4 +297,44 @@ ScanResult scan(const QString &text, const QString &relPath, const Options &opts
     return res;
 }
 
+// ANTS-5313 — see docsymbols.h. Occurrences of one span share a resolution
+// (scan() caches per needle), so the first occurrence decides — except that a
+// resolved occurrence outranks an unresolved or unchecked one, should a future
+// scan ever split them.
+Locators locate(const QVector<Symbol> &symbols) {
+    QHash<QString, const Symbol *> first;
+    QStringList order;
+    for (const Symbol &s : symbols) {
+        auto it = first.find(s.symbol);
+        if (it == first.end()) {
+            first.insert(s.symbol, &s);
+            order << s.symbol;
+        } else if (s.resolution == Resolution::Resolved
+                   && (*it)->resolution != Resolution::Resolved) {
+            *it = &s;
+        }
+    }
+
+    Locators out;
+    for (const QString &name : std::as_const(order)) {
+        const Symbol &s = *first.value(name);
+        if (s.resolution == Resolution::NotChecked) { out.notChecked << name; continue; }
+        if (s.resolution == Resolution::Unresolved) { out.unresolved << name; continue; }
+
+        // Distinct file:line per kind — a repeated match is one candidate.
+        QStringList defs, decls;
+        for (const SymbolQuery::DefMatch &d : s.definitions) {
+            const QString loc = d.file + QLatin1Char(':') + QString::number(d.line);
+            QStringList &bucket =
+                d.kind == QLatin1String("definition") ? defs : decls;
+            if (!bucket.contains(loc)) bucket << loc;
+        }
+        const QStringList &pick = defs.isEmpty() ? decls : defs;
+        if (pick.size() == 1)      out.located.insert(name, pick.first());
+        else if (pick.size() > 1) out.ambiguous.insert(name, int(pick.size()));
+        else                       out.unresolved << name;  // resolved with no match
+    }
+    return out;
+}
+
 }  // namespace DocSymbols

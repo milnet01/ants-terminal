@@ -365,6 +365,24 @@ QJsonDocument RemoteControl::cmdDocSymbols(const QJsonObject &req) {
         return QJsonDocument(bad);
     }
 
+    // ANTS-5313-INV-7 — `mode` is validated like `only`: an unknown value
+    // refuses rather than falling back to the full reply, and `only` with
+    // mode:"locator" refuses because it filters rows that mode never emits.
+    const QString mode = req.value(QStringLiteral("mode")).toString();
+    const bool locator = mode == QLatin1String("locator");
+    if ((!mode.isEmpty() && !locator && mode != QLatin1String("full"))
+        || (locator && !only.isEmpty() && only != QLatin1String("all"))) {
+        QJsonObject bad;
+        bad[QStringLiteral("ok")]    = false;
+        bad[QStringLiteral("code")]  = QStringLiteral("bad_args");
+        bad[QStringLiteral("error")] = locator
+            ? QStringLiteral("doc_symbols: only= does not apply to mode:\"locator\"")
+            : QStringLiteral("doc_symbols: unknown mode=\"%1\"").arg(mode.left(64));
+        bad[QStringLiteral("accepted")] = QJsonArray{
+            QStringLiteral("full"), QStringLiteral("locator")};
+        return QJsonDocument(bad);
+    }
+
     DocSymbols::Options opts;
     opts.rootCanonical = rootCanonical;
     opts.excludedNames = docSymbolsRefusalCodes(rootCanonical);
@@ -399,8 +417,9 @@ QJsonDocument RemoteControl::cmdDocSymbols(const QJsonObject &req) {
     }
     // etag injected centrally (isEtagSupportedTool); docs_digest keeps it
     // content-sensitive (ANTS-3737 — same shape as doc_integrity).
-    QJsonObject out =
-        docSymbolsBuildResponse(symbols, findings, truncated, checked, only);
+    QJsonObject out = locator
+        ? docSymbolsBuildLocatorResponse(DocSymbols::locate(symbols), truncated, checked)
+        : docSymbolsBuildResponse(symbols, findings, truncated, checked, only);
     out[QStringLiteral("docs_digest")] = docSetDigest(rootCanonical, checked);
     return QJsonDocument(out);
 }
@@ -492,6 +511,42 @@ QJsonObject RemoteControl::docSymbolsBuildResponse(
     // absence would otherwise be a third state a reader has to interpret.
     o[QStringLiteral("only")]                 = onlyApplied;
     o[QStringLiteral("symbols_filtered_out")] = withheld;
+    return o;
+}
+
+// ANTS-5313 — pure: the mode:"locator" reply. No symbols[] and no findings[]:
+// dropping the per-occurrence rows is the whole saving. `counts` is over
+// DISTINCT symbols, unlike the default mode's occurrence counts, so it is
+// named `symbols` rather than `total` to keep the two from being compared.
+QJsonObject RemoteControl::docSymbolsBuildLocatorResponse(
+    const DocSymbols::Locators &l, bool truncated,
+    const QStringList &checkedDocs) {
+    QJsonObject locators;
+    for (auto it = l.located.cbegin(); it != l.located.cend(); ++it)
+        locators[it.key()] = it.value();
+    QJsonObject ambiguous;
+    for (auto it = l.ambiguous.cbegin(); it != l.ambiguous.cend(); ++it)
+        ambiguous[it.key()] = it.value();
+
+    QJsonObject counts;
+    counts[QStringLiteral("located")]     = int(l.located.size());
+    counts[QStringLiteral("ambiguous")]   = int(l.ambiguous.size());
+    counts[QStringLiteral("unresolved")]  = int(l.unresolved.size());
+    counts[QStringLiteral("not_checked")] = int(l.notChecked.size());
+    counts[QStringLiteral("symbols")] =
+        int(l.located.size() + l.ambiguous.size() + l.unresolved.size()
+            + l.notChecked.size());
+
+    QJsonObject o;
+    o[QStringLiteral("ok")]           = true;
+    o[QStringLiteral("mode")]         = QStringLiteral("locator");
+    o[QStringLiteral("locators")]     = locators;
+    o[QStringLiteral("ambiguous")]    = ambiguous;
+    o[QStringLiteral("unresolved")]   = QJsonArray::fromStringList(l.unresolved);
+    o[QStringLiteral("not_checked")]  = QJsonArray::fromStringList(l.notChecked);
+    o[QStringLiteral("counts")]       = counts;
+    o[QStringLiteral("truncated")]    = truncated;
+    o[QStringLiteral("checked_docs")] = QJsonArray::fromStringList(checkedDocs);
     return o;
 }
 

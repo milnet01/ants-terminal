@@ -634,6 +634,10 @@ public:
         const QVector<DocSymbols::Symbol> &symbols,
         const QList<DocFinding::Finding> &findings, bool truncated,
         const QStringList &checkedDocs, const QString &only = {});
+    // ANTS-5313 — pure: DocSymbols::locate() → the mode:"locator" reply.
+    static QJsonObject docSymbolsBuildLocatorResponse(
+        const DocSymbols::Locators &l, bool truncated,
+        const QStringList &checkedDocs);
     // ANTS-3662 — spec_lint: the greppable half of the spec-format contract
     // (SpecLint::check). Walks `specs_dir`, not `docs_dir` — a README has no
     // invariants to check — but reuses docIntegrityEnumerate for the walk, for
