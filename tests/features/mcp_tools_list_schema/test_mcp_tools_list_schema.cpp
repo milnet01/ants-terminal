@@ -172,7 +172,7 @@ TEST(McpToolsListSchema, RegistryLambdasForwardCallerCwd) {
     // cmdRoadmapQuery. The provider was migrated to a verbatim rcDelegate
     // forward (ANTS-3422), so caller_cwd (and every arg) reaches the
     // handler without a per-arg line — the ANTS-1391 fix still applies.
-    expect(contains(mw, "rcDelegate(&RemoteControl::cmdRoadmapQuery)"),
+    expect(contains(mw, "rcDelegate(rc, &RemoteControl::cmdRoadmapQuery)"),
            "ANTS-3422",
            "roadmap_query registered via the verbatim rcDelegate forward, "
            "so caller_cwd reaches cmdRoadmapQuery");

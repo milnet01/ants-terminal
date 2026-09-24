@@ -186,7 +186,10 @@
       "summary": "MCP tool registry and dispatch. OVERSIZE: claudeintegration.cpp is 16,111 lines in one TU; split it by concern (schema block / verb handlers / helpers) when dispatching, this format has no line-range field.",
       "sourcePaths": [
         "src/claudeintegration.cpp",
-        "src/claudeintegration.h"
+        "src/claudeintegration.h",
+        "src/mcptoolregistry.cpp",
+        "src/mcptoolregistry.h",
+        "src/mcptoolsink.h"
       ]
     },
     {
@@ -229,7 +232,12 @@
         "src/remotecontrolgate.cpp",
         "src/remotecontrolgate.h",
         "src/localsockethub.cpp",
-        "src/localsockethub.h"
+        "src/localsockethub.h",
+        "src/mcpdforwarder.cpp",
+        "src/mcpdforwarder.h",
+        "src/mcpdmain.cpp",
+        "src/mcpdsocket.cpp",
+        "src/mcpdsocket.h"
       ]
     },
     {
@@ -407,6 +415,7 @@
         "src/mcpspill.cpp",
         "src/mcpspill.h",
         "src/resolvedroot.h",
+        "src/rootprovider.h",
         "src/secretredact.h",
         "src/tokenusageengine.cpp",
         "src/tokenusageengine.h"

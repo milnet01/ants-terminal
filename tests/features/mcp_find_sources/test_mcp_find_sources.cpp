@@ -300,7 +300,7 @@ TEST(McpFindSources, WiringContract) {
            "INV-10: find_sources registered in mainwindow.cpp");
     expect(contains(mwCpp,
                "CallerCwdContract::Required,\n"
-               "        rcDelegate(&RemoteControl::cmdFindSources)"),
+               "        rcDelegate(rc, &RemoteControl::cmdFindSources)"),
            "INV-10: registered with Required contract");
 
     // INV-11 — claudeintegration descriptor + cost + bucket + contract.

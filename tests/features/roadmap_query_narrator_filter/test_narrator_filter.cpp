@@ -78,7 +78,7 @@ TEST(roadmap_query_narrator_filter, Inv4SchemaAdvertises) {
 TEST(roadmap_query_narrator_filter, Inv5DispatchForwards) {
     expect_reset();
     const std::string cpp = ants_test::slurpMainWindow();
-    expect(contains(cpp, "rcDelegate(&RemoteControl::cmdRoadmapQuery)"),
+    expect(contains(cpp, "rcDelegate(rc, &RemoteControl::cmdRoadmapQuery)"),
            "INV-5: roadmap_query registered via the verbatim rcDelegate "
            "forward, so include_narrator_bullets reaches the handler");
     expect(contains(cpp, "ANTS-3422"),

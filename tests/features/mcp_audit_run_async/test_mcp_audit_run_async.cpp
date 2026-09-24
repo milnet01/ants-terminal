@@ -12,6 +12,7 @@
 #include <QJsonArray>
 #include <QJsonObject>
 #include <QString>
+#include <algorithm>
 #include <string>
 #include "claudeintegration.h"
 
@@ -68,7 +69,10 @@ TEST(McpAuditRunAsync, Inv1SyncPathUnchanged) {
     const std::string mw = mainwindowSrc();
     const size_t at = mw.find("registerToolProvider(\"audit_run\",");
     ASSERT_NE(at, std::string::npos) << "audit_run registration not found";
-    const size_t end = mw.find("\n    m_claudeIntegration->", at);
+    // ANTS-4932 § 2.3 — audit_run is registered in mcptoolregistry.cpp, where
+    // the next statement is a `sink.` registration.
+    const size_t end = std::min(mw.find("\n    m_claudeIntegration->", at),
+                                mw.find("\n    sink.", at));
     const std::string body =
         mw.substr(at, end == std::string::npos ? std::string::npos : end - at);
 

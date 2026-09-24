@@ -182,7 +182,7 @@ TEST(McpColdEyes, ProviderLambdasForwardArgs) {
     const std::string mw = ants_test::slurpMainWindow();
     ASSERT_FALSE(mw.empty());
     // ANTS-1782 — these are pure RC-delegate shims registered via the
-    // rcDelegate(&RemoteControl::cmd*) factory, which forwards `args`
+    // rcDelegate(rc, &RemoteControl::cmd*) factory, which forwards `args`
     // wholesale. Assert the verb reference rather than the old inline
     // `cmd(args)` call shape.
     for (const std::string cmd : {"cmdColdEyesPartition",

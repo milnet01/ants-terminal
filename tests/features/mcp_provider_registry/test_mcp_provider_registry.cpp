@@ -75,9 +75,13 @@ TEST(McpProviderRegistry, Inv3RegistrarAndTypeAlias) {
     expect(hdr.find("registerToolProvider(const QString &name") != std::string::npos,
            "INV-3a",
            "claudeintegration.h missing registerToolProvider declaration");
+    // ANTS-4932 § 2.3 — the alias's definition moved to mcptoolsink.h;
+    // claudeintegration.h re-exports it as ClaudeIntegration::ToolHandler.
+    const std::string sink = ants_test::slurpFile(SRC_MCP_TOOL_SINK_H_PATH);
     std::regex aliasRe(
         R"(using\s+ToolHandler\s*=\s*std::function\s*<\s*QString\s*\(\s*const\s+QJsonObject\s*&)");
-    expect(std::regex_search(hdr, aliasRe),
+    expect(std::regex_search(sink, aliasRe) &&
+               hdr.find("using ToolHandler = mcp::ToolHandler;") != std::string::npos,
            "INV-3b",
            "claudeintegration.h missing ToolHandler = "
            "std::function<QString(const QJsonObject&)> alias");
@@ -134,9 +138,11 @@ TEST(McpProviderRegistry, Inv7AtLeastTwelveRegisterCalls) {
     // (m_claudeIntegration->registerToolProvider("…") and won't drift
     // on future docstring mentions of the function name. ANTS-1253
     // landed with 12 calls; subsequent tools (ANTS-1254 +) add new
-    // calls, so the floor is "at least 12".
+    // calls, so the floor is "at least 12". ANTS-4932 § 2.3 — the
+    // project-scoped calls read `sink.registerToolProvider("…")` in
+    // mcptoolregistry.cpp, which the reading set includes.
     const std::string mw = ants_test::slurpMainWindow();
-    std::regex callRe(R"(->registerToolProvider\(\")");
+    std::regex callRe(R"((->|\bsink\.)registerToolProvider\(\")");
     const size_t n = countMatches(mw, callRe);
     expect(n >= 12, "INV-7",
            ("mainwindow.cpp has " + std::to_string(n) +

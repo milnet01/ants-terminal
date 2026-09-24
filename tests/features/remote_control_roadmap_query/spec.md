@@ -32,7 +32,7 @@ input tokens. See `docs/specs/ANTS-1117.md`.
   record's `kind` (string) and `lanes` (string list) fields.
 - **INV-7** `cmdRoadmapQuery` is registered in `dispatch()` and
   handles `cmd == "roadmap-query"`.
-- **INV-8** When `m_main->roadmapPathForRemote()` is empty, the verb
+- **INV-8** When the host's `RootProvider::fallbackRoadmapPath()` is empty, the verb
   returns `{"ok": false, "error": "...", "code": "no_roadmap_loaded"}`
   per the unified error shape (no crash, no segfault).
 - **INV-9** Cache wiring: `m_roadmapCachePath`, `m_roadmapCacheMtimeMs`,

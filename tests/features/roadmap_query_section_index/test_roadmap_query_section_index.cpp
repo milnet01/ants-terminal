@@ -454,7 +454,7 @@ TEST(roadmap_query_section_index, Inv13PerSectionLegacyFlag) {
 TEST(roadmap_query_section_index, DispatchForwardsModeArg) {
     expect_reset();
     const std::string cpp = ants_test::slurpMainWindow();
-    expect(contains(cpp, "rcDelegate(&RemoteControl::cmdRoadmapQuery)"),
+    expect(contains(cpp, "rcDelegate(rc, &RemoteControl::cmdRoadmapQuery)"),
            "dispatch: roadmap_query registered via the verbatim rcDelegate "
            "forward, so mode + include_section_headers reach the handler");
     expect(contains(cpp, "ANTS-3422"),
@@ -469,7 +469,7 @@ TEST(roadmap_query_section_index, DispatchForwardsModeArg) {
 TEST(roadmap_query_section_index, DispatchForwardsIncludeBody) {
     expect_reset();
     const std::string cpp = ants_test::slurpMainWindow();
-    expect(contains(cpp, "rcDelegate(&RemoteControl::cmdRoadmapQuery)"),
+    expect(contains(cpp, "rcDelegate(rc, &RemoteControl::cmdRoadmapQuery)"),
            "dispatch: roadmap_query registered via the verbatim rcDelegate "
            "forward, so include_body reaches the handler");
     expect(contains(cpp, "ANTS-3422"),

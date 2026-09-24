@@ -36,4 +36,20 @@ public:
     virtual std::optional<int> tabForCwd(const QString &canonical) const = 0;
 };
 
+// ants-mcpd's provider: no tabs, and the fallback root is this process's own
+// cwd, which the client set to its working directory when it launched the
+// server (spec § 2.1). Defined beside resolveCallerCwdRoot.
+class ServerCwdRootProvider final : public RootProvider {
+public:
+    QString fallbackRoot() const override;
+    QString fallbackRoadmapPath() const override;
+    std::optional<int> fallbackTab() const override { return std::nullopt; }
+    ResolvedRoot::Source fallbackSource() const override {
+        return ResolvedRoot::Source::ServerCwd;
+    }
+    std::optional<int> tabForCwd(const QString &) const override {
+        return std::nullopt;
+    }
+};
+
 }  // namespace ants

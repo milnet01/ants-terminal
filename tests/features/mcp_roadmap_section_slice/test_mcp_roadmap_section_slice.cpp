@@ -130,9 +130,9 @@ TEST(McpRoadmapSectionSlice, ProviderLambdaForwardsSection) {
     const std::string mw = ants_test::slurpMainWindow();
     ASSERT_FALSE(mw.empty());
     // ANTS-3422 — the roadmap_query provider forwards args VERBATIM via
-    // rcDelegate(&RemoteControl::cmdRoadmapQuery), so `section` reaches the
+    // rcDelegate(rc, &RemoteControl::cmdRoadmapQuery), so `section` reaches the
     // handler by construction (no per-arg extract/forward line).
-    EXPECT_NE(mw.find("rcDelegate(&RemoteControl::cmdRoadmapQuery)"),
+    EXPECT_NE(mw.find("rcDelegate(rc, &RemoteControl::cmdRoadmapQuery)"),
               std::string::npos)
         << "roadmap_query not registered via the verbatim rcDelegate forward";
     EXPECT_NE(mw.find("ANTS-3422"), std::string::npos)

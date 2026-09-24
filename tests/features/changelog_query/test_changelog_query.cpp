@@ -452,7 +452,7 @@ TEST(ChangelogQueryWiring, RegisteredAndAllowlisted) {
     const std::string mwsq = ants_test::squashWhitespace(mw);
     // Registered verbatim-forward under CallerCwdContract::Required.
     EXPECT_NE(mwsq.find("registerToolProvider(\"changelog_query\""), std::string::npos);
-    EXPECT_NE(mwsq.find("rcDelegate(&RemoteControl::cmdChangelogQuery)"),
+    EXPECT_NE(mwsq.find("rcDelegate(rc, &RemoteControl::cmdChangelogQuery)"),
               std::string::npos);
 
     // Handler exists.

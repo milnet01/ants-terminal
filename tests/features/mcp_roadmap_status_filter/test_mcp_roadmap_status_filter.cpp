@@ -206,7 +206,7 @@ TEST(mcp_roadmap_status_filter, Inv9McpDispatchExtractsStatus) {
     const std::string mw = ants_test::slurpMainWindow();
     expect(contains(mw, "registerToolProvider(\"roadmap_query\""),
            "ANTS-1253: roadmap_query registered via registerToolProvider");
-    expect(contains(mw, "rcDelegate(&RemoteControl::cmdRoadmapQuery)"),
+    expect(contains(mw, "rcDelegate(rc, &RemoteControl::cmdRoadmapQuery)"),
            "ANTS-3422: roadmap_query forwards status (and every arg) verbatim");
     expect(contains(mw, "ANTS-3422"),
            "INV-9: ANTS-3422 verbatim-forward anchor present");
@@ -245,11 +245,11 @@ TEST(mcp_roadmap_status_filter, ProviderLambdaWidened) {
     expect_reset();
     const std::string mw = ants_test::slurpMainWindow();
     // ANTS-3422 — the roadmap_query provider forwards args VERBATIM via
-    // rcDelegate(&RemoteControl::cmdRoadmapQuery), so `status` threads
+    // rcDelegate(rc, &RemoteControl::cmdRoadmapQuery), so `status` threads
     // through to cmdRoadmapQuery without a per-arg forward line.
     expect(contains(mw, "registerToolProvider(\"roadmap_query\""),
            "MainWindow registers roadmap_query (ANTS-1253)");
-    expect(contains(mw, "rcDelegate(&RemoteControl::cmdRoadmapQuery)"),
+    expect(contains(mw, "rcDelegate(rc, &RemoteControl::cmdRoadmapQuery)"),
            "ANTS-3422: provider forwards status (and every arg) verbatim "
            "to cmdRoadmapQuery");
     expect(contains(mw, "ANTS-3422"),

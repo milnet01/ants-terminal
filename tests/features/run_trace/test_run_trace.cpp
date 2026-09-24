@@ -491,7 +491,8 @@ TEST(RunTrace, RegisteredRequiredWithStrictSchema) {
         ss << f.rdbuf();
         return ss.str();
     };
-    const std::string mw = slurp("/mainwindow.cpp");
+    // ANTS-4932 § 2.3 — project-scoped verbs are registered in the shared list.
+    const std::string mw = slurp("/mcptoolregistry.cpp");
     const std::string ci = slurp("/claudeintegration.cpp");
     ASSERT_FALSE(mw.empty());
     ASSERT_FALSE(ci.empty());

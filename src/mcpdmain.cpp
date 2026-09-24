@@ -18,12 +18,9 @@
 #include "mcpspill.h"
 #include "mcptoolregistry.h"
 #include "remotecontrol.h"
-#include "remotecontrol_internal.h"
 #include "rootprovider.h"
 
 #include <QCoreApplication>
-#include <QDir>
-#include <QFileInfo>
 #include <QSet>
 #include <QSocketNotifier>
 
@@ -31,24 +28,6 @@
 #include <unistd.h>
 
 namespace {
-
-// § 2.4 — with no tabs, the fallback root is this process's own cwd, which
-// the client set to its working directory when it launched us.
-class ServerCwdRootProvider final : public ants::RootProvider {
-public:
-    QString fallbackRoot() const override { return QDir::currentPath(); }
-    QString fallbackRoadmapPath() const override {
-        const QString root = QFileInfo(fallbackRoot()).canonicalFilePath();
-        return root.isEmpty() ? QString() : rcdetail::findRoadmapUnder(root);
-    }
-    std::optional<int> fallbackTab() const override { return std::nullopt; }
-    ants::ResolvedRoot::Source fallbackSource() const override {
-        return ants::ResolvedRoot::Source::ServerCwd;
-    }
-    std::optional<int> tabForCwd(const QString &) const override {
-        return std::nullopt;
-    }
-};
 
 void writeStdout(const QByteArray &line) {
     std::fwrite(line.constData(), 1, static_cast<size_t>(line.size()), stdout);
@@ -86,7 +65,7 @@ int main(int argc, char **argv) {
     pipeline.setMcpEnabled(config.claudeMcpEnabled());
     pipeline.setServerName(QStringLiteral("ants-mcpd"));
 
-    ServerCwdRootProvider roots;
+    ants::ServerCwdRootProvider roots;
     RemoteControl rc(nullptr, nullptr, &roots);
     rc.setMcpVerbVocabularyProvider(
         [&pipeline] { return pipeline.registeredToolNames(); });

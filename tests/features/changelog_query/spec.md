@@ -44,7 +44,7 @@ and source-scrapes the handler wiring.
 
 ## Wiring (source-scrape, INV-1/6/9)
 
-- `changelog_query` registered via `rcDelegate(&RemoteControl::cmdChangelogQuery)`.
+- `changelog_query` registered via `rcDelegate(rc, &RemoteControl::cmdChangelogQuery)`.
 - Present in the opt-in allowlists (`fields=` needs none since ANTS-4524 —
   every verb honours it): `isCompactArgTool`,
   `isOffloadEligible`, `isEtagSupportedTool`, `callerCwdContractFor` (Required).

@@ -754,14 +754,8 @@ set_target_properties(ants_vt_lib PROPERTIES POSITION_INDEPENDENT_CODE ON)
 set(ANTS_MAINWINDOW_SOURCES_REL
     src/mainwindow.cpp
 )
-# ANTS-4932 § 2.3 — the tests' reading set also holds src/mcptoolregistry.cpp:
-# MainWindow::setupClaudeMcpProviders() registers the project-scoped verbs by
-# calling that list, so a wiring test that asks "is verb X registered for the
-# terminal?" must read it. It is NOT a chrome_lib source (claude_lib compiles
-# it); this variable only feeds ANTS_MAINWINDOW_SOURCES.
 list(TRANSFORM ANTS_MAINWINDOW_SOURCES_REL PREPEND "${CMAKE_SOURCE_DIR}/"
      OUTPUT_VARIABLE _ants_mainwindow_abs)
-list(APPEND _ants_mainwindow_abs "${CMAKE_SOURCE_DIR}/src/mcptoolregistry.cpp")
 list(JOIN _ants_mainwindow_abs ";" _ants_mainwindow_joined)
 # Escaped for the reason given beside _ants_rc_joined.
 string(REPLACE ";" "\\;" _ants_mainwindow_joined "${_ants_mainwindow_joined}")
@@ -1784,6 +1778,9 @@ if(ANTS_TESTS)
         SRC_TERMINALGRID_CPP_PATH="${CMAKE_SOURCE_DIR}/src/terminalgrid.cpp"
         SRC_VTPARSER_PATH="${CMAKE_SOURCE_DIR}/src/vtparser.cpp"
         "ANTS_MAINWINDOW_SOURCES=\"${_ants_mainwindow_joined}\""
+        # ANTS-4932 § 2.3 — setupClaudeMcpProviders() registers the project-scoped
+        # verbs through this list, so ants_test::slurpMainWindow() reads it too.
+        ANTS_MCP_REGISTRY_SOURCE="${CMAKE_SOURCE_DIR}/src/mcptoolregistry.cpp"
         SRC_MAINWINDOW_H_PATH="${CMAKE_SOURCE_DIR}/src/mainwindow.h"
         SRC_THEMEDSTYLESHEET_CPP_PATH="${CMAKE_SOURCE_DIR}/src/themedstylesheet.cpp")
 
@@ -1960,6 +1957,9 @@ if(ANTS_TESTS)
     target_compile_definitions(test_chrome PRIVATE
         SRC_MAIN_PATH="${CMAKE_SOURCE_DIR}/src/main.cpp"
         "ANTS_MAINWINDOW_SOURCES=\"${_ants_mainwindow_joined}\""
+        # ANTS-4932 § 2.3 — setupClaudeMcpProviders() registers the project-scoped
+        # verbs through this list, so ants_test::slurpMainWindow() reads it too.
+        ANTS_MCP_REGISTRY_SOURCE="${CMAKE_SOURCE_DIR}/src/mcptoolregistry.cpp"
         # ANTS-4273 INV-5 — the doc claimed ants.notify() was a no-op.
         PLUGINS_MD_PATH="${CMAKE_SOURCE_DIR}/PLUGINS.md"
         SRC_MAINWINDOW_H_PATH="${CMAKE_SOURCE_DIR}/src/mainwindow.h"
@@ -2771,11 +2771,17 @@ if(ANTS_TESTS)
         SRC_CI_WORKFLOW_PATH="${CMAKE_SOURCE_DIR}/.github/workflows/ci.yml"
         ANTS_SOURCE_DIR="${CMAKE_SOURCE_DIR}"
         "ANTS_MAINWINDOW_SOURCES=\"${_ants_mainwindow_joined}\""
+        # ANTS-4932 § 2.3 — setupClaudeMcpProviders() registers the project-scoped
+        # verbs through this list, so ants_test::slurpMainWindow() reads it too.
+        ANTS_MCP_REGISTRY_SOURCE="${CMAKE_SOURCE_DIR}/src/mcptoolregistry.cpp"
         SRC_MAINWINDOW_H_PATH="${CMAKE_SOURCE_DIR}/src/mainwindow.h"
         SRC_CLAUDESTATUSWIDGETS_CPP_PATH="${CMAKE_SOURCE_DIR}/src/claudestatuswidgets.cpp"
         SRC_CLAUDESTATUSWIDGETS_H_PATH="${CMAKE_SOURCE_DIR}/src/claudestatuswidgets.h"
         SRC_CLAUDE_INTEGRATION_CPP_PATH="${CMAKE_SOURCE_DIR}/src/claudeintegration.cpp"
         SRC_CLAUDE_INTEGRATION_H_PATH="${CMAKE_SOURCE_DIR}/src/claudeintegration.h"
+        # ANTS-4932 § 2.3 — the registration types moved out of
+        # claudeintegration.h; ClaudeIntegration keeps aliases for them.
+        SRC_MCP_TOOL_SINK_H_PATH="${CMAKE_SOURCE_DIR}/src/mcptoolsink.h"
         SRC_SETTINGSDIALOG_CPP="${CMAKE_SOURCE_DIR}/src/settingsdialog.cpp"
         SRC_RC_HEADER="${CMAKE_SOURCE_DIR}/src/remotecontrol.h"
         # ANTS-3833 — the RemoteControl implementation is eleven TUs. The two
@@ -3355,6 +3361,9 @@ if(ANTS_TESTS)
         SRC_SETTINGSDIALOG_H_PATH="${CMAKE_SOURCE_DIR}/src/settingsdialog.h"
         SRC_CLAUDEALLOWLIST_CPP_PATH="${CMAKE_SOURCE_DIR}/src/claudeallowlist.cpp"
         "ANTS_MAINWINDOW_SOURCES=\"${_ants_mainwindow_joined}\""
+        # ANTS-4932 § 2.3 — setupClaudeMcpProviders() registers the project-scoped
+        # verbs through this list, so ants_test::slurpMainWindow() reads it too.
+        ANTS_MCP_REGISTRY_SOURCE="${CMAKE_SOURCE_DIR}/src/mcptoolregistry.cpp"
         SRC_DIFFVIEWER_CPP_PATH="${CMAKE_SOURCE_DIR}/src/diffviewer.cpp"
         ROADMAPDIALOG_H="${CMAKE_SOURCE_DIR}/src/roadmapdialog.h"
         ROADMAPDIALOG_CPP="${CMAKE_SOURCE_DIR}/src/roadmapdialog.cpp"
@@ -3434,7 +3443,8 @@ if(ANTS_TESTS)
             SRC_LUAENGINE_PATH="${CMAKE_SOURCE_DIR}/src/luaengine.cpp"
             SRC_LUAENGINE_H_PATH="${CMAKE_SOURCE_DIR}/src/luaengine.h"
             SRC_PLUGINMANAGER_CPP_PATH="${CMAKE_SOURCE_DIR}/src/pluginmanager.cpp"
-            "ANTS_MAINWINDOW_SOURCES=\"${_ants_mainwindow_joined}\"")
+            "ANTS_MAINWINDOW_SOURCES=\"${_ants_mainwindow_joined}\""
+            ANTS_MCP_REGISTRY_SOURCE="${CMAKE_SOURCE_DIR}/src/mcptoolregistry.cpp")
 
     # ANTS-4797 — a per-TEST path define belongs on its own source, not on
     # the bundle. Every define in the block above lands on EVERY TU's command
@@ -3805,6 +3815,9 @@ if(ANTS_TESTS)
         ANTS_RC_SRC_DIR="${CMAKE_SOURCE_DIR}/src"
         SRC_MAINWINDOW_H="${CMAKE_SOURCE_DIR}/src/mainwindow.h"
         "ANTS_MAINWINDOW_SOURCES=\"${_ants_mainwindow_joined}\""
+        # ANTS-4932 § 2.3 — setupClaudeMcpProviders() registers the project-scoped
+        # verbs through this list, so ants_test::slurpMainWindow() reads it too.
+        ANTS_MCP_REGISTRY_SOURCE="${CMAKE_SOURCE_DIR}/src/mcptoolregistry.cpp"
         # ANTS-3358 — ChromeGuard -Wnull-dereference pragma-guard source-grep.
         SRC_DIALOGCHROME_CPP="${CMAKE_SOURCE_DIR}/src/dialogchrome.cpp"
         # ANTS-3505 — diffviewer positionBackToTop -Wnull-dereference source-grep.

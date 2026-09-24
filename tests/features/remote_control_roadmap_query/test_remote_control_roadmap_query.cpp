@@ -177,9 +177,12 @@ static int runMain() {
     if (!contains(rcSrc, "no_roadmap_loaded"))
         fail("INV-8",
                     "no_roadmap_loaded error code missing from cmdRoadmapQuery");
-    if (!contains(rcSrc, "roadmapPathForRemote"))
+    // ANTS-4932 § 2.4 — the host's roadmap path arrives through
+    // RootProvider::fallbackRoadmapPath(); the terminal's provider answers it
+    // from MainWindow::roadmapPathForRemote().
+    if (!contains(rcSrc, "fallbackRoadmapPath()"))
         fail("INV-8",
-                    "cmdRoadmapQuery must call MainWindow::roadmapPathForRemote()");
+                    "cmdRoadmapQuery must call RootProvider::fallbackRoadmapPath()");
 
     // INV-9: cache fields wired up.
     const char *cacheFields[] = {

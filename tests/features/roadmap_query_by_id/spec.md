@@ -50,7 +50,7 @@ item], count, path, id, found}`. Body included by default. Bypasses the
   provider forwards `id` to `cmdRoadmapQuery`. ANTS-3422 retired the
   hand-maintained per-arg forward (whose repeated omissions were the
   silent-drop hazard ANTS-1586/ANTS-1856 kept re-fixing) in favour of a
-  verbatim `rcDelegate(&RemoteControl::cmdRoadmapQuery)` forward that
+  verbatim `rcDelegate(rc, &RemoteControl::cmdRoadmapQuery)` forward that
   passes the whole args object through, so `id` reaches the handler by
-  construction. Source anchor: `rcDelegate(&RemoteControl::cmdRoadmapQuery)`
+  construction. Source anchor: `rcDelegate(rc, &RemoteControl::cmdRoadmapQuery)`
   + `ANTS-3422` in `mainwindow.cpp`.

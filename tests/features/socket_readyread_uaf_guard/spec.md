@@ -46,7 +46,7 @@ that exist are all safe:
 
 | Handler | File | Dispatches a nested loop? | Guard |
 |---|---|---|---|
-| MCP | `claudeintegration.cpp` (`[this, socket, idleTimer]`) | yes (`audit_run` et al.) | `idleTimer->stop()` + `QPointer<QLocalSocket>` (ANTS-2101) |
+| MCP | `claudeintegration.cpp` (`[this, socket, idleTimer, channel]`) | yes (`audit_run` et al.) | `idleTimer->stop()` + `QPointer<McpReplyChannel>`, the socket's child (ANTS-2101, ANTS-4932) |
 | remote-control | `remotecontrol.cpp` | yes (`audit_run` et al.) | `idleTimer->stop()` + `QPointer<QLocalSocket>` (ANTS-2026) |
 | hook | `claudeintegration.cpp` (`[socket]`) | **no** — buffers only; dispatch (`processHookEvent`) runs in the `disconnected` handler, no nested loop | n/a (short-op) |
 
@@ -58,7 +58,8 @@ pumps nothing. Not in scope.
 
 - **INV-1** — the MCP `readyRead` handler in `claudeintegration.cpp`
   (the one capturing `idleTimer`) MUST call `idleTimer->stop()` and then
-  guard the socket with `QPointer<QLocalSocket>` before the dispatch.
+  dispatch through a `QPointer<McpReplyChannel>` to the socket's reply
+  channel, which is the socket's child and dies with it (ANTS-4932).
 - **INV-2** — the remote-control `readyRead` handler in
   `remotecontrol.cpp` MUST do the same `idleTimer->stop()` +
   `QPointer<QLocalSocket>` pair before `dispatch()`.

@@ -184,7 +184,7 @@ TEST(McpSessionMemory, ProviderLambdaRegisteredInMainWindow) {
               std::string::npos)
         << "session_memory provider not registered in mainwindow.cpp";
     // ANTS-1782 — the provider is a pure RC-delegate shim, registered
-    // via the rcDelegate(&RemoteControl::cmd*) factory which forwards
+    // via the rcDelegate(rc, &RemoteControl::cmd*) factory which forwards
     // `args` wholesale. Assert the verb reference rather than the old
     // inline `cmdSessionMemory(args)` call shape.
     EXPECT_NE(mw.find("cmdSessionMemory"), std::string::npos)

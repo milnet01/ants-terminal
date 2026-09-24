@@ -891,14 +891,14 @@ void registerProjectScopedVerbs(ToolSink &sink, RemoteControlGetter rc,
     // rg.waitForFinished(), which starved the QLocalSocket notifier and
     // tripped concurrent verbs into a -32000 transport timeout. caller_cwd
     // is Required here, so the off-thread path never reaches the
-    // m_main->currentTerminal() fallback (main-thread-only state).
+    // focused-tab fallback (RootProvider, main-thread-only state).
     sink.registerToolProvider("workspace_search",
         ClaudeIntegration::CallerCwdContract::Required,
         rcDelegate(rc, &RemoteControl::cmdWorkspaceSearch));
     // ANTS-3716 — cited_by. Off the socket thread for the same reason
     // workspace_search is, and more so: it runs ONE rg per anchor, up to 64 of
     // them, each blocking on waitForFinished(). caller_cwd is Required, so the
-    // off-thread path never reaches the m_main->currentTerminal() fallback.
+    // off-thread path never reaches the focused-tab fallback.
     sink.registerToolProvider("cited_by",
         ClaudeIntegration::CallerCwdContract::Required,
         rcDelegate(rc, &RemoteControl::cmdCitedBy));

@@ -58,7 +58,7 @@ It is a list-path filter, not a targeted selector.
   correct, but the hand-maintained forward list omitted these args, so
   each was dropped at the MCP boundary and inert end-to-end. ANTS-3422
   retired that allowlist for a verbatim
-  `rcDelegate(&RemoteControl::cmdRoadmapQuery)` forward that passes the
+  `rcDelegate(rc, &RemoteControl::cmdRoadmapQuery)` forward that passes the
   whole args object through — so every arg (present and future) reaches
   the handler by construction and the drop bug-class cannot recur.
 

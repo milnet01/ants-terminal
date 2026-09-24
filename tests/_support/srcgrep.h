@@ -94,8 +94,17 @@ inline std::string slurpAuditDialog() { return slurpSourceList(ANTS_AUDITDIALOG_
 // ANTS-1677 — the MainWindow class's text: every file of
 // ANTS_MAINWINDOW_SOURCES, the list CMake builds from
 // ANTS_MAINWINDOW_SOURCES_REL. Guarded for the reason slurpRemoteControl is.
+// ANTS-4932 § 2.3 — followed by src/mcptoolregistry.cpp, the project-scoped
+// half of the registration list setupClaudeMcpProviders() runs. It is not a
+// MainWindow source, so it is not in that list.
 #if defined(ANTS_MAINWINDOW_SOURCES)
-inline std::string slurpMainWindow() { return slurpSourceList(ANTS_MAINWINDOW_SOURCES); }
+inline std::string slurpMainWindow() {
+    std::string text = slurpSourceList(ANTS_MAINWINDOW_SOURCES);
+#if defined(ANTS_MCP_REGISTRY_SOURCE)
+    text += slurpFile(ANTS_MCP_REGISTRY_SOURCE);
+#endif
+    return text;
+}
 #endif
 
 // Return the body of the function whose signature starts with the

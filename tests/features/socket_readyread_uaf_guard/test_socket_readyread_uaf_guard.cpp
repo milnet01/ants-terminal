@@ -66,14 +66,17 @@ TEST(SocketReadyreadUafGuard, Main) {
     // stops the slow-loris timer and QPointer-guards the socket before
     // dispatch. The hook handler (`[socket]`) is short-op-only and is
     // intentionally not required to carry these. (ANTS-2101)
+    // ANTS-4932 — the reply goes through the connection's McpReplyChannel, a
+    // child of the socket, so a QPointer to the channel goes null exactly when
+    // the socket is freed. handleMcpLine() takes that guard.
     {
         const std::string mcpMarker =
-            "&QLocalSocket::readyRead, this, [this, socket, idleTimer]";
+            "&QLocalSocket::readyRead, this, [this, socket, idleTimer, channel]";
         expect(claude.find(mcpMarker) != std::string::npos,
                "INV-1/mcp-readyread-handler-present");
         expect(windowHas(claude, mcpMarker, 3000, "idleTimer->stop()"),
                "INV-1/mcp-stops-idle-timer-before-dispatch");
-        expect(windowHas(claude, mcpMarker, 3000, "QPointer<QLocalSocket>"),
+        expect(windowHas(claude, mcpMarker, 3000, "QPointer<McpReplyChannel>"),
                "INV-1/mcp-qpointer-guards-socket");
     }
 

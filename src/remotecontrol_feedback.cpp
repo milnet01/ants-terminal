@@ -2283,6 +2283,17 @@ ResolvedRoot resolveCallerCwdRoot(const RootProvider *roots,
     return rr;
 }
 
+// ANTS-4932 § 2.4 — ants-mcpd's fallback is its process cwd, and its roadmap
+// is the one a caller_cwd naming that directory would get.
+QString ServerCwdRootProvider::fallbackRoot() const {
+    return QDir::currentPath();
+}
+
+QString ServerCwdRootProvider::fallbackRoadmapPath() const {
+    const QString root = QFileInfo(fallbackRoot()).canonicalFilePath();
+    return root.isEmpty() ? QString() : rcdetail::findRoadmapUnder(root);
+}
+
 // ANTS-1390 — global Claude config sentinel. Path tools
 // (workspace_search, file_outline) detect this *before* the normal
 // caller_cwd resolution above, so a Claude session editing global

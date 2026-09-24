@@ -138,7 +138,7 @@ TEST(roadmap_query_by_id, Inv7SchemaAdvertisesId) {
 TEST(roadmap_query_by_id, Inv8DispatchForwardsId) {
     expect_reset();
     const std::string cpp = ants_test::slurpMainWindow();
-    expect(contains(cpp, "rcDelegate(&RemoteControl::cmdRoadmapQuery)"),
+    expect(contains(cpp, "rcDelegate(rc, &RemoteControl::cmdRoadmapQuery)"),
            "INV-8: roadmap_query registered via the verbatim rcDelegate "
            "forward, so id reaches the handler (not silently dropped)");
     expect(contains(cpp, "ANTS-3422"),

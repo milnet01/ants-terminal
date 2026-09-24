@@ -141,7 +141,7 @@ bool isPassThroughLambda(const std::string &body) {
     const std::string forms[] = {
         "(args)", "( args )", "(args,", "( args,",
         " args)", ", args)", ", args,",
-        // ANTS-1782 — the rcDelegate(&RemoteControl::cmd*) factory
+        // ANTS-1782 — the rcDelegate(rc, &RemoteControl::cmd*) factory
         // builds a handler that forwards the whole `args` object to the
         // cmd verb, so a registration handed an rcDelegate(...) is
         // pass-through by construction (same as `cmd(args)` inline).

@@ -56,13 +56,19 @@ TEST(TerminalForCallerIsolation, EmptyCallerCwdFallsBackToFocused) {
     const std::string &rc = rcSource();
     ASSERT_FALSE(rc.empty());
     const std::string body =
-        functionBody(rc, "resolveCallerCwdRoot(const MainWindow *main,");
+        functionBody(rc, "resolveCallerCwdRoot(const RootProvider *roots,");
     ASSERT_FALSE(body.empty())
         << "ANTS-1401: resolveCallerCwdRoot body not located";
     EXPECT_NE(body.find("callerCwd.isEmpty()"), std::string::npos)
         << "ANTS-1396 INV-1: empty-callerCwd branch missing from helper";
-    EXPECT_NE(body.find("focusedTerminal()"), std::string::npos)
-        << "ANTS-1396 INV-1: focused fallback missing for empty callerCwd";
+    // ANTS-4932 § 2.4 — the fallback is the host's RootProvider; in the
+    // terminal that is the focused tab (MainWindowRootProvider).
+    EXPECT_NE(body.find("fallbackRoot()"), std::string::npos)
+        << "ANTS-1396 INV-1: host fallback missing for empty callerCwd";
+    const std::string provider = functionBody(
+        mwSource(), "QString fallbackRoot() const override");
+    EXPECT_NE(provider.find("focusedTerminal()"), std::string::npos)
+        << "ANTS-1396 INV-1: the terminal's fallback is not the focused tab";
 }
 
 // INV-3 — non-empty + no-match → NoMatch (helper) → nullptr (wrapper).
@@ -72,7 +78,7 @@ TEST(TerminalForCallerIsolation, NoMatchReturnsNullptr) {
     const std::string &rc = rcSource();
     ASSERT_FALSE(rc.empty());
     const std::string body =
-        functionBody(rc, "resolveCallerCwdRoot(const MainWindow *main,");
+        functionBody(rc, "resolveCallerCwdRoot(const RootProvider *roots,");
     ASSERT_FALSE(body.empty());
     EXPECT_NE(body.find("Source::NoMatch"), std::string::npos)
         << "ANTS-1396 INV-3: explicit NoMatch case missing from helper — "
@@ -87,12 +93,14 @@ TEST(TerminalForCallerIsolation, FocusedFallbackIsOnlyForEmptyCaller) {
     const std::string &rc = rcSource();
     ASSERT_FALSE(rc.empty());
     const std::string helperBody =
-        functionBody(rc, "resolveCallerCwdRoot(const MainWindow *main,");
+        functionBody(rc, "resolveCallerCwdRoot(const RootProvider *roots,");
     ASSERT_FALSE(helperBody.empty());
+    // ANTS-4932 § 2.4 — the helper reaches the focused tab only through
+    // RootProvider::fallbackRoot(), so that call is what is capped at one.
     int helperCount = 0;
     {
         size_t pos = 0;
-        while ((pos = helperBody.find("focusedTerminal()", pos)) !=
+        while ((pos = helperBody.find("fallbackRoot()", pos)) !=
                std::string::npos) {
             ++helperCount;
             ++pos;
@@ -100,9 +108,11 @@ TEST(TerminalForCallerIsolation, FocusedFallbackIsOnlyForEmptyCaller) {
     }
     EXPECT_EQ(helperCount, 1)
         << "ANTS-1396 INV-3: resolveCallerCwdRoot must call "
-           "focusedTerminal() exactly once (only in the empty-"
+           "fallbackRoot() exactly once (only in the empty-"
            "callerCwd back-compat branch). Multiple call sites "
            "suggest the v1 cross-project leak has crept back.";
+    EXPECT_EQ(helperBody.find("focusedTerminal()"), std::string::npos)
+        << "ANTS-4932: the helper must not read the focused tab directly";
 
     const std::string &mw = mwSource();
     ASSERT_FALSE(mw.empty());
@@ -130,7 +140,7 @@ TEST(TerminalForCallerIsolation, UnresolvableCanonicalReturnsNullptr) {
     const std::string &rc = rcSource();
     ASSERT_FALSE(rc.empty());
     const std::string body =
-        functionBody(rc, "resolveCallerCwdRoot(const MainWindow *main,");
+        functionBody(rc, "resolveCallerCwdRoot(const RootProvider *roots,");
     ASSERT_FALSE(body.empty());
     EXPECT_NE(body.find("wantCanonical.isEmpty()"), std::string::npos)
         << "ANTS-1396 INV-4: missing wantCanonical.isEmpty() guard in helper";
@@ -144,11 +154,10 @@ TEST(TerminalForCallerIsolation, UnresolvableCanonicalReturnsNullptr) {
 // match wins. A reverse-walk regression would silently flip
 // `tabIndex` to the highest-index match, changing the
 // `caller_cwd_info` envelope (ANTS-1400) under callers.
+// ANTS-4932 § 2.4 — the walk is the terminal's RootProvider::tabForCwd().
 TEST(TerminalForCallerIsolation, HelperWalksAscendingForLowestIndex) {
-    const std::string &rc = rcSource();
-    ASSERT_FALSE(rc.empty());
-    const std::string body =
-        functionBody(rc, "resolveCallerCwdRoot(const MainWindow *main,");
+    const std::string body = functionBody(
+        mwSource(), "std::optional<int> tabForCwd(const QString &canonical) const override");
     ASSERT_FALSE(body.empty());
     EXPECT_NE(body.find("for (int i = 0;"), std::string::npos)
         << "ANTS-1401 INV-5: helper must walk tabs ascending so the "

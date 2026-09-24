@@ -203,7 +203,7 @@ TEST(roadmap_query_pagination, Inv11HelperCallSiteCount) {
 TEST(roadmap_query_pagination, DispatchForwardsVerbatim) {
     expect_reset();
     const std::string mw = ants_test::slurpMainWindow();
-    expect(contains(mw, "rcDelegate(&RemoteControl::cmdRoadmapQuery)"),
+    expect(contains(mw, "rcDelegate(rc, &RemoteControl::cmdRoadmapQuery)"),
            "dispatch: roadmap_query registered via the verbatim rcDelegate "
            "forward, so offset/limit reach the handler un-gated");
     expect(contains(mw, "ANTS-3422"),

@@ -38,9 +38,9 @@ mirrors the v1 `include_section_headers` design.
   `roadmap_query` provider forwards `include_narrator_bullets` to the
   handler. ANTS-3422 replaced the per-arg forward (whose omissions were
   the silent-drop bug class the ANTS-1437 forward-fix belonged to) with a
-  verbatim `rcDelegate(&RemoteControl::cmdRoadmapQuery)` forward that
+  verbatim `rcDelegate(rc, &RemoteControl::cmdRoadmapQuery)` forward that
   passes the whole args object through, so the flag reaches the handler by
-  construction. Source anchor: `rcDelegate(&RemoteControl::cmdRoadmapQuery)`
+  construction. Source anchor: `rcDelegate(rc, &RemoteControl::cmdRoadmapQuery)`
   + `ANTS-3422`.
 - **INV-6 / echo-only-when-set discipline.** Envelope only carries
   `include_narrator_bullets` when the caller explicitly passed

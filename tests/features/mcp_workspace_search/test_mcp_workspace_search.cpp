@@ -205,7 +205,10 @@ TEST(McpWorkspaceSearch, WiringContract) {
            "member (ANTS-1253)");
     std::regex toolHandlerRe(
         R"(using\s+ToolHandler\s*=\s*std::function\s*<\s*QString\s*\(\s*const\s+QJsonObject\s*&)");
-    expect(std::regex_search(ciHdr, toolHandlerRe),
+    // ANTS-4932 § 2.3 — defined in mcptoolsink.h, aliased by ClaudeIntegration.
+    expect(std::regex_search(ants_test::slurpFile(SRC_MCP_TOOL_SINK_H_PATH),
+                             toolHandlerRe) &&
+               contains(ciHdr, "using ToolHandler = mcp::ToolHandler;"),
            "INV-7c",
            "claudeintegration.h does not declare ToolHandler as "
            "std::function<QString(const QJsonObject&)> — required for "

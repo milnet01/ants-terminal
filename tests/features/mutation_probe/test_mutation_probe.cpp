@@ -116,7 +116,7 @@ TEST(MutationProbe, Inv3GuaranteesWired) {
     // (seconds-to-minutes) does not block the window.
     EXPECT_NE(mw.find("registerToolProvider(\"mutation_probe\""),
               std::string::npos);
-    EXPECT_NE(mw.find("rcDelegate(&RemoteControl::cmdMutationProbe)"),
+    EXPECT_NE(mw.find("rcDelegate(rc, &RemoteControl::cmdMutationProbe)"),
               std::string::npos)
         << "a batch of full test runs must not run on the GUI thread";
     EXPECT_NE(ci.find("\"mutation_probe\""), std::string::npos);

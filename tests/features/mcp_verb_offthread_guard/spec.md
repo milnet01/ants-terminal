@@ -18,7 +18,7 @@ byte-for-byte `rcDelegate`.
 ## Mechanism
 
 `registerToolProvider` marks a verb off-thread when it was built by the
-`rcDelegate` factory and its contract is not `TabSpecific`. `onMcpConnection`
+`rcDelegate` factory and its contract is not `TabSpecific`. `handleMcpRequest`
 hands a marked verb to `postToolDispatch`, which queues it on the worker; the
 worker runs the handler and marshals the result back, and
 `finishToolDispatch` — the one response pipeline, shared with the synchronous

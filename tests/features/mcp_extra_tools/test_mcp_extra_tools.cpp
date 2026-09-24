@@ -163,8 +163,16 @@ static int runMain() {
             // get_text past the old window. The window is a heuristic
             // body-cap; raise as new providers slot in.
             : mwCpp.substr(braceOpen, 80 * 1024);
-        inv(6, contains(body, "registerToolProvider(\"roadmap_query\""),
-            "setupClaudeMcpProviders does not register roadmap_query");
+        // ANTS-4932 § 2.3 — the project-scoped verbs, roadmap_query among
+        // them, are registered by mcp::registerProjectScopedVerbs(), which
+        // setupClaudeMcpProviders() calls.
+        inv(6, contains(body, "mcp::registerProjectScopedVerbs(*m_claudeIntegration"),
+            "setupClaudeMcpProviders does not call registerProjectScopedVerbs");
+        const size_t regPos = mwCpp.find("void registerProjectScopedVerbs(");
+        inv(6, regPos != std::string::npos &&
+               mwCpp.find("registerToolProvider(\"roadmap_query\"", regPos) !=
+                   std::string::npos,
+            "registerProjectScopedVerbs does not register roadmap_query");
         inv(6, contains(body, "registerToolProvider(\"tab_list\""),
             "setupClaudeMcpProviders does not register tab_list");
         inv(6, contains(body, "registerToolProvider(\"get_text\""),

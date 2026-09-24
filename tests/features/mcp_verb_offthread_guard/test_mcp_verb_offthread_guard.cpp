@@ -9,6 +9,7 @@
 #include "../../_support/expect.h"
 #include "../../_support/srcgrep.h"
 
+#include <algorithm>
 #include <cctype>
 #include <regex>
 #include <set>
@@ -110,6 +111,20 @@ std::vector<std::string> rcSourcePaths() {
     return out;
 }
 
+// ANTS-4932 § 2.3 — the registration statements of both hosts: the
+// terminal-scoped ones in mainwindow.cpp and the project-scoped ones in
+// mcptoolregistry.cpp. Sorted offsets, terminated by the end of the text.
+std::vector<size_t> registrationBounds(const std::string &mw) {
+    std::vector<size_t> bounds;
+    for (const char *stmt : {"\n    m_claudeIntegration->", "\n    sink."})
+        for (size_t b = mw.find(stmt); b != std::string::npos;
+             b = mw.find(stmt, b + 1))
+            bounds.push_back(b);
+    std::sort(bounds.begin(), bounds.end());
+    bounds.push_back(mw.size());
+    return bounds;
+}
+
 std::string baseName(const std::string &path) {
     const size_t slash = path.find_last_of('/');
     return slash == std::string::npos ? path : path.substr(slash + 1);
@@ -126,8 +141,10 @@ TEST(McpVerbOffthreadGuard, Main) {
     expect(!mw.empty(), "load/mainwindow.cpp");
     expect(!ci.empty(), "load/claudeintegration.cpp");
 
+    // ANTS-4932 § 2.3 — the request body moved out of onMcpConnection() into
+    // handleMcpRequest(), which both hosts run.
     const std::string dispatcher =
-        bodyAfter(ci, "void ClaudeIntegration::onMcpConnection() {");
+        bodyAfter(ci, "void ClaudeIntegration::handleMcpRequest(");
     const std::string finish =
         bodyAfter(ci, "void ClaudeIntegration::finishToolDispatch(");
     const std::string post =
@@ -138,10 +155,11 @@ TEST(McpVerbOffthreadGuard, Main) {
     const std::string transform = bodyAfter(ci, transformMarker);
     const std::string teardown =
         bodyAfter(ci, "void ClaudeIntegration::shutdownDispatchWorker() {");
-    // ANTS-1677 — the factory is the private member MainWindow::rcDelegate(),
-    // so its body ends at the column-0 brace closing that definition.
+    // ANTS-4932 § 2.3 — the factory is the free function mcp::rcDelegate() in
+    // src/mcptoolregistry.cpp (part of the reading set), so its body ends at
+    // the column-0 brace closing that definition.
     const std::string factory = [&mw]() -> std::string {
-        const size_t at = mw.find("ClaudeIntegration::RcHandler MainWindow::rcDelegate(");
+        const size_t at = mw.find("RcHandler rcDelegate(RemoteControlGetter rc,");
         if (at == std::string::npos) return {};
         const size_t end = mw.find("\n}\n", at);
         return mw.substr(at, end == std::string::npos ? std::string::npos
@@ -269,7 +287,7 @@ TEST(McpVerbOffthreadGuard, Main) {
     std::set<std::string> offThreadCmds;
     {
         static const std::regex rx(
-            R"RX(registerToolProvider\("[^"]+",\s*ClaudeIntegration::CallerCwdContract::(\w+),\s*rcDelegate\(&RemoteControl::(\w+)(?:,\s*ClaudeIntegration::DispatchLane::\w+)?\))RX");
+            R"RX(registerToolProvider\("[^"]+",\s*ClaudeIntegration::CallerCwdContract::(\w+),\s*rcDelegate\(rc, &RemoteControl::(\w+)(?:,\s*ClaudeIntegration::DispatchLane::\w+)?\))RX");
         for (auto it = std::sregex_iterator(mw.begin(), mw.end(), rx);
              it != std::sregex_iterator(); ++it) {
             if ((*it)[1].str() != "TabSpecific")
@@ -384,12 +402,7 @@ TEST(McpVerbOffthreadGuard, Main) {
         // which has no following registration to stop at, and it excludes the
         // rcDelegate factory's own RcHandler{ — that is a factory definition,
         // not a registration, and carries no verb name.
-        static const std::string kStmt = "\n    m_claudeIntegration->";
-        std::vector<size_t> bounds;
-        for (size_t b = mw.find(kStmt); b != std::string::npos;
-             b = mw.find(kStmt, b + 1))
-            bounds.push_back(b);
-        bounds.push_back(mw.size());
+        const std::vector<size_t> bounds = registrationBounds(mw);
 
         size_t seen = 0;
         for (size_t i = 0; i + 1 < bounds.size(); ++i) {
@@ -436,13 +449,8 @@ TEST(McpVerbOffthreadGuard, Main) {
         // lambdas, segmented by registration statement as INV-11 does.
         std::set<std::string> twinCmds = offThreadCmds;
         static const std::regex contractRx(R"RX(CallerCwdContract::(\w+))RX");
-        static const std::regex rcCallRx(R"RX(m_remoteControl->(cmd\w+)\()RX");
-        static const std::string kStmt = "\n    m_claudeIntegration->";
-        std::vector<size_t> bounds;
-        for (size_t b = mw.find(kStmt); b != std::string::npos;
-             b = mw.find(kStmt, b + 1))
-            bounds.push_back(b);
-        bounds.push_back(mw.size());
+        static const std::regex rcCallRx(R"RX((?:m_remoteControl|rc\(\))->(cmd\w+)\()RX");
+        const std::vector<size_t> bounds = registrationBounds(mw);
         for (size_t i = 0; i + 1 < bounds.size(); ++i) {
             const std::string seg = mw.substr(bounds[i], bounds[i + 1] - bounds[i]);
             if (seg.find("registerToolProvider(") == std::string::npos ||

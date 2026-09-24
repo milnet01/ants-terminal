@@ -168,7 +168,7 @@ TEST(RoadmapQueryKeywordFilter, Inv7DispatchForwardsQuery) {
     const QString mw = QString::fromStdString(ants_test::slurpMainWindow());
     ASSERT_FALSE(mw.isEmpty());
     EXPECT_TRUE(mw.contains(
-        QStringLiteral("rcDelegate(&RemoteControl::cmdRoadmapQuery)")))
+        QStringLiteral("rcDelegate(rc, &RemoteControl::cmdRoadmapQuery)")))
         << "dispatch: roadmap_query registered via the verbatim rcDelegate "
            "forward, so query + max_body_bytes + include_section_etags + "
            "section_etag_match all reach the handler";

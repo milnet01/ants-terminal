@@ -72,4 +72,4 @@ clock and the random source passed in.
   transcript.
 - **INV-14 — the verb is registered with the Required contract.** Its schema
   sets `additionalProperties: false`. This case is a source scrape of
-  `mainwindow.cpp` and `claudeintegration.cpp`.
+  `mcptoolregistry.cpp` and `claudeintegration.cpp`.

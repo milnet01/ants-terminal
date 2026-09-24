@@ -255,8 +255,10 @@ TEST_F(RateLimitTestFixture, Inv12OrderVsCallerCwdRequired) {
     // the rate-limit block. Bumped 9000→12000 (ANTS-1772), 12000→15000
     // (ANTS-1853 grew the caller_cwd gate with the empty-arguments
     // diagnostic) — the ordering assertion below is what matters, not
-    // the exact window size.
-    const std::string region = cc.substr(dispatchStart, 15000);
+    // the exact window size. ANTS-4932 — the window is gone: ants-mcpd's
+    // forward branch sits between the two anchors and outgrew it, and each
+    // anchor's FIRST occurrence after the dispatch start is what is ordered.
+    const std::string region = cc.substr(dispatchStart);
     const auto cwdRequired =
         region.find("CallerCwdContract::Required &&");
     const auto rateLimit = region.find("// ANTS-1356 — per-tool");

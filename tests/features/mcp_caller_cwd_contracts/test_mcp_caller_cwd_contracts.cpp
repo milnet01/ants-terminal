@@ -193,7 +193,10 @@ TEST(McpCallerCwdContracts, ProviderDispatchGuardedByToolHandled) {
 
 // Header surface — CallerCwdContract enum + helper visible.
 TEST(McpCallerCwdContracts, HeaderSurface) {
-    const std::string h = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_H_PATH);
+    // ANTS-4932 § 2.3 — the enum is defined in mcptoolsink.h and aliased into
+    // ClaudeIntegration, so the surface is the two headers together.
+    const std::string h = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_H_PATH) +
+                          ants_test::slurpFile(SRC_MCP_TOOL_SINK_H_PATH);
     ASSERT_FALSE(h.empty());
     EXPECT_NE(h.find("enum class CallerCwdContract"), std::string::npos)
         << "ANTS-1404: CallerCwdContract enum missing from header";
