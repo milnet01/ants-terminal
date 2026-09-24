@@ -41556,7 +41556,7 @@ in each bullet, not just the reporter's symptom.
   Kind: chore.
   Source: in-session-2026-09-09.
 
-- 🚧 [ANTS-5316] **CI build-test red: bench_partition_walk under-links, and no local leg reproduces CI's toolchain.**
+- ✅ [ANTS-5316] **CI build-test red: bench_partition_walk under-links, and no local leg reproduces CI's toolchain.**
   Runs 35829254077, 35958448186 and 35980440710 failed the Release
   build: mold reported undefined MainWindow / TerminalWidget / audit
   symbols from ants_core_lib's remotecontrol_*.o members. The trigger
@@ -41569,12 +41569,14 @@ in each bullet, not just the reporter's symptom.
   --full) and the pre-push hook (--warm-only) run it.
   Run 35980440710's ASan job was a runner shutdown mid-suite, not a
   test failure.
+  Resolved (2026-09-24) (ece586e7). CI run 35984907653 green on all four
+  jobs.
   **Layman:** The automated build on GitHub broke on one benchmark program that builds fine on this machine, and our local pre-push check could not see the difference.
   Kind: fix.
   Source: user-request-2026-09-24.
   Lanes: build, ci.
 
-- 🚧 [ANTS-5317] **encodeProjectPath kept `.` and spaces, so a Claude session in ~/.claude showed no model in the status bar.**
+- ✅ [ANTS-5317] **encodeProjectPath kept `.` and spaces, so a Claude session in ~/.claude showed no model in the status bar.**
   Claude Code stores sessions under ~/.claude/projects/<encoded>/ with
   every non-alphanumeric character folded to `-` (all 34 dirs here
   match ^[A-Za-z0-9-]+$). encodeProjectPath folded only `/` and `_`,
@@ -41582,6 +41584,8 @@ in each bullet, not just the reporter's symptom.
   -home-ants--claude, and the transcript (and model chip) was lost.
   Fix: fold every non-ASCII-alphanumeric. Test: ClaudeSessionFreshness
   INV-17, proven red first. Live after a relaunch.
+  Resolved (2026-09-24) (1e297bdd). CI run 35985739334 green on all four
+  jobs. Reaches the running terminal on the next relaunch.
   **Layman:** The status bar could not find the session log for a Claude Code session running in a folder whose name has a dot, like ~/.claude, so it showed no model name.
   Kind: fix.
   Source: user-report-2026-09-24.
