@@ -18895,7 +18895,7 @@ fixes don't address. Roadmapped here as their own design tasks.
   Source: claude-ab-request-2026-09-24.
   Lanes: mcp, docs.
 
-- 🚧 [ANTS-5314] **File map prototype — every tracked file with a quoted purpose or "no stated purpose".**
+- 🚫 [ANTS-5314] **File map prototype — every tracked file with a quoted purpose or "no stated purpose".**
   Prototype: tools/filemap.py. Purpose lines quoted from a header comment,
   docstring, Purpose: line, H1 title, directory README or docs/subsystems.md,
   each tagged; otherwise the literal "no stated purpose". Uniform directories
@@ -18904,6 +18904,12 @@ fixes don't address. Roadmapped here as their own design tasks.
   Ships only if a token test shows sessions reading it spend fewer tokens
   answering "where does X live" than sessions that do not. Machine-wide home
   (~/.claude) is claude-ab's decision.
+  Dropped (2026-09-24): measured, did not win. 8 seeded questions, two
+  arms: both 8/8 correct; the map arm cost 88,093 tokens per question
+  against 84,768 without it. Agents searched the map or ignored it rather
+  than reading it. Record: docs/reviews/ANTS-5314-file-map-token-test-2026-09-24.md.
+  Prototype kept at tools/measure/filemap_prototype.py for a re-run on a
+  project with no code index.
   **Layman:** A one-page guide to what every file in a project is for, so a new session does not have to open three files to find the one it wanted.
   Kind: research.
   Source: claude-ab-request-2026-09-24.
